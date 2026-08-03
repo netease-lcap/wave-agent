@@ -6,9 +6,14 @@
  * writes a new Host block into ~/.ssh/config.
  */
 
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+
+const execFileAsync = promisify(execFile);
+const SHELL_PROBE_TIMEOUT_MS = 15_000;
 
 /** Sentinel host name for local (non-remote) sessions. */
 export const LOCAL_HOST = 'local';
@@ -163,4 +168,44 @@ export function buildSshSpawnArgs(host: string, remoteCommand: string): string[]
  */
 export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Per-host login shell, probed once per session and reused for every command. */
+const loginShellCache = new Map<string, Promise<string>>();
+
+/** Test-only: drop the per-host login shell cache. */
+export function resetRemoteShellCache(): void {
+  loginShellCache.clear();
+}
+
+/**
+ * Resolve the remote user's login shell from passwd (`echo $SHELL` is set even
+ * in a non-interactive session). nvm-style version managers put node/npm on
+ * PATH only in interactive rc files (.bashrc/.zshrc), which a plain
+ * `ssh host 'cmd'` never loads — so the shell is needed to run every remote
+ * command with its full user environment.
+ */
+export function getRemoteLoginShell(host: string): Promise<string> {
+  let cached = loginShellCache.get(host);
+  if (!cached) {
+    cached = execFileAsync('ssh', buildSshSpawnArgs(host, 'echo $SHELL'), {
+      timeout: SHELL_PROBE_TIMEOUT_MS,
+    })
+      .then(({ stdout }) => stdout.trim() || '/bin/sh')
+      .catch(() => '/bin/sh');
+    loginShellCache.set(host, cached);
+  }
+  return cached;
+}
+
+/**
+ * Wrap a remote command so it runs in the user's login shell:
+ * `<shell> -lic '<command>'`. `-l` loads .profile/.zprofile, `-i` loads
+ * .bashrc/.zshrc — the combination covers where nvm init lives. Without a TTY
+ * the shell prints a job-control warning on stderr (harmless, stdout stays
+ * clean); a genuinely failing command still surfaces its own stderr.
+ */
+export async function withRemoteLoginShell(host: string, command: string): Promise<string> {
+  const shell = await getRemoteLoginShell(host);
+  return `${shell} -lic ${shellQuote(command)}`;
 }

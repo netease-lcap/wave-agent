@@ -4,11 +4,15 @@
  * `command -v wave`; a missing CLI triggers a best-effort auto-install via the
  * npmmirror registry, then the flow continues. Every failure surfaces an
  * actionable message — nothing retries indefinitely.
+ *
+ * All probes run through the user's login shell (`withRemoteLoginShell`):
+ * nvm-style version managers expose node/npm only in interactive rc files,
+ * which a plain `ssh host 'cmd'` never loads.
  */
 
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { buildSshSpawnArgs, shellQuote } from './sshHosts';
+import { buildSshSpawnArgs, shellQuote, withRemoteLoginShell } from './sshHosts';
 
 const execFileAsync = promisify(execFile);
 
@@ -23,9 +27,18 @@ export interface RemoteCliInfo {
   nodeVersion: string;
 }
 
+/** stderr noise emitted by `bash/zsh -i` without a TTY — skip, not an error. */
+const JOB_CONTROL_NOISE = /^(bash|zsh): (cannot set terminal process group|no job control in this shell)$/;
+
 function describeError(error: unknown): string {
   const e = error as { stderr?: string; message?: string };
-  return (e.stderr ?? e.message ?? String(error)).trim().split('\n')[0];
+  const lines = (e.stderr ?? e.message ?? String(error)).trim().split('\n');
+  return lines.find((line) => !JOB_CONTROL_NOISE.test(line.trim())) ?? lines[0];
+}
+
+/** Run a remote probe command under the host's login shell. */
+async function remoteCommand(host: string, command: string): Promise<string[]> {
+  return buildSshSpawnArgs(host, await withRemoteLoginShell(host, command));
 }
 
 /**
@@ -38,11 +51,9 @@ function describeError(error: unknown): string {
 export async function resolveRemoteWaveBinary(host: string, installIfMissing = true): Promise<RemoteCliInfo> {
   let nodeVersion = '';
   try {
-    const { stdout } = await execFileAsync(
-      'ssh',
-      buildSshSpawnArgs(host, 'node -v'),
-      { timeout: PROBE_TIMEOUT_MS },
-    );
+    const { stdout } = await execFileAsync('ssh', await remoteCommand(host, 'node -v'), {
+      timeout: PROBE_TIMEOUT_MS,
+    });
     nodeVersion = stdout.trim();
   } catch {
     throw new Error(
@@ -58,11 +69,9 @@ export async function resolveRemoteWaveBinary(host: string, installIfMissing = t
 
   const probeWave = async (): Promise<string> => {
     try {
-      const { stdout } = await execFileAsync(
-        'ssh',
-        buildSshSpawnArgs(host, 'command -v wave'),
-        { timeout: PROBE_TIMEOUT_MS },
-      );
+      const { stdout } = await execFileAsync('ssh', await remoteCommand(host, 'command -v wave'), {
+        timeout: PROBE_TIMEOUT_MS,
+      });
       return stdout.trim();
     } catch {
       return '';
@@ -75,7 +84,7 @@ export async function resolveRemoteWaveBinary(host: string, installIfMissing = t
   const installCommand = `npm install -g wave-code --registry=${REMOTE_INSTALL_REGISTRY}`;
   if (installIfMissing) {
     try {
-      await execFileAsync('ssh', buildSshSpawnArgs(host, installCommand), {
+      await execFileAsync('ssh', await remoteCommand(host, installCommand), {
         timeout: INSTALL_TIMEOUT_MS,
         // npm writes progress to stderr — swallow it so failures surface only
         // the summarized error below.
@@ -102,9 +111,11 @@ export async function resolveRemoteWaveBinary(host: string, installIfMissing = t
  */
 export async function remotePathExists(host: string, remotePath: string): Promise<boolean> {
   try {
-    await execFileAsync('ssh', buildSshSpawnArgs(host, `test -d ${shellQuote(remotePath)}`), {
-      timeout: PROBE_TIMEOUT_MS,
-    });
+    await execFileAsync(
+      'ssh',
+      await remoteCommand(host, `test -d ${shellQuote(remotePath)}`),
+      { timeout: PROBE_TIMEOUT_MS },
+    );
     return true;
   } catch {
     return false;

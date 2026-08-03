@@ -216,6 +216,17 @@ vi.mock('../src/main/remoteCli', () => ({
   remotePathExists: vi.fn(async () => true),
 }));
 
+// withRemoteLoginShell probes the remote login shell via a real `echo $SHELL`
+// ssh round trip — stub it to keep host tests offline. Everything else in
+// sshHosts (config parsing, spawn args, quoting) stays real.
+vi.mock('../src/main/sshHosts', async () => {
+  const actual = await vi.importActual<typeof import('../src/main/sshHosts')>('../src/main/sshHosts');
+  return {
+    ...actual,
+    withRemoteLoginShell: vi.fn(async (_host: string, command: string) => command),
+  };
+});
+
 import { DesktopHost } from '../src/main/desktopHost';
 import { ConfigStore } from '../src/main/configStore';
 import { HOST_CHANNEL } from '../src/main/channels';
