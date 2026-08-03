@@ -247,23 +247,24 @@ describe("Session Error Handling and Edge Cases", () => {
       const olderMainSessionId = randomUUID();
       const newerMainSessionId = randomUUID();
 
-      // Create different timestamps - older session has more recent activity
-      // Note: timestamps are used to simulate file creation order in this test
-      new Date(Date.now() - 1000).toISOString(); // 1 second ago
-      new Date().toISOString(); // now
+      // Create different timestamps - older session has more recent activity.
+      // The two must differ deterministically: when both land in the same
+      // millisecond the sort order becomes a race and the test flakes.
+      const olderLastActiveAt = new Date().toISOString(); // now
+      const newerLastActiveAt = new Date(Date.now() - 1000).toISOString(); // 1 second ago
 
       const olderSessionMessage = {
         id: generateMessageId(),
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "Hello" }],
-        timestamp: new Date().toISOString(),
+        timestamp: olderLastActiveAt,
       };
 
       const newerSessionMessage = {
         id: generateMessageId(),
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "Hello" }],
-        timestamp: new Date().toISOString(),
+        timestamp: newerLastActiveAt,
       };
 
       // Create files - subagent sessions would be in separate directory
