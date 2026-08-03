@@ -1259,6 +1259,22 @@ describe('worktree flow', () => {
     expect(msg).toMatchObject({ workdir: '/work/a', result: null });
   });
 
+  it('desktopListGitBranches arriving before the stdio client is ready waits for init instead of replying null', async () => {
+    // Fresh-launch sequence: the webview's branch query (mount effect) lands
+    // before webviewReady has spawned the stdio client. It must await the
+    // client init, otherwise the reply is null and the webview never re-queries
+    // — the branch/worktree controls stay hidden until the user re-picks a
+    // workdir.
+    const { host, sent } = createHost();
+    h.branchesResult = { branches: ['main', 'dev'], current: 'main' };
+
+    await host.handleWebviewMessage({ command: 'desktopReady' });
+    await host.handleWebviewMessage({ command: 'desktopListGitBranches', workdir: '/work/a' });
+
+    const msg = sent('desktopGitBranches').at(-1);
+    expect(msg).toMatchObject({ workdir: '/work/a', result: { branches: ['main', 'dev'], current: 'main' } });
+  });
+
   it('desktopCreateWorktree switches workdir into the worktree', async () => {
     const { host, store, sent } = await readyHost();
     h.worktreeResult = worktree;

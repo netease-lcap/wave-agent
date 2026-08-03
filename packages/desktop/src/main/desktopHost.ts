@@ -1501,6 +1501,12 @@ export class DesktopHost {
   private async handleListGitBranches(workdir: string, paneId?: string): Promise<void> {
     const h = this.hostForPane(paneId);
     try {
+      // A fresh launch's first query (webview mount) can land before
+      // webviewReady has spawned the stdio client. Await the client instead of
+      // replying null — the webview never re-queries on a null reply, which
+      // would leave the branch/worktree controls hidden until the user
+      // re-picks a workdir.
+      await this.ensureClientFor(h);
       const result = await this.utilityClientFor(h).request('listGitBranches', { workdir });
       this.postMessage({ command: 'desktopGitBranches', workdir, paneId, result });
     } catch {
