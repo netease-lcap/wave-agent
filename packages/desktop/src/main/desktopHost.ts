@@ -2083,7 +2083,18 @@ export class DesktopHost {
       this.pushSystemMessage(`未知主机：${host}`);
       return;
     }
-    this.hostState.set(this.focusedPaneId, host);
+    const pid = this.focusedPaneId;
+    const active = this.agentForPane(pid);
+    // A message-less agent is still the new-session picker state (新对话 binds a
+    // fresh empty agent to the pane). Switching host releases it so the pane's
+    // reported host follows the picker — a bound agent would otherwise pin the
+    // label to its own host and the selector never leaves the old one. The
+    // empty agent has no session yet, so releasing it loses nothing.
+    if (active && active.messages.length === 0 && !active.isStreaming && this.hostForAgent(active) !== host) {
+      this.bindAgentToPane(pid, null);
+      this.pushPaneSessionState(pid);
+    }
+    this.hostState.set(pid, host);
     // Establish the host's client eagerly so auth/status queries against the
     // newly selected host don't race the first agent spawn. Fire-and-forget:
     // failures surface as a system message, the picker updates immediately.
@@ -2093,6 +2104,9 @@ export class DesktopHost {
       );
     });
     this.sendWorkdirState();
+    // The webview's host label reads the pane-bound host from desktopPanes —
+    // without a re-push the selector stays on the previous host.
+    this.pushPanes();
   }
 
   /**
@@ -2110,7 +2124,15 @@ export class DesktopHost {
       this.pushSystemMessage(error instanceof Error ? error.message : String(error));
       return;
     }
-    this.hostState.set(this.focusedPaneId, name);
+    const pid = this.focusedPaneId;
+    const active = this.agentForPane(pid);
+    // Same as handleSelectHost: a bound message-less agent must not pin the
+    // pane to its old host — release it so the new host takes effect.
+    if (active && active.messages.length === 0 && !active.isStreaming) {
+      this.bindAgentToPane(pid, null);
+      this.pushPaneSessionState(pid);
+    }
+    this.hostState.set(pid, name);
     this.ensureClientFor(name).catch((error) => {
       this.pushSystemMessage(
         `连接主机 ${name} 失败：${error instanceof Error ? error.message : String(error)}`,
@@ -2118,6 +2140,9 @@ export class DesktopHost {
     });
     this.pushSystemMessage(`已添加主机：${name}`);
     this.sendWorkdirState();
+    // Same as handleSelectHost: the pane layout must carry the new host or the
+    // selector never leaves the old one.
+    this.pushPanes();
   }
 
   /**
