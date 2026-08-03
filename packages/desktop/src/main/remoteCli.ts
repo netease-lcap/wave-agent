@@ -224,7 +224,7 @@ export async function readRemoteFile(host: string, remotePath: string): Promise<
     const totalLines = Number(lines[3].replace(/^total=/, ''));
     const truncated = lines[4] === 'truncated=1';
     const payload = lines.slice(5).join('\n').replace(/\s+$/, '');
-    if (type === 'image') return { type, mime, imageBase64: payload };
+    if (type === 'image') return { type, mime, imageBase64: `data:${mime};base64,${payload}` };
     if (type === 'binary') return { type, mime };
     return {
       type,

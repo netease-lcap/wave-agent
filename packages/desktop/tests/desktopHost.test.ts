@@ -3620,7 +3620,11 @@ describe('file panel', () => {
     await host.handleWebviewMessage({ command: 'openFile', path: '/work/a/icon.png' });
 
     const fv = (sent('desktopFileContent').at(-1) as { fileView: Record<string, unknown> }).fileView;
-    expect(fv).toMatchObject({ path: '/work/a/icon.png', host: 'local', imageBase64: png.toString('base64') });
+    expect(fv).toMatchObject({
+      path: '/work/a/icon.png',
+      host: 'local',
+      imageBase64: `data:image/png;base64,${png.toString('base64')}`,
+    });
   });
 
   it('openFile reports NUL-containing files as binary without a system message', async () => {
@@ -3665,7 +3669,7 @@ describe('file panel', () => {
     await host.handleWebviewMessage({ command: 'previewImage', path: '/work/a/logo.png' });
 
     const fv = (sent('desktopFileContent').at(-1) as { fileView: Record<string, unknown> }).fileView;
-    expect(fv).toMatchObject({ path: '/work/a/logo.png', imageBase64: png.toString('base64') });
+    expect(fv).toMatchObject({ path: '/work/a/logo.png', imageBase64: `data:image/png;base64,${png.toString('base64')}` });
   });
 
   it('openFile on a remote pane reads via ssh and maps the result', async () => {
@@ -3693,13 +3697,13 @@ describe('file panel', () => {
     vi.mocked(readRemoteFile).mockResolvedValueOnce({
       type: 'image',
       mime: 'image/png',
-      imageBase64: 'aGVsbG8=',
+      imageBase64: 'data:image/png;base64,aGVsbG8=',
     });
 
     await host.handleWebviewMessage({ command: 'openFile', path: '/remote/pic.png' });
 
     const fv = (sent('desktopFileContent').at(-1) as { fileView: Record<string, unknown> }).fileView;
-    expect(fv).toMatchObject({ path: '/remote/pic.png', host: 'prod', imageBase64: 'aGVsbG8=' });
+    expect(fv).toMatchObject({ path: '/remote/pic.png', host: 'prod', imageBase64: 'data:image/png;base64,aGVsbG8=' });
   });
 
   it('openFile on a remote pane maps ssh read failures to a panel error', async () => {
