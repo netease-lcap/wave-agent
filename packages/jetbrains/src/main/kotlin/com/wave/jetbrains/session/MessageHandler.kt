@@ -295,7 +295,8 @@ class MessageHandler(
                 }
                 postMessage("projectSettings", buildJsonObject { put("enabledPlugins", enabledPlugins) })
             }
-            // Toggle a builtin plugin (e.g. SDD) in project settings — persist-only, no rebuild.
+            // Toggle a builtin plugin (e.g. SDD) in project settings. Same restart path as
+            // handlePluginMutation: persist, then reload the agent so changes apply immediately.
             "setBuiltinPluginEnabled" -> {
                 val pluginId = msg["pluginId"]?.jsonPrimitive?.content ?: return
                 val enabled = msg["enabled"]?.jsonPrimitive?.content?.toBoolean() ?: false
@@ -309,6 +310,7 @@ class MessageHandler(
                 }
                 if (enabledPlugins != null) {
                     postMessage("projectSettings", buildJsonObject { put("enabledPlugins", enabledPlugins) })
+                    reloadAgentConfig()
                 }
             }
             // VSCE :110/:302

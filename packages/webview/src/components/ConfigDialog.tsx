@@ -222,12 +222,7 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
             {activeTab === 'project' && (
               <div className="configuration-field config-project-field">
                 <div className="config-project-row">
-                  <div className="config-project-label">
-                    <span className="config-project-title">SDD</span>
-                    <span className="config-project-desc">
-                      Spec-driven development 插件（/sdd:specify 等命令与技能）
-                    </span>
-                  </div>
+                  <span className="config-project-title">SDD</span>
                   <label className="switch">
                     <input
                       type="checkbox"
@@ -249,10 +244,13 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
                     <span className="slider round"></span>
                   </label>
                 </div>
+                <div className="config-project-desc">
+                  规格驱动开发（SDD）插件：自动创建或更新功能规格说明
+                </div>
                 <div className="config-model-hint config-project-hint">
                   <InfoIcon className="config-model-hint-icon" />
                   <span>
-                    写入项目 .wave/settings.json；修改后需重启会话或新建会话生效。
+                    切换后自动生效。
                   </span>
                 </div>
               </div>

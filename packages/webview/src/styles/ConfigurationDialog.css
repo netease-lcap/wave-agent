@@ -454,12 +454,6 @@ input:checked + .slider:before {
     gap: 12px;
 }
 
-.config-project-label {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
 .config-project-title {
     font-weight: 500;
 }

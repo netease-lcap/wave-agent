@@ -2643,6 +2643,8 @@ export class DesktopHost {
         workdir,
       })) as { enabledPlugins: Record<string, boolean> };
       this.postMessage({ command: 'projectSettings', paneId, enabledPlugins: result.enabledPlugins });
+      // Recreate agents so the plugin change applies immediately (mirrors handlePluginMutation)
+      await this.updateAgentConfig(this.configStore.getConfiguration());
     } catch (error) {
       this.pushSystemMessage(`修改项目设置失败: ${error}`, paneId);
     }
