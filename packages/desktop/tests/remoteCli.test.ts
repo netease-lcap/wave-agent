@@ -242,7 +242,7 @@ describe('readRemoteFile', () => {
   it('returns base64 image bytes for image mimes', async () => {
     stubExec([LOGIN_SHELL, { stdout: `WAVE_REMOTE_FILE_V1\ntype=image\nmime=image/png\ntotal=-\ntruncated=-\naGVsbG8=\n` }]);
     const result = await readRemoteFile('prod', '/home/user/pic.png');
-    expect(result).toEqual({ type: 'image', mime: 'image/png', imageBase64: 'aGVsbG8=' });
+    expect(result).toEqual({ type: 'image', mime: 'image/png', imageBase64: 'data:image/png;base64,aGVsbG8=' });
   });
 
   it('returns binary with no payload', async () => {

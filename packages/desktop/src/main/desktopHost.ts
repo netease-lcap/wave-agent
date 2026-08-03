@@ -3018,6 +3018,18 @@ export class DesktopHost {
   /** Image extensions the file panel can inline (local host; remote keys off mime). */
   private readonly FILE_PANEL_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']);
 
+  /** Mime per extension for the inline data URL (local images; remote uses `file -b -I`). */
+  private readonly IMAGE_MIME_BY_EXT: Record<string, string> = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    svg: 'image/svg+xml',
+    bmp: 'image/bmp',
+    ico: 'image/x-icon',
+  };
+
   /**
    * Read a file for the file panel and push desktopFileContent to its pane.
    * Local files are read straight from disk; remote ones over ssh (base64 for
@@ -3064,7 +3076,8 @@ export class DesktopHost {
     const ext = path.extname(filePath).toLowerCase().replace(/^\./, '');
     if (this.FILE_PANEL_IMAGE_EXTS.has(ext)) {
       const data = await fs.promises.readFile(filePath);
-      return { path: filePath, host: LOCAL_HOST, imageBase64: data.toString('base64') };
+      const mime = this.IMAGE_MIME_BY_EXT[ext] ?? 'application/octet-stream';
+      return { path: filePath, host: LOCAL_HOST, imageBase64: `data:${mime};base64,${data.toString('base64')}` };
     }
 
     // +1 byte probes whether the file exceeds the cap without a second stat.
