@@ -34,6 +34,7 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
 } from 'wave-agent-sdk';
 import { StdioClient } from './stdio/stdioClient';
+import type { JsonRpcClient } from './stdio/jsonRpcClient';
 import { StdioAgent, type StdioAgentCallbacks } from './stdio/stdioAgent';
 import { NotificationRouter } from './stdio/notificationRouter';
 import {
@@ -42,15 +43,17 @@ import {
   getCliVersion,
 } from './stdio/binaryResolver';
 import { ConfigStore, type DesktopConfigData, type SessionIndexEntry } from './configStore';
-import { LOCAL_HOST, parseSshConfigHosts, addSshHost, buildSshSpawnArgs, withRemoteLoginShell } from './sshHosts';
+import { LOCAL_HOST, parseSshConfigHosts, addSshHost } from './sshHosts';
 import {
-  resolveRemoteWaveBinary,
   remotePathExists,
   listRemoteDirs,
   readRemoteFile,
+  ensureRemoteDaemon,
+  connectRemoteDaemon,
   REMOTE_FILE_MAX_LINES,
   REMOTE_FILE_MAX_BYTES,
 } from './remoteCli';
+import type { ChildProcess } from 'child_process';
 import { getWorkspaceDiff } from './gitDiff';
 import { TerminalManager } from './terminal';
 import { PortForwardManager } from './portForward';
@@ -60,6 +63,9 @@ import type { PanelKind } from './menu';
 
 interface PendingConfirmation {
   resolve: (decision: PermissionDecision) => void;
+  /** Remote daemon requestId — used to dedup re-attached snapshots and to
+   *  send the response back over the daemon client for re-surfaced entries. */
+  requestId: string;
   agent: StdioAgent;
   toolName: string;
   confirmationType: string;
@@ -112,12 +118,19 @@ export class DesktopHost {
   private initPromise: Promise<void> | null = null;
   private cliVersion: string | null = null;
 
-  // Remote (ssh) host infrastructure: host name → its own shared stdio
-  // client. Each remote host runs its own `wave --stdio` over ssh, so sessions
-  // on different hosts never share a process (spec scenario 9).
+  // Remote (ssh) host infrastructure: host name → its own shared JSON-RPC
+  // client. Each remote host runs a `wave --daemon` (nohup, survives this app),
+  // reached through a unix-socket ssh tunnel — so sessions on different hosts
+  // never share a process, and remote sessions outlive the desktop app (spec
+  // scenario 9 + SSH 后台模式). The tunnel is a plain `ssh -N -L` child.
   private remoteHosts = new Map<
     string,
-    { client: StdioClient | null; router: NotificationRouter | null; initPromise: Promise<void> }
+    {
+      client: JsonRpcClient | null;
+      router: NotificationRouter | null;
+      tunnel: ChildProcess | null;
+      initPromise: Promise<void>;
+    }
   >();
 
   // agent pool (multi-session parallel): `${host}\u0000${sessionId}` → live
@@ -316,14 +329,21 @@ export class DesktopHost {
       }
     }
     this.paneThrottles.clear();
-    await Promise.allSettled([...this.agents.values()].map((agent) => agent.destroy()));
+    // Local agents die with the app; remote agents run on a daemon that must
+    // survive this quit, so their sessions are left running (真后台).
+    await Promise.allSettled(
+      [...this.agents.values()]
+        .filter((agent) => this.hostForAgent(agent) === LOCAL_HOST)
+        .map((agent) => agent.destroy()),
+    );
     this.agents.clear();
     this.agentHosts.clear();
     this.panes = [{ paneId: 'pane-1', agent: null }];
     this.focusedPaneId = 'pane-1';
     this.hostState.clear();
-    for (const { client } of this.remoteHosts.values()) {
+    for (const { client, tunnel } of this.remoteHosts.values()) {
       client?.dispose();
+      tunnel?.kill();
     }
     this.remoteHosts.clear();
     this.client?.dispose();
@@ -433,29 +453,32 @@ export class DesktopHost {
   }
 
   /**
-   * Spawn a remote `wave --stdio` over ssh. Resolves the remote binary first
-   * (probing `node -v` / `command -v wave`, auto-installing via npmmirror when
-   * missing), then spawns `ssh <host> <wave> --stdio` as the host's shared
-   * client. Failed init deletes the entry so a later attempt can retry.
+   * Ensure the remote host's wave daemon is running, then attach to it through
+   * a unix-socket ssh tunnel. The daemon is launched detached (nohup) and
+   * survives this app's quit — pending approvals and running sessions live
+   * there and are re-attached on the next launch. Failed init deletes the
+   * entry so a later attempt can retry.
    */
   private ensureRemoteHostClient(host: string): Promise<void> {
     const existing = this.remoteHosts.get(host);
     if (existing) return existing.initPromise;
 
-    const entry: { client: StdioClient | null; router: NotificationRouter | null; initPromise: Promise<void> } = {
+    const entry: {
+      client: JsonRpcClient | null;
+      router: NotificationRouter | null;
+      tunnel: ChildProcess | null;
+      initPromise: Promise<void>;
+    } = {
       client: null,
       router: null,
+      tunnel: null,
       initPromise: Promise.resolve(),
     };
     this.remoteHosts.set(host, entry);
 
     entry.initPromise = (async () => {
-      const { binaryPath } = await resolveRemoteWaveBinary(host);
-      // Run the remote wave under the user's login shell — its npm bin shim
-      // (`#!/usr/bin/env node`) needs node on PATH, which nvm-style installs
-      // only provide in interactive rc files.
-      const remoteRun = await withRemoteLoginShell(host, `${binaryPath} --stdio`);
-      const client = new StdioClient('ssh', buildSshSpawnArgs(host, remoteRun));
+      const daemonSocket = await ensureRemoteDaemon(host);
+      const { client, tunnel } = await connectRemoteDaemon(host, daemonSocket);
       const router = new NotificationRouter(client);
       router.registerGlobal('authUrl', (params) => {
         const p = params as { url?: string };
@@ -464,6 +487,16 @@ export class DesktopHost {
       router.attach();
       entry.client = client;
       entry.router = router;
+      entry.tunnel = tunnel;
+      // The ssh tunnel dropped (network blip, host reboot) — the daemon keeps
+      // running remotely, so release the local host entry + pool agents so a
+      // later access re-attaches. Detach, never destroy: the remote session
+      // must survive until the user deletes it (真后台).
+      client.onClosed(() => {
+        this.remoteHosts.delete(host);
+        tunnel.kill();
+        this.dropHostAgents(host);
+      });
     })();
 
     entry.initPromise.catch(() => {
@@ -474,7 +507,7 @@ export class DesktopHost {
   }
 
   /** Resolve the (client, router) pair for a host, throwing if not initialized. */
-  private clientFor(host: string): { client: StdioClient; router: NotificationRouter } {
+  private clientFor(host: string): { client: JsonRpcClient; router: NotificationRouter } {
     if (host === LOCAL_HOST) {
       if (!this.client || !this.router) throw new Error('StdioClient not initialized');
       return { client: this.client, router: this.router };
@@ -485,7 +518,7 @@ export class DesktopHost {
   }
 
   /** Utility (non-session-scoped) client for a host — auth, plugins, git RPCs. */
-  private utilityClientFor(host: string): StdioClient {
+  private utilityClientFor(host: string): JsonRpcClient {
     return this.clientFor(host).client;
   }
 
@@ -633,7 +666,7 @@ export class DesktopHost {
         }
       },
       onPermissionRequest: (requestId, context) => {
-        void this.handleToolPermissionRequest(agentRef, context).then((decision) => {
+        void this.handleToolPermissionRequest(agentRef, context, requestId).then((decision) => {
           agentRef.sendPermissionResponse(requestId, decision);
         });
       },
@@ -646,13 +679,17 @@ export class DesktopHost {
   }
 
   /** Create + initialize a fresh agent and register it in the pool. */
-  private async spawnAgent(opts: { host?: string; workdir?: string; worktreeInfo?: WorktreeInfo; worktreeName?: string; isNewWorktree?: boolean }): Promise<StdioAgent> {
+  private async spawnAgent(opts: { host?: string; workdir?: string; worktreeInfo?: WorktreeInfo; worktreeName?: string; isNewWorktree?: boolean; sessionId?: string }): Promise<StdioAgent> {
     const host = opts.host ?? LOCAL_HOST;
     await this.ensureClientFor(host);
     const config = this.configStore.getConfiguration();
     const agent = this.createAgent({ ...opts, host });
     await agent.initialize({
       workdir: opts.workdir,
+      // Restoring an existing session (e.g. re-attaching to a remote daemon
+      // session): the daemon reuses the live agent instead of forking a second
+      // one writing to the same transcript. Fresh sessions omit the field.
+      ...(opts.sessionId ? { restoreSessionId: opts.sessionId } : {}),
       apiKey: config.apiKey || undefined,
       defaultHeaders: parseHeaders(config.headers),
       baseURL: config.baseURL || undefined,
@@ -1116,7 +1153,7 @@ export class DesktopHost {
     const token = this.pendingRestores.get(paneId)?.token;
     let agent: StdioAgent | undefined;
     try {
-      agent = await this.spawnAgent({ host: opts.host, workdir: opts.workdir, worktreeInfo: opts.entry?.worktree });
+      agent = await this.spawnAgent({ host: opts.host, workdir: opts.workdir, worktreeInfo: opts.entry?.worktree, sessionId: opts.sessionId });
       if (this.pendingRestores.get(paneId)?.token !== token) {
         await this.discardAgent(agent);
         return;
@@ -1132,6 +1169,11 @@ export class DesktopHost {
       this.ensureSessionRegistered(agent);
       this.touchSessionInIndex(agent);
       this.refreshSessionTree();
+      // Re-attach approvals the daemon held while no client was connected —
+      // they resurface as the same dialogs a live session would show.
+      if (opts.host !== LOCAL_HOST) {
+        void this.attachPendingPermissionsForSession(opts.host, opts.sessionId, agent);
+      }
     } catch (error) {
       console.error('[DesktopHost] 恢复会话失败:', error);
       // Only the latest restore clears the overlay; superseded restores
@@ -1170,6 +1212,41 @@ export class DesktopHost {
       }
     }
     await agent.destroy().catch(() => { /* best-effort */ });
+  }
+
+  /**
+   * Detach every agent of a host from the pool WITHOUT destroying it — the
+   * session keeps running on the remote daemon (真后台) and is re-attached
+   * through a fresh tunnel on the next access. Pane bindings are released to
+   * the new-session state (the picker stays on the remote host); sidebar
+   * running/waiting markers vanish because a disconnected host cannot report
+   * live state, which is also what a dead daemon looks like (spec scenario 10).
+   */
+  private dropHostAgents(host: string): void {
+    const released = new Set<StdioAgent>();
+    for (const [key, agent] of this.agents) {
+      if (this.hostForAgent(agent) === host) {
+        this.agents.delete(key);
+        released.add(agent);
+      }
+    }
+    for (const agent of released) {
+      this.agentHosts.delete(agent);
+      this.agentWorktreeInfo.delete(agent);
+      for (const [confirmationId, p] of this.pendingConfirmations) {
+        if (p.agent === agent) this.pendingConfirmations.delete(confirmationId);
+      }
+    }
+    for (const pane of this.panes) {
+      if (pane.agent && released.has(pane.agent)) {
+        this.bindAgentToPane(pane.paneId, null);
+        this.workflowRuns.delete(pane.paneId);
+      }
+    }
+    if (released.size > 0) {
+      this.refreshSessionTree();
+      this.pushPanes();
+    }
   }
 
   /** Lazily-created per-pane throttle state. */
@@ -1262,26 +1339,55 @@ export class DesktopHost {
   // Tool permission flow
   // ------------------------------------------------------------------
 
-  private handleToolPermissionRequest(agent: StdioAgent, context: ToolPermissionContext): Promise<PermissionDecision> {
+  private handleToolPermissionRequest(agent: StdioAgent, context: ToolPermissionContext, requestId: string): Promise<PermissionDecision> {
     return new Promise((resolve) => {
-      const confirmationId = `confirmation_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+      this.pushPendingConfirmation(agent, context, requestId, resolve);
+    });
+  }
 
-      let confirmationType: string;
-      if ([EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(context.toolName)) {
-        confirmationType = '代码修改待确认';
-      } else if (context.toolName === BASH_TOOL_NAME) {
-        confirmationType = '命令执行待确认';
-      } else if (context.toolName === EXIT_PLAN_MODE_TOOL_NAME || context.toolName === ENTER_PLAN_MODE_TOOL_NAME) {
-        confirmationType = '计划待确认';
-      } else if (context.toolName === ASK_USER_QUESTION_TOOL_NAME) {
-        confirmationType = '问题待回答';
-      } else {
-        confirmationType = '操作待确认';
-      }
+  /** Record a pending tool confirmation and pop its dialog when the session is visible. */
+  private pushPendingConfirmation(
+    agent: StdioAgent,
+    context: ToolPermissionContext,
+    requestId: string,
+    resolve: (decision: PermissionDecision) => void,
+  ): void {
+    const confirmationId = `confirmation_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
-      this.pendingConfirmations.set(confirmationId, {
-        resolve,
-        agent,
+    let confirmationType: string;
+    if ([EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(context.toolName)) {
+      confirmationType = '代码修改待确认';
+    } else if (context.toolName === BASH_TOOL_NAME) {
+      confirmationType = '命令执行待确认';
+    } else if (context.toolName === EXIT_PLAN_MODE_TOOL_NAME || context.toolName === ENTER_PLAN_MODE_TOOL_NAME) {
+      confirmationType = '计划待确认';
+    } else if (context.toolName === ASK_USER_QUESTION_TOOL_NAME) {
+      confirmationType = '问题待回答';
+    } else {
+      confirmationType = '操作待确认';
+    }
+
+    this.pendingConfirmations.set(confirmationId, {
+      resolve,
+      requestId,
+      agent,
+      toolName: context.toolName,
+      confirmationType,
+      toolInput: context.toolInput,
+      planContent: context.planContent,
+      suggestedPrefix: context.suggestedPrefix,
+      hidePersistentOption: context.hidePersistentOption,
+    });
+    this.refreshSessionTree();
+
+    // Only a visible session pops the dialog; a background session's request
+    // stays pending and is surfaced when the user switches back to it.
+    const paneId = this.paneIdForAgent(agent);
+    if (paneId) {
+      this.postMessage({
+        command: 'showConfirmation',
+        paneId,
+        confirmationId,
         toolName: context.toolName,
         confirmationType,
         toolInput: context.toolInput,
@@ -1289,25 +1395,31 @@ export class DesktopHost {
         suggestedPrefix: context.suggestedPrefix,
         hidePersistentOption: context.hidePersistentOption,
       });
-      this.refreshSessionTree();
+    }
+  }
 
-      // Only a visible session pops the dialog; a background session's request
-      // stays pending and is surfaced when the user switches back to it.
-      const paneId = this.paneIdForAgent(agent);
-      if (paneId) {
-        this.postMessage({
-          command: 'showConfirmation',
-          paneId,
-          confirmationId,
-          toolName: context.toolName,
-          confirmationType,
-          toolInput: context.toolInput,
-          planContent: context.planContent,
-          suggestedPrefix: context.suggestedPrefix,
-          hidePersistentOption: context.hidePersistentOption,
+  /**
+   * Re-attach a remote session's pending approvals after a disconnect
+   * (spec scenario 4/5): the daemon holds them while no client is connected,
+   * and a fresh tunnel snapshot surfaces them as the same confirmation dialogs
+   * a live session would show. Re-surfaced entries resolve straight back to
+   * the daemon client — there is no in-process wait for them.
+   */
+  private async attachPendingPermissionsForSession(host: string, sessionId: string, agent: StdioAgent): Promise<void> {
+    try {
+      const result = (await this.utilityClientFor(host).request('listPendingPermissions')) as {
+        requests: Array<{ requestId: string; sessionId?: string; context: ToolPermissionContext }>;
+      };
+      for (const req of result.requests ?? []) {
+        if (req.sessionId && req.sessionId !== sessionId) continue;
+        if ([...this.pendingConfirmations.values()].some((p) => p.requestId === req.requestId)) continue;
+        this.pushPendingConfirmation(agent, req.context, req.requestId, (decision) => {
+          agent.sendPermissionResponse(req.requestId, decision);
         });
       }
-    });
+    } catch (error) {
+      console.error('[DesktopHost] 恢复待确认审批失败:', error);
+    }
   }
 
   private handleConfirmationResponse(confirmationId: string, approved: boolean, decision?: PermissionDecision): void {

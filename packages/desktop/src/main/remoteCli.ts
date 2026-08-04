@@ -10,9 +10,14 @@
  * which a plain `ssh host 'cmd'` never loads.
  */
 
-import { execFile } from 'child_process';
+import { execFile, spawn, type ChildProcess } from 'child_process';
 import { promisify } from 'util';
-import { buildSshSpawnArgs, shellQuote, withRemoteLoginShell } from './sshHosts';
+import * as fs from 'fs';
+import * as net from 'net';
+import * as os from 'os';
+import * as path from 'path';
+import { buildSshSpawnArgs, buildSshTunnelArgs, shellQuote, withRemoteLoginShell } from './sshHosts';
+import { SocketClient } from './stdio/socketClient';
 
 const execFileAsync = promisify(execFile);
 
@@ -239,4 +244,174 @@ export async function readRemoteFile(host: string, remotePath: string): Promise<
     if (e.code === 4) throw new Error(`远端文件不可读：${remotePath}`);
     throw new Error(`读取远端文件失败：${describeError(error)}`);
   }
+}
+
+// ── Remote daemon (后台模式) ─────────────────────────────────────
+//
+// 远端 daemon = `nohup wave --daemon <socket>` 常驻进程（nohup+重定向使 ssh
+// 只等启动器 fork 即返回，见 specs「SSH 远程主机」）。桌面端通过
+// `ssh -N -L 本地socket:远端socket` 转发后复用同一套 JSON-RPC 客户端，因此
+// 断线重连只换传输层，会话与挂起审批都在 daemon 进程里存活。
+
+export const DAEMON_START_TIMEOUT_MS = 10_000;
+export const DAEMON_POLL_INTERVAL_MS = 500;
+/** 等待本地转发 socket 出现（含 connect 重试）的总时长。 */
+export const TUNNEL_READY_TIMEOUT_MS = 10_000;
+
+/**
+ * Probe the remote user's home directory. `~` is not expanded inside
+ * shellQuote single quotes, so the daemon socket path must be built from an
+ * explicit `echo $HOME` probe.
+ */
+export async function getRemoteHomeDir(host: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync('ssh', await remoteCommand(host, 'echo $HOME'), {
+      timeout: PROBE_TIMEOUT_MS,
+    });
+    const home = stdout.trim();
+    if (!home) throw new Error('empty');
+    return home;
+  } catch {
+    throw new Error(`无法获取主机 ${host} 的远端主目录（$HOME）`);
+  }
+}
+
+/** Remote daemon socket path under the user's home (posix). */
+export function remoteDaemonSocketPath(homeDir: string): string {
+  return path.posix.join(homeDir, '.wave', 'daemon.sock');
+}
+
+/** Local end of the tunnel: a unique socket per host in the tmp dir. */
+export function localDaemonSocketPath(host: string): string {
+  return path.join(os.tmpdir(), `wave-daemon-${host.replace(/[^a-zA-Z0-9_.-]/g, '_')}.sock`);
+}
+
+/**
+ * True when the remote daemon socket exists AND accepts a probe connection.
+ * `test -S` alone can't tell a live daemon from a stale socket left by a
+ * crashed one — the daemon would never be relaunched. Probe with node's
+ * `net.connect` (node is required to run wave anyway): connect → alive,
+ * failure/refused → dead, and `ensureRemoteDaemon` relaunches (the daemon
+ * cleans the stale socket itself on start).
+ */
+export async function remoteDaemonAlive(host: string, socketPath: string): Promise<boolean> {
+  const probeScript = `const s=require('net').connect(${JSON.stringify(socketPath)});s.on('connect',()=>process.exit(0));s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),3000)`;
+  try {
+    await execFileAsync('ssh', await remoteCommand(host, `node -e ${shellQuote(probeScript)}`), {
+      timeout: PROBE_TIMEOUT_MS,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Launch the remote daemon detached: `nohup <binary> --daemon <socket>
+ * </dev/null >/dev/null 2>&1 &`. nohup + the redirects detach the process from
+ * the ssh session and make ssh return immediately after the launcher forks —
+ * the daemon keeps running when the tunnel/desktop app goes away.
+ */
+export async function startRemoteDaemon(host: string, binaryPath: string, socketPath: string): Promise<void> {
+  const command = `nohup ${shellQuote(binaryPath)} --daemon ${shellQuote(socketPath)} </dev/null >/dev/null 2>&1 &`;
+  await execFileAsync('ssh', await remoteCommand(host, command), {
+    timeout: PROBE_TIMEOUT_MS,
+  });
+}
+
+/** Poll `test -S` until the daemon socket appears (or the start timeout elapses). */
+export async function waitForRemoteDaemon(host: string, socketPath: string): Promise<void> {
+  const deadline = Date.now() + DAEMON_START_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (await remoteDaemonAlive(host, socketPath)) return;
+    await new Promise((resolve) => setTimeout(resolve, DAEMON_POLL_INTERVAL_MS));
+  }
+  throw new Error(`远端 wave daemon 启动超时（${host}）`);
+}
+
+/**
+ * Ensure a wave daemon runs on `host`: probe the daemon socket; when missing,
+ * resolve the wave binary, launch the daemon detached, then wait for its
+ * socket. Returns the remote daemon socket path to forward.
+ */
+export async function ensureRemoteDaemon(host: string): Promise<string> {
+  const homeDir = await getRemoteHomeDir(host);
+  const socketPath = remoteDaemonSocketPath(homeDir);
+  if (await remoteDaemonAlive(host, socketPath)) return socketPath;
+  const { binaryPath } = await resolveRemoteWaveBinary(host);
+  await startRemoteDaemon(host, binaryPath, socketPath);
+  await waitForRemoteDaemon(host, socketPath);
+  return socketPath;
+}
+
+export interface RemoteDaemonConnection {
+  client: SocketClient;
+  /** The `ssh -N -L` forward process — keep it alive with the connection. */
+  tunnel: ChildProcess;
+}
+
+/**
+ * Forward the remote daemon socket to a local unix socket via `ssh -N -L`,
+ * then wrap the local socket in a SocketClient. The tunnel keeps running until
+ * the caller disposes both — killing only the client would close the socket
+ * but leave the ssh process lingering. Plain `spawn('ssh', …)` (no login
+ * shell): `-N` tunnels never run a remote command.
+ */
+export async function connectRemoteDaemon(host: string, remoteSocketPath: string): Promise<RemoteDaemonConnection> {
+  const localSocket = localDaemonSocketPath(host);
+  try {
+    fs.unlinkSync(localSocket);
+  } catch {
+    // no stale local socket
+  }
+  const tunnel = spawn('ssh', buildSshTunnelArgs(host, localSocket, remoteSocketPath), {
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  let tunnelStderr = '';
+  tunnel.stderr?.on('data', (data: Buffer) => {
+    tunnelStderr = (tunnelStderr + data.toString()).slice(-1024);
+  });
+
+  const socket = await new Promise<net.Socket>((resolve, reject) => {
+    let settled = false;
+    const fail = (error: Error) => {
+      if (!settled) {
+        settled = true;
+        reject(error);
+      }
+    };
+    tunnel.once('exit', (code, signal) => {
+      fail(
+        new Error(
+          `ssh 隧道退出（code: ${code}, signal: ${signal}${tunnelStderr.trim() ? `: ${tunnelStderr.trim()}` : ''}）`,
+        ),
+      );
+    });
+    const deadline = Date.now() + TUNNEL_READY_TIMEOUT_MS;
+    const attempt = () => {
+      if (settled) return;
+      if (Date.now() >= deadline) {
+        fail(new Error(`本地转发 socket 未就绪（${localSocket}）`));
+        return;
+      }
+      if (!fs.existsSync(localSocket)) {
+        setTimeout(attempt, 100);
+        return;
+      }
+      const sock = net.createConnection(localSocket);
+      sock.once('connect', () => {
+        settled = true;
+        resolve(sock);
+      });
+      sock.once('error', () => {
+        setTimeout(attempt, 100);
+      });
+    };
+    attempt();
+  }).catch((error) => {
+    tunnel.kill();
+    throw new Error(`无法连接远端 wave daemon（${describeError(error)}）`);
+  });
+
+  return { client: new SocketClient(socket), tunnel };
 }
