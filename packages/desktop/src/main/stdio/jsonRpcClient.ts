@@ -36,6 +36,10 @@ export abstract class JsonRpcClient {
   protected attachReadable(readable: Readable): void {
     const rl = createInterface({ input: readable });
     rl.on('line', (line) => this.handleLine(line));
+    // readline re-emits input errors on the Interface; the transport subclass
+    // already handles errors on the underlying stream, swallow them here so
+    // they never surface as an uncaught 'error' on the Interface.
+    rl.on('error', () => {});
   }
 
   /** Mark the transport closed: reject every pending request. Idempotent. */

@@ -24,6 +24,9 @@ function startServer(
       // The client RSTs on dispose when a reply is still in flight — expected.
     });
     const rl = createInterface({ input: socket });
+    // readline re-emits socket errors on the Interface; the socket-level
+    // handler above already covers them, swallow here.
+    rl.on('error', () => {});
     rl.on('line', (line: string) => {
       if (!line.trim()) return;
       const msg = JSON.parse(line);

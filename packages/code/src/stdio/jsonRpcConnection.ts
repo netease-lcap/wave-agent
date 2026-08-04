@@ -41,6 +41,11 @@ export class JsonRpcConnection {
       crlfDelay: Infinity,
     });
 
+    // readline re-emits input errors on the Interface; error handling on the
+    // underlying stream is the owner's job (the daemon keeps running on a
+    // client reset), so swallow them here.
+    this.rl.on("error", () => {});
+
     this.rl.on("line", (line: string) => {
       this.handleLine(line).catch((err) => {
         // Should never reach here — handleLine catches internally
