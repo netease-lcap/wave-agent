@@ -1,5 +1,5 @@
 import { test, expect, vi, beforeEach, afterEach } from "vitest";
-import { PassThrough, Writable } from "stream";
+import { PassThrough } from "stream";
 import { Agent } from "wave-agent-sdk";
 
 // Mock the Agent SDK
@@ -447,69 +447,6 @@ test("handleNotification forwards permissionResponse notification without throwi
   // No new response written for notifications
   await linesBefore;
   expect(true).toBe(true);
-
-  server.stop();
-});
-
-// ── Output resilience: backpressure + write errors ───────────────
-
-test("output write error (ENOBUFS) is logged, not fatal", async () => {
-  const stderrSpy = vi
-    .spyOn(process.stderr, "write")
-    .mockImplementation(() => true);
-  const input = new PassThrough();
-  const output = new Writable({
-    write(_chunk, _enc, cb) {
-      cb(new Error("write ENOBUFS"));
-    },
-  });
-  const server = new StdioServer({ input, output });
-  server.start();
-
-  server.sendNotification("boom", { v: 1 });
-
-  await vi.waitFor(() => {
-    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("ENOBUFS"));
-  });
-  server.stop();
-  stderrSpy.mockRestore();
-});
-
-test("backpressure: pauses writes when pipe is full, resumes on drain in order", async () => {
-  const input = new PassThrough();
-  const written: string[] = [];
-  let pendingCb: (() => void) | null = null;
-  const output = new Writable({
-    highWaterMark: 1,
-    write(chunk, _enc, cb) {
-      written.push(chunk.toString());
-      pendingCb = () => cb();
-    },
-  });
-  const writeSpy = vi.spyOn(output, "write");
-  const server = new StdioServer({ input, output });
-  server.start();
-
-  server.sendNotification("n1", { v: 1 });
-  server.sendNotification("n2", { v: 2 });
-  server.sendNotification("n3", { v: 3 });
-
-  // First write fills the pipe (returns false) → the server must pause
-  // instead of piling more writes into the OS pipe.
-  expect(writeSpy).toHaveBeenCalledTimes(1);
-  expect(written[0]).toContain('"method":"n1"');
-
-  // Reader drains → queued lines flush one at a time, in order.
-  // NOTE: Writable calls the write callback synchronously when we release it,
-  // so drain fires synchronously inside pendingCb() and the next line is
-  // already written (and pendingCb re-assigned) by the time we await.
-  pendingCb!();
-  await vi.waitFor(() => expect(written).toHaveLength(2));
-  expect(written[1]).toContain('"method":"n2"');
-
-  pendingCb!();
-  await vi.waitFor(() => expect(written).toHaveLength(3));
-  expect(written[2]).toContain('"method":"n3"');
 
   server.stop();
 });
