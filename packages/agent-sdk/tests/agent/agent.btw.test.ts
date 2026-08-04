@@ -62,9 +62,7 @@ describe("Agent askBtw", () => {
       tool_calls: [],
     });
 
-    mockCallbacks = {
-      onMessagesChange: vi.fn(),
-    };
+    mockCallbacks = {};
 
     agent = await Agent.create({
       workdir: `${BTW_HOME}/workdir`,
