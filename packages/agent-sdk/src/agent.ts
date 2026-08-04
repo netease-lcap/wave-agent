@@ -994,6 +994,21 @@ export class Agent {
     this.subagentManager.cleanup();
     // Cleanup forked agent manager
     await this.forkedAgentManager.cleanup();
+    // Drain an in-flight auto-memory extraction fork so the process doesn't
+    // exit mid-extraction
+    try {
+      const autoMemoryService =
+        this.container.get<
+          import("./services/autoMemoryService.js").AutoMemoryService
+        >("AutoMemoryService");
+      if (autoMemoryService) {
+        await autoMemoryService.drain();
+      }
+    } catch (error) {
+      this.logger?.warn(
+        `Auto-memory extraction drain failed: ${(error as Error).message}`,
+      );
+    }
     // Cleanup skill manager
     await this.skillManager.destroy();
     // Cleanup live configuration reload

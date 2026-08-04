@@ -1,16 +1,27 @@
-import { Agent } from "../../src/agent.js";
+import { Agent } from "../../src/index.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import { execSync } from "node:child_process";
+import { getGitCommonDir } from "../../src/utils/gitUtils.js";
+import { pathEncoder } from "../../src/utils/pathEncoder.js";
 
 /**
- * Example to verify the Auto Memory Background Agent.
+ * Example to verify the Auto Memory perfect-fork extraction.
+ *
+ * After each turn, the agent spawns a fork that shares the parent's prompt
+ * cache (same system prompt, tools, model, and message prefix) and runs in
+ * isolation with restricted tools: Read/Grep/Glob, read-only Bash, and
+ * Write/Edit inside the memory directory only.
+ *
  * This script:
  * 1. Creates a temporary git repository.
  * 2. Initializes a Wave agent in that repository.
- * 3. Sends a message with "stable" information.
- * 4. Verifies that the background agent extracts and saves the memory.
+ * 3. Sends a message with "stable" project information.
+ * 4. Polls the auto-memory directory until the fork extracts the keywords.
+ *
+ * Usage:
+ *   WAVE_FAST_MODEL=<model> pnpm exec tsx examples/features/auto-memory-demo.ts
  */
 async function main() {
   const tempDir = await fs.mkdtemp(
@@ -18,11 +29,13 @@ async function main() {
   );
   console.log(`Created temporary directory: ${tempDir}`);
 
+  let agent: Agent | undefined;
+
   try {
     // Initialize a git repo to ensure stable memory directory resolution
     execSync("git init", { cwd: tempDir, stdio: "ignore" });
 
-    const agent = await Agent.create({
+    agent = await Agent.create({
       workdir: tempDir,
       model: process.env.WAVE_FAST_MODEL,
       logger: {
@@ -43,14 +56,23 @@ async function main() {
         onAssistantContentUpdated: (params) => {
           process.stdout.write(params.chunk);
         },
-        onSubagentAssistantContentUpdated: (params) => {
-          // We can see the background agent working!
-          process.stdout.write(
-            `\x1b[2m[Background Memory Agent] ${params.chunk}\x1b[0m`,
-          );
-        },
       },
     });
+
+    // The auto-memory directory is derived deterministically from the git
+    // common directory (same logic as MemoryService.getAutoMemoryDirectory).
+    const commonDir = getGitCommonDir(tempDir);
+    const projectRoot =
+      path.basename(commonDir) === ".git" ? path.dirname(commonDir) : commonDir;
+    const memoryDir = path.join(
+      os.homedir(),
+      ".wave",
+      "projects",
+      pathEncoder.encodeSync(projectRoot),
+      "memory",
+    );
+    const memoryFile = path.join(memoryDir, "MEMORY.md");
+    console.log(`Memory directory: ${memoryDir}`);
 
     console.log("\n--- Sending message with memory-worthy information ---\n");
 
@@ -60,75 +82,69 @@ async function main() {
     );
 
     console.log(
-      "\n\n--- Waiting for background memory extraction to complete ---\n",
+      "\n\n--- Waiting for the auto-memory fork to extract the memory ---\n",
     );
 
-    // The background agent runs after the turn ends.
-    // Since we don't have a direct "onBackgroundAgentFinished" callback in the main Agent API yet,
-    // we'll wait a bit and then check the memory directory.
-    await new Promise((resolve) => setTimeout(resolve, 30000));
-
-    // Resolve memory directory (internal logic duplicated for verification)
-    const { MemoryService: MemoryServiceClass } = await import(
-      "../../src/services/memory.js"
-    );
-    const container = (
-      agent as unknown as { container: { get: (name: string) => unknown } }
-    ).container;
-    const memoryService = container.get("MemoryService") as InstanceType<
-      typeof MemoryServiceClass
-    >;
-    console.log(`MemoryService type check: ${!!MemoryServiceClass}`);
-    const memoryDir = memoryService.getAutoMemoryDirectory(tempDir);
-    const memoryFile = path.join(memoryDir, "MEMORY.md");
-
-    console.log(`Checking memory file: ${memoryFile}`);
-
-    try {
-      const files = await fs.readdir(memoryDir);
-      console.log(`\nFiles in memory directory: ${files.join(", ")}`);
-
-      let allContent = "";
-      for (const file of files) {
-        if (file.endsWith(".md")) {
-          const content = await fs.readFile(
-            path.join(memoryDir, file),
-            "utf-8",
-          );
-          allContent += `\n--- File: ${file} ---\n${content}\n`;
+    // The fork runs after the turn ends (fire-and-forget). Poll the memory
+    // directory instead of waiting a fixed amount of time.
+    let allContent = "";
+    const deadline = Date.now() + 120_000;
+    while (Date.now() < deadline) {
+      try {
+        const files = await fs.readdir(memoryDir);
+        allContent = "";
+        for (const file of files) {
+          if (file.endsWith(".md")) {
+            allContent += `\n--- File: ${file} ---\n${await fs.readFile(
+              path.join(memoryDir, file),
+              "utf-8",
+            )}\n`;
+          }
         }
+        if (
+          allContent.toLowerCase().includes("pnpm") ||
+          allContent.toLowerCase().includes("vitest")
+        ) {
+          break;
+        }
+      } catch {
+        // Memory directory may not exist yet; keep polling.
       }
-
-      console.log(allContent);
-
-      if (
-        allContent.toLowerCase().includes("pnpm") ||
-        allContent.toLowerCase().includes("vitest")
-      ) {
-        console.log(
-          "\x1b[32m✅ Success: Background agent correctly extracted the memory!\x1b[0m",
-        );
-      } else {
-        console.log(
-          "\x1b[31m❌ Failure: Background agent did not seem to extract the expected keywords.\x1b[0m",
-        );
-      }
-    } catch (e) {
-      console.log(
-        "\x1b[31m❌ Failure: Could not read memory directory. Background agent might still be running or failed.\x1b[0m",
-      );
-      console.error(e);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
-    await agent.destroy();
+    console.log(`Checking memory file: ${memoryFile}`);
+    console.log(allContent);
+
+    if (
+      allContent.toLowerCase().includes("pnpm") ||
+      allContent.toLowerCase().includes("vitest")
+    ) {
+      console.log(
+        "\x1b[32m✅ Success: the auto-memory fork extracted the memory!\x1b[0m",
+      );
+    } else {
+      console.log(
+        "\x1b[31m❌ Failure: expected keywords (pnpm/vitest) were not extracted within 120s.\x1b[0m",
+      );
+    }
+  } catch (error) {
+    console.error("Error in example:", error);
   } finally {
-    // Clean up temp dir
+    // destroy() drains any in-flight auto-memory extraction before cleanup
+    if (agent) {
+      await agent.destroy();
+    }
     await fs.rm(tempDir, { recursive: true, force: true });
-    console.log(`\nDeleted temporary directory: ${tempDir}`);
+    console.log(`Deleted temporary directory: ${tempDir}`);
   }
 }
 
-main().catch((error) => {
-  console.error("💥 Unhandled error:", error);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("Unhandled error:", error);
+    process.exit(1);
+  });
