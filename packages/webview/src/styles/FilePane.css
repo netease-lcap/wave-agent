@@ -1,4 +1,4 @@
-/* Desktop file panel: title bar, host + path location row, line-numbered
+/* Desktop file panel: toolbar with host badge + path, line-numbered
    code view with horizontal scrolling, markdown rendering and inline images. */
 
 .file-pane-body {
@@ -7,19 +7,30 @@
     overflow: auto;
 }
 
-/* Host badge + relative path, sticky so the location stays visible while the
-   code scrolls under it (same background as the line-number gutter). */
-.file-pane-location {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+/* Host badge + path, shown in the (fixed) toolbar so the location stays
+   visible while the code scrolls under it. */
+.file-pane-host {
     flex-shrink: 0;
-    position: sticky;
-    top: 0;
-    background: var(--vscode-sideBar-background, var(--vscode-panel-background));
-    z-index: 1;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    padding: 1px 6px;
+    margin-right: 6px;
+    border-radius: 3px;
+    background: var(--vscode-badge-background, rgba(90, 93, 94, 0.31));
+    color: var(--vscode-badge-foreground, #fff);
+}
+
+.file-pane-path {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    font-size: 12px;
 }
 
 .file-pane-body .desktop-panel-placeholder {
@@ -30,32 +41,6 @@
 
 .file-pane-placeholder-icon {
     font-size: 22px;
-}
-
-.file-pane-host {
-    flex-shrink: 0;
-    max-width: 120px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 11px;
-    padding: 1px 6px;
-    border-radius: 3px;
-    background: var(--vscode-badge-background, rgba(90, 93, 94, 0.31));
-    color: var(--vscode-badge-foreground, #fff);
-}
-
-.file-pane-host--local {
-    background: var(--vscode-badge-background, rgba(90, 93, 94, 0.31));
-}
-
-.file-pane-path {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: left;
 }
 
 /* Code view: one row per line; the gutter is sticky so long lines scroll

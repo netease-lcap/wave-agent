@@ -58,7 +58,6 @@ describe('FilePane', () => {
     it('shows the placeholder when no file is open', () => {
         renderPane({ fileView: null });
         expect(screen.getByText('点击消息中的文件路径，在此查看文件内容')).toBeInTheDocument();
-        expect(screen.queryByTestId('file-copy-path')).not.toBeInTheDocument();
         expect(screen.queryByTestId('file-open-external')).not.toBeInTheDocument();
     });
 
@@ -73,12 +72,21 @@ describe('FilePane', () => {
         expect(screen.queryByText(/本地|^prod$/, { selector: '.file-pane-host' })).not.toBeInTheDocument();
     });
 
-    it('shows the host badge and path inside the body location row', () => {
-        const { container } = renderPane({ workdir: '/work/a' });
-        const location = container.querySelector('.file-pane-location');
-        expect(location?.querySelector('.file-pane-host')?.textContent).toBe('本地');
-        expect(location?.querySelector('.file-pane-path')?.textContent).toBe('src/app.ts');
-        expect(screen.getByText('文件')).toBeInTheDocument();
+    it('shows the host badge and path in the toolbar', () => {
+        renderPane({ workdir: '/work/a' });
+        const toolbar = screen.getByTestId('file-pane').querySelector('.preview-pane-toolbar');
+        expect(toolbar?.querySelector('.file-pane-host')?.textContent).toBe('本地');
+        expect(toolbar?.querySelector('.file-pane-path')?.textContent).toBe('src/app.ts');
+        expect(screen.queryByText('文件')).not.toBeInTheDocument();
+    });
+
+    it('trims over-long paths with a middle ellipsis, keeping the file name', () => {
+        const long = `/repos/wave-agent/${'x'.repeat(60)}/src/components/FilePane.tsx`;
+        renderPane({ fileView: makeFileView({ path: long }) });
+        const el = screen.getByTitle(long);
+        expect(el.textContent).not.toBe(long);
+        expect(el.textContent).toContain('…');
+        expect(el.textContent?.endsWith('FilePane.tsx')).toBe(true);
     });
 
     it('shows the error state instead of content', () => {
@@ -185,33 +193,12 @@ describe('FilePane', () => {
         );
     });
 
-    it('copies the full path and flips the icon briefly', () => {
-        const writeText = vi.fn().mockResolvedValue(undefined);
-        Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-        renderPane({ fileView: makeFileView({ path: '/work/a/src/app.ts' }) });
-        const button = screen.getByTestId('file-copy-path');
-        expect(button.querySelector('.codicon-copy')).not.toBeNull();
-        fireEvent.click(button);
-        expect(writeText).toHaveBeenCalledWith('/work/a/src/app.ts');
-        expect(button.querySelector('.codicon-check')).not.toBeNull();
-    });
-
-    it('falls back to execCommand when the clipboard API is unavailable', () => {
-        Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
-        const exec = vi.fn(() => true);
-        Object.defineProperty(document, 'execCommand', { value: exec, configurable: true });
-        renderPane();
-        fireEvent.click(screen.getByTestId('file-copy-path'));
-        expect(exec).toHaveBeenCalledWith('copy');
-    });
-
     it('shows 本地 for local files and the host name for remote ones', () => {
         const { rerenderWith } = renderPane({ fileView: makeFileView({ host: 'local' }) });
-        const localBadge = screen.getByText('本地');
-        expect(localBadge.classList.contains('file-pane-host--local')).toBe(true);
+        expect(screen.getByText('本地')).toBeInTheDocument();
         rerenderWith(makeFileView({ host: 'prod' }));
-        const remoteBadge = screen.getByText('prod');
-        expect(remoteBadge.classList.contains('file-pane-host--local')).toBe(false);
+        expect(screen.getByText('prod')).toBeInTheDocument();
+        expect(screen.queryByText('本地')).not.toBeInTheDocument();
     });
 
     it('shows the workdir-relative path with the full path as title', () => {
