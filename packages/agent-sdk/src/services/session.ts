@@ -613,6 +613,74 @@ export async function cleanupEmptyProjectDirectories(): Promise<void> {
 }
 
 /**
+ * Clean up "ghost" session files that contain only meta messages
+ * (isMeta: true) — e.g. sessions where a SessionStart hook injected a
+ * system-reminder but no real user/assistant message was ever sent.
+ *
+ * Such sessions are no longer created thanks to lazy materialization in
+ * saveSession(); this one-time sweep removes files that predate that change
+ * so they stop showing up as "0 tokens / No content" entries in the resume
+ * list.
+ *
+ * @returns Promise that resolves to the number of files deleted
+ */
+export async function cleanupMetaOnlySessions(): Promise<number> {
+  // Do not perform cleanup operations in test environment
+  if (process.env.NODE_ENV === "test") {
+    return 0;
+  }
+
+  let deletedCount = 0;
+  try {
+    const projectDirs = await fs.readdir(SESSION_DIR);
+
+    for (const projectDirName of projectDirs) {
+      const projectPath = join(SESSION_DIR, projectDirName);
+      try {
+        const stat = await fs.stat(projectPath);
+        if (!stat.isDirectory()) {
+          continue;
+        }
+
+        const files = await fs.readdir(projectPath);
+        for (const file of files) {
+          if (!file.endsWith(".jsonl")) {
+            continue;
+          }
+
+          const filePath = join(projectPath, file);
+          try {
+            // Fast path: a file whose last message is not meta contains a
+            // real message, so it can never be meta-only.
+            const jsonlHandler = new JsonlHandler();
+            const lastMessage = await jsonlHandler.getLastMessage(filePath);
+            if (!lastMessage?.isMeta) {
+              continue;
+            }
+
+            const messages = await jsonlHandler.read(filePath);
+            if (messages.length > 0 && messages.every((m) => m.isMeta)) {
+              await fs.unlink(filePath);
+              deletedCount++;
+            }
+          } catch {
+            // Skip corrupted or unreadable files
+            continue;
+          }
+        }
+      } catch {
+        // Skip directories we can't access
+        continue;
+      }
+    }
+  } catch {
+    // Ignore errors if base directory doesn't exist or can't be accessed
+  }
+
+  return deletedCount;
+}
+
+/**
  * Check if a session exists in JSONL storage (new approach)
  *
  * @param sessionId - UUID session identifier

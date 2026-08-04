@@ -24,6 +24,7 @@ import { ForkedAgentManager } from "../managers/forkedAgentManager.js";
 import { LiveConfigManager } from "../managers/liveConfigManager.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { ReversionService } from "../services/reversionService.js";
+import { cleanupMetaOnlySessions } from "../services/session.js";
 import { MemoryService } from "../services/memory.js";
 import { AutoMemoryService } from "../services/autoMemoryService.js";
 import { USER_MEMORY_FILE } from "./constants.js";
@@ -209,6 +210,17 @@ export function setupAgentContainer(
   reversionService.cleanupOldSessions(30).catch((error) => {
     logger.error("Failed to cleanup old file history:", error);
   });
+  // Remove pre-existing meta-only session files (SessionStart hook context
+  // with no real messages) that were persisted before lazy materialization.
+  cleanupMetaOnlySessions()
+    .then((count) => {
+      if (count > 0) {
+        logger.debug(`Removed ${count} meta-only session file(s)`);
+      }
+    })
+    .catch((error) => {
+      logger.error("Failed to cleanup meta-only session files:", error);
+    });
   const reversionManager = new ReversionManager(container);
   container.register("ReversionManager", reversionManager);
 

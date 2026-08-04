@@ -125,6 +125,67 @@ describe("MessageManager Coverage Improvements", () => {
     // Should not throw
   });
 
+  it("should skip saveSession when all unsaved messages are meta (lazy materialization)", async () => {
+    messageManager.addUserMessage({
+      content: "<system-reminder>SessionStart hook context</system-reminder>",
+      isMeta: true,
+    });
+
+    await messageManager.saveSession();
+
+    // Session file is not materialized yet (savedMessageCount === 0) and all
+    // unsaved messages are meta -> nothing should be persisted.
+    expect(sessionService.createSession).not.toHaveBeenCalled();
+    expect(sessionService.appendMessages).not.toHaveBeenCalled();
+  });
+
+  it("should flush buffered meta messages together with the first real message", async () => {
+    messageManager.addUserMessage({
+      content: "<system-reminder>SessionStart hook context</system-reminder>",
+      isMeta: true,
+    });
+
+    // Meta-only save is skipped: no file created, count not advanced.
+    await messageManager.saveSession();
+    expect(sessionService.createSession).not.toHaveBeenCalled();
+    expect(sessionService.appendMessages).not.toHaveBeenCalled();
+
+    messageManager.addUserMessage({ content: "Hello" });
+
+    await messageManager.saveSession();
+    expect(sessionService.createSession).toHaveBeenCalledTimes(1);
+    expect(sessionService.appendMessages).toHaveBeenCalledTimes(1);
+
+    // The meta message stays in memory and is flushed together with the
+    // first real user message.
+    const newMessages = vi.mocked(sessionService.appendMessages).mock
+      .calls[0][1];
+    expect(newMessages).toHaveLength(2);
+    expect(newMessages[0].isMeta).toBe(true);
+    expect(newMessages[1].isMeta).toBeFalsy();
+  });
+
+  it("should append meta messages normally once the session is materialized", async () => {
+    messageManager.addUserMessage({ content: "Hello" });
+    await messageManager.saveSession();
+    expect(sessionService.appendMessages).toHaveBeenCalledTimes(1);
+
+    // After the first real message the session file exists; later meta
+    // messages (e.g. plan-mode reminders) append like any other message.
+    messageManager.addUserMessage({
+      content: "<system-reminder>Plan mode reminder</system-reminder>",
+      isMeta: true,
+    });
+
+    await messageManager.saveSession();
+    expect(sessionService.appendMessages).toHaveBeenCalledTimes(2);
+
+    const newMessages = vi.mocked(sessionService.appendMessages).mock
+      .calls[1][1];
+    expect(newMessages).toHaveLength(1);
+    expect(newMessages[0].isMeta).toBe(true);
+  });
+
   it("should handle getCombinedMemory with memoryRuleManager", async () => {
     const mockMemoryRuleManager = {
       getActiveRulesSplit: vi.fn().mockReturnValue({
