@@ -189,6 +189,25 @@ order: 220
 
 ---
 
+### 用户故事：流式通知纯增量负载（优先级：P1）
+
+作为 stdio 传输层，我希望跨进程增量通知只携带增量片段（delta）而非累积值，以便流式期间单条通知的序列化与传输成本与已流式内容总长度无关，长会话流式不再对子进程内存和管道带宽造成 O(n²) 压力。
+
+**为什么是这个优先级**：移除 `messagesChange` 后通知条数已经与消息条数无关，但每个 `assistantContentUpdated` 通知仍携带与已流式内容等长的累积 `accumulated` payload（tool block 携带累积 `parameters`），节流只能减少条数、无法减少单条负载。改为纯 delta 后，`assistantContentUpdated`/`assistantReasoningUpdated` 只携带 `{messageId, chunk, stage}`（SDK 侧已计算 chunk = 新内容 − 旧内容），`toolBlockUpdated` 在 `stage="streaming"` 只携带 `parametersChunk`；消费端负责累积（追加），`getMessages` 全量响应作为权威对账通道自愈丢失的 delta。剥离发生在 agentBridge（wire 入口），SDK 回调与 CLI 进程内路径不受影响。
+
+**独立测试**：构造长会话触发流式，在 CLI 侧记录 stdout 并测量通知负载大小：通知字节数随流式累积不增长（仅随 chunk 本身大小波动）；流式过程中 kill/重启任一宿主的 webview 转发层后，通过一次 `getMessages` 拉取即可恢复完整内容。
+
+**验收场景**：
+
+1. **假设** 助手响应正在流式传输，**当** CLI 推送 `assistantContentUpdated`/`assistantReasoningUpdated` 通知时，**则** 通知负载为 `{messageId, chunk, stage}`，不含 `accumulated` 字段；内容由消费端按序追加累积
+2. **假设** 工具参数正在流式传输，**当** CLI 推送 `toolBlockUpdated` 且 `stage="streaming"` 时，**则** 负载只含 `parametersChunk` 增量，不含累积 `parameters`；**当** `stage="end"` 时，**则** 负载携带全量 `parameters` + `result` 作为一次性权威值
+3. **假设** 某条流结束，**当** CLI 推送最后一个增量通知时，**则** `chunk` 为空字符串（`chunk: ""`）且 `stage="end"`，消费端据此终结流式块
+4. **假设** 宿主对增量通知做节流（如桌面 16ms / CLI 500ms 窗口），**当** 窗口内有多条 chunk 时，**则** 按到达顺序拼接为一个合并 delta 发送（window-concat），不丢弃中间值；进程内 CLI 对 accumulated 的 last-value-wins 节流不变
+5. **假设** 增量通知中途丢失（传输异常），**当** 消费端发现内容不完整时，**则** 通过一次 `getMessages` 请求拉取全量权威快照整体替换自愈，管道 FIFO 保证拉取响应包含其之前发出的所有 chunk，不重复
+6. **假设** 某个宿主需要将 delta 转发给 webview，**当** 转发时，**则** 透传 delta（消费端 webview reducer 追加），不在宿主侧重新累积为全量后再下发
+
+---
+
 ### 用户故事：IDE 插件消息队列列表（优先级：P2）
 
 作为 IDE 插件用户，我希望在 AI 处理期间发送的消息以队列列表形式展示，可以查看、立即发送、删除或重新编辑排队消息，以便在 AI 忙碌时管理我的待处理输入。
@@ -221,4 +240,6 @@ order: 220
 - **CLI 子进程的 env 传递**：StdioClient 构造函数接受可选的 `env` 参数，未传时子进程继承插件宿主的 `process.env`。
 - **消息队列列表编辑无重复入队**：IDE 插件中编辑排队消息时，将原消息删除并把内容载入输入框；若用户编辑后未发送，该消息不会自动回到队列。
 - **消息队列列表无键盘召回**：IDE 插件输入框的方向上键不召回队列消息（与 CLI 不同），仅支持通过列表中的"编辑"按钮召回；这是刻意的平台产品差异。
+- **增量通知不携带累积值**：`assistantContentUpdated`/`assistantReasoningUpdated` 通知只携带 `chunk` 增量；`toolBlockUpdated` 在 `streaming` 阶段只携带 `parametersChunk`。任何依赖 `accumulated`/`parameters` 累积字段的旧消费端需改为本地累积或使用 `getMessages` 拉取全量。
+- **end 通知是全量权威值**：`toolBlockUpdated` 的 `stage="end"` 通知携带完整 `parameters` + `result`，消费端应以该值为准终结工具块，不能仅凭 streaming 阶段的拼接结果。
 

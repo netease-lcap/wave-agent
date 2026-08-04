@@ -113,7 +113,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 作为 CLI 或 IDE 插件的使用者，我希望在积累了大量消息的会话中，助手流式输出时界面依然即时、平滑地更新，以便消息越多时交互越不卡顿。
 
-**为什么是这个优先级**：当前每次流式 chunk 都会触发 `onMessagesChange` 全量回调，CLI 侧随之全量 `setMessages`、插件宿主经 stdio 全量下发消息列表，序列化与传输成本随会话长度线性增长，是长会话流式卡顿的主要来源；且它与增量回调在时间上重复（同一 chunk 同时触发 `onAssistantContentUpdated` 与 `onMessagesChange`），造成数据冗余与竞态。为此移除 `onMessagesChange`，使流式更新全链路走增量通道；bang 信号携带 `messageId` 支持增量定位，完整消息列表仅在"拉取"场景（初始化、compact、rewind、clear、restore）传输（详见下方"状态管理架构"与 2026-08-04 会议记录）。
+**为什么是这个优先级**：当前每次流式 chunk 都会触发 `onMessagesChange` 全量回调，CLI 侧随之全量 `setMessages`、插件宿主经 stdio 全量下发消息列表，序列化与传输成本随会话长度线性增长，是长会话流式卡顿的主要来源；且它与增量回调在时间上重复（同一 chunk 同时触发 `onAssistantContentUpdated` 与 `onMessagesChange`），造成数据冗余与竞态。为此移除 `onMessagesChange`，使流式更新全链路走增量通道；bang 信号携带 `messageId` 支持增量定位，完整消息列表仅在"拉取"场景（初始化、compact、rewind、clear、restore）传输。进一步地，跨进程（stdio）增量通知的负载从"chunk + accumulated 并存"收敛为"纯 chunk delta"（tool block streaming 只携带 `parametersChunk`），使单个通知的序列化成本与已流式内容总长度解耦，从根源消除传输层随流式累积的内存/带宽压力；进程内消费者（CLI、print-cli）不经 wire，继续直接使用 SDK 回调中的 accumulated（详见下方"状态管理架构"与 2026-08-04 会议记录）。
 
 **独立测试**：构造一个包含数百条消息的长会话并发送一条消息触发流式响应：CLI 消息内容增量就地更新、无整屏刷新闪烁；插件侧记录 CLI stdout，流式期间只出现增量通知、无全量消息推送。执行 `!` bang 命令后消息列表正确显示命令输出。
 
@@ -125,6 +125,10 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 4. **假设**CLI 收到 bang 信号（`onAddBangMessage(command, messageId)`/`onUpdateBangMessage(command, output, messageId)`/`onCompleteBangMessage(command, exitCode, messageId)`，携带 messageId），**当**需要渲染命令消息时，**则**按 messageId 就地创建/更新 bang 消息块，无需读取 `agent.messages`
 5. **假设**插件 webview 需要完整会话（webviewReady / compact / rewind / clearChat / restoreSession），**当**触发上述任一场景时，**则**宿主主动调用 `getMessages` 请求拉取并下发全量渲染，而非订阅持续的全量推送
 6. **假设**子代理（subagent）运行中，**当**其消息变更时，**则** `SubagentManager` 通过 `instance.messageManager.getMessages()` 拉取最新列表维护 `instance.messages` 与 `usedTools`，并继续转发 `onSubagentMessagesChange`，不再依赖子代理的 `onMessagesChange`
+7. **假设**助手响应正在经 stdio 跨进程流式传输，**当**每个内容/推理 chunk 到达时，**则**增量通知只携带 `chunk`（增量片段），不再携带 `accumulated` 累积值；SDK 侧回调仍同时提供 chunk 与 accumulated 供进程内消费者使用，剥离仅发生在跨进程 wire 层（agentBridge）
+8. **假设**工具参数正在经 stdio 流式传输，**当** `stage="streaming"` 通知到达时，**则**只携带 `parametersChunk`（增量），不再携带累积 `parameters`；**当** `stage="end"` 通知到达时，**则**携带全量 `parameters` + `result` 作为一次性权威值
+9. **假设**宿主（VSCE/桌面/CLI）对增量通知做了节流（如 16ms/500ms 窗口），**当**窗口内累积了多个 chunk 时，**则**按到达顺序将窗口内所有 chunks 拼接为一个合并 delta 发送，而非 last-value-wins 丢弃中间值——丢弃中间 chunk 会造成内容永久缺失，只能由后续 `getMessages` 拉取自愈
+10. **假设**webview 正在追加流式 delta，**当**触发 `getMessages` 拉取全量列表时，**则**全量响应整体替换消息块为权威快照，随后到达的 delta 继续追加；管道 FIFO 保证拉取响应包含其之前发出的所有 chunk，不发生重复或错乱
 
 ---
 
@@ -136,12 +140,17 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - 如果流式传输因 API 速率限制或错误而中断，界面行为如何？
 - 当非常长的内容流超过终端显示限制时会发生什么？
 - 当推理块的开始时间存在但结束时间缺失（流被中止）时，耗时如何展示？
+- 如果某个增量通知在传输中丢失（进程异常、节流实现错误），UI 内容如何恢复？→ 丢失的 delta 由后续 `getMessages` 拉取的全量权威快照整体替换自愈
+- 如果在追加流式 delta 期间插入了一次 `getMessages` 拉取（如恢复会话），是否会重复或丢失内容？→ 不会：管道 FIFO 保证拉取响应按序到达且包含其之前全部 chunk；UI 以响应快照为准整体替换，后续 delta 继续追加
 
 ### 状态管理架构
 
 - **Agent SDK 职责**：在内部管理所有消息状态并更新消息；变更通过增量回调（`onUserMessageAdded`、`onAssistantMessageAdded`、`onAssistantContentUpdated`、`onAssistantReasoningUpdated`、`onToolBlockUpdated`、`onErrorBlockAdded` 等）对外发布；完整列表通过 `agent.messages` getter（同进程）或 `getMessages` 请求（stdio 跨进程）按需获取。`onMessagesChange` 全量回调已移除
 - **增量回调用途**：为第三方集成、扩展、CLI 与示例（如 `packages/code/src/print-cli.ts` 和 `packages/agent-sdk/examples`）提供实时流式数据；增量回调是消息状态同步的唯一推送通道
-- **UI 状态流**：CLI 直接订阅增量回调就地更新消息；插件/桌面经 stdio 增量通知（`userMessageAdded`、`assistantContentUpdated`、`toolBlockUpdated` 等）驱动 webview 增量 reducer；需要完整列表的场景（初始化、compact、rewind、clear、bang）主动拉取
+- **SDK 回调负载**：`onAssistantContentUpdated`/`onAssistantReasoningUpdated` 始终同时提供 `chunk`（增量）与 `accumulated`（累积）两个字段，进程内消费者免费使用 `accumulated` 就地替换；`onToolBlockUpdated` 提供 `parametersChunk`（增量）与 `parameters`（累积）并存
+- **跨进程 wire 负载（纯 delta）**：agentBridge 在转发 stdio 通知时剥离累积字段——`assistantContentUpdated`/`assistantReasoningUpdated` 只携带 `{messageId, chunk, stage}`；`toolBlockUpdated` 在 `stage="streaming"` 时只携带 `parametersChunk`，`stage="end"` 时携带全量 `parameters` + `result` 作为权威值。消费端负责累积（追加），丢失的 delta 由 `getMessages` 拉取的全量快照自愈
+- **UI 状态流**：CLI 直接订阅增量回调就地更新消息（accumulated 替换 + 500ms 节流）；插件/桌面经 stdio 增量通知（`userMessageAdded`、`assistantContentUpdated`、`toolBlockUpdated` 等，纯 delta 负载）驱动 webview 增量 reducer——文本/推理块追加 chunk、工具块追加 `parametersChunk`，end 时以权威值终结；需要完整列表的场景（初始化、compact、rewind、clear、bang）主动拉取，拉取响应整体替换为权威快照
+- **节流语义**：节流器对 delta 负载必须按到达顺序拼接窗口内所有 chunks 为一个合并 delta（window-concat），绝不能 last-value-wins 丢弃中间值；对 accumulated 负载（CLI 进程内）last-value-wins 仍然正确
 - **清晰分离**：增量回调是消息状态管理的正式对外通道；全量数据按需获取，避免随每次流式 chunk 序列化整个列表
 
 ## 澄清
@@ -182,6 +191,17 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - 问：子代理消息如何维护 → 答：`SubagentManager` 在子代理增量回调中通过 `instance.messageManager.getMessages()` 拉取最新列表，维护 `instance.messages` / `usedTools` 并转发 `onSubagentMessagesChange`
 - 问：vsce 宿主增量注册注意事项 → 答：`onUserMessageAdded` 与 `onAssistantMessageAdded` 需分别映射到 webview 的用户/助手消息追加通道（修复现有 `onUserMessageAdded` 误路由到 `onAssistantMessageAdded` 的问题），避免与全量拉取叠加导致消息重复
 
+### 2026-08-04 会议（流式通知纯增量负载）
+
+- 问：为什么从"chunk + accumulated 并存"收敛为纯 delta → 答：节流只能减少通知条数，每个通知仍携带与已流式内容等长的累积 payload，总序列化/传输成本 O(n²)，长流时 stdio 内存与带宽压力持续存在；改为 wire 纯 delta 后通知负载与内容总长度解耦，总成本 O(n)
+- 问：SDK 回调签名是否改变 → 答：不改。SDK 回调继续同时提供 chunk 与 accumulated（进程内消费者免费使用 accumulated）；剥离只发生在跨进程 wire 层（agentBridge），CLI/print-cli 进程内路径完全不动
+- 问：tool block 流式通知负载 → 答：`stage="streaming"` 只携带 `parametersChunk`（增量），不再携带累积 `parameters`；`stage="end"` 仍携带全量 `parameters` + `result`（一次性权威值，UI 以此为最终值）
+- 问：流结束信号如何表示 → 答：与现状一致——`chunk: ""`（空字符串）作为流结束标记，配合 `stage="end"`
+- 问：webview 如何应用 delta → 答：reducer 追加——文本/推理块 `content += chunk`；工具块 `parameters += parametersChunk`；`getMessages` 拉取全量时整体替换为权威快照（自愈通道）
+- 问：节流语义如何调整 → 答：从 last-value-wins（对累积值安全）改为窗口拼接（window-concat）：窗口内按到达顺序拼接所有 chunks 发送一个合并 delta；丢弃中间值会造成内容永久缺失
+- 问：乱序/丢失如何保证正确性 → 答：管道 FIFO 保证通知与请求响应按序到达，"assistantMessageAdded 先于其首个 delta"、拉取响应包含其之前全部 chunk；偶发丢失由后续 `getMessages` 全量快照自愈
+- 问：受影响范围 → 答：agentBridge（剥离累积字段）、各宿主 stdioAgent（透传 delta）、各宿主 webview 转发层（VSCE chatSession、桌面 desktopHost、JetBrains WaveSession 等的节流改为窗口拼接）；CLI/print-cli 进程内不变
+
 ## 假设 *（必填）*
 
 - 底层 AI 服务支持流式响应（增量内容传递）
@@ -190,5 +210,6 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - 用户通常使用支持实时文本渲染的标准终端模拟器
 - 在正常网络条件下内容流按时间顺序到达
 - 消息变更通过增量回调对外发布，完整列表按需拉取（`agent.messages` / `getMessages` 请求）；每次流式 chunk 不触发全量列表推送
+- 跨进程增量通知只携带增量负载（chunk / parametersChunk），SDK 回调在进程内仍同时提供累积值；消费端负责累积，`getMessages` 全量快照负责对账自愈
 - 工具参数流包含有效的 JSON 或结构化数据，可以使用新的 `extractStreamingParams` 工具函数（待实现）增量解析，该函数将验证 JSON 完整性并从部分流中提取有效的参数对象
 - Agent SDK 在内部管理消息状态，并通过增量回调与按需读取（`agent.messages`）对外提供消息数据

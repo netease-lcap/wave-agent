@@ -769,14 +769,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           if (!forThisPane(message)) break;
           dispatch({
             type: 'UPDATE_STREAMING_CONTENT',
-            payload: { messageId: message.messageId, accumulated: message.accumulated, stage: message.stage }
+            payload: { messageId: message.messageId, chunk: message.chunk, stage: message.stage }
           });
           break;
         case 'updateStreamingReasoning':
           if (!forThisPane(message)) break;
           dispatch({
             type: 'UPDATE_STREAMING_REASONING',
-            payload: { messageId: message.messageId as string, accumulated: message.accumulated as string, stage: message.stage as 'end' | 'streaming' }
+            payload: { messageId: message.messageId as string, chunk: message.chunk as string, stage: message.stage as 'end' | 'streaming' }
           });
           break;
         case 'updateToolBlock':

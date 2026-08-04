@@ -87,9 +87,9 @@ interface Pane {
 
 interface PaneThrottle {
   streamingContentTimer?: NodeJS.Timeout;
-  pendingStreamingContent?: { messageId: string; accumulated: string; stage: 'streaming' | 'end' };
+  pendingStreamingContent?: { messageId: string; chunk: string };
   streamingReasoningTimer?: NodeJS.Timeout;
-  pendingStreamingReasoning?: { messageId: string; accumulated: string; stage: 'streaming' | 'end' };
+  pendingStreamingReasoning?: { messageId: string; chunk: string };
 }
 /** Minimum chat-pane width — mirrors the webview DesktopShell MIN_PANE_WIDTH. */
 const MIN_PANE_WIDTH_PX = 360;
@@ -556,11 +556,11 @@ export class DesktopHost {
       },
       onAssistantContentUpdated: (params) => {
         const paneId = paneIdOf();
-        if (paneId) this.throttledStreamingContentUpdate(paneId, params.messageId, params.accumulated, params.stage);
+        if (paneId) this.throttledStreamingContentUpdate(paneId, params.messageId, params.chunk, params.stage);
       },
       onAssistantReasoningUpdated: (params) => {
         const paneId = paneIdOf();
-        if (paneId) this.throttledStreamingReasoningUpdate(paneId, params.messageId, params.accumulated, params.stage);
+        if (paneId) this.throttledStreamingReasoningUpdate(paneId, params.messageId, params.chunk, params.stage);
       },
       onToolBlockUpdated: (params) => {
         const paneId = paneIdOf();
@@ -3301,24 +3301,38 @@ export class DesktopHost {
   // Throttled streaming updates (ported from vsce ChatSession)
   // ------------------------------------------------------------------
 
-  private throttledStreamingContentUpdate(paneId: string, messageId: string, accumulated: string, stage: 'streaming' | 'end'): void {
+  private throttledStreamingContentUpdate(paneId: string, messageId: string, chunk: string, stage: 'streaming' | 'end'): void {
     const t = this.paneThrottle(paneId);
     if (stage === 'end') {
       if (t.streamingContentTimer) {
         clearTimeout(t.streamingContentTimer);
         t.streamingContentTimer = undefined;
       }
-      t.pendingStreamingContent = undefined;
-      this.postMessage({ command: 'updateStreamingContent', paneId, messageId, accumulated, stage });
+      // Flush any chunks still pending inside the cooldown window first
+      if (t.pendingStreamingContent) {
+        this.postMessage({ command: 'updateStreamingContent', paneId, ...t.pendingStreamingContent, stage: 'streaming' });
+        t.pendingStreamingContent = undefined;
+      }
+      this.postMessage({ command: 'updateStreamingContent', paneId, messageId, chunk, stage });
       return;
     }
 
-    t.pendingStreamingContent = { messageId, accumulated, stage };
+    // window-concat: merge all chunks arriving within the cooldown window so
+    // no delta is lost (dropping a delta would permanently lose content).
+    if (t.pendingStreamingContent) {
+      t.pendingStreamingContent.chunk += chunk;
+    } else {
+      t.pendingStreamingContent = { messageId, chunk };
+    }
     if (!t.streamingContentTimer) {
-      this.postMessage({ command: 'updateStreamingContent', paneId, ...t.pendingStreamingContent });
+      // leading edge: fire the current delta immediately, then reset pending so
+      // the trailing edge only carries chunks arriving within this window
+      // (otherwise the leading chunk would be appended twice by the reducer).
+      this.postMessage({ command: 'updateStreamingContent', paneId, ...t.pendingStreamingContent, stage });
+      t.pendingStreamingContent = undefined;
       t.streamingContentTimer = setTimeout(() => {
         if (t.pendingStreamingContent) {
-          this.postMessage({ command: 'updateStreamingContent', paneId, ...t.pendingStreamingContent });
+          this.postMessage({ command: 'updateStreamingContent', paneId, ...t.pendingStreamingContent, stage: 'streaming' });
           t.pendingStreamingContent = undefined;
         }
         t.streamingContentTimer = undefined;
@@ -3326,24 +3340,38 @@ export class DesktopHost {
     }
   }
 
-  private throttledStreamingReasoningUpdate(paneId: string, messageId: string, accumulated: string, stage: 'streaming' | 'end'): void {
+  private throttledStreamingReasoningUpdate(paneId: string, messageId: string, chunk: string, stage: 'streaming' | 'end'): void {
     const t = this.paneThrottle(paneId);
     if (stage === 'end') {
       if (t.streamingReasoningTimer) {
         clearTimeout(t.streamingReasoningTimer);
         t.streamingReasoningTimer = undefined;
       }
-      t.pendingStreamingReasoning = undefined;
-      this.postMessage({ command: 'updateStreamingReasoning', paneId, messageId, accumulated, stage });
+      // Flush any chunks still pending inside the cooldown window first
+      if (t.pendingStreamingReasoning) {
+        this.postMessage({ command: 'updateStreamingReasoning', paneId, ...t.pendingStreamingReasoning, stage: 'streaming' });
+        t.pendingStreamingReasoning = undefined;
+      }
+      this.postMessage({ command: 'updateStreamingReasoning', paneId, messageId, chunk, stage });
       return;
     }
 
-    t.pendingStreamingReasoning = { messageId, accumulated, stage };
+    // window-concat: merge all chunks arriving within the cooldown window so
+    // no delta is lost (dropping a delta would permanently lose content).
+    if (t.pendingStreamingReasoning) {
+      t.pendingStreamingReasoning.chunk += chunk;
+    } else {
+      t.pendingStreamingReasoning = { messageId, chunk };
+    }
     if (!t.streamingReasoningTimer) {
-      this.postMessage({ command: 'updateStreamingReasoning', paneId, ...t.pendingStreamingReasoning });
+      // leading edge: fire the current delta immediately, then reset pending so
+      // the trailing edge only carries chunks arriving within this window
+      // (otherwise the leading chunk would be appended twice by the reducer).
+      this.postMessage({ command: 'updateStreamingReasoning', paneId, ...t.pendingStreamingReasoning, stage });
+      t.pendingStreamingReasoning = undefined;
       t.streamingReasoningTimer = setTimeout(() => {
         if (t.pendingStreamingReasoning) {
-          this.postMessage({ command: 'updateStreamingReasoning', paneId, ...t.pendingStreamingReasoning });
+          this.postMessage({ command: 'updateStreamingReasoning', paneId, ...t.pendingStreamingReasoning, stage: 'streaming' });
           t.pendingStreamingReasoning = undefined;
         }
         t.streamingReasoningTimer = undefined;

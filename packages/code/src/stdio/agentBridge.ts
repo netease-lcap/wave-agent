@@ -1110,13 +1110,36 @@ export class AgentBridge {
           );
       },
       onAssistantContentUpdated: (params) => {
-        this.emit("assistantContentUpdated", params, ctx.registeredSessionId);
+        // Wire carries only the delta; consumers accumulate (spec: 流式通知纯增量负载).
+        this.emit(
+          "assistantContentUpdated",
+          {
+            messageId: params.messageId,
+            chunk: params.chunk,
+            stage: params.stage,
+          },
+          ctx.registeredSessionId,
+        );
       },
       onAssistantReasoningUpdated: (params) => {
-        this.emit("assistantReasoningUpdated", params, ctx.registeredSessionId);
+        this.emit(
+          "assistantReasoningUpdated",
+          {
+            messageId: params.messageId,
+            chunk: params.chunk,
+            stage: params.stage,
+          },
+          ctx.registeredSessionId,
+        );
       },
       onToolBlockUpdated: (params) => {
-        this.emit("toolBlockUpdated", params, ctx.registeredSessionId);
+        // Streaming stages carry only the parametersChunk delta; start/running
+        // (one-time snapshots) and end (authoritative full value) keep
+        // `parameters` (spec: 流式通知纯增量负载).
+        const { parameters, ...rest } = params;
+        void parameters;
+        const wireParams = params.stage === "streaming" ? rest : params;
+        this.emit("toolBlockUpdated", wireParams, ctx.registeredSessionId);
       },
       onErrorBlockAdded: (error: string) => {
         this.emit("errorBlockAdded", { error }, ctx.registeredSessionId);

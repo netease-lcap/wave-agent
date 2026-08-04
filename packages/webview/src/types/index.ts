@@ -683,8 +683,8 @@ export type ChatAction =
     } }
   // Incremental update actions for streaming optimization
   | { type: 'APPEND_MESSAGE'; payload: Message }
-  | { type: 'UPDATE_STREAMING_CONTENT'; payload: { messageId: string; accumulated: string; stage: 'streaming' | 'end' } }
-  | { type: 'UPDATE_STREAMING_REASONING'; payload: { messageId: string; accumulated: string; stage: 'streaming' | 'end' } }
+  | { type: 'UPDATE_STREAMING_CONTENT'; payload: { messageId: string; chunk: string; stage: 'streaming' | 'end' } }
+  | { type: 'UPDATE_STREAMING_REASONING'; payload: { messageId: string; chunk: string; stage: 'streaming' | 'end' } }
   | { type: 'UPDATE_TOOL_BLOCK'; payload: ToolBlockUpdateCallbackParams }
   | { type: 'APPEND_ERROR_BLOCK'; payload: { error: string } }
   // Bang message incremental updates (keyed by messageId). The bang block is

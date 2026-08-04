@@ -74,12 +74,12 @@ export interface StdioAgentCallbacks {
     onAssistantMessageAdded?: (message: Message) => void;
     onAssistantContentUpdated?: (params: {
         messageId: string;
-        accumulated: string;
+        chunk: string;
         stage: 'streaming' | 'end';
     }) => void;
     onAssistantReasoningUpdated?: (params: {
         messageId: string;
-        accumulated: string;
+        chunk: string;
         stage: 'streaming' | 'end';
     }) => void;
     onToolBlockUpdated?: (params: ToolBlockUpdateCallbackParams) => void;
@@ -429,7 +429,7 @@ export class StdioAgent {
                 this.callbacks.onAssistantContentUpdated?.(
                     params as {
                         messageId: string;
-                        accumulated: string;
+                        chunk: string;
                         stage: 'streaming' | 'end';
                     },
                 );
@@ -438,7 +438,7 @@ export class StdioAgent {
                 this.callbacks.onAssistantReasoningUpdated?.(
                     params as {
                         messageId: string;
-                        accumulated: string;
+                        chunk: string;
                         stage: 'streaming' | 'end';
                     },
                 );

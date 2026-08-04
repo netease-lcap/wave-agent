@@ -603,7 +603,7 @@ describe('StdioAgent', () => {
         const onAssistantContentUpdated = vi.fn();
         const { agent } = createAgent({ onAssistantContentUpdated });
 
-        const params = { messageId: 'a1', accumulated: 'hello', stage: 'streaming' as const };
+        const params = { messageId: 'a1', chunk: 'hello', stage: 'streaming' as const };
         agent.handleNotification('assistantContentUpdated', params);
 
         expect(onAssistantContentUpdated).toHaveBeenCalledWith(params);
@@ -613,7 +613,7 @@ describe('StdioAgent', () => {
         const onAssistantReasoningUpdated = vi.fn();
         const { agent } = createAgent({ onAssistantReasoningUpdated });
 
-        const params = { messageId: 'a1', accumulated: 'thinking', stage: 'end' as const };
+        const params = { messageId: 'a1', chunk: 'thinking', stage: 'end' as const };
         agent.handleNotification('assistantReasoningUpdated', params);
 
         expect(onAssistantReasoningUpdated).toHaveBeenCalledWith(params);

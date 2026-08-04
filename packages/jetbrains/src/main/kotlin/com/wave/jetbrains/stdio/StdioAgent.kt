@@ -17,8 +17,8 @@ import kotlinx.serialization.json.put
 interface AgentCallbacks {
     fun onUserMessageAdded(message: JsonElement?) {}
     fun onAssistantMessageAdded(message: JsonElement?) {}
-    fun onAssistantContentUpdated(messageId: String, accumulated: String, stage: String) {}
-    fun onAssistantReasoningUpdated(messageId: String, accumulated: String, stage: String) {}
+    fun onAssistantContentUpdated(messageId: String, chunk: String, stage: String) {}
+    fun onAssistantReasoningUpdated(messageId: String, chunk: String, stage: String) {}
     fun onToolBlockUpdated(params: JsonElement?) {}
     fun onErrorBlockAdded(error: String) {}
     fun onCompactBlockAdded(content: String) {}
@@ -66,7 +66,7 @@ class StdioAgent(
                 val o = params?.jsonObject
                 callbacks.onAssistantContentUpdated(
                     o?.get("messageId")?.jsonPrimitive?.content ?: "",
-                    o?.get("accumulated")?.jsonPrimitive?.content ?: "",
+                    o?.get("chunk")?.jsonPrimitive?.content ?: "",
                     o?.get("stage")?.jsonPrimitive?.content ?: "",
                 )
             }
@@ -74,7 +74,7 @@ class StdioAgent(
                 val o = params?.jsonObject
                 callbacks.onAssistantReasoningUpdated(
                     o?.get("messageId")?.jsonPrimitive?.content ?: "",
-                    o?.get("accumulated")?.jsonPrimitive?.content ?: "",
+                    o?.get("chunk")?.jsonPrimitive?.content ?: "",
                     o?.get("stage")?.jsonPrimitive?.content ?: "",
                 )
             }

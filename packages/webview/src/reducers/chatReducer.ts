@@ -253,7 +253,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
     }
     case 'UPDATE_STREAMING_CONTENT': {
-      const { messageId, accumulated, stage } = action.payload;
+      const { messageId, chunk, stage } = action.payload;
       const messageIndex = state.messages.findIndex(m => m.id === messageId);
       if (messageIndex === -1) return state;
 
@@ -265,15 +265,15 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         // No text block yet, append one
         const newTextBlock: TextBlock = {
           type: 'text',
-          content: accumulated,
+          content: chunk,
           stage
         };
         newBlocks = [...message.blocks, newTextBlock];
       } else {
-        // Update existing text block
+        // Append the delta chunk to the existing text block
         newBlocks = message.blocks.map((block, idx) => {
           if (idx === textBlockIndex && block.type === 'text') {
-            return { ...block, content: accumulated, stage } as TextBlock;
+            return { ...block, content: block.content + chunk, stage } as TextBlock;
           }
           return block;
         });
@@ -292,7 +292,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
     }
     case 'UPDATE_STREAMING_REASONING': {
-      const { messageId, accumulated, stage } = action.payload;
+      const { messageId, chunk, stage } = action.payload;
       const messageIndex = state.messages.findIndex(m => m.id === messageId);
       if (messageIndex === -1) return state;
 
@@ -306,20 +306,20 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         // with the SDK's persisted value).
         const newReasoningBlock = {
           type: 'reasoning' as const,
-          content: accumulated,
+          content: chunk,
           stage,
           startTime: Date.now(),
           ...(stage === 'end' ? { endTime: Date.now() } : {})
         };
         newBlocks = [...message.blocks, newReasoningBlock];
       } else {
-        // Update existing reasoning block, preserving startTime and stamping
-        // endTime when the reasoning finishes.
+        // Append the delta chunk to the existing reasoning block, preserving
+        // startTime and stamping endTime when the reasoning finishes.
         newBlocks = message.blocks.map((block, idx) => {
           if (idx === reasoningBlockIndex && block.type === 'reasoning') {
             return {
               ...block,
-              content: accumulated,
+              content: block.content + chunk,
               stage,
               startTime: block.startTime ?? Date.now(),
               ...(stage === 'end' ? { endTime: block.endTime ?? Date.now() } : {})
@@ -342,7 +342,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
     }
     case 'UPDATE_TOOL_BLOCK': {
-      const { messageId, id: toolBlockId, ...updates } = action.payload;
+      const { messageId, id: toolBlockId, parametersChunk, ...rest } = action.payload;
       const messageIndex = state.messages.findIndex(m => m.id === messageId);
       if (messageIndex === -1) return state;
 
@@ -355,19 +355,24 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         const newToolBlock: ToolBlock = {
           type: 'tool',
           id: toolBlockId,
-          name: updates.name || '',
-          stage: updates.stage || 'start',
-          parameters: updates.parameters || '',
-          result: updates.result || '',
-          success: updates.success ?? false,
-          ...updates
+          name: rest.name || '',
+          stage: rest.stage || 'start',
+          result: rest.result || '',
+          success: rest.success ?? false,
+          ...rest,
+          parameters: (rest.parameters || '') + (parametersChunk || '')
         };
         newBlocks = [...message.blocks, newToolBlock];
       } else {
         // Update existing tool block
         newBlocks = message.blocks.map((block, idx) => {
           if (idx === toolBlockIndex && block.type === 'tool') {
-            return { ...block, ...updates };
+            const merged: ToolBlock = { ...block, ...rest };
+            if (parametersChunk) {
+              // Delta form (streaming): append the chunk to the accumulated parameters
+              merged.parameters = (block.parameters || '') + parametersChunk;
+            }
+            return merged;
           }
           return block;
         });
