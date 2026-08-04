@@ -28,7 +28,6 @@ import {
   BTW_SYSTEM_PROMPT,
   type SystemPromptBlock,
 } from "../prompts/index.js";
-import { GOAL_EVALUATION_SYSTEM_PROMPT } from "../constants/goalPrompts.js";
 
 /**
  * Interface for debug data saved during 400 errors
@@ -1015,109 +1014,6 @@ export async function btw(options: BtwOptions): Promise<BtwResult> {
       throw new Error("Side question request was aborted");
     }
     logger.error("Failed to process side question:", error);
-    throw error;
-  }
-}
-
-export interface EvaluateGoalOptions {
-  gatewayConfig: GatewayConfig;
-  modelConfig: ModelConfig;
-  model: string;
-  goalCondition: string;
-  messages: ChatCompletionMessageParam[];
-  abortSignal?: AbortSignal;
-}
-
-export interface EvaluateGoalResult {
-  content: string;
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
-}
-
-export async function evaluateGoal(
-  options: EvaluateGoalOptions,
-): Promise<EvaluateGoalResult> {
-  const {
-    gatewayConfig,
-    modelConfig,
-    model,
-    goalCondition,
-    messages,
-    abortSignal,
-  } = options;
-
-  // Create OpenAI client with injected configuration (no rate limiter — bypasses 1 QPS)
-  const openai = new OpenAIClient({
-    apiKey: gatewayConfig.apiKey,
-    baseURL: gatewayConfig.baseURL,
-    defaultHeaders: gatewayConfig.defaultHeaders,
-    fetchOptions: gatewayConfig.fetchOptions,
-    fetch: gatewayConfig.fetch,
-  });
-
-  const openaiModelConfig = getModelConfig(model, {
-    temperature: 0,
-    max_tokens: 200,
-    ...(modelConfig.fastModelOptions || {}),
-    ...(effectiveDisableThinkingOptions(modelConfig) || {}),
-  });
-
-  // Strip images from messages to reduce token usage (same as compact)
-  const cleanedMessages = messages.map((msg) => {
-    if (Array.isArray(msg.content)) {
-      const textParts = msg.content.filter(
-        (part) => part.type === "text",
-      ) as import("openai/resources.js").ChatCompletionContentPartText[];
-      const text = textParts.map((p) => p.text).join("\n");
-      return { ...msg, content: text || "(empty message)" };
-    }
-    return msg;
-  });
-
-  try {
-    const response = await openai.chat.completions.create(
-      {
-        ...openaiModelConfig,
-        messages: [
-          {
-            role: "system",
-            content: GOAL_EVALUATION_SYSTEM_PROMPT,
-          },
-          ...cleanedMessages,
-          {
-            role: "user",
-            content: `Goal condition: ${goalCondition}\n\nHas this goal been achieved based on the conversation above?`,
-          },
-        ],
-      },
-      {
-        signal: abortSignal,
-      },
-    );
-
-    const result = response.choices[0]?.message?.content?.trim();
-    if (!result) {
-      throw new Error("Goal evaluation returned empty response");
-    }
-
-    const usage = response.usage
-      ? {
-          prompt_tokens: response.usage.prompt_tokens,
-          completion_tokens: response.usage.completion_tokens,
-          total_tokens: response.usage.total_tokens,
-        }
-      : undefined;
-
-    return { content: result, usage };
-  } catch (error) {
-    if ((error as Error).name === "AbortError") {
-      logger.info("Goal evaluation was aborted");
-      throw new Error("Goal evaluation was aborted");
-    }
-    logger.error("Goal evaluation failed:", error);
     throw error;
   }
 }

@@ -124,51 +124,6 @@ describe("AI Service - disable thinking options (fast-model scenarios)", () => {
     });
   });
 
-  describe("evaluateGoal", () => {
-    let evaluateGoal: typeof import("@/services/aiService.js").evaluateGoal;
-
-    beforeEach(async () => {
-      const aiService = await import("@/services/aiService.js");
-      evaluateGoal = aiService.evaluateGoal;
-      mockCreate.mockResolvedValue({
-        choices: [{ message: { content: "yes" } }],
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-      });
-    });
-
-    it("does not send disable-thinking params when none configured", async () => {
-      await evaluateGoal({
-        gatewayConfig: TEST_GATEWAY_CONFIG,
-        modelConfig: TEST_MODEL_CONFIG,
-        model: "fast-model",
-        goalCondition: "Task complete",
-        messages: [{ role: "user", content: "hi" }],
-      });
-
-      const callArgs = mockCreate.mock.calls[0][0];
-      expect(callArgs.model).toBe("fast-model");
-      expect(callArgs.thinking).toBeUndefined();
-      expect(callArgs.enable_thinking).toBeUndefined();
-    });
-
-    it("uses explicitly configured disableThinkingOptions", async () => {
-      await evaluateGoal({
-        gatewayConfig: TEST_GATEWAY_CONFIG,
-        modelConfig: {
-          ...TEST_MODEL_CONFIG,
-          disableThinkingOptions: { enable_thinking: false },
-        },
-        model: "fast-model",
-        goalCondition: "Task complete",
-        messages: [{ role: "user", content: "hi" }],
-      });
-
-      const callArgs = mockCreate.mock.calls[0][0];
-      expect(callArgs.enable_thinking).toBe(false);
-      expect(callArgs.thinking).toBeUndefined();
-    });
-  });
-
   describe("callAgent", () => {
     let callAgent: typeof import("@/services/aiService.js").callAgent;
 

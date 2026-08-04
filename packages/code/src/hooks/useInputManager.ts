@@ -48,7 +48,6 @@ export const useInputManager = (
     onRecallQueuedMessage,
     onClearMessages,
     onCompact,
-    onGoalCommand,
     isIdle: isIdleProp,
   } = callbacks;
 
@@ -221,8 +220,6 @@ export const useInputManager = (
                 await onClearMessages?.();
               } else if (command === "compact") {
                 await onCompact?.(effect.args);
-              } else if (command === "goal") {
-                await onGoalCommand?.(effect.args);
               }
             }
             break;
@@ -251,7 +248,6 @@ export const useInputManager = (
     onRecallQueuedMessage,
     onClearMessages,
     onCompact,
-    onGoalCommand,
   ]);
 
   useEffect(() => {

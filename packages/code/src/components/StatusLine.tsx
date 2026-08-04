@@ -4,8 +4,6 @@ import { Box, Text } from "ink";
 export interface StatusLineProps {
   permissionMode: string;
   isShellCommand: boolean;
-  isGoalActive?: boolean;
-  goalElapsed?: string;
   latestTotalTokens?: number;
   maxInputTokens?: number;
 }
@@ -13,8 +11,6 @@ export interface StatusLineProps {
 export const StatusLine: React.FC<StatusLineProps> = ({
   permissionMode,
   isShellCommand,
-  isGoalActive,
-  goalElapsed,
   latestTotalTokens = 0,
   maxInputTokens = 200000,
 }) => {
@@ -34,12 +30,6 @@ export const StatusLine: React.FC<StatusLineProps> = ({
         </Text>
       ) : (
         <Box>
-          {isGoalActive && (
-            <Text color="gray">
-              <Text color="cyan">◎ /goal</Text> active{" "}
-              {goalElapsed && <Text>({goalElapsed})</Text>} |{" "}
-            </Text>
-          )}
           <Text color="gray">
             Mode:{" "}
             <Text

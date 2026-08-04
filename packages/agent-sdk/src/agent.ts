@@ -8,7 +8,6 @@ import { McpManager } from "./managers/mcpManager.js";
 import { LspManager } from "./managers/lspManager.js";
 import { BangManager } from "./managers/bangManager.js";
 import { CronManager } from "./managers/cronManager.js";
-import { GoalManager } from "./managers/goalManager.js";
 import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
 import { MessageQueue, type QueuedMessage } from "./managers/messageQueue.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
@@ -73,7 +72,6 @@ export class Agent {
   private pluginManager: PluginManager; // Add plugin manager instance
   private skillManager: SkillManager; // Add skill manager instance
   private cronManager: CronManager; // Add cron manager instance
-  private goalManager: GoalManager; // Add goal manager instance
   private hookManager: HookManager; // Add hooks manager instance
   private reversionManager: ReversionManager;
   private messageQueue: MessageQueue; // Unified queue for messages, bang commands, and notifications
@@ -208,7 +206,6 @@ export class Agent {
     this.pluginManager = this.container.get("PluginManager")!;
     this.bangManager = this.container.get("BangManager")!;
     this.cronManager = this.container.get("CronManager")!;
-    this.goalManager = this.container.get("GoalManager")!;
     this.messageQueue = this.container.get("MessageQueue")!;
 
     // Wire up CWD change callback from AIManager to sync Agent's workdir
@@ -238,16 +235,6 @@ export class Agent {
     if (options.permissionMode) {
       this.setPermissionMode(options.permissionMode);
     }
-
-    // Wire up goal state change callback
-    this.goalManager.setOnGoalStateChange((active, condition, elapsed) => {
-      this.options.callbacks?.onGoalStateChange?.(active, condition, elapsed);
-    });
-
-    // Wire up goal evaluating callback
-    this.goalManager.setOnGoalEvaluating((evaluating) => {
-      this.options.callbacks?.onGoalEvaluating?.(evaluating);
-    });
   }
 
   // Public getter methods
@@ -338,16 +325,6 @@ export class Agent {
     return this.messageQueue
       .getQueue()
       .filter((m) => m.type !== "notification");
-  }
-
-  /** Get goal status string */
-  public get goalStatus(): string {
-    return this.goalManager.getStatusString();
-  }
-
-  /** Check if a goal is active */
-  public get isGoalActive(): boolean {
-    return this.goalManager.isGoalActive();
   }
 
   /**
@@ -709,9 +686,6 @@ export class Agent {
   public async clearMessages(): Promise<void> {
     this.aiManager.abortAIMessage();
 
-    // Clear any active goal
-    this.goalManager.clearGoal();
-
     // Capture old session info before clearing
     const oldSessionId = this.messageManager.getSessionId();
     const transcriptPath = this.messageManager.getTranscriptPath();
@@ -777,75 +751,6 @@ export class Agent {
     await this.aiManager.compactConversation({
       customInstructions,
     });
-
-    await this.messageManager.saveSession();
-  }
-
-  /**
-   * Set an autonomous goal for the session
-   * @param condition - The goal condition to achieve
-   */
-  public async setGoal(condition: string): Promise<void> {
-    // Check plan mode
-    if (this.getPermissionMode() === "plan") {
-      this.messageManager.addUserMessage({
-        content:
-          "<system-reminder>Cannot set a goal in plan mode. Exit plan mode first.</system-reminder>",
-        isMeta: true,
-      });
-      return;
-    }
-
-    this.goalManager.setGoal(condition);
-    this.messageManager.addUserMessage({
-      content: `<system-reminder>Goal set: ${condition}. The agent will work autonomously until this goal is achieved.</system-reminder>`,
-      isMeta: true,
-    });
-    // Add the goal as a user directive to start working
-    this.messageManager.addUserMessage({
-      content: condition,
-    });
-    this.aiManager.sendAIMessage();
-
-    await this.messageManager.saveSession();
-  }
-
-  /**
-   * Clear the current autonomous goal
-   */
-  public async clearGoal(): Promise<void> {
-    if (this.goalManager.isGoalActive()) {
-      this.goalManager.clearGoal();
-      this.messageManager.addUserMessage({
-        content: "<system-reminder>Goal cleared.</system-reminder>",
-        isMeta: true,
-      });
-    } else {
-      this.messageManager.addUserMessage({
-        content: "<system-reminder>No active goal to clear.</system-reminder>",
-        isMeta: true,
-      });
-    }
-
-    await this.messageManager.saveSession();
-  }
-
-  /**
-   * Show the current goal status
-   */
-  public async showGoalStatus(): Promise<void> {
-    if (this.goalManager.isGoalActive()) {
-      this.messageManager.addUserMessage({
-        content: `<system-reminder>${this.goalManager.getStatusString()}</system-reminder>`,
-        isMeta: true,
-      });
-    } else {
-      this.messageManager.addUserMessage({
-        content:
-          "<system-reminder>No active goal. Use /goal <condition> to set one.</system-reminder>",
-        isMeta: true,
-      });
-    }
 
     await this.messageManager.saveSession();
   }
@@ -1066,7 +971,7 @@ export class Agent {
     images?: Array<{ path: string; mimeType: string }>,
   ): Promise<void> {
     // If the agent is busy, enqueue the message — unless it's an immediate
-    // slash command (e.g., /goal clear, /clear, /compact) that should execute
+    // slash command (e.g., /clear, /compact) that should execute
     // right away even while AI is processing
     if (this.aiManager.isLoading || this.isCommandRunning) {
       const trimmed = content.trim();

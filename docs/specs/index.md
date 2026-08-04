@@ -43,6 +43,6 @@ const specHref = (p) => withBase(`/specs/${p.replace(/\.md$/, '.html')}`)
 | | | 语言指令 + `<env>` 环境信息 + 自动记忆 (MEMORY.md) | 无 | 不持久化 | 否 | |
 | [1] | user (meta) | `<system-reminder>`: 项目 AGENTS.md + 用户 AGENTS.md + 无条件规则 | 无 | 不持久化，每轮插入头部 | 否 | 唯一每轮注入 |
 | 历史 | user / assistant / tool | 文本块 / 图片块 / 工具块 / 后台任务通知块 / 推理块 | 最后一条有 | 持久化到 session JSONL | 是 | |
-| | user (isMeta) | 计划模式提醒 / 条件规则 / 任务提醒 / Goal 消息 / SessionStart Hook 上下文 / 后台任务通知 / Token 限制续写 | 同上 | 同上 | 否 | 触发时插入当时的结尾，各类型有独立触发条件 |
+| | user (isMeta) | 计划模式提醒 / 条件规则 / 任务提醒 / SessionStart Hook 上下文 / 后台任务通知 / Token 限制续写 | 同上 | 同上 | 否 | 触发时插入当时的结尾，各类型有独立触发条件 |
 
-**专用调用**（独立系统提示词，不经过主系统提示词组装）：压缩、网页内容提取、BTW 旁路问题、Goal 评估、Workflow 结构化输出。
+**专用调用**（独立系统提示词，不经过主系统提示词组装）：压缩、网页内容提取、BTW 旁路问题、Workflow 结构化输出。
