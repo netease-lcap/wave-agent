@@ -837,6 +837,23 @@ describe('agent notifications', () => {
     expect(sent('updatePermissionMode')[0]).toMatchObject({ mode: 'plan' });
   });
 
+  it('onBtwContent posts btwStream to the pane', async () => {
+    const { sent } = await readyHost();
+    lastAgent().callbacks.onBtwContent({
+      question: 'weather?',
+      content: 'thinking chunk',
+      type: 'thinking',
+    });
+
+    const msg = sent('btwStream')[0];
+    expect(msg).toMatchObject({
+      question: 'weather?',
+      content: 'thinking chunk',
+      type: 'thinking',
+    });
+    expect(msg.paneId).toBeDefined();
+  });
+
   it('onBackgroundTasksChange posts tasks and refreshes workflow runs', async () => {
     const { sent } = await readyHost();
     const runsBefore = sent('updateWorkflowRuns').length;

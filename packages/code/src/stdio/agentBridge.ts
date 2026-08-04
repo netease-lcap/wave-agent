@@ -719,7 +719,31 @@ export class AgentBridge {
 
   private async askBtw(question: string, sessionId?: string): Promise<string> {
     const entry = this.requireSession(sessionId);
-    return entry.agent.askBtw(question);
+    return entry.agent.askBtw(
+      question,
+      undefined,
+      // Stream partial content to the client so webview hosts can render the
+      // answer incrementally (thinking and content travel on separate
+      // channels so the panel can drop thinking text once content starts).
+      (content) => {
+        if (sessionId) {
+          this.emit(
+            "btwContent",
+            { question, content, type: "content" },
+            sessionId,
+          );
+        }
+      },
+      (content) => {
+        if (sessionId) {
+          this.emit(
+            "btwContent",
+            { question, content, type: "thinking" },
+            sessionId,
+          );
+        }
+      },
+    );
   }
 
   private async abortMessage(sessionId?: string): Promise<null> {

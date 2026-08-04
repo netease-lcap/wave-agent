@@ -10,10 +10,10 @@ interface BtwPanelProps {
   onClose: () => void;
 }
 
-// Escape closes the panel (spec scenario 6). A separate keydown listener is used
-// instead of a focused tabIndex container so closing works even while focus is
-// inside the message input (the input's own Esc handler is scoped to slash/mention
-// popups and would otherwise swallow it).
+// Escape closes only the panel (spec scenario 9). A capture-phase listener with
+// stopPropagation runs before React's synthetic onKeyDown (attached at the root
+// container), so the keypress never reaches MessageInput's onAbortMessage and
+// the in-flight agent loop keeps running.
 const renderMarkdown = (content: string): string => {
   const html = marked.parse(content, { gfm: true, breaks: true });
   const sanitized = DOMPurify.sanitize(html as string, {
@@ -32,22 +32,22 @@ export const BtwPanel: React.FC<BtwPanelProps> = ({ question, answer, isLoading,
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
+        event.stopPropagation();
         onClose();
       }
     };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
   }, [onClose]);
 
   return (
     <div className="btw-panel" data-testid="btw-panel">
       <div className="btw-panel-header">
-        {question && (
-          <>
-            <span className="btw-panel-prefix">/btw </span>
-            <span className="btw-panel-question" data-testid="btw-panel-question">{question}</span>
-          </>
-        )}
+        {/* The prefix is always rendered so the header keeps a title and the
+            close button stays on the right even for a bare `/btw` (spec
+            scenario 3). */}
+        <span className="btw-panel-prefix">/btw </span>
+        <span className="btw-panel-question" data-testid="btw-panel-question">{question}</span>
         <button
           className="btw-panel-close"
           onClick={onClose}
@@ -57,18 +57,24 @@ export const BtwPanel: React.FC<BtwPanelProps> = ({ question, answer, isLoading,
           <i className="codicon codicon-close"></i>
         </button>
       </div>
-      {isLoading ? (
+      {isLoading && (
         <div className="btw-panel-loading" data-testid="btw-panel-loading">
-          <span className="btw-loading-indicator">✻</span>
-          <span className="btw-loading-text">Answering...</span>
+          <span className="btw-loading-indicator">▋</span>
+          <span className="btw-loading-text">正在回答…</span>
         </div>
-      ) : answer ? (
-        <div
-          className="btw-panel-answer"
-          data-testid="btw-panel-answer"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(answer) }}
-        />
-      ) : null}
+      )}
+      {answer &&
+        (isLoading ? (
+          // Streaming chunks render as plain text (no markdown flicker while
+          // the answer is incomplete); the finished answer is rendered below.
+          <div className="btw-panel-streaming" data-testid="btw-panel-streaming">{answer}</div>
+        ) : (
+          <div
+            className="btw-panel-answer"
+            data-testid="btw-panel-answer"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(answer) }}
+          />
+        ))}
     </div>
   );
 };
