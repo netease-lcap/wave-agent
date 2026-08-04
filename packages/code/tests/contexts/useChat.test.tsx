@@ -6,7 +6,7 @@ import {
   useChat,
   ChatContextType,
 } from "../../src/contexts/useChat.js";
-import { Agent, BackgroundShell } from "wave-agent-sdk";
+import { Agent, BackgroundShell, Task } from "wave-agent-sdk";
 import { AppProvider } from "../../src/contexts/useAppConfig.js";
 import { useInput } from "ink";
 
@@ -1368,6 +1368,200 @@ describe("ChatProvider", () => {
         success: true,
         parameters: '{"cmd":"ls"}',
       });
+    });
+  });
+
+  it("throttles reasoning streaming updates and flushes on end", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    // Start with a text block so the reasoning append + in-place update paths
+    // both map over a multi-block message
+    const assistantMsg = {
+      id: "msg-reason",
+      role: "assistant" as const,
+      blocks: [{ type: "text" as const, content: "pre" }],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [assistantMsg] });
+    callbacks.onAssistantMessageAdded!("msg-reason");
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toHaveLength(1);
+    });
+
+    // Leading edge appends a new reasoning block immediately
+    callbacks.onAssistantReasoningUpdated!({
+      messageId: "msg-reason",
+      chunk: "Th",
+      accumulated: "Th",
+      stage: "streaming",
+    });
+    await vi.waitFor(() => {
+      const reasoning = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "reasoning",
+      ) as { content: string } | undefined;
+      expect(reasoning?.content).toBe("Th");
+    });
+
+    // Subsequent chunks within the 500ms window are coalesced (trailing)
+    callbacks.onAssistantReasoningUpdated!({
+      messageId: "msg-reason",
+      chunk: "ink",
+      accumulated: "Think",
+      stage: "streaming",
+    });
+    callbacks.onAssistantReasoningUpdated!({
+      messageId: "msg-reason",
+      chunk: "ing",
+      accumulated: "Thinking",
+      stage: "streaming",
+    });
+    const beforeFlush = lastValue?.messages[0].blocks.find(
+      (b) => b.type === "reasoning",
+    ) as { content: string } | undefined;
+    expect(beforeFlush?.content).toBe("Th");
+
+    // stage === "end" flushes the accumulated reasoning as an in-place update
+    callbacks.onAssistantReasoningUpdated!({
+      messageId: "msg-reason",
+      chunk: "…",
+      accumulated: "Thinking complete",
+      stage: "end",
+    });
+    await vi.waitFor(() => {
+      const reasoning = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "reasoning",
+      ) as { content: string } | undefined;
+      expect(reasoning?.content).toBe("Thinking complete");
+    });
+
+    // Unknown messageId leaves messages untouched
+    callbacks.onAssistantReasoningUpdated!({
+      messageId: "nonexistent",
+      chunk: "x",
+      accumulated: "x",
+      stage: "end",
+    });
+    expect(lastValue?.messages[0].blocks).toHaveLength(2);
+  });
+
+  it("handles bang message callbacks", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    // onAddBangMessage appends a new user message with a bang block
+    callbacks.onAddBangMessage!("ls", "bang-1");
+    await vi.waitFor(() => {
+      expect(lastValue?.messages.some((m) => m.id === "bang-1")).toBe(true);
+    });
+
+    // A duplicate messageId must not append a second message
+    callbacks.onAddBangMessage!("ls", "bang-1");
+    await vi.waitFor(() => {
+      expect(lastValue?.messages.filter((m) => m.id === "bang-1")).toHaveLength(
+        1,
+      );
+    });
+
+    // onUpdateBangMessage patches the trailing bang block in place
+    callbacks.onUpdateBangMessage!("ls -la", "file.txt\n", "bang-1");
+    await vi.waitFor(() => {
+      const msg = lastValue!.messages.find((m) => m.id === "bang-1")!;
+      const bangBlock = msg.blocks[msg.blocks.length - 1];
+      expect(bangBlock).toMatchObject({
+        type: "bang",
+        command: "ls -la",
+        output: "file.txt\n",
+      });
+    });
+
+    // onCompleteBangMessage records the exit code and final stage
+    callbacks.onCompleteBangMessage!("ls -la", 0, "bang-1");
+    await vi.waitFor(() => {
+      const msg = lastValue!.messages.find((m) => m.id === "bang-1")!;
+      const bangBlock = msg.blocks[msg.blocks.length - 1];
+      expect(bangBlock).toMatchObject({
+        type: "bang",
+        exitCode: 0,
+        stage: "end",
+      });
+    });
+
+    // Unknown messageId is a no-op for update/complete
+    callbacks.onUpdateBangMessage!("x", "y", "nonexistent");
+    callbacks.onCompleteBangMessage!("x", 1, "nonexistent");
+    expect(lastValue?.messages).toHaveLength(1);
+  });
+
+  it("updates tasks only when the task list actually changes", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    const tasks = [
+      { id: "t1", subject: "Task 1", status: "pending" },
+    ] as unknown as Task[];
+    callbacks.onTasksChange!(tasks);
+    await vi.waitFor(() => {
+      expect(lastValue?.tasks).toEqual(tasks);
+    });
+
+    // Identical task list → reducer keeps the previous reference
+    const before = lastValue?.tasks;
+    callbacks.onTasksChange!([
+      { id: "t1", subject: "Task 1", status: "pending" },
+    ] as unknown as Task[]);
+    await vi.waitFor(() => {
+      expect(lastValue?.tasks).toBe(before);
+    });
+
+    // A task status change replaces the list
+    callbacks.onTasksChange!([
+      { id: "t1", subject: "Task 1", status: "running" },
+    ] as unknown as Task[]);
+    await vi.waitFor(() => {
+      expect(lastValue?.tasks[0].status).toBe("running");
+    });
+
+    // A length change replaces the list
+    callbacks.onTasksChange!([
+      ...tasks,
+      { id: "t2", subject: "Task 2", status: "pending" },
+    ] as unknown as Task[]);
+    await vi.waitFor(() => {
+      expect(lastValue?.tasks).toHaveLength(2);
     });
   });
 
