@@ -167,6 +167,7 @@ vi.mock('../src/main/stdio/stdioAgent', () => ({
   StdioAgent: class {
     sessionId: string | undefined;
     workingDirectory: string | undefined;
+    sessionCwd: string | undefined;
     latestTotalTokens = 0;
     messages: unknown[] = [];
     tasks: unknown[] = [];
@@ -177,8 +178,9 @@ vi.mock('../src/main/stdio/stdioAgent', () => ({
     isCompacting = false;
     callbacks: Record<string, (...args: never[]) => void>;
 
-    initialize = vi.fn(async function (this: { workingDirectory?: string; sessionId?: string }, params: { workdir?: string }) {
+    initialize = vi.fn(async function (this: { workingDirectory?: string; sessionCwd?: string; sessionId?: string }, params: { workdir?: string }) {
       this.workingDirectory = params.workdir;
+      this.sessionCwd = params.workdir;
       this.sessionId = `sess-${++h.agentCounter}`;
       if (h.initializeGate) await h.initializeGate;
     });
@@ -485,6 +487,31 @@ describe('file suggestions', () => {
     await host.handleWebviewMessage({ command: 'desktopReady' });
     await host.handleWebviewMessage({ command: 'webviewReady' });
 
+    await host.handleWebviewMessage({ command: 'requestFileSuggestions', filterText: 'app', requestId: 'r1' });
+
+    const search = h.clientRequests.find((r) => r.method === 'searchFiles');
+    expect(search?.params).toMatchObject({ workdir: '/work/a', query: 'app', maxResults: 20 });
+  });
+
+  it('stays anchored to the session root after bash cd drifts the working directory', async () => {
+    const { host, sent } = await readyHost();
+    const first = lastAgent();
+    first.messages = [{ id: 'm-1' }];
+    fireSessionId(first, 'sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    await vi.waitFor(() => {
+      expect((sent('desktopPanes').at(-1)?.panes as Array<{ sessionId?: string }>)[1]?.sessionId).toBe('sess-2');
+    });
+    const panes = sent('desktopPanes').at(-1)!.panes as Array<{ paneId: string }>;
+
+    // The agent ran `cd src` — the CLI broadcast workdirChange, drifting the
+    // agent's workingDirectory.
+    first.workingDirectory = '/work/a/src';
+    first.callbacks.onWorkdirChange('/work/a/src');
+
+    // Switching back to the drifted pane re-anchors host workdir to the
+    // subdir. @file suggestions must still search the session root.
+    await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: panes[0].paneId });
     await host.handleWebviewMessage({ command: 'requestFileSuggestions', filterText: 'app', requestId: 'r1' });
 
     const search = h.clientRequests.find((r) => r.method === 'searchFiles');
@@ -924,6 +951,20 @@ describe('configuration and status', () => {
       sessionId: 'sess-1',
       workdir: '/work/a',
     });
+  });
+
+  it('getStatus keeps the session root workdir after bash cd drifts the working directory', async () => {
+    const { host, sent } = await readyHost();
+    // The agent ran `cd src` — the CLI broadcast workdirChange, which drifts
+    // the agent's workingDirectory. The /status popup must still report the
+    // session root, not the subdir the agent cd'd into.
+    const agent = lastAgent();
+    agent.workingDirectory = '/work/a/src';
+    agent.callbacks.onWorkdirChange('/work/a/src');
+
+    await host.handleWebviewMessage({ command: 'getStatus' });
+
+    expect(sent('statusResponse')[0]).toMatchObject({ workdir: '/work/a' });
   });
 
   it('openExternal allows https URLs (FR-008)', async () => {

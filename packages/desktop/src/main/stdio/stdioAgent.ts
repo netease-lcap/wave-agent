@@ -119,6 +119,13 @@ export class StdioAgent {
     // ── Cached state (synchronous access) ──
     public sessionId: string | undefined;
     public workingDirectory: string | undefined;
+    /**
+     * Initialize-time cwd — the session's stable root. Unlike
+     * `workingDirectory` it is never overwritten by the workdirChange
+     * notification (bash cd), so @file search and the /status workdir stay
+     * anchored to the project root.
+     */
+    public sessionCwd: string | undefined;
     public latestTotalTokens = 0;
     public permissionMode: PermissionMode | undefined;
     public messages: Message[] = [];
@@ -154,6 +161,7 @@ export class StdioAgent {
         )) as InitializeResult;
         this.sessionId = result.sessionId;
         this.workingDirectory = result.workingDirectory;
+        this.sessionCwd = result.workingDirectory;
         this.permissionMode = result.permissionMode;
         this.latestTotalTokens = result.latestTotalTokens;
         // Register with the router so subsequent notifications are routed here
