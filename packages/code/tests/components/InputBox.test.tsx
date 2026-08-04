@@ -44,6 +44,7 @@ vi.mock("../../src/contexts/useChat.js", () => ({
   useChat: () => ({
     permissionMode: "default",
     setPermissionMode: mockSetPermissionMode,
+    setIsBtwActive: vi.fn(),
     backgroundTasks: [],
     messages: [],
     handleRewindSelect: mockHandleRewindSelect,

@@ -64,6 +64,38 @@ describe("TaskList", () => {
     expect(lastFrame()).toBeFalsy();
   });
 
+  it("should render nothing while the /btw overlay is active", () => {
+    vi.mocked(useTasks).mockReturnValue([
+      makeTask({ id: "1", subject: "Task 1", status: "in_progress" }),
+    ]);
+    vi.mocked(useChat).mockReturnValue({
+      isTaskListVisible: true,
+      isBtwActive: true,
+    } as unknown as ChatContextType);
+    const { lastFrame } = render(<TaskList />);
+    expect(lastFrame()).toBeFalsy();
+  });
+
+  it("should render tasks again after the /btw overlay dismisses", () => {
+    vi.mocked(useTasks).mockReturnValue([
+      makeTask({ id: "1", subject: "Task 1", status: "in_progress" }),
+    ]);
+    vi.mocked(useChat).mockReturnValue({
+      isTaskListVisible: true,
+      isBtwActive: true,
+    } as unknown as ChatContextType);
+    const { lastFrame: hiddenFrame, rerender } = render(<TaskList />);
+    expect(hiddenFrame()).toBeFalsy();
+
+    vi.mocked(useChat).mockReturnValue({
+      isTaskListVisible: true,
+      isBtwActive: false,
+    } as unknown as ChatContextType);
+    rerender(<TaskList />);
+    const frame = hiddenFrame();
+    expect(frame ?? "").toContain("Task 1");
+  });
+
   it("should render tasks with correct icons and subjects", () => {
     const mockTasks: Task[] = [
       makeTask({ id: "1", subject: "Pending Task", status: "pending" }),

@@ -46,6 +46,9 @@ export interface ChatContextType {
   isExpanded: boolean;
   isTaskListVisible: boolean;
   setIsTaskListVisible: (visible: boolean) => void;
+  // True while the /btw side-question overlay is on display
+  isBtwActive: boolean;
+  setIsBtwActive: (active: boolean) => void;
   queuedMessages: QueuedMessage[];
   // AI functionality
   sessionId: string;
@@ -54,7 +57,11 @@ export interface ChatContextType {
     images?: Array<{ path: string; mimeType: string }>,
     longTextMap?: Record<string, string>,
   ) => Promise<void>;
-  askBtw: (question: string, abortSignal?: AbortSignal) => Promise<string>;
+  askBtw: (
+    question: string,
+    abortSignal?: AbortSignal,
+    onContent?: (content: string) => void,
+  ) => Promise<string>;
   clearMessages: () => Promise<void>;
   compact: (instructions?: string) => Promise<void>;
   abortMessage: () => void;
@@ -171,6 +178,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const isExpandedRef = useRef(isExpanded);
 
   const [isTaskListVisible, setIsTaskListVisible] = useState(true);
+  const [isBtwActive, setIsBtwActive] = useState(false);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [latestTotalTokens, setLatestTotalTokens] = useState(0);
@@ -852,11 +860,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   );
 
   const askBtw = useCallback(
-    async (question: string, abortSignal?: AbortSignal) => {
+    async (
+      question: string,
+      abortSignal?: AbortSignal,
+      onContent?: (content: string) => void,
+    ) => {
       if (!agentRef.current) {
         throw new Error("Agent not initialized");
       }
-      return await agentRef.current.askBtw(question, abortSignal);
+      return await agentRef.current.askBtw(question, abortSignal, onContent);
     },
     [],
   );
@@ -1067,6 +1079,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     isExpanded,
     isTaskListVisible,
     setIsTaskListVisible,
+    isBtwActive,
+    setIsBtwActive,
     queuedMessages,
     sessionId,
     sendMessage,

@@ -152,6 +152,18 @@ export const useInputManager = (
               const answer = await onAskBtw?.(
                 effect.question,
                 controller.signal,
+                (content: string) => {
+                  // Stream partial answers into the overlay so the user sees
+                  // the response grow in real time (same visual language as
+                  // assistant text / thinking blocks) instead of a static
+                  // "Answering..." indicator.
+                  if (!btwDismissedRef.current) {
+                    dispatch({
+                      type: "SET_BTW_STATE",
+                      payload: { answer: content, isLoading: true },
+                    });
+                  }
+                },
               );
               if (!btwDismissedRef.current) {
                 dispatch({
@@ -369,8 +381,9 @@ export const useInputManager = (
   // can defer to the /btw overlay (ink runs ALL useInput handlers per keypress
   // with no propagation control).
   useEffect(() => {
-    btwOverlayActiveRef.current = state.btwState.question !== "";
-  }, [state.btwState.question]);
+    btwOverlayActiveRef.current =
+      state.btwState.question !== "" || state.btwState.answer !== undefined;
+  }, [state.btwState.question, state.btwState.answer]);
 
   // Methods
   const insertTextAtCursor = useCallback((text: string) => {
