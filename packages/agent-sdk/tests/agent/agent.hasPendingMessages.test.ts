@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "../../src/agent.js";
 import { SkillManager } from "../../src/managers/skillManager.js";
+import { cleanupMetaOnlySessions } from "../../src/services/session.js";
 import * as fs from "fs/promises";
 
 vi.mock("fs/promises");
@@ -43,6 +44,7 @@ describe("Agent hasPendingMessages (print-mode wait condition)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(cleanupMetaOnlySessions).mockResolvedValue(0);
     vi.mocked(fs.readFile).mockResolvedValue("");
     vi.mocked(SkillManager.prototype.getAvailableSkills).mockReturnValue([]);
   });
