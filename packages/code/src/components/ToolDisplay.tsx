@@ -9,6 +9,22 @@ interface ToolDisplayProps {
   isExpanded?: boolean;
 }
 
+// Status dot color for a tool block. In-flight stages (start/streaming/running)
+// never show red — the outcome isn't known until the tool reaches "end".
+// An explicit error overrides everything.
+export const getToolStatusColor = (
+  stage: ToolBlock["stage"],
+  success?: boolean,
+  error?: string | Error,
+): string => {
+  if (error) return "red";
+  if (stage === "start" || stage === "streaming") return "gray";
+  if (stage === "running") return "yellow";
+  if (success) return "green";
+  if (success === false) return "red";
+  return "gray"; // Unknown state or no state information
+};
+
 export const ToolDisplay: React.FC<ToolDisplayProps> = ({
   block,
   isExpanded = false,
@@ -19,12 +35,7 @@ export const ToolDisplay: React.FC<ToolDisplayProps> = ({
   // Directly use compactParams
   // (no change needed as we destructured it above)
 
-  const getStatusColor = () => {
-    if (stage === "running") return "yellow";
-    if (success) return "green";
-    if (error || success === false) return "red";
-    return "gray"; // Unknown state or no state information
-  };
+  const getStatusColor = () => getToolStatusColor(stage, success, error);
 
   const hasImages = () => {
     return block.images && block.images.length > 0;

@@ -281,7 +281,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
                     stage: updates.stage || "start",
                     parameters: updates.parameters || "",
                     result: updates.result || "",
-                    success: updates.success ?? false,
                     ...updates,
                   },
                 ],
