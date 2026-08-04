@@ -12,7 +12,6 @@ import type { SubagentManagerCallbacks } from "../../src/managers/subagentManage
  */
 export function createMockCallbacks(): MessageManagerCallbacks {
   return {
-    onMessagesChange: vi.fn(),
     onSessionIdChange: vi.fn(),
     onLatestTotalTokensChange: vi.fn(),
     onUsagesChange: vi.fn(),
@@ -39,7 +38,6 @@ export function createErrorThrowingCallbacks(): MessageManagerCallbacks {
   });
 
   return {
-    onMessagesChange: errorCallback,
     onUserMessageAdded: errorCallback,
     onAssistantMessageAdded: errorCallback,
     onAssistantContentUpdated: errorCallback,

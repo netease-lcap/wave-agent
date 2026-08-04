@@ -23,7 +23,6 @@ describe("MessageManager History Truncation Integration", () => {
   let mockReversionManager: Mocked<ReversionManager>;
   const container = new Container();
   const callbacks = {
-    onMessagesChange: vi.fn(),
     onSessionIdChange: vi.fn(),
   };
 

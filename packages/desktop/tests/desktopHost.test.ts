@@ -191,6 +191,12 @@ vi.mock('../src/main/stdio/stdioAgent', () => ({
     });
     compact = vi.fn(async () => undefined);
     rewindToMessage = vi.fn(async () => ({ inputContent: 'rewound draft' }));
+    getFullMessageThread = vi.fn(async function (this: { messages?: unknown[] }) {
+      return { messages: this.messages ?? [], sessionIds: [] };
+    });
+    getMessages = vi.fn(async function (this: { messages?: unknown[] }) {
+      return this.messages ?? [];
+    });
     listRewindCheckpoints = vi.fn(async () => ({ checkpoints: [{ id: 'u1', content: 'hello' }] }));
     removeQueuedMessage = vi.fn(async () => undefined);
     updateQueuedMessageById = vi.fn(async () => true);
@@ -577,8 +583,7 @@ describe('agent notifications', () => {
     const { sent } = await readyHost();
     const agent = lastAgent();
     // Contract: the desktop does not subscribe to messagesChange at all (the
-    // agent keeps its own cache). The CLI fires messagesChange first, then
-    // the incremental userMessageAdded — pushing both double-appended.
+    // agent keeps its own cache, fed by incremental appends below).
     expect(agent.callbacks.onMessagesChange).toBeUndefined();
     const userMsg = { id: 'u1', role: 'user', blocks: [{ type: 'text', content: '你好' }] };
     agent.messages = [userMsg];
@@ -2135,7 +2140,10 @@ describe('multi-session parallel (FR-031)', () => {
     seedActiveSession('sess-2');
 
     const appends = sent('appendMessage').length;
-    agent1.messages = [{ id: 'm-sess-1' }, { id: 'bg-1' }];
+    // The cache is fed by the incremental callback itself (no messagesChange
+    // snapshot anymore), so start from the pre-bg state and let the callback
+    // append.
+    agent1.messages = [{ id: 'm-sess-1' }];
     agent1.callbacks.onAssistantMessageAdded({ id: 'bg-1' });
     expect(sent('appendMessage')).toHaveLength(appends);
 

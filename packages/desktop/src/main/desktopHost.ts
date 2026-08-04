@@ -86,9 +86,6 @@ interface Pane {
 }
 
 interface PaneThrottle {
-  updateTimer?: NodeJS.Timeout;
-  pendingUpdate: boolean;
-  forceNextUpdateImmediate: boolean;
   streamingContentTimer?: NodeJS.Timeout;
   pendingStreamingContent?: { messageId: string; accumulated: string; stage: 'streaming' | 'end' };
   streamingReasoningTimer?: NodeJS.Timeout;
@@ -231,7 +228,7 @@ export class DesktopHost {
   private throttleFor(paneId: string): PaneThrottle {
     let t = this.paneThrottles.get(paneId);
     if (!t) {
-      t = { pendingUpdate: false, forceNextUpdateImmediate: false };
+      t = {};
       this.paneThrottles.set(paneId, t);
     }
     return t;
@@ -311,7 +308,7 @@ export class DesktopHost {
     this.terminalManager.killAll();
     this.portForwardManager.dispose();
     for (const t of this.paneThrottles.values()) {
-      for (const timer of [t.updateTimer, t.streamingContentTimer, t.streamingReasoningTimer]) {
+      for (const timer of [t.streamingContentTimer, t.streamingReasoningTimer]) {
         if (timer) clearTimeout(timer);
       }
     }
@@ -373,6 +370,25 @@ export class DesktopHost {
       agent.messages = [...agent.messages, message];
     }
     this.postMessage({ command: 'appendMessage', paneId: targetPaneId, message });
+  }
+
+  /**
+   * Pull the authoritative message list (getMessages RPC) into the agent's
+   * cache and push it to the pane's webview as updateMessages. Replaces the
+   * removed full-snapshot messagesChange push for structural transitions
+   * (compact / clearChat / rewind) where incremental events can't rebuild the
+   * list. Binding is re-checked after the RPC — the agent may have been
+   * rebound while the request was in flight.
+   */
+  private async pullAndPushMessages(agent: StdioAgent, paneId: string): Promise<void> {
+    try {
+      await agent.getMessages();
+    } catch (error) {
+      console.warn('[DesktopHost] getMessages failed:', error);
+    }
+    if (this.agentForPane(paneId) === agent) {
+      this.postMessage({ command: 'updateMessages', paneId, messages: agent.messages });
+    }
   }
 
   private sendWorkdirState(): void {
@@ -507,29 +523,34 @@ export class DesktopHost {
     const paneIdOf = () => this.paneIdForAgent(agentRef);
 
     const callbacks: StdioAgentCallbacks = {
-      // NOTE: onMessagesChange deliberately does NOT push the full list to the
-      // view (the agent keeps its own cache). Every mutation also fires a
-      // dedicated incremental callback (user/assistantMessageAdded, streaming,
-      // toolBlockUpdated, bang…), so pushing the list here would make the
-      // webview append each message twice. Full-list pushes happen explicitly
-      // on restore / rewind / compact via pushPaneSessionState /
-      // throttledUpdateChatMessages.
+      // NOTE: no full-list push here. The server no longer emits messagesChange;
+      // the cache is kept fresh via incremental appends below (user/assistant
+      // adds, bang mirroring) and pull-based refreshes on structural transitions
+      // (webviewReady / restore / compact / clearChat / rewind) via
+      // getMessages(). Full-list pushes to the webview happen only through
+      // pullAndPushMessages (updateMessages) and pushPaneSessionState
+      // (setInitialState).
       onCompactBlockAdded: () => {
         const paneId = paneIdOf();
         if (!paneId) return;
-        this.throttleFor(paneId).forceNextUpdateImmediate = true;
-        this.throttledUpdateChatMessages(paneId);
+        // Compaction truncates the list server-side; pull it and replace the
+        // webview list.
+        void this.pullAndPushMessages(agentRef, paneId);
       },
       onCompactionStateChange: (isCompacting: boolean) => {
         const paneId = paneIdOf();
         if (paneId) this.postMessage({ command: 'compactionStateChange', isCompacting, paneId });
       },
       onUserMessageAdded: (message: Message) => {
+        // Keep the cache mirroring the server (no messagesChange snapshot
+        // arrives anymore) — feeds FR-024 title + idle checks.
+        agentRef.messages = [...agentRef.messages, message];
         const paneId = paneIdOf();
         if (paneId) this.postMessage({ command: 'appendMessage', paneId, message });
         this.ensureSessionRegistered(agentRef);
       },
       onAssistantMessageAdded: (message: Message) => {
+        agentRef.messages = [...agentRef.messages, message];
         const paneId = paneIdOf();
         if (paneId) this.postMessage({ command: 'appendMessage', paneId, message });
       },
@@ -614,17 +635,56 @@ export class DesktopHost {
         const paneId = paneIdOf();
         if (paneId) this.postMessage({ command: 'mcpServersUpdate', paneId, servers });
       },
-      onBangMessageAdded: () => {
+      onBangMessageAdded: (params) => {
+        // Bang commands append a user message with a bang block — no
+        // userMessageAdded fires for it, so mirror it into the cache (same
+        // shape the server builds) to keep full-state pushes coherent, then
+        // forward the params incrementally. Params are nested because they
+        // carry a `command` field that would clobber the postMessage
+        // discriminator.
+        agentRef.messages = [
+          ...agentRef.messages,
+          {
+            id: params.messageId,
+            role: 'user',
+            timestamp: new Date().toISOString(),
+            blocks: [{ type: 'bang', command: params.command, output: '', stage: 'running', exitCode: null }],
+          } as Message,
+        ];
         const paneId = paneIdOf();
-        if (paneId) this.postMessage({ command: 'updateMessages', paneId, messages: agentRef.messages });
+        if (paneId) this.postMessage({ command: 'bangMessageAdded', paneId, params });
       },
-      onBangMessageUpdated: () => {
+      onBangMessageUpdated: (params) => {
+        agentRef.messages = agentRef.messages.map((m) =>
+          m.id === params.messageId
+            ? {
+                ...m,
+                blocks: m.blocks.map((b, idx) =>
+                  idx === m.blocks.length - 1 && b.type === 'bang'
+                    ? { ...b, command: params.command, output: params.output }
+                    : b,
+                ),
+              }
+            : m,
+        );
         const paneId = paneIdOf();
-        if (paneId) this.postMessage({ command: 'updateMessages', paneId, messages: agentRef.messages });
+        if (paneId) this.postMessage({ command: 'bangMessageUpdated', paneId, params });
       },
-      onBangMessageCompleted: () => {
+      onBangMessageCompleted: (params) => {
+        agentRef.messages = agentRef.messages.map((m) =>
+          m.id === params.messageId
+            ? {
+                ...m,
+                blocks: m.blocks.map((b, idx) =>
+                  idx === m.blocks.length - 1 && b.type === 'bang'
+                    ? { ...b, command: params.command, exitCode: params.exitCode, stage: 'end' }
+                    : b,
+                ),
+              }
+            : m,
+        );
         const paneId = paneIdOf();
-        if (paneId) this.postMessage({ command: 'updateMessages', paneId, messages: agentRef.messages });
+        if (paneId) this.postMessage({ command: 'bangMessageCompleted', paneId, params });
       },
       onNotificationMessageAdded: (params) => {
         const paneId = paneIdOf();
@@ -1176,7 +1236,7 @@ export class DesktopHost {
   private paneThrottle(paneId: string): PaneThrottle {
     let t = this.paneThrottles.get(paneId);
     if (!t) {
-      t = { pendingUpdate: false, forceNextUpdateImmediate: false };
+      t = {};
       this.paneThrottles.set(paneId, t);
     }
     return t;
@@ -1186,14 +1246,10 @@ export class DesktopHost {
   private clearThrottleState(paneId: string): void {
     const t = this.paneThrottles.get(paneId);
     if (!t) return;
-    for (const timer of [t.updateTimer, t.streamingContentTimer, t.streamingReasoningTimer]) {
+    for (const timer of [t.streamingContentTimer, t.streamingReasoningTimer]) {
       if (timer) clearTimeout(timer);
     }
     this.paneThrottles.delete(paneId);
-  }
-
-  private messagesForPane(paneId: string): Message[] {
-    return this.agentForPane(paneId)?.messages ?? [];
   }
 
   private tasksForPane(paneId: string): Task[] {
@@ -1772,13 +1828,15 @@ export class DesktopHost {
 
       case 'clearChat': {
         // 与 IDE 插件对齐：/clear 原地清空当前会话（agent.clearMessages 会
-        // 中止进行中的生成并换新 sessionId），不 spawn 新 agent。消息列表的
-        // 全量推送走显式 updateMessages（agent 的 messagesChange 缓存不直推）。
+        // 中止进行中的生成并换新 sessionId），不 spawn 新 agent。clearMessages
+        // 触发的 sessionIdChange 在 RPC 中途到达——先把缓存清空，让该处理器
+        // 的空会话守卫（messages.length > 0）仍然成立；随后按需拉取权威的
+        // （已清空的）列表并推给 webview。
         const agent = this.agentForPane(pid);
         if (agent) {
+          agent.messages = [];
           await agent.clearMessages();
-          this.throttleFor(pid).forceNextUpdateImmediate = true;
-          this.throttledUpdateChatMessages(pid);
+          await this.pullAndPushMessages(agent, pid);
         }
         break;
       }
@@ -2721,8 +2779,9 @@ export class DesktopHost {
     try {
       const { inputContent } = await agent.rewindToMessage(messageId);
       this.inputDrafts.set(pid, inputContent);
-      this.paneThrottle(pid).forceNextUpdateImmediate = true;
-      this.throttledUpdateChatMessages(pid);
+      // Rewind truncates the list server-side; pull it into the cache, then
+      // setInitialState below carries it to the webview.
+      await this.pullAndPushMessages(agent, pid);
       await this.pushPaneSessionState(pid);
       this.postMessage({ command: 'focusInput', paneId: pid });
       this.postMessage({ command: 'scrollToBottom', paneId: pid });
@@ -3239,39 +3298,8 @@ export class DesktopHost {
   }
 
   // ------------------------------------------------------------------
-  // Throttled message updates (ported from vsce ChatSession)
+  // Throttled streaming updates (ported from vsce ChatSession)
   // ------------------------------------------------------------------
-
-  private immediateUpdateChatMessages(paneId: string): void {
-    const t = this.paneThrottle(paneId);
-    if (t.updateTimer) {
-      clearTimeout(t.updateTimer);
-      t.updateTimer = undefined;
-    }
-    t.pendingUpdate = false;
-    this.postMessage({ command: 'updateMessages', paneId, messages: this.messagesForPane(paneId) });
-  }
-
-  private throttledUpdateChatMessages(paneId: string): void {
-    const t = this.paneThrottle(paneId);
-    if (t.forceNextUpdateImmediate) {
-      t.forceNextUpdateImmediate = false;
-      this.immediateUpdateChatMessages(paneId);
-      return;
-    }
-
-    // leading edge
-    if (!t.pendingUpdate && !t.updateTimer) {
-      this.postMessage({ command: 'updateMessages', paneId, messages: this.messagesForPane(paneId) });
-      t.pendingUpdate = true;
-      // trailing edge after 300ms cooldown
-      t.updateTimer = setTimeout(() => {
-        this.postMessage({ command: 'updateMessages', paneId, messages: this.messagesForPane(paneId) });
-        t.pendingUpdate = false;
-        t.updateTimer = undefined;
-      }, 300);
-    }
-  }
 
   private throttledStreamingContentUpdate(paneId: string, messageId: string, accumulated: string, stage: 'streaming' | 'end'): void {
     const t = this.paneThrottle(paneId);

@@ -23,7 +23,6 @@ type GlobalHandler = (params: unknown) => void;
 import type { StdioAgent } from './stdioAgent';
 
 const ALL_NOTIFICATION_METHODS = [
-    'messagesChange',
     'userMessageAdded',
     'assistantMessageAdded',
     'assistantContentUpdated',

@@ -54,7 +54,7 @@ describe('NotificationRouter', () => {
         router.attach();
 
         const methods = client.onNotification.mock.calls.map((c) => c[0] as string);
-        expect(methods).toContain('messagesChange');
+        expect(methods).not.toContain('messagesChange');
         expect(methods).toContain('userMessageAdded');
         expect(methods).toContain('assistantMessageAdded');
         expect(methods).toContain('assistantContentUpdated');
@@ -99,9 +99,9 @@ describe('NotificationRouter', () => {
         const agent = createFakeAgent();
         router.register('s1', agent as unknown as Parameters<NotificationRouter['register']>[1]);
 
-        getHandler(client, 'messagesChange')({ messages: [] }, 's1');
+        getHandler(client, 'userMessageAdded')({ message: { id: 'm1', role: 'user', timestamp: '', blocks: [] } }, 's1');
 
-        expect(agent.handleNotification).toHaveBeenCalledWith('messagesChange', { messages: [] });
+        expect(agent.handleNotification).toHaveBeenCalledWith('userMessageAdded', { message: { id: 'm1', role: 'user', timestamp: '', blocks: [] } });
     });
 
     it('dispatches compactionStateChange to registered agent by sessionId', () => {
@@ -124,7 +124,7 @@ describe('NotificationRouter', () => {
         router.register('s1', agent as unknown as Parameters<NotificationRouter['register']>[1]);
 
         expect(() => {
-            getHandler(client, 'messagesChange')({ messages: [] }, 's2');
+            getHandler(client, 'userMessageAdded')({ message: { id: 'm1', role: 'user', timestamp: '', blocks: [] } }, 's2');
         }).not.toThrow();
         expect(agent.handleNotification).not.toHaveBeenCalled();
     });
@@ -194,7 +194,7 @@ describe('NotificationRouter', () => {
 
         router.unregister('s1');
 
-        getHandler(client, 'messagesChange')({ messages: [] }, 's1');
+        getHandler(client, 'userMessageAdded')({ message: { id: 'm1', role: 'user', timestamp: '', blocks: [] } }, 's1');
 
         expect(agent.handleNotification).not.toHaveBeenCalled();
     });
@@ -223,8 +223,8 @@ describe('NotificationRouter', () => {
         expect(agent.handleNotification).toHaveBeenCalledWith('sessionIdChange', { sessionId: 'new-id' });
 
         // Subsequent notification tagged with new-id dispatches to the same agent
-        getHandler(client, 'messagesChange')({ messages: [] }, 'new-id');
-        expect(agent.handleNotification).toHaveBeenCalledWith('messagesChange', { messages: [] });
+        getHandler(client, 'userMessageAdded')({ message: { id: 'm1', role: 'user', timestamp: '', blocks: [] } }, 'new-id');
+        expect(agent.handleNotification).toHaveBeenCalledWith('userMessageAdded', { message: { id: 'm1', role: 'user', timestamp: '', blocks: [] } });
 
         // Old sessionId no longer routes to the agent
         getHandler(client, 'loadingChange')({ loading: true }, 'old-id');
@@ -241,7 +241,7 @@ describe('NotificationRouter', () => {
         getHandler(client, 'sessionIdChange')({ sessionId: 'same-id' }, 'same-id');
 
         // Still dispatches under same-id
-        getHandler(client, 'messagesChange')({ messages: [] }, 'same-id');
-        expect(agent.handleNotification).toHaveBeenCalledWith('messagesChange', { messages: [] });
+        getHandler(client, 'userMessageAdded')({ message: { id: 'm1', role: 'user', timestamp: '', blocks: [] } }, 'same-id');
+        expect(agent.handleNotification).toHaveBeenCalledWith('userMessageAdded', { message: { id: 'm1', role: 'user', timestamp: '', blocks: [] } });
     });
 });

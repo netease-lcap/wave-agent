@@ -56,7 +56,6 @@ describe("Agent - Telemetry Initialization", () => {
       apiKey: "test-key",
       workdir: "/tmp/test-telemetry-await",
       callbacks: {
-        onMessagesChange: vi.fn(),
         onLoadingChange: vi.fn(),
       },
     });
@@ -91,7 +90,6 @@ describe("Agent - Telemetry Initialization", () => {
       apiKey: "test-key",
       workdir: "/tmp/test-telemetry-fail",
       callbacks: {
-        onMessagesChange: vi.fn(),
         onLoadingChange: vi.fn(),
       },
     });
@@ -110,7 +108,6 @@ describe("Agent - Telemetry Initialization", () => {
       apiKey: "test-key",
       workdir: "/tmp/test-telemetry-order",
       callbacks: {
-        onMessagesChange: vi.fn(),
         onLoadingChange: vi.fn(),
       },
     });

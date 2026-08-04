@@ -105,6 +105,9 @@ describe("ChatProvider", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    // Reset the shared mock agent's message list — tests mutate it via
+    // Object.assign and initializeAgent's initial pull reads it at mount.
+    mockAgent.messages = [];
     vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
   });
 
@@ -167,7 +170,7 @@ describe("ChatProvider", () => {
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
 
-    // Test onMessagesChange
+    // Test onUserMessageAdded (incremental — reads agent.messages tail)
     const newMessages = [
       {
         id: "msg-1",
@@ -182,7 +185,10 @@ describe("ChatProvider", () => {
       },
     ];
     Object.assign(mockAgent, { messages: newMessages });
-    callbacks.onMessagesChange!(newMessages);
+    callbacks.onUserMessageAdded!({ content: "test" });
+
+    // Test onLatestTotalTokensChange
+    callbacks.onLatestTotalTokensChange!(100);
 
     // Test onMcpServersChange
     const newServers = [
@@ -956,7 +962,7 @@ describe("ChatProvider", () => {
     expect(lastValue?.remountKey).toBe(initialRemountKey! + 2);
   });
 
-  it("clears throttle timer when expanding", async () => {
+  it("freezes message updates while expanded", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
       lastValue = val;
@@ -971,31 +977,58 @@ describe("ChatProvider", () => {
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
 
-    // Trigger onMessagesChange to start a timer
-    const newMessages = [
+    // Deliver an assistant message incrementally (lands in state)
+    const msg1 = [
       {
         id: "msg-1",
-        role: "user" as const,
-        blocks: [{ type: "text" as const, content: "test" }],
+        role: "assistant" as const,
+        blocks: [],
         timestamp: new Date().toISOString(),
       },
     ];
-    Object.assign(mockAgent, { messages: newMessages });
-
-    callbacks.onMessagesChange!(newMessages);
+    Object.assign(mockAgent, { messages: msg1 });
+    callbacks.onAssistantMessageAdded!("msg-1");
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toEqual(msg1);
+    });
 
     // Get the useInput callback
     const useInputMock = vi.mocked(useInput);
     const inputCallback =
       useInputMock.mock.calls[useInputMock.mock.calls.length - 1][0];
 
-    // Simulate Ctrl+O to expand
+    // Simulate Ctrl+O to expand — the view freezes
     inputCallback("o", { ctrl: true } as Parameters<typeof inputCallback>[1]);
+    await vi.waitFor(() => {
+      expect(lastValue?.isExpanded).toBe(true);
+    });
 
-    // Advance time - the timer should have been cleared, so messages should NOT be updated to newMessages
-    vi.advanceTimersByTime(100);
+    // Incremental updates while expanded should be dropped (frozen snapshot)
+    const msg2 = [
+      {
+        id: "msg-2",
+        role: "assistant" as const,
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+    Object.assign(mockAgent, { messages: msg2 });
+    callbacks.onAssistantMessageAdded!("msg-2");
+    callbacks.onAssistantContentUpdated!({
+      messageId: "msg-1",
+      chunk: "hi",
+      accumulated: "hi",
+      stage: "streaming",
+    });
+    await vi.advanceTimersByTimeAsync(10);
+    expect(lastValue?.messages).toEqual(msg1);
 
-    expect(lastValue?.messages).toEqual([]);
+    // Collapse restores the agent's actual state (full pull)
+    inputCallback("o", { ctrl: true } as Parameters<typeof inputCallback>[1]);
+    await vi.waitFor(() => {
+      expect(lastValue?.isExpanded).toBe(false);
+      expect(lastValue?.messages).toEqual(msg2);
+    });
   });
 
   it("cancels confirmation with ESC key", async () => {
@@ -1234,7 +1267,7 @@ describe("ChatProvider", () => {
     });
   });
 
-  it("throttles onMessagesChange updates", async () => {
+  it("updates messages incrementally on streaming callbacks", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
       lastValue = val;
@@ -1252,56 +1285,71 @@ describe("ChatProvider", () => {
     // Initial state: 0 messages
     expect(lastValue?.messages).toEqual([]);
 
-    // 1st update: leading call should be immediate
-    const msg1 = [
-      {
-        id: "1",
-        role: "user" as const,
-        blocks: [],
-        timestamp: new Date().toISOString(),
-      },
-    ];
-    Object.assign(mockAgent, { messages: msg1 });
-    callbacks.onMessagesChange!(msg1);
+    // Assistant message added via incremental callback
+    const assistantMsg = {
+      id: "msg-1",
+      role: "assistant" as const,
+      blocks: [],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [assistantMsg] });
+    callbacks.onAssistantMessageAdded!("msg-1");
     await vi.waitFor(() => {
-      expect(lastValue?.messages).toEqual(msg1);
+      expect(lastValue?.messages).toHaveLength(1);
     });
 
-    // 2nd update within 100ms: should be throttled
-    const msg2 = [
-      {
-        id: "2",
-        role: "user" as const,
-        blocks: [],
-        timestamp: new Date().toISOString(),
-      },
-    ];
-    Object.assign(mockAgent, { messages: msg2 });
-    callbacks.onMessagesChange!(msg2);
-    // Should NOT update yet
-    await vi.advanceTimersByTimeAsync(50);
-    expect(lastValue?.messages).toEqual(msg1);
-
-    // 3rd update within 100ms: still throttled
-    const msg3 = [
-      {
-        id: "3",
-        role: "user" as const,
-        blocks: [],
-        timestamp: new Date().toISOString(),
-      },
-    ];
-    Object.assign(mockAgent, { messages: msg3 });
-    callbacks.onMessagesChange!(msg3);
-    // Should NOT update yet
-    await vi.advanceTimersByTimeAsync(20);
-    expect(lastValue?.messages).toEqual(msg1);
-
-    // Advance to end of throttle period (100ms total from 1st call)
-    // We already advanced 50 + 20 = 70. Need 30 more.
-    await vi.advanceTimersByTimeAsync(35);
+    // Streaming content chunks update the text block in place
+    callbacks.onAssistantContentUpdated!({
+      messageId: "msg-1",
+      chunk: "Hel",
+      accumulated: "Hel",
+      stage: "streaming",
+    });
     await vi.waitFor(() => {
-      expect(lastValue?.messages).toEqual(msg3);
+      expect(lastValue?.messages[0].blocks[0]).toEqual({
+        type: "text",
+        content: "Hel",
+        stage: "streaming",
+      });
+    });
+
+    callbacks.onAssistantContentUpdated!({
+      messageId: "msg-1",
+      chunk: "lo",
+      accumulated: "Hello",
+      stage: "streaming",
+    });
+    await vi.waitFor(() => {
+      expect(lastValue?.messages[0].blocks).toHaveLength(1);
+      expect(
+        (lastValue?.messages[0].blocks[0] as { content: string }).content,
+      ).toBe("Hello");
+    });
+
+    // Tool block updates land in place
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-1",
+      id: "tool-1",
+      name: "bash",
+      stage: "streaming",
+      parametersChunk: "{",
+    });
+    await vi.waitFor(() => {
+      expect(
+        lastValue?.messages[0].blocks.some(
+          (b) => b.type === "tool" && b.id === "tool-1",
+        ),
+      ).toBe(true);
+    });
+
+    // Error block is appended to the assistant message
+    callbacks.onErrorBlockAdded!("boom");
+    await vi.waitFor(() => {
+      expect(
+        lastValue?.messages[0].blocks.some(
+          (b) => b.type === "error" && b.content === "boom",
+        ),
+      ).toBe(true);
     });
   });
 

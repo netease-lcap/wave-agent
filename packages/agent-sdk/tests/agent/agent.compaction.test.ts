@@ -337,9 +337,7 @@ describe("Agent Message Compaction Tests", () => {
     // Recreate Agent and pass in message history
     await agent.destroy();
     agent = await Agent.create({
-      callbacks: {
-        onMessagesChange: vi.fn(),
-      },
+      callbacks: {},
       messages: [...messagesWithCompaction, newUserMessage],
     });
 

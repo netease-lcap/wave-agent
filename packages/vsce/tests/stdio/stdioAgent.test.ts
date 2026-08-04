@@ -59,7 +59,7 @@ describe('StdioAgent', () => {
         const registeredMethods = client.onNotification.mock.calls.map(
             (c) => c[0] as string,
         );
-        expect(registeredMethods).toContain('messagesChange');
+        expect(registeredMethods).not.toContain('messagesChange');
         expect(registeredMethods).toContain('userMessageAdded');
         expect(registeredMethods).toContain('assistantMessageAdded');
         expect(registeredMethods).toContain('assistantContentUpdated');
@@ -556,17 +556,18 @@ describe('StdioAgent', () => {
 
     // ── handleNotification (called by NotificationRouter) ──────
 
-    it('messagesChange updates cached messages and calls callback', () => {
-        const onMessagesChange = vi.fn();
-        const { agent } = createAgent({ onMessagesChange });
-
+    it('getMessages pulls the full message list and caches it', async () => {
+        const { agent, client } = createAgent();
         const messages: Message[] = [
             { id: 'm1', role: 'user', timestamp: '', blocks: [] },
         ];
-        agent.handleNotification('messagesChange', { messages });
+        client.request.mockResolvedValue({ messages });
 
+        const result = await agent.getMessages();
+
+        expect(client.request).toHaveBeenCalledWith('getMessages', undefined, undefined);
         expect(agent.messages).toEqual(messages);
-        expect(onMessagesChange).toHaveBeenCalledWith(messages);
+        expect(result).toEqual(messages);
     });
 
     it('userMessageAdded forwards message to callback', () => {
@@ -747,7 +748,7 @@ describe('StdioAgent', () => {
         expect(onWorkdirChange).toHaveBeenCalledWith('/repo/.wave/worktrees/feat-a');
     });
 
-    it('bangMessageAdded/Updated/Completed call respective callbacks', () => {
+    it('bangMessageAdded/Updated/Completed forward params to callbacks', () => {
         const onBangMessageAdded = vi.fn();
         const onBangMessageUpdated = vi.fn();
         const onBangMessageCompleted = vi.fn();
@@ -757,13 +758,16 @@ describe('StdioAgent', () => {
             onBangMessageCompleted,
         });
 
-        agent.handleNotification('bangMessageAdded', undefined);
-        agent.handleNotification('bangMessageUpdated', undefined);
-        agent.handleNotification('bangMessageCompleted', undefined);
+        const added = { command: 'ls', messageId: 'm1' };
+        const updated = { command: 'ls', output: 'file.txt', messageId: 'm1' };
+        const completed = { command: 'ls', exitCode: 0, messageId: 'm1' };
+        agent.handleNotification('bangMessageAdded', added);
+        agent.handleNotification('bangMessageUpdated', updated);
+        agent.handleNotification('bangMessageCompleted', completed);
 
-        expect(onBangMessageAdded).toHaveBeenCalled();
-        expect(onBangMessageUpdated).toHaveBeenCalled();
-        expect(onBangMessageCompleted).toHaveBeenCalled();
+        expect(onBangMessageAdded).toHaveBeenCalledWith(added);
+        expect(onBangMessageUpdated).toHaveBeenCalledWith(updated);
+        expect(onBangMessageCompleted).toHaveBeenCalledWith(completed);
     });
 
     it('notificationMessageAdded forwards params to callback', () => {
@@ -800,7 +804,6 @@ describe('StdioAgent', () => {
         const { agent } = createAgent(); // no callbacks
 
         expect(() => {
-            agent.handleNotification('messagesChange', { messages: [] });
             agent.handleNotification('loadingChange', { loading: true, latestTotalTokens: 0 });
             agent.handleNotification('permissionRequest', { requestId: 'r1', context: {} });
         }).not.toThrow();

@@ -705,6 +705,9 @@ export class MessageHandler {
         if (!session.agent) {
             await this.context.initializeAgent(viewType || 'tab', windowId);
         }
+        // No full-snapshot push anymore — the webview pulls the message list on
+        // demand (webviewReady / restore / rewind / clear / compact).
+        await session.getMessages();
         const configurationData = await this.configService.loadConfiguration();
         const sessions = await this.sessionService.getSessionsList();
         let isAuthenticated = false;

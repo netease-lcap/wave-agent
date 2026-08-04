@@ -45,7 +45,6 @@ vi.mock("@/managers/forkedAgentManager", () => ({
 describe("Hook Blocking Error Behavior (User Story 2)", () => {
   let agent: Agent;
   const mockCallbacks = {
-    onMessagesChange: vi.fn(),
     onLoadingChange: vi.fn(),
   };
 

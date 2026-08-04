@@ -29,7 +29,9 @@ describe("Agent Content Streaming Tests", () => {
   let agent: Agent;
   let mockCallAgent: ReturnType<typeof vi.fn>;
   let mockCallbacks: {
-    onMessagesChange: Mock<NonNullable<AgentCallbacks["onMessagesChange"]>>;
+    onAssistantMessageAdded: Mock<
+      NonNullable<AgentCallbacks["onAssistantMessageAdded"]>
+    >;
   };
 
   beforeEach(async () => {
@@ -39,8 +41,8 @@ describe("Agent Content Streaming Tests", () => {
 
     // Create mock callbacks
     mockCallbacks = {
-      onMessagesChange:
-        vi.fn<NonNullable<AgentCallbacks["onMessagesChange"]>>(),
+      onAssistantMessageAdded:
+        vi.fn<NonNullable<AgentCallbacks["onAssistantMessageAdded"]>>(),
     };
 
     // Create Agent instance with required parameters
@@ -85,8 +87,8 @@ describe("Agent Content Streaming Tests", () => {
       expect(callOptions).toHaveProperty("modelConfig");
       expect(callOptions).toHaveProperty("abortSignal");
 
-      // Verify the final message was added to message manager
-      expect(mockCallbacks.onMessagesChange).toHaveBeenCalled();
+      // Verify the incremental callback fired instead of a full-list callback
+      expect(mockCallbacks.onAssistantMessageAdded).toHaveBeenCalled();
       const messages = agent.messages;
 
       expect(messages).toHaveLength(2); // User message + assistant message

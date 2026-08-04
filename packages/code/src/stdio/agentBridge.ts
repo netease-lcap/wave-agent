@@ -1091,9 +1091,6 @@ export class AgentBridge {
 
   private createCallbacks(ctx: SessionContext): AgentCallbacks {
     return {
-      onMessagesChange: (messages: Message[]) => {
-        this.emit("messagesChange", { messages }, ctx.registeredSessionId);
-      },
       onUserMessageAdded: () => {
         const msg = this.findLastUserMessage(ctx.agent);
         if (msg)
@@ -1193,14 +1190,26 @@ export class AgentBridge {
       onMcpServersChange: (servers: McpServerStatus[]) => {
         this.emit("mcpServersChange", { servers }, ctx.registeredSessionId);
       },
-      onAddBangMessage: () => {
-        this.emit("bangMessageAdded", {}, ctx.registeredSessionId);
+      onAddBangMessage: (command, messageId) => {
+        this.emit(
+          "bangMessageAdded",
+          { command, messageId },
+          ctx.registeredSessionId,
+        );
       },
-      onUpdateBangMessage: () => {
-        this.emit("bangMessageUpdated", {}, ctx.registeredSessionId);
+      onUpdateBangMessage: (command, output, messageId) => {
+        this.emit(
+          "bangMessageUpdated",
+          { command, output, messageId },
+          ctx.registeredSessionId,
+        );
       },
-      onCompleteBangMessage: () => {
-        this.emit("bangMessageCompleted", {}, ctx.registeredSessionId);
+      onCompleteBangMessage: (command, exitCode, messageId) => {
+        this.emit(
+          "bangMessageCompleted",
+          { command, exitCode, messageId },
+          ctx.registeredSessionId,
+        );
       },
       onNotificationMessageAdded: (params) => {
         const msg = ctx.agent?.messages.find(

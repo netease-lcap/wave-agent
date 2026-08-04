@@ -43,7 +43,6 @@ describe("Agent - Abort Handling", () => {
   beforeEach(async () => {
     // Create mock callbacks
     const mockCallbacks = {
-      onMessagesChange: vi.fn(),
       onLoadingChange: vi.fn(),
     };
 
@@ -396,7 +395,6 @@ describe("Agent - Abort Handling", () => {
 
   it("should clear message queue before aborting AI to prevent race condition", async () => {
     const mockCallbacks = {
-      onMessagesChange: vi.fn(),
       onLoadingChange: vi.fn(),
       onQueuedMessagesChange: vi.fn(),
     };
@@ -474,7 +472,6 @@ describe("Agent - Abort Handling", () => {
   describe("abortMessage queue behavior", () => {
     it("should not clear queue when agent is idle", async () => {
       const mockCallbacks = {
-        onMessagesChange: vi.fn(),
         onLoadingChange: vi.fn(),
         onQueuedMessagesChange: vi.fn(),
       };
@@ -553,7 +550,6 @@ describe("Agent - Abort Handling", () => {
 
     it("should clear queue when agent is busy (loading)", async () => {
       const mockCallbacks = {
-        onMessagesChange: vi.fn(),
         onLoadingChange: vi.fn(),
         onQueuedMessagesChange: vi.fn(),
       };
@@ -625,7 +621,6 @@ describe("Agent - Abort Handling", () => {
 
     it("should not dispatch queued notification during abort", async () => {
       const mockCallbacks = {
-        onMessagesChange: vi.fn(),
         onLoadingChange: vi.fn(),
         onQueuedMessagesChange: vi.fn(),
       };
@@ -710,7 +705,6 @@ describe("Agent - Abort Handling", () => {
         apiKey: "test-key",
         workdir: "/tmp/test-abort-queue-state",
         callbacks: {
-          onMessagesChange: vi.fn(),
           onLoadingChange: vi.fn(),
         },
       });
@@ -768,7 +762,6 @@ describe("Agent - Abort Handling", () => {
   describe("recallQueuedMessage", () => {
     it("should recall last editable message from queue", async () => {
       const mockCallbacks = {
-        onMessagesChange: vi.fn(),
         onLoadingChange: vi.fn(),
         onQueuedMessagesChange: vi.fn(),
       };
@@ -843,7 +836,6 @@ describe("Agent - Abort Handling", () => {
         apiKey: "test-key",
         workdir: "/tmp/test-recall-empty",
         callbacks: {
-          onMessagesChange: vi.fn(),
           onLoadingChange: vi.fn(),
         },
       });
@@ -887,7 +879,6 @@ describe("Agent - Abort Handling", () => {
 
     it("should fire onQueuedMessagesChange callback", async () => {
       const mockCallbacks = {
-        onMessagesChange: vi.fn(),
         onLoadingChange: vi.fn(),
         onQueuedMessagesChange: vi.fn(),
       };
@@ -957,7 +948,6 @@ describe("Agent - Abort Handling", () => {
   describe("removeQueuedMessageById", () => {
     it("should remove message by id", async () => {
       const mockCallbacks = {
-        onMessagesChange: vi.fn(),
         onLoadingChange: vi.fn(),
         onQueuedMessagesChange: vi.fn(),
       };
@@ -1026,7 +1016,6 @@ describe("Agent - Abort Handling", () => {
         apiKey: "test-key",
         workdir: "/tmp/test-remove-unknown-id",
         callbacks: {
-          onMessagesChange: vi.fn(),
           onLoadingChange: vi.fn(),
         },
       });

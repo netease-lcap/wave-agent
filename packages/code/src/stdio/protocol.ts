@@ -105,7 +105,6 @@ export type ClientNotificationMethod = "permissionResponse";
 // ── Server → Client notification methods ────────────────────────
 
 export type ServerNotificationMethod =
-  | "messagesChange"
   | "userMessageAdded"
   | "assistantMessageAdded"
   | "assistantContentUpdated"

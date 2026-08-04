@@ -35,7 +35,6 @@ describe("Agent Usage Tracking", () => {
     // Create mock callbacks that track usage changes
     usagesHistory = [];
     const mockCallbacks = {
-      onMessagesChange: vi.fn(),
       onLoadingChange: vi.fn(),
       onUsagesChange: vi.fn((usages: Usage[]) => {
         usagesHistory = [...usages];
@@ -358,7 +357,6 @@ describe("Agent Usage Tracking", () => {
       await agent.destroy();
       agent = await Agent.create({
         callbacks: {
-          onMessagesChange: vi.fn(),
           onUsagesChange: vi.fn((usages: Usage[]) => {
             usagesHistory = [...usages];
           }),

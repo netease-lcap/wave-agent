@@ -109,6 +109,25 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 ---
 
+### 用户故事：长会话流式输出保持流畅（优先级：P1）
+
+作为 CLI 或 IDE 插件的使用者，我希望在积累了大量消息的会话中，助手流式输出时界面依然即时、平滑地更新，以便消息越多时交互越不卡顿。
+
+**为什么是这个优先级**：当前每次流式 chunk 都会触发 `onMessagesChange` 全量回调，CLI 侧随之全量 `setMessages`、插件宿主经 stdio 全量下发消息列表，序列化与传输成本随会话长度线性增长，是长会话流式卡顿的主要来源；且它与增量回调在时间上重复（同一 chunk 同时触发 `onAssistantContentUpdated` 与 `onMessagesChange`），造成数据冗余与竞态。为此移除 `onMessagesChange`，使流式更新全链路走增量通道；bang 信号携带 `messageId` 支持增量定位，完整消息列表仅在"拉取"场景（初始化、compact、rewind、clear、restore）传输（详见下方"状态管理架构"与 2026-08-04 会议记录）。
+
+**独立测试**：构造一个包含数百条消息的长会话并发送一条消息触发流式响应：CLI 消息内容增量就地更新、无整屏刷新闪烁；插件侧记录 CLI stdout，流式期间只出现增量通知、无全量消息推送。执行 `!` bang 命令后消息列表正确显示命令输出。
+
+**验收场景**：
+
+1. **假设**会话已积累大量消息，**当**助手开始流式响应时，**则**CLI 与插件界面通过增量回调就地更新，不整屏刷新、不卡顿
+2. **假设**助手响应正在流式传输，**当**每个内容 chunk 到达时，**则**SDK 只触发 `onAssistantContentUpdated` 等增量回调，不再触发任何携带完整消息列表的回调
+3. **假设**CLI 正在渲染流式响应，**当**新 chunk 到达时，**则**消息内容就地更新，不再执行全量 `setMessages`
+4. **假设**CLI 收到 bang 信号（`onAddBangMessage(command, messageId)`/`onUpdateBangMessage(command, output, messageId)`/`onCompleteBangMessage(command, exitCode, messageId)`，携带 messageId），**当**需要渲染命令消息时，**则**按 messageId 就地创建/更新 bang 消息块，无需读取 `agent.messages`
+5. **假设**插件 webview 需要完整会话（webviewReady / compact / rewind / clearChat / restoreSession），**当**触发上述任一场景时，**则**宿主主动调用 `getMessages` 请求拉取并下发全量渲染，而非订阅持续的全量推送
+6. **假设**子代理（subagent）运行中，**当**其消息变更时，**则** `SubagentManager` 通过 `instance.messageManager.getMessages()` 拉取最新列表维护 `instance.messages` 与 `usedTools`，并继续转发 `onSubagentMessagesChange`，不再依赖子代理的 `onMessagesChange`
+
+---
+
 ### 边界情况
 
 - 当网络连接较差且流式块乱序到达或延迟时会发生什么？
@@ -120,10 +139,10 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 ### 状态管理架构
 
-- **Agent SDK 职责**：在内部管理所有消息状态，更新消息，并触发 `onMessagesChange`
-- **流式回调用途**：为第三方集成、扩展和示例（如 `packages/code/src/print-cli.ts` 和 `packages/agent-sdk/examples`）提供实时流式数据
-- **UI 状态流**：所有消息更新通过现有的 `onMessagesChange` 流动以保持一致性
-- **清晰分离**：流式回调为外部集成而添加，不是主要状态管理
+- **Agent SDK 职责**：在内部管理所有消息状态并更新消息；变更通过增量回调（`onUserMessageAdded`、`onAssistantMessageAdded`、`onAssistantContentUpdated`、`onAssistantReasoningUpdated`、`onToolBlockUpdated`、`onErrorBlockAdded` 等）对外发布；完整列表通过 `agent.messages` getter（同进程）或 `getMessages` 请求（stdio 跨进程）按需获取。`onMessagesChange` 全量回调已移除
+- **增量回调用途**：为第三方集成、扩展、CLI 与示例（如 `packages/code/src/print-cli.ts` 和 `packages/agent-sdk/examples`）提供实时流式数据；增量回调是消息状态同步的唯一推送通道
+- **UI 状态流**：CLI 直接订阅增量回调就地更新消息；插件/桌面经 stdio 增量通知（`userMessageAdded`、`assistantContentUpdated`、`toolBlockUpdated` 等）驱动 webview 增量 reducer；需要完整列表的场景（初始化、compact、rewind、clear、bang）主动拉取
+- **清晰分离**：增量回调是消息状态管理的正式对外通道；全量数据按需获取，避免随每次流式 chunk 序列化整个列表
 
 ## 澄清
 
@@ -135,7 +154,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - 问：onAssistantContentUpdated 回调数据格式 → 答：两个参数：(chunk: string, accumulated: string)
 - 问：onToolBlockUpdated 回调参数格式 → 答：现有签名加上用于增量更新的新 `parametersChunk` 字段与累积参数并存
 - 问：onAssistantMessageAdded 回调参数 → 答：不接收参数，内容/工具由专用流式回调处理
-- 问：流式传输期间的状态管理 → 答：Agent SDK 在内部管理消息状态并触发 `onMessagesChange`；流式回调为第三方集成、扩展和示例提供数据
+- 问：流式传输期间的状态管理 → 答：Agent SDK 在内部管理消息状态并通过增量回调对外发布；完整列表按需拉取（`agent.messages` / `getMessages`）。流式回调为第三方集成、扩展和示例提供数据（2026-08-04 起 `onMessagesChange` 已移除，见下方会议记录）
 
 ### 2026-04-09 会议（PR #928）
 
@@ -155,6 +174,14 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - 问：结束/历史加载如何展示 → 答：`stage="end"` 时停止计时并显示由起止时间算出的固定最终耗时；历史会话重新加载后直接静态显示，不重新计时
 - 问：起止时间异常如何处理 → 答：缺少开始时间或结束早于开始时，不显示耗时而非显示负值
 
+### 2026-08-04 会议（移除 `onMessagesChange` 全量回调）
+
+- 问：移除哪个回调 → 答：仅移除 `onMessagesChange`（携带完整 `Message[]` 的全量回调）；`onTasksChange`、`onBackgroundTasksChange`、`onMcpServersChange`、`onQueuedMessagesChange`、`onConfiguredModelsChange` 等其他全量回调保留不动
+- 问：CLI 如何更新消息 UI → 答：改为注册增量回调（`onUserMessageAdded`、`onAssistantMessageAdded`、`onAssistantContentUpdated`、`onAssistantReasoningUpdated`、`onToolBlockUpdated`、`onErrorBlockAdded`、bang 三回调）就地更新；bang 三回调新增 `messageId` 参数（`onAddBangMessage(command, messageId)` 等），CLI 按 messageId 就地创建/更新 bang 消息块，无需全量拉取
+- 问：webview 如何获取全量数据 → 答：主动拉取。stdio 协议移除 `messagesChange` 通知；宿主在 webviewReady / compact / rewind / clearChat / restoreSession 后调用 `getMessages` 请求，以响应形式下发全量消息；流式期间仅流动增量通知，bang 信号经 stdio 增量通知携带 messageId
+- 问：子代理消息如何维护 → 答：`SubagentManager` 在子代理增量回调中通过 `instance.messageManager.getMessages()` 拉取最新列表，维护 `instance.messages` / `usedTools` 并转发 `onSubagentMessagesChange`
+- 问：vsce 宿主增量注册注意事项 → 答：`onUserMessageAdded` 与 `onAssistantMessageAdded` 需分别映射到 webview 的用户/助手消息追加通道（修复现有 `onUserMessageAdded` 误路由到 `onAssistantMessageAdded` 的问题），避免与全量拉取叠加导致消息重复
+
 ## 假设 *（必填）*
 
 - 底层 AI 服务支持流式响应（增量内容传递）
@@ -162,6 +189,6 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - 终端/CLI 界面可以以 OpenAI 的流式速率处理实时文本更新（目标：每秒 2-3 次内容更新）
 - 用户通常使用支持实时文本渲染的标准终端模拟器
 - 在正常网络条件下内容流按时间顺序到达
-- 现有的消息管理系统可以通过 `onMessagesChange` 增强以支持增量更新
+- 消息变更通过增量回调对外发布，完整列表按需拉取（`agent.messages` / `getMessages` 请求）；每次流式 chunk 不触发全量列表推送
 - 工具参数流包含有效的 JSON 或结构化数据，可以使用新的 `extractStreamingParams` 工具函数（待实现）增量解析，该函数将验证 JSON 完整性并从部分流中提取有效的参数对象
-- Agent SDK 可以管理内部消息状态并触发现有回调进行 UI 更新
+- Agent SDK 在内部管理消息状态，并通过增量回调与按需读取（`agent.messages`）对外提供消息数据

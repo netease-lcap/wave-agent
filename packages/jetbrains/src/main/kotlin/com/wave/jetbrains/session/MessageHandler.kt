@@ -76,7 +76,9 @@ class MessageHandler(
                         // abort any queued
                     }
                 }
-                postMessage("updateMessages", buildJsonObject { put("messages", JsonArray(emptyList())) })
+                // Pull the (now empty) list server-side and push it back as the
+                // response — mirrors VSCE chatSession.clearChat (getMessages pull).
+                session.pullAndPushMessages()
                 postMessage("updateQueue", buildJsonObject { put("queue", JsonArray(emptyList())) })
             }
             "compact" -> {
@@ -108,7 +110,9 @@ class MessageHandler(
             "restoreSession" -> {
                 val sid = msg["sessionId"]?.jsonPrimitive?.content ?: return
                 session.agent?.restoreSession(sid)
-                session.immediateMessagesUpdate()
+                // Pull the restored messages and push them back (no more full-snapshot
+                // push from the server; the host pulls on demand — VSCE restoreSession).
+                session.pullAndPushMessages()
             }
             "confirmationResponse" -> {
                 val confirmationId = msg["confirmationId"]?.jsonPrimitive?.content ?: return
@@ -665,6 +669,10 @@ class MessageHandler(
         // sessionIdChange to trigger listSessions, but a freshly-created session
         // may not emit that notification, so refresh explicitly here.
         session.refreshSessions()
+        // Pull the full message list on demand (mirrors VSCE messageHandler.ts
+        // handleWebviewReady → session.getMessages()). The server no longer pushes
+        // full snapshots; the host pulls and delivers them via setInitialState.
+        session.refreshMessages()
         // Refresh serverUrl + isAuthenticated from auth status before sending initial state.
         // Mirrors VSCE messageHandler.ts:622-633: without isAuthenticated the webview's
         // WelcomeView wrongly shows the login CTA to already-logged-in users (it never

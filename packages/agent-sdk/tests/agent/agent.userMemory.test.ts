@@ -73,9 +73,7 @@ describe("Agent User Memory Integration", () => {
     // Reset all mocks
     vi.clearAllMocks();
 
-    mockCallbacks = {
-      onMessagesChange: vi.fn(),
-    };
+    mockCallbacks = {};
 
     agent = await Agent.create({
       workdir: mockTempDir,

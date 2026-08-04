@@ -157,17 +157,35 @@ order: 220
 
 **为什么是这个优先级**：React 组件渲染是同步的，异步获取状态会导致渲染闪烁和竞态条件。本地缓存确保 UI 始终有最新状态可读。
 
-**独立测试**：发送一条消息后立即读取 StdioAgent.messages，验证缓存已更新为最新消息列表。
+**独立测试**：调用 `getMessages` 拉取后读取 StdioAgent.messages，验证缓存已更新为 CLI 侧的最新消息列表。
 
 **验收场景**：
 
-1. **假设** CLI 推送 `messagesChange` 通知，**当**StdioAgent 处理该通知时，**则**更新 `this.messages` 缓存并触发 `onMessagesChange` 回调。
+1. **假设** UI 需要完整消息列表（webviewReady、compact、rewind、clearChat、restoreSession），**当**调用 `getMessages` 请求时，**则**StdioAgent 向 CLI 发起请求，将返回的 `Message[]` 更新到 `this.messages` 缓存。`messagesChange` 通知已从协议中移除，消息缓存不再由推送维护。
 2. **假设** CLI 推送 `tasksChange` 通知，**当**StdioAgent 处理该通知时，**则**更新 `this.tasks` 缓存并触发 `onTasksChange` 回调。
 3. **假设** CLI 推送 `permissionModeChange` 通知，**当**StdioAgent 处理该通知时，**则**更新 `this.permissionMode` 缓存并触发 `onPermissionModeChange` 回调。
 4. **假设** CLI 推送 `loadingChange` 通知，**当**StdioAgent 处理该通知时，**则**更新 `this.latestTotalTokens` 缓存并触发 `onLoadingChange` 回调。
 5. **假设** StdioAgent 的某个回调未设置（为 undefined），**当**对应通知到达时，**则**正常更新缓存但不触发回调，不抛出错误。
 6. **假设** StdioAgent 收到 `sessionIdChange` 通知，**当**处理该通知时，**则**更新 `this.sessionId` 缓存、触发 `onSessionIdChange` 回调，同时 NotificationRouter 执行 rekey。
 7. **假设** StdioAgent 收到 `workdirChange` 通知，**当**处理该通知时，**则**更新 `this.workingDirectory` 缓存并触发 `onWorkdirChange` 回调。
+
+---
+
+### 用户故事：Webview 按需拉取全量消息（优先级：P1）
+
+作为 webview UI 层，我希望完整消息列表只在主动请求时获取（webviewReady、compact、rewind、clearChat、restoreSession），而不是订阅持续的 `messagesChange` 全量推送，以便流式更新保持纯增量，长会话不因每次 chunk 全量序列化而下发。
+
+**为什么是这个优先级**：移除 `onMessagesChange` 后，stdio 通道上的消息数据流必须是"增量通知 + 按需拉取"：流式期间只流动消息/块粒度的增量通知（bang 三回调 `onAddBangMessage`/`onUpdateBangMessage`/`onCompleteBangMessage` 携带 `messageId`，支持增量定位），全量列表仅作为对 webview 主动请求（`getMessages`）或初始化（`webviewReady` → `setInitialState`）的响应下发。这是消息流式化架构在传输层的核心诉求。
+
+**独立测试**：打开插件聊天面板发送一条触发流式的消息，在 CLI 侧记录 stdout：流式期间仅出现 `assistantMessageAdded`/`assistantContentUpdated` 等增量通知，无 `messagesChange` 或等价的全量推送；面板初始化、执行 compact/rewind 后各出现一次 `getMessages` 请求，bang 命令期间仅出现携带 `messageId` 的增量通知（`bangMessageAdded`/`bangMessageUpdated`/`bangMessageCompleted`）。
+
+**验收场景**：
+
+1. **假设**插件 webview 首次加载，**当**发送 `webviewReady` 时，**则**宿主调用 `getMessages` 拉取完整消息列表，并在 `setInitialState` 响应中下发
+2. **假设**助手正在流式响应，**当**CLI 产生新 chunk 时，**则**webview 仅收到增量通知（`userMessageAdded`/`assistantMessageAdded`/`assistantContentUpdated`/`toolBlockUpdated` 等）并就地更新对应消息块，全程无全量列表下发
+3. **假设**用户执行 compact / rewind / clearChat / restoreSession，**当**操作完成时，**则**webview（或宿主代表 webview）主动发起 `getMessages` 请求，以返回的全量列表重建消息区
+4. **假设** bang 信号（`bangMessageAdded`/`bangMessageUpdated`/`bangMessageCompleted`）到达，**当**宿主转发给 webview 时，**则**通知携带 `messageId`，webview 按 `messageId` 就地创建/更新/完成 bang 消息块，无需拉取全量列表
+5. **假设** CLI 侧移除 `messagesChange` 通知，**当**StdioAgent 收到流式增量通知时，**则**不再通过任何全量消息推送更新缓存；`this.messages` 仅在 `getMessages` 响应或显式初始化时更新
 
 ---
 

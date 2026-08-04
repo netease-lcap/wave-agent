@@ -9,11 +9,9 @@ describe("MessageManager - Streaming Functionality", () => {
   describe("updateCurrentMessageContent with FR-001 compliance", () => {
     it("should call onAssistantContentUpdated with chunk and accumulated content", () => {
       const mockOnAssistantContentUpdated = vi.fn();
-      const mockOnMessagesChange = vi.fn();
 
       const callbacks: MessageManagerCallbacks = {
         onAssistantContentUpdated: mockOnAssistantContentUpdated,
-        onMessagesChange: mockOnMessagesChange,
       };
 
       const messageManager = new MessageManager(container, {
@@ -57,7 +55,6 @@ describe("MessageManager - Streaming Functionality", () => {
 
       // Verify total calls
       expect(mockOnAssistantContentUpdated).toHaveBeenCalledTimes(3);
-      expect(mockOnMessagesChange).toHaveBeenCalledTimes(4); // 1 for addAssistantMessage + 3 for updates
     });
 
     it("should handle empty content correctly", () => {

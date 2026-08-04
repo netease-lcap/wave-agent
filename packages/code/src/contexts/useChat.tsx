@@ -180,34 +180,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [latestTotalTokens, setLatestTotalTokens] = useState(0);
   const [maxInputTokens, setMaxInputTokens] = useState(200000);
 
-  const throttledSetMessages = useMemo(
-    () =>
-      throttle(
-        () => {
-          if (!isExpandedRef.current && agentRef.current) {
-            const msgs = [...agentRef.current.messages];
-            setMessages(msgs);
-            setLatestTotalTokens(extractLatestTotalTokens(msgs));
-          }
-        },
-        500,
-        { leading: true, trailing: true },
-      ),
-    [],
-  );
-
   useEffect(() => {
     isExpandedRef.current = isExpanded;
-    if (isExpanded) {
-      throttledSetMessages.cancel();
-    }
-  }, [isExpanded, throttledSetMessages]);
-
-  useEffect(() => {
-    return () => {
-      throttledSetMessages.cancel();
-    };
-  }, [throttledSetMessages]);
+  }, [isExpanded]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState("");
@@ -337,6 +312,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const agentRef = useRef<Agent | null>(null);
 
+  // Full-list refresh — one-shot pull from the agent, used only for structural
+  // changes (compact/clear/rewind/collapse/init). Streaming updates flow through
+  // the incremental callbacks in initializeAgent below.
+  const refreshMessages = useCallback(() => {
+    if (!isExpandedRef.current && agentRef.current) {
+      const msgs = [...agentRef.current.messages];
+      setMessages(msgs);
+      setLatestTotalTokens(extractLatestTotalTokens(msgs));
+    }
+  }, []);
+
   // Permission confirmation methods with queue support
   const showConfirmation = useCallback(
     async (
@@ -371,8 +357,210 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         restoreSessionIdOverride ?? restoreSessionId;
 
       const callbacks: AgentCallbacks = {
-        onMessagesChange: () => {
-          throttledSetMessages();
+        // ── Incremental message updates (no full-list pushes) ──────
+        onUserMessageAdded: () => {
+          if (isExpandedRef.current || !agentRef.current) return;
+          const msgs = agentRef.current.messages;
+          const last = msgs[msgs.length - 1];
+          if (!last || last.role !== "user") return;
+          setMessages((prev) =>
+            prev.some((m) => m.id === last.id) ? prev : [...prev, last],
+          );
+        },
+        onAssistantMessageAdded: (messageId: string) => {
+          if (isExpandedRef.current || !agentRef.current) return;
+          const msg = agentRef.current.messages.find((m) => m.id === messageId);
+          if (!msg) return;
+          setMessages((prev) =>
+            prev.some((m) => m.id === messageId) ? prev : [...prev, msg],
+          );
+        },
+        onAssistantContentUpdated: (params) => {
+          if (isExpandedRef.current) return;
+          const { messageId, accumulated, stage } = params;
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== messageId) return m;
+              const textBlockIndex = m.blocks.findIndex(
+                (b) => b.type === "text",
+              );
+              if (textBlockIndex === -1) {
+                return {
+                  ...m,
+                  blocks: [
+                    ...m.blocks,
+                    { type: "text", content: accumulated, stage },
+                  ],
+                };
+              }
+              return {
+                ...m,
+                blocks: m.blocks.map((b, idx) =>
+                  idx === textBlockIndex && b.type === "text"
+                    ? { ...b, content: accumulated, stage }
+                    : b,
+                ),
+              };
+            }),
+          );
+        },
+        onAssistantReasoningUpdated: (params) => {
+          if (isExpandedRef.current) return;
+          const { messageId, accumulated, stage } = params;
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== messageId) return m;
+              const reasoningBlockIndex = m.blocks.findIndex(
+                (b) => b.type === "reasoning",
+              );
+              if (reasoningBlockIndex === -1) {
+                return {
+                  ...m,
+                  blocks: [
+                    ...m.blocks,
+                    { type: "reasoning", content: accumulated, stage },
+                  ],
+                };
+              }
+              return {
+                ...m,
+                blocks: m.blocks.map((b, idx) =>
+                  idx === reasoningBlockIndex && b.type === "reasoning"
+                    ? { ...b, content: accumulated, stage }
+                    : b,
+                ),
+              };
+            }),
+          );
+        },
+        onToolBlockUpdated: (params) => {
+          if (isExpandedRef.current) return;
+          const { messageId, id: toolBlockId, ...updates } = params;
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== messageId) return m;
+              const toolBlockIndex = m.blocks.findIndex(
+                (b) => b.type === "tool" && b.id === toolBlockId,
+              );
+              if (toolBlockIndex === -1) {
+                return {
+                  ...m,
+                  blocks: [
+                    ...m.blocks,
+                    {
+                      type: "tool",
+                      id: toolBlockId,
+                      name: updates.name || "",
+                      stage: updates.stage || "start",
+                      parameters: updates.parameters || "",
+                      result: updates.result || "",
+                      success: updates.success ?? false,
+                      ...updates,
+                    },
+                  ],
+                };
+              }
+              return {
+                ...m,
+                blocks: m.blocks.map((b, idx) =>
+                  idx === toolBlockIndex && b.type === "tool"
+                    ? { ...b, ...updates }
+                    : b,
+                ),
+              };
+            }),
+          );
+        },
+        onErrorBlockAdded: (error: string) => {
+          if (isExpandedRef.current) return;
+          setMessages((prev) => {
+            // Append to the last assistant message, or create one if none exists
+            for (let i = prev.length - 1; i >= 0; i--) {
+              if (prev[i].role === "assistant") {
+                return prev.map((m, idx) =>
+                  idx === i
+                    ? {
+                        ...m,
+                        blocks: [
+                          ...m.blocks,
+                          { type: "error", content: error },
+                        ],
+                      }
+                    : m,
+                );
+              }
+            }
+            return [
+              ...prev,
+              {
+                id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+                role: "assistant",
+                timestamp: new Date().toISOString(),
+                blocks: [{ type: "error", content: error }],
+              },
+            ];
+          });
+        },
+        onAddBangMessage: (command, messageId) => {
+          if (isExpandedRef.current) return;
+          setMessages((prev) =>
+            prev.some((m) => m.id === messageId)
+              ? prev
+              : [
+                  ...prev,
+                  {
+                    id: messageId,
+                    role: "user",
+                    timestamp: new Date().toISOString(),
+                    blocks: [
+                      {
+                        type: "bang",
+                        command,
+                        output: "",
+                        stage: "running",
+                        exitCode: null,
+                      },
+                    ],
+                  },
+                ],
+          );
+        },
+        onUpdateBangMessage: (command, output, messageId) => {
+          if (isExpandedRef.current) return;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === messageId
+                ? {
+                    ...m,
+                    blocks: m.blocks.map((b, idx) =>
+                      idx === m.blocks.length - 1 && b.type === "bang"
+                        ? { ...b, command, output }
+                        : b,
+                    ),
+                  }
+                : m,
+            ),
+          );
+        },
+        onCompleteBangMessage: (command, exitCode, messageId) => {
+          if (isExpandedRef.current) return;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === messageId
+                ? {
+                    ...m,
+                    blocks: m.blocks.map((b, idx) =>
+                      idx === m.blocks.length - 1 && b.type === "bang"
+                        ? { ...b, command, exitCode, stage: "end" }
+                        : b,
+                    ),
+                  }
+                : m,
+            ),
+          );
+        },
+        onLatestTotalTokensChange: (tokens) => {
+          setLatestTotalTokens(tokens);
         },
         onMcpServersChange: (servers) => {
           setMcpServerStatuses([...servers]);
@@ -533,7 +721,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       originalCwd,
       model,
       initialPermissionMode,
-      throttledSetMessages,
+      refreshMessages,
       mcpServers,
     ],
   );
@@ -646,11 +834,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const clearMessages = useCallback(async () => {
     await agentRef.current?.clearMessages();
-  }, []);
+    refreshMessages();
+  }, [refreshMessages]);
 
-  const compact = useCallback(async (instructions?: string) => {
-    await agentRef.current?.compact(instructions);
-  }, []);
+  const compact = useCallback(
+    async (instructions?: string) => {
+      await agentRef.current?.compact(instructions);
+      refreshMessages();
+    },
+    [refreshMessages],
+  );
 
   const goalCommand = useCallback(async (args?: string) => {
     const trimmed = args?.trim() ?? "";
@@ -773,13 +966,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       if (agentRef.current) {
         try {
           await agentRef.current.truncateHistory(index);
+          refreshMessages();
           requestRemount();
         } catch (error) {
           logger.error("Failed to rewind:", error);
         }
       }
     },
-    [requestRemount],
+    [requestRemount, refreshMessages],
   );
 
   const getFullMessageThread = useCallback(async () => {
@@ -827,15 +1021,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
       if (nextExpanded) {
         // Transitioning to EXPANDED: Freeze the current view
-        // Cancel any pending throttled updates to avoid overwriting the frozen state
-        throttledSetMessages.cancel();
+        // Incremental updates are skipped while expanded (isExpandedRef guard)
       } else {
         // Transitioning to COLLAPSED: Restore from agent's actual state
-        if (agentRef.current) {
-          const msgs = [...agentRef.current.messages];
-          setMessages(msgs);
-          setLatestTotalTokens(extractLatestTotalTokens(msgs));
-        }
+        refreshMessages();
       }
       // Force remount directly (bypass throttle) to ensure Static items re-render
       // The throttled requestRemount can be dropped if pressed too quickly after

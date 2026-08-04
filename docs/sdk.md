@@ -232,7 +232,6 @@ callbacks: {
 
 | 回调 | 参数 | 说明 |
 |------|------|------|
-| `onMessagesChange` | `Message[]` | 消息列表完整更新 |
 | `onSessionIdChange` | `string` | 会话 ID 变更（如压缩后创建新会话） |
 | `onLatestTotalTokensChange` | `number` | Token 总量更新 |
 | `onUsagesChange` | `Usage[]` | Token 使用记录更新 |
@@ -249,9 +248,9 @@ callbacks: {
 
 | 回调 | 参数 | 说明 |
 |------|------|------|
-| `onAddBangMessage` | `command: string` | Bang 命令开始执行 |
-| `onUpdateBangMessage` | `command, output` | Bang 命令输出更新 |
-| `onCompleteBangMessage` | `command, exitCode` | Bang 命令执行完成 |
+| `onAddBangMessage` | `command: string, messageId: string` | Bang 命令开始执行 |
+| `onUpdateBangMessage` | `command: string, output: string, messageId: string` | Bang 命令输出更新 |
+| `onCompleteBangMessage` | `command: string, exitCode: number \| null, messageId: string` | Bang 命令执行完成 |
 
 ### 后台任务回调 {#callbacks-background}
 
