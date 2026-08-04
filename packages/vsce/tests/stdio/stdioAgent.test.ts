@@ -302,6 +302,25 @@ describe('StdioAgent', () => {
         expect(result).toEqual({ inputContent: 'previous text' });
     });
 
+    // ── askBtw ─────────────────────────────────────────────────
+
+    it('sends askBtw with question and sessionId, returns answer string', async () => {
+        const { agent, client } = createAgent();
+        client.request.mockResolvedValue({
+            sessionId: 'session-123',
+            workingDirectory: '/w',
+            permissionMode: 'default',
+            latestTotalTokens: 0,
+        });
+        await agent.initialize({ workdir: '/w' });
+        client.request.mockResolvedValue('**Sunny** weather');
+
+        const result = await agent.askBtw('weather?');
+
+        expect(client.request).toHaveBeenCalledWith('askBtw', { question: 'weather?' }, 'session-123');
+        expect(result).toBe('**Sunny** weather');
+    });
+
     // ── removeQueuedMessage ────────────────────────────────────
 
     it('sends deleteQueuedMessage with index and sessionId', async () => {

@@ -1985,6 +1985,10 @@ export class DesktopHost {
         await this.handleListRewindCheckpoints(pid);
         break;
 
+      case 'askBtw':
+        await this.handleAskBtw(msg.question as string, pid);
+        break;
+
       case 'confirmationResponse':
         this.handleConfirmationResponse(
           msg.confirmationId as string,
@@ -2891,6 +2895,27 @@ export class DesktopHost {
     this.postMessage({ command: 'rewindCheckpoints', paneId: pid, checkpoints });
   }
 
+  private async handleAskBtw(question: string, paneId?: string): Promise<void> {
+    const pid = paneId ?? this.focusedPaneId;
+    const agent = this.agentForPane(pid);
+    if (!agent) {
+      this.postMessage({ command: 'btwError', paneId: pid, question, error: '智能体未初始化' });
+      return;
+    }
+    try {
+      const answer = await agent.askBtw(question);
+      this.postMessage({ command: 'btwResponse', paneId: pid, question, answer });
+    } catch (error) {
+      console.error('[DesktopHost] 旁路提问失败:', error);
+      this.postMessage({
+        command: 'btwError',
+        paneId: pid,
+        question,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   private async handleRewindToMessage(messageId: string, paneId?: string): Promise<void> {
     const pid = paneId ?? this.focusedPaneId;
     const agent = this.agentForPane(pid);
@@ -3395,6 +3420,7 @@ export class DesktopHost {
         { id: 'tasks', name: 'tasks', description: '查看后台任务' },
         { id: 'workflows', name: 'workflows', description: '查看工作流运行' },
         { id: 'rewind', name: 'rewind', description: '回滚到之前的用户消息' },
+        { id: 'btw', name: 'btw', description: '旁路提问（不进入聊天记录）' },
       ];
 
       const allCommands = [...sdkCommands, ...localCommands];

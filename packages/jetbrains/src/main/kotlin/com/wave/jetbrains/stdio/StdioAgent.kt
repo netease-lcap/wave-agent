@@ -236,6 +236,9 @@ class StdioAgent(
         return result?.jsonObject?.get("inputContent")?.jsonPrimitive?.content ?: ""
     }
 
+    suspend fun askBtw(question: String): String =
+        client.request("askBtw", buildJsonObject { put("question", question) }, sessionId)?.jsonPrimitive?.content ?: ""
+
     suspend fun listRewindCheckpoints(): JsonElement =
         client.request("listRewindCheckpoints", sessionId = sessionId) ?: JsonObject(emptyMap())
 

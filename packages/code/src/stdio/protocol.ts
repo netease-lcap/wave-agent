@@ -54,6 +54,7 @@ export type RequestMethod =
   | "getSessionInfo"
   | "sendMessage"
   | "bang"
+  | "askBtw"
   | "abortMessage"
   | "clearMessages"
   | "rewindToMessage"

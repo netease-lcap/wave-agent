@@ -163,6 +163,9 @@ export class MessageHandler {
             case 'listRewindCheckpoints':
                 await this.handleListRewindCheckpoints(viewType, windowId);
                 break;
+            case 'askBtw':
+                await this.handleAskBtw(msg.question as string, viewType, windowId);
+                break;
             case 'requestHistory':
                 await this.handleRequestHistory(viewType, windowId);
                 break;
@@ -283,6 +286,25 @@ export class MessageHandler {
             this.context.postMessage({
                 command: 'rewindCheckpoints',
                 checkpoints: []
+            }, viewType, windowId);
+        }
+    }
+
+    private async handleAskBtw(question: string, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
+        const session = this.context.getChatSession(viewType || 'tab', windowId);
+        try {
+            const answer = await session.askBtw(question);
+            this.context.postMessage({
+                command: 'btwResponse',
+                question,
+                answer
+            }, viewType, windowId);
+        } catch (error) {
+            console.error(`旁路提问 ${viewType} 失败:`, error);
+            this.context.postMessage({
+                command: 'btwError',
+                question,
+                error: error instanceof Error ? error.message : String(error)
             }, viewType, windowId);
         }
     }
@@ -771,7 +793,8 @@ export class MessageHandler {
                 { id: 'compact', name: 'compact', description: '手动压缩对话历史' },
                 { id: 'tasks', name: 'tasks', description: '查看后台任务' },
                 { id: 'workflows', name: 'workflows', description: '查看工作流运行' },
-                { id: 'rewind', name: 'rewind', description: '回退到之前的用户消息' }
+                { id: 'rewind', name: 'rewind', description: '回退到之前的用户消息' },
+                { id: 'btw', name: 'btw', description: '旁路提问（不进入聊天记录）' }
             ];
 
             const allCommands = [...sdkCommands, ...localCommands];

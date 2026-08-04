@@ -157,6 +157,10 @@ class MessageHandler(
                 handleRewindToMessage(messageId)
             }
             "listRewindCheckpoints" -> handleListRewindCheckpoints()
+            "askBtw" -> {
+                val question = msg["question"]?.jsonPrimitive?.content ?: return
+                handleAskBtw(question)
+            }
 
             // ── Prompt history ─────────────────────────────────────────
             // VSCE :137/:171 → historyResponse { history }
@@ -553,6 +557,24 @@ class MessageHandler(
         postMessage("rewindCheckpoints", buildJsonObject { put("checkpoints", checkpoints) })
     }
 
+    // ── /btw side question: answer out-of-band, echo the question so the webview
+    // can match the reply against its in-flight panel (dropping stale replies) ──
+    private suspend fun handleAskBtw(question: String) {
+        try {
+            val answer = session.agent?.askBtw(question) ?: throw StdioClientException("智能体未初始化")
+            postMessage("btwResponse", buildJsonObject {
+                put("question", question)
+                put("answer", answer)
+            })
+        } catch (e: StdioClientException) {
+            LOG.warn("askBtw failed: ${e.message}", e)
+            postMessage("btwError", buildJsonObject {
+                put("question", question)
+                put("error", e.message ?: "unknown")
+            })
+        }
+    }
+
     // ── Rewind: webview already confirmed → rewind → setInitialState + focusInput + scrollToBottom ──
     private suspend fun handleRewindToMessage(messageId: String) {
         try {
@@ -767,6 +789,7 @@ class MessageHandler(
             triple("clear", "clear", "清除对话历史并重置会话"),
             triple("compact", "compact", "手动压缩对话历史"),
             triple("rewind", "rewind", "回滚到之前的用户消息"),
+            triple("btw", "btw", "旁路提问（不进入聊天记录）"),
         )
         val all = sdkCommands + local
         // VSCE messageHandler.ts:618-624: filter by id/name (case-insensitive includes)

@@ -102,6 +102,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
     initialAttachedImages,
     workdirSelector,
     rewindPopup,
+    btwPopup,
     disabled
   } = props;
   const [message, setMessage] = useState('');
@@ -1458,6 +1459,9 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
 
         {/* /rewind 检查点弹窗，与历史记录弹窗共用 .input-wrapper 定位上下文 */}
         {rewindPopup}
+
+        {/* /btw 旁路提问面板，锚定 .input-wrapper 顶部 */}
+        {btwPopup}
       </div>
     </div>
   );

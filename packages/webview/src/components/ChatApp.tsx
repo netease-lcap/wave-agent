@@ -9,6 +9,7 @@ import { ConfirmationDialog } from './ConfirmationDialog';
 import { ConfirmDialog } from './ConfirmDialog';
 import { RewindPopup } from './RewindPopup';
 import type { RewindCheckpoint } from './RewindPopup';
+import { BtwPanel } from './BtwPanel';
 import ConfigDialog from './ConfigDialog';
 import PluginDialog from './PluginDialog';
 import McpDialog from './McpDialog';
@@ -193,6 +194,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const [rewindPopupOpen, setRewindPopupOpen] = useState(false);
   const [rewindCheckpoints, setRewindCheckpoints] = useState<RewindCheckpoint[]>([]);
   const [rewindCheckpointsLoading, setRewindCheckpointsLoading] = useState(false);
+  // /btw side-question panel (webview spec story 3). Non-null while the panel is
+  // open; `loading` while the askBtw RPC is in flight, `answer` afterwards
+  // (including the bare-/btw usage hint and API-error strings).
+  const [btwPanel, setBtwPanel] = useState<{ question: string; answer: string; loading: boolean } | null>(null);
+  // Question of the in-flight askBtw RPC. Cleared on close so a late reply is
+  // dropped (scenario 7); matched against the reply's echoed question so a stale
+  // reply never lands on a newer panel (scenario 6/7).
+  const btwActiveRef = useRef<string | null>(null);
   // Desktop new-session worktree controls (FR-022/FR-023).
   const [worktreeBranch, setWorktreeBranch] = useState<string>('');
   const [worktreeChecked, setWorktreeChecked] = useState(true);
@@ -569,6 +578,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           setRewindCheckpoints(message.checkpoints || []);
           setRewindCheckpointsLoading(false);
           break;
+        case 'btwResponse':
+          if (!forThisPane(message)) break;
+          // Drop late replies: the panel must be open, the panel's question must
+          // still match the in-flight one, and the reply must echo the same question.
+          if (btwActiveRef.current && message.question === btwActiveRef.current) {
+            setBtwPanel(panel => panel ? { ...panel, answer: message.answer ?? '', loading: false } : panel);
+          }
+          break;
+        case 'btwError':
+          if (!forThisPane(message)) break;
+          if (btwActiveRef.current && message.question === btwActiveRef.current) {
+            setBtwPanel(panel => panel ? { ...panel, answer: `(API error: ${message.error ?? 'unknown'})`, loading: false } : panel);
+          }
+          break;
         // Test-only handlers
         case 'startStreaming':
           if (!forThisPane(message)) break;
@@ -918,6 +941,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       postToHost({ command: 'listRewindCheckpoints' });
       return;
     }
+    // /btw side question — answered out-of-band via askBtw, never enters the chat.
+    if (trimmedText === '/btw' || trimmedText.startsWith('/btw ')) {
+      const question = trimmedText.slice('/btw'.length).trim();
+      if (!question) {
+        // Code span keeps `<your question>` from being parsed as an HTML tag.
+        setBtwPanel({ question: '', answer: '`Usage: /btw <your question>`', loading: false });
+        return;
+      }
+      btwActiveRef.current = question;
+      setBtwPanel({ question, answer: '', loading: true });
+      postToHost({ command: 'askBtw', question });
+      return;
+    }
 
     // Desktop worktree flow (FR-023): on the first message of a new session
     // with the worktree checkbox on, create the worktree first — the main
@@ -1109,6 +1145,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
 
   const handleRewindPopupClose = useCallback(() => {
     setRewindPopupOpen(false);
+    messageInputRef.current?.focus();
+  }, []);
+
+  // Close the /btw panel. While a request is in flight, clearing btwActiveRef
+  // makes the late reply a no-op (scenario 7: closing during loading drops it).
+  const handleBtwClose = useCallback(() => {
+    btwActiveRef.current = null;
+    setBtwPanel(null);
     messageInputRef.current?.focus();
   }, []);
 
@@ -1726,6 +1770,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
                 onSelect={handleRewindCheckpointSelect}
                 onClose={handleRewindPopupClose}
               />
+            }
+            btwPopup={
+              btwPanel ? (
+                <BtwPanel
+                  question={btwPanel.question}
+                  answer={btwPanel.answer}
+                  isLoading={btwPanel.loading}
+                  onClose={handleBtwClose}
+                />
+              ) : undefined
             }
           />
         </div>
