@@ -43,6 +43,12 @@ describe("BangDisplay", () => {
     expect(lastFrame()).toContain("! ls -la");
   });
 
+  it("should render command in gray when exit code is unknown", () => {
+    const unknownBlock = { ...mockBlock, exitCode: null };
+    const { lastFrame } = render(<BangDisplay block={unknownBlock} />);
+    expect(lastFrame()).toContain("! ls -la");
+  });
+
   it("should truncate output when not expanded and exceeding MAX_LINES", async () => {
     const longOutput = Array.from(
       { length: 20 },
