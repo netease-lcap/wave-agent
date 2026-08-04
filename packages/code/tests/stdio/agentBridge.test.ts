@@ -1311,6 +1311,63 @@ test("restoreSession delegates to agent.restoreSession", async () => {
   expect(mockAgent.restoreSession).toHaveBeenCalledWith("old-session");
 });
 
+test("initialize with restoreSessionId reuses a live session instead of creating a second agent", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  const first = await bridge.handleRequest("initialize", {
+    workdir: "/test/workdir",
+  });
+  const sessionId = (first as { sessionId: string }).sessionId;
+
+  const second = await bridge.handleRequest("initialize", {
+    workdir: "/test/workdir",
+    restoreSessionId: sessionId,
+  });
+
+  expect(vi.mocked(Agent.create)).toHaveBeenCalledTimes(1);
+  expect(second).toEqual({
+    sessionId,
+    workingDirectory: "/test/workdir",
+    permissionMode: "default",
+    latestTotalTokens: 100,
+  });
+});
+
+test("restoreSession to the live session emits a messagesChange snapshot without replaying", async () => {
+  const { bridge, notifications } = createBridge();
+  const mockAgent = createMockAgent({
+    messages: [
+      {
+        id: "msg-1",
+        role: "user",
+        blocks: [{ type: "text", content: "hello" }],
+      },
+    ],
+  });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+
+  await bridge.handleRequest("restoreSession", { sessionId }, sessionId);
+
+  expect(mockAgent.restoreSession).not.toHaveBeenCalled();
+  expect(notifications).toContainEqual({
+    method: "messagesChange",
+    params: {
+      messages: [
+        {
+          id: "msg-1",
+          role: "user",
+          blocks: [{ type: "text", content: "hello" }],
+        },
+      ],
+    },
+    sessionId,
+  });
+});
+
 test("listSessions with workdir delegates to listSessions SDK", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());

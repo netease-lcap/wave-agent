@@ -53,6 +53,12 @@ export async function main() {
         default: false,
         global: false,
       })
+      .option("daemon", {
+        description:
+          "Start as a background daemon (JSON-RPC over a unix socket at PATH)",
+        type: "string",
+        global: false,
+      })
       .option("show-stats", {
         description: "Show timing and usage statistics in print mode",
         type: "boolean",
@@ -400,6 +406,12 @@ export async function main() {
     if (argv.stdio) {
       const { startStdioCli } = await import("./stdio-cli.js");
       return startStdioCli();
+    }
+
+    // Handle daemon mode (remote background sessions)
+    if (typeof argv.daemon === "string") {
+      const { startDaemonCli } = await import("./daemon-cli.js");
+      return startDaemonCli(argv.daemon);
     }
 
     await startCli({
