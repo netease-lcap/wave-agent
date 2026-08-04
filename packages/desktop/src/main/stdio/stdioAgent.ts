@@ -1,5 +1,5 @@
 /**
- * StdioAgent — typed wrapper around StdioClient that mirrors the Agent API.
+ * StdioAgent — typed wrapper around a JSON-RPC client that mirrors the Agent API.
  *
  * In the single-shared-process architecture, all sessions share one
  * StdioClient. The NotificationRouter dispatches incoming notifications to
@@ -27,7 +27,7 @@ import type {
     SlashCommand,
     McpServerConfig,
 } from 'wave-agent-sdk';
-import { StdioClient } from './stdioClient';
+import type { JsonRpcClient } from './jsonRpcClient';
 import { NotificationRouter } from './notificationRouter';
 
 // ── Params / Results ─────────────────────────────────────────────
@@ -130,12 +130,12 @@ export class StdioAgent {
     public isCommandRunning = false;
     public isCompacting = false;
 
-    private client: StdioClient;
+    private client: JsonRpcClient;
     private router: NotificationRouter;
     private callbacks: StdioAgentCallbacks;
 
     constructor(
-        client: StdioClient,
+        client: JsonRpcClient,
         router: NotificationRouter,
         callbacks: StdioAgentCallbacks,
     ) {

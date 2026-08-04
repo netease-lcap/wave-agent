@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { BrowserWindow } from 'electron';
 import * as os from 'os';
 import * as path from 'path';
+import { BASH_TOOL_NAME } from 'wave-agent-sdk';
 
 // ---------------------------------------------------------------------------
 // fs mock — ConfigStore persistence + desktopHost's tmpdir/artifact helpers
@@ -15,6 +16,44 @@ const h = vi.hoisted(() => ({
   agentInstances: [] as Array<Record<string, unknown>>,
   clientRequests: [] as Array<{ method: string; params: unknown }>,
   authUrlHandler: null as ((params: unknown) => void) | null,
+  // Shared RPC implementation for the local StdioClient mock and the remote
+  // daemon client returned by the connectRemoteDaemon mock — both must answer
+  // the same utility methods so auth/worktree/git flows work on every host.
+  handleClientRequest: (method: string, params?: unknown) => {
+    switch (method) {
+      case 'listSessions': {
+        const workdir = (params as { workdir?: string } | undefined)?.workdir ?? '';
+        return { sessions: h.dirSessions.get(workdir) ?? [] };
+      }
+      case 'getAuthStatus':
+        return { isAuthenticated: h.authStatusResults.shift() ?? false, serverUrl: '' };
+      case 'getPromptHistory':
+      case 'searchPromptHistory':
+        return { history: [] };
+      case 'searchFiles':
+        return { files: [] };
+      case 'listPlugins':
+        return { plugins: [] };
+      case 'listMarketplaces':
+        return { marketplaces: [] };
+      case 'listGitBranches': {
+        if (!h.branchesResult) throw new Error('not a git repository');
+        return h.branchesResult;
+      }
+      case 'createWorktree': {
+        if (h.worktreeError) throw h.worktreeError;
+        if (!h.worktreeResult) throw new Error('createWorktree not stubbed');
+        return h.worktreeResult;
+      }
+      case 'removeWorktree':
+        if (h.removeWorktreeGate) return h.removeWorktreeGate.then(() => ({ removed: true }));
+        return { removed: true };
+      case 'listPendingPermissions':
+        return { requests: h.pendingPermissionRequests };
+      default:
+        return {};
+    }
+  },
   // Sequential getAuthStatus results, consumed FIFO by the stdio mock. Empty
   // means "logged out" — pushInitialState queries once at webview-ready.
   authStatusResults: [] as boolean[],
@@ -35,6 +74,12 @@ const h = vi.hoisted(() => ({
   // Multi-agent pool: each StdioAgent instance gets a unique sessionId so the
   // host's agents Map keys don't collapse (FR-031).
   agentCounter: 0,
+  // onClosed handlers registered by ensureRemoteHostClient on each
+  // connectRemoteDaemon client — tests fire them to simulate a disconnect.
+  closedHandlers: [] as Array<() => void>,
+  // listPendingPermissions result for the remote daemon client (SSH remote
+  // background: re-surfaced pending approvals on attach).
+  pendingPermissionRequests: [] as Array<{ requestId: string; sessionId?: string; context: unknown }>,
 }));
 
 vi.mock('fs', () => ({
@@ -102,37 +147,7 @@ vi.mock('../src/main/stdio/stdioClient', () => ({
     dispose = vi.fn();
     request = vi.fn(async (method: string, params?: unknown) => {
       h.clientRequests.push({ method, params });
-      switch (method) {
-        case 'listSessions': {
-          const workdir = (params as { workdir?: string } | undefined)?.workdir ?? '';
-          return { sessions: h.dirSessions.get(workdir) ?? [] };
-        }
-        case 'getAuthStatus':
-          return { isAuthenticated: h.authStatusResults.shift() ?? false, serverUrl: '' };
-        case 'getPromptHistory':
-        case 'searchPromptHistory':
-          return { history: [] };
-        case 'searchFiles':
-          return { files: [] };
-        case 'listPlugins':
-          return { plugins: [] };
-        case 'listMarketplaces':
-          return { marketplaces: [] };
-        case 'listGitBranches': {
-          if (!h.branchesResult) throw new Error('not a git repository');
-          return h.branchesResult;
-        }
-        case 'createWorktree': {
-          if (h.worktreeError) throw h.worktreeError;
-          if (!h.worktreeResult) throw new Error('createWorktree not stubbed');
-          return h.worktreeResult;
-        }
-        case 'removeWorktree':
-          if (h.removeWorktreeGate) await h.removeWorktreeGate;
-          return { removed: true };
-        default:
-          return {};
-      }
+      return h.handleClientRequest(method, params);
     });
   },
 }));
@@ -248,6 +263,21 @@ vi.mock('../src/main/remoteCli', async () => {
       binaryPath: `/remote/wave-${host}`,
       nodeVersion: 'v22.0.0',
     })),
+    ensureRemoteDaemon: vi.fn(async (host: string) => `/home/${host}/.wave/daemon.sock`),
+    connectRemoteDaemon: vi.fn(async () => ({
+      client: {
+        onNotification: vi.fn(),
+        onClosed: vi.fn((handler: () => void) => {
+          h.closedHandlers.push(handler);
+        }),
+        dispose: vi.fn(),
+        request: vi.fn(async (method: string, params?: unknown) => {
+          h.clientRequests.push({ method, params });
+          return h.handleClientRequest(method, params);
+        }),
+      },
+      tunnel: { kill: vi.fn() },
+    })),
     remotePathExists: vi.fn(async () => true),
     listRemoteDirs: vi.fn(async () => ({ resolvedPath: '/remote/repo', dirs: ['a', 'b'] })),
     readRemoteFile: vi.fn(async () => ({
@@ -276,7 +306,7 @@ import { HOST_CHANNEL } from '../src/main/channels';
 import { shell, nativeTheme } from 'electron';
 import { checkForUpdate } from '../src/main/updateChecker';
 import {
-  resolveRemoteWaveBinary,
+  connectRemoteDaemon,
   remotePathExists,
   listRemoteDirs,
   readRemoteFile,
@@ -347,6 +377,8 @@ beforeEach(() => {
   h.removeWorktreeGate = null;
   h.initializeGate = null;
   h.agentCounter = 0;
+  h.closedHandlers.length = 0;
+  h.pendingPermissionRequests = [];
   vi.clearAllMocks();
   nativeTheme.__reset();
 });
@@ -937,6 +969,11 @@ describe('misc commands', () => {
     // land after the handler returns.
     await vi.waitFor(() => {
       expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-x');
+      // The daemon reuses the live agent for the session being restored —
+      // initialize must carry the restoreSessionId (dedupe on re-attach).
+      expect(lastAgent().initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ restoreSessionId: 'sess-x' }),
+      );
       expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -3292,7 +3329,7 @@ describe('SSH remote hosts', () => {
     expect(sent('appendMessage').some((m) => JSON.stringify(m).includes('未知主机：unknown'))).toBe(true);
     // No workdir state re-send — the picker stays put.
     expect(sent('desktopWorkdirState').length).toBe(statesBefore);
-    expect(vi.mocked(resolveRemoteWaveBinary)).not.toHaveBeenCalled();
+    expect(vi.mocked(connectRemoteDaemon)).not.toHaveBeenCalled();
   });
 
   it('desktopSelectHost switches the picker to a host from ~/.ssh/config and shows its recents', async () => {
@@ -3304,7 +3341,7 @@ describe('SSH remote hosts', () => {
 
     // The host's client is established eagerly so auth failures surface early.
     await vi.waitFor(() => {
-      expect(vi.mocked(resolveRemoteWaveBinary)).toHaveBeenCalledWith('prod');
+      expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledWith('prod', expect.any(String));
     });
     const state = sent('desktopWorkdirState').at(-1);
     expect(state).toMatchObject({
@@ -3451,7 +3488,7 @@ describe('SSH remote hosts', () => {
     expect(config).toContain('\nHost newhost\n    User user\n    Port 2222\n');
     expect(sent('appendMessage').some((m) => JSON.stringify(m).includes('已添加主机：newhost'))).toBe(true);
     await vi.waitFor(() => {
-      expect(vi.mocked(resolveRemoteWaveBinary)).toHaveBeenCalledWith('newhost');
+      expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledWith('newhost', expect.any(String));
     });
     expect(sent('desktopWorkdirState').at(-1)).toMatchObject({
       command: 'desktopWorkdirState',
@@ -3680,6 +3717,110 @@ describe('SSH remote hosts', () => {
     await vi.waitFor(() => {
       expect(sent('updateWorkflowRuns').at(-1)?.runs).toEqual([{ runId: 'run-1' }]);
     });
+  });
+
+  it('a dropped tunnel releases the host entry so the next access re-attaches', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host } = createHost();
+
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+    await vi.waitFor(() => expect(h.closedHandlers).toHaveLength(1));
+    const first = (await vi.mocked(connectRemoteDaemon).mock.results[0].value) as Awaited<
+      ReturnType<typeof connectRemoteDaemon>
+    >;
+
+    // The ssh tunnel died (network blip / host reboot) — the daemon keeps
+    // running remotely, so the local host entry is released and the tunnel torn
+    // down; a later access re-attaches through a fresh tunnel (spec scenario 10).
+    h.closedHandlers[0]();
+    expect(first.tunnel.kill).toHaveBeenCalledTimes(1);
+
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+    await vi.waitFor(() => {
+      expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(2);
+    });
+    // A fresh client registered its own disconnect handler.
+    expect(h.closedHandlers).toHaveLength(2);
+  });
+
+  it('a dropped tunnel detaches host agents without destroying them (真后台)', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    h.existingPaths.add('/remote/repo');
+    const { host, sent } = await readyHost();
+
+    // A remote session is live in the pool and bound to the pane.
+    await host.handleWebviewMessage({ command: 'desktopSelectRemotePath', host: 'prod', path: '/remote/repo' });
+    await vi.waitFor(() => expect(h.closedHandlers).toHaveLength(1));
+    const remoteAgent = lastAgent();
+    registerAgentInIndex(remoteAgent);
+    remoteAgent.isStreaming = true;
+    remoteAgent.callbacks.onLoadingChange(true);
+    const sessionId = remoteAgent.sessionId as string;
+    const treeSessions = (tree: Record<string, unknown> | undefined) =>
+      ((tree?.groups as Array<{ sessions: Array<{ sessionId: string; running: boolean }> }>) ?? []).flatMap(
+        (g) => g.sessions,
+      );
+    expect(treeSessions(sent('desktopSessionTree').at(-1)).find((s) => s.sessionId === sessionId)?.running).toBe(true);
+
+    h.closedHandlers[0]();
+
+    // The session keeps running on the remote daemon — the pool agent is
+    // released, never destroyed (destroy would kill the background task).
+    expect(remoteAgent.destroy).not.toHaveBeenCalled();
+    // The pane returns to the new-session state, but stays on the remote host.
+    await vi.waitFor(() => {
+      const panes = sent('desktopPanes').at(-1) as { panes: Array<{ sessionId?: string; host: string }> };
+      expect(panes.panes[0].sessionId).toBeUndefined();
+      expect(panes.panes[0].host).toBe('prod');
+    });
+    // No ghost running marker: a disconnected host cannot report live state,
+    // which is also what a dead daemon looks like (spec scenario 10).
+    await vi.waitFor(() => {
+      const sessions = treeSessions(sent('desktopSessionTree').at(-1));
+      expect(sessions.find((s) => s.sessionId === sessionId)?.running).toBe(false);
+    });
+  });
+
+  it('re-attaching a session re-surfaces approvals the daemon held while detached', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host, store, sent } = await readyHost();
+    h.existingPaths.add('/remote/repo');
+    store.upsertSession({
+      sessionId: 'rem-1',
+      title: 'Remote history',
+      host: 'prod',
+      workdir: '/remote/repo',
+      cwd: '/remote/repo',
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+    });
+    // The daemon held this approval while no client was attached (spec
+    // scenarios 4/5) — attach must resurface it as a normal dialog.
+    h.pendingPermissionRequests = [
+      {
+        requestId: 'req-9',
+        sessionId: 'rem-1',
+        context: { toolName: BASH_TOOL_NAME, toolInput: { command: 'npm run build' } },
+      },
+    ];
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/remote/repo', sessionId: 'rem-1' });
+
+    // The restore (spawn + transcript replay) runs behind the overlay, then the
+    // held approval resurfaced as the same dialog a live session would show.
+    await vi.waitFor(() => {
+      expect(sent('showConfirmation')).toHaveLength(1);
+    });
+    expect(sent('showConfirmation')[0]).toMatchObject({
+      toolName: BASH_TOOL_NAME,
+      confirmationType: '命令执行待确认',
+    });
+    expect(h.clientRequests.some((r) => r.method === 'listPendingPermissions')).toBe(true);
+
+    // Approving the resurfaced dialog resumes the task on the daemon.
+    const confirmationId = sent('showConfirmation')[0].confirmationId as string;
+    await host.handleWebviewMessage({ command: 'confirmationResponse', confirmationId, approved: true });
+    expect(lastAgent().sendPermissionResponse).toHaveBeenCalledWith('req-9', { behavior: 'allow' });
   });
 });
 

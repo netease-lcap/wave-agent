@@ -162,6 +162,28 @@ export function buildSshSpawnArgs(host: string, remoteCommand: string): string[]
 }
 
 /**
+ * Spawn args for an `ssh -N` unix-socket forward: `localSocket:remoteSocket`.
+ * `-N` means no remote command — the tunnel just forwards. ExitOnForwardFailure
+ * makes ssh exit (instead of idling) when the remote end refuses the forward,
+ * so a missing daemon socket surfaces as a tunnel exit rather than a silent
+ * half-open connection. No login shell is needed: `-N` tunnels never run a
+ * remote command.
+ */
+export function buildSshTunnelArgs(
+  host: string,
+  localSocketPath: string,
+  remoteSocketPath: string,
+): string[] {
+  return [
+    ...SSH_BASE_OPTIONS,
+    '-o', 'ExitOnForwardFailure=yes',
+    '-N',
+    '-L', `${localSocketPath}:${remoteSocketPath}`,
+    host,
+  ];
+}
+
+/**
  * Single-quote a string for a remote shell command. ssh joins every argv
  * after the hostname into one remote command line, so any user-supplied path
  * (remote cwd, git pathspecs, untracked file paths) must be shell-escaped.

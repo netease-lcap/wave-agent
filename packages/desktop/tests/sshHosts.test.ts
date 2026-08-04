@@ -28,6 +28,7 @@ import {
   parseConnectionString,
   addSshHost,
   buildSshSpawnArgs,
+  buildSshTunnelArgs,
 } from '../src/main/sshHosts';
 
 const CONFIG = '/mock-home/.ssh/config';
@@ -168,6 +169,20 @@ describe('buildSshSpawnArgs', () => {
       ...SSH_BASE_OPTIONS,
       'prod',
       '/path/to/wave --stdio',
+    ]);
+  });
+});
+
+describe('buildSshTunnelArgs', () => {
+  it('builds an -N unix-socket forward with ExitOnForwardFailure', () => {
+    expect(
+      buildSshTunnelArgs('prod', '/tmp/wave-daemon-prod.sock', '/home/u/.wave/daemon.sock'),
+    ).toEqual([
+      ...SSH_BASE_OPTIONS,
+      '-o', 'ExitOnForwardFailure=yes',
+      '-N',
+      '-L', '/tmp/wave-daemon-prod.sock:/home/u/.wave/daemon.sock',
+      'prod',
     ]);
   });
 });
