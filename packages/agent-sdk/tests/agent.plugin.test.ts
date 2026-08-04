@@ -3,6 +3,7 @@ import { Agent } from "../src/agent.js";
 import { PluginLoader } from "../src/services/pluginLoader.js";
 import { AIManager } from "../src/managers/aiManager.js";
 import { CustomSlashCommand, TextBlock } from "../src/types/index.js";
+import { cleanupMetaOnlySessions } from "../src/services/session.js";
 import * as fs from "fs/promises";
 import * as os from "os";
 import { exec } from "child_process";
@@ -22,6 +23,7 @@ describe("Agent Plugin Integration", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(cleanupMetaOnlySessions).mockResolvedValue(0);
     vi.mocked(fs.readFile).mockResolvedValue("");
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
