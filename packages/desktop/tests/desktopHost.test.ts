@@ -183,10 +183,12 @@ vi.mock('../src/main/stdio/stdioAgent', () => ({
       if (h.initializeGate) await h.initializeGate;
     });
     destroy = vi.fn(async () => undefined);
-    restoreSession = vi.fn(async function (this: { sessionId?: string; messages?: unknown[] }, sessionId: string) {
+    restoreSession = vi.fn(async function (this: { sessionId?: string; daemonMessages?: unknown[] }, sessionId: string) {
       this.sessionId = sessionId;
-      // Mirror the real agent: after restore, messages holds the full history.
-      this.messages = [{ id: 'restored-u1', role: 'user', blocks: [{ type: 'text', content: '历史会话的第一条消息' }] }];
+      // Mirror the real StdioAgent: restore is a bare RPC — the daemon switches
+      // to the session and holds its history daemon-side. The desktop cache is
+      // NOT filled here; the host must pull it via getMessages().
+      this.daemonMessages = [{ id: 'restored-u1', role: 'user', blocks: [{ type: 'text', content: '历史会话的第一条消息' }] }];
     });
     updateConfig = vi.fn(async () => undefined);
     sendMessage = vi.fn(async () => undefined);
@@ -196,10 +198,12 @@ vi.mock('../src/main/stdio/stdioAgent', () => ({
     // through the sessionIdChange notification.
     clearMessages = vi.fn(async function (this: {
       messages: unknown[];
+      daemonMessages?: unknown[];
       sessionId?: string;
       callbacks: Record<string, (id: string) => void>;
     }) {
       this.messages = [];
+      this.daemonMessages = [];
       const newId = `sess-${++h.agentCounter}`;
       this.sessionId = newId;
       this.callbacks.onSessionIdChange(newId);
@@ -209,8 +213,12 @@ vi.mock('../src/main/stdio/stdioAgent', () => ({
     getFullMessageThread = vi.fn(async function (this: { messages?: unknown[] }) {
       return { messages: this.messages ?? [], sessionIds: [] };
     });
-    getMessages = vi.fn(async function (this: { messages?: unknown[] }) {
-      return this.messages ?? [];
+    getMessages = vi.fn(async function (this: { daemonMessages?: unknown[]; messages?: unknown[] }) {
+      // Mirrors StdioAgent.getMessages: pull the daemon's authoritative list
+      // into the cache. A restored session's history lives daemon-side until
+      // this pull — without it, a re-attached session opens with no messages.
+      this.messages = this.daemonMessages ?? this.messages ?? [];
+      return this.messages;
     });
     listRewindCheckpoints = vi.fn(async () => ({ checkpoints: [{ id: 'u1', content: 'hello' }] }));
     removeQueuedMessage = vi.fn(async () => undefined);
@@ -609,6 +617,18 @@ describe('agent notifications', () => {
       ]);
     });
     expect(sent('updateMessages')).toHaveLength(0);
+  });
+
+  it('restoreSession pulls the transcript via getMessages (re-attach regression)', async () => {
+    const { host } = await readyHost();
+
+    await host.handleWebviewMessage({ command: 'restoreSession', sessionId: 'sess-x' });
+
+    // The daemon emits no transcript on restore — the host must pull it, or a
+    // re-attached session (remote or local) opens with an empty message list.
+    await vi.waitFor(() => {
+      expect(lastAgent().getMessages).toHaveBeenCalled();
+    });
   });
 
   it('onMessagesChange never pushes the full list — each message arrives once via appendMessage', async () => {
@@ -2790,11 +2810,16 @@ describe('pane rows (two-row layout)', () => {
 
     await host.handleWebviewMessage({ command: 'desktopMovePane', paneId: first.paneId, newRow: 'below' });
 
+    // The opened session binds asynchronously (fire-and-forget restore) — wait
+    // for the binding push so the layout assertion sees the final row state.
+    await vi.waitFor(() => {
+      const layout = panePushes(sent).at(-1)!;
+      expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+        ['sess-2', 0],
+        ['sess-1', 1],
+      ]);
+    });
     const layout = panePushes(sent).at(-1)!;
-    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
-      ['sess-2', 0],
-      ['sess-1', 1],
-    ]);
     // The remaining top-row pane re-expands to the full row width.
     expect(layout.panes[0].width).toBeCloseTo(1);
     expect(layout.panes[1].width).toBeUndefined();
@@ -2898,6 +2923,11 @@ describe('pane rows (two-row layout)', () => {
     const { host, sent } = await readyHost();
     seedActiveSession('sess-1');
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
+    // The pane binds asynchronously — settle it before counting pushes, so a
+    // late restore binding push can't be miscounted as an ignored payload.
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)!.panes.some((p) => p.sessionId === 'sess-2')).toBe(true);
+    });
 
     await host.handleWebviewMessage({ command: 'desktopResizePaneRows', heights: [300, 500] });
     const pushes = panePushes(sent).length;
@@ -2935,6 +2965,9 @@ describe('pane rows (two-row layout)', () => {
     const { host, sent } = await readyHost();
     seedActiveSession('sess-1');
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)!.panes.some((p) => p.sessionId === 'sess-2')).toBe(true);
+    });
     const topPane = panePushes(sent).at(-1)!.panes[0];
 
     await host.handleWebviewMessage({ command: 'desktopClosePane', paneId: topPane.paneId });
