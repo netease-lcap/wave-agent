@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useCallback } from "react";
+import { useEffect, useReducer, useCallback, useRef } from "react";
 import { Key } from "ink";
 import {
   inputReducer,
@@ -6,6 +6,7 @@ import {
   InputManagerCallbacks,
   ESC_DOUBLE_PRESS_TIMEOUT_MS,
 } from "../managers/inputReducer.js";
+import { createBracketedPasteDetector } from "../utils/bracketedPaste.js";
 import {
   searchFiles as searchFilesUtil,
   PermissionMode,
@@ -18,6 +19,11 @@ export const useInputManager = (
   callbacks: Partial<InputManagerCallbacks> = {},
 ) => {
   const [state, dispatch] = useReducer(inputReducer, initialState);
+
+  // Detects bracketed paste (DECSET 2004) markers so pasted text is inserted
+  // without triggering submit — a pasted trailing \r must not be treated as
+  // Enter (see utils/bracketedPaste.ts).
+  const pasteDetectorRef = useRef(createBracketedPasteDetector());
 
   const {
     onInputTextChange,
@@ -536,10 +542,42 @@ export const useInputManager = (
 
   const handleInput = useCallback(
     async (input: string, key: Key) => {
+      const result = pasteDetectorRef.current.process(input);
+
+      if (result.kind === "consume") {
+        // Content of an in-flight bracketed paste (or an empty paste):
+        // hold it, never submit or insert prematurely.
+        return true;
+      }
+
+      if (result.kind === "paste") {
+        if (result.leadingInput) {
+          dispatch({
+            type: "HANDLE_KEY",
+            payload: {
+              input: result.leadingInput,
+              key,
+              hasSlashCommand: (cmd) => !!onHasSlashCommand?.(cmd),
+              hasQueuedMessages: hasQueuedMessagesProp ?? false,
+              isIdle: isIdleProp ?? false,
+            },
+          });
+        }
+        if (result.text !== "") {
+          // Insert-only: \r → \n normalizes CRLF terminals, matching the
+          // canonical paste path (inputHandlers.handlePasteInput).
+          dispatch({
+            type: "INSERT_TEXT_WITH_PLACEHOLDER",
+            payload: result.text.replace(/\r/g, "\n"),
+          });
+        }
+        return true;
+      }
+
       dispatch({
         type: "HANDLE_KEY",
         payload: {
-          input,
+          input: result.input,
           key,
           hasSlashCommand: (cmd) => !!onHasSlashCommand?.(cmd),
           hasQueuedMessages: hasQueuedMessagesProp ?? false,
