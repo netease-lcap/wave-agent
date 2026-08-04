@@ -13,6 +13,7 @@ export interface MessageListProps {
   forceStatic?: boolean;
   version?: string;
   workdir?: string;
+  showLoginHint?: boolean;
 }
 
 export const MessageList = React.memo(
@@ -22,6 +23,7 @@ export const MessageList = React.memo(
     forceStatic = false,
     version,
     workdir,
+    showLoginHint = false,
   }: MessageListProps) => {
     const maxMessages = isExpanded
       ? MAX_MESSAGES_EXPANDED
@@ -134,6 +136,10 @@ export const MessageList = React.memo(
             }}
           </Static>
         )}
+
+        {/* Login hint — rendered in the dynamic area (not Static) so it can
+            disappear in real time when the user authenticates. */}
+        {showLoginHint && <Text color="gray">Type /login to authenticate</Text>}
 
         {/* Dynamic blocks */}
         {dynamicBlocks.length > 0 && (

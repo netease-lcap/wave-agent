@@ -64,6 +64,10 @@ describe("ChatInterface Rewind Visibility", () => {
         model: "test-model",
         fastModel: "test-fast-model",
       }),
+      getGatewayConfig: vi.fn().mockReturnValue({
+        apiKey: undefined,
+        baseURL: undefined,
+      }),
       getFullMessageThread: vi
         .fn()
         .mockResolvedValue({ messages: [], sessionIds: [] }),
@@ -144,6 +148,10 @@ describe("ChatInterface Rewind Visibility", () => {
       getModelConfig: vi.fn().mockReturnValue({
         model: "test-model",
         fastModel: "test-fast-model",
+      }),
+      getGatewayConfig: vi.fn().mockReturnValue({
+        apiKey: undefined,
+        baseURL: undefined,
       }),
       getFullMessageThread: vi
         .fn()
