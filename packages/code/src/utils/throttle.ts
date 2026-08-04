@@ -3,8 +3,8 @@ export interface ThrottleOptions {
   trailing?: boolean;
 }
 
-export interface ThrottledFunction<T extends (...args: unknown[]) => void> {
-  (...args: Parameters<T>): void;
+export interface ThrottledFunction<A extends unknown[]> {
+  (...args: A): void;
   cancel: () => void;
   flush: () => void;
 }
@@ -13,13 +13,13 @@ export interface ThrottledFunction<T extends (...args: unknown[]) => void> {
  * Creates a throttled function that only invokes `func` at most once per
  * every `wait` milliseconds.
  */
-export function throttle<T extends (...args: unknown[]) => void>(
-  func: T,
+export function throttle<A extends unknown[]>(
+  func: (...args: A) => void,
   wait: number,
   options: ThrottleOptions = { leading: true, trailing: true },
-): ThrottledFunction<T> {
+): ThrottledFunction<A> {
   let timeoutId: NodeJS.Timeout | null = null;
-  let lastArgs: Parameters<T> | null = null;
+  let lastArgs: A | null = null;
   let lastCallTime = 0;
 
   const invokeFunc = () => {
@@ -30,7 +30,7 @@ export function throttle<T extends (...args: unknown[]) => void>(
     }
   };
 
-  const throttled = (...args: Parameters<T>) => {
+  const throttled = (...args: A) => {
     const now = Date.now();
     const remaining = wait - (now - lastCallTime);
 
@@ -71,5 +71,5 @@ export function throttle<T extends (...args: unknown[]) => void>(
     invokeFunc();
   };
 
-  return throttled as ThrottledFunction<T>;
+  return throttled as ThrottledFunction<A>;
 }

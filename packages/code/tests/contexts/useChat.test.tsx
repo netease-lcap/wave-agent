@@ -1353,6 +1353,127 @@ describe("ChatProvider", () => {
     });
   });
 
+  it("throttles streaming updates to 500ms and flushes immediately on end", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    const assistantMsg = {
+      id: "msg-throttle",
+      role: "assistant" as const,
+      blocks: [],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [assistantMsg] });
+    callbacks.onAssistantMessageAdded!("msg-throttle");
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toHaveLength(1);
+    });
+
+    // Leading edge applies immediately
+    callbacks.onAssistantContentUpdated!({
+      messageId: "msg-throttle",
+      chunk: "Hel",
+      accumulated: "Hel",
+      stage: "streaming",
+    });
+    await vi.waitFor(() => {
+      expect(
+        (lastValue?.messages[0].blocks[0] as { content: string }).content,
+      ).toBe("Hel");
+    });
+
+    // Subsequent chunks within the 500ms window are coalesced (trailing)
+    callbacks.onAssistantContentUpdated!({
+      messageId: "msg-throttle",
+      chunk: "lo",
+      accumulated: "Hello",
+      stage: "streaming",
+    });
+    callbacks.onAssistantContentUpdated!({
+      messageId: "msg-throttle",
+      chunk: " Wor",
+      accumulated: "Hello Wor",
+      stage: "streaming",
+    });
+    // No timer advanced yet — still shows the leading update
+    expect(
+      (lastValue?.messages[0].blocks[0] as { content: string }).content,
+    ).toBe("Hel");
+
+    // stage === "end" flushes the accumulated content immediately
+    callbacks.onAssistantContentUpdated!({
+      messageId: "msg-throttle",
+      chunk: "ld",
+      accumulated: "Hello World",
+      stage: "end",
+    });
+    await vi.waitFor(() => {
+      expect(
+        (lastValue?.messages[0].blocks[0] as { content: string }).content,
+      ).toBe("Hello World");
+    });
+
+    // Tool block updates are throttled too; start applies immediately
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-throttle",
+      id: "tool-thr",
+      name: "bash",
+      stage: "start",
+      parameters: "",
+    });
+    await vi.waitFor(() => {
+      expect(
+        lastValue?.messages[0].blocks.some(
+          (b) => b.type === "tool" && b.id === "tool-thr",
+        ),
+      ).toBe(true);
+    });
+
+    // Mid-stream parameter updates coalesce; end applies the final state right away
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-throttle",
+      id: "tool-thr",
+      stage: "streaming",
+      parametersChunk: "{",
+    });
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-throttle",
+      id: "tool-thr",
+      stage: "streaming",
+      parametersChunk: '"cmd"',
+    });
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-throttle",
+      id: "tool-thr",
+      stage: "end",
+      result: "ok",
+      success: true,
+      parameters: '{"cmd":"ls"}',
+    });
+    await vi.waitFor(() => {
+      const toolBlock = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "tool" && b.id === "tool-thr",
+      );
+      expect(toolBlock).toMatchObject({
+        stage: "end",
+        result: "ok",
+        success: true,
+        parameters: '{"cmd":"ls"}',
+      });
+    });
+  });
+
   it("throttles requestRemount to once per second", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
