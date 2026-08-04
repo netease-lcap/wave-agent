@@ -37,6 +37,28 @@ describe('Task list card pinned above input', () => {
   });
 });
 
+describe('task list capped at 4 visible rows', () => {
+  it('renders all tasks in the DOM, capping the visible area so the rest scroll', async () => {
+    const manyTasks = Array.from({ length: 6 }, (_, i) => ({
+      id: String(i + 1),
+      subject: `任务 ${i + 1}`,
+      description: '',
+      status: 'pending' as const,
+      blocks: [],
+      blockedBy: [],
+      metadata: {},
+    }));
+    renderChatApp();
+    act(() => {
+      sendCommand('updateTasks', { tasks: manyTasks });
+    });
+    await waitFor(() => expect(screen.getByTestId('task-list')).toBeInTheDocument());
+    // 所有任务都渲染在滚动容器内（第 5 个及以后通过滚动查看）
+    expect(document.querySelectorAll('.task-list-items .task-row').length).toBe(6);
+    expect(screen.getByTestId('task-list')).toHaveTextContent('任务列表 (6)');
+  });
+});
+
 describe('collapse via updateTasks', () => {
   it('collapses when isTaskListCollapsed:true', async () => {
     renderChatApp();
