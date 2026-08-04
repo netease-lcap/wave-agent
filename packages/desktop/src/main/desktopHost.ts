@@ -495,7 +495,7 @@ export class DesktopHost {
     this.remoteHosts.set(host, entry);
 
     entry.initPromise = (async () => {
-      const daemonSocket = await ensureRemoteDaemon(host);
+      const daemonSocket = await ensureRemoteDaemon(host, app.getVersion(), (msg) => this.pushSystemMessage(msg));
       const { client, tunnel } = await connectRemoteDaemon(host, daemonSocket);
       const router = new NotificationRouter(client);
       router.registerGlobal('authUrl', (params) => {

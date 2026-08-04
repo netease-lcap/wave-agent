@@ -18,6 +18,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { buildSshSpawnArgs, buildSshTunnelArgs, shellQuote, withRemoteLoginShell } from './sshHosts';
 import { SocketClient } from './stdio/socketClient';
+import { parseVersion, compareVersions } from './version';
 
 const execFileAsync = promisify(execFile);
 
@@ -107,6 +108,82 @@ export async function resolveRemoteWaveBinary(host: string, installIfMissing = t
   throw new Error(
     `远端未安装 wave-code CLI。请手动执行 ssh ${host} "${installCommand}" 后重试`,
   );
+}
+
+/**
+ * Remote `wave -v` — null when the probe fails (missing/corrupt binary or ssh
+ * error). Mirrors local getCliVersion: callers treat null as "needs upgrade"
+ * rather than crashing.
+ */
+async function getRemoteCliVersion(host: string, binaryPath: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('ssh', await remoteCommand(host, `${shellQuote(binaryPath)} -v`), {
+      timeout: PROBE_TIMEOUT_MS,
+    });
+    const line = stdout.trim().split('\n')[0]?.trim();
+    if (!line) return null;
+    // `wave -v` prints the bare version; tolerate a leading "v" just in case.
+    return line.replace(/^v/, '');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Upgrade the remote wave CLI to a specific version via npm global install
+ * (spec: desktop-app.md 「自动更新 CLI」 scenario 3). The version is validated
+ * against a strict semver pattern before it is interpolated into the remote
+ * shell command — the same no-shell-injection guarantee the local
+ * upgradeWaveBinary holds. Returns the freshly resolved binary path.
+ */
+export async function upgradeRemoteWave(host: string, targetVersion: string): Promise<string> {
+  const SEMVER_RE = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+  if (!SEMVER_RE.test(targetVersion)) {
+    throw new Error(`Invalid version: ${targetVersion}`);
+  }
+  const installCommand = `npm install -g wave-code@${targetVersion} --registry=${REMOTE_INSTALL_REGISTRY}`;
+  try {
+    await execFileAsync('ssh', await remoteCommand(host, installCommand), {
+      timeout: INSTALL_TIMEOUT_MS,
+      // npm writes progress to stderr — swallow it so failures surface only
+      // the summarized error below.
+      maxBuffer: 1024 * 1024,
+    });
+  } catch (error) {
+    throw new Error(
+      `远端 wave-code 升级失败：${describeError(error)}。请手动执行 ssh ${host} "${installCommand}"`,
+    );
+  }
+  return (await resolveRemoteWaveBinary(host)).binaryPath;
+}
+
+export interface RemoteCliUpToDateResult {
+  binaryPath: string;
+  /** True when the CLI was upgraded by this call. */
+  upgraded: boolean;
+}
+
+/**
+ * Ensure the remote wave CLI version is >= targetVersion (spec: desktop-app.md
+ * 「自动更新 CLI」 scenarios 3/4). Mirrors local ensureCliUpToDate: resolve →
+ * `wave -v` → compare → upgrade when the version is null (corrupt) or older.
+ * The caller decides what to do about the still-running old daemon.
+ */
+export async function ensureRemoteCliUpToDate(
+  host: string,
+  targetVersion: string,
+): Promise<RemoteCliUpToDateResult> {
+  const { binaryPath } = await resolveRemoteWaveBinary(host);
+  const current = await getRemoteCliVersion(host, binaryPath);
+  if (current !== null) {
+    const cur = parseVersion(current);
+    const target = parseVersion(targetVersion);
+    if (cur && target && compareVersions(cur, target) >= 0) {
+      return { binaryPath, upgraded: false };
+    }
+  }
+  // current is null (unreadable) or older than target → upgrade.
+  return { binaryPath: await upgradeRemoteWave(host, targetVersion), upgraded: true };
 }
 
 /**
@@ -330,15 +407,67 @@ export async function waitForRemoteDaemon(host: string, socketPath: string): Pro
 }
 
 /**
- * Ensure a wave daemon runs on `host`: probe the daemon socket; when missing,
- * resolve the wave binary, launch the daemon detached, then wait for its
- * socket. Returns the remote daemon socket path to forward.
+ * Terminate the remote daemon for `socketPath` (spec 「自动更新 CLI」 scenario 4:
+ * after a CLI upgrade the old daemon still runs pre-upgrade code and must be
+ * restarted). The `[w]ave` bracket trick keeps pkill's own shell out of the
+ * match — its command line contains the literal `[w]ave...` pattern, which the
+ * regex does not match — so only the real daemon process dies.
  */
-export async function ensureRemoteDaemon(host: string): Promise<string> {
+export async function killRemoteDaemon(host: string, socketPath: string): Promise<void> {
+  const pattern = `[w]ave.*--daemon.*${socketPath}`;
+  await execFileAsync('ssh', await remoteCommand(host, `pkill -f ${shellQuote(pattern)} || true`), {
+    timeout: PROBE_TIMEOUT_MS,
+  });
+}
+
+/** Poll remoteDaemonAlive until the daemon is gone (or the start timeout elapses). */
+export async function waitForRemoteDaemonExit(host: string, socketPath: string): Promise<void> {
+  const deadline = Date.now() + DAEMON_START_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (!(await remoteDaemonAlive(host, socketPath))) return;
+    await new Promise((resolve) => setTimeout(resolve, DAEMON_POLL_INTERVAL_MS));
+  }
+  throw new Error(`远端 wave daemon 未能退出（${host}）`);
+}
+
+/**
+ * Ensure a wave daemon runs on `host` with a compatible CLI version:
+ * 1. ensureRemoteCliUpToDate — upgrade the remote wave CLI to targetVersion
+ *    when it is older. Upgrade failures surface via onNotice and fall back to
+ *    the existing binary (mirroring the local CLI's fallback semantics).
+ * 2. After a successful upgrade, the still-running old daemon executes
+ *    pre-upgrade code — it MUST be restarted or the upgrade never takes effect.
+ *    Kill it and wait for its socket to release before relaunching.
+ * 3. Reuse a live daemon; otherwise launch one detached and wait for its
+ *    socket. Returns the remote daemon socket path to forward.
+ */
+export async function ensureRemoteDaemon(
+  host: string,
+  targetVersion: string,
+  onNotice?: (message: string) => void,
+): Promise<string> {
   const homeDir = await getRemoteHomeDir(host);
   const socketPath = remoteDaemonSocketPath(homeDir);
+
+  let binaryPath: string | undefined;
+  let upgraded = false;
+  try {
+    ({ binaryPath, upgraded } = await ensureRemoteCliUpToDate(host, targetVersion));
+  } catch (error) {
+    console.warn(`[remoteCli] ${host} wave CLI 升级失败，继续使用现有版本:`, error);
+    onNotice?.(
+      `远程 wave-code CLI 升级失败：${error instanceof Error ? error.message : String(error)}。` +
+        `可通过 ssh ${host} "npm install -g wave-code@${targetVersion}" 手动升级`,
+    );
+  }
+
+  if (upgraded) {
+    await killRemoteDaemon(host, socketPath);
+    await waitForRemoteDaemonExit(host, socketPath);
+  }
+
   if (await remoteDaemonAlive(host, socketPath)) return socketPath;
-  const { binaryPath } = await resolveRemoteWaveBinary(host);
+  binaryPath ??= (await resolveRemoteWaveBinary(host)).binaryPath;
   await startRemoteDaemon(host, binaryPath, socketPath);
   await waitForRemoteDaemon(host, socketPath);
   return socketPath;
