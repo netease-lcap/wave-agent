@@ -710,8 +710,7 @@ export class AIManager {
     } catch (compactError) {
       this.consecutiveCompactionFailures++;
       logger?.error(
-        `Failed to compact messages (${this.consecutiveCompactionFailures} consecutive):`,
-        compactError,
+        `Failed to compact messages (${this.consecutiveCompactionFailures} consecutive): ${compactError instanceof Error ? compactError.message : String(compactError)}`,
       );
       this.messageManager.addErrorBlock(
         `Failed to compact conversation history: ${compactError instanceof Error ? compactError.message : String(compactError)}. You may encounter context limit issues.`,
