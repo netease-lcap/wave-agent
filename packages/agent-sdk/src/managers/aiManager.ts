@@ -62,6 +62,22 @@ import {
 import { logOTelEvent } from "../telemetry/events.js";
 import type { BackgroundTask } from "../types/processes.js";
 
+/** Result of a fork-path agent loop (compaction or auto-memory extraction). */
+interface ForkLoopResult {
+  content?: string;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
+/** Max turns for the compaction fork: the model should summarize, not act. */
+const MAX_FORK_TURNS = 3;
+
+/** Max turns for the auto-memory extraction fork. */
+const MAX_AUTO_MEMORY_FORK_TURNS = 5;
+
 // Truncate text to `max` chars and append a "… [+N chars]" marker when exceeded.
 // Used for background_tasks description/command fields (≤1000 chars per spec FR-063).
 function truncateWithMarker(text: string, max: number): string {
@@ -745,27 +761,26 @@ export class AIManager {
   }
 
   /**
-   * Fork-path compaction: run a bounded agent loop over a copy of the
-   * conversation using the same system prompt, tools, model, and generation
-   * params as the main loop, so the forked request prefix matches exactly
-   * and the prompt cache is reused. Tool calls are denied locally (the model
-   * is told to summarize, not act) and their rejections are fed back for
-   * another turn. Returns undefined content when the model never produces
-   * text; the caller treats that as a compaction failure.
+   * Fork-path loop: run a bounded agent loop over a copy of the conversation
+   * using the same system prompt, tools, model, and generation params as the
+   * main loop, so the forked request prefix matches exactly and the prompt
+   * cache is reused. A `canUseTool` gate decides whether each tool call
+   * executes locally (with a stripped context) or is denied and fed back to
+   * the model for another turn. Returns undefined content when the model never
+   * produces text; the caller treats that as a failure.
    */
-  private async runCompactFork(
+  private async runForkLoop(
     historyMessages: ChatCompletionMessageParam[],
-    compactPrompt: string,
+    prompt: string,
+    options: {
+      maxTurns: number;
+      /** Gate deciding which tool calls execute locally. When undefined, every tool call is denied. */
+      canUseTool?: (name: string, args: Record<string, unknown>) => boolean;
+      /** Message fed back to the model when a tool call is denied. */
+      deniedToolMessage?: string;
+    },
     abortSignal?: AbortSignal,
-  ): Promise<{
-    content?: string;
-    usage?: {
-      prompt_tokens: number;
-      completion_tokens: number;
-      total_tokens: number;
-    };
-  }> {
-    const MAX_FORK_TURNS = 3;
+  ): Promise<ForkLoopResult> {
     const modelConfig = this.getModelConfig();
     const gatewayConfig = this.getGatewayConfig();
     const sessionId = this.messageManager.getSessionId();
@@ -783,21 +798,22 @@ export class AIManager {
       });
     }
 
-    forkMessages.push({ role: "user", content: compactPrompt });
+    forkMessages.push({ role: "user", content: prompt });
 
     const { toolsConfig, filteredToolPlugins } = this.resolveFilteredTools();
     const systemPrompt = await this.buildMainSystemPrompt(filteredToolPlugins);
 
-    let totalUsage:
-      | {
-          prompt_tokens: number;
-          completion_tokens: number;
-          total_tokens: number;
-        }
-      | undefined;
+    // Fresh read-state map so Read/Edit state built up inside the fork never
+    // leaks into the main session's dedup and staleness tracking.
+    const forkReadFileState = new Map<
+      string,
+      { mtime: number; hash: string; offset?: number; limit?: number }
+    >();
+
+    let totalUsage: ForkLoopResult["usage"];
     let content: string | undefined;
 
-    for (let turn = 0; turn < MAX_FORK_TURNS; turn++) {
+    for (let turn = 0; turn < options.maxTurns; turn++) {
       const result = await aiService.callAgent({
         gatewayConfig,
         modelConfig,
@@ -810,7 +826,7 @@ export class AIManager {
         toolChoice: this.toolChoiceOverride,
         // Stream so a slow reasoning model emits first bytes before the
         // gateway's idle timeout fires (non-streaming waits for the full
-        // summary, which exceeds the timeout on large contexts).
+        // response, which exceeds the timeout on large contexts).
         stream: true,
       });
 
@@ -832,29 +848,181 @@ export class AIManager {
       }
 
       if (result.tool_calls && result.tool_calls.length > 0) {
-        // Deny all tool calls locally and feed the rejections back so the
-        // model gets another turn to produce the summary text.
+        const functionCalls = result.tool_calls.filter(
+          (tc) => tc.type === "function",
+        );
+        if (functionCalls.length === 0) break;
+
         forkMessages.push({
           role: "assistant",
           content: result.content ?? null,
-          tool_calls: result.tool_calls,
+          tool_calls: functionCalls,
         });
-        for (const toolCall of result.tool_calls) {
+
+        for (const toolCall of functionCalls) {
+          const name = toolCall.function?.name || "";
+          const args = this.parseForkToolArgs(toolCall.function?.arguments);
+          let toolContent: string;
+          if (options.canUseTool && options.canUseTool(name, args)) {
+            toolContent = await this.executeForkTool(
+              name,
+              args,
+              workdir,
+              sessionId,
+              abortSignal,
+              forkReadFileState,
+            );
+          } else {
+            toolContent =
+              options.deniedToolMessage ??
+              "Tool use is not allowed in this context";
+          }
           forkMessages.push({
             role: "tool",
             tool_call_id: toolCall.id,
-            content: "Tool use is not allowed during compaction",
+            content: toolContent,
           });
         }
         continue;
       }
 
       // Neither text nor tool calls: retrying the identical request is
-      // pointless, bail out and let the caller fail the compaction.
+      // pointless, bail out and let the caller fail.
       break;
     }
 
     return { content, usage: totalUsage };
+  }
+
+  /**
+   * Fork-path compaction: deny all tool calls locally (the model is told to
+   * summarize, not act) and feed the rejections back for another turn.
+   */
+  private async runCompactFork(
+    historyMessages: ChatCompletionMessageParam[],
+    compactPrompt: string,
+    abortSignal?: AbortSignal,
+  ): Promise<ForkLoopResult> {
+    return this.runForkLoop(
+      historyMessages,
+      compactPrompt,
+      {
+        maxTurns: MAX_FORK_TURNS,
+        deniedToolMessage: "Tool use is not allowed during compaction",
+      },
+      abortSignal,
+    );
+  }
+
+  /**
+   * Auto-memory extraction via the perfect fork: the extraction prompt is run
+   * against the same request prefix as the main conversation (same system
+   * prompt, tools, model, and message history) so the prompt cache is reused.
+   * Gate-approved tools execute locally in a stripped context; everything else
+   * is denied. Usage is reported with operation_type "agent" so extraction
+   * token costs stay visible in session accounting.
+   */
+  public async runAutoMemoryFork(
+    messages: Message[],
+    prompt: string,
+    options: {
+      canUseTool: (name: string, args: Record<string, unknown>) => boolean;
+      deniedToolMessage?: string;
+      maxTurns?: number;
+    },
+    abortSignal?: AbortSignal,
+  ): Promise<ForkLoopResult> {
+    const modelConfig = this.getModelConfig();
+    const historyMessages = convertMessagesForAPI(messages, {
+      supportsVision: supportsVision(modelConfig.capabilities),
+    });
+    // Give the fork a real signal even when the caller has none, so tools
+    // (e.g. Bash's foreground path) always receive a well-formed context.
+    const signal = abortSignal ?? new AbortController().signal;
+    const result = await this.runForkLoop(
+      historyMessages,
+      prompt,
+      {
+        maxTurns: options.maxTurns ?? MAX_AUTO_MEMORY_FORK_TURNS,
+        canUseTool: options.canUseTool,
+        deniedToolMessage: options.deniedToolMessage,
+      },
+      signal,
+    );
+
+    if (result.usage && this.callbacks?.onUsageAdded) {
+      this.callbacks.onUsageAdded({
+        ...result.usage,
+        model: modelConfig.model,
+        operation_type: "agent",
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Parse a fork tool call's JSON arguments, recovering truncated JSON the
+   * same way the main loop does. Unparseable arguments fall back to `{}` and
+   * are rejected by the gate or the tool's own parameter validation.
+   */
+  private parseForkToolArgs(
+    argsString: string | undefined,
+  ): Record<string, unknown> {
+    if (!argsString?.trim()) return {};
+    try {
+      return JSON.parse(argsString) as Record<string, unknown>;
+    } catch {
+      try {
+        return JSON.parse(recoverTruncatedJson(argsString)) as Record<
+          string,
+          unknown
+        >;
+      } catch {
+        return {};
+      }
+    }
+  }
+
+  /**
+   * Execute a single tool call inside a fork with a stripped context: no
+   * permission manager (never prompts the user), no message manager (no
+   * conditional-rule triggering), no messageId (no file-history snapshots),
+   * and no background task manager (commands run in the foreground). Only
+   * gate-approved tool names reach this path.
+   */
+  private async executeForkTool(
+    name: string,
+    args: Record<string, unknown>,
+    workdir: string,
+    sessionId: string | undefined,
+    abortSignal: AbortSignal | undefined,
+    readFileState: ToolContext["readFileState"],
+  ): Promise<string> {
+    const plugin = this.toolManager.getTools().find((t) => t.name === name);
+    if (!plugin) {
+      return `Tool '${name}' not found`;
+    }
+    const context: ToolContext = {
+      abortSignal,
+      workdir,
+      originalWorkdir: this.originalWorkdir,
+      sessionId,
+      taskManager: this.taskManager,
+      readFileState,
+      onShortResultUpdate: () => {},
+      onResultUpdate: () => {},
+      onCwdChange: () => {},
+    };
+    try {
+      const result = await plugin.execute(args, context);
+      if (result.content) return result.content;
+      if (result.error) return `Error: ${result.error}`;
+      return "";
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger?.error(`Fork tool execution failed for ${name}:`, error);
+      return `Tool execution failed: ${message}`;
+    }
   }
 
   /**
