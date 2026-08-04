@@ -344,6 +344,20 @@ export class MessageManager {
         return;
       }
 
+      // CC-aligned lazy materialization: when the session file has not been
+      // materialized yet (no saved messages) and every unsaved message is a
+      // meta message (isMeta: true, e.g. SessionStart hook context), skip
+      // persistence. Persisting meta-only sessions would create "0 tokens /
+      // No content" ghost entries in the resume list. The meta messages stay
+      // in memory and are flushed together with the first real user/assistant
+      // message (matches CC's pendingEntries buffering).
+      if (
+        this.savedMessageCount === 0 &&
+        unsavedMessages.every((m) => m.isMeta)
+      ) {
+        return;
+      }
+
       // Create session if needed (only when we have messages to save)
       if (this.savedMessageCount === 0) {
         // This is the first time saving messages, so create the session
