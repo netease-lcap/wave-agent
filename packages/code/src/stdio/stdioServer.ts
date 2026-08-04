@@ -31,10 +31,20 @@ export class StdioServer {
   private input: Readable;
   private output: Writable;
   private started = false;
+  // Lines waiting to be written while the output pipe is full (backpressure).
+  private pendingLines: string[] = [];
+  private awaitingDrain = false;
+  // A stdout write failure (e.g. ENOBUFS when the reader is briefly slow,
+  // which macOS reports instead of EAGAIN) must not crash the shared stdio
+  // process — log it and keep going.
+  private handleOutputError = (err: Error): void => {
+    process.stderr.write(`[stdio] stdout write error: ${err.message}\n`);
+  };
 
   constructor(options: StdioServerOptions = {}) {
     this.input = options.input ?? process.stdin;
     this.output = options.output ?? process.stdout;
+    this.output.on("error", this.handleOutputError);
     this.bridge = new AgentBridge({
       ...options.bridgeOptions,
       emit: (method, params, sessionId) =>
@@ -74,6 +84,7 @@ export class StdioServer {
     this.rl?.close();
     this.rl = undefined;
     this.started = false;
+    this.output.off("error", this.handleOutputError);
   }
 
   async handleLine(line: string): Promise<void> {
@@ -164,6 +175,31 @@ export class StdioServer {
   }
 
   private write(obj: JsonRpcResponse | JsonRpcNotification): void {
-    this.output.write(JSON.stringify(obj) + "\n");
+    this.pendingLines.push(JSON.stringify(obj) + "\n");
+    this.flush();
+  }
+
+  /**
+   * Write queued lines until the output reports backpressure (write returns
+   * false), then pause and resume on 'drain'. Without this, a reader that is
+   * briefly slow (e.g. the desktop host restoring a session) lets the OS pipe
+   * fill up; on macOS the kernel reports that as ENOBUFS and the unhandled
+   * 'error' event would kill the whole shared stdio process.
+   */
+  private flush(): void {
+    if (this.awaitingDrain) return;
+    while (this.pendingLines.length > 0) {
+      const line = this.pendingLines[0];
+      this.pendingLines.shift();
+      if (!this.output.write(line)) {
+        // The line is buffered but the pipe is full — stop until drain.
+        this.awaitingDrain = true;
+        this.output.once("drain", () => {
+          this.awaitingDrain = false;
+          this.flush();
+        });
+        break;
+      }
+    }
   }
 }
