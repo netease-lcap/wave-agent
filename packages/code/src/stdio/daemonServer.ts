@@ -42,6 +42,10 @@ export class DaemonServer {
     this.server = net.createServer((socket) => {
       const conn = new JsonRpcConnection(socket, socket, this.bridge);
       this.connections.add(conn);
+      socket.on("error", () => {
+        // The client (ssh tunnel) can reset the socket mid-detach; the daemon
+        // must keep running — 'close' below cleans up the connection.
+      });
       socket.on("close", () => {
         this.connections.delete(conn);
       });
