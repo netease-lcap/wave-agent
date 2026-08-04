@@ -45,4 +45,8 @@ const specHref = (p) => withBase(`/specs/${p.replace(/\.md$/, '.html')}`)
 | 历史 | user / assistant / tool | 文本块 / 图片块 / 工具块 / 后台任务通知块 / 推理块 | 最后一条有 | 持久化到 session JSONL | 是 | |
 | | user (isMeta) | 计划模式提醒 / 条件规则 / 任务提醒 / SessionStart Hook 上下文 / 后台任务通知 / Token 限制续写 | 同上 | 同上 | 否 | 触发时插入当时的结尾，各类型有独立触发条件 |
 
-**专用调用**（独立系统提示词，不经过主系统提示词组装）：压缩、网页内容提取、BTW 旁路问题、Workflow 结构化输出。
+**专用调用**：
+
+- **Fork 复用主对话上下文**（复用主系统提示词、工具、模型与生成参数，指令作为末尾 user 消息追加，命中 prompt cache；无独立系统提示词）：上下文压缩（`runCompactFork` → `runForkLoop`）、自动记忆提取（`runAutoMemoryFork` → `runForkLoop`）、BTW 旁路问题（`runBtwFork`，同构的内联单轮调用）。
+- **独立调用**（自带独立系统提示词，不经过主系统提示词组装）：网页内容提取（`processWebContent`，内置 `WEB_CONTENT_SYSTEM_PROMPT`，独立请求，不走会话历史）。
+- **常规子代理机制**：Workflow 结构化输出——spawn 常规子代理（general-purpose），schema 指令追加到 prompt 末尾并强制 StructuredOutput `tool_choice`，非独立调用路径。

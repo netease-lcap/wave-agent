@@ -36,8 +36,8 @@ export interface ModelConfig {
   /**
    * Fast-model-only disable-thinking params passed through verbatim
    * (e.g. `{ thinking: { type: "disabled" } }`). Applied only in fast-model
-   * scenarios (webFetch, fast subagents, autoMemory), never in the agent loop.
-   * `{}` clears the default.
+   * scenarios (webFetch content processing, `model: fastModel` subagents),
+   * never in the agent loop. `{}` clears the default.
    */
   disableThinkingOptions?: Record<string, unknown>;
 }
