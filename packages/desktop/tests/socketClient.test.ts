@@ -20,6 +20,9 @@ function startServer(
   const sockets: Socket[] = [];
   const server: Server = createServer((socket) => {
     sockets.push(socket);
+    socket.on('error', () => {
+      // The client RSTs on dispose when a reply is still in flight — expected.
+    });
     const rl = createInterface({ input: socket });
     rl.on('line', (line: string) => {
       if (!line.trim()) return;
