@@ -53,6 +53,14 @@ class StdioAgent(
         private set
     @Volatile var workingDirectory: String? = null
         private set
+    /**
+     * Initialize-time cwd — the session's stable root. Unlike
+     * [workingDirectory] it is never overwritten by the workdirChange
+     * notification (bash cd), so @file search and the /status workdir stay
+     * anchored to the project root.
+     */
+    @Volatile var sessionCwd: String? = null
+        private set
     @Volatile var latestTotalTokens: Int = 0
         private set
     @Volatile var permissionMode: String? = null
@@ -153,6 +161,7 @@ class StdioAgent(
             ?: throw StdioClientException("initialize returned null")
         sessionId = res["sessionId"]?.jsonPrimitive?.content
         workingDirectory = res["workingDirectory"]?.jsonPrimitive?.content
+        sessionCwd = res["workingDirectory"]?.jsonPrimitive?.content
         permissionMode = res["permissionMode"]?.jsonPrimitive?.content
         res["latestTotalTokens"]?.jsonPrimitive?.intOrNull?.let { latestTotalTokens = it }
         sessionId?.let { router.register(it, this) }

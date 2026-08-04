@@ -641,7 +641,7 @@ class MessageHandler(
     }
 
     private fun currentWorkdir(): String =
-        session.agent?.workingDirectory ?: project.basePath ?: System.getProperty("user.dir")
+        session.agent?.sessionCwd ?: session.agent?.workingDirectory ?: project.basePath ?: System.getProperty("user.dir")
 
     private fun pluginVersion(): String =
         PluginManagerCore.getPlugin(PluginId.getId("com.wave.jetbrains"))?.version ?: ""

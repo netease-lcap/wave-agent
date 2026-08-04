@@ -2292,7 +2292,10 @@ export class DesktopHost {
           command: 'statusResponse',
           version: app.getVersion(),
           sessionId: paneAgent?.sessionId ?? '',
-          workdir: paneAgent?.workingDirectory ?? this.workdir ?? '',
+          // Report the session root (initialize-time cwd), not the subdir the
+          // agent bash-cd'd into — the workdir shown must match what @file
+          // searches, not the agent's transient cwd.
+          workdir: paneAgent?.sessionCwd ?? paneAgent?.workingDirectory ?? this.workdir ?? '',
           configurationData: this.configStore.getConfiguration(),
         });
         break;
@@ -3261,10 +3264,13 @@ export class DesktopHost {
 
   private async findWorkspaceFiles(filterText: string): Promise<Record<string, string | boolean>[]> {
     const host = this.currentHost;
-    // Before any agent activation (fresh launch) this.workdir is unset while
-    // the webview already treats recents[0] as the effective workdir — mirror
-    // that fallback so @file suggestions work before a directory is picked.
-    const workdir = this.workdir ?? this.configStore.getRecentWorkdirsForHost(host)[0];
+    // Anchor @file search to the session's stable root (initialize-time cwd):
+    // bash cd drifts this.workdir via pane focus, but file suggestions belong
+    // to the project the session started in. Before any agent activation
+    // (fresh launch) this.workdir is unset while the webview already treats
+    // recents[0] as the effective workdir — mirror that fallback so @file
+    // suggestions work before a directory is picked.
+    const workdir = this.activeAgent?.sessionCwd ?? this.workdir ?? this.configStore.getRecentWorkdirsForHost(host)[0];
     if (!workdir) return [];
     try {
       // Remote workdirs are POSIX paths; path.join/basename on Windows would mangle them.

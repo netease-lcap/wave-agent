@@ -911,7 +911,9 @@ export class MessageHandler {
             command: 'statusResponse',
             version,
             sessionId: session.sessionId || '',
-            workdir: session.agent?.workingDirectory || '',
+            // Session root (initialize-time cwd), not the subdir the agent
+            // bash-cd'd into — matches where @file search is anchored.
+            workdir: session.agent?.sessionCwd || session.agent?.workingDirectory || '',
             configurationData: config
         }, viewType, windowId);
     }

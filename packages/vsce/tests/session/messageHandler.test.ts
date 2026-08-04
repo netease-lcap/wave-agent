@@ -229,6 +229,23 @@ describe('MessageHandler MCP handlers', () => {
         expect(posted.version).toBe('1.2.3');
     });
 
+    // Regression: agent `cd` broadcasts workdirChange which drifts
+    // workingDirectory; the /status popup must keep showing the session root
+    // (initialize-time cwd), matching where @file search is anchored.
+    test('getStatus reports the session root workdir, not the agent cd drift', async () => {
+        const session = createReadySession();
+        const agent = session.agent as { sessionCwd?: string; workingDirectory?: string };
+        agent.sessionCwd = '/tmp';
+        agent.workingDirectory = '/tmp/src';
+        const { handler, context } = createReadyHandler(session);
+
+        await handler.handleMessage({ command: 'getStatus' }, 'tab');
+
+        const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as { command: string; workdir: string };
+        expect(posted.command).toBe('statusResponse');
+        expect(posted.workdir).toBe('/tmp');
+    });
+
     // /compact command: mirrors /clear — the webview posts { command: 'compact', customInstructions }
     // and the handler delegates to session.compact(customInstructions).
     test('compact command calls session.compact with customInstructions', async () => {
