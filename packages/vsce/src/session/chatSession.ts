@@ -464,6 +464,13 @@ export class ChatSession {
         await this.getMessages();
     }
 
+    public async askBtw(question: string): Promise<string> {
+        if (!this.agent) {
+            throw new Error('智能体未初始化');
+        }
+        return await this.agent.askBtw(question);
+    }
+
     public async destroy() {
         if (this.streamingContentUpdateTimer) {
             clearTimeout(this.streamingContentUpdateTimer);

@@ -904,6 +904,25 @@ test("getSlashCommands returns command list", async () => {
   expect(r).toEqual({ commands });
 });
 
+test("askBtw returns the side-question answer", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent({
+    askBtw: vi.fn().mockResolvedValue("side answer"),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "askBtw",
+    { question: "what is 2+2?" },
+    sessionId,
+  );
+
+  expect(mockAgent.askBtw).toHaveBeenCalledWith("what is 2+2?");
+  expect(r).toBe("side answer");
+});
+
 test("rewindToMessage truncates history and returns input content", async () => {
   const { bridge } = createBridge();
   const messages = [

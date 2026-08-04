@@ -175,6 +175,8 @@ export class AgentBridge {
         );
       case "bang":
         return this.bang(p.command as string, sessionId);
+      case "askBtw":
+        return this.askBtw(p.question as string, sessionId);
       case "abortMessage":
         return this.abortMessage(sessionId);
       case "clearMessages":
@@ -701,6 +703,11 @@ export class AgentBridge {
     const entry = this.requireSession(sessionId);
     await entry.agent.bang(command);
     return null;
+  }
+
+  private async askBtw(question: string, sessionId?: string): Promise<string> {
+    const entry = this.requireSession(sessionId);
+    return entry.agent.askBtw(question);
   }
 
   private async abortMessage(sessionId?: string): Promise<null> {

@@ -347,6 +347,8 @@ export interface MessageInputProps {
   workdirSelector?: React.ReactNode;
   /** Optional /rewind popup rendered above the input box, anchored to .input-wrapper. */
   rewindPopup?: React.ReactNode;
+  /** Optional /btw side-question panel rendered above the input box, anchored to .input-wrapper. */
+  btwPopup?: React.ReactNode;
   /** Disable the whole input area (e.g. desktop host without a workdir). */
   disabled?: boolean;
 }

@@ -1,0 +1,115 @@
+.btw-panel {
+  position: absolute;
+  bottom: 100%; /* Anchor to the top of .input-wrapper (= top of the input box) */
+  margin-bottom: 8px; /* Gap above the input */
+  z-index: 1000;
+  background-color: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 600px;
+  min-width: 200px;
+  box-sizing: border-box;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  left: 0; /* Align with the input container */
+}
+
+.btw-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-dropdown-border);
+  background-color: var(--vscode-editor-background);
+  font-size: 13px;
+}
+
+.btw-panel-prefix {
+  color: var(--vscode-gitDecoration-modifiedResourceForeground);
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.btw-panel-question {
+  color: var(--vscode-descriptionForeground);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btw-panel-close {
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  display: flex;
+  align-items: center;
+  border-radius: 3px;
+}
+
+.btw-panel-close:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+}
+
+.btw-panel-loading {
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 13px;
+}
+
+.btw-loading-indicator {
+  color: var(--vscode-gitDecoration-modifiedResourceForeground);
+}
+
+.btw-loading-text {
+  font-weight: bold;
+  color: var(--vscode-gitDecoration-modifiedResourceForeground);
+}
+
+.btw-panel-answer {
+  padding: 8px 12px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.btw-panel-answer p {
+  margin: 0 0 8px 0;
+}
+
+.btw-panel-answer p:last-child {
+  margin-bottom: 0;
+}
+
+.btw-panel-answer pre {
+  background-color: var(--vscode-textCodeBlock-background);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 4px;
+  padding: 8px;
+  overflow-x: auto;
+}
+
+.btw-panel-answer code {
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.btw-panel-answer a {
+  color: var(--vscode-textLink-foreground);
+}
+
+.btw-panel-answer ul,
+.btw-panel-answer ol {
+  padding-left: 20px;
+  margin: 0 0 8px 0;
+}

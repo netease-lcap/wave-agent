@@ -206,6 +206,7 @@ vi.mock('../src/main/stdio/stdioAgent', () => ({
     });
     compact = vi.fn(async () => undefined);
     rewindToMessage = vi.fn(async () => ({ inputContent: 'rewound draft' }));
+    askBtw = vi.fn(async () => '**Sunny** weather');
     getFullMessageThread = vi.fn(async function (this: { messages?: unknown[] }) {
       return { messages: this.messages ?? [], sessionIds: [] };
     });
@@ -1029,6 +1030,29 @@ describe('misc commands', () => {
     await host.handleWebviewMessage({ command: 'listRewindCheckpoints' });
     expect(lastAgent().listRewindCheckpoints).toHaveBeenCalled();
     expect(sent('rewindCheckpoints')[0]).toMatchObject({ checkpoints: [{ id: 'u1', content: 'hello' }] });
+  });
+
+  it('askBtw replies with the agent answer and echoed question', async () => {
+    const { host, sent } = await readyHost();
+    await host.handleWebviewMessage({ command: 'askBtw', question: 'weather?' });
+    expect(lastAgent().askBtw).toHaveBeenCalledWith('weather?');
+    expect(sent('btwResponse')[0]).toMatchObject({ question: 'weather?', answer: '**Sunny** weather' });
+  });
+
+  it('askBtw posts btwError when the agent is missing', async () => {
+    // A host that never spawned an agent (no workdir picked) has no pane agent.
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({ command: 'askBtw', question: 'weather?' });
+    expect(sent('btwError')[0]).toMatchObject({ question: 'weather?', error: expect.any(String) });
+  });
+
+  it('requestSlashCommands includes btw in the merged list', async () => {
+    const { host, sent } = await readyHost();
+    await host.handleWebviewMessage({ command: 'requestSlashCommands', filterText: '' });
+
+    const resp = sent('slashCommandsResponse')[0];
+    const names = (resp.commands as Array<{ name: string }>).map((c) => c.name);
+    expect(names).toContain('btw');
   });
 
   it('dispose destroys the agent and the client', async () => {

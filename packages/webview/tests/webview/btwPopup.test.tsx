@@ -1,0 +1,183 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand, fireInput } from './test-utils';
+
+/** Set contenteditable text with selection inside a text node and fire input. */
+async function typeInInput(text: string) {
+    const input = screen.getByTestId('message-input');
+    const existing = input.textContent || '';
+    const fullText = existing + text;
+    input.textContent = fullText;
+
+    const range = document.createRange();
+    if (input.firstChild && input.firstChild.nodeType === Node.TEXT_NODE) {
+        const textNode = input.firstChild;
+        range.setStart(textNode, textNode.textContent!.length);
+        range.collapse(true);
+    } else {
+        range.selectNodeContents(input);
+        range.collapse(false);
+    }
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    await fireInput(input, { data: text, inputType: 'insertText' });
+}
+
+/** Type text and click send, returning the mock vscode. */
+async function sendText(text: string) {
+    const { vscode } = renderChatApp();
+    await typeInInput(text);
+    act(() => {
+        fireEvent.click(screen.getByTestId('send-btn'));
+    });
+    return vscode;
+}
+
+describe('/btw Popup', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('sends an askBtw RPC instead of a message and shows the loading panel', async () => {
+        const vscode = await sendText('/btw what is the weather?');
+
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'askBtw', question: 'what is the weather?' })
+        );
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'sendMessage' })
+        );
+
+        expect(screen.getByTestId('btw-panel')).toBeInTheDocument();
+        expect(screen.getByTestId('btw-panel-question').textContent).toBe('what is the weather?');
+        expect(screen.getByTestId('btw-panel-loading')).toBeInTheDocument();
+        expect(screen.getByText('Answering...')).toBeInTheDocument();
+    });
+
+    it('renders the answer as markdown when btwResponse arrives', async () => {
+        await sendText('/btw what is the weather?');
+
+        act(() => {
+            sendCommand('btwResponse', { question: 'what is the weather?', answer: '**Sunny** and 25°C' });
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('btw-panel-answer')).toBeInTheDocument();
+        });
+        expect(screen.queryByTestId('btw-panel-loading')).not.toBeInTheDocument();
+        // dangerouslySetInnerHTML receives the rendered markdown (DOMPurify is mocked to pass through)
+        expect(screen.getByTestId('btw-panel-answer').innerHTML).toContain('<strong>Sunny</strong>');
+    });
+
+    it('bare /btw shows the usage hint without sending anything', async () => {
+        const vscode = await sendText('/btw');
+
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'askBtw' })
+        );
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'sendMessage' })
+        );
+
+        expect(screen.getByTestId('btw-panel')).toBeInTheDocument();
+        await waitFor(() => {
+            expect(screen.getByText('Usage: /btw <your question>')).toBeInTheDocument();
+        });
+    });
+
+    it('close button hides the panel and a late reply is dropped', async () => {
+        const vscode = await sendText('/btw what is the weather?');
+
+        act(() => {
+            fireEvent.click(screen.getByTestId('btw-panel-close'));
+        });
+        expect(screen.queryByTestId('btw-panel')).not.toBeInTheDocument();
+
+        // Reply arriving after close must not resurrect the panel
+        act(() => {
+            sendCommand('btwResponse', { question: 'what is the weather?', answer: 'Sunny' });
+        });
+        expect(screen.queryByTestId('btw-panel')).not.toBeInTheDocument();
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'sendMessage' })
+        );
+    });
+
+    it('Escape closes the panel', async () => {
+        await sendText('/btw what is the weather?');
+        expect(screen.getByTestId('btw-panel')).toBeInTheDocument();
+
+        act(() => {
+            fireEvent.keyDown(document, { key: 'Escape' });
+        });
+        expect(screen.queryByTestId('btw-panel')).not.toBeInTheDocument();
+    });
+
+    it('shows an API error string when btwError arrives', async () => {
+        await sendText('/btw what is the weather?');
+
+        act(() => {
+            sendCommand('btwError', { question: 'what is the weather?', error: 'rate limited' });
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('(API error: rate limited)')).toBeInTheDocument();
+        });
+        expect(screen.queryByTestId('btw-panel-loading')).not.toBeInTheDocument();
+    });
+
+    it('ignores a stale reply whose question does not match the active one', async () => {
+        await sendText('/btw first question');
+        expect(screen.getByTestId('btw-panel-loading')).toBeInTheDocument();
+
+        act(() => {
+            sendCommand('btwResponse', { question: 'some other question', answer: 'stale answer' });
+        });
+
+        // Still loading — the stale reply was dropped
+        expect(screen.getByTestId('btw-panel-loading')).toBeInTheDocument();
+        expect(screen.queryByTestId('btw-panel-answer')).not.toBeInTheDocument();
+    });
+
+    it('selecting /btw in the slash popup inserts the prefix without sending', async () => {
+        const { vscode } = renderChatApp();
+        const input = screen.getByTestId('message-input');
+        input.focus();
+
+        await typeInInput('/');
+        await waitFor(() => {
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'requestSlashCommands' })
+            );
+        }, { timeout: 3000 });
+
+        sendCommand('slashCommandsResponse', {
+            commands: [
+                { id: 'btw', name: 'btw', description: 'Ask a side question' },
+                { id: 'config', name: 'config', description: 'Configuration' }
+            ]
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('slash-commands-popup')).toBeInTheDocument();
+        });
+
+        await act(async () => {
+            fireEvent.keyDown(input, { key: 'Enter' });
+        });
+
+        // btw groups under 系统指令 with config; order = [config, btw]? No —
+        // popup order follows groupSlashCommands: plugin, system (in listed
+        // order), skills. Just assert the prefix text was inserted.
+        await waitFor(() => {
+            expect(input.textContent).toBe('/btw ');
+        });
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'askBtw' })
+        );
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'sendMessage' })
+        );
+    });
+});

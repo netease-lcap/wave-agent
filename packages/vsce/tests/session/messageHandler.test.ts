@@ -32,6 +32,7 @@ function createMockSession(): ChatSession {
         compact: vi.fn(),
         getSlashCommands: vi.fn().mockResolvedValue([]),
         getMessages: vi.fn().mockResolvedValue([]),
+        askBtw: vi.fn(),
     } as unknown as ChatSession;
 }
 
@@ -264,6 +265,61 @@ describe('MessageHandler MCP handlers', () => {
         const compact = posted.commands.find(c => c.id === 'compact');
         expect(compact).toBeDefined();
         expect(compact?.name).toBe('compact');
+    });
+
+    // /btw command: webview posts { command: 'askBtw', question } and the handler
+    // delegates to session.askBtw, echoing the question back so the webview can
+    // match the reply against its in-flight panel (dropping stale replies).
+    test('askBtw posts btwResponse with answer and echoed question', async () => {
+        const session = createMockSession();
+        (session.askBtw as ReturnType<typeof vi.fn>).mockResolvedValue('**Sunny** weather');
+
+        const { handler, context } = createHandler(session);
+        await handler.handleMessage({ command: 'askBtw', question: 'weather?' }, 'tab');
+
+        expect(session.askBtw).toHaveBeenCalledWith('weather?');
+        const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+            command: string;
+            question: string;
+            answer: string;
+        };
+        expect(posted.command).toBe('btwResponse');
+        expect(posted.question).toBe('weather?');
+        expect(posted.answer).toBe('**Sunny** weather');
+    });
+
+    test('askBtw posts btwError when session.askBtw rejects', async () => {
+        const session = createMockSession();
+        (session.askBtw as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('agent not initialized'));
+
+        const { handler, context } = createHandler(session);
+        await handler.handleMessage({ command: 'askBtw', question: 'weather?' }, 'tab');
+
+        const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+            command: string;
+            question: string;
+            error: string;
+        };
+        expect(posted.command).toBe('btwError');
+        expect(posted.question).toBe('weather?');
+        expect(posted.error).toContain('agent not initialized');
+    });
+
+    test('slashCommandsRequest includes btw in localCommands', async () => {
+        const session = createMockSession();
+
+        const { handler, context } = createHandler(session);
+        await handler.handleMessage({ command: 'requestSlashCommands', filterText: '' }, 'tab');
+
+        const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+            command: string;
+            commands: Array<{ id: string; name: string; description: string }>;
+        };
+        expect(posted.command).toBe('slashCommandsResponse');
+        const btw = posted.commands.find(c => c.id === 'btw');
+        expect(btw).toBeDefined();
+        expect(btw?.name).toBe('btw');
+        expect(btw?.description).toContain('旁路');
     });
 
     // Toggling a project-level builtin plugin (e.g. sdd@builtin) must recreate

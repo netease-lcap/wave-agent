@@ -243,6 +243,14 @@ export class StdioAgent {
         )) as { inputContent: string };
     }
 
+    async askBtw(question: string): Promise<string> {
+        return (await this.client.request(
+            'askBtw',
+            { question },
+            this.sessionId,
+        )) as string;
+    }
+
     async removeQueuedMessage(index: number): Promise<void> {
         await this.client.request(
             'deleteQueuedMessage',
