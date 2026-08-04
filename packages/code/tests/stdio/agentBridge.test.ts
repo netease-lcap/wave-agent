@@ -1511,6 +1511,26 @@ test("initialize with an unknown restoreSessionId creates a new agent", async ()
   });
 });
 
+test("restoreSession to a live streaming session emits the current loading state so re-attached clients restore the running indicator", async () => {
+  const { bridge, notifications } = createBridge();
+  // The live agent is mid-generation on the daemon; a freshly attached client
+  // missed the loadingChange(true) that fired before its router registered.
+  const mockAgent = createMockAgent({ isLoading: true });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+
+  await bridge.handleRequest("restoreSession", { sessionId }, sessionId);
+
+  expect(mockAgent.restoreSession).not.toHaveBeenCalled();
+  expect(notifications).toContainEqual({
+    method: "loadingChange",
+    params: { loading: true, latestTotalTokens: 100 },
+    sessionId,
+  });
+});
+
 test("restoreSession to the live session emits a messagesChange snapshot without replaying", async () => {
   const { bridge, notifications } = createBridge();
   const mockAgent = createMockAgent({
