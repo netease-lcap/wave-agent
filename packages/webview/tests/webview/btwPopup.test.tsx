@@ -57,34 +57,28 @@ describe('/btw Popup', () => {
         expect(screen.getByTestId('btw-panel-loading').textContent).toContain('▋');
     });
 
-    it('streams thinking chunks live, then discards them once content starts', async () => {
+    it('does not show streaming chunks while loading and renders the finished answer as markdown', async () => {
         await sendText('/btw what is the weather?');
         expect(screen.getByTestId('btw-panel-loading')).toBeInTheDocument();
+        expect(screen.queryByTestId('btw-panel-streaming')).not.toBeInTheDocument();
 
-        // Thinking chunks stream live while the model reasons…
+        // Streaming chunks (thinking or content) are never displayed while loading
         act(() => {
             sendCommand('btwStream', { question: 'what is the weather?', content: 'Let me think', type: 'thinking' });
         });
         act(() => {
             sendCommand('btwStream', { question: 'what is the weather?', content: ' about it.', type: 'thinking' });
         });
-        expect(screen.getByTestId('btw-panel-streaming').textContent).toBe('Let me think about it.');
-
-        // …but the first content chunk discards the accumulated thinking text
         act(() => {
             sendCommand('btwStream', { question: 'what is the weather?', content: 'Sunny', type: 'content' });
         });
         act(() => {
             sendCommand('btwStream', { question: 'what is the weather?', content: ' and 25°C', type: 'content' });
         });
-        expect(screen.getByTestId('btw-panel-streaming').textContent).toBe('Sunny and 25°C');
-        expect(screen.getByTestId('btw-panel-streaming').textContent).not.toContain('Let me think');
-
-        // A late thinking chunk after content started is ignored too
-        act(() => {
-            sendCommand('btwStream', { question: 'what is the weather?', content: 'stale reasoning', type: 'thinking' });
-        });
-        expect(screen.getByTestId('btw-panel-streaming').textContent).toBe('Sunny and 25°C');
+        expect(screen.queryByTestId('btw-panel-streaming')).not.toBeInTheDocument();
+        expect(screen.getByTestId('btw-panel').textContent).not.toContain('Let me think');
+        expect(screen.getByTestId('btw-panel').textContent).not.toContain('Sunny');
+        expect(screen.getByTestId('btw-panel-loading')).toBeInTheDocument();
 
         // The finished answer still lands via btwResponse and renders as markdown
         act(() => {

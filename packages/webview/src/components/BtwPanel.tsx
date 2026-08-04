@@ -63,18 +63,13 @@ export const BtwPanel: React.FC<BtwPanelProps> = ({ question, answer, isLoading,
           <span className="btw-loading-text">正在回答…</span>
         </div>
       )}
-      {answer &&
-        (isLoading ? (
-          // Streaming chunks render as plain text (no markdown flicker while
-          // the answer is incomplete); the finished answer is rendered below.
-          <div className="btw-panel-streaming" data-testid="btw-panel-streaming">{answer}</div>
-        ) : (
-          <div
-            className="btw-panel-answer"
-            data-testid="btw-panel-answer"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(answer) }}
-          />
-        ))}
+      {answer && !isLoading && (
+        <div
+          className="btw-panel-answer"
+          data-testid="btw-panel-answer"
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(answer) }}
+        />
+      )}
     </div>
   );
 };

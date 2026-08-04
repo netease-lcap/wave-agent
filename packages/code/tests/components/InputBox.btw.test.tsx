@@ -61,14 +61,14 @@ vi.mock("../../src/contexts/useChat.js", () => ({
   }),
 }));
 
-describe("InputBox /btw streaming", () => {
+describe("InputBox /btw", () => {
   beforeEach(() => {
     mockAskBtw.mockReset();
   });
 
-  it("should stream partial answers with the loading text below the chunk", async () => {
+  it("should show only the loading text until the answer completes", async () => {
     // Keep the onAskBtw promise pending so the test can observe the
-    // intermediate streaming state before releasing the final answer.
+    // intermediate loading state before releasing the final answer.
     let capturedOnContent: ((content: string) => void) | undefined;
     let resolveBtw: (answer: string) => void = () => {};
     mockAskBtw.mockImplementation(
@@ -104,23 +104,19 @@ describe("InputBox /btw streaming", () => {
       ),
     );
 
-    // Before the first content chunk arrives the loading text shows below the
-    // question line.
+    // While loading, only the question line and the loading text show.
     await vi.waitFor(() => {
       const output = stripAnsiColors(lastFrame() || "");
       expect(output).toContain("/btw what is life?");
       expect(output).toContain("✻ Answering...");
     });
 
-    // A partial chunk streams in above the loading text.
+    // Streaming chunks arrive but are never displayed — only the loading text.
     capturedOnContent?.("42 is the");
     await vi.waitFor(() => {
       const output = stripAnsiColors(lastFrame() || "");
-      expect(output).toContain("42 is the");
       expect(output).toContain("✻ Answering...");
-      expect(output.indexOf("42 is the")).toBeLessThan(
-        output.indexOf("✻ Answering..."),
-      );
+      expect(output).not.toContain("42 is the");
     });
 
     // Completion: Markdown render, loading text gone, dismiss hint appears.
