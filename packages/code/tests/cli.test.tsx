@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { startCli } from "../src/cli.js";
 import { render } from "ink";
 import { removeWorktree } from "../src/utils/worktree.js";
+import { cleanupLogs } from "../src/utils/logger.js";
 
 vi.mock("ink", () => ({
   render: vi.fn().mockReturnValue({
@@ -65,5 +66,77 @@ describe("startCli", () => {
     chdirSpy.mockRestore();
     exitSpy.mockRestore();
     consoleErrorSpy.mockRestore();
+  });
+
+  it("enables and disables bracketed paste when stdout is a TTY", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit called");
+    });
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const stdoutWriteSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: true,
+      configurable: true,
+    });
+
+    await expect(startCli({})).rejects.toThrow("process.exit called");
+
+    expect(stdoutWriteSpy).toHaveBeenCalledWith("\x1b[?2004h");
+    expect(stdoutWriteSpy).toHaveBeenCalledWith("\x1b[?2004l");
+
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: false,
+      configurable: true,
+    });
+    stdoutWriteSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
+    exitSpy.mockRestore();
+  });
+
+  it("exits cleanly without removing a worktree by default", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit called");
+    });
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    await expect(startCli({})).rejects.toThrow("process.exit called");
+
+    expect(exitSpy).toHaveBeenCalledWith(0);
+    expect(removeWorktree).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+    exitSpy.mockRestore();
+  });
+
+  it("logs and exits with code 1 when cleanup fails", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit called");
+    });
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const consoleWarnSpy = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => {});
+
+    vi.mocked(cleanupLogs).mockRejectedValueOnce(new Error("cleanup boom"));
+
+    await expect(startCli({})).rejects.toThrow("process.exit called");
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "Error during cleanup:",
+      expect.any(Error),
+    );
+    expect(exitSpy).toHaveBeenCalledWith(1);
+
+    consoleWarnSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
+    exitSpy.mockRestore();
   });
 });
