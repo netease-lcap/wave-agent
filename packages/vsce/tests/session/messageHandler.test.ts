@@ -31,6 +31,7 @@ function createMockSession(): ChatSession {
         disconnectMcpServer: vi.fn(),
         compact: vi.fn(),
         getSlashCommands: vi.fn().mockResolvedValue([]),
+        getMessages: vi.fn().mockResolvedValue([]),
     } as unknown as ChatSession;
 }
 
@@ -66,6 +67,7 @@ function createReadySession(): ChatSession {
         inputContent: '',
         isStreaming: false,
         isCommandRunning: false,
+        getMessages: vi.fn().mockResolvedValue([]),
     } as unknown as ChatSession;
 }
 

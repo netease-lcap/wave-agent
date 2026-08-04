@@ -53,8 +53,6 @@ describe("Agent Tool Stage Tests", () => {
       vi.fn<NonNullable<AgentCallbacks["onToolBlockUpdated"]>>();
 
     const mockCallbacks = {
-      onMessagesChange:
-        vi.fn<NonNullable<AgentCallbacks["onMessagesChange"]>>(),
       onToolBlockUpdated,
     };
 

@@ -75,9 +75,6 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
           );
         });
       },
-      onMessagesChange: (messages) => {
-        console.log(`📝 Messages updated! Total: ${messages.length}`);
-      },
       onUserMessageAdded: (params) => {
         console.log(`👤 User: "${params.content}"`);
       },

@@ -12,7 +12,6 @@ vi.mock("fs/promises");
 
 describe("Agent WorktreeCreate Hook", () => {
   const mockCallbacks = {
-    onMessagesChange: vi.fn(),
     onLoadingChange: vi.fn(),
   };
 

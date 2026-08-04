@@ -46,7 +46,6 @@ vi.mock("@/services/memoryManager", () => ({
 describe("Agent - System Prompt", () => {
   let agent: Agent;
   const mockCallbacks = {
-    onMessagesChange: vi.fn(),
     onLoadingChange: vi.fn(),
   };
 

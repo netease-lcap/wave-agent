@@ -72,7 +72,6 @@ export interface UpdateConfigParams {
 // ── Callbacks (mirror AgentCallbacks) ────────────────────────────
 
 export interface StdioAgentCallbacks {
-    onMessagesChange?: (messages: Message[]) => void;
     onUserMessageAdded?: (message: Message) => void;
     onAssistantMessageAdded?: (message: Message) => void;
     onAssistantContentUpdated?: (params: {
@@ -98,9 +97,9 @@ export interface StdioAgentCallbacks {
     onPermissionModeChange?: (mode: PermissionMode) => void;
     onMcpServersChange?: (servers: McpServerStatus[]) => void;
     onWorkdirChange?: (workdir: string) => void;
-    onBangMessageAdded?: () => void;
-    onBangMessageUpdated?: () => void;
-    onBangMessageCompleted?: () => void;
+    onBangMessageAdded?: (params: { command: string; messageId: string }) => void;
+    onBangMessageUpdated?: (params: { command: string; output: string; messageId: string }) => void;
+    onBangMessageCompleted?: (params: { command: string; exitCode: number; messageId: string }) => void;
     onNotificationMessageAdded?: (params: {
         taskId: string;
         taskType: string;
@@ -287,6 +286,16 @@ export class StdioAgent {
         )) as { messages: Message[]; sessionIds: string[] };
     }
 
+    async getMessages(): Promise<Message[]> {
+        const result = (await this.client.request(
+            'getMessages',
+            undefined,
+            this.sessionId,
+        )) as { messages: Message[] };
+        this.messages = result.messages;
+        return result.messages;
+    }
+
     async listRewindCheckpoints(): Promise<{
         checkpoints: Array<{ id: string; content: string }>;
     }> {
@@ -410,12 +419,6 @@ export class StdioAgent {
 
     handleNotification(method: string, params: unknown): void {
         switch (method) {
-            case 'messagesChange': {
-                const p = params as { messages: Message[] };
-                this.messages = p.messages;
-                this.callbacks.onMessagesChange?.(this.messages);
-                break;
-            }
             case 'userMessageAdded': {
                 const p = params as { message: Message };
                 if (p.message) this.callbacks.onUserMessageAdded?.(p.message);
@@ -525,15 +528,21 @@ export class StdioAgent {
                 this.callbacks.onWorkdirChange?.(p.workdir);
                 break;
             }
-            case 'bangMessageAdded':
-                this.callbacks.onBangMessageAdded?.();
+            case 'bangMessageAdded': {
+                const p = params as { command: string; messageId: string };
+                this.callbacks.onBangMessageAdded?.(p);
                 break;
-            case 'bangMessageUpdated':
-                this.callbacks.onBangMessageUpdated?.();
+            }
+            case 'bangMessageUpdated': {
+                const p = params as { command: string; output: string; messageId: string };
+                this.callbacks.onBangMessageUpdated?.(p);
                 break;
-            case 'bangMessageCompleted':
-                this.callbacks.onBangMessageCompleted?.();
+            }
+            case 'bangMessageCompleted': {
+                const p = params as { command: string; exitCode: number; messageId: string };
+                this.callbacks.onBangMessageCompleted?.(p);
                 break;
+            }
             case 'notificationMessageAdded':
                 this.callbacks.onNotificationMessageAdded?.(
                     params as {

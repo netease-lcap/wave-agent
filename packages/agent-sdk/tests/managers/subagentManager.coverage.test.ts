@@ -133,21 +133,14 @@ describe("SubagentManager - Recent Changes Coverage", () => {
     );
 
     // Simulate messages with tool blocks (usedTools is computed from messages)
-    const msg1 = {
-      id: "m1",
-      role: "assistant" as const,
-      blocks: [
-        {
-          type: "tool" as const,
-          id: "1",
-          name: "ToolA",
-          stage: "start" as const,
-          parameters: "",
-        },
-      ],
-      timestamp: new Date().toISOString(),
-    };
-    instance.messageManager.setMessages([msg1]);
+    // msg1: ToolA starts
+    instance.messageManager.addAssistantMessage("", [
+      {
+        id: "1",
+        type: "function",
+        function: { name: "ToolA", arguments: "" },
+      },
+    ]);
     expect(instance.usedTools).toEqual([
       {
         name: "ToolA",
@@ -158,28 +151,12 @@ describe("SubagentManager - Recent Changes Coverage", () => {
     ]);
     expect(onUpdate).toHaveBeenCalled();
 
-    const msg2 = {
-      id: "m2",
-      role: "assistant" as const,
-      blocks: [
-        {
-          type: "tool" as const,
-          id: "1",
-          name: "ToolA",
-          stage: "end" as const,
-          parameters: "",
-        },
-        {
-          type: "tool" as const,
-          id: "2",
-          name: "ToolB",
-          stage: "start" as const,
-          parameters: "",
-        },
-      ],
-      timestamp: new Date().toISOString(),
-    };
-    instance.messageManager.setMessages([msg1, msg2]);
+    // msg2: ToolA completes, ToolB starts
+    instance.messageManager.updateToolBlock({ id: "1", stage: "end" });
+    instance.messageManager.addToolBlockToMessage(
+      instance.messageManager.getMessages().slice(-1)[0].id,
+      { name: "ToolB", parameters: "", stage: "start" },
+    );
     expect(instance.usedTools).toEqual([
       {
         name: "ToolA",
@@ -195,21 +172,14 @@ describe("SubagentManager - Recent Changes Coverage", () => {
       },
     ]);
 
-    const msg3 = {
-      id: "m3",
-      role: "assistant" as const,
-      blocks: [
-        {
-          type: "tool" as const,
-          id: "3",
-          name: "ToolC",
-          stage: "start" as const,
-          parameters: "",
-        },
-      ],
-      timestamp: new Date().toISOString(),
-    };
-    instance.messageManager.setMessages([msg1, msg2, msg3]);
+    // msg3: ToolC starts
+    instance.messageManager.addAssistantMessage("", [
+      {
+        id: "3",
+        type: "function",
+        function: { name: "ToolC", arguments: "" },
+      },
+    ]);
     expect(instance.usedTools).toEqual([
       {
         name: "ToolB",

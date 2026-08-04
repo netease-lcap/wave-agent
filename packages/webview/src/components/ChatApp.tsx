@@ -745,6 +745,22 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           if (!forThisPane(message)) break;
           dispatch({ type: 'APPEND_MESSAGE', payload: message.message });
           break;
+        // Bang message incremental updates. Hosts post the bang params nested
+        // under `params` (they contain a `command` field that would otherwise
+        // clobber the postMessage command discriminator).
+        case 'bangMessageAdded':
+          if (!forThisPane(message)) break;
+          console.log('DBG bangMessageAdded', message.params, stateRef.current.messages.length);
+          dispatch({ type: 'APPEND_BANG_MESSAGE', payload: message.params });
+          break;
+        case 'bangMessageUpdated':
+          if (!forThisPane(message)) break;
+          dispatch({ type: 'UPDATE_BANG_MESSAGE', payload: message.params });
+          break;
+        case 'bangMessageCompleted':
+          if (!forThisPane(message)) break;
+          dispatch({ type: 'COMPLETE_BANG_MESSAGE', payload: message.params });
+          break;
         case 'compactionStateChange':
           if (!forThisPane(message)) break;
           dispatch({ type: 'SET_COMPACTING', payload: message.isCompacting === true });

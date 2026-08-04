@@ -39,7 +39,6 @@ vi.mock("@/services/memoryManager", () => ({
 describe("Agent - No Parameters Tool Handling", () => {
   let agent: Agent;
   const mockCallbacks = {
-    onMessagesChange: vi.fn(),
     onLoadingChange: vi.fn(),
   };
 

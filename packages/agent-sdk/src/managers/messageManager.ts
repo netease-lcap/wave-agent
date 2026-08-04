@@ -37,7 +37,6 @@ import { READ_TOOL_NAME } from "../constants/tools.js";
 import { Container } from "../utils/container.js";
 
 export interface MessageManagerCallbacks {
-  onMessagesChange?: (messages: Message[]) => void;
   onSessionIdChange?: (sessionId: string) => void;
   onLatestTotalTokensChange?: (latestTotalTokens: number) => void;
   onUsagesChange?: (usages: Usage[]) => void;
@@ -64,9 +63,17 @@ export interface MessageManagerCallbacks {
   onCompactBlockAdded?: (content: string) => void;
   onCompactionStateChange?: (isCompacting: boolean) => void;
   // Bang callback
-  onAddBangMessage?: (command: string) => void;
-  onUpdateBangMessage?: (command: string, output: string) => void;
-  onCompleteBangMessage?: (command: string, exitCode: number) => void;
+  onAddBangMessage?: (command: string, messageId: string) => void;
+  onUpdateBangMessage?: (
+    command: string,
+    output: string,
+    messageId: string,
+  ) => void;
+  onCompleteBangMessage?: (
+    command: string,
+    exitCode: number,
+    messageId: string,
+  ) => void;
   onInfoBlockAdded?: (content: string) => void;
   // Rewind callbacks
   onShowRewind?: () => void;
@@ -322,8 +329,6 @@ export class MessageManager {
       this.extractFileReadsFromMessage(messages[messages.length - 1]);
       this.extractSkillInvocationsFromMessage(messages[messages.length - 1]);
     }
-
-    this.callbacks.onMessagesChange?.([...messages]);
   }
 
   /**
@@ -622,7 +627,9 @@ export class MessageManager {
       command,
     });
     this.setMessages(updatedMessages);
-    this.callbacks.onAddBangMessage?.(command);
+    // The bang message is appended as the last message
+    const messageId = this.messages[this.messages.length - 1]?.id ?? "";
+    this.callbacks.onAddBangMessage?.(command, messageId);
   }
 
   public updateBangMessage(command: string, output: string): void {
@@ -632,7 +639,8 @@ export class MessageManager {
       output,
     });
     this.setMessages(updatedMessages);
-    this.callbacks.onUpdateBangMessage?.(command, output);
+    const messageId = this.findBangMessageId(command) ?? "";
+    this.callbacks.onUpdateBangMessage?.(command, output, messageId);
   }
 
   public completeBangMessage(
@@ -647,7 +655,25 @@ export class MessageManager {
       output,
     });
     this.setMessages(updatedMessages);
-    this.callbacks.onCompleteBangMessage?.(command, exitCode);
+    const messageId = this.findBangMessageId(command) ?? "";
+    this.callbacks.onCompleteBangMessage?.(command, exitCode, messageId);
+  }
+
+  /**
+   * Find the message ID of the most recent message containing a bang block
+   * for the given command. Bang callbacks do not carry a block ID, so the
+   * message is located by matching the command against bang blocks.
+   */
+  private findBangMessageId(command: string): string | undefined {
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const message = this.messages[i];
+      if (message.role !== "user") continue;
+      const hasBangBlock = message.blocks?.some(
+        (block) => block.type === "bang" && block.command === command,
+      );
+      if (hasBangBlock) return message.id;
+    }
+    return undefined;
   }
 
   public addNotificationMessage(
@@ -700,7 +726,6 @@ export class MessageManager {
   /**
    * Finalize a streaming block of the given type by setting its stage to "end".
    * Fires the corresponding incremental callback with chunk="" to signal finalization.
-   * Does NOT call onMessagesChange — the caller is responsible for that.
    * Returns true if a block was finalized.
    */
   private finalizeStreamingBlock(
@@ -807,8 +832,6 @@ export class MessageManager {
     });
 
     // Note: Subagent-specific callbacks are now handled by SubagentManager
-
-    this.callbacks.onMessagesChange?.([...this.messages]); // Still need to notify of changes
   }
 
   /**
@@ -871,8 +894,6 @@ export class MessageManager {
       accumulated: newAccumulatedReasoning,
       stage: "streaming",
     });
-
-    this.callbacks.onMessagesChange?.([...this.messages]); // Still need to notify of changes
   }
 
   /**
@@ -885,15 +906,8 @@ export class MessageManager {
     const lastMessage = this.messages[this.messages.length - 1];
     if (lastMessage.role !== "assistant") return;
 
-    const textFinalized = this.finalizeStreamingBlock(lastMessage, "text");
-    const reasoningFinalized = this.finalizeStreamingBlock(
-      lastMessage,
-      "reasoning",
-    );
-
-    if (textFinalized || reasoningFinalized) {
-      this.callbacks.onMessagesChange?.([...this.messages]);
-    }
+    this.finalizeStreamingBlock(lastMessage, "text");
+    this.finalizeStreamingBlock(lastMessage, "reasoning");
   }
 
   /**

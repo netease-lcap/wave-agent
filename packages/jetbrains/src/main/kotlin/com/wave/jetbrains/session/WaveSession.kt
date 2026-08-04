@@ -90,11 +90,6 @@ class WaveSession(
     /** Public entry so other components (PermissionFlow, MessageHandler) can push to the webview. */
     fun postMessage(command: String, payload: JsonObject) = postMessageFn(command, payload)
 
-    // ── Throttle: message list (300ms leading+trailing) ───────────
-    private val msgMutex = Mutex()
-    private var msgTimer: Job? = null
-    private var msgPending = false
-
     // ── Throttle: streaming content (16ms leading+trailing) ───────
     private val streamMutex = Mutex()
     private var streamTimer: Job? = null
@@ -159,13 +154,10 @@ class WaveSession(
 
     // ── AgentCallbacks: route notifications → webview commands ────
 
-    override fun onMessagesChange(messages: JsonElement?) {
-        this.messages = messages
-    }
-
     override fun onCompactBlockAdded(content: String) {
-        // onMessagesChange（截断列表）已先于此到达并更新 this.messages；即时推一次
-        scope.launch { immediateMessagesUpdate() }
+        // Compaction truncated the list server-side; pull the fresh list and push it
+        // to the webview (mirrors VSCE chatSession.ts:91-94, spec pull model).
+        scope.launch { pullAndPushMessages() }
     }
 
     // Forward the compaction state to the shared webview, which renders the
@@ -399,18 +391,36 @@ class WaveSession(
         postMessage("mcpServersUpdate", buildJsonObject { put("servers", servers ?: JsonArray(emptyList())) })
     }
 
-    // VSCE chatProvider.ts:229-236 / chatSession.ts:139-141: all three bang notifications
-    // re-push the full message list via updateMessages (onBangMessageCompleted delegates to Updated).
-    override fun onBangMessageAdded() {
-        scope.launch { throttledMessagesUpdate(messages) }
+    // Bang notifications carry messageId for incremental updates (mirrors VSCE
+    // chatProvider.ts:297-308). Params are nested (not spread) because they contain
+    // a `command` field that would clobber the postMessage command discriminator.
+    override fun onBangMessageAdded(command: String, messageId: String) {
+        postMessage("bangMessageAdded", buildJsonObject {
+            put("params", buildJsonObject {
+                put("command", command)
+                put("messageId", messageId)
+            })
+        })
     }
 
-    override fun onBangMessageUpdated() {
-        scope.launch { throttledMessagesUpdate(messages) }
+    override fun onBangMessageUpdated(command: String, output: String, messageId: String) {
+        postMessage("bangMessageUpdated", buildJsonObject {
+            put("params", buildJsonObject {
+                put("command", command)
+                put("output", output)
+                put("messageId", messageId)
+            })
+        })
     }
 
-    override fun onBangMessageCompleted() {
-        scope.launch { throttledMessagesUpdate(messages) }
+    override fun onBangMessageCompleted(command: String, exitCode: Int, messageId: String) {
+        postMessage("bangMessageCompleted", buildJsonObject {
+            put("params", buildJsonObject {
+                put("command", command)
+                put("exitCode", exitCode)
+                put("messageId", messageId)
+            })
+        })
     }
 
     // VSCE chatSession.ts:142-146: if params.message is present, forward to appendMessage.
@@ -429,37 +439,28 @@ class WaveSession(
         LOG.warn("Wave session error: $message")
     }
 
-    // ── Throttle implementations ──────────────────────────────────
+    // ── Message list: one-shot pull ───────────────────────────────
 
-    /** Push the current message list immediately, bypassing the throttle. */
-    suspend fun immediateMessagesUpdate() {
-        msgMutex.withLock {
-            msgTimer?.cancel()
-            msgTimer = null
-            msgPending = false
+    /**
+     * Pull the full message list via the `getMessages` RPC into the [messages] cache.
+     * The webview no longer subscribes to a full-snapshot push; hosts pull on demand
+     * after webviewReady / compact / rewind / clearChat / restoreSession (spec pull model,
+     * mirrors VSCE chatSession.getMessages). The cache field [messages] is maintained
+     * exclusively from these pulls.
+     */
+    suspend fun refreshMessages() {
+        try {
+            val list = agent?.getMessages()?.jsonObject?.get("messages")
+            if (list != null) messages = list
+        } catch (e: StdioClientException) {
+            LOG.warn("getMessages failed: ${e.message}")
         }
-        postMessage("updateMessages", buildJsonObject {
-            put("messages", messages ?: JsonArray(emptyList()))
-        })
     }
 
-    private suspend fun throttledMessagesUpdate(messages: JsonElement?) {
-        msgMutex.withLock {
-            if (!msgPending && msgTimer == null) {
-                // leading edge
-                postMessage("updateMessages", buildJsonObject { put("messages", messages ?: JsonArray(emptyList())) })
-                msgPending = true
-                msgTimer = scope.launch {
-                    delay(300)
-                    msgMutex.withLock {
-                        // trailing edge
-                        postMessage("updateMessages", buildJsonObject { put("messages", this@WaveSession.messages ?: JsonArray(emptyList())) })
-                        msgPending = false
-                        msgTimer = null
-                    }
-                }
-            }
-        }
+    /** Pull the full message list and push it to the webview as the "response" (updateMessages). */
+    suspend fun pullAndPushMessages() {
+        refreshMessages()
+        postMessage("updateMessages", buildJsonObject { put("messages", messages ?: JsonArray(emptyList())) })
     }
 
     /**

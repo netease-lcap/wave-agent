@@ -92,9 +92,7 @@ describe("Agent Modular Memory Rules Integration", () => {
 
     vi.clearAllMocks();
 
-    mockCallbacks = {
-      onMessagesChange: vi.fn(),
-    };
+    mockCallbacks = {};
   });
 
   afterEach(async () => {

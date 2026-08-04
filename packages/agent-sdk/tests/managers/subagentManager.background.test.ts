@@ -209,6 +209,10 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       subagent_type: "t",
     });
 
+    // refreshSubagentState pulls from messageManager.getMessages on every
+    // incremental callback; stub it to an empty list for this unit test.
+    vi.mocked(instance.messageManager.getMessages).mockReturnValue([]);
+
     // In the test, MessageManager is mocked, so we need to make sure it has the callbacks
     // But wait, if it's mocked, (instance.messageManager as any).callbacks might be undefined
     // unless we set it.
@@ -250,6 +254,10 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     expect(outputPath).toContain(".log");
 
     await vi.waitFor(() => expect(fs.existsSync(outputPath)).toBe(true));
+
+    // refreshSubagentState pulls from messageManager.getMessages on every
+    // incremental callback; stub it to an empty list for this unit test.
+    vi.mocked(instance.messageManager.getMessages).mockReturnValue([]);
 
     // Capture callbacks passed to MessageManager
     const MessageManagerMock = vi.mocked(MessageManager);
@@ -389,6 +397,10 @@ describe("SubagentManager - Backgrounding Coverage", () => {
 
     const addTaskMock = vi.mocked(mockBackgroundTaskManager.addTask);
     const outputPath = addTaskMock.mock.calls[0][0].outputPath!;
+
+    // refreshSubagentState pulls from messageManager.getMessages on every
+    // incremental callback; stub it to an empty list for this unit test.
+    vi.mocked(instance.messageManager.getMessages).mockReturnValue([]);
 
     // Capture callbacks passed to MessageManager
     const MessageManagerMock = vi.mocked(MessageManager);

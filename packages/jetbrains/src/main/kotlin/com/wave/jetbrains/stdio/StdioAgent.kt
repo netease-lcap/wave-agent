@@ -15,7 +15,6 @@ import kotlinx.serialization.json.put
  * Each corresponds to a server→client notification.
  */
 interface AgentCallbacks {
-    fun onMessagesChange(messages: JsonElement?) {}
     fun onUserMessageAdded(message: JsonElement?) {}
     fun onAssistantMessageAdded(message: JsonElement?) {}
     fun onAssistantContentUpdated(messageId: String, accumulated: String, stage: String) {}
@@ -34,9 +33,9 @@ interface AgentCallbacks {
     fun onMcpServersChange(servers: JsonElement?) {}
     fun onWorkdirChange(workdir: String) {}
     fun onPermissionRequest(requestId: String, context: JsonElement?) {}
-    fun onBangMessageAdded() {}
-    fun onBangMessageUpdated() {}
-    fun onBangMessageCompleted() {}
+    fun onBangMessageAdded(command: String, messageId: String) {}
+    fun onBangMessageUpdated(command: String, output: String, messageId: String) {}
+    fun onBangMessageCompleted(command: String, exitCode: Int, messageId: String) {}
     fun onNotificationMessageAdded(message: JsonObject) {}
     fun onError(message: String) {}
 }
@@ -61,7 +60,6 @@ class StdioAgent(
 
     fun handleNotification(method: String, params: JsonElement?) {
         when (method) {
-            "messagesChange" -> callbacks.onMessagesChange(params?.jsonObject?.get("messages"))
             "userMessageAdded" -> callbacks.onUserMessageAdded(params?.jsonObject?.get("message"))
             "assistantMessageAdded" -> callbacks.onAssistantMessageAdded(params?.jsonObject?.get("message"))
             "assistantContentUpdated" -> {
@@ -116,9 +114,29 @@ class StdioAgent(
                     o?.get("context"),
                 )
             }
-            "bangMessageAdded" -> callbacks.onBangMessageAdded()
-            "bangMessageUpdated" -> callbacks.onBangMessageUpdated()
-            "bangMessageCompleted" -> callbacks.onBangMessageCompleted()
+            "bangMessageAdded" -> {
+                val o = params?.jsonObject
+                callbacks.onBangMessageAdded(
+                    o?.get("command")?.jsonPrimitive?.content ?: "",
+                    o?.get("messageId")?.jsonPrimitive?.content ?: "",
+                )
+            }
+            "bangMessageUpdated" -> {
+                val o = params?.jsonObject
+                callbacks.onBangMessageUpdated(
+                    o?.get("command")?.jsonPrimitive?.content ?: "",
+                    o?.get("output")?.jsonPrimitive?.content ?: "",
+                    o?.get("messageId")?.jsonPrimitive?.content ?: "",
+                )
+            }
+            "bangMessageCompleted" -> {
+                val o = params?.jsonObject
+                callbacks.onBangMessageCompleted(
+                    o?.get("command")?.jsonPrimitive?.content ?: "",
+                    o?.get("exitCode")?.jsonPrimitive?.intOrNull ?: 0,
+                    o?.get("messageId")?.jsonPrimitive?.content ?: "",
+                )
+            }
             "notificationMessageAdded" -> callbacks.onNotificationMessageAdded(params?.jsonObject ?: JsonObject(emptyMap()))
             "compactBlockAdded" -> callbacks.onCompactBlockAdded(params?.jsonObject?.get("content")?.jsonPrimitive?.content ?: "")
             "compactionStateChange" -> callbacks.onCompactionStateChange(
@@ -165,6 +183,9 @@ class StdioAgent(
 
     suspend fun abortMessage() { client.request("abortMessage", sessionId = sessionId) }
     suspend fun clearMessages() { client.request("clearMessages", sessionId = sessionId) }
+
+    suspend fun getMessages(): JsonElement =
+        client.request("getMessages", sessionId = sessionId) ?: JsonObject(emptyMap())
 
     suspend fun compact(customInstructions: String? = null) {
         client.request("compact", buildJsonObject {

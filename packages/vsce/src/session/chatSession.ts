@@ -6,7 +6,6 @@ import { StdioAgent, type StdioAgentCallbacks } from '../stdio/stdioAgent';
 import { NotificationRouter } from '../stdio/notificationRouter';
 
 export interface ChatSessionCallbacks {
-    onMessagesChange: (messages: Message[]) => void;
     onTasksChange: (tasks: Task[]) => void;
     onBackgroundTasksChange?: (tasks: BackgroundTaskSummary[]) => void;
     onWorkflowRunsChange?: (runs: SerializableWorkflowRun[]) => void;
@@ -21,14 +20,16 @@ export interface ChatSessionCallbacks {
     onError: (error: unknown) => void;
     onMcpServersChange?: (servers: McpServerStatus[]) => void;
     // Incremental update callbacks for streaming optimization
+    onUserMessageAdded?: (message: Message) => void;
     onAssistantMessageAdded?: (message: Message) => void;
     onStreamingContentUpdate?: (params: { messageId: string; accumulated: string; stage: 'streaming' | 'end' }) => void;
     onStreamingReasoningUpdate?: (params: { messageId: string; accumulated: string; stage: 'streaming' | 'end' }) => void;
     onToolBlockUpdate?: (params: ToolBlockUpdateCallbackParams) => void;
     onErrorBlockAdded?: (error: string) => void;
-    // Bang message callbacks
-    onBangMessageAdded?: () => void;
-    onBangMessageUpdated?: () => void;
+    // Bang message callbacks (incremental; messageId identifies the message)
+    onBangMessageAdded?: (params: { command: string; messageId: string }) => void;
+    onBangMessageUpdated?: (params: { command: string; output: string; messageId: string }) => void;
+    onBangMessageCompleted?: (params: { command: string; exitCode: number; messageId: string }) => void;
 }
 
 export class ChatSession {
@@ -52,10 +53,6 @@ export class ChatSession {
         suggestedPrefix?: string;
         hidePersistentOption?: boolean;
     }> = new Map();
-
-    private updateTimer: NodeJS.Timeout | undefined;
-    private pendingUpdate: boolean = false;
-    private forceNextUpdateImmediate: boolean = false;
 
     // Throttled incremental update fields
     private streamingContentUpdateTimer: NodeJS.Timeout | undefined;
@@ -91,19 +88,15 @@ export class ChatSession {
             }
 
             const agentCallbacks: StdioAgentCallbacks = {
-                onMessagesChange: (messages: Message[]) => {
-                    this.messages = messages;
-                },
                 onCompactBlockAdded: () => {
-                    // messagesChange（截断列表）已先于此到达并更新 this.messages
-                    this.forceNextUpdateImmediate = true;
-                    this.throttledUpdateChatMessages(this.messages);
+                    // 压缩后按需拉取截断后的完整消息列表
+                    void this.getMessages();
                 },
                 onCompactionStateChange: (isCompacting: boolean) => {
                     this.callbacks.onCompactionStateChange?.(isCompacting);
                 },
                 onUserMessageAdded: (message: Message) => {
-                    this.callbacks.onAssistantMessageAdded?.(message);
+                    this.callbacks.onUserMessageAdded?.(message);
                 },
                 onAssistantMessageAdded: (message: Message) => {
                     this.callbacks.onAssistantMessageAdded?.(message);
@@ -154,14 +147,14 @@ export class ChatSession {
                 onMcpServersChange: (servers: McpServerStatus[]) => {
                     this.callbacks.onMcpServersChange?.(servers);
                 },
-                onBangMessageAdded: () => {
-                    this.callbacks.onBangMessageAdded?.();
+                onBangMessageAdded: (params) => {
+                    this.callbacks.onBangMessageAdded?.(params);
                 },
-                onBangMessageUpdated: () => {
-                    this.callbacks.onBangMessageUpdated?.();
+                onBangMessageUpdated: (params) => {
+                    this.callbacks.onBangMessageUpdated?.(params);
                 },
-                onBangMessageCompleted: () => {
-                    this.callbacks.onBangMessageUpdated?.();
+                onBangMessageCompleted: (params) => {
+                    this.callbacks.onBangMessageCompleted?.(params);
                 },
                 onNotificationMessageAdded: (params) => {
                     if (params.message) {
@@ -266,10 +259,9 @@ export class ChatSession {
 
     public async clearChat() {
         if (this.agent) {
-            this.forceNextUpdateImmediate = true;
             this.inputContent = '';
             await this.agent.clearMessages();
-            this.throttledUpdateChatMessages([]);
+            await this.getMessages();
         }
         await this.clearQueue();
     }
@@ -291,11 +283,11 @@ export class ChatSession {
 
     public async restoreSession(sessionId: string) {
         if (this.agent) {
-            this.forceNextUpdateImmediate = true;
             this.inputContent = '';
             await this.agent.restoreSession(sessionId);
-            // Push restored messages to webview (notification updates this.messages)
-            this.throttledUpdateChatMessages(this.messages);
+            // Pull the restored messages so the webview can re-render (no more
+            // full-snapshot push; the webview pulls on demand).
+            await this.getMessages();
         }
         await this.clearQueue();
     }
@@ -363,35 +355,13 @@ export class ChatSession {
         return [];
     }
 
-    private immediateUpdateChatMessages() {
-        if (this.updateTimer) {
-            clearTimeout(this.updateTimer);
-            this.updateTimer = undefined;
+    /** Pull the authoritative message list from the server (updates cache). */
+    public async getMessages(): Promise<Message[]> {
+        if (!this.agent) {
+            return this.messages;
         }
-        this.pendingUpdate = false;
-        this.callbacks.onMessagesChange(this.messages);
-    }
-
-    private throttledUpdateChatMessages(messages: Message[]) {
-        this.messages = messages;
-
-        if (this.forceNextUpdateImmediate) {
-            this.forceNextUpdateImmediate = false;
-            this.immediateUpdateChatMessages();
-            return;
-        }
-
-        // leading edge: first call fires immediately
-        if (!this.pendingUpdate && !this.updateTimer) {
-            this.callbacks.onMessagesChange(this.messages);
-            this.pendingUpdate = true;
-            // trailing edge: fire the last update after 300ms cooldown
-            this.updateTimer = setTimeout(() => {
-                this.callbacks.onMessagesChange(this.messages);
-                this.pendingUpdate = false;
-                this.updateTimer = undefined;
-            }, 300);
-        }
+        this.messages = await this.agent.getMessages();
+        return this.messages;
     }
 
     private throttledStreamingContentUpdate(messageId: string, accumulated: string, stage: 'streaming' | 'end') {
@@ -464,16 +434,11 @@ export class ChatSession {
         const { inputContent } = await this.agent.rewindToMessage(messageId);
         this.inputContent = inputContent;
 
-        // Messages updated via messagesChange notification; force immediate push
-        this.forceNextUpdateImmediate = true;
-        this.throttledUpdateChatMessages(this.messages);
+        // Messages truncated server-side; pull the new list for the webview
+        await this.getMessages();
     }
 
     public async destroy() {
-        if (this.updateTimer) {
-            clearTimeout(this.updateTimer);
-            this.updateTimer = undefined;
-        }
         if (this.streamingContentUpdateTimer) {
             clearTimeout(this.streamingContentUpdateTimer);
             this.streamingContentUpdateTimer = undefined;
@@ -499,7 +464,6 @@ export class ChatSession {
         this.pendingConfirmations.clear();
         this.isStreaming = false;
         this.isCommandRunning = false;
-        this.pendingUpdate = false;
         this.pendingStreamingContentUpdate = undefined;
         this.pendingStreamingReasoningUpdate = undefined;
         this.messageQueue = [];

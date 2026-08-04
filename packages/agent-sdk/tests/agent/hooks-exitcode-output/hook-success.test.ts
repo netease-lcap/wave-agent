@@ -28,7 +28,6 @@ vi.mock("@/managers/forkedAgentManager", () => ({
 describe("Hook Success Behavior (User Story 1)", () => {
   let agent: Agent;
   const mockCallbacks = {
-    onMessagesChange: vi.fn(),
     onLoadingChange: vi.fn(),
   };
 

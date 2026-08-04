@@ -162,7 +162,7 @@ test("initialize forwards worktreeName and isNewWorktree to Agent options", asyn
 
 // ── Callbacks → Notifications ────────────────────────────────────
 
-test("onMessagesChange emits messagesChange notification", async () => {
+test("onAssistantContentUpdated emits assistantContentUpdated notification", async () => {
   const { bridge, notifications } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
 
@@ -170,14 +170,17 @@ test("onMessagesChange emits messagesChange notification", async () => {
   const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
     .callbacks as AgentCallbacks;
 
-  const messages = [
-    { id: "1", role: "user", blocks: [] },
-  ] as unknown as Message[];
-  callbacks.onMessagesChange!(messages);
+  const params = {
+    messageId: "msg-1",
+    chunk: "Hello",
+    accumulated: "Hello",
+    stage: "streaming" as const,
+  };
+  callbacks.onAssistantContentUpdated!(params);
 
   expect(notifications).toContainEqual({
-    method: "messagesChange",
-    params: { messages },
+    method: "assistantContentUpdated",
+    params,
     sessionId: "test-session-id",
   });
 });
@@ -443,11 +446,11 @@ test("onAddBangMessage emits bangMessageAdded notification", async () => {
   const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
     .callbacks as AgentCallbacks;
 
-  callbacks.onAddBangMessage!("ls");
+  callbacks.onAddBangMessage!("ls", "msg-1");
 
   expect(notifications).toContainEqual({
     method: "bangMessageAdded",
-    params: {},
+    params: { command: "ls", messageId: "msg-1" },
     sessionId: "test-session-id",
   });
 });
@@ -460,11 +463,11 @@ test("onUpdateBangMessage emits bangMessageUpdated notification", async () => {
   const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
     .callbacks as AgentCallbacks;
 
-  callbacks.onUpdateBangMessage!("ls", "output");
+  callbacks.onUpdateBangMessage!("ls", "output", "msg-1");
 
   expect(notifications).toContainEqual({
     method: "bangMessageUpdated",
-    params: {},
+    params: { command: "ls", output: "output", messageId: "msg-1" },
     sessionId: "test-session-id",
   });
 });
@@ -477,11 +480,11 @@ test("onCompleteBangMessage emits bangMessageCompleted notification", async () =
   const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
     .callbacks as AgentCallbacks;
 
-  callbacks.onCompleteBangMessage!("ls", 0);
+  callbacks.onCompleteBangMessage!("ls", 0, "msg-1");
 
   expect(notifications).toContainEqual({
     method: "bangMessageCompleted",
-    params: {},
+    params: { command: "ls", exitCode: 0, messageId: "msg-1" },
     sessionId: "test-session-id",
   });
 });
@@ -1769,28 +1772,34 @@ test("notifications route by sessionId when callbacks fire", async () => {
   const callbacksB = vi.mocked(Agent.create).mock.calls[1][0]
     .callbacks as AgentCallbacks;
 
-  const messagesA = [
-    { id: "a-1", role: "user", blocks: [] },
-  ] as unknown as Message[];
-  const messagesB = [
-    { id: "b-1", role: "user", blocks: [] },
-  ] as unknown as Message[];
+  const paramsA = {
+    messageId: "a-1",
+    chunk: "A",
+    accumulated: "A",
+    stage: "streaming" as const,
+  };
+  const paramsB = {
+    messageId: "b-1",
+    chunk: "B",
+    accumulated: "B",
+    stage: "streaming" as const,
+  };
 
-  // Fire onMessagesChange for session A's callbacks
-  callbacksA.onMessagesChange!(messagesA);
+  // Fire onAssistantContentUpdated for session A's callbacks
+  callbacksA.onAssistantContentUpdated!(paramsA);
 
   // The notification emitted via session A's callbacks should carry sessionId "sess-A"
   expect(notifications).toContainEqual({
-    method: "messagesChange",
-    params: { messages: messagesA },
+    method: "assistantContentUpdated",
+    params: paramsA,
     sessionId: "sess-A",
   });
 
   // Fire for session B → should carry "sess-B"
-  callbacksB.onMessagesChange!(messagesB);
+  callbacksB.onAssistantContentUpdated!(paramsB);
   expect(notifications).toContainEqual({
-    method: "messagesChange",
-    params: { messages: messagesB },
+    method: "assistantContentUpdated",
+    params: paramsB,
     sessionId: "sess-B",
   });
 });

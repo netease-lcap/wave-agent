@@ -22,7 +22,6 @@ describe("Agent Tool Recursion Tests", () => {
   beforeEach(async () => {
     // Create mock callbacks
     const mockCallbacks = {
-      onMessagesChange: vi.fn(),
       onLoadingChange: vi.fn(),
     };
 

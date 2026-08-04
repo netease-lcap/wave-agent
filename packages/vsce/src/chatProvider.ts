@@ -229,9 +229,6 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
     private createChatSession(viewType: 'sidebar' | 'tab' | 'window', windowId?: string): ChatSession {
         return new ChatSession(viewType, windowId, {
-            onMessagesChange: (messages) => {
-                this.webviewManager.postMessage({ command: 'updateMessages', messages }, viewType, windowId);
-            },
             onTasksChange: (tasks) => {
                 this.webviewManager.postMessage({ command: 'updateTasks', tasks }, viewType, windowId);
             },
@@ -279,6 +276,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                 this.webviewManager.postMessage({ command: 'mcpServersUpdate', servers }, viewType, windowId);
             },
             // Incremental update callbacks for streaming optimization
+            onUserMessageAdded: (message) => {
+                this.webviewManager.postMessage({ command: 'appendMessage', message }, viewType, windowId);
+            },
             onAssistantMessageAdded: (message) => {
                 this.webviewManager.postMessage({ command: 'appendMessage', message }, viewType, windowId);
             },
@@ -294,14 +294,17 @@ export class ChatProvider implements vscode.WebviewViewProvider {
             onErrorBlockAdded: (error) => {
                 this.webviewManager.postMessage({ command: 'updateErrorBlock', error }, viewType, windowId);
             },
-            // Bang message callbacks - send full message list update
-            onBangMessageAdded: () => {
-                const session = this.getChatSession(viewType, windowId);
-                this.webviewManager.postMessage({ command: 'updateMessages', messages: session.messages }, viewType, windowId);
+            // Bang message callbacks - incremental updates keyed by messageId.
+            // Params are nested (not spread) because they contain a `command`
+            // field that would clobber the postMessage command discriminator.
+            onBangMessageAdded: (params) => {
+                this.webviewManager.postMessage({ command: 'bangMessageAdded', params }, viewType, windowId);
             },
-            onBangMessageUpdated: () => {
-                const session = this.getChatSession(viewType, windowId);
-                this.webviewManager.postMessage({ command: 'updateMessages', messages: session.messages }, viewType, windowId);
+            onBangMessageUpdated: (params) => {
+                this.webviewManager.postMessage({ command: 'bangMessageUpdated', params }, viewType, windowId);
+            },
+            onBangMessageCompleted: (params) => {
+                this.webviewManager.postMessage({ command: 'bangMessageCompleted', params }, viewType, windowId);
             }
         });
     }

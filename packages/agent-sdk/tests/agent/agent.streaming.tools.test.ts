@@ -11,7 +11,6 @@ import { Agent } from "@/agent.js";
 import type { AgentCallbacks } from "@/types/index.js";
 import * as aiService from "@/services/aiService.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
-import { Message } from "@/index.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -39,7 +38,7 @@ describe("Agent Tool Streaming Tests", () => {
   let agent: Agent;
   let mockCallAgent: ReturnType<typeof vi.fn>;
   let mockCallbacks: {
-    onMessagesChange: Mock<NonNullable<AgentCallbacks["onMessagesChange"]>>;
+    onToolBlockUpdated: Mock<NonNullable<AgentCallbacks["onToolBlockUpdated"]>>;
   };
 
   beforeEach(async () => {
@@ -52,8 +51,8 @@ describe("Agent Tool Streaming Tests", () => {
 
     // Create mock callbacks
     mockCallbacks = {
-      onMessagesChange:
-        vi.fn<NonNullable<AgentCallbacks["onMessagesChange"]>>(),
+      onToolBlockUpdated:
+        vi.fn<NonNullable<AgentCallbacks["onToolBlockUpdated"]>>(),
     };
 
     // Create Agent instance with required parameters
@@ -261,14 +260,8 @@ describe("Agent Tool Streaming Tests", () => {
     });
 
     it("should add tool calls to agent.messages during streaming before execution completion", async () => {
-      const messageStateSnapshots: Message[][] = [];
       let streamingCallbackExecuted = false;
       let aiCallCount = 0;
-
-      mockCallbacks.onMessagesChange.mockImplementation((messages) => {
-        // Take a snapshot of the message state at each change
-        messageStateSnapshots.push(JSON.parse(JSON.stringify(messages)));
-      });
 
       mockCallAgent.mockImplementation(async (options) => {
         aiCallCount++;

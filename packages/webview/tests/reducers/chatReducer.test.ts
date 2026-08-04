@@ -627,6 +627,126 @@ describe('chatReducer', () => {
     });
   });
 
+  describe('Bang message flow', () => {
+    it('APPEND_BANG_MESSAGE creates a user message with a running bang block', () => {
+      const state = { ...initialState, messages: [] };
+
+      const newState = chatReducer(state, {
+        type: 'APPEND_BANG_MESSAGE',
+        payload: { command: 'ls -la', messageId: 'bang-1' }
+      });
+
+      expect(newState.messages).toHaveLength(1);
+      const msg = newState.messages[0];
+      expect(msg.id).toBe('bang-1');
+      expect(msg.role).toBe('user');
+      expect(msg.blocks).toHaveLength(1);
+      expect(msg.blocks[0]).toEqual({
+        type: 'bang',
+        command: 'ls -la',
+        output: '',
+        stage: 'running',
+        exitCode: null
+      });
+    });
+
+    it('APPEND_BANG_MESSAGE is a no-op when the message already exists', () => {
+      const existing: Message = {
+        id: 'bang-1',
+        role: 'user',
+        timestamp: '0',
+        blocks: [{ type: 'bang', command: 'ls', output: 'x', stage: 'end', exitCode: 0 }]
+      };
+      const state = { ...initialState, messages: [existing] };
+
+      const newState = chatReducer(state, {
+        type: 'APPEND_BANG_MESSAGE',
+        payload: { command: 'other', messageId: 'bang-1' }
+      });
+
+      expect(newState.messages).toHaveLength(1);
+      expect(newState.messages[0]).toBe(existing);
+    });
+
+    it('UPDATE_BANG_MESSAGE merges command and output into the bang block', () => {
+      const state = {
+        ...initialState,
+        messages: [
+          {
+            id: 'bang-1',
+            role: 'user' as const,
+            timestamp: '0',
+            blocks: [{ type: 'bang' as const, command: 'ls', output: '', stage: 'running' as const, exitCode: null }]
+          }
+        ]
+      };
+
+      const newState = chatReducer(state, {
+        type: 'UPDATE_BANG_MESSAGE',
+        payload: { command: 'ls -la', output: 'total 0', messageId: 'bang-1' }
+      });
+
+      const block = newState.messages[0].blocks[0];
+      expect(block).toEqual({
+        type: 'bang',
+        command: 'ls -la',
+        output: 'total 0',
+        stage: 'running',
+        exitCode: null
+      });
+    });
+
+    it('UPDATE_BANG_MESSAGE is a no-op for an unknown messageId', () => {
+      const state = { ...initialState, messages: [] };
+
+      const newState = chatReducer(state, {
+        type: 'UPDATE_BANG_MESSAGE',
+        payload: { command: 'ls', output: 'x', messageId: 'missing' }
+      });
+
+      expect(newState).toBe(state);
+    });
+
+    it('COMPLETE_BANG_MESSAGE stamps exitCode and transitions stage to end', () => {
+      const state = {
+        ...initialState,
+        messages: [
+          {
+            id: 'bang-1',
+            role: 'user' as const,
+            timestamp: '0',
+            blocks: [{ type: 'bang' as const, command: 'false', output: '', stage: 'running' as const, exitCode: null }]
+          }
+        ]
+      };
+
+      const newState = chatReducer(state, {
+        type: 'COMPLETE_BANG_MESSAGE',
+        payload: { command: 'false', exitCode: 1, messageId: 'bang-1' }
+      });
+
+      const block = newState.messages[0].blocks[0];
+      expect(block).toEqual({
+        type: 'bang',
+        command: 'false',
+        output: '',
+        stage: 'end',
+        exitCode: 1
+      });
+    });
+
+    it('COMPLETE_BANG_MESSAGE is a no-op for an unknown messageId', () => {
+      const state = { ...initialState, messages: [] };
+
+      const newState = chatReducer(state, {
+        type: 'COMPLETE_BANG_MESSAGE',
+        payload: { command: 'ls', exitCode: 0, messageId: 'missing' }
+      });
+
+      expect(newState).toBe(state);
+    });
+  });
+
   describe('User message flow', () => {
     it('should handle user message followed by assistant message', () => {
       const state = { ...initialState, messages: [] };

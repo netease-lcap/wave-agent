@@ -65,9 +65,7 @@ describe("Agent Memory Functionality", () => {
     mockMemoryServiceInstance._cachedProjectMemory = "";
     mockMemoryServiceInstance._cachedUserMemory = "";
 
-    mockCallbacks = {
-      onMessagesChange: vi.fn(),
-    };
+    mockCallbacks = {};
   });
 
   afterEach(async () => {

@@ -790,6 +790,7 @@ export class SubagentManager {
   private createSubagentCallbacks(subagentId: string) {
     return {
       onUserMessageAdded: (params: UserMessageParams) => {
+        this.refreshSubagentState(subagentId);
         // Forward user message events to parent via SubagentManager callbacks
         if (this.callbacks?.onSubagentUserMessageAdded) {
           this.callbacks.onSubagentUserMessageAdded(subagentId, params);
@@ -797,6 +798,7 @@ export class SubagentManager {
       },
 
       onAssistantMessageAdded: (messageId: string) => {
+        this.refreshSubagentState(subagentId);
         // Forward assistant message events to parent via SubagentManager callbacks
         if (this.callbacks?.onSubagentAssistantMessageAdded) {
           this.callbacks.onSubagentAssistantMessageAdded(subagentId, messageId);
@@ -809,6 +811,7 @@ export class SubagentManager {
         accumulated: string;
         stage: "streaming" | "end";
       }) => {
+        this.refreshSubagentState(subagentId);
         // Forward assistant content updates to parent via SubagentManager callbacks
         if (this.callbacks?.onSubagentAssistantContentUpdated) {
           this.callbacks.onSubagentAssistantContentUpdated({
@@ -823,6 +826,7 @@ export class SubagentManager {
         accumulated: string;
         stage: "streaming" | "end";
       }) => {
+        this.refreshSubagentState(subagentId);
         // Forward assistant reasoning updates to parent via SubagentManager callbacks
         if (this.callbacks?.onSubagentAssistantReasoningUpdated) {
           this.callbacks.onSubagentAssistantReasoningUpdated({
@@ -833,6 +837,7 @@ export class SubagentManager {
       },
 
       onToolBlockUpdated: (params: ToolBlockUpdateCallbackParams) => {
+        this.refreshSubagentState(subagentId);
         const instance = this.instances.get(subagentId);
         if (instance) {
           // Log tool execution to file only when finalized
@@ -852,31 +857,6 @@ export class SubagentManager {
         }
       },
 
-      // These callbacks will be handled by the parent agent
-      onMessagesChange: (messages: Message[]) => {
-        const instance = this.instances.get(subagentId);
-        if (instance) {
-          instance.messages = messages;
-          // Compute usedTools from messages (last 2 tool blocks)
-          const toolBlocks = messages.flatMap(
-            (m) => m.blocks?.filter((b) => b.type === "tool") ?? [],
-          );
-          const last2 = toolBlocks.slice(-2);
-          instance.usedTools = last2.map((tb) => ({
-            name: tb.name ?? "",
-            parameters: tb.parameters ?? "",
-            compactParams: tb.compactParams,
-            stage: tb.stage,
-          }));
-          // Trigger the onUpdate callback if provided
-          instance.onUpdate?.();
-          // Forward subagent message changes to parent via callbacks
-          if (this.callbacks?.onSubagentMessagesChange) {
-            this.callbacks.onSubagentMessagesChange(subagentId, messages);
-          }
-        }
-      },
-
       onLatestTotalTokensChange: (tokens: number) => {
         const instance = this.instances.get(subagentId);
         if (instance) {
@@ -890,6 +870,7 @@ export class SubagentManager {
       },
 
       onErrorBlockAdded: (error: string) => {
+        this.refreshSubagentState(subagentId);
         const instance = this.instances.get(subagentId);
         if (instance?.logStream) {
           instance.logStream.write(
@@ -898,5 +879,35 @@ export class SubagentManager {
         }
       },
     };
+  }
+
+  /**
+   * Pull the latest messages from the subagent instance's MessageManager and
+   * refresh the instance's cached messages, usedTools, onUpdate and the
+   * onSubagentMessagesChange forwarding. Triggered by incremental callbacks.
+   */
+  private refreshSubagentState(subagentId: string): void {
+    const instance = this.instances.get(subagentId);
+    if (!instance) return;
+
+    const messages = instance.messageManager.getMessages();
+    instance.messages = messages;
+    // Compute usedTools from messages (last 2 tool blocks)
+    const toolBlocks = messages.flatMap(
+      (m) => m.blocks?.filter((b) => b.type === "tool") ?? [],
+    );
+    const last2 = toolBlocks.slice(-2);
+    instance.usedTools = last2.map((tb) => ({
+      name: tb.name ?? "",
+      parameters: tb.parameters ?? "",
+      compactParams: tb.compactParams,
+      stage: tb.stage,
+    }));
+    // Trigger the onUpdate callback if provided
+    instance.onUpdate?.();
+    // Forward subagent message changes to parent via callbacks
+    if (this.callbacks?.onSubagentMessagesChange) {
+      this.callbacks.onSubagentMessagesChange(subagentId, messages);
+    }
   }
 }
