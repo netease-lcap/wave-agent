@@ -19,6 +19,7 @@ import type {
   PermissionMode,
   QueuedMessage,
   WorkflowRun,
+  ToolBlockUpdateCallbackParams,
 } from "wave-agent-sdk";
 import {
   Agent,
@@ -175,9 +176,145 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [latestTotalTokens, setLatestTotalTokens] = useState(0);
   const [maxInputTokens, setMaxInputTokens] = useState(200000);
 
+  // Throttled incremental streaming updaters — 500ms leading+trailing, the same interval
+  // as the pre-incremental throttledSetMessages. `stage === "end"` flushes the final
+  // update immediately so completion results are never delayed.
+  const throttledContentUpdate = useMemo(
+    () =>
+      throttle(
+        (params: {
+          messageId: string;
+          accumulated: string;
+          stage: "streaming" | "end";
+        }) => {
+          const { messageId, accumulated, stage } = params;
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== messageId) return m;
+              const textBlockIndex = m.blocks.findIndex(
+                (b) => b.type === "text",
+              );
+              if (textBlockIndex === -1) {
+                return {
+                  ...m,
+                  blocks: [
+                    ...m.blocks,
+                    { type: "text", content: accumulated, stage },
+                  ],
+                };
+              }
+              return {
+                ...m,
+                blocks: m.blocks.map((b, idx) =>
+                  idx === textBlockIndex && b.type === "text"
+                    ? { ...b, content: accumulated, stage }
+                    : b,
+                ),
+              };
+            }),
+          );
+        },
+        500,
+      ),
+    [],
+  );
+
+  const throttledReasoningUpdate = useMemo(
+    () =>
+      throttle(
+        (params: {
+          messageId: string;
+          accumulated: string;
+          stage: "streaming" | "end";
+        }) => {
+          const { messageId, accumulated, stage } = params;
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== messageId) return m;
+              const reasoningBlockIndex = m.blocks.findIndex(
+                (b) => b.type === "reasoning",
+              );
+              if (reasoningBlockIndex === -1) {
+                return {
+                  ...m,
+                  blocks: [
+                    ...m.blocks,
+                    { type: "reasoning", content: accumulated, stage },
+                  ],
+                };
+              }
+              return {
+                ...m,
+                blocks: m.blocks.map((b, idx) =>
+                  idx === reasoningBlockIndex && b.type === "reasoning"
+                    ? { ...b, content: accumulated, stage }
+                    : b,
+                ),
+              };
+            }),
+          );
+        },
+        500,
+      ),
+    [],
+  );
+
+  const throttledToolBlockUpdate = useMemo(
+    () =>
+      throttle((params: ToolBlockUpdateCallbackParams) => {
+        const { messageId, id: toolBlockId, ...updates } = params;
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id !== messageId) return m;
+            const toolBlockIndex = m.blocks.findIndex(
+              (b) => b.type === "tool" && b.id === toolBlockId,
+            );
+            if (toolBlockIndex === -1) {
+              return {
+                ...m,
+                blocks: [
+                  ...m.blocks,
+                  {
+                    type: "tool",
+                    id: toolBlockId,
+                    name: updates.name || "",
+                    stage: updates.stage || "start",
+                    parameters: updates.parameters || "",
+                    result: updates.result || "",
+                    success: updates.success ?? false,
+                    ...updates,
+                  },
+                ],
+              };
+            }
+            return {
+              ...m,
+              blocks: m.blocks.map((b, idx) =>
+                idx === toolBlockIndex && b.type === "tool"
+                  ? { ...b, ...updates }
+                  : b,
+              ),
+            };
+          }),
+        );
+      }, 500),
+    [],
+  );
+
   useEffect(() => {
     isExpandedRef.current = isExpanded;
-  }, [isExpanded]);
+    if (isExpanded) {
+      // Cancel pending throttled updates so the frozen expanded view isn't overwritten
+      throttledContentUpdate.cancel();
+      throttledReasoningUpdate.cancel();
+      throttledToolBlockUpdate.cancel();
+    }
+  }, [
+    isExpanded,
+    throttledContentUpdate,
+    throttledReasoningUpdate,
+    throttledToolBlockUpdate,
+  ]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState("");
@@ -350,99 +487,18 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         },
         onAssistantContentUpdated: (params) => {
           if (isExpandedRef.current) return;
-          const { messageId, accumulated, stage } = params;
-          setMessages((prev) =>
-            prev.map((m) => {
-              if (m.id !== messageId) return m;
-              const textBlockIndex = m.blocks.findIndex(
-                (b) => b.type === "text",
-              );
-              if (textBlockIndex === -1) {
-                return {
-                  ...m,
-                  blocks: [
-                    ...m.blocks,
-                    { type: "text", content: accumulated, stage },
-                  ],
-                };
-              }
-              return {
-                ...m,
-                blocks: m.blocks.map((b, idx) =>
-                  idx === textBlockIndex && b.type === "text"
-                    ? { ...b, content: accumulated, stage }
-                    : b,
-                ),
-              };
-            }),
-          );
+          throttledContentUpdate(params);
+          if (params.stage === "end") throttledContentUpdate.flush();
         },
         onAssistantReasoningUpdated: (params) => {
           if (isExpandedRef.current) return;
-          const { messageId, accumulated, stage } = params;
-          setMessages((prev) =>
-            prev.map((m) => {
-              if (m.id !== messageId) return m;
-              const reasoningBlockIndex = m.blocks.findIndex(
-                (b) => b.type === "reasoning",
-              );
-              if (reasoningBlockIndex === -1) {
-                return {
-                  ...m,
-                  blocks: [
-                    ...m.blocks,
-                    { type: "reasoning", content: accumulated, stage },
-                  ],
-                };
-              }
-              return {
-                ...m,
-                blocks: m.blocks.map((b, idx) =>
-                  idx === reasoningBlockIndex && b.type === "reasoning"
-                    ? { ...b, content: accumulated, stage }
-                    : b,
-                ),
-              };
-            }),
-          );
+          throttledReasoningUpdate(params);
+          if (params.stage === "end") throttledReasoningUpdate.flush();
         },
         onToolBlockUpdated: (params) => {
           if (isExpandedRef.current) return;
-          const { messageId, id: toolBlockId, ...updates } = params;
-          setMessages((prev) =>
-            prev.map((m) => {
-              if (m.id !== messageId) return m;
-              const toolBlockIndex = m.blocks.findIndex(
-                (b) => b.type === "tool" && b.id === toolBlockId,
-              );
-              if (toolBlockIndex === -1) {
-                return {
-                  ...m,
-                  blocks: [
-                    ...m.blocks,
-                    {
-                      type: "tool",
-                      id: toolBlockId,
-                      name: updates.name || "",
-                      stage: updates.stage || "start",
-                      parameters: updates.parameters || "",
-                      result: updates.result || "",
-                      success: updates.success ?? false,
-                      ...updates,
-                    },
-                  ],
-                };
-              }
-              return {
-                ...m,
-                blocks: m.blocks.map((b, idx) =>
-                  idx === toolBlockIndex && b.type === "tool"
-                    ? { ...b, ...updates }
-                    : b,
-                ),
-              };
-            }),
-          );
+          throttledToolBlockUpdate(params);
+          if (params.stage === "end") throttledToolBlockUpdate.flush();
         },
         onErrorBlockAdded: (error: string) => {
           if (isExpandedRef.current) return;
@@ -683,6 +739,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       model,
       initialPermissionMode,
       refreshMessages,
+      throttledContentUpdate,
+      throttledReasoningUpdate,
+      throttledToolBlockUpdate,
       mcpServers,
     ],
   );
@@ -720,6 +779,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      throttledContentUpdate.cancel();
+      throttledReasoningUpdate.cancel();
+      throttledToolBlockUpdate.cancel();
       if (agentRef.current) {
         try {
           // Display usage summary before cleanup
@@ -733,7 +795,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         agentRef.current.destroy();
       }
     };
-  }, []);
+  }, [
+    throttledContentUpdate,
+    throttledReasoningUpdate,
+    throttledToolBlockUpdate,
+  ]);
 
   // Trigger WorktreeRemove hook BEFORE agent destruction
   const triggerWorktreeRemoveHook = useCallback(
