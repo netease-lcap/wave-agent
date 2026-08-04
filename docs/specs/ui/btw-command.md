@@ -82,7 +82,7 @@ order: 170
 
 ### 边界情况
 
-- **用户输入不带问题的 `/btw` 怎么办？** 命令不进入 BTW 状态，显示 "Usage: /btw <your question>"；输入行随 usage 消息隐藏，仅按 ESC 关闭（与 Claude Code 一致），其他按键被忽略。
+- **用户输入不带问题的 `/btw` 怎么办？** 命令不进入 BTW 状态，显示 `"Usage: /btw <your question>"`；输入行随 usage 消息隐藏，仅按 ESC 关闭（与 Claude Code 一致），其他按键被忽略。
 - **用户提出通常会触发工具的 `/btw` 问题怎么办？** btw 请求携带与主对话相同的工具列表（缓存键一致），但仅执行一轮且不反馈工具结果；模型若尝试调用工具，显示 "(The model tried to call X...)" 提示。
 - **请求失败（如 API 错误）怎么办？** `BtwDisplay` 显示 "(API error: ...)" 错误信息，不中断主对话。
 - **模型只输出 thinking 而无最终答案怎么办？** `BtwDisplay` 显示 thinking 内容（而非 "No response received"），避免思考阶段输出被丢弃。
