@@ -223,10 +223,14 @@ test("pending permission survives disconnect; new connection lists and resolves 
   expect(req.sessionId).toBe(sessionId);
   expect(req.context.toolName).toBe("Bash");
 
-  b.send({
-    method: "permissionResponse",
-    params: { requestId: req.requestId, decision: { behavior: "allow" } },
-  });
+  // Notification (no id) — the daemon sends no response, so write it raw
+  // instead of going through send() (whose waitFor would time out).
+  b.socket.write(
+    JSON.stringify({
+      method: "permissionResponse",
+      params: { requestId: req.requestId, decision: { behavior: "allow" } },
+    }) + "\n",
+  );
   await expect(permissionPromise).resolves.toEqual({ behavior: "allow" });
   b.close();
 });
