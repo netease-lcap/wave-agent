@@ -44,6 +44,10 @@ describe("ChatInterface Loading State", () => {
       model: "test-model",
       fastModel: "test-fast-model",
     }),
+    getGatewayConfig: vi.fn().mockReturnValue({
+      apiKey: undefined,
+      baseURL: undefined,
+    }),
   } as unknown as ChatContextType;
 
   const mockInputManager = {

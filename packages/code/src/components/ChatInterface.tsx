@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Box, useStdout, measureElement, Static } from "ink";
 import type { DOMElement } from "ink";
+import { authService } from "wave-agent-sdk";
 import { MessageList } from "./MessageList.js";
 import { InputBox } from "./InputBox.js";
 import { LoadingIndicator } from "./LoadingIndicator.js";
@@ -40,6 +41,7 @@ export const ChatInterface: React.FC = () => {
     isGoalActive,
     goalElapsed,
     isGoalEvaluating,
+    getGatewayConfig,
   } = useChat();
 
   const displayMessages = messages;
@@ -48,6 +50,26 @@ export const ChatInterface: React.FC = () => {
   const { stdout } = useStdout();
   const terminalHeight = stdout?.rows ?? 24;
   const chatInterfaceRef = useRef<DOMElement>(null);
+
+  // Compute whether the user has any usable auth/direct-API config,
+  // so the welcome page can prompt /login when neither is present.
+  const computeAuthState = useCallback((): boolean => {
+    if (authService.isSSOAuthenticated()) return true;
+    const gateway = getGatewayConfig();
+    return Boolean(gateway.apiKey || gateway.baseURL);
+  }, [getGatewayConfig]);
+
+  const [hasAuth, setHasAuth] = useState<boolean>(computeAuthState);
+
+  // Keep the /login hint in sync with auth state changes (login/logout).
+  useEffect(() => {
+    const unsubscribe = authService.onAuthChange(() => {
+      setHasAuth(computeAuthState());
+    });
+    return unsubscribe;
+  }, [computeAuthState]);
+
+  const showLoginHint = !hasAuth;
 
   // Handle forceStatic mode for overflow and request remount when exiting
   useEffect(() => {
@@ -79,6 +101,7 @@ export const ChatInterface: React.FC = () => {
         version={version}
         workdir={workdir}
         forceStatic={forceStatic}
+        showLoginHint={showLoginHint}
       />
 
       {!isConfirmationVisible && !isExpanded && (
