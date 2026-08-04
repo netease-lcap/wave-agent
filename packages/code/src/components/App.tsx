@@ -10,6 +10,7 @@ import {
   getDefaultRemoteBranch,
 } from "wave-agent-sdk";
 import { BaseAppProps } from "../types.js";
+import { btwOverlayActiveRef } from "../managers/inputReducer.js";
 
 interface AppProps extends BaseAppProps {
   restoreSessionId?: string;
@@ -51,6 +52,8 @@ const ChatWithExitPrompt: React.FC<{
   }, [worktreeSession, onExit]);
 
   useInput((input, key) => {
+    // While the /btw overlay is up, Ctrl+C dismisses it instead of exiting
+    if (btwOverlayActiveRef.current) return;
     if (input === "c" && key.ctrl) {
       handleSignal();
     }
@@ -107,6 +110,8 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   // Handle Ctrl-C for non-worktree sessions (immediate exit)
   // Ink runs terminal in raw mode, so Ctrl+C arrives as useInput event, not SIGINT
   useInput((input, key) => {
+    // While the /btw overlay is up, Ctrl+C dismisses it instead of exiting
+    if (btwOverlayActiveRef.current) return;
     if (!worktreeSession && input === "c" && key.ctrl) {
       onExit(false);
       return true;

@@ -542,6 +542,29 @@ describe("inputHandlers", () => {
         );
       });
     });
+
+    it("should show usage for bare /btw executed via selector", async () => {
+      const state: InputState = {
+        ...initialState,
+        slashPosition: 0,
+        inputText: "/btw",
+        cursorPosition: 4,
+      };
+      vi.mocked(callbacks.onHasSlashCommand!).mockReturnValue(false);
+
+      handleCommandSelect(state, dispatch, callbacks, "btw");
+
+      await vi.waitFor(() => {
+        expect(dispatch).toHaveBeenCalledWith({
+          type: "SET_BTW_STATE",
+          payload: {
+            question: "",
+            isLoading: false,
+            answer: "Usage: /btw <your question>",
+          },
+        });
+      });
+    });
   });
 
   describe("handleFileSelect", () => {

@@ -37,9 +37,6 @@ import { LiveConfigManager } from "./managers/liveConfigManager.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
 import { TaskManager } from "./services/taskManager.js";
-import { btw } from "./services/aiService.js";
-import { convertMessagesForAPI } from "./utils/convertMessagesForAPI.js";
-import { supportsVision } from "./utils/modelCapabilities.js";
 import type { WorktreeSession } from "./utils/worktreeSession.js";
 import { parseTaskNotificationXml } from "./utils/notificationXml.js";
 import { InitializationService } from "./services/initializationService.js";
@@ -938,21 +935,23 @@ export class Agent {
   }
 
   /**
-   * Ask a side question without tool use
+   * Ask a side question without interrupting the main agent.
+   *
+   * Runs a single-turn fork of the conversation that reuses the main loop's
+   * system prompt, tools, and memory injection (prompt-cache friendly) and
+   * never executes tools. The abort signal lets the UI cancel a pending
+   * question (loading dismiss); aborts propagate as thrown errors.
+   *
    * @param question - The side question to ask
+   * @param abortSignal - Optional signal to abort the pending request
    * @returns Promise that resolves to the AI's answer
    */
-  public async askBtw(question: string): Promise<string> {
-    const messages = convertMessagesForAPI(this.messageManager.getMessages(), {
-      supportsVision: supportsVision(this.getModelConfig().capabilities),
-    });
-    const result = await btw({
-      gatewayConfig: this.getGatewayConfig(),
-      modelConfig: this.getModelConfig(),
-      messages,
-      question,
-    });
-    return result.content;
+  public async askBtw(
+    question: string,
+    abortSignal?: AbortSignal,
+  ): Promise<string> {
+    const result = await this.aiManager.runBtwFork(question, abortSignal);
+    return result.content ?? result.error ?? "No response received";
   }
 
   /**

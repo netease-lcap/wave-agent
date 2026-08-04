@@ -5,6 +5,7 @@ import {
   initialState,
   InputManagerCallbacks,
   ESC_DOUBLE_PRESS_TIMEOUT_MS,
+  btwOverlayActiveRef,
 } from "../managers/inputReducer.js";
 import { createBracketedPasteDetector } from "../utils/bracketedPaste.js";
 import {
@@ -24,6 +25,12 @@ export const useInputManager = (
   // without triggering submit — a pasted trailing \r must not be treated as
   // Enter (see utils/bracketedPaste.ts).
   const pasteDetectorRef = useRef(createBracketedPasteDetector());
+
+  // Abort plumbing for the /btw side question: ABORT_BTW (set when the overlay
+  // is dismissed while loading) aborts the in-flight onAskBtw call; the
+  // dismissed ref suppresses the late SET_BTW_STATE dispatch / error logging.
+  const btwAbortRef = useRef<AbortController | null>(null);
+  const btwDismissedRef = useRef(false);
 
   const {
     onInputTextChange,
@@ -137,24 +144,40 @@ export const useInputManager = (
           case "BACKGROUND_CURRENT_TASK":
             onBackgroundCurrentTask?.();
             break;
-          case "ASK_BTW":
+          case "ASK_BTW": {
+            const controller = new AbortController();
+            btwAbortRef.current = controller;
+            btwDismissedRef.current = false;
             try {
-              const answer = await onAskBtw?.(effect.question);
-              dispatch({
-                type: "SET_BTW_STATE",
-                payload: { answer, isLoading: false },
-              });
+              const answer = await onAskBtw?.(
+                effect.question,
+                controller.signal,
+              );
+              if (!btwDismissedRef.current) {
+                dispatch({
+                  type: "SET_BTW_STATE",
+                  payload: { answer, isLoading: false },
+                });
+              }
             } catch (error) {
-              console.error("Failed to ask side question:", error);
-              dispatch({
-                type: "SET_BTW_STATE",
-                payload: {
-                  answer:
-                    "Error: Failed to get an answer for your side question.",
-                  isLoading: false,
-                },
-              });
+              if (!btwDismissedRef.current) {
+                console.error("Failed to ask side question:", error);
+                dispatch({
+                  type: "SET_BTW_STATE",
+                  payload: {
+                    answer:
+                      "Error: Failed to get an answer for your side question.",
+                    isLoading: false,
+                  },
+                });
+              }
             }
+            break;
+          }
+          case "ABORT_BTW":
+            btwDismissedRef.current = true;
+            btwAbortRef.current?.abort();
+            btwAbortRef.current = null;
             break;
           case "PERMISSION_MODE_CHANGE":
             onPermissionModeChange?.(effect.mode);
@@ -216,6 +239,17 @@ export const useInputManager = (
                 dispatch({ type: "SET_SHOW_LOGIN_COMMAND", payload: true });
               } else if (command === "logout") {
                 dispatch({ type: "SET_SHOW_LOGIN_COMMAND", payload: true });
+              } else if (command === "btw") {
+                // Bare /btw executed via the command selector — show usage
+                // (aligned with Claude Code's empty-args message).
+                dispatch({
+                  type: "SET_BTW_STATE",
+                  payload: {
+                    question: "",
+                    isLoading: false,
+                    answer: "Usage: /btw <your question>",
+                  },
+                });
               } else if (command === "plugin") {
                 dispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: true });
               } else if (command === "model") {
@@ -331,7 +365,12 @@ export const useInputManager = (
     onImagesStateChange?.(state.attachedImages);
   }, [state.attachedImages, onImagesStateChange]);
 
-  // /btw side question is handled via pendingEffect "ASK_BTW" above
+  // Keep the shared overlay-active flag in sync so App's Ctrl+C exit handler
+  // can defer to the /btw overlay (ink runs ALL useInput handlers per keypress
+  // with no propagation control).
+  useEffect(() => {
+    btwOverlayActiveRef.current = state.btwState.question !== "";
+  }, [state.btwState.question]);
 
   // Methods
   const insertTextAtCursor = useCallback((text: string) => {
