@@ -25,7 +25,17 @@ export interface BtwState {
   question: string;
   answer?: string;
   isLoading: boolean;
+  /** Scroll offset (in lines) into the answer; bumped by ↑/↓ / Ctrl+P / Ctrl+N */
+  scrollOffset?: number;
 }
+
+/**
+ * True while the /btw overlay is up (a question is on display, loading or
+ * answered). App's Ctrl+C exit handler checks this so Ctrl+C dismisses the
+ * overlay instead of quitting (aligned with Claude Code). Synced from
+ * useInputManager via an effect.
+ */
+export const btwOverlayActiveRef: { current: boolean } = { current: false };
 
 export const ESC_DOUBLE_PRESS_TIMEOUT_MS = 1000;
 
@@ -44,6 +54,7 @@ export type PendingEffect =
   | { type: "ABORT_MESSAGE" }
   | { type: "BACKGROUND_CURRENT_TASK" }
   | { type: "ASK_BTW"; question: string }
+  | { type: "ABORT_BTW" }
   | { type: "PERMISSION_MODE_CHANGE"; mode: PermissionMode }
   | { type: "FETCH_HISTORY" }
   | { type: "PASTE_IMAGE" }
@@ -83,7 +94,7 @@ export interface InputManagerCallbacks {
   onAbortMessage?: () => void;
   onBackgroundCurrentTask?: () => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
-  onAskBtw?: (question: string) => Promise<string>;
+  onAskBtw?: (question: string, abortSignal?: AbortSignal) => Promise<string>;
   onClearMessages?: () => Promise<void>;
   onCompact?: (instructions?: string) => Promise<void>;
   sessionId?: string;
@@ -242,7 +253,7 @@ function insertTextWithPlaceholder(
 /**
  * Submit the current input text: extract [Image #N] references, route /btw
  * and CLI-internal slash commands, otherwise send as a message. Returns null
- * when there is nothing to submit (empty text, bare /btw).
+ * when there is nothing to submit (empty text).
  */
 function submitInput(state: InputState): InputState | null {
   if (!state.inputText.trim()) {
@@ -265,8 +276,20 @@ function submitInput(state: InputState): InputState | null {
   if (contentWithPlaceholders.startsWith("/btw ")) {
     const question = contentWithPlaceholders.substring(5).trim();
     if (!question) {
-      // Bare /btw with no question text — ignore
-      return null;
+      // "/btw " with no question text — show usage (aligned with Claude Code)
+      return {
+        ...state,
+        inputText: "",
+        cursorPosition: 0,
+        historyIndex: -1,
+        longTextMap: {},
+        attachedImages: [],
+        btwState: {
+          question: "",
+          isLoading: false,
+          answer: "Usage: /btw <your question>",
+        },
+      };
     }
 
     return {
@@ -286,8 +309,20 @@ function submitInput(state: InputState): InputState | null {
   }
 
   if (contentWithPlaceholders === "/btw") {
-    // Bare /btw — ignore
-    return null;
+    // Bare /btw — show usage (aligned with Claude Code)
+    return {
+      ...state,
+      inputText: "",
+      cursorPosition: 0,
+      historyIndex: -1,
+      longTextMap: {},
+      attachedImages: [],
+      btwState: {
+        question: "",
+        isLoading: false,
+        answer: "Usage: /btw <your question>",
+      },
+    };
   }
 
   // Check if the content is a CLI-internal slash command (help, tasks,
@@ -857,10 +892,68 @@ export function inputReducer(
         return state;
       }
 
+      // 1. /btw overlay handling (active while a question is displayed).
+      // Dismiss keys match Claude Code's btw.tsx (escape|return|space|ctrl+c/d);
+      // dismissing while loading aborts the in-flight side question. Scroll
+      // keys page the answer by SCROLL_LINES (3) per press.
+      if (state.btwState.question) {
+        const isDismiss =
+          key.return ||
+          key.escape ||
+          input === " " ||
+          (key.ctrl && (input === "c" || input === "d"));
+        const isScrollUp = key.upArrow || (key.ctrl && input === "p");
+        const isScrollDown = key.downArrow || (key.ctrl && input === "n");
+
+        if (isDismiss) {
+          if (state.btwState.isLoading) {
+            return {
+              ...state,
+              btwState: {
+                question: "",
+                answer: undefined,
+                isLoading: false,
+              },
+              pendingEffect: { type: "ABORT_BTW" },
+            };
+          }
+          return {
+            ...state,
+            btwState: {
+              question: "",
+              answer: undefined,
+              isLoading: false,
+            },
+          };
+        }
+
+        if (isScrollUp && !state.btwState.isLoading) {
+          return {
+            ...state,
+            btwState: {
+              ...state.btwState,
+              scrollOffset: Math.max(0, (state.btwState.scrollOffset ?? 0) - 3),
+            },
+          };
+        }
+        if (isScrollDown && !state.btwState.isLoading) {
+          return {
+            ...state,
+            btwState: {
+              ...state.btwState,
+              scrollOffset: (state.btwState.scrollOffset ?? 0) + 3,
+            },
+          };
+        }
+
+        // Any other key while the overlay is up is ignored
+        return state;
+      }
+
       // 1. Escape Handling
       if (key.escape) {
-        // Dismiss btw answer
-        if (state.btwState.question && !state.btwState.isLoading) {
+        // Dismiss the /btw usage message (bare /btw with no question)
+        if (state.btwState.answer && !state.btwState.question) {
           return {
             ...state,
             btwState: {

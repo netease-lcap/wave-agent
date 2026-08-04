@@ -63,16 +63,26 @@ export const handleSubmit = async (
         ? contentWithPlaceholders.substring(5).trim()
         : "";
 
-      const payload = {
-        isActive: true,
-        question,
-        isLoading: question !== "",
-      };
-
-      dispatch({
-        type: "SET_BTW_STATE",
-        payload,
-      });
+      if (question) {
+        dispatch({
+          type: "SET_BTW_STATE",
+          payload: {
+            question,
+            isLoading: true,
+            answer: undefined,
+          },
+        });
+      } else {
+        // Bare /btw — show usage (aligned with Claude Code)
+        dispatch({
+          type: "SET_BTW_STATE",
+          payload: {
+            question: "",
+            isLoading: false,
+            answer: "Usage: /btw <your question>",
+          },
+        });
+      }
       dispatch({ type: "CLEAR_INPUT" });
       dispatch({ type: "RESET_HISTORY_NAVIGATION" });
       dispatch({ type: "CLEAR_LONG_TEXT_MAP" });
@@ -363,6 +373,17 @@ export const handleCommandSelect = (
           dispatch({ type: "SET_SHOW_HELP", payload: true });
         } else if (command === "status") {
           dispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: true });
+        } else if (command === "btw") {
+          // Bare /btw executed via the command selector — show usage
+          // (aligned with Claude Code's empty-args message).
+          dispatch({
+            type: "SET_BTW_STATE",
+            payload: {
+              question: "",
+              isLoading: false,
+              answer: "Usage: /btw <your question>",
+            },
+          });
         } else if (command === "plugin") {
           dispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: true });
         } else if (command === "model") {
@@ -696,8 +717,54 @@ export const handleInput = async (
   key: Key,
   clearImages?: () => void,
 ): Promise<boolean> => {
-  // Handle ESC to dismiss btw answer
-  if (key.escape && state.btwState.question && !state.btwState.isLoading) {
+  // /btw overlay handling (mirrors inputReducer's HANDLE_KEY block; this
+  // handler is not wired, kept in sync for consistency).
+  if (state.btwState.question) {
+    const isDismiss =
+      key.return ||
+      key.escape ||
+      input === " " ||
+      (key.ctrl && (input === "c" || input === "d"));
+    const isScrollUp = key.upArrow || (key.ctrl && input === "p");
+    const isScrollDown = key.downArrow || (key.ctrl && input === "n");
+
+    if (isDismiss) {
+      dispatch({
+        type: "SET_BTW_STATE",
+        payload: {
+          question: "",
+          answer: undefined,
+          isLoading: false,
+        },
+      });
+      return true;
+    }
+
+    if (isScrollUp && !state.btwState.isLoading) {
+      dispatch({
+        type: "SET_BTW_STATE",
+        payload: {
+          scrollOffset: Math.max(0, (state.btwState.scrollOffset ?? 0) - 3),
+        },
+      });
+      return true;
+    }
+    if (isScrollDown && !state.btwState.isLoading) {
+      dispatch({
+        type: "SET_BTW_STATE",
+        payload: {
+          scrollOffset: (state.btwState.scrollOffset ?? 0) + 3,
+        },
+      });
+      return true;
+    }
+
+    // Any other key while the overlay is up is ignored
+    return true;
+  }
+
+  // ESC dismisses the /btw usage message (bare /btw with no question)
+  if (key.escape && state.btwState.answer && !state.btwState.question) {
     dispatch({
       type: "SET_BTW_STATE",
       payload: {

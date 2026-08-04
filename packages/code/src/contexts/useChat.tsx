@@ -53,7 +53,7 @@ export interface ChatContextType {
     images?: Array<{ path: string; mimeType: string }>,
     longTextMap?: Record<string, string>,
   ) => Promise<void>;
-  askBtw: (question: string) => Promise<string>;
+  askBtw: (question: string, abortSignal?: AbortSignal) => Promise<string>;
   clearMessages: () => Promise<void>;
   compact: (instructions?: string) => Promise<void>;
   abortMessage: () => void;
@@ -598,12 +598,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     [],
   );
 
-  const askBtw = useCallback(async (question: string) => {
-    if (!agentRef.current) {
-      throw new Error("Agent not initialized");
-    }
-    return await agentRef.current.askBtw(question);
-  }, []);
+  const askBtw = useCallback(
+    async (question: string, abortSignal?: AbortSignal) => {
+      if (!agentRef.current) {
+        throw new Error("Agent not initialized");
+      }
+      return await agentRef.current.askBtw(question, abortSignal);
+    },
+    [],
+  );
 
   const clearMessages = useCallback(async () => {
     await agentRef.current?.clearMessages();

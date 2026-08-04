@@ -1026,6 +1026,121 @@ export class AIManager {
   }
 
   /**
+   * Fork-path side question ("/btw"): run a single-turn fork of the
+   * conversation using the same system prompt, tools, model, and generation
+   * params as the main loop, so the forked request prefix matches exactly and
+   * the prompt cache is reused. The in-progress assistant message (if any) is
+   * stripped so the fork starts from the last completed request prefix. Tools
+   * are never executed — the wrapped question instructs the model to answer
+   * directly; an attempted tool call is surfaced as an error string.
+   */
+  async runBtwFork(
+    question: string,
+    abortSignal?: AbortSignal,
+  ): Promise<{ content?: string; error?: string }> {
+    const modelConfig = this.getModelConfig();
+    const gatewayConfig = this.getGatewayConfig();
+    const sessionId = this.messageManager.getSessionId();
+    const workdir = this.getWorkdir();
+
+    const rawMessages = this.messageManager.getMessages();
+
+    // Strip the in-progress assistant message (a block still in "streaming"
+    // stage) so the fork's request prefix matches the last completed
+    // main-loop request and the prompt cache is reused.
+    const lastMessage = rawMessages[rawMessages.length - 1];
+    const hasInProgressMessage =
+      lastMessage?.role === "assistant" &&
+      lastMessage.blocks.some(
+        (b) => "stage" in b && (b as { stage?: string }).stage === "streaming",
+      );
+
+    const forkMessages: ChatCompletionMessageParam[] = convertMessagesForAPI(
+      hasInProgressMessage ? rawMessages.slice(0, -1) : rawMessages,
+      { supportsVision: supportsVision(modelConfig.capabilities) },
+    );
+
+    // Mirror the main loop's memory injection so the request prefix matches.
+    const { prependContent } =
+      await this.messageManager.getMemoryForInjection();
+    if (prependContent.trim()) {
+      forkMessages.unshift({
+        role: "user",
+        content: wrapInSystemReminder(prependContent),
+      });
+    }
+
+    // Wrap the question with the side-question instructions (verbatim
+    // Claude Code sideQuestion.ts) so the model answers directly.
+    const wrappedQuestion = `<system-reminder>This is a side question from the user. You must answer this question directly in a single response.
+
+IMPORTANT CONTEXT:
+- You are a separate, lightweight agent spawned to answer this one question
+- The main agent is NOT interrupted - it continues working independently in the background
+- You share the conversation context but are a completely separate instance
+- Do NOT reference being interrupted or what you were "previously doing" - that framing is incorrect
+
+CRITICAL CONSTRAINTS:
+- You have NO tools available - you cannot read files, run commands, search, or take any actions
+- This is a one-off response - there will be no follow-up turns
+- You can ONLY provide information based on what you already know from the conversation context
+- NEVER say things like "Let me try...", "I'll now...", "Let me check...", or promise to take any action
+- If you don't know the answer, say so - do not offer to look it up or investigate
+
+Simply answer the question with the information you have.</system-reminder>
+
+${question}`;
+    forkMessages.push({ role: "user", content: wrappedQuestion });
+
+    const { toolsConfig, filteredToolPlugins } = this.resolveFilteredTools();
+    const systemPrompt = await this.buildMainSystemPrompt(filteredToolPlugins);
+
+    try {
+      const result = await aiService.callAgent({
+        gatewayConfig,
+        modelConfig,
+        messages: forkMessages,
+        sessionId,
+        abortSignal,
+        workdir,
+        tools: toolsConfig,
+        systemPrompt,
+        toolChoice: this.toolChoiceOverride,
+        // Stream so a slow reasoning model emits first bytes before the
+        // gateway's idle timeout fires (same rationale as runCompactFork).
+        stream: true,
+      });
+
+      if (result.content?.trim()) {
+        return { content: result.content };
+      }
+
+      if (result.tool_calls && result.tool_calls.length > 0) {
+        const firstFunctionCall = result.tool_calls.find(
+          (call) => call.type === "function",
+        );
+        const toolName = firstFunctionCall?.function?.name ?? "a tool";
+        return {
+          error: `(The model tried to call ${toolName} instead of answering directly. Try rephrasing or ask in the main conversation.)`,
+        };
+      }
+
+      // Neither text nor tool calls.
+      return { error: "No response received" };
+    } catch (error) {
+      // aiService.callAgent converts AbortError into a plain Error, so the
+      // abort is detected via the signal itself; rethrow so the UI can
+      // silently dismiss instead of showing an error.
+      if (abortSignal?.aborted) {
+        throw error;
+      }
+      return {
+        error: `(API error: ${error instanceof Error ? error.message : String(error)})`,
+      };
+    }
+  }
+
+  /**
    * Build post-compact context restoration content.
    * Restores file reads, working directory, plan mode, skills, and background tasks.
    */
