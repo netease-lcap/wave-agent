@@ -24,6 +24,8 @@ import type {
   ToolPermissionContext,
   SessionMetadata,
   Scope,
+  ToolBlock,
+  ErrorBlock,
 } from 'wave-agent-sdk';
 import {
   EDIT_TOOL_NAME,
@@ -588,18 +590,123 @@ export class DesktopHost {
         if (paneId) this.postMessage({ command: 'appendMessage', paneId, message });
       },
       onAssistantContentUpdated: (params) => {
+        // The webview merges streaming deltas via UPDATE_STREAMING_CONTENT,
+        // but the cache only ever saw the initial empty assistant message.
+        // Mirror the deltas into it so a session switch (setInitialState from
+        // the cache) renders the full assistant reply.
+        agentRef.messages = agentRef.messages.map((m) => {
+          if (m.id !== params.messageId) return m;
+          const textIndex = m.blocks.findIndex((b) => b.type === 'text');
+          const blocks: Message['blocks'] =
+            textIndex === -1
+              ? [...m.blocks, { type: 'text' as const, content: params.chunk, stage: params.stage }]
+              : m.blocks.map((b, idx) =>
+                  idx === textIndex && b.type === 'text'
+                    ? { ...b, content: b.content + params.chunk, stage: params.stage }
+                    : b,
+                );
+          return { ...m, blocks };
+        });
         const paneId = paneIdOf();
         if (paneId) this.throttledStreamingContentUpdate(paneId, params.messageId, params.chunk, params.stage);
       },
       onAssistantReasoningUpdated: (params) => {
+        // Mirror reasoning deltas into the cache too (UPDATE_STREAMING_REASONING
+        // semantics: chunk append, startTime on first chunk, endTime on end).
+        agentRef.messages = agentRef.messages.map((m) => {
+          if (m.id !== params.messageId) return m;
+          const reasoningIndex = m.blocks.findIndex((b) => b.type === 'reasoning');
+          const blocks: Message['blocks'] =
+            reasoningIndex === -1
+              ? [
+                  ...m.blocks,
+                  {
+                    type: 'reasoning' as const,
+                    content: params.chunk,
+                    stage: params.stage,
+                    startTime: Date.now(),
+                    ...(params.stage === 'end' ? { endTime: Date.now() } : {}),
+                  },
+                ]
+              : m.blocks.map((b, idx) =>
+                  idx === reasoningIndex && b.type === 'reasoning'
+                    ? {
+                        ...b,
+                        content: b.content + params.chunk,
+                        stage: params.stage,
+                        startTime: b.startTime ?? Date.now(),
+                        ...(params.stage === 'end' ? { endTime: b.endTime ?? Date.now() } : {}),
+                      }
+                    : b,
+                );
+          return { ...m, blocks };
+        });
         const paneId = paneIdOf();
         if (paneId) this.throttledStreamingReasoningUpdate(paneId, params.messageId, params.chunk, params.stage);
       },
       onToolBlockUpdated: (params) => {
+        // Mirror tool block merges into the cache too (UPDATE_TOOL_BLOCK
+        // semantics: create on first update, merge fields, append
+        // parametersChunk to the accumulated parameters).
+        const { messageId, id: toolBlockId, parametersChunk, ...rest } = params;
+        agentRef.messages = agentRef.messages.map((m) => {
+          if (m.id !== messageId) return m;
+          const toolIndex = m.blocks.findIndex((b) => b.type === 'tool' && b.id === toolBlockId);
+          const blocks: Message['blocks'] =
+            toolIndex === -1
+              ? [
+                  ...m.blocks,
+                  {
+                    type: 'tool' as const,
+                    id: toolBlockId,
+                    name: rest.name || '',
+                    stage: rest.stage || 'start',
+                    result: rest.result || '',
+                    success: rest.success ?? false,
+                    ...rest,
+                    parameters: (rest.parameters || '') + (parametersChunk || ''),
+                  },
+                ]
+              : m.blocks.map((b, idx) => {
+                  if (idx !== toolIndex || b.type !== 'tool') return b;
+                  const merged: ToolBlock = { ...b, ...rest };
+                  if (parametersChunk) {
+                    merged.parameters = (b.parameters || '') + parametersChunk;
+                  }
+                  return merged;
+                });
+          return { ...m, blocks };
+        });
         const paneId = paneIdOf();
         if (paneId) this.postMessage({ command: 'updateToolBlock', paneId, params });
       },
       onErrorBlockAdded: (error: string) => {
+        // Mirror the error block into the cache too (APPEND_ERROR_BLOCK
+        // semantics: append to the last assistant message, creating one if no
+        // assistant message exists yet).
+        const newErrorBlock: ErrorBlock = { type: 'error', content: error };
+        let targetIndex = -1;
+        for (let i = agentRef.messages.length - 1; i >= 0; i--) {
+          if (agentRef.messages[i].role === 'assistant') {
+            targetIndex = i;
+            break;
+          }
+        }
+        if (targetIndex === -1) {
+          agentRef.messages = [
+            ...agentRef.messages,
+            {
+              id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+              role: 'assistant',
+              timestamp: new Date().toISOString(),
+              blocks: [newErrorBlock],
+            },
+          ];
+        } else {
+          agentRef.messages = agentRef.messages.map((m, idx) =>
+            idx === targetIndex ? { ...m, blocks: [...m.blocks, newErrorBlock] } : m,
+          );
+        }
         const paneId = paneIdOf();
         if (paneId) this.postMessage({ command: 'updateErrorBlock', paneId, error });
       },
