@@ -73,6 +73,7 @@ function flattenSystemPrompt(sp: unknown): string {
 
 describe("AIManager", () => {
   let aiManager: AIManager;
+  let container: Container;
   let mockMessageManager: MessageManager;
   let mockToolManager: ToolManager;
 
@@ -140,7 +141,7 @@ describe("AIManager", () => {
       getEnvironmentVars: vi.fn().mockReturnValue({}),
     };
 
-    const container = new Container();
+    container = new Container();
     container.register("ConfigurationService", mockConfigurationService);
     container.register("MessageManager", mockMessageManager);
     container.register("ToolManager", mockToolManager);
@@ -196,6 +197,83 @@ describe("AIManager", () => {
   it("should call callAgent", async () => {
     await aiManager.sendAIMessage();
     expect(aiService.callAgent).toHaveBeenCalled();
+  });
+
+  it("does not send disableThinkingOptions in the agent loop", async () => {
+    await aiManager.sendAIMessage();
+    const options = vi.mocked(aiService.callAgent).mock.calls[0][0];
+    expect(options.disableThinkingOptions).toBeUndefined();
+  });
+
+  it("does not send disableThinkingOptions for fast-model subagents when none configured", async () => {
+    const subagent = new AIManager(container, {
+      workdir: "/test/workdir",
+      stream: false,
+      modelOverride: "fastModel",
+    });
+    await subagent.sendAIMessage();
+    const options = vi.mocked(aiService.callAgent).mock.calls[0][0];
+    expect(options.disableThinkingOptions).toBeUndefined();
+  });
+
+  it("passes through explicitly configured disableThinkingOptions for fast-model subagents", async () => {
+    const taskManager = {
+      on: vi.fn(),
+      listTasks: vi.fn().mockResolvedValue([]),
+    } as unknown as TaskManager;
+
+    const fastContainer = new Container();
+    fastContainer.register("ConfigurationService", {
+      setOptions: vi.fn(),
+      resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
+      resolveModelConfig: vi.fn().mockReturnValue({
+        ...mockModelConfig,
+        disableThinkingOptions: { thinking: { type: "disabled" } },
+      }),
+      resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+      resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
+      resolveLanguage: vi.fn().mockReturnValue(undefined),
+      getEnvironmentVars: vi.fn().mockReturnValue({}),
+    });
+    fastContainer.register("MessageManager", mockMessageManager);
+    fastContainer.register("ToolManager", mockToolManager);
+    fastContainer.register("TaskManager", taskManager);
+    fastContainer.register("MemoryService", {
+      getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+      getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+      ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+      getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+    });
+    fastContainer.register("PermissionManager", {
+      getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+      clearTemporaryRules: vi.fn(),
+      getPlanFilePath: vi.fn().mockReturnValue(undefined),
+      setHasExitedPlanMode: vi.fn(),
+      hasExitedPlanModeInSession: vi.fn(() => false),
+      setNeedsPlanModeExitAttachment: vi.fn(),
+      getNeedsPlanModeExitAttachment: vi.fn(() => false),
+    } as unknown as Record<string, unknown>);
+    fastContainer.register("SubagentManager", {
+      getConfigurations: vi.fn().mockReturnValue([]),
+    });
+    fastContainer.register("SkillManager", {
+      getAvailableSkills: vi.fn().mockReturnValue([]),
+    });
+    fastContainer.register("MessageQueue", {
+      hasNotifications: vi.fn().mockReturnValue(false),
+      drainNotifications: vi.fn().mockReturnValue([]),
+    });
+
+    const fastSubagent = new AIManager(fastContainer, {
+      workdir: "/test/workdir",
+      stream: false,
+      modelOverride: "fastModel",
+    });
+    await fastSubagent.sendAIMessage();
+    const options = vi.mocked(aiService.callAgent).mock.calls[0][0];
+    expect(options.disableThinkingOptions).toEqual({
+      thinking: { type: "disabled" },
+    });
   });
 
   describe("Language Prompt Injection", () => {

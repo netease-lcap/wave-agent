@@ -660,6 +660,111 @@ describe("ConfigurationService", () => {
     });
   });
 
+  describe("resolveModelConfig — disableThinkingOptions", () => {
+    it("should set disableThinkingOptions from models[fastModel]", async () => {
+      const config = {
+        models: {
+          "gpt-4o": { options: { temperature: 0.7 } },
+          "gpt-4o-mini": {
+            disableThinkingOptions: { enable_thinking: false },
+          },
+        },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      const origFastModel = process.env.WAVE_FAST_MODEL;
+      delete process.env.WAVE_MODEL;
+      delete process.env.WAVE_FAST_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        const resolved = configService.resolveModelConfig(
+          "gpt-4o",
+          "gpt-4o-mini",
+        );
+
+        expect(resolved.disableThinkingOptions).toEqual({
+          enable_thinking: false,
+        });
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+        if (origFastModel !== undefined)
+          process.env.WAVE_FAST_MODEL = origFastModel;
+        else delete process.env.WAVE_FAST_MODEL;
+      }
+    });
+
+    it("should prefer the fast model's disableThinkingOptions over the agent model's", async () => {
+      const config = {
+        models: {
+          "gpt-4o": {
+            disableThinkingOptions: { thinking: { type: "disabled" } },
+          },
+          "gpt-4o-mini": {
+            disableThinkingOptions: { enable_thinking: false },
+          },
+        },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      const origFastModel = process.env.WAVE_FAST_MODEL;
+      delete process.env.WAVE_MODEL;
+      delete process.env.WAVE_FAST_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        const resolved = configService.resolveModelConfig(
+          "gpt-4o",
+          "gpt-4o-mini",
+        );
+
+        expect(resolved.disableThinkingOptions).toEqual({
+          enable_thinking: false,
+        });
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+        if (origFastModel !== undefined)
+          process.env.WAVE_FAST_MODEL = origFastModel;
+        else delete process.env.WAVE_FAST_MODEL;
+      }
+    });
+
+    it("should leave disableThinkingOptions undefined when neither model configures it", async () => {
+      const config = {
+        models: {
+          "gpt-4o": { options: { temperature: 0.7 } },
+          "gpt-4o-mini": { options: { temperature: 0.2 } },
+        },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      const origFastModel = process.env.WAVE_FAST_MODEL;
+      delete process.env.WAVE_MODEL;
+      delete process.env.WAVE_FAST_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        const resolved = configService.resolveModelConfig(
+          "gpt-4o",
+          "gpt-4o-mini",
+        );
+
+        expect(resolved.disableThinkingOptions).toBeUndefined();
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+        if (origFastModel !== undefined)
+          process.env.WAVE_FAST_MODEL = origFastModel;
+        else delete process.env.WAVE_FAST_MODEL;
+      }
+    });
+  });
+
   describe("resolveModelConfig — capabilities", () => {
     it("should merge capabilities from models[modelName] into resolved config", async () => {
       const config = {

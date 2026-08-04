@@ -619,16 +619,31 @@ export class ConfigurationService {
       baseConfig.fastModelOptions = fastModelSource.options;
     }
 
+    // Resolve fast-model disable-thinking params from models[fastModel].disableThinkingOptions
+    const fastModelDisableThinking =
+      fastModelSource && fastModelSource.disableThinkingOptions
+        ? fastModelSource.disableThinkingOptions
+        : undefined;
+    if (fastModelDisableThinking) {
+      baseConfig.disableThinkingOptions = fastModelDisableThinking;
+    }
+
     // Merge model-specific settings from configuration
     const modelSpecificConfig =
       resolvedAgentModel &&
       this.currentConfiguration?.models?.[resolvedAgentModel];
 
     if (modelSpecificConfig) {
-      return {
+      const resolved: ModelConfig = {
         ...baseConfig,
         ...modelSpecificConfig,
       };
+      // Re-apply after the spread so the agent model's own
+      // disableThinkingOptions cannot clobber the fast-model value.
+      if (fastModelDisableThinking) {
+        resolved.disableThinkingOptions = fastModelDisableThinking;
+      }
+      return resolved;
     }
 
     return baseConfig;

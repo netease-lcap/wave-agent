@@ -33,4 +33,11 @@ export interface ModelConfig {
   options?: Record<string, unknown>;
   /** Fast model generation params (resolved from models[fastModel].options) */
   fastModelOptions?: Record<string, unknown>;
+  /**
+   * Fast-model-only disable-thinking params passed through verbatim
+   * (e.g. `{ thinking: { type: "disabled" } }`). Applied only in fast-model
+   * scenarios (webFetch, goal evaluation, fast subagents, autoMemory),
+   * never in the agent loop. `{}` clears the default.
+   */
+  disableThinkingOptions?: Record<string, unknown>;
 }
