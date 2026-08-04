@@ -464,6 +464,18 @@ export class AgentBridge {
         { messages: entry.agent.messages },
         entry.agent.sessionId,
       );
+      // The re-attached client also missed the loading state that settled
+      // before its router registered — replay it or the client's
+      // isStreaming/running indicator stays false while the live session
+      // keeps generating.
+      this.emit(
+        "loadingChange",
+        {
+          loading: entry.agent.isLoading,
+          latestTotalTokens: entry.agent.latestTotalTokens,
+        },
+        entry.agent.sessionId,
+      );
       return null;
     }
     await entry.agent.restoreSession(restoreId);
