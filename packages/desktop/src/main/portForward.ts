@@ -4,10 +4,12 @@
  * forwards the remote service to the local loopback via `ssh -N -L` and the
  * preview pane loads the rewritten local address.
  *
- * Forwarding is demand-driven and reference-counted: the same (host, remote
- * port) is reused while any preview pane references it; when the last pane
- * closes, switches host, or the app quits, the ssh process is killed and the
- * local port released (scenario 18).
+ * Forwarding is demand-driven and session-scoped: the same (host, remote port)
+ * is reused while any session references it, and the tunnel lives as long as
+ * its referencing sessions — closing a preview panel, switching sessions or
+ * hosts never releases it. Only deleting the session (releaseSession), the ssh
+ * process dying on its own, or the app quitting (dispose) tears it down
+ * (scenario 18).
  */
 
 import * as net from 'net';
@@ -34,7 +36,8 @@ export interface ForwardEntry {
   host: string;
   remotePort: number;
   localPort: number;
-  refCount: number;
+  /** Session ids referencing this tunnel — the tunnel dies when the set empties. */
+  sessionIds: Set<string>;
   state: ForwardState;
   proc: ChildProcess | null;
   waiters: ForwardWaiter[];
@@ -68,9 +71,9 @@ export class PortForwardManager {
   /**
    * Resolve a preview URL to a forwarded loopback address. Local hosts pass
    * through unchanged. For remote hosts, a tunnel for (host, remote port) is
-   * started on demand and reused while any pane holds a reference.
+   * started on demand and reused while any session holds a reference.
    */
-  acquire(host: string, url: string): Promise<ForwardResult> {
+  acquire(host: string, url: string, sessionId?: string): Promise<ForwardResult> {
     if (host === LOCAL_HOST) return Promise.resolve({ url, originalUrl: url });
     let remotePort: number;
     try {
@@ -88,7 +91,8 @@ export class PortForwardManager {
     const key = this.key(host, remotePort);
     const existing = this.entries.get(key);
     if (existing && existing.state !== 'failed') {
-      existing.refCount++;
+      // Idempotent per session — re-clicking the same link does not double-count.
+      if (sessionId) existing.sessionIds.add(sessionId);
       if (existing.state === 'ready') return Promise.resolve(this.resultFor(existing, url));
       // Connecting — park on the shared waiter list; resolved/rejected when the
       // tunnel settles.
@@ -102,7 +106,7 @@ export class PortForwardManager {
       host,
       remotePort,
       localPort: 0,
-      refCount: 1,
+      sessionIds: sessionId ? new Set([sessionId]) : new Set(),
       state: 'connecting',
       proc: null,
       waiters: [],
@@ -111,12 +115,18 @@ export class PortForwardManager {
     return this.startForward(entry).then(() => this.resultFor(entry, url));
   }
 
-  /** Release one reference; the tunnel dies when the count reaches zero. */
-  release(host: string, remotePort: number): void {
-    const entry = this.entries.get(this.key(host, remotePort));
-    if (!entry || entry.state === 'failed') return;
-    entry.refCount--;
-    if (entry.refCount <= 0) this.stopForward(entry);
+  /**
+   * Drop a session's references — every tunnel referenced only by this session
+   * dies. The tunnel is session-scoped (scenario 18): closing a preview panel,
+   * switching sessions/hosts or clicking a different link never releases;
+   * deleting the session does.
+   */
+  releaseSession(sessionId: string): void {
+    for (const entry of this.entries.values()) {
+      if (entry.sessionIds.delete(sessionId) && entry.sessionIds.size === 0) {
+        this.stopForward(entry);
+      }
+    }
   }
 
   /** Kill every tunnel — app quit (scenario 18). */
@@ -238,7 +248,7 @@ export class PortForwardManager {
     this.killProc(entry);
   }
 
-  /** Intentional teardown (refcount zero / dispose) — silent, no waiters rejected. */
+  /** Intentional teardown (last session released / dispose) — silent, no waiters rejected. */
   private stopForward(entry: ForwardEntry): void {
     entry.state = 'failed';
     const key = this.key(entry.host, entry.remotePort);

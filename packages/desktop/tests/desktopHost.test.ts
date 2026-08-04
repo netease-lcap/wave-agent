@@ -225,14 +225,14 @@ vi.mock('../src/main/updateChecker', () => ({
 }));
 
 // PortForwardManager spawns real `ssh -N -L` processes — stub it entirely and
-// assert the wiring (messages in, forwarded results out, releases forwarded).
+// assert the wiring (messages in, forwarded results out, session-scoped teardown).
 vi.mock('../src/main/portForward', () => {
   class MockPortForwardManager {
     acquire = vi.fn(async () => ({
       url: 'http://127.0.0.1:5173/app',
       originalUrl: 'http://localhost:5173/app',
     }));
-    release = vi.fn();
+    releaseSession = vi.fn();
     dispose = vi.fn();
   }
   return { PortForwardManager: MockPortForwardManager };
@@ -3691,7 +3691,7 @@ describe('remote preview port forwarding', () => {
   type HostWithFwd = DesktopHost & {
     portForwardManager: {
       acquire: ReturnType<typeof vi.fn>;
-      release: ReturnType<typeof vi.fn>;
+      releaseSession: ReturnType<typeof vi.fn>;
       dispose: ReturnType<typeof vi.fn>;
     };
   };
@@ -3707,9 +3707,10 @@ describe('remote preview port forwarding', () => {
       host: 'prod',
       requestId: 'r1',
       url: 'http://localhost:5173/app',
+      sessionId: 's1',
     });
 
-    expect(fwd.acquire).toHaveBeenCalledWith('prod', 'http://localhost:5173/app');
+    expect(fwd.acquire).toHaveBeenCalledWith('prod', 'http://localhost:5173/app', 's1');
     expect(sent('desktopForwardPortResult')).toEqual([
       {
         command: 'desktopForwardPortResult',
@@ -3727,7 +3728,7 @@ describe('remote preview port forwarding', () => {
 
     await host.handleWebviewMessage({ command: 'desktopForwardPort', requestId: 'r1', url: 'http://localhost:5173/app' });
 
-    expect(fwd.acquire).toHaveBeenCalledWith('local', 'http://localhost:5173/app');
+    expect(fwd.acquire).toHaveBeenCalledWith('local', 'http://localhost:5173/app', undefined);
     expect(sent('desktopForwardPortResult')).toHaveLength(1);
   });
 
@@ -3753,13 +3754,40 @@ describe('remote preview port forwarding', () => {
     ]);
   });
 
-  it('desktopReleasePort releases the (host, remote port) reference', async () => {
+  it('closing a pane keeps its session\'s tunnel alive', async () => {
+    const { host, sent } = await readyHost();
+    const fwd = (host as unknown as HostWithFwd).portForwardManager;
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    await vi.waitFor(() => {
+      const panes = sent('desktopPanes').at(-1) as { panes: Array<{ sessionId?: string }> } | undefined;
+      expect(panes?.panes[1].sessionId).toBe('sess-2');
+    });
+    const layout = sent('desktopPanes').at(-1) as { panes: Array<{ paneId: string }> };
+
+    // A session-bound tunnel exists before the pane closes.
+    await host.handleWebviewMessage({
+      command: 'desktopForwardPort',
+      host: 'prod',
+      requestId: 'r1',
+      url: 'http://localhost:5173/app',
+      sessionId: 'sess-1',
+    });
+
+    await host.handleWebviewMessage({ command: 'desktopClosePane', paneId: layout.panes[1].paneId });
+
+    // Pane closed but the session stays in the tree — the tunnel survives
+    // (scenario 18); only deleting the session releases it.
+    expect(fwd.releaseSession).not.toHaveBeenCalled();
+    expect(fwd.acquire).toHaveBeenCalledWith('prod', 'http://localhost:5173/app', 'sess-1');
+  });
+
+  it('desktopDeleteSession releases the deleted session\'s tunnels', async () => {
     const { host } = createHost();
     const fwd = (host as unknown as HostWithFwd).portForwardManager;
 
-    await host.handleWebviewMessage({ command: 'desktopReleasePort', host: 'prod', remotePort: 5173 });
+    await host.handleWebviewMessage({ command: 'desktopDeleteSession', sessionId: 's1' });
 
-    expect(fwd.release).toHaveBeenCalledWith('prod', 5173);
+    expect(fwd.releaseSession).toHaveBeenCalledWith('s1');
   });
 
   it('dispose tears down the port forward manager', async () => {

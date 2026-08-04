@@ -18,13 +18,13 @@ vi.mock('../../src/styles/DesktopApp.css', () => ({}));
 
 function renderDesktop(options?: { workdir?: string }) {
     const vscode = createMockVscode();
-    render(<DesktopApp vscode={vscode} />);
+    const view = render(<DesktopApp vscode={vscode} />);
     sendCommand('desktopWorkdirState', {
         workdir: options?.workdir,
         recentWorkdirs: options?.workdir ? [options.workdir] : [],
     });
     sendCommand('authStatusResponse', { isAuthenticated: true });
-    return { vscode };
+    return { vscode, unmount: view.unmount };
 }
 
 const panelStatePosts = (vscode: ReturnType<typeof createMockVscode>) =>
@@ -708,8 +708,9 @@ describe('session-level panel groups', () => {
  * localhost link in a remote session requests an ssh -N -L forward from the
  * main process, the rewritten reply loads in the preview pane, re-clicking the
  * same link is a no-op (no duplicate tunnel), failures surface an actionable
- * error with a retry that re-establishes the forward, and closing the panel /
- * switching host / unmounting releases the tunnel so no ssh process leaks.
+ * error with a retry that re-establishes the forward. Tunnels are
+ * session-scoped: closing the panel, switching sessions/hosts or unmounting
+ * never releases them — only deleting the session (or the app quitting) does.
  */
 describe('remote preview port forwarding', () => {
     const session = (sessionId: string) => ({
@@ -747,9 +748,11 @@ describe('remote preview port forwarding', () => {
         openLink();
 
         // The pane's own host is used (not the local fallback), and the preview
-        // panel opens in its connecting stub while the tunnel comes up.
+        // panel opens in its connecting stub while the tunnel comes up. The
+        // message carries the bound session id so the host scopes the tunnel's
+        // lifetime to it (scenario 18).
         expect(forwardPosts(vscode)).toEqual([
-            { command: 'desktopForwardPort', host: 'prod', url: 'http://localhost:5173/app', requestId: 'fwd-1', paneId: 'pane-1' },
+            { command: 'desktopForwardPort', host: 'prod', url: 'http://localhost:5173/app', requestId: 'fwd-1', paneId: 'pane-1', sessionId: 's1' },
         ]);
         expect(screen.getByTestId('preview-pane-empty')).toBeInTheDocument();
         expect(screen.getByTestId('preview-pane-empty')).toHaveTextContent('点击消息或终端中的 localhost 链接加载预览');
@@ -772,8 +775,9 @@ describe('remote preview port forwarding', () => {
         const pane = screen.getByTestId('preview-pane');
         expect(pane.querySelector('webview')?.getAttribute('src')).toBe('http://127.0.0.1:5173/app');
         expect(screen.queryByTestId('preview-pane-empty')).not.toBeInTheDocument();
-        // The local tunnel is only meaningful on this host — never cached
-        // against the session for later restoration.
+        // The forwarded URL is cached against the session: the tunnel is
+        // session-scoped and survives remounts, so switching away and back
+        // restores this same address (spec 场景 9).
         expect(vscode.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ command: 'desktopPanelState', checked: expect.arrayContaining(['preview']) }),
         );
@@ -821,6 +825,69 @@ describe('remote preview port forwarding', () => {
         );
     });
 
+    it('clicking a link on a different port does not release the tunnel', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        pushRemotePane();
+        openLink('http://localhost:5173/app');
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-1',
+            url: 'http://127.0.0.1:5173/app',
+            originalUrl: 'http://localhost:5173/app',
+        });
+
+        // Same conversation, different service: the panel re-targets and a new
+        // forward is requested, but the session's tunnels are NOT released —
+        // deletion is the only teardown (scenario 18).
+        openLink('http://localhost:8080/other');
+        expect(releasePosts(vscode)).toHaveLength(0);
+        expect(forwardPosts(vscode)).toHaveLength(2);
+        expect(forwardPosts(vscode)[1]).toMatchObject({ host: 'prod', url: 'http://localhost:8080/other' });
+
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-2',
+            url: 'http://127.0.0.1:8080/other',
+            originalUrl: 'http://localhost:8080/other',
+        });
+        expect(screen.getByTestId('preview-pane').querySelector('webview')?.getAttribute('src')).toBe(
+            'http://127.0.0.1:8080/other',
+        );
+    });
+
+    it('a same-origin link with a different path reuses the tunnel (no release)', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        pushRemotePane();
+        openLink('http://localhost:5173/app');
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-1',
+            url: 'http://127.0.0.1:5173/app',
+            originalUrl: 'http://localhost:5173/app',
+        });
+
+        // Same service, different path: the tunnel keys on host+port, so the
+        // old forward is NOT released — the host reuses the established
+        // tunnel for the new path.
+        openLink('http://localhost:5173/other');
+        expect(releasePosts(vscode)).toHaveLength(0);
+        expect(forwardPosts(vscode)).toHaveLength(2);
+
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-2',
+            url: 'http://127.0.0.1:5173/other',
+            originalUrl: 'http://localhost:5173/other',
+        });
+        expect(screen.getByTestId('preview-pane').querySelector('webview')?.getAttribute('src')).toBe(
+            'http://127.0.0.1:5173/other',
+        );
+    });
+
     it('a failed forward shows an actionable error; retry re-acquires and loads', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
@@ -853,7 +920,7 @@ describe('remote preview port forwarding', () => {
         expect(screen.queryByTestId('preview-pane-empty')).not.toBeInTheDocument();
     });
 
-    it('closing the preview panel releases the forward (no orphan ssh)', () => {
+    it('closing the preview panel keeps the tunnel alive (session-scoped)', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
         sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
@@ -862,14 +929,37 @@ describe('remote preview port forwarding', () => {
 
         fireEvent.click(screen.getByTestId('preview-close'));
 
-        expect(releasePosts(vscode)).toEqual([
-            { command: 'desktopReleasePort', host: 'prod', remotePort: 5173, paneId: 'pane-1' },
-        ]);
-        // Closing must not re-request the tunnel.
+        // The tunnel is scoped to the session, not the pane (scenario 18):
+        // closing the preview panel must not release the forward, and must not
+        // re-request it either. Re-checking the panel restores the same URL.
+        expect(releasePosts(vscode)).toHaveLength(0);
         expect(forwardPosts(vscode)).toHaveLength(1);
     });
 
-    it('switching host releases the forward and clears the preview', () => {
+    it('unmounting the pane (session still in the tree) keeps the tunnel alive', () => {
+        window.waveHostType = 'desktop';
+        const { vscode, unmount } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        pushRemotePane();
+        openLink();
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-1',
+            url: 'http://127.0.0.1:5173/app',
+            originalUrl: 'http://localhost:5173/app',
+        });
+        expect(screen.getByTestId('preview-pane')).toBeInTheDocument();
+
+        // The pane unmounts (split closed, pane moved across rows) while s1
+        // stays in the session tree: the tunnel is session-scoped and must
+        // survive — no release message (scenario 18).
+        unmount();
+
+        expect(releasePosts(vscode)).toHaveLength(0);
+        expect(forwardPosts(vscode)).toHaveLength(1);
+    });
+
+    it('re-checking the preview panel restores the forwarded URL', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
         sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
@@ -883,18 +973,86 @@ describe('remote preview port forwarding', () => {
         });
         expect(screen.getByTestId('preview-pane')).toBeInTheDocument();
 
-        // Host switch (remote → local): the tunnel is meaningless on the new
-        // host, so it is released and the forwarded URL is dropped.
+        // Close the panel, then re-open it from the 面板 menu.
+        fireEvent.click(screen.getByTestId('preview-close'));
+        expect(screen.getByTestId('preview-pane').parentElement).toHaveStyle({ display: 'none' });
+        fireEvent.click(screen.getByTestId('panel-toggle-btn'));
+        fireEvent.click(screen.getByTestId('panel-toggle-item-preview'));
+
+        // The URL survived the close — re-checking shows it directly, no new
+        // forward request (the tunnel was never released).
+        expect(screen.getByTestId('preview-pane').querySelector('webview')?.getAttribute('src')).toBe(
+            'http://127.0.0.1:5173/app',
+        );
+        expect(forwardPosts(vscode)).toHaveLength(1);
+    });
+
+    it('switching host keeps the tunnel alive and the preview URL cached', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        pushRemotePane();
+        openLink();
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-1',
+            url: 'http://127.0.0.1:5173/app',
+            originalUrl: 'http://localhost:5173/app',
+        });
+        expect(screen.getByTestId('preview-pane')).toBeInTheDocument();
+
+        // Host switch (remote → local): the tunnel is session-scoped — no
+        // release. The pane's preview keeps its URL (still cached, still loads
+        // through the live tunnel), so switching back shows it unchanged.
         sendCommand('desktopPanes', {
             panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'local' }],
             focusedPaneId: 'pane-1',
         });
 
-        expect(releasePosts(vscode)).toEqual([
-            { command: 'desktopReleasePort', host: 'prod', remotePort: 5173, paneId: 'pane-1' },
-        ]);
+        expect(releasePosts(vscode)).toHaveLength(0);
+        expect(screen.getByTestId('preview-pane')).toBeInTheDocument();
+        expect(screen.getByTestId('preview-pane').querySelector('webview')?.getAttribute('src')).toBe(
+            'http://127.0.0.1:5173/app',
+        );
+    });
+
+    it('switching to another session and back restores the remote preview URL (spec 场景 9)', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', {
+            groups: [{ workdir: '/work/a', sessions: [session('s1'), session('s2')] }],
+        });
+        pushRemotePane();
+        openLink();
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-1',
+            url: 'http://127.0.0.1:5173/app',
+            originalUrl: 'http://localhost:5173/app',
+        });
+        expect(screen.getByTestId('preview-pane')).toBeInTheDocument();
+
+        // Switch to s2 (local host): no release, and the pane shows s2's own
+        // (empty) preview state.
+        sendCommand('desktopPanes', {
+            panes: [{ paneId: 'pane-1', sessionId: 's2', row: 0, host: 'local' }],
+            focusedPaneId: 'pane-1',
+        });
+        expect(releasePosts(vscode)).toHaveLength(0);
+        // s2 has no cached panel state — the preview slot is not mounted.
         expect(screen.queryByTestId('preview-pane')).not.toBeInTheDocument();
-        expect(screen.getByTestId('preview-pane-empty')).toBeInTheDocument();
+
+        // Switch back to s1: the forwarded URL is restored from the session
+        // cache, and the tunnel was never released — no re-acquire needed.
+        sendCommand('desktopPanes', {
+            panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'prod' }],
+            focusedPaneId: 'pane-1',
+        });
+        expect(screen.getByTestId('preview-pane').querySelector('webview')?.getAttribute('src')).toBe(
+            'http://127.0.0.1:5173/app',
+        );
+        expect(forwardPosts(vscode)).toHaveLength(1);
+        expect(releasePosts(vscode)).toHaveLength(0);
     });
 
     it('a stale forward reply for a released request is dropped', () => {
@@ -919,5 +1077,68 @@ describe('remote preview port forwarding', () => {
         });
         expect(screen.queryByTestId('preview-pane')).not.toBeInTheDocument();
         expect(screen.getByTestId('preview-pane-empty')).toHaveTextContent('点击消息或终端中的 localhost 链接加载预览');
+    });
+
+    it('rebinding the pane to another session keeps both sessions\' tunnels', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', {
+            groups: [{ workdir: '/work/a', sessions: [session('s1'), session('s2')] }],
+        });
+        pushRemotePane();
+        openLink();
+        expect(forwardPosts(vscode)).toHaveLength(1);
+
+        // Rebind the pane to s2 (another remote host) and open a different
+        // URL there: a SECOND tunnel is requested — s1's stays held, because
+        // tunnels are owned by sessions, not by the pane (scenario 18).
+        sendCommand('desktopPanes', {
+            panes: [{ paneId: 'pane-1', sessionId: 's2', row: 0, host: 'prod2' }],
+            focusedPaneId: 'pane-1',
+        });
+        openLink('http://localhost:8080/app');
+        expect(forwardPosts(vscode)).toHaveLength(2);
+        expect(forwardPosts(vscode)[1]).toMatchObject({
+            host: 'prod2',
+            url: 'http://localhost:8080/app',
+            sessionId: 's2',
+        });
+
+        // s2's forward reply updates s2's preview only.
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-2',
+            url: 'http://127.0.0.1:8080/app',
+            originalUrl: 'http://localhost:8080/app',
+        });
+        expect(screen.getByTestId('preview-pane').querySelector('webview')?.getAttribute('src')).toBe(
+            'http://127.0.0.1:8080/app',
+        );
+
+        // A late reply for s1's forward (fwd-1) lands in s1's cached session
+        // state instead of being dropped — the pane rebinding must not lose
+        // s1's URL for when the user switches back.
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-1',
+            url: 'http://127.0.0.1:5173/app',
+            originalUrl: 'http://localhost:5173/app',
+        });
+        // The pane still shows s2's URL (s1's cached URL is untouched here).
+        expect(screen.getByTestId('preview-pane').querySelector('webview')?.getAttribute('src')).toBe(
+            'http://127.0.0.1:8080/app',
+        );
+
+        // Switch back to s1: its own forwarded URL shows again from the session
+        // cache; neither tunnel was ever released.
+        sendCommand('desktopPanes', {
+            panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'prod' }],
+            focusedPaneId: 'pane-1',
+        });
+        expect(screen.getByTestId('preview-pane').querySelector('webview')?.getAttribute('src')).toBe(
+            'http://127.0.0.1:5173/app',
+        );
+        expect(forwardPosts(vscode)).toHaveLength(2);
+        expect(releasePosts(vscode)).toHaveLength(0);
     });
 });
