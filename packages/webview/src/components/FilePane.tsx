@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
@@ -59,6 +59,18 @@ const EXT_LANGUAGE: Record<string, string> = {
 };
 
 const isMarkdownPath = (path: string) => /\.(md|markdown|mdown|mkd)$/i.test(path);
+
+/** Trim the middle of an over-long path so the file name stays intact; the
+    full path remains available on hover (title). Falls back to a plain split
+    when the file name alone exceeds the limit. */
+const middleEllipsis = (text: string, max = 48): string => {
+  if (text.length <= max) return text;
+  const fileName = text.slice(text.lastIndexOf('/') + 1);
+  const headMax = max - fileName.length - 1; // -1 for the ellipsis
+  if (headMax > 8) return `${text.slice(0, headMax)}…${fileName}`;
+  const head = Math.ceil((max - 1) / 2);
+  return `${text.slice(0, head)}…${text.slice(-(max - 1 - head))}`;
+};
 
 const escapeHtml = (text: string) =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -163,9 +175,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
 }) => {
   const asideRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [copied, setCopied] = useState(false);
-  const copyTimerRef = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(copyTimerRef.current), []);
 
   const onDragStart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -188,33 +197,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   };
-
-  const copyPath = useCallback(() => {
-    if (!fileView) return;
-    const path = fileView.path;
-    const fallback = () => {
-      const ta = document.createElement('textarea');
-      ta.value = path;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand('copy');
-      } catch {
-        /* clipboard unavailable — nothing else to try */
-      }
-      document.body.removeChild(ta);
-    };
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(path).catch(fallback);
-    } else {
-      fallback();
-    }
-    setCopied(true);
-    window.clearTimeout(copyTimerRef.current);
-    copyTimerRef.current = window.setTimeout(() => setCopied(false), 1500);
-  }, [fileView]);
 
   // Per-line fragments: syntax-highlighted (balanced spans) or plain text.
   const contentLines = useMemo(() => {
@@ -258,7 +240,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
         <div className="preview-pane-toolbar">
-          <span className="preview-pane-url">文件</span>
+          {fileView ? (
+            <>
+              <span className="file-pane-host">{isLocal ? '本地' : fileView.host}</span>
+              <span className="file-pane-path" title={fileView.path}>
+                {middleEllipsis(relativePath || fileView.path)}
+              </span>
+            </>
+          ) : (
+            <span className="preview-pane-url">文件</span>
+          )}
           {fileView && isLocal && onOpenExternal && (
             <button
               className="preview-pane-button"
@@ -267,16 +258,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
               onClick={() => onOpenExternal(fileView.path)}
             >
               <i className="codicon codicon-open-external" />
-            </button>
-          )}
-          {fileView && (
-            <button
-              className="preview-pane-button"
-              title="复制路径"
-              data-testid="file-copy-path"
-              onClick={copyPath}
-            >
-              <i className={`codicon codicon-${copied ? 'check' : 'copy'}`} />
             </button>
           )}
           <button
@@ -289,16 +270,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </button>
         </div>
         <div className="preview-pane-body file-pane-body" ref={scrollRef}>
-          {fileView && (
-            <div className="file-pane-location">
-              <span className={`file-pane-host${isLocal ? ' file-pane-host--local' : ''}`}>
-                {isLocal ? '本地' : fileView.host}
-              </span>
-              <span className="file-pane-path" title={fileView.path}>
-                {relativePath || fileView.path}
-              </span>
-            </div>
-          )}
           {!fileView && (
             <div className="desktop-panel-placeholder">
               <i className="codicon codicon-file file-pane-placeholder-icon" />
