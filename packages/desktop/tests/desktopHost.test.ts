@@ -646,6 +646,88 @@ describe('agent notifications', () => {
     expect(sent('appendMessage')).toEqual([expect.objectContaining({ message: userMsg })]);
   });
 
+  it('streaming content deltas are mirrored into the agent cache so a session switch shows the full assistant reply', async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    const userMsg = { id: 'u1', role: 'user', blocks: [{ type: 'text', content: '你好' }] };
+    agent.messages = [userMsg];
+    agent.callbacks.onUserMessageAdded(userMsg);
+    // The assistant message arrives empty — its content only exists as
+    // streaming deltas afterwards. The cache must accumulate them, otherwise a
+    // session switch (setInitialState) renders a blank reply.
+    const assistantMsg = { id: 'a1', role: 'assistant', blocks: [] };
+    agent.messages = [...agent.messages, assistantMsg];
+    agent.callbacks.onAssistantMessageAdded(assistantMsg);
+    agent.callbacks.onAssistantContentUpdated({ messageId: 'a1', chunk: 'Hello', stage: 'streaming' });
+    agent.callbacks.onAssistantContentUpdated({ messageId: 'a1', chunk: ' world', stage: 'end' });
+
+    // Re-push pane state (what a session switch does) — the cached list must
+    // carry the full accumulated text, not the initial empty block.
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+    const messages = sent('setInitialState').at(-1)?.messages as Array<{ id: string; blocks: Array<{ type: string; content: string; stage?: string }> }>;
+    expect(messages.find((m) => m.id === 'a1')?.blocks).toEqual([
+      expect.objectContaining({ type: 'text', content: 'Hello world', stage: 'end' }),
+    ]);
+  });
+
+  it('reasoning deltas are mirrored into the agent cache too', async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    const userMsg = { id: 'u1', role: 'user', blocks: [{ type: 'text', content: '你好' }] };
+    agent.messages = [userMsg];
+    agent.callbacks.onUserMessageAdded(userMsg);
+    const assistantMsg = { id: 'a1', role: 'assistant', blocks: [] };
+    agent.messages = [...agent.messages, assistantMsg];
+    agent.callbacks.onAssistantMessageAdded(assistantMsg);
+    agent.callbacks.onAssistantReasoningUpdated({ messageId: 'a1', chunk: '思考中', stage: 'streaming' });
+    agent.callbacks.onAssistantReasoningUpdated({ messageId: 'a1', chunk: '…', stage: 'end' });
+    agent.callbacks.onAssistantContentUpdated({ messageId: 'a1', chunk: '结论', stage: 'end' });
+
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+    const messages = sent('setInitialState').at(-1)?.messages as Array<{ id: string; blocks: Array<{ type: string; content: string; stage?: string }> }>;
+    const blocks = messages.find((m) => m.id === 'a1')?.blocks ?? [];
+    expect(blocks.find((b) => b.type === 'reasoning')).toEqual(expect.objectContaining({ content: '思考中…', stage: 'end' }));
+    expect(blocks.find((b) => b.type === 'text')).toEqual(expect.objectContaining({ content: '结论', stage: 'end' }));
+  });
+
+  it('tool block updates are mirrored into the agent cache', async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    const userMsg = { id: 'u1', role: 'user', blocks: [{ type: 'text', content: '你好' }] };
+    agent.messages = [userMsg];
+    agent.callbacks.onUserMessageAdded(userMsg);
+    const assistantMsg = { id: 'a1', role: 'assistant', blocks: [] };
+    agent.messages = [...agent.messages, assistantMsg];
+    agent.callbacks.onAssistantMessageAdded(assistantMsg);
+    agent.callbacks.onToolBlockUpdated({
+      messageId: 'a1',
+      id: 'tool-1',
+      name: 'read_file',
+      stage: 'start',
+      parameters: '{"path":',
+      parametersChunk: '"/a.txt"}',
+    });
+    agent.callbacks.onToolBlockUpdated({
+      messageId: 'a1',
+      id: 'tool-1',
+      stage: 'end',
+      result: 'file content',
+      success: true,
+    });
+
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+    const messages = sent('setInitialState').at(-1)?.messages as Array<{ id: string; blocks: Array<{ type: string; id?: string; name?: string; stage?: string; parameters?: string; result?: string; success?: boolean }> }>;
+    const toolBlock = messages.find((m) => m.id === 'a1')?.blocks.find((b) => b.type === 'tool');
+    expect(toolBlock).toMatchObject({
+      id: 'tool-1',
+      name: 'read_file',
+      stage: 'end',
+      parameters: '{"path":"/a.txt"}',
+      result: 'file content',
+      success: true,
+    });
+  });
+
   it('first user message registers the new session in the sidebar tree with a truncated title (FR-024)', async () => {
     const { sent } = await readyHost();
     const agent = lastAgent();
