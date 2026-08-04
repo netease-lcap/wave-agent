@@ -91,7 +91,7 @@ function getDisplayLimit(rows: number | undefined): number {
 
 export const TaskList: React.FC = () => {
   const tasks = useTasks();
-  const { isTaskListVisible } = useChat();
+  const { isTaskListVisible, isBtwActive } = useChat();
   const { stdout } = useStdout();
 
   const completionTimestampsRef = React.useRef<Map<string, number>>(new Map());
@@ -188,6 +188,7 @@ export const TaskList: React.FC = () => {
   if (
     tasks.length === 0 ||
     !isTaskListVisible ||
+    isBtwActive ||
     autoHidden ||
     (allCompleted && !hadIncompleteRef.current)
   ) {

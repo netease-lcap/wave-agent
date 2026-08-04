@@ -297,6 +297,84 @@ describe("AIManager - runBtwFork", () => {
     });
   });
 
+  describe("onContent streaming", () => {
+    it("should forward partial content from callAgent to the caller's onContent", async () => {
+      const onContent = vi.fn();
+      callAgentMock.mockImplementationOnce(
+        async (options: { onContentUpdate?: (content: string) => void }) => {
+          options.onContentUpdate?.("Partial side answer");
+          return {
+            content: "Full side answer",
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+            tool_calls: [],
+          };
+        },
+      );
+
+      const result = await aiManager.runBtwFork(
+        "Question?",
+        undefined,
+        onContent,
+      );
+
+      expect(onContent).toHaveBeenCalledWith("Partial side answer");
+      expect(result).toEqual({ content: "Full side answer" });
+    });
+
+    it("should forward thinking chunks from a reasoning model to the caller's onContent", async () => {
+      const onContent = vi.fn();
+      callAgentMock.mockImplementationOnce(
+        async (options: {
+          onReasoningUpdate?: (content: string) => void;
+          onContentUpdate?: (content: string) => void;
+        }) => {
+          // Thinking phase: reasoning chunks stream, no answer content yet.
+          options.onReasoningUpdate?.("Let me think about this");
+          options.onReasoningUpdate?.("Let me think about this carefully");
+          // Answer phase: content takes over the display.
+          options.onContentUpdate?.("The plan is:");
+          return {
+            content: "The plan is: step 1, step 2",
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+            tool_calls: [],
+          };
+        },
+      );
+
+      const result = await aiManager.runBtwFork(
+        "Question?",
+        undefined,
+        onContent,
+      );
+
+      expect(onContent).toHaveBeenCalledWith("Let me think about this");
+      expect(onContent).toHaveBeenCalledWith(
+        "Let me think about this carefully",
+      );
+      expect(onContent).toHaveBeenCalledWith("The plan is:");
+      expect(result).toEqual({ content: "The plan is: step 1, step 2" });
+    });
+
+    it("should surface reasoning content when the model emits only thinking", async () => {
+      const onContent = vi.fn();
+      callAgentMock.mockResolvedValueOnce({
+        content: "",
+        reasoning_content: "I reasoned about this without a final answer",
+        tool_calls: [],
+      });
+
+      const result = await aiManager.runBtwFork(
+        "Question?",
+        undefined,
+        onContent,
+      );
+
+      expect(result).toEqual({
+        content: "I reasoned about this without a final answer",
+      });
+    });
+  });
+
   describe("result classification", () => {
     it("should surface an attempted tool call as an error string", async () => {
       callAgentMock.mockResolvedValueOnce({

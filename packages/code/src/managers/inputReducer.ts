@@ -25,15 +25,13 @@ export interface BtwState {
   question: string;
   answer?: string;
   isLoading: boolean;
-  /** Scroll offset (in lines) into the answer; bumped by ↑/↓ / Ctrl+P / Ctrl+N */
-  scrollOffset?: number;
 }
 
 /**
  * True while the /btw overlay is up (a question is on display, loading or
- * answered). App's Ctrl+C exit handler checks this so Ctrl+C dismisses the
- * overlay instead of quitting (aligned with Claude Code). Synced from
- * useInputManager via an effect.
+ * answered). App's Ctrl+C exit handler checks this so Ctrl+C does not quit
+ * the app while the overlay owns the keys. Synced from useInputManager via
+ * an effect.
  */
 export const btwOverlayActiveRef: { current: boolean } = { current: false };
 
@@ -94,7 +92,11 @@ export interface InputManagerCallbacks {
   onAbortMessage?: () => void;
   onBackgroundCurrentTask?: () => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
-  onAskBtw?: (question: string, abortSignal?: AbortSignal) => Promise<string>;
+  onAskBtw?: (
+    question: string,
+    abortSignal?: AbortSignal,
+    onContent?: (content: string) => void,
+  ) => Promise<string>;
   onClearMessages?: () => Promise<void>;
   onCompact?: (instructions?: string) => Promise<void>;
   sessionId?: string;
@@ -892,20 +894,11 @@ export function inputReducer(
         return state;
       }
 
-      // 1. /btw overlay handling (active while a question is displayed).
-      // Dismiss keys match Claude Code's btw.tsx (escape|return|space|ctrl+c/d);
-      // dismissing while loading aborts the in-flight side question. Scroll
-      // keys page the answer by SCROLL_LINES (3) per press.
-      if (state.btwState.question) {
-        const isDismiss =
-          key.return ||
-          key.escape ||
-          input === " " ||
-          (key.ctrl && (input === "c" || input === "d"));
-        const isScrollUp = key.upArrow || (key.ctrl && input === "p");
-        const isScrollDown = key.downArrow || (key.ctrl && input === "n");
-
-        if (isDismiss) {
+      // 1. /btw overlay handling (active while a question is displayed, or
+      // the bare-/btw usage message). Only Escape dismisses (or aborts the
+      // in-flight side question while loading); every other key is ignored.
+      if (state.btwState.question || state.btwState.answer) {
+        if (key.escape) {
           if (state.btwState.isLoading) {
             return {
               ...state,
@@ -927,42 +920,12 @@ export function inputReducer(
           };
         }
 
-        if (isScrollUp && !state.btwState.isLoading) {
-          return {
-            ...state,
-            btwState: {
-              ...state.btwState,
-              scrollOffset: Math.max(0, (state.btwState.scrollOffset ?? 0) - 3),
-            },
-          };
-        }
-        if (isScrollDown && !state.btwState.isLoading) {
-          return {
-            ...state,
-            btwState: {
-              ...state.btwState,
-              scrollOffset: (state.btwState.scrollOffset ?? 0) + 3,
-            },
-          };
-        }
-
         // Any other key while the overlay is up is ignored
         return state;
       }
 
       // 1. Escape Handling
       if (key.escape) {
-        // Dismiss the /btw usage message (bare /btw with no question)
-        if (state.btwState.answer && !state.btwState.question) {
-          return {
-            ...state,
-            btwState: {
-              question: "",
-              answer: undefined,
-              isLoading: false,
-            },
-          };
-        }
         if (state.showFileSelector) {
           return {
             ...state,

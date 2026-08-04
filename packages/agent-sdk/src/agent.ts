@@ -949,8 +949,13 @@ export class Agent {
   public async askBtw(
     question: string,
     abortSignal?: AbortSignal,
+    onContent?: (content: string) => void,
   ): Promise<string> {
-    const result = await this.aiManager.runBtwFork(question, abortSignal);
+    const result = await this.aiManager.runBtwFork(
+      question,
+      abortSignal,
+      onContent,
+    );
     return result.content ?? result.error ?? "No response received";
   }
 

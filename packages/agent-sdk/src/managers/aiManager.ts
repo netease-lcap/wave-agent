@@ -1036,6 +1036,7 @@ export class AIManager {
   async runBtwFork(
     question: string,
     abortSignal?: AbortSignal,
+    onContent?: (content: string) => void,
   ): Promise<{ content?: string; error?: string }> {
     const modelConfig = this.getModelConfig();
     const gatewayConfig = this.getGatewayConfig();
@@ -1095,6 +1096,15 @@ ${question}`;
     const systemPrompt = await this.buildMainSystemPrompt(filteredToolPlugins);
 
     try {
+      // Surface partial output to the caller (e.g. the /btw overlay's
+      // streaming display) as it arrives. Reasoning chunks from thinking
+      // models stream through the same channel so the overlay shows live
+      // progress during the thinking phase, before the final answer.
+      const streamToOverlay = (text: string) => {
+        if (text.trim()) {
+          onContent?.(text);
+        }
+      };
       const result = await aiService.callAgent({
         gatewayConfig,
         modelConfig,
@@ -1108,10 +1118,19 @@ ${question}`;
         // Stream so a slow reasoning model emits first bytes before the
         // gateway's idle timeout fires (same rationale as runCompactFork).
         stream: true,
+        onContentUpdate: streamToOverlay,
+        onReasoningUpdate: streamToOverlay,
       });
 
       if (result.content?.trim()) {
         return { content: result.content };
+      }
+
+      // A thinking model may emit only reasoning content (e.g. the stream
+      // is truncated before the final answer); surface that instead of
+      // falling through to "No response received".
+      if (result.reasoning_content?.trim()) {
+        return { content: result.reasoning_content };
       }
 
       if (result.tool_calls && result.tool_calls.length > 0) {

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "fs";
 import { Agent } from "@/agent.js";
-import type { AgentCallbacks } from "@/types/index.js";
 
 const { callAgentMock } = vi.hoisted(() => ({
   callAgentMock: vi.fn(),
@@ -48,7 +47,6 @@ const BTW_HOME = "/tmp/wave-btw-test-homedir";
 
 describe("Agent askBtw", () => {
   let agent: Agent;
-  let mockCallbacks: AgentCallbacks;
 
   beforeEach(async () => {
     // Start from a clean isolated home.
@@ -62,11 +60,8 @@ describe("Agent askBtw", () => {
       tool_calls: [],
     });
 
-    mockCallbacks = {};
-
     agent = await Agent.create({
       workdir: `${BTW_HOME}/workdir`,
-      callbacks: mockCallbacks,
     });
   });
 
@@ -106,6 +101,29 @@ describe("Agent askBtw", () => {
     expect(answer).toBe(
       "(The model tried to call Read instead of answering directly. Try rephrasing or ask in the main conversation.)",
     );
+  });
+
+  it("should forward partial content to the onContent callback", async () => {
+    const onContent = vi.fn();
+    callAgentMock.mockImplementationOnce(
+      async (options: { onContentUpdate?: (content: string) => void }) => {
+        options.onContentUpdate?.("Partial side answer");
+        return {
+          content: "Side answer",
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+          tool_calls: [],
+        };
+      },
+    );
+
+    const answer = await agent.askBtw(
+      "What is the plan?",
+      undefined,
+      onContent,
+    );
+
+    expect(onContent).toHaveBeenCalledWith("Partial side answer");
+    expect(answer).toBe("Side answer");
   });
 
   it("should propagate aborts as thrown errors", async () => {

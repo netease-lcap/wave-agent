@@ -718,17 +718,11 @@ export const handleInput = async (
   clearImages?: () => void,
 ): Promise<boolean> => {
   // /btw overlay handling (mirrors inputReducer's HANDLE_KEY block; this
-  // handler is not wired, kept in sync for consistency).
-  if (state.btwState.question) {
-    const isDismiss =
-      key.return ||
-      key.escape ||
-      input === " " ||
-      (key.ctrl && (input === "c" || input === "d"));
-    const isScrollUp = key.upArrow || (key.ctrl && input === "p");
-    const isScrollDown = key.downArrow || (key.ctrl && input === "n");
-
-    if (isDismiss) {
+  // handler is not wired, kept in sync for consistency). Active while a
+  // question is displayed, or the bare-/btw usage message shows. Only
+  // Escape dismisses; every other key is ignored.
+  if (state.btwState.question || state.btwState.answer) {
+    if (key.escape) {
       dispatch({
         type: "SET_BTW_STATE",
         payload: {
@@ -740,39 +734,7 @@ export const handleInput = async (
       return true;
     }
 
-    if (isScrollUp && !state.btwState.isLoading) {
-      dispatch({
-        type: "SET_BTW_STATE",
-        payload: {
-          scrollOffset: Math.max(0, (state.btwState.scrollOffset ?? 0) - 3),
-        },
-      });
-      return true;
-    }
-    if (isScrollDown && !state.btwState.isLoading) {
-      dispatch({
-        type: "SET_BTW_STATE",
-        payload: {
-          scrollOffset: (state.btwState.scrollOffset ?? 0) + 3,
-        },
-      });
-      return true;
-    }
-
     // Any other key while the overlay is up is ignored
-    return true;
-  }
-
-  // ESC dismisses the /btw usage message (bare /btw with no question)
-  if (key.escape && state.btwState.answer && !state.btwState.question) {
-    dispatch({
-      type: "SET_BTW_STATE",
-      payload: {
-        question: "",
-        answer: undefined,
-        isLoading: false,
-      },
-    });
     return true;
   }
 

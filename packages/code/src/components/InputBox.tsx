@@ -83,6 +83,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     recreateAgent,
     recallQueuedMessage,
     queuedMessages,
+    setIsBtwActive,
   } = useChat();
 
   // Ref to hold setInputText so queue callbacks can access it before useInputManager returns
@@ -177,6 +178,13 @@ export const InputBox: React.FC<InputBoxProps> = ({
   useEffect(() => {
     setInputTextRef.current = setInputText;
   }, [setInputText]);
+
+  // Sync the btw overlay's visibility to ChatContext so siblings (TaskList)
+  // can hide while the side-question is on display (aligned with Claude Code,
+  // which suppresses the expanded task list while a local-jsx command shows).
+  useEffect(() => {
+    setIsBtwActive(btwState.question !== "" || btwState.answer !== undefined);
+  }, [btwState.question, btwState.answer, setIsBtwActive]);
 
   // Sync permission mode from useChat to InputManager
   useEffect(() => {
@@ -335,7 +343,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         <WorkflowManager onCancel={() => setShowWorkflowManager(false)} />
       )}
 
-      {btwState.question
+      {btwState.question || btwState.answer
         ? null
         : showBackgroundTaskManager ||
           showMcpManager ||

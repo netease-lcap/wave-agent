@@ -1578,20 +1578,21 @@ describe("inputReducer", () => {
         answer: undefined,
         isLoading: false,
       });
+      expect(result.pendingEffect).toBeNull();
     });
 
     it.each([
       ["Enter", "", { return: true }],
       ["Space", " ", {}],
-      ["Escape", "", { escape: true }],
       ["Ctrl+C", "c", { ctrl: true }],
       ["Ctrl+D", "d", { ctrl: true }],
-    ])("should dismiss answered btw overlay on %s", (_, input, key) => {
+    ])("should ignore %s while btw usage shows", (_, input, key) => {
       const state: InputState = {
         ...initialState,
+        inputText: "hello",
         btwState: {
-          question: "what is life?",
-          answer: "42",
+          question: "",
+          answer: "Usage: /btw <your question>",
           isLoading: false,
         },
       };
@@ -1603,6 +1604,63 @@ describe("inputReducer", () => {
           hasSlashCommand: () => false,
         },
       });
+      // The usage message is a static hint dismissed only by Escape; other
+      // keys are swallowed by the overlay so a message can't be submitted.
+      expect(result.btwState).toEqual(state.btwState);
+      expect(result.pendingEffect).toBeNull();
+      expect(result.inputText).toBe("hello");
+    });
+
+    it.each([
+      ["Enter", "", { return: true }],
+      ["Space", " ", {}],
+      ["Ctrl+C", "c", { ctrl: true }],
+      ["Ctrl+D", "d", { ctrl: true }],
+    ])(
+      "should ignore %s while the answered btw overlay shows",
+      (_, input, key) => {
+        const state: InputState = {
+          ...initialState,
+          inputText: "hello",
+          btwState: {
+            question: "what is life?",
+            answer: "42",
+            isLoading: false,
+          },
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input,
+            key: key as unknown as Key,
+            hasSlashCommand: () => false,
+          },
+        });
+        // Only Escape dismisses the overlay; other keys are swallowed so a
+        // message can't be submitted while the overlay is up.
+        expect(result.btwState).toEqual(state.btwState);
+        expect(result.pendingEffect).toBeNull();
+        expect(result.inputText).toBe("hello");
+      },
+    );
+
+    it("should dismiss the answered btw overlay on escape", () => {
+      const state: InputState = {
+        ...initialState,
+        btwState: {
+          question: "what is life?",
+          answer: "42",
+          isLoading: false,
+        },
+      };
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { escape: true } as unknown as Key,
+          hasSlashCommand: () => false,
+        },
+      });
       expect(result.btwState).toEqual({
         question: "",
         answer: undefined,
@@ -1611,76 +1669,46 @@ describe("inputReducer", () => {
       expect(result.pendingEffect).toBeNull();
     });
 
+    it("should abort in-flight btw question when dismissed on escape", () => {
+      const state: InputState = {
+        ...initialState,
+        btwState: { question: "what is life?", isLoading: true },
+      };
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { escape: true } as unknown as Key,
+          hasSlashCommand: () => false,
+        },
+      });
+      expect(result.btwState.question).toBe("");
+      expect(result.btwState.isLoading).toBe(false);
+      expect(result.pendingEffect).toEqual({ type: "ABORT_BTW" });
+    });
+
+    it("should ignore non-escape keys while a btw question is loading", () => {
+      const state: InputState = {
+        ...initialState,
+        btwState: { question: "what is life?", isLoading: true },
+      };
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "c",
+          key: { ctrl: true } as unknown as Key,
+          hasSlashCommand: () => false,
+        },
+      });
+      expect(result.btwState).toEqual(state.btwState);
+      expect(result.pendingEffect).toBeNull();
+    });
+
     it.each([
-      ["Ctrl+C", "c"],
-      ["Ctrl+D", "d"],
-      ["Escape", ""],
-    ])(
-      "should abort in-flight btw question when dismissed on %s",
-      (_, input) => {
-        const state: InputState = {
-          ...initialState,
-          btwState: { question: "what is life?", isLoading: true },
-        };
-        const result = inputReducer(state, {
-          type: "HANDLE_KEY",
-          payload: {
-            input,
-            key: (input === "c" || input === "d"
-              ? { ctrl: true }
-              : { escape: true }) as unknown as Key,
-            hasSlashCommand: () => false,
-          },
-        });
-        expect(result.btwState.question).toBe("");
-        expect(result.btwState.isLoading).toBe(false);
-        expect(result.pendingEffect).toEqual({ type: "ABORT_BTW" });
-      },
-    );
-
-    it("should scroll btw answer up by 3 lines", () => {
-      const state: InputState = {
-        ...initialState,
-        btwState: {
-          question: "q?",
-          answer: "a",
-          isLoading: false,
-          scrollOffset: 3,
-        },
-      };
-      const result = inputReducer(state, {
-        type: "HANDLE_KEY",
-        payload: {
-          input: "",
-          key: { upArrow: true } as unknown as Key,
-          hasSlashCommand: () => false,
-        },
-      });
-      expect(result.btwState.scrollOffset).toBe(0);
-    });
-
-    it("should clamp btw scroll offset at 0", () => {
-      const state: InputState = {
-        ...initialState,
-        btwState: {
-          question: "q?",
-          answer: "a",
-          isLoading: false,
-          scrollOffset: 1,
-        },
-      };
-      const result = inputReducer(state, {
-        type: "HANDLE_KEY",
-        payload: {
-          input: "",
-          key: { upArrow: true } as unknown as Key,
-          hasSlashCommand: () => false,
-        },
-      });
-      expect(result.btwState.scrollOffset).toBe(0);
-    });
-
-    it("should scroll btw answer down via ctrl+n", () => {
+      ["up arrow", { upArrow: true }],
+      ["down arrow", { downArrow: true }],
+      ["Ctrl+P", { ctrl: true }],
+    ])("should ignore %s while btw overlay is up", (_, key) => {
       const state: InputState = {
         ...initialState,
         btwState: { question: "q?", answer: "a", isLoading: false },
@@ -1688,50 +1716,12 @@ describe("inputReducer", () => {
       const result = inputReducer(state, {
         type: "HANDLE_KEY",
         payload: {
-          input: "n",
-          key: { ctrl: true } as unknown as Key,
-          hasSlashCommand: () => false,
-        },
-      });
-      expect(result.btwState.scrollOffset).toBe(3);
-    });
-
-    it("should scroll btw answer up via ctrl+p", () => {
-      const state: InputState = {
-        ...initialState,
-        btwState: {
-          question: "q?",
-          answer: "a",
-          isLoading: false,
-          scrollOffset: 5,
-        },
-      };
-      const result = inputReducer(state, {
-        type: "HANDLE_KEY",
-        payload: {
-          input: "p",
-          key: { ctrl: true } as unknown as Key,
-          hasSlashCommand: () => false,
-        },
-      });
-      expect(result.btwState.scrollOffset).toBe(2);
-    });
-
-    it("should ignore scroll while btw is loading", () => {
-      const state: InputState = {
-        ...initialState,
-        btwState: { question: "q?", isLoading: true },
-      };
-      const result = inputReducer(state, {
-        type: "HANDLE_KEY",
-        payload: {
           input: "",
-          key: { downArrow: true } as unknown as Key,
+          key: key as unknown as Key,
           hasSlashCommand: () => false,
         },
       });
-      expect(result.btwState.question).toBe("q?");
-      expect(result.btwState.scrollOffset).toBeUndefined();
+      expect(result).toBe(state);
     });
 
     it("should ignore other keys while btw overlay is up", () => {

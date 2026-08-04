@@ -65,6 +65,7 @@ describe("ChatInterface login hint", () => {
     slashCommands: [],
     hasSlashCommand: vi.fn(),
     isTaskListVisible: true,
+    setIsBtwActive: vi.fn(),
     sendMessage: vi.fn(),
     abortMessage: vi.fn(),
     connectMcpServer: vi.fn(),
