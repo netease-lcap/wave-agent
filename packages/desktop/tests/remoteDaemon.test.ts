@@ -186,8 +186,15 @@ describe('waitForRemoteDaemon', () => {
 
 describe('ensureRemoteDaemon', () => {
   it('returns the socket path without launching when the daemon already runs', async () => {
-    stubExec([LOGIN_SHELL, { stdout: '/home/alice' }, { stdout: '' }]); // $HOME + probe ok
-    const socketPath = await ensureRemoteDaemon('prod');
+    stubExec([
+      LOGIN_SHELL, // login shell probe
+      { stdout: '/home/alice' }, // echo $HOME
+      { stdout: 'v22.0.0' }, // node -v
+      { stdout: '/usr/local/bin/wave' }, // command -v wave
+      { stdout: '1.0.0\n' }, // wave -v ≥ target → no upgrade
+      { stdout: '' }, // probe ok
+    ]);
+    const socketPath = await ensureRemoteDaemon('prod', '1.0.0');
     expect(socketPath).toBe('/home/alice/.wave/daemon.sock');
     const commands = h.execFile.mock.calls.map((c) => (c[1] as string[]).at(-1) as string);
     expect(commands.some((c) => c.includes('nohup'))).toBe(false);
@@ -197,13 +204,14 @@ describe('ensureRemoteDaemon', () => {
     stubExec([
       LOGIN_SHELL, // login shell probe
       { stdout: '/home/alice' }, // echo $HOME
-      { error: SOCKET_MISSING }, // probe → not alive
       { stdout: 'v22.0.0' }, // node -v
       { stdout: '/usr/local/bin/wave' }, // command -v wave
+      { stdout: '1.0.0\n' }, // wave -v ≥ target → no upgrade
+      { error: SOCKET_MISSING }, // probe → not alive
       { stdout: '' }, // nohup launch
       { stdout: '' }, // probe → alive
     ]);
-    const socketPath = await ensureRemoteDaemon('prod');
+    const socketPath = await ensureRemoteDaemon('prod', '1.0.0');
     expect(socketPath).toBe('/home/alice/.wave/daemon.sock');
     const commands = h.execFile.mock.calls.map((c) => (c[1] as string[]).at(-1) as string);
     const launch = commands.find((c) => c.includes('nohup'));

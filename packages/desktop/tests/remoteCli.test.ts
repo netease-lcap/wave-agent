@@ -16,6 +16,10 @@ import {
   REMOTE_FILE_MAX_LINES,
   REMOTE_FILE_MAX_BYTES,
   REMOTE_NODE_MIN_MAJOR,
+  ensureRemoteCliUpToDate,
+  upgradeRemoteWave,
+  ensureRemoteDaemon,
+  killRemoteDaemon,
 } from '../src/main/remoteCli';
 import { resetRemoteShellCache, shellQuote } from '../src/main/sshHosts';
 
@@ -134,6 +138,135 @@ describe('resolveRemoteWaveBinary', () => {
     expect(info.nodeVersion).toBe('v22.0.0');
     const nodeProbe = h.execFile.mock.calls[1][1] as string[];
     expect(nodeProbe.at(-1)).toBe(`/bin/sh -lic 'node -v'`);
+  });
+});
+
+describe('ensureRemoteCliUpToDate', () => {
+  it('keeps the binary when the remote version meets the target', async () => {
+    stubExec([LOGIN_SHELL, { stdout: 'v22.0.0' }, { stdout: '/usr/local/bin/wave' }, { stdout: '1.0.0\n' }]);
+    const result = await ensureRemoteCliUpToDate('prod', '1.0.0');
+    expect(result).toEqual({ binaryPath: '/usr/local/bin/wave', upgraded: false });
+  });
+
+  it('upgrades via npm when the remote version is older than the target', async () => {
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: 'v22.0.0' },
+      { stdout: '/usr/local/bin/wave' },
+      { stdout: '0.9.0\n' }, // wave -v
+      { stdout: '' }, // npm install -g wave-code@1.0.0
+      { stdout: 'v22.0.0' }, // re-resolve after upgrade
+      { stdout: '/usr/local/bin/wave' },
+    ]);
+    const result = await ensureRemoteCliUpToDate('prod', '1.0.0');
+    expect(result.upgraded).toBe(true);
+    expect(result.binaryPath).toBe('/usr/local/bin/wave');
+    const install = h.execFile.mock.calls
+      .map((c) => (c[1] as string[]).at(-1) as string)
+      .find((cmd) => cmd.includes('npm install -g wave-code'));
+    expect(install).toContain('wave-code@1.0.0');
+  });
+
+  it('treats a failing `wave -v` as needing upgrade (corrupt binary)', async () => {
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: 'v22.0.0' },
+      { stdout: '/usr/local/bin/wave' },
+      { error: new Error('segfault') }, // wave -v fails → null
+      { stdout: '' }, // npm install
+      { stdout: 'v22.0.0' },
+      { stdout: '/usr/local/bin/wave' },
+    ]);
+    const result = await ensureRemoteCliUpToDate('prod', '1.0.0');
+    expect(result.upgraded).toBe(true);
+  });
+
+  it('rejects an invalid target version before running any remote command', async () => {
+    h.execFile.mockClear();
+    await expect(upgradeRemoteWave('prod', '1.0')).rejects.toThrow('Invalid version: 1.0');
+    expect(h.execFile).not.toHaveBeenCalled();
+  });
+});
+
+describe('killRemoteDaemon', () => {
+  it('pkills the daemon by its socket with the anti-self-match bracket trick', async () => {
+    stubExec([LOGIN_SHELL, { stdout: '' }]);
+    await killRemoteDaemon('prod', '/home/user/.wave/daemon.sock');
+    const args = h.execFile.mock.calls[1][1] as string[];
+    expect(args[args.length - 1]).toBe(
+      `/bin/bash -lic ${shellQuote("pkill -f '[w]ave.*--daemon.*/home/user/.wave/daemon.sock' || true")}`,
+    );
+  });
+});
+
+describe('ensureRemoteDaemon', () => {
+  it('reuses a live daemon when the CLI version is up to date', async () => {
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: '/home/user' }, // echo $HOME
+      { stdout: 'v22.0.0' }, // node -v
+      { stdout: '/usr/local/bin/wave' }, // command -v
+      { stdout: '1.0.0\n' }, // wave -v
+      { stdout: '' }, // daemon socket probe — alive
+    ]);
+    await expect(ensureRemoteDaemon('prod', '1.0.0')).resolves.toBe('/home/user/.wave/daemon.sock');
+    const start = h.execFile.mock.calls.find((c) => ((c[1] as string[]).at(-1) as string).includes('nohup'));
+    expect(start).toBeUndefined();
+  });
+
+  it('launches the daemon when none is running', async () => {
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: '/home/user' },
+      { stdout: 'v22.0.0' },
+      { stdout: '/usr/local/bin/wave' },
+      { stdout: '1.0.0\n' },
+      { error: new Error('connect ECONNREFUSED') }, // probe — dead
+      { stdout: '' }, // nohup start
+      { stdout: '' }, // probe poll — alive
+    ]);
+    await expect(ensureRemoteDaemon('prod', '1.0.0')).resolves.toBe('/home/user/.wave/daemon.sock');
+  });
+
+  it('upgrades an older CLI and restarts the old daemon so the upgrade takes effect', async () => {
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: '/home/user' },
+      { stdout: 'v22.0.0' },
+      { stdout: '/usr/local/bin/wave' },
+      { stdout: '0.9.0\n' }, // wave -v < 1.0.0 → upgrade
+      { stdout: '' }, // npm install -g wave-code@1.0.0
+      { stdout: 'v22.0.0' }, // re-resolve
+      { stdout: '/usr/local/bin/wave' },
+      { stdout: '' }, // pkill old daemon
+      { error: new Error('ECONNREFUSED') }, // exit poll — gone
+      { error: new Error('ECONNREFUSED') }, // ensureRemoteDaemon alive check — gone
+      { stdout: '' }, // nohup start new daemon
+      { stdout: '' }, // start poll — alive
+    ]);
+    await expect(ensureRemoteDaemon('prod', '1.0.0')).resolves.toBe('/home/user/.wave/daemon.sock');
+    const commands = h.execFile.mock.calls.map((c) => (c[1] as string[]).at(-1) as string);
+    expect(commands.some((cmd) => cmd.includes('npm install -g wave-code@1.0.0'))).toBe(true);
+    expect(commands.some((cmd) => cmd.includes('pkill -f'))).toBe(true);
+    expect(commands.some((cmd) => cmd.includes('nohup'))).toBe(true);
+  });
+
+  it('falls back to the existing daemon and notifies when the upgrade fails', async () => {
+    const notice = vi.fn();
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: '/home/user' },
+      { stdout: 'v22.0.0' },
+      { stdout: '/usr/local/bin/wave' },
+      { stdout: '0.9.0\n' },
+      { error: new Error('npm ERR! network') }, // upgrade fails
+      { stdout: '' }, // old daemon still alive → reuse
+    ]);
+    await expect(ensureRemoteDaemon('prod', '1.0.0', notice)).resolves.toBe('/home/user/.wave/daemon.sock');
+    expect(notice).toHaveBeenCalledWith(expect.stringContaining('升级失败'));
+    expect(notice).toHaveBeenCalledWith(expect.stringContaining('npm install -g wave-code@1.0.0'));
+    const pkill = h.execFile.mock.calls.find((c) => ((c[1] as string[]).at(-1) as string).includes('pkill'));
+    expect(pkill).toBeUndefined();
   });
 });
 
