@@ -124,14 +124,23 @@ interface PanelGroupState {
   previewUrl: string | null;
   /** File panel state (which file is open + content); null = never opened. */
   fileView: FileViewState | null;
+  /**
+   * This session's remote port forward (scenario 18). The tunnel is owned by
+   * the session, not the pane: it survives panel close, host switches, pane
+   * rebinding and unmount/remount — only session deletion, ssh process death
+   * or app exit release it. This reference is display bookkeeping only.
+   */
+  forward: RemoteForwardRef | null;
+  /** Last forward failure for this session, shown in the preview stub. */
+  forwardError: string | null;
 }
 
 /**
- * The in-flight/established remote port forward owned by this pane. Set when a
- * remote localhost link is clicked (before the host replies) and kept until the
- * panel closes, the host switches, or this pane unmounts — mirroring the
- * reference the main process holds so the ssh tunnel dies with the last
- * reference (spec scenarios 15/18).
+ * The in-flight/established remote port forward requested by this session. Set
+ * when a remote localhost link is clicked (before the host replies). A pane
+ * rebinding to another session must keep the previous session's forward held
+ * (the host tunnels stay alive independently), so references live in the
+ * per-session panel-group cache rather than a single pane ref.
  */
 interface RemoteForwardRef {
   host: string;
@@ -143,6 +152,26 @@ interface RemoteForwardRef {
 }
 
 const panelGroupCache = new Map<string, PanelGroupState>();
+
+/** Fresh panel-group state, used when a session gets its first forward. */
+function emptyPanelGroup(): PanelGroupState {
+  return {
+    checked: [],
+    mounted: [],
+    widths: {
+      preview: PANEL_DEFAULT_WIDTH,
+      diff: PANEL_DEFAULT_WIDTH,
+      terminal: PANEL_DEFAULT_WIDTH,
+      file: PANEL_DEFAULT_WIDTH,
+    },
+    rows: { preview: 1, diff: 1, terminal: 1, file: 1 },
+    rowHeight: null,
+    previewUrl: null,
+    fileView: null,
+    forward: null,
+    forwardError: null,
+  };
+}
 
 /**
  * Drop cached panel groups whose owner is gone. The keep-set covers live pane
@@ -204,8 +233,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     () => (groupKey ? panelGroupCache.get(groupKey)?.previewUrl : null) ?? null,
   );
   // Desktop remote sessions: port-forward failure shown in the empty-preview
-  // stub with a retry entry (scenario 16). Null = no error.
-  const [previewForwardError, setPreviewForwardError] = useState<string | null>(null);
+  // stub with a retry entry (scenario 16). Null = no error. Restored from the
+  // session's cached group so a pane rebinding away and back keeps the error.
+  const [previewForwardError, setPreviewForwardError] = useState<string | null>(
+    () => (groupKey ? panelGroupCache.get(groupKey)?.forwardError : undefined) ?? null,
+  );
   // Bumped when a re-acquire returns the SAME forwarded URL — the [url] effect
   // in PreviewPane would otherwise early-return and skip the forced reload a
   // retry after a guest load failure needs. Remounting restarts the webview.
@@ -216,11 +248,28 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const [fileView, setFileView] = useState<FileViewState | null>(
     () => (groupKey ? panelGroupCache.get(groupKey)?.fileView : undefined) ?? null,
   );
-  // The pane's current remote port forward (see RemoteForwardRef above).
-  const remoteForwardRef = useRef<RemoteForwardRef | null>(null);
+  // The pane's current remote port forward (see RemoteForwardRef above). State
+  // rather than a ref because a pane rebinding to another session must drop its
+  // own current forward WITHOUT dropping the previous session's (the host
+  // tunnels stay alive independently, scenario 18): the per-session references
+  // live in panelGroupCache, this state only mirrors the bound session's one
+  // for rendering the preview stub.
+  const [currentForward, setCurrentForward] = useState<RemoteForwardRef | null>(
+    () => (groupKey ? panelGroupCache.get(groupKey)?.forward : undefined) ?? null,
+  );
+  // Mirrors of the forward state, refreshed on every render. Message is a
+  // React.memo component whose DOM click handler captures props.onOpenPreview
+  // at mount time — a useCallback that closes over the state values would pin
+  // the FIRST values forever and the same-link dedup in
+  // handleOpenRemotePreview would never see the established forward. The
+  // handlers read the refs at click time instead (same pattern as
+  // TerminalPane.tsx:117-119).
+  const currentForwardRef = useRef(currentForward);
+  currentForwardRef.current = currentForward;
+  const previewForwardErrorRef = useRef(previewForwardError);
+  previewForwardErrorRef.current = previewForwardError;
   const forwardSeqRef = useRef(0);
   const previewUrlRef = useRef(previewUrl);
-  const prevHostRef = useRef(effectiveHost);
   const fileViewRef = useRef<FileViewState | null>(fileView);
   // Desktop only: conversation-level panel group (checked = visible; mounted =
   // rendered but possibly hidden, so panel content survives unchecking). When
@@ -335,13 +384,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       widths: panelWidths,
       rows: panelRows,
       rowHeight: panelRowHeight,
-      // A remote forwarded URL is ephemeral (the tunnel dies with the pane) —
-      // caching it would restore a dead address after a remount. Local URLs
-      // survive so the restored pane reloads the same dev server.
-      previewUrl: remoteForwardRef.current ? null : previewUrl,
+      // A forwarded URL's tunnel is session-scoped (scenario 18) — it survives
+      // pane remounts and session switches, so the URL is cached like a local
+      // one: switching away and back restores the same address, which still
+      // loads because the host keeps the tunnel alive for the session.
+      previewUrl,
       fileView,
+      forward: currentForward,
+      forwardError: previewForwardError,
     });
-  }, [groupKey, checkedPanels, mountedPanels, panelWidths, panelRows, panelRowHeight, previewUrl, fileView]);
+  }, [groupKey, checkedPanels, mountedPanels, panelWidths, panelRows, panelRowHeight, previewUrl, fileView, currentForward, previewForwardError]);
 
   // Session switch: swap in the incoming session's remembered panel group
   // (empty when it has none — panels never leak across sessions). Only the
@@ -368,6 +420,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     }
     sentFromNewSessionRef.current = false;
     setPreviewUrl(group?.previewUrl ?? null);
+    setPreviewForwardError(group?.forwardError ?? null);
+    setCurrentForward(group?.forward ?? null);
     setCheckedPanels(group?.checked ?? []);
     setMountedPanels(group?.mounted ?? []);
     setPanelWidths(group?.widths ?? {
@@ -459,22 +513,34 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           setPaneGitBranches(message.result ?? null);
           break;
         case 'desktopForwardPortResult':
-          // Remote preview port-forward reply (scenario 15/16). Only the
-          // request this pane last sent counts — a stale reply for a released
-          // or superseded forward is dropped via the requestId match.
+          // Remote preview port-forward reply (scenario 15/16). The forward is
+          // session-scoped, so the reply is matched against the session whose
+          // cached forward carries this requestId — a reply that lands after
+          // the pane rebinds to another session still updates the owning
+          // session's cached URL instead of being dropped.
           if (!forThisPane(message)) break;
           {
-            const fwd = remoteForwardRef.current;
-            if (!fwd || fwd.requestId !== message.requestId) break;
+            let targetKey: string | undefined;
+            panelGroupCache.forEach((g, key) => {
+              if (g.forward?.requestId === message.requestId) targetKey = key;
+            });
+            if (targetKey === undefined) break;
+            const target = panelGroupCache.get(targetKey);
+            if (!target) break;
             if (message.error) {
-              setPreviewForwardError(String(message.error));
+              target.forwardError = String(message.error);
+              if (targetKey === groupKeyRef.current) setPreviewForwardError(String(message.error));
             } else {
-              setPreviewForwardError(null);
-              setPreviewUrl(message.url as string);
-              // Same URL as before (re-acquire after a guest load failure):
-              // remount so the webview actually reloads instead of the [url]
-              // effect early-returning on an unchanged prop.
-              if (message.url === previewUrlRef.current) setPreviewEpoch((e) => e + 1);
+              target.forwardError = null;
+              target.previewUrl = message.url as string;
+              if (targetKey === groupKeyRef.current) {
+                setPreviewForwardError(null);
+                setPreviewUrl(message.url as string);
+                // Same URL as before (re-acquire after a guest load failure):
+                // remount so the webview actually reloads instead of the [url]
+                // effect early-returning on an unchanged prop.
+                if (message.url === previewUrlRef.current) setPreviewEpoch((e) => e + 1);
+              }
             }
           }
           break;
@@ -1053,6 +1119,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // preview pane then loads. Repeated clicks on the SAME link while the forward
   // is established or connecting are no-ops — the tunnel is reused, not rebuilt.
   const acquireForward = useCallback((host: string, url: string) => {
+    // The forward is keyed by the session's panel-group key; without one (a
+    // pane-less desktop view) there is nothing to cache the reference under.
+    if (!groupKey) return;
     let remotePort: number;
     try {
       const u = new URL(url);
@@ -1066,18 +1135,24 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       return;
     }
     const requestId = `fwd-${++forwardSeqRef.current}`;
-    remoteForwardRef.current = { host, remotePort, originalUrl: url, requestId };
-    postToHost({ command: 'desktopForwardPort', host, url, requestId });
-  }, [postToHost, showPanelHint]);
-
-  // Drop this pane's forward reference: the host kills the tunnel when the
-  // refcount reaches zero (scenario 18). Safe to call when none is held.
-  const releaseCurrentForward = useCallback(() => {
-    const fwd = remoteForwardRef.current;
-    if (!fwd) return;
-    remoteForwardRef.current = null;
-    postToHost({ command: 'desktopReleasePort', host: fwd.host, remotePort: fwd.remotePort });
-  }, [postToHost]);
+    const fwd = { host, remotePort, originalUrl: url, requestId };
+    setCurrentForward(fwd);
+    // Keep the reference in the session's cached group immediately (not via the
+    // state-sync effect below) so a desktopForwardPortResult reply — which may
+    // arrive on the very next event-loop turn — can match this forward even if
+    // the effect hasn't flushed yet. A pane rebinding to another session then
+    // keeps THIS session's forward cached for when it comes back.
+    let group = panelGroupCache.get(groupKey);
+    if (!group) {
+      group = emptyPanelGroup();
+      panelGroupCache.set(groupKey, group);
+    }
+    group.forward = fwd;
+    // The session id scopes the tunnel's lifetime on the host — it stays alive
+    // across UI actions and is only released when the session is deleted
+    // (scenario 18).
+    postToHost({ command: 'desktopForwardPort', host, url, requestId, sessionId: groupKey });
+  }, [postToHost, showPanelHint, groupKey]);
 
   // Desktop: idle-preload the lazily injected xterm chunk so the first
   // terminal open doesn't pay the fetch+parse cost.
@@ -1137,22 +1212,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     if (panelDisabledRef.current.includes(kind)) return;
     if (checkedPanelsRef.current.includes(kind)) {
       setCheckedPanels((prev) => prev.filter((k) => k !== kind));
-      // Closing the preview drops this pane's forward reference — the host
-      // kills the tunnel when the refcount hits zero (scenario 18). Only a
-      // remote tunnel is cleared; a local URL survives so re-checking shows
-      // the same page without reloading the guest.
-      if (kind === 'preview') {
-        const hadForward = remoteForwardRef.current !== null;
-        releaseCurrentForward();
-        if (hadForward) {
-          setPreviewUrl(null);
-          setPreviewForwardError(null);
-        }
-      }
+      // Closing the preview hides the pane but never releases a remote tunnel
+      // (scenario 18): the URL stays cached so re-checking shows the same page,
+      // and the host keeps the ssh forward alive until the session is deleted.
     } else {
       tryOpenPanel(kind);
     }
-  }, [tryOpenPanel, releaseCurrentForward]);
+  }, [tryOpenPanel]);
 
   useEffect(() => {
     togglePanelRef.current = handleTogglePanel;
@@ -1373,41 +1439,31 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   }, [tryOpenPanel]);
 
   // Remote localhost link handler: open the preview panel (creating it when
-  // absent) and forward. A different URL replaces the previous forward; the
-  // same URL — under any loopback/all-interfaces host spelling — is a no-op
-  // unless the previous attempt failed (scenario 15/16).
+  // absent) and forward. The same URL — under any loopback/all-interfaces
+  // host spelling — is a no-op unless the previous attempt failed (scenario
+  // 15/16). Every other click — a different path, a different origin, another
+  // service entirely — just re-targets the panel; tunnels are session-scoped
+  // and only die when the session is deleted (scenario 18).
   const handleOpenRemotePreview = useCallback((url: string) => {
     if (!checkedPanelsRef.current.includes('preview') && !tryOpenPanel('preview')) return;
-    const current = remoteForwardRef.current;
-    if (current && canonicalForwardUrl(current.originalUrl) === canonicalForwardUrl(url) && previewForwardError === null) return;
-    if (current) releaseCurrentForward();
+    // Read the refs, not the state values: this callback is captured by the
+    // memoized Message component at mount, so closing over state would freeze
+    // the first render's values and break the same-link dedup below.
+    const current = currentForwardRef.current;
+    if (current && canonicalForwardUrl(current.originalUrl) === canonicalForwardUrl(url) && previewForwardErrorRef.current === null) return;
     setPreviewForwardError(null);
     setPreviewUrl(null); // show the connecting stub while the tunnel comes up
     acquireForward(effectiveHostRef.current, url);
-  }, [tryOpenPanel, releaseCurrentForward, acquireForward, previewForwardError]);
+  }, [tryOpenPanel, acquireForward]);
 
   // Retry after a failed forward (scenario 16): re-request the same tunnel.
   // The host treats a failed entry as gone, so a fresh forward is established.
   const handleRemotePreviewRetry = useCallback(() => {
-    const fwd = remoteForwardRef.current;
+    const fwd = currentForwardRef.current;
     if (!fwd) return;
     setPreviewForwardError(null);
     acquireForward(fwd.host, fwd.originalUrl);
   }, [acquireForward]);
-
-  // Host switch (local ⇄ remote, or remote A ⇄ remote B): the old tunnel is
-  // meaningless on the new host — drop it and clear the preview (scenario 18).
-  useEffect(() => {
-    if (prevHostRef.current === effectiveHost) return;
-    prevHostRef.current = effectiveHost;
-    releaseCurrentForward();
-    setPreviewUrl(null);
-    setPreviewForwardError(null);
-  }, [effectiveHost, releaseCurrentForward]);
-
-  // Unmount (pane moved across window rows / window closed): never leave an
-  // orphan ssh process behind (scenario 18).
-  useEffect(() => () => releaseCurrentForward(), [releaseCurrentForward]);
 
   const openPreviewHandler = effectiveHost !== 'local' ? handleOpenRemotePreview : handleOpenPreview;
 
@@ -1475,8 +1531,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         <PreviewPane
           key={previewEpoch}
           url={previewUrl}
-          originalUrl={remoteForwardRef.current?.originalUrl}
-          onRetry={remoteForwardRef.current ? handleRemotePreviewRetry : undefined}
+          originalUrl={currentForward?.originalUrl}
+          onRetry={currentForward ? handleRemotePreviewRetry : undefined}
           vscode={vscode}
           onAddComment={handleAddComment}
           {...common}

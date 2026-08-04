@@ -1581,6 +1581,11 @@ export class DesktopHost {
       : Promise.resolve();
 
     this.configStore.removeSession(sessionId);
+    // The session is gone — release every tunnel it referenced. Tunnels are
+    // session-scoped (scenario 18): deleting a session is one of the only ways
+    // a physical ssh forward closes, alongside the process dying on its own and
+    // the app quitting.
+    this.portForwardManager.releaseSession(sessionId);
     // Update the sidebar right away — the worktree cleanup below runs in the
     // background and must not hold back the tree refresh.
     this.refreshSessionTree();
@@ -1909,11 +1914,13 @@ export class DesktopHost {
 
       // Remote preview: forward a localhost URL over ssh and load the
       // rewritten loopback address (spec scenario 15-18). The webview sends
-      // the host it computed (effectiveHost); defaults to the pane's host.
+      // the host it computed (effectiveHost); defaults to the pane's host. The
+      // session id scopes the tunnel's lifetime — it survives UI actions and is
+      // only released when the session is deleted (scenario 18).
       case 'desktopForwardPort': {
         const host = (msg.host as string) || this.hostForPane(pid);
         try {
-          const result = await this.portForwardManager.acquire(host, msg.url as string);
+          const result = await this.portForwardManager.acquire(host, msg.url as string, msg.sessionId as string | undefined);
           this.postMessage({
             command: 'desktopForwardPortResult',
             paneId: pid,
@@ -1931,12 +1938,6 @@ export class DesktopHost {
         }
         break;
       }
-
-      case 'desktopReleasePort':
-        // Host is required: the pane may have already switched sessions/hosts
-        // by the time the webview releases the reference.
-        this.portForwardManager.release(msg.host as string, msg.remotePort as number);
-        break;
 
       // Pane panel toggle state — drives the 面板 menu checkboxes.
       case 'desktopPanelState': {

@@ -120,14 +120,18 @@ describe('PortForwardManager.acquire', () => {
 
   it('reuses a ready tunnel: repeated acquires do not spawn again', async () => {
     const manager = new PortForwardManager();
-    const first = await manager.acquire('prod', 'http://localhost:5173/a');
-    const second = await manager.acquire('prod', 'http://localhost:5173/b');
+    const first = await manager.acquire('prod', 'http://localhost:5173/a', 's1');
+    const second = await manager.acquire('prod', 'http://localhost:5173/b', 's1');
     expect(h.spawn).toHaveBeenCalledTimes(1);
     expect(second.url).toBe('http://127.0.0.1:5173/b');
     expect(first.url).toBe('http://127.0.0.1:5173/a');
-    // releasing once keeps it alive for the remaining reference
-    manager.release('prod', 5173);
+    // a second session sharing the tunnel keeps it alive after s1 drops it
+    await manager.acquire('prod', 'http://localhost:5173/c', 's2');
+    manager.releaseSession('s1');
     expect(lastChild().kill).not.toHaveBeenCalled();
+    // the tunnel dies only when the last referencing session releases
+    manager.releaseSession('s2');
+    expect(lastChild().kill).toHaveBeenCalledTimes(1);
     manager.dispose();
   });
 
@@ -136,8 +140,8 @@ describe('PortForwardManager.acquire', () => {
     // Both acquires run before the ready probe resolves, so the second must
     // park on the first entry's waiter list.
     const [a, b] = await Promise.all([
-      manager.acquire('prod', 'http://localhost:5173/a'),
-      manager.acquire('prod', 'http://localhost:5173/b'),
+      manager.acquire('prod', 'http://localhost:5173/a', 's1'),
+      manager.acquire('prod', 'http://localhost:5173/b', 's2'),
     ]);
     expect(h.spawn).toHaveBeenCalledTimes(1);
     expect(a.url).toBe('http://127.0.0.1:5173/a');
@@ -147,15 +151,33 @@ describe('PortForwardManager.acquire', () => {
 });
 
 describe('PortForwardManager lifecycle', () => {
-  it('kills the ssh process and frees the entry when the last reference releases', async () => {
+  it('kills the ssh process when the referencing session is deleted', async () => {
     const manager = new PortForwardManager();
-    await manager.acquire('prod', 'http://localhost:5173/');
+    await manager.acquire('prod', 'http://localhost:5173/', 's1');
     expect(lastChild().kill).not.toHaveBeenCalled();
-    manager.release('prod', 5173);
+    manager.releaseSession('s1');
     expect(lastChild().kill).toHaveBeenCalledTimes(1);
     // a later acquire starts a fresh tunnel
-    await manager.acquire('prod', 'http://localhost:5173/');
+    await manager.acquire('prod', 'http://localhost:5173/', 's1');
     expect(h.spawn).toHaveBeenCalledTimes(2);
+    manager.dispose();
+  });
+
+  it('acquiring from the same session is idempotent — one release kills the tunnel', async () => {
+    const manager = new PortForwardManager();
+    await manager.acquire('prod', 'http://localhost:5173/', 's1');
+    await manager.acquire('prod', 'http://localhost:5173/', 's1');
+    manager.releaseSession('s1');
+    expect(h.spawn).toHaveBeenCalledTimes(1);
+    expect(lastChild().kill).toHaveBeenCalledTimes(1);
+    manager.dispose();
+  });
+
+  it('releasing a session with no references is a no-op', async () => {
+    const manager = new PortForwardManager();
+    await manager.acquire('prod', 'http://localhost:5173/', 's1');
+    manager.releaseSession('s2');
+    expect(lastChild().kill).not.toHaveBeenCalled();
     manager.dispose();
   });
 
