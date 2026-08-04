@@ -492,6 +492,46 @@ test("onSessionIdChange emits sessionIdChange notification", async () => {
   });
 });
 
+test("onSessionIdChange with unchanged session id skips re-key", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  // oldSessionId === newSessionId → the re-key condition is skipped
+  callbacks.onSessionIdChange!("test-session-id");
+
+  expect(notifications).toContainEqual({
+    method: "sessionIdChange",
+    params: { sessionId: "test-session-id" },
+    sessionId: "test-session-id",
+  });
+});
+
+test("onSessionIdChange after destroy handles missing sessions entry", async () => {
+  const { bridge, notifications } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  // destroy removes the sessions map entry while registeredSessionId stays set
+  await bridge.handleRequest("destroy", {}, sessionId);
+
+  callbacks.onSessionIdChange!("session-after-destroy");
+
+  expect(notifications).toContainEqual({
+    method: "sessionIdChange",
+    params: { sessionId: "session-after-destroy" },
+    sessionId,
+  });
+});
+
 test("onMcpServersChange emits mcpServersChange notification", async () => {
   const { bridge, notifications } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
@@ -959,6 +999,17 @@ test("destroy destroys the agent", async () => {
   expect(mockAgent.destroy).toHaveBeenCalled();
 });
 
+test("destroy with unknown sessionId is a no-op", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+
+  const result = await bridge.handleRequest("destroy", {}, "unknown-session");
+
+  expect(result).toBeNull();
+});
+
 // ── Error handling ───────────────────────────────────────────────
 
 test("unknown method throws METHOD_NOT_FOUND", async () => {
@@ -978,6 +1029,17 @@ test("calling method before initialize throws INTERNAL_ERROR", async () => {
   await expect(
     bridge.handleRequest("sendMessage", { text: "hi" }),
   ).rejects.toThrow("sessionId is required for this request");
+});
+
+test("calling method with an unknown sessionId throws Session not found", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+
+  await expect(
+    bridge.handleRequest("sendMessage", { text: "hi" }, "unknown-session"),
+  ).rejects.toThrow("Session not found: unknown-session");
 });
 
 test("RpcError has correct code and toJsonRpcError", () => {
@@ -1411,6 +1473,25 @@ test("initialize with restoreSessionId reuses a live session instead of creating
   });
 });
 
+test("initialize with an unknown restoreSessionId creates a new agent", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  const result = await bridge.handleRequest("initialize", {
+    workdir: "/test/workdir",
+    restoreSessionId: "ghost-session",
+  });
+
+  // No live session matches → falls through to a fresh Agent.create
+  expect(vi.mocked(Agent.create)).toHaveBeenCalledTimes(1);
+  expect(result).toEqual({
+    sessionId: "test-session-id",
+    workingDirectory: "/test/workdir",
+    permissionMode: "default",
+    latestTotalTokens: 100,
+  });
+});
+
 test("restoreSession to the live session emits a messagesChange snapshot without replaying", async () => {
   const { bridge, notifications } = createBridge();
   const mockAgent = createMockAgent({
@@ -1773,6 +1854,31 @@ test("onUserMessageAdded before initialize does not crash", async () => {
   ).toHaveLength(0);
 });
 
+test("onUserMessageAdded with no agent (pre-create) does not crash", async () => {
+  const { bridge, notifications } = createBridge();
+  const mockAgent = createMockAgent();
+  let resolveCreate!: (agent: Agent) => void;
+  vi.mocked(Agent.create).mockReturnValue(
+    new Promise<Agent>((resolve) => {
+      resolveCreate = resolve;
+    }),
+  );
+
+  // Kick off initialize without awaiting — ctx.agent is still undefined here
+  const initPromise = bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  callbacks.onUserMessageAdded!({} as never);
+
+  expect(
+    notifications.filter((n) => n.method === "userMessageAdded"),
+  ).toHaveLength(0);
+
+  resolveCreate(mockAgent);
+  await initPromise;
+});
+
 // ── Multi-session (multi-tenant) ─────────────────────────────────
 
 test("two sessions are independent and route notifications by sessionId", async () => {
@@ -1953,6 +2059,18 @@ test("listGitBranches returns null current when rev-parse fails", async () => {
 
   expect(result.branches).toEqual(["main"]);
   expect(result.current).toBeNull();
+});
+
+test("listGitBranches returns an empty list when the repo has no refs", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(execFileSync).mockReturnValueOnce("").mockReturnValueOnce("main\n");
+
+  const result = (await bridge.handleRequest("listGitBranches", {
+    workdir: "/repo",
+  })) as { branches: string[]; current: string | null };
+
+  expect(result.branches).toEqual([]);
+  expect(result.current).toBe("main");
 });
 
 // ── createWorktree ─────────────────────────────────────────────
