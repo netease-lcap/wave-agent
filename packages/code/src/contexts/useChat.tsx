@@ -56,7 +56,6 @@ export interface ChatContextType {
   askBtw: (question: string) => Promise<string>;
   clearMessages: () => Promise<void>;
   compact: (instructions?: string) => Promise<void>;
-  goalCommand: (args?: string) => Promise<void>;
   abortMessage: () => void;
   recallQueuedMessage: () => QueuedMessage | null;
   removeQueuedMessageById: (id: string) => boolean;
@@ -132,10 +131,6 @@ export interface ChatContextType {
   recreateAgent: () => void;
   // Trigger WorktreeRemove hook BEFORE agent destruction
   triggerWorktreeRemoveHook: (worktreePath: string) => Promise<void>;
-  // Goal state
-  isGoalActive: boolean;
-  goalElapsed?: string;
-  isGoalEvaluating: boolean;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -216,28 +211,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [currentModel, setCurrentModelState] = useState("");
   const [configuredModels, setConfiguredModels] = useState<string[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
-  const [isGoalActive, setIsGoalActive] = useState(false);
-  const [goalElapsed, setGoalElapsed] = useState<string | undefined>();
-  const [isGoalEvaluating, setIsGoalEvaluating] = useState(false);
-  const goalStartedAt = useRef<number | null>(null);
-
-  // Update goal elapsed time every 30s while active
-  useEffect(() => {
-    if (!isGoalActive || goalStartedAt.current === null) return;
-    const formatElapsed = (ms: number): string => {
-      const minutes = Math.floor(ms / 60000);
-      if (minutes < 1) return "<1m";
-      if (minutes < 60) return `${minutes}m`;
-      const hours = Math.floor(minutes / 60);
-      const remainingMin = minutes % 60;
-      return `${hours}h${remainingMin}m`;
-    };
-    const update = () =>
-      setGoalElapsed(formatElapsed(Date.now() - goalStartedAt.current!));
-    update();
-    const timer = setInterval(update, 30_000);
-    return () => clearInterval(timer);
-  }, [isGoalActive]);
 
   // MCP State
   const [mcpServerStatuses, setMcpServerStatuses] = useState<McpServerStatus[]>(
@@ -420,18 +393,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         },
         onQueuedMessagesChange: (messages) => {
           setQueuedMessages([...messages]);
-        },
-        onGoalStateChange: (active, _condition, elapsed) => {
-          setIsGoalActive(active);
-          if (active) {
-            goalStartedAt.current = Date.now();
-          } else {
-            goalStartedAt.current = null;
-          }
-          setGoalElapsed(elapsed);
-        },
-        onGoalEvaluating: (evaluating) => {
-          setIsGoalEvaluating(evaluating);
         },
       };
 
@@ -652,19 +613,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     await agentRef.current?.compact(instructions);
   }, []);
 
-  const goalCommand = useCallback(async (args?: string) => {
-    const trimmed = args?.trim() ?? "";
-    if (!trimmed) {
-      await agentRef.current?.showGoalStatus();
-    } else if (
-      ["clear", "stop", "off", "reset", "none", "cancel"].includes(trimmed)
-    ) {
-      await agentRef.current?.clearGoal();
-    } else {
-      await agentRef.current?.setGoal(trimmed);
-    }
-  }, []);
-
   // Unified interrupt method, interrupt both AI messages and command execution
   const abortMessage = useCallback(() => {
     agentRef.current?.abortMessage();
@@ -868,7 +816,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     askBtw,
     clearMessages,
     compact,
-    goalCommand,
     abortMessage,
     recallQueuedMessage,
     removeQueuedMessageById,
@@ -912,9 +859,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     workdir,
     recreateAgent,
     triggerWorktreeRemoveHook,
-    isGoalActive,
-    goalElapsed,
-    isGoalEvaluating,
   };
 
   return (

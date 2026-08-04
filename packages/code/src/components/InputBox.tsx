@@ -32,7 +32,6 @@ export interface InputBoxProps {
   isLoading?: boolean;
   isCommandRunning?: boolean;
   isCompacting?: boolean;
-  isGoalEvaluating?: boolean;
   workdir?: string;
   sendMessage?: (
     message: string,
@@ -50,16 +49,12 @@ export interface InputBoxProps {
   // Token usage
   latestTotalTokens?: number;
   maxInputTokens?: number;
-  // Goal state
-  isGoalActive?: boolean;
-  goalElapsed?: string;
 }
 
 export const InputBox: React.FC<InputBoxProps> = ({
   isLoading,
   isCommandRunning,
   isCompacting,
-  isGoalEvaluating,
   sendMessage = () => {},
   abortMessage = () => {},
   mcpServers = [],
@@ -69,8 +64,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
   hasSlashCommand = () => false,
   latestTotalTokens = 0,
   maxInputTokens = 200000,
-  isGoalActive,
-  goalElapsed,
 }) => {
   const {
     permissionMode: chatPermissionMode,
@@ -84,7 +77,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     askBtw,
     clearMessages,
     compact,
-    goalCommand,
     currentModel,
     configuredModels,
     setModel,
@@ -100,12 +92,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   // Idle means no AI work in flight. Esc double-press clear only applies when
   // idle; while busy, Esc keeps its abort semantics.
-  const isIdle = !(
-    isLoading ||
-    isCommandRunning ||
-    isCompacting ||
-    isGoalEvaluating
-  );
+  const isIdle = !(isLoading || isCommandRunning || isCompacting);
 
   const onRecallQueuedMessage = useCallback(() => {
     const msg = recallQueuedMessage();
@@ -174,7 +161,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     onAskBtw: askBtw,
     onClearMessages: clearMessages,
     onCompact: compact,
-    onGoalCommand: goalCommand,
     onHasSlashCommand: hasSlashCommand,
     onAbortMessage: abortMessage,
     onBackgroundCurrentTask: backgroundCurrentTask,
@@ -384,8 +370,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
               <StatusLine
                 permissionMode={permissionMode}
                 isShellCommand={isShellCommand}
-                isGoalActive={isGoalActive}
-                goalElapsed={goalElapsed}
                 latestTotalTokens={latestTotalTokens}
                 maxInputTokens={maxInputTokens}
               />

@@ -86,7 +86,6 @@ export interface InputManagerCallbacks {
   onAskBtw?: (question: string) => Promise<string>;
   onClearMessages?: () => Promise<void>;
   onCompact?: (instructions?: string) => Promise<void>;
-  onGoalCommand?: (args?: string) => Promise<void>;
   sessionId?: string;
   workdir?: string;
   getFullMessageThread?: () => Promise<{

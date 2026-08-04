@@ -146,8 +146,6 @@ await agent.destroy();
 | `isCompacting` | `boolean` | 是否正在压缩 |
 | `isCommandRunning` | `boolean` | 是否有命令正在执行 |
 | `queuedMessages` | `QueuedMessage[]` | 消息队列 |
-| `goalStatus` | `string` | 目标状态 |
-| `isGoalActive` | `boolean` | 是否有活跃目标 |
 | `taskListId` | `string` | 任务列表 ID |
 | `hasRunningBackgroundWork` | `boolean` | 是否有后台任务运行中 |
 
@@ -287,8 +285,6 @@ callbacks: {
 | `onWorkdirChange` | `string` | 工作目录变更 |
 | `onQueuedMessagesChange` | `QueuedMessage[]` | 消息队列变更 |
 | `onTasksChange` | `Task[]` | 任务列表变更 |
-| `onGoalStateChange` | `active, condition?, elapsed?` | 目标状态变更 |
-| `onGoalEvaluating` | `evaluating: boolean` | 目标评估状态 |
 
 ## 5. 工具系统 {#tool-system}
 
@@ -908,23 +904,6 @@ callbacks: {
 ```
 
 ## 11. 其他功能 {#other-features}
-
-### 目标管理 (Goal) {#goal}
-
-`/goal <condition>` 设置自主多轮目标追求，Agent 会持续执行直到条件满足或触发熔断。
-
-```typescript
-// 设置目标
-await agent.setGoal('所有测试通过且无 lint 错误');
-
-// 查看目标状态
-await agent.showGoalStatus();
-
-// 清除目标
-await agent.clearGoal();
-```
-
-**熔断条件**：50 轮对话、30 分钟、3 次评估失败。
 
 ### 斜杠命令 {#slash-commands}
 

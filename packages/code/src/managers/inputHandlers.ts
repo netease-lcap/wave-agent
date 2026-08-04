@@ -373,8 +373,6 @@ export const handleCommandSelect = (
           await callbacks.onClearMessages?.();
         } else if (command === "compact") {
           await callbacks.onCompact?.();
-        } else if (command === "goal") {
-          await callbacks.onGoalCommand?.();
         }
       }
     })();

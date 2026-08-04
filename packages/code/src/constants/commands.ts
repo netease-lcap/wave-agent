@@ -80,10 +80,4 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     description: "Compact conversation history to reduce context usage",
     handler: () => {},
   },
-  {
-    id: "goal",
-    name: "goal",
-    description: "Set, check, or clear an autonomous goal for the session",
-    handler: () => {},
-  },
 ];

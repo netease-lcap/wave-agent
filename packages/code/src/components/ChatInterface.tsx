@@ -38,9 +38,6 @@ export const ChatInterface: React.FC = () => {
     workdir,
     remountKey,
     requestRemount,
-    isGoalActive,
-    goalElapsed,
-    isGoalEvaluating,
     getGatewayConfig,
   } = useChat();
 
@@ -106,15 +103,11 @@ export const ChatInterface: React.FC = () => {
 
       {!isConfirmationVisible && !isExpanded && (
         <>
-          {(isLoading ||
-            isCommandRunning ||
-            isCompacting ||
-            isGoalEvaluating) && (
+          {(isLoading || isCommandRunning || isCompacting) && (
             <LoadingIndicator
               isLoading={isLoading}
               isCommandRunning={isCommandRunning}
               isCompacting={isCompacting}
-              isGoalEvaluating={isGoalEvaluating}
               latestTotalTokens={latestTotalTokens}
             />
           )}
@@ -124,7 +117,6 @@ export const ChatInterface: React.FC = () => {
             isLoading={isLoading}
             isCommandRunning={isCommandRunning}
             isCompacting={isCompacting}
-            isGoalEvaluating={isGoalEvaluating}
             sendMessage={sendMessage}
             abortMessage={abortMessage}
             mcpServers={mcpServers}
@@ -134,8 +126,6 @@ export const ChatInterface: React.FC = () => {
             hasSlashCommand={hasSlashCommand}
             latestTotalTokens={latestTotalTokens}
             maxInputTokens={maxInputTokens}
-            isGoalActive={isGoalActive}
-            goalElapsed={goalElapsed}
           />
         </>
       )}

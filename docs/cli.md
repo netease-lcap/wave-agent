@@ -155,7 +155,6 @@ wave update    # 更新 Wave CLI 到最新版本
 | `/logout`    | 清除 SSO 认证                  |
 | `/clear`     | 清除当前对话历史               |
 | `/compact`   | 压缩对话历史，减少 Token 占用  |
-| `/goal`      | 设置、检查或清除 AI 自主目标   |
 | `/btw`       | 旁路提问，不调用工具的快速问答 |
 
 > 了解更多：详见 [SDK 文档 - 斜杠命令](/sdk#slash-commands)
@@ -253,19 +252,7 @@ wave -w my-feature
 
 在交互模式中也可通过内置工具 `EnterWorktree` 切换到 worktree。
 
-### 7.4 Goal 自主目标 {#goal}
-
-`/goal` 设置 AI 自主追求的目标，AI 会在多轮对话中持续努力直到目标达成或触发断路器。
-
-```
-/goal 所有测试通过
-/goal status    # 查看当前目标状态
-/goal clear     # 清除目标
-```
-
-断路器限制：最多 50 轮对话、30 分钟运行时间、3 次评估失败。
-
-### 7.5 Compact 压缩 {#compact}
+### 7.4 Compact 压缩 {#compact}
 
 `/compact` 压缩当前对话历史，将冗长的上下文总结为精简摘要，减少后续请求的 Token 占用。支持附加自定义指令引导压缩方向。
 
@@ -273,37 +260,37 @@ wave -w my-feature
 /compact 重点保留 API 设计相关的讨论
 ```
 
-### 7.6 Rewind 回滚 {#rewind}
+### 7.5 Rewind 回滚 {#rewind}
 
 `/rewind` 将对话回滚到历史检查点，撤销后续的对话记录和文件更改。
 
-### 7.7 图片粘贴 {#image-paste}
+### 7.6 图片粘贴 {#image-paste}
 
 按 `Ctrl+V` 粘贴剪贴板中的图片，支持跨平台（macOS、Linux、Windows）。AI 可识别截图中的 UI 设计、错误信息或架构图。
 
-### 7.8 MCP 集成 {#mcp}
+### 7.7 MCP 集成 {#mcp}
 
 通过 `/mcp` 管理 MCP（Model Context Protocol）服务器连接，扩展 AI 的外部工具能力。支持在项目根目录的 `.mcp.json` 中配置，或通过 `--mcp-config` 命令行传入。
 
-### 7.9 插件系统 {#plugin}
+### 7.8 插件系统 {#plugin}
 
 通过插件扩展 AI 的 Skill 和命令。支持插件市场的发现、安装和管理，插件可在 user、project、local 三种作用域下激活。
 
 详见 [第 3.1 节 插件管理](#plugin-commands)。
 
-### 7.10 Workflow 工作流 {#workflow}
+### 7.9 Workflow 工作流 {#workflow}
 
 通过 `/workflows` 查看和管理正在运行的工作流。工作流支持多阶段编排、并行执行和确定性控制流。
 
-### 7.11 后台任务 {#background-tasks}
+### 7.10 后台任务 {#background-tasks}
 
 通过 `/tasks` 查看后台任务列表，或通过 `Ctrl+B` 将当前前台任务放到后台执行。支持 shell 命令和子代理两种任务类型，任务完成后自动通知。
 
-### 7.12 SSO 认证 {#sso}
+### 7.11 SSO 认证 {#sso}
 
 通过 `/login` 进行企业 SSO 认证，授权码通过 localhost 回调自动交换为 JWT。登录后 API 请求自动通过 Wave AI 服务端代理路由，无需手动配置 API Key。通过 `/logout` 清除认证状态。
 
-### 7.13 会话管理 {#session-management}
+### 7.12 会话管理 {#session-management}
 
 支持多会话的创建、恢复和管理：
 
@@ -314,7 +301,7 @@ wave -r           # 列出可恢复的会话
 wave -r <id>      # 恢复指定会话
 ```
 
-### 7.14 Token 用量统计 {#token-stats}
+### 7.13 Token 用量统计 {#token-stats}
 
 在打印模式下配合 `--show-stats` 使用，输出结果末尾显示耗时和 Token 用量统计信息。
 

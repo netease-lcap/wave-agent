@@ -52,7 +52,7 @@ order: 215
 
 **验收场景**：
 
-1. **假设**空闲状态（`isLoading`/`isCommandRunning`/`isCompacting`/`isGoalEvaluating` 均为 false）且输入框有内容，**当**按第一次 Esc 时，**则**显示"再次按 Esc 清空输入"的提示，输入内容保持不变。
+1. **假设**空闲状态（`isLoading`/`isCommandRunning`/`isCompacting` 均为 false）且输入框有内容，**当**按第一次 Esc 时，**则**显示"再次按 Esc 清空输入"的提示，输入内容保持不变。
 2. **假设**上述状态下已在 1 秒内按了第二次 Esc，**当**再次按 Esc 时，**则**输入框被清空，且原内容保存到输入历史（对齐 CC 的 `addToHistory(originalValue)`）。
 3. **假设**第一次 Esc 后超过 1 秒未按第二次，**当**再次按 Esc 时，**则**视为新一轮双击，仅重新显示提示，不清空输入。
 4. **假设**空闲状态且输入框为空，**当**按 Esc 时，**则**不产生提示，无副作用。
@@ -87,6 +87,6 @@ order: 215
 
 ## 假设
 
-- 空闲状态定义为 `isLoading`、`isCommandRunning`、`isCompacting`、`isGoalEvaluating` 均为 false。
+- 空闲状态定义为 `isLoading`、`isCommandRunning`、`isCompacting` 均为 false。
 - "再次按 Esc 清空"提示沿用项目内现有提示机制（若无 toast 机制，可用输入框上方提示行或状态栏文本呈现）。
 - 对齐 Claude Code 的互斥设计：Esc 的中止语义与双击清空语义互斥，由"是否有正在运行的任务"决定，不共存。
