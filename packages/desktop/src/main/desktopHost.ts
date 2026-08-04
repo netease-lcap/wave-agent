@@ -1223,6 +1223,14 @@ export class DesktopHost {
         await this.discardAgent(agent);
         return;
       }
+      // Restore is a bare RPC — the daemon does not deliver the transcript, so
+      // pull it into the cache. Without this, a re-attached session (remote or
+      // local) opens with an empty list and its agent looks "blank".
+      try {
+        await agent.getMessages();
+      } catch (error) {
+        console.warn('[DesktopHost] getMessages failed:', error);
+      }
       this.rekeyAgent(agent, opts.sessionId);
       // activateAgentInPane clears the pending entry — the pane is now live.
       await this.activateAgentInPane(paneId, agent);
