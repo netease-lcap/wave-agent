@@ -55,7 +55,7 @@ describe("BtwDisplay", () => {
     expect(frame).not.toContain("to dismiss");
   });
 
-  it("should render the streaming partial answer with the loading text below it", () => {
+  it("should not render the partial answer while loading, only the loading text", () => {
     const { lastFrame } = render(
       <BtwDisplay
         btwState={{
@@ -66,15 +66,11 @@ describe("BtwDisplay", () => {
       />,
     );
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("42 is the meaning");
     expect(frame).toContain("✻ Answering...");
-    // The loading text sits below the streaming chunk (chunk first in the frame)
-    expect(frame.indexOf("42 is the meaning")).toBeLessThan(
-      frame.indexOf("✻ Answering..."),
-    );
+    expect(frame).not.toContain("42 is the meaning");
   });
 
-  it("should truncate a long streaming answer to the last 30 characters", () => {
+  it("should not show a long streaming partial answer while loading", () => {
     const { lastFrame } = render(
       <BtwDisplay
         btwState={{
@@ -85,11 +81,11 @@ describe("BtwDisplay", () => {
       />,
     );
     const frame = lastFrame();
-    expect(frame).toContain("…");
-    expect(frame).not.toContain("The meaning of life is");
+    expect(frame).toContain("✻ Answering...");
+    expect(frame).not.toContain("The meaning of life is a very long answer");
   });
 
-  it("should hide the loading text once the answer has finished streaming", () => {
+  it("should hide the loading text once the answer has completed", () => {
     const { lastFrame } = render(<BtwDisplay btwState={answeredState} />);
     const frame = lastFrame();
     expect(frame).toContain("42");

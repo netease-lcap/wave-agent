@@ -36,17 +36,7 @@ export const BtwDisplay: React.FC<BtwDisplayProps> = ({ btwState }) => {
       )}
       <Box marginTop={1} flexDirection="column">
         {btwState.isLoading ? (
-          <>
-            {answer !== "" && (
-              <Text color="gray" wrap="truncate-end">
-                {(() => {
-                  const flat = answer.replace(/\n/g, "\\n");
-                  return flat.length > 30 ? `…${flat.slice(-30)}` : flat;
-                })()}
-              </Text>
-            )}
-            <Text color="gray">✻ Answering...</Text>
-          </>
+          <Text color="gray">✻ Answering...</Text>
         ) : isError ? (
           <Text color="error">{answer}</Text>
         ) : (
