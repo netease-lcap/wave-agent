@@ -1150,6 +1150,12 @@ export class AIManager {
             systemPrompt: mainSystemPrompt, // Pass custom system prompt
             maxTokens: maxTokens, // Pass max tokens override
             toolChoice: this.toolChoiceOverride, // Pass tool_choice override
+            // Fast-model subagents send disable-thinking params only when
+            // explicitly configured (never in the agent loop).
+            disableThinkingOptions:
+              this.modelOverride === "fastModel"
+                ? this.getModelConfig().disableThinkingOptions
+                : undefined,
           };
 
           // Prepend: AGENTS.md + user memory + unconditional rules as system-reminder

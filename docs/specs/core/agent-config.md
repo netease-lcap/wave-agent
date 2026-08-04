@@ -172,6 +172,25 @@ SDK 用户需要按子代理类型配置不同的 HTTP 请求头，以便 `custo
 
 ---
 
+### 用户故事：快速模型思考禁用配置（优先级：P1）
+
+用户将推理模型（如 deepseek-v4-flash）配置为快速模型（fastModel）后，WebFetch 内容处理、目标评估等轻量任务会偶发 "Empty response from AI" 错误——推理模型的思考（reasoning）消耗了全部输出 token（max_tokens），导致 content 为空。用户希望为不同模型配置各自的"禁用思考"参数，使快速模型场景可按需禁用思考、稳定返回内容，同时不影响主代理对话（agent loop）中的思考能力。
+
+**为什么是这个优先级**：这是快速模型场景空响应错误的直接修复，影响 WebFetch 等常用工具的可用性。
+
+**独立测试**：分别配置与不配置 `models[X].disableThinkingOptions`，触发 WebFetch 内容处理、目标评估与自动记忆提取，验证请求携带正确参数；同时验证主代理对话请求不受影响。
+
+**验收场景**：
+
+1. **假设**用户未配置 `disableThinkingOptions`，**当**快速模型场景（如 WebFetch 内容处理）发起请求时，**则**请求不携带任何禁用思考参数，交由模型默认处理（避免对不支持该参数的网关报错）
+2. **假设**用户为模型 X 配置 `models[X].disableThinkingOptions: {"enable_thinking": false}`，**当**快速模型场景使用模型 X 时，**则**请求携带 `{"enable_thinking": false}`
+3. **假设**用户为快速模型配置了 `models[fastModel].disableThinkingOptions`，**当** WebFetch 内容处理与目标评估使用快速模型时，**则**两类请求都携带该模型的禁用思考参数
+4. **假设**用户为快速模型配置了 `models[fastModel].disableThinkingOptions`，**当**自动记忆提取等后台子代理使用快速模型时，**则**子代理请求同样携带该参数
+5. **假设**用户配置了 `models[X].disableThinkingOptions`，**当**主代理对话（agent loop）使用模型 X 时，**则**请求不携带禁用思考参数，思考行为保持模型默认
+6. **假设**用户为模型 X 配置 `disableThinkingOptions: {}`，**当**快速模型场景使用模型 X 时，**则**请求不携带任何禁用思考参数，交由模型默认处理
+
+---
+
 ### 边界情况
 
 - 当提供部分配置时会发生什么（如 apiKey 但无 baseURL）？
@@ -184,6 +203,8 @@ SDK 用户需要按子代理类型配置不同的 HTTP 请求头，以便 `custo
 - 当文件监视器在系统启动时初始化失败会发生什么？
 - IDE 插件配置对话框只填写部分字段（如仅 API Key、无 API 地址）时如何生效？（未填写的字段保持原值或回退到环境变量）
 - IDE 插件配置对话框加载已保存配置失败时如何展示？（对话框内显示错误，表单仍可填写重试）
+- 不同模型的禁用思考参数形态不同（`thinking: {type}` / `enable_thinking` / `reasoning_effort`），SDK 不做内置映射，由用户在 `models[X].disableThinkingOptions` 中按目标接口格式原样配置
+- 未配置 `disableThinkingOptions` 时，快速模型场景不发送任何禁用思考参数；SDK 不内置默认值，避免直连不支持 `thinking` 参数的网关时报错
 
 ### 边界说明：环境变量作用域与优先级
 

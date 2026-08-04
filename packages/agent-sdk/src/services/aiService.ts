@@ -148,6 +148,18 @@ function getModelConfig(
   return config;
 }
 
+/**
+ * Effective disable-thinking params for a model config. No default: these
+ * params are only sent when the user explicitly configures
+ * `models[X].disableThinkingOptions` (an empty object clears them), so a
+ * gateway that doesn't understand the params is never hit with them.
+ */
+function effectiveDisableThinkingOptions(
+  modelConfig: ModelConfig,
+): Record<string, unknown> | undefined {
+  return modelConfig.disableThinkingOptions;
+}
+
 export interface CallAgentOptions {
   // Resolved configuration
   gatewayConfig: GatewayConfig;
@@ -184,6 +196,10 @@ export interface CallAgentOptions {
     stage?: "start" | "streaming" | "running" | "end";
   }) => void;
   onReasoningUpdate?: (content: string) => void;
+
+  // Disable-thinking params for fast-model subagent calls (merged into the
+  // request; never used in the agent loop).
+  disableThinkingOptions?: Record<string, unknown>;
 }
 
 export interface CallAgentResult {
@@ -238,6 +254,7 @@ export async function callAgent(
     onContentUpdate,
     onToolUpdate,
     onReasoningUpdate,
+    disableThinkingOptions,
   } = options;
 
   // Validate model config at call time
@@ -321,6 +338,7 @@ export async function callAgent(
     const openaiModelConfig = getModelConfig(model || modelConfig.model, {
       max_tokens: resolvedMaxTokens,
       ...(modelConfig.options || {}),
+      ...(disableThinkingOptions ?? {}),
     });
 
     // Determine if streaming is needed
@@ -842,10 +860,17 @@ export async function processWebContent(
     ? modelConfig.fastModelOptions || {}
     : modelConfig.options || {};
 
+  // Disable-thinking params only apply to the fast-model override path;
+  // the agent-model path is untouched.
+  const disableThinking = options.model
+    ? effectiveDisableThinkingOptions(modelConfig)
+    : undefined;
+
   const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
     temperature: 0.1,
     max_tokens: 4096,
     ...activeExtraParams,
+    ...(disableThinking || {}),
   });
 
   try {
@@ -1037,6 +1062,7 @@ export async function evaluateGoal(
     temperature: 0,
     max_tokens: 200,
     ...(modelConfig.fastModelOptions || {}),
+    ...(effectiveDisableThinkingOptions(modelConfig) || {}),
   });
 
   // Strip images from messages to reduce token usage (same as compact)
