@@ -1,8 +1,9 @@
 import React, { useMemo } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useStdout } from "ink";
 import { Renderer, marked, type Tokens } from "marked";
 import chalk from "chalk";
 import { highlightToAnsi } from "../utils/highlightUtils.js";
+import { renderMarkdownTable } from "../utils/markdownTable.js";
 
 export interface MarkdownProps {
   children: string;
@@ -19,6 +20,10 @@ const unescapeHtml = (html: string) => {
 };
 
 class AnsiRenderer extends Renderer<string> {
+  constructor(private readonly columns: number) {
+    super();
+  }
+
   override code({ text, lang }: Tokens.Code): string {
     const prefix = lang ? `\`\`\`${lang}` : "```";
     const suffix = "```";
@@ -82,20 +87,10 @@ class AnsiRenderer extends Renderer<string> {
   }
 
   override table(token: Tokens.Table): string {
-    const header = token.header.map((cell) => this.tablecell(cell)).join("");
-    const body = token.rows
-      .map((row) => row.map((cell) => this.tablecell(cell)).join("") + "\n")
-      .join("");
-    return `\n${header}\n${body}\n`;
-  }
-
-  override tablerow({ text }: Tokens.TableRow): string {
-    return text + "\n";
-  }
-
-  override tablecell(token: Tokens.TableCell): string {
-    const text = token.header ? chalk.bold(token.text) : token.text;
-    return text + " | ";
+    const table = renderMarkdownTable(token, this.columns, (tokens) =>
+      this.parser.parseInline(tokens),
+    );
+    return `\n${table}\n`;
   }
 
   override strong({ tokens }: Tokens.Strong): string {
@@ -140,17 +135,19 @@ class AnsiRenderer extends Renderer<string> {
   }
 }
 
-const renderer = new AnsiRenderer();
+const createRenderer = (columns: number) => new AnsiRenderer(columns);
 
 // Markdown component using custom ANSI renderer
 export const Markdown = React.memo(({ children }: MarkdownProps) => {
+  const { stdout } = useStdout();
+  const columns = stdout?.columns ?? 80;
   const ansiContent = useMemo(() => {
     return marked.parse(children, {
-      renderer,
+      renderer: createRenderer(columns),
       gfm: true,
       breaks: true,
     }) as string;
-  }, [children]);
+  }, [children, columns]);
 
   return (
     <Box flexDirection="column">

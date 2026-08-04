@@ -262,28 +262,52 @@ describe("Markdown Component - Blockquotes and HR", () => {
 });
 
 describe("Markdown Component - Tables", () => {
-  it("should render simple tables", () => {
+  it("should render simple tables with box-drawing borders and centered headers", () => {
     const markdown = "| H1 | H2 |\n| --- | --- |\n| C1 | C2 |";
     const { lastFrame } = render(<Markdown>{markdown}</Markdown>);
     const output = lastFrame() || "";
+    const cleanOutput = stripAnsi(output);
 
-    const cleanOutput = output
-      .replace(new RegExp("\\x" + "1B\\[[0-9;]*m", "g"), "")
-      .replace(/\s+/g, "");
-    expect(cleanOutput).toContain("H1");
-    expect(cleanOutput).toContain("H2");
-    expect(cleanOutput).toContain("C1");
-    expect(cleanOutput).toContain("C2");
+    expect(cleanOutput).toContain("┌─────┬─────┐");
+    expect(cleanOutput).toContain("│ H1  │ H2  │");
+    expect(cleanOutput).toContain("├─────┼─────┤");
+    expect(cleanOutput).toContain("│ C1  │ C2  │");
+    expect(cleanOutput).toContain("└─────┴─────┘");
+  });
+
+  it("should align data cells per column alignment directives", () => {
+    const markdown = [
+      "| Left | Center | Right |",
+      "| :--- | :----: | ----: |",
+      "| a | bb | ccc |",
+    ].join("\n");
+    const { lastFrame } = render(<Markdown>{markdown}</Markdown>);
+    const output = lastFrame() || "";
+    const cleanOutput = stripAnsi(output);
+
+    // Header centered (flush in even-width columns), data aligned: left/center/right
+    expect(cleanOutput).toContain("│ Left │ Center │ Right │");
+    expect(cleanOutput).toContain("│ a    │   bb   │   ccc │");
   });
 
   it("should handle table scaling", () => {
-    // Create a very wide table
-    const markdown = `| ${"A".repeat(50)} | ${"B".repeat(50)} | ${"C".repeat(50)} |`;
+    // Create a very wide table (cells must wrap, not truncate)
+    const markdown = [
+      `| ${"A".repeat(50)} | ${"B".repeat(50)} | ${"C".repeat(50)} |`,
+      `| --- | --- | --- |`,
+      `| ${"D".repeat(50)} | ${"E".repeat(50)} | ${"F".repeat(50)} |`,
+    ].join("\n");
     const { lastFrame } = render(<Markdown>{markdown}</Markdown>);
     const output = lastFrame();
+    const cleanOutput = stripAnsi(output || "");
 
-    // It should still render something
+    // It should still render something with box-drawing borders
     expect(output).toBeTruthy();
+    expect(cleanOutput).toContain("┌");
+    expect(cleanOutput).toContain("│");
+    // No content is lost to truncation
+    expect((cleanOutput.match(/A/g) ?? []).length).toBe(50);
+    expect((cleanOutput.match(/F/g) ?? []).length).toBe(50);
   });
 });
 
