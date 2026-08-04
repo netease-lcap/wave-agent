@@ -52,7 +52,48 @@ describe('/btw Popup', () => {
         expect(screen.getByTestId('btw-panel')).toBeInTheDocument();
         expect(screen.getByTestId('btw-panel-question').textContent).toBe('what is the weather?');
         expect(screen.getByTestId('btw-panel-loading')).toBeInTheDocument();
-        expect(screen.getByText('Answering...')).toBeInTheDocument();
+        expect(screen.getByText('正在回答…')).toBeInTheDocument();
+        // No emoji — the ▋ cursor blink is aligned with the message list
+        expect(screen.getByTestId('btw-panel-loading').textContent).toContain('▋');
+    });
+
+    it('streams thinking chunks live, then discards them once content starts', async () => {
+        await sendText('/btw what is the weather?');
+        expect(screen.getByTestId('btw-panel-loading')).toBeInTheDocument();
+
+        // Thinking chunks stream live while the model reasons…
+        act(() => {
+            sendCommand('btwStream', { question: 'what is the weather?', content: 'Let me think', type: 'thinking' });
+        });
+        act(() => {
+            sendCommand('btwStream', { question: 'what is the weather?', content: ' about it.', type: 'thinking' });
+        });
+        expect(screen.getByTestId('btw-panel-streaming').textContent).toBe('Let me think about it.');
+
+        // …but the first content chunk discards the accumulated thinking text
+        act(() => {
+            sendCommand('btwStream', { question: 'what is the weather?', content: 'Sunny', type: 'content' });
+        });
+        act(() => {
+            sendCommand('btwStream', { question: 'what is the weather?', content: ' and 25°C', type: 'content' });
+        });
+        expect(screen.getByTestId('btw-panel-streaming').textContent).toBe('Sunny and 25°C');
+        expect(screen.getByTestId('btw-panel-streaming').textContent).not.toContain('Let me think');
+
+        // A late thinking chunk after content started is ignored too
+        act(() => {
+            sendCommand('btwStream', { question: 'what is the weather?', content: 'stale reasoning', type: 'thinking' });
+        });
+        expect(screen.getByTestId('btw-panel-streaming').textContent).toBe('Sunny and 25°C');
+
+        // The finished answer still lands via btwResponse and renders as markdown
+        act(() => {
+            sendCommand('btwResponse', { question: 'what is the weather?', answer: '**Sunny** and 25°C' });
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId('btw-panel-answer')).toBeInTheDocument();
+        });
+        expect(screen.queryByTestId('btw-panel-streaming')).not.toBeInTheDocument();
     });
 
     it('renders the answer as markdown when btwResponse arrives', async () => {
@@ -81,6 +122,10 @@ describe('/btw Popup', () => {
         );
 
         expect(screen.getByTestId('btw-panel')).toBeInTheDocument();
+        // The `/btw ` prefix is always rendered (spec scenario 3) so the header
+        // keeps a title and the close button stays on the right.
+        expect(screen.getByText('/btw')).toBeInTheDocument();
+        expect(screen.getByTestId('btw-panel-close')).toBeInTheDocument();
         await waitFor(() => {
             expect(screen.getByText('Usage: /btw <your question>')).toBeInTheDocument();
         });
@@ -112,6 +157,29 @@ describe('/btw Popup', () => {
             fireEvent.keyDown(document, { key: 'Escape' });
         });
         expect(screen.queryByTestId('btw-panel')).not.toBeInTheDocument();
+    });
+
+    it('Escape while streaming closes only the panel, never aborting the agent loop', async () => {
+        const vscode = await sendText('/btw what is the weather?');
+        // The main conversation is streaming — a plain Escape on the input would
+        // normally fire onAbortMessage (MessageInput.tsx:1020). The btw panel's
+        // capture-phase listener must swallow it first (spec scenario 9).
+        act(() => {
+            sendCommand('startStreaming');
+        });
+
+        const input = screen.getByTestId('message-input');
+        input.focus();
+        act(() => {
+            fireEvent.keyDown(input, { key: 'Escape' });
+        });
+
+        expect(screen.queryByTestId('btw-panel')).not.toBeInTheDocument();
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'abortMessage' })
+        );
+        // The main conversation keeps streaming
+        expect(screen.getByTestId('message-input')).toBeInTheDocument();
     });
 
     it('shows an API error string when btwError arrives', async () => {

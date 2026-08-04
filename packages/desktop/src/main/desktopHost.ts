@@ -837,6 +837,12 @@ export class DesktopHost {
           agentRef.sendPermissionResponse(requestId, decision);
         });
       },
+      onBtwContent: (params) => {
+        const paneId = paneIdOf();
+        if (paneId) {
+          this.postMessage({ command: 'btwStream', paneId, question: params.question, content: params.content, type: params.type });
+        }
+      },
     };
 
     const agentRef = new StdioAgent(client, router, callbacks);

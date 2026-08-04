@@ -30,6 +30,7 @@ export interface ChatSessionCallbacks {
     onBangMessageAdded?: (params: { command: string; messageId: string }) => void;
     onBangMessageUpdated?: (params: { command: string; output: string; messageId: string }) => void;
     onBangMessageCompleted?: (params: { command: string; exitCode: number; messageId: string }) => void;
+    onBtwContent?: (params: { question: string; content: string; type: 'thinking' | 'content' }) => void;
 }
 
 export class ChatSession {
@@ -165,6 +166,9 @@ export class ChatSession {
                     this.callbacks.onToolPermissionRequest(context).then(decision => {
                         this.agent?.sendPermissionResponse(requestId, decision);
                     });
+                },
+                onBtwContent: (params) => {
+                    this.callbacks.onBtwContent?.(params);
                 },
             };
 

@@ -37,6 +37,7 @@ interface AgentCallbacks {
     fun onBangMessageUpdated(command: String, output: String, messageId: String) {}
     fun onBangMessageCompleted(command: String, exitCode: Int, messageId: String) {}
     fun onNotificationMessageAdded(message: JsonObject) {}
+    fun onBtwContent(question: String, content: String, type: String) {}
     fun onError(message: String) {}
 }
 
@@ -146,6 +147,14 @@ class StdioAgent(
                 )
             }
             "notificationMessageAdded" -> callbacks.onNotificationMessageAdded(params?.jsonObject ?: JsonObject(emptyMap()))
+            "btwContent" -> {
+                val o = params?.jsonObject
+                callbacks.onBtwContent(
+                    o?.get("question")?.jsonPrimitive?.content ?: "",
+                    o?.get("content")?.jsonPrimitive?.content ?: "",
+                    o?.get("type")?.jsonPrimitive?.content ?: "",
+                )
+            }
             "compactBlockAdded" -> callbacks.onCompactBlockAdded(params?.jsonObject?.get("content")?.jsonPrimitive?.content ?: "")
             "compactionStateChange" -> callbacks.onCompactionStateChange(
                 params?.jsonObject?.get("isCompacting")?.jsonPrimitive?.content?.toBoolean() ?: false

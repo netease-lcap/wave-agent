@@ -471,6 +471,14 @@ class WaveSession(
         if (msg != null) postMessage("appendMessage", buildJsonObject { put("message", msg) })
     }
 
+    override fun onBtwContent(question: String, content: String, type: String) {
+        postMessage("btwStream", buildJsonObject {
+            put("question", question)
+            put("content", content)
+            put("type", type)
+        })
+    }
+
     override fun onPermissionRequest(requestId: String, context: JsonElement?) {
         scope.launch {
             PermissionFlow.handle(this@WaveSession, requestId, context)

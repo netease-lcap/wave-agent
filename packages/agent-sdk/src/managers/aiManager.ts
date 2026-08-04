@@ -1037,6 +1037,7 @@ export class AIManager {
     question: string,
     abortSignal?: AbortSignal,
     onContent?: (content: string) => void,
+    onReasoning?: (content: string) => void,
   ): Promise<{ content?: string; error?: string }> {
     const modelConfig = this.getModelConfig();
     const gatewayConfig = this.getGatewayConfig();
@@ -1098,11 +1099,22 @@ ${question}`;
     try {
       // Surface partial output to the caller (e.g. the /btw overlay's
       // streaming display) as it arrives. Reasoning chunks from thinking
-      // models stream through the same channel so the overlay shows live
-      // progress during the thinking phase, before the final answer.
+      // models stream through a separate channel when the caller supplies
+      // one (webview hosts distinguish thinking from content so the panel
+      // can drop thinking text once content starts); otherwise they fall
+      // back to the content channel (CLI overlay mixes both).
       const streamToOverlay = (text: string) => {
         if (text.trim()) {
           onContent?.(text);
+        }
+      };
+      const streamReasoning = (text: string) => {
+        if (text.trim()) {
+          if (onReasoning) {
+            onReasoning(text);
+          } else {
+            onContent?.(text);
+          }
         }
       };
       const result = await aiService.callAgent({
@@ -1119,7 +1131,7 @@ ${question}`;
         // gateway's idle timeout fires (same rationale as runCompactFork).
         stream: true,
         onContentUpdate: streamToOverlay,
-        onReasoningUpdate: streamToOverlay,
+        onReasoningUpdate: streamReasoning,
       });
 
       if (result.content?.trim()) {

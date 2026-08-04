@@ -111,6 +111,11 @@ export interface StdioAgentCallbacks {
         requestId: string,
         context: ToolPermissionContext,
     ) => void;
+    onBtwContent?: (params: {
+        question: string;
+        content: string;
+        type: 'thinking' | 'content';
+    }) => void;
 }
 
 // ── StdioAgent ───────────────────────────────────────────────────
@@ -576,6 +581,15 @@ export class StdioAgent {
                     context: ToolPermissionContext;
                 };
                 this.callbacks.onPermissionRequest?.(p.requestId, p.context);
+                break;
+            }
+            case 'btwContent': {
+                const p = params as {
+                    question: string;
+                    content: string;
+                    type: 'thinking' | 'content';
+                };
+                if (p) this.callbacks.onBtwContent?.(p);
                 break;
             }
         }

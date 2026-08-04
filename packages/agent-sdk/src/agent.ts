@@ -950,11 +950,13 @@ export class Agent {
     question: string,
     abortSignal?: AbortSignal,
     onContent?: (content: string) => void,
+    onReasoning?: (content: string) => void,
   ): Promise<string> {
     const result = await this.aiManager.runBtwFork(
       question,
       abortSignal,
       onContent,
+      onReasoning,
     );
     return result.content ?? result.error ?? "No response received";
   }

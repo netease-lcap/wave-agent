@@ -305,6 +305,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
             },
             onBangMessageCompleted: (params) => {
                 this.webviewManager.postMessage({ command: 'bangMessageCompleted', params }, viewType, windowId);
+            },
+            onBtwContent: (params) => {
+                this.webviewManager.postMessage({ command: 'btwStream', ...params }, viewType, windowId);
             }
         });
     }

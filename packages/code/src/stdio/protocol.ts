@@ -130,7 +130,8 @@ export type ServerNotificationMethod =
   | "authUrl"
   | "compactBlockAdded"
   | "compactionStateChange"
-  | "backgroundTasksChange";
+  | "backgroundTasksChange"
+  | "btwContent";
 
 // ── Helper: is this a request (has id)? ─────────────────────────
 

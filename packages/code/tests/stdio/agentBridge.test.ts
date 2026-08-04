@@ -959,8 +959,54 @@ test("askBtw returns the side-question answer", async () => {
     sessionId,
   );
 
-  expect(mockAgent.askBtw).toHaveBeenCalledWith("what is 2+2?");
+  // askBtw now also receives streaming callbacks (content/reasoning)
+  expect(vi.mocked(mockAgent.askBtw).mock.calls[0][0]).toBe("what is 2+2?");
+  expect(vi.mocked(mockAgent.askBtw).mock.calls[0][1]).toBeUndefined();
   expect(r).toBe("side answer");
+});
+
+test("askBtw emits btwContent notifications for thinking and content chunks", async () => {
+  const { bridge, notifications } = createBridge();
+  const mockAgent = createMockAgent({
+    askBtw: vi
+      .fn()
+      .mockImplementation(
+        async (
+          _question: string,
+          _signal: AbortSignal | undefined,
+          onContent?: (content: string) => void,
+          onReasoning?: (content: string) => void,
+        ) => {
+          onReasoning?.("thinking chunk");
+          onContent?.("answer chunk");
+          return "side answer";
+        },
+      ),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest("askBtw", { question: "what is 2+2?" }, sessionId);
+
+  expect(notifications).toContainEqual({
+    method: "btwContent",
+    params: {
+      question: "what is 2+2?",
+      content: "thinking chunk",
+      type: "thinking",
+    },
+    sessionId,
+  });
+  expect(notifications).toContainEqual({
+    method: "btwContent",
+    params: {
+      question: "what is 2+2?",
+      content: "answer chunk",
+      type: "content",
+    },
+    sessionId,
+  });
 });
 
 test("rewindToMessage truncates history and returns input content", async () => {

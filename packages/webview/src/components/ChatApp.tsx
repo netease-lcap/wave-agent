@@ -197,7 +197,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // /btw side-question panel (webview spec story 3). Non-null while the panel is
   // open; `loading` while the askBtw RPC is in flight, `answer` afterwards
   // (including the bare-/btw usage hint and API-error strings).
-  const [btwPanel, setBtwPanel] = useState<{ question: string; answer: string; loading: boolean } | null>(null);
+  const [btwPanel, setBtwPanel] = useState<{ question: string; answer: string; loading: boolean; contentStarted: boolean } | null>(null);
   // Question of the in-flight askBtw RPC. Cleared on close so a late reply is
   // dropped (scenario 7); matched against the reply's echoed question so a stale
   // reply never lands on a newer panel (scenario 6/7).
@@ -578,6 +578,25 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           setRewindCheckpoints(message.checkpoints || []);
           setRewindCheckpointsLoading(false);
           break;
+        case 'btwStream':
+          if (!forThisPane(message)) break;
+          // Streaming chunks from the askBtw RPC (spec scenario 6): thinking
+          // chunks show live while they stream, but once the first content
+          // chunk arrives the accumulated thinking text is discarded and only
+          // content is kept (user decision: thinking is not shown after the
+          // thinking phase ends).
+          if (!btwActiveRef.current || message.question !== btwActiveRef.current) break;
+          setBtwPanel(panel => {
+            if (!panel) return panel;
+            const content = typeof message.content === 'string' ? message.content : '';
+            if (message.type === 'content') {
+              const base = panel.contentStarted ? panel.answer : '';
+              return { ...panel, contentStarted: true, answer: base + content };
+            }
+            if (panel.contentStarted) return panel;
+            return { ...panel, answer: panel.answer + content };
+          });
+          break;
         case 'btwResponse':
           if (!forThisPane(message)) break;
           // Drop late replies: the panel must be open, the panel's question must
@@ -946,11 +965,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       const question = trimmedText.slice('/btw'.length).trim();
       if (!question) {
         // Code span keeps `<your question>` from being parsed as an HTML tag.
-        setBtwPanel({ question: '', answer: '`Usage: /btw <your question>`', loading: false });
+        setBtwPanel({ question: '', answer: '`Usage: /btw <your question>`', loading: false, contentStarted: false });
         return;
       }
       btwActiveRef.current = question;
-      setBtwPanel({ question, answer: '', loading: true });
+      setBtwPanel({ question, answer: '', loading: true, contentStarted: false });
       postToHost({ command: 'askBtw', question });
       return;
     }

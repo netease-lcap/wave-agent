@@ -804,6 +804,20 @@ describe('StdioAgent', () => {
         expect(onNotificationMessageAdded).toHaveBeenCalledWith(params);
     });
 
+    it('btwContent forwards question/content/type to callback', () => {
+        const onBtwContent = vi.fn();
+        const { agent } = createAgent({ onBtwContent });
+
+        const params = {
+            question: 'weather?',
+            content: 'thinking chunk',
+            type: 'thinking',
+        };
+        agent.handleNotification('btwContent', params);
+
+        expect(onBtwContent).toHaveBeenCalledWith(params);
+    });
+
     it('permissionRequest forwards requestId and context to callback', () => {
         const onPermissionRequest = vi.fn();
         const { agent } = createAgent({ onPermissionRequest });

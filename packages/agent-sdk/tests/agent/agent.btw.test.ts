@@ -126,6 +126,61 @@ describe("Agent askBtw", () => {
     expect(answer).toBe("Side answer");
   });
 
+  it("should route reasoning chunks to onReasoning when provided", async () => {
+    const onContent = vi.fn();
+    const onReasoning = vi.fn();
+    callAgentMock.mockImplementationOnce(
+      async (options: {
+        onContentUpdate?: (content: string) => void;
+        onReasoningUpdate?: (content: string) => void;
+      }) => {
+        options.onReasoningUpdate?.("thinking chunk");
+        options.onContentUpdate?.("answer chunk");
+        return {
+          content: "Side answer",
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+          tool_calls: [],
+        };
+      },
+    );
+
+    const answer = await agent.askBtw(
+      "What is the plan?",
+      undefined,
+      onContent,
+      onReasoning,
+    );
+
+    expect(onReasoning).toHaveBeenCalledWith("thinking chunk");
+    // Reasoning is not routed to onContent when a dedicated channel exists
+    expect(onContent).toHaveBeenCalledWith("answer chunk");
+    expect(onContent).not.toHaveBeenCalledWith("thinking chunk");
+    expect(answer).toBe("Side answer");
+  });
+
+  it("should fall back to onContent for reasoning when no onReasoning is given (CLI compatibility)", async () => {
+    const onContent = vi.fn();
+    callAgentMock.mockImplementationOnce(
+      async (options: { onReasoningUpdate?: (content: string) => void }) => {
+        options.onReasoningUpdate?.("thinking chunk");
+        return {
+          content: "Side answer",
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+          tool_calls: [],
+        };
+      },
+    );
+
+    const answer = await agent.askBtw(
+      "What is the plan?",
+      undefined,
+      onContent,
+    );
+
+    expect(onContent).toHaveBeenCalledWith("thinking chunk");
+    expect(answer).toBe("Side answer");
+  });
+
   it("should propagate aborts as thrown errors", async () => {
     const abortController = new AbortController();
     callAgentMock.mockRejectedValueOnce(new Error("Request was aborted"));
