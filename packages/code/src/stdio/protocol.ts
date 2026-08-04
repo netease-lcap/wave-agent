@@ -73,6 +73,8 @@ export type RequestMethod =
   | "getPromptHistory"
   | "searchPromptHistory"
   | "updateConfig"
+  // Permissions (daemon attach: re-surface pending approvals after reconnect)
+  | "listPendingPermissions"
   // Auth
   | "getAuthStatus"
   | "login"

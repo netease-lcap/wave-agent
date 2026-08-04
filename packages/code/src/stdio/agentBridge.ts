@@ -118,9 +118,16 @@ interface SessionContext {
 
 export class AgentBridge {
   private sessions = new Map<string, SessionEntry>();
+  /** Pending approval requests, keyed by requestId. Stored with the resolve +
+   * context so a re-attached client can list and respond to them (daemon mode:
+   * approvals outlive any single connection). */
   private pendingPermissions = new Map<
     string,
-    (decision: PermissionDecision) => void
+    {
+      resolve: (decision: PermissionDecision) => void;
+      sessionId?: string;
+      context: ToolPermissionContext;
+    }
   >();
   private permissionCounter = 0;
   private emit: NotificationEmitter;
@@ -151,6 +158,8 @@ export class AgentBridge {
         return this.listSessions(p.workdir as string | undefined, sessionId);
       case "getSessionInfo":
         return this.getSessionInfo(sessionId);
+      case "listPendingPermissions":
+        return this.listPendingPermissions();
       case "updateConfig":
         return this.updateConfig(p as unknown as UpdateConfigParams, sessionId);
 
@@ -353,10 +362,10 @@ export class AgentBridge {
         decision: PermissionDecision;
       };
       // requestId is process-level unique; lookup doesn't need sessionId
-      const resolve = this.pendingPermissions.get(p.requestId);
-      if (resolve) {
+      const entry = this.pendingPermissions.get(p.requestId);
+      if (entry) {
         this.pendingPermissions.delete(p.requestId);
-        resolve(p.decision);
+        entry.resolve(p.decision);
       }
     }
   }
@@ -369,6 +378,21 @@ export class AgentBridge {
     permissionMode: PermissionMode;
     latestTotalTokens: number;
   }> {
+    // Re-attach (daemon mode): if the target session is already live in this
+    // process, reuse it instead of creating a second agent writing to the same
+    // transcript. The live agent keeps running across client detach/attach.
+    if (params.restoreSessionId) {
+      const live = this.sessions.get(params.restoreSessionId);
+      if (live) {
+        return {
+          sessionId: live.agent.sessionId,
+          workingDirectory: live.agent.workingDirectory,
+          permissionMode: live.agent.getPermissionMode(),
+          latestTotalTokens: live.agent.latestTotalTokens,
+        };
+      }
+    }
+
     const ctx: SessionContext = {};
     const callbacks = this.createCallbacks(ctx);
 
@@ -428,6 +452,18 @@ export class AgentBridge {
     sessionId?: string,
   ): Promise<null> {
     const entry = this.requireSession(sessionId);
+    // Re-attach to a live session: the SDK restore would no-op (target is
+    // already current). Emit the current messages so the freshly attached
+    // client — whose router registered only after initialize returned and so
+    // missed any earlier notifications — gets a snapshot without replay.
+    if (entry.agent.sessionId === restoreId) {
+      this.emit(
+        "messagesChange",
+        { messages: entry.agent.messages },
+        entry.agent.sessionId,
+      );
+      return null;
+    }
     await entry.agent.restoreSession(restoreId);
     return null;
   }
@@ -901,13 +937,38 @@ export class AgentBridge {
   ): Promise<PermissionDecision> {
     const requestId = `perm_${++this.permissionCounter}`;
     return new Promise<PermissionDecision>((resolve) => {
-      this.pendingPermissions.set(requestId, resolve);
+      this.pendingPermissions.set(requestId, {
+        resolve,
+        sessionId: ctx.registeredSessionId,
+        context,
+      });
       this.emit(
         "permissionRequest",
         { requestId, context },
         ctx.registeredSessionId,
       );
     });
+  }
+
+  /** Attach snapshot: re-surface approvals that are still pending after a
+   * client disconnected (daemon mode). Responding to any listed requestId
+   * resolves the in-process promise. */
+  private listPendingPermissions(): {
+    requests: Array<{
+      requestId: string;
+      sessionId?: string;
+      context: ToolPermissionContext;
+    }>;
+  } {
+    return {
+      requests: [...this.pendingPermissions.entries()].map(
+        ([requestId, entry]) => ({
+          requestId,
+          sessionId: entry.sessionId,
+          context: entry.context,
+        }),
+      ),
+    };
   }
 
   // ── Auth (global) ────────────────────────────────────────────
