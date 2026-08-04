@@ -178,9 +178,83 @@ test("onAssistantContentUpdated emits assistantContentUpdated notification", asy
   };
   callbacks.onAssistantContentUpdated!(params);
 
+  // The wire carries only the delta (accumulated is stripped) — spec: 流式通知纯增量负载
   expect(notifications).toContainEqual({
     method: "assistantContentUpdated",
-    params,
+    params: { messageId: "msg-1", chunk: "Hello", stage: "streaming" },
+    sessionId: "test-session-id",
+  });
+});
+
+test("onToolBlockUpdated strips parameters only at streaming stage", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  // streaming: only the delta (parametersChunk) crosses the wire
+  callbacks.onToolBlockUpdated!({
+    messageId: "msg-1",
+    id: "tool-1",
+    name: "Bash",
+    parameters: '{"command":"echo hi"}',
+    parametersChunk: '{"command":"e',
+    stage: "streaming",
+  });
+  expect(notifications).toContainEqual({
+    method: "toolBlockUpdated",
+    params: {
+      messageId: "msg-1",
+      id: "tool-1",
+      name: "Bash",
+      parametersChunk: '{"command":"e',
+      stage: "streaming",
+    },
+    sessionId: "test-session-id",
+  });
+
+  // running (forked-skill snapshot): full parameters must be kept — stripping
+  // here would permanently lose the parameters in hosts (no end update carries them)
+  callbacks.onToolBlockUpdated!({
+    messageId: "msg-2",
+    id: "tool-2",
+    name: "Skill",
+    parameters: "prepared content",
+    stage: "running",
+  });
+  expect(notifications).toContainEqual({
+    method: "toolBlockUpdated",
+    params: {
+      messageId: "msg-2",
+      id: "tool-2",
+      name: "Skill",
+      parameters: "prepared content",
+      stage: "running",
+    },
+    sessionId: "test-session-id",
+  });
+
+  // end: authoritative full value, kept verbatim
+  callbacks.onToolBlockUpdated!({
+    messageId: "msg-1",
+    id: "tool-1",
+    parameters: '{"command":"echo hi"}',
+    result: "hi",
+    success: true,
+    stage: "end",
+  });
+  expect(notifications).toContainEqual({
+    method: "toolBlockUpdated",
+    params: {
+      messageId: "msg-1",
+      id: "tool-1",
+      parameters: '{"command":"echo hi"}',
+      result: "hi",
+      success: true,
+      stage: "end",
+    },
     sessionId: "test-session-id",
   });
 });
@@ -1791,7 +1865,7 @@ test("notifications route by sessionId when callbacks fire", async () => {
   // The notification emitted via session A's callbacks should carry sessionId "sess-A"
   expect(notifications).toContainEqual({
     method: "assistantContentUpdated",
-    params: paramsA,
+    params: { messageId: "a-1", chunk: "A", stage: "streaming" },
     sessionId: "sess-A",
   });
 
@@ -1799,7 +1873,7 @@ test("notifications route by sessionId when callbacks fire", async () => {
   callbacksB.onAssistantContentUpdated!(paramsB);
   expect(notifications).toContainEqual({
     method: "assistantContentUpdated",
-    params: paramsB,
+    params: { messageId: "b-1", chunk: "B", stage: "streaming" },
     sessionId: "sess-B",
   });
 });

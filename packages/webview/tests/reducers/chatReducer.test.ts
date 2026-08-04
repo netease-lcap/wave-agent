@@ -136,7 +136,7 @@ describe('chatReducer', () => {
 
       const newState = chatReducer(state, {
         type: 'UPDATE_STREAMING_CONTENT',
-        payload: { messageId: 'msg-1', accumulated: 'Hello World', stage: 'streaming' }
+        payload: { messageId: 'msg-1', chunk: ' World', stage: 'streaming' }
       });
 
       expect(newState.messages).toHaveLength(1);
@@ -162,11 +162,12 @@ describe('chatReducer', () => {
 
       const newState = chatReducer(state, {
         type: 'UPDATE_STREAMING_CONTENT',
-        payload: { messageId: 'msg-1', accumulated: 'Hello', stage: 'end' }
+        payload: { messageId: 'msg-1', chunk: '', stage: 'end' }
       });
 
       const updatedBlock = newState.messages[0].blocks[0] as TextBlock;
       expect(updatedBlock.stage).toBe('end');
+      expect(updatedBlock.content).toBe('Hello');
     });
 
     it('should append text block if none exists', () => {
@@ -180,7 +181,7 @@ describe('chatReducer', () => {
 
       const newState = chatReducer(state, {
         type: 'UPDATE_STREAMING_CONTENT',
-        payload: { messageId: 'msg-1', accumulated: 'Hello', stage: 'streaming' }
+        payload: { messageId: 'msg-1', chunk: 'Hello', stage: 'streaming' }
       });
 
       expect(newState.messages[0].blocks).toHaveLength(1);
@@ -195,7 +196,7 @@ describe('chatReducer', () => {
 
       const newState = chatReducer(state, {
         type: 'UPDATE_STREAMING_CONTENT',
-        payload: { messageId: 'non-existent', accumulated: 'Hello', stage: 'streaming' }
+        payload: { messageId: 'non-existent', chunk: 'Hello', stage: 'streaming' }
       });
 
       expect(newState).toBe(state);
@@ -219,7 +220,7 @@ describe('chatReducer', () => {
 
       const newState = chatReducer(state, {
         type: 'UPDATE_STREAMING_REASONING',
-        payload: { messageId: 'msg-1', accumulated: 'Thinking... about this', stage: 'streaming' }
+        payload: { messageId: 'msg-1', chunk: ' about this', stage: 'streaming' }
       });
 
       expect(newState.messages[0].blocks).toHaveLength(1);
@@ -239,7 +240,7 @@ describe('chatReducer', () => {
 
       const newState = chatReducer(state, {
         type: 'UPDATE_STREAMING_REASONING',
-        payload: { messageId: 'msg-1', accumulated: 'Thinking...', stage: 'streaming' }
+        payload: { messageId: 'msg-1', chunk: 'Thinking...', stage: 'streaming' }
       });
 
       expect(newState.messages[0].blocks).toHaveLength(1);
@@ -253,7 +254,7 @@ describe('chatReducer', () => {
 
       const newState = chatReducer(state, {
         type: 'UPDATE_STREAMING_REASONING',
-        payload: { messageId: 'non-existent', accumulated: 'Thinking...', stage: 'streaming' }
+        payload: { messageId: 'non-existent', chunk: 'Thinking...', stage: 'streaming' }
       });
 
       expect(newState).toBe(state);
@@ -270,7 +271,7 @@ describe('chatReducer', () => {
 
       const newState = chatReducer(state, {
         type: 'UPDATE_STREAMING_REASONING',
-        payload: { messageId: 'msg-1', accumulated: 'Thinking...', stage: 'streaming' }
+        payload: { messageId: 'msg-1', chunk: 'Thinking...', stage: 'streaming' }
       });
 
       const newBlock = newState.messages[0].blocks[0] as ReasoningBlock;
@@ -295,7 +296,7 @@ describe('chatReducer', () => {
 
       const newState = chatReducer(state, {
         type: 'UPDATE_STREAMING_REASONING',
-        payload: { messageId: 'msg-1', accumulated: 'Thinking... done', stage: 'end' }
+        payload: { messageId: 'msg-1', chunk: '', stage: 'end' }
       });
 
       const updatedBlock = newState.messages[0].blocks[0] as ReasoningBlock;
@@ -777,7 +778,7 @@ describe('chatReducer', () => {
       // Assistant content streams in
       newState = chatReducer(newState, {
         type: 'UPDATE_STREAMING_CONTENT',
-        payload: { messageId: 'assistant-1', accumulated: 'Hi there', stage: 'streaming' }
+        payload: { messageId: 'assistant-1', chunk: 'Hi there', stage: 'streaming' }
       });
       expect(newState.messages).toHaveLength(2);
       expect(newState.messages[1].blocks).toHaveLength(1);

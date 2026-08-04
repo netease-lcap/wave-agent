@@ -22,8 +22,8 @@ export interface ChatSessionCallbacks {
     // Incremental update callbacks for streaming optimization
     onUserMessageAdded?: (message: Message) => void;
     onAssistantMessageAdded?: (message: Message) => void;
-    onStreamingContentUpdate?: (params: { messageId: string; accumulated: string; stage: 'streaming' | 'end' }) => void;
-    onStreamingReasoningUpdate?: (params: { messageId: string; accumulated: string; stage: 'streaming' | 'end' }) => void;
+    onStreamingContentUpdate?: (params: { messageId: string; chunk: string; stage: 'streaming' | 'end' }) => void;
+    onStreamingReasoningUpdate?: (params: { messageId: string; chunk: string; stage: 'streaming' | 'end' }) => void;
     onToolBlockUpdate?: (params: ToolBlockUpdateCallbackParams) => void;
     onErrorBlockAdded?: (error: string) => void;
     // Bang message callbacks (incremental; messageId identifies the message)
@@ -56,9 +56,9 @@ export class ChatSession {
 
     // Throttled incremental update fields
     private streamingContentUpdateTimer: NodeJS.Timeout | undefined;
-    private pendingStreamingContentUpdate: { messageId: string; accumulated: string; stage: 'streaming' | 'end' } | undefined;
+    private pendingStreamingContentUpdate: { messageId: string; chunk: string } | undefined;
     private streamingReasoningUpdateTimer: NodeJS.Timeout | undefined;
-    private pendingStreamingReasoningUpdate: { messageId: string; accumulated: string; stage: 'streaming' | 'end' } | undefined;
+    private pendingStreamingReasoningUpdate: { messageId: string; chunk: string } | undefined;
 
     constructor(
         public readonly viewType: 'sidebar' | 'tab' | 'window',
@@ -102,10 +102,10 @@ export class ChatSession {
                     this.callbacks.onAssistantMessageAdded?.(message);
                 },
                 onAssistantContentUpdated: (params) => {
-                    this.throttledStreamingContentUpdate(params.messageId, params.accumulated, params.stage);
+                    this.throttledStreamingContentUpdate(params.messageId, params.chunk, params.stage);
                 },
                 onAssistantReasoningUpdated: (params) => {
-                    this.throttledStreamingReasoningUpdate(params.messageId, params.accumulated, params.stage);
+                    this.throttledStreamingReasoningUpdate(params.messageId, params.chunk, params.stage);
                 },
                 onToolBlockUpdated: (params) => {
                     this.callbacks.onToolBlockUpdate?.(params);
@@ -364,27 +364,40 @@ export class ChatSession {
         return this.messages;
     }
 
-    private throttledStreamingContentUpdate(messageId: string, accumulated: string, stage: 'streaming' | 'end') {
+    private throttledStreamingContentUpdate(messageId: string, chunk: string, stage: 'streaming' | 'end') {
         // If stage is 'end', fire immediately to ensure finalization is not delayed
         if (stage === 'end') {
             if (this.streamingContentUpdateTimer) {
                 clearTimeout(this.streamingContentUpdateTimer);
                 this.streamingContentUpdateTimer = undefined;
             }
-            this.pendingStreamingContentUpdate = undefined;
-            this.callbacks.onStreamingContentUpdate?.({ messageId, accumulated, stage });
+            // Flush any chunks still pending inside the cooldown window first
+            if (this.pendingStreamingContentUpdate) {
+                this.callbacks.onStreamingContentUpdate?.({ ...this.pendingStreamingContentUpdate, stage: 'streaming' });
+                this.pendingStreamingContentUpdate = undefined;
+            }
+            this.callbacks.onStreamingContentUpdate?.({ messageId, chunk, stage });
             return;
         }
 
-        this.pendingStreamingContentUpdate = { messageId, accumulated, stage };
+        // window-concat: merge all chunks arriving within the cooldown window so
+        // no delta is lost (dropping a delta would permanently lose content).
+        if (this.pendingStreamingContentUpdate) {
+            this.pendingStreamingContentUpdate.chunk += chunk;
+        } else {
+            this.pendingStreamingContentUpdate = { messageId, chunk };
+        }
 
-        // leading edge: first call fires immediately
+        // leading edge: fire the current delta immediately, then reset pending so
+        // the trailing edge only carries chunks arriving within this window
+        // (otherwise the leading chunk would be appended twice by the reducer).
         if (!this.streamingContentUpdateTimer) {
-            this.callbacks.onStreamingContentUpdate?.(this.pendingStreamingContentUpdate);
-            // trailing edge: fire the last update after 16ms cooldown (~60fps)
+            this.callbacks.onStreamingContentUpdate?.({ ...this.pendingStreamingContentUpdate, stage });
+            this.pendingStreamingContentUpdate = undefined;
+            // trailing edge: fire the concatenated delta after 16ms cooldown (~60fps)
             this.streamingContentUpdateTimer = setTimeout(() => {
                 if (this.pendingStreamingContentUpdate) {
-                    this.callbacks.onStreamingContentUpdate?.(this.pendingStreamingContentUpdate);
+                    this.callbacks.onStreamingContentUpdate?.({ ...this.pendingStreamingContentUpdate, stage: 'streaming' });
                     this.pendingStreamingContentUpdate = undefined;
                 }
                 this.streamingContentUpdateTimer = undefined;
@@ -392,27 +405,40 @@ export class ChatSession {
         }
     }
 
-    private throttledStreamingReasoningUpdate(messageId: string, accumulated: string, stage: 'streaming' | 'end') {
+    private throttledStreamingReasoningUpdate(messageId: string, chunk: string, stage: 'streaming' | 'end') {
         // If stage is 'end', fire immediately to ensure finalization is not delayed
         if (stage === 'end') {
             if (this.streamingReasoningUpdateTimer) {
                 clearTimeout(this.streamingReasoningUpdateTimer);
                 this.streamingReasoningUpdateTimer = undefined;
             }
-            this.pendingStreamingReasoningUpdate = undefined;
-            this.callbacks.onStreamingReasoningUpdate?.({ messageId, accumulated, stage });
+            // Flush any chunks still pending inside the cooldown window first
+            if (this.pendingStreamingReasoningUpdate) {
+                this.callbacks.onStreamingReasoningUpdate?.({ ...this.pendingStreamingReasoningUpdate, stage: 'streaming' });
+                this.pendingStreamingReasoningUpdate = undefined;
+            }
+            this.callbacks.onStreamingReasoningUpdate?.({ messageId, chunk, stage });
             return;
         }
 
-        this.pendingStreamingReasoningUpdate = { messageId, accumulated, stage };
+        // window-concat: merge all chunks arriving within the cooldown window so
+        // no delta is lost (dropping a delta would permanently lose content).
+        if (this.pendingStreamingReasoningUpdate) {
+            this.pendingStreamingReasoningUpdate.chunk += chunk;
+        } else {
+            this.pendingStreamingReasoningUpdate = { messageId, chunk };
+        }
 
-        // leading edge: first call fires immediately
+        // leading edge: fire the current delta immediately, then reset pending so
+        // the trailing edge only carries chunks arriving within this window
+        // (otherwise the leading chunk would be appended twice by the reducer).
         if (!this.streamingReasoningUpdateTimer) {
-            this.callbacks.onStreamingReasoningUpdate?.(this.pendingStreamingReasoningUpdate);
-            // trailing edge: fire the last update after 16ms cooldown (~60fps)
+            this.callbacks.onStreamingReasoningUpdate?.({ ...this.pendingStreamingReasoningUpdate, stage });
+            this.pendingStreamingReasoningUpdate = undefined;
+            // trailing edge: fire the concatenated delta after 16ms cooldown (~60fps)
             this.streamingReasoningUpdateTimer = setTimeout(() => {
                 if (this.pendingStreamingReasoningUpdate) {
-                    this.callbacks.onStreamingReasoningUpdate?.(this.pendingStreamingReasoningUpdate);
+                    this.callbacks.onStreamingReasoningUpdate?.({ ...this.pendingStreamingReasoningUpdate, stage: 'streaming' });
                     this.pendingStreamingReasoningUpdate = undefined;
                 }
                 this.streamingReasoningUpdateTimer = undefined;

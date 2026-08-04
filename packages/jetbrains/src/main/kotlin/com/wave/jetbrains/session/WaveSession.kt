@@ -230,25 +230,46 @@ class WaveSession(
         if (message != null) postMessage("appendMessage", buildJsonObject { put("message", message) })
     }
 
-    override fun onAssistantContentUpdated(messageId: String, accumulated: String, stage: String) {
-        val payload = buildJsonObject {
-            put("messageId", messageId)
-            put("accumulated", accumulated)
-            put("stage", stage)
-        }
+    override fun onAssistantContentUpdated(messageId: String, chunk: String, stage: String) {
         scope.launch {
-            if (stage == "end") {
-                streamMutex.withLock {
+            streamMutex.withLock {
+                if (stage == "end") {
                     streamTimer?.cancel()
+                    // Flush any chunks still pending inside the cooldown window first
+                    streamPending?.let { postMessage("updateStreamingContent", it) }
                     streamPending = null
                     streamTimer = null
-                }
-                postMessage("updateStreamingContent", payload)
-            } else {
-                streamPending = payload
-                streamMutex.withLock {
+                    postMessage("updateStreamingContent", buildJsonObject {
+                        put("messageId", messageId)
+                        put("chunk", chunk)
+                        put("stage", stage)
+                    })
+                } else {
+                    // window-concat: merge all chunks arriving within the cooldown
+                    // window so no delta is lost (dropping a delta would
+                    // permanently lose content).
+                    val pending = streamPending
+                    val merged = if (pending != null) {
+                        buildJsonObject {
+                            put("messageId", pending["messageId"] ?: JsonPrimitive(""))
+                            put("chunk", (pending["chunk"]?.jsonPrimitive?.content ?: "") + chunk)
+                            put("stage", "streaming")
+                        }
+                    } else {
+                        buildJsonObject {
+                            put("messageId", messageId)
+                            put("chunk", chunk)
+                            put("stage", stage)
+                        }
+                    }
+                    streamPending = merged
                     if (streamTimer == null) {
-                        postMessage("updateStreamingContent", streamPending!!)
+                        // leading edge: fire the current delta immediately, then
+                        // reset pending so the trailing edge only carries chunks
+                        // arriving within this window (otherwise the leading
+                        // chunk would be appended twice by the reducer).
+                        postMessage("updateStreamingContent", merged)
+                        streamPending = null
                         streamTimer = scope.launch {
                             delay(16)
                             streamMutex.withLock {
@@ -263,25 +284,46 @@ class WaveSession(
         }
     }
 
-    override fun onAssistantReasoningUpdated(messageId: String, accumulated: String, stage: String) {
-        val payload = buildJsonObject {
-            put("messageId", messageId)
-            put("accumulated", accumulated)
-            put("stage", stage)
-        }
+    override fun onAssistantReasoningUpdated(messageId: String, chunk: String, stage: String) {
         scope.launch {
-            if (stage == "end") {
-                reasonMutex.withLock {
+            reasonMutex.withLock {
+                if (stage == "end") {
                     reasonTimer?.cancel()
+                    // Flush any chunks still pending inside the cooldown window first
+                    reasonPending?.let { postMessage("updateStreamingReasoning", it) }
                     reasonPending = null
                     reasonTimer = null
-                }
-                postMessage("updateStreamingReasoning", payload)
-            } else {
-                reasonPending = payload
-                reasonMutex.withLock {
+                    postMessage("updateStreamingReasoning", buildJsonObject {
+                        put("messageId", messageId)
+                        put("chunk", chunk)
+                        put("stage", stage)
+                    })
+                } else {
+                    // window-concat: merge all chunks arriving within the cooldown
+                    // window so no delta is lost (dropping a delta would
+                    // permanently lose content).
+                    val pending = reasonPending
+                    val merged = if (pending != null) {
+                        buildJsonObject {
+                            put("messageId", pending["messageId"] ?: JsonPrimitive(""))
+                            put("chunk", (pending["chunk"]?.jsonPrimitive?.content ?: "") + chunk)
+                            put("stage", "streaming")
+                        }
+                    } else {
+                        buildJsonObject {
+                            put("messageId", messageId)
+                            put("chunk", chunk)
+                            put("stage", stage)
+                        }
+                    }
+                    reasonPending = merged
                     if (reasonTimer == null) {
-                        postMessage("updateStreamingReasoning", reasonPending!!)
+                        // leading edge: fire the current delta immediately, then
+                        // reset pending so the trailing edge only carries chunks
+                        // arriving within this window (otherwise the leading
+                        // chunk would be appended twice by the reducer).
+                        postMessage("updateStreamingReasoning", merged)
+                        reasonPending = null
                         reasonTimer = scope.launch {
                             delay(16)
                             reasonMutex.withLock {
