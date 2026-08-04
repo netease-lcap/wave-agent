@@ -449,6 +449,41 @@ export class AgentBridge {
     return null;
   }
 
+  /**
+   * True when every hosted session has settled: not generating, nothing queued,
+   * and no background work (background bash / subagents / workflows) — the same
+   * condition `wave -p` waits on before exiting (print-cli.ts). Pending
+   * permission approvals keep the owning agent's isLoading true, so they are
+   * covered without an explicit check.
+   */
+  public isIdle(): boolean {
+    for (const entry of this.sessions.values()) {
+      const agent = entry.agent;
+      if (
+        agent.isLoading ||
+        agent.hasPendingMessages ||
+        agent.hasRunningBackgroundWork
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Destroy every hosted session agent. Each Agent.destroy() saves its
+   * transcript, drains in-flight auto-memory extraction, and cleans up
+   * background tasks/subagents. Best-effort: one failing destroy must not
+   * block the rest of the shutdown.
+   */
+  public async destroyAll(): Promise<void> {
+    const entries = [...this.sessions.values()];
+    this.sessions.clear();
+    await Promise.all(
+      entries.map((entry) => entry.agent.destroy().catch(() => {})),
+    );
+  }
+
   private async restoreSession(
     restoreId: string,
     sessionId?: string,

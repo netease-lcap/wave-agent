@@ -15,6 +15,11 @@ const stderrWriteSpy = vi
   .spyOn(process.stderr, "write")
   .mockImplementation(() => true);
 
+// Idle auto-exit calls process.exit(0); keep the test process alive.
+const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+  return undefined as never;
+});
+
 import { DaemonServer } from "../../src/stdio/daemonServer.js";
 import type { Message } from "wave-agent-sdk";
 
@@ -25,7 +30,7 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     workingDirectory: "/test/workdir",
     latestTotalTokens: 0,
     messages,
-    destroy: vi.fn(),
+    destroy: vi.fn().mockResolvedValue(undefined),
     restoreSession: vi.fn(),
     sendMessage: vi.fn(),
     bang: vi.fn(),
@@ -43,6 +48,9 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     disconnectMcpServer: vi.fn().mockResolvedValue(true),
     getSlashCommands: vi.fn().mockReturnValue([]),
     getAvailableToolNames: vi.fn().mockReturnValue(["Bash"]),
+    isLoading: false,
+    hasPendingMessages: false,
+    hasRunningBackgroundWork: false,
     ...overrides,
   } as unknown as Agent;
 }
@@ -261,4 +269,83 @@ test("start() rejects when a live daemon already holds the socket", async () => 
   await expect(second.start()).rejects.toThrow(
     `另一个 wave daemon 已在 ${socketPath} 监听`,
   );
+});
+
+// ── Idle auto-exit (spec: 远程 daemon 空闲自动退出) ─────────────────
+
+test("daemon with no sessions and no clients auto-exits after the grace period", async () => {
+  const localPath = socketPath + "-idle";
+  const s = new DaemonServer({ socketPath: localPath, graceMs: 50 });
+  await s.start();
+  await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(0));
+  await s.stop();
+});
+
+test("daemon stays alive while a client is connected, even when idle", async () => {
+  const localPath = socketPath + "-connected";
+  const s = new DaemonServer({ socketPath: localPath, graceMs: 50 });
+  await s.start();
+  const client = connectClient(localPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(exitSpy).not.toHaveBeenCalled();
+  client.close();
+  await s.stop();
+});
+
+test("daemon does not exit while a session is busy with no clients connected", async () => {
+  const localPath = socketPath + "-busy";
+  const agent = createMockAgent({ isLoading: true });
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+  const s = new DaemonServer({ socketPath: localPath, graceMs: 50 });
+  await s.start();
+  const client = connectClient(localPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(exitSpy).not.toHaveBeenCalled();
+  await s.stop();
+});
+
+test("daemon exits once a busy session settles; shutdown destroys agents", async () => {
+  const localPath = socketPath + "-settle";
+  const agent = createMockAgent({ isLoading: true });
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+  const s = new DaemonServer({ socketPath: localPath, graceMs: 50 });
+  await s.start();
+  const client = connectClient(localPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(exitSpy).not.toHaveBeenCalled();
+
+  // Session settles: the SDK flips its loading state, then fires the
+  // notification that the bridge forwards (re-evaluating the idle check).
+  (agent as unknown as { isLoading: boolean }).isLoading = false;
+  const options = vi.mocked(Agent.create).mock.calls[0][0];
+  options.callbacks!.onLoadingChange!(false);
+
+  await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(0));
+  expect(agent.destroy).toHaveBeenCalled();
+  await s.stop();
+});
+
+test("reconnecting within the grace period cancels the idle exit", async () => {
+  const localPath = socketPath + "-reconnect";
+  const s = new DaemonServer({ socketPath: localPath, graceMs: 100 });
+  await s.start();
+  const a = connectClient(localPath);
+  const msgs = await a.send({ id: 1, method: "initialize", params: {} });
+  const initResp = msgs[0] as { result: { sessionId: string } };
+  const sessionId = initResp.result.sessionId;
+  a.close();
+  // The daemon is now idle with no clients — but re-attach before the grace
+  // window elapses cancels the countdown.
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const b = connectClient(localPath);
+  await b.send({ id: 2, method: "getSessionInfo", params: {}, sessionId });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  expect(exitSpy).not.toHaveBeenCalled();
+  b.close();
+  await s.stop();
 });
