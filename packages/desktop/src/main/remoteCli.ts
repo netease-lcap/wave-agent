@@ -265,8 +265,10 @@ export interface RemoteFileReadResult {
 
 /**
  * Read a remote file for the file panel (spec: docs/specs/ui/desktop-app.md 「文
- * 件面板」 scenarios 1-3/14/15). A single ssh invocation reports the mime via
- * `file -b -I`, inlines images as base64, NUL-detects binaries on the first
+ * 件面板」 scenarios 1-3/14/15/19). A single ssh invocation reports the mime via
+ * `file` (flag fallback chain `--mime-type` → `-I` → `-i`, since support varies
+ * across file builds; when `file` is missing, common image extensions are
+ * mapped instead), inlines images as base64, NUL-detects binaries on the first
  * 8KB, and truncates text to REMOTE_FILE_MAX_BYTES/REMOTE_FILE_MAX_LINES.
  * Output is a fixed-position header (V1 line, type=, mime=, total=,
  * truncated=) followed by one base64 payload line — parsed by position, not by
@@ -281,7 +283,11 @@ export async function readRemoteFile(host: string, remotePath: string): Promise<
     `";; esac; ` +
     `test -f "$p" || { echo '文件不存在' >&2; exit 3; }; ` +
     `test -r "$p" || { echo '文件不可读' >&2; exit 4; }; ` +
-    `mime=$(file -b -I "$p" 2>/dev/null | head -1 | tr -d ' \\r\\n'); mime=\${mime%%;*}; mime=$(printf '%s' "$mime" | tr 'A-Z' 'a-z'); ` +
+    `mime=$(file -b --mime-type "$p" 2>/dev/null | head -1 | tr -d ' \\r\\n'); ` +
+    `[ -z "$mime" ] && mime=$(file -b -I "$p" 2>/dev/null | head -1 | tr -d ' \\r\\n'); ` +
+    `[ -z "$mime" ] && mime=$(file -b -i "$p" 2>/dev/null | head -1 | tr -d ' \\r\\n'); ` +
+    `mime=\${mime%%;*}; mime=$(printf '%s' "$mime" | tr 'A-Z' 'a-z'); ` +
+    `if [ -z "$mime" ]; then case "\${p##*.}" in png) mime=image/png;; jpg|jpeg) mime=image/jpeg;; gif) mime=image/gif;; webp) mime=image/webp;; bmp) mime=image/bmp;; ico) mime=image/x-icon;; svg) mime=image/svg+xml;; esac; fi; ` +
     `case "$mime" in image/*) printf 'WAVE_REMOTE_FILE_V1\\ntype=image\\nmime=%s\\ntotal=-\\ntruncated=-\\n%s\\n' "$mime" "$(base64 "$p" | tr -d '\\n')"; exit 0;; esac; ` +
     `prefix=$(head -c 8192 "$p" | wc -c | tr -d ' '); ` +
     `nul=$(head -c 8192 "$p" | LC_ALL=C tr -d '\\000' | wc -c | tr -d ' '); ` +

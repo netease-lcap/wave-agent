@@ -421,4 +421,18 @@ describe('readRemoteFile', () => {
     expect(cmd).toContain('${p#');
     expect(cmd).toContain(`head -c ${REMOTE_FILE_MAX_BYTES} "$p" | head -n ${REMOTE_FILE_MAX_LINES}`);
   });
+
+  it('probes mime through a file flag fallback chain and maps image extensions', async () => {
+    stubExec([LOGIN_SHELL, { stdout: `WAVE_REMOTE_FILE_V1\ntype=image\nmime=image/png\ntotal=-\ntruncated=-\naGVsbG8=\n` }]);
+    await readRemoteFile('prod', '/home/user/pic.png');
+    const args = h.execFile.mock.calls[1][1] as string[];
+    const cmd = args[args.length - 1] as string;
+    // Some file builds reject -I/-i, others reject --mime-type — try in order.
+    expect(cmd).toContain('file -b --mime-type');
+    expect(cmd).toContain('file -b -I');
+    expect(cmd).toContain('file -b -i');
+    // When `file` is missing entirely, common image extensions still count.
+    expect(cmd).toContain('png) mime=image/png');
+    expect(cmd).toContain('svg) mime=image/svg+xml');
+  });
 });
