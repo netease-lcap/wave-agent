@@ -1747,6 +1747,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
             vscode={vscode}
             selection={state.selection}
             inputContent={state.inputContent}
+            sessionId={state.currentSession?.id}
             permissionMode={state.permissionMode}
             initialAttachedImages={state.attachedImages}
             disabled={host?.type === 'desktop' && !effectiveWorkdir}

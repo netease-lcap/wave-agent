@@ -171,7 +171,7 @@ export class DesktopHost {
   private previewWidthPx = 0;
   /** Top row's height as a fraction of the pane area; undefined while there is a single row. */
   private topRowHeight?: number;
-  private inputDrafts = new Map<string, string>(); // keyed by paneId
+  private inputDrafts = new Map<string, string>(); // keyed by `session:<sessionId>` or `new:<paneId>`
   private agentWorktreeInfo = new Map<StdioAgent, WorktreeInfo>();
   private workdir: string | undefined;
 
@@ -226,6 +226,23 @@ export class DesktopHost {
   private agentForPane(paneId?: string): StdioAgent | null {
     if (paneId === undefined) return this.activeAgent;
     return this.panes.find((p) => p.paneId === paneId)?.agent ?? null;
+  }
+
+  /**
+   * Key for a pane's input draft. Drafts are per-session (desktop-app.md
+   * 「会话管理」scenario 11/12): typed-but-unsent text must not leak across
+   * sessions shown in the same pane, and follows the session between panes.
+   * A pane targeting an in-flight restore resolves to the pending session
+   * (its webview already shows that session behind the overlay); a pane with
+   * no session yet (welcome state / blank new-session agent) falls back to a
+   * pane-scoped key so each split's fresh input stays independent.
+   */
+  private draftKeyForPane(paneId: string): string {
+    const sessionId =
+      this.pendingRestores.get(paneId)?.sessionId ??
+      this.agentForPane(paneId)?.sessionId ??
+      undefined;
+    return sessionId ? `session:${sessionId}` : `new:${paneId}`;
   }
 
   /** Pane currently showing the given agent, if any. */
@@ -1274,7 +1291,9 @@ export class DesktopHost {
     const closedAgent = this.panes[idx].agent;
     const closedRow = this.panes[idx].row ?? 0;
     this.panes.splice(idx, 1);
-    this.inputDrafts.delete(paneId);
+    // Only the pane-scoped new-session draft dies with the pane — session
+    // drafts belong to the conversation, which keeps running in the background.
+    this.inputDrafts.delete(`new:${paneId}`);
     this.workflowRuns.delete(paneId);
     this.hostState.delete(paneId);
     // An in-flight restore for the closed pane is dead — its token check
@@ -1791,7 +1810,7 @@ export class DesktopHost {
       tasks: current?.tasks ?? [],
       backgroundTasks: current?.backgroundTasks ?? [],
       workflowRuns: this.workflowRuns.get(paneId) ?? [],
-      inputContent: this.inputDrafts.get(paneId) ?? '',
+      inputContent: this.inputDrafts.get(this.draftKeyForPane(paneId)) ?? '',
       isStreaming: current?.isStreaming ?? false,
       isCommandRunning: current?.isCommandRunning ?? false,
       isCompacting: current?.isCompacting ?? false,
@@ -1984,6 +2003,8 @@ export class DesktopHost {
       : Promise.resolve();
 
     this.configStore.removeSession(sessionId);
+    // The conversation (and its per-session draft) is gone.
+    this.inputDrafts.delete(`session:${sessionId}`);
     // The session is gone — release every tunnel it referenced. Tunnels are
     // session-scoped (scenario 18): deleting a session is one of the only ways
     // a physical ssh forward closes, alongside the process dying on its own and
@@ -2606,9 +2627,19 @@ export class DesktopHost {
         this.pushSystemMessage(`${msg.message as string}`);
         break;
 
-      case 'updateInputContent':
-        this.inputDrafts.set(pid, (msg.content as string) ?? '');
+      case 'updateInputContent': {
+        // The webview tags every update with the session its input belonged to
+        // at edit time, so a debounced save arriving after the pane switched
+        // sessions still lands on the right conversation (scenario 12). Untagged
+        // messages (session-less hosts) fall back to the pane's current session.
+        const sessionId = msg.sessionId as string | undefined;
+        if (sessionId) {
+          this.inputDrafts.set(`session:${sessionId}`, (msg.content as string) ?? '');
+        } else {
+          this.inputDrafts.set(this.draftKeyForPane(pid), (msg.content as string) ?? '');
+        }
         break;
+      }
 
       case 'requestSlashCommands':
         await this.handleSlashCommandsRequest(msg.filterText as string, pid);
@@ -2918,6 +2949,7 @@ export class DesktopHost {
           await this.pushPaneSessionState(pid);
         }
         this.configStore.removeSession(sessionId);
+        this.inputDrafts.delete(`session:${sessionId}`);
         if (!entry?.worktree) {
           this.configStore.removeRecentWorkdir({ host, path: workdir });
           this.sendWorkdirState();
@@ -3153,7 +3185,7 @@ export class DesktopHost {
     // The webview already showed the confirmation dialog — execute directly.
     try {
       const { inputContent } = await agent.rewindToMessage(messageId);
-      this.inputDrafts.set(pid, inputContent);
+      this.inputDrafts.set(this.draftKeyForPane(pid), inputContent);
       // Rewind truncates the list server-side; pull it into the cache, then
       // setInitialState below carries it to the webview.
       await this.pullAndPushMessages(agent, pid);

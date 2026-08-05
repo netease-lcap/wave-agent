@@ -341,6 +341,12 @@ export interface MessageInputProps {
   // Selection props
   selection?: SelectionInfo;
   inputContent?: string;
+  /**
+   * The session this input belongs to. Tagged on every updateInputContent so
+   * the host routes drafts per conversation; on change the input flushes the
+   * outgoing session's draft and applies the incoming one.
+   */
+  sessionId?: string;
   permissionMode?: PermissionMode;
   initialAttachedImages?: AttachedImage[];
   /** Optional slot rendered at the top-left of the input box (desktop workdir selector). */

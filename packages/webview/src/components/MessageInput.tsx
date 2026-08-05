@@ -98,6 +98,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
     vscode,
     selection: _selection,
     inputContent,
+    sessionId,
     permissionMode,
     initialAttachedImages,
     workdirSelector,
@@ -211,7 +212,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
       const mirror = div.innerText ?? div.textContent ?? '';
       setMessage(mirror);
       inputContentRef.current = mirror;
-      vscode.postMessage({ command: 'updateInputContent', content: mirror });
+      vscode.postMessage({ command: 'updateInputContent', sessionId, content: mirror });
       div.focus();
       // Caret to the end so the user can keep typing seamlessly.
       const sel = window.getSelection();
@@ -240,15 +241,35 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
   // Initialize message from inputContent prop
   // Use a ref to avoid re-running effect on every local message change
   const inputContentRef = useRef(inputContent);
+  const prevSessionRef = useRef(sessionId);
   useEffect(() => {
-    if (inputContent !== undefined && inputContent !== inputContentRef.current) {
-      inputContentRef.current = inputContent;
-      setMessage(inputContent);
-      if (textareaRef.current) {
-        textareaRef.current.innerText = inputContent;
+    const prevSession = prevSessionRef.current;
+    const sessionChanged = prevSession !== sessionId;
+    prevSessionRef.current = sessionId;
+    if (sessionChanged) {
+      // A session switch is in flight. Cancel the pending debounce so the old
+      // text can't land on the incoming session's draft, then flush the
+      // outgoing session's draft — tagged with its sessionId so the host saves
+      // it to the right conversation even if the pane has already switched.
+      if (inputContentTimerRef.current) {
+        clearTimeout(inputContentTimerRef.current);
+        inputContentTimerRef.current = null;
+      }
+      const text = textareaRef.current?.innerText ?? message;
+      if (text) {
+        vscode.postMessage({ command: 'updateInputContent', sessionId: prevSession, content: text });
       }
     }
-  }, [inputContent]);
+    // Reset unconditionally on a session switch — the old and new drafts can
+    // be equal, which the value-equality guard below can't distinguish.
+    if (sessionChanged || (inputContent !== undefined && inputContent !== inputContentRef.current)) {
+      inputContentRef.current = inputContent ?? '';
+      setMessage(inputContent ?? '');
+      if (textareaRef.current) {
+        textareaRef.current.innerText = inputContent ?? '';
+      }
+    }
+  }, [inputContent, sessionId, vscode, message]);
   
   // Initialize attached images from initialAttachedImages prop
   useEffect(() => {
@@ -454,13 +475,14 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
       // Clear persisted input content
       vscode.postMessage({
         command: 'updateInputContent',
+        sessionId,
         content: ''
       });
       setAttachedImages([]);
       closeDropdown();
       onInputCleared?.();
     }
-  }, [shouldClearInput, onInputCleared, vscode, closeDropdown]);
+  }, [shouldClearInput, onInputCleared, vscode, closeDropdown, sessionId]);
 
   // Request file suggestions from extension
   const requestFileSuggestions = useCallback((filterText: string) => {
@@ -1105,13 +1127,17 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
       onCancelQueuedEdit?.();
     }
 
-    // Debounce sending updated content to extension for persistence
+    // Debounce sending updated content to extension for persistence. The
+    // sessionId is captured at keystroke time so a save landing after the pane
+    // switched sessions still routes to the conversation it was typed in.
+    const draftSession = sessionId;
     if (inputContentTimerRef.current) {
       clearTimeout(inputContentTimerRef.current);
     }
     inputContentTimerRef.current = setTimeout(() => {
       vscode.postMessage({
         command: 'updateInputContent',
+        sessionId: draftSession,
         content: target.innerText
       });
       inputContentTimerRef.current = null;
@@ -1119,7 +1145,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
 
     // Debounced selection change detection (for @mention and /command)
     handleSelectionChange();
-  }, [handleSelectionChange, vscode, editingQueuedId, onCancelQueuedEdit]);
+  }, [handleSelectionChange, vscode, editingQueuedId, onCancelQueuedEdit, sessionId]);
 
   // Handle IME composition events
   const handleCompositionStart = useCallback(() => {
