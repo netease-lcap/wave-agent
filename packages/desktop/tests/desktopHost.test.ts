@@ -3399,6 +3399,166 @@ describe('input focus on conversation switch', () => {
 });
 
 // ---------------------------------------------------------------------------
+// per-session input drafts (desktop-app.md 会话管理 scenario 11/12)
+// ---------------------------------------------------------------------------
+
+describe('input drafts per session (desktop-app.md scenario 11/12)', () => {
+  const seedActiveSession = (sessionId: string) => {
+    const agent = lastAgent();
+    agent.messages = [{ id: `m-${sessionId}` }];
+    fireSessionId(agent, sessionId);
+    return agent;
+  };
+
+  const makeEntry = (sessionId: string, workdir: string, overrides: Record<string, unknown> = {}) => ({
+    sessionId,
+    title: `Session ${sessionId}`,
+    workdir,
+    cwd: workdir,
+    createdAt: Date.now(),
+    lastActiveAt: Date.now(),
+    ...overrides,
+  });
+
+  const panePushes = (sent: ReturnType<typeof createHost>['sent']) =>
+    sent('desktopPanes').map((m) => m as { panes: Array<{ paneId: string; sessionId?: string }>; focusedPaneId: string });
+
+  const lastState = (sent: ReturnType<typeof createHost>['sent']) =>
+    sent('setInitialState').at(-1) as Record<string, unknown> | undefined;
+
+  // The optimistic overlay push (isRestoring: true) and the post-restore push
+  // both carry the target session — only the latter has the restore settled.
+  const waitForSettledSession = async (sent: ReturnType<typeof createHost>['sent'], sessionId: string) => {
+    await vi.waitFor(() => {
+      const state = lastState(sent);
+      expect(state?.session).toMatchObject({ id: sessionId });
+      expect(state?.isRestoring).toBeFalsy();
+    });
+  };
+
+  it('typing in A, switching to B shows B empty, switching back restores the text (scenario 11)', async () => {
+    const { host, store, sent } = await readyHost();
+    seedActiveSession('sess-A');
+    await host.handleWebviewMessage({ command: 'updateInputContent', sessionId: 'sess-A', content: '1' });
+
+    // Switch to a historical B — its own (empty) draft shows, not A's text.
+    store.upsertSession(makeEntry('sess-B', '/work/a'));
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-B' });
+    await waitForSettledSession(sent, 'sess-B');
+    expect(lastState(sent)?.inputContent).toBe('');
+
+    // Switch back — the unsent '1' comes back with the conversation.
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-A' });
+    await waitForSettledSession(sent, 'sess-A');
+    expect(lastState(sent)?.inputContent).toBe('1');
+  });
+
+  it('a debounced save tagged with the old session lands after the switch without polluting the new session (scenario 12)', async () => {
+    const { host, store, sent } = await readyHost();
+    seedActiveSession('sess-A');
+    await host.handleWebviewMessage({ command: 'updateInputContent', sessionId: 'sess-A', content: '1' });
+
+    store.upsertSession(makeEntry('sess-B', '/work/a'));
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-B' });
+    await waitForSettledSession(sent, 'sess-B');
+
+    // Type '2' in B, then A's pending debounce fires — it is still tagged with
+    // sess-A, so it must not clobber B's draft.
+    await host.handleWebviewMessage({ command: 'updateInputContent', sessionId: 'sess-B', content: '2' });
+    await host.handleWebviewMessage({ command: 'updateInputContent', sessionId: 'sess-A', content: '1' });
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-A' });
+    await waitForSettledSession(sent, 'sess-A');
+    expect(lastState(sent)?.inputContent).toBe('1');
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-B' });
+    await waitForSettledSession(sent, 'sess-B');
+    expect(lastState(sent)?.inputContent).toBe('2');
+  });
+
+  it('an untagged update falls back to the pane-current session', async () => {
+    const { host, store, sent } = await readyHost();
+    seedActiveSession('sess-A');
+    // Session-less hosts (VSCE-style) omit the tag — lands on the current pane session.
+    await host.handleWebviewMessage({ command: 'updateInputContent', content: 'legacy draft' });
+
+    store.upsertSession(makeEntry('sess-B', '/work/a'));
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-B' });
+    await waitForSettledSession(sent, 'sess-B');
+    expect(lastState(sent)?.inputContent).toBe('');
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-A' });
+    await waitForSettledSession(sent, 'sess-A');
+    expect(lastState(sent)?.inputContent).toBe('legacy draft');
+  });
+
+  it('rewindToMessage stores the rewound draft under the session', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-A');
+
+    await host.handleWebviewMessage({ command: 'rewindToMessage', messageId: 'u1' });
+
+    await vi.waitFor(() => {
+      expect(lastAgent().rewindToMessage).toHaveBeenCalledWith('u1');
+      expect(lastState(sent)?.inputContent).toBe('rewound draft');
+    });
+  });
+
+  it('closing a pane keeps the session draft — reopening the session elsewhere restores it', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-A');
+    await host.handleWebviewMessage({ command: 'updateInputContent', sessionId: 'sess-A', content: '1' });
+
+    // A second pane with its own fresh session and draft.
+    await host.handleWebviewMessage({ command: 'desktopNewSessionInPane' });
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)?.panes).toHaveLength(2);
+      expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBeDefined();
+    });
+    const [, pane2] = panePushes(sent).at(-1)!.panes;
+    const sess2 = pane2.sessionId!;
+    await host.handleWebviewMessage({ command: 'updateInputContent', paneId: pane2.paneId, sessionId: sess2, content: '2' });
+
+    // Close pane-2 — only a pane-scoped `new:` draft would die with it.
+    await host.handleWebviewMessage({ command: 'desktopClosePane', paneId: pane2.paneId });
+
+    // Reopen the closed pane's session: its draft survived the close.
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: sess2 });
+    await waitForSettledSession(sent, sess2);
+    expect(lastState(sent)?.inputContent).toBe('2');
+  });
+
+  it('an unbound pane draft stays pane-scoped and never leaks into the session that binds later', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-A');
+    const before = h.agentInstances.length;
+
+    // Park the spawn so the new pane exists in the unbound welcome state.
+    let resolveInit!: () => void;
+    h.initializeGate = new Promise<void>((r) => { resolveInit = r; });
+    const openPromise = host.handleWebviewMessage({ command: 'desktopNewSessionInPane' });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+    });
+    const newPane = panePushes(sent).at(-1)!.panes[1];
+
+    // Untagged draft typed while the pane has no session yet → pane-scoped key.
+    await host.handleWebviewMessage({ command: 'updateInputContent', paneId: newPane.paneId, content: 'fresh pane draft' });
+
+    resolveInit();
+    await openPromise;
+
+    // The session that binds later starts clean — the pane-scoped text is not inherited.
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBeDefined();
+    });
+    const states = sent('setInitialState').filter((s) => s?.paneId === newPane.paneId);
+    expect(states.at(-1)?.session).toBeDefined();
+    expect(states.at(-1)?.inputContent).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // native menu actions (spec: desktop-split-view-multi-chat §原生菜单)
 // ---------------------------------------------------------------------------
 

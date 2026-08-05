@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { renderChatApp, screen, fireEvent, act, sendCommand, fireInput } from './test-utils';
+import { describe, it, expect, vi } from 'vitest';
+import { renderChatApp, screen, fireEvent, act, sendCommand, fireInput, setInputText } from './test-utils';
 import { MockDataGenerator } from '../fixtures/mockData';
 
 /**
@@ -388,5 +388,110 @@ describe('Session Management', () => {
         const header = screen.getByTestId('chat-header');
         expect(header).toHaveTextContent('hi');
         expect(header).not.toHaveTextContent('新会话');
+    });
+});
+
+describe('input drafts per session (desktop-app.md 会话管理 scenario 11/12)', () => {
+    const sessionA = {
+        id: 'session-A',
+        sessionType: 'main',
+        workdir: '/test/project',
+        firstMessage: 'Session A',
+        lastActiveAt: new Date('2023-12-01T10:00:00Z'),
+        latestTotalTokens: 150
+    };
+    const sessionB = {
+        id: 'session-B',
+        sessionType: 'main',
+        workdir: '/test/project',
+        firstMessage: 'Session B',
+        lastActiveAt: new Date('2023-12-01T11:00:00Z'),
+        latestTotalTokens: 250
+    };
+
+    it('switching sessions resets the input even when both drafts are equal (empty)', async () => {
+        const { vscode } = renderChatApp();
+        act(() => {
+            sendCommand('setInitialState', { session: sessionA, messages: [], inputContent: '' });
+        });
+        const input = screen.getByTestId('message-input');
+
+        // Type '1' into A — the 150ms debounced save is still pending.
+        await setInputText(input, '1');
+        expect(input.innerText).toBe('1');
+
+        // Switch to B, whose draft is also empty — the input must still reset
+        // (value equality alone cannot distinguish two empty drafts).
+        vscode.postMessage.mockClear();
+        act(() => {
+            sendCommand('setInitialState', { session: sessionB, messages: [], inputContent: '' });
+        });
+
+        expect(input.innerText).toBe('');
+        // The outgoing draft is flushed, tagged with A's session so the host
+        // saves it to the right conversation.
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                command: 'updateInputContent',
+                sessionId: 'session-A',
+                content: '1'
+            })
+        );
+    });
+
+    it('switching back to a session restores its unsent draft', () => {
+        const { vscode } = renderChatApp();
+
+        // A has an unsent draft persisted by the host.
+        act(() => {
+            sendCommand('setInitialState', { session: sessionA, messages: [], inputContent: '1' });
+        });
+        const input = screen.getByTestId('message-input');
+        expect(input.innerText).toBe('1');
+
+        // Switch to B (no draft) — the input clears.
+        act(() => {
+            sendCommand('setInitialState', { session: sessionB, messages: [], inputContent: '' });
+        });
+        expect(input.innerText).toBe('');
+
+        // Back to A — the draft comes back with the conversation.
+        act(() => {
+            sendCommand('setInitialState', { session: sessionA, messages: [], inputContent: '1' });
+        });
+        expect(input.innerText).toBe('1');
+    });
+
+    it('a pending debounced save is cancelled on session switch — only the tagged flush lands', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            const { vscode } = renderChatApp();
+            act(() => {
+                sendCommand('setInitialState', { session: sessionA, messages: [], inputContent: '' });
+            });
+            const input = screen.getByTestId('message-input');
+
+            await setInputText(input, '1');
+            vscode.postMessage.mockClear();
+
+            // Switch to B: the effect cancels the pending timer and flushes the
+            // outgoing draft with A's tag immediately.
+            act(() => {
+                sendCommand('setInitialState', { session: sessionB, messages: [], inputContent: '' });
+            });
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'updateInputContent', sessionId: 'session-A', content: '1' })
+            );
+
+            // Advancing past the original debounce must not fire a second save —
+            // the stale timer was cancelled by the switch.
+            await vi.advanceTimersByTimeAsync(200);
+            const updates = vscode.postMessage.mock.calls.filter(
+                ([m]) => (m as { command?: string }).command === 'updateInputContent'
+            );
+            expect(updates).toHaveLength(1);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
