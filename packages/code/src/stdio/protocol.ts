@@ -71,6 +71,7 @@ export type RequestMethod =
   | "disconnectMcpServer"
   | "getSlashCommands"
   | "searchFiles"
+  | "writeArtifactFile"
   | "getPromptHistory"
   | "searchPromptHistory"
   | "updateConfig"

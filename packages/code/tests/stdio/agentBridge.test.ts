@@ -30,12 +30,37 @@ vi.mock("../../src/utils/worktree.js", () => ({
   removeWorktree: vi.fn(),
 }));
 
+// writeArtifactFile writes into the artifacts dir on the machine where the
+// agent runs (the remote daemon). Stub fs/os so the path and bytes are
+// observable without touching disk; the real functions are only used by
+// writeArtifactFile, so the rest of the file is unaffected.
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    mkdirSync: vi.fn(() => undefined),
+    existsSync: vi.fn(() => false),
+    writeFileSync: vi.fn(() => undefined),
+  };
+});
+
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  return {
+    ...actual,
+    tmpdir: vi.fn(() => "/tmp"),
+  };
+});
+
 // Mock process.stderr.write to suppress noise
 const stderrWriteSpy = vi
   .spyOn(process.stderr, "write")
   .mockImplementation(() => true);
 
 import { AgentBridge, RpcError } from "../../src/stdio/agentBridge.js";
+import { INVALID_PARAMS } from "../../src/stdio/protocol.js";
+import { mkdirSync, existsSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import type {
   AgentCallbacks,
   McpServerStatus,
@@ -1170,6 +1195,74 @@ test("searchFiles falls back to agent workingDirectory", async () => {
     maxResults: undefined,
     workingDirectory: "/test/workdir",
   });
+});
+
+// ── writeArtifactFile (remote uploads) ──────────────────────────
+
+test("writeArtifactFile writes bytes into the artifacts dir and returns the path", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(tmpdir).mockReturnValue("/remote/tmp");
+  vi.mocked(existsSync).mockReturnValue(false);
+
+  const result = await bridge.handleRequest("writeArtifactFile", {
+    name: "note.txt",
+    contentBase64: Buffer.from("hello").toString("base64"),
+  });
+
+  expect(result).toEqual({ path: "/remote/tmp/wave-artifacts/note.txt" });
+  expect(mkdirSync).toHaveBeenCalledWith("/remote/tmp/wave-artifacts", {
+    recursive: true,
+  });
+  expect(writeFileSync).toHaveBeenCalledWith(
+    "/remote/tmp/wave-artifacts/note.txt",
+    Buffer.from("hello"),
+  );
+});
+
+test("writeArtifactFile renames on collision with a numeric suffix", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(tmpdir).mockReturnValue("/remote/tmp");
+  vi.mocked(existsSync)
+    .mockReturnValueOnce(true) // note.txt taken
+    .mockReturnValueOnce(false); // note_1.txt free
+
+  const result = await bridge.handleRequest("writeArtifactFile", {
+    name: "note.txt",
+    contentBase64: "aGVsbG8=",
+  });
+
+  expect(result).toEqual({ path: "/remote/tmp/wave-artifacts/note_1.txt" });
+  expect(writeFileSync).toHaveBeenCalledWith(
+    "/remote/tmp/wave-artifacts/note_1.txt",
+    expect.any(Buffer),
+  );
+});
+
+test("writeArtifactFile strips path traversal via basename", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(tmpdir).mockReturnValue("/remote/tmp");
+  vi.mocked(existsSync).mockReturnValue(false);
+
+  const result = await bridge.handleRequest("writeArtifactFile", {
+    name: "../../etc/evil.txt",
+    contentBase64: "aGVsbG8=",
+  });
+
+  expect(result).toEqual({ path: "/remote/tmp/wave-artifacts/evil.txt" });
+});
+
+test("writeArtifactFile rejects empty or dot names", async () => {
+  const { bridge } = createBridge();
+
+  for (const name of ["", ".", ".."]) {
+    await expect(
+      bridge.handleRequest("writeArtifactFile", {
+        name,
+        contentBase64: "aGVsbG8=",
+      }),
+    ).rejects.toMatchObject({ code: INVALID_PARAMS });
+  }
+  expect(writeFileSync).not.toHaveBeenCalled();
 });
 
 // ── Auth handlers ────────────────────────────────────────────────

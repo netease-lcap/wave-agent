@@ -3502,26 +3502,38 @@ export class DesktopHost {
 
   private async handleUploadFilesToArtifacts(files: Array<{ name: string; data: ArrayBuffer }>): Promise<void> {
     try {
-      const artifactsDir = path.join(os.tmpdir(), 'wave-artifacts');
-      if (!fs.existsSync(artifactsDir)) {
-        fs.mkdirSync(artifactsDir, { recursive: true });
-      }
-
+      const host = this.currentHost;
+      const isRemote = host !== LOCAL_HOST;
       const uploadedFiles: string[] = [];
       const errors: string[] = [];
 
       for (const file of files) {
         try {
-          const filePath = path.join(artifactsDir, file.name);
-          let finalPath = filePath;
-          let counter = 1;
-          while (fs.existsSync(finalPath)) {
-            const ext = path.extname(file.name);
-            const baseName = path.basename(file.name, ext);
-            finalPath = path.join(artifactsDir, `${baseName}_${counter}${ext}`);
-            counter++;
+          let finalPath: string;
+          if (isRemote) {
+            // Remote: write the bytes on the host where the agent runs (via the
+            // remote daemon) so the returned path is reachable by its tools —
+            // a local path would be invisible to the remote agent.
+            const result = (await this.utilityClientFor(host).request('writeArtifactFile', {
+              name: file.name,
+              contentBase64: Buffer.from(file.data).toString('base64'),
+            })) as { path: string };
+            finalPath = result.path;
+          } else {
+            const artifactsDir = path.join(os.tmpdir(), 'wave-artifacts');
+            if (!fs.existsSync(artifactsDir)) {
+              fs.mkdirSync(artifactsDir, { recursive: true });
+            }
+            finalPath = path.join(artifactsDir, file.name);
+            let counter = 1;
+            while (fs.existsSync(finalPath)) {
+              const ext = path.extname(file.name);
+              const baseName = path.basename(file.name, ext);
+              finalPath = path.join(artifactsDir, `${baseName}_${counter}${ext}`);
+              counter++;
+            }
+            fs.writeFileSync(finalPath, Buffer.from(file.data));
           }
-          fs.writeFileSync(finalPath, Buffer.from(file.data));
           uploadedFiles.push(finalPath);
         } catch (error) {
           errors.push(`${file.name}: ${error}`);

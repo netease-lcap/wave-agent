@@ -45,10 +45,14 @@ import {
 } from "wave-agent-sdk";
 import {
   type JsonRpcError,
+  INVALID_PARAMS as PROTOCOL_INVALID_PARAMS,
   INTERNAL_ERROR as PROTOCOL_INTERNAL_ERROR,
   METHOD_NOT_FOUND as PROTOCOL_METHOD_NOT_FOUND,
 } from "./protocol.js";
 import { execFileSync } from "node:child_process";
+import { mkdirSync, existsSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, extname, join } from "node:path";
 import { createWorktree, removeWorktree } from "../utils/worktree.js";
 import { logger } from "../utils/logger.js";
 import { isUserCheckpointMessage } from "../utils/rewindCheckpoints.js";
@@ -222,6 +226,10 @@ export class AgentBridge {
       // ── File / History (global — no session required) ──
       case "searchFiles":
         return this.searchFiles(p as unknown as SearchFilesParams, sessionId);
+      case "writeArtifactFile":
+        return this.writeArtifactFile(
+          p as unknown as { name: string; contentBase64: string },
+        );
       case "getPromptHistory":
         return this.getPromptHistory(
           p.workdir as string | undefined,
@@ -980,6 +988,40 @@ export class AgentBridge {
         params.workdir || this.getSessionWorkdir(sessionId) || process.cwd(),
     });
     return { files };
+  }
+
+  /**
+   * Writes an uploaded file (from the desktop/webview "+上传文件" flow) into the
+   * artifacts dir on THIS machine — i.e. where the agent runs. Remote sessions
+   * call this over the ssh tunnel so the returned path is reachable by the
+   * remote agent's tools; local sessions never hit this (desktop writes locally
+   * itself).
+   */
+  private async writeArtifactFile(params: {
+    name: string;
+    contentBase64: string;
+  }): Promise<{ path: string }> {
+    // Artifacts are keyed by basename only — reject anything that could escape
+    // the artifacts dir via path traversal.
+    const safeName = basename(params.name || "");
+    if (!safeName || safeName === "." || safeName === "..") {
+      throw new RpcError(
+        PROTOCOL_INVALID_PARAMS,
+        `Invalid artifact file name: ${params.name}`,
+      );
+    }
+    const artifactsDir = join(tmpdir(), "wave-artifacts");
+    mkdirSync(artifactsDir, { recursive: true });
+    let finalPath = join(artifactsDir, safeName);
+    let counter = 1;
+    while (existsSync(finalPath)) {
+      const ext = extname(safeName);
+      const baseName = basename(safeName, ext);
+      finalPath = join(artifactsDir, `${baseName}_${counter}${ext}`);
+      counter++;
+    }
+    writeFileSync(finalPath, Buffer.from(params.contentBase64 || "", "base64"));
+    return { path: finalPath };
   }
 
   private async getPromptHistory(

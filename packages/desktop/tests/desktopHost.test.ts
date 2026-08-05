@@ -32,6 +32,11 @@ const h = vi.hoisted(() => ({
         return { history: [] };
       case 'searchFiles':
         return { files: [] };
+      case 'writeArtifactFile': {
+        // Remote daemon writes to ITS artifacts dir and returns a remote path.
+        const name = (params as { name?: string } | undefined)?.name ?? 'file';
+        return { path: `/remote/tmp/wave-artifacts/${name}` };
+      }
       case 'listPlugins':
         return { plugins: [] };
       case 'listMarketplaces':
@@ -519,6 +524,71 @@ describe('file suggestions', () => {
 
     const search = h.clientRequests.find((r) => r.method === 'searchFiles');
     expect(search?.params).toMatchObject({ workdir: '/work/a', query: 'app', maxResults: 20 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// file uploads (+ 上传文件 → uploadFilesToArtifacts)
+// ---------------------------------------------------------------------------
+
+describe('uploadFilesToArtifacts', () => {
+  it('local session writes to the local artifacts dir and returns the local path', async () => {
+    const { host, sent } = await readyHost();
+    // NOTE: not Buffer.from('hello').buffer — that returns the shared Buffer
+    // pool ArrayBuffer (multi-KB, stale bytes), not a 5-byte buffer.
+    const data = new TextEncoder().encode('hello').buffer;
+
+    await host.handleWebviewMessage({
+      command: 'uploadFilesToArtifacts',
+      files: [{ name: 'note.txt', data }],
+    });
+
+    const success = sent('uploadSuccess').at(-1) as { uploadedFiles: string[] };
+    const expected = path.join(os.tmpdir(), 'wave-artifacts', 'note.txt');
+    expect(success.uploadedFiles[0]).toBe(expected);
+    // Bytes landed on the local filesystem (mock fs).
+    expect(h.files.get(expected)).toEqual(Buffer.from('hello'));
+    // Local uploads must not hit the remote-daemon RPC.
+    expect(h.clientRequests.some((r) => r.method === 'writeArtifactFile')).toBe(false);
+  });
+
+  it('remote session routes the bytes to the remote daemon and returns the remote path', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: 'local', path: '/work/a' });
+    store.upsertSession({
+      sessionId: 'sess-remote',
+      title: 'remote',
+      host: 'prod',
+      workdir: '/work/a',
+      cwd: '/work/a',
+      createdAt: 1,
+      lastActiveAt: 1,
+    });
+    h.existingPaths.add('/work/a');
+    await host.handleWebviewMessage({ command: 'desktopReady' });
+    await host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/work/a' });
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-remote' });
+    // The remote pane's client is established before uploads route to it.
+    await vi.waitFor(() => {
+      expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledWith('prod', expect.any(String));
+    });
+
+    const data = new TextEncoder().encode('hello').buffer;
+    await host.handleWebviewMessage({
+      command: 'uploadFilesToArtifacts',
+      files: [{ name: 'note.txt', data }],
+    });
+
+    // The bytes go over the tunnel to the remote daemon's writeArtifactFile.
+    const write = h.clientRequests.find((r) => r.method === 'writeArtifactFile');
+    expect(write?.params).toMatchObject({ name: 'note.txt', contentBase64: 'aGVsbG8=' });
+    // The inserted path is the remote one the agent can read — not a local path.
+    const success = sent('uploadSuccess').at(-1) as { uploadedFiles: string[] };
+    expect(success.uploadedFiles[0]).toBe('/remote/tmp/wave-artifacts/note.txt');
+    // Nothing written to the local artifacts dir.
+    expect(h.files.has(path.join(os.tmpdir(), 'wave-artifacts', 'note.txt'))).toBe(false);
   });
 });
 
