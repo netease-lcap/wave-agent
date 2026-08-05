@@ -6,7 +6,7 @@ Wave 代码智聊是一款集成在 VS Code 与 JetBrains IDE（WebStorm、Intel
 
 ## 1. 核心聊天体验 {#core-chat-experience}
 
-插件启动后，聊天面板默认展示欢迎页；未登录时欢迎页居中显示登录按钮，点击即可发起 SSO 登录（详见 [第 8.1 节 配置设置](#configuration-settings)）。
+插件启动后，聊天面板默认展示欢迎页；未登录时欢迎页居中显示登录按钮，点击即可发起 SSO 登录（详见 [第 9.1 节 配置设置](#configuration-settings)）。
 
 ![欢迎页](/screenshots/spec-welcome.webp)
 _欢迎页_
@@ -111,9 +111,9 @@ _输入框中的代码选中标签_
 
 通过输入 `/`，用户可以快速调用预设的指令，如 `/explain`、`/fix` 等提高操作效率。此外，Wave 还提供以下内置指令来快速打开管理弹窗：
 
-- **`/config`**：打开常规设置弹窗（详见 [第 10.1 节 配置设置](#configuration-settings)）
-- **`/plugin`**：打开插件管理弹窗（详见 [第 11 章 插件系统](#plugin-system)）
-- **`/mcp`**：打开 MCP 服务器管理弹窗（详见 [第 6.3 节 MCP 协议集成](#mcp-integration)）
+- **`/config`**：打开常规设置弹窗（详见 [第 9.1 节 配置设置](#configuration-settings)）
+- **`/plugin`**：打开插件管理弹窗（详见 [第 10 章 插件系统](#plugin-system)）
+- **`/mcp`**：打开 MCP 服务器管理弹窗（详见 [第 7.3 节 MCP 协议集成](#mcp-integration)）
 - **`/status`**：打开状态信息弹窗，查看版本、会话 ID、工作目录、模型配置和认证状态
 
 选择这些指令后会直接弹出对应弹窗，无需按回车发送。
@@ -507,9 +507,66 @@ _工作流管理对话框 - 运行详情与阶段_
 
 ---
 
-## 6. 能力扩展 {#capability-extensions}
+## 6. 多 Agents 与并发 {#multi-agent-concurrency}
 
-### 6.1 子代理状态 (Subagent Display) {#subagent-display}
+Wave 支持多种并发方式：在单个对话内并行启动多个子代理、同时开启多个对话并行推进不同任务（配合 worktree 隔离避免代码冲突）。本章介绍如何充分利用这些并发能力。
+
+### 6.1 并发使用子代理 {#subagent-concurrency}
+
+AI 可以在同一回合内并行启动多个 Agent 工具块（并发安全的工具会批量并行执行），消息流中会实时显示各个子代理的进度。主要有两种使用方式：
+
+**方式一：工具块内直接并发**
+
+在一条消息中要求 AI 同时完成多件事，AI 会并行启动多个子代理。提示词示例：
+
+> 请同时做三件事：1) 梳理支付模块的代码结构；2) 审查分布式事务中的竞态条件；3) 盘点测试覆盖缺口。
+
+![并发子代理](/screenshots/spec-subagent-concurrency.webp)
+_一条消息触发的 3 个并行子代理（Explore / general-purpose / plan 同时运行）_
+
+**方式二：后台运行子代理**
+
+要求 AI 使用 `run_in_background` 参数把子代理放入后台执行，不阻塞当前对话——主对话可以继续做其他事，子代理完成后会收到任务通知（详见 [5.2 后台任务通知](#task-notification)），也可通过 `/tasks` 命令集中管理（详见 [5.4 后台任务管理对话框](#background-task-manager)）。提示词示例：
+
+> 在后台调研支付网关的兼容性，同时并行审查提现流程的边界条件，我们先继续重构其他模块。
+
+![后台运行子代理](/screenshots/spec-background-subagent.webp)
+_两个后台子代理并行运行，完成后分别收到任务通知_
+
+### 6.2 多对话并行 {#parallel-conversations}
+
+当需要并行推进多个任务时，可以同时开启多个对话，每个对话独立运行、互不干扰：
+
+- **VS Code**：打开多个编辑器标签页（或独立窗口），每个标签页拥有独立的并行会话。
+- **JetBrains**：在 Wave 工具窗口点击「+」按钮新建聊天标签页，多个标签页并行会话。
+
+![标题栏与工具栏](/screenshots/spec-chat-header.webp)
+_点击标题栏的"新建会话"图标可开启新的对话_
+
+多个对话并行处理同一仓库的不同任务时，为避免在主线工作区直接改动造成冲突，推荐结合 [6.3 通过 Worktree 创建隔离环境](#worktree-concurrency) 使用。
+
+### 6.3 通过 Worktree 创建隔离环境 {#worktree-concurrency}
+
+多个对话并行修改同一仓库时，直接在主线工作区改动容易互相冲突。此时可以让 AI 调用 `EnterWorktree` 工具，为每个对话创建独立的 git worktree——每个 worktree 拥有独立的分支与工作目录，互不影响。
+
+在对话中直接以自然语言提出即可，例如：
+
+> 把支付模块的重构放到独立的 worktree 里做，避免影响主线。
+
+AI 会调用 `EnterWorktree` 工具，创建 `.wave/worktrees/<name>` 目录并将当前会话的工作目录切换到该 worktree：
+
+![创建 Worktree](/screenshots/spec-worktree-enter.webp)
+_通过自然语言让 AI 创建隔离 worktree_
+
+创建成功后，该对话的所有文件修改都会落在独立的 worktree 中，不会影响主线分支与其他对话。需要离开时，可要求 AI 调用 `ExitWorktree` 工具退出 worktree。
+
+> 了解更多：桌面版同样支持基于分支的 worktree 隔离会话，详见 [桌面版文档 - 基于分支的 worktree 隔离会话](/desktop#基于分支的-worktree-隔离会话)。
+
+---
+
+## 7. 能力扩展 {#capability-extensions}
+
+### 7.1 子代理状态 (Subagent Display) {#subagent-display}
 
 对于复杂的任务，Wave 会启动子代理（如 Explore 代理）进行深度探索。子代理的执行过程会以工具块的形式展示，实时显示其正在使用的工具和进度（如 `...Read, Write (2 tools | 1,234 tokens)`）。
 
@@ -518,7 +575,7 @@ _工作流管理对话框 - 运行详情与阶段_
 ![子代理状态](/screenshots/spec-subagent.webp)
 _子代理状态_
 
-### 6.2 Skill 技能系统 {#skill-system}
+### 7.2 Skill 技能系统 {#skill-system}
 
 Skill 是预设的自动化任务模板，用于处理特定的复杂任务（如文档处理、PDF 解析等）。AI 可以根据需要调用这些技能来扩展其能力。
 
@@ -529,7 +586,7 @@ Skill 是预设的自动化任务模板，用于处理特定的复杂任务（�
 ![Skill 系统](/screenshots/spec-skill.webp)
 _Skill 系统_
 
-### 6.3 MCP 协议集成 {#mcp-integration}
+### 7.3 MCP 协议集成 {#mcp-integration}
 
 支持 Model Context Protocol (MCP)，允许 AI 连接到外部的 MCP 服务器，从而获取更多的上下文信息或调用外部工具。用户可通过 `/mcp` 命令唤起的 MCP 服务器管理弹窗查看和管理所有已配置的 MCP 服务器。
 
@@ -552,9 +609,9 @@ _MCP 服务器管理（通过 `/mcp` 命令唤起）_
 
 ---
 
-## 7. 会话与持久化 {#session-persistence}
+## 8. 会话与持久化 {#session-persistence}
 
-### 7.1 对话回滚 (Rewind) {#rewind-feature}
+### 8.1 对话回滚 (Rewind) {#rewind-feature}
 
 Wave 支持将对话回滚到之前的任意用户消息状态。这不仅会删除该消息及其之后的所有对话记录，还会自动撤销 AI 在这些回合中所做的所有文件更改，并将被回滚的消息内容重新填充到输入框中，方便用户修改后重新发送。
 
@@ -575,7 +632,7 @@ _通过 `/rewind` 命令打开检查点列表_
 ![回滚确认对话框](/screenshots/spec-confirm-rewind.webp)
 _回滚确认对话框_
 
-### 7.2 会话管理 {#session-management}
+### 8.2 会话管理 {#session-management}
 
 扩展提供完整的会话管理功能，支持多个对话会话的创建、切换和管理。聊天面板顶部的标题栏左侧显示当前会话标题，右侧提供**新建会话**、**历史对话**、**更多**三个工具栏图标。
 
@@ -602,16 +659,16 @@ _历史对话搜索与关键词高亮_
 点击标题栏的"更多"图标弹出菜单，提供以下操作：
 - **设置**：打开配置弹窗（等同于输入 `/config`）。
 - **企业控制台**：在系统浏览器中打开企业控制台（即当前服务端链接 `serverUrl`）。
-- **登录 / 退出登录**：根据当前认证状态自动切换——未登录时显示"登录"入口（触发 SSO 登录流程，详见 [第 8.1 节 SSO 认证](#configuration-settings)），已登录时显示"退出登录"，退出后界面恢复为未登录的欢迎页。
+- **登录 / 退出登录**：根据当前认证状态自动切换——未登录时显示"登录"入口（触发 SSO 登录流程，详见 [第 9.1 节 SSO 认证](#configuration-settings)），已登录时显示"退出登录"，退出后界面恢复为未登录的欢迎页。
 
 ![更多菜单](/screenshots/spec-more-menu.webp)
 _更多菜单：设置 / 企业控制台 / 登录（或退出登录）_
 
 ---
 
-## 8. 配置管理 {#config-management}
+## 9. 配置管理 {#config-management}
 
-### 8.1 配置设置 {#configuration-settings}
+### 9.1 配置设置 {#configuration-settings}
 
 用户可以自定义 API Key、Base URL 等关键参数，以适配不同的 AI 服务提供商。通过 `/config`、`/status`、`/plugin`、`/mcp` 四个斜杠命令分别唤起独立的弹窗进行管理。配置弹窗分为「全局设置」与「模型设置」两个选项卡，表单字段仅显示用户手动输入的值，不会被环境变量填充。
 
@@ -634,8 +691,8 @@ _更多菜单：设置 / 企业控制台 / 登录（或退出登录）_
 ![状态信息](/screenshots/spec-status-dialog.webp)
 _状态信息弹窗_
 
-- **插件管理（`/plugin`）**：管理插件的安装、更新、卸载和插件市场（详见 [第 11 章 插件系统](#plugin-system)）。
-- **MCP 服务器（`/mcp`）**：查看和管理 MCP 服务器连接状态（详见 [第 6.3 节 MCP 协议集成](#mcp-integration)）。
+- **插件管理（`/plugin`）**：管理插件的安装、更新、卸载和插件市场（详见 [第 10 章 插件系统](#plugin-system)）。
+- **MCP 服务器（`/mcp`）**：查看和管理 MCP 服务器连接状态（详见 [第 7.3 节 MCP 协议集成](#mcp-integration)）。
 
 ![配置设置](/screenshots/spec-configuration.webp)
 _配置设置（全局设置选项卡）_
@@ -643,7 +700,7 @@ _配置设置（全局设置选项卡）_
 ![模型设置](/screenshots/spec-config-model.webp)
 _模型设置选项卡_
 
-### 8.2 语言设置 {#language-settings}
+### 9.2 语言设置 {#language-settings}
 
 用户可以在常规设置弹窗（通过 `/config` 命令唤起）中选择偏好的语言（中文或英文），AI 代理将根据该设置使用相应的语言进行回复。
 
@@ -652,9 +709,9 @@ _语言设置_
 
 ---
 
-## 9. 插件系统 {#plugin-system}
+## 10. 插件系统 {#plugin-system}
 
-### 9.1 概述 {#plugin-overview}
+### 10.1 概述 {#plugin-overview}
 
 Wave 通过插件系统扩展 AI 能力，用户可以通过 `/plugin` 命令唤起的插件管理弹窗管理插件的安装、更新和卸载。
 
@@ -666,7 +723,7 @@ Wave 通过插件系统扩展 AI 能力，用户可以通过 `/plugin` 命令唤
 - **插件更新**：支持对已安装的插件进行更新，确保使用最新版本的功能。
 - **插件市场管理**：添加、更新和移除插件市场源（支持 GitHub 仓库、本地路径等）。
 
-### 9.2 探索新插件 {#explore-plugins}
+### 10.2 探索新插件 {#explore-plugins}
 
 在插件管理弹窗的"探索新插件"选项卡中，用户可以通过顶部的搜索框按关键词过滤插件列表。搜索支持对插件名称和描述进行不区分大小写的匹配。对于尚未在当前环境激活的插件，用户可以选择安装作用域后点击"安装"按钮。已安装但未在当前作用域激活的插件也会在此列出，并带有"已安装"标识。
 
@@ -676,14 +733,14 @@ _探索新插件（支持关键词搜索）_
 ![关键词过滤效果](/screenshots/plugin-search-filtered.webp)
 _关键词过滤效果_
 
-### 9.3 已激活插件 {#installed-plugins}
+### 10.3 已激活插件 {#installed-plugins}
 
 在插件管理弹窗的"已激活插件"选项卡中，用户可以查看当前作用域下所有已激活的插件。用户可以对这些插件进行"更新"或"卸载"操作。每个插件会显示其激活的作用域（User、Project 或 Local）。
 
 ![已激活插件管理](/screenshots/spec-plugin-installed.webp)
 _已激活插件管理_
 
-### 9.4 内置插件：规格驱动开发（SDD） {#sdd-plugin}
+### 10.4 内置插件：规格驱动开发（SDD） {#sdd-plugin}
 
 Wave 随 SDK 内置了「规格驱动开发」（SDD）插件，帮助团队在写代码之前先用功能规格说明（用户故事 + 验收场景）明确设计。该插件默认关闭，不干扰日常使用。启用方式有两种：
 

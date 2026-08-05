@@ -112,38 +112,47 @@ export default {
           ],
         },
         {
-          text: '6. 能力扩展',
+          text: '6. 多 Agents 与并发',
           collapsed: false,
           items: [
-            { text: '6.1 子代理状态', link: '/vsce#subagent-display' },
-            { text: '6.2 Skill 技能系统', link: '/vsce#skill-system' },
-            { text: '6.3 MCP 协议集成', link: '/vsce#mcp-integration' },
+            { text: '6.1 并发使用子代理', link: '/vsce#subagent-concurrency' },
+            { text: '6.2 多对话并行', link: '/vsce#parallel-conversations' },
+            { text: '6.3 通过 Worktree 创建隔离环境', link: '/vsce#worktree-concurrency' },
           ],
         },
         {
-          text: '7. 会话与持久化',
+          text: '7. 能力扩展',
+          collapsed: false,
+          items: [
+            { text: '7.1 子代理状态', link: '/vsce#subagent-display' },
+            { text: '7.2 Skill 技能系统', link: '/vsce#skill-system' },
+            { text: '7.3 MCP 协议集成', link: '/vsce#mcp-integration' },
+          ],
+        },
+        {
+          text: '8. 会话与持久化',
           collapsed: true,
           items: [
-            { text: '7.1 对话回滚', link: '/vsce#rewind-feature' },
-            { text: '7.2 会话管理', link: '/vsce#session-management' },
+            { text: '8.1 对话回滚', link: '/vsce#rewind-feature' },
+            { text: '8.2 会话管理', link: '/vsce#session-management' },
           ],
         },
         {
-          text: '8. 配置管理',
+          text: '9. 配置管理',
           collapsed: false,
           items: [
-            { text: '8.1 配置设置', link: '/vsce#configuration-settings' },
-            { text: '8.2 语言设置', link: '/vsce#language-settings' },
+            { text: '9.1 配置设置', link: '/vsce#configuration-settings' },
+            { text: '9.2 语言设置', link: '/vsce#language-settings' },
           ],
         },
         {
-          text: '9. 插件系统',
+          text: '10. 插件系统',
           collapsed: false,
           items: [
-            { text: '9.1 概述', link: '/vsce#plugin-overview' },
-            { text: '9.2 探索新插件', link: '/vsce#explore-plugins' },
-            { text: '9.3 已激活插件', link: '/vsce#installed-plugins' },
-            { text: '9.4 内置插件：规格驱动开发（SDD）', link: '/vsce#sdd-plugin' },
+            { text: '10.1 概述', link: '/vsce#plugin-overview' },
+            { text: '10.2 探索新插件', link: '/vsce#explore-plugins' },
+            { text: '10.3 已激活插件', link: '/vsce#installed-plugins' },
+            { text: '10.4 内置插件：规格驱动开发（SDD）', link: '/vsce#sdd-plugin' },
           ],
         },
         {
