@@ -71,8 +71,9 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 1. **假设**工具执行开始，**当**`onToolBlockUpdated`触发时，**则**收到的第一个事件包含 `stage="start"` 和工具的显示名称
 2. **假设**工具发出流式输出，**当**`onToolBlockUpdated`以 `stage="streaming"` 触发时，**则**每个事件包含最新的 `parametersChunk`
 3. **假设**长时间运行的工具，**当**进度更新发生但没有新块时，**则**`onToolBlockUpdated`发出 `stage="running"`
-4. **假设**工具完成，**当**`onToolBlockUpdated`发出最终更新时，**则**事件使用 `stage="end"` 并携带最终输出或错误摘要
-5. **假设**任何 `onToolBlockUpdated` 事件，**则**有效载荷不包含已弃用的 `isRunning` 标志
+4. **假设**工具处于 `running` 阶段，**当**其产生增量结果或短结果时，**则**每次 `stage="running"` 事件都必须携带该工具调用自始至终不变的稳定展示字段（`compactParams`、`name`），而不是只在首次 running 事件携带——消费端（如 CLI）以 last-value-wins 节流丢弃中间事件后，仍能在 running 阶段正确渲染 compactParams
+5. **假设**工具完成，**当**`onToolBlockUpdated`发出最终更新时，**则**事件使用 `stage="end"` 并携带最终输出或错误摘要
+6. **假设**任何 `onToolBlockUpdated` 事件，**则**有效载荷不包含已弃用的 `isRunning` 标志
 
 ---
 
@@ -150,7 +151,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - **SDK 回调负载**：`onAssistantContentUpdated`/`onAssistantReasoningUpdated` 始终同时提供 `chunk`（增量）与 `accumulated`（累积）两个字段，进程内消费者免费使用 `accumulated` 就地替换；`onToolBlockUpdated` 提供 `parametersChunk`（增量）与 `parameters`（累积）并存
 - **跨进程 wire 负载（纯 delta）**：agentBridge 在转发 stdio 通知时剥离累积字段——`assistantContentUpdated`/`assistantReasoningUpdated` 只携带 `{messageId, chunk, stage}`；`toolBlockUpdated` 在 `stage="streaming"` 时只携带 `parametersChunk`，`stage="end"` 时携带全量 `parameters` + `result` 作为权威值。消费端负责累积（追加），丢失的 delta 由 `getMessages` 拉取的全量快照自愈
 - **UI 状态流**：CLI 直接订阅增量回调就地更新消息（accumulated 替换 + 500ms 节流）；插件/桌面经 stdio 增量通知（`userMessageAdded`、`assistantContentUpdated`、`toolBlockUpdated` 等，纯 delta 负载）驱动 webview 增量 reducer——文本/推理块追加 chunk、工具块追加 `parametersChunk`，end 时以权威值终结；需要完整列表的场景（初始化、compact、rewind、clear、bang）主动拉取，拉取响应整体替换为权威快照
-- **节流语义**：节流器对 delta 负载必须按到达顺序拼接窗口内所有 chunks 为一个合并 delta（window-concat），绝不能 last-value-wins 丢弃中间值；对 accumulated 负载（CLI 进程内）last-value-wins 仍然正确
+- **节流语义**：节流器对 delta 负载必须按到达顺序拼接窗口内所有 chunks 为一个合并 delta（window-concat），绝不能 last-value-wins 丢弃中间值；对 accumulated 负载（CLI 进程内）last-value-wins 仍然正确。为配合该语义，SDK 必须在每次 running 事件中重复携带 `compactParams` 等稳定展示字段（见"工具块阶段更新"验收场景 4），保证丢弃中间事件不丢失这些字段
 - **清晰分离**：增量回调是消息状态管理的正式对外通道；全量数据按需获取，避免随每次流式 chunk 序列化整个列表
 
 ## 澄清
