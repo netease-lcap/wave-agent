@@ -38,6 +38,7 @@ import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
 import { TaskManager } from "./services/taskManager.js";
 import type { WorktreeSession } from "./utils/worktreeSession.js";
+import path from "node:path";
 import { parseTaskNotificationXml } from "./utils/notificationXml.js";
 import { InitializationService } from "./services/initializationService.js";
 import { InteractionService } from "./services/interactionService.js";
@@ -1043,6 +1044,43 @@ export class Agent {
       content,
       images,
     );
+  }
+
+  // ========== Additional Directories ==========
+
+  /**
+   * Add an additional directory to the Safe Zone for this session.
+   *
+   * The directory immediately becomes part of the Safe Zone (permission
+   * checks and the system prompt), and with `remember: true` it is also
+   * persisted to `.wave/settings.local.json` `permissions.additionalDirectories`
+   * so future sessions pick it up automatically.
+   *
+   * @param directory Path of the directory to add (relative paths resolve against the workdir).
+   * @param options.remember Whether to persist the directory across sessions.
+   */
+  public async addAdditionalDirectory(
+    directory: string,
+    options?: { remember?: boolean },
+  ): Promise<void> {
+    const resolvedPath = path.isAbsolute(directory)
+      ? directory
+      : path.resolve(this.workdir, directory);
+    this.permissionManager.addInstanceAdditionalDirectory(resolvedPath);
+    if (options?.remember) {
+      await this.configurationService.addAdditionalDirectory(
+        this.workdir,
+        resolvedPath,
+      );
+    }
+  }
+
+  /**
+   * Get the effective additional directories for this session (config +
+   * session-level union), matching what is listed in the system prompt.
+   */
+  public getAdditionalDirectories(): string[] {
+    return this.permissionManager.getEffectiveAdditionalDirectories();
   }
 
   // ========== MCP Management Methods ==========

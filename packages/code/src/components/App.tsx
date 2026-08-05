@@ -96,6 +96,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   bypassPermissions,
   permissionMode,
   pluginDirs,
+  additionalDirectories,
   tools,
   allowedTools,
   disallowedTools,
@@ -124,6 +125,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
         bypassPermissions={bypassPermissions}
         permissionMode={permissionMode}
         pluginDirs={pluginDirs}
+        additionalDirectories={additionalDirectories}
         tools={tools}
         allowedTools={allowedTools}
         disallowedTools={disallowedTools}
@@ -144,6 +146,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
       bypassPermissions={bypassPermissions}
       permissionMode={permissionMode}
       pluginDirs={pluginDirs}
+      additionalDirectories={additionalDirectories}
       tools={tools}
       allowedTools={allowedTools}
       disallowedTools={disallowedTools}
@@ -165,6 +168,7 @@ export const App: React.FC<AppProps> = ({
   bypassPermissions,
   permissionMode,
   pluginDirs,
+  additionalDirectories,
   tools,
   allowedTools,
   disallowedTools,
@@ -185,6 +189,7 @@ export const App: React.FC<AppProps> = ({
         bypassPermissions={bypassPermissions}
         permissionMode={permissionMode}
         pluginDirs={pluginDirs}
+        additionalDirectories={additionalDirectories}
         tools={tools}
         allowedTools={allowedTools}
         disallowedTools={disallowedTools}

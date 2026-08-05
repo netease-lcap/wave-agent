@@ -99,6 +99,8 @@ export interface PermissionManagerOptions {
   instanceDeniedRules?: string[];
   /** Additional directories considered part of the Safe Zone */
   additionalDirectories?: string[];
+  /** Instance-specific additional directories (from AgentOptions, session-level) */
+  instanceAdditionalDirectories?: string[];
   /** System additional directories (persistent across reloads) */
   systemAdditionalDirectories?: string[];
   /** Path to the current plan file */
@@ -115,6 +117,7 @@ export class PermissionManager {
   private instanceDeniedRules: string[] = [];
   private temporaryRules: string[] = [];
   private additionalDirectories: string[] = [];
+  private instanceAdditionalDirectories: string[] = [];
   private systemAdditionalDirectories: string[] = [];
   private planFilePath?: string;
   private hasExitedPlanMode: boolean = false;
@@ -136,14 +139,17 @@ export class PermissionManager {
     this.instanceDeniedRules = options.instanceDeniedRules || [];
     this.planFilePath = options.planFilePath;
     this._logger = options.logger;
-    this.updateAdditionalDirectories(options.additionalDirectories || []);
-    for (const dir of options.systemAdditionalDirectories || []) {
-      this.addSystemAdditionalDirectory(dir);
-    }
-
+    // Read workdir first so relative additional directories resolve against it.
     this.workdir = this.container.get<string>("Workdir");
     this.worktreeName = this.container.get<string | undefined>("WorktreeName");
     this.mainRepoRoot = this.container.get<string | undefined>("MainRepoRoot");
+    this.updateAdditionalDirectories(options.additionalDirectories || []);
+    for (const dir of options.instanceAdditionalDirectories || []) {
+      this.addInstanceAdditionalDirectory(dir);
+    }
+    for (const dir of options.systemAdditionalDirectories || []) {
+      this.addSystemAdditionalDirectory(dir);
+    }
   }
 
   /**
@@ -222,6 +228,32 @@ export class PermissionManager {
   }
 
   /**
+   * Get all instance-specific additional directories (session-level, from AgentOptions or /add-dir)
+   */
+  public getInstanceAdditionalDirectories(): string[] {
+    return [...this.instanceAdditionalDirectories];
+  }
+
+  /**
+   * Get the effective union of additional directories (config + instance, deduplicated).
+   * This is the data source for system prompt injection and Safe Zone checks.
+   */
+  public getEffectiveAdditionalDirectories(): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const dir of [
+      ...this.additionalDirectories,
+      ...this.instanceAdditionalDirectories,
+    ]) {
+      if (!seen.has(dir)) {
+        seen.add(dir);
+        result.push(dir);
+      }
+    }
+    return result;
+  }
+
+  /**
    * Get all system additional directories
    */
   public getSystemAdditionalDirectories(): string[] {
@@ -274,6 +306,21 @@ export class PermissionManager {
       }
       return path.resolve(dir);
     });
+  }
+
+  /**
+   * Add an instance-level additional directory (session-level, e.g. /add-dir command)
+   */
+  public addInstanceAdditionalDirectory(directory: string): void {
+    const workdir = this.workdir;
+    const resolvedPath =
+      workdir && !path.isAbsolute(directory)
+        ? path.resolve(workdir, directory)
+        : path.resolve(directory);
+
+    if (!this.instanceAdditionalDirectories.includes(resolvedPath)) {
+      this.instanceAdditionalDirectories.push(resolvedPath);
+    }
   }
 
   /**
@@ -350,6 +397,13 @@ export class PermissionManager {
 
     // Check additional directories
     for (const dir of this.additionalDirectories) {
+      if (isPathInside(absolutePath, dir)) {
+        return { isInside: true, resolvedPath: absolutePath };
+      }
+    }
+
+    // Check instance additional directories
+    for (const dir of this.instanceAdditionalDirectories) {
       if (isPathInside(absolutePath, dir)) {
         return { isInside: true, resolvedPath: absolutePath };
       }

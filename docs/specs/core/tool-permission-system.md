@@ -146,6 +146,20 @@ order: 130
 1. **假设**文件位于安全区域之外，**当**系统尝试写入或编辑该文件时，**则**向用户显示确认提示，无论 `acceptEdits` 设置如何。
 2. **假设**系统处于 `acceptEdits` 模式，**当**尝试越界文件操作时，**则**系统仍必须显示确认提示，而不是自动执行。
 
+### 用户故事：附加工作目录（优先级：P1）
+
+作为用户，我希望将工作目录之外的其他目录加入 agent 的安全区域，使这些目录中的文件操作在 `acceptEdits` 模式下自动放行、并让 agent 在系统提示词中感知这些目录的存在，从而允许 agent 安全地访问我指定的外部目录而无需反复确认。
+
+**验收场景**：
+1. **假设** `settings.json` 的 `permissions.additionalDirectories` 包含 `/data/exports`，**当** agent 启动时，**则** `/data/exports` 属于安全区域，且主 agent 系统提示词的 `# Environment` 段包含 `Additional working directories:` 及其下的目录列表。
+2. **假设** 主 agent 系统提示词已列出附加目录，**当** agent 处于 `acceptEdits` 模式并尝试 `Edit`、`Delete` 或 `Write` 附加目录内的文件时，**则** 操作立即执行，无需权限提示。
+3. **假设** 目录不在安全区域内，**当** agent 尝试修改该目录内的文件时，**则** 即使处于 `acceptEdits` 模式仍显示确认提示（与"越界安全确认"一致）。
+4. **假设** 用户以 `wave --add-dir /data/exports` 启动 CLI，**当** agent 运行时，**则** `/data/exports` 仅在当前会话内属于安全区域并在提示词中列出，会话结束后不写入任何配置文件。
+5. **假设** CLI 会话进行中，**当** 用户输入 `/add-dir /data/exports` 时，**则** `/data/exports` 在当前会话立即加入安全区域，系统提示词在下一次构建时包含该目录。
+6. **假设** 用户输入 `/add-dir --remember /data/exports`，**当** 命令执行后，**则** `/data/exports` 除当前会话生效外，还被追加到 `.wave/settings.local.json` 的 `permissions.additionalDirectories`，后续会话自动加载。
+7. **假设** 用户输入无参数的 `/add-dir`，**当** 命令执行时，**则** 显示用法说明及当前会话的附加目录列表。
+8. **假设** agent 派生子 agent，**当** 子 agent 的系统提示词构建时，**则** `<env>` 中包含单行 `Additional working directories: /data/exports`（附加目录并集），且子 agent 的权限检查同样将附加目录视为安全区域。
+
 ### 用户故事：CLI 模式切换（优先级：P2）
 
 作为 CLI 用户，我希望在会话期间使用键盘快捷键快速切换权限模式，以便我可以轻松地在手动控制、自动编辑、规划和绕过之间切换。
@@ -182,7 +196,7 @@ order: 130
 - **智能通配符**：用 `*` 替换动态参数的启发式生成模式。
 - **PermissionDecision**：权限检查的结果，扩展为包含可选的 `newPermissionMode` 和 `newPermissionRule` 以通知系统更新其状态。
 - **安全区域**：允许 agent 执行文件操作而无需每次操作都经用户明确确认的文件系统路径集合。
-- **附加目录**：用户可配置的路径列表，将安全区域扩展到默认工作目录之外。
+- **附加目录**：用户可配置的路径列表，将安全区域扩展到默认工作目录之外。可通过 `settings.json` 的 `permissions.additionalDirectories`、CLI 的 `--add-dir` 启动选项或 `/add-dir` 斜杠命令（会话级）加入；其中 `--add-dir` 与 `/add-dir` 为 CLI 专属入口。
 
 ## 边界情况
 
@@ -196,3 +210,4 @@ order: 130
 - **受限与不受限工具**：不受限工具（不在 `RESTRICTED_TOOLS` 中的工具）仍应被自动允许，即使在 `dontAsk` 模式下。
 - **符号链接**：系统应该解析真实路径并对照安全区域检查，以防止通过符号链接绕过。
 - **嵌套目录**：列出目录或其子目录内的任何文件都应被视为安全。
+- **重复附加目录**：同一目录通过配置、`--add-dir` 与 `/add-dir` 等多个入口重复加入时，系统提示词列表与 `--remember` 持久化均应去重，不产生重复项。

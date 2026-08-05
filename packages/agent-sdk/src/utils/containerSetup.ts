@@ -176,6 +176,7 @@ export function setupAgentContainer(
   const permissionManager = new PermissionManager(container, {
     instanceAllowedRules: options.allowedTools,
     instanceDeniedRules: options.disallowedTools,
+    instanceAdditionalDirectories: options.additionalDirectories,
   });
   if (configurationService.resolveAutoMemoryEnabled()) {
     const autoMemoryDir = memoryService.getAutoMemoryDirectory(workdir);

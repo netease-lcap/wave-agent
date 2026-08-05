@@ -5,6 +5,8 @@ export interface BaseAppProps {
   bypassPermissions?: boolean;
   permissionMode?: PermissionMode;
   pluginDirs?: string[];
+  /** Additional directories to add to the session Safe Zone (from --add-dir). */
+  additionalDirectories?: string[];
   tools?: string[];
   allowedTools?: string[];
   disallowedTools?: string[];
