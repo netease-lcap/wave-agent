@@ -1,7 +1,12 @@
 // Sidebar anchor checker (no dependencies).
-// Validates that every leaf link in the VitePress sidebar config resolves to an
-// existing docs/*.md file, and that any anchor on the link corresponds to a
-// heading in that file. Catches drift between sidebar links and doc headings.
+// 1. Forward: every leaf link in the VitePress sidebar config resolves to an
+//    existing docs/*.md file, and any anchor on the link corresponds to a
+//    heading in that file.
+// 2. Reverse: every `###` heading (and non-group `##` headings) in a page that
+//    appears in the sidebar must be reachable from some sidebar leaf link.
+//    Group headings (##) are exempt when a sidebar group with matching text
+//    exists. Catches drift between sidebar links and doc headings in both
+//    directions.
 //
 // Run: node scripts/check-sidebar-anchors.mjs
 
@@ -41,10 +46,10 @@ function collectHeadings(content) {
         explicitId = idMatch[1];
         text = text.replace(/\s*\{#[^}]+\}\s*$/, '').trim();
       }
-      headings.push({ text, explicitId, slug: slugify(text) });
+      headings.push({ level: m[1].length, text, explicitId, slug: slugify(text) });
     } else {
       const idMatch = line.match(/\{#([^}]+)\}/);
-      if (idMatch) headings.push({ text: line, explicitId: idMatch[1], slug: idMatch[1] });
+      if (idMatch) headings.push({ level: 0, text: line, explicitId: idMatch[1], slug: idMatch[1] });
     }
   }
   return headings;
@@ -64,20 +69,22 @@ function anchorMatches(anchor, headings) {
   return false;
 }
 
-function walkSidebar(node, leaves) {
+function walkSidebar(node, leaves, groups) {
   if (Array.isArray(node)) {
-    for (const n of node) walkSidebar(n, leaves);
+    for (const n of node) walkSidebar(n, leaves, groups);
     return;
   }
   if (node && typeof node === 'object') {
-    if (typeof node.link === 'string' && typeof node.text === 'string') {
-      leaves.push({ text: node.text, link: node.link });
+    const isGroup = Array.isArray(node.items);
+    if (typeof node.text === 'string') {
+      if (isGroup) groups.push(node.text);
+      else if (typeof node.link === 'string') leaves.push({ text: node.text, link: node.link });
     }
-    if (Array.isArray(node.items)) {
-      walkSidebar(node.items, leaves);
+    if (isGroup) {
+      walkSidebar(node.items, leaves, groups);
     } else {
       for (const v of Object.values(node)) {
-        if (v && typeof v === 'object') walkSidebar(v, leaves);
+        if (v && typeof v === 'object') walkSidebar(v, leaves, groups);
       }
     }
   }
@@ -90,8 +97,9 @@ async function getSidebarLeaves() {
     const cfg = mod.default || mod;
     const sidebar = cfg && cfg.themeConfig && cfg.themeConfig.sidebar;
     const leaves = [];
-    walkSidebar(sidebar, leaves);
-    if (leaves.length > 0) return { leaves, source: 'dynamic-import' };
+    const groups = [];
+    walkSidebar(sidebar, leaves, groups);
+    if (leaves.length > 0) return { leaves, groups, source: 'dynamic-import' };
   } catch (e) {
     // fall through to regex
   }
@@ -101,14 +109,22 @@ async function getSidebarLeaves() {
   const leaves = [];
   let m;
   while ((m = re.exec(src)) !== null) leaves.push({ text: m[1], link: m[2] });
-  return { leaves, source: 'regex' };
+  return { leaves, groups: [], source: 'regex' };
 }
 
-const { leaves, source } = await getSidebarLeaves();
+const { leaves, groups, source } = await getSidebarLeaves();
 
 const errors = [];
 let checked = 0;
 
+function splitHash(url) {
+  const i = url.indexOf('#');
+  if (i < 0) return [url, null];
+  return [url.slice(0, i), url.slice(i + 1)];
+}
+
+// Forward check: each sidebar leaf link must point at an existing file + heading.
+const pageLeaves = new Map(); // pageName -> [anchor, ...]
 for (const { text, link } of leaves) {
   const [page, anchor] = splitHash(link);
   if (!page) {
@@ -122,6 +138,8 @@ for (const { text, link } of leaves) {
     continue;
   }
   checked++;
+  if (!pageLeaves.has(pageName)) pageLeaves.set(pageName, []);
+  if (anchor) pageLeaves.get(pageName).push(anchor);
   if (anchor) {
     const headings = collectHeadings(readFileSync(filePath, 'utf8'));
     if (!anchorMatches(anchor, headings)) {
@@ -132,7 +150,30 @@ for (const { text, link } of leaves) {
   }
 }
 
-console.log(`(sidebar parsed via ${source}: ${leaves.length} leaf items)`);
+// Reverse check: every heading in a sidebar-referenced page must be covered by
+// a sidebar leaf link (or by a matching sidebar group for ## headings).
+const groupTexts = groups.map(normalize);
+for (const [pageName, anchors] of pageLeaves) {
+  if (anchors.length === 0) continue; // page referenced without anchors — nothing to verify
+  if (pageName.startsWith('specs/')) continue; // specs sidebar is auto-generated
+  const filePath = join(docsDir, `${pageName}.md`);
+  const headings = collectHeadings(readFileSync(filePath, 'utf8'));
+  for (const h of headings) {
+    if (h.level === 0) continue; // anchor-only line, not a real heading
+    if (h.level === 1 || h.level > 3) continue; // page title / 4th-level subsections are not sidebar entries
+    // Group headings (##) are covered by a sidebar group with matching text.
+    if (h.level === 2 && groupTexts.includes(normalize(h.text))) continue;
+    const covered = anchors.some((a) => anchorMatches(a, [h]));
+    if (!covered) {
+      const label = h.explicitId ? `{#${h.explicitId}}` : `#${h.slug}`;
+      errors.push(
+        `docs/${pageName}.md heading '${h.text}' (${label}) has no sidebar entry — add a leaf link to it`
+      );
+    }
+  }
+}
+
+console.log(`(sidebar parsed via ${source}: ${leaves.length} leaf items, ${groups.length} groups)`);
 
 if (errors.length > 0) {
   for (const e of errors) console.log('ERROR: ' + e);
@@ -141,11 +182,5 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
-console.log(`PASS: sidebar anchors OK (${checked} item(s) checked)`);
+console.log(`PASS: sidebar anchors OK (${checked} link(s) checked forward, ${pageLeaves.size} page(s) checked reverse)`);
 process.exit(0);
-
-function splitHash(url) {
-  const i = url.indexOf('#');
-  if (i < 0) return [url, null];
-  return [url.slice(0, i), url.slice(i + 1)];
-}
