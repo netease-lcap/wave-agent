@@ -681,6 +681,14 @@ export class Agent {
   }
 
   public async clearMessages(): Promise<void> {
+    // Aligned with webview (ChatApp handleClearChat): /clear is ignored
+    // while the agent is running, instead of aborting the AI mid-turn
+    // (which used to inject a late "Request was aborted" error into the
+    // newly cleared session).
+    if (this.aiManager.isLoading) {
+      return;
+    }
+
     this.aiManager.abortAIMessage();
 
     // Capture old session info before clearing
@@ -743,6 +751,12 @@ export class Agent {
    * @param customInstructions - Optional custom instructions for compaction
    */
   public async compact(customInstructions?: string): Promise<void> {
+    // Aligned with webview: /compact is ignored while the agent is running,
+    // instead of aborting the AI mid-turn before compacting.
+    if (this.aiManager.isLoading) {
+      return;
+    }
+
     this.aiManager.abortAIMessage();
 
     await this.aiManager.compactConversation({

@@ -1565,7 +1565,7 @@ describe("ChatProvider", () => {
     });
   });
 
-  it("throttles requestRemount to once per second", async () => {
+  it("forceRemount writes a full screen clear and increments remountKey on every call", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
       lastValue = val;
@@ -1589,31 +1589,17 @@ describe("ChatProvider", () => {
 
     const initialRemountKey = lastValue?.remountKey;
 
-    // Call requestRemount multiple times
-    lastValue?.requestRemount();
-    lastValue?.requestRemount();
-    lastValue?.requestRemount();
+    // No throttling: every call writes the screen-clear escape sequence
+    // and bumps the remount key (Static items re-render).
+    lastValue?.forceRemount();
+    lastValue?.forceRemount();
 
-    // Should have called write once immediately (leading: true)
-    await vi.waitFor(() => {
-      expect(writeSpy).toHaveBeenCalledTimes(1);
-      expect(lastValue?.remountKey).toBe(initialRemountKey! + 1);
-    });
-
-    // Advance time by 500ms
-    await vi.advanceTimersByTimeAsync(500);
-    lastValue?.requestRemount();
-    // Still 1 call
-    await vi.advanceTimersByTimeAsync(100); // Give some time for React update
-    expect(writeSpy).toHaveBeenCalledTimes(1);
-    expect(lastValue?.remountKey).toBe(initialRemountKey! + 1);
-
-    // Advance time by another 600ms (total 1100ms)
-    await vi.advanceTimersByTimeAsync(600);
-    lastValue?.requestRemount();
-    // Now 2 calls
     await vi.waitFor(() => {
       expect(writeSpy).toHaveBeenCalledTimes(2);
+      expect(writeSpy).toHaveBeenCalledWith(
+        "\u001b[2J\u001b[3J\u001b[0;0H",
+        expect.any(Function),
+      );
       expect(lastValue?.remountKey).toBe(initialRemountKey! + 2);
     });
   });
@@ -1647,27 +1633,5 @@ describe("ChatProvider", () => {
     await vi.waitFor(() => {
       expect(lastValue?.queuedMessages).toHaveLength(0);
     });
-  });
-
-  it("cancels throttled requestRemount on unmount", async () => {
-    let lastValue: ChatContextType | undefined;
-    const onHookValue = (val: ChatContextType) => {
-      lastValue = val;
-    };
-
-    const { unmount } = renderWithProvider(onHookValue);
-
-    await vi.waitFor(() => {
-      expect(lastValue).toBeDefined();
-    });
-
-    const cancelSpy = vi.spyOn(
-      lastValue!.requestRemount as unknown as { cancel: () => void },
-      "cancel",
-    );
-
-    unmount();
-
-    expect(cancelSpy).toHaveBeenCalled();
   });
 });
