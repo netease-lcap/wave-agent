@@ -3,6 +3,7 @@ import { render, fireEvent, screen, createEvent, within, act } from '@testing-li
 import React from 'react';
 import { DesktopApp } from '../../src/components/DesktopApp';
 import { ChatApp, prunePanelGroupCache } from '../../src/components/ChatApp';
+import type { WebviewTagElement } from '../../src/components/PreviewPane';
 import { EXIT_PLAN_MODE_TOOL_NAME } from 'wave-agent-sdk';
 import { createMockVscode, sendCommand, renderChatApp, fireInput } from './test-utils';
 import { MockDataGenerator } from '../fixtures/mockData';
@@ -1140,5 +1141,71 @@ describe('remote preview port forwarding', () => {
         );
         expect(forwardPosts(vscode)).toHaveLength(2);
         expect(releasePosts(vscode)).toHaveLength(0);
+    });
+
+    it('picker comments in a remote preview land in the chat input (URL rewritten to the original remote address)', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        pushRemotePane();
+        // The host always pushes a pane snapshot on session switch, including
+        // the (possibly empty) input draft — see desktopHost.ts pushPaneSessionState.
+        sendCommand('setInitialState', {
+            paneId: 'pane-1',
+            messages: [],
+            inputContent: '',
+            isAuthenticated: true,
+        });
+        openLink();
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-1',
+            url: 'http://127.0.0.1:5173/app',
+            originalUrl: 'http://localhost:5173/app',
+        });
+
+        const wv = screen.getByTestId('preview-pane').querySelector('webview') as unknown as Omit<
+            WebviewTagElement,
+            'send' | 'loadURL' | 'reload' | 'reloadIgnoringCache' | 'getURL'
+        > & {
+            send: ReturnType<typeof vi.fn>;
+            loadURL: ReturnType<typeof vi.fn>;
+            reload: ReturnType<typeof vi.fn>;
+            reloadIgnoringCache: ReturnType<typeof vi.fn>;
+            getURL: ReturnType<typeof vi.fn>;
+        };
+        wv.send = vi.fn();
+        wv.loadURL = vi.fn().mockResolvedValue(undefined);
+        wv.reload = vi.fn();
+        wv.reloadIgnoringCache = vi.fn();
+        wv.getURL = vi.fn(() => 'http://127.0.0.1:5173/app');
+        fireEvent(wv, new Event('dom-ready'));
+        fireEvent(wv, Object.assign(new Event('ipc-message'), { channel: 'wave-picker', args: [{ type: 'ready' }] }));
+        fireEvent.click(screen.getByTestId('preview-picker-toggle'));
+
+        // The picker submits the tunnel URL (the guest's location.href); the
+        // pane rewrites it back to the original remote address before appending.
+        fireEvent(
+            wv,
+            Object.assign(new Event('ipc-message'), {
+                channel: 'wave-picker',
+                args: [
+                    {
+                        type: 'submit',
+                        url: 'http://127.0.0.1:5173/app',
+                        selector: '#app > button',
+                        summary: 'button',
+                        text: '登录',
+                        comment: '远程评论要进输入框',
+                    },
+                ],
+            }),
+        );
+
+        const input = screen.getByTestId('message-input') as HTMLElement;
+        expect(input.textContent).toContain('远程评论要进输入框');
+        expect(input.textContent).toContain('http://localhost:5173/app');
+        // Nothing is sent directly — the user reviews the batch and sends manually.
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ command: 'sendMessage' }));
     });
 });
