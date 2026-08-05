@@ -180,10 +180,21 @@ describe('buildSshTunnelArgs', () => {
     ).toEqual([
       ...SSH_BASE_OPTIONS,
       '-o', 'ExitOnForwardFailure=yes',
+      '-o', 'ServerAliveInterval=15',
+      '-o', 'ServerAliveCountMax=4',
       '-N',
       '-L', '/tmp/wave-daemon-prod.sock:/home/u/.wave/daemon.sock',
       'prod',
     ]);
+  });
+
+  it('keeps ServerAlive probes tight enough to detect a half-open tunnel after sleep', () => {
+    const args = buildSshTunnelArgs('prod', '/tmp/wave-daemon-prod.sock', '/home/u/.wave/daemon.sock');
+    const aliveInterval = Number(args.find((a) => a.startsWith('ServerAliveInterval='))?.split('=')[1]);
+    const aliveCountMax = Number(args.find((a) => a.startsWith('ServerAliveCountMax='))?.split('=')[1]);
+    // interval × count bounds the dead-tunnel detection time (spec: SSH 远程会话
+    // 自动重连 scenario 2 — no unbounded "looks alive but silent" state).
+    expect(aliveInterval * aliveCountMax).toBeLessThanOrEqual(60);
   });
 });
 

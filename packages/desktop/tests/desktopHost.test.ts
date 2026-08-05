@@ -399,6 +399,8 @@ beforeEach(() => {
   h.pendingPermissionRequests = [];
   vi.clearAllMocks();
   nativeTheme.__reset();
+  // Reset the auto-reconnect backoff seam (tests shrink it to keep retries fast).
+  (DesktopHost as unknown as { autoReconnectBaseDelayMs: number }).autoReconnectBaseDelayMs = 2000;
 });
 
 // ---------------------------------------------------------------------------
@@ -3525,6 +3527,13 @@ function registerAgentInIndex(agent: ReturnType<typeof lastAgent>) {
   fireSessionId(agent, agent.sessionId as string);
 }
 
+/** Flatten the sidebar session tree into a sessionId → running-marker lookup. */
+function treeSessions(tree: Record<string, unknown> | undefined) {
+  return ((tree?.groups as Array<{ sessions: Array<{ sessionId: string; running: boolean }> }>) ?? []).flatMap(
+    (g) => g.sessions,
+  );
+}
+
 describe('SSH remote hosts', () => {
   it('desktopSelectHost with an unknown host is rejected with a system message', async () => {
     const { host, sent } = await readyHost();
@@ -3949,7 +3958,7 @@ describe('SSH remote hosts', () => {
     expect(h.closedHandlers).toHaveLength(2);
   });
 
-  it('a dropped tunnel detaches host agents without destroying them (真后台)', async () => {
+  it('a dropped tunnel detaches host agents without destroying them and auto-reconnects the pane (真后台)', async () => {
     seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
     h.existingPaths.add('/remote/repo');
     const { host, sent } = await readyHost();
@@ -3962,10 +3971,6 @@ describe('SSH remote hosts', () => {
     remoteAgent.isStreaming = true;
     remoteAgent.callbacks.onLoadingChange(true);
     const sessionId = remoteAgent.sessionId as string;
-    const treeSessions = (tree: Record<string, unknown> | undefined) =>
-      ((tree?.groups as Array<{ sessions: Array<{ sessionId: string; running: boolean }> }>) ?? []).flatMap(
-        (g) => g.sessions,
-      );
     expect(treeSessions(sent('desktopSessionTree').at(-1)).find((s) => s.sessionId === sessionId)?.running).toBe(true);
 
     h.closedHandlers[0]();
@@ -3973,17 +3978,117 @@ describe('SSH remote hosts', () => {
     // The session keeps running on the remote daemon — the pool agent is
     // released, never destroyed (destroy would kill the background task).
     expect(remoteAgent.destroy).not.toHaveBeenCalled();
-    // The pane returns to the new-session state, but stays on the remote host.
+    // The pane auto-reconnects through a fresh tunnel (spec: SSH 远程会话自动重连
+    // scenario 1): a new agent re-attaches the same session and re-binds the
+    // pane, without the user re-selecting it from the sidebar.
+    await vi.waitFor(() => {
+      expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(2);
+    });
+    expect(h.closedHandlers).toHaveLength(2); // the fresh client registered its own handler
+    const reconnected = lastAgent();
+    expect(reconnected).not.toBe(remoteAgent);
+    expect(reconnected.sessionId).toBe(sessionId);
+    await vi.waitFor(() => {
+      const panes = sent('desktopPanes').at(-1) as { panes: Array<{ sessionId?: string; host: string }> };
+      expect(panes.panes[0].sessionId).toBe(sessionId);
+      expect(panes.panes[0].host).toBe('prod');
+    });
+    // The transcript was pulled into the re-attached agent (消息 catch-up:
+    // spec scenario 3 — messages produced while detached must be visible).
+    await vi.waitFor(() => {
+      expect(reconnected.messages.some((m) => (m as { id?: string }).id === 'restored-u1')).toBe(true);
+    });
+  });
+
+  it('auto-reconnect gives up after the backoff cap, leaving the pane as a new session with a final message', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    h.existingPaths.add('/remote/repo');
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({ command: 'desktopSelectRemotePath', host: 'prod', path: '/remote/repo' });
+    await vi.waitFor(() => expect(h.closedHandlers).toHaveLength(1));
+    const remoteAgent = lastAgent();
+    registerAgentInIndex(remoteAgent);
+    const sessionId = remoteAgent.sessionId as string;
+
+    // The initial attach (above) succeeded; every reconnect attempt fails —
+    // the tunnel cannot be re-established while the network is still down.
+    // Once-mocks expire so they can't leak into later tests.
+    for (let i = 0; i < 5; i++) {
+      vi.mocked(connectRemoteDaemon).mockRejectedValueOnce(new Error('tunnel down'));
+    }
+    // Shrink the backoff so all five attempts finish in milliseconds.
+    (DesktopHost as unknown as { autoReconnectBaseDelayMs: number }).autoReconnectBaseDelayMs = 1;
+    h.closedHandlers[0]();
+
+    // The sequence caps out: five retries, then a final give-up message.
+    await vi.waitFor(() => {
+      expect(sent('appendMessage').some((m) => JSON.stringify(m).includes('自动重连失败（已尝试 5 次）'))).toBe(true);
+    });
+    // 5 reconnect attempts on top of the original attach.
+    expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(6);
+    // The pane is back to the new-session state on the same host — the session
+    // still exists remotely, detached (spec scenario 10: no ghost running marker).
     await vi.waitFor(() => {
       const panes = sent('desktopPanes').at(-1) as { panes: Array<{ sessionId?: string; host: string }> };
       expect(panes.panes[0].sessionId).toBeUndefined();
       expect(panes.panes[0].host).toBe('prod');
     });
-    // No ghost running marker: a disconnected host cannot report live state,
-    // which is also what a dead daemon looks like (spec scenario 10).
+    const sessions = treeSessions(sent('desktopSessionTree').at(-1));
+    expect(sessions.find((s) => s.sessionId === sessionId)?.running).toBe(false);
+  });
+
+  it('a user action supersedes the auto-reconnect (retries stop, the half-spawned agent is discarded)', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    h.existingPaths.add('/remote/repo');
+    h.existingPaths.add('/remote/other');
+    const { host, store, sent } = await readyHost();
+
+    await host.handleWebviewMessage({ command: 'desktopSelectRemotePath', host: 'prod', path: '/remote/repo' });
+    await vi.waitFor(() => expect(h.closedHandlers).toHaveLength(1));
+    const remoteAgent = lastAgent();
+    registerAgentInIndex(remoteAgent);
+
+    // Park the auto-reconnect's first spawn so the user can act first.
+    // [0] = readyHost's local agent, [1] = the remote session agent,
+    // [2] = the reconnect's agent (parked on the gate).
+    let releaseInitialize!: () => void;
+    h.initializeGate = new Promise<void>((resolve) => (releaseInitialize = resolve));
+    h.closedHandlers[0]();
+    await vi.waitFor(() => expect(h.agentInstances.length).toBe(3)); // reconnect's agent spawned, parked
+
+    // The user picks a different remote session while the reconnect is in flight.
+    store.upsertSession({
+      sessionId: 'other-1',
+      title: 'Other remote',
+      host: 'prod',
+      workdir: '/remote/other',
+      cwd: '/remote/other',
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+    });
+    const selectPromise = host.handleWebviewMessage({
+      command: 'desktopSelectSession',
+      workdir: '/remote/other',
+      sessionId: 'other-1',
+    });
+    await vi.waitFor(() => expect(h.agentInstances.length).toBe(4)); // user's restore spawned, parked
+
+    releaseInitialize();
+    await selectPromise;
+
+    // The user's selection wins: the pane binds the other session…
     await vi.waitFor(() => {
-      const sessions = treeSessions(sent('desktopSessionTree').at(-1));
-      expect(sessions.find((s) => s.sessionId === sessionId)?.running).toBe(false);
+      const panes = sent('desktopPanes').at(-1) as { panes: Array<{ sessionId?: string; host: string }> };
+      expect(panes.panes[0].sessionId).toBe('other-1');
+      expect(panes.panes[0].host).toBe('prod');
+    });
+    // …the reconnect's half-spawned agent is discarded…
+    const reconnectAgent = h.agentInstances[2] as unknown as { destroy: ReturnType<typeof vi.fn> };
+    await vi.waitFor(() => expect(reconnectAgent.destroy).toHaveBeenCalled());
+    // …and the sequence stops: no further tunnel attempts beyond the reconnect's first.
+    await vi.waitFor(() => {
+      expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(2);
     });
   });
 
