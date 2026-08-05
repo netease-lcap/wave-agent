@@ -86,6 +86,12 @@ export interface AgentOptions {
    */
   disallowedTools?: string[];
   /**
+   * Optional list of additional directories to include in the Safe Zone
+   * for this agent session. These directories are listed in the system
+   * prompt and treated as safe for file operations (e.g. in acceptEdits mode).
+   */
+  additionalDirectories?: string[];
+  /**
    * Optional MCP server configs to connect at startup.
    * Overrides .mcp.json for specified server names.
    */

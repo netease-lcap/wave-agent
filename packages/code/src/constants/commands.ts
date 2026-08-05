@@ -80,4 +80,10 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     description: "Compact conversation history to reduce context usage",
     handler: () => {},
   },
+  {
+    id: "add-dir",
+    name: "add-dir",
+    description: "Add a directory to the session Safe Zone",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
 ];

@@ -746,6 +746,8 @@ export class AIManager {
       language: this.getLanguage(),
       isSubagent: !!this.subagentType,
       worktreeSession: this.getWorktreeSession(),
+      additionalWorkingDirectories:
+        this.permissionManager?.getEffectiveAdditionalDirectories?.() ?? [],
       autoMemory: autoMemoryOptions,
     });
   }

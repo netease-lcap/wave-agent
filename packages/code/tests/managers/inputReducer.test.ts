@@ -1960,6 +1960,31 @@ describe("inputReducer", () => {
       });
     });
 
+    it("should execute add-dir as CLI-internal command with arguments", () => {
+      // /add-dir is an internal CLI command — should be EXECUTE_COMMAND with args
+      const state: InputState = {
+        ...initialState,
+        inputText: "/add-dir ./config --remember",
+        cursorPosition: 25,
+      };
+
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand: () => false,
+        },
+      });
+
+      expect(result.inputText).toBe("");
+      expect(result.pendingEffect).toEqual({
+        type: "EXECUTE_COMMAND",
+        command: "add-dir",
+        args: "./config --remember",
+      });
+    });
+
     it("should send agent slash command as message even without arguments", () => {
       // Agent commands (registered via hasSlashCommand) are NOT internal CLI
       // commands — they should always be sent as SEND_MESSAGE

@@ -88,6 +88,12 @@ export async function main() {
         string: true,
         global: false,
       })
+      .option("add-dir", {
+        description: "Add a directory to the session Safe Zone (repeatable)",
+        type: "array",
+        string: true,
+        global: false,
+      })
       .option("tools", {
         description:
           'Specify a comma-separated list of tools to enable (e.g., \'Bash,Read,Write\'). Use "" to disable all, "default" for all.',
@@ -321,6 +327,12 @@ export async function main() {
       path.resolve(originalCwd, dir),
     );
 
+    // Resolve additional directories to absolute paths (relative to the
+    // original working directory, before any worktree change)
+    const additionalDirectories = (argv.addDir as string[] | undefined)?.map(
+      (dir) => path.resolve(originalCwd, dir),
+    );
+
     let worktreeSession: WorktreeSession | undefined;
     if (
       argv.worktree !== undefined ||
@@ -365,6 +377,7 @@ export async function main() {
         bypassPermissions: argv.dangerouslySkipPermissions as boolean,
         permissionMode: argv.permissionMode as PermissionMode | undefined,
         pluginDirs,
+        additionalDirectories,
         tools,
         allowedTools,
         disallowedTools,
@@ -390,6 +403,7 @@ export async function main() {
           | undefined,
         permissionMode: argv.permissionMode as PermissionMode | undefined,
         pluginDirs,
+        additionalDirectories,
         tools,
         allowedTools,
         disallowedTools,
@@ -420,6 +434,7 @@ export async function main() {
       bypassPermissions: argv.dangerouslySkipPermissions as boolean | undefined,
       permissionMode: argv.permissionMode as PermissionMode | undefined,
       pluginDirs,
+      additionalDirectories,
       tools,
       allowedTools,
       disallowedTools,

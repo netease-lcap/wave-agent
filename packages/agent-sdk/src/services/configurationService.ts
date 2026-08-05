@@ -920,6 +920,46 @@ export class ConfigurationService {
   }
 
   /**
+   * Add an additional directory to the local settings.local.json
+   * `permissions.additionalDirectories`, so it persists across sessions.
+   */
+  async addAdditionalDirectory(
+    workdir: string,
+    directory: string,
+  ): Promise<void> {
+    const localConfigPath = path.join(workdir, ".wave", "settings.local.json");
+
+    // Ensure .wave directory exists
+    const waveDir = path.join(workdir, ".wave");
+    ensureWaveRuntimeFilesExcluded(workdir);
+    if (!existsSync(waveDir)) {
+      await fs.mkdir(waveDir, { recursive: true });
+    }
+
+    let config: WaveConfiguration = {};
+    if (existsSync(localConfigPath)) {
+      try {
+        const content = await fs.readFile(localConfigPath, "utf-8");
+        config = JSON.parse(content);
+      } catch {
+        // If file is corrupted, start with empty config
+      }
+    }
+
+    if (!config.permissions) {
+      config.permissions = {};
+    }
+    if (!config.permissions.additionalDirectories) {
+      config.permissions.additionalDirectories = [];
+    }
+
+    if (!config.permissions.additionalDirectories.includes(directory)) {
+      config.permissions.additionalDirectories.push(directory);
+      await atomicWriteFile(localConfigPath, JSON.stringify(config, null, 2));
+    }
+  }
+
+  /**
    * Update the enabled state of a plugin in the specified scope
    */
   async updateEnabledPlugin(

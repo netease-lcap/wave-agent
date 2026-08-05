@@ -231,6 +231,47 @@ describe("prompts", () => {
       expect(result).not.toContain("original repository root");
     });
 
+    it("should list additional working directories as bullets in main agent env", () => {
+      const result = flattenBlocks(
+        buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+          workdir: "/some/path",
+          additionalWorkingDirectories: ["/some/path/config", "/opt/shared"],
+        }),
+      );
+
+      expect(result).toContain("Additional working directories:");
+      expect(result).toContain("  - /some/path/config");
+      expect(result).toContain("  - /opt/shared");
+      // Title appears before the first bullet
+      expect(result.indexOf("Additional working directories:")).toBeLessThan(
+        result.indexOf("  - /some/path/config"),
+      );
+    });
+
+    it("should not include additional working directories section when empty", () => {
+      const result = flattenBlocks(
+        buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+          workdir: "/some/path",
+        }),
+      );
+
+      expect(result).not.toContain("Additional working directories:");
+    });
+
+    it("should list additional working directories on a single line in subagent env", () => {
+      const result = flattenBlocks(
+        buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+          workdir: "/some/path",
+          isSubagent: true,
+          additionalWorkingDirectories: ["/some/path/config", "/opt/shared"],
+        }),
+      );
+
+      expect(result).toContain(
+        "Additional working directories: /some/path/config, /opt/shared",
+      );
+    });
+
     it("should append Unix shell syntax hint when platform is win32", () => {
       const originalShell = process.env.SHELL;
       process.env.SHELL = "/bin/bash";

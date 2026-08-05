@@ -78,6 +78,12 @@ wave --model gpt-4o --disallowed-tools Bash,Write
 | -------------------------------- | ------------------------------------------------------------------------------ |
 | `--permission-mode <mode>`       | 设置权限模式：`default`、`acceptEdits`、`bypassPermissions`、`dontAsk`、`plan` |
 | `--dangerously-skip-permissions` | 跳过所有权限检查（危险）                                                       |
+| `--add-dir <path>`               | 将目录加入会话安全区域，可重复指定（仅当前会话生效）                            |
+
+```bash
+# 将 /data/exports 加入当前会话的安全区域
+wave --add-dir /data/exports
+```
 
 ### 2.4 工作目录 {#worktree-options}
 
@@ -155,6 +161,7 @@ wave update    # 更新 Wave CLI 到最新版本
 | `/logout`    | 清除 SSO 认证                  |
 | `/clear`     | 清除当前对话历史               |
 | `/compact`   | 压缩对话历史，减少 Token 占用  |
+| `/add-dir`   | 将目录加入会话安全区域（可带 `--remember` 持久化） |
 | `/btw`       | 旁路提问，不调用工具的快速问答 |
 
 > 了解更多：详见 [SDK 文档 - 斜杠命令](/sdk#slash-commands)
@@ -301,7 +308,23 @@ wave -r           # 列出可恢复的会话
 wave -r <id>      # 恢复指定会话
 ```
 
-### 7.13 Token 用量统计 {#token-stats}
+### 7.13 附加工作目录 {#additional-working-directories}
+
+默认情况下，Agent 只能在当前工作目录内读写文件。通过附加目录（additional working directories）将安全区域扩展到工作目录之外，目录内的文件操作不再触发权限确认，并在系统提示词中列出。
+
+```bash
+# 启动时加入（仅当前会话生效，可重复指定）
+wave --add-dir /data/exports
+
+# 会话进行中加入（--remember 追加到 .wave/settings.local.json 的
+# permissions.additionalDirectories，后续会话自动加载）
+/add-dir /data/exports
+/add-dir --remember /data/exports
+```
+
+无参数执行 `/add-dir` 显示用法及当前会话的附加目录列表。此功能为 CLI 专属入口；配置键 `permissions.additionalDirectories` 为通用配置，各端（CLI、VS Code 等）均生效。
+
+### 7.14 Token 用量统计 {#token-stats}
 
 在打印模式下配合 `--show-stats` 使用，输出结果末尾显示耗时和 Token 用量统计信息。
 

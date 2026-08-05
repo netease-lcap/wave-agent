@@ -396,6 +396,7 @@ export function buildSystemPrompt(
     language?: string;
     isSubagent?: boolean;
     worktreeSession?: WorktreeSession | null;
+    additionalWorkingDirectories?: string[];
     autoMemory?: {
       directory: string;
       content: string;
@@ -431,11 +432,17 @@ export function buildSystemPrompt(
     const osVersion = getUnameSR();
     const primaryWorkdir = options.originalWorkdir ?? options.workdir;
     const worktreeSession = options.worktreeSession;
+    const additionalWorkingDirectories =
+      options.additionalWorkingDirectories || [];
 
     if (options.isSubagent) {
       // Subagent env section, aligned with Claude Code's computeEnvInfo() +
       // enhanceSystemPromptWithEnvDetails() (without the model description and
       // knowledge cutoff lines, which Wave does not use).
+      const additionalDirsInfo =
+        additionalWorkingDirectories.length > 0
+          ? `Additional working directories: ${additionalWorkingDirectories.join(", ")}\n`
+          : "";
       dynamicText += `
 
 ${SUBAGENT_ENV_NOTES}
@@ -444,7 +451,7 @@ Here is useful information about the environment you are running in:
 <env>
 Working directory: ${primaryWorkdir}
 Is directory a git repo: ${isGitRepo}
-Platform: ${platform}
+${additionalDirsInfo}Platform: ${platform}
 ${shellInfo}
 OS Version: ${osVersion}
 </env>
@@ -453,21 +460,31 @@ OS Version: ${osVersion}
       // Main agent env section, aligned with Claude Code's
       // computeSimpleEnvInfo() (without the model description, knowledge
       // cutoff, and marketing lines, which Wave does not use).
-      const envItems = [
+      const envItems: Array<string | string[]> = [
         `Primary working directory: ${primaryWorkdir}`,
         worktreeSession
           ? `This is a git worktree — an isolated copy of the repository. Run all commands from this directory. Do NOT \`cd\` to the original repository root.`
           : null,
         `Is a git repository: ${isGitRepo}`,
+        additionalWorkingDirectories.length > 0
+          ? `Additional working directories:`
+          : null,
+        additionalWorkingDirectories.length > 0
+          ? additionalWorkingDirectories
+          : null,
         `Platform: ${platform}`,
         shellInfo,
         `OS Version: ${osVersion}`,
-      ].filter((item): item is string => item !== null);
+      ].filter((item): item is string | string[] => item !== null);
 
       const envBlock = [
         `# Environment`,
         `You have been invoked in the following environment: `,
-        ...envItems.map((item) => ` - ${item}`),
+        ...envItems.flatMap((item) =>
+          Array.isArray(item)
+            ? item.map((subItem) => `  - ${subItem}`)
+            : [` - ${item}`],
+        ),
       ].join("\n");
 
       dynamicText += `\n\n${envBlock}`;

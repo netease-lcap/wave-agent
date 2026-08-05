@@ -64,6 +64,7 @@ export interface ChatContextType {
   ) => Promise<string>;
   clearMessages: () => Promise<void>;
   compact: (instructions?: string) => Promise<void>;
+  addDir: (args?: string) => Promise<void>;
   abortMessage: () => void;
   recallQueuedMessage: () => QueuedMessage | null;
   removeQueuedMessageById: (id: string) => boolean;
@@ -160,6 +161,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   bypassPermissions,
   permissionMode: initialPermissionMode,
   pluginDirs,
+  additionalDirectories,
   tools,
   allowedTools,
   disallowedTools,
@@ -653,6 +655,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           canUseTool: permissionCallback,
           stream: true,
           plugins: pluginDirs?.map((path) => ({ type: "local", path })),
+          additionalDirectories,
           tools,
           allowedTools,
           disallowedTools,
@@ -710,6 +713,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       bypassPermissions,
       showConfirmation,
       pluginDirs,
+      additionalDirectories,
       tools,
       allowedTools,
       disallowedTools,
@@ -860,6 +864,52 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     },
     [refreshMessages, forceRemount],
   );
+
+  // /add-dir: add a directory to the session Safe Zone (session-level, with
+  // optional --remember persistence). Bare command shows usage + current list.
+  const addDir = useCallback(async (args?: string) => {
+    const agent = agentRef.current;
+    if (!agent) return;
+
+    // Show the result as a UI-only assistant text message (same display path
+    // as error blocks; not persisted to session history).
+    const showResult = (content: string) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+          role: "assistant",
+          timestamp: new Date().toISOString(),
+          blocks: [{ type: "text", content, stage: "end" }],
+        },
+      ]);
+    };
+
+    const rawArgs = (args ?? "").trim();
+    if (!rawArgs) {
+      const dirs = agent.getAdditionalDirectories();
+      const list =
+        dirs.length > 0
+          ? dirs.map((dir) => `  - ${dir}`).join("\n")
+          : "  (none)";
+      showResult(
+        `Usage: /add-dir <path> [--remember]\n\nAdditional working directories:\n${list}`,
+      );
+      return;
+    }
+
+    const remember = rawArgs.includes("--remember");
+    const dir = rawArgs.replace("--remember", "").trim();
+    if (!dir) {
+      showResult("Usage: /add-dir <path> [--remember]");
+      return;
+    }
+
+    await agent.addAdditionalDirectory(dir, { remember });
+    showResult(
+      `Added ${dir} to the session Safe Zone${remember ? " (remembered)" : ""}.`,
+    );
+  }, []);
 
   // Unified interrupt method, interrupt both AI messages and command execution
   const abortMessage = useCallback(() => {
@@ -1058,6 +1108,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     askBtw,
     clearMessages,
     compact,
+    addDir,
     abortMessage,
     recallQueuedMessage,
     removeQueuedMessageById,

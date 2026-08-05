@@ -100,6 +100,8 @@ describe("ChatProvider", () => {
     getGatewayConfig: vi.fn(() => ({ serverUrl: "http://localhost:8080" })),
     getMaxInputTokens: vi.fn(() => 128000),
     getWorkflowRuns: vi.fn(() => []),
+    getAdditionalDirectories: vi.fn(() => [] as string[]),
+    addAdditionalDirectory: vi.fn(),
   };
 
   beforeEach(() => {
@@ -1632,6 +1634,94 @@ describe("ChatProvider", () => {
 
     await vi.waitFor(() => {
       expect(lastValue?.queuedMessages).toHaveLength(0);
+    });
+  });
+
+  describe("/add-dir", () => {
+    const lastAssistantText = (val?: ChatContextType): string => {
+      const msgs = val?.messages ?? [];
+      const last = msgs[msgs.length - 1];
+      const block = last?.blocks.find((b) => b.type === "text");
+      return (block as { content?: string } | undefined)?.content ?? "";
+    };
+
+    it("bare command shows usage and current additional directories", async () => {
+      vi.mocked(mockAgent.getAdditionalDirectories).mockReturnValue([
+        "/opt/shared",
+      ]);
+      let lastValue: ChatContextType | undefined;
+      const onHookValue = (val: ChatContextType) => {
+        lastValue = val;
+      };
+
+      renderWithProvider(onHookValue);
+
+      await vi.waitFor(() => {
+        expect(lastValue).toBeDefined();
+      });
+
+      await lastValue!.addDir();
+
+      await vi.waitFor(() => {
+        const content = lastAssistantText(lastValue);
+        expect(content).toContain("Usage: /add-dir <path> [--remember]");
+        expect(content).toContain("Additional working directories:");
+        expect(content).toContain("  - /opt/shared");
+      });
+      expect(mockAgent.getAdditionalDirectories).toHaveBeenCalled();
+      expect(mockAgent.addAdditionalDirectory).not.toHaveBeenCalled();
+    });
+
+    it("adds a directory session-level without persistence by default", async () => {
+      let lastValue: ChatContextType | undefined;
+      const onHookValue = (val: ChatContextType) => {
+        lastValue = val;
+      };
+
+      renderWithProvider(onHookValue);
+
+      await vi.waitFor(() => {
+        expect(lastValue).toBeDefined();
+      });
+
+      await lastValue!.addDir("./config");
+
+      expect(mockAgent.addAdditionalDirectory).toHaveBeenCalledWith(
+        "./config",
+        {
+          remember: false,
+        },
+      );
+      await vi.waitFor(() => {
+        const content = lastAssistantText(lastValue);
+        expect(content).toContain("Added ./config");
+        expect(content).not.toContain("remembered");
+      });
+    });
+
+    it("persists the directory when --remember is passed", async () => {
+      let lastValue: ChatContextType | undefined;
+      const onHookValue = (val: ChatContextType) => {
+        lastValue = val;
+      };
+
+      renderWithProvider(onHookValue);
+
+      await vi.waitFor(() => {
+        expect(lastValue).toBeDefined();
+      });
+
+      await lastValue!.addDir("./config --remember");
+
+      expect(mockAgent.addAdditionalDirectory).toHaveBeenCalledWith(
+        "./config",
+        {
+          remember: true,
+        },
+      );
+      await vi.waitFor(() => {
+        expect(lastAssistantText(lastValue)).toContain(" (remembered)");
+      });
     });
   });
 });

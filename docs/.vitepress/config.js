@@ -253,7 +253,8 @@ export default {
             { text: '7.10 后台任务', link: '/cli#background-tasks' },
             { text: '7.11 SSO 认证', link: '/cli#sso' },
             { text: '7.12 会话管理', link: '/cli#session-management' },
-            { text: '7.13 Token 用量统计', link: '/cli#token-stats' },
+            { text: '7.13 附加工作目录', link: '/cli#additional-working-directories' },
+            { text: '7.14 Token 用量统计', link: '/cli#token-stats' },
           ],
         },
         {

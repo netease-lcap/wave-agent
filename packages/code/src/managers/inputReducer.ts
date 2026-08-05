@@ -99,6 +99,7 @@ export interface InputManagerCallbacks {
   ) => Promise<string>;
   onClearMessages?: () => Promise<void>;
   onCompact?: (instructions?: string) => Promise<void>;
+  onAddDir?: (args?: string) => Promise<void>;
   sessionId?: string;
   workdir?: string;
   getFullMessageThread?: () => Promise<{

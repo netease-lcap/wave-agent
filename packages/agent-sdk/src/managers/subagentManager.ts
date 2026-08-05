@@ -341,6 +341,8 @@ export class SubagentManager {
       ],
       additionalDirectories:
         parentPermissionManager?.getAdditionalDirectories(),
+      instanceAdditionalDirectories:
+        parentPermissionManager?.getInstanceAdditionalDirectories?.(),
       systemAdditionalDirectories:
         parentPermissionManager?.getSystemAdditionalDirectories(),
       planFilePath: parentPermissionManager?.getPlanFilePath(),

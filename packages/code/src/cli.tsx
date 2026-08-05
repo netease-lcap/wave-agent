@@ -17,6 +17,7 @@ export async function startCli(options: CliOptions): Promise<void> {
     bypassPermissions,
     permissionMode,
     pluginDirs,
+    additionalDirectories,
     tools,
     allowedTools,
     disallowedTools,
@@ -55,6 +56,7 @@ export async function startCli(options: CliOptions): Promise<void> {
       bypassPermissions={bypassPermissions}
       permissionMode={permissionMode}
       pluginDirs={pluginDirs}
+      additionalDirectories={additionalDirectories}
       tools={tools}
       allowedTools={allowedTools}
       disallowedTools={disallowedTools}
