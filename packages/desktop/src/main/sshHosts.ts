@@ -166,8 +166,12 @@ export function buildSshSpawnArgs(host: string, remoteCommand: string): string[]
  * `-N` means no remote command — the tunnel just forwards. ExitOnForwardFailure
  * makes ssh exit (instead of idling) when the remote end refuses the forward,
  * so a missing daemon socket surfaces as a tunnel exit rather than a silent
- * half-open connection. No login shell is needed: `-N` tunnels never run a
- * remote command.
+ * half-open connection. ServerAliveInterval/CountMax send application-level
+ * keepalives through the encrypted channel: after a machine sleep the TCP
+ * connection is often half-open (no RST/FIN), and only these probes make ssh
+ * detect the dead tunnel in bounded time instead of idling on SO_KEEPALIVE
+ * (macOS probes after ~2h idle by default). No login shell is needed: `-N`
+ * tunnels never run a remote command.
  */
 export function buildSshTunnelArgs(
   host: string,
@@ -177,6 +181,8 @@ export function buildSshTunnelArgs(
   return [
     ...SSH_BASE_OPTIONS,
     '-o', 'ExitOnForwardFailure=yes',
+    '-o', 'ServerAliveInterval=15',
+    '-o', 'ServerAliveCountMax=4',
     '-N',
     '-L', `${localSocketPath}:${remoteSocketPath}`,
     host,

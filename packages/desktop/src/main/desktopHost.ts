@@ -107,6 +107,17 @@ const MIN_PANE_ROW_HEIGHT_PX = 280;
 const SIDEBAR_WIDTH_PX = 240;
 /** Float tolerance for ratio-vs-minimum comparisons. */
 const WIDTH_EPSILON = 1e-9;
+/** Max auto-reconnect attempts after a dropped ssh tunnel (spec: SSH 远程会话自动重连). */
+const AUTO_RECONNECT_MAX_ATTEMPTS = 5;
+
+/** A pane-bound session targeted by the auto-reconnect after a dropped tunnel. */
+interface ReconnectTarget {
+  paneId: string;
+  sessionId: string;
+  workdir: string;
+  host: string;
+  entry?: SessionIndexEntry;
+}
 
 export class DesktopHost {
   private mainWindow: BrowserWindow | null = null;
@@ -131,6 +142,13 @@ export class DesktopHost {
       initPromise: Promise<void>;
     }
   >();
+
+  /**
+   * Base delay (ms) between auto-reconnect attempts after a dropped tunnel;
+   * doubles per failure (2s → 4s → 8s → 16s). A static so tests can shrink it
+   * without faking timers.
+   */
+  private static autoReconnectBaseDelayMs = 2000;
 
   // agent pool (multi-session parallel): `${host}\u0000${sessionId}` → live
   // StdioAgent (composite key keeps sessions from different hosts distinct).
@@ -519,7 +537,12 @@ export class DesktopHost {
       client.onClosed(() => {
         this.remoteHosts.delete(host);
         tunnel.kill();
+        // Collect pane-bound sessions BEFORE detaching (dropHostAgents unbinds
+        // panes) so the auto-reconnect can re-attach them through a fresh
+        // tunnel without the user re-selecting them.
+        const targets = this.collectReconnectTargets(host);
         this.dropHostAgents(host);
+        if (targets.length > 0) this.startAutoReconnect(targets);
       });
     })();
 
@@ -1323,24 +1346,27 @@ export class DesktopHost {
    * Background half of startPaneRestore: connect the host, spawn + restore the
    * agent, then activate it in the pane. Every step re-checks the restore
    * token — a newer selection, activation or pane close supersedes this
-   * restore, in which case the freshly spawned agent is discarded.
+   * restore, in which case the freshly spawned agent is discarded. Returns
+   * true when the pane is settled (restored, or superseded by a newer action);
+   * false only in autoReconnect mode after a failed attempt, meaning the
+   * sequence should back off and retry.
    */
   private async runPaneRestore(
     paneId: string,
-    opts: { sessionId: string; workdir: string; host: string; entry?: SessionIndexEntry },
-  ): Promise<void> {
+    opts: { sessionId: string; workdir: string; host: string; entry?: SessionIndexEntry; autoReconnect?: boolean },
+  ): Promise<boolean> {
     const token = this.pendingRestores.get(paneId)?.token;
     let agent: StdioAgent | undefined;
     try {
       agent = await this.spawnAgent({ host: opts.host, workdir: opts.workdir, worktreeInfo: opts.entry?.worktree, sessionId: opts.sessionId });
       if (this.pendingRestores.get(paneId)?.token !== token) {
         await this.discardAgent(agent);
-        return;
+        return true;
       }
       await agent.restoreSession(opts.sessionId);
       if (this.pendingRestores.get(paneId)?.token !== token) {
         await this.discardAgent(agent);
-        return;
+        return true;
       }
       // Restore is a bare RPC — the daemon does not deliver the transcript, so
       // pull it into the cache. Without this, a re-attached session (remote or
@@ -1361,21 +1387,30 @@ export class DesktopHost {
       if (opts.host !== LOCAL_HOST) {
         void this.attachPendingPermissionsForSession(opts.host, opts.sessionId, agent);
       }
+      return true;
     } catch (error) {
       console.error('[DesktopHost] 恢复会话失败:', error);
-      // Only the latest restore clears the overlay; superseded restores
-      // already cleaned up via their token checks.
-      if (this.pendingRestores.get(paneId)?.token === token) {
-        this.pendingRestores.delete(paneId);
-        // A failed restore leaves the previous agent bound (or nothing for a
-        // fresh pane) — push that state so the overlay disappears. An agent
-        // that never made it into a pane is destroyed.
+      // A superseded restore already cleaned up via its token checks.
+      if (this.pendingRestores.get(paneId)?.token !== token) return true;
+      if (opts.autoReconnect) {
+        // Auto-reconnect mode: keep the sweep overlay (pendingRestores entry)
+        // — the sequence retries and owns the give-up message. Discard an
+        // agent that never made it into a pane.
         if (agent && this.paneIdForAgent(agent) !== paneId) {
           void this.discardAgent(agent);
         }
-        await this.pushPaneSessionState(paneId);
-        this.pushSystemMessage(`恢复会话失败: ${error instanceof Error ? error.message : String(error)}`, paneId);
+        return false;
       }
+      this.pendingRestores.delete(paneId);
+      // A failed restore leaves the previous agent bound (or nothing for a
+      // fresh pane) — push that state so the overlay disappears. An agent
+      // that never made it into a pane is destroyed.
+      if (agent && this.paneIdForAgent(agent) !== paneId) {
+        void this.discardAgent(agent);
+      }
+      await this.pushPaneSessionState(paneId);
+      this.pushSystemMessage(`恢复会话失败: ${error instanceof Error ? error.message : String(error)}`, paneId);
+      return true;
     }
   }
 
@@ -1434,6 +1469,79 @@ export class DesktopHost {
       this.refreshSessionTree();
       this.pushPanes();
     }
+  }
+
+  // -- auto-reconnect (spec: SSH 远程会话自动重连) -------------------------------
+
+  /** Pane-bound sessions of a host whose tunnel dropped — auto-reconnect targets. */
+  private collectReconnectTargets(host: string): ReconnectTarget[] {
+    const index = this.configStore.getSessionIndex();
+    const targets: ReconnectTarget[] = [];
+    for (const pane of this.panes) {
+      const agent = pane.agent;
+      if (!agent || !agent.sessionId) continue;
+      if (this.hostForAgent(agent) !== host) continue;
+      const entry = index.find((e) => e.sessionId === agent.sessionId);
+      targets.push({
+        paneId: pane.paneId,
+        sessionId: agent.sessionId,
+        workdir: entry?.cwd ?? agent.workingDirectory ?? '',
+        host,
+        entry,
+      });
+    }
+    return targets;
+  }
+
+  /** Launch one auto-reconnect sequence per affected pane. */
+  private startAutoReconnect(targets: ReconnectTarget[]): void {
+    for (const t of targets) {
+      void this.autoReconnectPane(t);
+    }
+  }
+
+  /**
+   * Re-attach a pane's session after its host's tunnel dropped. Each attempt
+   * reuses the sidebar-restore machinery (overlay + token checks); a failure
+   * keeps the overlay and backs off (base delay doubles per attempt). Any user
+   * action that supersedes the restore — new session, pane close, host switch,
+   * manual re-select — stops the sequence: canAutoReconnect and the restore
+   * token checks both detect it.
+   */
+  private async autoReconnectPane(t: ReconnectTarget): Promise<void> {
+    for (let attempt = 1; attempt <= AUTO_RECONNECT_MAX_ATTEMPTS; attempt++) {
+      if (!this.canAutoReconnect(t)) return;
+      this.startPaneRestore(t.paneId, { sessionId: t.sessionId, workdir: t.workdir, host: t.host });
+      const handled = await this.runPaneRestore(t.paneId, { ...t, autoReconnect: true });
+      if (handled) return;
+      if (attempt < AUTO_RECONNECT_MAX_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, DesktopHost.autoReconnectBaseDelayMs * 2 ** (attempt - 1)));
+      }
+    }
+    // Give up: clear the overlay (the pane returns to the new-session state)
+    // and tell the user the session is still running remotely and reachable.
+    if (this.pendingRestores.get(t.paneId)?.sessionId === t.sessionId) {
+      this.pendingRestores.delete(t.paneId);
+      await this.pushPaneSessionState(t.paneId);
+      this.pushSystemMessage(
+        `与 ${t.host} 的连接断开后自动重连失败（已尝试 ${AUTO_RECONNECT_MAX_ATTEMPTS} 次），会话仍在远端运行，请检查网络后从侧边栏重新进入。`,
+        t.paneId,
+      );
+    }
+  }
+
+  /** Per-attempt pre-check: the pane must still be the empty restore target. */
+  private canAutoReconnect(t: ReconnectTarget): boolean {
+    const pane = this.panes.find((p) => p.paneId === t.paneId);
+    if (!pane) return false; // pane closed
+    if (pane.agent) return false; // user bound a session (incl. a manual re-attach)
+    if (this.hostState.get(t.paneId) !== t.host) return false; // host switched
+    // No entry yet = the first attempt (startPaneRestore runs after this
+    // check); an entry that no longer targets this session means a user
+    // action superseded the restore.
+    const pending = this.pendingRestores.get(t.paneId);
+    if (pending && pending.sessionId !== t.sessionId) return false;
+    return true;
   }
 
   /** Lazily-created per-pane throttle state. */
