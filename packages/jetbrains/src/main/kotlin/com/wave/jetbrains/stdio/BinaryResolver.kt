@@ -29,7 +29,7 @@ object BinaryResolver {
     /** Optional callback invoked when an npm install/upgrade starts. */
     var onInstall: ((String) -> Unit)? = null
 
-    fun resolveWaveBinary(): String {
+    fun resolveWaveBinary(targetVersion: String? = null): String {
         cachedPath?.let { return it }
 
         // 0. Verify Node.js >= 20 — wave --stdio requires it.
@@ -49,11 +49,12 @@ object BinaryResolver {
         val globalPath = File(globalBin, waveName).path
         if (File(globalPath).exists()) return cache(globalPath)
 
-        // 4. auto-install
+        // 4. auto-install — pin the exact version (same as the upgrade path).
         val npm = findNpm()
-        LOG.info("wave not found; running: \"$npm\" install -g $PACKAGE --registry=$NPM_REGISTRY")
-        onInstall?.invoke("正在安装 wave-code，请稍候…")
-        runCommand(npm, "install", "-g", PACKAGE, "--registry=$NPM_REGISTRY")
+        val spec = if (targetVersion != null) "$PACKAGE@$targetVersion" else PACKAGE
+        LOG.info("wave not found; running: \"$npm\" install -g $spec --registry=$NPM_REGISTRY")
+        onInstall?.invoke(if (targetVersion != null) "正在安装 wave-code@$targetVersion，请稍候…" else "正在安装 wave-code，请稍候…")
+        runCommand(npm, "install", "-g", spec, "--registry=$NPM_REGISTRY")
 
         // 5. recheck global bin
         if (File(globalPath).exists()) return cache(globalPath)
@@ -62,7 +63,8 @@ object BinaryResolver {
         findOnPath(waveName)?.let { return cache(it) }
 
         // 7. fail
-        throw StdioClientException("wave binary not found after installation. Install manually: npm install -g $PACKAGE --registry=$NPM_REGISTRY")
+        val manual = if (targetVersion != null) "$PACKAGE@$targetVersion" else PACKAGE
+        throw StdioClientException("wave binary not found after installation. Install manually: npm install -g $manual --registry=$NPM_REGISTRY")
     }
 
     /**
@@ -110,7 +112,7 @@ object BinaryResolver {
      * ensureCliUpToDate.
      */
     fun ensureCliUpToDate(targetVersion: String): String {
-        val binaryPath = resolveWaveBinary()
+        val binaryPath = resolveWaveBinary(targetVersion)
         val current = getCliVersion(binaryPath)
         if (current != null) {
             val cmp = try { compareVersions(current, targetVersion) } catch (_: Exception) { 0 }

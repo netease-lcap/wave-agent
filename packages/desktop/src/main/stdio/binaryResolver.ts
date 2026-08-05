@@ -2,7 +2,7 @@
  * BinaryResolver — locates or installs the `wave` CLI binary.
  *
  * 1. Check PATH for `wave`
- * 2. If missing, run `npm install -g wave-code`
+ * 2. If missing, run `npm install -g wave-code[@<version>]`
  * 3. Resolve via npm global prefix
  *
  * Result is cached for the extension lifetime.
@@ -15,6 +15,26 @@ import { parseVersion, compareVersions } from '../version';
 
 /** npm registry mirror for China users (faster than the default registry). */
 export const NPM_REGISTRY = 'https://registry.npmmirror.com';
+
+/**
+ * Strict semver — versions are interpolated into shell commands (on Windows
+ * through cmd.exe), so a non-semver version must never reach the shell.
+ */
+const SEMVER_RE = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+
+/**
+ * `wave-code` package specifier for install/upgrade commands: pins the exact
+ * version when one is known, otherwise the bare package (resolves to @latest).
+ * Throws "Invalid version" on non-semver input (same no-shell-injection
+ * guarantee as upgradeWaveBinary).
+ */
+function waveCodeSpec(targetVersion?: string): string {
+    if (targetVersion == null) return 'wave-code';
+    if (!SEMVER_RE.test(targetVersion)) {
+        throw new Error(`Invalid version: ${targetVersion}`);
+    }
+    return `wave-code@${targetVersion}`;
+}
 
 let cachedPath: string | undefined;
 
@@ -165,7 +185,7 @@ function fileExists(p: string): boolean {
 /** Optional callback invoked when an npm install/upgrade starts. */
 export type InstallProgressCallback = (message: string) => void;
 
-export function resolveWaveBinary(onInstall?: InstallProgressCallback): string {
+export function resolveWaveBinary(onInstall?: InstallProgressCallback, targetVersion?: string): string {
     if (cachedPath) return cachedPath;
 
     // 0. Verify Node.js >= 20 — wave --stdio requires it.
@@ -198,7 +218,7 @@ export function resolveWaveBinary(onInstall?: InstallProgressCallback): string {
         // NodeJsNotFoundError / NodeJsVersionError have user-friendly messages — propagate.
         if (e instanceof NodeJsNotFoundError || e instanceof NodeJsVersionError) throw e;
         throw new Error(
-            'Failed to determine npm global directory. Please install wave-code manually: npm install -g wave-code --registry=https://registry.npmmirror.com',
+            `Failed to determine npm global directory. Please install wave-code manually: npm install -g ${targetVersion ? `wave-code@${targetVersion}` : 'wave-code'} --registry=${NPM_REGISTRY}`,
         );
     }
 
@@ -209,11 +229,12 @@ export function resolveWaveBinary(onInstall?: InstallProgressCallback): string {
         return cachedPath;
     }
 
-    // 3. Install globally
-    console.log('[Wave] wave binary not found, installing wave-code globally...');
-    onInstall?.('正在安装 wave-code，请稍候…');
+    // 3. Install globally — pin the exact version (same as the upgrade path).
+    const spec = waveCodeSpec(targetVersion);
+    console.log(`[Wave] wave binary not found, installing ${spec} globally...`);
+    onInstall?.(targetVersion ? `正在安装 wave-code@${targetVersion}，请稍候…` : '正在安装 wave-code，请稍候…');
     const npm = findNpm();
-    execSync(`"${npm}" install -g wave-code --registry=${NPM_REGISTRY}`, {
+    execSync(`"${npm}" install -g ${spec} --registry=${NPM_REGISTRY}`, {
         encoding: 'utf-8',
         stdio: 'pipe',
     });
@@ -236,7 +257,7 @@ export function resolveWaveBinary(onInstall?: InstallProgressCallback): string {
     }
 
     throw new Error(
-        'wave binary not found after installation. Please install manually: npm install -g wave-code --registry=https://registry.npmmirror.com',
+        `wave binary not found after installation. Please install manually: npm install -g ${targetVersion ? `wave-code@${targetVersion}` : 'wave-code'} --registry=${NPM_REGISTRY}`,
     );
 }
 
@@ -274,7 +295,7 @@ export function getCliVersion(binaryPath: string): string | null {
  *    targetVersion (which resets the cache and re-resolves).
  */
 export async function ensureCliUpToDate(targetVersion: string, onInstall?: InstallProgressCallback): Promise<string> {
-    const binaryPath = resolveWaveBinary(onInstall);
+    const binaryPath = resolveWaveBinary(onInstall, targetVersion);
     const current = getCliVersion(binaryPath);
     if (current !== null) {
         const cur = parseVersion(current);
@@ -303,17 +324,14 @@ export async function upgradeWaveBinary(targetVersion: string, onInstall?: Insta
     // through cmd.exe (see shell option below); a strict semver check preserves
     // the "no shell injection of the version arg" guarantee this function held
     // when it used execFile without a shell.
-    const SEMVER_RE = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
-    if (!SEMVER_RE.test(targetVersion)) {
-        throw new Error(`Invalid version: ${targetVersion}`);
-    }
+    const spec = waveCodeSpec(targetVersion);
 
     onInstall?.(`正在升级 wave-code 到 v${targetVersion}，请稍候…`);
     const npm = findNpm();
     await new Promise<void>((resolve, reject) => {
         execFile(
             quoteForShell(npm),
-            ['install', '-g', `wave-code@${targetVersion}`, `--registry=${NPM_REGISTRY}`],
+            ['install', '-g', spec, `--registry=${NPM_REGISTRY}`],
             // `npm` is `npm.cmd` on Windows; Node refuses to execFile a `.cmd`
             // without a shell (ERR_CHILD_PROCESS_INVALID_COMMAND_FILE). The
             // validated version above contains no shell metacharacters.

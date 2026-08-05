@@ -27,6 +27,27 @@ export const REMOTE_INSTALL_REGISTRY = 'https://registry.npmmirror.com';
 const PROBE_TIMEOUT_MS = 15_000;
 const INSTALL_TIMEOUT_MS = 5 * 60_000;
 
+/**
+ * Strict semver — versions are interpolated into the remote shell command
+ * (login shell via ssh), so a non-semver version must never reach it.
+ */
+const SEMVER_RE = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+
+/**
+ * Build the remote `npm install -g wave-code[@<version>]` command. Pins the
+ * exact version when one is known (same semantics as the local resolvers),
+ * otherwise installs the bare package (resolves to @latest). Throws
+ * "Invalid version" on non-semver input — the same no-shell-injection
+ * guarantee upgradeRemoteWave holds.
+ */
+function remoteInstallCommand(targetVersion?: string): string {
+  if (targetVersion != null && !SEMVER_RE.test(targetVersion)) {
+    throw new Error(`Invalid version: ${targetVersion}`);
+  }
+  const spec = targetVersion == null ? 'wave-code' : `wave-code@${targetVersion}`;
+  return `npm install -g ${spec} --registry=${REMOTE_INSTALL_REGISTRY}`;
+}
+
 export interface RemoteCliInfo {
   /** Absolute path to the `wave` binary on the remote host. */
   binaryPath: string;
@@ -51,10 +72,14 @@ async function remoteCommand(host: string, command: string): Promise<string[]> {
  * Resolve the remote `wave` binary for `host`. Steps:
  * 1. `node -v` — must be present and ≥ REMOTE_NODE_MIN_MAJOR.
  * 2. `command -v wave` — return the path when found.
- * 3. (installIfMissing) `npm install -g wave-code --registry=…`, then re-probe.
+ * 3. (installIfMissing) `npm install -g wave-code[@<version>] --registry=…`, then re-probe.
  * Throws with an actionable, user-facing error on any failure.
  */
-export async function resolveRemoteWaveBinary(host: string, installIfMissing = true): Promise<RemoteCliInfo> {
+export async function resolveRemoteWaveBinary(
+  host: string,
+  installIfMissing = true,
+  targetVersion?: string,
+): Promise<RemoteCliInfo> {
   let nodeVersion = '';
   try {
     const { stdout } = await execFileAsync('ssh', await remoteCommand(host, 'node -v'), {
@@ -87,7 +112,7 @@ export async function resolveRemoteWaveBinary(host: string, installIfMissing = t
   const found = await probeWave();
   if (found) return { binaryPath: found, nodeVersion };
 
-  const installCommand = `npm install -g wave-code --registry=${REMOTE_INSTALL_REGISTRY}`;
+  const installCommand = remoteInstallCommand(targetVersion);
   if (installIfMissing) {
     try {
       await execFileAsync('ssh', await remoteCommand(host, installCommand), {
@@ -137,11 +162,7 @@ async function getRemoteCliVersion(host: string, binaryPath: string): Promise<st
  * upgradeWaveBinary holds. Returns the freshly resolved binary path.
  */
 export async function upgradeRemoteWave(host: string, targetVersion: string): Promise<string> {
-  const SEMVER_RE = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
-  if (!SEMVER_RE.test(targetVersion)) {
-    throw new Error(`Invalid version: ${targetVersion}`);
-  }
-  const installCommand = `npm install -g wave-code@${targetVersion} --registry=${REMOTE_INSTALL_REGISTRY}`;
+  const installCommand = remoteInstallCommand(targetVersion);
   try {
     await execFileAsync('ssh', await remoteCommand(host, installCommand), {
       timeout: INSTALL_TIMEOUT_MS,
@@ -173,7 +194,7 @@ export async function ensureRemoteCliUpToDate(
   host: string,
   targetVersion: string,
 ): Promise<RemoteCliUpToDateResult> {
-  const { binaryPath } = await resolveRemoteWaveBinary(host);
+  const { binaryPath } = await resolveRemoteWaveBinary(host, true, targetVersion);
   const current = await getRemoteCliVersion(host, binaryPath);
   if (current !== null) {
     const cur = parseVersion(current);
@@ -473,7 +494,7 @@ export async function ensureRemoteDaemon(
   }
 
   if (await remoteDaemonAlive(host, socketPath)) return socketPath;
-  binaryPath ??= (await resolveRemoteWaveBinary(host)).binaryPath;
+  binaryPath ??= (await resolveRemoteWaveBinary(host, true, targetVersion)).binaryPath;
   await startRemoteDaemon(host, binaryPath, socketPath);
   await waitForRemoteDaemon(host, socketPath);
   return socketPath;

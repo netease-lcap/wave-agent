@@ -206,6 +206,105 @@ describe('binaryResolver', () => {
         expect(installCmd).toContain(`--registry=${NPM_REGISTRY}`);
     });
 
+    // ── first-install pins the exact version (spec: stdio-transport.md) ──
+    // When the CLI is missing entirely, the auto-install must pin
+    // `wave-code@<pluginVersion>` — NOT resolve @latest — so a plugin at 1.0.0
+    // never silently gets 1.0.1 (which ensureCliUpToDate would then accept).
+
+    it('resolveWaveBinary pins the exact version when a target version is given', async () => {
+        let installCmd = '';
+        mockExecSync.mockImplementation((cmd: string) => {
+            if (cmd.includes(waveLookup)) {
+                if (installCmd) return `${globalWave}\n`;
+                throw new Error('not found');
+            }
+            if (cmd.includes(npmLookup)) return `${npmBin}\n`;
+            if (cmd.includes('prefix -g')) return `${npmPrefix}\n`;
+            if (cmd.includes('install -g wave-code')) {
+                installCmd = cmd;
+                return '';
+            }
+            throw new Error(`unexpected: ${cmd}`);
+        });
+        mockExistsSync.mockImplementation((p: string) => !!installCmd && p === globalWave);
+
+        const result = await resolveWaveBinary(undefined, '1.0.0');
+        expect(result).toBe(globalWave);
+        expect(installCmd).toContain('install -g wave-code@1.0.0');
+        expect(installCmd).toContain(`--registry=${NPM_REGISTRY}`);
+    });
+
+    it('resolveWaveBinary falls back to the bare package when no version is given', async () => {
+        let installCmd = '';
+        mockExecSync.mockImplementation((cmd: string) => {
+            if (cmd.includes(waveLookup)) {
+                if (installCmd) return `${globalWave}\n`;
+                throw new Error('not found');
+            }
+            if (cmd.includes(npmLookup)) return `${npmBin}\n`;
+            if (cmd.includes('prefix -g')) return `${npmPrefix}\n`;
+            if (cmd.includes('install -g wave-code')) {
+                installCmd = cmd;
+                return '';
+            }
+            throw new Error(`unexpected: ${cmd}`);
+        });
+        mockExistsSync.mockImplementation((p: string) => !!installCmd && p === globalWave);
+
+        const result = await resolveWaveBinary();
+        expect(result).toBe(globalWave);
+        expect(installCmd).toContain('install -g wave-code ');
+        expect(installCmd).not.toContain('@');
+    });
+
+    it('ensureCliUpToDate pins the exact version on first install (wave missing)', async () => {
+        let installCmd = '';
+        mockExecSync.mockImplementation((cmd: string) => {
+            if (cmd.includes(waveLookup)) {
+                if (installCmd) return `${globalWave}\n`;
+                throw new Error('not found');
+            }
+            if (cmd.includes(npmLookup)) return `${npmBin}\n`;
+            if (cmd.includes('prefix -g')) return `${npmPrefix}\n`;
+            if (cmd.includes('install -g wave-code')) {
+                installCmd = cmd;
+                return '';
+            }
+            throw new Error(`unexpected: ${cmd}`);
+        });
+        mockExistsSync.mockImplementation((p: string) => !!installCmd && p === globalWave);
+        // wave -v after the pinned install reports exactly the target version.
+        mockExecFileSync.mockImplementation((cmd: string | Buffer) =>
+            String(cmd).replace(/^"|"$/g, '') === globalWave ? '1.0.0\n' : 'v20.0.0\n',
+        );
+
+        const result = await ensureCliUpToDate('1.0.0');
+        expect(result).toBe(globalWave);
+        expect(installCmd).toContain('install -g wave-code@1.0.0');
+        expect(installCmd).toContain(`--registry=${NPM_REGISTRY}`);
+        // Exact match → no follow-up upgrade.
+        expect(mockExecFile).not.toHaveBeenCalled();
+    });
+
+    it('resolveWaveBinary rejects non-semver target versions (shell-injection guard)', () => {
+        mockExecSync.mockImplementation((cmd: string) => {
+            if (cmd.includes(nodeLookup)) return `${nodeBin}\n`;
+            if (cmd.includes(npmLookup)) return `${npmBin}\n`;
+            if (cmd.includes('prefix -g')) return `${npmPrefix}\n`;
+            throw new Error('not found');
+        });
+        mockExistsSync.mockReturnValue(false);
+
+        expect(() => resolveWaveBinary(undefined, '1.0.0; rm -rf /')).toThrow('Invalid version');
+        expect(() => resolveWaveBinary(undefined, '$(rm -rf /)')).toThrow('Invalid version');
+        expect(() => resolveWaveBinary(undefined, 'latest')).toThrow('Invalid version');
+        // The invalid spec must never reach execSync (no shell injection).
+        const installCalls = mockExecSync.mock.calls.filter(
+            (c: unknown[]) => (c[0] as string).includes('install -g wave-code'),
+        );
+        expect(installCalls).toHaveLength(0);
+    });
+
     // ── resetCache ───────────────────────────────────────────────
 
     it('resetCache clears the cached path', async () => {

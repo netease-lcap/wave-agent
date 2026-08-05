@@ -121,6 +121,50 @@ describe('resolveRemoteWaveBinary', () => {
     expect(install).toContain('--registry=https://registry.npmmirror.com');
   });
 
+  it('pins the exact version when first-installing with a target version', async () => {
+    const commands: string[] = [];
+    const queue: StubResult[] = [
+      LOGIN_SHELL,
+      { stdout: 'v22.0.0' },
+      { error: new Error('not found') },
+      { stdout: '' },
+      { stdout: '/usr/local/bin/wave' },
+    ];
+    h.execFile.mockImplementation(
+      (_cmd: string, args: string[], _opts: unknown, cb: (err: Error | null, result: { stdout: string }) => void) => {
+        commands.push(args[args.length - 1] as string);
+        const next = queue.shift() ?? { stdout: '' };
+        if (next.error) cb(next.error, { stdout: '' });
+        else cb(null, { stdout: next.stdout ?? '' });
+      },
+    );
+    const info = await resolveRemoteWaveBinary('prod', true, '1.0.0');
+    expect(info.binaryPath).toBe('/usr/local/bin/wave');
+    const install = commands.find((c) => c.includes('npm install -g wave-code'));
+    expect(install).toContain('wave-code@1.0.0');
+    expect(install).toContain('--registry=https://registry.npmmirror.com');
+  });
+
+  it('rejects a non-semver target version before any install command runs', async () => {
+    const commands: string[] = [];
+    const queue: StubResult[] = [
+      LOGIN_SHELL,
+      { stdout: 'v22.0.0' },
+      { error: new Error('not found') },
+    ];
+    h.execFile.mockImplementation(
+      (_cmd: string, args: string[], _opts: unknown, cb: (err: Error | null, result: { stdout: string }) => void) => {
+        commands.push(args[args.length - 1] as string);
+        const next = queue.shift() ?? { stdout: '' };
+        if (next.error) cb(next.error, { stdout: '' });
+        else cb(null, { stdout: next.stdout ?? '' });
+      },
+    );
+    await expect(resolveRemoteWaveBinary('prod', true, '1.0.0; rm -rf /')).rejects.toThrow('Invalid version');
+    // The malicious version must never reach the remote shell as an npm command.
+    expect(commands.some((c) => c.includes('npm install -g'))).toBe(false);
+  });
+
   it('runs every probe under the host login shell so nvm-managed node is visible', async () => {
     stubExec([LOGIN_SHELL, { stdout: 'v22.0.0' }, { stdout: '/usr/local/bin/wave' }]);
     await resolveRemoteWaveBinary('prod');
