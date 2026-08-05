@@ -83,46 +83,6 @@ describe("MessageList Component", () => {
     });
   });
 
-  describe("Login hint", () => {
-    it("should display login hint when showLoginHint is true", () => {
-      const { lastFrame } = render(
-        <MessageList messages={[]} isExpanded={false} showLoginHint={true} />,
-      );
-
-      expect(lastFrame()).toContain("Type /login to authenticate");
-    });
-
-    it("should not display login hint when showLoginHint is false", () => {
-      const { lastFrame } = render(
-        <MessageList messages={[]} isExpanded={false} showLoginHint={false} />,
-      );
-
-      expect(lastFrame()).not.toContain("Type /login to authenticate");
-    });
-
-    it("should not display login hint by default", () => {
-      const { lastFrame } = render(
-        <MessageList messages={[]} isExpanded={false} />,
-      );
-
-      expect(lastFrame()).not.toContain("Type /login to authenticate");
-    });
-
-    it("should display login hint even when messages are present", () => {
-      const messages = [createMessage("user", "Hello", 1)];
-      const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isExpanded={false}
-          showLoginHint={true}
-        />,
-      );
-
-      expect(lastFrame()).toContain("Type /login to authenticate");
-      expect(lastFrame()).toContain("Hello - Message 1");
-    });
-  });
-
   describe("Basic message rendering", () => {
     it("should render a single message", () => {
       const messages = [createMessage("user", "Hello", 1)];

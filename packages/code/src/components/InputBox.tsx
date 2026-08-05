@@ -14,6 +14,7 @@ import { PluginManagerShell } from "./PluginManagerShell.js";
 import { ModelSelector } from "./ModelSelector.js";
 import { WorkflowManager } from "./WorkflowManager.js";
 import { StatusLine } from "./StatusLine.js";
+import { Notifications } from "./Notifications.js";
 import { BtwDisplay } from "./BtwDisplay.js";
 import { useInputManager } from "../hooks/useInputManager.js";
 import { useChat } from "../contexts/useChat.js";
@@ -49,6 +50,8 @@ export interface InputBoxProps {
   // Token usage
   latestTotalTokens?: number;
   maxInputTokens?: number;
+  // Login hint
+  showLoginHint?: boolean;
 }
 
 export const InputBox: React.FC<InputBoxProps> = ({
@@ -64,6 +67,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   hasSlashCommand = () => false,
   latestTotalTokens = 0,
   maxInputTokens = 200000,
+  showLoginHint = false,
 }) => {
   const {
     permissionMode: chatPermissionMode,
@@ -375,12 +379,17 @@ export const InputBox: React.FC<InputBoxProps> = ({
                   )}
                 </Text>
               </Box>
-              <StatusLine
-                permissionMode={permissionMode}
-                isShellCommand={isShellCommand}
-                latestTotalTokens={latestTotalTokens}
-                maxInputTokens={maxInputTokens}
-              />
+              <Box justifyContent="space-between">
+                <StatusLine
+                  permissionMode={permissionMode}
+                  isShellCommand={isShellCommand}
+                />
+                <Notifications
+                  latestTotalTokens={latestTotalTokens}
+                  maxInputTokens={maxInputTokens}
+                  showLoginHint={showLoginHint}
+                />
+              </Box>
             </Box>
           )}
     </Box>

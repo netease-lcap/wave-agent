@@ -98,7 +98,6 @@ export const ChatInterface: React.FC = () => {
         version={version}
         workdir={workdir}
         forceStatic={forceStatic}
-        showLoginHint={showLoginHint}
       />
 
       {!isConfirmationVisible && !isExpanded && (
@@ -126,6 +125,7 @@ export const ChatInterface: React.FC = () => {
             hasSlashCommand={hasSlashCommand}
             latestTotalTokens={latestTotalTokens}
             maxInputTokens={maxInputTokens}
+            showLoginHint={showLoginHint}
           />
         </>
       )}
