@@ -110,45 +110,49 @@
     font-style: italic;
 }
 
-/* Inline line-comment button (GitHub/GitLab style): hidden until the line is
-   hovered; opens a comment box under the line. Scoped to .diff-pane so the
-   shared message-rendered diff blocks are unaffected. */
+/* Inline line-comment button (GitHub style): hidden until the line is
+   hovered, then a filled circle with a blue "+" appears at the line start;
+   opens a comment box under the line. Scoped to .diff-pane so the shared
+   message-rendered diff blocks are unaffected. */
 .diff-pane .diff-line {
     position: relative;
 }
 
 .diff-line-comment-btn {
     position: absolute;
-    right: 4px;
+    left: 0;
     top: 50%;
     transform: translateY(-50%);
     display: flex;
     align-items: center;
     justify-content: center;
-    background: transparent;
+    width: 16px;
+    height: 16px;
+    background: var(--vscode-editor-background, #1e1e1e);
     border: none;
-    border-radius: 3px;
-    padding: 1px;
-    color: var(--vscode-descriptionForeground);
+    border-radius: 4px;
+    padding: 0;
+    color: var(--vscode-textLink-foreground, #3794ff);
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.1s;
     line-height: 1;
+    z-index: 1;
 }
 
 .diff-pane .diff-line:hover .diff-line-comment-btn {
-    opacity: 0.6;
+    opacity: 1;
 }
 
 .diff-line-comment-btn:hover {
-    opacity: 1;
-    color: var(--vscode-foreground);
+    background: var(--vscode-textLink-foreground, #3794ff);
+    color: var(--vscode-editor-background, #1e1e1e);
 }
 
 /* Bump specificity to (0,3,0) so it beats the codicons.css baseline
    `.codicon[class*="codicon-"]` (0,2,0) that otherwise pins icons to 16px. */
 .diff-pane .diff-line-comment-btn .codicon {
-    font-size: 10px;
+    font-size: 9px;
 }
 
 /* Inline comment box rendered under the commented line. */
