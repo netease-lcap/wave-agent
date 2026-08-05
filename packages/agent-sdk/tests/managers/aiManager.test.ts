@@ -929,24 +929,24 @@ describe("AIManager", () => {
   });
 
   describe("isGitRepository", () => {
-    it("should include 'Is directory a git repo: Yes' in system prompt if .git exists", async () => {
+    it("should include 'Is a git repository: Yes' in system prompt if .git exists", async () => {
       const { isGitRepository } = await import("../../src/utils/gitUtils.js");
       vi.mocked(isGitRepository).mockReturnValue("Yes");
       await aiManager.sendAIMessage();
 
       const gitYesCallArgs = vi.mocked(aiService.callAgent).mock.calls[0][0];
       const gitYesSpText = flattenSystemPrompt(gitYesCallArgs.systemPrompt);
-      expect(gitYesSpText).toContain("Is directory a git repo: Yes");
+      expect(gitYesSpText).toContain("Is a git repository: Yes");
     });
 
-    it("should include 'Is directory a git repo: No' in system prompt if .git does not exist", async () => {
+    it("should include 'Is a git repository: No' in system prompt if .git does not exist", async () => {
       const { isGitRepository } = await import("../../src/utils/gitUtils.js");
       vi.mocked(isGitRepository).mockReturnValue("No");
       await aiManager.sendAIMessage();
 
       const gitNoCallArgs = vi.mocked(aiService.callAgent).mock.calls[0][0];
       const gitNoSpText = flattenSystemPrompt(gitNoCallArgs.systemPrompt);
-      expect(gitNoSpText).toContain("Is directory a git repo: No");
+      expect(gitNoSpText).toContain("Is a git repository: No");
     });
   });
 

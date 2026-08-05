@@ -347,6 +347,46 @@ export function formatCompactSummary(summary: string): string {
 
 export const WEB_CONTENT_SYSTEM_PROMPT = `You are a helpful assistant that extracts information from web content. The content is provided in Markdown format.`;
 
+/**
+ * Notes block prepended to the subagent env section, aligned with Claude
+ * Code's enhanceSystemPromptWithEnvDetails().
+ */
+const SUBAGENT_ENV_NOTES = `Notes:
+- Agent threads always have their cwd reset between bash calls, as a result please only use absolute file paths.
+- In your final response, share file paths (always absolute, never relative) that are relevant to the task. Include code snippets only when the exact text is load-bearing (e.g., a bug you found, a function signature the caller asked for) — do not recap code you merely read.
+- For clear communication with the user the assistant MUST avoid using emojis.
+- Do not use a colon before tool calls. Text like "Let me read the file:" followed by a read tool call should just be "Let me read the file." with a period.`;
+
+/**
+ * Shell info line, aligned with Claude Code's getShellInfoLine(). On win32 an
+ * extra Unix-syntax hint is appended.
+ */
+function getShellInfoLine(): string {
+  const shell = process.env.SHELL || "unknown";
+  const shellName = shell.includes("zsh")
+    ? "zsh"
+    : shell.includes("bash")
+      ? "bash"
+      : shell;
+  if (os.platform() === "win32") {
+    return `Shell: ${shellName} (use Unix shell syntax, not Windows — e.g., /dev/null not NUL, forward slashes in paths)`;
+  }
+  return `Shell: ${shellName}`;
+}
+
+/**
+ * OS Version value, aligned with Claude Code's getUnameSR(). os.type() and
+ * os.release() wrap uname(3) on POSIX, producing output byte-identical to
+ * `uname -sr`. Windows has no uname(3); os.type() returns "Windows_NT" there,
+ * but os.version() gives the friendlier "Windows 11 Pro", so use that instead.
+ */
+function getUnameSR(): string {
+  if (os.platform() === "win32") {
+    return `${os.version()} ${os.release()}`;
+  }
+  return `${os.type()} ${os.release()}`;
+}
+
 export function buildSystemPrompt(
   basePrompt: string | undefined,
   tools: ToolPlugin[],
@@ -387,29 +427,51 @@ export function buildSystemPrompt(
   if (options.workdir) {
     const isGitRepo = isGitRepository(options.workdir);
     const platform = os.platform();
-    const osVersion = `${os.type()} ${os.release()}`;
-    const today = new Date().toISOString().split("T")[0];
-    const shell = process.env.SHELL || "unknown";
-    const shellName = shell.includes("zsh")
-      ? "zsh"
-      : shell.includes("bash")
-        ? "bash"
-        : shell;
-
+    const shellInfo = getShellInfoLine();
+    const osVersion = getUnameSR();
+    const primaryWorkdir = options.originalWorkdir ?? options.workdir;
     const worktreeSession = options.worktreeSession;
 
-    dynamicText += `
+    if (options.isSubagent) {
+      // Subagent env section, aligned with Claude Code's computeEnvInfo() +
+      // enhanceSystemPromptWithEnvDetails() (without the model description and
+      // knowledge cutoff lines, which Wave does not use).
+      dynamicText += `
+
+${SUBAGENT_ENV_NOTES}
 
 Here is useful information about the environment you are running in:
 <env>
-Primary working directory: ${options.originalWorkdir ?? options.workdir}${worktreeSession ? `\nThis is a git worktree — an isolated copy of the repository. Run all commands from this directory. Do NOT \`cd\` to the original repository root at ${worktreeSession.originalCwd}.` : ""}
+Working directory: ${primaryWorkdir}
 Is directory a git repo: ${isGitRepo}
 Platform: ${platform}
-Shell: ${shellName}
+${shellInfo}
 OS Version: ${osVersion}
-Today's date: ${today}
 </env>
 `;
+    } else {
+      // Main agent env section, aligned with Claude Code's
+      // computeSimpleEnvInfo() (without the model description, knowledge
+      // cutoff, and marketing lines, which Wave does not use).
+      const envItems = [
+        `Primary working directory: ${primaryWorkdir}`,
+        worktreeSession
+          ? `This is a git worktree — an isolated copy of the repository. Run all commands from this directory. Do NOT \`cd\` to the original repository root.`
+          : null,
+        `Is a git repository: ${isGitRepo}`,
+        `Platform: ${platform}`,
+        shellInfo,
+        `OS Version: ${osVersion}`,
+      ].filter((item): item is string => item !== null);
+
+      const envBlock = [
+        `# Environment`,
+        `You have been invoked in the following environment: `,
+        ...envItems.map((item) => ` - ${item}`),
+      ].join("\n");
+
+      dynamicText += `\n\n${envBlock}`;
+    }
   }
 
   if (options.autoMemory) {
@@ -424,43 +486,4 @@ Today's date: ${today}
   }
 
   return blocks;
-}
-
-export function enhanceSystemPromptWithEnvDetails(
-  existingSystemPrompt: string,
-  workdir: string,
-  originalWorkdir?: string,
-  worktreeSession?: WorktreeSession | null,
-): string {
-  const isGitRepo = isGitRepository(workdir);
-  const platform = os.platform();
-  const osVersion = `${os.type()} ${os.release()}`;
-  const today = new Date().toISOString().split("T")[0];
-  const shell = process.env.SHELL || "unknown";
-  const shellName = shell.includes("zsh")
-    ? "zsh"
-    : shell.includes("bash")
-      ? "bash"
-      : shell;
-
-  const notes = `Notes:
-- Agent threads always have their cwd reset between bash calls, as a result please only use absolute file paths.${worktreeSession ? `\n- You are in a git worktree at ${worktreeSession.worktreePath} (branch: ${worktreeSession.worktreeBranch}). Absolute paths from prior context may refer to the original repo at ${worktreeSession.originalCwd}; translate them to your worktree. Do NOT edit files outside this worktree.` : ""}
-- In your final response, share file paths (always absolute, never relative) that are relevant to the task. Include code snippets only when the exact text is load-bearing (e.g., a bug you found, a function signature the caller asked for) — do not recap code you merely read.
-- For clear communication with the user the assistant MUST avoid using emojis.
-- Do not use a colon before tool calls. Text like "Let me read the file:" followed by a read tool call should just be "Let me read the file." with a period.`;
-
-  return `${existingSystemPrompt}
-
-${notes}
-
-Here is useful information about the environment you are running in:
-<env>
-Primary working directory: ${originalWorkdir ?? workdir}${worktreeSession ? `\nThis is a git worktree — an isolated copy of the repository. Run all commands from this directory. Do NOT \`cd\` to the original repository root at ${worktreeSession.originalCwd}.` : ""}
-Is directory a git repo: ${isGitRepo}
-Platform: ${platform}
-Shell: ${shellName}
-OS Version: ${osVersion}
-Today's date: ${today}
-</env>
-`;
 }

@@ -6,9 +6,9 @@ order: 90
 
 # 功能规格说明：提示缓存控制
 
-**创建日期**：2025-12-02  
+**创建日期**：2025-12-02
 
-## 用户场景与测试 *（必填）*
+## 用户场景与测试 _（必填）_
 
 ### 用户故事：系统消息缓存优化（优先级：P1）
 
@@ -83,7 +83,7 @@ order: 90
 
 ### 用户故事：系统提示静态/动态分块缓存（优先级：P1）
 
-作为使用 Claude 模型的开发者，我希望系统提示被拆分为静态块（cacheable: true）和动态块（cacheable: false），使得动态内容变更（日期、MEMORY.md、权限模式、环境信息）不会失效静态块的缓存，从而最大化缓存命中率。
+作为使用 Claude 模型的开发者，我希望系统提示被拆分为静态块（cacheable: true）和动态块（cacheable: false），使得动态内容变更（MEMORY.md、权限模式、环境信息）不会失效静态块的缓存，从而最大化缓存命中率。
 
 **为什么是这个优先级**：此前整个系统提示作为单一字符串传递给 `transformMessagesForExplicitCache`，该函数对系统消息整体添加 cache_control。这意味着任何动态内容变更（如日期变化、MEMORY.md 更新、权限模式切换）都会改变系统消息内容，导致整个系统提示的缓存被失效。通过将静态内容（base prompt + DOING_TASKS + EXECUTING_ACTIONS + TOOL_POLICY + OUTPUT_EFFICIENCY + TONE_AND_STYLE）和动态内容（权限模式 + 语言 + 环境信息 + auto memory + MEMORY.md）分离为独立的 `SystemPromptBlock`，静态块获得自己的 cache_control 标记，动态块不获得标记，动态内容变更不会影响静态块缓存。
 
@@ -111,4 +111,3 @@ order: 90
 - **边界情况 6**：最后一条有内容的消息必须接收 cache_control 标记，无论对话长度。如果最后一条消息没有内容（如只有 tool_calls 没有文本的助手消息），系统向后查找最近有内容的消息。标记完全无状态——没有模块级状态跨请求追踪标记位置
 - **边界情况 7**：当动态块为空（无 workdir、无权限模式、无 auto memory 等动态内容）时，`buildSystemPrompt` 只返回静态块，不添加空的动态块
 - **边界情况 8**：`transformMessagesForExplicitCache` 的幂等性检查（检测系统消息是否已有 cache_control）必须正确处理 `SystemPromptBlock[]` 映射产生的内容部分数组，避免重复标记
-
