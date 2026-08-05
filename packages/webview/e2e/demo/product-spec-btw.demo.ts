@@ -53,7 +53,7 @@ test.describe('Product Spec: /btw side question', () => {
         await webviewPage.keyboard.press('Enter');
 
         await expect(webviewPage.locator('[data-testid="btw-panel"]')).toBeVisible();
-        await expect(webviewPage.locator('[data-testid="btw-panel-answer"]')).toContainText('Usage: /btw <your question>');
+        await expect(webviewPage.locator('[data-testid="btw-panel-answer"]')).toContainText('用法：/btw <你的问题>');
 
         await elementScreenshotWebp(
             webviewPage.locator('[data-testid="btw-panel"]'),
