@@ -2195,6 +2195,8 @@ ${question}`;
             id: toolId,
             shortResult,
             stage: "running",
+            compactParams,
+            name: toolName,
           });
         },
         onResultUpdate: (result: string) => {
@@ -2202,6 +2204,8 @@ ${question}`;
             id: toolId,
             result,
             stage: "running",
+            compactParams,
+            name: toolName,
           });
         },
         onCwdChange: async (newCwd: string) => {
