@@ -122,7 +122,7 @@ export interface ChatContextType {
   backgroundCurrentTask: () => void;
   // Remount functionality
   remountKey: number;
-  requestRemount: () => void;
+  forceRemount: () => void;
   // Rewind functionality
   handleRewindSelect: (index: number) => Promise<void>;
   getFullMessageThread: () => Promise<{
@@ -387,42 +387,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Remount state
   const [remountKey, setRemountKey] = useState(0);
-  const prevSessionId = useRef<string | null>(null);
 
-  const requestRemount = useMemo(
-    () =>
-      throttle(
-        () => {
-          logger.debug("requesting remount");
-          stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H", () => {
-            setRemountKey((prev) => prev + 1);
-          });
-        },
-        1000,
-        { leading: true, trailing: false },
-      ),
-    [stdout],
-  );
-
-  useEffect(() => {
-    return () => {
-      requestRemount.cancel();
-    };
-  }, [requestRemount]);
-
-  // Track sessionId changes to trigger remount
-  useEffect(() => {
-    if (
-      prevSessionId.current &&
-      sessionId &&
-      prevSessionId.current !== sessionId
-    ) {
-      requestRemount();
-    }
-    if (sessionId) {
-      prevSessionId.current = sessionId;
-    }
-  }, [sessionId, requestRemount]);
+  // Full terminal clear + remount so Ink's append-only <Static> re-renders.
+  // Used on structural actions (/clear, /compact, rewind, ctrl-o, forceStatic
+  // exit) where stale Static output must not linger on screen.
+  const forceRemount = useCallback(() => {
+    stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H", () => {
+      setRemountKey((prev) => prev + 1);
+    });
+  }, [stdout]);
 
   // Status metadata state
   const [workingDirectory, setWorkingDirectory] = useState("");
@@ -876,14 +849,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const clearMessages = useCallback(async () => {
     await agentRef.current?.clearMessages();
     refreshMessages();
-  }, [refreshMessages]);
+    forceRemount();
+  }, [refreshMessages, forceRemount]);
 
   const compact = useCallback(
     async (instructions?: string) => {
       await agentRef.current?.compact(instructions);
       refreshMessages();
+      forceRemount();
     },
-    [refreshMessages],
+    [refreshMessages, forceRemount],
   );
 
   // Unified interrupt method, interrupt both AI messages and command execution
@@ -995,13 +970,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         try {
           await agentRef.current.truncateHistory(index);
           refreshMessages();
-          requestRemount();
+          forceRemount();
         } catch (error) {
           logger.error("Failed to rewind:", error);
         }
       }
     },
-    [requestRemount, refreshMessages],
+    [forceRemount, refreshMessages],
   );
 
   const getFullMessageThread = useCallback(async () => {
@@ -1054,12 +1029,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         // Transitioning to COLLAPSED: Restore from agent's actual state
         refreshMessages();
       }
-      // Force remount directly (bypass throttle) to ensure Static items re-render
-      // The throttled requestRemount can be dropped if pressed too quickly after
-      // a previous remount, leaving the UI stuck without a visual update
-      stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H", () => {
-        setRemountKey((prev) => prev + 1);
-      });
+      // Force remount to ensure Static items re-render
+      forceRemount();
     }
 
     if (key.ctrl && input === "t") {
@@ -1119,7 +1090,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     handleConfirmationCancel,
     backgroundCurrentTask,
     remountKey,
-    requestRemount: requestRemount as () => void,
+    forceRemount,
     handleRewindSelect,
     getFullMessageThread,
 

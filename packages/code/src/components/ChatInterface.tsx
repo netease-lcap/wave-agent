@@ -37,7 +37,7 @@ export const ChatInterface: React.FC = () => {
     version,
     workdir,
     remountKey,
-    requestRemount,
+    forceRemount,
     getGatewayConfig,
   } = useChat();
 
@@ -79,14 +79,14 @@ export const ChatInterface: React.FC = () => {
       }
     } else if (forceStatic && !hasPendingConfirmations) {
       setForceStatic(false);
-      requestRemount();
+      forceRemount();
     }
   }, [
     isConfirmationVisible,
     terminalHeight,
     forceStatic,
     hasPendingConfirmations,
-    requestRemount,
+    forceRemount,
   ]);
 
   if (!sessionId) return null;
