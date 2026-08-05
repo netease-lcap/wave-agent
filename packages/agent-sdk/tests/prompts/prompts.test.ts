@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   buildSystemPrompt,
-  enhanceSystemPromptWithEnvDetails,
   DEFAULT_SYSTEM_PROMPT,
   type SystemPromptBlock,
 } from "../../src/prompts/index.js";
@@ -31,72 +30,6 @@ describe("prompts", () => {
     vi.restoreAllMocks();
   });
 
-  describe("enhanceSystemPromptWithEnvDetails", () => {
-    it("should cover all shell branches (zsh)", () => {
-      const originalShell = process.env.SHELL;
-      process.env.SHELL = "/bin/zsh";
-
-      vi.mocked(isGitRepository).mockReturnValue("Yes");
-      vi.mocked(os.platform).mockReturnValue("linux");
-      vi.mocked(os.type).mockReturnValue("Linux");
-      vi.mocked(os.release).mockReturnValue("6.8.0");
-
-      const result = enhanceSystemPromptWithEnvDetails(
-        "Existing Prompt",
-        "/some/path",
-      );
-
-      expect(result).toContain("Shell: zsh");
-      expect(result).toContain("Is directory a git repo: Yes");
-      expect(result).toContain("Platform: linux");
-      expect(result).toContain("OS Version: Linux 6.8.0");
-
-      process.env.SHELL = originalShell;
-    });
-
-    it("should cover all shell branches (bash)", () => {
-      const originalShell = process.env.SHELL;
-      process.env.SHELL = "/bin/bash";
-
-      vi.mocked(isGitRepository).mockReturnValue("No");
-      vi.mocked(os.platform).mockReturnValue("darwin");
-      vi.mocked(os.type).mockReturnValue("Darwin");
-      vi.mocked(os.release).mockReturnValue("23.0.0");
-
-      const result = enhanceSystemPromptWithEnvDetails(
-        "Existing Prompt",
-        "/some/path",
-      );
-
-      expect(result).toContain("Shell: bash");
-      expect(result).toContain("Is directory a git repo: No");
-      expect(result).toContain("Platform: darwin");
-      expect(result).toContain("OS Version: Darwin 23.0.0");
-
-      process.env.SHELL = originalShell;
-    });
-
-    it("should cover all shell branches (unknown/other)", () => {
-      const originalShell = process.env.SHELL;
-      process.env.SHELL = "/usr/bin/fish";
-
-      const result = enhanceSystemPromptWithEnvDetails(
-        "Existing Prompt",
-        "/some/path",
-      );
-      expect(result).toContain("Shell: /usr/bin/fish");
-
-      delete process.env.SHELL;
-      const result2 = enhanceSystemPromptWithEnvDetails(
-        "Existing Prompt",
-        "/some/path",
-      );
-      expect(result2).toContain("Shell: unknown");
-
-      process.env.SHELL = originalShell;
-    });
-  });
-
   describe("buildSystemPrompt", () => {
     it("should include environment details when workdir is provided", () => {
       const originalShell = process.env.SHELL;
@@ -113,9 +46,14 @@ describe("prompts", () => {
         }),
       );
 
+      expect(result).toContain("# Environment");
+      expect(result).toContain(
+        "You have been invoked in the following environment:",
+      );
       expect(result).toContain("Shell: zsh");
       expect(result).toContain("Primary working directory: /some/path");
-      expect(result).toContain("Is directory a git repo: Yes");
+      expect(result).toContain("Is a git repository: Yes");
+      expect(result).toContain("OS Version: Linux 6.8.0");
 
       process.env.SHELL = originalShell;
     });
@@ -232,9 +170,8 @@ describe("prompts", () => {
       );
 
       expect(result).toContain("This is a git worktree");
-      expect(result).toContain(
-        "Do NOT `cd` to the original repository root at /original/repo",
-      );
+      expect(result).toContain("Do NOT `cd` to the original repository root.");
+      expect(result).not.toContain("original repository root at");
     });
 
     it("should not include worktree warning when no worktree session", () => {
@@ -246,6 +183,96 @@ describe("prompts", () => {
 
       expect(result).not.toContain("This is a git worktree");
       expect(result).not.toContain("original repository root");
+    });
+
+    it("should use subagent env format (Notes + <env>) when isSubagent is true", () => {
+      const originalShell = process.env.SHELL;
+      process.env.SHELL = "/bin/bash";
+
+      vi.mocked(isGitRepository).mockReturnValue("Yes");
+      vi.mocked(os.platform).mockReturnValue("linux");
+      vi.mocked(os.type).mockReturnValue("Linux");
+      vi.mocked(os.release).mockReturnValue("6.8.0");
+
+      const result = flattenBlocks(
+        buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+          workdir: "/some/path",
+          isSubagent: true,
+        }),
+      );
+
+      expect(result).toContain("Notes:");
+      expect(result).toContain(
+        "Agent threads always have their cwd reset between bash calls",
+      );
+      expect(result).toContain(
+        "Here is useful information about the environment you are running in:",
+      );
+      expect(result).toContain("<env>");
+      expect(result).toContain("Working directory: /some/path");
+      expect(result).toContain("Is directory a git repo: Yes");
+      expect(result).not.toContain("# Environment");
+      expect(result).not.toContain("Primary working directory");
+      expect(result).not.toContain("Today's date");
+
+      process.env.SHELL = originalShell;
+    });
+
+    it("should not include worktree warning in subagent env format", () => {
+      const result = flattenBlocks(
+        buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+          workdir: "/original/repo/.wave/worktrees/test-feature",
+          worktreeSession: worktreeSessionActive,
+          isSubagent: true,
+        }),
+      );
+
+      expect(result).not.toContain("This is a git worktree");
+      expect(result).not.toContain("original repository root");
+    });
+
+    it("should append Unix shell syntax hint when platform is win32", () => {
+      const originalShell = process.env.SHELL;
+      process.env.SHELL = "/bin/bash";
+
+      vi.mocked(os.platform).mockReturnValue("win32");
+
+      const result = flattenBlocks(
+        buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+          workdir: "/some/path",
+        }),
+      );
+      expect(result).toContain(
+        "Shell: bash (use Unix shell syntax, not Windows — e.g., /dev/null not NUL, forward slashes in paths)",
+      );
+
+      process.env.SHELL = originalShell;
+    });
+
+    it("should use friendly OS version on win32", () => {
+      vi.mocked(os.platform).mockReturnValue("win32");
+      vi.mocked(os.version).mockReturnValue("Windows 11 Pro");
+      vi.mocked(os.release).mockReturnValue("10.0.26100");
+
+      const result = flattenBlocks(
+        buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+          workdir: "/some/path",
+        }),
+      );
+      expect(result).toContain("OS Version: Windows 11 Pro 10.0.26100");
+    });
+
+    it("should not include Today's date in the env section", () => {
+      vi.mocked(os.platform).mockReturnValue("linux");
+      vi.mocked(os.type).mockReturnValue("Linux");
+      vi.mocked(os.release).mockReturnValue("6.8.0");
+
+      const result = flattenBlocks(
+        buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+          workdir: "/some/path",
+        }),
+      );
+      expect(result).not.toContain("Today's date");
     });
   });
 
@@ -316,43 +343,6 @@ describe("prompts", () => {
         .map((b) => b.text)
         .join("\n\n");
       expect(dynamic1).not.toBe(dynamic2);
-    });
-  });
-
-  describe("enhanceSystemPromptWithEnvDetails worktree", () => {
-    it("should include worktree warning in enhanceSystemPromptWithEnvDetails", () => {
-      const result = enhanceSystemPromptWithEnvDetails(
-        "Existing Prompt",
-        "/original/repo/.wave/worktrees/fix-bug",
-        undefined,
-        {
-          originalCwd: "/original/repo",
-          worktreePath: "/original/repo/.wave/worktrees/fix-bug",
-          worktreeBranch: "wave-fix-bug",
-          worktreeName: "fix-bug",
-          isNew: true,
-          repoRoot: "/original/repo",
-        },
-      );
-
-      expect(result).toContain("This is a git worktree");
-      expect(result).toContain(
-        "Do NOT `cd` to the original repository root at /original/repo",
-      );
-      expect(result).toContain(
-        "Absolute paths from prior context may refer to the original repo",
-      );
-      expect(result).toContain("Do NOT edit files outside this worktree");
-    });
-
-    it("should not include worktree warning when no session in enhanceSystemPromptWithEnvDetails", () => {
-      const result = enhanceSystemPromptWithEnvDetails(
-        "Existing Prompt",
-        "/some/path",
-      );
-
-      expect(result).not.toContain("This is a git worktree");
-      expect(result).not.toContain("original repo");
     });
   });
 });
