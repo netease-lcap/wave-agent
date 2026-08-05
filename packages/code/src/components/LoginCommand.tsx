@@ -80,7 +80,9 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
   const handleEnter = async () => {
     if (isLoadingRef.current) return;
 
-    const isAuthenticated = authService.isSSOAuthenticated();
+    // A stale-but-present SSO token still counts as logged in; it refreshes
+    // lazily on the next API call. Enter toggles logout only when a token exists.
+    const isAuthenticated = Boolean(authService.getSSOToken());
     if (isAuthenticated) {
       await authService.clearAuth();
       setMessage("Logged out successfully");
@@ -123,7 +125,7 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
     }
   };
 
-  const isAuthenticated = authService.isSSOAuthenticated();
+  const isAuthenticated = Boolean(authService.getSSOToken());
   const token = authService.getSSOToken();
   const serverUrl = authService.getServerUrl();
 

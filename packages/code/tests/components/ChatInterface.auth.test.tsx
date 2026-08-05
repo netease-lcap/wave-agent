@@ -13,6 +13,7 @@ import { useTasks } from "../../src/hooks/useTasks.js";
 const { mockAuthService } = vi.hoisted(() => ({
   mockAuthService: {
     isSSOAuthenticated: vi.fn<() => boolean>(() => false),
+    getSSOToken: vi.fn<() => string | undefined>(() => undefined),
     onAuthChange:
       vi.fn<(cb: (event: "login" | "logout") => void) => () => void>(),
   },
@@ -94,6 +95,7 @@ describe("ChatInterface login hint", () => {
     vi.clearAllMocks();
     authChangeCallback = null;
     mockAuthService.isSSOAuthenticated.mockReturnValue(false);
+    mockAuthService.getSSOToken.mockReturnValue(undefined);
     mockAuthService.onAuthChange.mockImplementation((cb) => {
       authChangeCallback = cb;
       return () => {
@@ -119,6 +121,16 @@ describe("ChatInterface login hint", () => {
 
   it("should not show the /login hint when SSO authenticated", () => {
     mockAuthService.isSSOAuthenticated.mockReturnValue(true);
+    mockAuthService.getSSOToken.mockReturnValue("valid-token");
+
+    const { lastFrame } = render(<ChatInterface />);
+
+    expect(lastFrame()).not.toContain("Type /login to authenticate");
+  });
+
+  it("should not show the /login hint when SSO token exists but is expired", () => {
+    mockAuthService.isSSOAuthenticated.mockReturnValue(false);
+    mockAuthService.getSSOToken.mockReturnValue("expired-token");
 
     const { lastFrame } = render(<ChatInterface />);
 
@@ -160,6 +172,7 @@ describe("ChatInterface login hint", () => {
     // Wait until the auth-change subscription is active before simulating login
     await vi.waitFor(() => expect(authChangeCallback).not.toBeNull());
     mockAuthService.isSSOAuthenticated.mockReturnValue(true);
+    mockAuthService.getSSOToken.mockReturnValue("new-token");
     authChangeCallback?.("login");
 
     await vi.waitFor(() => {
@@ -169,12 +182,14 @@ describe("ChatInterface login hint", () => {
 
   it("should show the hint again when the user logs out", async () => {
     mockAuthService.isSSOAuthenticated.mockReturnValue(true);
+    mockAuthService.getSSOToken.mockReturnValue("valid-token");
 
     const { lastFrame } = render(<ChatInterface />);
     expect(lastFrame()).not.toContain("Type /login to authenticate");
 
     await vi.waitFor(() => expect(authChangeCallback).not.toBeNull());
     mockAuthService.isSSOAuthenticated.mockReturnValue(false);
+    mockAuthService.getSSOToken.mockReturnValue(undefined);
     authChangeCallback?.("logout");
 
     await vi.waitFor(() => {
