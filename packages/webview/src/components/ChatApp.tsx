@@ -965,7 +965,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       const question = trimmedText.slice('/btw'.length).trim();
       if (!question) {
         // Code span keeps `<your question>` from being parsed as an HTML tag.
-        setBtwPanel({ question: '', answer: '`Usage: /btw <your question>`', loading: false, contentStarted: false });
+        setBtwPanel({ question: '', answer: '`用法：/btw <你的问题>`', loading: false, contentStarted: false });
         return;
       }
       btwActiveRef.current = question;

@@ -121,7 +121,7 @@ describe('/btw Popup', () => {
         expect(screen.getByText('/btw')).toBeInTheDocument();
         expect(screen.getByTestId('btw-panel-close')).toBeInTheDocument();
         await waitFor(() => {
-            expect(screen.getByText('Usage: /btw <your question>')).toBeInTheDocument();
+            expect(screen.getByText('用法：/btw <你的问题>')).toBeInTheDocument();
         });
     });
 
