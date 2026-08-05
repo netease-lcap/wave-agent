@@ -1,3 +1,4 @@
 pnpm run type-check
 pnpm -r lint
 pnpm exec lint-staged
+node scripts/check-docs-links.mjs && node scripts/check-sidebar-anchors.mjs
