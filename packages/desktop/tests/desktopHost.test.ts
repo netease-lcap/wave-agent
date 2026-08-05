@@ -266,6 +266,7 @@ vi.mock('../src/main/portForward', () => {
     }));
     releaseSession = vi.fn();
     dispose = vi.fn();
+    forwardAuthCallback = vi.fn();
   }
   return { PortForwardManager: MockPortForwardManager };
 });
@@ -4039,6 +4040,7 @@ describe('remote preview port forwarding', () => {
       acquire: ReturnType<typeof vi.fn>;
       releaseSession: ReturnType<typeof vi.fn>;
       dispose: ReturnType<typeof vi.fn>;
+      forwardAuthCallback: ReturnType<typeof vi.fn>;
     };
   };
 
@@ -4143,6 +4145,57 @@ describe('remote preview port forwarding', () => {
     await host.dispose();
 
     expect(fwd.dispose).toHaveBeenCalled();
+  });
+
+  // Remote SSO login (spec scenario 8): the daemon's callback server listens on
+  // the remote 127.0.0.1, so the desktop must forward the callback port over
+  // SSH and open the REWRITTEN auth URL in the browser — opening the raw URL
+  // redirects to an empty local port and the login hangs.
+  const remoteAuthUrl =
+    'https://sso.example.test/login?client_id=x&callback_url=http%3A%2F%2F127.0.0.1%3A8765';
+  const forwardedAuthUrl =
+    'https://sso.example.test/login?client_id=x&callback_url=http%3A%2F%2F127.0.0.1%3A3456';
+  async function selectRemoteHost(): Promise<DesktopHost> {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host } = createHost();
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+    return host;
+  }
+
+  it('remote authUrl forwards the callback port and opens the rewritten URL', async () => {
+    const host = await selectRemoteHost();
+    const fwd = (host as unknown as HostWithFwd).portForwardManager;
+    fwd.forwardAuthCallback.mockResolvedValue({ authUrl: forwardedAuthUrl, close: vi.fn() });
+
+    h.authUrlHandler?.({ url: remoteAuthUrl });
+
+    await vi.waitFor(() => expect(fwd.forwardAuthCallback).toHaveBeenCalledWith('prod', remoteAuthUrl));
+    expect(shell.openExternal).toHaveBeenCalledWith(forwardedAuthUrl);
+  });
+
+  it('handleLogin closes the callback tunnel once the login settles', async () => {
+    const host = await selectRemoteHost();
+    const fwd = (host as unknown as HostWithFwd).portForwardManager;
+    const close = vi.fn();
+    fwd.forwardAuthCallback.mockResolvedValue({ authUrl: forwardedAuthUrl, close });
+    h.authUrlHandler?.({ url: remoteAuthUrl });
+    await vi.waitFor(() => expect(fwd.forwardAuthCallback).toHaveBeenCalled());
+
+    await host.handleWebviewMessage({ command: 'login' });
+
+    // No orphan ssh process: the tunnel dies with the login request.
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('authUrl forward failure surfaces an error and does not open the browser', async () => {
+    const host = await selectRemoteHost();
+    const fwd = (host as unknown as HostWithFwd).portForwardManager;
+    fwd.forwardAuthCallback.mockRejectedValue(new Error('ssh: command not found'));
+
+    h.authUrlHandler?.({ url: remoteAuthUrl });
+
+    await vi.waitFor(() => expect(fwd.forwardAuthCallback).toHaveBeenCalled());
+    await vi.waitFor(() => expect(shell.openExternal).not.toHaveBeenCalled());
   });
 });
 

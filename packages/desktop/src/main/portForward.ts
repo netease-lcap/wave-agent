@@ -51,6 +51,17 @@ export interface ForwardResult {
   originalUrl: string;
 }
 
+export interface AuthCallbackForward {
+  /** Auth URL to open in the system browser — callback_url rewritten to the local forwarded port. */
+  authUrl: string;
+  /**
+   * Tear the callback tunnel down. The login request only settles after the
+   * code exchange, so the tunnel must stay up until the caller knows the login
+   * is done (spec: SSO 登录 scenario 8).
+   */
+  close: () => void;
+}
+
 /**
  * Rewrite `url` to 127.0.0.1:<localPort>, preserving path/search/hash. The
  * hostname is pinned to 127.0.0.1 (not localhost) because the tunnel binds the
@@ -62,10 +73,26 @@ export function rewriteForwardedUrl(url: string, localPort: number): string {
 }
 
 export class PortForwardManager {
+  /** Session-scoped preview tunnels (acquire/releaseSession). */
   private entries = new Map<string, ForwardEntry>();
+  /** One-shot SSO callback tunnels (forwardAuthCallback), closed on login settle. */
+  private authEntries = new Map<string, ForwardEntry>();
 
   private key(host: string, remotePort: number): string {
     return `${host}\u0000${remotePort}`;
+  }
+
+  /** Whether `entry` is still tracked by this manager (either map). */
+  private isTracked(entry: ForwardEntry): boolean {
+    const key = this.key(entry.host, entry.remotePort);
+    return this.entries.get(key) === entry || this.authEntries.get(key) === entry;
+  }
+
+  /** Drop `entry` from whichever map tracks it. Idempotent. */
+  private untrack(entry: ForwardEntry): void {
+    const key = this.key(entry.host, entry.remotePort);
+    if (this.entries.get(key) === entry) this.entries.delete(key);
+    if (this.authEntries.get(key) === entry) this.authEntries.delete(key);
   }
 
   /**
@@ -116,6 +143,58 @@ export class PortForwardManager {
   }
 
   /**
+   * Forward the callback port of a remote host's SSO auth URL to the local
+   * loopback (spec: SSO 登录 scenario 8). The daemon's callback server listens
+   * on the REMOTE 127.0.0.1 — a browser on this machine redirects to its own
+   * local 127.0.0.1, so without the tunnel the auth code never reaches the
+   * daemon and the login hangs until timeout. `callback_url` is rewritten to
+   * the local forwarded port; call `close()` once the login request settles.
+   */
+  async forwardAuthCallback(host: string, authUrl: string): Promise<AuthCallbackForward> {
+    const remotePort = this.parseCallbackPort(authUrl);
+    const entry: ForwardEntry = {
+      host,
+      remotePort,
+      localPort: 0,
+      sessionIds: new Set(),
+      state: 'connecting',
+      proc: null,
+      waiters: [],
+    };
+    this.authEntries.set(this.key(host, remotePort), entry);
+    try {
+      await this.spawnForward(entry);
+    } catch (err) {
+      // spawnForward already failForward()ed on error; untrack is idempotent.
+      this.untrack(entry);
+      throw err;
+    }
+    const rewritten = new URL(authUrl);
+    rewritten.searchParams.set('callback_url', `http://127.0.0.1:${entry.localPort}`);
+    return {
+      authUrl: rewritten.toString(),
+      close: () => this.stopForward(entry),
+    };
+  }
+
+  private parseCallbackPort(authUrl: string): number {
+    try {
+      const u = new URL(authUrl);
+      const callbackUrl = u.searchParams.get('callback_url');
+      if (!callbackUrl) throw new Error('缺少 callback_url 参数');
+      const callback = new URL(callbackUrl);
+      if (callback.protocol !== 'http:') throw new Error(`不支持的协议 ${callback.protocol}`);
+      const port = Number(callback.port || 80);
+      if (!Number.isInteger(port) || port < 1 || port > MAX_PORT) {
+        throw new Error(`无效的回调端口：${callback.port}`);
+      }
+      return port;
+    } catch (err) {
+      throw new Error(`无法解析 SSO 回调地址：${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
    * Drop a session's references — every tunnel referenced only by this session
    * dies. The tunnel is session-scoped (scenario 18): closing a preview panel,
    * switching sessions/hosts or clicking a different link never releases;
@@ -132,6 +211,7 @@ export class PortForwardManager {
   /** Kill every tunnel — app quit (scenario 18). */
   dispose(): void {
     for (const entry of [...this.entries.values()]) this.stopForward(entry);
+    for (const entry of [...this.authEntries.values()]) this.stopForward(entry);
   }
 
   private resultFor(entry: ForwardEntry, url: string): ForwardResult {
@@ -150,11 +230,19 @@ export class PortForwardManager {
   private async spawnForward(entry: ForwardEntry): Promise<void> {
     const localPort = await this.pickLocalPort(entry.remotePort);
     entry.localPort = localPort;
+    // The SSO callback server binds the remote 127.0.0.1 explicitly, so the
+    // remote end must be 127.0.0.1 (not localhost, which ssh may resolve to ::1
+    // and miss an IPv4-only listener). Preview tunnels use localhost (the
+    // service may listen on either loopback).
+    const remoteEnd =
+      this.authEntries.get(this.key(entry.host, entry.remotePort)) === entry
+        ? `127.0.0.1:${entry.remotePort}`
+        : `localhost:${entry.remotePort}`;
     // `-N -L` are ssh OPTIONS and must precede the hostname — buildSshSpawnArgs
     // (remote-command form) is not applicable here.
     const proc = spawn(
       'ssh',
-      [...SSH_BASE_OPTIONS, '-N', '-L', `127.0.0.1:${localPort}:localhost:${entry.remotePort}`, entry.host],
+      [...SSH_BASE_OPTIONS, '-N', '-L', `127.0.0.1:${localPort}:${remoteEnd}`, entry.host],
       { stdio: 'ignore' },
     );
     entry.proc = proc;
@@ -162,7 +250,7 @@ export class PortForwardManager {
       this.failForward(entry, `转发进程启动失败：${err.message}`);
     });
     proc.on('exit', (code, signal) => {
-      if (this.entries.get(this.key(entry.host, entry.remotePort)) !== entry) return; // intentional stop
+      if (!this.isTracked(entry)) return; // intentional stop
       // The tunnel died on its own (remote unreachable / connection dropped) —
       // fail so the pane shows an actionable error (scenario 16).
       this.failForward(entry, code !== null ? `转发连接已断开（退出码 ${code}）` : `转发进程被信号终止（${signal}）`);
@@ -218,9 +306,12 @@ export class PortForwardManager {
     );
   }
 
-  /** Ports already assigned to live tunnels of this manager. */
+  /** Ports already assigned to live tunnels of this manager (preview + auth). */
   private isLocalPortTaken(port: number): boolean {
     for (const entry of this.entries.values()) {
+      if (entry.state !== 'failed' && entry.localPort === port) return true;
+    }
+    for (const entry of this.authEntries.values()) {
       if (entry.state !== 'failed' && entry.localPort === port) return true;
     }
     return false;
@@ -241,18 +332,16 @@ export class PortForwardManager {
     if (entry.state === 'failed') return;
     entry.state = 'failed';
     entry.error = error;
-    const key = this.key(entry.host, entry.remotePort);
-    if (this.entries.get(key) === entry) this.entries.delete(key);
+    this.untrack(entry);
     for (const w of entry.waiters) w.reject(new Error(error));
     entry.waiters = [];
     this.killProc(entry);
   }
 
-  /** Intentional teardown (last session released / dispose) — silent, no waiters rejected. */
+  /** Intentional teardown (last session released / login settled / dispose) — silent, no waiters rejected. */
   private stopForward(entry: ForwardEntry): void {
     entry.state = 'failed';
-    const key = this.key(entry.host, entry.remotePort);
-    if (this.entries.get(key) === entry) this.entries.delete(key);
+    this.untrack(entry);
     entry.waiters = [];
     this.killProc(entry);
   }

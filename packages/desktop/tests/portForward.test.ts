@@ -250,3 +250,102 @@ describe('rewriteForwardedUrl', () => {
     expect(rewriteForwardedUrl('http://localhost:5173', 5174)).toBe('http://127.0.0.1:5174/');
   });
 });
+
+describe('PortForwardManager.forwardAuthCallback', () => {
+  const authUrl = (port = 3456): string =>
+    // Mirrors authService.startLocalAuthServer: callback_url is a bare
+    // `http://127.0.0.1:<port>` (no path) — the server reads code from query only.
+    `https://sso.example.test/login?client_id=x&callback_url=${encodeURIComponent(`http://127.0.0.1:${port}`)}`;
+
+  it('spawns a 127.0.0.1→127.0.0.1 tunnel and rewrites callback_url to the local port', async () => {
+    const manager = new PortForwardManager();
+    const forward = await manager.forwardAuthCallback('prod', authUrl());
+    expect(h.spawn).toHaveBeenCalledWith(
+      'ssh',
+      [...SSH_BASE_OPTIONS, '-N', '-L', '127.0.0.1:3456:127.0.0.1:3456', 'prod'],
+      { stdio: 'ignore' },
+    );
+    // The daemon binds the remote 127.0.0.1 explicitly — the remote end must
+    // be 127.0.0.1, not localhost (which ssh may resolve to ::1).
+    const rewritten = new URL(forward.authUrl);
+    expect(rewritten.searchParams.get('callback_url')).toBe('http://127.0.0.1:3456');
+    // the SSO page and its other params are preserved
+    expect(rewritten.searchParams.get('client_id')).toBe('x');
+    forward.close();
+    manager.dispose();
+  });
+
+  it('increments to the first free local port when the preferred one is taken', async () => {
+    const manager = new PortForwardManager();
+    h.listenResults.set(3456, false);
+    const forward = await manager.forwardAuthCallback('prod', authUrl());
+    expect(h.spawn.mock.calls[0][1]).toContain('127.0.0.1:3457:127.0.0.1:3456');
+    expect(new URL(forward.authUrl).searchParams.get('callback_url')).toBe('http://127.0.0.1:3457');
+    forward.close();
+    manager.dispose();
+  });
+
+  it('avoids colliding with a live preview tunnel on the same local port', async () => {
+    const manager = new PortForwardManager();
+    await manager.forwardAuthCallback('prod', authUrl(5173));
+    // same (host, remote port) key, but a different map — the preview tunnel
+    // must still not reuse the auth tunnel's local port 5173
+    const result = await manager.acquire('prod', 'http://localhost:5173/');
+    expect(result.url).toBe('http://127.0.0.1:5174/');
+    manager.dispose();
+  });
+
+  it('rejects auth URLs without callback_url, with non-http protocol, or unparseable', async () => {
+    const manager = new PortForwardManager();
+    await expect(manager.forwardAuthCallback('prod', 'https://sso.example.test/login')).rejects.toThrow('缺少 callback_url');
+    await expect(
+      manager.forwardAuthCallback(
+        'prod',
+        `https://sso.example.test/login?callback_url=${encodeURIComponent('https://127.0.0.1:3456/cb')}`,
+      ),
+    ).rejects.toThrow('不支持的协议');
+    await expect(manager.forwardAuthCallback('prod', 'not a url')).rejects.toThrow('无法解析 SSO 回调地址');
+    expect(h.spawn).not.toHaveBeenCalled();
+    manager.dispose();
+  });
+
+  it('close() tears the tunnel down and a later login starts a fresh one', async () => {
+    const manager = new PortForwardManager();
+    const forward = await manager.forwardAuthCallback('prod', authUrl());
+    const child = lastChild();
+    forward.close();
+    expect(child.kill).toHaveBeenCalledTimes(1);
+    await manager.forwardAuthCallback('prod', authUrl());
+    expect(h.spawn).toHaveBeenCalledTimes(2);
+    manager.dispose();
+  });
+
+  it('fails the tunnel when the ssh process dies on its own before the login settles', async () => {
+    const manager = new PortForwardManager();
+    const forward = await manager.forwardAuthCallback('prod', authUrl());
+    lastChild().emit('exit', 255, null);
+    // entry is gone — a retry re-spawns
+    await manager.forwardAuthCallback('prod', authUrl());
+    expect(h.spawn).toHaveBeenCalledTimes(2);
+    forward.close();
+    manager.dispose();
+  });
+
+  it('dispose kills the callback tunnel', async () => {
+    const manager = new PortForwardManager();
+    await manager.forwardAuthCallback('prod', authUrl(3456));
+    const child = lastChild();
+    manager.dispose();
+    expect(child.kill).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects with an actionable error when ssh fails to spawn', async () => {
+    const manager = new PortForwardManager();
+    h.connectResults.set(3456, false);
+    const p = manager.forwardAuthCallback('prod', authUrl());
+    await vi.waitFor(() => expect(h.spawn).toHaveBeenCalledTimes(1));
+    (h.spawn.mock.results[0].value as FakeChild).emit('error', new Error('ENOENT'));
+    await expect(p).rejects.toThrow('转发进程启动失败：ENOENT');
+    manager.dispose();
+  });
+});

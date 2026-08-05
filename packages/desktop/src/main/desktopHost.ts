@@ -58,7 +58,7 @@ import {
 import type { ChildProcess } from 'child_process';
 import { getWorkspaceDiff } from './gitDiff';
 import { TerminalManager } from './terminal';
-import { PortForwardManager } from './portForward';
+import { PortForwardManager, type AuthCallbackForward } from './portForward';
 import { checkForUpdate } from './updateChecker';
 import { HOST_CHANNEL } from './channels';
 import type { PanelKind } from './menu';
@@ -195,6 +195,9 @@ export class DesktopHost {
 
   /** SSH tunnels serving remote preview URLs, refcounted per (host, remote port). */
   private portForwardManager = new PortForwardManager();
+
+  /** One-shot SSO callback tunnels per host — closed when that host's login settles. */
+  private pendingAuthTunnels = new Map<string, AuthCallbackForward>();
 
   /** Focused pane's agent — the default target for unscoped webview commands. */
   private get activeAgent(): StdioAgent | null {
@@ -500,7 +503,10 @@ export class DesktopHost {
       const router = new NotificationRouter(client);
       router.registerGlobal('authUrl', (params) => {
         const p = params as { url?: string };
-        if (p?.url) void shell.openExternal(p.url);
+        // The daemon's SSO callback server listens on the remote 127.0.0.1 —
+        // forward the callback port to this machine's loopback before opening
+        // the browser (spec: SSO 登录 scenario 8).
+        if (p?.url) void this.handleRemoteAuthUrl(host, p.url);
       });
       router.attach();
       entry.client = client;
@@ -3132,9 +3138,31 @@ export class DesktopHost {
     }
   }
 
-  private async handleLogin(): Promise<void> {
+  /**
+   * Route a remote host's SSO auth URL to the system browser (spec: SSO 登录
+   * scenario 8). The daemon's callback server listens on the remote 127.0.0.1
+   * and a browser on this machine can't reach it directly — forward the
+   * callback port over SSH, rewrite callback_url to the local forwarded port,
+   * and only then open the page. The tunnel is kept in pendingAuthTunnels and
+   * torn down by handleLogin once the request settles.
+   */
+  private async handleRemoteAuthUrl(host: string, url: string): Promise<void> {
     try {
-      const result = (await this.utilityClientFor(this.currentHost).request('login')) as {
+      const forward = await this.portForwardManager.forwardAuthCallback(host, url);
+      this.pendingAuthTunnels.set(host, forward);
+      void shell.openExternal(forward.authUrl);
+    } catch (error) {
+      console.error(`[DesktopHost] ${host} 的 SSO 回调端口转发失败:`, error);
+      this.pushSystemMessage(
+        `登录回调端口转发失败：${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private async handleLogin(): Promise<void> {
+    const host = this.currentHost;
+    try {
+      const result = (await this.utilityClientFor(host).request('login')) as {
         user: { id: string; email?: string } | undefined;
       };
       this.postMessage({ command: 'loginResponse', success: true, user: result.user });
@@ -3147,6 +3175,15 @@ export class DesktopHost {
         success: false,
         error: error instanceof Error ? error.message : String(error),
       });
+    } finally {
+      // The code exchange has settled (success or failure) — the callback
+      // tunnel's job is done, tear it down so no orphan ssh process lingers
+      // (spec: SSO 登录 scenario 8).
+      const forward = this.pendingAuthTunnels.get(host);
+      if (forward) {
+        forward.close();
+        this.pendingAuthTunnels.delete(host);
+      }
     }
   }
 
