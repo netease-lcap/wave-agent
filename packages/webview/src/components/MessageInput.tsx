@@ -242,6 +242,12 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
   // Use a ref to avoid re-running effect on every local message change
   const inputContentRef = useRef(inputContent);
   const prevSessionRef = useRef(sessionId);
+  // Mirror the latest local message so the session-switch flush can read it
+  // without depending on `message` in the effect deps: a message dep would
+  // re-run this effect after every keystroke/appendText and wipe the input
+  // with the (stale) inputContent prop the host last pushed.
+  const messageRef = useRef(message);
+  messageRef.current = message;
   useEffect(() => {
     const prevSession = prevSessionRef.current;
     const sessionChanged = prevSession !== sessionId;
@@ -255,7 +261,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
         clearTimeout(inputContentTimerRef.current);
         inputContentTimerRef.current = null;
       }
-      const text = textareaRef.current?.innerText ?? message;
+      const text = textareaRef.current?.innerText ?? messageRef.current;
       if (text) {
         vscode.postMessage({ command: 'updateInputContent', sessionId: prevSession, content: text });
       }
@@ -269,7 +275,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
         textareaRef.current.innerText = inputContent ?? '';
       }
     }
-  }, [inputContent, sessionId, vscode, message]);
+  }, [inputContent, sessionId, vscode]);
   
   // Initialize attached images from initialAttachedImages prop
   useEffect(() => {
