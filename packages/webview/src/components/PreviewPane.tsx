@@ -16,6 +16,9 @@ export interface WebviewTagElement extends HTMLElement {
   send(channel: string, ...args: unknown[]): void;
   loadURL(url: string): Promise<void>;
   reload(): void;
+  /** Bypass the HTTP cache entirely — the refresh button uses this so a dev
+   * server's stale cache headers can't hide the latest build. */
+  reloadIgnoringCache(): void;
   getURL(): string;
 }
 
@@ -252,7 +255,9 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
 
   const handleRefresh = () => {
     setLoadError(null);
-    webviewRef.current?.reload();
+    // Force-refresh: plain reload() honors the HTTP cache, which can hide a
+    // dev server's latest output behind stale cache headers.
+    webviewRef.current?.reloadIgnoringCache();
   };
 
   const handleOpenExternal = () => {

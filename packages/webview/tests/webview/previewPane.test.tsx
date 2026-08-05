@@ -10,10 +10,11 @@ import { MockDataGenerator } from '../fixtures/mockData';
 
 vi.mock('../../src/styles/DesktopApp.css', () => ({}));
 
-type MockWebview = Omit<WebviewTagElement, 'send' | 'loadURL' | 'reload' | 'getURL'> & {
+type MockWebview = Omit<WebviewTagElement, 'send' | 'loadURL' | 'reload' | 'reloadIgnoringCache' | 'getURL'> & {
     send: ReturnType<typeof vi.fn>;
     loadURL: ReturnType<typeof vi.fn>;
     reload: ReturnType<typeof vi.fn>;
+    reloadIgnoringCache: ReturnType<typeof vi.fn>;
     getURL: ReturnType<typeof vi.fn>;
 };
 
@@ -34,6 +35,7 @@ function renderPane(options?: { url?: string; onClose?: () => void; onAddComment
     wv.send = vi.fn();
     wv.loadURL = vi.fn().mockResolvedValue(undefined);
     wv.reload = vi.fn();
+    wv.reloadIgnoringCache = vi.fn();
     wv.getURL = vi.fn(() => url);
     const rerenderWithUrl = (u: string) => result.rerender(<Harness url={u} />);
     return { ...result, rerenderWithUrl, vscode, wv, url, onClose, onAddComment };
@@ -132,7 +134,7 @@ describe('PreviewPane', () => {
         wv.send.mockClear();
 
         fireEvent.click(screen.getByTestId('preview-refresh'));
-        expect(wv.reload).toHaveBeenCalled();
+        expect(wv.reloadIgnoringCache).toHaveBeenCalled();
         fireDomReady(wv);
         firePickerReady(wv); // fresh document re-announces ready
         expect(wv.send).toHaveBeenCalledWith('wave-picker', expect.objectContaining({ action: 'activate' }));
@@ -151,7 +153,7 @@ describe('PreviewPane', () => {
         expect(screen.getByTestId('preview-error')).toHaveTextContent('ERR_NAME_NOT_RESOLVED');
 
         fireEvent.click(screen.getByTestId('preview-retry'));
-        expect(wv.reload).toHaveBeenCalled();
+        expect(wv.reloadIgnoringCache).toHaveBeenCalled();
         expect(screen.queryByTestId('preview-error')).not.toBeInTheDocument();
     });
 
@@ -359,6 +361,7 @@ describe('PreviewPane integration (DesktopApp)', () => {
         wv.send = vi.fn();
         wv.loadURL = vi.fn().mockResolvedValue(undefined);
         wv.reload = vi.fn();
+        wv.reloadIgnoringCache = vi.fn();
         wv.getURL = vi.fn(() => 'http://localhost:5173/proto');
         fireDomReady(wv);
         firePickerReady(wv);
