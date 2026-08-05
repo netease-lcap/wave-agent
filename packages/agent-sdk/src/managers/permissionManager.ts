@@ -427,18 +427,8 @@ export class PermissionManager {
       }
     }
 
-    // 1. If bypassPermissions mode, always allow
-    // Exception: tools that require user interaction (e.g. AskUserQuestion)
-    // must still prompt the user, matching Claude Code's requiresUserInteraction behavior.
-    if (context.permissionMode === "bypassPermissions") {
-      const requiresUserInteraction =
-        context.toolName === ASK_USER_QUESTION_TOOL_NAME;
-      if (!requiresUserInteraction) {
-        return { behavior: "allow" };
-      }
-    }
-
-    // 1.0 Check worktree safety for Write and Edit tools
+    // Check worktree safety for Write and Edit tools — unconditional safety
+    // check, applied regardless of permission mode (same as read-before-edit).
     // Support both CLI -w sessions (container-registered) and EnterWorktree mid-session
     // (per-agent WorktreeSession stored in this session's container)
     const worktreeSession = this.container.get<WorktreeSession | null>(
@@ -503,7 +493,19 @@ export class PermissionManager {
       }
     }
 
-    // 1.1 If acceptEdits mode, allow Edit, Write, and mkdir in safe zone
+    // If bypassPermissions mode, always allow
+    // Exception: tools that require user interaction (e.g. AskUserQuestion)
+    // must still prompt the user, matching Claude Code's requiresUserInteraction behavior.
+    // Worktree safety check above runs unconditionally, so bypass never skips it.
+    if (context.permissionMode === "bypassPermissions") {
+      const requiresUserInteraction =
+        context.toolName === ASK_USER_QUESTION_TOOL_NAME;
+      if (!requiresUserInteraction) {
+        return { behavior: "allow" };
+      }
+    }
+
+    // If acceptEdits mode, allow Edit, Write, and mkdir in safe zone
     if (context.permissionMode === "acceptEdits") {
       const autoAcceptedTools = [EDIT_TOOL_NAME, WRITE_TOOL_NAME];
       if (autoAcceptedTools.includes(context.toolName)) {

@@ -138,6 +138,80 @@ describe("PermissionManager Worktree Safety", () => {
     const result = await manager.checkPermission(context);
     expect(result.behavior).toBe("allow");
   });
+
+  it("should auto-deny Write to main repo in bypassPermissions mode", async () => {
+    const container = createWorktreeContainer();
+    const manager = new PermissionManager(container);
+    const context: ToolPermissionContext = {
+      toolName: "Write",
+      permissionMode: "bypassPermissions",
+      toolInput: { file_path: path.join(mainRepoRoot, "main-file.txt") },
+    };
+
+    const result = await manager.checkPermission(context);
+    expect(result.behavior).toBe("deny");
+    expect(result.message).toContain(
+      "Access denied: You are currently in a worktree session",
+    );
+    expect(result.message).toContain(worktreeName);
+  });
+
+  it("should auto-deny Edit to main repo in bypassPermissions mode", async () => {
+    const container = createWorktreeContainer();
+    const manager = new PermissionManager(container);
+    const context: ToolPermissionContext = {
+      toolName: "Edit",
+      permissionMode: "bypassPermissions",
+      toolInput: { file_path: path.join(mainRepoRoot, "main-file.txt") },
+    };
+
+    const result = await manager.checkPermission(context);
+    expect(result.behavior).toBe("deny");
+    expect(result.message).toContain(
+      "Access denied: You are currently in a worktree session",
+    );
+  });
+
+  it("should allow Write inside worktree in bypassPermissions mode", async () => {
+    const container = createWorktreeContainer();
+    const manager = new PermissionManager(container);
+    const context: ToolPermissionContext = {
+      toolName: "Write",
+      permissionMode: "bypassPermissions",
+      toolInput: { file_path: path.join(workdir, "test.txt") },
+    };
+
+    const result = await manager.checkPermission(context);
+    expect(result.behavior).toBe("allow");
+  });
+
+  it("should allow Write outside worktree in bypassPermissions mode when not in a worktree session", async () => {
+    const container = new Container();
+    container.register("Workdir", mainRepoRoot);
+    const manager = new PermissionManager(container);
+    const context: ToolPermissionContext = {
+      toolName: "Write",
+      permissionMode: "bypassPermissions",
+      toolInput: { file_path: path.join(mainRepoRoot, "main-file.txt") },
+    };
+
+    const result = await manager.checkPermission(context);
+    expect(result.behavior).toBe("allow");
+  });
+
+  it("should allow Write to the plan file in bypassPermissions mode", async () => {
+    const planFilePath = "/home/user/.wave/plans/plan.md";
+    const container = createWorktreeContainer();
+    const manager = new PermissionManager(container, { planFilePath });
+    const context: ToolPermissionContext = {
+      toolName: "Write",
+      permissionMode: "bypassPermissions",
+      toolInput: { file_path: planFilePath },
+    };
+
+    const result = await manager.checkPermission(context);
+    expect(result.behavior).toBe("allow");
+  });
 });
 
 describe("PermissionManager Worktree Safety — EnterWorktree mid-session", () => {
