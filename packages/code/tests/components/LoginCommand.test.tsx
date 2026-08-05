@@ -65,6 +65,16 @@ describe("LoginCommand", () => {
     expect(lastFrame()).toContain("Press Enter to logout");
   });
 
+  it("should show authenticated state when token exists but is expired", () => {
+    mockAuthService.isSSOAuthenticated.mockReturnValue(false);
+    mockAuthService.getSSOToken.mockReturnValue("expired-token");
+
+    const { lastFrame } = render(<LoginCommand onCancel={vi.fn()} />);
+
+    expect(lastFrame()).toContain("Authenticated");
+    expect(lastFrame()).toContain("Press Enter to logout");
+  });
+
   it("should show server URL when getServerUrl returns a value", () => {
     mockAuthService.isSSOAuthenticated.mockReturnValue(true);
     mockAuthService.getSSOToken.mockReturnValue("short-token");

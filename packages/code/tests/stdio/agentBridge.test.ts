@@ -1182,10 +1182,43 @@ test("getAuthStatus returns auth state", async () => {
       .fn()
       .mockReturnValue({ id: "user-1", email: "test@test.com" }),
     getServerUrl: vi.fn().mockReturnValue("https://codechat.codewave.163.com"),
+    checkAndRefreshTokenIfNeeded: vi.fn().mockResolvedValue(true),
   } as unknown as AuthService);
 
   const result = await bridge.handleRequest("getAuthStatus", {});
 
+  expect(result).toEqual({
+    isAuthenticated: true,
+    user: { id: "user-1", email: "test@test.com" },
+    serverUrl: "https://codechat.codewave.163.com",
+  });
+});
+
+test("getAuthStatus refreshes a stale-but-refreshable token before reporting", async () => {
+  // A remote daemon started with an expired access token (hourly expiry) must
+  // still report the user as logged in once the refresh succeeds. Without the
+  // proactive refresh, getAuthStatus returns false right after daemon start —
+  // the desktop welcome page then keeps showing the login button although the
+  // user is authenticated (refresh token valid).
+  const { bridge } = createBridge();
+  let authenticated = false; // stale token on disk when the daemon starts
+  const isSSOAuthenticated = vi.fn(() => authenticated);
+  const checkAndRefreshTokenIfNeeded = vi.fn().mockImplementation(async () => {
+    authenticated = true; // the refresh writes a fresh token
+    return true;
+  });
+  vi.mocked(AuthService.getInstance).mockReturnValue({
+    isSSOAuthenticated,
+    getAuthUser: vi
+      .fn()
+      .mockReturnValue({ id: "user-1", email: "test@test.com" }),
+    getServerUrl: vi.fn().mockReturnValue("https://codechat.codewave.163.com"),
+    checkAndRefreshTokenIfNeeded,
+  } as unknown as AuthService);
+
+  const result = await bridge.handleRequest("getAuthStatus", {});
+
+  expect(checkAndRefreshTokenIfNeeded).toHaveBeenCalled();
   expect(result).toEqual({
     isAuthenticated: true,
     user: { id: "user-1", email: "test@test.com" },

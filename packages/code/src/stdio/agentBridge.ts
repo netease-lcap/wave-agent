@@ -1057,6 +1057,14 @@ export class AgentBridge {
     serverUrl: string;
   }> {
     const authService = AuthService.getInstance();
+    // A stale-but-refreshable token still means "logged in" — the daemon may
+    // have started with an expired access token (hourly expiry) and only
+    // refreshes lazily on the first API call. Without this proactive refresh a
+    // fresh client querying right after daemon start gets a false
+    // isAuthenticated and e.g. the desktop welcome page keeps showing the
+    // login button for an authenticated host. Mirrors the refresh that
+    // createAuthAwareFetch does before every real request.
+    await authService.checkAndRefreshTokenIfNeeded();
     return {
       isAuthenticated: authService.isSSOAuthenticated(),
       user: authService.getAuthUser(),

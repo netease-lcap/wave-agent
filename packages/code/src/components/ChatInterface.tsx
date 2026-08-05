@@ -50,8 +50,10 @@ export const ChatInterface: React.FC = () => {
 
   // Compute whether the user has any usable auth/direct-API config,
   // so the welcome page can prompt /login when neither is present.
+  // An SSO token counts as authenticated even if the access token is stale —
+  // it refreshes lazily on the next API call (matching the claude-code CLI).
   const computeAuthState = useCallback((): boolean => {
-    if (authService.isSSOAuthenticated()) return true;
+    if (authService.getSSOToken()) return true;
     const gateway = getGatewayConfig();
     return Boolean(gateway.apiKey || gateway.baseURL);
   }, [getGatewayConfig]);
