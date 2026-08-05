@@ -51,7 +51,7 @@ order: 220
 
 1. **假设** `wave` 已在系统 PATH 中，**当**插件初始化时，**则**通过 `which wave`（Unix）或 `where wave`（Windows）直接解析到二进制路径并使用它，不触发 npm 安装。
 2. **假设** `wave` 不在 PATH 中但已通过 npm 全局安装，**当**插件初始化时，**则**通过 `npm prefix -g` 获取全局 bin 目录，在其中找到 `wave`（Unix）或 `wave.cmd`（Windows）并使用它。
-3. **假设** `wave` 完全未安装，**当**插件初始化时，**则**自动执行 `npm install -g wave-code --registry=https://registry.npmmirror.com`，安装完成后重新解析二进制路径。
+3. **假设** `wave` 完全未安装，**当**插件初始化时，**则**自动执行 `npm install -g wave-code@<插件版本> --registry=https://registry.npmmirror.com`，安装与插件版本精确匹配的 CLI（而非 registry 最新版），安装完成后重新解析二进制路径。
 4. **假设** 二进制路径已解析成功，**当**同一插件生命周期内再次调用解析时，**则**直接返回缓存的路径，不重复查找。
 5. **假设** 自动安装完成后二进制文件仍未出现在预期位置，**当**插件再次检查时，**则**再次尝试 PATH 查找作为兜底，仍失败则抛出明确错误。
 
@@ -69,9 +69,10 @@ order: 220
 
 1. **假设** 已安装 CLI 版本 >= 插件版本，**当**插件初始化时，**则**不执行升级，直接使用现有二进制。
 2. **假设** 已安装 CLI 版本 < 插件版本，**当**插件初始化时，**则**自动执行 `npm install -g wave-code@<插件版本>` 升级到精确匹配版本。
-3. **假设** CLI 二进制存在但损坏（`wave -v` 执行失败或返回空），**当**插件初始化时，**则**视为需要升级，执行升级流程。
-4. **假设** 升级完成后，**当**插件重新解析二进制时，**则**缓存被清除并重新查找，确保使用新安装的二进制。
-5. **假设** 目标版本字符串不匹配 semver 格式，**当**尝试升级时，**则**拒绝执行升级并抛出 "Invalid version" 错误，防止 shell 注入。
+3. **假设** `wave` 完全未安装，**当**首次自动安装 CLI 时，**则**安装命令同样携带精确版本（`wave-code@<插件版本>`），与升级路径一致，不解析 `@latest`。
+4. **假设** CLI 二进制存在但损坏（`wave -v` 执行失败或返回空），**当**插件初始化时，**则**视为需要升级，执行升级流程。
+5. **假设** 升级完成后，**当**插件重新解析二进制时，**则**缓存被清除并重新查找，确保使用新安装的二进制。
+6. **假设** 目标版本字符串不匹配 semver 格式，**当**尝试升级时，**则**拒绝执行升级并抛出 "Invalid version" 错误，防止 shell 注入。
 
 ---
 
@@ -233,6 +234,7 @@ order: 220
 
 - **Windows `.cmd` 兼容性**：Node.js（CVE-2024-27980 补丁后）拒绝在没有 shell 的情况下 spawn `.cmd` 文件。所有执行 `npm.cmd` 和 `wave.cmd` 的地方必须设置 `shell: true`（或 `shell: process.platform === 'win32'`）。
 - **`getCliVersion` 超时**：`wave -v` 执行有 5 秒超时，超时返回 `null`（视为二进制损坏，触发升级）。
+- **首次安装同样携带精确版本**：`wave` 完全未安装时的自动安装命令为 `npm install -g wave-code@<插件版本>`（本地与远端一致），不解析 `@latest`，避免装到与插件不匹配的更新版本；若精确版本安装失败，按失败路径报错并提示手动执行带版本号的安装命令，不回退到最新版。
 - **semver 校验防注入**：`upgradeWaveBinary` 中的目标版本来自插件 `package.json`（可信源），但仍通过正则 `SEMVER_RE` 校验，因为 Windows 上 execFile 通过 cmd.exe 执行，严格的 semver 检查保留 "不对版本参数进行 shell 注入" 的保证。
 - **npm 全局目录差异**：`npm prefix -g` 在 Windows 上直接返回全局 bin 目录（如 `C:\Users\xxx\AppData\Roaming\npm`），Unix 上返回 prefix 需要拼接 `/bin`。
 - **utility 请求无 session 上下文**：FileService（搜索文件）、SessionService（列出会话）、PluginService（管理插件）的请求不需要 sessionId，直接通过共享 StdioClient 发送。

@@ -478,9 +478,9 @@ export class DesktopHost {
         // Upgrade/install failure — fall back to whatever binary is resolvable.
         console.warn('[DesktopHost] ensureCliUpToDate failed, falling back:', error);
         this.pushSystemMessage(
-          `wave-code CLI 升级失败：${error instanceof Error ? error.message : String(error)}。可通过 npm install -g wave-code@latest 手动升级`,
+          `wave-code CLI 升级失败：${error instanceof Error ? error.message : String(error)}。可通过 npm install -g wave-code@${targetVersion} 手动升级`,
         );
-        binaryPath = resolveWaveBinary();
+        binaryPath = resolveWaveBinary(undefined, targetVersion);
       }
       this.cliVersion = getCliVersion(binaryPath);
 
