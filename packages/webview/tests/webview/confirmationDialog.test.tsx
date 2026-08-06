@@ -612,4 +612,38 @@ describe('Confirmation Dialog', () => {
         expect(document.querySelector('.confirmation-dialog')).toBeInTheDocument();
         expect(screen.queryByText('是，并跳过权限确认')).not.toBeInTheDocument();
     });
+
+    it('should not show bypass button for Bash tool in plan mode', async () => {
+        renderChatApp();
+
+        await act(async () => {
+            sendCommand('showConfirmation', {
+                confirmationId: 'test_bash_plan_no_bypass',
+                toolName: BASH_TOOL_NAME,
+                confirmationType: '命令执行待确认',
+                toolInput: { command: 'ls -la' },
+                permissionMode: 'plan'
+            });
+        });
+
+        expect(document.querySelector('.confirmation-dialog')).toBeInTheDocument();
+        expect(screen.queryByText('是，并跳过权限确认')).not.toBeInTheDocument();
+    });
+
+    it('should still show bypass button for ExitPlanMode in plan mode', async () => {
+        renderChatApp();
+
+        await act(async () => {
+            sendCommand('showConfirmation', {
+                confirmationId: 'test_exit_plan_mode_bypass',
+                toolName: EXIT_PLAN_MODE_TOOL_NAME,
+                confirmationType: '计划待确认',
+                planContent: '## Test Plan\n- Step 1',
+                permissionMode: 'plan'
+            });
+        });
+
+        expect(document.querySelector('.confirmation-dialog')).toBeInTheDocument();
+        expect(screen.getByText('是，并跳过权限确认')).toBeInTheDocument();
+    });
 });

@@ -75,6 +75,7 @@ interface PendingConfirmation {
   planContent?: string;
   suggestedPrefix?: string;
   hidePersistentOption?: boolean;
+  permissionMode?: PermissionMode;
 }
 
 interface WorktreeInfo {
@@ -1687,6 +1688,7 @@ export class DesktopHost {
       planContent: context.planContent,
       suggestedPrefix: context.suggestedPrefix,
       hidePersistentOption: context.hidePersistentOption,
+      permissionMode: context.permissionMode,
     });
     this.refreshSessionTree();
 
@@ -1704,6 +1706,7 @@ export class DesktopHost {
         planContent: context.planContent,
         suggestedPrefix: context.suggestedPrefix,
         hidePersistentOption: context.hidePersistentOption,
+        permissionMode: context.permissionMode,
       });
     }
   }
@@ -1801,6 +1804,7 @@ export class DesktopHost {
         confirmationType: p.confirmationType,
         toolInput: p.toolInput,
         suggestedPrefix: p.suggestedPrefix,
+        permissionMode: p.permissionMode,
       }));
 
     this.postMessage({

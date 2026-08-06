@@ -43,6 +43,7 @@ data class PendingConfirmation(
     val confirmationType: String,
     val toolInput: JsonElement? = null,
     val planContent: String? = null,
+    val permissionMode: String? = null,
 )
 
 /**

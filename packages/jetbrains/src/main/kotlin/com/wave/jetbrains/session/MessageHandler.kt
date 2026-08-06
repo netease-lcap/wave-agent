@@ -757,6 +757,7 @@ class MessageHandler(
                     put("confirmationType", pc.confirmationType)
                     if (pc.toolInput != null) put("toolInput", pc.toolInput)
                     if (pc.planContent != null) put("planContent", pc.planContent)
+                    if (pc.permissionMode != null) put("permissionMode", pc.permissionMode)
                 }
             }
             put("pendingConfirmations", JsonArray(confirmations))

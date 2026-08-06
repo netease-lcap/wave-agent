@@ -510,7 +510,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                 toolInput: context.toolInput,
                 planContent: context.planContent,
                 suggestedPrefix: context.suggestedPrefix,
-                hidePersistentOption: context.hidePersistentOption
+                hidePersistentOption: context.hidePersistentOption,
+                permissionMode: context.permissionMode
             });
 
             this.webviewManager.postMessage({
@@ -521,7 +522,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                 toolInput: context.toolInput,
                 planContent: context.planContent,
                 suggestedPrefix: context.suggestedPrefix,
-                hidePersistentOption: context.hidePersistentOption
+                hidePersistentOption: context.hidePersistentOption,
+                permissionMode: context.permissionMode
             }, viewType, windowId);
         });
     }

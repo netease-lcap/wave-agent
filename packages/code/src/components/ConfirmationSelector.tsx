@@ -1,6 +1,10 @@
 import React, { useEffect, useReducer } from "react";
 import { Box, Text, useInput } from "ink";
-import type { PermissionDecision, AskUserQuestionInput } from "wave-agent-sdk";
+import type {
+  PermissionDecision,
+  PermissionMode,
+  AskUserQuestionInput,
+} from "wave-agent-sdk";
 import {
   BASH_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
@@ -24,6 +28,7 @@ export interface ConfirmationSelectorProps {
   toolInput?: Record<string, unknown>;
   suggestedPrefix?: string;
   hidePersistentOption?: boolean;
+  permissionMode?: PermissionMode;
   isExpanded?: boolean;
   onDecision: (decision: PermissionDecision) => void;
   onCancel: () => void;
@@ -34,6 +39,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
   toolInput,
   suggestedPrefix,
   hidePersistentOption,
+  permissionMode,
   isExpanded = false,
   onDecision,
   onCancel,
@@ -119,6 +125,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
         toolInput,
         suggestedPrefix,
         hidePersistentOption,
+        permissionMode,
       });
     }
   });
@@ -240,8 +247,8 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                 </Text>
               </Box>
             )}
-            {(toolName === BASH_TOOL_NAME ||
-              toolName === EXIT_PLAN_MODE_TOOL_NAME) && (
+            {(toolName === EXIT_PLAN_MODE_TOOL_NAME ||
+              (toolName === BASH_TOOL_NAME && permissionMode !== "plan")) && (
               <Box key="bypass-option">
                 <Text
                   color={state.selectedOption === "bypass" ? "black" : "white"}
