@@ -4,7 +4,7 @@ import React from 'react';
 import { DesktopApp } from '../../src/components/DesktopApp';
 import { ChatApp, prunePanelGroupCache } from '../../src/components/ChatApp';
 import type { WebviewTagElement } from '../../src/components/PreviewPane';
-import { EXIT_PLAN_MODE_TOOL_NAME } from 'wave-agent-sdk';
+import { EXIT_PLAN_MODE_TOOL_NAME, READ_TOOL_NAME } from 'wave-agent-sdk';
 import { createMockVscode, sendCommand, sendHostMessage, renderChatApp, fireInput } from './test-utils';
 import { fixtures } from 'wave-webview-fixtures';
 import { MockDataGenerator } from '../fixtures/mockData';
@@ -233,6 +233,49 @@ describe('ChatApp desktop panel framework', () => {
             fireEvent.click(screen.getByTestId('panel-toggle-item-diff'));
             expect(screen.queryByTestId('diff-pane')).not.toBeInTheDocument();
             expect(screen.getByTestId('desktop-panel-hint')).toHaveTextContent('空间不足');
+        } finally {
+            rectSpy.mockRestore();
+        }
+    });
+
+    it('re-clicking another file path replaces the panel in place without moving rows (spec 场景 6)', () => {
+        window.waveHostType = 'desktop';
+        // 1000px fits the 420px file panel beside the 360px conversation
+        // minimum, so the panel belongs in the first row. tryOpenPanel used to
+        // double-count an already-open panel's own width in the row-fit check,
+        // overflowing row 1 and silently spilling the panel into the second
+        // row on the second click.
+        const rectSpy = vi
+            .spyOn(Element.prototype, 'getBoundingClientRect')
+            .mockReturnValue({ width: 1000, right: 1000 } as DOMRect);
+        try {
+            renderDesktop({ workdir: '/work/a' });
+            const readMessage = (path: string) =>
+                MockDataGenerator.createAssistantMessageWithTool(
+                    'Reading a file.',
+                    READ_TOOL_NAME,
+                    JSON.stringify({ file_path: path }),
+                    'done',
+                );
+
+            sendCommand('updateMessages', { messages: [readMessage('/work/a/src/first.ts')] });
+            const firstPath = document.querySelector('.write-tool-path') as HTMLElement;
+            expect(firstPath).toBeInTheDocument();
+            fireEvent.click(firstPath);
+
+            const pane = screen.getByTestId('file-pane');
+            expect(pane).toBeInTheDocument();
+            expect(pane.closest('.desktop-panel-slot')).toHaveClass('desktop-panel-slot--row-1');
+
+            // A different file link re-targets the same panel — the content
+            // swaps but the panel must stay where it is (no row move).
+            sendCommand('updateMessages', { messages: [readMessage('/work/a/src/second.ts')] });
+            fireEvent.click(document.querySelector('.write-tool-path') as HTMLElement);
+
+            expect(screen.getByTestId('file-pane').closest('.desktop-panel-slot')).toHaveClass(
+                'desktop-panel-slot--row-1',
+            );
+            expect(screen.queryByTestId('desktop-panel-row-separator')).not.toBeInTheDocument();
         } finally {
             rectSpy.mockRestore();
         }

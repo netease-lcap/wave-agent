@@ -1257,7 +1257,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       if (!containerW) return true;
       const used =
         checkedPanelsRef.current
-          .filter((k) => panelRowsRef.current[k] === row)
+          .filter((k) => k !== kind && panelRowsRef.current[k] === row)
           .reduce((sum, k) => sum + panelWidthsRef.current[k], 0) + panelWidthsRef.current[kind];
       return containerW - used >= (row === 1 ? CHAT_MAIN_MIN_WIDTH : 0);
     };
