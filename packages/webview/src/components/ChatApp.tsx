@@ -981,7 +981,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     if (paneId && groupKeyRef.current?.startsWith('new:')) sentFromNewSessionRef.current = true;
     if (
       host?.type === 'desktop' &&
-      stateRef.current.messages.length === 0 &&
+      !stateRef.current.messages.some((m) => !(m.role === 'user' && m.isMeta)) &&
       worktreeChecked &&
       effectiveWorkdirRef.current &&
       gitBranches
@@ -1083,10 +1083,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     dispatch({ type: 'HIDE_DIALOG' });
   }, []);
 
-  // Welcome page shows only when there are no messages yet. Login is optional:
+  // A message counts as chat content only when the UI renders it — hidden meta
+  // user messages (e.g. SessionStart hook additionalContext, isMeta: true) do
+  // not, so they must not suppress the welcome page, the desktop new-session
+  // pickers, or the desktop worktree trigger.
+  const hasVisibleMessages = state.messages.some((m) => !(m.role === 'user' && m.isMeta));
+
+  // Welcome page shows only when there are no visible messages yet. Login is optional:
   // a direct-connect config (baseURL/apiKey) works without authentication, so an
   // unauthenticated user who sends a message must still see the chat, not the welcome page.
-  const showWelcome = state.messages.length === 0;
+  const showWelcome = !hasVisibleMessages;
   // Withhold the welcome page until the initial state (incl. auth status) has
   // arrived, otherwise logged-in users see the login CTA flash before
   // setInitialState updates isAuthenticated to true.
@@ -1753,7 +1759,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
             initialAttachedImages={state.attachedImages}
             disabled={host?.type === 'desktop' && !effectiveWorkdir}
             workdirSelector={
-              host?.type === 'desktop' && state.messages.length === 0 ? (
+              host?.type === 'desktop' && !hasVisibleMessages ? (
                 <>
                   <DesktopHostSelector
                     host={effectiveHost}
