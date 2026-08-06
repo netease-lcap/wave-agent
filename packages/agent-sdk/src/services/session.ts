@@ -24,7 +24,10 @@ import { PathEncoder } from "../utils/pathEncoder.js";
 import { JsonlHandler } from "../services/jsonlHandler.js";
 import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
 import { logger } from "../utils/globalLogger.js";
-import { getMessageContent } from "../utils/messageOperations.js";
+import {
+  getMessageContent,
+  sliceFromLastCompact,
+} from "../utils/messageOperations.js";
 
 export interface SessionData {
   id: string;
@@ -222,15 +225,7 @@ export async function loadSessionFromJsonl(
     const allMessages = await jsonlHandler.read(filePath);
 
     // Find the last compact boundary — only return messages from there forward
-    let lastCompactIndex = -1;
-    for (let i = allMessages.length - 1; i >= 0; i--) {
-      if (allMessages[i].blocks?.some((b) => b.type === "compact")) {
-        lastCompactIndex = i;
-        break;
-      }
-    }
-    const messages =
-      lastCompactIndex >= 0 ? allMessages.slice(lastCompactIndex) : allMessages;
+    const messages = sliceFromLastCompact(allMessages);
 
     // Extract metadata from messages
     const lastMessage =
