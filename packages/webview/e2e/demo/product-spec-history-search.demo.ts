@@ -32,9 +32,6 @@ test.describe('Product Spec: History Search', () => {
 
         // 5. Take screenshot of the whole webview to show the popup in context
         await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-history-search.webp');
-
-        // 6. Take a full screenshot showing the context
-        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-history-search-context.webp');
     });
 
     test('should capture plus menu with history prompt entry', async ({ webviewPage }) => {

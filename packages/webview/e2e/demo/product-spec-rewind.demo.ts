@@ -30,9 +30,6 @@ test.describe('Product Spec: Rewind', () => {
         await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-rewind-button.webp', {
             clip: (await ui.messagesContainer.boundingBox()) || undefined
         });
-
-        // Take a full screenshot showing the context
-        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-rewind-context.webp');
     });
 
     test('should capture /rewind popup screenshot', async ({ webviewPage }) => {

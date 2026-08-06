@@ -203,21 +203,5 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
         await webviewPage.keyboard.press('Escape');
         await webviewPage.keyboard.press('Control+A');
         await webviewPage.keyboard.press('Backspace');
-
-        // 5. Mermaid Diagrams
-        const mermaidChat = [
-            MockDataGenerator.createUserMessage('帮我画一张这套微服务的架构图', 'msg_user_mermaid'),
-            MockDataGenerator.createAssistantMessage('这是一个微服务架构图：\n\n```mermaid\ngraph TD\n    Client[Client App] --> Gateway[API Gateway]\n    Gateway --> AuthSvc[Auth Service]\n    Gateway --> PaySvc[Payment Service]\n    Gateway --> OrderSvc[Order Service]\n    PaySvc --> DB[(Payment DB)]\n    OrderSvc --> DB2[(Order DB)]\n    PaySvc --> MQ[[Message Queue]]\n    MQ --> NotifySvc[Notification Service]\n```')
-        ];
-        await injector.updateMessages(mermaidChat);
-        await injector.endStreaming();
-        await webviewPage.waitForSelector('.mermaid-container svg');
-        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-mermaid.webp');
-
-        // 23. Mermaid Fullscreen
-        await webviewPage.click('.mermaid-container'); // Click to open fullscreen
-        await webviewPage.waitForSelector('.mermaid-fullscreen-modal');
-        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-mermaid-fullscreen.webp');
-        await webviewPage.keyboard.press('Escape');
     });
 });

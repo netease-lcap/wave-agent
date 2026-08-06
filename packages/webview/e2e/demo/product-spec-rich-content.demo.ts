@@ -5,8 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import {
-    type Message,
-    type SessionMetadata
+    type Message
 } from 'wave-agent-sdk';
 import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
@@ -136,49 +135,6 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
             }
         ]);
         await elementScreenshotWebp(webviewPage.locator('.messages-container'), '../../docs/public/screenshots/spec-message-inline-tags.webp');
-
-        // 14. Session Selector - 使用 SDK 的 SessionMetadata 类型
-        const now = Date.now();
-        const sessions: SessionMetadata[] = [
-            {
-                id: 'session-1',
-                sessionType: 'main',
-                workdir: '/home/dev/projects/nebula-platform',
-                createdAt: new Date(now - 1000 * 60 * 60), // 1小时前创建
-                lastActiveAt: new Date(now - 1000 * 60 * 30), // 30分钟前
-                latestTotalTokens: 15420
-            },
-            {
-                id: 'session-2',
-                sessionType: 'main',
-                workdir: '/home/dev/projects/nebula-platform',
-                createdAt: new Date(now - 1000 * 60 * 60 * 3), // 3小时前创建
-                lastActiveAt: new Date(now - 1000 * 60 * 60 * 2), // 2小时前
-                latestTotalTokens: 32800
-            },
-            {
-                id: 'session-3',
-                sessionType: 'main',
-                workdir: '/home/dev/projects/nebula-platform',
-                createdAt: new Date(now - 1000 * 60 * 60 * 48), // 2天前创建
-                lastActiveAt: new Date(now - 1000 * 60 * 60 * 24), // 1天前
-                latestTotalTokens: 8600
-            }
-        ];
-        
-        await injector.simulateExtensionMessage('updateSessions', { sessions });
-        await injector.simulateExtensionMessage('updateCurrentSession', {
-            session: sessions[0]
-        });
-        
-        // 打开历史对话弹窗以在截图中展示会话列表
-        await webviewPage.getByTestId('history-btn').click();
-        await webviewPage.waitForSelector('[data-testid="session-list-popup"]');
-
-        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-sessions.webp');
-
-        // 关闭历史对话弹窗
-        await webviewPage.keyboard.press('Escape');
 
         // 22. Vision
         const visionMessages = [
