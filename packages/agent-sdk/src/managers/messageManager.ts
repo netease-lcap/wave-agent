@@ -15,6 +15,7 @@ import {
   type ToolBlockUpdateCallbackParams,
   type AddNotificationMessageParams,
   generateMessageId,
+  sliceFromLastCompact,
 } from "../utils/messageOperations.js";
 import type { Message, Usage, ToolBlock } from "../types/index.js";
 import { getLastApiRounds } from "../utils/groupMessagesByApiRound.js";
@@ -1014,9 +1015,12 @@ export class MessageManager {
       await reversionManager.revertTo(messageIdsToRemove, messages);
     }
 
-    // Rewrite file with truncated messages
+    // Rewrite file with truncated messages (full history kept on disk)
     await this.rewriteSessionFile(newMessages);
-    this.setMessages(newMessages);
+    // Fold the in-memory messages at the last compact boundary so the agent
+    // only sees messages from the latest compact summary forward — matching
+    // the compact and resume behaviors (which also fold memory).
+    this.setMessages(sliceFromLastCompact(newMessages));
     this.savedMessageCount = newMessages.length;
   }
 

@@ -192,4 +192,126 @@ describe("MessageManager Single-Session Rewind", () => {
       "old_assistant1",
     );
   });
+
+  it("should fold in-memory messages at the last compact boundary when rewinding past it", async () => {
+    // Full thread as stored on disk after multiple compactions:
+    // u1 a1 u2 a2 u3 a3 c1 u2 a2 u3 a3 u4 a4 c2 u3 a3 u4 a4 u5 a5
+    const messages = [
+      { id: "u1", role: "user", blocks: [{ type: "text", content: "one" }] },
+      {
+        id: "a1",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi1" }],
+      },
+      { id: "u2", role: "user", blocks: [{ type: "text", content: "two" }] },
+      {
+        id: "a2",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi2" }],
+      },
+      { id: "u3", role: "user", blocks: [{ type: "text", content: "three" }] },
+      {
+        id: "a3",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi3" }],
+      },
+      {
+        id: "c1",
+        role: "assistant",
+        blocks: [{ type: "compact", content: "summary 1" }],
+      },
+      { id: "u2b", role: "user", blocks: [{ type: "text", content: "two" }] },
+      {
+        id: "a2b",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi2" }],
+      },
+      { id: "u3b", role: "user", blocks: [{ type: "text", content: "three" }] },
+      {
+        id: "a3b",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi3" }],
+      },
+      { id: "u4", role: "user", blocks: [{ type: "text", content: "four" }] },
+      {
+        id: "a4",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi4" }],
+      },
+      {
+        id: "c2",
+        role: "assistant",
+        blocks: [{ type: "compact", content: "summary 2" }],
+      },
+      { id: "u3c", role: "user", blocks: [{ type: "text", content: "three" }] },
+      {
+        id: "a3c",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi3" }],
+      },
+      { id: "u4b", role: "user", blocks: [{ type: "text", content: "four" }] },
+      {
+        id: "a4b",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi4" }],
+      },
+      { id: "u5", role: "user", blocks: [{ type: "text", content: "five" }] },
+      {
+        id: "a5",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi5" }],
+      },
+    ] as Message[];
+
+    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
+      messages,
+      sessionIds: [messageManager.getSessionId()],
+    });
+
+    // Rewind to u5 (index 18): drops u5 + a5, file keeps everything before it
+    await messageManager.truncateHistory(18);
+
+    // In-memory messages are folded at the last compact boundary (c2),
+    // matching compact/resume behavior — what the LLM/UI sees
+    const currentMessages = messageManager.getMessages();
+    expect(currentMessages.map((m) => m.id)).toEqual([
+      "c2",
+      "u3c",
+      "a3c",
+      "u4b",
+      "a4b",
+    ]);
+
+    // The session file keeps the full truncated history (incl. pre-compact
+    // duplicates) so checkpoints can still rewind before the compact boundary
+    const { writeFile } = await import("fs/promises");
+    expect(writeFile).toHaveBeenCalledTimes(1);
+    const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string;
+    const writtenIds = writtenContent
+      .trim()
+      .split("\n")
+      .map((line) => (JSON.parse(line) as { id: string }).id);
+    expect(writtenIds).toEqual(messages.slice(0, 18).map((m) => m.id));
+  });
+
+  it("should not fold in-memory messages when no compact block exists", async () => {
+    const messages = [
+      { id: "u1", role: "user", blocks: [{ type: "text", content: "one" }] },
+      {
+        id: "a1",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi" }],
+      },
+      { id: "u2", role: "user", blocks: [{ type: "text", content: "two" }] },
+    ] as Message[];
+
+    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
+      messages,
+      sessionIds: [messageManager.getSessionId()],
+    });
+
+    await messageManager.truncateHistory(2);
+
+    expect(messageManager.getMessages().map((m) => m.id)).toEqual(["u1", "a1"]);
+  });
 });
