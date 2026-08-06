@@ -30,6 +30,8 @@ function createMockSession(): ChatSession {
         connectMcpServer: vi.fn(),
         disconnectMcpServer: vi.fn(),
         compact: vi.fn(),
+        clearChat: vi.fn(),
+        restoreSession: vi.fn(),
         getSlashCommands: vi.fn().mockResolvedValue([]),
         getMessages: vi.fn().mockResolvedValue([]),
         askBtw: vi.fn(),
@@ -248,6 +250,41 @@ describe('MessageHandler MCP handlers', () => {
 
     // /compact command: mirrors /clear — the webview posts { command: 'compact', customInstructions }
     // and the handler delegates to session.compact(customInstructions).
+    // Regression (9cea65ea): the onMessagesChange full-snapshot push was removed;
+    // restoring a history session must deliver the pulled list to the webview via
+    // updateMessages, otherwise state.messages stays empty and the webview keeps
+    // showing the welcome page after selecting a session in the sidebar.
+    test('restoreSession posts updateMessages with the restored messages', async () => {
+        const restoredMessages = [{ id: 'm1', role: 'user', content: 'hello' }];
+        const session = createMockSession();
+        (session.restoreSession as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+        session.messages = restoredMessages as unknown as ChatSession['messages'];
+
+        const { handler, context } = createHandler(session);
+        await handler.handleMessage({ command: 'restoreSession', sessionId: 'sess-1' }, 'tab');
+
+        expect(session.restoreSession).toHaveBeenCalledWith('sess-1');
+        const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as { command: string; messages: unknown };
+        expect(posted.command).toBe('updateMessages');
+        expect(posted.messages).toEqual(restoredMessages);
+    });
+
+    // Same regression class: /clear pulls the (now empty) list into the cache
+    // but never pushes it, so the webview would keep showing the old messages.
+    test('clearChat posts updateMessages with the cleared message list', async () => {
+        const session = createMockSession();
+        (session.clearChat as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+        session.messages = [];
+
+        const { handler, context } = createHandler(session);
+        await handler.handleMessage({ command: 'clearChat' }, 'tab');
+
+        expect(session.clearChat).toHaveBeenCalled();
+        const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as { command: string; messages: unknown };
+        expect(posted.command).toBe('updateMessages');
+        expect(posted.messages).toEqual([]);
+    });
+
     test('compact command calls session.compact with customInstructions', async () => {
         const session = createMockSession();
         (session.compact as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);

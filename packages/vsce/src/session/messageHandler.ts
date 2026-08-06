@@ -591,6 +591,9 @@ export class MessageHandler {
         const session = this.context.getChatSession(viewType || 'tab', windowId);
         try {
             await session.clearChat();
+            // No full-snapshot push from the server — deliver the (now empty)
+            // list so the webview actually clears.
+            this.context.postMessage({ command: 'updateMessages', messages: session.messages }, viewType, windowId);
         } catch (error) {
             console.error(`清除 ${viewType} 聊天会话失败:`, error);
             vscode.window.showErrorMessage('清除聊天失败: ' + error);
@@ -612,6 +615,9 @@ export class MessageHandler {
         const session = this.context.getChatSession(viewType || 'tab', windowId);
         try {
             await session.restoreSession(sessionId);
+            // No full-snapshot push from the server — deliver the restored list
+            // so the webview re-renders instead of keeping the welcome page.
+            this.context.postMessage({ command: 'updateMessages', messages: session.messages }, viewType, windowId);
         } catch (error) {
             console.error(`恢复 ${viewType} 会话失败:`, error);
             vscode.window.showErrorMessage('恢复会话失败: ' + error);
