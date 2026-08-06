@@ -593,7 +593,9 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   </button>
                 )}
 
-                {(confirmation.toolName === BASH_TOOL_NAME || confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME) && (
+                {(confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
+                  (confirmation.toolName === BASH_TOOL_NAME &&
+                    confirmation.permissionMode !== 'plan')) && (
                   <button
                     className="confirmation-btn confirmation-btn-auto"
                     onClick={handleBypassConfirm}

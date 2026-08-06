@@ -108,6 +108,7 @@ export interface ChatContextType {
     suggestedPrefix?: string;
     hidePersistentOption?: boolean;
     planContent?: string;
+    permissionMode?: PermissionMode;
   };
   showConfirmation: (
     toolName: string,
@@ -115,6 +116,7 @@ export interface ChatContextType {
     suggestedPrefix?: string,
     hidePersistentOption?: boolean,
     planContent?: string,
+    permissionMode?: PermissionMode,
   ) => Promise<PermissionDecision>;
   hideConfirmation: () => void;
   handleConfirmationDecision: (decision: PermissionDecision) => void;
@@ -363,6 +365,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         suggestedPrefix?: string;
         hidePersistentOption?: boolean;
         planContent?: string;
+        permissionMode?: PermissionMode;
       }
     | undefined
   >();
@@ -373,6 +376,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       suggestedPrefix?: string;
       hidePersistentOption?: boolean;
       planContent?: string;
+      permissionMode?: PermissionMode;
       resolver: (decision: PermissionDecision) => void;
       reject: () => void;
     }>
@@ -383,6 +387,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     suggestedPrefix?: string;
     hidePersistentOption?: boolean;
     planContent?: string;
+    permissionMode?: PermissionMode;
     resolver: (decision: PermissionDecision) => void;
     reject: () => void;
   } | null>(null);
@@ -423,6 +428,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       suggestedPrefix?: string,
       hidePersistentOption?: boolean,
       planContent?: string,
+      permissionMode?: PermissionMode,
     ): Promise<PermissionDecision> => {
       return new Promise<PermissionDecision>((resolve, reject) => {
         const queueItem = {
@@ -431,6 +437,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           suggestedPrefix,
           hidePersistentOption,
           planContent,
+          permissionMode,
           resolver: resolve,
           reject,
         };
@@ -634,6 +641,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
               context.suggestedPrefix,
               context.hidePersistentOption,
               context.planContent,
+              context.permissionMode,
             );
           } catch {
             // If confirmation was cancelled or failed, deny the operation
@@ -975,6 +983,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         suggestedPrefix: next.suggestedPrefix,
         hidePersistentOption: next.hidePersistentOption,
         planContent: next.planContent,
+        permissionMode: next.permissionMode,
       });
       setIsConfirmationVisible(true);
       setConfirmationQueue((prev) => prev.slice(1));

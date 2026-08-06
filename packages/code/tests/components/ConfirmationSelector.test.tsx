@@ -343,6 +343,48 @@ describe("ConfirmationSelector Additional Coverage", () => {
         });
       });
     });
+
+    it("should not show bypass option for Bash in plan mode", async () => {
+      const { lastFrame } = render(
+        <ConfirmationSelector
+          toolName="Bash"
+          toolInput={{ command: "ls -la" }}
+          permissionMode="plan"
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("Yes, proceed");
+      });
+      expect(stripAnsiColors(lastFrame() || "")).not.toContain(
+        "bypass permissions",
+      );
+    });
+
+    it("should navigate from allow straight to alternative for Bash in plan mode", async () => {
+      const { stdin, lastFrame } = render(
+        <ConfirmationSelector
+          toolName="Bash"
+          toolInput={{ command: "ls -la" }}
+          permissionMode="plan"
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
+      });
+      stdin.write("\u001b[B"); // Down to auto
+      stdin.write("\u001b[B"); // Down — bypass skipped, lands on alternative
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Type here to tell Wave what to change",
+        );
+      });
+    });
   });
 
   describe("ExitPlanMode bypass permissions option", () => {

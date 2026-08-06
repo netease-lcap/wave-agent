@@ -526,6 +526,7 @@ export interface ConfirmationRequest {
   planContent?: string;
   suggestedPrefix?: string;
   hidePersistentOption?: boolean;
+  permissionMode?: PermissionMode;
 }
 
 export interface ConfirmationDecision {

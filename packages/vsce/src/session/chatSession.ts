@@ -53,6 +53,7 @@ export class ChatSession {
         planContent?: string;
         suggestedPrefix?: string;
         hidePersistentOption?: boolean;
+        permissionMode?: PermissionMode;
     }> = new Map();
 
     // Throttled incremental update fields

@@ -1,5 +1,5 @@
 import { Key } from "ink";
-import type { PermissionDecision } from "wave-agent-sdk";
+import type { PermissionDecision, PermissionMode } from "wave-agent-sdk";
 import {
   BASH_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
@@ -30,6 +30,7 @@ export type ConfirmationAction =
       toolInput?: Record<string, unknown>;
       suggestedPrefix?: string;
       hidePersistentOption?: boolean;
+      permissionMode?: PermissionMode;
     };
 
 export function confirmationReducer(
@@ -95,6 +96,7 @@ export function confirmationReducer(
         toolInput,
         suggestedPrefix,
         hidePersistentOption,
+        permissionMode,
       } = action;
 
       if (key.return) {
@@ -175,7 +177,10 @@ export function confirmationReducer(
       const availableOptions: ConfirmationState["selectedOption"][] = [];
       availableOptions.push("allow");
       if (!hidePersistentOption) availableOptions.push("auto");
-      if (toolName === BASH_TOOL_NAME || toolName === EXIT_PLAN_MODE_TOOL_NAME)
+      if (
+        toolName === EXIT_PLAN_MODE_TOOL_NAME ||
+        (toolName === BASH_TOOL_NAME && permissionMode !== "plan")
+      )
         availableOptions.push("bypass");
       availableOptions.push("alternative");
 

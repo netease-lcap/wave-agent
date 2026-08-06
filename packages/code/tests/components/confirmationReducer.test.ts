@@ -298,6 +298,61 @@ describe("confirmationReducer", () => {
       });
       expect(result.selectedOption).toBe("auto");
     });
+
+    it("should not include bypass in navigation for Bash in plan mode", () => {
+      const afterAuto = confirmationReducer(initialState, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { downArrow: true } as unknown as Key,
+        toolName: "Bash",
+        toolInput: { command: "ls -la" },
+        permissionMode: "plan",
+      });
+      expect(afterAuto.selectedOption).toBe("auto");
+
+      const afterAlternative = confirmationReducer(afterAuto, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { downArrow: true } as unknown as Key,
+        toolName: "Bash",
+        toolInput: { command: "ls -la" },
+        permissionMode: "plan",
+      });
+      expect(afterAlternative.selectedOption).toBe("alternative");
+    });
+
+    it("should not include bypass for Bash in plan mode when persistent option is hidden", () => {
+      const result = confirmationReducer(initialState, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { downArrow: true } as unknown as Key,
+        toolName: "Bash",
+        toolInput: { command: "rm -rf temp/" },
+        hidePersistentOption: true,
+        permissionMode: "plan",
+      });
+      expect(result.selectedOption).toBe("alternative");
+    });
+
+    it("should still include bypass in navigation for ExitPlanMode in plan mode", () => {
+      const afterAuto = confirmationReducer(initialState, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { downArrow: true } as unknown as Key,
+        toolName: "ExitPlanMode",
+        permissionMode: "plan",
+      });
+      expect(afterAuto.selectedOption).toBe("auto");
+
+      const afterBypass = confirmationReducer(afterAuto, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { downArrow: true } as unknown as Key,
+        toolName: "ExitPlanMode",
+        permissionMode: "plan",
+      });
+      expect(afterBypass.selectedOption).toBe("bypass");
+    });
   });
 
   describe("default action", () => {

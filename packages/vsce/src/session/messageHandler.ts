@@ -755,7 +755,8 @@ export class MessageHandler {
             toolName: pending.toolName,
             confirmationType: pending.confirmationType,
             toolInput: pending.toolInput,
-            suggestedPrefix: pending.suggestedPrefix
+            suggestedPrefix: pending.suggestedPrefix,
+            permissionMode: pending.permissionMode
         }));
 
         this.context.postMessage({

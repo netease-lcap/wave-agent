@@ -29,6 +29,7 @@ object PermissionFlow {
         val planContent = ctx?.get("planContent")?.jsonPrimitive?.content
         val suggestedPrefix = ctx?.get("suggestedPrefix")?.jsonPrimitive?.content
         val hidePersistentOption = ctx?.get("hidePersistentOption")?.jsonPrimitive?.content?.toBoolean() ?: false
+        val permissionMode = ctx?.get("permissionMode")?.jsonPrimitive?.content
 
         val confirmationId = "confirmation_${System.currentTimeMillis()}_${counter++}"
         val deferred = CompletableDeferred<JsonObject>()
@@ -40,6 +41,7 @@ object PermissionFlow {
             confirmationType = confirmationType,
             toolInput = toolInput,
             planContent = planContent,
+            permissionMode = permissionMode,
         )
 
         Edt.invokeLater {
@@ -51,6 +53,7 @@ object PermissionFlow {
                 if (planContent != null) put("planContent", planContent)
                 if (suggestedPrefix != null) put("suggestedPrefix", suggestedPrefix)
                 put("hidePersistentOption", hidePersistentOption)
+                if (permissionMode != null) put("permissionMode", permissionMode)
             })
         }
 
