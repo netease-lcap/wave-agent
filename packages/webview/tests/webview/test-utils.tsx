@@ -4,6 +4,7 @@ import { render, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { VsCodeApi } from '../../src/types';
 import { ChatApp } from '../../src/components/ChatApp';
+import { fixtures, type HostToWebviewMessage } from 'wave-webview-fixtures';
 
 // Mock heavy dependencies
 vi.mock('mermaid', () => ({
@@ -51,7 +52,7 @@ export function renderChatApp(vscode?: VsCodeApi) {
     const result = render(<ChatApp vscode={mockVscode} />);
     // Default to authenticated so the message input is enabled and MessageList
     // (not the unauthenticated WelcomeView) renders for empty-state assertions.
-    sendExtensionMessage({ command: 'authStatusResponse', isAuthenticated: true });
+    sendHostMessage(fixtures.authStatusResponse());
     const user = userEvent.setup();
     return { ...result, vscode: mockVscode, user };
 }
@@ -70,6 +71,15 @@ export function sendExtensionMessage(data: Record<string, unknown>) {
  */
 export function sendCommand(command: string, data?: Record<string, unknown>) {
     sendExtensionMessage({ command, ...data });
+}
+
+/**
+ * Send a typed host → webview message anchored to the shared contract
+ * (wave-webview-fixtures). Prefer this over sendCommand for messages that
+ * have a fixture, so test payloads stay in lockstep with the real hosts.
+ */
+export function sendHostMessage(message: HostToWebviewMessage) {
+    sendExtensionMessage(message as unknown as Record<string, unknown>);
 }
 
 /**

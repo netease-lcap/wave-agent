@@ -30,7 +30,8 @@
     "typescript": "^5.9.3",
     "vitest": "^4.1.7",
     "wave-agent-sdk": "workspace:*",
-    "wave-webview": "workspace:*"
+    "wave-webview": "workspace:*",
+    "wave-webview-fixtures": "workspace:*"
   },
   "build": {
     "appId": "com.netease.wave-desktop",

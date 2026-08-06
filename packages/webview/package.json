@@ -38,7 +38,8 @@
     "react-dom": "^18.0.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.5",
-    "wave-agent-sdk": "workspace:*"
+    "wave-agent-sdk": "workspace:*",
+    "wave-webview-fixtures": "workspace:*"
   },
   "dependencies": {
     "@vscode/codicons": "^0.0.43",

@@ -15,7 +15,7 @@ export default defineConfig({
     exclude: ['node_modules'],
     server: {
       deps: {
-        inline: ['wave-agent-sdk'],
+        inline: ['wave-agent-sdk', 'wave-webview-fixtures'],
       },
     },
     coverage: {

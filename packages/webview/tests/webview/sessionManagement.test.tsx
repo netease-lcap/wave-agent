@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderChatApp, screen, fireEvent, act, sendCommand, fireInput, setInputText } from './test-utils';
+import { renderChatApp, screen, fireEvent, act, sendCommand, sendHostMessage, fireInput, setInputText } from './test-utils';
+import { fixtures } from 'wave-webview-fixtures';
 import { MockDataGenerator } from '../fixtures/mockData';
 
 /**
@@ -206,7 +207,7 @@ describe('Session Management', () => {
             MockDataGenerator.createAssistantMessage('Hi! This is in the original session.')
         ];
         act(() => {
-            sendCommand('updateMessages', { messages: conversation });
+            sendHostMessage(fixtures.updateMessages(conversation));
         });
 
         // Verify current session title and messages are present
@@ -236,7 +237,7 @@ describe('Session Management', () => {
         // Simulate EXPECTED BEHAVIOR through proper callback mechanism:
         // 1. Messages are cleared
         act(() => {
-            sendCommand('updateMessages', { messages: [] });
+            sendHostMessage(fixtures.updateMessages([]));
         });
 
         // 2. Session ID changes
@@ -380,9 +381,7 @@ describe('Session Management', () => {
 
         // User sends "hi" — the title should now reflect it.
         act(() => {
-            sendCommand('updateMessages', {
-                messages: [MockDataGenerator.createUserMessage('hi')]
-            });
+            sendHostMessage(fixtures.updateMessages([MockDataGenerator.createUserMessage('hi')]));
         });
 
         const header = screen.getByTestId('chat-header');
@@ -394,17 +393,19 @@ describe('Session Management', () => {
 describe('input drafts per session (desktop-app.md 会话管理 scenario 11/12)', () => {
     const sessionA = {
         id: 'session-A',
-        sessionType: 'main',
+        sessionType: 'main' as const,
         workdir: '/test/project',
         firstMessage: 'Session A',
+        createdAt: new Date('2023-12-01T10:00:00Z'),
         lastActiveAt: new Date('2023-12-01T10:00:00Z'),
         latestTotalTokens: 150
     };
     const sessionB = {
         id: 'session-B',
-        sessionType: 'main',
+        sessionType: 'main' as const,
         workdir: '/test/project',
         firstMessage: 'Session B',
+        createdAt: new Date('2023-12-01T11:00:00Z'),
         lastActiveAt: new Date('2023-12-01T11:00:00Z'),
         latestTotalTokens: 250
     };
@@ -412,7 +413,7 @@ describe('input drafts per session (desktop-app.md 会话管理 scenario 11/12)'
     it('switching sessions resets the input even when both drafts are equal (empty)', async () => {
         const { vscode } = renderChatApp();
         act(() => {
-            sendCommand('setInitialState', { session: sessionA, messages: [], inputContent: '' });
+            sendHostMessage(fixtures.setInitialState({ session: sessionA, messages: [] }));
         });
         const input = screen.getByTestId('message-input');
 
@@ -424,7 +425,7 @@ describe('input drafts per session (desktop-app.md 会话管理 scenario 11/12)'
         // (value equality alone cannot distinguish two empty drafts).
         vscode.postMessage.mockClear();
         act(() => {
-            sendCommand('setInitialState', { session: sessionB, messages: [], inputContent: '' });
+            sendHostMessage(fixtures.setInitialState({ session: sessionB, messages: [] }));
         });
 
         expect(input.innerText).toBe('');
@@ -444,20 +445,20 @@ describe('input drafts per session (desktop-app.md 会话管理 scenario 11/12)'
 
         // A has an unsent draft persisted by the host.
         act(() => {
-            sendCommand('setInitialState', { session: sessionA, messages: [], inputContent: '1' });
+            sendHostMessage(fixtures.setInitialState({ session: sessionA, messages: [], inputContent: '1' }));
         });
         const input = screen.getByTestId('message-input');
         expect(input.innerText).toBe('1');
 
         // Switch to B (no draft) — the input clears.
         act(() => {
-            sendCommand('setInitialState', { session: sessionB, messages: [], inputContent: '' });
+            sendHostMessage(fixtures.setInitialState({ session: sessionB, messages: [] }));
         });
         expect(input.innerText).toBe('');
 
         // Back to A — the draft comes back with the conversation.
         act(() => {
-            sendCommand('setInitialState', { session: sessionA, messages: [], inputContent: '1' });
+            sendHostMessage(fixtures.setInitialState({ session: sessionA, messages: [], inputContent: '1' }));
         });
         expect(input.innerText).toBe('1');
     });
@@ -467,7 +468,7 @@ describe('input drafts per session (desktop-app.md 会话管理 scenario 11/12)'
         try {
             const { vscode } = renderChatApp();
             act(() => {
-                sendCommand('setInitialState', { session: sessionA, messages: [], inputContent: '' });
+                sendHostMessage(fixtures.setInitialState({ session: sessionA, messages: [] }));
             });
             const input = screen.getByTestId('message-input');
 
@@ -477,7 +478,7 @@ describe('input drafts per session (desktop-app.md 会话管理 scenario 11/12)'
             // Switch to B: the effect cancels the pending timer and flushes the
             // outgoing draft with A's tag immediately.
             act(() => {
-                sendCommand('setInitialState', { session: sessionB, messages: [], inputContent: '' });
+                sendHostMessage(fixtures.setInitialState({ session: sessionB, messages: [] }));
             });
             expect(vscode.postMessage).toHaveBeenCalledWith(
                 expect.objectContaining({ command: 'updateInputContent', sessionId: 'session-A', content: '1' })
