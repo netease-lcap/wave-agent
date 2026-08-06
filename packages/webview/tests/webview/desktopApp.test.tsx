@@ -1148,6 +1148,58 @@ describe('DesktopApp', () => {
             expect(pane1().getByTestId('desktop-branch-selector')).toHaveTextContent('b-branch');
         });
 
+        it('keeps a pane btw panel open when focus moves to a sibling pane (conversation-scoped, not focus-scoped)', async () => {
+            const { vscode } = renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+            // pane-0 is bound to conversation s1 (desktop pushes setInitialState
+            // with the pane's own session on activation).
+            sendCommand('setInitialState', {
+                paneId: 'pane-0',
+                messages: [],
+                isAuthenticated: true,
+                session: { id: 's1', sessionType: 'main', workdir: '/work/a', createdAt: new Date(), lastActiveAt: new Date(), latestTotalTokens: 0 },
+            });
+            const pane0 = () => within(screen.getByTestId('desktop-pane-pane-0'));
+
+            // Open the /btw panel in pane-0
+            const input = pane0().getByTestId('message-input');
+            input.textContent = '/btw what is the weather?';
+            await fireInput(input, { inputType: 'insertText' });
+            fireEvent.click(pane0().getByTestId('send-btn'));
+            expect(pane0().getByTestId('btw-panel')).toBeInTheDocument();
+
+            // Focus moves to pane-1. handleFocusPane only changes focusedPaneId
+            // and pushes desktopPanes/workdir/panel state — it never pushes
+            // setInitialState, so pane-0's currentSession is untouched and the
+            // panel stays: btw is conversation-level, not focus-level.
+            sendCommand('desktopPanes', { panes: [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }], focusedPaneId: 'pane-1' });
+            expect(pane0().getByTestId('btw-panel')).toBeInTheDocument();
+            // The sibling pane never shows it
+            expect(within(screen.getByTestId('desktop-pane-pane-1')).queryByTestId('btw-panel')).not.toBeInTheDocument();
+
+            // A host re-push with the SAME session id (e.g. a state refresh)
+            // must also keep the panel — only a real conversation switch
+            // (different session id) closes it.
+            sendCommand('setInitialState', {
+                paneId: 'pane-0',
+                messages: [],
+                isAuthenticated: true,
+                session: { id: 's1', sessionType: 'main', workdir: '/work/a', createdAt: new Date(), lastActiveAt: new Date(), latestTotalTokens: 0 },
+            });
+            expect(pane0().getByTestId('btw-panel')).toBeInTheDocument();
+
+            // Control: switching pane-0 to a different conversation closes it
+            sendCommand('setInitialState', {
+                paneId: 'pane-0',
+                messages: [],
+                isAuthenticated: true,
+                session: { id: 's2', sessionType: 'main', workdir: '/work/a', createdAt: new Date(), lastActiveAt: new Date(), latestTotalTokens: 0 },
+            });
+            expect(pane0().queryByTestId('btw-panel')).not.toBeInTheDocument();
+        });
+
         it('a new-session pane empty during spawn resolves its workdir to recents[0], not a sibling worktree path leaked via the host workdir', () => {
             const { vscode } = renderWithPanes(
                 [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1' }],

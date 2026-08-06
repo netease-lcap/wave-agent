@@ -202,6 +202,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // dropped (scenario 7); matched against the reply's echoed question so a stale
   // reply never lands on a newer panel (scenario 6/7).
   const btwActiveRef = useRef<string | null>(null);
+  // Session the current /btw panel belongs to. Compared against
+  // state.currentSession.id in an effect below: the panel is conversation-scoped
+  // (spec scenario 14), and desktop pane instances stay mounted across
+  // conversation switches (ChatApp is keyed by paneId, not sessionId), so a
+  // local useState alone would leak the previous conversation's panel.
+  const btwSessionRef = useRef<string | undefined>(undefined);
   // Desktop new-session worktree controls (FR-022/FR-023).
   const [worktreeBranch, setWorktreeBranch] = useState<string>('');
   const [worktreeChecked, setWorktreeChecked] = useState(true);
@@ -1181,6 +1187,21 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     setBtwPanel(null);
     messageInputRef.current?.focus();
   }, []);
+
+  // The /btw panel is conversation-scoped (spec scenario 14): switching to
+  // another conversation closes it, so the new conversation never shows the old
+  // one's panel. Desktop panes key ChatApp by paneId (not sessionId), so a
+  // sidebar session switch leaves this component mounted — without this effect
+  // the local btwPanel useState would survive the switch (setInitialState only
+  // resets reducer state, not local state). Clearing btwActiveRef also drops any
+  // in-flight askBtw reply that lands after the switch. `previous !== undefined`
+  // keeps the initial mount (no conversation assigned yet) a no-op.
+  useEffect(() => {
+    const sessionId = state.currentSession?.id;
+    const previous = btwSessionRef.current;
+    btwSessionRef.current = sessionId;
+    if (previous !== undefined && previous !== sessionId) handleBtwClose();
+  }, [state.currentSession?.id, handleBtwClose]);
 
   const handleRewindConfirm = useCallback(() => {
     const messageId = pendingRewindId;
