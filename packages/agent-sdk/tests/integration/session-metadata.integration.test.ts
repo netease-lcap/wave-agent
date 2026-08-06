@@ -959,10 +959,7 @@ invalid json line here
 
         const filenameFilterTime = Date.now() - filenameFilterStart;
 
-        // Simulate content-based filtering (much slower)
-        const contentFilterStart = Date.now();
-
-        // Simulate reading each file to determine type (slow approach)
+        // Simulate content-based filtering (slow approach: reading file content)
         const contentBasedSessions = sessionFilenames.map((filename) => ({
           filename,
           type: filename.startsWith("subagent-") ? "subagent" : "main", // Simulated content reading
@@ -975,8 +972,6 @@ invalid json line here
           (s) => s.type === "subagent",
         );
 
-        const contentFilterTime = Date.now() - contentFilterStart;
-
         // Verify both methods produce same results
         expect(filenameBasedMainSessions).toHaveLength(
           contentBasedMainSessions.length,
@@ -985,10 +980,10 @@ invalid json line here
           contentBasedSubagentSessions.length,
         );
 
-        // Verify performance benefit (filename-based should be equal or faster)
-        // Note: In some environments (like CI or fast local runs), both might be 0ms or very close.
-        // We use a larger tolerance to avoid flakiness while still ensuring it's not excessively slow.
-        expect(filenameFilterTime).toBeLessThanOrEqual(contentFilterTime + 10);
+        // Filename-based filtering must complete promptly. (No relative
+        // comparison against the simulated content pass: both are pure
+        // in-memory O(n) filters whose millisecond timings are noise under
+        // CI parallelism.)
         expect(filenameFilterTime).toBeLessThan(500); // Should complete in < 500ms
 
         // Verify correct counts
