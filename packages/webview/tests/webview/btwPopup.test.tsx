@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand, fireInput } from './test-utils';
+import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand, fireInput, sendHostMessage } from './test-utils';
+import { fixtures } from 'wave-webview-fixtures';
+
+/** A minimal SessionMetadata for conversation-switch tests. */
+function session(id: string) {
+    return { id, sessionType: 'main' as const, workdir: '/tmp/test', createdAt: new Date(), lastActiveAt: new Date(), latestTotalTokens: 0 };
+}
 
 /** Set contenteditable text with selection inside a text node and fire input. */
 async function typeInInput(text: string) {
@@ -200,6 +206,50 @@ describe('/btw Popup', () => {
         // Still loading — the stale reply was dropped
         expect(screen.getByTestId('btw-panel-loading')).toBeInTheDocument();
         expect(screen.queryByTestId('btw-panel-answer')).not.toBeInTheDocument();
+    });
+
+    it('switching conversations closes the btw panel (conversation-scoped)', async () => {
+        renderChatApp();
+        // Desktop pushes setInitialState with the activated session on a sidebar
+        // conversation switch (pushPaneSessionState). Establish conversation A.
+        sendHostMessage(fixtures.setInitialState({ session: session('session-a') }));
+        await typeInInput('/btw what is the weather?');
+        act(() => {
+            fireEvent.click(screen.getByTestId('send-btn'));
+        });
+        expect(screen.getByTestId('btw-panel')).toBeInTheDocument();
+
+        // Switch to conversation B: the panel is conversation-scoped (spec
+        // scenario 14) and must close — the new conversation never shows the
+        // old one's panel. Desktop panes key ChatApp by paneId (not sessionId),
+        // so this component stays mounted and only the session-id change in
+        // setInitialState can dismiss the local btwPanel state.
+        sendHostMessage(fixtures.setInitialState({ session: session('session-b') }));
+        expect(screen.queryByTestId('btw-panel')).not.toBeInTheDocument();
+    });
+
+    it('drops a late btw reply that lands after switching conversations', async () => {
+        const { vscode } = renderChatApp();
+        sendHostMessage(fixtures.setInitialState({ session: session('session-a') }));
+        await typeInInput('/btw what is the weather?');
+        act(() => {
+            fireEvent.click(screen.getByTestId('send-btn'));
+        });
+        expect(screen.getByTestId('btw-panel-loading')).toBeInTheDocument();
+
+        // Switch while the askBtw RPC is still in flight: closing clears
+        // btwActiveRef, so the reply that lands in the new conversation is
+        // dropped (spec scenario 14: 若切换发生在加载中，旧请求的迟到回复同样被丢弃).
+        sendHostMessage(fixtures.setInitialState({ session: session('session-b') }));
+        expect(screen.queryByTestId('btw-panel')).not.toBeInTheDocument();
+
+        act(() => {
+            sendCommand('btwResponse', { question: 'what is the weather?', answer: 'Sunny' });
+        });
+        expect(screen.queryByTestId('btw-panel')).not.toBeInTheDocument();
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'sendMessage' })
+        );
     });
 
     it('selecting /btw in the slash popup inserts the prefix without sending', async () => {
