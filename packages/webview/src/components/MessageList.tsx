@@ -245,6 +245,24 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     return () => container.removeEventListener('load', repin, true);
   }, [doScrollToBottom]);
 
+  // Re-pin once the sticky user message renders. The sticky bar is a normal
+  // in-flow child (position: sticky keeps its space), inserted as the first
+  // element AFTER the initial load's scroll ran — so it grows scrollHeight by
+  // its own height and pushes the true bottom ~30-70px below the parked
+  // viewport. That happens after the main effect (stickyMessage isn't one of
+  // its deps) and often before fonts.ready/load fire, leaving the viewport
+  // short of the real bottom. Re-pin here, gated on being near the bottom
+  // (the push is far smaller than the 300px threshold) and on the user not
+  // having scrolled up, so a sticky change while reading history is ignored.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !stickyMessage) return;
+    const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 300;
+    if (isNearBottom && !userScrolledUpRef.current) {
+      doScrollToBottom('auto');
+    }
+  }, [stickyMessage, doScrollToBottom]);
+
   return (
     <div 
       ref={containerRef}
