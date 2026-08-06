@@ -3,6 +3,7 @@ import type { BrowserWindow } from 'electron';
 import * as os from 'os';
 import * as path from 'path';
 import { BASH_TOOL_NAME } from 'wave-agent-sdk';
+import { fixtures, type HostToWebviewMessage } from 'wave-webview-fixtures';
 
 // ---------------------------------------------------------------------------
 // fs mock — ConfigStore persistence + desktopHost's tmpdir/artifact helpers
@@ -353,10 +354,13 @@ function createHost(winWidth = 1280, winHeight = 800) {
     getContentSize: () => [winWidth, winHeight],
   } as unknown as BrowserWindow;
   host.setMainWindow(win);
-  const sent = (command: string) =>
+  // Typed against the shared host→webview contract: an unknown command string
+  // or a field access outside the command's payload is a compile error, so a
+  // contract rename breaks this suite the same way it breaks the webview one.
+  const sent = <C extends HostToWebviewMessage['command']>(command: C) =>
     send.mock.calls
       .filter(([channel, msg]) => channel === HOST_CHANNEL && (msg as { command?: string }).command === command)
-      .map(([, msg]) => msg as Record<string, unknown>);
+      .map(([, msg]) => msg as Extract<HostToWebviewMessage, { command: C }>);
   return { host, store, send, sent };
 }
 
@@ -602,7 +606,8 @@ describe('webviewReady / setInitialState', () => {
 
     const states = sent('setInitialState');
     expect(states.length).toBeGreaterThanOrEqual(1);
-    expect(states[states.length - 1]).toMatchObject({
+    const last = states[states.length - 1];
+    expect(last).toMatchObject({
       command: 'setInitialState',
       messages: [],
       isStreaming: false,
@@ -610,7 +615,22 @@ describe('webviewReady / setInitialState', () => {
       isAuthenticated: false,
       workdir: '/work/a',
     });
-    expect(states[states.length - 1].configurationData).toBeDefined();
+    expect(last.configurationData).toBeDefined();
+
+    // Contract gates: setInitialState must always carry inputContent ('' when
+    // no draft) and the pane id. These mirror the shared fixture defaults — if
+    // the host stops sending them or the fixture default changes, both layers
+    // go red together instead of one passing on mock-defined expectations.
+    const anchors = fixtures.setInitialState();
+    expect(last.inputContent).toBe(anchors.inputContent);
+    expect(last.isAuthenticated).toBe(false);
+    expect(last.messages).toEqual(anchors.messages);
+    expect(last.tasks).toEqual(anchors.tasks);
+    expect(last.backgroundTasks).toEqual(anchors.backgroundTasks);
+    expect(last.workflowRuns).toEqual(anchors.workflowRuns);
+    expect(last.queuedMessages).toEqual(anchors.queuedMessages);
+    expect(last.pendingConfirmations).toEqual(anchors.pendingConfirmations);
+    expect(last.paneId).toBeTypeOf('string');
   });
 
   it('starts a fresh session on every launch: agent.initialize never carries restoreSessionId', async () => {

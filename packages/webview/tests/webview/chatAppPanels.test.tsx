@@ -5,7 +5,8 @@ import { DesktopApp } from '../../src/components/DesktopApp';
 import { ChatApp, prunePanelGroupCache } from '../../src/components/ChatApp';
 import type { WebviewTagElement } from '../../src/components/PreviewPane';
 import { EXIT_PLAN_MODE_TOOL_NAME } from 'wave-agent-sdk';
-import { createMockVscode, sendCommand, renderChatApp, fireInput } from './test-utils';
+import { createMockVscode, sendCommand, sendHostMessage, renderChatApp, fireInput } from './test-utils';
+import { fixtures } from 'wave-webview-fixtures';
 import { MockDataGenerator } from '../fixtures/mockData';
 
 vi.mock('../../src/styles/DesktopApp.css', () => ({}));
@@ -20,11 +21,11 @@ vi.mock('../../src/styles/DesktopApp.css', () => ({}));
 function renderDesktop(options?: { workdir?: string }) {
     const vscode = createMockVscode();
     const view = render(<DesktopApp vscode={vscode} />);
-    sendCommand('desktopWorkdirState', {
+    sendHostMessage(fixtures.desktopWorkdirState({
         workdir: options?.workdir,
         recentWorkdirs: options?.workdir ? [options.workdir] : [],
-    });
-    sendCommand('authStatusResponse', { isAuthenticated: true });
+    }));
+    sendHostMessage(fixtures.authStatusResponse());
     return { vscode, unmount: view.unmount };
 }
 
@@ -165,11 +166,11 @@ describe('ChatApp desktop panel framework', () => {
     it('desktopTogglePanel from the host takes the same path as the menu', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopTogglePanel', { kind: 'diff' });
+        sendHostMessage(fixtures.desktopTogglePanel('diff'));
         expect(screen.getByTestId('diff-pane')).toBeInTheDocument();
         expect(lastPanelState(vscode)).toEqual(['diff']);
 
-        sendCommand('desktopTogglePanel', { kind: 'diff' });
+        sendHostMessage(fixtures.desktopTogglePanel('diff'));
         expect(screen.getByTestId('diff-pane').parentElement).toHaveStyle({ display: 'none' });
         expect(lastPanelState(vscode)).toEqual([]);
     });
@@ -188,7 +189,7 @@ describe('ChatApp desktop panel framework', () => {
         expect(vscode.postMessage).not.toHaveBeenCalledWith({ command: 'desktopGetWorkspaceDiff' });
 
         // Host-originated toggles hit the same guard.
-        sendCommand('desktopTogglePanel', { kind: 'terminal' });
+        sendHostMessage(fixtures.desktopTogglePanel('terminal'));
         expect(screen.queryByTestId('terminal-pane')).not.toBeInTheDocument();
     });
 
@@ -240,7 +241,7 @@ describe('ChatApp desktop panel framework', () => {
     it('does not show the panel toggle when waveHostType is not desktop', () => {
         const vscode = createMockVscode();
         render(<ChatApp vscode={vscode} />);
-        sendCommand('authStatusResponse', { isAuthenticated: true });
+        sendHostMessage(fixtures.authStatusResponse());
         expect(screen.queryByTestId('panel-toggle-btn')).not.toBeInTheDocument();
         expect(document.querySelector('.desktop-panel-slot')).toBeNull();
     });
@@ -454,9 +455,10 @@ describe('ChatApp desktop panel framework', () => {
             renderDesktop({ workdir: '/work/a' });
             // Sessions must exist in the sidebar tree — the prune keeps panel
             // groups only for live panes and tree sessions.
-            sendCommand('desktopSessionTree', {
+            sendHostMessage(fixtures.desktopSessionTree({
                 groups: [
                     {
+                        host: 'local',
                         workdir: '/work/a',
                         sessions: ['s1', 's2'].map((sessionId) => ({
                             sessionId,
@@ -466,30 +468,30 @@ describe('ChatApp desktop panel framework', () => {
                         })),
                     },
                 ],
-            });
-            sendCommand('desktopPanes', {
-                panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0 }],
+            }));
+            sendHostMessage(fixtures.desktopPanes({
+                panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'local', width: 0.5 }],
                 focusedPaneId: 'pane-1',
-            });
+            }));
             openDiffPanel();
             dragDiffToRow2();
             expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-2');
 
             // Switch to another session: its (empty) group swaps in — no
             // panels, no second row.
-            sendCommand('desktopPanes', {
-                panes: [{ paneId: 'pane-1', sessionId: 's2', row: 0 }],
+            sendHostMessage(fixtures.desktopPanes({
+                panes: [{ paneId: 'pane-1', sessionId: 's2', row: 0, host: 'local', width: 0.5 }],
                 focusedPaneId: 'pane-1',
-            });
+            }));
             expect(screen.queryByTestId('diff-pane')).not.toBeInTheDocument();
             expect(screen.queryByTestId('desktop-panel-row-separator')).not.toBeInTheDocument();
 
             // Switching back restores the diff panel in its second row with
             // the same height.
-            sendCommand('desktopPanes', {
-                panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0 }],
+            sendHostMessage(fixtures.desktopPanes({
+                panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'local', width: 0.5 }],
                 focusedPaneId: 'pane-1',
-            });
+            }));
             expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-2');
             expect(screen.getByTestId('desktop-panel-row-separator')).toBeInTheDocument();
             expect(bodyOf().style.getPropertyValue('--panel-row-height')).toBe('280px');
@@ -504,17 +506,17 @@ describe('ChatApp desktop panel framework', () => {
                 lastActiveAt: Date.now(),
                 hasWorktree: false,
             });
-            sendCommand('desktopSessionTree', {
-                groups: [{ workdir: '/work/a', sessions: [session('s1'), session('s2')] }],
-            });
-            sendCommand('desktopPanes', {
+            sendHostMessage(fixtures.desktopSessionTree({
+                groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1'), session('s2')] }],
+            }));
+            sendHostMessage(fixtures.desktopPanes({
                 panes: [
-                    { paneId: 'pane-cache-a', sessionId: 's1', row: 0 },
-                    { paneId: 'pane-cache-b', sessionId: 's2', row: 1 },
+                    { paneId: 'pane-cache-a', sessionId: 's1', row: 0, host: 'local', width: 0.5 },
+                    { paneId: 'pane-cache-b', sessionId: 's2', row: 1, host: 'local', width: 0.5 },
                 ],
                 rowHeights: [0.5, 0.5],
                 focusedPaneId: 'pane-cache-a',
-            });
+            }));
 
             // Open the diff panel in pane-cache-a and drag it into the second row.
             const paneA = screen.getByTestId('desktop-pane-pane-cache-a');
@@ -532,14 +534,14 @@ describe('ChatApp desktop panel framework', () => {
 
             // The host moves pane-cache-a into window row 1 — the pane subtree
             // unmounts and remounts (React cannot reparent DOM nodes).
-            sendCommand('desktopPanes', {
+            sendHostMessage(fixtures.desktopPanes({
                 panes: [
-                    { paneId: 'pane-cache-b', sessionId: 's2', row: 0 },
-                    { paneId: 'pane-cache-a', sessionId: 's1', row: 1 },
+                    { paneId: 'pane-cache-b', sessionId: 's2', row: 0, host: 'local', width: 0.5 },
+                    { paneId: 'pane-cache-a', sessionId: 's1', row: 1, host: 'local', width: 0.5 },
                 ],
                 rowHeights: [0.5, 0.5],
                 focusedPaneId: 'pane-cache-a',
-            });
+            }));
 
             // The panel group migrated with the pane: diff still checked and
             // still in its second row.
@@ -595,14 +597,14 @@ describe('session-level panel groups', () => {
         hasWorktree: false,
     });
     const pushPanes = (sessionId?: string) =>
-        sendCommand('desktopPanes', {
-            panes: [{ paneId: 'pane-1', sessionId, row: 0 }],
+        sendHostMessage(fixtures.desktopPanes({
+            panes: [{ paneId: 'pane-1', sessionId, row: 0, host: 'local', width: 0.5 }],
             focusedPaneId: 'pane-1',
-        });
+        }));
     const pushTree = (ids: string[]) =>
-        sendCommand('desktopSessionTree', {
-            groups: [{ workdir: '/work/a', sessions: ids.map(session) }],
-        });
+        sendHostMessage(fixtures.desktopSessionTree({
+            groups: [{ host: 'local', workdir: '/work/a', sessions: ids.map(session) }],
+        }));
     const openPanel = (kind: string) => {
         fireEvent.click(screen.getByTestId('panel-toggle-btn'));
         fireEvent.click(screen.getByTestId(`panel-toggle-item-${kind}`));
@@ -721,15 +723,15 @@ describe('remote preview port forwarding', () => {
         hasWorktree: false,
     });
     const pushRemotePane = () =>
-        sendCommand('desktopPanes', {
-            panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'prod' }],
+        sendHostMessage(fixtures.desktopPanes({
+            panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'prod', width: 0.5 }],
             focusedPaneId: 'pane-1',
-        });
+        }));
     const openLink = (url = 'http://localhost:5173/app') => {
-        sendCommand('updateMessages', {
-            paneId: 'pane-1',
-            messages: [MockDataGenerator.createAssistantMessage(`服务在 [这里](${url})`)],
-        });
+        sendHostMessage(fixtures.updateMessages(
+            [MockDataGenerator.createAssistantMessage(`服务在 [这里](${url})`)],
+            { paneId: 'pane-1' },
+        ));
         fireEvent.click(screen.getByText('这里'));
     };
     const forwardPosts = (vscode: ReturnType<typeof createMockVscode>) =>
@@ -744,7 +746,7 @@ describe('remote preview port forwarding', () => {
     it('clicking a localhost link in a remote session requests a forward on the pane host', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        sendHostMessage(fixtures.desktopSessionTree({ groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1')] }] }));
         pushRemotePane();
         openLink();
 
@@ -762,7 +764,7 @@ describe('remote preview port forwarding', () => {
     it('the forward reply loads the rewritten address in the preview pane', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        sendHostMessage(fixtures.desktopSessionTree({ groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1')] }] }));
         pushRemotePane();
         openLink();
 
@@ -787,7 +789,7 @@ describe('remote preview port forwarding', () => {
     it('clicking the same link again does not re-establish the forward', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        sendHostMessage(fixtures.desktopSessionTree({ groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1')] }] }));
         pushRemotePane();
         openLink();
         sendCommand('desktopForwardPortResult', {
@@ -805,7 +807,7 @@ describe('remote preview port forwarding', () => {
     it('an equivalent loopback spelling of the same link reuses the forward', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        sendHostMessage(fixtures.desktopSessionTree({ groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1')] }] }));
         pushRemotePane();
         openLink();
         sendCommand('desktopForwardPortResult', {
@@ -829,7 +831,7 @@ describe('remote preview port forwarding', () => {
     it('clicking a link on a different port does not release the tunnel', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        sendHostMessage(fixtures.desktopSessionTree({ groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1')] }] }));
         pushRemotePane();
         openLink('http://localhost:5173/app');
         sendCommand('desktopForwardPortResult', {
@@ -861,7 +863,7 @@ describe('remote preview port forwarding', () => {
     it('a same-origin link with a different path reuses the tunnel (no release)', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        sendHostMessage(fixtures.desktopSessionTree({ groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1')] }] }));
         pushRemotePane();
         openLink('http://localhost:5173/app');
         sendCommand('desktopForwardPortResult', {
@@ -892,7 +894,7 @@ describe('remote preview port forwarding', () => {
     it('a failed forward shows an actionable error; retry re-acquires and loads', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        sendHostMessage(fixtures.desktopSessionTree({ groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1')] }] }));
         pushRemotePane();
         openLink();
 
@@ -924,7 +926,7 @@ describe('remote preview port forwarding', () => {
     it('closing the preview panel keeps the tunnel alive (session-scoped)', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        sendHostMessage(fixtures.desktopSessionTree({ groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1')] }] }));
         pushRemotePane();
         openLink();
 
@@ -940,7 +942,7 @@ describe('remote preview port forwarding', () => {
     it('unmounting the pane (session still in the tree) keeps the tunnel alive', () => {
         window.waveHostType = 'desktop';
         const { vscode, unmount } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        sendHostMessage(fixtures.desktopSessionTree({ groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1')] }] }));
         pushRemotePane();
         openLink();
         sendCommand('desktopForwardPortResult', {
@@ -963,7 +965,7 @@ describe('remote preview port forwarding', () => {
     it('re-checking the preview panel restores the forwarded URL', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        sendHostMessage(fixtures.desktopSessionTree({ groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1')] }] }));
         pushRemotePane();
         openLink();
         sendCommand('desktopForwardPortResult', {
@@ -991,7 +993,7 @@ describe('remote preview port forwarding', () => {
     it('switching host keeps the tunnel alive and the preview URL cached', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        sendHostMessage(fixtures.desktopSessionTree({ groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1')] }] }));
         pushRemotePane();
         openLink();
         sendCommand('desktopForwardPortResult', {
@@ -1005,10 +1007,10 @@ describe('remote preview port forwarding', () => {
         // Host switch (remote → local): the tunnel is session-scoped — no
         // release. The pane's preview keeps its URL (still cached, still loads
         // through the live tunnel), so switching back shows it unchanged.
-        sendCommand('desktopPanes', {
-            panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'local' }],
+        sendHostMessage(fixtures.desktopPanes({
+            panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'local', width: 0.5 }],
             focusedPaneId: 'pane-1',
-        });
+        }));
 
         expect(releasePosts(vscode)).toHaveLength(0);
         expect(screen.getByTestId('preview-pane')).toBeInTheDocument();
@@ -1020,9 +1022,9 @@ describe('remote preview port forwarding', () => {
     it('switching to another session and back restores the remote preview URL (spec 场景 9)', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', {
-            groups: [{ workdir: '/work/a', sessions: [session('s1'), session('s2')] }],
-        });
+        sendHostMessage(fixtures.desktopSessionTree({
+            groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1'), session('s2')] }],
+        }));
         pushRemotePane();
         openLink();
         sendCommand('desktopForwardPortResult', {
@@ -1035,20 +1037,20 @@ describe('remote preview port forwarding', () => {
 
         // Switch to s2 (local host): no release, and the pane shows s2's own
         // (empty) preview state.
-        sendCommand('desktopPanes', {
-            panes: [{ paneId: 'pane-1', sessionId: 's2', row: 0, host: 'local' }],
+        sendHostMessage(fixtures.desktopPanes({
+            panes: [{ paneId: 'pane-1', sessionId: 's2', row: 0, host: 'local', width: 0.5 }],
             focusedPaneId: 'pane-1',
-        });
+        }));
         expect(releasePosts(vscode)).toHaveLength(0);
         // s2 has no cached panel state — the preview slot is not mounted.
         expect(screen.queryByTestId('preview-pane')).not.toBeInTheDocument();
 
         // Switch back to s1: the forwarded URL is restored from the session
         // cache, and the tunnel was never released — no re-acquire needed.
-        sendCommand('desktopPanes', {
-            panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'prod' }],
+        sendHostMessage(fixtures.desktopPanes({
+            panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'prod', width: 0.5 }],
             focusedPaneId: 'pane-1',
-        });
+        }));
         expect(screen.getByTestId('preview-pane').querySelector('webview')?.getAttribute('src')).toBe(
             'http://127.0.0.1:5173/app',
         );
@@ -1059,7 +1061,7 @@ describe('remote preview port forwarding', () => {
     it('a stale forward reply for a released request is dropped', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        sendHostMessage(fixtures.desktopSessionTree({ groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1')] }] }));
         pushRemotePane();
         openLink();
         // Fail, then retry: the current request is now fwd-2.
@@ -1083,9 +1085,9 @@ describe('remote preview port forwarding', () => {
     it('rebinding the pane to another session keeps both sessions\' tunnels', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', {
-            groups: [{ workdir: '/work/a', sessions: [session('s1'), session('s2')] }],
-        });
+        sendHostMessage(fixtures.desktopSessionTree({
+            groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1'), session('s2')] }],
+        }));
         pushRemotePane();
         openLink();
         expect(forwardPosts(vscode)).toHaveLength(1);
@@ -1093,10 +1095,10 @@ describe('remote preview port forwarding', () => {
         // Rebind the pane to s2 (another remote host) and open a different
         // URL there: a SECOND tunnel is requested — s1's stays held, because
         // tunnels are owned by sessions, not by the pane (scenario 18).
-        sendCommand('desktopPanes', {
-            panes: [{ paneId: 'pane-1', sessionId: 's2', row: 0, host: 'prod2' }],
+        sendHostMessage(fixtures.desktopPanes({
+            panes: [{ paneId: 'pane-1', sessionId: 's2', row: 0, host: 'prod2', width: 0.5 }],
             focusedPaneId: 'pane-1',
-        });
+        }));
         openLink('http://localhost:8080/app');
         expect(forwardPosts(vscode)).toHaveLength(2);
         expect(forwardPosts(vscode)[1]).toMatchObject({
@@ -1132,10 +1134,10 @@ describe('remote preview port forwarding', () => {
 
         // Switch back to s1: its own forwarded URL shows again from the session
         // cache; neither tunnel was ever released.
-        sendCommand('desktopPanes', {
-            panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'prod' }],
+        sendHostMessage(fixtures.desktopPanes({
+            panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'prod', width: 0.5 }],
             focusedPaneId: 'pane-1',
-        });
+        }));
         expect(screen.getByTestId('preview-pane').querySelector('webview')?.getAttribute('src')).toBe(
             'http://127.0.0.1:5173/app',
         );
@@ -1146,7 +1148,7 @@ describe('remote preview port forwarding', () => {
     it('picker comments in a remote preview land in the chat input (URL rewritten to the original remote address)', () => {
         window.waveHostType = 'desktop';
         const { vscode } = renderDesktop({ workdir: '/work/a' });
-        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        sendHostMessage(fixtures.desktopSessionTree({ groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1')] }] }));
         pushRemotePane();
         // The host always pushes a pane snapshot on session switch, including
         // the (possibly empty) input draft — see desktopHost.ts pushPaneSessionState.

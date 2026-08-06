@@ -10,7 +10,7 @@ export default defineConfig({
         setupFiles: ['tests/setup.ts'],
         server: {
             deps: {
-                inline: ['wave-agent-sdk'],
+                inline: ['wave-agent-sdk', 'wave-webview-fixtures'],
             },
         },
         coverage: {

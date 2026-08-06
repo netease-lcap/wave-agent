@@ -1,4 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
+import { fixtures, type HostToWebviewMessage } from 'wave-webview-fixtures';
 
 // ── Mocks ──────────────────────────────────────────────────────
 
@@ -63,6 +64,8 @@ function createReadySession(): ChatSession {
         pendingConfirmations: new Map(),
         messages: [],
         tasks: [],
+        backgroundTasks: [],
+        workflowRuns: [],
         messageQueue: [],
         sessionId: undefined,
         inputContent: '',
@@ -70,6 +73,17 @@ function createReadySession(): ChatSession {
         isCommandRunning: false,
         getMessages: vi.fn().mockResolvedValue([]),
     } as unknown as ChatSession;
+}
+
+// Typed against the shared host→webview contract: an unknown command string
+// or a field access outside the command's payload is a compile error, so a
+// contract rename breaks this suite the same way it breaks the webview one.
+function sentPosts(context: { postMessage: unknown }) {
+    const calls = (context.postMessage as ReturnType<typeof vi.fn>).mock.calls;
+    return <C extends HostToWebviewMessage['command']>(command: C) =>
+        calls
+            .map((call) => call[0] as { command?: string })
+            .filter((msg) => msg.command === command) as unknown as Extract<HostToWebviewMessage, { command: C }>[];
 }
 
 function createReadyHandler(session: ChatSession) {
@@ -203,13 +217,28 @@ describe('MessageHandler MCP handlers', () => {
         expect(utilityClient.request).toHaveBeenCalledWith('getAuthStatus');
         expect(configService.saveConfiguration).toHaveBeenCalledWith({ serverUrl: 'https://console.example.com' });
 
-        const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock.calls
-            .map((call) => call[0])
-            .find((msg) => msg.command === 'setInitialState') as { configurationData: { serverUrl: string }; isAuthenticated: boolean };
+        const states = sentPosts(context)('setInitialState');
+        expect(states.length).toBeGreaterThanOrEqual(1);
+        const posted = states[states.length - 1];
 
         expect(posted).toBeDefined();
         expect(posted.configurationData.serverUrl).toBe('https://console.example.com');
         expect(posted.isAuthenticated).toBe(true);
+
+        // Contract gates mirroring the shared fixture defaults: if the host
+        // stops sending a field or the fixture default changes, both layers go
+        // red together instead of one passing on mock-defined expectations.
+        const anchors = fixtures.setInitialState();
+        expect(posted.inputContent).toBe(anchors.inputContent);
+        expect(posted.messages).toEqual(anchors.messages);
+        expect(posted.tasks).toEqual(anchors.tasks);
+        expect(posted.backgroundTasks).toEqual(anchors.backgroundTasks);
+        expect(posted.workflowRuns).toEqual(anchors.workflowRuns);
+        expect(posted.queuedMessages).toEqual(anchors.queuedMessages);
+        expect(posted.pendingConfirmations).toEqual(anchors.pendingConfirmations);
+        expect(posted.sessions).toEqual(anchors.sessions);
+        // IDE hosts never send pane-scoped messages — only desktop does.
+        expect(posted.paneId).toBeUndefined();
     });
 
     // Regression: /status showed empty version in VSCE because handleGetStatus
