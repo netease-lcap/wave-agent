@@ -59,9 +59,6 @@ test.describe('Plugin Search UI Demo', () => {
         await expect(searchInput).toBeVisible();
         await expect(searchInput).toHaveAttribute('placeholder', '搜索插件...');
 
-        // Screenshot of search input with all plugins
-        await screenshotWebp(webviewPage, '../../docs/public/screenshots/plugin-search-input.webp');
-
         // 4. Type "git" to filter
         await searchInput.fill('git');
 
@@ -76,8 +73,6 @@ test.describe('Plugin Search UI Demo', () => {
         // 5. Type a non-matching query
         await searchInput.fill('zzz-nonexistent');
         await expect(webviewPage.getByText('没有找到匹配的插件')).toBeVisible();
-
-        await screenshotWebp(webviewPage, '../../docs/public/screenshots/plugin-search-no-results.webp');
 
         // 6. Clear the search
         await searchInput.fill('');

@@ -76,9 +76,6 @@ test.describe('Plugin Management Screenshots', () => {
         await expect(webviewPage.getByText('Git Workflow')).toBeVisible();
         await expect(webviewPage.getByText('Kubernetes Helper')).toBeVisible();
 
-        // 截图：探索新插件列表页
-        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-plugin-explore-list.webp');
-
         // 点击一个插件查看详情
         await webviewPage.getByText('Git Workflow').click();
 
@@ -129,9 +126,6 @@ test.describe('Plugin Management Screenshots', () => {
         // 确保输入框和按钮可见
         await expect(webviewPage.locator('input[placeholder*="市场 URL"]')).toBeVisible();
         await expect(webviewPage.getByText('添加', { exact: true })).toBeVisible();
-
-        // 截图：插件市场标签页，显示市场列表和管理功能
-        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-plugin-marketplaces.webp');
 
         // Close the dialog
         await webviewPage.keyboard.press('Escape');

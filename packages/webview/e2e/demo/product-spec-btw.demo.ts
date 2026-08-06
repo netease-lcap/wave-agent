@@ -38,12 +38,6 @@ test.describe('Product Spec: /btw side question', () => {
 
         // Full screenshot showing the panel above the input
         await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-btw-panel.webp');
-
-        // Element screenshot of the panel alone
-        await elementScreenshotWebp(
-            webviewPage.locator('[data-testid="btw-panel"]'),
-            '../../docs/public/screenshots/spec-btw-panel-element.webp'
-        );
     });
 
     test('should capture the bare /btw usage hint', async ({ webviewPage }) => {

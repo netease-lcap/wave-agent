@@ -108,8 +108,6 @@ test.describe('MCP Server Dialog Demo', () => {
         // Verify empty state message
         await expect(webviewPage.getByText('未配置 MCP 服务器')).toBeVisible();
         await expect(webviewPage.locator('code', { hasText: '.mcp.json' })).toBeVisible();
-
-        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-mcp-server-empty.webp');
     });
 
     test('should handle connect/disconnect actions', async ({ webviewPage }) => {

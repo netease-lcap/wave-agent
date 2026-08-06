@@ -89,8 +89,5 @@ test.describe('Status Dialog Demo', () => {
         });
 
         await expect(webviewPage.getByTestId('status-dialog')).toBeVisible();
-
-        const dialog = webviewPage.getByTestId('status-dialog');
-        await elementScreenshotWebp(dialog, '../../docs/public/screenshots/spec-status-dialog-noauth.webp');
     });
 });
