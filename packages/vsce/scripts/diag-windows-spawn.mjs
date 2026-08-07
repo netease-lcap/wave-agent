@@ -24,7 +24,7 @@
  * 运行：node packages/vsce/scripts/diag-windows-spawn.mjs （仅 Windows）
  */
 import { spawn, execSync, execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, cpSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -313,24 +313,31 @@ for (const ver of ['0.19.7', '1.0.4']) {
 // ── L. 完整模拟用户环境：0.19.7 → npm 升级 1.0.4 → spawn ──────────────
 // 用户线索「0.19.7 时正常，1.0.x 升级后报错」：VSCE 1.0.x pre-spawn 升级 CLI
 // （ensureCliUpToDate → upgradeWaveBinary → npm install -g）。此处用真实 npm
-// 在含空格+中文目录下做同样升级，观察升级后 binaryPath 与 spawn 结果。
+// 先装 0.19.7（验证「旧版好」），再升级 1.0.4（复现「新版坏」），全程在含
+// 空格路径下（用户 C:\Users\Name\AppData\Roaming\npm 同构）。
 console.log('\n===== L. full user upgrade path: 0.19.7 -> npm i -g 1.0.4 -> spawn =====');
-const upgradeRoot = path.join(os.tmpdir(), 'wave upgrade 测试');
+const upgradeRoot = path.join(os.tmpdir(), 'wave upgrade test');
 const upgradeDir = path.join(upgradeRoot, 'npm-global');
 mkdirSync(upgradeDir, { recursive: true });
+const whereNpm = execSync('where npm', { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+const npmPick = whereNpm.split('\n').map((l) => l.trim()).filter(Boolean).find((l) => /\.(cmd|exe)$/i.test(l));
+console.log(`[diag] L: npm = ${npmPick}`);
+function npmGlobalInstall(pkg, timeoutMs = 300000) {
+  const t0 = Date.now();
+  execFileSync(`"${npmPick}"`, ['install', '-g', pkg, `--prefix=${upgradeDir}`, '--registry=https://registry.npmjs.org'], {
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: timeoutMs,
+    shell: true,
+  });
+  console.log(`[diag] L: npm i -g ${pkg} done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+}
 try {
-  // L1: 下载 0.19.7 tarball，解压为 node_modules/wave-code（真实 CLI 文件）
-  const tarball197 = await fetchTarball('0.19.7');
-  const wcDir = path.join(upgradeDir, 'node_modules', 'wave-code');
-  const tmpExtract = path.join(upgradeRoot, 'extract-0197');
-  mkdirSync(tmpExtract, { recursive: true });
-  execSync(`tar -xzf "${tarball197}" -C "${tmpExtract}"`, { stdio: 'pipe' });
-  mkdirSync(wcDir, { recursive: true });
-  cpSync(path.join(tmpExtract, 'package'), wcDir, { recursive: true });
-  console.log(`[diag] L: 0.19.7 extracted to ${wcDir}`);
+  // L1: 真实 npm 全局安装 0.19.7（模拟用户「0.19.7 时代」的安装状态）
+  console.log('[diag] L: npm install -g wave-code@0.19.7 --prefix=... (may take a while)...');
+  npmGlobalInstall('wave-code@0.19.7');
 
-  // L2: npm 风格 shim + PATH 前缀
-  makeShimAt(upgradeDir);
+  // L2: PATH 前缀（模拟 npm 全局目录在 PATH 里）
   const lPath = upgradeDir + ';' + process.env.PATH;
   const lEnv = { ...process.env, PATH: lPath };
 
@@ -340,7 +347,7 @@ try {
   const pick197 = where197.split('\n').map((l) => l.trim()).filter(Boolean).find((l) => /\.(cmd|exe|bat)$/i.test(l));
   console.log(`[diag] L: pickExecutableLine -> ${pick197}`);
 
-  // L4: 真实执行 0.19.7 的 -v
+  // L4: 真实执行 0.19.7 的 -v + spawn（验证「旧版好」）
   let ver197 = null;
   try {
     ver197 = execFileSync(`"${pick197}"`, ['-v'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 20000, shell: true }).trim();
@@ -348,25 +355,13 @@ try {
     console.log(`[diag] L: -v (0.19.7) failed: ${e.message}`);
   }
   console.log(`[diag] L: wave -v (before upgrade) = ${ver197}`);
+  const js0197 = path.join(upgradeDir, 'node_modules', 'wave-code', 'bin', 'wave-code.js');
+  console.log(`[diag] L: 0.19.7 bin/wave-code.js exists=${fs_exists(js0197)}`);
+  printResult(await trySpawn('L. 0.19.7 spawn --stdio (expect ALIVE)', pick197, { cwd: validCwd, pathEnv: lPath }));
 
-  // L5: 模拟 upgradeWaveBinary — 真实 npm install -g（--prefix 限定目录）
-  const whereNpm = execSync('where npm', { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-  const npmPick = whereNpm.split('\n').map((l) => l.trim()).filter(Boolean).find((l) => /\.(cmd|exe)$/i.test(l));
-  console.log(`[diag] L: npm = ${npmPick}`);
-  console.log('[diag] L: npm install -g wave-code@1.0.4 --prefix=... (may take a while)...');
-  const t0 = Date.now();
-  try {
-    execFileSync(`"${npmPick}"`, ['install', '-g', 'wave-code@1.0.4', `--prefix=${upgradeDir}`, '--registry=https://registry.npmjs.org'], {
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 300000,
-      shell: true,
-    });
-    console.log(`[diag] L: npm install done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  } catch (e) {
-    console.log(`[diag] L: npm install FAILED: ${e.message}`);
-    console.log(`[diag] L: npm stderr tail: ${String(e.stderr ?? '').slice(-500)}`);
-  }
+  // L5: 模拟 upgradeWaveBinary — npm install -g wave-code@1.0.4
+  console.log('[diag] L: npm install -g wave-code@1.0.4 --prefix=... (upgrade, may take a while)...');
+  npmGlobalInstall('wave-code@1.0.4');
 
   // L6: 升级后重新解析 + 布局检查（对应 upgradeWaveBinary 里的 resolveWaveBinary()）
   const where104 = execSync('where wave', { encoding: 'utf-8', env: lEnv, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
@@ -392,6 +387,7 @@ try {
   }
 } catch (err) {
   console.log(`[diag] L failed: ${err.message}`);
+  if (err.stderr) console.log(`[diag] L stderr tail: ${String(err.stderr).slice(-800)}`);
 }
 
 // ── cleanup ────────────────────────────────────────────────────────
