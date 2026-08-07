@@ -23,8 +23,8 @@
  *
  * 运行：node packages/vsce/scripts/diag-windows-spawn.mjs （仅 Windows）
  */
-import { spawn, execSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { spawn, execSync, execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -252,6 +252,23 @@ try {
   console.log(`[diag] where wave failed: ${err.message}`);
 }
 
+// ── K. 含空格 + 中文目录名路径 spawn（真实用户路径盲点）───────────────
+// 此前所有场景都在无空格路径（CI runner 8.3 短名 C:\Users\RUNNER~1）下验证。
+// 真实用户路径 C:\Users\张三\AppData\Roaming\npm 含空格/非 ASCII，cmd.exe 的
+// 引号剥离规则（cmd /? 规则 2）在含空格路径下行为不同，可能报错误码 3。
+console.log('\n===== K. path with spaces + CJK (user-realistic) =====');
+const kDir = path.join(os.tmpdir(), 'wave agent 测试', 'npm-global');
+const kBin = path.join(kDir, 'node_modules', 'wave-code', 'bin');
+mkdirSync(kBin, { recursive: true });
+const kCmd = makeShimAt(kDir);
+writeFileSync(path.join(kBin, 'wave-code.js'), ['process.stdin.resume();', 'setTimeout(() => process.exit(0), 60000);'].join('\n'));
+console.log(`[diag] K wave.cmd = ${kCmd}`);
+printResult(await trySpawn('K1. spaced+CJK path, complete layout', kCmd, { cwd: validCwd }));
+// K2: 目录存在但 wave.cmd 文件不存在（模拟 where 找到的是 .cmd 但已被删除）
+const kMissingCmd = path.join(kDir, 'wave.cmd');
+if (existsSync(kMissingCmd)) rmSync(kMissingCmd, { force: true });
+printResult(await trySpawn('K2. spaced+CJK path, shim file deleted', kMissingCmd, { cwd: validCwd }));
+
 // ── G. 真实 wave-code 版本对比（0.19.7 vs 1.0.4，fetch tarball）──────
 // 用户线索：0.19.7 时正常，1.0.x 升级后出现「系统找不到指定的路径。」。
 // npm install -g 在 Windows runner 上超时（120s），改用 fetch 下载 tarball。
@@ -293,6 +310,87 @@ for (const ver of ['0.19.7', '1.0.4']) {
   }
 }
 
+// ── L. 完整模拟用户环境：0.19.7 → npm 升级 1.0.4 → spawn ──────────────
+// 用户线索「0.19.7 时正常，1.0.x 升级后报错」：VSCE 1.0.x pre-spawn 升级 CLI
+// （ensureCliUpToDate → upgradeWaveBinary → npm install -g）。此处用真实 npm
+// 在含空格+中文目录下做同样升级，观察升级后 binaryPath 与 spawn 结果。
+console.log('\n===== L. full user upgrade path: 0.19.7 -> npm i -g 1.0.4 -> spawn =====');
+const upgradeRoot = path.join(os.tmpdir(), 'wave upgrade 测试');
+const upgradeDir = path.join(upgradeRoot, 'npm-global');
+mkdirSync(upgradeDir, { recursive: true });
+try {
+  // L1: 下载 0.19.7 tarball，解压为 node_modules/wave-code（真实 CLI 文件）
+  const tarball197 = await fetchTarball('0.19.7');
+  const wcDir = path.join(upgradeDir, 'node_modules', 'wave-code');
+  mkdirSync(wcDir, { recursive: true });
+  execSync(`tar -xzf "${tarball197}" -C "${wcDir}" --strip-components=1`, { stdio: 'pipe' });
+  console.log(`[diag] L: 0.19.7 extracted to ${wcDir}`);
+
+  // L2: npm 风格 shim + PATH 前缀
+  makeShimAt(upgradeDir);
+  const lPath = upgradeDir + ';' + process.env.PATH;
+  const lEnv = { ...process.env, PATH: lPath };
+
+  // L3: 模拟 VSCE init — where wave + pickExecutableLine(.cmd 偏好)
+  const where197 = execSync('where wave', { encoding: 'utf-8', env: lEnv, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  console.log(`[diag] L: where wave (0.19.7):\n${where197}`);
+  const pick197 = where197.split('\n').map((l) => l.trim()).filter(Boolean).find((l) => /\.(cmd|exe|bat)$/i.test(l));
+  console.log(`[diag] L: pickExecutableLine -> ${pick197}`);
+
+  // L4: 真实执行 0.19.7 的 -v
+  let ver197 = null;
+  try {
+    ver197 = execFileSync(`"${pick197}"`, ['-v'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 20000, shell: true }).trim();
+  } catch (e) {
+    console.log(`[diag] L: -v (0.19.7) failed: ${e.message}`);
+  }
+  console.log(`[diag] L: wave -v (before upgrade) = ${ver197}`);
+
+  // L5: 模拟 upgradeWaveBinary — 真实 npm install -g（--prefix 限定目录）
+  const whereNpm = execSync('where npm', { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  const npmPick = whereNpm.split('\n').map((l) => l.trim()).filter(Boolean).find((l) => /\.(cmd|exe)$/i.test(l));
+  console.log(`[diag] L: npm = ${npmPick}`);
+  console.log('[diag] L: npm install -g wave-code@1.0.4 --prefix=... (may take a while)...');
+  const t0 = Date.now();
+  try {
+    execFileSync(`"${npmPick}"`, ['install', '-g', 'wave-code@1.0.4', `--prefix=${upgradeDir}`, '--registry=https://registry.npmjs.org'], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 300000,
+      shell: true,
+    });
+    console.log(`[diag] L: npm install done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    console.log(`[diag] L: npm install FAILED: ${e.message}`);
+    console.log(`[diag] L: npm stderr tail: ${String(e.stderr ?? '').slice(-500)}`);
+  }
+
+  // L6: 升级后重新解析 + 布局检查（对应 upgradeWaveBinary 里的 resolveWaveBinary()）
+  const where104 = execSync('where wave', { encoding: 'utf-8', env: lEnv, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  console.log(`[diag] L: where wave (after upgrade):\n${where104}`);
+  const pick104 = where104.split('\n').map((l) => l.trim()).filter(Boolean).find((l) => /\.(cmd|exe|bat)$/i.test(l));
+  console.log(`[diag] L: re-resolved -> ${pick104}`);
+  const js104 = path.join(upgradeDir, 'node_modules', 'wave-code', 'bin', 'wave-code.js');
+  console.log(`[diag] L: bin/wave-code.js exists=${fs_exists(js104)} dist/cli.js exists=${fs_exists(path.join(upgradeDir, 'node_modules', 'wave-code', 'dist', 'cli.js'))}`);
+  if (pick104 && existsSync(pick104)) {
+    console.log(`[diag] L: wave.cmd content (after npm rewrite):\n${readFileSync(pick104, 'utf8')}`);
+  }
+  let ver104 = null;
+  try {
+    ver104 = execFileSync(`"${pick104}"`, ['-v'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 20000, shell: true }).trim();
+  } catch (e) {
+    console.log(`[diag] L: -v (after) failed: ${e.message}`);
+  }
+  console.log(`[diag] L: wave -v (after upgrade) = ${ver104}`);
+
+  // L7: spawn（与 stdioClient 完全一致）
+  if (pick104) {
+    printResult(await trySpawn('L. post-upgrade spawn --stdio', pick104, { cwd: validCwd, pathEnv: lPath }));
+  }
+} catch (err) {
+  console.log(`[diag] L failed: ${err.message}`);
+}
+
 // ── cleanup ────────────────────────────────────────────────────────
 try {
   rmSync(root, { recursive: true, force: true });
@@ -303,5 +401,11 @@ try {
   rmSync(realRoot, { recursive: true, force: true });
 } catch (e) {
   console.log(`[diag] cleanup warning (realRoot): ${e.message}`);
+}
+try {
+  rmSync(path.join(os.tmpdir(), 'wave agent 测试'), { recursive: true, force: true });
+  rmSync(path.join(os.tmpdir(), 'wave upgrade 测试'), { recursive: true, force: true });
+} catch (e) {
+  console.log(`[diag] cleanup warning (k/upgrade): ${e.message}`);
 }
 console.log('\n[diag] done');
