@@ -8,7 +8,7 @@
  * packages/vsce/src/session/{chatSession,messageHandler}.ts).
  */
 
-import { app, dialog, shell, nativeTheme, type BrowserWindow } from 'electron';
+import { app, dialog, shell, nativeTheme, powerMonitor, type BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -110,6 +110,13 @@ const SIDEBAR_WIDTH_PX = 240;
 const WIDTH_EPSILON = 1e-9;
 /** Max auto-reconnect attempts after a dropped ssh tunnel (spec: SSH 远程会话自动重连). */
 const AUTO_RECONNECT_MAX_ATTEMPTS = 5;
+/**
+ * After a system sleep/wake the network stack takes tens of seconds to come
+ * back (Wi-Fi association, DHCP, 802.1x/VPN auth). Auto-reconnect launched
+ * in that window burns its attempts on dead air — wait this long after the
+ * system `resume` event before starting an attempt (spec scenario 2/11).
+ */
+const AUTO_RECONNECT_RESUME_GRACE_MS = 8000;
 
 /** A pane-bound session targeted by the auto-reconnect after a dropped tunnel. */
 interface ReconnectTarget {
@@ -146,10 +153,23 @@ export class DesktopHost {
 
   /**
    * Base delay (ms) between auto-reconnect attempts after a dropped tunnel;
-   * doubles per failure (2s → 4s → 8s → 16s). A static so tests can shrink it
-   * without faking timers.
+   * doubles per failure (5s → 10s → 20s → 40s). The 5s base stretches the
+   * retry window (≈75s of backoff + per-attempt SSH timeouts) so attempts
+   * still land after a slow post-resume network recovery. A static so tests
+   * can shrink it without faking timers.
    */
-  private static autoReconnectBaseDelayMs = 2000;
+  private static autoReconnectBaseDelayMs = 5000;
+  /**
+   * Post-resume network grace (ms) before the first auto-reconnect attempt;
+   * a static so tests can shrink it without faking timers.
+   */
+  private static autoReconnectResumeGraceMs = AUTO_RECONNECT_RESUME_GRACE_MS;
+  /** Timestamp of the last system `resume` event (0 = none since launch). */
+  private lastResumeAt = 0;
+
+  private readonly onSystemResume = () => {
+    this.lastResumeAt = Date.now();
+  };
 
   // agent pool (multi-session parallel): `${host}\u0000${sessionId}` → live
   // StdioAgent (composite key keeps sessions from different hosts distinct).
@@ -310,6 +330,7 @@ export class DesktopHost {
 
   constructor(private readonly configStore: ConfigStore) {
     nativeTheme.on('updated', this.onNativeThemeUpdated);
+    powerMonitor.on('resume', this.onSystemResume);
   }
 
   setMainWindow(win: BrowserWindow): void {
@@ -359,6 +380,7 @@ export class DesktopHost {
   /** Graceful shutdown for app quit (FR-015): destroy every live agent. */
   async dispose(): Promise<void> {
     nativeTheme.off('updated', this.onNativeThemeUpdated);
+    powerMonitor.off('resume', this.onSystemResume);
     this.terminalManager.killAll();
     this.portForwardManager.dispose();
     for (const t of this.paneThrottles.values()) {
@@ -1531,6 +1553,11 @@ export class DesktopHost {
   private async autoReconnectPane(t: ReconnectTarget): Promise<void> {
     for (let attempt = 1; attempt <= AUTO_RECONNECT_MAX_ATTEMPTS; attempt++) {
       if (!this.canAutoReconnect(t)) return;
+      // A tunnel that dropped on system sleep triggers this on wake, when the
+      // network stack is usually not back yet — wait out the post-resume grace
+      // so attempts don't burn on dead air (spec scenario 2/11).
+      await this.waitForNetworkGraceIfResumed();
+      if (!this.canAutoReconnect(t)) return;
       this.startPaneRestore(t.paneId, { sessionId: t.sessionId, workdir: t.workdir, host: t.host });
       const handled = await this.runPaneRestore(t.paneId, { ...t, autoReconnect: true });
       if (handled) return;
@@ -1547,6 +1574,14 @@ export class DesktopHost {
         `与 ${t.host} 的连接断开后自动重连失败（已尝试 ${AUTO_RECONNECT_MAX_ATTEMPTS} 次），会话仍在远端运行，请检查网络后从侧边栏重新进入。`,
         t.paneId,
       );
+    }
+  }
+
+  /** Wait out the post-resume network grace period when the system just woke up. */
+  private async waitForNetworkGraceIfResumed(): Promise<void> {
+    const remaining = DesktopHost.autoReconnectResumeGraceMs - (Date.now() - this.lastResumeAt);
+    if (remaining > 0) {
+      await new Promise((resolve) => setTimeout(resolve, remaining));
     }
   }
 
