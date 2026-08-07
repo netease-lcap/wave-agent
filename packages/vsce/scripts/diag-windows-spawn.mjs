@@ -16,10 +16,12 @@
  *
  * 运行：node packages/vsce/scripts/diag-windows-spawn.mjs （仅 Windows）
  */
-import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { spawn, execSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+
+const fs_exists = (p) => existsSync(p);
 
 console.log(`[diag] platform=${process.platform} node=${process.version} arch=${process.arch}`);
 
@@ -119,6 +121,9 @@ const pathNoNode = (process.env.PATH ?? '')
   .filter((p) => p && path.resolve(p).toLowerCase() !== nodeDir.toLowerCase())
   .join(';');
 
+// GUI 最小 PATH（VS Code 从注册表继承，通常只有系统目录，无用户 shell 的 node）
+const guiPath = [process.env.SystemRoot + '\\System32', process.env.SystemRoot, process.env.SystemRoot + '\\System32\\Wbem'].join(';');
+
 console.log(`[diag] node dir (removed in C/D) = ${nodeDir}`);
 console.log(`[diag] missing cwd (B/D)         = ${missingCwd}`);
 
@@ -142,14 +147,14 @@ console.log('\n===== F. process cwd deleted away (helper subprocess) =====');
 const ghostDir = path.join(os.tmpdir(), 'wave-diag-ghost-' + Date.now());
 mkdirSync(ghostDir);
 
-// helper 脚本（写文件，避免 Windows -e 引号问题）
+// ── helper 脚本（写文件，避免 Windows -e 引号问题）──────────────────
 const helperPath = path.join(root, 'ghost-helper.mjs');
 writeFileSync(
   helperPath,
   `
 import { spawn } from 'node:child_process';
-const ghostDir = process.argv[1];
-const waveCmd = process.argv[2];
+const ghostDir = process.argv[2];
+const waveCmd = process.argv[3];
 process.chdir(ghostDir);
 process.stdout.write('READY\\n');
 process.stdin.once('data', () => {
@@ -235,8 +240,87 @@ if (fResult.parsed) {
   if (p.stdout?.trim()) console.log(`stdout: ${JSON.stringify(p.stdout)}`);
 }
 
+// ── G. 真实 wave-code 版本对比（0.19.7 vs 1.0.4）──────────────────
+// 用户线索：0.19.7 时正常，1.0.x 升级后出现「系统找不到指定的路径。」。
+// 用 npm 安装两个版本的真实 CLI，分别模拟「GUI 无 node PATH」与「正常 PATH」。
+console.log('\n===== G. real wave-code version comparison =====');
+console.log('[diag] installing wave-code@0.19.7 and wave-code@1.0.4 (npm, may take a while)...');
+const realRoot = path.join(os.tmpdir(), 'wave-diag-real-' + Date.now());
+const realBins = {};
+for (const ver of ['0.19.7', '1.0.4']) {
+  const prefix = path.join(realRoot, `wv-${ver}`);
+  mkdirSync(prefix, { recursive: true });
+  try {
+    execSync(`npm install -g wave-code@${ver} --prefix "${prefix}" --no-save --no-package-lock --silent`, {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 120000,
+    });
+    // 全局安装（-g --prefix）：bin 位于 <prefix>/wave.cmd，dp0=<prefix>，
+    // shim 内引用 %dp0%\node_modules\wave-code\bin\wave-code.js（与真实 npm 全局安装一致）。
+    const bin = path.join(prefix, 'wave.cmd');
+    realBins[ver] = { bin, exists: fs_exists(bin) };
+    console.log(`[diag] ${ver}: wave.cmd=${bin} exists=${realBins[ver].exists}`);
+  } catch (e) {
+    console.log(`[diag] ${ver} install failed: ${e.message}`);
+  }
+}
+
+// 真实 wave.cmd 的 spawn（GUI PATH 模拟：无 node）
+async function tryReal(ver, label, { pathEnv }) {
+  const { bin } = realBins[ver] ?? {};
+  if (!bin || !fs_exists(bin)) {
+    console.log(`\n===== ${label} =====\nstatus: SKIPPED (bin missing)`);
+    return;
+  }
+  return new Promise((resolve) => {
+    const env = { ...process.env, PATH: pathEnv };
+    const child = spawn(`"${bin}"`, ['--stdio'], {
+      cwd: root,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: true,
+    });
+    let stderr = '';
+    let stdout = '';
+    child.stderr.on('data', (d) => (stderr += d.toString('utf8')));
+    child.stdout.on('data', (d) => (stdout += d.toString('utf8')));
+    const timer = setTimeout(() => {
+      child.kill();
+      child.once('exit', () =>
+        resolve(console.log(`\n===== ${label} =====\nstatus: ALIVE (3s)\nstderr: ${JSON.stringify(stderr)}`)),
+      );
+      setTimeout(() => resolve(console.log(`\n===== ${label} =====\nstatus: ALIVE (3s)\nstderr: ${JSON.stringify(stderr)}`)), 1000);
+    }, 3000);
+    child.on('exit', (code, signal) => {
+      clearTimeout(timer);
+      console.log(`\n===== ${label} =====`);
+      console.log(`status: EXIT code=${code} signal=${signal}`);
+      if (stderr.trim()) console.log(`stderr: ${JSON.stringify(stderr)}`);
+      if (stdout.trim()) console.log(`stdout: ${JSON.stringify(stdout)}`);
+      resolve();
+    });
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      console.log(`\n===== ${label} =====`);
+      console.log(`status: SPAWN_ERROR: ${err.message}`);
+      resolve();
+    });
+  });
+}
+
+for (const ver of ['0.19.7', '1.0.4']) {
+  await tryReal(ver, `G. real ${ver} / GUI PATH (no node)`, { pathEnv: guiPath });
+  await tryReal(ver, `G. real ${ver} / full PATH`, { pathEnv: process.env.PATH });
+}
+
 try {
   rmSync(root, { recursive: true, force: true });
 } catch (e) {
   console.log(`[diag] cleanup warning: ${e.message}`);
+}
+try {
+  rmSync(realRoot, { recursive: true, force: true });
+} catch (e) {
+  console.log(`[diag] cleanup warning (realRoot): ${e.message}`);
 }
