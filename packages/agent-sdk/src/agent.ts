@@ -75,6 +75,7 @@ export class Agent {
   private messageQueue: MessageQueue; // Unified queue for messages, bang commands, and notifications
   private dispatchPromise: Promise<void> | null = null; // Track current dispatch for teardown
   private isAborting = false; // Guard: prevents tryDispatch from firing during abortMessage
+  private dispatchAborted = false; // Set on abort while a dispatch is running: suppress the .finally re-check so preserved notifications don't get dispatched after abort
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private taskManager: TaskManager;
@@ -392,6 +393,7 @@ export class Agent {
    */
   private tryDispatch(): void {
     if (this.isAborting) return; // Suppress dispatch during abort to prevent queued notifications from being dispatched as a side-effect
+    if (this.dispatchAborted) return; // Aborted mid-dispatch: don't start a new dispatch (the user interrupted this turn)
     if (this.messageQueue.state !== "idle") return;
     if (!this.messageQueue.hasPending()) return;
     if (this.aiManager.isLoading || this.isCommandRunning) return;
@@ -404,7 +406,10 @@ export class Agent {
       .finally(() => {
         this.messageQueue.transitionTo("idle");
         this.dispatchPromise = null;
-        this.tryDispatch(); // Re-check after processing
+        if (!this.dispatchAborted) {
+          this.tryDispatch(); // Re-check after processing
+        }
+        this.dispatchAborted = false;
       });
   }
 
@@ -773,6 +778,12 @@ export class Agent {
     // from dispatching preserved notifications as a new AI turn during the abort.
     this.isAborting = true;
     try {
+      // If a queued dispatch is in flight (e.g. a notification turn was being
+      // processed), remember the abort so the .finally re-check won't start a
+      // new dispatch with the preserved notifications right after aborting.
+      if (this.dispatchPromise) {
+        this.dispatchAborted = true;
+      }
       if (this.aiManager.isLoading || this.isCommandRunning) {
         // Clear user-facing queue items first to prevent processQueuedMessage
         // from dequeuing when abortAIMessage triggers onLoadingChange(false).

@@ -153,28 +153,65 @@ describe("AIManager abort with queued notification", () => {
     vi.clearAllMocks();
   });
 
-  it("re-asserts loading state when the aborted turn continues via a queued notification", async () => {
+  it("does not resurrect an aborted turn via a queued notification", async () => {
+    const loadingCalls: boolean[] = [];
+    const { aiManager, messageQueue } = buildHarness(loadingCalls);
+
+    const mockCallAgent = vi.mocked(callAgent);
+    mockCallAgent.mockImplementation(async (options) => {
+      // First turn: hang until the abort signal fires
+      return new Promise<Awaited<ReturnType<typeof callAgent>>>(
+        (_resolve, reject) => {
+          options.abortSignal?.addEventListener(
+            "abort",
+            () => reject(new Error("Aborted")),
+            { once: true },
+          );
+        },
+      );
+    });
+
+    const sendPromise = aiManager.sendAIMessage();
+    await vi.waitFor(() => expect(mockCallAgent).toHaveBeenCalledTimes(1));
+    expect(aiManager.isLoading).toBe(true);
+
+    // Background notification arrives while the turn is running, then abort
+    messageQueue.enqueueNotification(NOTIFICATION_XML);
+    aiManager.abortAIMessage();
+    expect(aiManager.isLoading).toBe(false);
+
+    // The aborted turn unwinds and ends — it must NOT fold the queued
+    // notification in and restart itself (that would resurrect the turn the
+    // user just interrupted and spawn a second, uninterruptible agent loop).
+    await sendPromise;
+    await vi.waitFor(() => expect(mockCallAgent).toHaveBeenCalledTimes(1));
+
+    // The notification stays queued for the next user-initiated turn.
+    expect(messageQueue.hasNotifications()).toBe(true);
+    expect(aiManager.isLoading).toBe(false);
+    expect(loadingCalls).toEqual([true, false]);
+  });
+
+  it("folds queued notifications into the next turn on normal completion", async () => {
     const loadingCalls: boolean[] = [];
     const { aiManager, messageQueue, messageManager } =
       buildHarness(loadingCalls);
 
     const mockCallAgent = vi.mocked(callAgent);
+    let resolveFirstCall:
+      | ((value: Awaited<ReturnType<typeof callAgent>>) => void)
+      | undefined;
     let resolveSecondCall:
       | ((value: Awaited<ReturnType<typeof callAgent>>) => void)
       | undefined;
-    mockCallAgent.mockImplementation(async (options) => {
+    mockCallAgent.mockImplementation(async () => {
       const callNumber = mockCallAgent.mock.calls.length;
       if (callNumber === 1) {
-        // First turn: hang until the abort signal fires
-        return new Promise<Awaited<ReturnType<typeof callAgent>>>(
-          (_resolve, reject) => {
-            options.abortSignal?.addEventListener(
-              "abort",
-              () => reject(new Error("Aborted")),
-              { once: true },
-            );
-          },
-        );
+        // First turn: hold until the test enqueues the notification and
+        // releases it, so the notification is pending when the turn ends
+        return new Promise<Awaited<ReturnType<typeof callAgent>>>((resolve) => {
+          resolveFirstCall = resolve;
+        });
       }
       if (callNumber === 2) {
         // Continued turn: hold until the test releases it
@@ -191,23 +228,25 @@ describe("AIManager abort with queued notification", () => {
 
     const sendPromise = aiManager.sendAIMessage();
     await vi.waitFor(() => expect(mockCallAgent).toHaveBeenCalledTimes(1));
-    expect(aiManager.isLoading).toBe(true);
 
-    // Background notification arrives while the turn is running, then abort
+    // Background notification arrives while the (non-aborted) turn is running
     messageQueue.enqueueNotification(NOTIFICATION_XML);
-    aiManager.abortAIMessage();
-    expect(aiManager.isLoading).toBe(false);
 
-    // The aborted turn unwinds, drains the queued notification and continues
-    // the conversation in a restarted loop iteration
+    // First turn completes normally
+    resolveFirstCall!({
+      content: "first turn",
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      tool_calls: [],
+    });
+
+    // The turn drains the queued notification and continues the conversation
+    // in a restarted loop iteration — loading stays active across the restart
+    // so the webview keeps showing the streaming cursor / stop button.
     await vi.waitFor(() =>
       expect(mockCallAgent.mock.calls.length).toBeGreaterThanOrEqual(2),
     );
-
-    // The continued turn must run with loading state active so the webview
-    // shows the streaming cursor / stop button and ESC can interrupt
     expect(aiManager.isLoading).toBe(true);
-    expect(loadingCalls).toEqual([true, false, true]);
+    expect(loadingCalls).toEqual([true, true]);
 
     // Let the continued turn finish
     resolveSecondCall!({
@@ -217,10 +256,9 @@ describe("AIManager abort with queued notification", () => {
     });
     await sendPromise;
 
-    // End-of-turn cleanup must release the loading state — the abort-bumped
-    // generation must not cause the continued turn to be treated as superseded
+    // End-of-turn cleanup must release the loading state
     expect(aiManager.isLoading).toBe(false);
-    expect(loadingCalls).toEqual([true, false, true, false]);
+    expect(loadingCalls).toEqual([true, true, false]);
     expect(messageManager.addNotificationMessage).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: "bg-1" }),
     );
