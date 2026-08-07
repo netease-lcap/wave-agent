@@ -16,7 +16,7 @@
  * 运行：node packages/vsce/scripts/diag-windows-spawn.mjs （仅 Windows）
  */
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, renameSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -81,9 +81,14 @@ function trySpawn(label, { cwd, pathEnv, inheritCwd = false }) {
 
     const timer = setTimeout(() => {
       child.kill();
-      resolve({ label, status: 'ALIVE (3s, expected success)', code: null, signal: null, stderr, stdout });
+      // 等 kill 生效（cmd.exe 可能仍持有 cwd 句柄），再 resolve
+      child.once('exit', () =>
+        resolve({ label, status: 'ALIVE (3s, expected success)', code: null, signal: null, stderr, stdout }),
+      );
+      setTimeout(() => {
+        resolve({ label, status: 'ALIVE (3s, expected success)', code: null, signal: null, stderr, stdout });
+      }, 1000);
     }, 3000);
-
     child.on('exit', (code, signal) => {
       clearTimeout(timer);
       resolve({ label, status: 'EXIT', code, signal, stderr, stdout });
@@ -117,6 +122,15 @@ results.push(await trySpawn('D. cwd missing + PATH without node', { cwd: missing
 // E: 不传 cwd —— 子进程继承本进程 cwd（模拟扩展宿主 spawn 时未指定 cwd）
 results.push(await trySpawn('E. inherit cwd (like extension host)', { inheritCwd: true }));
 
+// F: 扩展宿主进程 cwd 无效（VS Code 打开的工作区目录被移动/删除后，进程 cwd 指向已失效路径）。
+// chdir 到 ghostDir 再 rename 走它 —— Windows 允许重命名当前工作目录，旧路径立即失效。
+const ghostDir = path.join(os.tmpdir(), 'wave-diag-ghost-' + Date.now());
+mkdirSync(ghostDir);
+process.chdir(ghostDir);
+renameSync(ghostDir, ghostDir + '-moved');
+console.log(`[diag] ghost cwd (F) = ${ghostDir} -> renamed away, process.cwd() now invalid`);
+results.push(await trySpawn('F. invalid cwd (cwd moved away)', { inheritCwd: true }));
+
 for (const r of results) {
   console.log(`\n===== ${r.label} =====`);
   console.log(`status: ${r.status}${r.code !== null ? ` code=${r.code}` : ''}${r.signal ? ` signal=${r.signal}` : ''}`);
@@ -124,4 +138,8 @@ for (const r of results) {
   if (r.stdout.trim()) console.log(`stdout: ${JSON.stringify(r.stdout)}`);
 }
 
-rmSync(root, { recursive: true, force: true });
+try {
+  rmSync(root, { recursive: true, force: true });
+} catch (e) {
+  console.log(`[diag] cleanup warning: ${e.message}`);
+}
