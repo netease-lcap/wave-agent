@@ -11,12 +11,13 @@
  *   B. cwd 不存在                                —— 期望：观察 Node/cmd 报错
  *   C. PATH 缺少 node 所在目录                   —— 期望：观察 cmd 找不到 node
  *   D. cwd 不存在 + PATH 缺 node（组合）
- *   E. 继承无效 cwd（模拟父进程 cwd 被删除后相对路径解析失败）
+ *   E. 继承 cwd（模拟扩展宿主未显式传 cwd）
+ *   F. 进程 cwd 指向已删除目录（helper 子进程模拟，Windows 无法直接删除自身 cwd）
  *
  * 运行：node packages/vsce/scripts/diag-windows-spawn.mjs （仅 Windows）
  */
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, renameSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -100,6 +101,13 @@ function trySpawn(label, { cwd, pathEnv, inheritCwd = false }) {
   });
 }
 
+function printResult(r) {
+  console.log(`\n===== ${r.label} =====`);
+  console.log(`status: ${r.status}${r.code !== null ? ` code=${r.code}` : ''}${r.signal ? ` signal=${r.signal}` : ''}`);
+  if (r.stderr.trim()) console.log(`stderr: ${JSON.stringify(r.stderr)}`);
+  if (r.stdout.trim()) console.log(`stdout: ${JSON.stringify(r.stdout)}`);
+}
+
 // ── 场景 ────────────────────────────────────────────────────────
 const validCwd = root;
 const missingCwd = path.join(os.tmpdir(), 'wave-diag-missing-' + Date.now());
@@ -114,28 +122,117 @@ const pathNoNode = (process.env.PATH ?? '')
 console.log(`[diag] node dir (removed in C/D) = ${nodeDir}`);
 console.log(`[diag] missing cwd (B/D)         = ${missingCwd}`);
 
-const results = [];
-results.push(await trySpawn('A. normal (valid cwd, full PATH)', { cwd: validCwd }));
-results.push(await trySpawn('B. cwd does not exist', { cwd: missingCwd }));
-results.push(await trySpawn('C. PATH without node dir', { cwd: validCwd, pathEnv: pathNoNode }));
-results.push(await trySpawn('D. cwd missing + PATH without node', { cwd: missingCwd, pathEnv: pathNoNode }));
+// 先跑并立即打印 A-E（任何后续场景崩溃都不影响前序结果）
+const a = await trySpawn('A. normal (valid cwd, full PATH)', { cwd: validCwd });
+printResult(a);
+const b = await trySpawn('B. cwd does not exist', { cwd: missingCwd });
+printResult(b);
+const c = await trySpawn('C. PATH without node dir', { cwd: validCwd, pathEnv: pathNoNode });
+printResult(c);
+const d = await trySpawn('D. cwd missing + PATH without node', { cwd: missingCwd, pathEnv: pathNoNode });
+printResult(d);
 // E: 不传 cwd —— 子进程继承本进程 cwd（模拟扩展宿主 spawn 时未指定 cwd）
-results.push(await trySpawn('E. inherit cwd (like extension host)', { inheritCwd: true }));
+const e = await trySpawn('E. inherit cwd (like extension host)', { inheritCwd: true });
+printResult(e);
 
-// F: 扩展宿主进程 cwd 无效（VS Code 打开的工作区目录被移动/删除后，进程 cwd 指向已失效路径）。
-// chdir 到 ghostDir 再 rename 走它 —— Windows 允许重命名当前工作目录，旧路径立即失效。
+// ── F: 进程 cwd 指向已删除目录 ───────────────────────────────────
+// Windows 不允许删除/重命名当前进程的 cwd（EBUSY），所以用一个 helper
+// 子进程持有 ghostDir 作为其 cwd，父进程删掉 ghostDir 后让 helper spawn。
+console.log('\n===== F. process cwd deleted away (helper subprocess) =====');
 const ghostDir = path.join(os.tmpdir(), 'wave-diag-ghost-' + Date.now());
 mkdirSync(ghostDir);
-process.chdir(ghostDir);
-renameSync(ghostDir, ghostDir + '-moved');
-console.log(`[diag] ghost cwd (F) = ${ghostDir} -> renamed away, process.cwd() now invalid`);
-results.push(await trySpawn('F. invalid cwd (cwd moved away)', { inheritCwd: true }));
 
-for (const r of results) {
-  console.log(`\n===== ${r.label} =====`);
-  console.log(`status: ${r.status}${r.code !== null ? ` code=${r.code}` : ''}${r.signal ? ` signal=${r.signal}` : ''}`);
-  if (r.stderr.trim()) console.log(`stderr: ${JSON.stringify(r.stderr)}`);
-  if (r.stdout.trim()) console.log(`stdout: ${JSON.stringify(r.stdout)}`);
+// helper 脚本（写文件，避免 Windows -e 引号问题）
+const helperPath = path.join(root, 'ghost-helper.mjs');
+writeFileSync(
+  helperPath,
+  `
+import { spawn } from 'node:child_process';
+const ghostDir = process.argv[1];
+const waveCmd = process.argv[2];
+process.chdir(ghostDir);
+process.stdout.write('READY\\n');
+process.stdin.once('data', () => {
+  // cwd 已被父进程删除，此处进程 cwd 指向已不存在的目录
+  try {
+    const child = spawn('"' + waveCmd + '"', ['--stdio'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env },
+      shell: true,
+    });
+    let stderr = '';
+    let stdout = '';
+    child.stderr.on('data', (d) => (stderr += d.toString('utf8')));
+    child.stdout.on('data', (d) => (stdout += d.toString('utf8')));
+    const timer = setTimeout(() => {
+      child.kill();
+      setTimeout(() => {
+        console.log(JSON.stringify({ status: 'ALIVE', stderr, stdout }));
+        process.exit(0);
+      }, 1000);
+    }, 3000);
+    child.on('exit', (code, signal) => {
+      clearTimeout(timer);
+      console.log(JSON.stringify({ status: 'EXIT', code, signal, stderr, stdout }));
+      process.exit(0);
+    });
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      console.log(JSON.stringify({ status: 'SPAWN_ERROR', msg: err.message, stderr, stdout }));
+      process.exit(0);
+    });
+  } catch (err) {
+    console.log(JSON.stringify({ status: 'THROW', msg: err.message }));
+    process.exit(1);
+  }
+});
+`,
+);
+
+let fOut = '';
+const fResult = await new Promise((resolve) => {
+  const helper = spawn(process.execPath, [helperPath, ghostDir, waveCmd], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env },
+  });
+  helper.stdout.on('data', (d) => (fOut += d.toString('utf8')));
+  helper.stderr.on('data', (d) => (fOut += `[helper stderr] ${d.toString('utf8')}`));
+  helper.stdout.once('data', () => {
+    // READY 已收到 → 删除 helper 的 cwd
+    try {
+      rmSync(ghostDir, { recursive: true, force: true });
+      console.log('[diag] ghost cwd deleted:', ghostDir);
+    } catch (err) {
+      console.log(`[diag] rmSync ghost cwd failed: ${err.message}`);
+    }
+    helper.stdin.write('GO\n');
+  });
+  helper.on('exit', (code) => {
+    const lines = fOut.trim().split('\n');
+    let jsonLine = lines.find((l) => l.startsWith('{'));
+    let parsed = null;
+    if (jsonLine) {
+      try {
+        parsed = JSON.parse(jsonLine);
+      } catch {
+        parsed = null;
+      }
+    }
+    resolve({ code, fOut, parsed });
+  });
+});
+
+console.log(`helper exit code: ${fResult.code}`);
+console.log('helper output:');
+console.log(fResult.fOut);
+if (fResult.parsed) {
+  const p = fResult.parsed;
+  console.log(
+    `status: ${p.status}${p.code !== null && p.code !== undefined ? ` code=${p.code}` : ''}${p.signal ? ` signal=${p.signal}` : ''}`,
+  );
+  if (p.msg) console.log(`msg: ${p.msg}`);
+  if (p.stderr?.trim()) console.log(`stderr: ${JSON.stringify(p.stderr)}`);
+  if (p.stdout?.trim()) console.log(`stdout: ${JSON.stringify(p.stdout)}`);
 }
 
 try {
