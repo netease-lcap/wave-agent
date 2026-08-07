@@ -24,7 +24,7 @@
  * 运行：node packages/vsce/scripts/diag-windows-spawn.mjs （仅 Windows）
  */
 import { spawn, execSync, execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, cpSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -322,8 +322,11 @@ try {
   // L1: 下载 0.19.7 tarball，解压为 node_modules/wave-code（真实 CLI 文件）
   const tarball197 = await fetchTarball('0.19.7');
   const wcDir = path.join(upgradeDir, 'node_modules', 'wave-code');
+  const tmpExtract = path.join(upgradeRoot, 'extract-0197');
+  mkdirSync(tmpExtract, { recursive: true });
+  execSync(`tar -xzf "${tarball197}" -C "${tmpExtract}"`, { stdio: 'pipe' });
   mkdirSync(wcDir, { recursive: true });
-  execSync(`tar -xzf "${tarball197}" -C "${wcDir}" --strip-components=1`, { stdio: 'pipe' });
+  cpSync(path.join(tmpExtract, 'package'), wcDir, { recursive: true });
   console.log(`[diag] L: 0.19.7 extracted to ${wcDir}`);
 
   // L2: npm 风格 shim + PATH 前缀
