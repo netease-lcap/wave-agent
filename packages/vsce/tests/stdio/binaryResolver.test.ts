@@ -476,6 +476,43 @@ describe('binaryResolver', () => {
         });
     });
 
+    // ── Windows: cmd.exe builtins output GBK on Chinese systems ──
+    // `where` is a cmd.exe builtin — on a Chinese system its stdout is in the
+    // OEM code page (CP936/GBK), NOT UTF-8. Decoding those bytes as UTF-8
+    // corrupts non-ASCII path segments (`C:\Users\刘一奇\...` → U+FFFD
+    // garbage), and spawning the corrupted path fails with
+    // ERROR_PATH_NOT_FOUND ("系统找不到指定的路径。") — the upgrade-only
+    // regression where fresh installs worked but any upgrade failed.
+    // The resolver must decode cmd output UTF-8-first / GBK-fallback.
+
+    it('on Windows, decodes GBK-encoded Chinese username paths from where output', async () => {
+        const nodeBinWin = 'C:\\Program Files\\nodejs\\node.exe';
+        // GBK (CP936) bytes of `刘一奇` — what cmd.exe actually writes when
+        // the username contains Chinese characters.
+        const gbkUsername = Buffer.from([0xc1, 0xf5, 0xd2, 0xbb, 0xc6, 0xe6]);
+        const gbkLine = (suffix: string) =>
+            Buffer.concat([
+                Buffer.from('C:\\Users\\', 'ascii'),
+                gbkUsername,
+                Buffer.from(suffix, 'ascii'),
+            ]);
+        const whereOutput = Buffer.concat([
+            gbkLine('\\AppData\\Roaming\\npm\\wave\r\n'),
+            gbkLine('\\AppData\\Roaming\\npm\\wave.cmd\r\n'),
+        ]);
+
+        await withPlatform('win32', async () => {
+            mockExecSync.mockImplementation((cmd: string) => {
+                if (cmd.includes('where wave')) return whereOutput;
+                if (cmd.includes('where node')) return `${nodeBinWin}\n`;
+                throw new Error(`unexpected: ${cmd}`);
+            });
+
+            const result = await resolveWaveBinary();
+            expect(result).toBe('C:\\Users\\刘一奇\\AppData\\Roaming\\npm\\wave.cmd');
+        });
+    });
+
     it('on Windows, upgradeWaveBinary picks npm.cmd and quotes the space-containing path', async () => {
         const nodeBinWin = 'C:\\Program Files\\nodejs\\node.exe';
         const npmShim = 'C:\\Program Files\\nodejs\\npm';
