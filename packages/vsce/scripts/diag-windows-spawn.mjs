@@ -324,7 +324,9 @@ const npmPick = whereNpm.split('\n').map((l) => l.trim()).filter(Boolean).find((
 console.log(`[diag] L: npm = ${npmPick}`);
 function npmGlobalInstall(pkg, timeoutMs = 300000) {
   const t0 = Date.now();
-  execFileSync(`"${npmPick}"`, ['install', '-g', pkg, `--prefix=${upgradeDir}`, '--registry=https://registry.npmjs.org'], {
+  // shell:true 下含空格参数必须自己加引号，否则 cmd 会把 --prefix=<dir with spaces>
+  // 拆成多个参数（npm 会把后面的碎片当相对路径包安装 → ENOENT）。
+  execFileSync(`"${npmPick}"`, ['install', '-g', pkg, `--prefix="${upgradeDir}"`, '--registry=https://registry.npmjs.org'], {
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: timeoutMs,
