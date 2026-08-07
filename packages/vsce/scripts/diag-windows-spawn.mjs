@@ -392,6 +392,59 @@ try {
   if (err.stderr) console.log(`[diag] L stderr tail: ${String(err.stderr).slice(-800)}`);
 }
 
+// ── M. 编码假设：中文代码页(GBK)下 where wave 输出被 UTF-8 误解码 ──
+// 用户环境：中文系统（代码页 936），npm 全局目录含中文（C:\Users\张三\...）。
+// binaryResolver 步骤1 用 execSync('where wave', {encoding:'utf-8'})，cmd 输出 GBK 字节
+// 被按 UTF-8 解码 → 中文路径变乱码（U+FFFD）→ 乱码路径磁盘上不存在 →
+// spawn(乱码路径) → cmd 报「系统找不到指定的路径。」（错误码 3）。
+// CI 是英文系统（1252），此前场景从未测过「中文代码页下 where 输出解码」环节。
+console.log('\n===== M. encoding: CJK codepage (936) where-output decoding =====');
+
+// M1: 构造中文路径的 npm 全局布局
+const mRoot = path.join(os.tmpdir(), 'wave 张三 test');
+const mDir = path.join(mRoot, 'npm-global');
+const mCmd = makeShimAt(mDir);
+const mBinDir = path.join(mDir, 'node_modules', 'wave-code', 'bin');
+mkdirSync(mBinDir, { recursive: true });
+writeFileSync(path.join(mBinDir, 'wave-code.js'), 'process.stdin.resume();\n');
+const mPath = mDir + ';' + (process.env.PATH ?? '');
+const mEnv = { ...process.env, PATH: mPath };
+console.log(`[diag] M: CJK dir      = ${mDir}`);
+console.log(`[diag] M: shim exists   = ${fs_exists(mCmd)}`);
+console.log(`[diag] M: js exists     = ${fs_exists(path.join(mBinDir, 'wave-code.js'))}`);
+
+// M2: 模拟中文系统代码页 936，取 where wave 原始字节（buffer）
+let raw = null;
+let rawErr = null;
+try {
+  raw = execSync('chcp 936 >nul && where wave', { encoding: 'buffer', env: mEnv, stdio: ['ignore', 'pipe', 'ignore'] });
+} catch (e) {
+  rawErr = e;
+}
+if (rawErr) {
+  console.log(`[diag] M: chcp 936 where wave FAILED: ${rawErr.message}`);
+  if (rawErr.stdout) console.log(`[diag] M: rawErr.stdout=${JSON.stringify(String(rawErr.stdout))}`);
+} else {
+  console.log(`[diag] M: where wave raw bytes = ${JSON.stringify([...raw].slice(0, 400))}`);
+  const text = raw.toString('utf-8');
+  console.log(`[diag] M: utf8-decoded text   = ${JSON.stringify(text)}`);
+  const hasReplacement = text.includes('\uFFFD');
+  const pick = text.split('\n').map((l) => l.trim()).filter(Boolean).find((l) => /\.(cmd|exe|bat)$/i.test(l));
+  console.log(`[diag] M: pickExecutableLine  = ${JSON.stringify(pick)}`);
+  console.log(`[diag] M: contains U+FFFD     = ${hasReplacement}`);
+  if (pick) {
+    console.log(`[diag] M: pick === real shim  = ${pick.toLowerCase() === mCmd.toLowerCase()}`);
+    console.log(`[diag] M: pick exists on disk = ${fs_exists(pick)}`);
+  }
+
+  // M3: spawn 解码后的路径（与 stdioClient 一致）——期望复现用户错误
+  if (pick) {
+    printResult(await trySpawn('M. spawn utf8-decoded CJK where-path (user repro?)', pick, { cwd: validCwd, pathEnv: mPath }));
+  }
+  // M4: 对照——直接 spawn 磁盘真实路径（期望 ALIVE，证明布局本身没问题）
+  printResult(await trySpawn('M. spawn real fs path (control, expect ALIVE)', mCmd, { cwd: validCwd, pathEnv: mPath }));
+}
+
 // ── cleanup ────────────────────────────────────────────────────────
 try {
   rmSync(root, { recursive: true, force: true });
@@ -406,7 +459,9 @@ try {
 try {
   rmSync(path.join(os.tmpdir(), 'wave agent 测试'), { recursive: true, force: true });
   rmSync(path.join(os.tmpdir(), 'wave upgrade 测试'), { recursive: true, force: true });
+  rmSync(path.join(os.tmpdir(), 'wave upgrade test'), { recursive: true, force: true });
+  rmSync(path.join(os.tmpdir(), 'wave 张三 test'), { recursive: true, force: true });
 } catch (e) {
-  console.log(`[diag] cleanup warning (k/upgrade): ${e.message}`);
+  console.log(`[diag] cleanup warning (k/upgrade/m): ${e.message}`);
 }
 console.log('\n[diag] done');
