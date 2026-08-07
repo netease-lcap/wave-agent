@@ -58,6 +58,30 @@ export class BrowserWindow {
   static getAllWindows = vi.fn(() => [] as unknown[]);
 }
 
+// powerMonitor mock: `resume` listeners fire on __resume() so the desktop
+// host's auto-reconnect wake-awareness can be unit-tested deterministically.
+const powerMonitorResumeListeners: Array<() => void> = [];
+export const powerMonitor = {
+  on: vi.fn((event: string, cb: () => void) => {
+    if (event === 'resume') powerMonitorResumeListeners.push(cb);
+  }),
+  off: vi.fn((event: string, cb: () => void) => {
+    if (event === 'resume') {
+      const i = powerMonitorResumeListeners.indexOf(cb);
+      if (i >= 0) powerMonitorResumeListeners.splice(i, 1);
+    }
+  }),
+  /** Test helper: fire the `resume` event (system woke from sleep). */
+  __resume(): void {
+    for (const cb of [...powerMonitorResumeListeners]) cb();
+  },
+  __reset(): void {
+    powerMonitorResumeListeners.length = 0;
+    vi.mocked(this.on).mockClear();
+    vi.mocked(this.off).mockClear();
+  },
+};
+
 // nativeTheme mock: `shouldUseDarkColors` is derived from `themeSource` +
 // the OS appearance (systemDark), mirroring real Electron semantics so the
 // desktop host's nativeTheme listener can be unit-tested deterministically.

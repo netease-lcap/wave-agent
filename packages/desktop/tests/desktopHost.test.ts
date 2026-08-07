@@ -327,7 +327,7 @@ vi.mock('../src/main/sshHosts', async () => {
 import { DesktopHost } from '../src/main/desktopHost';
 import { ConfigStore } from '../src/main/configStore';
 import { HOST_CHANNEL } from '../src/main/channels';
-import { shell, nativeTheme } from 'electron';
+import { shell, nativeTheme, powerMonitor } from 'electron';
 import { checkForUpdate } from '../src/main/updateChecker';
 import {
   connectRemoteDaemon,
@@ -408,8 +408,10 @@ beforeEach(() => {
   h.pendingPermissionRequests = [];
   vi.clearAllMocks();
   nativeTheme.__reset();
-  // Reset the auto-reconnect backoff seam (tests shrink it to keep retries fast).
-  (DesktopHost as unknown as { autoReconnectBaseDelayMs: number }).autoReconnectBaseDelayMs = 2000;
+  powerMonitor.__reset();
+  // Reset the auto-reconnect seams (tests shrink them to keep retries fast).
+  (DesktopHost as unknown as { autoReconnectBaseDelayMs: number }).autoReconnectBaseDelayMs = 5000;
+  (DesktopHost as unknown as { autoReconnectResumeGraceMs: number }).autoReconnectResumeGraceMs = 8000;
 });
 
 // ---------------------------------------------------------------------------
@@ -4286,6 +4288,50 @@ describe('SSH remote hosts', () => {
     });
     const sessions = treeSessions(sent('desktopSessionTree').at(-1));
     expect(sessions.find((s) => s.sessionId === sessionId)?.running).toBe(false);
+  });
+
+  it('auto-reconnect waits out the post-resume network grace before attempting, then re-attaches (sleep-wake)', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    h.existingPaths.add('/remote/repo');
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({ command: 'desktopSelectRemotePath', host: 'prod', path: '/remote/repo' });
+    await vi.waitFor(() => expect(h.closedHandlers).toHaveLength(1));
+    const remoteAgent = lastAgent();
+    registerAgentInIndex(remoteAgent);
+    const sessionId = remoteAgent.sessionId as string;
+
+    // The system woke from sleep (resume fired) and the stale tunnel is then
+    // detected dead — the reconnect must NOT burn its first attempt on the
+    // still-recovering network: it waits out the grace period first (spec
+    // scenario 2/11), then re-attaches the same session.
+    (DesktopHost as unknown as { autoReconnectResumeGraceMs: number }).autoReconnectResumeGraceMs = 40;
+    (DesktopHost as unknown as { autoReconnectBaseDelayMs: number }).autoReconnectBaseDelayMs = 1;
+    powerMonitor.__resume();
+    const t0 = Date.now();
+    h.closedHandlers[0]();
+
+    await vi.waitFor(() => {
+      expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(2);
+    });
+    // The attempt only started after the grace period elapsed.
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(35);
+    const reconnected = lastAgent();
+    expect(reconnected).not.toBe(remoteAgent);
+    expect(reconnected.sessionId).toBe(sessionId);
+    await vi.waitFor(() => {
+      const panes = sent('desktopPanes').at(-1) as { panes: Array<{ sessionId?: string; host: string }> };
+      expect(panes.panes[0].sessionId).toBe(sessionId);
+    });
+  });
+
+  it('dispose unsubscribes from powerMonitor resume events', async () => {
+    const { host } = createHost();
+    await host.handleWebviewMessage({ command: 'desktopReady' });
+    await host.dispose();
+
+    expect(powerMonitor.off).toHaveBeenCalledWith('resume', expect.any(Function));
+    powerMonitor.__resume(); // must not throw / leak — no listeners left
   });
 
   it('a user action supersedes the auto-reconnect (retries stop, the half-spawned agent is discarded)', async () => {
