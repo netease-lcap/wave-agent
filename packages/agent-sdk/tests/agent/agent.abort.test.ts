@@ -1132,4 +1132,184 @@ describe("Agent - Abort Handling", () => {
       }
     }
   });
+
+  describe("force-send with a pending background notification (issue repro)", () => {
+    function createGate(): { release: () => void; promise: Promise<void> } {
+      let release!: () => void;
+      const promise = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { release, promise };
+    }
+
+    async function awaitUntil(
+      cond: () => boolean,
+      timeoutMs = 3000,
+    ): Promise<void> {
+      const start = Date.now();
+      while (!cond()) {
+        if (Date.now() - start > timeoutMs) {
+          throw new Error("awaitUntil: condition not met within timeout");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    }
+
+    // Signal-aware gated callAgent: each call blocks on its own gate and
+    // rejects immediately when the caller aborts its signal. Tracks which
+    // calls started and which were aborted.
+    function installGatedCallAgent() {
+      const gates = [createGate(), createGate(), createGate(), createGate()];
+      const callStarted: boolean[] = [];
+      const callAborted: boolean[] = [];
+      let callIndex = 0;
+      vi.mocked(aiService.callAgent).mockImplementation(async (options) => {
+        const idx = callIndex++;
+        callStarted[idx] = true;
+        try {
+          await new Promise<void>((resolve, reject) => {
+            if (options.abortSignal?.aborted) {
+              reject(new Error(`call ${idx} aborted`));
+              return;
+            }
+            const onAbort = () => reject(new Error(`call ${idx} aborted`));
+            options.abortSignal?.addEventListener("abort", onAbort, {
+              once: true,
+            });
+            gates[idx].promise.then(() => {
+              options.abortSignal?.removeEventListener("abort", onAbort);
+              resolve();
+            });
+          });
+        } catch (error) {
+          callAborted[idx] = true;
+          throw error;
+        }
+        return {
+          content: `response ${idx}`,
+          tool_calls: [],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 20,
+            total_tokens: 30,
+          },
+        };
+      });
+      return { gates, callStarted, callAborted };
+    }
+
+    // Wire the freshly-created AIManager's onLoadingChange → tryDispatch
+    // (the Agent constructor's wiring, agent.ts:222, was lost in beforeEach
+    // when the AIManager instance was replaced).
+    function wireLoadingChange() {
+      const aiManager = (agent as unknown as { aiManager: AIManager })
+        .aiManager;
+      const agentInternal = agent as unknown as { tryDispatch: () => void };
+      aiManager.onLoadingChange = (loading: boolean) => {
+        if (!loading) agentInternal.tryDispatch();
+      };
+    }
+
+    it("aborted queued dispatch must not resurrect with a pending notification", async () => {
+      wireLoadingChange();
+      const { gates, callStarted, callAborted } = installGatedCallAgent();
+      const messageQueue = (
+        agent as unknown as {
+          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        }
+      ).messageQueue;
+
+      try {
+        // Agent busy: a queued message auto-dispatch (loop #0) is blocked in
+        // callAgent (call 0).
+        messageQueue.enqueue({ content: "queued msg 0" });
+        await awaitUntil(() => callStarted[0] === true);
+
+        // While busy, a background-task notification queues up.
+        messageQueue.enqueueNotification(
+          "<task-notification><task-id>bg-1</task-id><task-type>shell</task-type><status>completed</status><summary>Done</summary></task-notification>",
+        );
+
+        // Force-send — mirrors agentBridge.sendMessage(force=true):
+        // abortMessage() → async gap (PromptHistoryManager.addEntry) → sendMessage().
+        agent.abortMessage();
+        // The bridge gap: give loop #0's async unwinding time to reach its
+        // end-of-turn cleanup. Buggy behavior: the aborted turn folds the
+        // notification in and resurrects itself (aiManager.ts:1923 fold-in is
+        // NOT guarded by isCurrentlyAborted), starting a second callAgent.
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Correct behavior: the aborted turn ends. No second AI call starts,
+        // and the notification stays queued to be folded into the next
+        // user-initiated turn.
+        expect(callStarted.filter(Boolean).length).toBe(1);
+        expect(callAborted[0]).toBe(true);
+        expect(messageQueue.hasNotifications()).toBe(true);
+      } finally {
+        for (const gate of gates) gate.release();
+      }
+    });
+
+    it("force-send with a pending notification runs a single interruptible loop", async () => {
+      wireLoadingChange();
+      const { gates, callStarted, callAborted } = installGatedCallAgent();
+      const messageQueue = (
+        agent as unknown as {
+          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        }
+      ).messageQueue;
+      let sendPromise: Promise<void> | undefined;
+
+      try {
+        // Agent busy: a queued message auto-dispatch (loop #0) is blocked in
+        // callAgent (call 0).
+        messageQueue.enqueue({ content: "queued msg 0" });
+        await awaitUntil(() => callStarted[0] === true);
+
+        // While busy, the queued message the user will force-send, plus a
+        // background-task notification.
+        messageQueue.enqueue({ content: "queued msg 1" });
+        messageQueue.enqueueNotification(
+          "<task-notification><task-id>bg-1</task-id><task-type>shell</task-type><status>completed</status><summary>Done</summary></task-notification>",
+        );
+
+        // Force-send, no gap: abortMessage() then immediately sendMessage().
+        // The message goes direct (abort reset loading to false), so loop B
+        // (call 1) starts while loop #0 is still unwinding.
+        agent.abortMessage();
+        sendPromise = agent.sendMessage("queued msg 1");
+        await awaitUntil(() => callStarted[1] === true);
+
+        // Let loop #0's async unwinding reach its end-of-turn. Buggy behavior:
+        // the aborted turn's fold-in creates a second concurrent callAgent
+        // (call 2) whose fresh controller overwrites this.abortController,
+        // orphaning loop B's controller — the "无法中断" mechanism.
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Correct behavior: exactly one live loop (call 0 was aborted by the
+        // force-send; loop B is the only running turn — no call 2).
+        expect(callStarted[2]).toBeUndefined();
+
+        // User interrupts the running loop — it must actually die. (Abort
+        // rejection propagates through the gated callAgent asynchronously, so
+        // wait for it to land before asserting.)
+        agent.abortMessage();
+        await awaitUntil(() => callAborted[1] === true);
+        expect(
+          callStarted.some((started, i) => started && !callAborted[i]),
+        ).toBe(false);
+
+        // The notification is preserved for the next user turn.
+        expect(messageQueue.hasNotifications()).toBe(true);
+      } finally {
+        for (const gate of gates) gate.release();
+        if (sendPromise) {
+          await Promise.race([
+            sendPromise,
+            new Promise((resolve) => setTimeout(resolve, 3000)),
+          ]);
+        }
+      }
+    });
+  });
 });

@@ -1881,9 +1881,15 @@ ${question}`;
         // Clear temporary rules
         this.permissionManager?.clearTemporaryRules();
 
-        // Clear abort controllers
-        this.abortController = null;
-        this.toolAbortController = null;
+        // Clear abort controllers (only if we still own them — a concurrent
+        // turn may have already registered its own controller, and clearing
+        // it would orphan that turn and make it uninterruptible)
+        if (this.abortController === abortController) {
+          this.abortController = null;
+        }
+        if (this.toolAbortController === toolAbortController) {
+          this.toolAbortController = null;
+        }
 
         // Execute Stop/SubagentStop hooks only if the operation was not aborted
         const isCurrentlyAborted =
@@ -1916,11 +1922,21 @@ ${question}`;
         }
 
         // Inject pending notifications from background tasks (after Stop hooks,
-        // aligned with Claude Code which fires Stop hooks unconditionally)
+        // aligned with Claude Code which fires Stop hooks unconditionally).
+        // Skip injection when this turn was aborted: folding a pending
+        // notification in would restart the loop and resurrect the aborted
+        // turn — if a concurrent sendMessage is already running (e.g. the
+        // queue's "send now" button), it would spawn a second, orphaned,
+        // uninterruptible agent loop. The notification stays queued for the
+        // next turn.
         const messageQueue = this.container.has("MessageQueue")
           ? this.container.get<MessageQueue>("MessageQueue")
           : undefined;
-        if (messageQueue && messageQueue.hasNotifications()) {
+        if (
+          messageQueue &&
+          messageQueue.hasNotifications() &&
+          !isCurrentlyAborted
+        ) {
           const notifications = messageQueue.drainNotifications();
           for (const notification of notifications) {
             const block = parseTaskNotificationXml(notification);
