@@ -12,6 +12,7 @@ import {
   validateWorktreeRemovalPath,
 } from "wave-agent-sdk";
 import { execFileSync } from "node:child_process";
+import path from "node:path";
 import { createWorktree, removeWorktree } from "../../src/utils/worktree.js";
 
 // Mock the Agent SDK
@@ -1209,12 +1210,17 @@ test("writeArtifactFile writes bytes into the artifacts dir and returns the path
     contentBase64: Buffer.from("hello").toString("base64"),
   });
 
-  expect(result).toEqual({ path: "/remote/tmp/wave-artifacts/note.txt" });
-  expect(mkdirSync).toHaveBeenCalledWith("/remote/tmp/wave-artifacts", {
-    recursive: true,
+  expect(result).toEqual({
+    path: path.join("/remote/tmp", "wave-artifacts", "note.txt"),
   });
+  expect(mkdirSync).toHaveBeenCalledWith(
+    path.join("/remote/tmp", "wave-artifacts"),
+    {
+      recursive: true,
+    },
+  );
   expect(writeFileSync).toHaveBeenCalledWith(
-    "/remote/tmp/wave-artifacts/note.txt",
+    path.join("/remote/tmp", "wave-artifacts", "note.txt"),
     Buffer.from("hello"),
   );
 });
@@ -1231,9 +1237,11 @@ test("writeArtifactFile renames on collision with a numeric suffix", async () =>
     contentBase64: "aGVsbG8=",
   });
 
-  expect(result).toEqual({ path: "/remote/tmp/wave-artifacts/note_1.txt" });
+  expect(result).toEqual({
+    path: path.join("/remote/tmp", "wave-artifacts", "note_1.txt"),
+  });
   expect(writeFileSync).toHaveBeenCalledWith(
-    "/remote/tmp/wave-artifacts/note_1.txt",
+    path.join("/remote/tmp", "wave-artifacts", "note_1.txt"),
     expect.any(Buffer),
   );
 });
@@ -1248,7 +1256,9 @@ test("writeArtifactFile strips path traversal via basename", async () => {
     contentBase64: "aGVsbG8=",
   });
 
-  expect(result).toEqual({ path: "/remote/tmp/wave-artifacts/evil.txt" });
+  expect(result).toEqual({
+    path: path.join("/remote/tmp", "wave-artifacts", "evil.txt"),
+  });
 });
 
 test("writeArtifactFile rejects empty or dot names", async () => {
