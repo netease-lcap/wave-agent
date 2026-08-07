@@ -511,4 +511,45 @@ describe('StdioClient', () => {
         expect(err.message).toContain('wave --stdio process exited');
         expect(err.message).toContain('FATAL: cannot find module');
     });
+
+    // ── stderr encoding fallback (Windows GBK/CP936) ────────────
+
+    it('decodes GBK stderr into readable Chinese in exit error', async () => {
+        const { client, proc } = createClient();
+
+        // "node 不是内部或外部命令" in GBK/CP936 (Windows Chinese console).
+        const gbk = Buffer.from([
+            0x6e, 0x6f, 0x64, 0x65, 0x20, // "node "
+            0xb2, 0xbb, 0xca, 0xc7, // 不是
+            0xc4, 0xda, 0xb2, 0xbf, // 内部
+            0xbb, 0xf2, 0xcd, 0xe2, 0xb2, 0xbf, // 外部
+            0xc3, 0xfc, 0xc1, 0xee, // 命令
+        ]);
+        proc.stderr.emit('data', gbk);
+
+        const p = expectReject(client.request('method1'));
+        proc.emit('exit', 1, null);
+
+        const err = await p;
+        expect(err.message).toContain('node 不是内部或外部命令');
+        expect(err.message).not.toContain('\uFFFD');
+    });
+
+    it('forwards GBK stderr to onStderr as readable Chinese', () => {
+        const onStderr = vi.fn();
+        const { proc } = createClient([], undefined, onStderr);
+
+        proc.stderr.emit('data', Buffer.from([0xb2, 0xbb, 0xca, 0xc7])); // "不是"
+
+        expect(onStderr).toHaveBeenCalledWith('不是');
+    });
+
+    it('keeps valid UTF-8 stderr untouched', () => {
+        const onStderr = vi.fn();
+        const { proc } = createClient([], undefined, onStderr);
+
+        proc.stderr.emit('data', Buffer.from('工作目录不存在\n', 'utf-8'));
+
+        expect(onStderr).toHaveBeenCalledWith('工作目录不存在');
+    });
 });

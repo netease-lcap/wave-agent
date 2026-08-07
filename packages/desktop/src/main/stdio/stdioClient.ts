@@ -13,9 +13,30 @@ import { JsonRpcClient } from './jsonRpcClient';
 export type { NotificationHandler } from './jsonRpcClient';
 export type StderrHandler = (data: string) => void;
 
+/** Keep a bounded tail of stderr (bytes) for inclusion in the exit error. */
+const STDERR_TAIL_LIMIT = 4096;
+
+/**
+ * Decode stderr bytes: UTF-8 when valid, otherwise GBK (Windows console
+ * code page 936). cmd.exe and native Windows tools emit GBK on Chinese
+ * systems; decoding those bytes as UTF-8 yields U+FFFD garbage and the real
+ * error message is lost.
+ */
+function decodeStderr(buf: Buffer): string {
+    const utf8 = buf.toString('utf-8');
+    if (!utf8.includes('\uFFFD')) return utf8;
+    try {
+        return new TextDecoder('gbk').decode(buf);
+    } catch {
+        return utf8;
+    }
+}
+
 export class StdioClient extends JsonRpcClient {
     private proc: ChildProcess;
-    private stderrBuffer = '';
+    /** Raw stderr bytes, bounded to the last STDERR_TAIL_LIMIT bytes. */
+    private stderrChunks: Buffer[] = [];
+    private stderrBytes = 0;
     private onStderr?: StderrHandler;
 
     constructor(
@@ -52,15 +73,26 @@ export class StdioClient extends JsonRpcClient {
         });
 
         this.proc.stderr!.on('data', (data: Buffer) => {
-            const text = data.toString();
-            // Keep a rolling tail for inclusion in the exit error message.
-            this.stderrBuffer = (this.stderrBuffer + text).slice(-4096);
-            const trimmed = text.trimEnd();
+            // Keep raw bytes (not per-chunk strings) so the exit error can be
+            // decoded exactly, without splitting a multi-byte character across
+            // chunk boundaries.
+            this.stderrChunks.push(data);
+            this.stderrBytes += data.length;
+            while (
+                this.stderrChunks.length > 1 &&
+                this.stderrBytes - this.stderrChunks[0].length >= STDERR_TAIL_LIMIT
+            ) {
+                this.stderrBytes -= this.stderrChunks[0].length;
+                this.stderrChunks.shift();
+            }
+            const trimmed = decodeStderr(data).trimEnd();
             if (trimmed) this.onStderr?.(trimmed);
         });
 
         this.proc.on('exit', (code, signal) => {
-            const stderr = this.stderrBuffer.trim();
+            const stderr = decodeStderr(
+                Buffer.concat(this.stderrChunks),
+            ).trim();
             const parts = [
                 `wave --stdio process exited (code: ${code}, signal: ${signal})`,
             ];
