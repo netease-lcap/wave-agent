@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import path from "node:path";
 import { Agent } from "@/agent.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
 import type { ConfigurationService } from "@/services/configurationService.js";
@@ -61,7 +62,9 @@ describe("Agent - additional directories", () => {
       additionalDirectories: ["/tmp/test-add-dir/config"],
     });
 
-    expect(a.getAdditionalDirectories()).toContain("/tmp/test-add-dir/config");
+    expect(a.getAdditionalDirectories()).toContain(
+      path.resolve("/tmp/test-add-dir/config"),
+    );
   });
 
   it("should add a directory session-level via addAdditionalDirectory", async () => {
@@ -69,7 +72,7 @@ describe("Agent - additional directories", () => {
 
     await a.addAdditionalDirectory("/tmp/shared");
 
-    expect(a.getAdditionalDirectories()).toContain("/tmp/shared");
+    expect(a.getAdditionalDirectories()).toContain(path.resolve("/tmp/shared"));
   });
 
   it("should not persist when remember is false", async () => {
@@ -82,7 +85,9 @@ describe("Agent - additional directories", () => {
     await a.addAdditionalDirectory("/tmp/session-only", { remember: false });
 
     expect(spy).not.toHaveBeenCalled();
-    expect(a.getAdditionalDirectories()).toContain("/tmp/session-only");
+    expect(a.getAdditionalDirectories()).toContain(
+      path.resolve("/tmp/session-only"),
+    );
   });
 
   it("should persist via configurationService when remember is true", async () => {
@@ -95,6 +100,8 @@ describe("Agent - additional directories", () => {
     await a.addAdditionalDirectory("/tmp/persisted", { remember: true });
 
     expect(spy).toHaveBeenCalledWith("/tmp/test-add-dir", "/tmp/persisted");
-    expect(a.getAdditionalDirectories()).toContain("/tmp/persisted");
+    expect(a.getAdditionalDirectories()).toContain(
+      path.resolve("/tmp/persisted"),
+    );
   });
 });
