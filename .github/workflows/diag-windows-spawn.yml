@@ -1,0 +1,30 @@
+name: diag-windows-spawn
+
+# 临时诊断 workflow（用完删除）：在 Windows runner 上模拟扩展宿主 spawn
+# `wave.cmd --stdio` 的三种环境差异，定位「系统找不到指定的路径。」根因。
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run spawn diagnostic
+        run: node packages/vsce/scripts/diag-windows-spawn.mjs
+        shell: pwsh
