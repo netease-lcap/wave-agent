@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import path from "node:path";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import type { SubagentManagerCallbacks } from "../../src/managers/subagentManager.js";
@@ -43,7 +44,7 @@ describe("SubagentManager - instance additional directories inheritance", () => 
   let mockGatewayConfig: GatewayConfig;
   let mockModelConfig: ModelConfig;
   let container: Container;
-  const instanceDirs = ["/tmp/test/shared-session"];
+  const instanceDirs = [path.resolve("/tmp/test/shared-session")];
 
   beforeEach(async () => {
     callbacks = {};

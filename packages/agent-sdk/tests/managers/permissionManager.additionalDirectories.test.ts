@@ -50,7 +50,7 @@ describe("PermissionManager - instance additional directories", () => {
       });
 
       expect(manager.getInstanceAdditionalDirectories()).toContain(
-        "/b/absolute",
+        path.resolve("/b/absolute"),
       );
     });
   });

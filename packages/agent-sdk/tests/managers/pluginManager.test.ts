@@ -482,7 +482,7 @@ describe("PluginManager", () => {
       // Non-directory entries (e.g. README.md) are skipped.
       expect(PluginLoader.loadManifest).toHaveBeenCalledTimes(1);
       expect(existsSync).toHaveBeenCalledWith(
-        expect.stringContaining("builtin/plugins"),
+        expect.stringContaining(path.join("builtin", "plugins")),
       );
     });
 
