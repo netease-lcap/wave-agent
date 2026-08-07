@@ -4,7 +4,9 @@ name: diag-windows-spawn
 # `wave.cmd --stdio` 的三种环境差异，定位「系统找不到指定的路径。」根因。
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - worktree-fair-calm-mountain
 
 jobs:
   diag:
