@@ -61,9 +61,6 @@ export interface DiffPaneProps {
   /** Session identity / workdir changes re-point the panel while visible. */
   sessionId?: string;
   workdir?: string;
-  /** Second-row layout: panels pack from the left, so the width drag anchors
-   * the (fixed) left edge instead of the right edge. */
-  widthFromLeft?: boolean;
   /** Receives a formatted diff-line comment; appended to this pane's chat input. */
   onAddComment?: (text: string) => void;
 }
@@ -80,7 +77,6 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   isStreaming,
   sessionId,
   workdir,
-  widthFromLeft,
   onAddComment,
 }) => {
   const [state, setState] = useState<DiffState>({ kind: 'loading' });
@@ -192,7 +188,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     document.body.classList.add('is-panel-resizing');
     const rect = asideRef.current?.getBoundingClientRect();
     const onMove = (ev: MouseEvent) => {
-      const next = widthFromLeft ? ev.clientX - (rect?.left ?? 0) : (rect?.right ?? 0) - ev.clientX;
+      const next = (rect?.right ?? 0) - ev.clientX;
       onWidthChange(Math.min(Math.max(next, MIN_WIDTH), maxWidth));
     };
     const onUp = () => {

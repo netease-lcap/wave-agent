@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, fireEvent, screen, createEvent, within, act } from '@testing-library/react';
+import { render, fireEvent, screen, act } from '@testing-library/react';
 import React from 'react';
 import { DesktopApp } from '../../src/components/DesktopApp';
 import { ChatApp, prunePanelGroupCache } from '../../src/components/ChatApp';
 import type { WebviewTagElement } from '../../src/components/PreviewPane';
-import { EXIT_PLAN_MODE_TOOL_NAME, READ_TOOL_NAME } from 'wave-agent-sdk';
+import { READ_TOOL_NAME } from 'wave-agent-sdk';
 import { createMockVscode, sendCommand, sendHostMessage, renderChatApp, fireInput } from './test-utils';
 import { fixtures } from 'wave-webview-fixtures';
 import { MockDataGenerator } from '../fixtures/mockData';
@@ -107,7 +107,7 @@ describe('ChatApp desktop panel framework', () => {
             // The empty state must carry the same drag affordance as loaded panels.
             expect(empty.querySelector('.preview-pane-drag-handle')).not.toBeNull();
 
-            // Row 1 (widthFromLeft=false): width = rect.right - clientX.
+            // Single-row layout: width = rect.right - clientX.
             const handle = empty.querySelector('.preview-pane-drag-handle') as HTMLElement;
             fireEvent.mouseDown(handle);
             fireEvent.mouseMove(window, { clientX: 624 }); // 1024 - 624 = 400
@@ -193,11 +193,11 @@ describe('ChatApp desktop panel framework', () => {
         expect(screen.queryByTestId('terminal-pane')).not.toBeInTheDocument();
     });
 
-    it('opens the panel in a fresh second row when the first row would squeeze the conversation below its minimum', () => {
+    it('refuses to open a panel when it would squeeze the conversation below its minimum', () => {
         window.waveHostType = 'desktop';
-        // 500px fits the 420px panel only without the 360px conversation
-        // minimum beside it → row 1 refuses, row 2 takes it. The rect mock
-        // reports no height, so the row-creation height gate is skipped.
+        // 500px fits the 420px default panel width only without the 360px
+        // conversation minimum beside it — there is no second row to overflow
+        // into, so the panel is rejected with a hint.
         const rectSpy = vi
             .spyOn(Element.prototype, 'getBoundingClientRect')
             .mockReturnValue({ width: 500, right: 500 } as DOMRect);
@@ -205,25 +205,17 @@ describe('ChatApp desktop panel framework', () => {
             renderDesktop({ workdir: '/work/a' });
             fireEvent.click(screen.getByTestId('panel-toggle-btn'));
             fireEvent.click(screen.getByTestId('panel-toggle-item-diff'));
-            expect(screen.getByTestId('diff-pane')).toBeInTheDocument();
-            expect(screen.getByTestId('diff-pane').closest('.desktop-panel-slot')).toHaveClass(
-                'desktop-panel-slot--row-2',
-            );
-            // A lone second-row panel must fill the pane width (spec: 第二行
-            // 横贯分屏宽度), so the slot stretches instead of leaving a gap.
-            expect(screen.getByTestId('diff-pane').closest('.desktop-panel-slot')).toHaveClass(
-                'desktop-panel-slot--row-2-fill',
-            );
-            expect(screen.queryByTestId('desktop-panel-hint')).not.toBeInTheDocument();
+            expect(screen.queryByTestId('diff-pane')).not.toBeInTheDocument();
+            expect(screen.getByTestId('desktop-panel-hint')).toHaveTextContent('空间不足');
         } finally {
             rectSpy.mockRestore();
         }
     });
 
-    it('refuses to open a panel that fits in neither row', () => {
+    it('refuses to open a panel narrower than its own minimum width', () => {
         window.waveHostType = 'desktop';
-        // 300px is below the 420px default panel width even on a full-width
-        // second row → nothing to overflow into.
+        // 300px is below the 420px default panel width even on the full pane
+        // → the panel cannot open at all.
         const rectSpy = vi
             .spyOn(Element.prototype, 'getBoundingClientRect')
             .mockReturnValue({ width: 300, right: 300 } as DOMRect);
@@ -238,13 +230,12 @@ describe('ChatApp desktop panel framework', () => {
         }
     });
 
-    it('re-clicking another file path replaces the panel in place without moving rows (spec 场景 6)', () => {
+    it('re-clicking another file path replaces the panel in place (spec 场景 6)', () => {
         window.waveHostType = 'desktop';
         // 1000px fits the 420px file panel beside the 360px conversation
-        // minimum, so the panel belongs in the first row. tryOpenPanel used to
-        // double-count an already-open panel's own width in the row-fit check,
-        // overflowing row 1 and silently spilling the panel into the second
-        // row on the second click.
+        // minimum. tryOpenPanel used to double-count an already-open panel's
+        // own width in the fit check, overflowing the space and silently
+        // spilling the panel out of view on the second click.
         const rectSpy = vi
             .spyOn(Element.prototype, 'getBoundingClientRect')
             .mockReturnValue({ width: 1000, right: 1000 } as DOMRect);
@@ -265,15 +256,15 @@ describe('ChatApp desktop panel framework', () => {
 
             const pane = screen.getByTestId('file-pane');
             expect(pane).toBeInTheDocument();
-            expect(pane.closest('.desktop-panel-slot')).toHaveClass('desktop-panel-slot--row-1');
+            expect(pane.closest('.desktop-panel-slot')).toHaveClass('desktop-panel-slot');
 
             // A different file link re-targets the same panel — the content
-            // swaps but the panel must stay where it is (no row move).
+            // swaps but the panel stays mounted in place.
             sendCommand('updateMessages', { messages: [readMessage('/work/a/src/second.ts')] });
             fireEvent.click(document.querySelector('.write-tool-path') as HTMLElement);
 
             expect(screen.getByTestId('file-pane').closest('.desktop-panel-slot')).toHaveClass(
-                'desktop-panel-slot--row-1',
+                'desktop-panel-slot',
             );
             expect(screen.queryByTestId('desktop-panel-row-separator')).not.toBeInTheDocument();
         } finally {
@@ -289,341 +280,6 @@ describe('ChatApp desktop panel framework', () => {
         expect(document.querySelector('.desktop-panel-slot')).toBeNull();
     });
 
-    describe('panel second row', () => {
-        afterEach(() => {
-            vi.restoreAllMocks();
-        });
-
-        const bodyOf = (root: ParentNode = document) =>
-            root.querySelector('.desktop-chat-body') as HTMLElement;
-
-        const slotOf = (testid: string) =>
-            screen.getByTestId(testid).closest('.desktop-panel-slot') as HTMLElement;
-
-        function toolbarOf(testid: string): HTMLElement {
-            const toolbar = screen.getByTestId(testid).querySelector('.preview-pane-toolbar');
-            if (!toolbar) throw new Error(`no toolbar in ${testid}`);
-            return toolbar as HTMLElement;
-        }
-
-        // jsdom reports 0 rects; the drag hit-testing measures the chat body.
-        function mockChatBodyHeight(body: HTMLElement, height: number) {
-            vi.spyOn(body, 'getBoundingClientRect').mockReturnValue({
-                width: 1200, height, top: 0, left: 0, bottom: height, right: 1200, x: 0, y: 0, toJSON: () => ({}),
-            });
-        }
-
-        function makeDataTransfer() {
-            const store: Record<string, string> = {};
-            return {
-                get types() { return Object.keys(store); },
-                setData: (type: string, value: string) => { store[type] = value; },
-                getData: (type: string) => store[type] ?? '',
-                effectAllowed: '',
-                dropEffect: '',
-            };
-        }
-
-        // jsdom lacks DragEvent, so fireEvent's dragOver drops clientY — build
-        // the event manually to pin the pointer position.
-        function dragOverBody(body: HTMLElement, dataTransfer: ReturnType<typeof makeDataTransfer>, clientY: number) {
-            const event = createEvent.dragOver(body, { dataTransfer });
-            Object.defineProperty(event, 'clientY', { value: clientY });
-            fireEvent(body, event);
-        }
-
-        function openDiffPanel() {
-            fireEvent.click(screen.getByTestId('panel-toggle-btn'));
-            fireEvent.click(screen.getByTestId('panel-toggle-item-diff'));
-        }
-
-        // Starts a toolbar drag, targets the bottom band, and drops there.
-        function dragToRow2(testid: string, bodyHeight = 800) {
-            const body = bodyOf();
-            mockChatBodyHeight(body, bodyHeight);
-            const toolbar = toolbarOf(testid);
-            const dataTransfer = makeDataTransfer();
-            fireEvent.dragStart(toolbar, { dataTransfer });
-            dragOverBody(body, dataTransfer, bodyHeight - 10);
-            fireEvent.drop(body, { dataTransfer });
-            fireEvent.dragEnd(toolbar, { dataTransfer });
-        }
-
-        const dragDiffToRow2 = (bodyHeight = 800) => dragToRow2('diff-pane', bodyHeight);
-
-        it('dragging a panel toolbar into the bottom band creates the second row', () => {
-            window.waveHostType = 'desktop';
-            renderDesktop({ workdir: '/work/a' });
-            openDiffPanel();
-            const body = bodyOf();
-            mockChatBodyHeight(body, 800);
-
-            const dataTransfer = makeDataTransfer();
-            fireEvent.dragStart(toolbarOf('diff-pane'), { dataTransfer });
-            dragOverBody(body, dataTransfer, 790);
-
-            // VS Code-style overlay previews the row that would open.
-            const zone = screen.getByTestId('desktop-panel-dropzone');
-            expect(zone.style.top).toBe('520px');
-            expect(zone.style.height).toBe('280px');
-
-            fireEvent.drop(body, { dataTransfer });
-            fireEvent.dragEnd(toolbarOf('diff-pane'), { dataTransfer });
-
-            expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-2');
-            expect(screen.getByTestId('desktop-panel-row-separator')).toBeInTheDocument();
-            expect(body.className).toContain('desktop-chat-body--two-rows');
-            // Default row height: 35% of 800px, clamped to the row minimums.
-            expect(body.style.getPropertyValue('--panel-row-height')).toBe('280px');
-            expect(screen.queryByTestId('desktop-panel-dropzone')).not.toBeInTheDocument();
-        });
-
-        it('dragging within the panel’s own row shows no overlay and changes nothing', () => {
-            window.waveHostType = 'desktop';
-            renderDesktop({ workdir: '/work/a' });
-            openDiffPanel();
-            const body = bodyOf();
-            mockChatBodyHeight(body, 800);
-
-            const dataTransfer = makeDataTransfer();
-            const toolbar = toolbarOf('diff-pane');
-            fireEvent.dragStart(toolbar, { dataTransfer });
-            dragOverBody(body, dataTransfer, 100);
-
-            expect(screen.queryByTestId('desktop-panel-dropzone')).not.toBeInTheDocument();
-
-            fireEvent.drop(body, { dataTransfer });
-            fireEvent.dragEnd(toolbar, { dataTransfer });
-
-            expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-1');
-            expect(screen.queryByTestId('desktop-panel-row-separator')).not.toBeInTheDocument();
-        });
-
-        it('dragging a second-row panel back up collapses the second row', () => {
-            window.waveHostType = 'desktop';
-            renderDesktop({ workdir: '/work/a' });
-            openDiffPanel();
-            dragDiffToRow2();
-            expect(screen.getByTestId('desktop-panel-row-separator')).toBeInTheDocument();
-
-            const body = bodyOf();
-            const dataTransfer = makeDataTransfer();
-            const toolbar = toolbarOf('diff-pane');
-            fireEvent.dragStart(toolbar, { dataTransfer });
-            dragOverBody(body, dataTransfer, 50);
-
-            // The overlay covers the first row (everything above row 2 + separator).
-            const zone = screen.getByTestId('desktop-panel-dropzone');
-            expect(zone.style.top).toBe('0px');
-            expect(zone.style.height).toBe('515px');
-
-            fireEvent.drop(body, { dataTransfer });
-            fireEvent.dragEnd(toolbar, { dataTransfer });
-
-            expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-1');
-            expect(screen.queryByTestId('desktop-panel-row-separator')).not.toBeInTheDocument();
-            expect(body.className).not.toContain('desktop-chat-body--two-rows');
-        });
-
-        it('the panel row separator drag resizes the second row with both clamps', () => {
-            window.waveHostType = 'desktop';
-            renderDesktop({ workdir: '/work/a' });
-            openDiffPanel();
-            dragDiffToRow2();
-            const body = bodyOf();
-            expect(body.style.getPropertyValue('--panel-row-height')).toBe('280px');
-
-            const separator = screen.getByTestId('desktop-panel-row-separator');
-            fireEvent.mouseDown(separator, { clientY: 500 });
-            expect(separator.className).toContain('desktop-panel-row-separator--active');
-
-            // Dragging up grows the panel row: 280 + (500-400) = 380.
-            fireEvent.mouseMove(window, { clientY: 400 });
-            expect(body.style.getPropertyValue('--panel-row-height')).toBe('380px');
-
-            // Clamped at the panel-row minimum (160) when dragged far down.
-            fireEvent.mouseMove(window, { clientY: 900 });
-            expect(body.style.getPropertyValue('--panel-row-height')).toBe('160px');
-
-            // Clamped at body - message minimum - separator (800-240-5=555).
-            fireEvent.mouseMove(window, { clientY: 0 });
-            expect(body.style.getPropertyValue('--panel-row-height')).toBe('555px');
-
-            fireEvent.mouseUp(window);
-            expect(separator.className).not.toContain('desktop-panel-row-separator--active');
-        });
-
-        it('refuses to create the second row when the chat body is too short', () => {
-            window.waveHostType = 'desktop';
-            renderDesktop({ workdir: '/work/a' });
-            openDiffPanel();
-            const body = bodyOf();
-            mockChatBodyHeight(body, 300);
-
-            const dataTransfer = makeDataTransfer();
-            const toolbar = toolbarOf('diff-pane');
-            fireEvent.dragStart(toolbar, { dataTransfer });
-            dragOverBody(body, dataTransfer, 290);
-
-            expect(screen.queryByTestId('desktop-panel-dropzone')).not.toBeInTheDocument();
-            expect(screen.getByTestId('desktop-panel-hint')).toHaveTextContent('空间不足');
-
-            fireEvent.drop(body, { dataTransfer });
-            fireEvent.dragEnd(toolbar, { dataTransfer });
-
-            expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-1');
-            expect(screen.queryByTestId('desktop-panel-row-separator')).not.toBeInTheDocument();
-        });
-
-        it('only the last second-row panel grows to fill the row width', () => {
-            window.waveHostType = 'desktop';
-            renderDesktop({ workdir: '/work/a' });
-            fireEvent.click(screen.getByTestId('panel-toggle-btn'));
-            fireEvent.click(screen.getByTestId('panel-toggle-item-diff'));
-            fireEvent.click(screen.getByTestId('panel-toggle-item-terminal'));
-            // Drag both into the second row; the fixed order is Preview→Diff→Terminal,
-            // so terminal is the last and should absorb the remaining width.
-            dragToRow2('diff-pane');
-            dragToRow2('terminal-pane');
-            const diffSlot = slotOf('diff-pane');
-            const termSlot = slotOf('terminal-pane');
-            expect(diffSlot.className).toContain('desktop-panel-slot--row-2');
-            expect(termSlot.className).toContain('desktop-panel-slot--row-2');
-            expect(diffSlot.className).not.toContain('desktop-panel-slot--row-2-fill');
-            expect(termSlot.className).toContain('desktop-panel-slot--row-2-fill');
-        });
-
-        it('the second-row layout is remembered per session across switches', () => {
-            window.waveHostType = 'desktop';
-            renderDesktop({ workdir: '/work/a' });
-            // Sessions must exist in the sidebar tree — the prune keeps panel
-            // groups only for live panes and tree sessions.
-            sendHostMessage(fixtures.desktopSessionTree({
-                groups: [
-                    {
-                        host: 'local',
-                        workdir: '/work/a',
-                        sessions: ['s1', 's2'].map((sessionId) => ({
-                            sessionId,
-                            title: sessionId,
-                            lastActiveAt: Date.now(),
-                            hasWorktree: false,
-                        })),
-                    },
-                ],
-            }));
-            sendHostMessage(fixtures.desktopPanes({
-                panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'local', width: 0.5 }],
-                focusedPaneId: 'pane-1',
-            }));
-            openDiffPanel();
-            dragDiffToRow2();
-            expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-2');
-
-            // Switch to another session: its (empty) group swaps in — no
-            // panels, no second row.
-            sendHostMessage(fixtures.desktopPanes({
-                panes: [{ paneId: 'pane-1', sessionId: 's2', row: 0, host: 'local', width: 0.5 }],
-                focusedPaneId: 'pane-1',
-            }));
-            expect(screen.queryByTestId('diff-pane')).not.toBeInTheDocument();
-            expect(screen.queryByTestId('desktop-panel-row-separator')).not.toBeInTheDocument();
-
-            // Switching back restores the diff panel in its second row with
-            // the same height.
-            sendHostMessage(fixtures.desktopPanes({
-                panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'local', width: 0.5 }],
-                focusedPaneId: 'pane-1',
-            }));
-            expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-2');
-            expect(screen.getByTestId('desktop-panel-row-separator')).toBeInTheDocument();
-            expect(bodyOf().style.getPropertyValue('--panel-row-height')).toBe('280px');
-        });
-
-        it('the panel group survives the pane moving across window rows', () => {
-            window.waveHostType = 'desktop';
-            renderDesktop({ workdir: '/work/a' });
-            const session = (sessionId: string) => ({
-                sessionId,
-                title: sessionId,
-                lastActiveAt: Date.now(),
-                hasWorktree: false,
-            });
-            sendHostMessage(fixtures.desktopSessionTree({
-                groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1'), session('s2')] }],
-            }));
-            sendHostMessage(fixtures.desktopPanes({
-                panes: [
-                    { paneId: 'pane-cache-a', sessionId: 's1', row: 0, host: 'local', width: 0.5 },
-                    { paneId: 'pane-cache-b', sessionId: 's2', row: 1, host: 'local', width: 0.5 },
-                ],
-                rowHeights: [0.5, 0.5],
-                focusedPaneId: 'pane-cache-a',
-            }));
-
-            // Open the diff panel in pane-cache-a and drag it into the second row.
-            const paneA = screen.getByTestId('desktop-pane-pane-cache-a');
-            fireEvent.click(within(paneA).getByTestId('panel-toggle-btn'));
-            fireEvent.click(within(paneA).getByTestId('panel-toggle-item-diff'));
-            const bodyA = paneA.querySelector('.desktop-chat-body') as HTMLElement;
-            mockChatBodyHeight(bodyA, 800);
-            const toolbar = paneA.querySelector('.preview-pane-toolbar') as HTMLElement;
-            const dataTransfer = makeDataTransfer();
-            fireEvent.dragStart(toolbar, { dataTransfer });
-            dragOverBody(bodyA, dataTransfer, 790);
-            fireEvent.drop(bodyA, { dataTransfer });
-            fireEvent.dragEnd(toolbar, { dataTransfer });
-            expect(within(paneA).getByTestId('desktop-panel-row-separator')).toBeInTheDocument();
-
-            // The host moves pane-cache-a into window row 1 — the pane subtree
-            // unmounts and remounts (React cannot reparent DOM nodes).
-            sendHostMessage(fixtures.desktopPanes({
-                panes: [
-                    { paneId: 'pane-cache-b', sessionId: 's2', row: 0, host: 'local', width: 0.5 },
-                    { paneId: 'pane-cache-a', sessionId: 's1', row: 1, host: 'local', width: 0.5 },
-                ],
-                rowHeights: [0.5, 0.5],
-                focusedPaneId: 'pane-cache-a',
-            }));
-
-            // The panel group migrated with the pane: diff still checked and
-            // still in its second row.
-            const paneA2 = screen.getByTestId('desktop-pane-pane-cache-a');
-            const diff = within(paneA2).getByTestId('diff-pane');
-            expect(diff.closest('.desktop-panel-slot')!.className).toContain('desktop-panel-slot--row-2');
-            expect(within(paneA2).getByTestId('desktop-panel-row-separator')).toBeInTheDocument();
-            const bodyA2 = paneA2.querySelector('.desktop-chat-body') as HTMLElement;
-            expect(bodyA2.className).toContain('desktop-chat-body--two-rows');
-            expect(bodyA2.style.getPropertyValue('--panel-row-height')).toBe('280px');
-        });
-
-        // Two-row mode compresses the message row; an inline ConfirmationDialog
-        // (plan preview / permission / AskUserQuestions) can grow taller than the
-        // compressed first row. The input area must clamp and the dialog body must
-        // scroll instead of overflowing onto the second-row panels.
-        it('two-row mode clamps an over-tall inline ConfirmationDialog with an inner scroller', async () => {
-            window.waveHostType = 'desktop';
-            renderDesktop({ workdir: '/work/a' });
-            openDiffPanel();
-            dragDiffToRow2();
-            expect(bodyOf().className).toContain('desktop-chat-body--two-rows');
-
-            await act(async () => {
-                sendCommand('showConfirmation', {
-                    confirmationId: 'confirm_two_row',
-                    toolName: EXIT_PLAN_MODE_TOOL_NAME,
-                    confirmationType: '计划待确认',
-                    planContent: '## Plan\n' + '- step\n'.repeat(120),
-                });
-            });
-
-            const inputArea = document.querySelector('.input-area-container') as HTMLElement;
-            expect(inputArea).not.toBeNull();
-            expect(inputArea.className).toContain('input-area-container--confirm');
-            const inner = document.querySelector('.confirmation-dialog-inner') as HTMLElement;
-            expect(inner).toBeInTheDocument();
-        });
-    });
 });
 
 /**

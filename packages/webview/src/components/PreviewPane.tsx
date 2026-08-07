@@ -96,12 +96,9 @@ export interface PreviewPaneProps {
   /** Remote sessions: re-establish the port forward on error retry (scenario
    * 16). Undefined for local URLs, where the retry reloads the guest instead. */
   onRetry?: () => void;
-  /** Second-row layout: panels pack from the left, so the width drag anchors
-   * the (fixed) left edge instead of the right edge. */
-  widthFromLeft?: boolean;
 }
 
-export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, width, onWidthChange, maxWidth, onAddComment, originalUrl, onRetry, widthFromLeft }) => {
+export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, width, onWidthChange, maxWidth, onAddComment, originalUrl, onRetry }) => {
   const [displayUrl, setDisplayUrl] = useState(url);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pickerActive, setPickerActive] = useState(false);
@@ -265,9 +262,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
   };
 
   const asideRef = useRef<HTMLElement | null>(null);
-  // Dragging the left edge resizes this panel. In the first row the panels to
-  // the right keep their widths, so the aside's right edge is fixed for the
-  // drag; in the second row the left edge is fixed instead.
+  // Dragging the left edge resizes this panel: the panels to the right keep
+  // their widths, so the aside's right edge is fixed for the drag.
   const onDragStart = (e: React.MouseEvent) => {
     e.preventDefault();
     const handle = e.currentTarget as HTMLElement;
@@ -277,7 +273,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
     document.body.classList.add('is-panel-resizing');
     const rect = asideRef.current?.getBoundingClientRect();
     const onMove = (ev: MouseEvent) => {
-      const next = widthFromLeft ? ev.clientX - (rect?.left ?? 0) : (rect?.right ?? 0) - ev.clientX;
+      const next = (rect?.right ?? 0) - ev.clientX;
       onWidthChange(Math.min(Math.max(next, MIN_WIDTH), maxWidth));
     };
     const onUp = () => {
