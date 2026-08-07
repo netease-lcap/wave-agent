@@ -1,4 +1,4 @@
-import { test, expect, vi, beforeEach, afterEach } from "vitest";
+import { test as vitestTest, expect, vi, beforeEach, afterEach } from "vitest";
 import { createInterface } from "readline";
 import { PassThrough } from "stream";
 import * as net from "net";
@@ -6,6 +6,12 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { Agent } from "wave-agent-sdk";
+
+// Unix-domain sockets are unreliable on Windows: libuv rejects binding a
+// non-"\\.\pipe\..." path with EACCES, so every socket-based test fails there.
+// The daemon protocol logic is platform-agnostic and already covered by the
+// blocking Linux CI; the Windows job only checks platform-specific paths.
+const test = process.platform === "win32" ? vitestTest.skip : vitestTest;
 
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
