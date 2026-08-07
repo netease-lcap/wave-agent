@@ -148,8 +148,6 @@ export interface FilePaneProps {
   onWidthChange: (width: number) => void;
   maxWidth: number;
   onClose: () => void;
-  /** Second-row layout: the width drag anchors the left edge. */
-  widthFromLeft?: boolean;
   /** Local sessions only: open the file in the OS default app. */
   onOpenExternal?: (path: string) => void;
   /** Owning pane's effective cwd, for the relative-path title display. */
@@ -169,7 +167,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onWidthChange,
   maxWidth,
   onClose,
-  widthFromLeft,
   onOpenExternal,
   workdir,
 }) => {
@@ -185,7 +182,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     document.body.classList.add('is-panel-resizing');
     const rect = asideRef.current?.getBoundingClientRect();
     const onMove = (ev: MouseEvent) => {
-      const next = widthFromLeft ? ev.clientX - (rect?.left ?? 0) : (rect?.right ?? 0) - ev.clientX;
+      const next = (rect?.right ?? 0) - ev.clientX;
       onWidthChange(Math.min(Math.max(next, MIN_WIDTH), maxWidth));
     };
     const onUp = () => {

@@ -907,16 +907,11 @@ body.is-panel-resizing * {
 
 /* ---- Conversation-level panel group: message column + side panels ----
    The header spans the full pane width; below it the message column sits
-   left of the checked panels (preview → diff → terminal). Panels can also be
-   dragged into a second row below the message area: the container wraps, the
-   full-width separator forces the line break, and `order` places each slot on
-   its line — slots never change parents, so panel content survives row moves. */
+   left of the checked panels (preview → diff → terminal). */
 
 .desktop-chat-body {
     position: relative;
     display: flex;
-    flex-wrap: wrap;
-    align-content: flex-start;
     flex: 1;
     min-height: 0;
 }
@@ -926,7 +921,6 @@ body.is-panel-resizing * {
     flex-direction: column;
     flex: 1;
     min-width: 0;
-    order: 0;
     height: 100%;
 }
 
@@ -936,82 +930,6 @@ body.is-panel-resizing * {
     display: flex;
     min-height: 0;
     height: 100%;
-}
-
-.desktop-panel-slot--row-1 {
-    order: 1;
-}
-
-.desktop-panel-slot--row-2 {
-    order: 3;
-}
-
-/* The last second-row panel grows to span the full pane width (the spec's
-   "第二行横贯分屏宽度"); earlier second-row panels keep their set widths.
-   basis:auto keeps the panel's pixel width as the line-break hypothetical so
-   the slot lands on its own line, then flex-grow stretches it to fill. */
-.desktop-panel-slot--row-2-fill {
-    flex: 1 1 auto;
-}
-
-.desktop-panel-slot--row-2-fill > * {
-    flex: 1 1 auto;
-}
-
-/* Two-row mode: the first line (message area + first-row panels) takes the
-   height left by the second row and the separator; second-row slots take the
-   configured row height. */
-.desktop-chat-body--two-rows .desktop-chat-main,
-.desktop-chat-body--two-rows .desktop-panel-slot--row-1 {
-    height: calc(100% - var(--panel-row-height, 200px) - 5px);
-}
-
-.desktop-chat-body--two-rows .desktop-panel-slot--row-2 {
-    height: var(--panel-row-height, 200px);
-}
-
-/* No first-row panels: the message area must claim the entire first line so
-   the separator wraps below it. */
-.desktop-chat-body--two-rows.desktop-chat-body--row1-empty .desktop-chat-main {
-    flex-basis: 100%;
-}
-
-/* Horizontal resize handle between the message row and the panel second row.
-   Its 100% flex basis forces the wrap that forms the second line. */
-.desktop-panel-row-separator {
-    order: 2;
-    flex: 0 0 100%;
-    height: 5px;
-    z-index: 6;
-    cursor: row-resize;
-}
-
-.desktop-panel-row-separator:hover,
-.desktop-panel-row-separator--active {
-    background: var(--vscode-focusBorder, #007fd4);
-}
-
-/* VS Code-style translucent overlay over the row a dragged panel would land
-   in; geometry (top/height) is set inline from the dragover hit-test. */
-.desktop-panel-dropzone {
-    position: absolute;
-    left: 0;
-    right: 0;
-    z-index: 7;
-    pointer-events: none;
-    background: var(--vscode-editorGroup-dropBackground, rgba(0, 122, 204, 0.18));
-    border: 1px dashed var(--vscode-focusBorder, #007fd4);
-}
-
-/* While a panel toolbar drags, keep dragover firing over the preview guest. */
-.desktop-chat-body--panel-dragging .preview-pane webview,
-.desktop-chat-body--panel-dragging .preview-pane iframe {
-    pointer-events: none;
-}
-
-/* The toolbar's blank area is the panel drag source. */
-.desktop-chat-body .preview-pane-toolbar {
-    cursor: grab;
 }
 
 /* Shared empty/placeholder body for panel stubs. */
@@ -1026,11 +944,10 @@ body.is-panel-resizing * {
     color: var(--vscode-descriptionForeground, #999);
 }
 
-/* Two-row mode compresses the message row; an inline ConfirmationDialog
-   (plan preview / permission / AskUserQuestions) can grow taller than the
-   compressed first row. Let the input area shrink within the flex column and
-   the dialog body scroll, instead of overflowing onto the second-row panels.
-   Scoped under .desktop-chat-main so VSCE/JB (single-row, full-height) stay
+/* An inline ConfirmationDialog (plan preview / permission / AskUserQuestions)
+   can grow taller than the pane; let the input area shrink within the flex
+   column and the dialog body scroll, instead of overflowing onto the panels.
+   Scoped under .desktop-chat-main so VSCE/JB (full-height chat column) stay
    on the inline auto-height path. */
 .desktop-chat-main .input-area-container--confirm {
     flex: 0 1 auto;

@@ -17,7 +17,6 @@ function renderPane(options: {
     fileView?: FileViewState | null;
     width?: number;
     maxWidth?: number;
-    widthFromLeft?: boolean;
     workdir?: string;
     onOpenExternal?: (path: string) => void;
     onClose?: () => void;
@@ -33,7 +32,6 @@ function renderPane(options: {
             onWidthChange={onWidthChange}
             maxWidth={options.maxWidth ?? 716}
             onClose={onClose}
-            widthFromLeft={options.widthFromLeft}
             onOpenExternal={options.onOpenExternal}
             workdir={options.workdir}
         />,
@@ -46,7 +44,6 @@ function renderPane(options: {
                 onWidthChange={onWidthChange}
                 maxWidth={options.maxWidth ?? 716}
                 onClose={onClose}
-                widthFromLeft={options.widthFromLeft}
                 onOpenExternal={options.onOpenExternal}
                 workdir={options.workdir}
             />,
@@ -255,20 +252,6 @@ describe('FilePane', () => {
         fireEvent.mouseUp(window);
         expect(handle.style.background).toBe('');
         expect(document.body.classList.contains('is-panel-resizing')).toBe(false);
-    });
-
-    it('anchors the drag at the left edge in second-row layout', () => {
-        const { onWidthChange } = renderPane({ widthFromLeft: true });
-        const pane = screen.getByTestId('file-pane');
-        const handle = pane.querySelector('.preview-pane-drag-handle') as HTMLElement;
-        vi.spyOn(pane, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 1024 } as DOMRect);
-
-        fireEvent.mouseDown(handle);
-        fireEvent.mouseMove(window, { clientX: 624 }); // 624 - 0 = 624
-        expect(onWidthChange).toHaveBeenLastCalledWith(624);
-        fireEvent.mouseMove(window, { clientX: 200 }); // → clamped to 320
-        expect(onWidthChange).toHaveBeenLastCalledWith(320);
-        fireEvent.mouseUp(window);
     });
 
     afterEach(() => {

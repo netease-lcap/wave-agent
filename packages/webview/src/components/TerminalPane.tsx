@@ -81,9 +81,6 @@ export interface TerminalPaneProps {
   visible: boolean;
   /** Session identity change → rebuild (visible) or kill (hidden). */
   sessionId?: string;
-  /** Second-row layout: panels pack from the left, so the width drag anchors
-   * the (fixed) left edge instead of the right edge. */
-  widthFromLeft?: boolean;
   /** Desktop only: route localhost links printed in the terminal into the
    * preview pane, mirroring Message.tsx. Non-localhost links open externally. */
   onOpenPreview?: (url: string) => void;
@@ -100,7 +97,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   visible,
   sessionId,
   workdir,
-  widthFromLeft,
   onOpenPreview,
 }) => {
   const [status, setStatus] = useState<PaneStatus>({ kind: 'loading' });
@@ -278,7 +274,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     document.body.classList.add('is-panel-resizing');
     const rect = asideRef.current?.getBoundingClientRect();
     const onMove = (ev: MouseEvent) => {
-      const next = widthFromLeft ? ev.clientX - (rect?.left ?? 0) : (rect?.right ?? 0) - ev.clientX;
+      const next = (rect?.right ?? 0) - ev.clientX;
       onWidthChange(Math.min(Math.max(next, MIN_WIDTH), maxWidth));
     };
     const onUp = () => {
