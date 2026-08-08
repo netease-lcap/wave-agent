@@ -2591,6 +2591,12 @@ export class DesktopHost {
         break;
       }
 
+      case 'backgroundCurrentTask': {
+        const paneAgent = this.agentForPane(pid);
+        await paneAgent?.backgroundCurrentTask();
+        break;
+      }
+
       case 'getWorkflowRuns': {
         const paneAgent = this.agentForPane(pid);
         const runs = paneAgent ? await paneAgent.getWorkflowRuns() : [];

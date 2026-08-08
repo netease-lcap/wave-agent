@@ -350,6 +350,23 @@ test("compact request without customInstructions calls agent.compact with undefi
   expect(r).toBeNull();
 });
 
+// ── backgroundCurrentTask request ─────────────────────────────────
+
+test("backgroundCurrentTask request calls agent.backgroundCurrentTask and returns null", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent({
+    backgroundCurrentTask: vi.fn().mockResolvedValue(undefined),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest("backgroundCurrentTask", {}, sessionId);
+
+  expect(mockAgent.backgroundCurrentTask).toHaveBeenCalledTimes(1);
+  expect(r).toBeNull();
+});
+
 test("onUserMessageAdded finds last user message and emits notification", async () => {
   const { bridge, notifications } = createBridge();
   const userMessage = {

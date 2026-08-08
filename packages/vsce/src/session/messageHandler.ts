@@ -207,6 +207,11 @@ export class MessageHandler {
                 this.context.postMessage({ command: 'backgroundTaskStopped', taskId, success }, viewType, windowId);
                 break;
             }
+            case 'backgroundCurrentTask': {
+                const session = this.context.getChatSession(viewType || 'tab', windowId);
+                await session.backgroundCurrentTask();
+                break;
+            }
             case 'getWorkflowRuns': {
                 const session = this.context.getChatSession(viewType || 'tab', windowId);
                 const runs = await session.getWorkflowRuns();

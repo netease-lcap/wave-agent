@@ -536,6 +536,13 @@ export class ChatSession {
         return await this.agent.stopBackgroundTask(taskId);
     }
 
+    public async backgroundCurrentTask(): Promise<void> {
+        if (!this.agent) {
+            return;
+        }
+        await this.agent.backgroundCurrentTask();
+    }
+
     private async refreshWorkflowRuns(): Promise<void> {
         const runs = await this.getWorkflowRuns();
         this.workflowRuns = runs;
