@@ -7,7 +7,7 @@ describe("MessageManager - Streaming Functionality", () => {
   const container = new Container();
 
   describe("updateCurrentMessageContent with FR-001 compliance", () => {
-    it("should call onAssistantContentUpdated with chunk and accumulated content", () => {
+    it("should call onAssistantContentUpdated with chunk and stage", () => {
       const mockOnAssistantContentUpdated = vi.fn();
 
       const callbacks: MessageManagerCallbacks = {
@@ -29,7 +29,6 @@ describe("MessageManager - Streaming Functionality", () => {
       expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith({
         messageId,
         chunk: "Hello",
-        accumulated: "Hello",
         stage: "streaming",
       });
 
@@ -39,7 +38,6 @@ describe("MessageManager - Streaming Functionality", () => {
       expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith({
         messageId,
         chunk: ", world!",
-        accumulated: "Hello, world!",
         stage: "streaming",
       });
 
@@ -49,7 +47,6 @@ describe("MessageManager - Streaming Functionality", () => {
       expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith({
         messageId,
         chunk: " How are you?",
-        accumulated: "Hello, world! How are you?",
         stage: "streaming",
       });
 
@@ -79,7 +76,6 @@ describe("MessageManager - Streaming Functionality", () => {
       expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith({
         messageId,
         chunk: "",
-        accumulated: "",
         stage: "streaming",
       });
     });
@@ -106,7 +102,6 @@ describe("MessageManager - Streaming Functionality", () => {
       expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith({
         messageId,
         chunk: "New content",
-        accumulated: "New content",
         stage: "streaming",
       });
 
@@ -192,7 +187,6 @@ describe("MessageManager - Streaming Functionality", () => {
         {
           messageId,
           chunk: "",
-          accumulated: "Let me think...",
           stage: "end",
         },
       ]);
@@ -201,7 +195,6 @@ describe("MessageManager - Streaming Functionality", () => {
       expect(mockContentUpdated).toHaveBeenCalledWith({
         messageId,
         chunk: "Hello",
-        accumulated: "Hello",
         stage: "streaming",
       });
     });
@@ -236,7 +229,6 @@ describe("MessageManager - Streaming Functionality", () => {
         {
           messageId,
           chunk: "",
-          accumulated: "Hello world",
           stage: "end",
         },
       ]);
@@ -245,7 +237,6 @@ describe("MessageManager - Streaming Functionality", () => {
       expect(mockReasoningUpdated).toHaveBeenCalledWith({
         messageId,
         chunk: "Thinking...",
-        accumulated: "Thinking...",
         stage: "streaming",
       });
     });
@@ -283,7 +274,6 @@ describe("MessageManager - Streaming Functionality", () => {
       expect(mockReasoningUpdated).toHaveBeenCalledWith({
         messageId,
         chunk: "",
-        accumulated: "Some reasoning",
         stage: "end",
       });
     });
@@ -308,7 +298,6 @@ describe("MessageManager - Streaming Functionality", () => {
       expect(mockContentUpdated).toHaveBeenCalledWith({
         messageId,
         chunk: "Hello",
-        accumulated: "Hello",
         stage: "streaming",
       });
     });

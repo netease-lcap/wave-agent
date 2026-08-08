@@ -158,6 +158,84 @@ export interface ChatProviderProps extends BaseAppProps {
   children: React.ReactNode;
 }
 
+interface StreamingUpdateParams {
+  messageId: string;
+  chunk: string;
+  stage: "streaming" | "end";
+}
+
+/**
+ * Window-concat throttle for pure-delta streaming updates: chunks arriving
+ * within the cooldown window are merged so no delta is lost (a dropped delta
+ * would permanently lose content, unlike the accumulated-payload throttle it
+ * replaces). Leading edge fires immediately; the trailing edge carries only
+ * chunks that arrived within the window. `end` flushes any pending deltas
+ * first, then forwards the end signal right away.
+ */
+function createStreamingWindowThrottle(
+  fn: (params: StreamingUpdateParams) => void,
+  wait: number,
+): {
+  (params: StreamingUpdateParams): void;
+  cancel: () => void;
+  flush: () => void;
+} {
+  let timer: NodeJS.Timeout | null = null;
+  let pending: { messageId: string; chunk: string } | null = null;
+
+  const fire = (stage: "streaming" | "end") => {
+    if (pending) {
+      fn({ ...pending, stage });
+      pending = null;
+    }
+  };
+
+  const throttled = (params: StreamingUpdateParams) => {
+    if (params.stage === "end") {
+      // Flush any deltas still pending inside the cooldown window first
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      fire("streaming");
+      fn(params);
+      return;
+    }
+    if (pending) {
+      pending.chunk += params.chunk;
+    } else {
+      pending = { messageId: params.messageId, chunk: params.chunk };
+    }
+    if (!timer) {
+      // Leading edge: fire the current delta immediately, then reset pending so
+      // the trailing edge only carries chunks arriving within this window
+      fire("streaming");
+      timer = setTimeout(() => {
+        timer = null;
+        fire("streaming");
+      }, wait);
+    }
+  };
+
+  throttled.cancel = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    pending = null;
+  };
+
+  throttled.flush = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    fire("streaming");
+  };
+
+  return throttled;
+}
+
 export const ChatProvider: React.FC<ChatProviderProps> = ({
   children,
   bypassPermissions,
@@ -188,86 +266,77 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [latestTotalTokens, setLatestTotalTokens] = useState(0);
   const [maxInputTokens, setMaxInputTokens] = useState(200000);
 
-  // Throttled incremental streaming updaters — 500ms leading+trailing, the same interval
-  // as the pre-incremental throttledSetMessages. `stage === "end"` flushes the final
-  // update immediately so completion results are never delayed.
+  // Throttled incremental streaming updaters — 500ms window-concat, the same
+  // interval as the pre-incremental throttledSetMessages. Chunks are pure
+  // deltas: within-window chunks are merged so none is dropped, and
+  // `stage === "end"` flushes pending deltas + applies the end signal
+  // immediately so completion results are never delayed.
   const throttledContentUpdate = useMemo(
     () =>
-      throttle(
-        (params: {
-          messageId: string;
-          accumulated: string;
-          stage: "streaming" | "end";
-        }) => {
-          const { messageId, accumulated, stage } = params;
-          setMessages((prev) =>
-            prev.map((m) => {
-              if (m.id !== messageId) return m;
-              const textBlockIndex = m.blocks.findIndex(
-                (b) => b.type === "text",
-              );
-              if (textBlockIndex === -1) {
-                return {
-                  ...m,
-                  blocks: [
-                    ...m.blocks,
-                    { type: "text", content: accumulated, stage },
-                  ],
-                };
-              }
+      createStreamingWindowThrottle((params) => {
+        const { messageId, chunk, stage } = params;
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id !== messageId) return m;
+            const textBlockIndex = m.blocks.findIndex((b) => b.type === "text");
+            if (textBlockIndex === -1) {
               return {
                 ...m,
-                blocks: m.blocks.map((b, idx) =>
-                  idx === textBlockIndex && b.type === "text"
-                    ? { ...b, content: accumulated, stage }
-                    : b,
-                ),
+                blocks: [...m.blocks, { type: "text", content: chunk, stage }],
               };
-            }),
-          );
-        },
-        500,
-      ),
+            }
+            return {
+              ...m,
+              blocks: m.blocks.map((b, idx) =>
+                idx === textBlockIndex && b.type === "text"
+                  ? {
+                      ...b,
+                      content: (b.content || "") + chunk,
+                      stage,
+                    }
+                  : b,
+              ),
+            };
+          }),
+        );
+      }, 500),
     [],
   );
 
   const throttledReasoningUpdate = useMemo(
     () =>
-      throttle(
-        (params: {
-          messageId: string;
-          accumulated: string;
-          stage: "streaming" | "end";
-        }) => {
-          const { messageId, accumulated, stage } = params;
-          setMessages((prev) =>
-            prev.map((m) => {
-              if (m.id !== messageId) return m;
-              const reasoningBlockIndex = m.blocks.findIndex(
-                (b) => b.type === "reasoning",
-              );
-              if (reasoningBlockIndex === -1) {
-                return {
-                  ...m,
-                  blocks: [
-                    ...m.blocks,
-                    { type: "reasoning", content: accumulated, stage },
-                  ],
-                };
-              }
+      createStreamingWindowThrottle((params) => {
+        const { messageId, chunk, stage } = params;
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id !== messageId) return m;
+            const reasoningBlockIndex = m.blocks.findIndex(
+              (b) => b.type === "reasoning",
+            );
+            if (reasoningBlockIndex === -1) {
               return {
                 ...m,
-                blocks: m.blocks.map((b, idx) =>
-                  idx === reasoningBlockIndex && b.type === "reasoning"
-                    ? { ...b, content: accumulated, stage }
-                    : b,
-                ),
+                blocks: [
+                  ...m.blocks,
+                  { type: "reasoning", content: chunk, stage },
+                ],
               };
-            }),
-          );
-        },
-        500,
-      ),
+            }
+            return {
+              ...m,
+              blocks: m.blocks.map((b, idx) =>
+                idx === reasoningBlockIndex && b.type === "reasoning"
+                  ? {
+                      ...b,
+                      content: (b.content || "") + chunk,
+                      stage,
+                    }
+                  : b,
+              ),
+            };
+          }),
+        );
+      }, 500),
     [],
   );
 
@@ -477,12 +546,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onAssistantContentUpdated: (params) => {
           if (isExpandedRef.current) return;
           throttledContentUpdate(params);
-          if (params.stage === "end") throttledContentUpdate.flush();
         },
         onAssistantReasoningUpdated: (params) => {
           if (isExpandedRef.current) return;
           throttledReasoningUpdate(params);
-          if (params.stage === "end") throttledReasoningUpdate.flush();
         },
         onToolBlockUpdated: (params) => {
           if (isExpandedRef.current) return;

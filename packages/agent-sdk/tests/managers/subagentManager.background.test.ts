@@ -225,7 +225,6 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     passedCallbacks.onAssistantReasoningUpdated?.({
       messageId: "msg-test-id",
       chunk: "chunk",
-      accumulated: "accumulated",
       stage: "streaming",
     });
 
@@ -233,7 +232,6 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       subagentId: instance.subagentId,
       messageId: "msg-test-id",
       chunk: "chunk",
-      accumulated: "accumulated",
       stage: "streaming",
     });
   });

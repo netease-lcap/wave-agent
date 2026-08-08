@@ -314,7 +314,6 @@ describe("SubagentManager - Callback Integration", () => {
         subagentId: instance.subagentId,
         messageId: expect.any(String),
         chunk: expect.any(String),
-        accumulated: newContent,
         stage: "streaming",
       });
 
@@ -355,16 +354,16 @@ describe("SubagentManager - Callback Integration", () => {
         2,
       );
 
-      // Check the accumulated content in calls
+      // Check the chunk deltas in calls
       const mockedCallback = vi.mocked(
         callbacks.onSubagentAssistantContentUpdated,
       )!;
       expect(mockedCallback.mock.calls).toBeDefined();
       const calls = mockedCallback.mock.calls!;
       expect(calls[0]![0].subagentId).toBe(instance.subagentId);
-      expect(calls[0]![0].accumulated).toBe("Hello world");
+      expect(calls[0]![0].chunk).toBe(" world");
       expect(calls[1]![0].subagentId).toBe(instance.subagentId);
-      expect(calls[1]![0].accumulated).toBe("Hello world!");
+      expect(calls[1]![0].chunk).toBe("!");
     });
   });
 
