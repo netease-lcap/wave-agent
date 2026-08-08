@@ -13,10 +13,15 @@ import type {
 import { logger } from "../utils/globalLogger.js";
 import * as fs from "node:fs";
 
-import type { SpanExporter, ReadableSpan } from "@opentelemetry/sdk-trace-node";
+import type {
+  SpanExporter,
+  ReadableSpan,
+  BasicTracerProvider,
+} from "@opentelemetry/sdk-trace-base";
 import type {
   LogRecordExporter,
   ReadableLogRecord,
+  LoggerProvider,
 } from "@opentelemetry/sdk-logs";
 import {
   AuthService,
@@ -24,8 +29,10 @@ import {
 } from "../services/authService.js";
 
 // Lazy-loaded OTEL modules — only imported when telemetry is initialized
-let sdkNode: typeof import("@opentelemetry/sdk-node") | undefined;
+let sdkTraceBase: typeof import("@opentelemetry/sdk-trace-base") | undefined;
+let otelResources: typeof import("@opentelemetry/resources") | undefined;
 let api: typeof import("@opentelemetry/api") | undefined;
+let apiLogs: typeof import("@opentelemetry/api-logs") | undefined;
 let sdkLogs: typeof import("@opentelemetry/sdk-logs") | undefined;
 let exporterTraceOtlpHttp:
   | typeof import("@opentelemetry/exporter-trace-otlp-http")
@@ -34,8 +41,11 @@ let exporterLogsOtlpHttp:
   | typeof import("@opentelemetry/exporter-logs-otlp-http")
   | undefined;
 
-/** Internal SDK instance */
-let otelSdk: import("@opentelemetry/sdk-node").NodeSDK | undefined;
+/** Internal trace provider instance */
+let tracerProvider: BasicTracerProvider | undefined;
+
+/** Internal log provider instance */
+let loggerProvider: LoggerProvider | undefined;
 
 /** Whether telemetry has been initialized */
 let initialized = false;
@@ -60,14 +70,23 @@ function resolveTelemetryFilePath(): string {
 async function loadOTELModules(): Promise<void> {
   if (api) return; // Already loaded
 
-  [sdkNode, api, sdkLogs, exporterTraceOtlpHttp, exporterLogsOtlpHttp] =
-    await Promise.all([
-      import("@opentelemetry/sdk-node"),
-      import("@opentelemetry/api"),
-      import("@opentelemetry/sdk-logs"),
-      import("@opentelemetry/exporter-trace-otlp-http"),
-      import("@opentelemetry/exporter-logs-otlp-http"),
-    ]);
+  [
+    sdkTraceBase,
+    otelResources,
+    api,
+    apiLogs,
+    sdkLogs,
+    exporterTraceOtlpHttp,
+    exporterLogsOtlpHttp,
+  ] = await Promise.all([
+    import("@opentelemetry/sdk-trace-base"),
+    import("@opentelemetry/resources"),
+    import("@opentelemetry/api"),
+    import("@opentelemetry/api-logs"),
+    import("@opentelemetry/sdk-logs"),
+    import("@opentelemetry/exporter-trace-otlp-http"),
+    import("@opentelemetry/exporter-logs-otlp-http"),
+  ]);
 }
 
 /**
@@ -365,10 +384,9 @@ export async function initializeTelemetry(
 
     const { tracesExporter, logsExporter } = currentConfig;
 
-    // Build resource attributes using new API (sdk-node 0.217+)
-    const { resources } = sdkNode!;
-    const resource = resources.defaultResource().merge(
-      resources.resourceFromAttributes({
+    // Build resource attributes (lightweight assembly: sdk-trace-base + resources)
+    const resource = otelResources!.defaultResource().merge(
+      otelResources!.resourceFromAttributes({
         "service.name": "wave",
         "service.version": process.env.npm_package_version || "unknown",
         "os.type": process.platform,
@@ -376,30 +394,54 @@ export async function initializeTelemetry(
       }),
     );
 
-    // Configure trace provider
-    const nodeSdkOptions: Record<string, unknown> = { resource };
+    const spanProcessors: import("@opentelemetry/sdk-trace-base").SpanProcessor[] =
+      [];
 
     if (tracesExporter === "otlp" && currentConfig.endpoint) {
-      nodeSdkOptions.traceExporter = createOTLPTraceExporter(currentConfig);
+      spanProcessors.push(
+        new sdkTraceBase!.BatchSpanProcessor(
+          createOTLPTraceExporter(currentConfig),
+        ),
+      );
     } else if (tracesExporter === "jsonl") {
-      nodeSdkOptions.traceExporter = new JsonlSpanExporter();
+      spanProcessors.push(
+        new sdkTraceBase!.BatchSpanProcessor(new JsonlSpanExporter()),
+      );
     }
 
-    // Configure logs provider
+    const logProcessors: import("@opentelemetry/sdk-logs").LogRecordProcessor[] =
+      [];
+
     if (logsExporter === "otlp" && currentConfig.endpoint) {
-      nodeSdkOptions.logRecordProcessor = new sdkLogs!.BatchLogRecordProcessor(
-        createOTLPLogExporter(currentConfig),
+      logProcessors.push(
+        new sdkLogs!.BatchLogRecordProcessor(
+          createOTLPLogExporter(currentConfig),
+        ),
       );
     } else if (logsExporter === "jsonl") {
-      nodeSdkOptions.logRecordProcessor = new sdkLogs!.BatchLogRecordProcessor(
-        new JsonlLogExporter(),
+      logProcessors.push(
+        new sdkLogs!.BatchLogRecordProcessor(new JsonlLogExporter()),
       );
     }
 
-    // Only initialize SDK if at least one exporter is configured
-    if (nodeSdkOptions.traceExporter || nodeSdkOptions.logRecordProcessor) {
-      otelSdk = new sdkNode!.NodeSDK(nodeSdkOptions);
-      await otelSdk.start();
+    // Only initialize providers if at least one exporter is configured
+    if (spanProcessors.length > 0 || logProcessors.length > 0) {
+      if (spanProcessors.length > 0) {
+        tracerProvider = new sdkTraceBase!.BasicTracerProvider({
+          resource,
+          spanProcessors,
+        });
+        api!.trace.setGlobalTracerProvider(tracerProvider);
+      }
+
+      if (logProcessors.length > 0) {
+        loggerProvider = new sdkLogs!.LoggerProvider({
+          resource,
+          processors: logProcessors,
+        });
+        apiLogs!.logs.setGlobalLoggerProvider(loggerProvider);
+      }
+
       initialized = true;
 
       logger?.info("OpenTelemetry initialized", {
@@ -424,7 +466,7 @@ export async function initializeTelemetry(
  * Respects shutdownTimeoutMs config.
  */
 export async function shutdownTelemetry(): Promise<void> {
-  if (!otelSdk || !initialized) {
+  if (!tracerProvider && !loggerProvider) {
     return;
   }
 
@@ -437,12 +479,17 @@ export async function shutdownTelemetry(): Promise<void> {
       );
     });
 
-    await Promise.race([otelSdk.shutdown(), timeoutPromise]);
+    const shutdowns: Promise<void>[] = [];
+    if (tracerProvider) shutdowns.push(tracerProvider.shutdown());
+    if (loggerProvider) shutdowns.push(loggerProvider.shutdown());
+
+    await Promise.race([Promise.all(shutdowns), timeoutPromise]);
     logger?.debug("OpenTelemetry shut down successfully");
   } catch (error) {
     logger?.warn("OpenTelemetry shutdown failed:", error);
   } finally {
-    otelSdk = undefined;
+    tracerProvider = undefined;
+    loggerProvider = undefined;
     initialized = false;
     currentConfig = undefined;
   }

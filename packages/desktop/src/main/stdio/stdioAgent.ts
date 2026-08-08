@@ -26,7 +26,7 @@ import type {
     ToolBlockUpdateCallbackParams,
     SlashCommand,
     McpServerConfig,
-} from 'wave-agent-sdk';
+} from 'wave-agent-sdk/light';
 import type { JsonRpcClient } from './jsonRpcClient';
 import { NotificationRouter } from './notificationRouter';
 

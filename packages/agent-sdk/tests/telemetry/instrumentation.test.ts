@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { ReadableSpan } from "@opentelemetry/sdk-trace-node";
+import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 import type { ReadableLogRecord } from "@opentelemetry/sdk-logs";
 
 // Mock globalLogger to suppress output
@@ -13,21 +13,21 @@ vi.mock("@/utils/globalLogger.js", () => ({
 }));
 
 function setupMocks() {
-  const mockStart = vi.fn().mockResolvedValue(undefined);
-  const mockShutdown = vi.fn().mockResolvedValue(undefined);
-  const mockNodeSDK = vi.fn().mockImplementation(function () {
-    return { start: mockStart, shutdown: mockShutdown };
+  const mockTracerShutdown = vi.fn().mockResolvedValue(undefined);
+  const mockLoggerShutdown = vi.fn().mockResolvedValue(undefined);
+  const mockBasicTracerProvider = vi.fn().mockImplementation(function () {
+    return { shutdown: mockTracerShutdown };
   });
+  const mockLoggerProvider = vi.fn().mockImplementation(function () {
+    return { shutdown: mockLoggerShutdown };
+  });
+  const mockBatchSpanProcessor = vi.fn();
+  const mockBatchLogRecordProcessor = vi.fn();
+  const mockSetGlobalTracerProvider = vi.fn();
+  const mockSetGlobalLoggerProvider = vi.fn();
 
   const mockOTLPTraceExporter = vi.fn();
   const mockOTLPLogExporter = vi.fn();
-
-  const mockTracer = { startSpan: vi.fn() };
-  const mockTrace = {
-    getTracer: vi.fn().mockReturnValue(mockTracer),
-    setSpan: vi.fn(),
-  };
-  const mockContext = { active: vi.fn().mockReturnValue({}) };
 
   const mockResource = {
     defaultResource: vi.fn().mockReturnValue({
@@ -36,21 +36,23 @@ function setupMocks() {
     resourceFromAttributes: vi.fn().mockReturnValue({}),
   };
 
-  const mockBatchLogRecordProcessor = vi.fn();
-
-  vi.doMock("@opentelemetry/sdk-node", () => ({
-    NodeSDK: mockNodeSDK,
-    resources: mockResource,
+  vi.doMock("@opentelemetry/sdk-trace-base", () => ({
+    BasicTracerProvider: mockBasicTracerProvider,
+    BatchSpanProcessor: mockBatchSpanProcessor,
   }));
+
+  vi.doMock("@opentelemetry/resources", () => mockResource);
 
   vi.doMock("@opentelemetry/api", () => ({
-    trace: mockTrace,
-    context: mockContext,
+    trace: { setGlobalTracerProvider: mockSetGlobalTracerProvider },
   }));
 
-  vi.doMock("@opentelemetry/sdk-trace-node", () => ({}));
+  vi.doMock("@opentelemetry/api-logs", () => ({
+    logs: { setGlobalLoggerProvider: mockSetGlobalLoggerProvider },
+  }));
 
   vi.doMock("@opentelemetry/sdk-logs", () => ({
+    LoggerProvider: mockLoggerProvider,
     BatchLogRecordProcessor: mockBatchLogRecordProcessor,
   }));
 
@@ -63,11 +65,15 @@ function setupMocks() {
   }));
 
   return {
-    mockNodeSDK,
-    mockStart,
-    mockShutdown,
-    mockResource,
+    mockBasicTracerProvider,
+    mockLoggerProvider,
+    mockBatchSpanProcessor,
     mockBatchLogRecordProcessor,
+    mockTracerShutdown,
+    mockLoggerShutdown,
+    mockSetGlobalTracerProvider,
+    mockSetGlobalLoggerProvider,
+    mockResource,
   };
 }
 
@@ -455,16 +461,16 @@ describe("instrumentation", () => {
         tracesExporter: "jsonl",
       });
 
-      expect(mocks.mockNodeSDK).toHaveBeenCalledTimes(1);
-      expect(mocks.mockStart).toHaveBeenCalledTimes(1);
+      expect(mocks.mockBasicTracerProvider).toHaveBeenCalledTimes(1);
+      expect(mocks.mockSetGlobalTracerProvider).toHaveBeenCalledTimes(1);
 
       await instrumentation.initializeTelemetry({
         enabled: true,
         tracesExporter: "jsonl",
       });
 
-      expect(mocks.mockNodeSDK).toHaveBeenCalledTimes(1);
-      expect(mocks.mockStart).toHaveBeenCalledTimes(1);
+      expect(mocks.mockBasicTracerProvider).toHaveBeenCalledTimes(1);
+      expect(mocks.mockSetGlobalTracerProvider).toHaveBeenCalledTimes(1);
     });
 
     it("should set isInitialized to true after successful init", async () => {
@@ -490,17 +496,19 @@ describe("instrumentation", () => {
     it("should not initialize when disabled", async () => {
       await instrumentation.initializeTelemetry({ enabled: false });
       expect(instrumentation.isInitialized()).toBe(false);
-      expect(mocks.mockNodeSDK).not.toHaveBeenCalled();
+      expect(mocks.mockBasicTracerProvider).not.toHaveBeenCalled();
     });
 
     it("should not initialize when no exporters configured", async () => {
       await instrumentation.initializeTelemetry({ enabled: true });
       expect(instrumentation.isInitialized()).toBe(false);
-      expect(mocks.mockNodeSDK).not.toHaveBeenCalled();
+      expect(mocks.mockBasicTracerProvider).not.toHaveBeenCalled();
     });
 
     it("should gracefully degrade on failure", async () => {
-      mocks.mockStart.mockRejectedValueOnce(new Error("Network error"));
+      mocks.mockBasicTracerProvider.mockImplementationOnce(function () {
+        throw new Error("Network error");
+      });
 
       await expect(
         instrumentation.initializeTelemetry({
@@ -520,7 +528,7 @@ describe("instrumentation", () => {
       });
 
       expect(instrumentation.isInitialized()).toBe(true);
-      expect(mocks.mockNodeSDK).toHaveBeenCalledTimes(1);
+      expect(mocks.mockBasicTracerProvider).toHaveBeenCalledTimes(1);
     });
 
     it("should initialize with OTLP logs exporter when endpoint provided", async () => {
@@ -531,7 +539,7 @@ describe("instrumentation", () => {
       });
 
       expect(instrumentation.isInitialized()).toBe(true);
-      expect(mocks.mockNodeSDK).toHaveBeenCalledTimes(1);
+      expect(mocks.mockLoggerProvider).toHaveBeenCalledTimes(1);
       expect(mocks.mockBatchLogRecordProcessor).toHaveBeenCalledTimes(1);
     });
 
@@ -544,7 +552,8 @@ describe("instrumentation", () => {
       });
 
       expect(instrumentation.isInitialized()).toBe(true);
-      expect(mocks.mockNodeSDK).toHaveBeenCalledTimes(1);
+      expect(mocks.mockBasicTracerProvider).toHaveBeenCalledTimes(1);
+      expect(mocks.mockLoggerProvider).toHaveBeenCalledTimes(1);
     });
 
     it("should not initialize OTLP traces without endpoint", async () => {
@@ -554,7 +563,7 @@ describe("instrumentation", () => {
       });
 
       // OTLP requires endpoint, so no SDK init should happen
-      expect(mocks.mockNodeSDK).not.toHaveBeenCalled();
+      expect(mocks.mockBasicTracerProvider).not.toHaveBeenCalled();
       expect(instrumentation.isInitialized()).toBe(false);
     });
 
@@ -564,7 +573,7 @@ describe("instrumentation", () => {
         logsExporter: "otlp",
       });
 
-      expect(mocks.mockNodeSDK).not.toHaveBeenCalled();
+      expect(mocks.mockLoggerProvider).not.toHaveBeenCalled();
       expect(instrumentation.isInitialized()).toBe(false);
     });
 
@@ -576,7 +585,8 @@ describe("instrumentation", () => {
       });
 
       expect(instrumentation.isInitialized()).toBe(true);
-      expect(mocks.mockNodeSDK).toHaveBeenCalledTimes(1);
+      expect(mocks.mockBasicTracerProvider).toHaveBeenCalledTimes(1);
+      expect(mocks.mockLoggerProvider).toHaveBeenCalledTimes(1);
       expect(mocks.mockBatchLogRecordProcessor).toHaveBeenCalledTimes(1);
     });
   });
@@ -584,7 +594,8 @@ describe("instrumentation", () => {
   describe("shutdownTelemetry", () => {
     it("should be no-op if not initialized", async () => {
       await instrumentation.shutdownTelemetry();
-      expect(mocks.mockShutdown).not.toHaveBeenCalled();
+      expect(mocks.mockTracerShutdown).not.toHaveBeenCalled();
+      expect(mocks.mockLoggerShutdown).not.toHaveBeenCalled();
     });
 
     it("should call SDK shutdown when initialized", async () => {
@@ -595,7 +606,7 @@ describe("instrumentation", () => {
       expect(instrumentation.isInitialized()).toBe(true);
 
       await instrumentation.shutdownTelemetry();
-      expect(mocks.mockShutdown).toHaveBeenCalledTimes(1);
+      expect(mocks.mockTracerShutdown).toHaveBeenCalledTimes(1);
     });
 
     it("should reset initialized state after shutdown", async () => {
@@ -616,11 +627,13 @@ describe("instrumentation", () => {
       await instrumentation.shutdownTelemetry();
       await instrumentation.shutdownTelemetry();
 
-      expect(mocks.mockShutdown).toHaveBeenCalledTimes(1);
+      expect(mocks.mockTracerShutdown).toHaveBeenCalledTimes(1);
     });
 
     it("should handle shutdown failure gracefully", async () => {
-      mocks.mockShutdown.mockRejectedValueOnce(new Error("Shutdown failed"));
+      mocks.mockTracerShutdown.mockRejectedValueOnce(
+        new Error("Shutdown failed"),
+      );
 
       await instrumentation.initializeTelemetry({
         enabled: true,

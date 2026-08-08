@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { SessionMetadata, ToolPermissionContext, PermissionDecision } from 'wave-agent-sdk';
+import type { SessionMetadata, ToolPermissionContext, PermissionDecision } from 'wave-agent-sdk/light';
 import { 
     EDIT_TOOL_NAME, 
     WRITE_TOOL_NAME, 
@@ -7,7 +7,7 @@ import {
     ENTER_PLAN_MODE_TOOL_NAME,
     EXIT_PLAN_MODE_TOOL_NAME, 
     ASK_USER_QUESTION_TOOL_NAME 
-} from 'wave-agent-sdk';
+} from 'wave-agent-sdk/light';
 import { ChatSession } from './session/chatSession';
 import { ConfigurationService, ConfigurationData } from './services/configurationService';
 import { FileService } from './services/fileService';

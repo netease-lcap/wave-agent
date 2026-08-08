@@ -81,5 +81,5 @@ order: 10
 ## 假设
 
 - 代理具有访问工作区目录所需的系统级权限。
-- `ripgrep`（`rg`）在系统路径中可用，供 `Grep` 工具使用。
+- `ripgrep`（`rg`）二进制由 `@vscode/ripgrep` 依赖提供（通过 `optionalDependencies` 按平台分发，运行时无需系统预装或网络下载），供 `Grep` 工具使用。
 - `PermissionManager` 已正确配置以处理文件系统访问级别。
