@@ -110,20 +110,32 @@ export function collectSpecs() {
   return { groups, totals, warnings };
 }
 
-// Count test files and test cases in packages/agent-sdk + packages/code.
+// Test packages scanned by collectTests(). The include regex mirrors each
+// package's vitest include pattern (packages/*/vitest.config.ts); note
+// webview-fixtures uses src/ (not tests/).
+const TEST_PACKAGES = [
+  {
+    dir: "packages/agent-sdk",
+    include: /\.(test|spec)\.(js|mjs|cjs|ts|mts|cts|jsx|tsx)$/,
+  },
+  { dir: "packages/code", include: /\.(test|spec)\.(js|mjs|cjs|ts|mts|cts|jsx|tsx)$/ },
+  { dir: "packages/webview", include: /\.test\.(ts|tsx)$/ },
+  { dir: "packages/desktop", include: /\.test\.ts$/ },
+  { dir: "packages/vsce", include: /\.test\.(ts|tsx)$/ },
+  { dir: "packages/webview-fixtures/src", include: /\.test\.ts$/ },
+];
+
+// Count test files and test cases across all test packages. Uses a simple
+// line-anchored declaration count; dynamically generated cases (it.each, tests
+// registered in loops) are not expanded exactly, so the number is approximate.
 export function collectTests() {
   let files = 0;
   let cases = 0;
-  for (const pkg of ["packages/agent-sdk", "packages/code"]) {
-    const testsDir = path.join(ROOT_DIR, pkg, "tests");
+  for (const { dir, include } of TEST_PACKAGES) {
+    const testsDir = path.join(ROOT_DIR, dir);
     if (!fs.existsSync(testsDir)) continue;
     for (const fp of walk(testsDir)) {
-      if (
-        !/\.(test|spec)\.(js|mjs|cjs|ts|mts|cts|jsx|tsx)$/.test(
-          path.basename(fp),
-        )
-      )
-        continue;
+      if (!include.test(path.basename(fp))) continue;
       files++;
       const m = fs.readFileSync(fp, "utf-8").match(/^\s*(it|test)\s*[\(]/gm);
       cases += m ? m.length : 0;
