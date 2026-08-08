@@ -130,6 +130,78 @@ describe("bashTool", () => {
       });
     });
 
+    it("prepends the cwd recovery notice when the session cwd was auto-recovered", async () => {
+      const mockProcess = {
+        pid: 1234,
+        stdout: {
+          on: vi.fn((event, callback) => {
+            if (event === "data") {
+              setTimeout(() => callback(Buffer.from("test output")), 10);
+            }
+          }),
+        },
+        stderr: {
+          on: vi.fn(),
+        },
+        on: vi.fn((event, callback) => {
+          if (event === "exit") {
+            setTimeout(() => callback(0), 20);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      // Session workdir was deleted behind wave's back (manual git worktree remove)
+      context.aiManager = {
+        consumeCwdRecovery: vi.fn().mockReturnValue({
+          from: "/repo/.wave/worktrees/feat-a",
+          to: "/repo",
+        }),
+      } as unknown as ToolContext["aiManager"];
+
+      const result = await bashTool.execute({ command: "echo hello" }, context);
+
+      expect(result.success).toBe(true);
+      expect(result.content).toBe(
+        "Note: working directory /repo/.wave/worktrees/feat-a no longer exists; session working directory recovered to /repo.\ntest output",
+      );
+    });
+
+    it("omits the notice when there is no pending cwd recovery", async () => {
+      const mockProcess = {
+        pid: 1234,
+        stdout: {
+          on: vi.fn((event, callback) => {
+            if (event === "data") {
+              setTimeout(() => callback(Buffer.from("test output")), 10);
+            }
+          }),
+        },
+        stderr: {
+          on: vi.fn(),
+        },
+        on: vi.fn((event, callback) => {
+          if (event === "exit") {
+            setTimeout(() => callback(0), 20);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      context.aiManager = {
+        consumeCwdRecovery: vi.fn().mockReturnValue(null),
+      } as unknown as ToolContext["aiManager"];
+
+      const result = await bashTool.execute({ command: "echo hello" }, context);
+
+      expect(result.success).toBe(true);
+      expect(result.content).toBe("test output");
+    });
+
     it("should handle background execution", async () => {
       const mockProcess = {
         pid: 1234,

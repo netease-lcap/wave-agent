@@ -173,6 +173,14 @@ The working directory persists between commands. Try to maintain your current wo
       };
     }
 
+    // If the session cwd was auto-recovered (e.g. the previous worktree
+    // directory was removed manually via `git worktree remove`), surface
+    // the notice in this tool's result so the model is aware of the switch.
+    const cwdRecovery = context.aiManager?.consumeCwdRecovery?.();
+    const recoveryNotice = cwdRecovery
+      ? `Note: working directory ${cwdRecovery.from} no longer exists; session working directory recovered to ${cwdRecovery.to}.\n`
+      : "";
+
     // Resolve shell path: on Windows, use Git Bash; on macOS/Linux, use bash or zsh
     const shellPath = resolveShellPath();
     if (!shellPath) {
@@ -260,7 +268,7 @@ The working directory persists between commands. Try to maintain your current wo
       ].join("\n");
       return {
         success: true,
-        content: backgroundMsg,
+        content: recoveryNotice + backgroundMsg,
         shortResult: `Background process ${taskId} started${outputPath ? ` → ${outputPath}` : ""}`,
       };
     }
@@ -471,9 +479,11 @@ The working directory persists between commands. Try to maintain your current wo
           );
           resolve({
             success: false,
-            content: processedOutput
-              ? `${processedOutput}\n\n${reason}`
-              : reason,
+            content: recoveryNotice
+              ? recoveryNotice + (processedOutput || reason)
+              : processedOutput
+                ? `${processedOutput}\n\n${reason}`
+                : reason,
             error: reason,
           });
         }
@@ -559,6 +569,7 @@ The working directory persists between commands. Try to maintain your current wo
 
           // Prepend CWD change message to output if present
           const finalOutput =
+            recoveryNotice +
             (cwdMessage ? cwdMessage + "\n" : "") +
             (combinedOutput || `Command executed with exit code: ${exitCode}`);
           const content = processToolResult(
@@ -601,7 +612,8 @@ The working directory persists between commands. Try to maintain your current wo
           resolve({
             success: false,
             content: "",
-            error: `Failed to execute command: ${error.message}`,
+            error:
+              `${recoveryNotice}Failed to execute command: ${error.message}`.trim(),
           });
         }
       });
