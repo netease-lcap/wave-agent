@@ -24,16 +24,6 @@ vi.mock("@/managers/toolManager", () => ({
   }),
 }));
 
-// Prevent auto-memory extraction forked agents from making extra AI calls
-vi.mock("@/managers/forkedAgentManager", () => ({
-  ForkedAgentManager: vi.fn().mockImplementation(function () {
-    return {
-      forkAndExecute: vi.fn().mockResolvedValue("mock-fork-id"),
-      cleanup: vi.fn(),
-    };
-  }),
-}));
-
 describe("Agent Tool Streaming Tests", () => {
   let agent: Agent;
   let mockCallAgent: ReturnType<typeof vi.fn>;

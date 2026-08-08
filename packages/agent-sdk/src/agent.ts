@@ -3,7 +3,6 @@ import { MessageManager } from "./managers/messageManager.js";
 import { AIManager } from "./managers/aiManager.js";
 import { ToolManager } from "./managers/toolManager.js";
 import { SubagentManager } from "./managers/subagentManager.js";
-import { ForkedAgentManager } from "./managers/forkedAgentManager.js";
 import { McpManager } from "./managers/mcpManager.js";
 import { LspManager } from "./managers/lspManager.js";
 import { BangManager } from "./managers/bangManager.js";
@@ -65,7 +64,6 @@ export class Agent {
   private permissionManager: PermissionManager; // Add permission manager instance
   private planManager: PlanManager; // Add plan manager instance
   private subagentManager: SubagentManager; // Add subagent manager instance
-  private forkedAgentManager: ForkedAgentManager; // Add forked agent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private pluginManager: PluginManager; // Add plugin manager instance
   private skillManager: SkillManager; // Add skill manager instance
@@ -199,7 +197,6 @@ export class Agent {
     this.toolManager = this.container.get("ToolManager")!;
     this.liveConfigManager = this.container.get("LiveConfigManager")!;
     this.subagentManager = this.container.get("SubagentManager")!;
-    this.forkedAgentManager = this.container.get("ForkedAgentManager")!;
     this.aiManager = this.container.get("AIManager")!;
     this.slashCommandManager = this.container.get("SlashCommandManager")!;
     this.pluginManager = this.container.get("PluginManager")!;
@@ -920,8 +917,6 @@ export class Agent {
     }
     // Cleanup subagent manager
     this.subagentManager.cleanup();
-    // Cleanup forked agent manager
-    await this.forkedAgentManager.cleanup();
     // Drain an in-flight auto-memory extraction fork so the process doesn't
     // exit mid-extraction
     try {
@@ -985,6 +980,35 @@ export class Agent {
       onReasoning,
     );
     return result.content ?? result.error ?? "No response received";
+  }
+
+  /**
+   * Start a fork subagent in the background (the "/subtask" command path).
+   *
+   * The fork inherits the parent's full conversation context — same system
+   * prompt, tools, model, and message prefix — so the prompt cache is reused,
+   * then works independently in the background. On completion its final
+   * response is delivered back to the main conversation as a task notification
+   * carrying the `<result>` tag. Recursion is prevented inside the fork (the
+   * Agent tool and Task tools are denied).
+   *
+   * @param prompt - The task description for the fork subagent
+   * @param options - Background task label and optional loose turn bound
+   * @param options.description - Display label for the background task
+   * @param options.maxTurns - Loose turn bound (defaults to 200, aligned with
+   * Claude Code's fork subagent)
+   * @param abortSignal - Optional signal to abort the fork
+   * @returns Promise that resolves to the background task ID
+   */
+  public async forkSubagent(
+    prompt: string,
+    options: {
+      description: string;
+      maxTurns?: number;
+    },
+    abortSignal?: AbortSignal,
+  ): Promise<string> {
+    return this.aiManager.runForkSubagent(prompt, options, abortSignal);
   }
 
   /**

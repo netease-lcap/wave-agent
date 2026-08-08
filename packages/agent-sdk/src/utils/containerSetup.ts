@@ -20,7 +20,6 @@ import { WorkflowManager } from "../managers/workflowManager.js";
 import { MemoryRuleManager } from "../managers/MemoryRuleManager.js";
 import { ReversionManager } from "../managers/reversionManager.js";
 import { SubagentManager } from "../managers/subagentManager.js";
-import { ForkedAgentManager } from "../managers/forkedAgentManager.js";
 import { LiveConfigManager } from "../managers/liveConfigManager.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { ReversionService } from "../services/reversionService.js";
@@ -335,9 +334,6 @@ export function setupAgentContainer(
     stream,
   });
   container.register("SubagentManager", subagentManager);
-
-  const forkedAgentManager = new ForkedAgentManager(container);
-  container.register("ForkedAgentManager", forkedAgentManager);
 
   const aiManager = new AIManager(container, {
     callbacks: {

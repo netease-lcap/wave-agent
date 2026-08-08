@@ -43,6 +43,37 @@ describe("notificationXml", () => {
       expect(xml).toContain("<status>completed</status>");
       expect(xml).toContain("<summary>Agent done</summary>");
     });
+
+    it("should generate XML with an optional result field", () => {
+      const block: TaskNotificationBlock = {
+        type: "task_notification",
+        taskId: "task_789",
+        taskType: "agent",
+        status: "completed",
+        summary: "Subtask done",
+        result: "The findings are in /tmp/report.md",
+      };
+
+      const xml = taskNotificationToXml(block);
+
+      expect(xml).toContain(
+        "<result>The findings are in /tmp/report.md</result>",
+      );
+    });
+
+    it("should omit the result tag when result is absent", () => {
+      const block: TaskNotificationBlock = {
+        type: "task_notification",
+        taskId: "task_789",
+        taskType: "agent",
+        status: "failed",
+        summary: "Subtask failed",
+      };
+
+      const xml = taskNotificationToXml(block);
+
+      expect(xml).not.toContain("<result>");
+    });
   });
 
   describe("parseTaskNotificationXml", () => {
@@ -83,6 +114,27 @@ describe("notificationXml", () => {
         status: "failed",
         summary: "Error occurred",
         outputFile: "/tmp/output.log",
+      });
+    });
+
+    it("should parse XML with a result field", () => {
+      const xml = `<task-notification>
+<task-id>task_789</task-id>
+<task-type>agent</task-type>
+<status>completed</status>
+<summary>Subtask done</summary>
+<result>The findings are in /tmp/report.md</result>
+</task-notification>`;
+
+      const result = parseTaskNotificationXml(xml);
+
+      expect(result).toEqual({
+        type: "task_notification",
+        taskId: "task_789",
+        taskType: "agent",
+        status: "completed",
+        summary: "Subtask done",
+        result: "The findings are in /tmp/report.md",
       });
     });
 
