@@ -45,18 +45,16 @@ export interface MessageManagerCallbacks {
   onUserMessageAdded?: (params: UserMessageParams) => void;
   // MODIFIED: Remove arguments for separation of concerns
   onAssistantMessageAdded?: (messageId: string) => void;
-  // NEW: Streaming content callback - FR-001: receives chunk and accumulated content
+  // NEW: Streaming content callback - FR-001: receives chunk delta and stage
   onAssistantContentUpdated?: (params: {
     messageId: string;
     chunk: string;
-    accumulated: string;
     stage: "streaming" | "end";
   }) => void;
   // NEW: Streaming reasoning callback
   onAssistantReasoningUpdated?: (params: {
     messageId: string;
     chunk: string;
-    accumulated: string;
     stage: "streaming" | "end";
   }) => void;
   onToolBlockUpdated?: (params: ToolBlockUpdateCallbackParams) => void;
@@ -780,7 +778,6 @@ export class MessageManager {
     const callbackParams = {
       messageId: lastMessage.id,
       chunk: "",
-      accumulated: block.content,
       stage: "end" as const,
     };
     if (type === "text") {
@@ -794,7 +791,7 @@ export class MessageManager {
   /**
    * Update the current assistant message content during streaming
    * This method updates the last assistant message's content without creating a new message
-   * FR-001: Tracks and provides both chunk (new content) and accumulated (total content)
+   * FR-001: Tracks and provides chunk (new content since last update)
    */
   public updateCurrentMessageContent(newAccumulatedContent: string): void {
     if (this.messages.length === 0) return;
@@ -838,11 +835,10 @@ export class MessageManager {
       });
     }
 
-    // FR-001: Trigger callbacks with chunk and accumulated content
+    // FR-001: Trigger callbacks with chunk delta and stage
     this.callbacks.onAssistantContentUpdated?.({
       messageId: lastMessage.id,
       chunk,
-      accumulated: newAccumulatedContent,
       stage: "streaming",
     });
 
@@ -902,11 +898,10 @@ export class MessageManager {
       });
     }
 
-    // Trigger callbacks with chunk and accumulated reasoning content
+    // Trigger callbacks with chunk delta and stage
     this.callbacks.onAssistantReasoningUpdated?.({
       messageId: lastMessage.id,
       chunk,
-      accumulated: newAccumulatedReasoning,
       stage: "streaming",
     });
   }

@@ -194,7 +194,7 @@ order: 220
 
 作为 stdio 传输层，我希望跨进程增量通知只携带增量片段（delta）而非累积值，以便流式期间单条通知的序列化与传输成本与已流式内容总长度无关，长会话流式不再对子进程内存和管道带宽造成 O(n²) 压力。
 
-**为什么是这个优先级**：移除 `messagesChange` 后通知条数已经与消息条数无关，但每个 `assistantContentUpdated` 通知仍携带与已流式内容等长的累积 `accumulated` payload（tool block 携带累积 `parameters`），节流只能减少条数、无法减少单条负载。改为纯 delta 后，`assistantContentUpdated`/`assistantReasoningUpdated` 只携带 `{messageId, chunk, stage}`（SDK 侧已计算 chunk = 新内容 − 旧内容），`toolBlockUpdated` 在 `stage="streaming"` 只携带 `parametersChunk`；消费端负责累积（追加），`getMessages` 全量响应作为权威对账通道自愈丢失的 delta。剥离发生在 agentBridge（wire 入口），SDK 回调与 CLI 进程内路径不受影响。
+**为什么是这个优先级**：移除 `messagesChange` 后通知条数已经与消息条数无关，但每个 `assistantContentUpdated` 通知仍携带与已流式内容等长的累积 `accumulated` payload（tool block 携带累积 `parameters`），节流只能减少条数、无法减少单条负载。改为纯 delta 后，`assistantContentUpdated`/`assistantReasoningUpdated` 只携带 `{messageId, chunk, stage}`（SDK 侧已计算 chunk = 新内容 − 旧内容），`toolBlockUpdated` 在 `stage="streaming"` 只携带 `parametersChunk`；消费端负责累积（追加），`getMessages` 全量响应作为权威对账通道自愈丢失的 delta。SDK 回调与 wire 通知统一为纯 delta（`accumulated` 已从 SDK 回调移除，2026-08-08），agentBridge 原样透传、无需剥离。
 
 **独立测试**：构造长会话触发流式，在 CLI 侧记录 stdout 并测量通知负载大小：通知字节数随流式累积不增长（仅随 chunk 本身大小波动）；流式过程中 kill/重启任一宿主的 webview 转发层后，通过一次 `getMessages` 拉取即可恢复完整内容。
 
@@ -203,7 +203,7 @@ order: 220
 1. **假设** 助手响应正在流式传输，**当** CLI 推送 `assistantContentUpdated`/`assistantReasoningUpdated` 通知时，**则** 通知负载为 `{messageId, chunk, stage}`，不含 `accumulated` 字段；内容由消费端按序追加累积
 2. **假设** 工具参数正在流式传输，**当** CLI 推送 `toolBlockUpdated` 且 `stage="streaming"` 时，**则** 负载只含 `parametersChunk` 增量，不含累积 `parameters`；**当** `stage="end"` 时，**则** 负载携带全量 `parameters` + `result` 作为一次性权威值
 3. **假设** 某条流结束，**当** CLI 推送最后一个增量通知时，**则** `chunk` 为空字符串（`chunk: ""`）且 `stage="end"`，消费端据此终结流式块
-4. **假设** 宿主对增量通知做节流（如桌面 16ms / CLI 500ms 窗口），**当** 窗口内有多条 chunk 时，**则** 按到达顺序拼接为一个合并 delta 发送（window-concat），不丢弃中间值；进程内 CLI 对 accumulated 的 last-value-wins 节流不变
+4. **假设** 宿主对增量通知做节流（如桌面 16ms / CLI 500ms 窗口），**当** 窗口内有多条 chunk 时，**则** 按到达顺序拼接为一个合并 delta 发送（window-concat），不丢弃中间值；进程内 CLI 同样使用 window-concat（SDK 回调已无 accumulated，不存在 last-value-wins 路径）
 5. **假设** 增量通知中途丢失（传输异常），**当** 消费端发现内容不完整时，**则** 通过一次 `getMessages` 请求拉取全量权威快照整体替换自愈，管道 FIFO 保证拉取响应包含其之前发出的所有 chunk，不重复
 6. **假设** 某个宿主需要将 delta 转发给 webview，**当** 转发时，**则** 透传 delta（消费端 webview reducer 追加），不在宿主侧重新累积为全量后再下发
 

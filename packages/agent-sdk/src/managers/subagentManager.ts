@@ -48,7 +48,6 @@ export interface SubagentManagerCallbacks {
     subagentId: string;
     messageId: string;
     chunk: string;
-    accumulated: string;
     stage: "streaming" | "end";
   }) => void;
   /** Triggered during subagent reasoning streaming updates */
@@ -56,7 +55,6 @@ export interface SubagentManagerCallbacks {
     subagentId: string;
     messageId: string;
     chunk: string;
-    accumulated: string;
     stage: "streaming" | "end";
   }) => void;
   /** Triggered when subagent tool block is updated */
@@ -810,7 +808,6 @@ export class SubagentManager {
       onAssistantContentUpdated: (params: {
         messageId: string;
         chunk: string;
-        accumulated: string;
         stage: "streaming" | "end";
       }) => {
         this.refreshSubagentState(subagentId);
@@ -825,7 +822,6 @@ export class SubagentManager {
       onAssistantReasoningUpdated: (params: {
         messageId: string;
         chunk: string;
-        accumulated: string;
         stage: "streaming" | "end";
       }) => {
         this.refreshSubagentState(subagentId);

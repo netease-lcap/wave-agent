@@ -199,7 +199,6 @@ test("onAssistantContentUpdated emits assistantContentUpdated notification", asy
   const params = {
     messageId: "msg-1",
     chunk: "Hello",
-    accumulated: "Hello",
     stage: "streaming" as const,
   };
   callbacks.onAssistantContentUpdated!(params);
@@ -2176,13 +2175,11 @@ test("notifications route by sessionId when callbacks fire", async () => {
   const paramsA = {
     messageId: "a-1",
     chunk: "A",
-    accumulated: "A",
     stage: "streaming" as const,
   };
   const paramsB = {
     messageId: "b-1",
     chunk: "B",
-    accumulated: "B",
     stage: "streaming" as const,
   };
 

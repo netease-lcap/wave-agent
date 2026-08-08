@@ -916,7 +916,6 @@ describe("ChatProvider", () => {
     callbacks.onAssistantContentUpdated!({
       messageId: "msg-1",
       chunk: "hi",
-      accumulated: "hi",
       stage: "streaming",
     });
     await vi.advanceTimersByTimeAsync(10);
@@ -1201,7 +1200,6 @@ describe("ChatProvider", () => {
     callbacks.onAssistantContentUpdated!({
       messageId: "msg-1",
       chunk: "Hel",
-      accumulated: "Hel",
       stage: "streaming",
     });
     await vi.waitFor(() => {
@@ -1212,10 +1210,10 @@ describe("ChatProvider", () => {
       });
     });
 
+    // The next chunk is a pure delta — the window-concat throttle appends it
     callbacks.onAssistantContentUpdated!({
       messageId: "msg-1",
       chunk: "lo",
-      accumulated: "Hello",
       stage: "streaming",
     });
     await vi.waitFor(() => {
@@ -1283,7 +1281,6 @@ describe("ChatProvider", () => {
     callbacks.onAssistantContentUpdated!({
       messageId: "msg-throttle",
       chunk: "Hel",
-      accumulated: "Hel",
       stage: "streaming",
     });
     await vi.waitFor(() => {
@@ -1296,13 +1293,11 @@ describe("ChatProvider", () => {
     callbacks.onAssistantContentUpdated!({
       messageId: "msg-throttle",
       chunk: "lo",
-      accumulated: "Hello",
       stage: "streaming",
     });
     callbacks.onAssistantContentUpdated!({
       messageId: "msg-throttle",
       chunk: " Wor",
-      accumulated: "Hello Wor",
       stage: "streaming",
     });
     // No timer advanced yet — still shows the leading update
@@ -1310,11 +1305,10 @@ describe("ChatProvider", () => {
       (lastValue?.messages[0].blocks[0] as { content: string }).content,
     ).toBe("Hel");
 
-    // stage === "end" flushes the accumulated content immediately
+    // stage === "end" flushes pending deltas and applies the end signal
     callbacks.onAssistantContentUpdated!({
       messageId: "msg-throttle",
       chunk: "ld",
-      accumulated: "Hello World",
       stage: "end",
     });
     await vi.waitFor(() => {
@@ -1406,7 +1400,6 @@ describe("ChatProvider", () => {
     callbacks.onAssistantReasoningUpdated!({
       messageId: "msg-reason",
       chunk: "Th",
-      accumulated: "Th",
       stage: "streaming",
     });
     await vi.waitFor(() => {
@@ -1420,13 +1413,11 @@ describe("ChatProvider", () => {
     callbacks.onAssistantReasoningUpdated!({
       messageId: "msg-reason",
       chunk: "ink",
-      accumulated: "Think",
       stage: "streaming",
     });
     callbacks.onAssistantReasoningUpdated!({
       messageId: "msg-reason",
       chunk: "ing",
-      accumulated: "Thinking",
       stage: "streaming",
     });
     const beforeFlush = lastValue?.messages[0].blocks.find(
@@ -1434,25 +1425,23 @@ describe("ChatProvider", () => {
     ) as { content: string } | undefined;
     expect(beforeFlush?.content).toBe("Th");
 
-    // stage === "end" flushes the accumulated reasoning as an in-place update
+    // stage === "end" flushes pending deltas and applies the end signal
     callbacks.onAssistantReasoningUpdated!({
       messageId: "msg-reason",
       chunk: "…",
-      accumulated: "Thinking complete",
       stage: "end",
     });
     await vi.waitFor(() => {
       const reasoning = lastValue?.messages[0].blocks.find(
         (b) => b.type === "reasoning",
       ) as { content: string } | undefined;
-      expect(reasoning?.content).toBe("Thinking complete");
+      expect(reasoning?.content).toBe("Thinking…");
     });
 
     // Unknown messageId leaves messages untouched
     callbacks.onAssistantReasoningUpdated!({
       messageId: "nonexistent",
       chunk: "x",
-      accumulated: "x",
       stage: "end",
     });
     expect(lastValue?.messages[0].blocks).toHaveLength(2);

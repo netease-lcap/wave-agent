@@ -280,7 +280,6 @@ test("subagent content callbacks are not registered in print mode", async () => 
     subagentId: "test-subagent-123",
     messageId: "msg-123",
     chunk: "Hello from subagent",
-    accumulated: "Hello from subagent",
     stage: "streaming",
   });
   expect(stdoutSpy).not.toHaveBeenCalled();
@@ -419,7 +418,6 @@ test("reasoning callbacks output correctly", async () => {
   capturedCallbacks?.onAssistantReasoningUpdated?.({
     messageId: "msg-test-id",
     chunk: "Thinking...",
-    accumulated: "Thinking...",
     stage: "streaming",
   });
   expect(stdoutSpy).toHaveBeenCalledWith("\n💭 Reasoning:\n");
@@ -430,7 +428,6 @@ test("reasoning callbacks output correctly", async () => {
   capturedCallbacks?.onAssistantReasoningUpdated?.({
     messageId: "msg-test-id",
     chunk: " more thinking",
-    accumulated: "Thinking... more thinking",
     stage: "streaming",
   });
   expect(stdoutSpy).not.toHaveBeenCalledWith("\n💭 Reasoning:\n");
@@ -441,7 +438,6 @@ test("reasoning callbacks output correctly", async () => {
   capturedCallbacks?.onAssistantContentUpdated?.({
     messageId: "msg-test-id",
     chunk: "Hello!",
-    accumulated: "Hello!",
     stage: "streaming",
   });
   expect(stdoutSpy).toHaveBeenCalledWith("\n\n📝 Response:\n");
@@ -452,7 +448,6 @@ test("reasoning callbacks output correctly", async () => {
   capturedCallbacks?.onAssistantContentUpdated?.({
     messageId: "msg-test-id",
     chunk: " world",
-    accumulated: "Hello! world",
     stage: "streaming",
   });
   expect(stdoutSpy).not.toHaveBeenCalledWith("\n\n📝 Response:\n");

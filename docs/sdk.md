@@ -194,7 +194,7 @@ Agent 支持多种消息块类型，通过回调通知 UI 层：
 
 | 类型 | 回调 | 说明 |
 |------|------|------|
-| 文本内容 | `onAssistantContentUpdated` | AI 文本流式输出，含 `chunk`、`accumulated`、`stage` |
+| 文本内容 | `onAssistantContentUpdated` | AI 文本流式输出，含 `chunk`、`stage`（chunk 为增量片段，消费端自行累积） |
 | 推理内容 | `onAssistantReasoningUpdated` | 推理/思考过程流式输出 |
 | 工具调用 | `onToolBlockUpdated` | 工具执行状态更新 |
 | 压缩摘要 | `onCompactBlockAdded` | 上下文压缩后生成的摘要 |
@@ -209,13 +209,14 @@ Agent 支持多种消息块类型，通过回调通知 UI 层：
 ```typescript
 callbacks: {
   // 文本流式输出
-  onAssistantContentUpdated: ({ messageId, chunk, accumulated, stage }) => {
-    // stage: "streaming" | "end"
+  onAssistantContentUpdated: ({ messageId, chunk, stage }) => {
+    // chunk: 增量片段（自上次回调以来的新内容）；stage: "streaming" | "end"
+    // 注意：回调不再提供 accumulated，需自行追加累积
     process.stdout.write(chunk);
   },
   // 推理过程流式输出
-  onAssistantReasoningUpdated: ({ messageId, chunk, accumulated, stage }) => {
-    // 推理内容（thinking/reasoning）
+  onAssistantReasoningUpdated: ({ messageId, chunk, stage }) => {
+    // 推理内容（thinking/reasoning），chunk 同样为增量片段
   },
 }
 ```
@@ -235,8 +236,8 @@ callbacks: {
 | `onUsagesChange` | `Usage[]` | Token 使用记录更新 |
 | `onUserMessageAdded` | `UserMessageParams` | 用户消息添加 |
 | `onAssistantMessageAdded` | `messageId: string` | AI 消息创建 |
-| `onAssistantContentUpdated` | `{ messageId, chunk, accumulated, stage }` | 文本流式输出 |
-| `onAssistantReasoningUpdated` | `{ messageId, chunk, accumulated, stage }` | 推理流式输出 |
+| `onAssistantContentUpdated` | `{ messageId, chunk, stage }` | 文本流式输出（chunk 为增量片段） |
+| `onAssistantReasoningUpdated` | `{ messageId, chunk, stage }` | 推理流式输出（chunk 为增量片段） |
 | `onToolBlockUpdated` | `ToolBlockUpdateCallbackParams` | 工具块更新 |
 | `onErrorBlockAdded` | `error: string` | 错误块添加 |
 | `onCompactBlockAdded` | `content: string` | 压缩摘要添加 |
@@ -263,7 +264,7 @@ callbacks: {
 |------|------|------|
 | `onSubagentUserMessageAdded` | `subagentId, params` | 子代理收到用户消息 |
 | `onSubagentAssistantMessageAdded` | `subagentId, messageId` | 子代理创建 AI 消息 |
-| `onSubagentAssistantContentUpdated` | `{ subagentId, messageId, chunk, accumulated, stage }` | 子代理流式输出 |
+| `onSubagentAssistantContentUpdated` | `{ subagentId, messageId, chunk, stage }` | 子代理流式输出（chunk 为增量片段） |
 | `onSubagentLatestTotalTokensChange` | `subagentId, tokens` | 子代理 Token 更新 |
 
 ### MCP 回调 {#callbacks-mcp}
