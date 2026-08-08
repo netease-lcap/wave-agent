@@ -60,6 +60,7 @@ describe("SlashCommandManager", () => {
       abortAIMessage: vi.fn(),
       setIsLoading: vi.fn(),
       isLoading: false,
+      runForkSubagent: vi.fn().mockResolvedValue("task_1"),
     } as unknown as AIManager;
 
     // Create mock BackgroundTaskManager
@@ -764,6 +765,49 @@ describe("SlashCommandManager", () => {
 
       // Verify sendAIMessage was called (no early return due to isLoading guard)
       expect(aiManager.sendAIMessage).toHaveBeenCalled();
+    });
+  });
+
+  describe("/subtask command", () => {
+    it("should show usage error block and not start a fork when no args given", async () => {
+      const errorSpy = vi.spyOn(messageManager, "addErrorBlock");
+
+      const result = await slashCommandManager.executeCommand("subtask");
+
+      expect(result).toBe(true);
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Usage: /subtask <task description>",
+      );
+      expect(aiManager.runForkSubagent).not.toHaveBeenCalled();
+    });
+
+    it("should start a fork subagent with the task description and echo the command", async () => {
+      const result = await slashCommandManager.executeCommand(
+        "subtask",
+        "Summarize the plan",
+      );
+
+      expect(result).toBe(true);
+      expect(aiManager.runForkSubagent).toHaveBeenCalledWith(
+        "Summarize the plan",
+        { description: "Summarize the plan" },
+        expect.any(AbortSignal),
+      );
+
+      const messages = messageManager.getMessages();
+      const lastMessage = messages[messages.length - 1];
+      const textBlock = lastMessage.blocks[0] as TextBlock;
+      expect(textBlock.content).toBe("/subtask Summarize the plan");
+    });
+
+    it("should report failure via error block and reset loading when the fork fails", async () => {
+      vi.mocked(aiManager.runForkSubagent).mockRejectedValue(new Error("boom"));
+      const errorSpy = vi.spyOn(messageManager, "addErrorBlock");
+
+      await slashCommandManager.executeCommand("subtask", "Do it");
+
+      expect(aiManager.setIsLoading).toHaveBeenCalledWith(false);
+      expect(errorSpy).toHaveBeenCalledWith("Failed to execute /subtask: boom");
     });
   });
 });

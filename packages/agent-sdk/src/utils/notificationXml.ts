@@ -7,6 +7,9 @@ export function taskNotificationToXml(block: TaskNotificationBlock): string {
   if (block.outputFile) {
     xml += `<output-file>${block.outputFile}</output-file>\n`;
   }
+  if (block.result) {
+    xml += `<result>${block.result}</result>\n`;
+  }
   xml += `<status>${block.status}</status>\n`;
   xml += `<summary>${block.summary}</summary>\n`;
   xml += `</task-notification>`;
@@ -42,6 +45,7 @@ export function parseTaskNotificationXml(
     }
 
     const outputFile = extractTag(xml, "output-file") || undefined;
+    const result = extractTag(xml, "result") || undefined;
 
     return {
       type: "task_notification",
@@ -50,6 +54,7 @@ export function parseTaskNotificationXml(
       status,
       summary,
       ...(outputFile && { outputFile }),
+      ...(result && { result }),
     };
   } catch {
     return null;

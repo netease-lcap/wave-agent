@@ -111,4 +111,6 @@ export interface TaskNotificationBlock {
   status: "completed" | "failed" | "killed" | "aborted";
   summary: string;
   outputFile?: string;
+  /** Full final response of the task (e.g. a fork subagent's result). */
+  result?: string;
 }
