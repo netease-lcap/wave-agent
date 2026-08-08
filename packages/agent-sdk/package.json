@@ -13,6 +13,18 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./light": {
+      "types": "./dist/light.d.ts",
+      "default": "./dist/light.js"
+    },
+    "./package.json": "./package.json",
+    "./*": "./*"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/netease-lcap/wave-agent.git",
@@ -20,16 +32,10 @@
   },
   "files": [
     "dist",
-    "src",
-    "bin",
-    "vendor",
-    "scripts",
     "builtin",
     "README.md"
   ],
   "scripts": {
-    "prepare": "node scripts/install_ripgrep.js",
-    "postinstall": "node scripts/postinstall.js",
     "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "type-check": "tsc --noEmit --incremental",
     "watch": "tsc -p tsconfig.build.json --watch & tsc-alias -p tsconfig.build.json --watch",
@@ -45,9 +51,10 @@
     "@opentelemetry/api-logs": "^0.217.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.217.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.217.0",
+    "@opentelemetry/resources": "^2.7.1",
     "@opentelemetry/sdk-logs": "^0.217.0",
-    "@opentelemetry/sdk-node": "^0.217.0",
-    "@opentelemetry/sdk-trace-node": "^2.7.1",
+    "@opentelemetry/sdk-trace-base": "^2.7.1",
+    "@vscode/ripgrep": "^1.18.0",
     "chokidar": "^4.0.3",
     "cron-parser": "^5.5.0",
     "find-up": "^8.0.0",

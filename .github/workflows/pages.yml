@@ -34,14 +34,6 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
 
-      - name: Cache ripgrep binaries
-        uses: actions/cache@v6
-        with:
-          path: packages/agent-sdk/vendor/ripgrep
-          key: ripgrep-${{ runner.os }}-${{ runner.arch }}
-          restore-keys: |
-            ripgrep-${{ runner.os }}-
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

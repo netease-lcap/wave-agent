@@ -6,7 +6,7 @@ import { FileService } from '../services/fileService';
 import { SessionService } from '../services/sessionService';
 import { PluginService } from '../services/pluginService';
 import type { StdioClient } from '../stdio/stdioClient';
-import type { Scope, PermissionMode, PermissionDecision } from 'wave-agent-sdk';
+import type { Scope, PermissionMode, PermissionDecision } from 'wave-agent-sdk/light';
 
 export interface MessageHandlerContext {
     getChatSession: (viewType: 'sidebar' | 'tab' | 'window', windowId?: string) => ChatSession;

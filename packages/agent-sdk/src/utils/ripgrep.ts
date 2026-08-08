@@ -1,35 +1,6 @@
-import path from "path";
-import process from "process";
-import { getPackageRoot } from "./configPaths.js";
-
 /**
- * Detect the current platform and architecture to find the correct bundled ripgrep binary.
+ * Path to the ripgrep binary, provided by the @vscode/ripgrep dependency.
+ * The wrapper resolves the platform-specific binary package at import time
+ * via optionalDependencies + os/cpu filtering.
  */
-function getPlatformKey(): string {
-  const platform = process.platform;
-  const arch = process.arch;
-
-  if (platform === "darwin") {
-    return arch === "arm64" ? "macos-aarch64" : "macos-x86_64";
-  } else if (platform === "linux") {
-    return arch === "arm64" ? "linux-aarch64" : "linux-x86_64";
-  } else if (platform === "win32") {
-    return arch === "arm64" ? "windows-aarch64" : "windows-x86_64";
-  }
-
-  throw new Error(`Unsupported platform: ${platform}-${arch}`);
-}
-
-const platformKey = getPlatformKey();
-const isWindows = platformKey.startsWith("windows");
-const binaryName = isWindows ? "rg.exe" : "rg";
-
-/**
- * Path to the ripgrep binary bundled in the vendor directory.
- * Uses findUpSync to locate the package root, working correctly even
- * when bundled (e.g. esbuild into a VS Code extension).
- */
-export const rgPath = path.join(
-  getPackageRoot(),
-  `vendor/ripgrep/${platformKey}/${binaryName}`,
-);
+export { rgPath } from "@vscode/ripgrep";
