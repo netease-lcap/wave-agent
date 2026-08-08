@@ -191,6 +191,45 @@ src/utils.ts:1:export const logger = {};
     expect(result.content).toContain("export const logger");
   });
 
+  it("prepends the cwd recovery notice when the session cwd was auto-recovered", async () => {
+    const stdout = "src/index.ts:1:export const app = 'main';\n";
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
+    const context: ToolContext = {
+      ...testContext,
+      aiManager: {
+        consumeCwdRecovery: vi.fn().mockReturnValue({
+          from: "/repo/.wave/worktrees/feat-a",
+          to: "/repo",
+        }),
+      } as unknown as ToolContext["aiManager"],
+    };
+
+    const result = await grepTool.execute({ pattern: "export const" }, context);
+
+    expect(result.success).toBe(true);
+    expect(result.content).toBe(
+      "Note: working directory /repo/.wave/worktrees/feat-a no longer exists; session working directory recovered to /repo.\nsrc/index.ts:1:export const app = 'main';",
+    );
+  });
+
+  it("omits the notice when there is no pending cwd recovery", async () => {
+    const stdout = "src/index.ts:1:export const app = 'main';\n";
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
+    const context: ToolContext = {
+      ...testContext,
+      aiManager: {
+        consumeCwdRecovery: vi.fn().mockReturnValue(null),
+      } as unknown as ToolContext["aiManager"],
+    };
+
+    const result = await grepTool.execute({ pattern: "export const" }, context);
+
+    expect(result.success).toBe(true);
+    expect(result.content).toBe("src/index.ts:1:export const app = 'main';");
+  });
+
   it("should show match counts (count mode)", async () => {
     const stdout = `src/index.ts:2
 src/utils.ts:3

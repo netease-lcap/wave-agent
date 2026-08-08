@@ -11,6 +11,7 @@ import {
   TASK_REMINDER_CONFIG,
 } from "../utils/taskReminder.js";
 import { existsSync } from "node:fs";
+import * as path from "node:path";
 import type {
   GatewayConfig,
   ModelConfig,
@@ -149,6 +150,8 @@ export class AIManager {
   private modelOverride?: string;
   private _onCwdChange?: (newCwd: string) => void; // Store callback for CWD changes
   private originalWorkdir: string;
+  /** Pending cwd-recovery notice (set when getWorkdir() auto-recovers), consumed by tools */
+  private pendingCwdRecovery: { from: string; to: string } | null = null;
   private consecutiveCompactionFailures: number = 0;
   private readonly maxTurns?: number;
   /** Tracks file mtime/hash at read time for staleness detection on Edit/Write */
@@ -299,7 +302,55 @@ export class AIManager {
   }
 
   public getWorkdir(): string {
-    return this.container.get<string>("Workdir") ?? process.cwd();
+    const workdir = this.container.get<string>("Workdir") ?? process.cwd();
+    if (existsSync(workdir)) {
+      return workdir;
+    }
+
+    // The stored workdir no longer exists — e.g. the current worktree
+    // directory was removed manually with `git worktree remove` outside
+    // wave's exit flow. Node spawn() chdirs to `cwd` before spawning, so
+    // every tool that spawns a subprocess (Bash, Grep, background tasks)
+    // would fail with ENOENT and cripple the session. Recover to the
+    // original workdir (main repo) so the session keeps working.
+    if (!existsSync(this.originalWorkdir)) {
+      // No valid fallback — keep the stale value (sessions started in a
+      // directory that was deleted since cannot recover to anything real).
+      return workdir;
+    }
+
+    this.pendingCwdRecovery = { from: workdir, to: this.originalWorkdir };
+
+    // If the removed directory was this session's worktree, drop the stale
+    // worktree session state so ExitWorktree no-ops and EnterWorktree can
+    // start a fresh session.
+    const worktreeSession = this.getWorktreeSession();
+    if (
+      worktreeSession &&
+      path.resolve(worktreeSession.worktreePath) === path.resolve(workdir)
+    ) {
+      this.setWorktreeSession(null);
+    }
+
+    logger.warn(
+      `Working directory ${workdir} no longer exists; recovered session workdir to ${this.originalWorkdir}`,
+    );
+
+    this.container.register("Workdir", this.originalWorkdir);
+    this._onCwdChange?.(this.originalWorkdir);
+    return this.originalWorkdir;
+  }
+
+  /**
+   * Consume a pending cwd-recovery notice (if any). After the session
+   * workdir was auto-recovered because the previous directory disappeared,
+   * the first tool that calls this surfaces the notice to the model.
+   * Returns null when no recovery is pending.
+   */
+  public consumeCwdRecovery(): { from: string; to: string } | null {
+    const recovery = this.pendingCwdRecovery;
+    this.pendingCwdRecovery = null;
+    return recovery;
   }
 
   public getOriginalWorkdir(): string {

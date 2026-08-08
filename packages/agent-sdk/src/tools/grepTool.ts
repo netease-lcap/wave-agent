@@ -157,6 +157,14 @@ export const grepTool: ToolPlugin = {
 
     try {
       const workdir = context.workdir;
+
+      // If the session cwd was auto-recovered (e.g. the previous worktree
+      // directory was removed manually via `git worktree remove`), surface
+      // the notice in this tool's result so the model is aware of the switch.
+      const cwdRecovery = context.aiManager?.consumeCwdRecovery?.();
+      const recoveryNotice = cwdRecovery
+        ? `Note: working directory ${cwdRecovery.from} no longer exists; session working directory recovered to ${cwdRecovery.to}.\n`
+        : "";
       const rgArgs: string[] = [
         "--color=never",
         "--max-columns=500",
@@ -243,7 +251,7 @@ export const grepTool: ToolPlugin = {
         return {
           success: false,
           content: "",
-          error: `ripgrep failed: ${result.stderr}`,
+          error: `${recoveryNotice}ripgrep failed: ${result.stderr}`.trim(),
         };
       }
 
@@ -258,6 +266,7 @@ export const grepTool: ToolPlugin = {
         return {
           success: true,
           content:
+            recoveryNotice +
             "No matches found. Suggestion: specify the 'path' field to search in ignored or other directories (e.g., 'node_modules'), as the default search path is the current working directory and respects .gitignore.",
           shortResult: "No matches found",
           metadata: {
@@ -303,7 +312,7 @@ export const grepTool: ToolPlugin = {
 
       return {
         success: true,
-        content: finalOutput,
+        content: recoveryNotice + finalOutput,
         shortResult,
         metadata: {
           numMatches: totalMatches,

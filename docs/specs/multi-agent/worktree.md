@@ -147,6 +147,27 @@ order: 90
 
 ---
 
+### 用户故事：手动删除 worktree 后会话自动恢复（优先级：P1）
+
+作为开发者，我希望在会话中手动执行 `git worktree remove` 删掉当前 worktree 目录后，会话的工作目录自动回退到主仓库，以便会话内需要 spawn 子进程的工具（Bash、Grep、后台任务）不会因 cwd 失效而全部 ENOENT 崩溃。
+
+**为什么是这个优先级**：手动 `git worktree remove` 绕过 wave 的退出流程（ExitWorktree 工具 / CLI 退出对话框 / stdio RPC），会话的 "Workdir" 仍指向已删除目录。Node `spawn()` 会先 chdir 到 `cwd`，cwd 不存在直接抛 ENOENT——Bash（`spawn /bin/bash ENOENT`）、Grep（`spawn rg ENOENT`）、后台任务全部失效，而 Read/Write/Glob 正常，会话直接残废。Claude Code 的处理是 Shell.ts 在 spawn 前对 cwd 做 `realpath()` 检查并回退到 originalCwd，但其 originalCwd 在 worktree 会话中期就是 worktree 路径本身，回退同样失败，只能给出"目录不存在，请重启"的干净报错；wave 的 `getOriginalWorkdir()` 稳定指向主仓库（进入 worktree 时不改写），可以真正自动回退，比 Claude Code 更彻底。
+
+**独立测试**：进入 EnterWorktree 会话，在会话内用 Bash 执行 `git worktree remove --force <name>` 删除当前 worktree 目录，再执行任意 Bash/Grep 命令，验证命令正常执行、工作目录已回退到主仓库、工具结果包含回退提示；再调用 ExitWorktree，验证返回无操作消息（不报错）。
+
+**验收场景**：
+
+1. **假设** 会话在 EnterWorktree 创建的 worktree 中，**当** 用户在会话内手动执行 `git worktree remove --force` 删除当前 worktree 目录，**则** 下一次工具调用构建上下文时检测到会话 cwd 失效，自动回退到主仓库（原始 cwd），不再指向已删除目录。
+2. **假设** 回退已发生，**当** 会话内继续执行 Bash / Grep / 后台任务等需要 spawn 子进程的工具时，**则** 工具正常执行，不再出现 `spawn /bin/bash ENOENT` 或 `spawn rg ENOENT`。
+3. **假设** 回退已发生，**当** 下一个 spawn 工具执行时，**则** 工具结果开头包含提示："Note: working directory `<已删除路径>` no longer exists; session working directory recovered to `<主仓库路径>`"（该提示仅出现一次）。
+4. **假设** 回退已发生，**当** AI 调用 ExitWorktree 工具时，**则** 返回无操作消息（会话的 worktree 状态已随回退清除），不进行任何文件系统更改、不报错。
+5. **假设** 回退已发生，**当** AI 调用 EnterWorktree 工具时，**则** 能正常创建新的 worktree 会话（旧会话状态已清除，不会被误拒为"已在 worktree 会话中"）。
+6. **假设** 会话原始工作目录（主仓库）本身也不存在（极端场景），**当** 检测到当前 cwd 失效时，**则** 不进行回退，保持原值（没有有效的回退目标）。
+7. **假设** 原始工作目录是有效的主仓库，**当** 检测到当前 cwd 失效并回退时，**则** 日志记录 warn 级 "Working directory ... no longer exists; recovered session workdir to ..."，且宿主（CLI/webview）通过 workdirChange 通知更新会话工作目录显示。
+8. **假设** 用户在会话内手动删除 worktree 目录，**当** 删除发生时，**则** WorktreeRemove hook 不补触发——hook 契约要求目录仍存在（git 移除**之前**）以便 hook 读取目录内文件定位外部资源，且触发时机落在任意下一次工具调用对用户是意外副作用；与 Claude Code 行为一致（CC 也不检测手动删除、不补触发 hook）。用户通过工具提示获知目录已失效并完成回退。
+
+---
+
 ### 用户故事：stdio 多 Agent 并发下的 Worktree 会话隔离（优先级：P1）
 
 作为通过 stdio 后端同时运行多个会话的用户（例如 VS Code 侧边栏 + 多个编辑器标签页 / 多个窗口，或 JetBrains 插件），我希望一个会话进入 worktree 不会影响其它并发会话的工作目录、worktree 状态或工具执行，以便每个会话彼此隔离、互不干扰。
@@ -203,6 +224,7 @@ order: 90
 - **如果用户不在 git 仓库中怎么办？** `-w` 标志应失败并显示错误消息。
 - **当 WorktreeRemove hook 失败或超时时会发生什么？** 非阻塞：stderr 以错误块显示给用户，worktree 删除照常进行。
 - **当 stdio RPC 传入的 worktree 路径为符号链接或逃逸 repo root 时会发生什么？** 删除被拒绝并返回 RPC 错误，hook 不触发。
+- **当用户在会话内手动 `git worktree remove` 删除当前 worktree 目录时会发生什么？** 会话工作目录在下一次工具调用时自动回退到主仓库（原始 cwd），spawn 工具恢复可用，工具结果包含一次性回退提示；WorktreeRemove hook 不补触发（与 Claude Code 一致，hook 契约要求目录在 git 移除前仍可读）。
 
 ## 假设
 
@@ -213,4 +235,5 @@ order: 90
 - WorktreeRemove 是通知型钩子（Notification）：无决策控制，永不替代 `git worktree remove --force` + `git branch -D`。
 - WorktreeRemove hook 的 JSON 输入仅包含官方字段（`session_id`、`transcript_path`、`cwd`、`hook_event_name`、`worktree_path`），worktree 名称由 hook 通过 `basename "$worktree_path"` 派生。
 - 删除后台会话（stdio RPC）的 worktree 前会校验路径：拒绝符号链接或解析后位于 repo root 之外的路径。
+- 手动删除当前 worktree 目录不触发 WorktreeRemove hook（与 Claude Code 一致）；会话通过 cwd 失效检测 + 自动回退到主仓库 + 一次性工具提示恢复，回退时清除已失效的 worktree 会话状态。
 
