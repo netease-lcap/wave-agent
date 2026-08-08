@@ -373,6 +373,14 @@ export class StdioAgent {
         return result.success;
     }
 
+    async backgroundCurrentTask(): Promise<void> {
+        await this.client.request(
+            'backgroundCurrentTask',
+            undefined,
+            this.sessionId,
+        );
+    }
+
     async getWorkflowRuns(): Promise<SerializableWorkflowRun[]> {
         const result = (await this.client.request(
             'getWorkflowRuns',

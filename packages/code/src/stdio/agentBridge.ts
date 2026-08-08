@@ -335,6 +335,8 @@ export class AgentBridge {
         return this.getBackgroundTaskOutput(p.taskId as string, sessionId);
       case "stopBackgroundTask":
         return this.stopBackgroundTask(p.taskId as string, sessionId);
+      case "backgroundCurrentTask":
+        return this.backgroundCurrentTask(sessionId);
 
       case "getWorkflowRuns":
         return this.getWorkflowRuns(sessionId);
@@ -903,6 +905,12 @@ export class AgentBridge {
     const entry = this.requireSession(sessionId);
     const success = entry.agent.stopBackgroundTask(taskId);
     return { success };
+  }
+
+  private async backgroundCurrentTask(sessionId?: string): Promise<null> {
+    const entry = this.requireSession(sessionId);
+    await entry.agent.backgroundCurrentTask();
+    return null;
   }
 
   private async getWorkflowRuns(

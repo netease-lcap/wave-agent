@@ -987,6 +987,19 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
       return;
     }
 
+    // Handle Ctrl+B to background the current foreground task (same as CLI).
+    // Only intercepted while a turn is running — when idle the key falls
+    // through so the host keeps its own Ctrl+B binding (e.g. VS Code's
+    // Toggle Sidebar).
+    if (event.key === 'b' && (event.ctrlKey || event.metaKey) && !isComposing) {
+      if (isStreaming) {
+        event.preventDefault();
+        event.stopPropagation();
+        vscode.postMessage({ command: 'backgroundCurrentTask' });
+        return;
+      }
+    }
+
     // Handle 指令 navigation. Navigate over the display-ordered list so the
     // highlighted item, up/down movement, and Enter selection all match the
     // grouped order shown in the popup.
