@@ -36,9 +36,9 @@ test.describe('Language Configuration Demo', () => {
         await elementScreenshotWebp(dialog, '../../docs/public/screenshots/language-config-ui.webp');
 
         // Switch to the model settings tab and capture it
-        await webviewPage.getByRole('tab', { name: '模型设置' }).click();
+        await webviewPage.getByRole('tab', { name: '直连设置' }).click();
         await expect(webviewPage.locator('#apiKey')).toBeVisible();
         await expect(webviewPage.locator('#fastModel')).toHaveValue('claude-haiku-4-20250514');
-        await elementScreenshotWebp(dialog, '../../docs/public/screenshots/spec-config-model.webp');
+        await elementScreenshotWebp(dialog, '../../docs/public/screenshots/spec-config-direct.webp');
     });
 });

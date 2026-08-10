@@ -670,13 +670,13 @@ _更多菜单：设置 / 企业控制台 / 登录（或退出登录）_
 
 ### 9.1 配置设置 {#configuration-settings}
 
-用户可以自定义 API Key、Base URL 等关键参数，以适配不同的 AI 服务提供商。通过 `/config`、`/status`、`/plugin`、`/mcp` 四个斜杠命令分别唤起独立的弹窗进行管理。配置弹窗分为「全局设置」与「模型设置」两个选项卡，表单字段仅显示用户手动输入的值，不会被环境变量填充。
+用户可以自定义 API Key、Base URL 等关键参数，以适配不同的 AI 服务提供商。通过 `/config`、`/status`、`/plugin`、`/mcp` 四个斜杠命令分别唤起独立的弹窗进行管理。配置弹窗分为「全局设置」与「直连设置」两个选项卡，表单字段仅显示用户手动输入的值，不会被环境变量填充。
 
 **主要特性：**
 
 - **常规设置（`/config`）**：
   - **全局设置**：选择 AI 回复语言（中文 / 英文）。
-  - **模型设置**：配置直连 LLM 的参数，保存后优先使用此配置，无需登录即可使用插件：
+  - **直连设置**：配置直连 LLM 的参数，保存后优先使用此配置，无需登录即可使用插件：
     - **API Key**：LLM 服务的访问密钥。
     - **Base URL**：LLM 服务的 API 基础地址。
     - **Agent Model**：主代理使用的模型。
@@ -697,8 +697,8 @@ _状态信息弹窗_
 ![配置设置](/screenshots/spec-configuration.webp)
 _配置设置（全局设置选项卡）_
 
-![模型设置](/screenshots/spec-config-model.webp)
-_模型设置选项卡_
+![直连设置](/screenshots/spec-config-direct.webp)
+_直连设置选项卡_
 
 ### 9.2 语言设置 {#language-settings}
 

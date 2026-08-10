@@ -52,7 +52,7 @@ describe('ConfigDialog', () => {
     expect(screen.getByRole('heading', { name: '设置' })).toBeTruthy();
 
     const globalTab = screen.getByRole('tab', { name: '全局设置' });
-    const modelTab = screen.getByRole('tab', { name: '模型设置' });
+    const modelTab = screen.getByRole('tab', { name: '直连设置' });
     expect(globalTab.getAttribute('aria-selected')).toBe('true');
     expect(modelTab.getAttribute('aria-selected')).toBe('false');
 
@@ -65,9 +65,9 @@ describe('ConfigDialog', () => {
   it('switches to the model tab and renders model fields', () => {
     renderDialog();
 
-    fireEvent.click(screen.getByRole('tab', { name: '模型设置' }));
+    fireEvent.click(screen.getByRole('tab', { name: '直连设置' }));
 
-    expect(screen.getByRole('tab', { name: '模型设置' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tab', { name: '直连设置' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByText('保存后，优先使用此配置，无需登录即可正常使用插件。')).toBeTruthy();
     expect(screen.getByLabelText('API Key')).toBeTruthy();
     expect(screen.getByLabelText('Base URL')).toBeTruthy();
@@ -80,7 +80,7 @@ describe('ConfigDialog', () => {
 
   it('renders Fast Model as an <input>, not a <select>', () => {
     renderDialog();
-    fireEvent.click(screen.getByRole('tab', { name: '模型设置' }));
+    fireEvent.click(screen.getByRole('tab', { name: '直连设置' }));
 
     const fastModel = screen.getByLabelText('Fast Model');
     expect(fastModel.tagName).toBe('INPUT');
@@ -89,7 +89,7 @@ describe('ConfigDialog', () => {
 
   it('uses the correct placeholder text for Base URL', () => {
     renderDialog();
-    fireEvent.click(screen.getByRole('tab', { name: '模型设置' }));
+    fireEvent.click(screen.getByRole('tab', { name: '直连设置' }));
 
     expect(screen.getByLabelText('Base URL').getAttribute('placeholder')).toBe('请输入 Base URL');
     expect(screen.getByLabelText('API Key').getAttribute('placeholder')).toBe('请输入 API Key');
@@ -106,7 +106,7 @@ describe('ConfigDialog', () => {
       },
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: '模型设置' }));
+    fireEvent.click(screen.getByRole('tab', { name: '直连设置' }));
 
     const apiKey = screen.getByLabelText('API Key');
     fireEvent.change(apiKey, { target: { value: 'new-key' } });
