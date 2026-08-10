@@ -57,7 +57,7 @@ describe("RewindCommand Content", () => {
     });
   });
 
-  it("should display bang command content", async () => {
+  it("should exclude bang command messages", async () => {
     const mockMessages: Partial<Message>[] = [
       {
         id: "1",
@@ -84,7 +84,9 @@ describe("RewindCommand Content", () => {
 
     await vi.waitFor(() => {
       const output = stripAnsiColors(lastFrame() || "");
-      expect(output).toContain("!ls -la");
+      // bang 命令消息是系统执行结果，不作为回滚点
+      expect(output).not.toContain("!ls -la");
+      expect(output).toContain("No user messages found to rewind to.");
     });
   });
 
