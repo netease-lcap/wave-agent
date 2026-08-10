@@ -20,6 +20,17 @@ export const shell = {
   openPath: vi.fn(async () => ''),
 };
 
+// vi.fn-wrapped class so tests can inspect Notification.mock.instances /
+// mockClear() across tests (a plain class has no .mock).
+export const Notification = vi.fn(function (this: { options: unknown; show: ReturnType<typeof vi.fn> }, options: unknown) {
+  this.options = options;
+  this.show = vi.fn();
+}) as unknown as typeof import('electron').Notification & {
+  isSupported: ReturnType<typeof vi.fn>;
+  mockClear: ReturnType<typeof vi.fn>;
+};
+Notification.isSupported = vi.fn(() => true);
+
 export const ipcMain = {
   on: vi.fn(),
   handle: vi.fn(),
