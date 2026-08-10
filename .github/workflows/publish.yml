@@ -182,13 +182,23 @@ jobs:
       # notarization env vars are injected only on macOS (the p12 and App Store
       # Connect API key are Apple-specific; passing them to the Windows runner
       # would make electron-builder attempt an invalid signature there).
+      #
+      # APPLE_API_KEY must be a PATH to the .p8 file: @electron/notarize
+      # forwards it verbatim as `notarytool --key <value>` (no base64 decode
+      # or temp-file write on our installed 2.5.0), so the raw PEM content
+      # would be parsed as an option (starts with '-') → "Invalid option".
+      # Materialize the secret into a runner-local file first.
       - name: Build desktop installers (macOS)
         if: runner.os == 'macOS'
-        run: pnpm -F wave-desktop run dist -- --publish never
+        run: |
+          mkdir -p "$HOME/private_keys"
+          printf '%s' "$APPLE_API_KEY_CONTENT" > "$HOME/private_keys/AuthKey_$APPLE_API_KEY_ID.p8"
+          chmod 600 "$HOME/private_keys/AuthKey_$APPLE_API_KEY_ID.p8"
+          APPLE_API_KEY="$HOME/private_keys/AuthKey_$APPLE_API_KEY_ID.p8" pnpm -F wave-desktop run dist -- --publish never
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
