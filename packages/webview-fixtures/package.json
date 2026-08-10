@@ -1,6 +1,6 @@
 {
   "name": "wave-webview-fixtures",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "type": "module",
   "description": "Shared host→webview message contract fixtures for the webview, VS Code, JetBrains and desktop test suites",
