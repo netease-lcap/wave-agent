@@ -12,12 +12,12 @@ import { MockDataGenerator } from '../fixtures/mockData';
 const CONTENT =
     'preview [local app](http://localhost:5173/app) then [docs](https://example.com/docs)';
 
-function renderMessage(options?: { onOpenPreview?: (url: string) => void; hostType?: string }) {
+function renderMessage(options?: { onOpenPreview?: (url: string) => void; hostType?: string; content?: string }) {
     const vscode = createMockVscode();
     if (options?.hostType) {
         window.waveHostType = options.hostType;
     }
-    const message = MockDataGenerator.createAssistantMessage(CONTENT);
+    const message = MockDataGenerator.createAssistantMessage(options?.content ?? CONTENT);
     const result = render(
         <Message message={message} vscode={vscode} onOpenPreview={options?.onOpenPreview} />
     );
@@ -67,7 +67,12 @@ describe('Message link routing', () => {
 
     it('IDE host: links are not intercepted at all', () => {
         const onOpenPreview = vi.fn();
-        const { vscode, localLink, externalLink } = renderMessage({ onOpenPreview });
+        // jsdom only implements same-document (fragment) navigation; clicking
+        // real URLs would trigger its unimplemented cross-document navigation.
+        const { vscode, localLink, externalLink } = renderMessage({
+            onOpenPreview,
+            content: 'preview [local app](#app) then [docs](#docs)',
+        });
 
         const localNotPrevented = fireEvent.click(localLink);
         const externalNotPrevented = fireEvent.click(externalLink);
