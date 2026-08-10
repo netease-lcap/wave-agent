@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand } from './test-utils';
 import { MockDataGenerator } from '../fixtures/mockData';
+import type { Message } from 'wave-agent-sdk';
+import { MessageSource } from 'wave-agent-sdk';
 
 describe('Rewind Feature', () => {
     beforeEach(() => {
@@ -178,6 +180,70 @@ describe('Rewind Feature', () => {
         // Rewind buttons should only appear on user messages
         const rewindButtons = document.querySelectorAll('.message-action-btn');
         // Only 1 user message (non-bang) should have a rewind button
+        expect(rewindButtons).toHaveLength(1);
+    });
+
+    it('should not show rewind button on background task notification messages', async () => {
+        renderChatApp();
+
+        const notificationMessage: Message = {
+            id: 'msg-notif',
+            role: 'user',
+            timestamp: '2024-01-01T00:00:00.000Z',
+            blocks: [{
+                type: 'task_notification',
+                taskId: 'task-1',
+                taskType: 'shell',
+                status: 'completed',
+                summary: 'Task done'
+            }]
+        };
+
+        const messages = [
+            MockDataGenerator.createUserMessage('User message', 'msg-user'),
+            notificationMessage,
+            MockDataGenerator.createAssistantMessage('Assistant message', 'msg-assistant')
+        ];
+
+        act(() => {
+            sendCommand('updateMessages', { messages });
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('User message')).toBeInTheDocument();
+        });
+
+        // Only the real user message has a rewind button; the background
+        // notification (role: user) must not — it is not a rewind checkpoint.
+        const rewindButtons = document.querySelectorAll('.message-action-btn');
+        expect(rewindButtons).toHaveLength(1);
+    });
+
+    it('should not show rewind button on hook-injected user messages', async () => {
+        renderChatApp();
+
+        const hookMessage: Message = {
+            id: 'msg-hook',
+            role: 'user',
+            timestamp: '2024-01-01T00:00:00.000Z',
+            blocks: [{ type: 'text', content: 'hook context', source: MessageSource.HOOK }]
+        };
+
+        const messages = [
+            MockDataGenerator.createUserMessage('User message', 'msg-user'),
+            hookMessage
+        ];
+
+        act(() => {
+            sendCommand('updateMessages', { messages });
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('User message')).toBeInTheDocument();
+        });
+
+        // Hook-injected messages are system-generated and not rewind checkpoints
+        const rewindButtons = document.querySelectorAll('.message-action-btn');
         expect(rewindButtons).toHaveLength(1);
     });
 });

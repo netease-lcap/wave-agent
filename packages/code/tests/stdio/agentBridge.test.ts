@@ -851,6 +851,12 @@ test("listRewindCheckpoints filters to real user messages and flattens content",
       id: "u5",
       blocks: [{ type: "text", content: "hook 输出", source: "hook" }],
     },
+    // bang 命令消息是系统执行结果，不是用户输入
+    {
+      role: "user",
+      id: "u6",
+      blocks: [{ type: "bang", command: "deploy", stage: "end", exitCode: 0 }],
+    },
   ] as unknown as Message[];
   const mockAgent = createMockAgent({
     getFullMessageThread: vi.fn().mockResolvedValue({

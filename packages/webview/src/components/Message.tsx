@@ -17,7 +17,7 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME
 } from 'wave-agent-sdk/dist/constants/tools.js';
-import type { MessageProps, ToolBlock, ImageBlock, TaskNotificationBlock, ReasoningBlock, CompactBlock, MessageBlock } from '../types';
+import type { Message as MessageType, MessageProps, ToolBlock, ImageBlock, TaskNotificationBlock, ReasoningBlock, CompactBlock, MessageBlock } from '../types';
 import { DiffViewer } from './DiffViewer';
 import { MermaidRenderer } from './MermaidRenderer';
 import { ReasoningBlockView } from './ReasoningBlockView';
@@ -99,6 +99,16 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
 
   return { elements };
 };
+
+// 与 CLI /rewind 检查点判定（isUserCheckpointMessage）保持一致：后台任务
+// 通知与 hook 注入的系统生成消息不作为回滚目标，bang 命令消息也不显示按钮。
+const isRewindTargetMessage = (message: MessageType): boolean =>
+  message.role === 'user' &&
+  !message.isMeta &&
+  !!message.id &&
+  !message.blocks.some((b) => b.type === 'bang') &&
+  !message.blocks.some((b) => b.type === 'task_notification') &&
+  !message.blocks.some((b) => b.type === 'text' && b.source === 'hook');
 
 
 export const Message: React.FC<MessageProps> = React.memo((props) => {
@@ -721,7 +731,7 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
   return (
     <div className={getMessageClassName()} data-message-id={message.id} data-role={message.role}>
       {message.blocks?.map((block, index) => renderBlock(block, index))}
-      {message.role === 'user' && !isQueued && message.id && !message.blocks?.some(b => b.type === 'bang') && (
+      {isRewindTargetMessage(message) && !isQueued && (
         <div className="message-actions">
           <Tooltip text="回滚到此消息" position="bottom">
             <button 
