@@ -6,7 +6,6 @@ import '../styles/MermaidRenderer.css';
 interface MermaidRendererProps {
   content: string;
   className?: string;
-  vscode: { postMessage: (msg: unknown) => void };
 }
 
 interface FullscreenModalProps {
@@ -14,7 +13,6 @@ interface FullscreenModalProps {
   onClose: () => void;
   svgContent: string;
   originalContent: string;
-  vscode: { postMessage: (msg: unknown) => void };
 }
 
 let currentMermaidTheme: 'default' | 'dark' | null = null;
@@ -83,7 +81,7 @@ const cleanMermaidSyntax = (content: string): string => {
     .replace(/\s+$/gm, '');
 };
 
-const FullscreenModal: React.FC<FullscreenModalProps> = ({ isOpen, onClose, svgContent, originalContent: _originalContent, vscode }) => {
+const FullscreenModal: React.FC<FullscreenModalProps> = ({ isOpen, onClose, svgContent, originalContent: _originalContent }) => {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -149,91 +147,6 @@ const FullscreenModal: React.FC<FullscreenModalProps> = ({ isOpen, onClose, svgC
     }
   }, [isOpen, handleWheel, handleMouseMove, handleMouseUp, onClose]);
 
-  const downloadSvg = () => {
-    vscode.postMessage({
-      command: 'downloadMermaid',
-      content: svgContent,
-      format: 'svg'
-    });
-  };
-
-  const downloadPng = () => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const img = new Image();
-    
-    // Use base64 data URL for SVG to avoid some security/tainting issues
-    // and ensure it's self-contained
-    const svgBase64 = btoa(unescape(encodeURIComponent(svgContent)));
-    const url = `data:image/svg+xml;base64,${svgBase64}`;
-
-    img.onload = () => {
-      // Create a temporary SVG element to measure its actual size
-      const parser = new DOMParser();
-      const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml');
-      const svgElement = svgDoc.documentElement;
-      
-      // Try to get dimensions from SVG attributes
-      let width = parseFloat(svgElement.getAttribute('width') || '0');
-      let height = parseFloat(svgElement.getAttribute('height') || '0');
-      const viewBox = svgElement.getAttribute('viewBox');
-      let viewBoxWidth = 0;
-      let viewBoxHeight = 0;
-
-      if (viewBox) {
-        const parts = viewBox.split(/\s+/).map(parseFloat);
-        if (parts.length === 4) {
-          viewBoxWidth = parts[2];
-          viewBoxHeight = parts[3];
-        }
-      }
-
-      // If width/height are percentages or missing, use viewBox
-      if (!width || isNaN(width) || svgElement.getAttribute('width')?.includes('%')) {
-        width = viewBoxWidth || img.naturalWidth || img.width || 800;
-      }
-      if (!height || isNaN(height) || svgElement.getAttribute('height')?.includes('%')) {
-        height = viewBoxHeight || img.naturalHeight || img.height || 600;
-      }
-
-      // Final check to maintain aspect ratio if one dimension is still missing
-      if (viewBoxWidth && viewBoxHeight) {
-        const aspectRatio = viewBoxWidth / viewBoxHeight;
-        if (width && !height) height = width / aspectRatio;
-        else if (!width && height) width = height * aspectRatio;
-      }
-
-      // Fallback to defaults
-      width = width || 800;
-      height = height || 600;
-      
-      canvas.width = width * 2; // Higher resolution
-      canvas.height = height * 2;
-      ctx.scale(2, 2);
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, width, height);
-      
-      try {
-        const pngDataUrl = canvas.toDataURL('image/png');
-        vscode.postMessage({
-          command: 'downloadMermaid',
-          content: pngDataUrl,
-          format: 'png'
-        });
-      } catch (err) {
-        console.error('Failed to export canvas to PNG:', err);
-        vscode.postMessage({
-          command: 'showError',
-          message: '由于浏览器安全限制，无法生成 PNG。这通常是因为图表中包含了复杂的 HTML 标签。请尝试下载 SVG 格式。'
-        });
-      }
-    };
-    img.src = url;
-  };
-
   const resetView = () => {
     setScale(1);
     setPosition({ x: 0, y: 0 });
@@ -249,12 +162,6 @@ const FullscreenModal: React.FC<FullscreenModalProps> = ({ isOpen, onClose, svgC
     >
       <div className="fullscreen-header">
         <div className="fullscreen-controls">
-          <button onClick={downloadSvg} className="control-btn" title="下载 SVG">
-            <i className="codicon codicon-file-code"></i> SVG
-          </button>
-          <button onClick={downloadPng} className="control-btn" title="下载 PNG">
-            <i className="codicon codicon-file-media"></i> PNG
-          </button>
           <button onClick={resetView} className="control-btn" title="重置视图">
             <i className="codicon codicon-refresh"></i> 重置
           </button>
@@ -288,7 +195,7 @@ const FullscreenModal: React.FC<FullscreenModalProps> = ({ isOpen, onClose, svgC
   );
 };
 
-export const MermaidRenderer: React.FC<MermaidRendererProps> = ({ content, className = '', vscode }) => {
+export const MermaidRenderer: React.FC<MermaidRendererProps> = ({ content, className = '' }) => {
   const [activeTab, setActiveTab] = useState<'preview' | 'source'>('preview');
   const [error, setError] = useState<string | null>(null);
   const [isRendering, setIsRendering] = useState(false);
@@ -440,95 +347,6 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({ content, class
     }
   }, [svgContent]);
 
-  // Download functions
-  const downloadSvg = useCallback(() => {
-    if (!svgContent) return;
-    
-    vscode.postMessage({
-      command: 'downloadMermaid',
-      content: svgContent,
-      format: 'svg'
-    });
-  }, [svgContent, vscode]);
-
-  const downloadPng = useCallback(() => {
-    if (!svgContent) return;
-    
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const img = new Image();
-    
-    // Use base64 data URL for SVG to avoid some security/tainting issues
-    const svgBase64 = btoa(unescape(encodeURIComponent(svgContent)));
-    const url = `data:image/svg+xml;base64,${svgBase64}`;
-
-    img.onload = () => {
-      // Create a temporary SVG element to measure its actual size
-      const parser = new DOMParser();
-      const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml');
-      const svgElement = svgDoc.documentElement;
-      
-      // Try to get dimensions from SVG attributes
-      let width = parseFloat(svgElement.getAttribute('width') || '0');
-      let height = parseFloat(svgElement.getAttribute('height') || '0');
-      const viewBox = svgElement.getAttribute('viewBox');
-      let viewBoxWidth = 0;
-      let viewBoxHeight = 0;
-
-      if (viewBox) {
-        const parts = viewBox.split(/\s+/).map(parseFloat);
-        if (parts.length === 4) {
-          viewBoxWidth = parts[2];
-          viewBoxHeight = parts[3];
-        }
-      }
-
-      // If width/height are percentages or missing, use viewBox
-      if (!width || isNaN(width) || svgElement.getAttribute('width')?.includes('%')) {
-        width = viewBoxWidth || img.naturalWidth || img.width || 800;
-      }
-      if (!height || isNaN(height) || svgElement.getAttribute('height')?.includes('%')) {
-        height = viewBoxHeight || img.naturalHeight || img.height || 600;
-      }
-
-      // Final check to maintain aspect ratio if one dimension is still missing
-      if (viewBoxWidth && viewBoxHeight) {
-        const aspectRatio = viewBoxWidth / viewBoxHeight;
-        if (width && !height) height = width / aspectRatio;
-        else if (!width && height) width = height * aspectRatio;
-      }
-
-      // Fallback to defaults
-      width = width || 800;
-      height = height || 600;
-      
-      canvas.width = width * 2; // Higher resolution
-      canvas.height = height * 2;
-      ctx.scale(2, 2);
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, width, height);
-      
-      try {
-        const pngDataUrl = canvas.toDataURL('image/png');
-        vscode.postMessage({
-          command: 'downloadMermaid',
-          content: pngDataUrl,
-          format: 'png'
-        });
-      } catch (err) {
-        console.error('Failed to export canvas to PNG:', err);
-        vscode.postMessage({
-          command: 'showError',
-          message: '由于浏览器安全限制，无法生成 PNG。这通常是因为图表中包含了复杂的 HTML 标签。请尝试下载 SVG 格式。'
-        });
-      }
-    };
-    img.src = url;
-  }, [svgContent, vscode]);
-
   const renderPreviewTab = () => {
     if (error) {
       return (
@@ -555,20 +373,6 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({ content, class
       <div className="mermaid-preview">
         {svgContent && (
           <div className="mermaid-actions">
-            <button 
-              onClick={downloadSvg} 
-              className="action-button" 
-              title="下载 SVG"
-            >
-              <i className="codicon codicon-file-code"></i>
-            </button>
-            <button 
-              onClick={downloadPng} 
-              className="action-button" 
-              title="下载 PNG"
-            >
-              <i className="codicon codicon-file-media"></i>
-            </button>
             <button 
               onClick={() => setIsFullscreen(true)} 
               className="action-button" 
@@ -634,7 +438,6 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({ content, class
         onClose={() => setIsFullscreen(false)}
         svgContent={svgContent}
         originalContent={content}
-        vscode={vscode}
       />
     </>
   );

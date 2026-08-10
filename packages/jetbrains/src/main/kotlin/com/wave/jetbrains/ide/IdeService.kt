@@ -9,8 +9,6 @@ import com.intellij.openapi.editor.LogicalPosition
 import com.intellij.openapi.editor.ScrollType
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.TextEditor
-import com.intellij.openapi.fileChooser.FileChooserFactory
-import com.intellij.openapi.fileChooser.FileSaverDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.wave.jetbrains.util.Edt
@@ -22,11 +20,10 @@ import kotlinx.serialization.json.put
 import java.awt.Desktop
 import java.io.File
 import java.nio.file.Files
-import java.util.Base64
 
 /**
  * IDE integration service: handles webview commands that touch IntelliJ IDE capabilities
- * (open file, preview image, download mermaid, error notification, upload artifacts).
+ * (open file, preview image, error notification, upload artifacts).
  * Mirrors packages/vscode/src/session/messageHandler.ts handlers + fileService.ts.
  *
  * Field names and response commands follow the VSCE implementation so the shared webview
@@ -120,57 +117,6 @@ object IdeService {
         } catch (e: Exception) {
             LOG.warn("openExternal failed: ${e.message}", e)
             showError(project, "打开外部链接失败: ${e.message}")
-        }
-    }
-
-    /**
-     * downloadMermaid — mirrors VSCE handleDownloadMermaid (messageHandler.ts:388).
-     * Params: content (String), format ("svg" | "png"). For png, content is a data URL
-     * (data:image/png;base64,...); for svg, content is the raw SVG text.
-     * Shows a native save dialog, writes the file, and pushes downloadSuccess / downloadError
-     * back to the webview (VSCE shows an info message instead; the response commands are
-     * harmless extras the webview ignores).
-     */
-    fun downloadMermaid(
-        project: Project,
-        params: JsonObject,
-        onResult: (command: String, payload: JsonObject) -> Unit,
-    ) {
-        val content = params["content"]?.jsonPrimitive?.content
-        val format = params["format"]?.jsonPrimitive?.content ?: "svg"
-        if (content.isNullOrEmpty()) {
-            onResult("downloadError", buildJsonObject { put("error", "缺少图表内容") })
-            return
-        }
-        val defaultFileName = "mermaid-diagram-${System.currentTimeMillis()}.$format"
-        val defaultDir = project.basePath?.let { java.nio.file.Paths.get(it) }
-
-        Edt.invokeLater {
-            try {
-                val descriptor = FileSaverDescriptor("保存 Mermaid 图表", "选择保存位置", format)
-                val dialog = FileChooserFactory.getInstance().createSaveFileDialog(descriptor, project)
-                val wrapper = dialog.save(defaultDir, defaultFileName) ?: return@invokeLater // user cancelled
-                val target = wrapper.file
-                val bytes = when (format) {
-                    "svg" -> content.toByteArray(Charsets.UTF_8)
-                    else -> {
-                        // data URL: data:image/png;base64,<...>
-                        val base64 = content.substringAfter(",", "")
-                        if (base64.isEmpty()) {
-                            onResult("downloadError", buildJsonObject { put("error", "无效的 PNG 数据") })
-                            return@invokeLater
-                        }
-                        Base64.getDecoder().decode(base64)
-                    }
-                }
-                Files.write(target.toPath(), bytes)
-                onResult("downloadSuccess", buildJsonObject {
-                    put("message", "图表已保存至: ${target.absolutePath}")
-                })
-            } catch (e: Exception) {
-                LOG.warn("downloadMermaid failed: ${e.message}", e)
-                onResult("downloadError", buildJsonObject { put("error", "保存图表失败: ${e.message}") })
-            }
         }
     }
 

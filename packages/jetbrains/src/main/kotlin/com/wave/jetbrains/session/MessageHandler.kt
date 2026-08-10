@@ -1,6 +1,6 @@
 package com.wave.jetbrains.session
 
-import com.intellij.ide.plugins.PluginManagerCore
+import com.intellij.ide.plugins.PluginManager
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
@@ -256,10 +256,6 @@ class MessageHandler(
             "showError" -> {
                 val message = msg["message"]?.jsonPrimitive?.content ?: ""
                 IdeService.showError(project, message)
-            }
-            // VSCE :83 → save dialog + write
-            "downloadMermaid" -> {
-                IdeService.downloadMermaid(project, msg) { cmd, payload -> postMessage(cmd, payload) }
             }
             // VSCE :128/:221 → open file + selection
             "openFile" -> IdeService.openFile(project, msg)
@@ -636,7 +632,7 @@ class MessageHandler(
         session.agent?.sessionCwd ?: session.agent?.workingDirectory ?: project.basePath ?: System.getProperty("user.dir")
 
     private fun pluginVersion(): String =
-        PluginManagerCore.getPlugin(PluginId.getId("com.wave.jetbrains"))?.version ?: ""
+        PluginManager.getInstance().findEnabledPlugin(PluginId.getId("com.wave.jetbrains"))?.version ?: ""
 
     /** Decode webview file payload → bytes. data may be a base64/data-url string (best effort). */
     private fun decodeFileData(data: JsonElement?): ByteArray {

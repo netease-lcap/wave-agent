@@ -206,7 +206,6 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
             <MermaidRenderer 
               key={element.id || `mermaid-${index}-${elIndex}`}
               content={element.content}
-              vscode={props.vscode}
             />
           ) : (
             <div 
