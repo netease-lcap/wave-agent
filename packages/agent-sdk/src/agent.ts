@@ -1276,6 +1276,23 @@ export class Agent {
   }
 
   /**
+   * Get all subagent configurations visible in this session (built-in,
+   * user, project, and plugin agents).
+   * @returns The list of subagent configurations
+   */
+  public getSubagentConfigurations(): import("./utils/subagentParser.js").SubagentConfiguration[] {
+    return this.subagentManager.getConfigurations();
+  }
+
+  /**
+   * Get currently active subagent instances (status active/initializing).
+   * @returns The list of active subagent instances
+   */
+  public getActiveSubagentInstances(): import("./managers/subagentManager.js").SubagentInstance[] {
+    return this.subagentManager.getActiveInstances();
+  }
+
+  /**
    * Get the current task list ID
    */
   public get taskListId(): string {

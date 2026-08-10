@@ -130,6 +130,7 @@ export interface InputState {
   imageIdCounter: number;
   showBackgroundTaskManager: boolean;
   showMcpManager: boolean;
+  showAgentsManager: boolean;
   showRewindManager: boolean;
   showHelp: boolean;
   showStatusCommand: boolean;
@@ -167,6 +168,7 @@ export const initialState: InputState = {
   imageIdCounter: 1,
   showBackgroundTaskManager: false,
   showMcpManager: false,
+  showAgentsManager: false,
   showRewindManager: false,
   showHelp: false,
   showStatusCommand: false,
@@ -400,6 +402,7 @@ export type InputAction =
   | { type: "CLEAR_IMAGES" }
   | { type: "SET_SHOW_BACKGROUND_TASK_MANAGER"; payload: boolean }
   | { type: "SET_SHOW_MCP_MANAGER"; payload: boolean }
+  | { type: "SET_SHOW_AGENTS_MANAGER"; payload: boolean }
   | { type: "SET_SHOW_REWIND_MANAGER"; payload: boolean }
   | { type: "SET_SHOW_HELP"; payload: boolean }
   | { type: "SET_SHOW_STATUS_COMMAND"; payload: boolean }
@@ -587,6 +590,12 @@ export function inputReducer(
       return {
         ...state,
         showMcpManager: action.payload,
+        selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
+      };
+    case "SET_SHOW_AGENTS_MANAGER":
+      return {
+        ...state,
+        showAgentsManager: action.payload,
         selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
       };
     case "SET_SHOW_REWIND_MANAGER":
@@ -970,6 +979,7 @@ export function inputReducer(
           !(
             state.showBackgroundTaskManager ||
             state.showMcpManager ||
+            state.showAgentsManager ||
             state.showRewindManager ||
             state.showHelp ||
             state.showStatusCommand ||

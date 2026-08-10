@@ -242,6 +242,8 @@ export const useInputManager = (
                 });
               } else if (command === "mcp") {
                 dispatch({ type: "SET_SHOW_MCP_MANAGER", payload: true });
+              } else if (command === "agents") {
+                dispatch({ type: "SET_SHOW_AGENTS_MANAGER", payload: true });
               } else if (command === "rewind") {
                 dispatch({ type: "SET_SHOW_REWIND_MANAGER", payload: true });
               } else if (command === "help") {
@@ -493,6 +495,10 @@ export const useInputManager = (
     dispatch({ type: "SET_SHOW_MCP_MANAGER", payload: show });
   }, []);
 
+  const setShowAgentsManager = useCallback((show: boolean) => {
+    dispatch({ type: "SET_SHOW_AGENTS_MANAGER", payload: show });
+  }, []);
+
   const setShowRewindManager = useCallback((show: boolean) => {
     dispatch({ type: "SET_SHOW_REWIND_MANAGER", payload: show });
   }, []);
@@ -657,6 +663,7 @@ export const useInputManager = (
     historySearchQuery: state.historySearchQuery,
     showBackgroundTaskManager: state.showBackgroundTaskManager,
     showMcpManager: state.showMcpManager,
+    showAgentsManager: state.showAgentsManager,
     showRewindManager: state.showRewindManager,
     showHelp: state.showHelp,
     showStatusCommand: state.showStatusCommand,
@@ -702,6 +709,7 @@ export const useInputManager = (
     // Bash/MCP Manager
     setShowBackgroundTaskManager,
     setShowMcpManager,
+    setShowAgentsManager,
     setShowRewindManager,
     setShowHelp,
     setShowStatusCommand,

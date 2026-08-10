@@ -6,6 +6,7 @@ import { CommandSelector } from "./CommandSelector.js";
 import { HistorySearch } from "./HistorySearch.js";
 import { BackgroundTaskManager } from "./BackgroundTaskManager.js";
 import { McpManager } from "./McpManager.js";
+import { AgentsManager } from "./AgentsManager.js";
 import { RewindCommand } from "./RewindCommand.js";
 import { HelpView } from "./HelpView.js";
 import { StatusCommand } from "./StatusCommand.js";
@@ -89,6 +90,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
     recallQueuedMessage,
     queuedMessages,
     setIsBtwActive,
+    agentDefinitions,
+    activeSubagentInstances,
+    backgroundTasks,
   } = useChat();
 
   // Ref to hold setInputText so queue callbacks can access it before useInputManager returns
@@ -133,6 +137,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     // Task/MCP Manager
     showBackgroundTaskManager,
     showMcpManager,
+    showAgentsManager,
     showRewindManager,
     showHelp,
     showStatusCommand,
@@ -142,6 +147,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showWorkflowManager,
     setShowBackgroundTaskManager,
     setShowMcpManager,
+    setShowAgentsManager,
     setShowRewindManager,
     setShowHelp,
     setShowStatusCommand,
@@ -211,6 +217,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       showModelSelector ||
       showBackgroundTaskManager ||
       showMcpManager ||
+      showAgentsManager ||
       showWorkflowManager
     ) {
       return;
@@ -345,6 +352,15 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
+      {showAgentsManager && (
+        <AgentsManager
+          onCancel={() => setShowAgentsManager(false)}
+          agentDefinitions={agentDefinitions}
+          activeSubagentInstances={activeSubagentInstances}
+          backgroundTasks={backgroundTasks}
+        />
+      )}
+
       {showWorkflowManager && (
         <WorkflowManager onCancel={() => setShowWorkflowManager(false)} />
       )}
@@ -353,6 +369,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         ? null
         : showBackgroundTaskManager ||
           showMcpManager ||
+          showAgentsManager ||
           showRewindManager ||
           showHelp ||
           showStatusCommand ||
