@@ -4,7 +4,7 @@
     <vendor>wave-codechat</vendor>
 
     <description><![CDATA[
-        Wave 代码智聊 — 面向 JetBrains IDE 的企业级 AI 辅助编程助手
+        Wave Code Chat — an enterprise-grade AI coding assistant for JetBrains IDEs.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
