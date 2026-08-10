@@ -885,26 +885,6 @@ body.is-panel-resizing * {
     background: var(--vscode-list-hoverBackground);
 }
 
-/* Transient hint (e.g. min-width refusal), centered at the top of the row.
-   Sits above dropdown menus (z-index 1000) like the panel toggle so a refusal
-   hint fired from a menu click is not covered by the still-open menu. */
-.desktop-pane-hint {
-    position: absolute;
-    top: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 2000;
-    padding: 6px 14px;
-    border-radius: 4px;
-    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-    color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
-    box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
-    font-size: 12px;
-    pointer-events: none;
-    white-space: nowrap;
-}
-
 /* ---- Conversation-level panel group: message column + side panels ----
    The header spans the full pane width; below it the message column sits
    left of the checked panels (preview → diff → terminal). */

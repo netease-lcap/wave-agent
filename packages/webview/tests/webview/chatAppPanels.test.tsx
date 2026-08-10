@@ -202,11 +202,11 @@ describe('ChatApp desktop panel framework', () => {
             .spyOn(Element.prototype, 'getBoundingClientRect')
             .mockReturnValue({ width: 500, right: 500 } as DOMRect);
         try {
-            renderDesktop({ workdir: '/work/a' });
+            const { vscode } = renderDesktop({ workdir: '/work/a' });
             fireEvent.click(screen.getByTestId('panel-toggle-btn'));
             fireEvent.click(screen.getByTestId('panel-toggle-item-diff'));
             expect(screen.queryByTestId('diff-pane')).not.toBeInTheDocument();
-            expect(screen.getByTestId('desktop-panel-hint')).toHaveTextContent('空间不足');
+            expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopShowHint', text: '空间不足，无法开启面板' });
         } finally {
             rectSpy.mockRestore();
         }
@@ -220,11 +220,11 @@ describe('ChatApp desktop panel framework', () => {
             .spyOn(Element.prototype, 'getBoundingClientRect')
             .mockReturnValue({ width: 300, right: 300 } as DOMRect);
         try {
-            renderDesktop({ workdir: '/work/a' });
+            const { vscode } = renderDesktop({ workdir: '/work/a' });
             fireEvent.click(screen.getByTestId('panel-toggle-btn'));
             fireEvent.click(screen.getByTestId('panel-toggle-item-diff'));
             expect(screen.queryByTestId('diff-pane')).not.toBeInTheDocument();
-            expect(screen.getByTestId('desktop-panel-hint')).toHaveTextContent('空间不足');
+            expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopShowHint', text: '空间不足，无法开启面板' });
         } finally {
             rectSpy.mockRestore();
         }

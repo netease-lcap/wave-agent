@@ -46,7 +46,6 @@ const PANEL_DEFAULT_WIDTH = 420;
 const PANEL_MIN_WIDTH = 320;
 /** The conversation (message) area never shrinks below this when opening/dragging panels. */
 const CHAT_MAIN_MIN_WIDTH = 360;
-const PANEL_HINT_DURATION_MS = 2400;
 
 /**
  * Hostname spellings that name the same remote service through an ssh tunnel:
@@ -284,9 +283,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         file: PANEL_DEFAULT_WIDTH,
       },
   );
-  const [panelHint, setPanelHint] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const panelHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const checkedPanelsRef = useRef(checkedPanels);
   const panelWidthsRef = useRef(panelWidths);
   // Mirrors so the stable message listener can reach the panel toggle logic
@@ -1170,10 +1167,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   }, [pendingRewindId, postToHost]);
 
   const showPanelHint = useCallback((text: string) => {
-    if (panelHintTimer.current) clearTimeout(panelHintTimer.current);
-    setPanelHint(text);
-    panelHintTimer.current = setTimeout(() => setPanelHint(null), PANEL_HINT_DURATION_MS);
-  }, []);
+    // Route local validations (panel min-width refusals, preview URL checks)
+    // through the host's global toast so desktop hints share one presentation
+    // with host failures instead of a second hint style.
+    postToHost({ command: 'desktopShowHint', text });
+  }, [postToHost]);
 
   // Desktop remote sessions: request an ssh port forward for the clicked
   // localhost URL (scenario 15). The main process picks a local port, starts
@@ -1727,11 +1725,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
               {renderPanelSlot(kind)}
             </div>
           ))}
-          {panelHint && (
-            <div className="desktop-pane-hint" role="status" data-testid="desktop-panel-hint">
-              {panelHint}
-            </div>
-          )}
         </div>
       ) : (
         chatBodyContent

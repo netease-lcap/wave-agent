@@ -375,6 +375,18 @@ function shownToasts(): Array<{ message: string; actionLabel?: string; action?: 
     );
 }
 
+/** Make one utility RPC method throw; returns a restore function for after the test. */
+function failRpc(method: string, message: string): () => void {
+  const orig = h.handleClientRequest;
+  h.handleClientRequest = (m: string, params?: unknown) => {
+    if (m === method) throw new Error(message);
+    return orig(m, params);
+  };
+  return () => {
+    h.handleClientRequest = orig;
+  };
+}
+
 function createHost(winWidth = 1280, winHeight = 800) {
   const store = new ConfigStore(STORE_PATH);
   const host = new DesktopHost(store);
@@ -510,10 +522,8 @@ describe('workdir lifecycle', () => {
 
     expect(store.getRecentWorkdirs()).not.toEqual(expect.arrayContaining([{ host: 'local', path: '/gone' }]));
     expect(lastAgent()).toBe(agentBefore);
-    const sysMsgs = sent('appendMessage').filter((m) =>
-      JSON.stringify(m).includes('已从最近列表移除'),
-    );
-    expect(sysMsgs).toHaveLength(1);
+    expect(shownToasts().some((t) => t.message.includes('已从最近列表移除'))).toBe(true);
+    expect(sent('appendMessage').filter((m) => JSON.stringify(m).includes('已从最近列表移除'))).toHaveLength(0);
   });
 
 });
@@ -1468,6 +1478,98 @@ describe('misc commands', () => {
     expect(sent('mcpServersResponse')[0]).toMatchObject({ servers: [] });
   });
 
+  it('connectMcpServer failure surfaces as a toast, not a chat message', async () => {
+    const { host, sent } = await readyHost();
+    lastAgent().connectMcpServer.mockRejectedValueOnce(new Error('server not found'));
+
+    await host.handleWebviewMessage({ command: 'connectMcpServer', serverName: 'srv' });
+
+    expect(shownToasts().some((t) => t.message.includes('连接 MCP 服务器失败'))).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
+  });
+
+  it('disconnectMcpServer failure surfaces as a toast, not a chat message', async () => {
+    const { host, sent } = await readyHost();
+    lastAgent().disconnectMcpServer.mockRejectedValueOnce(new Error('not connected'));
+
+    await host.handleWebviewMessage({ command: 'disconnectMcpServer', serverName: 'srv' });
+
+    expect(shownToasts().some((t) => t.message.includes('断开 MCP 服务器失败'))).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
+  });
+
+  it('listPlugins failure surfaces as a toast, not a chat message', async () => {
+    const { host, sent } = await readyHost();
+    const restore = failRpc('listPlugins', 'plugin service down');
+    try {
+      await host.handleWebviewMessage({ command: 'listPlugins' });
+    } finally {
+      restore();
+    }
+    expect(shownToasts().some((t) => t.message.includes('获取插件列表失败'))).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
+  });
+
+  it('plugin mutation failure surfaces as a toast, not a chat message', async () => {
+    const { host, sent } = await readyHost();
+    const restore = failRpc('enablePlugin', 'plugin service down');
+    try {
+      await host.handleWebviewMessage({ command: 'enablePlugin', pluginId: 'demo', scope: 'user' });
+    } finally {
+      restore();
+    }
+    expect(shownToasts().some((t) => t.message.includes('插件操作失败'))).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
+  });
+
+  it('getProjectSettings failure surfaces as a toast, not a chat message', async () => {
+    const { host, sent } = await readyHost();
+    const restore = failRpc('getProjectSettings', 'settings down');
+    try {
+      await host.handleWebviewMessage({ command: 'getProjectSettings' });
+    } finally {
+      restore();
+    }
+    expect(shownToasts().some((t) => t.message.includes('获取项目设置失败'))).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
+  });
+
+  it('setBuiltinPluginEnabled failure surfaces as a toast, not a chat message', async () => {
+    const { host, sent } = await readyHost();
+    const restore = failRpc('setBuiltinPluginEnabled', 'settings down');
+    try {
+      await host.handleWebviewMessage({ command: 'setBuiltinPluginEnabled', pluginId: 'builtin-review', enabled: true, scope: 'user' });
+    } finally {
+      restore();
+    }
+    expect(shownToasts().some((t) => t.message.includes('修改项目设置失败'))).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
+  });
+
+  it('listMarketplaces failure surfaces as a toast, not a chat message', async () => {
+    const { host, sent } = await readyHost();
+    const restore = failRpc('listMarketplaces', 'marketplace down');
+    try {
+      await host.handleWebviewMessage({ command: 'listMarketplaces' });
+    } finally {
+      restore();
+    }
+    expect(shownToasts().some((t) => t.message.includes('获取市场列表失败'))).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
+  });
+
+  it('marketplace mutation failure surfaces as a toast, not a chat message', async () => {
+    const { host, sent } = await readyHost();
+    const restore = failRpc('addMarketplace', 'marketplace down');
+    try {
+      await host.handleWebviewMessage({ command: 'addMarketplace', input: { name: 'm', url: 'https://m' } });
+    } finally {
+      restore();
+    }
+    expect(shownToasts().some((t) => t.message.includes('市场操作失败'))).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
+  });
+
   it('listRewindCheckpoints replies with the agent checkpoints', async () => {
     const { host, sent } = await readyHost();
     await host.handleWebviewMessage({ command: 'listRewindCheckpoints' });
@@ -1643,8 +1745,8 @@ describe('session tree', () => {
       expect(store.getSessionIndex().some((e) => e.sessionId === 'sess-z')).toBe(false);
       expect(store.getRecentWorkdirs()).not.toEqual(expect.arrayContaining([{ host: 'local', path: '/gone' }]));
       expect(lastAgent().restoreSession).not.toHaveBeenCalled();
-      const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('已从最近列表与会话列表移除'));
-      expect(sysMsgs).toHaveLength(1);
+      expect(shownToasts().some((t) => t.message.includes('已从最近列表与会话列表移除'))).toBe(true);
+      expect(sent('appendMessage').filter((m) => JSON.stringify(m).includes('已从最近列表与会话列表移除'))).toHaveLength(0);
     });
   });
 
@@ -1869,8 +1971,9 @@ describe('session tree', () => {
       const states = sent('setInitialState');
       expect(states.some((s) => s?.isRestoring === true)).toBe(true);
       expect(store.getSessionIndex().some((e) => e.sessionId === 'gone-1')).toBe(false);
-      const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('目录不存在'));
-      expect(sysMsgs).toHaveLength(1);
+      const toasts = shownToasts().filter((t) => t.message.includes('目录不存在'));
+      expect(toasts).toHaveLength(1);
+      expect(sent('appendMessage').filter((m) => JSON.stringify(m).includes('目录不存在'))).toHaveLength(0);
       expect(states.at(-1)?.isRestoring).toBe(false);
     });
   });
@@ -2032,10 +2135,8 @@ describe('session switch shortcut (FR-038)', () => {
 
     expect(ctx.store.getSessionIndex().some((e) => e.sessionId === 's2')).toBe(false);
     expect(h.agentInstances).toHaveLength(0);
-    const sysMsgs = ctx.sent('appendMessage').filter((m) =>
-      JSON.stringify(m).includes('已从最近列表与会话列表移除'),
-    );
-    expect(sysMsgs).toHaveLength(1);
+    expect(shownToasts().some((t) => t.message.includes('已从最近列表与会话列表移除'))).toBe(true);
+    expect(ctx.sent('appendMessage').filter((m) => JSON.stringify(m).includes('已从最近列表与会话列表移除'))).toHaveLength(0);
   });
 });
 
@@ -2348,8 +2449,8 @@ describe('worktree flow', () => {
       // Repo root stays in recents — only the stale index entry is dropped.
       expect(store.getRecentWorkdirs()).toEqual(expect.arrayContaining([{ host: 'local', path: '/work/a' }]));
       expect(lastAgent().restoreSession).not.toHaveBeenCalled();
-      const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('worktree 目录不存在'));
-      expect(sysMsgs).toHaveLength(1);
+      expect(shownToasts().some((t) => t.message.includes('worktree 目录不存在'))).toBe(true);
+      expect(sent('appendMessage').filter((m) => JSON.stringify(m).includes('worktree 目录不存在'))).toHaveLength(0);
     });
   });
 
@@ -2859,6 +2960,34 @@ describe('split-view panes (FR-032~036)', () => {
     expect(panePushes(sent)).toHaveLength(layouts);
   });
 
+  it('desktopFocusPane surfaces the newly focused host connect failure as a toast', async () => {
+    seedSshConfig('Host prod\n');
+    const { host, sent } = await readyHost();
+    // pane-1's picker is pinned to prod (no agent bound yet), so focusing back
+    // onto it must establish the prod client again — and fail here.
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+    await vi.waitFor(() => {
+      expect(shownToasts().length).toBe(0); // eager connect succeeded, no toast
+    });
+    // Open a local pane-2 so focus can move away from pane-1.
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-9' });
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)?.panes).toHaveLength(2);
+    });
+    const pane1 = panePushes(sent).at(-1)!.panes.find((p) => p.sessionId !== 'sess-2')!;
+    // Drop the prod tunnel: the cached client is released, and since no prod
+    // agent is bound to a pane, no auto-reconnect competes for the retry.
+    h.closedHandlers.at(-1)?.();
+    vi.mocked(connectRemoteDaemon).mockRejectedValueOnce(new Error('tunnel down'));
+
+    await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: pane1.paneId });
+
+    await vi.waitFor(() => {
+      expect(shownToasts().some((t) => t.message.includes('连接主机 prod 失败'))).toBe(true);
+    });
+    expect(sent('appendMessage')).toHaveLength(0);
+  });
+
   it('desktopClosePane removes the pane without destroying its agent, and moves focus to a neighbor', async () => {
     const { host, sent } = await readyHost();
     const agent1 = seedActiveSession('sess-1');
@@ -3108,12 +3237,23 @@ describe('pane rows (two-row layout)', () => {
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
 
-    // No new pane, no agent spawn, and a system message explains the refusal.
+    // No new pane, no agent spawn, and a toast explains the refusal.
     expect(h.agentInstances).toHaveLength(spawned);
     const layout = panePushes(sent).at(-1)!;
     expect(layout.panes).toHaveLength(1);
     expect(layout.rowHeights).toBeUndefined();
-    expect(lastSystemMessage(sent)?.blocks[0].content).toBe('窗口高度不足，无法拆分为两行');
+    expect(shownToasts().some((t) => t.message === '窗口高度不足，无法拆分为两行')).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
+  });
+
+  it('desktopShowHint relays a webview hint to the global toast stack', async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({ command: 'desktopShowHint', text: '空间不足，无法添加更多分屏' });
+
+    expect(shownToasts().some((t) => t.message === '空间不足，无法添加更多分屏')).toBe(true);
+    // The hint must never become a chat message.
+    expect(sent('appendMessage')).toHaveLength(0);
   });
 
   it('desktopOpenPane without a target row spills into a fresh second row when the single row is full', async () => {
@@ -3172,7 +3312,8 @@ describe('pane rows (two-row layout)', () => {
 
     expect(h.agentInstances).toHaveLength(spawned);
     expect(panePushes(sent).at(-1)!.panes).toHaveLength(1);
-    expect(lastSystemMessage(sent)?.blocks[0].content).toBe('空间不足，无法添加更多分屏');
+    expect(shownToasts().some((t) => t.message === '空间不足，无法添加更多分屏')).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
   });
 
   it('desktopOpenPane without a target row refuses with a hint when both rows are full', async () => {
@@ -3188,7 +3329,8 @@ describe('pane rows (two-row layout)', () => {
 
     expect(h.agentInstances).toHaveLength(spawned);
     expect(panePushes(sent).at(-1)!.panes).toHaveLength(2);
-    expect(lastSystemMessage(sent)?.blocks[0].content).toBe('窗口宽度不足，无法添加更多分屏');
+    expect(shownToasts().some((t) => t.message === '窗口宽度不足，无法添加更多分屏')).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
   });
 
   it('desktopOpenPane with a named target row squeezes into a narrow row like a pane move', async () => {
@@ -3445,12 +3587,6 @@ describe('desktopNewSessionInPane (new session side-by-side)', () => {
         },
     );
 
-  const lastSystemMessage = (sent: ReturnType<typeof createHost>['sent']) =>
-    sent('appendMessage')
-      .map((m) => m.message as { role: string; blocks: Array<{ type: string; content: string }> })
-      .filter((msg) => msg.blocks?.[0]?.type === 'text')
-      .at(-1);
-
   it('opens a fresh session in a new pane next to the current one', async () => {
     const { host, sent } = await readyHost();
     const original = seedActiveSession('sess-1');
@@ -3528,7 +3664,8 @@ describe('desktopNewSessionInPane (new session side-by-side)', () => {
 
     expect(h.agentInstances).toHaveLength(spawned);
     expect(panePushes(sent).at(-1)!.panes).toHaveLength(1);
-    expect(lastSystemMessage(sent)?.blocks[0].content).toBe('空间不足，无法添加更多分屏');
+    expect(shownToasts().some((t) => t.message === '空间不足，无法添加更多分屏')).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
   });
 
   it('still opens a new pane while the current one is streaming', async () => {
@@ -3975,16 +4112,31 @@ function treeSessions(tree: Record<string, unknown> | undefined) {
 }
 
 describe('SSH remote hosts', () => {
-  it('desktopSelectHost with an unknown host is rejected with a system message', async () => {
+  it('desktopSelectHost with an unknown host is rejected with a toast', async () => {
     const { host, sent } = await readyHost();
     const statesBefore = sent('desktopWorkdirState').length;
 
     await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'unknown' });
 
-    expect(sent('appendMessage').some((m) => JSON.stringify(m).includes('未知主机：unknown'))).toBe(true);
+    expect(shownToasts().some((t) => t.message.includes('未知主机：unknown'))).toBe(true);
+    // A picker refusal must not insert a message that hides the selectors.
+    expect(sent('appendMessage')).toHaveLength(0);
     // No workdir state re-send — the picker stays put.
     expect(sent('desktopWorkdirState').length).toBe(statesBefore);
     expect(vi.mocked(connectRemoteDaemon)).not.toHaveBeenCalled();
+  });
+
+  it('desktopSelectHost surfaces an eager-connect failure as a toast, not a chat message', async () => {
+    seedSshConfig('Host prod\n');
+    vi.mocked(connectRemoteDaemon).mockRejectedValueOnce(new Error('tunnel down'));
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+
+    await vi.waitFor(() => {
+      expect(shownToasts().some((t) => t.message.includes('连接主机 prod 失败'))).toBe(true);
+    });
+    expect(sent('appendMessage')).toHaveLength(0);
   });
 
   it('desktopSelectHost switches the picker to a host from ~/.ssh/config and shows its recents', async () => {
@@ -4141,7 +4293,11 @@ describe('SSH remote hosts', () => {
 
     const config = h.files.get(sshConfigPath()) as string;
     expect(config).toContain('\nHost newhost\n    User user\n    Port 2222\n');
-    expect(sent('appendMessage').some((m) => JSON.stringify(m).includes('已添加主机：newhost'))).toBe(true);
+    // The success notice is a window-global toast — never a chat message, or the
+    // new-session picker (host/workdir selectors) would be hidden by the
+    // visible-message state the append would create.
+    expect(shownToasts().some((t) => t.message.includes('已添加主机：newhost'))).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
     await vi.waitFor(() => {
       expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledWith('newhost', expect.any(String));
     });
@@ -4150,6 +4306,21 @@ describe('SSH remote hosts', () => {
       host: 'newhost',
       hosts: ['newhost'],
     });
+  });
+
+  it('desktopAddHost surfaces an eager-connect failure as a toast, not a chat message', async () => {
+    vi.mocked(connectRemoteDaemon).mockRejectedValueOnce(new Error('tunnel down'));
+    const { host, sent } = createHost();
+
+    await host.handleWebviewMessage({
+      command: 'desktopAddHost',
+      connectionString: 'ssh user@newhost -p 2222',
+    });
+
+    await vi.waitFor(() => {
+      expect(shownToasts().some((t) => t.message.includes('连接主机 newhost 失败'))).toBe(true);
+    });
+    expect(sent('appendMessage')).toHaveLength(0);
   });
 
   it('desktopAddHost also re-queries the auth status on the auto-selected host', async () => {
@@ -4176,7 +4347,8 @@ describe('SSH remote hosts', () => {
       connectionString: 'ssh -i key.pem user@host',
     });
 
-    expect(sent('appendMessage').some((m) => JSON.stringify(m).includes('无法解析连接串'))).toBe(true);
+    expect(shownToasts().some((t) => t.message.includes('无法解析连接串'))).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
     expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ host: 'local' });
   });
 
@@ -4213,9 +4385,23 @@ describe('SSH remote hosts', () => {
 
     await host.handleWebviewMessage({ command: 'desktopSelectRemotePath', host: 'prod', path: '/gone' });
 
-    expect(sent('appendMessage').some((m) => JSON.stringify(m).includes('远端目录不存在：/gone'))).toBe(true);
+    expect(shownToasts().some((t) => t.message.includes('远端目录不存在：/gone'))).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
     expect(h.agentInstances.length).toBe(1); // the local ready agent only
     expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ host: 'local' });
+  });
+
+  it('desktopSelectRecentWorkdir drops a vanished directory with a toast', async () => {
+    const { host, store, sent } = await readyHost();
+    store.addRecentWorkdir({ host: 'local', path: '/gone' });
+
+    await host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/gone' });
+
+    // The stale entry is removed from recents; the notice is a toast so the
+    // new-session picker stays visible.
+    expect(store.getRecentWorkdirs()).not.toEqual(expect.arrayContaining([{ host: 'local', path: '/gone' }]));
+    expect(shownToasts().some((t) => t.message.includes('目录不存在：/gone，已从最近列表移除'))).toBe(true);
+    expect(sent('appendMessage')).toHaveLength(0);
   });
 
   it('local and remote sessions in the same path stay separate agents', async () => {

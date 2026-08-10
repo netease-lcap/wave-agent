@@ -8,7 +8,6 @@ const MIN_PANE_WIDTH = 360;
 /** Minimum height of a pane row; splitting into two rows needs 2× this and
     the row separator clamps to it (the desktop host enforces the same limit). */
 const MIN_ROW_HEIGHT = 280;
-const HINT_DURATION_MS = 2400;
 const PANE_DRAG_MIME = 'application/x-wave-pane';
 
 type DropZone = 'above' | 'below';
@@ -61,7 +60,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   if (paneRows[1].length === 0) paneRows.pop();
   const hasTwoRows = paneRows.length === 2;
 
-  const [hint, setHint] = useState<string | null>(null);
   const [dropIndicator, setDropIndicator] = useState<{ row: number; x: number } | null>(null);
   // VS Code-style translucent overlay while hovering an edge band (only in a
   // single-row layout): drop splits the layout into two rows.
@@ -72,17 +70,16 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   const [rowSeparatorActive, setRowSeparatorActive] = useState(false);
   const rowsContainerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const paneNodes = useRef(new Map<string, HTMLDivElement>());
   // Insertion boundary (row + gap index) tracked while a pane/session drags.
   const dropBoundary = useRef<{ row: number; index: number } | null>(null);
   const resizePreviewRef = useRef<{ row: number; widths: number[] } | null>(null);
 
   const showHint = useCallback((text: string) => {
-    if (hintTimer.current) clearTimeout(hintTimer.current);
-    setHint(text);
-    hintTimer.current = setTimeout(() => setHint(null), HINT_DURATION_MS);
-  }, []);
+    // Route local validations (min-size refusals) through the host's global
+    // toast so desktop hints share one presentation with host failures.
+    vscode.postMessage({ command: 'desktopShowHint', text });
+  }, [vscode]);
 
   const clearDragFeedback = useCallback(() => {
     dropBoundary.current = null;
@@ -570,11 +567,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
             className={`desktop-pane-dropzone desktop-pane-dropzone--${dropZone}`}
             data-testid="desktop-pane-dropzone"
           />
-        )}
-        {hint && (
-          <div className="desktop-pane-hint" role="status" data-testid="desktop-pane-hint">
-            {hint}
-          </div>
         )}
       </div>
     </div>
