@@ -9,6 +9,7 @@ import { ConfirmationDialog } from './ConfirmationDialog';
 import { ConfirmDialog } from './ConfirmDialog';
 import { RewindPopup } from './RewindPopup';
 import type { RewindCheckpoint } from './RewindPopup';
+import { ToastStack } from './ToastStack';
 import { BtwPanel } from './BtwPanel';
 import ConfigDialog from './ConfigDialog';
 import PluginDialog from './PluginDialog';
@@ -34,6 +35,7 @@ import type {
   DesktopPanelKind,
   FileViewState,
   ToolBlockUpdateCallbackParams,
+  UpdateToast,
 } from '../types';
 import { chatReducer, initialState } from '../reducers/chatReducer';
 import '../styles/ChatApp.css';
@@ -162,6 +164,9 @@ export function prunePanelGroupCache(keepKeys: Set<string>): void {
 export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const [queueEditWarning, setQueueEditWarning] = useState<string | null>(null);
+  // In-app toasts (VS Code-style, bottom-right). Desktop host only: pushed via
+  // `showToast` (update announcements), acknowledged via `toastAction`.
+  const [toasts, setToasts] = useState<UpdateToast[]>([]);
   // Message id awaiting rewind confirmation; non-null shows the ConfirmDialog.
   const [pendingRewindId, setPendingRewindId] = useState<string | null>(null);
   // /rewind popup: checkpoint list requested from the host on open.
@@ -644,6 +649,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         case 'desktopThemeChange':
           document.documentElement.setAttribute('data-theme', message.effective);
           break;
+        case 'showToast':
+          // Toasts are window-global (no paneId) — only the root instance (the
+          // one that renders the shell/sidebar, never a split-view pane) tracks
+          // them, so a multi-pane desktop never stacks duplicates.
+          if (myPane !== undefined) break;
+          setToasts((prev) => [...prev.filter((t) => t.id !== message.toast.id), message.toast]);
+          break;
         case 'desktopTogglePanel':
           if (!forThisPane(message)) break;
           togglePanelRef.current(message.kind as DesktopPanelKind);
@@ -827,6 +839,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     postToHost({
       command: 'clearChat'
     });
+  }, [postToHost]);
+
+  const handleToastDismiss = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const handleToastAction = useCallback((toast: UpdateToast) => {
+    if (!toast.action) return;
+    postToHost({ command: 'toastAction', toastId: toast.id, action: toast.action });
+    setToasts((prev) => prev.filter((t) => t.id !== toast.id));
   }, [postToHost]);
 
   // Desktop 的"新对话"入口（侧边栏按钮）：由宿主 spawn 新 agent 承载全新会话，
@@ -1652,6 +1674,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           onCancel={() => setPendingRewindId(null)}
         />
       )}
+      <ToastStack toasts={toasts} onDismiss={handleToastDismiss} onAction={handleToastAction} />
     </>
   );
 

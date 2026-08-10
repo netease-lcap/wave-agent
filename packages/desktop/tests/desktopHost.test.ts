@@ -342,7 +342,7 @@ vi.mock('../src/main/sshHosts', async () => {
 import { DesktopHost } from '../src/main/desktopHost';
 import { ConfigStore } from '../src/main/configStore';
 import { HOST_CHANNEL } from '../src/main/channels';
-import { shell, dialog, nativeTheme, powerMonitor, Notification } from 'electron';
+import { shell, dialog, nativeTheme, powerMonitor } from 'electron';
 import { checkForUpdate } from '../src/main/updateChecker';
 import { autoUpdater } from 'electron-updater';
 import {
@@ -360,17 +360,26 @@ import {
 
 const STORE_PATH = '/mock-userData/wave-desktop.json';
 
-/** The title/body pairs of every Notification the host showed. */
-function shownNotifications(): Array<{ title: string; body: string }> {
-  return vi
-    .mocked(Notification)
-    .mock.instances.map((n) => (n as unknown as { options: { title: string; body: string } }).options);
+/** The send mock of the most recently created host (shownToasts reads it). */
+let lastSend: ReturnType<typeof vi.fn> | undefined;
+
+/** The message/action of every update toast the host pushed to the webview. */
+function shownToasts(): Array<{ message: string; actionLabel?: string; action?: { type: string; url?: string } }> {
+  const send = lastSend;
+  if (!send) return [];
+  return send.mock.calls
+    .filter(([channel, msg]) => channel === HOST_CHANNEL && (msg as { command?: string }).command === 'showToast')
+    .map(
+      ([, msg]) =>
+        (msg as { toast: { message: string; actionLabel?: string; action?: { type: string; url?: string } } }).toast,
+    );
 }
 
 function createHost(winWidth = 1280, winHeight = 800) {
   const store = new ConfigStore(STORE_PATH);
   const host = new DesktopHost(store);
   const send = vi.fn();
+  lastSend = send;
   const win = {
     webContents: { send },
     isDestroyed: () => false,
@@ -431,7 +440,6 @@ beforeEach(() => {
   h.pendingPermissionRequests = [];
   vi.clearAllMocks();
   for (const key of Object.keys(auListeners)) delete auListeners[key];
-  vi.mocked(Notification).mockClear();
   nativeTheme.__reset();
   powerMonitor.__reset();
   // Reset the auto-reconnect seams (tests shrink them to keep retries fast).
@@ -1122,7 +1130,7 @@ describe('configuration and status', () => {
 // ---------------------------------------------------------------------------
 
 describe('checkForUpdates', () => {
-  it('manual check announces a newer version as a system notification', async () => {
+  it('manual check announces a newer version as a toast with a download-page action', async () => {
     vi.mocked(checkForUpdate).mockResolvedValueOnce({
       latestVersion: '0.20.0',
       currentVersion: '0.19.7',
@@ -1132,17 +1140,19 @@ describe('checkForUpdates', () => {
 
     await host.handleWebviewMessage({ command: 'checkForUpdates' });
 
-    const notices = shownNotifications().filter((n) => JSON.stringify(n).includes('0.20.0'));
-    expect(notices).toHaveLength(1);
-    expect(notices[0].body).toContain('https://github.com/release');
+    const toasts = shownToasts().filter((n) => n.message.includes('0.20.0'));
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].message).toContain('0.19.7');
+    expect(toasts[0].actionLabel).toBe('打开下载页');
+    expect(toasts[0].action).toEqual({ type: 'openDownloadPage', url: 'https://github.com/release' });
   });
 
-  it('manual check says "already latest" via a system notification when no update exists', async () => {
+  it('manual check says "already latest" via a toast when no update exists', async () => {
     const { host } = await readyHost();
     await host.handleWebviewMessage({ command: 'checkForUpdates' });
 
-    const notices = shownNotifications().filter((n) => JSON.stringify(n).includes('已是最新'));
-    expect(notices).toHaveLength(1);
+    const toasts = shownToasts().filter((n) => n.message.includes('已是最新'));
+    expect(toasts).toHaveLength(1);
   });
 
   it('runs an automatic check once after the first webviewReady', async () => {
@@ -1187,7 +1197,7 @@ describe('checkForUpdates with a configured serverUrl', () => {
     expect(checkForUpdate).not.toHaveBeenCalled();
   });
 
-  it('announces the update via a system notification on update-available', async () => {
+  it('announces the update via a toast on update-available', async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: '0.20.0', files: [], path: 'wave-0.20.0.dmg' },
       isUpdateAvailable: true,
@@ -1199,12 +1209,14 @@ describe('checkForUpdates with a configured serverUrl', () => {
       cb({ version: '0.20.0' });
     }
 
-    const notices = shownNotifications().filter((n) => JSON.stringify(n).includes('0.20.0'));
-    expect(notices).toHaveLength(1);
-    expect(notices[0].body).toContain('正在后台下载');
+    const toasts = shownToasts().filter((n) => n.message.includes('0.20.0'));
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].message).toContain('正在后台下载');
+    // Informational only — no action button; the user acts once downloaded.
+    expect(toasts[0].action).toBeUndefined();
   });
 
-  it('asks before installing once the update is downloaded, then quits and installs', async () => {
+  it('shows a restart-install toast once the update is downloaded, and quitAndInstall fires on its action', async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: '0.20.0', files: [], path: 'wave-0.20.0.dmg' },
       isUpdateAvailable: true,
@@ -1215,13 +1227,28 @@ describe('checkForUpdates with a configured serverUrl', () => {
     for (const cb of auListeners['update-downloaded'] ?? []) {
       cb({ version: '0.20.0' });
     }
-    await vi.waitFor(() => expect(dialog.showMessageBox).toHaveBeenCalledTimes(1));
 
-    expect(JSON.stringify(dialog.showMessageBox.mock.calls[0][0])).toContain('重启安装');
-    // electron mock's showMessageBox resolves { response: 0 } → 重启安装.
-    await vi.waitFor(() => expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1));
-    const notices = shownNotifications().filter((n) => JSON.stringify(n).includes('已下载完成'));
-    expect(notices).toHaveLength(1);
+    const toasts = shownToasts().filter((n) => n.message.includes('已下载完成'));
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].actionLabel).toBe('重启安装');
+    expect(toasts[0].action).toEqual({ type: 'quitAndInstall' });
+    // No native confirm dialog anymore (spec: the toast button installs directly).
+    expect(dialog.showMessageBox).not.toHaveBeenCalled();
+    expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled();
+
+    // The webview echoes the action back; the host performs it.
+    await host.handleWebviewMessage({ command: 'toastAction', toastId: 'x', action: { type: 'quitAndInstall' } });
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the download page when the toast action is openDownloadPage', async () => {
+    const { host } = await readyHost();
+    await host.handleWebviewMessage({
+      command: 'toastAction',
+      toastId: 'x',
+      action: { type: 'openDownloadPage', url: 'https://github.com/release' },
+    });
+    expect(shell.openExternal).toHaveBeenCalledWith('https://github.com/release');
   });
 
   it('falls back to the manual checker when electron-updater fails', async () => {
@@ -1236,8 +1263,9 @@ describe('checkForUpdates with a configured serverUrl', () => {
     await host.handleWebviewMessage({ command: 'checkForUpdates' });
 
     expect(checkForUpdate).toHaveBeenCalledWith('0.19.7', SERVER);
-    const notices = shownNotifications().filter((n) => JSON.stringify(n).includes('0.20.0'));
-    expect(notices.length).toBeGreaterThanOrEqual(1);
+    const toasts = shownToasts().filter((n) => n.message.includes('0.20.0'));
+    expect(toasts.length).toBeGreaterThanOrEqual(1);
+    expect(toasts[0].action).toEqual({ type: 'openDownloadPage', url: 'https://github.com/release' });
     // Restore the default implementation — this persistent mock leaks into the
     // next test's one-shot automatic check otherwise (it would announce a fake
     // update and mutate that test's agent message list).
@@ -1262,14 +1290,15 @@ describe('checkForUpdates with a configured serverUrl', () => {
     }
 
     await vi.waitFor(() => expect(checkForUpdate).toHaveBeenCalledWith('0.19.7', SERVER));
-    const notices = shownNotifications().filter((n) =>
-      JSON.stringify(n).includes('https://codechat.example.com/api/downloads'),
+    const toasts = shownToasts().filter((n) =>
+      n.message.includes('0.20.0'),
     );
-    expect(notices.length).toBeGreaterThanOrEqual(1);
+    expect(toasts.length).toBeGreaterThanOrEqual(1);
+    expect(toasts[0].action).toEqual({ type: 'openDownloadPage', url: 'https://codechat.example.com/api/downloads/manifest.json' });
     vi.mocked(checkForUpdate).mockResolvedValue(null);
   });
 
-  it('says "already latest" via a system notification without a GitHub round trip when the feed has no update', async () => {
+  it('says "already latest" via a toast without a GitHub round trip when the feed has no update', async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: '0.19.7', files: [], path: 'wave-0.19.7.dmg' },
       isUpdateAvailable: false,
@@ -1281,8 +1310,8 @@ describe('checkForUpdates with a configured serverUrl', () => {
     expect(checkForUpdate).not.toHaveBeenCalled();
     // The one-shot automatic check stays silent on no-update; only the manual
     // check announces it.
-    const notices = shownNotifications().filter((n) => JSON.stringify(n).includes('已是最新'));
-    expect(notices).toHaveLength(1);
+    const toasts = shownToasts().filter((n) => n.message.includes('已是最新'));
+    expect(toasts).toHaveLength(1);
   });
 });
 
