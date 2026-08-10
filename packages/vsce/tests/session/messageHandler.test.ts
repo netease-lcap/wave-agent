@@ -46,7 +46,6 @@ function createHandler(session: ChatSession) {
         initializeAgent: vi.fn(),
         listSessions: vi.fn(),
         updateAllSessionsConfig: vi.fn(),
-        checkForUpdates: vi.fn(),
         getVersion: vi.fn().mockReturnValue('1.2.3'),
     };
     const handler = new MessageHandler(
@@ -105,7 +104,6 @@ function createReadyHandler(session: ChatSession) {
         initializeAgent: vi.fn(),
         listSessions: vi.fn(),
         updateAllSessionsConfig: vi.fn(),
-        checkForUpdates: vi.fn(),
         getVersion: vi.fn().mockReturnValue('1.2.3'),
     } as unknown as MessageHandlerContext;
     const handler = new MessageHandler(
@@ -422,7 +420,6 @@ describe('MessageHandler MCP handlers', () => {
             initializeAgent: vi.fn(),
             listSessions: vi.fn(),
             updateAllSessionsConfig: vi.fn(),
-            checkForUpdates: vi.fn(),
             getVersion: vi.fn().mockReturnValue('1.2.3'),
         };
         const handler = new MessageHandler(

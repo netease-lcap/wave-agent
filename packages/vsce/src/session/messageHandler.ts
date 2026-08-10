@@ -14,7 +14,6 @@ export interface MessageHandlerContext {
     initializeAgent: (viewType: 'sidebar' | 'tab' | 'window', windowId?: string, restoreSessionId?: string) => Promise<void>;
     listSessions: (viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) => Promise<void>;
     updateAllSessionsConfig: (config: unknown) => void;
-    checkForUpdates: () => Promise<void>;
     getVersion: () => string;
 }
 
@@ -225,9 +224,6 @@ export class MessageHandler {
                 this.context.postMessage({ command: 'workflowRunStopped', runId, success }, viewType, windowId);
                 break;
             }
-            case 'checkForUpdates':
-                await this.context.checkForUpdates();
-                break;
         }
     }
 

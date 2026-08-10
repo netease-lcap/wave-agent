@@ -19,7 +19,6 @@ import { MessageHandler } from './session/messageHandler';
 import { StdioClient } from './stdio/stdioClient';
 import { NotificationRouter } from './stdio/notificationRouter';
 import { resolveWaveBinary, ensureCliUpToDate, NodeJsNotFoundError, NodeJsVersionError } from './stdio/binaryResolver';
-import { checkAndNotify } from './services/updateService';
 
 export class ChatProvider implements vscode.WebviewViewProvider {
     private static formatConfigError(error: unknown): string {
@@ -51,7 +50,6 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     private notificationRouter: NotificationRouter | undefined;
     private outputChannel: vscode.OutputChannel;
     private initPromise: Promise<void>;
-    private updateCheckTriggered = false;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -185,10 +183,6 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                         this.sidebarSession.updateConfig(cfg);
                         this.tabSessions.forEach(session => session.updateConfig(cfg));
                         this.windowSessions.forEach(session => session.updateConfig(cfg));
-                    },
-                    checkForUpdates: async () => {
-                        const cfg = await this.configService.loadConfiguration();
-                        return checkAndNotify(this.context, true, cfg.serverUrl);
                     },
                     getVersion: () => this.context.extension.packageJSON?.version || ''
                 }
@@ -341,16 +335,6 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                 this.sharedClient!,
                 this.notificationRouter!,
             );
-
-            // Auto-update check: trigger once per activation after the first agent is created.
-            // The 24h cooldown is enforced inside checkAndNotify via globalState.
-            if (!this.updateCheckTriggered) {
-                this.updateCheckTriggered = true;
-                const cfg = await this.configService.loadConfiguration();
-                checkAndNotify(this.context, false, cfg.serverUrl).catch(err => {
-                    console.warn('[UpdateService] Update check failed:', err);
-                });
-            }
         } catch (error) {
             console.error(`初始化 ${viewType} 智能体失败:`, error);
             const isConfigError = error && typeof error === 'object' && 'name' in error && error.name === 'ConfigurationError';
