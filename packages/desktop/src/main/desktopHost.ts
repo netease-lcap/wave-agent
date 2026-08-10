@@ -2679,10 +2679,6 @@ export class DesktopHost {
         this.handleToastAction(msg.action as ToastAction);
         break;
 
-      case 'downloadMermaid':
-        await this.handleDownloadMermaid(msg.content as string, msg.format as 'svg' | 'png');
-        break;
-
       case 'showError':
         console.error('[DesktopHost] Webview error:', msg.message);
         this.pushSystemMessage(`${msg.message as string}`);
@@ -3813,29 +3809,6 @@ export class DesktopHost {
       truncated: result.truncated,
       totalLines: result.totalLines,
     };
-  }
-
-  private async handleDownloadMermaid(content: string, format: 'svg' | 'png'): Promise<void> {
-    if (!this.mainWindow) return;
-    const defaultFileName = `mermaid-diagram-${Date.now()}.${format}`;
-    const defaultPath = this.workdir ? path.join(this.workdir, defaultFileName) : defaultFileName;
-
-    const result = await dialog.showSaveDialog(this.mainWindow, {
-      defaultPath,
-      filters: format === 'svg' ? [{ name: 'SVG', extensions: ['svg'] }] : [{ name: 'PNG', extensions: ['png'] }],
-    });
-    if (result.canceled || !result.filePath) return;
-
-    try {
-      const data = format === 'svg'
-        ? Buffer.from(content, 'utf8')
-        : Buffer.from(content.split(',')[1], 'base64');
-      await fs.promises.writeFile(result.filePath, data);
-      this.pushSystemMessage(`图表已保存至: ${result.filePath}`);
-    } catch (error) {
-      console.error('[DesktopHost] 保存图表失败:', error);
-      this.pushSystemMessage(`保存图表失败: ${error}`);
-    }
   }
 
   private async handleSlashCommandsRequest(filterText: string, paneId?: string): Promise<void> {

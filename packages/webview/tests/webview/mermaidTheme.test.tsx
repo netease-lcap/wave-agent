@@ -14,8 +14,7 @@ vi.mock('mermaid', () => ({
 const initializeMock = vi.mocked(mermaid.initialize);
 
 function renderDiagram() {
-    const vscode = { postMessage: vi.fn() };
-    return render(<MermaidRenderer content={'graph TD\nA-->B'} vscode={vscode} />);
+    return render(<MermaidRenderer content={'graph TD\nA-->B'} />);
 }
 
 afterEach(() => {
