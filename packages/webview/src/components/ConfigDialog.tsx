@@ -3,7 +3,7 @@
  *
  * Opened via the /config slash command. Contains two tabs:
  * - Global settings (language)
- * - Model settings (API Key, Base URL, Agent Model, Fast Model)
+ * - Direct connection settings (API Key, Base URL, Agent Model, Fast Model)
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -131,7 +131,7 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
             className={`config-tab${activeTab === 'model' ? ' active' : ''}`}
             onClick={() => setActiveTab('model')}
           >
-            模型设置
+            直连设置
           </button>
           <button
             type="button"
