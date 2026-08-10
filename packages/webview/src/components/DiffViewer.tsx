@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { diffLines, diffWords, type Change } from 'diff';
+import { diffLines, type Change } from 'diff';
 import { transformToolBlockToChanges, transformParametersToChanges } from '../utils/diffTransform';
+import { renderWordLevelDiff } from '../utils/diffHighlight';
 import { WRITE_TOOL_NAME, EDIT_TOOL_NAME } from 'wave-agent-sdk/dist/constants/tools.js';
 import type { ToolBlock } from 'wave-agent-sdk/dist/types/messaging.js';
 import '../styles/DiffViewer.css';
@@ -41,54 +42,6 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ toolBlock, toolName, par
     (toolBlock ? ["end"].includes(toolBlock.stage) : true) &&
     (toolBlock?.name || toolName) &&
     [WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(toolBlock?.name || toolName || "");
-
-  // Render word-level diff for line-by-line comparison
-  const renderWordLevelDiff = (
-    oldLine: string,
-    newLine: string,
-    keyPrefix: string,
-  ) => {
-    const wordChanges = diffWords(oldLine, newLine);
-
-    const removedParts: React.ReactNode[] = [];
-    const addedParts: React.ReactNode[] = [];
-
-    wordChanges.forEach((part, index) => {
-      if (part.removed) {
-        removedParts.push(
-          <span
-            key={`removed-${keyPrefix}-${index}`}
-            className="diff-word-removed"
-          >
-            {part.value}
-          </span>
-        );
-      } else if (part.added) {
-        addedParts.push(
-          <span
-            key={`added-${keyPrefix}-${index}`}
-            className="diff-word-added"
-          >
-            {part.value}
-          </span>
-        );
-      } else {
-        // Unchanged parts
-        removedParts.push(
-          <span key={`removed-unchanged-${keyPrefix}-${index}`} className="diff-word-unchanged">
-            {part.value}
-          </span>
-        );
-        addedParts.push(
-          <span key={`added-unchanged-${keyPrefix}-${index}`} className="diff-word-unchanged">
-            {part.value}
-          </span>
-        );
-      }
-    });
-
-    return { removedParts, addedParts };
-  };
 
   // Render expanded diff display using word-level diff for all scenarios
   const renderExpandedDiff = () => {
