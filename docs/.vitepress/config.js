@@ -182,6 +182,7 @@ export default {
             { text: '终端面板', link: '/desktop#终端面板' },
             { text: 'localhost 原型预览与元素评论', link: '/desktop#localhost-原型预览与元素评论' },
             { text: '核心交互', link: '/desktop#核心交互' },
+            { text: '自动更新', link: '/desktop#自动更新' },
             { text: '登录', link: '/desktop#登录' },
           ],
         },

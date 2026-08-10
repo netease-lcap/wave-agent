@@ -221,6 +221,19 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 - [权限模式管理](/vsce#permission-modes)
 - [配置设置](/vsce#configuration-settings)
 
+## 自动更新
+
+应用在后台自动检查新版本（已登录企业版时经 codechat 下载端点，未登录回退 GitHub Releases），发现新版本时在右下角弹出应用内 toast 提示（非模态，不打断当前输入），无需理会、会自动消失：
+
+![发现新版本 toast](/screenshots/desktop-update-toast.webp)
+
+新版本下载完成后，toast 带「重启安装」按钮，点击即退出并安装新版本：
+
+![更新就绪 toast](/screenshots/desktop-update-toast-action.webp)
+
+- 下载完成后不弹二次确认对话框——toast 按钮即唯一操作入口；不需要时可点右上角 × 关闭，稍后侧边栏「更多」→ 设置中的「检查更新」可再次触发
+- 更新服务故障（端点不可达 / 下载失败）或 macOS 上应用位于不可写位置时，toast 会带「打开下载页」按钮，引导手动下载安装，不静默失败
+
 ## 登录
 
 桌面版支持 SSO 登录，复用与 IDE 插件相同的登录按钮与登录对话框；授权页面会在系统默认浏览器中打开，登录流程由内置 CLI 子进程完成。登录为可选项 —— 未登录时也可通过自定义配置（API Key / Base URL）直连模型服务。登录/登出入口位于侧边栏「更多」菜单（见上文）。
