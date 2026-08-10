@@ -1,10 +1,10 @@
 <idea-plugin>
     <id>com.wave.jetbrains</id>
-    <name>Wave 代码智聊</name>
+    <name>Wave Code Chat</name>
     <vendor>wave-codechat</vendor>
 
     <description><![CDATA[
-        Wave code for JetBrains IDEs — AI-powered development assistant.
+        Wave 代码智聊
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
