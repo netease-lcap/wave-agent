@@ -1326,7 +1326,6 @@ describe('DesktopApp', () => {
                 sessionId: 's2',
                 newRow: 'below',
             });
-            expect(screen.queryByTestId('desktop-pane-hint')).not.toBeInTheDocument();
         });
 
         it('refuses Cmd/Ctrl+Click with a hint when the row is too narrow and the window too short to split', () => {
@@ -1340,7 +1339,7 @@ describe('DesktopApp', () => {
             expect(vscode.postMessage).not.toHaveBeenCalledWith(
                 expect.objectContaining({ command: 'desktopOpenPane' }),
             );
-            expect(screen.getByTestId('desktop-pane-hint')).toHaveTextContent('空间不足');
+            expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopShowHint', text: '空间不足，无法添加更多分屏' });
         });
 
         // jsdom lacks DragEvent, so fireEvent's dragOver drops clientX — build
@@ -1437,7 +1436,6 @@ describe('DesktopApp', () => {
             expect(vscode.postMessage).toHaveBeenCalledWith(
                 expect.objectContaining({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 's2', row: 0 }),
             );
-            expect(screen.queryByTestId('desktop-pane-hint')).not.toBeInTheDocument();
         });
 
         it('skips the width gate when the dropped session is already visible (host focuses its pane)', () => {
@@ -1451,7 +1449,6 @@ describe('DesktopApp', () => {
             expect(vscode.postMessage).toHaveBeenCalledWith(
                 expect.objectContaining({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 's1' }),
             );
-            expect(screen.queryByTestId('desktop-pane-hint')).not.toBeInTheDocument();
         });
 
         it('posts desktopMovePane when a pane header is dragged onto another pane edge', () => {
@@ -1851,7 +1848,7 @@ describe('DesktopApp', () => {
             dragOverAt(screen.getByTestId('desktop-pane-row'), dataTransfer, { clientX: 200, clientY: 370 });
 
             expect(screen.queryByTestId('desktop-pane-dropzone')).not.toBeInTheDocument();
-            expect(screen.getByTestId('desktop-pane-hint')).toHaveTextContent('窗口高度不足');
+            expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopShowHint', text: '窗口高度不足，无法拆分为两行' });
 
             vscode.postMessage.mockClear();
             fireEvent.drop(screen.getByTestId('desktop-pane-row'), { dataTransfer });
@@ -1972,7 +1969,6 @@ describe('DesktopApp', () => {
             expect(vscode.postMessage).toHaveBeenCalledWith(
                 expect.objectContaining({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 's4', row: 1 }),
             );
-            expect(screen.queryByTestId('desktop-pane-hint')).not.toBeInTheDocument();
         });
 
         it('spills Cmd/Ctrl+Click into the other row when the focused row is full', () => {
@@ -1997,7 +1993,6 @@ describe('DesktopApp', () => {
                 sessionId: 's3',
                 row: 1,
             });
-            expect(screen.queryByTestId('desktop-pane-hint')).not.toBeInTheDocument();
         });
 
         it('refuses Cmd/Ctrl+Click with a hint when both rows are full', () => {
@@ -2016,7 +2011,7 @@ describe('DesktopApp', () => {
             expect(vscode.postMessage).not.toHaveBeenCalledWith(
                 expect.objectContaining({ command: 'desktopOpenPane' }),
             );
-            expect(screen.getByTestId('desktop-pane-hint')).toHaveTextContent('窗口宽度不足');
+            expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopShowHint', text: '窗口宽度不足，无法添加更多分屏' });
         });
     });
 

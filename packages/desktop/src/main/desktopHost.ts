@@ -443,11 +443,16 @@ export class DesktopHost {
     this.onPanelStateChanged?.(this.panePanelState.get(this.focusedPaneId) ?? []);
   }
 
-  /** Surface an update event as a non-modal in-app toast (VS Code-style). */
-  private showUpdateToast(toast: Omit<UpdateToast, 'id'>): void {
+  /**
+   * Surface an event as a non-modal in-app toast (VS Code-style, bottom-right).
+   * Window-global: the webview shows it on the root instance only, so it never
+   * becomes a chat message and never flips the pane out of the new-session
+   * picker state.
+   */
+  private showToast(toast: Omit<UpdateToast, 'id'>): void {
     this.postMessage({
       command: 'showToast',
-      toast: { id: `update-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, ...toast },
+      toast: { id: `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, ...toast },
     });
   }
 
@@ -1080,9 +1085,9 @@ export class DesktopHost {
     this.ensureClientFor(host)
       .then(() => this.refreshAuthStatus(host))
       .catch((error) => {
-        this.pushSystemMessage(
-          `连接主机 ${host} 失败：${error instanceof Error ? error.message : String(error)}`,
-        );
+        this.showToast({
+          message: `连接主机 ${host} 失败：${error instanceof Error ? error.message : String(error)}`,
+        });
       });
   }
 
@@ -1133,7 +1138,7 @@ export class DesktopHost {
     if (newRow && !hasSecondRow) {
       // Split the single row into two; the new pane is alone in its fresh row.
       if (!this.canSplitRows()) {
-        this.pushSystemMessage('窗口高度不足，无法拆分为两行', this.focusedPaneId);
+        this.showToast({ message: '窗口高度不足，无法拆分为两行' });
         return null;
       }
       if (newRow === 'above') this.panes.forEach((p) => { p.row = 1; });
@@ -1150,10 +1155,9 @@ export class DesktopHost {
         } else if (!hasSecondRow && this.canSplitRows()) {
           targetRow = 1;
         } else {
-          this.pushSystemMessage(
-            hasSecondRow ? '窗口宽度不足，无法添加更多分屏' : '空间不足，无法添加更多分屏',
-            this.focusedPaneId,
-          );
+          this.showToast({
+            message: hasSecondRow ? '窗口宽度不足，无法添加更多分屏' : '空间不足，无法添加更多分屏',
+          });
           return null;
         }
       }
@@ -1251,7 +1255,7 @@ export class DesktopHost {
     if (wantsSplit) {
       if (this.panes.length <= 1) return;
       if (!this.canSplitRows()) {
-        this.pushSystemMessage('窗口高度不足，无法拆分为两行', this.focusedPaneId);
+        this.showToast({ message: '窗口高度不足，无法拆分为两行' });
         return;
       }
       const targetRow = newRow != null ? (newRow === 'above' ? 0 : 1) : toRow!;
@@ -2202,6 +2206,13 @@ export class DesktopHost {
         await this.handleSelectHost(msg.host as string);
         break;
 
+      case 'desktopShowHint':
+        // Webview-side local validations (pane/panel min-size refusals, preview
+        // URL checks) route through the same global toast so desktop hints share
+        // one presentation with host failures instead of a second hint style.
+        this.showToast({ message: msg.text as string });
+        break;
+
       case 'desktopAddHost':
         await this.handleAddHost(msg.connectionString as string);
         break;
@@ -2522,7 +2533,7 @@ export class DesktopHost {
         try {
           await this.agentForPane(pid)?.connectMcpServer(msg.serverName as string);
         } catch (error) {
-          this.pushSystemMessage(`连接 MCP 服务器失败: ${error}`, pid);
+          this.showToast({ message: `连接 MCP 服务器失败: ${error}` });
         }
         break;
 
@@ -2530,7 +2541,7 @@ export class DesktopHost {
         try {
           await this.agentForPane(pid)?.disconnectMcpServer(msg.serverName as string);
         } catch (error) {
-          this.pushSystemMessage(`断开 MCP 服务器失败: ${error}`, pid);
+          this.showToast({ message: `断开 MCP 服务器失败: ${error}` });
         }
         break;
 
@@ -2787,7 +2798,7 @@ export class DesktopHost {
    */
   private async handleSelectHost(host: string): Promise<void> {
     if (host !== LOCAL_HOST && !parseSshConfigHosts().includes(host)) {
-      this.pushSystemMessage(`未知主机：${host}`);
+      this.showToast({ message: `未知主机：${host}` });
       return;
     }
     const pid = this.focusedPaneId;
@@ -2820,9 +2831,9 @@ export class DesktopHost {
     this.ensureClientFor(host)
       .then(() => this.refreshAuthStatus(host))
       .catch((error) => {
-        this.pushSystemMessage(
-          `连接主机 ${host} 失败：${error instanceof Error ? error.message : String(error)}`,
-        );
+        this.showToast({
+          message: `连接主机 ${host} 失败：${error instanceof Error ? error.message : String(error)}`,
+        });
       });
     this.sendWorkdirState();
     // The webview's host label reads the pane-bound host from desktopPanes —
@@ -2842,7 +2853,7 @@ export class DesktopHost {
     try {
       name = addSshHost(connectionString);
     } catch (error) {
-      this.pushSystemMessage(error instanceof Error ? error.message : String(error));
+      this.showToast({ message: error instanceof Error ? error.message : String(error) });
       return;
     }
     const pid = this.focusedPaneId;
@@ -2864,11 +2875,14 @@ export class DesktopHost {
     this.ensureClientFor(name)
       .then(() => this.refreshAuthStatus(name))
       .catch((error) => {
-        this.pushSystemMessage(
-          `连接主机 ${name} 失败：${error instanceof Error ? error.message : String(error)}`,
-        );
+        this.showToast({
+          message: `连接主机 ${name} 失败：${error instanceof Error ? error.message : String(error)}`,
+        });
       });
-    this.pushSystemMessage(`已添加主机：${name}`);
+    // Notices surface as a window-global toast — pushing them as chat messages
+    // would flip the pane out of the new-session picker state and hide the
+    // host/workdir selectors.
+    this.showToast({ message: `已添加主机：${name}` });
     this.sendWorkdirState();
     // Same as handleSelectHost: the pane layout must carry the new host or the
     // selector never leaves the old one.
@@ -2883,11 +2897,11 @@ export class DesktopHost {
   private async handleSelectRemotePath(host: string, path: string): Promise<void> {
     if (host === LOCAL_HOST || !path) return;
     if (!parseSshConfigHosts().includes(host)) {
-      this.pushSystemMessage(`未知主机：${host}`);
+      this.showToast({ message: `未知主机：${host}` });
       return;
     }
     if (!(await remotePathExists(host, path))) {
-      this.pushSystemMessage(`远端目录不存在：${path}`);
+      this.showToast({ message: `远端目录不存在：${path}` });
       return;
     }
     this.hostState.set(this.focusedPaneId, host);
@@ -2936,7 +2950,7 @@ export class DesktopHost {
       // index-derived session tree (FR-006), so no refreshSessionTree here.
       this.configStore.removeRecentWorkdir({ host: h, path: dir });
       this.sendWorkdirState();
-      this.pushSystemMessage(`目录不存在：${dir}，已从最近列表移除`);
+      this.showToast({ message: `目录不存在：${dir}，已从最近列表移除` });
       return;
     }
     await this.activateWorkdir({ host: h, dir });
@@ -3012,12 +3026,11 @@ export class DesktopHost {
           this.sendWorkdirState();
         }
         this.refreshSessionTree();
-        this.pushSystemMessage(
-          entry?.worktree
+        this.showToast({
+          message: entry?.worktree
             ? `worktree 目录不存在：${targetDir}，已从会话列表移除`
             : `目录不存在：${workdir}，已从最近列表与会话列表移除`,
-          pid,
-        );
+        });
         return;
       }
 
@@ -3310,7 +3323,7 @@ export class DesktopHost {
       if (!this.autoUpdaterService) {
         this.autoUpdaterService = new AutoUpdaterService({
           onUpdateAvailable: (info) =>
-            this.showUpdateToast({
+            this.showToast({
               message: `发现新版本 v${info.version}（当前 v${app.getVersion()}），正在后台下载…`,
             }),
           onUpdateDownloaded: (info) => void this.handleUpdateDownloaded(info.version),
@@ -3320,7 +3333,7 @@ export class DesktopHost {
       const outcome = await this.autoUpdaterService.checkForUpdates(serverUrl);
       if (outcome === 'update') return;
       if (outcome === 'no-update') {
-        if (manual) this.showUpdateToast({ message: '当前已是最新版本' });
+        if (manual) this.showToast({ message: '当前已是最新版本' });
         return;
       }
       // outcome === 'error': degrade to the manual checker below.
@@ -3329,13 +3342,13 @@ export class DesktopHost {
 
     const info = await checkForUpdate(app.getVersion(), serverUrl);
     if (info) {
-      this.showUpdateToast({
+      this.showToast({
         message: `发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}）`,
         actionLabel: '打开下载页',
         action: { type: 'openDownloadPage', url: info.downloadUrl },
       });
     } else if (manual) {
-      this.showUpdateToast({ message: '当前已是最新版本' });
+      this.showToast({ message: '当前已是最新版本' });
     }
   }
 
@@ -3345,7 +3358,7 @@ export class DesktopHost {
     console.warn('[DesktopHost] Auto updater errored, falling back to manual check');
     const info = await checkForUpdate(app.getVersion(), serverUrl);
     if (info) {
-      this.showUpdateToast({
+      this.showToast({
         message: `发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}）`,
         actionLabel: '打开下载页',
         action: { type: 'openDownloadPage', url: info.downloadUrl },
@@ -3356,7 +3369,7 @@ export class DesktopHost {
   /** The new version finished downloading — announce it via a toast whose
    *  「重启安装」 button quits and installs directly (no second confirm dialog). */
   private handleUpdateDownloaded(version: string): void {
-    this.showUpdateToast({
+    this.showToast({
       message: `新版本 v${version} 已下载完成，重启应用以完成安装。`,
       actionLabel: '重启安装',
       action: { type: 'quitAndInstall' },
@@ -3465,7 +3478,7 @@ export class DesktopHost {
       const result = (await this.utilityClientFor(this.currentHost).request('listPlugins', { workdir: this.workdir })) as { plugins: unknown[] };
       this.postMessage({ command: 'listPluginsResponse', plugins: result.plugins });
     } catch (error) {
-      this.pushSystemMessage(`获取插件列表失败: ${error}`);
+      this.showToast({ message: `获取插件列表失败: ${error}` });
     }
   }
 
@@ -3476,7 +3489,7 @@ export class DesktopHost {
       // Recreate agent to apply plugin changes
       await this.updateAgentConfig(this.configStore.getConfiguration());
     } catch (error) {
-      this.pushSystemMessage(`插件操作失败: ${error}`);
+      this.showToast({ message: `插件操作失败: ${error}` });
     }
   }
 
@@ -3488,7 +3501,7 @@ export class DesktopHost {
       };
       this.postMessage({ command: 'projectSettings', paneId, enabledPlugins: result.enabledPlugins });
     } catch (error) {
-      this.pushSystemMessage(`获取项目设置失败: ${error}`, paneId);
+      this.showToast({ message: `获取项目设置失败: ${error}` });
     }
   }
 
@@ -3510,7 +3523,7 @@ export class DesktopHost {
       // Recreate agents so the plugin change applies immediately (mirrors handlePluginMutation)
       await this.updateAgentConfig(this.configStore.getConfiguration());
     } catch (error) {
-      this.pushSystemMessage(`修改项目设置失败: ${error}`, paneId);
+      this.showToast({ message: `修改项目设置失败: ${error}` });
     }
   }
 
@@ -3519,7 +3532,7 @@ export class DesktopHost {
       const marketplaces = await this.utilityClientFor(this.currentHost).request('listMarketplaces', { workdir: this.workdir });
       this.postMessage({ command: 'listMarketplacesResponse', marketplaces });
     } catch (error) {
-      this.pushSystemMessage(`获取市场列表失败: ${error}`);
+      this.showToast({ message: `获取市场列表失败: ${error}` });
     }
   }
 
@@ -3528,7 +3541,7 @@ export class DesktopHost {
       await this.utilityClientFor(this.currentHost).request(method, { ...params, workdir: this.workdir });
       await this.handleListMarketplaces();
     } catch (error) {
-      this.pushSystemMessage(`市场操作失败: ${error}`);
+      this.showToast({ message: `市场操作失败: ${error}` });
     }
   }
 
