@@ -277,6 +277,19 @@ export interface ThemeState {
   effective: EffectiveTheme;
 }
 
+/** Action a toast's button triggers when clicked (host-side semantics). */
+export type ToastAction =
+  | { type: 'quitAndInstall' }
+  | { type: 'openDownloadPage'; url: string };
+
+/** A non-modal in-app toast (VS Code-style, bottom-right). Desktop host only. */
+export interface UpdateToast {
+  id: string;
+  message: string;
+  actionLabel?: string;
+  action?: ToastAction;
+}
+
 // Pushed by the desktop main process in response to `desktopReady` and after
 // every workdir/host change (message command: 'desktopWorkdirState').
 export interface DesktopWorkdirState {

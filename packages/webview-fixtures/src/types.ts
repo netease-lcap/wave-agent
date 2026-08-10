@@ -332,6 +332,24 @@ export interface DesktopThemeChangeMessage extends HostToWebviewMessageBase {
   effective: EffectiveTheme;
 }
 
+/** Action a toast's button triggers when clicked (host-side semantics). */
+export type ToastAction =
+  | { type: 'quitAndInstall' }
+  | { type: 'openDownloadPage'; url: string };
+
+/** A non-modal in-app toast (VS Code-style, bottom-right). Desktop host only. */
+export interface UpdateToast {
+  id: string;
+  message: string;
+  actionLabel?: string;
+  action?: ToastAction;
+}
+
+export interface ShowToastMessage extends HostToWebviewMessageBase {
+  command: 'showToast';
+  toast: UpdateToast;
+}
+
 export interface DesktopTogglePanelMessage extends HostToWebviewMessageBase {
   command: 'desktopTogglePanel';
   kind: DesktopPanelKind;
@@ -542,6 +560,7 @@ export type HostToWebviewMessage =
   | ProjectSettingsMessage
   | SetInitialStateMessage
   | DesktopThemeChangeMessage
+  | ShowToastMessage
   | DesktopTogglePanelMessage
   | ShowConfigurationMessage
   | ShowDialogMessage

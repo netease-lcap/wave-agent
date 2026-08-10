@@ -8,7 +8,7 @@
  * packages/vsce/src/session/{chatSession,messageHandler}.ts).
  */
 
-import { app, dialog, shell, nativeTheme, powerMonitor, Notification, type BrowserWindow } from 'electron';
+import { app, dialog, shell, nativeTheme, powerMonitor, type BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -55,6 +55,7 @@ import {
   REMOTE_FILE_MAX_LINES,
   REMOTE_FILE_MAX_BYTES,
 } from './remoteCli';
+import type { ToastAction, UpdateToast } from 'wave-webview-fixtures';
 import type { ChildProcess } from 'child_process';
 import { getWorkspaceDiff } from './gitDiff';
 import { TerminalManager } from './terminal';
@@ -442,11 +443,12 @@ export class DesktopHost {
     this.onPanelStateChanged?.(this.panePanelState.get(this.focusedPaneId) ?? []);
   }
 
-  /** Surface an update event as a non-modal OS notification. */
-  private showUpdateNotification(title: string, body: string): void {
-    if (Notification.isSupported()) {
-      new Notification({ title, body }).show();
-    }
+  /** Surface an update event as a non-modal in-app toast (VS Code-style). */
+  private showUpdateToast(toast: Omit<UpdateToast, 'id'>): void {
+    this.postMessage({
+      command: 'showToast',
+      toast: { id: `update-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, ...toast },
+    });
   }
 
   /** Insert a host-generated system message into a pane's chat stream (focused pane by default). */
@@ -2673,6 +2675,10 @@ export class DesktopHost {
         break;
       }
 
+      case 'toastAction':
+        this.handleToastAction(msg.action as ToastAction);
+        break;
+
       case 'downloadMermaid':
         await this.handleDownloadMermaid(msg.content as string, msg.format as 'svg' | 'png');
         break;
@@ -3308,10 +3314,9 @@ export class DesktopHost {
       if (!this.autoUpdaterService) {
         this.autoUpdaterService = new AutoUpdaterService({
           onUpdateAvailable: (info) =>
-            this.showUpdateNotification(
-              '发现新版本',
-              `v${info.version}（当前 v${app.getVersion()}），正在后台下载…`,
-            ),
+            this.showUpdateToast({
+              message: `发现新版本 v${info.version}（当前 v${app.getVersion()}），正在后台下载…`,
+            }),
           onUpdateDownloaded: (info) => void this.handleUpdateDownloaded(info.version),
           onError: () => void this.handleAutoUpdaterError(serverUrl),
         });
@@ -3319,7 +3324,7 @@ export class DesktopHost {
       const outcome = await this.autoUpdaterService.checkForUpdates(serverUrl);
       if (outcome === 'update') return;
       if (outcome === 'no-update') {
-        if (manual) this.showUpdateNotification('Wave 更新', '当前已是最新版本');
+        if (manual) this.showUpdateToast({ message: '当前已是最新版本' });
         return;
       }
       // outcome === 'error': degrade to the manual checker below.
@@ -3328,9 +3333,13 @@ export class DesktopHost {
 
     const info = await checkForUpdate(app.getVersion(), serverUrl);
     if (info) {
-      this.showUpdateNotification('发现新版本', `v${info.latestVersion}（当前 v${info.currentVersion}）：${info.downloadUrl}`);
+      this.showUpdateToast({
+        message: `发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}）`,
+        actionLabel: '打开下载页',
+        action: { type: 'openDownloadPage', url: info.downloadUrl },
+      });
     } else if (manual) {
-      this.showUpdateNotification('Wave 更新', '当前已是最新版本');
+      this.showUpdateToast({ message: '当前已是最新版本' });
     }
   }
 
@@ -3340,23 +3349,32 @@ export class DesktopHost {
     console.warn('[DesktopHost] Auto updater errored, falling back to manual check');
     const info = await checkForUpdate(app.getVersion(), serverUrl);
     if (info) {
-      this.showUpdateNotification('发现新版本', `v${info.latestVersion}（当前 v${info.currentVersion}）：${info.downloadUrl}`);
+      this.showUpdateToast({
+        message: `发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}）`,
+        actionLabel: '打开下载页',
+        action: { type: 'openDownloadPage', url: info.downloadUrl },
+      });
     }
   }
 
-  /** The new version finished downloading — confirm before installing. */
-  private async handleUpdateDownloaded(version: string): Promise<void> {
-    this.showUpdateNotification('Wave 更新', `新版本 v${version} 已下载完成`);
-    const { response } = await dialog.showMessageBox({
-      type: 'info',
-      buttons: ['重启安装', '稍后'],
-      defaultId: 0,
-      cancelId: 1,
-      message: 'Wave 更新已就绪',
-      detail: `新版本 v${version} 已下载完成，重启应用以完成安装。`,
+  /** The new version finished downloading — announce it via a toast whose
+   *  「重启安装」 button quits and installs directly (no second confirm dialog). */
+  private handleUpdateDownloaded(version: string): void {
+    this.showUpdateToast({
+      message: `新版本 v${version} 已下载完成，重启应用以完成安装。`,
+      actionLabel: '重启安装',
+      action: { type: 'quitAndInstall' },
     });
-    if (response === 0) {
+  }
+
+  /** A toast's button was clicked: quit-and-install the downloaded update, or
+   *  open the manual download page. The webview sends the opaque action payload
+   *  back verbatim, so the host stays the single source of the action semantics. */
+  private handleToastAction(action: ToastAction): void {
+    if (action.type === 'quitAndInstall') {
       this.autoUpdaterService?.quitAndInstall();
+    } else if (action.type === 'openDownloadPage' && /^(https?):/.test(action.url)) {
+      void shell.openExternal(action.url);
     }
   }
 
