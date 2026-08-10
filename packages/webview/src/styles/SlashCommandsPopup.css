@@ -61,7 +61,8 @@
 }
 
 .slash-command-item.selected .slash-command-description {
-    color: var(--vscode-foreground);
+    color: var(--vscode-list-activeSelectionForeground);
+    opacity: 0.85;
 }
 
 .slash-command-name {
