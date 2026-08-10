@@ -9,7 +9,7 @@ This is a pnpm monorepo focused on AI-powered development tools.
 - **`packages/agent-sdk`**: Core Node.js SDK. Handles AI model integration, tool systems, and memory management.
 - **`packages/code`**: CLI frontend built with React Ink. Provides the interactive terminal interface.
 - **`packages/webview`**: React 18 chat UI shared by the VS Code extension, JetBrains plugin, and desktop app.
-- **`packages/vsce`**: VS Code extension. Uses esbuild for bundling (not tsc). Its `webview/` directory is a build artifact synced from `packages/webview` — always edit the source in `packages/webview/src/`.
+- **`packages/vscode`**: VS Code extension. Uses esbuild for bundling (not tsc). Its `webview/` directory is a build artifact synced from `packages/webview` — always edit the source in `packages/webview/src/`.
 - **`packages/jetbrains`**: JetBrains plugin (Gradle/Kotlin), reuses the `packages/webview` UI.
 - **`packages/desktop`**: Electron desktop app, reuses the `packages/webview` UI and drives the CLI via stdio.
 - **`docs/`**: VitePress documentation site.
@@ -18,7 +18,7 @@ This is a pnpm monorepo focused on AI-powered development tools.
 
 ### Key Dependencies
 - `packages/code` depends on `packages/agent-sdk`.
-- `packages/vsce` depends on `packages/agent-sdk` and `packages/webview`.
+- `packages/vscode` depends on `packages/agent-sdk` and `packages/webview`.
 - `packages/jetbrains` consumes the `packages/webview` build output.
 - `packages/desktop` consumes the `packages/webview` build output and spawns the `wave --stdio` CLI (from `packages/code`).
 - **Important**: After modifying `agent-sdk` or `webview`, you MUST rebuild them (`pnpm -F wave-agent-sdk build` / `pnpm -F wave-webview build`) before the changes are available to dependent packages.
@@ -64,20 +64,20 @@ Always use `pnpm` as the package manager.
 
 - **Prefer temporary console.log/console.trace**: When diagnosing bugs, especially race conditions or complex flows, add temporary `console.log` or `console.trace` statements to trace execution rather than overthinking through static analysis. Run the code/tests, observe the actual output, then remove the logs once the issue is identified.
 
-## 🧩 VS Code Extension (`packages/vsce`)
+## 🧩 VS Code Extension (`packages/vscode`)
 
 ### Build
-- **Compile**: `pnpm -F wave-vsce run compile` (esbuild: backend CJS + frontend IIFE)
-- **Watch**: `pnpm -F wave-vsce run watch`
-- **Package .vsix**: `pnpm -F wave-vsce run package`
+- **Compile**: `pnpm -F wave-vscode run compile` (esbuild: backend CJS + frontend IIFE)
+- **Watch**: `pnpm -F wave-vscode run watch`
+- **Package .vsix**: `pnpm -F wave-vscode run package`
 
 ### Architecture
 - **Backend** (Extension Host): `src/extension.ts` → `ChatProvider` → `ChatSession` (wraps `wave-agent-sdk` Agent) → `MessageHandler` → services
-- **Frontend** (Webview): React 18 app whose source lives in `packages/webview/src/` (NOT `packages/vsce/webview/`, which is synced build output), uses `useReducer` for state, communicates via `vscode.postMessage`
+- **Frontend** (Webview): React 18 app whose source lives in `packages/webview/src/` (NOT `packages/vscode/webview/`, which is synced build output), uses `useReducer` for state, communicates via `vscode.postMessage`
 - **Key constraint**: `acquireVsCodeApi()` can only be called once per webview lifecycle — call in root component and pass as prop
 
 ### Testing
-- **Unit tests**: Vitest in `tests/` — `pnpm -F wave-vsce test`
+- **Unit tests**: Vitest in `tests/` — `pnpm -F wave-vscode test`
 - **E2E tests**: Playwright in `e2e/` (requires Chromium)
 - **Demo/screenshot tests**: `pnpm -F wave-webview run test:demo` (regenerates the gitignored screenshots under `docs/public/screenshots/`)
 

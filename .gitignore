@@ -21,8 +21,8 @@ vendor/
 
 # VS Code Extension
 *.vsix
-packages/vsce/webview/dist/
-packages/vsce/releases/
+packages/vscode/webview/dist/
+packages/vscode/releases/
 
 # Desktop app
 packages/desktop/dist/

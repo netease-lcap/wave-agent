@@ -45,7 +45,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm -F wave-vsce run package
+      - run: pnpm -F wave-vscode run package
 
       - name: Overwrite .vsix on latest release
         env:
@@ -53,7 +53,7 @@ jobs:
         run: |
           TAG=$(gh release view --json tagName -q .tagName)
           echo "Overwriting assets on latest release: $TAG"
-          gh release upload "$TAG" packages/vsce/releases/*.vsix --clobber
+          gh release upload "$TAG" packages/vscode/releases/*.vsix --clobber
 
   refresh-jetbrains:
     runs-on: ubuntu-latest

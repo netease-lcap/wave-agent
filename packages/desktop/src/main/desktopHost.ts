@@ -5,7 +5,7 @@
  * webview↔agent message protocol. All webview commands arrive via
  * handleWebviewMessage(); agent notifications are translated back into the
  * exact message shapes the webview already understands (ported from
- * packages/vsce/src/session/{chatSession,messageHandler}.ts).
+ * packages/vscode/src/session/{chatSession,messageHandler}.ts).
  */
 
 import { app, dialog, shell, nativeTheme, powerMonitor, type BrowserWindow } from 'electron';

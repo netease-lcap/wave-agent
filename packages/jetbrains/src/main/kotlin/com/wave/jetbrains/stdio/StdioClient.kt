@@ -34,7 +34,7 @@ class StdioClientException(message: String) : RuntimeException(message)
 
 /**
  * Pure transport layer: spawns `wave --stdio`, speaks line-delimited JSON-RPC 2.0.
- * Mirrors packages/vsce/src/stdio/stdioClient.ts.
+ * Mirrors packages/vscode/src/stdio/stdioClient.ts.
  */
 class StdioClient(
     binaryPath: String,

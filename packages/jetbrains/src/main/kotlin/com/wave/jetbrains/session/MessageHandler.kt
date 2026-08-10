@@ -27,7 +27,7 @@ import java.util.Base64
 
 /**
  * Dispatches webview commands → stdio RPC / local actions.
- * Mirrors packages/vsce/src/session/messageHandler.ts.
+ * Mirrors packages/vscode/src/session/messageHandler.ts.
  *
  * Field names, response command names and payload structures match the VSCE implementation
  * so the shared webview bundle works unchanged.

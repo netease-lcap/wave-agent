@@ -47,7 +47,7 @@ data class PendingConfirmation(
 
 /**
  * Holds stdio connection + session state + throttling.
- * Mirrors packages/vsce/src/session/chatSession.ts.
+ * Mirrors packages/vscode/src/session/chatSession.ts.
  */
 class WaveSession(
     private val project: Project,

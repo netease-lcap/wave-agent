@@ -121,7 +121,7 @@ const TEST_PACKAGES = [
   { dir: "packages/code", include: /\.(test|spec)\.(js|mjs|cjs|ts|mts|cts|jsx|tsx)$/ },
   { dir: "packages/webview", include: /\.test\.(ts|tsx)$/ },
   { dir: "packages/desktop", include: /\.test\.ts$/ },
-  { dir: "packages/vsce", include: /\.test\.(ts|tsx)$/ },
+  { dir: "packages/vscode", include: /\.test\.(ts|tsx)$/ },
   { dir: "packages/webview-fixtures/src", include: /\.test\.ts$/ },
 ];
 

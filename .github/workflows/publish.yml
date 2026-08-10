@@ -35,7 +35,7 @@ jobs:
 
       # --- VS Code extension (.vsix) ---
       - name: Package .vsix
-        run: pnpm -F wave-vsce run package
+        run: pnpm -F wave-vscode run package
 
       # --- Docs (docs.tar.gz) ---
       - name: Cache Playwright browsers
@@ -69,7 +69,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            packages/vsce/releases/*.vsix
+            packages/vscode/releases/*.vsix
             docs.tar.gz
           draft: false
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}

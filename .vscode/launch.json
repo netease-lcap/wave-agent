@@ -5,7 +5,7 @@
       "name": "Run Extension",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}/packages/vsce"],
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/packages/vscode"],
       "env": {
         "LOG_LEVEL": "DEBUG"
       }

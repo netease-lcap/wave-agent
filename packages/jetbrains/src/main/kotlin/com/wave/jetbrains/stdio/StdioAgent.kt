@@ -43,7 +43,7 @@ interface AgentCallbacks {
 
 /**
  * Typed business wrapper over StdioClient. Caches state and routes notifications.
- * Mirrors packages/vsce/src/stdio/stdioAgent.ts.
+ * Mirrors packages/vscode/src/stdio/stdioAgent.ts.
  */
 class StdioAgent(
     private val client: StdioClient,

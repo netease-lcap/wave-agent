@@ -7,7 +7,7 @@
   </defs>
   <!-- macOS icon grid: 824x824 rounded rect centered on the 1024 canvas -->
   <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
-  <!-- Brand glyph (C + code brackets), same paths as packages/vsce/logo.svg,
+  <!-- Brand glyph (C + code brackets), same paths as packages/vscode/logo.svg,
        scaled to ~58% of the icon shape and centered -->
   <g fill="#FFFFFF" transform="translate(272 272) scale(20)">
     <path d="M12.4175 5.18945C12.51 5.18959 12.5566 5.28241 12.5103 5.375L11.398 6.99609C11.3516 7.04242 11.3515 7.04297 11.3052 7.04297H6.90384C4.21674 7.08934 1.94638 9.22015 1.89993 11.9072C1.8536 14.687 4.07762 16.911 6.81107 16.9111H12.3247C12.4173 16.9112 12.4638 17.004 12.4175 17.0967L11.3052 18.7178C11.3052 18.7641 11.2588 18.8105 11.2124 18.8105H6.90384C3.15106 18.8105 0.0468529 15.8456 0.000519606 12.0928C-0.0458107 8.29369 3.01201 5.18955 6.81107 5.18945H12.4175Z"/>
