@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.wave.jetbrains</id>
-    <name>Wave</name>
-    <vendor>wave-code</vendor>
+    <name>Wave 代码智聊</name>
+    <vendor>wave-codechat</vendor>
 
     <description><![CDATA[
         Wave code for JetBrains IDEs — AI-powered development assistant.
