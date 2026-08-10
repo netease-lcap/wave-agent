@@ -287,11 +287,11 @@ desktop 还支持**并排多对话**：`Cmd/Ctrl+Click` 或拖拽侧边栏中的
 **验收场景**：
 
 1. **假设**用户已登录企业版（存在 serverUrl），**当**应用触发更新检查，**则**必须通过 electron-updater 的 generic provider 查询 `serverUrl/api/downloads/desktop/{mac|win}/` 下的更新元数据（按当前平台区分 mac/win），不得再查询 GitHub Releases。
-2. **假设**用户未登录（无 serverUrl），**当**应用触发更新检查，**则**不得启动 electron-updater，必须回退现有 checkForUpdate 流程（GitHub Releases 查询 + 系统消息提示 + 下载 URL）。
-3. **假设**electron-updater 检测到新版本，**当**收到 update-available 事件，**则**必须向消息流推送系统消息（非模态）告知发现新版本，不打断当前输入。
-4. **假设**新版本下载完成，**当**收到 update-downloaded 事件，**则**必须提供「重启安装」入口（如消息流中的操作按钮），用户确认后调用 quitAndInstall 退出并安装新版本。
-5. **假设**更新服务故障（端点不可达 / 元数据解析失败 / 下载失败），**当**自动更新链路失败，**则**必须降级为现有 checkForUpdate 提示流程（系统消息给出新版本号与下载 URL），不得静默失败或让用户错过更新。
-6. **假设**用户打开状态对话框点击「检查更新」，**当**手动检查触发，**则**必须复用自动更新链路：已登录走 electron-updater（无更新时提示「当前已是最新版本」，有更新按场景 3-4 下载安装），未登录回退 GitHub 提示。
+2. **假设**用户未登录（无 serverUrl），**当**应用触发更新检查，**则**不得启动 electron-updater，必须回退现有 checkForUpdate 流程（GitHub Releases 查询 + 系统通知提示 + 下载 URL）。
+3. **假设**electron-updater 检测到新版本，**当**收到 update-available 事件，**则**必须弹出系统通知（非模态）告知发现新版本，不打断当前输入。
+4. **假设**新版本下载完成，**当**收到 update-downloaded 事件，**则**必须弹出确认对话框提供「重启安装」入口，用户确认后调用 quitAndInstall 退出并安装新版本。
+5. **假设**更新服务故障（端点不可达 / 元数据解析失败 / 下载失败），**当**自动更新链路失败，**则**必须降级为现有 checkForUpdate 提示流程（系统通知给出新版本号与下载 URL），不得静默失败或让用户错过更新。
+6. **假设**用户打开状态对话框点击「检查更新」，**当**手动检查触发，**则**必须复用自动更新链路：已登录走 electron-updater（无更新时系统通知「当前已是最新版本」，有更新按场景 3-4 下载安装），未登录回退 GitHub 提示。
 7. **假设**已登录企业版且 codechat 端点返回更新信息，**当**updateChecker 构造下载地址，**则** downloadUrl 必须指向真实下载入口（安装包 / 下载页），不得指向 manifest.json 自身（修复 updateChecker.ts:99）。
 8. **假设**macOS 上应用运行于不可写位置（如非 /Applications），**当**更新下载完成但无法原地安装，**则**必须提示用户手动下载安装并给出下载 URL，不得静默失败。
 

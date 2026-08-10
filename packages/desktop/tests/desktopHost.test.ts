@@ -342,7 +342,7 @@ vi.mock('../src/main/sshHosts', async () => {
 import { DesktopHost } from '../src/main/desktopHost';
 import { ConfigStore } from '../src/main/configStore';
 import { HOST_CHANNEL } from '../src/main/channels';
-import { shell, dialog, nativeTheme, powerMonitor } from 'electron';
+import { shell, dialog, nativeTheme, powerMonitor, Notification } from 'electron';
 import { checkForUpdate } from '../src/main/updateChecker';
 import { autoUpdater } from 'electron-updater';
 import {
@@ -359,6 +359,13 @@ import {
 // ---------------------------------------------------------------------------
 
 const STORE_PATH = '/mock-userData/wave-desktop.json';
+
+/** The title/body pairs of every Notification the host showed. */
+function shownNotifications(): Array<{ title: string; body: string }> {
+  return vi
+    .mocked(Notification)
+    .mock.instances.map((n) => (n as unknown as { options: { title: string; body: string } }).options);
+}
 
 function createHost(winWidth = 1280, winHeight = 800) {
   const store = new ConfigStore(STORE_PATH);
@@ -424,6 +431,7 @@ beforeEach(() => {
   h.pendingPermissionRequests = [];
   vi.clearAllMocks();
   for (const key of Object.keys(auListeners)) delete auListeners[key];
+  vi.mocked(Notification).mockClear();
   nativeTheme.__reset();
   powerMonitor.__reset();
   // Reset the auto-reconnect seams (tests shrink them to keep retries fast).
@@ -1114,26 +1122,27 @@ describe('configuration and status', () => {
 // ---------------------------------------------------------------------------
 
 describe('checkForUpdates', () => {
-  it('manual check announces a newer version in the chat', async () => {
+  it('manual check announces a newer version as a system notification', async () => {
     vi.mocked(checkForUpdate).mockResolvedValueOnce({
       latestVersion: '0.20.0',
       currentVersion: '0.19.7',
       downloadUrl: 'https://github.com/release',
     });
-    const { host, sent } = await readyHost();
+    const { host } = await readyHost();
 
     await host.handleWebviewMessage({ command: 'checkForUpdates' });
 
-    const msgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('0.20.0'));
-    expect(msgs).toHaveLength(1);
+    const notices = shownNotifications().filter((n) => JSON.stringify(n).includes('0.20.0'));
+    expect(notices).toHaveLength(1);
+    expect(notices[0].body).toContain('https://github.com/release');
   });
 
-  it('manual check says "already latest" when no update exists', async () => {
-    const { host, sent } = await readyHost();
+  it('manual check says "already latest" via a system notification when no update exists', async () => {
+    const { host } = await readyHost();
     await host.handleWebviewMessage({ command: 'checkForUpdates' });
 
-    const msgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('已是最新'));
-    expect(msgs).toHaveLength(1);
+    const notices = shownNotifications().filter((n) => JSON.stringify(n).includes('已是最新'));
+    expect(notices).toHaveLength(1);
   });
 
   it('runs an automatic check once after the first webviewReady', async () => {
@@ -1178,21 +1187,21 @@ describe('checkForUpdates with a configured serverUrl', () => {
     expect(checkForUpdate).not.toHaveBeenCalled();
   });
 
-  it('announces the update via the update-available event', async () => {
+  it('announces the update via a system notification on update-available', async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: '0.20.0', files: [], path: 'wave-0.20.0.dmg' },
       isUpdateAvailable: true,
     } as never);
-    const { host, sent } = await readyHostWithServerUrl();
+    const { host } = await readyHostWithServerUrl();
 
     await host.handleWebviewMessage({ command: 'checkForUpdates' });
     for (const cb of auListeners['update-available'] ?? []) {
       cb({ version: '0.20.0' });
     }
 
-    const msgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('0.20.0'));
-    expect(msgs).toHaveLength(1);
-    expect(JSON.stringify(msgs[0])).toContain('正在后台下载');
+    const notices = shownNotifications().filter((n) => JSON.stringify(n).includes('0.20.0'));
+    expect(notices).toHaveLength(1);
+    expect(notices[0].body).toContain('正在后台下载');
   });
 
   it('asks before installing once the update is downloaded, then quits and installs', async () => {
@@ -1200,7 +1209,7 @@ describe('checkForUpdates with a configured serverUrl', () => {
       updateInfo: { version: '0.20.0', files: [], path: 'wave-0.20.0.dmg' },
       isUpdateAvailable: true,
     } as never);
-    const { host, sent } = await readyHostWithServerUrl();
+    const { host } = await readyHostWithServerUrl();
 
     await host.handleWebviewMessage({ command: 'checkForUpdates' });
     for (const cb of auListeners['update-downloaded'] ?? []) {
@@ -1211,8 +1220,8 @@ describe('checkForUpdates with a configured serverUrl', () => {
     expect(JSON.stringify(dialog.showMessageBox.mock.calls[0][0])).toContain('重启安装');
     // electron mock's showMessageBox resolves { response: 0 } → 重启安装.
     await vi.waitFor(() => expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1));
-    const msgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('已下载完成'));
-    expect(msgs).toHaveLength(1);
+    const notices = shownNotifications().filter((n) => JSON.stringify(n).includes('已下载完成'));
+    expect(notices).toHaveLength(1);
   });
 
   it('falls back to the manual checker when electron-updater fails', async () => {
@@ -1222,13 +1231,13 @@ describe('checkForUpdates with a configured serverUrl', () => {
       currentVersion: '0.19.7',
       downloadUrl: 'https://github.com/release',
     });
-    const { host, sent } = await readyHostWithServerUrl();
+    const { host } = await readyHostWithServerUrl();
 
     await host.handleWebviewMessage({ command: 'checkForUpdates' });
 
     expect(checkForUpdate).toHaveBeenCalledWith('0.19.7', SERVER);
-    const msgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('0.20.0'));
-    expect(msgs.length).toBeGreaterThanOrEqual(1);
+    const notices = shownNotifications().filter((n) => JSON.stringify(n).includes('0.20.0'));
+    expect(notices.length).toBeGreaterThanOrEqual(1);
     // Restore the default implementation — this persistent mock leaks into the
     // next test's one-shot automatic check otherwise (it would announce a fake
     // update and mutate that test's agent message list).
@@ -1245,7 +1254,7 @@ describe('checkForUpdates with a configured serverUrl', () => {
       currentVersion: '0.19.7',
       downloadUrl: 'https://codechat.example.com/api/downloads/manifest.json',
     });
-    const { host, sent } = await readyHostWithServerUrl();
+    const { host } = await readyHostWithServerUrl();
 
     await host.handleWebviewMessage({ command: 'checkForUpdates' });
     for (const cb of auListeners['error'] ?? []) {
@@ -1253,25 +1262,27 @@ describe('checkForUpdates with a configured serverUrl', () => {
     }
 
     await vi.waitFor(() => expect(checkForUpdate).toHaveBeenCalledWith('0.19.7', SERVER));
-    const msgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('https://codechat.example.com/api/downloads'));
-    expect(msgs.length).toBeGreaterThanOrEqual(1);
+    const notices = shownNotifications().filter((n) =>
+      JSON.stringify(n).includes('https://codechat.example.com/api/downloads'),
+    );
+    expect(notices.length).toBeGreaterThanOrEqual(1);
     vi.mocked(checkForUpdate).mockResolvedValue(null);
   });
 
-  it('says "already latest" without a GitHub round trip when the feed has no update', async () => {
+  it('says "already latest" via a system notification without a GitHub round trip when the feed has no update', async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: '0.19.7', files: [], path: 'wave-0.19.7.dmg' },
       isUpdateAvailable: false,
     } as never);
-    const { host, sent } = await readyHostWithServerUrl();
+    const { host } = await readyHostWithServerUrl();
 
     await host.handleWebviewMessage({ command: 'checkForUpdates' });
 
     expect(checkForUpdate).not.toHaveBeenCalled();
     // The one-shot automatic check stays silent on no-update; only the manual
     // check announces it.
-    const msgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('已是最新'));
-    expect(msgs).toHaveLength(1);
+    const notices = shownNotifications().filter((n) => JSON.stringify(n).includes('已是最新'));
+    expect(notices).toHaveLength(1);
   });
 });
 

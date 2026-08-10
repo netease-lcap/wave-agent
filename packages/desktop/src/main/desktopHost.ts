@@ -8,7 +8,7 @@
  * packages/vsce/src/session/{chatSession,messageHandler}.ts).
  */
 
-import { app, dialog, shell, nativeTheme, powerMonitor, type BrowserWindow } from 'electron';
+import { app, dialog, shell, nativeTheme, powerMonitor, Notification, type BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -440,6 +440,13 @@ export class DesktopHost {
 
   private emitPanelState(): void {
     this.onPanelStateChanged?.(this.panePanelState.get(this.focusedPaneId) ?? []);
+  }
+
+  /** Surface an update event as a non-modal OS notification. */
+  private showUpdateNotification(title: string, body: string): void {
+    if (Notification.isSupported()) {
+      new Notification({ title, body }).show();
+    }
   }
 
   /** Insert a host-generated system message into a pane's chat stream (focused pane by default). */
@@ -3301,7 +3308,10 @@ export class DesktopHost {
       if (!this.autoUpdaterService) {
         this.autoUpdaterService = new AutoUpdaterService({
           onUpdateAvailable: (info) =>
-            this.pushSystemMessage(`发现新版本 v${info.version}（当前 v${app.getVersion()}），正在后台下载…`),
+            this.showUpdateNotification(
+              '发现新版本',
+              `v${info.version}（当前 v${app.getVersion()}），正在后台下载…`,
+            ),
           onUpdateDownloaded: (info) => void this.handleUpdateDownloaded(info.version),
           onError: () => void this.handleAutoUpdaterError(serverUrl),
         });
@@ -3309,7 +3319,7 @@ export class DesktopHost {
       const outcome = await this.autoUpdaterService.checkForUpdates(serverUrl);
       if (outcome === 'update') return;
       if (outcome === 'no-update') {
-        if (manual) this.pushSystemMessage('当前已是最新版本');
+        if (manual) this.showUpdateNotification('Wave 更新', '当前已是最新版本');
         return;
       }
       // outcome === 'error': degrade to the manual checker below.
@@ -3318,9 +3328,9 @@ export class DesktopHost {
 
     const info = await checkForUpdate(app.getVersion(), serverUrl);
     if (info) {
-      this.pushSystemMessage(`发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}）：${info.downloadUrl}`);
+      this.showUpdateNotification('发现新版本', `v${info.latestVersion}（当前 v${info.currentVersion}）：${info.downloadUrl}`);
     } else if (manual) {
-      this.pushSystemMessage('当前已是最新版本');
+      this.showUpdateNotification('Wave 更新', '当前已是最新版本');
     }
   }
 
@@ -3330,13 +3340,13 @@ export class DesktopHost {
     console.warn('[DesktopHost] Auto updater errored, falling back to manual check');
     const info = await checkForUpdate(app.getVersion(), serverUrl);
     if (info) {
-      this.pushSystemMessage(`发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}）：${info.downloadUrl}`);
+      this.showUpdateNotification('发现新版本', `v${info.latestVersion}（当前 v${info.currentVersion}）：${info.downloadUrl}`);
     }
   }
 
   /** The new version finished downloading — confirm before installing. */
   private async handleUpdateDownloaded(version: string): Promise<void> {
-    this.pushSystemMessage(`新版本 v${version} 已下载完成，重启应用即可安装`);
+    this.showUpdateNotification('Wave 更新', `新版本 v${version} 已下载完成`);
     const { response } = await dialog.showMessageBox({
       type: 'info',
       buttons: ['重启安装', '稍后'],
