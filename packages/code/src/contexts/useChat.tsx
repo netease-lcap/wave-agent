@@ -797,7 +797,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       originalCwd,
       model,
       initialPermissionMode,
-      refreshMessages,
       throttledContentUpdate,
       throttledReasoningUpdate,
       throttledToolBlockUpdate,
