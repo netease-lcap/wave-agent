@@ -14,6 +14,12 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {
+    id: "agents",
+    name: "agents",
+    description: "List available agents and active subagents",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
+  {
     id: "rewind",
     name: "rewind",
     description:

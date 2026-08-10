@@ -543,6 +543,25 @@ describe("inputHandlers", () => {
       });
     });
 
+    it("should open agents manager when no slash command handler exists", async () => {
+      const state: InputState = {
+        ...initialState,
+        slashPosition: 0,
+        inputText: "/agents",
+        cursorPosition: 7,
+      };
+      vi.mocked(callbacks.onHasSlashCommand!).mockReturnValue(false);
+
+      handleCommandSelect(state, dispatch, callbacks, "agents");
+
+      await vi.waitFor(() => {
+        expect(dispatch).toHaveBeenCalledWith({
+          type: "SET_SHOW_AGENTS_MANAGER",
+          payload: true,
+        });
+      });
+    });
+
     it("should show usage for bare /btw executed via selector", async () => {
       const state: InputState = {
         ...initialState,

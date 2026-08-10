@@ -6,6 +6,7 @@ import { CommandSelector } from "./CommandSelector.js";
 import { HistorySearch } from "./HistorySearch.js";
 import { BackgroundTaskManager } from "./BackgroundTaskManager.js";
 import { McpManager } from "./McpManager.js";
+import { AgentsManager } from "./AgentsManager.js";
 import { RewindCommand } from "./RewindCommand.js";
 import { HelpView } from "./HelpView.js";
 import { StatusCommand } from "./StatusCommand.js";
@@ -89,6 +90,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
     recallQueuedMessage,
     queuedMessages,
     setIsBtwActive,
+    agentDefinitions,
+    activeSubagentInstances,
+    backgroundTasks,
   } = useChat();
 
   // Ref to hold setInputText so queue callbacks can access it before useInputManager returns
@@ -133,6 +137,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     // Task/MCP Manager
     showBackgroundTaskManager,
     showMcpManager,
+    showAgentsManager,
     showRewindManager,
     showHelp,
     showStatusCommand,
@@ -142,6 +147,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showWorkflowManager,
     setShowBackgroundTaskManager,
     setShowMcpManager,
+    setShowAgentsManager,
     setShowRewindManager,
     setShowHelp,
     setShowStatusCommand,
@@ -211,6 +217,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       showModelSelector ||
       showBackgroundTaskManager ||
       showMcpManager ||
+      showAgentsManager ||
       showWorkflowManager
     ) {
       return;
@@ -253,51 +260,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     }
     await handleRewindSelect(index);
   };
-
-  if (showRewindManager) {
-    return (
-      <RewindCommand
-        messages={messages}
-        onSelect={handleRewindSelectWithClose}
-        onCancel={handleRewindCancel}
-        getFullMessageThread={getFullMessageThread}
-      />
-    );
-  }
-
-  if (showHelp) {
-    return (
-      <HelpView onCancel={() => setShowHelp(false)} commands={slashCommands} />
-    );
-  }
-
-  if (showStatusCommand) {
-    return <StatusCommand onCancel={() => setShowStatusCommand(false)} />;
-  }
-
-  if (showLoginCommand) {
-    return <LoginCommand onCancel={() => setShowLoginCommand(false)} />;
-  }
-
-  if (showPluginManager) {
-    return (
-      <PluginManagerShell
-        onCancel={() => setShowPluginManager(false)}
-        onPluginInstalled={recreateAgent}
-      />
-    );
-  }
-
-  if (showModelSelector) {
-    return (
-      <ModelSelector
-        onCancel={() => setShowModelSelector(false)}
-        currentModel={currentModel}
-        configuredModels={configuredModels}
-        onSelectModel={setModel}
-      />
-    );
-  }
 
   return (
     <Box flexDirection="column">
@@ -345,19 +307,70 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
+      {showAgentsManager && (
+        <AgentsManager
+          onCancel={() => setShowAgentsManager(false)}
+          agentDefinitions={agentDefinitions}
+          activeSubagentInstances={activeSubagentInstances}
+          backgroundTasks={backgroundTasks}
+        />
+      )}
+
       {showWorkflowManager && (
         <WorkflowManager onCancel={() => setShowWorkflowManager(false)} />
+      )}
+
+      {showRewindManager && (
+        <RewindCommand
+          messages={messages}
+          onSelect={handleRewindSelectWithClose}
+          onCancel={handleRewindCancel}
+          getFullMessageThread={getFullMessageThread}
+        />
+      )}
+
+      {showHelp && (
+        <HelpView
+          onCancel={() => setShowHelp(false)}
+          commands={slashCommands}
+        />
+      )}
+
+      {showStatusCommand && (
+        <StatusCommand onCancel={() => setShowStatusCommand(false)} />
+      )}
+
+      {showLoginCommand && (
+        <LoginCommand onCancel={() => setShowLoginCommand(false)} />
+      )}
+
+      {showPluginManager && (
+        <PluginManagerShell
+          onCancel={() => setShowPluginManager(false)}
+          onPluginInstalled={recreateAgent}
+        />
+      )}
+
+      {showModelSelector && (
+        <ModelSelector
+          onCancel={() => setShowModelSelector(false)}
+          currentModel={currentModel}
+          configuredModels={configuredModels}
+          onSelectModel={setModel}
+        />
       )}
 
       {btwState.question || btwState.answer
         ? null
         : showBackgroundTaskManager ||
           showMcpManager ||
+          showAgentsManager ||
           showRewindManager ||
           showHelp ||
           showStatusCommand ||
           showLoginCommand ||
           showPluginManager ||
+          showModelSelector ||
           showWorkflowManager || (
             <Box flexDirection="column">
               {escClearPending && <Text color="gray">再次按 Esc 清空输入</Text>}

@@ -33,6 +33,10 @@ export * from "./utils/worktreeUtils.js";
 export { loadMergedWaveConfig } from "./services/configurationService.js";
 export * from "./types/index.js";
 
+// Export subagent types (used by CLI /agents overlay)
+export type { SubagentConfiguration } from "./utils/subagentParser.js";
+export type { SubagentInstance } from "./managers/subagentManager.js";
+
 // Export tool building utilities
 export * from "./tools/buildTool.js";
 export type { ToolPlugin, ToolResult, ToolContext } from "./tools/types.js";
