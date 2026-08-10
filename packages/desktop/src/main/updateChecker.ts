@@ -1,12 +1,13 @@
 /**
  * Update checker for the desktop app — queries GitHub Releases (or the
- * CodeChat downloads manifest when a serverUrl is configured).
+ * CodeChat electron-builder download feed when a serverUrl is configured).
  * Ported from packages/vsce/src/services/updateService.ts without the
  * VS Code-specific notification/install code.
  */
 
 import * as http from 'http';
 import * as https from 'https';
+import { load as parseYaml } from 'js-yaml';
 import { parseVersion, compareVersions, type ParsedVersion } from './version';
 
 export interface UpdateInfo {
@@ -75,15 +76,34 @@ async function checkViaGitHub(currentVersion: string, current: ParsedVersion): P
 }
 
 async function checkViaCodeChat(currentVersion: string, current: ParsedVersion, serverUrl: string): Promise<UpdateInfo | null> {
-  const { statusCode, body } = await httpGet(`${serverUrl}/api/downloads/manifest.json`, 5000);
+  // The codechat downloads endpoint serves electron-builder metadata:
+  // mac → latest-mac.yml, win → latest.yml. The `path` field is the absolute
+  // download entry (e.g. a file-center URL) — pointing users at the metadata
+  // itself would be useless.
+  const platform = process.platform === 'win32' ? 'win' : 'mac';
+  const fileName = process.platform === 'win32' ? 'latest.yml' : 'latest-mac.yml';
+  const feedUrl = `${serverUrl}/api/downloads/desktop/${platform}/${fileName}`;
+
+  const { statusCode, body } = await httpGet(feedUrl, 5000);
 
   if (statusCode !== 200) {
-    throw new Error(`CodeChat manifest returned non-OK status: ${statusCode}`);
+    throw new Error(`CodeChat download feed returned non-OK status: ${statusCode}`);
   }
 
-  const data = JSON.parse(body) as { version: string };
-  const latest = parseVersion(data.version);
+  let data: { version?: unknown; path?: unknown };
+  try {
+    data = parseYaml(body) as { version?: unknown; path?: unknown };
+  } catch (error) {
+    console.warn('[UpdateChecker] Failed to parse CodeChat download feed:', error);
+    return null;
+  }
 
+  if (typeof data.version !== 'string') {
+    console.warn('[UpdateChecker] Invalid latest version from CodeChat:', data.version);
+    return null;
+  }
+
+  const latest = parseVersion(data.version);
   if (!latest) {
     console.warn('[UpdateChecker] Invalid latest version from CodeChat:', data.version);
     return null;
@@ -96,7 +116,7 @@ async function checkViaCodeChat(currentVersion: string, current: ParsedVersion, 
   return {
     latestVersion: data.version,
     currentVersion,
-    downloadUrl: `${serverUrl}/api/downloads/manifest.json`,
+    downloadUrl: typeof data.path === 'string' ? data.path : feedUrl,
     releaseNotes: undefined,
   };
 }
@@ -114,7 +134,7 @@ export async function checkForUpdate(currentVersion: string, serverUrl?: string)
       try {
         return await checkViaCodeChat(currentVersion, current, serverUrl);
       } catch (error) {
-        console.warn('[UpdateChecker] CodeChat manifest check failed, falling back to GitHub:', error);
+        console.warn('[UpdateChecker] CodeChat download feed check failed, falling back to GitHub:', error);
       }
     }
     return await checkViaGitHub(currentVersion, current);

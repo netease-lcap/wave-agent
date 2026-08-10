@@ -276,6 +276,27 @@ desktop 还支持**并排多对话**：`Cmd/Ctrl+Click` 或拖拽侧边栏中的
 
 ---
 
+### 用户故事：桌面端自动更新（优先级：P1）
+
+作为用户，我希望桌面应用检测到新版本时自动下载、就绪后一键重启安装，以便我无需手动访问下载页面即可获得修复与新功能。
+
+**为什么是这个优先级**：应用更新是修复与功能到达用户的唯一通道；现状仅「提示 + 给下载 URL」，用户不主动访问下载页就拿不到修复。macOS 签名 + 公证已就绪（ed2d9bf7 + 6f00c44a），自动更新链路可以端到端闭环。企业版用户登录后 serverUrl 已知，更新源（codechat 的 file-center 更新元数据）运行时注入，构建期不写死。
+
+**独立测试**：本地 mock 一个 generic 更新源（`latest-mac.yml`/`latest.yml`，元数据指向更高版本），登录后触发检查，验证「发现更新 → 下载 → 重启安装」全流程；无 serverUrl 时验证回退 GitHub 提示流程；更新端点故障时验证降级提示。
+
+**验收场景**：
+
+1. **假设**用户已登录企业版（存在 serverUrl），**当**应用触发更新检查，**则**必须通过 electron-updater 的 generic provider 查询 `serverUrl/api/downloads/desktop/{mac|win}/` 下的更新元数据（按当前平台区分 mac/win），不得再查询 GitHub Releases。
+2. **假设**用户未登录（无 serverUrl），**当**应用触发更新检查，**则**不得启动 electron-updater，必须回退现有 checkForUpdate 流程（GitHub Releases 查询 + 系统消息提示 + 下载 URL）。
+3. **假设**electron-updater 检测到新版本，**当**收到 update-available 事件，**则**必须向消息流推送系统消息（非模态）告知发现新版本，不打断当前输入。
+4. **假设**新版本下载完成，**当**收到 update-downloaded 事件，**则**必须提供「重启安装」入口（如消息流中的操作按钮），用户确认后调用 quitAndInstall 退出并安装新版本。
+5. **假设**更新服务故障（端点不可达 / 元数据解析失败 / 下载失败），**当**自动更新链路失败，**则**必须降级为现有 checkForUpdate 提示流程（系统消息给出新版本号与下载 URL），不得静默失败或让用户错过更新。
+6. **假设**用户打开状态对话框点击「检查更新」，**当**手动检查触发，**则**必须复用自动更新链路：已登录走 electron-updater（无更新时提示「当前已是最新版本」，有更新按场景 3-4 下载安装），未登录回退 GitHub 提示。
+7. **假设**已登录企业版且 codechat 端点返回更新信息，**当**updateChecker 构造下载地址，**则** downloadUrl 必须指向真实下载入口（安装包 / 下载页），不得指向 manifest.json 自身（修复 updateChecker.ts:99）。
+8. **假设**macOS 上应用运行于不可写位置（如非 /Applications），**当**更新下载完成但无法原地安装，**则**必须提示用户手动下载安装并给出下载 URL，不得静默失败。
+
+---
+
 ### 用户故事：跟随系统主题（优先级：P2）
 
 作为用户，我希望 desktop 自动跟随操作系统的亮色/暗色外观，与 IDE 插件保持一致的"不暴露独立主题切换选项"行为（VSCE 跟随 VS Code 主题、JetBrains 跟随 IDE LaF），避免在桌面端重复维护一套主题切换 UI。
@@ -661,3 +682,7 @@ desktop 还支持**并排多对话**：`Cmd/Ctrl+Click` 或拖拽侧边栏中的
 - **IDE 插件的 file 面板**：VSCE/JetBrains 不提供该面板，其 `openFile` 由 IDE 自身处理（含 IDE 的 Remote-SSH 能力）。
 - **语法高亮的语言覆盖**：仅覆盖常用语言子集（highlight.js common 集），未覆盖语言纯文本展示。
 - **文件内搜索与符号跳转**：不做文件内文本搜索、符号跳转等编辑器能力。
+- **Windows 更新包签名校验**：Windows 安装包未签名，electron-updater 对未签名当前应用不校验更新签名（与现分发一致，SmartScreen 警告不在自动更新范围解决）。
+- **Linux 自动更新**：首版仅 macOS（arm64）与 Windows。
+- **CI 发布自动上传**：CI 保持 `--publish never` 零改动，安装包由 ops 手动上传 codechat file-center，与 vscode/jetbrains 分发方式一致。
+- **更新安装的推迟调度**：重启安装立即执行（quitAndInstall），不做「推迟到下次退出应用」的调度。

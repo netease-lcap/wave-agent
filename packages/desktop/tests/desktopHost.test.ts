@@ -262,6 +262,21 @@ vi.mock('../src/main/updateChecker', () => ({
   checkForUpdate: vi.fn(async () => null),
 }));
 
+// electron-updater — the auto-update service for logged-in (serverUrl) installs.
+// The on() mock records listeners so tests can fire update-available /
+// update-downloaded to assert the host's system-message wiring.
+const auListeners: Record<string, Array<(info: unknown) => void>> = {};
+vi.mock('electron-updater', () => ({
+  autoUpdater: {
+    checkForUpdates: vi.fn(async () => null),
+    setFeedURL: vi.fn(),
+    quitAndInstall: vi.fn(),
+    on: vi.fn((event: string, cb: (info: unknown) => void) => {
+      (auListeners[event] ??= []).push(cb);
+    }),
+  },
+}));
+
 // PortForwardManager spawns real `ssh -N -L` processes — stub it entirely and
 // assert the wiring (messages in, forwarded results out, session-scoped teardown).
 vi.mock('../src/main/portForward', () => {
@@ -327,8 +342,9 @@ vi.mock('../src/main/sshHosts', async () => {
 import { DesktopHost } from '../src/main/desktopHost';
 import { ConfigStore } from '../src/main/configStore';
 import { HOST_CHANNEL } from '../src/main/channels';
-import { shell, nativeTheme, powerMonitor } from 'electron';
+import { shell, dialog, nativeTheme, powerMonitor } from 'electron';
 import { checkForUpdate } from '../src/main/updateChecker';
+import { autoUpdater } from 'electron-updater';
 import {
   connectRemoteDaemon,
   remotePathExists,
@@ -407,6 +423,7 @@ beforeEach(() => {
   h.closedHandlers.length = 0;
   h.pendingPermissionRequests = [];
   vi.clearAllMocks();
+  for (const key of Object.keys(auListeners)) delete auListeners[key];
   nativeTheme.__reset();
   powerMonitor.__reset();
   // Reset the auto-reconnect seams (tests shrink them to keep retries fast).
@@ -1124,6 +1141,137 @@ describe('checkForUpdates', () => {
     await vi.waitFor(() => {
       expect(checkForUpdate).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('checkForUpdates with a configured serverUrl', () => {
+  const SERVER = 'https://codechat.example.com';
+
+  // Like readyHost() but the serverUrl is in place BEFORE webviewReady, so the
+  // one-shot automatic check takes the electron-updater path too.
+  async function readyHostWithServerUrl() {
+    const ctx = createHost();
+    ctx.store.addRecentWorkdir({ host: 'local', path: '/work/a' });
+    h.existingPaths.add('/work/a');
+    ctx.store.setConfiguration({ serverUrl: SERVER });
+    await ctx.host.handleWebviewMessage({ command: 'desktopReady' });
+    await ctx.host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/work/a' });
+    await ctx.host.handleWebviewMessage({ command: 'webviewReady' });
+    return ctx;
+  }
+
+  it('routes the check through electron-updater against the codechat feed', async () => {
+    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: '0.20.0', files: [], path: 'wave-0.20.0.dmg' },
+      isUpdateAvailable: true,
+    } as never);
+    const { host } = await readyHostWithServerUrl();
+
+    await host.handleWebviewMessage({ command: 'checkForUpdates' });
+
+    expect(autoUpdater.setFeedURL).toHaveBeenCalledWith({
+      provider: 'generic',
+      url: `${SERVER}/api/downloads/desktop/mac/`,
+    });
+    expect(autoUpdater.checkForUpdates).toHaveBeenCalled();
+    // The electron-updater path is authoritative when logged in — no GitHub fallback.
+    expect(checkForUpdate).not.toHaveBeenCalled();
+  });
+
+  it('announces the update via the update-available event', async () => {
+    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: '0.20.0', files: [], path: 'wave-0.20.0.dmg' },
+      isUpdateAvailable: true,
+    } as never);
+    const { host, sent } = await readyHostWithServerUrl();
+
+    await host.handleWebviewMessage({ command: 'checkForUpdates' });
+    for (const cb of auListeners['update-available'] ?? []) {
+      cb({ version: '0.20.0' });
+    }
+
+    const msgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('0.20.0'));
+    expect(msgs).toHaveLength(1);
+    expect(JSON.stringify(msgs[0])).toContain('正在后台下载');
+  });
+
+  it('asks before installing once the update is downloaded, then quits and installs', async () => {
+    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: '0.20.0', files: [], path: 'wave-0.20.0.dmg' },
+      isUpdateAvailable: true,
+    } as never);
+    const { host, sent } = await readyHostWithServerUrl();
+
+    await host.handleWebviewMessage({ command: 'checkForUpdates' });
+    for (const cb of auListeners['update-downloaded'] ?? []) {
+      cb({ version: '0.20.0' });
+    }
+    await vi.waitFor(() => expect(dialog.showMessageBox).toHaveBeenCalledTimes(1));
+
+    expect(JSON.stringify(dialog.showMessageBox.mock.calls[0][0])).toContain('重启安装');
+    // electron mock's showMessageBox resolves { response: 0 } → 重启安装.
+    await vi.waitFor(() => expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1));
+    const msgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('已下载完成'));
+    expect(msgs).toHaveLength(1);
+  });
+
+  it('falls back to the manual checker when electron-updater fails', async () => {
+    vi.mocked(autoUpdater.checkForUpdates).mockRejectedValue(new Error('ECONNREFUSED'));
+    vi.mocked(checkForUpdate).mockResolvedValue({
+      latestVersion: '0.20.0',
+      currentVersion: '0.19.7',
+      downloadUrl: 'https://github.com/release',
+    });
+    const { host, sent } = await readyHostWithServerUrl();
+
+    await host.handleWebviewMessage({ command: 'checkForUpdates' });
+
+    expect(checkForUpdate).toHaveBeenCalledWith('0.19.7', SERVER);
+    const msgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('0.20.0'));
+    expect(msgs.length).toBeGreaterThanOrEqual(1);
+    // Restore the default implementation — this persistent mock leaks into the
+    // next test's one-shot automatic check otherwise (it would announce a fake
+    // update and mutate that test's agent message list).
+    vi.mocked(checkForUpdate).mockResolvedValue(null);
+  });
+
+  it('degrades to the manual checker when the background download errors', async () => {
+    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: '0.19.7', files: [], path: 'wave-0.19.7.dmg' },
+      isUpdateAvailable: false,
+    } as never);
+    vi.mocked(checkForUpdate).mockResolvedValue({
+      latestVersion: '0.20.0',
+      currentVersion: '0.19.7',
+      downloadUrl: 'https://codechat.example.com/api/downloads/manifest.json',
+    });
+    const { host, sent } = await readyHostWithServerUrl();
+
+    await host.handleWebviewMessage({ command: 'checkForUpdates' });
+    for (const cb of auListeners['error'] ?? []) {
+      cb(new Error('download failed'));
+    }
+
+    await vi.waitFor(() => expect(checkForUpdate).toHaveBeenCalledWith('0.19.7', SERVER));
+    const msgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('https://codechat.example.com/api/downloads'));
+    expect(msgs.length).toBeGreaterThanOrEqual(1);
+    vi.mocked(checkForUpdate).mockResolvedValue(null);
+  });
+
+  it('says "already latest" without a GitHub round trip when the feed has no update', async () => {
+    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: '0.19.7', files: [], path: 'wave-0.19.7.dmg' },
+      isUpdateAvailable: false,
+    } as never);
+    const { host, sent } = await readyHostWithServerUrl();
+
+    await host.handleWebviewMessage({ command: 'checkForUpdates' });
+
+    expect(checkForUpdate).not.toHaveBeenCalled();
+    // The one-shot automatic check stays silent on no-update; only the manual
+    // check announces it.
+    const msgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('已是最新'));
+    expect(msgs).toHaveLength(1);
   });
 });
 
