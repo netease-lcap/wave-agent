@@ -13,11 +13,11 @@ AI 辅助编程工具链，提供 SDK、CLI 终端界面、VS Code 扩展与 Jet
 
 ### VS Code 扩展
 
-从企业控制台「产品下载」页面下载 `.vsix` 文件，在 VS Code 中通过「扩展 → ⋯ → 从 VSIX 安装」安装。打开聊天面板点击欢迎页的「登录」按钮完成 SSO 登录。
+在 VS Code 扩展市场搜索 **Wave Code Chat**（扩展 ID：`wave-codechat.wave-vscode`）安装。打开聊天面板点击欢迎页的「登录」按钮完成 SSO 登录。
 
 ### JetBrains 插件
 
-从企业控制台「产品下载」页面下载 JetBrains 插件包，在 IDE（WebStorm、IntelliJ IDEA 等）中通过「设置 → 插件 → ⚙ → 从磁盘安装插件」安装。打开聊天面板点击欢迎页的「登录」按钮完成 SSO 登录。
+在 JetBrains 插件市场（IDE「设置 → 插件」）搜索 **Wave Code Chat** 安装。打开聊天面板点击欢迎页的「登录」按钮完成 SSO 登录。
 
 ### CLI 终端
 
