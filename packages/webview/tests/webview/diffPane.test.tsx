@@ -102,6 +102,79 @@ describe('DiffPane', () => {
         expect(container.querySelector('.diff-line-removed .diff-content')).toHaveTextContent('old');
     });
 
+    it('pairs adjacent removed/added lines and highlights word-level changes', () => {
+        const { container } = renderPane();
+        sendDiffResult([makeFile({ hunks: '@@ -1 +1 @@\n-const x = 1;\n+const x = 2;' })]);
+        const removed = container.querySelector('.diff-line-removed');
+        const added = container.querySelector('.diff-line-added');
+        // Unchanged words keep the line-level background; only the changed word
+        // gets the deeper word-level highlight.
+        expect(removed?.querySelector('.diff-word-unchanged')).toHaveTextContent('const x =');
+        expect(removed?.querySelector('.diff-word-removed')).toHaveTextContent('1');
+        expect(added?.querySelector('.diff-word-unchanged')).toHaveTextContent('const x =');
+        expect(added?.querySelector('.diff-word-added')).toHaveTextContent('2');
+        // Rows are rendered as removed-then-added pairs.
+        expect(removed?.querySelector('.diff-prefix')).toHaveTextContent('-');
+        expect(added?.querySelector('.diff-prefix')).toHaveTextContent('+');
+    });
+
+    it('highlights whole lines for unpaired added-only and removed-only blocks', () => {
+        const { container } = renderPane();
+        // Removed-only hunk (no added lines) and added-only hunk (no removed
+        // lines) — nothing to pair, the whole line is word-level highlighted
+        // (same as the message diff block).
+        sendDiffResult([
+            makeFile({ hunks: '@@ -1 +1 @@\n-only-removed\n@@ -2 +2 @@\n+only-added', additions: 1, deletions: 1 }),
+        ]);
+        const removed = container.querySelector('.diff-line-removed');
+        const added = container.querySelector('.diff-line-added');
+        expect(removed?.querySelector('.diff-word-removed')).toHaveTextContent('only-removed');
+        expect(added?.querySelector('.diff-word-added')).toHaveTextContent('only-added');
+    });
+
+    it('resets word-level pairing at context lines and hunk headers', () => {
+        const { container } = renderPane();
+        sendDiffResult([
+            makeFile({
+                hunks: '@@ -1 +3 @@\n context\n-old-a\n+new-a\n@@ -10 +10 @@\n-old-b\n+new-b',
+            }),
+        ]);
+        const removed = container.querySelectorAll('.diff-line-removed');
+        const added = container.querySelectorAll('.diff-line-added');
+        // Pair (old-a, new-a) then a second (old-b, new-b) after a fresh hunk
+        // header — pairing must not leak across the hunk boundary.
+        expect(removed).toHaveLength(2);
+        expect(added).toHaveLength(2);
+        // diffWords('old-a', 'new-a') marks only the changed words ('old'/'new');
+        // the '-a' suffix stays on the line-level background.
+        expect(removed[0].querySelector('.diff-word-removed')).toHaveTextContent('old');
+        expect(added[0].querySelector('.diff-word-added')).toHaveTextContent('new');
+        expect(removed[1].querySelector('.diff-word-removed')).toHaveTextContent('old');
+        expect(added[1].querySelector('.diff-word-added')).toHaveTextContent('new');
+        expect(removed[0].querySelector('.diff-content')).toHaveTextContent('old-a');
+        expect(added[0].querySelector('.diff-content')).toHaveTextContent('new-a');
+    });
+
+    it('does not pair lines across a hunk boundary', () => {
+        const { container } = renderPane();
+        // Hunk 1 has only a removed line, hunk 2 only an added line — pairing
+        // would merge them, so both must stay whole-line highlighted instead.
+        sendDiffResult([
+            makeFile({ hunks: '@@ -1 +1 @@\n-only-x\n@@ -10 +10 @@\n+only-y', additions: 1, deletions: 1 }),
+        ]);
+        const removed = container.querySelector('.diff-line-removed');
+        const added = container.querySelector('.diff-line-added');
+        expect(removed?.querySelector('.diff-word-removed')).toHaveTextContent('only-x');
+        expect(added?.querySelector('.diff-word-added')).toHaveTextContent('only-y');
+    });
+
+    it('keeps line-comment buttons on word-level highlighted rows', () => {
+        renderPane();
+        sendDiffResult([makeFile({ hunks: '@@ -1 +1 @@\n-const x = 1;\n+const x = 2;' })]);
+        expect(screen.getByTestId('diff-comment-add-1')).toBeInTheDocument();
+        expect(screen.getByTestId('diff-comment-add-2')).toBeInTheDocument();
+    });
+
     it('binary files show a placeholder instead of hunks', () => {
         renderPane();
         sendDiffResult([makeFile({ binary: true, hunks: '' })]);

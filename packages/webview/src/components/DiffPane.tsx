@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { VsCodeApi } from '../types';
+import { renderWordLevelDiff } from '../utils/diffHighlight';
 import '../styles/DiffViewer.css';
 import '../styles/DiffPane.css';
 
@@ -201,49 +202,27 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     window.addEventListener('mouseup', onUp);
   };
 
-  const renderHunks = (file: WorkspaceDiffFile) =>
-    file.hunks.split('\n').map((line, i) => {
-      if (line.startsWith('@@')) {
-        return (
-          <div key={i} className="diff-line-hunk">
-            {line}
-          </div>
-        );
-      }
-      if (line.startsWith('\\')) {
-        return (
-          <div key={i} className="diff-line-ellipsis">
-            {line}
-          </div>
-        );
-      }
-      let cls = 'diff-line diff-line-context';
-      let prefix = ' ';
-      let content = line;
-      if (line.startsWith('+')) {
-        cls = 'diff-line diff-line-added';
-        prefix = '+';
-        content = line.slice(1);
-      } else if (line.startsWith('-')) {
-        cls = 'diff-line diff-line-removed';
-        prefix = '-';
-        content = line.slice(1);
-      } else if (line.startsWith(' ')) {
-        content = line.slice(1);
-      }
-      const lineKey = `${file.path}:${i}`;
+  const renderHunks = (file: WorkspaceDiffFile) => {
+    const elements: React.ReactNode[] = [];
+    // Removed/added lines awaiting word-level pairing; `idx` is the original
+    // hunk line index (stable key + comment target).
+    let pendingRemoved: { text: string; idx: number }[] = [];
+    let pendingAdded: { text: string; idx: number }[] = [];
+
+    const renderDiffLine = (prefix: string, cls: string, content: React.ReactNode, idx: number, text: string) => {
+      const lineKey = `${file.path}:${idx}`;
       const isOpen = commentTarget?.lineKey === lineKey;
       return (
-        <React.Fragment key={i}>
+        <React.Fragment key={idx}>
           <div className={cls}>
             <span className="diff-prefix">{prefix}</span>
             <span className="diff-content">{content}</span>
             <button
               className="diff-line-comment-btn"
               title="评论这行"
-              aria-label={`评论 ${file.path} 第 ${i + 1} 行`}
-              data-testid={`diff-comment-add-${i}`}
-              onClick={() => setCommentTarget({ lineKey, file, prefix, text: content.slice(0, 30) })}
+              aria-label={`评论 ${file.path} 第 ${idx + 1} 行`}
+              data-testid={`diff-comment-add-${idx}`}
+              onClick={() => setCommentTarget({ lineKey, file, prefix, text: text.slice(0, 30) })}
             >
               <i className="codicon codicon-add" />
             </button>
@@ -294,7 +273,64 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
           )}
         </React.Fragment>
       );
+    };
+
+    // Pair pending removed/added lines by position; unpaired lines (added-only
+    // or removed-only blocks) are highlighted as whole lines, same as the
+    // message-list diff block.
+    const flushPending = () => {
+      const maxLines = Math.max(pendingRemoved.length, pendingAdded.length);
+      for (let i = 0; i < maxLines; i++) {
+        const oldLine = pendingRemoved[i];
+        const newLine = pendingAdded[i];
+        if (oldLine && newLine) {
+          const { removedParts, addedParts } = renderWordLevelDiff(oldLine.text, newLine.text, `pair-${oldLine.idx}`);
+          elements.push(renderDiffLine('-', 'diff-line diff-line-removed', removedParts, oldLine.idx, oldLine.text));
+          elements.push(renderDiffLine('+', 'diff-line diff-line-added', addedParts, newLine.idx, newLine.text));
+        } else if (oldLine) {
+          const { removedParts } = renderWordLevelDiff(oldLine.text, '', `removed-${oldLine.idx}`);
+          elements.push(renderDiffLine('-', 'diff-line diff-line-removed', removedParts, oldLine.idx, oldLine.text));
+        } else if (newLine) {
+          const { addedParts } = renderWordLevelDiff('', newLine.text, `added-${newLine.idx}`);
+          elements.push(renderDiffLine('+', 'diff-line diff-line-added', addedParts, newLine.idx, newLine.text));
+        }
+      }
+      pendingRemoved = [];
+      pendingAdded = [];
+    };
+
+    file.hunks.split('\n').forEach((line, i) => {
+      if (line.startsWith('+')) {
+        pendingAdded.push({ text: line.slice(1), idx: i });
+        return;
+      }
+      if (line.startsWith('-')) {
+        pendingRemoved.push({ text: line.slice(1), idx: i });
+        return;
+      }
+      // Context lines, hunk headers and trailing markers end the current
+      // pairing block.
+      flushPending();
+      if (line.startsWith('@@')) {
+        elements.push(
+          <div key={i} className="diff-line-hunk">
+            {line}
+          </div>
+        );
+      } else if (line.startsWith('\\')) {
+        elements.push(
+          <div key={i} className="diff-line-ellipsis">
+            {line}
+          </div>
+        );
+      } else {
+        const content = line.startsWith(' ') ? line.slice(1) : line;
+        elements.push(renderDiffLine(' ', 'diff-line diff-line-context', content, i, content));
+      }
     });
+    flushPending();
+    return elements;
+  };
 
   const renderFile = (file: WorkspaceDiffFile) => {
     const isExpanded = expandedPath === file.path;
