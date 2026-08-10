@@ -52,8 +52,10 @@
     "afterPack": "scripts/afterPack.js",
     "mac": {
       "category": "public.app-category.developer-tools",
-      "identity": null,
+      "identity": "Hangzhou Langhe Technology Company Limited (86Y5QKVXN9)",
       "icon": "assets/icon.png",
+      "hardenedRuntime": true,
+      "notarize": true,
       "target": [
         {
           "target": "dmg",

@@ -143,8 +143,9 @@ jobs:
   # --- Desktop app (Electron) ---
   # Builds the desktop installers and attaches them to the same GitHub Release
   # (FR-021). macOS .dmg requires a macOS runner and Windows NSIS a Windows
-  # runner, hence the matrix. Unsigned builds — no signing certs configured yet;
-  # the docs describe the Gatekeeper bypass for macOS users.
+  # runner, hence the matrix. macOS builds are Developer ID-signed and notarized
+  # via CSC_LINK/CSC_KEY_PASSWORD (p12) + App Store Connect API key secrets;
+  # Windows builds remain unsigned (no code-signing cert configured).
   build-desktop:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -177,8 +178,22 @@ jobs:
         run: pnpm -F wave-webview run compile -- --production
 
       # `--publish never`: electron-builder only produces the installers; the
-      # release upload is handled by action-gh-release below.
-      - name: Build desktop installers
+      # release upload is handled by action-gh-release below. Apple signing +
+      # notarization env vars are injected only on macOS (the p12 and App Store
+      # Connect API key are Apple-specific; passing them to the Windows runner
+      # would make electron-builder attempt an invalid signature there).
+      - name: Build desktop installers (macOS)
+        if: runner.os == 'macOS'
+        run: pnpm -F wave-desktop run dist -- --publish never
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+
+      - name: Build desktop installers (Windows)
+        if: runner.os == 'Windows'
         run: pnpm -F wave-desktop run dist -- --publish never
 
       - name: Attach installers to GitHub Release
