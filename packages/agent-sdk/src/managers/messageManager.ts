@@ -579,6 +579,17 @@ export class MessageManager {
     // Get last 2 API rounds to preserve (structurally safe boundary)
     const lastThreeMessages = getLastApiRounds(this.messages, 2);
 
+    // The turn that triggered compaction has already finished streaming, so
+    // finalize any still-'streaming' text/reasoning blocks on the preserved
+    // last assistant message. Otherwise hosts that pull a full snapshot after
+    // compaction (or the loop's own finalizeStreamingBlocks, which no-ops once
+    // a plan-mode reminder is appended) would keep showing the streaming dot.
+    const lastPreserved = lastThreeMessages[lastThreeMessages.length - 1];
+    if (lastPreserved && lastPreserved.role === "assistant") {
+      this.finalizeStreamingBlock(lastPreserved, "text");
+      this.finalizeStreamingBlock(lastPreserved, "reasoning");
+    }
+
     // Create compacted message
     const compactMessage: Message = {
       id: generateMessageId(),
