@@ -60,6 +60,7 @@ import { getWorkspaceDiff } from './gitDiff';
 import { TerminalManager } from './terminal';
 import { PortForwardManager, type AuthCallbackForward } from './portForward';
 import { checkForUpdate } from './updateChecker';
+import { AutoUpdaterService } from './updateAutoUpdater';
 import { HOST_CHANNEL } from './channels';
 import type { PanelKind } from './menu';
 
@@ -219,6 +220,8 @@ export class DesktopHost {
 
   private updateCheckTriggered = false;
   private lastIsAuthenticated = false;
+  /** electron-updater path, created lazily once a serverUrl is configured. */
+  private autoUpdaterService: AutoUpdaterService | null = null;
 
   /** Latest panel toggle state reported by each pane's webview (drives the 面板 menu). */
   private panePanelState = new Map<string, PanelKind[]>();
@@ -3289,11 +3292,61 @@ export class DesktopHost {
   }
 
   private async handleCheckForUpdates(manual: boolean): Promise<void> {
-    const info = await checkForUpdate(app.getVersion(), this.configStore.getConfiguration().serverUrl);
+    const serverUrl = this.configStore.getConfiguration().serverUrl;
+
+    // Logged in → the codechat feed drives updates via electron-updater
+    // (background download + one-shot install). Unauthenticated installs fall
+    // back to the GitHub Releases flow (system message + download URL).
+    if (serverUrl) {
+      if (!this.autoUpdaterService) {
+        this.autoUpdaterService = new AutoUpdaterService({
+          onUpdateAvailable: (info) =>
+            this.pushSystemMessage(`发现新版本 v${info.version}（当前 v${app.getVersion()}），正在后台下载…`),
+          onUpdateDownloaded: (info) => void this.handleUpdateDownloaded(info.version),
+          onError: () => void this.handleAutoUpdaterError(serverUrl),
+        });
+      }
+      const outcome = await this.autoUpdaterService.checkForUpdates(serverUrl);
+      if (outcome === 'update') return;
+      if (outcome === 'no-update') {
+        if (manual) this.pushSystemMessage('当前已是最新版本');
+        return;
+      }
+      // outcome === 'error': degrade to the manual checker below.
+      console.warn('[DesktopHost] Auto update check failed, falling back to manual check');
+    }
+
+    const info = await checkForUpdate(app.getVersion(), serverUrl);
     if (info) {
       this.pushSystemMessage(`发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}）：${info.downloadUrl}`);
     } else if (manual) {
       this.pushSystemMessage('当前已是最新版本');
+    }
+  }
+
+  /** The background download (or a later check) errored — degrade to the
+   *  manual checker so the user still learns about the update with a URL. */
+  private async handleAutoUpdaterError(serverUrl: string): Promise<void> {
+    console.warn('[DesktopHost] Auto updater errored, falling back to manual check');
+    const info = await checkForUpdate(app.getVersion(), serverUrl);
+    if (info) {
+      this.pushSystemMessage(`发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}）：${info.downloadUrl}`);
+    }
+  }
+
+  /** The new version finished downloading — confirm before installing. */
+  private async handleUpdateDownloaded(version: string): Promise<void> {
+    this.pushSystemMessage(`新版本 v${version} 已下载完成，重启应用即可安装`);
+    const { response } = await dialog.showMessageBox({
+      type: 'info',
+      buttons: ['重启安装', '稍后'],
+      defaultId: 0,
+      cancelId: 1,
+      message: 'Wave 更新已就绪',
+      detail: `新版本 v${version} 已下载完成，重启应用以完成安装。`,
+    });
+    if (response === 0) {
+      this.autoUpdaterService?.quitAndInstall();
     }
   }
 

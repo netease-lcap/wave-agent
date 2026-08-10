@@ -88,24 +88,43 @@ describe('checkForUpdate via GitHub', () => {
   });
 });
 
-describe('checkForUpdate via CodeChat manifest', () => {
+describe('checkForUpdate via CodeChat download feed', () => {
   const SERVER = 'https://codechat.example.com';
+  // The test host is macOS, so the feed is the electron-builder mac metadata.
+  const FEED_URL = `${SERVER}/api/downloads/desktop/mac/latest-mac.yml`;
 
-  it('returns UpdateInfo from the manifest when newer', async () => {
+  it('returns UpdateInfo parsed from the YAML feed when newer', async () => {
     h.handler = (url) => {
       if (url.startsWith(SERVER)) {
-        return { statusCode: 200, body: JSON.stringify({ version: '1.0.0' }) };
+        return {
+          statusCode: 200,
+          body: `version: 1.0.0\nfiles:\n  - url: wave-1.0.0.dmg\npath: https://file-center.example.com/wave-1.0.0.dmg\n`,
+        };
       }
       return new Error(`unexpected url: ${url}`);
     };
 
     const info = await checkForUpdate('0.19.7', SERVER);
     expect(info?.latestVersion).toBe('1.0.0');
-    expect(info?.downloadUrl).toBe(`${SERVER}/api/downloads/manifest.json`);
-    expect(h.requestedUrls).toEqual([`https:${SERVER}/api/downloads/manifest.json`]);
+    // The downloadUrl must point at the real download entry, not the feed itself.
+    expect(info?.downloadUrl).toBe('https://file-center.example.com/wave-1.0.0.dmg');
+    expect(h.requestedUrls).toEqual([`https:${FEED_URL}`]);
   });
 
-  it('falls back to GitHub when the manifest check fails', async () => {
+  it('falls back to the feed URL when the feed has no path field', async () => {
+    h.handler = () => ({ statusCode: 200, body: 'version: 1.0.0\n' });
+
+    const info = await checkForUpdate('0.19.7', SERVER);
+    expect(info?.latestVersion).toBe('1.0.0');
+    expect(info?.downloadUrl).toBe(FEED_URL);
+  });
+
+  it('returns null when the feed version is not newer', async () => {
+    h.handler = () => ({ statusCode: 200, body: 'version: 0.19.7\n' });
+    expect(await checkForUpdate('0.19.7', SERVER)).toBeNull();
+  });
+
+  it('falls back to GitHub when the feed check fails', async () => {
     h.handler = (url) => {
       if (url.startsWith(SERVER)) {
         return { statusCode: 500, body: '' };
@@ -118,9 +137,6 @@ describe('checkForUpdate via CodeChat manifest', () => {
 
     const info = await checkForUpdate('0.19.7', SERVER);
     expect(info?.latestVersion).toBe('0.20.0');
-    expect(h.requestedUrls).toEqual([
-      `https:${SERVER}/api/downloads/manifest.json`,
-      `https:${GITHUB_LATEST}`,
-    ]);
+    expect(h.requestedUrls).toEqual([`https:${FEED_URL}`, `https:${GITHUB_LATEST}`]);
   });
 });
