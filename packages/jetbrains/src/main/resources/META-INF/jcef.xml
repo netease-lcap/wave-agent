@@ -1,0 +1,8 @@
+<idea-plugin>
+    <!--
+      Optional depends (com.intellij.modules.jcef) 的 config-file：
+      - 2026.2+：JCEF 插件存在，本文件随依赖一并加载（本插件不在 XML 声明
+        JCEF 组件，JBCefBrowser 仅在 Kotlin 代码中实例化，故内容为空）；
+      - 2024.2–2026.1：JCEF 插件不存在，本文件与依赖一并被忽略。
+    -->
+</idea-plugin>
