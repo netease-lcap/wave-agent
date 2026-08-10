@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { BrowserWindow } from 'electron';
 import * as os from 'os';
 import * as path from 'path';
-import { BASH_TOOL_NAME } from 'wave-agent-sdk/light';
+import { BASH_TOOL_NAME } from 'wave-agent-sdk/constants';
 import { fixtures, type HostToWebviewMessage } from 'wave-webview-fixtures';
 
 // ---------------------------------------------------------------------------

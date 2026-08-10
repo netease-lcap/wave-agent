@@ -18,9 +18,13 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./light": {
-      "types": "./dist/light.d.ts",
-      "default": "./dist/light.js"
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/types/index.js"
+    },
+    "./constants": {
+      "types": "./dist/constants/tools.d.ts",
+      "default": "./dist/constants/tools.js"
     },
     "./package.json": "./package.json",
     "./*": "./*"
