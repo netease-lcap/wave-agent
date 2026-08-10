@@ -39,3 +39,10 @@ export * from "./cron.js";
 export * from "./telemetry.js";
 export * from "./auth.js";
 export * from "./workflow.js";
+
+// Types UI consumers (vsce, desktop webview) import via the `wave-agent-sdk/types`
+// entry; they live outside this barrel's domain files, so re-export them here
+// (type-only, erased at compile time).
+export type { SessionMetadata, SessionData } from "../services/session.js";
+export type { ToolBlockUpdateCallbackParams } from "../utils/messageOperations.js";
+export type { QueuedMessage } from "../managers/messageQueue.js";

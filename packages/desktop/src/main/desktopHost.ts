@@ -26,7 +26,7 @@ import type {
   Scope,
   ToolBlock,
   ErrorBlock,
-} from 'wave-agent-sdk/light';
+} from 'wave-agent-sdk/types';
 import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
@@ -34,7 +34,7 @@ import {
   EXIT_PLAN_MODE_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
-} from 'wave-agent-sdk/light';
+} from 'wave-agent-sdk/constants';
 import { StdioClient } from './stdio/stdioClient';
 import type { JsonRpcClient } from './stdio/jsonRpcClient';
 import { StdioAgent, type StdioAgentCallbacks } from './stdio/stdioAgent';

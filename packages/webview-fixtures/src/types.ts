@@ -13,16 +13,18 @@
  * the single webview instance / self-consumed per ChatApp).
  */
 
-// SDK types come from the same deep imports the webview package itself uses.
+// SDK types come from the light entry (same types the UI consumers import;
+// avoids deep dist paths).
 import type {
   Message,
   Task,
   PermissionMode,
   BackgroundTaskSummary,
   SerializableWorkflowRun,
-} from 'wave-agent-sdk/dist/types/index.js';
-import type { SessionMetadata, SessionData } from 'wave-agent-sdk/dist/services/session.js';
-import type { ToolBlockUpdateCallbackParams } from 'wave-agent-sdk/dist/utils/messageOperations.js';
+  SessionMetadata,
+  SessionData,
+  ToolBlockUpdateCallbackParams,
+} from 'wave-agent-sdk/types';
 
 export type {
   Message,

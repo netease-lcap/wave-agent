@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { Message, PermissionDecision, ToolPermissionContext, PermissionMode, Task, BackgroundTaskSummary, SerializableWorkflowRun, QueuedMessage, McpServerStatus, ToolBlockUpdateCallbackParams } from 'wave-agent-sdk/light';
+import type { Message, PermissionDecision, ToolPermissionContext, PermissionMode, Task, BackgroundTaskSummary, SerializableWorkflowRun, QueuedMessage, McpServerStatus, ToolBlockUpdateCallbackParams } from 'wave-agent-sdk/types';
 import { ConfigurationData } from '../services/configurationService';
 import { StdioClient } from '../stdio/stdioClient';
 import { StdioAgent, type StdioAgentCallbacks } from '../stdio/stdioAgent';
