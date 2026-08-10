@@ -72,7 +72,7 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   return (
     <div ref={menuRef} className="more-menu" data-testid="more-menu">
       <div className="more-menu-item" onClick={handleSettings} data-testid="more-menu-settings">
-        设置
+        设置{hostLabel ? `（${hostLabel}）` : ''}
       </div>
       <div
         className="more-menu-item more-menu-item--between"

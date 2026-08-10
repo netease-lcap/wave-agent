@@ -1597,6 +1597,64 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     </>
   );
 
+  // Dialogs render at the component root — not inside chatContainer — so they
+  // stay visible in every layout: the desktop split-view shell (where the root
+  // ChatApp never mounts its own chatContainer) still shows the config dialog
+  // opened from the sidebar 更多 menu.
+  const dialogs = (
+    <>
+      {state.activeDialog === 'config' && (
+        <ConfigDialog
+          configurationData={state.configurationData || {}}
+          isLoading={state.configurationLoading}
+          error={state.configurationError}
+          onSave={handleConfigurationSave}
+          onCancel={handleDialogClose}
+          projectSettings={state.projectSettings}
+          onLoadProjectSettings={() => postToHost({ command: 'getProjectSettings' })}
+          onToggleBuiltinPlugin={(pluginId, enabled) =>
+            postToHost({ command: 'setBuiltinPluginEnabled', pluginId, enabled, scope: 'project' })
+          }
+          vscode={vscode}
+        />
+      )}
+      {state.activeDialog === 'plugin' && (
+        <PluginDialog vscode={vscode} onClose={handleDialogClose} />
+      )}
+      {state.activeDialog === 'mcp' && (
+        <McpDialog vscode={vscode} onClose={handleDialogClose} />
+      )}
+      {state.activeDialog === 'status' && (
+        <StatusDialog
+          onClose={handleDialogClose}
+          vscode={vscode}
+        />
+      )}
+      {state.activeDialog === 'tasks' && (
+        <BackgroundTaskManager
+          tasks={state.backgroundTasks}
+          vscode={vscode}
+          onClose={handleDialogClose}
+        />
+      )}
+      {state.activeDialog === 'workflows' && (
+        <WorkflowManager
+          runs={state.workflowRuns}
+          vscode={vscode}
+          onCancel={handleDialogClose}
+        />
+      )}
+      {pendingRewindId && (
+        <ConfirmDialog
+          title="确定要回滚到此消息吗？"
+          description="这将删除之后的所有消息并撤销相关的文件更改。"
+          onConfirm={handleRewindConfirm}
+          onCancel={() => setPendingRewindId(null)}
+        />
+      )}
+    </>
+  );
+
   const chatContainer = (
     <div className="chat-container" data-testid="chat-container" ref={isDesktop ? chatContainerRef : undefined}>
       {queueEditWarning && (
@@ -1654,56 +1712,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       ) : (
         chatBodyContent
       )}
-
-      {state.activeDialog === 'config' && (
-        <ConfigDialog
-          configurationData={state.configurationData || {}}
-          isLoading={state.configurationLoading}
-          error={state.configurationError}
-          onSave={handleConfigurationSave}
-          onCancel={handleDialogClose}
-          projectSettings={state.projectSettings}
-          onLoadProjectSettings={() => postToHost({ command: 'getProjectSettings' })}
-          onToggleBuiltinPlugin={(pluginId, enabled) =>
-            postToHost({ command: 'setBuiltinPluginEnabled', pluginId, enabled, scope: 'project' })
-          }
-          vscode={vscode}
-        />
-      )}
-      {state.activeDialog === 'plugin' && (
-        <PluginDialog vscode={vscode} onClose={handleDialogClose} />
-      )}
-      {state.activeDialog === 'mcp' && (
-        <McpDialog vscode={vscode} onClose={handleDialogClose} />
-      )}
-      {state.activeDialog === 'status' && (
-        <StatusDialog
-          onClose={handleDialogClose}
-          vscode={vscode}
-        />
-      )}
-      {state.activeDialog === 'tasks' && (
-        <BackgroundTaskManager
-          tasks={state.backgroundTasks}
-          vscode={vscode}
-          onClose={handleDialogClose}
-        />
-      )}
-      {state.activeDialog === 'workflows' && (
-        <WorkflowManager
-          runs={state.workflowRuns}
-          vscode={vscode}
-          onCancel={handleDialogClose}
-        />
-      )}
-      {pendingRewindId && (
-        <ConfirmDialog
-          title="确定要回滚到此消息吗？"
-          description="这将删除之后的所有消息并撤销相关的文件更改。"
-          onConfirm={handleRewindConfirm}
-          onCancel={() => setPendingRewindId(null)}
-        />
-      )}
     </div>
   );
 
@@ -1714,21 +1722,29 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     // paneId it would double-render, so bail out to the shell instead.
     if ((host.panes?.length ?? 0) > 0 && paneId === undefined) {
       return (
-        <DesktopShell
-          vscode={vscode}
-          host={host}
-          onOpenSettings={handleOpenSettings}
-          onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
-          onLogin={handleLogin}
-          onLogout={handleLogout}
-          isAuthenticated={state.isAuthenticated}
-        />
+        <>
+          <DesktopShell
+            vscode={vscode}
+            host={host}
+            onOpenSettings={handleOpenSettings}
+            onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
+            onLogin={handleLogin}
+            onLogout={handleLogout}
+            isAuthenticated={state.isAuthenticated}
+          />
+          {dialogs}
+        </>
       );
     }
     // Inside DesktopShell each pane renders only its own chatContainer; the
     // sidebar / preview pane live in the shell / single-pane layout.
     if (paneId !== undefined) {
-      return chatContainer;
+      return (
+        <>
+          {chatContainer}
+          {dialogs}
+        </>
+      );
     }
     return (
       <div className="desktop-layout">
@@ -1750,9 +1766,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           onDeleteSession={host.onDeleteSession}
         />
         {chatContainer}
+        {dialogs}
       </div>
     );
   }
 
-  return chatContainer;
+  return (
+    <>
+      {chatContainer}
+      {dialogs}
+    </>
+  );
 };

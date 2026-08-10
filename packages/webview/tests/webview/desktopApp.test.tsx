@@ -552,6 +552,24 @@ describe('DesktopApp', () => {
             expect(screen.queryByTestId('more-menu')).not.toBeInTheDocument();
         });
 
+        it('opens the config dialog from the sidebar when panes are present (DesktopShell layout)', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: [] });
+            // Once desktopPanes arrives the root ChatApp renders DesktopShell and
+            // never mounts its own chatContainer — the config dialog must still
+            // appear (regression: 更多-设置 did nothing while /config worked).
+            sendCommand('desktopPanes', {
+                panes: [{ paneId: 'pane-0', sessionId: 's1', host: 'local' }],
+                focusedPaneId: 'pane-0',
+            });
+
+            openSidebarMoreMenu();
+            fireEvent.click(screen.getByTestId('more-menu-settings'));
+
+            expect(screen.getByRole('heading', { name: '设置' })).toBeInTheDocument();
+            expect(screen.getByRole('tab', { name: '全局设置' })).toBeInTheDocument();
+        });
+
         it('posts login when 登录 is clicked while unauthenticated', () => {
             const { vscode } = renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: [] });
@@ -581,6 +599,8 @@ describe('DesktopApp', () => {
             openSidebarMoreMenu();
 
             expect(screen.getByTestId('more-menu-logout')).toHaveTextContent('退出登录（prod）');
+            // The 设置 entry names the host its config applies to, same as login
+            expect(screen.getByTestId('more-menu-settings')).toHaveTextContent('设置（prod）');
         });
 
         it('re-labels the login/logout entry when the focused pane switches host', () => {
@@ -598,6 +618,7 @@ describe('DesktopApp', () => {
             openSidebarMoreMenu();
             // The local host is the default subject — no annotation.
             expect(screen.getByTestId('more-menu-login').textContent).toBe('登录');
+            expect(screen.getByTestId('more-menu-settings').textContent).toBe('设置');
             fireEvent.keyDown(document, { key: 'Escape' });
 
             sendCommand('desktopPanes', {
@@ -609,6 +630,7 @@ describe('DesktopApp', () => {
             });
             openSidebarMoreMenu();
             expect(screen.getByTestId('more-menu-login')).toHaveTextContent('登录（prod）');
+            expect(screen.getByTestId('more-menu-settings')).toHaveTextContent('设置（prod）');
         });
     });
 
