@@ -6,7 +6,7 @@ on:
     paths:
       - 'docs/**'
       - 'packages/webview/e2e/demo/**'
-      - 'packages/vsce/LOGO.png'
+      - 'packages/vscode/LOGO.png'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 

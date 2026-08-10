@@ -1,6 +1,6 @@
 /**
  * Semver helpers shared by the binary resolver and the update checker.
- * (Copied from packages/vsce/src/services/updateService.ts — that module also
+ * (Copied from packages/vscode/src/services/updateService.ts — that module also
  * carries VS Code-specific download/install code we don't need here.)
  */
 

@@ -15,7 +15,7 @@ import kotlinx.serialization.json.put
 /**
  * Permission request flow: server permissionRequest → showConfirmation (webview)
  * → confirmationResponse (user) → sendPermissionResponse (stdio).
- * Mirrors packages/vsce/src/chatProvider.ts:394-434 + messageHandler confirmationResponse.
+ * Mirrors packages/vscode/src/chatProvider.ts:394-434 + messageHandler confirmationResponse.
  */
 object PermissionFlow {
     private val LOG = logger<PermissionFlow>()

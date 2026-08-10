@@ -8,7 +8,7 @@ private const val MIN_NODE_MAJOR = 20
 
 /**
  * Resolves the `wave` binary at runtime: PATH → npm global bin → auto-install.
- * Mirrors packages/vsce/src/stdio/binaryResolver.ts.
+ * Mirrors packages/vscode/src/stdio/binaryResolver.ts.
  */
 object BinaryResolver {
     private val LOG = logger<BinaryResolver>()
@@ -108,7 +108,7 @@ object BinaryResolver {
 
     /**
      * Ensure the wave CLI exists and its version is >= [targetVersion]. Returns the
-     * (possibly upgraded) binary path. Mirrors packages/vsce/src/stdio/binaryResolver.ts
+     * (possibly upgraded) binary path. Mirrors packages/vscode/src/stdio/binaryResolver.ts
      * ensureCliUpToDate.
      */
     fun ensureCliUpToDate(targetVersion: String): String {

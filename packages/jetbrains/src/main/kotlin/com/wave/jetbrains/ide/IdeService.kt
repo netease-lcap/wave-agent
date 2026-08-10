@@ -27,7 +27,7 @@ import java.util.Base64
 /**
  * IDE integration service: handles webview commands that touch IntelliJ IDE capabilities
  * (open file, preview image, download mermaid, error notification, upload artifacts).
- * Mirrors packages/vsce/src/session/messageHandler.ts handlers + fileService.ts.
+ * Mirrors packages/vscode/src/session/messageHandler.ts handlers + fileService.ts.
  *
  * Field names and response commands follow the VSCE implementation so the shared webview
  * bundle works unchanged. Invoked by [com.wave.jetbrains.session.MessageHandler] on a

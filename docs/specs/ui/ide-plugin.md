@@ -35,12 +35,12 @@ order: 230
 
 **优先级原因**：单一真源是双宿主 webview 可维护性的根基；任何分叉都会导致行为不一致与重复劳动。
 
-**独立测试**：修改 `packages/webview/src/` 中一个组件，重新构建 webview，验证 VS Code 与 JetBrains 两侧面板均反映改动；检查 `packages/vsce/webview/` 与 JetBrains 资源目录均属构建产物而非手编源。
+**独立测试**：修改 `packages/webview/src/` 中一个组件，重新构建 webview，验证 VS Code 与 JetBrains 两侧面板均反映改动；检查 `packages/vscode/webview/` 与 JetBrains 资源目录均属构建产物而非手编源。
 
 **验收场景**：
 
 1. **假设** `packages/webview/src/` 是唯一手编 React 源，**当**执行 webview 构建时，**则**产物同步到 VS Code 与 JetBrains 的 webview 资源目录。
-2. **假设** 开发者直接编辑了 `packages/vsce/webview/` 下文件，**当**下一次构建时，**则**该改动被构建产物覆盖——构建产物目录不可手编。
+2. **假设** 开发者直接编辑了 `packages/vscode/webview/` 下文件，**当**下一次构建时，**则**该改动被构建产物覆盖——构建产物目录不可手编。
 
 ---
 

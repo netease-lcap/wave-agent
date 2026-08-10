@@ -66,4 +66,4 @@ jobs:
         run: |
           pnpm --filter wave-agent-sdk exec vitest run &&
           pnpm --filter wave-code exec vitest run &&
-          pnpm --filter wave-vsce exec vitest run
+          pnpm --filter wave-vscode exec vitest run

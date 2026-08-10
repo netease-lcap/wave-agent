@@ -1,7 +1,7 @@
 /**
  * Update checker for the desktop app — queries GitHub Releases (or the
  * CodeChat electron-builder download feed when a serverUrl is configured).
- * Ported from packages/vsce/src/services/updateService.ts without the
+ * Ported from packages/vscode/src/services/updateService.ts without the
  * VS Code-specific notification/install code.
  */
 
