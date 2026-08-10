@@ -8,6 +8,13 @@
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
+    <!--
+      JCEF 自 2026.2 起从平台核心拆分为独立 bundled 插件（IJPL-246446）。
+      - 2026.2+：声明该依赖后 JBCefBrowser 才对插件类加载器可见；
+      - 2024.2–2026.1：插件不存在，optional 依赖被忽略，JCEF 类仍由
+        平台核心的 app-client.jar 提供，插件照常工作。
+    -->
+    <depends optional="true" config-file="jcef.xml">com.intellij.modules.jcef</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <applicationService
