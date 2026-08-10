@@ -11,7 +11,7 @@
 import { execSync, execFile, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseVersion, compareVersions } from '../services/updateService';
+import { parseVersion, compareVersions } from '../services/version';
 
 /** npm registry mirror for China users (faster than the default registry). */
 export const NPM_REGISTRY = 'https://registry.npmmirror.com';

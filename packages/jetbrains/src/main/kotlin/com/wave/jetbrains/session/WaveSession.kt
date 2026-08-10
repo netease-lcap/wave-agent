@@ -11,7 +11,6 @@ import com.wave.jetbrains.stdio.NotificationRouter
 import com.wave.jetbrains.stdio.StdioAgent
 import com.wave.jetbrains.stdio.StdioClient
 import com.wave.jetbrains.stdio.StdioClientException
-import com.wave.jetbrains.update.UpdateChecker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -137,12 +136,6 @@ class WaveSession(
                 sessionId = a.sessionId
             }
             permissionMode = a.permissionMode
-            // CLI 升级由 WaveBackendService.ensureClient 在进程启动前统一处理（pre-spawn upgrade）
-            // Plugin self-update check: once per activation, 24h cooldown (mirrors VSCE updateService).
-            if (!UpdateChecker.autoCheckTriggered) {
-                UpdateChecker.autoCheckTriggered = true
-                scope.launch { UpdateChecker.checkAndNotify(project) }
-            }
             true
         } catch (e: Exception) {
             LOG.error("Failed to initialize wave session", e)

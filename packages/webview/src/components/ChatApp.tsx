@@ -1650,6 +1650,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         <StatusDialog
           onClose={handleDialogClose}
           vscode={vscode}
+          isDesktop={isDesktop}
         />
       )}
       {state.activeDialog === 'tasks' && (
