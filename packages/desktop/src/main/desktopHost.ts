@@ -3169,8 +3169,8 @@ export class DesktopHost {
       }
       await this.activateAgentInPane(pid, agent);
     } catch (error) {
-      console.error('[DesktopHost] 新建会话失败:', error);
-      this.pushSystemMessage(`新建会话失败: ${error}`, pid);
+      console.error('[DesktopHost] 新建对话失败:', error);
+      this.pushSystemMessage(`新建对话失败: ${error}`, pid);
     }
   }
 
@@ -3206,8 +3206,8 @@ export class DesktopHost {
       }
       await this.activateAgentInPane(paneId, agent);
     } catch (error) {
-      console.error('[DesktopHost] 新建分屏会话失败:', error);
-      this.pushSystemMessage(`新建会话失败: ${error}`, paneId);
+      console.error('[DesktopHost] 新建分屏对话失败:', error);
+      this.pushSystemMessage(`新建对话失败: ${error}`, paneId);
     }
   }
 

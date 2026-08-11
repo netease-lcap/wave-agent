@@ -311,7 +311,7 @@ describe('Session Management', () => {
         expect(screen.getByTestId('new-session-btn')).not.toBeDisabled();
     });
 
-    it('should show 新会话 title when current session is not yet in the list', () => {
+    it('should show 新对话 title when current session is not yet in the list', () => {
         renderChatApp();
 
         // sessions list with one session
@@ -332,14 +332,14 @@ describe('Session Management', () => {
         });
 
         // Without a current session the header shows the default title
-        expect(screen.getByTestId('chat-header')).toHaveTextContent('新会话');
+        expect(screen.getByTestId('chat-header')).toHaveTextContent('新对话');
 
         // The existing session is still listed in the popup
         openSessionListPopup();
         expect(screen.getByTestId('session-list-item-session-in-list')).toBeInTheDocument();
     });
 
-    it('should show 新会话 title for a current session that has no first message yet', () => {
+    it('should show 新对话 title for a current session that has no first message yet', () => {
         renderChatApp();
 
         // A freshly created session is pushed as currentSession before any
@@ -358,7 +358,7 @@ describe('Session Management', () => {
 
         // Must show the friendly default, not a formatted timestamp
         const header = screen.getByTestId('chat-header');
-        expect(header).toHaveTextContent('新会话');
+        expect(header).toHaveTextContent('新对话');
         expect(header).not.toHaveTextContent('2026');
     });
 
@@ -377,7 +377,7 @@ describe('Session Management', () => {
                 }
             });
         });
-        expect(screen.getByTestId('chat-header')).toHaveTextContent('新会话');
+        expect(screen.getByTestId('chat-header')).toHaveTextContent('新对话');
 
         // User sends "hi" — the title should now reflect it.
         act(() => {
@@ -386,7 +386,7 @@ describe('Session Management', () => {
 
         const header = screen.getByTestId('chat-header');
         expect(header).toHaveTextContent('hi');
-        expect(header).not.toHaveTextContent('新会话');
+        expect(header).not.toHaveTextContent('新对话');
     });
 });
 

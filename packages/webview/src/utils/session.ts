@@ -1,6 +1,6 @@
 import type { Message, SessionMetadata } from 'wave-agent-sdk';
 
-const DEFAULT_SESSION_TITLE = '新会话';
+const DEFAULT_SESSION_TITLE = '新对话';
 
 const truncate = (content: string): string => {
   const trimmed = content.trim();

@@ -37,13 +37,13 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
       <div className="header-buttons">
         {!hideSessionButtons && (
           <>
-            <Tooltip text="新建会话" position="bottom">
+            <Tooltip text="新建对话" position="bottom">
               <button
                 className="header-button"
                 onClick={onNewSession}
                 disabled={newSessionDisabled}
                 data-testid="new-session-btn"
-                aria-label="新建会话"
+                aria-label="新建对话"
               >
                 <NewSessionIcon />
               </button>

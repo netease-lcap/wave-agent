@@ -51,7 +51,7 @@ class WavePanelHolder(private val project: Project) {
      */
     fun setTabTitle(tabId: String, title: String) {
         val content = contents[tabId] ?: return
-        val safe = if (title.isBlank()) "新会话" else title
+        val safe = if (title.isBlank()) "新对话" else title
         if (SwingUtilities.isEventDispatchThread()) {
             content.displayName = safe
         } else {
@@ -71,7 +71,7 @@ class WavePanelHolder(private val project: Project) {
 
         fun build(): WavePanel {
             val panel = WavePanel(project, id)
-            val content = ContentFactory.getInstance().createContent(panel.component, "新会话", false)
+            val content = ContentFactory.getInstance().createContent(panel.component, "新对话", false)
             content.putUserData(TAB_KEY, id)
             content.setDisposer(panel)
             contents[id] = content
