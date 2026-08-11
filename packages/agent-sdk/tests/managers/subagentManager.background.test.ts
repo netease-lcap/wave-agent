@@ -372,11 +372,14 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       subagentManager.executeAgent(instance, "test prompt"),
     ).rejects.toThrow("Build failed with exit code 1");
 
-    await vi.waitFor(() => expect(fs.existsSync(outputPath)).toBe(true));
-
-    const content = fs.readFileSync(outputPath, "utf8");
-    expect(content).toContain("Agent failed:");
-    expect(content).toContain("Build failed with exit code 1");
+    // logStream.write is async — wait for content, not just file existence
+    await vi.waitFor(() => {
+      const content = fs.existsSync(outputPath)
+        ? fs.readFileSync(outputPath, "utf8")
+        : "";
+      expect(content).toContain("Agent failed:");
+      expect(content).toContain("Build failed with exit code 1");
+    });
 
     // Cleanup
     if (fs.existsSync(outputPath)) {
