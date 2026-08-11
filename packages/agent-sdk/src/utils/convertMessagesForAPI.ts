@@ -264,8 +264,9 @@ export function convertMessagesForAPI(
           } else {
             block.imageUrls.forEach((imageUrl: string) => {
               // Check if it's already base64, convert if not
+              const isDataUrl = imageUrl.startsWith("data:image/");
               let finalImageUrl = imageUrl;
-              if (!imageUrl.startsWith("data:image/")) {
+              if (!isDataUrl) {
                 // If it's a file path, it needs to be converted to base64
                 try {
                   finalImageUrl = convertImageToBase64(imageUrl);
@@ -287,6 +288,17 @@ export function convertMessagesForAPI(
                   detail: "auto",
                 },
               });
+
+              // Aligned with Claude Code: when the image comes from a local
+              // file (not an inline dataURL), append its source path as text
+              // metadata so the model can reference the file with tools
+              // (e.g. a vision-model subagent reading the image).
+              if (!isDataUrl) {
+                contentParts.push({
+                  type: "text",
+                  text: `[Image source: ${imageUrl}]`,
+                });
+              }
             });
           }
         }

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { convertMessagesForAPI } from "../../src/utils/convertMessagesForAPI.js";
 import { generateMessageId } from "../../src/utils/messageOperations.js";
 import type { Message } from "../../src/types/index.js";
@@ -6,6 +6,22 @@ import type {
   ChatCompletionMessageParam,
   ChatCompletionMessageToolCall,
 } from "openai/resources.js";
+
+// convertImageToBase64 reads the file from disk; stub it so path-based image
+// tests can verify the `[Image source: <path>]` metadata without real files.
+vi.mock("../../src/utils/messageOperations.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../src/utils/messageOperations.js")
+    >();
+  return {
+    ...actual,
+    convertImageToBase64: vi.fn(
+      (imagePath: string) =>
+        `data:image/png;base64,${Buffer.from(`mock:${imagePath}`).toString("base64")}`,
+    ),
+  };
+});
 
 describe("convertMessagesForAPI", () => {
   it("should correctly convert user and assistant messages", () => {
@@ -856,6 +872,77 @@ describe("convertMessagesForAPI", () => {
       });
       const allContentTrue = JSON.stringify(apiMessagesTrue);
       expect(allContentTrue).toContain("image_url");
+    });
+  });
+
+  describe("image source path metadata (aligned with Claude Code)", () => {
+    it("appends [Image source: <path>] text after the image part for local file paths", () => {
+      const messages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            { type: "text", content: "What is in this screenshot?" },
+            {
+              type: "image",
+              imageUrls: ["/tmp/clipboard-image-123.png"],
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      const apiMessages = convertMessagesForAPI(messages);
+
+      expect(apiMessages).toHaveLength(1);
+      const content = apiMessages[0].content as Array<{
+        type: string;
+        text?: string;
+        image_url?: { url: string };
+      }>;
+      expect(content).toEqual([
+        { type: "text", text: "What is in this screenshot?" },
+        {
+          type: "image_url",
+          image_url: {
+            url: `data:image/png;base64,${Buffer.from("mock:/tmp/clipboard-image-123.png").toString("base64")}`,
+            detail: "auto",
+          },
+        },
+        {
+          type: "text",
+          text: "[Image source: /tmp/clipboard-image-123.png]",
+        },
+      ]);
+    });
+
+    it("does not append source metadata for inline dataURL images", () => {
+      const messages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            { type: "text", content: "What is in this image?" },
+            {
+              type: "image",
+              imageUrls: ["data:image/png;base64,iVBORw0KGgoAAAANS..."],
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      const apiMessages = convertMessagesForAPI(messages);
+
+      const content = apiMessages[0].content as Array<{
+        type: string;
+        text?: string;
+      }>;
+      expect(
+        content.some(
+          (p) => p.type === "text" && p.text?.startsWith("[Image source:"),
+        ),
+      ).toBe(false);
     });
   });
 });
