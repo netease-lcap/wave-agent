@@ -23,7 +23,7 @@ afterEach(() => {
 });
 import { InputBox } from "../../src/components/InputBox.js";
 import { stripAnsiColors } from "wave-agent-sdk";
-import type { SlashCommand } from "wave-agent-sdk";
+import type { BackgroundTask, Message, SlashCommand } from "wave-agent-sdk";
 
 vi.mock("wave-agent-sdk", async (importOriginal) => {
   const actual = (await importOriginal()) as object;
@@ -39,14 +39,19 @@ vi.mock("wave-agent-sdk", async (importOriginal) => {
 const mockSetPermissionMode = vi.fn();
 const mockHandleRewindSelect = vi.fn();
 const mockBackgroundCurrentTask = vi.fn();
+// Stable references mirror the real useChat context (useState-backed values),
+// so effects keyed on these (e.g. BackgroundTaskManager's SET_TASKS sync)
+// don't re-fire on every render and loop into "Maximum update depth exceeded".
+const mockBackgroundTasks: BackgroundTask[] = [];
+const mockMessages: Message[] = [];
 
 vi.mock("../../src/contexts/useChat.js", () => ({
   useChat: () => ({
     permissionMode: "default",
     setPermissionMode: mockSetPermissionMode,
     setIsBtwActive: vi.fn(),
-    backgroundTasks: [],
-    messages: [],
+    backgroundTasks: mockBackgroundTasks,
+    messages: mockMessages,
     handleRewindSelect: mockHandleRewindSelect,
     backgroundCurrentTask: mockBackgroundCurrentTask,
   }),
