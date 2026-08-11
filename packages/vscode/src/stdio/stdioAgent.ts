@@ -322,6 +322,25 @@ export class StdioAgent {
         )) as { checkpoints: Array<{ id: string; content: string }> };
     }
 
+    async getConfiguredModels(): Promise<{
+        models: string[];
+        currentModel: string | undefined;
+    }> {
+        return (await this.client.request(
+            'getConfiguredModels',
+            undefined,
+            this.sessionId,
+        )) as { models: string[]; currentModel: string | undefined };
+    }
+
+    async setModel(model: string): Promise<void> {
+        await this.client.request(
+            'setModel',
+            { model },
+            this.sessionId,
+        );
+    }
+
     // ── Permissions ───────────────────────────────────────────────
 
     async setPermissionMode(mode: PermissionMode): Promise<void> {

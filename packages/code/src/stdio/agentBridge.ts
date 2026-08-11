@@ -166,6 +166,10 @@ export class AgentBridge {
         return this.listPendingPermissions();
       case "updateConfig":
         return this.updateConfig(p as unknown as UpdateConfigParams, sessionId);
+      case "getConfiguredModels":
+        return this.getConfiguredModels(sessionId);
+      case "setModel":
+        return this.setModel(p.model as string, sessionId);
 
       // ── Messages ──
       case "sendMessage":
@@ -725,6 +729,27 @@ export class AgentBridge {
     });
 
     return { sessionId: agent.sessionId };
+  }
+
+  private getConfiguredModels(sessionId?: string): {
+    models: string[];
+    currentModel: string | undefined;
+  } {
+    const entry = this.requireSession(sessionId);
+    return {
+      models: entry.agent.getConfiguredModels(),
+      currentModel: entry.agent.getModelConfig().model,
+    };
+  }
+
+  private async setModel(model: string, sessionId?: string): Promise<null> {
+    const entry = this.requireSession(sessionId);
+    entry.agent.setModel(model);
+    // Keep storedConfig in sync: updateConfig recreates the agent from
+    // storedConfig, so without this a later config save would revert the
+    // model chosen here.
+    entry.storedConfig = { ...entry.storedConfig, model };
+    return null;
   }
 
   // ── Messages ──────────────────────────────────────────────────

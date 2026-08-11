@@ -261,6 +261,13 @@ class StdioAgent(
     suspend fun listRewindCheckpoints(): JsonElement =
         client.request("listRewindCheckpoints", sessionId = sessionId) ?: JsonObject(emptyMap())
 
+    suspend fun getConfiguredModels(): JsonElement =
+        client.request("getConfiguredModels", sessionId = sessionId) ?: JsonObject(emptyMap())
+
+    suspend fun setModel(model: String) {
+        client.request("setModel", buildJsonObject { put("model", model) }, sessionId)
+    }
+
     suspend fun getMcpServers(): JsonElement =
         client.request("getMcpServers", sessionId = sessionId) ?: JsonObject(emptyMap())
 

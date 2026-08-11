@@ -9,6 +9,7 @@ import { ConfirmationDialog } from './ConfirmationDialog';
 import { ConfirmDialog } from './ConfirmDialog';
 import { RewindPopup } from './RewindPopup';
 import type { RewindCheckpoint } from './RewindPopup';
+import { ModelPopup } from './ModelPopup';
 import { ToastStack } from './ToastStack';
 import { BtwPanel } from './BtwPanel';
 import ConfigDialog from './ConfigDialog';
@@ -172,6 +173,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const [rewindPopupOpen, setRewindPopupOpen] = useState(false);
   const [rewindCheckpoints, setRewindCheckpoints] = useState<RewindCheckpoint[]>([]);
   const [rewindCheckpointsLoading, setRewindCheckpointsLoading] = useState(false);
+  // /model popup: configured models requested from the host on open.
+  const [modelPopupOpen, setModelPopupOpen] = useState(false);
+  const [configuredModels, setConfiguredModels] = useState<string[]>([]);
+  const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
+  const [modelLoading, setModelLoading] = useState(false);
   // /btw side-question panel (webview spec story 3). Non-null while the panel is
   // open; `loading` while the askBtw RPC is in flight, `answer` afterwards
   // (including the bare-/btw usage hint and API-error strings).
@@ -518,6 +524,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           if (!forThisPane(message)) break;
           setRewindCheckpoints(message.checkpoints || []);
           setRewindCheckpointsLoading(false);
+          break;
+        case 'configuredModels':
+          if (!forThisPane(message)) break;
+          setConfiguredModels(message.models || []);
+          setCurrentModel(message.currentModel);
+          setModelLoading(false);
           break;
         case 'btwStream':
           if (!forThisPane(message)) break;
@@ -919,6 +931,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       postToHost({ command: 'listRewindCheckpoints' });
       return;
     }
+    // /model is allowed mid-stream (spec scenario 8): no isStreaming guard.
+    if (trimmedText === '/model') {
+      setModelPopupOpen(true);
+      setModelLoading(true);
+      postToHost({ command: 'getConfiguredModels' });
+      return;
+    }
     // /btw side question — answered out-of-band via askBtw, never enters the chat.
     if (trimmedText === '/btw' || trimmedText.startsWith('/btw ')) {
       const question = trimmedText.slice('/btw'.length).trim();
@@ -1129,6 +1148,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
 
   const handleRewindPopupClose = useCallback(() => {
     setRewindPopupOpen(false);
+    messageInputRef.current?.focus();
+  }, []);
+
+  // /model popup: send the switch and close silently (no toast/system message).
+  const handleModelSelect = useCallback((model: string) => {
+    postToHost({ command: 'setModel', model });
+    setModelPopupOpen(false);
+    messageInputRef.current?.focus();
+  }, [postToHost]);
+
+  const handleModelPopupClose = useCallback(() => {
+    setModelPopupOpen(false);
     messageInputRef.current?.focus();
   }, []);
 
@@ -1589,6 +1620,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
                 checkpoints={rewindCheckpoints}
                 onSelect={handleRewindCheckpointSelect}
                 onClose={handleRewindPopupClose}
+              />
+            }
+            modelPopup={
+              <ModelPopup
+                isVisible={modelPopupOpen}
+                isLoading={modelLoading}
+                models={configuredModels}
+                currentModel={currentModel}
+                onSelect={handleModelSelect}
+                onClose={handleModelPopupClose}
               />
             }
             btwPopup={

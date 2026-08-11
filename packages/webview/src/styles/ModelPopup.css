@@ -1,0 +1,84 @@
+.model-popup {
+  position: absolute;
+  bottom: 100%; /* Anchor to the top of .input-wrapper (= top of the input box) */
+  margin-bottom: 8px; /* Gap above the input */
+  z-index: 1000;
+  background-color: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 600px;
+  min-width: 200px;
+  box-sizing: border-box;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  outline: none;
+  left: 0; /* Align with the input container */
+}
+
+.model-popup-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-dropdown-border);
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+.model-popup-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.model-popup-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--vscode-dropdown-border);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.model-popup-item:last-child {
+  border-bottom: none;
+}
+
+.model-popup-item.selected {
+  background-color: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+.model-popup-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-popup-item-check {
+  flex-shrink: 0;
+}
+
+.model-popup-loading,
+.model-popup-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-popup-loading .codicon-modifier-spin {
+  animation: spin 1s linear infinite;
+}

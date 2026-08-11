@@ -156,6 +156,11 @@ class MessageHandler(
                 handleRewindToMessage(messageId)
             }
             "listRewindCheckpoints" -> handleListRewindCheckpoints()
+            "getConfiguredModels" -> handleGetConfiguredModels()
+            "setModel" -> {
+                val model = msg["model"]?.jsonPrimitive?.content ?: return
+                handleSetModel(model)
+            }
             "askBtw" -> {
                 val question = msg["question"]?.jsonPrimitive?.content ?: return
                 handleAskBtw(question)
@@ -545,6 +550,29 @@ class MessageHandler(
         postMessage("rewindCheckpoints", buildJsonObject { put("checkpoints", checkpoints) })
     }
 
+    private suspend fun handleGetConfiguredModels() {
+        val result = try {
+            session.agent?.getConfiguredModels()?.jsonObject
+        } catch (e: StdioClientException) {
+            LOG.warn("getConfiguredModels failed: ${e.message}")
+            null
+        }
+        val models = result?.get("models") ?: JsonArray(emptyList())
+        val currentModel = result?.get("currentModel") ?: JsonNull
+        postMessage("configuredModels", buildJsonObject {
+            put("models", models)
+            put("currentModel", currentModel)
+        })
+    }
+
+    private suspend fun handleSetModel(model: String) {
+        try {
+            session.agent?.setModel(model)
+        } catch (e: StdioClientException) {
+            LOG.warn("setModel failed: ${e.message}")
+        }
+    }
+
     // ── /btw side question: answer out-of-band, echo the question so the webview
     // can match the reply against its in-flight panel (dropping stale replies) ──
     private suspend fun handleAskBtw(question: String) {
@@ -778,6 +806,7 @@ class MessageHandler(
             triple("clear", "clear", "清除对话历史并重置会话"),
             triple("compact", "compact", "手动压缩对话历史"),
             triple("rewind", "rewind", "回滚到之前的用户消息"),
+            triple("model", "model", "切换 AI 模型"),
             triple("btw", "btw", "旁路提问（不进入聊天记录）"),
         )
         val all = sdkCommands + local

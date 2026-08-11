@@ -387,6 +387,44 @@ describe('StdioAgent', () => {
         });
     });
 
+    // ── getConfiguredModels / setModel ─────────────────────────
+
+    it('getConfiguredModels returns the model list and current model', async () => {
+        const { agent, client } = createAgent();
+        client.request.mockResolvedValue({
+            sessionId: 'session-123',
+            workingDirectory: '/w',
+            permissionMode: 'default',
+            latestTotalTokens: 0,
+        });
+        await agent.initialize({ workdir: '/w' });
+        client.request.mockResolvedValue({
+            models: ['gpt-4', 'claude'],
+            currentModel: 'gpt-4',
+        });
+
+        const result = await agent.getConfiguredModels();
+
+        expect(client.request).toHaveBeenCalledWith('getConfiguredModels', undefined, 'session-123');
+        expect(result).toEqual({ models: ['gpt-4', 'claude'], currentModel: 'gpt-4' });
+    });
+
+    it('setModel sends the picked model with sessionId', async () => {
+        const { agent, client } = createAgent();
+        client.request.mockResolvedValue({
+            sessionId: 'session-123',
+            workingDirectory: '/w',
+            permissionMode: 'default',
+            latestTotalTokens: 0,
+        });
+        await agent.initialize({ workdir: '/w' });
+        client.request.mockResolvedValue(null);
+
+        await agent.setModel('claude');
+
+        expect(client.request).toHaveBeenCalledWith('setModel', { model: 'claude' }, 'session-123');
+    });
+
     // ── updateConfig ───────────────────────────────────────────
 
     it('sends updateConfig with sessionId and re-registers router when sessionId changes', async () => {

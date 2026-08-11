@@ -2301,6 +2301,14 @@ export class DesktopHost {
         await this.handleListRewindCheckpoints(pid);
         break;
 
+      case 'getConfiguredModels':
+        await this.handleGetConfiguredModels(pid);
+        break;
+
+      case 'setModel':
+        await this.handleSetModel(msg.model as string, pid);
+        break;
+
       case 'askBtw':
         await this.handleAskBtw(msg.question as string, pid);
         break;
@@ -3233,6 +3241,30 @@ export class DesktopHost {
     this.postMessage({ command: 'rewindCheckpoints', paneId: pid, checkpoints });
   }
 
+  private async handleGetConfiguredModels(paneId?: string): Promise<void> {
+    const pid = paneId ?? this.focusedPaneId;
+    const agent = this.agentForPane(pid);
+    let models: string[] = [];
+    let currentModel: string | undefined;
+    try {
+      if (agent) {
+        ({ models, currentModel } = await agent.getConfiguredModels());
+      }
+    } catch (error) {
+      console.error('[DesktopHost] 获取模型列表失败:', error);
+    }
+    this.postMessage({ command: 'configuredModels', paneId: pid, models, currentModel });
+  }
+
+  private async handleSetModel(model: string, paneId?: string): Promise<void> {
+    const pid = paneId ?? this.focusedPaneId;
+    try {
+      await this.agentForPane(pid)?.setModel(model);
+    } catch (error) {
+      console.error('[DesktopHost] 设置模型失败:', error);
+    }
+  }
+
   private async handleAskBtw(question: string, paneId?: string): Promise<void> {
     const pid = paneId ?? this.focusedPaneId;
     const agent = this.agentForPane(pid);
@@ -3846,6 +3878,7 @@ export class DesktopHost {
         { id: 'tasks', name: 'tasks', description: '查看后台任务' },
         { id: 'workflows', name: 'workflows', description: '查看工作流运行' },
         { id: 'rewind', name: 'rewind', description: '回滚到之前的用户消息' },
+        { id: 'model', name: 'model', description: '切换 AI 模型' },
         { id: 'btw', name: 'btw', description: '旁路提问（不进入聊天记录）' },
       ];
 
