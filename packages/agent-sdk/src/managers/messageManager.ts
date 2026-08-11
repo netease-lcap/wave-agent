@@ -975,7 +975,9 @@ export class MessageManager {
         stage: "end",
         success: false,
         error: errorMessage,
-        isManuallyBackgrounded: block.isManuallyBackgrounded,
+        backgroundTaskId: block.backgroundTaskId,
+        backgroundedByUser: block.backgroundedByUser,
+        assistantAutoBackgrounded: block.assistantAutoBackgrounded,
         timestamp,
       });
     }

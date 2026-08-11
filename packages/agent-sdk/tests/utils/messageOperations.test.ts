@@ -988,7 +988,9 @@ describe("updateToolBlockInMessage with messageId", () => {
       stage: "end",
       compactParams: "compact",
       parametersChunk: "chunk",
-      isManuallyBackgrounded: true,
+      backgroundTaskId: "task-1",
+      backgroundedByUser: true,
+      assistantAutoBackgrounded: true,
     });
 
     const block = result[0].blocks[0];
@@ -1003,7 +1005,9 @@ describe("updateToolBlockInMessage with messageId", () => {
       stage: "end",
       compactParams: "compact",
       parametersChunk: "chunk",
-      isManuallyBackgrounded: true,
+      backgroundTaskId: "task-1",
+      backgroundedByUser: true,
+      assistantAutoBackgrounded: true,
     });
   });
 });

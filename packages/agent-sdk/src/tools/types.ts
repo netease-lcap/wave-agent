@@ -54,8 +54,12 @@ export interface ToolResult {
     data: string; // base64 encoded image data
     mediaType?: string; // Image media type, such as "image/png"
   }>;
-  // Whether the tool was manually backgrounded by the user (e.g. via Ctrl-B)
-  isManuallyBackgrounded?: boolean;
+  // ID of the background task if the command is running in the background
+  backgroundTaskId?: string;
+  // True if the user manually backgrounded the command (e.g. via Ctrl-B)
+  backgroundedByUser?: boolean;
+  // True if the command was auto-backgrounded after exceeding the timeout
+  assistantAutoBackgrounded?: boolean;
   // Optional metadata for the tool result
   metadata?: Record<string, unknown>;
 }

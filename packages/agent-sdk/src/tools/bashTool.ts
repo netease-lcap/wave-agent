@@ -259,17 +259,14 @@ The working directory persists between commands. Try to maintain your current wo
       );
       const task = backgroundTaskManager.getTask(taskId);
       const outputPath = task?.outputPath;
-      const backgroundMsg = [
-        `Command started in background with ID: ${taskId}.`,
-        `You will be notified automatically when it completes.`,
-        outputPath
-          ? `output_file: ${outputPath}`
-          : `Use ${READ_TOOL_NAME} tool with task_id="${taskId}" to read the output.`,
-      ].join("\n");
+      const backgroundMsg = outputPath
+        ? `Command running in background with ID: ${taskId}. Output is being written to: ${outputPath}`
+        : `Command running in background with ID: ${taskId}. Use ${READ_TOOL_NAME} tool with task_id="${taskId}" to read the output.`;
       return {
         success: true,
         content: recoveryNotice + backgroundMsg,
         shortResult: `Background process ${taskId} started${outputPath ? ` → ${outputPath}` : ""}`,
+        backgroundTaskId: taskId,
       };
     }
 
@@ -366,9 +363,10 @@ The working directory persists between commands. Try to maintain your current wo
               const outputPath = task?.outputPath;
               resolve({
                 success: true,
-                content: `Command moved to background with ID: ${taskId}.${outputPath ? ` Real-time output: ${outputPath}` : ""}`,
+                content: `Command was manually backgrounded by user with ID: ${taskId}.${outputPath ? ` Output is being written to: ${outputPath}` : ""}`,
                 shortResult: `Process ${taskId} backgrounded`,
-                isManuallyBackgrounded: true,
+                backgroundedByUser: true,
+                backgroundTaskId: taskId,
               });
             } else {
               handleAbort(
@@ -414,8 +412,10 @@ The working directory persists between commands. Try to maintain your current wo
               );
               resolve({
                 success: true,
-                content: `Command timed out after ${timeout / 1000} seconds and was moved to background with ID: ${taskId}.${outputPath ? ` Real-time output: ${outputPath}` : ""}`,
-                shortResult: `Process ${taskId} auto-backgrounded (timeout)`,
+                content: `Command exceeded the timeout (${timeout / 1000}s) and was moved to the background with ID: ${taskId}. It is still running — you will be notified when it completes.${outputPath ? ` Output is being written to: ${outputPath}` : ""}`,
+                shortResult: `Process ${taskId} auto-backgrounded`,
+                assistantAutoBackgrounded: true,
+                backgroundTaskId: taskId,
               });
             } else {
               handleAbort("Command timed out");
