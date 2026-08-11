@@ -2,7 +2,7 @@
   "name": "wave-desktop",
   "private": true,
   "description": "Wave code desktop app (Electron)",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "type": "module",
   "main": "./dist/main/index.cjs",
   "engines": {
