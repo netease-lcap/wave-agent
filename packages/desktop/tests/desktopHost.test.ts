@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { BrowserWindow } from 'electron';
 import * as os from 'os';
 import * as path from 'path';
@@ -435,6 +435,8 @@ async function readyHost(winWidth?: number, winHeight?: number) {
   return ctx;
 }
 
+let consoleSpies: Array<ReturnType<typeof vi.spyOn>> = [];
+
 beforeEach(() => {
   h.files.clear();
   h.existingPaths.clear();
@@ -459,6 +461,15 @@ beforeEach(() => {
   // Reset the auto-reconnect seams (tests shrink them to keep retries fast).
   (DesktopHost as unknown as { autoReconnectBaseDelayMs: number }).autoReconnectBaseDelayMs = 5000;
   (DesktopHost as unknown as { autoReconnectResumeGraceMs: number }).autoReconnectResumeGraceMs = 8000;
+  // Silence error logs from intentionally-triggered failure paths (restore
+  // session tunnel down, SSO callback forward failure, update check failure…).
+  consoleSpies = [vi.spyOn(console, 'error'), vi.spyOn(console, 'warn')].map((s) =>
+    s.mockImplementation(() => {}),
+  );
+});
+
+afterEach(() => {
+  for (const s of consoleSpies) s.mockRestore();
 });
 
 // ---------------------------------------------------------------------------
