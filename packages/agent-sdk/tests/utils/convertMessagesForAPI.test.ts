@@ -407,6 +407,67 @@ describe("convertMessagesForAPI", () => {
     );
   });
 
+  it("should include reasoning-only assistant messages (truncated thinking preserved)", () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Write a chess engine" }],
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "reasoning",
+            content:
+              "Let me understand the task deeply... (truncated before any text or tool call)",
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(2);
+
+    expect(apiMessages[0].role).toBe("user");
+    expect(apiMessages[1].role).toBe("assistant");
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      reasoning_content?: string;
+    };
+    expect(assistantMessage.reasoning_content).toBe(
+      "Let me understand the task deeply... (truncated before any text or tool call)",
+    );
+  });
+
+  it("should filter out assistant messages with no content, tool calls, or reasoning", () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Hello" }],
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          { type: "reasoning", content: "   " },
+          { type: "text", content: "" },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(1);
+    expect(apiMessages[0].role).toBe("user");
+  });
+
   it("should not include reasoning_content when there are no reasoning blocks", () => {
     const messages: Message[] = [
       {

@@ -210,11 +210,17 @@ export function convertMessagesForAPI(
         }
       }
 
-      // Construct assistant message - only add if there is meaningful content or tool calls
+      // Construct assistant message - only add if there is meaningful content,
+      // tool calls, or reasoning content. Reasoning-only messages (a truncated
+      // turn that produced nothing but thinking) must be preserved so the next
+      // round can continue from the previous reasoning instead of starting
+      // over (aligned with Claude Code's thinking trajectory preservation).
       const hasContent = content && content.trim().length > 0;
       const hasToolCalls = tool_calls && tool_calls.length > 0;
+      const hasReasoning =
+        reasoning_content && reasoning_content.trim().length > 0;
 
-      if (hasContent || hasToolCalls) {
+      if (hasContent || hasToolCalls || hasReasoning) {
         const assistantMessage: ChatCompletionMessageParam = {
           role: "assistant",
           content: hasContent ? content : undefined,
