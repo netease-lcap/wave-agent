@@ -484,6 +484,11 @@ export interface McpServersResponseMessage extends HostToWebviewMessageBase {
   servers: unknown[];
 }
 
+export interface SubagentConfigurationsResponseMessage extends HostToWebviewMessageBase {
+  command: 'subagentConfigurationsResponse';
+  configurations: unknown[];
+}
+
 export interface HistoryResponseMessage extends HostToWebviewMessageBase {
   command: 'historyResponse';
   history: SessionMetadata[];
@@ -586,6 +591,7 @@ export type HostToWebviewMessage =
   | DesktopSessionTreeMessage
   | DesktopWorkdirStateMessage
   | McpServersResponseMessage
+  | SubagentConfigurationsResponseMessage
   | HistoryResponseMessage
   | FileSuggestionsMessage
   | FileSuggestionsErrorMessage

@@ -46,3 +46,4 @@ export * from "./workflow.js";
 export type { SessionMetadata, SessionData } from "../services/session.js";
 export type { ToolBlockUpdateCallbackParams } from "../utils/messageOperations.js";
 export type { QueuedMessage } from "../managers/messageQueue.js";
+export type { SubagentConfiguration } from "../utils/subagentParser.js";

@@ -26,6 +26,7 @@ import type {
     ToolBlockUpdateCallbackParams,
     SlashCommand,
     McpServerConfig,
+    SubagentConfiguration,
 } from 'wave-agent-sdk/types';
 import type { JsonRpcClient } from './jsonRpcClient';
 import { NotificationRouter } from './notificationRouter';
@@ -461,6 +462,15 @@ export class StdioAgent {
             this.sessionId,
         )) as { commands: SlashCommand[] };
         return result.commands;
+    }
+
+    async getSubagentConfigurations(): Promise<SubagentConfiguration[]> {
+        const result = (await this.client.request(
+            'getSubagentConfigurations',
+            undefined,
+            this.sessionId,
+        )) as { configurations: SubagentConfiguration[] };
+        return result.configurations;
     }
 
     // ── Notification dispatch (called by NotificationRouter) ──────

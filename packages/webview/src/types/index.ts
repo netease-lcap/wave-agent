@@ -6,11 +6,11 @@
  */
 
 // Import message structures and session types from wave-agent-sdk
-import type { Message, MessageBlock, TextBlock, ErrorBlock, ToolBlock, ImageBlock, BangBlock, CompactBlock, ReasoningBlock, PermissionMode, AskUserQuestion, AskUserQuestionInput, AskUserQuestionOption, Task, TaskStatus, TaskNotificationBlock, McpServerStatus, McpServerConfig, BackgroundTaskSummary, SerializableWorkflowRun } from 'wave-agent-sdk/dist/types/index.js';
+import type { Message, MessageBlock, TextBlock, ErrorBlock, ToolBlock, ImageBlock, BangBlock, CompactBlock, ReasoningBlock, PermissionMode, AskUserQuestion, AskUserQuestionInput, AskUserQuestionOption, Task, TaskStatus, TaskNotificationBlock, McpServerStatus, McpServerConfig, BackgroundTaskSummary, SerializableWorkflowRun, SubagentConfiguration } from 'wave-agent-sdk/dist/types/index.js';
 import type { SessionMetadata, SessionData } from 'wave-agent-sdk/dist/services/session.js';
 import type { ToolBlockUpdateCallbackParams } from 'wave-agent-sdk/dist/utils/messageOperations.js';
 
-export type { Message, MessageBlock, TextBlock, ErrorBlock, ToolBlock, ImageBlock, BangBlock, CompactBlock, ReasoningBlock, TaskNotificationBlock, SessionData, SessionMetadata, PermissionMode, AskUserQuestion, AskUserQuestionInput, AskUserQuestionOption, Task, TaskStatus, McpServerStatus, McpServerConfig, BackgroundTaskSummary, SerializableWorkflowRun, ToolBlockUpdateCallbackParams };
+export type { Message, MessageBlock, TextBlock, ErrorBlock, ToolBlock, ImageBlock, BangBlock, CompactBlock, ReasoningBlock, TaskNotificationBlock, SessionData, SessionMetadata, PermissionMode, AskUserQuestion, AskUserQuestionInput, AskUserQuestionOption, Task, TaskStatus, McpServerStatus, McpServerConfig, BackgroundTaskSummary, SerializableWorkflowRun, SubagentConfiguration, ToolBlockUpdateCallbackParams };
 
 // Slash command types
 export interface SlashCommand {
@@ -514,7 +514,7 @@ export interface ChatState {
   // Agent working directory, used to render tool file paths as relative.
   workdir?: string;
   // Dialog state
-  activeDialog: 'config' | 'plugin' | 'mcp' | 'status' | 'tasks' | 'workflows' | null;
+  activeDialog: 'config' | 'plugin' | 'mcp' | 'status' | 'tasks' | 'workflows' | 'agents' | null;
   configurationData?: ConfigurationData;
   configurationLoading: boolean;
   configurationError?: string;
@@ -648,6 +648,13 @@ export interface BackgroundTaskManagerProps {
   onClose: () => void;
 }
 
+/**
+ * Props for the agent definitions dialog component
+ */
+export interface AgentsDialogProps {
+  onClose: () => void;
+}
+
 export interface WorkflowManagerProps {
   onCancel: () => void;
 }
@@ -669,7 +676,7 @@ export type ChatAction =
   | { type: 'SET_SESSIONS_LOADING'; payload: boolean }
   | { type: 'SHOW_CONFIRMATION'; payload: ConfirmationRequest }
   | { type: 'HIDE_CONFIRMATION'; payload: string }
-  | { type: 'SHOW_DIALOG'; payload: { type: 'config' | 'plugin' | 'mcp' | 'status' | 'tasks' | 'workflows'; data?: ConfigurationData; error?: string } }
+  | { type: 'SHOW_DIALOG'; payload: { type: 'config' | 'plugin' | 'mcp' | 'status' | 'tasks' | 'workflows' | 'agents'; data?: ConfigurationData; error?: string } }
   | { type: 'HIDE_DIALOG' }
   | { type: 'SET_AUTHENTICATED'; payload: boolean }
   | { type: 'SET_CONFIGURATION_LOADING'; payload: boolean }

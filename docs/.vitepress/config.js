@@ -109,6 +109,7 @@ export default {
             { text: '5.3 后台任务系统', link: '/vsce#mechanism-background-tasks' },
             { text: '5.4 后台任务管理对话框', link: '/vsce#background-task-manager' },
             { text: '5.5 工作流管理对话框', link: '/vsce#workflow-manager' },
+            { text: '5.6 Agents 对话框', link: '/vsce#agents-dialog' },
           ],
         },
         {

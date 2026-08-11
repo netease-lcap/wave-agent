@@ -188,6 +188,9 @@ export class MessageHandler {
             case 'getMcpServers':
                 await this.handleGetMcpServers(viewType, windowId);
                 break;
+            case 'getSubagentConfigurations':
+                await this.handleGetSubagentConfigurations(viewType, windowId);
+                break;
             case 'connectMcpServer':
                 await this.handleConnectMcpServer(msg.serverName as string, viewType, windowId);
                 break;
@@ -796,6 +799,7 @@ export class MessageHandler {
                 { id: 'compact', name: 'compact', description: '手动压缩对话历史' },
                 { id: 'tasks', name: 'tasks', description: '查看后台任务' },
                 { id: 'workflows', name: 'workflows', description: '查看工作流运行' },
+                { id: 'agents', name: 'agents', description: '查看可用 agents' },
                 { id: 'rewind', name: 'rewind', description: '回退到之前的用户消息' },
                 { id: 'model', name: 'model', description: '切换 AI 模型' },
                 { id: 'btw', name: 'btw', description: '旁路提问（不进入聊天记录）' }
@@ -928,6 +932,15 @@ export class MessageHandler {
         this.context.postMessage({
             command: 'mcpServersResponse',
             servers
+        }, viewType, windowId);
+    }
+
+    private async handleGetSubagentConfigurations(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
+        const session = this.context.getChatSession(viewType || 'tab', windowId);
+        const configurations = await session.getSubagentConfigurations();
+        this.context.postMessage({
+            command: 'subagentConfigurationsResponse',
+            configurations
         }, viewType, windowId);
     }
 
