@@ -37,7 +37,7 @@ jobs:
       - name: Package .vsix
         run: pnpm -F wave-vscode run package
 
-      # --- Docs (docs.tar.gz) ---
+      # --- Docs (docs-<version>.tar.gz) ---
       - name: Cache Playwright browsers
         uses: actions/cache@v6
         with:
@@ -55,8 +55,13 @@ jobs:
       - name: Build docs with base /docs/
         run: npx vitepress build docs --base /docs/
 
-      - name: Package docs.tar.gz
-        run: tar -czf docs.tar.gz -C docs/.vitepress/dist .
+      # Version the archive like the other release assets (.vsix/.zip/.dmg/.exe);
+      # read from package.json (bumped by scripts/version.js) so it also works
+      # on workflow_dispatch, where GITHUB_REF_NAME is a branch, not a tag.
+      - name: Package docs archive
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          tar -czf "docs-${VERSION}.tar.gz" -C docs/.vitepress/dist .
 
       # --- GitHub Release ---
       - name: Get previous tag
@@ -70,7 +75,7 @@ jobs:
         with:
           files: |
             packages/vscode/releases/*.vsix
-            docs.tar.gz
+            docs-*.tar.gz
           draft: false
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
           generate_release_notes: true
