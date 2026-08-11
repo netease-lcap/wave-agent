@@ -20,6 +20,7 @@ import {
   mergeEnvironmentConfig,
   loadMergedWaveConfig,
   loadWaveConfigFromFile,
+  loadUserConfigEnv,
 } from "../../src/services/configurationService.js";
 import { atomicWriteFile } from "../../src/utils/atomicWrite.js";
 import {
@@ -1309,6 +1310,36 @@ describe("ConfigurationService", () => {
       expect(() => JSON.parse(content)).not.toThrow();
       const parsed = JSON.parse(content);
       expect(parsed.enabledPlugins["plugin@market"]).toBe(true);
+    });
+  });
+
+  describe("loadUserConfigEnv", () => {
+    it("returns the user-level settings.json env block", () => {
+      const userSettingsPath = path.join(userHome, ".wave", "settings.json");
+      mockExistsSync.mockImplementation(
+        (p) => p.toString() === userSettingsPath,
+      );
+      mockReadFileSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        if (pathStr === userSettingsPath) {
+          return JSON.stringify({
+            env: {
+              WAVE_SERVER_URL: "https://codechat.codewave-test.163yun.com",
+            },
+          });
+        }
+        return "";
+      });
+
+      expect(loadUserConfigEnv()).toEqual({
+        WAVE_SERVER_URL: "https://codechat.codewave-test.163yun.com",
+      });
+    });
+
+    it("returns an empty object when the user settings file is missing", () => {
+      mockExistsSync.mockReturnValue(false);
+
+      expect(loadUserConfigEnv()).toEqual({});
     });
   });
 });

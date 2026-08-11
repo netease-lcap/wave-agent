@@ -377,7 +377,6 @@ export class AuthService {
           refresh_token: config.SSO_REFRESH_TOKEN,
         }),
       });
-
       if (response.status === 400 || response.status === 401) {
         // Refresh token revoked — clear auth
         logger.info(

@@ -1,6 +1,6 @@
 import { test, expect, vi, beforeEach, afterEach } from "vitest";
 import { PassThrough } from "stream";
-import { Agent } from "wave-agent-sdk";
+import { Agent, loadUserConfigEnv } from "wave-agent-sdk";
 
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
@@ -77,6 +77,7 @@ function createServer() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(loadUserConfigEnv).mockReturnValue({});
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
 });
 
