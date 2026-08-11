@@ -4,6 +4,7 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 import { MarketplaceAddForm } from "../../src/components/MarketplaceAddForm.js";
 import { PluginManagerContext } from "../../src/contexts/PluginManagerContext.js";
 import { PluginManagerContextType } from "../../src/components/PluginManagerTypes.js";
+import { stripAnsiColors } from "wave-agent-sdk";
 
 describe("MarketplaceAddForm", () => {
   const mockActions = {
@@ -130,6 +131,23 @@ describe("MarketplaceAddForm", () => {
       },
       { timeout: 3000 },
     );
+  });
+
+  it("should strip bracketed paste markers when entering source", async () => {
+    const { stdin, lastFrame } = render(
+      <PluginManagerContext.Provider value={mockContext}>
+        <MarketplaceAddForm />
+      </PluginManagerContext.Provider>,
+    );
+
+    stdin.write("\u001b[200~github:owner/repo\u001b[201~");
+
+    await vi.waitFor(() => {
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("github:owner/repo");
+      expect(frame).not.toContain("[200~");
+      expect(frame).not.toContain("[201~");
+    });
   });
 
   it("should call setView('MARKETPLACES') when Escape is pressed on step 1", async () => {

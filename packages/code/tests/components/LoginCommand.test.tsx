@@ -208,6 +208,53 @@ describe("LoginCommand", () => {
     await vi.waitFor(() => expect(mockAuthService.login).toHaveBeenCalled());
   });
 
+  it("should strip bracketed paste markers from pasted code", async () => {
+    mockAuthService.login.mockImplementation(
+      ({ readToken }: { readToken: () => Promise<string> }) =>
+        new Promise<string>((resolve) => {
+          readToken().then(resolve);
+        }),
+    );
+
+    const { stdin, lastFrame } = render(<LoginCommand onCancel={vi.fn()} />);
+
+    stdin.write("\r");
+    await vi.waitFor(() => expect(lastFrame()).toContain("Code:"));
+
+    // Terminals with bracketed paste (DECSET 2004) wrap pasted text in
+    // \x1b[200~ ... \x1b[201~ markers; ink strips one leading ESC, so the
+    // handler sees "[200~<token>\x1b[201~" and must strip both markers.
+    stdin.write("\u001b[200~dcb412164583961543e63dc3c73beb0e\u001b[201~");
+    await vi.waitFor(() =>
+      expect(lastFrame()).toContain("dcb412164583961543e63dc3c73beb0e"),
+    );
+    expect(lastFrame()).not.toContain("[200~");
+    expect(lastFrame()).not.toContain("[201~");
+  });
+
+  it("should buffer bracketed paste split across input chunks", async () => {
+    mockAuthService.login.mockImplementation(
+      ({ readToken }: { readToken: () => Promise<string> }) =>
+        new Promise<string>((resolve) => {
+          readToken().then(resolve);
+        }),
+    );
+
+    const { stdin, lastFrame } = render(<LoginCommand onCancel={vi.fn()} />);
+
+    stdin.write("\r");
+    await vi.waitFor(() => expect(lastFrame()).toContain("Code:"));
+
+    // Start marker may arrive in its own chunk (pty splits the paste burst).
+    stdin.write("\u001b[200~");
+    stdin.write("dcb412164583961543e63dc3c73beb0e\u001b[201~");
+    await vi.waitFor(() =>
+      expect(lastFrame()).toContain("dcb412164583961543e63dc3c73beb0e"),
+    );
+    expect(lastFrame()).not.toContain("[200~");
+    expect(lastFrame()).not.toContain("[201~");
+  });
+
   it("should cancel on escape during login", async () => {
     mockAuthService.login.mockImplementation(
       ({ readToken }: { readToken: () => Promise<string> }) =>

@@ -1,4 +1,4 @@
-import React, { useEffect, useReducer } from "react";
+import React, { useEffect, useReducer, useRef } from "react";
 import { Box, Text, useInput } from "ink";
 import type {
   PermissionDecision,
@@ -13,6 +13,7 @@ import {
 } from "wave-agent-sdk";
 import { confirmationReducer } from "../reducers/confirmationReducer.js";
 import { questionReducer } from "../reducers/questionReducer.js";
+import { createBracketedPasteDetector } from "../utils/bracketedPaste.js";
 
 const getHeaderColor = (header: string) => {
   const colors = ["red", "green", "blue", "magenta", "cyan"] as const;
@@ -103,23 +104,37 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     return "Yes, and auto-accept edits";
   };
 
+  const pasteDetectorRef = useRef(createBracketedPasteDetector());
+
   useInput((input, key) => {
     if (key.escape) {
       onCancel();
       return;
     }
 
+    const result = pasteDetectorRef.current.process(input);
+    if (result.kind === "consume") {
+      // Content of an in-flight bracketed paste: hold it, never submit.
+      return;
+    }
+    let cleanInput: string;
+    if (result.kind === "paste") {
+      cleanInput = (result.leadingInput ?? "") + result.text;
+    } else {
+      cleanInput = result.input;
+    }
+
     if (toolName === ASK_USER_QUESTION_TOOL_NAME) {
       questionDispatch({
         type: "HANDLE_KEY",
-        input,
+        input: cleanInput,
         key,
         questions,
       });
     } else {
       dispatch({
         type: "HANDLE_KEY",
-        input,
+        input: cleanInput,
         key,
         toolName,
         toolInput,
