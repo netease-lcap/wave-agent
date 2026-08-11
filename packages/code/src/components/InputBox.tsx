@@ -91,8 +91,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     queuedMessages,
     setIsBtwActive,
     agentDefinitions,
-    activeSubagentInstances,
-    backgroundTasks,
   } = useChat();
 
   // Ref to hold setInputText so queue callbacks can access it before useInputManager returns
@@ -311,8 +309,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
         <AgentsManager
           onCancel={() => setShowAgentsManager(false)}
           agentDefinitions={agentDefinitions}
-          activeSubagentInstances={activeSubagentInstances}
-          backgroundTasks={backgroundTasks}
         />
       )}
 

@@ -1,10 +1,6 @@
 import React, { useEffect, useMemo, useReducer } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
-import type {
-  BackgroundTask,
-  SubagentConfiguration,
-  SubagentInstance,
-} from "wave-agent-sdk";
+import type { SubagentConfiguration } from "wave-agent-sdk";
 import { Markdown } from "./Markdown.js";
 import {
   agentsManagerReducer,
@@ -14,28 +10,16 @@ import {
 export interface AgentsManagerProps {
   onCancel: () => void;
   agentDefinitions: SubagentConfiguration[];
-  activeSubagentInstances: SubagentInstance[];
-  backgroundTasks: BackgroundTask[];
-}
-
-interface ActiveRow {
-  id: string;
-  name: string;
-  description: string;
-  status: string;
-  model?: string;
 }
 
 interface DisplayEntry {
-  kind: "header" | "definition" | "active" | "empty";
+  kind: "header" | "definition" | "empty";
   label: string;
   sub?: string;
   model?: string;
-  status?: string;
   scope?: SubagentConfiguration["scope"];
   selectableIndex: number; // -1 for non-selectable rows
   definition?: SubagentConfiguration;
-  active?: ActiveRow;
 }
 
 const SCOPE_LABELS: Record<SubagentConfiguration["scope"], string> = {
@@ -52,10 +36,6 @@ const SCOPE_ORDER: SubagentConfiguration["scope"][] = [
   "plugin",
 ];
 
-// SubagentInstance uses "active"/"initializing"; background fork tasks use
-// "running". Normalize for display so both show as "(running)".
-const RUNNING_STATUSES = new Set(["running", "active"]);
-
 const initialState: AgentsManagerState = {
   selectedIndex: 0,
   viewMode: "list",
@@ -65,8 +45,6 @@ const initialState: AgentsManagerState = {
 export const AgentsManager: React.FC<AgentsManagerProps> = ({
   onCancel,
   agentDefinitions,
-  activeSubagentInstances,
-  backgroundTasks,
 }) => {
   const [state, dispatch] = useReducer(agentsManagerReducer, initialState);
   const { stdout } = useStdout();
@@ -81,46 +59,8 @@ export const AgentsManager: React.FC<AgentsManagerProps> = ({
     }
   }, [state.pendingEffect, onCancel]);
 
-  // Background fork subagents run outside SubagentManager (registered as
-  // type "subagent" background tasks). Merge them with active instances and
-  // dedupe instances that were transitioned to background tasks.
-  const activeRows = useMemo<ActiveRow[]>(() => {
-    const instanceTaskIds = new Set(
-      activeSubagentInstances
-        .map((i) => i.backgroundTaskId)
-        .filter((id): id is string => Boolean(id)),
-    );
-    const instanceSubagentIds = new Set(
-      activeSubagentInstances.map((i) => i.subagentId),
-    );
-    const instanceRows: ActiveRow[] = activeSubagentInstances.map(
-      (instance) => ({
-        id: `instance:${instance.subagentId}`,
-        name: instance.configuration.name,
-        description: instance.description || instance.configuration.description,
-        status: instance.status,
-        model: instance.model ?? instance.configuration.model,
-      }),
-    );
-    const forkRows: ActiveRow[] = backgroundTasks
-      .filter(
-        (task) =>
-          task.type === "subagent" &&
-          task.status === "running" &&
-          !(task.subagentId && instanceSubagentIds.has(task.subagentId)) &&
-          !instanceTaskIds.has(task.id),
-      )
-      .map((task) => ({
-        id: `task:${task.id}`,
-        name: "fork subagent",
-        description: task.description || "",
-        status: task.status,
-      }));
-    return [...instanceRows, ...forkRows];
-  }, [activeSubagentInstances, backgroundTasks]);
-
-  // Flatten definitions (grouped by scope) + active subagents into one
-  // navigable list. Headers and the empty-state line are non-selectable.
+  // Flatten definitions (grouped by scope) into one navigable list. Headers
+  // and the empty-state line are non-selectable.
   const entries = useMemo<DisplayEntry[]>(() => {
     const result: DisplayEntry[] = [];
     let selectableCount = 0;
@@ -159,32 +99,8 @@ export const AgentsManager: React.FC<AgentsManagerProps> = ({
       });
     }
 
-    result.push({
-      kind: "header",
-      label: "ACTIVE SUBAGENTS",
-      selectableIndex: -1,
-    });
-    for (const row of activeRows) {
-      result.push({
-        kind: "active",
-        label: row.name,
-        model: row.model,
-        sub: row.description,
-        status: row.status,
-        selectableIndex: selectableCount++,
-        active: row,
-      });
-    }
-    if (activeRows.length === 0) {
-      result.push({
-        kind: "empty",
-        label: "No active subagents",
-        selectableIndex: -1,
-      });
-    }
-
     return result;
-  }, [agentDefinitions, activeRows]);
+  }, [agentDefinitions]);
 
   const itemCount = entries.filter((e) => e.selectableIndex >= 0).length;
 
@@ -230,83 +146,45 @@ export const AgentsManager: React.FC<AgentsManagerProps> = ({
       >
         <Box>
           <Text color="cyan" bold>
-            {def ? `Agent: ${selectedEntry.label}` : "Active Subagent Details"}
+            Agent: {selectedEntry.label}
           </Text>
         </Box>
 
-        {def ? (
-          <Box flexDirection="column" gap={1}>
-            {def.description && (
-              <Box>
-                <Text>
-                  <Text color="blue">Description:</Text> {def.description}
-                </Text>
-              </Box>
-            )}
+        <Box flexDirection="column" gap={1}>
+          {def?.description && (
             <Box>
               <Text>
-                <Text color="blue">Model:</Text>{" "}
-                {def.model || "default (not explicitly configured)"}
+                <Text color="blue">Description:</Text> {def.description}
               </Text>
             </Box>
+          )}
+          <Box>
+            <Text>
+              <Text color="blue">Model:</Text>{" "}
+              {def?.model || "default (not explicitly configured)"}
+            </Text>
+          </Box>
+          <Box>
+            <Text>
+              <Text color="blue">Scope:</Text>{" "}
+              {def ? SCOPE_LABELS[def.scope] : ""}
+            </Text>
+          </Box>
+          {def?.tools && def.tools.length > 0 && (
             <Box>
-              <Text>
-                <Text color="blue">Scope:</Text> {SCOPE_LABELS[def.scope]}
+              <Text wrap="wrap">
+                <Text color="blue">Tools:</Text> {def.tools.join(", ")}
               </Text>
             </Box>
-            {def.tools && def.tools.length > 0 && (
-              <Box>
-                <Text wrap="wrap">
-                  <Text color="blue">Tools:</Text> {def.tools.join(", ")}
-                </Text>
-              </Box>
-            )}
+          )}
+          {def?.filePath && (
             <Box>
               <Text wrap="wrap">
                 <Text color="blue">File:</Text> {def.filePath}
               </Text>
             </Box>
-          </Box>
-        ) : (
-          <Box flexDirection="column" gap={1}>
-            <Box>
-              <Text>
-                <Text color="blue">Name:</Text> {selectedEntry.label}
-              </Text>
-            </Box>
-            {selectedEntry.active?.description && (
-              <Box>
-                <Text wrap="wrap">
-                  <Text color="blue">Description:</Text>{" "}
-                  {selectedEntry.active.description}
-                </Text>
-              </Box>
-            )}
-            <Box>
-              <Text>
-                <Text color="blue">Status:</Text>{" "}
-                <Text
-                  color={
-                    RUNNING_STATUSES.has(selectedEntry.status ?? "")
-                      ? "green"
-                      : "yellow"
-                  }
-                >
-                  {RUNNING_STATUSES.has(selectedEntry.status ?? "")
-                    ? "running"
-                    : selectedEntry.status}
-                </Text>
-              </Text>
-            </Box>
-            {selectedEntry.active?.model && (
-              <Box>
-                <Text>
-                  <Text color="blue">Model:</Text> {selectedEntry.active.model}
-                </Text>
-              </Box>
-            )}
-          </Box>
-        )}
+          )}
+        </Box>
 
         {def && (
           <Box flexDirection="column" marginTop={1}>
@@ -395,11 +273,6 @@ export const AgentsManager: React.FC<AgentsManagerProps> = ({
                   {" "}
                   · {entry.model}
                 </Text>
-              ) : null}
-              {entry.status && RUNNING_STATUSES.has(entry.status) ? (
-                <Text color="green"> (running)</Text>
-              ) : entry.status ? (
-                <Text color="yellow"> ({entry.status})</Text>
               ) : null}
               {entry.sub ? ` · ${entry.sub}` : ""}
             </Text>
