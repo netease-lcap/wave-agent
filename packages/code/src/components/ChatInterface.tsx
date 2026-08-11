@@ -142,6 +142,7 @@ export const ChatInterface: React.FC = () => {
                   toolName={confirmingTool!.name}
                   toolInput={confirmingTool!.input}
                   planContent={confirmingTool!.planContent}
+                  warning={confirmingTool!.warning}
                   isExpanded={isExpanded}
                 />
               )}
@@ -151,6 +152,7 @@ export const ChatInterface: React.FC = () => {
               toolName={confirmingTool!.name}
               toolInput={confirmingTool!.input}
               planContent={confirmingTool!.planContent}
+              warning={confirmingTool!.warning}
               isExpanded={isExpanded}
             />
           )}

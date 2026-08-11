@@ -3,6 +3,14 @@ import { LRUCache } from "lru-cache";
 import { WEB_FETCH_TOOL_NAME } from "../constants/tools.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { logger } from "../utils/globalLogger.js";
+import { isArtifactEnabled } from "../services/artifactAvailability.js";
+import { authService, createAuthAwareFetch } from "../services/authService.js";
+import { recordVersion } from "../services/artifactSession.js";
+import {
+  buildPersistedOutputMessage,
+  generatePreview,
+  persistToolResult,
+} from "../utils/toolResultStorage.js";
 
 // --- Security Limits ---
 const MAX_HTTP_CONTENT_LENGTH = 10 * 1024 * 1024; // 10MB
@@ -10,6 +18,8 @@ const FETCH_TIMEOUT_MS = 60_000; // 60s
 const MAX_REDIRECTS = 10;
 const MAX_MARKDOWN_LENGTH = 100_000;
 const USER_AGENT = "Wave-User (+https://github.com/netease-lcap/wave-agent)";
+/** Artifact HTML beyond this size is persisted to a temp file (path + head preview). */
+const ARTIFACT_PREVIEW_BYTES = 2 * 1024; // ~2KB
 
 // --- Cache (LRU with 15min TTL, 50MB max) ---
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
@@ -96,6 +106,168 @@ function isPermittedRedirect(
   }
 }
 
+// --- Artifact read channel ---
+
+/** Extract the artifact slug from a `{host}/code/artifact/{slug}` URL. */
+function extractArtifactSlug(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const match = parsed.pathname.match(/^\/code\/artifact\/([^/]+)\/?$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+type ArtifactReadResult =
+  | {
+      kind: "ok";
+      slug: string;
+      version: string;
+      markdown: string;
+      bytes: number;
+    }
+  | { kind: "error"; error: string };
+
+/**
+ * Fetch artifact metadata (`via=model_read`) then the HTML content (Bearer).
+ * Returns markdown (HTML converted via turndown) on success.
+ */
+async function readArtifact(
+  url: string,
+  slug: string,
+  abortSignal?: AbortSignal,
+): Promise<ArtifactReadResult> {
+  const serverUrl = authService.getServerUrl();
+  const authFetch = createAuthAwareFetch(globalThis.fetch);
+  const signal = abortSignal
+    ? AbortSignal.any([abortSignal, AbortSignal.timeout(FETCH_TIMEOUT_MS)])
+    : AbortSignal.timeout(FETCH_TIMEOUT_MS);
+
+  let meta: Record<string, unknown>;
+  try {
+    const metaRes = await authFetch(
+      `${serverUrl}/api/frame/${encodeURIComponent(slug)}?via=model_read`,
+      { method: "GET", signal },
+    );
+    if (metaRes.status === 404) {
+      return {
+        kind: "error",
+        error: `Artifact not found: ${url} (it may have been deleted)`,
+      };
+    }
+    if (!metaRes.ok) {
+      return {
+        kind: "error",
+        error: `Failed to fetch artifact metadata: ${metaRes.status} ${metaRes.statusText}`,
+      };
+    }
+    meta = (await metaRes.json()) as Record<string, unknown>;
+  } catch (error) {
+    logger?.warn("Artifact read metadata failed", {
+      slug,
+      error: String(error),
+    });
+    return {
+      kind: "error",
+      error: `Failed to fetch artifact metadata: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
+  const contentUrl = typeof meta.contentUrl === "string" ? meta.contentUrl : "";
+  const version = typeof meta.version === "string" ? meta.version : "";
+  if (!contentUrl) {
+    return {
+      kind: "error",
+      error: "Artifact metadata did not include a contentUrl",
+    };
+  }
+
+  let html: string;
+  try {
+    const contentRes = await authFetch(
+      new URL(contentUrl, serverUrl).toString(),
+      { method: "GET", signal },
+    );
+    if (!contentRes.ok) {
+      return {
+        kind: "error",
+        error: `Failed to fetch artifact content: ${contentRes.status} ${contentRes.statusText}`,
+      };
+    }
+    html = await contentRes.text();
+  } catch (error) {
+    logger?.warn("Artifact read content failed", {
+      slug,
+      error: String(error),
+    });
+    return {
+      kind: "error",
+      error: `Failed to fetch artifact content: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
+  const turndownService = new TurndownService();
+  const markdown = turndownService.turndown(html);
+  return {
+    kind: "ok",
+    slug,
+    version,
+    markdown,
+    bytes: new TextEncoder().encode(markdown).length,
+  };
+}
+
+/**
+ * Process an artifact read result: persist content >~2KB to a temp file
+ * (return file path + head preview), run the prompt, attach artifactRead metadata.
+ */
+async function processArtifactRead(
+  url: string,
+  prompt: string,
+  markdown: string,
+  slug: string,
+  version: string,
+  context: ToolContext,
+): Promise<ToolResult> {
+  const bytes = new TextEncoder().encode(markdown).length;
+  let aiInput = markdown;
+  let persistedMessage = "";
+  if (bytes > ARTIFACT_PREVIEW_BYTES) {
+    const filePath = persistToolResult(markdown, "artifact");
+    if (filePath) {
+      persistedMessage = buildPersistedOutputMessage(
+        markdown.length,
+        filePath,
+        generatePreview(markdown),
+      );
+      aiInput = persistedMessage;
+    } else {
+      aiInput =
+        markdown.substring(0, MAX_MARKDOWN_LENGTH) +
+        "\n\n... (content truncated, failed to persist full output)";
+    }
+  }
+
+  const result = await processWithAI(
+    url,
+    prompt,
+    aiInput,
+    200,
+    "OK",
+    context,
+    bytes,
+  );
+  result.metadata = { artifactRead: { slug, ver: version } };
+  if (persistedMessage) {
+    // Append the persisted-output message so the model can Read the full content.
+    result.content = result.content
+      ? result.content + "\n\n" + persistedMessage
+      : persistedMessage;
+  }
+  return result;
+}
+
 // --- Tool ---
 
 export const webFetchTool: ToolPlugin = {
@@ -170,6 +342,35 @@ Usage notes:
         content: "",
         error: validation.error,
       };
+    }
+
+    // Artifact URL interception: {host}/code/artifact/{slug} goes through the
+    // dedicated read channel (via=model_read + Bearer) instead of a public fetch.
+    // Only when the Artifact tool is enabled (spec 6.4: disabled = no interception).
+    if (isArtifactEnabled(context.workdir)) {
+      const artifactSlug = extractArtifactSlug(url);
+      if (artifactSlug) {
+        const readResult = await readArtifact(
+          url,
+          artifactSlug,
+          context.abortSignal,
+        );
+        if (readResult.kind === "error") {
+          return { success: false, content: "", error: readResult.error };
+        }
+        if (context.sessionId && readResult.version) {
+          // Keep the stale-version guard in sync with what the model has seen.
+          recordVersion(context.sessionId, artifactSlug, readResult.version);
+        }
+        return processArtifactRead(
+          url,
+          prompt,
+          readResult.markdown,
+          artifactSlug,
+          readResult.version,
+          context,
+        );
+      }
     }
 
     try {

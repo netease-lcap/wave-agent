@@ -1316,9 +1316,15 @@ export function loadWaveConfigFromFile(
         config.autoMemoryEnabled !== undefined
           ? config.autoMemoryEnabled
           : undefined,
+      autoMemoryFrequency:
+        config.autoMemoryFrequency !== undefined
+          ? config.autoMemoryFrequency
+          : undefined,
       models: config.models || undefined,
       marketplaces: config.marketplaces || undefined,
       worktree: config.worktree || undefined,
+      enableArtifact:
+        config.enableArtifact !== undefined ? config.enableArtifact : undefined,
     };
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -1483,6 +1489,11 @@ export function loadMergedWaveConfig(
       mergedConfig.worktree = config.worktree;
     }
 
+    // Merge enableArtifact (last one wins)
+    if (config.enableArtifact !== undefined) {
+      mergedConfig.enableArtifact = config.enableArtifact;
+    }
+
     // Merge models
     if (config.models) {
       if (!mergedConfig.models) mergedConfig.models = {};
@@ -1527,5 +1538,6 @@ export function loadMergedWaveConfig(
         ? mergedConfig.models
         : undefined,
     worktree: mergedConfig.worktree,
+    enableArtifact: mergedConfig.enableArtifact,
   };
 }

@@ -59,6 +59,8 @@ export interface WaveConfiguration {
     /** Base ref for new worktrees: "fresh" (origin/<default-branch>, default) | "head" (local HEAD) */
     baseRef?: "fresh" | "head";
   };
+  /** Whether the Artifact tool is enabled. Unset follows the code default constant (ARTIFACT_DEFAULT_ENABLED). */
+  enableArtifact?: boolean;
 }
 
 /**

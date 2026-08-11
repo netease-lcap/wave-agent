@@ -597,7 +597,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
               planContent: message.planContent,
               suggestedPrefix: message.suggestedPrefix,
               hidePersistentOption: message.hidePersistentOption,
-              permissionMode: message.permissionMode
+              permissionMode: message.permissionMode,
+              warning: message.warning
             }
           });
           // Scroll to bottom when confirmation is shown

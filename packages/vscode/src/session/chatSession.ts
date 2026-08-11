@@ -53,6 +53,7 @@ export class ChatSession {
         planContent?: string;
         suggestedPrefix?: string;
         hidePersistentOption?: boolean;
+        warning?: string;
         permissionMode?: PermissionMode;
     }> = new Map();
 

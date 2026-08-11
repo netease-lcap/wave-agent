@@ -98,6 +98,9 @@ importers:
       lru-cache:
         specifier: ^11.3.5
         version: 11.3.5
+      marked:
+        specifier: ^17.0.2
+        version: 17.0.2
       minimatch:
         specifier: ^10.0.3
         version: 10.0.3

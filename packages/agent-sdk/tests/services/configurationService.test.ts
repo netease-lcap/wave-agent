@@ -1175,6 +1175,55 @@ describe("ConfigurationService", () => {
     });
   });
 
+  describe("loadMergedWaveConfig — enableArtifact field", () => {
+    it("should propagate enableArtifact from project settings", async () => {
+      const userSettingsPath = path.join(userHome, ".wave", "settings.json");
+      const projectSettingsPath = path.join(tempDir, ".wave", "settings.json");
+
+      mockExistsSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        return [userSettingsPath, projectSettingsPath].some((expected) =>
+          pathStr.includes(expected),
+        );
+      });
+
+      mockReadFileSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        if (pathStr.includes(userSettingsPath))
+          return JSON.stringify({ enableArtifact: false });
+        if (pathStr.includes(projectSettingsPath))
+          return JSON.stringify({ enableArtifact: true });
+        return "";
+      });
+
+      const result = loadMergedWaveConfig(tempDir);
+      expect(result?.enableArtifact).toBe(true);
+    });
+
+    it("should propagate enableArtifact from user settings when project has none", async () => {
+      const userSettingsPath = path.join(userHome, ".wave", "settings.json");
+      const projectSettingsPath = path.join(tempDir, ".wave", "settings.json");
+
+      mockExistsSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        return [userSettingsPath, projectSettingsPath].some((expected) =>
+          pathStr.includes(expected),
+        );
+      });
+
+      mockReadFileSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        if (pathStr.includes(userSettingsPath))
+          return JSON.stringify({ enableArtifact: true });
+        if (pathStr.includes(projectSettingsPath)) return JSON.stringify({});
+        return "";
+      });
+
+      const result = loadMergedWaveConfig(tempDir);
+      expect(result?.enableArtifact).toBe(true);
+    });
+  });
+
   describe("loadWaveConfigFromFile — read tolerance", () => {
     it("should return null for empty file (not throw)", () => {
       const configPath = path.join(tempDir, "settings.json");
