@@ -148,7 +148,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 - **Agent SDK 职责**：在内部管理所有消息状态并更新消息；变更通过增量回调（`onUserMessageAdded`、`onAssistantMessageAdded`、`onAssistantContentUpdated`、`onAssistantReasoningUpdated`、`onToolBlockUpdated`、`onErrorBlockAdded` 等）对外发布；完整列表通过 `agent.messages` getter（同进程）或 `getMessages` 请求（stdio 跨进程）按需获取。`onMessagesChange` 全量回调已移除
 - **增量回调用途**：为第三方集成、扩展、CLI 与示例（如 `packages/code/src/print-cli.ts` 和 `packages/agent-sdk/examples`）提供实时流式数据；增量回调是消息状态同步的唯一推送通道
-- **SDK 回调负载**：`onAssistantContentUpdated`/`onAssistantReasoningUpdated` 只提供 `chunk`（增量）+ `messageId` + `stage`，不再携带 `accumulated` 累积值，进程内消费者（CLI、print-cli）自行累积追加；`onToolBlockUpdated` 提供 `parametersChunk`（增量）与 `parameters`（累积）并存
+- **SDK 回调负载**：`onAssistantContentUpdated`/`onAssistantReasoningUpdated` 只提供 `chunk`（增量）+ `messageId` + `stage`，不再携带 `accumulated` 累积值，进程内消费者（CLI、print-cli）自行累积追加；`onToolBlockUpdated` 在 `stage="streaming"` 时只提供 `parametersChunk`（增量），`start`/`running`/`end` 阶段携带权威 `parameters`（end 为最终值，一次性权威）。SDK 内部仍将 chunk 追加进内存 `toolBlock.parameters` 保持累积，只是累积值不再暴露到外部回调
 - **跨进程 wire 负载（纯 delta）**：agentBridge 原样透传增量回调负载——`assistantContentUpdated`/`assistantReasoningUpdated` 只携带 `{messageId, chunk, stage}`（SDK 回调本身已无累积字段，无需剥离）；`toolBlockUpdated` 在 `stage="streaming"` 时只携带 `parametersChunk`，`stage="end"` 时携带全量 `parameters` + `result` 作为权威值。消费端负责累积（追加），丢失的 delta 由 `getMessages` 拉取的全量快照自愈
 - **UI 状态流**：CLI 直接订阅增量回调就地更新消息（chunk 追加 + 500ms 窗口拼接节流）；插件/桌面经 stdio 增量通知（`userMessageAdded`、`assistantContentUpdated`、`toolBlockUpdated` 等，纯 delta 负载）驱动 webview 增量 reducer——文本/推理块追加 chunk、工具块追加 `parametersChunk`，end 时以权威值终结；需要完整列表的场景（初始化、compact、rewind、clear、bang）主动拉取，拉取响应整体替换为权威快照
 - **节流语义**：SDK 回调与 wire 通知均只携带纯 delta，节流器一律按到达顺序拼接窗口内所有 chunks 为一个合并 delta（window-concat），绝不能 last-value-wins 丢弃中间值。为配合该语义，SDK 必须在每次 running 事件中重复携带 `compactParams` 等稳定展示字段（见"工具块阶段更新"验收场景 4），保证丢弃中间事件不丢失这些字段
@@ -209,6 +209,12 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - 问：SDK 内部累积逻辑是否一并移除 → 答：不移除。aiService 仍内部累积全文，messageManager 仍以"新值 slice 当前长度"计算 chunk delta——只是累积值不再暴露到外部回调
 - 问：进程内消费者如何适配 → 答：CLI useChat 改为消费纯 chunk：新增窗口拼接节流器（window-concat，500ms），窗口内按到达顺序拼接 chunks 为一个合并 delta 发送，`stage="end"` 时先冲刷窗口内 pending 增量再转发 end 信号，最后一条 chunk 以空串 end 终结；print-cli 直接按 chunk 打印，无累积依赖
 - 问：为什么 `stage="end"` 事件以 `chunk: ""` 结尾 → 答：end 是流结束信号，权威最终值由消费端自行累积得到，end 事件不再重复携带全量值
+
+### 2026-08-11 会议（SDK tool 回调 streaming 移除累积 parameters）
+
+- 问：`onToolBlockUpdated` 的 `stage="streaming"` 是否继续携带累积 `parameters` → 答：移除（对齐 2026-08-08 content/reasoning 决策）。streaming 只携带 `parametersChunk`（增量）+ `messageId` + `stage`；`start`/`running`/`end` 仍携带权威 `parameters`（end 为最终值）。SDK 内部 messageOperations 仍将 chunk 追加进内存 `toolBlock.parameters` 保持累积，`getMessages` 快照对账自愈不回归——只是累积值不再暴露到外部回调
+- 问：CLI 多 tool 场景下第一个 tool 不显示 compact params 的根因 → 答：CLI useChat 对 tool 更新误用普通 throttle（last-value-wins，单 lastArgs 槽），多 tool 交错 streaming 时首 tool 的 chunks 被后续事件覆盖，trailing 只应用最后一个 tool 的累积值 → 违反"节流语义"（window-concat）；修复为按 tool id 的 window-concat 节流，窗口内各 tool 的 chunks 独立累积拼接，end 时先冲刷窗口内 pending 增量再应用权威参数
+- 问：受影响范围 → 答：aiService（streaming 不再发 `parameters`）、aiManager（`parameters` 条件转发，避免 `undefined` 泄漏进回调载荷）、messageOperations（chunk 追加进内存 `parameters`）、CLI useChat（按 tool 窗口拼接节流）；wire/agentBridge 自 2026-08-04 起已纯 delta，webview/desktop 消费端已按 `parametersChunk` 追加，均无需改动
 
 ## 假设 *（必填）*
 
