@@ -556,6 +556,81 @@ describe("ConfirmationSelector Additional Coverage", () => {
     });
   });
 
+  describe("Bracketed paste handling", () => {
+    it("should strip bracketed paste markers when pasting into alternative text", async () => {
+      const { stdin, lastFrame } = render(
+        <ConfirmationSelector
+          toolName="Edit"
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
+      });
+      // Navigate to alternative
+      stdin.write("\u001b[B");
+      stdin.write("\u001b[B");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type here to tell Wave what to change",
+        );
+      });
+
+      // Paste with bracketed paste markers
+      stdin.write("\u001b[200~fix the typo in src/main.ts\u001b[201~");
+
+      await vi.waitFor(() => {
+        const frame = stripAnsiColors(lastFrame() || "");
+        expect(frame).toContain("fix the typo in src/main.ts");
+        expect(frame).not.toContain("[200~");
+        expect(frame).not.toContain("[201~");
+      });
+    });
+
+    it("should strip bracketed paste markers when pasting into AskUserQuestion Other text", async () => {
+      const mockQuestions = {
+        questions: [
+          {
+            question: "What color?",
+            header: "Color",
+            options: [{ label: "Red" }, { label: "Blue" }],
+          },
+        ],
+      };
+
+      const { stdin, lastFrame } = render(
+        <ConfirmationSelector
+          toolName="AskUserQuestion"
+          toolInput={mockQuestions as unknown as Record<string, unknown>}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("What color?");
+      });
+      // Navigate to Other
+      stdin.write("\u001b[B");
+      stdin.write("\u001b[B");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("Other");
+      });
+
+      // Paste with bracketed paste markers
+      stdin.write("\u001b[200~green-ish\u001b[201~");
+
+      await vi.waitFor(() => {
+        const frame = stripAnsiColors(lastFrame() || "");
+        expect(frame).toContain("green-ish");
+        expect(frame).not.toContain("[200~");
+        expect(frame).not.toContain("[201~");
+      });
+    });
+  });
+
   describe("AskUserQuestion edge cases", () => {
     it("should submit immediately when there is only one question", async () => {
       const mockQuestions = {
