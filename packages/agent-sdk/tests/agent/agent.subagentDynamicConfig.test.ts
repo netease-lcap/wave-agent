@@ -51,6 +51,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
     delete process.env.WAVE_BASE_URL;
     delete process.env.WAVE_MODEL;
     delete process.env.WAVE_FAST_MODEL;
+    delete process.env.WAVE_VISION_MODEL;
     delete process.env.WAVE_MAX_INPUT_TOKENS;
     // Reset and setup loadMergedWaveConfig mock
     vi.mocked(loadMergedWaveConfig).mockReturnValue(null);
@@ -205,6 +206,56 @@ describe("Subagent Dynamic Configuration Tests", () => {
 
       expect(subagentAIManager.getGatewayConfig().apiKey).toBe(
         "updated-parent-token",
+      );
+    });
+
+    it("should resolve visionModel special value from WAVE_VISION_MODEL", async () => {
+      // Set parent environment variables
+      process.env.WAVE_API_KEY = "parent-token";
+      process.env.WAVE_BASE_URL = "https://parent.url";
+      process.env.WAVE_MODEL = "parent-model";
+      process.env.WAVE_VISION_MODEL = "qwen-vl-max";
+
+      // Create parent agent
+      agent = await Agent.create({
+        workdir: mockWorkdir,
+      });
+
+      // Get SubagentManager
+      subagentManager = (agent as unknown as TestableAgent).subagentManager;
+      await subagentManager.initialize();
+
+      // Create subagent configuration using the visionModel special value
+      const mockConfiguration: SubagentConfiguration = {
+        name: "vision",
+        description: "Image recognition specialist",
+        systemPrompt: "You are an image recognition specialist.",
+        model: "visionModel", // Special value resolved to WAVE_VISION_MODEL
+        tools: ["Read"],
+        filePath: "/mock/path/vision.md",
+        scope: "builtin",
+        priority: 3,
+      };
+
+      const subagentInstance = await subagentManager.createInstance(
+        mockConfiguration,
+        {
+          description: "Testing visionModel resolution",
+          prompt: "Describe this image",
+          subagent_type: "vision",
+        },
+      );
+
+      // The subagent's model should resolve to the WAVE_VISION_MODEL value
+      const subagentAIManager = subagentInstance.aiManager;
+      expect(subagentAIManager.getModelConfig().model).toBe("qwen-vl-max");
+      // Fast model should still be inherited from parent
+      expect(subagentAIManager.getModelConfig().fastModel).toBeUndefined();
+
+      // Update the env var — resolution should track it dynamically
+      process.env.WAVE_VISION_MODEL = "updated-vision-model";
+      expect(subagentAIManager.getModelConfig().model).toBe(
+        "updated-vision-model",
       );
     });
 

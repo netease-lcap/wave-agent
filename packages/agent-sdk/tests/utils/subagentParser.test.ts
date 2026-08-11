@@ -27,6 +27,7 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 describe("SubagentParser with Built-ins", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.WAVE_VISION_MODEL;
 
     // Setup default builtin subagents dir mock
     vi.mocked(configPaths.getBuiltinSubagentsDir).mockReturnValue(
@@ -104,6 +105,85 @@ test`;
 
       const builtin = configs.find((c) => c.scope === "builtin");
       expect(builtin?.priority).toBe(3);
+    });
+
+    it("should load built-in vision subagent only when WAVE_VISION_MODEL is set", async () => {
+      const mockFs = await import("fs");
+
+      vi.mocked(mockFs.readdirSync).mockImplementation((dirPath) => {
+        if (dirPath === "/builtin/subagents") {
+          return ["vision.md"] as unknown as ReturnType<
+            typeof import("fs").readdirSync
+          >;
+        }
+        return [] as unknown as ReturnType<typeof import("fs").readdirSync>;
+      });
+
+      vi.mocked(mockFs.statSync).mockReturnValue({
+        isFile: () => true,
+      } as import("fs").Stats);
+
+      vi.mocked(mockFs.readFileSync).mockImplementation((filePath) => {
+        if (filePath === path.join("/builtin/subagents", "vision.md")) {
+          return `---
+description: Image recognition specialist
+tools: [Read]
+model: visionModel
+---
+You are an image recognition specialist...`;
+        }
+        return "";
+      });
+
+      // Without the env var, the vision subagent is filtered out
+      const configsWithoutEnv = await loadSubagentConfigurations(
+        "/test/workdir",
+        {},
+      );
+      expect(configsWithoutEnv).toHaveLength(0);
+
+      // With the env var (via the merged env param), it loads with model: visionModel
+      const configsWithEnv = await loadSubagentConfigurations("/test/workdir", {
+        WAVE_VISION_MODEL: "qwen-vl-max",
+      });
+      expect(configsWithEnv).toHaveLength(1);
+      const vision = configsWithEnv.find((c) => c.name === "vision");
+      expect(vision).toBeDefined();
+      expect(vision?.scope).toBe("builtin");
+      expect(vision?.tools).toEqual(["Read"]);
+      expect(vision?.model).toBe("visionModel");
+    });
+
+    it("should treat WAVE_VISION_MODEL from process.env as set", async () => {
+      const mockFs = await import("fs");
+
+      vi.mocked(mockFs.readdirSync).mockImplementation((dirPath) => {
+        if (dirPath === "/builtin/subagents") {
+          return ["vision.md"] as unknown as ReturnType<
+            typeof import("fs").readdirSync
+          >;
+        }
+        return [] as unknown as ReturnType<typeof import("fs").readdirSync>;
+      });
+
+      vi.mocked(mockFs.statSync).mockReturnValue({
+        isFile: () => true,
+      } as import("fs").Stats);
+
+      vi.mocked(mockFs.readFileSync).mockImplementation((filePath) => {
+        if (filePath === path.join("/builtin/subagents", "vision.md")) {
+          return `---
+description: Image recognition specialist
+model: visionModel
+---
+You are an image recognition specialist...`;
+        }
+        return "";
+      });
+
+      process.env.WAVE_VISION_MODEL = "qwen-vl-max";
+      const configs = await loadSubagentConfigurations("/test/workdir");
+      expect(configs.find((c) => c.name === "vision")).toBeDefined();
     });
 
     it("should sort configurations by priority then name", async () => {

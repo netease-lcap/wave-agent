@@ -293,6 +293,8 @@ export class AIManager {
     if (this.modelOverride) {
       if (this.modelOverride === "fastModel") {
         modelToUse = parentModelConfig.fastModel;
+      } else if (this.modelOverride === "visionModel") {
+        modelToUse = parentModelConfig.visionModel;
       } else if (this.modelOverride !== "inherit") {
         modelToUse = this.modelOverride;
       }

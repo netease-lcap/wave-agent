@@ -944,5 +944,88 @@ describe("convertMessagesForAPI", () => {
         ),
       ).toBe(false);
     });
+
+    it("appends [Image source: <path>] alongside placeholder when supportsVision is false", () => {
+      const messages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            { type: "text", content: "What is in this image?" },
+            {
+              type: "image",
+              imageUrls: ["/tmp/clipboard-image-123.png"],
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      const apiMessages = convertMessagesForAPI(messages, {
+        supportsVision: false,
+      });
+
+      expect(apiMessages).toHaveLength(1);
+      const content = apiMessages[0].content as Array<{
+        type: string;
+        text?: string;
+      }>;
+      // Placeholder + [Image source: path] metadata so a non-vision main model
+      // can delegate recognition to the vision subagent
+      expect(content).toEqual([
+        { type: "text", text: "What is in this image?" },
+        {
+          type: "text",
+          text: "[User shared an image, but the current model does not support image recognition]",
+        },
+        {
+          type: "text",
+          text: "[Image source: /tmp/clipboard-image-123.png]",
+        },
+      ]);
+
+      // Ensure no image_url parts remain
+      const allContent = JSON.stringify(apiMessages);
+      expect(allContent).not.toContain("image_url");
+    });
+
+    it("appends [Image source: <path>] for each non-dataURL image when supportsVision is false", () => {
+      const messages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            { type: "text", content: "Describe both images" },
+            {
+              type: "image",
+              imageUrls: [
+                "/tmp/image-a.png",
+                "data:image/png;base64,iVBORw0KGgoAAAANS...",
+                "/tmp/image-b.jpg",
+              ],
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      const apiMessages = convertMessagesForAPI(messages, {
+        supportsVision: false,
+      });
+
+      const content = apiMessages[0].content as Array<{
+        type: string;
+        text?: string;
+      }>;
+      const sourcePaths = content
+        .filter(
+          (p) => p.type === "text" && p.text?.startsWith("[Image source:"),
+        )
+        .map((p) => p.text);
+      expect(sourcePaths).toEqual([
+        "[Image source: /tmp/image-a.png]",
+        "[Image source: /tmp/image-b.jpg]",
+      ]);
+    });
   });
 });

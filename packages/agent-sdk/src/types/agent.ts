@@ -36,6 +36,8 @@ export interface AgentOptions {
   fetch?: ClientOptions["fetch"];
   model?: string;
   fastModel?: string;
+  /** Vision-capable model used by the builtin vision subagent (resolved from WAVE_VISION_MODEL env var). */
+  visionModel?: string;
   maxInputTokens?: number;
   maxTokens?: number;
   /** Preferred language for agent communication */

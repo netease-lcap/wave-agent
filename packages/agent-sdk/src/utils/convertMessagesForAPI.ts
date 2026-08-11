@@ -261,6 +261,18 @@ export function convertMessagesForAPI(
               type: "text",
               text: "[User shared an image, but the current model does not support image recognition]",
             });
+            // Append source path metadata for local-file images so the main
+            // model can delegate recognition to a vision subagent (which
+            // reads the path with the Read tool). Inline dataURLs are
+            // skipped — only persisted paths are delegatable.
+            block.imageUrls.forEach((imageUrl: string) => {
+              if (!imageUrl.startsWith("data:image/")) {
+                contentParts.push({
+                  type: "text",
+                  text: `[Image source: ${imageUrl}]`,
+                });
+              }
+            });
           } else {
             block.imageUrls.forEach((imageUrl: string) => {
               // Check if it's already base64, convert if not

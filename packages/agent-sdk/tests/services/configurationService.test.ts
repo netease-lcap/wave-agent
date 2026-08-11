@@ -474,26 +474,32 @@ describe("ConfigurationService", () => {
       const config = configService.resolveModelConfig();
       const expectedAgentModel = process.env.WAVE_MODEL;
       const expectedFastModel = process.env.WAVE_FAST_MODEL;
+      const expectedVisionModel = process.env.WAVE_VISION_MODEL;
       const expectedMaxTokens = process.env.WAVE_MAX_OUTPUT_TOKENS
         ? parseInt(process.env.WAVE_MAX_OUTPUT_TOKENS, 10)
         : DEFAULT_WAVE_MAX_OUTPUT_TOKENS;
       expect(config.model).toBe(expectedAgentModel);
       expect(config.fastModel).toBe(expectedFastModel);
+      expect(config.visionModel).toBe(expectedVisionModel);
       expect(config.maxTokens).toBe(expectedMaxTokens);
     });
 
     it("should return undefined model/fastModel when not configured", () => {
       const originalModel = process.env.WAVE_MODEL;
       const originalFastModel = process.env.WAVE_FAST_MODEL;
+      const originalVisionModel = process.env.WAVE_VISION_MODEL;
       delete process.env.WAVE_MODEL;
       delete process.env.WAVE_FAST_MODEL;
+      delete process.env.WAVE_VISION_MODEL;
       try {
         const config = configService.resolveModelConfig();
         expect(config.model).toBeUndefined();
         expect(config.fastModel).toBeUndefined();
+        expect(config.visionModel).toBeUndefined();
       } finally {
         process.env.WAVE_MODEL = originalModel;
         process.env.WAVE_FAST_MODEL = originalFastModel;
+        process.env.WAVE_VISION_MODEL = originalVisionModel;
       }
     });
 
@@ -501,11 +507,13 @@ describe("ConfigurationService", () => {
       configService.setEnvironmentVars({
         WAVE_MODEL: "custom-agent",
         WAVE_FAST_MODEL: "custom-fast",
+        WAVE_VISION_MODEL: "custom-vision",
         WAVE_MAX_OUTPUT_TOKENS: "1000",
       });
       const config = configService.resolveModelConfig();
       expect(config.model).toBe("custom-agent");
       expect(config.fastModel).toBe("custom-fast");
+      expect(config.visionModel).toBe("custom-vision");
       expect(config.maxTokens).toBe(1000);
     });
 

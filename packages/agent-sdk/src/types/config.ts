@@ -26,6 +26,8 @@ export interface ModelCapabilities {
 export interface ModelConfig {
   model?: string;
   fastModel?: string;
+  /** Vision-capable model for image recognition subagents (resolved from WAVE_VISION_MODEL env var). */
+  visionModel?: string;
   maxTokens?: number;
   permissionMode?: PermissionMode;
   capabilities?: ModelCapabilities;
