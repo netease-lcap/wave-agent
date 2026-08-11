@@ -75,6 +75,8 @@ export type RequestMethod =
   | "getPromptHistory"
   | "searchPromptHistory"
   | "updateConfig"
+  | "getConfiguredModels"
+  | "setModel"
   // Permissions (daemon attach: re-surface pending approvals after reconnect)
   | "listPendingPermissions"
   // Auth

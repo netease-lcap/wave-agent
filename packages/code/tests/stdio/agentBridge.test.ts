@@ -997,6 +997,45 @@ test("getSlashCommands returns command list", async () => {
   expect(r).toEqual({ commands });
 });
 
+test("getConfiguredModels returns configured models and current model", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({
+      getConfiguredModels: vi.fn().mockReturnValue(["gpt-4", "claude"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "gpt-4" }),
+    }),
+  );
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest("getConfiguredModels", {}, sessionId);
+
+  expect(r).toEqual({ models: ["gpt-4", "claude"], currentModel: "gpt-4" });
+});
+
+test("setModel calls agent.setModel and survives a later updateConfig recreation", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent({ setModel: vi.fn() });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", { model: "gpt-4" });
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "setModel",
+    { model: "claude" },
+    sessionId,
+  );
+
+  expect(mockAgent.setModel).toHaveBeenCalledWith("claude");
+  expect(r).toBeNull();
+
+  // updateConfig recreates the agent from storedConfig — the model chosen via
+  // setModel must not be reverted by a later config save
+  await bridge.handleRequest("updateConfig", { language: "zh-CN" }, sessionId);
+  const secondCall = vi.mocked(Agent.create).mock.calls[1][0];
+  expect(secondCall.model).toBe("claude");
+});
+
 test("askBtw returns the side-question answer", async () => {
   const { bridge } = createBridge();
   const mockAgent = createMockAgent({

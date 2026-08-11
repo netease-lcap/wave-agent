@@ -158,6 +158,12 @@ export class MessageHandler {
             case 'listRewindCheckpoints':
                 await this.handleListRewindCheckpoints(viewType, windowId);
                 break;
+            case 'getConfiguredModels':
+                await this.handleGetConfiguredModels(viewType, windowId);
+                break;
+            case 'setModel':
+                await this.handleSetModel(msg.model as string, viewType, windowId);
+                break;
             case 'askBtw':
                 await this.handleAskBtw(msg.question as string, viewType, windowId);
                 break;
@@ -284,6 +290,34 @@ export class MessageHandler {
                 command: 'rewindCheckpoints',
                 checkpoints: []
             }, viewType, windowId);
+        }
+    }
+
+    private async handleGetConfiguredModels(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
+        const session = this.context.getChatSession(viewType || 'tab', windowId);
+        try {
+            const result = await session.agent?.getConfiguredModels() ?? { models: [], currentModel: undefined };
+            this.context.postMessage({
+                command: 'configuredModels',
+                models: result.models,
+                currentModel: result.currentModel
+            }, viewType, windowId);
+        } catch (error) {
+            console.error(`获取 ${viewType} 模型列表失败:`, error);
+            this.context.postMessage({
+                command: 'configuredModels',
+                models: [],
+                currentModel: undefined
+            }, viewType, windowId);
+        }
+    }
+
+    private async handleSetModel(model: string, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
+        const session = this.context.getChatSession(viewType || 'tab', windowId);
+        try {
+            await session.agent?.setModel(model);
+        } catch (error) {
+            console.error(`设置 ${viewType} 模型失败:`, error);
         }
     }
 
@@ -763,6 +797,7 @@ export class MessageHandler {
                 { id: 'tasks', name: 'tasks', description: '查看后台任务' },
                 { id: 'workflows', name: 'workflows', description: '查看工作流运行' },
                 { id: 'rewind', name: 'rewind', description: '回退到之前的用户消息' },
+                { id: 'model', name: 'model', description: '切换 AI 模型' },
                 { id: 'btw', name: 'btw', description: '旁路提问（不进入聊天记录）' }
             ];
 

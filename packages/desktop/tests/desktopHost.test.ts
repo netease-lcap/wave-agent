@@ -230,6 +230,8 @@ vi.mock('../src/main/stdio/stdioAgent', () => ({
       return this.messages;
     });
     listRewindCheckpoints = vi.fn(async () => ({ checkpoints: [{ id: 'u1', content: 'hello' }] }));
+    getConfiguredModels = vi.fn(async () => ({ models: ['gpt-4', 'claude'], currentModel: 'gpt-4' }));
+    setModel = vi.fn(async () => undefined);
     removeQueuedMessage = vi.fn(async () => undefined);
     updateQueuedMessageById = vi.fn(async () => true);
     removeQueuedMessageById = vi.fn(async () => undefined);
@@ -1575,6 +1577,23 @@ describe('misc commands', () => {
     await host.handleWebviewMessage({ command: 'listRewindCheckpoints' });
     expect(lastAgent().listRewindCheckpoints).toHaveBeenCalled();
     expect(sent('rewindCheckpoints')[0]).toMatchObject({ checkpoints: [{ id: 'u1', content: 'hello' }] });
+  });
+
+  it('getConfiguredModels replies with the agent model list for this pane', async () => {
+    const { host, sent } = await readyHost();
+    await host.handleWebviewMessage({ command: 'getConfiguredModels' });
+    expect(lastAgent().getConfiguredModels).toHaveBeenCalled();
+    expect(sent('configuredModels')[0]).toMatchObject({
+      models: ['gpt-4', 'claude'],
+      currentModel: 'gpt-4',
+      paneId: expect.any(String),
+    });
+  });
+
+  it('setModel forwards the picked model to the pane agent', async () => {
+    const { host } = await readyHost();
+    await host.handleWebviewMessage({ command: 'setModel', model: 'claude' });
+    expect(lastAgent().setModel).toHaveBeenCalledWith('claude');
   });
 
   it('askBtw replies with the agent answer and echoed question', async () => {

@@ -103,6 +103,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
     initialAttachedImages,
     workdirSelector,
     rewindPopup,
+    modelPopup,
     btwPopup,
     disabled
   } = props;
@@ -873,7 +874,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
     // mouse click on the popup works even when the browser selection is no
     // longer inside the input's text node (which made getSelection()-based
     // logic below silently no-op on click).
-    const localCommands = ['config', 'plugin', 'mcp', 'status', 'tasks', 'workflows', 'clear', 'compact', 'rewind'];
+    const localCommands = ['config', 'plugin', 'mcp', 'status', 'tasks', 'workflows', 'clear', 'compact', 'rewind', 'model'];
     if (localCommands.includes(command.name)) {
       textareaRef.current.innerHTML = '';
       setMessage('');
@@ -1504,6 +1505,9 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
 
         {/* /rewind 检查点弹窗，与历史记录弹窗共用 .input-wrapper 定位上下文 */}
         {rewindPopup}
+
+        {/* /model 模型选择弹窗，与 rewind 弹窗共用 .input-wrapper 定位上下文 */}
+        {modelPopup}
 
         {/* /btw 旁路提问面板，锚定 .input-wrapper 顶部 */}
         {btwPopup}
