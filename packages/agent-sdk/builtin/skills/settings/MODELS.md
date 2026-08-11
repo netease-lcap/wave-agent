@@ -105,11 +105,14 @@ You can also set the default models Wave uses via environment variables in `sett
   "env": {
     "WAVE_MODEL": "gemini-3-flash",
     "WAVE_FAST_MODEL": "gemini-2.5-flash",
+    "WAVE_VISION_MODEL": "qwen-vl-max",
     "WAVE_MAX_INPUT_TOKENS": "100000",
     "WAVE_MAX_OUTPUT_TOKENS": "4096"
   }
 }
 ```
+
+`WAVE_VISION_MODEL` names a vision-capable model for the built-in `vision` subagent. Setting it registers the subagent, whose frontmatter `model: visionModel` resolves to this value — so a fast non-vision main model can delegate image recognition. Leave it unset to disable the built-in `vision` subagent.
 
 ## Live Reload
 
