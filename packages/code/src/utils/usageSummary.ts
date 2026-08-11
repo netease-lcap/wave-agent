@@ -12,13 +12,9 @@ export interface TokenSummary {
     agent_calls: number;
     compactions: number;
   };
-  // Cache-related tokens (for Claude models)
+  // Normalized cache tokens
   cache_read_input_tokens?: number;
   cache_creation_input_tokens?: number;
-  cache_creation?: {
-    ephemeral_5m_input_tokens: number;
-    ephemeral_1h_input_tokens: number;
-  };
 }
 
 /**
@@ -64,22 +60,6 @@ export function calculateTokenSummary(
       summary.cache_creation_input_tokens =
         (summary.cache_creation_input_tokens || 0) +
         usage.cache_creation_input_tokens;
-    }
-    if (
-      usage.cache_creation &&
-      (usage.cache_creation.ephemeral_5m_input_tokens > 0 ||
-        usage.cache_creation.ephemeral_1h_input_tokens > 0)
-    ) {
-      if (!summary.cache_creation) {
-        summary.cache_creation = {
-          ephemeral_5m_input_tokens: 0,
-          ephemeral_1h_input_tokens: 0,
-        };
-      }
-      summary.cache_creation.ephemeral_5m_input_tokens +=
-        usage.cache_creation.ephemeral_5m_input_tokens || 0;
-      summary.cache_creation.ephemeral_1h_input_tokens +=
-        usage.cache_creation.ephemeral_1h_input_tokens || 0;
     }
 
     // Track operation types
@@ -132,8 +112,6 @@ export function displayUsageSummary(
   let totalCompactions = 0;
   let totalCacheRead = 0;
   let totalCacheCreation = 0;
-  let totalCache5m = 0;
-  let totalCache1h = 0;
   let hasCacheData = false;
 
   for (const [, summary] of Object.entries(summaries)) {
@@ -147,8 +125,7 @@ export function displayUsageSummary(
     // Display cache information if available
     if (
       summary.cache_read_input_tokens ||
-      summary.cache_creation_input_tokens ||
-      summary.cache_creation
+      summary.cache_creation_input_tokens
     ) {
       hasCacheData = true;
       console.log("  Cache Usage:");
@@ -171,21 +148,6 @@ export function displayUsageSummary(
           `    Created cache: ${summary.cache_creation_input_tokens.toLocaleString()} tokens`,
         );
         totalCacheCreation += summary.cache_creation_input_tokens;
-      }
-
-      if (summary.cache_creation) {
-        if (summary.cache_creation.ephemeral_5m_input_tokens > 0) {
-          console.log(
-            `    5m cache: ${summary.cache_creation.ephemeral_5m_input_tokens.toLocaleString()} tokens`,
-          );
-          totalCache5m += summary.cache_creation.ephemeral_5m_input_tokens;
-        }
-        if (summary.cache_creation.ephemeral_1h_input_tokens > 0) {
-          console.log(
-            `    1h cache: ${summary.cache_creation.ephemeral_1h_input_tokens.toLocaleString()} tokens`,
-          );
-          totalCache1h += summary.cache_creation.ephemeral_1h_input_tokens;
-        }
       }
     }
 
@@ -218,12 +180,6 @@ export function displayUsageSummary(
         console.log(
           `    Created cache: ${totalCacheCreation.toLocaleString()} tokens`,
         );
-      }
-      if (totalCache5m > 0) {
-        console.log(`    5m cache: ${totalCache5m.toLocaleString()} tokens`);
-      }
-      if (totalCache1h > 0) {
-        console.log(`    1h cache: ${totalCache1h.toLocaleString()} tokens`);
       }
     }
 

@@ -222,10 +222,6 @@ describe("AIManager - Coverage", () => {
         completion_tokens: 20,
         total_tokens: 30,
         cache_creation_input_tokens: 5,
-        cache_creation: {
-          ephemeral_5m_input_tokens: 100,
-          ephemeral_1h_input_tokens: 50,
-        },
       },
       tool_calls: [],
       finish_reason: "stop",

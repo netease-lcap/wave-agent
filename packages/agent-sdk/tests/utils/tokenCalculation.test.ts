@@ -111,10 +111,6 @@ describe("calculateComprehensiveTotalTokens", () => {
       cache_creation_input_tokens: 30,
       model: "claude-3-sonnet",
       operation_type: "agent",
-      cache_creation: {
-        ephemeral_5m_input_tokens: 15,
-        ephemeral_1h_input_tokens: 15,
-      },
     };
 
     const result = calculateComprehensiveTotalTokens(usage);

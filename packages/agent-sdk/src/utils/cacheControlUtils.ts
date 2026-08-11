@@ -15,6 +15,7 @@ import type {
 import { logger } from "./globalLogger.js";
 import { supportsPromptCaching } from "./modelCapabilities.js";
 import type { ModelCapabilities } from "../types/config.js";
+import type { Usage } from "../types/core.js";
 
 // ============================================================================
 // Core Types
@@ -44,27 +45,6 @@ export interface ClaudeChatCompletionContentPartText
 export interface ExtendedPromptTokensDetails
   extends CompletionUsage.PromptTokensDetails {
   cache_creation_input_tokens?: number;
-}
-
-/**
- * Enhanced usage metrics including cache information
- * Supports both Claude-specific top-level fields and OpenAI-standard prompt_tokens_details
- */
-export interface ClaudeUsage extends CompletionUsage {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-
-  // Cache extensions (from Claude top-level or OpenAI prompt_tokens_details)
-  cache_read_input_tokens?: number; // Claude: cache_read_input_tokens / OpenAI: prompt_tokens_details.cached_tokens
-  cache_creation_input_tokens?: number; // Claude: cache_creation_input_tokens / OpenAI: prompt_tokens_details.cache_creation_input_tokens
-  cache_creation?: {
-    ephemeral_5m_input_tokens: number;
-    ephemeral_1h_input_tokens: number;
-  };
-
-  // Override prompt_tokens_details to include cache_creation_input_tokens
-  prompt_tokens_details?: ExtendedPromptTokensDetails;
 }
 
 // ============================================================================
@@ -317,110 +297,28 @@ export function transformMessagesForExplicitCache(
 
 /**
  * Extends standard usage with cache metrics
- * Extracts cache tokens from both Claude-specific top-level fields and
- * OpenAI-standard prompt_tokens_details (used by Gemini, DeepSeek, etc.)
- * @param standardUsage - OpenAI usage response
- * @param cacheMetrics - Additional cache metrics from the API response
+ * Extracts cache tokens from OpenAI-standard prompt_tokens_details
+ * (cached_tokens and the gateway-provided cache_creation_input_tokens)
+ * @param usage - OpenAI usage response
  * @returns Extended usage with cache information
  */
-export function extendUsageWithCacheMetrics(
-  standardUsage: CompletionUsage,
-  cacheMetrics?: Partial<ClaudeUsage>,
-): ClaudeUsage {
-  const baseUsage: ClaudeUsage = {
-    prompt_tokens: standardUsage.prompt_tokens,
-    completion_tokens: standardUsage.completion_tokens,
-    total_tokens: standardUsage.total_tokens,
+export function extendUsageWithCacheMetrics(usage: CompletionUsage): Usage {
+  const baseUsage: Usage = {
+    prompt_tokens: usage.prompt_tokens,
+    completion_tokens: usage.completion_tokens,
+    total_tokens: usage.total_tokens,
   };
 
-  if (!cacheMetrics) {
-    return baseUsage;
-  }
+  const details = usage.prompt_tokens_details as
+    | ExtendedPromptTokensDetails
+    | undefined;
 
-  // Extract cache_read_input_tokens from Claude top-level field
-  if (typeof cacheMetrics.cache_read_input_tokens === "number") {
-    baseUsage.cache_read_input_tokens = cacheMetrics.cache_read_input_tokens;
+  if (details?.cached_tokens != null) {
+    baseUsage.cache_read_input_tokens = details.cached_tokens;
   }
-  // Fallback to prompt_tokens_details.cached_tokens (OpenAI standard)
-  else if (cacheMetrics.prompt_tokens_details?.cached_tokens != null) {
-    baseUsage.cache_read_input_tokens =
-      cacheMetrics.prompt_tokens_details.cached_tokens;
-  }
-
-  // Extract cache_creation_input_tokens from Claude top-level field
-  if (typeof cacheMetrics.cache_creation_input_tokens === "number") {
-    baseUsage.cache_creation_input_tokens =
-      cacheMetrics.cache_creation_input_tokens;
-  }
-  // Fallback to prompt_tokens_details.cache_creation_input_tokens
-  else if (
-    cacheMetrics.prompt_tokens_details?.cache_creation_input_tokens != null
-  ) {
-    baseUsage.cache_creation_input_tokens =
-      cacheMetrics.prompt_tokens_details.cache_creation_input_tokens;
-  }
-
-  // Extract cache_creation breakdown (Claude-specific)
-  if (
-    cacheMetrics.cache_creation &&
-    typeof cacheMetrics.cache_creation.ephemeral_5m_input_tokens === "number" &&
-    typeof cacheMetrics.cache_creation.ephemeral_1h_input_tokens === "number"
-  ) {
-    baseUsage.cache_creation = {
-      ephemeral_5m_input_tokens:
-        cacheMetrics.cache_creation.ephemeral_5m_input_tokens,
-      ephemeral_1h_input_tokens:
-        cacheMetrics.cache_creation.ephemeral_1h_input_tokens,
-    };
+  if (details?.cache_creation_input_tokens != null) {
+    baseUsage.cache_creation_input_tokens = details.cache_creation_input_tokens;
   }
 
   return baseUsage;
-}
-
-/**
- * Validates Claude usage structure
- * @param usage - Usage object to validate
- * @returns True if usage structure is valid
- */
-export function isValidClaudeUsage(usage: unknown): usage is ClaudeUsage {
-  if (!usage || typeof usage !== "object") {
-    return false;
-  }
-
-  const usageObj = usage as Record<string, unknown>;
-
-  // Check required standard fields
-  const hasStandardFields =
-    typeof usageObj.prompt_tokens === "number" &&
-    typeof usageObj.completion_tokens === "number" &&
-    typeof usageObj.total_tokens === "number";
-
-  if (!hasStandardFields) {
-    return false;
-  }
-
-  // Check optional cache fields
-  const hasCacheFields =
-    (usageObj.cache_read_input_tokens === undefined ||
-      typeof usageObj.cache_read_input_tokens === "number") &&
-    (usageObj.cache_creation_input_tokens === undefined ||
-      typeof usageObj.cache_creation_input_tokens === "number");
-
-  if (!hasCacheFields) {
-    return false;
-  }
-
-  // Check cache_creation object if present
-  if (usageObj.cache_creation !== undefined) {
-    const cacheCreation = usageObj.cache_creation as Record<string, unknown>;
-    if (
-      typeof cacheCreation !== "object" ||
-      typeof cacheCreation.ephemeral_5m_input_tokens !== "number" ||
-      typeof cacheCreation.ephemeral_1h_input_tokens !== "number"
-    ) {
-      return false;
-    }
-  }
-
-  return true;
 }
