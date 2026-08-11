@@ -21,7 +21,7 @@ class NewWaveTabAction : AnAction(AllIcons.General.Add), DumbAware {
     }
 
     override fun update(e: AnActionEvent) {
-        e.presentation.text = "新建会话"
+        e.presentation.text = "新建对话"
         e.presentation.isEnabled = WavePanelHolder.getInstance(e.project ?: return).toolWindow != null
     }
 }
