@@ -22,8 +22,8 @@ order: 20
 **验收场景**：
 
 1. **假设** 有要执行的命令，**当** 调用 `Bash` 工具时，**则** 它必须返回命令的输出（stdout 和 stderr）。
-2. **假设** 前台命令耗时较长，**当** 超过超时时，**则** 它必须被自动转为后台（如果命令允许）或终止（如果不允许，例如 `sleep`）。
-3. **假设** 前台命令超时并被自动转为后台，**则** 代理必须收到一条消息，指示进程已被移至后台，并包含其任务 ID 和输出路径。
+2. **假设** 前台命令耗时较长，**当** 超过超时时，**则** 它必须被自动转为后台（如果命令允许）或终止（如果不允许，例如 `sleep`），且返回结果必须标记为成功（`success: true`），不得视为错误。
+3. **假设** 前台命令超时并被自动转为后台，**则** 代理必须收到一条消息，指示进程仍在后台运行、完成时会收到通知，并包含其任务 ID 和输出路径；消息不得使用 "timed out" 等暗示失败的措辞。
 
 ---
 
@@ -41,6 +41,26 @@ order: 20
 2. **假设** `run_in_background` 为 true，**则** 命令必须在没有任何超时的情况下运行——它持续运行直到完成或手动停止。
 3. **假设** 有运行中的后台进程，**当** 使用其 ID 调用 `TaskStop`（原 `KillBash`）时，**则** 进程必须被终止。
 4. **假设** 后台进程已启动，**当** 我使用 `Read` 工具读取提供的 `outputPath` 文件时，**则** 我应该看到进程的实时输出。
+
+---
+
+### 用户故事：后台状态结构化返回（优先级：P2）
+
+作为 AI 代理，我希望 Bash 工具的结果包含结构化的后台状态字段，以便精确区分"用户手动转后台"、"超时自动转后台"和"显式后台启动"三种场景，而无需解析文本。
+
+**优先级原因**：当前超时转后台的返回文本含 "timed out"，容易被模型误解为命令失败；结构化字段（与 Claude Code 输出 schema 对齐：`backgroundTaskId`、`backgroundedByUser`、`assistantAutoBackgrounded`）让模型与 UI 可机器可读地判断后台状态。
+
+**独立测试**：运行 `sleep 60`（timeout 设为 2000ms），验证返回结果包含 `assistantAutoBackgrounded: true` 与 `backgroundTaskId`，且文本与 Claude Code 对齐（不含 "timed out"）。
+
+**验收场景**：
+
+1. **假设** 命令超时被自动转为后台，**当** Bash 工具返回结果时，**则** 结果必须包含 `backgroundTaskId` 与 `assistantAutoBackgrounded: true`，且 `success: true`。
+2. **假设** 用户通过 Ctrl+B 手动将命令转为后台，**当** Bash 工具返回结果时，**则** 结果必须包含 `backgroundTaskId` 与 `backgroundedByUser: true`。
+3. **假设** 命令通过 `run_in_background: true` 显式启动，**当** Bash 工具返回结果时，**则** 结果必须包含 `backgroundTaskId`，且 `backgroundedByUser` 与 `assistantAutoBackgrounded` 为 false 或省略。
+4. **假设** 命令超时被自动转为后台，**当** 返回结果时，**则** 文本内容必须为（与 Claude Code 对齐，其中 X 为任务 ID、Y 为输出路径）：`Command exceeded the timeout (Xs) and was moved to the background with ID: X. It is still running — you will be notified when it completes. Output is being written to: Y`。
+5. **假设** 命令通过 Ctrl+B 手动转为后台，**当** 返回结果时，**则** 文本内容必须为：`Command was manually backgrounded by user with ID: X. Output is being written to: Y`。
+6. **假设** 命令通过 `run_in_background: true` 启动，**当** 返回结果时，**则** 文本内容必须为：`Command running in background with ID: X. Output is being written to: Y`。
+7. **假设** 命令超时被自动转为后台，**则** 该结果不得中断代理当前运行循环——只有用户手动转后台（`backgroundedByUser`）才停止循环。
 
 ---
 
@@ -104,6 +124,7 @@ order: 20
 - **无效任务 ID**：使用不存在或已过期的 ID 调用 `TaskStop` 应返回清晰的错误消息。
 - **每次命令使用新 Shell**：每次前台命令都会生成新的 shell；`cd` 和环境变量更改不会在调用之间持久化。
 - **超时自动转后台**：当前台命令超时时，系统必须自动将其转为后台（移至 `BackgroundTaskManager`）而不是终止，除非命令以 `sleep` 开头（仍按原方式终止）。
+- **超时转后台措辞**：自动转后台的通知文本必须避免 "timed out" 等暗示失败的措辞，改用"超出超时预算并移至后台、命令仍在运行、完成时会收到通知"的语义，并携带任务 ID 与输出路径。
 - **后台无超时**：当 `run_in_background` 明确为 `true` 时，任何超时（默认或显式）必须被取消——进程无限期运行直到完成或手动停止。
 - **Windows 路径转换**：在 Windows 上使用 Git Bash 时，临时 CWD 文件路径必须从 Windows 路径（`C:\Users\...`）转换为 POSIX 路径（`C:/Users/...`），否则 Bash 会将反斜杠视为转义字符导致路径损坏、临时文件泄漏到项目目录中。
 - **Git Bash 未安装**：Windows 上未检测到 Git Bash 时，必须返回错误而非静默降级到 cmd.exe。

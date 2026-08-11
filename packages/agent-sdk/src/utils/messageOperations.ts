@@ -48,7 +48,9 @@ export interface UpdateToolBlockParams {
   images?: Array<{ data: string; mediaType?: string }>;
   compactParams?: string;
   parametersChunk?: string; // Incremental parameter updates for streaming
-  isManuallyBackgrounded?: boolean;
+  backgroundTaskId?: string;
+  backgroundedByUser?: boolean;
+  assistantAutoBackgrounded?: boolean;
   timestamp?: number;
 }
 
@@ -296,7 +298,9 @@ export const updateToolBlockInMessage = ({
   images,
   compactParams,
   parametersChunk,
-  isManuallyBackgrounded,
+  backgroundTaskId,
+  backgroundedByUser,
+  assistantAutoBackgrounded,
 }: UpdateToolBlockParams): { messages: Message[]; messageId?: string } => {
   const newMessages = [...messages];
 
@@ -324,8 +328,12 @@ export const updateToolBlockInMessage = ({
             toolBlock.compactParams = compactParams;
           if (parametersChunk !== undefined)
             toolBlock.parametersChunk = parametersChunk;
-          if (isManuallyBackgrounded !== undefined)
-            toolBlock.isManuallyBackgrounded = isManuallyBackgrounded;
+          if (backgroundTaskId !== undefined)
+            toolBlock.backgroundTaskId = backgroundTaskId;
+          if (backgroundedByUser !== undefined)
+            toolBlock.backgroundedByUser = backgroundedByUser;
+          if (assistantAutoBackgrounded !== undefined)
+            toolBlock.assistantAutoBackgrounded = assistantAutoBackgrounded;
         }
       }
     }
@@ -355,8 +363,12 @@ export const updateToolBlockInMessage = ({
             toolBlock.compactParams = compactParams;
           if (parametersChunk !== undefined)
             toolBlock.parametersChunk = parametersChunk;
-          if (isManuallyBackgrounded !== undefined)
-            toolBlock.isManuallyBackgrounded = isManuallyBackgrounded;
+          if (backgroundTaskId !== undefined)
+            toolBlock.backgroundTaskId = backgroundTaskId;
+          if (backgroundedByUser !== undefined)
+            toolBlock.backgroundedByUser = backgroundedByUser;
+          if (assistantAutoBackgrounded !== undefined)
+            toolBlock.assistantAutoBackgrounded = assistantAutoBackgrounded;
         }
         const foundMessageId = newMessages[i].id;
         return { messages: newMessages, messageId: foundMessageId };
@@ -377,7 +389,9 @@ export const updateToolBlockInMessage = ({
           stage: stage ?? "start",
           compactParams: compactParams,
           parametersChunk: parametersChunk,
-          isManuallyBackgrounded: isManuallyBackgrounded,
+          backgroundTaskId: backgroundTaskId,
+          backgroundedByUser: backgroundedByUser,
+          assistantAutoBackgrounded: assistantAutoBackgrounded,
         });
         const foundMessageId = newMessages[i].id;
         return { messages: newMessages, messageId: foundMessageId };

@@ -2009,7 +2009,7 @@ ${question}`;
                 ) || [];
               const hasBackgrounded =
                 toolBlocks.length > 0 &&
-                toolBlocks.some((block) => block.isManuallyBackgrounded);
+                toolBlocks.some((block) => block.backgroundedByUser);
 
               if (hasBackgrounded) {
                 logger?.info(
@@ -2542,7 +2542,9 @@ ${question}`;
         name: toolName,
         compactParams,
         shortResult: toolResult.shortResult,
-        isManuallyBackgrounded: toolResult.isManuallyBackgrounded,
+        backgroundTaskId: toolResult.backgroundTaskId,
+        backgroundedByUser: toolResult.backgroundedByUser,
+        assistantAutoBackgrounded: toolResult.assistantAutoBackgrounded,
         startLineNumber: toolResult.startLineNumber,
         images: toolResult.images,
         timestamp: Date.now(),
@@ -2568,7 +2570,6 @@ ${question}`;
         stage: "end",
         name: toolName,
         compactParams,
-        isManuallyBackgrounded: false,
         timestamp: Date.now(),
       });
     }

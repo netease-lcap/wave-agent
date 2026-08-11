@@ -214,7 +214,8 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
                   success: true,
                   content: `Agent backgrounded with ID: ${taskId}.${outputPath ? ` Real-time output: ${outputPath}` : ""}`,
                   shortResult: "Agent backgrounded",
-                  isManuallyBackgrounded: true,
+                  backgroundedByUser: true,
+                  backgroundTaskId: taskId,
                 });
               },
             });

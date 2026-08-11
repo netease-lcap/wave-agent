@@ -69,7 +69,12 @@ export interface ToolBlock {
   error?: string | Error;
   compactParams?: string; // Compact parameter display
   parametersChunk?: string; // Incremental parameter updates for streaming
-  isManuallyBackgrounded?: boolean; // Whether the tool was manually backgrounded by the user
+  // ID of the background task if the command is running in the background
+  backgroundTaskId?: string;
+  // True if the user manually backgrounded the command (e.g. via Ctrl-B)
+  backgroundedByUser?: boolean;
+  // True if the command was auto-backgrounded after exceeding the timeout
+  assistantAutoBackgrounded?: boolean;
   timestamp?: number; // Unix ms, set when tool result is finalized (stage="end")
 }
 

@@ -228,8 +228,9 @@ describe("bashTool", () => {
 
       expect(result.success).toBe(true);
       expect(result.content).toMatch(
-        /Command started in background with ID: task_\d+_\d+/,
+        /Command running in background with ID: task_\d+_\d+/,
       );
+      expect(result.backgroundTaskId).toMatch(/task_\d+_\d+/);
     });
 
     it("should run background command in context.workdir, not the BTM stale workdir (worktree cwd)", async () => {
@@ -425,9 +426,16 @@ describe("bashTool", () => {
       const result = await promise;
 
       expect(result.success).toBe(true);
-      expect(result.content).toContain("timed out after 1 seconds");
-      expect(result.content).toContain("moved to background");
-      expect(result.shortResult).toContain("auto-backgrounded (timeout)");
+      expect(result.content).toContain("exceeded the timeout (1s)");
+      expect(result.content).toContain("moved to the background");
+      expect(result.content).toContain(
+        "It is still running — you will be notified when it completes.",
+      );
+      expect(result.content).not.toContain("timed out");
+      expect(result.assistantAutoBackgrounded).toBe(true);
+      expect(result.backgroundTaskId).toBeTruthy();
+      expect(result.shortResult).toContain("auto-backgrounded");
+      expect(result.shortResult).not.toContain("(timeout)");
       vi.useRealTimers();
     });
 
@@ -493,7 +501,8 @@ describe("bashTool", () => {
       const result = await promise;
 
       expect(result.success).toBe(true);
-      expect(result.content).toContain("moved to background");
+      expect(result.content).toContain("moved to the background");
+      expect(result.assistantAutoBackgrounded).toBe(true);
       vi.useRealTimers();
     });
 
@@ -612,8 +621,13 @@ describe("bashTool", () => {
       const result = await executePromise;
       expect(result.success).toBe(true);
       expect(result.content).toContain(
-        "Command moved to background with ID: task_adopted",
+        "Command was manually backgrounded by user with ID: task_adopted",
       );
+      expect(result.content).toContain(
+        "Output is being written to: /tmp/test.log",
+      );
+      expect(result.backgroundedByUser).toBe(true);
+      expect(result.backgroundTaskId).toBe("task_adopted");
       expect(mockBackgroundTaskManager.adoptProcess).toHaveBeenCalled();
     });
 
