@@ -37,6 +37,7 @@ import type {
   CompactionStateChangeMessage,
   BtwResponseMessage,
   McpServersResponseMessage,
+  SubagentConfigurationsResponseMessage,
   DesktopPanesMessage,
   DesktopSessionTreeMessage,
   DesktopWorkdirStateMessage,
@@ -72,6 +73,7 @@ export interface Fixtures {
   compactionStateChange: (isCompacting: boolean, overrides?: Overrides<CompactionStateChangeMessage>) => CompactionStateChangeMessage;
   btwResponse: (question: string, answer: string, overrides?: Overrides<BtwResponseMessage>) => BtwResponseMessage;
   mcpServersResponse: (servers: unknown[], overrides?: Overrides<McpServersResponseMessage>) => McpServersResponseMessage;
+  subagentConfigurationsResponse: (configurations: unknown[], overrides?: Overrides<SubagentConfigurationsResponseMessage>) => SubagentConfigurationsResponseMessage;
   desktopPanes: (overrides?: Overrides<DesktopPanesMessage>) => DesktopPanesMessage;
   desktopSessionTree: (overrides?: Overrides<DesktopSessionTreeMessage>) => DesktopSessionTreeMessage;
   desktopWorkdirState: (overrides?: Overrides<DesktopWorkdirStateMessage>) => DesktopWorkdirStateMessage;
@@ -190,6 +192,12 @@ export const fixtures: Fixtures = {
   mcpServersResponse: (servers, overrides = {}) => ({
     command: 'mcpServersResponse',
     servers,
+    ...overrides,
+  }),
+
+  subagentConfigurationsResponse: (configurations, overrides = {}) => ({
+    command: 'subagentConfigurationsResponse',
+    configurations,
     ...overrides,
   }),
 

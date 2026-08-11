@@ -1,35 +1,37 @@
-import React from 'react';
-import { vi } from 'vitest';
-import { render, act, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import type { VsCodeApi } from '../../src/types';
-import { ChatApp } from '../../src/components/ChatApp';
-import { fixtures, type HostToWebviewMessage } from 'wave-webview-fixtures';
+import React from "react";
+import { vi } from "vitest";
+import { render, act, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { VsCodeApi } from "../../src/types";
+import { ChatApp } from "../../src/components/ChatApp";
+import { fixtures, type HostToWebviewMessage } from "wave-webview-fixtures";
 
 // Mock heavy dependencies
-vi.mock('mermaid', () => ({
-    default: {
-        initialize: vi.fn(),
-        render: vi.fn().mockResolvedValue({ svg: '<svg></svg>', bindFunctions: vi.fn() }),
-    },
+vi.mock("mermaid", () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi
+      .fn()
+      .mockResolvedValue({ svg: "<svg></svg>", bindFunctions: vi.fn() }),
+  },
 }));
 
-vi.mock('dompurify', () => ({
-    default: {
-        sanitize: vi.fn((html: string) => html),
-    },
+vi.mock("dompurify", () => ({
+  default: {
+    sanitize: vi.fn((html: string) => html),
+  },
 }));
 
 // Mock CSS imports
-vi.mock('../../src/styles/ChatApp.css', () => ({}));
-vi.mock('../../src/styles/globals.css', () => ({}));
-vi.mock('@vscode/codicons/dist/codicon.css', () => ({}));
+vi.mock("../../src/styles/ChatApp.css", () => ({}));
+vi.mock("../../src/styles/globals.css", () => ({}));
+vi.mock("@vscode/codicons/dist/codicon.css", () => ({}));
 
 // Mock ResizeObserver (not available in jsdom)
 class MockResizeObserver {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
+  observe() {}
+  unobserve() {}
+  disconnect() {}
 }
 global.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
 
@@ -37,40 +39,42 @@ global.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
  * Create a mock VS Code API object
  */
 export function createMockVscode() {
-    return {
-        postMessage: vi.fn(),
-        getState: vi.fn().mockReturnValue(null),
-        setState: vi.fn(),
-    };
+  return {
+    postMessage: vi.fn(),
+    getState: vi.fn().mockReturnValue(null),
+    setState: vi.fn(),
+  };
 }
 
 /**
  * Render the ChatApp with a mock VS Code API
  */
 export function renderChatApp(vscode?: VsCodeApi) {
-    const mockVscode = (vscode || createMockVscode()) as ReturnType<typeof createMockVscode>;
-    const result = render(<ChatApp vscode={mockVscode} />);
-    // Default to authenticated so the message input is enabled and MessageList
-    // (not the unauthenticated WelcomeView) renders for empty-state assertions.
-    sendHostMessage(fixtures.authStatusResponse());
-    const user = userEvent.setup();
-    return { ...result, vscode: mockVscode, user };
+  const mockVscode = (vscode || createMockVscode()) as ReturnType<
+    typeof createMockVscode
+  >;
+  const result = render(<ChatApp vscode={mockVscode} />);
+  // Default to authenticated so the message input is enabled and MessageList
+  // (not the unauthenticated WelcomeView) renders for empty-state assertions.
+  sendHostMessage(fixtures.authStatusResponse());
+  const user = userEvent.setup();
+  return { ...result, vscode: mockVscode, user };
 }
 
 /**
  * Simulate an extension → webview message
  */
 export function sendExtensionMessage(data: Record<string, unknown>) {
-    act(() => {
-        window.dispatchEvent(new MessageEvent('message', { data }));
-    });
+  act(() => {
+    window.dispatchEvent(new MessageEvent("message", { data }));
+  });
 }
 
 /**
  * Simulate extension message with command and additional data
  */
 export function sendCommand(command: string, data?: Record<string, unknown>) {
-    sendExtensionMessage({ command, ...data });
+  sendExtensionMessage({ command, ...data });
 }
 
 /**
@@ -79,7 +83,7 @@ export function sendCommand(command: string, data?: Record<string, unknown>) {
  * have a fixture, so test payloads stay in lockstep with the real hosts.
  */
 export function sendHostMessage(message: HostToWebviewMessage) {
-    sendExtensionMessage(message as unknown as Record<string, unknown>);
+  sendExtensionMessage(message as unknown as Record<string, unknown>);
 }
 
 /**
@@ -89,33 +93,47 @@ export function sendHostMessage(message: HostToWebviewMessage) {
  * fire the input event so the React handler picks up the value.
  */
 export async function setInputText(element: HTMLElement, text: string) {
-    Object.defineProperty(element, 'innerText', {
-        value: text,
-        configurable: true,
-        writable: true,
-    });
-    element.textContent = text;
-    await act(async () => {
-        fireEvent.input(element, { data: text, inputType: 'insertText' });
-    });
+  Object.defineProperty(element, "innerText", {
+    value: text,
+    configurable: true,
+    writable: true,
+  });
+  element.textContent = text;
+  await act(async () => {
+    fireEvent.input(element, { data: text, inputType: "insertText" });
+  });
 }
 
 /**
  * Fire an input event wrapped in act() to prevent React state update warnings.
  * If fake timers are enabled, also advances them to flush debounced state updates.
  */
-export async function fireInput(element: HTMLElement, options?: { data?: string; inputType?: string }) {
-    await act(async () => {
-        fireEvent.input(element, options);
-        // Try to advance timers if fake timers are enabled (flushes 150ms debounce in handleSelectionChange)
-        try {
-            await vi.advanceTimersByTimeAsync(150);
-        } catch {
-            // Fake timers not enabled, skip
-        }
-    });
+export async function fireInput(
+  element: HTMLElement,
+  options?: { data?: string; inputType?: string },
+) {
+  await act(async () => {
+    fireEvent.input(element, options);
+    // Try to advance timers if fake timers are enabled (flushes 150ms debounce in handleSelectionChange)
+    try {
+      await vi.advanceTimersByTimeAsync(150);
+    } catch {
+      // Fake timers not enabled, skip
+    }
+  });
 }
 
+// Re-export the shared fixture factory so tests can build contract-anchored
+// host payloads (e.g. subagentConfigurationsResponse).
+export { fixtures } from "wave-webview-fixtures";
+
 // Re-export commonly used testing utilities
-export { render, screen, waitFor, within, fireEvent, act } from '@testing-library/react';
-export { default as userEvent } from '@testing-library/user-event';
+export {
+  render,
+  screen,
+  waitFor,
+  within,
+  fireEvent,
+  act,
+} from "@testing-library/react";
+export { default as userEvent } from "@testing-library/user-event";

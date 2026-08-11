@@ -43,6 +43,7 @@ import {
   validateWorktreeRemovalPath,
   type SlashCommand,
   loadUserConfigEnv,
+  type SubagentConfiguration,
 } from "wave-agent-sdk";
 import {
   type JsonRpcError,
@@ -236,6 +237,8 @@ export class AgentBridge {
       // ── Commands ──
       case "getSlashCommands":
         return this.getSlashCommands(sessionId);
+      case "getSubagentConfigurations":
+        return this.getSubagentConfigurations(sessionId);
 
       // ── File / History (global — no session required) ──
       case "searchFiles":
@@ -1017,6 +1020,13 @@ export class AgentBridge {
   private getSlashCommands(sessionId?: string): { commands: SlashCommand[] } {
     const entry = this.requireSession(sessionId);
     return { commands: entry.agent.getSlashCommands() };
+  }
+
+  private getSubagentConfigurations(sessionId?: string): {
+    configurations: SubagentConfiguration[];
+  } {
+    const entry = this.requireSession(sessionId);
+    return { configurations: entry.agent.getSubagentConfigurations() };
   }
 
   // ── File / History (global) ───────────────────────────────────

@@ -360,6 +360,13 @@ export class ChatSession {
         return [];
     }
 
+    public async getSubagentConfigurations() {
+        if (this.agent) {
+            return await this.agent.getSubagentConfigurations();
+        }
+        return [];
+    }
+
     /** Pull the authoritative message list from the server (updates cache). */
     public async getMessages(): Promise<Message[]> {
         if (!this.agent) {

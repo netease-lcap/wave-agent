@@ -239,6 +239,9 @@ class StdioAgent(
 
     suspend fun getSlashCommands(): JsonElement? = client.request("getSlashCommands", sessionId = sessionId)
 
+    suspend fun getSubagentConfigurations(): JsonElement? =
+        client.request("getSubagentConfigurations", sessionId = sessionId)
+
     suspend fun updateConfig(params: JsonObject) {
         val oldSessionId = sessionId
         val result = client.request("updateConfig", params, sessionId)?.jsonObject

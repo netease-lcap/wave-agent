@@ -467,6 +467,15 @@ class MessageHandler(
                 }
                 postMessage("mcpServersResponse", buildJsonObject { put("servers", servers) })
             }
+            "getSubagentConfigurations" -> {
+                val configurations = try {
+                    session.agent?.getSubagentConfigurations()?.jsonObject?.get("configurations") ?: JsonArray(emptyList())
+                } catch (e: StdioClientException) {
+                    LOG.warn("getSubagentConfigurations failed: ${e.message}")
+                    JsonArray(emptyList())
+                }
+                postMessage("subagentConfigurationsResponse", buildJsonObject { put("configurations", configurations) })
+            }
             "getBackgroundTaskOutput" -> {
                 val taskId = msg["taskId"]?.jsonPrimitive?.content ?: return
                 val output = try {
@@ -803,6 +812,7 @@ class MessageHandler(
             triple("status", "status", "查看当前状态"),
             triple("tasks", "tasks", "查看后台任务"),
             triple("workflows", "workflows", "查看工作流运行"),
+            triple("agents", "agents", "查看可用 agents"),
             triple("clear", "clear", "清除对话历史并重置会话"),
             triple("compact", "compact", "手动压缩对话历史"),
             triple("rewind", "rewind", "回滚到之前的用户消息"),

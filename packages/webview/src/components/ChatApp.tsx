@@ -18,6 +18,7 @@ import McpDialog from './McpDialog';
 import StatusDialog from './StatusDialog';
 import BackgroundTaskManager from './BackgroundTaskManager';
 import WorkflowManager from './WorkflowManager';
+import AgentsDialog from './AgentsDialog';
 import WelcomeView from './WelcomeView';
 import LoadingLogo from './LoadingLogo';
 import { DesktopHostSelector } from './DesktopHostSelector';
@@ -924,6 +925,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     }
     if (trimmedText === '/tasks') { dispatch({ type: 'SHOW_DIALOG', payload: { type: 'tasks' } }); return; }
     if (trimmedText === '/workflows' || trimmedText === '/workflows ') { dispatch({ type: 'SHOW_DIALOG', payload: { type: 'workflows' } }); return; }
+    if (trimmedText === '/agents') { dispatch({ type: 'SHOW_DIALOG', payload: { type: 'agents' } }); return; }
     if (trimmedText === '/rewind') {
       if (stateRef.current.isStreaming) return;
       setRewindPopupOpen(true);
@@ -1705,6 +1707,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           vscode={vscode}
           onCancel={handleDialogClose}
         />
+      )}
+      {state.activeDialog === 'agents' && (
+        <AgentsDialog vscode={vscode} onClose={handleDialogClose} />
       )}
       {pendingRewindId && (
         <ConfirmDialog

@@ -2543,6 +2543,13 @@ export class DesktopHost {
         break;
       }
 
+      case 'getSubagentConfigurations': {
+        const paneAgent = this.agentForPane(pid);
+        const configurations = paneAgent ? await paneAgent.getSubagentConfigurations() : [];
+        this.postMessage({ command: 'subagentConfigurationsResponse', paneId: pid, configurations });
+        break;
+      }
+
       case 'connectMcpServer':
         try {
           await this.agentForPane(pid)?.connectMcpServer(msg.serverName as string);
@@ -3877,6 +3884,7 @@ export class DesktopHost {
         { id: 'compact', name: 'compact', description: '手动压缩对话历史' },
         { id: 'tasks', name: 'tasks', description: '查看后台任务' },
         { id: 'workflows', name: 'workflows', description: '查看工作流运行' },
+        { id: 'agents', name: 'agents', description: '查看可用 agents' },
         { id: 'rewind', name: 'rewind', description: '回滚到之前的用户消息' },
         { id: 'model', name: 'model', description: '切换 AI 模型' },
         { id: 'btw', name: 'btw', description: '旁路提问（不进入聊天记录）' },
