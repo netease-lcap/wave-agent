@@ -112,6 +112,7 @@ export interface ChatContextType {
     hidePersistentOption?: boolean;
     planContent?: string;
     permissionMode?: PermissionMode;
+    warning?: string;
   };
   showConfirmation: (
     toolName: string,
@@ -120,6 +121,7 @@ export interface ChatContextType {
     hidePersistentOption?: boolean,
     planContent?: string,
     permissionMode?: PermissionMode,
+    warning?: string,
   ) => Promise<PermissionDecision>;
   hideConfirmation: () => void;
   handleConfirmationDecision: (decision: PermissionDecision) => void;
@@ -443,6 +445,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         hidePersistentOption?: boolean;
         planContent?: string;
         permissionMode?: PermissionMode;
+        warning?: string;
       }
     | undefined
   >();
@@ -454,6 +457,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       hidePersistentOption?: boolean;
       planContent?: string;
       permissionMode?: PermissionMode;
+      warning?: string;
       resolver: (decision: PermissionDecision) => void;
       reject: () => void;
     }>
@@ -465,6 +469,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     hidePersistentOption?: boolean;
     planContent?: string;
     permissionMode?: PermissionMode;
+    warning?: string;
     resolver: (decision: PermissionDecision) => void;
     reject: () => void;
   } | null>(null);
@@ -506,6 +511,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       hidePersistentOption?: boolean,
       planContent?: string,
       permissionMode?: PermissionMode,
+      warning?: string,
     ): Promise<PermissionDecision> => {
       return new Promise<PermissionDecision>((resolve, reject) => {
         const queueItem = {
@@ -515,6 +521,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           hidePersistentOption,
           planContent,
           permissionMode,
+          warning,
           resolver: resolve,
           reject,
         };
@@ -723,6 +730,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
               context.hidePersistentOption,
               context.planContent,
               context.permissionMode,
+              context.warning,
             );
           } catch {
             // If confirmation was cancelled or failed, deny the operation
@@ -1070,6 +1078,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         hidePersistentOption: next.hidePersistentOption,
         planContent: next.planContent,
         permissionMode: next.permissionMode,
+        warning: next.warning,
       });
       setIsConfirmationVisible(true);
       setConfirmationQueue((prev) => prev.slice(1));

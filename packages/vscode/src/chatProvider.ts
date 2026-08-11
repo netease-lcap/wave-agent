@@ -495,6 +495,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                 planContent: context.planContent,
                 suggestedPrefix: context.suggestedPrefix,
                 hidePersistentOption: context.hidePersistentOption,
+                warning: context.warning,
                 permissionMode: context.permissionMode
             });
 
@@ -507,6 +508,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                 planContent: context.planContent,
                 suggestedPrefix: context.suggestedPrefix,
                 hidePersistentOption: context.hidePersistentOption,
+                warning: context.warning,
                 permissionMode: context.permissionMode
             }, viewType, windowId);
         });

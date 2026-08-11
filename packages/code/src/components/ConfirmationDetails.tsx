@@ -7,6 +7,7 @@ import {
   EXIT_PLAN_MODE_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
+  ARTIFACT_TOOL_NAME,
 } from "wave-agent-sdk";
 import { DiffDisplay } from "./DiffDisplay.js";
 import { PlanDisplay } from "./PlanDisplay.js";
@@ -34,6 +35,8 @@ const getActionDescription = (
       return "Enter plan mode for complex task planning";
     case ASK_USER_QUESTION_TOOL_NAME:
       return "Answer questions to clarify intent";
+    case ARTIFACT_TOOL_NAME:
+      return `Publish file: ${toolInput.file_path || "unknown file"}`;
     default:
       return "Execute operation";
   }
@@ -43,6 +46,7 @@ export interface ConfirmationDetailsProps {
   toolName: string;
   toolInput?: Record<string, unknown>;
   planContent?: string;
+  warning?: string;
   isExpanded?: boolean;
 }
 
@@ -50,6 +54,7 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
   toolName,
   toolInput,
   planContent,
+  warning,
   isExpanded = false,
 }) => {
   const startLineNumber =
@@ -69,6 +74,7 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
         Tool: {toolName}
       </Text>
       <Text color="yellow">{getActionDescription(toolName, toolInput)}</Text>
+      {warning && <Text color="red">⚠ {warning}</Text>}
 
       <DiffDisplay
         toolName={toolName}

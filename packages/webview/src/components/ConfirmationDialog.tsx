@@ -535,6 +535,9 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
               <strong>文件:</strong> {String(confirmation.toolInput.file_path)}
             </div>
           )}
+          {confirmation.warning && (
+            <div className="confirmation-warning">⚠ {confirmation.warning}</div>
+          )}
         </div>
 
         {renderPlanContent()}

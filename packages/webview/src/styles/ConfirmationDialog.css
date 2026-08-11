@@ -119,6 +119,15 @@
   word-break: break-all;
 }
 
+/* Warning line (e.g. shared-live redeploy impact) */
+.confirmation-warning {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--vscode-editorWarning-foreground, #cca700);
+  word-break: break-all;
+}
+
 /* Ask User Questions Styles */
 .ask-user-questions {
   display: flex;

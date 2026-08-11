@@ -15,6 +15,7 @@ import {
   ENTER_PLAN_MODE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
+  ARTIFACT_TOOL_NAME,
 } from "../constants/tools.js";
 
 /** Permission mode configuration */
@@ -60,6 +61,8 @@ export interface ToolPermissionContext {
   toolCallId?: string;
   /** The content of the plan being exited from */
   planContent?: string;
+  /** Optional warning line to surface in the confirmation UI (e.g. shared-live redeploy impact) */
+  warning?: string;
 }
 
 /** List of tools that require permission checks in default mode */
@@ -70,6 +73,7 @@ export const RESTRICTED_TOOLS = [
   ENTER_PLAN_MODE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
+  ARTIFACT_TOOL_NAME,
 ] as const;
 
 /** Type for restricted tool names */

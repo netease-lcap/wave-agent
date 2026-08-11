@@ -542,6 +542,7 @@ export interface ConfirmationRequest {
   suggestedPrefix?: string;
   hidePersistentOption?: boolean;
   permissionMode?: PermissionMode;
+  warning?: string;
 }
 
 export interface ConfirmationDecision {

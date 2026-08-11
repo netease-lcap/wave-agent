@@ -10,6 +10,8 @@ import { cronCreateTool } from "../tools/cronCreateTool.js";
 import { cronDeleteTool } from "../tools/cronDeleteTool.js";
 import { cronListTool } from "../tools/cronListTool.js";
 import { webFetchTool } from "../tools/webFetchTool.js";
+import { artifactTool } from "../tools/artifactTool.js";
+import { isArtifactEnabled } from "../services/artifactAvailability.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
@@ -135,6 +137,12 @@ class ToolManager {
       exitWorktreeTool,
       workflowTool,
     ];
+
+    // Artifact is a feature-gated tool: not registered at all while the frame
+    // backend is not live, unless settings.json opts in via enableArtifact: true.
+    if (isArtifactEnabled(this.container.get<string>("Workdir"))) {
+      builtInTools.push(artifactTool);
+    }
 
     for (const tool of builtInTools) {
       if (this.shouldEnableTool(tool.name)) {
