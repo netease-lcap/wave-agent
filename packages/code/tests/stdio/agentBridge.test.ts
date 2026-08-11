@@ -748,6 +748,76 @@ test("sendMessage calls agent.sendMessage with text and images", async () => {
   ]);
 });
 
+test("sendMessage persists dataURL images to temp files so the model gets a real path", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest(
+    "sendMessage",
+    {
+      text: "hello world",
+      images: [
+        { path: "data:image/png;base64,aGVsbG8=", mimeType: "image/png" },
+      ],
+    },
+    sessionId,
+  );
+
+  const forwarded = vi.mocked(mockAgent.sendMessage).mock.calls[0][1] as
+    | Array<{ path: string; mimeType: string }>
+    | undefined;
+  expect(forwarded).toHaveLength(1);
+  expect(forwarded![0].path).toMatch(/^\/tmp\/wave-image-.*\.png$/);
+  expect(forwarded![0].mimeType).toBe("image/png");
+  // "aGVsbG8=" base64-decodes to "hello"
+  expect(writeFileSync).toHaveBeenCalledWith(
+    forwarded![0].path,
+    Buffer.from("hello"),
+  );
+});
+
+test("updateQueuedMessage persists dataURL images to temp files", async () => {
+  const { bridge } = createBridge();
+  const updateQueuedMessageById = vi.fn<
+    (
+      id: string,
+      update: {
+        content: string;
+        images?: Array<{ path: string; mimeType: string }>;
+      },
+    ) => boolean
+  >(() => true);
+  const mockAgent = createMockAgent({ updateQueuedMessageById });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest(
+    "updateQueuedMessage",
+    {
+      id: "queued-1",
+      text: "updated",
+      images: [
+        { path: "data:image/jpeg;base64,aGVsbG8=", mimeType: "image/jpeg" },
+      ],
+    },
+    sessionId,
+  );
+
+  const forwarded = updateQueuedMessageById.mock.calls[0][1];
+  expect(forwarded.content).toBe("updated");
+  expect(forwarded.images).toHaveLength(1);
+  expect(forwarded.images![0].path).toMatch(/^\/tmp\/wave-image-.*\.jpg$/);
+  expect(forwarded.images![0].mimeType).toBe("image/jpeg");
+  expect(writeFileSync).toHaveBeenCalledWith(
+    forwarded.images![0].path,
+    Buffer.from("hello"),
+  );
+});
+
 test("bang calls agent.bang with command", async () => {
   const { bridge } = createBridge();
   const mockAgent = createMockAgent();

@@ -790,8 +790,43 @@ export class AgentBridge {
     } catch {
       // Best-effort; don't block message sending on history save failure
     }
-    await entry.agent.sendMessage(params.text, params.images);
+    await entry.agent.sendMessage(
+      params.text,
+      this.persistDataUrlImages(params.images),
+    );
     return null;
+  }
+
+  /**
+   * Webview hosts (desktop/vscode/jetbrains) send pasted images as inline
+   * data URLs — there is no local file behind them. Persist each to a temp
+   * file so the model gets a real path it can reference with tools (aligned
+   * with Claude Code's `[Image source: <path>]` metadata). Real paths pass
+   * through untouched; unparseable data URLs pass through as-is and are
+   * skipped by the SDK rather than blocking the message.
+   */
+  private persistDataUrlImages(
+    images?: Array<{ path: string; mimeType: string }>,
+  ): Array<{ path: string; mimeType: string }> | undefined {
+    if (!images || images.length === 0) return images;
+    return images.map((img) => {
+      if (!img.path.startsWith("data:")) return img;
+      const match = /^data:([^;,]+);base64,(.*)$/s.exec(img.path);
+      if (!match) return img;
+      try {
+        const mimeType = match[1];
+        const ext = mimeType.split("/")[1]?.replace("jpeg", "jpg") || "png";
+        const filePath = join(
+          tmpdir(),
+          `wave-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`,
+        );
+        writeFileSync(filePath, Buffer.from(match[2], "base64"));
+        return { path: filePath, mimeType };
+      } catch (error) {
+        logger.warn("Failed to persist pasted image to temp file:", error);
+        return img;
+      }
+    });
   }
 
   private async bang(command: string, sessionId?: string): Promise<null> {
@@ -893,7 +928,7 @@ export class AgentBridge {
     const entry = this.requireSession(sessionId);
     const ok = entry.agent.updateQueuedMessageById(id, {
       content: text,
-      images,
+      images: this.persistDataUrlImages(images),
     });
     return { ok };
   }
