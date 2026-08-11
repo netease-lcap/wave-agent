@@ -91,6 +91,15 @@ const MAX_FORK_TURNS = 3;
 /** Max turns for the auto-memory extraction fork. */
 const MAX_AUTO_MEMORY_FORK_TURNS = 5;
 
+/**
+ * Max consecutive auto-resumes after `finish_reason === "length"` when the
+ * truncated turn produced NO tool calls (aligned with Claude Code's
+ * MAX_OUTPUT_TOKENS_RECOVERY_LIMIT). A tool call resets the counter — it is
+ * real progress. Exhausting the limit terminates the turn with an error
+ * instead of re-planning forever.
+ */
+const MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3;
+
 // Truncate text to `max` chars and append a "… [+N chars]" marker when exceeded.
 // Used for background_tasks description/command fields (≤1000 chars per spec FR-063).
 function truncateWithMarker(text: string, max: number): string {
@@ -1677,6 +1686,11 @@ ${question}`;
 
       let turnDepth = turnOffset;
 
+      // Consecutive truncation recoveries within this turn (no tool calls
+      // in between). Reset to 0 on tool calls / at each sendAIMessage entry,
+      // matching Claude Code's maxOutputTokensRecoveryCount semantics.
+      let maxOutputTokensRecoveryCount = 0;
+
       inner: while (true) {
         let llmSpan: import("@opentelemetry/api").Span | undefined;
         try {
@@ -2016,8 +2030,33 @@ ${question}`;
                   "Some tools were manually backgrounded, stopping.",
                 );
               } else if (!isCurrentlyAborted) {
+                // If the response was truncated WITHOUT any tool calls,
+                // enforce the consecutive recovery limit (aligned with Claude
+                // Code's MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3). Re-planning
+                // loops that never produce output would otherwise continue
+                // until the platform kills the task.
+                if (
+                  result.finish_reason === "length" &&
+                  toolCalls.length === 0 &&
+                  maxOutputTokensRecoveryCount >=
+                    MAX_OUTPUT_TOKENS_RECOVERY_LIMIT
+                ) {
+                  this.messageManager.addErrorBlock(
+                    `Response exceeded the output token limit ${MAX_OUTPUT_TOKENS_RECOVERY_LIMIT + 1} consecutive times without producing output or tool calls. Stopped to avoid an infinite loop. Break the remaining work into smaller pieces and try again.`,
+                  );
+                  break inner;
+                }
+
                 // If response was truncated, add a hidden continuation message
                 if (result.finish_reason === "length") {
+                  if (toolCalls.length === 0) {
+                    // Pure truncation — count toward the recovery limit.
+                    maxOutputTokensRecoveryCount++;
+                  } else {
+                    // Truncated with tool calls — real progress, reset the
+                    // consecutive counter.
+                    maxOutputTokensRecoveryCount = 0;
+                  }
                   this.messageManager.addUserMessage({
                     content:
                       "Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.",

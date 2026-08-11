@@ -6,6 +6,7 @@ import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
+import type { ChatCompletionMessageToolCall } from "openai/resources";
 
 // Mock the aiService module
 vi.mock("../../src/services/aiService.js", () => ({
@@ -227,5 +228,85 @@ describe("AIManager finish reason", () => {
     await aiManager.sendAIMessage();
 
     expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+  });
+
+  it("should stop with an error block after 3 consecutive truncations with no tool calls", async () => {
+    const { callAgent } = await import("../../src/services/aiService.js");
+    const truncated = (
+      content: string,
+    ): Awaited<ReturnType<typeof callAgent>> => ({
+      content,
+      finish_reason: "length",
+      tool_calls: [],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 20,
+        total_tokens: 30,
+      },
+    });
+    // 1st-3rd truncations recover (count 1→3), 4th truncation exhausts the
+    // limit — no 5th call should happen.
+    vi.mocked(callAgent)
+      .mockResolvedValueOnce(truncated("truncated 1"))
+      .mockResolvedValueOnce(truncated("truncated 2"))
+      .mockResolvedValueOnce(truncated("truncated 3"))
+      .mockResolvedValueOnce(truncated("truncated 4"));
+
+    await aiManager.sendAIMessage();
+
+    expect(callAgent).toHaveBeenCalledTimes(4);
+    // First 3 truncations got the hidden recovery message, the 4th did not.
+    const resumeCalls = vi
+      .mocked(mockMessageManager.addUserMessage)
+      .mock.calls.filter(
+        ([params]) =>
+          typeof params?.content === "string" &&
+          params.content.includes("Output token limit hit"),
+      );
+    expect(resumeCalls).toHaveLength(3);
+    expect(mockMessageManager.addErrorBlock).toHaveBeenCalledTimes(1);
+    expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect.stringContaining("output token limit"),
+    );
+  });
+
+  it("should reset the consecutive recovery counter when a truncated turn includes tool calls", async () => {
+    const { callAgent } = await import("../../src/services/aiService.js");
+    const truncated = (
+      content: string,
+      tool_calls: ChatCompletionMessageToolCall[] = [],
+    ): Awaited<ReturnType<typeof callAgent>> => ({
+      content,
+      finish_reason: "length",
+      tool_calls,
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 20,
+        total_tokens: 30,
+      },
+    });
+    const toolCall: ChatCompletionMessageToolCall = {
+      id: "tool-1",
+      type: "function",
+      function: { name: "test_tool", arguments: '{"arg": "val"}' },
+    };
+    // t1: count 1 · t2: tool call resets to 0 · t3-t5: count 1→3 ·
+    // t6: 4th pure truncation → exhaustion. Without the reset, exhaustion
+    // would hit at t4 (only 4 calls total).
+    vi.mocked(callAgent)
+      .mockResolvedValueOnce(truncated("truncated 1"))
+      .mockResolvedValueOnce(truncated("truncated 2", [toolCall]))
+      .mockResolvedValueOnce(truncated("truncated 3"))
+      .mockResolvedValueOnce(truncated("truncated 4"))
+      .mockResolvedValueOnce(truncated("truncated 5"))
+      .mockResolvedValueOnce(truncated("truncated 6"));
+
+    await aiManager.sendAIMessage();
+
+    expect(callAgent).toHaveBeenCalledTimes(6);
+    expect(mockMessageManager.addErrorBlock).toHaveBeenCalledTimes(1);
+    expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect.stringContaining("output token limit"),
+    );
   });
 });
