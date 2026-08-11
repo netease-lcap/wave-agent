@@ -627,7 +627,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
             ),
           );
         },
-        onCompleteBangMessage: (command, exitCode, messageId) => {
+        onCompleteBangMessage: (command, exitCode, messageId, output) => {
           if (isExpandedRef.current) return;
           setMessages((prev) =>
             prev.map((m) =>
@@ -636,7 +636,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
                     ...m,
                     blocks: m.blocks.map((b, idx) =>
                       idx === m.blocks.length - 1 && b.type === "bang"
-                        ? { ...b, command, exitCode, stage: "end" }
+                        ? {
+                            ...b,
+                            command,
+                            exitCode,
+                            stage: "end",
+                            ...(output !== undefined ? { output } : {}),
+                          }
                         : b,
                     ),
                   }

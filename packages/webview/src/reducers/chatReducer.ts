@@ -468,7 +468,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, messages: newMessages };
     }
     case 'COMPLETE_BANG_MESSAGE': {
-      const { command, exitCode, messageId } = action.payload;
+      const { command, exitCode, messageId, output } = action.payload;
       const messageIndex = state.messages.findIndex(m => m.id === messageId);
       if (messageIndex === -1) return state;
       const newMessages = state.messages.map((m, idx) => {
@@ -476,7 +476,15 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         return {
           ...m,
           blocks: m.blocks.map((b, bidx) =>
-            bidx === m.blocks.length - 1 && b.type === 'bang' ? { ...b, command, exitCode, stage: 'end' as const } : b
+            bidx === m.blocks.length - 1 && b.type === 'bang'
+              ? {
+                  ...b,
+                  command,
+                  exitCode,
+                  stage: 'end' as const,
+                  ...(output !== undefined ? { output } : {})
+                }
+              : b
           )
         };
       });

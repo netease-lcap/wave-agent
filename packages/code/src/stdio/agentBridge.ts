@@ -1424,10 +1424,10 @@ export class AgentBridge {
           ctx.registeredSessionId,
         );
       },
-      onCompleteBangMessage: (command, exitCode, messageId) => {
+      onCompleteBangMessage: (command, exitCode, messageId, output) => {
         this.emit(
           "bangMessageCompleted",
-          { command, exitCode, messageId },
+          { command, exitCode, messageId, output },
           ctx.registeredSessionId,
         );
       },

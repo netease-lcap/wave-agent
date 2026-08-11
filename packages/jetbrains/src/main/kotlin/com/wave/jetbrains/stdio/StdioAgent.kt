@@ -35,7 +35,7 @@ interface AgentCallbacks {
     fun onPermissionRequest(requestId: String, context: JsonElement?) {}
     fun onBangMessageAdded(command: String, messageId: String) {}
     fun onBangMessageUpdated(command: String, output: String, messageId: String) {}
-    fun onBangMessageCompleted(command: String, exitCode: Int, messageId: String) {}
+    fun onBangMessageCompleted(command: String, exitCode: Int, messageId: String, output: String?) {}
     fun onNotificationMessageAdded(message: JsonObject) {}
     fun onBtwContent(question: String, content: String, type: String) {}
     fun onError(message: String) {}
@@ -144,6 +144,7 @@ class StdioAgent(
                     o?.get("command")?.jsonPrimitive?.content ?: "",
                     o?.get("exitCode")?.jsonPrimitive?.intOrNull ?: 0,
                     o?.get("messageId")?.jsonPrimitive?.content ?: "",
+                    o?.get("output")?.jsonPrimitive?.content,
                 )
             }
             "notificationMessageAdded" -> callbacks.onNotificationMessageAdded(params?.jsonObject ?: JsonObject(emptyMap()))

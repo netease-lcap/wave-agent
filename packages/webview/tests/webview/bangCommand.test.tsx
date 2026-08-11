@@ -182,6 +182,25 @@ describe('Bang Command', () => {
         });
     });
 
+    it('should show output delivered only via bangMessageCompleted', async () => {
+        renderChatApp();
+
+        // bangManager buffers output and only delivers it at completion
+        // (no bangMessageUpdated fires) — the completed notification must
+        // carry the output.
+        await act(async () => {
+            dispatchBang('bangMessageAdded', { command: 'ls', messageId: 'bang-1' });
+        });
+        await act(async () => {
+            dispatchBang('bangMessageCompleted', { command: 'ls', exitCode: 0, messageId: 'bang-1', output: 'file.txt' });
+        });
+
+        await waitFor(() => {
+            const output = document.querySelector('.bash-command-unified .bash-command-output');
+            expect(output).toHaveTextContent('file.txt');
+        });
+    });
+
     it('should show failure exit code after bangMessageCompleted', async () => {
         renderChatApp();
 

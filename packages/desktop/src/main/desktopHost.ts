@@ -903,7 +903,13 @@ export class DesktopHost {
                 ...m,
                 blocks: m.blocks.map((b, idx) =>
                   idx === m.blocks.length - 1 && b.type === 'bang'
-                    ? { ...b, command: params.command, exitCode: params.exitCode, stage: 'end' }
+                    ? {
+                        ...b,
+                        command: params.command,
+                        exitCode: params.exitCode,
+                        stage: 'end',
+                        ...(params.output !== undefined ? { output: params.output } : {}),
+                      }
                     : b,
                 ),
               }

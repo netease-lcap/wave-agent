@@ -713,4 +713,4 @@ export type ChatAction =
   // constructed in the reducer because it needs a Message wrapper (id/timestamp).
   | { type: 'APPEND_BANG_MESSAGE'; payload: { command: string; messageId: string } }
   | { type: 'UPDATE_BANG_MESSAGE'; payload: { command: string; output: string; messageId: string } }
-  | { type: 'COMPLETE_BANG_MESSAGE'; payload: { command: string; exitCode: number; messageId: string } };
+  | { type: 'COMPLETE_BANG_MESSAGE'; payload: { command: string; exitCode: number; messageId: string; output?: string } };

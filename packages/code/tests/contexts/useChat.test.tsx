@@ -1488,13 +1488,17 @@ describe("ChatProvider", () => {
       });
     });
 
-    // onCompleteBangMessage records the exit code and final stage
-    callbacks.onCompleteBangMessage!("ls -la", 0, "bang-1");
+    // onCompleteBangMessage records the exit code, final stage AND the
+    // captured output (regression: output was dropped after 9cea65ea).
+    // bangManager streams nothing — output arrives only at completion, so it
+    // must be delivered here with a value distinct from the earlier update.
+    callbacks.onCompleteBangMessage!("ls -la", 0, "bang-1", "final-output\n");
     await vi.waitFor(() => {
       const msg = lastValue!.messages.find((m) => m.id === "bang-1")!;
       const bangBlock = msg.blocks[msg.blocks.length - 1];
       expect(bangBlock).toMatchObject({
         type: "bang",
+        output: "final-output\n",
         exitCode: 0,
         stage: "end",
       });
