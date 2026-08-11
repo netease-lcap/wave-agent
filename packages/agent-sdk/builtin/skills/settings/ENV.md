@@ -27,6 +27,7 @@ Wave uses several environment variables to control its core functionality. Varia
 | `WAVE_CUSTOM_HEADERS` | Custom HTTP headers for the AI gateway. Newline-separated `Key: Value` pairs (e.g., `"X-Foo: bar\nAuthorization: Bearer xxx"`). | - |
 | `WAVE_MODEL` | The primary AI model to use for the agent. | `gemini-3-flash` |
 | `WAVE_FAST_MODEL` | The fast AI model to use for quick tasks. | `gemini-2.5-flash` |
+| `WAVE_VISION_MODEL` | Vision-capable model used by the built-in `vision` subagent for image recognition. When set, the built-in `vision` subagent is registered (its frontmatter `model: visionModel` resolves to this value); when unset, the subagent is not loaded. Useful when the main model is fast but non-vision (e.g. DeepSeek). | - (not registered) |
 | `WAVE_MAX_INPUT_TOKENS` | Maximum number of input tokens allowed. | `200000` |
 | `WAVE_MAX_OUTPUT_TOKENS` | Maximum number of output tokens allowed. | `32000` |
 | `WAVE_DISABLE_AUTO_MEMORY` | Set to `1` or `true` to disable the auto-memory feature. | `false` |
