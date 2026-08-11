@@ -577,6 +577,7 @@ export class ConfigurationService {
    * @param fastModel - Fast model override (optional)
    * @param maxTokens - Max output tokens override (optional)
    * @param permissionMode - Permission mode override (optional)
+   * @param visionModel - Vision model override (optional)
    * @returns Resolved model configuration with defaults
    */
   resolveModelConfig(
@@ -584,6 +585,7 @@ export class ConfigurationService {
     fastModel?: string,
     maxTokens?: number,
     permissionMode?: PermissionMode,
+    visionModel?: string,
   ): ModelConfig {
     // Resolve agent model: override > options > currentConfiguration (settings.json model, possibly remote-merged) > process.env
     // Priority: user's explicit model field > admin's env.WAVE_MODEL default.
@@ -600,12 +602,19 @@ export class ConfigurationService {
       this.options.fastModel ||
       (this.envSnapshot.WAVE_FAST_MODEL ?? process.env.WAVE_FAST_MODEL);
 
+    // Resolve vision model: override > options > process.env (includes settings.json env)
+    const resolvedVisionModel =
+      visionModel ||
+      this.options.visionModel ||
+      (this.envSnapshot.WAVE_VISION_MODEL ?? process.env.WAVE_VISION_MODEL);
+
     // Resolve max output tokens
     const resolvedMaxTokens = this.resolveMaxOutputTokens(maxTokens);
 
     const baseConfig: ModelConfig = {
       model: resolvedAgentModel,
       fastModel: resolvedFastModel,
+      visionModel: resolvedVisionModel,
       maxTokens: resolvedMaxTokens,
       permissionMode: permissionMode ?? this.options.permissionMode,
     };

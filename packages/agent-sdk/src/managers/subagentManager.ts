@@ -185,9 +185,21 @@ export class SubagentManager {
       );
       this.cachedConfigurations = await loadSubagentConfigurations(
         this.workdir,
+        this.getMergedEnv(),
       );
     }
     return this.cachedConfigurations;
+  }
+
+  /**
+   * Get the merged environment (OS env overlaid with settings.json env) used
+   * for conditional subagent registration (e.g. WAVE_VISION_MODEL).
+   */
+  private getMergedEnv(): Record<string, string> {
+    return (
+      this.configurationService?.getMergedEnv?.() ??
+      (process.env as Record<string, string>)
+    );
   }
 
   /**
@@ -215,7 +227,7 @@ export class SubagentManager {
     }
     // Fall back to filesystem scan for non-plugin agents
     const { findSubagentByName } = await import("../utils/subagentParser.js");
-    return findSubagentByName(name, this.workdir);
+    return findSubagentByName(name, this.workdir, this.getMergedEnv());
   }
 
   /**

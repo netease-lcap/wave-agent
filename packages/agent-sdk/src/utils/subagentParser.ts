@@ -226,9 +226,13 @@ function scanSubagentDirectory(
 
 /**
  * Load all subagent configurations from project and user directories, plus built-in subagents
+ * @param workdir - Working directory to scan for project-level subagents
+ * @param env - Merged environment (settings.json env over OS env). Defaults to process.env.
+ *              Used for conditional registration of builtin subagents (e.g. WAVE_VISION_MODEL).
  */
 export async function loadSubagentConfigurations(
   workdir: string,
+  env: Record<string, string> = process.env as Record<string, string>,
 ): Promise<SubagentConfiguration[]> {
   const projectWaveDir = join(workdir, ".wave", "agents");
   const projectClaudeDir = join(workdir, ".claude", "agents");
@@ -237,7 +241,16 @@ export async function loadSubagentConfigurations(
   const builtinDir = getBuiltinSubagentsDir();
 
   // Load configurations from all sources
-  const builtinConfigs = scanSubagentDirectory(builtinDir, "builtin");
+  let builtinConfigs = scanSubagentDirectory(builtinDir, "builtin");
+  // Conditional registration: builtin subagents whose frontmatter requires the
+  // WAVE_VISION_MODEL env var (`model: visionModel`) are only loaded when it is
+  // set — otherwise the main model would delegate image recognition to a
+  // subagent that resolves to a non-vision model.
+  if (!env.WAVE_VISION_MODEL) {
+    builtinConfigs = builtinConfigs.filter(
+      (config) => config.model !== "visionModel",
+    );
+  }
   const userClaudeConfigs = scanSubagentDirectory(userClaudeDir, "user");
   const userWaveConfigs = scanSubagentDirectory(userWaveDir, "user");
   const projectClaudeConfigs = scanSubagentDirectory(
@@ -273,7 +286,8 @@ export async function loadSubagentConfigurations(
 export async function findSubagentByName(
   name: string,
   workdir: string,
+  env?: Record<string, string>,
 ): Promise<SubagentConfiguration | null> {
-  const configurations = await loadSubagentConfigurations(workdir);
+  const configurations = await loadSubagentConfigurations(workdir, env);
   return configurations.find((config) => config.name === name) || null;
 }
