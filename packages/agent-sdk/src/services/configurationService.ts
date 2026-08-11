@@ -1335,6 +1335,17 @@ export function loadWaveConfigFromFile(
 }
 
 /**
+ * Load the user-level (~/.wave/settings.json) `env` block only — no workdir
+ * dependency. Used at daemon startup to apply WAVE_SERVER_URL before any agent
+ * initializes: auth queries (getAuthStatus) can run before the first agent,
+ * and AuthService falls back to the default URL otherwise.
+ */
+export function loadUserConfigEnv(): Record<string, string> {
+  const config = loadWaveConfigFromFile(getUserConfigPaths()[0]);
+  return config?.env ?? {};
+}
+
+/**
  * Load and merge Wave configuration from both user and project sources
  * Project configuration takes precedence over user configuration
  * Checks .local.json files first, then falls back to .json files

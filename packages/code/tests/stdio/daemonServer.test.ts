@@ -5,7 +5,7 @@ import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { Agent } from "wave-agent-sdk";
+import { Agent, loadUserConfigEnv } from "wave-agent-sdk";
 
 // Unix-domain sockets are unreliable on Windows: libuv rejects binding a
 // non-"\\.\pipe\..." path with EACCES, so every socket-based test fails there.
@@ -100,6 +100,7 @@ let socketPath: string;
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  vi.mocked(loadUserConfigEnv).mockReturnValue({});
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
   socketPath = path.join(
     os.tmpdir(),

@@ -10,6 +10,7 @@ import {
   getDefaultRemoteBranch,
   getMessageContent,
   validateWorktreeRemovalPath,
+  loadUserConfigEnv,
 } from "wave-agent-sdk";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -120,10 +121,14 @@ function createBridge() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The constructor applies the user-level settings env to process.env —
+  // default the mock to an empty env so unrelated tests are unaffected.
+  vi.mocked(loadUserConfigEnv).mockReturnValue({});
 });
 
 afterEach(() => {
   stderrWriteSpy.mockRestore();
+  delete process.env.WAVE_SERVER_URL;
 });
 
 // ── initialize ───────────────────────────────────────────────────
@@ -1342,6 +1347,31 @@ test("writeArtifactFile rejects empty or dot names", async () => {
 });
 
 // ── Auth handlers ────────────────────────────────────────────────
+
+test("constructor mirrors user settings WAVE_SERVER_URL into process.env", () => {
+  // getAuthStatus can run before any agent initializes (webviewReady →
+  // pushInitialState). AuthService reads process.env.WAVE_SERVER_URL, which
+  // settings.json `env` only mirrors at agent initialization — without an
+  // early mirror the daemon falls back to the default URL and refreshes a
+  // custom-domain token against the wrong host (401 → logged out).
+  vi.mocked(loadUserConfigEnv).mockReturnValue({
+    WAVE_SERVER_URL: "https://codechat.codewave-test.163yun.com",
+  });
+
+  createBridge();
+
+  expect(process.env.WAVE_SERVER_URL).toBe(
+    "https://codechat.codewave-test.163yun.com",
+  );
+});
+
+test("constructor does not set WAVE_SERVER_URL when user settings omit it", () => {
+  vi.mocked(loadUserConfigEnv).mockReturnValue({});
+
+  createBridge();
+
+  expect(process.env.WAVE_SERVER_URL).toBeUndefined();
+});
 
 test("getAuthStatus returns auth state", async () => {
   const { bridge } = createBridge();

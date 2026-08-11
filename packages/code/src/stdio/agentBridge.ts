@@ -42,6 +42,7 @@ import {
   PluginCore,
   validateWorktreeRemovalPath,
   type SlashCommand,
+  loadUserConfigEnv,
 } from "wave-agent-sdk";
 import {
   type JsonRpcError,
@@ -140,6 +141,15 @@ export class AgentBridge {
 
   constructor(options: AgentBridgeOptions) {
     this.emit = options.emit;
+    // Mirror the user-level settings env WAVE_SERVER_URL into process.env
+    // before any agent initializes. getAuthStatus (webviewReady →
+    // pushInitialState) can run before the first agent, and AuthService falls
+    // back to the default URL otherwise — refreshing a custom-domain token
+    // against the wrong host 401s into a logged-out state.
+    const userEnv = loadUserConfigEnv();
+    if (userEnv.WAVE_SERVER_URL) {
+      process.env.WAVE_SERVER_URL = userEnv.WAVE_SERVER_URL;
+    }
   }
 
   // ── Public API ────────────────────────────────────────────────
@@ -1132,13 +1142,6 @@ export class AgentBridge {
     serverUrl: string;
   }> {
     const authService = AuthService.getInstance();
-    // A stale-but-refreshable token still means "logged in" — the daemon may
-    // have started with an expired access token (hourly expiry) and only
-    // refreshes lazily on the first API call. Without this proactive refresh a
-    // fresh client querying right after daemon start gets a false
-    // isAuthenticated and e.g. the desktop welcome page keeps showing the
-    // login button for an authenticated host. Mirrors the refresh that
-    // createAuthAwareFetch does before every real request.
     await authService.checkAndRefreshTokenIfNeeded();
     return {
       isAuthenticated: authService.isSSOAuthenticated(),
