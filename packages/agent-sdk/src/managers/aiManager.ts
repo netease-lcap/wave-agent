@@ -1796,10 +1796,15 @@ ${question}`;
               // No need to extract params or generate compact params during streaming
 
               // Update tool block with streaming parameters using parametersChunk as compact param
+              // `parameters` is only present on start/running/end (authoritative); streaming
+              // carries only `parametersChunk`, so don't forward `parameters: undefined`
+              // (it would overwrite the accumulated block params in consumers)
               this.messageManager.updateToolBlock({
                 id: toolCall.id,
                 name: toolCall.name,
-                parameters: toolCall.parameters,
+                ...(toolCall.parameters !== undefined
+                  ? { parameters: toolCall.parameters }
+                  : {}),
                 parametersChunk: toolCall.parametersChunk,
                 stage: toolCall.stage || "streaming", // Default to streaming if stage not provided
               });

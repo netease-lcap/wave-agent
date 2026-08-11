@@ -316,6 +316,9 @@ export const updateToolBlockInMessage = ({
         const toolBlock = newMessages[messageIndex].blocks[toolBlockIndex];
         if (toolBlock.type === "tool") {
           if (parameters !== undefined) toolBlock.parameters = parameters;
+          else if (parametersChunk !== undefined)
+            toolBlock.parameters =
+              (toolBlock.parameters || "") + parametersChunk;
           if (result !== undefined) toolBlock.result = result;
           if (shortResult !== undefined) toolBlock.shortResult = shortResult;
           if (startLineNumber !== undefined)
@@ -351,6 +354,9 @@ export const updateToolBlockInMessage = ({
         const toolBlock = newMessages[i].blocks[toolBlockIndex];
         if (toolBlock.type === "tool") {
           if (parameters !== undefined) toolBlock.parameters = parameters;
+          else if (parametersChunk !== undefined)
+            toolBlock.parameters =
+              (toolBlock.parameters || "") + parametersChunk;
           if (result !== undefined) toolBlock.result = result;
           if (shortResult !== undefined) toolBlock.shortResult = shortResult;
           if (startLineNumber !== undefined)
@@ -377,7 +383,8 @@ export const updateToolBlockInMessage = ({
         // This handles cases where we're streaming tool parameters before execution
         newMessages[i].blocks.push({
           type: "tool",
-          parameters: parameters,
+          parameters:
+            parameters !== undefined ? parameters : (parametersChunk ?? ""),
           result: result || "",
           shortResult: shortResult,
           startLineNumber: startLineNumber,

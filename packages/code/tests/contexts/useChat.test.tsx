@@ -1367,6 +1367,100 @@ describe("ChatProvider", () => {
     });
   });
 
+  it("accumulates parametersChunk per tool during multi-tool streaming", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    const assistantMsg = {
+      id: "msg-multi",
+      role: "assistant" as const,
+      blocks: [],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [assistantMsg] });
+    callbacks.onAssistantMessageAdded!("msg-multi");
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toHaveLength(1);
+    });
+
+    // Both tool blocks are created immediately via start
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-multi",
+      id: "tool-a",
+      name: "bash",
+      stage: "start",
+      parameters: "",
+    });
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-multi",
+      id: "tool-b",
+      name: "read",
+      stage: "start",
+      parameters: "",
+    });
+    await vi.waitFor(() => {
+      expect(
+        lastValue?.messages[0].blocks
+          .filter((b) => b.type === "tool")
+          .map((b) => b.id),
+      ).toEqual(["tool-a", "tool-b"]);
+    });
+
+    // Interleaved streaming deltas (pure parametersChunk, no accumulated
+    // parameters) — the first tool's deltas must survive the throttle window
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-multi",
+      id: "tool-a",
+      stage: "streaming",
+      parametersChunk: '{"fi',
+    });
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-multi",
+      id: "tool-b",
+      stage: "streaming",
+      parametersChunk: '{"file',
+    });
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-multi",
+      id: "tool-a",
+      stage: "streaming",
+      parametersChunk: 'le": "a.txt"}',
+    });
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-multi",
+      id: "tool-b",
+      stage: "streaming",
+      parametersChunk: '_path": "b.txt"}',
+    });
+
+    await vi.waitFor(() => {
+      const blocks = lastValue?.messages[0].blocks.filter(
+        (b) => b.type === "tool",
+      );
+      const params = Object.fromEntries(
+        (blocks ?? []).map((b) => [
+          b.id,
+          (b as { parameters?: string }).parameters,
+        ]),
+      );
+      // Regression: the plain throttle's single lastArgs slot dropped tool-a's
+      // deltas, so the FIRST tool never showed streaming parameters
+      expect(params["tool-a"]).toBe('{"file": "a.txt"}');
+      expect(params["tool-b"]).toBe('{"file_path": "b.txt"}');
+    });
+  });
+
   it("throttles reasoning streaming updates and flushes on end", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {

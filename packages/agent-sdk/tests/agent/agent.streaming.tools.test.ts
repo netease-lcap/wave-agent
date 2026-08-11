@@ -262,7 +262,8 @@ describe("Agent Tool Streaming Tests", () => {
             options.onToolUpdate!({
               id: "call_streaming",
               name: "write_file",
-              parameters: '{"file_path":',
+              parametersChunk: '{"file_path": ',
+              stage: "streaming",
             });
 
             streamingCallbackExecuted = true;
@@ -271,7 +272,8 @@ describe("Agent Tool Streaming Tests", () => {
             options.onToolUpdate!({
               id: "call_streaming",
               name: "write_file",
-              parameters: '{"file_path": "/test.txt", "content": "hello"}',
+              parametersChunk: '"/test.txt", "content": "hello"}',
+              stage: "streaming",
             });
 
             // CRITICAL: Verify tool call is added to messages DURING streaming (before execution)
@@ -357,8 +359,8 @@ describe("Agent Tool Streaming Tests", () => {
             options.onToolUpdate({
               id: "call_lifecycle",
               name: "test_tool",
-              parameters: '{"param": "value"}',
               parametersChunk: '{"param": "value"}',
+              stage: "streaming",
             });
           }
 
@@ -412,7 +414,8 @@ describe("Agent Tool Streaming Tests", () => {
         onToolUpdate?: (update: {
           id: string;
           name: string;
-          parameters: string;
+          parametersChunk: string;
+          stage: string;
         }) => void;
         onContentUpdate?: (update: string) => void;
       } = {};
@@ -431,7 +434,8 @@ describe("Agent Tool Streaming Tests", () => {
                 options.onToolUpdate!({
                   id: "call_123",
                   name: "run_terminal_cmd",
-                  parameters: '{"com',
+                  parametersChunk: '{"com',
+                  stage: "streaming",
                 }),
               10,
             );
@@ -441,7 +445,8 @@ describe("Agent Tool Streaming Tests", () => {
                 options.onToolUpdate!({
                   id: "call_123",
                   name: "run_terminal_cmd",
-                  parameters: '{"command": "ls -la"}',
+                  parametersChunk: '"command": "ls -la"}',
+                  stage: "streaming",
                 }),
               20,
             );
@@ -502,7 +507,8 @@ describe("Agent Tool Streaming Tests", () => {
       const parameterUpdates: {
         id: string;
         name: string;
-        parameters: string;
+        parametersChunk: string;
+        stage: string;
       }[] = [];
       let aiCallCount = 0;
 
@@ -514,16 +520,17 @@ describe("Agent Tool Streaming Tests", () => {
             // Simulate parameter accumulation with different JSON states
             const updates = [
               '{"param1":',
-              '{"param1": "value1"',
-              '{"param1": "value1", "param2":',
-              '{"param1": "value1", "param2": ["item1", "item2"]}',
+              ' "value1"',
+              ', "param2":',
+              ' ["item1", "item2"]}',
             ];
 
             updates.forEach((params) => {
               const update = {
                 id: "call_accumulate",
                 name: "test_tool",
-                parameters: params,
+                parametersChunk: params,
+                stage: "streaming" as const,
               };
               parameterUpdates.push(update);
               options.onToolUpdate!(update);
@@ -564,11 +571,9 @@ describe("Agent Tool Streaming Tests", () => {
       // Verify parameter updates were received
       expect(parameterUpdates.length).toBe(4);
 
-      // Verify progressive parameter building
-      expect(parameterUpdates[0].parameters).toBe('{"param1":');
-      expect(parameterUpdates[3].parameters).toBe(
-        '{"param1": "value1", "param2": ["item1", "item2"]}',
-      );
+      // Verify progressive parameter building (delta-only chunks)
+      expect(parameterUpdates[0].parametersChunk).toBe('{"param1":');
+      expect(parameterUpdates[3].parametersChunk).toBe(' ["item1", "item2"]}');
 
       // Verify final tool execution used complete parameters
       expect(mockToolExecute).toHaveBeenCalledWith(
@@ -590,13 +595,15 @@ describe("Agent Tool Streaming Tests", () => {
             options.onToolUpdate!({
               id: "call_fast",
               name: "fast_tool",
-              parameters: '{"quick": true}',
+              parametersChunk: '{"quick": true}',
+              stage: "streaming",
             });
 
             options.onToolUpdate!({
               id: "call_slow",
               name: "slow_tool",
-              parameters: '{"complex": {"nested": "value"}}',
+              parametersChunk: '{"complex": {"nested": "value"}}',
+              stage: "streaming",
             });
           }
 

@@ -31,7 +31,6 @@ import {
   extractLatestTotalTokens,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
-import { throttle } from "../utils/throttle.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
 import { expandLongTextPlaceholders } from "../managers/inputHandlers.js";
 
@@ -241,6 +240,84 @@ function createStreamingWindowThrottle(
   return throttled;
 }
 
+/**
+ * Per-tool window-concat throttle for pure-delta tool parameter streaming:
+ * `parametersChunk` deltas are accumulated independently per tool block id
+ * within the cooldown window, so interleaved multi-tool streams lose no delta
+ * (a plain throttle's single last-args slot would drop every earlier tool's
+ * deltas, leaving the first tool without streaming parameters). `start` /
+ * `running` apply immediately (one-shot snapshots); `end` flushes pending
+ * streaming deltas first, then applies the authoritative parameters/result.
+ */
+function createToolStreamingThrottle(
+  fn: (params: ToolBlockUpdateCallbackParams) => void,
+  wait: number,
+): {
+  (params: ToolBlockUpdateCallbackParams): void;
+  cancel: () => void;
+  flush: () => void;
+} {
+  let timer: NodeJS.Timeout | null = null;
+  let pending: { messageId: string; chunks: Map<string, string> } | null = null;
+
+  const fire = () => {
+    if (pending && pending.chunks.size > 0) {
+      const { messageId, chunks } = pending;
+      pending = null;
+      for (const [id, chunk] of chunks) {
+        fn({ messageId, id, parametersChunk: chunk, stage: "streaming" });
+      }
+    }
+  };
+
+  const throttled = (params: ToolBlockUpdateCallbackParams) => {
+    if (params.stage === "end") {
+      // Flush any deltas still pending inside the cooldown window first
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      fire();
+      fn(params);
+      return;
+    }
+    if (params.stage === "streaming") {
+      if (!pending) {
+        pending = { messageId: params.messageId, chunks: new Map() };
+      }
+      const prev = pending.chunks.get(params.id) || "";
+      pending.chunks.set(params.id, prev + (params.parametersChunk || ""));
+      if (!timer) {
+        timer = setTimeout(() => {
+          timer = null;
+          fire();
+        }, wait);
+      }
+      return;
+    }
+    // start / running — one-shot snapshots applied immediately
+    fn(params);
+  };
+
+  throttled.cancel = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    pending = null;
+  };
+
+  throttled.flush = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    fire();
+  };
+
+  return throttled;
+}
+
 export const ChatProvider: React.FC<ChatProviderProps> = ({
   children,
   bypassPermissions,
@@ -347,8 +424,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const throttledToolBlockUpdate = useMemo(
     () =>
-      throttle((params: ToolBlockUpdateCallbackParams) => {
-        const { messageId, id: toolBlockId, ...updates } = params;
+      createToolStreamingThrottle((params) => {
+        const {
+          messageId,
+          id: toolBlockId,
+          parametersChunk,
+          ...updates
+        } = params;
         setMessages((prev) =>
           prev.map((m) => {
             if (m.id !== messageId) return m;
@@ -365,7 +447,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
                     id: toolBlockId,
                     name: updates.name || "",
                     stage: updates.stage || "start",
-                    parameters: updates.parameters || "",
+                    parameters:
+                      (updates.parameters || "") + (parametersChunk || ""),
                     result: updates.result || "",
                     ...updates,
                   },
@@ -376,7 +459,18 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
               ...m,
               blocks: m.blocks.map((b, idx) =>
                 idx === toolBlockIndex && b.type === "tool"
-                  ? { ...b, ...updates }
+                  ? {
+                      ...b,
+                      ...updates,
+                      // Streaming carries only the delta; append it to the
+                      // accumulated parameters. start/running/end carry the
+                      // authoritative value and replace wholesale.
+                      parameters: parametersChunk
+                        ? (b.parameters || "") + parametersChunk
+                        : updates.parameters !== undefined
+                          ? updates.parameters
+                          : b.parameters,
+                    }
                   : b,
               ),
             };

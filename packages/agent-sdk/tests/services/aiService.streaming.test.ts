@@ -221,7 +221,9 @@ describe("AI Service - Streaming", () => {
       const toolUpdates: Array<{
         id: string;
         name: string;
-        parameters: string;
+        parameters?: string;
+        parametersChunk?: string;
+        stage?: "start" | "streaming" | "running" | "end";
       }> = [];
 
       const result = await callAgent({

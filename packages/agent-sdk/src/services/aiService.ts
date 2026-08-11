@@ -188,7 +188,7 @@ export interface CallAgentOptions {
   onToolUpdate?: (toolCall: {
     id: string;
     name: string;
-    parameters: string;
+    parameters?: string;
     parametersChunk?: string;
     stage?: "start" | "streaming" | "running" | "end";
   }) => void;
@@ -577,7 +577,7 @@ async function processStreamingResponse(
   onToolUpdate?: (toolCall: {
     id: string;
     name: string;
-    parameters: string;
+    parameters?: string;
     parametersChunk?: string;
     stage?: "start" | "streaming" | "running" | "end";
   }) => void,
@@ -715,7 +715,9 @@ async function processStreamingResponse(
             existingCall.function.arguments += functionDelta.arguments;
           }
 
-          // Emit streaming updates for all chunks with actual content (including first chunk)
+          // Emit streaming updates for all chunks with actual content (including first chunk).
+          // Streaming carries only the delta `parametersChunk` — consumers accumulate it;
+          // authoritative `parameters` arrives at `start` (empty) / `running` / `end`.
           if (
             onToolUpdate &&
             existingCall.function.name &&
@@ -725,7 +727,6 @@ async function processStreamingResponse(
             onToolUpdate({
               id: existingCall.id,
               name: existingCall.function.name,
-              parameters: existingCall.function.arguments,
               parametersChunk: functionDelta.arguments,
               stage: "streaming",
             });

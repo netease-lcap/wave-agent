@@ -104,7 +104,6 @@ describe("Agent Tool Stage Tests", () => {
           onToolUpdate({
             id: "call_123",
             name: "test_tool",
-            parameters: JSON.stringify({ param: "value" }),
             parametersChunk: JSON.stringify({ param: "value" }),
             stage: "streaming",
           });
@@ -153,16 +152,26 @@ describe("Agent Tool Stage Tests", () => {
       }),
     );
 
-    // Verify that onToolBlockUpdated was called with streaming stage (actual content)
+    // Verify that onToolBlockUpdated was called with streaming stage (delta only)
     expect(onToolBlockUpdated).toHaveBeenCalledWith(
       expect.objectContaining({
         stage: "streaming",
         name: "test_tool",
         id: "call_123",
-        parameters: JSON.stringify({ param: "value" }),
         parametersChunk: JSON.stringify({ param: "value" }), // Should match the chunk content
       }),
     );
+
+    // Streaming stage must NOT carry the accumulated parameters (delta-only contract)
+    const streamingCall = onToolBlockUpdated.mock.calls.find(
+      (call: unknown[]) =>
+        call[0] &&
+        typeof call[0] === "object" &&
+        "stage" in call[0] &&
+        call[0].stage === "streaming",
+    ) as [Record<string, unknown>] | undefined;
+    expect(streamingCall).toBeDefined();
+    expect(streamingCall![0]).not.toHaveProperty("parameters");
 
     // Verify that isRunning field is not present
     const startCall = onToolBlockUpdated.mock.calls.find(
@@ -198,7 +207,6 @@ describe("Agent Tool Stage Tests", () => {
           onToolUpdate({
             id: "call_456",
             name: "calculator_tool",
-            parameters: JSON.stringify({ a: 5, b: 3 }),
             parametersChunk: JSON.stringify({ a: 5, b: 3 }),
             stage: "streaming",
           });
@@ -331,7 +339,6 @@ describe("Agent Tool Stage Tests", () => {
           onToolUpdate({
             id: "call_order",
             name: "order_tool",
-            parameters: JSON.stringify({ data: "test" }),
             parametersChunk: JSON.stringify({ data: "test" }),
             stage: "streaming",
           });
@@ -408,7 +415,6 @@ describe("Agent Tool Stage Tests", () => {
           onToolUpdate({
             id: "call_multi",
             name: "multi_tool",
-            parameters: '{"step":',
             parametersChunk: '{"step":',
             stage: "streaming",
           });
@@ -417,7 +423,6 @@ describe("Agent Tool Stage Tests", () => {
           onToolUpdate({
             id: "call_multi",
             name: "multi_tool",
-            parameters: '{"step": 1}',
             parametersChunk: " 1}",
             stage: "streaming",
           });
@@ -466,13 +471,12 @@ describe("Agent Tool Stage Tests", () => {
       }),
     );
 
-    // Verify that streaming stages were emitted with incremental content
+    // Verify that streaming stages were emitted with incremental content only
     expect(onToolBlockUpdated).toHaveBeenCalledWith(
       expect.objectContaining({
         stage: "streaming",
         name: "multi_tool",
         id: "call_multi",
-        parameters: '{"step":',
         parametersChunk: '{"step":',
       }),
     );
@@ -482,9 +486,21 @@ describe("Agent Tool Stage Tests", () => {
         stage: "streaming",
         name: "multi_tool",
         id: "call_multi",
-        parameters: '{"step": 1}',
         parametersChunk: " 1}",
       }),
     );
+
+    // Streaming stages must NOT carry accumulated parameters (delta-only contract)
+    const streamingCalls = onToolBlockUpdated.mock.calls.filter(
+      (call: unknown[]) =>
+        call[0] &&
+        typeof call[0] === "object" &&
+        "stage" in call[0] &&
+        call[0].stage === "streaming",
+    ) as [Record<string, unknown>][];
+    expect(streamingCalls.length).toBe(2);
+    for (const [payload] of streamingCalls) {
+      expect(payload).not.toHaveProperty("parameters");
+    }
   });
 });
