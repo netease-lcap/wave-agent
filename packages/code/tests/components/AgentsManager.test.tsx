@@ -13,11 +13,7 @@ import {
   AgentsManager,
   AgentsManagerProps,
 } from "../../src/components/AgentsManager.js";
-import type {
-  BackgroundTask,
-  SubagentConfiguration,
-  SubagentInstance,
-} from "wave-agent-sdk";
+import type { SubagentConfiguration } from "wave-agent-sdk";
 
 const mockDefinitions: SubagentConfiguration[] = [
   {
@@ -59,39 +55,6 @@ const mockDefinitions: SubagentConfiguration[] = [
   },
 ];
 
-const mockInstance = (
-  overrides: Partial<SubagentInstance> = {},
-): SubagentInstance =>
-  ({
-    subagentId: "sub-1",
-    configuration: mockDefinitions[0],
-    aiManager: {},
-    messageManager: {},
-    toolManager: {},
-    permissionManager: {},
-    backgroundTaskManager: {},
-    status: "active",
-    messages: [],
-    usedTools: [],
-    subagentType: "bash",
-    description: "Running shell commands",
-    ...overrides,
-  }) as unknown as SubagentInstance;
-
-const mockBackgroundTask = (
-  overrides: Partial<BackgroundTask> = {},
-): BackgroundTask =>
-  ({
-    id: "task-1",
-    type: "subagent",
-    status: "running",
-    startTime: Date.now(),
-    stdout: "",
-    stderr: "",
-    description: "Fork subagent investigating issue #123",
-    ...overrides,
-  }) as BackgroundTask;
-
 describe("AgentsManager", () => {
   let mockOnCancel: Mock<() => void>;
   let defaultProps: AgentsManagerProps;
@@ -101,8 +64,6 @@ describe("AgentsManager", () => {
     defaultProps = {
       onCancel: mockOnCancel,
       agentDefinitions: mockDefinitions,
-      activeSubagentInstances: [mockInstance()],
-      backgroundTasks: [],
     };
   });
 
@@ -139,50 +100,6 @@ describe("AgentsManager", () => {
       expect(output).toContain("claude-sonnet-4-5");
     });
 
-    it("should display active subagents section", () => {
-      const props = {
-        ...defaultProps,
-        activeSubagentInstances: [mockInstance()],
-      };
-      const { lastFrame } = render(<AgentsManager {...props} />);
-      const output = lastFrame();
-
-      expect(output).toContain("ACTIVE SUBAGENTS");
-      expect(output).toContain("bash");
-      expect(output).toContain("running");
-    });
-
-    it("should display background fork subagents", () => {
-      const props = {
-        ...defaultProps,
-        backgroundTasks: [mockBackgroundTask()],
-      };
-      const { lastFrame } = render(<AgentsManager {...props} />);
-      const output = lastFrame();
-
-      expect(output).toContain("fork subagent");
-      expect(output).toContain("Fork subagent investigating issue #123");
-    });
-
-    it("should dedupe instances that transitioned to background tasks", () => {
-      // Instance with backgroundTaskId pointing at an existing background task
-      const instance = mockInstance({
-        backgroundTaskId: "task-1",
-        status: "active",
-      });
-      const props = {
-        ...defaultProps,
-        activeSubagentInstances: [instance],
-        backgroundTasks: [mockBackgroundTask({ subagentId: "sub-1" })],
-      };
-      const { lastFrame } = render(<AgentsManager {...props} />);
-      const output = lastFrame();
-
-      // Only one bash row should appear (either via instance or task, not both)
-      expect(output).toContain("ACTIVE SUBAGENTS");
-      expect(output).not.toContain("fork subagent");
-    });
-
     it("should show navigation instructions", () => {
       const { lastFrame } = render(<AgentsManager {...defaultProps} />);
       const output = lastFrame();
@@ -192,32 +109,16 @@ describe("AgentsManager", () => {
       expect(output).toContain("Esc to close");
     });
 
-    it("should show empty state when no agents and no active subagents", () => {
+    it("should show empty state when no agents", () => {
       const props = {
         ...defaultProps,
         agentDefinitions: [],
-        activeSubagentInstances: [],
-        backgroundTasks: [],
       };
       const { lastFrame } = render(<AgentsManager {...props} />);
       const output = lastFrame();
 
       expect(output).toContain("No agents available");
       expect(output).toContain("Press Escape to close");
-      expect(output).not.toContain("No active subagents");
-    });
-
-    it("should show no-active hint when agents exist but none are running", () => {
-      const props = {
-        ...defaultProps,
-        agentDefinitions: [mockDefinitions[0]],
-        activeSubagentInstances: [],
-        backgroundTasks: [],
-      };
-      const { lastFrame } = render(<AgentsManager {...props} />);
-      const output = lastFrame();
-
-      expect(output).toContain("No active subagents");
     });
   });
 
@@ -233,8 +134,10 @@ describe("AgentsManager", () => {
       stdin.write("\u001B[B");
       stdin.write("\u001B[B");
       stdin.write("\u001B[B");
-      // Fifth selectable entry is the active subagent (bash instance)
-      await vi.waitFor(() => expect(lastFrame()).toContain("▶ 5. bash"));
+      // Last selectable entry is the plugin agent
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("▶ 4. my-plugin:helper"),
+      );
     });
 
     it("should clamp selection at the bottom", async () => {
@@ -243,7 +146,9 @@ describe("AgentsManager", () => {
       for (let i = 0; i < 10; i++) {
         stdin.write("\u001B[B");
       }
-      await vi.waitFor(() => expect(lastFrame()).toContain("▶ 5. bash"));
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("▶ 4. my-plugin:helper"),
+      );
     });
 
     it("should enter detail view on Enter and go back on Escape", async () => {
@@ -287,25 +192,6 @@ describe("AgentsManager", () => {
       await vi.waitFor(() => expect(lastFrame()).toContain("Agent: bash"));
       expect(lastFrame()).toContain("You are a bash automation subagent.");
     });
-
-    it("should show detail of active subagent", async () => {
-      const props = {
-        ...defaultProps,
-        // Only the active instance (no definitions selected first)
-        agentDefinitions: [],
-        activeSubagentInstances: [mockInstance()],
-      };
-      const { lastFrame, stdin } = render(<AgentsManager {...props} />);
-
-      stdin.write("\r");
-      await vi.waitFor(() =>
-        expect(lastFrame()).toContain("Active Subagent Details"),
-      );
-      const output = lastFrame();
-      expect(output).toContain("Running shell commands");
-      expect(output).toContain("Status:");
-      expect(output).toContain("running");
-    });
   });
 
   describe("detail view content", () => {
@@ -319,8 +205,6 @@ describe("AgentsManager", () => {
               "# Long Agent\n\nThis is a **very long** system prompt.\n\n## Section\n\n- bullet one\n- bullet two\n\n```js\nconsole.log(1);\n```\n\nParagraph with `inline code`.",
           },
         ],
-        activeSubagentInstances: [],
-        backgroundTasks: [],
       };
       const { lastFrame, stdin } = render(<AgentsManager {...props} />);
 
@@ -342,8 +226,6 @@ describe("AgentsManager", () => {
       const props = {
         ...defaultProps,
         agentDefinitions: [mockDefinitions[0]], // bash has no model
-        activeSubagentInstances: [],
-        backgroundTasks: [],
       };
       const { lastFrame, stdin } = render(<AgentsManager {...props} />);
 
@@ -360,20 +242,29 @@ describe("AgentsManager", () => {
       expect(() => unmount()).not.toThrow();
     });
 
-    it("should handle prop changes (live background task updates)", () => {
+    it("should handle definition prop changes", () => {
       const { rerender, lastFrame } = render(
         <AgentsManager {...defaultProps} />,
       );
 
-      // A new fork subagent starts
+      // A new definition is added
       rerender(
         <AgentsManager
           {...defaultProps}
-          backgroundTasks={[mockBackgroundTask()]}
+          agentDefinitions={[
+            ...defaultProps.agentDefinitions,
+            {
+              name: "another-agent",
+              description: "Another agent",
+              systemPrompt: "You are another agent.",
+              filePath: "/agents/another.md",
+              scope: "builtin",
+              priority: 4,
+            },
+          ]}
         />,
       );
-      const output = lastFrame();
-      expect(output).toContain("fork subagent");
+      expect(lastFrame()).toContain("another-agent");
     });
   });
 });

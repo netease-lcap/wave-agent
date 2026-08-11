@@ -16,7 +16,6 @@ import type {
   Task,
   SlashCommand,
   SubagentConfiguration,
-  SubagentInstance,
   PermissionDecision,
   PermissionMode,
   QueuedMessage,
@@ -98,9 +97,8 @@ export interface ChatContextType {
   // Slash Command functionality
   slashCommands: SlashCommand[];
   hasSlashCommand: (commandId: string) => boolean;
-  // Agent definitions & active subagents (for /agents overlay)
+  // Agent definitions (for /agents overlay)
   agentDefinitions: SubagentConfiguration[];
-  activeSubagentInstances: SubagentInstance[];
   // Permission functionality
   permissionMode: PermissionMode;
   setPermissionMode: (mode: PermissionMode) => void;
@@ -424,12 +422,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // Command state
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
 
-  // Agent definitions & active subagents (for /agents overlay)
+  // Agent definitions (for /agents overlay)
   const [agentDefinitions, setAgentDefinitions] = useState<
     SubagentConfiguration[]
-  >([]);
-  const [activeSubagentInstances, setActiveSubagentInstances] = useState<
-    SubagentInstance[]
   >([]);
 
   // Permission state
@@ -792,13 +787,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         const agentSlashCommands = agent.getSlashCommands?.() || [];
         setSlashCommands(agentSlashCommands);
 
-        // Get initial agent definitions & active subagents
+        // Get initial agent definitions
         const initialAgentDefinitions =
           agent.getSubagentConfigurations?.() || [];
         setAgentDefinitions(initialAgentDefinitions);
-        const initialActiveSubagents =
-          agent.getActiveSubagentInstances?.() || [];
-        setActiveSubagentInstances(initialActiveSubagents);
       } catch (error) {
         console.error("Failed to initialize AI manager:", error);
       }
@@ -840,7 +832,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     setMcpServerStatuses([]);
     setSlashCommands([]);
     setAgentDefinitions([]);
-    setActiveSubagentInstances([]);
     setSessionId("");
     setIsLoading(false);
     setLatestTotalTokens(0);
@@ -1229,7 +1220,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     slashCommands,
     hasSlashCommand,
     agentDefinitions,
-    activeSubagentInstances,
     permissionMode,
     setPermissionMode,
     isConfirmationVisible,
