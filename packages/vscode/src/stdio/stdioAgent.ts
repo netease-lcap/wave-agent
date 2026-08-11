@@ -97,7 +97,7 @@ export interface StdioAgentCallbacks {
     onWorkdirChange?: (workdir: string) => void;
     onBangMessageAdded?: (params: { command: string; messageId: string }) => void;
     onBangMessageUpdated?: (params: { command: string; output: string; messageId: string }) => void;
-    onBangMessageCompleted?: (params: { command: string; exitCode: number; messageId: string }) => void;
+    onBangMessageCompleted?: (params: { command: string; exitCode: number; messageId: string; output?: string }) => void;
     onNotificationMessageAdded?: (params: {
         taskId: string;
         taskType: string;
@@ -569,6 +569,7 @@ export class StdioAgent {
                         command: string;
                         exitCode: number;
                         messageId: string;
+                        output?: string;
                     },
                 );
                 break;

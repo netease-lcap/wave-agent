@@ -449,12 +449,13 @@ class WaveSession(
         })
     }
 
-    override fun onBangMessageCompleted(command: String, exitCode: Int, messageId: String) {
+    override fun onBangMessageCompleted(command: String, exitCode: Int, messageId: String, output: String?) {
         postMessage("bangMessageCompleted", buildJsonObject {
             put("params", buildJsonObject {
                 put("command", command)
                 put("exitCode", exitCode)
                 put("messageId", messageId)
+                if (output != null) put("output", output)
             })
         })
     }

@@ -249,7 +249,7 @@ callbacks: {
 |------|------|------|
 | `onAddBangMessage` | `command: string, messageId: string` | Bang 命令开始执行 |
 | `onUpdateBangMessage` | `command: string, output: string, messageId: string` | Bang 命令输出更新 |
-| `onCompleteBangMessage` | `command: string, exitCode: number \| null, messageId: string` | Bang 命令执行完成 |
+| `onCompleteBangMessage` | `command: string, exitCode: number \| null, messageId: string, output?: string` | Bang 命令执行完成（`output` 为最终输出，可能不存在） |
 
 ### 后台任务回调 {#callbacks-background}
 

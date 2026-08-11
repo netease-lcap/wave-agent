@@ -123,7 +123,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 1. **假设**会话已积累大量消息，**当**助手开始流式响应时，**则**CLI 与插件界面通过增量回调就地更新，不整屏刷新、不卡顿
 2. **假设**助手响应正在流式传输，**当**每个内容 chunk 到达时，**则**SDK 只触发 `onAssistantContentUpdated` 等增量回调，不再触发任何携带完整消息列表的回调
 3. **假设**CLI 正在渲染流式响应，**当**新 chunk 到达时，**则**消息内容就地更新，不再执行全量 `setMessages`
-4. **假设**CLI 收到 bang 信号（`onAddBangMessage(command, messageId)`/`onUpdateBangMessage(command, output, messageId)`/`onCompleteBangMessage(command, exitCode, messageId)`，携带 messageId），**当**需要渲染命令消息时，**则**按 messageId 就地创建/更新 bang 消息块，无需读取 `agent.messages`
+4. **假设**CLI 收到 bang 信号（`onAddBangMessage(command, messageId)`/`onUpdateBangMessage(command, output, messageId)`/`onCompleteBangMessage(command, exitCode, messageId, output?)`，携带 messageId），**当**需要渲染命令消息时，**则**按 messageId 就地创建/更新 bang 消息块，无需读取 `agent.messages`
 5. **假设**插件 webview 需要完整会话（webviewReady / compact / rewind / clearChat / restoreSession），**当**触发上述任一场景时，**则**宿主主动调用 `getMessages` 请求拉取并下发全量渲染，而非订阅持续的全量推送
 6. **假设**子代理（subagent）运行中，**当**其消息变更时，**则** `SubagentManager` 通过 `instance.messageManager.getMessages()` 拉取最新列表维护 `instance.messages` 与 `usedTools`，并继续转发 `onSubagentMessagesChange`，不再依赖子代理的 `onMessagesChange`
 7. **假设**助手响应正在流式传输，**当**每个内容/推理 chunk 到达时，**则**增量回调与 stdio 增量通知都只携带 `chunk`（增量片段）+ `messageId` + `stage`，不再携带 `accumulated` 累积值；进程内消费者（CLI、print-cli）与跨进程宿主（agentBridge）统一消费纯 chunk，自行累积追加

@@ -72,6 +72,7 @@ export interface MessageManagerCallbacks {
     command: string,
     exitCode: number,
     messageId: string,
+    output?: string,
   ) => void;
   onInfoBlockAdded?: (content: string) => void;
   // Rewind callbacks
@@ -680,7 +681,12 @@ export class MessageManager {
     });
     this.setMessages(updatedMessages);
     const messageId = this.findBangMessageId(command) ?? "";
-    this.callbacks.onCompleteBangMessage?.(command, exitCode, messageId);
+    this.callbacks.onCompleteBangMessage?.(
+      command,
+      exitCode,
+      messageId,
+      output?.trim(),
+    );
   }
 
   /**

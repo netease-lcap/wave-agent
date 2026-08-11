@@ -723,16 +723,44 @@ describe('chatReducer', () => {
 
       const newState = chatReducer(state, {
         type: 'COMPLETE_BANG_MESSAGE',
-        payload: { command: 'false', exitCode: 1, messageId: 'bang-1' }
+        payload: { command: 'false', exitCode: 1, messageId: 'bang-1', output: 'boom\n' }
       });
 
       const block = newState.messages[0].blocks[0];
       expect(block).toEqual({
         type: 'bang',
         command: 'false',
-        output: '',
+        output: 'boom\n',
         stage: 'end',
         exitCode: 1
+      });
+    });
+
+    it('COMPLETE_BANG_MESSAGE without output preserves the running-stage output', () => {
+      const state = {
+        ...initialState,
+        messages: [
+          {
+            id: 'bang-1',
+            role: 'user' as const,
+            timestamp: '0',
+            blocks: [{ type: 'bang' as const, command: 'ls', output: 'partial', stage: 'running' as const, exitCode: null }]
+          }
+        ]
+      };
+
+      const newState = chatReducer(state, {
+        type: 'COMPLETE_BANG_MESSAGE',
+        payload: { command: 'ls', exitCode: 0, messageId: 'bang-1' }
+      });
+
+      const block = newState.messages[0].blocks[0];
+      expect(block).toEqual({
+        type: 'bang',
+        command: 'ls',
+        output: 'partial',
+        stage: 'end',
+        exitCode: 0
       });
     });
 

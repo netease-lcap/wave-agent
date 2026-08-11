@@ -636,11 +636,16 @@ test("onCompleteBangMessage emits bangMessageCompleted notification", async () =
   const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
     .callbacks as AgentCallbacks;
 
-  callbacks.onCompleteBangMessage!("ls", 0, "msg-1");
+  callbacks.onCompleteBangMessage!("ls", 0, "msg-1", "file.txt\n");
 
   expect(notifications).toContainEqual({
     method: "bangMessageCompleted",
-    params: { command: "ls", exitCode: 0, messageId: "msg-1" },
+    params: {
+      command: "ls",
+      exitCode: 0,
+      messageId: "msg-1",
+      output: "file.txt\n",
+    },
     sessionId: "test-session-id",
   });
 });

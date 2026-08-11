@@ -29,7 +29,7 @@ export interface ChatSessionCallbacks {
     // Bang message callbacks (incremental; messageId identifies the message)
     onBangMessageAdded?: (params: { command: string; messageId: string }) => void;
     onBangMessageUpdated?: (params: { command: string; output: string; messageId: string }) => void;
-    onBangMessageCompleted?: (params: { command: string; exitCode: number; messageId: string }) => void;
+    onBangMessageCompleted?: (params: { command: string; exitCode: number; messageId: string; output?: string }) => void;
     onBtwContent?: (params: { question: string; content: string; type: 'thinking' | 'content' }) => void;
 }
 
