@@ -138,43 +138,6 @@ describe("AI Service - Claude Cache Control", () => {
       });
     });
 
-    describe("isValidClaudeUsage", () => {
-      it("should validate correct Claude usage objects", async () => {
-        const validUsage = {
-          prompt_tokens: 100,
-          completion_tokens: 50,
-          total_tokens: 150,
-          cache_read_input_tokens: 30,
-          cache_creation_input_tokens: 70,
-          cache_creation: {
-            ephemeral_5m_input_tokens: 70,
-            ephemeral_1h_input_tokens: 0,
-          },
-        };
-        expect(cacheUtils.isValidClaudeUsage(validUsage)).toBe(true);
-      });
-
-      it("should validate usage objects without cache fields", async () => {
-        const basicUsage = {
-          prompt_tokens: 100,
-          completion_tokens: 50,
-          total_tokens: 150,
-        };
-        expect(cacheUtils.isValidClaudeUsage(basicUsage)).toBe(true);
-      });
-
-      it("should reject invalid usage objects", async () => {
-        expect(cacheUtils.isValidClaudeUsage({})).toBe(false);
-        expect(cacheUtils.isValidClaudeUsage(null)).toBe(false);
-        expect(cacheUtils.isValidClaudeUsage({ prompt_tokens: "100" })).toBe(
-          false,
-        );
-        expect(cacheUtils.isValidClaudeUsage({ prompt_tokens: 100 })).toBe(
-          false,
-        ); // missing required fields
-      });
-    });
-
     describe("addCacheControlToContent", () => {
       it("should transform string content to structured arrays with cache control", async () => {
         const result = cacheUtils.addCacheControlToContent(
@@ -1048,8 +1011,8 @@ describe("AI Service - Claude Cache Control", () => {
       callAgent = aiService.callAgent;
     });
 
-    it("should extend usage tracking with cache metrics for Claude models", async () => {
-      // Mock Claude response with cache metrics
+    it("should extend usage tracking with cache metrics from prompt_tokens_details", async () => {
+      // Mock response with cache metrics in prompt_tokens_details
       const mockWithResponse = vi.fn().mockResolvedValue({
         data: {
           choices: [
@@ -1064,11 +1027,9 @@ describe("AI Service - Claude Cache Control", () => {
             prompt_tokens: 100,
             completion_tokens: 50,
             total_tokens: 150,
-            cache_read_input_tokens: 30,
-            cache_creation_input_tokens: 70,
-            cache_creation: {
-              ephemeral_5m_input_tokens: 70,
-              ephemeral_1h_input_tokens: 0,
+            prompt_tokens_details: {
+              cached_tokens: 30,
+              cache_creation_input_tokens: 70,
             },
           },
         },
@@ -1090,8 +1051,11 @@ describe("AI Service - Claude Cache Control", () => {
 
       expect(result).toBeDefined();
       expect(result.usage).toBeDefined();
-
-      // Test will verify cache metrics are properly handled once implementation is complete
+      expect(result.usage?.prompt_tokens).toBe(100);
+      expect(result.usage?.completion_tokens).toBe(50);
+      expect(result.usage?.total_tokens).toBe(150);
+      expect(result.usage?.cache_read_input_tokens).toBe(30);
+      expect(result.usage?.cache_creation_input_tokens).toBe(70);
     });
 
     it("should maintain backward compatibility for non-Claude usage tracking", async () => {
@@ -1134,10 +1098,9 @@ describe("AI Service - Claude Cache Control", () => {
       expect(result.usage?.completion_tokens).toBe(50);
       expect(result.usage?.total_tokens).toBe(150);
 
-      // Ensure no cache-specific fields are present for non-Claude models
+      // Ensure no cache-specific fields are present without cache data
       expect(result.usage).not.toHaveProperty("cache_read_input_tokens");
       expect(result.usage).not.toHaveProperty("cache_creation_input_tokens");
-      expect(result.usage).not.toHaveProperty("cache_creation");
     });
   });
 
@@ -1319,10 +1282,9 @@ describe("AI Service - Claude Cache Control", () => {
         expect(result.usage?.completion_tokens).toBe(20);
         expect(result.usage?.total_tokens).toBe(30);
 
-        // Should not have Claude-specific cache fields
+        // Should not have cache fields
         expect(result.usage).not.toHaveProperty("cache_read_input_tokens");
         expect(result.usage).not.toHaveProperty("cache_creation_input_tokens");
-        expect(result.usage).not.toHaveProperty("cache_creation");
       });
 
       it("should handle missing usage gracefully", async () => {
@@ -1435,7 +1397,7 @@ describe("AI Service - Claude Cache Control", () => {
         expect(result.usage?.cache_creation_input_tokens).toBe(40);
       });
 
-      it("should prefer Claude top-level fields over prompt_tokens_details when both present", async () => {
+      it("should ignore non-standard Claude top-level fields and only read prompt_tokens_details", async () => {
         const mockWithResponse = vi.fn().mockResolvedValue({
           data: {
             choices: [
@@ -1470,9 +1432,9 @@ describe("AI Service - Claude Cache Control", () => {
         });
 
         expect(result).toBeDefined();
-        // Claude top-level fields take priority
-        expect(result.usage?.cache_read_input_tokens).toBe(30);
-        expect(result.usage?.cache_creation_input_tokens).toBe(70);
+        // Only prompt_tokens_details is read; Claude top-level fields are ignored
+        expect(result.usage?.cache_read_input_tokens).toBe(999);
+        expect(result.usage?.cache_creation_input_tokens).toBe(888);
       });
     });
 

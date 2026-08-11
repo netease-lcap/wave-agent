@@ -9,12 +9,11 @@ import {
 import { OpenAIClient } from "../utils/openaiClient.js";
 import { logger } from "../utils/globalLogger.js";
 import { addOnceAbortListener } from "../utils/abortUtils.js";
-import type { GatewayConfig, ModelConfig } from "../types/index.js";
+import type { GatewayConfig, ModelConfig, Usage } from "../types/index.js";
 import { ConfigurationError, CONFIG_ERRORS } from "../types/index.js";
 import {
   transformMessagesForExplicitCache,
   extendUsageWithCacheMetrics,
-  type ClaudeUsage,
   type ClaudeChatCompletionContentPartText,
 } from "../utils/cacheControlUtils.js";
 import { supportsPromptCaching } from "../utils/modelCapabilities.js";
@@ -204,7 +203,7 @@ export interface CallAgentResult {
   content?: string;
   tool_calls?: ChatCompletionMessageToolCall[];
   reasoning_content?: string;
-  usage?: ClaudeUsage;
+  usage?: Usage;
   finish_reason?:
     | "stop"
     | "length"
@@ -403,21 +402,9 @@ export async function callAgent(
       const finalMessage = response.choices[0]?.message;
       const finishReason = response.choices[0]?.finish_reason || null;
 
-      let totalUsage = response.usage
-        ? {
-            prompt_tokens: response.usage.prompt_tokens,
-            completion_tokens: response.usage.completion_tokens,
-            total_tokens: response.usage.total_tokens,
-          }
+      const totalUsage = response.usage
+        ? extendUsageWithCacheMetrics(response.usage)
         : undefined;
-
-      // Extend usage with cache metrics (Claude top-level + OpenAI prompt_tokens_details)
-      if (totalUsage && response.usage) {
-        totalUsage = extendUsageWithCacheMetrics(
-          totalUsage,
-          response.usage as Partial<ClaudeUsage>,
-        );
-      }
 
       const result: CallAgentResult = {};
 
@@ -622,19 +609,8 @@ async function processStreamingResponse(
 
       // Check for usage information in any chunk
       if (chunk.usage) {
-        let chunkUsage = {
-          prompt_tokens: chunk.usage.prompt_tokens,
-          completion_tokens: chunk.usage.completion_tokens,
-          total_tokens: chunk.usage.total_tokens,
-        };
-
-        // Extend usage with cache metrics (Claude top-level + OpenAI prompt_tokens_details)
-        chunkUsage = extendUsageWithCacheMetrics(
-          chunkUsage,
-          chunk.usage as Partial<ClaudeUsage>,
-        );
-
-        usage = chunkUsage;
+        // Extend usage with cache metrics from OpenAI prompt_tokens_details
+        usage = extendUsageWithCacheMetrics(chunk.usage);
       }
 
       // Check for finish_reason in the choice
@@ -916,4 +892,3 @@ export async function processWebContent(
     throw error;
   }
 }
-

@@ -1891,9 +1891,6 @@ ${question}`;
                 cache_creation_input_tokens:
                   result.usage.cache_creation_input_tokens,
               }),
-              ...(result.usage.cache_creation && {
-                cache_creation: result.usage.cache_creation,
-              }),
             };
           }
 

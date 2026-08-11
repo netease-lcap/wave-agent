@@ -208,39 +208,6 @@ describe("Usage Summary Utilities", () => {
       });
     });
 
-    it("should handle partial cache creation data", () => {
-      const usages: Usage[] = [
-        {
-          prompt_tokens: 100,
-          completion_tokens: 50,
-          total_tokens: 150,
-          model: "claude-3",
-          operation_type: "agent",
-          cache_creation: {
-            ephemeral_5m_input_tokens: 10,
-            ephemeral_1h_input_tokens: 0,
-          },
-        },
-        {
-          prompt_tokens: 100,
-          completion_tokens: 50,
-          total_tokens: 150,
-          model: "claude-3",
-          operation_type: "agent",
-          cache_creation: {
-            ephemeral_5m_input_tokens: 0,
-            ephemeral_1h_input_tokens: 20,
-          },
-        },
-      ];
-
-      const result = calculateTokenSummary(usages);
-      expect(result["claude-3"].cache_creation).toEqual({
-        ephemeral_5m_input_tokens: 10,
-        ephemeral_1h_input_tokens: 20,
-      });
-    });
-
     it("should sort results by total tokens descending", () => {
       const usages: Usage[] = [
         {
@@ -512,10 +479,6 @@ describe("Usage Summary Utilities", () => {
             operation_type: "agent",
             cache_read_input_tokens: 30,
             cache_creation_input_tokens: 70,
-            cache_creation: {
-              ephemeral_5m_input_tokens: 40,
-              ephemeral_1h_input_tokens: 30,
-            },
           },
         ];
 
@@ -533,10 +496,6 @@ describe("Usage Summary Utilities", () => {
             },
             cache_read_input_tokens: 30,
             cache_creation_input_tokens: 70,
-            cache_creation: {
-              ephemeral_5m_input_tokens: 40,
-              ephemeral_1h_input_tokens: 30,
-            },
           },
         });
       });
@@ -555,10 +514,6 @@ describe("Usage Summary Utilities", () => {
             operation_type: "agent",
             cache_read_input_tokens: 30,
             cache_creation_input_tokens: 70,
-            cache_creation: {
-              ephemeral_5m_input_tokens: 40,
-              ephemeral_1h_input_tokens: 30,
-            },
           },
         ];
 
@@ -569,8 +524,6 @@ describe("Usage Summary Utilities", () => {
         expect(logCalls).toContain("  Cache Usage:");
         expect(logCalls).toContain("    Read from cache: 30 tokens");
         expect(logCalls).toContain("    Created cache: 70 tokens");
-        expect(logCalls).toContain("    5m cache: 40 tokens");
-        expect(logCalls).toContain("    1h cache: 30 tokens");
 
         consoleSpy.mockRestore();
       });
@@ -596,10 +549,6 @@ describe("Usage Summary Utilities", () => {
             model: "claude-3-opus",
             operation_type: "agent",
             cache_creation_input_tokens: 70,
-            cache_creation: {
-              ephemeral_5m_input_tokens: 40,
-              ephemeral_1h_input_tokens: 30,
-            },
           },
         ];
 
@@ -614,8 +563,6 @@ describe("Usage Summary Utilities", () => {
         expect(overallLogs).toContain("  Cache Usage:");
         expect(overallLogs).toContain("    Read from cache: 30 tokens");
         expect(overallLogs).toContain("    Created cache: 70 tokens");
-        expect(overallLogs).toContain("    5m cache: 40 tokens");
-        expect(overallLogs).toContain("    1h cache: 30 tokens");
 
         consoleSpy.mockRestore();
       });
@@ -642,28 +589,6 @@ describe("Usage Summary Utilities", () => {
             operation_type: "agent",
             cache_creation_input_tokens: 20,
           },
-          {
-            prompt_tokens: 100,
-            completion_tokens: 50,
-            total_tokens: 150,
-            model: "model-3",
-            operation_type: "agent",
-            cache_creation: {
-              ephemeral_5m_input_tokens: 5,
-              ephemeral_1h_input_tokens: 0,
-            },
-          },
-          {
-            prompt_tokens: 100,
-            completion_tokens: 50,
-            total_tokens: 150,
-            model: "model-4",
-            operation_type: "agent",
-            cache_creation: {
-              ephemeral_5m_input_tokens: 0,
-              ephemeral_1h_input_tokens: 15,
-            },
-          },
         ];
 
         displayUsageSummary(usages);
@@ -672,8 +597,6 @@ describe("Usage Summary Utilities", () => {
         const overallLogs = logCalls.slice(logCalls.indexOf("Overall Total:"));
         expect(overallLogs).toContain("    Read from cache: 10 tokens");
         expect(overallLogs).toContain("    Created cache: 20 tokens");
-        expect(overallLogs).toContain("    5m cache: 5 tokens");
-        expect(overallLogs).toContain("    1h cache: 15 tokens");
 
         consoleSpy.mockRestore();
       });
