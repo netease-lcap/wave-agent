@@ -5,6 +5,7 @@ import {
   ChatProvider,
   useChat,
   ChatContextType,
+  createToolStreamingThrottle,
 } from "../../src/contexts/useChat.js";
 import { Agent, BackgroundShell, Task } from "wave-agent-sdk";
 import { AppProvider } from "../../src/contexts/useAppConfig.js";
@@ -1458,6 +1459,186 @@ describe("ChatProvider", () => {
       // deltas, so the FIRST tool never showed streaming parameters
       expect(params["tool-a"]).toBe('{"file": "a.txt"}');
       expect(params["tool-b"]).toBe('{"file_path": "b.txt"}');
+    });
+  });
+
+  it("keeps a tool block running when the throttle window straddles streaming→running", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    const assistantMsg = {
+      id: "msg-dot",
+      role: "assistant" as const,
+      blocks: [],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [assistantMsg] });
+    callbacks.onAssistantMessageAdded!("msg-dot");
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toHaveLength(1);
+    });
+
+    // Tool args start streaming; the last chunk lands inside the 500ms
+    // throttle window (buffered, timer still armed)
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-dot",
+      id: "tool-dot",
+      name: "bash",
+      stage: "start",
+      parameters: "",
+    });
+    await vi.waitFor(() => {
+      expect(
+        lastValue?.messages[0].blocks.some(
+          (b) => b.type === "tool" && b.id === "tool-dot",
+        ),
+      ).toBe(true);
+    });
+
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-dot",
+      id: "tool-dot",
+      stage: "streaming",
+      parametersChunk: "{",
+    });
+
+    // running arrives before the window elapses — applied immediately with
+    // the authoritative parameters
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-dot",
+      id: "tool-dot",
+      name: "bash",
+      stage: "running",
+      parameters: '{"cmd":"ls"}',
+    });
+    await vi.waitFor(() => {
+      const toolBlock = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "tool" && b.id === "tool-dot",
+      );
+      expect(toolBlock).toMatchObject({ stage: "running" });
+    });
+
+    // Regression: the pending streaming flush must not fire late and regress
+    // the block back to "streaming" (yellow dot → gray mid-execution), nor
+    // append the stale buffered chunk to the authoritative parameters.
+    // The stale flush (if armed) fires as soon as the 500ms window elapses;
+    // a waitFor asserting "running" would early-resolve on the not-yet-committed
+    // state, so instead assert the opposite: a short poll for a regressed
+    // "streaming" stage must NEVER resolve.
+    await vi.advanceTimersByTimeAsync(600);
+    await expect(
+      vi.waitFor(
+        () => {
+          const tb = lastValue?.messages[0].blocks.find(
+            (b) => b.type === "tool" && b.id === "tool-dot",
+          );
+          expect((tb as { stage?: string } | undefined)?.stage).toBe(
+            "streaming",
+          );
+        },
+        { timeout: 300, interval: 50 },
+      ),
+    ).rejects.toThrow();
+    // The block is still running with the authoritative parameters, and the
+    // stale chunk was never appended
+    const toolBlock = lastValue?.messages[0].blocks.find(
+      (b) => b.type === "tool" && b.id === "tool-dot",
+    );
+    expect(toolBlock).toMatchObject({
+      stage: "running",
+      parameters: '{"cmd":"ls"}',
+    });
+  });
+
+  describe("createToolStreamingThrottle", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("drops a tool's buffered streaming deltas when running arrives so no stale flush regresses the stage", () => {
+      vi.useFakeTimers();
+      const fn = vi.fn();
+      const throttled = createToolStreamingThrottle(fn, 500);
+
+      throttled({
+        messageId: "m",
+        id: "bash",
+        name: "bash",
+        stage: "start",
+        parameters: "",
+      });
+      throttled({
+        messageId: "m",
+        id: "bash",
+        stage: "streaming",
+        parametersChunk: "{",
+      });
+      throttled({
+        messageId: "m",
+        id: "bash",
+        name: "bash",
+        stage: "running",
+        parameters: '{"cmd":"ls"}',
+      });
+
+      // The throttle window elapses — the stale streaming chunk must NOT fire
+      // late and regress the block back to "streaming"
+      vi.advanceTimersByTime(600);
+      expect(fn).toHaveBeenCalledTimes(2);
+      expect(fn.mock.calls.map((c) => c[0].stage)).toEqual([
+        "start",
+        "running",
+      ]);
+      expect(fn).not.toHaveBeenCalledWith(
+        expect.objectContaining({ stage: "streaming", parametersChunk: "{" }),
+      );
+    });
+
+    it("keeps other tools' in-flight streaming deltas when one tool goes running", () => {
+      vi.useFakeTimers();
+      const fn = vi.fn();
+      const throttled = createToolStreamingThrottle(fn, 500);
+
+      throttled({
+        messageId: "m",
+        id: "tool-a",
+        stage: "streaming",
+        parametersChunk: '{"fi',
+      });
+      throttled({
+        messageId: "m",
+        id: "tool-b",
+        stage: "streaming",
+        parametersChunk: '{"file',
+      });
+      throttled({
+        messageId: "m",
+        id: "tool-a",
+        name: "bash",
+        stage: "running",
+        parameters: '{"file": "a.txt"}',
+      });
+
+      // tool-a's stale chunk is dropped, but tool-b's still flushes at the
+      // window boundary — interleaved multi-tool streaming keeps working
+      vi.advanceTimersByTime(500);
+      const streamingCalls = fn.mock.calls
+        .map((c) => c[0] as { stage: string; id: string })
+        .filter((c) => c.stage === "streaming");
+      expect(streamingCalls).toEqual([
+        expect.objectContaining({ id: "tool-b", parametersChunk: '{"file' }),
+      ]);
     });
   });
 

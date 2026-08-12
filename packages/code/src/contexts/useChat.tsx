@@ -249,7 +249,7 @@ function createStreamingWindowThrottle(
  * `running` apply immediately (one-shot snapshots); `end` flushes pending
  * streaming deltas first, then applies the authoritative parameters/result.
  */
-function createToolStreamingThrottle(
+export function createToolStreamingThrottle(
   fn: (params: ToolBlockUpdateCallbackParams) => void,
   wait: number,
 ): {
@@ -295,7 +295,22 @@ function createToolStreamingThrottle(
       }
       return;
     }
-    // start / running — one-shot snapshots applied immediately
+    // start / running — one-shot snapshots applied immediately. Drop this
+    // tool's buffered streaming deltas first: start/running carry the
+    // authoritative parameters, and a pending timer would otherwise fire late
+    // with a stale `streaming` event, regressing this tool block's stage back
+    // to streaming (yellow dot -> gray) mid-execution. Other tools' in-flight
+    // chunks are kept so interleaved multi-tool streaming still accumulates.
+    if (pending) {
+      pending.chunks.delete(params.id);
+      if (pending.chunks.size === 0) {
+        pending = null;
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      }
+    }
     fn(params);
   };
 
