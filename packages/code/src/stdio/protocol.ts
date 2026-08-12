@@ -79,6 +79,8 @@ export type RequestMethod =
   | "setModel"
   // Permissions (daemon attach: re-surface pending approvals after reconnect)
   | "listPendingPermissions"
+  // Daemon (global — list in-memory session registry, no session required)
+  | "listDaemonSessions"
   // Auth
   | "getAuthStatus"
   | "login"
