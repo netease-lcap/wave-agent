@@ -133,6 +133,23 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 ---
 
+### 用户故事：增量消费端以快照推入消息（优先级：P1）
+
+作为 CLI 或其他进程内增量消费端，我推入自己的消息状态时使用 SDK 消息对象的快照而非活引用，以便流式增量期间 SDK 就地更新消息块不会与消费端自己的累积追加相互污染。
+
+**为什么是这个优先级**：2026-08-08 起 SDK 回调只携带纯 chunk delta，消费端必须自行累积追加（`content += chunk`）；而 SDK 内部仍将累积全文写入消息块（先写全量、再按"新值 slice 当前长度"计算并回调 chunk delta）。若消费端在 `onAssistantMessageAdded`/`onUserMessageAdded` 时直接把 `agent.messages` 中的消息对象活引用推入自己的状态，第一个 delta 到达时 SDK 已把共享块内容替换为完整累积值，消费端追加逻辑会读到此已更新值再拼接该 delta——首个 delta 被重复计数，表现为"reasoning 第一个单词重复"（如 `LetLet me think about this.`）。文本内容同理受影响，只是文本流通常在消息解耦后才出现而不易暴露。
+
+**独立测试**：构造一个带 reasoning 流式的会话，用与 CLI 相同的消费模式（推入活引用 + 追加 reducer）验证出现首词重复；改用快照推入（`{ ...m, blocks: m.blocks.map(b => ({ ...b })) }`）后同一断言通过。
+
+**验收场景**：
+
+1. **假设**增量消费端（CLI）收到 `onAssistantMessageAdded`/`onUserMessageAdded`，**当**将消息加入自己的状态时，**则**推入的是消息对象及其 blocks 的快照（深拷贝至少一层：消息与 blocks），而非 SDK 内部消息对象的活引用
+2. **假设**助手消息流式输出 reasoning，**当**消费端按 `chunk` delta 累积追加时，**则**追加结果与 SDK 存储的完整推理内容一致，首个 delta 不重复（首个单词不翻倍）
+3. **假设**消费端通过拉取通道（`agent.messages` / `getMessages`）获取全量列表，**当**把拉取结果推入状态时，**则**同样以快照推入，不与 SDK 内部对象共享引用
+4. **假设**消费端已按快照推入消息，**当** SDK 继续就地更新其内部消息块时，**则**消费端状态不受影响，仅通过后续 delta 回调获得更新
+
+---
+
 ### 边界情况
 
 - 当网络连接较差且流式块乱序到达或延迟时会发生什么？
@@ -150,7 +167,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - **增量回调用途**：为第三方集成、扩展、CLI 与示例（如 `packages/code/src/print-cli.ts` 和 `packages/agent-sdk/examples`）提供实时流式数据；增量回调是消息状态同步的唯一推送通道
 - **SDK 回调负载**：`onAssistantContentUpdated`/`onAssistantReasoningUpdated` 只提供 `chunk`（增量）+ `messageId` + `stage`，不再携带 `accumulated` 累积值，进程内消费者（CLI、print-cli）自行累积追加；`onToolBlockUpdated` 在 `stage="streaming"` 时只提供 `parametersChunk`（增量），`start`/`running`/`end` 阶段携带权威 `parameters`（end 为最终值，一次性权威）。SDK 内部仍将 chunk 追加进内存 `toolBlock.parameters` 保持累积，只是累积值不再暴露到外部回调
 - **跨进程 wire 负载（纯 delta）**：agentBridge 原样透传增量回调负载——`assistantContentUpdated`/`assistantReasoningUpdated` 只携带 `{messageId, chunk, stage}`（SDK 回调本身已无累积字段，无需剥离）；`toolBlockUpdated` 在 `stage="streaming"` 时只携带 `parametersChunk`，`stage="end"` 时携带全量 `parameters` + `result` 作为权威值。消费端负责累积（追加），丢失的 delta 由 `getMessages` 拉取的全量快照自愈
-- **UI 状态流**：CLI 直接订阅增量回调就地更新消息（chunk 追加 + 500ms 窗口拼接节流）；插件/桌面经 stdio 增量通知（`userMessageAdded`、`assistantContentUpdated`、`toolBlockUpdated` 等，纯 delta 负载）驱动 webview 增量 reducer——文本/推理块追加 chunk、工具块追加 `parametersChunk`，end 时以权威值终结；需要完整列表的场景（初始化、compact、rewind、clear、bang）主动拉取，拉取响应整体替换为权威快照
+- **UI 状态流**：CLI 直接订阅增量回调就地更新消息（chunk 追加 + 500ms 窗口拼接节流）；插件/桌面经 stdio 增量通知（`userMessageAdded`、`assistantContentUpdated`、`toolBlockUpdated` 等，纯 delta 负载）驱动 webview 增量 reducer——文本/推理块追加 chunk、工具块追加 `parametersChunk`，end 时以权威值终结；需要完整列表的场景（初始化、compact、rewind、clear、bang）主动拉取，拉取响应整体替换为权威快照。进程内消费端把 SDK 消息对象推入自有状态时**必须克隆**（消息 + blocks 至少一层），不得持有 SDK 内部活引用——SDK 会就地更新共享块，与消费端累积追加叠加会重复计数（见"增量消费端以快照推入消息"用户故事）
 - **节流语义**：SDK 回调与 wire 通知均只携带纯 delta，节流器一律按到达顺序拼接窗口内所有 chunks 为一个合并 delta（window-concat），绝不能 last-value-wins 丢弃中间值。为配合该语义，SDK 必须在每次 running 事件中重复携带 `compactParams` 等稳定展示字段（见"工具块阶段更新"验收场景 4），保证丢弃中间事件不丢失这些字段
 - **清晰分离**：增量回调是消息状态管理的正式对外通道；全量数据按需获取，避免随每次流式 chunk 序列化整个列表
 
@@ -215,6 +232,12 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - 问：`onToolBlockUpdated` 的 `stage="streaming"` 是否继续携带累积 `parameters` → 答：移除（对齐 2026-08-08 content/reasoning 决策）。streaming 只携带 `parametersChunk`（增量）+ `messageId` + `stage`；`start`/`running`/`end` 仍携带权威 `parameters`（end 为最终值）。SDK 内部 messageOperations 仍将 chunk 追加进内存 `toolBlock.parameters` 保持累积，`getMessages` 快照对账自愈不回归——只是累积值不再暴露到外部回调
 - 问：CLI 多 tool 场景下第一个 tool 不显示 compact params 的根因 → 答：CLI useChat 对 tool 更新误用普通 throttle（last-value-wins，单 lastArgs 槽），多 tool 交错 streaming 时首 tool 的 chunks 被后续事件覆盖，trailing 只应用最后一个 tool 的累积值 → 违反"节流语义"（window-concat）；修复为按 tool id 的 window-concat 节流，窗口内各 tool 的 chunks 独立累积拼接，end 时先冲刷窗口内 pending 增量再应用权威参数
 - 问：受影响范围 → 答：aiService（streaming 不再发 `parameters`）、aiManager（`parameters` 条件转发，避免 `undefined` 泄漏进回调载荷）、messageOperations（chunk 追加进内存 `parameters`）、CLI useChat（按 tool 窗口拼接节流）；wire/agentBridge 自 2026-08-04 起已纯 delta，webview/desktop 消费端已按 `parametersChunk` 追加，均无需改动
+
+### 2026-08-12 会议（CLI reasoning 首词重复缺陷）
+
+- 问：CLI 中所有 reasoning 第一个单词重复的根因 → 答：进程内增量消费端（CLI useChat）在 `onAssistantMessageAdded` 时把 `agent.messages` 中的 SDK 消息对象**活引用**推入 React 状态；`updateCurrentMessageReasoning` 先就地替换共享块为完整累积值、再按"新值 slice 当前长度"计算并回调 chunk delta。首个 delta 到达时消费端追加逻辑（`content += chunk`）读到已被 SDK 更新的完整值再拼接该 chunk → 首词翻倍（`Let` + `Let me think about this.`）；首个 delta 处理完成、消息与 SDK 解耦后，后续 delta 正常
+- 问：修复位置 → 答：消费端边界。CLI 在推入消息时必须克隆（`{ ...m, blocks: m.blocks.map(b => ({ ...b })) }`），不得持有 SDK 内部消息对象活引用；SDK 就地更新与回调顺序（先写全量、再回 delta）不变。覆盖所有推入点：`onAssistantMessageAdded`、`onUserMessageAdded`、拉取全量（`refreshMessages`、初始 `setMessages(agent.messages)`）
+- 问：为什么不在 SDK 侧改 → 答：SDK 就地更新是 `getMessages` 权威快照的基础，先写全量再回 delta 保证回调时刻 SDK 状态已一致；改为先回调再写会让拉取与回调交错时读到过期值。快照克隆成本只在消息创建时发生一次，与流式 delta 数量无关
 
 ## 假设 *（必填）*
 
