@@ -1208,6 +1208,84 @@ describe("PermissionManager", () => {
       });
     });
 
+    describe("instance allowed rules (addInstanceAllowedRule)", () => {
+      it("should add the rule to instanceAllowedRules", () => {
+        permissionManager.addInstanceAllowedRule("Bash(node *spec-count.js*)");
+
+        expect(permissionManager.getInstanceAllowedRules()).toContain(
+          "Bash(node *spec-count.js*)",
+        );
+      });
+
+      it("should not duplicate an existing instance rule", () => {
+        permissionManager.addInstanceAllowedRule("Bash(ls)");
+        permissionManager.addInstanceAllowedRule("Bash(ls)");
+
+        expect(
+          permissionManager
+            .getInstanceAllowedRules()
+            .filter((r) => r === "Bash(ls)"),
+        ).toHaveLength(1);
+      });
+
+      it("should not persist the rule to configured allowed rules", () => {
+        permissionManager.addInstanceAllowedRule("Bash(ls)");
+
+        expect(permissionManager.getAllowedRules()).not.toContain("Bash(ls)");
+      });
+
+      it("should allow the spec-count script with a quoted absolute path", async () => {
+        permissionManager.addInstanceAllowedRule("Bash(node *spec-count.js*)");
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: {
+            command:
+              'node "/usr/lib/node_modules/wave-agent-sdk/builtin/plugins/sdd/scripts/spec-count.js"',
+          },
+        };
+
+        expect(
+          (await permissionManager.checkPermission(context)).behavior,
+        ).toBe("allow");
+      });
+
+      it("should allow the spec-count script with an unquoted absolute path", async () => {
+        permissionManager.addInstanceAllowedRule("Bash(node *spec-count.js*)");
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: {
+            command:
+              "node /usr/lib/node_modules/wave-agent-sdk/builtin/plugins/sdd/scripts/spec-count.js",
+          },
+        };
+
+        expect(
+          (await permissionManager.checkPermission(context)).behavior,
+        ).toBe("allow");
+      });
+
+      it("should not allow other node scripts", async () => {
+        permissionManager.addInstanceAllowedRule("Bash(node *spec-count.js*)");
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: {
+            command:
+              "node /usr/lib/node_modules/wave-agent-sdk/builtin/plugins/sdd/scripts/other.js",
+          },
+        };
+
+        expect(
+          (await permissionManager.checkPermission(context)).behavior,
+        ).toBe("deny");
+      });
+    });
+
     describe("default mode with unrestricted tools", () => {
       it("should allow unrestricted tools without callback", async () => {
         const unrestrictedTools = ["Read", "Grep", "LS", "Glob", "TaskCreate"];
