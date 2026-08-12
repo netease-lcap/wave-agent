@@ -230,9 +230,11 @@ export function convertMessagesForAPI(
         // field (the channel reasoning models natively continue from), and
         // content carries an explanatory note so the request stays valid and
         // the model knows the thinking was cut off and auto-preserved.
+        // Tool calls are meaningful content of their own — a reasoning +
+        // tool-call turn is not truncated, so no note is injected.
         const fallbackContent = hasContent
           ? content
-          : hasReasoning
+          : hasReasoning && !hasToolCalls
             ? "[Note: The reasoning above was cut off before completion. It was auto-preserved from an interrupted or truncated turn — continue from where it left off, or disregard it if no longer relevant.]"
             : undefined;
 
