@@ -192,6 +192,30 @@ export class SubagentManager {
   }
 
   /**
+   * Rebuild the cached subagent configurations. Called after settings.json
+   * env becomes available (post loadMergedConfiguration) so conditional
+   * builtin subagents (e.g. `model: visionModel` requiring WAVE_VISION_MODEL)
+   * register correctly. Plugin agents are preserved across the rebuild.
+   */
+  async refreshConfigurations(): Promise<SubagentConfiguration[]> {
+    // Preserve plugin agents (namespaced `pluginName:agentName`) across the rebuild
+    const pluginAgents = (this.cachedConfigurations ?? []).filter((config) =>
+      config.name.includes(":"),
+    );
+    this.cachedConfigurations = null;
+    await this.loadConfigurations();
+    for (const agent of pluginAgents) {
+      this.cachedConfigurations!.push(agent);
+    }
+    // Re-sort by priority then name (matches registerPluginAgents)
+    this.cachedConfigurations!.sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      return a.name.localeCompare(b.name);
+    });
+    return this.cachedConfigurations!;
+  }
+
+  /**
    * Get the merged environment (OS env overlaid with settings.json env) used
    * for conditional subagent registration (e.g. WAVE_VISION_MODEL).
    */
