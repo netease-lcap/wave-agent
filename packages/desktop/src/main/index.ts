@@ -6,14 +6,19 @@
  * happens inside DesktopHost via the shared StdioClient.
  */
 
-import { app, BrowserWindow, ipcMain, nativeImage, shell } from 'electron';
-import { execFileSync } from 'child_process';
-import * as path from 'path';
-import { WEBVIEW_CHANNEL } from './channels';
-import { ConfigStore } from './configStore';
-import { DesktopHost } from './desktopHost';
-import { isLocalhostUrl } from './isLocalhostUrl';
-import { attachDesktopShortcutKeys, installApplicationMenu, updateMenuState, type DesktopMenuActions } from './menu';
+import { app, BrowserWindow, ipcMain, nativeImage, shell } from "electron";
+import { execFileSync } from "child_process";
+import * as path from "path";
+import { WEBVIEW_CHANNEL } from "./channels";
+import { ConfigStore } from "./configStore";
+import { DesktopHost } from "./desktopHost";
+import { isLocalhostUrl } from "./isLocalhostUrl";
+import {
+  attachDesktopShortcutKeys,
+  installApplicationMenu,
+  updateMenuState,
+  type DesktopMenuActions,
+} from "./menu";
 
 /**
  * GUI-launched apps (Finder/Spotlight) get a bare system PATH without the
@@ -22,16 +27,20 @@ import { attachDesktopShortcutKeys, installApplicationMenu, updateMenuState, typ
  * its PATH; child processes inherit it via `...process.env` spreads.
  */
 function adoptLoginShellPath(): void {
-  if (process.platform === 'win32') return;
+  if (process.platform === "win32") return;
   try {
     // execFileSync, NOT execSync: with execSync the command goes through
     // /bin/sh -c which would expand `$PATH` BEFORE zsh sources .zshrc,
     // defeating the whole probe.
-    const probed = execFileSync('/bin/zsh', ['-lic', 'echo $PATH'], {
-      encoding: 'utf-8',
+    const probed = execFileSync("/bin/zsh", ["-lic", "echo $PATH"], {
+      encoding: "utf-8",
       timeout: 5000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim().split('\n').pop()?.trim();
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .trim()
+      .split("\n")
+      .pop()
+      ?.trim();
     if (probed) process.env.PATH = probed;
   } catch {
     // keep the default PATH — the resolver will surface its usual errors
@@ -44,7 +53,10 @@ adoptLoginShellPath();
 // app (the single-instance lock is scoped to the userData directory) and never
 // touch the real config/session index.
 if (!app.isPackaged) {
-  app.setPath('userData', path.join(app.getPath('appData'), 'wave-desktop-dev'));
+  app.setPath(
+    "userData",
+    path.join(app.getPath("appData"), "wave-desktop-dev"),
+  );
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -76,7 +88,7 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on("second-instance", () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
@@ -87,7 +99,11 @@ if (!gotLock) {
     // Dev launches the bare Electron binary, whose default atom icon shows in
     // the Dock — swap in the brand icon (packaged apps get it from the icns).
     if (!app.isPackaged) {
-      app.dock?.setIcon(nativeImage.createFromPath(path.join(__dirname, '../../assets/icon.png')));
+      app.dock?.setIcon(
+        nativeImage.createFromPath(
+          path.join(__dirname, "../../assets/icon.png"),
+        ),
+      );
     }
 
     const configStore = new ConfigStore();
@@ -95,36 +111,40 @@ if (!gotLock) {
     host.onMenuStateChange = updateMenuState;
     installApplicationMenu(menuActions);
     // 面板 menu checkboxes mirror the focused pane's toggle state.
-    host.onPanelStateChanged = (checked) => installApplicationMenu(menuActions, checked);
+    host.onPanelStateChanged = (checked) =>
+      installApplicationMenu(menuActions, checked);
 
     ipcMain.on(WEBVIEW_CHANNEL, (_event, message: Record<string, unknown>) => {
       void host?.handleWebviewMessage(message).catch((error) => {
-        console.error('[Wave Desktop] Failed to handle webview message:', error);
+        console.error(
+          "[Wave Desktop] Failed to handle webview message:",
+          error,
+        );
       });
     });
 
     // Sync theme lookup for the preload: applied to <html data-theme> before
     // first paint so the initial frame matches the persisted preference (FR-019).
-    ipcMain.on('wave:get-initial-theme', (event) => {
-      event.returnValue = host?.getInitialEffectiveTheme() ?? 'dark';
+    ipcMain.on("wave:get-initial-theme", (event) => {
+      event.returnValue = host?.getInitialEffectiveTheme() ?? "dark";
     });
 
     createWindow();
 
-    app.on('activate', () => {
+    app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
       }
     });
   });
 
-  app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") {
       app.quit();
     }
   });
 
-  app.on('before-quit', () => {
+  app.on("before-quit", () => {
     void host?.dispose();
   });
 }
@@ -135,10 +155,10 @@ function createWindow(): void {
     height: 840,
     minWidth: 720,
     minHeight: 480,
-    title: 'Wave',
-    backgroundColor: '#1e1e1e',
+    title: "Wave",
+    backgroundColor: "#1e1e1e",
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -155,13 +175,13 @@ function createWindow(): void {
     if (/^https?:/.test(url)) {
       void shell.openExternal(url);
     }
-    return { action: 'deny' };
+    return { action: "deny" };
   });
 
   // Clicking an <a href> navigates the whole window away from the chat UI —
   // block every non-file navigation (file: is the bundled index.html itself).
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (url.startsWith('file:')) return;
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (url.startsWith("file:")) return;
     event.preventDefault();
     if (/^https?:/.test(url)) {
       void shell.openExternal(url);
@@ -170,17 +190,23 @@ function createWindow(): void {
 
   // Lock down any <webview> the page attaches: the preview pane is the only
   // consumer and it must stay sandboxed + localhost-only.
-  mainWindow.webContents.on('will-attach-webview', (event, webPreferences, params) => {
-    webPreferences.nodeIntegration = false;
-    webPreferences.contextIsolation = true;
-    webPreferences.sandbox = true;
-    if (!isLocalhostUrl(params.src)) {
-      console.warn('[Wave Desktop] Blocked <webview> attach with non-localhost src:', params.src);
-      event.preventDefault();
-    }
-  });
+  mainWindow.webContents.on(
+    "will-attach-webview",
+    (event, webPreferences, params) => {
+      webPreferences.nodeIntegration = false;
+      webPreferences.contextIsolation = true;
+      webPreferences.sandbox = true;
+      if (!isLocalhostUrl(params.src)) {
+        console.warn(
+          "[Wave Desktop] Blocked <webview> attach with non-localhost src:",
+          params.src,
+        );
+        event.preventDefault();
+      }
+    },
+  );
 
-  mainWindow.webContents.on('did-attach-webview', (_event, guest) => {
+  mainWindow.webContents.on("did-attach-webview", (_event, guest) => {
     // The session-switch/panel-toggle keys must also work while the preview
     // pane has focus.
     attachDesktopShortcutKeys(guest, menuActions);
@@ -190,11 +216,11 @@ function createWindow(): void {
       if (/^https?:/.test(url)) {
         void shell.openExternal(url);
       }
-      return { action: 'deny' };
+      return { action: "deny" };
     });
     // The preview pane is localhost-only: divert in-guest navigation
     // to external sites into the system browser instead of loading them here.
-    guest.on('will-navigate', (event, url) => {
+    guest.on("will-navigate", (event, url) => {
       if (isLocalhostUrl(url)) return;
       event.preventDefault();
       if (/^https?:/.test(url)) {
@@ -203,11 +229,13 @@ function createWindow(): void {
     });
   });
 
-  mainWindow.on('closed', () => {
+  mainWindow.on("closed", () => {
     mainWindow = null;
   });
 
   // webview/ lives at the package root (synced by scripts/syncWebview.mjs);
   // dist/main → ../.. reaches the package root both in dev and inside app.asar.
-  void mainWindow.loadFile(path.join(__dirname, '..', '..', 'webview', 'index.html'));
+  void mainWindow.loadFile(
+    path.join(__dirname, "..", "..", "webview", "index.html"),
+  );
 }

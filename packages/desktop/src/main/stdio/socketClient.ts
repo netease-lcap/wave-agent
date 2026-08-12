@@ -7,31 +7,31 @@
  * request/notification semantics, same "closed" rejection behavior.
  */
 
-import type { Socket } from 'net';
-import { JsonRpcClient } from './jsonRpcClient';
+import type { Socket } from "net";
+import { JsonRpcClient } from "./jsonRpcClient";
 
 export class SocketClient extends JsonRpcClient {
-    private socket: Socket;
+  private socket: Socket;
 
-    constructor(socket: Socket) {
-        super();
-        this.socket = socket;
-        this.attachReadable(socket);
+  constructor(socket: Socket) {
+    super();
+    this.socket = socket;
+    this.attachReadable(socket);
 
-        socket.on('close', () => {
-            this.handleClosed('远端连接已断开。');
-        });
-        socket.on('error', (err) => {
-            console.error('[wave-remote] Socket error:', err.message);
-        });
-    }
+    socket.on("close", () => {
+      this.handleClosed("远端连接已断开。");
+    });
+    socket.on("error", (err) => {
+      console.error("[wave-remote] Socket error:", err.message);
+    });
+  }
 
-    protected writeLine(message: string): void {
-        this.socket.write(message);
-    }
+  protected writeLine(message: string): void {
+    this.socket.write(message);
+  }
 
-    dispose(): void {
-        this.handleClosed('远端连接已断开。');
-        this.socket.destroy();
-    }
+  dispose(): void {
+    this.handleClosed("远端连接已断开。");
+    this.socket.destroy();
+  }
 }

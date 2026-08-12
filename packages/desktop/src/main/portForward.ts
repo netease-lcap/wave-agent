@@ -12,9 +12,9 @@
  * (scenario 18).
  */
 
-import * as net from 'net';
-import { spawn, type ChildProcess } from 'child_process';
-import { LOCAL_HOST, SSH_BASE_OPTIONS } from './sshHosts';
+import * as net from "net";
+import { spawn, type ChildProcess } from "child_process";
+import { LOCAL_HOST, SSH_BASE_OPTIONS } from "./sshHosts";
 
 /** Local port assignment attempts (remote port, remote port+1, …) before failing. */
 const MAX_PORT_ATTEMPTS = 20;
@@ -24,7 +24,7 @@ const READY_TIMEOUT_MS = 15_000;
 const READY_PROBE_MS = 200;
 const MAX_PORT = 65_535;
 
-export type ForwardState = 'connecting' | 'ready' | 'failed';
+export type ForwardState = "connecting" | "ready" | "failed";
 
 interface ForwardWaiter {
   url: string;
@@ -85,7 +85,9 @@ export class PortForwardManager {
   /** Whether `entry` is still tracked by this manager (either map). */
   private isTracked(entry: ForwardEntry): boolean {
     const key = this.key(entry.host, entry.remotePort);
-    return this.entries.get(key) === entry || this.authEntries.get(key) === entry;
+    return (
+      this.entries.get(key) === entry || this.authEntries.get(key) === entry
+    );
   }
 
   /** Drop `entry` from whichever map tracks it. Idempotent. */
@@ -100,27 +102,38 @@ export class PortForwardManager {
    * through unchanged. For remote hosts, a tunnel for (host, remote port) is
    * started on demand and reused while any session holds a reference.
    */
-  acquire(host: string, url: string, sessionId?: string): Promise<ForwardResult> {
+  acquire(
+    host: string,
+    url: string,
+    sessionId?: string,
+  ): Promise<ForwardResult> {
     if (host === LOCAL_HOST) return Promise.resolve({ url, originalUrl: url });
     let remotePort: number;
     try {
       const parsed = new URL(url);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        return Promise.reject(new Error('仅支持 http/https 链接'));
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return Promise.reject(new Error("仅支持 http/https 链接"));
       }
-      remotePort = Number(parsed.port || (parsed.protocol === 'https:' ? 443 : 80));
+      remotePort = Number(
+        parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+      );
     } catch {
-      return Promise.reject(new Error('无法解析链接'));
+      return Promise.reject(new Error("无法解析链接"));
     }
-    if (!Number.isInteger(remotePort) || remotePort < 1 || remotePort > MAX_PORT) {
+    if (
+      !Number.isInteger(remotePort) ||
+      remotePort < 1 ||
+      remotePort > MAX_PORT
+    ) {
       return Promise.reject(new Error(`无效的端口：${remotePort}`));
     }
     const key = this.key(host, remotePort);
     const existing = this.entries.get(key);
-    if (existing && existing.state !== 'failed') {
+    if (existing && existing.state !== "failed") {
       // Idempotent per session — re-clicking the same link does not double-count.
       if (sessionId) existing.sessionIds.add(sessionId);
-      if (existing.state === 'ready') return Promise.resolve(this.resultFor(existing, url));
+      if (existing.state === "ready")
+        return Promise.resolve(this.resultFor(existing, url));
       // Connecting — park on the shared waiter list; resolved/rejected when the
       // tunnel settles.
       return new Promise<ForwardResult>((resolve, reject) => {
@@ -134,7 +147,7 @@ export class PortForwardManager {
       remotePort,
       localPort: 0,
       sessionIds: sessionId ? new Set([sessionId]) : new Set(),
-      state: 'connecting',
+      state: "connecting",
       proc: null,
       waiters: [],
     };
@@ -150,14 +163,17 @@ export class PortForwardManager {
    * daemon and the login hangs until timeout. `callback_url` is rewritten to
    * the local forwarded port; call `close()` once the login request settles.
    */
-  async forwardAuthCallback(host: string, authUrl: string): Promise<AuthCallbackForward> {
+  async forwardAuthCallback(
+    host: string,
+    authUrl: string,
+  ): Promise<AuthCallbackForward> {
     const remotePort = this.parseCallbackPort(authUrl);
     const entry: ForwardEntry = {
       host,
       remotePort,
       localPort: 0,
       sessionIds: new Set(),
-      state: 'connecting',
+      state: "connecting",
       proc: null,
       waiters: [],
     };
@@ -170,7 +186,10 @@ export class PortForwardManager {
       throw err;
     }
     const rewritten = new URL(authUrl);
-    rewritten.searchParams.set('callback_url', `http://127.0.0.1:${entry.localPort}`);
+    rewritten.searchParams.set(
+      "callback_url",
+      `http://127.0.0.1:${entry.localPort}`,
+    );
     return {
       authUrl: rewritten.toString(),
       close: () => this.stopForward(entry),
@@ -180,17 +199,20 @@ export class PortForwardManager {
   private parseCallbackPort(authUrl: string): number {
     try {
       const u = new URL(authUrl);
-      const callbackUrl = u.searchParams.get('callback_url');
-      if (!callbackUrl) throw new Error('缺少 callback_url 参数');
+      const callbackUrl = u.searchParams.get("callback_url");
+      if (!callbackUrl) throw new Error("缺少 callback_url 参数");
       const callback = new URL(callbackUrl);
-      if (callback.protocol !== 'http:') throw new Error(`不支持的协议 ${callback.protocol}`);
+      if (callback.protocol !== "http:")
+        throw new Error(`不支持的协议 ${callback.protocol}`);
       const port = Number(callback.port || 80);
       if (!Number.isInteger(port) || port < 1 || port > MAX_PORT) {
         throw new Error(`无效的回调端口：${callback.port}`);
       }
       return port;
     } catch (err) {
-      throw new Error(`无法解析 SSO 回调地址：${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(
+        `无法解析 SSO 回调地址：${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
@@ -241,23 +263,35 @@ export class PortForwardManager {
     // `-N -L` are ssh OPTIONS and must precede the hostname — buildSshSpawnArgs
     // (remote-command form) is not applicable here.
     const proc = spawn(
-      'ssh',
-      [...SSH_BASE_OPTIONS, '-N', '-L', `127.0.0.1:${localPort}:${remoteEnd}`, entry.host],
-      { stdio: 'ignore' },
+      "ssh",
+      [
+        ...SSH_BASE_OPTIONS,
+        "-N",
+        "-L",
+        `127.0.0.1:${localPort}:${remoteEnd}`,
+        entry.host,
+      ],
+      { stdio: "ignore" },
     );
     entry.proc = proc;
-    proc.on('error', (err) => {
+    proc.on("error", (err) => {
       this.failForward(entry, `转发进程启动失败：${err.message}`);
     });
-    proc.on('exit', (code, signal) => {
+    proc.on("exit", (code, signal) => {
       if (!this.isTracked(entry)) return; // intentional stop
       // The tunnel died on its own (remote unreachable / connection dropped) —
       // fail so the pane shows an actionable error (scenario 16).
-      this.failForward(entry, code !== null ? `转发连接已断开（退出码 ${code}）` : `转发进程被信号终止（${signal}）`);
+      this.failForward(
+        entry,
+        code !== null
+          ? `转发连接已断开（退出码 ${code}）`
+          : `转发进程被信号终止（${signal}）`,
+      );
     });
     await this.waitForReady(entry);
-    if (entry.state !== 'connecting') throw new Error(entry.error ?? '转发建立失败');
-    entry.state = 'ready';
+    if (entry.state !== "connecting")
+      throw new Error(entry.error ?? "转发建立失败");
+    entry.state = "ready";
     for (const w of entry.waiters) w.resolve(this.resultFor(entry, w.url));
     entry.waiters = [];
   }
@@ -271,21 +305,27 @@ export class PortForwardManager {
     return new Promise((resolve, reject) => {
       const deadline = Date.now() + READY_TIMEOUT_MS;
       const attempt = (): void => {
-        if (entry.state !== 'connecting') {
-          reject(new Error(entry.error ?? '转发建立失败'));
+        if (entry.state !== "connecting") {
+          reject(new Error(entry.error ?? "转发建立失败"));
           return;
         }
         if (Date.now() >= deadline) {
-          this.failForward(entry, '转发建立超时：无法连接远端主机，或远端服务未监听该端口');
+          this.failForward(
+            entry,
+            "转发建立超时：无法连接远端主机，或远端服务未监听该端口",
+          );
           reject(new Error(entry.error));
           return;
         }
-        const socket = net.connect({ host: '127.0.0.1', port: entry.localPort });
-        socket.once('connect', () => {
+        const socket = net.connect({
+          host: "127.0.0.1",
+          port: entry.localPort,
+        });
+        socket.once("connect", () => {
           socket.destroy();
           resolve();
         });
-        socket.once('error', () => {
+        socket.once("error", () => {
           socket.destroy();
           setTimeout(attempt, READY_PROBE_MS);
         });
@@ -309,10 +349,10 @@ export class PortForwardManager {
   /** Ports already assigned to live tunnels of this manager (preview + auth). */
   private isLocalPortTaken(port: number): boolean {
     for (const entry of this.entries.values()) {
-      if (entry.state !== 'failed' && entry.localPort === port) return true;
+      if (entry.state !== "failed" && entry.localPort === port) return true;
     }
     for (const entry of this.authEntries.values()) {
-      if (entry.state !== 'failed' && entry.localPort === port) return true;
+      if (entry.state !== "failed" && entry.localPort === port) return true;
     }
     return false;
   }
@@ -320,8 +360,8 @@ export class PortForwardManager {
   private canBind(port: number): Promise<boolean> {
     return new Promise((resolve) => {
       const server = net.createServer();
-      server.once('error', () => resolve(false));
-      server.listen({ host: '127.0.0.1', port }, () => {
+      server.once("error", () => resolve(false));
+      server.listen({ host: "127.0.0.1", port }, () => {
         server.close(() => resolve(true));
       });
     });
@@ -329,8 +369,8 @@ export class PortForwardManager {
 
   /** Mark failed, reject waiters, drop the entry, kill the process. Idempotent. */
   private failForward(entry: ForwardEntry, error: string): void {
-    if (entry.state === 'failed') return;
-    entry.state = 'failed';
+    if (entry.state === "failed") return;
+    entry.state = "failed";
     entry.error = error;
     this.untrack(entry);
     for (const w of entry.waiters) w.reject(new Error(error));
@@ -340,7 +380,7 @@ export class PortForwardManager {
 
   /** Intentional teardown (last session released / login settled / dispose) — silent, no waiters rejected. */
   private stopForward(entry: ForwardEntry): void {
-    entry.state = 'failed';
+    entry.state = "failed";
     this.untrack(entry);
     entry.waiters = [];
     this.killProc(entry);

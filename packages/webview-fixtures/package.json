@@ -8,6 +8,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "format": "prettier --write .",
     "type-check": "tsc --noEmit",
     "test": "vitest run --reporter=dot"
   },

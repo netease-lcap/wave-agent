@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 /**
  * Tests for the guest picker preload. The module is side-effect-only: it
@@ -15,232 +15,272 @@ const { ipcRenderer } = vi.hoisted(() => ({
     sendToHost: vi.fn(),
   },
 }));
-vi.mock('electron', () => ({ ipcRenderer }));
+vi.mock("electron", () => ({ ipcRenderer }));
 
 // jsdom lacks constructable stylesheets — stub the bits the preload uses.
 class FakeSheet {
-  css = '';
+  css = "";
   replaceSync(css: string) {
     this.css = css;
   }
 }
-vi.stubGlobal('CSSStyleSheet', FakeSheet);
+vi.stubGlobal("CSSStyleSheet", FakeSheet);
 
-import '../src/main/pickerPreload';
+import "../src/main/pickerPreload";
 
 // ipcRenderer.on('wave-picker', handler) was registered at import time.
-const handler = ipcRenderer.on.mock.calls.find((c) => c[0] === 'wave-picker')?.[1] as (
+const handler = ipcRenderer.on.mock.calls.find(
+  (c) => c[0] === "wave-picker",
+)?.[1] as (
   event: unknown,
   msg: { action?: string; palette?: Record<string, string> },
 ) => void;
-const activate = (palette?: Record<string, string>) => handler(null, { action: 'activate', palette });
-const deactivate = () => handler(null, { action: 'deactivate' });
+const activate = (palette?: Record<string, string>) =>
+  handler(null, { action: "activate", palette });
+const deactivate = () => handler(null, { action: "deactivate" });
 
 function shadowRoot(): ShadowRoot {
   const host = document.body.lastElementChild;
-  if (!host?.shadowRoot) throw new Error('picker card not found');
+  if (!host?.shadowRoot) throw new Error("picker card not found");
   return host.shadowRoot;
 }
 
-const mouseOver = (el: Element) => el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-const click = (el: Element) => el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+const mouseOver = (el: Element) =>
+  el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+const click = (el: Element) =>
+  el.dispatchEvent(
+    new MouseEvent("click", { bubbles: true, cancelable: true }),
+  );
 
 beforeEach(() => {
   // Reset module state + DOM; keep sendToHost trace so the ready call stays
   // observable for the handshake test.
   deactivate();
-  document.body.innerHTML = '';
-  (document as unknown as { adoptedStyleSheets: unknown[] }).adoptedStyleSheets = [];
+  document.body.innerHTML = "";
+  (
+    document as unknown as { adoptedStyleSheets: unknown[] }
+  ).adoptedStyleSheets = [];
 });
 
 afterEach(() => deactivate());
 
 function renderPage() {
-  document.body.innerHTML = '<div id="app"><div class="card"><button class="primary">立即购买</button></div></div>';
+  document.body.innerHTML =
+    '<div id="app"><div class="card"><button class="primary">立即购买</button></div></div>';
   return {
-    button: document.querySelector('button.primary') as Element,
-    container: document.querySelector('#app > .card') as Element,
+    button: document.querySelector("button.primary") as Element,
+    container: document.querySelector("#app > .card") as Element,
   };
 }
 
-describe('pickerPreload', () => {
+describe("pickerPreload", () => {
   it('announces { type: "ready" } on load', () => {
     expect(
       ipcRenderer.sendToHost.mock.calls.some(
-        ([channel, payload]) => channel === 'wave-picker' && payload && payload.type === 'ready',
+        ([channel, payload]) =>
+          channel === "wave-picker" && payload && payload.type === "ready",
       ),
     ).toBe(true);
   });
 
-  it('highlights hovered elements only while active', () => {
+  it("highlights hovered elements only while active", () => {
     const { button } = renderPage();
     mouseOver(button);
-    expect(button.classList.contains('__wave-picker-highlight')).toBe(false);
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(false);
 
-    activate({ accent: '#ff0000' });
+    activate({ accent: "#ff0000" });
     mouseOver(button);
-    expect(button.classList.contains('__wave-picker-highlight')).toBe(true);
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(true);
 
     deactivate();
-    expect(button.classList.contains('__wave-picker-highlight')).toBe(false);
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(false);
   });
 
-  it('moves the highlight between hovered elements', () => {
+  it("moves the highlight between hovered elements", () => {
     const { button, container } = renderPage();
     activate();
     mouseOver(button);
     mouseOver(container);
-    expect(button.classList.contains('__wave-picker-highlight')).toBe(false);
-    expect(container.classList.contains('__wave-picker-highlight')).toBe(true);
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(false);
+    expect(container.classList.contains("__wave-picker-highlight")).toBe(true);
   });
 
-  it('click selects the element and shows the floating comment card', () => {
+  it("click selects the element and shows the floating comment card", () => {
     const { button } = renderPage();
     activate();
     click(button);
 
-    expect(button.classList.contains('__wave-picker-highlight')).toBe(true);
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(true);
     const root = shadowRoot();
     // Card footer shows just the element tag name (selector on hover title).
-    const tag = root.querySelector('.tag') as HTMLElement;
-    expect(tag.textContent).toBe('button');
-    expect(tag.title).toBe('#app > div > button');
-    expect(root.querySelector('textarea')).toBeTruthy();
+    const tag = root.querySelector(".tag") as HTMLElement;
+    expect(tag.textContent).toBe("button");
+    expect(tag.title).toBe("#app > div > button");
+    expect(root.querySelector("textarea")).toBeTruthy();
     // Submit button: "add to input" text button, disabled until the user types.
-    const send = root.querySelector('.send') as HTMLButtonElement;
+    const send = root.querySelector(".send") as HTMLButtonElement;
     expect(send.disabled).toBe(true);
-    expect(send.title).toBe('添加到输入框');
-    expect(send.textContent).toBe('添加');
+    expect(send.title).toBe("添加到输入框");
+    expect(send.textContent).toBe("添加");
   });
 
-  it('intercepts page clicks and form submits while active', () => {
+  it("intercepts page clicks and form submits while active", () => {
     renderPage();
-    document.body.insertAdjacentHTML('beforeend', '<form><button type="submit">go</button></form>');
-    const link = document.createElement('a');
-    link.href = 'http://localhost:5173/other';
-    link.textContent = 'nav';
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<form><button type="submit">go</button></form>',
+    );
+    const link = document.createElement("a");
+    link.href = "http://localhost:5173/other";
+    link.textContent = "nav";
     document.body.appendChild(link);
     activate();
 
-    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    const clickEvent = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+    });
     link.dispatchEvent(clickEvent);
     expect(clickEvent.defaultPrevented).toBe(true);
 
-    const form = document.querySelector('form') as HTMLFormElement;
-    const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+    const form = document.querySelector("form") as HTMLFormElement;
+    const submitEvent = new Event("submit", {
+      bubbles: true,
+      cancelable: true,
+    });
     form.dispatchEvent(submitEvent);
     expect(submitEvent.defaultPrevented).toBe(true);
   });
 
-  it('Enter submits a structured comment and returns to hover-pick state', () => {
+  it("Enter submits a structured comment and returns to hover-pick state", () => {
     const { button, container } = renderPage();
-    activate({ accent: '#ff0000' });
+    activate({ accent: "#ff0000" });
     click(button);
 
     const root = shadowRoot();
-    const textarea = root.querySelector('textarea') as HTMLTextAreaElement;
-    textarea.value = '这个按钮颜色太淡了';
-    textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    const textarea = root.querySelector("textarea") as HTMLTextAreaElement;
+    textarea.value = "这个按钮颜色太淡了";
+    textarea.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
 
-    expect(ipcRenderer.sendToHost).toHaveBeenCalledWith('wave-picker', {
-      type: 'submit',
-      url: 'http://localhost:3000/',
-      selector: '#app > div > button',
-      summary: 'button.primary',
-      text: '立即购买',
-      comment: '这个按钮颜色太淡了',
+    expect(ipcRenderer.sendToHost).toHaveBeenCalledWith("wave-picker", {
+      type: "submit",
+      url: "http://localhost:3000/",
+      selector: "#app > div > button",
+      summary: "button.primary",
+      text: "立即购买",
+      comment: "这个按钮颜色太淡了",
     });
     // Selection cleared: highlight gone, card removed.
-    expect(button.classList.contains('__wave-picker-highlight')).toBe(false);
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(false);
     expect(document.body.lastElementChild?.shadowRoot ?? null).toBeNull();
     // Picker stays active for the next pick: hover highlights again and a
     // second element can be selected for another comment.
     mouseOver(container);
-    expect(container.classList.contains('__wave-picker-highlight')).toBe(true);
+    expect(container.classList.contains("__wave-picker-highlight")).toBe(true);
     click(container);
-    expect(shadowRoot().querySelector('.tag')?.textContent).toBe('div');
+    expect(shadowRoot().querySelector(".tag")?.textContent).toBe("div");
   });
 
-  it('Enter does not submit while IME is composing (e.g. pinyin)', () => {
+  it("Enter does not submit while IME is composing (e.g. pinyin)", () => {
     // sendToHost is intentionally NOT cleared between tests (the ready
     // handshake test relies on the import-time call), so scope the assertion
     // to calls made within this test only.
     ipcRenderer.sendToHost.mockClear();
     const { button } = renderPage();
-    activate({ accent: '#ff0000' });
+    activate({ accent: "#ff0000" });
     click(button);
 
     const root = shadowRoot();
-    const textarea = root.querySelector('textarea') as HTMLTextAreaElement;
-    textarea.value = '这个按钮颜色太淡了';
+    const textarea = root.querySelector("textarea") as HTMLTextAreaElement;
+    textarea.value = "这个按钮颜色太淡了";
     // Chinese IME uses Enter to confirm the candidate; that keydown fires with
     // isComposing=true (keyCode 229) and must NOT submit the draft comment.
     textarea.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true, keyCode: 229 }),
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+        isComposing: true,
+        keyCode: 229,
+      }),
     );
     expect(ipcRenderer.sendToHost).not.toHaveBeenCalledWith(
-      'wave-picker',
-      expect.objectContaining({ type: 'submit' }),
+      "wave-picker",
+      expect.objectContaining({ type: "submit" }),
     );
     // Card stays open so the user can keep composing.
     expect(document.body.lastElementChild?.shadowRoot ?? null).not.toBeNull();
   });
 
-  it('send button is an equivalent submit entry once text is present', () => {
+  it("send button is an equivalent submit entry once text is present", () => {
     const { button } = renderPage();
     activate();
     click(button);
 
     const root = shadowRoot();
-    const textarea = root.querySelector('textarea') as HTMLTextAreaElement;
-    textarea.value = '改大一点';
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    const send = root.querySelector('.send') as HTMLButtonElement;
+    const textarea = root.querySelector("textarea") as HTMLTextAreaElement;
+    textarea.value = "改大一点";
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    const send = root.querySelector(".send") as HTMLButtonElement;
     expect(send.disabled).toBe(false);
     send.click();
 
     expect(ipcRenderer.sendToHost).toHaveBeenCalledWith(
-      'wave-picker',
-      expect.objectContaining({ type: 'submit', comment: '改大一点' }),
+      "wave-picker",
+      expect.objectContaining({ type: "submit", comment: "改大一点" }),
     );
   });
 
-  it('clicking outside the card cancels the current selection', () => {
+  it("clicking outside the card cancels the current selection", () => {
     const { button, container } = renderPage();
     activate();
     click(button);
     expect(shadowRoot()).toBeTruthy();
 
     click(container); // outside the card → cancel, NOT reselect
-    expect(button.classList.contains('__wave-picker-highlight')).toBe(false);
-    expect(container.classList.contains('__wave-picker-highlight')).toBe(false);
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(false);
+    expect(container.classList.contains("__wave-picker-highlight")).toBe(false);
     expect(document.body.lastElementChild?.shadowRoot ?? null).toBeNull();
 
     click(container); // next click selects
-    expect(container.classList.contains('__wave-picker-highlight')).toBe(true);
-    expect(shadowRoot().querySelector('.tag')?.textContent).toBe('div');
+    expect(container.classList.contains("__wave-picker-highlight")).toBe(true);
+    expect(shadowRoot().querySelector(".tag")?.textContent).toBe("div");
   });
 
-  it('clicks inside the card do not cancel or propagate', () => {
+  it("clicks inside the card do not cancel or propagate", () => {
     const { button } = renderPage();
     activate();
     click(button);
-    const textarea = shadowRoot().querySelector('textarea') as HTMLTextAreaElement;
+    const textarea = shadowRoot().querySelector(
+      "textarea",
+    ) as HTMLTextAreaElement;
 
-    const innerClick = new MouseEvent('click', { bubbles: true, cancelable: true });
+    const innerClick = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+    });
     textarea.dispatchEvent(innerClick);
     expect(innerClick.defaultPrevented).toBe(false);
-    expect(button.classList.contains('__wave-picker-highlight')).toBe(true);
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(true);
   });
 
-  it('deactivate removes all picker artifacts', () => {
+  it("deactivate removes all picker artifacts", () => {
     const { button } = renderPage();
     activate();
     click(button);
     deactivate();
 
-    expect(button.classList.contains('__wave-picker-highlight')).toBe(false);
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(false);
     expect(document.body.lastElementChild?.shadowRoot ?? null).toBeNull();
-    expect((document as unknown as { adoptedStyleSheets: unknown[] }).adoptedStyleSheets.length).toBe(0);
+    expect(
+      (document as unknown as { adoptedStyleSheets: unknown[] })
+        .adoptedStyleSheets.length,
+    ).toBe(0);
   });
 });

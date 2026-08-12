@@ -11,15 +11,15 @@
  * rebuild (FR-018). chat.css follows the variable sets so `var(--vscode-*)`
  * resolves against the active theme.
  */
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const desktopRoot = path.resolve(__dirname, '..');
-const webviewDist = path.resolve(desktopRoot, '../webview/dist');
-const themeDir = path.resolve(desktopRoot, '../webview/theme');
-const outDir = path.join(desktopRoot, 'webview');
+const desktopRoot = path.resolve(__dirname, "..");
+const webviewDist = path.resolve(desktopRoot, "../webview/dist");
+const themeDir = path.resolve(desktopRoot, "../webview/theme");
+const outDir = path.join(desktopRoot, "webview");
 
 const CSP = [
   "default-src 'none'",
@@ -28,15 +28,17 @@ const CSP = [
   "img-src 'self' data: https:",
   "font-src 'self' data:",
   "connect-src 'none'",
-].join('; ');
+].join("; ");
 
-for (const file of ['chat.js', 'chat.css', 'terminal.js', 'terminal.css']) {
+for (const file of ["chat.js", "chat.css", "terminal.js", "terminal.css"]) {
   if (!fs.existsSync(path.join(webviewDist, file))) {
-    console.error(`[syncWebview] Missing ${file} in ${webviewDist}. Run \`pnpm -F wave-webview build\` first.`);
+    console.error(
+      `[syncWebview] Missing ${file} in ${webviewDist}. Run \`pnpm -F wave-webview build\` first.`,
+    );
     process.exit(1);
   }
 }
-for (const file of ['theme-base-dark.css', 'theme-base-light.css']) {
+for (const file of ["theme-base-dark.css", "theme-base-light.css"]) {
   if (!fs.existsSync(path.join(themeDir, file))) {
     console.error(`[syncWebview] Missing ${file} in ${themeDir}.`);
     process.exit(1);
@@ -45,25 +47,34 @@ for (const file of ['theme-base-dark.css', 'theme-base-light.css']) {
 
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
-fs.copyFileSync(path.join(webviewDist, 'chat.js'), path.join(outDir, 'chat.js'));
+fs.copyFileSync(
+  path.join(webviewDist, "chat.js"),
+  path.join(outDir, "chat.js"),
+);
 // Desktop-only terminal chunk — lazy-injected by TerminalPane via a same-origin
 // <script> tag (CSP script-src 'self' allows it); its CSS is inlined up front.
-fs.copyFileSync(path.join(webviewDist, 'terminal.js'), path.join(outDir, 'terminal.js'));
+fs.copyFileSync(
+  path.join(webviewDist, "terminal.js"),
+  path.join(outDir, "terminal.js"),
+);
 
 // Rewrite each theme-base `:root { ... }` block to only apply when <html> carries
 // the matching `data-theme` attribute, so both sets can coexist in one <style>.
 const rewriteThemeBase = (css, theme) =>
   css.replace(/:root\s*\{/g, `:root[data-theme="${theme}"] {`);
 
-const chatCss = fs.readFileSync(path.join(webviewDist, 'chat.css'), 'utf-8');
-const terminalCss = fs.readFileSync(path.join(webviewDist, 'terminal.css'), 'utf-8');
+const chatCss = fs.readFileSync(path.join(webviewDist, "chat.css"), "utf-8");
+const terminalCss = fs.readFileSync(
+  path.join(webviewDist, "terminal.css"),
+  "utf-8",
+);
 const darkThemeCss = rewriteThemeBase(
-  fs.readFileSync(path.join(themeDir, 'theme-base-dark.css'), 'utf-8'),
-  'dark',
+  fs.readFileSync(path.join(themeDir, "theme-base-dark.css"), "utf-8"),
+  "dark",
 );
 const lightThemeCss = rewriteThemeBase(
-  fs.readFileSync(path.join(themeDir, 'theme-base-light.css'), 'utf-8'),
-  'light',
+  fs.readFileSync(path.join(themeDir, "theme-base-light.css"), "utf-8"),
+  "light",
 );
 const html = `<!DOCTYPE html>
 <html lang="zh-CN" data-theme="dark">
@@ -85,5 +96,5 @@ ${terminalCss}
 </body>
 </html>
 `;
-fs.writeFileSync(path.join(outDir, 'index.html'), html, 'utf-8');
-console.log('[syncWebview] webview synced to', outDir);
+fs.writeFileSync(path.join(outDir, "index.html"), html, "utf-8");
+console.log("[syncWebview] webview synced to", outDir);

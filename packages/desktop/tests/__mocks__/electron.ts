@@ -1,8 +1,8 @@
-import { vi } from 'vitest';
+import { vi } from "vitest";
 
 export const app = {
-  getPath: vi.fn(() => '/tmp/wave-desktop-test-userData'),
-  getVersion: vi.fn(() => '0.19.7'),
+  getPath: vi.fn(() => "/tmp/wave-desktop-test-userData"),
+  getVersion: vi.fn(() => "0.19.7"),
   requestSingleInstanceLock: vi.fn(() => true),
   on: vi.fn(),
   whenReady: vi.fn(() => Promise.resolve()),
@@ -10,14 +10,20 @@ export const app = {
 };
 
 export const dialog = {
-  showOpenDialog: vi.fn(async () => ({ canceled: true, filePaths: [] as string[] })),
-  showSaveDialog: vi.fn(async () => ({ canceled: true, filePath: undefined as string | undefined })),
+  showOpenDialog: vi.fn(async () => ({
+    canceled: true,
+    filePaths: [] as string[],
+  })),
+  showSaveDialog: vi.fn(async () => ({
+    canceled: true,
+    filePath: undefined as string | undefined,
+  })),
   showMessageBox: vi.fn(async () => ({ response: 0 })),
 };
 
 export const shell = {
   openExternal: vi.fn(async () => undefined),
-  openPath: vi.fn(async () => ''),
+  openPath: vi.fn(async () => ""),
 };
 
 export const ipcMain = {
@@ -63,10 +69,10 @@ export class BrowserWindow {
 const powerMonitorResumeListeners: Array<() => void> = [];
 export const powerMonitor = {
   on: vi.fn((event: string, cb: () => void) => {
-    if (event === 'resume') powerMonitorResumeListeners.push(cb);
+    if (event === "resume") powerMonitorResumeListeners.push(cb);
   }),
   off: vi.fn((event: string, cb: () => void) => {
-    if (event === 'resume') {
+    if (event === "resume") {
       const i = powerMonitorResumeListeners.indexOf(cb);
       if (i >= 0) powerMonitorResumeListeners.splice(i, 1);
     }
@@ -85,21 +91,21 @@ export const powerMonitor = {
 // nativeTheme mock: `shouldUseDarkColors` is derived from `themeSource` +
 // the OS appearance (systemDark), mirroring real Electron semantics so the
 // desktop host's nativeTheme listener can be unit-tested deterministically.
-type NativeThemeSetting = 'system' | 'light' | 'dark';
+type NativeThemeSetting = "system" | "light" | "dark";
 const nativeThemeListeners: Array<() => void> = [];
 let systemDark = false;
 export const nativeTheme = {
-  themeSource: 'system' as NativeThemeSetting,
+  themeSource: "system" as NativeThemeSetting,
   get shouldUseDarkColors(): boolean {
-    if (this.themeSource === 'dark') return true;
-    if (this.themeSource === 'light') return false;
+    if (this.themeSource === "dark") return true;
+    if (this.themeSource === "light") return false;
     return systemDark;
   },
   on: vi.fn((event: string, cb: () => void) => {
-    if (event === 'updated') nativeThemeListeners.push(cb);
+    if (event === "updated") nativeThemeListeners.push(cb);
   }),
   off: vi.fn((event: string, cb: () => void) => {
-    if (event === 'updated') {
+    if (event === "updated") {
       const i = nativeThemeListeners.indexOf(cb);
       if (i >= 0) nativeThemeListeners.splice(i, 1);
     }
@@ -110,7 +116,7 @@ export const nativeTheme = {
     for (const cb of [...nativeThemeListeners]) cb();
   },
   __reset(): void {
-    this.themeSource = 'system';
+    this.themeSource = "system";
     systemDark = false;
     nativeThemeListeners.length = 0;
     vi.mocked(this.on).mockClear();

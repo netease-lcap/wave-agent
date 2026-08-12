@@ -9,9 +9,9 @@
  * for unexpected deaths / spawn failures.
  */
 
-import * as fs from 'fs';
-import * as os from 'os';
-import { buildSshSpawnArgs, LOCAL_HOST, shellQuote } from './sshHosts';
+import * as fs from "fs";
+import * as os from "os";
+import { buildSshSpawnArgs, LOCAL_HOST, shellQuote } from "./sshHosts";
 
 export interface TerminalExitInfo {
   exitCode?: number;
@@ -30,17 +30,23 @@ interface PtyModule {
   spawn(
     file: string,
     args: string[],
-    options: { name: string; cwd: string; cols: number; rows: number; env: Record<string, string> },
+    options: {
+      name: string;
+      cwd: string;
+      cols: number;
+      rows: number;
+      env: Record<string, string>;
+    },
   ): PtyProcess;
 }
 
 let ptyModule: PtyModule | null | undefined; // undefined = not attempted yet
-let ptyLoadError = '';
+let ptyLoadError = "";
 
 async function loadPty(): Promise<PtyModule | null> {
   if (ptyModule !== undefined) return ptyModule;
   try {
-    ptyModule = (await import('node-pty')) as unknown as PtyModule;
+    ptyModule = (await import("node-pty")) as unknown as PtyModule;
   } catch (err) {
     ptyLoadError = err instanceof Error ? err.message : String(err);
     ptyModule = null;
@@ -50,11 +56,12 @@ async function loadPty(): Promise<PtyModule | null> {
 
 /** User default shell: $SHELL, then /bin/zsh, then /bin/bash; PowerShell on Windows. */
 function defaultShell(): { file: string; args: string[] } {
-  if (process.platform === 'win32') return { file: 'powershell.exe', args: [] };
-  for (const candidate of [process.env.SHELL, '/bin/zsh', '/bin/bash']) {
-    if (candidate && fs.existsSync(candidate)) return { file: candidate, args: ['-l'] };
+  if (process.platform === "win32") return { file: "powershell.exe", args: [] };
+  for (const candidate of [process.env.SHELL, "/bin/zsh", "/bin/bash"]) {
+    if (candidate && fs.existsSync(candidate))
+      return { file: candidate, args: ["-l"] };
   }
-  return { file: '/bin/sh', args: ['-l'] };
+  return { file: "/bin/sh", args: ["-l"] };
 }
 
 /**
@@ -97,7 +104,14 @@ export class TerminalManager {
    * the remote cwd applied inside the ssh command.
    * Failures report via onExit.
    */
-  async create(termId: string, cwd: string, cols: number, rows: number, paneId?: string, host: string = LOCAL_HOST): Promise<void> {
+  async create(
+    termId: string,
+    cwd: string,
+    cols: number,
+    rows: number,
+    paneId?: string,
+    host: string = LOCAL_HOST,
+  ): Promise<void> {
     const existing = this.terminals.get(termId);
     if (existing) {
       try {
@@ -111,31 +125,48 @@ export class TerminalManager {
     }
     const pty = await loadPty();
     if (!pty) {
-      this.callbacks.onExit(termId, { error: `终端组件加载失败：${ptyLoadError}` });
+      this.callbacks.onExit(termId, {
+        error: `终端组件加载失败：${ptyLoadError}`,
+      });
       return;
     }
     const shell = defaultShell();
     const env = {
       ...(process.env as Record<string, string>),
-      TERM: 'xterm-256color',
-      COLORTERM: 'truecolor',
+      TERM: "xterm-256color",
+      COLORTERM: "truecolor",
     };
     try {
       const proc =
         host === LOCAL_HOST
-          ? pty.spawn(shell.file, shell.args, { name: 'xterm-256color', cwd, cols, rows, env })
+          ? pty.spawn(shell.file, shell.args, {
+              name: "xterm-256color",
+              cwd,
+              cols,
+              rows,
+              env,
+            })
           : // `-t` forces TTY allocation so the PTY's cols/rows and TERM reach
             // the remote shell. The ssh process itself runs locally — its cwd
             // is irrelevant (any existing directory works); the real working
             // directory is applied on the remote side by remoteShellCommand.
-            pty.spawn('ssh', ['-t', ...buildSshSpawnArgs(host, remoteShellCommand(cwd))], {
-              name: 'xterm-256color',
-              cwd: os.homedir(),
-              cols,
-              rows,
-              env,
-            });
-      const entry: TerminalEntry = { proc, paneId, disposables: [], buffer: '' };
+            pty.spawn(
+              "ssh",
+              ["-t", ...buildSshSpawnArgs(host, remoteShellCommand(cwd))],
+              {
+                name: "xterm-256color",
+                cwd: os.homedir(),
+                cols,
+                rows,
+                env,
+              },
+            );
+      const entry: TerminalEntry = {
+        proc,
+        paneId,
+        disposables: [],
+        buffer: "",
+      };
       entry.disposables.push(
         proc.onData((data) => {
           entry.buffer = (entry.buffer + data).slice(-BUFFER_CAP_BYTES);

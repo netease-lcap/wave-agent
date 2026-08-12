@@ -16,8 +16,8 @@ export interface ParsedVersion {
  */
 export function parseVersion(version: string): ParsedVersion | null {
   // Strip pre-release suffix for comparison
-  const core = version.replace(/^v?/, '').split('-')[0];
-  const parts = core.split('.').map(Number);
+  const core = version.replace(/^v?/, "").split("-")[0];
+  const parts = core.split(".").map(Number);
   if (parts.length !== 3 || parts.some((p) => Number.isNaN(p))) {
     return null;
   }

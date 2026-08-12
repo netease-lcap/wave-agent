@@ -1,7 +1,7 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { app } from 'electron';
-import { LOCAL_HOST } from './sshHosts';
+import * as fs from "fs";
+import * as path from "path";
+import { app } from "electron";
+import { LOCAL_HOST } from "./sshHosts";
 
 /**
  * App-level configuration persisted by the desktop host (the VSCE extension
@@ -62,30 +62,42 @@ export class ConfigStore {
   private data: StoreData;
 
   constructor(filePath?: string) {
-    this.filePath = filePath ?? path.join(app.getPath('userData'), 'wave-desktop.json');
+    this.filePath =
+      filePath ?? path.join(app.getPath("userData"), "wave-desktop.json");
     this.data = this.load();
   }
 
   private load(): StoreData {
     try {
-      const raw = fs.readFileSync(this.filePath, 'utf-8');
+      const raw = fs.readFileSync(this.filePath, "utf-8");
       const parsed = JSON.parse(raw) as Partial<StoreData>;
       return {
         configuration: parsed.configuration ?? {},
         // Legacy plain-string entries (pre-remote) become local-host refs.
         recentWorkdirs: Array.isArray(parsed.recentWorkdirs)
-          ? parsed.recentWorkdirs.map(normalizeWorkdirRef).filter((d): d is WorkdirRef => d !== null)
+          ? parsed.recentWorkdirs
+              .map(normalizeWorkdirRef)
+              .filter((d): d is WorkdirRef => d !== null)
           : [],
         sessions: Array.isArray(parsed.sessions)
           ? parsed.sessions
               .filter(
                 (s): s is SessionIndexEntry =>
-                  typeof s === 'object' && s !== null && typeof s.sessionId === 'string',
+                  typeof s === "object" &&
+                  s !== null &&
+                  typeof s.sessionId === "string",
               )
               // Entries persisted before createdAt existed fall back to their
               // last activity time, preserving the previously visible order.
               // Pre-remote entries carry no host — they were all local.
-              .map((s) => ({ ...s, host: s.host ?? LOCAL_HOST, createdAt: typeof s.createdAt === 'number' ? s.createdAt : s.lastActiveAt }))
+              .map((s) => ({
+                ...s,
+                host: s.host ?? LOCAL_HOST,
+                createdAt:
+                  typeof s.createdAt === "number"
+                    ? s.createdAt
+                    : s.lastActiveAt,
+              }))
           : [],
       };
     } catch {
@@ -98,10 +110,10 @@ export class ConfigStore {
     try {
       fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
       const tmp = `${this.filePath}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2), 'utf-8');
+      fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2), "utf-8");
       fs.renameSync(tmp, this.filePath);
     } catch (err) {
-      console.error('[Wave Desktop] Failed to persist config:', err);
+      console.error("[Wave Desktop] Failed to persist config:", err);
     }
   }
 
@@ -112,7 +124,7 @@ export class ConfigStore {
     // sends an undefined language, so the system prompt never injects the
     // `# Language` directive and the model replies in its own default.
     const config = { ...this.data.configuration };
-    if (!config.language) config.language = 'Chinese';
+    if (!config.language) config.language = "Chinese";
     return config;
   }
 
@@ -139,11 +151,13 @@ export class ConfigStore {
   addRecentWorkdir(ref: WorkdirRef): void {
     const key = (d: string | WorkdirRef): string => {
       const w = normalizeWorkdirRef(d);
-      return w ? `${w.host}\u0000${w.path}` : '';
+      return w ? `${w.host}\u0000${w.path}` : "";
     };
     this.data.recentWorkdirs = [
       ref,
-      ...this.data.recentWorkdirs.filter((d) => key(d) !== `${ref.host}\u0000${ref.path}`),
+      ...this.data.recentWorkdirs.filter(
+        (d) => key(d) !== `${ref.host}\u0000${ref.path}`,
+      ),
     ].slice(0, MAX_RECENT_WORKDIRS);
     this.save();
   }
@@ -156,15 +170,19 @@ export class ConfigStore {
 
   /** Paths (MRU) for one host — the picker list shown while that host is selected. */
   getRecentWorkdirsForHost(host: string): string[] {
-    return this.getRecentWorkdirs().filter((d) => d.host === host).map((d) => d.path);
+    return this.getRecentWorkdirs()
+      .filter((d) => d.host === host)
+      .map((d) => d.path);
   }
 
   removeRecentWorkdir(ref: WorkdirRef): void {
     const key = (d: string | WorkdirRef): string => {
       const w = normalizeWorkdirRef(d);
-      return w ? `${w.host}\u0000${w.path}` : '';
+      return w ? `${w.host}\u0000${w.path}` : "";
     };
-    this.data.recentWorkdirs = this.data.recentWorkdirs.filter((d) => key(d) !== `${ref.host}\u0000${ref.path}`);
+    this.data.recentWorkdirs = this.data.recentWorkdirs.filter(
+      (d) => key(d) !== `${ref.host}\u0000${ref.path}`,
+    );
     this.save();
   }
 
@@ -178,7 +196,9 @@ export class ConfigStore {
   upsertSession(entry: SessionIndexEntry): void {
     // Defensive normalization: any entry without an explicit host is local.
     const normalized = { ...entry, host: entry.host ?? LOCAL_HOST };
-    const idx = this.data.sessions.findIndex((s) => s.sessionId === entry.sessionId);
+    const idx = this.data.sessions.findIndex(
+      (s) => s.sessionId === entry.sessionId,
+    );
     if (idx >= 0) {
       this.data.sessions[idx] = normalized;
     } else {
@@ -207,11 +227,18 @@ export class ConfigStore {
 }
 
 /** Accepts either disk form; returns null for malformed entries. */
-function normalizeWorkdirRef(value: string | WorkdirRef | undefined | null): WorkdirRef | null {
-  if (typeof value === 'string') {
+function normalizeWorkdirRef(
+  value: string | WorkdirRef | undefined | null,
+): WorkdirRef | null {
+  if (typeof value === "string") {
     return value ? { host: LOCAL_HOST, path: value } : null;
   }
-  if (typeof value === 'object' && value !== null && typeof value.host === 'string' && typeof value.path === 'string') {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    typeof value.host === "string" &&
+    typeof value.path === "string"
+  ) {
     return value;
   }
   return null;

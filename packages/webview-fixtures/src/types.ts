@@ -24,7 +24,7 @@ import type {
   SessionMetadata,
   SessionData,
   ToolBlockUpdateCallbackParams,
-} from 'wave-agent-sdk/types';
+} from "wave-agent-sdk/types";
 
 export type {
   Message,
@@ -40,7 +40,7 @@ export type {
 // ---- Webview-owned shapes (copied structurally — the fixtures package must
 // not depend on the webview package or a dependency cycle forms). ----
 
-export type EffectiveTheme = 'light' | 'dark';
+export type EffectiveTheme = "light" | "dark";
 
 /** Desktop host theme snapshot (effective only; desktop follows the OS). */
 export interface ThemeState {
@@ -48,7 +48,7 @@ export interface ThemeState {
 }
 
 /** Desktop conversation-level side panels. VSCE/JetBrains never render these. */
-export type DesktopPanelKind = 'preview' | 'diff' | 'terminal' | 'file';
+export type DesktopPanelKind = "preview" | "diff" | "terminal" | "file";
 
 /** State of the desktop file panel, pushed via `desktopFileContent`. */
 export interface FileViewState {
@@ -66,7 +66,7 @@ export interface FileViewState {
 
 export interface QueuedMessage {
   id?: string;
-  type?: 'message' | 'bang';
+  type?: "message" | "bang";
   content: string;
   images?: Array<{ path: string; mimeType: string }>;
   longTextMap?: Record<string, string>;
@@ -148,7 +148,7 @@ export interface GitBranchesResult {
 }
 
 /** Streaming delta types shared by content/reasoning updates. */
-export type StreamingStage = 'start' | 'streaming' | 'end';
+export type StreamingStage = "start" | "streaming" | "end";
 
 // ---- The contract union. Every case mirrors a `case` in ChatApp.tsx's
 // handleMessage switch (plus host-only commands consumed outside the switch:
@@ -161,74 +161,76 @@ export interface HostToWebviewMessageBase {
 }
 
 export interface UpdateMessagesMessage extends HostToWebviewMessageBase {
-  command: 'updateMessages';
+  command: "updateMessages";
   messages: Message[];
 }
 
 export interface UpdateTasksMessage extends HostToWebviewMessageBase {
-  command: 'updateTasks';
+  command: "updateTasks";
   tasks: Task[];
   isTaskListCollapsed?: boolean;
 }
 
 export interface UpdateBackgroundTasksMessage extends HostToWebviewMessageBase {
-  command: 'updateBackgroundTasks';
+  command: "updateBackgroundTasks";
   tasks: BackgroundTaskSummary[];
 }
 
 export interface UpdateWorkflowRunsMessage extends HostToWebviewMessageBase {
-  command: 'updateWorkflowRuns';
+  command: "updateWorkflowRuns";
   runs: SerializableWorkflowRun[];
 }
 
 export interface UpdateSelectionMessage extends HostToWebviewMessageBase {
-  command: 'updateSelection';
+  command: "updateSelection";
   selection: SelectionInfo;
 }
 
 export interface UpdatePermissionModeMessage extends HostToWebviewMessageBase {
-  command: 'updatePermissionMode';
+  command: "updatePermissionMode";
   mode: PermissionMode;
 }
 
 export interface UpdateWorkdirMessage extends HostToWebviewMessageBase {
-  command: 'updateWorkdir';
+  command: "updateWorkdir";
   workdir?: string;
 }
 
 export interface DesktopGitBranchesMessage extends HostToWebviewMessageBase {
-  command: 'desktopGitBranches';
+  command: "desktopGitBranches";
   result?: GitBranchesResult;
 }
 
-export interface DesktopForwardPortResultMessage extends HostToWebviewMessageBase {
-  command: 'desktopForwardPortResult';
+export interface DesktopForwardPortResultMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopForwardPortResult";
   requestId: string;
   error?: unknown;
   url?: string;
 }
 
 export interface DesktopFileContentMessage extends HostToWebviewMessageBase {
-  command: 'desktopFileContent';
+  command: "desktopFileContent";
   fileView: FileViewState;
 }
 
 export interface UpdateQueueMessage extends HostToWebviewMessageBase {
-  command: 'updateQueue';
+  command: "updateQueue";
   queue: QueuedMessage[];
 }
 
-export interface UpdateQueuedMessageMissingMessage extends HostToWebviewMessageBase {
-  command: 'updateQueuedMessageMissing';
+export interface UpdateQueuedMessageMissingMessage
+  extends HostToWebviewMessageBase {
+  command: "updateQueuedMessageMissing";
 }
 
 export interface UpdateCommandRunningMessage extends HostToWebviewMessageBase {
-  command: 'updateCommandRunning';
+  command: "updateCommandRunning";
   running: boolean;
 }
 
 export interface RewindCheckpointsMessage extends HostToWebviewMessageBase {
-  command: 'rewindCheckpoints';
+  command: "rewindCheckpoints";
   checkpoints?: Array<{
     messageId: string;
     time: string;
@@ -239,48 +241,48 @@ export interface RewindCheckpointsMessage extends HostToWebviewMessageBase {
 }
 
 export interface BtwStreamMessage extends HostToWebviewMessageBase {
-  command: 'btwStream';
+  command: "btwStream";
   question: string;
   type?: string;
   content?: string;
 }
 
 export interface BtwResponseMessage extends HostToWebviewMessageBase {
-  command: 'btwResponse';
+  command: "btwResponse";
   question: string;
   answer?: string;
 }
 
 export interface BtwErrorMessage extends HostToWebviewMessageBase {
-  command: 'btwError';
+  command: "btwError";
   question: string;
   error?: unknown;
 }
 
 export interface StartStreamingMessage extends HostToWebviewMessageBase {
-  command: 'startStreaming';
+  command: "startStreaming";
 }
 
 export interface EndStreamingMessage extends HostToWebviewMessageBase {
-  command: 'endStreaming';
+  command: "endStreaming";
 }
 
 export interface EnsureUIResetMessage extends HostToWebviewMessageBase {
-  command: 'ensureUIReset';
+  command: "ensureUIReset";
 }
 
 export interface UpdateSessionsMessage extends HostToWebviewMessageBase {
-  command: 'updateSessions';
+  command: "updateSessions";
   sessions: SessionMetadata[];
 }
 
 export interface UpdateCurrentSessionMessage extends HostToWebviewMessageBase {
-  command: 'updateCurrentSession';
+  command: "updateCurrentSession";
   session?: SessionMetadata;
 }
 
 export interface ShowConfirmationMessage extends HostToWebviewMessageBase {
-  command: 'showConfirmation';
+  command: "showConfirmation";
   confirmationId: string;
   toolName: string;
   confirmationType: string;
@@ -291,17 +293,17 @@ export interface ShowConfirmationMessage extends HostToWebviewMessageBase {
 }
 
 export interface ConfigurationResponseMessage extends HostToWebviewMessageBase {
-  command: 'configurationResponse';
+  command: "configurationResponse";
   configurationData: ConfigurationData;
 }
 
 export interface ProjectSettingsMessage extends HostToWebviewMessageBase {
-  command: 'projectSettings';
+  command: "projectSettings";
   enabledPlugins: Record<string, boolean>;
 }
 
 export interface SetInitialStateMessage extends HostToWebviewMessageBase {
-  command: 'setInitialState';
+  command: "setInitialState";
   messages: Message[];
   tasks: Task[];
   backgroundTasks: BackgroundTaskSummary[];
@@ -328,14 +330,14 @@ export interface SetInitialStateMessage extends HostToWebviewMessageBase {
 }
 
 export interface DesktopThemeChangeMessage extends HostToWebviewMessageBase {
-  command: 'desktopThemeChange';
+  command: "desktopThemeChange";
   effective: EffectiveTheme;
 }
 
 /** Action a toast's button triggers when clicked (host-side semantics). */
 export type ToastAction =
-  | { type: 'quitAndInstall' }
-  | { type: 'openDownloadPage'; url: string };
+  | { type: "quitAndInstall" }
+  | { type: "openDownloadPage"; url: string };
 
 /** A non-modal in-app toast (VS Code-style, bottom-right). Desktop host only. */
 export interface UpdateToast {
@@ -346,133 +348,135 @@ export interface UpdateToast {
 }
 
 export interface ShowToastMessage extends HostToWebviewMessageBase {
-  command: 'showToast';
+  command: "showToast";
   toast: UpdateToast;
 }
 
 export interface DesktopTogglePanelMessage extends HostToWebviewMessageBase {
-  command: 'desktopTogglePanel';
+  command: "desktopTogglePanel";
   kind: DesktopPanelKind;
 }
 
 export interface ShowConfigurationMessage extends HostToWebviewMessageBase {
-  command: 'showConfiguration';
+  command: "showConfiguration";
   configurationData?: ConfigurationData;
   error?: unknown;
 }
 
 export interface ShowDialogMessage extends HostToWebviewMessageBase {
-  command: 'showDialog';
+  command: "showDialog";
   dialogType: string;
 }
 
 export interface ConfigurationUpdatedMessage extends HostToWebviewMessageBase {
-  command: 'configurationUpdated';
+  command: "configurationUpdated";
 }
 
 export interface StatusResponseMessage extends HostToWebviewMessageBase {
-  command: 'statusResponse';
+  command: "statusResponse";
   configurationData?: ConfigurationData;
 }
 
 export interface ConfigurationErrorMessage extends HostToWebviewMessageBase {
-  command: 'configurationError';
+  command: "configurationError";
   error: unknown;
 }
 
 export interface FocusInputMessage extends HostToWebviewMessageBase {
-  command: 'focusInput';
+  command: "focusInput";
 }
 
 export interface TriggerShortcutMessage extends HostToWebviewMessageBase {
-  command: 'triggerShortcut';
+  command: "triggerShortcut";
   name: string;
 }
 
 export interface ScrollToBottomMessage extends HostToWebviewMessageBase {
-  command: 'scrollToBottom';
+  command: "scrollToBottom";
 }
 
 export interface AppendMessageMessage extends HostToWebviewMessageBase {
-  command: 'appendMessage';
+  command: "appendMessage";
   message: Message;
 }
 
 export interface BangMessageAddedMessage extends HostToWebviewMessageBase {
-  command: 'bangMessageAdded';
+  command: "bangMessageAdded";
   params: Record<string, unknown>;
 }
 
 export interface BangMessageUpdatedMessage extends HostToWebviewMessageBase {
-  command: 'bangMessageUpdated';
+  command: "bangMessageUpdated";
   params: Record<string, unknown>;
 }
 
 export interface BangMessageCompletedMessage extends HostToWebviewMessageBase {
-  command: 'bangMessageCompleted';
+  command: "bangMessageCompleted";
   params: Record<string, unknown>;
 }
 
 export interface CompactionStateChangeMessage extends HostToWebviewMessageBase {
-  command: 'compactionStateChange';
+  command: "compactionStateChange";
   isCompacting: boolean;
 }
 
-export interface UpdateStreamingContentMessage extends HostToWebviewMessageBase {
-  command: 'updateStreamingContent';
+export interface UpdateStreamingContentMessage
+  extends HostToWebviewMessageBase {
+  command: "updateStreamingContent";
   messageId: string;
   chunk: string;
   stage?: StreamingStage;
 }
 
-export interface UpdateStreamingReasoningMessage extends HostToWebviewMessageBase {
-  command: 'updateStreamingReasoning';
+export interface UpdateStreamingReasoningMessage
+  extends HostToWebviewMessageBase {
+  command: "updateStreamingReasoning";
   messageId: string;
   chunk: string;
-  stage?: 'end' | 'streaming';
+  stage?: "end" | "streaming";
 }
 
 export interface UpdateToolBlockMessage extends HostToWebviewMessageBase {
-  command: 'updateToolBlock';
+  command: "updateToolBlock";
   params: ToolBlockUpdateCallbackParams;
 }
 
 export interface UpdateErrorBlockMessage extends HostToWebviewMessageBase {
-  command: 'updateErrorBlock';
+  command: "updateErrorBlock";
   error: unknown;
 }
 
 export interface AuthStatusResponseMessage extends HostToWebviewMessageBase {
-  command: 'authStatusResponse';
+  command: "authStatusResponse";
   isAuthenticated: boolean;
 }
 
 export interface LoginResponseMessage extends HostToWebviewMessageBase {
-  command: 'loginResponse';
+  command: "loginResponse";
   success: boolean;
 }
 
 export interface LogoutResponseMessage extends HostToWebviewMessageBase {
-  command: 'logoutResponse';
+  command: "logoutResponse";
   success: boolean;
 }
 
 // ---- Host-only commands (consumed outside the ChatApp switch). ----
 
 export interface DesktopPanesMessage extends HostToWebviewMessageBase {
-  command: 'desktopPanes';
+  command: "desktopPanes";
   panes: DesktopPaneInfo[];
   rowHeights?: [number, number];
   focusedPaneId?: string;
 }
 
 export interface DesktopSessionTreeMessage extends HostToWebviewMessageBase {
-  command: 'desktopSessionTree';
+  command: "desktopSessionTree";
   groups: DesktopSessionGroup[];
 }
 
 export interface DesktopWorkdirStateMessage extends HostToWebviewMessageBase {
-  command: 'desktopWorkdirState';
+  command: "desktopWorkdirState";
   workdir?: string;
   host: string;
   hosts: string[];
@@ -480,57 +484,58 @@ export interface DesktopWorkdirStateMessage extends HostToWebviewMessageBase {
 }
 
 export interface McpServersResponseMessage extends HostToWebviewMessageBase {
-  command: 'mcpServersResponse';
+  command: "mcpServersResponse";
   servers: unknown[];
 }
 
-export interface SubagentConfigurationsResponseMessage extends HostToWebviewMessageBase {
-  command: 'subagentConfigurationsResponse';
+export interface SubagentConfigurationsResponseMessage
+  extends HostToWebviewMessageBase {
+  command: "subagentConfigurationsResponse";
   configurations: unknown[];
 }
 
 export interface HistoryResponseMessage extends HostToWebviewMessageBase {
-  command: 'historyResponse';
+  command: "historyResponse";
   history: SessionMetadata[];
 }
 
 // ---- MessageInput-owned replies (consumed outside the ChatApp switch). ----
 
 export interface FileSuggestionsMessage extends HostToWebviewMessageBase {
-  command: 'fileSuggestions';
+  command: "fileSuggestions";
   requestId: string;
   suggestions: unknown[];
 }
 
 export interface FileSuggestionsErrorMessage extends HostToWebviewMessageBase {
-  command: 'fileSuggestionsError';
+  command: "fileSuggestionsError";
   requestId: string;
   error: unknown;
 }
 
 export interface SlashCommandsResponseMessage extends HostToWebviewMessageBase {
-  command: 'slashCommandsResponse';
+  command: "slashCommandsResponse";
   commands: Array<{ id: string; name: string; description?: string }>;
 }
 
 export interface SlashCommandsErrorMessage extends HostToWebviewMessageBase {
-  command: 'slashCommandsError';
+  command: "slashCommandsError";
   error: unknown;
 }
 
 export interface UploadSuccessMessage extends HostToWebviewMessageBase {
-  command: 'uploadSuccess';
+  command: "uploadSuccess";
   uploadedFiles: string[];
 }
 
 export interface UploadErrorMessage extends HostToWebviewMessageBase {
-  command: 'uploadError';
+  command: "uploadError";
   error: unknown;
 }
 
 /** Remote directory listing reply for the desktop workdir browser. */
 export interface DesktopRemoteDirListMessage extends HostToWebviewMessageBase {
-  command: 'desktopRemoteDirList';
+  command: "desktopRemoteDirList";
   requestId: string;
   resolvedPath?: string;
   dirs?: string[];
