@@ -69,6 +69,22 @@ function findTextOffset(
   return null;
 }
 
+// Map a {node, offset} position inside `container` back to a flat character
+// offset in the container's text — the inverse of findTextOffset. Used to
+// remember the caret across blur so async insertions (upload success,
+// selection tag) can restore the position the browser lost on focus().
+function textOffsetOf(container: Node, node: Node, offset: number): number {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let acc = 0;
+  let textNode = walker.nextNode() as Text | null;
+  while (textNode) {
+    if (textNode === node) return acc + offset;
+    acc += textNode.textContent?.length ?? 0;
+    textNode = walker.nextNode() as Text | null;
+  }
+  return acc;
+}
+
 // Permission mode options rendered in the custom dropdown. A custom dropdown is used
 // instead of a native <select> so the option list can be forced to expand upward
 // (bottom:100%): the native <select> popup expands downward by default and gets
@@ -581,25 +597,74 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       [vscode],
     );
 
+    // Remembers the caret position when the input loses focus. The browser
+    // resets the caret to the start when focus() is called from an async
+    // insertion (e.g. upload success), so those paths restore the pre-blur
+    // position instead of inserting at the wrong spot.
+    const lastCaretOffsetRef = useRef<number | null>(null);
+
+    const handleInputBlur = useCallback(() => {
+      const selection = window.getSelection();
+      if (
+        selection &&
+        selection.rangeCount > 0 &&
+        textareaRef.current?.contains(selection.getRangeAt(0).startContainer)
+      ) {
+        const range = selection.getRangeAt(0);
+        if (range.startContainer.nodeType === Node.TEXT_NODE) {
+          lastCaretOffsetRef.current = textOffsetOf(
+            textareaRef.current,
+            range.startContainer,
+            range.startOffset,
+          );
+        }
+      }
+    }, []);
+
+    // The insertion point for async tag insertions: the pre-blur caret
+    // snapshot first, then the live selection when the input never lost focus,
+    // else null (caller falls back to the end of the input).
+    const resolveInsertionPoint = useCallback((): {
+      node: Node;
+      offset: number;
+    } | null => {
+      const input = textareaRef.current;
+      if (!input) return null;
+
+      if (lastCaretOffsetRef.current !== null) {
+        return findTextOffset(input, lastCaretOffsetRef.current);
+      }
+
+      const selection = window.getSelection();
+      if (
+        selection &&
+        selection.rangeCount > 0 &&
+        input.contains(selection.getRangeAt(0).startContainer)
+      ) {
+        const range = selection.getRangeAt(0);
+        return { node: range.startContainer, offset: range.startOffset };
+      }
+      return null;
+    }, []);
+
     // Handle inserting uploaded file paths into the input
     const insertUploadedFilePaths = useCallback(
       (uploadedFiles: string[]) => {
         if (!textareaRef.current || uploadedFiles.length === 0) return;
 
-        // Focus the input first to ensure we can work with selection
+        // Focus the input first; the browser resets the caret to the start, so
+        // the insertion point must come from the pre-blur snapshot (or the
+        // live selection when the input never lost focus).
         textareaRef.current.focus();
 
-        const selection = window.getSelection();
-        if (!selection) return;
-
-        // Insert at the current cursor position; fall back to the end of the input
-        // if there is no active range inside the editor.
+        // Insert at the saved/pre-blur caret position; fall back to the end of
+        // the input when no reliable position exists.
         let range: Range;
-        if (
-          selection.rangeCount > 0 &&
-          textareaRef.current.contains(selection.getRangeAt(0).startContainer)
-        ) {
-          range = selection.getRangeAt(0);
+        const insertPoint = resolveInsertionPoint();
+        if (insertPoint) {
+          range = document.createRange();
+          range.setStart(insertPoint.node, insertPoint.offset);
+          range.collapse(true);
         } else {
           range = document.createRange();
           range.selectNodeContents(textareaRef.current);
@@ -633,8 +698,8 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
         });
 
         range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
+        window.getSelection()?.removeAllRanges();
+        window.getSelection()?.addRange(range);
 
         // Trigger input event to update message state
         const inputEvent = new Event("input", { bubbles: true });
@@ -642,7 +707,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
 
         closeDropdown();
       },
-      [closeDropdown],
+      [closeDropdown, resolveInsertionPoint],
     );
 
     // Handle inserting selection tags into the input
@@ -656,13 +721,17 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       }) => {
         if (!textareaRef.current || !selection || selection.isEmpty) return;
 
-        // Focus the input first to ensure we can work with selection
+        // Focus the input first; the browser resets the caret to the start, so
+        // the insertion point must come from the pre-blur snapshot (or the
+        // live selection when the input never lost focus).
         textareaRef.current.focus();
 
-        const windowSelection = window.getSelection();
-        if (!windowSelection || windowSelection.rangeCount === 0) return;
+        const insertPoint = resolveInsertionPoint();
+        if (!insertPoint) return;
 
-        const range = windowSelection.getRangeAt(0);
+        const range = document.createRange();
+        range.setStart(insertPoint.node, insertPoint.offset);
+        range.setEnd(insertPoint.node, insertPoint.offset);
 
         const fileName =
           selection.fileName.split(/[/\\]/).pop() || selection.fileName;
@@ -704,14 +773,14 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
         range.setStartAfter(space);
 
         range.collapse(true);
-        windowSelection.removeAllRanges();
-        windowSelection.addRange(range);
+        window.getSelection()?.removeAllRanges();
+        window.getSelection()?.addRange(range);
 
         // Trigger input event to update message state
         const inputEvent = new Event("input", { bubbles: true });
         textareaRef.current?.dispatchEvent(inputEvent);
       },
-      [vscode],
+      [vscode, resolveInsertionPoint],
     );
 
     // Listen for file suggestions response from extension
@@ -873,18 +942,10 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
     const handleFileSelect = useCallback(
       (file: FileItem) => {
         if (!textareaRef.current) return;
-
-        const selection = window.getSelection();
-        if (!selection || selection.rangeCount === 0) return;
-
-        const range = selection.getRangeAt(0);
-
-        // Find the @ mention text node and replace it
-        // This is a simplified implementation. In a real app, you'd want to be more precise.
-        // For now, we'll just insert the tag at the current cursor position and remove the @mention text.
-
-        // Remove the @mention text (from atMention.startPos to atMention.endPos)
-        // Since we are in contenteditable, we need to find the text node.
+        if (!atMention.isActive) {
+          closeDropdown();
+          return;
+        }
 
         // Create the tag element
         const tagSpan = document.createElement("span");
@@ -924,40 +985,84 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
           />,
         );
 
-        // Find the '@' and the filter text to delete it.
-        const textNode = range.startContainer;
-        if (textNode.nodeType === Node.TEXT_NODE) {
-          const text = textNode.textContent || "";
-          const lastAtIndex = text.lastIndexOf("@", range.startOffset - 1);
+        // Locate the '@' + filter text to replace. Prefer the live DOM selection
+        // when it still points into the input's text node (keyboard Enter): the
+        // atMention snapshot may be stale if the 200ms detection debounce has not
+        // fired yet, so it would only cover the '@'. Fall back to atMention when
+        // the selection sits on the popup item (mouse click), where the old
+        // text-node check silently no-op'd (same failure mode as the slash popup).
+        textareaRef.current.focus();
 
-          if (lastAtIndex !== -1) {
-            // Set range to cover the '@' and filter text
-            range.setStart(textNode, lastAtIndex);
-            range.deleteContents();
+        let start: { node: Text; offset: number } | null = null;
+        let end: { node: Text; offset: number } | null = null;
 
-            // Insert the tag
-            range.insertNode(tagSpan);
-
-            // Insert a space after the tag
-            const space = document.createTextNode(" ");
-            range.setStartAfter(tagSpan);
-            range.insertNode(space);
-
-            // Move cursor after the space
-            range.setStartAfter(space);
-            range.setEndAfter(space);
-            selection.removeAllRanges();
-            selection.addRange(range);
-
-            // Trigger input event to update message state
-            const inputEvent = new Event("input", { bubbles: true });
-            textareaRef.current?.dispatchEvent(inputEvent);
+        const selection = window.getSelection();
+        if (
+          selection &&
+          selection.rangeCount > 0 &&
+          textareaRef.current.contains(selection.getRangeAt(0).startContainer)
+        ) {
+          const selRange = selection.getRangeAt(0);
+          if (selRange.startContainer.nodeType === Node.TEXT_NODE) {
+            const text = selRange.startContainer.textContent || "";
+            const lastAtIndex = text.lastIndexOf(
+              "@",
+              selRange.startOffset - 1,
+            );
+            // A zero-length range (caret at the very start, e.g. after focus()
+            // reset it) would delete nothing and insert the tag *before* the
+            // '@' — reject it and fall back to the atMention snapshot instead.
+            if (lastAtIndex !== -1 && selRange.startOffset > lastAtIndex) {
+              start = {
+                node: selRange.startContainer as Text,
+                offset: lastAtIndex,
+              };
+              end = {
+                node: selRange.startContainer as Text,
+                offset: selRange.startOffset,
+              };
+            }
           }
+        }
+
+        if (!start || !end) {
+          if (!atMention.isActive) {
+            closeDropdown();
+            return;
+          }
+          start = findTextOffset(textareaRef.current, atMention.startPos);
+          end = findTextOffset(textareaRef.current, atMention.endPos);
+        }
+
+        if (start && end) {
+          const range = document.createRange();
+          range.setStart(start.node, start.offset);
+          range.setEnd(end.node, end.offset);
+          range.deleteContents();
+
+          // Insert the tag
+          range.insertNode(tagSpan);
+
+          // Insert a space after the tag
+          const space = document.createTextNode(" ");
+          range.setStartAfter(tagSpan);
+          range.insertNode(space);
+
+          // Move cursor after the space
+          range.setStartAfter(space);
+          range.setEndAfter(space);
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+
+          // Trigger input event to update message state
+          const inputEvent = new Event("input", { bubbles: true });
+          textareaRef.current?.dispatchEvent(inputEvent);
         }
 
         closeDropdown();
       },
-      [closeDropdown, vscode],
+      [closeDropdown, vscode, atMention],
     );
 
     // Handle 指令 selection
@@ -1542,6 +1647,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
               onKeyDown={handleKeyDown}
               onSelect={handleSelectionChange}
               onClick={handleSelectionChange}
+              onBlur={handleInputBlur}
               onCompositionStart={handleCompositionStart}
               onCompositionEnd={handleCompositionEnd}
               data-testid="message-input"
