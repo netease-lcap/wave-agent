@@ -150,6 +150,12 @@ export class InitializationService {
       const configResult =
         await configurationService.loadMergedConfiguration(workdir);
 
+      // Rebuild subagent configurations now that settings.json env is loaded
+      // into the snapshot: conditional builtin subagents (model: visionModel
+      // → WAVE_VISION_MODEL) can only register once the env is available.
+      // Plugin agents are preserved by refreshConfigurations.
+      await subagentManager.refreshConfigurations();
+
       hookManager.loadConfigurationFromWaveConfig(configResult.configuration);
 
       // Update plugin manager with enabled plugins configuration
