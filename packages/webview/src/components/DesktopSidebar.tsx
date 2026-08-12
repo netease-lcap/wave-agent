@@ -82,6 +82,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   // Session awaiting delete confirmation; non-null shows the ConfirmDialog.
   const [pendingDelete, setPendingDelete] = useState<{ sessionId: string; title: string; description?: string } | null>(null);
+  // Modifier key label for the side-by-side hints, same platform branch as the
+  // click handlers below (Cmd on macOS / Ctrl elsewhere).
+  const modKeyLabel = isMacPlatform() ? 'Cmd' : 'Ctrl';
 
   const isExpanded = (group: DesktopSessionGroup): boolean =>
     overrides[groupKey(group)] ?? true;
@@ -130,16 +133,29 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         }}
         data-testid={`desktop-session-item-${session.sessionId}`}
       >
-        {running || waiting ? (
-          <i
-            className={`codicon codicon-${waiting ? 'bell' : 'loading codicon-modifier-spin'} desktop-session-status-icon`}
-            style={{ color: waiting ? 'var(--vscode-charts-purple, #b180d7)' : 'var(--vscode-charts-blue, #59a4f9)' }}
-            title={waiting ? '等待确认' : '正在运行'}
-          />
-        ) : (
-          <span className="desktop-session-dot" aria-hidden="true" />
-        )}
-        <span className="desktop-session-title">{session.title || '新对话'}</span>
+        {/*
+          The tooltip wraps the row content only (dot + title) — the delete
+          button stays a sibling so it keeps its own hover affordance, and the
+          li remains the ul's direct child (no span-wrapped li, invalid DOM).
+        */}
+        <Tooltip
+          text={`可拖拽或 ${modKeyLabel}+点击 并排打开`}
+          position="right"
+          className="desktop-session-item-tooltip"
+        >
+          <div className="desktop-session-item-main">
+            {running || waiting ? (
+              <i
+                className={`codicon codicon-${waiting ? 'bell' : 'loading codicon-modifier-spin'} desktop-session-status-icon`}
+                style={{ color: waiting ? 'var(--vscode-charts-purple, #b180d7)' : 'var(--vscode-charts-blue, #59a4f9)' }}
+                title={waiting ? '等待确认' : '正在运行'}
+              />
+            ) : (
+              <span className="desktop-session-dot" aria-hidden="true" />
+            )}
+            <span className="desktop-session-title">{session.title || '新对话'}</span>
+          </div>
+        </Tooltip>
         <button
           className="desktop-session-delete"
           title="删除会话"
@@ -192,26 +208,31 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           onClose={() => setShowMoreMenu(false)}
         />
       )}
-      <button
-        className="desktop-sidebar-new-chat"
-        onClick={(e) => {
-          // Cmd on macOS / Ctrl elsewhere opens the new session side-by-side
-          // in a fresh pane; a plain click keeps the replace-focused-pane
-          // behavior (same branching as session items above).
-          if (isMacPlatform() ? e.metaKey : e.ctrlKey) {
-            onNewSessionInPane();
-          } else {
-            onNewSession();
-          }
-        }}
-        // 新对话在会话运行（streaming）期间也可用 — 多会话并行，旧会话在后台继续生成（FR-031）。
-        disabled={disabled}
-        title={isMacPlatform() ? '新对话（Cmd+Click 并排打开）' : '新对话（Ctrl+Click 并排打开）'}
-        data-testid="desktop-new-session"
+      <Tooltip
+        text={isMacPlatform() ? '新对话（Cmd+Click 并排打开）' : '新对话（Ctrl+Click 并排打开）'}
+        position="right"
+        className="desktop-sidebar-new-chat-tooltip"
       >
-        <span className="codicon codicon-add"></span>
-        <span>新对话</span>
-      </button>
+        <button
+          className="desktop-sidebar-new-chat"
+          onClick={(e) => {
+            // Cmd on macOS / Ctrl elsewhere opens the new session side-by-side
+            // in a fresh pane; a plain click keeps the replace-focused-pane
+            // behavior (same branching as session items above).
+            if (isMacPlatform() ? e.metaKey : e.ctrlKey) {
+              onNewSessionInPane();
+            } else {
+              onNewSession();
+            }
+          }}
+          // 新对话在会话运行（streaming）期间也可用 — 多会话并行，旧会话在后台继续生成（FR-031）。
+          disabled={disabled}
+          data-testid="desktop-new-session"
+        >
+          <span className="codicon codicon-add"></span>
+          <span>新对话</span>
+        </button>
+      </Tooltip>
       <div className="desktop-session-tree" data-testid="desktop-session-tree">
         {sessionTree.map((group) => {
           const expanded = isExpanded(group);
