@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, RefObject } from "react";
 import { Tooltip } from "./Tooltip";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { MoreIcon } from "./HeaderIcons";
@@ -92,6 +92,23 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   // click handlers below (Cmd on macOS / Ctrl elsewhere).
   const modKeyLabel = isMacPlatform() ? "Cmd" : "Ctrl";
 
+  // Tooltip anchors live on the hover-highlight containers themselves (li for
+  // session rows, the button for 新对话), so both hints start at the row's
+  // visual right edge. Per-session ref objects are created lazily and reused
+  // across renders — a fresh object per render would re-attach the refs.
+  const sessionAnchorsRef = useRef(
+    new Map<string, RefObject<HTMLLIElement>>(),
+  );
+  const getAnchorRef = (sessionId: string) => {
+    let anchor = sessionAnchorsRef.current.get(sessionId);
+    if (!anchor) {
+      anchor = { current: null };
+      sessionAnchorsRef.current.set(sessionId, anchor);
+    }
+    return anchor;
+  };
+  const newChatAnchorRef = useRef<HTMLButtonElement | null>(null);
+
   const isExpanded = (group: DesktopSessionGroup): boolean =>
     overrides[groupKey(group)] ?? true;
 
@@ -150,16 +167,20 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           }
         }}
         data-testid={`desktop-session-item-${session.sessionId}`}
+        ref={getAnchorRef(session.sessionId)}
       >
         {/*
-          The tooltip wraps the row content only (dot + title) — the delete
-          button stays a sibling so it keeps its own hover affordance, and the
-          li remains the ul's direct child (no span-wrapped li, invalid DOM).
+          Tooltip anchor = the li's hover-highlight container (via anchorRef),
+          so the hint starts at the row's right edge (position="right", offset
+          8px). The wrapper span only carries the row content + hover events.
+          The delete button stays a sibling so hovering it shows its own
+          "删除会话" title instead of the drag hint.
         */}
         <Tooltip
           text={`可拖拽或 ${modKeyLabel}+点击 并排打开`}
           position="right"
           className="desktop-session-item-tooltip"
+          anchorRef={getAnchorRef(session.sessionId)}
         >
           <div className="desktop-session-item-main">
             {running || waiting ? (
@@ -240,8 +261,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         }
         position="right"
         className="desktop-sidebar-new-chat-tooltip"
+        anchorRef={newChatAnchorRef}
       >
         <button
+          ref={newChatAnchorRef}
           className="desktop-sidebar-new-chat"
           onClick={(e) => {
             // Cmd on macOS / Ctrl elsewhere opens the new session side-by-side
@@ -310,6 +333,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           description={pendingDelete.description}
           onConfirm={() => {
             onDeleteSession(pendingDelete.sessionId);
+            sessionAnchorsRef.current.delete(pendingDelete.sessionId);
             setPendingDelete(null);
           }}
           onCancel={() => setPendingDelete(null)}

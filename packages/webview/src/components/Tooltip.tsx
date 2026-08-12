@@ -2,6 +2,7 @@ import React, {
   useState,
   useId,
   ReactElement,
+  RefObject,
   useRef,
   useCallback,
 } from "react";
@@ -22,6 +23,12 @@ interface TooltipProps {
   offset?: number;
   disabled?: boolean;
   className?: string;
+  /**
+   * Optional external anchor: the tooltip positions against this element
+   * instead of the wrapper span (e.g. a row's hover-highlight container, so
+   * the hint starts at the row's visual edge rather than the content's).
+   */
+  anchorRef?: RefObject<HTMLElement>;
 }
 
 export const Tooltip: React.FC<TooltipProps> = ({
@@ -31,6 +38,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
   offset = 8,
   disabled = false,
   className = "",
+  anchorRef,
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({});
@@ -39,9 +47,10 @@ export const Tooltip: React.FC<TooltipProps> = ({
   const tooltipRef = useRef<HTMLDivElement>(null);
 
   const calculatePosition = useCallback(() => {
-    if (!containerRef.current || !tooltipRef.current) return;
+    const anchor = anchorRef?.current ?? containerRef.current;
+    if (!anchor || !tooltipRef.current) return;
 
-    const containerRect = containerRef.current.getBoundingClientRect();
+    const containerRect = anchor.getBoundingClientRect();
     const tooltipRect = tooltipRef.current.getBoundingClientRect();
 
     let left = 0;
@@ -101,7 +110,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
     top = Math.min(Math.max(top, margin), maxTop);
 
     setTooltipStyle({ left, top });
-  }, [position, offset]);
+  }, [position, offset, anchorRef]);
 
   // When disabled, render children without tooltip wrapper
   if (disabled) {
