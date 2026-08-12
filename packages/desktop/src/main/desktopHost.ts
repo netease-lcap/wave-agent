@@ -418,7 +418,12 @@ export class DesktopHost {
       return;
     }
     const pane = this.panes[0];
-    if (pane?.agent) await this.handleNewSession(pane.paneId);
+    // Closing a sole empty session is a no-op — it already is the fresh
+    // session that closing would reset to (and 新对话 / Cmd+N always spawn
+    // instead, so the button is never a dead click).
+    if (pane?.agent && (pane.agent.messages.length > 0 || pane.agent.isStreaming)) {
+      await this.handleNewSession(pane.paneId);
+    }
   }
 
   /**
@@ -3794,7 +3799,10 @@ export class DesktopHost {
     const host = this.hostState.get(pid) ?? LOCAL_HOST;
     const dir = this.configStore.getRecentWorkdirsForHost(host)[0];
     if (!dir) return;
-    if (active && active.messages.length === 0 && !active.isStreaming) return;
+    // No no-op guard for an already-empty active session: clicking 新对话 is an
+    // explicit intent, and the blank agent is discarded by bindAgentToPane when
+    // replaced (delete-sole-session auto-replacement used to make the button a
+    // silent dead click — user feedback "点不动").
     try {
       const agent = await this.spawnAgent({ host, workdir: dir });
       // Spawning is slow (agent init) — the user may have selected another

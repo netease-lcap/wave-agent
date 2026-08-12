@@ -1774,11 +1774,19 @@ describe("misc commands", () => {
     expect(spawned.destroy).toHaveBeenCalledTimes(1);
   });
 
-  it("newSession on an empty active session is a no-op", async () => {
-    const { host } = await readyHost();
+  it("newSession on an empty active session spawns a fresh session (replaces the blank agent)", async () => {
+    const { host, sent } = await readyHost();
+    const blank = lastAgent();
     const before = h.agentInstances.length;
     await host.handleWebviewMessage({ command: "newSession" });
-    expect(h.agentInstances).toHaveLength(before);
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+    });
+    // The blank agent is replaced by the fresh one, not leaked into the pool.
+    expect(blank.destroy).toHaveBeenCalled();
+    expect(sent("setInitialState").at(-1)).toMatchObject({
+      session: { id: lastAgent().sessionId },
+    });
   });
 
   it("clearChat clears the active session in place instead of spawning a new agent", async () => {
@@ -2386,6 +2394,41 @@ describe("session tree", () => {
     expect(h.agentInstances).toHaveLength(before + 1);
   });
 
+  it("repro: 终止并删除唯一会话后再次新建对话立即生效（用户反馈「点不动」）", async () => {
+    const { host, store } = await readyHost();
+    const doomed = lastAgent();
+    doomed.messages = [
+      { id: "m1", role: "user", blocks: [{ type: "text", content: "hi" }] },
+    ];
+    doomed.callbacks.onUserMessageAdded(doomed.messages[0]);
+    fireSessionId(doomed, "live-1");
+    doomed.isStreaming = true;
+
+    // 终止（mock 的 abortMessage 不改变流式态，手动复位模拟真实行为）
+    await host.handleWebviewMessage({ command: "abortMessage" });
+    doomed.isStreaming = false;
+
+    // 删除唯一会话：pane 释放 → 自动补一个空白新会话（agent C）
+    await host.handleWebviewMessage({
+      command: "desktopDeleteSession",
+      sessionId: "live-1",
+    });
+    await vi.waitFor(() => {
+      expect(
+        store.getSessionIndex().some((e) => e.sessionId === "live-1"),
+      ).toBe(false);
+    });
+    expect(doomed.destroy).toHaveBeenCalled();
+
+    // 再次新建对话：必须立即生效（不再被空白 agent 的 no-op 守卫拦截），
+    // 空白 agent C 被替换销毁，不留孤儿
+    const before = h.agentInstances.length;
+    await host.handleWebviewMessage({ command: "newSession" });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+    });
+  });
+
   it("desktopDeleteSession on the active session does not clobber a session selected while destroy is in flight", async () => {
     const { host, store, sent } = await readyHost();
     fireSessionId(lastAgent(), "live-1");
@@ -2970,7 +3013,7 @@ describe("worktree flow", () => {
       command: "desktopCreateWorktree",
       workdir: "/work/a",
     });
-    lastAgent().messages = [{ id: "m1" }]; // non-empty so newSession is not a no-op
+    lastAgent().messages = [{ id: "m1" }];
 
     await host.handleWebviewMessage({ command: "newSession" });
 
