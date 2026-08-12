@@ -284,6 +284,53 @@ describe("convertMessagesForAPI", () => {
     expect(apiMessages[2].content).toBe("hello");
   });
 
+  it("should not inject truncation note when assistant message has tool calls but no text content", () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Run a tool for me" }],
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "reasoning",
+            content: "I need to call the bash tool to check the directory.",
+          },
+          {
+            type: "tool",
+            id: "tool1",
+            name: "bash",
+            parameters: '{"command": "ls"}',
+            stage: "end",
+            result: "file.txt",
+            success: true,
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(3);
+
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      tool_calls?: ChatCompletionMessageToolCall[];
+      reasoning_content?: string;
+    };
+    // Tool calls make the request valid — the truncation note must not be
+    // injected (the turn is not truncated, it produced a tool call).
+    expect(assistantMessage.content).toBeUndefined();
+    expect(assistantMessage.tool_calls).toHaveLength(1);
+    expect(assistantMessage.reasoning_content).toBe(
+      "I need to call the bash tool to check the directory.",
+    );
+  });
+
   it("should filter out ErrorBlock content to ensure user-visible only (FR-020)", () => {
     // FR-020: System MUST ensure ErrorBlock content is not processed by
     // convertMessagesForAPI so it remains user-visible only and is not sent to the agent
