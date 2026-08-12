@@ -5,6 +5,8 @@ import {
   createEvent,
   screen,
   within,
+  act,
+  waitFor,
 } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
@@ -753,6 +755,30 @@ describe("DesktopApp", () => {
     expect(vscode.postMessage).toHaveBeenCalledWith({ command: "newSession" });
   });
 
+  it("shows the side-by-side hint tooltip when hovering the new-chat button", async () => {
+    renderDesktopApp();
+    sendCommand("desktopWorkdirState", {
+      workdir: "/home/user/project",
+      recentWorkdirs: [],
+    });
+
+    const btn = screen.getByTestId("desktop-new-session");
+    // The hint moved off the native title attribute onto the Tooltip.
+    expect(btn.getAttribute("title")).toBeNull();
+    const container = btn.closest(".tooltip-container") as HTMLElement;
+    expect(container).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.mouseEnter(container);
+    });
+
+    await waitFor(() => {
+      const tooltip = document.querySelector(".tooltip-box.visible");
+      expect(tooltip).not.toBeNull();
+      expect(tooltip).toHaveTextContent("新对话（Ctrl+Click 并排打开）");
+    });
+  });
+
   it("should update the workdir name and enable new-chat when a new workdir state arrives", () => {
     renderDesktopApp();
     sendCommand("desktopWorkdirState", { recentWorkdirs: [] });
@@ -1114,6 +1140,83 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         sessionId: "s1",
       });
+    });
+
+    it("shows a drag-or-Ctrl hint tooltip on hover over a session item (non-mac)", async () => {
+      renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: "/work/a",
+        recentWorkdirs: ["/work/a"],
+      });
+      sendCommand("desktopSessionTree", {
+        groups: [
+          {
+            host: "local",
+            workdir: "/work/a",
+            sessions: [session("s1", "hello a")],
+          },
+        ],
+      });
+
+      const item = screen.getByTestId("desktop-session-item-s1");
+      // The tooltip wraps the row content, NOT the li — ul > li stays valid DOM.
+      expect(item.tagName).toBe("LI");
+      expect(item.parentElement?.className).toContain("desktop-session-items");
+      const container = item.querySelector(".tooltip-container") as HTMLElement;
+      expect(container).not.toBeNull();
+
+      await act(async () => {
+        fireEvent.mouseEnter(container);
+      });
+
+      await waitFor(() => {
+        const tooltip = document.querySelector(".tooltip-box.visible");
+        expect(tooltip).not.toBeNull();
+        expect(tooltip).toHaveTextContent("可拖拽或 Ctrl+点击 并排打开");
+      });
+    });
+
+    it("shows the Cmd variant of the session hint on macOS", async () => {
+      const originalPlatform = navigator.platform;
+      Object.defineProperty(navigator, "platform", {
+        value: "MacIntel",
+        configurable: true,
+      });
+      try {
+        renderDesktopApp();
+        sendCommand("desktopWorkdirState", {
+          workdir: "/work/a",
+          recentWorkdirs: ["/work/a"],
+        });
+        sendCommand("desktopSessionTree", {
+          groups: [
+            {
+              host: "local",
+              workdir: "/work/a",
+              sessions: [session("s1", "hello a")],
+            },
+          ],
+        });
+
+        const container = screen
+          .getByTestId("desktop-session-item-s1")
+          .querySelector(".tooltip-container") as HTMLElement;
+
+        await act(async () => {
+          fireEvent.mouseEnter(container);
+        });
+
+        await waitFor(() => {
+          expect(
+            document.querySelector(".tooltip-box.visible"),
+          ).toHaveTextContent("可拖拽或 Cmd+点击 并排打开");
+        });
+      } finally {
+        Object.defineProperty(navigator, "platform", {
+          value: originalPlatform,
+          configurable: true,
+        });
+      }
     });
 
     it("shows a running dot on the streaming current session and marks it current", () => {

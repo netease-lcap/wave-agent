@@ -61,7 +61,13 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  margin: 8px 6px;
+  /* Vertical spacing only — the 6px side insets moved to the tooltip anchor
+     span (.desktop-sidebar-new-chat-tooltip) so the button can stretch to
+     the full row (width:100%) and its hover background covers it. <button>
+     elements shrink-fit their content even with display:flex, so an explicit
+     width is required. */
+  margin: 8px 0;
+  width: 100%;
   padding: 6px 6px;
   border: none;
   border-radius: 4px;
@@ -218,6 +224,33 @@
 .desktop-session-delete:hover {
   opacity: 1;
   color: var(--vscode-errorForeground, #f14c4c);
+}
+
+/* Drag-or-Cmd/Ctrl hint tooltip (Tooltip.tsx): the anchor wraps the row content
+   (dot + title) — the delete button stays a sibling so it keeps its own hover
+   affordance. The anchor must grow to fill the row for the title's ellipsis,
+   overriding .tooltip-container's flex-shrink:0 (DesktopApp.css loads after
+   Tooltip.css, so this class wins the cascade). */
+.desktop-session-item-tooltip {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
+/* New-chat hint tooltip: the Tooltip wrapper span defaults to inline-flex and
+   shrink-fits the button — block-level makes it fill the row, and the 6px
+   side padding keeps the button's hover background aligned with the session
+   items' inset. The two selectors beat .tooltip-container's single-class rule
+   regardless of the bundled CSS order. */
+.desktop-sidebar .desktop-sidebar-new-chat-tooltip {
+  display: block;
+  padding: 0 6px;
+}
+
+.desktop-session-item-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .desktop-session-empty {
@@ -684,7 +717,10 @@ body.is-panel-resizing * {
 }
 
 .preview-pane-address::placeholder {
-  color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground, #999));
+  color: var(
+    --vscode-input-placeholderForeground,
+    var(--vscode-descriptionForeground, #999)
+  );
 }
 
 .preview-pane-button {
