@@ -315,6 +315,7 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 | `Bash` | 终端命令执行，支持后台运行和超时控制 |
 | `AskUserQuestion` | 向用户提问，支持单选/多选选项 |
 | `WebFetch` | 网页内容抓取与 AI 摘要 |
+| `Artifact` | 将本地 `.html`/`.md` 文件发布为默认私有的可分享网页（启用 `enableArtifact` 后注册） |
 
 #### 任务管理
 
@@ -433,6 +434,26 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 | `prompt` | string | 必需，对抓取内容的处理指令 |
 
 内置 15 分钟 LRU 缓存（最大 50MB），自动将 HTTP 升级到 HTTPS，HTML 自动转 Markdown，使用快速模型处理摘要。内容上限 100K 字符。GitHub URL 提示使用 `gh` CLI。
+
+**Artifact URL 拦截**：URL 形如 `{host}/code/artifact/{slug}` 时，WebFetch 走专用读取通道（元数据 + 正文均经登录鉴权），而非抓取公开页面；读取成功时结果附带 `artifactRead: { slug, ver }` 元数据，大内容落盘到临时文件并返回文件路径与预览。
+
+#### Artifact — 发布可分享网页 {#tool-artifact}
+
+将本地已写好的 `.html`/`.md` 文件发布为**默认私有**的可分享网页（Claude Code 风格），返回可传播的 URL。默认禁用，需在设置中开启 `enableArtifact` 后才注册该工具。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `file_path` | string | 必需，待发布的 `.html` 或 `.md` 文件路径（不接受内联 content） |
+| `favicon` | string | 页面图标 emoji（如 `📄`） |
+| `url` | string | 已有 artifact 的 URL（同会话重新部署时传入，版本号递增） |
+| `force` | boolean | 冲突时跳过检查直接覆盖发布 |
+
+要点：
+
+- `.md` 文件先渲染为完整 HTML 再上传；发布与读取接口复用 Server URL 同源，无需额外配置
+- 发布动作默认经用户确认（首次发布 / 已分享页面重新部署时），同会话内的重复发布自动允许
+- 并发与防冲突：服务端 409 或本地记录版本落后时拒绝发布（提示先 WebFetch 最新内容），除非带 `force: true`
+- 发布结果返回 `{ url, path, title, version }`，`url` 形如 `{host}/code/artifact/{slug}`；页面默认仅发布者可见
 
 #### EnterWorktree / ExitWorktree — Git Worktree 隔离 {#tool-worktree}
 
@@ -554,6 +575,8 @@ const agent = await Agent.create({
   },
 });
 ```
+
+**默认自动放行的只读命令**：`default` 模式下，只读 git 命令（`git status` / `git diff` / `git log` / `git show` / `git branch` 及变体 / `git tag` / `git remote` / `git ls-files` / `git rev-parse` / `git config --list` / `git cat-file` / `git count-objects`）默认直接执行、不触发确认；带全局作用域参数（如 `git -C <path> status`）时先剥离前缀再匹配，同样自动放行。原始命令优先匹配，路径级 deny 规则（如 `Bash(git -C /secret status)`）保持优先。写操作（`git push` / `git commit` / `git branch -D` 等）不受影响，仍按正常权限流程确认。
 
 ### 工具名常量 {#tool-name-constants}
 
@@ -1141,6 +1164,15 @@ await agent.triggerWorktreeRemoveHook('/path/to/worktree');
 const subagent = agent.getSubagentInstance('explore');
 ```
 
+### Vision — 图像识别 {#subagent-vision}
+
+图像识别专家，运行在 `WAVE_VISION_MODEL` 指定的视觉模型上。当主模型不支持图像识别（如 DeepSeek 等快速非视觉模型）但用户分享了图片时，主模型可委托该子代理读取图片并返回详细的文字描述。
+
+- **工具**: `[Read]`
+- **模型**: `WAVE_VISION_MODEL` 环境变量指定的视觉模型（frontmatter `model: visionModel` 解析）
+
+**启用方式**：设置 `WAVE_VISION_MODEL` 环境变量（如 `qwen-vl-max`）后，内置 `vision` 子代理自动注册；未设置时该子代理不加载。与 `fastModel` 机制对称，详见 [环境变量](#settings-env)。主模型支持视觉时图片仍直接发送，不受该变量影响。
+
 ## 14. Settings Skill {#settings-skill}
 
 Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配置系统交互的自然语言入口。用户无需手动编辑配置文件，只需用自然语言描述需求，AI 即可帮助查看、修改和引导配置。
@@ -1197,6 +1229,7 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 |---|---|
 | `WAVE_MODEL` | 默认 AI 模型 |
 | `WAVE_FAST_MODEL` | 快速模型（用于子代理、摘要等轻量场景） |
+| `WAVE_VISION_MODEL` | 视觉模型（用于内置 `vision` 子代理的图像识别；设置后该子代理注册，未设置则禁用） |
 | `WAVE_API_KEY` | API Key |
 | `WAVE_BASE_URL` | API Base URL |
 | `WAVE_SERVER_URL` | Wave AI 服务端地址（用于 SSO） |
@@ -1302,6 +1335,7 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 - `language`：AI 通信首选语言（如 `"zh"`、`"en"`）。
 - `autoMemoryEnabled`：启用或禁用自动记忆（默认：`true`）。
 - `autoMemoryFrequency`：自动记忆提取频率（默认：`1`）。
+- `enableArtifact`：启用 Artifact 工具（默认：`false`）。未设置时跟随代码默认值（当前默认禁用）；设为 `true` 后注册 [Artifact 工具](#tool-artifact)，将本地 HTML/Markdown 发布为可分享网页。
 - `worktree.baseRef`：新建 worktree 的基准引用。`"fresh"`（默认）基于 `origin/<默认分支>` 创建新分支；`"head"` 基于当前本地 HEAD 创建，跳过 origin 解析与网络 fetch。适用于基于尚未推送的本地分支工作的场景。
 
 ## 15. 官方插件市场 {#plugin-marketplaces}

@@ -114,7 +114,7 @@ _输入框中的代码选中标签_
 - **`/model`**：打开模型选择菜单，快速切换当前会话使用的模型（详见下文）
 - **`/tasks`**：打开后台任务管理对话框（详见 [第 5.4 节](#background-task-manager)）
 - **`/workflows`**：打开工作流管理对话框（详见 [第 5.5 节](#workflow-manager)）
-- **`/agents`**：打开 Agents 对话框，查看当前会话中的子代理定义（详见 [第 5.6 节](#agents-dialog)）
+- **`/agents`**：打开 Agents 对话框，查看当前会话中的子代理定义（详见 [第 6.1 节](#agents-dialog)）
 
 选择这些指令后会直接弹出对应弹窗，无需按回车发送。
 
@@ -523,7 +523,13 @@ _工作流管理对话框 - 运行列表_
 ![工作流管理 - 详情](/screenshots/spec-workflow-detail.webp)
 _工作流管理对话框 - 运行详情与阶段_
 
-### 5.6 Agents 对话框（/agents 命令） {#agents-dialog}
+---
+
+## 6. 多 Agents 与并发 {#multi-agent-concurrency}
+
+Wave 支持多种并发方式：在单个对话内并行启动多个子代理、同时开启多个对话并行推进不同任务（配合 worktree 隔离避免代码冲突）。本章先通过 `/agents` 对话框了解当前会话可见的所有代理定义，再介绍如何充分利用这些并发能力。
+
+### 6.1 Agents 对话框（/agents 命令） {#agents-dialog}
 
 输入 `/agents` 斜杠命令可打开 Agents 对话框，查看当前会话中所有可见的子代理（subagent）定义。定义按来源分组展示——`内置 agents`、`用户 agents`、`项目 agents`、`插件 agents`，数据由扩展通过 `getSubagentConfigurations` 从 CLI 实时获取。
 
@@ -546,13 +552,7 @@ _Agents 对话框 - 按来源分组展示代理定义_
 ![Agents - 详情](/screenshots/spec-agents-detail.webp)
 _Agents 对话框 - 代理完整配置_
 
----
-
-## 6. 多 Agents 与并发 {#multi-agent-concurrency}
-
-Wave 支持多种并发方式：在单个对话内并行启动多个子代理、同时开启多个对话并行推进不同任务（配合 worktree 隔离避免代码冲突）。本章介绍如何充分利用这些并发能力。
-
-### 6.1 并发使用子代理 {#subagent-concurrency}
+### 6.2 并发使用子代理 {#subagent-concurrency}
 
 AI 可以在同一回合内并行启动多个 Agent 工具块（并发安全的工具会批量并行执行），消息流中会实时显示各个子代理的进度。主要有两种使用方式：
 
@@ -574,7 +574,7 @@ _一条消息触发的 3 个并行子代理（Explore / general-purpose / plan �
 ![后台运行子代理](/screenshots/spec-background-subagent.webp)
 _两个后台子代理并行运行，完成后分别收到任务通知_
 
-### 6.2 多对话并行 {#parallel-conversations}
+### 6.3 多对话并行 {#parallel-conversations}
 
 当需要并行推进多个任务时，可以同时开启多个对话，每个对话独立运行、互不干扰：
 
@@ -584,9 +584,9 @@ _两个后台子代理并行运行，完成后分别收到任务通知_
 ![标题栏与工具栏](/screenshots/spec-chat-header.webp)
 _点击标题栏的"新建对话"图标可开启新的对话_
 
-多个对话并行处理同一仓库的不同任务时，为避免在主线工作区直接改动造成冲突，推荐结合 [6.3 通过 Worktree 创建隔离环境](#worktree-concurrency) 使用。
+多个对话并行处理同一仓库的不同任务时，为避免在主线工作区直接改动造成冲突，推荐结合 [6.4 通过 Worktree 创建隔离环境](#worktree-concurrency) 使用。
 
-### 6.3 通过 Worktree 创建隔离环境 {#worktree-concurrency}
+### 6.4 通过 Worktree 创建隔离环境 {#worktree-concurrency}
 
 多个对话并行修改同一仓库时，直接在主线工作区改动容易互相冲突。此时可以让 AI 调用 `EnterWorktree` 工具，为每个对话创建独立的 git worktree——每个 worktree 拥有独立的分支与工作目录，互不影响。
 
@@ -802,7 +802,7 @@ Wave 随 SDK 内置了「规格驱动开发」（SDD）插件，帮助团队在�
 
 - **规格编写（自动触发）**：当用户提出新的需求、修改需求或涉及功能边界时，AI 会自动创建或更新对应的功能规格说明文件，自动探测项目的 `docs/specs/` 或 `specs/` 目录并沿用既有分组约定。该技能由 AI 自动触发，不出现在斜杠命令列表中；不明确的关键决策会以「待澄清」标记向用户提问，确认后再更新文件。
 - **会话引导**：每次会话开始时，自动注入"先更新规格、确认后再实现"的流程指引，提醒需求变更时优先维护规格说明。
-- **规格校验**：内置校验脚本可统计规格目录下的用户故事与验收场景数量，并对缺少必要章节的文件输出警告，方便在提交前快速检查规格完整性。
+- **规格校验**：内置校验脚本（`spec-count.js`）可统计规格目录下的用户故事与验收场景数量，并对缺少必要章节的文件输出警告，方便在提交前快速检查规格完整性。启用 SDD 插件后，该校验命令在默认权限模式下自动放行（实例级允许规则 `Bash(node *spec-count.js*)`，锚定脚本文件名、兼容不同安装路径），只读校验不打断规格优先工作流，也无需手写随路径变化的权限规则。
 
 ![内置 SDD 插件开关（项目设置）](/screenshots/spec-sdd-plugin.webp)
 _设置弹窗"项目设置"选项卡中的 SDD 内置插件开关_
