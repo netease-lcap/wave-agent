@@ -81,7 +81,7 @@ order: 35
 
 **验收场景**：
 
-1. **假设** model 首次发布某文件，**当** 调用 `Artifact` 工具时，**则** 触发权限确认（文案形如 "publish \"<file>\" to a private page"），用户拒绝则取消发布。
+1. **假设** model 首次发布某文件，**当** 调用 `Artifact` 工具时，**则** 触发权限确认（文案形如 "publish \"&lt;file&gt;\" to a private page"），用户拒绝则取消发布。
 2. **假设** 同会话内 model 再次发布本会话已发布过的文件（`url` 省略，靠会话内 file_path → artifact URL 映射），**当** 调用 `Artifact` 工具时，**则** 自动允许，不再弹确认。
 3. **假设** 会话内映射不存在（本会话未发布过该文件）且用户未配置自动允许，**当** 调用 `Artifact` 工具时，**则** 仍弹确认。
 
