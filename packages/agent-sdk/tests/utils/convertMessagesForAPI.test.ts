@@ -454,6 +454,13 @@ describe("convertMessagesForAPI", () => {
     const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
       reasoning_content?: string;
     };
+    // Reasoning-only messages fall back to an explanatory note as content
+    // (OpenAI-compatible upstreams reject assistant messages without
+    // content/tool_calls), while the thinking itself stays on the native
+    // reasoning_content field so reasoning models continue from it.
+    expect(assistantMessage.content).toBe(
+      "[Note: The reasoning above was cut off before completion. It was auto-preserved from an interrupted or truncated turn — continue from where it left off, or disregard it if no longer relevant.]",
+    );
     expect(assistantMessage.reasoning_content).toBe(
       "Let me understand the task deeply... (truncated before any text or tool call)",
     );

@@ -56,11 +56,11 @@ order: 120
 
 **为什么是这个优先级**：当前纯 Reasoning 段（无文本、无工具调用）的 assistant 消息在转换为 API 消息时被过滤，模型每轮续写都看不到自己上一轮的推理，只能重新推导出同量级的 reasoning 再次被截断——这是无限续写循环的放大器之一。Claude Code 要求 thinking 块在整个 assistant trajectory 内保留（_"Thinking blocks must be preserved for the duration of an assistant trajectory"_），其续写是接着上一轮思考继续的。
 
-**独立测试**：可以构造"user 任务 → assistant 纯 reasoning（截断）→ user 隐藏恢复消息"的消息序列，验证转换后的 API 消息包含带 `reasoning_content` 的 assistant 消息。
+**独立测试**：可以构造"user 任务 → assistant 纯 reasoning（截断）→ user 隐藏恢复消息"的消息序列，验证转换后的 API 消息包含 assistant 消息：推理内容保留在 `reasoning_content` 字段，`content` 为说明思考未完成、由系统自动保留的提示文案。
 
 **验收场景**：
 
-1. **假设**AI 响应因输出 token 限制被截断，且该轮只有 reasoning 内容（无文本、无工具调用），**当**代理发起下一轮续写调用时，**则**转换后的 API 消息应包含该 assistant 消息及其 `reasoning_content`，模型能看到自己上一轮的全部推理
+1. **假设**AI 响应因输出 token 限制被截断，且该轮只有 reasoning 内容（无文本、无工具调用），**当**代理发起下一轮续写调用时，**则**转换后的 API 消息应包含该 assistant 消息，推理内容保留在 `reasoning_content` 字段（推理模型原生续接通道），`content` 为一段说明文案——OpenAI 兼容上游拒绝无 `content`/`tool_calls` 的 assistant 消息（仅带 `reasoning_content` 会触发 400 "content or tool_calls must be set"），说明文案同时告知模型思考未完成、由系统自动保留，可续接或忽略——模型仍能看到自己上一轮的全部推理
 2. **假设**AI 响应因长度限制被截断但该轮包含文本内容，**当**代理发起下一轮续写调用时，**则**`reasoning_content` 照常随 assistant 消息一起发送（现有行为不变）
 3. **假设**某 assistant 轮次既无文本、无工具调用也无 reasoning 内容，**当**转换 API 消息时，**则**该消息继续被过滤，不产生空的 assistant 消息
 
@@ -119,7 +119,7 @@ order: 120
 - **无限递归**：如果 AI 不断被截断会发生什么？
   - _对齐 Claude Code_：连续截断恢复上限为 3 次（中间无工具调用则计数不重置），达到上限后终止回合并显示错误消息，不再无限续写；工具调用（正常进度）会重置计数
 - **截断恢复上下文**：纯 reasoning 截断轮（无文本、无工具调用）的推理内容是否应该保留到下一轮？
-  - _对齐 Claude Code_：保留。转换 API 消息时，带 `reasoning_content` 的 assistant 消息即使没有文本和工具调用也应包含在下一轮请求中，使续写能接着上一轮思考继续；既无文本、无工具调用也无 reasoning 的空消息仍被过滤
+  - _对齐 Claude Code_：保留。推理内容放在 `reasoning_content` 原生字段（推理模型天然从中续接），`content` 携带说明文案（思考未完成、系统自动保留，可续接或忽略）以满足 OpenAI 兼容上游"assistant 消息必须有 `content` 或 `tool_calls`"的校验（仅带 `reasoning_content` 会被剥离并触发 400 "content or tool_calls must be set"）；有文本的轮次 `reasoning_content` 照常随行、`content` 用真实文本；既无文本、无工具调用也无 reasoning 的空消息仍被过滤
 - **中断**：如果用户在截断响应期间中止会话会发生什么？
   - _假设_：代理应该尊重中止信号并停止递归
 - **后台工具**：如果工具在截断响应期间被放到后台会发生什么？
