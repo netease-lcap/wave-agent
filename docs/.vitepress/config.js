@@ -109,16 +109,16 @@ export default {
             { text: '5.3 后台任务系统', link: '/vsce#mechanism-background-tasks' },
             { text: '5.4 后台任务管理对话框', link: '/vsce#background-task-manager' },
             { text: '5.5 工作流管理对话框', link: '/vsce#workflow-manager' },
-            { text: '5.6 Agents 对话框', link: '/vsce#agents-dialog' },
           ],
         },
         {
           text: '6. 多 Agents 与并发',
           collapsed: false,
           items: [
-            { text: '6.1 并发使用子代理', link: '/vsce#subagent-concurrency' },
-            { text: '6.2 多对话并行', link: '/vsce#parallel-conversations' },
-            { text: '6.3 通过 Worktree 创建隔离环境', link: '/vsce#worktree-concurrency' },
+            { text: '6.1 Agents 对话框', link: '/vsce#agents-dialog' },
+            { text: '6.2 并发使用子代理', link: '/vsce#subagent-concurrency' },
+            { text: '6.3 多对话并行', link: '/vsce#parallel-conversations' },
+            { text: '6.4 通过 Worktree 创建隔离环境', link: '/vsce#worktree-concurrency' },
           ],
         },
         {
@@ -214,6 +214,7 @@ export default {
           items: [
             { text: '3.1 插件管理', link: '/cli#plugin-commands' },
             { text: '3.2 更新', link: '/cli#update-command' },
+            { text: '3.3 Daemon 客户端命令', link: '/cli#daemon-commands' },
           ],
         },
         {
@@ -406,6 +407,7 @@ export default {
             { text: 'Explore — 代码库探索', link: '/sdk#subagent-explore' },
             { text: 'Plan — 软件架构师', link: '/sdk#subagent-plan' },
             { text: '通用代理', link: '/sdk#subagent-general-purpose' },
+            { text: 'Vision — 图像识别', link: '/sdk#subagent-vision' },
           ],
         },
         {

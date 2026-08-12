@@ -141,6 +141,34 @@ wave plugin install my-plugin@official --scope local    # 本地安装
 wave update    # 更新 Wave CLI 到最新版本
 ```
 
+### 3.3 Daemon 客户端命令 {#daemon-commands}
+
+`wave --daemon <socket>` 在远端主机上以守护进程方式启动 Wave，托管后台 agent 会话（桌面端经 SSH 隧道访问）。与之对应，`wave daemon <子命令>` 是访问该 daemon 的客户端命令组，可在远端主机上（或经 `ssh <host> wave daemon ...`）查看、续聊与审批 daemon 托管的会话，无需打开完整 UI。所有子命令非交互式运行：结果输出到 stdout、诊断输出到 stderr，便于脚本与管道消费。
+
+```bash
+# 列出 daemon 当前托管（进程内存中 live）的全部会话：会话 ID、工作目录、状态、消息数
+wave daemon list
+
+# 查看指定会话的实时状态（生成中/空闲/等待审批）与最近消息
+wave daemon status <sessionId> [--lines 20]
+
+# 向会话注入一条消息并等待回复完成，输出助手最终回复
+wave daemon send <sessionId> "继续" [--timeout 600]
+
+# 处理会话挂起的权限请求：允许 / 拒绝（可附原因）
+wave daemon respond <sessionId> <requestId> --allow
+wave daemon respond <sessionId> <requestId> --deny --reason "原因"
+```
+
+要点：
+
+- 所有子命令固定连接默认 socket（`~/.wave/daemon.sock`），不提供 `--socket` 覆盖参数
+- **语义区分**：`wave --daemon <socket>` 是启动 daemon（服务端），`wave daemon <子命令>` 是访问 daemon（客户端），两者互不干扰
+- daemon 空闲 60 秒自动退出属正常现象；daemon 未运行时任一子命令快速报错退出（非零退出码），不进入 TUI、不挂起
+- `wave daemon list` 仅展示当前 daemon 进程内存中 live 的会话（不扫磁盘索引）；知道 sessionId 时即使不在列表中，也可经 `status` / `send` 重新载入
+- `wave daemon send` 默认 600 秒超时等待回复（`--timeout 0` 不限制）；会话挂起等待审批时超时退出，提示先经 `wave daemon respond` 处理
+- `wave daemon respond` 按工具智能补全决策：`EnterPlanMode` 的 `--allow` 自动附带 plan 模式切换；`AskUserQuestion` 需用 `--answer '{"问题":"答案"}'` 提供答案；`--rule "Bash(ls)"` 持久化允许规则（后续同类调用不再询问）；`--mode acceptEdits` 切换会话权限模式
+
 ---
 
 ## 4. 斜杠命令 {#slash-commands}
@@ -157,11 +185,13 @@ wave update    # 更新 Wave CLI 到最新版本
 | `/plugin`    | 管理插件                       |
 | `/workflows` | 查看和管理工作流运行           |
 | `/rewind`    | 回滚到历史检查点               |
+| `/subtask`   | 以当前对话完整上下文在后台启动 fork 子代理（`/subtask <任务描述>`） |
 | `/login`     | SSO 企业认证登录               |
 | `/logout`    | 清除 SSO 认证                  |
 | `/clear`     | 清除当前对话历史               |
 | `/compact`   | 压缩对话历史，减少 Token 占用  |
 | `/add-dir`   | 将目录加入会话安全区域（可带 `--remember` 持久化） |
+| `/agents`    | 查看当前会话可见的所有 agent（子代理）定义，按来源分组展示 |
 | `/btw`       | 旁路提问，不调用工具的快速问答 |
 
 > 了解更多：详见 [SDK 文档 - 斜杠命令](/sdk#slash-commands)
@@ -224,6 +254,10 @@ Wave 提供五种权限管理模式，控制 AI 调用工具时的确认行为�
 - 交互模式中按 `Shift+Tab` 循环切换
 - 启动时通过 `--permission-mode` 指定
 - 使用 `--dangerously-skip-permissions` 等同于 `bypassPermissions`
+
+**默认自动放行的只读命令：**
+
+`default` 模式下，以下只读 git 命令默认直接执行、不触发权限确认：`git status`、`git diff`、`git log`、`git show`、`git branch`（含 `--list` / `-a` / `-r` / `-v` 等变体）、`git tag`、`git remote`、`git ls-files`、`git rev-parse`、`git config --list`、`git cat-file`、`git count-objects`。命令带全局作用域参数（如 `git -C <path> status`、`git --work-tree <path> diff`）时同样匹配自动放行；写操作（`git push`、`git commit`、`git branch -D` 等）不受影响，仍按正常权限流程确认。
 
 ---
 
