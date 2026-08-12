@@ -958,6 +958,53 @@ test("listRewindCheckpoints filters to real user messages and flattens content",
   });
 });
 
+test("listRewindCheckpoints dedupes user messages by id after compaction", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(getMessageContent).mockImplementation((m) => {
+    const block = m.blocks.find((b) => b.type === "text");
+    return block && "content" in block ? (block.content as string) : "";
+  });
+  // 压缩是 append-only：磁盘完整线程会保留压缩前的历史，同时把
+  // [compact, ...lastTwoRounds] 追加到末尾 —— 因此 u2/u3 同 id 出现两次。
+  const threadMessages = [
+    { role: "user", id: "u1", blocks: [{ type: "text", content: "one" }] },
+    { role: "assistant", id: "a1", blocks: [{ type: "text", content: "hi1" }] },
+    { role: "user", id: "u2", blocks: [{ type: "text", content: "two" }] },
+    { role: "assistant", id: "a2", blocks: [{ type: "text", content: "hi2" }] },
+    { role: "user", id: "u3", blocks: [{ type: "text", content: "three" }] },
+    { role: "assistant", id: "a3", blocks: [{ type: "text", content: "hi3" }] },
+    {
+      role: "assistant",
+      id: "c1",
+      blocks: [{ type: "compact", content: "summary" }],
+    },
+    { role: "user", id: "u2", blocks: [{ type: "text", content: "two" }] },
+    { role: "assistant", id: "a2", blocks: [{ type: "text", content: "hi2" }] },
+    { role: "user", id: "u3", blocks: [{ type: "text", content: "three" }] },
+    { role: "assistant", id: "a3", blocks: [{ type: "text", content: "hi3" }] },
+  ] as unknown as Message[];
+  const mockAgent = createMockAgent({
+    getFullMessageThread: vi.fn().mockResolvedValue({
+      messages: threadMessages,
+      sessionIds: ["test-session-id"],
+    }),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest("listRewindCheckpoints", {}, sessionId);
+
+  // 压缩后的重复条目（同 id）只应出现一次，避免 UI 弹窗显示"两条"
+  expect(r).toEqual({
+    checkpoints: [
+      { id: "u1", content: "one" },
+      { id: "u2", content: "two" },
+      { id: "u3", content: "three" },
+    ],
+  });
+});
+
 test("listRewindCheckpoints returns empty list when no user messages", async () => {
   const { bridge } = createBridge();
   const mockAgent = createMockAgent();
@@ -1205,6 +1252,44 @@ test("rewindToMessage truncates history and returns input content", async () => 
 
   expect(mockAgent.truncateHistory).toHaveBeenCalledWith(0);
   expect(r).toEqual({ inputContent: "hello" });
+});
+
+test("rewindToMessage uses the LAST occurrence of a duplicated id after compaction", async () => {
+  const { bridge } = createBridge();
+  // 压缩 append-only：u3 同 id 出现两次（压缩前 index 4、压缩后 index 9）。
+  // 用户从 UI 看到的折叠后消息对应最后一次出现，回滚索引必须指向它，
+  // 否则会连压缩摘要一起回滚掉。
+  const messages = [
+    { id: "u1", role: "user", blocks: [{ type: "text", content: "one" }] },
+    { id: "a1", role: "assistant", blocks: [{ type: "text", content: "hi1" }] },
+    { id: "u2", role: "user", blocks: [{ type: "text", content: "two" }] },
+    { id: "a2", role: "assistant", blocks: [{ type: "text", content: "hi2" }] },
+    { id: "u3", role: "user", blocks: [{ type: "text", content: "three" }] },
+    { id: "a3", role: "assistant", blocks: [{ type: "text", content: "hi3" }] },
+    {
+      id: "c1",
+      role: "assistant",
+      blocks: [{ type: "compact", content: "summary" }],
+    },
+    { id: "u2", role: "user", blocks: [{ type: "text", content: "two" }] },
+    { id: "a2", role: "assistant", blocks: [{ type: "text", content: "hi2" }] },
+    { id: "u3", role: "user", blocks: [{ type: "text", content: "three" }] },
+    { id: "a3", role: "assistant", blocks: [{ type: "text", content: "hi3" }] },
+  ] as unknown as Message[];
+  const mockAgent = createMockAgent({
+    getFullMessageThread: vi.fn().mockResolvedValue({
+      messages,
+      sessionIds: ["test-session-id"],
+    }),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest("rewindToMessage", { messageId: "u3" }, sessionId);
+
+  // 最后一次出现的 u3 在 index 9（而非第一次的 4）
+  expect(mockAgent.truncateHistory).toHaveBeenCalledWith(9);
 });
 
 test("deleteQueuedMessage calls removeQueuedMessage", async () => {

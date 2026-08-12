@@ -34,10 +34,16 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
   }, [getFullMessageThread]);
 
   // Filter user messages as checkpoints, excluding meta messages and
-  // system-generated user-role messages (task notifications, hook injections)
-  const checkpoints = messages
-    .map((msg, index) => ({ msg, index }))
-    .filter(({ msg }) => isUserCheckpointMessage(msg));
+  // system-generated user-role messages (task notifications, hook injections).
+  // Compaction is append-only: the same message id appears twice on the full
+  // thread (pre-compact history + post-compact append), so dedupe by id and
+  // keep the last occurrence (matching the folded view the user sees).
+  const checkpointMap = new Map<string, { msg: Message; index: number }>();
+  messages.forEach((msg, index) => {
+    if (!isUserCheckpointMessage(msg)) return;
+    checkpointMap.set(msg.id ?? `index:${index}`, { msg, index });
+  });
+  const checkpoints = Array.from(checkpointMap.values());
 
   const MAX_VISIBLE_ITEMS = 3;
 

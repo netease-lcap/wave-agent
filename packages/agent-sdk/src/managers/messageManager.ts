@@ -1035,7 +1035,11 @@ export class MessageManager {
     // only sees messages from the latest compact summary forward — matching
     // the compact and resume behaviors (which also fold memory).
     this.setMessages(sliceFromLastCompact(newMessages));
-    this.savedMessageCount = newMessages.length;
+    // savedMessageCount tracks in-memory progress, so it must be the folded
+    // length. Using the full disk count here would make saveSession's
+    // slice(savedMessageCount) empty after a rewind past a compact boundary
+    // and silently drop every subsequent message from the session file.
+    this.savedMessageCount = this.messages.length;
   }
 
   /**
