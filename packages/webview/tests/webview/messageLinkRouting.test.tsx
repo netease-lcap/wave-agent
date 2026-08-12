@@ -5,12 +5,13 @@ import { Message } from "../../src/components/Message";
 import { createMockVscode } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 
-// in the desktop host, localhost links open the preview pane and all
-// other links go to the system browser via openExternal. IDE hosts must keep
-// their native link handling (no interception at all).
+// in the desktop host, any http(s) link opens the preview pane (spec scenario
+// 1); non-http(s) links (mailto:, file:) go to the system default app via
+// openExternal (scenario 2). IDE hosts must keep their native link handling
+// (no interception at all).
 
 const CONTENT =
-  "preview [local app](http://localhost:5173/app) then [docs](https://example.com/docs)";
+  "preview [local app](http://localhost:5173/app) then [docs](https://example.com/docs) then [mail](mailto:dev@example.com)";
 
 function renderMessage(options?: {
   onOpenPreview?: (url: string) => void;
@@ -39,6 +40,7 @@ function renderMessage(options?: {
     vscode,
     localLink: links[0] as HTMLElement,
     externalLink: links[1] as HTMLElement,
+    mailLink: links[2] as HTMLElement,
   };
 }
 
@@ -61,19 +63,33 @@ describe("Message link routing", () => {
     expect(notPrevented).toBe(false); // default navigation prevented
   });
 
-  it("desktop host: non-localhost link goes to the system browser", () => {
+  it("desktop host: non-localhost http(s) link opens the preview pane", () => {
     const onOpenPreview = vi.fn();
     const { vscode, externalLink } = renderMessage({
       onOpenPreview,
       hostType: "desktop",
     });
 
-    fireEvent.click(externalLink);
+    const notPrevented = fireEvent.click(externalLink);
+
+    expect(onOpenPreview).toHaveBeenCalledWith("https://example.com/docs");
+    expect(vscode.postMessage).not.toHaveBeenCalled();
+    expect(notPrevented).toBe(false); // default navigation prevented
+  });
+
+  it("desktop host: non-http(s) link goes to the system default app", () => {
+    const onOpenPreview = vi.fn();
+    const { vscode, mailLink } = renderMessage({
+      onOpenPreview,
+      hostType: "desktop",
+    });
+
+    fireEvent.click(mailLink);
 
     expect(onOpenPreview).not.toHaveBeenCalled();
     expect(vscode.postMessage).toHaveBeenCalledWith({
       command: "openExternal",
-      url: "https://example.com/docs",
+      url: "mailto:dev@example.com",
     });
   });
 

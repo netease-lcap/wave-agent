@@ -75,6 +75,48 @@ export function rewriteCommentUrl(
 
 const MIN_WIDTH = 320;
 
+export type PreviewAddressResult =
+  | { ok: true; url: string }
+  | { ok: false; reason: "empty" | "invalid" };
+
+/**
+ * Normalize what the user typed in the preview address bar into a loadable
+ * http(s) URL (spec scenario 5/6). Local/loopback hosts without a scheme get
+ * `http://` (they are dev servers, which rarely serve https); anything else
+ * gets `https://`. An explicit non-http(s) scheme or garbage that can't form
+ * a URL is rejected; the empty string is a distinct "do nothing" signal (the
+ * bar just restores, scenario 4).
+ */
+export function resolvePreviewAddress(input: string): PreviewAddressResult {
+  const trimmed = input.trim();
+  if (trimmed === "") {
+    return input === ""
+      ? { ok: false, reason: "empty" }
+      : { ok: false, reason: "invalid" };
+  }
+  // Already has a scheme (the `://` guard keeps `example.com:8080` from
+  // reading as the `example.com:` protocol). Only http(s) is loadable.
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        return { ok: false, reason: "invalid" };
+      }
+      return { ok: true, url: url.toString() };
+    } catch {
+      return { ok: false, reason: "invalid" };
+    }
+  }
+  const prefixed = /^(localhost|127\.0\.0\.1)(:|$)/i.test(trimmed)
+    ? `http://${trimmed}`
+    : `https://${trimmed}`;
+  try {
+    return { ok: true, url: new URL(prefixed).toString() };
+  } catch {
+    return { ok: false, reason: "invalid" };
+  }
+}
+
 /** Colors the guest picker can't read cross-origin — sampled from the host theme. */
 const readPalette = (): Record<string, string> => {
   const styles = getComputedStyle(document.documentElement);
@@ -110,6 +152,10 @@ export interface PreviewPaneProps {
   /** Remote sessions: re-establish the port forward on error retry (scenario
    * 16). Undefined for local URLs, where the retry reloads the guest instead. */
   onRetry?: () => void;
+  /** Address-bar navigation (spec scenario 4/5/6). Remote sessions: the host
+   * re-acquires the port forward or loads the URL directly. Undefined for
+   * local URLs, which navigate the guest in place. */
+  onNavigate?: (url: string) => void;
 }
 
 export const PreviewPane: React.FC<PreviewPaneProps> = ({
@@ -122,11 +168,14 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   onAddComment,
   originalUrl,
   onRetry,
+  onNavigate,
 }) => {
   const [displayUrl, setDisplayUrl] = useState(url);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pickerActive, setPickerActive] = useState(false);
   const [pickerUnsupported, setPickerUnsupported] = useState(false);
+  const [addressValue, setAddressValue] = useState(url);
+  const [addressInvalid, setAddressInvalid] = useState(false);
   const webviewRef = useRef<WebviewTagElement | null>(null);
   // URL the guest is currently showing — follows in-guest navigation.
   const currentUrlRef = useRef(url);
@@ -146,6 +195,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   urlPropRef.current = url;
   const originalUrlRef = useRef(originalUrl);
   originalUrlRef.current = originalUrl;
+  const onNavigateRef = useRef(onNavigate);
+  onNavigateRef.current = onNavigate;
 
   const sendPicker = useCallback((action: "activate" | "deactivate") => {
     const wv = webviewRef.current;
@@ -289,6 +340,47 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     return () => clearTimeout(timer);
   }, [pickerUnsupported]);
 
+  // Address bar mirrors the guest's current URL, so in-guest navigation (link
+  // clicks) keeps the bar in sync (scenario 4). Editing the input itself only
+  // touches addressValue, so it is not clobbered while typing.
+  useEffect(() => {
+    setAddressValue(displayUrl);
+  }, [displayUrl]);
+
+  // Transient "invalid address" hint.
+  useEffect(() => {
+    if (!addressInvalid) return;
+    const timer = setTimeout(() => setAddressInvalid(false), 3000);
+    return () => clearTimeout(timer);
+  }, [addressInvalid]);
+
+  const handleAddressSubmit = () => {
+    const result = resolvePreviewAddress(addressValue);
+    if (result.ok !== true) {
+      // Empty is silent (scenario 4); anything else is an invalid address that
+      // must not navigate — the bar just restores to the current URL.
+      if (result.reason === "invalid") setAddressInvalid(true);
+      setAddressValue(displayUrl);
+      return;
+    }
+    setAddressInvalid(false);
+    setAddressValue(result.url);
+    currentUrlRef.current = result.url;
+    const wv = webviewRef.current;
+    if (originalUrlRef.current) {
+      // Remote: the host owns the guest — it re-acquires the tunnel for
+      // localhost or loads an external URL directly.
+      onNavigateRef.current?.(result.url);
+    } else if (wv) {
+      if (domReadyRef.current) {
+        void wv.loadURL(result.url);
+      } else {
+        // Guest hasn't finished its first load yet — retarget the initial src.
+        wv.setAttribute("src", result.url);
+      }
+    }
+  };
+
   const handleRefresh = () => {
     setLoadError(null);
     // Force-refresh: plain reload() honors the HTTP cache, which can hide a
@@ -335,9 +427,21 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
         <div className="preview-pane-toolbar">
-          <span className="preview-pane-url" title={displayUrl}>
-            {displayUrl}
-          </span>
+          <input
+            className="preview-pane-address"
+            data-testid="preview-address"
+            type="text"
+            spellCheck={false}
+            value={addressValue}
+            onChange={(e) => setAddressValue(e.target.value)}
+            onFocus={(e) => e.currentTarget.select()}
+            onBlur={() => setAddressValue(displayUrl)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleAddressSubmit();
+            }}
+            title={displayUrl}
+            aria-label="预览地址"
+          />
           <button
             className={`preview-pane-button${pickerActive ? " active" : ""}`}
             title="选择元素并评论"
@@ -378,6 +482,14 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
             data-testid="preview-picker-unsupported"
           >
             该页面暂不支持元素拾取
+          </div>
+        )}
+        {addressInvalid && (
+          <div
+            className="preview-pane-hint"
+            data-testid="preview-address-invalid"
+          >
+            地址无效，请输入 http(s) 地址
           </div>
         )}
         <div className="preview-pane-body">

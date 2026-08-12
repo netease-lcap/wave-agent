@@ -47,6 +47,7 @@ import type {
   UpdateToast,
 } from "../types";
 import { chatReducer, initialState } from "../reducers/chatReducer";
+import { isLocalhostUrl } from "../utils/isLocalhostUrl";
 import "../styles/ChatApp.css";
 
 /** Desktop conversation-level panels: fixed left→right order regardless of check order. */
@@ -1674,6 +1675,25 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     acquireForward(fwd.host, fwd.originalUrl);
   }, [acquireForward]);
 
+  // Address-bar navigation in a remote preview (scenario 4/5/6): a localhost
+  // address re-acquires the tunnel (with the connecting stub); anything else
+  // loads directly in the guest. Same-URL entries remount so the guest
+  // actually reloads instead of the [url] effect early-returning.
+  const handlePreviewAddressNavigate = useCallback(
+    (url: string) => {
+      if (isLocalhostUrl(url)) {
+        setPreviewForwardError(null);
+        setPreviewUrl(null); // show the connecting stub while the tunnel comes up
+        acquireForward(effectiveHostRef.current, url);
+      } else if (url === previewUrlRef.current) {
+        setPreviewEpoch((e) => e + 1);
+      } else {
+        setPreviewUrl(url);
+      }
+    },
+    [acquireForward],
+  );
+
   const openPreviewHandler =
     effectiveHost !== "local" ? handleOpenRemotePreview : handleOpenPreview;
 
@@ -1748,6 +1768,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           url={previewUrl}
           originalUrl={currentForward?.originalUrl}
           onRetry={currentForward ? handleRemotePreviewRetry : undefined}
+          onNavigate={currentForward ? handlePreviewAddressNavigate : undefined}
           vscode={vscode}
           onAddComment={handleAddComment}
           {...common}
