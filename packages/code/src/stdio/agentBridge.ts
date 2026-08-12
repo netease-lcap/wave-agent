@@ -884,7 +884,10 @@ export class AgentBridge {
   }> {
     const entry = this.requireSession(sessionId);
     const { messages } = await entry.agent.getFullMessageThread();
-    const index = messages.findIndex((m) => m.id === messageId);
+    // 压缩是 append-only：同 id 消息（压缩前历史 + 压缩后 append 的重复）会
+    // 在磁盘完整线程中出现多次。用户看到的折叠视图对应最后一次出现，
+    // 因此匹配最后一个而非第一个，避免回滚时连压缩摘要一起删掉。
+    const index = messages.map((m) => m.id).lastIndexOf(messageId);
     if (index === -1) {
       throw new RpcError(
         PROTOCOL_INTERNAL_ERROR,
@@ -904,13 +907,19 @@ export class AgentBridge {
   }> {
     const entry = this.requireSession(sessionId);
     const { messages } = await entry.agent.getFullMessageThread();
-    const checkpoints = messages
-      .filter((m) => isUserCheckpointMessage(m) && m.id)
-      .map((m) => ({
-        id: m.id as string,
-        content: getMessageContent(m).replace(/\s+/g, " ").trim(),
-      }));
-    return { checkpoints };
+    // 压缩 append-only 后同 id 消息在磁盘完整线程中重复出现（压缩前历史 +
+    // 压缩后 append 的重复）。按 id 去重并保留最后一次出现（与折叠后的
+    // UI/内存视图一致），避免弹窗把同一条用户消息显示两遍。
+    const checkpointMap = new Map<string, { id: string; content: string }>();
+    for (const m of messages) {
+      if (isUserCheckpointMessage(m) && m.id) {
+        checkpointMap.set(m.id, {
+          id: m.id,
+          content: getMessageContent(m).replace(/\s+/g, " ").trim(),
+        });
+      }
+    }
+    return { checkpoints: Array.from(checkpointMap.values()) };
   }
 
   private deleteQueuedMessage(index: number, sessionId?: string): null {

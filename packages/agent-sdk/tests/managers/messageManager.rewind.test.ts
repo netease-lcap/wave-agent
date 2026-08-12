@@ -294,6 +294,104 @@ describe("MessageManager Single-Session Rewind", () => {
     expect(writtenIds).toEqual(messages.slice(0, 18).map((m) => m.id));
   });
 
+  it("should keep savedMessageCount folded after rewinding past a compact boundary so new messages still persist", async () => {
+    // 与上一条相同的多压缩磁盘布局
+    const messages = [
+      { id: "u1", role: "user", blocks: [{ type: "text", content: "one" }] },
+      {
+        id: "a1",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi1" }],
+      },
+      { id: "u2", role: "user", blocks: [{ type: "text", content: "two" }] },
+      {
+        id: "a2",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi2" }],
+      },
+      { id: "u3", role: "user", blocks: [{ type: "text", content: "three" }] },
+      {
+        id: "a3",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi3" }],
+      },
+      {
+        id: "c1",
+        role: "assistant",
+        blocks: [{ type: "compact", content: "summary 1" }],
+      },
+      { id: "u2b", role: "user", blocks: [{ type: "text", content: "two" }] },
+      {
+        id: "a2b",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi2" }],
+      },
+      { id: "u3b", role: "user", blocks: [{ type: "text", content: "three" }] },
+      {
+        id: "a3b",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi3" }],
+      },
+      { id: "u4", role: "user", blocks: [{ type: "text", content: "four" }] },
+      {
+        id: "a4",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi4" }],
+      },
+      {
+        id: "c2",
+        role: "assistant",
+        blocks: [{ type: "compact", content: "summary 2" }],
+      },
+      { id: "u3c", role: "user", blocks: [{ type: "text", content: "three" }] },
+      {
+        id: "a3c",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi3" }],
+      },
+      { id: "u4b", role: "user", blocks: [{ type: "text", content: "four" }] },
+      {
+        id: "a4b",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi4" }],
+      },
+      { id: "u5", role: "user", blocks: [{ type: "text", content: "five" }] },
+      {
+        id: "a5",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi5" }],
+      },
+    ] as Message[];
+
+    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
+      messages,
+      sessionIds: [messageManager.getSessionId()],
+    });
+
+    // Rewind to u5 (index 18)：磁盘截断到 18 条，内存折叠到 [c2, u3c, a3c, u4b, a4b]
+    await messageManager.truncateHistory(18);
+    expect(messageManager.getMessages().map((m) => m.id)).toEqual([
+      "c2",
+      "u3c",
+      "a3c",
+      "u4b",
+      "a4b",
+    ]);
+
+    // 回滚后新增一条消息并保存：必须通过 appendMessages 落到磁盘。
+    // 若 savedMessageCount 仍等于磁盘截断数(18)而内存已折叠(5)，
+    // slice(savedMessageCount) 会为空，新消息永远不会持久化。
+    messageManager.addUserMessage({ content: "six" });
+    await messageManager.saveSession();
+
+    expect(sessionService.appendMessages).toHaveBeenCalledTimes(1);
+    const saved = vi.mocked(sessionService.appendMessages).mock
+      .calls[0][1] as Message[];
+    expect(saved.map((m) => (m.blocks[0] as TextBlock).content)).toEqual([
+      "six",
+    ]);
+  });
+
   it("should not fold in-memory messages when no compact block exists", async () => {
     const messages = [
       { id: "u1", role: "user", blocks: [{ type: "text", content: "one" }] },

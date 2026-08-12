@@ -135,4 +135,86 @@ describe("RewindCommand Content", () => {
       expect(output).not.toContain("(No text content)");
     });
   });
+
+  it("should dedupe user messages by id after compaction", async () => {
+    // 压缩 append-only 后磁盘完整线程保留压缩前历史 + 压缩后 append 的重复消息
+    //（同 id 同内容）。CLI 只应展示每个用户消息一次。
+    const mockMessages: Partial<Message>[] = [
+      {
+        id: "u1",
+        role: "user",
+        blocks: [{ type: "text", content: "one" }],
+      },
+      {
+        id: "a1",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi1" }],
+      },
+      {
+        id: "u2",
+        role: "user",
+        blocks: [{ type: "text", content: "two" }],
+      },
+      {
+        id: "a2",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi2" }],
+      },
+      {
+        id: "u3",
+        role: "user",
+        blocks: [{ type: "text", content: "three" }],
+      },
+      {
+        id: "a3",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi3" }],
+      },
+      {
+        id: "c1",
+        role: "assistant",
+        blocks: [{ type: "compact", content: "summary" }],
+      },
+      {
+        id: "u2",
+        role: "user",
+        blocks: [{ type: "text", content: "two" }],
+      },
+      {
+        id: "a2",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi2" }],
+      },
+      {
+        id: "u3",
+        role: "user",
+        blocks: [{ type: "text", content: "three" }],
+      },
+      {
+        id: "a3",
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi3" }],
+      },
+    ];
+
+    const { lastFrame } = render(
+      <RewindCommand
+        messages={mockMessages as Message[]}
+        onSelect={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    await vi.waitFor(() => {
+      const output = stripAnsiColors(lastFrame() || "");
+      expect(output).toContain("one");
+      expect(output).toContain("two");
+      expect(output).toContain("three");
+      // 重复 id 只渲染一次（出现两次说明压缩后重复没去重）
+      const twoCount = output.split("two").length - 1;
+      const threeCount = output.split("three").length - 1;
+      expect(twoCount).toBe(1);
+      expect(threeCount).toBe(1);
+    });
+  });
 });
