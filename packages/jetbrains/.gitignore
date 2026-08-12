@@ -8,6 +8,8 @@ build/
 *.iws
 out/
 .DS_Store
-# webview assets are copied at build time by copyWebviewAssets (from packages/webview/dist)
+# webview assets are copied at build time by copyWebviewAssets (from packages/webview/dist + packages/webview/theme)
 src/main/resources/webview/chat.js
 src/main/resources/webview/chat.css
+src/main/resources/webview/theme-base.css
+src/main/resources/webview/theme-base-light.css
