@@ -1789,6 +1789,43 @@ describe("misc commands", () => {
     });
   });
 
+  it("newSession with no recent workdirs releases the pane to the blank state instead of dropping the click (scenario 10)", async () => {
+    const { host, store, sent } = await readyHost();
+    const realAgent = lastAgent();
+    realAgent.messages = [{ id: "m1" }]; // a real session — must stay re-selectable
+    store.removeRecentWorkdir({ host: "local", path: "/work/a" });
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: "newSession" });
+
+    // No workdir to spawn at: no new agent, and the real session is not
+    // discarded (it remains re-selectable from the sidebar).
+    expect(h.agentInstances).toHaveLength(before);
+    expect(realAgent.destroy).not.toHaveBeenCalled();
+    // The pane is released to the blank new-session state (workdir picker
+    // shows the "选择工作目录…" placeholder).
+    const initialState = sent("setInitialState").at(-1);
+    expect(initialState?.session).toBeUndefined();
+    expect(initialState?.messages).toEqual([]);
+    expect(sent("desktopWorkdirState").at(-1)?.workdir).toBeUndefined();
+    expect(sent("desktopPanes").at(-1)?.panes[0].sessionId).toBeUndefined();
+  });
+
+  it("intercepts a message sent in the released blank pane with the workdir hint (scenario 10)", async () => {
+    const { host, store, sent } = await readyHost();
+    lastAgent().messages = [{ id: "m1" }];
+    store.removeRecentWorkdir({ host: "local", path: "/work/a" });
+    await host.handleWebviewMessage({ command: "newSession" });
+
+    await host.handleWebviewMessage({ command: "sendMessage", text: "hi" });
+
+    const hints = sent("appendMessage").filter((m) =>
+      JSON.stringify(m).includes("请先选择工作目录"),
+    );
+    expect(hints).toHaveLength(1);
+    expect(lastAgent().sendMessage).not.toHaveBeenCalled();
+  });
+
   it("clearChat clears the active session in place instead of spawning a new agent", async () => {
     const { host, sent } = await readyHost();
     const agent = lastAgent();
@@ -4946,6 +4983,41 @@ describe("desktopNewSessionInPane (new session side-by-side)", () => {
 
     await host.handleWebviewMessage({ command: "desktopNewSessionInPane" });
 
+    expect(h.agentInstances).toHaveLength(spawned);
+    expect(panePushes(sent).at(-1)!.panes).toHaveLength(1);
+    const focus = sent("focusInput");
+    expect(focus).toHaveLength(focusBefore + 1);
+    expect((focus.at(-1) as { paneId?: string }).paneId).toBe("pane-1");
+  });
+
+  it("opens a blank pane without spawning when no recent workdirs exist (scenario 10)", async () => {
+    const { host, store, sent } = await readyHost();
+    seedActiveSession("sess-1");
+    store.removeRecentWorkdir({ host: "local", path: "/work/a" });
+    const spawned = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: "desktopNewSessionInPane" });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(2);
+    expect(layout.panes[0].sessionId).toBe("sess-1");
+    // The new pane is blank: no session, no agent — workdir to be picked later.
+    expect(layout.panes[1].sessionId).toBeUndefined();
+    expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+    expect(h.agentInstances).toHaveLength(spawned);
+    expect(sent("setInitialState").at(-1)?.session).toBeUndefined();
+  });
+
+  it("focuses the sole empty pane even when no recent workdirs exist (scenario 10)", async () => {
+    const { host, store, sent } = await readyHost();
+    store.removeRecentWorkdir({ host: "local", path: "/work/a" });
+    const spawned = h.agentInstances.length;
+    const focusBefore = sent("focusInput").length;
+
+    await host.handleWebviewMessage({ command: "desktopNewSessionInPane" });
+
+    // The empty-pane lookup runs before the empty-recents early return, so the
+    // entry still lands on the blank pane instead of silently dead-ending.
     expect(h.agentInstances).toHaveLength(spawned);
     expect(panePushes(sent).at(-1)!.panes).toHaveLength(1);
     const focus = sent("focusInput");

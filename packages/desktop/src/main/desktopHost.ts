@@ -3793,12 +3793,31 @@ export class DesktopHost {
     // New session cwd = the most recently user-selected repo root (recents),
     // decoupled from the previous session's state (worktree session, bash cd,
     // etc.). See desktop-app.md「会话管理」scenario 8. No fallback to
-    // this.workdir — it follows the focused pane and could be a worktree path;
-    // if recents is empty the user hasn't picked a dir yet, so this is a no-op.
+    // this.workdir — it follows the focused pane and could be a worktree path.
     // The host is the pane's pending picker host (spec scenario 1/9).
     const host = this.hostState.get(pid) ?? LOCAL_HOST;
     const dir = this.configStore.getRecentWorkdirsForHost(host)[0];
-    if (!dir) return;
+    if (!dir) {
+      // No recents — the user never picked a directory (scenario 10). The 新对话
+      // entry must still work: release the pane to the blank new-session state
+      // (workdir picker shows the "选择工作目录…" placeholder) instead of
+      // silently dropping the click. A real session's agent is not blank, so it
+      // stays in the pool and remains re-selectable from the sidebar; only a
+      // blank agent is discarded by bindAgentToPane. Sending a message here is
+      // still intercepted by handleSendMessage's 请先选择工作目录 guard.
+      if (backOffOnRestore && this.pendingRestores.has(pid)) return;
+      this.bindAgentToPane(pid, null);
+      this.workdir = undefined;
+      this.postMessage({
+        command: "updateWorkdir",
+        paneId: pid,
+        workdir: undefined,
+      });
+      this.sendWorkdirState();
+      this.pushPanes();
+      await this.pushPaneSessionState(pid);
+      return;
+    }
     // No no-op guard for an already-empty active session: clicking 新对话 is an
     // explicit intent, and the blank agent is discarded by bindAgentToPane when
     // replaced (delete-sole-session auto-replacement used to make the button a
@@ -3836,7 +3855,10 @@ export class DesktopHost {
   private async handleNewSessionInNewPane(): Promise<void> {
     const host = this.hostState.get(this.focusedPaneId) ?? LOCAL_HOST;
     const dir = this.configStore.getRecentWorkdirsForHost(host)[0];
-    if (!dir) return;
+    // An already-empty new-session pane is focused instead of duplicated —
+    // checked before the dir lookup so an empty recents list can't dead-end
+    // the entry (scenario 10): the new pane is still created, just without a
+    // bound agent until the user picks a directory.
     const empty = this.panes.find((p) => {
       const a = p.agent;
       return !a || (a.messages.length === 0 && !a.isStreaming);
@@ -3848,6 +3870,21 @@ export class DesktopHost {
     }
     const paneId = this.insertNewPane();
     if (!paneId) return;
+    if (!dir) {
+      // No recents — the user never picked a directory (scenario 10). Insert a
+      // blank new-session pane (workdir picker shows the "选择工作目录…"
+      // placeholder) without spawning an agent; sending a message here is still
+      // intercepted by handleSendMessage's 请先选择工作目录 guard.
+      this.workdir = undefined;
+      this.postMessage({
+        command: "updateWorkdir",
+        paneId,
+        workdir: undefined,
+      });
+      this.sendWorkdirState();
+      await this.pushPaneSessionState(paneId);
+      return;
+    }
     try {
       const agent = await this.spawnAgent({ host, workdir: dir });
       // Spawning is slow (agent init) — the pane may have been closed meanwhile.
