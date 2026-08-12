@@ -175,6 +175,8 @@ export class AgentBridge {
         return this.getSessionInfo(sessionId);
       case "listPendingPermissions":
         return this.listPendingPermissions();
+      case "listDaemonSessions":
+        return this.listDaemonSessions();
       case "updateConfig":
         return this.updateConfig(p as unknown as UpdateConfigParams, sessionId);
       case "getConfiguredModels":
@@ -1185,6 +1187,26 @@ export class AgentBridge {
           context: entry.context,
         }),
       ),
+    };
+  }
+
+  /** Daemon list: expose the in-memory session registry (live sessions only,
+   * not disk-scanning). Registration order is preserved. */
+  private listDaemonSessions(): {
+    sessions: Array<{
+      sessionId: string;
+      workingDirectory: string;
+      isLoading: boolean;
+      messageCount: number;
+    }>;
+  } {
+    return {
+      sessions: [...this.sessions.entries()].map(([sessionId, entry]) => ({
+        sessionId,
+        workingDirectory: entry.agent.workingDirectory,
+        isLoading: entry.agent.isLoading,
+        messageCount: entry.agent.messages.length,
+      })),
     };
   }
 

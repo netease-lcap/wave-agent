@@ -253,6 +253,136 @@ export async function main() {
           );
       })
       .command(
+        "daemon",
+        "Manage the wave daemon (client subcommands — to START a daemon use `wave --daemon <socket>` instead)",
+        (yargs) => {
+          return yargs
+            .help()
+            .command(
+              "list",
+              "List sessions hosted by the daemon (in-memory registry)",
+              {},
+              async () => {
+                const { daemonListCommand, DEFAULT_DAEMON_SOCKET } =
+                  await import("./daemon/commands.js");
+                await daemonListCommand(DEFAULT_DAEMON_SOCKET);
+              },
+            )
+            .command(
+              "status <sessionId>",
+              "Show a session's progress and recent messages",
+              (yargs) => {
+                return yargs
+                  .positional("sessionId", {
+                    describe: "Session ID hosted by the daemon",
+                    type: "string",
+                  })
+                  .option("lines", {
+                    describe: "Number of recent messages to show",
+                    default: 20,
+                    type: "number",
+                  });
+              },
+              async (argv) => {
+                const { daemonStatusCommand, DEFAULT_DAEMON_SOCKET } =
+                  await import("./daemon/commands.js");
+                await daemonStatusCommand(
+                  DEFAULT_DAEMON_SOCKET,
+                  argv.sessionId as string,
+                  argv.lines as number,
+                );
+              },
+            )
+            .command(
+              "send <sessionId> <message>",
+              "Inject a message into a session and wait for the reply",
+              (yargs) => {
+                return yargs
+                  .positional("sessionId", {
+                    describe: "Session ID hosted by the daemon",
+                    type: "string",
+                  })
+                  .positional("message", {
+                    describe: "Message to send",
+                    type: "string",
+                  })
+                  .option("timeout", {
+                    describe: "Seconds to wait for the reply (0 = no limit)",
+                    default: 600,
+                    type: "number",
+                  });
+              },
+              async (argv) => {
+                const { daemonSendCommand, DEFAULT_DAEMON_SOCKET } =
+                  await import("./daemon/commands.js");
+                await daemonSendCommand(
+                  DEFAULT_DAEMON_SOCKET,
+                  argv.sessionId as string,
+                  argv.message as string,
+                  { timeout: argv.timeout as number },
+                );
+              },
+            )
+            .command(
+              "respond <sessionId> <requestId>",
+              "Respond to a pending permission request",
+              (yargs) => {
+                return yargs
+                  .positional("sessionId", {
+                    describe: "Session ID hosting the pending request",
+                    type: "string",
+                  })
+                  .positional("requestId", {
+                    describe: "Pending permission request ID",
+                    type: "string",
+                  })
+                  .option("allow", {
+                    describe: "Allow the operation",
+                    type: "boolean",
+                  })
+                  .option("deny", {
+                    describe: "Deny the operation",
+                    type: "boolean",
+                  })
+                  .option("reason", {
+                    describe: "Reason for the decision (deny)",
+                    type: "string",
+                  })
+                  .option("answer", {
+                    describe: "Answers JSON for AskUserQuestion requests",
+                    type: "string",
+                  })
+                  .option("rule", {
+                    describe: "Persist an allowed rule (e.g. Bash(ls))",
+                    type: "string",
+                  })
+                  .option("mode", {
+                    describe: "Switch the session's permission mode",
+                    type: "string",
+                  });
+              },
+              async (argv) => {
+                const { daemonRespondCommand, DEFAULT_DAEMON_SOCKET } =
+                  await import("./daemon/commands.js");
+                await daemonRespondCommand(
+                  DEFAULT_DAEMON_SOCKET,
+                  argv.sessionId as string,
+                  argv.requestId as string,
+                  {
+                    allow: argv.allow as boolean | undefined,
+                    deny: argv.deny as boolean | undefined,
+                    reason: argv.reason as string | undefined,
+                    answer: argv.answer as string | undefined,
+                    rule: argv.rule as string | undefined,
+                    mode: argv.mode as string | undefined,
+                  },
+                );
+              },
+            )
+            .demandCommand(1, "Please specify a daemon subcommand");
+        },
+      )
+      .command(
         "update",
         "Update WAVE Code to the latest version",
         {},
