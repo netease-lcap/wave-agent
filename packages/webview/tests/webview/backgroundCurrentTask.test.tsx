@@ -1,5 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderChatApp, screen, fireEvent, sendCommand, act } from './test-utils';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  renderChatApp,
+  screen,
+  fireEvent,
+  sendCommand,
+  act,
+} from "./test-utils";
 
 /**
  * Ctrl+B backgrounds the current foreground task (same behavior as the CLI).
@@ -9,51 +15,57 @@ import { renderChatApp, screen, fireEvent, sendCommand, act } from './test-utils
  * while a turn is running so the host keeps its own Ctrl+B binding when idle
  * (e.g. VS Code's Toggle Sidebar).
  */
-describe('Background Current Task (Ctrl+B)', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
+describe("Background Current Task (Ctrl+B)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should post backgroundCurrentTask on Ctrl+B while streaming", async () => {
+    const { vscode } = renderChatApp();
+
+    sendCommand("startStreaming");
+
+    const messageInput = screen.getByTestId("message-input");
+    messageInput.focus();
+
+    await act(async () => {
+      fireEvent.keyDown(messageInput, { key: "b", ctrlKey: true });
     });
 
-    it('should post backgroundCurrentTask on Ctrl+B while streaming', async () => {
-        const { vscode } = renderChatApp();
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      command: "backgroundCurrentTask",
+    });
+  });
 
-        sendCommand('startStreaming');
+  it("should post backgroundCurrentTask on Cmd+B while streaming (macOS convention)", async () => {
+    const { vscode } = renderChatApp();
 
-        const messageInput = screen.getByTestId('message-input');
-        messageInput.focus();
+    sendCommand("startStreaming");
 
-        await act(async () => {
-            fireEvent.keyDown(messageInput, { key: 'b', ctrlKey: true });
-        });
+    const messageInput = screen.getByTestId("message-input");
+    messageInput.focus();
 
-        expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'backgroundCurrentTask' });
+    await act(async () => {
+      fireEvent.keyDown(messageInput, { key: "b", metaKey: true });
     });
 
-    it('should post backgroundCurrentTask on Cmd+B while streaming (macOS convention)', async () => {
-        const { vscode } = renderChatApp();
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      command: "backgroundCurrentTask",
+    });
+  });
 
-        sendCommand('startStreaming');
+  it("should not intercept Ctrl+B when idle (falls through to host binding)", async () => {
+    const { vscode } = renderChatApp();
 
-        const messageInput = screen.getByTestId('message-input');
-        messageInput.focus();
+    const messageInput = screen.getByTestId("message-input");
+    messageInput.focus();
 
-        await act(async () => {
-            fireEvent.keyDown(messageInput, { key: 'b', metaKey: true });
-        });
-
-        expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'backgroundCurrentTask' });
+    await act(async () => {
+      fireEvent.keyDown(messageInput, { key: "b", ctrlKey: true });
     });
 
-    it('should not intercept Ctrl+B when idle (falls through to host binding)', async () => {
-        const { vscode } = renderChatApp();
-
-        const messageInput = screen.getByTestId('message-input');
-        messageInput.focus();
-
-        await act(async () => {
-            fireEvent.keyDown(messageInput, { key: 'b', ctrlKey: true });
-        });
-
-        expect(vscode.postMessage).not.toHaveBeenCalledWith({ command: 'backgroundCurrentTask' });
+    expect(vscode.postMessage).not.toHaveBeenCalledWith({
+      command: "backgroundCurrentTask",
     });
+  });
 });

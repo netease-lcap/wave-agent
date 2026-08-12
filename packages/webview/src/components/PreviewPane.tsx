@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import type { VsCodeApi } from '../types';
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import type { VsCodeApi } from "../types";
 
 /**
  * Desktop-only preview pane: renders a localhost dev server in a
@@ -33,11 +33,19 @@ export interface PreviewComment {
 
 /** User-visible markdown for a picker comment — appended to the chat input. */
 export function formatPreviewComment(msg: PreviewComment): string {
-  const location = [msg.summary ? `\`${msg.summary}\`` : '', msg.text ? `「${msg.text}」` : '']
+  const location = [
+    msg.summary ? `\`${msg.summary}\`` : "",
+    msg.text ? `「${msg.text}」` : "",
+  ]
     .filter(Boolean)
-    .join('');
-  const lines = [`**预览评论** · ${msg.url ?? ''}`, `${location} · \`${msg.selector ?? ''}\``, '', msg.comment ?? ''];
-  return lines.join('\n');
+    .join("");
+  const lines = [
+    `**预览评论** · ${msg.url ?? ""}`,
+    `${location} · \`${msg.selector ?? ""}\``,
+    "",
+    msg.comment ?? "",
+  ];
+  return lines.join("\n");
 }
 
 /**
@@ -49,7 +57,11 @@ export function formatPreviewComment(msg: PreviewComment): string {
  * dies. Only the origin is remapped — path/search/hash pass through unchanged,
  * and any URL that isn't on the forwarded origin is returned untouched.
  */
-export function rewriteCommentUrl(commentUrl: string, forwardedBase: string, originalBase: string): string {
+export function rewriteCommentUrl(
+  commentUrl: string,
+  forwardedBase: string,
+  originalBase: string,
+): string {
   try {
     const fwd = new URL(forwardedBase);
     const orig = new URL(originalBase);
@@ -66,16 +78,18 @@ const MIN_WIDTH = 320;
 /** Colors the guest picker can't read cross-origin — sampled from the host theme. */
 const readPalette = (): Record<string, string> => {
   const styles = getComputedStyle(document.documentElement);
-  const pick = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
+  const pick = (name: string, fallback: string) =>
+    styles.getPropertyValue(name).trim() || fallback;
   return {
-    accent: pick('--vscode-button-background', '#0e639c'),
-    accentForeground: pick('--vscode-button-foreground', '#ffffff'),
-    foreground: pick('--vscode-foreground', '#cccccc'),
+    accent: pick("--vscode-button-background", "#0e639c"),
+    accentForeground: pick("--vscode-button-foreground", "#ffffff"),
+    foreground: pick("--vscode-foreground", "#cccccc"),
     background:
-      pick('--vscode-panel-background', '') || pick('--vscode-editor-background', '#1e1e1e'),
-    border: pick('--vscode-panel-border', 'rgba(128, 128, 128, 0.35)'),
-    inputBackground: pick('--vscode-input-background', '#3c3c3c'),
-    inputForeground: pick('--vscode-input-foreground', '#cccccc'),
+      pick("--vscode-panel-background", "") ||
+      pick("--vscode-editor-background", "#1e1e1e"),
+    border: pick("--vscode-panel-border", "rgba(128, 128, 128, 0.35)"),
+    inputBackground: pick("--vscode-input-background", "#3c3c3c"),
+    inputForeground: pick("--vscode-input-foreground", "#cccccc"),
   };
 };
 
@@ -98,7 +112,17 @@ export interface PreviewPaneProps {
   onRetry?: () => void;
 }
 
-export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, width, onWidthChange, maxWidth, onAddComment, originalUrl, onRetry }) => {
+export const PreviewPane: React.FC<PreviewPaneProps> = ({
+  url,
+  vscode,
+  onClose,
+  width,
+  onWidthChange,
+  maxWidth,
+  onAddComment,
+  originalUrl,
+  onRetry,
+}) => {
   const [displayUrl, setDisplayUrl] = useState(url);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pickerActive, setPickerActive] = useState(false);
@@ -123,16 +147,19 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
   const originalUrlRef = useRef(originalUrl);
   originalUrlRef.current = originalUrl;
 
-  const sendPicker = useCallback((action: 'activate' | 'deactivate') => {
+  const sendPicker = useCallback((action: "activate" | "deactivate") => {
     const wv = webviewRef.current;
     if (!wv || !domReadyRef.current) return;
-    wv.send('wave-picker', action === 'activate' ? { action, palette: readPalette() } : { action });
+    wv.send(
+      "wave-picker",
+      action === "activate" ? { action, palette: readPalette() } : { action },
+    );
   }, []);
 
   const deactivatePicker = useCallback(() => {
     pickerActiveRef.current = false;
     setPickerActive(false);
-    sendPicker('deactivate');
+    sendPicker("deactivate");
   }, [sendPicker]);
 
   // Wire the <webview> once. `src` is set imperatively (never from JSX) so
@@ -145,7 +172,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
       domReadyRef.current = true;
       // Manual refresh keeps the picker on: the fresh guest preload starts
       // inactive, so re-send. (Real navigations already reset the toggle.)
-      if (pickerActiveRef.current) sendPicker('activate');
+      if (pickerActiveRef.current) sendPicker("activate");
     };
     const onDidNavigate = (e: Event) => {
       const navUrl = (e as { url?: string }).url;
@@ -170,20 +197,27 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
       deactivatePicker();
     };
     const onDidFailLoad = (e: Event) => {
-      const detail = e as { errorCode?: number; errorDescription?: string; isMainFrame?: boolean };
+      const detail = e as {
+        errorCode?: number;
+        errorDescription?: string;
+        isMainFrame?: boolean;
+      };
       if (detail.isMainFrame === false) return;
       if (detail.errorCode === -3) return; // ERR_ABORTED: superseded by a newer load
-      setLoadError(detail.errorDescription || 'ERR_FAILED');
+      setLoadError(detail.errorDescription || "ERR_FAILED");
     };
     const onIpcMessage = (e: Event) => {
-      const { channel, args } = e as unknown as { channel: string; args: PreviewComment[] };
-      if (channel !== 'wave-picker') return;
+      const { channel, args } = e as unknown as {
+        channel: string;
+        args: PreviewComment[];
+      };
+      if (channel !== "wave-picker") return;
       const msg = args?.[0];
-      if (msg?.type === 'ready') {
+      if (msg?.type === "ready") {
         pickerReadyRef.current = true;
         return;
       }
-      if (msg?.type === 'submit' && msg.comment) {
+      if (msg?.type === "submit" && msg.comment) {
         // Append to the chat input instead of sending: the user batches
         // several element comments and sends them together. The picker
         // stays active for the next pick. The guest reports its actual
@@ -191,26 +225,31 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
         // tunnels so the comment records the URL the user clicked (scenario
         // 17); local previews pass through unchanged.
         const originalBase = originalUrlRef.current;
-        const rewritten = originalBase ? rewriteCommentUrl(msg.url ?? '', urlPropRef.current, originalBase) : (msg.url ?? '');
-        onAddCommentRef.current?.(formatPreviewComment({ ...msg, url: rewritten }));
+        const rewritten = originalBase
+          ? rewriteCommentUrl(msg.url ?? "", urlPropRef.current, originalBase)
+          : (msg.url ?? "");
+        onAddCommentRef.current?.(
+          formatPreviewComment({ ...msg, url: rewritten }),
+        );
       }
     };
 
-    wv.addEventListener('dom-ready', onDomReady);
-    wv.addEventListener('did-navigate', onDidNavigate);
-    wv.addEventListener('did-navigate-in-page', onDidNavigateInPage);
-    wv.addEventListener('did-fail-load', onDidFailLoad);
-    wv.addEventListener('ipc-message', onIpcMessage);
-    wv.setAttribute('src', url);
+    wv.addEventListener("dom-ready", onDomReady);
+    wv.addEventListener("did-navigate", onDidNavigate);
+    wv.addEventListener("did-navigate-in-page", onDidNavigateInPage);
+    wv.addEventListener("did-fail-load", onDidFailLoad);
+    wv.addEventListener("ipc-message", onIpcMessage);
+    wv.setAttribute("src", urlPropRef.current);
     return () => {
-      wv.removeEventListener('dom-ready', onDomReady);
-      wv.removeEventListener('did-navigate', onDidNavigate);
-      wv.removeEventListener('did-navigate-in-page', onDidNavigateInPage);
-      wv.removeEventListener('did-fail-load', onDidFailLoad);
-      wv.removeEventListener('ipc-message', onIpcMessage);
+      wv.removeEventListener("dom-ready", onDomReady);
+      wv.removeEventListener("did-navigate", onDidNavigate);
+      wv.removeEventListener("did-navigate-in-page", onDidNavigateInPage);
+      wv.removeEventListener("did-fail-load", onDidFailLoad);
+      wv.removeEventListener("ipc-message", onIpcMessage);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // deactivatePicker/sendPicker are stable useCallbacks, so this still only
+    // runs once per mount.
+  }, [deactivatePicker, sendPicker]);
 
   // Navigate when a different localhost link is clicked while the panel is open.
   const lastUrlRef = useRef(url);
@@ -226,7 +265,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
       void wv.loadURL(url);
     } else {
       // Guest hasn't finished its first load yet — retarget the initial src.
-      wv.setAttribute('src', url);
+      wv.setAttribute("src", url);
     }
   }, [url]);
 
@@ -240,7 +279,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
     setPickerUnsupported(false);
     pickerActiveRef.current = next;
     setPickerActive(next);
-    sendPicker(next ? 'activate' : 'deactivate');
+    sendPicker(next ? "activate" : "deactivate");
   };
 
   // Transient "picker unsupported" hint.
@@ -258,7 +297,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
   };
 
   const handleOpenExternal = () => {
-    vscode.postMessage({ command: 'openExternal', url: currentUrlRef.current });
+    vscode.postMessage({ command: "openExternal", url: currentUrlRef.current });
   };
 
   const asideRef = useRef<HTMLElement | null>(null);
@@ -269,31 +308,38 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
     const handle = e.currentTarget as HTMLElement;
     // Keep the handle lit + cursor locked for the whole drag — :hover and the
     // 6px-only col-resize cursor both flicker as the pointer outruns the handle.
-    handle.style.background = 'var(--vscode-focusBorder, #007fd4)';
-    document.body.classList.add('is-panel-resizing');
+    handle.style.background = "var(--vscode-focusBorder, #007fd4)";
+    document.body.classList.add("is-panel-resizing");
     const rect = asideRef.current?.getBoundingClientRect();
     const onMove = (ev: MouseEvent) => {
       const next = (rect?.right ?? 0) - ev.clientX;
       onWidthChange(Math.min(Math.max(next, MIN_WIDTH), maxWidth));
     };
     const onUp = () => {
-      handle.style.background = '';
-      document.body.classList.remove('is-panel-resizing');
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      handle.style.background = "";
+      document.body.classList.remove("is-panel-resizing");
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
     };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   };
 
   return (
-    <aside ref={asideRef} className="preview-pane" style={{ width }} data-testid="preview-pane">
+    <aside
+      ref={asideRef}
+      className="preview-pane"
+      style={{ width }}
+      data-testid="preview-pane"
+    >
       <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
         <div className="preview-pane-toolbar">
-          <span className="preview-pane-url" title={displayUrl}>{displayUrl}</span>
+          <span className="preview-pane-url" title={displayUrl}>
+            {displayUrl}
+          </span>
           <button
-            className={`preview-pane-button${pickerActive ? ' active' : ''}`}
+            className={`preview-pane-button${pickerActive ? " active" : ""}`}
             title="选择元素并评论"
             aria-pressed={pickerActive}
             data-testid="preview-picker-toggle"
@@ -301,18 +347,36 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
           >
             <i className="codicon codicon-inspect" />
           </button>
-          <button className="preview-pane-button" title="刷新" data-testid="preview-refresh" onClick={handleRefresh}>
+          <button
+            className="preview-pane-button"
+            title="刷新"
+            data-testid="preview-refresh"
+            onClick={handleRefresh}
+          >
             <i className="codicon codicon-refresh" />
           </button>
-          <button className="preview-pane-button" title="在浏览器中打开" data-testid="preview-open-external" onClick={handleOpenExternal}>
+          <button
+            className="preview-pane-button"
+            title="在浏览器中打开"
+            data-testid="preview-open-external"
+            onClick={handleOpenExternal}
+          >
             <i className="codicon codicon-link-external" />
           </button>
-          <button className="preview-pane-button" title="关闭" data-testid="preview-close" onClick={onClose}>
+          <button
+            className="preview-pane-button"
+            title="关闭"
+            data-testid="preview-close"
+            onClick={onClose}
+          >
             <i className="codicon codicon-close" />
           </button>
         </div>
         {pickerUnsupported && (
-          <div className="preview-pane-hint" data-testid="preview-picker-unsupported">
+          <div
+            className="preview-pane-hint"
+            data-testid="preview-picker-unsupported"
+          >
             该页面暂不支持元素拾取
           </div>
         )}

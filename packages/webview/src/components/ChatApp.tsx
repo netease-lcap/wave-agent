@@ -1,35 +1,42 @@
-import React, { useEffect, useLayoutEffect, useReducer, useCallback, useRef, useState } from 'react';
-import { MessageList } from './MessageList';
-import { MessageInput } from './MessageInput';
-import type { MessageInputHandle } from './MessageInput';
-import { ChatHeader } from './ChatHeader';
-import { TaskList } from './TaskList';
-import { QueuedMessageList } from './QueuedMessageList';
-import { ConfirmationDialog } from './ConfirmationDialog';
-import { ConfirmDialog } from './ConfirmDialog';
-import { RewindPopup } from './RewindPopup';
-import type { RewindCheckpoint } from './RewindPopup';
-import { ModelPopup } from './ModelPopup';
-import { ToastStack } from './ToastStack';
-import { BtwPanel } from './BtwPanel';
-import ConfigDialog from './ConfigDialog';
-import PluginDialog from './PluginDialog';
-import McpDialog from './McpDialog';
-import StatusDialog from './StatusDialog';
-import BackgroundTaskManager from './BackgroundTaskManager';
-import WorkflowManager from './WorkflowManager';
-import AgentsDialog from './AgentsDialog';
-import WelcomeView from './WelcomeView';
-import LoadingLogo from './LoadingLogo';
-import { DesktopHostSelector } from './DesktopHostSelector';
-import { DesktopSidebar } from './DesktopSidebar';
-import { DesktopShell } from './DesktopShell';
-import { DesktopWorkdirSelector } from './DesktopWorkdirSelector';
-import { DesktopWorktreeControls } from './DesktopWorktreeControls';
-import { PreviewPane } from './PreviewPane';
-import { DiffPane } from './DiffPane';
-import { TerminalPane, prefetchTerminalLib } from './TerminalPane';
-import { FilePane } from './FilePane';
+import React, {
+  useEffect,
+  useReducer,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { MessageList } from "./MessageList";
+import { MessageInput } from "./MessageInput";
+import type { MessageInputHandle } from "./MessageInput";
+import { ChatHeader } from "./ChatHeader";
+import { TaskList } from "./TaskList";
+import { QueuedMessageList } from "./QueuedMessageList";
+import { ConfirmationDialog } from "./ConfirmationDialog";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { RewindPopup } from "./RewindPopup";
+import type { RewindCheckpoint } from "./RewindPopup";
+import { ModelPopup } from "./ModelPopup";
+import { ToastStack } from "./ToastStack";
+import { BtwPanel } from "./BtwPanel";
+import ConfigDialog from "./ConfigDialog";
+import PluginDialog from "./PluginDialog";
+import McpDialog from "./McpDialog";
+import StatusDialog from "./StatusDialog";
+import BackgroundTaskManager from "./BackgroundTaskManager";
+import WorkflowManager from "./WorkflowManager";
+import AgentsDialog from "./AgentsDialog";
+import WelcomeView from "./WelcomeView";
+import LoadingLogo from "./LoadingLogo";
+import { DesktopHostSelector } from "./DesktopHostSelector";
+import { DesktopSidebar } from "./DesktopSidebar";
+import { DesktopShell } from "./DesktopShell";
+import { DesktopWorkdirSelector } from "./DesktopWorkdirSelector";
+import { DesktopWorktreeControls } from "./DesktopWorktreeControls";
+import { PreviewPane } from "./PreviewPane";
+import { DiffPane } from "./DiffPane";
+import { TerminalPane, prefetchTerminalLib } from "./TerminalPane";
+import { FilePane } from "./FilePane";
 import type {
   ChatAppProps,
   ConfigurationData,
@@ -38,12 +45,12 @@ import type {
   FileViewState,
   ToolBlockUpdateCallbackParams,
   UpdateToast,
-} from '../types';
-import { chatReducer, initialState } from '../reducers/chatReducer';
-import '../styles/ChatApp.css';
+} from "../types";
+import { chatReducer, initialState } from "../reducers/chatReducer";
+import "../styles/ChatApp.css";
 
 /** Desktop conversation-level panels: fixed left→right order regardless of check order. */
-const PANEL_ORDER: DesktopPanelKind[] = ['preview', 'diff', 'terminal', 'file'];
+const PANEL_ORDER: DesktopPanelKind[] = ["preview", "diff", "terminal", "file"];
 const PANEL_DEFAULT_WIDTH = 420;
 const PANEL_MIN_WIDTH = 320;
 /** The conversation (message) area never shrinks below this when opening/dragging panels. */
@@ -59,17 +66,17 @@ const CHAT_MAIN_MIN_WIDTH = 360;
  * former, terminal/Markdown links may carry the latter.
  */
 const LOOPBACK_OR_ALL_INTERFACES_HOSTS = new Set([
-  'localhost',
-  '127.0.0.1',
-  '::1',
-  '[::1]',
-  '0:0:0:0:0:0:0:1',
-  '[0:0:0:0:0:0:0:1]',
-  '0.0.0.0',
-  '::',
-  '[::]',
-  '0:0:0:0:0:0:0:0',
-  '[0:0:0:0:0:0:0:0]',
+  "localhost",
+  "127.0.0.1",
+  "::1",
+  "[::1]",
+  "0:0:0:0:0:0:0:1",
+  "[0:0:0:0:0:0:0:1]",
+  "0.0.0.0",
+  "::",
+  "[::]",
+  "0:0:0:0:0:0:0:0",
+  "[0:0:0:0:0:0:0:0]",
 ]);
 
 /**
@@ -82,7 +89,8 @@ const LOOPBACK_OR_ALL_INTERFACES_HOSTS = new Set([
 function canonicalForwardUrl(raw: string): string {
   try {
     const u = new URL(raw);
-    if (LOOPBACK_OR_ALL_INTERFACES_HOSTS.has(u.hostname.toLowerCase())) u.hostname = 'localhost';
+    if (LOOPBACK_OR_ALL_INTERFACES_HOSTS.has(u.hostname.toLowerCase()))
+      u.hostname = "localhost";
     return u.href;
   } catch {
     return raw;
@@ -172,17 +180,27 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const [pendingRewindId, setPendingRewindId] = useState<string | null>(null);
   // /rewind popup: checkpoint list requested from the host on open.
   const [rewindPopupOpen, setRewindPopupOpen] = useState(false);
-  const [rewindCheckpoints, setRewindCheckpoints] = useState<RewindCheckpoint[]>([]);
-  const [rewindCheckpointsLoading, setRewindCheckpointsLoading] = useState(false);
+  const [rewindCheckpoints, setRewindCheckpoints] = useState<
+    RewindCheckpoint[]
+  >([]);
+  const [rewindCheckpointsLoading, setRewindCheckpointsLoading] =
+    useState(false);
   // /model popup: configured models requested from the host on open.
   const [modelPopupOpen, setModelPopupOpen] = useState(false);
   const [configuredModels, setConfiguredModels] = useState<string[]>([]);
-  const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
+  const [currentModel, setCurrentModel] = useState<string | undefined>(
+    undefined,
+  );
   const [modelLoading, setModelLoading] = useState(false);
   // /btw side-question panel (webview spec story 3). Non-null while the panel is
   // open; `loading` while the askBtw RPC is in flight, `answer` afterwards
   // (including the bare-/btw usage hint and API-error strings).
-  const [btwPanel, setBtwPanel] = useState<{ question: string; answer: string; loading: boolean; contentStarted: boolean } | null>(null);
+  const [btwPanel, setBtwPanel] = useState<{
+    question: string;
+    answer: string;
+    loading: boolean;
+    contentStarted: boolean;
+  } | null>(null);
   // Question of the in-flight askBtw RPC. Cleared on close so a late reply is
   // dropped (scenario 7); matched against the reply's echoed question so a stale
   // reply never lands on a newer panel (scenario 6/7).
@@ -194,35 +212,46 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // local useState alone would leak the previous conversation's panel.
   const btwSessionRef = useRef<string | undefined>(undefined);
   // Desktop new-session worktree controls (FR-022/FR-023).
-  const [worktreeBranch, setWorktreeBranch] = useState<string>('');
+  const [worktreeBranch, setWorktreeBranch] = useState<string>("");
   const [worktreeChecked, setWorktreeChecked] = useState(true);
   // Per-pane git branches for this pane's OWN workdir (FR-022). The host-level
   // workdir follows the focused pane — sharing it would bleed one pane's
   // directory/branch into a sibling new-session pane, so each new-session pane
   // queries branches against its own session workdir.
-  const [paneGitBranches, setPaneGitBranches] = useState<{ branches: string[]; current: string } | null>(null);
+  const [paneGitBranches, setPaneGitBranches] = useState<{
+    branches: string[];
+    current: string;
+  } | null>(null);
   // The pane's effective cwd: its own session workdir wins; a new-session pane
   // (state.workdir empty during spawn) falls back to the most recently selected
   // repo root from recents — never to the host-level workdir, which follows the
   // focused pane and would bleed a sibling worktree session's path/branch into
   // this new pane until the spawn finishes and setInitialState lands.
-  const effectiveWorkdir = state.workdir ?? (host?.type === 'desktop' ? (host?.recentWorkdirs?.[0] ?? host?.workdir) : undefined);
-  const isDesktop = host?.type === 'desktop';
+  const effectiveWorkdir =
+    state.workdir ??
+    (host?.type === "desktop"
+      ? (host?.recentWorkdirs?.[0] ?? host?.workdir)
+      : undefined);
+  const isDesktop = host?.type === "desktop";
   // The pane's effective host ('local' or an SSH host name): a pane-bound
   // session's host (authoritative `desktopPanes` push) wins; the single-pane
   // layout reads the host-level current host. Remote sessions run the whole
   // agent on the remote host, so local-only surfaces — the preview/diff/
   // terminal panels and preview-pane localhost links — are suppressed for them.
-  const paneHost = paneId ? host?.panes?.find((p) => p.paneId === paneId)?.host : undefined;
-  const effectiveHost = paneHost ?? host?.host ?? 'local';
+  const paneHost = paneId
+    ? host?.panes?.find((p) => p.paneId === paneId)?.host
+    : undefined;
+  const effectiveHost = paneHost ?? host?.host ?? "local";
   const effectiveHostRef = useRef(effectiveHost);
   const gitBranches = isDesktop ? paneGitBranches : null;
   const effectiveWorkdirRef = useRef(effectiveWorkdir);
   // Desktop only: the panel group follows the session bound to this pane. The
   // cache key is the session id from the host-authoritative `desktopPanes`
   // push, or the pane's new-session bucket while no session is bound.
-  const boundSessionId = paneId ? host?.panes?.find((p) => p.paneId === paneId)?.sessionId : undefined;
-  const groupKey = paneId ? boundSessionId ?? `new:${paneId}` : undefined;
+  const boundSessionId = paneId
+    ? host?.panes?.find((p) => p.paneId === paneId)?.sessionId
+    : undefined;
+  const groupKey = paneId ? (boundSessionId ?? `new:${paneId}`) : undefined;
   const groupKeyRef = useRef(groupKey);
   // Set when the user sends a message from this pane's new-session state. The
   // new-session bucket migrates to the session id only when that message binds
@@ -236,7 +265,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // stub with a retry entry (scenario 16). Null = no error. Restored from the
   // session's cached group so a pane rebinding away and back keeps the error.
   const [previewForwardError, setPreviewForwardError] = useState<string | null>(
-    () => (groupKey ? panelGroupCache.get(groupKey)?.forwardError : undefined) ?? null,
+    () =>
+      (groupKey ? panelGroupCache.get(groupKey)?.forwardError : undefined) ??
+      null,
   );
   // Bumped when a re-acquire returns the SAME forwarded URL — the [url] effect
   // in PreviewPane would otherwise early-return and skip the forced reload a
@@ -246,7 +277,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // Set locally to a loading stub when a path is clicked, then filled by the
   // host's desktopFileContent reply (routed by paneId).
   const [fileView, setFileView] = useState<FileViewState | null>(
-    () => (groupKey ? panelGroupCache.get(groupKey)?.fileView : undefined) ?? null,
+    () =>
+      (groupKey ? panelGroupCache.get(groupKey)?.fileView : undefined) ?? null,
   );
   // The pane's current remote port forward (see RemoteForwardRef above). State
   // rather than a ref because a pane rebinding to another session must drop its
@@ -255,7 +287,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // live in panelGroupCache, this state only mirrors the bound session's one
   // for rendering the preview stub.
   const [currentForward, setCurrentForward] = useState<RemoteForwardRef | null>(
-    () => (groupKey ? panelGroupCache.get(groupKey)?.forward : undefined) ?? null,
+    () =>
+      (groupKey ? panelGroupCache.get(groupKey)?.forward : undefined) ?? null,
   );
   // Mirrors of the forward state, refreshed on every render. Message is a
   // React.memo component whose DOM click handler captures props.onOpenPreview
@@ -281,7 +314,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const [mountedPanels, setMountedPanels] = useState<DesktopPanelKind[]>(
     () => (groupKey ? panelGroupCache.get(groupKey)?.mounted : undefined) ?? [],
   );
-  const [panelWidths, setPanelWidths] = useState<Record<DesktopPanelKind, number>>(
+  const [panelWidths, setPanelWidths] = useState<
+    Record<DesktopPanelKind, number>
+  >(
     () =>
       (groupKey ? panelGroupCache.get(groupKey)?.widths : undefined) ?? {
         preview: PANEL_DEFAULT_WIDTH,
@@ -298,7 +333,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const togglePanelRef = useRef<(kind: DesktopPanelKind) => void>(() => {});
   const panelDisabledRef = useRef<DesktopPanelKind[]>([]);
   const messageInputRef = useRef<MessageInputHandle>(null);
-  const messageListRef = useRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }>(null);
+  const messageListRef = useRef<{
+    scrollToBottom: (behavior?: ScrollBehavior) => void;
+  }>(null);
   const stateRef = useRef(state);
   // The pane this instance renders; undefined = single view (IDE hosts and the
   // desktop single-pane layout). Ref mirror for use inside stable callbacks.
@@ -352,7 +389,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       forward: currentForward,
       forwardError: previewForwardError,
     });
-  }, [groupKey, checkedPanels, mountedPanels, panelWidths, previewUrl, fileView, currentForward, previewForwardError]);
+  }, [
+    groupKey,
+    checkedPanels,
+    mountedPanels,
+    panelWidths,
+    previewUrl,
+    fileView,
+    currentForward,
+    previewForwardError,
+  ]);
 
   // Session switch: swap in the incoming session's remembered panel group
   // (empty when it has none — panels never leak across sessions). Only the
@@ -367,8 +413,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     let group = panelGroupCache.get(groupKey);
     if (
       !group &&
-      prevKey?.startsWith('new:') &&
-      !groupKey.startsWith('new:') &&
+      prevKey?.startsWith("new:") &&
+      !groupKey.startsWith("new:") &&
       sentFromNewSessionRef.current
     ) {
       group = panelGroupCache.get(prevKey);
@@ -383,12 +429,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     setCurrentForward(group?.forward ?? null);
     setCheckedPanels(group?.checked ?? []);
     setMountedPanels(group?.mounted ?? []);
-    setPanelWidths(group?.widths ?? {
-      preview: PANEL_DEFAULT_WIDTH,
-      diff: PANEL_DEFAULT_WIDTH,
-      terminal: PANEL_DEFAULT_WIDTH,
-      file: PANEL_DEFAULT_WIDTH,
-    });
+    setPanelWidths(
+      group?.widths ?? {
+        preview: PANEL_DEFAULT_WIDTH,
+        diff: PANEL_DEFAULT_WIDTH,
+        terminal: PANEL_DEFAULT_WIDTH,
+        file: PANEL_DEFAULT_WIDTH,
+      },
+    );
     setFileView(group?.fileView ?? null);
   }, [paneId, groupKey]);
 
@@ -401,7 +449,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // inject their own variables and never set state.theme, so this is inert there.
   useEffect(() => {
     if (state.theme) {
-      document.documentElement.setAttribute('data-theme', state.theme.effective);
+      document.documentElement.setAttribute(
+        "data-theme",
+        state.theme.effective,
+      );
     }
   }, [state.theme]);
 
@@ -415,7 +466,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // Desktop: reset the worktree controls when the branch list changes (i.e. the
   // workdir was re-queried). Default to the repo's current branch, checked.
   useEffect(() => {
-    setWorktreeBranch(gitBranches?.current ?? '');
+    setWorktreeBranch(gitBranches?.current ?? "");
     setWorktreeChecked(true);
   }, [gitBranches]);
 
@@ -426,50 +477,54 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     // commands) or tagged with this pane's id. Messages tagged with a different
     // paneId belong to a sibling pane and are ignored here.
     const myPane = paneIdRef.current;
-    const forThisPane = (message: any): boolean => myPane === undefined || message.paneId === myPane;
+    const forThisPane = (message: { paneId?: string }): boolean =>
+      myPane === undefined || message.paneId === myPane;
 
     const handleMessage = (event: MessageEvent) => {
-      const message = event.data as any;
+      const message = event.data;
 
       switch (message.command) {
-        case 'updateMessages':
+        case "updateMessages":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'SET_MESSAGES', payload: message.messages });
+          dispatch({ type: "SET_MESSAGES", payload: message.messages });
           break;
-        case 'updateTasks':
+        case "updateTasks":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'SET_TASKS', payload: message.tasks });
+          dispatch({ type: "SET_TASKS", payload: message.tasks });
           if (message.isTaskListCollapsed !== undefined) {
-            dispatch({ type: 'SET_TASK_LIST_COLLAPSED', payload: message.isTaskListCollapsed });
+            dispatch({
+              type: "SET_TASK_LIST_COLLAPSED",
+              payload: message.isTaskListCollapsed,
+            });
           }
           break;
-        case 'updateBackgroundTasks':
+        case "updateBackgroundTasks":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'SET_BACKGROUND_TASKS', payload: message.tasks });
+          dispatch({ type: "SET_BACKGROUND_TASKS", payload: message.tasks });
           break;
-        case 'updateWorkflowRuns':
+        case "updateWorkflowRuns":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'SET_WORKFLOW_RUNS', payload: message.runs });
+          dispatch({ type: "SET_WORKFLOW_RUNS", payload: message.runs });
           break;
-        case 'updateSelection':
+        case "updateSelection":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'UPDATE_SELECTION', payload: message.selection });
+          dispatch({ type: "UPDATE_SELECTION", payload: message.selection });
           break;
-        case 'updatePermissionMode':
+        case "updatePermissionMode":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'SET_PERMISSION_MODE', payload: message.mode });
+          dispatch({ type: "SET_PERMISSION_MODE", payload: message.mode });
           break;
-        case 'updateWorkdir':
+        case "updateWorkdir":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'SET_WORKDIR', payload: message.workdir });
+          dispatch({ type: "SET_WORKDIR", payload: message.workdir });
           break;
-        case 'desktopGitBranches':
+        case "desktopGitBranches":
           // Per-pane branch list reply (FR-052). Routed by paneId so a sibling
           // pane's reply never overwrites this pane's selector.
           if (!forThisPane(message)) break;
           setPaneGitBranches(message.result ?? null);
           break;
-        case 'desktopForwardPortResult':
+        case "desktopForwardPortResult":
           // Remote preview port-forward reply (scenario 15/16). The forward is
           // session-scoped, so the reply is matched against the session whose
           // cached forward carries this requestId — a reply that lands after
@@ -486,7 +541,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
             if (!target) break;
             if (message.error) {
               target.forwardError = String(message.error);
-              if (targetKey === groupKeyRef.current) setPreviewForwardError(String(message.error));
+              if (targetKey === groupKeyRef.current)
+                setPreviewForwardError(String(message.error));
             } else {
               target.forwardError = null;
               target.previewUrl = message.url as string;
@@ -496,99 +552,123 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
                 // Same URL as before (re-acquire after a guest load failure):
                 // remount so the webview actually reloads instead of the [url]
                 // effect early-returning on an unchanged prop.
-                if (message.url === previewUrlRef.current) setPreviewEpoch((e) => e + 1);
+                if (message.url === previewUrlRef.current)
+                  setPreviewEpoch((e) => e + 1);
               }
             }
           }
           break;
-        case 'desktopFileContent':
+        case "desktopFileContent":
           // File panel content reply (file panel spec scenario 1/2). Routed by
           // paneId so a sibling pane's reply never overwrites this pane's view.
           if (!forThisPane(message)) break;
           setFileView(message.fileView as FileViewState);
           break;
-        case 'updateQueue':
+        case "updateQueue":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'SET_QUEUED_MESSAGES', payload: message.queue });
+          dispatch({ type: "SET_QUEUED_MESSAGES", payload: message.queue });
           break;
-        case 'updateQueuedMessageMissing':
+        case "updateQueuedMessageMissing":
           if (!forThisPane(message)) break;
           // The edited queue message no longer exists. Keep input content, exit editing.
-          dispatch({ type: 'SET_EDITING_QUEUED_ID', payload: null });
-          setQueueEditWarning('编辑的队列消息已不存在！');
+          dispatch({ type: "SET_EDITING_QUEUED_ID", payload: null });
+          setQueueEditWarning("编辑的队列消息已不存在！");
           break;
-        case 'updateCommandRunning':
+        case "updateCommandRunning":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'SET_COMMAND_RUNNING', payload: message.running });
+          dispatch({ type: "SET_COMMAND_RUNNING", payload: message.running });
           break;
-        case 'rewindCheckpoints':
+        case "rewindCheckpoints":
           if (!forThisPane(message)) break;
           setRewindCheckpoints(message.checkpoints || []);
           setRewindCheckpointsLoading(false);
           break;
-        case 'configuredModels':
+        case "configuredModels":
           if (!forThisPane(message)) break;
           setConfiguredModels(message.models || []);
           setCurrentModel(message.currentModel);
           setModelLoading(false);
           break;
-        case 'btwStream':
+        case "btwStream":
           if (!forThisPane(message)) break;
           // Streaming chunks from the askBtw RPC (spec scenario 6): thinking
           // chunks show live while they stream, but once the first content
           // chunk arrives the accumulated thinking text is discarded and only
           // content is kept (user decision: thinking is not shown after the
           // thinking phase ends).
-          if (!btwActiveRef.current || message.question !== btwActiveRef.current) break;
-          setBtwPanel(panel => {
+          if (
+            !btwActiveRef.current ||
+            message.question !== btwActiveRef.current
+          )
+            break;
+          setBtwPanel((panel) => {
             if (!panel) return panel;
-            const content = typeof message.content === 'string' ? message.content : '';
-            if (message.type === 'content') {
-              const base = panel.contentStarted ? panel.answer : '';
+            const content =
+              typeof message.content === "string" ? message.content : "";
+            if (message.type === "content") {
+              const base = panel.contentStarted ? panel.answer : "";
               return { ...panel, contentStarted: true, answer: base + content };
             }
             if (panel.contentStarted) return panel;
             return { ...panel, answer: panel.answer + content };
           });
           break;
-        case 'btwResponse':
+        case "btwResponse":
           if (!forThisPane(message)) break;
           // Drop late replies: the panel must be open, the panel's question must
           // still match the in-flight one, and the reply must echo the same question.
-          if (btwActiveRef.current && message.question === btwActiveRef.current) {
-            setBtwPanel(panel => panel ? { ...panel, answer: message.answer ?? '', loading: false } : panel);
+          if (
+            btwActiveRef.current &&
+            message.question === btwActiveRef.current
+          ) {
+            setBtwPanel((panel) =>
+              panel
+                ? { ...panel, answer: message.answer ?? "", loading: false }
+                : panel,
+            );
           }
           break;
-        case 'btwError':
+        case "btwError":
           if (!forThisPane(message)) break;
-          if (btwActiveRef.current && message.question === btwActiveRef.current) {
-            setBtwPanel(panel => panel ? { ...panel, answer: `(API error: ${message.error ?? 'unknown'})`, loading: false } : panel);
+          if (
+            btwActiveRef.current &&
+            message.question === btwActiveRef.current
+          ) {
+            setBtwPanel((panel) =>
+              panel
+                ? {
+                    ...panel,
+                    answer: `(API error: ${message.error ?? "unknown"})`,
+                    loading: false,
+                  }
+                : panel,
+            );
           }
           break;
         // Test-only handlers
-        case 'startStreaming':
+        case "startStreaming":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'START_STREAMING' });
+          dispatch({ type: "START_STREAMING" });
           break;
-        case 'endStreaming':
+        case "endStreaming":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'END_STREAMING' });
+          dispatch({ type: "END_STREAMING" });
           break;
-        case 'ensureUIReset':
+        case "ensureUIReset":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'END_STREAMING' });
+          dispatch({ type: "END_STREAMING" });
           break;
-        case 'updateSessions':
-          dispatch({ type: 'SET_SESSIONS', payload: message.sessions });
+        case "updateSessions":
+          dispatch({ type: "SET_SESSIONS", payload: message.sessions });
           break;
-        case 'updateCurrentSession':
+        case "updateCurrentSession":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'SET_CURRENT_SESSION', payload: message.session });
+          dispatch({ type: "SET_CURRENT_SESSION", payload: message.session });
           break;
-        case 'showConfirmation':
+        case "showConfirmation":
           if (!forThisPane(message)) break;
           dispatch({
-            type: 'SHOW_CONFIRMATION',
+            type: "SHOW_CONFIRMATION",
             payload: {
               confirmationId: message.confirmationId,
               toolName: message.toolName,
@@ -598,36 +678,39 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
               suggestedPrefix: message.suggestedPrefix,
               hidePersistentOption: message.hidePersistentOption,
               permissionMode: message.permissionMode,
-              warning: message.warning
-            }
+              warning: message.warning,
+            },
           });
           // Scroll to bottom when confirmation is shown
           setTimeout(() => {
-            if (messageListRef.current && typeof messageListRef.current.scrollToBottom === 'function') {
-              messageListRef.current.scrollToBottom('smooth');
+            if (
+              messageListRef.current &&
+              typeof messageListRef.current.scrollToBottom === "function"
+            ) {
+              messageListRef.current.scrollToBottom("smooth");
             }
           }, 0);
           break;
-        case 'configurationResponse':
+        case "configurationResponse":
           dispatch({
-            type: 'SET_CONFIGURATION_DATA',
-            payload: message.configurationData
+            type: "SET_CONFIGURATION_DATA",
+            payload: message.configurationData,
           });
           break;
-        case 'projectSettings':
+        case "projectSettings":
           // Project settings (.wave/settings.json merged enabledPlugins) are
           // per-workdir, so on Desktop each pane may hold a different value —
           // must be pane-guarded (unlike the shared global configurationResponse).
           if (!forThisPane(message)) break;
           dispatch({
-            type: 'SET_PROJECT_SETTINGS',
-            payload: { enabledPlugins: message.enabledPlugins }
+            type: "SET_PROJECT_SETTINGS",
+            payload: { enabledPlugins: message.enabledPlugins },
           });
           break;
-        case 'setInitialState':
+        case "setInitialState":
           if (!forThisPane(message)) break;
           dispatch({
-            type: 'SET_INITIAL_STATE',
+            type: "SET_INITIAL_STATE",
             payload: {
               messages: message.messages,
               tasks: message.tasks,
@@ -638,7 +721,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
               sessions: message.sessions,
               currentSession: message.session,
               configurationData: message.configurationData,
-              pendingConfirmations: message.pendingConfirmations || (message.pendingConfirmation ? [message.pendingConfirmation] : []),
+              pendingConfirmations:
+                message.pendingConfirmations ||
+                (message.pendingConfirmation
+                  ? [message.pendingConfirmation]
+                  : []),
               selection: message.selection,
               inputContent: message.inputContent,
               permissionMode: message.permissionMode,
@@ -654,52 +741,67 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
               // until the next incremental updateBackgroundTasks (e.g. stop).
               backgroundTasks: message.backgroundTasks,
               workflowRuns: message.workflowRuns,
-            }
+            },
           });
           break;
-        case 'desktopThemeChange':
-          document.documentElement.setAttribute('data-theme', message.effective);
+        case "desktopThemeChange":
+          document.documentElement.setAttribute(
+            "data-theme",
+            message.effective,
+          );
           break;
-        case 'showToast':
+        case "showToast":
           // Toasts are window-global (no paneId) — only the root instance (the
           // one that renders the shell/sidebar, never a split-view pane) tracks
           // them, so a multi-pane desktop never stacks duplicates.
           if (myPane !== undefined) break;
-          setToasts((prev) => [...prev.filter((t) => t.id !== message.toast.id), message.toast]);
+          setToasts((prev) => [
+            ...prev.filter((t) => t.id !== message.toast.id),
+            message.toast,
+          ]);
           break;
-        case 'desktopTogglePanel':
+        case "desktopTogglePanel":
           if (!forThisPane(message)) break;
           togglePanelRef.current(message.kind as DesktopPanelKind);
           break;
-        case 'showConfiguration':
+        case "showConfiguration":
           if (!forThisPane(message)) break;
           dispatch({
-            type: 'SHOW_DIALOG',
+            type: "SHOW_DIALOG",
             payload: {
-              type: 'config' as const,
-              data: message.configurationData || stateRef.current.configurationData || {},
-              error: message.error
-            }
+              type: "config" as const,
+              data:
+                message.configurationData ||
+                stateRef.current.configurationData ||
+                {},
+              error: message.error,
+            },
           });
           break;
-        case 'showDialog':
+        case "showDialog":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'SHOW_DIALOG', payload: { type: message.dialogType } });
+          dispatch({
+            type: "SHOW_DIALOG",
+            payload: { type: message.dialogType },
+          });
           break;
-        case 'configurationUpdated':
-          dispatch({ type: 'HIDE_DIALOG' });
+        case "configurationUpdated":
+          dispatch({ type: "HIDE_DIALOG" });
           break;
-        case 'statusResponse':
+        case "statusResponse":
           if (!forThisPane(message)) break;
           if (message.configurationData) {
-            dispatch({ type: 'SET_CONFIGURATION_DATA', payload: message.configurationData });
+            dispatch({
+              type: "SET_CONFIGURATION_DATA",
+              payload: message.configurationData,
+            });
           }
           break;
-        case 'configurationError':
+        case "configurationError":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'SET_CONFIGURATION_ERROR', payload: message.error });
+          dispatch({ type: "SET_CONFIGURATION_ERROR", payload: message.error });
           break;
-        case 'focusInput':
+        case "focusInput":
           if (!forThisPane(message)) break;
           // When a confirm/rewind dialog is open in this pane, focus its
           // primary action instead of the message input. The input is hidden
@@ -711,114 +813,152 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           {
             const root = chatContainerRef.current ?? document;
             const rewindBtn = root.querySelector<HTMLElement>(
-              '.confirm-dialog-btn-confirm:not([disabled])',
+              ".confirm-dialog-btn-confirm:not([disabled])",
             );
             if (rewindBtn) {
               rewindBtn.focus();
               break;
             }
             const applyBtn = root.querySelector<HTMLElement>(
-              '.confirmation-btn-apply:not([disabled])',
+              ".confirmation-btn-apply:not([disabled])",
             );
             if (applyBtn) {
               applyBtn.focus();
               break;
             }
-            if (messageInputRef.current && typeof messageInputRef.current.focus === 'function') {
+            if (
+              messageInputRef.current &&
+              typeof messageInputRef.current.focus === "function"
+            ) {
               messageInputRef.current.focus();
             }
           }
           break;
-        case 'triggerShortcut':
+        case "triggerShortcut":
           if (!forThisPane(message)) break;
           // Forwarded IDE keymap shortcut (JetBrains): the component-scoped AnAction
           // intercepts the IDE action and forwards the intended operation here, since
           // registerCustomShortcutSet consumes the AWT event before CEF can see it.
-          if (messageInputRef.current && typeof messageInputRef.current.triggerShortcut === 'function') {
+          if (
+            messageInputRef.current &&
+            typeof messageInputRef.current.triggerShortcut === "function"
+          ) {
             messageInputRef.current.triggerShortcut(message.name);
           }
           break;
-        case 'scrollToBottom':
+        case "scrollToBottom":
           if (!forThisPane(message)) break;
           // Scroll the message list to bottom
-          if (messageListRef.current && typeof messageListRef.current.scrollToBottom === 'function') {
-            messageListRef.current.scrollToBottom('smooth');
+          if (
+            messageListRef.current &&
+            typeof messageListRef.current.scrollToBottom === "function"
+          ) {
+            messageListRef.current.scrollToBottom("smooth");
           }
           break;
         // Incremental update commands for streaming optimization
-        case 'appendMessage':
+        case "appendMessage":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'APPEND_MESSAGE', payload: message.message });
+          dispatch({ type: "APPEND_MESSAGE", payload: message.message });
           break;
         // Bang message incremental updates. Hosts post the bang params nested
         // under `params` (they contain a `command` field that would otherwise
         // clobber the postMessage command discriminator).
-        case 'bangMessageAdded':
+        case "bangMessageAdded":
           if (!forThisPane(message)) break;
-          console.log('DBG bangMessageAdded', message.params, stateRef.current.messages.length);
-          dispatch({ type: 'APPEND_BANG_MESSAGE', payload: message.params });
+          console.log(
+            "DBG bangMessageAdded",
+            message.params,
+            stateRef.current.messages.length,
+          );
+          dispatch({ type: "APPEND_BANG_MESSAGE", payload: message.params });
           break;
-        case 'bangMessageUpdated':
+        case "bangMessageUpdated":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'UPDATE_BANG_MESSAGE', payload: message.params });
+          dispatch({ type: "UPDATE_BANG_MESSAGE", payload: message.params });
           break;
-        case 'bangMessageCompleted':
+        case "bangMessageCompleted":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'COMPLETE_BANG_MESSAGE', payload: message.params });
+          dispatch({ type: "COMPLETE_BANG_MESSAGE", payload: message.params });
           break;
-        case 'compactionStateChange':
-          if (!forThisPane(message)) break;
-          dispatch({ type: 'SET_COMPACTING', payload: message.isCompacting === true });
-          break;
-        case 'updateStreamingContent':
-          if (!forThisPane(message)) break;
-          dispatch({
-            type: 'UPDATE_STREAMING_CONTENT',
-            payload: { messageId: message.messageId, chunk: message.chunk, stage: message.stage }
-          });
-          break;
-        case 'updateStreamingReasoning':
+        case "compactionStateChange":
           if (!forThisPane(message)) break;
           dispatch({
-            type: 'UPDATE_STREAMING_REASONING',
-            payload: { messageId: message.messageId as string, chunk: message.chunk as string, stage: message.stage as 'end' | 'streaming' }
+            type: "SET_COMPACTING",
+            payload: message.isCompacting === true,
           });
           break;
-        case 'updateToolBlock':
+        case "updateStreamingContent":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'UPDATE_TOOL_BLOCK', payload: message.params as ToolBlockUpdateCallbackParams });
+          dispatch({
+            type: "UPDATE_STREAMING_CONTENT",
+            payload: {
+              messageId: message.messageId,
+              chunk: message.chunk,
+              stage: message.stage,
+            },
+          });
           break;
-        case 'updateErrorBlock':
+        case "updateStreamingReasoning":
           if (!forThisPane(message)) break;
-          dispatch({ type: 'APPEND_ERROR_BLOCK', payload: { error: message.error } });
+          dispatch({
+            type: "UPDATE_STREAMING_REASONING",
+            payload: {
+              messageId: message.messageId as string,
+              chunk: message.chunk as string,
+              stage: message.stage as "end" | "streaming",
+            },
+          });
           break;
-        case 'authStatusResponse':
-          dispatch({ type: 'SET_AUTHENTICATED', payload: message.isAuthenticated || false });
+        case "updateToolBlock":
+          if (!forThisPane(message)) break;
+          dispatch({
+            type: "UPDATE_TOOL_BLOCK",
+            payload: message.params as ToolBlockUpdateCallbackParams,
+          });
           break;
-        case 'loginResponse':
+        case "updateErrorBlock":
+          if (!forThisPane(message)) break;
+          dispatch({
+            type: "APPEND_ERROR_BLOCK",
+            payload: { error: message.error },
+          });
+          break;
+        case "authStatusResponse":
+          dispatch({
+            type: "SET_AUTHENTICATED",
+            payload: message.isAuthenticated || false,
+          });
+          break;
+        case "loginResponse":
           if (message.success) {
-            dispatch({ type: 'SET_AUTHENTICATED', payload: true });
+            dispatch({ type: "SET_AUTHENTICATED", payload: true });
           }
           break;
-        case 'logoutResponse':
+        case "logoutResponse":
           if (message.success) {
-            dispatch({ type: 'SET_AUTHENTICATED', payload: false });
+            dispatch({ type: "SET_AUTHENTICATED", payload: false });
           }
           break;
       }
     };
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
   }, []);
 
   // Desktop multi-pane (FR-032): session-scoped commands carry this pane's id
   // so the host routes them to the agent bound to this pane. Untagged when
   // paneId is undefined (IDE hosts) — those backends ignore the field.
-  const postToHost = useCallback((message: Record<string, unknown>) => {
-    const pid = paneIdRef.current;
-    vscode.postMessage(pid === undefined ? message : { ...message, paneId: pid });
-  }, [vscode]);
+  const postToHost = useCallback(
+    (message: Record<string, unknown>) => {
+      const pid = paneIdRef.current;
+      vscode.postMessage(
+        pid === undefined ? message : { ...message, paneId: pid },
+      );
+    },
+    [vscode],
+  );
 
   // Desktop: query this pane's own workdir for its git branches (FR-052). Each
   // pane asks independently so a new-session pane keeps its workdir/branch even
@@ -840,7 +980,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     if (!isDesktop) return;
     setPaneGitBranches(null);
     if (!effectiveWorkdir) return;
-    postToHost({ command: 'desktopListGitBranches', workdir: effectiveWorkdir, paneId });
+    postToHost({
+      command: "desktopListGitBranches",
+      workdir: effectiveWorkdir,
+      paneId,
+    });
   }, [effectiveWorkdir, isDesktop, postToHost, paneId]);
 
   const handleClearChat = useCallback(() => {
@@ -848,7 +992,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     if (stateRef.current.isStreaming) return;
 
     postToHost({
-      command: 'clearChat'
+      command: "clearChat",
     });
   }, [postToHost]);
 
@@ -856,218 +1000,300 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const handleToastAction = useCallback((toast: UpdateToast) => {
-    if (!toast.action) return;
-    postToHost({ command: 'toastAction', toastId: toast.id, action: toast.action });
-    setToasts((prev) => prev.filter((t) => t.id !== toast.id));
-  }, [postToHost]);
+  const handleToastAction = useCallback(
+    (toast: UpdateToast) => {
+      if (!toast.action) return;
+      postToHost({
+        command: "toastAction",
+        toastId: toast.id,
+        action: toast.action,
+      });
+      setToasts((prev) => prev.filter((t) => t.id !== toast.id));
+    },
+    [postToHost],
+  );
 
   // Desktop 的"新对话"入口（侧边栏按钮）：由宿主 spawn 新 agent 承载全新会话，
   // 当前会话在后台继续，因此流式期间保持可用。
   const handleDesktopNewSession = useCallback(() => {
     postToHost({
-      command: 'newSession'
+      command: "newSession",
     });
   }, [postToHost]);
 
   const handleLogin = useCallback(() => {
-    vscode.postMessage({ command: 'login' });
+    vscode.postMessage({ command: "login" });
   }, [vscode]);
 
   const handleOpenSettings = useCallback(() => {
-    dispatch({ type: 'SHOW_DIALOG', payload: { type: 'config', data: stateRef.current.configurationData || {} } });
-    vscode.postMessage({ command: 'getConfiguration' });
+    dispatch({
+      type: "SHOW_DIALOG",
+      payload: {
+        type: "config",
+        data: stateRef.current.configurationData || {},
+      },
+    });
+    vscode.postMessage({ command: "getConfiguration" });
   }, [vscode]);
 
   const handleOpenEnterpriseConsole = useCallback(() => {
     const url = stateRef.current.configurationData?.serverUrl;
     if (url) {
-      vscode.postMessage({ command: 'openExternal', url });
+      vscode.postMessage({ command: "openExternal", url });
     }
   }, [vscode]);
 
   const handleLogout = useCallback(() => {
-    vscode.postMessage({ command: 'logout' });
+    vscode.postMessage({ command: "logout" });
   }, [vscode]);
 
-  const handleSendMessage = useCallback((text: string, images?: Array<{ data: string; mediaType: string; }>, force: boolean = false) => {
-    const trimmedText = text.trim();
-    if (!trimmedText && (!images || images.length === 0)) return;
+  const handleSendMessage = useCallback(
+    (
+      text: string,
+      images?: Array<{ data: string; mediaType: string }>,
+      force: boolean = false,
+    ) => {
+      const trimmedText = text.trim();
+      if (!trimmedText && (!images || images.length === 0)) return;
 
-    // Intercept local slash commands — open dialogs instead of sending to agent
-    if (trimmedText === '/clear') {
-      handleClearChat();
-      return;
-    }
-    if (trimmedText === '/compact' || trimmedText.startsWith('/compact ')) {
-      const customInstructions = trimmedText.slice('/compact'.length).trim() || undefined;
-      postToHost({
-        command: 'compact',
-        customInstructions
-      });
-      return;
-    }
-    if (trimmedText === '/config') {
-      dispatch({ type: 'SHOW_DIALOG', payload: { type: 'config', data: stateRef.current.configurationData || {} } });
-      vscode.postMessage({ command: 'getConfiguration' });
-      return;
-    }
-    if (trimmedText === '/plugin') {
-      dispatch({ type: 'SHOW_DIALOG', payload: { type: 'plugin' } });
-      return;
-    }
-    if (trimmedText === '/mcp') {
-      dispatch({ type: 'SHOW_DIALOG', payload: { type: 'mcp' } });
-      return;
-    }
-    if (trimmedText === '/status') {
-      dispatch({ type: 'SHOW_DIALOG', payload: { type: 'status' } });
-      return;
-    }
-    if (trimmedText === '/tasks') { dispatch({ type: 'SHOW_DIALOG', payload: { type: 'tasks' } }); return; }
-    if (trimmedText === '/workflows' || trimmedText === '/workflows ') { dispatch({ type: 'SHOW_DIALOG', payload: { type: 'workflows' } }); return; }
-    if (trimmedText === '/agents') { dispatch({ type: 'SHOW_DIALOG', payload: { type: 'agents' } }); return; }
-    if (trimmedText === '/rewind') {
-      if (stateRef.current.isStreaming) return;
-      setRewindPopupOpen(true);
-      setRewindCheckpointsLoading(true);
-      postToHost({ command: 'listRewindCheckpoints' });
-      return;
-    }
-    // /model is allowed mid-stream (spec scenario 8): no isStreaming guard.
-    if (trimmedText === '/model') {
-      setModelPopupOpen(true);
-      setModelLoading(true);
-      postToHost({ command: 'getConfiguredModels' });
-      return;
-    }
-    // /btw side question — answered out-of-band via askBtw, never enters the chat.
-    if (trimmedText === '/btw' || trimmedText.startsWith('/btw ')) {
-      const question = trimmedText.slice('/btw'.length).trim();
-      if (!question) {
-        // Code span keeps `<your question>` from being parsed as an HTML tag.
-        setBtwPanel({ question: '', answer: '`用法：/btw <你的问题>`', loading: false, contentStarted: false });
+      // Intercept local slash commands — open dialogs instead of sending to agent
+      if (trimmedText === "/clear") {
+        handleClearChat();
         return;
       }
-      btwActiveRef.current = question;
-      setBtwPanel({ question, answer: '', loading: true, contentStarted: false });
-      postToHost({ command: 'askBtw', question });
-      return;
-    }
+      if (trimmedText === "/compact" || trimmedText.startsWith("/compact ")) {
+        const customInstructions =
+          trimmedText.slice("/compact".length).trim() || undefined;
+        postToHost({
+          command: "compact",
+          customInstructions,
+        });
+        return;
+      }
+      if (trimmedText === "/config") {
+        dispatch({
+          type: "SHOW_DIALOG",
+          payload: {
+            type: "config",
+            data: stateRef.current.configurationData || {},
+          },
+        });
+        vscode.postMessage({ command: "getConfiguration" });
+        return;
+      }
+      if (trimmedText === "/plugin") {
+        dispatch({ type: "SHOW_DIALOG", payload: { type: "plugin" } });
+        return;
+      }
+      if (trimmedText === "/mcp") {
+        dispatch({ type: "SHOW_DIALOG", payload: { type: "mcp" } });
+        return;
+      }
+      if (trimmedText === "/status") {
+        dispatch({ type: "SHOW_DIALOG", payload: { type: "status" } });
+        return;
+      }
+      if (trimmedText === "/tasks") {
+        dispatch({ type: "SHOW_DIALOG", payload: { type: "tasks" } });
+        return;
+      }
+      if (trimmedText === "/workflows" || trimmedText === "/workflows ") {
+        dispatch({ type: "SHOW_DIALOG", payload: { type: "workflows" } });
+        return;
+      }
+      if (trimmedText === "/agents") {
+        dispatch({ type: "SHOW_DIALOG", payload: { type: "agents" } });
+        return;
+      }
+      if (trimmedText === "/rewind") {
+        if (stateRef.current.isStreaming) return;
+        setRewindPopupOpen(true);
+        setRewindCheckpointsLoading(true);
+        postToHost({ command: "listRewindCheckpoints" });
+        return;
+      }
+      // /model is allowed mid-stream (spec scenario 8): no isStreaming guard.
+      if (trimmedText === "/model") {
+        setModelPopupOpen(true);
+        setModelLoading(true);
+        postToHost({ command: "getConfiguredModels" });
+        return;
+      }
+      // /btw side question — answered out-of-band via askBtw, never enters the chat.
+      if (trimmedText === "/btw" || trimmedText.startsWith("/btw ")) {
+        const question = trimmedText.slice("/btw".length).trim();
+        if (!question) {
+          // Code span keeps `<your question>` from being parsed as an HTML tag.
+          setBtwPanel({
+            question: "",
+            answer: "`用法：/btw <你的问题>`",
+            loading: false,
+            contentStarted: false,
+          });
+          return;
+        }
+        btwActiveRef.current = question;
+        setBtwPanel({
+          question,
+          answer: "",
+          loading: true,
+          contentStarted: false,
+        });
+        postToHost({ command: "askBtw", question });
+        return;
+      }
 
-    // Desktop worktree flow (FR-023): on the first message of a new session
-    // with the worktree checkbox on, create the worktree first — the main
-    // process switches into it and forwards this message.
-    if (paneId && groupKeyRef.current?.startsWith('new:')) sentFromNewSessionRef.current = true;
-    if (
-      host?.type === 'desktop' &&
-      !stateRef.current.messages.some((m) => !(m.role === 'user' && m.isMeta)) &&
-      worktreeChecked &&
-      effectiveWorkdirRef.current &&
-      gitBranches
-    ) {
+      // Desktop worktree flow (FR-023): on the first message of a new session
+      // with the worktree checkbox on, create the worktree first — the main
+      // process switches into it and forwards this message.
+      if (paneId && groupKeyRef.current?.startsWith("new:"))
+        sentFromNewSessionRef.current = true;
+      if (
+        host?.type === "desktop" &&
+        !stateRef.current.messages.some(
+          (m) => !(m.role === "user" && m.isMeta),
+        ) &&
+        worktreeChecked &&
+        effectiveWorkdirRef.current &&
+        gitBranches
+      ) {
+        postToHost({
+          command: "desktopCreateWorktree",
+          workdir: effectiveWorkdirRef.current,
+          baseBranch: worktreeBranch || gitBranches.current,
+          text: trimmedText,
+          images: images,
+        });
+        return;
+      }
+
+      // Send to extension
       postToHost({
-        command: 'desktopCreateWorktree',
-        workdir: effectiveWorkdirRef.current,
-        baseBranch: worktreeBranch || gitBranches.current,
+        command: "sendMessage",
         text: trimmedText,
         images: images,
+        force: force,
       });
-      return;
-    }
-
-    // Send to extension
-    postToHost({
-      command: 'sendMessage',
-      text: trimmedText,
-      images: images,
-      force: force
-    });
-  }, [handleClearChat, host, worktreeChecked, worktreeBranch, postToHost, paneId, gitBranches]);
+    },
+    [
+      handleClearChat,
+      host,
+      worktreeChecked,
+      worktreeBranch,
+      postToHost,
+      paneId,
+      gitBranches,
+      vscode,
+    ],
+  );
 
   const handleAbortMessage = useCallback(() => {
     if (!state.isStreaming) return;
 
     postToHost({
-      command: 'abortMessage'
+      command: "abortMessage",
     });
   }, [state.isStreaming, postToHost]);
 
-  const handleDeleteQueuedMessage = useCallback((id: string) => {
-    // Optimistically update local state (filter by id)
-    const newQueue = state.queuedMessages.filter(qm => qm.id !== id);
-    dispatch({ type: 'SET_QUEUED_MESSAGES', payload: newQueue });
+  const handleDeleteQueuedMessage = useCallback(
+    (id: string) => {
+      // Optimistically update local state (filter by id)
+      const newQueue = state.queuedMessages.filter((qm) => qm.id !== id);
+      dispatch({ type: "SET_QUEUED_MESSAGES", payload: newQueue });
 
-    // If the deleted one is being edited, exit editing mode
-    if (state.editingQueuedId === id) {
-      dispatch({ type: 'SET_EDITING_QUEUED_ID', payload: null });
-    }
+      // If the deleted one is being edited, exit editing mode
+      if (state.editingQueuedId === id) {
+        dispatch({ type: "SET_EDITING_QUEUED_ID", payload: null });
+      }
 
-    // Notify extension to delete from SDK's queue by id
-    postToHost({
-      command: 'deleteQueuedMessageById',
-      id
-    });
-  }, [state.queuedMessages, state.editingQueuedId, postToHost]);
+      // Notify extension to delete from SDK's queue by id
+      postToHost({
+        command: "deleteQueuedMessageById",
+        id,
+      });
+    },
+    [state.queuedMessages, state.editingQueuedId, postToHost],
+  );
 
-  const handleEditQueuedMessage = useCallback((id: string) => {
-    const qm = state.queuedMessages.find(m => m.id === id);
-    if (!qm) return;
+  const handleEditQueuedMessage = useCallback(
+    (id: string) => {
+      const qm = state.queuedMessages.find((m) => m.id === id);
+      if (!qm) return;
 
-    const text = qm.content || qm.text || '';
+      const text = qm.content || qm.text || "";
 
-    // Load content into this pane's input via the imperative ref (scoped to this
-    // pane only; window.postMessage would be received by all split-view panes).
-    messageInputRef.current?.loadQueuedEditContent(text);
-    dispatch({ type: 'SET_EDITING_QUEUED_ID', payload: id });
-  }, [state.queuedMessages]);
+      // Load content into this pane's input via the imperative ref (scoped to this
+      // pane only; window.postMessage would be received by all split-view panes).
+      messageInputRef.current?.loadQueuedEditContent(text);
+      dispatch({ type: "SET_EDITING_QUEUED_ID", payload: id });
+    },
+    [state.queuedMessages],
+  );
 
-  const handleSendQueuedMessage = useCallback((id: string) => {
-    const qm = state.queuedMessages.find(m => m.id === id);
-    if (!qm) return;
+  const handleSendQueuedMessage = useCallback(
+    (id: string) => {
+      const qm = state.queuedMessages.find((m) => m.id === id);
+      if (!qm) return;
 
-    const text = qm.content || qm.text || '';
-    const images = qm.images?.map(img => ({ data: img.path || '', mediaType: img.mimeType || '' }));
+      const text = qm.content || qm.text || "";
+      const images = qm.images?.map((img) => ({
+        data: img.path || "",
+        mediaType: img.mimeType || "",
+      }));
 
-    // force=true: terminate current conversation and send this message immediately
-    handleSendMessage(text, images, true);
+      // force=true: terminate current conversation and send this message immediately
+      handleSendMessage(text, images, true);
 
-    // Optimistically remove from queue + notify backend (and exit editing if applicable)
-    handleDeleteQueuedMessage(id);
-  }, [state.queuedMessages, handleSendMessage, handleDeleteQueuedMessage]);
+      // Optimistically remove from queue + notify backend (and exit editing if applicable)
+      handleDeleteQueuedMessage(id);
+    },
+    [state.queuedMessages, handleSendMessage, handleDeleteQueuedMessage],
+  );
 
-  const handleSubmitQueuedEdit = useCallback((id: string, text: string, images?: Array<{ data: string; mediaType: string; }>) => {
-    postToHost({
-      command: 'updateQueuedMessage',
-      id,
-      text,
-      images
-    });
-    dispatch({ type: 'SET_EDITING_QUEUED_ID', payload: null });
-  }, [postToHost]);
+  const handleSubmitQueuedEdit = useCallback(
+    (
+      id: string,
+      text: string,
+      images?: Array<{ data: string; mediaType: string }>,
+    ) => {
+      postToHost({
+        command: "updateQueuedMessage",
+        id,
+        text,
+        images,
+      });
+      dispatch({ type: "SET_EDITING_QUEUED_ID", payload: null });
+    },
+    [postToHost],
+  );
 
   const handleCancelQueuedEdit = useCallback(() => {
-    dispatch({ type: 'SET_EDITING_QUEUED_ID', payload: null });
+    dispatch({ type: "SET_EDITING_QUEUED_ID", payload: null });
   }, []);
 
   // Configuration handlers
-  const handleConfigurationSave = useCallback((configData: ConfigurationData) => {
-    dispatch({ type: 'SET_CONFIGURATION_LOADING', payload: true });
-    vscode.postMessage({
-      command: 'updateConfiguration',
-      configurationData: configData
-    });
-  }, [vscode]);
+  const handleConfigurationSave = useCallback(
+    (configData: ConfigurationData) => {
+      dispatch({ type: "SET_CONFIGURATION_LOADING", payload: true });
+      vscode.postMessage({
+        command: "updateConfiguration",
+        configurationData: configData,
+      });
+    },
+    [vscode],
+  );
 
   const handleDialogClose = useCallback(() => {
-    dispatch({ type: 'HIDE_DIALOG' });
+    dispatch({ type: "HIDE_DIALOG" });
   }, []);
 
   // A message counts as chat content only when the UI renders it — hidden meta
   // user messages (e.g. SessionStart hook additionalContext, isMeta: true) do
   // not, so they must not suppress the welcome page, the desktop new-session
   // pickers, or the desktop worktree trigger.
-  const hasVisibleMessages = state.messages.some((m) => !(m.role === 'user' && m.isMeta));
+  const hasVisibleMessages = state.messages.some(
+    (m) => !(m.role === "user" && m.isMeta),
+  );
 
   // Welcome page shows only when there are no visible messages yet. Login is optional:
   // a direct-connect config (baseURL/apiKey) works without authentication, so an
@@ -1080,27 +1306,30 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
 
   // Initialize webview and load sessions on component mount
   useEffect(() => {
-    dispatch({ type: 'SET_SESSIONS_LOADING', payload: true });
+    dispatch({ type: "SET_SESSIONS_LOADING", payload: true });
     vscode.postMessage({
-      command: 'webviewReady'
+      command: "webviewReady",
     });
   }, [vscode]);
 
-  const handleSessionSelect = useCallback((sessionId: string) => {
-    if (state.isStreaming) return;
+  const handleSessionSelect = useCallback(
+    (sessionId: string) => {
+      if (state.isStreaming) return;
 
-    // 清空当前任务列表：避免恢复期间残留旧会话的任务，
-    // 并让新会话任务从空状态进入（若全部已完成则直接保持隐藏）
-    dispatch({ type: 'SET_TASKS', payload: [] });
+      // 清空当前任务列表：避免恢复期间残留旧会话的任务，
+      // 并让新会话任务从空状态进入（若全部已完成则直接保持隐藏）
+      dispatch({ type: "SET_TASKS", payload: [] });
 
-    postToHost({
-      command: 'restoreSession',
-      sessionId
-    });
-  }, [state.isStreaming, postToHost]);
+      postToHost({
+        command: "restoreSession",
+        sessionId,
+      });
+    },
+    [state.isStreaming, postToHost],
+  );
 
   const handleInputCleared = useCallback(() => {
-    dispatch({ type: 'INPUT_CLEARED' });
+    dispatch({ type: "INPUT_CLEARED" });
   }, []);
 
   // Desktop panel comments (preview element picks, diff-line comments) land in
@@ -1117,29 +1346,38 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     }
   }, [state.isCommandRunning]);
 
-  const handleConfirmation = useCallback((confirmationId: string, decision?: ConfirmationDecision) => {
-    postToHost({
-      command: 'confirmationResponse',
-      confirmationId,
-      approved: true,
-      decision
-    });
-    dispatch({ type: 'HIDE_CONFIRMATION', payload: confirmationId });
-  }, [postToHost]);
+  const handleConfirmation = useCallback(
+    (confirmationId: string, decision?: ConfirmationDecision) => {
+      postToHost({
+        command: "confirmationResponse",
+        confirmationId,
+        approved: true,
+        decision,
+      });
+      dispatch({ type: "HIDE_CONFIRMATION", payload: confirmationId });
+    },
+    [postToHost],
+  );
 
-  const handleRejection = useCallback((confirmationId: string) => {
-    postToHost({
-      command: 'confirmationResponse',
-      confirmationId,
-      approved: false
-    });
-    dispatch({ type: 'HIDE_CONFIRMATION', payload: confirmationId });
-  }, [postToHost]);
+  const handleRejection = useCallback(
+    (confirmationId: string) => {
+      postToHost({
+        command: "confirmationResponse",
+        confirmationId,
+        approved: false,
+      });
+      dispatch({ type: "HIDE_CONFIRMATION", payload: confirmationId });
+    },
+    [postToHost],
+  );
 
-  const handleRewindToMessage = useCallback((messageId: string) => {
-    if (state.isStreaming) return;
-    setPendingRewindId(messageId);
-  }, [state.isStreaming]);
+  const handleRewindToMessage = useCallback(
+    (messageId: string) => {
+      if (state.isStreaming) return;
+      setPendingRewindId(messageId);
+    },
+    [state.isStreaming],
+  );
 
   // /rewind popup selection reuses the same ConfirmDialog flow as the
   // per-message rewind button.
@@ -1155,11 +1393,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   }, []);
 
   // /model popup: send the switch and close silently (no toast/system message).
-  const handleModelSelect = useCallback((model: string) => {
-    postToHost({ command: 'setModel', model });
-    setModelPopupOpen(false);
-    messageInputRef.current?.focus();
-  }, [postToHost]);
+  const handleModelSelect = useCallback(
+    (model: string) => {
+      postToHost({ command: "setModel", model });
+      setModelPopupOpen(false);
+      messageInputRef.current?.focus();
+    },
+    [postToHost],
+  );
 
   const handleModelPopupClose = useCallback(() => {
     setModelPopupOpen(false);
@@ -1194,59 +1435,71 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     setPendingRewindId(null);
     if (messageId) {
       postToHost({
-        command: 'rewindToMessage',
-        messageId
+        command: "rewindToMessage",
+        messageId,
       });
     }
   }, [pendingRewindId, postToHost]);
 
-  const showPanelHint = useCallback((text: string) => {
-    // Route local validations (panel min-width refusals, preview URL checks)
-    // through the host's global toast so desktop hints share one presentation
-    // with host failures instead of a second hint style.
-    postToHost({ command: 'desktopShowHint', text });
-  }, [postToHost]);
+  const showPanelHint = useCallback(
+    (text: string) => {
+      // Route local validations (panel min-width refusals, preview URL checks)
+      // through the host's global toast so desktop hints share one presentation
+      // with host failures instead of a second hint style.
+      postToHost({ command: "desktopShowHint", text });
+    },
+    [postToHost],
+  );
 
   // Desktop remote sessions: request an ssh port forward for the clicked
   // localhost URL (scenario 15). The main process picks a local port, starts
   // `ssh -N -L` and replies with the rewritten 127.0.0.1 address, which the
   // preview pane then loads. Repeated clicks on the SAME link while the forward
   // is established or connecting are no-ops — the tunnel is reused, not rebuilt.
-  const acquireForward = useCallback((host: string, url: string) => {
-    // The forward is keyed by the session's panel-group key; without one (a
-    // pane-less desktop view) there is nothing to cache the reference under.
-    if (!groupKey) return;
-    let remotePort: number;
-    try {
-      const u = new URL(url);
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-        showPanelHint('仅支持 http/https 链接');
+  const acquireForward = useCallback(
+    (host: string, url: string) => {
+      // The forward is keyed by the session's panel-group key; without one (a
+      // pane-less desktop view) there is nothing to cache the reference under.
+      if (!groupKey) return;
+      let remotePort: number;
+      try {
+        const u = new URL(url);
+        if (u.protocol !== "http:" && u.protocol !== "https:") {
+          showPanelHint("仅支持 http/https 链接");
+          return;
+        }
+        remotePort = Number(u.port) || (u.protocol === "https:" ? 443 : 80);
+      } catch {
+        showPanelHint("无效的预览链接");
         return;
       }
-      remotePort = Number(u.port) || (u.protocol === 'https:' ? 443 : 80);
-    } catch {
-      showPanelHint('无效的预览链接');
-      return;
-    }
-    const requestId = `fwd-${++forwardSeqRef.current}`;
-    const fwd = { host, remotePort, originalUrl: url, requestId };
-    setCurrentForward(fwd);
-    // Keep the reference in the session's cached group immediately (not via the
-    // state-sync effect below) so a desktopForwardPortResult reply — which may
-    // arrive on the very next event-loop turn — can match this forward even if
-    // the effect hasn't flushed yet. A pane rebinding to another session then
-    // keeps THIS session's forward cached for when it comes back.
-    let group = panelGroupCache.get(groupKey);
-    if (!group) {
-      group = emptyPanelGroup();
-      panelGroupCache.set(groupKey, group);
-    }
-    group.forward = fwd;
-    // The session id scopes the tunnel's lifetime on the host — it stays alive
-    // across UI actions and is only released when the session is deleted
-    // (scenario 18).
-    postToHost({ command: 'desktopForwardPort', host, url, requestId, sessionId: groupKey });
-  }, [postToHost, showPanelHint, groupKey]);
+      const requestId = `fwd-${++forwardSeqRef.current}`;
+      const fwd = { host, remotePort, originalUrl: url, requestId };
+      setCurrentForward(fwd);
+      // Keep the reference in the session's cached group immediately (not via the
+      // state-sync effect below) so a desktopForwardPortResult reply — which may
+      // arrive on the very next event-loop turn — can match this forward even if
+      // the effect hasn't flushed yet. A pane rebinding to another session then
+      // keeps THIS session's forward cached for when it comes back.
+      let group = panelGroupCache.get(groupKey);
+      if (!group) {
+        group = emptyPanelGroup();
+        panelGroupCache.set(groupKey, group);
+      }
+      group.forward = fwd;
+      // The session id scopes the tunnel's lifetime on the host — it stays alive
+      // across UI actions and is only released when the session is deleted
+      // (scenario 18).
+      postToHost({
+        command: "desktopForwardPort",
+        host,
+        url,
+        requestId,
+        sessionId: groupKey,
+      });
+    },
+    [postToHost, showPanelHint, groupKey],
+  );
 
   // Desktop: idle-preload the lazily injected xterm chunk so the first
   // terminal open doesn't pay the fetch+parse cost.
@@ -1261,34 +1514,46 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // Check a panel on: it shares its row with the message area, so refuse (with
   // a hint) when the checked panels would squeeze the conversation below its
   // minimum width. Mounting is sticky — unchecking only hides.
-  const tryOpenPanel = useCallback((kind: DesktopPanelKind): boolean => {
-    const containerW = chatContainerRef.current?.getBoundingClientRect().width;
-    if (containerW) {
-      const used =
-        checkedPanelsRef.current
-          .filter((k) => k !== kind)
-          .reduce((sum, k) => sum + panelWidthsRef.current[k], 0) + panelWidthsRef.current[kind];
-      if (containerW - used < CHAT_MAIN_MIN_WIDTH) {
-        showPanelHint('空间不足，无法开启面板');
-        return false;
+  const tryOpenPanel = useCallback(
+    (kind: DesktopPanelKind): boolean => {
+      const containerW =
+        chatContainerRef.current?.getBoundingClientRect().width;
+      if (containerW) {
+        const used =
+          checkedPanelsRef.current
+            .filter((k) => k !== kind)
+            .reduce((sum, k) => sum + panelWidthsRef.current[k], 0) +
+          panelWidthsRef.current[kind];
+        if (containerW - used < CHAT_MAIN_MIN_WIDTH) {
+          showPanelHint("空间不足，无法开启面板");
+          return false;
+        }
       }
-    }
-    setCheckedPanels((prev) => (prev.includes(kind) ? prev : [...prev, kind]));
-    setMountedPanels((prev) => (prev.includes(kind) ? prev : [...prev, kind]));
-    return true;
-  }, [showPanelHint]);
+      setCheckedPanels((prev) =>
+        prev.includes(kind) ? prev : [...prev, kind],
+      );
+      setMountedPanels((prev) =>
+        prev.includes(kind) ? prev : [...prev, kind],
+      );
+      return true;
+    },
+    [showPanelHint],
+  );
 
-  const handleTogglePanel = useCallback((kind: DesktopPanelKind) => {
-    if (panelDisabledRef.current.includes(kind)) return;
-    if (checkedPanelsRef.current.includes(kind)) {
-      setCheckedPanels((prev) => prev.filter((k) => k !== kind));
-      // Closing the preview hides the pane but never releases a remote tunnel
-      // (scenario 18): the URL stays cached so re-checking shows the same page,
-      // and the host keeps the ssh forward alive until the session is deleted.
-    } else {
-      tryOpenPanel(kind);
-    }
-  }, [tryOpenPanel]);
+  const handleTogglePanel = useCallback(
+    (kind: DesktopPanelKind) => {
+      if (panelDisabledRef.current.includes(kind)) return;
+      if (checkedPanelsRef.current.includes(kind)) {
+        setCheckedPanels((prev) => prev.filter((k) => k !== kind));
+        // Closing the preview hides the pane but never releases a remote tunnel
+        // (scenario 18): the URL stays cached so re-checking shows the same page,
+        // and the host keeps the ssh forward alive until the session is deleted.
+      } else {
+        tryOpenPanel(kind);
+      }
+    },
+    [tryOpenPanel],
+  );
 
   useEffect(() => {
     togglePanelRef.current = handleTogglePanel;
@@ -1305,10 +1570,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     (path: string, startLine?: number, endLine?: number) => {
       if (!path) return;
       if (!isDesktop) {
-        vscode.postMessage({ command: 'openFile', path, startLine, endLine });
+        vscode.postMessage({ command: "openFile", path, startLine, endLine });
         return;
       }
-      if (!tryOpenPanel('file')) return;
+      if (!tryOpenPanel("file")) return;
       // Re-clicking the file already shown re-reads it (soft refresh: keep the
       // old content until the host reply lands, matching the diff pane).
       setFileView((prev) =>
@@ -1316,7 +1581,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           ? { ...prev, loading: true, startLine, endLine }
           : { path, host: effectiveHost, loading: true, startLine, endLine },
       );
-      postToHost({ command: 'openFile', path, host: effectiveHost, startLine, endLine });
+      postToHost({
+        command: "openFile",
+        path,
+        host: effectiveHost,
+        startLine,
+        endLine,
+      });
     },
     [isDesktop, tryOpenPanel, effectiveHost, postToHost, vscode],
   );
@@ -1326,32 +1597,43 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const handleOpenFileExternal = useCallback(
     (path: string) => {
       if (!isDesktop || !path) return;
-      postToHost({ command: 'desktopOpenFileExternal', path });
+      postToHost({ command: "desktopOpenFileExternal", path });
     },
     [isDesktop, postToHost],
   );
 
   // Authoritative clamp at drag time: keep the panel within [320, container -
   // other checked panels - conversation minimum].
-  const handlePanelWidthChange = useCallback((kind: DesktopPanelKind, width: number) => {
-    let clamped = Math.max(width, PANEL_MIN_WIDTH);
-    const containerW = chatContainerRef.current?.getBoundingClientRect().width;
-    if (containerW) {
-      const others = checkedPanelsRef.current
-        .filter((k) => k !== kind)
-        .reduce((sum, k) => sum + panelWidthsRef.current[k], 0);
-      clamped = Math.min(clamped, containerW - others - CHAT_MAIN_MIN_WIDTH);
-    }
-    setPanelWidths((prev) => ({ ...prev, [kind]: clamped }));
-  }, []);
+  const handlePanelWidthChange = useCallback(
+    (kind: DesktopPanelKind, width: number) => {
+      let clamped = Math.max(width, PANEL_MIN_WIDTH);
+      const containerW =
+        chatContainerRef.current?.getBoundingClientRect().width;
+      if (containerW) {
+        const others = checkedPanelsRef.current
+          .filter((k) => k !== kind)
+          .reduce((sum, k) => sum + panelWidthsRef.current[k], 0);
+        clamped = Math.min(clamped, containerW - others - CHAT_MAIN_MIN_WIDTH);
+      }
+      setPanelWidths((prev) => ({ ...prev, [kind]: clamped }));
+    },
+    [],
+  );
 
   // Desktop only: open/re-target the preview panel. Clicking a localhost link
   // checks the preview item (refused with a hint when space runs out) and loads
   // the URL. Message.tsx gates on waveHostType, so this never fires in IDE hosts.
-  const handleOpenPreview = useCallback((url: string) => {
-    if (!checkedPanelsRef.current.includes('preview') && !tryOpenPanel('preview')) return;
-    setPreviewUrl(url);
-  }, [tryOpenPanel]);
+  const handleOpenPreview = useCallback(
+    (url: string) => {
+      if (
+        !checkedPanelsRef.current.includes("preview") &&
+        !tryOpenPanel("preview")
+      )
+        return;
+      setPreviewUrl(url);
+    },
+    [tryOpenPanel],
+  );
 
   // Remote localhost link handler: open the preview panel (creating it when
   // absent) and forward. The same URL — under any loopback/all-interfaces
@@ -1359,17 +1641,29 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // 15/16). Every other click — a different path, a different origin, another
   // service entirely — just re-targets the panel; tunnels are session-scoped
   // and only die when the session is deleted (scenario 18).
-  const handleOpenRemotePreview = useCallback((url: string) => {
-    if (!checkedPanelsRef.current.includes('preview') && !tryOpenPanel('preview')) return;
-    // Read the refs, not the state values: this callback is captured by the
-    // memoized Message component at mount, so closing over state would freeze
-    // the first render's values and break the same-link dedup below.
-    const current = currentForwardRef.current;
-    if (current && canonicalForwardUrl(current.originalUrl) === canonicalForwardUrl(url) && previewForwardErrorRef.current === null) return;
-    setPreviewForwardError(null);
-    setPreviewUrl(null); // show the connecting stub while the tunnel comes up
-    acquireForward(effectiveHostRef.current, url);
-  }, [tryOpenPanel, acquireForward]);
+  const handleOpenRemotePreview = useCallback(
+    (url: string) => {
+      if (
+        !checkedPanelsRef.current.includes("preview") &&
+        !tryOpenPanel("preview")
+      )
+        return;
+      // Read the refs, not the state values: this callback is captured by the
+      // memoized Message component at mount, so closing over state would freeze
+      // the first render's values and break the same-link dedup below.
+      const current = currentForwardRef.current;
+      if (
+        current &&
+        canonicalForwardUrl(current.originalUrl) === canonicalForwardUrl(url) &&
+        previewForwardErrorRef.current === null
+      )
+        return;
+      setPreviewForwardError(null);
+      setPreviewUrl(null); // show the connecting stub while the tunnel comes up
+      acquireForward(effectiveHostRef.current, url);
+    },
+    [tryOpenPanel, acquireForward],
+  );
 
   // Retry after a failed forward (scenario 16): re-request the same tunnel.
   // The host treats a failed entry as gone, so a fresh forward is established.
@@ -1380,12 +1674,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     acquireForward(fwd.host, fwd.originalUrl);
   }, [acquireForward]);
 
-  const openPreviewHandler = effectiveHost !== 'local' ? handleOpenRemotePreview : handleOpenPreview;
+  const openPreviewHandler =
+    effectiveHost !== "local" ? handleOpenRemotePreview : handleOpenPreview;
 
   // Diff/terminal need a workdir; preview only needs a URL. Remote sessions
   // keep diff/terminal (git and the shell run over ssh) and gain preview via
   // port forwarding (scenario 15); only the workdir requirement remains.
-  const panelDisabled: DesktopPanelKind[] = effectiveWorkdir ? [] : ['diff', 'terminal'];
+  const panelDisabled: DesktopPanelKind[] = useMemo(
+    () => (effectiveWorkdir ? [] : ["diff", "terminal"]),
+    [effectiveWorkdir],
+  );
 
   useEffect(() => {
     panelDisabledRef.current = panelDisabled;
@@ -1395,14 +1693,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // reflect the focused pane.
   useEffect(() => {
     if (!isDesktop) return;
-    postToHost({ command: 'desktopPanelState', checked: checkedPanels });
+    postToHost({ command: "desktopPanelState", checked: checkedPanels });
   }, [checkedPanels, isDesktop, postToHost]);
 
   // Width ceiling for one panel: container minus the other checked panels and
   // the conversation-area minimum. Render-time estimate — the drag handler
   // re-clamps authoritatively on every mousemove.
   const panelMaxWidth = (kind: DesktopPanelKind): number => {
-    const containerW = chatContainerRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+    const containerW =
+      chatContainerRef.current?.getBoundingClientRect().width ??
+      window.innerWidth;
     const others = checkedPanels
       .filter((k) => k !== kind)
       .reduce((sum, k) => sum + panelWidths[k], 0);
@@ -1422,24 +1722,26 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     const onEmptyPreviewDragStart = (e: React.MouseEvent) => {
       e.preventDefault();
       const handle = e.currentTarget as HTMLElement;
-      handle.style.background = 'var(--vscode-focusBorder, #007fd4)';
-      document.body.classList.add('is-panel-resizing');
+      handle.style.background = "var(--vscode-focusBorder, #007fd4)";
+      document.body.classList.add("is-panel-resizing");
       const rect = handle.parentElement?.getBoundingClientRect();
       const onMove = (ev: MouseEvent) => {
         const next = (rect?.right ?? 0) - ev.clientX;
-        common.onWidthChange(Math.min(Math.max(next, PANEL_MIN_WIDTH), common.maxWidth));
+        common.onWidthChange(
+          Math.min(Math.max(next, PANEL_MIN_WIDTH), common.maxWidth),
+        );
       };
       const onUp = () => {
-        handle.style.background = '';
-        document.body.classList.remove('is-panel-resizing');
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
+        handle.style.background = "";
+        document.body.classList.remove("is-panel-resizing");
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
       };
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
     };
 
-    if (kind === 'preview') {
+    if (kind === "preview") {
       return previewUrl ? (
         <PreviewPane
           key={previewEpoch}
@@ -1451,12 +1753,24 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           {...common}
         />
       ) : (
-        <aside className="preview-pane" style={{ width: common.width }} data-testid="preview-pane-empty">
-          <div className="preview-pane-drag-handle" onMouseDown={onEmptyPreviewDragStart} />
+        <aside
+          className="preview-pane"
+          style={{ width: common.width }}
+          data-testid="preview-pane-empty"
+        >
+          <div
+            className="preview-pane-drag-handle"
+            onMouseDown={onEmptyPreviewDragStart}
+          />
           <div className="preview-pane-inner">
             <div className="preview-pane-toolbar">
               <span className="preview-pane-url">预览</span>
-              <button className="preview-pane-button" title="关闭" data-testid="preview-close" onClick={common.onClose}>
+              <button
+                className="preview-pane-button"
+                title="关闭"
+                data-testid="preview-close"
+                onClick={common.onClose}
+              >
                 <i className="codicon codicon-close" />
               </button>
             </div>
@@ -1464,7 +1778,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
               {previewForwardError ? (
                 <>
                   <span>远程预览加载失败：{previewForwardError}</span>
-                  <button className="preview-pane-button" data-testid="preview-forward-retry" onClick={handleRemotePreviewRetry}>
+                  <button
+                    className="preview-pane-button"
+                    data-testid="preview-forward-retry"
+                    onClick={handleRemotePreviewRetry}
+                  >
                     重试
                   </button>
                 </>
@@ -1476,12 +1794,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         </aside>
       );
     }
-    if (kind === 'diff') {
+    if (kind === "diff") {
       return (
         <DiffPane
           vscode={vscode}
           paneId={paneId}
-          visible={checkedPanels.includes('diff')}
+          visible={checkedPanels.includes("diff")}
           isStreaming={state.isStreaming}
           sessionId={state.currentSession?.id}
           workdir={effectiveWorkdir}
@@ -1490,7 +1808,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         />
       );
     }
-    if (kind === 'file') {
+    if (kind === "file") {
       return (
         <FilePane
           fileView={fileView}
@@ -1504,7 +1822,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       <TerminalPane
         vscode={vscode}
         paneId={paneId}
-        visible={checkedPanels.includes('terminal')}
+        visible={checkedPanels.includes("terminal")}
         sessionId={state.currentSession?.id}
         workdir={effectiveWorkdir}
         onOpenPreview={openPreviewHandler}
@@ -1517,7 +1835,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     // Desktop restore in progress: the pane already switched to the target
     // session — show the sweep animation over the message + input area until
     // the host finishes connecting and replaying the transcript (spec 场景 7).
-    <div className="chat-restoring-overlay" data-testid="chat-restoring-overlay">
+    <div
+      className="chat-restoring-overlay"
+      data-testid="chat-restoring-overlay"
+    >
       <LoadingLogo />
     </div>
   ) : (
@@ -1525,7 +1846,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       {showWelcomeReady ? (
         <WelcomeView
           isAuthenticated={state.isAuthenticated}
-          hasDirectConnectConfig={!!(state.configurationData?.apiKey && state.configurationData?.baseURL)}
+          hasDirectConnectConfig={
+            !!(
+              state.configurationData?.apiKey &&
+              state.configurationData?.baseURL
+            )
+          }
           onLogin={handleLogin}
         />
       ) : showWelcome ? (
@@ -1545,20 +1871,28 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         />
       )}
 
-      <div className={`input-area-container${isDesktop && state.pendingConfirmations.length > 0 ? ' input-area-container--confirm' : ''}`}>
-        <div style={{ display: state.pendingConfirmations.length === 0 ? 'block' : 'none' }}>
+      <div
+        className={`input-area-container${isDesktop && state.pendingConfirmations.length > 0 ? " input-area-container--confirm" : ""}`}
+      >
+        <div
+          style={{
+            display: state.pendingConfirmations.length === 0 ? "block" : "none",
+          }}
+        >
           <TaskList
             // 按会话 id 重挂载：切换会话时重置“观察过未完成任务”的跟踪，
             // 使全部已完成的新会话立即隐藏，而不是沿用上一会话的 5 秒宽限
             key={state.currentSession?.id}
             tasks={state.tasks}
             isCollapsed={state.isTaskListCollapsed}
-            onToggleCollapse={() => dispatch({ type: 'TOGGLE_TASK_LIST_COLLAPSE' })}
+            onToggleCollapse={() =>
+              dispatch({ type: "TOGGLE_TASK_LIST_COLLAPSE" })
+            }
           />
           <QueuedMessageList
             queuedMessages={state.queuedMessages}
             isCollapsed={state.isQueueCollapsed}
-            onToggleCollapse={() => dispatch({ type: 'TOGGLE_QUEUE_COLLAPSE' })}
+            onToggleCollapse={() => dispatch({ type: "TOGGLE_QUEUE_COLLAPSE" })}
             onEdit={handleEditQueuedMessage}
             onSend={handleSendQueuedMessage}
             onDelete={handleDeleteQueuedMessage}
@@ -1567,7 +1901,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           />
         </div>
 
-        <div style={{ display: state.pendingConfirmations.length === 0 ? 'block' : 'none' }}>
+        <div
+          style={{
+            display: state.pendingConfirmations.length === 0 ? "block" : "none",
+          }}
+        >
           <MessageInput
             ref={messageInputRef}
             onSendMessage={handleSendMessage}
@@ -1584,9 +1922,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
             sessionId={state.currentSession?.id}
             permissionMode={state.permissionMode}
             initialAttachedImages={state.attachedImages}
-            disabled={host?.type === 'desktop' && !effectiveWorkdir}
+            disabled={host?.type === "desktop" && !effectiveWorkdir}
             workdirSelector={
-              host?.type === 'desktop' && !hasVisibleMessages ? (
+              host?.type === "desktop" && !hasVisibleMessages ? (
                 <>
                   <DesktopHostSelector
                     host={effectiveHost}
@@ -1599,8 +1937,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
                     workdir={effectiveWorkdir}
                     recentWorkdirs={host.recentWorkdirs}
                     onSelectWorkdir={host.onSelectWorkdir}
-                    onSelectRemotePath={(path) => host.onSelectRemotePath(path, effectiveHost)}
-                    onListRemoteDir={(path, requestId) => host.onListRemoteDir(path, effectiveHost, requestId)}
+                    onSelectRemotePath={(path) =>
+                      host.onSelectRemotePath(path, effectiveHost)
+                    }
+                    onListRemoteDir={(path, requestId) =>
+                      host.onListRemoteDir(path, effectiveHost, requestId)
+                    }
                     onSelectRecentWorkdir={host.onSelectRecentWorkdir}
                     onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
                   />
@@ -1667,7 +2009,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // opened from the sidebar 更多 menu.
   const dialogs = (
     <>
-      {state.activeDialog === 'config' && (
+      {state.activeDialog === "config" && (
         <ConfigDialog
           configurationData={state.configurationData || {}}
           isLoading={state.configurationLoading}
@@ -1675,41 +2017,48 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           onSave={handleConfigurationSave}
           onCancel={handleDialogClose}
           projectSettings={state.projectSettings}
-          onLoadProjectSettings={() => postToHost({ command: 'getProjectSettings' })}
+          onLoadProjectSettings={() =>
+            postToHost({ command: "getProjectSettings" })
+          }
           onToggleBuiltinPlugin={(pluginId, enabled) =>
-            postToHost({ command: 'setBuiltinPluginEnabled', pluginId, enabled, scope: 'project' })
+            postToHost({
+              command: "setBuiltinPluginEnabled",
+              pluginId,
+              enabled,
+              scope: "project",
+            })
           }
           vscode={vscode}
         />
       )}
-      {state.activeDialog === 'plugin' && (
+      {state.activeDialog === "plugin" && (
         <PluginDialog vscode={vscode} onClose={handleDialogClose} />
       )}
-      {state.activeDialog === 'mcp' && (
+      {state.activeDialog === "mcp" && (
         <McpDialog vscode={vscode} onClose={handleDialogClose} />
       )}
-      {state.activeDialog === 'status' && (
+      {state.activeDialog === "status" && (
         <StatusDialog
           onClose={handleDialogClose}
           vscode={vscode}
           isDesktop={isDesktop}
         />
       )}
-      {state.activeDialog === 'tasks' && (
+      {state.activeDialog === "tasks" && (
         <BackgroundTaskManager
           tasks={state.backgroundTasks}
           vscode={vscode}
           onClose={handleDialogClose}
         />
       )}
-      {state.activeDialog === 'workflows' && (
+      {state.activeDialog === "workflows" && (
         <WorkflowManager
           runs={state.workflowRuns}
           vscode={vscode}
           onCancel={handleDialogClose}
         />
       )}
-      {state.activeDialog === 'agents' && (
+      {state.activeDialog === "agents" && (
         <AgentsDialog vscode={vscode} onClose={handleDialogClose} />
       )}
       {pendingRewindId && (
@@ -1720,14 +2069,26 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           onCancel={() => setPendingRewindId(null)}
         />
       )}
-      <ToastStack toasts={toasts} onDismiss={handleToastDismiss} onAction={handleToastAction} />
+      <ToastStack
+        toasts={toasts}
+        onDismiss={handleToastDismiss}
+        onAction={handleToastAction}
+      />
     </>
   );
 
   const chatContainer = (
-    <div className="chat-container" data-testid="chat-container" ref={isDesktop ? chatContainerRef : undefined}>
+    <div
+      className="chat-container"
+      data-testid="chat-container"
+      ref={isDesktop ? chatContainerRef : undefined}
+    >
       {queueEditWarning && (
-        <div className="queue-edit-warning-banner" role="alert" data-testid="queue-edit-warning">
+        <div
+          className="queue-edit-warning-banner"
+          role="alert"
+          data-testid="queue-edit-warning"
+        >
           <span className="queue-edit-warning-text">{queueEditWarning}</span>
           <button
             className="queue-edit-warning-close"
@@ -1756,22 +2117,30 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         hideMoreButton={isDesktop}
         panelToggle={
           isDesktop
-            ? { checked: checkedPanels, onToggle: handleTogglePanel, disabled: panelDisabled }
+            ? {
+                checked: checkedPanels,
+                onToggle: handleTogglePanel,
+                disabled: panelDisabled,
+              }
             : undefined
         }
       />
       {isDesktop ? (
         <div className="desktop-chat-body">
           <div className="desktop-chat-main">{chatBodyContent}</div>
-          {PANEL_ORDER.filter((kind) => mountedPanels.includes(kind)).map((kind) => (
-            <div
-              key={kind}
-              className="desktop-panel-slot"
-              style={{ display: checkedPanels.includes(kind) ? undefined : 'none' }}
-            >
-              {renderPanelSlot(kind)}
-            </div>
-          ))}
+          {PANEL_ORDER.filter((kind) => mountedPanels.includes(kind)).map(
+            (kind) => (
+              <div
+                key={kind}
+                className="desktop-panel-slot"
+                style={{
+                  display: checkedPanels.includes(kind) ? undefined : "none",
+                }}
+              >
+                {renderPanelSlot(kind)}
+              </div>
+            ),
+          )}
         </div>
       ) : (
         chatBodyContent
@@ -1779,7 +2148,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     </div>
   );
 
-  if (host?.type === 'desktop') {
+  if (host?.type === "desktop") {
     // FR-032 split-view: when the host has pushed a pane layout, DesktopShell
     // owns the row of paneId-scoped ChatApp instances. This instance then only
     // contributes its pane-scoped chatContainer (rendered below); without a
@@ -1814,7 +2183,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       <div className="desktop-layout">
         <DesktopSidebar
           onNewSession={handleDesktopNewSession}
-          onNewSessionInPane={() => postToHost({ command: 'desktopNewSessionInPane' })}
+          onNewSessionInPane={() =>
+            postToHost({ command: "desktopNewSessionInPane" })
+          }
           isStreaming={state.isStreaming}
           disabled={!host.workdir}
           onOpenSettings={handleOpenSettings}

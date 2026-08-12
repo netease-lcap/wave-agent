@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import '../styles/ModelPopup.css';
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import "../styles/ModelPopup.css";
 
 interface ModelPopupProps {
   isVisible: boolean;
@@ -19,14 +19,14 @@ export const ModelPopup: React.FC<ModelPopupProps> = ({
   models,
   currentModel,
   onSelect,
-  onClose
+  onClose,
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const popupRef = useRef<HTMLDivElement>(null);
 
   // Default selection: the current model (first item as fallback).
   useEffect(() => {
-    const currentIndex = models.indexOf(currentModel || '');
+    const currentIndex = models.indexOf(currentModel || "");
     setSelectedIndex(currentIndex >= 0 ? currentIndex : 0);
   }, [models, currentModel]);
 
@@ -39,47 +39,55 @@ export const ModelPopup: React.FC<ModelPopupProps> = ({
   useEffect(() => {
     if (!isVisible) return;
     const handleClickOutside = (event: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
+      if (
+        popupRef.current &&
+        !popupRef.current.contains(event.target as Node)
+      ) {
         onClose();
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isVisible, onClose]);
 
   // Auto-scroll selected item into view when navigation happens
   useEffect(() => {
     if (!popupRef.current) return;
-    const selectedItem = popupRef.current.querySelector('.model-popup-item.selected');
+    const selectedItem = popupRef.current.querySelector(
+      ".model-popup-item.selected",
+    );
     if (selectedItem) {
-      selectedItem.scrollIntoView({ block: 'nearest' });
+      selectedItem.scrollIntoView({ block: "nearest" });
     }
   }, [selectedIndex]);
 
-  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (!isVisible) return;
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (!isVisible) return;
 
-    switch (event.key) {
-      case 'ArrowUp':
-        event.preventDefault();
-        setSelectedIndex((prev) => Math.max(0, prev - 1));
-        break;
-      case 'ArrowDown':
-        event.preventDefault();
-        setSelectedIndex((prev) => Math.min(models.length - 1, prev + 1));
-        break;
-      case 'Enter':
-        event.preventDefault();
-        if (models[selectedIndex]) {
-          onSelect(models[selectedIndex]);
-        }
-        break;
-      case 'Escape':
-        event.preventDefault();
-        onClose();
-        break;
-    }
-  }, [isVisible, models, selectedIndex, onSelect, onClose]);
+      switch (event.key) {
+        case "ArrowUp":
+          event.preventDefault();
+          setSelectedIndex((prev) => Math.max(0, prev - 1));
+          break;
+        case "ArrowDown":
+          event.preventDefault();
+          setSelectedIndex((prev) => Math.min(models.length - 1, prev + 1));
+          break;
+        case "Enter":
+          event.preventDefault();
+          if (models[selectedIndex]) {
+            onSelect(models[selectedIndex]);
+          }
+          break;
+        case "Escape":
+          event.preventDefault();
+          onClose();
+          break;
+      }
+    },
+    [isVisible, models, selectedIndex, onSelect, onClose],
+  );
 
   if (!isVisible) return null;
 
@@ -98,15 +106,13 @@ export const ModelPopup: React.FC<ModelPopupProps> = ({
           正在加载...
         </div>
       ) : models.length === 0 ? (
-        <div className="model-popup-empty">
-          没有已配置的模型
-        </div>
+        <div className="model-popup-empty">没有已配置的模型</div>
       ) : (
         <ul className="model-popup-list">
           {models.map((model, index) => (
             <li
               key={model}
-              className={`model-popup-item ${index === selectedIndex ? 'selected' : ''}`}
+              className={`model-popup-item ${index === selectedIndex ? "selected" : ""}`}
               onClick={() => onSelect(model)}
               onMouseEnter={() => setSelectedIndex(index)}
             >

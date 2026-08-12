@@ -1,8 +1,8 @@
-import React from 'react';
-import { ExternalLinkIcon } from './HeaderIcons';
-import { FileToolHeader } from './FileToolHeader';
-import type { ToolBlock } from '../types';
-import { toRelativePath } from '../utils/messageUtils';
+import React from "react";
+import { ExternalLinkIcon } from "./HeaderIcons";
+import { FileToolHeader } from "./FileToolHeader";
+import type { ToolBlock } from "../types";
+import { toRelativePath } from "../utils/messageUtils";
 
 interface WriteToolPreviewProps {
   toolBlock: ToolBlock;
@@ -10,14 +10,18 @@ interface WriteToolPreviewProps {
   workdir?: string;
 }
 
-export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({ toolBlock, vscode, workdir }) => {
-  let filePath = '';
+export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
+  toolBlock,
+  vscode,
+  workdir,
+}) => {
+  let filePath = "";
   let content: string | null = null;
   try {
     if (toolBlock.parameters) {
       const params = JSON.parse(toolBlock.parameters);
-      filePath = params.file_path || '';
-      content = typeof params.content === 'string' ? params.content : null;
+      filePath = params.file_path || "";
+      content = typeof params.content === "string" ? params.content : null;
     }
   } catch {
     content = null;
@@ -25,11 +29,17 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({ toolBlock, v
 
   const openFile = () => {
     if (filePath) {
-      vscode.postMessage({ command: 'openFile', path: filePath });
+      vscode.postMessage({ command: "openFile", path: filePath });
     }
   };
 
-  const header = <FileToolHeader toolBlock={toolBlock} filePath={toRelativePath(filePath, workdir)} onOpenFile={openFile} />;
+  const header = (
+    <FileToolHeader
+      toolBlock={toolBlock}
+      filePath={toRelativePath(filePath, workdir)}
+      onOpenFile={openFile}
+    />
+  );
 
   if (content === null) {
     return <div className="write-tool-preview">{header}</div>;

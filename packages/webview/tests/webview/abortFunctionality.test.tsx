@@ -1,206 +1,225 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderChatApp, screen, fireEvent, sendCommand } from './test-utils';
-import { StreamingFixtures } from '../fixtures/streamingFixtures';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderChatApp, screen, fireEvent, sendCommand } from "./test-utils";
+import { StreamingFixtures } from "../fixtures/streamingFixtures";
 
 /** The abort button is conditionally rendered: present in the DOM only while streaming */
 function expectAbortVisible(visible: boolean) {
-    if (visible) {
-        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
-    } else {
-        expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
-    }
+  if (visible) {
+    expect(screen.getByTestId("abort-btn")).toBeInTheDocument();
+  } else {
+    expect(screen.queryByTestId("abort-btn")).not.toBeInTheDocument();
+  }
 }
 
-describe('Abort Functionality', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
+describe("Abort Functionality", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should show abort button during streaming", () => {
+    renderChatApp();
+
+    // Initially abort button should be hidden
+    expectAbortVisible(false);
+
+    // Start streaming
+    sendCommand("startStreaming");
+
+    // Abort button should now be visible
+    expectAbortVisible(true);
+  });
+
+  it("should hide abort button when not streaming", () => {
+    renderChatApp();
+
+    // Start streaming to show abort button
+    sendCommand("startStreaming");
+    expectAbortVisible(true);
+
+    // Simulate streaming completion by updating with final messages
+    sendCommand("updateMessages", {
+      messages: [
+        {
+          id: "msg_1",
+          role: "assistant",
+          timestamp: "2024-01-01T00:00:00.000Z",
+          blocks: [{ type: "text", content: "Completed message" }],
+        },
+      ],
     });
 
-    it('should show abort button during streaming', () => {
-        renderChatApp();
+    // End streaming (simulates agent.sendMessage() completion)
+    sendCommand("endStreaming");
 
-        // Initially abort button should be hidden
-        expectAbortVisible(false);
+    // Abort button should be hidden again
+    expectAbortVisible(false);
+  });
 
-        // Start streaming
-        sendCommand('startStreaming');
+  it("should handle abort button click", () => {
+    const { vscode } = renderChatApp();
 
-        // Abort button should now be visible
-        expectAbortVisible(true);
+    // Start streaming
+    sendCommand("startStreaming");
+    expectAbortVisible(true);
+
+    // Add some streaming content
+    sendCommand("updateMessages", {
+      messages: [
+        {
+          id: "msg_streaming_1",
+          role: "assistant",
+          timestamp: "2024-01-01T00:00:00.000Z",
+          blocks: [
+            {
+              type: "text",
+              content: "This is partial content that will be aborted...",
+            },
+          ],
+        },
+      ],
     });
 
-    it('should hide abort button when not streaming', () => {
-        renderChatApp();
+    // Click abort button
+    fireEvent.click(screen.getByTestId("abort-btn"));
 
-        // Start streaming to show abort button
-        sendCommand('startStreaming');
-        expectAbortVisible(true);
+    // Verify abort message was sent to extension
+    const sentMessages = vscode.postMessage.mock.calls.map((c) => c[0]);
+    const abortMessage = sentMessages.find(
+      (msg) => msg.command === "abortMessage",
+    );
+    expect(abortMessage).toBeDefined();
+  });
 
-        // Simulate streaming completion by updating with final messages
-        sendCommand('updateMessages', {
-            messages: [{
-                id: "msg_1",
-                role: "assistant",
-                timestamp: "2024-01-01T00:00:00.000Z",
-                blocks: [{ type: "text", content: "Completed message" }]
-            }]
-        });
+  it("should preserve partial content when aborted", () => {
+    renderChatApp();
 
-        // End streaming (simulates agent.sendMessage() completion)
-        sendCommand('endStreaming');
+    // Start streaming
+    sendCommand("startStreaming");
 
-        // Abort button should be hidden again
-        expectAbortVisible(false);
+    // Add some content
+    const partialContent = "This message was interrupted";
+    sendCommand("updateMessages", {
+      messages: [
+        {
+          id: "msg_partial_1",
+          role: "assistant",
+          timestamp: "2024-01-01T00:00:00.000Z",
+          blocks: [{ type: "text", content: partialContent }],
+        },
+      ],
     });
 
-    it('should handle abort button click', () => {
-        const { vscode } = renderChatApp();
+    // Simulate abort with partial content preservation
+    const abortedMessage = {
+      id: `msg_abort_${Date.now()}`,
+      role: "assistant" as const,
+      timestamp: "2024-01-01T00:00:00.000Z",
+      blocks: [{ type: "error" as const, content: partialContent }],
+    };
+    sendCommand("updateMessages", { messages: [abortedMessage] });
 
-        // Start streaming
-        sendCommand('startStreaming');
-        expectAbortVisible(true);
+    // End streaming (simulates agent completing after abort)
+    sendCommand("endStreaming");
 
-        // Add some streaming content
-        sendCommand('updateMessages', {
-            messages: [{
-                id: "msg_streaming_1",
-                role: "assistant",
-                timestamp: "2024-01-01T00:00:00.000Z",
-                blocks: [{ type: "text", content: "This is partial content that will be aborted..." }]
-            }]
-        });
+    // Verify the partial content is still visible
+    const messages = document.querySelectorAll(".message");
+    const lastMessage = messages[messages.length - 1] as HTMLElement;
+    expect(lastMessage).toHaveTextContent(partialContent);
 
-        // Click abort button
-        fireEvent.click(screen.getByTestId('abort-btn'));
+    // Abort button should be hidden after abort
+    expectAbortVisible(false);
+  });
 
-        // Verify abort message was sent to extension
-        const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
-        const abortMessage = sentMessages.find(msg => msg.command === 'abortMessage');
-        expect(abortMessage).toBeDefined();
+  it("should allow new messages after abort", () => {
+    renderChatApp();
+
+    // Start and abort streaming
+    sendCommand("startStreaming");
+    sendCommand("updateMessages", {
+      messages: [
+        {
+          id: "msg_partial_2",
+          role: "assistant",
+          timestamp: "2024-01-01T00:00:00.000Z",
+          blocks: [{ type: "text", content: "Partial content" }],
+        },
+      ],
     });
 
-    it('should preserve partial content when aborted', () => {
-        renderChatApp();
+    // Simulate abort
+    const abortedMessage = {
+      id: `msg_abort_${Date.now()}`,
+      role: "assistant" as const,
+      timestamp: "2024-01-01T00:00:00.000Z",
+      blocks: [{ type: "error" as const, content: "Partial content" }],
+    };
+    sendCommand("updateMessages", { messages: [abortedMessage] });
 
-        // Start streaming
-        sendCommand('startStreaming');
+    // End streaming (simulates agent completing after abort)
+    sendCommand("endStreaming");
 
-        // Add some content
-        const partialContent = 'This message was interrupted';
-        sendCommand('updateMessages', {
-            messages: [{
-                id: "msg_partial_1",
-                role: "assistant",
-                timestamp: "2024-01-01T00:00:00.000Z",
-                blocks: [{ type: "text", content: partialContent }]
-            }]
-        });
+    // Verify UI is ready for new input
+    expectAbortVisible(false);
 
-        // Simulate abort with partial content preservation
-        const abortedMessage = {
-            id: `msg_abort_${Date.now()}`,
-            role: 'assistant' as const,
-            timestamp: '2024-01-01T00:00:00.000Z',
-            blocks: [{ type: 'error' as const, content: partialContent }]
-        };
-        sendCommand('updateMessages', { messages: [abortedMessage] });
+    // Verify send button is present (disabled when input is empty, which is correct)
+    const sendBtn = screen.getByTestId("send-btn");
+    expect(sendBtn).toBeInTheDocument();
 
-        // End streaming (simulates agent completing after abort)
-        sendCommand('endStreaming');
+    // Verify message input is present and editable
+    const messageInput = screen.getByTestId("message-input");
+    expect(messageInput).toBeInTheDocument();
+    expect(messageInput.getAttribute("contenteditable")).toBe("true");
+  });
 
-        // Verify the partial content is still visible
-        const messages = document.querySelectorAll('.message');
-        const lastMessage = messages[messages.length - 1] as HTMLElement;
-        expect(lastMessage).toHaveTextContent(partialContent);
+  it("should handle abort with streaming scenario", () => {
+    renderChatApp();
 
-        // Abort button should be hidden after abort
-        expectAbortVisible(false);
-    });
+    // Use the aborted streaming scenario
+    const scenario = StreamingFixtures.ABORTED_STREAMING;
 
-    it('should allow new messages after abort', () => {
-        renderChatApp();
+    // Start streaming
+    sendCommand("startStreaming");
+    expectAbortVisible(true);
 
-        // Start and abort streaming
-        sendCommand('startStreaming');
-        sendCommand('updateMessages', {
-            messages: [{
-                id: "msg_partial_2",
-                role: "assistant",
-                timestamp: "2024-01-01T00:00:00.000Z",
-                blocks: [{ type: "text", content: "Partial content" }]
-            }]
-        });
+    // Stream up to abort point
+    let accumulated = "";
+    for (let i = 0; i < (scenario.abortAtChunk || 3); i++) {
+      accumulated += scenario.chunks[i];
+      sendCommand("updateMessages", {
+        messages: [
+          {
+            id: "msg_streaming_scenario",
+            role: "assistant",
+            timestamp: "2024-01-01T00:00:00.000Z",
+            blocks: [{ type: "text", content: accumulated }],
+          },
+        ],
+      });
+    }
 
-        // Simulate abort
-        const abortedMessage = {
-            id: `msg_abort_${Date.now()}`,
-            role: 'assistant' as const,
-            timestamp: '2024-01-01T00:00:00.000Z',
-            blocks: [{ type: 'error' as const, content: 'Partial content' }]
-        };
-        sendCommand('updateMessages', { messages: [abortedMessage] });
+    // Verify content before abort
+    const messages = document.querySelectorAll(".message");
+    const lastMessage = messages[messages.length - 1] as HTMLElement;
+    expect(lastMessage).toHaveTextContent(/I'm going to write a very/);
 
-        // End streaming (simulates agent completing after abort)
-        sendCommand('endStreaming');
+    // Simulate abort
+    const abortedMessage = {
+      id: `msg_abort_final`,
+      role: "assistant" as const,
+      timestamp: "2024-01-01T00:00:00.000Z",
+      blocks: [{ type: "error" as const, content: scenario.finalContent }],
+    };
+    sendCommand("updateMessages", { messages: [abortedMessage] });
 
-        // Verify UI is ready for new input
-        expectAbortVisible(false);
+    // End streaming (simulates agent completing after abort)
+    sendCommand("endStreaming");
 
-        // Verify send button is present (disabled when input is empty, which is correct)
-        const sendBtn = screen.getByTestId('send-btn');
-        expect(sendBtn).toBeInTheDocument();
-
-        // Verify message input is present and editable
-        const messageInput = screen.getByTestId('message-input');
-        expect(messageInput).toBeInTheDocument();
-        expect(messageInput.getAttribute('contenteditable')).toBe('true');
-    });
-
-    it('should handle abort with streaming scenario', () => {
-        renderChatApp();
-
-        // Use the aborted streaming scenario
-        const scenario = StreamingFixtures.ABORTED_STREAMING;
-
-        // Start streaming
-        sendCommand('startStreaming');
-        expectAbortVisible(true);
-
-        // Stream up to abort point
-        let accumulated = '';
-        for (let i = 0; i < (scenario.abortAtChunk || 3); i++) {
-            accumulated += scenario.chunks[i];
-            sendCommand('updateMessages', {
-                messages: [{
-                    id: "msg_streaming_scenario",
-                    role: "assistant",
-                    timestamp: "2024-01-01T00:00:00.000Z",
-                    blocks: [{ type: "text", content: accumulated }]
-                }]
-            });
-        }
-
-        // Verify content before abort
-        const messages = document.querySelectorAll('.message');
-        const lastMessage = messages[messages.length - 1] as HTMLElement;
-        expect(lastMessage).toHaveTextContent(/I'm going to write a very/);
-
-        // Simulate abort
-        const abortedMessage = {
-            id: `msg_abort_final`,
-            role: 'assistant' as const,
-            timestamp: '2024-01-01T00:00:00.000Z',
-            blocks: [{ type: 'error' as const, content: scenario.finalContent }]
-        };
-        sendCommand('updateMessages', { messages: [abortedMessage] });
-
-        // End streaming (simulates agent completing after abort)
-        sendCommand('endStreaming');
-
-        // Verify abort preserved the expected content
-        const messagesAfter = document.querySelectorAll('.message');
-        const lastMessageAfter = messagesAfter[messagesAfter.length - 1] as HTMLElement;
-        expect(lastMessageAfter).toHaveTextContent(scenario.finalContent);
-        expectAbortVisible(false);
-    });
+    // Verify abort preserved the expected content
+    const messagesAfter = document.querySelectorAll(".message");
+    const lastMessageAfter = messagesAfter[
+      messagesAfter.length - 1
+    ] as HTMLElement;
+    expect(lastMessageAfter).toHaveTextContent(scenario.finalContent);
+    expectAbortVisible(false);
+  });
 });

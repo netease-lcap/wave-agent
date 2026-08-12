@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { SessionMetadata } from 'wave-agent-sdk';
-import { formatSessionLabel } from '../utils/session';
-import { SessionList } from './SessionList';
-import '../styles/SessionListPopup.css';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import type { SessionMetadata } from "wave-agent-sdk";
+import { formatSessionLabel } from "../utils/session";
+import { SessionList } from "./SessionList";
+import "../styles/SessionListPopup.css";
 
 interface SessionListPopupProps {
   sessions: SessionMetadata[];
@@ -17,9 +17,9 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
   currentSession,
   onSessionSelect,
   onClose,
-  loading
+  loading,
 }) => {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
@@ -31,20 +31,23 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
   // Click outside + Escape to close
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
+      if (
+        popupRef.current &&
+        !popupRef.current.contains(event.target as Node)
+      ) {
         onClose();
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         onClose();
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [onClose]);
 
@@ -52,7 +55,7 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
     const trimmed = query.trim().toLowerCase();
     if (!trimmed) return sessions;
     return sessions.filter((session) =>
-      formatSessionLabel(session).toLowerCase().includes(trimmed)
+      formatSessionLabel(session).toLowerCase().includes(trimmed),
     );
   }, [sessions, query]);
 
@@ -62,7 +65,11 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
   };
 
   return (
-    <div ref={popupRef} className="session-list-popup" data-testid="session-list-popup">
+    <div
+      ref={popupRef}
+      className="session-list-popup"
+      data-testid="session-list-popup"
+    >
       <input
         ref={inputRef}
         type="text"

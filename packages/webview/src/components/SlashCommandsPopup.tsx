@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import '../styles/SlashCommandsPopup.css';
+import React, { useEffect, useRef } from "react";
+import "../styles/SlashCommandsPopup.css";
 
 export interface SlashCommand {
   id: string;
@@ -16,8 +16,20 @@ interface SlashCommandsPopupProps {
   position: { top: number; left: number };
 }
 
-const PLUGIN_COMMAND = 'plugin';
-const SYSTEM_COMMANDS = ['config', 'mcp', 'status', 'tasks', 'workflows', 'agents', 'clear', 'compact', 'rewind', 'model', 'btw'];
+const PLUGIN_COMMAND = "plugin";
+const SYSTEM_COMMANDS = [
+  "config",
+  "mcp",
+  "status",
+  "tasks",
+  "workflows",
+  "agents",
+  "clear",
+  "compact",
+  "rewind",
+  "model",
+  "btw",
+];
 
 interface CommandGroup {
   title: string;
@@ -27,7 +39,9 @@ interface CommandGroup {
 // Split the flat command list into fixed-order visual groups. The concatenated
 // group order is the single source of truth for both rendering and keyboard
 // navigation, so the highlighted item always matches its visual position.
-export const groupSlashCommands = (commands: SlashCommand[]): CommandGroup[] => {
+export const groupSlashCommands = (
+  commands: SlashCommand[],
+): CommandGroup[] => {
   const pluginCommands: SlashCommand[] = [];
   const systemCommands: SlashCommand[] = [];
   const skillCommands: SlashCommand[] = [];
@@ -43,9 +57,9 @@ export const groupSlashCommands = (commands: SlashCommand[]): CommandGroup[] => 
   });
 
   return [
-    { title: '插件管理', commands: pluginCommands },
-    { title: '系统指令', commands: systemCommands },
-    { title: '技能', commands: skillCommands }
+    { title: "插件管理", commands: pluginCommands },
+    { title: "系统指令", commands: systemCommands },
+    { title: "技能", commands: skillCommands },
   ];
 };
 
@@ -59,21 +73,25 @@ export const SlashCommandsPopup: React.FC<SlashCommandsPopupProps> = ({
   selectedIndex,
   onSelect,
   onClose,
-  position
+  position,
 }) => {
   const popupRef = useRef<HTMLDivElement>(null);
 
   // Handle clicks outside to close popup
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
+      if (
+        popupRef.current &&
+        !popupRef.current.contains(event.target as Node)
+      ) {
         onClose();
       }
     };
 
     if (isVisible) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [isVisible, onClose]);
 
@@ -83,7 +101,7 @@ export const SlashCommandsPopup: React.FC<SlashCommandsPopupProps> = ({
       if (!isVisible) return;
 
       switch (event.key) {
-        case 'Escape':
+        case "Escape":
           event.preventDefault();
           onClose();
           break;
@@ -91,17 +109,19 @@ export const SlashCommandsPopup: React.FC<SlashCommandsPopupProps> = ({
     };
 
     if (isVisible) {
-      document.addEventListener('keydown', handleKeyDown);
-      return () => document.removeEventListener('keydown', handleKeyDown);
+      document.addEventListener("keydown", handleKeyDown);
+      return () => document.removeEventListener("keydown", handleKeyDown);
     }
   }, [isVisible, onClose]);
 
   // Auto-scroll selected item into view when navigation happens
   useEffect(() => {
     if (!popupRef.current) return;
-    const selectedItem = popupRef.current.querySelector('.slash-command-item.selected');
+    const selectedItem = popupRef.current.querySelector(
+      ".slash-command-item.selected",
+    );
     if (selectedItem) {
-      selectedItem.scrollIntoView({ block: 'nearest' });
+      selectedItem.scrollIntoView({ block: "nearest" });
     }
   }, [selectedIndex]);
 
@@ -115,17 +135,15 @@ export const SlashCommandsPopup: React.FC<SlashCommandsPopupProps> = ({
       ref={popupRef}
       className="slash-commands-popup"
       style={{
-        position: 'absolute',
+        position: "absolute",
         top: position.top,
         left: position.left,
-        zIndex: 1000
+        zIndex: 1000,
       }}
       data-testid="slash-commands-popup"
     >
       {commands.length === 0 ? (
-        <div className="slash-commands-empty">
-          未找到可用命令
-        </div>
+        <div className="slash-commands-empty">未找到可用命令</div>
       ) : (
         groups
           .filter((group) => group.commands.length > 0)
@@ -139,13 +157,18 @@ export const SlashCommandsPopup: React.FC<SlashCommandsPopupProps> = ({
                   return (
                     <li
                       key={command.id}
-                      className={`slash-command-item ${isSelected ? 'selected' : ''}`}
-                      onMouseDown={(e) => { e.preventDefault(); onSelect(command); }}
+                      className={`slash-command-item ${isSelected ? "selected" : ""}`}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        onSelect(command);
+                      }}
                       data-testid={`slash-command-${command.id}`}
                     >
                       <div className="slash-command-name">/{command.name}</div>
                       {command.description && (
-                        <div className="slash-command-description">{command.description}</div>
+                        <div className="slash-command-description">
+                          {command.description}
+                        </div>
                       )}
                     </li>
                   );

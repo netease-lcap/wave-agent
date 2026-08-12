@@ -16,12 +16,14 @@
   pointer-events: none;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
   border: 1px solid var(--vscode-editorWidget-border);
-  
+
   /* 初始隐藏状态 */
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.1s ease-in-out, visibility 0.1s;
-  
+  transition:
+    opacity 0.1s ease-in-out,
+    visibility 0.1s;
+
   max-width: 250px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -34,43 +36,57 @@
 
 /* 箭头 - 由 JS 计算定位，CSS 只负责箭头方向 */
 .tooltip-box::after {
-  content: '';
+  content: "";
   position: absolute;
   border: 4px solid transparent;
 }
 
 .tooltip-top::after,
 .tooltip-top-left::after,
-.tooltip-top-right::after { 
-  top: 100%; 
-  border-top-color: var(--vscode-editorWidget-background); 
+.tooltip-top-right::after {
+  top: 100%;
+  border-top-color: var(--vscode-editorWidget-background);
 }
 
-.tooltip-top::after { left: 50%; transform: translateX(-50%); }
-.tooltip-top-left::after { right: 10px; }
-.tooltip-top-right::after { left: 10px; }
+.tooltip-top::after {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.tooltip-top-left::after {
+  right: 10px;
+}
+.tooltip-top-right::after {
+  left: 10px;
+}
 
 .tooltip-bottom::after,
 .tooltip-bottom-left::after,
-.tooltip-bottom-right::after { 
-  bottom: 100%; 
-  border-bottom-color: var(--vscode-editorWidget-background); 
+.tooltip-bottom-right::after {
+  bottom: 100%;
+  border-bottom-color: var(--vscode-editorWidget-background);
 }
 
-.tooltip-bottom::after { left: 50%; transform: translateX(-50%); }
-.tooltip-bottom-left::after { right: 10px; }
-.tooltip-bottom-right::after { left: 10px; }
-
-.tooltip-left::after { 
-  left: 100%; 
-  top: 50%; 
-  transform: translateY(-50%); 
-  border-left-color: var(--vscode-editorWidget-background); 
+.tooltip-bottom::after {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.tooltip-bottom-left::after {
+  right: 10px;
+}
+.tooltip-bottom-right::after {
+  left: 10px;
 }
 
-.tooltip-right::after { 
-  right: 100%; 
-  top: 50%; 
-  transform: translateY(-50%); 
-  border-right-color: var(--vscode-editorWidget-background); 
+.tooltip-left::after {
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border-left-color: var(--vscode-editorWidget-background);
+}
+
+.tooltip-right::after {
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border-right-color: var(--vscode-editorWidget-background);
 }

@@ -18,7 +18,8 @@
   gap: 8px;
   padding: 8px 12px;
   border-radius: 6px;
-  border: 1px solid var(--vscode-notifications-border, rgba(128, 128, 128, 0.35));
+  border: 1px solid
+    var(--vscode-notifications-border, rgba(128, 128, 128, 0.35));
   background: var(--vscode-notifications-background, #252526);
   color: var(--vscode-notifications-foreground, #cccccc);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);

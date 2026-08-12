@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import '../styles/DesktopApp.css';
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import "../styles/DesktopApp.css";
 
 export interface DesktopHostSelectorProps {
   /** Current host: 'local' or an SSH host name (the focused pane's host). */
@@ -32,7 +32,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [connectionString, setConnectionString] = useState('');
+  const [connectionString, setConnectionString] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -45,8 +45,8 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
         setAdding(false);
       }
     };
-    document.addEventListener('mousedown', onMouseDown);
-    return () => document.removeEventListener('mousedown', onMouseDown);
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
   }, [menuOpen]);
 
   const handleSelect = useCallback(
@@ -60,7 +60,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
 
   const openAdd = useCallback(() => {
     setAdding(true);
-    setConnectionString('');
+    setConnectionString("");
     // The input renders only when `adding` flips true; focus after the menu
     // has been committed to the DOM.
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -71,38 +71,46 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
     if (!s) return;
     setMenuOpen(false);
     setAdding(false);
-    setConnectionString('');
+    setConnectionString("");
     onAddHost(s);
   }, [connectionString, onAddHost]);
 
-  const isLocal = host === 'local';
+  const isLocal = host === "local";
 
   return (
     <div className="desktop-host-container" ref={menuRef}>
       <div
         className="desktop-host-trigger"
         onClick={() => setMenuOpen((o) => !o)}
-        title={isLocal ? '本地' : host}
+        title={isLocal ? "本地" : host}
         data-testid="desktop-host"
         aria-expanded={menuOpen}
         role="button"
       >
-        <span className={`codicon ${isLocal ? 'codicon-laptop' : 'codicon-remote'}`}></span>
-        <span className="desktop-host-name">{isLocal ? '本地' : host}</span>
+        <span
+          className={`codicon ${isLocal ? "codicon-laptop" : "codicon-remote"}`}
+        ></span>
+        <span className="desktop-host-name">{isLocal ? "本地" : host}</span>
         <span className="codicon codicon-chevron-down desktop-host-caret"></span>
       </div>
       {menuOpen && (
-        <div className="desktop-workdir-menu" role="listbox" data-testid="desktop-host-menu">
+        <div
+          className="desktop-workdir-menu"
+          role="listbox"
+          data-testid="desktop-host-menu"
+        >
           <div
             className="desktop-workdir-menu-item"
             role="option"
-            onClick={() => handleSelect('local')}
+            onClick={() => handleSelect("local")}
             data-testid="desktop-host-local"
           >
             <span className="codicon codicon-laptop"></span>
             <span>本地</span>
           </div>
-          {hosts.length > 0 && <div className="desktop-workdir-menu-label">SSH 主机</div>}
+          {hosts.length > 0 && (
+            <div className="desktop-workdir-menu-label">SSH 主机</div>
+          )}
           {hosts.map((h) => (
             <div
               key={h}
@@ -126,8 +134,8 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
                 value={connectionString}
                 onChange={(e) => setConnectionString(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitAdd();
-                  else if (e.key === 'Escape') setAdding(false);
+                  if (e.key === "Enter") submitAdd();
+                  else if (e.key === "Escape") setAdding(false);
                 }}
               />
             </div>

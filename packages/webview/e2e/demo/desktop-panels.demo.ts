@@ -1,7 +1,7 @@
 import { test, expect } from "../utils/desktopTestHarness.js";
 import { MessageInjector } from "../utils/messageInjector.js";
 import { MockDataGenerator } from "../fixtures/mockData.js";
-import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
+import { screenshotWebp } from "../utils/screenshot.js";
 
 const DIR_A = "/Users/dev/projects/wave-agent";
 
@@ -33,26 +33,39 @@ async function setupSinglePane(injector: MessageInjector) {
     MockDataGenerator.createUserMessage("帮我修复登录页的样式问题", "msg-u1"),
     MockDataGenerator.createAssistantMessage(
       "我先看一下登录页组件的样式文件，找出对齐问题的原因。",
-      "msg-a1"
+      "msg-a1",
     ),
   ]);
 }
 
 test.describe("Desktop conversation-level panels", () => {
-  test("panel toggle menu lists preview / diff / terminal", async ({ webviewPage }) => {
+  test("panel toggle menu lists preview / diff / terminal", async ({
+    webviewPage,
+  }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 1280, height: 720 });
     await setupSinglePane(injector);
 
     await webviewPage.getByTestId("panel-toggle-btn").click();
     await expect(webviewPage.getByTestId("panel-toggle-menu")).toBeVisible();
-    await expect(webviewPage.getByTestId("panel-toggle-item-preview")).toBeVisible();
-    await expect(webviewPage.getByTestId("panel-toggle-item-diff")).toBeVisible();
-    await expect(webviewPage.getByTestId("panel-toggle-item-terminal")).toBeVisible();
-    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-panel-toggle.webp");
+    await expect(
+      webviewPage.getByTestId("panel-toggle-item-preview"),
+    ).toBeVisible();
+    await expect(
+      webviewPage.getByTestId("panel-toggle-item-diff"),
+    ).toBeVisible();
+    await expect(
+      webviewPage.getByTestId("panel-toggle-item-terminal"),
+    ).toBeVisible();
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-panel-toggle.webp",
+    );
   });
 
-  test("diff pane renders an accordion of git workspace changes", async ({ webviewPage }) => {
+  test("diff pane renders an accordion of git workspace changes", async ({
+    webviewPage,
+  }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 1280, height: 720 });
     await setupSinglePane(injector);
@@ -74,7 +87,8 @@ test.describe("Desktop conversation-level panels", () => {
             status: "modified",
             additions: 8,
             deletions: 2,
-            hunks: "@@ -12,4 +12,10 @@\n function Login() {\n-  const [user, setUser] = useState(null);\n+  const [user, setUser] = useState(null);\n+  const [error, setError] = useState(null);\n+  // 表单提交前校验\n   return (",
+            hunks:
+              "@@ -12,4 +12,10 @@\n function Login() {\n-  const [user, setUser] = useState(null);\n+  const [user, setUser] = useState(null);\n+  const [error, setError] = useState(null);\n+  // 表单提交前校验\n   return (",
             truncated: false,
             binary: false,
           },
@@ -83,7 +97,8 @@ test.describe("Desktop conversation-level panels", () => {
             status: "added",
             additions: 15,
             deletions: 0,
-            hunks: "@@ -0,0 +1,15 @@\n+export function authenticate(user, pass) {\n+  // 校验用户名密码后请求登录接口\n+  return fetch('/api/login', { method: 'POST', body: JSON.stringify({ user, pass }) });\n+}",
+            hunks:
+              "@@ -0,0 +1,15 @@\n+export function authenticate(user, pass) {\n+  // 校验用户名密码后请求登录接口\n+  return fetch('/api/login', { method: 'POST', body: JSON.stringify({ user, pass }) });\n+}",
             truncated: false,
             binary: false,
           },
@@ -114,10 +129,15 @@ test.describe("Desktop conversation-level panels", () => {
     await expect(webviewPage.getByTestId("diff-file-added")).toBeVisible();
     await expect(webviewPage.getByTestId("diff-file-deleted")).toBeVisible();
     await expect(webviewPage.getByTestId("diff-file-untracked")).toBeVisible();
-    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-diff-pane.webp");
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-diff-pane.webp",
+    );
   });
 
-  test("terminal pane mounts an embedded xterm.js terminal", async ({ webviewPage }) => {
+  test("terminal pane mounts an embedded xterm.js terminal", async ({
+    webviewPage,
+  }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 1280, height: 720 });
     await setupSinglePane(injector);
@@ -136,6 +156,9 @@ test.describe("Desktop conversation-level panels", () => {
 
     await expect(webviewPage.getByTestId("terminal-pane")).toBeVisible();
     await expect(webviewPage.getByTestId("terminal-restart")).toBeVisible();
-    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-terminal-pane.webp");
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-terminal-pane.webp",
+    );
   });
 });

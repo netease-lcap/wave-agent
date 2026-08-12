@@ -1,17 +1,21 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { 
-  ASK_USER_QUESTION_TOOL_NAME, 
-  BASH_TOOL_NAME, 
+import React, { useRef, useEffect, useState, useCallback } from "react";
+import {
+  ASK_USER_QUESTION_TOOL_NAME,
+  BASH_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
-  EXIT_PLAN_MODE_TOOL_NAME, 
-  EDIT_TOOL_NAME, 
-  WRITE_TOOL_NAME 
-} from 'wave-agent-sdk/dist/constants/tools.js';
-import type { ConfirmationDialogProps, ConfirmationDecision, AskUserQuestionInput } from '../types';
-import '../styles/ConfirmationDialog.css';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
-import { DiffViewer } from './DiffViewer';
+  EXIT_PLAN_MODE_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  WRITE_TOOL_NAME,
+} from "wave-agent-sdk/dist/constants/tools.js";
+import type {
+  ConfirmationDialogProps,
+  ConfirmationDecision,
+  AskUserQuestionInput,
+} from "../types";
+import "../styles/ConfirmationDialog.css";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
+import { DiffViewer } from "./DiffViewer";
 
 /**
  * Radio / Checkbox indicator that matches the Figma design (16×16).
@@ -19,10 +23,20 @@ import { DiffViewer } from './DiffViewer';
  * - Checkbox unchecked: rounded square; checked: same square with a check mark.
  * Colors use VS Code theme variables so it adapts to light/dark themes.
  */
-const OptionIndicator: React.FC<{ multiSelect: boolean; checked: boolean }> = ({ multiSelect, checked }) => {
+const OptionIndicator: React.FC<{ multiSelect: boolean; checked: boolean }> = ({
+  multiSelect,
+  checked,
+}) => {
   if (multiSelect) {
     return (
-      <svg className="option-indicator-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <svg
+        className="option-indicator-icon"
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        aria-hidden="true"
+      >
         <rect
           x="0.5"
           y="0.5"
@@ -45,14 +59,27 @@ const OptionIndicator: React.FC<{ multiSelect: boolean; checked: boolean }> = ({
     );
   }
   return (
-    <svg className="option-indicator-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <svg
+      className="option-indicator-icon"
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
       <circle
         cx="8"
         cy="8"
         r="7.5"
-        stroke={checked ? 'var(--vscode-focusBorder)' : 'var(--vscode-checkbox-border)'}
+        stroke={
+          checked
+            ? "var(--vscode-focusBorder)"
+            : "var(--vscode-checkbox-border)"
+        }
       />
-      {checked && <circle cx="8" cy="8" r="3" fill="var(--vscode-focusBorder)" />}
+      {checked && (
+        <circle cx="8" cy="8" r="3" fill="var(--vscode-focusBorder)" />
+      )}
     </svg>
   );
 };
@@ -65,54 +92,73 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [otherInputs, setOtherInputs] = useState<Record<string, string>>({});
-  const [feedback, setFeedback] = useState('');
+  const [feedback, setFeedback] = useState("");
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
 
   const handleReject = useCallback(() => {
     if (confirmation.toolName === ENTER_PLAN_MODE_TOOL_NAME) {
       onConfirm(confirmation.confirmationId, {
-        behavior: 'deny',
-        message: '不，现在开始实现'
+        behavior: "deny",
+        message: "不，现在开始实现",
       });
     } else {
       onReject(confirmation.confirmationId);
     }
   }, [onReject, onConfirm, confirmation.confirmationId, confirmation.toolName]);
 
-  const handleOptionChange = useCallback((questionText: string, optionLabel: string, multiSelect: boolean, isChecked: boolean) => {
-    setAnswers(prev => {
-      const current = prev[questionText];
-      if (multiSelect) {
-        const currentArray = Array.isArray(current) ? (current as string[]) : [];
-        const exists = currentArray.includes(optionLabel);
-        if (isChecked && !exists) {
-          return { ...prev, [questionText]: [...currentArray, optionLabel] };
-        } else if (!isChecked && exists) {
-          return { ...prev, [questionText]: currentArray.filter(o => o !== optionLabel) };
+  const handleOptionChange = useCallback(
+    (
+      questionText: string,
+      optionLabel: string,
+      multiSelect: boolean,
+      isChecked: boolean,
+    ) => {
+      setAnswers((prev) => {
+        const current = prev[questionText];
+        if (multiSelect) {
+          const currentArray = Array.isArray(current)
+            ? (current as string[])
+            : [];
+          const exists = currentArray.includes(optionLabel);
+          if (isChecked && !exists) {
+            return { ...prev, [questionText]: [...currentArray, optionLabel] };
+          } else if (!isChecked && exists) {
+            return {
+              ...prev,
+              [questionText]: currentArray.filter((o) => o !== optionLabel),
+            };
+          }
+          return prev;
+        } else {
+          if (prev[questionText] === optionLabel) return prev;
+          return { ...prev, [questionText]: optionLabel };
         }
-        return prev;
-      } else {
-        if (prev[questionText] === optionLabel) return prev;
-        return { ...prev, [questionText]: optionLabel };
-      }
-    });
-  }, []);
+      });
+    },
+    [],
+  );
 
-  const handleOtherInputChange = useCallback((questionText: string, value: string) => {
-    setOtherInputs(prev => ({ ...prev, [questionText]: value }));
-  }, []);
+  const handleOtherInputChange = useCallback(
+    (questionText: string, value: string) => {
+      setOtherInputs((prev) => ({ ...prev, [questionText]: value }));
+    },
+    [],
+  );
 
   // Auto-grow the "other" textarea to fit its content (capped by CSS max-height).
   const autoGrow = useCallback((el: HTMLTextAreaElement) => {
-    el.style.height = 'auto';
+    el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, []);
 
   // Size the textarea once when it mounts (e.g. when reopening with prior content).
-  const autoGrowTextarea = useCallback((el: HTMLTextAreaElement | null) => {
-    if (el) autoGrow(el);
-  }, [autoGrow]);
+  const autoGrowTextarea = useCallback(
+    (el: HTMLTextAreaElement | null) => {
+      if (el) autoGrow(el);
+    },
+    [autoGrow],
+  );
 
   const confirmationRef = useRef(confirmation);
 
@@ -133,21 +179,26 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       const currentConfirmation = confirmationRef.current;
 
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         handleReject();
         return;
       }
 
-      const isAskUser = currentConfirmation.toolName === ASK_USER_QUESTION_TOOL_NAME;
+      const isAskUser =
+        currentConfirmation.toolName === ASK_USER_QUESTION_TOOL_NAME;
 
-      if (e.key === 'Enter' && !e.shiftKey && isAskUser && !isComposing) {
+      if (e.key === "Enter" && !e.shiftKey && isAskUser && !isComposing) {
         const activeElement = document.activeElement;
-        const isOptionFocused = activeElement?.classList.contains('option-item') || 
-                                activeElement?.closest('.option-item');
-        const isInputFocused = activeElement?.classList.contains('other-text-input');
-        
+        const isOptionFocused =
+          activeElement?.classList.contains("option-item") ||
+          activeElement?.closest(".option-item");
+        const isInputFocused =
+          activeElement?.classList.contains("other-text-input");
+
         if (isOptionFocused || isInputFocused) {
-          const applyBtn = document.querySelector('.confirmation-dialog .confirmation-btn-apply') as HTMLButtonElement;
+          const applyBtn = document.querySelector(
+            ".confirmation-dialog .confirmation-btn-apply",
+          ) as HTMLButtonElement;
           if (applyBtn && !applyBtn.disabled) {
             e.preventDefault();
             applyBtn.click();
@@ -157,66 +208,82 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleReject, isComposing]);
 
   const handleConfirm = useCallback(() => {
     if (confirmation.toolName === ENTER_PLAN_MODE_TOOL_NAME) {
       onConfirm(confirmation.confirmationId, {
-        behavior: 'allow',
-        newPermissionMode: 'plan'
+        behavior: "allow",
+        newPermissionMode: "plan",
       });
-    } else if (confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME || confirmation.toolName === BASH_TOOL_NAME || [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(confirmation.toolName)) {
+    } else if (
+      confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
+      confirmation.toolName === BASH_TOOL_NAME ||
+      [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(confirmation.toolName)
+    ) {
       if (showFeedbackInput) {
         onConfirm(confirmation.confirmationId, {
-          behavior: 'deny',
-          message: feedback
+          behavior: "deny",
+          message: feedback,
         });
       } else {
         onConfirm(confirmation.confirmationId, {
-          behavior: 'allow',
-          newPermissionMode: confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ? 'default' : undefined
+          behavior: "allow",
+          newPermissionMode:
+            confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME
+              ? "default"
+              : undefined,
         });
       }
-    } else if (confirmation.toolName.startsWith('mcp__')) {
+    } else if (confirmation.toolName.startsWith("mcp__")) {
       if (showFeedbackInput) {
         onConfirm(confirmation.confirmationId, {
-          behavior: 'deny',
-          message: feedback
+          behavior: "deny",
+          message: feedback,
         });
       } else {
         onConfirm(confirmation.confirmationId, {
-          behavior: 'allow'
+          behavior: "allow",
         });
       }
     } else if (confirmation.toolName === ASK_USER_QUESTION_TOOL_NAME) {
       // Combine selected options and "Other" inputs
       const finalAnswers: Record<string, string | string[]> = { ...answers };
-      const questions = (confirmation.toolInput as unknown as AskUserQuestionInput).questions;
-      
-      questions.forEach((q, _index) => {
+      const questions = (
+        confirmation.toolInput as unknown as AskUserQuestionInput
+      ).questions;
+
+      questions.forEach((q) => {
         const qKey = q.question;
         const otherVal = otherInputs[qKey];
-        
+
         if (q.multiSelect) {
           const current = (finalAnswers[qKey] as string[]) || [];
           if (otherVal && otherVal.trim() && !current.includes(otherVal)) {
             finalAnswers[qKey] = [...current, otherVal];
           }
-        } else if (finalAnswers[qKey] === '__other__') {
-          finalAnswers[qKey] = otherVal || '';
+        } else if (finalAnswers[qKey] === "__other__") {
+          finalAnswers[qKey] = otherVal || "";
         }
       });
-      
+
       onConfirm(confirmation.confirmationId, {
-        behavior: 'allow',
-        message: JSON.stringify(finalAnswers)
+        behavior: "allow",
+        message: JSON.stringify(finalAnswers),
       });
     } else {
       onConfirm(confirmation.confirmationId);
     }
-  }, [confirmation, onConfirm, showFeedbackInput, feedback, answers, otherInputs]);
+  }, [
+    confirmation,
+    onConfirm,
+    showFeedbackInput,
+    feedback,
+    answers,
+    otherInputs,
+  ]);
 
   const handleAutoConfirm = useCallback(() => {
     let decision: unknown;
@@ -225,23 +292,23 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         ? `Bash(${confirmation.suggestedPrefix})`
         : `Bash(${confirmation.toolInput?.command})`;
       decision = {
-        behavior: 'allow',
+        behavior: "allow",
         newPermissionRule: rule,
       };
     } else if (confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
       decision = {
-        behavior: 'allow',
-        newPermissionMode: 'acceptEdits',
+        behavior: "allow",
+        newPermissionMode: "acceptEdits",
       };
-    } else if (confirmation.toolName.startsWith('mcp__')) {
+    } else if (confirmation.toolName.startsWith("mcp__")) {
       decision = {
-        behavior: 'allow',
+        behavior: "allow",
         newPermissionRule: confirmation.toolName,
       };
     } else {
       decision = {
-        behavior: 'allow',
-        newPermissionMode: 'acceptEdits',
+        behavior: "allow",
+        newPermissionMode: "acceptEdits",
       };
     }
     onConfirm(confirmation.confirmationId, decision as ConfirmationDecision);
@@ -249,8 +316,8 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
   const handleBypassConfirm = useCallback(() => {
     onConfirm(confirmation.confirmationId, {
-      behavior: 'allow',
-      newPermissionMode: 'bypassPermissions',
+      behavior: "allow",
+      newPermissionMode: "bypassPermissions",
     });
   }, [onConfirm, confirmation.confirmationId]);
 
@@ -264,33 +331,44 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     if (confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
       return "批准并自动接受后续修改";
     }
-    if (confirmation.toolName.startsWith('mcp__')) {
+    if (confirmation.toolName.startsWith("mcp__")) {
       return `是，且不再询问：${confirmation.toolName}`;
     }
     return "是，且自动接受修改";
   };
 
   const renderPlanContent = () => {
-    const planContent = confirmation.planContent || confirmation.toolInput?.plan_content;
+    const planContent =
+      confirmation.planContent || confirmation.toolInput?.plan_content;
     if (confirmation.toolName !== EXIT_PLAN_MODE_TOOL_NAME || !planContent) {
       return null;
     }
 
-    const html = DOMPurify.sanitize(marked.parse(String(planContent)) as string);
+    const html = DOMPurify.sanitize(
+      marked.parse(String(planContent)) as string,
+    );
     return (
       <div className="plan-content-preview" tabIndex={0}>
         <h3>计划内容：</h3>
-        <div className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+        <div
+          className="markdown-body"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
       </div>
     );
   };
 
   const renderQuestions = () => {
-    if (confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME || !confirmation.toolInput?.questions) {
+    if (
+      confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME ||
+      !confirmation.toolInput?.questions
+    ) {
       return null;
     }
 
-    const questions = (confirmation.toolInput as unknown as AskUserQuestionInput).questions;
+    const questions = (
+      confirmation.toolInput as unknown as AskUserQuestionInput
+    ).questions;
     const q = questions[currentQuestionIndex];
     if (!q) return null;
 
@@ -308,7 +386,9 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   className="question-progress-nav"
                   aria-label="上一题"
                   disabled={currentQuestionIndex === 0}
-                  onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
+                  onClick={() =>
+                    setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))
+                  }
                 >
                   <i className="codicon codicon-chevron-left"></i>
                 </button>
@@ -320,7 +400,11 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   className="question-progress-nav"
                   aria-label="下一题"
                   disabled={isLastQuestion || !isCurrentQuestionAnswered()}
-                  onClick={() => setCurrentQuestionIndex(prev => Math.min(questions.length - 1, prev + 1))}
+                  onClick={() =>
+                    setCurrentQuestionIndex((prev) =>
+                      Math.min(questions.length - 1, prev + 1),
+                    )
+                  }
                 >
                   <i className="codicon codicon-chevron-right"></i>
                 </button>
@@ -329,20 +413,33 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           </div>
           <div className="options-list">
             {q.options.map((opt, oIndex) => (
-              <label 
-                key={oIndex} 
+              <label
+                key={oIndex}
                 data-option-index={oIndex}
                 className={`option-item ${
-                  (q.multiSelect 
-                    ? (answers[q.question] as string[] || []).includes(opt.label)
-                    : answers[q.question] === opt.label) ? 'selected' : ''
+                  (
+                    q.multiSelect
+                      ? ((answers[q.question] as string[]) || []).includes(
+                          opt.label,
+                        )
+                      : answers[q.question] === opt.label
+                  )
+                    ? "selected"
+                    : ""
                 }`}
                 tabIndex={0}
                 onKeyDown={(e) => {
-                  if (e.key === ' ') {
+                  if (e.key === " ") {
                     e.preventDefault();
-                    handleOptionChange(q.question, opt.label, !!q.multiSelect, 
-                      q.multiSelect ? !(answers[q.question] as string[] || []).includes(opt.label) : true
+                    handleOptionChange(
+                      q.question,
+                      opt.label,
+                      !!q.multiSelect,
+                      q.multiSelect
+                        ? !((answers[q.question] as string[]) || []).includes(
+                            opt.label,
+                          )
+                        : true,
                     );
                   }
                 }}
@@ -352,45 +449,68 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   name={`question-${currentQuestionIndex}`}
                   className="option-input-hidden"
                   tabIndex={-1}
-                  checked={q.multiSelect 
-                    ? (answers[q.question] as string[] || []).includes(opt.label)
-                    : answers[q.question] === opt.label
+                  checked={
+                    q.multiSelect
+                      ? ((answers[q.question] as string[]) || []).includes(
+                          opt.label,
+                        )
+                      : answers[q.question] === opt.label
                   }
-                  onChange={(e) => handleOptionChange(q.question, opt.label, !!q.multiSelect, e.target.checked)}
+                  onChange={(e) =>
+                    handleOptionChange(
+                      q.question,
+                      opt.label,
+                      !!q.multiSelect,
+                      e.target.checked,
+                    )
+                  }
                 />
                 <div className="option-row">
                   <div className="option-indicator">
                     <OptionIndicator
                       multiSelect={!!q.multiSelect}
-                      checked={q.multiSelect
-                        ? (answers[q.question] as string[] || []).includes(opt.label)
-                        : answers[q.question] === opt.label}
+                      checked={
+                        q.multiSelect
+                          ? ((answers[q.question] as string[]) || []).includes(
+                              opt.label,
+                            )
+                          : answers[q.question] === opt.label
+                      }
                     />
                   </div>
-                  <div className="option-label">
-                    {opt.label}
-                  </div>
+                  <div className="option-label">{opt.label}</div>
                 </div>
-                {opt.description && <div className="option-description">{opt.description}</div>}
+                {opt.description && (
+                  <div className="option-description">{opt.description}</div>
+                )}
               </label>
             ))}
-            <label 
+            <label
               data-option-index="other"
               className={`option-item other-option ${
-                (q.multiSelect 
-                  ? !!otherInputs[q.question]
-                  : answers[q.question] === '__other__') ? 'selected' : ''
+                (
+                  q.multiSelect
+                    ? !!otherInputs[q.question]
+                    : answers[q.question] === "__other__"
+                )
+                  ? "selected"
+                  : ""
               }`}
               tabIndex={0}
               onKeyDown={(e) => {
-                if (e.key === ' ') {
+                if (e.key === " ") {
                   if (e.target === e.currentTarget) {
                     e.preventDefault();
                     if (!q.multiSelect) {
-                      setAnswers(prev => ({ ...prev, [q.question]: '__other__' }));
+                      setAnswers((prev) => ({
+                        ...prev,
+                        [q.question]: "__other__",
+                      }));
                     }
                     // Focus the input
-                    const input = (e.currentTarget as HTMLElement).querySelector('.other-text-input') as HTMLInputElement;
+                    const input = (
+                      e.currentTarget as HTMLElement
+                    ).querySelector(".other-text-input") as HTMLInputElement;
                     input?.focus();
                   }
                 }
@@ -401,15 +521,19 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                 name={`question-${currentQuestionIndex}`}
                 className="option-input-hidden"
                 tabIndex={-1}
-                checked={q.multiSelect 
-                  ? !!otherInputs[q.question]
-                  : answers[q.question] === '__other__'
+                checked={
+                  q.multiSelect
+                    ? !!otherInputs[q.question]
+                    : answers[q.question] === "__other__"
                 }
                 onChange={(e) => {
                   if (!q.multiSelect) {
-                    setAnswers(prev => ({ ...prev, [q.question]: '__other__' }));
+                    setAnswers((prev) => ({
+                      ...prev,
+                      [q.question]: "__other__",
+                    }));
                   } else if (!e.target.checked) {
-                    setOtherInputs(prev => ({ ...prev, [q.question]: '' }));
+                    setOtherInputs((prev) => ({ ...prev, [q.question]: "" }));
                   }
                 }}
               />
@@ -417,9 +541,11 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                 <div className="option-indicator">
                   <OptionIndicator
                     multiSelect={!!q.multiSelect}
-                    checked={q.multiSelect
-                      ? !!otherInputs[q.question]
-                      : answers[q.question] === '__other__'}
+                    checked={
+                      q.multiSelect
+                        ? !!otherInputs[q.question]
+                        : answers[q.question] === "__other__"
+                    }
                   />
                 </div>
                 <div className="option-label">其他</div>
@@ -428,11 +554,14 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                 <textarea
                   className="other-text-input"
                   placeholder="输入自定义回答..."
-                  value={otherInputs[q.question] || ''}
+                  value={otherInputs[q.question] || ""}
                   ref={autoGrowTextarea}
                   onFocus={() => {
                     if (!q.multiSelect) {
-                      setAnswers(prev => ({ ...prev, [q.question]: '__other__' }));
+                      setAnswers((prev) => ({
+                        ...prev,
+                        [q.question]: "__other__",
+                      }));
                     }
                   }}
                   onChange={(e) => {
@@ -446,13 +575,13 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             </label>
           </div>
         </div>
-        
+
         <div className="question-navigation">
           {!isLastQuestion && (
             <button
               className="confirmation-btn confirmation-btn-secondary"
               disabled={!isCurrentQuestionAnswered()}
-              onClick={() => setCurrentQuestionIndex(prev => prev + 1)}
+              onClick={() => setCurrentQuestionIndex((prev) => prev + 1)}
             >
               下一个
             </button>
@@ -471,32 +600,55 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
   const isCurrentQuestionAnswered = () => {
     if (confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME) return true;
-    const questions = (confirmation.toolInput as unknown as AskUserQuestionInput).questions;
+    const questions = (
+      confirmation.toolInput as unknown as AskUserQuestionInput
+    ).questions;
     const q = questions[currentQuestionIndex];
     if (!q) return true;
-    
+
     const answer = answers[q.question];
     const other = otherInputs[q.question];
     if (q.multiSelect) {
-      return (Array.isArray(answer) && answer.length > 0) || (other && other.trim());
+      return (
+        (Array.isArray(answer) && answer.length > 0) || (other && other.trim())
+      );
     }
-    return (answer && answer !== '__other__') || (answer === '__other__' && other && other.trim());
+    return (
+      (answer && answer !== "__other__") ||
+      (answer === "__other__" && other && other.trim())
+    );
   };
 
   const isConfirmDisabled = () => {
     if (confirmation.toolName === ASK_USER_QUESTION_TOOL_NAME) {
-      const questions = (confirmation.toolInput as unknown as AskUserQuestionInput).questions;
-      return !questions.every(q => {
+      const questions = (
+        confirmation.toolInput as unknown as AskUserQuestionInput
+      ).questions;
+      return !questions.every((q) => {
         const answer = answers[q.question];
         const other = otherInputs[q.question];
         if (q.multiSelect) {
-          return (Array.isArray(answer) && answer.length > 0) || (other && other.trim());
+          return (
+            (Array.isArray(answer) && answer.length > 0) ||
+            (other && other.trim())
+          );
         }
-        return (answer && answer !== '__other__') || (answer === '__other__' && other && other.trim());
+        return (
+          (answer && answer !== "__other__") ||
+          (answer === "__other__" && other && other.trim())
+        );
       });
     }
-    const isPlanModeTool = confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME || confirmation.toolName === ENTER_PLAN_MODE_TOOL_NAME;
-    if ((isPlanModeTool || confirmation.toolName === BASH_TOOL_NAME || [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(confirmation.toolName) || confirmation.toolName.startsWith('mcp__')) && showFeedbackInput) {
+    const isPlanModeTool =
+      confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
+      confirmation.toolName === ENTER_PLAN_MODE_TOOL_NAME;
+    if (
+      (isPlanModeTool ||
+        confirmation.toolName === BASH_TOOL_NAME ||
+        [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(confirmation.toolName) ||
+        confirmation.toolName.startsWith("mcp__")) &&
+      showFeedbackInput
+    ) {
       return !feedback.trim();
     }
     return false;
@@ -520,23 +672,29 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
               <i className="codicon codicon-close"></i>
             </button>
           </div>
-          {confirmation.toolName === BASH_TOOL_NAME && !!confirmation.toolInput?.command && (
-            <div className="confirmation-command">
-              {String(confirmation.toolInput.command)}
-            </div>
-          )}
-          {confirmation.toolName.startsWith('mcp__') && confirmation.toolInput && (
-            <div className="confirmation-mcp-params">
-              <pre>{JSON.stringify(confirmation.toolInput, null, 2)}</pre>
-            </div>
-          )}
-          {[WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(confirmation.toolName) && !!confirmation.toolInput?.file_path && (
-            <div className="confirmation-file-path">
-              <strong>文件:</strong> {String(confirmation.toolInput.file_path)}
-            </div>
-          )}
+          {confirmation.toolName === BASH_TOOL_NAME &&
+            !!confirmation.toolInput?.command && (
+              <div className="confirmation-command">
+                {String(confirmation.toolInput.command)}
+              </div>
+            )}
+          {confirmation.toolName.startsWith("mcp__") &&
+            confirmation.toolInput && (
+              <div className="confirmation-mcp-params">
+                <pre>{JSON.stringify(confirmation.toolInput, null, 2)}</pre>
+              </div>
+            )}
+          {[WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(confirmation.toolName) &&
+            !!confirmation.toolInput?.file_path && (
+              <div className="confirmation-file-path">
+                <strong>文件:</strong>{" "}
+                {String(confirmation.toolInput.file_path)}
+              </div>
+            )}
           {confirmation.warning && (
-            <div className="confirmation-warning">⚠ {confirmation.warning}</div>
+            <div className="confirmation-warning">
+              ⚠ {confirmation.warning}
+            </div>
           )}
         </div>
 
@@ -545,13 +703,12 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
         {[WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(confirmation.toolName) && (
           <div className="confirmation-diff-viewer">
-            <DiffViewer 
-              toolName={confirmation.toolName} 
-              parameters={confirmation.toolInput} 
+            <DiffViewer
+              toolName={confirmation.toolName}
+              parameters={confirmation.toolInput}
             />
           </div>
         )}
-
 
         {confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME && (
           <div className="confirmation-actions">
@@ -563,9 +720,15 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   disabled={isConfirmDisabled()}
                 >
                   <span className="btn-text">
-                    {(confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME || confirmation.toolName === ENTER_PLAN_MODE_TOOL_NAME || confirmation.toolName === BASH_TOOL_NAME || [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(confirmation.toolName) || confirmation.toolName.startsWith('mcp__'))
-                      ? '批准并继续'
-                      : '是'}
+                    {confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
+                    confirmation.toolName === ENTER_PLAN_MODE_TOOL_NAME ||
+                    confirmation.toolName === BASH_TOOL_NAME ||
+                    [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(
+                      confirmation.toolName,
+                    ) ||
+                    confirmation.toolName.startsWith("mcp__")
+                      ? "批准并继续"
+                      : "是"}
                   </span>
                 </button>
 
@@ -587,18 +750,22 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   </button>
                 )}
 
-                {confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME && confirmation.toolName !== EXIT_PLAN_MODE_TOOL_NAME && confirmation.toolName !== ENTER_PLAN_MODE_TOOL_NAME && !showFeedbackInput && !confirmation.hidePersistentOption && (
-                  <button
-                    className="confirmation-btn confirmation-btn-auto"
-                    onClick={handleAutoConfirm}
-                  >
-                    <span className="btn-text">{getAutoOptionText()}</span>
-                  </button>
-                )}
+                {confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME &&
+                  confirmation.toolName !== EXIT_PLAN_MODE_TOOL_NAME &&
+                  confirmation.toolName !== ENTER_PLAN_MODE_TOOL_NAME &&
+                  !showFeedbackInput &&
+                  !confirmation.hidePersistentOption && (
+                    <button
+                      className="confirmation-btn confirmation-btn-auto"
+                      onClick={handleAutoConfirm}
+                    >
+                      <span className="btn-text">{getAutoOptionText()}</span>
+                    </button>
+                  )}
 
                 {(confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
                   (confirmation.toolName === BASH_TOOL_NAME &&
-                    confirmation.permissionMode !== 'plan')) && (
+                    confirmation.permissionMode !== "plan")) && (
                   <button
                     className="confirmation-btn confirmation-btn-auto"
                     onClick={handleBypassConfirm}
@@ -607,7 +774,12 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   </button>
                 )}
 
-                {(confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME || confirmation.toolName === BASH_TOOL_NAME || [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(confirmation.toolName) || confirmation.toolName.startsWith('mcp__')) && (
+                {(confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
+                  confirmation.toolName === BASH_TOOL_NAME ||
+                  [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(
+                    confirmation.toolName,
+                  ) ||
+                  confirmation.toolName.startsWith("mcp__")) && (
                   <button
                     className="confirmation-btn confirmation-btn-feedback"
                     onClick={() => setShowFeedbackInput(true)}
@@ -625,7 +797,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !isComposing) {
+                    if (e.key === "Enter" && !isComposing) {
                       handleConfirm();
                     }
                   }}

@@ -1,7 +1,7 @@
-import { test, expect } from '../utils/desktopTestHarness.js';
-import { MessageInjector } from '../utils/messageInjector.js';
-import { MockDataGenerator } from '../fixtures/mockData.js';
-import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
+import { test, expect } from "../utils/desktopTestHarness.js";
+import { MessageInjector } from "../utils/messageInjector.js";
+import { MockDataGenerator } from "../fixtures/mockData.js";
+import { screenshotWebp } from "../utils/screenshot.js";
 
 /**
  * Desktop preview pane + element picker screenshots.
@@ -15,19 +15,19 @@ import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
  * however, flows through the real PreviewPane → MessageInput path so the
  * "comment lands in the chat input" shot shows the actual behavior.
  */
-const DIR_A = '/Users/dev/projects/wave-agent';
+const DIR_A = "/Users/dev/projects/wave-agent";
 
 const initialState = {
-    messages: [],
-    isStreaming: false,
-    sessions: [],
-    isAuthenticated: true,
-    configurationData: {
-        baseURL: 'https://api.anthropic.com/v1',
-        model: 'claude-sonnet-4-20250514',
-        fastModel: 'claude-haiku-4-20250514'
-    },
-    permissionMode: 'default'
+  messages: [],
+  isStreaming: false,
+  sessions: [],
+  isAuthenticated: true,
+  configurationData: {
+    baseURL: "https://api.anthropic.com/v1",
+    model: "claude-sonnet-4-20250514",
+    fastModel: "claude-haiku-4-20250514",
+  },
+  permissionMode: "default",
 };
 
 /** Mock order-management prototype overlaid on the (inert) <webview>. */
@@ -80,110 +80,143 @@ const mockCardHtml = (comment: string) => `
   </div>
 </div>`;
 
-test.describe('Desktop Preview Pane Screenshots', () => {
-    test('capture preview pane + element picker', async ({ webviewPage }) => {
-        const injector = new MessageInjector(webviewPage);
-        await webviewPage.setViewportSize({ width: 1100, height: 680 });
+test.describe("Desktop Preview Pane Screenshots", () => {
+  test("capture preview pane + element picker", async ({ webviewPage }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1100, height: 680 });
 
-        await injector.simulateExtensionMessage('desktopWorkdirState', {
-            workdir: DIR_A,
-            recentWorkdirs: [DIR_A]
-        });
-        // Wait for ChatApp to mount and attach its message listener before
-        // sending setInitialState — otherwise the auth/initialized payload is
-        // lost to the mount race.
-        await injector.waitForChatAppReady();
-        await injector.simulateExtensionMessage('setInitialState', initialState);
-
-        await injector.updateMessages([
-            MockDataGenerator.createUserMessage('帮我做一个订单管理页面的原型，先跑起来看看效果', 'msg-u1'),
-            MockDataGenerator.createAssistantMessage(
-                '已用 Vite 创建原型并启动开发服务器，点击 [http://localhost:5173](http://localhost:5173) 在右侧预览。页面包含订单列表、状态筛选和待支付操作。',
-                'msg-a1'
-            )
-        ]);
-
-        // ── 1. Open the preview pane via the localhost link ──────────
-        const link = webviewPage.locator('a[href="http://localhost:5173"]');
-        await expect(link).toBeVisible();
-        await link.click();
-        await expect(webviewPage.getByTestId('preview-pane')).toBeVisible();
-
-        // Stub the guest IPC surface and announce picker readiness.
-        await webviewPage.evaluate(() => {
-            const wv = document.querySelector('webview') as unknown as Record<string, unknown> & HTMLElement;
-            wv.send = () => {};
-            wv.loadURL = async () => {};
-            wv.reload = () => {};
-            wv.dispatchEvent(new Event('dom-ready'));
-            const ipc = new Event('ipc-message') as Event & { channel: string; args: unknown[] };
-            ipc.channel = 'wave-picker';
-            ipc.args = [{ type: 'ready' }];
-            wv.dispatchEvent(ipc);
-        });
-
-        // Overlay the mock prototype page.
-        await webviewPage.evaluate((html) => {
-            const body = document.querySelector('.preview-pane-body');
-            body?.insertAdjacentHTML('beforeend', html);
-        }, MOCK_PROTOTYPE_HTML);
-        await expect(webviewPage.locator('#mock-prototype')).toBeVisible();
-        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-preview-pane.webp');
-
-        // ── 2. Picker active: toggle on + hover highlight outline ─────
-        await webviewPage.getByTestId('preview-picker-toggle').click();
-        await expect(webviewPage.getByTestId('preview-picker-toggle')).toHaveClass(/active/);
-        await webviewPage.evaluate(() => {
-            const chip = document.querySelector('#mock-chip-shipping') as HTMLElement | null;
-            if (chip) {
-                chip.style.outline = '2px solid var(--vscode-button-background)';
-                chip.style.outlineOffset = '-2px';
-            }
-        });
-        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-preview-picker.webp');
-
-        // ── 3. Comment card pinned to the picked element ──────────────
-        await webviewPage.evaluate((html) => {
-            const body = document.querySelector('.preview-pane-body');
-            const btn = document.querySelector('#mock-pay-btn');
-            if (!body || !btn) return;
-            const bodyRect = body.getBoundingClientRect();
-            const btnRect = btn.getBoundingClientRect();
-            const wrap = document.createElement('div');
-            wrap.innerHTML = html;
-            const card = wrap.firstElementChild as HTMLElement;
-            const left = Math.min(
-                btnRect.left - bodyRect.left,
-                bodyRect.width - 280 - 14
-            );
-            card.style.left = `${Math.max(8, left)}px`;
-            card.style.top = `${btnRect.bottom - bodyRect.top + 8}px`;
-            body.appendChild(card);
-        }, mockCardHtml('这里改成主要按钮样式，并加上加载中状态'));
-        await expect(webviewPage.locator('#mock-picker-card')).toBeVisible();
-        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-preview-comment.webp');
-
-        // ── 4. Submit dismisses the card; the comment lands in the chat ─
-        // input (nothing sent to the agent yet) so several can be batched.
-        await webviewPage.evaluate(() => {
-            document.querySelector('#mock-picker-card')?.remove();
-            const wv = document.querySelector('webview') as HTMLElement & {
-                dispatchEvent: (e: Event) => boolean;
-            };
-            const ipc = new Event('ipc-message') as Event & { channel: string; args: unknown[] };
-            ipc.channel = 'wave-picker';
-            ipc.args = [{
-                type: 'submit',
-                url: 'http://localhost:5173',
-                selector: '#mock-prototype button',
-                summary: 'button#mock-pay-btn',
-                text: '去支付',
-                comment: '这里改成主要按钮样式，并加上加载中状态',
-            }];
-            wv.dispatchEvent(ipc);
-        });
-        // The real MessageInput now carries the formatted comment.
-        await expect(webviewPage.getByTestId('message-input')).toContainText('这里改成主要按钮样式');
-        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-preview-comment-input.webp');
+    await injector.simulateExtensionMessage("desktopWorkdirState", {
+      workdir: DIR_A,
+      recentWorkdirs: [DIR_A],
     });
+    // Wait for ChatApp to mount and attach its message listener before
+    // sending setInitialState — otherwise the auth/initialized payload is
+    // lost to the mount race.
+    await injector.waitForChatAppReady();
+    await injector.simulateExtensionMessage("setInitialState", initialState);
+
+    await injector.updateMessages([
+      MockDataGenerator.createUserMessage(
+        "帮我做一个订单管理页面的原型，先跑起来看看效果",
+        "msg-u1",
+      ),
+      MockDataGenerator.createAssistantMessage(
+        "已用 Vite 创建原型并启动开发服务器，点击 [http://localhost:5173](http://localhost:5173) 在右侧预览。页面包含订单列表、状态筛选和待支付操作。",
+        "msg-a1",
+      ),
+    ]);
+
+    // ── 1. Open the preview pane via the localhost link ──────────
+    const link = webviewPage.locator('a[href="http://localhost:5173"]');
+    await expect(link).toBeVisible();
+    await link.click();
+    await expect(webviewPage.getByTestId("preview-pane")).toBeVisible();
+
+    // Stub the guest IPC surface and announce picker readiness.
+    await webviewPage.evaluate(() => {
+      const wv = document.querySelector("webview") as unknown as Record<
+        string,
+        unknown
+      > &
+        HTMLElement;
+      wv.send = () => {};
+      wv.loadURL = async () => {};
+      wv.reload = () => {};
+      wv.dispatchEvent(new Event("dom-ready"));
+      const ipc = new Event("ipc-message") as Event & {
+        channel: string;
+        args: unknown[];
+      };
+      ipc.channel = "wave-picker";
+      ipc.args = [{ type: "ready" }];
+      wv.dispatchEvent(ipc);
+    });
+
+    // Overlay the mock prototype page.
+    await webviewPage.evaluate((html) => {
+      const body = document.querySelector(".preview-pane-body");
+      body?.insertAdjacentHTML("beforeend", html);
+    }, MOCK_PROTOTYPE_HTML);
+    await expect(webviewPage.locator("#mock-prototype")).toBeVisible();
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-preview-pane.webp",
+    );
+
+    // ── 2. Picker active: toggle on + hover highlight outline ─────
+    await webviewPage.getByTestId("preview-picker-toggle").click();
+    await expect(webviewPage.getByTestId("preview-picker-toggle")).toHaveClass(
+      /active/,
+    );
+    await webviewPage.evaluate(() => {
+      const chip = document.querySelector(
+        "#mock-chip-shipping",
+      ) as HTMLElement | null;
+      if (chip) {
+        chip.style.outline = "2px solid var(--vscode-button-background)";
+        chip.style.outlineOffset = "-2px";
+      }
+    });
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-preview-picker.webp",
+    );
+
+    // ── 3. Comment card pinned to the picked element ──────────────
+    await webviewPage.evaluate((html) => {
+      const body = document.querySelector(".preview-pane-body");
+      const btn = document.querySelector("#mock-pay-btn");
+      if (!body || !btn) return;
+      const bodyRect = body.getBoundingClientRect();
+      const btnRect = btn.getBoundingClientRect();
+      const wrap = document.createElement("div");
+      wrap.innerHTML = html;
+      const card = wrap.firstElementChild as HTMLElement;
+      const left = Math.min(
+        btnRect.left - bodyRect.left,
+        bodyRect.width - 280 - 14,
+      );
+      card.style.left = `${Math.max(8, left)}px`;
+      card.style.top = `${btnRect.bottom - bodyRect.top + 8}px`;
+      body.appendChild(card);
+    }, mockCardHtml("这里改成主要按钮样式，并加上加载中状态"));
+    await expect(webviewPage.locator("#mock-picker-card")).toBeVisible();
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-preview-comment.webp",
+    );
+
+    // ── 4. Submit dismisses the card; the comment lands in the chat ─
+    // input (nothing sent to the agent yet) so several can be batched.
+    await webviewPage.evaluate(() => {
+      document.querySelector("#mock-picker-card")?.remove();
+      const wv = document.querySelector("webview") as HTMLElement & {
+        dispatchEvent: (e: Event) => boolean;
+      };
+      const ipc = new Event("ipc-message") as Event & {
+        channel: string;
+        args: unknown[];
+      };
+      ipc.channel = "wave-picker";
+      ipc.args = [
+        {
+          type: "submit",
+          url: "http://localhost:5173",
+          selector: "#mock-prototype button",
+          summary: "button#mock-pay-btn",
+          text: "去支付",
+          comment: "这里改成主要按钮样式，并加上加载中状态",
+        },
+      ];
+      wv.dispatchEvent(ipc);
+    });
+    // The real MessageInput now carries the formatted comment.
+    await expect(webviewPage.getByTestId("message-input")).toContainText(
+      "这里改成主要按钮样式",
+    );
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-preview-comment-input.webp",
+    );
+  });
 });

@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import '../styles/RewindPopup.css';
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import "../styles/RewindPopup.css";
 
 export interface RewindCheckpoint {
   id: string;
@@ -22,7 +22,7 @@ export const RewindPopup: React.FC<RewindPopupProps> = ({
   isLoading,
   checkpoints,
   onSelect,
-  onClose
+  onClose,
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -41,47 +41,57 @@ export const RewindPopup: React.FC<RewindPopupProps> = ({
   useEffect(() => {
     if (!isVisible) return;
     const handleClickOutside = (event: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
+      if (
+        popupRef.current &&
+        !popupRef.current.contains(event.target as Node)
+      ) {
         onClose();
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isVisible, onClose]);
 
   // Auto-scroll selected item into view when navigation happens
   useEffect(() => {
     if (!popupRef.current) return;
-    const selectedItem = popupRef.current.querySelector('.rewind-popup-item.selected');
+    const selectedItem = popupRef.current.querySelector(
+      ".rewind-popup-item.selected",
+    );
     if (selectedItem) {
-      selectedItem.scrollIntoView({ block: 'nearest' });
+      selectedItem.scrollIntoView({ block: "nearest" });
     }
   }, [selectedIndex]);
 
-  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (!isVisible) return;
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (!isVisible) return;
 
-    switch (event.key) {
-      case 'ArrowUp':
-        event.preventDefault();
-        setSelectedIndex((prev) => Math.max(0, prev - 1));
-        break;
-      case 'ArrowDown':
-        event.preventDefault();
-        setSelectedIndex((prev) => Math.min(checkpoints.length - 1, prev + 1));
-        break;
-      case 'Enter':
-        event.preventDefault();
-        if (checkpoints[selectedIndex]) {
-          onSelect(checkpoints[selectedIndex].id);
-        }
-        break;
-      case 'Escape':
-        event.preventDefault();
-        onClose();
-        break;
-    }
-  }, [isVisible, checkpoints, selectedIndex, onSelect, onClose]);
+      switch (event.key) {
+        case "ArrowUp":
+          event.preventDefault();
+          setSelectedIndex((prev) => Math.max(0, prev - 1));
+          break;
+        case "ArrowDown":
+          event.preventDefault();
+          setSelectedIndex((prev) =>
+            Math.min(checkpoints.length - 1, prev + 1),
+          );
+          break;
+        case "Enter":
+          event.preventDefault();
+          if (checkpoints[selectedIndex]) {
+            onSelect(checkpoints[selectedIndex].id);
+          }
+          break;
+        case "Escape":
+          event.preventDefault();
+          onClose();
+          break;
+      }
+    },
+    [isVisible, checkpoints, selectedIndex, onSelect, onClose],
+  );
 
   if (!isVisible) return null;
 
@@ -100,15 +110,13 @@ export const RewindPopup: React.FC<RewindPopupProps> = ({
           正在加载...
         </div>
       ) : checkpoints.length === 0 ? (
-        <div className="rewind-popup-empty">
-          没有可回滚的用户消息
-        </div>
+        <div className="rewind-popup-empty">没有可回滚的用户消息</div>
       ) : (
         <ul className="rewind-popup-list">
           {checkpoints.map((checkpoint, index) => (
             <li
               key={checkpoint.id}
-              className={`rewind-popup-item ${index === selectedIndex ? 'selected' : ''}`}
+              className={`rewind-popup-item ${index === selectedIndex ? "selected" : ""}`}
               onClick={() => onSelect(checkpoint.id)}
               onMouseEnter={() => setSelectedIndex(index)}
             >

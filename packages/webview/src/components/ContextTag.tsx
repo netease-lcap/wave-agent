@@ -1,6 +1,6 @@
-import React from 'react';
-import { Tooltip } from './Tooltip';
-import './ContextTag.css';
+import React from "react";
+import { Tooltip } from "./Tooltip";
+import "./ContextTag.css";
 
 interface ContextTagProps {
   name: string;
@@ -9,7 +9,12 @@ interface ContextTagProps {
   onClick?: () => void;
 }
 
-export const ContextTag: React.FC<ContextTagProps> = ({ name, path, isImage, onClick }) => {
+export const ContextTag: React.FC<ContextTagProps> = ({
+  name,
+  path,
+  isImage,
+  onClick,
+}) => {
   const isClickable = onClick !== undefined;
 
   const handlePreview = (e: React.MouseEvent) => {
@@ -22,8 +27,8 @@ export const ContextTag: React.FC<ContextTagProps> = ({ name, path, isImage, onC
 
   return (
     <Tooltip text={isClickable ? `点击查看 ${name}` : path} position="top">
-      <span 
-        className={`context-tag ${isClickable ? 'clickable' : ''} ${isImage ? 'is-image' : ''}`}
+      <span
+        className={`context-tag ${isClickable ? "clickable" : ""} ${isImage ? "is-image" : ""}`}
         onClick={handlePreview}
         aria-label={isClickable ? `点击查看 ${name}` : path}
         data-path={path}
