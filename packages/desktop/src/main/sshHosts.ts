@@ -6,17 +6,17 @@
  * writes a new Host block into ~/.ssh/config.
  */
 
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import { execFile } from "child_process";
+import { promisify } from "util";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 
 const execFileAsync = promisify(execFile);
 const SHELL_PROBE_TIMEOUT_MS = 15_000;
 
 /** Sentinel host name for local (non-remote) sessions. */
-export const LOCAL_HOST = 'local';
+export const LOCAL_HOST = "local";
 
 /**
  * Options applied to every remote ssh invocation. BatchMode forbids password /
@@ -25,13 +25,16 @@ export const LOCAL_HOST = 'local';
  * on first connection. ConnectTimeout bounds an unreachable host.
  */
 export const SSH_BASE_OPTIONS = [
-  '-o', 'BatchMode=yes',
-  '-o', 'StrictHostKeyChecking=accept-new',
-  '-o', 'ConnectTimeout=15',
+  "-o",
+  "BatchMode=yes",
+  "-o",
+  "StrictHostKeyChecking=accept-new",
+  "-o",
+  "ConnectTimeout=15",
 ];
 
 export function getSshConfigPath(): string {
-  return path.join(os.homedir(), '.ssh', 'config');
+  return path.join(os.homedir(), ".ssh", "config");
 }
 
 /**
@@ -40,10 +43,12 @@ export function getSshConfigPath(): string {
  * are skipped. Returns [] when the file is missing or unreadable (spec
  * scenario 12 — the picker then shows only 本地 + 添加主机…).
  */
-export function parseSshConfigHosts(configPath: string = getSshConfigPath()): string[] {
+export function parseSshConfigHosts(
+  configPath: string = getSshConfigPath(),
+): string[] {
   let content: string;
   try {
-    content = fs.readFileSync(configPath, 'utf-8');
+    content = fs.readFileSync(configPath, "utf-8");
   } catch {
     return [];
   }
@@ -51,7 +56,8 @@ export function parseSshConfigHosts(configPath: string = getSshConfigPath()): st
   const seen = new Set<string>();
   for (const rawLine of content.split(/\r?\n/)) {
     const trimmed = rawLine.trim();
-    if (!trimmed || trimmed.startsWith('#') || /^Include\s+/i.test(trimmed)) continue;
+    if (!trimmed || trimmed.startsWith("#") || /^Include\s+/i.test(trimmed))
+      continue;
     const m = /^Host\s+(.+)$/i.exec(trimmed);
     if (!m) continue;
     for (const name of m[1].split(/\s+/)) {
@@ -91,7 +97,7 @@ export function parseConnectionString(input: string): ParsedConnection | null {
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     if (!t) continue;
-    if (t === '-p') {
+    if (t === "-p") {
       const v = tokens[i + 1];
       if (v && /^\d+$/.test(v)) {
         port = Number(v);
@@ -100,7 +106,7 @@ export function parseConnectionString(input: string): ParsedConnection | null {
       }
       return null;
     }
-    if (t.startsWith('-')) return null; // unsupported option
+    if (t.startsWith("-")) return null; // unsupported option
     if (target === undefined) {
       target = t;
     } else {
@@ -108,10 +114,10 @@ export function parseConnectionString(input: string): ParsedConnection | null {
     }
   }
   if (!target) return null;
-  const at = target.lastIndexOf('@');
+  const at = target.lastIndexOf("@");
   const user = at >= 0 ? target.slice(0, at) : undefined;
   const hostPart = at >= 0 ? target.slice(at + 1) : target;
-  const host = hostPart.replace(/^\[|\]$/g, '');
+  const host = hostPart.replace(/^\[|\]$/g, "");
   if (!host) return null;
   return { host, hostName: hostPart, user, port };
 }
@@ -122,30 +128,34 @@ export function parseConnectionString(input: string): ParsedConnection | null {
  * exists — never overwrite or duplicate (spec scenario 5). Returns the host
  * name written.
  */
-export function addSshHost(connectionString: string, configPath: string = getSshConfigPath()): string {
+export function addSshHost(
+  connectionString: string,
+  configPath: string = getSshConfigPath(),
+): string {
   const parsed = parseConnectionString(connectionString);
   if (!parsed) {
-    throw new Error('无法解析连接串，请使用 ssh user@hostname -p port 格式');
+    throw new Error("无法解析连接串，请使用 ssh user@hostname -p port 格式");
   }
   const name = parsed.host;
   if (parseSshConfigHosts(configPath).includes(name)) {
     throw new Error(`主机 ${name} 已存在于 ~/.ssh/config，未做修改`);
   }
   const optionLines: string[] = [];
-  if (parsed.hostName !== name) optionLines.push(`    HostName ${parsed.hostName}`);
+  if (parsed.hostName !== name)
+    optionLines.push(`    HostName ${parsed.hostName}`);
   if (parsed.user) optionLines.push(`    User ${parsed.user}`);
   if (parsed.port) optionLines.push(`    Port ${parsed.port}`);
-  const block = `\nHost ${name}\n${optionLines.join('\n')}\n`;
+  const block = `\nHost ${name}\n${optionLines.join("\n")}\n`;
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  let existing = '';
+  let existing = "";
   try {
-    existing = fs.readFileSync(configPath, 'utf-8');
+    existing = fs.readFileSync(configPath, "utf-8");
   } catch {
     // new file — the block itself starts with a leading newline, so it reads
     // cleanly when appended to the empty file.
   }
-  if (existing && !existing.endsWith('\n')) existing += '\n';
-  fs.writeFileSync(configPath, existing + block, 'utf-8');
+  if (existing && !existing.endsWith("\n")) existing += "\n";
+  fs.writeFileSync(configPath, existing + block, "utf-8");
   return name;
 }
 
@@ -157,7 +167,10 @@ export function addSshHost(connectionString: string, configPath: string = getSsh
  * and older versions would execute it as the first remote token; the wave
  * binary path can never start with `-`, so none is needed.
  */
-export function buildSshSpawnArgs(host: string, remoteCommand: string): string[] {
+export function buildSshSpawnArgs(
+  host: string,
+  remoteCommand: string,
+): string[] {
   return [...SSH_BASE_OPTIONS, host, remoteCommand];
 }
 
@@ -180,11 +193,15 @@ export function buildSshTunnelArgs(
 ): string[] {
   return [
     ...SSH_BASE_OPTIONS,
-    '-o', 'ExitOnForwardFailure=yes',
-    '-o', 'ServerAliveInterval=15',
-    '-o', 'ServerAliveCountMax=4',
-    '-N',
-    '-L', `${localSocketPath}:${remoteSocketPath}`,
+    "-o",
+    "ExitOnForwardFailure=yes",
+    "-o",
+    "ServerAliveInterval=15",
+    "-o",
+    "ServerAliveCountMax=4",
+    "-N",
+    "-L",
+    `${localSocketPath}:${remoteSocketPath}`,
     host,
   ];
 }
@@ -216,11 +233,11 @@ export function resetRemoteShellCache(): void {
 export function getRemoteLoginShell(host: string): Promise<string> {
   let cached = loginShellCache.get(host);
   if (!cached) {
-    cached = execFileAsync('ssh', buildSshSpawnArgs(host, 'echo $SHELL'), {
+    cached = execFileAsync("ssh", buildSshSpawnArgs(host, "echo $SHELL"), {
       timeout: SHELL_PROBE_TIMEOUT_MS,
     })
-      .then(({ stdout }) => stdout.trim() || '/bin/sh')
-      .catch(() => '/bin/sh');
+      .then(({ stdout }) => stdout.trim() || "/bin/sh")
+      .catch(() => "/bin/sh");
     loginShellCache.set(host, cached);
   }
   return cached;
@@ -233,7 +250,10 @@ export function getRemoteLoginShell(host: string): Promise<string> {
  * the shell prints a job-control warning on stderr (harmless, stdout stays
  * clean); a genuinely failing command still surfaces its own stderr.
  */
-export async function withRemoteLoginShell(host: string, command: string): Promise<string> {
+export async function withRemoteLoginShell(
+  host: string,
+  command: string,
+): Promise<string> {
   const shell = await getRemoteLoginShell(host);
   return `${shell} -lic ${shellQuote(command)}`;
 }

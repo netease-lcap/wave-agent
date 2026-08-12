@@ -6,8 +6,8 @@
  * desktop host can surface them as chat system messages.
  */
 
-import { app } from 'electron';
-import { autoUpdater, type UpdateInfo } from 'electron-updater';
+import { app } from "electron";
+import { autoUpdater, type UpdateInfo } from "electron-updater";
 
 export interface AutoUpdaterCallbacks {
   /** A newer version was found and the background download has started. */
@@ -18,11 +18,11 @@ export interface AutoUpdaterCallbacks {
   onError: (error: Error) => void;
 }
 
-export type UpdateCheckOutcome = 'update' | 'no-update' | 'error';
+export type UpdateCheckOutcome = "update" | "no-update" | "error";
 
 export function feedUrlFor(serverUrl: string): string {
-  const platform = process.platform === 'win32' ? 'win' : 'mac';
-  return `${serverUrl.replace(/\/+$/, '')}/api/downloads/desktop/${platform}/`;
+  const platform = process.platform === "win32" ? "win" : "mac";
+  return `${serverUrl.replace(/\/+$/, "")}/api/downloads/desktop/${platform}/`;
 }
 
 export class AutoUpdaterService {
@@ -33,22 +33,26 @@ export class AutoUpdaterService {
   private attachListeners(): void {
     if (this.listenersAttached) return;
     this.listenersAttached = true;
-    autoUpdater.on('update-available', (info) => this.callbacks.onUpdateAvailable(info));
-    autoUpdater.on('update-downloaded', (info) => this.callbacks.onUpdateDownloaded(info));
-    autoUpdater.on('error', (error) => this.callbacks.onError(error));
+    autoUpdater.on("update-available", (info) =>
+      this.callbacks.onUpdateAvailable(info),
+    );
+    autoUpdater.on("update-downloaded", (info) =>
+      this.callbacks.onUpdateDownloaded(info),
+    );
+    autoUpdater.on("error", (error) => this.callbacks.onError(error));
   }
 
   /** Point the generic provider at the codechat feed and check for updates. */
   async checkForUpdates(serverUrl: string): Promise<UpdateCheckOutcome> {
     this.attachListeners();
-    autoUpdater.setFeedURL({ provider: 'generic', url: feedUrlFor(serverUrl) });
+    autoUpdater.setFeedURL({ provider: "generic", url: feedUrlFor(serverUrl) });
     try {
       const result = await autoUpdater.checkForUpdates();
       const version = result?.updateInfo.version;
-      return version && version !== app.getVersion() ? 'update' : 'no-update';
+      return version && version !== app.getVersion() ? "update" : "no-update";
     } catch (error) {
-      console.warn('[AutoUpdater] update check failed:', error);
-      return 'error';
+      console.warn("[AutoUpdater] update check failed:", error);
+      return "error";
     }
   }
 

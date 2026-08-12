@@ -43,7 +43,14 @@ export default [
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
       "react/display-name": "off",
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
       // Allow any in webview code due to dynamic message types from VS Code extension
       "@typescript-eslint/no-explicit-any": "off",
       // Prohibit warning comments like TODO, FIXME, eslint-disable

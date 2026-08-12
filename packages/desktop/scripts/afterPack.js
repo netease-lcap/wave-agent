@@ -16,14 +16,16 @@
  * spawn-helper executable, asar-unpacked so posix_spawn/dlopen can reach
  * them) — both must carry a signature consistent with the bundle.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync } from "node:child_process";
 
 export default async function afterPack(context) {
-  if (context.electronPlatformName !== 'darwin') return;
+  if (context.electronPlatformName !== "darwin") return;
   const identity = context.packager.config?.mac?.identity;
   // Developer ID mode signs everything itself — an ad-hoc pass would be
   // redundant (and would be overwritten anyway).
   if (identity != null) return;
   const appPath = `${context.appOutDir}/${context.packager.appInfo.productFilename}.app`;
-  execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' });
+  execFileSync("codesign", ["--force", "--deep", "--sign", "-", appPath], {
+    stdio: "inherit",
+  });
 }

@@ -25,9 +25,14 @@
  * strips their Cmd+W accelerator.
  */
 
-import { Menu, type Input, type MenuItemConstructorOptions, type WebContents } from 'electron';
+import {
+  Menu,
+  type Input,
+  type MenuItemConstructorOptions,
+  type WebContents,
+} from "electron";
 
-export type PanelKind = 'preview' | 'diff' | 'terminal' | 'file';
+export type PanelKind = "preview" | "diff" | "terminal" | "file";
 
 export interface DesktopMenuActions {
   nextSession: () => void;
@@ -43,7 +48,7 @@ export interface SessionMenuState {
   canClosePane: boolean;
 }
 
-type SwitchDirection = 'next' | 'prev';
+type SwitchDirection = "next" | "prev";
 
 /**
  * Map a before-input-event Input to a switch direction, or null when the key
@@ -51,16 +56,19 @@ type SwitchDirection = 'next' | 'prev';
  * (OS window switcher) are left alone. The macOS bracket combos match on
  * `code` rather than `key` because Shift turns ]/[ into }/{ in `key`.
  */
-export function matchSessionSwitchInput(input: Input, isMac: boolean): SwitchDirection | null {
+export function matchSessionSwitchInput(
+  input: Input,
+  isMac: boolean,
+): SwitchDirection | null {
   // Non-text key presses arrive as keyDown or rawKeyDown depending on
   // platform/modifiers; a single press never emits both.
-  if (input.type !== 'keyDown' && input.type !== 'rawKeyDown') return null;
-  if (input.control && !input.meta && !input.alt && input.key === 'Tab') {
-    return input.shift ? 'prev' : 'next';
+  if (input.type !== "keyDown" && input.type !== "rawKeyDown") return null;
+  if (input.control && !input.meta && !input.alt && input.key === "Tab") {
+    return input.shift ? "prev" : "next";
   }
   if (isMac && input.meta && input.shift && !input.control && !input.alt) {
-    if (input.code === 'BracketRight') return 'next';
-    if (input.code === 'BracketLeft') return 'prev';
+    if (input.code === "BracketRight") return "next";
+    if (input.code === "BracketLeft") return "prev";
   }
   return null;
 }
@@ -72,17 +80,26 @@ export function matchSessionSwitchInput(input: Input, isMac: boolean): SwitchDir
  * Ctrl+` on every platform.
  * Letters match on `code` because Shift uppercases them in `key`.
  */
-export function matchPanelToggleInput(input: Input, isMac: boolean): PanelKind | null {
-  if (input.type !== 'keyDown' && input.type !== 'rawKeyDown') return null;
-  if (input.control && !input.meta && !input.alt && !input.shift && input.code === 'Backquote') {
-    return 'terminal';
+export function matchPanelToggleInput(
+  input: Input,
+  isMac: boolean,
+): PanelKind | null {
+  if (input.type !== "keyDown" && input.type !== "rawKeyDown") return null;
+  if (
+    input.control &&
+    !input.meta &&
+    !input.alt &&
+    !input.shift &&
+    input.code === "Backquote"
+  ) {
+    return "terminal";
   }
   const primary = isMac ? input.meta : input.control;
   const secondary = isMac ? input.control : input.meta;
   if (primary && input.shift && !secondary && !input.alt) {
-    if (input.code === 'KeyP') return 'preview';
-    if (input.code === 'KeyD') return 'diff';
-    if (input.code === 'KeyF') return 'file';
+    if (input.code === "KeyP") return "preview";
+    if (input.code === "KeyD") return "diff";
+    if (input.code === "KeyF") return "file";
   }
   return null;
 }
@@ -94,120 +111,130 @@ export function buildApplicationMenuTemplate(
   panelChecked: PanelKind[] = [],
 ): MenuItemConstructorOptions[] {
   return [
-    ...(isMac ? [{ role: 'appMenu' } as MenuItemConstructorOptions] : []),
+    ...(isMac ? [{ role: "appMenu" } as MenuItemConstructorOptions] : []),
     // macOS fileMenu = Close Window (Cmd+W) — keep the item so the window can
     // still be closed from the menu, but strip the accelerator (an explicit
     // '' overrides the role default) so 关闭分屏 is the sole Cmd+W claimant.
     isMac
-      ? { label: '文件', submenu: [{ role: 'close', accelerator: '' }] }
-      : { role: 'fileMenu' },
-    { role: 'editMenu' },
+      ? { label: "文件", submenu: [{ role: "close", accelerator: "" }] }
+      : { role: "fileMenu" },
+    { role: "editMenu" },
     {
-      label: '会话',
+      label: "会话",
       submenu: [
         {
-          id: 'new-session',
-          label: '新对话',
-          accelerator: 'CmdOrCtrl+N',
+          id: "new-session",
+          label: "新对话",
+          accelerator: "CmdOrCtrl+N",
           click: () => actions.newSession(),
         },
         {
-          id: 'new-session-in-pane',
-          label: '并排新对话',
-          accelerator: 'CmdOrCtrl+Shift+N',
+          id: "new-session-in-pane",
+          label: "并排新对话",
+          accelerator: "CmdOrCtrl+Shift+N",
           click: () => actions.newSessionInPane(),
         },
         {
-          id: 'close-pane',
-          label: '关闭分屏',
-          accelerator: 'CmdOrCtrl+W',
+          id: "close-pane",
+          label: "关闭分屏",
+          accelerator: "CmdOrCtrl+W",
           click: () => actions.closePane(),
         },
-        { type: 'separator' },
+        { type: "separator" },
         {
-          label: '下一个会话',
-          accelerator: isMac ? 'Cmd+Shift+]' : 'Ctrl+Tab',
+          label: "下一个会话",
+          accelerator: isMac ? "Cmd+Shift+]" : "Ctrl+Tab",
           registerAccelerator: false,
           click: () => actions.nextSession(),
         },
         {
-          label: '上一个会话',
-          accelerator: isMac ? 'Cmd+Shift+[' : 'Ctrl+Shift+Tab',
+          label: "上一个会话",
+          accelerator: isMac ? "Cmd+Shift+[" : "Ctrl+Shift+Tab",
           registerAccelerator: false,
           click: () => actions.prevSession(),
         },
       ],
     },
     {
-      label: '面板',
+      label: "面板",
       submenu: [
         {
-          label: '预览',
-          type: 'checkbox',
-          checked: panelChecked.includes('preview'),
-          accelerator: isMac ? 'Shift+Cmd+P' : 'Ctrl+Shift+P',
+          label: "预览",
+          type: "checkbox",
+          checked: panelChecked.includes("preview"),
+          accelerator: isMac ? "Shift+Cmd+P" : "Ctrl+Shift+P",
           registerAccelerator: false,
-          click: () => actions.togglePanel('preview'),
+          click: () => actions.togglePanel("preview"),
         },
         {
-          label: '差异',
-          type: 'checkbox',
-          checked: panelChecked.includes('diff'),
-          accelerator: isMac ? 'Shift+Cmd+D' : 'Ctrl+Shift+D',
+          label: "差异",
+          type: "checkbox",
+          checked: panelChecked.includes("diff"),
+          accelerator: isMac ? "Shift+Cmd+D" : "Ctrl+Shift+D",
           registerAccelerator: false,
-          click: () => actions.togglePanel('diff'),
+          click: () => actions.togglePanel("diff"),
         },
         {
-          label: '终端',
-          type: 'checkbox',
-          checked: panelChecked.includes('terminal'),
-          accelerator: 'Ctrl+`',
+          label: "终端",
+          type: "checkbox",
+          checked: panelChecked.includes("terminal"),
+          accelerator: "Ctrl+`",
           registerAccelerator: false,
-          click: () => actions.togglePanel('terminal'),
+          click: () => actions.togglePanel("terminal"),
         },
         {
-          label: '文件',
-          type: 'checkbox',
-          checked: panelChecked.includes('file'),
-          accelerator: isMac ? 'Shift+Cmd+F' : 'Ctrl+Shift+F',
+          label: "文件",
+          type: "checkbox",
+          checked: panelChecked.includes("file"),
+          accelerator: isMac ? "Shift+Cmd+F" : "Ctrl+Shift+F",
           registerAccelerator: false,
-          click: () => actions.togglePanel('file'),
+          click: () => actions.togglePanel("file"),
         },
       ],
     },
-    { role: 'viewMenu' },
+    { role: "viewMenu" },
     // Off macOS windowMenu ends with Close (Cmd+W) — same conflict, so keep
     // only Minimize / Zoom. The macOS windowMenu has no Close item.
     isMac
-      ? { role: 'windowMenu' }
-      : { label: '窗口', submenu: [{ role: 'minimize' }, { role: 'zoom' }] },
+      ? { role: "windowMenu" }
+      : { label: "窗口", submenu: [{ role: "minimize" }, { role: "zoom" }] },
   ];
 }
 
-export function installApplicationMenu(actions: DesktopMenuActions, panelChecked: PanelKind[] = []): void {
-  const template = buildApplicationMenuTemplate(actions, process.platform === 'darwin', panelChecked);
+export function installApplicationMenu(
+  actions: DesktopMenuActions,
+  panelChecked: PanelKind[] = [],
+): void {
+  const template = buildApplicationMenuTemplate(
+    actions,
+    process.platform === "darwin",
+    panelChecked,
+  );
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 /** Reflect host pane/streaming state in the 新对话 / 关闭分屏 menu items. */
 export function updateMenuState(state: SessionMenuState): void {
   const menu = Menu.getApplicationMenu();
-  const newItem = menu?.getMenuItemById('new-session');
+  const newItem = menu?.getMenuItemById("new-session");
   if (newItem) newItem.enabled = state.canNewSession;
-  const newPaneItem = menu?.getMenuItemById('new-session-in-pane');
+  const newPaneItem = menu?.getMenuItemById("new-session-in-pane");
   if (newPaneItem) newPaneItem.enabled = state.canNewSession;
-  const closeItem = menu?.getMenuItemById('close-pane');
+  const closeItem = menu?.getMenuItemById("close-pane");
   if (closeItem) closeItem.enabled = state.canClosePane;
 }
 
 /** Wire the switch/toggle keys onto a webContents (main window or preview guest). */
-export function attachDesktopShortcutKeys(contents: WebContents, actions: DesktopMenuActions): void {
-  contents.on('before-input-event', (event, input) => {
-    const isMac = process.platform === 'darwin';
+export function attachDesktopShortcutKeys(
+  contents: WebContents,
+  actions: DesktopMenuActions,
+): void {
+  contents.on("before-input-event", (event, input) => {
+    const isMac = process.platform === "darwin";
     const direction = matchSessionSwitchInput(input, isMac);
     if (direction) {
       event.preventDefault();
-      if (direction === 'next') actions.nextSession();
+      if (direction === "next") actions.nextSession();
       else actions.prevSession();
       return;
     }

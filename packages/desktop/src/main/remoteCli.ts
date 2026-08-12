@@ -10,20 +10,25 @@
  * which a plain `ssh host 'cmd'` never loads.
  */
 
-import { execFile, spawn, type ChildProcess } from 'child_process';
-import { promisify } from 'util';
-import * as fs from 'fs';
-import * as net from 'net';
-import * as os from 'os';
-import * as path from 'path';
-import { buildSshSpawnArgs, buildSshTunnelArgs, shellQuote, withRemoteLoginShell } from './sshHosts';
-import { SocketClient } from './stdio/socketClient';
-import { parseVersion, compareVersions } from './version';
+import { execFile, spawn, type ChildProcess } from "child_process";
+import { promisify } from "util";
+import * as fs from "fs";
+import * as net from "net";
+import * as os from "os";
+import * as path from "path";
+import {
+  buildSshSpawnArgs,
+  buildSshTunnelArgs,
+  shellQuote,
+  withRemoteLoginShell,
+} from "./sshHosts";
+import { SocketClient } from "./stdio/socketClient";
+import { parseVersion, compareVersions } from "./version";
 
 const execFileAsync = promisify(execFile);
 
 export const REMOTE_NODE_MIN_MAJOR = 20;
-export const REMOTE_INSTALL_REGISTRY = 'https://registry.npmmirror.com';
+export const REMOTE_INSTALL_REGISTRY = "https://registry.npmmirror.com";
 const PROBE_TIMEOUT_MS = 15_000;
 const INSTALL_TIMEOUT_MS = 5 * 60_000;
 
@@ -44,7 +49,8 @@ function remoteInstallCommand(targetVersion?: string): string {
   if (targetVersion != null && !SEMVER_RE.test(targetVersion)) {
     throw new Error(`Invalid version: ${targetVersion}`);
   }
-  const spec = targetVersion == null ? 'wave-code' : `wave-code@${targetVersion}`;
+  const spec =
+    targetVersion == null ? "wave-code" : `wave-code@${targetVersion}`;
   return `npm install -g ${spec} --registry=${REMOTE_INSTALL_REGISTRY}`;
 }
 
@@ -55,11 +61,12 @@ export interface RemoteCliInfo {
 }
 
 /** stderr noise emitted by `bash/zsh -i` without a TTY — skip, not an error. */
-const JOB_CONTROL_NOISE = /^(bash|zsh): (cannot set terminal process group|no job control in this shell)$/;
+const JOB_CONTROL_NOISE =
+  /^(bash|zsh): (cannot set terminal process group|no job control in this shell)$/;
 
 function describeError(error: unknown): string {
   const e = error as { stderr?: string; message?: string };
-  const lines = (e.stderr ?? e.message ?? String(error)).trim().split('\n');
+  const lines = (e.stderr ?? e.message ?? String(error)).trim().split("\n");
   return lines.find((line) => !JOB_CONTROL_NOISE.test(line.trim())) ?? lines[0];
 }
 
@@ -80,11 +87,15 @@ export async function resolveRemoteWaveBinary(
   installIfMissing = true,
   targetVersion?: string,
 ): Promise<RemoteCliInfo> {
-  let nodeVersion = '';
+  let nodeVersion = "";
   try {
-    const { stdout } = await execFileAsync('ssh', await remoteCommand(host, 'node -v'), {
-      timeout: PROBE_TIMEOUT_MS,
-    });
+    const { stdout } = await execFileAsync(
+      "ssh",
+      await remoteCommand(host, "node -v"),
+      {
+        timeout: PROBE_TIMEOUT_MS,
+      },
+    );
     nodeVersion = stdout.trim();
   } catch {
     throw new Error(
@@ -100,12 +111,16 @@ export async function resolveRemoteWaveBinary(
 
   const probeWave = async (): Promise<string> => {
     try {
-      const { stdout } = await execFileAsync('ssh', await remoteCommand(host, 'command -v wave'), {
-        timeout: PROBE_TIMEOUT_MS,
-      });
+      const { stdout } = await execFileAsync(
+        "ssh",
+        await remoteCommand(host, "command -v wave"),
+        {
+          timeout: PROBE_TIMEOUT_MS,
+        },
+      );
       return stdout.trim();
     } catch {
-      return '';
+      return "";
     }
   };
 
@@ -115,7 +130,7 @@ export async function resolveRemoteWaveBinary(
   const installCommand = remoteInstallCommand(targetVersion);
   if (installIfMissing) {
     try {
-      await execFileAsync('ssh', await remoteCommand(host, installCommand), {
+      await execFileAsync("ssh", await remoteCommand(host, installCommand), {
         timeout: INSTALL_TIMEOUT_MS,
         // npm writes progress to stderr — swallow it so failures surface only
         // the summarized error below.
@@ -140,15 +155,22 @@ export async function resolveRemoteWaveBinary(
  * error). Mirrors local getCliVersion: callers treat null as "needs upgrade"
  * rather than crashing.
  */
-async function getRemoteCliVersion(host: string, binaryPath: string): Promise<string | null> {
+async function getRemoteCliVersion(
+  host: string,
+  binaryPath: string,
+): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync('ssh', await remoteCommand(host, `${shellQuote(binaryPath)} -v`), {
-      timeout: PROBE_TIMEOUT_MS,
-    });
-    const line = stdout.trim().split('\n')[0]?.trim();
+    const { stdout } = await execFileAsync(
+      "ssh",
+      await remoteCommand(host, `${shellQuote(binaryPath)} -v`),
+      {
+        timeout: PROBE_TIMEOUT_MS,
+      },
+    );
+    const line = stdout.trim().split("\n")[0]?.trim();
     if (!line) return null;
     // `wave -v` prints the bare version; tolerate a leading "v" just in case.
-    return line.replace(/^v/, '');
+    return line.replace(/^v/, "");
   } catch {
     return null;
   }
@@ -161,10 +183,13 @@ async function getRemoteCliVersion(host: string, binaryPath: string): Promise<st
  * shell command — the same no-shell-injection guarantee the local
  * upgradeWaveBinary holds. Returns the freshly resolved binary path.
  */
-export async function upgradeRemoteWave(host: string, targetVersion: string): Promise<string> {
+export async function upgradeRemoteWave(
+  host: string,
+  targetVersion: string,
+): Promise<string> {
   const installCommand = remoteInstallCommand(targetVersion);
   try {
-    await execFileAsync('ssh', await remoteCommand(host, installCommand), {
+    await execFileAsync("ssh", await remoteCommand(host, installCommand), {
       timeout: INSTALL_TIMEOUT_MS,
       // npm writes progress to stderr — swallow it so failures surface only
       // the summarized error below.
@@ -194,7 +219,11 @@ export async function ensureRemoteCliUpToDate(
   host: string,
   targetVersion: string,
 ): Promise<RemoteCliUpToDateResult> {
-  const { binaryPath } = await resolveRemoteWaveBinary(host, true, targetVersion);
+  const { binaryPath } = await resolveRemoteWaveBinary(
+    host,
+    true,
+    targetVersion,
+  );
   const current = await getRemoteCliVersion(host, binaryPath);
   if (current !== null) {
     const cur = parseVersion(current);
@@ -204,7 +233,10 @@ export async function ensureRemoteCliUpToDate(
     }
   }
   // current is null (unreadable) or older than target → upgrade.
-  return { binaryPath: await upgradeRemoteWave(host, targetVersion), upgraded: true };
+  return {
+    binaryPath: await upgradeRemoteWave(host, targetVersion),
+    upgraded: true,
+  };
 }
 
 /**
@@ -212,10 +244,13 @@ export async function ensureRemoteCliUpToDate(
  * user-typed remote workdir paths (spec scenario 3) — the Electron dialog
  * cannot pick remote directories, so the path is a text input.
  */
-export async function remotePathExists(host: string, remotePath: string): Promise<boolean> {
+export async function remotePathExists(
+  host: string,
+  remotePath: string,
+): Promise<boolean> {
   try {
     await execFileAsync(
-      'ssh',
+      "ssh",
       await remoteCommand(host, `test -d ${shellQuote(remotePath)}`),
       { timeout: PROBE_TIMEOUT_MS },
     );
@@ -240,7 +275,10 @@ export interface RemoteDirListResult {
  * Throws with a user-facing message when the path is missing/unreadable (cd
  * fails) or the ssh connection fails.
  */
-export async function listRemoteDirs(host: string, dir: string): Promise<RemoteDirListResult> {
+export async function listRemoteDirs(
+  host: string,
+  dir: string,
+): Promise<RemoteDirListResult> {
   // `~`-prefix handling is shell parameter expansion, so `${p#'~'}` must stay
   // in a plain string literal (a template literal would parse it as JS).
   const command =
@@ -251,14 +289,18 @@ export async function listRemoteDirs(host: string, dir: string): Promise<RemoteD
     `cd "$p" 2>/dev/null || { echo '目录不存在或不可读' >&2; exit 3; }; ` +
     `pwd; find "$p" -maxdepth 1 -mindepth 1 -type d -exec basename {} \\;`;
   try {
-    const { stdout } = await execFileAsync('ssh', await remoteCommand(host, command), {
-      timeout: PROBE_TIMEOUT_MS,
-    });
-    const lines = stdout.split('\n').filter((line) => line.length > 0);
+    const { stdout } = await execFileAsync(
+      "ssh",
+      await remoteCommand(host, command),
+      {
+        timeout: PROBE_TIMEOUT_MS,
+      },
+    );
+    const lines = stdout.split("\n").filter((line) => line.length > 0);
     const resolvedPath = lines[0] ?? dir;
     const dirs = lines
       .slice(1)
-      .filter((name) => name !== '.' && name !== '..')
+      .filter((name) => name !== "." && name !== "..")
       .sort((a, b) => a.localeCompare(b));
     return { resolvedPath, dirs };
   } catch (error) {
@@ -271,7 +313,7 @@ export const REMOTE_FILE_MAX_LINES = 2000;
 export const REMOTE_FILE_MAX_BYTES = 2 * 1024 * 1024;
 
 export interface RemoteFileReadResult {
-  type: 'text' | 'image' | 'binary';
+  type: "text" | "image" | "binary";
   /** Lowercased mime of the remote file (e.g. text/plain, image/png). */
   mime: string;
   /** Full-file line count (text only; may be undefined when unreadable). */
@@ -296,7 +338,10 @@ export interface RemoteFileReadResult {
  * key=value heuristics, because base64 payloads can start with letters.
  * Exit codes: 3 = missing, 4 = unreadable (messages go to stderr).
  */
-export async function readRemoteFile(host: string, remotePath: string): Promise<RemoteFileReadResult> {
+export async function readRemoteFile(
+  host: string,
+  remotePath: string,
+): Promise<RemoteFileReadResult> {
   const command =
     `p=${shellQuote(remotePath)}; ` +
     `case "$p" in '~') p="$HOME";; '~/'*) p="$HOME` +
@@ -320,21 +365,26 @@ export async function readRemoteFile(host: string, remotePath: string): Promise<
     `printf 'WAVE_REMOTE_FILE_V1\\ntype=text\\nmime=%s\\ntotal=%s\\ntruncated=%s\\n%s\\n' "$mime" "$total" "$truncated" "$(printf '%s' "$content" | base64 | tr -d '\\n')"`;
   try {
     // maxBuffer must cover base64(payload) ≈ 1.37 × file size + headers.
-    const { stdout } = await execFileAsync('ssh', await remoteCommand(host, command), {
-      timeout: PROBE_TIMEOUT_MS,
-      maxBuffer: 4 * 1024 * 1024,
-    });
-    const lines = stdout.split('\n');
-    if (lines[0] !== 'WAVE_REMOTE_FILE_V1') {
-      throw new Error('远端返回了无法识别的响应');
+    const { stdout } = await execFileAsync(
+      "ssh",
+      await remoteCommand(host, command),
+      {
+        timeout: PROBE_TIMEOUT_MS,
+        maxBuffer: 4 * 1024 * 1024,
+      },
+    );
+    const lines = stdout.split("\n");
+    if (lines[0] !== "WAVE_REMOTE_FILE_V1") {
+      throw new Error("远端返回了无法识别的响应");
     }
-    const type = lines[1].replace(/^type=/, '') as RemoteFileReadResult['type'];
-    const mime = lines[2].replace(/^mime=/, '');
-    const totalLines = Number(lines[3].replace(/^total=/, ''));
-    const truncated = lines[4] === 'truncated=1';
-    const payload = lines.slice(5).join('\n').replace(/\s+$/, '');
-    if (type === 'image') return { type, mime, imageBase64: `data:${mime};base64,${payload}` };
-    if (type === 'binary') return { type, mime };
+    const type = lines[1].replace(/^type=/, "") as RemoteFileReadResult["type"];
+    const mime = lines[2].replace(/^mime=/, "");
+    const totalLines = Number(lines[3].replace(/^total=/, ""));
+    const truncated = lines[4] === "truncated=1";
+    const payload = lines.slice(5).join("\n").replace(/\s+$/, "");
+    if (type === "image")
+      return { type, mime, imageBase64: `data:${mime};base64,${payload}` };
+    if (type === "binary") return { type, mime };
     return {
       type,
       mime,
@@ -369,11 +419,15 @@ export const TUNNEL_READY_TIMEOUT_MS = 10_000;
  */
 export async function getRemoteHomeDir(host: string): Promise<string> {
   try {
-    const { stdout } = await execFileAsync('ssh', await remoteCommand(host, 'echo $HOME'), {
-      timeout: PROBE_TIMEOUT_MS,
-    });
+    const { stdout } = await execFileAsync(
+      "ssh",
+      await remoteCommand(host, "echo $HOME"),
+      {
+        timeout: PROBE_TIMEOUT_MS,
+      },
+    );
     const home = stdout.trim();
-    if (!home) throw new Error('empty');
+    if (!home) throw new Error("empty");
     return home;
   } catch {
     throw new Error(`无法获取主机 ${host} 的远端主目录（$HOME）`);
@@ -382,12 +436,15 @@ export async function getRemoteHomeDir(host: string): Promise<string> {
 
 /** Remote daemon socket path under the user's home (posix). */
 export function remoteDaemonSocketPath(homeDir: string): string {
-  return path.posix.join(homeDir, '.wave', 'daemon.sock');
+  return path.posix.join(homeDir, ".wave", "daemon.sock");
 }
 
 /** Local end of the tunnel: a unique socket per host in the tmp dir. */
 export function localDaemonSocketPath(host: string): string {
-  return path.join(os.tmpdir(), `wave-daemon-${host.replace(/[^a-zA-Z0-9_.-]/g, '_')}.sock`);
+  return path.join(
+    os.tmpdir(),
+    `wave-daemon-${host.replace(/[^a-zA-Z0-9_.-]/g, "_")}.sock`,
+  );
 }
 
 /**
@@ -398,12 +455,19 @@ export function localDaemonSocketPath(host: string): string {
  * failure/refused → dead, and `ensureRemoteDaemon` relaunches (the daemon
  * cleans the stale socket itself on start).
  */
-export async function remoteDaemonAlive(host: string, socketPath: string): Promise<boolean> {
+export async function remoteDaemonAlive(
+  host: string,
+  socketPath: string,
+): Promise<boolean> {
   const probeScript = `const s=require('net').connect(${JSON.stringify(socketPath)});s.on('connect',()=>process.exit(0));s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),3000)`;
   try {
-    await execFileAsync('ssh', await remoteCommand(host, `node -e ${shellQuote(probeScript)}`), {
-      timeout: PROBE_TIMEOUT_MS,
-    });
+    await execFileAsync(
+      "ssh",
+      await remoteCommand(host, `node -e ${shellQuote(probeScript)}`),
+      {
+        timeout: PROBE_TIMEOUT_MS,
+      },
+    );
     return true;
   } catch {
     return false;
@@ -416,19 +480,28 @@ export async function remoteDaemonAlive(host: string, socketPath: string): Promi
  * the ssh session and make ssh return immediately after the launcher forks —
  * the daemon keeps running when the tunnel/desktop app goes away.
  */
-export async function startRemoteDaemon(host: string, binaryPath: string, socketPath: string): Promise<void> {
+export async function startRemoteDaemon(
+  host: string,
+  binaryPath: string,
+  socketPath: string,
+): Promise<void> {
   const command = `nohup ${shellQuote(binaryPath)} --daemon ${shellQuote(socketPath)} </dev/null >/dev/null 2>&1 &`;
-  await execFileAsync('ssh', await remoteCommand(host, command), {
+  await execFileAsync("ssh", await remoteCommand(host, command), {
     timeout: PROBE_TIMEOUT_MS,
   });
 }
 
 /** Poll `test -S` until the daemon socket appears (or the start timeout elapses). */
-export async function waitForRemoteDaemon(host: string, socketPath: string): Promise<void> {
+export async function waitForRemoteDaemon(
+  host: string,
+  socketPath: string,
+): Promise<void> {
   const deadline = Date.now() + DAEMON_START_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (await remoteDaemonAlive(host, socketPath)) return;
-    await new Promise((resolve) => setTimeout(resolve, DAEMON_POLL_INTERVAL_MS));
+    await new Promise((resolve) =>
+      setTimeout(resolve, DAEMON_POLL_INTERVAL_MS),
+    );
   }
   throw new Error(`远端 wave daemon 启动超时（${host}）`);
 }
@@ -440,19 +513,31 @@ export async function waitForRemoteDaemon(host: string, socketPath: string): Pro
  * match — its command line contains the literal `[w]ave...` pattern, which the
  * regex does not match — so only the real daemon process dies.
  */
-export async function killRemoteDaemon(host: string, socketPath: string): Promise<void> {
+export async function killRemoteDaemon(
+  host: string,
+  socketPath: string,
+): Promise<void> {
   const pattern = `[w]ave.*--daemon.*${socketPath}`;
-  await execFileAsync('ssh', await remoteCommand(host, `pkill -f ${shellQuote(pattern)} || true`), {
-    timeout: PROBE_TIMEOUT_MS,
-  });
+  await execFileAsync(
+    "ssh",
+    await remoteCommand(host, `pkill -f ${shellQuote(pattern)} || true`),
+    {
+      timeout: PROBE_TIMEOUT_MS,
+    },
+  );
 }
 
 /** Poll remoteDaemonAlive until the daemon is gone (or the start timeout elapses). */
-export async function waitForRemoteDaemonExit(host: string, socketPath: string): Promise<void> {
+export async function waitForRemoteDaemonExit(
+  host: string,
+  socketPath: string,
+): Promise<void> {
   const deadline = Date.now() + DAEMON_START_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (!(await remoteDaemonAlive(host, socketPath))) return;
-    await new Promise((resolve) => setTimeout(resolve, DAEMON_POLL_INTERVAL_MS));
+    await new Promise((resolve) =>
+      setTimeout(resolve, DAEMON_POLL_INTERVAL_MS),
+    );
   }
   throw new Error(`远端 wave daemon 未能退出（${host}）`);
 }
@@ -479,9 +564,15 @@ export async function ensureRemoteDaemon(
   let binaryPath: string | undefined;
   let upgraded = false;
   try {
-    ({ binaryPath, upgraded } = await ensureRemoteCliUpToDate(host, targetVersion));
+    ({ binaryPath, upgraded } = await ensureRemoteCliUpToDate(
+      host,
+      targetVersion,
+    ));
   } catch (error) {
-    console.warn(`[remoteCli] ${host} wave CLI 升级失败，继续使用现有版本:`, error);
+    console.warn(
+      `[remoteCli] ${host} wave CLI 升级失败，继续使用现有版本:`,
+      error,
+    );
     onNotice?.(
       `远程 wave-code CLI 升级失败：${error instanceof Error ? error.message : String(error)}。` +
         `可通过 ssh ${host} "npm install -g wave-code@${targetVersion}" 手动升级`,
@@ -494,7 +585,8 @@ export async function ensureRemoteDaemon(
   }
 
   if (await remoteDaemonAlive(host, socketPath)) return socketPath;
-  binaryPath ??= (await resolveRemoteWaveBinary(host, true, targetVersion)).binaryPath;
+  binaryPath ??= (await resolveRemoteWaveBinary(host, true, targetVersion))
+    .binaryPath;
   await startRemoteDaemon(host, binaryPath, socketPath);
   await waitForRemoteDaemon(host, socketPath);
   return socketPath;
@@ -513,18 +605,25 @@ export interface RemoteDaemonConnection {
  * but leave the ssh process lingering. Plain `spawn('ssh', …)` (no login
  * shell): `-N` tunnels never run a remote command.
  */
-export async function connectRemoteDaemon(host: string, remoteSocketPath: string): Promise<RemoteDaemonConnection> {
+export async function connectRemoteDaemon(
+  host: string,
+  remoteSocketPath: string,
+): Promise<RemoteDaemonConnection> {
   const localSocket = localDaemonSocketPath(host);
   try {
     fs.unlinkSync(localSocket);
   } catch {
     // no stale local socket
   }
-  const tunnel = spawn('ssh', buildSshTunnelArgs(host, localSocket, remoteSocketPath), {
-    stdio: ['ignore', 'ignore', 'pipe'],
-  });
-  let tunnelStderr = '';
-  tunnel.stderr?.on('data', (data: Buffer) => {
+  const tunnel = spawn(
+    "ssh",
+    buildSshTunnelArgs(host, localSocket, remoteSocketPath),
+    {
+      stdio: ["ignore", "ignore", "pipe"],
+    },
+  );
+  let tunnelStderr = "";
+  tunnel.stderr?.on("data", (data: Buffer) => {
     tunnelStderr = (tunnelStderr + data.toString()).slice(-1024);
   });
 
@@ -536,10 +635,10 @@ export async function connectRemoteDaemon(host: string, remoteSocketPath: string
         reject(error);
       }
     };
-    tunnel.once('exit', (code, signal) => {
+    tunnel.once("exit", (code, signal) => {
       fail(
         new Error(
-          `ssh 隧道退出（code: ${code}, signal: ${signal}${tunnelStderr.trim() ? `: ${tunnelStderr.trim()}` : ''}）`,
+          `ssh 隧道退出（code: ${code}, signal: ${signal}${tunnelStderr.trim() ? `: ${tunnelStderr.trim()}` : ""}）`,
         ),
       );
     });
@@ -555,11 +654,11 @@ export async function connectRemoteDaemon(host: string, remoteSocketPath: string
         return;
       }
       const sock = net.createConnection(localSocket);
-      sock.once('connect', () => {
+      sock.once("connect", () => {
         settled = true;
         resolve(sock);
       });
-      sock.once('error', () => {
+      sock.once("error", () => {
         setTimeout(attempt, 100);
       });
     };

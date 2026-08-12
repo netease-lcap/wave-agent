@@ -1,118 +1,138 @@
-import * as vscode from 'vscode';
-import type { SessionMetadata, ToolPermissionContext, PermissionDecision } from 'wave-agent-sdk/types';
-import { 
-    EDIT_TOOL_NAME, 
-    WRITE_TOOL_NAME, 
-    BASH_TOOL_NAME, 
-    ENTER_PLAN_MODE_TOOL_NAME,
-    EXIT_PLAN_MODE_TOOL_NAME, 
-    ASK_USER_QUESTION_TOOL_NAME 
-} from 'wave-agent-sdk/constants';
-import { ChatSession } from './session/chatSession';
-import { ConfigurationService, ConfigurationData } from './services/configurationService';
-import { FileService } from './services/fileService';
-import { SessionService } from './services/sessionService';
-import { SelectionService } from './services/selectionService';
-import { PluginService } from './services/pluginService';
-import { WebviewManager } from './session/webviewManager';
-import { MessageHandler } from './session/messageHandler';
-import { StdioClient } from './stdio/stdioClient';
-import { NotificationRouter } from './stdio/notificationRouter';
-import { resolveWaveBinary, ensureCliUpToDate, NodeJsNotFoundError, NodeJsVersionError } from './stdio/binaryResolver';
+import * as vscode from "vscode";
+import type {
+  SessionMetadata,
+  ToolPermissionContext,
+  PermissionDecision,
+} from "wave-agent-sdk/types";
+import {
+  EDIT_TOOL_NAME,
+  WRITE_TOOL_NAME,
+  BASH_TOOL_NAME,
+  ENTER_PLAN_MODE_TOOL_NAME,
+  EXIT_PLAN_MODE_TOOL_NAME,
+  ASK_USER_QUESTION_TOOL_NAME,
+} from "wave-agent-sdk/constants";
+import { ChatSession } from "./session/chatSession";
+import {
+  ConfigurationService,
+  ConfigurationData,
+} from "./services/configurationService";
+import { FileService } from "./services/fileService";
+import { SessionService } from "./services/sessionService";
+import { SelectionService } from "./services/selectionService";
+import { PluginService } from "./services/pluginService";
+import { WebviewManager } from "./session/webviewManager";
+import { MessageHandler } from "./session/messageHandler";
+import { StdioClient } from "./stdio/stdioClient";
+import { NotificationRouter } from "./stdio/notificationRouter";
+import {
+  resolveWaveBinary,
+  ensureCliUpToDate,
+  NodeJsNotFoundError,
+  NodeJsVersionError,
+} from "./stdio/binaryResolver";
 
 export class ChatProvider implements vscode.WebviewViewProvider {
-    private static formatConfigError(error: unknown): string {
-        const field = (error as Record<string, unknown>).field;
-        switch (field) {
-            case 'model':
-                return '请设置主模型（Model）配置';
-            case 'fastModel':
-                return '请设置快速模型（Fast Model）配置';
-            default:
-                return (error as Error).message || String(error);
-        }
+  private static formatConfigError(error: unknown): string {
+    const field = (error as Record<string, unknown>).field;
+    switch (field) {
+      case "model":
+        return "请设置主模型（Model）配置";
+      case "fastModel":
+        return "请设置快速模型（Fast Model）配置";
+      default:
+        return (error as Error).message || String(error);
     }
-    public static readonly viewType = 'waveChatView';
-    private context: vscode.ExtensionContext;
-    
-    private sidebarSession: ChatSession;
-    private tabSessions: Map<string, ChatSession> = new Map();
-    private windowSessions: Map<string, ChatSession> = new Map();
+  }
+  public static readonly viewType = "waveChatView";
+  private context: vscode.ExtensionContext;
 
-    private configService: ConfigurationService;
-    private fileService!: FileService;
-    private sessionService!: SessionService;
-    private selectionService: SelectionService;
-    private pluginService!: PluginService;
-    private webviewManager: WebviewManager;
-    private messageHandler!: MessageHandler;
-    private sharedClient: StdioClient | undefined;
-    private notificationRouter: NotificationRouter | undefined;
-    private outputChannel: vscode.OutputChannel;
-    private initPromise: Promise<void>;
+  private sidebarSession: ChatSession;
+  private tabSessions: Map<string, ChatSession> = new Map();
+  private windowSessions: Map<string, ChatSession> = new Map();
 
-    constructor(context: vscode.ExtensionContext) {
-        this.context = context;
-        this.configService = new ConfigurationService(context);
-        this.selectionService = new SelectionService(context);
-        this.outputChannel = vscode.window.createOutputChannel('Wave');
+  private configService: ConfigurationService;
+  private fileService!: FileService;
+  private sessionService!: SessionService;
+  private selectionService: SelectionService;
+  private pluginService!: PluginService;
+  private webviewManager: WebviewManager;
+  private messageHandler!: MessageHandler;
+  private sharedClient: StdioClient | undefined;
+  private notificationRouter: NotificationRouter | undefined;
+  private outputChannel: vscode.OutputChannel;
+  private initPromise: Promise<void>;
 
-        this.webviewManager = new WebviewManager(context, {
-            onMessage: async (message, viewType, windowId) => {
-                // Gate on init so services/messageHandler exist before dispatch.
-                await this.initPromise.catch(() => {});
-                if (!this.messageHandler) {
-                    console.error('[Wave] Shared client not initialized; dropping message:', message);
-                    return;
-                }
-                await this.messageHandler.handleMessage(message, viewType, windowId);
-            },
-            onTabDispose: (tabId) => {
-                console.log(`标签页面板被关闭 - 销毁 agent 和清理资源，TabID: ${tabId}`);
-                const session = this.tabSessions.get(tabId);
-                if (session) {
-                    session.destroy().then(() => {
-                        this.tabSessions.delete(tabId);
-                    });
-                }
-            },
-            onWindowDispose: (windowId) => {
-                console.log(`窗口面板被关闭 - 销毁 agent 和清理资源，窗口ID: ${windowId}`);
-                const session = this.windowSessions.get(windowId);
-                if (session) {
-                    session.destroy().then(() => {
-                        this.windowSessions.delete(windowId);
-                    });
-                }
-            }
-        });
+  constructor(context: vscode.ExtensionContext) {
+    this.context = context;
+    this.configService = new ConfigurationService(context);
+    this.selectionService = new SelectionService(context);
+    this.outputChannel = vscode.window.createOutputChannel("Wave");
 
-        this.sidebarSession = this.createChatSession('sidebar');
-
-        // Spawn the shared stdio client asynchronously (runs the `wave -v`
-        // upgrade check before spawning) and build the services/messageHandler
-        // that depend on it. All client-touching entry points await initPromise.
-        this.initPromise = this.init();
-
-        console.log('创建了 ChatProvider');
-        
-        // Register as webview provider for sidebar
-        context.subscriptions.push(
-            vscode.window.registerWebviewViewProvider('waveChat', this)
+    this.webviewManager = new WebviewManager(context, {
+      onMessage: async (message, viewType, windowId) => {
+        // Gate on init so services/messageHandler exist before dispatch.
+        await this.initPromise.catch(() => {});
+        if (!this.messageHandler) {
+          console.error(
+            "[Wave] Shared client not initialized; dropping message:",
+            message,
+          );
+          return;
+        }
+        await this.messageHandler.handleMessage(message, viewType, windowId);
+      },
+      onTabDispose: (tabId) => {
+        console.log(
+          `标签页面板被关闭 - 销毁 agent 和清理资源，TabID: ${tabId}`,
         );
-        
-        // Listen for workspace folder changes
-        const workspaceChangeListener = vscode.workspace.onDidChangeWorkspaceFolders((event) => {
-            console.log('工作区文件夹已更改:', {
-                added: event.added.map(f => f.uri.fsPath),
-                removed: event.removed.map(f => f.uri.fsPath)
-            });
-        });
-        
-        this.context.subscriptions.push(workspaceChangeListener);
+        const session = this.tabSessions.get(tabId);
+        if (session) {
+          session.destroy().then(() => {
+            this.tabSessions.delete(tabId);
+          });
+        }
+      },
+      onWindowDispose: (windowId) => {
+        console.log(
+          `窗口面板被关闭 - 销毁 agent 和清理资源，窗口ID: ${windowId}`,
+        );
+        const session = this.windowSessions.get(windowId);
+        if (session) {
+          session.destroy().then(() => {
+            this.windowSessions.delete(windowId);
+          });
+        }
+      },
+    });
 
-        // Listen for selection changes - removed auto-sync
-        /*
+    this.sidebarSession = this.createChatSession("sidebar");
+
+    // Spawn the shared stdio client asynchronously (runs the `wave -v`
+    // upgrade check before spawning) and build the services/messageHandler
+    // that depend on it. All client-touching entry points await initPromise.
+    this.initPromise = this.init();
+
+    console.log("创建了 ChatProvider");
+
+    // Register as webview provider for sidebar
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider("waveChat", this),
+    );
+
+    // Listen for workspace folder changes
+    const workspaceChangeListener =
+      vscode.workspace.onDidChangeWorkspaceFolders((event) => {
+        console.log("工作区文件夹已更改:", {
+          added: event.added.map((f) => f.uri.fsPath),
+          removed: event.removed.map((f) => f.uri.fsPath),
+        });
+      });
+
+    this.context.subscriptions.push(workspaceChangeListener);
+
+    // Listen for selection changes - removed auto-sync
+    /*
         this.selectionService.onSelectionChange((selection) => {
             this.webviewManager.postMessage({
                 command: 'updateSelection',
@@ -120,445 +140,608 @@ export class ChatProvider implements vscode.WebviewViewProvider {
             });
         });
         */
-    }
+  }
 
-    /**
-     * Spawn the shared stdio client, upgrading the `wave` CLI first (via
-     * `wave -v`) if it is older than the extension. Services/MessageHandler are
-     * constructed AFTER the upgrade so they capture the post-upgrade client —
-     * this is what avoids the "StdioClient is disposed" dangling-reference
-     * failure that the old post-init reinit path had.
-     */
-    private async init(): Promise<void> {
-        try {
-            const clientVersion: string | undefined = this.context.extension.packageJSON?.version;
-            const binaryPath = await vscode.window.withProgress(
-                {
-                    location: vscode.ProgressLocation.Notification,
-                    title: 'Wave',
-                    cancellable: false,
-                },
-                (progress) => {
-                    const onInstall = (message: string) => progress.report({ message });
-                    return clientVersion
-                        ? ensureCliUpToDate(clientVersion, onInstall)
-                        : Promise.resolve(resolveWaveBinary(onInstall));
-                },
-            );
+  /**
+   * Spawn the shared stdio client, upgrading the `wave` CLI first (via
+   * `wave -v`) if it is older than the extension. Services/MessageHandler are
+   * constructed AFTER the upgrade so they capture the post-upgrade client —
+   * this is what avoids the "StdioClient is disposed" dangling-reference
+   * failure that the old post-init reinit path had.
+   */
+  private async init(): Promise<void> {
+    try {
+      const clientVersion: string | undefined =
+        this.context.extension.packageJSON?.version;
+      const binaryPath = await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "Wave",
+          cancellable: false,
+        },
+        (progress) => {
+          const onInstall = (message: string) => progress.report({ message });
+          return clientVersion
+            ? ensureCliUpToDate(clientVersion, onInstall)
+            : Promise.resolve(resolveWaveBinary(onInstall));
+        },
+      );
 
-            this.sharedClient = new StdioClient(
-                binaryPath,
-                ['--stdio'],
-                undefined,
-                (data) => this.outputChannel.appendLine(`[wave-stdio] ${data}`),
-            );
-            this.notificationRouter = new NotificationRouter(this.sharedClient);
-            this.notificationRouter.attach();
-            // Open browser when auth URL is received (global — no sessionId).
-            this.notificationRouter.registerGlobal('authUrl', (params) => {
-                const p = params as { url: string };
-                if (p.url) {
-                    vscode.env.openExternal(vscode.Uri.parse(p.url));
-                }
-            });
-
-            // Build the services + messageHandler against the (possibly
-            // upgraded) client so they never hold a stale reference.
-            this.fileService = new FileService(this.sharedClient);
-            this.sessionService = new SessionService(this.sharedClient);
-            this.pluginService = new PluginService(this.sharedClient);
-            this.messageHandler = new MessageHandler(
-                this.configService,
-                this.fileService,
-                this.sessionService,
-                this.pluginService,
-                this.sharedClient,
-                {
-                    getChatSession: (viewType, windowId) => this.getChatSession(viewType, windowId),
-                    postMessage: (message, viewType, windowId) => this.webviewManager.postMessage(message, viewType, windowId),
-                    initializeAgent: (viewType, windowId, restoreSessionId) => this.initializeAgent(viewType, windowId, restoreSessionId),
-                    listSessions: (viewType, windowId) => this.listSessions(viewType, windowId),
-                    updateAllSessionsConfig: (config) => {
-                        const cfg = config as ConfigurationData;
-                        this.sidebarSession.updateConfig(cfg);
-                        this.tabSessions.forEach(session => session.updateConfig(cfg));
-                        this.windowSessions.forEach(session => session.updateConfig(cfg));
-                    },
-                    getVersion: () => this.context.extension.packageJSON?.version || ''
-                }
-            );
-        } catch (err) {
-            console.error('[Wave] Failed to initialize shared client:', err);
-            this.outputChannel.appendLine(
-                `[Wave] Failed to initialize shared client: ${err instanceof Error ? err.stack ?? err.message : String(err)}`,
-            );
-            if (err instanceof NodeJsNotFoundError) {
-                vscode.window.showErrorMessage(err.message);
-            } else if (err instanceof NodeJsVersionError) {
-                vscode.window.showErrorMessage(err.message);
-            } else {
-                vscode.window.showErrorMessage(
-                    '无法启动 wave 二进制文件。请手动安装: npm install -g wave-code',
-                );
-            }
+      this.sharedClient = new StdioClient(
+        binaryPath,
+        ["--stdio"],
+        undefined,
+        (data) => this.outputChannel.appendLine(`[wave-stdio] ${data}`),
+      );
+      this.notificationRouter = new NotificationRouter(this.sharedClient);
+      this.notificationRouter.attach();
+      // Open browser when auth URL is received (global — no sessionId).
+      this.notificationRouter.registerGlobal("authUrl", (params) => {
+        const p = params as { url: string };
+        if (p.url) {
+          vscode.env.openExternal(vscode.Uri.parse(p.url));
         }
+      });
+
+      // Build the services + messageHandler against the (possibly
+      // upgraded) client so they never hold a stale reference.
+      this.fileService = new FileService(this.sharedClient);
+      this.sessionService = new SessionService(this.sharedClient);
+      this.pluginService = new PluginService(this.sharedClient);
+      this.messageHandler = new MessageHandler(
+        this.configService,
+        this.fileService,
+        this.sessionService,
+        this.pluginService,
+        this.sharedClient,
+        {
+          getChatSession: (viewType, windowId) =>
+            this.getChatSession(viewType, windowId),
+          postMessage: (message, viewType, windowId) =>
+            this.webviewManager.postMessage(message, viewType, windowId),
+          initializeAgent: (viewType, windowId, restoreSessionId) =>
+            this.initializeAgent(viewType, windowId, restoreSessionId),
+          listSessions: (viewType, windowId) =>
+            this.listSessions(viewType, windowId),
+          updateAllSessionsConfig: (config) => {
+            const cfg = config as ConfigurationData;
+            this.sidebarSession.updateConfig(cfg);
+            this.tabSessions.forEach((session) => session.updateConfig(cfg));
+            this.windowSessions.forEach((session) => session.updateConfig(cfg));
+          },
+          getVersion: () => this.context.extension.packageJSON?.version || "",
+        },
+      );
+    } catch (err) {
+      console.error("[Wave] Failed to initialize shared client:", err);
+      this.outputChannel.appendLine(
+        `[Wave] Failed to initialize shared client: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+      );
+      if (err instanceof NodeJsNotFoundError) {
+        vscode.window.showErrorMessage(err.message);
+      } else if (err instanceof NodeJsVersionError) {
+        vscode.window.showErrorMessage(err.message);
+      } else {
+        vscode.window.showErrorMessage(
+          "无法启动 wave 二进制文件。请手动安装: npm install -g wave-code",
+        );
+      }
+    }
+  }
+
+  public async addToWave() {
+    const selection = this.selectionService.getSelection();
+    if (!selection || selection.isEmpty) {
+      vscode.window.showInformationMessage("请先在编辑器中选择一段代码");
+      return;
     }
 
-    public async addToWave() {
-        const selection = this.selectionService.getSelection();
-        if (!selection || selection.isEmpty) {
-            vscode.window.showInformationMessage('请先在编辑器中选择一段代码');
-            return;
-        }
+    // Ensure chat view is visible
+    await this.focusView();
 
-        // Ensure chat view is visible
-        await this.focusView();
+    // Send selection to webview
+    this.webviewManager.postMessage({
+      command: "addSelectionToInput",
+      selection,
+    });
+  }
 
-        // Send selection to webview
-        this.webviewManager.postMessage({
-            command: 'addSelectionToInput',
-            selection
-        });
-    }
-
-    private createChatSession(viewType: 'sidebar' | 'tab' | 'window', windowId?: string): ChatSession {
-        return new ChatSession(viewType, windowId, {
-            onTasksChange: (tasks) => {
-                this.webviewManager.postMessage({ command: 'updateTasks', tasks }, viewType, windowId);
-            },
-            onBackgroundTasksChange: (tasks) => {
-                this.webviewManager.postMessage({ command: 'updateBackgroundTasks', tasks }, viewType, windowId);
-            },
-            onWorkflowRunsChange: (runs) => {
-                this.webviewManager.postMessage({ command: 'updateWorkflowRuns', runs }, viewType, windowId);
-            },
-            onSessionIdChange: (sessionId) => {
-                this.handleSessionIdChange(sessionId, viewType, windowId).catch(err =>
-                    console.error(`Error handling session ID change for ${viewType}:`, err)
-                );
-            },
-            onStreamingChange: (isStreaming) => {
-                this.webviewManager.postMessage({ command: isStreaming ? 'startStreaming' : 'endStreaming' }, viewType, windowId);
-            },
-            onCompactionStateChange: (isCompacting) => {
-                this.webviewManager.postMessage({ command: 'compactionStateChange', isCompacting }, viewType, windowId);
-            },
-            onCommandRunningChange: (running) => {
-                this.webviewManager.postMessage({ command: 'updateCommandRunning', running }, viewType, windowId);
-            },
-            onQueueChange: (queue) => {
-                this.webviewManager.postMessage({ command: 'updateQueue', queue }, viewType, windowId);
-            },
-            onPermissionModeChange: (mode) => {
-                this.webviewManager.postMessage({ command: 'updatePermissionMode', mode }, viewType, windowId);
-            },
-            onWorkdirChange: (workdir) => {
-                this.webviewManager.postMessage({ command: 'updateWorkdir', workdir }, viewType, windowId);
-            },
-            onToolPermissionRequest: (context) => {
-                return this.handleToolPermissionRequest(context, viewType, windowId);
-            },
-            onError: (error) => {
-                const isConfigError = error && typeof error === 'object' && 'name' in error && error.name === 'ConfigurationError';
-                if (isConfigError) {
-                    vscode.window.showErrorMessage(ChatProvider.formatConfigError(error));
-                } else {
-                    vscode.window.showErrorMessage(`智能体错误: ` + error);
-                }
-            },
-            onMcpServersChange: (servers) => {
-                this.webviewManager.postMessage({ command: 'mcpServersUpdate', servers }, viewType, windowId);
-            },
-            // Incremental update callbacks for streaming optimization
-            onUserMessageAdded: (message) => {
-                this.webviewManager.postMessage({ command: 'appendMessage', message }, viewType, windowId);
-            },
-            onAssistantMessageAdded: (message) => {
-                this.webviewManager.postMessage({ command: 'appendMessage', message }, viewType, windowId);
-            },
-            onStreamingContentUpdate: (params) => {
-                this.webviewManager.postMessage({ command: 'updateStreamingContent', ...params }, viewType, windowId);
-            },
-            onStreamingReasoningUpdate: (params) => {
-                this.webviewManager.postMessage({ command: 'updateStreamingReasoning', ...params }, viewType, windowId);
-            },
-            onToolBlockUpdate: (params) => {
-                this.webviewManager.postMessage({ command: 'updateToolBlock', params }, viewType, windowId);
-            },
-            onErrorBlockAdded: (error) => {
-                this.webviewManager.postMessage({ command: 'updateErrorBlock', error }, viewType, windowId);
-            },
-            // Bang message callbacks - incremental updates keyed by messageId.
-            // Params are nested (not spread) because they contain a `command`
-            // field that would clobber the postMessage command discriminator.
-            onBangMessageAdded: (params) => {
-                this.webviewManager.postMessage({ command: 'bangMessageAdded', params }, viewType, windowId);
-            },
-            onBangMessageUpdated: (params) => {
-                this.webviewManager.postMessage({ command: 'bangMessageUpdated', params }, viewType, windowId);
-            },
-            onBangMessageCompleted: (params) => {
-                this.webviewManager.postMessage({ command: 'bangMessageCompleted', params }, viewType, windowId);
-            },
-            onBtwContent: (params) => {
-                this.webviewManager.postMessage({ command: 'btwStream', ...params }, viewType, windowId);
-            }
-        });
-    }
-
-    // Implement WebviewViewProvider interface for sidebar
-    public resolveWebviewView(
-        webviewView: vscode.WebviewView
-    ): void | Thenable<void> {
-        console.log('解析侧边栏webview视图');
-        this.webviewManager.setSidebarView(webviewView);
-
-        // Set sidebar visible context
-        vscode.commands.executeCommand('setContext', 'waveChatSidebarVisible', true);
-    }
-
-    private async initializeAgent(viewType: 'sidebar' | 'tab' | 'window', windowId?: string, restoreSessionId?: string) {
-        const session = this.getChatSession(viewType, windowId);
-        if (session.isInitializing) {
-            return;
-        }
-
-        // Wait for the shared client (and the `wave -v` upgrade check) to finish
-        // before touching the client or its dependent services.
-        await this.initPromise;
-
-        try {
-            const config = await this.configService.loadConfiguration();
-            await session.initialize(
-                config,
-                restoreSessionId,
-                this.sharedClient!,
-                this.notificationRouter!,
-            );
-        } catch (error) {
-            console.error(`初始化 ${viewType} 智能体失败:`, error);
-            const isConfigError = error && typeof error === 'object' && 'name' in error && error.name === 'ConfigurationError';
-            if (isConfigError) {
-                vscode.window.showErrorMessage(ChatProvider.formatConfigError(error));
-            } else {
-                vscode.window.showErrorMessage(`初始化 ${viewType} AI 智能体失败: ` + error);
-            }
-        }
-    }
-
-    private getChatSession(viewType: 'sidebar' | 'tab' | 'window', windowId?: string): ChatSession {
-        if (viewType === 'sidebar') {
-            return this.sidebarSession;
-        } else if (viewType === 'tab' && windowId) {
-            if (!this.tabSessions.has(windowId)) {
-                this.tabSessions.set(windowId, this.createChatSession('tab', windowId));
-            }
-            return this.tabSessions.get(windowId)!;
-        } else if (viewType === 'window' && windowId) {
-            if (!this.windowSessions.has(windowId)) {
-                this.windowSessions.set(windowId, this.createChatSession('window', windowId));
-            }
-            return this.windowSessions.get(windowId)!;
+  private createChatSession(
+    viewType: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ): ChatSession {
+    return new ChatSession(viewType, windowId, {
+      onTasksChange: (tasks) => {
+        this.webviewManager.postMessage(
+          { command: "updateTasks", tasks },
+          viewType,
+          windowId,
+        );
+      },
+      onBackgroundTasksChange: (tasks) => {
+        this.webviewManager.postMessage(
+          { command: "updateBackgroundTasks", tasks },
+          viewType,
+          windowId,
+        );
+      },
+      onWorkflowRunsChange: (runs) => {
+        this.webviewManager.postMessage(
+          { command: "updateWorkflowRuns", runs },
+          viewType,
+          windowId,
+        );
+      },
+      onSessionIdChange: (sessionId) => {
+        this.handleSessionIdChange(sessionId, viewType, windowId).catch((err) =>
+          console.error(
+            `Error handling session ID change for ${viewType}:`,
+            err,
+          ),
+        );
+      },
+      onStreamingChange: (isStreaming) => {
+        this.webviewManager.postMessage(
+          { command: isStreaming ? "startStreaming" : "endStreaming" },
+          viewType,
+          windowId,
+        );
+      },
+      onCompactionStateChange: (isCompacting) => {
+        this.webviewManager.postMessage(
+          { command: "compactionStateChange", isCompacting },
+          viewType,
+          windowId,
+        );
+      },
+      onCommandRunningChange: (running) => {
+        this.webviewManager.postMessage(
+          { command: "updateCommandRunning", running },
+          viewType,
+          windowId,
+        );
+      },
+      onQueueChange: (queue) => {
+        this.webviewManager.postMessage(
+          { command: "updateQueue", queue },
+          viewType,
+          windowId,
+        );
+      },
+      onPermissionModeChange: (mode) => {
+        this.webviewManager.postMessage(
+          { command: "updatePermissionMode", mode },
+          viewType,
+          windowId,
+        );
+      },
+      onWorkdirChange: (workdir) => {
+        this.webviewManager.postMessage(
+          { command: "updateWorkdir", workdir },
+          viewType,
+          windowId,
+        );
+      },
+      onToolPermissionRequest: (context) => {
+        return this.handleToolPermissionRequest(context, viewType, windowId);
+      },
+      onError: (error) => {
+        const isConfigError =
+          error &&
+          typeof error === "object" &&
+          "name" in error &&
+          error.name === "ConfigurationError";
+        if (isConfigError) {
+          vscode.window.showErrorMessage(ChatProvider.formatConfigError(error));
         } else {
-            throw new Error(`Invalid view type or missing windowId: ${viewType}, ${windowId}`);
+          vscode.window.showErrorMessage(`智能体错误: ` + error);
         }
+      },
+      onMcpServersChange: (servers) => {
+        this.webviewManager.postMessage(
+          { command: "mcpServersUpdate", servers },
+          viewType,
+          windowId,
+        );
+      },
+      // Incremental update callbacks for streaming optimization
+      onUserMessageAdded: (message) => {
+        this.webviewManager.postMessage(
+          { command: "appendMessage", message },
+          viewType,
+          windowId,
+        );
+      },
+      onAssistantMessageAdded: (message) => {
+        this.webviewManager.postMessage(
+          { command: "appendMessage", message },
+          viewType,
+          windowId,
+        );
+      },
+      onStreamingContentUpdate: (params) => {
+        this.webviewManager.postMessage(
+          { command: "updateStreamingContent", ...params },
+          viewType,
+          windowId,
+        );
+      },
+      onStreamingReasoningUpdate: (params) => {
+        this.webviewManager.postMessage(
+          { command: "updateStreamingReasoning", ...params },
+          viewType,
+          windowId,
+        );
+      },
+      onToolBlockUpdate: (params) => {
+        this.webviewManager.postMessage(
+          { command: "updateToolBlock", params },
+          viewType,
+          windowId,
+        );
+      },
+      onErrorBlockAdded: (error) => {
+        this.webviewManager.postMessage(
+          { command: "updateErrorBlock", error },
+          viewType,
+          windowId,
+        );
+      },
+      // Bang message callbacks - incremental updates keyed by messageId.
+      // Params are nested (not spread) because they contain a `command`
+      // field that would clobber the postMessage command discriminator.
+      onBangMessageAdded: (params) => {
+        this.webviewManager.postMessage(
+          { command: "bangMessageAdded", params },
+          viewType,
+          windowId,
+        );
+      },
+      onBangMessageUpdated: (params) => {
+        this.webviewManager.postMessage(
+          { command: "bangMessageUpdated", params },
+          viewType,
+          windowId,
+        );
+      },
+      onBangMessageCompleted: (params) => {
+        this.webviewManager.postMessage(
+          { command: "bangMessageCompleted", params },
+          viewType,
+          windowId,
+        );
+      },
+      onBtwContent: (params) => {
+        this.webviewManager.postMessage(
+          { command: "btwStream", ...params },
+          viewType,
+          windowId,
+        );
+      },
+    });
+  }
+
+  // Implement WebviewViewProvider interface for sidebar
+  public resolveWebviewView(
+    webviewView: vscode.WebviewView,
+  ): void | Thenable<void> {
+    console.log("解析侧边栏webview视图");
+    this.webviewManager.setSidebarView(webviewView);
+
+    // Set sidebar visible context
+    vscode.commands.executeCommand(
+      "setContext",
+      "waveChatSidebarVisible",
+      true,
+    );
+  }
+
+  private async initializeAgent(
+    viewType: "sidebar" | "tab" | "window",
+    windowId?: string,
+    restoreSessionId?: string,
+  ) {
+    const session = this.getChatSession(viewType, windowId);
+    if (session.isInitializing) {
+      return;
     }
 
-    /**
-     * Focus the appropriate chat view and send focus message to webview
-     */
-    public async focusView() {
-        console.log('聚焦聊天视图...');
+    // Wait for the shared client (and the `wave -v` upgrade check) to finish
+    // before touching the client or its dependent services.
+    await this.initPromise;
 
-        // Check for active views in order of priority: window > tab > sidebar
-        
-        // 1. Check for active window panels first
-        const windowPanels = this.webviewManager.getAllWindowPanels();
-        if (windowPanels.size > 0) {
-            const windowPanel = windowPanels.values().next().value;
-            if (windowPanel) {
-                console.log('聚焦窗口视图');
-                windowPanel.reveal(vscode.ViewColumn.Active);
-                windowPanel.webview.postMessage({ command: 'focusInput' });
-                return;
-            }
-        }
+    try {
+      const config = await this.configService.loadConfiguration();
+      await session.initialize(
+        config,
+        restoreSessionId,
+        this.sharedClient!,
+        this.notificationRouter!,
+      );
+    } catch (error) {
+      console.error(`初始化 ${viewType} 智能体失败:`, error);
+      const isConfigError =
+        error &&
+        typeof error === "object" &&
+        "name" in error &&
+        error.name === "ConfigurationError";
+      if (isConfigError) {
+        vscode.window.showErrorMessage(ChatProvider.formatConfigError(error));
+      } else {
+        vscode.window.showErrorMessage(
+          `初始化 ${viewType} AI 智能体失败: ` + error,
+        );
+      }
+    }
+  }
 
-        // 2. Check for tab panels
-        const tabPanels = this.webviewManager.getAllTabPanels();
-        if (tabPanels.size > 0) {
-            const tabPanel = tabPanels.values().next().value;
-            if (tabPanel) {
-                console.log('聚焦标签页视图');
-                tabPanel.reveal(vscode.ViewColumn.Active);
-                tabPanel.webview.postMessage({ command: 'focusInput' });
-                return;
-            }
-        }
+  private getChatSession(
+    viewType: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ): ChatSession {
+    if (viewType === "sidebar") {
+      return this.sidebarSession;
+    } else if (viewType === "tab" && windowId) {
+      if (!this.tabSessions.has(windowId)) {
+        this.tabSessions.set(windowId, this.createChatSession("tab", windowId));
+      }
+      return this.tabSessions.get(windowId)!;
+    } else if (viewType === "window" && windowId) {
+      if (!this.windowSessions.has(windowId)) {
+        this.windowSessions.set(
+          windowId,
+          this.createChatSession("window", windowId),
+        );
+      }
+      return this.windowSessions.get(windowId)!;
+    } else {
+      throw new Error(
+        `Invalid view type or missing windowId: ${viewType}, ${windowId}`,
+      );
+    }
+  }
 
-        // 3. Check for sidebar
-        const sidebarView = this.webviewManager.getSidebarView();
-        if (sidebarView) {
-            console.log('聚焦侧边栏视图');
-            await vscode.commands.executeCommand('workbench.view.extension.waveChatView');
-            setTimeout(() => {
-                sidebarView.webview.postMessage({ command: 'focusInput' });
-            }, 100);
-            return;
-        }
+  /**
+   * Focus the appropriate chat view and send focus message to webview
+   */
+  public async focusView() {
+    console.log("聚焦聊天视图...");
 
-        // 4. No views are open, create a new tab view
-        console.log('未找到活动视图，创建新的标签页视图');
-        await this.createOrShowChatPanel('tab');
+    // Check for active views in order of priority: window > tab > sidebar
+
+    // 1. Check for active window panels first
+    const windowPanels = this.webviewManager.getAllWindowPanels();
+    if (windowPanels.size > 0) {
+      const windowPanel = windowPanels.values().next().value;
+      if (windowPanel) {
+        console.log("聚焦窗口视图");
+        windowPanel.reveal(vscode.ViewColumn.Active);
+        windowPanel.webview.postMessage({ command: "focusInput" });
+        return;
+      }
     }
 
-
-
-    public async createOrShowChatPanel(mode: 'sidebar' | 'tab' | 'window' = 'tab') {
-        console.log(`调用了 createOrShowChatPanel，模式: ${mode}`);
-
-        if (mode === 'sidebar') {
-            if (!this.sidebarSession.agent) {
-                await this.initializeAgent('sidebar');
-            }
-            await vscode.commands.executeCommand('workbench.view.extension.waveChatView');
-            return;
-        }
-
-        if (mode === 'window') {
-            const windowId = `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            this.webviewManager.createWindowPanel(ChatProvider.viewType + '_window', `Wave - 代码智聊`, windowId);
-            await this.initializeAgent('window', windowId);
-            await vscode.commands.executeCommand('workbench.action.moveEditorToNewWindow');
-            return;
-        }
-
-        // Tab mode: always create a new tab
-        const tabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        const columnToShowIn = vscode.window.activeTextEditor
-            ? vscode.window.activeTextEditor.viewColumn
-            : undefined;
-        this.webviewManager.createTabPanel(ChatProvider.viewType, 'Wave - 代码智聊', tabId, columnToShowIn || vscode.ViewColumn.One);
-        await this.initializeAgent('tab', tabId);
+    // 2. Check for tab panels
+    const tabPanels = this.webviewManager.getAllTabPanels();
+    if (tabPanels.size > 0) {
+      const tabPanel = tabPanels.values().next().value;
+      if (tabPanel) {
+        console.log("聚焦标签页视图");
+        tabPanel.reveal(vscode.ViewColumn.Active);
+        tabPanel.webview.postMessage({ command: "focusInput" });
+        return;
+      }
     }
 
-    private async listSessions(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
-        try {
-            const sessionsWithContent = await this.sessionService.getSessionsList();
-            this.webviewManager.postMessage({
-                command: 'updateSessions',
-                sessions: sessionsWithContent
-            }, viewType, windowId);
-        } catch (error) {
-            console.error(`获取 ${viewType} 会话列表失败:`, error);
-
-            const isDirectoryNotFound = error &&
-                typeof error === 'object' &&
-                'code' in error &&
-                error.code === 'ENOENT';
-
-            if (isDirectoryNotFound) {
-                this.webviewManager.postMessage({
-                    command: 'updateSessions',
-                    sessions: []
-                }, viewType, windowId);
-            } else {
-                vscode.window.showErrorMessage('获取会话列表失败: ' + error);
-            }
-        }
+    // 3. Check for sidebar
+    const sidebarView = this.webviewManager.getSidebarView();
+    if (sidebarView) {
+      console.log("聚焦侧边栏视图");
+      await vscode.commands.executeCommand(
+        "workbench.view.extension.waveChatView",
+      );
+      setTimeout(() => {
+        sidebarView.webview.postMessage({ command: "focusInput" });
+      }, 100);
+      return;
     }
 
-    private async handleToolPermissionRequest(context: ToolPermissionContext, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string): Promise<PermissionDecision> {
-        const session = this.getChatSession(viewType || 'tab', windowId);
-        
-        return new Promise((resolve) => {
-            const confirmationId = `confirmation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // 4. No views are open, create a new tab view
+    console.log("未找到活动视图，创建新的标签页视图");
+    await this.createOrShowChatPanel("tab");
+  }
 
-            let confirmationType: string;
-            if ([EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(context.toolName)) {
-                confirmationType = '代码修改待确认';
-            } else if (context.toolName === BASH_TOOL_NAME) {
-                confirmationType = '命令执行待确认';
-            } else if (context.toolName === EXIT_PLAN_MODE_TOOL_NAME || context.toolName === ENTER_PLAN_MODE_TOOL_NAME) {
-                confirmationType = '计划待确认';
-            } else if (context.toolName === ASK_USER_QUESTION_TOOL_NAME) {
-                confirmationType = '问题待回答';
-            } else {
-                confirmationType = '操作待确认';
-            }
+  public async createOrShowChatPanel(
+    mode: "sidebar" | "tab" | "window" = "tab",
+  ) {
+    console.log(`调用了 createOrShowChatPanel，模式: ${mode}`);
 
-            session.pendingConfirmations.set(confirmationId, {
-                resolve,
-                toolName: context.toolName,
-                confirmationType: confirmationType,
-                toolInput: context.toolInput,
-                planContent: context.planContent,
-                suggestedPrefix: context.suggestedPrefix,
-                hidePersistentOption: context.hidePersistentOption,
-                warning: context.warning,
-                permissionMode: context.permissionMode
-            });
-
-            this.webviewManager.postMessage({
-                command: 'showConfirmation',
-                confirmationId: confirmationId,
-                toolName: context.toolName,
-                confirmationType: confirmationType,
-                toolInput: context.toolInput,
-                planContent: context.planContent,
-                suggestedPrefix: context.suggestedPrefix,
-                hidePersistentOption: context.hidePersistentOption,
-                warning: context.warning,
-                permissionMode: context.permissionMode
-            }, viewType, windowId);
-        });
+    if (mode === "sidebar") {
+      if (!this.sidebarSession.agent) {
+        await this.initializeAgent("sidebar");
+      }
+      await vscode.commands.executeCommand(
+        "workbench.view.extension.waveChatView",
+      );
+      return;
     }
 
-    private async handleSessionIdChange(sessionId: string, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
-        const session = this.getChatSession(viewType || 'tab', windowId);
-        if (session.agent) {
-            this.webviewManager.postMessage({
-                command: 'updateCurrentSession',
-                session: {
-                    id: sessionId,
-                    sessionType: 'main',
-                    workdir: session.agent.workingDirectory,
-                    lastActiveAt: new Date(),
-                    latestTotalTokens: session.agent.latestTotalTokens
-                } as SessionMetadata
-            }, viewType, windowId);
-            await this.listSessions(viewType, windowId);
-        }
+    if (mode === "window") {
+      const windowId = `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      this.webviewManager.createWindowPanel(
+        ChatProvider.viewType + "_window",
+        `Wave - 代码智聊`,
+        windowId,
+      );
+      await this.initializeAgent("window", windowId);
+      await vscode.commands.executeCommand(
+        "workbench.action.moveEditorToNewWindow",
+      );
+      return;
     }
 
-    /**
-     * Clean up resources when extension deactivates
-     */
-    public async destroy() {
-        console.log('ChatProvider 正在清理资源...');
-        
-        try {
-            await this.sidebarSession.destroy();
-            for (const session of this.tabSessions.values()) {
-                await session.destroy();
-            }
-            this.tabSessions.clear();
-            for (const session of this.windowSessions.values()) {
-                await session.destroy();
-            }
-            this.windowSessions.clear();
-        } catch (error) {
-            console.error('销毁智能体时出错:', error);
-        }
+    // Tab mode: always create a new tab
+    const tabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const columnToShowIn = vscode.window.activeTextEditor
+      ? vscode.window.activeTextEditor.viewColumn
+      : undefined;
+    this.webviewManager.createTabPanel(
+      ChatProvider.viewType,
+      "Wave - 代码智聊",
+      tabId,
+      columnToShowIn || vscode.ViewColumn.One,
+    );
+    await this.initializeAgent("tab", tabId);
+  }
 
-        // Wait for init to complete (best-effort) before disposing the shared
-        // client so we don't race with init() still assigning sharedClient/router.
-        await this.initPromise.catch(() => {});
+  private async listSessions(
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    try {
+      const sessionsWithContent = await this.sessionService.getSessionsList();
+      this.webviewManager.postMessage(
+        {
+          command: "updateSessions",
+          sessions: sessionsWithContent,
+        },
+        viewType,
+        windowId,
+      );
+    } catch (error) {
+      console.error(`获取 ${viewType} 会话列表失败:`, error);
 
-        this.sharedClient?.dispose();
+      const isDirectoryNotFound =
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "ENOENT";
 
-        this.webviewManager.dispose();
-        
-        console.log('ChatProvider 资源清理完成');
+      if (isDirectoryNotFound) {
+        this.webviewManager.postMessage(
+          {
+            command: "updateSessions",
+            sessions: [],
+          },
+          viewType,
+          windowId,
+        );
+      } else {
+        vscode.window.showErrorMessage("获取会话列表失败: " + error);
+      }
     }
+  }
+
+  private async handleToolPermissionRequest(
+    context: ToolPermissionContext,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ): Promise<PermissionDecision> {
+    const session = this.getChatSession(viewType || "tab", windowId);
+
+    return new Promise((resolve) => {
+      const confirmationId = `confirmation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      let confirmationType: string;
+      if ([EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(context.toolName)) {
+        confirmationType = "代码修改待确认";
+      } else if (context.toolName === BASH_TOOL_NAME) {
+        confirmationType = "命令执行待确认";
+      } else if (
+        context.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
+        context.toolName === ENTER_PLAN_MODE_TOOL_NAME
+      ) {
+        confirmationType = "计划待确认";
+      } else if (context.toolName === ASK_USER_QUESTION_TOOL_NAME) {
+        confirmationType = "问题待回答";
+      } else {
+        confirmationType = "操作待确认";
+      }
+
+      session.pendingConfirmations.set(confirmationId, {
+        resolve,
+        toolName: context.toolName,
+        confirmationType: confirmationType,
+        toolInput: context.toolInput,
+        planContent: context.planContent,
+        suggestedPrefix: context.suggestedPrefix,
+        hidePersistentOption: context.hidePersistentOption,
+        warning: context.warning,
+        permissionMode: context.permissionMode,
+      });
+
+      this.webviewManager.postMessage(
+        {
+          command: "showConfirmation",
+          confirmationId: confirmationId,
+          toolName: context.toolName,
+          confirmationType: confirmationType,
+          toolInput: context.toolInput,
+          planContent: context.planContent,
+          suggestedPrefix: context.suggestedPrefix,
+          hidePersistentOption: context.hidePersistentOption,
+          warning: context.warning,
+          permissionMode: context.permissionMode,
+        },
+        viewType,
+        windowId,
+      );
+    });
+  }
+
+  private async handleSessionIdChange(
+    sessionId: string,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    const session = this.getChatSession(viewType || "tab", windowId);
+    if (session.agent) {
+      this.webviewManager.postMessage(
+        {
+          command: "updateCurrentSession",
+          session: {
+            id: sessionId,
+            sessionType: "main",
+            workdir: session.agent.workingDirectory,
+            lastActiveAt: new Date(),
+            latestTotalTokens: session.agent.latestTotalTokens,
+          } as SessionMetadata,
+        },
+        viewType,
+        windowId,
+      );
+      await this.listSessions(viewType, windowId);
+    }
+  }
+
+  /**
+   * Clean up resources when extension deactivates
+   */
+  public async destroy() {
+    console.log("ChatProvider 正在清理资源...");
+
+    try {
+      await this.sidebarSession.destroy();
+      for (const session of this.tabSessions.values()) {
+        await session.destroy();
+      }
+      this.tabSessions.clear();
+      for (const session of this.windowSessions.values()) {
+        await session.destroy();
+      }
+      this.windowSessions.clear();
+    } catch (error) {
+      console.error("销毁智能体时出错:", error);
+    }
+
+    // Wait for init to complete (best-effort) before disposing the shared
+    // client so we don't race with init() still assigning sharedClient/router.
+    await this.initPromise.catch(() => {});
+
+    this.sharedClient?.dispose();
+
+    this.webviewManager.dispose();
+
+    console.log("ChatProvider 资源清理完成");
+  }
 }

@@ -11,8 +11,8 @@
  *   event on the underlying transport.
  */
 
-import { createInterface } from 'readline';
-import type { Readable } from 'stream';
+import { createInterface } from "readline";
+import type { Readable } from "stream";
 
 export type NotificationHandler = (params: unknown, sessionId?: string) => void;
 
@@ -35,11 +35,11 @@ export abstract class JsonRpcClient {
   /** Wire an inbound Readable (stdout / socket) to the line parser. */
   protected attachReadable(readable: Readable): void {
     const rl = createInterface({ input: readable });
-    rl.on('line', (line) => this.handleLine(line));
+    rl.on("line", (line) => this.handleLine(line));
     // readline re-emits input errors on the Interface; the transport subclass
     // already handles errors on the underlying stream, swallow them here so
     // they never surface as an uncaught 'error' on the Interface.
-    rl.on('error', () => {});
+    rl.on("error", () => {});
   }
 
   /** Mark the transport closed: reject every pending request. Idempotent. */
@@ -73,12 +73,14 @@ export abstract class JsonRpcClient {
     sessionId?: string,
   ): Promise<unknown> {
     if (this.closed) {
-      throw new Error('连接已断开。wave 进程已退出，请重启编辑器或检查 CLI 安装。');
+      throw new Error(
+        "连接已断开。wave 进程已退出，请重启编辑器或检查 CLI 安装。",
+      );
     }
     const id = this.nextId++;
     const envelope: Record<string, unknown> = { id, method, params };
     if (sessionId) envelope.sessionId = sessionId;
-    const message = JSON.stringify(envelope) + '\n';
+    const message = JSON.stringify(envelope) + "\n";
 
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
@@ -90,7 +92,7 @@ export abstract class JsonRpcClient {
     if (this.closed) return;
     const envelope: Record<string, unknown> = { method, params };
     if (sessionId) envelope.sessionId = sessionId;
-    this.writeLine(JSON.stringify(envelope) + '\n');
+    this.writeLine(JSON.stringify(envelope) + "\n");
   }
 
   onNotification(method: string, handler: NotificationHandler): void {
@@ -113,15 +115,15 @@ export abstract class JsonRpcClient {
     try {
       msg = JSON.parse(line);
     } catch {
-      console.error('[wave-jsonrpc] Failed to parse:', line);
+      console.error("[wave-jsonrpc] Failed to parse:", line);
       return;
     }
 
-    if (typeof msg !== 'object' || msg === null) return;
+    if (typeof msg !== "object" || msg === null) return;
     const obj = msg as Record<string, unknown>;
 
     // Response (has id + result/error)
-    if ('id' in obj && ('result' in obj || 'error' in obj)) {
+    if ("id" in obj && ("result" in obj || "error" in obj)) {
       const id = Number(obj.id);
       const pending = this.pending.get(id);
       if (pending) {
@@ -137,11 +139,11 @@ export abstract class JsonRpcClient {
     }
 
     // Notification (has method, no id)
-    if ('method' in obj && !('id' in obj)) {
+    if ("method" in obj && !("id" in obj)) {
       const method = obj.method as string;
       const params = obj.params;
       const sessionId =
-        typeof obj.sessionId === 'string' ? obj.sessionId : undefined;
+        typeof obj.sessionId === "string" ? obj.sessionId : undefined;
       const set = this.handlers.get(method);
       if (set) {
         for (const handler of set) {
