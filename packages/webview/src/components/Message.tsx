@@ -1,13 +1,13 @@
-import React from 'react';
-import { ContextTag } from './ContextTag';
-import { parseMentions, toRelativePath } from '../utils/messageUtils';
-import { isLocalhostUrl } from '../utils/isLocalhostUrl';
-import { marked } from 'marked';
-import { BangBlock } from './BangBlock';
-import { Tooltip } from './Tooltip';
+import React from "react";
+import { ContextTag } from "./ContextTag";
+import { parseMentions, toRelativePath } from "../utils/messageUtils";
+import { isLocalhostUrl } from "../utils/isLocalhostUrl";
+import { marked } from "marked";
+import { BangBlock } from "./BangBlock";
+import { Tooltip } from "./Tooltip";
 
 // ... (existing imports)
-import DOMPurify from 'dompurify';
+import DOMPurify from "dompurify";
 import {
   BASH_TOOL_NAME,
   LSP_TOOL_NAME,
@@ -15,16 +15,25 @@ import {
   EDIT_TOOL_NAME,
   READ_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
-  EXIT_PLAN_MODE_TOOL_NAME
-} from 'wave-agent-sdk/dist/constants/tools.js';
-import type { Message as MessageType, MessageProps, ToolBlock, ImageBlock, TaskNotificationBlock, ReasoningBlock, CompactBlock, MessageBlock } from '../types';
-import { DiffViewer } from './DiffViewer';
-import { MermaidRenderer } from './MermaidRenderer';
-import { ReasoningBlockView } from './ReasoningBlockView';
-import { CompactBlockView } from './CompactBlockView';
-import { WriteToolPreview } from './WriteToolPreview';
-import { FileToolHeader } from './FileToolHeader';
-import '../styles/Message.css';
+  EXIT_PLAN_MODE_TOOL_NAME,
+} from "wave-agent-sdk/dist/constants/tools.js";
+import type {
+  Message as MessageType,
+  MessageProps,
+  ToolBlock,
+  ImageBlock,
+  TaskNotificationBlock,
+  ReasoningBlock,
+  CompactBlock,
+  MessageBlock,
+} from "../types";
+import { DiffViewer } from "./DiffViewer";
+import { MermaidRenderer } from "./MermaidRenderer";
+import { ReasoningBlockView } from "./ReasoningBlockView";
+import { CompactBlockView } from "./CompactBlockView";
+import { WriteToolPreview } from "./WriteToolPreview";
+import { FileToolHeader } from "./FileToolHeader";
+import "../styles/Message.css";
 
 // Configure marked for VS Code webview context
 marked.use({
@@ -33,17 +42,17 @@ marked.use({
   renderer: {
     listitem(text: string, task: boolean, checked: boolean) {
       if (task) {
-        return `<li class="task-list-item${checked ? ' checked' : ''}">${text}</li>`;
+        return `<li class="task-list-item${checked ? " checked" : ""}">${text}</li>`;
       }
       return `<li>${text}</li>`;
-    }
-  }
+    },
+  },
 });
 
 // Interface for parsed markdown content that may contain mermaid diagrams
 interface ParsedMarkdownContent {
   elements: Array<{
-    type: 'html' | 'mermaid';
+    type: "html" | "mermaid";
     content: string;
     id?: string;
   }>;
@@ -51,47 +60,90 @@ interface ParsedMarkdownContent {
 
 // Parse markdown content and extract mermaid blocks
 const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
-  if (!content || content.trim() === '') {
+  if (!content || content.trim() === "") {
     return { elements: [] };
   }
 
-  const elements: Array<{ type: 'html' | 'mermaid'; content: string; id?: string; }> = [];
-  
+  const elements: Array<{
+    type: "html" | "mermaid";
+    content: string;
+    id?: string;
+  }> = [];
+
   // Split content by mermaid blocks
   const parts = content.split(/(```mermaid\n[\s\S]*?\n```)/g);
-  
+
   let mermaidIndex = 0;
-  
+
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
-    
+
     if (part.match(/^```mermaid\n[\s\S]*?\n```$/)) {
       // This is a mermaid block
-      const mermaidContent = part.replace(/^```mermaid\n/, '').replace(/\n```$/, '').trim();
+      const mermaidContent = part
+        .replace(/^```mermaid\n/, "")
+        .replace(/\n```$/, "")
+        .trim();
       elements.push({
-        type: 'mermaid',
+        type: "mermaid",
         content: mermaidContent,
-        id: `mermaid-${mermaidIndex++}`
+        id: `mermaid-${mermaidIndex++}`,
       });
     } else if (part.trim()) {
       // This is regular markdown content
       const html = marked.parse(part);
       const sanitizedHtml = DOMPurify.sanitize(html, {
         ALLOWED_TAGS: [
-          'p', 'br', 'strong', 'b', 'em', 'i', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-          'ul', 'ol', 'li', 'a', 'blockquote', 'hr', 'img',
-          'table', 'thead', 'tbody', 'tr', 'th', 'td', 'del', 'input'
+          "p",
+          "br",
+          "strong",
+          "b",
+          "em",
+          "i",
+          "code",
+          "pre",
+          "h1",
+          "h2",
+          "h3",
+          "h4",
+          "h5",
+          "h6",
+          "ul",
+          "ol",
+          "li",
+          "a",
+          "blockquote",
+          "hr",
+          "img",
+          "table",
+          "thead",
+          "tbody",
+          "tr",
+          "th",
+          "td",
+          "del",
+          "input",
         ],
-        ALLOWED_ATTR: ['href', 'title', 'align', 'type', 'checked', 'disabled', 'class', 'src', 'alt'],
+        ALLOWED_ATTR: [
+          "href",
+          "title",
+          "align",
+          "type",
+          "checked",
+          "disabled",
+          "class",
+          "src",
+          "alt",
+        ],
         ALLOW_DATA_ATTR: false,
         FORBID_ATTR: [],
-        FORBID_TAGS: []
+        FORBID_TAGS: [],
       });
-      
-      if (typeof sanitizedHtml === 'string' && sanitizedHtml.trim()) {
+
+      if (typeof sanitizedHtml === "string" && sanitizedHtml.trim()) {
         elements.push({
-          type: 'html',
-          content: sanitizedHtml
+          type: "html",
+          content: sanitizedHtml,
         });
       }
     }
@@ -103,650 +155,812 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
 // 与 CLI /rewind 检查点判定（isUserCheckpointMessage）保持一致：后台任务
 // 通知与 hook 注入的系统生成消息不作为回滚目标，bang 命令消息也不显示按钮。
 const isRewindTargetMessage = (message: MessageType): boolean =>
-  message.role === 'user' &&
+  message.role === "user" &&
   !message.isMeta &&
   !!message.id &&
-  !message.blocks.some((b) => b.type === 'bang') &&
-  !message.blocks.some((b) => b.type === 'task_notification') &&
-  !message.blocks.some((b) => b.type === 'text' && b.source === 'hook');
+  !message.blocks.some((b) => b.type === "bang") &&
+  !message.blocks.some((b) => b.type === "task_notification") &&
+  !message.blocks.some((b) => b.type === "text" && b.source === "hook");
 
+export const Message: React.FC<MessageProps> = React.memo(
+  (props: MessageProps) => {
+    const { message, isQueued = false, onRewindToMessage, workdir } = props;
 
-export const Message: React.FC<MessageProps> = React.memo((props) => {
-  const { message, isQueued = false, onRewindToMessage, workdir } = props;
-
-  // Desktop routes file opens to its file panel (the host resolves the path,
-  // pushing content back); IDE hosts keep the plain openFile RPC. The message
-  // chain reaches here via onOpenFile so the outbound message carries the
-  // originating paneId (postToHost in ChatApp) — a direct vscode.postMessage
-  // from a split-view pane would broadcast without it and misroute.
-  const openFile = (path: string, startLine?: number, endLine?: number) => {
-    if (props.onOpenFile) {
-      props.onOpenFile(path, startLine, endLine);
-    } else {
-      props.vscode.postMessage({ command: 'openFile', path, startLine, endLine });
-    }
-  };
-
-  const getMessageClassName = () => {
-    const classes = ['message'];
-    
-    const hasBangBlock = message.blocks?.some(b => b.type === 'bang');
-
-    if (message.role === 'user') {
-      if (!hasBangBlock) {
-        classes.push('user');
-      }
-      if (isQueued) {
-        classes.push('queued');
-      }
-    } else if (message.role === 'assistant') {
-      classes.push('assistant');
-    }
-    
-    return classes.join(' ');
-  };
-
-  const handleImagePreview = (url: string, name: string) => {
-    const modal = document.createElement('div');
-    modal.className = 'image-preview-modal';
-    modal.onclick = () => document.body.removeChild(modal);
-    
-    const img = document.createElement('img');
-    img.src = url;
-    img.alt = name;
-    img.onclick = (e) => e.stopPropagation();
-    
-    const closeBtn = document.createElement('div');
-    closeBtn.className = 'image-preview-close';
-    closeBtn.innerHTML = '<i class="codicon codicon-close"></i>';
-    
-    modal.appendChild(img);
-    modal.appendChild(closeBtn);
-    document.body.appendChild(modal);
-  };
-
-  const getAttachedImages = () => {
-    const images: Array<{ data: string, filename?: string }> = [];
-    message.blocks?.forEach(block => {
-      if (block.type === 'image' && block.imageUrls) {
-        block.imageUrls.forEach((url) => {
-          images.push({ data: url, filename: `图片 ${images.length + 1}` });
-        });
-      } else if (block.type === 'tool' && block.images) {
-        block.images.forEach((img) => {
-          images.push({ data: img.data, filename: `图片 ${images.length + 1}` });
+    // Desktop routes file opens to its file panel (the host resolves the path,
+    // pushing content back); IDE hosts keep the plain openFile RPC. The message
+    // chain reaches here via onOpenFile so the outbound message carries the
+    // originating paneId (postToHost in ChatApp) — a direct vscode.postMessage
+    // from a split-view pane would broadcast without it and misroute.
+    const openFile = (path: string, startLine?: number, endLine?: number) => {
+      if (props.onOpenFile) {
+        props.onOpenFile(path, startLine, endLine);
+      } else {
+        props.vscode.postMessage({
+          command: "openFile",
+          path,
+          startLine,
+          endLine,
         });
       }
-    });
-    return images;
-  };
+    };
 
-  // Link routing is a desktop-host feature: localhost links open in
-  // the preview pane, everything else goes to the system browser. IDE hosts
-  // keep their native link handling, so bail BEFORE any preventDefault.
-  const handleContentClick = (e: React.MouseEvent) => {
-    if (window.waveHostType !== 'desktop') return;
-    const anchor = (e.target as Element | null)?.closest?.('a');
-    const href = anchor?.getAttribute('href');
-    if (!href) return;
-    e.preventDefault();
-    if (isLocalhostUrl(href) && props.onOpenPreview) {
-      props.onOpenPreview(href);
-    } else {
-      props.vscode.postMessage({ command: 'openExternal', url: href });
-    }
-  };
+    const getMessageClassName = () => {
+      const classes = ["message"];
 
-  const renderMarkdownContent = (content: string, index: number) => {
-    const parsed = parseMarkdownWithMermaid(content);
-    return (
-      <div key={index} className="message-content-container" onClick={handleContentClick}>
-        {parsed.elements.map((element, elIndex) => (
-          element.type === 'mermaid' ? (
-            <MermaidRenderer 
-              key={element.id || `mermaid-${index}-${elIndex}`}
-              content={element.content}
-            />
-          ) : (
-            <div 
-              key={`html-${index}-${elIndex}`}
-              className="message-content markdown-content"
-              dangerouslySetInnerHTML={{ 
-                __html: element.content 
-              }}
-            />
-          )
-        ))}
-      </div>
-    );
-  };
+      const hasBangBlock = message.blocks?.some((b) => b.type === "bang");
 
-  const renderBashIO = (toolBlock: ToolBlock) => {
-    const stage = toolBlock.stage;
-    
-    // Parse the command from parameters
-    let command = '';
-    let hasValidCommand = false;
-    try {
-      if (toolBlock.parameters) {
-        const params = JSON.parse(toolBlock.parameters);
-        command = params.command || '';
-        hasValidCommand = !!command;
+      if (message.role === "user") {
+        if (!hasBangBlock) {
+          classes.push("user");
+        }
+        if (isQueued) {
+          classes.push("queued");
+        }
+      } else if (message.role === "assistant") {
+        classes.push("assistant");
       }
-    } catch {
-      // If parsing fails, use compactParams or fallback
-      command = toolBlock.compactParams || '';
-      hasValidCommand = !!toolBlock.compactParams;
-    }
 
-    // Only render bash-specific content if we have a valid command and appropriate stage
-    if ((stage === 'running' || stage === 'end') && hasValidCommand) {
-      const result = (toolBlock.result || toolBlock.shortResult || '').trim();
-      
-      if (result) {
-        // Show both input and output if result is present (even if running)
-        return (
-          <div className="bash-command-unified">
+      return classes.join(" ");
+    };
+
+    const handleImagePreview = (url: string, name: string) => {
+      const modal = document.createElement("div");
+      modal.className = "image-preview-modal";
+      modal.onclick = () => document.body.removeChild(modal);
+
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = name;
+      img.onclick = (e) => e.stopPropagation();
+
+      const closeBtn = document.createElement("div");
+      closeBtn.className = "image-preview-close";
+      closeBtn.innerHTML = '<i class="codicon codicon-close"></i>';
+
+      modal.appendChild(img);
+      modal.appendChild(closeBtn);
+      document.body.appendChild(modal);
+    };
+
+    const getAttachedImages = () => {
+      const images: Array<{ data: string; filename?: string }> = [];
+      message.blocks?.forEach((block) => {
+        if (block.type === "image" && block.imageUrls) {
+          block.imageUrls.forEach((url) => {
+            images.push({ data: url, filename: `图片 ${images.length + 1}` });
+          });
+        } else if (block.type === "tool" && block.images) {
+          block.images.forEach((img) => {
+            images.push({
+              data: img.data,
+              filename: `图片 ${images.length + 1}`,
+            });
+          });
+        }
+      });
+      return images;
+    };
+
+    // Link routing is a desktop-host feature: localhost links open in
+    // the preview pane, everything else goes to the system browser. IDE hosts
+    // keep their native link handling, so bail BEFORE any preventDefault.
+    const handleContentClick = (e: React.MouseEvent) => {
+      if (window.waveHostType !== "desktop") return;
+      const anchor = (e.target as Element | null)?.closest?.("a");
+      const href = anchor?.getAttribute("href");
+      if (!href) return;
+      e.preventDefault();
+      if (isLocalhostUrl(href) && props.onOpenPreview) {
+        props.onOpenPreview(href);
+      } else {
+        props.vscode.postMessage({ command: "openExternal", url: href });
+      }
+    };
+
+    const renderMarkdownContent = (content: string, index: number) => {
+      const parsed = parseMarkdownWithMermaid(content);
+      return (
+        <div
+          key={index}
+          className="message-content-container"
+          onClick={handleContentClick}
+        >
+          {parsed.elements.map((element, elIndex) =>
+            element.type === "mermaid" ? (
+              <MermaidRenderer
+                key={element.id || `mermaid-${index}-${elIndex}`}
+                content={element.content}
+              />
+            ) : (
+              <div
+                key={`html-${index}-${elIndex}`}
+                className="message-content markdown-content"
+                dangerouslySetInnerHTML={{
+                  __html: element.content,
+                }}
+              />
+            ),
+          )}
+        </div>
+      );
+    };
+
+    const renderBashIO = (toolBlock: ToolBlock) => {
+      const stage = toolBlock.stage;
+
+      // Parse the command from parameters
+      let command = "";
+      let hasValidCommand = false;
+      try {
+        if (toolBlock.parameters) {
+          const params = JSON.parse(toolBlock.parameters);
+          command = params.command || "";
+          hasValidCommand = !!command;
+        }
+      } catch {
+        // If parsing fails, use compactParams or fallback
+        command = toolBlock.compactParams || "";
+        hasValidCommand = !!toolBlock.compactParams;
+      }
+
+      // Only render bash-specific content if we have a valid command and appropriate stage
+      if ((stage === "running" || stage === "end") && hasValidCommand) {
+        const result = (toolBlock.result || toolBlock.shortResult || "").trim();
+
+        if (result) {
+          // Show both input and output if result is present (even if running)
+          return (
+            <div className="bash-command-unified">
+              <div className="bash-command-input">
+                <span className="bash-command">{command}</span>
+              </div>
+              <div className="bash-command-output">{result}</div>
+            </div>
+          );
+        } else {
+          // Show only input if no result yet
+          return (
             <div className="bash-command-input">
               <span className="bash-command">{command}</span>
             </div>
-            <div className="bash-command-output">
-              {result}
-            </div>
-          </div>
-        );
-      } else {
-        // Show only input if no result yet
-        return (
-          <div className="bash-command-input">
-            <span className="bash-command">{command}</span>
-          </div>
-        );
+          );
+        }
       }
-    }
 
-    // For all other cases, return null (no additional content)
-    return null;
-  };
+      // For all other cases, return null (no additional content)
+      return null;
+    };
 
-  const getToolStatusColor = (toolBlock: ToolBlock) =>
-    toolBlock.stage === 'running' || toolBlock.stage === 'streaming'
-      ? 'var(--vscode-editorWarning-foreground, #cca700)'
-      : toolBlock.success === true
-        ? 'var(--vscode-testing-iconPassed, #73c991)'
-        : (toolBlock.error || toolBlock.success === false)
-          ? 'var(--vscode-testing-iconFailed, #f14c4c)'
-          : 'var(--vscode-descriptionForeground, #888)';
+    const getToolStatusColor = (toolBlock: ToolBlock) =>
+      toolBlock.stage === "running" || toolBlock.stage === "streaming"
+        ? "var(--vscode-editorWarning-foreground, #cca700)"
+        : toolBlock.success === true
+          ? "var(--vscode-testing-iconPassed, #73c991)"
+          : toolBlock.error || toolBlock.success === false
+            ? "var(--vscode-testing-iconFailed, #f14c4c)"
+            : "var(--vscode-descriptionForeground, #888)";
 
-  // Dot color for text/reasoning blocks: yellow while streaming, green once done.
-  const getStageColor = (stage?: 'streaming' | 'end') =>
-    stage === 'streaming'
-      ? 'var(--vscode-editorWarning-foreground, #cca700)'
-      : 'var(--vscode-testing-iconPassed, #73c991)';
+    // Dot color for text/reasoning blocks: yellow while streaming, green once done.
+    const getStageColor = (stage?: "streaming" | "end") =>
+      stage === "streaming"
+        ? "var(--vscode-editorWarning-foreground, #cca700)"
+        : "var(--vscode-testing-iconPassed, #73c991)";
 
-  const renderToolBlock = (toolBlock: ToolBlock, index: number) => {
-    // Default tool rendering for all tools (including Bash)
-    const compactInfo = toolBlock.stage === 'streaming'
-      ? (toolBlock.parameters ? String(toolBlock.parameters).slice(-30) : '')
-      : (toolBlock.compactParams || '');
-    const toolStatusColor = getToolStatusColor(toolBlock);
-    const toolHeader = (
-      <div key={index} className="tool-block">
-        <span className="tool-status-dot" style={{ color: toolStatusColor }}>●</span> {toolBlock.name || 'Tool'}{compactInfo ? <span className="compact-params"> {compactInfo}</span> : ''}
-      </div>
-    );
+    const renderToolBlock = (toolBlock: ToolBlock, index: number) => {
+      // Default tool rendering for all tools (including Bash)
+      const compactInfo =
+        toolBlock.stage === "streaming"
+          ? toolBlock.parameters
+            ? String(toolBlock.parameters).slice(-30)
+            : ""
+          : toolBlock.compactParams || "";
+      const toolStatusColor = getToolStatusColor(toolBlock);
+      const toolHeader = (
+        <div key={index} className="tool-block">
+          <span className="tool-status-dot" style={{ color: toolStatusColor }}>
+            ●
+          </span>{" "}
+          {toolBlock.name || "Tool"}
+          {compactInfo ? (
+            <span className="compact-params"> {compactInfo}</span>
+          ) : (
+            ""
+          )}
+        </div>
+      );
 
-    // Render tool error if it exists (with same style as error blocks)
-    const errorContent = (toolBlock as unknown as Record<string, unknown>).error ? (
-      <div className="tool-error">
-        <pre>{String((toolBlock as unknown as Record<string, unknown>).error)}</pre>
-      </div>
-    ) : null;
+      // Render tool error if it exists (with same style as error blocks)
+      const errorContent = (toolBlock as unknown as Record<string, unknown>)
+        .error ? (
+        <div className="tool-error">
+          <pre>
+            {String((toolBlock as unknown as Record<string, unknown>).error)}
+          </pre>
+        </div>
+      ) : null;
 
-    // For Bash tools, add the bash-specific content below the header
-    if (toolBlock.name === BASH_TOOL_NAME) {
-      const bashContent = renderBashIO(toolBlock);
-      if (bashContent || errorContent) {
+      // For Bash tools, add the bash-specific content below the header
+      if (toolBlock.name === BASH_TOOL_NAME) {
+        const bashContent = renderBashIO(toolBlock);
+        if (bashContent || errorContent) {
+          return (
+            <div key={index} className="tool-container">
+              {toolHeader}
+              {bashContent}
+              {errorContent}
+            </div>
+          );
+        }
+      }
+
+      // For LSP tools, show output with max height and no scrolling
+      if (toolBlock.name === LSP_TOOL_NAME) {
         return (
           <div key={index} className="tool-container">
             {toolHeader}
-            {bashContent}
+            {!errorContent && (
+              <div className="lsp-output">
+                {(toolBlock.shortResult || toolBlock.result || "").trim()}
+              </div>
+            )}
             {errorContent}
           </div>
         );
       }
-    }
-    
-    // For LSP tools, show output with max height and no scrolling
-    if (toolBlock.name === LSP_TOOL_NAME) {
-      return (
-        <div key={index} className="tool-container">
-          {toolHeader}
-          {!errorContent && (
-            <div className="lsp-output">
-              {(toolBlock.shortResult || toolBlock.result || '').trim()}
-            </div>
-          )}
-          {errorContent}
-        </div>
-      );
-    }
-    
-    // For file editing tools, show diff below the header only when stage is 'end'
-    if (toolBlock.name === WRITE_TOOL_NAME) {
-      // During streaming the parameters JSON is incomplete; fall back to the
-      // default header which shows the last 30 chars of the raw parameters.
-      if (toolBlock.stage === 'streaming') {
-        return toolHeader;
-      }
-      return (
-        <div key={index} className="tool-container">
-          {!errorContent && <WriteToolPreview toolBlock={toolBlock} vscode={props.vscode} workdir={workdir} />}
-          {errorContent && toolHeader}
-          {errorContent}
-        </div>
-      );
-    }
-    if (toolBlock.name === EDIT_TOOL_NAME) {
-      if (toolBlock.stage === 'streaming') {
-        return toolHeader;
-      }
-      let editFilePath = '';
-      try {
-        if (toolBlock.parameters) {
-          editFilePath = JSON.parse(toolBlock.parameters).file_path || '';
-        }
-      } catch {
-        editFilePath = '';
-      }
-      const openEditFile = () => {
-        if (editFilePath) {
-          openFile(editFilePath);
-        }
-      };
-      return (
-        <div key={index} className="tool-container">
-          <FileToolHeader toolBlock={toolBlock} filePath={toRelativePath(editFilePath, workdir)} onOpenFile={openEditFile} />
-          {!errorContent && <DiffViewer toolBlock={toolBlock} />}
-          {errorContent}
-        </div>
-      );
-    }
 
-    // For Read tools, show clickable path with offset/limit suffix (aligned with Write header style)
-    if (toolBlock.name === READ_TOOL_NAME) {
-      if (toolBlock.stage === 'streaming') {
-        return toolHeader;
-      }
-      let filePath = '';
-      let displayPath = '';
-      let offset: number | undefined;
-      let limit: number | undefined;
-      try {
-        if (toolBlock.parameters) {
-          const params = JSON.parse(toolBlock.parameters);
-          filePath = params.file_path || '';
-          offset = typeof params.offset === 'number' ? params.offset : undefined;
-          limit = typeof params.limit === 'number' ? params.limit : undefined;
-          const relPath = toRelativePath(filePath, workdir);
-          displayPath = relPath && (offset !== undefined || limit !== undefined)
-            ? `${relPath}:${offset !== undefined ? offset : 1}:${limit !== undefined ? limit : 2000}`
-            : relPath;
+      // For file editing tools, show diff below the header only when stage is 'end'
+      if (toolBlock.name === WRITE_TOOL_NAME) {
+        // During streaming the parameters JSON is incomplete; fall back to the
+        // default header which shows the last 30 chars of the raw parameters.
+        if (toolBlock.stage === "streaming") {
+          return toolHeader;
         }
-      } catch {
-        filePath = '';
+        return (
+          <div key={index} className="tool-container">
+            {!errorContent && (
+              <WriteToolPreview
+                toolBlock={toolBlock}
+                vscode={props.vscode}
+                workdir={workdir}
+              />
+            )}
+            {errorContent && toolHeader}
+            {errorContent}
+          </div>
+        );
       }
-      const openReadFile = () => {
-        if (filePath) {
-          // offset/limit describe the read slice (1-based); jump to it so the
-          // panel lands on the same lines the tool actually read.
-          openFile(filePath, offset, offset && limit ? offset + limit - 1 : undefined);
+      if (toolBlock.name === EDIT_TOOL_NAME) {
+        if (toolBlock.stage === "streaming") {
+          return toolHeader;
         }
-      };
-      return (
-        <div key={index} className="tool-container">
-          <FileToolHeader toolBlock={toolBlock} filePath={displayPath} onOpenFile={openReadFile} />
-          {!errorContent && toolBlock.shortResult && (
-            <div className="write-tool-stats">{toolBlock.shortResult}</div>
-          )}
-          {errorContent}
-        </div>
-      );
-    }
+        let editFilePath = "";
+        try {
+          if (toolBlock.parameters) {
+            editFilePath = JSON.parse(toolBlock.parameters).file_path || "";
+          }
+        } catch {
+          editFilePath = "";
+        }
+        const openEditFile = () => {
+          if (editFilePath) {
+            openFile(editFilePath);
+          }
+        };
+        return (
+          <div key={index} className="tool-container">
+            <FileToolHeader
+              toolBlock={toolBlock}
+              filePath={toRelativePath(editFilePath, workdir)}
+              onOpenFile={openEditFile}
+            />
+            {!errorContent && <DiffViewer toolBlock={toolBlock} />}
+            {errorContent}
+          </div>
+        );
+      }
 
-    // For AskUserQuestion tools, show the user's answers
-    if (toolBlock.name === ASK_USER_QUESTION_TOOL_NAME) {
-      let answers: Record<string, unknown> = {};
-      let isParsed = false;
-      try {
-        const result = toolBlock.shortResult || toolBlock.result;
-        if (typeof result === 'string') {
-          const trimmed = result.trim();
-          if (trimmed.startsWith('{')) {
-            try {
-              let parsed = JSON.parse(trimmed);
-              // Handle nested "answers" key if it's the only key
-              if (parsed && typeof parsed === 'object' && Object.keys(parsed).length === 1 && parsed.answers && typeof parsed.answers === 'object') {
-                parsed = parsed.answers;
-              }
-              answers = parsed;
-              isParsed = true;
-            } catch {
-              // Try to find the first { and last }
-              const start = trimmed.indexOf('{');
-              const end = trimmed.lastIndexOf('}');
-              if (start !== -1 && end !== -1 && end > start) {
-                let parsed = JSON.parse(trimmed.substring(start, end + 1));
-                if (parsed && typeof parsed === 'object' && Object.keys(parsed).length === 1 && parsed.answers && typeof parsed.answers === 'object') {
+      // For Read tools, show clickable path with offset/limit suffix (aligned with Write header style)
+      if (toolBlock.name === READ_TOOL_NAME) {
+        if (toolBlock.stage === "streaming") {
+          return toolHeader;
+        }
+        let filePath = "";
+        let displayPath = "";
+        let offset: number | undefined;
+        let limit: number | undefined;
+        try {
+          if (toolBlock.parameters) {
+            const params = JSON.parse(toolBlock.parameters);
+            filePath = params.file_path || "";
+            offset =
+              typeof params.offset === "number" ? params.offset : undefined;
+            limit = typeof params.limit === "number" ? params.limit : undefined;
+            const relPath = toRelativePath(filePath, workdir);
+            displayPath =
+              relPath && (offset !== undefined || limit !== undefined)
+                ? `${relPath}:${offset !== undefined ? offset : 1}:${limit !== undefined ? limit : 2000}`
+                : relPath;
+          }
+        } catch {
+          filePath = "";
+        }
+        const openReadFile = () => {
+          if (filePath) {
+            // offset/limit describe the read slice (1-based); jump to it so the
+            // panel lands on the same lines the tool actually read.
+            openFile(
+              filePath,
+              offset,
+              offset && limit ? offset + limit - 1 : undefined,
+            );
+          }
+        };
+        return (
+          <div key={index} className="tool-container">
+            <FileToolHeader
+              toolBlock={toolBlock}
+              filePath={displayPath}
+              onOpenFile={openReadFile}
+            />
+            {!errorContent && toolBlock.shortResult && (
+              <div className="write-tool-stats">{toolBlock.shortResult}</div>
+            )}
+            {errorContent}
+          </div>
+        );
+      }
+
+      // For AskUserQuestion tools, show the user's answers
+      if (toolBlock.name === ASK_USER_QUESTION_TOOL_NAME) {
+        let answers: Record<string, unknown> = {};
+        let isParsed = false;
+        try {
+          const result = toolBlock.shortResult || toolBlock.result;
+          if (typeof result === "string") {
+            const trimmed = result.trim();
+            if (trimmed.startsWith("{")) {
+              try {
+                let parsed = JSON.parse(trimmed);
+                // Handle nested "answers" key if it's the only key
+                if (
+                  parsed &&
+                  typeof parsed === "object" &&
+                  Object.keys(parsed).length === 1 &&
+                  parsed.answers &&
+                  typeof parsed.answers === "object"
+                ) {
                   parsed = parsed.answers;
                 }
                 answers = parsed;
                 isParsed = true;
+              } catch {
+                // Try to find the first { and last }
+                const start = trimmed.indexOf("{");
+                const end = trimmed.lastIndexOf("}");
+                if (start !== -1 && end !== -1 && end > start) {
+                  let parsed = JSON.parse(trimmed.substring(start, end + 1));
+                  if (
+                    parsed &&
+                    typeof parsed === "object" &&
+                    Object.keys(parsed).length === 1 &&
+                    parsed.answers &&
+                    typeof parsed.answers === "object"
+                  ) {
+                    parsed = parsed.answers;
+                  }
+                  answers = parsed;
+                  isParsed = true;
+                }
               }
             }
+          } else if (typeof result === "object" && result !== null) {
+            let parsed: Record<string, unknown> = result as Record<
+              string,
+              unknown
+            >;
+            if (
+              Object.keys(parsed).length === 1 &&
+              parsed.answers &&
+              typeof parsed.answers === "object"
+            ) {
+              parsed = parsed.answers as Record<string, unknown>;
+            }
+            answers = parsed;
+            isParsed = true;
           }
-        } else if (typeof result === 'object' && result !== null) {
-          let parsed: Record<string, unknown> = result as Record<string, unknown>;
-          if (Object.keys(parsed).length === 1 && parsed.answers && typeof parsed.answers === 'object') {
-            parsed = parsed.answers as Record<string, unknown>;
-          }
-          answers = parsed;
-          isParsed = true;
+        } catch {
+          // Fallback to raw result
         }
-      } catch {
-        // Fallback to raw result
+
+        const result = toolBlock.shortResult || toolBlock.result;
+        return (
+          <div key={index} className="tool-container">
+            {toolHeader}
+            {!errorContent && result && (
+              <div className="tool-result-block">
+                {isParsed ? (
+                  Object.entries(answers).map(([question, answer], aIndex) => (
+                    <div key={aIndex} className="ask-user-result-item">
+                      <span
+                        className="ask-user-result-q"
+                        style={{ whiteSpace: "pre-wrap" }}
+                      >
+                        {question}
+                      </span>
+                      <span
+                        className="ask-user-result-a"
+                        style={{ whiteSpace: "pre-wrap" }}
+                      >
+                        {Array.isArray(answer)
+                          ? answer.join(", ")
+                          : typeof answer === "object" && answer !== null
+                            ? JSON.stringify(answer)
+                            : String(answer)}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="result-raw">{String(result)}</div>
+                )}
+              </div>
+            )}
+            {errorContent}
+          </div>
+        );
       }
 
-      const result = toolBlock.shortResult || toolBlock.result;
-      return (
-        <div key={index} className="tool-container">
-          {toolHeader}
-          {!errorContent && result && (
+      // For ExitPlanMode tools, show the decision
+      if (toolBlock.name === EXIT_PLAN_MODE_TOOL_NAME) {
+        const result = toolBlock.shortResult || toolBlock.result;
+        const resultText =
+          typeof result === "string"
+            ? result
+            : result
+              ? JSON.stringify(result)
+              : "";
+
+        return (
+          <div key={index} className="tool-container">
+            {toolHeader}
+            {!errorContent && resultText && (
+              <div className="tool-result-block">
+                <div className="result-item">
+                  <div className="result-answer">{resultText}</div>
+                </div>
+              </div>
+            )}
+            {errorContent}
+          </div>
+        );
+      }
+
+      // For other tools, show result or shortResult if present
+      if ((toolBlock.result || toolBlock.shortResult) && !errorContent) {
+        const rawText = (
+          toolBlock.shortResult ||
+          toolBlock.result ||
+          ""
+        ).trim();
+        const lines = rawText.split("\n");
+        return (
+          <div key={index} className="tool-container">
+            {toolHeader}
             <div className="tool-result-block">
-              {isParsed ? (
-                Object.entries(answers).map(([question, answer], aIndex) => (
-                  <div key={aIndex} className="ask-user-result-item">
-                    <span className="ask-user-result-q" style={{ whiteSpace: 'pre-wrap' }}>{question}</span>
-                    <span className="ask-user-result-a" style={{ whiteSpace: 'pre-wrap' }}>
-                      {Array.isArray(answer)
-                        ? answer.join(', ')
-                        : (typeof answer === 'object' && answer !== null
-                            ? JSON.stringify(answer)
-                            : String(answer))}
-                    </span>
+              <div className="result-raw">
+                {lines.map((line, i) => (
+                  <div key={i} className="result-raw-line">
+                    {line}
                   </div>
-                ))
-              ) : (
-                <div className="result-raw">{String(result)}</div>
-              )}
-            </div>
-          )}
-          {errorContent}
-        </div>
-      );
-    }
-
-    // For ExitPlanMode tools, show the decision
-    if (toolBlock.name === EXIT_PLAN_MODE_TOOL_NAME) {
-      const result = toolBlock.shortResult || toolBlock.result;
-      const resultText = typeof result === 'string' 
-        ? result 
-        : (result ? JSON.stringify(result) : '');
-
-      return (
-        <div key={index} className="tool-container">
-          {toolHeader}
-          {!errorContent && resultText && (
-            <div className="tool-result-block">
-              <div className="result-item">
-                <div className="result-answer">{resultText}</div>
+                ))}
               </div>
             </div>
-          )}
-          {errorContent}
-        </div>
-      );
-    }
-
-    // For other tools, show result or shortResult if present
-    if ((toolBlock.result || toolBlock.shortResult) && !errorContent) {
-      const rawText = (toolBlock.shortResult || toolBlock.result || '').trim();
-      const lines = rawText.split('\n');
-      return (
-        <div key={index} className="tool-container">
-          {toolHeader}
-          <div className="tool-result-block">
-            <div className="result-raw">
-              {lines.map((line, i) => (
-                <div key={i} className="result-raw-line">{line}</div>
-              ))}
-            </div>
           </div>
-        </div>
-      );
-    }
-
-    // For other tools, show error if present
-    if (errorContent) {
-      return (
-        <div key={index} className="tool-container">
-          {toolHeader}
-          {errorContent}
-        </div>
-      );
-    }
-    
-    // For other tools without special content, just return the header
-    return toolHeader;
-  };
-
-  const renderImageBlock = (imageBlock: ImageBlock, index: number) => {
-    if (!imageBlock.imageUrls || imageBlock.imageUrls.length === 0 || message.role === 'user') {
-      return null;
-    }
-
-    const getImageTypeFromUrl = (url: string): string => {
-      // Try to determine type from URL extension or default to IMG
-      const extension = url.split('.').pop()?.toLowerCase();
-      switch (extension) {
-        case 'png': return 'PNG';
-        case 'jpg':
-        case 'jpeg': return 'JPG';
-        case 'gif': return 'GIF';
-        case 'webp': return 'WEBP';
-        case 'svg': return 'SVG';
-        default: return 'IMG';
+        );
       }
+
+      // For other tools, show error if present
+      if (errorContent) {
+        return (
+          <div key={index} className="tool-container">
+            {toolHeader}
+            {errorContent}
+          </div>
+        );
+      }
+
+      // For other tools without special content, just return the header
+      return toolHeader;
+    };
+
+    const renderImageBlock = (imageBlock: ImageBlock, index: number) => {
+      if (
+        !imageBlock.imageUrls ||
+        imageBlock.imageUrls.length === 0 ||
+        message.role === "user"
+      ) {
+        return null;
+      }
+
+      const getImageTypeFromUrl = (url: string): string => {
+        // Try to determine type from URL extension or default to IMG
+        const extension = url.split(".").pop()?.toLowerCase();
+        switch (extension) {
+          case "png":
+            return "PNG";
+          case "jpg":
+          case "jpeg":
+            return "JPG";
+          case "gif":
+            return "GIF";
+          case "webp":
+            return "WEBP";
+          case "svg":
+            return "SVG";
+          default:
+            return "IMG";
+        }
+      };
+
+      return (
+        <div key={`image-${index}`} className="image-block">
+          {imageBlock.imageUrls.map((imageUrl, imgIndex) => (
+            <div
+              key={`img-${index}-${imgIndex}`}
+              className="image-item-message"
+            >
+              <div className="image-icon">
+                <span className="image-type">
+                  {getImageTypeFromUrl(imageUrl)}
+                </span>
+              </div>
+              <div className="image-info">
+                <span className="image-name">{`Image ${imgIndex + 1}`}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    };
+
+    const renderReasoningBlock = (
+      reasoningBlock: ReasoningBlock,
+      index: number,
+    ) => {
+      return (
+        <ReasoningBlockView
+          key={`reasoning-${index}`}
+          block={reasoningBlock}
+          renderContent={(content) => renderMarkdownContent(content, index)}
+        />
+      );
+    };
+
+    const renderCompactBlock = (compactBlock: CompactBlock, index: number) => {
+      return (
+        <CompactBlockView
+          key={`compact-${index}`}
+          block={compactBlock}
+          renderContent={(content) => renderMarkdownContent(content, index)}
+        />
+      );
+    };
+
+    const renderTaskNotification = (
+      block: TaskNotificationBlock,
+      index: number,
+    ) => {
+      const statusIcon =
+        block.status === "completed"
+          ? "check"
+          : block.status === "failed"
+            ? "error"
+            : "circle-slash";
+      const statusLabel =
+        block.status === "completed"
+          ? "已完成"
+          : block.status === "failed"
+            ? "失败"
+            : "已终止";
+      const statusColor =
+        block.status === "completed"
+          ? "#3fb950"
+          : block.status === "failed"
+            ? "#f85149"
+            : "#8b949e";
+      return (
+        <div
+          key={`task-notification-${index}`}
+          className="task-notification-block"
+          style={{
+            padding: "8px 12px",
+            margin: "4px 0",
+            borderRadius: "6px",
+            border: `1px solid ${statusColor}40`,
+            background: `${statusColor}0d`,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <i
+              className={`codicon codicon-${statusIcon}`}
+              style={{ color: statusColor }}
+            ></i>
+            <span
+              style={{ fontWeight: 500, fontSize: "12px", color: statusColor }}
+            >
+              {statusLabel}
+            </span>
+          </div>
+          {block.summary && (
+            <div style={{ marginTop: "4px", fontSize: "13px" }}>
+              {block.summary}
+            </div>
+          )}
+          {block.outputFile && (
+            <div
+              style={{ marginTop: "4px", fontSize: "12px", color: "#8b949e" }}
+            >
+              输出: {block.outputFile}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const renderBlock = (block: MessageBlock, index: number) => {
+      let rendered: React.ReactNode = null;
+      let wrap = false;
+      let dotColor: string | undefined;
+
+      switch (block.type) {
+        case "compact":
+          return renderCompactBlock(block, index);
+        case "text": {
+          const content = block.content || "";
+          if (!content.trim()) return null;
+
+          if (message.role === "user") {
+            const attachedImages = getAttachedImages();
+            const parts = parseMentions(content, attachedImages);
+
+            return (
+              <div key={index} className="user-text-block">
+                <div className="message-content user-content">
+                  {parts.map((part, pIndex) => {
+                    if (part.type === "mention") {
+                      const onClick = part.isImage
+                        ? () => {
+                            if (part.imageData) {
+                              handleImagePreview(
+                                part.imageData,
+                                part.path || "image",
+                              );
+                            } else {
+                              openFile(part.path || "");
+                            }
+                          }
+                        : undefined;
+
+                      return (
+                        <ContextTag
+                          key={pIndex}
+                          name={
+                            part.path
+                              ?.replace(/[/\\]$/, "")
+                              .split(/[/\\]/)
+                              .pop() || ""
+                          }
+                          path={part.path || ""}
+                          isImage={part.isImage}
+                          onClick={onClick}
+                        />
+                      );
+                    } else if (part.type === "selection") {
+                      const displayName = `${part.fileName}#${part.startLine}-${part.endLine}`;
+                      const filePath = part.path || part.fileName || "";
+                      return (
+                        <ContextTag
+                          key={pIndex}
+                          name={displayName}
+                          path={filePath}
+                          onClick={() => {
+                            openFile(
+                              filePath,
+                              part.startLine
+                                ? parseInt(part.startLine)
+                                : undefined,
+                              part.endLine ? parseInt(part.endLine) : undefined,
+                            );
+                          }}
+                        />
+                      );
+                    } else {
+                      return <span key={pIndex}>{part.content}</span>;
+                    }
+                  })}
+                </div>
+              </div>
+            );
+          }
+
+          rendered = renderMarkdownContent(content, index);
+          wrap = true;
+          dotColor = getStageColor(block.stage);
+          break;
+        }
+        case "error":
+          return (
+            <div key={index} className="message-content error">
+              <pre>{block.content || ""}</pre>
+            </div>
+          );
+        case "tool": {
+          const toolBlock = block as ToolBlock;
+          rendered = renderToolBlock(toolBlock, index);
+          wrap = true;
+          dotColor = getToolStatusColor(block as ToolBlock);
+          break;
+        }
+        case "bang":
+          return <BangBlock key={index} block={block} />;
+        case "image":
+          return renderImageBlock(block as ImageBlock, index);
+        case "reasoning":
+          rendered = renderReasoningBlock(block, index);
+          wrap = true;
+          dotColor = getStageColor(block.stage);
+          break;
+        case "task_notification":
+          return renderTaskNotification(block as TaskNotificationBlock, index);
+        default:
+          return null;
+      }
+
+      if (!wrap || rendered === null) return rendered;
+
+      return (
+        <div
+          key={index}
+          className="timeline-row"
+          style={
+            dotColor
+              ? ({ ["--dot-color"]: dotColor } as React.CSSProperties)
+              : undefined
+          }
+        >
+          {rendered}
+        </div>
+      );
     };
 
     return (
-      <div key={`image-${index}`} className="image-block">
-        {imageBlock.imageUrls.map((imageUrl, imgIndex) => (
-          <div key={`img-${index}-${imgIndex}`} className="image-item-message">
-            <div className="image-icon">
-              <span className="image-type">{getImageTypeFromUrl(imageUrl)}</span>
-            </div>
-            <div className="image-info">
-              <span className="image-name">
-                {`Image ${imgIndex + 1}`}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const renderReasoningBlock = (reasoningBlock: ReasoningBlock, index: number) => {
-    return (
-      <ReasoningBlockView
-        key={`reasoning-${index}`}
-        block={reasoningBlock}
-        renderContent={(content) => renderMarkdownContent(content, index)}
-      />
-    );
-  };
-
-  const renderCompactBlock = (compactBlock: CompactBlock, index: number) => {
-    return (
-      <CompactBlockView
-        key={`compact-${index}`}
-        block={compactBlock}
-        renderContent={(content) => renderMarkdownContent(content, index)}
-      />
-    );
-  };
-
-  const renderTaskNotification = (block: TaskNotificationBlock, index: number) => {
-    const statusIcon = block.status === 'completed' ? 'check' : block.status === 'failed' ? 'error' : 'circle-slash';
-    const statusLabel = block.status === 'completed' ? '已完成' : block.status === 'failed' ? '失败' : '已终止';
-    const statusColor = block.status === 'completed' ? '#3fb950' : block.status === 'failed' ? '#f85149' : '#8b949e';
-    return (
-      <div key={`task-notification-${index}`} className="task-notification-block" style={{ padding: '8px 12px', margin: '4px 0', borderRadius: '6px', border: `1px solid ${statusColor}40`, background: `${statusColor}0d` }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <i className={`codicon codicon-${statusIcon}`} style={{ color: statusColor }}></i>
-          <span style={{ fontWeight: 500, fontSize: '12px', color: statusColor }}>{statusLabel}</span>
-        </div>
-        {block.summary && (
-          <div style={{ marginTop: '4px', fontSize: '13px' }}>{block.summary}</div>
-        )}
-        {block.outputFile && (
-          <div style={{ marginTop: '4px', fontSize: '12px', color: '#8b949e' }}>输出: {block.outputFile}</div>
-        )}
-      </div>
-    );
-  };
-
-  const renderBlock = (block: MessageBlock, index: number) => {
-    let rendered: React.ReactNode = null;
-    let wrap = false;
-    let dotColor: string | undefined;
-
-    switch (block.type) {
-      case 'compact':
-        return renderCompactBlock(block, index);
-      case 'text': {
-        const content = block.content || '';
-        if (!content.trim()) return null;
-        
-        if (message.role === 'user') {
-          const attachedImages = getAttachedImages();
-          const parts = parseMentions(content, attachedImages);
-          
-          return (
-            <div key={index} className="user-text-block">
-              <div className="message-content user-content">
-                {parts.map((part, pIndex) => {
-                  if (part.type === 'mention') {
-                    const onClick = part.isImage ? () => {
-                      if (part.imageData) {
-                        handleImagePreview(part.imageData, part.path || 'image');
-                      } else {
-                        openFile(part.path || '');
-                      }
-                    } : undefined;
-
-                    return (
-                      <ContextTag 
-                        key={pIndex}
-                        name={part.path?.replace(/[/\\]$/, '').split(/[/\\]/).pop() || ''}
-                        path={part.path || ''}
-                        isImage={part.isImage}
-                        onClick={onClick}
-                      />
-                    );
-                  } else if (part.type === 'selection') {
-                    const displayName = `${part.fileName}#${part.startLine}-${part.endLine}`;
-                    const filePath = part.path || part.fileName || '';
-                    return (
-                      <ContextTag 
-                        key={pIndex}
-                        name={displayName}
-                        path={filePath}
-                        onClick={() => {
-                          openFile(
-                            filePath,
-                            part.startLine ? parseInt(part.startLine) : undefined,
-                            part.endLine ? parseInt(part.endLine) : undefined
-                          );
-                        }}
-                      />
-                    );
-                  } else {
-                    return <span key={pIndex}>{part.content}</span>;
-                  }
-                })}
-              </div>
-            </div>
-          );
-        }
-
-        rendered = renderMarkdownContent(content, index);
-        wrap = true;
-        dotColor = getStageColor(block.stage);
-        break;
-      }
-      case 'error':
-        return (
-          <div key={index} className="message-content error">
-            <pre>{block.content || ''}</pre>
-          </div>
-        );
-      case 'tool': {
-        const toolBlock = block as ToolBlock;
-        rendered = renderToolBlock(toolBlock, index);
-        wrap = true;
-        dotColor = getToolStatusColor(block as ToolBlock);
-        break;
-      }
-      case 'bang':
-        return <BangBlock key={index} block={block} />;
-      case 'image':
-        return renderImageBlock(block as ImageBlock, index);
-      case 'reasoning':
-        rendered = renderReasoningBlock(block, index);
-        wrap = true;
-        dotColor = getStageColor(block.stage);
-        break;
-      case 'task_notification':
-        return renderTaskNotification(block as TaskNotificationBlock, index);
-      default:
-        return null;
-    }
-
-    if (!wrap || rendered === null) return rendered;
-
-    return (
       <div
-        key={index}
-        className="timeline-row"
-        style={dotColor ? ({ ['--dot-color']: dotColor } as React.CSSProperties) : undefined}
+        className={getMessageClassName()}
+        data-message-id={message.id}
+        data-role={message.role}
       >
-        {rendered}
+        {message.blocks?.map((block, index) => renderBlock(block, index))}
+        {isRewindTargetMessage(message) && !isQueued && (
+          <div className="message-actions">
+            <Tooltip text="回滚到此消息" position="bottom">
+              <button
+                className="message-action-btn"
+                onClick={() => onRewindToMessage?.(message.id!)}
+              >
+                <i className="codicon codicon-history"></i>
+              </button>
+            </Tooltip>
+          </div>
+        )}
       </div>
     );
-  };
-
-  return (
-    <div className={getMessageClassName()} data-message-id={message.id} data-role={message.role}>
-      {message.blocks?.map((block, index) => renderBlock(block, index))}
-      {isRewindTargetMessage(message) && !isQueued && (
-        <div className="message-actions">
-          <Tooltip text="回滚到此消息" position="bottom">
-            <button 
-              className="message-action-btn" 
-              onClick={() => onRewindToMessage?.(message.id!)}
-            >
-              <i className="codicon codicon-history"></i>
-            </button>
-          </Tooltip>
-        </div>
-      )}
-    </div>
-  );
-}, (prev, next) => {
-  // Custom comparison for React.memo
-  return prev.message === next.message &&
-    prev.isQueued === next.isQueued &&
-    prev.onRewindToMessage === next.onRewindToMessage;
-});
+  },
+  (prev, next) => {
+    // Custom comparison for React.memo
+    return (
+      prev.message === next.message &&
+      prev.isQueued === next.isQueued &&
+      prev.onRewindToMessage === next.onRewindToMessage
+    );
+  },
+);
+Message.displayName = "Message";

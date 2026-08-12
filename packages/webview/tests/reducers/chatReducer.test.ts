@@ -1,626 +1,757 @@
-import { describe, it, expect } from 'vitest';
-import { chatReducer, initialState } from '../../src/reducers/chatReducer';
-import type { Message, TextBlock, ToolBlock, ReasoningBlock, ErrorBlock, SessionMetadata } from '../../src/types';
+import { describe, it, expect } from "vitest";
+import { chatReducer, initialState } from "../../src/reducers/chatReducer";
+import type {
+  Message,
+  TextBlock,
+  ToolBlock,
+  ReasoningBlock,
+  ErrorBlock,
+  SessionMetadata,
+} from "../../src/types";
 
-describe('chatReducer', () => {
-  describe('APPEND_MESSAGE', () => {
-    it('should append a new message to the end of the list', () => {
+describe("chatReducer", () => {
+  describe("APPEND_MESSAGE", () => {
+    it("should append a new message to the end of the list", () => {
       const existingMessage: Message = {
-        id: 'msg-1',
-        role: 'user',
-        timestamp: '0',
-        blocks: []
+        id: "msg-1",
+        role: "user",
+        timestamp: "0",
+        blocks: [],
       };
       const state = { ...initialState, messages: [existingMessage] };
 
       const newMessage: Message = {
-        id: 'msg-2',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: []
+        id: "msg-2",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [],
       };
 
-      const newState = chatReducer(state, { type: 'APPEND_MESSAGE', payload: newMessage });
+      const newState = chatReducer(state, {
+        type: "APPEND_MESSAGE",
+        payload: newMessage,
+      });
 
       expect(newState.messages).toHaveLength(2);
       expect(newState.messages[0]).toBe(existingMessage);
       expect(newState.messages[1]).toBe(newMessage);
     });
 
-    it('should append to empty message list', () => {
+    it("should append to empty message list", () => {
       const state = { ...initialState, messages: [] };
       const newMessage: Message = {
-        id: 'msg-1',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: []
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [],
       };
 
-      const newState = chatReducer(state, { type: 'APPEND_MESSAGE', payload: newMessage });
+      const newState = chatReducer(state, {
+        type: "APPEND_MESSAGE",
+        payload: newMessage,
+      });
 
       expect(newState.messages).toHaveLength(1);
       expect(newState.messages[0]).toBe(newMessage);
     });
 
-    it('should pin currentSession.firstMessage when the first user message arrives incrementally', () => {
+    it("should pin currentSession.firstMessage when the first user message arrives incrementally", () => {
       const currentSession: SessionMetadata = {
-        id: 's1',
-        sessionType: 'main',
-        workdir: '/w',
+        id: "s1",
+        sessionType: "main",
+        workdir: "/w",
         createdAt: new Date(0),
         lastActiveAt: new Date(0),
-        latestTotalTokens: 0
+        latestTotalTokens: 0,
       };
       const state = { ...initialState, currentSession };
 
       const newState = chatReducer(state, {
-        type: 'APPEND_MESSAGE',
-        payload: { id: 'u1', role: 'user', timestamp: '0', blocks: [{ type: 'text', content: '帮我重构登录模块' }] }
+        type: "APPEND_MESSAGE",
+        payload: {
+          id: "u1",
+          role: "user",
+          timestamp: "0",
+          blocks: [{ type: "text", content: "帮我重构登录模块" }],
+        },
       });
 
-      expect(newState.currentSession?.firstMessage).toBe('帮我重构登录模块');
+      expect(newState.currentSession?.firstMessage).toBe("帮我重构登录模块");
     });
 
-    it('should keep the title pinned via APPEND_MESSAGE after compaction truncates the list', () => {
+    it("should keep the title pinned via APPEND_MESSAGE after compaction truncates the list", () => {
       // Desktop sequence: session pushed without firstMessage, user/assistant
       // messages arrive incrementally, then compaction pushes the truncated
       // list ([assistant(compact), ...assistant-only tail]).
       const currentSession: SessionMetadata = {
-        id: 's1',
-        sessionType: 'main',
-        workdir: '/w',
+        id: "s1",
+        sessionType: "main",
+        workdir: "/w",
         createdAt: new Date(0),
         lastActiveAt: new Date(0),
-        latestTotalTokens: 0
+        latestTotalTokens: 0,
       };
       let state: typeof initialState = { ...initialState, currentSession };
 
       state = chatReducer(state, {
-        type: 'APPEND_MESSAGE',
-        payload: { id: 'u1', role: 'user', timestamp: '0', blocks: [{ type: 'text', content: '帮我重构登录模块' }] }
+        type: "APPEND_MESSAGE",
+        payload: {
+          id: "u1",
+          role: "user",
+          timestamp: "0",
+          blocks: [{ type: "text", content: "帮我重构登录模块" }],
+        },
       });
       state = chatReducer(state, {
-        type: 'APPEND_MESSAGE',
-        payload: { id: 'a1', role: 'assistant', timestamp: '0', blocks: [{ type: 'text', content: '好的' }] }
+        type: "APPEND_MESSAGE",
+        payload: {
+          id: "a1",
+          role: "assistant",
+          timestamp: "0",
+          blocks: [{ type: "text", content: "好的" }],
+        },
       });
 
       const compacted = chatReducer(state, {
-        type: 'SET_MESSAGES',
+        type: "SET_MESSAGES",
         payload: [
-          { id: 'c1', role: 'assistant', timestamp: '0', blocks: [{ type: 'compact', content: '对话摘要' }] },
-          { id: 'a2', role: 'assistant', timestamp: '0', blocks: [{ type: 'text', content: '继续' }] }
-        ]
+          {
+            id: "c1",
+            role: "assistant",
+            timestamp: "0",
+            blocks: [{ type: "compact", content: "对话摘要" }],
+          },
+          {
+            id: "a2",
+            role: "assistant",
+            timestamp: "0",
+            blocks: [{ type: "text", content: "继续" }],
+          },
+        ],
       });
 
-      expect(compacted.currentSession?.firstMessage).toBe('帮我重构登录模块');
+      expect(compacted.currentSession?.firstMessage).toBe("帮我重构登录模块");
     });
 
-    it('should not pin firstMessage from appended assistant or meta messages', () => {
+    it("should not pin firstMessage from appended assistant or meta messages", () => {
       const currentSession: SessionMetadata = {
-        id: 's1',
-        sessionType: 'main',
-        workdir: '/w',
+        id: "s1",
+        sessionType: "main",
+        workdir: "/w",
         createdAt: new Date(0),
         lastActiveAt: new Date(0),
-        latestTotalTokens: 0
+        latestTotalTokens: 0,
       };
       let state: typeof initialState = { ...initialState, currentSession };
 
       state = chatReducer(state, {
-        type: 'APPEND_MESSAGE',
-        payload: { id: 'm1', role: 'user', timestamp: '0', isMeta: true, blocks: [{ type: 'text', content: '系统提醒' }] }
+        type: "APPEND_MESSAGE",
+        payload: {
+          id: "m1",
+          role: "user",
+          timestamp: "0",
+          isMeta: true,
+          blocks: [{ type: "text", content: "系统提醒" }],
+        },
       });
       state = chatReducer(state, {
-        type: 'APPEND_MESSAGE',
-        payload: { id: 'a1', role: 'assistant', timestamp: '0', blocks: [{ type: 'text', content: '好的' }] }
+        type: "APPEND_MESSAGE",
+        payload: {
+          id: "a1",
+          role: "assistant",
+          timestamp: "0",
+          blocks: [{ type: "text", content: "好的" }],
+        },
       });
 
       expect(state.currentSession?.firstMessage).toBeUndefined();
     });
   });
 
-  describe('UPDATE_STREAMING_CONTENT', () => {
-    it('should update existing text block content and stage', () => {
+  describe("UPDATE_STREAMING_CONTENT", () => {
+    it("should update existing text block content and stage", () => {
       const textBlock: TextBlock = {
-        type: 'text',
-        content: 'Hello',
-        stage: 'streaming'
+        type: "text",
+        content: "Hello",
+        stage: "streaming",
       };
       const message: Message = {
-        id: 'msg-1',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: [textBlock]
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [textBlock],
       };
       const state = { ...initialState, messages: [message] };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_STREAMING_CONTENT',
-        payload: { messageId: 'msg-1', chunk: ' World', stage: 'streaming' }
+        type: "UPDATE_STREAMING_CONTENT",
+        payload: { messageId: "msg-1", chunk: " World", stage: "streaming" },
       });
 
       expect(newState.messages).toHaveLength(1);
       expect(newState.messages[0].blocks).toHaveLength(1);
       const updatedBlock = newState.messages[0].blocks[0] as TextBlock;
-      expect(updatedBlock.content).toBe('Hello World');
-      expect(updatedBlock.stage).toBe('streaming');
+      expect(updatedBlock.content).toBe("Hello World");
+      expect(updatedBlock.stage).toBe("streaming");
     });
 
-    it('should update stage to end', () => {
+    it("should update stage to end", () => {
       const textBlock: TextBlock = {
-        type: 'text',
-        content: 'Hello',
-        stage: 'streaming'
+        type: "text",
+        content: "Hello",
+        stage: "streaming",
       };
       const message: Message = {
-        id: 'msg-1',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: [textBlock]
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [textBlock],
       };
       const state = { ...initialState, messages: [message] };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_STREAMING_CONTENT',
-        payload: { messageId: 'msg-1', chunk: '', stage: 'end' }
+        type: "UPDATE_STREAMING_CONTENT",
+        payload: { messageId: "msg-1", chunk: "", stage: "end" },
       });
 
       const updatedBlock = newState.messages[0].blocks[0] as TextBlock;
-      expect(updatedBlock.stage).toBe('end');
-      expect(updatedBlock.content).toBe('Hello');
+      expect(updatedBlock.stage).toBe("end");
+      expect(updatedBlock.content).toBe("Hello");
     });
 
-    it('should append text block if none exists', () => {
+    it("should append text block if none exists", () => {
       const message: Message = {
-        id: 'msg-1',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: []
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [],
       };
       const state = { ...initialState, messages: [message] };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_STREAMING_CONTENT',
-        payload: { messageId: 'msg-1', chunk: 'Hello', stage: 'streaming' }
+        type: "UPDATE_STREAMING_CONTENT",
+        payload: { messageId: "msg-1", chunk: "Hello", stage: "streaming" },
       });
 
       expect(newState.messages[0].blocks).toHaveLength(1);
       const newBlock = newState.messages[0].blocks[0] as TextBlock;
-      expect(newBlock.type).toBe('text');
-      expect(newBlock.content).toBe('Hello');
-      expect(newBlock.stage).toBe('streaming');
+      expect(newBlock.type).toBe("text");
+      expect(newBlock.content).toBe("Hello");
+      expect(newBlock.stage).toBe("streaming");
     });
 
-    it('should return original state if messageId not found', () => {
+    it("should return original state if messageId not found", () => {
       const state = { ...initialState, messages: [] };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_STREAMING_CONTENT',
-        payload: { messageId: 'non-existent', chunk: 'Hello', stage: 'streaming' }
+        type: "UPDATE_STREAMING_CONTENT",
+        payload: {
+          messageId: "non-existent",
+          chunk: "Hello",
+          stage: "streaming",
+        },
       });
 
       expect(newState).toBe(state);
     });
   });
 
-  describe('UPDATE_STREAMING_REASONING', () => {
-    it('should update existing reasoning block content and stage', () => {
+  describe("UPDATE_STREAMING_REASONING", () => {
+    it("should update existing reasoning block content and stage", () => {
       const reasoningBlock: ReasoningBlock = {
-        type: 'reasoning',
-        content: 'Thinking...',
-        stage: 'streaming'
+        type: "reasoning",
+        content: "Thinking...",
+        stage: "streaming",
       };
       const message: Message = {
-        id: 'msg-1',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: [reasoningBlock]
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [reasoningBlock],
       };
       const state = { ...initialState, messages: [message] };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_STREAMING_REASONING',
-        payload: { messageId: 'msg-1', chunk: ' about this', stage: 'streaming' }
+        type: "UPDATE_STREAMING_REASONING",
+        payload: {
+          messageId: "msg-1",
+          chunk: " about this",
+          stage: "streaming",
+        },
       });
 
       expect(newState.messages[0].blocks).toHaveLength(1);
       const updatedBlock = newState.messages[0].blocks[0] as ReasoningBlock;
-      expect(updatedBlock.content).toBe('Thinking... about this');
-      expect(updatedBlock.stage).toBe('streaming');
+      expect(updatedBlock.content).toBe("Thinking... about this");
+      expect(updatedBlock.stage).toBe("streaming");
     });
 
-    it('should append reasoning block if none exists', () => {
+    it("should append reasoning block if none exists", () => {
       const message: Message = {
-        id: 'msg-1',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: []
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [],
       };
       const state = { ...initialState, messages: [message] };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_STREAMING_REASONING',
-        payload: { messageId: 'msg-1', chunk: 'Thinking...', stage: 'streaming' }
+        type: "UPDATE_STREAMING_REASONING",
+        payload: {
+          messageId: "msg-1",
+          chunk: "Thinking...",
+          stage: "streaming",
+        },
       });
 
       expect(newState.messages[0].blocks).toHaveLength(1);
       const newBlock = newState.messages[0].blocks[0] as ReasoningBlock;
-      expect(newBlock.type).toBe('reasoning');
-      expect(newBlock.content).toBe('Thinking...');
+      expect(newBlock.type).toBe("reasoning");
+      expect(newBlock.content).toBe("Thinking...");
     });
 
-    it('should return original state if messageId not found', () => {
+    it("should return original state if messageId not found", () => {
       const state = { ...initialState, messages: [] };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_STREAMING_REASONING',
-        payload: { messageId: 'non-existent', chunk: 'Thinking...', stage: 'streaming' }
+        type: "UPDATE_STREAMING_REASONING",
+        payload: {
+          messageId: "non-existent",
+          chunk: "Thinking...",
+          stage: "streaming",
+        },
       });
 
       expect(newState).toBe(state);
     });
 
-    it('should stamp startTime when appending a streaming reasoning block', () => {
+    it("should stamp startTime when appending a streaming reasoning block", () => {
       const message: Message = {
-        id: 'msg-1',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: []
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [],
       };
       const state = { ...initialState, messages: [message] };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_STREAMING_REASONING',
-        payload: { messageId: 'msg-1', chunk: 'Thinking...', stage: 'streaming' }
+        type: "UPDATE_STREAMING_REASONING",
+        payload: {
+          messageId: "msg-1",
+          chunk: "Thinking...",
+          stage: "streaming",
+        },
       });
 
       const newBlock = newState.messages[0].blocks[0] as ReasoningBlock;
-      expect(typeof newBlock.startTime).toBe('number');
+      expect(typeof newBlock.startTime).toBe("number");
       expect(newBlock.endTime).toBeUndefined();
     });
 
-    it('should preserve startTime and stamp endTime when reasoning finishes', () => {
+    it("should preserve startTime and stamp endTime when reasoning finishes", () => {
       const reasoningBlock: ReasoningBlock = {
-        type: 'reasoning',
-        content: 'Thinking...',
-        stage: 'streaming',
-        startTime: 1000
+        type: "reasoning",
+        content: "Thinking...",
+        stage: "streaming",
+        startTime: 1000,
       };
       const message: Message = {
-        id: 'msg-1',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: [reasoningBlock]
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [reasoningBlock],
       };
       const state = { ...initialState, messages: [message] };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_STREAMING_REASONING',
-        payload: { messageId: 'msg-1', chunk: '', stage: 'end' }
+        type: "UPDATE_STREAMING_REASONING",
+        payload: { messageId: "msg-1", chunk: "", stage: "end" },
       });
 
       const updatedBlock = newState.messages[0].blocks[0] as ReasoningBlock;
-      expect(updatedBlock.stage).toBe('end');
+      expect(updatedBlock.stage).toBe("end");
       expect(updatedBlock.startTime).toBe(1000);
-      expect(typeof updatedBlock.endTime).toBe('number');
+      expect(typeof updatedBlock.endTime).toBe("number");
     });
   });
 
-  describe('UPDATE_TOOL_BLOCK', () => {
-    it('should update existing tool block', () => {
+  describe("UPDATE_TOOL_BLOCK", () => {
+    it("should update existing tool block", () => {
       const toolBlock: ToolBlock = {
-        type: 'tool',
-        id: 'tool-1',
-        name: 'Bash',
-        stage: 'running',
+        type: "tool",
+        id: "tool-1",
+        name: "Bash",
+        stage: "running",
         parameters: '{"command":"ls"}',
-        result: '',
-        success: false
+        result: "",
+        success: false,
       };
       const message: Message = {
-        id: 'msg-1',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: [toolBlock]
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [toolBlock],
       };
       const state = { ...initialState, messages: [message] };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_TOOL_BLOCK',
+        type: "UPDATE_TOOL_BLOCK",
         payload: {
-          messageId: 'msg-1',
-          id: 'tool-1',
-          name: 'Bash',
-          stage: 'end',
-          result: 'file1.txt\nfile2.txt',
+          messageId: "msg-1",
+          id: "tool-1",
+          name: "Bash",
+          stage: "end",
+          result: "file1.txt\nfile2.txt",
           success: true,
-          parameters: '{"command":"ls"}'
-        }
+          parameters: '{"command":"ls"}',
+        },
       });
 
       expect(newState.messages[0].blocks).toHaveLength(1);
       const updatedBlock = newState.messages[0].blocks[0] as ToolBlock;
-      expect(updatedBlock.stage).toBe('end');
-      expect(updatedBlock.result).toBe('file1.txt\nfile2.txt');
+      expect(updatedBlock.stage).toBe("end");
+      expect(updatedBlock.result).toBe("file1.txt\nfile2.txt");
       expect(updatedBlock.success).toBe(true);
     });
 
-    it('should return original state if messageId not found', () => {
+    it("should return original state if messageId not found", () => {
       const state = { ...initialState, messages: [] };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_TOOL_BLOCK',
+        type: "UPDATE_TOOL_BLOCK",
         payload: {
-          messageId: 'non-existent',
-          id: 'tool-1',
-          name: 'Bash',
-          stage: 'end',
-          result: '',
+          messageId: "non-existent",
+          id: "tool-1",
+          name: "Bash",
+          stage: "end",
+          result: "",
           success: false,
-          parameters: '{}'
-        }
+          parameters: "{}",
+        },
       });
 
       expect(newState).toBe(state);
     });
 
-    it('should add new tool block if not found (incremental callback scenario)', () => {
+    it("should add new tool block if not found (incremental callback scenario)", () => {
       const message: Message = {
-        id: 'msg-1',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: []
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [],
       };
       const state = { ...initialState, messages: [message] };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_TOOL_BLOCK',
+        type: "UPDATE_TOOL_BLOCK",
         payload: {
-          messageId: 'msg-1',
-          id: 'tool-new',
-          name: 'Bash',
-          stage: 'start',
-          parameters: '{"command":"ls"}'
-        }
+          messageId: "msg-1",
+          id: "tool-new",
+          name: "Bash",
+          stage: "start",
+          parameters: '{"command":"ls"}',
+        },
       });
 
       expect(newState.messages[0].blocks).toHaveLength(1);
       const newBlock = newState.messages[0].blocks[0] as ToolBlock;
-      expect(newBlock.type).toBe('tool');
-      expect(newBlock.id).toBe('tool-new');
-      expect(newBlock.name).toBe('Bash');
-      expect(newBlock.stage).toBe('start');
+      expect(newBlock.type).toBe("tool");
+      expect(newBlock.id).toBe("tool-new");
+      expect(newBlock.name).toBe("Bash");
+      expect(newBlock.stage).toBe("start");
       expect(newBlock.parameters).toBe('{"command":"ls"}');
     });
 
-    it('should add tool block alongside existing blocks', () => {
+    it("should add tool block alongside existing blocks", () => {
       const textBlock: TextBlock = {
-        type: 'text',
-        content: 'Let me run a command',
-        stage: 'end'
+        type: "text",
+        content: "Let me run a command",
+        stage: "end",
       };
       const message: Message = {
-        id: 'msg-1',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: [textBlock]
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [textBlock],
       };
       const state = { ...initialState, messages: [message] };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_TOOL_BLOCK',
+        type: "UPDATE_TOOL_BLOCK",
         payload: {
-          messageId: 'msg-1',
-          id: 'tool-1',
-          name: 'Bash',
-          stage: 'running',
-          parameters: '{"command":"ls"}'
-        }
+          messageId: "msg-1",
+          id: "tool-1",
+          name: "Bash",
+          stage: "running",
+          parameters: '{"command":"ls"}',
+        },
       });
 
       expect(newState.messages[0].blocks).toHaveLength(2);
-      expect(newState.messages[0].blocks[0].type).toBe('text');
+      expect(newState.messages[0].blocks[0].type).toBe("text");
       const toolBlock = newState.messages[0].blocks[1] as ToolBlock;
-      expect(toolBlock.type).toBe('tool');
-      expect(toolBlock.id).toBe('tool-1');
-      expect(toolBlock.stage).toBe('running');
+      expect(toolBlock.type).toBe("tool");
+      expect(toolBlock.id).toBe("tool-1");
+      expect(toolBlock.stage).toBe("running");
     });
   });
 
-  describe('SET_MESSAGES', () => {
-    it('should replace entire message list', () => {
-      const oldMessage: Message = { id: 'old', role: 'user', timestamp: '0', blocks: [] };
+  describe("SET_MESSAGES", () => {
+    it("should replace entire message list", () => {
+      const oldMessage: Message = {
+        id: "old",
+        role: "user",
+        timestamp: "0",
+        blocks: [],
+      };
       const state = { ...initialState, messages: [oldMessage] };
       const newMessages: Message[] = [
-        { id: 'new-1', role: 'user', timestamp: '0', blocks: [] },
-        { id: 'new-2', role: 'assistant', timestamp: '0', blocks: [] }
+        { id: "new-1", role: "user", timestamp: "0", blocks: [] },
+        { id: "new-2", role: "assistant", timestamp: "0", blocks: [] },
       ];
 
-      const newState = chatReducer(state, { type: 'SET_MESSAGES', payload: newMessages });
+      const newState = chatReducer(state, {
+        type: "SET_MESSAGES",
+        payload: newMessages,
+      });
 
       expect(newState.messages).toHaveLength(2);
-      expect(newState.messages[0].id).toBe('new-1');
-      expect(newState.messages[1].id).toBe('new-2');
+      expect(newState.messages[0].id).toBe("new-1");
+      expect(newState.messages[1].id).toBe("new-2");
     });
 
-    it('should pin currentSession.firstMessage from the first user message while it is still in the list', () => {
+    it("should pin currentSession.firstMessage from the first user message while it is still in the list", () => {
       const currentSession: SessionMetadata = {
-        id: 's1',
-        sessionType: 'main',
-        workdir: '/w',
+        id: "s1",
+        sessionType: "main",
+        workdir: "/w",
         createdAt: new Date(0),
         lastActiveAt: new Date(0),
-        latestTotalTokens: 0
+        latestTotalTokens: 0,
       };
       const state = { ...initialState, currentSession };
       const newMessages: Message[] = [
-        { id: 'u1', role: 'user', timestamp: '0', blocks: [{ type: 'text', content: '帮我重构登录模块' }] },
-        { id: 'a1', role: 'assistant', timestamp: '0', blocks: [{ type: 'text', content: '好的' }] }
+        {
+          id: "u1",
+          role: "user",
+          timestamp: "0",
+          blocks: [{ type: "text", content: "帮我重构登录模块" }],
+        },
+        {
+          id: "a1",
+          role: "assistant",
+          timestamp: "0",
+          blocks: [{ type: "text", content: "好的" }],
+        },
       ];
 
-      const newState = chatReducer(state, { type: 'SET_MESSAGES', payload: newMessages });
+      const newState = chatReducer(state, {
+        type: "SET_MESSAGES",
+        payload: newMessages,
+      });
 
-      expect(newState.currentSession?.firstMessage).toBe('帮我重构登录模块');
+      expect(newState.currentSession?.firstMessage).toBe("帮我重构登录模块");
     });
 
-    it('should keep the pinned title after compaction truncates the message list', () => {
+    it("should keep the pinned title after compaction truncates the message list", () => {
       const currentSession: SessionMetadata = {
-        id: 's1',
-        sessionType: 'main',
-        workdir: '/w',
+        id: "s1",
+        sessionType: "main",
+        workdir: "/w",
         createdAt: new Date(0),
         lastActiveAt: new Date(0),
-        latestTotalTokens: 0
+        latestTotalTokens: 0,
       };
       const state = { ...initialState, currentSession };
 
       // Pre-compaction: full list still contains the first user message.
       const withUser = chatReducer(state, {
-        type: 'SET_MESSAGES',
+        type: "SET_MESSAGES",
         payload: [
-          { id: 'u1', role: 'user', timestamp: '0', blocks: [{ type: 'text', content: '帮我重构登录模块' }] },
-          { id: 'a1', role: 'assistant', timestamp: '0', blocks: [{ type: 'text', content: '好的' }] }
-        ]
+          {
+            id: "u1",
+            role: "user",
+            timestamp: "0",
+            blocks: [{ type: "text", content: "帮我重构登录模块" }],
+          },
+          {
+            id: "a1",
+            role: "assistant",
+            timestamp: "0",
+            blocks: [{ type: "text", content: "好的" }],
+          },
+        ],
       });
 
       // Post-compaction: [assistant(compact), ...assistant-only tail rounds].
       const compacted = chatReducer(withUser, {
-        type: 'SET_MESSAGES',
+        type: "SET_MESSAGES",
         payload: [
-          { id: 'c1', role: 'assistant', timestamp: '0', blocks: [{ type: 'compact', content: '对话摘要' }] },
-          { id: 'a2', role: 'assistant', timestamp: '0', blocks: [{ type: 'text', content: '继续' }] }
-        ]
+          {
+            id: "c1",
+            role: "assistant",
+            timestamp: "0",
+            blocks: [{ type: "compact", content: "对话摘要" }],
+          },
+          {
+            id: "a2",
+            role: "assistant",
+            timestamp: "0",
+            blocks: [{ type: "text", content: "继续" }],
+          },
+        ],
       });
 
-      expect(compacted.currentSession?.firstMessage).toBe('帮我重构登录模块');
+      expect(compacted.currentSession?.firstMessage).toBe("帮我重构登录模块");
     });
 
-    it('should not overwrite an existing firstMessage', () => {
+    it("should not overwrite an existing firstMessage", () => {
       const currentSession: SessionMetadata = {
-        id: 's1',
-        sessionType: 'main',
-        firstMessage: '原始标题',
-        workdir: '/w',
+        id: "s1",
+        sessionType: "main",
+        firstMessage: "原始标题",
+        workdir: "/w",
         createdAt: new Date(0),
         lastActiveAt: new Date(0),
-        latestTotalTokens: 0
+        latestTotalTokens: 0,
       };
       const state = { ...initialState, currentSession };
 
       const newState = chatReducer(state, {
-        type: 'SET_MESSAGES',
-        payload: [{ id: 'u1', role: 'user', timestamp: '0', blocks: [{ type: 'text', content: '新首条消息' }] }]
+        type: "SET_MESSAGES",
+        payload: [
+          {
+            id: "u1",
+            role: "user",
+            timestamp: "0",
+            blocks: [{ type: "text", content: "新首条消息" }],
+          },
+        ],
       });
 
-      expect(newState.currentSession?.firstMessage).toBe('原始标题');
+      expect(newState.currentSession?.firstMessage).toBe("原始标题");
     });
 
-    it('should leave firstMessage empty when the list has no user text message', () => {
+    it("should leave firstMessage empty when the list has no user text message", () => {
       const currentSession: SessionMetadata = {
-        id: 's1',
-        sessionType: 'main',
-        workdir: '/w',
+        id: "s1",
+        sessionType: "main",
+        workdir: "/w",
         createdAt: new Date(0),
         lastActiveAt: new Date(0),
-        latestTotalTokens: 0
+        latestTotalTokens: 0,
       };
       const state = { ...initialState, currentSession };
 
       const newState = chatReducer(state, {
-        type: 'SET_MESSAGES',
-        payload: [{ id: 'c1', role: 'assistant', timestamp: '0', blocks: [{ type: 'compact', content: '对话摘要' }] }]
+        type: "SET_MESSAGES",
+        payload: [
+          {
+            id: "c1",
+            role: "assistant",
+            timestamp: "0",
+            blocks: [{ type: "compact", content: "对话摘要" }],
+          },
+        ],
       });
 
       expect(newState.currentSession?.firstMessage).toBeUndefined();
     });
   });
 
-  describe('APPEND_ERROR_BLOCK', () => {
-    it('should append error block to last assistant message', () => {
-      const textBlock: TextBlock = { type: 'text', content: 'Hello', stage: 'end' };
+  describe("APPEND_ERROR_BLOCK", () => {
+    it("should append error block to last assistant message", () => {
+      const textBlock: TextBlock = {
+        type: "text",
+        content: "Hello",
+        stage: "end",
+      };
       const assistantMessage: Message = {
-        id: 'msg-1',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: [textBlock]
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [textBlock],
       };
       const state = { ...initialState, messages: [assistantMessage] };
 
       const newState = chatReducer(state, {
-        type: 'APPEND_ERROR_BLOCK',
-        payload: { error: 'API rate limit exceeded' }
+        type: "APPEND_ERROR_BLOCK",
+        payload: { error: "API rate limit exceeded" },
       });
 
       expect(newState.messages[0].blocks).toHaveLength(2);
       const errorBlock = newState.messages[0].blocks[1] as ErrorBlock;
-      expect(errorBlock.type).toBe('error');
-      expect(errorBlock.content).toBe('API rate limit exceeded');
+      expect(errorBlock.type).toBe("error");
+      expect(errorBlock.content).toBe("API rate limit exceeded");
     });
 
-    it('should append error block to last assistant message when multiple messages exist', () => {
+    it("should append error block to last assistant message when multiple messages exist", () => {
       const userMessage: Message = {
-        id: 'msg-1',
-        role: 'user',
-        timestamp: '0',
-        blocks: [{ type: 'text', content: 'Hi', stage: 'end' }]
+        id: "msg-1",
+        role: "user",
+        timestamp: "0",
+        blocks: [{ type: "text", content: "Hi", stage: "end" }],
       };
       const assistantMessage: Message = {
-        id: 'msg-2',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: [{ type: 'text', content: 'Hello', stage: 'end' }]
+        id: "msg-2",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [{ type: "text", content: "Hello", stage: "end" }],
       };
-      const state = { ...initialState, messages: [userMessage, assistantMessage] };
+      const state = {
+        ...initialState,
+        messages: [userMessage, assistantMessage],
+      };
 
       const newState = chatReducer(state, {
-        type: 'APPEND_ERROR_BLOCK',
-        payload: { error: 'Something went wrong' }
+        type: "APPEND_ERROR_BLOCK",
+        payload: { error: "Something went wrong" },
       });
 
       expect(newState.messages[1].blocks).toHaveLength(2);
       const errorBlock = newState.messages[1].blocks[1] as ErrorBlock;
-      expect(errorBlock.type).toBe('error');
-      expect(errorBlock.content).toBe('Something went wrong');
+      expect(errorBlock.type).toBe("error");
+      expect(errorBlock.content).toBe("Something went wrong");
       // User message unchanged
       expect(newState.messages[0].blocks).toHaveLength(1);
     });
 
-    it('should create a new assistant message with error block if no assistant message exists', () => {
+    it("should create a new assistant message with error block if no assistant message exists", () => {
       const userMessage: Message = {
-        id: 'msg-1',
-        role: 'user',
-        timestamp: '0',
-        blocks: []
+        id: "msg-1",
+        role: "user",
+        timestamp: "0",
+        blocks: [],
       };
       const state = { ...initialState, messages: [userMessage] };
 
       const newState = chatReducer(state, {
-        type: 'APPEND_ERROR_BLOCK',
-        payload: { error: '402 Payment Required' }
+        type: "APPEND_ERROR_BLOCK",
+        payload: { error: "402 Payment Required" },
       });
 
       expect(newState.messages).toHaveLength(2);
       expect(newState.messages[0]).toBe(userMessage);
       const errorMessage = newState.messages[1];
-      expect(errorMessage.role).toBe('assistant');
+      expect(errorMessage.role).toBe("assistant");
       expect(errorMessage.blocks).toHaveLength(1);
       const errorBlock = errorMessage.blocks[0] as ErrorBlock;
-      expect(errorBlock.type).toBe('error');
-      expect(errorBlock.content).toBe('402 Payment Required');
+      expect(errorBlock.type).toBe("error");
+      expect(errorBlock.content).toBe("402 Payment Required");
     });
 
-    it('should not mutate original state', () => {
+    it("should not mutate original state", () => {
       const assistantMessage: Message = {
-        id: 'msg-1',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: []
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [],
       };
       const state = { ...initialState, messages: [assistantMessage] };
 
       const newState = chatReducer(state, {
-        type: 'APPEND_ERROR_BLOCK',
-        payload: { error: 'Error' }
+        type: "APPEND_ERROR_BLOCK",
+        payload: { error: "Error" },
       });
 
       expect(state.messages[0].blocks).toHaveLength(0);
@@ -628,353 +759,423 @@ describe('chatReducer', () => {
     });
   });
 
-  describe('Bang message flow', () => {
-    it('APPEND_BANG_MESSAGE creates a user message with a running bang block', () => {
+  describe("Bang message flow", () => {
+    it("APPEND_BANG_MESSAGE creates a user message with a running bang block", () => {
       const state = { ...initialState, messages: [] };
 
       const newState = chatReducer(state, {
-        type: 'APPEND_BANG_MESSAGE',
-        payload: { command: 'ls -la', messageId: 'bang-1' }
+        type: "APPEND_BANG_MESSAGE",
+        payload: { command: "ls -la", messageId: "bang-1" },
       });
 
       expect(newState.messages).toHaveLength(1);
       const msg = newState.messages[0];
-      expect(msg.id).toBe('bang-1');
-      expect(msg.role).toBe('user');
+      expect(msg.id).toBe("bang-1");
+      expect(msg.role).toBe("user");
       expect(msg.blocks).toHaveLength(1);
       expect(msg.blocks[0]).toEqual({
-        type: 'bang',
-        command: 'ls -la',
-        output: '',
-        stage: 'running',
-        exitCode: null
+        type: "bang",
+        command: "ls -la",
+        output: "",
+        stage: "running",
+        exitCode: null,
       });
     });
 
-    it('APPEND_BANG_MESSAGE is a no-op when the message already exists', () => {
+    it("APPEND_BANG_MESSAGE is a no-op when the message already exists", () => {
       const existing: Message = {
-        id: 'bang-1',
-        role: 'user',
-        timestamp: '0',
-        blocks: [{ type: 'bang', command: 'ls', output: 'x', stage: 'end', exitCode: 0 }]
+        id: "bang-1",
+        role: "user",
+        timestamp: "0",
+        blocks: [
+          {
+            type: "bang",
+            command: "ls",
+            output: "x",
+            stage: "end",
+            exitCode: 0,
+          },
+        ],
       };
       const state = { ...initialState, messages: [existing] };
 
       const newState = chatReducer(state, {
-        type: 'APPEND_BANG_MESSAGE',
-        payload: { command: 'other', messageId: 'bang-1' }
+        type: "APPEND_BANG_MESSAGE",
+        payload: { command: "other", messageId: "bang-1" },
       });
 
       expect(newState.messages).toHaveLength(1);
       expect(newState.messages[0]).toBe(existing);
     });
 
-    it('UPDATE_BANG_MESSAGE merges command and output into the bang block', () => {
+    it("UPDATE_BANG_MESSAGE merges command and output into the bang block", () => {
       const state = {
         ...initialState,
         messages: [
           {
-            id: 'bang-1',
-            role: 'user' as const,
-            timestamp: '0',
-            blocks: [{ type: 'bang' as const, command: 'ls', output: '', stage: 'running' as const, exitCode: null }]
-          }
-        ]
+            id: "bang-1",
+            role: "user" as const,
+            timestamp: "0",
+            blocks: [
+              {
+                type: "bang" as const,
+                command: "ls",
+                output: "",
+                stage: "running" as const,
+                exitCode: null,
+              },
+            ],
+          },
+        ],
       };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_BANG_MESSAGE',
-        payload: { command: 'ls -la', output: 'total 0', messageId: 'bang-1' }
+        type: "UPDATE_BANG_MESSAGE",
+        payload: { command: "ls -la", output: "total 0", messageId: "bang-1" },
       });
 
       const block = newState.messages[0].blocks[0];
       expect(block).toEqual({
-        type: 'bang',
-        command: 'ls -la',
-        output: 'total 0',
-        stage: 'running',
-        exitCode: null
+        type: "bang",
+        command: "ls -la",
+        output: "total 0",
+        stage: "running",
+        exitCode: null,
       });
     });
 
-    it('UPDATE_BANG_MESSAGE is a no-op for an unknown messageId', () => {
+    it("UPDATE_BANG_MESSAGE is a no-op for an unknown messageId", () => {
       const state = { ...initialState, messages: [] };
 
       const newState = chatReducer(state, {
-        type: 'UPDATE_BANG_MESSAGE',
-        payload: { command: 'ls', output: 'x', messageId: 'missing' }
+        type: "UPDATE_BANG_MESSAGE",
+        payload: { command: "ls", output: "x", messageId: "missing" },
       });
 
       expect(newState).toBe(state);
     });
 
-    it('COMPLETE_BANG_MESSAGE stamps exitCode and transitions stage to end', () => {
+    it("COMPLETE_BANG_MESSAGE stamps exitCode and transitions stage to end", () => {
       const state = {
         ...initialState,
         messages: [
           {
-            id: 'bang-1',
-            role: 'user' as const,
-            timestamp: '0',
-            blocks: [{ type: 'bang' as const, command: 'false', output: '', stage: 'running' as const, exitCode: null }]
-          }
-        ]
+            id: "bang-1",
+            role: "user" as const,
+            timestamp: "0",
+            blocks: [
+              {
+                type: "bang" as const,
+                command: "false",
+                output: "",
+                stage: "running" as const,
+                exitCode: null,
+              },
+            ],
+          },
+        ],
       };
 
       const newState = chatReducer(state, {
-        type: 'COMPLETE_BANG_MESSAGE',
-        payload: { command: 'false', exitCode: 1, messageId: 'bang-1', output: 'boom\n' }
+        type: "COMPLETE_BANG_MESSAGE",
+        payload: {
+          command: "false",
+          exitCode: 1,
+          messageId: "bang-1",
+          output: "boom\n",
+        },
       });
 
       const block = newState.messages[0].blocks[0];
       expect(block).toEqual({
-        type: 'bang',
-        command: 'false',
-        output: 'boom\n',
-        stage: 'end',
-        exitCode: 1
+        type: "bang",
+        command: "false",
+        output: "boom\n",
+        stage: "end",
+        exitCode: 1,
       });
     });
 
-    it('COMPLETE_BANG_MESSAGE without output preserves the running-stage output', () => {
+    it("COMPLETE_BANG_MESSAGE without output preserves the running-stage output", () => {
       const state = {
         ...initialState,
         messages: [
           {
-            id: 'bang-1',
-            role: 'user' as const,
-            timestamp: '0',
-            blocks: [{ type: 'bang' as const, command: 'ls', output: 'partial', stage: 'running' as const, exitCode: null }]
-          }
-        ]
+            id: "bang-1",
+            role: "user" as const,
+            timestamp: "0",
+            blocks: [
+              {
+                type: "bang" as const,
+                command: "ls",
+                output: "partial",
+                stage: "running" as const,
+                exitCode: null,
+              },
+            ],
+          },
+        ],
       };
 
       const newState = chatReducer(state, {
-        type: 'COMPLETE_BANG_MESSAGE',
-        payload: { command: 'ls', exitCode: 0, messageId: 'bang-1' }
+        type: "COMPLETE_BANG_MESSAGE",
+        payload: { command: "ls", exitCode: 0, messageId: "bang-1" },
       });
 
       const block = newState.messages[0].blocks[0];
       expect(block).toEqual({
-        type: 'bang',
-        command: 'ls',
-        output: 'partial',
-        stage: 'end',
-        exitCode: 0
+        type: "bang",
+        command: "ls",
+        output: "partial",
+        stage: "end",
+        exitCode: 0,
       });
     });
 
-    it('COMPLETE_BANG_MESSAGE is a no-op for an unknown messageId', () => {
+    it("COMPLETE_BANG_MESSAGE is a no-op for an unknown messageId", () => {
       const state = { ...initialState, messages: [] };
 
       const newState = chatReducer(state, {
-        type: 'COMPLETE_BANG_MESSAGE',
-        payload: { command: 'ls', exitCode: 0, messageId: 'missing' }
+        type: "COMPLETE_BANG_MESSAGE",
+        payload: { command: "ls", exitCode: 0, messageId: "missing" },
       });
 
       expect(newState).toBe(state);
     });
   });
 
-  describe('User message flow', () => {
-    it('should handle user message followed by assistant message', () => {
+  describe("User message flow", () => {
+    it("should handle user message followed by assistant message", () => {
       const state = { ...initialState, messages: [] };
 
       // User sends a message
       const userMessage: Message = {
-        id: 'user-1',
-        role: 'user',
-        timestamp: '0',
-        blocks: [{ type: 'text', content: 'Hello', stage: 'end' }]
+        id: "user-1",
+        role: "user",
+        timestamp: "0",
+        blocks: [{ type: "text", content: "Hello", stage: "end" }],
       };
-      let newState = chatReducer(state, { type: 'APPEND_MESSAGE', payload: userMessage });
+      let newState = chatReducer(state, {
+        type: "APPEND_MESSAGE",
+        payload: userMessage,
+      });
       expect(newState.messages).toHaveLength(1);
-      expect(newState.messages[0].role).toBe('user');
+      expect(newState.messages[0].role).toBe("user");
 
       // Assistant starts responding
       const assistantMessage: Message = {
-        id: 'assistant-1',
-        role: 'assistant',
-        timestamp: '0',
-        blocks: []
+        id: "assistant-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [],
       };
-      newState = chatReducer(newState, { type: 'APPEND_MESSAGE', payload: assistantMessage });
+      newState = chatReducer(newState, {
+        type: "APPEND_MESSAGE",
+        payload: assistantMessage,
+      });
       expect(newState.messages).toHaveLength(2);
-      expect(newState.messages[0].role).toBe('user');
-      expect(newState.messages[1].role).toBe('assistant');
+      expect(newState.messages[0].role).toBe("user");
+      expect(newState.messages[1].role).toBe("assistant");
 
       // Assistant content streams in
       newState = chatReducer(newState, {
-        type: 'UPDATE_STREAMING_CONTENT',
-        payload: { messageId: 'assistant-1', chunk: 'Hi there', stage: 'streaming' }
+        type: "UPDATE_STREAMING_CONTENT",
+        payload: {
+          messageId: "assistant-1",
+          chunk: "Hi there",
+          stage: "streaming",
+        },
       });
       expect(newState.messages).toHaveLength(2);
       expect(newState.messages[1].blocks).toHaveLength(1);
-      expect((newState.messages[1].blocks[0] as TextBlock).content).toBe('Hi there');
+      expect((newState.messages[1].blocks[0] as TextBlock).content).toBe(
+        "Hi there",
+      );
     });
   });
 
-  describe('SET_CURRENT_SESSION', () => {
-    it('should backfill firstMessage from sessions list when payload lacks it', () => {
+  describe("SET_CURRENT_SESSION", () => {
+    it("should backfill firstMessage from sessions list when payload lacks it", () => {
       const sessionInList: SessionMetadata = {
-        id: 's1',
-        sessionType: 'main',
-        firstMessage: '压缩块摘要内容',
-        workdir: '/w',
+        id: "s1",
+        sessionType: "main",
+        firstMessage: "压缩块摘要内容",
+        workdir: "/w",
         createdAt: new Date(0),
         lastActiveAt: new Date(0),
-        latestTotalTokens: 0
+        latestTotalTokens: 0,
       };
       const state = { ...initialState, sessions: [sessionInList] };
 
       const newState = chatReducer(state, {
-        type: 'SET_CURRENT_SESSION',
+        type: "SET_CURRENT_SESSION",
         payload: {
-          id: 's1',
-          sessionType: 'main',
-          workdir: '/w',
+          id: "s1",
+          sessionType: "main",
+          workdir: "/w",
           createdAt: new Date(0),
           lastActiveAt: new Date(0),
-          latestTotalTokens: 0
-        }
+          latestTotalTokens: 0,
+        },
       });
 
-      expect(newState.currentSession?.firstMessage).toBe('压缩块摘要内容');
+      expect(newState.currentSession?.firstMessage).toBe("压缩块摘要内容");
     });
 
-    it('should not override firstMessage when payload already has one', () => {
+    it("should not override firstMessage when payload already has one", () => {
       const sessionInList: SessionMetadata = {
-        id: 's1',
-        sessionType: 'main',
-        firstMessage: '列表里的摘要',
-        workdir: '/w',
+        id: "s1",
+        sessionType: "main",
+        firstMessage: "列表里的摘要",
+        workdir: "/w",
         createdAt: new Date(0),
         lastActiveAt: new Date(0),
-        latestTotalTokens: 0
+        latestTotalTokens: 0,
       };
       const state = { ...initialState, sessions: [sessionInList] };
 
       const newState = chatReducer(state, {
-        type: 'SET_CURRENT_SESSION',
+        type: "SET_CURRENT_SESSION",
         payload: {
-          id: 's1',
-          sessionType: 'main',
-          firstMessage: 'payload自带的',
-          workdir: '/w',
+          id: "s1",
+          sessionType: "main",
+          firstMessage: "payload自带的",
+          workdir: "/w",
           createdAt: new Date(0),
           lastActiveAt: new Date(0),
-          latestTotalTokens: 0
-        }
+          latestTotalTokens: 0,
+        },
       });
 
-      expect(newState.currentSession?.firstMessage).toBe('payload自带的');
+      expect(newState.currentSession?.firstMessage).toBe("payload自带的");
     });
 
-    it('should not backfill firstMessage when session is not in sessions list', () => {
+    it("should not backfill firstMessage when session is not in sessions list", () => {
       const state = { ...initialState, sessions: [] };
 
       const newState = chatReducer(state, {
-        type: 'SET_CURRENT_SESSION',
+        type: "SET_CURRENT_SESSION",
         payload: {
-          id: 'new-session',
-          sessionType: 'main',
-          workdir: '/w',
+          id: "new-session",
+          sessionType: "main",
+          workdir: "/w",
           createdAt: new Date(0),
           lastActiveAt: new Date(0),
-          latestTotalTokens: 0
-        }
+          latestTotalTokens: 0,
+        },
       });
 
       expect(newState.currentSession?.firstMessage).toBeUndefined();
     });
 
-    it('should clear currentSession when payload is undefined without error', () => {
+    it("should clear currentSession when payload is undefined without error", () => {
       const currentSession: SessionMetadata = {
-        id: 's1',
-        sessionType: 'main',
-        workdir: '/w',
+        id: "s1",
+        sessionType: "main",
+        workdir: "/w",
         createdAt: new Date(0),
         lastActiveAt: new Date(0),
-        latestTotalTokens: 0
+        latestTotalTokens: 0,
       };
       const state = { ...initialState, currentSession };
 
-      const newState = chatReducer(state, { type: 'SET_CURRENT_SESSION', payload: undefined });
+      const newState = chatReducer(state, {
+        type: "SET_CURRENT_SESSION",
+        payload: undefined,
+      });
 
       expect(newState.currentSession).toBeUndefined();
     });
   });
 
-  describe('SET_INITIAL_STATE', () => {
-    it('should pin firstMessage from the initial messages when the pushed session lacks it', () => {
+  describe("SET_INITIAL_STATE", () => {
+    it("should pin firstMessage from the initial messages when the pushed session lacks it", () => {
       // Desktop re-pushes pane state (setInitialState) with a session object
       // that never carries firstMessage; the title must be re-derived from the
       // same-snapshot messages so a pane switch does not drop the pinned title.
       const newState = chatReducer(initialState, {
-        type: 'SET_INITIAL_STATE',
+        type: "SET_INITIAL_STATE",
         payload: {
           messages: [
-            { id: 'u1', role: 'user', timestamp: '0', blocks: [{ type: 'text', content: '帮我重构登录模块' }] },
-            { id: 'a1', role: 'assistant', timestamp: '0', blocks: [{ type: 'text', content: '好的' }] }
+            {
+              id: "u1",
+              role: "user",
+              timestamp: "0",
+              blocks: [{ type: "text", content: "帮我重构登录模块" }],
+            },
+            {
+              id: "a1",
+              role: "assistant",
+              timestamp: "0",
+              blocks: [{ type: "text", content: "好的" }],
+            },
           ],
           sessions: [],
           currentSession: {
-            id: 's1',
-            sessionType: 'main',
-            workdir: '/w',
+            id: "s1",
+            sessionType: "main",
+            workdir: "/w",
             createdAt: new Date(0),
             lastActiveAt: new Date(0),
-            latestTotalTokens: 0
+            latestTotalTokens: 0,
           },
-          configurationData: {} as any,
+          configurationData: {},
           pendingConfirmations: [],
           isStreaming: false,
         },
       });
 
-      expect(newState.currentSession?.firstMessage).toBe('帮我重构登录模块');
+      expect(newState.currentSession?.firstMessage).toBe("帮我重构登录模块");
     });
 
-    it('should not overwrite a firstMessage already present on the pushed session', () => {
+    it("should not overwrite a firstMessage already present on the pushed session", () => {
       const newState = chatReducer(initialState, {
-        type: 'SET_INITIAL_STATE',
+        type: "SET_INITIAL_STATE",
         payload: {
           messages: [
-            { id: 'u1', role: 'user', timestamp: '0', blocks: [{ type: 'text', content: '新首条消息' }] }
+            {
+              id: "u1",
+              role: "user",
+              timestamp: "0",
+              blocks: [{ type: "text", content: "新首条消息" }],
+            },
           ],
           sessions: [],
           currentSession: {
-            id: 's1',
-            sessionType: 'main',
-            firstMessage: '原始标题',
-            workdir: '/w',
+            id: "s1",
+            sessionType: "main",
+            firstMessage: "原始标题",
+            workdir: "/w",
             createdAt: new Date(0),
             lastActiveAt: new Date(0),
-            latestTotalTokens: 0
+            latestTotalTokens: 0,
           },
-          configurationData: {} as any,
+          configurationData: {},
           pendingConfirmations: [],
           isStreaming: false,
         },
       });
 
-      expect(newState.currentSession?.firstMessage).toBe('原始标题');
+      expect(newState.currentSession?.firstMessage).toBe("原始标题");
     });
 
-    it('SET_INITIAL_STATE clears a stale isCompacting so a session switch does not leak the compaction hint', () => {
+    it("SET_INITIAL_STATE clears a stale isCompacting so a session switch does not leak the compaction hint", () => {
       // Session A is mid-compaction: the view shows "正在压缩对话…".
-      let state = chatReducer(initialState, { type: 'SET_COMPACTING', payload: true });
+      let state = chatReducer(initialState, {
+        type: "SET_COMPACTING",
+        payload: true,
+      });
       expect(state.isCompacting).toBe(true);
 
       // User switches to session B, which is not compacting. The host pushes
       // setInitialState for B (isCompacting absent). The hint must not leak
       // from A into B.
       state = chatReducer(state, {
-        type: 'SET_INITIAL_STATE',
+        type: "SET_INITIAL_STATE",
         payload: {
           messages: [],
           sessions: [],
-          configurationData: {} as any,
+          configurationData: {},
           pendingConfirmations: [],
           isStreaming: false,
         },
@@ -983,16 +1184,16 @@ describe('chatReducer', () => {
       expect(state.isCompacting).toBe(false);
     });
 
-    it('SET_INITIAL_STATE preserves isCompacting when the host pushes a still-compacting session', () => {
+    it("SET_INITIAL_STATE preserves isCompacting when the host pushes a still-compacting session", () => {
       // Switching back to a session that is still compacting must keep the hint.
       const state = chatReducer(
         { ...initialState, isCompacting: false },
         {
-          type: 'SET_INITIAL_STATE',
+          type: "SET_INITIAL_STATE",
           payload: {
             messages: [],
             sessions: [],
-            configurationData: {} as any,
+            configurationData: {},
             pendingConfirmations: [],
             isStreaming: false,
             isCompacting: true,
@@ -1003,17 +1204,17 @@ describe('chatReducer', () => {
       expect(state.isCompacting).toBe(true);
     });
 
-    it('SET_INITIAL_STATE raises isRestoring when the host pushes a still-restoring session', () => {
+    it("SET_INITIAL_STATE raises isRestoring when the host pushes a still-restoring session", () => {
       // The desktop host switches the pane to the selected historical session
       // immediately and keeps the sweep overlay up until the restore lands.
       const state = chatReducer(
         { ...initialState, isRestoring: false },
         {
-          type: 'SET_INITIAL_STATE',
+          type: "SET_INITIAL_STATE",
           payload: {
             messages: [],
             sessions: [],
-            configurationData: {} as any,
+            configurationData: {},
             pendingConfirmations: [],
             isStreaming: false,
             isRestoring: true,
@@ -1024,15 +1225,15 @@ describe('chatReducer', () => {
       expect(state.isRestoring).toBe(true);
     });
 
-    it('SET_INITIAL_STATE clears a stale isRestoring when absent (restore finished)', () => {
+    it("SET_INITIAL_STATE clears a stale isRestoring when absent (restore finished)", () => {
       // The host raises the overlay on selection, then drops it once the
       // restore lands — a push without the flag must not keep the overlay.
       let state = chatReducer(initialState, {
-        type: 'SET_INITIAL_STATE',
+        type: "SET_INITIAL_STATE",
         payload: {
           messages: [],
           sessions: [],
-          configurationData: {} as any,
+          configurationData: {},
           pendingConfirmations: [],
           isStreaming: false,
           isRestoring: true,
@@ -1041,11 +1242,11 @@ describe('chatReducer', () => {
       expect(state.isRestoring).toBe(true);
 
       state = chatReducer(state, {
-        type: 'SET_INITIAL_STATE',
+        type: "SET_INITIAL_STATE",
         payload: {
           messages: [],
           sessions: [],
-          configurationData: {} as any,
+          configurationData: {},
           pendingConfirmations: [],
           isStreaming: false,
         },
@@ -1055,15 +1256,15 @@ describe('chatReducer', () => {
     });
   });
 
-  describe('theme state', () => {
-    it('SET_INITIAL_STATE stores the theme payload and preserves it when absent', () => {
-      const theme = { effective: 'dark' as const };
+  describe("theme state", () => {
+    it("SET_INITIAL_STATE stores the theme payload and preserves it when absent", () => {
+      const theme = { effective: "dark" as const };
       const newState = chatReducer(initialState, {
-        type: 'SET_INITIAL_STATE',
+        type: "SET_INITIAL_STATE",
         payload: {
           messages: [],
           sessions: [],
-          configurationData: {} as any,
+          configurationData: {},
           pendingConfirmations: [],
           isStreaming: false,
           theme,
@@ -1072,11 +1273,11 @@ describe('chatReducer', () => {
       expect(newState.theme).toEqual(theme);
 
       const withoutTheme = chatReducer(initialState, {
-        type: 'SET_INITIAL_STATE',
+        type: "SET_INITIAL_STATE",
         payload: {
           messages: [],
           sessions: [],
-          configurationData: {} as any,
+          configurationData: {},
           pendingConfirmations: [],
           isStreaming: false,
         },

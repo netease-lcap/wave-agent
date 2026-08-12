@@ -1,22 +1,36 @@
-import React, { useState, useId, ReactElement, useRef, useCallback } from 'react';
-import '../styles/Tooltip.css';
+import React, {
+  useState,
+  useId,
+  ReactElement,
+  useRef,
+  useCallback,
+} from "react";
+import "../styles/Tooltip.css";
 
 interface TooltipProps {
   text: string;
   children: ReactElement;
-  position?: 'top' | 'bottom' | 'left' | 'right' | 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right';
+  position?:
+    | "top"
+    | "bottom"
+    | "left"
+    | "right"
+    | "bottom-left"
+    | "bottom-right"
+    | "top-left"
+    | "top-right";
   offset?: number;
   disabled?: boolean;
   className?: string;
 }
 
-export const Tooltip: React.FC<TooltipProps> = ({ 
-  text, 
-  children, 
-  position = 'top',
+export const Tooltip: React.FC<TooltipProps> = ({
+  text,
+  children,
+  position = "top",
   offset = 8,
   disabled = false,
-  className = ''
+  className = "",
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({});
@@ -26,56 +40,66 @@ export const Tooltip: React.FC<TooltipProps> = ({
 
   const calculatePosition = useCallback(() => {
     if (!containerRef.current || !tooltipRef.current) return;
-    
+
     const containerRect = containerRef.current.getBoundingClientRect();
     const tooltipRect = tooltipRef.current.getBoundingClientRect();
-    
+
     let left = 0;
     let top = 0;
-    
+
     switch (position) {
-      case 'top':
-        left = containerRect.left + containerRect.width / 2 - tooltipRect.width / 2;
+      case "top":
+        left =
+          containerRect.left + containerRect.width / 2 - tooltipRect.width / 2;
         top = containerRect.top - tooltipRect.height - offset;
         break;
-      case 'bottom':
-        left = containerRect.left + containerRect.width / 2 - tooltipRect.width / 2;
+      case "bottom":
+        left =
+          containerRect.left + containerRect.width / 2 - tooltipRect.width / 2;
         top = containerRect.bottom + offset;
         break;
-      case 'left':
+      case "left":
         left = containerRect.left - tooltipRect.width - offset;
-        top = containerRect.top + containerRect.height / 2 - tooltipRect.height / 2;
+        top =
+          containerRect.top + containerRect.height / 2 - tooltipRect.height / 2;
         break;
-      case 'right':
+      case "right":
         left = containerRect.right + offset;
-        top = containerRect.top + containerRect.height / 2 - tooltipRect.height / 2;
+        top =
+          containerRect.top + containerRect.height / 2 - tooltipRect.height / 2;
         break;
-      case 'top-left':
+      case "top-left":
         left = containerRect.right - tooltipRect.width;
         top = containerRect.top - tooltipRect.height - offset;
         break;
-      case 'top-right':
+      case "top-right":
         left = containerRect.left;
         top = containerRect.top - tooltipRect.height - offset;
         break;
-      case 'bottom-left':
+      case "bottom-left":
         left = containerRect.right - tooltipRect.width;
         top = containerRect.bottom + offset;
         break;
-      case 'bottom-right':
+      case "bottom-right":
         left = containerRect.left;
         top = containerRect.bottom + offset;
         break;
     }
-    
+
     // Keep the tooltip inside the viewport (webview bounds); if it would
     // overflow an edge, shift it inward so it never gets clipped.
     const margin = 4;
-    const maxLeft = Math.max(window.innerWidth - tooltipRect.width - margin, margin);
-    const maxTop = Math.max(window.innerHeight - tooltipRect.height - margin, margin);
+    const maxLeft = Math.max(
+      window.innerWidth - tooltipRect.width - margin,
+      margin,
+    );
+    const maxTop = Math.max(
+      window.innerHeight - tooltipRect.height - margin,
+      margin,
+    );
     left = Math.min(Math.max(left, margin), maxLeft);
     top = Math.min(Math.max(top, margin), maxTop);
-    
+
     setTooltipStyle({ left, top });
   }, [position, offset]);
 
@@ -92,7 +116,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
   const handleHide = () => setIsVisible(false);
 
   return (
-    <span 
+    <span
       className={`tooltip-container ${className}`}
       onMouseEnter={handleShow}
       onMouseLeave={handleHide}
@@ -101,13 +125,13 @@ export const Tooltip: React.FC<TooltipProps> = ({
       ref={containerRef}
     >
       {React.cloneElement(children, {
-        'aria-describedby': id
+        "aria-describedby": id,
       })}
-      <div 
-        id={id} 
-        role="tooltip" 
+      <div
+        id={id}
+        role="tooltip"
         ref={tooltipRef}
-        className={`tooltip-box tooltip-${position} ${isVisible ? 'visible' : ''}`}
+        className={`tooltip-box tooltip-${position} ${isVisible ? "visible" : ""}`}
         style={tooltipStyle}
       >
         {text}

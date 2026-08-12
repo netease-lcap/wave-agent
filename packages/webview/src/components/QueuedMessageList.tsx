@@ -1,8 +1,13 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Tooltip } from './Tooltip';
-import { QueueChevronIcon, QueueEditIcon, QueueSendIcon, QueueTrashIcon } from './HeaderIcons';
-import type { QueuedMessageListProps } from '../types';
-import '../styles/QueuedMessageList.css';
+import React, { useRef, useState, useEffect } from "react";
+import { Tooltip } from "./Tooltip";
+import {
+  QueueChevronIcon,
+  QueueEditIcon,
+  QueueSendIcon,
+  QueueTrashIcon,
+} from "./HeaderIcons";
+import type { QueuedMessageListProps } from "../types";
+import "../styles/QueuedMessageList.css";
 
 export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
   queuedMessages,
@@ -11,7 +16,7 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
   onEdit,
   onSend,
   onDelete,
-  editingQueuedId
+  editingQueuedId,
 }) => {
   const listRef = useRef<HTMLDivElement>(null);
   const [showScrim, setShowScrim] = useState(false);
@@ -27,11 +32,14 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
     const el = listRef.current;
     if (!el) return;
     const update = () => {
-      setShowScrim(el.scrollHeight > el.clientHeight && el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+      setShowScrim(
+        el.scrollHeight > el.clientHeight &&
+          el.scrollTop + el.clientHeight < el.scrollHeight - 1,
+      );
     };
     update();
-    el.addEventListener('scroll', update);
-    return () => el.removeEventListener('scroll', update);
+    el.addEventListener("scroll", update);
+    return () => el.removeEventListener("scroll", update);
   }, [isCollapsed, queuedMessages]);
 
   if (queuedMessages.length === 0) {
@@ -39,25 +47,42 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
   }
 
   return (
-    <div className="queued-message-list-container" data-testid="queued-message-list">
+    <div
+      className="queued-message-list-container"
+      data-testid="queued-message-list"
+    >
       <div
         className="queued-message-list-header"
         onClick={onToggleCollapse}
-        aria-label={isCollapsed ? '展开消息队列' : '折叠消息队列'}
+        aria-label={isCollapsed ? "展开消息队列" : "折叠消息队列"}
       >
-        <QueueChevronIcon className={`queued-chevron${isCollapsed ? '' : ' expanded'}`} />
-        <span className="queued-message-list-title">消息队列 ({queuedMessages.length})</span>
+        <QueueChevronIcon
+          className={`queued-chevron${isCollapsed ? "" : " expanded"}`}
+        />
+        <span className="queued-message-list-title">
+          消息队列 ({queuedMessages.length})
+        </span>
       </div>
 
-      <div className={`queued-items${isCollapsed ? '' : ' expanded'}`} ref={listRef}>
+      <div
+        className={`queued-items${isCollapsed ? "" : " expanded"}`}
+        ref={listRef}
+      >
         {items.map((qm, index) => {
           const id = qm.id ?? String(index);
-          const fullText = (qm.type === 'bang' ? '!' : '') + (qm.content || qm.text || '');
-          const isEditing = editingQueuedId != null && editingQueuedId === qm.id;
+          const fullText =
+            (qm.type === "bang" ? "!" : "") + (qm.content || qm.text || "");
+          const isEditing =
+            editingQueuedId != null && editingQueuedId === qm.id;
           return (
-            <Tooltip key={id} text={fullText} position="top" className="queued-item-tooltip">
+            <Tooltip
+              key={id}
+              text={fullText}
+              position="top"
+              className="queued-item-tooltip"
+            >
               <div
-                className={`queued-item${isEditing ? ' editing' : ''}`}
+                className={`queued-item${isEditing ? " editing" : ""}`}
                 data-testid={`queued-item-${id}`}
               >
                 <span className="queued-item-text">{fullText}</span>
@@ -101,7 +126,9 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
           );
         })}
       </div>
-      {showScrim && <div className="queued-items-scrim" aria-hidden="true"></div>}
+      {showScrim && (
+        <div className="queued-items-scrim" aria-hidden="true"></div>
+      )}
     </div>
   );
 };

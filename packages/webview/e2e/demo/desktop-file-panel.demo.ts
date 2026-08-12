@@ -51,7 +51,10 @@ async function setupReadMessage(
 }
 
 /** Click the read-tool path and wait for the host to be asked to open it. */
-async function openFileFromMessage(page: import("@playwright/test").Page, injector: MessageInjector) {
+async function openFileFromMessage(
+  page: import("@playwright/test").Page,
+  injector: MessageInjector,
+) {
   await page.locator(".write-tool-path").click();
   await injector.waitForMessage("openFile");
   await expect(page.getByTestId("file-pane")).toBeVisible();
@@ -97,10 +100,14 @@ function generatePng(page: import("@playwright/test").Page): Promise<string> {
 /** The panel's <img> must have actually decoded the data URL (naturalWidth>0),
  *  not be a broken-image render — the point of the data: scheme fix. */
 function expectImageDecoded(page: import("@playwright/test").Page) {
-  return expect(page.locator(".file-pane-image")).toHaveJSProperty("complete", true, { timeout: 3000 }).then(async () => {
-    const naturalWidth = await page.locator(".file-pane-image").evaluate((img: HTMLImageElement) => img.naturalWidth);
-    expect(naturalWidth).toBeGreaterThan(0);
-  });
+  return expect(page.locator(".file-pane-image"))
+    .toHaveJSProperty("complete", true, { timeout: 3000 })
+    .then(async () => {
+      const naturalWidth = await page
+        .locator(".file-pane-image")
+        .evaluate((img: HTMLImageElement) => img.naturalWidth);
+      expect(naturalWidth).toBeGreaterThan(0);
+    });
 }
 
 test.describe("Desktop file panel", () => {
@@ -121,10 +128,15 @@ test.describe("Desktop file panel", () => {
     });
 
     await expectImageDecoded(webviewPage);
-    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-file-panel-image.webp");
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-file-panel-image.webp",
+    );
   });
 
-  test("remote images preview inline with the ssh host label", async ({ webviewPage }) => {
+  test("remote images preview inline with the ssh host label", async ({
+    webviewPage,
+  }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 1280, height: 720 });
     // A remote session shows the file's full remote path; the panel labels the
@@ -143,10 +155,15 @@ test.describe("Desktop file panel", () => {
 
     await expectImageDecoded(webviewPage);
     await expect(webviewPage.getByText("prod")).toBeVisible();
-    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-file-panel-image-remote.webp");
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-file-panel-image-remote.webp",
+    );
   });
 
-  test("code files render highlighted lines with a jump range", async ({ webviewPage }) => {
+  test("code files render highlighted lines with a jump range", async ({
+    webviewPage,
+  }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 1280, height: 720 });
     const codePath = `${DIR_A}/src/components/Login.tsx`;
@@ -154,7 +171,9 @@ test.describe("Desktop file panel", () => {
     // panel highlights the corresponding line range (13–29).
     await setupReadMessage(injector, codePath, 13, 17);
     await openFileFromMessage(webviewPage, injector);
-    await expect(webviewPage.getByText("src/components/Login.tsx:13:17")).toBeVisible();
+    await expect(
+      webviewPage.getByText("src/components/Login.tsx:13:17"),
+    ).toBeVisible();
 
     const code = [
       "import { useState } from 'react';",
@@ -188,11 +207,11 @@ test.describe("Desktop file panel", () => {
       "  }",
       "",
       "  return (",
-      "    <form onSubmit={handleSubmit} className=\"login-form\">",
-      "      <input value={user} onChange={(e) => setUser(e.target.value)} placeholder=\"用户名\" />",
-      "      <input type=\"password\" value={pass} onChange={(e) => setPass(e.target.value)} placeholder=\"密码\" />",
-      "      {error && <p className=\"login-error\">{error}</p>}",
-      "      <button type=\"submit\">登录</button>",
+      '    <form onSubmit={handleSubmit} className="login-form">',
+      '      <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="用户名" />',
+      '      <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="密码" />',
+      '      {error && <p className="login-error">{error}</p>}',
+      '      <button type="submit">登录</button>',
       "    </form>",
       "  );",
       "}",
@@ -212,7 +231,12 @@ test.describe("Desktop file panel", () => {
     });
 
     await expect(webviewPage.locator(".file-pane-code")).toBeVisible();
-    await expect(webviewPage.locator(".file-pane-truncated-hint")).toBeVisible();
-    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-file-panel-code.webp");
+    await expect(
+      webviewPage.locator(".file-pane-truncated-hint"),
+    ).toBeVisible();
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-file-panel-code.webp",
+    );
   });
 });

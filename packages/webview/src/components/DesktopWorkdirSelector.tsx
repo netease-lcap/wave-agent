@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import '../styles/DesktopApp.css';
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import "../styles/DesktopApp.css";
 
 export interface DesktopWorkdirSelectorProps {
   workdir?: string;
@@ -25,14 +25,15 @@ export interface DesktopWorkdirSelectorProps {
 }
 
 /** Join a normalized absolute path with a child name. */
-const joinPath = (base: string, child: string): string => `${base.replace(/\/+$/, '')}/${child}`;
+const joinPath = (base: string, child: string): string =>
+  `${base.replace(/\/+$/, "")}/${child}`;
 
 /** Parent of a normalized absolute path; '/' has no parent. */
 const parentOf = (p: string): string => {
-  const norm = p.replace(/\/+$/, '');
-  if (!norm || norm === '/') return '/';
-  const idx = norm.lastIndexOf('/');
-  if (idx <= 0) return '/';
+  const norm = p.replace(/\/+$/, "");
+  if (!norm || norm === "/") return "/";
+  const idx = norm.lastIndexOf("/");
+  if (idx <= 0) return "/";
   return norm.slice(0, idx);
 };
 
@@ -62,8 +63,8 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [browsing, setBrowsing] = useState(false);
-  const [currentPath, setCurrentPath] = useState('~');
-  const [filterKeyword, setFilterKeyword] = useState('');
+  const [currentPath, setCurrentPath] = useState("~");
+  const [filterKeyword, setFilterKeyword] = useState("");
   const [dirs, setDirs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,8 +74,8 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   const filterInputRef = useRef<HTMLInputElement>(null);
   const selectedItemRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
-  const lastPathRef = useRef('~');
-  const isRemote = host !== undefined && host !== 'local';
+  const lastPathRef = useRef("~");
+  const isRemote = host !== undefined && host !== "local";
 
   // Close the dropdown / browser when clicking outside of it.
   useEffect(() => {
@@ -85,15 +86,15 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
         setBrowsing(false);
       }
     };
-    document.addEventListener('mousedown', onMouseDown);
-    return () => document.removeEventListener('mousedown', onMouseDown);
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
   }, [menuOpen, browsing]);
 
   const dirName = workdir
     ? workdir.split(/[\\/]/).filter(Boolean).pop() || workdir
     : isRemote
-      ? '选择远程目录…'
-      : '选择工作目录…';
+      ? "选择远程目录…"
+      : "选择工作目录…";
 
   const requestList = useCallback(
     (path: string) => {
@@ -103,7 +104,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
       setError(null);
       // Navigating to another directory resets the filter keyword — the
       // keyword targets the currently listed single-level directory list.
-      setFilterKeyword('');
+      setFilterKeyword("");
       setSelectedIndex(-1);
       onListRemoteDir(path, String(++requestIdRef.current));
     },
@@ -115,8 +116,8 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   useEffect(() => {
     if (!browsing) return;
     const onMessage = (e: MessageEvent) => {
-      const message = e.data as any;
-      if (message.command !== 'desktopRemoteDirList') return;
+      const message = e.data;
+      if (message.command !== "desktopRemoteDirList") return;
       if (String(message.requestId) !== String(requestIdRef.current)) return;
       setLoading(false);
       if (message.error) {
@@ -127,8 +128,8 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
       setDirs(message.dirs ?? []);
       lastPathRef.current = message.resolvedPath;
     };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
   }, [browsing]);
 
   const handleBrowse = useCallback(() => {
@@ -141,7 +142,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
     setBrowsing(true);
     // Location memory: reopen at the last visited directory (or home on the
     // first open of a session), spec scenario 22.
-    requestList(lastPathRef.current || '~');
+    requestList(lastPathRef.current || "~");
     requestAnimationFrame(() => filterInputRef.current?.focus());
   }, [requestList]);
 
@@ -159,7 +160,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
    */
   const submitFilterInput = useCallback(() => {
     const p = filterKeyword.trim();
-    if (!p || !(p.startsWith('/') || p.startsWith('~'))) return;
+    if (!p || !(p.startsWith("/") || p.startsWith("~"))) return;
     setBrowsing(false);
     onSelectRemotePath?.(p, host as string);
   }, [filterKeyword, host, onSelectRemotePath]);
@@ -181,14 +182,16 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   );
 
   // Breadcrumb segments of the current path: ['/', 'home', 'user', 'project'].
-  const crumbs = currentPath.startsWith('/')
-    ? ['/', ...currentPath.split('/').filter(Boolean)]
-    : currentPath.split('/').filter(Boolean);
+  const crumbs = currentPath.startsWith("/")
+    ? ["/", ...currentPath.split("/").filter(Boolean)]
+    : currentPath.split("/").filter(Boolean);
 
   // Live filter over the single-level directory list (case-insensitive
   // substring), spec scenario 20. The keyword also highlights matches.
   const keyword = filterKeyword.trim().toLowerCase();
-  const filteredDirs = keyword ? dirs.filter((d) => d.toLowerCase().includes(keyword)) : dirs;
+  const filteredDirs = keyword
+    ? dirs.filter((d) => d.toLowerCase().includes(keyword))
+    : dirs;
 
   /** Render a dir name with every keyword occurrence wrapped in a <mark>. */
   const highlightName = (name: string): React.ReactNode => {
@@ -215,8 +218,8 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   // Keep the highlighted item in view while moving with the keyboard.
   useEffect(() => {
     const el = selectedItemRef.current;
-    if (el && typeof el.scrollIntoView === 'function') {
-      el.scrollIntoView({ block: 'nearest' });
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "nearest" });
     }
   }, [selectedIndex]);
 
@@ -226,7 +229,9 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   const handleFilterChange = (value: string) => {
     setFilterKeyword(value);
     const next = value.trim().toLowerCase();
-    const matches = next ? dirs.filter((d) => d.toLowerCase().includes(next)) : dirs;
+    const matches = next
+      ? dirs.filter((d) => d.toLowerCase().includes(next))
+      : dirs;
     setSelectedIndex(matches.length > 0 ? 0 : -1);
   };
 
@@ -235,7 +240,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
       <div
         className="desktop-workdir-trigger"
         onClick={() => setMenuOpen((o) => !o)}
-        title={workdir ?? (isRemote ? '选择远程目录…' : '选择工作目录…')}
+        title={workdir ?? (isRemote ? "选择远程目录…" : "选择工作目录…")}
         data-testid="desktop-workdir"
         aria-expanded={menuOpen}
         role="button"
@@ -245,7 +250,11 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
         <span className="codicon codicon-chevron-down desktop-workdir-caret"></span>
       </div>
       {menuOpen && !browsing && (
-        <div className="desktop-workdir-menu" role="listbox" data-testid="desktop-workdir-menu">
+        <div
+          className="desktop-workdir-menu"
+          role="listbox"
+          data-testid="desktop-workdir-menu"
+        >
           {recentWorkdirs.length > 0 && (
             <div className="desktop-workdir-menu-label">最近打开</div>
           )}
@@ -255,7 +264,9 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
             // disambiguates same-named folders).
             const segments = dir.split(/[\\/]/).filter(Boolean);
             const base = segments.pop() || dir;
-            const parent = dir.slice(0, dir.length - base.length).replace(/[\\/]+$/, '');
+            const parent = dir
+              .slice(0, dir.length - base.length)
+              .replace(/[\\/]+$/, "");
             return (
               <div
                 key={dir}
@@ -268,7 +279,11 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
                 <span className="codicon codicon-folder"></span>
                 <span className="desktop-workdir-menu-path">
                   <span className="desktop-workdir-menu-name">{base}</span>
-                  {parent && <span className="desktop-workdir-menu-parent">{parent}</span>}
+                  {parent && (
+                    <span className="desktop-workdir-menu-parent">
+                      {parent}
+                    </span>
+                  )}
                 </span>
                 <button
                   className="desktop-workdir-menu-remove"
@@ -289,19 +304,26 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
             data-testid="desktop-workdir-browse"
           >
             <span className="codicon codicon-folder-opened"></span>
-            <span>{isRemote ? '浏览…' : '浏览…'}</span>
+            <span>{isRemote ? "浏览…" : "浏览…"}</span>
           </div>
         </div>
       )}
       {browsing && (
-        <div className="desktop-remote-browser" data-testid="desktop-remote-browser">
-          <div className="desktop-remote-browser-crumbs" data-testid="desktop-remote-browser-crumbs">
+        <div
+          className="desktop-remote-browser"
+          data-testid="desktop-remote-browser"
+        >
+          <div
+            className="desktop-remote-browser-crumbs"
+            data-testid="desktop-remote-browser-crumbs"
+          >
             {crumbs.map((seg, i) => {
-              const target = seg === '/' ? '/' : `/${crumbs.slice(1, i + 1).join('/')}`;
+              const target =
+                seg === "/" ? "/" : `/${crumbs.slice(1, i + 1).join("/")}`;
               return (
                 <span
                   key={`${seg}-${i}`}
-                  className={`desktop-remote-browser-crumb${i === crumbs.length - 1 ? ' active' : ''}`}
+                  className={`desktop-remote-browser-crumb${i === crumbs.length - 1 ? " active" : ""}`}
                   onClick={() => requestList(target)}
                 >
                   {seg}
@@ -312,15 +334,22 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
           {loading ? (
             <div className="desktop-remote-browser-status">加载中…</div>
           ) : error ? (
-            <div className="desktop-remote-browser-status desktop-remote-browser-error" data-testid="desktop-remote-browser-error">
+            <div
+              className="desktop-remote-browser-status desktop-remote-browser-error"
+              data-testid="desktop-remote-browser-error"
+            >
               <span>{error}</span>
-              <button className="desktop-remote-browser-retry" onClick={() => requestList(currentPath)} data-testid="desktop-remote-browser-retry">
+              <button
+                className="desktop-remote-browser-retry"
+                onClick={() => requestList(currentPath)}
+                data-testid="desktop-remote-browser-retry"
+              >
                 重试
               </button>
             </div>
           ) : (
             <div className="desktop-remote-browser-list" role="listbox">
-              {currentPath !== '/' && (
+              {currentPath !== "/" && (
                 <div
                   className="desktop-remote-browser-item"
                   role="option"
@@ -332,15 +361,18 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
                 </div>
               )}
               {filteredDirs.length === 0 ? (
-                <div className="desktop-remote-browser-status" data-testid="desktop-remote-browser-empty">
-                  {keyword ? '没有匹配的目录' : '该目录下没有子目录'}
+                <div
+                  className="desktop-remote-browser-status"
+                  data-testid="desktop-remote-browser-empty"
+                >
+                  {keyword ? "没有匹配的目录" : "该目录下没有子目录"}
                 </div>
               ) : (
                 filteredDirs.map((d, i) => (
                   <div
                     key={d}
                     ref={i === selectedIndex ? selectedItemRef : undefined}
-                    className={`desktop-remote-browser-item${i === selectedIndex ? ' selected' : ''}`}
+                    className={`desktop-remote-browser-item${i === selectedIndex ? " selected" : ""}`}
                     role="option"
                     aria-selected={i === selectedIndex}
                     onClick={() => requestList(joinPath(currentPath, d))}
@@ -348,7 +380,9 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
                     data-testid="desktop-remote-browser-item"
                   >
                     <span className="codicon codicon-folder"></span>
-                    <span className="desktop-remote-browser-item-name">{highlightName(d)}</span>
+                    <span className="desktop-remote-browser-item-name">
+                      {highlightName(d)}
+                    </span>
                   </div>
                 ))
               )}
@@ -362,22 +396,26 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
               value={filterKeyword}
               onChange={(e) => handleFilterChange(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'ArrowDown') {
+                if (e.key === "ArrowDown") {
                   e.preventDefault();
-                  setSelectedIndex((i) => (i >= filteredDirs.length - 1 ? i : i + 1));
-                } else if (e.key === 'ArrowUp') {
+                  setSelectedIndex((i) =>
+                    i >= filteredDirs.length - 1 ? i : i + 1,
+                  );
+                } else if (e.key === "ArrowUp") {
                   e.preventDefault();
                   setSelectedIndex((i) => (i <= 0 ? -1 : i - 1));
-                } else if (e.key === 'Enter') {
+                } else if (e.key === "Enter") {
                   // Enter enters the highlighted subdirectory first; without
                   // a selection it falls back to the absolute-path jump
                   // (spec scenario 20).
                   if (selectedIndex >= 0 && filteredDirs[selectedIndex]) {
-                    requestList(joinPath(currentPath, filteredDirs[selectedIndex]));
+                    requestList(
+                      joinPath(currentPath, filteredDirs[selectedIndex]),
+                    );
                   } else {
                     submitFilterInput();
                   }
-                } else if (e.key === 'Escape') {
+                } else if (e.key === "Escape") {
                   setBrowsing(false);
                 }
               }}

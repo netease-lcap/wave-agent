@@ -1,21 +1,23 @@
-import type { Message, SessionMetadata } from 'wave-agent-sdk';
+import type { Message, SessionMetadata } from "wave-agent-sdk";
 
-const DEFAULT_SESSION_TITLE = '新对话';
+const DEFAULT_SESSION_TITLE = "新对话";
 
 const truncate = (content: string): string => {
   const trimmed = content.trim();
-  return trimmed.length > 30 ? trimmed.substring(0, 30) + '...' : trimmed;
+  return trimmed.length > 30 ? trimmed.substring(0, 30) + "..." : trimmed;
 };
 
 /** Extract the first real user message text, used as a session title fallback. */
-export const firstUserMessageText = (messages?: Message[]): string | undefined => {
+export const firstUserMessageText = (
+  messages?: Message[],
+): string | undefined => {
   if (!messages) return undefined;
   for (const message of messages) {
-    if (message.role !== 'user' || message.isMeta) continue;
+    if (message.role !== "user" || message.isMeta) continue;
     const text = message.blocks
-      ?.filter((b) => b.type === 'text' || b.type === 'compact')
-      .map((b) => b.content || '')
-      .join('')
+      ?.filter((b) => b.type === "text" || b.type === "compact")
+      .map((b) => b.content || "")
+      .join("")
       .trim();
     if (text) return text;
   }
@@ -46,7 +48,9 @@ export const pinSessionTitle = (
 ): SessionMetadata | undefined => {
   if (!currentSession || currentSession.firstMessage) return currentSession;
   const derived = firstUserMessageText(messages);
-  return derived ? { ...currentSession, firstMessage: derived } : currentSession;
+  return derived
+    ? { ...currentSession, firstMessage: derived }
+    : currentSession;
 };
 
 /**

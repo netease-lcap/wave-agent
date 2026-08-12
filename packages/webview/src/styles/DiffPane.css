@@ -1,113 +1,127 @@
 /* DiffPane Component Styles — workspace git-diff accordion (desktop) */
 
 .diff-pane-body {
-    flex: 1;
-    overflow-y: auto;
-    min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .diff-pane .codicon-modifier-spin {
-    animation: spin 1s linear infinite;
+  animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .diff-file {
-    border-bottom: 1px solid var(--vscode-panel-border);
+  border-bottom: 1px solid var(--vscode-panel-border);
 }
 
 .diff-file-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    width: 100%;
-    padding: 6px 8px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--vscode-foreground);
-    font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--vscode-foreground);
+  font-size: 12px;
 }
 
 .diff-file-header:hover {
-    background: var(--vscode-list-hoverBackground);
+  background: var(--vscode-list-hoverBackground);
 }
 
 .diff-file-header .codicon {
-    font-size: 12px;
-    flex-shrink: 0;
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .diff-file-status {
-    flex-shrink: 0;
-    font-size: 10px;
-    padding: 1px 4px;
-    border-radius: 3px;
-    border: 1px solid currentColor;
+  flex-shrink: 0;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
 }
 
 .diff-file-status-added {
-    color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+  color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
 }
 
 .diff-file-status-modified {
-    color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
+  color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
 }
 
 .diff-file-status-deleted {
-    color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
 }
 
 .diff-file-status-renamed {
-    color: var(--vscode-gitDecoration-renamedResourceForeground, #73c991);
+  color: var(--vscode-gitDecoration-renamedResourceForeground, #73c991);
 }
 
 .diff-file-status-untracked {
-    color: var(--vscode-gitDecoration-untrackedResourceForeground, #73c991);
+  color: var(--vscode-gitDecoration-untrackedResourceForeground, #73c991);
 }
 
 .diff-file-path {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: left;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
 }
 
 .diff-file-stats {
-    flex-shrink: 0;
-    display: flex;
-    gap: 6px;
-    font-family: var(--vscode-editor-font-family, 'Consolas', 'Monaco', monospace);
-    font-size: 11px;
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  font-family: var(
+    --vscode-editor-font-family,
+    "Consolas",
+    "Monaco",
+    monospace
+  );
+  font-size: 11px;
 }
 
 .diff-file-stats-add {
-    color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+  color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
 }
 
 .diff-file-stats-del {
-    color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
 }
 
 .diff-file-body {
-    border-top: 1px solid var(--vscode-panel-border);
-    overflow-x: auto;
-    padding: 4px 0;
-    font-family: var(--vscode-editor-font-family, 'Consolas', 'Monaco', monospace);
-    font-size: 12px;
-    line-height: 1.2;
+  border-top: 1px solid var(--vscode-panel-border);
+  overflow-x: auto;
+  padding: 4px 0;
+  font-family: var(
+    --vscode-editor-font-family,
+    "Consolas",
+    "Monaco",
+    monospace
+  );
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 /* Hunk header (@@ ... @@) */
 .diff-line-hunk {
-    color: var(--vscode-descriptionForeground);
-    padding: 2px 8px;
-    user-select: none;
-    font-style: italic;
+  color: var(--vscode-descriptionForeground);
+  padding: 2px 8px;
+  user-select: none;
+  font-style: italic;
 }
 
 /* Inline line-comment button (GitHub style): hidden until the line is
@@ -115,121 +129,126 @@
    opens a comment box under the line. Scoped to .diff-pane so the shared
    message-rendered diff blocks are unaffected. */
 .diff-pane .diff-line {
-    position: relative;
+  position: relative;
 }
 
 .diff-line-comment-btn {
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    background: var(--vscode-editor-background, #1e1e1e);
-    border: none;
-    border-radius: 4px;
-    padding: 0;
-    color: var(--vscode-textLink-foreground, #3794ff);
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.1s;
-    line-height: 1;
-    z-index: 1;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: none;
+  border-radius: 4px;
+  padding: 0;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s;
+  line-height: 1;
+  z-index: 1;
 }
 
 .diff-pane .diff-line:hover .diff-line-comment-btn {
-    opacity: 1;
+  opacity: 1;
 }
 
 .diff-line-comment-btn:hover {
-    background: var(--vscode-textLink-foreground, #3794ff);
-    color: var(--vscode-editor-background, #1e1e1e);
+  background: var(--vscode-textLink-foreground, #3794ff);
+  color: var(--vscode-editor-background, #1e1e1e);
 }
 
 /* Bump specificity to (0,3,0) so it beats the codicons.css baseline
    `.codicon[class*="codicon-"]` (0,2,0) that otherwise pins icons to 16px. */
 .diff-pane .diff-line-comment-btn .codicon {
-    font-size: 9px;
+  font-size: 9px;
 }
 
 /* Inline comment box rendered under the commented line. */
 .diff-comment-box {
-    margin: 4px 8px;
-    padding: 6px;
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 4px;
-    background: var(--vscode-input-background);
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+  margin: 4px 8px;
+  padding: 6px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .diff-comment-box:focus-within {
-    border-color: var(--vscode-focusBorder);
+  border-color: var(--vscode-focusBorder);
 }
 
 .diff-comment-input {
-    width: 100%;
-    min-height: 40px;
-    resize: vertical;
-    box-sizing: border-box;
-    background: transparent;
-    color: var(--vscode-input-foreground);
-    border: none;
-    padding: 0;
-    font: inherit;
-    outline: none;
+  width: 100%;
+  min-height: 40px;
+  resize: vertical;
+  box-sizing: border-box;
+  background: transparent;
+  color: var(--vscode-input-foreground);
+  border: none;
+  padding: 0;
+  font: inherit;
+  outline: none;
 }
 
 .diff-comment-box-footer {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .diff-comment-box-tag {
-    flex: 1;
-    color: var(--vscode-textLink-foreground, var(--vscode-foreground));
-    font-family: var(--vscode-editor-font-family, 'Consolas', 'Monaco', monospace);
-    font-size: 11px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  flex: 1;
+  color: var(--vscode-textLink-foreground, var(--vscode-foreground));
+  font-family: var(
+    --vscode-editor-font-family,
+    "Consolas",
+    "Monaco",
+    monospace
+  );
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .diff-comment-box-cancel {
-    background: transparent;
-    color: var(--vscode-foreground);
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 3px;
-    font-size: 11px;
-    padding: 2px 10px;
-    cursor: pointer;
+  background: transparent;
+  color: var(--vscode-foreground);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 3px;
+  font-size: 11px;
+  padding: 2px 10px;
+  cursor: pointer;
 }
 
 .diff-comment-box-cancel:hover {
-    background: var(--vscode-list-hoverBackground);
+  background: var(--vscode-list-hoverBackground);
 }
 
 .diff-comment-box-send {
-    background: transparent;
-    color: var(--vscode-textLink-foreground, var(--vscode-foreground));
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 3px;
-    font-size: 11px;
-    padding: 2px 10px;
-    cursor: pointer;
+  background: transparent;
+  color: var(--vscode-textLink-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 3px;
+  font-size: 11px;
+  padding: 2px 10px;
+  cursor: pointer;
 }
 
 .diff-comment-box-send:hover:not(:disabled) {
-    background: var(--vscode-list-hoverBackground);
-    border-color: var(--vscode-focusBorder);
+  background: var(--vscode-list-hoverBackground);
+  border-color: var(--vscode-focusBorder);
 }
 
 .diff-comment-box-send:disabled {
-    opacity: 0.4;
-    cursor: default;
+  opacity: 0.4;
+  cursor: default;
 }

@@ -1,123 +1,146 @@
-import { test as base, expect, Page } from '@playwright/test';
-import path from 'path';
-import fs from 'fs';
+import { test as base, expect, Page } from "@playwright/test";
+import path from "path";
+import fs from "fs";
 
 declare global {
-    interface Window {
-        simulateExtensionMessage: (message: Record<string, unknown>) => void;
-        getTestMessages: () => Record<string, unknown>[];
-        clearTestMessages: () => void;
-        testMessages: Record<string, unknown>[];
-        sentMessages: Record<string, unknown>[];
-        capturePermissionMessage: (msg: Record<string, unknown>) => void;
-        captureModelMessage: (msg: Record<string, unknown>) => void;
-        captureQueueMessage: (msg: Record<string, unknown>) => void;
-        captureRichInputMessage: (msg: Record<string, unknown>) => void;
-        captureSlashMessage: (msg: Record<string, unknown>) => void;
-        captureTagMessage: (msg: Record<string, unknown>) => void;
-        captureToolMessage: (msg: Record<string, unknown>) => void;
-        captureUploadMessage: (msg: Record<string, unknown>) => void;
-        captureFilterMessage: (msg: Record<string, unknown>) => void;
-        captureMessage: (msg: Record<string, unknown>) => void;
-        captureMessageForTag: (msg: Record<string, unknown>) => void;
-        captureMessageForImageTag: (msg: Record<string, unknown>) => void;
-        capturePreviewMessage: (msg: Record<string, unknown>) => void;
-        vscode: {
-            postMessage: (message: Record<string, unknown>) => void;
-        };
-    }
+  interface Window {
+    simulateExtensionMessage: (message: Record<string, unknown>) => void;
+    getTestMessages: () => Record<string, unknown>[];
+    clearTestMessages: () => void;
+    testMessages: Record<string, unknown>[];
+    sentMessages: Record<string, unknown>[];
+    capturePermissionMessage: (msg: Record<string, unknown>) => void;
+    captureModelMessage: (msg: Record<string, unknown>) => void;
+    captureQueueMessage: (msg: Record<string, unknown>) => void;
+    captureRichInputMessage: (msg: Record<string, unknown>) => void;
+    captureSlashMessage: (msg: Record<string, unknown>) => void;
+    captureTagMessage: (msg: Record<string, unknown>) => void;
+    captureToolMessage: (msg: Record<string, unknown>) => void;
+    captureUploadMessage: (msg: Record<string, unknown>) => void;
+    captureFilterMessage: (msg: Record<string, unknown>) => void;
+    captureMessage: (msg: Record<string, unknown>) => void;
+    captureMessageForTag: (msg: Record<string, unknown>) => void;
+    captureMessageForImageTag: (msg: Record<string, unknown>) => void;
+    capturePreviewMessage: (msg: Record<string, unknown>) => void;
+    vscode: {
+      postMessage: (message: Record<string, unknown>) => void;
+    };
+  }
 }
 
 /**
  * Extended test context for webview testing
  */
 type WebviewTestContext = {
-    webviewPage: Page;
+  webviewPage: Page;
 };
 
 /**
  * Custom test fixture that loads the chat webview in isolation
  */
 export const test = base.extend<WebviewTestContext>({
-    webviewPage: async ({ page }, use) => {
+  webviewPage: async ({ page }, use) => {
+    // Enable error tracking
+    page.on("pageerror", (error) => {
+      console.error("Page error:", error);
+    });
 
-        // Enable error tracking
-        page.on('pageerror', (error) => {
-            console.error('Page error:', error);
+    // Load the React webview app for testing
+    const webviewDistPath = path.join(process.cwd(), "dist");
+    const vscodeStylesPath = path.join(
+      process.cwd(),
+      "theme",
+      "theme-base-dark.css",
+    );
+
+    let vscodeStyles = "";
+    if (fs.existsSync(vscodeStylesPath)) {
+      vscodeStyles = fs.readFileSync(vscodeStylesPath, "utf8");
+    }
+
+    // Resolve codicons paths for local serving (avoid CDN)
+    const codiconsCssPath = path.join(
+      process.cwd(),
+      "node_modules",
+      "@vscode",
+      "codicons",
+      "dist",
+      "codicon.css",
+    );
+    const codiconsTtfPath = path.join(
+      process.cwd(),
+      "node_modules",
+      "@vscode",
+      "codicons",
+      "dist",
+      "codicon.ttf",
+    );
+
+    // Serve the webview files through a mock server that simulates vscode-webview:// protocol
+    await page.route("vscode-webview://**", (route, request) => {
+      const url = new URL(request.url());
+      const pathname = url.pathname;
+
+      // Remove leading slash and map to actual file
+      const filename = pathname.substring(1);
+
+      // Serve codicons from local node_modules instead of CDN
+      if (
+        filename === "codicons/codicon.css" &&
+        fs.existsSync(codiconsCssPath)
+      ) {
+        route.fulfill({
+          status: 200,
+          contentType: "text/css",
+          headers: { "Access-Control-Allow-Origin": "*" },
+          body: fs.readFileSync(codiconsCssPath),
         });
-
-        // Load the React webview app for testing
-        const webviewDistPath = path.join(process.cwd(), 'dist');
-        const vscodeStylesPath = path.join(process.cwd(), 'theme', 'theme-base-dark.css');
-
-        let vscodeStyles = '';
-        if (fs.existsSync(vscodeStylesPath)) {
-            vscodeStyles = fs.readFileSync(vscodeStylesPath, 'utf8');
-        }
-
-        // Resolve codicons paths for local serving (avoid CDN)
-        const codiconsCssPath = path.join(process.cwd(), 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css');
-        const codiconsTtfPath = path.join(process.cwd(), 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.ttf');
-
-        // Serve the webview files through a mock server that simulates vscode-webview:// protocol
-        await page.route('vscode-webview://**', (route, request) => {
-            const url = new URL(request.url());
-            const pathname = url.pathname;
-
-            // Remove leading slash and map to actual file
-            const filename = pathname.substring(1);
-
-            // Serve codicons from local node_modules instead of CDN
-            if (filename === 'codicons/codicon.css' && fs.existsSync(codiconsCssPath)) {
-                route.fulfill({
-                    status: 200,
-                    contentType: 'text/css',
-                    headers: { 'Access-Control-Allow-Origin': '*' },
-                    body: fs.readFileSync(codiconsCssPath)
-                });
-                return;
-            }
-            if (filename === 'codicons/codicon.ttf' && fs.existsSync(codiconsTtfPath)) {
-                route.fulfill({
-                    status: 200,
-                    contentType: 'font/ttf',
-                    headers: { 'Access-Control-Allow-Origin': '*' },
-                    body: fs.readFileSync(codiconsTtfPath)
-                });
-                return;
-            }
-
-            const filePath = path.join(webviewDistPath, filename);
-
-            if (fs.existsSync(filePath)) {
-                const content = fs.readFileSync(filePath);
-                const ext = path.extname(filename);
-
-                let contentType = 'application/octet-stream';
-                if (ext === '.js') contentType = 'application/javascript';
-                else if (ext === '.css') contentType = 'text/css';
-                else if (ext === '.ttf') contentType = 'font/ttf';
-                else if (ext === '.woff') contentType = 'font/woff';
-                else if (ext === '.woff2') contentType = 'font/woff2';
-
-                route.fulfill({
-                    status: 200,
-                    contentType,
-                    headers: {
-                        'Access-Control-Allow-Origin': '*'
-                    },
-                    body: content
-                });
-            } else {
-                route.fulfill({
-                    status: 404,
-                    body: `File not found: ${filename}`
-                });
-            }
+        return;
+      }
+      if (
+        filename === "codicons/codicon.ttf" &&
+        fs.existsSync(codiconsTtfPath)
+      ) {
+        route.fulfill({
+          status: 200,
+          contentType: "font/ttf",
+          headers: { "Access-Control-Allow-Origin": "*" },
+          body: fs.readFileSync(codiconsTtfPath),
         });
+        return;
+      }
 
-        // Create a minimal HTML page that matches the React app structure
-        const testHtml = `
+      const filePath = path.join(webviewDistPath, filename);
+
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath);
+        const ext = path.extname(filename);
+
+        let contentType = "application/octet-stream";
+        if (ext === ".js") contentType = "application/javascript";
+        else if (ext === ".css") contentType = "text/css";
+        else if (ext === ".ttf") contentType = "font/ttf";
+        else if (ext === ".woff") contentType = "font/woff";
+        else if (ext === ".woff2") contentType = "font/woff2";
+
+        route.fulfill({
+          status: 200,
+          contentType,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+          },
+          body: content,
+        });
+      } else {
+        route.fulfill({
+          status: 404,
+          body: `File not found: ${filename}`,
+        });
+      }
+    });
+
+    // Create a minimal HTML page that matches the React app structure
+    const testHtml = `
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -154,17 +177,17 @@ export const test = base.extend<WebviewTestContext>({
 </body>
 </html>`;
 
-        // Load the HTML content
-        await page.setContent(testHtml);
+    // Load the HTML content
+    await page.setContent(testHtml);
 
-        // Wait for the React app to render by checking for the chat container
-        // This is much faster than a fixed timeout
-        await page.waitForSelector('[data-testid="chat-container"]', { 
-            timeout: 3000 
-        });
+    // Wait for the React app to render by checking for the chat container
+    // This is much faster than a fixed timeout
+    await page.waitForSelector('[data-testid="chat-container"]', {
+      timeout: 3000,
+    });
 
-        await use(page);
-    }
+    await use(page);
+  },
 });
 
 /**

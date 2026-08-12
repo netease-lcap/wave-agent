@@ -1,184 +1,225 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderChatApp, sendCommand } from './test-utils';
-import { MockDataGenerator } from '../fixtures/mockData';
-import { READ_TOOL_NAME, WRITE_TOOL_NAME, EDIT_TOOL_NAME, BASH_TOOL_NAME } from 'wave-agent-sdk';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderChatApp, sendCommand } from "./test-utils";
+import { MockDataGenerator } from "../fixtures/mockData";
+import {
+  READ_TOOL_NAME,
+  WRITE_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  BASH_TOOL_NAME,
+} from "wave-agent-sdk";
 
-describe('Tool Display Visual Test', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-    });
+describe("Tool Display Visual Test", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-    it('should display tools with compact parameters - visual verification', () => {
-        renderChatApp();
+  it("should display tools with compact parameters - visual verification", () => {
+    renderChatApp();
 
-        // Build conversation with tool calls
-        const messages = [
-            MockDataGenerator.createUserMessage("Can you help me read a file?"),
-            MockDataGenerator.createAssistantMessageWithTool(
-                "I'll read the file for you.",
-                READ_TOOL_NAME,
-                '{"file_path": "/home/user/project/src/components/Message.tsx", "limit": 50}',
-                "File contents read successfully"
-            ),
-            MockDataGenerator.createAssistantMessageWithTool(
-                "Now I'll write the updated file.",
-                WRITE_TOOL_NAME,
-                '{"file_path": "/home/user/project/config.json", "content": "{\\"version\\": \\"1.0\\"}"}',
-                "File written successfully"
-            )
-        ];
+    // Build conversation with tool calls
+    const messages = [
+      MockDataGenerator.createUserMessage("Can you help me read a file?"),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "I'll read the file for you.",
+        READ_TOOL_NAME,
+        '{"file_path": "/home/user/project/src/components/Message.tsx", "limit": 50}',
+        "File contents read successfully",
+      ),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "Now I'll write the updated file.",
+        WRITE_TOOL_NAME,
+        '{"file_path": "/home/user/project/config.json", "content": "{\\"version\\": \\"1.0\\"}"}',
+        "File written successfully",
+      ),
+    ];
 
-        // Add a tool without compactParams to test fallback
-        const bashToolMessage = MockDataGenerator.createAssistantMessageWithTool(
-            "Running a command.",
-            BASH_TOOL_NAME,
-            '{"command": "npm install --save lodash", "timeout": 30000}'
-        );
-        // Remove compactParams to test fallback
-        if (bashToolMessage.blocks && bashToolMessage.blocks.length > 1) {
-            const toolBlock = bashToolMessage.blocks[1] as unknown as Record<string, unknown>;
-            delete toolBlock.compactParams;
-        }
-        messages.push(bashToolMessage);
+    // Add a tool without compactParams to test fallback
+    const bashToolMessage = MockDataGenerator.createAssistantMessageWithTool(
+      "Running a command.",
+      BASH_TOOL_NAME,
+      '{"command": "npm install --save lodash", "timeout": 30000}',
+    );
+    // Remove compactParams to test fallback
+    if (bashToolMessage.blocks && bashToolMessage.blocks.length > 1) {
+      const toolBlock = bashToolMessage.blocks[1] as unknown as Record<
+        string,
+        unknown
+      >;
+      delete toolBlock.compactParams;
+    }
+    messages.push(bashToolMessage);
 
-        // Add final message
-        messages.push(MockDataGenerator.createAssistantMessage("The files have been updated successfully. The tool operations completed without any issues."));
+    // Add final message
+    messages.push(
+      MockDataGenerator.createAssistantMessage(
+        "The files have been updated successfully. The tool operations completed without any issues.",
+      ),
+    );
 
-        // Update all messages at once
-        sendCommand('updateMessages', { messages });
+    // Update all messages at once
+    sendCommand("updateMessages", { messages });
 
-        // Read now renders as a file-tool header (aligned with Write) with path + offset:limit suffix
-        const readHeader = document.querySelectorAll('.write-tool-header')[0] as HTMLElement;
-        expect(readHeader).toHaveTextContent(READ_TOOL_NAME);
-        expect(readHeader).toHaveTextContent(/Message\.tsx:1:50/);
+    // Read now renders as a file-tool header (aligned with Write) with path + offset:limit suffix
+    const readHeader = document.querySelectorAll(
+      ".write-tool-header",
+    )[0] as HTMLElement;
+    expect(readHeader).toHaveTextContent(READ_TOOL_NAME);
+    expect(readHeader).toHaveTextContent(/Message\.tsx:1:50/);
 
-        // Write tool renders a dedicated content preview instead of a generic tool block
-        const writePreview = document.querySelector('.write-tool-preview') as HTMLElement;
-        expect(writePreview).toBeInTheDocument();
-        expect(writePreview).toHaveTextContent(/config\.json/);
+    // Write tool renders a dedicated content preview instead of a generic tool block
+    const writePreview = document.querySelector(
+      ".write-tool-preview",
+    ) as HTMLElement;
+    expect(writePreview).toBeInTheDocument();
+    expect(writePreview).toHaveTextContent(/config\.json/);
 
-        // Only Bash remains as a generic tool block
-        const toolBlocks = document.querySelectorAll('.tool-block');
-        expect(toolBlocks).toHaveLength(1);
+    // Only Bash remains as a generic tool block
+    const toolBlocks = document.querySelectorAll(".tool-block");
+    expect(toolBlocks).toHaveLength(1);
 
-        // Check the generic tool block (Bash without compactParams - fallback)
-        const bashTool = toolBlocks[0] as HTMLElement;
-        expect(bashTool).toHaveTextContent(`● ${BASH_TOOL_NAME}`);
+    // Check the generic tool block (Bash without compactParams - fallback)
+    const bashTool = toolBlocks[0] as HTMLElement;
+    expect(bashTool).toHaveTextContent(`● ${BASH_TOOL_NAME}`);
 
-        // Verify no <pre> elements exist in generic tool blocks
-        const preElements = document.querySelectorAll('.tool-block pre');
-        expect(preElements).toHaveLength(0);
+    // Verify no <pre> elements exist in generic tool blocks
+    const preElements = document.querySelectorAll(".tool-block pre");
+    expect(preElements).toHaveLength(0);
 
-        // Verify messages don't have borders/backgrounds
-        const messageElements = document.querySelectorAll('.message');
-        // user + 4 assistant messages
-        expect(messageElements.length).toBeGreaterThanOrEqual(5);
-    });
+    // Verify messages don't have borders/backgrounds
+    const messageElements = document.querySelectorAll(".message");
+    // user + 4 assistant messages
+    expect(messageElements.length).toBeGreaterThanOrEqual(5);
+  });
 
-    it('should show unified message flow without visual separators', () => {
-        renderChatApp();
+  it("should show unified message flow without visual separators", () => {
+    renderChatApp();
 
-        // Create a conversation flow to test unified appearance
-        const messages = [
-            MockDataGenerator.createUserMessage("Hello, can you help me with my project?"),
-            MockDataGenerator.createAssistantMessage("Of course! Let me analyze your project structure first."),
-            MockDataGenerator.createAssistantMessageWithTool(
-                "I'll read your main configuration file.",
-                READ_TOOL_NAME,
-                '{"file_path": "./package.json"}',
-                "Configuration file read successfully"
-            ),
-            MockDataGenerator.createAssistantMessage("Based on your configuration, I can see this is a TypeScript project. Let me check your source code structure."),
-            MockDataGenerator.createAssistantMessageWithTool(
-                "Checking the source directory.",
-                BASH_TOOL_NAME,
-                '{"command": "ls -la src/"}',
-                "Directory listing completed"
-            ),
-            MockDataGenerator.createAssistantMessage("Perfect! I can see your project structure. How can I help you further?")
-        ];
+    // Create a conversation flow to test unified appearance
+    const messages = [
+      MockDataGenerator.createUserMessage(
+        "Hello, can you help me with my project?",
+      ),
+      MockDataGenerator.createAssistantMessage(
+        "Of course! Let me analyze your project structure first.",
+      ),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "I'll read your main configuration file.",
+        READ_TOOL_NAME,
+        '{"file_path": "./package.json"}',
+        "Configuration file read successfully",
+      ),
+      MockDataGenerator.createAssistantMessage(
+        "Based on your configuration, I can see this is a TypeScript project. Let me check your source code structure.",
+      ),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "Checking the source directory.",
+        BASH_TOOL_NAME,
+        '{"command": "ls -la src/"}',
+        "Directory listing completed",
+      ),
+      MockDataGenerator.createAssistantMessage(
+        "Perfect! I can see your project structure. How can I help you further?",
+      ),
+    ];
 
-        sendCommand('updateMessages', { messages });
+    sendCommand("updateMessages", { messages });
 
-        // Verify messages flow together visually
-        const messagesContainer = document.querySelector('.messages-container');
-        expect(messagesContainer).toBeInTheDocument();
-    });
+    // Verify messages flow together visually
+    const messagesContainer = document.querySelector(".messages-container");
+    expect(messagesContainer).toBeInTheDocument();
+  });
 
-    it('should show last 30 chars of parameters when tool stage is streaming', () => {
-        renderChatApp();
+  it("should show last 30 chars of parameters when tool stage is streaming", () => {
+    renderChatApp();
 
-        // Create a tool with a long parameters string and stage="streaming"
-        const longParams = '{"command": "grep -r \\"some_function\\" /home/user/project/src --include=\\"*.ts\\"", "timeout": 30000}';
+    // Create a tool with a long parameters string and stage="streaming"
+    const longParams =
+      '{"command": "grep -r \\"some_function\\" /home/user/project/src --include=\\"*.ts\\"", "timeout": 30000}';
 
-        const messages = [
-            MockDataGenerator.createUserMessage("Search for this function"),
-            MockDataGenerator.createAssistantMessageWithTool(
-                "Searching...",
-                BASH_TOOL_NAME,
-                longParams,
-                undefined // no result yet
-            ),
-        ];
+    const messages = [
+      MockDataGenerator.createUserMessage("Search for this function"),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "Searching...",
+        BASH_TOOL_NAME,
+        longParams,
+        undefined, // no result yet
+      ),
+    ];
 
-        // Override the tool block to set stage="streaming" and remove compactParams
-        const toolMsg = messages[1];
-        if (toolMsg.blocks && toolMsg.blocks.length > 1) {
-            const toolBlock = toolMsg.blocks[1] as unknown as Record<string, unknown>;
-            toolBlock.stage = 'streaming';
-            delete toolBlock.compactParams;
-        }
+    // Override the tool block to set stage="streaming" and remove compactParams
+    const toolMsg = messages[1];
+    if (toolMsg.blocks && toolMsg.blocks.length > 1) {
+      const toolBlock = toolMsg.blocks[1] as unknown as Record<string, unknown>;
+      toolBlock.stage = "streaming";
+      delete toolBlock.compactParams;
+    }
 
-        sendCommand('updateMessages', { messages });
+    sendCommand("updateMessages", { messages });
 
-        const toolBlocks = document.querySelectorAll('.tool-block');
-        expect(toolBlocks).toHaveLength(1);
+    const toolBlocks = document.querySelectorAll(".tool-block");
+    expect(toolBlocks).toHaveLength(1);
 
-        // Should show last 30 chars of parameters
-        const expected = longParams.slice(-30);
-        const compactParam = document.querySelector('.compact-params');
-        expect(compactParam).toBeInTheDocument();
-        expect(compactParam).toHaveTextContent(expected);
-    });
+    // Should show last 30 chars of parameters
+    const expected = longParams.slice(-30);
+    const compactParam = document.querySelector(".compact-params");
+    expect(compactParam).toBeInTheDocument();
+    expect(compactParam).toHaveTextContent(expected);
+  });
 
-    it('should show last 30 chars of parameters when Read/Edit/Write stage is streaming', () => {
-        renderChatApp();
+  it("should show last 30 chars of parameters when Read/Edit/Write stage is streaming", () => {
+    renderChatApp();
 
-        // Streaming parameters are an incomplete JSON fragment; JSON.parse fails
-        // so the file-tool header must fall back to the default tool header
-        // showing the last 30 chars of the raw parameters.
-        const longParams = '{"file_path": "/home/user/project/src/components/Message.tsx", "offset": 50, "limit":';
+    // Streaming parameters are an incomplete JSON fragment; JSON.parse fails
+    // so the file-tool header must fall back to the default tool header
+    // showing the last 30 chars of the raw parameters.
+    const longParams =
+      '{"file_path": "/home/user/project/src/components/Message.tsx", "offset": 50, "limit":';
 
-        const messages = [
-            MockDataGenerator.createUserMessage("Reading and editing"),
-            MockDataGenerator.createAssistantMessageWithTool("read", READ_TOOL_NAME, longParams),
-            MockDataGenerator.createAssistantMessageWithTool("edit", EDIT_TOOL_NAME, longParams),
-            MockDataGenerator.createAssistantMessageWithTool("write", WRITE_TOOL_NAME, longParams),
-        ];
+    const messages = [
+      MockDataGenerator.createUserMessage("Reading and editing"),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "read",
+        READ_TOOL_NAME,
+        longParams,
+      ),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "edit",
+        EDIT_TOOL_NAME,
+        longParams,
+      ),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "write",
+        WRITE_TOOL_NAME,
+        longParams,
+      ),
+    ];
 
-        // Force streaming stage and strip compactParams so the slice(-30) path is exercised
-        for (const msg of messages) {
-            if (msg.blocks && msg.blocks.length > 1) {
-                const toolBlock = msg.blocks[1] as unknown as Record<string, unknown>;
-                toolBlock.stage = 'streaming';
-                delete toolBlock.compactParams;
-            }
-        }
+    // Force streaming stage and strip compactParams so the slice(-30) path is exercised
+    for (const msg of messages) {
+      if (msg.blocks && msg.blocks.length > 1) {
+        const toolBlock = msg.blocks[1] as unknown as Record<string, unknown>;
+        toolBlock.stage = "streaming";
+        delete toolBlock.compactParams;
+      }
+    }
 
-        sendCommand('updateMessages', { messages });
+    sendCommand("updateMessages", { messages });
 
-        // All three render as generic tool blocks (not file-tool headers) while streaming
-        const toolBlocks = document.querySelectorAll('.tool-block');
-        expect(toolBlocks).toHaveLength(3);
-        expect(document.querySelector('.write-tool-header')).not.toBeInTheDocument();
-        expect(document.querySelector('.write-tool-preview')).not.toBeInTheDocument();
+    // All three render as generic tool blocks (not file-tool headers) while streaming
+    const toolBlocks = document.querySelectorAll(".tool-block");
+    expect(toolBlocks).toHaveLength(3);
+    expect(
+      document.querySelector(".write-tool-header"),
+    ).not.toBeInTheDocument();
+    expect(
+      document.querySelector(".write-tool-preview"),
+    ).not.toBeInTheDocument();
 
-        const expected = longParams.slice(-30);
-        const compactParams = document.querySelectorAll('.compact-params');
-        expect(compactParams).toHaveLength(3);
-        for (const cp of compactParams) {
-            expect(cp).toHaveTextContent(expected);
-        }
-    });
-
+    const expected = longParams.slice(-30);
+    const compactParams = document.querySelectorAll(".compact-params");
+    expect(compactParams).toHaveLength(3);
+    for (const cp of compactParams) {
+      expect(cp).toHaveTextContent(expected);
+    }
+  });
 });

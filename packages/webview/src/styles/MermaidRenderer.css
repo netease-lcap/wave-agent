@@ -35,7 +35,10 @@
 
 .mermaid-tabs .tab-button.active {
   color: var(--vscode-tab-activeForeground);
-  border-bottom-color: var(--vscode-tab-activeBorder, var(--vscode-focusBorder));
+  border-bottom-color: var(
+    --vscode-tab-activeBorder,
+    var(--vscode-focusBorder)
+  );
   background: var(--vscode-tab-activeBackground);
 }
 
@@ -127,7 +130,13 @@
   padding: 16px;
   background: var(--vscode-textCodeBlock-background);
   color: var(--vscode-editor-foreground);
-  font-family: var(--vscode-editor-font-family, 'Menlo', 'Monaco', 'Courier New', monospace);
+  font-family: var(
+    --vscode-editor-font-family,
+    "Menlo",
+    "Monaco",
+    "Courier New",
+    monospace
+  );
   font-size: var(--vscode-editor-font-size, 13px);
   line-height: 1.6;
   overflow-x: auto;
@@ -158,8 +167,12 @@
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* Error State */
@@ -191,7 +204,13 @@
   padding: 8px;
   background: var(--vscode-textCodeBlock-background);
   border-radius: 4px;
-  font-family: var(--vscode-editor-font-family, 'Menlo', 'Monaco', 'Courier New', monospace);
+  font-family: var(
+    --vscode-editor-font-family,
+    "Menlo",
+    "Monaco",
+    "Courier New",
+    monospace
+  );
   font-size: 12px;
   line-height: 1.4;
   overflow-x: auto;
@@ -226,7 +245,13 @@
   padding: 16px;
   background: var(--vscode-textCodeBlock-background);
   color: var(--vscode-editor-foreground);
-  font-family: var(--vscode-editor-font-family, 'Menlo', 'Monaco', 'Courier New', monospace);
+  font-family: var(
+    --vscode-editor-font-family,
+    "Menlo",
+    "Monaco",
+    "Courier New",
+    monospace
+  );
   font-size: var(--vscode-editor-font-size, 13px);
   line-height: 1.6;
   overflow-x: auto;
@@ -241,12 +266,12 @@
   .mermaid-preview {
     padding: 12px;
   }
-  
+
   .source-code {
     padding: 12px;
     font-size: 12px;
   }
-  
+
   .tab-button {
     padding: 6px 12px;
     font-size: 11px;
@@ -404,27 +429,27 @@
   .fullscreen-header {
     padding: 8px 12px;
   }
-  
+
   .fullscreen-controls {
     gap: 6px;
   }
-  
+
   .control-btn {
     padding: 4px 8px;
     font-size: 11px;
   }
-  
+
   .zoom-info {
     font-size: 10px;
     padding: 3px 6px;
     min-width: 40px;
   }
-  
+
   .close-btn {
     padding: 6px 10px;
     font-size: 12px;
   }
-  
+
   .fullscreen-help {
     padding: 6px 12px;
     font-size: 11px;

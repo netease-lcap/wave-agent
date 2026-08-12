@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from 'react';
-import { FileSuggestionDropdownProps, FileItem } from '../types';
-import '../styles/FileSuggestionDropdown.css';
+import React, { useEffect, useRef } from "react";
+import { FileSuggestionDropdownProps, FileItem } from "../types";
+import "../styles/FileSuggestionDropdown.css";
 
 /**
  * FileSuggestionDropdown - A dropdown component for file suggestions
@@ -16,21 +16,25 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
   onClose,
   position,
   filterText,
-  isLoading = false
+  isLoading = false,
 }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Handle clicks outside dropdown to close it
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
         onClose();
       }
     };
 
     if (isVisible) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [isVisible, onClose]);
 
@@ -38,11 +42,13 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
   useEffect(() => {
     if (dropdownRef.current && selectedIndex >= 0) {
       if (selectedIndex < dropdownRef.current.children.length) {
-        const selectedElement = dropdownRef.current.children[selectedIndex] as HTMLElement;
+        const selectedElement = dropdownRef.current.children[
+          selectedIndex
+        ] as HTMLElement;
         if (selectedElement) {
           selectedElement.scrollIntoView({
-            block: 'nearest',
-            behavior: 'smooth'
+            block: "nearest",
+            behavior: "smooth",
           });
         }
       }
@@ -81,7 +87,7 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
    */
   const truncatePath = (path: string, maxLength: number = 50): string => {
     if (path.length <= maxLength) return path;
-    return '...' + path.slice(path.length - maxLength + 3);
+    return "..." + path.slice(path.length - maxLength + 3);
   };
 
   return (
@@ -89,7 +95,7 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
       ref={dropdownRef}
       className="file-suggestion-dropdown"
       style={{
-        position: 'absolute',
+        position: "absolute",
         top: `${position.top}px`,
         left: `${position.left}px`,
       }}
@@ -97,7 +103,7 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
       {suggestions.map((file: FileItem, index: number) => (
         <div
           key={file.path}
-          className={`suggestion-item ${index === selectedIndex ? 'selected' : ''}`}
+          className={`suggestion-item ${index === selectedIndex ? "selected" : ""}`}
           onClick={() => onSelect(file)}
           onMouseEnter={() => {
             // Optional: Update selected index on hover

@@ -1,46 +1,49 @@
 /* Messages */
 .messages-container {
-    flex: 1;
-    box-sizing: border-box;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding: 10px;
-    /* Cap the conversation column at 800px and center it, mirroring .input-wrapper
+  flex: 1;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px;
+  /* Cap the conversation column at 800px and center it, mirroring .input-wrapper
        so messages line up with the input box instead of spanning the full pane
        width. The panel-background gutters come from .chat-container (see
        ChatApp.css) so they match this list exactly. */
-    max-width: 800px;
-    width: 100%;
-    margin: 0 auto;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-    background-color: var(--vscode-panel-background);
-    position: relative;
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  background-color: var(--vscode-panel-background);
+  position: relative;
 }
 
 /* Sticky user message pinned at the top of the viewport (设计稿 2248-9471) */
 .sticky-user-wrapper {
-    position: sticky;
-    top: 0;
-    align-self: stretch;
-    margin-bottom: -10px;
-    z-index: 20;
+  position: sticky;
+  top: 0;
+  align-self: stretch;
+  margin-bottom: -10px;
+  z-index: 20;
 }
 
 .sticky-user-message {
-    position: relative;
-    z-index: 20;
-    /* Opaque panel-background base so the card fully masks scrolling content
+  position: relative;
+  z-index: 20;
+  /* Opaque panel-background base so the card fully masks scrolling content
        behind it, with the (translucent) request-bubble tint layered on top to
        match the normal user message bubble color. */
-    background-color: var(--vscode-panel-background);
-    background-image: linear-gradient(var(--vscode-chat-requestBubbleBackground), var(--vscode-chat-requestBubbleBackground));
-    border-radius: 6px;
-    padding: 6px 10px;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
+  background-color: var(--vscode-panel-background);
+  background-image: linear-gradient(
+    var(--vscode-chat-requestBubbleBackground),
+    var(--vscode-chat-requestBubbleBackground)
+  );
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
 }
 
 /* Cap sits above the card: covers the top 10px padding gap (so scrolling
@@ -48,35 +51,42 @@
    cover the card's top rounded corners. Opaque panel background, NOT a
    gradient. z-index above the card so it overlaps the top corners cleanly. */
 .sticky-user-cap {
-    position: relative;
-    z-index: 19;
-    margin-top: -10px;
-    height: 16px;
-    margin-bottom: -6px;
-    background-color: var(--vscode-panel-background);
+  position: relative;
+  z-index: 19;
+  margin-top: -10px;
+  height: 16px;
+  margin-bottom: -6px;
+  background-color: var(--vscode-panel-background);
 }
 
 .sticky-user-message:hover {
-    background-image: linear-gradient(var(--vscode-chat-requestBubbleHoverBackground), var(--vscode-chat-requestBubbleHoverBackground));
+  background-image: linear-gradient(
+    var(--vscode-chat-requestBubbleHoverBackground),
+    var(--vscode-chat-requestBubbleHoverBackground)
+  );
 }
 
 .sticky-user-content {
-    color: var(--vscode-foreground);
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    overflow-wrap: break-word;
+  color: var(--vscode-foreground);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: break-word;
 }
 
 /* Scrim sits below the card inside the sticky wrapper. Peaks upward (negative
    margin) to cover the rounded-corner gap at the card's bottom, then fades to
    transparent below. z-index lower than the card so it sits beneath it. */
 .sticky-user-scrim {
-    position: relative;
-    z-index: 19;
-    margin-top: -6px;
-    height: 16px;
-    background: linear-gradient(to bottom, var(--vscode-panel-background), transparent);
-    pointer-events: none;
+  position: relative;
+  z-index: 19;
+  margin-top: -6px;
+  height: 16px;
+  background: linear-gradient(
+    to bottom,
+    var(--vscode-panel-background),
+    transparent
+  );
+  pointer-events: none;
 }

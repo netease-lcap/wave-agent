@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from 'react';
-import { ExternalLinkIcon } from './HeaderIcons';
-import '../styles/MoreMenu.css';
+import React, { useEffect, useRef } from "react";
+import { ExternalLinkIcon } from "./HeaderIcons";
+import "../styles/MoreMenu.css";
 
 interface MoreMenuProps {
   onOpenSettings: () => void;
@@ -25,7 +25,7 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   onLogout,
   onClose,
   isAuthenticated,
-  hostLabel
+  hostLabel,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -37,15 +37,15 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         onClose();
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [onClose]);
 
@@ -71,8 +71,12 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
 
   return (
     <div ref={menuRef} className="more-menu" data-testid="more-menu">
-      <div className="more-menu-item" onClick={handleSettings} data-testid="more-menu-settings">
-        设置{hostLabel ? `（${hostLabel}）` : ''}
+      <div
+        className="more-menu-item"
+        onClick={handleSettings}
+        data-testid="more-menu-settings"
+      >
+        设置{hostLabel ? `（${hostLabel}）` : ""}
       </div>
       <div
         className="more-menu-item more-menu-item--between"
@@ -83,12 +87,20 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
         <ExternalLinkIcon className="more-menu-item-icon" />
       </div>
       {isAuthenticated ? (
-        <div className="more-menu-item" onClick={handleLogout} data-testid="more-menu-logout">
-          退出登录{hostLabel ? `（${hostLabel}）` : ''}
+        <div
+          className="more-menu-item"
+          onClick={handleLogout}
+          data-testid="more-menu-logout"
+        >
+          退出登录{hostLabel ? `（${hostLabel}）` : ""}
         </div>
       ) : (
-        <div className="more-menu-item" onClick={handleLogin} data-testid="more-menu-login">
-          登录{hostLabel ? `（${hostLabel}）` : ''}
+        <div
+          className="more-menu-item"
+          onClick={handleLogin}
+          data-testid="more-menu-login"
+        >
+          登录{hostLabel ? `（${hostLabel}）` : ""}
         </div>
       )}
     </div>

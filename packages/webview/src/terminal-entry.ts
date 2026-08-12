@@ -4,8 +4,8 @@
  * TerminalPane only on the desktop host — VSCE/JetBrains sync targets filter
  * it out, so xterm never ships in plugin artifacts.
  */
-import '@xterm/xterm/css/xterm.css';
+import "@xterm/xterm/css/xterm.css";
 
-export { Terminal } from '@xterm/xterm';
-export { FitAddon } from '@xterm/addon-fit';
-export { WebLinksAddon } from '@xterm/addon-web-links';
+export { Terminal } from "@xterm/xterm";
+export { FitAddon } from "@xterm/addon-fit";
+export { WebLinksAddon } from "@xterm/addon-web-links";

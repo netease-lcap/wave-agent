@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import type { VsCodeApi } from '../types';
-import type { Terminal as XtermTerminal } from '@xterm/xterm';
-import type { FitAddon } from '@xterm/addon-fit';
-import type { WebLinksAddon } from '@xterm/addon-web-links';
-import { isLocalhostUrl } from '../utils/isLocalhostUrl';
-import '../styles/TerminalPane.css';
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import type { VsCodeApi } from "../types";
+import type { Terminal as XtermTerminal } from "@xterm/xterm";
+import type { FitAddon } from "@xterm/addon-fit";
+import type { WebLinksAddon } from "@xterm/addon-web-links";
+import { isLocalhostUrl } from "../utils/isLocalhostUrl";
+import "../styles/TerminalPane.css";
 
 declare global {
   interface Window {
@@ -20,19 +20,20 @@ declare global {
 const MIN_WIDTH = 320;
 
 /** Singleton loader for the desktop-only xterm chunk. */
-let terminalLibPromise: Promise<NonNullable<Window['WaveTerminal']>> | null = null;
+let terminalLibPromise: Promise<NonNullable<Window["WaveTerminal"]>> | null =
+  null;
 
-function loadTerminalLib(): Promise<NonNullable<Window['WaveTerminal']>> {
+function loadTerminalLib(): Promise<NonNullable<Window["WaveTerminal"]>> {
   if (window.WaveTerminal) return Promise.resolve(window.WaveTerminal);
   if (terminalLibPromise) return terminalLibPromise;
   terminalLibPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = './terminal.js';
+    const script = document.createElement("script");
+    script.src = "./terminal.js";
     script.onload = () => {
       if (window.WaveTerminal) resolve(window.WaveTerminal);
-      else reject(new Error('terminal chunk 未导出 WaveTerminal'));
+      else reject(new Error("terminal chunk 未导出 WaveTerminal"));
     };
-    script.onerror = () => reject(new Error('terminal.js 加载失败'));
+    script.onerror = () => reject(new Error("terminal.js 加载失败"));
     document.head.appendChild(script);
   });
   // Allow a later retry (e.g. 重启终端) after a failed load.
@@ -50,21 +51,27 @@ export function prefetchTerminalLib(): void {
 /** Terminal colors follow the app theme via --vscode-* variables. */
 const readTerminalTheme = () => {
   const styles = getComputedStyle(document.documentElement);
-  const pick = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
-  const background = pick('--vscode-panel-background', '') || pick('--vscode-editor-background', '#1e1e1e');
-  const foreground = pick('--vscode-foreground', '#cccccc');
+  const pick = (name: string, fallback: string) =>
+    styles.getPropertyValue(name).trim() || fallback;
+  const background =
+    pick("--vscode-panel-background", "") ||
+    pick("--vscode-editor-background", "#1e1e1e");
+  const foreground = pick("--vscode-foreground", "#cccccc");
   return {
     background,
     foreground,
-    cursor: pick('--vscode-editorCursor-foreground', foreground),
-    selectionBackground: pick('--vscode-editor-selectionBackground', 'rgba(255, 255, 255, 0.25)'),
+    cursor: pick("--vscode-editorCursor-foreground", foreground),
+    selectionBackground: pick(
+      "--vscode-editor-selectionBackground",
+      "rgba(255, 255, 255, 0.25)",
+    ),
   };
 };
 
 type PaneStatus =
-  | { kind: 'loading' }
-  | { kind: 'running' }
-  | { kind: 'exited'; detail: string };
+  | { kind: "loading" }
+  | { kind: "running" }
+  | { kind: "exited"; detail: string };
 
 export interface TerminalPaneProps {
   vscode: VsCodeApi;
@@ -99,39 +106,47 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   workdir,
   onOpenPreview,
 }) => {
-  const [status, setStatus] = useState<PaneStatus>({ kind: 'loading' });
+  const [status, setStatus] = useState<PaneStatus>({ kind: "loading" });
   const asideRef = useRef<HTMLElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<XtermTerminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   // Whether a PTY for this pane is believed alive in the host.
   const liveRef = useRef(false);
-  const termId = `term-${paneId ?? 'main'}`;
+  const termId = `term-${paneId ?? "main"}`;
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
   // The terminal is built once on mount; keep the latest callback so the
   // click handler never sees a stale onOpenPreview closure.
   const onOpenPreviewRef = useRef(onOpenPreview);
   onOpenPreviewRef.current = onOpenPreview;
+  // Prop mirrors for the [bootNonce]-deps mount effect below: paneId (and the
+  // derived termId) can change without a remount (panel slot keyed by kind),
+  // so the effect reads current values from refs (same pattern as
+  // onOpenPreviewRef / visibleRef).
+  const termIdRef = useRef(termId);
+  termIdRef.current = termId;
 
   const createPty = useCallback(() => {
     const term = termRef.current;
     if (!term) return;
     liveRef.current = true;
-    setStatus({ kind: 'running' });
+    setStatus({ kind: "running" });
     vscode.postMessage({
-      command: 'desktopTerminalCreate',
+      command: "desktopTerminalCreate",
       termId,
       ...(paneId ? { paneId } : {}),
       cols: term.cols,
       rows: term.rows,
     });
   }, [vscode, termId, paneId]);
+  const createPtyRef = useRef(createPty);
+  createPtyRef.current = createPty;
 
   const killPty = useCallback(() => {
     if (!liveRef.current) return;
     liveRef.current = false;
-    vscode.postMessage({ command: 'desktopTerminalKill', termId });
+    vscode.postMessage({ command: "desktopTerminalKill", termId });
   }, [vscode, termId]);
 
   // Bump to re-run the mount flow (chunk-load failure retry).
@@ -141,7 +156,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     if (!termRef.current) {
       // The terminal was never built (chunk load failed) — re-run the mount
       // flow, which retries loadTerminalLib (its failure cache self-clears).
-      setStatus({ kind: 'loading' });
+      setStatus({ kind: "loading" });
       setBootNonce((n) => n + 1);
       return;
     }
@@ -160,28 +175,36 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
 
     const onMessage = (event: MessageEvent) => {
       const msg = event.data;
-      if (msg?.command === 'desktopTerminalData' && msg.termId === termId) {
+      if (
+        msg?.command === "desktopTerminalData" &&
+        msg.termId === termIdRef.current
+      ) {
         termRef.current?.write(msg.data);
-      } else if (msg?.command === 'desktopTerminalExit' && msg.termId === termId) {
+      } else if (
+        msg?.command === "desktopTerminalExit" &&
+        msg.termId === termIdRef.current
+      ) {
         liveRef.current = false;
         setStatus({
-          kind: 'exited',
-          detail: msg.error ?? `进程已退出（退出码 ${msg.exitCode ?? '未知'}）`,
+          kind: "exited",
+          detail: msg.error ?? `进程已退出（退出码 ${msg.exitCode ?? "未知"}）`,
         });
-      } else if (msg?.command === 'desktopThemeChange') {
+      } else if (msg?.command === "desktopThemeChange") {
         // Follow the app theme live.
-        if (termRef.current) termRef.current.options.theme = readTerminalTheme();
+        if (termRef.current)
+          termRef.current.options.theme = readTerminalTheme();
       }
     };
-    window.addEventListener('message', onMessage);
+    window.addEventListener("message", onMessage);
 
     loadTerminalLib()
       .then((lib) => {
         if (disposed || !containerRef.current) return;
         const term = new lib.Terminal({
           fontFamily:
-            getComputedStyle(document.documentElement).getPropertyValue('--vscode-editor-font-family').trim() ||
-            'Menlo, Monaco, "Courier New", monospace',
+            getComputedStyle(document.documentElement)
+              .getPropertyValue("--vscode-editor-font-family")
+              .trim() || 'Menlo, Monaco, "Courier New", monospace',
           fontSize: 12,
           cursorBlink: true,
           theme: readTerminalTheme(),
@@ -196,7 +219,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           if (isLocalhostUrl(uri) && onOpenPreviewRef.current) {
             onOpenPreviewRef.current(uri);
           } else {
-            vscode.postMessage({ command: 'openExternal', url: uri });
+            vscode.postMessage({ command: "openExternal", url: uri });
           }
         });
         term.loadAddon(links);
@@ -204,7 +227,11 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         termRef.current = term;
         fitRef.current = fit;
         term.onData((data) => {
-          vscode.postMessage({ command: 'desktopTerminalInput', termId, data });
+          vscode.postMessage({
+            command: "desktopTerminalInput",
+            termId: termIdRef.current,
+            data,
+          });
         });
         resizeObserver = new ResizeObserver(() => {
           const el = containerRef.current;
@@ -214,8 +241,8 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           fit.fit();
           if (liveRef.current) {
             vscode.postMessage({
-              command: 'desktopTerminalResize',
-              termId,
+              command: "desktopTerminalResize",
+              termId: termIdRef.current,
               cols: term.cols,
               rows: term.rows,
             });
@@ -224,7 +251,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         resizeObserver.observe(containerRef.current);
         fit.fit();
         if (visibleRef.current) {
-          createPty();
+          createPtyRef.current();
           // 首次打开走这条路径（chunk 异步加载完成后才建终端）——聚焦，
           // 对齐 VS Code 打开终端面板的行为。
           term.focus();
@@ -232,20 +259,23 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       })
       .catch((err) => {
         if (!disposed) {
-          setStatus({ kind: 'exited', detail: err instanceof Error ? err.message : String(err) });
+          setStatus({
+            kind: "exited",
+            detail: err instanceof Error ? err.message : String(err),
+          });
         }
       });
 
     return () => {
       disposed = true;
       resizeObserver?.disconnect();
-      window.removeEventListener('message', onMessage);
+      window.removeEventListener("message", onMessage);
       termRef.current?.dispose();
       termRef.current = null;
       fitRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bootNonce]);
+    // vscode is a module singleton, so this still only re-runs on bootNonce.
+  }, [bootNonce, vscode]);
 
   // Visibility / session-context changes. A hidden terminal is kept
   // alive; a session switch kills it (rebuilt with the new cwd if visible).
@@ -254,7 +284,8 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     const prev = prevRef.current;
     prevRef.current = { visible, sessionId, workdir };
     const becameVisible = visible && !prev.visible;
-    const contextChanged = prev.sessionId !== sessionId || prev.workdir !== workdir;
+    const contextChanged =
+      prev.sessionId !== sessionId || prev.workdir !== workdir;
     if (contextChanged) {
       killPty();
       if (visible) createPty();
@@ -270,25 +301,30 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     const handle = e.currentTarget as HTMLElement;
     // Keep the handle lit + cursor locked for the whole drag — :hover and the
     // 6px-only col-resize cursor both flicker as the pointer outruns the handle.
-    handle.style.background = 'var(--vscode-focusBorder, #007fd4)';
-    document.body.classList.add('is-panel-resizing');
+    handle.style.background = "var(--vscode-focusBorder, #007fd4)";
+    document.body.classList.add("is-panel-resizing");
     const rect = asideRef.current?.getBoundingClientRect();
     const onMove = (ev: MouseEvent) => {
       const next = (rect?.right ?? 0) - ev.clientX;
       onWidthChange(Math.min(Math.max(next, MIN_WIDTH), maxWidth));
     };
     const onUp = () => {
-      handle.style.background = '';
-      document.body.classList.remove('is-panel-resizing');
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      handle.style.background = "";
+      document.body.classList.remove("is-panel-resizing");
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
     };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   };
 
   return (
-    <aside ref={asideRef} className="preview-pane terminal-pane" style={{ width }} data-testid="terminal-pane">
+    <aside
+      ref={asideRef}
+      className="preview-pane terminal-pane"
+      style={{ width }}
+      data-testid="terminal-pane"
+    >
       <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
         <div className="preview-pane-toolbar">
@@ -310,14 +346,22 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             <i className="codicon codicon-close" />
           </button>
         </div>
-        <div className="terminal-pane-body" ref={containerRef} data-testid="terminal-body">
-          {status.kind === 'loading' && (
+        <div
+          className="terminal-pane-body"
+          ref={containerRef}
+          data-testid="terminal-body"
+        >
+          {status.kind === "loading" && (
             <div className="desktop-panel-placeholder">终端加载中…</div>
           )}
-          {status.kind === 'exited' && (
+          {status.kind === "exited" && (
             <div className="desktop-panel-placeholder terminal-pane-exited">
               <span>{status.detail}</span>
-              <button className="preview-pane-button" data-testid="terminal-retry" onClick={restart}>
+              <button
+                className="preview-pane-button"
+                data-testid="terminal-retry"
+                onClick={restart}
+              >
                 重启终端
               </button>
             </div>

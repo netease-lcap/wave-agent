@@ -1,5 +1,5 @@
-import React from 'react';
-import type { BangBlock as BangBlockType } from '../types';
+import React from "react";
+import type { BangBlock as BangBlockType } from "../types";
 
 interface BangBlockProps {
   block: BangBlockType;
@@ -7,13 +7,18 @@ interface BangBlockProps {
 
 export const BangBlock: React.FC<BangBlockProps> = ({ block }) => {
   const { command, output, stage, exitCode } = block;
-  const isRunning = stage === 'running';
+  const isRunning = stage === "running";
 
   return (
     <div className="bash-command-unified">
       <div className="bash-command-input">
         <span className="bash-command">{command}</span>
-        {isRunning && <i className="codicon codicon-loading codicon-modifier-spin" style={{ marginLeft: '8px', fontSize: '12px' }}></i>}
+        {isRunning && (
+          <i
+            className="codicon codicon-loading codicon-modifier-spin"
+            style={{ marginLeft: "8px", fontSize: "12px" }}
+          ></i>
+        )}
       </div>
       {!isRunning && (
         <div className="bash-command-output">

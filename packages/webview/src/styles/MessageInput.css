@@ -1,20 +1,20 @@
 /* Input Area */
 .input-container {
-    padding: 10px 0;
-    background-color: var(--vscode-panel-background);
+  padding: 10px 0;
+  background-color: var(--vscode-panel-background);
 }
 
 .input-wrapper {
-    max-width: 800px;
-    margin: 0 auto;
-    width: 100%;
-    position: relative;
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+  position: relative;
 }
 
 .input-row {
-    display: flex;
-    gap: 8px;
-    align-items: flex-end;
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
 }
 
 /* Single bordered box wrapping the text area + toolbar (设计稿 2237-5088).
@@ -22,413 +22,422 @@
    mode, "+" menu) must be able to escape the box top; the inner .message-input
    handles its own scrolling via overflow-y:auto. */
 .input-content {
-    display: flex;
-    flex-direction: column;
-    background-color: var(--vscode-input-background);
-    /* Some themes (e.g. Visual Studio Light) don't define input.border, which would
+  display: flex;
+  flex-direction: column;
+  background-color: var(--vscode-input-background);
+  /* Some themes (e.g. Visual Studio Light) don't define input.border, which would
        invalidate the whole shorthand — fall back through other border vars. */
-    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.4))));
-    border-radius: 6px;
-    max-height: 176px;
+  border: 1px solid
+    var(
+      --vscode-input-border,
+      var(
+        --vscode-panel-border,
+        var(--vscode-widget-border, rgba(128, 128, 128, 0.4))
+      )
+    );
+  border-radius: 6px;
+  max-height: 176px;
 }
 
 /* Focus state: the whole box border turns brand red (设计稿 Focus state). */
 .input-content:focus-within {
-    border-color: var(--vscode-brand-primary, #c1292e);
+  border-color: var(--vscode-brand-primary, #c1292e);
 }
 
 /* Desktop host, new-session state: workdir selector row at the top-left of
    the input box. Sits above the text area; its dropdown expands upward. */
 .input-workdir-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px 0;
-    min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 0;
+  min-width: 0;
 }
 
 .message-input {
-    width: 100%;
-    box-sizing: border-box;
-    background-color: transparent;
-    color: var(--vscode-input-foreground);
-    border: none;
-    padding: 12px;
-    font-family: var(--vscode-font-family);
-    font-size: 12px;
-    line-height: 16px;
-    min-height: 40px;
-    max-height: 112px;
-    overflow-y: auto;
-    word-break: break-word;
-    white-space: pre-wrap;
-    field-sizing: content;
+  width: 100%;
+  box-sizing: border-box;
+  background-color: transparent;
+  color: var(--vscode-input-foreground);
+  border: none;
+  padding: 12px;
+  font-family: var(--vscode-font-family);
+  font-size: 12px;
+  line-height: 16px;
+  min-height: 40px;
+  max-height: 112px;
+  overflow-y: auto;
+  word-break: break-word;
+  white-space: pre-wrap;
+  field-sizing: content;
 }
 
 .content-editable-input:empty:before {
-    content: attr(data-placeholder);
-    color: var(--vscode-input-placeholderForeground);
-    pointer-events: none;
-    display: block;
+  content: attr(data-placeholder);
+  color: var(--vscode-input-placeholderForeground);
+  pointer-events: none;
+  display: block;
 }
 
 .message-input:focus {
-    outline: none;
+  outline: none;
 }
 
 /* Buttons */
 .send-button,
 .abort-button {
-    background-color: transparent;
-    color: var(--vscode-foreground);
-    border: none;
-    padding: 4px;
-    border-radius: 3px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    flex-shrink: 0;
+  background-color: transparent;
+  color: var(--vscode-foreground);
+  border: none;
+  padding: 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
 }
 
 .send-button i.codicon,
 .abort-button i.codicon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    line-height: 1;
-    opacity: 1;
-    font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  opacity: 1;
+  font-size: 16px;
 }
 
 .send-button:hover,
 .abort-button:hover {
-    background-color: var(--vscode-toolbar-hoverBackground);
+  background-color: var(--vscode-toolbar-hoverBackground);
 }
 
 .send-button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .send-button:disabled:hover {
-    background-color: transparent;
+  background-color: transparent;
 }
 
 /* Figma design: red send/abort buttons, 28x28 rounded square, white glyph */
 .ai-send-btn,
 .ai-abort-btn {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    background: var(--vscode-brand-primary, #c1292e);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--vscode-brand-primary, #c1292e);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
 }
 
 .ai-send-btn:hover:not(:disabled),
 .ai-abort-btn:hover {
-    background: var(--vscode-brand-primary, #c1292e);
-    background-color: var(--vscode-brand-primary, #c1292e);
-    filter: brightness(0.92);
+  background: var(--vscode-brand-primary, #c1292e);
+  background-color: var(--vscode-brand-primary, #c1292e);
+  filter: brightness(0.92);
 }
 
 .ai-send-btn:disabled {
-    opacity: 0.4;
-    cursor: default;
+  opacity: 0.4;
+  cursor: default;
 }
 
 .ai-send-btn:disabled:hover {
-    background-color: var(--vscode-brand-primary, #c1292e);
-    filter: none;
+  background-color: var(--vscode-brand-primary, #c1292e);
+  filter: none;
 }
 
 .ai-send-icon,
 .ai-send-btn svg {
-    width: 16px;
-    height: 16px;
-    display: block;
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 .abort-glyph {
-    width: 10px;
-    height: 10px;
-    border-radius: 2px;
-    background: #fff;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: #fff;
 }
 
 /* Toolbar row inside the bordered box: 40px tall, 12px horizontal padding (设计稿) */
 .input-buttons-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    height: 40px;
-    padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
 }
 
 .button-spacer {
-    flex: 1;
+  flex: 1;
 }
 
 .context-actions {
-    display: flex;
-    align-items: center;
-    gap: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .permission-mode-container {
-    position: relative;
-    display: flex;
+  position: relative;
+  display: flex;
 }
 
 .permission-mode-select {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background-color: transparent;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    font-size: 12px;
-    color: var(--vscode-descriptionForeground);
-    cursor: pointer;
-    padding: 4px 6px;
-    outline: none;
-    font-family: inherit;
-    transition: background-color 0.2s ease, color 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 4px 6px;
+  outline: none;
+  font-family: inherit;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 .permission-mode-icon {
-    width: 16px;
-    height: 16px;
-    display: inline-flex;
-    flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  flex-shrink: 0;
 }
 
 .permission-mode-caret {
-    font-size: 12px;
-    opacity: 0.8;
+  font-size: 12px;
+  opacity: 0.8;
 }
 
 .permission-mode-select:hover,
 .permission-mode-select:focus {
-    background-color: var(--vscode-toolbar-hoverBackground);
-    color: var(--vscode-foreground);
-    border-color: var(--vscode-focusBorder);
+  background-color: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+  border-color: var(--vscode-focusBorder);
 }
 
 .permission-mode-select.mode-default {
-    color: var(--vscode-testing-iconPassed, #73c991);
+  color: var(--vscode-testing-iconPassed, #73c991);
 }
 
 .permission-mode-select.mode-acceptEdits {
-    color: var(--vscode-list-warningForeground, #e5ba7d);
+  color: var(--vscode-list-warningForeground, #e5ba7d);
 }
 
 .permission-mode-select.mode-plan {
-    color: var(--vscode-textLink-foreground, #48a0c7);
+  color: var(--vscode-textLink-foreground, #48a0c7);
 }
 
 .permission-mode-select.mode-bypassPermissions {
-    color: var(--vscode-errorForeground, #f48771);
-    font-weight: bold;
+  color: var(--vscode-errorForeground, #f48771);
+  font-weight: bold;
 }
 
 /* Custom permission dropdown — expands upward (bottom:100%) so it is not clipped at
    the bottom of the webview viewport in JCEF, where a native <select> popup expands
    downward and gets cut off. */
 .permission-mode-menu {
-    position: absolute;
-    bottom: 100%;
-    left: 0;
-    margin-bottom: 4px;
-    list-style: none;
-    margin-top: 0;
-    padding: 2px 0;
-    background: var(--vscode-dropdown-background);
-    color: var(--vscode-dropdown-foreground);
-    border: 1px solid var(--vscode-dropdown-border);
-    border-radius: 4px;
-    box-shadow: 0 2px 8px var(--vscode-widget-shadow);
-    z-index: 10000;
-    min-width: 140px;
-    white-space: nowrap;
-    font-size: 12px;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 4px;
+  list-style: none;
+  margin-top: 0;
+  padding: 2px 0;
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+  z-index: 10000;
+  min-width: 140px;
+  white-space: nowrap;
+  font-size: 12px;
 }
 
 .permission-mode-item {
-    padding: 6px 12px;
-    cursor: pointer;
-    color: var(--vscode-dropdown-foreground);
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--vscode-dropdown-foreground);
 }
 
 .permission-mode-item:hover,
 .permission-mode-item.selected {
-    background: var(--vscode-list-hoverBackground);
-    color: var(--vscode-list-activeSelectionForeground);
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-list-activeSelectionForeground);
 }
 
 .permission-mode-item.selected {
-    background: var(--vscode-list-activeSelectionBackground);
+  background: var(--vscode-list-activeSelectionBackground);
 }
 
 /* Toolbar icon buttons ("+" and "/") — 22px square, 16px icon */
 .toolbar-icon-button {
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background-color: transparent;
-    color: var(--vscode-icon-foreground);
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  color: var(--vscode-icon-foreground);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .toolbar-icon {
-    width: 16px;
-    height: 16px;
-    display: block;
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 .toolbar-icon-button:hover {
-    background-color: var(--vscode-toolbar-hoverBackground);
+  background-color: var(--vscode-toolbar-hoverBackground);
 }
 
 /* "+" add menu — expands upward (bottom:100%) so it is not clipped at the bottom of
    the webview viewport in JCEF. Reuses the permission dropdown visual language. */
 .plus-menu-container {
-    position: relative;
-    display: flex;
+  position: relative;
+  display: flex;
 }
 
 .plus-menu {
-    position: absolute;
-    bottom: 100%;
-    left: 0;
-    margin-bottom: 4px;
-    margin-top: 0;
-    list-style: none;
-    padding: 8px;
-    background: var(--vscode-menu-background);
-    color: var(--vscode-menu-foreground);
-    border: 1px solid var(--vscode-widget-border);
-    border-radius: 8px;
-    box-shadow: 0 2px 8px var(--vscode-widget-shadow);
-    z-index: 10000;
-    width: 160px;
-    white-space: nowrap;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 4px;
+  margin-top: 0;
+  list-style: none;
+  padding: 8px;
+  background: var(--vscode-menu-background);
+  color: var(--vscode-menu-foreground);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+  z-index: 10000;
+  width: 160px;
+  white-space: nowrap;
 }
 
 .plus-menu-item {
-    display: flex;
-    align-items: center;
-    height: 24px;
-    padding: 0 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--vscode-menu-foreground);
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-menu-foreground);
 }
 
 .plus-menu-item:hover {
-    background: var(--vscode-list-hoverBackground);
-    color: var(--vscode-list-activeSelectionForeground);
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-list-activeSelectionForeground);
 }
 /* Selection Tag */
 .selection-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 11px;
-    cursor: pointer;
-    margin-bottom: 8px;
-    user-select: none;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  margin-bottom: 8px;
+  user-select: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .selection-tag.enabled {
-    background-color: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
 }
 
 .selection-tag.disabled {
-    background-color: var(--vscode-input-background);
-    color: var(--vscode-descriptionForeground);
-    border: 1px solid var(--vscode-input-border);
-    opacity: 0.7;
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-descriptionForeground);
+  border: 1px solid var(--vscode-input-border);
+  opacity: 0.7;
 }
 
 .selection-tag:hover,
 .selection-tag:focus-visible {
-    opacity: 0.9;
-    outline: 1px solid var(--vscode-focusBorder);
-    outline-offset: 1px;
+  opacity: 0.9;
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
 }
 
 /* Image Preview Modal */
 .image-preview-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background-color: rgba(0, 0, 0, 0.85);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 10000;
-    cursor: zoom-out;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.85);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  cursor: zoom-out;
 }
 
 .image-preview-modal img {
-    max-width: 90%;
-    max-height: 90%;
-    object-fit: contain;
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-    cursor: default;
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  cursor: default;
 }
 
 .image-preview-close {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    color: white;
-    font-size: 24px;
-    cursor: pointer;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background-color: rgba(255, 255, 255, 0.1);
-    border-radius: 50%;
-    transition: background-color 0.2s;
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  transition: background-color 0.2s;
 }
 
 .image-preview-close:hover {
-    background-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.2);
 }
 
 .queued-edit-chip {
-    color: var(--vscode-textLink-foreground);
-    font-size: 12px;
-    font-weight: 500;
-    user-select: none;
-    cursor: default;
+  color: var(--vscode-textLink-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  user-select: none;
+  cursor: default;
 }

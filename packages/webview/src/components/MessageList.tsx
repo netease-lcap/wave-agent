@@ -1,8 +1,16 @@
-import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback, useState } from 'react';
-import { Message } from './Message';
-import type { MessageListProps } from '../types';
-import type { Message as MessageType } from 'wave-agent-sdk';
-import '../styles/MessageList.css';
+import React, {
+  useEffect,
+  useRef,
+  useImperativeHandle,
+  forwardRef,
+  useMemo,
+  useCallback,
+  useState,
+} from "react";
+import { Message } from "./Message";
+import type { MessageListProps } from "../types";
+import type { Message as MessageType } from "wave-agent-sdk";
+import "../styles/MessageList.css";
 
 // Count the blocks in an assistant message that Message.tsx wraps in a `.timeline-row`
 // (i.e. that carry a timeline dot): non-empty text/compact, tool, and reasoning blocks.
@@ -13,12 +21,12 @@ function countTimelineBlocks(message: MessageType): number {
   let count = 0;
   for (const block of message.blocks) {
     switch (block.type) {
-      case 'text':
-      case 'compact':
+      case "text":
+      case "compact":
         if (block.content && block.content.trim()) count++;
         break;
-      case 'tool':
-      case 'reasoning':
+      case "tool":
+      case "reasoning":
         count++;
         break;
     }
@@ -26,7 +34,23 @@ function countTimelineBlocks(message: MessageType): number {
   return count;
 }
 
-export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, isStreaming, isCompacting, vscode, onRewindToMessage, workdir, onOpenPreview, onOpenFile }, ref) {
+export const MessageList = forwardRef<
+  { scrollToBottom: (behavior?: ScrollBehavior) => void },
+  MessageListProps
+>(function MessageList(
+  {
+    messages,
+    queuedMessages,
+    isStreaming,
+    isCompacting,
+    vscode,
+    onRewindToMessage,
+    workdir,
+    onOpenPreview,
+    onOpenFile,
+  },
+  ref,
+) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -65,7 +89,10 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
 
   // The most-recent user message that has scrolled above the viewport top; pinned
   // at the top of the list as a context hint (设计稿 2236-3792).
-  const [stickyMessage, setStickyMessage] = useState<{ id: string; text: string } | null>(null);
+  const [stickyMessage, setStickyMessage] = useState<{
+    id: string;
+    text: string;
+  } | null>(null);
 
   const computeSticky = useCallback(() => {
     const container = containerRef.current;
@@ -74,7 +101,9 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
       return;
     }
     const scrollTop = container.scrollTop;
-    const nodes = container.querySelectorAll<HTMLElement>('[data-role="user"][data-message-id]');
+    const nodes = container.querySelectorAll<HTMLElement>(
+      '[data-role="user"][data-message-id]',
+    );
     let candidate: HTMLElement | null = null;
     // Find the last user message whose top edge has scrolled above the viewport top.
     for (const node of nodes) {
@@ -88,19 +117,24 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
       setStickyMessage(null);
       return;
     }
-    const id = candidate.getAttribute('data-message-id') || '';
-    const text = candidate.querySelector('.user-content')?.textContent?.trim() || '';
+    const id = candidate.getAttribute("data-message-id") || "";
+    const text =
+      candidate.querySelector(".user-content")?.textContent?.trim() || "";
     if (!id || !text) {
       setStickyMessage(null);
       return;
     }
-    setStickyMessage(prev => (prev && prev.id === id && prev.text === text ? prev : { id, text }));
+    setStickyMessage((prev) =>
+      prev && prev.id === id && prev.text === text ? prev : { id, text },
+    );
   }, []);
 
   const scrollToMessage = useCallback((id: string) => {
     const container = containerRef.current;
-    const node = container?.querySelector<HTMLElement>(`[data-message-id="${id}"]`);
-    node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const node = container?.querySelector<HTMLElement>(
+      `[data-message-id="${id}"]`,
+    );
+    node?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, []);
 
   // Perform a programmatic scroll-to-bottom, guarding it with the
@@ -117,36 +151,46 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     });
   }, []);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth', force = false) => {
-    const container = containerRef.current;
-    const messagesEnd = messagesEndRef.current;
-    if (!container || !messagesEnd) return;
+  const scrollToBottom = useCallback(
+    (behavior: ScrollBehavior = "smooth", force = false) => {
+      const container = containerRef.current;
+      const messagesEnd = messagesEndRef.current;
+      if (!container || !messagesEnd) return;
 
-    const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 300;
+      const isNearBottom =
+        container.scrollTop + container.clientHeight >=
+        container.scrollHeight - 300;
 
-    const isUserMessage = messages.length > 0 && messages[messages.length - 1].role === 'user';
-    // Force scroll if it's a new message AND (it's from user OR user is already at bottom)
-    const shouldForce = force && (isUserMessage || !userScrolledUpRef.current);
+      const isUserMessage =
+        messages.length > 0 && messages[messages.length - 1].role === "user";
+      // Force scroll if it's a new message AND (it's from user OR user is already at bottom)
+      const shouldForce =
+        force && (isUserMessage || !userScrolledUpRef.current);
 
-    // Always scroll if:
-    // 1. It's a brand new message that should be forced
-    // 2. We are currently streaming content AND user hasn't scrolled up
-    // 3. The user is already near the bottom AND hasn't scrolled up
-    if (shouldForce || ((isStreaming || isNearBottom) && !userScrolledUpRef.current)) {
-      // A new user message means the user wants to follow the upcoming reply:
-      // clear any prior opt-out so streaming auto-scrolls into view.
-      if (shouldForce && isUserMessage) {
-        userScrolledUpRef.current = false;
+      // Always scroll if:
+      // 1. It's a brand new message that should be forced
+      // 2. We are currently streaming content AND user hasn't scrolled up
+      // 3. The user is already near the bottom AND hasn't scrolled up
+      if (
+        shouldForce ||
+        ((isStreaming || isNearBottom) && !userScrolledUpRef.current)
+      ) {
+        // A new user message means the user wants to follow the upcoming reply:
+        // clear any prior opt-out so streaming auto-scrolls into view.
+        if (shouldForce && isUserMessage) {
+          userScrolledUpRef.current = false;
+        }
+        doScrollToBottom(behavior);
       }
-      doScrollToBottom(behavior);
-    }
-  }, [messages, isStreaming, doScrollToBottom]);
+    },
+    [messages, isStreaming, doScrollToBottom],
+  );
 
   // Expose scrollToBottom method to parent component
   useImperativeHandle(ref, () => ({
-    scrollToBottom: (behavior: ScrollBehavior = 'smooth') => {
+    scrollToBottom: (behavior: ScrollBehavior = "smooth") => {
       doScrollToBottom(behavior);
-    }
+    },
   }));
 
   // Auto-scroll to bottom when messages change, streaming updates, or subagent messages update
@@ -159,7 +203,9 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     // mermaid) is still loading. isNewMessage marks appended messages.
     const isInitialLoad = isFirstEffectRef.current && messages.length > 0;
     isFirstEffectRef.current = false;
-    const isNewMessage = messages.length > prevMessagesLengthRef.current || (queuedMessages?.length || 0) > prevQueuedLengthRef.current;
+    const isNewMessage =
+      messages.length > prevMessagesLengthRef.current ||
+      (queuedMessages?.length || 0) > prevQueuedLengthRef.current;
     prevMessagesLengthRef.current = messages.length;
     prevQueuedLengthRef.current = queuedMessages?.length || 0;
 
@@ -173,17 +219,21 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     // back down to the bottom region resumes following.
     const handleScroll = () => {
       if (!isProgrammaticScrollRef.current) {
-        const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 300;
+        const isNearBottom =
+          container.scrollTop + container.clientHeight >=
+          container.scrollHeight - 300;
         const scrolledUp = container.scrollTop < prevScrollTopRef.current;
         // A clamp from a content-shrink reflow (scrollHeight decreased) moves
         // scrollTop downward but is NOT user intent — ignore it so auto-follow
         // survives reasoning collapse / streaming-end reflow / image load.
-        const contentShrank = container.scrollHeight < prevScrollHeightRef.current;
+        const contentShrank =
+          container.scrollHeight < prevScrollHeightRef.current;
         // Same for a viewport-growth clamp (clientHeight increased, scrollHeight
         // unchanged): the container got taller under the user's parked position,
         // e.g. when the confirmation dialog closes and the input area comes back
         // shorter than the dialog.
-        const viewportGrew = container.clientHeight > prevClientHeightRef.current;
+        const viewportGrew =
+          container.clientHeight > prevClientHeightRef.current;
         // An upward gesture always opts out of following (covers the "slight
         // nudge up then stop" case that the distance threshold alone missed).
         // A downward gesture to the bottom region opts back in.
@@ -199,7 +249,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
       computeSticky();
     };
 
-    container.addEventListener('scroll', handleScroll);
+    container.addEventListener("scroll", handleScroll);
 
     // Use ResizeObserver to recompute sticky state on content height changes
     // (images, diffs, etc.). Auto-scroll itself is driven by the messages
@@ -222,12 +272,15 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     // Follow new content: scroll on every messages change (incl. streaming text
     // chunks so streamed text stays visible), gated by userScrolledUp inside
     // scrollToBottom. A brand-new message forces the scroll.
-    scrollToBottom(isStreaming || isInitialLoad ? 'auto' : 'smooth', isNewMessage || isInitialLoad);
+    scrollToBottom(
+      isStreaming || isInitialLoad ? "auto" : "smooth",
+      isNewMessage || isInitialLoad,
+    );
     computeSticky();
 
     return () => {
       resizeObserver.disconnect();
-      container.removeEventListener('scroll', handleScroll);
+      container.removeEventListener("scroll", handleScroll);
     };
   }, [messages, queuedMessages, isStreaming, scrollToBottom, computeSticky]);
 
@@ -238,11 +291,11 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     const container = containerRef.current;
     if (!container) return;
     const repin = () => {
-      if (!userScrolledUpRef.current) doScrollToBottom('auto');
+      if (!userScrolledUpRef.current) doScrollToBottom("auto");
     };
-    container.addEventListener('load', repin, true);
+    container.addEventListener("load", repin, true);
     document.fonts?.ready.then(repin);
-    return () => container.removeEventListener('load', repin, true);
+    return () => container.removeEventListener("load", repin, true);
   }, [doScrollToBottom]);
 
   // Re-pin once the sticky user message renders. The sticky bar is a normal
@@ -257,17 +310,19 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !stickyMessage) return;
-    const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 300;
+    const isNearBottom =
+      container.scrollTop + container.clientHeight >=
+      container.scrollHeight - 300;
     if (isNearBottom && !userScrolledUpRef.current) {
-      doScrollToBottom('auto');
+      doScrollToBottom("auto");
     }
   }, [stickyMessage, doScrollToBottom]);
 
   return (
-    <div 
+    <div
       ref={containerRef}
-      id="messagesContainer" 
-      className={`messages-container${isStreaming ? ' streaming' : ''}${isCompacting ? ' compacting' : ''}`}
+      id="messagesContainer"
+      className={`messages-container${isStreaming ? " streaming" : ""}${isCompacting ? " compacting" : ""}`}
       data-testid="messages-container"
     >
       {stickyMessage && (
@@ -288,7 +343,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
         // Filter out user messages with isMeta (hidden from the list)
         const visibleMessages: MessageType[] = [];
         for (const msg of messages) {
-          if (msg.role === 'user' && msg.isMeta) continue;
+          if (msg.role === "user" && msg.isMeta) continue;
           visibleMessages.push(msg);
         }
 
@@ -314,21 +369,24 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
 
         const flushGroup = () => {
           if (group.length === 0) return;
-          const dotCount = group.reduce((sum, g) => sum + countTimelineBlocks(g.message), 0);
+          const dotCount = group.reduce(
+            (sum, g) => sum + countTimelineBlocks(g.message),
+            0,
+          );
           const single = dotCount <= 1;
           rendered.push(
             <div
               key={group[0].message.id}
-              className={`assistant-group${single ? ' assistant-group--single' : ''}`}
+              className={`assistant-group${single ? " assistant-group--single" : ""}`}
             >
-              {group.map(g => renderMessage(g.message))}
-            </div>
+              {group.map((g) => renderMessage(g.message))}
+            </div>,
           );
           group = [];
         };
 
         visibleMessages.forEach((message) => {
-          if (message.role === 'assistant') {
+          if (message.role === "assistant") {
             group.push({ message });
           } else {
             flushGroup();
@@ -338,8 +396,15 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
         flushGroup();
 
         return rendered;
-      }, [messages, vscode, onRewindToMessage, workdir, onOpenPreview, onOpenFile])}
-      
+      }, [
+        messages,
+        vscode,
+        onRewindToMessage,
+        workdir,
+        onOpenPreview,
+        onOpenFile,
+      ])}
+
       {/* Compaction hint: blinking cursor + label pinned to the end of the
           message list, independent of isStreaming (auto-compaction runs between
           turns, after the streaming cursor is gone). */}

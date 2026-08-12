@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { Tooltip } from './Tooltip';
-import { NewSessionIcon, HistoryIcon, MoreIcon } from './HeaderIcons';
-import { SessionListPopup } from './SessionListPopup';
-import { MoreMenu } from './MoreMenu';
-import { PanelToggleMenu } from './PanelToggleMenu';
-import { getSessionTitle } from '../utils/session';
-import type { ChatHeaderProps } from '../types';
-import '../styles/ChatHeader.css';
+import React, { useState } from "react";
+import { Tooltip } from "./Tooltip";
+import { NewSessionIcon, HistoryIcon, MoreIcon } from "./HeaderIcons";
+import { SessionListPopup } from "./SessionListPopup";
+import { MoreMenu } from "./MoreMenu";
+import { PanelToggleMenu } from "./PanelToggleMenu";
+import { getSessionTitle } from "../utils/session";
+import type { ChatHeaderProps } from "../types";
+import "../styles/ChatHeader.css";
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onNewSession,
@@ -23,7 +23,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   isAuthenticated,
   hideSessionButtons = false,
   hideMoreButton = false,
-  panelToggle
+  panelToggle,
 }) => {
   const [showSessionList, setShowSessionList] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);

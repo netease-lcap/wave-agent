@@ -1,5 +1,13 @@
-import type { ChatState, ChatAction, Message, MessageBlock, TextBlock, ToolBlock, ErrorBlock } from '../types';
-import { pinSessionTitle } from '../utils/session';
+import type {
+  ChatState,
+  ChatAction,
+  Message,
+  MessageBlock,
+  TextBlock,
+  ToolBlock,
+  ErrorBlock,
+} from "../types";
+import { pinSessionTitle } from "../utils/session";
 
 export const initialState: ChatState = {
   messages: [],
@@ -26,77 +34,80 @@ export const initialState: ChatState = {
   configurationError: undefined,
   projectSettings: undefined,
   // Permission mode state
-  permissionMode: 'default',
+  permissionMode: "default",
   // Attached images state
   attachedImages: [],
   // Auth state
   isAuthenticated: false,
   initialized: false,
-  workdir: undefined
+  workdir: undefined,
 };
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
-    case 'SET_MESSAGES': {
+    case "SET_MESSAGES": {
       return {
         ...state,
         messages: action.payload,
-        currentSession: pinSessionTitle(state.currentSession, action.payload)
+        currentSession: pinSessionTitle(state.currentSession, action.payload),
       };
     }
-    case 'SET_TASKS':
+    case "SET_TASKS":
       return {
         ...state,
         tasks: action.payload,
         // Auto-expand task list when tasks are first created
-        isTaskListCollapsed: state.tasks.length === 0 && action.payload.length > 0 ? false : state.isTaskListCollapsed
+        isTaskListCollapsed:
+          state.tasks.length === 0 && action.payload.length > 0
+            ? false
+            : state.isTaskListCollapsed,
       };
-    case 'SET_BACKGROUND_TASKS':
+    case "SET_BACKGROUND_TASKS":
       return { ...state, backgroundTasks: action.payload };
-    case 'SET_WORKFLOW_RUNS':
+    case "SET_WORKFLOW_RUNS":
       return { ...state, workflowRuns: action.payload };
-    case 'TOGGLE_TASK_LIST_COLLAPSE':
+    case "TOGGLE_TASK_LIST_COLLAPSE":
       return {
         ...state,
-        isTaskListCollapsed: !state.isTaskListCollapsed
+        isTaskListCollapsed: !state.isTaskListCollapsed,
       };
-    case 'SET_TASK_LIST_COLLAPSED':
+    case "SET_TASK_LIST_COLLAPSED":
       return {
         ...state,
-        isTaskListCollapsed: action.payload
+        isTaskListCollapsed: action.payload,
       };
-    case 'TOGGLE_QUEUE_COLLAPSE':
+    case "TOGGLE_QUEUE_COLLAPSE":
       return {
         ...state,
-        isQueueCollapsed: !state.isQueueCollapsed
+        isQueueCollapsed: !state.isQueueCollapsed,
       };
-    case 'START_STREAMING':
+    case "START_STREAMING":
       return {
         ...state,
-        isStreaming: true
+        isStreaming: true,
       };
-    case 'END_STREAMING':
+    case "END_STREAMING":
       return {
         ...state,
-        isStreaming: false
+        isStreaming: false,
       };
-    case 'SET_COMPACTING':
+    case "SET_COMPACTING":
       return {
         ...state,
-        isCompacting: action.payload
+        isCompacting: action.payload,
       };
-    case 'INPUT_CLEARED':
+    case "INPUT_CLEARED":
       return {
         ...state,
-        shouldClearInput: false
+        shouldClearInput: false,
       };
-    case 'SET_SESSIONS':
+    case "SET_SESSIONS":
       return {
         ...state,
         sessions: action.payload,
-        sessionsLoading: false
+        sessionsLoading: false,
       };
-    case 'SET_CURRENT_SESSION': {
+    case "SET_CURRENT_SESSION": {
       const session = action.payload;
       if (!session) {
         return { ...state, currentSession: undefined };
@@ -108,78 +119,89 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       // firstMessage so getSessionTitle falls back to deriving from messages.
       let currentSession = session;
       if (!session.firstMessage) {
-        const existing = state.sessions.find(s => s.id === session.id);
+        const existing = state.sessions.find((s) => s.id === session.id);
         if (existing?.firstMessage) {
           currentSession = { ...session, firstMessage: existing.firstMessage };
         }
       }
       return { ...state, currentSession };
     }
-    case 'SET_SESSIONS_LOADING':
+    case "SET_SESSIONS_LOADING":
       return {
         ...state,
-        sessionsLoading: action.payload
+        sessionsLoading: action.payload,
       };
-    case 'SHOW_CONFIRMATION':
+    case "SHOW_CONFIRMATION":
       return {
         ...state,
-        pendingConfirmations: [...state.pendingConfirmations, action.payload]
+        pendingConfirmations: [...state.pendingConfirmations, action.payload],
       };
-    case 'HIDE_CONFIRMATION':
+    case "HIDE_CONFIRMATION":
       return {
         ...state,
-        pendingConfirmations: state.pendingConfirmations.filter(c => c.confirmationId !== action.payload)
+        pendingConfirmations: state.pendingConfirmations.filter(
+          (c) => c.confirmationId !== action.payload,
+        ),
       };
-    case 'SHOW_DIALOG':
+    case "SHOW_DIALOG":
       return {
         ...state,
         activeDialog: action.payload.type,
         configurationData: action.payload.data ?? state.configurationData,
         configurationLoading: false,
-        configurationError: action.payload.error
+        configurationError: action.payload.error,
       };
-    case 'HIDE_DIALOG':
+    case "HIDE_DIALOG":
       return {
         ...state,
         activeDialog: null,
-        configurationError: undefined
+        configurationError: undefined,
       };
-    case 'SET_AUTHENTICATED':
+    case "SET_AUTHENTICATED":
       return {
         ...state,
         isAuthenticated: action.payload,
-        initialized: true
+        initialized: true,
       };
-    case 'SET_CONFIGURATION_LOADING':
+    case "SET_CONFIGURATION_LOADING":
       return {
         ...state,
-        configurationLoading: action.payload
+        configurationLoading: action.payload,
       };
-    case 'SET_CONFIGURATION_ERROR':
+    case "SET_CONFIGURATION_ERROR":
       return {
         ...state,
         configurationError: action.payload,
-        configurationLoading: false
+        configurationLoading: false,
       };
-    case 'SET_CONFIGURATION_DATA':
+    case "SET_CONFIGURATION_DATA":
       return {
         ...state,
         configurationData: action.payload,
-        configurationLoading: false
+        configurationLoading: false,
       };
-    case 'SET_PROJECT_SETTINGS':
+    case "SET_PROJECT_SETTINGS":
       return {
         ...state,
-        projectSettings: action.payload
+        projectSettings: action.payload,
       };
-    case 'SET_INITIAL_STATE':
+    case "SET_INITIAL_STATE":
       return {
         ...state,
         messages: action.payload.messages,
         tasks: action.payload.tasks || [],
-        isTaskListCollapsed: action.payload.isTaskListCollapsed !== undefined ? action.payload.isTaskListCollapsed : state.isTaskListCollapsed,
-        isStreaming: action.payload.isStreaming !== undefined ? action.payload.isStreaming : state.isStreaming,
-        isCommandRunning: action.payload.isCommandRunning !== undefined ? action.payload.isCommandRunning : state.isCommandRunning,
+        isTaskListCollapsed:
+          action.payload.isTaskListCollapsed !== undefined
+            ? action.payload.isTaskListCollapsed
+            : state.isTaskListCollapsed,
+        isStreaming:
+          action.payload.isStreaming !== undefined
+            ? action.payload.isStreaming
+            : state.isStreaming,
+        isCommandRunning:
+          action.payload.isCommandRunning !== undefined
+            ? action.payload.isCommandRunning
+            : state.isCommandRunning,
         // A session switch must not inherit the previous session's compaction
         // hint; the host pushes the activated session's own state (or omits
         // it, meaning "not compacting").
@@ -192,9 +214,10 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         // object without firstMessage on pane/webview re-init.
         currentSession: pinSessionTitle(
           action.payload.currentSession || state.currentSession,
-          action.payload.messages
+          action.payload.messages,
         ),
-        configurationData: action.payload.configurationData || state.configurationData,
+        configurationData:
+          action.payload.configurationData || state.configurationData,
         pendingConfirmations: action.payload.pendingConfirmations || [],
         queuedMessages: action.payload.queuedMessages || [],
         backgroundTasks: action.payload.backgroundTasks ?? [],
@@ -206,42 +229,51 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         sessionsLoading: false,
         configurationLoading: false,
         initialized: true,
-        isAuthenticated: action.payload.isAuthenticated !== undefined ? action.payload.isAuthenticated : state.isAuthenticated,
-        workdir: action.payload.workdir !== undefined ? action.payload.workdir : state.workdir,
-        theme: action.payload.theme !== undefined ? action.payload.theme : state.theme
+        isAuthenticated:
+          action.payload.isAuthenticated !== undefined
+            ? action.payload.isAuthenticated
+            : state.isAuthenticated,
+        workdir:
+          action.payload.workdir !== undefined
+            ? action.payload.workdir
+            : state.workdir,
+        theme:
+          action.payload.theme !== undefined
+            ? action.payload.theme
+            : state.theme,
       };
-    case 'UPDATE_SELECTION':
+    case "UPDATE_SELECTION":
       return {
         ...state,
-        selection: action.payload
+        selection: action.payload,
       };
-    case 'SET_QUEUED_MESSAGES':
+    case "SET_QUEUED_MESSAGES":
       return {
         ...state,
-        queuedMessages: action.payload
+        queuedMessages: action.payload,
       };
-    case 'SET_EDITING_QUEUED_ID':
+    case "SET_EDITING_QUEUED_ID":
       return {
         ...state,
-        editingQueuedId: action.payload
+        editingQueuedId: action.payload,
       };
-    case 'SET_COMMAND_RUNNING':
+    case "SET_COMMAND_RUNNING":
       return {
         ...state,
-        isCommandRunning: action.payload
+        isCommandRunning: action.payload,
       };
-    case 'SET_PERMISSION_MODE':
+    case "SET_PERMISSION_MODE":
       return {
         ...state,
-        permissionMode: action.payload
+        permissionMode: action.payload,
       };
-    case 'SET_WORKDIR':
+    case "SET_WORKDIR":
       return {
         ...state,
-        workdir: action.payload
+        workdir: action.payload,
       };
     // Incremental update actions for streaming optimization
-    case 'APPEND_MESSAGE': {
+    case "APPEND_MESSAGE": {
       const messages = [...state.messages, action.payload];
       return {
         ...state,
@@ -249,31 +281,35 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         // Hosts that deliver user messages incrementally (desktop, VSCE) never
         // route them through SET_MESSAGES, so the title pin must happen here
         // too — otherwise compaction wipes the derivation material.
-        currentSession: pinSessionTitle(state.currentSession, messages)
+        currentSession: pinSessionTitle(state.currentSession, messages),
       };
     }
-    case 'UPDATE_STREAMING_CONTENT': {
+    case "UPDATE_STREAMING_CONTENT": {
       const { messageId, chunk, stage } = action.payload;
-      const messageIndex = state.messages.findIndex(m => m.id === messageId);
+      const messageIndex = state.messages.findIndex((m) => m.id === messageId);
       if (messageIndex === -1) return state;
 
       const message = state.messages[messageIndex];
-      const textBlockIndex = message.blocks.findIndex(b => b.type === 'text');
+      const textBlockIndex = message.blocks.findIndex((b) => b.type === "text");
 
       let newBlocks: MessageBlock[];
       if (textBlockIndex === -1) {
         // No text block yet, append one
         const newTextBlock: TextBlock = {
-          type: 'text',
+          type: "text",
           content: chunk,
-          stage
+          stage,
         };
         newBlocks = [...message.blocks, newTextBlock];
       } else {
         // Append the delta chunk to the existing text block
         newBlocks = message.blocks.map((block, idx) => {
-          if (idx === textBlockIndex && block.type === 'text') {
-            return { ...block, content: block.content + chunk, stage } as TextBlock;
+          if (idx === textBlockIndex && block.type === "text") {
+            return {
+              ...block,
+              content: block.content + chunk,
+              stage,
+            } as TextBlock;
           }
           return block;
         });
@@ -288,16 +324,18 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
       return {
         ...state,
-        messages: newMessages
+        messages: newMessages,
       };
     }
-    case 'UPDATE_STREAMING_REASONING': {
+    case "UPDATE_STREAMING_REASONING": {
       const { messageId, chunk, stage } = action.payload;
-      const messageIndex = state.messages.findIndex(m => m.id === messageId);
+      const messageIndex = state.messages.findIndex((m) => m.id === messageId);
       if (messageIndex === -1) return state;
 
       const message = state.messages[messageIndex];
-      const reasoningBlockIndex = message.blocks.findIndex(b => b.type === 'reasoning');
+      const reasoningBlockIndex = message.blocks.findIndex(
+        (b) => b.type === "reasoning",
+      );
 
       let newBlocks: MessageBlock[];
       if (reasoningBlockIndex === -1) {
@@ -305,24 +343,26 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         // elapsed thinking time during streaming (SET_MESSAGES later overrides it
         // with the SDK's persisted value).
         const newReasoningBlock = {
-          type: 'reasoning' as const,
+          type: "reasoning" as const,
           content: chunk,
           stage,
           startTime: Date.now(),
-          ...(stage === 'end' ? { endTime: Date.now() } : {})
+          ...(stage === "end" ? { endTime: Date.now() } : {}),
         };
         newBlocks = [...message.blocks, newReasoningBlock];
       } else {
         // Append the delta chunk to the existing reasoning block, preserving
         // startTime and stamping endTime when the reasoning finishes.
         newBlocks = message.blocks.map((block, idx) => {
-          if (idx === reasoningBlockIndex && block.type === 'reasoning') {
+          if (idx === reasoningBlockIndex && block.type === "reasoning") {
             return {
               ...block,
               content: block.content + chunk,
               stage,
               startTime: block.startTime ?? Date.now(),
-              ...(stage === 'end' ? { endTime: block.endTime ?? Date.now() } : {})
+              ...(stage === "end"
+                ? { endTime: block.endTime ?? Date.now() }
+                : {}),
             };
           }
           return block;
@@ -338,39 +378,46 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
       return {
         ...state,
-        messages: newMessages
+        messages: newMessages,
       };
     }
-    case 'UPDATE_TOOL_BLOCK': {
-      const { messageId, id: toolBlockId, parametersChunk, ...rest } = action.payload;
-      const messageIndex = state.messages.findIndex(m => m.id === messageId);
+    case "UPDATE_TOOL_BLOCK": {
+      const {
+        messageId,
+        id: toolBlockId,
+        parametersChunk,
+        ...rest
+      } = action.payload;
+      const messageIndex = state.messages.findIndex((m) => m.id === messageId);
       if (messageIndex === -1) return state;
 
       const message = state.messages[messageIndex];
-      const toolBlockIndex = message.blocks.findIndex(b => b.type === 'tool' && b.id === toolBlockId);
+      const toolBlockIndex = message.blocks.findIndex(
+        (b) => b.type === "tool" && b.id === toolBlockId,
+      );
 
       let newBlocks: MessageBlock[];
       if (toolBlockIndex === -1) {
         // Tool block doesn't exist yet, add it as a new block
         const newToolBlock: ToolBlock = {
-          type: 'tool',
+          type: "tool",
           id: toolBlockId,
-          name: rest.name || '',
-          stage: rest.stage || 'start',
-          result: rest.result || '',
+          name: rest.name || "",
+          stage: rest.stage || "start",
+          result: rest.result || "",
           success: rest.success ?? false,
           ...rest,
-          parameters: (rest.parameters || '') + (parametersChunk || '')
+          parameters: (rest.parameters || "") + (parametersChunk || ""),
         };
         newBlocks = [...message.blocks, newToolBlock];
       } else {
         // Update existing tool block
         newBlocks = message.blocks.map((block, idx) => {
-          if (idx === toolBlockIndex && block.type === 'tool') {
+          if (idx === toolBlockIndex && block.type === "tool") {
             const merged: ToolBlock = { ...block, ...rest };
             if (parametersChunk) {
               // Delta form (streaming): append the chunk to the accumulated parameters
-              merged.parameters = (block.parameters || '') + parametersChunk;
+              merged.parameters = (block.parameters || "") + parametersChunk;
             }
             return merged;
           }
@@ -387,17 +434,17 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
       return {
         ...state,
-        messages: newMessages
+        messages: newMessages,
       };
     }
-    case 'APPEND_ERROR_BLOCK': {
+    case "APPEND_ERROR_BLOCK": {
       const { error } = action.payload;
-      const newErrorBlock: ErrorBlock = { type: 'error', content: error };
+      const newErrorBlock: ErrorBlock = { type: "error", content: error };
 
       // Find the last assistant message
       let targetIndex = -1;
       for (let i = state.messages.length - 1; i >= 0; i--) {
-        if (state.messages[i].role === 'assistant') {
+        if (state.messages[i].role === "assistant") {
           targetIndex = i;
           break;
         }
@@ -408,7 +455,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       if (targetIndex === -1) {
         const errorMessage: Message = {
           id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-          role: 'assistant',
+          role: "assistant",
           timestamp: new Date().toISOString(),
           blocks: [newErrorBlock],
         };
@@ -430,62 +477,72 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
       return {
         ...state,
-        messages: newMessages
+        messages: newMessages,
       };
     }
     // Bang message incremental updates (keyed by messageId). Mirrors the CLI's
     // incremental bang handlers in useChat.tsx: add creates the user message
     // wrapper, update merges command/output, complete stamps exitCode + stage.
-    case 'APPEND_BANG_MESSAGE': {
+    case "APPEND_BANG_MESSAGE": {
       const { command, messageId } = action.payload;
-      if (state.messages.some(m => m.id === messageId)) return state;
+      if (state.messages.some((m) => m.id === messageId)) return state;
       const bangMessage: Message = {
         id: messageId,
-        role: 'user',
+        role: "user",
         timestamp: new Date().toISOString(),
-        blocks: [{ type: 'bang', command, output: '', stage: 'running', exitCode: null }]
+        blocks: [
+          {
+            type: "bang",
+            command,
+            output: "",
+            stage: "running",
+            exitCode: null,
+          },
+        ],
       };
       const messages = [...state.messages, bangMessage];
       return {
         ...state,
         messages,
-        currentSession: pinSessionTitle(state.currentSession, messages)
+        currentSession: pinSessionTitle(state.currentSession, messages),
       };
     }
-    case 'UPDATE_BANG_MESSAGE': {
+    case "UPDATE_BANG_MESSAGE": {
       const { command, output, messageId } = action.payload;
-      const messageIndex = state.messages.findIndex(m => m.id === messageId);
+      const messageIndex = state.messages.findIndex((m) => m.id === messageId);
       if (messageIndex === -1) return state;
       const newMessages = state.messages.map((m, idx) => {
         if (idx !== messageIndex) return m;
         return {
           ...m,
           blocks: m.blocks.map((b, bidx) =>
-            bidx === m.blocks.length - 1 && b.type === 'bang' ? { ...b, command, output } : b
-          )
+            bidx === m.blocks.length - 1 && b.type === "bang"
+              ? { ...b, command, output }
+              : b,
+          ),
         };
       });
       return { ...state, messages: newMessages };
     }
-    case 'COMPLETE_BANG_MESSAGE': {
+    case "COMPLETE_BANG_MESSAGE": {
       const { command, exitCode, messageId, output } = action.payload;
-      const messageIndex = state.messages.findIndex(m => m.id === messageId);
+      const messageIndex = state.messages.findIndex((m) => m.id === messageId);
       if (messageIndex === -1) return state;
       const newMessages = state.messages.map((m, idx) => {
         if (idx !== messageIndex) return m;
         return {
           ...m,
           blocks: m.blocks.map((b, bidx) =>
-            bidx === m.blocks.length - 1 && b.type === 'bang'
+            bidx === m.blocks.length - 1 && b.type === "bang"
               ? {
                   ...b,
                   command,
                   exitCode,
-                  stage: 'end' as const,
-                  ...(output !== undefined ? { output } : {})
+                  stage: "end" as const,
+                  ...(output !== undefined ? { output } : {}),
                 }
-              : b
-          )
+              : b,
+          ),
         };
       });
       return { ...state, messages: newMessages };

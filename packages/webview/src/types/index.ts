@@ -1,16 +1,66 @@
 /**
  * TypeScript type definitions for the Wave AI Chat webview
- * 
+ *
  * This file contains all the interfaces and types used throughout the React webview,
  * providing type safety and better development experience.
  */
 
 // Import message structures and session types from wave-agent-sdk
-import type { Message, MessageBlock, TextBlock, ErrorBlock, ToolBlock, ImageBlock, BangBlock, CompactBlock, ReasoningBlock, PermissionMode, AskUserQuestion, AskUserQuestionInput, AskUserQuestionOption, Task, TaskStatus, TaskNotificationBlock, McpServerStatus, McpServerConfig, BackgroundTaskSummary, SerializableWorkflowRun, SubagentConfiguration } from 'wave-agent-sdk/dist/types/index.js';
-import type { SessionMetadata, SessionData } from 'wave-agent-sdk/dist/services/session.js';
-import type { ToolBlockUpdateCallbackParams } from 'wave-agent-sdk/dist/utils/messageOperations.js';
+import type {
+  Message,
+  MessageBlock,
+  TextBlock,
+  ErrorBlock,
+  ToolBlock,
+  ImageBlock,
+  BangBlock,
+  CompactBlock,
+  ReasoningBlock,
+  PermissionMode,
+  AskUserQuestion,
+  AskUserQuestionInput,
+  AskUserQuestionOption,
+  Task,
+  TaskStatus,
+  TaskNotificationBlock,
+  McpServerStatus,
+  McpServerConfig,
+  BackgroundTaskSummary,
+  SerializableWorkflowRun,
+  SubagentConfiguration,
+} from "wave-agent-sdk/dist/types/index.js";
+import type {
+  SessionMetadata,
+  SessionData,
+} from "wave-agent-sdk/dist/services/session.js";
+import type { ToolBlockUpdateCallbackParams } from "wave-agent-sdk/dist/utils/messageOperations.js";
 
-export type { Message, MessageBlock, TextBlock, ErrorBlock, ToolBlock, ImageBlock, BangBlock, CompactBlock, ReasoningBlock, TaskNotificationBlock, SessionData, SessionMetadata, PermissionMode, AskUserQuestion, AskUserQuestionInput, AskUserQuestionOption, Task, TaskStatus, McpServerStatus, McpServerConfig, BackgroundTaskSummary, SerializableWorkflowRun, SubagentConfiguration, ToolBlockUpdateCallbackParams };
+export type {
+  Message,
+  MessageBlock,
+  TextBlock,
+  ErrorBlock,
+  ToolBlock,
+  ImageBlock,
+  BangBlock,
+  CompactBlock,
+  ReasoningBlock,
+  TaskNotificationBlock,
+  SessionData,
+  SessionMetadata,
+  PermissionMode,
+  AskUserQuestion,
+  AskUserQuestionInput,
+  AskUserQuestionOption,
+  Task,
+  TaskStatus,
+  McpServerStatus,
+  McpServerConfig,
+  BackgroundTaskSummary,
+  SerializableWorkflowRun,
+  SubagentConfiguration,
+  ToolBlockUpdateCallbackParams,
+};
 
 // Slash command types
 export interface SlashCommand {
@@ -183,13 +233,13 @@ export interface OpenPaneOptions {
    * Split the single row into two and put the new pane alone in the fresh
    * row ('above' = new row on top). Ignored when two rows already exist.
    */
-  newRow?: 'above' | 'below';
+  newRow?: "above" | "below";
 }
 
 // Desktop host support — injected when running inside packages/desktop (Electron).
 // window.waveHostType === 'desktop' selects the DesktopApp root in index.tsx.
 export interface DesktopHostProps {
-  type: 'desktop';
+  type: "desktop";
   /** Current host: 'local' or an SSH host name (the focused pane's host). */
   host: string;
   /** All selectable hosts: 'local' + parsed ~/.ssh/config top-level Host names. */
@@ -228,7 +278,11 @@ export interface DesktopHostProps {
    * a fresh second row; omitted options mean "append at the right end of the
    * focused pane's row".
    */
-  onOpenPane: (workdir: string, sessionId: string, opts?: OpenPaneOptions) => void;
+  onOpenPane: (
+    workdir: string,
+    sessionId: string,
+    opts?: OpenPaneOptions,
+  ) => void;
   /**
    * Split-view panes (FR-032) grouped into up to two rows, pushed via
    * `desktopPanes`. Empty until the first layout push; the layout renders a
@@ -270,7 +324,7 @@ export interface DesktopSessionEntry {
  * The desktop host resolves the OS appearance to one of these before reaching
  * the renderer; desktop follows the OS only, no in-app preference (FR-016).
  */
-export type EffectiveTheme = 'light' | 'dark';
+export type EffectiveTheme = "light" | "dark";
 
 /** Theme snapshot pushed by the desktop host (effective only, no preference). */
 export interface ThemeState {
@@ -279,8 +333,8 @@ export interface ThemeState {
 
 /** Action a toast's button triggers when clicked (host-side semantics). */
 export type ToastAction =
-  | { type: 'quitAndInstall' }
-  | { type: 'openDownloadPage'; url: string };
+  | { type: "quitAndInstall" }
+  | { type: "openDownloadPage"; url: string };
 
 /** A non-modal in-app toast (VS Code-style, bottom-right). Desktop host only. */
 export interface UpdateToast {
@@ -342,10 +396,17 @@ export interface AttachedImage {
 }
 
 export interface MessageInputProps {
-  onSendMessage: (text: string, images?: Array<{ data: string; mediaType: string; }>) => void;
+  onSendMessage: (
+    text: string,
+    images?: Array<{ data: string; mediaType: string }>,
+  ) => void;
   isStreaming: boolean;
   onAbortMessage: () => void;
-  onSubmitQueuedEdit?: (id: string, text: string, images?: Array<{ data: string; mediaType: string; }>) => void;
+  onSubmitQueuedEdit?: (
+    id: string,
+    text: string,
+    images?: Array<{ data: string; mediaType: string }>,
+  ) => void;
   editingQueuedId?: string | null;
   onCancelQueuedEdit?: () => void;
   shouldClearInput?: boolean;
@@ -397,7 +458,7 @@ export interface FileSuggestionDropdownProps {
 }
 
 /** Desktop conversation-level side panels. VSCE/JetBrains hosts never render these. */
-export type DesktopPanelKind = 'preview' | 'diff' | 'terminal' | 'file';
+export type DesktopPanelKind = "preview" | "diff" | "terminal" | "file";
 
 /**
  * State of the desktop file panel (one per conversation): which file is open,
@@ -462,7 +523,7 @@ export interface ChatHeaderProps {
 // Matches wave-agent-sdk's QueuedMessage type
 export interface QueuedMessage {
   id?: string;
-  type?: 'message' | 'bang';
+  type?: "message" | "bang";
   content: string;
   images?: Array<{ path: string; mimeType: string }>;
   longTextMap?: Record<string, string>;
@@ -514,7 +575,15 @@ export interface ChatState {
   // Agent working directory, used to render tool file paths as relative.
   workdir?: string;
   // Dialog state
-  activeDialog: 'config' | 'plugin' | 'mcp' | 'status' | 'tasks' | 'workflows' | 'agents' | null;
+  activeDialog:
+    | "config"
+    | "plugin"
+    | "mcp"
+    | "status"
+    | "tasks"
+    | "workflows"
+    | "agents"
+    | null;
   configurationData?: ConfigurationData;
   configurationLoading: boolean;
   configurationError?: string;
@@ -546,7 +615,7 @@ export interface ConfirmationRequest {
 }
 
 export interface ConfirmationDecision {
-  behavior: 'allow' | 'deny';
+  behavior: "allow" | "deny";
   newPermissionMode?: string;
   newPermissionRule?: string;
   message?: string;
@@ -598,7 +667,7 @@ export interface MarketplaceInfo {
   url: string;
 }
 
-export type PluginScope = 'user' | 'project' | 'local';
+export type PluginScope = "user" | "project" | "local";
 
 export interface SelectionInfo {
   filePath: string;
@@ -661,66 +730,106 @@ export interface WorkflowManagerProps {
 }
 
 export type ChatAction =
-  | { type: 'SET_MESSAGES'; payload: Message[] }
-  | { type: 'SET_TASKS'; payload: Task[] }
-  | { type: 'SET_BACKGROUND_TASKS'; payload: BackgroundTaskSummary[] }
-  | { type: 'SET_WORKFLOW_RUNS'; payload: SerializableWorkflowRun[] }
-  | { type: 'TOGGLE_TASK_LIST_COLLAPSE' }
-  | { type: 'SET_TASK_LIST_COLLAPSED'; payload: boolean }
-  | { type: 'TOGGLE_QUEUE_COLLAPSE' }
-  | { type: 'START_STREAMING' }
-  | { type: 'END_STREAMING' }
-  | { type: 'SET_COMPACTING'; payload: boolean }
-  | { type: 'INPUT_CLEARED' }
-  | { type: 'SET_SESSIONS'; payload: SessionMetadata[] }
-  | { type: 'SET_CURRENT_SESSION'; payload: SessionMetadata | undefined }
-  | { type: 'SET_SESSIONS_LOADING'; payload: boolean }
-  | { type: 'SHOW_CONFIRMATION'; payload: ConfirmationRequest }
-  | { type: 'HIDE_CONFIRMATION'; payload: string }
-  | { type: 'SHOW_DIALOG'; payload: { type: 'config' | 'plugin' | 'mcp' | 'status' | 'tasks' | 'workflows' | 'agents'; data?: ConfigurationData; error?: string } }
-  | { type: 'HIDE_DIALOG' }
-  | { type: 'SET_AUTHENTICATED'; payload: boolean }
-  | { type: 'SET_CONFIGURATION_LOADING'; payload: boolean }
-  | { type: 'SET_CONFIGURATION_ERROR'; payload: string | undefined }
-  | { type: 'SET_CONFIGURATION_DATA'; payload: ConfigurationData }
-  | { type: 'SET_PROJECT_SETTINGS'; payload: { enabledPlugins: Record<string, boolean> } }
-  | { type: 'UPDATE_SELECTION'; payload: SelectionInfo | undefined }
-  | { type: 'SET_PERMISSION_MODE'; payload: PermissionMode }
-  | { type: 'SET_COMMAND_RUNNING'; payload: boolean }
-  | { type: 'SET_WORKDIR'; payload: string }
-  | { type: 'SET_QUEUED_MESSAGES'; payload: QueuedMessage[] }
-  | { type: 'SET_EDITING_QUEUED_ID'; payload: string | null }
-  | { type: 'SET_INITIAL_STATE'; payload: {
-      messages: Message[];
-      tasks?: Task[];
-      isStreaming: boolean;
-      isCommandRunning?: boolean;
-      isCompacting?: boolean;
-      isRestoring?: boolean;
-      isTaskListCollapsed?: boolean;
-      sessions: SessionMetadata[];
-      currentSession?: SessionMetadata;
-      configurationData: ConfigurationData;
-      pendingConfirmations: ConfirmationRequest[];
-      selection?: SelectionInfo;
-      inputContent?: string;
-      permissionMode?: PermissionMode;
-      attachedImages?: AttachedImage[];
-      queuedMessages?: QueuedMessage[];
-      isAuthenticated?: boolean;
-      workdir?: string;
-      backgroundTasks?: BackgroundTaskSummary[];
-      workflowRuns?: SerializableWorkflowRun[];
-      theme?: ThemeState;
-    } }
+  | { type: "SET_MESSAGES"; payload: Message[] }
+  | { type: "SET_TASKS"; payload: Task[] }
+  | { type: "SET_BACKGROUND_TASKS"; payload: BackgroundTaskSummary[] }
+  | { type: "SET_WORKFLOW_RUNS"; payload: SerializableWorkflowRun[] }
+  | { type: "TOGGLE_TASK_LIST_COLLAPSE" }
+  | { type: "SET_TASK_LIST_COLLAPSED"; payload: boolean }
+  | { type: "TOGGLE_QUEUE_COLLAPSE" }
+  | { type: "START_STREAMING" }
+  | { type: "END_STREAMING" }
+  | { type: "SET_COMPACTING"; payload: boolean }
+  | { type: "INPUT_CLEARED" }
+  | { type: "SET_SESSIONS"; payload: SessionMetadata[] }
+  | { type: "SET_CURRENT_SESSION"; payload: SessionMetadata | undefined }
+  | { type: "SET_SESSIONS_LOADING"; payload: boolean }
+  | { type: "SHOW_CONFIRMATION"; payload: ConfirmationRequest }
+  | { type: "HIDE_CONFIRMATION"; payload: string }
+  | {
+      type: "SHOW_DIALOG";
+      payload: {
+        type:
+          | "config"
+          | "plugin"
+          | "mcp"
+          | "status"
+          | "tasks"
+          | "workflows"
+          | "agents";
+        data?: ConfigurationData;
+        error?: string;
+      };
+    }
+  | { type: "HIDE_DIALOG" }
+  | { type: "SET_AUTHENTICATED"; payload: boolean }
+  | { type: "SET_CONFIGURATION_LOADING"; payload: boolean }
+  | { type: "SET_CONFIGURATION_ERROR"; payload: string | undefined }
+  | { type: "SET_CONFIGURATION_DATA"; payload: ConfigurationData }
+  | {
+      type: "SET_PROJECT_SETTINGS";
+      payload: { enabledPlugins: Record<string, boolean> };
+    }
+  | { type: "UPDATE_SELECTION"; payload: SelectionInfo | undefined }
+  | { type: "SET_PERMISSION_MODE"; payload: PermissionMode }
+  | { type: "SET_COMMAND_RUNNING"; payload: boolean }
+  | { type: "SET_WORKDIR"; payload: string }
+  | { type: "SET_QUEUED_MESSAGES"; payload: QueuedMessage[] }
+  | { type: "SET_EDITING_QUEUED_ID"; payload: string | null }
+  | {
+      type: "SET_INITIAL_STATE";
+      payload: {
+        messages: Message[];
+        tasks?: Task[];
+        isStreaming: boolean;
+        isCommandRunning?: boolean;
+        isCompacting?: boolean;
+        isRestoring?: boolean;
+        isTaskListCollapsed?: boolean;
+        sessions: SessionMetadata[];
+        currentSession?: SessionMetadata;
+        configurationData: ConfigurationData;
+        pendingConfirmations: ConfirmationRequest[];
+        selection?: SelectionInfo;
+        inputContent?: string;
+        permissionMode?: PermissionMode;
+        attachedImages?: AttachedImage[];
+        queuedMessages?: QueuedMessage[];
+        isAuthenticated?: boolean;
+        workdir?: string;
+        backgroundTasks?: BackgroundTaskSummary[];
+        workflowRuns?: SerializableWorkflowRun[];
+        theme?: ThemeState;
+      };
+    }
   // Incremental update actions for streaming optimization
-  | { type: 'APPEND_MESSAGE'; payload: Message }
-  | { type: 'UPDATE_STREAMING_CONTENT'; payload: { messageId: string; chunk: string; stage: 'streaming' | 'end' } }
-  | { type: 'UPDATE_STREAMING_REASONING'; payload: { messageId: string; chunk: string; stage: 'streaming' | 'end' } }
-  | { type: 'UPDATE_TOOL_BLOCK'; payload: ToolBlockUpdateCallbackParams }
-  | { type: 'APPEND_ERROR_BLOCK'; payload: { error: string } }
+  | { type: "APPEND_MESSAGE"; payload: Message }
+  | {
+      type: "UPDATE_STREAMING_CONTENT";
+      payload: { messageId: string; chunk: string; stage: "streaming" | "end" };
+    }
+  | {
+      type: "UPDATE_STREAMING_REASONING";
+      payload: { messageId: string; chunk: string; stage: "streaming" | "end" };
+    }
+  | { type: "UPDATE_TOOL_BLOCK"; payload: ToolBlockUpdateCallbackParams }
+  | { type: "APPEND_ERROR_BLOCK"; payload: { error: string } }
   // Bang message incremental updates (keyed by messageId). The bang block is
   // constructed in the reducer because it needs a Message wrapper (id/timestamp).
-  | { type: 'APPEND_BANG_MESSAGE'; payload: { command: string; messageId: string } }
-  | { type: 'UPDATE_BANG_MESSAGE'; payload: { command: string; output: string; messageId: string } }
-  | { type: 'COMPLETE_BANG_MESSAGE'; payload: { command: string; exitCode: number; messageId: string; output?: string } };
+  | {
+      type: "APPEND_BANG_MESSAGE";
+      payload: { command: string; messageId: string };
+    }
+  | {
+      type: "UPDATE_BANG_MESSAGE";
+      payload: { command: string; output: string; messageId: string };
+    }
+  | {
+      type: "COMPLETE_BANG_MESSAGE";
+      payload: {
+        command: string;
+        exitCode: number;
+        messageId: string;
+        output?: string;
+      };
+    };

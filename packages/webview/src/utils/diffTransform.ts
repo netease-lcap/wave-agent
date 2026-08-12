@@ -3,9 +3,15 @@
  * Uses tool parameter types from wave-agent-sdk with type assertions based on tool name
  */
 
-import type { ToolBlock } from 'wave-agent-sdk/dist/types/messaging.js';
-import type { WriteToolParameters, EditToolParameters } from 'wave-agent-sdk/dist/types/tools.js';
-import { WRITE_TOOL_NAME, EDIT_TOOL_NAME } from 'wave-agent-sdk/dist/constants/tools.js';
+import type { ToolBlock } from "wave-agent-sdk/dist/types/messaging.js";
+import type {
+  WriteToolParameters,
+  EditToolParameters,
+} from "wave-agent-sdk/dist/types/tools.js";
+import {
+  WRITE_TOOL_NAME,
+  EDIT_TOOL_NAME,
+} from "wave-agent-sdk/dist/constants/tools.js";
 
 export interface Change {
   oldContent: string;
@@ -19,7 +25,7 @@ function parseToolParameters(toolBlock: ToolBlock): unknown {
   if (!toolBlock.parameters) {
     return {};
   }
-  
+
   try {
     return JSON.parse(toolBlock.parameters);
   } catch (error) {
@@ -31,12 +37,14 @@ function parseToolParameters(toolBlock: ToolBlock): unknown {
 /**
  * Transform Write tool parameters to changes
  */
-export function transformWriteParameters(parameters: WriteToolParameters): Change[] {
+export function transformWriteParameters(
+  parameters: WriteToolParameters,
+): Change[] {
   // Validate required parameters
-  if (!parameters || typeof parameters.content !== 'string') {
+  if (!parameters || typeof parameters.content !== "string") {
     return [];
   }
-  
+
   return [
     {
       oldContent: "", // No previous content for write operations
@@ -48,14 +56,18 @@ export function transformWriteParameters(parameters: WriteToolParameters): Chang
 /**
  * Transform Edit tool parameters to changes
  */
-export function transformEditParameters(parameters: EditToolParameters): Change[] {
+export function transformEditParameters(
+  parameters: EditToolParameters,
+): Change[] {
   // Validate required parameters
-  if (!parameters || 
-      typeof parameters.old_string !== 'string' || 
-      typeof parameters.new_string !== 'string') {
+  if (
+    !parameters ||
+    typeof parameters.old_string !== "string" ||
+    typeof parameters.new_string !== "string"
+  ) {
     return [];
   }
-  
+
   return [
     {
       oldContent: parameters.old_string,
@@ -68,15 +80,18 @@ export function transformEditParameters(parameters: EditToolParameters): Change[
  * Transform tool block parameters into standardized Change[] array for diff display
  * Forces type judgment based on tool name using type assertions
  */
-export function transformParametersToChanges(toolName: string, parameters: unknown): Change[] {
+export function transformParametersToChanges(
+  toolName: string,
+  parameters: unknown,
+): Change[] {
   try {
     switch (toolName) {
       case WRITE_TOOL_NAME:
         return transformWriteParameters(parameters as WriteToolParameters);
-      
+
       case EDIT_TOOL_NAME:
         return transformEditParameters(parameters as EditToolParameters);
-      
+
       default:
         return [];
     }

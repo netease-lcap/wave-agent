@@ -1,12 +1,19 @@
-import { renderChatApp, screen, waitFor, act, sendCommand, fireInput } from './test-utils';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import {
+  renderChatApp,
+  screen,
+  waitFor,
+  act,
+  sendCommand,
+  fireInput,
+} from "./test-utils";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 
 /**
  * Helper: type text into the contenteditable message input and set up
  * a selection at the end so that selection-change detection works.
  */
 async function typeInInput(text: string) {
-  const input = screen.getByTestId('message-input');
+  const input = screen.getByTestId("message-input");
   input.focus();
   input.textContent = text;
 
@@ -26,120 +33,131 @@ async function typeInInput(text: string) {
 /**
  * Helper: wait for requestFileSuggestions and return the requestId
  */
-async function waitForFileSuggestionRequest(vscode: ReturnType<typeof renderChatApp>['vscode']): Promise<string> {
-  await waitFor(() => {
-    expect(vscode.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ command: 'requestFileSuggestions' })
-    );
-  }, { timeout: 3000 });
+async function waitForFileSuggestionRequest(
+  vscode: ReturnType<typeof renderChatApp>["vscode"],
+): Promise<string> {
+  await waitFor(
+    () => {
+      expect(vscode.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ command: "requestFileSuggestions" }),
+      );
+    },
+    { timeout: 3000 },
+  );
 
-  const calls = vscode.postMessage.mock.calls.map(c => c[0]);
-  const requestCall = calls.filter(c => c.command === 'requestFileSuggestions').pop();
+  const calls = vscode.postMessage.mock.calls.map((c) => c[0]);
+  const requestCall = calls
+    .filter((c) => c.command === "requestFileSuggestions")
+    .pop();
   return requestCall.requestId;
 }
 
-describe('File Mention Feature (@)', () => {
+describe("File Mention Feature (@)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should show file suggestion dropdown when typing @', async () => {
+  it("should show file suggestion dropdown when typing @", async () => {
     const { vscode } = renderChatApp();
 
     // Type @ symbol to trigger file suggestions
-    await typeInInput('@');
+    await typeInInput("@");
 
     // Wait for the debounced requestFileSuggestions request
     const reqId = await waitForFileSuggestionRequest(vscode);
 
     // Simulate response with suggestions
     act(() => {
-      sendCommand('fileSuggestionsResponse', {
+      sendCommand("fileSuggestionsResponse", {
         suggestions: [
           {
-            path: '/workspace/src',
-            relativePath: 'src',
-            name: 'src',
-            extension: '',
-            icon: 'codicon-folder',
-            isDirectory: true
+            path: "/workspace/src",
+            relativePath: "src",
+            name: "src",
+            extension: "",
+            icon: "codicon-folder",
+            isDirectory: true,
           },
           {
-            path: '/workspace/src/components/MessageInput.tsx',
-            relativePath: 'src/components/MessageInput.tsx',
-            name: 'MessageInput.tsx',
-            extension: 'tsx',
-            icon: 'codicon-file',
-            isDirectory: false
+            path: "/workspace/src/components/MessageInput.tsx",
+            relativePath: "src/components/MessageInput.tsx",
+            name: "MessageInput.tsx",
+            extension: "tsx",
+            icon: "codicon-file",
+            isDirectory: false,
           },
           {
-            path: '/workspace/src/components/ChatApp.tsx',
-            relativePath: 'src/components/ChatApp.tsx',
-            name: 'ChatApp.tsx',
-            extension: 'tsx',
-            icon: 'codicon-file',
-            isDirectory: false
-          }
+            path: "/workspace/src/components/ChatApp.tsx",
+            relativePath: "src/components/ChatApp.tsx",
+            name: "ChatApp.tsx",
+            extension: "tsx",
+            icon: "codicon-file",
+            isDirectory: false,
+          },
         ],
-        filterText: '',
-        requestId: reqId
+        filterText: "",
+        requestId: reqId,
       });
     });
 
     // Wait for suggestions to render
     await waitFor(() => {
-      const dropdown = document.querySelector('.file-suggestion-dropdown');
+      const dropdown = document.querySelector(".file-suggestion-dropdown");
       expect(dropdown).toBeInTheDocument();
     });
 
     // Check for suggestion items
-    const suggestionItems = document.querySelectorAll('.suggestion-item');
+    const suggestionItems = document.querySelectorAll(".suggestion-item");
     // Expect to see only the suggestions we injected (1 folder + 2 files) = 3.
     // The upload option is no longer shown in the @ mention dropdown.
     expect(suggestionItems.length).toBe(3);
 
     // Verify there is no upload option in the @ mention dropdown
-    const uploadOption = document.querySelector('.suggestion-item.upload-option');
+    const uploadOption = document.querySelector(
+      ".suggestion-item.upload-option",
+    );
     expect(uploadOption).toBeNull();
   });
 
-  it('should filter files as user types after @', async () => {
+  it("should filter files as user types after @", async () => {
     const { vscode } = renderChatApp();
 
     // Type @src to filter
-    await typeInInput('@src');
+    await typeInInput("@src");
 
     // Wait for the debounced requestFileSuggestions request
     const reqId = await waitForFileSuggestionRequest(vscode);
 
     // Mock filtered response with captured requestId
     act(() => {
-      sendCommand('fileSuggestionsResponse', {
+      sendCommand("fileSuggestionsResponse", {
         suggestions: [
           {
-            path: '/workspace/src/components/MessageInput.tsx',
-            relativePath: 'src/components/MessageInput.tsx',
-            name: 'MessageInput.tsx',
-            extension: 'tsx',
-            icon: 'codicon-react'
-          }
+            path: "/workspace/src/components/MessageInput.tsx",
+            relativePath: "src/components/MessageInput.tsx",
+            name: "MessageInput.tsx",
+            extension: "tsx",
+            icon: "codicon-react",
+          },
         ],
-        filterText: 'src',
-        requestId: reqId
+        filterText: "src",
+        requestId: reqId,
       });
     });
 
     // Wait for suggestion to render
     await waitFor(() => {
-      const items = document.querySelectorAll('.suggestion-item');
+      const items = document.querySelectorAll(".suggestion-item");
       expect(items.length).toBe(1);
     });
 
-    const suggestionItems = document.querySelectorAll('.suggestion-item');
+    const suggestionItems = document.querySelectorAll(".suggestion-item");
     expect(suggestionItems.length).toBe(1);
 
     // Should only show filtered results (no upload option when there's filter text)
-    const uploadOption = document.querySelector('.suggestion-item.upload-option');
+    const uploadOption = document.querySelector(
+      ".suggestion-item.upload-option",
+    );
     expect(uploadOption).toBeNull();
 
     // Verify the suggestion text contains the filter

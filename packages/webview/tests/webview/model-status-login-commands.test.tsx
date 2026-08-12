@@ -1,132 +1,156 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand, fireInput } from './test-utils';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  renderChatApp,
+  screen,
+  waitFor,
+  fireEvent,
+  act,
+  sendCommand,
+  fireInput,
+} from "./test-utils";
 
 async function typeAndSend(text: string) {
-    const input = screen.getByTestId('message-input');
-    input.textContent = text;
-    await fireInput(input);
-    fireEvent.keyDown(input, { key: 'Enter' });
+  const input = screen.getByTestId("message-input");
+  input.textContent = text;
+  await fireInput(input);
+  fireEvent.keyDown(input, { key: "Enter" });
 }
 
-describe('Model, Status, and Login Commands', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
+describe("Model, Status, and Login Commands", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("/status command", () => {
+    it("should open status dialog and show version, sessionId, and workdir", async () => {
+      renderChatApp();
+
+      await act(async () => {
+        await typeAndSend("/status");
+      });
+
+      // Wait for dialog to appear
+      await waitFor(() => {
+        expect(
+          document.querySelector(".configuration-dialog-overlay"),
+        ).toBeInTheDocument();
+      });
+
+      // StatusDialog sends getStatus on mount and listens for statusResponse
+      await act(async () => {
+        sendCommand("statusResponse", {
+          version: "1.2.3",
+          sessionId: "session-abc-123",
+          workdir: "/home/user/project",
+        });
+      });
+
+      const dialog = document.querySelector(
+        ".configuration-dialog",
+      ) as HTMLElement;
+      expect(dialog).toBeInTheDocument();
+      expect(dialog).toHaveTextContent("1.2.3");
+      expect(dialog).toHaveTextContent("session-abc-123");
+      expect(dialog).toHaveTextContent("/home/user/project");
     });
 
-    describe('/status command', () => {
-        it('should open status dialog and show version, sessionId, and workdir', async () => {
-            renderChatApp();
+    it("should close status dialog when close button is clicked", async () => {
+      renderChatApp();
 
-            await act(async () => {
-                await typeAndSend('/status');
-            });
+      await act(async () => {
+        await typeAndSend("/status");
+      });
 
-            // Wait for dialog to appear
-            await waitFor(() => {
-                expect(document.querySelector('.configuration-dialog-overlay')).toBeInTheDocument();
-            });
+      await waitFor(() => {
+        expect(
+          document.querySelector(".configuration-dialog-overlay"),
+        ).toBeInTheDocument();
+      });
 
-            // StatusDialog sends getStatus on mount and listens for statusResponse
-            await act(async () => {
-                sendCommand('statusResponse', {
-                    version: '1.2.3',
-                    sessionId: 'session-abc-123',
-                    workdir: '/home/user/project'
-                });
-            });
+      const closeButton = document.querySelector(
+        ".configuration-actions .configuration-cancel-btn",
+      ) as HTMLButtonElement;
+      await act(async () => {
+        fireEvent.click(closeButton);
+      });
 
-            const dialog = document.querySelector('.configuration-dialog') as HTMLElement;
-            expect(dialog).toBeInTheDocument();
-            expect(dialog).toHaveTextContent('1.2.3');
-            expect(dialog).toHaveTextContent('session-abc-123');
-            expect(dialog).toHaveTextContent('/home/user/project');
+      await waitFor(() => {
+        expect(
+          document.querySelector(".configuration-dialog-overlay"),
+        ).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("/config command", () => {
+    it("should open config dialog via /config", async () => {
+      renderChatApp();
+
+      await act(async () => {
+        sendCommand("configurationResponse", {
+          configurationData: {
+            language: "Chinese",
+          },
         });
+      });
 
-        it('should close status dialog when close button is clicked', async () => {
-            renderChatApp();
+      await act(async () => {
+        await typeAndSend("/config");
+      });
 
-            await act(async () => {
-                await typeAndSend('/status');
-            });
-
-            await waitFor(() => {
-                expect(document.querySelector('.configuration-dialog-overlay')).toBeInTheDocument();
-            });
-
-            const closeButton = document.querySelector('.configuration-actions .configuration-cancel-btn') as HTMLButtonElement;
-            await act(async () => {
-                fireEvent.click(closeButton);
-            });
-
-            await waitFor(() => {
-                expect(document.querySelector('.configuration-dialog-overlay')).not.toBeInTheDocument();
-            });
-        });
+      await waitFor(() => {
+        expect(
+          document.querySelector(".configuration-dialog-overlay"),
+        ).toBeInTheDocument();
+      });
+      // Config dialog should have language select
+      expect(document.querySelector("#language")).toBeInTheDocument();
     });
 
-    describe('/config command', () => {
-        it('should open config dialog via /config', async () => {
-            renderChatApp();
+    it("should send updateConfiguration when save is clicked", async () => {
+      const { vscode } = renderChatApp();
 
-            await act(async () => {
-                sendCommand('configurationResponse', {
-                    configurationData: {
-                        language: 'Chinese'
-                    }
-                });
-            });
-
-            await act(async () => {
-                await typeAndSend('/config');
-            });
-
-            await waitFor(() => {
-                expect(document.querySelector('.configuration-dialog-overlay')).toBeInTheDocument();
-            });
-            // Config dialog should have language select
-            expect(document.querySelector('#language')).toBeInTheDocument();
+      await act(async () => {
+        sendCommand("configurationResponse", {
+          configurationData: {
+            language: "Chinese",
+          },
         });
+      });
 
-        it('should send updateConfiguration when save is clicked', async () => {
-            const { vscode } = renderChatApp();
+      await act(async () => {
+        await typeAndSend("/config");
+      });
 
-            await act(async () => {
-                sendCommand('configurationResponse', {
-                    configurationData: {
-                        language: 'Chinese'
-                    }
-                });
-            });
+      await waitFor(() => {
+        expect(document.querySelector("#language")).toBeInTheDocument();
+      });
 
-            await act(async () => {
-                await typeAndSend('/config');
-            });
+      const languageSelect = document.querySelector(
+        "#language",
+      ) as HTMLSelectElement;
+      await act(async () => {
+        fireEvent.change(languageSelect, { target: { value: "English" } });
+      });
 
-            await waitFor(() => {
-                expect(document.querySelector('#language')).toBeInTheDocument();
-            });
+      const saveButton = document.querySelector(
+        ".configuration-save-btn",
+      ) as HTMLButtonElement;
+      vscode.postMessage.mockClear();
+      await act(async () => {
+        fireEvent.click(saveButton);
+      });
 
-            const languageSelect = document.querySelector('#language') as HTMLSelectElement;
-            await act(async () => {
-                fireEvent.change(languageSelect, { target: { value: 'English' } });
-            });
-
-            const saveButton = document.querySelector('.configuration-save-btn') as HTMLButtonElement;
-            vscode.postMessage.mockClear();
-            await act(async () => {
-                fireEvent.click(saveButton);
-            });
-
-            await waitFor(() => {
-                expect(vscode.postMessage).toHaveBeenCalledWith(
-                    expect.objectContaining({
-                        command: 'updateConfiguration',
-                        configurationData: expect.objectContaining({
-                            language: 'English'
-                        })
-                    })
-                );
-            });
-        });
+      await waitFor(() => {
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            command: "updateConfiguration",
+            configurationData: expect.objectContaining({
+              language: "English",
+            }),
+          }),
+        );
+      });
     });
+  });
 });

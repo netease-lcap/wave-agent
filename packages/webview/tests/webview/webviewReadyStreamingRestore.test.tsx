@@ -1,182 +1,206 @@
-import { describe, it, expect } from 'vitest';
-import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand, fireInput } from './test-utils';
-import { MockDataGenerator } from '../fixtures/mockData';
+import { describe, it, expect } from "vitest";
+import {
+  renderChatApp,
+  screen,
+  waitFor,
+  fireEvent,
+  act,
+  sendCommand,
+  fireInput,
+} from "./test-utils";
+import { MockDataGenerator } from "../fixtures/mockData";
 
-describe('Webview Ready Streaming State Restoration', () => {
+describe("Webview Ready Streaming State Restoration", () => {
+  it("should restore streaming state when webview becomes ready during active streaming", async () => {
+    renderChatApp();
 
-    it('should restore streaming state when webview becomes ready during active streaming', async () => {
-        renderChatApp();
+    // Send initial message to establish conversation
+    const input = screen.getByTestId("message-input");
+    input.textContent = "Hello";
+    await fireInput(input, { data: "Hello", inputType: "insertText" });
 
-        // Send initial message to establish conversation
-        const input = screen.getByTestId('message-input');
-        input.textContent = 'Hello';
-        await fireInput(input, { data: 'Hello', inputType: 'insertText' });
-
-        await act(async () => {
-            fireEvent.click(screen.getByTestId('send-btn'));
-        });
-
-        act(() => {
-            sendCommand('updateMessages', {
-                messages: [MockDataGenerator.createUserMessage('Hello')]
-            });
-        });
-
-        await waitFor(() => {
-            expect(screen.getByText('Hello')).toBeInTheDocument();
-        });
-
-        // Start streaming response
-        act(() => {
-            sendCommand('startStreaming');
-        });
-
-        // Verify abort button is present (streaming active); send button gone
-        await waitFor(() => {
-            expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
-        });
-        expect(screen.queryByTestId('send-btn')).not.toBeInTheDocument();
-
-        // Simulate streaming content update
-        act(() => {
-            sendCommand('updateMessages', {
-                messages: [
-                    MockDataGenerator.createUserMessage('Hello'),
-                    MockDataGenerator.createAssistantMessage('I am currently processing your request...')
-                ]
-            });
-        });
-
-        await waitFor(() => {
-            expect(screen.getByText('I am currently processing your request...')).toBeInTheDocument();
-        });
-
-        // Simulate webview becoming ready again (extension sends webviewReady → but in webview, it sends webviewReady to extension)
-        // The webviewReady command is sent FROM webview TO extension, not received.
-        // However, in the e2e test, sendWebviewReady simulates the extension re-responding.
-        // In RTL, we just verify streaming state persists — no special action needed since state is in React.
-        // We verify streaming is still active.
-        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
-
-        // Continue streaming with more content
-        act(() => {
-            sendCommand('updateMessages', {
-                messages: [
-                    MockDataGenerator.createUserMessage('Hello'),
-                    MockDataGenerator.createAssistantMessage('Processing complete. Here is your result...')
-                ]
-            });
-        });
-
-        await waitFor(() => {
-            expect(screen.getByText('Processing complete. Here is your result...')).toBeInTheDocument();
-        });
-
-        // End streaming
-        act(() => {
-            sendCommand('endStreaming');
-        });
-
-        // Verify streaming state is properly ended
-        await waitFor(() => {
-            expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
-        });
-
-        // Messages should remain the same
-        expect(screen.getByText('Processing complete. Here is your result...')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("send-btn"));
     });
 
-    it('should not affect non-streaming state when webview becomes ready', async () => {
-        renderChatApp();
-
-        // Send message and complete conversation without streaming
-        act(() => {
-            sendCommand('updateMessages', {
-                messages: [
-                    MockDataGenerator.createUserMessage('Test message'),
-                    MockDataGenerator.createAssistantMessage('Complete response')
-                ]
-            });
-        });
-
-        await waitFor(() => {
-            expect(screen.getByText('Test message')).toBeInTheDocument();
-        });
-
-        // Verify no streaming state
-        expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
-
-        // Simulate webview becoming ready again — no state change expected
-        // (In RTL, webviewReady is sent to extension; streaming state stays as-is in React)
-
-        // Verify that no streaming state is activated
-        expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
-        expect(screen.getByText('Complete response')).toBeInTheDocument();
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [MockDataGenerator.createUserMessage("Hello")],
+      });
     });
 
-    it('should handle multiple webview ready events during streaming', async () => {
-        renderChatApp();
-
-        // Start conversation and streaming
-        const input = screen.getByTestId('message-input');
-        input.textContent = 'Long running task';
-        await fireInput(input, { data: 'Long running task', inputType: 'insertText' });
-
-        await act(async () => {
-            fireEvent.click(screen.getByTestId('send-btn'));
-        });
-
-        act(() => {
-            sendCommand('updateMessages', {
-                messages: [MockDataGenerator.createUserMessage('Long running task')]
-            });
-        });
-
-        act(() => {
-            sendCommand('startStreaming');
-        });
-
-        act(() => {
-            sendCommand('updateMessages', {
-                messages: [
-                    MockDataGenerator.createUserMessage('Long running task'),
-                    MockDataGenerator.createAssistantMessage('Starting task...')
-                ]
-            });
-        });
-
-        // Verify streaming
-        await waitFor(() => {
-            expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
-        });
-
-        // Multiple webview ready events (simulating user switching views rapidly)
-        // In RTL, streaming state persists in React; no external event disrupts it.
-        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
-        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
-        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
-
-        // Continue with streaming updates
-        act(() => {
-            sendCommand('updateMessages', {
-                messages: [
-                    MockDataGenerator.createUserMessage('Long running task'),
-                    MockDataGenerator.createAssistantMessage('Task completed successfully.')
-                ]
-            });
-        });
-
-        await waitFor(() => {
-            expect(screen.getByText('Task completed successfully.')).toBeInTheDocument();
-        });
-
-        // End streaming
-        act(() => {
-            sendCommand('endStreaming');
-        });
-
-        await waitFor(() => {
-            expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
-        });
+    await waitFor(() => {
+      expect(screen.getByText("Hello")).toBeInTheDocument();
     });
+
+    // Start streaming response
+    act(() => {
+      sendCommand("startStreaming");
+    });
+
+    // Verify abort button is present (streaming active); send button gone
+    await waitFor(() => {
+      expect(screen.getByTestId("abort-btn")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("send-btn")).not.toBeInTheDocument();
+
+    // Simulate streaming content update
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          MockDataGenerator.createUserMessage("Hello"),
+          MockDataGenerator.createAssistantMessage(
+            "I am currently processing your request...",
+          ),
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("I am currently processing your request..."),
+      ).toBeInTheDocument();
+    });
+
+    // Simulate webview becoming ready again (extension sends webviewReady → but in webview, it sends webviewReady to extension)
+    // The webviewReady command is sent FROM webview TO extension, not received.
+    // However, in the e2e test, sendWebviewReady simulates the extension re-responding.
+    // In RTL, we just verify streaming state persists — no special action needed since state is in React.
+    // We verify streaming is still active.
+    expect(screen.getByTestId("abort-btn")).toBeInTheDocument();
+
+    // Continue streaming with more content
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          MockDataGenerator.createUserMessage("Hello"),
+          MockDataGenerator.createAssistantMessage(
+            "Processing complete. Here is your result...",
+          ),
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Processing complete. Here is your result..."),
+      ).toBeInTheDocument();
+    });
+
+    // End streaming
+    act(() => {
+      sendCommand("endStreaming");
+    });
+
+    // Verify streaming state is properly ended
+    await waitFor(() => {
+      expect(screen.queryByTestId("abort-btn")).not.toBeInTheDocument();
+    });
+
+    // Messages should remain the same
+    expect(
+      screen.getByText("Processing complete. Here is your result..."),
+    ).toBeInTheDocument();
+  });
+
+  it("should not affect non-streaming state when webview becomes ready", async () => {
+    renderChatApp();
+
+    // Send message and complete conversation without streaming
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          MockDataGenerator.createUserMessage("Test message"),
+          MockDataGenerator.createAssistantMessage("Complete response"),
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Test message")).toBeInTheDocument();
+    });
+
+    // Verify no streaming state
+    expect(screen.queryByTestId("abort-btn")).not.toBeInTheDocument();
+
+    // Simulate webview becoming ready again — no state change expected
+    // (In RTL, webviewReady is sent to extension; streaming state stays as-is in React)
+
+    // Verify that no streaming state is activated
+    expect(screen.queryByTestId("abort-btn")).not.toBeInTheDocument();
+    expect(screen.getByText("Complete response")).toBeInTheDocument();
+  });
+
+  it("should handle multiple webview ready events during streaming", async () => {
+    renderChatApp();
+
+    // Start conversation and streaming
+    const input = screen.getByTestId("message-input");
+    input.textContent = "Long running task";
+    await fireInput(input, {
+      data: "Long running task",
+      inputType: "insertText",
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [MockDataGenerator.createUserMessage("Long running task")],
+      });
+    });
+
+    act(() => {
+      sendCommand("startStreaming");
+    });
+
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          MockDataGenerator.createUserMessage("Long running task"),
+          MockDataGenerator.createAssistantMessage("Starting task..."),
+        ],
+      });
+    });
+
+    // Verify streaming
+    await waitFor(() => {
+      expect(screen.getByTestId("abort-btn")).toBeInTheDocument();
+    });
+
+    // Multiple webview ready events (simulating user switching views rapidly)
+    // In RTL, streaming state persists in React; no external event disrupts it.
+    expect(screen.getByTestId("abort-btn")).toBeInTheDocument();
+    expect(screen.getByTestId("abort-btn")).toBeInTheDocument();
+    expect(screen.getByTestId("abort-btn")).toBeInTheDocument();
+
+    // Continue with streaming updates
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          MockDataGenerator.createUserMessage("Long running task"),
+          MockDataGenerator.createAssistantMessage(
+            "Task completed successfully.",
+          ),
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Task completed successfully."),
+      ).toBeInTheDocument();
+    });
+
+    // End streaming
+    act(() => {
+      sendCommand("endStreaming");
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("abort-btn")).not.toBeInTheDocument();
+    });
+  });
 });

@@ -1,5 +1,5 @@
-import React from 'react';
-import { diffWords } from 'diff';
+import React from "react";
+import { diffWords } from "diff";
 
 /**
  * Word-level split of one removed/added line pair: only the changed words get
@@ -19,27 +19,36 @@ export function renderWordLevelDiff(
   wordChanges.forEach((part, index) => {
     if (part.removed) {
       removedParts.push(
-        <span key={`removed-${keyPrefix}-${index}`} className="diff-word-removed">
+        <span
+          key={`removed-${keyPrefix}-${index}`}
+          className="diff-word-removed"
+        >
           {part.value}
-        </span>
+        </span>,
       );
     } else if (part.added) {
       addedParts.push(
         <span key={`added-${keyPrefix}-${index}`} className="diff-word-added">
           {part.value}
-        </span>
+        </span>,
       );
     } else {
       // Unchanged parts
       removedParts.push(
-        <span key={`removed-unchanged-${keyPrefix}-${index}`} className="diff-word-unchanged">
+        <span
+          key={`removed-unchanged-${keyPrefix}-${index}`}
+          className="diff-word-unchanged"
+        >
           {part.value}
-        </span>
+        </span>,
       );
       addedParts.push(
-        <span key={`added-unchanged-${keyPrefix}-${index}`} className="diff-word-unchanged">
+        <span
+          key={`added-unchanged-${keyPrefix}-${index}`}
+          className="diff-word-unchanged"
+        >
           {part.value}
-        </span>
+        </span>,
       );
     }
   });

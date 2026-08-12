@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import '../styles/DesktopApp.css';
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import "../styles/DesktopApp.css";
 
 export interface DesktopWorktreeControlsProps {
   branches: string[];
@@ -17,7 +17,9 @@ export interface DesktopWorktreeControlsProps {
  * is a git repo. Same dropdown pattern as DesktopWorkdirSelector: relative
  * container, menu expands upward, click-outside closes.
  */
-export const DesktopWorktreeControls: React.FC<DesktopWorktreeControlsProps> = ({
+export const DesktopWorktreeControls: React.FC<
+  DesktopWorktreeControlsProps
+> = ({
   branches,
   branch,
   worktreeChecked,
@@ -34,8 +36,8 @@ export const DesktopWorktreeControls: React.FC<DesktopWorktreeControlsProps> = (
         setMenuOpen(false);
       }
     };
-    document.addEventListener('mousedown', onMouseDown);
-    return () => document.removeEventListener('mousedown', onMouseDown);
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
   }, [menuOpen]);
 
   const handleSelectBranch = useCallback(
@@ -47,7 +49,10 @@ export const DesktopWorktreeControls: React.FC<DesktopWorktreeControlsProps> = (
   );
 
   return (
-    <div className="desktop-worktree-controls" data-testid="desktop-worktree-controls">
+    <div
+      className="desktop-worktree-controls"
+      data-testid="desktop-worktree-controls"
+    >
       <div className="desktop-workdir-container" ref={menuRef}>
         <div
           className="desktop-workdir-trigger"
@@ -62,11 +67,15 @@ export const DesktopWorktreeControls: React.FC<DesktopWorktreeControlsProps> = (
           <span className="codicon codicon-chevron-down desktop-workdir-caret"></span>
         </div>
         {menuOpen && (
-          <div className="desktop-workdir-menu" role="listbox" data-testid="desktop-branch-menu">
+          <div
+            className="desktop-workdir-menu"
+            role="listbox"
+            data-testid="desktop-branch-menu"
+          >
             {branches.map((b) => (
               <div
                 key={b}
-                className={`desktop-workdir-menu-item${b === branch ? ' desktop-branch-active' : ''}`}
+                className={`desktop-workdir-menu-item${b === branch ? " desktop-branch-active" : ""}`}
                 role="option"
                 onClick={() => handleSelectBranch(b)}
                 title={b}
@@ -81,7 +90,10 @@ export const DesktopWorktreeControls: React.FC<DesktopWorktreeControlsProps> = (
           </div>
         )}
       </div>
-      <label className="desktop-worktree-checkbox" data-testid="desktop-worktree-checkbox">
+      <label
+        className="desktop-worktree-checkbox"
+        data-testid="desktop-worktree-checkbox"
+      >
         <input
           type="checkbox"
           checked={worktreeChecked}

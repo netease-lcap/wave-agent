@@ -1,53 +1,53 @@
 /* Chat Layout */
 .chat-container {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    /* Paint the whole chat column (header + message gutters + input) in
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* Paint the whole chat column (header + message gutters + input) in
        panel-background so the gutters on either side of the 800px message
        column match the message list. Hosts set body to editor-background
        (the editor-area chrome), which would otherwise bleed through the
        transparent wrappers around .messages-container. */
-    background-color: var(--vscode-panel-background);
+  background-color: var(--vscode-panel-background);
 }
 
 .input-area-container {
-    position: relative;
-    background-color: var(--vscode-panel-background);
-    display: flex;
-    flex-direction: column;
-    padding: 0 10px;
+  position: relative;
+  background-color: var(--vscode-panel-background);
+  display: flex;
+  flex-direction: column;
+  padding: 0 10px;
 }
 .queue-edit-warning-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 6px 12px;
-    font-size: 12px;
-    background-color: var(--vscode-inputValidation-warningBackground);
-    border: 1px solid var(--vscode-inputValidation-warningBorder);
-    color: var(--vscode-foreground);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  background-color: var(--vscode-inputValidation-warningBackground);
+  border: 1px solid var(--vscode-inputValidation-warningBorder);
+  color: var(--vscode-foreground);
 }
 
 .queue-edit-warning-text {
-    flex: 1;
-    min-width: 0;
+  flex: 1;
+  min-width: 0;
 }
 
 .queue-edit-warning-close {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 2px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--vscode-icon-foreground);
-    flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-icon-foreground);
+  flex-shrink: 0;
 }
 
 .queue-edit-warning-close:hover {
-    color: var(--vscode-foreground);
+  color: var(--vscode-foreground);
 }

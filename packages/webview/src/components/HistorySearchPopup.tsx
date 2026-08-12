@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import '../styles/HistorySearchPopup.css';
-import { HistoryItem, VsCodeApi } from '../types';
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import "../styles/HistorySearchPopup.css";
+import { HistoryItem, VsCodeApi } from "../types";
 
 interface HistorySearchPopupProps {
   isVisible: boolean;
@@ -15,9 +15,9 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
   onSelect,
   onClose,
   position,
-  vscode
+  vscode,
 }) => {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -27,14 +27,18 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
   // Handle clicks outside to close popup
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
+      if (
+        popupRef.current &&
+        !popupRef.current.contains(event.target as Node)
+      ) {
         onClose();
       }
     };
 
     if (isVisible) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [isVisible, onClose]);
 
@@ -44,9 +48,9 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
       inputRef.current.focus();
       // Request initial history
       setIsLoading(true);
-      vscode.postMessage({ command: 'requestHistory' });
+      vscode.postMessage({ command: "requestHistory" });
     } else {
-      setQuery('');
+      setQuery("");
       setItems([]);
       setSelectedIndex(0);
     }
@@ -56,26 +60,28 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const data = event.data;
-      if (data.command === 'historyResponse') {
+      if (data.command === "historyResponse") {
         setItems(data.history || []);
         setSelectedIndex(0);
         setIsLoading(false);
-      } else if (data.command === 'historyError') {
-        console.error('History error:', data.error);
+      } else if (data.command === "historyError") {
+        console.error("History error:", data.error);
         setIsLoading(false);
       }
     };
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
   }, []);
 
   // Auto-scroll selected item into view when navigation happens
   useEffect(() => {
     if (!popupRef.current) return;
-    const selectedItem = popupRef.current.querySelector('.history-search-item.selected');
+    const selectedItem = popupRef.current.querySelector(
+      ".history-search-item.selected",
+    );
     if (selectedItem) {
-      selectedItem.scrollIntoView({ block: 'nearest' });
+      selectedItem.scrollIntoView({ block: "nearest" });
     }
   }, [selectedIndex]);
 
@@ -84,39 +90,44 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
     if (isVisible && query.trim()) {
       const timer = setTimeout(() => {
         setIsLoading(true);
-        vscode.postMessage({ command: 'searchHistory', query });
+        vscode.postMessage({ command: "searchHistory", query });
       }, 300);
       return () => clearTimeout(timer);
     } else if (isVisible && !query.trim()) {
       setIsLoading(true);
-      vscode.postMessage({ command: 'requestHistory' });
+      vscode.postMessage({ command: "requestHistory" });
     }
   }, [query, isVisible, vscode]);
 
-  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (!isVisible) return;
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (!isVisible) return;
 
-    switch (event.key) {
-      case 'ArrowUp':
-        event.preventDefault();
-        setSelectedIndex((prev) => Math.max(0, prev - 1));
-        break;
-      case 'ArrowDown':
-        event.preventDefault();
-        setSelectedIndex((prev) => Math.min(Math.min(items.length, 50) - 1, prev + 1));
-        break;
-      case 'Enter':
-        event.preventDefault();
-        if (items[selectedIndex]) {
-          onSelect(items[selectedIndex].prompt);
-        }
-        break;
-      case 'Escape':
-        event.preventDefault();
-        onClose();
-        break;
-    }
-  }, [isVisible, items, selectedIndex, onSelect, onClose]);
+      switch (event.key) {
+        case "ArrowUp":
+          event.preventDefault();
+          setSelectedIndex((prev) => Math.max(0, prev - 1));
+          break;
+        case "ArrowDown":
+          event.preventDefault();
+          setSelectedIndex((prev) =>
+            Math.min(Math.min(items.length, 50) - 1, prev + 1),
+          );
+          break;
+        case "Enter":
+          event.preventDefault();
+          if (items[selectedIndex]) {
+            onSelect(items[selectedIndex].prompt);
+          }
+          break;
+        case "Escape":
+          event.preventDefault();
+          onClose();
+          break;
+      }
+    },
+    [isVisible, items, selectedIndex, onSelect, onClose],
+  );
 
   if (!isVisible) return null;
 
@@ -125,10 +136,10 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
       ref={popupRef}
       className="history-search-popup"
       style={{
-        position: 'absolute',
+        position: "absolute",
         top: position.top,
         left: position.left,
-        zIndex: 1000
+        zIndex: 1000,
       }}
       data-testid="history-search-popup"
     >
@@ -152,15 +163,13 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
             正在加载...
           </div>
         ) : items.length === 0 ? (
-          <div className="history-search-empty">
-            未找到匹配的历史记录
-          </div>
+          <div className="history-search-empty">未找到匹配的历史记录</div>
         ) : (
           <ul className="history-search-list">
             {items.slice(0, 50).map((item, index) => (
               <li
                 key={`${item.timestamp}-${index}`}
-                className={`history-search-item ${index === selectedIndex ? 'selected' : ''}`}
+                className={`history-search-item ${index === selectedIndex ? "selected" : ""}`}
                 onClick={() => onSelect(item.prompt)}
                 onMouseEnter={() => setSelectedIndex(index)}
               >

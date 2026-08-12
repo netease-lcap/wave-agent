@@ -1,6 +1,6 @@
-import React from 'react';
-import type { SessionMetadata } from 'wave-agent-sdk';
-import { formatSessionLabel } from '../utils/session';
+import React from "react";
+import type { SessionMetadata } from "wave-agent-sdk";
+import { formatSessionLabel } from "../utils/session";
 
 export interface SessionListProps {
   sessions: SessionMetadata[];
@@ -34,7 +34,7 @@ const highlightMatch = (text: string, query: string): React.ReactNode => {
     fragments.push(
       <span key={key++} className="session-list-highlight">
         {text.substring(matchIndex, matchIndex + lowerQuery.length)}
-      </span>
+      </span>,
     );
     cursor = matchIndex + lowerQuery.length;
     matchIndex = lowerText.indexOf(lowerQuery, cursor);
@@ -56,7 +56,7 @@ export const SessionList: React.FC<SessionListProps> = ({
   currentSession,
   onSessionSelect,
   loading = false,
-  highlightQuery = '',
+  highlightQuery = "",
 }) => {
   return (
     <div className="session-list-results">
@@ -72,7 +72,7 @@ export const SessionList: React.FC<SessionListProps> = ({
           {sessions.map((session) => (
             <li
               key={session.id}
-              className={`session-list-item ${session.id === currentSession?.id ? 'session-list-item--current' : ''}`}
+              className={`session-list-item ${session.id === currentSession?.id ? "session-list-item--current" : ""}`}
               onClick={() => onSessionSelect(session.id)}
               data-testid={`session-list-item-${session.id}`}
             >

@@ -8,9 +8,14 @@
 export function isLocalhostUrl(raw: string): boolean {
   try {
     const url = new URL(raw);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
     const host = url.hostname.toLowerCase();
-    return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "[::1]" ||
+      host === "::1"
+    );
   } catch {
     return false;
   }

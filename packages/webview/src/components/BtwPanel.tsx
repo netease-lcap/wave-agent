@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
-import '../styles/BtwPanel.css';
+import React, { useEffect } from "react";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
+import "../styles/BtwPanel.css";
 
 interface BtwPanelProps {
   question: string;
@@ -18,26 +18,57 @@ const renderMarkdown = (content: string): string => {
   const html = marked.parse(content, { gfm: true, breaks: true });
   const sanitized = DOMPurify.sanitize(html as string, {
     ALLOWED_TAGS: [
-      'p', 'br', 'strong', 'b', 'em', 'i', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'ul', 'ol', 'li', 'a', 'blockquote', 'hr', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'del'
+      "p",
+      "br",
+      "strong",
+      "b",
+      "em",
+      "i",
+      "code",
+      "pre",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "ul",
+      "ol",
+      "li",
+      "a",
+      "blockquote",
+      "hr",
+      "img",
+      "table",
+      "thead",
+      "tbody",
+      "tr",
+      "th",
+      "td",
+      "del",
     ],
-    ALLOWED_ATTR: ['href', 'title', 'align', 'src', 'alt'],
-    ALLOW_DATA_ATTR: false
+    ALLOWED_ATTR: ["href", "title", "align", "src", "alt"],
+    ALLOW_DATA_ATTR: false,
   });
-  return typeof sanitized === 'string' ? sanitized : '';
+  return typeof sanitized === "string" ? sanitized : "";
 };
 
-export const BtwPanel: React.FC<BtwPanelProps> = ({ question, answer, isLoading, onClose }) => {
+export const BtwPanel: React.FC<BtwPanelProps> = ({
+  question,
+  answer,
+  isLoading,
+  onClose,
+}) => {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
         onClose();
       }
     };
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => document.removeEventListener('keydown', handleKeyDown, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [onClose]);
 
   return (
@@ -47,7 +78,9 @@ export const BtwPanel: React.FC<BtwPanelProps> = ({ question, answer, isLoading,
             close button stays on the right even for a bare `/btw` (spec
             scenario 3). */}
         <span className="btw-panel-prefix">/btw </span>
-        <span className="btw-panel-question" data-testid="btw-panel-question">{question}</span>
+        <span className="btw-panel-question" data-testid="btw-panel-question">
+          {question}
+        </span>
         <button
           className="btw-panel-close"
           onClick={onClose}

@@ -1,10 +1,16 @@
-import React, { useMemo } from 'react';
-import { diffLines, type Change } from 'diff';
-import { transformToolBlockToChanges, transformParametersToChanges } from '../utils/diffTransform';
-import { renderWordLevelDiff } from '../utils/diffHighlight';
-import { WRITE_TOOL_NAME, EDIT_TOOL_NAME } from 'wave-agent-sdk/dist/constants/tools.js';
-import type { ToolBlock } from 'wave-agent-sdk/dist/types/messaging.js';
-import '../styles/DiffViewer.css';
+import React, { useMemo } from "react";
+import { diffLines, type Change } from "diff";
+import {
+  transformToolBlockToChanges,
+  transformParametersToChanges,
+} from "../utils/diffTransform";
+import { renderWordLevelDiff } from "../utils/diffHighlight";
+import {
+  WRITE_TOOL_NAME,
+  EDIT_TOOL_NAME,
+} from "wave-agent-sdk/dist/constants/tools.js";
+import type { ToolBlock } from "wave-agent-sdk/dist/types/messaging.js";
+import "../styles/DiffViewer.css";
 
 interface DiffViewerProps {
   toolBlock?: ToolBlock;
@@ -16,14 +22,17 @@ interface DiffViewerProps {
  * DiffViewer component that extracts and displays diffs from tool blocks
  * Uses transformToolBlockToChanges from wave-agent-sdk to get file changes
  */
-export const DiffViewer: React.FC<DiffViewerProps> = ({ toolBlock, toolName, parameters }) => {
-
+export const DiffViewer: React.FC<DiffViewerProps> = ({
+  toolBlock,
+  toolName,
+  parameters,
+}) => {
   // Diff detection and transformation
   const changes = useMemo(() => {
     try {
       if (toolBlock) {
         // Skip parsing during streaming - parameters are still being received and incomplete
-        if (toolBlock.stage === 'streaming') {
+        if (toolBlock.stage === "streaming") {
           return [];
         }
         return transformToolBlockToChanges(toolBlock);
@@ -41,7 +50,9 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ toolBlock, toolName, par
     changes.length > 0 &&
     (toolBlock ? ["end"].includes(toolBlock.stage) : true) &&
     (toolBlock?.name || toolName) &&
-    [WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(toolBlock?.name || toolName || "");
+    [WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(
+      toolBlock?.name || toolName || "",
+    );
 
   // Render expanded diff display using word-level diff for all scenarios
   const renderExpandedDiff = () => {
@@ -72,7 +83,10 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ toolBlock, toolName, par
           };
 
           const flushPending = () => {
-            const maxLines = Math.max(pendingRemoved.length, pendingAdded.length);
+            const maxLines = Math.max(
+              pendingRemoved.length,
+              pendingAdded.length,
+            );
             for (let i = 0; i < maxLines; i++) {
               const oldLine = pendingRemoved[i] || "";
               const newLine = pendingAdded[i] || "";
@@ -82,7 +96,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ toolBlock, toolName, par
                 const { removedParts, addedParts } = renderWordLevelDiff(
                   oldLine,
                   newLine,
-                  `paired-${changeIndex}-${groupIndex}-${i}`
+                  `paired-${changeIndex}-${groupIndex}-${i}`,
                 );
 
                 diffLinesElements.push(
@@ -92,7 +106,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ toolBlock, toolName, par
                   >
                     <span className="diff-prefix">-</span>
                     <span className="diff-content">{removedParts}</span>
-                  </div>
+                  </div>,
                 );
 
                 diffLinesElements.push(
@@ -102,14 +116,14 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ toolBlock, toolName, par
                   >
                     <span className="diff-prefix">+</span>
                     <span className="diff-content">{addedParts}</span>
-                  </div>
+                  </div>,
                 );
               } else if (i < pendingRemoved.length) {
                 // Only removed line
                 const { removedParts } = renderWordLevelDiff(
                   oldLine,
                   "",
-                  `removed-only-${changeIndex}-${groupIndex}-${i}`
+                  `removed-only-${changeIndex}-${groupIndex}-${i}`,
                 );
 
                 diffLinesElements.push(
@@ -119,14 +133,14 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ toolBlock, toolName, par
                   >
                     <span className="diff-prefix">-</span>
                     <span className="diff-content">{removedParts}</span>
-                  </div>
+                  </div>,
                 );
               } else if (i < pendingAdded.length) {
                 // Only added line
                 const { addedParts } = renderWordLevelDiff(
                   "",
                   newLine,
-                  `added-only-${changeIndex}-${groupIndex}-${i}`
+                  `added-only-${changeIndex}-${groupIndex}-${i}`,
                 );
 
                 diffLinesElements.push(
@@ -136,7 +150,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ toolBlock, toolName, par
                   >
                     <span className="diff-prefix">+</span>
                     <span className="diff-content">{addedParts}</span>
-                  </div>
+                  </div>,
                 );
               }
             }
@@ -154,7 +168,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ toolBlock, toolName, par
               flushPending();
               const lines = splitLines(part.value);
               const contextLimit = 3;
-              
+
               let displayLines = lines;
               let showEllipsisBefore = false;
               let showEllipsisAfter = false;
@@ -174,31 +188,41 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ toolBlock, toolName, par
               } else {
                 // Middle of diff: show first N and last N lines
                 if (lines.length > contextLimit * 2) {
-                  displayLines = [...lines.slice(0, contextLimit), "...", ...lines.slice(-contextLimit)];
+                  displayLines = [
+                    ...lines.slice(0, contextLimit),
+                    "...",
+                    ...lines.slice(-contextLimit),
+                  ];
                 }
               }
 
               if (showEllipsisBefore) {
                 diffLinesElements.push(
-                  <div key={`ellipsis-before-${changeIndex}-${groupIndex}`} className="diff-line-ellipsis">
+                  <div
+                    key={`ellipsis-before-${changeIndex}-${groupIndex}`}
+                    className="diff-line-ellipsis"
+                  >
                     ...
-                  </div>
+                  </div>,
                 );
               }
 
               displayLines.forEach((line, lineIndex) => {
                 if (line === "...") {
                   diffLinesElements.push(
-                    <div key={`ellipsis-middle-${changeIndex}-${groupIndex}-${lineIndex}`} className="diff-line-ellipsis">
+                    <div
+                      key={`ellipsis-middle-${changeIndex}-${groupIndex}-${lineIndex}`}
+                      className="diff-line-ellipsis"
+                    >
                       ...
-                    </div>
+                    </div>,
                   );
                   return;
                 }
                 const { addedParts } = renderWordLevelDiff(
-                  line, 
-                  line, 
-                  `context-${changeIndex}-${groupIndex}-${lineIndex}`
+                  line,
+                  line,
+                  `context-${changeIndex}-${groupIndex}-${lineIndex}`,
                 );
                 diffLinesElements.push(
                   <div
@@ -207,15 +231,18 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ toolBlock, toolName, par
                   >
                     <span className="diff-prefix"> </span>
                     <span className="diff-content">{addedParts}</span>
-                  </div>
+                  </div>,
                 );
               });
 
               if (showEllipsisAfter) {
                 diffLinesElements.push(
-                  <div key={`ellipsis-after-${changeIndex}-${groupIndex}`} className="diff-line-ellipsis">
+                  <div
+                    key={`ellipsis-after-${changeIndex}-${groupIndex}`}
+                    className="diff-line-ellipsis"
+                  >
                     ...
-                  </div>
+                  </div>,
                 );
               }
               groupIndex++;
@@ -242,9 +269,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ toolBlock, toolName, par
     <div className="diff-viewer-container">
       <div className="diff-viewer-content" tabIndex={0}>
         {renderExpandedDiff()}
-        {changes.length === 0 && (
-          <div className="diff-empty">No changes</div>
-        )}
+        {changes.length === 0 && <div className="diff-empty">No changes</div>}
       </div>
     </div>
   );
