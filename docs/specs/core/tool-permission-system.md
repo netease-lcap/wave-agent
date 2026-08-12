@@ -83,6 +83,8 @@ order: 130
 7. **假设**任何文件，**当**用户执行 `awk '{print $1}' file` 或 `jq '.x' file.json` 时，**则**系统应该自动允许。
 8. **假设**任何命令，**当**用户执行 `cat $(rm important)` 或 `grep x \`whoami\`` 时，**则**系统不得自动允许（含命令替换/进程替换，可能触发隐藏的破坏性执行），必须提示权限确认。
 9. **假设**链式命令 `sed -n '1,10p' a.txt | grep foo`，**当** 执行时，**则** 系统应该自动允许（每段均为只读）。
+10. **假设**任何 git 仓库，**当**用户执行 `git -C /path/to/repo status`、`git -C /path/to/repo diff --stat` 或 `git -C /path/to/repo log --oneline` 时，**则** 系统应该自动允许（`git` 的全局作用域选项如 `-C <path>`、`-c <key>=<value>`、`--git-dir <path>` 只改变目标仓库或配置，不改变子命令的只读属性；匹配 `Bash(git status*)` 等规则时忽略这些前缀）。
+11. **假设**任何目录，**当**用户执行 `git -C /path/to/repo commit -m "msg"`、`git -C /path/to/repo push` 或 `git -C /path/to/repo branch -D feature` 时，**则** 系统不得自动允许，必须提示权限确认。
 
 ### 用户故事：MCP 工具权限（优先级：P1）
 

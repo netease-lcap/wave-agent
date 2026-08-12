@@ -557,6 +557,19 @@ export interface ToolRule {
   scopeFlags?: string[];
 }
 
+/**
+ * Global scope flags for git that only change the target repository or
+ * configuration, not the subcommand being run. Shared by TOOL_RULES (smart
+ * prefix extraction) and stripGitScopePrefix (rule matching).
+ */
+export const GIT_SCOPE_FLAGS = [
+  "-C",
+  "-c",
+  "--directory",
+  "--work-tree",
+  "--git-dir",
+];
+
 export const TOOL_RULES: Record<string, ToolRule> = {
   // Node/JS
   npm: { depth: 2, scopeFlags: ["--prefix", "-C", "--registry"] },
@@ -575,7 +588,7 @@ export const TOOL_RULES: Record<string, ToolRule> = {
   // Git
   git: {
     depth: 2,
-    scopeFlags: ["-C", "-c", "--directory", "--work-tree", "--git-dir"],
+    scopeFlags: GIT_SCOPE_FLAGS,
   },
 
   // Python
@@ -738,6 +751,37 @@ export function hasSedInPlace(command: string): boolean {
   const tokens = stripped.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
   if (tokens.length === 0 || tokens[0] !== "sed") return false;
   return tokens.some((token) => /^-i(\..*)?$/.test(token));
+}
+
+/**
+ * Removes leading git global scope flags (e.g. `git -C <path>`, `git -c <key>=<value>`,
+ * `git --git-dir <path>`) from a command string, so that `git -C /tmp/foo status` is
+ * classified the same as `git status`. Only the leading sequence before the git
+ * subcommand is stripped; the remainder is re-joined with single spaces.
+ * Returns the input unchanged when nothing is stripped.
+ */
+export function stripGitScopePrefix(command: string): string {
+  const trimmed = command.trim();
+  if (!/^git(?:\s|$)/.test(trimmed)) return command;
+
+  const tokens = trimmed.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
+  if (tokens.length === 0 || tokens[0] !== "git") return command;
+
+  let i = 1;
+  while (i < tokens.length) {
+    const token = tokens[i];
+    const eqIndex = token.indexOf("=");
+    const flag = eqIndex > 0 ? token.slice(0, eqIndex) : token;
+    if (!GIT_SCOPE_FLAGS.includes(flag)) break;
+    if (eqIndex > 0) {
+      i++; // --flag=value form carries its own value
+    } else {
+      i += 2; // skip the flag and its argument
+    }
+  }
+
+  if (i === 1) return command;
+  return ["git", ...tokens.slice(i)].join(" ");
 }
 
 /**

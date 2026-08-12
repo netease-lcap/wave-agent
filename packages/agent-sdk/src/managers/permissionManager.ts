@@ -26,6 +26,7 @@ import {
   hasCommandSubstitution,
   hasProcessSubstitution,
   hasSedInPlace,
+  stripGitScopePrefix,
   DANGEROUS_COMMANDS,
   READ_ONLY_COMMANDS,
 } from "../utils/bashParser.js";
@@ -876,7 +877,13 @@ export class PermissionManager {
         .replace(/\*/g, ".*"); // Replace * with .*
       const regex = new RegExp(`^${regexPattern}$`, "s");
       const matched = regex.test(processedPart);
-      return matched;
+      if (matched) return true;
+      // Leading git global scope flags (e.g. `git -C <path>`) only change the
+      // target repository, not the subcommand being run, so rules like
+      // Bash(git status*) also cover `git -C <path> status`. The raw command
+      // is checked first so path-specific rules (e.g. deny rules on
+      // `git -C /secret status`) still match.
+      return regex.test(stripGitScopePrefix(processedPart));
     }
 
     // Handle path-based rules (e.g., "Read(**/*.env)")
