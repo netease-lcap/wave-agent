@@ -221,10 +221,28 @@ export function convertMessagesForAPI(
         reasoning_content && reasoning_content.trim().length > 0;
 
       if (hasContent || hasToolCalls || hasReasoning) {
+        // OpenAI-compatible upstreams reject assistant messages where neither
+        // content nor tool_calls is set — a reasoning_content-only message
+        // gets stripped and returns 400 "content or tool_calls must be set"
+        // (this is fine for Claude Code, whose thinking blocks ARE content).
+        // When a turn produced only thinking (interrupted/truncated
+        // mid-reasoning), the thinking stays on its native reasoning_content
+        // field (the channel reasoning models natively continue from), and
+        // content carries an explanatory note so the request stays valid and
+        // the model knows the thinking was cut off and auto-preserved.
+        const fallbackContent = hasContent
+          ? content
+          : hasReasoning
+            ? "[Note: The reasoning above was cut off before completion. It was auto-preserved from an interrupted or truncated turn — continue from where it left off, or disregard it if no longer relevant.]"
+            : undefined;
+
         const assistantMessage: ChatCompletionMessageParam = {
           role: "assistant",
-          content: hasContent ? content : undefined,
+          content: fallbackContent,
           tool_calls,
+          // Sent whenever reasoning exists: alongside real text it is the
+          // turn's own thinking; in the fallback case it carries the
+          // preserved thinking itself (content only holds the note).
           ...(reasoning_content ? { reasoning_content } : {}),
           ...(message.additionalFields ? { ...message.additionalFields } : {}),
         } as ChatCompletionMessageParam;
