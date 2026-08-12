@@ -226,20 +226,23 @@
   color: var(--vscode-errorForeground, #f14c4c);
 }
 
-/* Drag-or-Cmd/Ctrl hint tooltip (Tooltip.tsx): the anchor wraps the row content
-   (dot + title) — the delete button stays a sibling so it keeps its own hover
-   affordance. The anchor must grow to fill the row for the title's ellipsis,
-   overriding .tooltip-container's flex-shrink:0 (DesktopApp.css loads after
-   Tooltip.css, so this class wins the cascade). */
+/* Drag-or-Cmd/Ctrl hint tooltip (Tooltip.tsx): the tooltip positions against
+   the row's hover-highlight container (the li, passed via Tooltip anchorRef),
+   so the hint starts at the row's visual right edge. This wrapper span only
+   carries the row content + hover events; it must grow to fill the row for the
+   title's ellipsis, overriding .tooltip-container's flex-shrink:0
+   (DesktopApp.css loads after Tooltip.css, so this class wins the cascade). */
 .desktop-session-item-tooltip {
   flex: 1 1 0%;
   min-width: 0;
 }
 
-/* New-chat hint tooltip: the Tooltip wrapper span defaults to inline-flex and
-   shrink-fits the button — block-level makes it fill the row, and the 6px
-   side padding keeps the button's hover background aligned with the session
-   items' inset. The two selectors beat .tooltip-container's single-class rule
+/* New-chat hint tooltip: the tooltip positions against the button itself (its
+   hover-highlight container, passed via Tooltip anchorRef) — same row-edge x
+   as the session-item tooltips. This wrapper span defaults to inline-flex and
+   shrink-fits the button; block-level makes it fill the row, and the side
+   padding keeps the button's hover background aligned with the session items'
+   inset. The two selectors beat .tooltip-container's single-class rule
    regardless of the bundled CSS order. */
 .desktop-sidebar .desktop-sidebar-new-chat-tooltip {
   display: block;
@@ -250,6 +253,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: 1 1 0%;
   min-width: 0;
 }
 
