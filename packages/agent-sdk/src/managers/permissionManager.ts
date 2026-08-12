@@ -222,6 +222,16 @@ export class PermissionManager {
   }
 
   /**
+   * Add an instance-level allowed rule (session-level, in-memory only).
+   * Unlike addPermissionRule, this does NOT persist to settings.local.json.
+   */
+  public addInstanceAllowedRule(rule: string): void {
+    if (!this.instanceAllowedRules.includes(rule)) {
+      this.instanceAllowedRules.push(rule);
+    }
+  }
+
+  /**
    * Get all additional directories
    */
   public getAdditionalDirectories(): string[] {

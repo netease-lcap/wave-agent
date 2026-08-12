@@ -18,6 +18,7 @@ import { HookManager } from "../../src/managers/hookManager.js";
 import { LspManager } from "../../src/managers/lspManager.js";
 import { McpManager } from "../../src/managers/mcpManager.js";
 import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
+import { PermissionManager } from "../../src/managers/permissionManager.js";
 import { MarketplaceService } from "../../src/services/MarketplaceService.js";
 import { logger } from "../../src/utils/globalLogger.js";
 
@@ -46,6 +47,7 @@ describe("PluginManager", () => {
   let mockLspManager: LspManager;
   let mockMcpManager: McpManager;
   let mockSlashCommandManager: SlashCommandManager;
+  let mockPermissionManager: PermissionManager;
   const workdir = "/test/workdir";
 
   beforeEach(() => {
@@ -62,6 +64,9 @@ describe("PluginManager", () => {
     mockSlashCommandManager = {
       registerPluginCommands: vi.fn(),
     } as unknown as SlashCommandManager;
+    mockPermissionManager = {
+      addInstanceAllowedRule: vi.fn(),
+    } as unknown as PermissionManager;
 
     const mockConfigurationService = {
       getMergedEnabledPlugins: vi.fn().mockReturnValue({}),
@@ -73,6 +78,7 @@ describe("PluginManager", () => {
     container.register("LspManager", mockLspManager);
     container.register("McpManager", mockMcpManager);
     container.register("SlashCommandManager", mockSlashCommandManager);
+    container.register("PermissionManager", mockPermissionManager);
     container.register(
       "ConfigurationService",
       mockConfigurationService as unknown as Record<string, unknown>,
@@ -574,6 +580,79 @@ describe("PluginManager", () => {
       expect(logger.warn).not.toHaveBeenCalledWith(
         expect.stringContaining("marketplace builtin is unknown"),
       );
+    });
+
+    it("should register spec-count allow rule when sdd@builtin is enabled and loaded", async () => {
+      enableBuiltins("sdd");
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readdirSync).mockReturnValue(dirEntries(["sdd"], ["sdd"]));
+      vi.mocked(PluginLoader.loadManifest).mockResolvedValue({
+        name: "sdd",
+        version: "1.0.0",
+        description: "Spec-first workflow",
+      } as PluginManifest);
+      vi.mocked(PluginLoader.loadCommands).mockReturnValue([]);
+      vi.mocked(PluginLoader.loadSkills).mockResolvedValue([]);
+
+      await pluginManager.loadPlugins([]);
+
+      expect(mockPermissionManager.addInstanceAllowedRule).toHaveBeenCalledWith(
+        "Bash(node *spec-count.js*)",
+      );
+    });
+
+    it("should not register allow rules when sdd@builtin is not enabled", async () => {
+      // enabledPlugins is empty by default (getMergedEnabledPlugins returns {})
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readdirSync).mockReturnValue(dirEntries(["sdd"], ["sdd"]));
+      vi.mocked(PluginLoader.loadManifest).mockResolvedValue({
+        name: "sdd",
+        version: "1.0.0",
+        description: "d",
+      } as PluginManifest);
+
+      await pluginManager.loadPlugins([]);
+
+      expect(
+        mockPermissionManager.addInstanceAllowedRule,
+      ).not.toHaveBeenCalled();
+    });
+
+    it("should not register allow rules when the enabled builtin plugin fails to load", async () => {
+      enableBuiltins("broken");
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readdirSync).mockReturnValue(
+        dirEntries(["broken"], ["broken"]),
+      );
+      vi.mocked(PluginLoader.loadManifest).mockRejectedValue(
+        new Error("Manifest not found"),
+      );
+
+      await pluginManager.loadPlugins([]);
+
+      expect(
+        mockPermissionManager.addInstanceAllowedRule,
+      ).not.toHaveBeenCalled();
+    });
+
+    it("should not register allow rules for builtin plugins without declared rules", async () => {
+      enableBuiltins("other");
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readdirSync).mockReturnValue(dirEntries(["other"], ["other"]));
+      vi.mocked(PluginLoader.loadManifest).mockResolvedValue({
+        name: "other",
+        version: "1.0.0",
+        description: "d",
+      } as PluginManifest);
+      vi.mocked(PluginLoader.loadCommands).mockReturnValue([]);
+      vi.mocked(PluginLoader.loadSkills).mockResolvedValue([]);
+
+      await pluginManager.loadPlugins([]);
+
+      expect(pluginManager.getPlugin("other")).toBeDefined();
+      expect(
+        mockPermissionManager.addInstanceAllowedRule,
+      ).not.toHaveBeenCalled();
     });
   });
 });

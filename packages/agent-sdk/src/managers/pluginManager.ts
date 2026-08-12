@@ -13,6 +13,7 @@ import { SubagentManager } from "./subagentManager.js";
 import { MarketplaceService } from "../services/MarketplaceService.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { Container } from "../utils/container.js";
+import { PermissionManager } from "./permissionManager.js";
 
 export interface PluginManagerOptions {
   workdir: string;
@@ -20,6 +21,18 @@ export interface PluginManagerOptions {
 }
 
 export class PluginManager {
+  /**
+   * Read-only helper scripts shipped by builtin plugins that the agent runs via
+   * Bash. When such a plugin is enabled, its rules are registered as instance
+   * level allow rules (in-memory only, never persisted) so the scripts run
+   * without a permission prompt. Wildcards keep the rules valid across install
+   * locations; each rule anchors on the script filename.
+   */
+  private static readonly BUILTIN_PLUGIN_ALLOW_RULES: Record<string, string[]> =
+    {
+      sdd: ["Bash(node *spec-count.js*)"],
+    };
+
   private plugins = new Map<string, Plugin>();
   private workdir: string;
   private enabledPlugins: Record<string, boolean>;
@@ -30,6 +43,10 @@ export class PluginManager {
   ) {
     this.workdir = options.workdir;
     this.enabledPlugins = options.enabledPlugins || {};
+  }
+
+  private get permissionManager(): PermissionManager | undefined {
+    return this.container.get<PermissionManager>("PermissionManager");
   }
 
   private get skillManager(): SkillManager | undefined {
@@ -308,6 +325,15 @@ export class PluginManager {
         if (!entry.isDirectory()) continue;
         if (this.enabledPlugins[`${entry.name}@builtin`] !== true) continue;
         await this.loadSinglePlugin(path.join(builtinDir, entry.name));
+        // Register allow rules only after the plugin actually loaded, so a
+        // failed load never leaves permission grants behind.
+        if (this.plugins.has(entry.name)) {
+          for (const rule of PluginManager.BUILTIN_PLUGIN_ALLOW_RULES[
+            entry.name
+          ] || []) {
+            this.permissionManager?.addInstanceAllowedRule(rule);
+          }
+        }
       }
     } catch (error) {
       logger?.error("Failed to load built-in plugins:", error);
