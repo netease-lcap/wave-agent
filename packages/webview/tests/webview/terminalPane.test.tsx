@@ -284,7 +284,7 @@ describe("TerminalPane", () => {
   });
 
   // Clicking a URL printed in the terminal routes the same way Message.tsx
-  // does: localhost → preview pane, everything else → the system browser.
+  // does: any http(s) URL → preview pane, non-http(s) → the system default app.
   const linkHandlerOf = (term: MockTerminal) =>
     (
       term.addons.find((a) => a instanceof MockWebLinksAddon) as
@@ -305,7 +305,7 @@ describe("TerminalPane", () => {
     expect(postsOf(vscode, "openExternal")).toHaveLength(0);
   });
 
-  it("routes a non-localhost link in the terminal to the system browser", async () => {
+  it("routes a non-localhost http(s) link in the terminal to the preview pane", async () => {
     const onOpenPreview = vi.fn();
     const { vscode } = renderPane({ onOpenPreview });
     await act(async () => {});
@@ -316,9 +316,24 @@ describe("TerminalPane", () => {
       ),
     );
 
+    expect(onOpenPreview).toHaveBeenCalledWith("https://example.com/docs");
+    expect(postsOf(vscode, "openExternal")).toHaveLength(0);
+  });
+
+  it("routes a non-http(s) link in the terminal to the system default app", async () => {
+    const onOpenPreview = vi.fn();
+    const { vscode } = renderPane({ onOpenPreview });
+    await act(async () => {});
+    act(() =>
+      linkHandlerOf(mockTerminals[0])!(
+        {} as MouseEvent,
+        "file:///tmp/build.log",
+      ),
+    );
+
     expect(onOpenPreview).not.toHaveBeenCalled();
     expect(postsOf(vscode, "openExternal")).toEqual([
-      { command: "openExternal", url: "https://example.com/docs" },
+      { command: "openExternal", url: "file:///tmp/build.log" },
     ]);
   });
 

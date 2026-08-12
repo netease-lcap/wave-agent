@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, fireEvent, screen } from "@testing-library/react";
+import { render, fireEvent, screen, act } from "@testing-library/react";
 import React from "react";
 import {
   PreviewPane,
   formatPreviewComment,
   rewriteCommentUrl,
+  resolvePreviewAddress,
 } from "../../src/components/PreviewPane";
 import type { WebviewTagElement } from "../../src/components/PreviewPane";
 import { DesktopApp } from "../../src/components/DesktopApp";
@@ -31,6 +32,7 @@ function renderPane(options?: {
   onAddComment?: (text: string) => void;
   originalUrl?: string;
   onRetry?: () => void;
+  onNavigate?: (url: string) => void;
 }) {
   const vscode = createMockVscode();
   const url = options?.url ?? "http://localhost:5173/app";
@@ -38,6 +40,7 @@ function renderPane(options?: {
   const onAddComment = options?.onAddComment ?? vi.fn();
   const originalUrl = options?.originalUrl;
   const onRetry = options?.onRetry;
+  const onNavigate = options?.onNavigate ?? vi.fn();
   // Controlled-width harness: PreviewPane no longer owns its width state.
   const Harness = ({ url: u }: { url: string }) => {
     const [width, setWidth] = React.useState(420);
@@ -52,6 +55,7 @@ function renderPane(options?: {
         onAddComment={onAddComment}
         originalUrl={originalUrl}
         onRetry={onRetry}
+        onNavigate={onNavigate}
       />
     );
   };
@@ -65,7 +69,16 @@ function renderPane(options?: {
   wv.reloadIgnoringCache = vi.fn();
   wv.getURL = vi.fn(() => url);
   const rerenderWithUrl = (u: string) => result.rerender(<Harness url={u} />);
-  return { ...result, rerenderWithUrl, vscode, wv, url, onClose, onAddComment };
+  return {
+    ...result,
+    rerenderWithUrl,
+    vscode,
+    wv,
+    url,
+    onClose,
+    onAddComment,
+    onNavigate,
+  };
 }
 
 const fireDomReady = (wv: MockWebview) => fireEvent(wv, new Event("dom-ready"));
@@ -94,7 +107,7 @@ describe("PreviewPane", () => {
   it("loads the URL into the guest and shows it in the toolbar", () => {
     const { wv, url } = renderPane();
     expect(wv.getAttribute("src")).toBe(url);
-    expect(screen.getByText(url)).toBeInTheDocument();
+    expect(screen.getByTestId("preview-address")).toHaveValue(url);
   });
 
   it("toggles the picker: activate sends palette, second click deactivates", () => {
@@ -166,7 +179,9 @@ describe("PreviewPane", () => {
 
     fireDidNavigate(wv, "http://localhost:5173/other");
 
-    expect(screen.getByText("http://localhost:5173/other")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("preview-address"),
+    ).toHaveValue("http://localhost:5173/other");
     expect(screen.getByTestId("preview-picker-toggle")).toHaveAttribute(
       "aria-pressed",
       "false",
@@ -185,8 +200,8 @@ describe("PreviewPane", () => {
     fireInPageNavigate(wv, "http://localhost:5173/app#section");
 
     expect(
-      screen.getByText("http://localhost:5173/app#section"),
-    ).toBeInTheDocument();
+      screen.getByTestId("preview-address"),
+    ).toHaveValue("http://localhost:5173/app#section");
     expect(wv.send).toHaveBeenCalledWith("wave-picker", {
       action: "deactivate",
     });
@@ -396,6 +411,167 @@ describe("PreviewPane", () => {
     fireEvent.click(screen.getByTestId("preview-retry"));
     expect(onRetry).toHaveBeenCalled();
     expect(screen.queryByTestId("preview-error")).not.toBeInTheDocument();
+  });
+
+  it("address bar: Enter navigates a local URL via loadURL with scheme completion", () => {
+    const { wv } = renderPane();
+    fireDomReady(wv);
+    const input = screen.getByTestId("preview-address");
+    fireEvent.change(input, { target: { value: "localhost:3000/foo" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(wv.loadURL).toHaveBeenCalledWith("http://localhost:3000/foo");
+    expect(input).toHaveValue("http://localhost:3000/foo");
+  });
+
+  it("address bar: empty Enter is silent — no navigation, value restored", () => {
+    const { wv } = renderPane();
+    fireDomReady(wv);
+    const input = screen.getByTestId("preview-address");
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(wv.loadURL).not.toHaveBeenCalled();
+    expect(input).toHaveValue("http://localhost:5173/app");
+  });
+
+  it("address bar: invalid input shows a transient hint and restores the value", () => {
+    const { wv } = renderPane();
+    fireDomReady(wv);
+    const input = screen.getByTestId("preview-address");
+    fireEvent.change(input, { target: { value: "ftp://example.com" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(wv.loadURL).not.toHaveBeenCalled();
+    expect(screen.getByTestId("preview-address-invalid")).toHaveTextContent(
+      "地址无效",
+    );
+    expect(input).toHaveValue("http://localhost:5173/app");
+  });
+
+  it("address bar: invalid hint disappears after 3 seconds", () => {
+    vi.useFakeTimers();
+    try {
+      const { wv } = renderPane();
+      fireDomReady(wv);
+      const input = screen.getByTestId("preview-address");
+      fireEvent.change(input, { target: { value: "not a url" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(screen.getByTestId("preview-address-invalid")).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(
+        screen.queryByTestId("preview-address-invalid"),
+      ).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("address bar: blur without Enter restores the displayed URL", () => {
+    const { wv } = renderPane();
+    fireDomReady(wv);
+    const input = screen.getByTestId("preview-address");
+    fireEvent.change(input, { target: { value: "example.com" } });
+    fireEvent.blur(input);
+    expect(input).toHaveValue("http://localhost:5173/app");
+    expect(wv.loadURL).not.toHaveBeenCalled();
+  });
+
+  it("address bar: focus selects the whole URL", () => {
+    renderPane();
+    const input = screen.getByTestId("preview-address") as HTMLInputElement;
+    const select = vi.spyOn(input, "select");
+    fireEvent.focus(input);
+    expect(select).toHaveBeenCalled();
+  });
+
+  it("address bar: remote mode routes navigation through onNavigate (localhost → http)", () => {
+    const { wv, onNavigate } = renderPane({
+      url: "http://127.0.0.1:5173/app",
+      originalUrl: "http://localhost:5173/app",
+    });
+    fireDomReady(wv);
+    const input = screen.getByTestId("preview-address");
+    fireEvent.change(input, { target: { value: "localhost:3000/foo" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(wv.loadURL).not.toHaveBeenCalled();
+    expect(onNavigate).toHaveBeenCalledWith("http://localhost:3000/foo");
+  });
+
+  it("address bar: remote mode sends external URLs to onNavigate as https", () => {
+    const { wv, onNavigate } = renderPane({
+      url: "http://127.0.0.1:5173/app",
+      originalUrl: "http://localhost:5173/app",
+    });
+    fireDomReady(wv);
+    const input = screen.getByTestId("preview-address");
+    fireEvent.change(input, { target: { value: "example.com/docs" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onNavigate).toHaveBeenCalledWith("https://example.com/docs");
+  });
+});
+
+describe("resolvePreviewAddress", () => {
+  it("prefixes http:// for localhost and loopback hosts", () => {
+    expect(resolvePreviewAddress("localhost:5173/app")).toEqual({
+      ok: true,
+      url: "http://localhost:5173/app",
+    });
+    expect(resolvePreviewAddress("127.0.0.1:8080")).toEqual({
+      ok: true,
+      url: "http://127.0.0.1:8080/",
+    });
+  });
+
+  it("prefixes https:// for anything else", () => {
+    expect(resolvePreviewAddress("example.com")).toEqual({
+      ok: true,
+      url: "https://example.com/",
+    });
+    expect(resolvePreviewAddress("10.0.0.5:3000/admin")).toEqual({
+      ok: true,
+      url: "https://10.0.0.5:3000/admin",
+    });
+  });
+
+  it("keeps an explicit http(s) scheme", () => {
+    expect(resolvePreviewAddress("https://example.com/a?b=1")).toEqual({
+      ok: true,
+      url: "https://example.com/a?b=1",
+    });
+    expect(resolvePreviewAddress("http://localhost:3000/x")).toEqual({
+      ok: true,
+      url: "http://localhost:3000/x",
+    });
+  });
+
+  it("rejects non-http(s) schemes", () => {
+    expect(resolvePreviewAddress("ftp://example.com")).toEqual({
+      ok: false,
+      reason: "invalid",
+    });
+    expect(resolvePreviewAddress("file:///etc/passwd")).toEqual({
+      ok: false,
+      reason: "invalid",
+    });
+  });
+
+  it("distinguishes empty (silent) from whitespace-only (invalid)", () => {
+    expect(resolvePreviewAddress("")).toEqual({ ok: false, reason: "empty" });
+    expect(resolvePreviewAddress("   ")).toEqual({
+      ok: false,
+      reason: "invalid",
+    });
+  });
+
+  it("rejects input that cannot form a URL", () => {
+    expect(resolvePreviewAddress("not a url")).toEqual({
+      ok: false,
+      reason: "invalid",
+    });
+    expect(resolvePreviewAddress("exa mple.com")).toEqual({
+      ok: false,
+      reason: "invalid",
+    });
   });
 });
 
