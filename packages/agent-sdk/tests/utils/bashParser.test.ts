@@ -11,6 +11,7 @@ import {
   hasCommandSubstitution,
   hasProcessSubstitution,
   hasSedInPlace,
+  stripGitScopePrefix,
   READ_ONLY_COMMANDS,
 } from "../../src/utils/bashParser.js";
 
@@ -333,6 +334,56 @@ describe("bashParser", () => {
       expect(getSmartPrefix("sudo apt update")).toBe(null); // apt is dangerous
       expect(getSmartPrefix("sudo npm install")).toBe("sudo npm install");
       expect(getSmartPrefix("sudo git status")).toBe("sudo git status");
+    });
+  });
+
+  describe("stripGitScopePrefix", () => {
+    it("should strip leading -C <path>", () => {
+      expect(stripGitScopePrefix("git -C /tmp/foo status")).toBe("git status");
+      expect(stripGitScopePrefix("git -C /tmp/foo diff --stat")).toBe(
+        "git diff --stat",
+      );
+    });
+
+    it("should strip quoted -C <path>", () => {
+      expect(stripGitScopePrefix('git -C "/tmp/my repo" status')).toBe(
+        "git status",
+      );
+      expect(stripGitScopePrefix("git -C '/tmp/my repo' log --oneline")).toBe(
+        "git log --oneline",
+      );
+    });
+
+    it("should strip --flag=value and other scope flags", () => {
+      expect(stripGitScopePrefix("git --git-dir=/tmp/foo status")).toBe(
+        "git status",
+      );
+      expect(stripGitScopePrefix("git -c core.pager=cat log --oneline")).toBe(
+        "git log --oneline",
+      );
+      expect(stripGitScopePrefix("git --work-tree /tmp/foo status")).toBe(
+        "git status",
+      );
+    });
+
+    it("should strip multiple consecutive scope flags", () => {
+      expect(
+        stripGitScopePrefix("git -C /tmp/foo -c core.pager=cat status"),
+      ).toBe("git status");
+    });
+
+    it("should return the command unchanged when nothing is stripped", () => {
+      const cmd = "git status";
+      expect(stripGitScopePrefix(cmd)).toBe(cmd);
+      expect(stripGitScopePrefix("git commit -m 'msg'")).toBe(
+        "git commit -m 'msg'",
+      );
+      expect(stripGitScopePrefix("npm -C /tmp run build")).toBe(
+        "npm -C /tmp run build",
+      );
+      expect(stripGitScopePrefix("echo git -C /tmp status")).toBe(
+        "echo git -C /tmp status",
+      );
     });
   });
 

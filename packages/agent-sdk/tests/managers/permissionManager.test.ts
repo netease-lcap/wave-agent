@@ -2714,5 +2714,116 @@ describe("PermissionManager", () => {
       const result = await permissionManager.checkPermission(context);
       expect(result.behavior).toBe("deny");
     });
+
+    describe("git with scope flags", () => {
+      it("should auto-allow 'git -C <path> status'", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "git -C /home/user/project status", workdir },
+        };
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should auto-allow 'git -C <path> diff --stat'", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: {
+            command: "git -C /home/user/project diff --stat",
+            workdir,
+          },
+        };
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should auto-allow 'git -C <path> log --oneline'", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: {
+            command: "git -C /home/user/project log --oneline",
+            workdir,
+          },
+        };
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should auto-allow 'git -C <path> branch --show-current'", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: {
+            command: "git -C /home/user/project branch --show-current",
+            workdir,
+          },
+        };
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should deny 'git -C <path> push'", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "git -C /home/user/project push", workdir },
+        };
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+      });
+
+      it("should deny 'git -C <path> commit'", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: {
+            command: 'git -C /home/user/project commit -m "msg"',
+            workdir,
+          },
+        };
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+      });
+
+      it("should deny 'git -C <path> branch -D'", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: {
+            command: "git -C /home/user/project branch -D feature",
+            workdir,
+          },
+        };
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+      });
+
+      it("should still deny via path-specific deny rule (raw match checked first)", async () => {
+        permissionManager.updateDeniedRules(["Bash(git -C /secret status)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "git -C /secret status", workdir },
+        };
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+      });
+
+      it("should apply deny rule without path to 'git -C <path>' commands", async () => {
+        permissionManager.updateDeniedRules(["Bash(git status)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "git -C /home/user/project status", workdir },
+        };
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+      });
+    });
   });
 });
