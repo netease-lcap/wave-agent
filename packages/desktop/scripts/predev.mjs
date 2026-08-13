@@ -20,13 +20,12 @@ const me = process.pid;
 
 function buildWebview() {
   const isWin = process.platform === "win32";
-  const r = spawnSync(
-    isWin ? "pnpm.cmd" : "pnpm",
-    ["-F", "wave-webview", "build"],
-    {
-      stdio: "inherit",
-    },
-  );
+  // Windows: Node cannot spawn .cmd directly (EINVAL) and shell:true with an
+  // args array emits DEP0190 — pass the fixed literal command as a string
+  // instead. macOS/Linux keep the args-array form (no shell involved).
+  const r = isWin
+    ? spawnSync("pnpm.cmd -F wave-webview build", { stdio: "inherit", shell: true })
+    : spawnSync("pnpm", ["-F", "wave-webview", "build"], { stdio: "inherit" });
   if (r.error) {
     console.error(`[predev] failed to spawn pnpm: ${r.error.message}`);
     process.exit(1);
