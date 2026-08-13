@@ -426,6 +426,7 @@ import { shell, dialog, nativeTheme, powerMonitor } from "electron";
 import { checkForUpdate } from "../src/main/updateChecker";
 import { autoUpdater } from "electron-updater";
 import {
+  ensureRemoteDaemon,
   connectRemoteDaemon,
   remotePathExists,
   listRemoteDirs,
@@ -887,7 +888,7 @@ describe("webviewReady / setInitialState", () => {
     );
   });
 
-  it("posts a system message instead of throwing when initialization fails", async () => {
+  it("shows a toast instead of throwing when initialization fails", async () => {
     const { ensureCliUpToDate } = await import(
       "../src/main/stdio/binaryResolver"
     );
@@ -910,10 +911,99 @@ describe("webviewReady / setInitialState", () => {
       path: "/work/a",
     });
 
-    const sysMsgs = sent("appendMessage").filter((m) =>
-      JSON.stringify(m).includes("初始化失败"),
+    const toasts = shownToasts().filter((t) =>
+      t.message.includes("初始化失败"),
     );
-    expect(sysMsgs).toHaveLength(1);
+    expect(toasts).toHaveLength(1);
+    expect(
+      sent("appendMessage").filter((m) =>
+        JSON.stringify(m).includes("初始化失败"),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("surfaces the local CLI upgrade progress as a toast, not a chat message", async () => {
+    const { ensureCliUpToDate } = await import(
+      "../src/main/stdio/binaryResolver"
+    );
+    vi.mocked(ensureCliUpToDate).mockImplementationOnce(
+      async (_target, onInstall) => {
+        onInstall?.("正在升级 wave-code 到 v1.0.7，请稍候…");
+        return "/mock/wave";
+      },
+    );
+
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: "local", path: "/work/a" });
+    h.existingPaths.add("/work/a");
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      path: "/work/a",
+    });
+
+    expect(
+      shownToasts().some((t) => t.message.includes("正在升级 wave-code")),
+    ).toBe(true);
+    expect(
+      sent("appendMessage").filter((m) =>
+        JSON.stringify(m).includes("正在升级 wave-code"),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("surfaces a CLI upgrade failure as a toast, not a chat message", async () => {
+    const { ensureCliUpToDate } = await import(
+      "../src/main/stdio/binaryResolver"
+    );
+    vi.mocked(ensureCliUpToDate).mockRejectedValueOnce(
+      new Error("install failed"),
+    );
+
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: "local", path: "/work/a" });
+    h.existingPaths.add("/work/a");
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      path: "/work/a",
+    });
+
+    expect(
+      shownToasts().some((t) => t.message.includes("wave-code CLI 升级失败")),
+    ).toBe(true);
+    expect(
+      sent("appendMessage").filter((m) =>
+        JSON.stringify(m).includes("wave-code CLI 升级失败"),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("surfaces the remote daemon CLI upgrade progress as a toast, not a chat message", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, sent } = createHost();
+    vi.mocked(ensureRemoteDaemon).mockImplementationOnce(
+      async (_host, _version, onNotice) => {
+        onNotice?.("正在升级 wave-code 到 v1.0.7，请稍候…");
+        return "/home/prod/.wave/daemon.sock";
+      },
+    );
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        shownToasts().some((t) => t.message.includes("正在升级 wave-code")),
+      ).toBe(true);
+    });
+    expect(
+      sent("appendMessage").filter((m) =>
+        JSON.stringify(m).includes("正在升级 wave-code"),
+      ),
+    ).toHaveLength(0);
   });
 });
 
