@@ -20,6 +20,7 @@ import {
   executeBashCommands,
 } from "../utils/markdownParser.js";
 import { getBuiltinSkillsDir } from "../utils/configPaths.js";
+import { isArtifactEnabled } from "../services/artifactAvailability.js";
 
 import { Container } from "../utils/container.js";
 import { logger } from "../utils/globalLogger.js";
@@ -341,6 +342,13 @@ export class SkillManager extends EventEmitter {
             type: collection.type,
           };
 
+          // Feature-gated builtin skills (e.g. artifact behind
+          // enableArtifact) are skipped while the gate is off, mirroring
+          // ToolManager's registration gate for the Artifact tool.
+          if (this.isSkillGatedOff(skillMetadata)) {
+            continue;
+          }
+
           // Create full skill object with content
           const skill: Skill = {
             ...skillMetadata,
@@ -397,6 +405,31 @@ export class SkillManager extends EventEmitter {
     }
 
     return directories;
+  }
+
+  /**
+   * Whether a discovered skill is a feature-gated builtin skill whose gate
+   * is currently off. Mirrors ToolManager's gate for the Artifact tool so
+   * the /artifact skill command stays in sync with enableArtifact.
+   */
+  private isSkillGatedOff(metadata: SkillMetadata): boolean {
+    if (metadata.type !== "builtin") {
+      return false;
+    }
+    if (metadata.name === "artifact") {
+      return !isArtifactEnabled(this.workdir);
+    }
+    return false;
+  }
+
+  /**
+   * Re-evaluate feature-gated builtin skills after a live configuration
+   * reload (same hook as ToolManager.reloadFeatureGatedTools). Re-scans
+   * skill directories and emits "refreshed" so slash-command registration
+   * follows the gate.
+   */
+  async reloadFeatureGatedSkills(): Promise<void> {
+    await this.refreshSkills();
   }
 
   /**
