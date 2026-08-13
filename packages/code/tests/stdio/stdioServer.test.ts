@@ -366,6 +366,44 @@ test("stop() closes the readline interface", async () => {
   expect(true).toBe(true);
 });
 
+// ── stdin EOF (parent died) ──────────────────────────────────────
+
+test("stdin EOF (parent closed the pipe) triggers process.exit", async () => {
+  const exitSpy = vi
+    .spyOn(process, "exit")
+    .mockImplementation(() => undefined as never);
+  const { server, input } = createServer();
+  server.start();
+
+  // Parent is gone — stdin reaches EOF, the readline interface emits 'close',
+  // and stdio mode must follow the client by exiting the process.
+  input.end();
+
+  await vi.waitFor(() => {
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  exitSpy.mockRestore();
+  server.stop();
+});
+
+test("stop() does not trigger process.exit", async () => {
+  const exitSpy = vi
+    .spyOn(process, "exit")
+    .mockImplementation(() => undefined as never);
+  const { server, input } = createServer();
+  server.start();
+
+  server.stop();
+  // rl.close() emits 'close' asynchronously — give the event loop a tick.
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  expect(exitSpy).not.toHaveBeenCalled();
+
+  exitSpy.mockRestore();
+  input.end();
+});
+
 // ── sendNotification sessionId envelope ──────────────────────────
 
 test("sendNotification includes sessionId in envelope when provided", () => {

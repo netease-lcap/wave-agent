@@ -22,15 +22,28 @@ import {
   isNotification,
 } from "./protocol.js";
 
+export interface JsonRpcConnectionOptions {
+  /** Called when the input stream reaches EOF (parent closed the pipe). Only
+   * stdio mode passes it — it must exit the process when its client dies;
+   * daemon mode never passes it (a detached client must not kill the daemon,
+   * see daemonServer.ts). */
+  onClose?: () => void;
+}
+
 export class JsonRpcConnection {
   private rl: readline.Interface | undefined;
   private started = false;
+  private stoppedByOwner = false;
+  private onClose?: () => void;
 
   constructor(
     private input: Readable,
     private output: Writable,
     private bridge: AgentBridge,
-  ) {}
+    options: JsonRpcConnectionOptions = {},
+  ) {
+    this.onClose = options.onClose;
+  }
 
   start(): void {
     if (this.started) return;
@@ -58,10 +71,15 @@ export class JsonRpcConnection {
 
     this.rl.on("close", () => {
       this.started = false;
+      // stdin EOF from the owning client — not a deliberate stop(). stdio
+      // mode reacts by exiting the process (its parent is gone); daemon mode
+      // has no onClose so a detached client reset never kills the daemon.
+      if (!this.stoppedByOwner) this.onClose?.();
     });
   }
 
   stop(): void {
+    this.stoppedByOwner = true;
     this.rl?.close();
     this.rl = undefined;
     this.started = false;
