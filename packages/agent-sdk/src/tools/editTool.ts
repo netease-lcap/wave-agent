@@ -197,7 +197,11 @@ Usage:
       if (replaceAll) {
         // Replace all matches
         const regex = new RegExp(escapeRegExp(matchedOldString), "g");
-        newContent = normalizedContent.replace(regex, newString);
+        // Function replacer (claude-code's applyEditToFile approach): newString
+        // is inserted literally, never parsed as a $ replacement template. A
+        // string replacer would expand $& to the matched text, $$ to a single
+        // $, and `$` could even truncate and duplicate the file (issue #1752).
+        newContent = normalizedContent.replace(regex, () => newString);
         replacementCount = (normalizedContent.match(regex) || []).length;
       } else {
         // Replace only the first match, but first check if it's unique
@@ -210,7 +214,11 @@ Usage:
           };
         }
 
-        newContent = normalizedContent.replace(matchedOldString, newString);
+        // Function replacer: see note above — $ in newString stays literal
+        newContent = normalizedContent.replace(
+          matchedOldString,
+          () => newString,
+        );
         replacementCount = 1;
       }
 

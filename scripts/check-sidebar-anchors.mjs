@@ -39,7 +39,7 @@ function collectHeadings(content) {
   // "\r", so every line would be skipped. Strip carriage returns first.
   content = content.replace(/\r/g, "");
   const headings = [];
-  for (const line of stripCodeBlocks(content).split('\n')) {
+  for (const line of stripCodeBlocks(content).split(/\r?\n/)) {
     const m = line.match(/^(#{1,6})\s+(.*)$/);
     if (m) {
       let text = m[2];
