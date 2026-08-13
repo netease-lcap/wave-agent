@@ -36,7 +36,7 @@ function stripCodeBlocks(content) {
 
 function collectHeadings(content) {
   const headings = [];
-  for (const line of stripCodeBlocks(content).split('\n')) {
+  for (const line of stripCodeBlocks(content).split(/\r?\n/)) {
     const m = line.match(/^(#{1,6})\s+(.*)$/);
     if (m) {
       let text = m[2];
