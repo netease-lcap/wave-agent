@@ -35,6 +35,9 @@ function stripCodeBlocks(content) {
 }
 
 function collectHeadings(content) {
+  // CRLF (Windows autocrlf) breaks the heading regex: "." and "$" do not match
+  // "\r", so every line would be skipped. Strip carriage returns first.
+  content = content.replace(/\r/g, "");
   const headings = [];
   for (const line of stripCodeBlocks(content).split('\n')) {
     const m = line.match(/^(#{1,6})\s+(.*)$/);
