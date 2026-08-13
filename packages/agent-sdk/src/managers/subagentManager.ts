@@ -330,6 +330,17 @@ export class SubagentManager {
     // notifications from the parent queue, causing the main agent to exit early.
     subagentContainer.register("MessageQueue", new MessageQueue());
 
+    // Deliberately shadow the parent ReversionManager with `undefined` so the
+    // subagent resolves no reversion manager instead of falling back to the
+    // parent's. Subagent Write/Edit must not be recorded into the main agent's
+    // file_history buffer — this mirrors Claude Code's explicit isolation for
+    // forked agents (`updateFileHistoryState: () => {}` in forkedAgent.ts).
+    // Without this, the subagent drains the SHARED parent buffer into its own
+    // transient messages (discarded on cleanup), leaving orphaned snapshot
+    // files on disk and racing the main agent's own drain. All ReversionManager
+    // consumers are truthiness-guarded, so resolving to `undefined` is safe.
+    subagentContainer.register("ReversionManager", undefined);
+
     // Register a modified AgentOptions without onLoadingChange to prevent subagent loading
     // from affecting the parent agent's loading state
     const parentOptions =
