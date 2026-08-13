@@ -893,6 +893,7 @@ describe("remoteSettingsService", () => {
         models: { model: { maxTokens: 50 } },
         marketplaces: { m1: { source: "url" as const } },
         enabledPlugins: { p1: true },
+        enableArtifact: false,
       };
       const remote = {
         language: "ja",
@@ -901,6 +902,7 @@ describe("remoteSettingsService", () => {
         models: { model: { maxTokens: 100 } },
         marketplaces: { m2: { source: "url" as const } },
         enabledPlugins: { p2: true },
+        enableArtifact: true,
       };
       const result = mergeRemoteSettings(
         local as unknown as WaveConfiguration,
@@ -912,6 +914,7 @@ describe("remoteSettingsService", () => {
       expect(result.models).toEqual({ model: { maxTokens: 100 } });
       expect(result.marketplaces).toEqual({ m2: { source: "url" } });
       expect(result.enabledPlugins).toEqual({ p2: true });
+      expect(result.enableArtifact).toBe(true);
     });
 
     it("preserves local scalar fields when remote doesn't define them", () => {
@@ -922,6 +925,7 @@ describe("remoteSettingsService", () => {
         models: { model: { maxTokens: 50 } },
         marketplaces: { m1: { source: "url" as const } },
         enabledPlugins: { p1: true },
+        enableArtifact: false,
       };
       const remote = {};
       const result = mergeRemoteSettings(
@@ -934,6 +938,7 @@ describe("remoteSettingsService", () => {
       expect(result.models).toEqual({ model: { maxTokens: 50 } });
       expect(result.marketplaces).toEqual({ m1: { source: "url" } });
       expect(result.enabledPlugins).toEqual({ p1: true });
+      expect(result.enableArtifact).toBe(false);
     });
 
     it("handles both empty objects", () => {

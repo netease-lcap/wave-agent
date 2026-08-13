@@ -346,6 +346,8 @@ export function mergeRemoteSettings(
     result.marketplaces = remote.marketplaces;
   if (remote.enabledPlugins !== undefined)
     result.enabledPlugins = remote.enabledPlugins;
+  if (remote.enableArtifact !== undefined)
+    result.enableArtifact = remote.enableArtifact;
 
   return result;
 }

@@ -23,7 +23,7 @@ Wave uses several environment variables to control its core functionality. Varia
 | :--- | :--- | :--- |
 | `WAVE_API_KEY` | API key for the AI gateway. | - |
 | `WAVE_BASE_URL` | Base URL for the AI gateway. | - |
-| `WAVE_SERVER_URL` | Server URL for SSO authentication. **OS env only** — set via OS env or `options.serverUrl`; not read from settings.json `env` (avoids a startup 401 race). | `https://codechat.codewave.163.com` |
+| `WAVE_SERVER_URL` | Server URL for SSO authentication. Resolution order: `options.serverUrl` → `process.env.WAVE_SERVER_URL` → default. Unlike other `WAVE_*` vars, a settings.json `env` value is also mirrored to `process.env` so process-level singletons (AuthService) see it without a per-session snapshot. | `https://codechat.codewave.163.com` |
 | `WAVE_CUSTOM_HEADERS` | Custom HTTP headers for the AI gateway. Newline-separated `Key: Value` pairs (e.g., `"X-Foo: bar\nAuthorization: Bearer xxx"`). | - |
 | `WAVE_MODEL` | The primary AI model to use for the agent. | `gemini-3-flash` |
 | `WAVE_FAST_MODEL` | The fast AI model to use for quick tasks. | `gemini-2.5-flash` |
