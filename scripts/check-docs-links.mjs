@@ -38,7 +38,11 @@ function collectHeadings(content) {
   const headings = [];
   const lines = content.split('\n');
   for (const line of lines) {
-    const m = line.match(/^(#{1,6})\s+(.*)$/);
+    // Windows CRLF checkouts leave a trailing \r. `.` does not match \r (it is
+    // a line terminator), so without stripping it every heading regex fails on
+    // CRLF files — strip it once here instead of in every regex.
+    const clean = line.endsWith('\r') ? line.slice(0, -1) : line;
+    const m = clean.match(/^(#{1,6})\s+(.*)$/);
     if (m) {
       let text = m[2];
       let explicitId = null;
@@ -49,9 +53,9 @@ function collectHeadings(content) {
       }
       headings.push({ text, explicitId, slug: slugify(text) });
     } else {
-      const idMatch = line.match(/\{#([^}]+)\}/);
+      const idMatch = clean.match(/\{#([^}]+)\}/);
       if (idMatch) {
-        headings.push({ text: line, explicitId: idMatch[1], slug: idMatch[1] });
+        headings.push({ text: clean, explicitId: idMatch[1], slug: idMatch[1] });
       }
     }
   }
