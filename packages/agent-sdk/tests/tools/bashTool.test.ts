@@ -27,10 +27,15 @@ vi.mock("fs", async () => {
 });
 
 vi.mock("os", async () => {
-  const actual = await vi.importActual("os");
+  const actual = await vi.importActual<typeof import("os")>("os");
   return {
     ...actual,
-    tmpdir: vi.fn().mockReturnValue("/tmp"),
+    // Use the real temp dir: BackgroundTaskManager writes its log files via
+    // fs.createWriteStream(path.join(os.tmpdir(), ...)). A hardcoded "/tmp"
+    // resolves to C:\tmp on Windows (usually absent), making the stream's
+    // open fail with ENOENT — surfaced as unhandled errors under the dot
+    // reporter on Windows CI (issue: pre-existing test flakiness).
+    tmpdir: vi.fn().mockReturnValue(actual.tmpdir()),
   };
 });
 
@@ -710,7 +715,9 @@ describe("bashTool", () => {
       const wrapped = spawnCallArgs[0] as string;
       expect(wrapped).toContain("eval 'echo hello'");
       expect(wrapped).toContain("pwd -P");
-      expect(wrapped).toMatch(/&& pwd -P >\| \/tmp\/wave_cwd_.*\.tmp$/);
+      // Temp file path is platform-specific (C:/tmp on a "/tmp" mock, the real
+      // temp dir otherwise) — only assert the file naming pattern.
+      expect(wrapped).toMatch(/&& pwd -P >\| .*wave_cwd_.*\.tmp$/);
     });
 
     it("should escape single quotes in the user command", async () => {
@@ -723,9 +730,7 @@ describe("bashTool", () => {
       const wrapped = mockSpawn.mock.calls[0][0] as string;
       // Each single quote in the user command is replaced with '"'"'
       expect(wrapped).toContain(`eval 'echo '"'"'hi'"'"''`);
-      expect(wrapped).toMatch(
-        /^eval '.*' && pwd -P >\| \/tmp\/wave_cwd_.*\.tmp$/,
-      );
+      expect(wrapped).toMatch(/^eval '.*' && pwd -P >\| .*wave_cwd_.*\.tmp$/);
     });
 
     it("should keep && pwd -P outside the eval quotes for a heredoc command", async () => {
@@ -750,7 +755,7 @@ EOF
       const evalStart = wrapped.lastIndexOf("eval '");
       const pwdIndex = wrapped.indexOf("&& pwd -P");
       expect(pwdIndex).toBeGreaterThan(evalStart);
-      expect(wrapped).toMatch(/&& pwd -P >\| \/tmp\/wave_cwd_.*\.tmp$/);
+      expect(wrapped).toMatch(/&& pwd -P >\| .*wave_cwd_.*\.tmp$/);
     });
   });
 
