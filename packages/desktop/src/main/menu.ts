@@ -20,7 +20,7 @@
  * For that preemption to work, 关闭分屏 must be the ONLY Cmd+W claimant: the
  * default fileMenu role expands to File → Close Window (Cmd+W) on macOS, and
  * windowMenu to Minimize / Zoom / Close (Cmd+W) off macOS. Both precede the
- * 会话 menu in menu-bar order, so their Cmd+W would win and close the whole
+ * 对话 menu in menu-bar order, so their Cmd+W would win and close the whole
  * window. buildApplicationMenuTemplate therefore keeps those items but
  * strips their Cmd+W accelerator.
  */
@@ -104,7 +104,7 @@ export function matchPanelToggleInput(
   return null;
 }
 
-/** Full application menu: platform defaults + 会话/面板 menus. */
+/** Full application menu: platform defaults + 对话/面板 menus. */
 export function buildApplicationMenuTemplate(
   actions: DesktopMenuActions,
   isMac: boolean,
@@ -120,7 +120,7 @@ export function buildApplicationMenuTemplate(
       : { role: "fileMenu" },
     { role: "editMenu" },
     {
-      label: "会话",
+      label: "对话",
       submenu: [
         {
           id: "new-session",
@@ -142,13 +142,13 @@ export function buildApplicationMenuTemplate(
         },
         { type: "separator" },
         {
-          label: "下一个会话",
+          label: "下一个对话",
           accelerator: isMac ? "Cmd+Shift+]" : "Ctrl+Tab",
           registerAccelerator: false,
           click: () => actions.nextSession(),
         },
         {
-          label: "上一个会话",
+          label: "上一个对话",
           accelerator: isMac ? "Cmd+Shift+[" : "Ctrl+Shift+Tab",
           registerAccelerator: false,
           click: () => actions.prevSession(),

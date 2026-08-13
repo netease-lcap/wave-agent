@@ -269,7 +269,7 @@ describe("buildApplicationMenuTemplate", () => {
 
   function sessionMenuItems(isMac: boolean): MenuItemConstructorOptions[] {
     const template = buildApplicationMenuTemplate(actions, isMac);
-    const sessionMenu = template.find((item) => item.label === "会话");
+    const sessionMenu = template.find((item) => item.label === "对话");
     expect(sessionMenu).toBeDefined();
     return sessionMenu?.submenu as MenuItemConstructorOptions[];
   }
@@ -284,11 +284,11 @@ describe("buildApplicationMenuTemplate", () => {
   }
 
   it("shows Ctrl+Tab / Ctrl+Shift+Tab on Windows/Linux", () => {
-    expect(itemByLabel(false, "下一个会话")).toMatchObject({
+    expect(itemByLabel(false, "下一个对话")).toMatchObject({
       accelerator: "Ctrl+Tab",
       registerAccelerator: false,
     });
-    expect(itemByLabel(false, "上一个会话")).toMatchObject({
+    expect(itemByLabel(false, "上一个对话")).toMatchObject({
       accelerator: "Ctrl+Shift+Tab",
       registerAccelerator: false,
     });
@@ -297,11 +297,11 @@ describe("buildApplicationMenuTemplate", () => {
   it("shows Cmd+Shift+] / Cmd+Shift+[ plus the macOS app menu on macOS", () => {
     const template = buildApplicationMenuTemplate(actions, true);
     expect(template[0]).toMatchObject({ role: "appMenu" });
-    expect(itemByLabel(true, "下一个会话")).toMatchObject({
+    expect(itemByLabel(true, "下一个对话")).toMatchObject({
       accelerator: "Cmd+Shift+]",
       registerAccelerator: false,
     });
-    expect(itemByLabel(true, "上一个会话")).toMatchObject({
+    expect(itemByLabel(true, "上一个对话")).toMatchObject({
       accelerator: "Cmd+Shift+[",
       registerAccelerator: false,
     });
@@ -431,12 +431,12 @@ describe("buildApplicationMenuTemplate", () => {
   });
 
   it("menu item clicks take the same code path as the keys", () => {
-    itemByLabel(false, "下一个会话").click?.(
+    itemByLabel(false, "下一个对话").click?.(
       {} as never,
       {} as never,
       {} as never,
     );
-    itemByLabel(false, "上一个会话").click?.(
+    itemByLabel(false, "上一个对话").click?.(
       {} as never,
       {} as never,
       {} as never,
