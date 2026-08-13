@@ -320,6 +320,28 @@ describe("TerminalPane", () => {
     expect(postsOf(vscode, "openExternal")).toHaveLength(0);
   });
 
+  it("routes an artifact page link in the terminal to the system browser", async () => {
+    // Artifact pages need the user's browser SSO session (the preview pane
+    // has none), so they must not go through onOpenPreview.
+    const onOpenPreview = vi.fn();
+    const { vscode } = renderPane({ onOpenPreview });
+    await act(async () => {});
+    act(() =>
+      linkHandlerOf(mockTerminals[0])!(
+        {} as MouseEvent,
+        "https://codechat.codewave.163.com/code/artifact/abc123",
+      ),
+    );
+
+    expect(onOpenPreview).not.toHaveBeenCalled();
+    expect(postsOf(vscode, "openExternal")).toEqual([
+      {
+        command: "openExternal",
+        url: "https://codechat.codewave.163.com/code/artifact/abc123",
+      },
+    ]);
+  });
+
   it("routes a non-http(s) link in the terminal to the system default app", async () => {
     const onOpenPreview = vi.fn();
     const { vscode } = renderPane({ onOpenPreview });

@@ -93,6 +93,33 @@ describe("Message link routing", () => {
     });
   });
 
+  it("desktop host: artifact page link opens the system browser, not the preview pane", () => {
+    // Artifact pages are private and auth'd via the SSO session, which the
+    // sandboxed preview <webview> cannot carry — route them to the system
+    // browser where the user's browser SSO login applies.
+    const onOpenPreview = vi.fn();
+    const { vscode, container } = renderMessage({
+      onOpenPreview,
+      hostType: "desktop",
+      content:
+        "artifact [page](https://codechat.codewave.163.com/code/artifact/abc123) then [normal](https://example.com/docs)",
+    });
+    const links = container.querySelectorAll(".message-content-container a");
+
+    const notPrevented = fireEvent.click(links[0] as HTMLElement);
+
+    expect(onOpenPreview).not.toHaveBeenCalled();
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      command: "openExternal",
+      url: "https://codechat.codewave.163.com/code/artifact/abc123",
+    });
+    expect(notPrevented).toBe(false); // default navigation prevented
+
+    // Non-artifact http(s) links still open in the preview pane.
+    fireEvent.click(links[1] as HTMLElement);
+    expect(onOpenPreview).toHaveBeenCalledWith("https://example.com/docs");
+  });
+
   it("desktop host without onOpenPreview: localhost link falls back to external browser", () => {
     const { vscode, localLink } = renderMessage({ hostType: "desktop" });
 
