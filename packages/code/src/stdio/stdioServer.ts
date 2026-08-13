@@ -30,6 +30,7 @@ export class StdioServer {
       options.input ?? process.stdin,
       options.output ?? process.stdout,
       this.bridge,
+      { onClose: () => this.onConnectionClosed() },
     );
   }
 
@@ -43,6 +44,22 @@ export class StdioServer {
 
   stop(): void {
     this.conn.stop();
+  }
+
+  /**
+   * The owning client closed stdin (EOF) — it's gone, so this process must
+   * follow it. destroyAll() saves each session's transcript and drains
+   * auto-memory first; a timeout bounds it so a stuck agent can't orphan the
+   * exit. This is the real-world "parent died" path: without it the process
+   * lingers forever whenever an agent keeps event-loop handles alive.
+   */
+  private async onConnectionClosed(): Promise<void> {
+    const SHUTDOWN_TIMEOUT_MS = 5_000;
+    await Promise.race([
+      this.bridge.destroyAll(),
+      new Promise((resolve) => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS)),
+    ]);
+    process.exit(0);
   }
 
   handleLine(line: string): Promise<void> {

@@ -143,10 +143,25 @@ if (!gotLock) {
     }
   });
 
-  app.on("before-quit", () => {
-    void host?.dispose();
+  app.on("before-quit", (event) => {
+    // Never fire-and-forget the dispose: quitting before the destroy RPC
+    // reaches the agent would orphan the wave --stdio child (the other half
+    // of the fix is stdioServer's stdin-EOF self-exit). Hold the quit, await
+    // dispose bounded by a timeout, then exit explicitly. app.exit() skips the
+    // quit events, so this handler can't re-enter.
+    if (quitting) return;
+    quitting = true;
+    if (!host) return;
+    event.preventDefault();
+    void Promise.race([
+      host.dispose(),
+      new Promise((resolve) => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS)),
+    ]).finally(() => app.exit(0));
   });
 }
+
+const SHUTDOWN_TIMEOUT_MS = 5_000;
+let quitting = false;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
