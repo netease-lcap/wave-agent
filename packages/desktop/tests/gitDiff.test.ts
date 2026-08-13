@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "fs";
+import * as path from "path";
 import { getWorkspaceDiff, MAX_DIFF_LINES } from "../src/main/gitDiff";
 
 /**
@@ -301,7 +302,7 @@ describe("getWorkspaceDiff", () => {
       if (args.join(" ") === "rev-parse --show-toplevel") return `${ROOT}\n`;
       return inner(args);
     };
-    const correctAbs = `${ROOT}/${relPath}`;
+    const correctAbs = path.join(ROOT, relPath);
     vi.mocked(fs.promises.stat).mockImplementationOnce(async (p) => {
       if (p === correctAbs)
         return { isFile: () => true, size: 5 } as unknown as Awaited<
@@ -392,7 +393,10 @@ describe("getWorkspaceDiff", () => {
 
   it("reads remote untracked files via ssh stat + cat", async () => {
     stubGit({ status: "?? notes.txt\0" });
-    h.remoteFiles["/remote/repo/notes.txt"] = {
+    // path.join keeps the fixture key identical to the abs path the source
+    // builds (backslash-separated on Windows, forward-slash on POSIX).
+    const remoteAbs = path.join("/remote/repo", "notes.txt");
+    h.remoteFiles[remoteAbs] = {
       size: 12,
       content: Buffer.from("hello\nworld\n"),
     };
@@ -409,8 +413,8 @@ describe("getWorkspaceDiff", () => {
       truncated: false,
       binary: false,
     });
-    expect(h.sshCommands).toContain("stat -c %s '/remote/repo/notes.txt'");
-    expect(h.sshCommands).toContain("cat '/remote/repo/notes.txt'");
+    expect(h.sshCommands).toContain(`stat -c %s '${remoteAbs}'`);
+    expect(h.sshCommands).toContain(`cat '${remoteAbs}'`);
   });
 
   it("treats oversized remote untracked files as binary without downloading them", async () => {

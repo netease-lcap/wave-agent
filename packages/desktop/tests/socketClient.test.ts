@@ -1,9 +1,12 @@
 import { test, expect, vi, afterEach } from "vitest";
-import { createServer, connect, type Server, type Socket } from "net";
+import {
+  createServer,
+  connect,
+  type AddressInfo,
+  type Server,
+  type Socket,
+} from "net";
 import { createInterface } from "readline";
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
 import { SocketClient } from "../src/main/stdio/socketClient";
 
 // Mock process.stderr.write to suppress noise
@@ -11,15 +14,25 @@ const stderrWriteSpy = vi
   .spyOn(process.stderr, "write")
   .mockImplementation(() => true);
 
-/** Minimal JSON-RPC server; replies result:params unless `reply` is given. */
+/**
+ * Minimal JSON-RPC server; replies result:params unless `reply` is given.
+ *
+ * Listens on TCP loopback rather than a unix socket: some Windows sandboxes
+ * reject AF_UNIX / named-pipe bind with EACCES, and SocketClient accepts any
+ * net.Socket, so loopback exercises the identical transport path everywhere.
+ */
 function startServer(
-  socketPath: string,
   onMessage?: (msg: { id?: number; params?: unknown }) => void,
   reply?: (msg: { id: number; params?: unknown }) => unknown,
 ) {
   const sockets: Socket[] = [];
+  // Client 'connect' can fire before the server's 'connection' callback on
+  // loopback under load; queue pushes until the accept registers a socket.
+  const pending: unknown[] = [];
   const server: Server = createServer((socket) => {
     sockets.push(socket);
+    for (const m of pending) socket.write(JSON.stringify(m) + "\n");
+    pending.length = 0;
     socket.on("error", () => {
       // The client RSTs on dispose when a reply is still in flight — expected.
     });
@@ -42,64 +55,67 @@ function startServer(
       }
     });
   });
-  server.listen(socketPath);
-  return {
-    server,
-    push(message: unknown) {
-      for (const s of sockets) s.write(JSON.stringify(message) + "\n");
-    },
-    close() {
-      for (const s of sockets) s.destroy();
-      server.close();
-    },
-  };
+  return new Promise<{
+    server: Server;
+    port: number;
+    push(message: unknown): void;
+    close(): void;
+  }>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      resolve({
+        server,
+        port: (server.address() as AddressInfo).port,
+        push(message: unknown) {
+          const line = JSON.stringify(message) + "\n";
+          if (sockets.length > 0) for (const s of sockets) s.write(line);
+          else pending.push(message);
+        },
+        close() {
+          for (const s of sockets) s.destroy();
+          server.close();
+        },
+      });
+    });
+  });
 }
 
-async function connectClient(socketPath: string): Promise<SocketClient> {
+async function connectClient(port: number): Promise<SocketClient> {
   const socket = await new Promise<Socket>((resolve, reject) => {
-    const sock = connect(socketPath);
+    const sock = connect(port, "127.0.0.1");
     sock.once("connect", () => resolve(sock));
     sock.once("error", reject);
   });
   return new SocketClient(socket);
 }
 
-const socketPath = path.join(
-  os.tmpdir(),
-  `wave-socket-client-test-${process.pid}-${Date.now()}.sock`,
-);
-let server: ReturnType<typeof startServer>;
+let server: Awaited<ReturnType<typeof startServer>>;
 
 afterEach(() => {
   stderrWriteSpy.mockRestore();
   server?.close();
-  try {
-    fs.unlinkSync(socketPath);
-  } catch {
-    // already gone
-  }
 });
 
 test("request resolves with the server result (round-trip)", async () => {
-  server = startServer(socketPath);
-  const client = await connectClient(socketPath);
+  server = await startServer();
+  const client = await connectClient(server.port);
   const result = await client.request("echo", { hello: "world" });
   expect(result).toEqual({ hello: "world" });
   client.dispose();
 });
 
 test("request rejects when the server responds with an error", async () => {
-  server = startServer(socketPath, undefined, () => ({
+  server = await startServer(undefined, () => ({
     error: { code: -32601, message: "method not found" },
   }));
-  const client = await connectClient(socketPath);
+  const client = await connectClient(server.port);
   await expect(client.request("nope")).rejects.toThrow("method not found");
   client.dispose();
 });
 
 test("notifications from the server dispatch to registered handlers", async () => {
-  server = startServer(socketPath);
-  const client = await connectClient(socketPath);
+  server = await startServer();
+  const client = await connectClient(server.port);
   const handler = vi.fn();
   client.onNotification("permissionRequest", handler);
   server.push({
@@ -115,8 +131,8 @@ test("notifications from the server dispatch to registered handlers", async () =
 
 test("notify writes a notification to the server", async () => {
   const seen: unknown[] = [];
-  server = startServer(socketPath, (msg) => seen.push(msg));
-  const client = await connectClient(socketPath);
+  server = await startServer((msg) => seen.push(msg));
+  const client = await connectClient(server.port);
   client.notify("permissionResponse", { requestId: "r1" });
   await vi.waitFor(() => {
     expect(seen).toEqual([
@@ -127,8 +143,8 @@ test("notify writes a notification to the server", async () => {
 });
 
 test("pending request rejects when the server closes the connection", async () => {
-  server = startServer(socketPath);
-  const client = await connectClient(socketPath);
+  server = await startServer();
+  const client = await connectClient(server.port);
   const pending = client.request("echo", { x: 1 });
   server.close(); // destroys server-side sockets → client 'close' fires
   await expect(pending).rejects.toThrow("远端连接已断开");
@@ -136,8 +152,8 @@ test("pending request rejects when the server closes the connection", async () =
 });
 
 test("dispose rejects pending requests and destroys the socket", async () => {
-  server = startServer(socketPath);
-  const client = await connectClient(socketPath);
+  server = await startServer();
+  const client = await connectClient(server.port);
   const pending = client.request("echo", { x: 1 });
   client.dispose();
   await expect(pending).rejects.toThrow("远端连接已断开");

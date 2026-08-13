@@ -77,6 +77,36 @@ function pickExecutableLine(lookupOutput: string): string {
 }
 
 /**
+ * Is this the running app's own executable? The packaged desktop app lives in
+ * its own install dir, which is the process CWD; Windows `where` searches the
+ * CWD before PATH, so it can return `<install>\Wave.exe` — the desktop app
+ * itself — ahead of the real CLI shim in the npm global bin. Running
+ * `Wave.exe -v` spawns a second GUI instance (hangs → ETIMEDOUT), and
+ * `Wave.exe --stdio` quits immediately on the single-instance lock — the
+ * root of the「每次打开都升级 + 初始化失败：连接已断开」symptom.
+ */
+function isSelfExecutable(p: string): boolean {
+  try {
+    const a = path.resolve(p);
+    const b = path.resolve(process.execPath);
+    return process.platform === "win32"
+      ? a.toLowerCase() === b.toLowerCase()
+      : a === b;
+  } catch {
+    return false;
+  }
+}
+
+/** Drop the app's own executable from `where wave` candidates. */
+function filterSelfExecutable(lookupOutput: string): string {
+  return lookupOutput
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !isSelfExecutable(l))
+    .join("\n");
+}
+
+/**
  * With `shell: true` on Windows, Node concatenates file+args into the cmd.exe
  * command line WITHOUT quoting the file — a path containing spaces (e.g.
  * `C:\Program Files\nodejs\npm.cmd`) is split at the space and fails with
@@ -232,12 +262,15 @@ export function resolveWaveBinary(
   // 1. Try PATH
   const whichCmd = process.platform === "win32" ? "where wave" : "which wave";
   try {
-    const result = decodeCommandOutput(
-      execSync(whichCmd, { encoding: "buffer", stdio: "pipe" }),
-    ).trim();
-    if (result) {
-      cachedPath = pickExecutableLine(result);
-      return cachedPath;
+    const raw = execSync(whichCmd, { encoding: "buffer", stdio: "pipe" });
+    const decoded = decodeCommandOutput(raw).trim();
+    if (decoded) {
+      const filtered = filterSelfExecutable(decoded);
+      const picked = pickExecutableLine(filtered);
+      if (picked) {
+        cachedPath = picked;
+        return cachedPath;
+      }
     }
   } catch {
     // not on PATH
@@ -285,12 +318,14 @@ export function resolveWaveBinary(
 
   // 5. Try PATH again (install may have added it)
   try {
-    const result = decodeCommandOutput(
-      execSync(whichCmd, { encoding: "buffer", stdio: "pipe" }),
-    ).trim();
-    if (result) {
-      cachedPath = pickExecutableLine(result);
-      return cachedPath;
+    const raw = execSync(whichCmd, { encoding: "buffer", stdio: "pipe" });
+    const decoded = decodeCommandOutput(raw).trim();
+    if (decoded) {
+      const picked = pickExecutableLine(filterSelfExecutable(decoded));
+      if (picked) {
+        cachedPath = picked;
+        return cachedPath;
+      }
     }
   } catch {
     // still not found
@@ -311,7 +346,13 @@ export function getCliVersion(binaryPath: string): string | null {
     const output = execFileSync(quoteForShell(binaryPath), ["-v"], {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
-      timeout: 5000,
+      // Must tolerate a cold-start `wave.cmd` on Windows: the first execution
+      // after `npm install -g` can take >5s (AV/Defender scanning the freshly
+      // written files), while warm runs take ~2.3s. A 5s timeout made the
+      // first open after install misdetect the freshly-installed CLI as
+      // missing/corrupt (version probe → null → spurious `npm install -g`
+      // upgrade). 30s only bites on that one cold start; normal runs are fast.
+      timeout: 30000,
       // `wave` is `wave.cmd` on Windows; Node refuses to execFileSync a
       // `.cmd` without a shell.
       shell: process.platform === "win32",

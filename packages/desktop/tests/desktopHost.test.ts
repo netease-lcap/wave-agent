@@ -1667,7 +1667,9 @@ describe("checkForUpdates with a configured serverUrl", () => {
 
     expect(autoUpdater.setFeedURL).toHaveBeenCalledWith({
       provider: "generic",
-      url: `${SERVER}/api/downloads/desktop/mac/`,
+      url: `${SERVER}/api/downloads/desktop/${
+        process.platform === "win32" ? "win" : "mac"
+      }/`,
     });
     expect(autoUpdater.checkForUpdates).toHaveBeenCalled();
     // The electron-updater path is authoritative when logged in — no GitHub fallback.
