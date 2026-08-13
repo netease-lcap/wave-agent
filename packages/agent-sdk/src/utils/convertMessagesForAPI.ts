@@ -136,11 +136,29 @@ export function convertMessagesForAPI(
                   content: contentParts,
                 });
               } else {
-                // Non-vision model: replace images with a text placeholder
+                // Non-vision model: replace images with a text placeholder and
+                // append [Image source: <path>] metadata for MCP images that
+                // were persisted to temp files, so the main model can delegate
+                // recognition to a vision subagent (which reads the path with
+                // the Read tool). Images without a persisted path (e.g. legacy
+                // history) fall back to the placeholder only.
+                const contentParts: ChatCompletionContentPart[] = [
+                  {
+                    type: "text",
+                    text: "[Tool returned an image, but the current model does not support image recognition]",
+                  },
+                ];
+                toolBlock.images.forEach((image) => {
+                  if (image.path) {
+                    contentParts.push({
+                      type: "text",
+                      text: `[Image source: ${image.path}]`,
+                    });
+                  }
+                });
                 imageUserMessages.push({
                   role: "user",
-                  content:
-                    "[Tool returned an image, but the current model does not support image recognition]",
+                  content: contentParts,
                 });
               }
             }

@@ -45,7 +45,7 @@ export interface UpdateToolBlockParams {
   name?: string;
   shortResult?: string;
   startLineNumber?: number;
-  images?: Array<{ data: string; mediaType?: string }>;
+  images?: Array<{ data: string; mediaType?: string; path?: string }>;
   compactParams?: string;
   parametersChunk?: string; // Incremental parameter updates for streaming
   backgroundTaskId?: string;

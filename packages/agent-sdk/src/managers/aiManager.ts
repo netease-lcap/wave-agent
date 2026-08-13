@@ -2,6 +2,7 @@ import { type CallAgentOptions } from "../services/aiService.js";
 import * as aiService from "../services/aiService.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { supportsVision } from "../utils/modelCapabilities.js";
+import { persistToolImages } from "../utils/toolImagePersistence.js";
 import {
   parseTaskNotificationXml,
   taskNotificationToXml,
@@ -2568,6 +2569,21 @@ ${question}`;
         context,
       );
 
+      // MCP tools can return images (e.g. Figma screenshots) as in-memory
+      // base64. When this agent's model cannot see them, persist each image to
+      // a temp file so the non-vision path in convertMessagesForAPI can attach
+      // `[Image source: <path>]` metadata and the main model can delegate
+      // recognition to the vision subagent. Vision-capable models keep the
+      // inline base64 — no disk writes.
+      let toolImages = toolResult.images;
+      if (
+        toolImages &&
+        toolImages.length > 0 &&
+        !supportsVision(this.getModelConfig().capabilities)
+      ) {
+        toolImages = persistToolImages(toolImages);
+      }
+
       // Build result content, adding truncation warning if JSON was recovered
       let toolResultContent =
         toolResult.content ||
@@ -2592,7 +2608,7 @@ ${question}`;
         backgroundedByUser: toolResult.backgroundedByUser,
         assistantAutoBackgrounded: toolResult.assistantAutoBackgrounded,
         startLineNumber: toolResult.startLineNumber,
-        images: toolResult.images,
+        images: toolImages,
         timestamp: Date.now(),
       });
 

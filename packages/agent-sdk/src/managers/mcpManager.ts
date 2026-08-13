@@ -875,6 +875,7 @@ export class McpManager {
             type: string;
             text?: string;
             data?: string;
+            mimeType?: string;
             resource?: { uri: string };
             [key: string]: unknown;
           }) => {
@@ -883,7 +884,7 @@ export class McpManager {
             } else if (c.type === "image" && c.data) {
               images.push({
                 data: c.data,
-                mediaType: "image/png", // Default to PNG
+                mediaType: c.mimeType || "image/png", // MCP standard mimeType, PNG fallback
               });
             } else if (c.type === "resource") {
               textContent.push(`[Resource: ${c.resource?.uri || ""}]`);
