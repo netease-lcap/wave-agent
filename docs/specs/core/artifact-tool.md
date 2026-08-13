@@ -89,7 +89,7 @@ order: 35
 
 作为管理员或内测用户，我希望 Artifact 功能默认不可用、但可显式开启，以便在后端上线前不暴露无效工具，同时支持内测/灰度先行体验。
 
-**为什么是这个优先级**：当前 frame 后端尚未上线，功能需默认禁用（不注册工具、不拦截读取）；内测/灰度通过 `enableArtifact: true` 显式打开（无需改代码）；后端上线后把代码默认值常量翻转为启用（未设置 = 启用，对齐 CC `enableArtifact` 的"未设置跟随功能可用性"语义）。
+**为什么是这个优先级**：当前 frame 后端尚未上线，功能需默认禁用（不注册工具、不拦截读取）；内测/灰度通过 `enableArtifact: true` 显式打开（无需改代码）；后端上线后把代码默认值常量翻转为启用（未设置 = 启用，对齐 CC `enableArtifact` 的"未设置跟随功能可用性"语义）。开关支持热更新：运行中的会话修改 settings.json 后，配置重载会即时重评估工具注册（无需重启会话）。
 
 **验收场景**：
 
@@ -97,6 +97,10 @@ order: 35
 2. **假设** settings.json 配置 `enableArtifact: true`，**当** 会话初始化时，**则** `Artifact` 工具注册、可调用（内测/灰度入口）。
 3. **假设** 后端已上线、代码默认值常量已翻转为启用，**当** 会话初始化时，**则** 未配置 `enableArtifact` 也默认启用。
 4. **假设** Artifact 被禁用（默认或显式），**当** WebFetch 收到 artifact URL 时，**则** 不进入专用读取通道（按普通 URL 处理或报错），不执行 `via=model_read` 调用。
+5. **假设** 运行中的会话未配置 `enableArtifact`（工具未注册），**当** 用户在 settings.json 中改为 `enableArtifact: true` 触发配置热重载时，**则** `Artifact` 工具即时注册、可调用，无需重启会话。
+6. **假设** 运行中的会话已启用 `enableArtifact`，**当** 用户改为 `false` 触发配置热重载时，**则** `Artifact` 工具即时注销、不可调用，同时 WebFetch 的 artifact URL 拦截（逐调用检查 `isArtifactEnabled`）同步失效。
+7. **假设** 服务端 `GET /api/wave/settings` 下发了 `enableArtifact: true`（remote settings），**当** 会话初始化或轮询（60min + 304 checksum）检测到变更时，**则** remote 值优先于本地 settings.json 与代码默认值，`Artifact` 工具按 remote 值注册，WebFetch 拦截同样生效（管理员远程灰度/回滚入口）。
+8. **假设** 服务端下发的 remote `enableArtifact` 与本地 settings.json 冲突，**当** 合并配置时，**则** remote 胜出（last-write-wins，与 `model`、`permissions.permissionMode` 等 managed 字段语义一致）；未下发时回退本地/默认值。
 
 ### 非功能需求
 

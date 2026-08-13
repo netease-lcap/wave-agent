@@ -159,6 +159,18 @@ class ToolManager {
   }
 
   /**
+   * Re-evaluate feature-gated built-in tools after a live configuration
+   * reload. Currently gates the Artifact tool on settings.json
+   * `enableArtifact`. Safe to call multiple times: gated tools are removed
+   * from the registry first, then initializeBuiltInTools() re-registers them
+   * only if still enabled (so toggling the flag off actually unregisters).
+   */
+  public reloadFeatureGatedTools(): void {
+    this.toolsRegistry.delete(artifactTool.name);
+    this.initializeBuiltInTools();
+  }
+
+  /**
    * Check if a tool should be enabled based on tools configuration and permission rules
    */
   private shouldEnableTool(name: string): boolean {

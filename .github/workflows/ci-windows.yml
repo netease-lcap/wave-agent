@@ -1,14 +1,23 @@
 name: CI (Windows)
 
 # Non-blocking Windows compatibility check.
-# Manually triggered only (workflow_dispatch) — does NOT run on every PR to
-# avoid burning Windows runner minutes on routine changes. Run it manually
-# from the Actions tab when a change touches platform-specific code paths
-# (subprocess spawning, fs, .cmd/.exe resolution).
+# Runs after PRs merge to main (push), like the docs deploy workflow — it does
+# NOT gate PRs, so Windows runner minutes are only spent on merged changes that
+# touch platform-specific code paths (subprocess spawning, fs, .cmd/.exe
+# resolution). workflow_dispatch remains for manual runs from the Actions tab.
 # NOT a required check: configure in repo Settings → Branches → main
 # protection rule to keep only the Linux `check` job as required.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/agent-sdk/**'
+      - 'packages/code/**'
+      - 'packages/vscode/**'
+      - 'pnpm-lock.yaml'
+      - 'package.json'
+      - '.github/workflows/ci-windows.yml'
   workflow_dispatch:
 
 concurrency:

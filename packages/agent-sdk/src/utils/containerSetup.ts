@@ -303,6 +303,9 @@ export function setupAgentContainer(
     onReload: () => {
       const models = configurationService.getConfiguredModels();
       callbacks.onConfiguredModelsChange?.(models);
+      // Re-evaluate feature-gated tools (e.g. Artifact behind
+      // enableArtifact) so toggling the flag applies without a restart.
+      toolManager.reloadFeatureGatedTools();
     },
   });
   container.register("LiveConfigManager", liveConfigManager);

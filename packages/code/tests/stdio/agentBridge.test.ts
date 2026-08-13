@@ -748,16 +748,6 @@ test("sendMessage calls agent.sendMessage with text and images", async () => {
   ]);
 });
 
-// Source writes dataURL images to join(tmpdir(), `wave-image-<ts>-<rand>.<ext>`)
-// with tmpdir stubbed to "/tmp" — join yields backslash separators on Windows,
-// so build the expected pattern from path.join/path.sep instead of a literal.
-function tmpImagePath(ext: string): RegExp {
-  const dir = path.join("/tmp").replace(/\\/g, "\\\\");
-  const sep = path.sep === "\\" ? "\\\\" : "/";
-  const end = "$";
-  return new RegExp(`^${dir}${sep}wave-image-.*\\.${ext}${end}`);
-}
-
 test("sendMessage persists dataURL images to temp files so the model gets a real path", async () => {
   const { bridge } = createBridge();
   const mockAgent = createMockAgent();
@@ -780,7 +770,12 @@ test("sendMessage persists dataURL images to temp files so the model gets a real
     | Array<{ path: string; mimeType: string }>
     | undefined;
   expect(forwarded).toHaveLength(1);
-  expect(forwarded![0].path).toMatch(tmpImagePath("png"));
+  // tmpdir is mocked to "/tmp"; path.join renders platform-native separators,
+  // so assert via path helpers instead of a hardcoded POSIX regex.
+  expect(path.dirname(forwarded![0].path)).toBe(
+    path.dirname(path.join(tmpdir(), "x")),
+  );
+  expect(path.basename(forwarded![0].path)).toMatch(/^wave-image-.*\.png$/);
   expect(forwarded![0].mimeType).toBe("image/png");
   // "aGVsbG8=" base64-decodes to "hello"
   expect(writeFileSync).toHaveBeenCalledWith(
@@ -820,7 +815,12 @@ test("updateQueuedMessage persists dataURL images to temp files", async () => {
   const forwarded = updateQueuedMessageById.mock.calls[0][1];
   expect(forwarded.content).toBe("updated");
   expect(forwarded.images).toHaveLength(1);
-  expect(forwarded.images![0].path).toMatch(tmpImagePath("jpg"));
+  expect(path.dirname(forwarded.images![0].path)).toBe(
+    path.dirname(path.join(tmpdir(), "x")),
+  );
+  expect(path.basename(forwarded.images![0].path)).toMatch(
+    /^wave-image-.*\.jpg$/,
+  );
   expect(forwarded.images![0].mimeType).toBe("image/jpeg");
   expect(writeFileSync).toHaveBeenCalledWith(
     forwarded.images![0].path,

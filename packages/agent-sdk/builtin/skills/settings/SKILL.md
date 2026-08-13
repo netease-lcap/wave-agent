@@ -104,6 +104,13 @@ For detailed guidance on creating plugins and marketplaces, see [PLUGINS.md](${W
 - `language`: Preferred language for agent communication (e.g., `"en"`, `"zh"`).
 - `autoMemoryEnabled`: Enable or disable auto-memory (default: `true`).
 - `autoMemoryFrequency`: Frequency of auto-memory extraction turns (default: `1`).
+- `enableArtifact`: Enable the Artifact tool, which publishes local `.html`/`.md` files as shareable (default-private) web pages. Defaults to `false` while the frame backend is not live; set to `true` to register the tool and enable WebFetch interception for artifact URLs. Toggling it hot-reloads the tool registry.
+
+```json
+{
+  "enableArtifact": true
+}
+```
 
 ## How to use this skill
 
