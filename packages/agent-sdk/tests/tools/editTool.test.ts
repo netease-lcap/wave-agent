@@ -133,6 +133,84 @@ describe("editTool", () => {
     );
   });
 
+  it("should keep $ sequences in new_string literal (issue #1752)", async () => {
+    const mockContent = "line one\nline two\nline three";
+    const expectedContent = "line one\nA$&B A$$B A$1B A$xB\nline three";
+
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "line two",
+        new_string: "A$&B A$$B A$1B A$xB",
+      },
+      mockContext,
+    );
+
+    expect(result.success).toBe(true);
+    expect(writeFile).toHaveBeenCalledWith(
+      r("/test/file.js"),
+      expectedContent,
+      "utf-8",
+    );
+  });
+
+  it("should keep $ literal with backticks in new_string (issue #1752)", async () => {
+    const mockContent =
+      "// neither `.` nor `$` matches in a non-multiline regex — headings would";
+    const expectedContent =
+      "// neither `.` nor `$` matches in a non-multiline regex — headings would\n// `$` matches — note added line";
+
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string:
+          "// neither `.` nor `$` matches in a non-multiline regex — headings would",
+        new_string:
+          "// neither `.` nor `$` matches in a non-multiline regex — headings would\n// `$` matches — note added line",
+      },
+      mockContext,
+    );
+
+    expect(result.success).toBe(true);
+    expect(writeFile).toHaveBeenCalledWith(
+      r("/test/file.js"),
+      expectedContent,
+      "utf-8",
+    );
+  });
+
+  it("should keep $ literal in replace_all mode (issue #1752)", async () => {
+    const mockContent = "a $x b\na $x b";
+    const expectedContent = "a A$&B b\na A$&B b";
+
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "$x",
+        new_string: "A$&B",
+        replace_all: true,
+      },
+      mockContext,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("Replaced 2 instances");
+    expect(writeFile).toHaveBeenCalledWith(
+      r("/test/file.js"),
+      expectedContent,
+      "utf-8",
+    );
+  });
+
   it("should fail when old_string is not unique and replace_all is false", async () => {
     const mockContent = "var x = 1;\nvar y = 2;\nvar z = 3;";
 
