@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventEmitter } from "events";
 
-type Handler = (url: string) => { statusCode: number; body: string } | Error;
+type Handler = (
+  url: string,
+) =>
+  | { statusCode: number; body: string; headers?: Record<string, string> }
+  | Error;
 
 const h = vi.hoisted(() => ({
   handler: null as Handler | null,
@@ -18,8 +22,12 @@ function makeRequest(module: "http" | "https") {
         queueMicrotask(() => req.emit("error", result));
         return req;
       }
-      const res = new EventEmitter() as EventEmitter & { statusCode: number };
+      const res = new EventEmitter() as EventEmitter & {
+        statusCode: number;
+        headers: Record<string, string>;
+      };
       res.statusCode = result.statusCode;
+      res.headers = result.headers ?? {};
       queueMicrotask(() => {
         callback(res);
         res.emit("data", result.body);
@@ -36,7 +44,16 @@ vi.mock("http", () => ({ get: makeRequest("http") }));
 import { checkForUpdate } from "../src/main/updateChecker";
 
 const GITHUB_LATEST =
-  "https://api.github.com/repos/netease-lcap/wave-agent/releases/latest";
+  "https://github.com/netease-lcap/wave-agent/releases/latest";
+
+/** A 302 redirect to the given release tag, as GitHub serves for /releases/latest. */
+function githubRedirect(tag: string) {
+  return {
+    statusCode: 302,
+    body: "",
+    headers: { location: `https://github.com/netease-lcap/wave-agent/releases/tag/${tag}` },
+  };
+}
 
 beforeEach(() => {
   h.handler = null;
@@ -45,48 +62,36 @@ beforeEach(() => {
 
 describe("checkForUpdate via GitHub", () => {
   it("returns UpdateInfo when the latest release is newer", async () => {
-    h.handler = () => ({
-      statusCode: 200,
-      body: JSON.stringify({
-        tag_name: "v0.20.0",
-        html_url: "https://github.com/release/v0.20.0",
-        body: "notes",
-      }),
-    });
+    h.handler = () => githubRedirect("v1.0.8");
 
-    const info = await checkForUpdate("0.19.7");
+    const info = await checkForUpdate("1.0.7");
     expect(info).toEqual({
-      latestVersion: "0.20.0",
-      currentVersion: "0.19.7",
-      downloadUrl: "https://github.com/release/v0.20.0",
-      releaseNotes: "notes",
+      latestVersion: "1.0.8",
+      currentVersion: "1.0.7",
+      downloadUrl:
+        "https://github.com/netease-lcap/wave-agent/releases/tag/v1.0.8",
     });
   });
 
   it("returns null when already up to date", async () => {
-    h.handler = () => ({
-      statusCode: 200,
-      body: JSON.stringify({ tag_name: "v0.19.7", html_url: "x" }),
-    });
-    expect(await checkForUpdate("0.19.7")).toBeNull();
+    h.handler = () => githubRedirect("v1.0.7");
+    expect(await checkForUpdate("1.0.7")).toBeNull();
   });
 
   it("returns null when the latest release is older", async () => {
-    h.handler = () => ({
-      statusCode: 200,
-      body: JSON.stringify({ tag_name: "v0.19.0", html_url: "x" }),
-    });
-    expect(await checkForUpdate("0.19.7")).toBeNull();
+    h.handler = () => githubRedirect("v1.0.6");
+    expect(await checkForUpdate("1.0.7")).toBeNull();
   });
 
-  it("returns null on non-200 status", async () => {
-    h.handler = () => ({ statusCode: 404, body: "{}" });
-    expect(await checkForUpdate("0.19.7")).toBeNull();
+  it("throws when the redirect cannot be resolved", async () => {
+    // e.g. a non-3xx status (the old API endpoint would 403 rate-limit)
+    h.handler = () => ({ statusCode: 403, body: "{}" });
+    await expect(checkForUpdate("1.0.7")).rejects.toThrow();
   });
 
-  it("returns null on network error", async () => {
+  it("throws on network error", async () => {
     h.handler = () => new Error("ECONNREFUSED");
-    expect(await checkForUpdate("0.19.7")).toBeNull();
+    await expect(checkForUpdate("1.0.7")).rejects.toThrow();
   });
 
   it("returns null for an invalid current version", async () => {
@@ -97,8 +102,11 @@ describe("checkForUpdate via GitHub", () => {
 
 describe("checkForUpdate via CodeChat download feed", () => {
   const SERVER = "https://codechat.example.com";
-  // The test host is macOS, so the feed is the electron-builder mac metadata.
-  const FEED_URL = `${SERVER}/api/downloads/desktop/mac/latest-mac.yml`;
+  // Mirror checkViaCodeChat: the feed file depends on the host platform.
+  const platform = process.platform === "win32" ? "win" : "mac";
+  const fileName =
+    process.platform === "win32" ? "latest.yml" : "latest-mac.yml";
+  const FEED_URL = `${SERVER}/api/downloads/desktop/${platform}/${fileName}`;
 
   it("returns UpdateInfo parsed from the YAML feed when newer", async () => {
     h.handler = (url) => {
@@ -139,10 +147,7 @@ describe("checkForUpdate via CodeChat download feed", () => {
         return { statusCode: 500, body: "" };
       }
       if (url === GITHUB_LATEST) {
-        return {
-          statusCode: 200,
-          body: JSON.stringify({ tag_name: "v0.20.0", html_url: "gh" }),
-        };
+        return githubRedirect("v0.20.0");
       }
       return new Error(`unexpected url: ${url}`);
     };

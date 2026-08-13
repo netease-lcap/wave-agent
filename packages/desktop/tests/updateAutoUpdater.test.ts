@@ -44,6 +44,10 @@ describe("feedUrlFor", () => {
   });
 
   it("uses the mac channel on darwin", () => {
+    Object.defineProperty(process, "platform", {
+      value: "darwin",
+      configurable: true,
+    });
     expect(feedUrlFor("https://codechat.example.com")).toBe(
       "https://codechat.example.com/api/downloads/desktop/mac/",
     );
@@ -60,6 +64,10 @@ describe("feedUrlFor", () => {
   });
 
   it("strips trailing slashes from the serverUrl", () => {
+    Object.defineProperty(process, "platform", {
+      value: "darwin",
+      configurable: true,
+    });
     expect(feedUrlFor("https://codechat.example.com///")).toBe(
       "https://codechat.example.com/api/downloads/desktop/mac/",
     );
@@ -85,11 +93,12 @@ describe("AutoUpdaterService.checkForUpdates", () => {
     expect(outcome).toBe("update");
     expect(h.setFeedURL).toHaveBeenCalledWith({
       provider: "generic",
-      url: "https://codechat.example.com/api/downloads/desktop/mac/",
+      url: `https://codechat.example.com/api/downloads/desktop/${
+        process.platform === "win32" ? "win" : "mac"
+      }/`,
     });
     expect(h.checkForUpdates).toHaveBeenCalledTimes(1);
   });
-
   it('returns "no-update" when the feed version equals the running version', async () => {
     // electron mock app.getVersion() is 0.19.7
     vi.mocked(h.checkForUpdates).mockResolvedValue({

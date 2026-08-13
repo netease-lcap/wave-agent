@@ -71,7 +71,10 @@ import type { ChildProcess } from "child_process";
 import { getWorkspaceDiff } from "./gitDiff";
 import { TerminalManager } from "./terminal";
 import { PortForwardManager, type AuthCallbackForward } from "./portForward";
-import { checkForUpdate } from "./updateChecker";
+import {
+  checkForUpdate,
+  type UpdateInfo as ManualUpdateInfo,
+} from "./updateChecker";
 import { AutoUpdaterService } from "./updateAutoUpdater";
 import { HOST_CHANNEL } from "./channels";
 import type { PanelKind } from "./menu";
@@ -4102,7 +4105,18 @@ export class DesktopHost {
       );
     }
 
-    const info = await checkForUpdate(app.getVersion(), serverUrl);
+    // checkForUpdate throws when the check itself failed — don't present that
+    // as "already up to date".
+    let info: ManualUpdateInfo | null = null;
+    try {
+      info = await checkForUpdate(app.getVersion(), serverUrl);
+    } catch (error) {
+      console.warn("[DesktopHost] Update check failed:", error);
+      if (manual) {
+        this.showToast({ message: "检查更新失败，请稍后重试" });
+      }
+      return;
+    }
     if (info) {
       this.showToast({
         message: `发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}）`,
@@ -4120,7 +4134,13 @@ export class DesktopHost {
     console.warn(
       "[DesktopHost] Auto updater errored, falling back to manual check",
     );
-    const info = await checkForUpdate(app.getVersion(), serverUrl);
+    let info: ManualUpdateInfo | null = null;
+    try {
+      info = await checkForUpdate(app.getVersion(), serverUrl);
+    } catch (error) {
+      console.warn("[DesktopHost] Update check failed:", error);
+      return;
+    }
     if (info) {
       this.showToast({
         message: `发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}）`,
