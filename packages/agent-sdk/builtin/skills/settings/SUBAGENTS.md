@@ -35,7 +35,7 @@ You are a specialized subagent for a specific task. Your goal is to:
 - `name`: (Required) Unique identifier.
 - `description`: (Required) Explains the subagent's expertise and when to use it.
 - `tools`: (Optional) List of tools the subagent can use.
-- `model`: (Optional) Overrides the default model for this subagent.
+- `model`: (Optional) Overrides the default model for this subagent. The special values `fastModel` and `visionModel` resolve to the `WAVE_FAST_MODEL` / `WAVE_VISION_MODEL` env vars respectively. Built-in subagents declaring `model: visionModel` (e.g. the built-in `vision` agent) are only registered when `WAVE_VISION_MODEL` is set; for user-defined subagents the value simply resolves to the configured vision model.
 
 ## Subagent Locations
 

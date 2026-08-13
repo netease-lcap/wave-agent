@@ -1,9 +1,19 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Mock } from "vitest";
 import { ToolManager } from "@/managers/toolManager.js";
 import { McpManager } from "@/managers/mcpManager.js";
 import { Container } from "@/utils/container.js";
 
+vi.mock("@/services/artifactAvailability.js", () => ({
+  isArtifactEnabled: vi.fn().mockReturnValue(false),
+}));
+
+import { isArtifactEnabled } from "@/services/artifactAvailability.js";
+
 describe("ToolManager tool filtering", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
   const mockMcpManager = {
     isMcpTool: vi.fn().mockReturnValue(false),
     executeMcpToolByRegistry: vi.fn(),
@@ -104,5 +114,69 @@ describe("ToolManager tool filtering", () => {
     expect(toolNames).not.toContain("Bash");
     expect(toolNames).toContain("Read");
     expect(toolNames).toContain("Write");
+  });
+});
+
+describe("ToolManager feature-gated tools (Artifact)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const createContainer = () => {
+    const container = new Container();
+    container.register("PermissionManager", {
+      isToolDenied: vi.fn().mockReturnValue(false),
+      getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
+    });
+    container.register("TaskManager", {} as unknown as Record<string, unknown>);
+    container.register(
+      "ReversionManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register(
+      "BackgroundTaskManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register(
+      "ForegroundTaskManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register("LspManager", {} as unknown as Record<string, unknown>);
+    container.register("McpManager", {
+      isMcpTool: vi.fn().mockReturnValue(false),
+      executeMcpToolByRegistry: vi.fn(),
+      getAllConnectedTools: vi.fn().mockReturnValue([]),
+      getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      getMcpToolPlugins: vi.fn().mockReturnValue([]),
+    } as unknown as McpManager);
+    return container;
+  };
+
+  it("should not register Artifact while enableArtifact is off", () => {
+    (isArtifactEnabled as Mock).mockReturnValue(false);
+    const toolManager = new ToolManager({ container: createContainer() });
+    toolManager.initializeBuiltInTools();
+    expect(toolManager.list().map((t) => t.name)).not.toContain("Artifact");
+  });
+
+  it("should register Artifact after reloadFeatureGatedTools when enableArtifact turns on", () => {
+    const toolManager = new ToolManager({ container: createContainer() });
+    toolManager.initializeBuiltInTools();
+    expect(toolManager.list().map((t) => t.name)).not.toContain("Artifact");
+
+    (isArtifactEnabled as Mock).mockReturnValue(true);
+    toolManager.reloadFeatureGatedTools();
+    expect(toolManager.list().map((t) => t.name)).toContain("Artifact");
+  });
+
+  it("should unregister Artifact after reloadFeatureGatedTools when enableArtifact turns off", () => {
+    (isArtifactEnabled as Mock).mockReturnValue(true);
+    const toolManager = new ToolManager({ container: createContainer() });
+    toolManager.initializeBuiltInTools();
+    expect(toolManager.list().map((t) => t.name)).toContain("Artifact");
+
+    (isArtifactEnabled as Mock).mockReturnValue(false);
+    toolManager.reloadFeatureGatedTools();
+    expect(toolManager.list().map((t) => t.name)).not.toContain("Artifact");
   });
 });

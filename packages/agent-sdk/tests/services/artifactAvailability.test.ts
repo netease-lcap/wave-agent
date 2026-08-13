@@ -5,7 +5,12 @@ vi.mock("../../src/services/configurationService.js", () => ({
   loadMergedWaveConfig: vi.fn(),
 }));
 
+vi.mock("../../src/services/remoteSettingsService.js", () => ({
+  getRemoteSettingsSync: vi.fn(),
+}));
+
 import { loadMergedWaveConfig } from "../../src/services/configurationService.js";
+import { getRemoteSettingsSync } from "../../src/services/remoteSettingsService.js";
 import {
   isArtifactEnabled,
   ARTIFACT_DEFAULT_ENABLED,
@@ -39,5 +44,23 @@ describe("artifactAvailability", () => {
   it("should disable when settings.json sets enableArtifact: false", () => {
     (loadMergedWaveConfig as Mock).mockReturnValue({ enableArtifact: false });
     expect(isArtifactEnabled("/test/workdir")).toBe(false);
+  });
+
+  it("should prefer remote managed settings over local settings", () => {
+    (getRemoteSettingsSync as Mock).mockReturnValue({ enableArtifact: true });
+    (loadMergedWaveConfig as Mock).mockReturnValue({ enableArtifact: false });
+    expect(isArtifactEnabled("/test/workdir")).toBe(true);
+  });
+
+  it("should follow remote managed settings even when no workdir is given", () => {
+    (getRemoteSettingsSync as Mock).mockReturnValue({ enableArtifact: true });
+    expect(isArtifactEnabled(undefined)).toBe(true);
+    expect(loadMergedWaveConfig).not.toHaveBeenCalled();
+  });
+
+  it("should fall back to local settings when remote does not define enableArtifact", () => {
+    (getRemoteSettingsSync as Mock).mockReturnValue({ language: "en" });
+    (loadMergedWaveConfig as Mock).mockReturnValue({ enableArtifact: true });
+    expect(isArtifactEnabled("/test/workdir")).toBe(true);
   });
 });
