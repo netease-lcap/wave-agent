@@ -601,7 +601,7 @@ _通过自然语言让 AI 创建隔离 worktree_
 
 创建成功后，该对话的所有文件修改都会落在独立的 worktree 中，不会影响主线分支与其他对话。需要离开时，可要求 AI 调用 `ExitWorktree` 工具退出 worktree。
 
-> 了解更多：桌面版同样支持基于分支的 worktree 隔离会话，详见 [桌面版文档 - 基于分支的 worktree 隔离会话](/desktop#基于分支的-worktree-隔离会话)。
+> 了解更多：桌面版同样支持基于分支的 worktree 隔离会话，详见 [桌面版文档 - 基于分支的 worktree 隔离会话](/desktop#worktree-isolation)。
 
 ---
 
@@ -611,7 +611,7 @@ _通过自然语言让 AI 创建隔离 worktree_
 
 对于复杂的任务，Wave 会启动子代理（如 Explore 代理）进行深度探索。子代理的执行过程会以工具块的形式展示，实时显示其正在使用的工具和进度（如 `...Read, Write (2 tools | 1,234 tokens)`）。
 
-> 了解更多：详见 [SDK 文档 - 内置 Subagents](/sdk#内置-subagents)
+> 了解更多：详见 [SDK 文档 - 内置 Subagents](/sdk#builtin-subagents)
 
 ![子代理状态](/screenshots/spec-subagent.webp)
 _子代理状态_
@@ -620,7 +620,7 @@ _子代理状态_
 
 Skill 是预设的自动化任务模板，用于处理特定的复杂任务（如文档处理、PDF 解析等）。AI 可以根据需要调用这些技能来扩展其能力。
 
-> 了解更多：详见 [SDK 文档 - 内置 Skills](/sdk#内置-skills)
+> 了解更多：详见 [SDK 文档 - 内置 Skills](/sdk#builtin-skills)
 
 **提示：**用户可以通过内置的 `/settings` skill 来管理 Skill，例如输入 `/settings 帮我写个skill，具体做xxx` 即可快速创建自定义 Skill。
 
