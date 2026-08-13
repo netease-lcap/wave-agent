@@ -1,5 +1,26 @@
 #!/usr/bin/env node
 
+import { readFileSync, writeSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// `wave -v` / `wave --version` must be fast: editors probe the installed CLI
+// version on every launch (e.g. the desktop app's auto-update check). Loading
+// the full app graph (wave-agent-sdk, ink, highlight.js, ...) just to print
+// the version takes 2-3s+ on a warm machine and can exceed callers' probe
+// timeouts on cold starts (AV scan of freshly installed files), which they
+// misread as "CLI missing/corrupt" → spurious re-installs. Print the version
+// straight from package.json and exit before touching the app graph.
+const versionArgs = ["-v", "--version"];
+if (process.argv.slice(2).some((a) => versionArgs.includes(a))) {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const packageJson = JSON.parse(
+    readFileSync(path.resolve(__dirname, "../package.json"), "utf-8"),
+  );
+  writeSync(1, `${packageJson.version}\n`);
+  process.exit(0);
+}
+
 // Import and start the CLI
 import("../dist/index.js")
   .then(async ({ main }) => {
