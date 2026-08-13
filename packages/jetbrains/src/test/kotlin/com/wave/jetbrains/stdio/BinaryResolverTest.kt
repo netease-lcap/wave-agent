@@ -142,6 +142,55 @@ class BinaryResolverTest {
         assertNull(BinaryResolver.getCliVersion(missing))
     }
 
+    // ---- decodeCommandOutput / readProcessOutput -----------------------
+    //
+    // Customer repro: on Chinese Windows, cmd.exe builtins (`where`) and
+    // `npm prefix -g` write the system OEM code page (CP936/GBK) bytes, NOT
+    // UTF-8. Decoding those bytes with the JVM default charset (UTF-8 on
+    // JBR 21 / JEP 400) corrupts non-ASCII path segments (`C:\Users\刘一奇\...`
+    // → U+FFFD), and spawning the corrupted path fails with
+    // ERROR_PATH_NOT_FOUND — the stdio process dies before initialize. The
+    // decoder must try UTF-8 first and fall back to GBK on U+FFFD (same
+    // policy as packages/vscode and packages/desktop binaryResolver).
+
+    @Test
+    fun `decodeCommandOutput decodes GBK bytes to a Chinese path`() {
+        val bytes =
+            "C:\\Users\\".toByteArray(Charsets.US_ASCII) +
+            byteArrayOf(
+                0xC1.toByte(), 0xF5.toByte(), 0xD2.toByte(), 0xBB.toByte(),
+                0xC6.toByte(), 0xE6.toByte()
+            ) +
+            "\\npm\\wave.cmd".toByteArray(Charsets.US_ASCII)
+        assertEquals("C:\\Users\\刘一奇\\npm\\wave.cmd", BinaryResolver.decodeCommandOutput(bytes))
+    }
+
+    @Test
+    fun `decodeCommandOutput passes valid UTF-8 through unchanged`() {
+        val bytes = "C:\\Users\\刘一奇\\npm\\wave.cmd".toByteArray(Charsets.UTF_8)
+        assertEquals("C:\\Users\\刘一奇\\npm\\wave.cmd", BinaryResolver.decodeCommandOutput(bytes))
+    }
+
+    @Test
+    fun `readProcessOutput decodes GBK bytes from a real subprocess`() {
+        org.junit.jupiter.api.Assumptions.assumeFalse(
+            System.getProperty("os.name").lowercase().startsWith("win"),
+            "POSIX shell shim not available on Windows CI"
+        )
+        // printf emits the raw GBK bytes for 刘一奇 (\301\365\322\273\306\346)
+        // inside an otherwise-ASCII Windows path line, exactly like `where wave`
+        // on a Chinese Windows box.
+        val script = File(tempDir.toFile(), "gbk-shim-${shimCounter++}.sh").apply {
+            writeText("#!/bin/sh\nprintf 'C:\\\\Users\\\\\\301\\365\\322\\273\\306\\346\\\\npm\\\\wave.cmd'")
+            setExecutable(true)
+        }
+        val proc = ProcessBuilder(script.absolutePath).start()
+        assertEquals(
+            "C:\\Users\\刘一奇\\npm\\wave.cmd",
+            BinaryResolver.readProcessOutput(proc)
+        )
+    }
+
     // ---- pickExecutableLine --------------------------------------------
     //
     // Customer repro: a default Node.js install on Windows lives at

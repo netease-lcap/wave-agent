@@ -2,6 +2,7 @@ package com.wave.jetbrains.stdio
 
 import com.intellij.openapi.diagnostic.logger
 import java.io.File
+import java.nio.charset.Charset
 
 /** Minimum Node.js major version required by `wave --stdio`. */
 private const val MIN_NODE_MAJOR = 20
@@ -381,13 +382,41 @@ object BinaryResolver {
         return 0
     }
 
+    /**
+     * Decode output of cmd.exe builtins (`where`, `which`, `npm prefix -g`). On
+     * Chinese Windows those write the system OEM code page (CP936/GBK); decoding
+     * GBK bytes as UTF-8 corrupts non-ASCII path segments (`C:\Users\刘一奇\...`
+     * → U+FFFD), and spawning the corrupted path fails with ERROR_PATH_NOT_FOUND.
+     * Try UTF-8 first (covers non-Windows and chcp 65001), fall back to GBK on
+     * U+FFFD — same policy as packages/vscode and packages/desktop binaryResolver.
+     */
+    internal fun decodeCommandOutput(bytes: ByteArray): String {
+        val utf8 = String(bytes, Charsets.UTF_8)
+        if ('\uFFFD' !in utf8) return utf8
+        return try {
+            String(bytes, Charset.forName("GBK"))
+        } catch (_: Exception) {
+            utf8
+        }
+    }
+
+    /**
+     * Reads a child process' combined stdout/stderr as text via
+     * [decodeCommandOutput]. Explicitly decodes the raw bytes (not the JVM
+     * default charset) so `where`/`npm prefix -g` output survives on
+     * non-UTF-8 Windows systems.
+     */
+    internal fun readProcessOutput(proc: Process): String {
+        return proc.inputStream.use { decodeCommandOutput(it.readBytes()) }
+    }
+
     /** Runs a command without injecting [resolveEnv] — used by the login-shell
      *  PATH probe to avoid infinite recursion. Inherits the parent env as-is. */
     private fun runCommandRaw(vararg cmd: String): String {
         val proc = ProcessBuilder(cmd.toList()).apply {
             redirectErrorStream(true)
         }.start()
-        val out = proc.inputStream.bufferedReader().readText()
+        val out = readProcessOutput(proc)
         val code = proc.waitFor()
         if (code != 0) {
             throw StdioClientException("Command failed (${cmd.joinToString(" ")}): $out")
@@ -400,7 +429,7 @@ object BinaryResolver {
             redirectErrorStream(true)
             environment().putAll(resolveEnv())
         }.start()
-        val out = proc.inputStream.bufferedReader().readText()
+        val out = readProcessOutput(proc)
         val code = proc.waitFor()
         if (code != 0) {
             throw StdioClientException("Command failed (${cmd.joinToString(" ")}): $out")

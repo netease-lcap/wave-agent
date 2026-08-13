@@ -39,6 +39,26 @@ function waveCodeSpec(targetVersion?: string): string {
 let cachedPath: string | undefined;
 
 /**
+ * Decode output of cmd.exe builtins (`where`, `which`, `npm prefix -g`). On
+ * Chinese Windows those write the system OEM code page (CP936/GBK); decoding
+ * GBK bytes as UTF-8 corrupts non-ASCII path segments (`C:\Users\刘一奇\...`
+ * → U+FFFD), and spawning the corrupted path fails with ERROR_PATH_NOT_FOUND
+ * — the stdio process dies before initialize, surfacing as「初始化失败：连接
+ * 已断开」. Try UTF-8 first (covers non-Windows and chcp 65001), fall back to
+ * GBK on U+FFFD — same policy as stdioClient.decodeStderr.
+ */
+function decodeCommandOutput(out: string | Buffer): string {
+  const buf = Buffer.isBuffer(out) ? out : Buffer.from(out);
+  const utf8 = buf.toString("utf-8");
+  if (!utf8.includes("\uFFFD")) return utf8;
+  try {
+    return new TextDecoder("gbk").decode(buf);
+  } catch {
+    return utf8;
+  }
+}
+
+/**
  * Pick the executable line from `which`/`where` output. On Windows `where`
  * lists the extensionless bash launcher first (e.g. `C:\Program Files\nodejs\npm`)
  * followed by `npm.cmd` — cmd.exe cannot execute the bash launcher, so prefer
@@ -104,7 +124,9 @@ export class NodeJsVersionError extends Error {
 function findNode(): string {
   const cmd = process.platform === "win32" ? "where node" : "which node";
   try {
-    const result = execSync(cmd, { encoding: "utf-8", stdio: "pipe" }).trim();
+    const result = decodeCommandOutput(
+      execSync(cmd, { encoding: "buffer", stdio: "pipe" }),
+    ).trim();
     if (result) return result.split("\n")[0].trim();
   } catch {
     // not on PATH
@@ -145,7 +167,9 @@ function checkNodeVersion(): void {
 function findNpm(): string {
   const cmd = process.platform === "win32" ? "where npm" : "which npm";
   try {
-    const result = execSync(cmd, { encoding: "utf-8", stdio: "pipe" }).trim();
+    const result = decodeCommandOutput(
+      execSync(cmd, { encoding: "buffer", stdio: "pipe" }),
+    ).trim();
     if (result) return pickExecutableLine(result);
   } catch {
     // not on PATH
@@ -168,10 +192,12 @@ function findNpm(): string {
 /** Resolve the npm global bin directory. */
 function getNpmGlobalBin(): string {
   const npm = findNpm();
-  const prefix = execSync(`"${npm}" prefix -g`, {
-    encoding: "utf-8",
-    stdio: "pipe",
-  }).trim();
+  const prefix = decodeCommandOutput(
+    execSync(`"${npm}" prefix -g`, {
+      encoding: "buffer",
+      stdio: "pipe",
+    }),
+  ).trim();
   return process.platform === "win32" ? prefix : path.join(prefix, "bin");
 }
 
@@ -206,10 +232,9 @@ export function resolveWaveBinary(
   // 1. Try PATH
   const whichCmd = process.platform === "win32" ? "where wave" : "which wave";
   try {
-    const result = execSync(whichCmd, {
-      encoding: "utf-8",
-      stdio: "pipe",
-    }).trim();
+    const result = decodeCommandOutput(
+      execSync(whichCmd, { encoding: "buffer", stdio: "pipe" }),
+    ).trim();
     if (result) {
       cachedPath = pickExecutableLine(result);
       return cachedPath;
@@ -260,10 +285,9 @@ export function resolveWaveBinary(
 
   // 5. Try PATH again (install may have added it)
   try {
-    const result = execSync(whichCmd, {
-      encoding: "utf-8",
-      stdio: "pipe",
-    }).trim();
+    const result = decodeCommandOutput(
+      execSync(whichCmd, { encoding: "buffer", stdio: "pipe" }),
+    ).trim();
     if (result) {
       cachedPath = pickExecutableLine(result);
       return cachedPath;
