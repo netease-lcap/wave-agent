@@ -396,18 +396,18 @@ export class DesktopHost {
     canClosePane: boolean;
   }) => void;
 
-  /** 会话 → 新对话 (CmdOrCtrl+N): new session in the focused pane, same as the sidebar button. */
+  /** 对话 → 新对话 (CmdOrCtrl+N): new session in the focused pane, same as the sidebar button. */
   async newSessionInFocusedPane(): Promise<void> {
     await this.handleNewSession(this.focusedPaneId);
   }
 
-  /** 会话 → 并排新对话 (CmdOrCtrl+Shift+N): new session in a fresh pane, same as Cmd/Ctrl+Click on the sidebar button. */
+  /** 对话 → 并排新对话 (CmdOrCtrl+Shift+N): new session in a fresh pane, same as Cmd/Ctrl+Click on the sidebar button. */
   async newSessionInNewPane(): Promise<void> {
     await this.handleNewSessionInNewPane();
   }
 
   /**
-   * 会话 → 关闭分屏 (CmdOrCtrl+W): close the focused pane. With multiple panes
+   * 对话 → 关闭分屏 (CmdOrCtrl+W): close the focused pane. With multiple panes
    * this matches the pane close button; on the sole pane it resets that pane
    * to a fresh session. The detached agent is never destroyed — the session
    * keeps running in the background and stays in the sidebar.
