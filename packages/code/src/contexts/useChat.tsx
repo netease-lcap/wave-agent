@@ -169,6 +169,22 @@ interface StreamingUpdateParams {
 }
 
 /**
+ * Snapshot a SDK message for consumer state. The SDK mutates its internal
+ * message blocks in-place BEFORE firing the delta callback (it writes the full
+ * accumulated value to the shared block, then computes the chunk delta by
+ * slicing the new value). A consumer that pushed the SDK message object by
+ * live reference would read the already-updated block and append the delta
+ * again — the first delta is double-counted ("LetLet me think..."), affecting
+ * reasoning and text content alike. See docs/specs/core/stream-content-updates.md.
+ * The clone must be at least one layer deep (message + blocks) so the in-place
+ * block mutation never leaks into consumer state.
+ */
+const snapshotMessage = (message: Message): Message => ({
+  ...message,
+  blocks: message.blocks.map((block) => ({ ...block })),
+});
+
+/**
  * Window-concat throttle for pure-delta streaming updates: chunks arriving
  * within the cooldown window are merged so no delta is lost (a dropped delta
  * would permanently lose content, unlike the accumulated-payload throttle it
@@ -605,7 +621,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // the incremental callbacks in initializeAgent below.
   const refreshMessages = useCallback(() => {
     if (!isExpandedRef.current && agentRef.current) {
-      const msgs = [...agentRef.current.messages];
+      const msgs = agentRef.current.messages.map(snapshotMessage);
       setMessages(msgs);
       setLatestTotalTokens(extractLatestTotalTokens(msgs));
     }
@@ -656,7 +672,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           const last = msgs[msgs.length - 1];
           if (!last || last.role !== "user") return;
           setMessages((prev) =>
-            prev.some((m) => m.id === last.id) ? prev : [...prev, last],
+            prev.some((m) => m.id === last.id)
+              ? prev
+              : [...prev, snapshotMessage(last)],
           );
         },
         onAssistantMessageAdded: (messageId: string) => {
@@ -664,7 +682,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           const msg = agentRef.current.messages.find((m) => m.id === messageId);
           if (!msg) return;
           setMessages((prev) =>
-            prev.some((m) => m.id === messageId) ? prev : [...prev, msg],
+            prev.some((m) => m.id === messageId)
+              ? prev
+              : [...prev, snapshotMessage(msg)],
           );
         },
         onAssistantContentUpdated: (params) => {
@@ -889,9 +909,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           agent.setWorktreeSession(session);
         }
 
-        // Get initial state
+        // Get initial state — snapshot the SDK messages (never hold live
+        // references; see snapshotMessage)
         setSessionId(agent.sessionId);
-        setMessages(agent.messages);
+        setMessages(agent.messages.map(snapshotMessage));
         setIsLoading(agent.isLoading);
         setLatestTotalTokens(extractLatestTotalTokens(agent.messages));
         setIsCommandRunning(agent.isCommandRunning);
