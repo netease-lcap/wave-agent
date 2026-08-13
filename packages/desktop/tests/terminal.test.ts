@@ -82,7 +82,12 @@ describe("TerminalManager", () => {
   it("spawns the user default shell as a login shell with terminal env", async () => {
     const { manager } = await freshManager();
     await manager.create("term-1", "/work/a", 80, 24, "pane-1");
-    expect(h.spawn).toHaveBeenCalledWith("/bin/test-shell", ["-l"], {
+    // defaultShell(): $SHELL login shell on POSIX; PowerShell on Windows.
+    const [file, args] =
+      process.platform === "win32"
+        ? (["powershell.exe", []] as const)
+        : (["/bin/test-shell", ["-l"]] as const);
+    expect(h.spawn).toHaveBeenCalledWith(file, args, {
       name: "xterm-256color",
       cwd: "/work/a",
       cols: 80,
