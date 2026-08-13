@@ -1722,6 +1722,125 @@ describe("ChatProvider", () => {
     expect(lastValue?.messages[0].blocks).toHaveLength(2);
   });
 
+  it("does not double-count the first content chunk when the SDK mutates the shared message in place", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    const assistantMsg = {
+      id: "msg-dup-text",
+      role: "assistant" as const,
+      blocks: [],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [assistantMsg] });
+    callbacks.onAssistantMessageAdded!("msg-dup-text");
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toHaveLength(1);
+    });
+
+    // Regression (docs/specs/core/stream-content-updates.md, 2026-08-12): the
+    // SDK writes the full accumulated value onto the SAME message block
+    // (in-place) BEFORE firing the chunk-delta callback. A consumer that
+    // pushed the SDK message object by live reference would read the already
+    // updated block and append the delta again — the first chunk ("Hello")
+    // appears twice. The consumer must snapshot the message at push time.
+    //
+    // Note: we must wait for the message object to be REPLACED (the delta
+    // reducer commits) before asserting content — a pre-commit render of a
+    // live-ref message already shows "Hello" via the in-place mutation, which
+    // would satisfy the content assertion without exercising the reducer.
+    const sdkMsg = mockAgent.messages[0] as unknown as {
+      blocks: Array<{ type: string; content: string; stage: string }>;
+    };
+    sdkMsg.blocks.push({ type: "text", content: "Hello", stage: "streaming" });
+    callbacks.onAssistantContentUpdated!({
+      messageId: "msg-dup-text",
+      chunk: "Hello",
+      stage: "streaming",
+    });
+    await vi.waitFor(() => {
+      // Reducer commit replaces the pushed message with a fresh object
+      expect(lastValue?.messages[0]).not.toBe(sdkMsg);
+      // Single "Hello", never "HelloHello" (first delta double-counted)
+      expect(lastValue?.messages[0].blocks[0]).toEqual({
+        type: "text",
+        content: "Hello",
+        stage: "streaming",
+      });
+    });
+
+    // State must not share the SDK's message object (live reference)
+    expect(lastValue?.messages[0]).not.toBe(mockAgent.messages[0]);
+  });
+
+  it("does not double-count the first reasoning chunk when the SDK mutates the shared message in place", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    const assistantMsg = {
+      id: "msg-dup-reason",
+      role: "assistant" as const,
+      blocks: [],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [assistantMsg] });
+    callbacks.onAssistantMessageAdded!("msg-dup-reason");
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toHaveLength(1);
+    });
+
+    // Same SDK in-place mutation as the content case — reasoning blocks are
+    // updated on the shared message before the delta callback fires
+    // ("Let" + accumulated slice → `LetLet me think...` on the CLI pre-fix).
+    // The identity wait guards against the pre-commit render already showing
+    // "Let" via the in-place mutation (see content test above).
+    const sdkMsg = mockAgent.messages[0] as unknown as {
+      blocks: Array<{ type: string; content: string; stage: string }>;
+    };
+    sdkMsg.blocks.push({
+      type: "reasoning",
+      content: "Let",
+      stage: "streaming",
+    });
+    callbacks.onAssistantReasoningUpdated!({
+      messageId: "msg-dup-reason",
+      chunk: "Let",
+      stage: "streaming",
+    });
+    await vi.waitFor(() => {
+      expect(lastValue?.messages[0]).not.toBe(sdkMsg);
+      const reasoning = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "reasoning",
+      ) as { content: string } | undefined;
+      expect(reasoning?.content).toBe("Let");
+    });
+
+    // State must not share the SDK's message object (live reference)
+    expect(lastValue?.messages[0]).not.toBe(mockAgent.messages[0]);
+  });
+
   it("handles bang message callbacks", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
