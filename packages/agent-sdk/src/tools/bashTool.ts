@@ -6,6 +6,7 @@ import { logger } from "../utils/globalLogger.js";
 import { resolveShellPath } from "../utils/shellResolver.js";
 import { toPosixPath } from "../utils/path.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
+import { WindowsStreamDecoder } from "../utils/encoding.js";
 import { processToolResult } from "../utils/toolResultStorage.js";
 import { BASH_MAX_OUTPUT_CHARS } from "../constants/toolLimits.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
@@ -300,6 +301,13 @@ The working directory persists between commands. Try to maintain your current wo
       let isBackgrounded = false;
       let isFinished = false;
 
+      // On Windows, native tools (taskkill, powershell, ...) write GBK (cp936)
+      // instead of UTF-8; decode their byte streams accordingly (issue #1753).
+      const stdoutDecoder =
+        process.platform === "win32" ? new WindowsStreamDecoder() : null;
+      const stderrDecoder =
+        process.platform === "win32" ? new WindowsStreamDecoder() : null;
+
       // Best-effort cleanup of the temp CWD file — used by abort/error/exit paths
       const cleanupTempFile = () => {
         try {
@@ -503,7 +511,9 @@ The working directory persists between commands. Try to maintain your current wo
 
       child.stdout?.on("data", (data) => {
         if (!isAborted && !isBackgrounded && !runInBackground) {
-          const chunk = stripAnsiColors(data.toString());
+          const chunk = stripAnsiColors(
+            stdoutDecoder ? stdoutDecoder.push(data) : data.toString(),
+          );
           outputBuffer += chunk;
           updateRealtimeResults();
         }
@@ -511,7 +521,9 @@ The working directory persists between commands. Try to maintain your current wo
 
       child.stderr?.on("data", (data) => {
         if (!isAborted && !isBackgrounded && !runInBackground) {
-          const chunk = stripAnsiColors(data.toString());
+          const chunk = stripAnsiColors(
+            stderrDecoder ? stderrDecoder.push(data) : data.toString(),
+          );
           errorBuffer += chunk;
           updateRealtimeResults();
         }
@@ -564,6 +576,10 @@ The working directory persists between commands. Try to maintain your current wo
           }
 
           const exitCode = code ?? 0;
+          // Decode any bytes still held at stream end (e.g. a trailing UTF-8
+          // character split across the last chunk).
+          if (stdoutDecoder) outputBuffer += stdoutDecoder.flush();
+          if (stderrDecoder) errorBuffer += stderrDecoder.flush();
           const combinedOutput =
             outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
 

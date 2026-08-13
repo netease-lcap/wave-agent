@@ -1738,7 +1738,7 @@ describe("checkForUpdates with a configured serverUrl", () => {
     );
   });
 
-  it("falls back to the manual checker when electron-updater fails", async () => {
+  it("falls back to the manual checker exactly once when electron-updater fails", async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockRejectedValue(
       new Error("ECONNREFUSED"),
     );
@@ -1749,11 +1749,18 @@ describe("checkForUpdates with a configured serverUrl", () => {
     });
     const { host } = await readyHostWithServerUrl();
 
+    // electron-updater emits 'error' and then rejects the check — both signal
+    // the same failure. The host must fall back once, not twice.
     await host.handleWebviewMessage({ command: "checkForUpdates" });
+    for (const cb of auListeners["error"] ?? []) {
+      cb(new Error("ECONNREFUSED"));
+    }
 
-    expect(checkForUpdate).toHaveBeenCalledWith("0.19.7", SERVER);
+    await vi.waitFor(() =>
+      expect(checkForUpdate).toHaveBeenCalledWith("0.19.7", SERVER),
+    );
     const toasts = shownToasts().filter((n) => n.message.includes("0.20.0"));
-    expect(toasts.length).toBeGreaterThanOrEqual(1);
+    expect(toasts).toHaveLength(1);
     expect(toasts[0].action).toEqual({
       type: "openDownloadPage",
       url: "https://github.com/release",
@@ -1785,7 +1792,7 @@ describe("checkForUpdates with a configured serverUrl", () => {
       expect(checkForUpdate).toHaveBeenCalledWith("0.19.7", SERVER),
     );
     const toasts = shownToasts().filter((n) => n.message.includes("0.20.0"));
-    expect(toasts.length).toBeGreaterThanOrEqual(1);
+    expect(toasts).toHaveLength(1);
     expect(toasts[0].action).toEqual({
       type: "openDownloadPage",
       url: "https://codechat.example.com/api/downloads/manifest.json",

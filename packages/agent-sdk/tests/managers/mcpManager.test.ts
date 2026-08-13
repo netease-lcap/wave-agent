@@ -1087,6 +1087,42 @@ describe("McpManager", () => {
       });
     });
 
+    it("should use the MCP standard mimeType field when provided", async () => {
+      // Mock tools list response
+      mockClient.listTools.mockResolvedValue({
+        tools: [
+          {
+            name: "jpeg_screenshot_tool",
+            description: "A JPEG screenshot tool",
+            inputSchema: { type: "object" },
+          },
+        ],
+      });
+
+      // Mock tool execution response with a mimeType on the image content
+      mockClient.callTool.mockResolvedValue({
+        content: [
+          { type: "text", text: "Screenshot captured" },
+          {
+            type: "image",
+            data: "jpeg_base64_data",
+            mimeType: "image/jpeg",
+          },
+        ],
+      });
+
+      await mcpManager.connectServer("test-server");
+
+      const result = await mcpManager.executeMcpTool(
+        "mcp__test-server__jpeg_screenshot_tool",
+        {},
+      );
+
+      expect(result.images).toEqual([
+        { data: "jpeg_base64_data", mediaType: "image/jpeg" },
+      ]);
+    });
+
     it("should handle tool result with multiple images", async () => {
       // Mock tools list response
       mockClient.listTools.mockResolvedValue({

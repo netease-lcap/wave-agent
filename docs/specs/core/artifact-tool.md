@@ -11,6 +11,7 @@ order: 35
 > 对齐 Claude Code 的内建 Artifact 工具：把本地 `.html`/`.md` 文件发布为默认私有的可分享网页（claude.ai 风格），并通过 WebFetch 拦截读取已发布的 artifact 页面。
 > 服务端契约已落地（codechat 自托管同源实现）：`POST /api/frame/deploy/direct`（发布）、`GET /api/frame/{slug}?via=model_read`（元数据）、`GET /api/frame/{slug}/content?v={version}`（正文，同源 + Bearer 鉴权，无独立域名/assetToken 流程）。
 > 已拍板的简化决定：零新增配置（API 端点复用 Server URL origin：`options.serverUrl > WAVE_SERVER_URL > 默认值`，不新增 baseUrl 配置项）；客户端只实现 inline 直传一条路径（无 signed URL / DIRECT_UPLOAD）；无 AUTO_OPEN / FRAME_TIMING / OWNERSHIP_FRAME 遥测；**启用开关 `enableArtifact`（未设置时跟随代码默认值常量，当前默认禁用**——后端未上线先不发功能，内测/灰度通过 `enableArtifact: true` 显式打开；后端上线后翻转默认值常量为启用）。`disableArtifact` opt-out 开关等 GA 后再对齐 CC，本期不实现。
+> 触发方式定案（双通道并存，2026-08-13）：**模型经自然语言自动调用 `Artifact` 工具**（description 覆盖"发布/分享/做成网页/给链接"语义，中文提示词同样触发）+ **内置技能 `/artifact` 人工斜杠触发**（builtin SKILL.md，`disable-model-invocation: true` 仅人工、模型不可经 Skill 工具调用该技能）。用户在输入框输入 `/` 即可在技能列表看到该命令并一键触发，无需知道怎么写提示词。**技能本身不含任何发布逻辑**——其内容仅指示模型调用 `Artifact` 工具（参数经 `$ARGUMENTS`/`$1` 透传），发布/校验/权限确认/会话映射全部由工具完成，技能不绕过也不复制这些逻辑。
 > 范围：wave-agent 客户端侧工具 + WebFetch 拦截。分享管理（`POST /api/frame/{slug}/share`、pinned_version）由服务端/网页外壳承担，客户端仅发布私有页面并探测分享状态。
 
 ## 用户场景与测试 *（必填）*
@@ -32,6 +33,24 @@ order: 35
 5. **假设** `favicon` 包含非 emoji 字符（如文字、URL、HTML markup），**当** 工具执行时，**则** 返回 `success: false` 与错误提示。
 6. **假设** 发布内容超过 16MB（服务端返回 413），**当** 工具执行时，**则** 返回 `success: false` 与大小超限的错误。
 7. **假设** 客户端未登录（无有效 token），**当** 工具执行时，**则** 返回鉴权错误并提示先登录。
+
+### 用户故事：内置技能 /artifact 人工触发（优先级：P1）
+
+作为用户，我希望在不知道如何用自然语言描述发布需求时，通过在输入框输入 `/` 看到并选择 `artifact` 命令来触发发布，以便一键使用而不依赖提示词技巧。
+
+**为什么是这个优先级**：技能是"不会写提示词"用户的入口，与模型自动调用工具构成双通道，均为发布核心路径。**技能只是给用户的快捷入口**：其内容仅指示模型调用 `Artifact` 工具，不含任何发布逻辑——发布、校验、权限确认、会话映射全部由工具完成。
+
+**独立测试**：`enableArtifact` 开启时断言 `getSlashCommands()` 包含 `artifact` 技能命令（描述带 `Skill: ` 前缀、归入 popup 技能分组）；模型经 Skill 工具调用 artifact 技能被拒绝（`disable-model-invocation`）。
+
+**验收场景**：
+
+1. **假设** `enableArtifact` 已开启，**当** 用户在输入框输入 `/` 时，**则** popup 技能列表显示 `artifact` 命令（描述形如"发布本地 HTML/Markdown 为可分享网页"），用户选择即可触发。
+2. **假设** 用户输入 `/artifact`（无参数），**当** 命令执行时，**则** 技能内容注入主 agent（内容仅指示调用 `Artifact` 工具），agent 从会话上下文推断要发布的文件（不明确时先询问用户），随后调用 `Artifact` 工具发布并返回 URL。
+3. **假设** 用户输入 `/artifact <file_path>`（带参数），**当** 命令执行时，**则** 文件路径作为参数（`$ARGUMENTS`/`$1` 语义）透传给技能内容，agent 直接以该路径为 `file_path` 调用 `Artifact` 工具，不再询问。
+4. **假设** 模型试图通过 `Skill` 工具调用 artifact 技能，**当** 调用时，**则** 返回 "not available for model invocation"（`disable-model-invocation: true`）；模型的发布入口只有 `Artifact` 工具，两通道不重叠。
+5. **假设** 用户经 `/artifact` 触发发布，**当** `Artifact` 工具执行时，**则** 与自然语言路径走完全相同的工具调用：文件存在性/扩展名/大小校验、权限确认（首次）与同会话自动允许（重复发布）、409 冲突与 stale_version_guard 全部生效——技能不含任何绕过或复制这些逻辑的实现。
+6. **假设** `enableArtifact` 未开启（默认禁用），**当** 会话初始化时，**则** artifact 技能不注册，popup 不显示 `/artifact`（与工具注册同 gate）。
+7. **假设** 运行中的会话中 `enableArtifact` 由禁用热重载为启用，**当** 配置重载时，**则** `/artifact` 技能命令即时注册、popup 可见；反向关闭时即时注销（与工具注册同 gate）。
 
 ### 用户故事：WebFetch 读取 artifact 页面（优先级：P1）
 
@@ -93,18 +112,19 @@ order: 35
 
 **验收场景**：
 
-1. **假设** 未配置 `enableArtifact`（默认状态，后端上线前），**当** 会话初始化时，**则** `Artifact` 工具不注册、不可调用。
-2. **假设** settings.json 配置 `enableArtifact: true`，**当** 会话初始化时，**则** `Artifact` 工具注册、可调用（内测/灰度入口）。
-3. **假设** 后端已上线、代码默认值常量已翻转为启用，**当** 会话初始化时，**则** 未配置 `enableArtifact` 也默认启用。
+1. **假设** 未配置 `enableArtifact`（默认状态，后端上线前），**当** 会话初始化时，**则** `Artifact` 工具不注册、不可调用，`/artifact` 技能命令同样不注册、popup 不显示。
+2. **假设** settings.json 配置 `enableArtifact: true`，**当** 会话初始化时，**则** `Artifact` 工具注册、可调用，`/artifact` 技能命令同步注册、popup 可见（内测/灰度入口）。
+3. **假设** 后端已上线、代码默认值常量已翻转为启用，**当** 会话初始化时，**则** 未配置 `enableArtifact` 也默认启用（工具与技能命令均注册）。
 4. **假设** Artifact 被禁用（默认或显式），**当** WebFetch 收到 artifact URL 时，**则** 不进入专用读取通道（按普通 URL 处理或报错），不执行 `via=model_read` 调用。
-5. **假设** 运行中的会话未配置 `enableArtifact`（工具未注册），**当** 用户在 settings.json 中改为 `enableArtifact: true` 触发配置热重载时，**则** `Artifact` 工具即时注册、可调用，无需重启会话。
-6. **假设** 运行中的会话已启用 `enableArtifact`，**当** 用户改为 `false` 触发配置热重载时，**则** `Artifact` 工具即时注销、不可调用，同时 WebFetch 的 artifact URL 拦截（逐调用检查 `isArtifactEnabled`）同步失效。
-7. **假设** 服务端 `GET /api/wave/settings` 下发了 `enableArtifact: true`（remote settings），**当** 会话初始化或轮询（60min + 304 checksum）检测到变更时，**则** remote 值优先于本地 settings.json 与代码默认值，`Artifact` 工具按 remote 值注册，WebFetch 拦截同样生效（管理员远程灰度/回滚入口）。
-8. **假设** 服务端下发的 remote `enableArtifact` 与本地 settings.json 冲突，**当** 合并配置时，**则** remote 胜出（last-write-wins，与 `model`、`permissions.permissionMode` 等 managed 字段语义一致）；未下发时回退本地/默认值。
+5. **假设** 运行中的会话未配置 `enableArtifact`（工具未注册），**当** 用户在 settings.json 中改为 `enableArtifact: true` 触发配置热重载时，**则** `Artifact` 工具即时注册、可调用，`/artifact` 技能命令同步注册、popup 可见，无需重启会话。
+6. **假设** 运行中的会话已启用 `enableArtifact`，**当** 用户改为 `false` 触发配置热重载时，**则** `Artifact` 工具即时注销、不可调用，`/artifact` 技能命令同步注销、popup 隐藏，同时 WebFetch 的 artifact URL 拦截（逐调用检查 `isArtifactEnabled`）同步失效。
+7. **假设** 服务端 `GET /api/wave/settings` 下发了 `enableArtifact: true`（remote settings），**当** 会话初始化或轮询（60min + 304 checksum）检测到变更时，**则** remote 值优先于本地 settings.json 与代码默认值，`Artifact` 工具按 remote 值注册，`/artifact` 技能命令按同 gate 注册，WebFetch 拦截同样生效（管理员远程灰度/回滚入口）。
+8. **假设** 服务端下发的 remote `enableArtifact` 与本地 settings.json 冲突，**当** 合并配置时，**则** remote 胜出（last-write-wins，与 `model`、`permissions.permissionMode` 等 managed 字段语义一致），工具与技能命令均按 remote 值注册/注销；未下发时回退本地/默认值。
 
 ### 非功能需求
 
 - **零新增配置**：API 端点相对 Server URL origin 硬编码（`options.serverUrl > WAVE_SERVER_URL > 默认值`，经 authService.getServerUrl() 获取），不新增 baseUrl/artifactUrl 配置项。
+- **双通道不重叠**：`Artifact` 工具保留模型自动调用（自然语言触发）；内置技能 `/artifact`（builtin SKILL.md，`disable-model-invocation: true`）仅人工斜杠触发。技能仅指示模型调用 `Artifact` 工具，不含任何发布逻辑，与自然语言路径走完全相同的工具调用；技能注册与工具注册同 gate（`isArtifactEnabled`），禁用时两者都不暴露。
 - **鉴权**：发布（deploy/direct）与读取（model_read、contentUrl）请求均携带当前登录 token（Bearer）；未登录返回明确错误。
 - **大小上限**：发布内容上限 16MB（413 透传为友好错误）。
 - **文件大小策略**：读取时 >~2KB 的 HTML 落盘到临时文件（返回路径 + head 预览），避免工具结果膨胀。

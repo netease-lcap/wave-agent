@@ -1,6 +1,6 @@
 {
   "name": "wave-workspace",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "description": "Monorepo for Wave Code CLI and Agent SDK",
   "type": "module",
@@ -36,7 +36,7 @@
     "desktop:dev": "pnpm -F wave-webview build && pnpm -F wave-desktop run dev",
     "desktop:build": "pnpm -F wave-webview build && pnpm -F wave-desktop run compile",
     "desktop:package": "pnpm -F wave-webview build && pnpm -F wave-desktop run dist",
-    "desktop:install": "pnpm build && pnpm -F wave-desktop exec electron-builder --dir --config.mac.identity=null && rsync -a --delete packages/desktop/release/mac-arm64/Wave.app/ /Applications/Wave.app/",
+    "desktop:install": "node packages/desktop/scripts/install.mjs",
     "prepare": "husky"
   },
   "devDependencies": {

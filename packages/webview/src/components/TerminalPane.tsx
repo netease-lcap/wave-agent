@@ -3,6 +3,7 @@ import type { VsCodeApi } from "../types";
 import type { Terminal as XtermTerminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { WebLinksAddon } from "@xterm/addon-web-links";
+import { isArtifactUrl } from "../utils/isArtifactUrl";
 import "../styles/TerminalPane.css";
 
 declare global {
@@ -216,7 +217,9 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         // callback (e.g. after a session switch) is picked up without
         // rebuilding.
         const links = new lib.WebLinksAddon((_event, uri) => {
-          if (/^https?:/i.test(uri) && onOpenPreviewRef.current) {
+          // Artifact pages need the user's browser SSO session (the preview
+          // pane has none), so they open in the system browser.
+          if (/^https?:/i.test(uri) && onOpenPreviewRef.current && !isArtifactUrl(uri)) {
             onOpenPreviewRef.current(uri);
           } else {
             vscode.postMessage({ command: "openExternal", url: uri });

@@ -439,7 +439,12 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 
 #### Artifact — 发布可分享网页 {#tool-artifact}
 
-将本地已写好的 `.html`/`.md` 文件发布为**默认私有**的可分享网页（Claude Code 风格），返回可传播的 URL。默认禁用，需在设置中开启 `enableArtifact` 后才注册该工具。
+将本地已写好的 `.html`/`.md` 文件发布为**默认私有**的可分享网页（Claude Code 风格），返回可传播的 URL。默认禁用，需在设置中开启 `enableArtifact` 后才注册该工具与 `/artifact` 技能。
+
+**双通道触发**：
+
+- **自然语言触发（工具）**：模型可自动调用 `Artifact` 工具，工具描述覆盖「发布 / 分享 / 做成网页 / 给链接」等语义（含中文提示词），无需用户记忆特定命令。
+- **人工触发（内置技能 `/artifact`）**：输入 `/` 即可在命令选择器中看到，适合不熟悉提示词编写的用户。技能内容仅指示模型调用 `Artifact` 工具（参数经 `$ARGUMENTS` 透传），**不含任何发布逻辑**——发布 / 校验 / 权限确认 / 会话映射全部由工具完成。技能声明了 `disable-model-invocation: true`，模型不会自行调用该技能，两个通道互不干扰。
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
@@ -1128,6 +1133,14 @@ await agent.triggerWorktreeRemoveHook('/path/to/worktree');
 
 运行后可通过 `/workflows` 跟踪工作流进度。
 
+### artifact — 发布可分享网页 {#skill-artifact}
+
+将本地 `.html`/`.md` 文件发布为**默认私有**的可分享网页，并返回可传播的 URL。
+
+- **名称**: `artifact`
+- **使用方式**: `/artifact` 或 `/artifact <文件路径>`
+- **特性**: 与 [Artifact 工具](#tool-artifact) 同 gate（`enableArtifact`），禁用时不注册；声明 `disable-model-invocation: true`，仅人工触发、模型不可自动调用。技能内容仅指示模型调用 `Artifact` 工具——无参数时由模型根据对话上下文推断要发布的文件（不确定则询问用户），带参数时经 `$ARGUMENTS` 原样透传给工具的 `file_path`；发布 / 校验 / 权限确认 / 会话映射全部由工具完成，技能不含也不绕过这些逻辑。
+
 ## 13. 内置 Subagents {#builtin-subagents}
 
 ### Bash — 命令执行 {#subagent-bash}
@@ -1335,7 +1348,7 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 - `language`：AI 通信首选语言（如 `"zh"`、`"en"`）。
 - `autoMemoryEnabled`：启用或禁用自动记忆（默认：`true`）。
 - `autoMemoryFrequency`：自动记忆提取频率（默认：`1`）。
-- `enableArtifact`：启用 Artifact 工具（默认：`false`）。未设置时跟随代码默认值（当前默认禁用）；设为 `true` 后注册 [Artifact 工具](#tool-artifact)，将本地 HTML/Markdown 发布为可分享网页。
+- `enableArtifact`：启用 Artifact 工具（默认：`false`）。未设置时跟随代码默认值（当前默认禁用）；设为 `true` 后注册 [Artifact 工具](#tool-artifact) 与 `/artifact` 内置技能，将本地 HTML/Markdown 发布为可分享网页。
 - `worktree.baseRef`：新建 worktree 的基准引用。`"fresh"`（默认）基于 `origin/<默认分支>` 创建新分支；`"head"` 基于当前本地 HEAD 创建，跳过 origin 解析与网络 fetch。适用于基于尚未推送的本地分支工作的场景。
 
 ## 15. 官方插件市场 {#plugin-marketplaces}

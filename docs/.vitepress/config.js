@@ -397,6 +397,7 @@ export default {
             { text: 'simplify — 代码简化与清理', link: '/sdk#skill-simplify' },
             { text: 'code-review — 代码审查', link: '/sdk#skill-code-review' },
             { text: 'deep-research — 深度主题调研', link: '/sdk#skill-deep-research' },
+            { text: 'artifact — 发布可分享网页', link: '/sdk#skill-artifact' },
           ],
         },
         {

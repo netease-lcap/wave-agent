@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { BackgroundTask, BackgroundShell } from "../types/processes.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
+import { WindowsStreamDecoder } from "../utils/encoding.js";
 import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
 import { MessageQueue } from "./messageQueue.js";
@@ -153,8 +154,17 @@ export class BackgroundTaskManager {
       }, timeout);
     }
 
+    // On Windows, native tools (taskkill, powershell, ...) write GBK (cp936)
+    // instead of UTF-8; decode their byte streams accordingly (issue #1753).
+    const stdoutDecoder =
+      process.platform === "win32" ? new WindowsStreamDecoder() : null;
+    const stderrDecoder =
+      process.platform === "win32" ? new WindowsStreamDecoder() : null;
+
     const onStdout = (data: Buffer | string) => {
-      const stripped = stripAnsiColors(data.toString());
+      const stripped = stripAnsiColors(
+        stdoutDecoder ? stdoutDecoder.push(data as Buffer) : data.toString(),
+      );
       shell.stdout += stripped;
       if (logStream.writable) {
         logStream.write(stripped);
@@ -163,7 +173,9 @@ export class BackgroundTaskManager {
     };
 
     const onStderr = (data: Buffer | string) => {
-      const stripped = stripAnsiColors(data.toString());
+      const stripped = stripAnsiColors(
+        stderrDecoder ? stderrDecoder.push(data as Buffer) : data.toString(),
+      );
       shell.stderr += stripped;
       if (logStream.writable) {
         logStream.write(stripped);
@@ -174,6 +186,26 @@ export class BackgroundTaskManager {
     const onExit = (code: number | null) => {
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
+      }
+      // Decode any bytes still held at stream end (e.g. a trailing UTF-8
+      // character split across the last chunk).
+      if (stdoutDecoder) {
+        const rest = stdoutDecoder.flush();
+        if (rest) {
+          shell.stdout += rest;
+          if (logStream.writable) {
+            logStream.write(rest);
+          }
+        }
+      }
+      if (stderrDecoder) {
+        const rest = stderrDecoder.flush();
+        if (rest) {
+          shell.stderr += rest;
+          if (logStream.writable) {
+            logStream.write(rest);
+          }
+        }
       }
       if (logStream.writable) {
         logStream.end();
@@ -315,8 +347,17 @@ export class BackgroundTaskManager {
     this.tasks.set(id, shell);
     this.notifyTasksChange();
 
+    // On Windows, native tools write GBK (cp936) instead of UTF-8; decode
+    // their byte streams accordingly (issue #1753).
+    const stdoutDecoder =
+      process.platform === "win32" ? new WindowsStreamDecoder() : null;
+    const stderrDecoder =
+      process.platform === "win32" ? new WindowsStreamDecoder() : null;
+
     child.stdout?.on("data", (data) => {
-      const stripped = stripAnsiColors(data.toString());
+      const stripped = stripAnsiColors(
+        stdoutDecoder ? stdoutDecoder.push(data) : data.toString(),
+      );
       shell.stdout += stripped;
       if (logStream.writable) {
         logStream.write(stripped);
@@ -325,7 +366,9 @@ export class BackgroundTaskManager {
     });
 
     child.stderr?.on("data", (data) => {
-      const stripped = stripAnsiColors(data.toString());
+      const stripped = stripAnsiColors(
+        stderrDecoder ? stderrDecoder.push(data) : data.toString(),
+      );
       shell.stderr += stripped;
       if (logStream.writable) {
         logStream.write(stripped);
@@ -334,6 +377,25 @@ export class BackgroundTaskManager {
     });
 
     child.on("exit", (code) => {
+      // Decode any bytes still held at stream end
+      if (stdoutDecoder) {
+        const rest = stdoutDecoder.flush();
+        if (rest) {
+          shell.stdout += rest;
+          if (logStream.writable) {
+            logStream.write(rest);
+          }
+        }
+      }
+      if (stderrDecoder) {
+        const rest = stderrDecoder.flush();
+        if (rest) {
+          shell.stderr += rest;
+          if (logStream.writable) {
+            logStream.write(rest);
+          }
+        }
+      }
       if (logStream.writable) {
         logStream.end();
       }

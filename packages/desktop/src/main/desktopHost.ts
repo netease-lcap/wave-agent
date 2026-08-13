@@ -4099,10 +4099,11 @@ export class DesktopHost {
         if (manual) this.showToast({ message: "当前已是最新版本" });
         return;
       }
-      // outcome === 'error': degrade to the manual checker below.
-      console.warn(
-        "[DesktopHost] Auto update check failed, falling back to manual check",
-      );
+      // outcome === 'error': electron-updater already emitted 'error' on this
+      // failure (routed above to handleAutoUpdaterError, the single manual
+      // fallback). Falling back again here would show two identical
+      // "发现新版本" toasts.
+      return;
     }
 
     // checkForUpdate throws when the check itself failed — don't present that

@@ -54,6 +54,7 @@ export interface ToolBlock {
     // Add image data support
     data: string; // Base64 encoded image data
     mediaType?: string; // Media type of the image
+    path?: string; // Persisted temp file path (MCP images under a non-vision model)
   }>;
   id?: string;
   name?: string;
