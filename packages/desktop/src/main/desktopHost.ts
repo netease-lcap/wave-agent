@@ -591,7 +591,7 @@ export class DesktopHost {
       let binaryPath: string;
       try {
         binaryPath = await ensureCliUpToDate(targetVersion, (msg) =>
-          this.pushSystemMessage(msg),
+          this.showToast({ message: msg }),
         );
       } catch (error) {
         // Upgrade/install failure — fall back to whatever binary is resolvable.
@@ -599,9 +599,9 @@ export class DesktopHost {
           "[DesktopHost] ensureCliUpToDate failed, falling back:",
           error,
         );
-        this.pushSystemMessage(
-          `wave-code CLI 升级失败：${error instanceof Error ? error.message : String(error)}。可通过 npm install -g wave-code@${targetVersion} 手动升级`,
-        );
+        this.showToast({
+          message: `wave-code CLI 升级失败：${error instanceof Error ? error.message : String(error)}。可通过 npm install -g wave-code@${targetVersion} 手动升级`,
+        });
         binaryPath = resolveWaveBinary(undefined, targetVersion);
       }
       this.cliVersion = getCliVersion(binaryPath);
@@ -658,7 +658,7 @@ export class DesktopHost {
       const daemonSocket = await ensureRemoteDaemon(
         host,
         app.getVersion(),
-        (msg) => this.pushSystemMessage(msg),
+        (msg) => this.showToast({ message: msg }),
       );
       const { client, tunnel } = await connectRemoteDaemon(host, daemonSocket);
       const router = new NotificationRouter(client);
@@ -2029,10 +2029,9 @@ export class DesktopHost {
       const agent = await this.spawnAgent({ host, workdir: dir });
       await this.activateAgentInPane(paneId, agent);
     } catch (error) {
-      this.pushSystemMessage(
-        `初始化失败：${error instanceof Error ? error.message : String(error)}`,
-        paneId,
-      );
+      this.showToast({
+        message: `初始化失败：${error instanceof Error ? error.message : String(error)}`,
+      });
     }
   }
 
@@ -2568,9 +2567,9 @@ export class DesktopHost {
       });
       await this.activateAgentInPane(this.focusedPaneId, agent);
     } catch (error) {
-      this.pushSystemMessage(
-        `初始化失败：${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.showToast({
+        message: `初始化失败：${error instanceof Error ? error.message : String(error)}`,
+      });
       return;
     }
     if (text) {
@@ -3350,9 +3349,9 @@ export class DesktopHost {
       }
     } catch (error) {
       console.error("[DesktopHost] 初始化智能体失败:", error);
-      this.pushSystemMessage(
-        `初始化失败：${error instanceof Error ? error.message : String(error)}。可通过侧边栏切换工作目录重试，或重启应用`,
-      );
+      this.showToast({
+        message: `初始化失败：${error instanceof Error ? error.message : String(error)}。可通过侧边栏切换工作目录重试，或重启应用`,
+      });
     }
   }
 
