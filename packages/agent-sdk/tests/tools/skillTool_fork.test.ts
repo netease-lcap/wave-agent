@@ -12,9 +12,13 @@ vi.mock("fs/promises", () => ({
 }));
 
 // Mock os module
-vi.mock("os", () => ({
-  homedir: vi.fn(() => "/mock/home"),
-}));
+vi.mock("os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("os")>();
+  return {
+    ...actual,
+    homedir: vi.fn(() => "/mock/home"),
+  };
+});
 
 // Mock path module
 vi.mock("path", async () => {

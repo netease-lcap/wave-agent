@@ -306,6 +306,11 @@ export function setupAgentContainer(
       // Re-evaluate feature-gated tools (e.g. Artifact behind
       // enableArtifact) so toggling the flag applies without a restart.
       toolManager.reloadFeatureGatedTools();
+      // Same gate for the builtin /artifact skill: refresh emits "refreshed"
+      // so slash-command registration follows enableArtifact.
+      void skillManager.reloadFeatureGatedSkills().catch((error) => {
+        logger.error("Failed to reload feature-gated skills:", error);
+      });
     },
   });
   container.register("LiveConfigManager", liveConfigManager);

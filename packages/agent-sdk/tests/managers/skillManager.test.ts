@@ -34,6 +34,7 @@ import {
   formatSkillError,
 } from "../../src/utils/skillParser.js";
 import { executeBashCommands } from "../../src/utils/markdownParser.js";
+import { isArtifactEnabled } from "../../src/services/artifactAvailability.js";
 
 vi.mock("fs/promises");
 vi.mock("../../src/services/fileWatcher.js");
@@ -54,6 +55,10 @@ vi.mock("../../src/utils/markdownParser.js", async () => {
   };
 });
 
+vi.mock("../../src/services/artifactAvailability.js", () => ({
+  isArtifactEnabled: vi.fn(),
+}));
+
 describe("SkillManager", () => {
   let skillManager: SkillManager;
   let container: Container;
@@ -65,6 +70,7 @@ describe("SkillManager", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(isArtifactEnabled).mockReturnValue(false);
 
     mockFileWatcher = {
       watchFile: vi.fn().mockResolvedValue(undefined),
@@ -1471,6 +1477,98 @@ describe("SkillManager", () => {
       expect(watchedPaths).toContain("/home/user/.agents/skills");
 
       await manager.destroy();
+    });
+  });
+
+  describe("feature-gated artifact skill", () => {
+    function mockArtifactSkillDiscovery() {
+      vi.mocked(readdir).mockImplementation(async (path) => {
+        const p = path.toString().replace(/\\/g, "/");
+        if (p.includes("builtin-skills")) {
+          return [
+            { name: "artifact", isDirectory: () => true },
+          ] as unknown as Awaited<ReturnType<typeof readdir>>;
+        }
+        return [] as unknown as Awaited<ReturnType<typeof readdir>>;
+      });
+      vi.mocked(stat).mockResolvedValue(
+        {} as unknown as Awaited<ReturnType<typeof stat>>,
+      );
+      vi.mocked(parseSkillFile).mockReturnValue({
+        isValid: true,
+        skillMetadata: {
+          name: "artifact",
+          description:
+            "Publish a local HTML or Markdown file as a shareable web page",
+          type: "builtin",
+          skillPath: "/test/builtin-skills/artifact/SKILL.md",
+          disableModelInvocation: true,
+        },
+        content: "---\nname: artifact\n---\ncontent",
+        frontmatter: { name: "artifact" },
+        validationErrors: [],
+      } as unknown as ReturnType<typeof parseSkillFile>);
+    }
+
+    it("should skip the artifact skill while the gate is off", async () => {
+      vi.mocked(isArtifactEnabled).mockReturnValue(false);
+      mockArtifactSkillDiscovery();
+
+      await skillManager.initialize();
+
+      expect(skillManager.getSkillMetadata("artifact")).toBeUndefined();
+      expect(
+        skillManager.getAvailableSkills().find((s) => s.name === "artifact"),
+      ).toBeUndefined();
+      expect(await skillManager.loadSkill("artifact")).toBeNull();
+    });
+
+    it("should register the artifact skill when the gate is on", async () => {
+      vi.mocked(isArtifactEnabled).mockReturnValue(true);
+      mockArtifactSkillDiscovery();
+
+      await skillManager.initialize();
+
+      const metadata = skillManager.getSkillMetadata("artifact");
+      expect(metadata).toBeDefined();
+      expect(metadata?.disableModelInvocation).toBe(true);
+      expect(await skillManager.loadSkill("artifact")).not.toBeNull();
+    });
+
+    it("should register/unregister the artifact skill on reloadFeatureGatedSkills", async () => {
+      vi.mocked(isArtifactEnabled).mockReturnValue(false);
+      mockArtifactSkillDiscovery();
+      await skillManager.initialize();
+      expect(skillManager.getSkillMetadata("artifact")).toBeUndefined();
+
+      vi.mocked(isArtifactEnabled).mockReturnValue(true);
+      await skillManager.reloadFeatureGatedSkills();
+      expect(skillManager.getSkillMetadata("artifact")).toBeDefined();
+
+      vi.mocked(isArtifactEnabled).mockReturnValue(false);
+      await skillManager.reloadFeatureGatedSkills();
+      expect(skillManager.getSkillMetadata("artifact")).toBeUndefined();
+    });
+
+    it("should register /artifact slash command only while the gate is on", async () => {
+      vi.mocked(isArtifactEnabled).mockReturnValue(false);
+      mockArtifactSkillDiscovery();
+      container.register("SkillManager", skillManager);
+      const slashCommandManager = new SlashCommandManager(container, {
+        workdir: "/test/workdir",
+      });
+      slashCommandManager.initialize();
+
+      await skillManager.initialize();
+      expect(slashCommandManager.hasCommand("artifact")).toBe(false);
+
+      vi.mocked(isArtifactEnabled).mockReturnValue(true);
+      await skillManager.reloadFeatureGatedSkills();
+      expect(slashCommandManager.hasCommand("artifact")).toBe(true);
+
+      vi.mocked(isArtifactEnabled).mockReturnValue(false);
+      await skillManager.reloadFeatureGatedSkills();
+      expect(slashCommandManager.hasCommand("artifact")).toBe(false);
     });
   });
 });
