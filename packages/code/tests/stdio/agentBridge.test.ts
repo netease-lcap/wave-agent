@@ -770,7 +770,12 @@ test("sendMessage persists dataURL images to temp files so the model gets a real
     | Array<{ path: string; mimeType: string }>
     | undefined;
   expect(forwarded).toHaveLength(1);
-  expect(forwarded![0].path).toMatch(/^\/tmp\/wave-image-.*\.png$/);
+  // tmpdir is mocked to "/tmp"; path.join renders platform-native separators,
+  // so assert via path helpers instead of a hardcoded POSIX regex.
+  expect(path.dirname(forwarded![0].path)).toBe(
+    path.dirname(path.join(tmpdir(), "x")),
+  );
+  expect(path.basename(forwarded![0].path)).toMatch(/^wave-image-.*\.png$/);
   expect(forwarded![0].mimeType).toBe("image/png");
   // "aGVsbG8=" base64-decodes to "hello"
   expect(writeFileSync).toHaveBeenCalledWith(
@@ -810,7 +815,12 @@ test("updateQueuedMessage persists dataURL images to temp files", async () => {
   const forwarded = updateQueuedMessageById.mock.calls[0][1];
   expect(forwarded.content).toBe("updated");
   expect(forwarded.images).toHaveLength(1);
-  expect(forwarded.images![0].path).toMatch(/^\/tmp\/wave-image-.*\.jpg$/);
+  expect(path.dirname(forwarded.images![0].path)).toBe(
+    path.dirname(path.join(tmpdir(), "x")),
+  );
+  expect(path.basename(forwarded.images![0].path)).toMatch(
+    /^wave-image-.*\.jpg$/,
+  );
   expect(forwarded.images![0].mimeType).toBe("image/jpeg");
   expect(writeFileSync).toHaveBeenCalledWith(
     forwarded.images![0].path,
