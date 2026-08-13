@@ -30,6 +30,7 @@ describe("Image Support in Tool Results", () => {
       {
         data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jU77vwAAAABJRU5ErkJggg==",
         mediaType: "image/png",
+        path: "/tmp/wave-mcp-images/mcp-image_1_abc123.png",
       },
     ];
 
@@ -54,6 +55,9 @@ describe("Image Support in Tool Results", () => {
       expect(toolBlock.images).toHaveLength(1);
       expect(toolBlock.images![0].data).toBe(mockImages[0].data);
       expect(toolBlock.images![0].mediaType).toBe("image/png");
+      expect(toolBlock.images![0].path).toBe(
+        "/tmp/wave-mcp-images/mcp-image_1_abc123.png",
+      );
       expect(toolBlock.result).toBe("Screenshot captured successfully");
     }
   });

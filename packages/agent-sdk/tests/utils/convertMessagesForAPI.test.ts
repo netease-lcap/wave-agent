@@ -899,6 +899,161 @@ describe("convertMessagesForAPI", () => {
       expect(allContent).not.toContain("image_url");
     });
 
+    it("should append [Image source: <path>] for persisted tool images when supportsVision is false", () => {
+      const messages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [{ type: "text", content: "Take a screenshot" }],
+          timestamp: new Date().toISOString(),
+        },
+        {
+          id: generateMessageId(),
+          role: "assistant",
+          blocks: [
+            {
+              type: "tool",
+              id: "tool_img_1",
+              name: "get_screenshot",
+              parameters: '{"nodeId": "123"}',
+              stage: "end",
+              result: "Screenshot taken.",
+              success: true,
+              images: [
+                {
+                  data: "base64data",
+                  mediaType: "image/png",
+                  path: "/tmp/wave-mcp-images/mcp-image_1_abc123.png",
+                },
+              ],
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      const apiMessages = convertMessagesForAPI(messages, {
+        supportsVision: false,
+      });
+
+      type ContentPart = { type: string; text?: string };
+      const userMessages = apiMessages.filter((m) => m.role === "user");
+      const placeholderMessage = userMessages.find((m) => {
+        if (typeof m.content === "string") {
+          return m.content.includes("does not support image recognition");
+        }
+        if (Array.isArray(m.content)) {
+          const parts = m.content as ContentPart[];
+          return parts.some(
+            (p) =>
+              p.type === "text" &&
+              typeof p.text === "string" &&
+              p.text.includes("does not support image recognition"),
+          );
+        }
+        return false;
+      });
+      expect(placeholderMessage).toBeDefined();
+      const parts = placeholderMessage!.content as ContentPart[];
+      expect(parts).toHaveLength(2);
+      expect(parts[1]).toEqual({
+        type: "text",
+        text: "[Image source: /tmp/wave-mcp-images/mcp-image_1_abc123.png]",
+      });
+
+      // Ensure no image_url parts remain
+      const allContent = JSON.stringify(apiMessages);
+      expect(allContent).not.toContain("image_url");
+    });
+
+    it("should append one [Image source: <path>] line per persisted image when supportsVision is false", () => {
+      const messages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "assistant",
+          blocks: [
+            {
+              type: "tool",
+              id: "tool_img_2",
+              name: "get_screenshots",
+              parameters: "{}",
+              stage: "end",
+              result: "Two screenshots.",
+              success: true,
+              images: [
+                {
+                  data: "base64data",
+                  mediaType: "image/png",
+                  path: "/tmp/wave-mcp-images/mcp-image_1_abc123.png",
+                },
+                {
+                  data: "base64data",
+                  mediaType: "image/jpeg",
+                  path: "/tmp/wave-mcp-images/mcp-image_2_def456.jpg",
+                },
+              ],
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      const apiMessages = convertMessagesForAPI(messages, {
+        supportsVision: false,
+      });
+
+      type ContentPart = { type: string; text?: string };
+      const userMessages = apiMessages.filter((m) => m.role === "user");
+      expect(userMessages).toHaveLength(1);
+      const parts = userMessages[0].content as ContentPart[];
+      expect(parts).toHaveLength(3);
+      expect(parts[0].text).toContain("does not support image recognition");
+      expect(parts[1].text).toBe(
+        "[Image source: /tmp/wave-mcp-images/mcp-image_1_abc123.png]",
+      );
+      expect(parts[2].text).toBe(
+        "[Image source: /tmp/wave-mcp-images/mcp-image_2_def456.jpg]",
+      );
+    });
+
+    it("should keep sending persisted tool images as image_url when supportsVision is true", () => {
+      const messages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "assistant",
+          blocks: [
+            {
+              type: "tool",
+              id: "tool_img_3",
+              name: "get_screenshot",
+              parameters: "{}",
+              stage: "end",
+              result: "Screenshot taken.",
+              success: true,
+              images: [
+                {
+                  data: "base64data",
+                  mediaType: "image/png",
+                  path: "/tmp/wave-mcp-images/mcp-image_1_abc123.png",
+                },
+              ],
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      const apiMessages = convertMessagesForAPI(messages, {
+        supportsVision: true,
+      });
+
+      const allContent = JSON.stringify(apiMessages);
+      expect(allContent).toContain("image_url");
+      expect(allContent).toContain("data:image/png;base64,base64data");
+      // The persisted path is metadata for the non-vision path only
+      expect(allContent).not.toContain("[Image source:");
+    });
+
     it("should send images as image_url when supportsVision is true (default)", () => {
       const messages: Message[] = [
         {
