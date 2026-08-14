@@ -1,3 +1,5 @@
 pnpm run type-check
 pnpm exec lint-staged
-node scripts/check-docs-links.mjs --skip-images && node scripts/check-sidebar-anchors.mjs
+if git diff --cached --name-only | grep -q '^docs/'; then
+  node scripts/check-docs-links.mjs --skip-images && node scripts/check-sidebar-anchors.mjs
+fi
