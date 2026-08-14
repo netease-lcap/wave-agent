@@ -201,6 +201,13 @@ export interface DesktopGitBranchesMessage extends HostToWebviewMessageBase {
   result?: GitBranchesResult;
 }
 
+/** Ack for desktopCreateWorktree — clears the webview's "worktree 创建中"
+ * state on both success and failure. */
+export interface DesktopWorktreeCreatedMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopWorktreeCreated";
+}
+
 export interface DesktopForwardPortResultMessage
   extends HostToWebviewMessageBase {
   command: "desktopForwardPortResult";
@@ -551,6 +558,7 @@ export type HostToWebviewMessage =
   | UpdatePermissionModeMessage
   | UpdateWorkdirMessage
   | DesktopGitBranchesMessage
+  | DesktopWorktreeCreatedMessage
   | DesktopForwardPortResultMessage
   | DesktopFileContentMessage
   | UpdateQueueMessage

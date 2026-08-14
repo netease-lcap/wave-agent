@@ -1169,9 +1169,7 @@ describe("agent notifications", () => {
       { type: "error", content: "插件执行失败" },
     ]);
     // Previous turn's assistant message is left untouched.
-    expect(
-      (agent.messages[1] as { blocks: unknown[] }).blocks,
-    ).toHaveLength(1);
+    expect((agent.messages[1] as { blocks: unknown[] }).blocks).toHaveLength(1);
     expect(sent("updateErrorBlock")).toEqual([
       expect.objectContaining({ error: "插件执行失败" }),
     ]);
@@ -3140,6 +3138,11 @@ describe("worktree flow", () => {
     expect(store.getRecentWorkdirs()).not.toEqual(
       expect.arrayContaining([{ host: "local", path: worktree.path }]),
     );
+    // The ack ends the webview's "worktree 创建中" state on the pane that
+    // started the creation.
+    expect(sent("desktopWorktreeCreated").at(-1)).toMatchObject({
+      paneId: "pane-1",
+    });
   });
 
   it("desktopCreateWorktree with a first message forwards it after the switch", async () => {
@@ -3299,6 +3302,10 @@ describe("worktree flow", () => {
       JSON.stringify(m).includes("创建 worktree 失败"),
     );
     expect(sysMsgs).toHaveLength(1);
+    // Failure also ends the "worktree 创建中" state.
+    expect(sent("desktopWorktreeCreated").at(-1)).toMatchObject({
+      paneId: "pane-1",
+    });
   });
 
   it("registers the worktree session under the repo root with cwd = worktree path", async () => {

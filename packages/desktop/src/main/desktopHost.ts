@@ -424,7 +424,10 @@ export class DesktopHost {
     // Closing a sole empty session is a no-op — it already is the fresh
     // session that closing would reset to (and 新对话 / Cmd+N always spawn
     // instead, so the button is never a dead click).
-    if (pane?.agent && (pane.agent.messages.length > 0 || pane.agent.isStreaming)) {
+    if (
+      pane?.agent &&
+      (pane.agent.messages.length > 0 || pane.agent.isStreaming)
+    ) {
       await this.handleNewSession(pane.paneId);
     }
   }
@@ -2516,7 +2519,8 @@ export class DesktopHost {
   /**
    * FR-022/FR-023: create worktree via stdio, then switch into it. When the
    * caller passed a first message (worktree checkbox + send in one go), forward
-   * it after the switch so the session starts in the worktree.
+   * it after the switch so the session starts in the worktree. `paneId` routes
+   * the completion ack back to the pane that started the creation.
    */
   private async handleCreateWorktree(
     workdir: string,
@@ -2525,53 +2529,60 @@ export class DesktopHost {
     text?: string,
     images?: Array<{ data: string; mediaType: string }>,
     host?: string,
+    paneId?: string,
   ): Promise<void> {
     const h = host ?? this.currentHost;
-    let result: {
-      name: string;
-      path: string;
-      branch: string;
-      baseBranch: string;
-      repoRoot: string;
-      isNew: boolean;
-    };
     try {
-      result = (await this.utilityClientFor(h).request("createWorktree", {
-        workdir,
-        baseBranch,
-        name,
-      })) as typeof result;
-    } catch (error) {
-      this.pushSystemMessage(
-        `创建 worktree 失败：${error instanceof Error ? error.message : String(error)}`,
-      );
-      return;
-    }
-    let agent: StdioAgent;
-    try {
-      agent = await this.spawnAgent({
-        host: h,
-        workdir: result.path,
-        // Only a genuinely new worktree fires the WorktreeCreate hook during
-        // agent initialization (same as `wave -w`).
-        worktreeName: result.name,
-        isNewWorktree: result.isNew,
-        worktreeInfo: {
-          path: result.path,
-          branch: result.branch,
-          baseBranch: result.baseBranch,
-          repoRoot: result.repoRoot,
-        },
-      });
-      await this.activateAgentInPane(this.focusedPaneId, agent);
-    } catch (error) {
-      this.showToast({
-        message: `初始化失败：${error instanceof Error ? error.message : String(error)}`,
-      });
-      return;
-    }
-    if (text) {
-      await this.handleSendMessage(text, images);
+      let result: {
+        name: string;
+        path: string;
+        branch: string;
+        baseBranch: string;
+        repoRoot: string;
+        isNew: boolean;
+      };
+      try {
+        result = (await this.utilityClientFor(h).request("createWorktree", {
+          workdir,
+          baseBranch,
+          name,
+        })) as typeof result;
+      } catch (error) {
+        this.pushSystemMessage(
+          `创建 worktree 失败：${error instanceof Error ? error.message : String(error)}`,
+        );
+        return;
+      }
+      let agent: StdioAgent;
+      try {
+        agent = await this.spawnAgent({
+          host: h,
+          workdir: result.path,
+          // Only a genuinely new worktree fires the WorktreeCreate hook during
+          // agent initialization (same as `wave -w`).
+          worktreeName: result.name,
+          isNewWorktree: result.isNew,
+          worktreeInfo: {
+            path: result.path,
+            branch: result.branch,
+            baseBranch: result.baseBranch,
+            repoRoot: result.repoRoot,
+          },
+        });
+        await this.activateAgentInPane(this.focusedPaneId, agent);
+      } catch (error) {
+        this.showToast({
+          message: `初始化失败：${error instanceof Error ? error.message : String(error)}`,
+        });
+        return;
+      }
+      if (text) {
+        await this.handleSendMessage(text, images);
+      }
+    } finally {
+      // Success and failure both end the "worktree 创建中" state in the webview
+      // (failure surfaces an error message / toast instead).
+      this.postMessage({ command: "desktopWorktreeCreated", paneId });
     }
   }
 
@@ -2835,6 +2846,7 @@ export class DesktopHost {
           msg.text as string | undefined,
           msg.images as Array<{ data: string; mediaType: string }> | undefined,
           msg.host as string | undefined,
+          pid,
         );
         break;
 

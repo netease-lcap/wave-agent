@@ -7,6 +7,8 @@ export interface DesktopWorktreeControlsProps {
   branch: string;
   /** Whether the worktree checkbox is on. */
   worktreeChecked: boolean;
+  /** Worktree creation is in flight — show "创建中" and disable the controls. */
+  creating?: boolean;
   onBranchChange: (branch: string) => void;
   onWorktreeChange: (checked: boolean) => void;
 }
@@ -23,6 +25,7 @@ export const DesktopWorktreeControls: React.FC<
   branches,
   branch,
   worktreeChecked,
+  creating = false,
   onBranchChange,
   onWorktreeChange,
 }) => {
@@ -97,9 +100,18 @@ export const DesktopWorktreeControls: React.FC<
         <input
           type="checkbox"
           checked={worktreeChecked}
+          disabled={creating}
           onChange={(e) => onWorktreeChange(e.target.checked)}
         />
         <span>worktree</span>
+        {creating && (
+          <span
+            className="desktop-worktree-creating"
+            data-testid="desktop-worktree-creating"
+          >
+            worktree 创建中…
+          </span>
+        )}
       </label>
     </div>
   );
