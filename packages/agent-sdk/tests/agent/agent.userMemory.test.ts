@@ -3,6 +3,11 @@ import { Agent } from "@/agent.js";
 import type { AgentCallbacks } from "@/types/index.js";
 import { generateMessageId } from "@/utils/messageOperations.js";
 
+// Mock the builtin materializer to avoid writing to the mocked tmpdir
+vi.mock("../../src/utils/builtinEmbed.js", () => ({
+  ensureBuiltinMaterialized: () => "/fake-builtin-root",
+}));
+
 // Mock os module
 vi.mock("node:os", () => ({
   default: {
