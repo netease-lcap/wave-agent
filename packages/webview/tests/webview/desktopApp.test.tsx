@@ -1558,6 +1558,47 @@ describe("DesktopApp", () => {
       expect(
         screen.getByTestId("desktop-worktree-checkbox").querySelector("input"),
       ).toBeChecked();
+      // While the host creates the worktree, the checkbox shows the creating
+      // indicator and is disabled.
+      expect(screen.getByTestId("desktop-worktree-creating")).toHaveTextContent(
+        "worktree 创建中…",
+      );
+      expect(
+        screen.getByTestId("desktop-worktree-checkbox").querySelector("input"),
+      ).toBeDisabled();
+      // The spawned session's setInitialState carries the worktree path as its
+      // cwd — the still-visible new-session pickers must keep showing the repo
+      // the user picked (/work/a → "a") and the chosen base branch (dev), not
+      // flash the worktree path/branch.
+      sendCommand("setInitialState", {
+        workdir: "/work/wt-a",
+        messages: [],
+        isAuthenticated: true,
+      });
+      expect(screen.getByTestId("desktop-workdir")).toHaveTextContent("a");
+      expect(screen.getByTestId("desktop-branch-selector")).toHaveTextContent(
+        "dev",
+      );
+      expect(
+        screen.getByTestId("desktop-worktree-creating"),
+      ).toBeInTheDocument();
+      // The host's ack (success or failure) clears the indicator.
+      sendCommand("desktopWorktreeCreated", {});
+      expect(
+        screen.queryByTestId("desktop-worktree-creating"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByTestId("desktop-worktree-checkbox").querySelector("input"),
+      ).not.toBeDisabled();
+      // The first visible message (the forwarded user message) hides the
+      // new-session pickers.
+      sendCommand("updateMessages", {
+        messages: [MockDataGenerator.createUserMessage("hello worktree")],
+      });
+      expect(screen.queryByTestId("desktop-workdir")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("desktop-worktree-controls"),
+      ).not.toBeInTheDocument();
     });
 
     it("posts sendMessage normally when the checkbox is off", async () => {

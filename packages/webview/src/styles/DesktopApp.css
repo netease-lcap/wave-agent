@@ -296,6 +296,18 @@
   accent-color: var(--vscode-button-background);
 }
 
+.desktop-worktree-checkbox input[type="checkbox"]:disabled {
+  cursor: default;
+}
+
+.desktop-worktree-creating {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
 /* ---- Workdir dropdown (inside the message input, top-left) ----
    Custom dropdown mirroring the permission-mode dropdown in MessageInput:
    a relative container holds the trigger + an absolutely-positioned menu.

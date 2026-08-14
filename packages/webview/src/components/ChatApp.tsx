@@ -215,6 +215,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // Desktop new-session worktree controls (FR-022/FR-023).
   const [worktreeBranch, setWorktreeBranch] = useState<string>("");
   const [worktreeChecked, setWorktreeChecked] = useState(true);
+  // True while the host is creating the worktree after the first message was
+  // sent with the checkbox on — shows "worktree 创建中…" next to the checkbox.
+  // Cleared by the host's desktopWorktreeCreated ack (success or failure).
+  const [worktreeCreating, setWorktreeCreating] = useState(false);
   // Per-pane git branches for this pane's OWN workdir (FR-022). The host-level
   // workdir follows the focused pane — sharing it would bleed one pane's
   // directory/branch into a sibling new-session pane, so each new-session pane
@@ -233,6 +237,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     (host?.type === "desktop"
       ? (host?.recentWorkdirs?.[0] ?? host?.workdir)
       : undefined);
+  // The new-session pickers (workdir selector + worktree controls) show a
+  // directory the USER chose, decoupled from the pane's session cwd: the
+  // session cwd only wins when it is itself a user-chosen directory (it sits
+  // in recents — e.g. a session started from that repo). Internal cwds like a
+  // worktree path (or a bash-cd drift) are never user choices, so the pickers
+  // fall back to the most recently selected repo instead of flashing the
+  // worktree path into them before the first message hides them.
+  const pickerWorkdir =
+    host?.type === "desktop"
+      ? state.workdir && host?.recentWorkdirs?.includes(state.workdir)
+        ? state.workdir
+        : (host?.recentWorkdirs?.[0] ?? host?.workdir)
+      : effectiveWorkdir;
   const isDesktop = host?.type === "desktop";
   // The pane's effective host ('local' or an SSH host name): a pane-bound
   // session's host (authoritative `desktopPanes` push) wins; the single-pane
@@ -524,6 +541,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           // pane's reply never overwrites this pane's selector.
           if (!forThisPane(message)) break;
           setPaneGitBranches(message.result ?? null);
+          break;
+        case "desktopWorktreeCreated":
+          // Worktree creation finished (success or failure) — clear the
+          // "worktree 创建中" indicator.
+          if (!forThisPane(message)) break;
+          setWorktreeCreating(false);
           break;
         case "desktopForwardPortResult":
           // Remote preview port-forward reply (scenario 15/16). The forward is
@@ -967,7 +990,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // global workdir). Clear stale branches first so the selector hides until the
   // fresh reply lands.
   //
-  // Depend ONLY on effectiveWorkdir (a primitive string) — never on the host
+  // Depend ONLY on pickerWorkdir (a primitive string) — never on the host
   // object reference, and never on host.workdir. Rationale: when a new pane
   // boots, activateAgentInPane sends desktopWorkdirState to update the host's
   // global workdir from the previously-focused sibling's path to this pane's
@@ -976,17 +999,21 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // = state.workdir = agent.cwd = the same recents[0]). Re-querying on a
   // host.workdir change would null out the branches and flash the selector
   // twice. A genuine user workdir switch changes recents[0] (and thus
-  // effectiveWorkdir), which is the only re-query signal we want.
+  // pickerWorkdir), which is the only re-query signal we want. Likewise a
+  // worktree creation must not re-query: the spawned session's cwd is the
+  // worktree path, which is not a user-chosen directory (not in recents), so
+  // pickerWorkdir stays on the user's repo — and the query signal never fires
+  // before the first message hides the pickers.
   useEffect(() => {
     if (!isDesktop) return;
     setPaneGitBranches(null);
-    if (!effectiveWorkdir) return;
+    if (!pickerWorkdir) return;
     postToHost({
       command: "desktopListGitBranches",
-      workdir: effectiveWorkdir,
+      workdir: pickerWorkdir,
       paneId,
     });
-  }, [effectiveWorkdir, isDesktop, postToHost, paneId]);
+  }, [pickerWorkdir, isDesktop, postToHost, paneId]);
 
   const handleClearChat = useCallback(() => {
     // /clear 斜杠命令：三端统一为"原地清空当前会话"，streaming 期间忽略。
@@ -1158,6 +1185,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         effectiveWorkdirRef.current &&
         gitBranches
       ) {
+        setWorktreeCreating(true);
         postToHost({
           command: "desktopCreateWorktree",
           workdir: effectiveWorkdirRef.current,
@@ -1955,7 +1983,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
                   />
                   <DesktopWorkdirSelector
                     host={effectiveHost}
-                    workdir={effectiveWorkdir}
+                    workdir={pickerWorkdir}
                     recentWorkdirs={host.recentWorkdirs}
                     onSelectWorkdir={host.onSelectWorkdir}
                     onSelectRemotePath={(path) =>
@@ -1967,11 +1995,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
                     onSelectRecentWorkdir={host.onSelectRecentWorkdir}
                     onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
                   />
-                  {effectiveWorkdir && gitBranches && (
+                  {pickerWorkdir && gitBranches && (
                     <DesktopWorktreeControls
                       branches={gitBranches.branches}
                       branch={worktreeBranch || gitBranches.current}
                       worktreeChecked={worktreeChecked}
+                      creating={worktreeCreating}
                       onBranchChange={setWorktreeBranch}
                       onWorktreeChange={setWorktreeChecked}
                     />
