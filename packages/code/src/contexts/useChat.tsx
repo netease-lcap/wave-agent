@@ -703,21 +703,22 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onErrorBlockAdded: (error: string) => {
           if (isExpandedRef.current) return;
           setMessages((prev) => {
-            // Append to the last assistant message, or create one if none exists
-            for (let i = prev.length - 1; i >= 0; i--) {
-              if (prev[i].role === "assistant") {
-                return prev.map((m, idx) =>
-                  idx === i
-                    ? {
-                        ...m,
-                        blocks: [
-                          ...m.blocks,
-                          { type: "error", content: error },
-                        ],
-                      }
-                    : m,
-                );
-              }
+            // Append to the LAST message only if it is an assistant message
+            // (the current turn's in-flight reply). If the last message is a
+            // user message, the error belongs BELOW it — create a new
+            // assistant message instead of polluting the stale assistant from
+            // an earlier turn (which surfaced the error above the latest
+            // user message and accumulated it there).
+            const last = prev[prev.length - 1];
+            if (last && last.role === "assistant") {
+              return prev.map((m, idx) =>
+                idx === prev.length - 1
+                  ? {
+                      ...m,
+                      blocks: [...m.blocks, { type: "error", content: error }],
+                    }
+                  : m,
+              );
             }
             return [
               ...prev,

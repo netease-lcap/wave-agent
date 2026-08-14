@@ -716,6 +716,50 @@ describe("chatReducer", () => {
       expect(newState.messages[0].blocks).toHaveLength(1);
     });
 
+    it("appends the error to a NEW assistant message when the last message is a user message (regression: stale assistant from a previous turn)", () => {
+      const userMsg: Message = {
+        id: "msg-1",
+        role: "user",
+        timestamp: "0",
+        blocks: [{ type: "text", content: "Hi", stage: "end" }],
+      };
+      const assistantMsg: Message = {
+        id: "msg-2",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [{ type: "text", content: "Hello", stage: "end" }],
+      };
+      const latestUserMsg: Message = {
+        id: "msg-3",
+        role: "user",
+        timestamp: "0",
+        blocks: [{ type: "text", content: "帮我执行 X", stage: "end" }],
+      };
+      const state = {
+        ...initialState,
+        messages: [userMsg, assistantMsg, latestUserMsg],
+      };
+
+      const newState = chatReducer(state, {
+        type: "APPEND_ERROR_BLOCK",
+        payload: { error: "插件执行失败" },
+      });
+
+      // The error belongs under the LATEST user message, so a new assistant
+      // message must be created — appending to the previous turn's assistant
+      // would surface the error above the latest user message and accumulate.
+      expect(newState.messages).toHaveLength(4);
+      const errorMessage = newState.messages[3];
+      expect(errorMessage.role).toBe("assistant");
+      expect(errorMessage.blocks).toHaveLength(1);
+      const errorBlock = errorMessage.blocks[0] as ErrorBlock;
+      expect(errorBlock.type).toBe("error");
+      expect(errorBlock.content).toBe("插件执行失败");
+      // Previous turn's assistant message is left untouched.
+      expect(newState.messages[1].blocks).toHaveLength(1);
+      expect(newState.messages[2]).toBe(latestUserMsg);
+    });
+
     it("should create a new assistant message with error block if no assistant message exists", () => {
       const userMessage: Message = {
         id: "msg-1",

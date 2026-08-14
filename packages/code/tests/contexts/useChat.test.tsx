@@ -1251,6 +1251,71 @@ describe("ChatProvider", () => {
     });
   });
 
+  it("onErrorBlockAdded creates a NEW assistant message when the last message is a user message (regression: stale assistant from a previous turn)", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    // Build [user, assistant, user] in the UI via incremental callbacks — the
+    // latest user message has no assistant reply yet when the error fires.
+    const userMsg = {
+      id: "u1",
+      role: "user" as const,
+      blocks: [{ type: "text" as const, content: "你好" }],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [userMsg] });
+    callbacks.onUserMessageAdded!({ content: "你好" });
+    await vi.waitFor(() => expect(lastValue?.messages).toHaveLength(1));
+
+    const assistantMsg = {
+      id: "a1",
+      role: "assistant" as const,
+      blocks: [{ type: "text" as const, content: "好的" }],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [userMsg, assistantMsg] });
+    callbacks.onAssistantMessageAdded!("a1");
+    await vi.waitFor(() => expect(lastValue?.messages).toHaveLength(2));
+
+    const latestUserMsg = {
+      id: "u2",
+      role: "user" as const,
+      blocks: [{ type: "text" as const, content: "帮我执行 X" }],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, {
+      messages: [userMsg, assistantMsg, latestUserMsg],
+    });
+    callbacks.onUserMessageAdded!({ content: "帮我执行 X" });
+    await vi.waitFor(() => expect(lastValue?.messages).toHaveLength(3));
+
+    // The error belongs BELOW the latest user message: appending to the
+    // previous turn's assistant would surface it above the newest message
+    // and accumulate there across repeated errors.
+    callbacks.onErrorBlockAdded!("boom");
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toHaveLength(4);
+    });
+    const errorMessage = lastValue!.messages[3];
+    expect(errorMessage.role).toBe("assistant");
+    expect(errorMessage.blocks).toEqual([{ type: "error", content: "boom" }]);
+    // Previous turn's assistant message is left untouched.
+    expect(lastValue!.messages[1].blocks).toEqual([
+      { type: "text", content: "好的" },
+    ]);
+  });
+
   it("throttles streaming updates to 500ms and flushes immediately on end", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {

@@ -904,17 +904,18 @@ export class DesktopHost {
       },
       onErrorBlockAdded: (error: string) => {
         // Mirror the error block into the cache too (APPEND_ERROR_BLOCK
-        // semantics: append to the last assistant message, creating one if no
-        // assistant message exists yet).
+        // semantics: append to the LAST message if it is an assistant message,
+        // otherwise create a new assistant message below the latest user
+        // message — never attach to a stale assistant from an earlier turn).
         const newErrorBlock: ErrorBlock = { type: "error", content: error };
-        let targetIndex = -1;
-        for (let i = agentRef.messages.length - 1; i >= 0; i--) {
-          if (agentRef.messages[i].role === "assistant") {
-            targetIndex = i;
-            break;
-          }
-        }
-        if (targetIndex === -1) {
+        const lastMessage = agentRef.messages[agentRef.messages.length - 1];
+        if (lastMessage && lastMessage.role === "assistant") {
+          agentRef.messages = agentRef.messages.map((m, idx) =>
+            idx === agentRef.messages.length - 1
+              ? { ...m, blocks: [...m.blocks, newErrorBlock] }
+              : m,
+          );
+        } else {
           agentRef.messages = [
             ...agentRef.messages,
             {
@@ -924,12 +925,6 @@ export class DesktopHost {
               blocks: [newErrorBlock],
             },
           ];
-        } else {
-          agentRef.messages = agentRef.messages.map((m, idx) =>
-            idx === targetIndex
-              ? { ...m, blocks: [...m.blocks, newErrorBlock] }
-              : m,
-          );
         }
         const paneId = paneIdOf();
         if (paneId)
