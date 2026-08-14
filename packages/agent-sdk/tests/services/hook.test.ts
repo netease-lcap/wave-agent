@@ -22,6 +22,7 @@ import {
   executeCommands,
   isCommandSafe,
 } from "../../src/services/hook.js";
+import { resolveShellPath } from "../../src/utils/shellResolver.js";
 import type {
   HookExecutionContext,
   ExtendedHookExecutionContext,
@@ -37,6 +38,11 @@ vi.mock("../../src/services/session.js", () => ({
 // Mock child_process module
 vi.mock("child_process", () => ({
   spawn: vi.fn(),
+}));
+
+// Mock shell resolver so Git Bash detection is deterministic in tests
+vi.mock("../../src/utils/shellResolver.js", () => ({
+  resolveShellPath: vi.fn(),
 }));
 
 const mockSpawn = spawn as unknown as MockedFunction<
@@ -442,9 +448,82 @@ describe("Hook Services", () => {
   });
 
   describe("cross-platform support", () => {
-    it("should use correct shell for Windows", async () => {
+    it("should use Git Bash with POSIX command on Windows when available", async () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, "platform", { value: "win32" });
+      vi.mocked(resolveShellPath).mockReturnValue(
+        "C:\\Program Files\\Git\\bin\\bash.exe",
+      );
+
+      const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
+      let spawnArgs: Parameters<typeof spawn> | undefined;
+
+      mockSpawn.mockImplementation((...args) => {
+        spawnArgs = args as Parameters<typeof spawn>;
+        return mockProcess;
+      });
+
+      const resultPromise = executeCommand(
+        'node "C:\\path\\script.js"',
+        mockContext,
+      );
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      expect(spawnArgs).toBeDefined();
+      expect(spawnArgs![0]).toBe("C:\\Program Files\\Git\\bin\\bash.exe");
+      expect(spawnArgs![1]).toEqual(["-c", 'node "/c/path/script.js"']);
+
+      // Restore original platform
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+    });
+
+    it("should prepend bash for .sh hook commands on Windows", async () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "win32" });
+      vi.mocked(resolveShellPath).mockReturnValue(
+        "C:\\Program Files\\Git\\bin\\bash.exe",
+      );
+
+      const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
+      let spawnArgs: Parameters<typeof spawn> | undefined;
+
+      mockSpawn.mockImplementation((...args) => {
+        spawnArgs = args as Parameters<typeof spawn>;
+        return mockProcess;
+      });
+
+      const resultPromise = executeCommand(
+        "C:\\plugins\\setup-worktree.sh",
+        mockContext,
+      );
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      expect(spawnArgs).toBeDefined();
+      expect(spawnArgs![1]).toEqual([
+        "-c",
+        "bash /c/plugins/setup-worktree.sh",
+      ]);
+
+      // Restore original platform
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+    });
+
+    it("should fall back to cmd.exe on Windows when Git Bash is missing", async () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "win32" });
+      vi.mocked(resolveShellPath).mockReturnValue(undefined);
 
       const mockProcess = new MockChildProcess();
       mockProcess.stdin = new MockStdin();
