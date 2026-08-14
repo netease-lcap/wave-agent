@@ -179,6 +179,44 @@ describe("ConfigStore", () => {
     ]);
   });
 
+  it("treats C:\\a and C:/a as the same local workdir", () => {
+    const store = new ConfigStore(STORE_PATH);
+    store.addRecentWorkdir({ host: "local", path: "C:\\Users\\foo" });
+    store.addRecentWorkdir({ host: "local", path: "C:/Users/foo" });
+    store.addRecentWorkdir({ host: "local", path: "C:\\Users\\foo\\" });
+
+    expect(store.getRecentWorkdirs()).toEqual([
+      { host: "local", path: "C:\\Users\\foo" },
+    ]);
+  });
+
+  it("merges pre-existing duplicates that differ only in slash style on load", () => {
+    h.files.set(
+      STORE_PATH,
+      JSON.stringify({
+        configuration: {},
+        recentWorkdirs: [
+          { host: "local", path: "C:\\Users\\foo" },
+          { host: "local", path: "C:/Users/foo" },
+          { host: "local", path: "D:/other" },
+        ],
+      }),
+    );
+    const store = new ConfigStore(STORE_PATH);
+    expect(store.getRecentWorkdirs()).toEqual([
+      { host: "local", path: "C:\\Users\\foo" },
+      { host: "local", path: "D:\\other" },
+    ]);
+  });
+
+  it("keeps remote POSIX paths untouched", () => {
+    const store = new ConfigStore(STORE_PATH);
+    store.addRecentWorkdir({ host: "devbox", path: "/home/dev/repo" });
+    expect(store.getRecentWorkdirs()).toEqual([
+      { host: "devbox", path: "/home/dev/repo" },
+    ]);
+  });
+
   // ── Session index ──────────────────────────────────────────────
 
   it("starts with empty session index", () => {
