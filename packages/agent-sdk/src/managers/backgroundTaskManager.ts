@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "child_process";
+import { spawn, type ChildProcess, type SpawnOptions } from "child_process";
 import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
@@ -9,6 +9,7 @@ import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
 import { MessageQueue } from "./messageQueue.js";
 import { resolveShellPath } from "../utils/shellResolver.js";
+import { buildShellSpawnArgs } from "../utils/shellSnapshot.js";
 import type { ConfigurationService } from "../services/configurationService.js";
 
 export interface BackgroundTaskManagerCallbacks {
@@ -81,8 +82,7 @@ export class BackgroundTaskManager {
     const id = this.generateId();
     const startTime = Date.now();
 
-    const child = spawn(command, {
-      shell: resolveShellPath() ?? true,
+    const spawnOptions: SpawnOptions = {
       stdio: "pipe",
       detached: true,
       cwd: cwd ?? this.workdir,
@@ -90,7 +90,23 @@ export class BackgroundTaskManager {
         ...process.env,
         ...this.sessionEnv,
       },
-    });
+    };
+
+    // Aligned with the Bash tool: spawn the resolved bash/zsh with -c -l
+    // (login shell) until a shell snapshot is available, then reuse the cached
+    // login-shell PATH without -l. Falls back to the platform default shell
+    // (`shell: true`) when no bash/zsh is installed.
+    const shellPath = resolveShellPath();
+    let child: ChildProcess;
+    if (shellPath) {
+      child = spawn(
+        shellPath,
+        buildShellSpawnArgs(shellPath, command),
+        spawnOptions,
+      );
+    } else {
+      child = spawn(command, { ...spawnOptions, shell: true });
+    }
 
     // Create log file
     const logPath = path.join(os.tmpdir(), `wave-task-${id}.log`);

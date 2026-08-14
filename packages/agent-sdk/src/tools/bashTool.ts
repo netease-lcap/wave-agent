@@ -4,6 +4,10 @@ import * as path from "path";
 import * as os from "os";
 import { logger } from "../utils/globalLogger.js";
 import { resolveShellPath } from "../utils/shellResolver.js";
+import {
+  buildShellSpawnArgs,
+  shellSingleQuote,
+} from "../utils/shellSnapshot.js";
 import { toPosixPath } from "../utils/path.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { WindowsStreamDecoder } from "../utils/encoding.js";
@@ -36,8 +40,7 @@ function wrapCommandForCwdTracking(
   command: string,
   cwdFileForBash: string,
 ): string {
-  const escaped = command.replace(/'/g, `'"'"'`);
-  return `eval '${escaped}' && pwd -P >| ${cwdFileForBash}`;
+  return `eval ${shellSingleQuote(command)} && pwd -P >| ${cwdFileForBash}`;
 }
 
 // Commands that should not be auto-backgrounded on timeout (e.g. sleep should just be killed)
@@ -272,6 +275,12 @@ The working directory persists between commands. Try to maintain your current wo
     }
 
     // Foreground execution (original behavior)
+
+    // Shell spawn (aligned with Claude Code's bash provider): the user's
+    // profile is sourced once per session and the resulting login-shell PATH
+    // is cached. Until the snapshot is ready the shell is spawned as a login
+    // shell (`-c -l`); once ready, later commands skip `-l` and reuse the
+    // cached PATH instead of re-loading the profile.
     return new Promise((resolve) => {
       // Create a temporary file to store the CWD
       const tempCwdFile = path.join(
@@ -284,16 +293,19 @@ The working directory persists between commands. Try to maintain your current wo
         tempCwdFileForBash,
       );
 
-      const child: ChildProcess = spawn(wrappedCommand, {
-        shell: shellPath,
-        stdio: "pipe",
-        detached: true,
-        cwd: context.workdir,
-        env: {
-          ...process.env,
-          ...context.sessionEnv,
+      const child: ChildProcess = spawn(
+        shellPath,
+        buildShellSpawnArgs(shellPath, wrappedCommand),
+        {
+          stdio: "pipe",
+          detached: true,
+          cwd: context.workdir,
+          env: {
+            ...process.env,
+            ...context.sessionEnv,
+          },
         },
-      });
+      );
 
       let outputBuffer = "";
       let errorBuffer = "";

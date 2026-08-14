@@ -50,6 +50,7 @@ import {
 } from "./telemetry/instrumentation.js";
 import { logOTelEvent } from "./telemetry/events.js";
 import { remoteSettingsService } from "./services/remoteSettingsService.js";
+import { setShellIfWindows } from "./utils/shellResolver.js";
 
 export class Agent {
   private messageManager: MessageManager;
@@ -595,6 +596,11 @@ export class Agent {
     continueLastSession?: boolean;
     messages?: Message[];
   }): Promise<void> {
+    // On Windows, expose the Git Bash path as $SHELL so child processes
+    // spawned by the Bash tool use bash instead of cmd.exe (aligned with
+    // Claude Code's init.ts setShellIfWindows; COMSPEC is left untouched).
+    setShellIfWindows();
+
     await InitializationService.initialize(
       {
         skillManager: this.skillManager,
