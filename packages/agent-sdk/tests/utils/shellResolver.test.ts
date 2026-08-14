@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   resolveShellPath,
+  setShellIfWindows,
   WINDOWS_GIT_BASH_PATHS,
 } from "../../src/utils/shellResolver.js";
 import fs from "node:fs";
@@ -245,6 +246,41 @@ describe("shellResolver", () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
       expect(resolveShellPath()).toBe("D:\\custom\\git\\bash.exe");
       expect(execFileSync).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("setShellIfWindows", () => {
+    it("sets SHELL to the resolved Git Bash path on Windows, leaving COMSPEC untouched", () => {
+      Object.defineProperty(process, "platform", { value: "win32" });
+      process.env.WAVE_GIT_BASH_PATH = "C:\\Program Files\\Git\\bin\\bash.exe";
+      process.env.COMSPEC = "C:\\Windows\\system32\\cmd.exe";
+
+      setShellIfWindows();
+
+      expect(process.env.SHELL).toBe("C:\\Program Files\\Git\\bin\\bash.exe");
+      expect(process.env.COMSPEC).toBe("C:\\Windows\\system32\\cmd.exe");
+    });
+
+    it("leaves SHELL unchanged when no Git Bash is found on Windows", () => {
+      Object.defineProperty(process, "platform", { value: "win32" });
+      process.env.SHELL = "C:\\Windows\\system32\\cmd.exe";
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      vi.mocked(execFileSync).mockImplementation(() => {
+        throw new Error("not found");
+      });
+
+      setShellIfWindows();
+
+      expect(process.env.SHELL).toBe("C:\\Windows\\system32\\cmd.exe");
+    });
+
+    it("is a no-op on non-Windows platforms", () => {
+      Object.defineProperty(process, "platform", { value: "linux" });
+      process.env.SHELL = "/bin/bash";
+
+      setShellIfWindows();
+
+      expect(process.env.SHELL).toBe("/bin/bash");
     });
   });
 });

@@ -1,7 +1,8 @@
-import { spawn, type ChildProcess } from "child_process";
+import { spawn, type ChildProcess, type SpawnOptions } from "child_process";
 import type { MessageManager } from "./messageManager.js";
 import { Container } from "../utils/container.js";
 import { resolveShellPath } from "../utils/shellResolver.js";
+import { buildShellSpawnArgs } from "../utils/shellSnapshot.js";
 import type { ConfigurationService } from "../services/configurationService.js";
 
 export interface BangManagerOptions {
@@ -59,15 +60,30 @@ export class BangManager {
     this.messageManager.addBangMessage(command);
 
     return new Promise<number>((resolve) => {
-      const child = spawn(command, {
-        shell: resolveShellPath() ?? true,
+      const spawnOptions: SpawnOptions = {
         stdio: "pipe",
         cwd: this.workdir,
         env: {
           ...process.env,
           ...this.sessionEnv,
         },
-      });
+      };
+
+      // Aligned with the Bash tool: spawn the resolved bash/zsh with -c -l
+      // (login shell) until a shell snapshot is available, then reuse the
+      // cached login-shell PATH without -l. Falls back to the platform
+      // default shell (`shell: true`) when no bash/zsh is installed.
+      const shellPath = resolveShellPath();
+      let child: ChildProcess;
+      if (shellPath) {
+        child = spawn(
+          shellPath,
+          buildShellSpawnArgs(shellPath, command),
+          spawnOptions,
+        );
+      } else {
+        child = spawn(command, { ...spawnOptions, shell: true });
+      }
 
       this.currentProcess = child;
       let outputBuffer = "";

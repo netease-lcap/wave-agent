@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { spawn, type ChildProcess } from "child_process";
+import { execFile, spawn, type ChildProcess } from "child_process";
 import { EventEmitter } from "events";
 
 // Mock child_process
@@ -16,6 +16,10 @@ vi.mock("@/utils/shellResolver", () => ({
 import { BangManager } from "@/managers/bangManager.js";
 import type { MessageManager } from "@/managers/messageManager.js";
 import { Container } from "@/utils/container.js";
+import {
+  getShellSnapshotPath,
+  resetShellSnapshotCache,
+} from "@/utils/shellSnapshot.js";
 
 // Mock MessageManager
 const createMockMessageManager = (): MessageManager => {
@@ -28,6 +32,7 @@ const createMockMessageManager = (): MessageManager => {
 };
 
 const mockSpawn = vi.mocked(spawn);
+const mockExecFile = vi.mocked(execFile);
 
 // Mock ChildProcess
 class MockChildProcess extends EventEmitter {
@@ -64,6 +69,7 @@ describe("BangManager", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetShellSnapshotCache();
     mockMessageManager = createMockMessageManager();
     mockChildProcess = new MockChildProcess();
 
@@ -109,12 +115,17 @@ describe("BangManager", () => {
       expect(bangManager.isCommandRunning).toBe(true);
 
       // Verify spawn was called with correct arguments
-      expect(mockSpawn).toHaveBeenCalledWith(command, {
-        shell: "/bin/bash",
-        stdio: "pipe",
-        cwd: testWorkdir,
-        env: expect.any(Object),
-      });
+      // Explicit spawn: shell is spawned with -c -l (login shell) since no
+      // shell snapshot is cached yet.
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "/bin/bash",
+        ["-c", "-l", command],
+        {
+          stdio: "pipe",
+          cwd: testWorkdir,
+          env: expect.any(Object),
+        },
+      );
 
       // Verify initial command message was added
       expect(mockMessageManager.addBangMessage).toHaveBeenCalledWith(command);
@@ -206,6 +217,39 @@ describe("BangManager", () => {
         130,
         "",
       );
+    });
+
+    it("reuses the cached snapshot PATH (skips -l) once the snapshot is ready", async () => {
+      // Settle the real shell snapshot for the resolved shell path via the
+      // mocked execFile.
+      mockExecFile.mockImplementation(((
+        _file: string,
+        _args: string[],
+        _options: unknown,
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        callback(
+          null,
+          "WAVE_SHELL_SNAPSHOT\n/usr/local/bin:/usr/bin:/bin\n",
+          "",
+        );
+      }) as unknown as typeof execFile);
+      await getShellSnapshotPath("/bin/bash");
+
+      const executePromise = bangManager.executeCommand("echo hi");
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "/bin/bash",
+        ["-c", "export PATH='/usr/local/bin:/usr/bin:/bin'; echo hi"],
+        expect.objectContaining({
+          stdio: "pipe",
+          cwd: testWorkdir,
+          env: expect.any(Object),
+        }),
+      );
+
+      mockChildProcess.simulateExit(0);
+      await executePromise;
     });
 
     it("should prevent multiple concurrent commands", async () => {
