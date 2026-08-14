@@ -6,9 +6,9 @@ order: 60
 
 # 功能规格说明：Agent 配置
 
-**创建日期**：2025-01-27  
+**创建日期**：2025-01-27
 
-## 用户场景与测试 *（必填）*
+## 用户场景与测试 _（必填）_
 
 ### 用户故事：显式 AI 服务配置（优先级：P1）
 
@@ -212,17 +212,3 @@ SDK 用户需要按子代理类型配置不同的 HTTP 请求头，以便 `custo
 - **`WAVE_SERVER_URL` 支持从 settings.json `env` 读取（镜像到 `process.env`）**：`AuthService` 与 `remoteSettingsService` 是进程级单例，不持有 per-session 快照，因此 settings `env` 里的 `WAVE_SERVER_URL` 经 `setEnvironmentVars` 特例**镜像写入 `process.env`**，使这些单例能读到。优先级：`options.serverUrl` / stdio `initialize` 参数 > settings.json `env`（镜像到 `process.env`）> OS 环境变量 > 默认值。由于 `AuthService` 是进程单例（一个进程一个 server），同进程多会话的 `WAVE_SERVER_URL` 应为同值，镜像不造成跨会话污染。启动 401 竞态已通过 init 顺序消除（`loadCacheFromDisk` → `loadMergedConfiguration` 写入 `process.env` → `startBackgroundFetch` 读取）。
 - **SSO 认证 / 远端设置轮询为进程级单例**：`authService` 与 `remoteSettingsService` 是进程级单例（一个 `auth.json` / 远端设置缓存——按用户）。因此对于后台 token 刷新/远端设置轮询，**每个进程只有一个 `serverUrl`**；AI 网关/模型/密钥的解析本身仍是按会话进行的。
 - **基础设施子进程保持 OS-env-only**：git/worktree/LSP 等基础设施子进程只读取 OS 环境变量（`PATH`/`HOME`/`LC_ALL` 等），不合并会话快照。`WAVE_PLUGIN_GIT_TIMEOUT_MS`、`WAVE_SHELL`、`WAVE_GIT_BASH_PATH` 等"基础设施级"变量不从 settings.json `env` 读取，需通过 OS 环境设置。
-
-## 成功标准 *（必填）*
-
-### 可衡量结果
-
-- **SC-001**：开发者可以使用可选构造函数参数创建完全配置的 Agent 实例
-- **SC-002**：当未提供构造函数参数时，Agent 创建回退到环境变量
-- **SC-003**：当两个来源都缺少必需配置时（自定义请求头存在时的 `apiKey` 除外），Agent 创建失败并带有描述性错误消息
-- **SC-004**：当两者都存在时，构造函数参数覆盖环境变量
-- **SC-005**：与测试相关的环境变量继续像以前一样工作
-- **SC-006**：服务读取已解析的配置 / 会话级环境快照，而非直接访问 `process.env`（settings.json `env` 不写入 `process.env`）
-- **SC-007**：`maxTokens` 以正确的优先级正确应用于 AI 服务调用
-- **SC-008**：来自 `WAVE_CUSTOM_HEADERS` 的自定义请求头包含在发出的请求中
-- **SC-009**：代理以配置的语言响应，同时保留技术术语

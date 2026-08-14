@@ -6,7 +6,7 @@ order: 10
 
 # 功能规格说明：Hooks 支持
 
-**创建日期**：2024-12-19  
+**创建日期**：2024-12-19
 
 ## Hook 输出
 
@@ -16,9 +16,9 @@ Hook 有两种方式将输出返回给 Wave Agent。输出传达是否阻止以�
 
 Hook 通过退出码、stdout 和 stderr 传达状态：
 
-* **退出码 0**：成功。stdout 仅在 `UserPromptSubmit` 时添加到上下文中。
-* **退出码 2**：阻止性错误。`stderr` 反馈给 Wave 进行自动处理。参见下方各 hook 事件的行为。
-* **其他退出码**：非阻止性错误。`stderr` 显示给用户，执行继续。
+- **退出码 0**：成功。stdout 仅在 `UserPromptSubmit` 时添加到上下文中。
+- **退出码 2**：阻止性错误。`stderr` 反馈给 Wave 进行自动处理。参见下方各 hook 事件的行为。
+- **其他退出码**：非阻止性错误。`stderr` 显示给用户，执行继续。
 
 ::: warning
 提醒：如果退出码为 0，Wave Agent 不会看到 stdout，除了 `UserPromptSubmit` hook 的 stdout 会作为上下文注入。
@@ -26,20 +26,20 @@ Hook 通过退出码、stdout 和 stderr 传达状态：
 
 #### 退出码 2 行为
 
-| Hook 事件            | 行为                                                               |
-| ------------------ | ------------------------------------------------------------------ |
-| `PreToolUse`       | 阻止工具调用，向 Wave 显示 stderr                                    |
-| `PostToolUse`      | 向 Wave 显示 stderr 并允许 AI 继续（工具已执行）                       |
-| `UserPromptSubmit` | 阻止提示处理，清除提示，仅向用户显示 stderr                             |
-| `Stop`             | 阻止停止（AI 继续对话），向 Wave 显示 stderr                          |
-| `SubagentStop`     | 阻止停止（子代理继续），向 Wave 显示 stderr                            |
-| `PermissionRequest`| 阻止（拒绝）权限，仅向用户显示 stderr                                  |
-| `WorktreeCreate`   | 仅向用户显示 stderr（非阻止）                                         |
-| `WorktreeRemove`   | 仅向用户显示 stderr（非阻止）                                         |
-| `PreCompact`      | 非阻止；stderr 不显示给用户（静默丢弃），压缩继续                   |
-| `PostCompact`     | 仅向用户显示 stderr（非阻止）                                         |
+| Hook 事件           | 行为                                              |
+| ------------------- | ------------------------------------------------- |
+| `PreToolUse`        | 阻止工具调用，向 Wave 显示 stderr                 |
+| `PostToolUse`       | 向 Wave 显示 stderr 并允许 AI 继续（工具已执行）  |
+| `UserPromptSubmit`  | 阻止提示处理，清除提示，仅向用户显示 stderr       |
+| `Stop`              | 阻止停止（AI 继续对话），向 Wave 显示 stderr      |
+| `SubagentStop`      | 阻止停止（子代理继续），向 Wave 显示 stderr       |
+| `PermissionRequest` | 阻止（拒绝）权限，仅向用户显示 stderr             |
+| `WorktreeCreate`    | 仅向用户显示 stderr（非阻止）                     |
+| `WorktreeRemove`    | 仅向用户显示 stderr（非阻止）                     |
+| `PreCompact`        | 非阻止；stderr 不显示给用户（静默丢弃），压缩继续 |
+| `PostCompact`       | 仅向用户显示 stderr（非阻止）                     |
 
-## 用户场景与测试 *（必填）*
+## 用户场景与测试 _（必填）_
 
 ### 用户故事：配置 Hook 进行代码质量检查（优先级：P1）
 
@@ -97,7 +97,7 @@ Hook 通过退出码、stdout 和 stderr 传达状态：
 
 **验收场景**：
 
-1. **假设**配置了 PreToolUse hook 且 Write 工具即将执行，**当**hook 进程启动时，**则**它通过 stdin 接收 JSON，包含 session_id、transcript_path（路径格式为 ~/.wave/sessions/session_[id].json）、cwd、hook_event_name "PreToolUse"、tool_name "Write"，以及包含 file_path 和 content 字段的 tool_input
+1. **假设**配置了 PreToolUse hook 且 Write 工具即将执行，**当**hook 进程启动时，**则**它通过 stdin 接收 JSON，包含 session*id、transcript_path（路径格式为 ~/.wave/sessions/session*[id].json）、cwd、hook_event_name "PreToolUse"、tool_name "Write"，以及包含 file_path 和 content 字段的 tool_input
 2. **假设**配置了 PreToolUse hook 且 Read 工具即将执行，**当**hook 进程启动时，**则**它通过 stdin 接收包含 Read 工具相应 tool_input 模式的 JSON
 
 ---
@@ -350,14 +350,3 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 - 系统必须通过检查 `agent.messages` 不包含用户角色消息且助手消息中包含以 stderr 为内容的 `ErrorBlock` 来验证 `UserPromptSubmit` 阻止性错误
 - 系统必须确保 `ErrorBlock` 内容不被 `packages/agent-sdk/src/utils/convertMessagesForAPI.ts` 处理，使其仅用户可见且不发送给代理
 - 系统必须通过检查 `agent.messages` 包含带有 stderr 内容的用户角色消息来验证 `Stop` hook 阻止行为
-
-## 成功标准 *（必填）*
-
-### 可衡量结果
-
-- **SC-001**：所有 hook 执行在完成后 100ms 内正确解释退出码
-- **SC-002**：UserPromptSubmit hook stdout 注入在 10KB 以下上下文时 200ms 内完成
-- **SC-003**：阻止性错误在受影响的 hook 类型中 100% 阻止后续操作
-- **SC-004**：错误消息根据 hook 类型和退出码 100% 到达正确的接收者（Wave Agent 或用户）
-- **SC-005**：非阻止性错误在 100% 的情况下允许继续执行，同时仍向用户显示错误信息
-- **SC-006**：所有 hook 行为通过 agent.messages 验证模式一致可测试，判断正确实现的准确率为 100%
