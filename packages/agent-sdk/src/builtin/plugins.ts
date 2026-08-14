@@ -1,0 +1,225 @@
+export const sddPlugin: Record<string, string> = {
+  "plugins/sdd/.wave-plugin/plugin.json": `{
+  "name": "sdd",
+  "description": "Spec-first workflow: specify skill, SessionStart guidance, and spec-count validation.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Wave Team"
+  }
+}
+`,
+  "plugins/sdd/hooks/hooks.json": `{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \\"\${WAVE_PLUGIN_ROOT}/scripts/session-start.js\\""
+          }
+        ]
+      }
+    ]
+  }
+}
+`,
+  "plugins/sdd/scripts/session-start.js": `#!/usr/bin/env node
+// SessionStart hook for the sdd built-in plugin.
+// Emits the spec-first workflow guidance as additionalContext (JSON form),
+// resolving the absolute path to the plugin's spec-count validator so the
+// agent can run it from its bash tool (which does not carry WAVE_PLUGIN_ROOT).
+import path from "node:path";
+
+const root =
+  process.env.WAVE_PLUGIN_ROOT ||
+  path.dirname(new URL("..", import.meta.url).pathname);
+const specCount = \`node \${JSON.stringify(path.join(root, "scripts", "spec-count.js"))}\`;
+
+const guidance = [
+  "Spec-First Workflow（规格优先工作流）：",
+  "- 需求增加或变更时，优先更新 spec：先更新对应规格说明（新增用户故事、验收场景），待用户确认 spec 后再实现代码。spec 是功能设计的权威来源，不是 changelog。",
+  "- 边界模糊时也先写 spec 草稿请用户确认，不要直接改代码。",
+  "- 规格编写技能（specify）由 AI 自动触发：对话中涉及新需求或需求变更时主动创建或更新规格文件，不需要用户手动调用（不出现在斜杠命令列表中）。",
+  \`- 新增或修改 spec 后运行校验：\${specCount}（自动检测 docs/specs/，否则 specs/，否则退出）。\`,
+].join("\\n");
+
+// JSON form → parsed as hookSpecificOutput.additionalContext by the hook manager.
+console.log(
+  JSON.stringify({ hookSpecificOutput: { additionalContext: guidance } }),
+);
+`,
+  "plugins/sdd/scripts/spec-count.js": `#!/usr/bin/env node
+// Generic, self-contained spec validator. Counts user stories and acceptance
+// scenarios under the project's specs directory and warns on missing sections.
+// Detects the specs dir: prefers docs/specs/, else specs/, else exits gracefully.
+// No dependency on any project's VitePress/docs-site modules.
+import fs from "node:fs";
+import path from "node:path";
+
+function detectSpecsDir() {
+  for (const dir of ["docs/specs", "specs"]) {
+    const resolved = path.resolve(process.cwd(), dir);
+    if (fs.existsSync(resolved)) return resolved;
+  }
+  return null;
+}
+
+function walk(dir, out = []) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) walk(fullPath, out);
+    else if (entry.isFile() && entry.name.endsWith(".md")) out.push(fullPath);
+  }
+  return out;
+}
+
+function countUserStories(content) {
+  const m = content.match(/^### 用户故事[：:]/gm);
+  return m ? m.length : 0;
+}
+
+function countAcceptanceScenarios(content) {
+  const m = content.match(/^\\d+\\.\\s+\\*\\*假设\\*\\*/gm);
+  return m ? m.length : 0;
+}
+
+const specsDir = detectSpecsDir();
+if (!specsDir) {
+  console.log("未找到规格目录（docs/specs/ 或 specs/），跳过校验。");
+  process.exit(0);
+}
+
+const files = walk(specsDir).sort();
+const totals = { specs: 0, us: 0, ac: 0 };
+const warnings = [];
+
+// index.md is conventionally a directory listing page, not a spec — skip it.
+const specFiles = files.filter(
+  (fp) => path.basename(fp).toLowerCase() !== "index.md",
+);
+
+for (const fp of specFiles) {
+  const content = fs.readFileSync(fp, "utf-8");
+  const usCount = countUserStories(content);
+  const acCount = countAcceptanceScenarios(content);
+  const rel = path.relative(process.cwd(), fp);
+  totals.specs++;
+  totals.us += usCount;
+  totals.ac += acCount;
+  if (!content.match(/^## 用户场景与测试/m))
+    warnings.push(\`\${rel}: 缺少 "## 用户场景与测试" 章节\`);
+  if (usCount === 0)
+    warnings.push(\`\${rel}: 未找到用户故事（期望 \\\`### 用户故事：\\\`）\`);
+  if (acCount === 0)
+    warnings.push(
+      \`\${rel}: 未找到验收场景（期望 \\\`N. **假设** … **当** … **则** …\\\`）\`,
+    );
+  console.log(\`\${rel}  用户故事: \${usCount}  验收场景: \${acCount}\`);
+}
+
+console.log("---");
+console.log(
+  \`规格: \${totals.specs}  用户故事: \${totals.us}  验收场景: \${totals.ac}\`,
+);
+if (warnings.length) {
+  for (const w of warnings) console.warn(\`⚠ \${w}\`);
+  console.warn(\`⚠ \${warnings.length} 条模板警告——见上方。\`);
+}
+`,
+  "plugins/sdd/skills/specify/SKILL.md": `---
+name: specify
+description: 根据自然语言描述创建或更新功能规格说明，生成包含用户故事与验收场景的规格文件。
+user-invocable: false
+---
+
+## 用户输入
+
+\`\`\`text
+$ARGUMENTS
+\`\`\`
+
+## 流程
+
+本技能由 AI 在会话中自动触发（不占用手动斜杠命令）。触发时机：用户提出新的需求、修改需求或涉及功能边界时，若对应规格尚未创建或已过期，则主动创建或更新规格说明。$ARGUMENTS 通常为空——需求描述直接来自对话上下文，不要让用户重复。
+
+根据对话中的功能描述，执行以下步骤：
+
+1. **确定规格文件路径**：
+   - **确定规格根目录**：优先复用项目中已有的规格目录——若 \`docs/specs/\` 存在则用之，否则若 \`specs/\` 存在则用之，否则默认 \`specs/\`（并在完成报告中说明所选目录，便于用户纠正）。
+   - **选择分组**：若规格目录下已有分组子目录，沿用其既有分组约定；否则默认扁平结构（直接放在规格根目录下）。
+   - 根据功能描述生成 2-4 个词的 slug（小写、连字符、保留缩写词），与组内已有文件名不冲突
+   - 规格文件路径：\`<规格根目录>/<分组>/<slug>.md\`（无分组时为 \`<规格根目录>/<slug>.md\`）
+
+2. **加载模板** \`\${WAVE_SKILL_DIR}/templates/spec-template.md\`，了解必需章节。
+
+3. **编写规格说明**：
+   - 解析用户描述，提取关键概念：角色、操作、数据、约束
+   - 对于不明确的部分，根据上下文和行业标准做出合理推断
+   - 仅在关键决策处标记 \`[待澄清：具体问题]\`（最多 3 处）
+   - 填写 frontmatter（\`name\` 为功能中文名、\`description\` 为一句话简述、\`order\` 为控制组内排序的数字）
+   - 填写「用户场景与测试」章节，包含按优先级排序的用户故事（P1、P2、P3...），每个故事以「作为…，我希望…，以便…」描述，附 \`**为什么是这个优先级**\` 与 \`**独立测试**\`（不适用的可省略）
+   - 为每个用户故事编写可测试的验收场景（**假设** … **当** … **则** …）
+   - 写入规格文件，替换所有占位符
+
+4. **如果存在 \`[待澄清]\` 标记**（最多 3 处）：
+   - 将每个标记作为问题展示，附带建议答案
+   - 等待用户回复后更新规格文件
+
+5. 报告完成，输出规格文件路径。
+
+## 指南
+
+- 关注用户**需要什麼**和**为什么**，而非如何实现
+- 不包含实现细节（不涉及技术栈、API、代码结构）
+- 每个验收场景必须可测试、无歧义
+- 删除不适用的可选章节（不要留 "N/A"）
+`,
+  "plugins/sdd/skills/specify/templates/spec-template.md": `---
+name: "[功能名称]"
+description: "[一句话简短描述]"
+order: [数字，控制组内排序]
+---
+
+# 功能规格说明：[功能名称]
+
+**创建日期**：[日期]
+
+## 用户场景与测试 *（必填）*
+
+### 用户故事：[简要标题]（优先级：P1）
+
+作为[角色]，我希望[操作]，以便[价值/目的]。
+
+**为什么是这个优先级**：[解释其价值以及为何具有此优先级]
+
+**独立测试**：[描述如何独立测试——例如，"可以通过 [具体操作] 进行完整测试，并交付 [具体价值]"]
+
+**验收场景**：
+
+1. **假设** [初始状态]，**当** [操作]，**则** [预期结果]
+2. **假设** [初始状态]，**当** [操作]，**则** [预期结果]
+
+---
+
+### 用户故事：[简要标题]（优先级：P2）
+
+作为[角色]，我希望[操作]，以便[价值/目的]。
+
+**为什么是这个优先级**：[解释其价值以及为何具有此优先级]
+
+**独立测试**：[描述如何独立测试]
+
+**验收场景**：
+
+1. **假设** [初始状态]，**当** [操作]，**则** [预期结果]
+
+---
+
+[根据需要添加更多用户故事，每个都分配优先级]
+
+### 边界情况
+
+- **[问题？]** [答案/处理方式]
+- **[问题？]** [答案/处理方式]
+`,
+};

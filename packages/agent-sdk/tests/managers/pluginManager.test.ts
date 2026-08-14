@@ -33,6 +33,9 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 
 vi.mock("../../src/services/pluginLoader.js");
 vi.mock("../../src/services/MarketplaceService.js");
+vi.mock("../../src/utils/builtinEmbed.js", () => ({
+  ensureBuiltinMaterialized: () => "/fake-builtin-root",
+}));
 
 vi.mock("fs", async () => {
   const actual = await vi.importActual<typeof import("fs")>("fs");
@@ -488,7 +491,7 @@ describe("PluginManager", () => {
       // Non-directory entries (e.g. README.md) are skipped.
       expect(PluginLoader.loadManifest).toHaveBeenCalledTimes(1);
       expect(existsSync).toHaveBeenCalledWith(
-        expect.stringContaining(path.join("builtin", "plugins")),
+        expect.stringContaining(path.join("/fake-builtin-root", "plugins")),
       );
     });
 

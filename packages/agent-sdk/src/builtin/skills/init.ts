@@ -1,4 +1,5 @@
----
+export const initSkill: Record<string, string> = {
+  "skills/init/SKILL.md": `---
 name: init
 description: Analyze the codebase and create an AGENTS.md file to guide future agents.
 disable-model-invocation: true
@@ -21,8 +22,10 @@ Usage notes:
 - Do not make up information such as "Common Development Tasks", "Tips for Development", "Support and Documentation" unless this is expressly included in other files that you read.
 - Be sure to prefix the file with the following text:
 
-```
+\`\`\`
 # AGENTS.md
 
 This file provides guidance to Agent when working with code in this repository.
-```
+\`\`\`
+`,
+};

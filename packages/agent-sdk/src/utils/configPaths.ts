@@ -10,52 +10,30 @@
  * - Project configs override user configs (existing behavior)
  */
 
-import { join, dirname } from "path";
+import { join } from "path";
 import { homedir } from "os";
 import { existsSync } from "fs";
-import { fileURLToPath } from "url";
-import { findUpSync } from "find-up";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-/**
- * Resolve the package root directory by finding the nearest package.json.
- * Works correctly even when bundled (e.g. esbuild into a VS Code extension),
- * as long as vendor/ and builtin/ remain alongside package.json on disk.
- */
-let _packageRoot: string | undefined;
-export function getPackageRoot(): string {
-  if (_packageRoot) return _packageRoot;
-  const pkgPath = findUpSync("package.json", { cwd: __dirname });
-  if (pkgPath) {
-    _packageRoot = dirname(pkgPath);
-    return _packageRoot;
-  }
-  // Fallback: relative to this file (works during development)
-  _packageRoot = join(__dirname, "..", "..");
-  return _packageRoot;
-}
+import { ensureBuiltinMaterialized } from "./builtinEmbed.js";
 
 /**
  * Get the builtin skills directory path
  */
 export function getBuiltinSkillsDir(): string {
-  return join(getPackageRoot(), "builtin", "skills");
+  return join(ensureBuiltinMaterialized(), "skills");
 }
 
 /**
  * Get the builtin subagents directory path
  */
 export function getBuiltinSubagentsDir(): string {
-  return join(getPackageRoot(), "builtin", "subagents");
+  return join(ensureBuiltinMaterialized(), "subagents");
 }
 
 /**
  * Get the builtin plugins directory path
  */
 export function getBuiltinPluginsDir(): string {
-  return join(getPackageRoot(), "builtin", "plugins");
+  return join(ensureBuiltinMaterialized(), "plugins");
 }
 
 /**
