@@ -98,6 +98,8 @@
     "type-check": "tsc --noEmit --incremental && tsc -p tests --noEmit --incremental",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run",
+    "test:unit:coverage": "vitest run --coverage",
     "preinstall:vsix": "pnpm run package",
     "install:vsix": "code --install-extension releases/*.vsix",
     "push:tag": "git push origin $(git describe --tags --abbrev=0)"

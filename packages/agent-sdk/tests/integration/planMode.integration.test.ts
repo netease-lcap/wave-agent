@@ -59,6 +59,16 @@ describe("Plan Mode Integration", () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     expect(fs.mkdir).toHaveBeenCalledWith(planDir, { recursive: true });
+
+    // Unified with the former exitPlanMode path-generation case: the plan
+    // dir is created and a random .md plan file path is resolved.
+    const planFilePath = (
+      agent as unknown as {
+        permissionManager: { getPlanFilePath: () => string | undefined };
+      }
+    ).permissionManager.getPlanFilePath();
+    expect(planFilePath).toBeDefined();
+    expect(planFilePath).toContain(".md");
   });
 
   it("should include plan reminder in messages when in plan mode", async () => {

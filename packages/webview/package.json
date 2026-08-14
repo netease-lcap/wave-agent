@@ -21,6 +21,8 @@
     "lint": "eslint --cache",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run",
+    "test:unit:coverage": "vitest run --coverage",
     "pretest:demo": "pnpm run type-check && tsc -p e2e --noEmit && pnpm run compile",
     "test:demo": "playwright test --project=demo"
   },
