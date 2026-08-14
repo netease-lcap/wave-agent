@@ -1134,6 +1134,49 @@ describe("agent notifications", () => {
     ]);
   });
 
+  it("mirrors an error block under the LATEST user message — new assistant message, not the stale one from a previous turn", async () => {
+    const { sent } = await readyHost();
+    const agent = lastAgent();
+    const userMsg = {
+      id: "u1",
+      role: "user",
+      blocks: [{ type: "text", content: "你好" }],
+    };
+    const assistantMsg = {
+      id: "a1",
+      role: "assistant",
+      blocks: [{ type: "text", content: "好的" }],
+    };
+    const latestUserMsg = {
+      id: "u2",
+      role: "user",
+      blocks: [{ type: "text", content: "帮我执行 X" }],
+    };
+    agent.messages = [userMsg, assistantMsg, latestUserMsg];
+
+    agent.callbacks.onErrorBlockAdded("插件执行失败");
+
+    // The error belongs below the LATEST user message: appending to the
+    // previous turn's assistant would surface it above the newest message
+    // and accumulate there across repeated errors.
+    expect(agent.messages).toHaveLength(4);
+    const errorMessage = agent.messages[3] as {
+      role: string;
+      blocks: Array<{ type: string; content: string }>;
+    };
+    expect(errorMessage.role).toBe("assistant");
+    expect(errorMessage.blocks).toEqual([
+      { type: "error", content: "插件执行失败" },
+    ]);
+    // Previous turn's assistant message is left untouched.
+    expect(
+      (agent.messages[1] as { blocks: unknown[] }).blocks,
+    ).toHaveLength(1);
+    expect(sent("updateErrorBlock")).toEqual([
+      expect.objectContaining({ error: "插件执行失败" }),
+    ]);
+  });
+
   it("streaming content deltas are mirrored into the agent cache so a session switch shows the full assistant reply", async () => {
     const { host, sent } = await readyHost();
     const agent = lastAgent();

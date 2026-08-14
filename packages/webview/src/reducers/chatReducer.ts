@@ -441,43 +441,36 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       const { error } = action.payload;
       const newErrorBlock: ErrorBlock = { type: "error", content: error };
 
-      // Find the last assistant message
-      let targetIndex = -1;
-      for (let i = state.messages.length - 1; i >= 0; i--) {
-        if (state.messages[i].role === "assistant") {
-          targetIndex = i;
-          break;
-        }
-      }
-
-      // No assistant message yet (e.g. API error before any streaming chunk).
-      // Create one to carry the error block instead of silently dropping it.
-      if (targetIndex === -1) {
-        const errorMessage: Message = {
-          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-          role: "assistant",
-          timestamp: new Date().toISOString(),
-          blocks: [newErrorBlock],
-        };
+      // Append to the LAST message only if it is an assistant message — that
+      // message is the current turn's in-flight reply. If the last message is
+      // a user message (the previous turn's assistant already finished), the
+      // error belongs BELOW that user message: create a new assistant message
+      // to carry it instead of polluting the stale assistant from an earlier
+      // turn (which surfaced the error above the latest user message).
+      const lastMessage = state.messages[state.messages.length - 1];
+      if (lastMessage && lastMessage.role === "assistant") {
+        const newBlocks = [...lastMessage.blocks, newErrorBlock];
         return {
           ...state,
-          messages: [...state.messages, errorMessage],
+          messages: state.messages.map((m, idx) =>
+            idx === state.messages.length - 1
+              ? { ...m, blocks: newBlocks }
+              : m,
+          ),
         };
       }
 
-      const message = state.messages[targetIndex];
-      const newBlocks = [...message.blocks, newErrorBlock];
-
-      const newMessages = state.messages.map((m, idx) => {
-        if (idx === targetIndex) {
-          return { ...m, blocks: newBlocks };
-        }
-        return m;
-      });
-
+      // Last message is a user message (or none yet). Create a new assistant
+      // message to carry the error block instead of silently dropping it.
+      const errorMessage: Message = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+        role: "assistant",
+        timestamp: new Date().toISOString(),
+        blocks: [newErrorBlock],
+      };
       return {
         ...state,
-        messages: newMessages,
+        messages: [...state.messages, errorMessage],
       };
     }
     // Bang message incremental updates (keyed by messageId). Mirrors the CLI's
