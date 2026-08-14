@@ -61,7 +61,23 @@ describe("Hook real-command execution (spec automation/hooks.md)", () => {
       await agent.destroy();
       agent = undefined;
     }
-    fs.rmSync(workdir, { recursive: true, force: true });
+    // The async-hook case spawns a detached child whose cwd is the temp dir;
+    // on Windows the process handle may still hold the directory open for a
+    // moment after it exits, so retry the cleanup on EBUSY/EPERM instead of
+    // failing the whole suite.
+    for (let attempt = 0; attempt < 50; attempt++) {
+      try {
+        fs.rmSync(workdir, { recursive: true, force: true });
+        break;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "EBUSY" || code === "EPERM") {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          continue;
+        }
+        throw error;
+      }
+    }
   });
 
   it("blocks the tool and surfaces stderr when PreToolUse exits 2 (hooks.md / Hook 阻止性错误处理 / 场景 1)", async () => {
