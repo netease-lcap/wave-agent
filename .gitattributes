@@ -1,0 +1,22 @@
+# 文本文件：仓库统一存 LF，checkout 也一律 LF（覆盖各人 core.autocrlf 配置）
+* text=auto eol=lf
+
+# Windows 批处理脚本必须 CRLF
+*.bat text eol=crlf
+
+# 无扩展名的 Unix 脚本 / shell 脚本强制 LF
+gradlew text eol=lf
+*.sh text eol=lf
+
+# 二进制文件禁止任何转换
+*.jar binary
+*.png binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.eot binary
+*.ttf binary
+*.gif binary
+*.zip binary
+*.pdf binary
