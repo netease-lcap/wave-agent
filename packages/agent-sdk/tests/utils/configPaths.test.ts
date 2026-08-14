@@ -11,10 +11,17 @@ import {
   hasAnyConfig,
   getConfigurationInfo,
   getPluginsDir,
+  getBuiltinSkillsDir,
+  getBuiltinSubagentsDir,
+  getBuiltinPluginsDir,
 } from "../../src/utils/configPaths.js";
 import { join } from "path";
 import { homedir } from "os";
 import * as fs from "fs";
+
+vi.mock("../../src/utils/builtinEmbed.js", () => ({
+  ensureBuiltinMaterialized: () => "/fake-builtin-root",
+}));
 
 vi.mock("fs", async () => {
   const actual = await vi.importActual<typeof import("fs")>("fs");
@@ -57,6 +64,14 @@ describe("configPaths", () => {
 
   it("getPluginsDir returns correct path", () => {
     expect(getPluginsDir()).toBe(join(home, ".wave", "plugins"));
+  });
+
+  it("builtin dir getters point into the materialized cache", () => {
+    expect(getBuiltinSkillsDir()).toBe(join("/fake-builtin-root", "skills"));
+    expect(getBuiltinSubagentsDir()).toBe(
+      join("/fake-builtin-root", "subagents"),
+    );
+    expect(getBuiltinPluginsDir()).toBe(join("/fake-builtin-root", "plugins"));
   });
 
   it("getAllConfigPaths returns all paths", () => {

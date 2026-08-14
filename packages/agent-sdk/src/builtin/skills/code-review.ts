@@ -1,7 +1,16 @@
----
+import {
+  AGENT_TOOL_NAME,
+  BASH_TOOL_NAME,
+  GLOB_TOOL_NAME,
+  GREP_TOOL_NAME,
+  READ_TOOL_NAME,
+} from "../../constants/tools.js";
+
+export const code_reviewSkill: Record<string, string> = {
+  "skills/code-review/SKILL.md": `---
 name: code-review
 description: Review the current diff for correctness bugs and reuse/simplification/efficiency cleanups at the given effort level (low/medium: fewer, high-confidence findings; high/max: broader coverage, may include lower-confidence findings)
-allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git blame:*), Bash(git remote:*), Bash(command -v:*), Bash(gh pr comment:*), Bash(gh pr view:*), Bash(glab mr note:*), Bash(glab mr view:*), Read, Glob, Grep, Agent
+allowed-tools: ${BASH_TOOL_NAME}(git diff:*), ${BASH_TOOL_NAME}(git status:*), ${BASH_TOOL_NAME}(git log:*), ${BASH_TOOL_NAME}(git show:*), ${BASH_TOOL_NAME}(git blame:*), ${BASH_TOOL_NAME}(git remote:*), ${BASH_TOOL_NAME}(command -v:*), ${BASH_TOOL_NAME}(gh pr comment:*), ${BASH_TOOL_NAME}(gh pr view:*), ${BASH_TOOL_NAME}(glab mr note:*), ${BASH_TOOL_NAME}(glab mr view:*), ${READ_TOOL_NAME}, ${GLOB_TOOL_NAME}, ${GREP_TOOL_NAME}, ${AGENT_TOOL_NAME}
 disable-model-invocation: true
 ---
 
@@ -13,25 +22,25 @@ Review the current branch's changes for correctness bugs and quality issues.
 
 First, collect the diff and metadata:
 
-```
+\`\`\`
 GIT STATUS:
-!`git status`
+!\`git status\`
 
 FILES MODIFIED:
-!`git diff --name-only $(git merge-base HEAD main)...HEAD 2>/dev/null || git diff --name-only HEAD~1...HEAD`
+!\`git diff --name-only $(git merge-base HEAD main)...HEAD 2>/dev/null || git diff --name-only HEAD~1...HEAD\`
 
 COMMITS:
-!`git log --no-decorate $(git merge-base HEAD main 2>/dev/null || echo HEAD~1)...HEAD`
+!\`git log --no-decorate $(git merge-base HEAD main 2>/dev/null || echo HEAD~1)...HEAD\`
 
 DIFF CONTENT:
-!`git diff $(git merge-base HEAD main 2>/dev/null || echo HEAD~1)...HEAD`
-```
+!\`git diff $(git merge-base HEAD main 2>/dev/null || echo HEAD~1)...HEAD\`
+\`\`\`
 
 If there are no changes, stop and tell the user.
 
 ## Phase 2: Determine Effort Level
 
-Parse `$ARGUMENTS` for an effort level:
+Parse \`$ARGUMENTS\` for an effort level:
 - **low**: Launch 2 agents, confidence threshold 90 (only near-certain findings)
 - **medium** (default): Launch 3 agents, confidence threshold 80
 - **high**: Launch 4 agents, confidence threshold 70
@@ -39,7 +48,7 @@ Parse `$ARGUMENTS` for an effort level:
 
 ## Phase 3: Launch Review Agents in Parallel
 
-Use the Agent tool to launch all agents concurrently in a single message. Pass each agent the full diff so it has the complete context.
+Use the ${AGENT_TOOL_NAME} tool to launch all agents concurrently in a single message. Pass each agent the full diff so it has the complete context.
 
 ### Agent 1: Bug Scanner (all effort levels)
 
@@ -63,7 +72,7 @@ Review the changes for efficiency: unnecessary work, missed concurrency, hot-pat
 
 ## Phase 4: Confidence Scoring
 
-For each issue found in Phase 3, launch a parallel Agent to independently score the issue. The scoring agent receives the PR diff, the issue description, and the list of AGENTS.md files (if any). It returns a confidence score from 0-100.
+For each issue found in Phase 3, launch a parallel ${AGENT_TOOL_NAME} to independently score the issue. The scoring agent receives the PR diff, the issue description, and the list of AGENTS.md files (if any). It returns a confidence score from 0-100.
 
 Give the scoring agent this rubric verbatim:
 
@@ -79,18 +88,18 @@ Give the scoring agent this rubric verbatim:
 2. If no issues remain, say so and stop — do not post anything.
 3. Otherwise, detect the platform and CLI availability:
 
-```
+\`\`\`
 REMOTE URL:
-!`git remote get-url origin 2>/dev/null || echo "no-remote"`
+!\`git remote get-url origin 2>/dev/null || echo "no-remote"\`
 
 GH CLI:
-!`command -v gh 2>/dev/null || echo "not-installed"`
+!\`command -v gh 2>/dev/null || echo "not-installed"\`
 
 GLAB CLI:
-!`command -v glab 2>/dev/null || echo "not-installed"`
-```
+!\`command -v glab 2>/dev/null || echo "not-installed"\`
+\`\`\`
 
-4. **Post as comment** (preferred): If the remote URL contains `github` and `gh` is installed, check if a PR exists for the current branch (`gh pr view --json number`), then post the review as a comment: `gh pr comment --body "<review content>"`. If the remote URL contains `gitlab` and `glab` is installed, check if an MR exists for the current branch (`glab mr view`), then post the review as a note: `glab mr note --message "<review content>"`.
+4. **Post as comment** (preferred): If the remote URL contains \`github\` and \`gh\` is installed, check if a PR exists for the current branch (\`gh pr view --json number\`), then post the review as a comment: \`gh pr comment --body "<review content>"\`. If the remote URL contains \`gitlab\` and \`glab\` is installed, check if an MR exists for the current branch (\`glab mr view\`), then post the review as a note: \`glab mr note --message "<review content>"\`.
 5. **Output directly** (fallback): If no CLI is installed, no PR/MR exists, or the platform is unrecognized, output the findings directly instead.
 
 Whether posting or outputting, use this format:
@@ -103,11 +112,11 @@ Found N issues:
 
 1. <brief description of bug> (AGENTS.md says "<...>")
 
-   `<file>:<line range>`
+   \`<file>:<line range>\`
 
 2. <brief description of bug> (bug due to <file and code snippet>)
 
-   `<file>:<line range>`
+   \`<file>:<line range>\`
 
 ---
 
@@ -135,3 +144,5 @@ Examples of false positives to exclude:
 ## Input
 
 $ARGUMENTS
+`,
+};
