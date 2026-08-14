@@ -29,11 +29,18 @@ describe("editTool serialization (real fs)", () => {
     const content = await readFile(tempFile, "utf-8");
     const readFileState = new Map<
       string,
-      { mtime: number; hash: string; offset?: number; limit?: number }
+      {
+        mtime: number;
+        hash: string;
+        source: "read";
+        offset?: number;
+        limit?: number;
+      }
     >();
     readFileState.set(tempFile, {
       mtime: stats.mtime.getTime(),
       hash: createHash("sha256").update(content).digest("hex"),
+      source: "read",
     });
 
     context = {

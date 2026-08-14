@@ -179,7 +179,13 @@ export class AIManager {
   /** Tracks file mtime/hash at read time for staleness detection on Edit/Write */
   private readFileState = new Map<
     string,
-    { mtime: number; hash: string; offset?: number; limit?: number }
+    {
+      mtime: number;
+      hash: string;
+      source: "read" | "edit" | "write";
+      offset?: number;
+      limit?: number;
+    }
   >();
   /** Override tool_choice for this AI manager (e.g. for structured output) */
   public toolChoiceOverride?:
@@ -700,6 +706,11 @@ export class AIManager {
         compactUsage,
       );
 
+      // Clear readFileState after compaction (aligned with Claude Code's
+      // compact flow): a file_unchanged stub would otherwise reference Read
+      // results that were just folded away. Clearing forces a real re-read.
+      this.readFileState.clear();
+
       // Re-add plan mode reminder as persistent meta message after compaction
       const postCompactMode = this.permissionManager?.getCurrentEffectiveMode(
         this.getModelConfig().permissionMode,
@@ -883,7 +894,13 @@ export class AIManager {
     // leaks into the main session's dedup and staleness tracking.
     const forkReadFileState = new Map<
       string,
-      { mtime: number; hash: string; offset?: number; limit?: number }
+      {
+        mtime: number;
+        hash: string;
+        source: "read" | "edit" | "write";
+        offset?: number;
+        limit?: number;
+      }
     >();
 
     let totalUsage: ForkLoopResult["usage"];

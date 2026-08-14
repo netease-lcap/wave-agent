@@ -216,6 +216,7 @@ Usage:
         context.readFileState.set(resolvedPath, {
           mtime: newStats.mtime.getTime(),
           hash,
+          source: "write",
           offset: undefined,
           limit: undefined,
         });

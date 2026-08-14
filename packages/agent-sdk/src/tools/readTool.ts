@@ -246,13 +246,15 @@ Usage:
       const stats = await stat(actualFilePath);
 
       // Deduplication: only dedup if the exact same range was read before
+      // (aligned with Claude Code — full reads dedup too). Entries written by
+      // Edit/Write have source "edit"/"write" and never dedup, so a file that
+      // was written before its first Read is still returned in full.
       if (context.readFileState) {
         const state = context.readFileState.get(actualFilePath);
-        // Only dedup entries from a prior Read with explicit offset (not Edit/Write entries)
         if (
           state &&
-          state.mtime === stats.mtime.getTime() &&
-          state.offset !== undefined
+          state.source === "read" &&
+          state.mtime === stats.mtime.getTime()
         ) {
           const rangeMatch = state.offset === offset && state.limit === limit;
           if (rangeMatch) {
@@ -293,6 +295,7 @@ Usage:
         context.readFileState.set(actualFilePath, {
           mtime: stats.mtime.getTime(),
           hash,
+          source: "read",
           offset, // undefined for full reads
           limit, // undefined for full reads
         });
