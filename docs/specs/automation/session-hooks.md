@@ -6,9 +6,9 @@ order: 20
 
 # 功能规格说明：会话生命周期钩子
 
-**创建日期**：2026-08-02  
+**创建日期**：2026-08-02
 
-## 用户场景与测试 *（必填）*
+## 用户场景与测试 _（必填）_
 
 ### 用户故事：运行时恢复会话触发生命周期钩子（优先级：P1）
 
@@ -82,13 +82,3 @@ order: 20
 - 必须通过 `Agent.create({ restoreSessionId })` 验证启动路径 SessionStart 以 `"startup"` source 执行且不执行 SessionEnd
 - 必须通过传入与当前会话相同的 sessionId 验证无操作路径不执行任何钩子
 - 必须通过 `hookManager.executeSessionStartHooks("resume", ...)` 与 `executeSessionEndHooks("resume", ...)` 的单元测试验证钩子上下文中的 `source` / `end_source` 字段透传
-
-## 成功标准 *（必填）*
-
-### 可衡量结果
-
-- **SC-001**：运行时 `restoreSession` 100% 按 SessionEnd（`"resume"`）→ SessionStart（`"resume"`）顺序执行钩子
-- **SC-002**：SessionStart 钩子输出 `additionalContext` 时 100% 以 meta 用户消息注入恢复后的对话
-- **SC-003**：启动恢复路径行为不变：SessionStart 以 `"startup"` source 执行且无 SessionEnd，回归测试 100% 通过
-- **SC-004**：启动恢复与运行时恢复两条路径零重叠，运行时切换每次恰好触发一对 SessionEnd/SessionStart（`"resume"`），无双触发
-- **SC-005**：钩子失败（SessionEnd/SessionStart）100% 被捕获并记录警告，会话切换 100% 继续完成
