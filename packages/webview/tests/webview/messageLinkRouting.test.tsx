@@ -5,13 +5,12 @@ import { Message } from "../../src/components/Message";
 import { createMockVscode } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 
-// in the desktop host, any http(s) link opens the preview pane (spec scenario
-// 1); non-http(s) links (mailto:, file:) go to the system default app via
-// openExternal (scenario 2). IDE hosts must keep their native link handling
-// (no interception at all).
+// in the desktop host, localhost links open the preview pane and all
+// other links go to the system browser via openExternal. IDE hosts must keep
+// their native link handling (no interception at all).
 
 const CONTENT =
-  "preview [local app](http://localhost:5173/app) then [docs](https://example.com/docs) then [mail](mailto:dev@example.com)";
+  "preview [local app](http://localhost:5173/app) then [docs](https://example.com/docs)";
 
 function renderMessage(options?: {
   onOpenPreview?: (url: string) => void;
@@ -40,7 +39,6 @@ function renderMessage(options?: {
     vscode,
     localLink: links[0] as HTMLElement,
     externalLink: links[1] as HTMLElement,
-    mailLink: links[2] as HTMLElement,
   };
 }
 
@@ -63,61 +61,20 @@ describe("Message link routing", () => {
     expect(notPrevented).toBe(false); // default navigation prevented
   });
 
-  it("desktop host: non-localhost http(s) link opens the preview pane", () => {
+  it("desktop host: non-localhost link goes to the system browser", () => {
     const onOpenPreview = vi.fn();
     const { vscode, externalLink } = renderMessage({
       onOpenPreview,
       hostType: "desktop",
     });
 
-    const notPrevented = fireEvent.click(externalLink);
-
-    expect(onOpenPreview).toHaveBeenCalledWith("https://example.com/docs");
-    expect(vscode.postMessage).not.toHaveBeenCalled();
-    expect(notPrevented).toBe(false); // default navigation prevented
-  });
-
-  it("desktop host: non-http(s) link goes to the system default app", () => {
-    const onOpenPreview = vi.fn();
-    const { vscode, mailLink } = renderMessage({
-      onOpenPreview,
-      hostType: "desktop",
-    });
-
-    fireEvent.click(mailLink);
+    fireEvent.click(externalLink);
 
     expect(onOpenPreview).not.toHaveBeenCalled();
     expect(vscode.postMessage).toHaveBeenCalledWith({
       command: "openExternal",
-      url: "mailto:dev@example.com",
+      url: "https://example.com/docs",
     });
-  });
-
-  it("desktop host: artifact page link opens the system browser, not the preview pane", () => {
-    // Artifact pages are private and auth'd via the SSO session, which the
-    // sandboxed preview <webview> cannot carry — route them to the system
-    // browser where the user's browser SSO login applies.
-    const onOpenPreview = vi.fn();
-    const { vscode, container } = renderMessage({
-      onOpenPreview,
-      hostType: "desktop",
-      content:
-        "artifact [page](https://codechat.codewave.163.com/code/artifact/abc123) then [normal](https://example.com/docs)",
-    });
-    const links = container.querySelectorAll(".message-content-container a");
-
-    const notPrevented = fireEvent.click(links[0] as HTMLElement);
-
-    expect(onOpenPreview).not.toHaveBeenCalled();
-    expect(vscode.postMessage).toHaveBeenCalledWith({
-      command: "openExternal",
-      url: "https://codechat.codewave.163.com/code/artifact/abc123",
-    });
-    expect(notPrevented).toBe(false); // default navigation prevented
-
-    // Non-artifact http(s) links still open in the preview pane.
-    fireEvent.click(links[1] as HTMLElement);
-    expect(onOpenPreview).toHaveBeenCalledWith("https://example.com/docs");
   });
 
   it("desktop host without onOpenPreview: localhost link falls back to external browser", () => {
