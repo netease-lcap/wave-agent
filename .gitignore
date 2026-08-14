@@ -2,7 +2,7 @@ node_modules/
 dist/
 build/
 .eslintcache
-tsconfig.tsbuildinfo
+*.tsbuildinfo
 *.log
 .env*
 coverage/

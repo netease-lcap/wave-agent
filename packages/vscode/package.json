@@ -95,7 +95,7 @@
     "sync:webview": "node scripts/syncWebview.mjs",
     "esbuild:prod": "node esbuild.config.mjs --production && node scripts/syncWebview.mjs --production",
     "package": "node scripts/package.mjs",
-    "type-check": "tsc --noEmit && tsc -p tests --noEmit",
+    "type-check": "tsc --noEmit --incremental && tsc -p tests --noEmit --incremental",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "preinstall:vsix": "pnpm run package",

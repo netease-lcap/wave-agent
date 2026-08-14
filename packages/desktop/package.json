@@ -16,7 +16,7 @@
     "dev": "pnpm run compile && node scripts/dev.mjs",
     "dist": "pnpm run compile && electron-builder",
     "clean": "node -e \"import('fs').then(fs => ['dist', 'release', 'webview'].forEach(d => {try{fs.rmSync(d, {recursive:true, force:true})}catch(e){}}))\"",
-    "type-check": "tsc --noEmit && tsc -p tests --noEmit",
+    "type-check": "tsc --noEmit --incremental && tsc -p tests --noEmit --incremental",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint --cache",

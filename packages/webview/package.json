@@ -17,7 +17,7 @@
     "clean": "node -e \"import('fs').then(fs => {try{fs.rmSync('dist', {recursive:true, force:true})}catch(e){}})\"",
     "compile": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
-    "type-check": "tsc --noEmit && tsc -p tests --noEmit",
+    "type-check": "tsc --noEmit --incremental && tsc -p tests --noEmit --incremental",
     "lint": "eslint --cache",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",

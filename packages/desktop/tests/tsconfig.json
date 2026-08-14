@@ -2,6 +2,7 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "rootDir": "..",
+    "tsBuildInfoFile": "./tsconfig.tests.tsbuildinfo",
     "types": ["node", "vitest/globals"]
   },
   "include": ["../src/**/*", "./**/*"]
