@@ -36,6 +36,11 @@ intellijPlatform {
             untilBuild = provider { null }
         }
     }
+    publishing {
+        // Supplied as -PintellijPublishToken (GitHub Actions secret); orNull so
+        // local builds without the property still configure fine.
+        token = providers.gradleProperty("intellijPublishToken").orNull
+    }
 }
 
 // Copy webview assets (chat.js/chat.css) from packages/webview/dist into resources.
