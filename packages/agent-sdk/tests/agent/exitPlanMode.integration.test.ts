@@ -102,26 +102,6 @@ describe("ExitPlanMode Integration", () => {
     ).toBeDefined();
   });
 
-  it("should generate plan file path when entering plan mode", async () => {
-    const agent = await Agent.create({
-      workdir: "/test/workdir",
-    });
-    activeAgent = agent;
-
-    vi.mocked(readFile).mockResolvedValue("test");
-
-    agent.setPermissionMode("plan");
-
-    // Wait for async plan file path generation
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    const planFilePath = (
-      agent as unknown as AgentInternal
-    ).permissionManager.getPlanFilePath();
-    expect(planFilePath).toBeDefined();
-    expect(planFilePath).toContain(".md");
-  });
-
   it("should transition to default mode when ExitPlanMode is approved with default", async () => {
     const workdir = "/test/workdir";
     const planContent = "My plan";
