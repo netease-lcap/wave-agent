@@ -59,7 +59,12 @@ describe("worktreeUtils with real git", () => {
     });
     try {
       expect(info.isNew).toBe(true);
-      expect(info.repoRoot).toBe(repoRoot);
+      // git reports POSIX long paths (C:/Users/runneradmin/...) while
+      // os.tmpdir()/mkdtemp can yield 8.3 short names (C:\Users\RUNNER~1\...)
+      // on Windows — compare resolved real paths with normalized separators.
+      const normalize = (p: string) =>
+        path.resolve(fs.realpathSync(p)).split(/[\\/]/).join("/");
+      expect(normalize(info.repoRoot)).toBe(normalize(repoRoot));
       expect(fs.existsSync(info.path)).toBe(true);
 
       // The dedicated worktree branch exists in the real repo.

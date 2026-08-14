@@ -5,18 +5,25 @@ import { MessageManager } from "../src/managers/messageManager.js";
 import { Container } from "../src/utils/container.js";
 import { Task } from "../src/types/tasks.js";
 
-// Mock dependencies
-vi.mock("fs", () => ({
-  promises: {
+// Mock dependencies. Default export included for the same reason as in
+// 718be909: on a real win32 runner resolveShellPath() default-imports fs and
+// probes Git Bash via fs.existsSync.
+vi.mock("fs", () => {
+  const promises = {
     readdir: vi.fn().mockResolvedValue([]),
     mkdir: vi.fn().mockResolvedValue(undefined),
     open: vi.fn(),
     writeFile: vi.fn().mockResolvedValue(undefined),
     readFile: vi.fn(),
     unlink: vi.fn().mockResolvedValue(undefined),
-  },
-  existsSync: vi.fn(() => false),
-}));
+  };
+  const existsSync = vi.fn(() => false);
+  return {
+    promises,
+    existsSync,
+    default: { promises, existsSync },
+  };
+});
 
 vi.mock("fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),

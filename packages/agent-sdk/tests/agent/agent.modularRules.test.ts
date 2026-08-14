@@ -7,9 +7,12 @@ import type { PathLike } from "fs";
 import type { FileHandle } from "fs/promises";
 import * as path from "node:path";
 
-// Mock both fs import patterns
-vi.mock("fs", () => ({
-  promises: {
+// Mock both fs import patterns. A default export is required too: on a real
+// win32 runner resolveShellPath() default-imports fs and probes Git Bash via
+// fs.existsSync, which would crash with "No default export is defined on the
+// fs mock" (same gap as 718be909).
+vi.mock("fs", () => {
+  const promises = {
     rm: vi.fn(),
     readFile: vi.fn(),
     writeFile: vi.fn(),
@@ -18,9 +21,14 @@ vi.mock("fs", () => ({
     readdir: vi.fn(),
     stat: vi.fn(),
     realpath: vi.fn((p) => Promise.resolve(p)),
-  },
-  existsSync: vi.fn(() => false),
-}));
+  };
+  const existsSync = vi.fn(() => false);
+  return {
+    promises,
+    existsSync,
+    default: { promises, existsSync },
+  };
+});
 
 vi.mock("fs/promises", () => ({
   rm: vi.fn(),
