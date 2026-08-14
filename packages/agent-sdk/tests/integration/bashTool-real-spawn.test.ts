@@ -85,6 +85,22 @@ describe("bashTool with real shell spawn", () => {
     expect(result.content).toContain("3");
   });
 
+  // Spec bash-tools.md / 跨平台显式 shell 解析 / 场景 1: process
+  // substitution needs a real bash/zsh, /bin/sh (dash on Debian/Ubuntu)
+  // fails with "syntax error near '('".
+  it.skipIf(isWindows)(
+    "executes bash-only process substitution without syntax errors (bash-tools.md / 跨平台显式 shell 解析 / 场景 1)",
+    async () => {
+      const result = await bashTool.execute(
+        { command: "comm -23 <(echo a) <(echo b)" },
+        makeContext(workdir),
+      );
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("a");
+      expect(result.content).not.toContain("syntax error");
+    },
+  );
+
   it.skipIf(isWindows)("reports a cwd change through onCwdChange", async () => {
     const context = makeContext(workdir);
     let changedTo: string | undefined;
