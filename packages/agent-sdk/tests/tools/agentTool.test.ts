@@ -211,6 +211,308 @@ describe("Agent Tool Background Execution", () => {
     });
   });
 
+  it("should show last ONE tool plus the streaming text tail while text is streaming", async () => {
+    const mockInstance = {
+      subagentId: "gp-test-id",
+      usedTools: [
+        {
+          name: "Read",
+          parameters: '{"file_path":"file1.txt"}',
+          compactParams: "file1.txt",
+          stage: "running",
+        },
+        {
+          name: "Write",
+          parameters: '{"file_path":"file2.txt"}',
+          compactParams: "file2.txt",
+          stage: "running",
+        },
+      ],
+      messageManager: {
+        getMessages: vi.fn(() => [
+          { blocks: [{ type: "tool" }, { type: "tool" }] },
+          {
+            blocks: [
+              {
+                type: "text",
+                content: "Let me verify the fix now",
+                stage: "streaming",
+              },
+            ],
+          },
+        ]),
+        getLatestTotalTokens: vi.fn(() => 1000),
+      },
+    };
+
+    let capturedShortResult = "";
+    const contextWithCallback: ToolContext = {
+      ...mockToolContext,
+      onShortResultUpdate: (sr) => {
+        capturedShortResult = sr;
+      },
+    };
+
+    vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);
+    vi.mocked(mockSubagentManager.createInstance).mockImplementation(
+      async (config, args, background, updateShortResult) => {
+        setTimeout(() => updateShortResult?.(), 0);
+        return mockInstance as unknown as SubagentInstance;
+      },
+    );
+    vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue("done");
+
+    await agentTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+      },
+      contextWithCallback,
+    );
+
+    await vi.waitFor(() => {
+      // Last ONE tool only (Write), tail on its own line after "\n"
+      expect(capturedShortResult).toBe(
+        "(2 tools | 1,000 tokens)\nWrite file2.txt\nLet me verify the fix now",
+      );
+    });
+  });
+
+  it("should show last ONE tool plus the streaming reasoning tail while reasoning is streaming", async () => {
+    const mockInstance = {
+      subagentId: "gp-test-id",
+      usedTools: [
+        {
+          name: "Read",
+          parameters: '{"file_path":"file1.txt"}',
+          compactParams: "file1.txt",
+          stage: "running",
+        },
+        {
+          name: "Write",
+          parameters: '{"file_path":"file2.txt"}',
+          compactParams: "file2.txt",
+          stage: "running",
+        },
+      ],
+      messageManager: {
+        getMessages: vi.fn(() => [
+          { blocks: [{ type: "tool" }, { type: "tool" }] },
+          {
+            blocks: [
+              {
+                type: "reasoning",
+                content: "Checking block streaming flow",
+                stage: "streaming",
+              },
+            ],
+          },
+        ]),
+        getLatestTotalTokens: vi.fn(() => 1000),
+      },
+    };
+
+    let capturedShortResult = "";
+    const contextWithCallback: ToolContext = {
+      ...mockToolContext,
+      onShortResultUpdate: (sr) => {
+        capturedShortResult = sr;
+      },
+    };
+
+    vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);
+    vi.mocked(mockSubagentManager.createInstance).mockImplementation(
+      async (config, args, background, updateShortResult) => {
+        setTimeout(() => updateShortResult?.(), 0);
+        return mockInstance as unknown as SubagentInstance;
+      },
+    );
+    vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue("done");
+
+    await agentTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+      },
+      contextWithCallback,
+    );
+
+    await vi.waitFor(() => {
+      // Reasoning tail on its own line, last ONE tool only
+      expect(capturedShortResult).toBe(
+        "(2 tools | 1,000 tokens)\nWrite file2.txt\nChecking block streaming flow",
+      );
+    });
+  });
+
+  it("should truncate the streaming tail to the last 30 chars with a '...' prefix", async () => {
+    const longContent =
+      "This is a very long streaming reply text that definitely exceeds thirty characters";
+    const shortContent = "Short reply";
+
+    let mockInstance: unknown;
+    let capturedShortResult = "";
+    const contextWithCallback: ToolContext = {
+      ...mockToolContext,
+      onShortResultUpdate: (sr) => {
+        capturedShortResult = sr;
+      },
+    };
+
+    vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);
+    vi.mocked(mockSubagentManager.createInstance).mockImplementation(
+      async (config, args, background, updateShortResult) => {
+        setTimeout(() => updateShortResult?.(), 0);
+        return mockInstance as unknown as SubagentInstance;
+      },
+    );
+    vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue("done");
+
+    const baseInstance = {
+      subagentId: "gp-test-id",
+      usedTools: [
+        {
+          name: "Read",
+          parameters: '{"file_path":"file1.txt"}',
+          compactParams: "file1.txt",
+          stage: "running",
+        },
+        {
+          name: "Write",
+          parameters: '{"file_path":"file2.txt"}',
+          compactParams: "file2.txt",
+          stage: "running",
+        },
+      ],
+    };
+
+    // Long streaming content (> 30 chars) -> truncated tail
+    mockInstance = {
+      ...baseInstance,
+      messageManager: {
+        getMessages: vi.fn(() => [
+          { blocks: [{ type: "tool" }, { type: "tool" }] },
+          {
+            blocks: [
+              { type: "text", content: longContent, stage: "streaming" },
+            ],
+          },
+        ]),
+        getLatestTotalTokens: vi.fn(() => 1000),
+      },
+    };
+
+    await agentTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+      },
+      contextWithCallback,
+    );
+
+    await vi.waitFor(() => {
+      expect(capturedShortResult).toBe(
+        `(2 tools | 1,000 tokens)\nWrite file2.txt\n…${longContent.slice(-30)}`,
+      );
+    });
+
+    // Short streaming content (<= 30 chars) -> full tail
+    capturedShortResult = "";
+    mockInstance = {
+      ...baseInstance,
+      messageManager: {
+        getMessages: vi.fn(() => [
+          { blocks: [{ type: "tool" }, { type: "tool" }] },
+          {
+            blocks: [
+              { type: "text", content: shortContent, stage: "streaming" },
+            ],
+          },
+        ]),
+        getLatestTotalTokens: vi.fn(() => 1000),
+      },
+    };
+
+    await agentTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+      },
+      contextWithCallback,
+    );
+
+    await vi.waitFor(() => {
+      expect(capturedShortResult).toBe(
+        "(2 tools | 1,000 tokens)\nWrite file2.txt\nShort reply",
+      );
+    });
+  });
+
+  it("should keep the last TWO tools when the text block is finalized (stage end)", async () => {
+    const mockInstance = {
+      subagentId: "gp-test-id",
+      usedTools: [
+        {
+          name: "Read",
+          parameters: '{"file_path":"file1.txt"}',
+          compactParams: "file1.txt",
+          stage: "running",
+        },
+        {
+          name: "Write",
+          parameters: '{"file_path":"file2.txt"}',
+          compactParams: "file2.txt",
+          stage: "running",
+        },
+      ],
+      messageManager: {
+        getMessages: vi.fn(() => [
+          { blocks: [{ type: "tool" }, { type: "tool" }] },
+          {
+            blocks: [{ type: "text", content: "Done", stage: "end" }],
+          },
+        ]),
+        getLatestTotalTokens: vi.fn(() => 1000),
+      },
+    };
+
+    let capturedShortResult = "";
+    const contextWithCallback: ToolContext = {
+      ...mockToolContext,
+      onShortResultUpdate: (sr) => {
+        capturedShortResult = sr;
+      },
+    };
+
+    vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);
+    vi.mocked(mockSubagentManager.createInstance).mockImplementation(
+      async (config, args, background, updateShortResult) => {
+        setTimeout(() => updateShortResult?.(), 0);
+        return mockInstance as unknown as SubagentInstance;
+      },
+    );
+    vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue("done");
+
+    await agentTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+      },
+      contextWithCallback,
+    );
+
+    await vi.waitFor(() => {
+      expect(capturedShortResult).toBe(
+        "(2 tools | 1,000 tokens)\nRead file1.txt\nWrite file2.txt",
+      );
+    });
+  });
+
   it("should handle missing parameters", async () => {
     const result = await agentTool.execute({}, mockToolContext);
     expect(result.success).toBe(false);
