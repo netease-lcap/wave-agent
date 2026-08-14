@@ -2,10 +2,36 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { EXPLORE_SUBAGENT_TYPE } from "../constants/subagents.js";
 import { AGENT_TOOL_NAME } from "../constants/tools.js";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
+import type { Message, ReasoningBlock, TextBlock } from "../types/messaging.js";
 import {
   countToolBlocks,
   formatToolTokenSummary,
 } from "../utils/messageOperations.js";
+
+/**
+ * Find the last streaming text/reasoning block across the subagent's messages.
+ * The message manager finalizes streaming content blocks (stage → "end")
+ * before a tool call begins, so at most one block is "streaming" at a time:
+ * its presence means the subagent is currently generating content (thinking or
+ * answering), its absence means it is in a tool phase (streaming/running/idle).
+ */
+function findActiveStreamingBlock(
+  messages: Message[],
+): TextBlock | ReasoningBlock | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const blocks = messages[i].blocks;
+    for (let j = blocks.length - 1; j >= 0; j--) {
+      const block = blocks[j];
+      if (
+        (block.type === "text" || block.type === "reasoning") &&
+        block.stage === "streaming"
+      ) {
+        return block;
+      }
+    }
+  }
+  return undefined;
+}
 
 /**
  * Agent tool plugin for launching specialized agents to handle complex tasks
@@ -159,7 +185,13 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
 
           const messages = instance.messageManager.getMessages();
           const tokens = instance.messageManager.getLatestTotalTokens();
-          const usedTools = instance.usedTools;
+          // While the subagent is streaming content (reasoning or reply text),
+          // show the last ONE tool plus the streaming content tail; otherwise
+          // (tool streaming/running/idle) keep the last two tools.
+          const activeStreaming = findActiveStreamingBlock(messages);
+          const usedTools = activeStreaming
+            ? instance.usedTools.slice(-1)
+            : instance.usedTools;
 
           const toolCount = countToolBlocks(messages);
           const summary = formatToolTokenSummary(toolCount, tokens);
@@ -191,6 +223,16 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
               usedTools
                 .map((t) => `${t.name} ${getDisplayParam(t)}`)
                 .join("\n");
+          }
+
+          // Streaming content tail, on its own line below the tool lines
+          // (compact style, mirroring the tool's truncated compact params).
+          if (activeStreaming) {
+            const flat = activeStreaming.content.replace(/\s+/g, " ").trim();
+            if (flat) {
+              const tail = flat.length > 30 ? `…${flat.slice(-30)}` : flat;
+              shortResult += (shortResult ? "\n" : "") + tail;
+            }
           }
 
           context.onShortResultUpdate?.(shortResult);
