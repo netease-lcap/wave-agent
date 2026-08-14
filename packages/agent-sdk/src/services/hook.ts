@@ -15,6 +15,8 @@ import {
   type HookJsonInput,
 } from "../types/hooks.js";
 import { generateSessionFilePath } from "./session.js";
+import { resolveShellPath } from "../utils/shellResolver.js";
+import { toPosixCommand } from "../utils/windowsPaths.js";
 
 // =============================================================================
 // Hook Execution Functions
@@ -177,12 +179,42 @@ export async function executeCommand(
     let stderr = "";
     let timedOut = false;
 
-    // Parse command for shell execution
+    // Parse command for shell execution.
+    //
+    // Windows uses Git Bash (POSIX shell) instead of cmd.exe: cmd.exe's `/c`
+    // does not strip quotes from arguments after the first token, so commands
+    // like `node "C:\path\script.js"` silently fail (issue #1773). Git Bash
+    // parses quotes correctly, and Windows paths in the command are converted
+    // to POSIX form first (Git Bash resolves `/c/Users/...` and translates it
+    // back to a Windows path when spawning native executables like node.exe).
+    // Falls back to cmd.exe when no Git Bash is installed.
     const isWindows = process.platform === "win32";
-    const shell = isWindows ? "cmd.exe" : "/bin/sh";
-    const shellFlag = isWindows ? "/c" : "-c";
+    const bashPath = isWindows ? resolveShellPath() : undefined;
+    let shell: string;
+    let shellFlag: string;
+    let finalCommand: string;
+    if (bashPath) {
+      shell = bashPath;
+      shellFlag = "-c";
+      finalCommand = toPosixCommand(command);
+      // Windows .sh scripts aren't directly executable — run them via bash
+      // when the command itself is a .sh file (e.g. `${WAVE_PLUGIN_ROOT}/x.sh`).
+      const trimmed = finalCommand.trim();
+      const firstToken = trimmed.match(/^("([^"]*)"|'([^']*)'|\S+)/)?.[0] ?? "";
+      if (firstToken.endsWith(".sh") && !trimmed.startsWith("bash ")) {
+        finalCommand = `bash ${finalCommand}`;
+      }
+    } else if (isWindows) {
+      shell = "cmd.exe";
+      shellFlag = "/c";
+      finalCommand = command;
+    } else {
+      shell = "/bin/sh";
+      shellFlag = "-c";
+      finalCommand = command;
+    }
 
-    const childProcess: ChildProcess = spawn(shell, [shellFlag, command], {
+    const childProcess: ChildProcess = spawn(shell, [shellFlag, finalCommand], {
       stdio: ["pipe", "pipe", "pipe"],
       cwd: context.projectDir,
       env: {
