@@ -559,15 +559,30 @@ export class SubagentManager {
               task.endTime = Date.now();
               task.runtime = task.endTime - startTime;
             }
+          } finally {
+            // Free the instance once the background task finishes: without
+            // this the instance (message history, caches) would linger in the
+            // map for the whole session, and the task's onStop closure would
+            // keep it alive even after that.
+            this.releaseInstance(instance.subagentId);
           }
         })();
 
         return taskId;
       }
 
-      return await this.internalExecute(instance, prompt, abortSignal);
+      const result = await this.internalExecute(instance, prompt, abortSignal);
+      // Free the instance once the subagent finishes. Callers that still hold
+      // the reference can read its messageManager, but the map entry and the
+      // background task's onStop closure are released so the message history
+      // and caches can be garbage-collected.
+      this.releaseInstance(instance.subagentId);
+      return result;
     } catch (error) {
       this.updateInstanceStatus(instance.subagentId, "error");
+      // Release on failure too so errored instances don't linger for the
+      // session (the abort listener already releases on abort).
+      this.releaseInstance(instance.subagentId);
       throw error;
     }
   }
@@ -805,8 +820,38 @@ export class SubagentManager {
         instance.status === "error" ||
         instance.status === "aborted")
     ) {
-      this.instances.delete(subagentId);
+      this.releaseInstance(subagentId);
     }
+  }
+
+  /**
+   * Release a subagent instance so its graph (message history, file-read
+   * caches, log stream) can be garbage-collected. Besides removing the
+   * instance from the map, this drops the background task's onStop closure,
+   * which captures the instance and would otherwise keep the whole graph
+   * alive for the rest of the session.
+   */
+  private releaseInstance(subagentId: string): void {
+    const instance = this.instances.get(subagentId);
+    if (!instance) {
+      return;
+    }
+    if (instance.backgroundTaskId) {
+      const backgroundTaskManager = this.container.has("BackgroundTaskManager")
+        ? this.container.get<BackgroundTaskManager>("BackgroundTaskManager")
+        : undefined;
+      const task = backgroundTaskManager?.getTask(instance.backgroundTaskId);
+      if (task) {
+        task.onStop = undefined;
+      }
+    }
+    if (instance.logStream && !instance.logStream.writableEnded) {
+      // Only force-close a stream that hasn't been ended yet (the completion
+      // and error paths already call end(); destroy would drop buffered data).
+      instance.logStream.destroy();
+    }
+    instance.logStream = undefined;
+    this.instances.delete(subagentId);
   }
 
   /**
