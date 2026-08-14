@@ -119,7 +119,8 @@ export interface ToolContext {
     {
       mtime: number;
       hash: string;
-      offset?: number; // undefined = full read or Edit/Write entry (never dedup)
+      source: "read" | "edit" | "write"; // Read dedups only entries from Read
+      offset?: number; // undefined = full read
       limit?: number;
     }
   >;

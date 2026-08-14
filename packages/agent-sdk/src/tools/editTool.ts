@@ -289,6 +289,7 @@ Usage:
         context.readFileState.set(resolvedPath, {
           mtime: newStats.mtime.getTime(),
           hash,
+          source: "edit",
           offset: undefined,
           limit: undefined,
         });

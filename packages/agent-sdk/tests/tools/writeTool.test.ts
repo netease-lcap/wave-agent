@@ -28,9 +28,18 @@ describe("writeTool", () => {
       // path (matches source's resolvePath()). Individual tests override
       // with an empty Map or undefined to exercise rejection.
       readFileState: new Map([
-        [path.resolve("/test/file.js"), { mtime: 1000, hash: "abc" }],
-        [path.resolve("/test/existing.txt"), { mtime: 1000, hash: "abc" }],
-        [path.resolve("/test/file.txt"), { mtime: 1000, hash: "abc" }],
+        [
+          path.resolve("/test/file.js"),
+          { mtime: 1000, hash: "abc", source: "read" },
+        ],
+        [
+          path.resolve("/test/existing.txt"),
+          { mtime: 1000, hash: "abc", source: "read" },
+        ],
+        [
+          path.resolve("/test/file.txt"),
+          { mtime: 1000, hash: "abc", source: "read" },
+        ],
       ]),
     };
   });
@@ -542,7 +551,10 @@ describe("writeTool", () => {
         {
           ...mockContext,
           readFileState: new Map([
-            [path.resolve("/test/file.js"), { mtime: 1000, hash }],
+            [
+              path.resolve("/test/file.js"),
+              { mtime: 1000, hash, source: "read" },
+            ],
           ]),
         },
       );
@@ -571,7 +583,7 @@ describe("writeTool", () => {
           readFileState: new Map([
             [
               path.resolve("/test/file.js"),
-              { mtime: 1000, hash, offset: 1, limit: 10 },
+              { mtime: 1000, hash, source: "read", offset: 1, limit: 10 },
             ],
           ]),
         },

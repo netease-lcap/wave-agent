@@ -711,7 +711,13 @@ describe("readTool", () => {
     it("should dedup when the same partial range is read twice", async () => {
       const readFileState = new Map<
         string,
-        { mtime: number; hash: string; offset?: number; limit?: number }
+        {
+          mtime: number;
+          hash: string;
+          source: "read";
+          offset?: number;
+          limit?: number;
+        }
       >();
       const filePath = "/test/workdir/medium.txt";
 
@@ -734,10 +740,16 @@ describe("readTool", () => {
       expect(result2.content).toContain("has not changed");
     });
 
-    it("should NOT dedup a full read (offset=undefined) on second read", async () => {
+    it("should dedup a full read (offset=undefined) on second read", async () => {
       const readFileState = new Map<
         string,
-        { mtime: number; hash: string; offset?: number; limit?: number }
+        {
+          mtime: number;
+          hash: string;
+          source: "read";
+          offset?: number;
+          limit?: number;
+        }
       >();
       const filePath = "/test/workdir/small.txt";
 
@@ -749,20 +761,25 @@ describe("readTool", () => {
       expect(result1.success).toBe(true);
       expect(result1.metadata?.type).toBe("text");
 
-      // Second full read — should return content, not "unchanged"
+      // Second full read — same range, unchanged, should dedup
       const result2 = await readTool.execute(
         { file_path: filePath },
         { ...testContext, readFileState },
       );
       expect(result2.success).toBe(true);
-      expect(result2.metadata?.type).toBe("text");
-      expect(result2.content).toContain("Line 1");
+      expect(result2.metadata?.type).toBe("file_unchanged");
     });
 
     it("should NOT dedup a partial read after a full read (different range)", async () => {
       const readFileState = new Map<
         string,
-        { mtime: number; hash: string; offset?: number; limit?: number }
+        {
+          mtime: number;
+          hash: string;
+          source: "read";
+          offset?: number;
+          limit?: number;
+        }
       >();
       const filePath = "/test/workdir/medium.txt";
 

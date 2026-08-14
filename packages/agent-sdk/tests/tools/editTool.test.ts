@@ -36,10 +36,19 @@ describe("editTool", () => {
       // Keys must be the *resolved* path (matches source's resolvePath()).
       // Individual tests can override with an empty Map or undefined.
       readFileState: new Map([
-        [r("/test/file.js"), { mtime: 1000, hash: "abc" }],
-        [r("/test/workdir/file.js"), { mtime: 1000, hash: "abc" }],
-        [r("/test/nonexistent.js"), { mtime: 1000, hash: "abc" }],
-        [r("/absolute/path/file.js"), { mtime: 1000, hash: "abc" }],
+        [r("/test/file.js"), { mtime: 1000, hash: "abc", source: "read" }],
+        [
+          r("/test/workdir/file.js"),
+          { mtime: 1000, hash: "abc", source: "read" },
+        ],
+        [
+          r("/test/nonexistent.js"),
+          { mtime: 1000, hash: "abc", source: "read" },
+        ],
+        [
+          r("/absolute/path/file.js"),
+          { mtime: 1000, hash: "abc", source: "read" },
+        ],
       ]),
     };
   });
@@ -575,7 +584,10 @@ describe("editTool", () => {
       {
         ...mockContext,
         readFileState: new Map([
-          [r("/test/workdir/file.js"), { mtime: 1000, hash: "abc" }],
+          [
+            r("/test/workdir/file.js"),
+            { mtime: 1000, hash: "abc", source: "read" },
+          ],
         ]),
       },
     );
@@ -633,9 +645,19 @@ describe("editTool", () => {
     // readFileState shows mtime=1000, but current file has mtime=2000
     const readFileState = new Map<
       string,
-      { mtime: number; hash: string; offset?: number; limit?: number }
+      {
+        mtime: number;
+        hash: string;
+        source: "read" | "edit";
+        offset?: number;
+        limit?: number;
+      }
     >();
-    readFileState.set(r("/test/file.js"), { mtime: 1000, hash: "abc" });
+    readFileState.set(r("/test/file.js"), {
+      mtime: 1000,
+      hash: "abc",
+      source: "read",
+    });
 
     vi.mocked(stat).mockResolvedValue({
       mtime: { getTime: () => 2000 } as Date,
@@ -662,9 +684,19 @@ describe("editTool", () => {
 
     const readFileState = new Map<
       string,
-      { mtime: number; hash: string; offset?: number; limit?: number }
+      {
+        mtime: number;
+        hash: string;
+        source: "read" | "edit";
+        offset?: number;
+        limit?: number;
+      }
     >();
-    readFileState.set(r("/test/file.js"), { mtime: 1000, hash: "abc" });
+    readFileState.set(r("/test/file.js"), {
+      mtime: 1000,
+      hash: "abc",
+      source: "read",
+    });
 
     // First stat: staleness check (mtime matches)
     // Second stat: post-write state update
@@ -696,11 +728,18 @@ describe("editTool", () => {
     // readFileState: recorded mtime older than current, but hash matches content
     const readFileState = new Map<
       string,
-      { mtime: number; hash: string; offset?: number; limit?: number }
+      {
+        mtime: number;
+        hash: string;
+        source: "read" | "edit";
+        offset?: number;
+        limit?: number;
+      }
     >();
     readFileState.set(r("/test/file.js"), {
       mtime: 1000,
       hash: createHash("sha256").update(mockContent).digest("hex"),
+      source: "read",
     });
 
     // First stat: staleness check (newer mtime) → content fallback allows edit
@@ -733,11 +772,18 @@ describe("editTool", () => {
     // Partial read: offset/limit defined → no content fallback
     const readFileState = new Map<
       string,
-      { mtime: number; hash: string; offset?: number; limit?: number }
+      {
+        mtime: number;
+        hash: string;
+        source: "read" | "edit";
+        offset?: number;
+        limit?: number;
+      }
     >();
     readFileState.set(r("/test/file.js"), {
       mtime: 1000,
       hash: createHash("sha256").update(mockContent).digest("hex"),
+      source: "read",
       offset: 0,
       limit: 10,
     });
@@ -768,9 +814,19 @@ describe("editTool", () => {
     // readFileState recorded a newer mtime than current (clock skew / restore)
     const readFileState = new Map<
       string,
-      { mtime: number; hash: string; offset?: number; limit?: number }
+      {
+        mtime: number;
+        hash: string;
+        source: "read" | "edit";
+        offset?: number;
+        limit?: number;
+      }
     >();
-    readFileState.set(r("/test/file.js"), { mtime: 2000, hash: "abc" });
+    readFileState.set(r("/test/file.js"), {
+      mtime: 2000,
+      hash: "abc",
+      source: "read",
+    });
 
     // First stat: staleness check (current 1000 < recorded 2000 → not flagged)
     // Second stat: post-write state update
@@ -801,9 +857,19 @@ describe("editTool", () => {
 
     const readFileState = new Map<
       string,
-      { mtime: number; hash: string; offset?: number; limit?: number }
+      {
+        mtime: number;
+        hash: string;
+        source: "read" | "edit";
+        offset?: number;
+        limit?: number;
+      }
     >();
-    readFileState.set(r("/test/file.js"), { mtime: 1000, hash: "abc" });
+    readFileState.set(r("/test/file.js"), {
+      mtime: 1000,
+      hash: "abc",
+      source: "read",
+    });
 
     // First stat: staleness check (mtime matches readFileState)
     // Second stat: post-write state update (new mtime)
