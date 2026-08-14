@@ -37,6 +37,14 @@ import { READ_TOOL_NAME } from "../constants/tools.js";
 
 import { Container } from "../utils/container.js";
 
+// Cap for recentFileReads: content is only consumed by getRecentFileReads
+// (top 5 for post-compact restoration), so bound both the entry count and the
+// number of entries that keep full content (aligned with Claude Code's
+// FileStateCache 100-entry limit). Paths beyond the content cap are kept so
+// hasFileBeenRead still works for read-before-edit enforcement.
+const RECENT_FILE_READS_CACHE_LIMIT = 100;
+const RECENT_FILE_READS_CONTENT_LIMIT = 10;
+
 export interface MessageManagerCallbacks {
   onSessionIdChange?: (sessionId: string) => void;
   onLatestTotalTokensChange?: (latestTotalTokens: number) => void;
@@ -621,6 +629,9 @@ export class MessageManager {
     this.setMessages(newMessages);
     this.savedMessageCount = newMessages.length;
 
+    // Trim recent file read cache so contents compacted away are released
+    this.trimRecentFileReads();
+
     // Clear and rebuild loaded rule IDs from remaining meta messages
     this.clearLoadedRuleIds();
     this.rebuildLoadedRuleIds();
@@ -1090,7 +1101,39 @@ export class MessageManager {
             content: block.result,
             timestamp: Date.now(),
           });
+          this.trimRecentFileReads();
         }
+      }
+    }
+  }
+
+  /**
+   * Bound recentFileReads growth: evict oldest entries beyond the cache limit
+   * and drop content from all but the most recent entries (paths are kept for
+   * hasFileBeenRead). Prevents unbounded memory growth in long sessions.
+   */
+  private trimRecentFileReads(): void {
+    if (this.recentFileReads.size > RECENT_FILE_READS_CACHE_LIMIT) {
+      const sortedAsc = Array.from(this.recentFileReads.entries()).sort(
+        ([, a], [, b]) => a.timestamp - b.timestamp,
+      );
+      const excess = this.recentFileReads.size - RECENT_FILE_READS_CACHE_LIMIT;
+      for (const [path] of sortedAsc.slice(0, excess)) {
+        this.recentFileReads.delete(path);
+      }
+    }
+
+    if (this.recentFileReads.size > RECENT_FILE_READS_CONTENT_LIMIT) {
+      const sortedDesc = Array.from(this.recentFileReads.entries()).sort(
+        ([, a], [, b]) => b.timestamp - a.timestamp,
+      );
+      for (const [path, entry] of sortedDesc.slice(
+        RECENT_FILE_READS_CONTENT_LIMIT,
+      )) {
+        this.recentFileReads.set(path, {
+          content: "",
+          timestamp: entry.timestamp,
+        });
       }
     }
   }
