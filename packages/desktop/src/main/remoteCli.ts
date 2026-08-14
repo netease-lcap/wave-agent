@@ -404,8 +404,10 @@ export async function readRemoteFile(
 //
 // 远端 daemon = `nohup wave --daemon <socket>` 常驻进程（nohup+重定向使 ssh
 // 只等启动器 fork 即返回，见 specs「SSH 远程主机」）。桌面端通过
-// `ssh -N -L 本地socket:远端socket` 转发后复用同一套 JSON-RPC 客户端，因此
-// 断线重连只换传输层，会话与挂起审批都在 daemon 进程里存活。
+// `ssh -N -L` 转发后复用同一套 JSON-RPC 客户端，因此断线重连只换传输层，
+// 会话与挂起审批都在 daemon 进程里存活。本地转发端在 POSIX 是 unix socket、
+// Windows 是 127.0.0.1 的 TCP 端口（Windows OpenSSH 无法 bind 本地 unix
+// socket，见 connectRemoteDaemon）。
 
 export const DAEMON_START_TIMEOUT_MS = 10_000;
 export const DAEMON_POLL_INTERVAL_MS = 500;
@@ -599,13 +601,46 @@ export interface RemoteDaemonConnection {
 }
 
 /**
- * Forward the remote daemon socket to a local unix socket via `ssh -N -L`,
- * then wrap the local socket in a SocketClient. The tunnel keeps running until
- * the caller disposes both — killing only the client would close the socket
- * but leave the ssh process lingering. Plain `spawn('ssh', …)` (no login
- * shell): `-N` tunnels never run a remote command.
+ * Pick a free 127.0.0.1 TCP port for the tunnel's local end. The close-then-
+ * spawn window is tiny; on a collision ssh exits with "local port forwarding
+ * failed" and the tunnel-exit path in connectRemoteDaemonTcp surfaces it.
+ */
+async function allocateLoopbackPort(): Promise<number> {
+  const server = net.createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+  const address = server.address() as net.AddressInfo;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return address.port;
+}
+
+/**
+ * Connect to the remote wave daemon over an ssh tunnel, choosing the transport
+ * per platform. Windows OpenSSH cannot bind a local unix socket for `-L`: its
+ * parser rejects drive-letter paths (`C:\...`) and its AF_UNIX bind rejects
+ * drive-less paths (`/Users/...`), so the local end there is a 127.0.0.1 TCP
+ * port (`-L port:remote_socket`, supported by OpenSSH on every platform).
+ * POSIX keeps the unix-socket forward.
  */
 export async function connectRemoteDaemon(
+  host: string,
+  remoteSocketPath: string,
+): Promise<RemoteDaemonConnection> {
+  return process.platform === "win32"
+    ? connectRemoteDaemonTcp(host, remoteSocketPath)
+    : connectRemoteDaemonSocket(host, remoteSocketPath);
+}
+
+/**
+ * `connectRemoteDaemon` for POSIX: forward the remote daemon socket to a local
+ * unix socket via `ssh -N -L`, then wrap the local socket in a SocketClient.
+ * The tunnel keeps running until the caller disposes both — killing only the
+ * client would close the socket but leave the ssh process lingering. Plain
+ * `spawn('ssh', …)` (no login shell): `-N` tunnels never run a remote command.
+ */
+export async function connectRemoteDaemonSocket(
   host: string,
   remoteSocketPath: string,
 ): Promise<RemoteDaemonConnection> {
@@ -654,6 +689,69 @@ export async function connectRemoteDaemon(
         return;
       }
       const sock = net.createConnection(localSocket);
+      sock.once("connect", () => {
+        settled = true;
+        resolve(sock);
+      });
+      sock.once("error", () => {
+        setTimeout(attempt, 100);
+      });
+    };
+    attempt();
+  }).catch((error) => {
+    tunnel.kill();
+    throw new Error(`无法连接远端 wave daemon（${describeError(error)}）`);
+  });
+
+  return { client: new SocketClient(socket), tunnel };
+}
+
+/**
+ * `connectRemoteDaemon` for Windows: forward the remote daemon socket to a
+ * local loopback TCP port (`ssh -N -L 127.0.0.1:<port>:<remote socket>`) and
+ * wrap the port connection in a SocketClient. Same lifecycle as the socket
+ * variant — the tunnel keeps running until the caller disposes both.
+ */
+export async function connectRemoteDaemonTcp(
+  host: string,
+  remoteSocketPath: string,
+): Promise<RemoteDaemonConnection> {
+  const port = await allocateLoopbackPort();
+  const tunnel = spawn(
+    "ssh",
+    buildSshTunnelArgs(host, `127.0.0.1:${port}`, remoteSocketPath),
+    {
+      stdio: ["ignore", "ignore", "pipe"],
+    },
+  );
+  let tunnelStderr = "";
+  tunnel.stderr?.on("data", (data: Buffer) => {
+    tunnelStderr = (tunnelStderr + data.toString()).slice(-1024);
+  });
+
+  const socket = await new Promise<net.Socket>((resolve, reject) => {
+    let settled = false;
+    const fail = (error: Error) => {
+      if (!settled) {
+        settled = true;
+        reject(error);
+      }
+    };
+    tunnel.once("exit", (code, signal) => {
+      fail(
+        new Error(
+          `ssh 隧道退出（code: ${code}, signal: ${signal}${tunnelStderr.trim() ? `: ${tunnelStderr.trim()}` : ""}）`,
+        ),
+      );
+    });
+    const deadline = Date.now() + TUNNEL_READY_TIMEOUT_MS;
+    const attempt = () => {
+      if (settled) return;
+      if (Date.now() >= deadline) {
+        fail(new Error(`本地转发端口未就绪（127.0.0.1:${port}）`));
+        return;
+      }
+      const sock = net.createConnection({ host: "127.0.0.1", port });
       sock.once("connect", () => {
         settled = true;
         resolve(sock);
