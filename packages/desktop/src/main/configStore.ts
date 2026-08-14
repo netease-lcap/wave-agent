@@ -74,10 +74,10 @@ export class ConfigStore {
       return {
         configuration: parsed.configuration ?? {},
         // Legacy plain-string entries (pre-remote) become local-host refs.
+        // Deduped on load so older data where one directory was persisted with
+        // two slash styles (e.g. `C:\a` and `C:/a`) collapses into one entry.
         recentWorkdirs: Array.isArray(parsed.recentWorkdirs)
-          ? parsed.recentWorkdirs
-              .map(normalizeWorkdirRef)
-              .filter((d): d is WorkdirRef => d !== null)
+          ? dedupeRecentWorkdirs(parsed.recentWorkdirs)
           : [],
         sessions: Array.isArray(parsed.sessions)
           ? parsed.sessions
@@ -147,16 +147,20 @@ export class ConfigStore {
   /**
    * Push a directory to the front of its host's recent list (MRU, deduped).
    * The list is per-host: the same path on two hosts are distinct entries.
+   * Paths are normalized (slash style) before comparing/storing so the same
+   * local directory entered with `\` or `/` never shows up twice.
    */
   addRecentWorkdir(ref: WorkdirRef): void {
+    const normalized = normalizeWorkdirRef(ref);
+    if (!normalized) return;
     const key = (d: string | WorkdirRef): string => {
       const w = normalizeWorkdirRef(d);
       return w ? `${w.host}\u0000${w.path}` : "";
     };
     this.data.recentWorkdirs = [
-      ref,
+      normalized,
       ...this.data.recentWorkdirs.filter(
-        (d) => key(d) !== `${ref.host}\u0000${ref.path}`,
+        (d) => key(d) !== `${normalized.host}\u0000${normalized.path}`,
       ),
     ].slice(0, MAX_RECENT_WORKDIRS);
     this.save();
@@ -231,7 +235,7 @@ function normalizeWorkdirRef(
   value: string | WorkdirRef | undefined | null,
 ): WorkdirRef | null {
   if (typeof value === "string") {
-    return value ? { host: LOCAL_HOST, path: value } : null;
+    return value ? { host: LOCAL_HOST, path: normalizeLocalPath(value) } : null;
   }
   if (
     typeof value === "object" &&
@@ -239,7 +243,52 @@ function normalizeWorkdirRef(
     typeof value.host === "string" &&
     typeof value.path === "string"
   ) {
-    return value;
+    return {
+      host: value.host,
+      // Remote paths are POSIX and case-sensitive; only local paths on Windows
+      // tolerate both slash styles and a trailing separator.
+      path:
+        value.host === LOCAL_HOST ? normalizeLocalPath(value.path) : value.path,
+    };
   }
   return null;
+}
+
+/**
+ * Dedupe by (host, path) after normalization, keeping the first (MRU-most)
+ * occurrence of each directory. Callers pass disk-form arrays; malformed
+ * entries are dropped.
+ */
+function dedupeRecentWorkdirs(
+  entries: Array<string | WorkdirRef>,
+): WorkdirRef[] {
+  const seen = new Set<string>();
+  const out: WorkdirRef[] = [];
+  for (const raw of entries) {
+    const w = normalizeWorkdirRef(raw);
+    if (!w) continue;
+    const key = `${w.host}\u0000${w.path}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(w);
+  }
+  return out;
+}
+
+/**
+ * Normalize a local Windows path so equivalent spellings of the same directory
+ * compare equal: unify separators (`C:/a` → `C:\a`) and drop a redundant
+ * trailing separator (`C:\a\` → `C:\a`, but drive roots keep it). POSIX paths
+ * (and remote-host paths, which stay POSIX) are returned unchanged — detection
+ * is purely by shape, so this is a no-op on non-Windows spellings everywhere.
+ */
+function normalizeLocalPath(p: string): string {
+  const hasDrive = /^[A-Za-z]:[\\/]/.test(p);
+  const hasUnc = /^[\\/]{2}[^\\/]/.test(p);
+  if (!hasDrive && !hasUnc) return p;
+  const normalized = path.win32.normalize(p);
+  // `C:\` (drive root) keeps its separator; everything else drops it.
+  return normalized.length > 3 && normalized.endsWith("\\")
+    ? normalized.slice(0, -1)
+    : normalized;
 }
