@@ -716,29 +716,6 @@ body.is-panel-resizing * {
   opacity: 0.8;
 }
 
-.preview-pane-address {
-  flex: 1;
-  min-width: 0;
-  padding: 3px 6px;
-  font-size: 12px;
-  color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
-  border: 1px solid transparent;
-  border-radius: 3px;
-  outline: none;
-}
-
-.preview-pane-address:focus {
-  border-color: var(--vscode-focusBorder, #007fd4);
-}
-
-.preview-pane-address::placeholder {
-  color: var(
-    --vscode-input-placeholderForeground,
-    var(--vscode-descriptionForeground, #999)
-  );
-}
-
 .preview-pane-button {
   display: flex;
   align-items: center;

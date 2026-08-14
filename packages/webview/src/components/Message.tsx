@@ -1,7 +1,7 @@
 import React from "react";
 import { ContextTag } from "./ContextTag";
 import { parseMentions, toRelativePath } from "../utils/messageUtils";
-import { isArtifactUrl } from "../utils/isArtifactUrl";
+import { isLocalhostUrl } from "../utils/isLocalhostUrl";
 import { marked } from "marked";
 import { BangBlock } from "./BangBlock";
 import { Tooltip } from "./Tooltip";
@@ -241,23 +241,16 @@ export const Message: React.FC<MessageProps> = React.memo(
       return images;
     };
 
-    // Link routing is a desktop-host feature: any http(s) link opens in the
-    // preview pane, everything else (mailto:, file: …) goes to the system
-    // default app. IDE hosts keep their native link handling, so bail BEFORE
-    // any preventDefault. Artifact pages are private and need the user's
-    // browser SSO session, which the sandboxed preview <webview> cannot carry,
-    // so those open in the system browser instead.
+    // Link routing is a desktop-host feature: localhost links open in
+    // the preview pane, everything else goes to the system browser. IDE hosts
+    // keep their native link handling, so bail BEFORE any preventDefault.
     const handleContentClick = (e: React.MouseEvent) => {
       if (window.waveHostType !== "desktop") return;
       const anchor = (e.target as Element | null)?.closest?.("a");
       const href = anchor?.getAttribute("href");
       if (!href) return;
       e.preventDefault();
-      if (
-        /^https?:/i.test(href) &&
-        props.onOpenPreview &&
-        !isArtifactUrl(href)
-      ) {
+      if (isLocalhostUrl(href) && props.onOpenPreview) {
         props.onOpenPreview(href);
       } else {
         props.vscode.postMessage({ command: "openExternal", url: href });

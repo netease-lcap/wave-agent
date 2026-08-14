@@ -12,6 +12,7 @@ import * as path from "path";
 import { WEBVIEW_CHANNEL } from "./channels";
 import { ConfigStore } from "./configStore";
 import { DesktopHost } from "./desktopHost";
+import { isLocalhostUrl } from "./isLocalhostUrl";
 import {
   attachDesktopShortcutKeys,
   installApplicationMenu,
@@ -203,16 +204,16 @@ function createWindow(): void {
   });
 
   // Lock down any <webview> the page attaches: the preview pane is the only
-  // consumer and it must stay sandboxed + http(s)-only.
+  // consumer and it must stay sandboxed + localhost-only.
   mainWindow.webContents.on(
     "will-attach-webview",
     (event, webPreferences, params) => {
       webPreferences.nodeIntegration = false;
       webPreferences.contextIsolation = true;
       webPreferences.sandbox = true;
-      if (!/^https?:/i.test(params.src)) {
+      if (!isLocalhostUrl(params.src)) {
         console.warn(
-          "[Wave Desktop] Blocked <webview> attach with non-http(s) src:",
+          "[Wave Desktop] Blocked <webview> attach with non-localhost src:",
           params.src,
         );
         event.preventDefault();
@@ -232,12 +233,14 @@ function createWindow(): void {
       }
       return { action: "deny" };
     });
-    // The preview pane now loads arbitrary http(s) pages: in-guest navigation
-    // (including cross-site) stays inside the pane. Only non-http(s) schemes
-    // (file:, custom protocols) are blocked.
+    // The preview pane is localhost-only: divert in-guest navigation
+    // to external sites into the system browser instead of loading them here.
     guest.on("will-navigate", (event, url) => {
-      if (/^https?:/i.test(url)) return;
+      if (isLocalhostUrl(url)) return;
       event.preventDefault();
+      if (/^https?:/.test(url)) {
+        void shell.openExternal(url);
+      }
     });
   });
 
