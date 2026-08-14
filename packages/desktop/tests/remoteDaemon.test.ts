@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   existsSync: vi.fn(),
   unlinkSync: vi.fn(),
   createConnection: vi.fn(),
+  createServer: vi.fn(),
   SocketClient: vi.fn(),
 }));
 
@@ -22,6 +23,7 @@ vi.mock("fs", () => ({
 
 vi.mock("net", () => ({
   createConnection: h.createConnection,
+  createServer: h.createServer,
 }));
 
 vi.mock("../src/main/stdio/socketClient", () => ({
@@ -37,6 +39,8 @@ import {
   waitForRemoteDaemon,
   ensureRemoteDaemon,
   connectRemoteDaemon,
+  connectRemoteDaemonSocket,
+  connectRemoteDaemonTcp,
   DAEMON_START_TIMEOUT_MS,
   DAEMON_POLL_INTERVAL_MS,
 } from "../src/main/remoteCli";
@@ -86,12 +90,23 @@ function makeSocket() {
   return sock;
 }
 
+/** Fake `net.createServer` used by allocateLoopbackPort to pick a free port. */
+function makePortAllocator(port: number) {
+  return {
+    once: vi.fn(),
+    listen: vi.fn((_port: number, _host: string, cb: () => void) => cb()),
+    address: vi.fn(() => ({ port, address: "127.0.0.1", family: "IPv4" })),
+    close: vi.fn((cb: () => void) => cb()),
+  };
+}
+
 beforeEach(() => {
   h.execFile.mockReset();
   h.spawn.mockReset();
   h.existsSync.mockReset();
   h.unlinkSync.mockReset();
   h.createConnection.mockReset();
+  h.createServer.mockReset();
   h.SocketClient.mockReset();
   resetRemoteShellCache();
 });
@@ -262,7 +277,7 @@ describe("ensureRemoteDaemon", () => {
   });
 });
 
-describe("connectRemoteDaemon", () => {
+describe("connectRemoteDaemonSocket", () => {
   it("forwards the remote socket over ssh -N -L and wraps it in a SocketClient", async () => {
     const tunnel = makeTunnel();
     h.spawn.mockReturnValue(tunnel);
@@ -271,7 +286,7 @@ describe("connectRemoteDaemon", () => {
     h.createConnection.mockReturnValue(sock);
     setTimeout(() => sock.emit("connect"), 0);
 
-    const result = await connectRemoteDaemon(
+    const result = await connectRemoteDaemonSocket(
       "prod",
       "/home/alice/.wave/daemon.sock",
     );
@@ -298,7 +313,7 @@ describe("connectRemoteDaemon", () => {
     h.createConnection.mockReturnValue(sock);
     setTimeout(() => sock.emit("connect"), 0);
 
-    await connectRemoteDaemon("prod", "/home/alice/.wave/daemon.sock");
+    await connectRemoteDaemonSocket("prod", "/home/alice/.wave/daemon.sock");
     expect(h.unlinkSync).toHaveBeenCalledWith(localDaemonSocketPath("prod"));
   });
 
@@ -307,12 +322,113 @@ describe("connectRemoteDaemon", () => {
     h.spawn.mockReturnValue(tunnel);
     h.existsSync.mockReturnValue(false); // forward never materializes
 
-    const pending = connectRemoteDaemon(
+    const pending = connectRemoteDaemonSocket(
       "prod",
       "/home/alice/.wave/daemon.sock",
     );
     tunnel.emit("exit", 255, null);
     await expect(pending).rejects.toThrow("无法连接远端 wave daemon");
     expect(tunnel.kill).toHaveBeenCalled();
+  });
+});
+
+describe("connectRemoteDaemonTcp", () => {
+  it("forwards to a free loopback port and wraps the connection in a SocketClient", async () => {
+    const tunnel = makeTunnel();
+    h.spawn.mockReturnValue(tunnel);
+    h.createServer.mockReturnValue(makePortAllocator(43211));
+    const sock = makeSocket();
+    h.createConnection.mockReturnValue(sock);
+    setTimeout(() => sock.emit("connect"), 0);
+
+    const result = await connectRemoteDaemonTcp(
+      "prod",
+      "/home/alice/.wave/daemon.sock",
+    );
+    expect(result.tunnel).toBe(tunnel);
+    expect(h.SocketClient).toHaveBeenCalledWith(sock);
+    expect(result.client).toBe(h.SocketClient.mock.instances[0]);
+
+    expect(h.createServer).toHaveBeenCalled();
+    expect(h.spawn).toHaveBeenCalledWith(
+      "ssh",
+      buildSshTunnelArgs(
+        "prod",
+        "127.0.0.1:43211",
+        "/home/alice/.wave/daemon.sock",
+      ),
+      expect.any(Object),
+    );
+    expect(h.createConnection).toHaveBeenCalledWith({
+      host: "127.0.0.1",
+      port: 43211,
+    });
+  });
+
+  it("kills the tunnel and throws when ssh exits before the port is ready", async () => {
+    const tunnel = makeTunnel();
+    h.spawn.mockReturnValue(tunnel);
+    h.createServer.mockReturnValue(makePortAllocator(43211));
+
+    const pending = connectRemoteDaemonTcp(
+      "prod",
+      "/home/alice/.wave/daemon.sock",
+    );
+    tunnel.emit("exit", 255, null);
+    await expect(pending).rejects.toThrow("无法连接远端 wave daemon");
+    expect(tunnel.kill).toHaveBeenCalled();
+  });
+});
+
+describe("connectRemoteDaemon transport selection", () => {
+  it("uses the TCP transport on Windows", async () => {
+    const original = process.platform;
+    try {
+      Object.defineProperty(process, "platform", { value: "win32" });
+      const tunnel = makeTunnel();
+      h.spawn.mockReturnValue(tunnel);
+      h.createServer.mockReturnValue(makePortAllocator(43211));
+      const sock = makeSocket();
+      h.createConnection.mockReturnValue(sock);
+      setTimeout(() => sock.emit("connect"), 0);
+
+      await connectRemoteDaemon("prod", "/home/alice/.wave/daemon.sock");
+      expect(h.createServer).toHaveBeenCalled();
+      expect(h.spawn).toHaveBeenCalledWith(
+        "ssh",
+        buildSshTunnelArgs(
+          "prod",
+          "127.0.0.1:43211",
+          "/home/alice/.wave/daemon.sock",
+        ),
+        expect.any(Object),
+      );
+    } finally {
+      Object.defineProperty(process, "platform", { value: original });
+    }
+  });
+
+  it("uses the unix-socket transport on POSIX", async () => {
+    const original = process.platform;
+    try {
+      Object.defineProperty(process, "platform", { value: "linux" });
+      const tunnel = makeTunnel();
+      h.spawn.mockReturnValue(tunnel);
+      h.existsSync.mockReturnValue(true);
+      const sock = makeSocket();
+      h.createConnection.mockReturnValue(sock);
+      setTimeout(() => sock.emit("connect"), 0);
+
+      await connectRemoteDaemon("prod", "/home/alice/.wave/daemon.sock");
+      expect(h.createServer).not.toHaveBeenCalled();
+      const localSocket = localDaemonSocketPath("prod");
+      expect(h.spawn).toHaveBeenCalledWith(
+        "ssh",
+        buildSshTunnelArgs("prod", localSocket, "/home/alice/.wave/daemon.sock"),
+        expect.any(Object),
+      );
+    } finally {
+      Object.defineProperty(process, "platform", { value: original });
+    }
   });
 });

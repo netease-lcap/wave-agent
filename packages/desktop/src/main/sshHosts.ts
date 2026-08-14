@@ -175,20 +175,26 @@ export function buildSshSpawnArgs(
 }
 
 /**
- * Spawn args for an `ssh -N` unix-socket forward: `localSocket:remoteSocket`.
- * `-N` means no remote command — the tunnel just forwards. ExitOnForwardFailure
- * makes ssh exit (instead of idling) when the remote end refuses the forward,
- * so a missing daemon socket surfaces as a tunnel exit rather than a silent
- * half-open connection. ServerAliveInterval/CountMax send application-level
- * keepalives through the encrypted channel: after a machine sleep the TCP
- * connection is often half-open (no RST/FIN), and only these probes make ssh
- * detect the dead tunnel in bounded time instead of idling on SO_KEEPALIVE
- * (macOS probes after ~2h idle by default). No login shell is needed: `-N`
- * tunnels never run a remote command.
+ * Spawn args for an `ssh -N` forward to the remote daemon socket:
+ * `localForward:remoteSocket`. `-N` means no remote command — the tunnel just
+ * forwards. `localForward` is the tunnel's local end: a unix socket path on
+ * POSIX, or `127.0.0.1:<port>` on Windows (Windows OpenSSH cannot bind a local
+ * unix socket — its `-L` parser rejects drive-letter paths like `C:\...`, and
+ * its AF_UNIX bind rejects drive-less paths — so the desktop forwards to a
+ * loopback TCP port there; OpenSSH's `-L port:remote_socket` form works on
+ * every platform). ExitOnForwardFailure makes ssh exit (instead of idling)
+ * when a forward cannot be established, so a missing daemon socket surfaces as
+ * a tunnel exit rather than a silent half-open connection.
+ * ServerAliveInterval/CountMax send application-level keepalives through the
+ * encrypted channel: after a machine sleep the TCP connection is often
+ * half-open (no RST/FIN), and only these probes make ssh detect the dead
+ * tunnel in bounded time instead of idling on SO_KEEPALIVE (macOS probes after
+ * ~2h idle by default). No login shell is needed: `-N` tunnels never run a
+ * remote command.
  */
 export function buildSshTunnelArgs(
   host: string,
-  localSocketPath: string,
+  localForward: string,
   remoteSocketPath: string,
 ): string[] {
   return [
@@ -201,7 +207,7 @@ export function buildSshTunnelArgs(
     "ServerAliveCountMax=4",
     "-N",
     "-L",
-    `${localSocketPath}:${remoteSocketPath}`,
+    `${localForward}:${remoteSocketPath}`,
     host,
   ];
 }
