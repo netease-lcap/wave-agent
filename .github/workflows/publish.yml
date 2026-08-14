@@ -37,25 +37,18 @@ jobs:
       - name: Package .vsix
         run: pnpm -F wave-vscode run package
 
-      # --- VS Code Marketplace (Entra ID, no PAT) ---
-      # PATs retire 2026-12-01; publish via Azure OIDC federated credentials
-      # instead: azure/login@v2 exchanges the Actions id-token (federated
-      # credential Subject: repo:netease-lcap/wave-agent:ref:refs/tags/v*),
-      # and `vsce publish --azure-credential` reuses the resulting az login
-      # cache — no PAT secret involved.
+      # --- VS Code Marketplace (OIDC trusted publishing, no PAT) ---
+      # `vsce publish --oidc` requests a GitHub Actions OIDC token for the
+      # marketplace.visualstudio.com audience and exchanges it for a
+      # short-lived Marketplace credential — no PAT or Azure setup needed.
+      # The Marketplace enforces a trusted publishing policy (repo + workflow
+      # allowlist) configured under the publisher's manage page.
+      # Requires `permissions: id-token: write` (already set at workflow level).
       # Only runs on tag pushes; workflow_dispatch (asset re-upload) must not
       # re-publish because the marketplace rejects duplicate versions.
-      - name: Azure login
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
       - name: Publish to VS Code Marketplace
         if: startsWith(github.ref, 'refs/tags/')
-        run: pnpm -F wave-vscode exec vsce publish --azure-credential --packagePath releases/*.vsix
+        run: pnpm -F wave-vscode exec vsce publish --oidc --packagePath releases/*.vsix
 
       # --- Docs (docs-<version>.tar.gz) ---
       - name: Cache Playwright browsers
