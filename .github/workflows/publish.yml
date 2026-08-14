@@ -37,26 +37,6 @@ jobs:
       - name: Package .vsix
         run: pnpm -F wave-vscode run package
 
-      # --- VS Code Marketplace (Entra ID, no PAT) ---
-      # PATs retire 2026-12-01; publish via Azure OIDC federated credentials
-      # instead: azure/login@v2 exchanges the Actions id-token (federated
-      # credential Subject: repo:netease-lcap/wave-agent:ref:refs/tags/v*),
-      # and `vsce publish --azure-credential` reuses the resulting az login
-      # cache — no PAT secret involved.
-      # Only runs on tag pushes; workflow_dispatch (asset re-upload) must not
-      # re-publish because the marketplace rejects duplicate versions.
-      - name: Azure login
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Publish to VS Code Marketplace
-        if: startsWith(github.ref, 'refs/tags/')
-        run: pnpm -F wave-vscode exec vsce publish --azure-credential --packagePath releases/*.vsix
-
       # --- Docs (docs-<version>.tar.gz) ---
       - name: Cache Playwright browsers
         uses: actions/cache@v6
@@ -164,15 +144,6 @@ jobs:
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # --- JetBrains Marketplace ---
-      # publishPlugin uploads the distribution built above (plugin id
-      # com.wave.jetbrains read from plugin.xml). JetBrains has no OIDC
-      # equivalent, so this needs a permanent marketplace token.
-      # Same duplicate-version guard as the VS Code step: tag pushes only.
-      - name: Publish to JetBrains Marketplace
-        if: startsWith(github.ref, 'refs/tags/')
-        run: ./packages/jetbrains/gradlew -p packages/jetbrains publishPlugin --no-daemon -PintellijPublishToken=${{ secrets.JETBRAINS_TOKEN }}
 
   # --- Desktop app (Electron) ---
   # Builds the desktop installers and attaches them to the same GitHub Release
