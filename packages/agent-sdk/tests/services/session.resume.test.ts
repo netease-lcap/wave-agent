@@ -157,6 +157,44 @@ describe("Session resume: cross-directory listing & restore", () => {
     });
   });
 
+  describe("first-message preview in aggregated listing", () => {
+    it("populates firstMessage so Ctrl+A/Ctrl+W rows do not fall back to No content", async () => {
+      const fs = await import("fs");
+      const { readFirstNLines } = await import("../../src/utils/fileUtils.js");
+      const sessionId = randomUUID();
+
+      // Meta messages are skipped; the first real content is returned.
+      vi.mocked(readFirstNLines).mockResolvedValue([
+        JSON.stringify({
+          isMeta: true,
+          blocks: [{ type: "text", content: "system init" }],
+        }),
+        JSON.stringify({
+          blocks: [{ type: "text", content: "hello from another project" }],
+        }),
+      ]);
+
+      vi.mocked(fs.promises.readdir)
+        .mockResolvedValueOnce(["home-u-repo"] as unknown as Awaited<
+          ReturnType<typeof fs.promises.readdir>
+        >)
+        .mockResolvedValueOnce([`${sessionId}.jsonl`] as unknown as Awaited<
+          ReturnType<typeof fs.promises.readdir>
+        >);
+      vi.mocked(fs.promises.stat).mockResolvedValue({
+        isDirectory: () => true,
+      } as unknown as Awaited<ReturnType<typeof fs.promises.stat>>);
+      mockJsonlHandler.getLastMessage.mockResolvedValue(
+        makeMessage(new Date().toISOString()),
+      );
+
+      const sessions = await listAllSessions();
+
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]!.firstMessage).toBe("hello from another project");
+    });
+  });
+
   describe("worktree aggregation", () => {
     it("only scans project dirs matching the given worktree paths", async () => {
       const fs = await import("fs");

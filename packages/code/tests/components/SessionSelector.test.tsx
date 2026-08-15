@@ -7,7 +7,7 @@ import type { SessionMetadata } from "wave-agent-sdk";
 describe("SessionSelector", () => {
   const mockSessions: (SessionMetadata & { firstMessage?: string })[] = [
     {
-      id: "session-1",
+      id: "12345678-1234-4321-8765-123456789012",
       createdAt: new Date("2023-01-01T10:00:00Z"),
       lastActiveAt: new Date("2023-01-01T10:00:00Z"),
       latestTotalTokens: 100,
@@ -16,7 +16,7 @@ describe("SessionSelector", () => {
       workdir: "/test",
     },
     {
-      id: "session-2",
+      id: "87654321-4321-1234-5678-210987654321",
       createdAt: new Date("2023-01-01T11:00:00Z"),
       lastActiveAt: new Date("2023-01-01T11:00:00Z"),
       latestTotalTokens: 200,
@@ -36,8 +36,9 @@ describe("SessionSelector", () => {
     const { lastFrame } = render(<SessionSelector {...mockProps} />);
     const output = lastFrame();
     expect(output).toContain("Select a session to resume");
-    expect(output).toContain("session-1");
-    expect(output).toContain("session-2");
+    // Only the first 8 chars of the session id are shown
+    expect(output).toContain("12345678");
+    expect(output).toContain("87654321");
     expect(output).toContain("Hello world");
     // Only the selected session's first message is shown
     expect(output).not.toContain("How are you?");
@@ -56,20 +57,20 @@ describe("SessionSelector", () => {
     const { lastFrame, stdin } = render(<SessionSelector {...mockProps} />);
 
     // Initially first session is selected
-    expect(lastFrame()).toContain("▶ session-1");
+    expect(lastFrame()).toContain("▶ 12345678");
 
     // Press down arrow
     stdin.write("\u001B[B"); // Down arrow
 
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain("▶ session-2");
+      expect(lastFrame()).toContain("▶ 87654321");
     });
 
     // Press up arrow
     stdin.write("\u001B[A"); // Up arrow
 
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain("▶ session-1");
+      expect(lastFrame()).toContain("▶ 12345678");
     });
   });
 
@@ -81,7 +82,9 @@ describe("SessionSelector", () => {
 
     stdin.write("\r"); // Enter
     await vi.waitFor(() => {
-      expect(onSelect).toHaveBeenCalledWith("session-1");
+      expect(onSelect).toHaveBeenCalledWith(
+        "12345678-1234-4321-8765-123456789012",
+      );
     });
   });
 
