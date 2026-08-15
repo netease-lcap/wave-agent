@@ -602,6 +602,20 @@ export async function listAllSessions(options?: {
               lastActiveAt = stats.mtime;
             }
 
+            // Populate the first-message preview like listSessionsFromJsonl
+            // does, so aggregated modes (Ctrl+A / Ctrl+W) show real content
+            // instead of the "No content" fallback.
+            let firstMessage: string | undefined;
+            try {
+              const firstContent =
+                await getFirstMessageContentFromFile(filePath);
+              if (firstContent) {
+                firstMessage = firstContent;
+              }
+            } catch {
+              // Ignore errors getting first message
+            }
+
             allSessions.push({
               id: sessionId,
               sessionType: "main" as const,
@@ -612,6 +626,7 @@ export async function listAllSessions(options?: {
               latestTotalTokens: lastMessage?.usage
                 ? extractLatestTotalTokens([lastMessage])
                 : 0,
+              firstMessage,
             });
           } catch {
             continue;
@@ -861,6 +876,50 @@ export async function sessionExistsInJsonl(
 }
 
 /**
+ * Get the content of the first non-meta message in a session file
+ * For user role: get text block content
+ * For assistant role: get compact block content
+ * Skips meta messages (isMeta: true) to find the first meaningful message
+ * @param filePath - Path to the session JSONL file
+ * @returns Promise that resolves to the first non-meta message content or null if not found
+ */
+export async function getFirstMessageContentFromFile(
+  filePath: string,
+): Promise<string | null> {
+  try {
+    // Read first N lines to skip meta messages
+    const { readFirstNLines } = await import("../utils/fileUtils.js");
+    const lines = await readFirstNLines(filePath, 10);
+
+    for (const line of lines) {
+      try {
+        const message = JSON.parse(line) as Message;
+
+        // Skip meta messages
+        if (message.isMeta) {
+          continue;
+        }
+
+        const content = getMessageContent(message);
+        if (content) {
+          return content;
+        }
+      } catch (error) {
+        logger.warn(
+          `Failed to parse message in session file ${filePath}:`,
+          error,
+        );
+      }
+    }
+
+    return null;
+  } catch (error) {
+    logger.warn(`Failed to get first message content from ${filePath}:`, error);
+    return null;
+  }
+}
+
+/**
  * Get the content of the first non-meta message in a session
  * For user role: get text block content
  * For assistant role: get compact block content
@@ -880,29 +939,7 @@ export async function getFirstMessageContent(
     const projectDir = await encoder.getProjectDirectory(workdir, baseDir);
     const filePath = join(projectDir.encodedPath, `${sessionId}.jsonl`);
 
-    // Read first N lines to skip meta messages
-    const { readFirstNLines } = await import("../utils/fileUtils.js");
-    const lines = await readFirstNLines(filePath, 10);
-
-    for (const line of lines) {
-      try {
-        const message = JSON.parse(line) as Message;
-
-        // Skip meta messages
-        if (message.isMeta) {
-          continue;
-        }
-
-        const content = getMessageContent(message);
-        if (content) {
-          return content;
-        }
-      } catch (error) {
-        logger.warn(`Failed to parse message in session ${sessionId}:`, error);
-      }
-    }
-
-    return null;
+    return getFirstMessageContentFromFile(filePath);
   } catch (error) {
     logger.warn(
       `Failed to get first message content for session ${sessionId}:`,

@@ -191,8 +191,8 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
                     color={isSelected ? "black" : "white"}
                     wrap="truncate-end"
                   >
-                    {session.id} | {lastActiveAt} | {session.latestTotalTokens}{" "}
-                    tokens
+                    {session.id.slice(0, 8)} | {lastActiveAt} |{" "}
+                    {session.latestTotalTokens} tokens
                     {showProjectPath && session.workdir
                       ? ` | ${session.workdir}`
                       : ""}
