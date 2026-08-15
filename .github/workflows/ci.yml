@@ -14,12 +14,18 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    # Unit tests + coverage gate PRs; integration tests run post-merge (push main).
+    # PR gate: unit tests for the three heaviest packages (agent-sdk, code,
+    # webview), each sharded in two halves via vitest --shard and run on
+    # separate runners in parallel. Each shard writes a vitest blob report
+    # (with coverage) that check-coverage merges to enforce the coverage gate.
+    # integration tests run post-merge (push main).
     if: github.event_name != 'push'
 
     strategy:
+      fail-fast: false
       matrix:
-        node-version: [22]
+        pkg: [agent-sdk, code, webview]
+        shard: [1, 2]
 
     steps:
       - name: Checkout code
@@ -46,7 +52,7 @@ jobs:
         if: steps.filter.outputs.code == 'true'
         uses: actions/setup-node@v6
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 22
           cache: "pnpm"
 
       - name: Install dependencies
@@ -57,9 +63,154 @@ jobs:
         if: steps.filter.outputs.code == 'true'
         run: pnpm build
 
-      - name: CI (unit tests + coverage)
+      # Per-shard coverage thresholds are zeroed here: a shard only executes
+      # half the tests, so its coverage report is incomplete and would fail
+      # the real thresholds (vitest#8616). Coverage is collected into the blob
+      # report and merged with full thresholds in check-coverage.
+      - name: Unit tests (shard ${{ matrix.shard }}/2)
         if: steps.filter.outputs.code == 'true'
-        run: pnpm run ci
+        run: |
+          pnpm -F wave-${{ matrix.pkg }} test:unit \
+            --shard=${{ matrix.shard }}/2 \
+            --reporter=blob \
+            --coverage \
+            --coverage.thresholds.lines=0 \
+            --coverage.thresholds.functions=0 \
+            --coverage.thresholds.branches=0 \
+            --coverage.thresholds.statements=0
+
+      - name: Upload test blob
+        if: steps.filter.outputs.code == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: blob-${{ matrix.pkg }}-${{ matrix.shard }}
+          path: packages/${{ matrix.pkg }}/.vitest-reports/
+          # The blob dir is hidden (leading dot); upload-artifact skips hidden
+          # paths by default.
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  check-extras:
+    runs-on: ubuntu-latest
+    # PR gate, runs in parallel with check: type-check + lint (platform
+    # agnostic, run once for all packages here) and the two small packages'
+    # unit tests with coverage, which are fast enough to stay unsharded.
+    if: github.event_name != 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Detect code changes
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            code:
+              - '!**/*.md'
+              - '!**/*.txt'
+              - '!docs/**'
+              - '!scripts/**'
+              - '!packages/webview/e2e/**'
+              - '!LICENSE'
+
+      - name: Setup pnpm
+        if: steps.filter.outputs.code == 'true'
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        if: steps.filter.outputs.code == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        if: steps.filter.outputs.code == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        if: steps.filter.outputs.code == 'true'
+        run: pnpm build
+
+      - name: Type-check, lint, small package unit tests
+        if: steps.filter.outputs.code == 'true'
+        run: |
+          pnpm -r --parallel type-check
+          pnpm -r --parallel lint
+          pnpm -F wave-desktop -F wave-vscode test:unit:coverage
+
+  check-coverage:
+    runs-on: ubuntu-latest
+    # Coverage gate for the three sharded packages: merges the per-shard blob
+    # reports into one full coverage report per package and enforces the
+    # thresholds configured in each package's vitest.config.ts.
+    if: github.event_name != 'push'
+    needs: check
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Detect code changes
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            code:
+              - '!**/*.md'
+              - '!**/*.txt'
+              - '!docs/**'
+              - '!scripts/**'
+              - '!packages/webview/e2e/**'
+              - '!LICENSE'
+
+      - name: Setup pnpm
+        if: steps.filter.outputs.code == 'true'
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        if: steps.filter.outputs.code == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        if: steps.filter.outputs.code == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Download test blobs
+        if: steps.filter.outputs.code == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          path: .blobs/agent-sdk
+          pattern: blob-agent-sdk-*
+          merge-multiple: true
+
+      - name: Download test blobs (code)
+        if: steps.filter.outputs.code == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          path: .blobs/code
+          pattern: blob-code-*
+          merge-multiple: true
+
+      - name: Download test blobs (webview)
+        if: steps.filter.outputs.code == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          path: .blobs/webview
+          pattern: blob-webview-*
+          merge-multiple: true
+
+      - name: Merge coverage and enforce thresholds
+        if: steps.filter.outputs.code == 'true'
+        run: |
+          pnpm -F wave-agent-sdk exec vitest run --merge-reports=../../.blobs/agent-sdk --coverage
+          pnpm -F wave-code exec vitest run --merge-reports=../../.blobs/code --coverage
+          pnpm -F wave-webview exec vitest run --merge-reports=../../.blobs/webview --coverage
 
   integration:
     runs-on: ubuntu-latest
