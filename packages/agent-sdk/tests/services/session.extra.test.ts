@@ -466,23 +466,16 @@ describe("session service - additional coverage", () => {
       );
     });
 
-    it("should return undefined if restoreSessionId not found (graceful fallback)", async () => {
-      const spyWarn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-
+    it("should throw when restoreSessionId is not found (no silent fresh session)", async () => {
       vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
 
-      const result = await handleSessionRestoration(
-        validSessionId,
-        false,
-        workdir,
-      );
-      expect(result).toBeUndefined();
+      await expect(
+        handleSessionRestoration(validSessionId, false, workdir),
+      ).rejects.toThrow(`Session ${validSessionId} not found on disk`);
 
-      expect(spyWarn).toHaveBeenCalledWith(
-        `Session ${validSessionId} not found on disk, starting fresh session`,
-      );
-
-      spyWarn.mockRestore();
+      // loadSessionFromJsonl scans all project dirs as a fallback — reaching
+      // the throw means the session truly does not exist anywhere.
+      expect(fs.readdir).toHaveBeenCalled();
     });
   });
 });

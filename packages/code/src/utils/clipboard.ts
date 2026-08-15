@@ -10,6 +10,27 @@ export interface ClipboardImageResult {
 }
 
 /**
+ * Write text to the system clipboard via the terminal OSC 52 escape sequence.
+ * Works in most modern terminals without external tools (mirrors Claude
+ * Code's setClipboard). Callers must treat a `false` return as "clipboard
+ * unavailable" and still surface the text itself.
+ *
+ * @param text - Text to copy
+ * @returns Promise resolving to true when the sequence was written
+ */
+export async function setClipboardText(text: string): Promise<boolean> {
+  try {
+    process.stdout.write(
+      `\x1b]52;c;${Buffer.from(text, "utf-8").toString("base64")}\x07`,
+    );
+    return true;
+  } catch {
+    // stdout unavailable — clipboard could not be set
+    return false;
+  }
+}
+
+/**
  * Read image from clipboard
  * @returns Promise<ClipboardImageResult> Result containing image path or error information
  */

@@ -115,4 +115,85 @@ describe("SessionSelector", () => {
     const output = lastFrame();
     expect(output).toContain("showing 3 of 15 sessions");
   });
+
+  it("should call onToggleAllProjects when Ctrl+A is pressed", async () => {
+    const onToggleAllProjects = vi.fn();
+    const { stdin } = render(
+      <SessionSelector
+        {...mockProps}
+        onToggleAllProjects={onToggleAllProjects}
+      />,
+    );
+
+    stdin.write("\x01"); // Ctrl+A
+    await vi.waitFor(() => {
+      expect(onToggleAllProjects).toHaveBeenCalledWith(true);
+    });
+
+    stdin.write("\x01"); // Ctrl+A again → back to current dir scope
+    await vi.waitFor(() => {
+      expect(onToggleAllProjects).toHaveBeenCalledWith(false);
+    });
+  });
+
+  it("should call onToggleAllWorktrees on Ctrl+W only with multiple worktrees", async () => {
+    const onToggleAllWorktrees = vi.fn();
+    // Single worktree: Ctrl+W is a no-op
+    const { stdin: singleStdin } = render(
+      <SessionSelector
+        {...mockProps}
+        worktreePaths={["/repo"]}
+        onToggleAllWorktrees={onToggleAllWorktrees}
+      />,
+    );
+    singleStdin.write("\x17"); // Ctrl+W
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onToggleAllWorktrees).not.toHaveBeenCalled();
+
+    // Multiple worktrees: Ctrl+W toggles the scope
+    const { stdin } = render(
+      <SessionSelector
+        {...mockProps}
+        worktreePaths={["/repo", "/repo-wt"]}
+        onToggleAllWorktrees={onToggleAllWorktrees}
+      />,
+    );
+    stdin.write("\x17"); // Ctrl+W
+    await vi.waitFor(() => {
+      expect(onToggleAllWorktrees).toHaveBeenCalledWith(true);
+    });
+  });
+
+  it("should render workdir at row end when showProjectPath is set", () => {
+    const { lastFrame } = render(
+      <SessionSelector {...mockProps} showProjectPath />,
+    );
+    const output = lastFrame();
+    expect(output).toContain("| /test");
+  });
+
+  it("should show Ctrl+A / Ctrl+W hints when their toggles are available", () => {
+    // No toggles → no shortcut hints
+    const { lastFrame: plainFrame } = render(
+      <SessionSelector {...mockProps} />,
+    );
+    expect(plainFrame()).not.toContain("Ctrl+A");
+    expect(plainFrame()).not.toContain("Ctrl+W");
+
+    // All-projects toggle available → Ctrl+A hint shown
+    const { lastFrame: withA } = render(
+      <SessionSelector {...mockProps} onToggleAllProjects={vi.fn()} />,
+    );
+    expect(withA()).toContain("Ctrl+A");
+
+    // Multiple worktrees → Ctrl+W hint shown
+    const { lastFrame: withW } = render(
+      <SessionSelector
+        {...mockProps}
+        worktreePaths={["/repo", "/repo-wt"]}
+        onToggleAllWorktrees={vi.fn()}
+      />,
+    );
+    expect(withW()).toContain("Ctrl+W");
+  });
 });

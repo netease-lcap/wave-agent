@@ -56,6 +56,49 @@ export function validateWorktreeSlug(name: string): void {
 }
 
 /**
+ * List all worktree paths of the git repository containing `cwd`.
+ *
+ * Uses `git worktree list --porcelain` (same discovery Claude Code uses for
+ * its resume picker). The current worktree is returned first (when `cwd` is
+ * inside one), followed by the remaining worktrees alphabetically.
+ *
+ * @param cwd Directory to run the git command from
+ * @returns Array of absolute worktree paths; empty when git is unavailable,
+ *   `cwd` is not inside a git repository, or the repo has a single worktree.
+ */
+export async function listWorktrees(cwd: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["worktree", "list", "--porcelain"],
+      { cwd },
+    );
+
+    const worktreePaths = stdout
+      .split("\n")
+      .filter((line) => line.startsWith("worktree "))
+      .map((line) => line.slice("worktree ".length).normalize("NFC"));
+
+    if (worktreePaths.length <= 1) return worktreePaths;
+
+    // Current worktree first, then alphabetical
+    const currentWorktree = worktreePaths.find(
+      (wt) => cwd === wt || cwd.startsWith(wt + path.sep),
+    );
+    const otherWorktrees = worktreePaths
+      .filter((wt) => wt !== currentWorktree)
+      .sort((a, b) => a.localeCompare(b));
+
+    return currentWorktree
+      ? [currentWorktree, ...otherWorktrees]
+      : otherWorktrees;
+  } catch {
+    // Not a git repository, git unavailable, or command failed
+    return [];
+  }
+}
+
+/**
  * Create a new git worktree
  * @param name Worktree name
  * @param cwd Current working directory
