@@ -1,6 +1,6 @@
 import React from "react";
 import os from "os";
-import { Box, Text, Static } from "ink";
+import { Box, Text, Static, useWindowSize } from "ink";
 import type { Message, MessageBlock } from "wave-agent-sdk";
 import { MessageBlockItem } from "./MessageBlockItem.js";
 
@@ -19,6 +19,14 @@ export const MessageList = React.memo(
     const maxMessages = isExpanded
       ? MAX_MESSAGES_EXPANDED
       : MAX_MESSAGES_COLLAPSED;
+    // Bound the <Static> history to the terminal width. The static node is
+    // absolutely positioned, so without an explicit width Yoga measures it
+    // against its content: any row whose natural width exceeds the terminal
+    // (e.g. long tool compactParams) widens the node past the viewport, and
+    // the node's height stays at the pre-resize measurement while children
+    // re-layout at the wider width — leaving a block of blank rows between
+    // the last message and the input box on session restore.
+    const { columns } = useWindowSize();
 
     const welcomeMessage = (
       <Box flexDirection="column" paddingTop={1}>
@@ -99,7 +107,7 @@ export const MessageList = React.memo(
       <Box flexDirection="column" paddingBottom={1}>
         {/* Static items (Welcome message + Static blocks) */}
         {staticItems.length > 0 && (
-          <Static items={staticItems}>
+          <Static items={staticItems} style={{ width: columns }}>
             {(item) => {
               if (item.isWelcome) {
                 return (
