@@ -85,6 +85,9 @@ jobs:
         with:
           name: blob-${{ matrix.pkg }}-${{ matrix.shard }}
           path: packages/${{ matrix.pkg }}/.vitest-reports/
+          # The blob dir is hidden (leading dot); upload-artifact skips hidden
+          # paths by default.
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
 
