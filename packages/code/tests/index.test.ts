@@ -53,6 +53,15 @@ vi.mock("../src/commands/plugin/update.js");
 vi.mock("../src/cli.js");
 vi.mock("../src/print-cli.js");
 vi.mock("../src/session-selector-cli.js");
+// loadSessionFromJsonl backs the `wave --restore <id>` pre-flight check in
+// index.ts; a truthy result lets the CLI proceed to startCli.
+vi.mock("wave-agent-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("wave-agent-sdk")>();
+  return {
+    ...actual,
+    loadSessionFromJsonl: vi.fn().mockResolvedValue({ id: "mock-session" }),
+  };
+});
 vi.mock("../src/utils/worktree.js", () => ({
   createWorktree: vi.fn().mockImplementation((name, cwd) => ({
     name,
@@ -63,6 +72,7 @@ vi.mock("../src/utils/worktree.js", () => ({
     hasNewCommits: false,
   })),
   removeWorktree: vi.fn(),
+  listWorktrees: vi.fn().mockResolvedValue([]),
 }));
 
 describe("main", () => {
@@ -468,12 +478,13 @@ describe("main", () => {
   describe("session restoration", () => {
     it("should start session selector CLI if --restore is provided without an ID", async () => {
       process.argv = ["node", "index.js", "--restore"];
-      vi.mocked(sessionSelectorCli.startSessionSelectorCli).mockResolvedValue(
-        "selected-session-id",
-      );
+      vi.mocked(sessionSelectorCli.startSessionSelectorCli).mockResolvedValue({
+        sessionId: "selected-session-id",
+      });
       await main();
       expect(sessionSelectorCli.startSessionSelectorCli).toHaveBeenCalledWith({
         workdir: process.cwd(),
+        worktreePaths: [],
       });
       expect(cli.startCli).toHaveBeenCalledWith({
         restoreSessionId: "selected-session-id",
@@ -487,6 +498,25 @@ describe("main", () => {
       });
     });
 
+    it("should chdir into a sibling worktree before resuming its session", async () => {
+      process.argv = ["node", "index.js", "--restore"];
+      const worktreePath = path.join(process.cwd(), "..", "repo-wt");
+      vi.mocked(sessionSelectorCli.startSessionSelectorCli).mockResolvedValue({
+        sessionId: "wt-session-id",
+        resumeWorkdir: worktreePath,
+      });
+      const chdirSpy = vi.spyOn(process, "chdir").mockImplementation(() => {});
+      await main();
+      expect(chdirSpy).toHaveBeenCalledWith(worktreePath);
+      expect(cli.startCli).toHaveBeenCalledWith(
+        expect.objectContaining({
+          restoreSessionId: "wt-session-id",
+          workdir: worktreePath,
+        }),
+      );
+      chdirSpy.mockRestore();
+    });
+
     it("should not start CLI if session selector returns null", async () => {
       process.argv = ["node", "index.js", "--restore"];
       vi.mocked(sessionSelectorCli.startSessionSelectorCli).mockResolvedValue(
@@ -495,6 +525,7 @@ describe("main", () => {
       await main();
       expect(sessionSelectorCli.startSessionSelectorCli).toHaveBeenCalledWith({
         workdir: process.cwd(),
+        worktreePaths: [],
       });
       expect(cli.startCli).not.toHaveBeenCalled();
     });

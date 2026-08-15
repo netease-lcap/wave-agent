@@ -1,4 +1,4 @@
-import React, { useReducer, useEffect } from "react";
+import React, { useReducer, useEffect, useRef } from "react";
 import { Box, Text, useInput } from "ink";
 import type { SessionMetadata } from "wave-agent-sdk";
 import {
@@ -12,33 +12,86 @@ export interface SessionSelectorProps {
   sessions: SessionItem[];
   onSelect: (sessionId: string) => void;
   onCancel: () => void;
+  /**
+   * Same-repo worktree paths (from `git worktree list`). The Ctrl+W
+   * all-worktrees toggle is only enabled when more than one worktree exists.
+   */
+  worktreePaths?: string[];
+  /** Show each session's project directory at the end of its row. */
+  showProjectPath?: boolean;
+  /** Emitted with the new scope when the user toggles all-projects (Ctrl+A). */
+  onToggleAllProjects?: (showAllProjects: boolean) => void;
+  /** Emitted with the new scope when the user toggles all-worktrees (Ctrl+W). */
+  onToggleAllWorktrees?: (showAllWorktrees: boolean) => void;
 }
 
 export const SessionSelector: React.FC<SessionSelectorProps> = ({
   sessions,
   onSelect,
   onCancel,
+  worktreePaths = [],
+  showProjectPath = false,
+  onToggleAllProjects,
+  onToggleAllWorktrees,
 }) => {
   const [state, dispatch] = useReducer(selectorReducer<SessionItem>, {
     selectedIndex: 0,
     pendingDecision: null,
     items: [],
+    showAllProjects: false,
+    showAllWorktrees: false,
   } as SelectorState<SessionItem>);
 
-  const { selectedIndex, pendingDecision, items } = state;
+  const {
+    selectedIndex,
+    pendingDecision,
+    items,
+    showAllProjects,
+    showAllWorktrees,
+  } = state;
 
   // Sync sessions into reducer state
   useEffect(() => {
     dispatch({ type: "SET_ITEMS", items: sessions });
   }, [sessions]);
 
-  useInput((_input, key) => {
-    dispatch({
-      type: "HANDLE_KEY",
-      key,
-      hasInsert: false,
-    });
+  useInput((input, key) => {
+    // Ctrl+A — toggle all-projects scope (only when the parent supports it)
+    if (key.ctrl && input.toLowerCase() === "a" && onToggleAllProjects) {
+      dispatch({ type: "TOGGLE_ALL_PROJECTS" });
+      return;
+    }
+    // Ctrl+W — toggle all-worktrees scope (only with multiple worktrees)
+    if (
+      key.ctrl &&
+      input.toLowerCase() === "w" &&
+      onToggleAllWorktrees &&
+      worktreePaths.length > 1
+    ) {
+      dispatch({ type: "TOGGLE_ALL_WORKTREES" });
+      return;
+    }
+    dispatch({ type: "HANDLE_KEY", key, hasInsert: false });
   });
+
+  // Report scope toggles to the parent so it can reload the session list.
+  // Skip the initial render — the parent already starts in the default scope.
+  const projectsFirstRender = useRef(true);
+  useEffect(() => {
+    if (projectsFirstRender.current) {
+      projectsFirstRender.current = false;
+      return;
+    }
+    onToggleAllProjects?.(showAllProjects ?? false);
+  }, [showAllProjects, onToggleAllProjects]);
+  const worktreesFirstRender = useRef(true);
+  useEffect(() => {
+    if (worktreesFirstRender.current) {
+      worktreesFirstRender.current = false;
+      return;
+    }
+    onToggleAllWorktrees?.(showAllWorktrees ?? false);
+  }, [showAllWorktrees, onToggleAllWorktrees]);
 
   useEffect(() => {
     if (pendingDecision === "select") {
@@ -81,6 +134,20 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
     startIndex,
     startIndex + MAX_VISIBLE_ITEMS,
   );
+
+  const hints = [
+    onToggleAllProjects
+      ? `Ctrl+A ${showAllProjects ? "当前目录" : "全部项目"}`
+      : null,
+    onToggleAllWorktrees && worktreePaths.length > 1
+      ? `Ctrl+W ${showAllWorktrees ? "当前 worktree" : "全部 worktree"}`
+      : null,
+    "↑↓ 选择",
+    "Enter 确认",
+    "Esc 取消",
+  ]
+    .filter((hint): hint is string => hint !== null)
+    .join("  ·  ");
 
   return (
     <Box
@@ -126,6 +193,9 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
                   >
                     {session.id} | {lastActiveAt} | {session.latestTotalTokens}{" "}
                     tokens
+                    {showProjectPath && session.workdir
+                      ? ` | ${session.workdir}`
+                      : ""}
                   </Text>
                 </Box>
               </Box>
@@ -150,7 +220,7 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
       )}
 
       <Box>
-        <Text dimColor>↑↓ navigate • Enter to select • Esc to cancel</Text>
+        <Text dimColor>{hints}</Text>
       </Box>
     </Box>
   );

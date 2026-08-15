@@ -190,6 +190,43 @@ export async function appendMessages(
 }
 
 /**
+ * Scan all project directories for a session file by ID. Used as a fallback
+ * when the session is not found in the given working directory (e.g. resuming
+ * a session created in another project or a sibling git worktree via
+ * `wave --restore <id>`).
+ *
+ * @param sessionId - UUID session identifier
+ * @param sessionType - Type of session ("main" or "subagent")
+ * @returns Full path to the session file, or null if not found anywhere
+ */
+async function findSessionFileAcrossProjects(
+  sessionId: string,
+  sessionType: "main" | "subagent",
+): Promise<string | null> {
+  const targetFile =
+    sessionType === "subagent"
+      ? `subagent-${sessionId}.jsonl`
+      : `${sessionId}.jsonl`;
+
+  try {
+    const projectDirs = await fs.readdir(SESSION_DIR);
+    for (const projectDirName of projectDirs) {
+      const candidate = join(SESSION_DIR, projectDirName, targetFile);
+      try {
+        await fs.access(candidate);
+        return candidate;
+      } catch {
+        // ENOENT/ENOTDIR — keep scanning other project dirs
+      }
+    }
+  } catch {
+    // Sessions base dir missing or unreadable — nothing to scan
+  }
+
+  return null;
+}
+
+/**
  * Load session data from JSONL file (new approach)
  *
  * @param sessionId - UUID session identifier
@@ -213,16 +250,27 @@ export async function loadSessionFromJsonl(
     );
 
     // Check if file exists
+    let resolvedPath = filePath;
     try {
-      await fs.access(filePath);
+      await fs.access(resolvedPath);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return null;
+        // Cross-project fallback: the session may live in a different project
+        // directory (e.g. `wave --restore <id>` run from another cwd).
+        const fallbackPath = await findSessionFileAcrossProjects(
+          sessionId,
+          sessionType,
+        );
+        if (!fallbackPath) {
+          return null;
+        }
+        resolvedPath = fallbackPath;
+      } else {
+        throw error;
       }
-      throw error;
     }
 
-    const allMessages = await jsonlHandler.read(filePath);
+    const allMessages = await jsonlHandler.read(resolvedPath);
 
     // Find the last compact boundary — only return messages from there forward
     const messages = sliceFromLastCompact(allMessages);
@@ -326,9 +374,6 @@ export async function listSessionsFromJsonl(
 
     const projectDir = await encoder.getProjectDirectory(workdir, baseDir);
 
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
     let files: string[];
     try {
       files = await fs.readdir(projectDir.encodedPath);
@@ -380,10 +425,6 @@ export async function listSessionsFromJsonl(
           lastActiveAt = stats.mtime;
         }
 
-        if (lastActiveAt < sevenDaysAgo) {
-          continue;
-        }
-
         // Return inline object for performance (no interface instantiation overhead)
         const sessionMeta: SessionMetadata = {
           id: sessionId,
@@ -424,12 +465,33 @@ export async function listSessionsFromJsonl(
 }
 
 /**
- * List all sessions across all project directories
+ * List all sessions across all project directories.
  *
- * @returns Promise that resolves to array of session metadata objects
+ * When `worktreePaths` is provided, only project directories that match a
+ * same-repo git worktree (plus the current working directory's own project
+ * dir) are scanned — used by the `wave -r` picker's worktree aggregation
+ * (`Ctrl+W`). When omitted, every project directory under the sessions dir
+ * is scanned (all-projects mode, `Ctrl+A`).
+ *
+ * No time-based filtering is applied — all sessions whose files still exist
+ * are listed, regardless of how long ago they were last active.
+ *
+ * @param options.worktreePaths - Absolute paths of same-repo worktrees
+ *   (from `git worktree list`). When provided, scanning is limited to
+ *   matching project directories.
+ * @param options.workdir - Current working directory. Its own project dir is
+ *   always included in worktree mode so sessions created from a subdirectory
+ *   inside a worktree are not missed.
+ * @returns Promise that resolves to array of session metadata objects,
+ *   deduplicated by sessionId (newest lastActiveAt wins), sorted by
+ *   lastActiveAt descending.
  */
-export async function listAllSessions(): Promise<SessionMetadata[]> {
+export async function listAllSessions(options?: {
+  worktreePaths?: string[];
+  workdir?: string;
+}): Promise<SessionMetadata[]> {
   try {
+    const { worktreePaths, workdir } = options ?? {};
     const baseDir = SESSION_DIR;
     let projectDirs: string[];
     try {
@@ -441,9 +503,50 @@ export async function listAllSessions(): Promise<SessionMetadata[]> {
       throw error;
     }
 
+    // Worktree-aware mode: only scan project dirs that match a same-repo
+    // worktree path. Prefixes are sorted longest-first so a short prefix like
+    // "home-user-repo" cannot swallow "home-user-repo-wt" (short paths require
+    // exact match; prefix + "-" matching only kicks in for paths truncated by
+    // the 200-char encoding limit, mirroring Claude Code's session listing).
+    const encoder = new PathEncoder();
+    const caseInsensitive = process.platform === "win32";
+    let indexed: { prefix: string }[] | null = null;
+    if (worktreePaths && worktreePaths.length > 0) {
+      indexed = [];
+      const seen = new Set<string>();
+      for (const wt of worktreePaths) {
+        let encoded: string;
+        try {
+          encoded = await encoder.encode(wt);
+        } catch {
+          encoded = encoder.encodeSync(wt);
+        }
+        const prefix = caseInsensitive ? encoded.toLowerCase() : encoded;
+        if (seen.has(prefix)) continue;
+        seen.add(prefix);
+        indexed.push({ prefix });
+      }
+      indexed.sort((a, b) => b.prefix.length - a.prefix.length);
+      // Always include the current working directory's own project dir —
+      // the cwd may be a subdirectory inside a worktree whose root prefix
+      // does not match (short-path matching is exact-only).
+      if (workdir) {
+        let encodedCwd: string;
+        try {
+          encodedCwd = await encoder.encode(workdir);
+        } catch {
+          encodedCwd = encoder.encodeSync(workdir);
+        }
+        const prefix = caseInsensitive ? encodedCwd.toLowerCase() : encodedCwd;
+        if (!seen.has(prefix)) {
+          seen.add(prefix);
+          indexed.push({ prefix });
+        }
+      }
+    }
+
     const allSessions: SessionMetadata[] = [];
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const MAX_ENCODED_PREFIX_LENGTH = 200;
 
     for (const projectDirName of projectDirs) {
       const projectPath = join(baseDir, projectDirName);
@@ -452,6 +555,25 @@ export async function listAllSessions(): Promise<SessionMetadata[]> {
         if (!stat.isDirectory()) {
           continue;
         }
+
+        if (indexed) {
+          const dirName = caseInsensitive
+            ? projectDirName.toLowerCase()
+            : projectDirName;
+          const matchesWorktree = indexed.some(
+            ({ prefix }) =>
+              dirName === prefix ||
+              (prefix.length >= MAX_ENCODED_PREFIX_LENGTH &&
+                dirName.startsWith(prefix + "-")),
+          );
+          if (!matchesWorktree) continue;
+        }
+
+        // Decode the encoded directory name back to the original project
+        // path for display; fall back to the encoded name when the path was
+        // truncated with a hash suffix (lossy, cannot be reliably reversed).
+        const decodedWorkdir =
+          encoder.decodeSync(projectDirName) ?? projectDirName;
 
         // Scan .jsonl files in the project directory
         const files = await fs.readdir(projectPath);
@@ -480,13 +602,11 @@ export async function listAllSessions(): Promise<SessionMetadata[]> {
               lastActiveAt = stats.mtime;
             }
 
-            if (lastActiveAt < sevenDaysAgo) continue;
-
             allSessions.push({
               id: sessionId,
               sessionType: "main" as const,
               subagentType: undefined,
-              workdir: projectDirName,
+              workdir: decodedWorkdir,
               createdAt: new Date(),
               lastActiveAt,
               latestTotalTokens: lastMessage?.usage
@@ -502,7 +622,20 @@ export async function listAllSessions(): Promise<SessionMetadata[]> {
       }
     }
 
-    return allSessions.sort(
+    // Deduplicate by sessionId — the same session can appear in multiple
+    // project dirs (e.g. worktree branches). Keep the newest lastActiveAt.
+    const byId = new Map<string, SessionMetadata>();
+    for (const session of allSessions) {
+      const existing = byId.get(session.id);
+      if (
+        !existing ||
+        session.lastActiveAt.getTime() > existing.lastActiveAt.getTime()
+      ) {
+        byId.set(session.id, session);
+      }
+    }
+
+    return [...byId.values()].sort(
       (a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime(),
     );
   } catch (error) {
@@ -857,12 +990,10 @@ export async function handleSessionRestoration(
       // Use only JSONL format - no legacy support
       sessionToRestore = await loadSessionFromJsonl(restoreSessionId, workdir);
       if (!sessionToRestore) {
-        // Session doesn't exist on disk (e.g. new project with no messages saved yet).
-        // Gracefully fall back to starting fresh instead of throwing.
-        logger?.warn(
-          `Session ${restoreSessionId} not found on disk, starting fresh session`,
-        );
-        return;
+        // loadSessionFromJsonl already scans every project directory as a
+        // fallback — reaching here means the session does not exist anywhere.
+        // Surface a clear error instead of silently starting a fresh session.
+        throw new Error(`Session ${restoreSessionId} not found on disk`);
       }
     } else if (continueLastSession) {
       // Use only JSONL format - no legacy support

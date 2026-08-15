@@ -102,4 +102,26 @@ describe("selectorReducer", () => {
     } as unknown as SelectorAction);
     expect(result).toBe(initialState);
   });
+
+  it("should toggle all-projects scope with TOGGLE_ALL_PROJECTS", () => {
+    const result = selectorReducer(initialState, {
+      type: "TOGGLE_ALL_PROJECTS",
+    });
+    expect(result.showAllProjects).toBe(true);
+    // Toggle again returns to the default scope
+    const result2 = selectorReducer(result, { type: "TOGGLE_ALL_PROJECTS" });
+    expect(result2.showAllProjects).toBe(false);
+    // Other state is untouched
+    expect(result2.selectedIndex).toBe(initialState.selectedIndex);
+    expect(result2.items).toEqual(initialState.items);
+  });
+
+  it("should toggle all-worktrees scope with TOGGLE_ALL_WORKTREES", () => {
+    const result = selectorReducer(initialState, {
+      type: "TOGGLE_ALL_WORKTREES",
+    });
+    expect(result.showAllWorktrees).toBe(true);
+    const result2 = selectorReducer(result, { type: "TOGGLE_ALL_WORKTREES" });
+    expect(result2.showAllWorktrees).toBe(false);
+  });
 });

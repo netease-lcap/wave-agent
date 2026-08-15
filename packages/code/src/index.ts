@@ -497,13 +497,29 @@ export async function main() {
       const { startSessionSelectorCli } = await import(
         "./session-selector-cli.js"
       );
-      const selectedSessionId = await startSessionSelectorCli({ workdir });
-      if (!selectedSessionId) {
+      const { listWorktrees } = await import("./utils/worktree.js");
+      const worktreePaths = await listWorktrees(process.cwd());
+      const selection = await startSessionSelectorCli({
+        workdir,
+        worktreePaths,
+      });
+      if (!selection) {
         return;
       }
+
+      // Resume a session from a sibling worktree of the same repo — chdir into
+      // that worktree so the agent's workdir matches the session's origin
+      // (mirrors Claude Code's worktree resume; projectRoot is not set, so
+      // skills/history stay anchored to the original project).
+      let resumeWorkdir = workdir;
+      if (selection.resumeWorkdir) {
+        resumeWorkdir = selection.resumeWorkdir;
+        process.chdir(resumeWorkdir);
+      }
+
       // Continue with the selected session
       return startCli({
-        restoreSessionId: selectedSessionId,
+        restoreSessionId: selection.sessionId,
         bypassPermissions: argv.dangerouslySkipPermissions as boolean,
         permissionMode: argv.permissionMode as PermissionMode | undefined,
         pluginDirs,
@@ -512,12 +528,29 @@ export async function main() {
         allowedTools,
         disallowedTools,
         worktreeSession,
-        workdir,
+        workdir: resumeWorkdir,
         originalCwd,
         version,
         model: argv.model as string | undefined,
         mcpServers,
       });
+    }
+
+    // Validate an explicitly-specified restore ID before entering the CLI —
+    // loadSessionFromJsonl scans every project dir as a fallback, so a miss
+    // here means the session truly does not exist. Fail fast with a clear
+    // error instead of silently starting a fresh session.
+    if (
+      typeof argv.restore === "string" &&
+      argv.restore !== "" &&
+      !argv.print
+    ) {
+      const { loadSessionFromJsonl } = await import("wave-agent-sdk");
+      const exists = await loadSessionFromJsonl(argv.restore, workdir);
+      if (!exists) {
+        console.error(`Session ${argv.restore} not found on disk.`);
+        process.exit(1);
+      }
     }
 
     // Handle print mode directly

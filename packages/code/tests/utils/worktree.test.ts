@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   createWorktree,
+  listWorktrees,
   removeWorktree,
   validateWorktreeSlug,
 } from "../../src/utils/worktree.js";
@@ -436,6 +437,65 @@ describe("worktree utils", () => {
       expect(() => validateWorktreeSlug("trailing/")).toThrow(
         "segment must be non-empty",
       );
+    });
+  });
+
+  describe("listWorktrees", () => {
+    it("should parse porcelain output with current worktree first", async () => {
+      git.handler = (cmd, args) => {
+        expect(args).toEqual(["worktree", "list", "--porcelain"]);
+        return {
+          stdout: [
+            "worktree /repo/main",
+            "HEAD abc123",
+            "branch refs/heads/main",
+            "",
+            "worktree /repo/wt-feature",
+            "HEAD def456",
+            "branch refs/heads/feature",
+            "",
+            "worktree /repo/wt-other",
+            "HEAD 789abc",
+            "branch refs/heads/other",
+            "",
+          ].join("\n"),
+          stderr: "",
+        };
+      };
+
+      const paths = await listWorktrees("/repo/main");
+
+      // Current worktree first, then alphabetical
+      expect(paths).toEqual([
+        "/repo/main",
+        "/repo/wt-feature",
+        "/repo/wt-other",
+      ]);
+      expect(gitCallsWith(["worktree", "list"])).toHaveLength(1);
+    });
+
+    it("should return a single worktree unchanged", async () => {
+      git.handler = () => ({
+        stdout: "worktree /repo/main\nHEAD abc123\nbranch refs/heads/main\n",
+        stderr: "",
+      });
+
+      const paths = await listWorktrees("/repo/main");
+
+      expect(paths).toEqual(["/repo/main"]);
+    });
+
+    it("should return an empty array when git fails (not a repo)", async () => {
+      git.handler = () => {
+        throw gitError(
+          "Command failed: git worktree list",
+          "fatal: not a git repository",
+        );
+      };
+
+      const paths = await listWorktrees("/not-a-repo");
+
+      expect(paths).toEqual([]);
     });
   });
 });
