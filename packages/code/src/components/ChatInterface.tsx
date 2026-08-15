@@ -1,6 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Box, useStdout, measureElement, Static } from "ink";
-import type { DOMElement } from "ink";
+import React, { useState, useEffect, useCallback } from "react";
+import { Box, useWindowSize } from "ink";
 import { authService } from "wave-agent-sdk";
 import { MessageList } from "./MessageList.js";
 import { InputBox } from "./InputBox.js";
@@ -30,23 +29,26 @@ export const ChatInterface: React.FC = () => {
     slashCommands,
     hasSlashCommand,
     isConfirmationVisible,
-    hasPendingConfirmations,
     confirmingTool,
     handleConfirmationDecision,
     handleConfirmationCancel,
     version,
     workdir,
     remountKey,
-    forceRemount,
     getGatewayConfig,
   } = useChat();
 
   const displayMessages = messages;
 
-  const [forceStatic, setForceStatic] = useState(false);
-  const { stdout } = useStdout();
-  const terminalHeight = stdout?.rows ?? 24;
-  const chatInterfaceRef = useRef<DOMElement>(null);
+  const { rows } = useWindowSize();
+
+  // Reserve terminal rows for the pending tool block in the message list and
+  // the ConfirmationSelector, so the confirmation details stay within Ink's
+  // incremental-rendering height. When dynamic output >= terminal rows, Ink
+  // falls back to a fullscreen clear + redraw on every frame, which makes the
+  // confirmation options flicker while navigating.
+  const CONFIRMATION_UI_RESERVE = 14;
+  const detailsMaxHeight = Math.max(rows - CONFIRMATION_UI_RESERVE, 1);
 
   // Compute whether the user has any usable auth/direct-API config,
   // so the welcome page can prompt /login when neither is present.
@@ -70,36 +72,16 @@ export const ChatInterface: React.FC = () => {
 
   const showLoginHint = !hasAuth;
 
-  // Handle forceStatic mode for overflow and request remount when exiting
-  useEffect(() => {
-    if (isConfirmationVisible && chatInterfaceRef.current) {
-      const { height } = measureElement(chatInterfaceRef.current);
-      if (height > terminalHeight) {
-        setForceStatic(true);
-      }
-    } else if (forceStatic && !hasPendingConfirmations) {
-      setForceStatic(false);
-      forceRemount();
-    }
-  }, [
-    isConfirmationVisible,
-    terminalHeight,
-    forceStatic,
-    hasPendingConfirmations,
-    forceRemount,
-  ]);
-
   if (!sessionId) return null;
 
   return (
-    <Box ref={chatInterfaceRef} flexDirection="column">
+    <Box flexDirection="column">
       <MessageList
         key={remountKey}
         messages={displayMessages}
         isExpanded={isExpanded}
         version={version}
         workdir={workdir}
-        forceStatic={forceStatic}
       />
 
       {!isConfirmationVisible && !isExpanded && (
@@ -134,28 +116,13 @@ export const ChatInterface: React.FC = () => {
 
       {isConfirmationVisible && (
         <>
-          {forceStatic ? (
-            <Static items={[{ key: "confirmation-details" }]}>
-              {() => (
-                <ConfirmationDetails
-                  key="confirmation-details"
-                  toolName={confirmingTool!.name}
-                  toolInput={confirmingTool!.input}
-                  planContent={confirmingTool!.planContent}
-                  warning={confirmingTool!.warning}
-                  isExpanded={isExpanded}
-                />
-              )}
-            </Static>
-          ) : (
-            <ConfirmationDetails
-              toolName={confirmingTool!.name}
-              toolInput={confirmingTool!.input}
-              planContent={confirmingTool!.planContent}
-              warning={confirmingTool!.warning}
-              isExpanded={isExpanded}
-            />
-          )}
+          <ConfirmationDetails
+            toolName={confirmingTool!.name}
+            toolInput={confirmingTool!.input}
+            planContent={confirmingTool!.planContent}
+            warning={confirmingTool!.warning}
+            maxHeight={detailsMaxHeight}
+          />
           <ConfirmationSelector
             toolName={confirmingTool!.name}
             toolInput={confirmingTool!.input}

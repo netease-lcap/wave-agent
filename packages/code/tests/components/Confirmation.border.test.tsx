@@ -62,7 +62,7 @@ describe("Confirmation Border", () => {
     expect(lastLine).not.toMatch(/[└┘]/);
   });
 
-  it("should not have border or horizontal padding for plan content and render as markdown", async () => {
+  it("should not have border or horizontal padding for plan content", async () => {
     const { lastFrame } = render(
       <Confirmation
         toolName="ExitPlanMode"
@@ -73,7 +73,9 @@ describe("Confirmation Border", () => {
     );
 
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Test Plan Content");
+      expect(stripAnsiColors(lastFrame() || "")).toContain(
+        "**Test** Plan Content",
+      );
     });
 
     const frame = lastFrame();
@@ -88,11 +90,13 @@ describe("Confirmation Border", () => {
 
     // Check for absence of horizontal padding
     const lines = cleanFrame.split("\n");
-    const planContentLine = lines.find((l) => l.includes("Test Plan Content"));
-    expect(planContentLine?.trimStart()).toBe("Test Plan Content");
+    const planContentLine = lines.find((l) =>
+      l.includes("**Test** Plan Content"),
+    );
+    expect(planContentLine?.trimStart()).toBe("**Test** Plan Content");
 
-    // Verify markdown rendering (bold text should have asterisks removed by Markdown component)
-    expect(cleanFrame).toContain("Test Plan Content");
-    expect(cleanFrame).not.toContain("**Test**");
+    // Plan rows are rendered as plain text lines (no Markdown styling) so the
+    // details area can be scrolled line-by-line with PgUp/PgDn.
+    expect(cleanFrame).toContain("**Test** Plan Content");
   });
 });

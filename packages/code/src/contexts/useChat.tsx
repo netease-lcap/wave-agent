@@ -603,8 +603,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [remountKey, setRemountKey] = useState(0);
 
   // Full terminal clear + remount so Ink's append-only <Static> re-renders.
-  // Used on structural actions (/clear, /compact, rewind, ctrl-o, forceStatic
-  // exit) where stale Static output must not linger on screen.
+  // Used on structural actions (/clear, /compact, rewind, ctrl-o) where stale
+  // Static output must not linger on screen.
   const forceRemount = useCallback(() => {
     stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H", () => {
       setRemountKey((prev) => prev + 1);

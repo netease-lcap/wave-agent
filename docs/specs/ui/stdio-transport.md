@@ -27,7 +27,7 @@ order: 220
           │           │           │
    NotificationRouter  │    FileService / SessionService / PluginService
           │           │           │ (utility 请求，无 session 上下文)
-    register/unregister│          
+    register/unregister│
           │     StdioClient (单共享实例)
           │           │
     按 sessionId 分发   spawn
@@ -37,7 +37,7 @@ order: 220
 
 **关键设计决策**：所有会话（sidebar/tab/window）共享同一个 `StdioClient` 子进程实例，通过 JSON-RPC 信封中的 `sessionId` 字段区分不同会话的请求和通知。
 
-## 用户场景与测试 *（必填）*
+## 用户场景与测试 _（必填）_
 
 ### 用户故事：CLI 二进制自动解析与安装（优先级：P1）
 
@@ -87,7 +87,7 @@ order: 220
 **验收场景**：
 
 1. **假设** 系统未安装 Node.js（`where npm` / `which npm` 失败，且 `process.execPath` 同目录无 npm），**当**插件尝试解析二进制时，**则**抛出明确错误："未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"，并在编辑器通知中显示该消息。
-2. **假设** 系统已安装 Node.js 但版本低于 20，**当**插件尝试解析二进制时，**则**抛出明确错误："Node.js 版本过低（当前 vX，需要 >= 20）。请升级 Node.js (https://nodejs.org)，然后重启编辑器。"，并在编辑器通知中显示该消息。
+2. **假设** 系统已安装 Node.js 但版本低于 22，**当**插件尝试解析二进制时，**则**抛出明确错误："Node.js 版本过低（当前 vX，需要 >= 22）。请升级 Node.js (https://nodejs.org)，然后重启编辑器。"，并在编辑器通知中显示该消息。
 3. **假设** npm 存在但 `npm prefix -g` 执行失败，**当**插件尝试获取全局 bin 目录时，**则**抛出包含 npm 错误输出的问题描述，并建议用户检查 npm 配置。
 4. **假设** npm install 执行失败（网络问题、权限不足等），**当**插件尝试自动安装 CLI 时，**则**抛出包含 npm 错误输出的描述，并建议用户手动执行安装命令。
 5. **假设** CLI 子进程启动后立即退出（exit code 非 0），**当**插件检测到进程退出时，**则**在编辑器通知中显示错误，包含 stderr 输出（如果有），并建议用户检查 CLI 安装。
@@ -245,4 +245,3 @@ order: 220
 - **消息队列列表无键盘召回**：IDE 插件输入框的方向上键不召回队列消息（与 CLI 不同），仅支持通过列表中的"编辑"按钮召回；这是刻意的平台产品差异。
 - **增量通知不携带累积值**：`assistantContentUpdated`/`assistantReasoningUpdated` 通知只携带 `chunk` 增量；`toolBlockUpdated` 在 `streaming` 阶段只携带 `parametersChunk`。任何依赖 `accumulated`/`parameters` 累积字段的旧消费端需改为本地累积或使用 `getMessages` 拉取全量。
 - **end 通知是全量权威值**：`toolBlockUpdated` 的 `stage="end"` 通知携带完整 `parameters` + `result`，消费端应以该值为准终结工具块，不能仅凭 streaming 阶段的拼接结果。
-

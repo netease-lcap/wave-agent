@@ -190,7 +190,9 @@ describe("PluginManagerShell", () => {
 
       const { stdin } = render(<PluginManagerShell />);
       stdin.write("\u001B"); // Escape
-      expect(mockActions.setView).toHaveBeenCalledWith("DISCOVER");
+      await vi.waitFor(() =>
+        expect(mockActions.setView).toHaveBeenCalledWith("DISCOVER"),
+      );
     });
 
     it("goes back from PLUGIN_DETAIL (installed) to INSTALLED on Escape", async () => {
@@ -212,7 +214,9 @@ describe("PluginManagerShell", () => {
 
       const { stdin } = render(<PluginManagerShell />);
       stdin.write("\u001B"); // Escape
-      expect(mockActions.setView).toHaveBeenCalledWith("INSTALLED");
+      await vi.waitFor(() =>
+        expect(mockActions.setView).toHaveBeenCalledWith("INSTALLED"),
+      );
     });
 
     it("goes back from MARKETPLACE_DETAIL to MARKETPLACES on Escape", async () => {
@@ -233,7 +237,9 @@ describe("PluginManagerShell", () => {
 
       const { stdin } = render(<PluginManagerShell />);
       stdin.write("\u001B"); // Escape
-      expect(mockActions.setView).toHaveBeenCalledWith("MARKETPLACES");
+      await vi.waitFor(() =>
+        expect(mockActions.setView).toHaveBeenCalledWith("MARKETPLACES"),
+      );
     });
 
     it("goes back from ADD_MARKETPLACE to MARKETPLACES on Escape", async () => {
@@ -254,7 +260,9 @@ describe("PluginManagerShell", () => {
 
       const { stdin } = render(<PluginManagerShell />);
       stdin.write("\u001B"); // Escape
-      expect(mockActions.setView).toHaveBeenCalledWith("MARKETPLACES");
+      await vi.waitFor(() =>
+        expect(mockActions.setView).toHaveBeenCalledWith("MARKETPLACES"),
+      );
     });
   });
 

@@ -10,19 +10,12 @@ const MAX_MESSAGES_EXPANDED = 10;
 export interface MessageListProps {
   messages: Message[];
   isExpanded?: boolean;
-  forceStatic?: boolean;
   version?: string;
   workdir?: string;
 }
 
 export const MessageList = React.memo(
-  ({
-    messages,
-    isExpanded = false,
-    forceStatic = false,
-    version,
-    workdir,
-  }: MessageListProps) => {
+  ({ messages, isExpanded = false, version, workdir }: MessageListProps) => {
     const maxMessages = isExpanded
       ? MAX_MESSAGES_EXPANDED
       : MAX_MESSAGES_COLLAPSED;
@@ -81,7 +74,6 @@ export const MessageList = React.memo(
         (item.block.type === "text" || item.block.type === "reasoning") &&
         item.block.stage === "end";
       const isDynamic =
-        !forceStatic &&
         !isExpanded &&
         isInLastMessage &&
         !isBlockCompleted &&

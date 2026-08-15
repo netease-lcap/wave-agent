@@ -46,7 +46,7 @@ describe("binaryResolver", () => {
       }
       throw new Error(`unexpected: ${cmd}`);
     });
-    mockExecFileSync.mockReturnValue("v20.0.0\n");
+    mockExecFileSync.mockReturnValue("v22.0.0\n");
     _resetCacheForTesting();
   });
 
@@ -94,9 +94,7 @@ describe("binaryResolver", () => {
       );
 
       const result = await resolveWaveBinary();
-      expect(result).toBe(
-        "C:\\Users\\刘一奇\\AppData\\Roaming\\npm\\wave.cmd",
-      );
+      expect(result).toBe("C:\\Users\\刘一奇\\AppData\\Roaming\\npm\\wave.cmd");
     });
   });
 
