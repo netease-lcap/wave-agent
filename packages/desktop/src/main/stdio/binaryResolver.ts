@@ -117,7 +117,7 @@ function quoteForShell(executable: string): string {
 }
 
 /** Minimum Node.js major version required by `wave --stdio`. */
-const MIN_NODE_MAJOR = 20;
+const MIN_NODE_MAJOR = 22;
 
 /**
  * Error thrown when Node.js/npm cannot be found on the system.
@@ -249,7 +249,7 @@ export function resolveWaveBinary(
 ): string {
   if (cachedPath) return cachedPath;
 
-  // 0. Verify Node.js >= 20 — wave --stdio requires it.
+  // 0. Verify Node.js >= 22 — wave --stdio requires it.
   checkNodeVersion();
 
   // 0.5. Dev override: point at a workspace build (e.g. packages/code/bin/wave-code.js).

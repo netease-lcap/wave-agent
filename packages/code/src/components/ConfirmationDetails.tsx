@@ -1,5 +1,5 @@
-import React from "react";
-import { Box, Text } from "ink";
+import React, { useEffect, useState } from "react";
+import { Box, Text, useInput } from "ink";
 import {
   BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
@@ -9,8 +9,7 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
   ARTIFACT_TOOL_NAME,
 } from "wave-agent-sdk";
-import { DiffDisplay } from "./DiffDisplay.js";
-import { PlanDisplay } from "./PlanDisplay.js";
+import { buildDiffLinesFromParams } from "./DiffDisplay.js";
 import { highlightToAnsi } from "../utils/highlightUtils.js";
 
 // Helper function to generate descriptive action text
@@ -42,12 +41,18 @@ const getActionDescription = (
   }
 };
 
+// Row budget for the scroll indicators (↑ more / ↓ more, up to one each).
+const SCROLL_INDICATOR_BUDGET = 2;
+
 export interface ConfirmationDetailsProps {
   toolName: string;
   toolInput?: Record<string, unknown>;
   planContent?: string;
   warning?: string;
-  isExpanded?: boolean;
+  /** Available height (rows) for the whole details block, computed by
+   *  ChatInterface from the terminal size. Used to size the scrollable
+   *  content area so the dynamic output never exceeds terminal height. */
+  maxHeight?: number;
 }
 
 export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
@@ -55,56 +60,137 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
   toolInput,
   planContent,
   warning,
-  isExpanded = false,
+  maxHeight,
 }) => {
   const startLineNumber =
     (toolInput?.startLineNumber as number | undefined) ??
     (toolName === WRITE_TOOL_NAME ? 1 : undefined);
 
-  const content = (
+  const headerRows = 2 + (warning ? 1 : 0);
+
+  // Number of content rows rendered at once. The header stays fixed above the
+  // scrollable area; rows are budgeted for the scroll indicators.
+  const visibleCount = Math.max(
+    1,
+    (maxHeight ?? 24) - headerRows - SCROLL_INDICATOR_BUDGET,
+  );
+
+  // Content linearized into rows so the details area can be scrolled with
+  // PgUp/PgDn while the confirmation options stay fixed at the bottom.
+  const diffLines = buildDiffLinesFromParams({
+    toolName,
+    parameters: JSON.stringify(toolInput),
+    startLineNumber,
+  });
+
+  const showToolInput =
+    toolName !== WRITE_TOOL_NAME &&
+    toolName !== EDIT_TOOL_NAME &&
+    toolName !== EXIT_PLAN_MODE_TOOL_NAME &&
+    toolName !== ENTER_PLAN_MODE_TOOL_NAME &&
+    toolName !== ASK_USER_QUESTION_TOOL_NAME &&
+    toolName !== BASH_TOOL_NAME &&
+    !!toolInput;
+
+  const jsonLines = showToolInput
+    ? highlightToAnsi(JSON.stringify(toolInput, null, 2), "json")
+        .split("\n")
+        .map((line, index) => (
+          <Box
+            key={`json-${index}`}
+            paddingLeft={2}
+            borderLeft
+            borderColor="cyan"
+          >
+            <Text>{line || " "}</Text>
+          </Box>
+        ))
+    : [];
+
+  const showPlan =
+    toolName !== ASK_USER_QUESTION_TOOL_NAME &&
+    toolName === EXIT_PLAN_MODE_TOOL_NAME &&
+    !!planContent;
+
+  const planLines = showPlan
+    ? planContent!.split("\n").map((line, index) => (
+        <Box key={`plan-${index}`}>
+          <Text>{line || " "}</Text>
+        </Box>
+      ))
+    : [];
+
+  const contentLines: React.ReactNode[] = [
+    ...diffLines,
+    ...jsonLines,
+    ...planLines,
+  ];
+  const totalLines = contentLines.length;
+  const maxScroll = Math.max(0, totalLines - visibleCount);
+
+  const [scrollOffset, setScrollOffset] = useState(0);
+
+  // Reset scrolling when a new confirmation appears.
+  useEffect(() => {
+    setScrollOffset(0);
+  }, [toolName, toolInput, planContent]);
+
+  useInput((_input, key) => {
+    if (key.pageUp) {
+      setScrollOffset((offset) => Math.max(0, offset - visibleCount));
+    }
+    if (key.pageDown) {
+      setScrollOffset((offset) => Math.min(maxScroll, offset + visibleCount));
+    }
+  });
+
+  const clampedOffset = Math.min(scrollOffset, maxScroll);
+  const visibleLines = contentLines.slice(
+    clampedOffset,
+    clampedOffset + visibleCount,
+  );
+  const hasMoreAbove = clampedOffset > 0;
+  const hasMoreBelow = clampedOffset + visibleCount < totalLines;
+
+  return (
     <Box
       flexDirection="column"
+      flexShrink={0}
       borderStyle="single"
       borderColor="yellow"
       borderBottom={false}
       borderLeft={false}
       borderRight={false}
     >
-      <Text color="yellow" bold>
+      <Text color="yellow" bold wrap="truncate-end">
         Tool: {toolName}
       </Text>
-      <Text color="yellow">{getActionDescription(toolName, toolInput)}</Text>
-      {warning && <Text color="red">⚠ {warning}</Text>}
+      <Text color="yellow" wrap="truncate-end">
+        {getActionDescription(toolName, toolInput)}
+      </Text>
+      {warning && (
+        <Text color="red" wrap="truncate-end">
+          ⚠ {warning}
+        </Text>
+      )}
 
-      <DiffDisplay
-        toolName={toolName}
-        parameters={JSON.stringify(toolInput)}
-        startLineNumber={startLineNumber}
-      />
-
-      {toolName !== WRITE_TOOL_NAME &&
-        toolName !== EDIT_TOOL_NAME &&
-        toolName !== EXIT_PLAN_MODE_TOOL_NAME &&
-        toolName !== ENTER_PLAN_MODE_TOOL_NAME &&
-        toolName !== ASK_USER_QUESTION_TOOL_NAME &&
-        toolName !== BASH_TOOL_NAME &&
-        !!toolInput && (
-          <Box paddingLeft={2} borderLeft borderColor="cyan">
-            <Text>
-              {highlightToAnsi(JSON.stringify(toolInput, null, 2), "json")}
-            </Text>
-          </Box>
-        )}
-
-      {toolName !== ASK_USER_QUESTION_TOOL_NAME &&
-        toolName === EXIT_PLAN_MODE_TOOL_NAME &&
-        !!planContent && (
-          <PlanDisplay plan={planContent} isExpanded={isExpanded} />
-        )}
+      {hasMoreAbove && (
+        <Box>
+          <Text color="gray" dimColor>
+            ↑ {clampedOffset} more
+          </Text>
+        </Box>
+      )}
+      {visibleLines}
+      {hasMoreBelow && (
+        <Box>
+          <Text color="gray" dimColor>
+            ↓ {totalLines - clampedOffset - visibleCount} more
+          </Text>
+        </Box>
+      )}
     </Box>
   );
-
-  return content;
 };
 
 ConfirmationDetails.displayName = "ConfirmationDetails";

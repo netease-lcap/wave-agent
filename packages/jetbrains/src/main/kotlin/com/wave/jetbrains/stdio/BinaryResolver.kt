@@ -5,7 +5,7 @@ import java.io.File
 import java.nio.charset.Charset
 
 /** Minimum Node.js major version required by `wave --stdio`. */
-private const val MIN_NODE_MAJOR = 20
+private const val MIN_NODE_MAJOR = 22
 
 /**
  * Resolves the `wave` binary at runtime: PATH → npm global bin → auto-install.
@@ -33,7 +33,7 @@ object BinaryResolver {
     fun resolveWaveBinary(targetVersion: String? = null): String {
         cachedPath?.let { return it }
 
-        // 0. Verify Node.js >= 20 — wave --stdio requires it.
+        // 0. Verify Node.js >= 22 — wave --stdio requires it.
         checkNodeVersion()
 
         // 0a. nvm-installed binary (GUI-launched IDEs don't inherit shell PATH, so an

@@ -59,7 +59,7 @@ describe("binaryResolver", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExistsSync.mockReturnValue(false);
-    // Default: node version check passes (>= 20). findNode() tries
+    // Default: node version check passes (>= 22). findNode() tries
     // `which node`/`where node` first; if that throws it falls back to
     // process.execPath. Either way checkNodeVersion() calls
     // execFileSync(<nodePath>, ['-v']).
@@ -67,7 +67,7 @@ describe("binaryResolver", () => {
       if (cmd.includes(nodeLookup)) return `${nodeBin}\n`;
       throw new Error(`unexpected: ${cmd}`);
     });
-    mockExecFileSync.mockReturnValue("v20.0.0\n");
+    mockExecFileSync.mockReturnValue("v22.0.0\n");
     _resetCacheForTesting();
   });
 
@@ -299,7 +299,7 @@ describe("binaryResolver", () => {
     mockExecFileSync.mockImplementation((cmd: string | Buffer) =>
       String(cmd).replace(/^"|"$/g, "") === globalWave
         ? "1.0.0\n"
-        : "v20.0.0\n",
+        : "v22.0.0\n",
     );
 
     const result = await ensureCliUpToDate("1.0.0");
@@ -632,12 +632,12 @@ describe("binaryResolver", () => {
       if (cmd.includes(nodeLookup)) return `${nodeBin}\n`;
       throw new Error(`unexpected: ${cmd}`);
     });
-    // Node -v returns v20+; wave -v returns 1.0.0 (>= target).
+    // Node -v returns v22+; wave -v returns 1.0.0 (>= target).
     // (On Windows the wave path reaches execFileSync pre-quoted.)
     mockExecFileSync.mockImplementation((cmd: string | Buffer) =>
       String(cmd).replace(/^"|"$/g, "") === globalWave
         ? "1.0.0\n"
-        : "v20.0.0\n",
+        : "v22.0.0\n",
     );
 
     const result = await ensureCliUpToDate("1.0.0");
@@ -652,11 +652,11 @@ describe("binaryResolver", () => {
       if (cmd.includes(nodeLookup)) return `${nodeBin}\n`;
       throw new Error(`unexpected: ${cmd}`);
     });
-    // Node -v returns v20+; wave -v returns 0.18.0 (< target)
+    // Node -v returns v22+; wave -v returns 0.18.0 (< target)
     mockExecFileSync.mockImplementation((cmd: string | Buffer) =>
       String(cmd).replace(/^"|"$/g, "") === globalWave
         ? "0.18.0\n"
-        : "v20.0.0\n",
+        : "v22.0.0\n",
     );
     mockExecFile.mockImplementation((...args: unknown[]) => {
       const cb = args[args.length - 1] as (err: Error | null) => void;
@@ -681,11 +681,11 @@ describe("binaryResolver", () => {
       if (cmd.includes(nodeLookup)) return `${nodeBin}\n`;
       throw new Error(`unexpected: ${cmd}`);
     });
-    // Node -v returns v20+; wave -v fails (corrupt binary)
+    // Node -v returns v22+; wave -v fails (corrupt binary)
     mockExecFileSync.mockImplementation((cmd: string | Buffer) => {
       if (String(cmd).replace(/^"|"$/g, "") === globalWave)
         throw new Error("corrupt");
-      return "v20.0.0\n";
+      return "v22.0.0\n";
     });
     mockExecFile.mockImplementation((...args: unknown[]) => {
       const cb = args[args.length - 1] as (err: Error | null) => void;
@@ -703,11 +703,11 @@ describe("binaryResolver", () => {
       if (cmd.includes(nodeLookup)) return `${nodeBin}\n`;
       throw new Error(`unexpected: ${cmd}`);
     });
-    // Node -v returns v20+; wave -v returns 2.0.0 (> target)
+    // Node -v returns v22+; wave -v returns 2.0.0 (> target)
     mockExecFileSync.mockImplementation((cmd: string | Buffer) =>
       String(cmd).replace(/^"|"$/g, "") === globalWave
         ? "2.0.0\n"
-        : "v20.0.0\n",
+        : "v22.0.0\n",
     );
 
     const result = await ensureCliUpToDate("1.0.0");
@@ -717,7 +717,7 @@ describe("binaryResolver", () => {
 
   // ── Node.js version check (FR-005b) ──────────────────────────
 
-  it("throws NodeJsVersionError when Node.js version is below 20", () => {
+  it("throws NodeJsVersionError when Node.js version is below 22", () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes(nodeLookup)) return `${nodeBin}\n`;
       throw new Error(`unexpected: ${cmd}`);
@@ -729,18 +729,18 @@ describe("binaryResolver", () => {
     expect(() => resolveWaveBinary()).toThrow("v18");
   });
 
-  it("does not throw version error when Node.js is exactly v20", () => {
+  it("does not throw version error when Node.js is exactly v22", () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes(waveLookup)) return `${globalWave}\n`;
       if (cmd.includes(nodeLookup)) return `${nodeBin}\n`;
       throw new Error(`unexpected: ${cmd}`);
     });
-    mockExecFileSync.mockReturnValue("v20.0.0\n");
+    mockExecFileSync.mockReturnValue("v22.0.0\n");
 
     expect(() => resolveWaveBinary()).not.toThrow();
   });
 
-  it("does not throw version error when Node.js is above v20", () => {
+  it("does not throw version error when Node.js is above v22", () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes(waveLookup)) return `${globalWave}\n`;
       if (cmd.includes(nodeLookup)) return `${nodeBin}\n`;

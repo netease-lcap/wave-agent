@@ -27,7 +27,7 @@ import { parseVersion, compareVersions } from "./version";
 
 const execFileAsync = promisify(execFile);
 
-export const REMOTE_NODE_MIN_MAJOR = 20;
+export const REMOTE_NODE_MIN_MAJOR = 22;
 export const REMOTE_INSTALL_REGISTRY = "https://registry.npmmirror.com";
 const PROBE_TIMEOUT_MS = 15_000;
 const INSTALL_TIMEOUT_MS = 5 * 60_000;
