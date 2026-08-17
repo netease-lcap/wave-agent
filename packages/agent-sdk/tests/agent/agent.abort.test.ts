@@ -1166,6 +1166,11 @@ describe("Agent - Abort Handling", () => {
       vi.mocked(aiService.callAgent).mockImplementation(async (options) => {
         const idx = callIndex++;
         callStarted[idx] = true;
+        if (process.env.WINDBG_ABORT) {
+          process.stderr.write(
+            `[WINDBG] callAgent ${idx}\n${new Error().stack?.split("\n").slice(2, 5).join("\n")}\n`,
+          );
+        }
         try {
           await new Promise<void>((resolve, reject) => {
             if (options.abortSignal?.aborted) {

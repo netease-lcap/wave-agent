@@ -434,12 +434,15 @@ export class Agent {
       })
       .finally(() => {
         if (process.env.WINDBG_ABORT) {
-          console.log("[WINDBG] dispatch finally", {
-            dispatchAborted: this.dispatchAborted,
-            state: this.messageQueue.state,
-            hasPending: this.messageQueue.hasPending(),
-            isLoading: this.aiManager.isLoading,
-          });
+          console.log(
+            "[WINDBG] dispatch finally",
+            JSON.stringify({
+              dispatchAborted: this.dispatchAborted,
+              state: this.messageQueue.state,
+              hasPending: this.messageQueue.hasPending(),
+              isLoading: this.aiManager.isLoading,
+            }),
+          );
         }
         this.messageQueue.transitionTo("idle");
         this.dispatchPromise = null;
