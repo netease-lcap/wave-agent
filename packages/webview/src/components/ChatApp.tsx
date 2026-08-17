@@ -226,6 +226,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     branches: string[];
     current: string;
   } | null>(null);
+  // True while a desktopListGitBranches request is in flight — the branch
+  // selector shows a "分支获取中…" placeholder instead of disappearing
+  // (remote hosts can take seconds to connect before the list arrives).
+  const [branchesLoading, setBranchesLoading] = useState(false);
   // The pane's effective cwd: its own session workdir wins; a new-session pane
   // (state.workdir empty during spawn) falls back to the most recently selected
   // repo root from recents — never to the host-level workdir, which follows the
@@ -540,6 +544,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           // pane's reply never overwrites this pane's selector.
           if (!forThisPane(message)) break;
           setPaneGitBranches(message.result ?? null);
+          setBranchesLoading(false);
           break;
         case "desktopWorktreeCreated":
           // Worktree creation finished (success or failure) — clear the
@@ -1006,7 +1011,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   useEffect(() => {
     if (!isDesktop) return;
     setPaneGitBranches(null);
-    if (!pickerWorkdir) return;
+    if (!pickerWorkdir) {
+      setBranchesLoading(false);
+      return;
+    }
+    setBranchesLoading(true);
     postToHost({
       command: "desktopListGitBranches",
       workdir: pickerWorkdir,
@@ -1974,12 +1983,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
                     onSelectRecentWorkdir={host.onSelectRecentWorkdir}
                     onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
                   />
-                  {pickerWorkdir && gitBranches && (
+                  {pickerWorkdir && (gitBranches || branchesLoading) && (
                     <DesktopWorktreeControls
-                      branches={gitBranches.branches}
-                      branch={worktreeBranch || gitBranches.current}
+                      branches={gitBranches?.branches ?? []}
+                      branch={worktreeBranch || gitBranches?.current || ""}
                       worktreeChecked={worktreeChecked}
                       creating={worktreeCreating}
+                      loading={!gitBranches && branchesLoading}
                       onBranchChange={setWorktreeBranch}
                       onWorktreeChange={setWorktreeChecked}
                     />
