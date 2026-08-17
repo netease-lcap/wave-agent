@@ -5,7 +5,6 @@ import {
   ChatProvider,
   useChat,
   ChatContextType,
-  createToolStreamingThrottle,
 } from "../../src/contexts/useChat.js";
 import { Agent, BackgroundShell, Task } from "wave-agent-sdk";
 import { AppProvider } from "../../src/contexts/useAppConfig.js";
@@ -1626,88 +1625,7 @@ describe("ChatProvider", () => {
     });
   });
 
-  describe("createToolStreamingThrottle", () => {
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
-    it("drops a tool's buffered streaming deltas when running arrives so no stale flush regresses the stage", () => {
-      vi.useFakeTimers();
-      const fn = vi.fn();
-      const throttled = createToolStreamingThrottle(fn, 500);
-
-      throttled({
-        messageId: "m",
-        id: "bash",
-        name: "bash",
-        stage: "start",
-        parameters: "",
-      });
-      throttled({
-        messageId: "m",
-        id: "bash",
-        stage: "streaming",
-        parametersChunk: "{",
-      });
-      throttled({
-        messageId: "m",
-        id: "bash",
-        name: "bash",
-        stage: "running",
-        parameters: '{"cmd":"ls"}',
-      });
-
-      // The throttle window elapses — the stale streaming chunk must NOT fire
-      // late and regress the block back to "streaming"
-      vi.advanceTimersByTime(600);
-      expect(fn).toHaveBeenCalledTimes(2);
-      expect(fn.mock.calls.map((c) => c[0].stage)).toEqual([
-        "start",
-        "running",
-      ]);
-      expect(fn).not.toHaveBeenCalledWith(
-        expect.objectContaining({ stage: "streaming", parametersChunk: "{" }),
-      );
-    });
-
-    it("keeps other tools' in-flight streaming deltas when one tool goes running", () => {
-      vi.useFakeTimers();
-      const fn = vi.fn();
-      const throttled = createToolStreamingThrottle(fn, 500);
-
-      throttled({
-        messageId: "m",
-        id: "tool-a",
-        stage: "streaming",
-        parametersChunk: '{"fi',
-      });
-      throttled({
-        messageId: "m",
-        id: "tool-b",
-        stage: "streaming",
-        parametersChunk: '{"file',
-      });
-      throttled({
-        messageId: "m",
-        id: "tool-a",
-        name: "bash",
-        stage: "running",
-        parameters: '{"file": "a.txt"}',
-      });
-
-      // tool-a's stale chunk is dropped, but tool-b's still flushes at the
-      // window boundary — interleaved multi-tool streaming keeps working
-      vi.advanceTimersByTime(500);
-      const streamingCalls = fn.mock.calls
-        .map((c) => c[0] as { stage: string; id: string })
-        .filter((c) => c.stage === "streaming");
-      expect(streamingCalls).toEqual([
-        expect.objectContaining({ id: "tool-b", parametersChunk: '{"file' }),
-      ]);
-    });
-  });
-
-  it("throttles reasoning streaming updates and flushes on end", async () => {
+  it("applies reasoning streaming updates immediately without throttling", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
       lastValue = val;
@@ -1736,20 +1654,13 @@ describe("ChatProvider", () => {
       expect(lastValue?.messages).toHaveLength(1);
     });
 
-    // Leading edge appends a new reasoning block immediately
+    // Every delta applies immediately — no 500ms cooldown window coalesces
+    // chunks (the former window-concat throttle is removed)
     callbacks.onAssistantReasoningUpdated!({
       messageId: "msg-reason",
       chunk: "Th",
       stage: "streaming",
     });
-    await vi.waitFor(() => {
-      const reasoning = lastValue?.messages[0].blocks.find(
-        (b) => b.type === "reasoning",
-      ) as { content: string } | undefined;
-      expect(reasoning?.content).toBe("Th");
-    });
-
-    // Subsequent chunks within the 500ms window are coalesced (trailing)
     callbacks.onAssistantReasoningUpdated!({
       messageId: "msg-reason",
       chunk: "ink",
@@ -1760,12 +1671,14 @@ describe("ChatProvider", () => {
       chunk: "ing",
       stage: "streaming",
     });
-    const beforeFlush = lastValue?.messages[0].blocks.find(
-      (b) => b.type === "reasoning",
-    ) as { content: string } | undefined;
-    expect(beforeFlush?.content).toBe("Th");
+    await vi.waitFor(() => {
+      const reasoning = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "reasoning",
+      ) as { content: string } | undefined;
+      expect(reasoning?.content).toBe("Thinking");
+    });
 
-    // stage === "end" flushes pending deltas and applies the end signal
+    // stage === "end" appends its delta and applies the end signal
     callbacks.onAssistantReasoningUpdated!({
       messageId: "msg-reason",
       chunk: "…",
@@ -1904,6 +1817,98 @@ describe("ChatProvider", () => {
 
     // State must not share the SDK's message object (live reference)
     expect(lastValue?.messages[0]).not.toBe(mockAgent.messages[0]);
+  });
+
+  it("does not duplicate content when a full-list refresh interleaves mid-stream", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    const assistantMsg = {
+      id: "msg-refresh",
+      role: "assistant" as const,
+      blocks: [],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [assistantMsg] });
+    callbacks.onAssistantMessageAdded!("msg-refresh");
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toHaveLength(1);
+    });
+
+    // Regression (docs/specs/core/stream-content-updates.md, 2026-08-17): the
+    // removed 500ms window-concat throttle could carry a pending delta across
+    // a full-list refresh — the trailing-edge flush then re-appended the
+    // pre-refresh chunk on top of the authoritative snapshot ("Let me me").
+    // With the throttle gone every delta applies immediately, so no pending
+    // window exists for this interleaving to double-count through.
+    const sdkMsg = mockAgent.messages[0] as unknown as {
+      blocks: Array<{ type: string; content: string; stage: string }>;
+    };
+    sdkMsg.blocks.push({
+      type: "reasoning",
+      content: "Let",
+      stage: "streaming",
+    });
+    callbacks.onAssistantReasoningUpdated!({
+      messageId: "msg-refresh",
+      chunk: "Let",
+      stage: "streaming",
+    });
+    await vi.waitFor(() => {
+      const reasoning = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "reasoning",
+      ) as { content: string } | undefined;
+      expect(reasoning?.content).toBe("Let");
+    });
+
+    // SDK accumulates to "Let me" and fires the delta — under the old
+    // throttle this chunk would sit in the pending cooldown window
+    sdkMsg.blocks[0].content = "Let me";
+    callbacks.onAssistantReasoningUpdated!({
+      messageId: "msg-refresh",
+      chunk: " me",
+      stage: "streaming",
+    });
+    await vi.waitFor(() => {
+      const reasoning = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "reasoning",
+      ) as { content: string } | undefined;
+      expect(reasoning?.content).toBe("Let me");
+    });
+
+    // A structural action (e.g. /clear) replaces CLI state with a full
+    // snapshot of the SDK's authoritative messages mid-stream
+    Object.assign(mockAgent, {
+      clearMessages: vi.fn().mockResolvedValue(undefined),
+    });
+    await lastValue?.clearMessages();
+    await vi.waitFor(() => {
+      const reasoning = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "reasoning",
+      ) as { content: string } | undefined;
+      expect(reasoning?.content).toBe("Let me");
+    });
+
+    // Let any leftover cooldown timer (old code) fire — the content must stay
+    // byte-identical to the SDK's authoritative content, never "Let me me"
+    vi.advanceTimersByTime(1000);
+    await vi.waitFor(() => {
+      const reasoning = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "reasoning",
+      ) as { content: string } | undefined;
+      expect(reasoning?.content).toBe("Let me");
+    });
   });
 
   it("handles bang message callbacks", async () => {
