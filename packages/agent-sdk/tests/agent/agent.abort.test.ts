@@ -1282,12 +1282,16 @@ describe("Agent - Abort Handling", () => {
 
     it("force-send with a pending notification runs a single interruptible loop", async () => {
       wireLoadingChange();
-      const { gates, callStarted, callAborted } = installGatedCallAgent();
+      const { gates, callStarted, callAborted, callRecords } =
+        installGatedCallAgent();
       const agentInternal = agent as unknown as {
         messageQueue: import("@/managers/messageQueue.js").MessageQueue;
         dispatchPromise: Promise<void> | null;
       };
       const messageQueue = agentInternal.messageQueue;
+      const sendAIBase =
+        (globalThis as unknown as { __sendAIEnter?: number }).__sendAIEnter ??
+        0;
       let sendPromise: Promise<void> | undefined;
 
       try {
@@ -1322,7 +1326,13 @@ describe("Agent - Abort Handling", () => {
 
         // Correct behavior: exactly one live loop (call 0 was aborted by the
         // force-send; loop B is the only running turn — no call 2).
-        expect(callStarted[2]).toBeUndefined();
+        expect(
+          callStarted[2],
+          `${callRecords.join("\n")}\n__sendAIEnter delta=${
+            ((globalThis as unknown as { __sendAIEnter?: number })
+              .__sendAIEnter ?? 0) - sendAIBase
+          }`,
+        ).toBeUndefined();
 
         // User interrupts the running loop — it must actually die. (Abort
         // rejection propagates through the gated callAgent asynchronously, so
