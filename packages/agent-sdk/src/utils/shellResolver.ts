@@ -188,21 +188,3 @@ export function resolveShellPath(): string | undefined {
 
   return resolveUnixShell();
 }
-
-/**
- * On Windows, expose the Git Bash path as the `SHELL` environment variable so
- * child processes spawned by the Bash tool (make, git hooks, npm scripts, ...)
- * use bash instead of cmd.exe when they invoke `$SHELL -c`. COMSPEC is left
- * unchanged for system process execution. No-op elsewhere or when no Git Bash
- * is found (aligned with Claude Code's setShellIfWindows, without exiting the
- * process on failure).
- */
-export function setShellIfWindows(): void {
-  if (process.platform !== "win32") {
-    return;
-  }
-  const gitBashPath = resolveShellPath();
-  if (gitBashPath) {
-    process.env.SHELL = gitBashPath;
-  }
-}

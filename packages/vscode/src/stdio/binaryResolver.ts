@@ -44,9 +44,10 @@ let cachedPath: string | undefined;
  * UTF-8 corrupts non-ASCII path segments (`C:\Users\刘一奇\...` → U+FFFD),
  * and spawning the corrupted path fails with ERROR_PATH_NOT_FOUND. Try UTF-8
  * first (covers non-Windows and chcp 65001), fall back to GBK on U+FFFD —
- * same policy as stdioClient.decodeStderr.
+ * same policy as stdioClient.decodeStderr. Exported for reuse (loginPath
+ * decodes `where git` output the same way).
  */
-function decodeCommandOutput(out: string | Buffer): string {
+export function decodeCommandOutput(out: string | Buffer): string {
   const buf = Buffer.isBuffer(out) ? out : Buffer.from(out);
   const utf8 = buf.toString("utf-8");
   if (!utf8.includes("\uFFFD")) return utf8;
