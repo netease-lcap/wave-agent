@@ -1218,6 +1218,7 @@ describe("Agent - Abort Handling", () => {
         dispatchPromise: Promise<void> | null;
       };
       const messageQueue = agentInternal.messageQueue;
+      process.env.WINDBG_ABORT = "1";
 
       try {
         // Agent busy: a queued message auto-dispatch (loop #0) is blocked in
@@ -1250,6 +1251,7 @@ describe("Agent - Abort Handling", () => {
         expect(callAborted[0]).toBe(true);
         expect(messageQueue.hasNotifications()).toBe(true);
       } finally {
+        delete process.env.WINDBG_ABORT;
         for (const gate of gates) gate.release();
       }
     });

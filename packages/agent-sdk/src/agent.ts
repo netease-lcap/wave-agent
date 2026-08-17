@@ -391,39 +391,56 @@ export class Agent {
    */
   private tryDispatch(): void {
     if (this.isAborting) {
-      console.log("[WINDBG] tryDispatch:return isAborting", this.stack2());
+      if (process.env.WINDBG_ABORT) {
+        console.log("[WINDBG] tryDispatch:return isAborting", this.stack2());
+      }
       return;
     }
     if (this.dispatchAborted) {
-      console.log("[WINDBG] tryDispatch:return dispatchAborted", this.stack2());
+      if (process.env.WINDBG_ABORT) {
+        console.log(
+          "[WINDBG] tryDispatch:return dispatchAborted",
+          this.stack2(),
+        );
+      }
       return;
     }
     if (this.messageQueue.state !== "idle") {
-      console.log("[WINDBG] tryDispatch:return state", this.stack2());
+      if (process.env.WINDBG_ABORT) {
+        console.log("[WINDBG] tryDispatch:return state", this.stack2());
+      }
       return;
     }
     if (!this.messageQueue.hasPending()) {
-      console.log("[WINDBG] tryDispatch:return noPending", this.stack2());
+      if (process.env.WINDBG_ABORT) {
+        console.log("[WINDBG] tryDispatch:return noPending", this.stack2());
+      }
       return;
     }
     if (this.aiManager.isLoading || this.isCommandRunning) {
-      console.log("[WINDBG] tryDispatch:return busy", this.stack2());
+      if (process.env.WINDBG_ABORT) {
+        console.log("[WINDBG] tryDispatch:return busy", this.stack2());
+      }
       return;
     }
 
-    console.log("[WINDBG] tryDispatch:PASS", this.stack2());
+    if (process.env.WINDBG_ABORT) {
+      console.log("[WINDBG] tryDispatch:PASS", this.stack2());
+    }
     this.messageQueue.transitionTo("dispatching");
     this.dispatchPromise = this.processQueuedMessage()
       .catch((error) => {
         this.logger?.error("Failed to process queued message:", error);
       })
       .finally(() => {
-        console.log("[WINDBG] dispatch finally", {
-          dispatchAborted: this.dispatchAborted,
-          state: this.messageQueue.state,
-          hasPending: this.messageQueue.hasPending(),
-          isLoading: this.aiManager.isLoading,
-        });
+        if (process.env.WINDBG_ABORT) {
+          console.log("[WINDBG] dispatch finally", {
+            dispatchAborted: this.dispatchAborted,
+            state: this.messageQueue.state,
+            hasPending: this.messageQueue.hasPending(),
+            isLoading: this.aiManager.isLoading,
+          });
+        }
         this.messageQueue.transitionTo("idle");
         this.dispatchPromise = null;
         if (!this.dispatchAborted) {
@@ -805,11 +822,13 @@ export class Agent {
   public abortMessage(): void {
     // Guard: prevent tryDispatch (triggered by abortAIMessage → setIsLoading(false))
     // from dispatching preserved notifications as a new AI turn during the abort.
-    console.log("[WINDBG] abortMessage enter", {
-      hasDispatch: !!this.dispatchPromise,
-      isLoading: this.aiManager.isLoading,
-      isCommandRunning: this.isCommandRunning,
-    });
+    if (process.env.WINDBG_ABORT) {
+      console.log("[WINDBG] abortMessage enter", {
+        hasDispatch: !!this.dispatchPromise,
+        isLoading: this.aiManager.isLoading,
+        isCommandRunning: this.isCommandRunning,
+      });
+    }
     this.isAborting = true;
     try {
       // If a queued dispatch is in flight (e.g. a notification turn was being
