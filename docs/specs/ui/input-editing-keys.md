@@ -77,12 +77,33 @@ order: 215
 
 ---
 
+### 用户故事：长文本/图片占位符参与删除键（优先级：P1）
+
+作为粘贴了长文本（被折叠为 `[LongText#N]`）或附加了图片（`[Image #N]`）的用户，我希望 Backspace 能整块删除占位符、Ctrl+U/K/W 将其作为普通字符串参与切片删除，以便粘贴的长文本能被编辑键可靠清除，而不是只能按 Enter 提交或留下残缺占位符片段。
+
+**为什么是这个优先级**：当前 Backspace 对 `[LongText#N]` 逐字符删除，一次只删一个字符，且会留下 `[LongText#1` 这类残缺文本，随后按 Enter 会把残缺占位符当字面文本发送，原文（已存入 `longTextMap`）丢失。对齐 Claude Code：Backspace 走 `deleteTokenBefore` 正则整块删除（`Cursor.ts:937-969`，正则覆盖 `[Pasted text #N]`/`[Image #N]` 等 token，且仅当光标位于 token 末尾、后随空白或行尾时触发）；Ctrl+U/K/W 为纯文本切片/词删除（`useTextInput.ts:224-238` 的 `killToLineStart`/`killToLineEnd`/`killWordBefore`），占位符就是 input text 里的普通字符串，光标位于占位符中间时切片会留下残缺片段（与 CC 一致）；原始 DEL 字符（`\x7f`，SSH/tmux 退格）同样按 token 优先删除（`useTextInput.ts:442-465`）。不修复则长文本粘贴后编辑不可用。
+
+**独立测试**：粘贴超长文本折叠为 `[LongText#1]` 后按 Backspace，验证一次删除整个占位符且 `longTextMap` 条目被清理；光标位于占位符中间时 Backspace 仅删除单字符；Ctrl+U/K/W 按普通文本切片删除。
+
+**验收场景**：
+
+1. **假设**输入框中有 `prefix [LongText#1]` 且光标位于占位符之后（行尾），**当**按 Backspace 时，**则**整个 `[LongText#1]` 占位符被删除，文本变为 `prefix `，且 `longTextMap` 中对应条目被清理。
+2. **假设**输入框中有 `[LongText#1] suffix` 且光标位于占位符之后（占位符后随空白），**当**按 Backspace 时，**则**整个 `[LongText#1]` 占位符被删除，文本变为 ` suffix`。
+3. **假设**光标位于 `[LongText#1]` 占位符中间，**当**按 Backspace 时，**则**仅删除光标前一个字符，不触发整块删除（对齐 CC 的 word-boundary 守卫）。
+4. **假设**输入框中有 `[LongText#1]x`（占位符后紧跟非空白字符）且光标位于 `]` 之后，**当**按 Backspace 时，**则**仅删除光标前一个字符（CC 仅当光标后是空白或行尾时触发整块删除）。
+5. **假设**输入框中有 `[LongText#1]` 且光标位于行尾，**当**按 Ctrl+U 时，**则**占位符作为普通字符串随整行删除，输入框清空。
+6. **假设**输入框中有 `hello [LongText#1]` 且光标位于行尾，**当**按 Ctrl+W 时，**则**删除光标前一个词（含无空格的整个占位符），文本变为 `hello `。
+7. **假设**光标位于 `[LongText#1]` 占位符中间，**当**按 Ctrl+K 时，**则**纯文本切片删除光标后内容，占位符可能被切成残缺片段（如 `[Long`），与 CC 行为一致。
+8. **假设**输入框中有 `[LongText#1]` 且光标位于行尾，**当**收到含 `\x7f` 的原始 DEL chunk 时，**则**每个 DEL 按 token 优先整块删除占位符（对齐 CC `useTextInput.ts:442-465`）。
+
+---
+
 ### 边界情况
 
 - **粘贴与退格判定**：`isPasteOperation`（输入长度 > 1 且不含退格语义）与 `\x7f` 过滤需要互斥——包含 `\x7f` 的多字符 chunk 必须走退格路径而非粘贴路径。
 - **Ctrl 组合键与现有快捷键冲突**：Ctrl+A/E 与终端行编辑默认行为一致；Ctrl+C 保留现有中止语义不纳入本次范围。
 - **历史导航**：Esc 双击清空保存原内容到历史后，上/下方向键应能找回该内容。
-- **长文本占位符**：输入框含 `[LongText#N]` 占位符时，Ctrl+U/K 按占位符整体为单位删除（对齐 CC 的 `deleteTokenBefore`），不删除占位符内部字符。
+- **长文本/图片占位符**：`[LongText#N]`/`[Image #N]` 是输入框中的普通字符串。Ctrl+U/K/W 走纯文本切片/词删除（光标在占位符中间时留下残缺片段，与 CC 一致）；Backspace 与原始 DEL 走 `deleteTokenBefore` 正则整块删除（对齐 CC `Cursor.ts:937-969`）——光标位于占位符末尾且后随空白或行尾时触发，并清理 `longTextMap` 条目。
 - **待澄清**：空闲状态下输入框有内容但存在排队消息（`hasQueuedMessages`）时，Esc 是否应中止排队消息？[待澄清]
 
 ## 假设
