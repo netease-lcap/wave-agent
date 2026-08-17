@@ -18,11 +18,11 @@
  * (new window / close window), which the single-window app must suppress.
  *
  * For that preemption to work, 关闭分屏 must be the ONLY Cmd+W claimant: the
- * default fileMenu role expands to File → Close Window (Cmd+W) on macOS, and
- * windowMenu to Minimize / Zoom / Close (Cmd+W) off macOS. Both precede the
- * 对话 menu in menu-bar order, so their Cmd+W would win and close the whole
- * window. buildApplicationMenuTemplate therefore keeps those items but
- * strips their Cmd+W accelerator.
+ * 文件 menu keeps a Close Window item on macOS, and the default 窗口 submenu
+ * ends with Close (Cmd+W) off macOS. Both precede the 对话 menu in menu-bar
+ * order, so their Cmd+W would win and close the whole window.
+ * buildApplicationMenuTemplate therefore keeps those items but strips their
+ * Cmd+W accelerator.
  */
 
 import {
@@ -112,13 +112,44 @@ export function buildApplicationMenuTemplate(
 ): MenuItemConstructorOptions[] {
   return [
     ...(isMac ? [{ role: "appMenu" } as MenuItemConstructorOptions] : []),
-    // macOS fileMenu = Close Window (Cmd+W) — keep the item so the window can
-    // still be closed from the menu, but strip the accelerator (an explicit
-    // '' overrides the role default) so 关闭分屏 is the sole Cmd+W claimant.
-    isMac
-      ? { label: "文件", submenu: [{ role: "close", accelerator: "" }] }
-      : { role: "fileMenu" },
-    { role: "editMenu" },
+    // 全平台显式中文菜单：role 菜单（fileMenu/editMenu/viewMenu）在 Windows/
+    // Linux 上硬编码英文标签、macOS 上跟随系统语言，无法保证中文；子项一律
+    // 保留 role（原生行为与快捷键）+ 中文 label（Electron 官方最佳实践）。
+    {
+      label: "文件",
+      submenu: [
+        // macOS fileMenu = Close Window (Cmd+W) — keep the item so the window
+        // can still be closed from the menu, but strip the accelerator (an
+        // explicit '' overrides the role default) so 关闭分屏 is the sole
+        // Cmd+W claimant. Windows/Linux fileMenu = Quit.
+        ...(isMac
+          ? ([
+              { role: "close", accelerator: "", label: "关闭窗口" },
+            ] as MenuItemConstructorOptions[])
+          : ([
+              { role: "quit", label: "退出" },
+            ] as MenuItemConstructorOptions[])),
+      ],
+    },
+    {
+      label: "编辑",
+      submenu: [
+        { role: "undo", label: "撤销" },
+        { role: "redo", label: "重做" },
+        { type: "separator" },
+        { role: "cut", label: "剪切" },
+        { role: "copy", label: "复制" },
+        { role: "paste", label: "粘贴" },
+        ...(isMac
+          ? ([
+              { role: "pasteAndMatchStyle", label: "粘贴并匹配样式" },
+            ] as MenuItemConstructorOptions[])
+          : []),
+        { role: "delete", label: "删除" },
+        { type: "separator" },
+        { role: "selectAll", label: "全选" },
+      ],
+    },
     {
       label: "对话",
       submenu: [
@@ -192,12 +223,35 @@ export function buildApplicationMenuTemplate(
         },
       ],
     },
-    { role: "viewMenu" },
-    // Off macOS windowMenu ends with Close (Cmd+W) — same conflict, so keep
-    // only Minimize / Zoom. The macOS windowMenu has no Close item.
-    isMac
-      ? { role: "windowMenu" }
-      : { label: "窗口", submenu: [{ role: "minimize" }, { role: "zoom" }] },
+    {
+      label: "视图",
+      submenu: [
+        { role: "reload", label: "重新加载" },
+        { role: "forceReload", label: "强制重新加载" },
+        { role: "toggleDevTools", label: "开发者工具" },
+        { type: "separator" },
+        { role: "resetZoom", label: "实际大小" },
+        { role: "zoomIn", label: "放大" },
+        { role: "zoomOut", label: "缩小" },
+        { type: "separator" },
+        { role: "togglefullscreen", label: "切换全屏" },
+      ],
+    },
+    // macOS windowMenu has no Close item; off-macOS the default windowMenu
+    // ends with Close (Cmd+W) — same conflict, so keep only Minimize / Zoom
+    // (plus 全部置于前端 on macOS).
+    {
+      label: "窗口",
+      submenu: [
+        { role: "minimize", label: "最小化" },
+        { role: "zoom", label: "缩放" },
+        ...(isMac
+          ? ([
+              { role: "front", label: "全部置于前端" },
+            ] as MenuItemConstructorOptions[])
+          : []),
+      ],
+    },
   ];
 }
 
