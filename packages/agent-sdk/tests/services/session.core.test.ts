@@ -45,6 +45,7 @@ vi.mock("@/services/jsonlHandler.js", () => ({
       generateSessionFilename: vi.fn(),
       getLastMessage: vi.fn(),
       createSession: vi.fn(),
+      readWorkdirMetadata: vi.fn().mockResolvedValue(null),
     };
   }),
 }));

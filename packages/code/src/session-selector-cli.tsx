@@ -49,7 +49,15 @@ export async function resolveSessionOwnership(
   opts: { worktreePaths: string[]; currentWorkdir: string },
 ): Promise<SessionOwnership> {
   const encoder = new PathEncoder();
-  const sessionEncoded = await encoder.encode(session.workdir);
+  // encode() resolves the path via realpath and throws ENOENT when the
+  // directory no longer exists (e.g. a deleted worktree); fall back to the
+  // pure string encodeSync so the picker still works for ghost sessions.
+  let sessionEncoded: string;
+  try {
+    sessionEncoded = await encoder.encode(session.workdir);
+  } catch {
+    sessionEncoded = encoder.encodeSync(session.workdir);
+  }
   const cwdEncoded = await encoder.encode(opts.currentWorkdir);
 
   if (sessionEncoded === cwdEncoded) {

@@ -5,7 +5,7 @@
 
 import { appendFile, readFile, writeFile, stat, mkdir } from "fs/promises";
 import { dirname } from "path";
-import { getLastLine } from "../utils/fileUtils.js";
+import { getLastLine, readFirstNLines } from "../utils/fileUtils.js";
 
 import type { Message } from "../types/index.js";
 import type { SessionFilename } from "../types/session.js";
@@ -31,14 +31,24 @@ export class JsonlHandler {
   }
 
   /**
-   * Create a new session file (simplified - no metadata header)
+   * Create a new session file.
+   *
+   * When `workdir` is provided, the first line is a metadata header recording
+   * the real working directory: `{"type":"metadata","workdir":"..."}`. The
+   * encoded project dir name is lossy for paths containing "-", so persisting
+   * the real path lets session listing show it without decoding. The header
+   * carries no `timestamp`, so message readers filter it out naturally.
+   *
+   * Legacy callers that omit `workdir` still get an empty file.
    */
-  async createSession(filePath: string): Promise<void> {
+  async createSession(filePath: string, workdir?: string): Promise<void> {
     // Ensure directory exists
     await this.ensureDirectory(dirname(filePath));
 
-    // Create empty file (no metadata line needed)
-    await writeFile(filePath, "", "utf8");
+    const content = workdir
+      ? `${JSON.stringify({ type: "metadata", workdir })}\n`
+      : "";
+    await writeFile(filePath, content, "utf8");
   }
 
   /**
@@ -118,12 +128,16 @@ export class JsonlHandler {
 
       const allMessages: Message[] = [];
 
-      // Parse all messages (no metadata line to skip)
+      // Parse all messages, skipping the metadata header line (if any)
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
         try {
-          const message = JSON.parse(line) as Message;
+          const message = JSON.parse(line) as Message & {
+            type?: string;
+          };
+          // Metadata header line: not a message, skip
+          if (message.type === "metadata") continue;
           if (message.timestamp) allMessages.push(message);
         } catch (error) {
           // Throw error for invalid JSON lines with line number
@@ -163,7 +177,11 @@ export class JsonlHandler {
       }
 
       try {
-        const parsed = JSON.parse(lastLine);
+        const parsed = JSON.parse(lastLine) as Message & { type?: string };
+        // A file whose only line is the metadata header has no messages yet
+        if (parsed.type === "metadata") {
+          return null;
+        }
         return parsed as Message;
       } catch (error) {
         throw new Error(`Invalid JSON in last line of "${filePath}": ${error}`);
@@ -173,6 +191,34 @@ export class JsonlHandler {
         `Failed to get last message from "${filePath}": ${error}`,
       );
     }
+  }
+
+  /**
+   * Read the real workdir from the session file's metadata header line.
+   *
+   * Newer session files start with a `{"type":"metadata","workdir":...}` line
+   * (see `createSession`). Legacy files have no header.
+   *
+   * @param filePath - Path to the session JSONL file
+   * @returns The persisted workdir, or null when the file has no header
+   */
+  async readWorkdirMetadata(filePath: string): Promise<string | null> {
+    try {
+      const lines = await readFirstNLines(filePath, 1);
+      if (lines.length === 0) {
+        return null;
+      }
+      const header = JSON.parse(lines[0]) as {
+        type?: string;
+        workdir?: string;
+      };
+      if (header.type === "metadata" && typeof header.workdir === "string") {
+        return header.workdir;
+      }
+    } catch {
+      // Unreadable or invalid first line — treat as a legacy file
+    }
+    return null;
   }
 
   /**

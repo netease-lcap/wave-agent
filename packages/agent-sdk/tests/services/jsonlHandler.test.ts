@@ -21,6 +21,7 @@ vi.mock("fs/promises", () => ({
 vi.mock("@/utils/fileUtils.js", () => ({
   getLastLine: vi.fn(),
   readFirstLine: vi.fn(),
+  readFirstNLines: vi.fn(),
 }));
 
 describe("JsonlHandler.append()", () => {
@@ -597,6 +598,100 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
       // Verify file is created with empty content (no metadata header)
       expect(mockWriteFile).toHaveBeenCalledOnce();
       expect(mockWriteFile).toHaveBeenCalledWith(filePath, "", "utf8");
+    });
+  });
+
+  describe("Session creation with workdir metadata header", () => {
+    it("writes a metadata header line when a workdir is provided", async () => {
+      const filePath =
+        "/test/sessions/12345678-1234-1234-1234-123456789abc.jsonl";
+
+      await handler.createSession(filePath, "/home/u/repo-wt-1");
+
+      expect(mockWriteFile).toHaveBeenCalledOnce();
+      const writtenContent = mockWriteFile.mock.calls[0][1] as string;
+      expect(writtenContent).toBe(
+        `${JSON.stringify({ type: "metadata", workdir: "/home/u/repo-wt-1" })}\n`,
+      );
+    });
+
+    it("does not add a metadata header when workdir is omitted", async () => {
+      const filePath =
+        "/test/sessions/12345678-1234-1234-1234-123456789abc.jsonl";
+
+      await handler.createSession(filePath);
+
+      expect(mockWriteFile).toHaveBeenCalledWith(filePath, "", "utf8");
+    });
+  });
+
+  describe("Metadata header handling on read", () => {
+    it("read() skips the metadata header line", async () => {
+      const header = JSON.stringify({
+        type: "metadata",
+        workdir: "/home/u/repo",
+      });
+      const message = {
+        timestamp: "2024-01-01T00:00:00.000Z",
+        id: generateMessageId(),
+        role: "user" as const,
+        blocks: [{ type: "text" as const, content: "hello" }],
+      };
+      mockReadFile.mockResolvedValue(`${header}\n${JSON.stringify(message)}\n`);
+
+      const result = await handler.read("/test/session.jsonl");
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.role).toBe("user");
+    });
+
+    it("getLastMessage returns null when the file holds only the metadata header", async () => {
+      const { getLastLine } = await import("@/utils/fileUtils.js");
+      vi.mocked(getLastLine).mockResolvedValue(
+        JSON.stringify({ type: "metadata", workdir: "/home/u/repo" }),
+      );
+      const { stat } = await import("fs/promises");
+      vi.mocked(stat).mockResolvedValue({} as Awaited<ReturnType<typeof stat>>);
+
+      const result = await handler.getLastMessage("/test/session.jsonl");
+
+      expect(result).toBeNull();
+    });
+
+    it("readWorkdirMetadata returns the persisted workdir", async () => {
+      const { readFirstNLines } = await import("@/utils/fileUtils.js");
+      vi.mocked(readFirstNLines).mockResolvedValue([
+        JSON.stringify({ type: "metadata", workdir: "/home/u/repo-wt-1" }),
+      ]);
+
+      const result = await handler.readWorkdirMetadata("/test/session.jsonl");
+
+      expect(result).toBe("/home/u/repo-wt-1");
+    });
+
+    it("readWorkdirMetadata returns null for legacy files without a header", async () => {
+      const { readFirstNLines } = await import("@/utils/fileUtils.js");
+      vi.mocked(readFirstNLines).mockResolvedValue([
+        JSON.stringify({
+          timestamp: "2024-01-01T00:00:00.000Z",
+          id: generateMessageId(),
+          role: "user" as const,
+          blocks: [{ type: "text" as const, content: "hello" }],
+        }),
+      ]);
+
+      const result = await handler.readWorkdirMetadata("/test/session.jsonl");
+
+      expect(result).toBeNull();
+    });
+
+    it("readWorkdirMetadata returns null when the file has no lines", async () => {
+      const { readFirstNLines } = await import("@/utils/fileUtils.js");
+      vi.mocked(readFirstNLines).mockResolvedValue([]);
+
+      const result = await handler.readWorkdirMetadata("/test/session.jsonl");
+
+      expect(result).toBeNull();
     });
   });
 

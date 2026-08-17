@@ -139,7 +139,9 @@ export async function createSession(
 ): Promise<void> {
   const jsonlHandler = new JsonlHandler();
   const filePath = await getSessionFilePath(sessionId, workdir, sessionType);
-  await jsonlHandler.createSession(filePath);
+  // Persist the real workdir in a metadata header so session listing can
+  // display it without the lossy decodeSync of the encoded dir name.
+  await jsonlHandler.createSession(filePath, workdir);
 }
 
 /**
@@ -508,9 +510,11 @@ export async function listAllSessions(options?: {
     // "home-user-repo" cannot swallow "home-user-repo-wt" (short paths require
     // exact match; prefix + "-" matching only kicks in for paths truncated by
     // the 200-char encoding limit, mirroring Claude Code's session listing).
+    // Each entry also carries the real path so matching dirs can display it
+    // instead of the lossy decodeSync of the encoded name.
     const encoder = new PathEncoder();
     const caseInsensitive = process.platform === "win32";
-    let indexed: { prefix: string }[] | null = null;
+    let indexed: { prefix: string; path?: string }[] | null = null;
     if (worktreePaths && worktreePaths.length > 0) {
       indexed = [];
       const seen = new Set<string>();
@@ -524,7 +528,7 @@ export async function listAllSessions(options?: {
         const prefix = caseInsensitive ? encoded.toLowerCase() : encoded;
         if (seen.has(prefix)) continue;
         seen.add(prefix);
-        indexed.push({ prefix });
+        indexed.push({ prefix, path: wt });
       }
       indexed.sort((a, b) => b.prefix.length - a.prefix.length);
       // Always include the current working directory's own project dir —
@@ -540,7 +544,7 @@ export async function listAllSessions(options?: {
         const prefix = caseInsensitive ? encodedCwd.toLowerCase() : encodedCwd;
         if (!seen.has(prefix)) {
           seen.add(prefix);
-          indexed.push({ prefix });
+          indexed.push({ prefix, path: workdir });
         }
       }
     }
@@ -556,17 +560,20 @@ export async function listAllSessions(options?: {
           continue;
         }
 
+        // The indexed match (worktree mode) carries the real path of the
+        // worktree / cwd that encoded to this dir name.
+        let matchedIndexed: { prefix: string; path?: string } | undefined;
         if (indexed) {
           const dirName = caseInsensitive
             ? projectDirName.toLowerCase()
             : projectDirName;
-          const matchesWorktree = indexed.some(
+          matchedIndexed = indexed.find(
             ({ prefix }) =>
               dirName === prefix ||
               (prefix.length >= MAX_ENCODED_PREFIX_LENGTH &&
                 dirName.startsWith(prefix + "-")),
           );
-          if (!matchesWorktree) continue;
+          if (!matchedIndexed) continue;
         }
 
         // Decode the encoded directory name back to the original project
@@ -577,6 +584,11 @@ export async function listAllSessions(options?: {
 
         // Scan .jsonl files in the project directory
         const files = await fs.readdir(projectPath);
+
+        // All sessions in one encoded dir share the same workdir, so probe
+        // the persisted metadata header at most once per dir (newer files
+        // only — legacy files have no header).
+        let realWorkdir: string | null | undefined;
 
         for (const file of files) {
           if (!file.endsWith(".jsonl") || file.startsWith("subagent-")) {
@@ -593,6 +605,10 @@ export async function listAllSessions(options?: {
             const sessionId = uuidMatch[1];
             const jsonlHandler = new JsonlHandler();
             const lastMessage = await jsonlHandler.getLastMessage(filePath);
+
+            if (realWorkdir === undefined) {
+              realWorkdir = await jsonlHandler.readWorkdirMetadata(filePath);
+            }
 
             let lastActiveAt: Date;
             if (lastMessage) {
@@ -616,11 +632,16 @@ export async function listAllSessions(options?: {
               // Ignore errors getting first message
             }
 
+            // Prefer the real worktree path, then the persisted metadata
+            // header, then the lossy decodeSync fallback for legacy files.
+            const workdir =
+              matchedIndexed?.path ?? realWorkdir ?? decodedWorkdir;
+
             allSessions.push({
               id: sessionId,
               sessionType: "main" as const,
               subagentType: undefined,
-              workdir: decodedWorkdir,
+              workdir,
               createdAt: new Date(),
               lastActiveAt,
               latestTotalTokens: lastMessage?.usage
@@ -893,10 +914,10 @@ export async function getFirstMessageContentFromFile(
 
     for (const line of lines) {
       try {
-        const message = JSON.parse(line) as Message;
+        const message = JSON.parse(line) as Message & { type?: string };
 
-        // Skip meta messages
-        if (message.isMeta) {
+        // Skip the metadata header line and meta messages
+        if (message.type === "metadata" || message.isMeta) {
           continue;
         }
 
