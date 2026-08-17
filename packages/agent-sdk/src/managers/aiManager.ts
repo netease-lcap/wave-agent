@@ -2283,7 +2283,6 @@ ${question}`;
           myGeneration,
           turnGeneration: this.turnGeneration,
           isCurrentlyAborted,
-          hasNotifications: messageQueue?.hasNotifications() ?? null,
           shouldRestart,
         });
         if (

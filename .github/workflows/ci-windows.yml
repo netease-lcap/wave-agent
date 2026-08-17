@@ -74,7 +74,8 @@ jobs:
       - name: Tests
         shell: bash
         run: |
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
+            echo "=== loop $i ==="
             pnpm --filter wave-agent-sdk exec vitest run tests/agent/agent.abort.test.ts -t "aborted queued dispatch must not resurrect" || exit 1
           done
           pnpm --filter wave-agent-sdk exec vitest run &&
