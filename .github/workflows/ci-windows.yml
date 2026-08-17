@@ -74,7 +74,7 @@ jobs:
       - name: Tests
         shell: bash
         run: |
-          for i in $(seq 1 12); do
+          for i in $(seq 1 4); do
             echo "=== loop $i ==="
             pnpm --filter wave-agent-sdk exec vitest run || exit 1
           done

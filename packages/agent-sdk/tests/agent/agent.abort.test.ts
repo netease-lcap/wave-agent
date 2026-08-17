@@ -1168,14 +1168,11 @@ describe("Agent - Abort Handling", () => {
         const idx = callIndex++;
         callStarted[idx] = true;
         callRecords.push(
-          `call ${idx} @${Date.now()} msgs=${options.messages?.length ?? "?"} last=${
-            options.messages?.[options.messages.length - 1]?.role
-          }:${String(
+          `call ${idx} @${Date.now()} aborted=${
+            options.abortSignal?.aborted ?? "?"
+          } msgs=${options.messages?.length ?? "?"} last=${String(
             options.messages?.[options.messages.length - 1]?.content,
-          ).slice(0, 80)} | ${new Error().stack
-            ?.split("\n")
-            .slice(2, 6)
-            .join(" <- ")}`,
+          ).slice(0, 60)}`,
         );
         if (process.env.WINDBG_ABORT) {
           process.stderr.write(`[WINDBG] callAgent ${idx}\n`);
