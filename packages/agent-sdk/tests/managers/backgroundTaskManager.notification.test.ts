@@ -17,13 +17,6 @@ vi.mock("child_process", () => ({
     };
     return child;
   }),
-  execFile: vi.fn(),
-}));
-
-// Deterministic shell path for the spawn-shape assertions.
-vi.mock("../../src/utils/shellResolver.js", () => ({
-  resolveShellPath: vi.fn(() => "/bin/bash"),
-  setShellIfWindows: vi.fn(),
 }));
 
 // Mock fs. Both named exports (namespace-imported by backgroundTaskManager)
@@ -43,15 +36,8 @@ vi.mock("fs", () => {
   };
 });
 
-import { execFile, spawn } from "child_process";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { MessageQueue } from "../../src/managers/messageQueue.js";
-import {
-  getShellSnapshotPath,
-  resetShellSnapshotCache,
-} from "../../src/utils/shellSnapshot.js";
-const mockSpawn = vi.mocked(spawn);
-const mockExecFile = vi.mocked(execFile);
 
 describe("BackgroundTaskManager - Message Queue", () => {
   let container: Container;
@@ -60,7 +46,6 @@ describe("BackgroundTaskManager - Message Queue", () => {
 
   beforeEach(() => {
     handlers.clear();
-    resetShellSnapshotCache();
     container = new Container();
     messageQueue = new MessageQueue();
     container.register("MessageQueue", messageQueue);
@@ -213,62 +198,5 @@ describe("BackgroundTaskManager - Message Queue", () => {
     // Status must remain "killed", not overwritten to "completed"
     expect(tasks[0].status).toBe("killed");
     expect(messageQueue.hasNotifications()).toBe(false);
-  });
-
-  describe("startShell shell invocation", () => {
-    it("spawns the shell with -c -l (login shell) and kicks off snapshot creation", () => {
-      manager.startShell("echo hello");
-
-      // Explicit spawn: [shellPath, args, options].
-      expect(mockSpawn).toHaveBeenCalledWith(
-        "/bin/bash",
-        ["-c", "-l", "echo hello"],
-        expect.objectContaining({
-          stdio: "pipe",
-          detached: true,
-          cwd: "/test/workdir",
-          env: expect.any(Object),
-        }),
-      );
-      // Snapshot capture kicked off (fire-and-forget) for later commands.
-      expect(mockExecFile).toHaveBeenCalledWith(
-        "/bin/bash",
-        ["-c", "-l", expect.stringContaining('echo "$PATH"')],
-        expect.anything(),
-        expect.any(Function),
-      );
-    });
-
-    it("skips -l and reuses the cached snapshot PATH once it is ready", async () => {
-      // Settle the real snapshot for /bin/bash via the mocked execFile.
-      mockExecFile.mockImplementation(((
-        _file: string,
-        _args: string[],
-        _options: unknown,
-        callback: (error: Error | null, stdout: string, stderr: string) => void,
-      ) => {
-        callback(
-          null,
-          "WAVE_SHELL_SNAPSHOT\n/usr/local/bin:/usr/bin:/bin\n",
-          "",
-        );
-      }) as unknown as typeof execFile);
-      await getShellSnapshotPath("/bin/bash");
-      mockExecFile.mockClear();
-
-      manager.startShell("echo hello");
-
-      expect(mockSpawn).toHaveBeenCalledWith(
-        "/bin/bash",
-        ["-c", "export PATH='/usr/local/bin:/usr/bin:/bin'; echo hello"],
-        expect.objectContaining({
-          stdio: "pipe",
-          detached: true,
-          cwd: "/test/workdir",
-        }),
-      );
-      // Snapshot already cached — no new capture kicked off.
-      expect(mockExecFile).not.toHaveBeenCalled();
-    });
   });
 });

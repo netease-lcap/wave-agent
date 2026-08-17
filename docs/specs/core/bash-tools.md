@@ -9,7 +9,7 @@ order: 20
 **规格文件**：`docs/specs/core/bash-tools.md`
 **创建日期**：2024-12-19
 
-## 用户场景与测试 *(必填)*
+## 用户场景与测试 _(必填)_
 
 ### 用户故事：执行前台命令（优先级：P1）
 
@@ -113,6 +113,23 @@ order: 20
 2. **假设** 设置了 `WAVE_SHELL` 环境变量指向可执行的 bash/zsh，**当** 调用 Bash 工具时，**则** 必须使用该 shell 执行命令。
 3. **假设** 系统未安装 bash 和 zsh，**当** 调用 Bash 工具时，**则** 必须返回清晰错误消息而非静默回退到 `/bin/sh`。
 4. **假设** `$SHELL` 指向 zsh，**当** 调用 Bash 工具时，**则** 必须优先使用 zsh。
+
+---
+
+### 用户故事：登录 shell 环境注入（优先级：P1）
+
+作为 AI 代理，我希望 Bash 工具、后台任务与 bang 命令（`!`）执行的命令能拿到用户登录 shell 的完整 PATH（含 nvm、Homebrew 等），且无需每条命令都加载一次用户 profile。
+
+**优先级原因**：GUI 启动的宿主（Finder/Dock 启动的桌面端、VS Code 扩展与 JetBrains 插件）进程 PATH 不完整，且 Windows 上 Git Bash 的 profile 永远不会被 GUI 进程加载；若在 SDK 层每条命令都通过 `-c -l` 加载 profile，首次 login-shell spawn 存在启动开销与输出丢失竞态。登录 PATH 由宿主启动时注入一次，SDK 执行器纯 `-c` 继承即可。
+
+**独立测试**：在 agent-sdk 集成测试中执行 `echo $PATH`，验证命令非登录 shell 执行（无 `-l`）且输出与宿主注入的 PATH 一致。
+
+**验收场景**：
+
+1. **假设** 宿主（桌面端、VS Code 扩展、JetBrains 插件）启动，**当** 宿主初始化时，**则** 必须单次探测用户登录 shell 的 PATH（macOS/Linux：登录 shell `-lic 'echo $PATH'`；Windows：Git Bash `-lic 'cygpath -pw "$PATH"'`）并注入 wave 进程环境——Bash 工具、后台任务与 bang 命令通过继承获得该 PATH，且每条命令都以纯 `-c` 执行，不得为每条命令 spawn 登录 shell（`-c -l`）。
+2. **假设** 登录 shell PATH 探测成功，**当** 执行任意 shell 命令时，**则** 子进程的 PATH 必须包含登录 shell 中的路径（如 nvm/Homebrew/Git Bash）。
+3. **假设** 登录 shell PATH 探测失败（超时、shell 缺失、Git Bash 未安装等），**当** 执行 shell 命令时，**则** 命令必须正常执行并回退到继承环境（探测失败不阻塞、不报错）。
+4. **假设** 同一会话内执行多条命令，**当** 每条命令启动时，**则** 不得重新加载用户 profile——PATH 来自宿主启动时的一次注入。
 
 ---
 

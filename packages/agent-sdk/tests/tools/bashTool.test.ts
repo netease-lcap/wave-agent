@@ -61,21 +61,10 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
   isLoggerConfigured: vi.fn(),
 }));
 
-// The shell snapshot module is NOT mocked here: its real chain runs against
-// the auto-mocked child_process.execFile (below), so tests exercise the real
-// login-shell/snapshot wiring. By default execFile never invokes its callback
-// (snapshot stays pending → bashTool spawns `-c -l`); tests that need a
-// snapshot settle the capture via the mocked execFile callback.
-
-import { execFile, spawn } from "child_process";
+import { spawn } from "child_process";
 import { logger } from "../../src/utils/globalLogger.js";
 import { resolveShellPath } from "../../src/utils/shellResolver.js";
-import {
-  getShellSnapshotPath,
-  resetShellSnapshotCache,
-} from "../../src/utils/shellSnapshot.js";
 const mockSpawn = vi.mocked(spawn);
-const mockExecFile = vi.mocked(execFile);
 
 describe("bashTool", () => {
   let backgroundTaskManager: BackgroundTaskManager;
@@ -83,7 +72,6 @@ describe("bashTool", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    resetShellSnapshotCache();
     const container = new Container();
     backgroundTaskManager = new BackgroundTaskManager(container, {
       workdir: "/test/workdir",
@@ -137,17 +125,11 @@ describe("bashTool", () => {
       expect(result.shortResult).toBe("test output");
       expect(mockSpawn).toHaveBeenCalledTimes(1);
       const spawnCallArgs = mockSpawn.mock.calls[0];
-      // Explicit spawn: [shellPath, args, options] — no shell option anymore.
-      expect(spawnCallArgs[0]).toBe(resolveShellPath());
-      const shellArgs = spawnCallArgs[1] as string[];
-      // No snapshot → login shell (-l) so the user profile is loaded.
-      expect(shellArgs).toEqual([
-        "-c",
-        "-l",
-        expect.stringContaining("echo hello"),
-      ]);
-      expect(shellArgs[2]).toContain("pwd -P");
-      expect(spawnCallArgs[2]).toMatchObject({
+      expect(typeof spawnCallArgs[0]).toBe("string");
+      expect(spawnCallArgs[0]).toContain("echo hello");
+      expect(spawnCallArgs[0]).toContain("pwd -P");
+      expect(spawnCallArgs[1]).toMatchObject({
+        shell: resolveShellPath() || true,
         stdio: "pipe",
         cwd: "/test/workdir",
       });
@@ -288,14 +270,7 @@ describe("bashTool", () => {
       const spawnCallArgs = mockSpawn.mock.calls[0];
       // Background shell must inherit the session current workdir (worktree),
       // NOT fall back to the BTM construction-time workdir (base repo root).
-      // Explicit spawn: [shellPath, args, options].
-      expect(spawnCallArgs[0]).toBe(resolveShellPath());
-      expect(spawnCallArgs[1]).toEqual([
-        "-c",
-        "-l",
-        expect.stringContaining("pwd"),
-      ]);
-      expect(spawnCallArgs[2]).toMatchObject({
+      expect(spawnCallArgs[1]).toMatchObject({
         cwd: "/base/repo/root/.wave/worktrees/feat-x",
       });
 
@@ -736,7 +711,8 @@ describe("bashTool", () => {
       await bashTool.execute({ command: "echo hello" }, context);
 
       const spawnCallArgs = mockSpawn.mock.calls[0];
-      const wrapped = (spawnCallArgs[1] as string[])[2];
+      expect(typeof spawnCallArgs[0]).toBe("string");
+      const wrapped = spawnCallArgs[0] as string;
       expect(wrapped).toContain("eval 'echo hello'");
       expect(wrapped).toContain("pwd -P");
       // Temp file path is platform-specific (C:/tmp on a "/tmp" mock, the real
@@ -751,7 +727,7 @@ describe("bashTool", () => {
 
       await bashTool.execute({ command: "echo 'hi'" }, context);
 
-      const wrapped = (mockSpawn.mock.calls[0][1] as string[])[2];
+      const wrapped = mockSpawn.mock.calls[0][0] as string;
       // Each single quote in the user command is replaced with '"'"'
       expect(wrapped).toContain(`eval 'echo '"'"'hi'"'"''`);
       expect(wrapped).toMatch(/^eval '.*' && pwd -P >\| .*wave_cwd_.*\.tmp$/);
@@ -769,7 +745,7 @@ EOF
 
       await bashTool.execute({ command }, context);
 
-      const wrapped = (mockSpawn.mock.calls[0][1] as string[])[2];
+      const wrapped = mockSpawn.mock.calls[0][0] as string;
       // Whole user command wrapped in eval '...'
       expect(wrapped.startsWith("eval '")).toBe(true);
       expect(wrapped).toContain("pwd -P");
@@ -780,113 +756,6 @@ EOF
       const pwdIndex = wrapped.indexOf("&& pwd -P");
       expect(pwdIndex).toBeGreaterThan(evalStart);
       expect(wrapped).toMatch(/&& pwd -P >\| .*wave_cwd_.*\.tmp$/);
-    });
-  });
-
-  describe("Shell snapshot integration", () => {
-    const makeExitingProcess = () => ({
-      pid: 1234,
-      stdout: { on: vi.fn() },
-      stderr: { on: vi.fn() },
-      on: vi.fn((event: string, callback: (code: number) => void) => {
-        if (event === "exit") {
-          setTimeout(() => callback(0), 10);
-        }
-      }),
-      kill: vi.fn(),
-      killed: false,
-    });
-
-    /**
-     * Settle the real shell snapshot for the resolved shell path: the mocked
-     * execFile invokes its callback with the given login-shell PATH.
-     */
-    const settleSnapshot = async (pathValue: string) => {
-      mockExecFile.mockImplementation(((
-        _file: string,
-        _args: string[],
-        _options: unknown,
-        callback: (error: Error | null, stdout: string, stderr: string) => void,
-      ) => {
-        callback(null, `WAVE_SHELL_SNAPSHOT\n${pathValue}\n`, "");
-      }) as unknown as typeof execFile);
-      await getShellSnapshotPath(resolveShellPath()!);
-      // Clear the settle call so "not kicked off again" assertions hold.
-      mockExecFile.mockClear();
-    };
-
-    it("spawns a login shell (-c -l) and kicks off snapshot creation when none cached", async () => {
-      // execFile default (never calls back) → snapshot stays pending.
-      mockSpawn.mockReturnValue(
-        makeExitingProcess() as unknown as ChildProcess,
-      );
-
-      await bashTool.execute({ command: "echo hi" }, context);
-
-      const [shell, args] = mockSpawn.mock.calls[0];
-      expect(shell).toBe(resolveShellPath());
-      const shellArgs = args as string[];
-      expect(shellArgs[0]).toBe("-c");
-      expect(shellArgs[1]).toBe("-l");
-      expect(shellArgs[2]).toContain("echo hi");
-      // The first command kicks off snapshot creation (fire-and-forget) so
-      // later commands can reuse the cached PATH.
-      expect(mockExecFile).toHaveBeenCalledWith(
-        resolveShellPath(),
-        ["-c", "-l", expect.stringContaining('echo "$PATH"')],
-        expect.anything(),
-        expect.any(Function),
-      );
-    });
-
-    it("skips -l and reuses the cached snapshot PATH once it is ready", async () => {
-      await settleSnapshot("/usr/local/bin:/usr/bin:/bin");
-      mockSpawn.mockReturnValue(
-        makeExitingProcess() as unknown as ChildProcess,
-      );
-
-      await bashTool.execute({ command: "echo hi" }, context);
-
-      const [, args] = mockSpawn.mock.calls[0];
-      const shellArgs = args as string[];
-      // The command string is always the last argument.
-      const command = shellArgs[shellArgs.length - 1];
-      expect(shellArgs[0]).toBe("-c");
-      expect(shellArgs).not.toContain("-l");
-      expect(command).toContain(
-        "export PATH='/usr/local/bin:/usr/bin:/bin'; eval 'echo hi'",
-      );
-      expect(command).toContain("pwd -P");
-      // Snapshot already cached — no need to kick off creation again.
-      expect(mockExecFile).not.toHaveBeenCalled();
-    });
-
-    it("quotes a snapshot PATH containing spaces", async () => {
-      await settleSnapshot("/c/Program Files/Git/usr/bin:/usr/bin");
-      mockSpawn.mockReturnValue(
-        makeExitingProcess() as unknown as ChildProcess,
-      );
-
-      await bashTool.execute({ command: "echo hi" }, context);
-
-      const shellArgs = mockSpawn.mock.calls[0][1] as string[];
-      expect(shellArgs[shellArgs.length - 1]).toContain(
-        "export PATH='/c/Program Files/Git/usr/bin:/usr/bin';",
-      );
-    });
-
-    it("escapes embedded single quotes in the snapshot PATH", async () => {
-      await settleSnapshot("/usr/bin:/opt/my'x");
-      mockSpawn.mockReturnValue(
-        makeExitingProcess() as unknown as ChildProcess,
-      );
-
-      await bashTool.execute({ command: "echo hi" }, context);
-
-      const shellArgs = mockSpawn.mock.calls[0][1] as string[];
-      expect(shellArgs[shellArgs.length - 1]).toContain(
-        `export PATH='/usr/bin:/opt/my'"'"'x';`,
-      );
     });
   });
 

@@ -167,8 +167,7 @@ object BinaryResolver {
      * so homebrew, nvm, pnpm, and user-customized bin dirs are invisible to
      * `System.getenv("PATH")`. The login shell rebuilds the full PATH.
      *
-     * Result is cached for the IDE session. Returns null on Windows or if the
-     * probe fails.
+     * Result is cached for the IDE session. Returns null if the probe fails.
      *
      * Uses [runCommandRaw] (not [runCommand]) to avoid infinite recursion:
      * `runCommand` injects [resolveEnv], which calls this method.
@@ -176,7 +175,20 @@ object BinaryResolver {
     internal fun resolveLoginShellPath(): String? {
         if (loginPathResolved) return cachedLoginPath
         loginPathResolved = true
-        if (isWindows) return null
+        if (isWindows) {
+            // Windows: GUI-launched IDEs never source the Git Bash profile, so
+            // bash commands would miss PATH additions from ~/.bashrc. Probe the
+            // login PATH once and convert it back to Windows form via cygpath
+            // so cmd.exe and Node subprocesses can still resolve tools.
+            val gitBash = resolveGitBashPath() ?: return null
+            cachedLoginPath = try {
+                val out = runCommandRaw(gitBash, "-lic", "cygpath -pw \"\$PATH\"")
+                out.lineSequence().map { it.trim() }.lastOrNull { it.isNotEmpty() }
+            } catch (_: Exception) {
+                null
+            }
+            return cachedLoginPath
+        }
         val shell = System.getenv("SHELL")
             ?.takeIf { it.isNotEmpty() && File(it).exists() }
             ?: listOf("/bin/zsh", "/bin/bash").firstOrNull { File(it).exists() }
@@ -191,6 +203,48 @@ object BinaryResolver {
             null
         }
         return cachedLoginPath
+    }
+
+    /**
+     * Locate the Git Bash `bash.exe` on Windows (mirrors the agent-sdk shell
+     * resolver's resolveWindowsShell and packages/vscode loginPath):
+     *   1. WAVE_GIT_BASH_PATH env var override
+     *   2. Infer from `where git`: <git>/cmd/git.exe → <git>/bin/bash.exe
+     *   3. Common install paths (Program Files, Program Files (x86),
+     *      %LOCALAPPDATA%\Programs\Git)
+     * Returns null on non-Windows or when no Git Bash can be found.
+     */
+    internal fun resolveGitBashPath(): String? {
+        System.getenv("WAVE_GIT_BASH_PATH")
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { return it }
+        try {
+            val out = runCommandRaw(lookupCmd, "git")
+            val gitExe = out.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }
+            if (gitExe != null) {
+                inferGitBashFromGitExe(gitExe)?.takeIf { File(it).isFile }?.let { return it }
+            }
+        } catch (_: Exception) {
+            // git not on PATH — fall through to common install paths
+        }
+        val candidates = mutableListOf(
+            "C:\\Program Files\\Git\\bin\\bash.exe",
+            "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+        )
+        System.getenv("LOCALAPPDATA")?.takeIf { it.isNotEmpty() }?.let {
+            candidates.add(File(it, "Programs\\Git\\bin\\bash.exe").path)
+        }
+        return candidates.firstOrNull { File(it).isFile }
+    }
+
+    /**
+     * Infer the Git Bash path from a `where git` result:
+     * `<git>/cmd/git.exe` → `<git>/bin/bash.exe`. Pure path manipulation
+     * (no existence check) so it can be unit-tested with synthetic inputs.
+     */
+    internal fun inferGitBashFromGitExe(gitExe: String): String? {
+        val bash = File(gitExe).parentFile?.parentFile?.resolve("bin/bash.exe") ?: return null
+        return bash.path
     }
 
     /** Reset cache (testing). */

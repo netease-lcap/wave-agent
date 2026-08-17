@@ -1,13 +1,10 @@
 import { spawn, ChildProcess } from "child_process";
+import { Readable } from "stream";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { logger } from "../utils/globalLogger.js";
 import { resolveShellPath } from "../utils/shellResolver.js";
-import {
-  buildShellSpawnArgs,
-  shellSingleQuote,
-} from "../utils/shellSnapshot.js";
 import { toPosixPath } from "../utils/path.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { WindowsStreamDecoder } from "../utils/encoding.js";
@@ -25,6 +22,15 @@ import {
 
 const BASH_DEFAULT_TIMEOUT_MS = 120000;
 
+// After the shell exits, its last stdout/stderr chunks may still be in flight:
+// Node emits the child's 'exit' event as soon as the process terminates, then
+// delivers the remaining pipe data on a later event-loop turn and finally
+// emits 'close'. Finalization therefore waits for the streams to 'end' before
+// reading the buffers. This bound covers grandchildren that inherit the pipe
+// write ends (e.g. `sleep 30 &`), which would delay 'end' indefinitely — in
+// that case the shell's own output is returned, matching pre-existing behavior.
+const SHELL_STREAM_FLUSH_TIMEOUT_MS = 100;
+
 /**
  * Wrap a user command so we can append CWD tracking (`&& pwd -P`) without the
  * appended part being affected by trailing here-docs, unbalanced quotes, or
@@ -40,7 +46,8 @@ function wrapCommandForCwdTracking(
   command: string,
   cwdFileForBash: string,
 ): string {
-  return `eval ${shellSingleQuote(command)} && pwd -P >| ${cwdFileForBash}`;
+  const escaped = command.replace(/'/g, `'"'"'`);
+  return `eval '${escaped}' && pwd -P >| ${cwdFileForBash}`;
 }
 
 // Commands that should not be auto-backgrounded on timeout (e.g. sleep should just be killed)
@@ -275,12 +282,6 @@ The working directory persists between commands. Try to maintain your current wo
     }
 
     // Foreground execution (original behavior)
-
-    // Shell spawn (aligned with Claude Code's bash provider): the user's
-    // profile is sourced once per session and the resulting login-shell PATH
-    // is cached. Until the snapshot is ready the shell is spawned as a login
-    // shell (`-c -l`); once ready, later commands skip `-l` and reuse the
-    // cached PATH instead of re-loading the profile.
     return new Promise((resolve) => {
       // Create a temporary file to store the CWD
       const tempCwdFile = path.join(
@@ -293,19 +294,16 @@ The working directory persists between commands. Try to maintain your current wo
         tempCwdFileForBash,
       );
 
-      const child: ChildProcess = spawn(
-        shellPath,
-        buildShellSpawnArgs(shellPath, wrappedCommand),
-        {
-          stdio: "pipe",
-          detached: true,
-          cwd: context.workdir,
-          env: {
-            ...process.env,
-            ...context.sessionEnv,
-          },
+      const child: ChildProcess = spawn(wrappedCommand, {
+        shell: shellPath,
+        stdio: "pipe",
+        detached: true,
+        cwd: context.workdir,
+        env: {
+          ...process.env,
+          ...context.sessionEnv,
         },
-      );
+      });
 
       let outputBuffer = "";
       let errorBuffer = "";
@@ -541,7 +539,135 @@ The working directory persists between commands. Try to maintain your current wo
         }
       });
 
-      child.on("exit", async (code) => {
+      // The 'exit' event fires before the stdio pipes have fully drained:
+      // Node emits 'exit' as soon as the process terminates, then delivers the
+      // remaining pipe data on a later event-loop turn and finally emits
+      // 'close'. Reading the buffers at 'exit' could therefore drop the
+      // shell's trailing output, written just before it exited (observed as
+      // empty stdout with exit code 0 for a fast `echo` under load). The
+      // result is only finalized after the streams have emitted 'end'. A
+      // bounded valve covers grandchildren that inherit the pipe write ends
+      // (e.g. `sleep 30 &`), which would delay 'end' indefinitely — in that
+      // case the shell's own output is returned, matching pre-existing
+      // behavior.
+      const finalizeShellResult = (code: number | null): void => {
+        // Streams that may still hold undelivered data: real pipe streams not
+        // yet at EOF. Mocked child_process tests provide plain objects without
+        // `once` that never emit 'end' — skip the flush wait for them so the
+        // exit path is unchanged.
+        const pendingStreams = [child.stdout, child.stderr].filter(
+          (stream): stream is Readable =>
+            !!stream &&
+            !stream.readableEnded &&
+            typeof stream.once === "function",
+        );
+
+        let finalized = false;
+        const finish = () => {
+          if (finalized) return;
+          finalized = true;
+          clearTimeout(flushTimer);
+          completeShellResult(code);
+        };
+
+        if (pendingStreams.length === 0) {
+          completeShellResult(code);
+          return;
+        }
+
+        const remainingStreams = new Set(pendingStreams);
+        const onStreamDone = (stream: Readable) => {
+          remainingStreams.delete(stream);
+          if (remainingStreams.size === 0) {
+            finish();
+          }
+        };
+        for (const stream of pendingStreams) {
+          stream.once("end", () => onStreamDone(stream));
+          stream.once("error", () => onStreamDone(stream));
+        }
+
+        // Safety valve for the grandchild case. Runs via setImmediate (which
+        // executes after the next poll), so any data still in the kernel pipe
+        // is delivered before the buffers are read.
+        const flushTimer = setTimeout(() => {
+          if (!finalized) {
+            setImmediate(finish);
+          }
+        }, SHELL_STREAM_FLUSH_TIMEOUT_MS);
+      };
+
+      const completeShellResult = (code: number | null): void => {
+        // Read the new CWD from the temporary file
+        let newCwd: string | undefined;
+        try {
+          if (fs.existsSync(tempCwdFile)) {
+            newCwd = fs.readFileSync(tempCwdFile, "utf8").trim();
+            // Validate the path exists before calling the callback
+            fs.accessSync(newCwd, fs.constants.F_OK);
+          }
+        } catch (fileError) {
+          logger.warn(
+            `Could not read or validate new CWD from temp file ${tempCwdFile}:`,
+            fileError,
+          );
+          newCwd = undefined;
+        } finally {
+          cleanupTempFile();
+        }
+
+        // If CWD changed, call the onCwdChange callback and add notification
+        let cwdMessage: string | undefined;
+        if (newCwd && newCwd !== context.workdir && context.onCwdChange) {
+          const isInSafeZone =
+            context.permissionManager?.isPathInSafeZone?.(newCwd) ?? true;
+
+          if (!isInSafeZone && context.originalWorkdir) {
+            context.onCwdChange(context.originalWorkdir);
+            cwdMessage = `Shell cwd was reset to ${context.originalWorkdir}`;
+          } else {
+            context.onCwdChange(newCwd);
+            cwdMessage = `Shell working directory changed to ${newCwd}`;
+          }
+        }
+
+        const exitCode = code ?? 0;
+        // Decode any bytes still held at stream end (e.g. a trailing UTF-8
+        // character split across the last chunk).
+        if (stdoutDecoder) outputBuffer += stdoutDecoder.flush();
+        if (stderrDecoder) errorBuffer += stderrDecoder.flush();
+        const combinedOutput =
+          outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
+
+        // Prepend CWD change message to output if present
+        const finalOutput =
+          recoveryNotice +
+          (cwdMessage ? cwdMessage + "\n" : "") +
+          (combinedOutput || `Command executed with exit code: ${exitCode}`);
+        const content = processToolResult(
+          finalOutput,
+          BASH_MAX_OUTPUT_CHARS,
+          "bash",
+        );
+
+        const lines = combinedOutput.trim().split("\n");
+        const shortResult =
+          lines.length <= 3
+            ? lines.join("\n")
+            : `... +${lines.length - 3} lines\n` + lines.slice(-3).join("\n");
+
+        resolve({
+          success: exitCode === 0,
+          content,
+          shortResult: shortResult || undefined,
+          error:
+            exitCode !== 0
+              ? `Command failed with exit code: ${exitCode}`
+              : undefined,
+        });
+      };
+
+      child.on("exit", (code) => {
         isFinished = true;
         if (context.foregroundTaskManager) {
           context.foregroundTaskManager.unregisterForegroundTask(
@@ -549,79 +675,14 @@ The working directory persists between commands. Try to maintain your current wo
           );
         }
 
-        if (!isAborted && !isBackgrounded) {
-          if (timeoutHandle) {
-            clearTimeout(timeoutHandle);
-          }
-
-          // Read the new CWD from the temporary file
-          let newCwd: string | undefined;
-          try {
-            if (fs.existsSync(tempCwdFile)) {
-              newCwd = fs.readFileSync(tempCwdFile, "utf8").trim();
-              // Validate the path exists before calling the callback
-              fs.accessSync(newCwd, fs.constants.F_OK);
-            }
-          } catch (fileError) {
-            logger.warn(
-              `Could not read or validate new CWD from temp file ${tempCwdFile}:`,
-              fileError,
-            );
-            newCwd = undefined;
-          } finally {
-            cleanupTempFile();
-          }
-
-          // If CWD changed, call the onCwdChange callback and add notification
-          let cwdMessage: string | undefined;
-          if (newCwd && newCwd !== context.workdir && context.onCwdChange) {
-            const isInSafeZone =
-              context.permissionManager?.isPathInSafeZone?.(newCwd) ?? true;
-
-            if (!isInSafeZone && context.originalWorkdir) {
-              context.onCwdChange(context.originalWorkdir);
-              cwdMessage = `Shell cwd was reset to ${context.originalWorkdir}`;
-            } else {
-              context.onCwdChange(newCwd);
-              cwdMessage = `Shell working directory changed to ${newCwd}`;
-            }
-          }
-
-          const exitCode = code ?? 0;
-          // Decode any bytes still held at stream end (e.g. a trailing UTF-8
-          // character split across the last chunk).
-          if (stdoutDecoder) outputBuffer += stdoutDecoder.flush();
-          if (stderrDecoder) errorBuffer += stderrDecoder.flush();
-          const combinedOutput =
-            outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
-
-          // Prepend CWD change message to output if present
-          const finalOutput =
-            recoveryNotice +
-            (cwdMessage ? cwdMessage + "\n" : "") +
-            (combinedOutput || `Command executed with exit code: ${exitCode}`);
-          const content = processToolResult(
-            finalOutput,
-            BASH_MAX_OUTPUT_CHARS,
-            "bash",
-          );
-
-          const lines = combinedOutput.trim().split("\n");
-          const shortResult =
-            lines.length <= 3
-              ? lines.join("\n")
-              : `... +${lines.length - 3} lines\n` + lines.slice(-3).join("\n");
-
-          resolve({
-            success: exitCode === 0,
-            content,
-            shortResult: shortResult || undefined,
-            error:
-              exitCode !== 0
-                ? `Command failed with exit code: ${exitCode}`
-                : undefined,
-          });
+        if (isAborted || isBackgrounded) {
+          return;
         }
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+
+        finalizeShellResult(code);
       });
 
       child.on("error", (error) => {

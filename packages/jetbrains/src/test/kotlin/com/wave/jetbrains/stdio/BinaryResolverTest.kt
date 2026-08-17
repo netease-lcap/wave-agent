@@ -252,6 +252,31 @@ class BinaryResolverTest {
         assertNull(BinaryResolver.findInNvm("wave", nvm2))
     }
 
+    // ---- inferGitBashFromGitExe ----------------------------------------
+
+    @Test
+    fun `inferGitBashFromGitExe maps cmd git exe to bin bash exe`() {
+        assertEquals(
+            "C:\\Program Files\\Git\\bin\\bash.exe",
+            BinaryResolver.inferGitBashFromGitExe("C:\\Program Files\\Git\\cmd\\git.exe"),
+        )
+    }
+
+    @Test
+    fun `inferGitBashFromGitExe handles a shallow git exe path`() {
+        // e.g. git.exe two levels above a bin dir — parent chain collapses
+        assertEquals(
+            "C:\\tools\\bin\\bash.exe",
+            BinaryResolver.inferGitBashFromGitExe("C:\\tools\\bin\\git.exe"),
+        )
+    }
+
+    @Test
+    fun `inferGitBashFromGitExe returns null for a bare filename`() {
+        // No parent dirs to climb.
+        assertNull(BinaryResolver.inferGitBashFromGitExe("git.exe"))
+    }
+
     // ---- buildEnv ------------------------------------------------------
 
     @Test
