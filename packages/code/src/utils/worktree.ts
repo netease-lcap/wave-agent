@@ -7,6 +7,7 @@ import {
   getGitMainRepoRoot,
   performPostCreationSetup,
 } from "wave-agent-sdk";
+import { logger } from "./logger.js";
 
 // Never use execFileSync here: the shared `wave --stdio` process handles all
 // desktop sessions, so a synchronous git call (especially a multi-second
@@ -325,10 +326,9 @@ export async function removeWorktree(session: WorktreeSession): Promise<void> {
       },
     );
   } catch (error: unknown) {
-    console.warn(
-      `git worktree remove failed, falling back to fs.rmSync: ${
-        (error as Error).message
-      }`,
+    logger.warn(
+      "git worktree remove failed, falling back to fs.rmSync:",
+      error,
     );
     try {
       fs.rmSync(toExtendedLengthPath(session.path), {
@@ -336,9 +336,7 @@ export async function removeWorktree(session: WorktreeSession): Promise<void> {
         force: true,
       });
     } catch (rmError: unknown) {
-      console.error(
-        `Failed to remove worktree or branch: ${(rmError as Error).message}`,
-      );
+      logger.error("Failed to remove worktree or branch:", rmError);
     }
     // git removes worktree metadata before the working directory; prune any
     // leftovers in case git failed before deleting them.
