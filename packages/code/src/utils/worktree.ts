@@ -266,30 +266,57 @@ async function createWorktreeInternal(
 }
 
 /**
+ * On Windows, prefix an absolute path with the extended-length marker (`\\?\`)
+ * so recursive removal bypasses the 260-char MAX_PATH limit. POSIX paths are
+ * returned unchanged.
+ */
+function toExtendedLengthPath(worktreePath: string): string {
+  if (process.platform !== "win32") {
+    return worktreePath;
+  }
+  const absolute = path.win32.resolve(worktreePath);
+  if (absolute.startsWith("\\\\?\\")) {
+    return absolute;
+  }
+  if (absolute.startsWith("\\\\")) {
+    // UNC path: \\server\share -> \\?\UNC\server\share
+    return `\\\\?\\UNC\\${absolute.slice(2)}`;
+  }
+  return `\\\\?\\${absolute}`;
+}
+
+/**
  * Remove a git worktree and its associated branch
  * @param session Worktree session details
+ *
+ * Removal is best-effort: `git worktree remove --force` deletes the worktree
+ * metadata before the working directory, and on Windows its recursive deletion
+ * is MAX_PATH-limited — deep paths (e.g. node_modules) can fail with "Filename
+ * too long", leaving an orphan directory. When git fails we fall back to
+ * fs.rmSync with an extended-length path (bypasses MAX_PATH) and prune stale
+ * metadata. Failures are logged but never block branch deletion.
  */
 export async function removeWorktree(session: WorktreeSession): Promise<void> {
   const repoRoot = session.repoRoot;
 
+  // Get current branch in worktree before removing it
+  let currentBranch: string | undefined;
   try {
-    // Get current branch in worktree before removing it
-    let currentBranch: string | undefined;
-    try {
-      const { stdout } = await execFileAsync(
-        "git",
-        ["rev-parse", "--abbrev-ref", "HEAD"],
-        {
-          cwd: session.path,
-          encoding: "utf8",
-        },
-      );
-      currentBranch = stdout.trim();
-    } catch {
-      // Ignore errors getting current branch
-    }
+    const { stdout } = await execFileAsync(
+      "git",
+      ["rev-parse", "--abbrev-ref", "HEAD"],
+      {
+        cwd: session.path,
+        encoding: "utf8",
+      },
+    );
+    currentBranch = stdout.trim();
+  } catch {
+    // Ignore errors getting current branch
+  }
 
-    // Remove worktree
+  // Remove worktree
+  try {
     await execFileAsync(
       "git",
       ["worktree", "remove", "--force", session.path],
@@ -297,42 +324,63 @@ export async function removeWorktree(session: WorktreeSession): Promise<void> {
         cwd: repoRoot,
       },
     );
-
-    // Delete original branch
+  } catch (error: unknown) {
+    console.warn(
+      `git worktree remove failed, falling back to fs.rmSync: ${
+        (error as Error).message
+      }`,
+    );
     try {
-      await execFileAsync("git", ["branch", "-D", session.branch], {
+      fs.rmSync(toExtendedLengthPath(session.path), {
+        recursive: true,
+        force: true,
+      });
+    } catch (rmError: unknown) {
+      console.error(
+        `Failed to remove worktree or branch: ${(rmError as Error).message}`,
+      );
+    }
+    // git removes worktree metadata before the working directory; prune any
+    // leftovers in case git failed before deleting them.
+    try {
+      await execFileAsync("git", ["worktree", "prune"], {
         cwd: repoRoot,
       });
     } catch {
-      // Ignore errors deleting original branch
+      // Ignore errors pruning stale metadata
     }
+  }
 
-    // Delete current branch if it's different and not a protected branch
+  // Delete original branch
+  try {
+    await execFileAsync("git", ["branch", "-D", session.branch], {
+      cwd: repoRoot,
+    });
+  } catch {
+    // Ignore errors deleting original branch
+  }
+
+  // Delete current branch if it's different and not a protected branch
+  if (
+    currentBranch &&
+    currentBranch !== session.branch &&
+    currentBranch !== "HEAD"
+  ) {
+    const defaultRemoteBranch = getDefaultRemoteBranch(repoRoot);
+    const defaultBranchName = defaultRemoteBranch.split("/").pop();
+
     if (
-      currentBranch &&
-      currentBranch !== session.branch &&
-      currentBranch !== "HEAD"
+      currentBranch !== defaultBranchName &&
+      currentBranch !== "main" &&
+      currentBranch !== "master"
     ) {
-      const defaultRemoteBranch = getDefaultRemoteBranch(repoRoot);
-      const defaultBranchName = defaultRemoteBranch.split("/").pop();
-
-      if (
-        currentBranch !== defaultBranchName &&
-        currentBranch !== "main" &&
-        currentBranch !== "master"
-      ) {
-        try {
-          await execFileAsync("git", ["branch", "-D", currentBranch], {
-            cwd: repoRoot,
-          });
-        } catch {
-          // Ignore errors deleting current branch
-        }
+      try {
+        await execFileAsync("git", ["branch", "-D", currentBranch], {
+          cwd: repoRoot,
+        });
+      } catch {
+        // Ignore errors deleting current branch
       }
     }
-  } catch (error: unknown) {
-    console.error(
-      `Failed to remove worktree or branch: ${(error as Error).message}`,
-    );
   }
 }

@@ -50,6 +50,7 @@ vi.mock("node:fs", () => ({
   realpathSync: vi.fn(),
   readFileSync: vi.fn(),
   appendFileSync: vi.fn(),
+  rmSync: vi.fn(),
   promises: {
     readFile: vi.fn(),
     writeFile: vi.fn(),
@@ -398,6 +399,7 @@ describe("worktreeUtils", () => {
     beforeEach(() => {
       vi.mocked(execFileSync).mockReturnValue("");
       vi.mocked(gitUtils.getDefaultRemoteBranch).mockReturnValue("origin/main");
+      vi.mocked(fs.rmSync).mockImplementation(() => {});
     });
 
     it("removes worktree and branch", () => {
@@ -419,12 +421,15 @@ describe("worktreeUtils", () => {
         expect.arrayContaining(["branch", "-D", "worktree-feat"]),
         expect.anything(),
       );
+      expect(fs.rmSync).not.toHaveBeenCalled();
     });
 
-    it("logs and rethrows on failure", () => {
-      const error = new Error("git failed");
-      vi.mocked(execFileSync).mockImplementation(() => {
-        throw error;
+    it("falls back to fs.rmSync and still deletes the branch when git removal fails", () => {
+      vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
+        if (args?.includes("remove") && args?.includes("worktree")) {
+          throw new Error("git failed");
+        }
+        return "";
       });
 
       expect(() =>
@@ -435,7 +440,60 @@ describe("worktreeUtils", () => {
           repoRoot: "/test/repo",
           isNew: true,
         }),
-      ).toThrow("git failed");
+      ).not.toThrow();
+
+      const [rmPath] = vi.mocked(fs.rmSync).mock.calls[0];
+      if (process.platform === "win32") {
+        // Extended-length path bypasses the Windows MAX_PATH limit
+        expect(String(rmPath)).toMatch(/^\\\\\?\\/);
+      } else {
+        expect(rmPath).toBe("/test/repo/.wave/worktrees/feat");
+      }
+      expect(fs.rmSync).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ recursive: true, force: true }),
+      );
+      // Branch deletion still runs despite the git failure
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["branch", "-D", "worktree-feat"]),
+        expect.anything(),
+      );
+      // Stale metadata is pruned after the fallback removal
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["worktree", "prune"]),
+        expect.anything(),
+      );
+    });
+
+    it("logs and still deletes the branch when git and fs.rmSync both fail", () => {
+      vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
+        if (args?.includes("remove") && args?.includes("worktree")) {
+          throw new Error("git failed");
+        }
+        return "";
+      });
+      vi.mocked(fs.rmSync).mockImplementation(() => {
+        throw new Error("rm failed");
+      });
+
+      expect(() =>
+        worktreeUtils.removeWorktree({
+          name: "feat",
+          path: "/test/repo/.wave/worktrees/feat",
+          branch: "worktree-feat",
+          repoRoot: "/test/repo",
+          isNew: true,
+        }),
+      ).not.toThrow();
+
+      // Branch deletion still runs even when both removal attempts fail
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["branch", "-D", "worktree-feat"]),
+        expect.anything(),
+      );
     });
   });
 
