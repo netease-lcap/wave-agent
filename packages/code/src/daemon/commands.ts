@@ -68,7 +68,7 @@ async function connectDaemonOrExit(socketPath: string): Promise<SocketClient> {
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     console.error(
-      `无法连接 daemon socket ${socketPath}：daemon 未运行？（daemon 空闲 60 秒自动退出）` +
+      `Cannot connect to daemon socket ${socketPath}: is the daemon running? (it auto-exits after 60s idle)` +
         (code ? ` (${code})` : ""),
     );
     process.exit(1);
@@ -115,7 +115,7 @@ async function attachSession(
       // initialize silently started a junk fresh session — remove it from the
       // registry so the failed attach leaves no trace (spec: 会话不存在错误).
       await client.request("destroy", undefined, initId).catch(() => {});
-      fail(`会话不存在或未被该 daemon 托管：${sessionId}`);
+      fail(`Session not found or not hosted by this daemon: ${sessionId}`);
     }
     throw err;
   }
@@ -149,7 +149,7 @@ export async function daemonListCommand(socketPath: string): Promise<void> {
     if (sessions.length > 0) {
       const rows = sessions.map((s) => ({
         sessionId: s.sessionId,
-        status: s.isLoading ? "生成中" : "空闲",
+        status: s.isLoading ? "generating" : "idle",
         messageCount: String(s.messageCount),
         workingDirectory: s.workingDirectory,
       }));
@@ -158,7 +158,7 @@ export async function daemonListCommand(socketPath: string): Promise<void> {
       const pad = (value: string, w: number) => value.padEnd(w);
 
       console.log(
-        `${pad("会话", width("sessionId"))}  ${pad("状态", width("status"))}  ${pad("消息数", width("messageCount"))}  工作目录`,
+        `${pad("Session", width("sessionId"))}  ${pad("Status", width("status"))}  ${pad("Messages", width("messageCount"))}  Working directory`,
       );
       for (const r of rows) {
         console.log(
@@ -167,10 +167,10 @@ export async function daemonListCommand(socketPath: string): Promise<void> {
       }
     } else {
       // Daemon idle-exit is normal — an empty registry is not an error.
-      console.log("无会话");
+      console.log("No sessions");
     }
   } catch (err) {
-    fail(`wave daemon list 失败：${(err as Error).message}`);
+    fail(`wave daemon list failed: ${(err as Error).message}`);
   } finally {
     await client?.dispose();
   }
@@ -226,14 +226,18 @@ export async function daemonStatusCommand(
     };
 
     const status =
-      pending.length > 0 ? "等待审批" : loading ? "生成中" : "空闲";
-    console.log(`会话: ${initId}`);
-    console.log(`工作目录: ${init.workingDirectory}`);
-    console.log(`状态: ${status}`);
+      pending.length > 0
+        ? "waiting for approval"
+        : loading
+          ? "generating"
+          : "idle";
+    console.log(`Session: ${initId}`);
+    console.log(`Working directory: ${init.workingDirectory}`);
+    console.log(`Status: ${status}`);
 
     if (pending.length > 0) {
       console.log("");
-      console.log("待审批请求:");
+      console.log("Pending approval requests:");
       for (const r of pending) {
         const params = summarizeToolInput(r.context);
         console.log(
@@ -245,7 +249,7 @@ export async function daemonStatusCommand(
     const recent = messages.messages.slice(-lines);
     if (recent.length > 0) {
       console.log("");
-      console.log(`最近消息 (${recent.length}):`);
+      console.log(`Recent messages (${recent.length}):`);
       for (const m of recent) {
         const text = getMessageContent(m).replace(/\s+/g, " ").trim();
         if (!text) continue; // tool-only messages carry no readable text
@@ -253,7 +257,7 @@ export async function daemonStatusCommand(
       }
     }
   } catch (err) {
-    fail(`wave daemon status 失败：${(err as Error).message}`);
+    fail(`wave daemon status failed: ${(err as Error).message}`);
   } finally {
     await client?.dispose();
   }
@@ -311,7 +315,7 @@ export async function daemonSendCommand(
     await client.request("sendMessage", { text: message }, initId);
   } catch (err) {
     client.dispose();
-    fail(`wave daemon send 失败：${(err as Error).message}`);
+    fail(`wave daemon send failed: ${(err as Error).message}`);
   }
 
   // Wait for the reply that corresponds to our message.
@@ -327,13 +331,13 @@ export async function daemonSendCommand(
       client.dispose();
       if (pending.length > 0) {
         fail(
-          `会话等待权限审批，请通过 \`wave daemon respond ${sessionId} ${pending[0].requestId}\` 处理后重试`,
+          `Session is waiting for permission approval; handle it with \`wave daemon respond ${sessionId} ${pending[0].requestId}\` and retry`,
         );
       }
       fail(
         options.timeout === 0
-          ? "等待回复超时"
-          : `等待回复超时（${options.timeout} 秒），未收到助手回复`,
+          ? "Timed out waiting for a reply"
+          : `Timed out waiting for a reply (${options.timeout}s), no assistant reply received`,
       );
     }
     await sleep(200);
@@ -351,7 +355,7 @@ export async function daemonSendCommand(
       if (content) console.log(content);
     }
   } catch (err) {
-    fail(`wave daemon send 失败：${(err as Error).message}`);
+    fail(`wave daemon send failed: ${(err as Error).message}`);
   } finally {
     client.dispose();
   }
@@ -376,7 +380,7 @@ export async function daemonRespondCommand(
   options: RespondOptions,
 ): Promise<void> {
   if (!!options.allow === !!options.deny) {
-    fail("请指定 --allow 或 --deny（二选一）");
+    fail("Specify either --allow or --deny");
   }
   let client: SocketClient | undefined;
   try {
@@ -387,11 +391,11 @@ export async function daemonRespondCommand(
     const pending = await listPendingPermissions(client);
     const req = pending.find((r) => r.requestId === requestId);
     if (!req) {
-      fail("该请求不存在或已处理");
+      fail("Request not found or already handled");
     }
     if (req.sessionId && req.sessionId !== sessionId) {
       // Cross-check before notifying; never touch another session's request.
-      fail("会话不存在或未被该 daemon 托管");
+      fail("Session not found or not hosted by this daemon");
     }
 
     let decision: PermissionDecision;
@@ -407,13 +411,15 @@ export async function daemonRespondCommand(
         decision = { behavior: "allow", newPermissionMode: "default" };
       } else if (toolName === ASK_USER_QUESTION_TOOL_NAME) {
         if (!options.answer) {
-          fail("AskUserQuestion 请求需要 --answer 提供答案 JSON");
+          fail(
+            "AskUserQuestion requests require --answer with the answer JSON",
+          );
         }
         let answers: unknown;
         try {
           answers = JSON.parse(options.answer);
         } catch {
-          fail("--answer 不是合法的 JSON");
+          fail("--answer is not valid JSON");
         }
         decision = { behavior: "allow", message: JSON.stringify(answers) };
       } else {
@@ -424,7 +430,7 @@ export async function daemonRespondCommand(
       if (options.mode) {
         if (!PERMISSION_MODES.includes(options.mode as PermissionMode)) {
           fail(
-            `无效的权限模式：${options.mode}（可选：${PERMISSION_MODES.join("、")}）`,
+            `Invalid permission mode: ${options.mode} (options: ${PERMISSION_MODES.join(", ")})`,
           );
         }
         decision.newPermissionMode = options.mode as PermissionMode;
@@ -434,9 +440,9 @@ export async function daemonRespondCommand(
     // Mirror desktop stdioAgent.sendPermissionResponse: envelope sessionId
     // present, decision built from the pending request's tool.
     client.notify("permissionResponse", { requestId, decision }, sessionId);
-    console.log(`已处理审批请求：${requestId}`);
+    console.log(`Handled approval request: ${requestId}`);
   } catch (err) {
-    fail(`wave daemon respond 失败：${(err as Error).message}`);
+    fail(`wave daemon respond failed: ${(err as Error).message}`);
   } finally {
     await client?.dispose();
   }

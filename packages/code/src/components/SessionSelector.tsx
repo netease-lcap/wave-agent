@@ -137,14 +137,14 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
 
   const hints = [
     onToggleAllProjects
-      ? `Ctrl+A ${showAllProjects ? "当前目录" : "全部项目"}`
+      ? `Ctrl+A ${showAllProjects ? "current directory" : "all projects"}`
       : null,
     onToggleAllWorktrees && worktreePaths.length > 1
-      ? `Ctrl+W ${showAllWorktrees ? "当前 worktree" : "全部 worktree"}`
+      ? `Ctrl+W ${showAllWorktrees ? "current worktree" : "all worktrees"}`
       : null,
-    "↑↓ 选择",
-    "Enter 确认",
-    "Esc 取消",
+    "↑↓ select",
+    "Enter confirm",
+    "Esc cancel",
   ]
     .filter((hint): hint is string => hint !== null)
     .join("  ·  ");

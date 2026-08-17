@@ -16,7 +16,7 @@ export class SocketClient extends JsonRpcClient {
     this.attachReadable(socket);
 
     socket.on("close", () => {
-      this.handleClosed("远端连接已断开。");
+      this.handleClosed("Remote connection closed.");
     });
     socket.on("error", (err) => {
       console.error("[wave-daemon] Socket error:", err.message);
@@ -28,7 +28,7 @@ export class SocketClient extends JsonRpcClient {
   }
 
   dispose(): void {
-    this.handleClosed("远端连接已断开。");
+    this.handleClosed("Remote connection closed.");
     this.socket.destroy();
   }
 }
