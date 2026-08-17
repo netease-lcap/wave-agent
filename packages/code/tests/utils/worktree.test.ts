@@ -7,6 +7,7 @@ import {
   removeWorktree,
   validateWorktreeSlug,
 } from "../../src/utils/worktree.js";
+import { logger } from "../../src/utils/logger.js";
 import {
   getDefaultRemoteBranch,
   getGitMainRepoRoot,
@@ -379,7 +380,7 @@ describe("worktree utils", () => {
     });
 
     it("should fall back to fs.rmSync and still delete the branch when git removal fails", async () => {
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
       git.handler = (_cmd, args) => {
         if (args[0] === "worktree" && args[1] === "remove") {
           throw gitError("Filename too long", "");
@@ -389,9 +390,7 @@ describe("worktree utils", () => {
 
       await removeWorktree(session);
 
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("falling back to fs.rmSync"),
-      );
+      expect(warnSpy.mock.calls[0][0]).toContain("falling back to fs.rmSync");
       const rmCalls = vi.mocked(fs.rmSync).mock.calls;
       expect(rmCalls).toHaveLength(1);
       expect(rmCalls[0][1]).toMatchObject({ recursive: true, force: true });
@@ -410,10 +409,8 @@ describe("worktree utils", () => {
     });
 
     it("should log error but still delete the branch when git and fs.rmSync both fail", async () => {
-      const consoleSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const loggerSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
       git.handler = (_cmd, args) => {
         if (args[0] === "worktree" && args[1] === "remove") {
           throw gitError("Filename too long", "");
@@ -426,14 +423,14 @@ describe("worktree utils", () => {
 
       await removeWorktree(session);
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to remove worktree or branch"),
+      expect(loggerSpy.mock.calls[0][0]).toContain(
+        "Failed to remove worktree or branch",
       );
       // Branch deletion still runs even when both removal attempts fail
       expect(gitCallsWith(["branch", "-D", "worktree-my-feat"])).toHaveLength(
         1,
       );
-      consoleSpy.mockRestore();
+      loggerSpy.mockRestore();
       warnSpy.mockRestore();
     });
   });
