@@ -515,12 +515,6 @@ export class AIManager {
   }
 
   public setIsLoading(isLoading: boolean): void {
-    console.log(
-      "[WINDBG] setIsLoading",
-      isLoading,
-      "\n",
-      new Error().stack?.split("\n").slice(1, 8).join("\n"),
-    );
     this.isLoading = isLoading;
     this.onLoadingChange?.(isLoading);
     const options =
@@ -1643,15 +1637,6 @@ ${question}`;
     // previous turn not finished" race window by marking us busy immediately.
     this.turnGeneration++;
     let myGeneration = this.turnGeneration;
-    console.log(
-      "[WINDBG] sendAIMessage enter",
-      {
-        myGeneration,
-        turnGeneration: this.turnGeneration,
-        isLoading: this.isLoading,
-      },
-      new Error().stack?.split("\n").slice(1, 3).join(" <- "),
-    );
     this.setIsLoading(true);
 
     outer: while (true) {
@@ -2278,13 +2263,6 @@ ${question}`;
         const messageQueue = this.container.has("MessageQueue")
           ? this.container.get<MessageQueue>("MessageQueue")
           : undefined;
-        console.log("[WINDBG] cleanup", {
-          turnOffset,
-          myGeneration,
-          turnGeneration: this.turnGeneration,
-          isCurrentlyAborted,
-          shouldRestart,
-        });
         if (
           messageQueue &&
           messageQueue.hasNotifications() &&
