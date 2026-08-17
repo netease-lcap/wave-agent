@@ -15,8 +15,7 @@
     "ink",
     "typescript"
   ],
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/bundle/wave.mjs",
   "type": "module",
   "bin": {
     "wave-code": "bin/wave-code.js",
@@ -30,9 +29,8 @@
   ],
   "scripts": {
     "wave": "tsx --tsconfig tsconfig.dev.json src/dev-entry.ts",
-    "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "build": "rimraf dist && node scripts/bundle.mjs",
     "type-check": "tsc --noEmit --incremental",
-    "watch": "tsc -p tsconfig.build.json --watch & tsc-alias -p tsconfig.build.json --watch",
     "test": "vitest run --reporter=dot",
     "test:coverage": "vitest run --coverage --reporter=dot",
     "test:unit": "vitest run --reporter=dot --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
@@ -43,37 +41,35 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "chalk": "^5.6.2",
-    "diff": "^8.0.2",
-    "glob": "^13.0.0",
-    "highlight.js": "^11.11.1",
-    "ink": "^7.1.1",
-    "marked": "^17.0.2",
-    "node-html-parser": "^7.0.2",
-    "react": "^19.2.4",
-    "react-dom": "19.2.4",
-    "semver": "^7.7.4",
-    "string-width": "^8.2.2",
-    "wave-agent-sdk": "workspace:*",
-    "wrap-ansi": "^10.0.0",
-    "yargs": "^17.7.2",
-    "zod": "^3.23.8"
+    "@vscode/ripgrep": "^1.18.0"
   },
   "devDependencies": {
     "@types/react": "^19.1.8",
     "@types/semver": "^7.7.1",
     "@types/yargs": "^17.0.0",
     "@vitest/coverage-v8": "^4.1.7",
+    "chalk": "^5.6.2",
+    "diff": "^8.0.2",
+    "esbuild": "^0.28.1",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
+    "glob": "^13.0.0",
+    "highlight.js": "^11.11.1",
+    "ink": "^7.1.1",
     "ink-testing-library": "^4.0.0",
+    "marked": "^17.0.2",
+    "node-html-parser": "^7.0.2",
+    "react": "^19.2.4",
+    "react-dom": "19.2.4",
     "rimraf": "^6.1.2",
-    "tsc-alias": "^1.8.16",
+    "semver": "^7.7.4",
+    "string-width": "^8.2.2",
     "tsx": "^4.20.4",
-    "vitest": "^4.1.7"
-  },
-  "peerDependencies": {
-    "react": ">=18.0.0"
+    "vitest": "^4.1.7",
+    "wave-agent-sdk": "workspace:*",
+    "wrap-ansi": "^10.0.0",
+    "yargs": "^17.7.2",
+    "zod": "^3.23.8"
   },
   "engines": {
     "node": ">=22"

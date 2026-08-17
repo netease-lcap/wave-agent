@@ -9,13 +9,9 @@ import {
 } from "wave-agent-sdk";
 import { createWorktree, type WorktreeSession } from "./utils/worktree.js";
 import path from "path";
-import { readFileSync } from "fs";
-import { fileURLToPath } from "url";
+import { readNearestPackageJson } from "./utils/readPackageJson.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const packageJsonPath = path.resolve(__dirname, "../package.json");
-const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
-const version = packageJson.version;
+const version = readNearestPackageJson().version;
 
 // Export main function for external use
 export async function main() {
