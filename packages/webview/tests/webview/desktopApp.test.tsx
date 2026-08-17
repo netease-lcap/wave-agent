@@ -1436,10 +1436,10 @@ describe("DesktopApp", () => {
         command: "desktopListGitBranches",
         workdir: "/work/a",
       });
-      // Controls hidden until the branch list arrives
-      expect(
-        screen.queryByTestId("desktop-worktree-controls"),
-      ).not.toBeInTheDocument();
+      // Loading placeholder shown while the branch list is being fetched
+      expect(screen.getByTestId("desktop-branch-selector")).toHaveTextContent(
+        "分支获取中…",
+      );
 
       sendCommand("desktopGitBranches", {
         workdir: "/work/a",
@@ -1449,6 +1449,7 @@ describe("DesktopApp", () => {
       expect(screen.getByTestId("desktop-branch-selector")).toHaveTextContent(
         "main",
       );
+      expect(screen.queryByText("分支获取中…")).not.toBeInTheDocument();
       const checkbox = screen
         .getByTestId("desktop-worktree-checkbox")
         .querySelector("input");
@@ -1468,7 +1469,7 @@ describe("DesktopApp", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("hides stale controls immediately on workdir change until fresh branches arrive", () => {
+    it("shows a loading placeholder on workdir change until fresh branches arrive", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", {
         workdir: "/work/a",
@@ -1487,9 +1488,19 @@ describe("DesktopApp", () => {
         recentWorkdirs: ["/work/b", "/work/a"],
       });
 
-      expect(
-        screen.queryByTestId("desktop-worktree-controls"),
-      ).not.toBeInTheDocument();
+      // Stale branch list cleared — loading placeholder shown instead
+      expect(screen.getByTestId("desktop-branch-selector")).toHaveTextContent(
+        "分支获取中…",
+      );
+
+      sendCommand("desktopGitBranches", {
+        workdir: "/work/b",
+        result: { branches: ["feature", "main"], current: "main" },
+      });
+
+      expect(screen.getByTestId("desktop-branch-selector")).toHaveTextContent(
+        "main",
+      );
     });
 
     it("selects a branch from the dropdown", () => {

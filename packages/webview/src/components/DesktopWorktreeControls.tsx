@@ -9,6 +9,8 @@ export interface DesktopWorktreeControlsProps {
   worktreeChecked: boolean;
   /** Worktree creation is in flight — show "创建中" and disable the controls. */
   creating?: boolean;
+  /** Branch list is still being fetched — show "分支获取中…" and disable the trigger. */
+  loading?: boolean;
   onBranchChange: (branch: string) => void;
   onWorktreeChange: (checked: boolean) => void;
 }
@@ -26,6 +28,7 @@ export const DesktopWorktreeControls: React.FC<
   branch,
   worktreeChecked,
   creating = false,
+  loading = false,
   onBranchChange,
   onWorktreeChange,
 }) => {
@@ -59,14 +62,20 @@ export const DesktopWorktreeControls: React.FC<
       <div className="desktop-workdir-container" ref={menuRef}>
         <div
           className="desktop-workdir-trigger"
-          onClick={() => setMenuOpen((o) => !o)}
-          title={`基准分支：${branch}`}
+          onClick={loading ? undefined : () => setMenuOpen((o) => !o)}
+          title={loading ? "分支获取中…" : `基准分支：${branch}`}
           data-testid="desktop-branch-selector"
           aria-expanded={menuOpen}
           role="button"
         >
           <span className="codicon codicon-git-branch"></span>
-          <span className="desktop-workdir-name">{branch}</span>
+          {loading ? (
+            <span className="desktop-workdir-name desktop-branch-loading">
+              分支获取中…
+            </span>
+          ) : (
+            <span className="desktop-workdir-name">{branch}</span>
+          )}
           <span className="codicon codicon-chevron-down desktop-workdir-caret"></span>
         </div>
         {menuOpen && (
