@@ -390,18 +390,63 @@ export class Agent {
    * onLoadingChange(false), and onCommandRunningChange(false).
    */
   private tryDispatch(): void {
-    if (this.isAborting) return; // Suppress dispatch during abort to prevent queued notifications from being dispatched as a side-effect
-    if (this.dispatchAborted) return; // Aborted mid-dispatch: don't start a new dispatch (the user interrupted this turn)
-    if (this.messageQueue.state !== "idle") return;
-    if (!this.messageQueue.hasPending()) return;
-    if (this.aiManager.isLoading || this.isCommandRunning) return;
+    if (this.isAborting) {
+      console.log(
+        "[WINDBG] tryDispatch:return isAborting",
+        new Error().stack?.split("\n")[2],
+      );
+      return;
+    }
+    if (this.dispatchAborted) {
+      console.log(
+        "[WINDBG] tryDispatch:return dispatchAborted",
+        new Error().stack?.split("\n")[2],
+      );
+      return;
+    }
+    if (this.messageQueue.state !== "idle") {
+      console.log(
+        "[WINDBG] tryDispatch:return state",
+        this.messageQueue.state,
+        new Error().stack?.split("\n")[2],
+      );
+      return;
+    }
+    if (!this.messageQueue.hasPending()) {
+      console.log(
+        "[WINDBG] tryDispatch:return noPending",
+        new Error().stack?.split("\n")[2],
+      );
+      return;
+    }
+    if (this.aiManager.isLoading || this.isCommandRunning) {
+      console.log(
+        "[WINDBG] tryDispatch:return busy",
+        {
+          isLoading: this.aiManager.isLoading,
+          isCommandRunning: this.isCommandRunning,
+        },
+        new Error().stack?.split("\n")[2],
+      );
+      return;
+    }
 
+    console.log(
+      "[WINDBG] tryDispatch:PASS",
+      new Error().stack?.split("\n").slice(1, 3).join(" <- "),
+    );
     this.messageQueue.transitionTo("dispatching");
     this.dispatchPromise = this.processQueuedMessage()
       .catch((error) => {
         this.logger?.error("Failed to process queued message:", error);
       })
       .finally(() => {
+        console.log("[WINDBG] dispatch finally", {
+          dispatchAborted: this.dispatchAborted,
+          state: this.messageQueue.state,
+          hasPending: this.messageQueue.hasPending(),
+          isLoading: this.aiManager.isLoading,
+        });
         this.messageQueue.transitionTo("idle");
         this.dispatchPromise = null;
         if (!this.dispatchAborted) {
@@ -410,7 +455,6 @@ export class Agent {
         this.dispatchAborted = false;
       });
   }
-
   /**
    * Process the next queued item when the agent becomes idle.
    * Handles three item types: user messages, bang commands, and notifications.
@@ -779,6 +823,12 @@ export class Agent {
   public abortMessage(): void {
     // Guard: prevent tryDispatch (triggered by abortAIMessage → setIsLoading(false))
     // from dispatching preserved notifications as a new AI turn during the abort.
+    console.log("[WINDBG] abortMessage enter", {
+      hasDispatch: !!this.dispatchPromise,
+      isLoading: this.aiManager.isLoading,
+      isCommandRunning: this.isCommandRunning,
+      queue: this.messageQueue.getQueue().map((m) => m.type),
+    });
     this.isAborting = true;
     try {
       // If a queued dispatch is in flight (e.g. a notification turn was being

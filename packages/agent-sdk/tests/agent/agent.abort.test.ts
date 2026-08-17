@@ -1151,7 +1151,7 @@ describe("Agent - Abort Handling", () => {
         if (Date.now() - start > timeoutMs) {
           throw new Error("awaitUntil: condition not met within timeout");
         }
-        await new Promise((resolve) => setTimeout(resolve, 5));
+        await new Promise((resolve) => setTimeout(resolve, 16));
       }
     }
 

@@ -12,12 +12,12 @@ on:
   push:
     branches: [main]
     paths:
-      - 'packages/agent-sdk/**'
-      - 'packages/code/**'
-      - 'packages/vscode/**'
-      - 'pnpm-lock.yaml'
-      - 'package.json'
-      - '.github/workflows/ci-windows.yml'
+      - "packages/agent-sdk/**"
+      - "packages/code/**"
+      - "packages/vscode/**"
+      - "pnpm-lock.yaml"
+      - "package.json"
+      - ".github/workflows/ci-windows.yml"
   workflow_dispatch:
 
 concurrency:
@@ -73,6 +73,9 @@ jobs:
       # remaining test time).
       - name: Tests
         run: |
+          for i in $(seq 1 30); do
+            pnpm --filter wave-agent-sdk exec vitest run tests/agent/agent.abort.test.ts -t "aborted queued dispatch must not resurrect" || exit 1
+          done
           pnpm --filter wave-agent-sdk exec vitest run &&
           pnpm --filter wave-code exec vitest run &&
           pnpm --filter wave-vscode exec vitest run
