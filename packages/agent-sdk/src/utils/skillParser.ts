@@ -179,7 +179,6 @@ export function validateSkillMetadata(metadata: SkillMetadata): string[] {
   // Import SKILL_DEFAULTS dynamically to avoid circular imports
   const NAME_PATTERN = /^[a-z0-9-]+$/;
   const MAX_NAME_LENGTH = 64;
-  const MAX_DESCRIPTION_LENGTH = 1024;
   const MIN_DESCRIPTION_LENGTH = 1;
 
   // Validate name
@@ -196,18 +195,14 @@ export function validateSkillMetadata(metadata: SkillMetadata): string[] {
     }
   }
 
-  // Validate description
+  // Validate description (no length limit, aligned with Claude Code which
+  // truncates long descriptions at render time instead of rejecting the skill)
   if (!metadata.description) {
     errors.push("Skill description is required");
   } else {
     if (metadata.description.length < MIN_DESCRIPTION_LENGTH) {
       errors.push(
         `Skill description must be at least ${MIN_DESCRIPTION_LENGTH} character`,
-      );
-    }
-    if (metadata.description.length > MAX_DESCRIPTION_LENGTH) {
-      errors.push(
-        `Skill description must be ${MAX_DESCRIPTION_LENGTH} characters or less`,
       );
     }
   }
@@ -239,7 +234,7 @@ export function formatSkillError(skillPath: string, errors: string[]): string {
     "  1. Ensure SKILL.md has valid YAML frontmatter (---...---)",
     "  2. Include required fields: name and description",
     "  3. Use lowercase letters, numbers, and hyphens only for name",
-    "  4. Keep name under 64 characters and description under 1024 characters",
+    "  4. Keep name under 64 characters",
   ].join("\n");
 
   return `${header}\n${errorList}\n\n${suggestions}`;

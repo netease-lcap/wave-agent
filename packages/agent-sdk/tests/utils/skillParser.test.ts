@@ -163,6 +163,23 @@ description: A Claude Code compatible project skill
       expect(result.skillMetadata.type).toBe("project");
     });
 
+    it("should load skills with description longer than 1024 characters", () => {
+      const mockContent = `---
+name: long-desc-skill
+description: ${"a".repeat(1050)}
+---
+
+# Long Description Skill`;
+
+      mockReadFileSync.mockReturnValue(mockContent);
+
+      const result = parseSkillFile("/path/to/long-desc-skill/SKILL.md");
+
+      expect(result.isValid).toBe(true);
+      expect(result.skillMetadata.description).toHaveLength(1050);
+      expect(result.validationErrors).toHaveLength(0);
+    });
+
     it("should handle file read errors", () => {
       mockReadFileSync.mockImplementation(() => {
         throw new Error("File not found");
@@ -228,18 +245,16 @@ description: A Claude Code compatible project skill
       expect(errors).toContain("Skill description is required");
     });
 
-    it("should reject descriptions that are too long", () => {
+    it("should accept descriptions longer than 1024 characters (Claude Code alignment)", () => {
       const metadata: SkillMetadata = {
         name: "valid-skill",
-        description: "a".repeat(1025), // 1025 characters, exceeds limit of 1024
+        description: "a".repeat(1050), // exceeds the old 1024 limit, no longer validated
         type: "personal",
         skillPath: "/path/to/skill",
       };
 
       const errors = validateSkillMetadata(metadata);
-      expect(errors).toContain(
-        "Skill description must be 1024 characters or less",
-      );
+      expect(errors).toHaveLength(0);
     });
   });
 
