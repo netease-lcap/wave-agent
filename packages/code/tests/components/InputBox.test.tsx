@@ -118,7 +118,7 @@ describe("InputBox Smoke Tests", () => {
 
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
-          "再次按 Esc 清空输入",
+          "Press Esc again to clear input",
         );
       });
 
@@ -128,7 +128,7 @@ describe("InputBox Smoke Tests", () => {
       await vi.waitFor(() => {
         const output = stripAnsiColors(lastFrame() || "");
         expect(output).not.toContain("hello world");
-        expect(output).not.toContain("再次按 Esc 清空输入");
+        expect(output).not.toContain("Press Esc again to clear input");
       });
     });
 
@@ -146,7 +146,7 @@ describe("InputBox Smoke Tests", () => {
       // The hint must not appear while busy; Esc keeps abort semantics
       await new Promise((resolve) => setTimeout(resolve, 100));
       expect(stripAnsiColors(lastFrame() || "")).not.toContain(
-        "再次按 Esc 清空输入",
+        "Press Esc again to clear input",
       );
     });
 

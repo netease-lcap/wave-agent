@@ -12,7 +12,7 @@ order: 270
 
 `wave --daemon <socket>` 在远端主机上启动一个 JSON-RPC over unix socket 的 daemon，托管后台 agent 会话（桌面端经 SSH 隧道访问）。目前除了 `--daemon` 启动标志外，没有任何面向用户的 CLI 命令可以查看 daemon 里托管了哪些会话、会话进度如何、或向会话注入消息继续对话——这些能力只存在于 JSON-RPC 协议层，普通用户与脚本无法直接使用。本规格定义 `wave daemon` 子命令组，将已验证的协议流程（attach → 读消息 → 注入消息 → 审批挂起的权限请求）封装为四条命令，供用户在远端主机直接执行（或经 `ssh <host> wave daemon ...` 在远端主机上执行）。
 
-## 用户场景与测试 *（必填）*
+## 用户场景与测试 _（必填）_
 
 ### 用户故事：Daemon 命令组与默认 socket（优先级：P0）
 
@@ -25,7 +25,7 @@ order: 270
 **验收场景**：
 
 1. **假设** 远端 daemon 正在运行，**当** 用户运行 `wave daemon list` 时，**则** 命令连接默认 socket（`~/.wave/daemon.sock`）并列出该 daemon 当前托管的全部会话（进程内存中 live 的会话）。
-2. **假设** daemon 未运行或 socket 文件不存在（含 daemon 空闲自动退出后），**当** 用户运行任一 `wave daemon` 子命令时，**则** 命令以非零退出码退出并给出明确错误（如「无法连接 daemon socket <路径>：daemon 未运行？」，附空闲自动退出提示），不进入 TUI、不挂起。
+2. **假设** daemon 未运行或 socket 文件不存在（含 daemon 空闲自动退出后），**当** 用户运行任一 `wave daemon` 子命令时，**则** 命令以非零退出码退出并给出明确错误（如「Cannot connect to daemon socket <路径>: is the daemon running?」，附空闲自动退出提示），不进入 TUI、不挂起。
 3. **假设** 用户运行 `wave daemon list` 时，**当** 命令执行期间没有需要交互的输入，**则** 命令运行完即退出（非交互式），stdout 输出结果、stderr 输出诊断，便于脚本与管道消费。
 4. **假设** 用户误以为 `wave daemon` 与 `wave --daemon <socket>` 相同，**当** 对比两者行为时，**则** `wave --daemon` 启动 daemon（服务端），`wave daemon <子命令>` 访问 daemon（客户端），两者语义不同、互不干扰，帮助文本中明确区分。
 
@@ -37,13 +37,13 @@ order: 270
 
 **为什么是这个优先级**：查看进度与继续对话都先要找到会话。会话不归属于某个 daemon 进程——daemon 空闲 60 秒自动退出是正常现象，退出后进程重启、内存清空，磁盘上的历史会话不会随 daemon 常驻。因此「daemon 托管」的准确语义是「当前 daemon 进程内存中 live 的会话」（经 `initialize`/`restoreSession` 载入且仍存活于该进程，即 agentBridge 的会话注册表），`list` 直接暴露该注册表即可，不扫磁盘索引、不需要新增 `listAllSessions` 协议方法，也天然不会列出 daemon 之外的对话（普通 `wave` TUI 创建的会话不在列表中）。
 
-**独立测试**：在 daemon 中创建/恢复两条会话后运行 `wave daemon list`，验证两条会话都出现，且每条含会话 ID、工作目录、状态与消息数；daemon 空闲退出重启后运行 `wave daemon list` 显示无会话（退出码 0）。
+**独立测试**：在 daemon 中创建/恢复两条会话后运行 `wave daemon list`，验证两条会话都出现，且每条含会话 ID、工作目录、状态与消息数；daemon 空闲退出重启后运行 `wave daemon list` 显示 No sessions（退出码 0）。
 
 **验收场景**：
 
-1. **假设** daemon 进程内存中托管了多条会话（不同 workdir 下经 `initialize`/`restoreSession` 载入且仍存活），**当** 用户运行 `wave daemon list` 时，**则** 列出当前进程内存中的全部会话，每条显示会话 ID、工作目录、状态（生成中/空闲）与消息数，不扫磁盘索引、不列出 daemon 之外的对话。
+1. **假设** daemon 进程内存中托管了多条会话（不同 workdir 下经 `initialize`/`restoreSession` 载入且仍存活），**当** 用户运行 `wave daemon list` 时，**则** 列出当前进程内存中的全部会话，每条显示会话 ID、工作目录、状态（generating/idle）与消息数，不扫磁盘索引、不列出 daemon 之外的对话。
 2. **假设** daemon 托管了多条会话，**当** 用户运行 `wave daemon list` 时，**则** 会话按注册顺序展示（内存态无磁盘索引的 lastActiveAt，不做最后活跃时间排序）。
-3. **假设** daemon 空闲退出后重启（进程内存清空）或尚无任何会话，**当** 用户运行 `wave daemon list` 时，**则** 输出空结果（显示无会话），退出码为 0——daemon 空闲自动退出是正常现象，列表为空符合预期而非错误。
+3. **假设** daemon 空闲退出后重启（进程内存清空）或尚无任何会话，**当** 用户运行 `wave daemon list` 时，**则** 输出空结果（显示 No sessions），退出码为 0——daemon 空闲自动退出是正常现象，列表为空符合预期而非错误。
 4. **假设** 磁盘上存在历史会话（含 daemon 空闲退出前托管过、或普通 `wave` TUI 创建的会话），**当** 用户运行 `wave daemon list` 时，**则** 这些会话不出现于列表；用户知道 sessionId 时仍可经 `wave daemon status <sessionId>` / `send <sessionId>` attach（`restoreSession` 会重新载入内存），无需依赖 `list` 找回。
 
 ---
@@ -54,16 +54,16 @@ order: 270
 
 **为什么是这个优先级**：这是「查看进度」的核心命令；实时状态只能通过 attach（`initialize {restoreSessionId}` → `restoreSession`）获取——restoreSession 会重放 `loadingChange` 快照，`getMessages` 返回全量消息，磁盘索引不提供这两个信息，因此该命令必须走 attach 流程。
 
-**独立测试**：对一条正在生成回复的会话运行 `wave daemon status <sessionId>`，验证输出包含「正在生成」状态与最近消息文本；对一条空闲会话运行则显示空闲状态。
+**独立测试**：对一条正在生成回复的会话运行 `wave daemon status <sessionId>`，验证输出包含 generating 状态与最近消息文本；对一条空闲会话运行则显示 idle 状态。
 
 **验收场景**：
 
-1. **假设** 目标会话正在生成回复，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 命令经 `initialize {restoreSessionId}` + `restoreSession` attach 该会话，依据重放的 `loadingChange` 快照显示「正在生成/执行任务」状态。
-2. **假设** 目标会话空闲（未在生成、无排队消息、无后台任务），**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 显示空闲状态。
-3. **假设** 目标会话挂起等待权限审批，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 状态显示为等待审批（`loadingChange` 保持 loading 即视为未空闲），与桌面端「待确认」语义一致。
+1. **假设** 目标会话正在生成回复，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 命令经 `initialize {restoreSessionId}` + `restoreSession` attach 该会话，依据重放的 `loadingChange` 快照显示 generating（生成中）状态。
+2. **假设** 目标会话空闲（未在生成、无排队消息、无后台任务），**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 显示 idle 状态。
+3. **假设** 目标会话挂起等待权限审批，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 状态显示为 waiting for approval（`loadingChange` 保持 loading 即视为未空闲），与桌面端「待确认」语义一致。
 4. **假设** 目标会话挂起等待权限审批，**当** 查看最近消息时，**则** 最后一条 assistant 消息含一个冻结在 `stage: "running"` 的 tool 块：有工具名与参数（`name`/`parameters`/`compactParams`），但无 `result`/`success`/`error`/`shortResult`/`timestamp`——这些字段只在工具完成后（`stage: "end"`）写入，无独立的 pending stage；消息形态上「等审批」与「执行中」无法区分，status 须同时列出 `listPendingPermissions` 返回的待审批请求（工具名 + 参数摘要），作为审批态的确凿信号。
 5. **假设** 会话已有历史消息，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 经 `getMessages` 拉取并显示最近若干条消息的文本（含用户消息与助手回复，默认数量可经参数调整，如 `--lines 20`），足以判断任务进展。
-6. **假设** 指定的 sessionId 不存在于该 daemon，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 以非零退出码退出并给出明确错误（会话不存在或未被该 daemon 托管）。
+6. **假设** 指定的 sessionId 不存在于该 daemon，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 以非零退出码退出并给出明确错误（Session not found or not hosted by this daemon）。
 7. **假设** status 命令完成展示后，**当** 命令退出时，**则** 断开与 daemon 的连接（attach 是短暂查看，不常驻），daemon 与目标会话不受影响、继续运行。
 
 ---
@@ -84,8 +84,8 @@ order: 270
 4. **假设** 目标会话挂起 AskUserQuestion 审批，**当** 用户运行 `wave daemon respond <sessionId> <requestId> --answer '{"问题":"答案"}'` 时，**则** 发送 `{behavior:"allow", message: JSON.stringify(答案对象)}`，如同桌面端填写答案后确认；若只传 `--allow` 未传 `--answer`，命令报错提示需要提供答案。
 5. **假设** 用户运行 `wave daemon respond <sessionId> <requestId> --allow --rule "Bash(ls)"` 时，**则** 决策附带 `newPermissionRule`，该规则被持久化为允许规则、后续同类调用不再询问（与桌面端「不再询问」语义一致）。
 6. **假设** 用户运行 `wave daemon respond <sessionId> <requestId> --allow --mode acceptEdits` 时，**则** 决策附带 `newPermissionMode`，会话权限模式切换为 acceptEdits（后续 Edit/Write 不再询问，与桌面端「自动接受修改」语义一致）。
-7. **假设** 指定的 requestId 不存在（已被其他客户端处理或已过期），**当** 用户运行 respond 时，**则** 命令提示「该请求不存在或已处理」并以非零退出码退出（服务端对未知 requestId 静默忽略，命令应先行校验避免误导）。
-8. **假设** 指定的 sessionId 不存在于该 daemon，**当** 用户运行 `wave daemon respond <sessionId> <requestId> --allow` 时，**则** 以非零退出码退出并给出明确错误（会话不存在或未被该 daemon 托管），不发送任何通知。
+7. **假设** 指定的 requestId 不存在（已被其他客户端处理或已过期），**当** 用户运行 respond 时，**则** 命令提示「Request not found or already handled」并以非零退出码退出（服务端对未知 requestId 静默忽略，命令应先行校验避免误导）。
+8. **假设** 指定的 sessionId 不存在于该 daemon，**当** 用户运行 `wave daemon respond <sessionId> <requestId> --allow` 时，**则** 以非零退出码退出并给出明确错误（Session not found or not hosted by this daemon），不发送任何通知。
 9. **假设** respond 命令完成（成功或失败）后，**当** 命令退出时，**则** 断开与 daemon 的连接；会话恢复生成或回到空闲，不因客户端退出而终止。
 
 ---
@@ -103,7 +103,7 @@ order: 270
 1. **假设** 目标会话空闲，**当** 用户运行 `wave daemon send <sessionId> "继续"` 时，**则** 命令经 attach 后调用 `sendMessage` 注入消息，订阅流式通知（`assistantContentUpdated` 等），直到 `loadingChange:false` 表示该回复完成。
 2. **假设** 助手回复完成，**当** 命令结束时，**则** stdout 输出该条消息对应的助手最终回复文本（与 `wave -p` 的纯净输出一致，不含子代理内部信息与流式杂讯），退出码为 0。
 3. **假设** 目标会话正在生成中，**当** 用户运行 `wave daemon send <sessionId> "消息"` 时，**则** 消息按现有队列语义入队等待，命令持续等待直到该消息对应的回复完成（依据 `loadingChange` 与消息 ID 对应）后输出最终回复。
-4. **假设** 目标会话挂起等待权限审批，**当** 用户运行 `wave daemon send <sessionId> "消息"` 时，**则** 命令不无限期挂起：等待超过 `--timeout`（默认 600 秒，`0` 表示不限制）后以非零退出码退出，并提示「会话等待权限审批，请通过 `wave daemon respond <sessionId> <requestId>` 处理后重试」。
+4. **假设** 目标会话挂起等待权限审批，**当** 用户运行 `wave daemon send <sessionId> "消息"` 时，**则** 命令不无限期挂起：等待超过 `--timeout`（默认 600 秒，`0` 表示不限制）后以非零退出码退出，并提示「Session is waiting for permission approval; handle it with `wave daemon respond <sessionId> <requestId>` and retry」。
 5. **假设** 指定的 sessionId 不存在于该 daemon，**当** 用户运行 `wave daemon send <sessionId> "消息"` 时，**则** 以非零退出码退出并给出明确错误，不注入任何消息。
 6. **假设** send 命令完成或失败退出后，**当** 命令结束时，**则** 断开与 daemon 的连接，会话在 daemon 中继续存活、不因客户端退出而终止（与 attach 语义一致）。
 

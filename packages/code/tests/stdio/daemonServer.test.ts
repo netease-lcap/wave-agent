@@ -278,7 +278,7 @@ test("start() unlinks a non-socket stale file at the socket path", async () => {
 test("start() rejects when a live daemon already holds the socket", async () => {
   const second = new DaemonServer({ socketPath });
   await expect(second.start()).rejects.toThrow(
-    `另一个 wave daemon 已在 ${socketPath} 监听`,
+    `Another wave daemon is already listening on ${socketPath}`,
   );
 });
 
