@@ -1,7 +1,8 @@
 /**
  * `wave daemon` client subcommands — talk to the wave daemon's unix socket
  * (JSON-RPC over newline-delimited JSON) to list hosted sessions, inspect
- * progress, inject messages and respond to pending permission requests.
+ * progress, inject messages, respond to pending permission requests and abort
+ * in-flight message generation.
  *
  * All subcommands are non-interactive: results go to stdout, diagnostics to
  * stderr, and every handler calls process.exit() itself (yargs would fall
@@ -443,6 +444,29 @@ export async function daemonRespondCommand(
     console.log(`Handled approval request: ${requestId}`);
   } catch (err) {
     fail(`wave daemon respond failed: ${(err as Error).message}`);
+  } finally {
+    await client?.dispose();
+  }
+  process.exit(0);
+}
+
+// ── abort ─────────────────────────────────────────────────────
+
+export async function daemonAbortCommand(
+  socketPath: string,
+  sessionId: string,
+): Promise<void> {
+  let client: SocketClient | undefined;
+  try {
+    client = await connectDaemonOrExit(socketPath);
+    const init = await attachSession(client, sessionId);
+    // abortMessage is idempotent: a no-op on idle sessions, interrupts
+    // in-flight generation (incl. subagents / bash / slash / queued messages)
+    // otherwise (spec: 中断幂等，无需先确认是否正在生成).
+    await client.request("abortMessage", undefined, init.sessionId);
+    console.log(`Aborted session: ${sessionId}`);
+  } catch (err) {
+    fail(`wave daemon abort failed: ${(err as Error).message}`);
   } finally {
     await client?.dispose();
   }
