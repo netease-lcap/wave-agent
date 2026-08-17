@@ -1,8 +1,9 @@
 /**
- * `wave daemon` client subcommands (list / status / send / respond) — end-to-end
- * against a real DaemonServer: the commands' SocketClient connects to the unix
- * socket, initialize+restoreSession re-attach to live sessions in the daemon's
- * in-memory registry, and respond resolves in-process permission promises.
+ * `wave daemon` client subcommands (list / status / send / respond / abort) —
+ * end-to-end against a real DaemonServer: the commands' SocketClient connects
+ * to the unix socket, initialize+restoreSession re-attach to live sessions in
+ * the daemon's in-memory registry, respond resolves in-process permission
+ * promises and abort forwards to the agent's abortMessage.
  *
  * The SDK is mocked with a factory (NOT auto-mock) so the real
  * getMessageContent / tool-name constants used by commands.ts stay intact while
@@ -67,6 +68,7 @@ import {
   daemonStatusCommand,
   daemonSendCommand,
   daemonRespondCommand,
+  daemonAbortCommand,
 } from "../../src/daemon/commands.js";
 
 function userMsg(id: string, content: string): Message {
@@ -687,4 +689,69 @@ test("respond: requires exactly one of --allow / --deny", async () => {
   ).rejects.toThrow("exit(1)");
   expect(stderrText()).toContain("Specify either --allow or --deny");
   expect(exitSpy).toHaveBeenCalledWith(1);
+});
+
+// ── abort ─────────────────────────────────────────────────────
+
+test("abort: forwards abortMessage on a generating session, prints confirmation and exits 0", async () => {
+  const agent = createMockAgent({ isLoading: true });
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonAbortCommand(socketPath, "test-session-id"),
+  ).rejects.toThrow("exit(0)");
+  expect(agent.abortMessage).toHaveBeenCalled();
+  expect(logSpy).toHaveBeenCalledWith("Aborted session: test-session-id");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+
+  // Abort is a transient attach — the session stays hosted.
+  const b = connectClient(socketPath);
+  const msgs = await b.send({
+    id: 9,
+    method: "listDaemonSessions",
+    params: {},
+  });
+  const result = msgs[0] as { result: { sessions: unknown[] } };
+  expect(result.result.sessions).toHaveLength(1);
+  b.close();
+});
+
+test("abort: idle session is an idempotent no-op that still exits 0", async () => {
+  const agent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonAbortCommand(socketPath, "test-session-id"),
+  ).rejects.toThrow("exit(0)");
+  expect(agent.abortMessage).toHaveBeenCalled();
+  expect(logSpy).toHaveBeenCalledWith("Aborted session: test-session-id");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("abort: nonexistent session fails, destroys the junk fresh session, no abort sent", async () => {
+  const junk = createMockAgent({
+    sessionId: "fresh",
+    restoreSession: vi
+      .fn()
+      .mockRejectedValue(new Error("Session not found: ghost")),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(junk);
+
+  await expect(daemonAbortCommand(socketPath, "ghost")).rejects.toThrow(
+    "exit(1)",
+  );
+  expect(stderrText()).toContain(
+    "Session not found or not hosted by this daemon: ghost",
+  );
+  expect(exitSpy).toHaveBeenCalledWith(1);
+  expect(junk.destroy).toHaveBeenCalled();
+  expect(junk.abortMessage).not.toHaveBeenCalled();
 });

@@ -375,6 +375,24 @@ export async function main() {
                 );
               },
             )
+            .command(
+              "abort <sessionId>",
+              "Abort the session's in-flight message generation",
+              (yargs) => {
+                return yargs.positional("sessionId", {
+                  describe: "Session ID hosted by the daemon",
+                  type: "string",
+                });
+              },
+              async (argv) => {
+                const { daemonAbortCommand, DEFAULT_DAEMON_SOCKET } =
+                  await import("./daemon/commands.js");
+                await daemonAbortCommand(
+                  DEFAULT_DAEMON_SOCKET,
+                  argv.sessionId as string,
+                );
+              },
+            )
             .demandCommand(1, "Please specify a daemon subcommand");
         },
       )
