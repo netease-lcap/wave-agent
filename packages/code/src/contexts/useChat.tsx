@@ -5,7 +5,6 @@ import React, {
   useRef,
   useEffect,
   useState,
-  useMemo,
 } from "react";
 import { useInput, useStdout } from "ink";
 import { useAppConfig } from "./useAppConfig.js";
@@ -184,171 +183,6 @@ const snapshotMessage = (message: Message): Message => ({
   blocks: message.blocks.map((block) => ({ ...block })),
 });
 
-/**
- * Window-concat throttle for pure-delta streaming updates: chunks arriving
- * within the cooldown window are merged so no delta is lost (a dropped delta
- * would permanently lose content, unlike the accumulated-payload throttle it
- * replaces). Leading edge fires immediately; the trailing edge carries only
- * chunks that arrived within the window. `end` flushes any pending deltas
- * first, then forwards the end signal right away.
- */
-function createStreamingWindowThrottle(
-  fn: (params: StreamingUpdateParams) => void,
-  wait: number,
-): {
-  (params: StreamingUpdateParams): void;
-  cancel: () => void;
-  flush: () => void;
-} {
-  let timer: NodeJS.Timeout | null = null;
-  let pending: { messageId: string; chunk: string } | null = null;
-
-  const fire = (stage: "streaming" | "end") => {
-    if (pending) {
-      fn({ ...pending, stage });
-      pending = null;
-    }
-  };
-
-  const throttled = (params: StreamingUpdateParams) => {
-    if (params.stage === "end") {
-      // Flush any deltas still pending inside the cooldown window first
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      fire("streaming");
-      fn(params);
-      return;
-    }
-    if (pending) {
-      pending.chunk += params.chunk;
-    } else {
-      pending = { messageId: params.messageId, chunk: params.chunk };
-    }
-    if (!timer) {
-      // Leading edge: fire the current delta immediately, then reset pending so
-      // the trailing edge only carries chunks arriving within this window
-      fire("streaming");
-      timer = setTimeout(() => {
-        timer = null;
-        fire("streaming");
-      }, wait);
-    }
-  };
-
-  throttled.cancel = () => {
-    if (timer) {
-      clearTimeout(timer);
-      timer = null;
-    }
-    pending = null;
-  };
-
-  throttled.flush = () => {
-    if (timer) {
-      clearTimeout(timer);
-      timer = null;
-    }
-    fire("streaming");
-  };
-
-  return throttled;
-}
-
-/**
- * Per-tool window-concat throttle for pure-delta tool parameter streaming:
- * `parametersChunk` deltas are accumulated independently per tool block id
- * within the cooldown window, so interleaved multi-tool streams lose no delta
- * (a plain throttle's single last-args slot would drop every earlier tool's
- * deltas, leaving the first tool without streaming parameters). `start` /
- * `running` apply immediately (one-shot snapshots); `end` flushes pending
- * streaming deltas first, then applies the authoritative parameters/result.
- */
-export function createToolStreamingThrottle(
-  fn: (params: ToolBlockUpdateCallbackParams) => void,
-  wait: number,
-): {
-  (params: ToolBlockUpdateCallbackParams): void;
-  cancel: () => void;
-  flush: () => void;
-} {
-  let timer: NodeJS.Timeout | null = null;
-  let pending: { messageId: string; chunks: Map<string, string> } | null = null;
-
-  const fire = () => {
-    if (pending && pending.chunks.size > 0) {
-      const { messageId, chunks } = pending;
-      pending = null;
-      for (const [id, chunk] of chunks) {
-        fn({ messageId, id, parametersChunk: chunk, stage: "streaming" });
-      }
-    }
-  };
-
-  const throttled = (params: ToolBlockUpdateCallbackParams) => {
-    if (params.stage === "end") {
-      // Flush any deltas still pending inside the cooldown window first
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      fire();
-      fn(params);
-      return;
-    }
-    if (params.stage === "streaming") {
-      if (!pending) {
-        pending = { messageId: params.messageId, chunks: new Map() };
-      }
-      const prev = pending.chunks.get(params.id) || "";
-      pending.chunks.set(params.id, prev + (params.parametersChunk || ""));
-      if (!timer) {
-        timer = setTimeout(() => {
-          timer = null;
-          fire();
-        }, wait);
-      }
-      return;
-    }
-    // start / running — one-shot snapshots applied immediately. Drop this
-    // tool's buffered streaming deltas first: start/running carry the
-    // authoritative parameters, and a pending timer would otherwise fire late
-    // with a stale `streaming` event, regressing this tool block's stage back
-    // to streaming (yellow dot -> gray) mid-execution. Other tools' in-flight
-    // chunks are kept so interleaved multi-tool streaming still accumulates.
-    if (pending) {
-      pending.chunks.delete(params.id);
-      if (pending.chunks.size === 0) {
-        pending = null;
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
-        }
-      }
-    }
-    fn(params);
-  };
-
-  throttled.cancel = () => {
-    if (timer) {
-      clearTimeout(timer);
-      timer = null;
-    }
-    pending = null;
-  };
-
-  throttled.flush = () => {
-    if (timer) {
-      clearTimeout(timer);
-      timer = null;
-    }
-    fire();
-  };
-
-  return throttled;
-}
-
 export const ChatProvider: React.FC<ChatProviderProps> = ({
   children,
   bypassPermissions,
@@ -379,152 +213,132 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [latestTotalTokens, setLatestTotalTokens] = useState(0);
   const [maxInputTokens, setMaxInputTokens] = useState(200000);
 
-  // Throttled incremental streaming updaters — 500ms window-concat, the same
-  // interval as the pre-incremental throttledSetMessages. Chunks are pure
-  // deltas: within-window chunks are merged so none is dropped, and
-  // `stage === "end"` flushes pending deltas + applies the end signal
-  // immediately so completion results are never delayed.
-  const throttledContentUpdate = useMemo(
-    () =>
-      createStreamingWindowThrottle((params) => {
-        const { messageId, chunk, stage } = params;
-        setMessages((prev) =>
-          prev.map((m) => {
-            if (m.id !== messageId) return m;
-            const textBlockIndex = m.blocks.findIndex((b) => b.type === "text");
-            if (textBlockIndex === -1) {
-              return {
-                ...m,
-                blocks: [...m.blocks, { type: "text", content: chunk, stage }],
-              };
-            }
+  // Direct incremental streaming updaters — every delta is applied to the
+  // message state immediately, without a cooldown window. The former 500ms
+  // window-concat throttle is gone: its trailing-edge flush could interleave
+  // with a full-list `refreshMessages` snapshot replacement mid-stream and
+  // re-append old deltas on top of the authoritative content (first-word
+  // duplication). Terminal write frequency is bounded downstream by Ink's
+  // built-in ~30fps output throttle. See
+  // docs/specs/core/stream-content-updates.md.
+  const applyContentUpdate = useCallback((params: StreamingUpdateParams) => {
+    const { messageId, chunk, stage } = params;
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== messageId) return m;
+        const textBlockIndex = m.blocks.findIndex((b) => b.type === "text");
+        if (textBlockIndex === -1) {
+          return {
+            ...m,
+            blocks: [...m.blocks, { type: "text", content: chunk, stage }],
+          };
+        }
+        return {
+          ...m,
+          blocks: m.blocks.map((b, idx) =>
+            idx === textBlockIndex && b.type === "text"
+              ? {
+                  ...b,
+                  content: (b.content || "") + chunk,
+                  stage,
+                }
+              : b,
+          ),
+        };
+      }),
+    );
+  }, []);
+
+  const applyReasoningUpdate = useCallback((params: StreamingUpdateParams) => {
+    const { messageId, chunk, stage } = params;
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== messageId) return m;
+        const reasoningBlockIndex = m.blocks.findIndex(
+          (b) => b.type === "reasoning",
+        );
+        if (reasoningBlockIndex === -1) {
+          return {
+            ...m,
+            blocks: [...m.blocks, { type: "reasoning", content: chunk, stage }],
+          };
+        }
+        return {
+          ...m,
+          blocks: m.blocks.map((b, idx) =>
+            idx === reasoningBlockIndex && b.type === "reasoning"
+              ? {
+                  ...b,
+                  content: (b.content || "") + chunk,
+                  stage,
+                }
+              : b,
+          ),
+        };
+      }),
+    );
+  }, []);
+
+  const applyToolBlockUpdate = useCallback(
+    (params: ToolBlockUpdateCallbackParams) => {
+      const {
+        messageId,
+        id: toolBlockId,
+        parametersChunk,
+        ...updates
+      } = params;
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== messageId) return m;
+          const toolBlockIndex = m.blocks.findIndex(
+            (b) => b.type === "tool" && b.id === toolBlockId,
+          );
+          if (toolBlockIndex === -1) {
             return {
               ...m,
-              blocks: m.blocks.map((b, idx) =>
-                idx === textBlockIndex && b.type === "text"
-                  ? {
-                      ...b,
-                      content: (b.content || "") + chunk,
-                      stage,
-                    }
-                  : b,
-              ),
+              blocks: [
+                ...m.blocks,
+                {
+                  type: "tool",
+                  id: toolBlockId,
+                  name: updates.name || "",
+                  stage: updates.stage || "start",
+                  parameters:
+                    (updates.parameters || "") + (parametersChunk || ""),
+                  result: updates.result || "",
+                  ...updates,
+                },
+              ],
             };
-          }),
-        );
-      }, 500),
-    [],
-  );
-
-  const throttledReasoningUpdate = useMemo(
-    () =>
-      createStreamingWindowThrottle((params) => {
-        const { messageId, chunk, stage } = params;
-        setMessages((prev) =>
-          prev.map((m) => {
-            if (m.id !== messageId) return m;
-            const reasoningBlockIndex = m.blocks.findIndex(
-              (b) => b.type === "reasoning",
-            );
-            if (reasoningBlockIndex === -1) {
-              return {
-                ...m,
-                blocks: [
-                  ...m.blocks,
-                  { type: "reasoning", content: chunk, stage },
-                ],
-              };
-            }
-            return {
-              ...m,
-              blocks: m.blocks.map((b, idx) =>
-                idx === reasoningBlockIndex && b.type === "reasoning"
-                  ? {
-                      ...b,
-                      content: (b.content || "") + chunk,
-                      stage,
-                    }
-                  : b,
-              ),
-            };
-          }),
-        );
-      }, 500),
-    [],
-  );
-
-  const throttledToolBlockUpdate = useMemo(
-    () =>
-      createToolStreamingThrottle((params) => {
-        const {
-          messageId,
-          id: toolBlockId,
-          parametersChunk,
-          ...updates
-        } = params;
-        setMessages((prev) =>
-          prev.map((m) => {
-            if (m.id !== messageId) return m;
-            const toolBlockIndex = m.blocks.findIndex(
-              (b) => b.type === "tool" && b.id === toolBlockId,
-            );
-            if (toolBlockIndex === -1) {
-              return {
-                ...m,
-                blocks: [
-                  ...m.blocks,
-                  {
-                    type: "tool",
-                    id: toolBlockId,
-                    name: updates.name || "",
-                    stage: updates.stage || "start",
-                    parameters:
-                      (updates.parameters || "") + (parametersChunk || ""),
-                    result: updates.result || "",
+          }
+          return {
+            ...m,
+            blocks: m.blocks.map((b, idx) =>
+              idx === toolBlockIndex && b.type === "tool"
+                ? {
+                    ...b,
                     ...updates,
-                  },
-                ],
-              };
-            }
-            return {
-              ...m,
-              blocks: m.blocks.map((b, idx) =>
-                idx === toolBlockIndex && b.type === "tool"
-                  ? {
-                      ...b,
-                      ...updates,
-                      // Streaming carries only the delta; append it to the
-                      // accumulated parameters. start/running/end carry the
-                      // authoritative value and replace wholesale.
-                      parameters: parametersChunk
-                        ? (b.parameters || "") + parametersChunk
-                        : updates.parameters !== undefined
-                          ? updates.parameters
-                          : b.parameters,
-                    }
-                  : b,
-              ),
-            };
-          }),
-        );
-      }, 500),
+                    // Streaming carries only the delta; append it to the
+                    // accumulated parameters. start/running/end carry the
+                    // authoritative value and replace wholesale.
+                    parameters: parametersChunk
+                      ? (b.parameters || "") + parametersChunk
+                      : updates.parameters !== undefined
+                        ? updates.parameters
+                        : b.parameters,
+                  }
+                : b,
+            ),
+          };
+        }),
+      );
+    },
     [],
   );
 
   useEffect(() => {
     isExpandedRef.current = isExpanded;
-    if (isExpanded) {
-      // Cancel pending throttled updates so the frozen expanded view isn't overwritten
-      throttledContentUpdate.cancel();
-      throttledReasoningUpdate.cancel();
-      throttledToolBlockUpdate.cancel();
-    }
-  }, [
-    isExpanded,
-    throttledContentUpdate,
-    throttledReasoningUpdate,
-    throttledToolBlockUpdate,
-  ]);
+  }, [isExpanded]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState("");
@@ -689,16 +503,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         },
         onAssistantContentUpdated: (params) => {
           if (isExpandedRef.current) return;
-          throttledContentUpdate(params);
+          applyContentUpdate(params);
         },
         onAssistantReasoningUpdated: (params) => {
           if (isExpandedRef.current) return;
-          throttledReasoningUpdate(params);
+          applyReasoningUpdate(params);
         },
         onToolBlockUpdated: (params) => {
           if (isExpandedRef.current) return;
-          throttledToolBlockUpdate(params);
-          if (params.stage === "end") throttledToolBlockUpdate.flush();
+          applyToolBlockUpdate(params);
         },
         onErrorBlockAdded: (error: string) => {
           if (isExpandedRef.current) return;
@@ -955,9 +768,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       originalCwd,
       model,
       initialPermissionMode,
-      throttledContentUpdate,
-      throttledReasoningUpdate,
-      throttledToolBlockUpdate,
+      applyContentUpdate,
+      applyReasoningUpdate,
+      applyToolBlockUpdate,
       mcpServers,
     ],
   );
@@ -996,9 +809,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      throttledContentUpdate.cancel();
-      throttledReasoningUpdate.cancel();
-      throttledToolBlockUpdate.cancel();
       if (agentRef.current) {
         try {
           // Display usage summary before cleanup
@@ -1012,11 +822,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         agentRef.current.destroy();
       }
     };
-  }, [
-    throttledContentUpdate,
-    throttledReasoningUpdate,
-    throttledToolBlockUpdate,
-  ]);
+  }, []);
 
   // Trigger WorktreeRemove hook BEFORE agent destruction
   const triggerWorktreeRemoveHook = useCallback(

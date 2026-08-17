@@ -6,9 +6,9 @@ order: 110
 
 # 功能规格说明：实时内容流式传输
 
-**创建日期**：2025-11-19  
+**创建日期**：2025-11-19
 
-## 用户场景与测试 *（必填）*
+## 用户场景与测试 _（必填）_
 
 ### 用户故事：实时助手消息流式传输（优先级：P1）
 
@@ -128,7 +128,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 6. **假设**子代理（subagent）运行中，**当**其消息变更时，**则** `SubagentManager` 通过 `instance.messageManager.getMessages()` 拉取最新列表维护 `instance.messages` 与 `usedTools`，并继续转发 `onSubagentMessagesChange`，不再依赖子代理的 `onMessagesChange`
 7. **假设**助手响应正在流式传输，**当**每个内容/推理 chunk 到达时，**则**增量回调与 stdio 增量通知都只携带 `chunk`（增量片段）+ `messageId` + `stage`，不再携带 `accumulated` 累积值；进程内消费者（CLI、print-cli）与跨进程宿主（agentBridge）统一消费纯 chunk，自行累积追加
 8. **假设**工具参数正在经 stdio 流式传输，**当** `stage="streaming"` 通知到达时，**则**只携带 `parametersChunk`（增量），不再携带累积 `parameters`；**当** `stage="end"` 通知到达时，**则**携带全量 `parameters` + `result` 作为一次性权威值
-9. **假设**宿主（VSCE/桌面/CLI）对增量通知做了节流（如 16ms/500ms 窗口），**当**窗口内累积了多个 chunk 时，**则**按到达顺序将窗口内所有 chunks 拼接为一个合并 delta 发送，而非 last-value-wins 丢弃中间值——丢弃中间 chunk 会造成内容永久缺失，只能由后续 `getMessages` 拉取自愈
+9. **假设**除 CLI 外的宿主（VSCE/桌面）对增量通知做了节流（如 16ms 窗口），**当**窗口内累积了多个 chunk 时，**则**按到达顺序将窗口内所有 chunks 拼接为一个合并 delta 发送，而非 last-value-wins 丢弃中间值——丢弃中间 chunk 会造成内容永久缺失，只能由后续 `getMessages` 拉取自愈；CLI 进程内消费端已移除节流（见「CLI 以原始频率渲染流式内容」用户故事），每个 delta 立即应用
 10. **假设**webview 正在追加流式 delta，**当**触发 `getMessages` 拉取全量列表时，**则**全量响应整体替换消息块为权威快照，随后到达的 delta 继续追加；管道 FIFO 保证拉取响应包含其之前发出的所有 chunk，不发生重复或错乱
 
 ---
@@ -150,6 +150,24 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 ---
 
+### 用户故事：CLI 以原始频率渲染流式内容（优先级：P1）
+
+作为 CLI 使用者，我希望助手流式输出时每个内容 delta 都以原始频率立即渲染，而不是被 500ms 窗口节流合并后再渲染，以便界面反馈与模型生成节奏一致，且彻底消除节流窗口引入的内容重复竞态。
+
+**为什么是这个优先级**：CLI 之前的 500ms window-concat 节流保留了一个残留竞态——节流器 trailing edge 冲刷 pending 窗口内已合并的 chunk 时，若期间发生了一次全量列表替换（`refreshMessages`，由 /clear、/compact、/rewind、Ctrl+O 折叠触发），pending 内旧 delta 会被追加到已含全部内容的新快照之上，造成内容重复。移除节流后每个 delta 同步立即应用，不存在 pending 窗口，竞态从机制上消失。渲染性能不受影响：Ink 内置 30fps（~34ms）输出节流兜底终端写入频率，`<Static>` append-only 使历史消息永不重绘，动态部分仅剩最后一条消息的 running blocks，每次 commit 的 React 重建成本对典型会话规模（≤30 条可见消息）为亚毫秒级。
+
+**独立测试**：构造带 reasoning 流式的会话，在流式期间触发一次全量刷新（/clear、/compact、/rewind 或折叠切换），验证最终消息内容与 SDK 权威内容逐字节一致、无重复片段；同时观察流式期间界面即时更新且无整屏闪烁。
+
+**验收场景**：
+
+1. **假设** CLI 正在消费流式 delta，**当**每个 `onAssistantContentUpdated`/`onAssistantReasoningUpdated` 回调到达时，**则**该 delta 被立即应用于消息状态，不再经过 500ms 窗口节流合并（`createStreamingWindowThrottle` 对内容/reasoning 通道移除）
+2. **假设**流式期间发生了全量列表替换（`refreshMessages`），**当**替换前后均有 delta 到达时，**则**最终消息内容与 SDK 权威内容一致，不出现任何重复片段（旧 pending delta 不会叠加到新快照上）
+3. **假设** CLI 以原始频率触发 React commit，**当**模型以高频（如 30ms/chunk）产出 delta 时，**则**终端输出写入仍受 Ink 内置 `maxFps: 30` 节流约束，不出现逐 chunk 整屏重绘或闪烁
+4. **假设**长会话中流式输出，**当**消息不断积累时，**则**界面依然平滑即时更新，不因移除节流而卡顿（与「长会话流式输出保持流畅」验收场景 1 一致）
+5. **假设**存在内容重复的回归测试，**当**运行现有双计数回归测试（content/reasoning double-count）时，**则**测试继续通过，且不依赖节流窗口语义
+
+---
+
 ### 边界情况
 
 - 当网络连接较差且流式块乱序到达或延迟时会发生什么？
@@ -167,8 +185,8 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - **增量回调用途**：为第三方集成、扩展、CLI 与示例（如 `packages/code/src/print-cli.ts` 和 `packages/agent-sdk/examples`）提供实时流式数据；增量回调是消息状态同步的唯一推送通道
 - **SDK 回调负载**：`onAssistantContentUpdated`/`onAssistantReasoningUpdated` 只提供 `chunk`（增量）+ `messageId` + `stage`，不再携带 `accumulated` 累积值，进程内消费者（CLI、print-cli）自行累积追加；`onToolBlockUpdated` 在 `stage="streaming"` 时只提供 `parametersChunk`（增量），`start`/`running`/`end` 阶段携带权威 `parameters`（end 为最终值，一次性权威）。SDK 内部仍将 chunk 追加进内存 `toolBlock.parameters` 保持累积，只是累积值不再暴露到外部回调
 - **跨进程 wire 负载（纯 delta）**：agentBridge 原样透传增量回调负载——`assistantContentUpdated`/`assistantReasoningUpdated` 只携带 `{messageId, chunk, stage}`（SDK 回调本身已无累积字段，无需剥离）；`toolBlockUpdated` 在 `stage="streaming"` 时只携带 `parametersChunk`，`stage="end"` 时携带全量 `parameters` + `result` 作为权威值。消费端负责累积（追加），丢失的 delta 由 `getMessages` 拉取的全量快照自愈
-- **UI 状态流**：CLI 直接订阅增量回调就地更新消息（chunk 追加 + 500ms 窗口拼接节流）；插件/桌面经 stdio 增量通知（`userMessageAdded`、`assistantContentUpdated`、`toolBlockUpdated` 等，纯 delta 负载）驱动 webview 增量 reducer——文本/推理块追加 chunk、工具块追加 `parametersChunk`，end 时以权威值终结；需要完整列表的场景（初始化、compact、rewind、clear、bang）主动拉取，拉取响应整体替换为权威快照。进程内消费端把 SDK 消息对象推入自有状态时**必须克隆**（消息 + blocks 至少一层），不得持有 SDK 内部活引用——SDK 会就地更新共享块，与消费端累积追加叠加会重复计数（见"增量消费端以快照推入消息"用户故事）
-- **节流语义**：SDK 回调与 wire 通知均只携带纯 delta，节流器一律按到达顺序拼接窗口内所有 chunks 为一个合并 delta（window-concat），绝不能 last-value-wins 丢弃中间值。为配合该语义，SDK 必须在每次 running 事件中重复携带 `compactParams` 等稳定展示字段（见"工具块阶段更新"验收场景 4），保证丢弃中间事件不丢失这些字段
+- **UI 状态流**：CLI 直接订阅增量回调就地更新消息（chunk 追加，原始频率无节流——见「CLI 以原始频率渲染流式内容」用户故事；渲染频率由 Ink 内置 30fps 输出节流兜底）；插件/桌面经 stdio 增量通知（`userMessageAdded`、`assistantContentUpdated`、`toolBlockUpdated` 等，纯 delta 负载）驱动 webview 增量 reducer——文本/推理块追加 chunk、工具块追加 `parametersChunk`，end 时以权威值终结；需要完整列表的场景（初始化、compact、rewind、clear、bang）主动拉取，拉取响应整体替换为权威快照。进程内消费端把 SDK 消息对象推入自有状态时**必须克隆**（消息 + blocks 至少一层），不得持有 SDK 内部活引用——SDK 会就地更新共享块，与消费端累积追加叠加会重复计数（见"增量消费端以快照推入消息"用户故事）
+- **节流语义**：SDK 回调与 wire 通知均只携带纯 delta。CLI 进程内消费端不再节流（原始频率立即应用，见「CLI 以原始频率渲染流式内容」用户故事）；其余仍选择节流的宿主（如 VSCE/桌面 webview 通道），节流器一律按到达顺序拼接窗口内所有 chunks 为一个合并 delta（window-concat），绝不能 last-value-wins 丢弃中间值。为配合该语义，SDK 必须在每次 running 事件中重复携带 `compactParams` 等稳定展示字段（见"工具块阶段更新"验收场景 4），保证丢弃中间事件不丢失这些字段
 - **清晰分离**：增量回调是消息状态管理的正式对外通道；全量数据按需获取，避免随每次流式 chunk 序列化整个列表
 
 ## 澄清
@@ -239,11 +257,18 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - 问：修复位置 → 答：消费端边界。CLI 在推入消息时必须克隆（`{ ...m, blocks: m.blocks.map(b => ({ ...b })) }`），不得持有 SDK 内部消息对象活引用；SDK 就地更新与回调顺序（先写全量、再回 delta）不变。覆盖所有推入点：`onAssistantMessageAdded`、`onUserMessageAdded`、拉取全量（`refreshMessages`、初始 `setMessages(agent.messages)`）
 - 问：为什么不在 SDK 侧改 → 答：SDK 就地更新是 `getMessages` 权威快照的基础，先写全量再回 delta 保证回调时刻 SDK 状态已一致；改为先回调再写会让拉取与回调交错时读到过期值。快照克隆成本只在消息创建时发生一次，与流式 delta 数量无关
 
-## 假设 *（必填）*
+### 2026-08-17 会议（CLI 移除 500ms 节流、原始频率渲染）
+
+- 问：为什么移除 CLI 的 500ms window-concat 节流 → 答：2026-08-12 修复（快照推入）解决了首词重复的活引用根因，但调研复现了另一残留竞态：节流器 trailing edge 冲刷 pending 窗口内已合并 chunk 时，若期间发生全量列表替换（`refreshMessages`，/clear、/compact、/rewind、Ctrl+O 折叠触发），pending 内旧 delta 会追加到已含全部内容的权威快照之上，造成内容重复（如 `Let me think about me think about this...`）。移除节流后每个 delta 同步立即应用、无 pending 窗口，竞态从机制上消除——用忠实复刻 throttle+reducer 逻辑的模拟脚本验证：500ms 节流 + 流中刷新稳定复现重复，wait=0（无节流）同场景永不重复
+- 问：渲染性能是否受影响 → 答：不会。Ink 7.1.1 内置输出节流（`maxFps: 30` → ~34ms，leading+trailing）约束终端写入频率，与消费端节流无关；`<Static>` append-only 使历史消息永不重绘（`fullStaticOutput += staticOutput`）；`renderInteractiveFrame` 仅在 `output !== lastOutput` 时写入，log-update 再做增量 diff。React commit 频率等于 delta 到达频率，每次 commit 对全量可见消息做 `flatMap` + 元素重建，典型会话规模（≤30 条可见消息）为亚毫秒级
+- 问：受影响范围 → 答：仅 CLI 进程内消费端（`packages/code/src/contexts/useChat.tsx`）——移除内容/reasoning 通道的 `createStreamingWindowThrottle`（500ms）与 tool 通道的 `createToolStreamingThrottle`（同一 pending 窗口 + 全量刷新竞态结构、同一逐 token 高频来源），每个 delta 立即经 reducer 应用。VSCE/桌面跨进程通道保留 window-concat 节流语义不变（wire 通知频率较低，非首词重复来源）
+- 问：原「每秒 2-3 次内容更新」假设为何移除 → 答：该假设是 500ms 节流的设计依据；移除节流后更新频率由模型产出速率决定，终端写入频率由 Ink 30fps 兜底，无需人为限频
+
+## 假设 _（必填）_
 
 - 底层 AI 服务支持流式响应（增量内容传递）
 - 网络连接对大多数用户通常稳定
-- 终端/CLI 界面可以以 OpenAI 的流式速率处理实时文本更新（目标：每秒 2-3 次内容更新）
+- 终端/CLI 界面可以以 OpenAI 的流式速率处理实时文本更新（CLI 以原始 delta 频率渲染，终端写入频率由 Ink 内置 30fps 节流约束）
 - 用户通常使用支持实时文本渲染的标准终端模拟器
 - 在正常网络条件下内容流按时间顺序到达
 - 消息变更通过增量回调对外发布，完整列表按需拉取（`agent.messages` / `getMessages` 请求）；每次流式 chunk 不触发全量列表推送
