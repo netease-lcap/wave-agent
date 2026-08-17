@@ -333,19 +333,76 @@ describe("buildApplicationMenuTemplate", () => {
     }
   });
 
-  it("keeps the platform default menus (file/edit/view/window)", () => {
-    // macOS: File/Window are custom items (their default Cmd+W is stripped);
-    // off macOS: File stays the fileMenu role, Window becomes a custom menu.
-    const mac = buildApplicationMenuTemplate(actions, true);
-    expect(mac.map((item) => item.role)).toEqual(
-      expect.arrayContaining(["editMenu", "viewMenu", "windowMenu"]),
+  it("localizes the platform menus (文件/编辑/视图/窗口) without role menus off macOS", () => {
+    for (const isMac of [true, false]) {
+      const template = buildApplicationMenuTemplate(actions, isMac);
+      // Role menus (fileMenu/editMenu/viewMenu/windowMenu) are replaced by
+      // explicit localized menus; macOS keeps only the appMenu role.
+      const roles = template.map((item) => item.role);
+      expect(roles).not.toEqual(
+        expect.arrayContaining([
+          "fileMenu",
+          "editMenu",
+          "viewMenu",
+          "windowMenu",
+        ]),
+      );
+      for (const label of ["文件", "编辑", "对话", "面板", "视图", "窗口"]) {
+        expect(template.some((item) => item.label === label)).toBe(true);
+      }
+    }
+  });
+
+  it("keeps standard roles inside 编辑/视图 with Chinese labels", () => {
+    const submenuRoles = (
+      template: MenuItemConstructorOptions[],
+      label: string,
+    ) =>
+      (
+        template.find((item) => item.label === label)
+          ?.submenu as MenuItemConstructorOptions[]
+      ).map((item) => item.role);
+    for (const isMac of [true, false]) {
+      const template = buildApplicationMenuTemplate(actions, isMac);
+      expect(submenuRoles(template, "编辑")).toEqual(
+        expect.arrayContaining([
+          "undo",
+          "redo",
+          "cut",
+          "copy",
+          "paste",
+          "delete",
+          "selectAll",
+          ...(isMac ? (["pasteAndMatchStyle"] as string[]) : []),
+        ]),
+      );
+      expect(submenuRoles(template, "视图")).toEqual(
+        expect.arrayContaining([
+          "reload",
+          "forceReload",
+          "toggleDevTools",
+          "resetZoom",
+          "zoomIn",
+          "zoomOut",
+          "togglefullscreen",
+        ]),
+      );
+    }
+  });
+
+  it("offers 退出 on Windows/Linux and Close Window (no Cmd+W) on macOS", () => {
+    const winFileMenu = buildApplicationMenuTemplate(actions, false).find(
+      (item) => item.label === "文件",
     );
-    expect(mac.some((item) => item.label === "文件")).toBe(true);
-    const win = buildApplicationMenuTemplate(actions, false);
-    expect(win.map((item) => item.role)).toEqual(
-      expect.arrayContaining(["fileMenu", "editMenu", "viewMenu"]),
+    expect(winFileMenu?.submenu).toMatchObject([
+      { role: "quit", label: "退出" },
+    ]);
+    const macFileMenu = buildApplicationMenuTemplate(actions, true).find(
+      (item) => item.label === "文件",
     );
-    expect(win.some((item) => item.label === "窗口")).toBe(true);
+    expect(macFileMenu?.submenu).toMatchObject([
+      { role: "close", accelerator: "", label: "关闭窗口" },
+    ]);
   });
 
   it("关闭分屏 is the only Cmd+W claimant in the whole menu", () => {
