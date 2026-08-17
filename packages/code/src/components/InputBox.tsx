@@ -369,7 +369,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
           showModelSelector ||
           showWorkflowManager || (
             <Box flexDirection="column">
-              {escClearPending && <Text color="gray">再次按 Esc 清空输入</Text>}
+              {escClearPending && (
+                <Text color="gray">Press Esc again to clear input</Text>
+              )}
               <Box
                 borderStyle="single"
                 borderColor="gray"

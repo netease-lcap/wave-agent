@@ -104,7 +104,9 @@ export class DaemonServer {
           probe.once("connect", () => {
             probe.destroy();
             reject(
-              new Error(`另一个 wave daemon 已在 ${this.socketPath} 监听`),
+              new Error(
+                `Another wave daemon is already listening on ${this.socketPath}`,
+              ),
             );
           });
           probe.once("error", (err: NodeJS.ErrnoException) => {

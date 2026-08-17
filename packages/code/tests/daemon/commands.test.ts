@@ -205,9 +205,9 @@ afterEach(async () => {
 
 // ── list ───────────────────────────────────────────────────────
 
-test("list: empty daemon prints 无会话 and exits 0 (idle exit is not an error)", async () => {
+test("list: empty daemon prints No sessions and exits 0 (idle exit is not an error)", async () => {
   await expect(daemonListCommand(socketPath)).rejects.toThrow("exit(0)");
-  expect(logSpy).toHaveBeenCalledWith("无会话");
+  expect(logSpy).toHaveBeenCalledWith("No sessions");
   expect(exitSpy).toHaveBeenCalledWith(0);
 });
 
@@ -234,13 +234,13 @@ test("list: prints a padded table of hosted sessions (in-memory registry)", asyn
 
   await expect(daemonListCommand(socketPath)).rejects.toThrow("exit(0)");
   const out = stdoutLines();
-  expect(out[0]).toContain("会话");
-  expect(out[0]).toContain("工作目录");
+  expect(out[0]).toContain("Session");
+  expect(out[0]).toContain("Working directory");
   expect(out.join("\n")).toContain("session-busy");
-  expect(out.join("\n")).toContain("生成中");
+  expect(out.join("\n")).toContain("generating");
   expect(out.join("\n")).toContain("/repo/a");
   expect(out.join("\n")).toContain("session-idle");
-  expect(out.join("\n")).toContain("空闲");
+  expect(out.join("\n")).toContain("idle");
   expect(out.join("\n")).toContain("/repo/b");
   expect(exitSpy).toHaveBeenCalledWith(0);
 });
@@ -251,9 +251,9 @@ test("list: daemon not running exits 1 with the spec'd hint", async () => {
     `wave-daemon-missing-${process.pid}-${Date.now()}.sock`,
   );
   await expect(daemonListCommand(missing)).rejects.toThrow("exit(1)");
-  expect(stderrText()).toContain(`无法连接 daemon socket ${missing}`);
+  expect(stderrText()).toContain(`Cannot connect to daemon socket ${missing}`);
   expect(stderrText()).toContain(
-    "daemon 未运行？（daemon 空闲 60 秒自动退出）",
+    "is the daemon running? (it auto-exits after 60s idle)",
   );
   expect(stderrText()).toContain("(ENOENT)");
   expect(exitSpy).toHaveBeenCalledWith(1);
@@ -274,10 +274,10 @@ test("status: busy session prints session/workdir/status + recent messages, stay
     daemonStatusCommand(socketPath, "test-session-id"),
   ).rejects.toThrow("exit(0)");
   const out = stdoutLines();
-  expect(out).toContain("会话: test-session-id");
-  expect(out).toContain("工作目录: /test/workdir");
-  expect(out).toContain("状态: 生成中");
-  expect(out).toContain("最近消息 (2):");
+  expect(out).toContain("Session: test-session-id");
+  expect(out).toContain("Working directory: /test/workdir");
+  expect(out).toContain("Status: generating");
+  expect(out).toContain("Recent messages (2):");
   expect(out.join("\n")).toContain("[user] 你好");
   expect(out.join("\n")).toContain("[assistant] 正在处理…");
   expect(exitSpy).toHaveBeenCalledWith(0);
@@ -294,7 +294,7 @@ test("status: busy session prints session/workdir/status + recent messages, stay
   b.close();
 });
 
-test("status: idle session shows 空闲", async () => {
+test("status: idle session shows idle", async () => {
   const client = connectClient(socketPath);
   await client.send({ id: 1, method: "initialize", params: {} });
   client.close();
@@ -302,19 +302,19 @@ test("status: idle session shows 空闲", async () => {
   await expect(
     daemonStatusCommand(socketPath, "test-session-id"),
   ).rejects.toThrow("exit(0)");
-  expect(stdoutLines()).toContain("状态: 空闲");
+  expect(stdoutLines()).toContain("Status: idle");
   expect(exitSpy).toHaveBeenCalledWith(0);
 });
 
-test("status: pending approval shows 等待审批 + the request list", async () => {
+test("status: pending approval shows waiting for approval + the request list", async () => {
   await createPendingRequest("Bash", { command: "ls -la" });
 
   await expect(
     daemonStatusCommand(socketPath, "test-session-id"),
   ).rejects.toThrow("exit(0)");
   const out = stdoutLines();
-  expect(out).toContain("状态: 等待审批");
-  expect(out).toContain("待审批请求:");
+  expect(out).toContain("Status: waiting for approval");
+  expect(out).toContain("Pending approval requests:");
   expect(
     out.some(
       (l) => l.includes("perm_1") && l.includes("Bash") && l.includes("ls -la"),
@@ -335,7 +335,9 @@ test("status: nonexistent session fails, destroys the junk fresh session, regist
   await expect(daemonStatusCommand(socketPath, "ghost")).rejects.toThrow(
     "exit(1)",
   );
-  expect(stderrText()).toContain("会话不存在或未被该 daemon 托管：ghost");
+  expect(stderrText()).toContain(
+    "Session not found or not hosted by this daemon: ghost",
+  );
   expect(exitSpy).toHaveBeenCalledWith(1);
   expect(junk.destroy).toHaveBeenCalled();
 
@@ -432,7 +434,7 @@ test("send: times out and points at respond when a permission approval is pendin
     daemonSendCommand(socketPath, "test-session-id", "继续", { timeout: 0.2 }),
   ).rejects.toThrow("exit(1)");
   expect(stderrText()).toContain(
-    "会话等待权限审批，请通过 `wave daemon respond test-session-id perm_1` 处理后重试",
+    "Session is waiting for permission approval; handle it with `wave daemon respond test-session-id perm_1` and retry",
   );
   expect(exitSpy).toHaveBeenCalledWith(1);
 });
@@ -445,7 +447,9 @@ test("send: times out with the generic message when nothing is pending", async (
   await expect(
     daemonSendCommand(socketPath, "test-session-id", "继续", { timeout: 0.2 }),
   ).rejects.toThrow("exit(1)");
-  expect(stderrText()).toContain("等待回复超时（0.2 秒），未收到助手回复");
+  expect(stderrText()).toContain(
+    "Timed out waiting for a reply (0.2s), no assistant reply received",
+  );
   expect(exitSpy).toHaveBeenCalledWith(1);
 });
 
@@ -461,7 +465,9 @@ test("send: nonexistent session fails without injecting a message", async () => 
   await expect(daemonSendCommand(socketPath, "ghost", "hi")).rejects.toThrow(
     "exit(1)",
   );
-  expect(stderrText()).toContain("会话不存在或未被该 daemon 托管：ghost");
+  expect(stderrText()).toContain(
+    "Session not found or not hosted by this daemon: ghost",
+  );
   expect(exitSpy).toHaveBeenCalledWith(1);
   expect(junk.sendMessage).not.toHaveBeenCalled();
 });
@@ -478,7 +484,7 @@ test("respond: --allow resolves a Bash request with behavior allow", async () =>
       allow: true,
     }),
   ).rejects.toThrow("exit(0)");
-  expect(logSpy).toHaveBeenCalledWith("已处理审批请求：perm_1");
+  expect(logSpy).toHaveBeenCalledWith("Handled approval request: perm_1");
   await expect(permissionPromise).resolves.toEqual({ behavior: "allow" });
   expect(exitSpy).toHaveBeenCalledWith(0);
 });
@@ -555,7 +561,7 @@ test("respond: AskUserQuestion without --answer fails", async () => {
     }),
   ).rejects.toThrow("exit(1)");
   expect(stderrText()).toContain(
-    "AskUserQuestion 请求需要 --answer 提供答案 JSON",
+    "AskUserQuestion requests require --answer with the answer JSON",
   );
   expect(exitSpy).toHaveBeenCalledWith(1);
 });
@@ -569,7 +575,7 @@ test("respond: AskUserQuestion with invalid JSON --answer fails", async () => {
       answer: "not-json",
     }),
   ).rejects.toThrow("exit(1)");
-  expect(stderrText()).toContain("--answer 不是合法的 JSON");
+  expect(stderrText()).toContain("--answer is not valid JSON");
   expect(exitSpy).toHaveBeenCalledWith(1);
 });
 
@@ -617,7 +623,7 @@ test("respond: invalid --mode fails with the accepted modes listed", async () =>
     }),
   ).rejects.toThrow("exit(1)");
   expect(stderrText()).toContain(
-    "无效的权限模式：bogus（可选：default、bypassPermissions、acceptEdits、plan、dontAsk）",
+    "Invalid permission mode: bogus (options: default, bypassPermissions, acceptEdits, plan, dontAsk)",
   );
   expect(exitSpy).toHaveBeenCalledWith(1);
 });
@@ -630,7 +636,7 @@ test("respond: unknown requestId fails — the server would silently ignore it",
       allow: true,
     }),
   ).rejects.toThrow("exit(1)");
-  expect(stderrText()).toContain("该请求不存在或已处理");
+  expect(stderrText()).toContain("Request not found or already handled");
   expect(exitSpy).toHaveBeenCalledWith(1);
 });
 
@@ -661,7 +667,9 @@ test("respond: another session's request is refused and left untouched", async (
   await expect(
     daemonRespondCommand(socketPath, "s2", "perm_1", { allow: true }),
   ).rejects.toThrow("exit(1)");
-  expect(stderrText()).toContain("会话不存在或未被该 daemon 托管");
+  expect(stderrText()).toContain(
+    "Session not found or not hosted by this daemon",
+  );
   expect(exitSpy).toHaveBeenCalledWith(1);
 
   // The s1 request was never answered.
@@ -677,6 +685,6 @@ test("respond: requires exactly one of --allow / --deny", async () => {
   await expect(
     daemonRespondCommand(socketPath, "test-session-id", "perm_1", {}),
   ).rejects.toThrow("exit(1)");
-  expect(stderrText()).toContain("请指定 --allow 或 --deny（二选一）");
+  expect(stderrText()).toContain("Specify either --allow or --deny");
   expect(exitSpy).toHaveBeenCalledWith(1);
 });

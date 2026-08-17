@@ -76,7 +76,7 @@ export abstract class JsonRpcClient {
   ): Promise<unknown> {
     if (this.closed) {
       throw new Error(
-        "连接已断开。wave 进程已退出，请重启编辑器或检查 CLI 安装。",
+        "Connection closed. The wave process has exited; restart the editor or check your CLI installation.",
       );
     }
     const id = this.nextId++;

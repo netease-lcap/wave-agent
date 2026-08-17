@@ -28,7 +28,7 @@
     "README.md"
   ],
   "scripts": {
-    "wave": "NODE_OPTIONS='--heapsnapshot-near-heap-limit=1' tsx --tsconfig tsconfig.dev.json src/index.ts",
+    "wave": "tsx --tsconfig tsconfig.dev.json src/dev-entry.ts",
     "build": "rimraf dist && node scripts/bundle.mjs",
     "type-check": "tsc --noEmit --incremental",
     "test": "vitest run --reporter=dot",
