@@ -1643,11 +1643,13 @@ ${question}`;
     // previous turn not finished" race window by marking us busy immediately.
     this.turnGeneration++;
     let myGeneration = this.turnGeneration;
-    // Win-abort diagnostic: unconditional in-memory counter (no I/O, no
-    // timing impact) to prove whether a second sendAIMessage entry exists
-    // when the resurrected callAgent (call 1) is observed in CI.
-    const g = globalThis as unknown as { __sendAIEnter?: number };
+    // Win-abort diagnostic: in-memory trace (no I/O, no timing impact).
+    const g = globalThis as unknown as {
+      __sendAIEnter?: number;
+      __trace?: string[];
+    };
     g.__sendAIEnter = (g.__sendAIEnter ?? 0) + 1;
+    (g.__trace ??= []).push(`enter:${this.turnGeneration}`);
     if (process.env.WINDBG_ABORT) {
       console.log(
         "[WINDBG] sendAIMessage enter",
@@ -2245,6 +2247,9 @@ ${question}`;
         // Execute Stop/SubagentStop hooks only if the operation was not aborted
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;
+        (globalThis as unknown as { __trace?: string[] }).__trace?.push(
+          `cleanup:${isCurrentlyAborted}`,
+        );
 
         if (!isCurrentlyAborted) {
           // Record committed snapshots to message history for the final turn
@@ -2300,6 +2305,9 @@ ${question}`;
           messageQueue.hasNotifications() &&
           !isCurrentlyAborted
         ) {
+          (globalThis as unknown as { __trace?: string[] }).__trace?.push(
+            "foldin",
+          );
           const notifications = messageQueue.drainNotifications();
           for (const notification of notifications) {
             const block = parseTaskNotificationXml(notification);

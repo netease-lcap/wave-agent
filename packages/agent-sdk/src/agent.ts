@@ -427,6 +427,7 @@ export class Agent {
     if (process.env.WINDBG_ABORT) {
       console.log("[WINDBG] tryDispatch:PASS", this.stack2());
     }
+    (globalThis as unknown as { __trace?: string[] }).__trace?.push("PASS");
     this.messageQueue.transitionTo("dispatching");
     this.dispatchPromise = this.processQueuedMessage()
       .catch((error) => {

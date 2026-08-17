@@ -1234,6 +1234,8 @@ describe("Agent - Abort Handling", () => {
       const sendAIBase =
         (globalThis as unknown as { __sendAIEnter?: number }).__sendAIEnter ??
         0;
+      const traceBase =
+        (globalThis as unknown as { __trace?: string[] }).__trace?.length ?? 0;
 
       try {
         // Agent busy: a queued message auto-dispatch (loop #0) is blocked in
@@ -1267,7 +1269,11 @@ describe("Agent - Abort Handling", () => {
           `${callRecords.join("\n")}\n__sendAIEnter delta=${
             ((globalThis as unknown as { __sendAIEnter?: number })
               .__sendAIEnter ?? 0) - sendAIBase
-          }`,
+          }\n__trace delta=${(
+            (globalThis as unknown as { __trace?: string[] }).__trace ?? []
+          )
+            .slice(traceBase)
+            .join("; ")}`,
         ).toBe(1);
         expect(callAborted[0]).toBe(true);
         expect(messageQueue.hasNotifications()).toBe(true);
@@ -1289,6 +1295,8 @@ describe("Agent - Abort Handling", () => {
       const sendAIBase =
         (globalThis as unknown as { __sendAIEnter?: number }).__sendAIEnter ??
         0;
+      const traceBase =
+        (globalThis as unknown as { __trace?: string[] }).__trace?.length ?? 0;
       let sendPromise: Promise<void> | undefined;
 
       try {
@@ -1328,7 +1336,11 @@ describe("Agent - Abort Handling", () => {
           `${callRecords.join("\n")}\n__sendAIEnter delta=${
             ((globalThis as unknown as { __sendAIEnter?: number })
               .__sendAIEnter ?? 0) - sendAIBase
-          }`,
+          }\n__trace delta=${(
+            (globalThis as unknown as { __trace?: string[] }).__trace ?? []
+          )
+            .slice(traceBase)
+            .join("; ")}`,
         ).toBeUndefined();
 
         // User interrupts the running loop — it must actually die. (Abort
