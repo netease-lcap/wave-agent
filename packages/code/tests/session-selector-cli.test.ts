@@ -66,6 +66,28 @@ describe("resolveSessionOwnership", () => {
     });
   });
 
+  it("falls back to encodeSync when the session workdir no longer exists", async () => {
+    // A deleted worktree makes encode() (realpath-based) throw ENOENT; the
+    // picker must still decide ownership via the lossy-but-safe encodeSync.
+    mockEncoder.encode.mockImplementation(async (p: string) => {
+      if (p === "/mock/repo-wt")
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      return p;
+    });
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+
+    const result = await resolveSessionOwnership(
+      { id: "s6", workdir: "/mock/repo-wt" },
+      { worktreePaths: ["/mock/repo-wt"], currentWorkdir: "/mock/workdir" },
+    );
+
+    expect(mockEncoder.encodeSync).toHaveBeenCalledWith("/mock/repo-wt");
+    expect(result.kind).toBe("cross-project");
+    if (result.kind === "cross-project") {
+      expect(result.command).toContain("wave --restore s6");
+    }
+  });
+
   it("falls through to cross-project when the worktree directory no longer exists", async () => {
     mockEncoder.encode.mockImplementation(async (p: string) =>
       p === "/mock/repo-wt" || p === "/mock/encoded-repo-wt"

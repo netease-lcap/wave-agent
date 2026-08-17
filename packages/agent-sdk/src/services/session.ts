@@ -19,6 +19,8 @@ import { promises as fs } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { randomUUID } from "crypto";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import type { Message } from "../types/index.js";
 import { PathEncoder } from "../utils/pathEncoder.js";
 import { JsonlHandler } from "../services/jsonlHandler.js";
@@ -28,6 +30,8 @@ import {
   getMessageContent,
   sliceFromLastCompact,
 } from "../utils/messageOperations.js";
+
+const execFileAsync = promisify(execFile);
 
 export interface SessionData {
   id: string;
@@ -48,6 +52,8 @@ export interface SessionMetadata {
   lastActiveAt: Date;
   latestTotalTokens: number;
   firstMessage?: string;
+  /** Git branch at session creation time (from the metadata header). */
+  branch?: string;
 }
 
 /**
@@ -127,6 +133,26 @@ export async function getSessionFilePath(
 }
 
 /**
+ * Resolve the current git branch for a working directory, if any.
+ *
+ * Returns undefined when the directory is not inside a git repo, git is
+ * unavailable, or the command fails/times out — the session can still be
+ * created, its metadata header just omits the branch.
+ */
+async function getGitBranch(workdir: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["-C", workdir, "branch", "--show-current"],
+      { timeout: 2000, windowsHide: true },
+    );
+    return stdout.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Create a new session
  * @param sessionId - UUID session identifier
  * @param workdir - Working directory for the session
@@ -139,7 +165,15 @@ export async function createSession(
 ): Promise<void> {
   const jsonlHandler = new JsonlHandler();
   const filePath = await getSessionFilePath(sessionId, workdir, sessionType);
-  await jsonlHandler.createSession(filePath);
+  // Persist creation-time metadata in the header line: the real workdir
+  // (lossy via decodeSync), the real creation timestamp, and the git branch
+  // at creation time. The header is append-only — written once, never
+  // rewritten — so only creation-time-constant fields belong here.
+  await jsonlHandler.createSession(filePath, {
+    workdir,
+    createdAt: new Date().toISOString(),
+    gitBranch: await getGitBranch(workdir),
+  });
 }
 
 /**
@@ -414,6 +448,10 @@ export async function listSessionsFromJsonl(
         const jsonlHandler = new JsonlHandler();
         const lastMessage = await jsonlHandler.getLastMessage(filePath);
 
+        // Creation-time metadata (workdir is not needed here — the project
+        // dir gives the original path — but createdAt / branch are).
+        const header = await jsonlHandler.readMetadata(filePath);
+
         // Handle timing information efficiently
         let lastActiveAt: Date;
 
@@ -431,11 +469,14 @@ export async function listSessionsFromJsonl(
           sessionType: "main",
           subagentType: undefined,
           workdir: projectDir.originalPath,
-          createdAt: new Date(),
+          createdAt: header?.createdAt
+            ? new Date(header.createdAt)
+            : new Date(),
           lastActiveAt,
           latestTotalTokens: lastMessage?.usage
             ? extractLatestTotalTokens([lastMessage])
             : 0,
+          branch: header?.gitBranch,
         };
 
         // Try to get first message content for display
@@ -508,9 +549,11 @@ export async function listAllSessions(options?: {
     // "home-user-repo" cannot swallow "home-user-repo-wt" (short paths require
     // exact match; prefix + "-" matching only kicks in for paths truncated by
     // the 200-char encoding limit, mirroring Claude Code's session listing).
+    // Each entry also carries the real path so matching dirs can display it
+    // instead of the lossy decodeSync of the encoded name.
     const encoder = new PathEncoder();
     const caseInsensitive = process.platform === "win32";
-    let indexed: { prefix: string }[] | null = null;
+    let indexed: { prefix: string; path?: string }[] | null = null;
     if (worktreePaths && worktreePaths.length > 0) {
       indexed = [];
       const seen = new Set<string>();
@@ -524,7 +567,7 @@ export async function listAllSessions(options?: {
         const prefix = caseInsensitive ? encoded.toLowerCase() : encoded;
         if (seen.has(prefix)) continue;
         seen.add(prefix);
-        indexed.push({ prefix });
+        indexed.push({ prefix, path: wt });
       }
       indexed.sort((a, b) => b.prefix.length - a.prefix.length);
       // Always include the current working directory's own project dir —
@@ -540,7 +583,7 @@ export async function listAllSessions(options?: {
         const prefix = caseInsensitive ? encodedCwd.toLowerCase() : encodedCwd;
         if (!seen.has(prefix)) {
           seen.add(prefix);
-          indexed.push({ prefix });
+          indexed.push({ prefix, path: workdir });
         }
       }
     }
@@ -556,17 +599,20 @@ export async function listAllSessions(options?: {
           continue;
         }
 
+        // The indexed match (worktree mode) carries the real path of the
+        // worktree / cwd that encoded to this dir name.
+        let matchedIndexed: { prefix: string; path?: string } | undefined;
         if (indexed) {
           const dirName = caseInsensitive
             ? projectDirName.toLowerCase()
             : projectDirName;
-          const matchesWorktree = indexed.some(
+          matchedIndexed = indexed.find(
             ({ prefix }) =>
               dirName === prefix ||
               (prefix.length >= MAX_ENCODED_PREFIX_LENGTH &&
                 dirName.startsWith(prefix + "-")),
           );
-          if (!matchesWorktree) continue;
+          if (!matchedIndexed) continue;
         }
 
         // Decode the encoded directory name back to the original project
@@ -594,6 +640,10 @@ export async function listAllSessions(options?: {
             const jsonlHandler = new JsonlHandler();
             const lastMessage = await jsonlHandler.getLastMessage(filePath);
 
+            // Creation-time metadata — read per file: branch can differ
+            // between sessions created in the same directory over time.
+            const header = await jsonlHandler.readMetadata(filePath);
+
             let lastActiveAt: Date;
             if (lastMessage) {
               lastActiveAt = new Date(lastMessage.timestamp);
@@ -616,17 +666,25 @@ export async function listAllSessions(options?: {
               // Ignore errors getting first message
             }
 
+            // Prefer the real worktree path, then the persisted metadata
+            // header, then the lossy decodeSync fallback for legacy files.
+            const workdir =
+              matchedIndexed?.path ?? header?.workdir ?? decodedWorkdir;
+
             allSessions.push({
               id: sessionId,
               sessionType: "main" as const,
               subagentType: undefined,
-              workdir: decodedWorkdir,
-              createdAt: new Date(),
+              workdir,
+              createdAt: header?.createdAt
+                ? new Date(header.createdAt)
+                : new Date(),
               lastActiveAt,
               latestTotalTokens: lastMessage?.usage
                 ? extractLatestTotalTokens([lastMessage])
                 : 0,
               firstMessage,
+              branch: header?.gitBranch,
             });
           } catch {
             continue;
@@ -893,10 +951,10 @@ export async function getFirstMessageContentFromFile(
 
     for (const line of lines) {
       try {
-        const message = JSON.parse(line) as Message;
+        const message = JSON.parse(line) as Message & { type?: string };
 
-        // Skip meta messages
-        if (message.isMeta) {
+        // Skip the metadata header line and meta messages
+        if (message.type === "metadata" || message.isMeta) {
           continue;
         }
 

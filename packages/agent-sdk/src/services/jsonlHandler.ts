@@ -5,7 +5,7 @@
 
 import { appendFile, readFile, writeFile, stat, mkdir } from "fs/promises";
 import { dirname } from "path";
-import { getLastLine } from "../utils/fileUtils.js";
+import { getLastLine, readFirstNLines } from "../utils/fileUtils.js";
 
 import type { Message } from "../types/index.js";
 import type { SessionFilename } from "../types/session.js";
@@ -16,6 +16,21 @@ import type { SessionFilename } from "../types/session.js";
 export interface JsonlWriteOptions {
   // Safety options
   atomic?: boolean; // Default: true (write to temp file first)
+}
+
+/**
+ * Creation-time metadata persisted in the session file's header line
+ * (`{"type":"metadata",...}`). The header is append-only — written once on
+ * session creation and never rewritten — so only fields that are fixed at
+ * creation time belong here.
+ */
+export interface SessionMetadataHeader {
+  /** Real working directory (the encoded project dir name is lossy for paths containing "-"). */
+  workdir?: string;
+  /** ISO 8601 creation timestamp. */
+  createdAt?: string;
+  /** Git branch at creation time (`git branch --show-current`), when the directory is a git repo. */
+  gitBranch?: string;
 }
 
 /**
@@ -31,14 +46,31 @@ export class JsonlHandler {
   }
 
   /**
-   * Create a new session file (simplified - no metadata header)
+   * Create a new session file.
+   *
+   * When `metadata` is provided, the first line is a metadata header
+   * recording creation-time facts about the session:
+   * `{"type":"metadata","workdir":...,"createdAt":...,"gitBranch":...}`. The
+   * encoded project dir name is lossy for paths containing "-", so persisting
+   * the real path lets session listing show it without decoding; `createdAt`
+   * and `gitBranch` similarly avoid lossy/fabricated reconstruction later.
+   * The header carries no `timestamp`, so message readers filter it out
+   * naturally.
+   *
+   * Legacy callers that omit `metadata` still get an empty file.
    */
-  async createSession(filePath: string): Promise<void> {
+  async createSession(
+    filePath: string,
+    metadata?: SessionMetadataHeader,
+  ): Promise<void> {
     // Ensure directory exists
     await this.ensureDirectory(dirname(filePath));
 
-    // Create empty file (no metadata line needed)
-    await writeFile(filePath, "", "utf8");
+    const content =
+      metadata && Object.keys(metadata).length > 0
+        ? `${JSON.stringify({ type: "metadata", ...metadata })}\n`
+        : "";
+    await writeFile(filePath, content, "utf8");
   }
 
   /**
@@ -118,12 +150,16 @@ export class JsonlHandler {
 
       const allMessages: Message[] = [];
 
-      // Parse all messages (no metadata line to skip)
+      // Parse all messages, skipping the metadata header line (if any)
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
         try {
-          const message = JSON.parse(line) as Message;
+          const message = JSON.parse(line) as Message & {
+            type?: string;
+          };
+          // Metadata header line: not a message, skip
+          if (message.type === "metadata") continue;
           if (message.timestamp) allMessages.push(message);
         } catch (error) {
           // Throw error for invalid JSON lines with line number
@@ -163,7 +199,11 @@ export class JsonlHandler {
       }
 
       try {
-        const parsed = JSON.parse(lastLine);
+        const parsed = JSON.parse(lastLine) as Message & { type?: string };
+        // A file whose only line is the metadata header has no messages yet
+        if (parsed.type === "metadata") {
+          return null;
+        }
         return parsed as Message;
       } catch (error) {
         throw new Error(`Invalid JSON in last line of "${filePath}": ${error}`);
@@ -173,6 +213,37 @@ export class JsonlHandler {
         `Failed to get last message from "${filePath}": ${error}`,
       );
     }
+  }
+
+  /**
+   * Read the creation-time metadata from the session file's header line.
+   *
+   * Newer session files start with a `{"type":"metadata",...}` line (see
+   * `createSession`). Legacy files have no header.
+   *
+   * @param filePath - Path to the session JSONL file
+   * @returns The persisted metadata, or null when the file has no header
+   */
+  async readMetadata(filePath: string): Promise<SessionMetadataHeader | null> {
+    try {
+      const lines = await readFirstNLines(filePath, 1);
+      if (lines.length === 0) {
+        return null;
+      }
+      const header = JSON.parse(lines[0]) as
+        | ({ type?: string } & SessionMetadataHeader)
+        | null;
+      if (header?.type === "metadata") {
+        return {
+          workdir: header.workdir,
+          createdAt: header.createdAt,
+          gitBranch: header.gitBranch,
+        };
+      }
+    } catch {
+      // Unreadable or invalid first line — treat as a legacy file
+    }
+    return null;
   }
 
   /**
