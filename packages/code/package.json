@@ -15,8 +15,7 @@
     "ink",
     "typescript"
   ],
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/bundle/wave.mjs",
   "type": "module",
   "bin": {
     "wave-code": "bin/wave-code.js",
@@ -30,9 +29,8 @@
   ],
   "scripts": {
     "wave": "NODE_OPTIONS='--heapsnapshot-near-heap-limit=1' tsx --tsconfig tsconfig.dev.json src/index.ts",
-    "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && node scripts/bundle.mjs",
+    "build": "rimraf dist && node scripts/bundle.mjs",
     "type-check": "tsc --noEmit --incremental",
-    "watch": "tsc -p tsconfig.build.json --watch & tsc-alias -p tsconfig.build.json --watch",
     "test": "vitest run --reporter=dot",
     "test:coverage": "vitest run --coverage --reporter=dot",
     "test:unit": "vitest run --reporter=dot --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
@@ -70,7 +68,6 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "ink-testing-library": "^4.0.0",
     "rimraf": "^6.1.2",
-    "tsc-alias": "^1.8.16",
     "tsx": "^4.20.4",
     "vitest": "^4.1.7"
   },

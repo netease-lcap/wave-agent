@@ -43,6 +43,10 @@ await build({
   external: ["@vscode/ripgrep", "fsevents"],
   alias: { "@": path.join(root, "src") },
   plugins: [inkDevtoolsStub],
+  // Shrinks the bundle ~2.2x (8.4MB -> 3.7MB raw) and drops React's
+  // development-mode builds, which cuts Node parse/compile time at startup.
+  minify: true,
+  define: { "process.env.NODE_ENV": '"production"' },
   logLevel: "info",
 });
 

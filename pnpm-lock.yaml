@@ -205,9 +205,6 @@ importers:
       rimraf:
         specifier: ^6.1.2
         version: 6.1.2
-      tsc-alias:
-        specifier: ^1.8.16
-        version: 1.8.16
       tsx:
         specifier: ^4.20.4
         version: 4.20.6

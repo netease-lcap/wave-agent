@@ -1,6 +1,51 @@
-import hljs from "highlight.js";
+import hljs from "highlight.js/lib/core";
+import javascript from "highlight.js/lib/languages/javascript";
+import typescript from "highlight.js/lib/languages/typescript";
+import bash from "highlight.js/lib/languages/bash";
+import json from "highlight.js/lib/languages/json";
+import markdown from "highlight.js/lib/languages/markdown";
+import python from "highlight.js/lib/languages/python";
+import yaml from "highlight.js/lib/languages/yaml";
+import xml from "highlight.js/lib/languages/xml";
+import css from "highlight.js/lib/languages/css";
+import sql from "highlight.js/lib/languages/sql";
+import rust from "highlight.js/lib/languages/rust";
+import go from "highlight.js/lib/languages/go";
+import java from "highlight.js/lib/languages/java";
+import cpp from "highlight.js/lib/languages/cpp";
+import c from "highlight.js/lib/languages/c";
+import csharp from "highlight.js/lib/languages/csharp";
+import php from "highlight.js/lib/languages/php";
+import ruby from "highlight.js/lib/languages/ruby";
+import swift from "highlight.js/lib/languages/swift";
+import kotlin from "highlight.js/lib/languages/kotlin";
+import ini from "highlight.js/lib/languages/ini";
 import { parse, Node, HTMLElement, TextNode } from "node-html-parser";
 import chalk from "chalk";
+
+// Register only the languages we auto-detect (the full default import pulls
+// in all 384 languages, ~1.5MB of the bundle).
+hljs.registerLanguage("javascript", javascript);
+hljs.registerLanguage("typescript", typescript);
+hljs.registerLanguage("bash", bash);
+hljs.registerLanguage("json", json);
+hljs.registerLanguage("markdown", markdown);
+hljs.registerLanguage("python", python);
+hljs.registerLanguage("yaml", yaml);
+hljs.registerLanguage("xml", xml);
+hljs.registerLanguage("css", css);
+hljs.registerLanguage("sql", sql);
+hljs.registerLanguage("rust", rust);
+hljs.registerLanguage("go", go);
+hljs.registerLanguage("java", java);
+hljs.registerLanguage("cpp", cpp);
+hljs.registerLanguage("c", c);
+hljs.registerLanguage("csharp", csharp);
+hljs.registerLanguage("php", php);
+hljs.registerLanguage("ruby", ruby);
+hljs.registerLanguage("swift", swift);
+hljs.registerLanguage("kotlin", kotlin);
+hljs.registerLanguage("ini", ini);
 
 const theme: Record<string, (text: string) => string> = {
   "hljs-keyword": chalk.blue,
