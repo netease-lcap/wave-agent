@@ -1213,11 +1213,11 @@ describe("Agent - Abort Handling", () => {
     it("aborted queued dispatch must not resurrect with a pending notification", async () => {
       wireLoadingChange();
       const { gates, callStarted, callAborted } = installGatedCallAgent();
-      const messageQueue = (
-        agent as unknown as {
-          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
-        }
-      ).messageQueue;
+      const agentInternal = agent as unknown as {
+        messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        dispatchPromise: Promise<void> | null;
+      };
+      const messageQueue = agentInternal.messageQueue;
 
       try {
         // Agent busy: a queued message auto-dispatch (loop #0) is blocked in
@@ -1233,11 +1233,15 @@ describe("Agent - Abort Handling", () => {
         // Force-send — mirrors agentBridge.sendMessage(force=true):
         // abortMessage() → async gap (PromptHistoryManager.addEntry) → sendMessage().
         agent.abortMessage();
-        // The bridge gap: give loop #0's async unwinding time to reach its
-        // end-of-turn cleanup. Buggy behavior: the aborted turn folds the
-        // notification in and resurrects itself (aiManager.ts:1923 fold-in is
-        // NOT guarded by isCurrentlyAborted), starting a second callAgent.
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // The bridge gap: wait until loop #0's async unwinding reaches its
+        // end-of-turn cleanup (its dispatch settles to null) or, in the buggy
+        // behavior, the aborted turn folds the notification in and resurrects
+        // itself (aiManager.ts:1923 fold-in is NOT guarded by
+        // isCurrentlyAborted), starting a second callAgent (call 1).
+        await awaitUntil(
+          () =>
+            agentInternal.dispatchPromise === null || callStarted[1] === true,
+        );
 
         // Correct behavior: the aborted turn ends. No second AI call starts,
         // and the notification stays queued to be folded into the next
@@ -1253,11 +1257,11 @@ describe("Agent - Abort Handling", () => {
     it("force-send with a pending notification runs a single interruptible loop", async () => {
       wireLoadingChange();
       const { gates, callStarted, callAborted } = installGatedCallAgent();
-      const messageQueue = (
-        agent as unknown as {
-          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
-        }
-      ).messageQueue;
+      const agentInternal = agent as unknown as {
+        messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        dispatchPromise: Promise<void> | null;
+      };
+      const messageQueue = agentInternal.messageQueue;
       let sendPromise: Promise<void> | undefined;
 
       try {
@@ -1280,11 +1284,15 @@ describe("Agent - Abort Handling", () => {
         sendPromise = agent.sendMessage("queued msg 1");
         await awaitUntil(() => callStarted[1] === true);
 
-        // Let loop #0's async unwinding reach its end-of-turn. Buggy behavior:
-        // the aborted turn's fold-in creates a second concurrent callAgent
-        // (call 2) whose fresh controller overwrites this.abortController,
-        // orphaning loop B's controller — the "无法中断" mechanism.
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // Wait until loop #0's async unwinding reaches its end-of-turn (its
+        // dispatch settles to null). Buggy behavior: the aborted turn's
+        // fold-in creates a second concurrent callAgent (call 2) whose fresh
+        // controller overwrites this.abortController, orphaning loop B's
+        // controller — the "无法中断" mechanism.
+        await awaitUntil(
+          () =>
+            agentInternal.dispatchPromise === null || callStarted[2] === true,
+        );
 
         // Correct behavior: exactly one live loop (call 0 was aborted by the
         // force-send; loop B is the only running turn — no call 2).
