@@ -3,18 +3,18 @@ name: Docs Checks
 on:
   pull_request:
     paths:
-      - 'docs/**'
-      - '.github/workflows/check-docs.yml'
-      - 'scripts/check-docs-links.mjs'
-      - 'scripts/check-sidebar-anchors.mjs'
+      - "docs/**"
+      - ".github/workflows/check-docs.yml"
+      - "scripts/check-docs-links.mjs"
+      - "scripts/check-sidebar-anchors.mjs"
   push:
     branches:
       - main
     paths:
-      - 'docs/**'
-      - '.github/workflows/check-docs.yml'
-      - 'scripts/check-docs-links.mjs'
-      - 'scripts/check-sidebar-anchors.mjs'
+      - "docs/**"
+      - ".github/workflows/check-docs.yml"
+      - "scripts/check-docs-links.mjs"
+      - "scripts/check-sidebar-anchors.mjs"
 
 jobs:
   check-docs:
@@ -22,12 +22,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      # Cache pnpm/action-setup's install dir so jobs skip re-downloading the
+      # action tarball from codeload (429 rate limits, pnpm/action-setup#177).
+      # On hit we skip the action and prepend its bin dir to PATH ourselves.
+      # The key pins the pnpm version — keep it in sync with the `version`
+      # input below (package.json "packageManager").
+      - name: Cache pnpm install
+        id: pnpm-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/setup-pnpm
+          key: pnpm-setup-v4-${{ runner.os }}-${{ runner.arch }}-11.9.0
+
+      - name: Add cached pnpm to PATH
+        if: steps.pnpm-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          # Mirror pnpm/action-setup v4's env: the requested pnpm version is
+          # installed directly into node_modules/.bin.
+          PNPM_HOME="$HOME/.cache/setup-pnpm/node_modules/.bin"
+          echo "$PNPM_HOME" >> "$GITHUB_PATH"
+          echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
+
+      - name: Setup pnpm (cache miss)
+        if: steps.pnpm-cache.outputs.cache-hit != 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+          dest: ~/.cache/setup-pnpm
+          run_install: false
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: "22"
+          cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
 
