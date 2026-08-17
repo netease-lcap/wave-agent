@@ -44,9 +44,44 @@ jobs:
               - '!packages/webview/e2e/**'
               - '!LICENSE'
 
-      - name: Setup pnpm
+      # Cache pnpm/action-setup's install dir so concurrent jobs skip
+      # re-downloading the action tarball from codeload (429 rate limits,
+      # pnpm/action-setup#177). On hit we skip the action and prepend its bin
+      # dirs to PATH ourselves. The key pins the pnpm version — keep it in
+      # sync with the `version` input below (package.json "packageManager").
+      - name: Cache pnpm install
         if: steps.filter.outputs.code == 'true'
+        id: pnpm-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/setup-pnpm
+          key: pnpm-setup-v5-${{ runner.os }}-${{ runner.arch }}-11.9.0
+
+      - name: Add cached pnpm to PATH
+        if: steps.filter.outputs.code == 'true' && steps.pnpm-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          # Mirror pnpm/action-setup's env: node_modules/.bin/bin holds the
+          # self-updated target version (higher precedence), node_modules/.bin
+          # the bootstrap symlink. GITHUB_PATH is used verbatim, so write
+          # native Windows paths on Windows runners.
+          PNPM_HOME="${USERPROFILE:-$HOME}/.cache/setup-pnpm/node_modules/.bin"
+          PNPM_BIN="$PNPM_HOME/bin"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PNPM_HOME="${PNPM_HOME//\//\\}"
+            PNPM_BIN="${PNPM_BIN//\//\\}"
+          fi
+          echo "$PNPM_HOME" >> "$GITHUB_PATH"
+          echo "$PNPM_BIN" >> "$GITHUB_PATH"
+          echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
+
+      - name: Setup pnpm (cache miss)
+        if: steps.filter.outputs.code == 'true' && steps.pnpm-cache.outputs.cache-hit != 'true'
         uses: pnpm/action-setup@v5
+        with:
+          version: 11.9.0
+          dest: ~/.cache/setup-pnpm
+          run_install: false
 
       - name: Setup Node.js
         if: steps.filter.outputs.code == 'true'
@@ -115,9 +150,44 @@ jobs:
               - '!packages/webview/e2e/**'
               - '!LICENSE'
 
-      - name: Setup pnpm
+      # Cache pnpm/action-setup's install dir so concurrent jobs skip
+      # re-downloading the action tarball from codeload (429 rate limits,
+      # pnpm/action-setup#177). On hit we skip the action and prepend its bin
+      # dirs to PATH ourselves. The key pins the pnpm version — keep it in
+      # sync with the `version` input below (package.json "packageManager").
+      - name: Cache pnpm install
         if: steps.filter.outputs.code == 'true'
+        id: pnpm-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/setup-pnpm
+          key: pnpm-setup-v5-${{ runner.os }}-${{ runner.arch }}-11.9.0
+
+      - name: Add cached pnpm to PATH
+        if: steps.filter.outputs.code == 'true' && steps.pnpm-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          # Mirror pnpm/action-setup's env: node_modules/.bin/bin holds the
+          # self-updated target version (higher precedence), node_modules/.bin
+          # the bootstrap symlink. GITHUB_PATH is used verbatim, so write
+          # native Windows paths on Windows runners.
+          PNPM_HOME="${USERPROFILE:-$HOME}/.cache/setup-pnpm/node_modules/.bin"
+          PNPM_BIN="$PNPM_HOME/bin"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PNPM_HOME="${PNPM_HOME//\//\\}"
+            PNPM_BIN="${PNPM_BIN//\//\\}"
+          fi
+          echo "$PNPM_HOME" >> "$GITHUB_PATH"
+          echo "$PNPM_BIN" >> "$GITHUB_PATH"
+          echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
+
+      - name: Setup pnpm (cache miss)
+        if: steps.filter.outputs.code == 'true' && steps.pnpm-cache.outputs.cache-hit != 'true'
         uses: pnpm/action-setup@v5
+        with:
+          version: 11.9.0
+          dest: ~/.cache/setup-pnpm
+          run_install: false
 
       - name: Setup Node.js
         if: steps.filter.outputs.code == 'true'
@@ -166,9 +236,44 @@ jobs:
               - '!packages/webview/e2e/**'
               - '!LICENSE'
 
-      - name: Setup pnpm
+      # Cache pnpm/action-setup's install dir so concurrent jobs skip
+      # re-downloading the action tarball from codeload (429 rate limits,
+      # pnpm/action-setup#177). On hit we skip the action and prepend its bin
+      # dirs to PATH ourselves. The key pins the pnpm version — keep it in
+      # sync with the `version` input below (package.json "packageManager").
+      - name: Cache pnpm install
         if: steps.filter.outputs.code == 'true'
+        id: pnpm-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/setup-pnpm
+          key: pnpm-setup-v5-${{ runner.os }}-${{ runner.arch }}-11.9.0
+
+      - name: Add cached pnpm to PATH
+        if: steps.filter.outputs.code == 'true' && steps.pnpm-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          # Mirror pnpm/action-setup's env: node_modules/.bin/bin holds the
+          # self-updated target version (higher precedence), node_modules/.bin
+          # the bootstrap symlink. GITHUB_PATH is used verbatim, so write
+          # native Windows paths on Windows runners.
+          PNPM_HOME="${USERPROFILE:-$HOME}/.cache/setup-pnpm/node_modules/.bin"
+          PNPM_BIN="$PNPM_HOME/bin"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PNPM_HOME="${PNPM_HOME//\//\\}"
+            PNPM_BIN="${PNPM_BIN//\//\\}"
+          fi
+          echo "$PNPM_HOME" >> "$GITHUB_PATH"
+          echo "$PNPM_BIN" >> "$GITHUB_PATH"
+          echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
+
+      - name: Setup pnpm (cache miss)
+        if: steps.filter.outputs.code == 'true' && steps.pnpm-cache.outputs.cache-hit != 'true'
         uses: pnpm/action-setup@v5
+        with:
+          version: 11.9.0
+          dest: ~/.cache/setup-pnpm
+          run_install: false
 
       - name: Setup Node.js
         if: steps.filter.outputs.code == 'true'
@@ -239,9 +344,44 @@ jobs:
               - '!packages/webview/e2e/**'
               - '!LICENSE'
 
-      - name: Setup pnpm
+      # Cache pnpm/action-setup's install dir so concurrent jobs skip
+      # re-downloading the action tarball from codeload (429 rate limits,
+      # pnpm/action-setup#177). On hit we skip the action and prepend its bin
+      # dirs to PATH ourselves. The key pins the pnpm version — keep it in
+      # sync with the `version` input below (package.json "packageManager").
+      - name: Cache pnpm install
         if: steps.filter.outputs.code == 'true'
+        id: pnpm-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/setup-pnpm
+          key: pnpm-setup-v5-${{ runner.os }}-${{ runner.arch }}-11.9.0
+
+      - name: Add cached pnpm to PATH
+        if: steps.filter.outputs.code == 'true' && steps.pnpm-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          # Mirror pnpm/action-setup's env: node_modules/.bin/bin holds the
+          # self-updated target version (higher precedence), node_modules/.bin
+          # the bootstrap symlink. GITHUB_PATH is used verbatim, so write
+          # native Windows paths on Windows runners.
+          PNPM_HOME="${USERPROFILE:-$HOME}/.cache/setup-pnpm/node_modules/.bin"
+          PNPM_BIN="$PNPM_HOME/bin"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PNPM_HOME="${PNPM_HOME//\//\\}"
+            PNPM_BIN="${PNPM_BIN//\//\\}"
+          fi
+          echo "$PNPM_HOME" >> "$GITHUB_PATH"
+          echo "$PNPM_BIN" >> "$GITHUB_PATH"
+          echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
+
+      - name: Setup pnpm (cache miss)
+        if: steps.filter.outputs.code == 'true' && steps.pnpm-cache.outputs.cache-hit != 'true'
         uses: pnpm/action-setup@v5
+        with:
+          version: 11.9.0
+          dest: ~/.cache/setup-pnpm
+          run_install: false
 
       - name: Setup Node.js
         if: steps.filter.outputs.code == 'true'
