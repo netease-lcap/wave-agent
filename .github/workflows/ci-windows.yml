@@ -74,10 +74,9 @@ jobs:
       - name: Tests
         shell: bash
         run: |
-          for i in $(seq 1 40); do
+          for i in $(seq 1 10); do
             echo "=== loop $i ==="
-            pnpm --filter wave-agent-sdk exec vitest run tests/agent/agent.abort.test.ts || exit 1
+            pnpm --filter wave-agent-sdk exec vitest run || exit 1
           done
-          pnpm --filter wave-agent-sdk exec vitest run &&
           pnpm --filter wave-code exec vitest run &&
           pnpm --filter wave-vscode exec vitest run
