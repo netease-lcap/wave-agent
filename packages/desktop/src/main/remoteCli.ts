@@ -70,6 +70,29 @@ function describeError(error: unknown): string {
   return lines.find((line) => !JOB_CONTROL_NOISE.test(line.trim())) ?? lines[0];
 }
 
+/**
+ * Strip ANSI/OSC escape sequences from remote probe output. Some login shells
+ * (zsh with iTerm2/WezTerm-style shell integration) write OSC 1337 markers to
+ * stdout on every `-lic` invocation — without a TTY the shell never hides
+ * them. They would break every strict parser below (`^v?\d+` version match,
+ * first-line home dir, the WAVE_REMOTE_FILE_V1 header…).
+ * ESC/BEL are interpolated by char code so the regex source carries no
+ * control-character escapes (the no-control-regex lint rejects them).
+ */
+const ESC = String.fromCharCode(27);
+const BEL = String.fromCharCode(7);
+const ANSI_ESCAPE_RE = new RegExp(
+  `${ESC}\\]` +
+    `[^${BEL}${ESC}]*` +
+    `(?:${BEL}|${ESC}\\\\)` +
+    `|${ESC}\\[[0-9;?]*[ -/]*[@-~]`,
+  "g",
+);
+
+export function stripAnsiEscapes(text: string): string {
+  return text.replace(ANSI_ESCAPE_RE, "");
+}
+
 /** Run a remote probe command under the host's login shell. */
 async function remoteCommand(host: string, command: string): Promise<string[]> {
   return buildSshSpawnArgs(host, await withRemoteLoginShell(host, command));
@@ -96,7 +119,7 @@ export async function resolveRemoteWaveBinary(
         timeout: PROBE_TIMEOUT_MS,
       },
     );
-    nodeVersion = stdout.trim();
+    nodeVersion = stripAnsiEscapes(stdout).trim();
   } catch {
     throw new Error(
       `主机 ${host} 上未检测到 Node.js。请先在远端安装 Node.js ≥ ${REMOTE_NODE_MIN_MAJOR}（https://nodejs.org）后重试`,
@@ -118,7 +141,7 @@ export async function resolveRemoteWaveBinary(
           timeout: PROBE_TIMEOUT_MS,
         },
       );
-      return stdout.trim();
+      return stripAnsiEscapes(stdout).trim();
     } catch {
       return "";
     }
@@ -167,7 +190,7 @@ async function getRemoteCliVersion(
         timeout: PROBE_TIMEOUT_MS,
       },
     );
-    const line = stdout.trim().split("\n")[0]?.trim();
+    const line = stripAnsiEscapes(stdout).trim().split("\n")[0]?.trim();
     if (!line) return null;
     // `wave -v` prints the bare version; tolerate a leading "v" just in case.
     return line.replace(/^v/, "");
@@ -296,7 +319,9 @@ export async function listRemoteDirs(
         timeout: PROBE_TIMEOUT_MS,
       },
     );
-    const lines = stdout.split("\n").filter((line) => line.length > 0);
+    const lines = stripAnsiEscapes(stdout)
+      .split("\n")
+      .filter((line) => line.length > 0);
     const resolvedPath = lines[0] ?? dir;
     const dirs = lines
       .slice(1)
@@ -373,7 +398,7 @@ export async function readRemoteFile(
         maxBuffer: 4 * 1024 * 1024,
       },
     );
-    const lines = stdout.split("\n");
+    const lines = stripAnsiEscapes(stdout).split("\n");
     if (lines[0] !== "WAVE_REMOTE_FILE_V1") {
       throw new Error("远端返回了无法识别的响应");
     }
@@ -428,7 +453,7 @@ export async function getRemoteHomeDir(host: string): Promise<string> {
         timeout: PROBE_TIMEOUT_MS,
       },
     );
-    const home = stdout.trim();
+    const home = stripAnsiEscapes(stdout).trim();
     if (!home) throw new Error("empty");
     return home;
   } catch {

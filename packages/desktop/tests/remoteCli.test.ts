@@ -55,6 +55,16 @@ function stubExec(results: StubResult[]) {
 const CONNECT_FAIL = new Error("ssh: connect to host failed");
 CONNECT_FAIL.name = "Error";
 
+/**
+ * Real stdout pollution from `zsh -lic` without a TTY on the user's remote
+ * hosts: iTerm2/WezTerm-style shell integration writes OSC 1337 markers before
+ * every command's output. Verified against liuyiqi@matrix 2026-08-15.
+ */
+const OSC1337_PREFIX =
+  "\x1b]1337;RemoteHost=liuyiqi@ubuntu.ubuntu-domain\x07" +
+  "\x1b]1337;CurrentDir=/home/liuyiqi\x07" +
+  "\x1b]1337;ShellIntegrationVersion=14;shell=zsh\x07";
+
 beforeEach(() => {
   h.execFile.mockReset();
   resetRemoteShellCache();
@@ -71,6 +81,22 @@ describe("resolveRemoteWaveBinary", () => {
     expect(info).toEqual({
       binaryPath: "/usr/local/bin/wave",
       nodeVersion: "v22.3.0",
+    });
+  });
+
+  it("strips OSC shell-integration markers from node -v and command -v output", async () => {
+    // `zsh -lic` on matrix prints OSC 1337 markers to stdout before each
+    // command's real output; the strict `^v?\d+` version parse used to hit the
+    // marker line and misreport a healthy v22.23.2 as "版本过低".
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: `${OSC1337_PREFIX}v22.23.2\n` },
+      { stdout: `${OSC1337_PREFIX}/usr/local/bin/wave\n` },
+    ]);
+    const info = await resolveRemoteWaveBinary("prod");
+    expect(info).toEqual({
+      binaryPath: "/usr/local/bin/wave",
+      nodeVersion: "v22.23.2",
     });
   });
 
@@ -258,6 +284,20 @@ describe("ensureRemoteCliUpToDate", () => {
     });
   });
 
+  it("parses a polluted wave -v line (OSC prefix) so the up-to-date binary is kept", async () => {
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: "v22.0.0" },
+      { stdout: "/usr/local/bin/wave" },
+      { stdout: `${OSC1337_PREFIX}1.0.0\n` },
+    ]);
+    const result = await ensureRemoteCliUpToDate("prod", "1.0.0");
+    expect(result).toEqual({
+      binaryPath: "/usr/local/bin/wave",
+      upgraded: false,
+    });
+  });
+
   it("upgrades via npm when the remote version is older than the target", async () => {
     stubExec([
       LOGIN_SHELL,
@@ -328,6 +368,20 @@ describe("ensureRemoteDaemon", () => {
       ((c[1] as string[]).at(-1) as string).includes("nohup"),
     );
     expect(start).toBeUndefined();
+  });
+
+  it("strips OSC markers from $HOME so the daemon socket path stays clean", async () => {
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: `${OSC1337_PREFIX}/home/user\n` }, // echo $HOME
+      { stdout: "v22.0.0" }, // node -v
+      { stdout: "/usr/local/bin/wave" }, // command -v
+      { stdout: "1.0.0\n" }, // wave -v
+      { stdout: "" }, // daemon socket probe — alive
+    ]);
+    await expect(ensureRemoteDaemon("prod", "1.0.0")).resolves.toBe(
+      "/home/user/.wave/daemon.sock",
+    );
   });
 
   it("launches the daemon when none is running", async () => {
@@ -435,6 +489,18 @@ describe("listRemoteDirs", () => {
     });
   });
 
+  it("strips OSC markers from the listing before parsing", async () => {
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: `${OSC1337_PREFIX}/home/user/repo\nb-dir\nA-dir\n` },
+    ]);
+    const result = await listRemoteDirs("prod", "/home/user/repo");
+    expect(result).toEqual({
+      resolvedPath: "/home/user/repo",
+      dirs: ["A-dir", "b-dir"],
+    });
+  });
+
   it("normalizes ~ and relative components via cd + pwd", async () => {
     stubExec([LOGIN_SHELL, { stdout: "/home/alice\nproj\n" }]);
     const result = await listRemoteDirs("prod", "~/code/..");
@@ -508,6 +574,23 @@ describe("readRemoteFile", () => {
     expect(
       Buffer.from(result.contentBase64 ?? "", "base64").toString("utf8"),
     ).toBe(content);
+  });
+
+  it("strips OSC markers before matching the V1 header", async () => {
+    stubExec([
+      LOGIN_SHELL,
+      {
+        stdout: `${OSC1337_PREFIX}WAVE_REMOTE_FILE_V1\ntype=text\nmime=text/plain\ntotal=1\ntruncated=0\n${base64("hi\n")}\n`,
+      },
+    ]);
+    const result = await readRemoteFile("prod", "/home/user/a.md");
+    expect(result).toEqual({
+      type: "text",
+      mime: "text/plain",
+      totalLines: 1,
+      truncated: false,
+      contentBase64: base64("hi\n"),
+    });
   });
 
   it("marks the payload truncated when the header says so", async () => {
