@@ -47,7 +47,11 @@ await build({
   // development-mode builds, which cuts Node parse/compile time at startup.
   minify: true,
   define: { "process.env.NODE_ENV": '"production"' },
-  logLevel: "info",
+  // "warning" (not "info") skips esbuild's output summary table, whose
+  // "2.8mb ⚠️" size warning is hardcoded at a 1MB threshold and cannot be
+  // suppressed via logOverride. The script's own console.log below already
+  // reports the output size; real warnings/errors still print.
+  logLevel: "warning",
 });
 
 const size = fs.statSync(outfile).size;
