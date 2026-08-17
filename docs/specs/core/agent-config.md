@@ -118,6 +118,24 @@ order: 60
 
 ---
 
+### 用户故事：CLI 不在运行时强制 NODE_ENV，子进程环境与用户原始环境一致（优先级：P1）
+
+Wave Code CLI 入口曾强制 `process.env.NODE_ENV ||= "production"`，以加载 React/ink 生产构建——react-reconciler 开发构建每次组件渲染都会向 Node 全局 perf buffer 写入 `performance.measure()` 条目（永不清空），长会话累积到百万条会触发 `MaxPerformanceEntryBufferExceededWarning` 并泄漏约 150MB。但 `process.env` 的修改会被所有 spawn 的子进程继承：wave 是常驻 daemon，它生成的每个 shell（Bash 工具、`!` bang 命令、后台任务、hooks、shell 快照捕获）都带 `NODE_ENV=production`，导致 `npm install`/`pnpm install` 跳过 devDependencies、构建与测试框架行为被改变。作为 wave 会话中的开发者，我希望子进程环境与启动 wave 时的原始环境一致（未设置 `NODE_ENV` 即不含该键），以便 `npm install` 等命令与普通登录 shell 行为一致。
+
+**为什么是这个优先级**：这是静默行为破坏——依赖缺失报错时根因（`NODE_ENV`）与环境无关，排查成本高，影响所有把 wave 当作开发环境执行命令的用户。React 生产构建由构建期 esbuild define 保证（对齐 Claude Code 的做法：编译期替换 `process.env.NODE_ENV`，运行时不做修改），因此运行时强制并非必要。
+
+**独立测试**：在无 `NODE_ENV` 的环境启动 wave，`echo $NODE_ENV` 应为空、`npm install` 正常安装 devDependencies；在 `NODE_ENV=development` 环境启动 wave，CLI 进程与子进程均保持 `development`。
+
+**验收场景**：
+
+1. **假设**用户环境未设置 `NODE_ENV` 且启动 wave CLI，**当**CLI 进程加载时，**则**CLI 自身 `process.env.NODE_ENV` 保持未设置（不注入 `production`），React 生产构建由构建期 define 保证，无 `MaxPerformanceEntryBufferExceededWarning`
+2. **假设**用户显式设置 `NODE_ENV=development` 启动 wave，**当**CLI 加载时，**则**`process.env.NODE_ENV` 保持 `development`，不被覆盖
+3. **假设**用户环境未设置 `NODE_ENV`，**当**wave 会话内通过 Bash 工具、`!` bang 命令、后台任务或 hooks 启动子进程时，**则**子进程环境不包含 `NODE_ENV`，`echo $NODE_ENV` 输出为空（与普通登录 shell 一致）
+4. **假设**用户以 `NODE_ENV=development` 启动 wave，**当**wave 会话内启动子进程时，**则**子进程的 `NODE_ENV` 为 `development`
+5. **假设**用户环境未设置 `NODE_ENV`，**当**wave 会话内运行 `npm install` 时，**则**devDependencies 被正常安装，不被 `production` 跳过
+
+---
+
 ### 用户故事：设置实时重载（优先级：P2）
 
 开发者正在积极工作，需要修改其 settings.json 配置（hooks、环境变量等）。他们希望这些更改立即生效而无需重启 SDK，实现配置的快速迭代。Wave Code CLI 将受益于此，因为它使用 SDK。
