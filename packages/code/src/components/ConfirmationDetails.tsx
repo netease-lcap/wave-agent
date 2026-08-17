@@ -43,6 +43,8 @@ const getActionDescription = (
 
 // Row budget for the scroll indicators (↑ more / ↓ more, up to one each).
 const SCROLL_INDICATOR_BUDGET = 2;
+// Row budget for the fixed scroll-key hint shown when content is scrollable.
+const SCROLL_HINT_BUDGET = 1;
 
 export interface ConfirmationDetailsProps {
   toolName: string;
@@ -69,10 +71,13 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
   const headerRows = 2 + (warning ? 1 : 0);
 
   // Number of content rows rendered at once. The header stays fixed above the
-  // scrollable area; rows are budgeted for the scroll indicators.
+  // scrollable area; rows are budgeted for the scroll indicators and hint.
   const visibleCount = Math.max(
     1,
-    (maxHeight ?? 24) - headerRows - SCROLL_INDICATOR_BUDGET,
+    (maxHeight ?? 24) -
+      headerRows -
+      SCROLL_INDICATOR_BUDGET -
+      SCROLL_HINT_BUDGET,
   );
 
   // Content linearized into rows so the details area can be scrolled with
@@ -135,12 +140,21 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
     setScrollOffset(0);
   }, [toolName, toolInput, planContent]);
 
-  useInput((_input, key) => {
+  const halfPage = Math.max(1, Math.ceil(visibleCount / 2));
+  useInput((input, key) => {
     if (key.pageUp) {
       setScrollOffset((offset) => Math.max(0, offset - visibleCount));
     }
     if (key.pageDown) {
       setScrollOffset((offset) => Math.min(maxScroll, offset + visibleCount));
+    }
+    // Ctrl+u/Ctrl+d scroll half a page — fallback for keyboards without
+    // PgUp/PgDn (aligned with Claude Code's modal pager keys).
+    if (key.ctrl && input === "u") {
+      setScrollOffset((offset) => Math.max(0, offset - halfPage));
+    }
+    if (key.ctrl && input === "d") {
+      setScrollOffset((offset) => Math.min(maxScroll, offset + halfPage));
     }
   });
 
@@ -186,6 +200,13 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
         <Box>
           <Text color="gray" dimColor>
             ↓ {totalLines - clampedOffset - visibleCount} more
+          </Text>
+        </Box>
+      )}
+      {(hasMoreAbove || hasMoreBelow) && (
+        <Box>
+          <Text color="gray" dimColor>
+            PgUp/PgDn page • Ctrl+u/d half page
           </Text>
         </Box>
       )}

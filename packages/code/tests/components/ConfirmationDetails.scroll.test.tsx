@@ -31,8 +31,8 @@ describe("ConfirmationDetails scrolling", () => {
     await vi.waitFor(() => {
       const frame = stripAnsiColors(lastFrame() || "");
       expect(frame).toContain("plan line 0");
-      expect(frame).not.toContain("plan line 6"); // outside the 6-row viewport
-      expect(frame).toContain("↓ 24 more");
+      expect(frame).not.toContain("plan line 5"); // outside the 5-row viewport
+      expect(frame).toContain("↓ 25 more");
       expect(frame).not.toContain("↑ ");
     });
   });
@@ -52,10 +52,10 @@ describe("ConfirmationDetails scrolling", () => {
 
     await vi.waitFor(() => {
       const frame = stripAnsiColors(lastFrame() || "");
-      expect(frame).toContain("plan line 6");
+      expect(frame).toContain("plan line 5");
       expect(frame).not.toContain("plan line 0");
-      expect(frame).toContain("↑ 6 more");
-      expect(frame).toContain("↓ 18 more");
+      expect(frame).toContain("↑ 5 more");
+      expect(frame).toContain("↓ 20 more");
     });
   });
 
@@ -69,7 +69,7 @@ describe("ConfirmationDetails scrolling", () => {
     );
     await sleep(30);
 
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       stdin.write("\u001B[6~"); // PgDn
       await sleep(20);
     }
@@ -78,7 +78,7 @@ describe("ConfirmationDetails scrolling", () => {
       const frame = stripAnsiColors(lastFrame() || "");
       expect(frame).toContain("plan line 29"); // last line reachable
       expect(frame).not.toContain("↓ ");
-      expect(frame).toContain("↑ 24 more");
+      expect(frame).toContain("↑ 25 more");
     });
   });
 
@@ -104,7 +104,69 @@ describe("ConfirmationDetails scrolling", () => {
     });
   });
 
-  it("shows no indicators when the content fits", async () => {
+  it("scrolls down half a page with Ctrl+d", async () => {
+    const { stdin, lastFrame } = render(
+      <ConfirmationDetails
+        toolName="ExitPlanMode"
+        planContent={bigPlan}
+        maxHeight={10}
+      />,
+    );
+    await sleep(30);
+
+    stdin.write("\u0004"); // Ctrl+d
+    await sleep(30);
+
+    await vi.waitFor(() => {
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("plan line 3"); // half of 5 rounded up
+      expect(frame).not.toContain("plan line 2");
+      expect(frame).toContain("↑ 3 more");
+      expect(frame).toContain("↓ 22 more");
+    });
+  });
+
+  it("scrolls back up half a page with Ctrl+u", async () => {
+    const { stdin, lastFrame } = render(
+      <ConfirmationDetails
+        toolName="ExitPlanMode"
+        planContent={bigPlan}
+        maxHeight={10}
+      />,
+    );
+    await sleep(30);
+
+    stdin.write("\u001B[6~"); // PgDn → offset 5
+    await sleep(20);
+    stdin.write("\u0015"); // Ctrl+u → offset 2
+    await sleep(20);
+
+    await vi.waitFor(() => {
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("plan line 2");
+      expect(frame).not.toContain("plan line 1");
+      expect(frame).toContain("↑ 2 more");
+      expect(frame).toContain("↓ 23 more");
+    });
+  });
+
+  it("shows the scroll key hint while content is scrollable", async () => {
+    const { lastFrame } = render(
+      <ConfirmationDetails
+        toolName="ExitPlanMode"
+        planContent={bigPlan}
+        maxHeight={10}
+      />,
+    );
+
+    await vi.waitFor(() => {
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("PgUp/PgDn page");
+      expect(frame).toContain("Ctrl+u/d half page");
+    });
+  });
+
+  it("shows no indicators or hint when the content fits", async () => {
     const { lastFrame } = render(
       <ConfirmationDetails
         toolName="ExitPlanMode"
@@ -117,6 +179,7 @@ describe("ConfirmationDetails scrolling", () => {
       const frame = stripAnsiColors(lastFrame() || "");
       expect(frame).toContain("short plan");
       expect(frame).not.toContain("more");
+      expect(frame).not.toContain("half page");
     });
   });
 });
