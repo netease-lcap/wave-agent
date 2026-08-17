@@ -21,16 +21,13 @@ if (process.argv.slice(2).some((a) => versionArgs.includes(a))) {
   process.exit(0);
 }
 
-// Force React's production build. react-reconciler picks its development build
-// unless NODE_ENV === "production"; the dev build records a performance.measure()
-// entry for every component render into Node's global perf buffer (never
-// cleared), so long CLI sessions accumulate ~150MB per million entries and
-// eventually trigger MaxPerformanceEntryBufferExceededWarning. Must be set
-// before the dynamic import below evaluates the app graph.
-process.env.NODE_ENV ||= "production";
-
 // Import and start the CLI (single-file esbuild bundle — avoids Node's
 // per-import node_modules resolution at startup, ~5s -> ~0.6s module load).
+// React's production build is selected at compile time (esbuild define
+// replaces `process.env.NODE_ENV` with "production" — see scripts/bundle.mjs),
+// so the runtime environment is left untouched: child processes spawned by the
+// daemon inherit the user's original NODE_ENV (or none), keeping e.g.
+// `npm install` from skipping devDependencies.
 import("../dist/bundle/wave.mjs")
   .then(async ({ main }) => {
     try {

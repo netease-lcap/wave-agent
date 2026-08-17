@@ -28,7 +28,7 @@
     "README.md"
   ],
   "scripts": {
-    "wave": "tsx --tsconfig tsconfig.dev.json src/dev-entry.ts",
+    "wave": "tsx --tsconfig tsconfig.dev.json src/index.ts",
     "build": "rimraf dist && node scripts/bundle.mjs",
     "type-check": "tsc --noEmit --incremental",
     "test": "vitest run --reporter=dot",
