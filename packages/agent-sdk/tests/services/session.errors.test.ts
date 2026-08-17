@@ -38,6 +38,7 @@ vi.mock("@/services/jsonlHandler.js", () => ({
       generateSessionFilename: vi.fn(),
       getLastMessage: vi.fn(),
       createSession: vi.fn(),
+      readMetadata: vi.fn().mockResolvedValue(null),
     };
   }),
 }));
@@ -73,6 +74,13 @@ describe("Session Error Handling and Edge Cases", () => {
     >;
     getLastMessage: Mock<(filePath: string) => Promise<Message | null>>;
     createSession: Mock<(filePath: string) => Promise<void>>;
+    readMetadata: Mock<
+      (filePath: string) => Promise<{
+        workdir?: string;
+        createdAt?: string;
+        gitBranch?: string;
+      } | null>
+    >;
   };
   let mockPathEncoder: {
     createProjectDirectory: Mock<
@@ -134,6 +142,7 @@ describe("Session Error Handling and Edge Cases", () => {
         ),
       getLastMessage: vi.fn().mockResolvedValue(null),
       createSession: vi.fn().mockResolvedValue(undefined),
+      readMetadata: vi.fn().mockResolvedValue(null),
     };
 
     mockPathEncoder = {

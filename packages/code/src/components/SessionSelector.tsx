@@ -193,6 +193,7 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
                   >
                     {session.id.slice(0, 8)} | {lastActiveAt} |{" "}
                     {session.latestTotalTokens} tokens
+                    {session.branch ? ` | [${session.branch}]` : ""}
                     {showProjectPath && session.workdir
                       ? ` | ${session.workdir}`
                       : ""}

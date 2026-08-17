@@ -19,6 +19,21 @@ export interface JsonlWriteOptions {
 }
 
 /**
+ * Creation-time metadata persisted in the session file's header line
+ * (`{"type":"metadata",...}`). The header is append-only — written once on
+ * session creation and never rewritten — so only fields that are fixed at
+ * creation time belong here.
+ */
+export interface SessionMetadataHeader {
+  /** Real working directory (the encoded project dir name is lossy for paths containing "-"). */
+  workdir?: string;
+  /** ISO 8601 creation timestamp. */
+  createdAt?: string;
+  /** Git branch at creation time (`git branch --show-current`), when the directory is a git repo. */
+  gitBranch?: string;
+}
+
+/**
  * JSONL handler class for message persistence operations
  */
 export class JsonlHandler {
@@ -33,21 +48,28 @@ export class JsonlHandler {
   /**
    * Create a new session file.
    *
-   * When `workdir` is provided, the first line is a metadata header recording
-   * the real working directory: `{"type":"metadata","workdir":"..."}`. The
+   * When `metadata` is provided, the first line is a metadata header
+   * recording creation-time facts about the session:
+   * `{"type":"metadata","workdir":...,"createdAt":...,"gitBranch":...}`. The
    * encoded project dir name is lossy for paths containing "-", so persisting
-   * the real path lets session listing show it without decoding. The header
-   * carries no `timestamp`, so message readers filter it out naturally.
+   * the real path lets session listing show it without decoding; `createdAt`
+   * and `gitBranch` similarly avoid lossy/fabricated reconstruction later.
+   * The header carries no `timestamp`, so message readers filter it out
+   * naturally.
    *
-   * Legacy callers that omit `workdir` still get an empty file.
+   * Legacy callers that omit `metadata` still get an empty file.
    */
-  async createSession(filePath: string, workdir?: string): Promise<void> {
+  async createSession(
+    filePath: string,
+    metadata?: SessionMetadataHeader,
+  ): Promise<void> {
     // Ensure directory exists
     await this.ensureDirectory(dirname(filePath));
 
-    const content = workdir
-      ? `${JSON.stringify({ type: "metadata", workdir })}\n`
-      : "";
+    const content =
+      metadata && Object.keys(metadata).length > 0
+        ? `${JSON.stringify({ type: "metadata", ...metadata })}\n`
+        : "";
     await writeFile(filePath, content, "utf8");
   }
 
@@ -194,26 +216,29 @@ export class JsonlHandler {
   }
 
   /**
-   * Read the real workdir from the session file's metadata header line.
+   * Read the creation-time metadata from the session file's header line.
    *
-   * Newer session files start with a `{"type":"metadata","workdir":...}` line
-   * (see `createSession`). Legacy files have no header.
+   * Newer session files start with a `{"type":"metadata",...}` line (see
+   * `createSession`). Legacy files have no header.
    *
    * @param filePath - Path to the session JSONL file
-   * @returns The persisted workdir, or null when the file has no header
+   * @returns The persisted metadata, or null when the file has no header
    */
-  async readWorkdirMetadata(filePath: string): Promise<string | null> {
+  async readMetadata(filePath: string): Promise<SessionMetadataHeader | null> {
     try {
       const lines = await readFirstNLines(filePath, 1);
       if (lines.length === 0) {
         return null;
       }
-      const header = JSON.parse(lines[0]) as {
-        type?: string;
-        workdir?: string;
-      };
-      if (header.type === "metadata" && typeof header.workdir === "string") {
-        return header.workdir;
+      const header = JSON.parse(lines[0]) as
+        | ({ type?: string } & SessionMetadataHeader)
+        | null;
+      if (header?.type === "metadata") {
+        return {
+          workdir: header.workdir,
+          createdAt: header.createdAt,
+          gitBranch: header.gitBranch,
+        };
       }
     } catch {
       // Unreadable or invalid first line — treat as a legacy file

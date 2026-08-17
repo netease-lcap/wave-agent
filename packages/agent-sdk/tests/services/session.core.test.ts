@@ -45,7 +45,7 @@ vi.mock("@/services/jsonlHandler.js", () => ({
       generateSessionFilename: vi.fn(),
       getLastMessage: vi.fn(),
       createSession: vi.fn(),
-      readWorkdirMetadata: vi.fn().mockResolvedValue(null),
+      readMetadata: vi.fn().mockResolvedValue(null),
     };
   }),
 }));
@@ -86,7 +86,19 @@ describe("Session Core Functionality", () => {
       (sessionId: string, sessionType?: "main" | "subagent") => string
     >;
     getLastMessage: Mock<(filePath: string) => Promise<Message | null>>;
-    createSession: Mock<(filePath: string) => Promise<void>>;
+    createSession: Mock<
+      (
+        filePath: string,
+        metadata?: { workdir?: string; createdAt?: string; gitBranch?: string },
+      ) => Promise<void>
+    >;
+    readMetadata: Mock<
+      (filePath: string) => Promise<{
+        workdir?: string;
+        createdAt?: string;
+        gitBranch?: string;
+      } | null>
+    >;
   };
   let mockPathEncoder: {
     createProjectDirectory: Mock<
@@ -176,6 +188,7 @@ describe("Session Core Functionality", () => {
         ), // Default implementation for testing
       getLastMessage: vi.fn().mockResolvedValue(null), // Default: no last message
       createSession: vi.fn().mockResolvedValue(undefined), // Default: successful session creation
+      readMetadata: vi.fn().mockResolvedValue(null),
     };
 
     mockPathEncoder = {

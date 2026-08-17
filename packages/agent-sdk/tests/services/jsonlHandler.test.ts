@@ -601,12 +601,12 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
     });
   });
 
-  describe("Session creation with workdir metadata header", () => {
+  describe("Session creation with metadata header", () => {
     it("writes a metadata header line when a workdir is provided", async () => {
       const filePath =
         "/test/sessions/12345678-1234-1234-1234-123456789abc.jsonl";
 
-      await handler.createSession(filePath, "/home/u/repo-wt-1");
+      await handler.createSession(filePath, { workdir: "/home/u/repo-wt-1" });
 
       expect(mockWriteFile).toHaveBeenCalledOnce();
       const writtenContent = mockWriteFile.mock.calls[0][1] as string;
@@ -615,7 +615,50 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
       );
     });
 
-    it("does not add a metadata header when workdir is omitted", async () => {
+    it("writes createdAt and gitBranch into the metadata header", async () => {
+      const filePath =
+        "/test/sessions/12345678-1234-1234-1234-123456789abc.jsonl";
+
+      await handler.createSession(filePath, {
+        workdir: "/home/u/repo",
+        createdAt: "2026-08-14T00:00:00.000Z",
+        gitBranch: "feature/x",
+      });
+
+      expect(mockWriteFile).toHaveBeenCalledOnce();
+      const writtenContent = mockWriteFile.mock.calls[0][1] as string;
+      expect(writtenContent).toBe(
+        `${JSON.stringify({
+          type: "metadata",
+          workdir: "/home/u/repo",
+          createdAt: "2026-08-14T00:00:00.000Z",
+          gitBranch: "feature/x",
+        })}\n`,
+      );
+    });
+
+    it("omits undefined metadata fields from the header", async () => {
+      const filePath =
+        "/test/sessions/12345678-1234-1234-1234-123456789abc.jsonl";
+
+      await handler.createSession(filePath, {
+        workdir: "/home/u/repo",
+        createdAt: "2026-08-14T00:00:00.000Z",
+        gitBranch: undefined,
+      });
+
+      expect(mockWriteFile).toHaveBeenCalledOnce();
+      const writtenContent = mockWriteFile.mock.calls[0][1] as string;
+      expect(writtenContent).toBe(
+        `${JSON.stringify({
+          type: "metadata",
+          workdir: "/home/u/repo",
+          createdAt: "2026-08-14T00:00:00.000Z",
+        })}\n`,
+      );
+    });
+
+    it("does not add a metadata header when metadata is omitted", async () => {
       const filePath =
         "/test/sessions/12345678-1234-1234-1234-123456789abc.jsonl";
 
@@ -658,18 +701,27 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
       expect(result).toBeNull();
     });
 
-    it("readWorkdirMetadata returns the persisted workdir", async () => {
+    it("readMetadata returns the persisted metadata", async () => {
       const { readFirstNLines } = await import("@/utils/fileUtils.js");
       vi.mocked(readFirstNLines).mockResolvedValue([
-        JSON.stringify({ type: "metadata", workdir: "/home/u/repo-wt-1" }),
+        JSON.stringify({
+          type: "metadata",
+          workdir: "/home/u/repo-wt-1",
+          createdAt: "2026-08-14T00:00:00.000Z",
+          gitBranch: "feature/x",
+        }),
       ]);
 
-      const result = await handler.readWorkdirMetadata("/test/session.jsonl");
+      const result = await handler.readMetadata("/test/session.jsonl");
 
-      expect(result).toBe("/home/u/repo-wt-1");
+      expect(result).toEqual({
+        workdir: "/home/u/repo-wt-1",
+        createdAt: "2026-08-14T00:00:00.000Z",
+        gitBranch: "feature/x",
+      });
     });
 
-    it("readWorkdirMetadata returns null for legacy files without a header", async () => {
+    it("readMetadata returns null for legacy files without a header", async () => {
       const { readFirstNLines } = await import("@/utils/fileUtils.js");
       vi.mocked(readFirstNLines).mockResolvedValue([
         JSON.stringify({
@@ -680,16 +732,16 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
         }),
       ]);
 
-      const result = await handler.readWorkdirMetadata("/test/session.jsonl");
+      const result = await handler.readMetadata("/test/session.jsonl");
 
       expect(result).toBeNull();
     });
 
-    it("readWorkdirMetadata returns null when the file has no lines", async () => {
+    it("readMetadata returns null when the file has no lines", async () => {
       const { readFirstNLines } = await import("@/utils/fileUtils.js");
       vi.mocked(readFirstNLines).mockResolvedValue([]);
 
-      const result = await handler.readWorkdirMetadata("/test/session.jsonl");
+      const result = await handler.readMetadata("/test/session.jsonl");
 
       expect(result).toBeNull();
     });

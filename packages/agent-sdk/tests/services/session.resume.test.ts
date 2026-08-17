@@ -54,7 +54,7 @@ describe("Session resume: cross-directory listing & restore", () => {
     read: ReturnType<typeof vi.fn>;
     getLastMessage: ReturnType<typeof vi.fn>;
     generateSessionFilename: ReturnType<typeof vi.fn>;
-    readWorkdirMetadata: ReturnType<typeof vi.fn>;
+    readMetadata: ReturnType<typeof vi.fn>;
   };
 
   const makeMessage = (timestamp: string): Message =>
@@ -96,7 +96,7 @@ describe("Session resume: cross-directory listing & restore", () => {
               ? `${sessionId}.jsonl`
               : `subagent-${sessionId}.jsonl`,
         ),
-      readWorkdirMetadata: vi.fn().mockResolvedValue(null),
+      readMetadata: vi.fn().mockResolvedValue(null),
     };
 
     // Point the mocked constructors at our per-test instances
@@ -316,9 +316,9 @@ describe("Session resume: cross-directory listing & restore", () => {
       mockPathEncoder.decodeSync.mockImplementation((name: string) =>
         name === "home-u-repo-wt-1" ? "/home-u-repo-wt-1" : `/${name}`,
       );
-      mockJsonlHandler.readWorkdirMetadata.mockResolvedValue(
-        "/home/u/repo-wt-1",
-      );
+      mockJsonlHandler.readMetadata.mockResolvedValue({
+        workdir: "/home/u/repo-wt-1",
+      });
 
       vi.mocked(fs.promises.readdir)
         .mockResolvedValueOnce(["home-u-repo-wt-1"] as unknown as Awaited<
@@ -338,6 +338,38 @@ describe("Session resume: cross-directory listing & restore", () => {
 
       expect(sessions).toHaveLength(1);
       expect(sessions[0]!.workdir).toBe("/home/u/repo-wt-1");
+    });
+
+    it("reads createdAt and gitBranch from the metadata header", async () => {
+      const fs = await import("fs");
+      const sessionId = randomUUID();
+      const createdAt = "2026-08-14T00:00:00.000Z";
+
+      mockJsonlHandler.readMetadata.mockResolvedValue({
+        workdir: "/home/u/repo",
+        createdAt,
+        gitBranch: "feature/x",
+      });
+
+      vi.mocked(fs.promises.readdir)
+        .mockResolvedValueOnce(["home-u-repo"] as unknown as Awaited<
+          ReturnType<typeof fs.promises.readdir>
+        >)
+        .mockResolvedValueOnce([`${sessionId}.jsonl`] as unknown as Awaited<
+          ReturnType<typeof fs.promises.readdir>
+        >);
+      vi.mocked(fs.promises.stat).mockResolvedValue({
+        isDirectory: () => true,
+      } as unknown as Awaited<ReturnType<typeof fs.promises.stat>>);
+      mockJsonlHandler.getLastMessage.mockResolvedValue(
+        makeMessage(new Date().toISOString()),
+      );
+
+      const sessions = await listAllSessions();
+
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]!.createdAt.toISOString()).toBe(createdAt);
+      expect(sessions[0]!.branch).toBe("feature/x");
     });
 
     it("shows the real worktree path in worktree mode (indexed path wins)", async () => {

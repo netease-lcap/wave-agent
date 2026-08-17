@@ -175,6 +175,18 @@ describe("SessionSelector", () => {
     expect(output).toContain("| /test");
   });
 
+  it("should render the git branch tag when the session has a branch", () => {
+    const sessions = mockSessions.map((s, i) => ({
+      ...s,
+      branch: i === 0 ? "feature/x" : undefined,
+    }));
+    const { lastFrame } = render(
+      <SessionSelector {...mockProps} sessions={sessions} />,
+    );
+    const output = lastFrame();
+    expect(output).toContain("| [feature/x]");
+  });
+
   it("should show Ctrl+A / Ctrl+W hints when their toggles are available", () => {
     // No toggles → no shortcut hints
     const { lastFrame: plainFrame } = render(

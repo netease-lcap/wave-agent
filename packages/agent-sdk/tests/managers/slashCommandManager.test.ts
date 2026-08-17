@@ -18,6 +18,7 @@ import type { MemoryService } from "../../src/services/memory.js";
 const mockExec = vi.hoisted(() => vi.fn());
 vi.mock("child_process", () => ({
   exec: mockExec,
+  execFile: mockExec,
 }));
 vi.mock("util", () => ({
   promisify: vi.fn(() => mockExec),

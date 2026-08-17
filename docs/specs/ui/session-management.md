@@ -148,6 +148,24 @@ order: 10
 
 ---
 
+### 用户故事：会话元数据头：真实创建时间与 git 分支（优先级：P1）
+
+作为 `wave -r` 用户，我希望会话文件的 metadata header 持久化真实创建时间（`createdAt`）与创建时的 git 分支（`gitBranch`），以便列表能使用真实创建时间，并在多 worktree 场景区分同一仓库不同分支的会话。
+
+**为什么是这个优先级**：`SessionMetadata.createdAt` 目前是列表扫描时即时生成的 `new Date()`（恒等于"当前时间"，完全失真）；多 worktree 场景的会话无法显示所属分支，只能靠目录名猜测。
+
+**独立测试**：创建会话后检查 JSONL 首行为 metadata header 且含 `workdir`、`createdAt`、`gitBranch` 字段；列表返回的 `createdAt` 与 header 一致；非 git 目录创建会话时 header 不含 `gitBranch`。
+
+**验收场景**：
+
+1. **假设**创建新会话，**当** session 文件写入时，**则**首行为 metadata header，含 `workdir` 与 `createdAt`（ISO 8601，会话创建时刻）；目录为 git 仓库时含 `gitBranch`（`git branch --show-current` 结果），非 git 目录或执行失败时省略 `gitBranch`。
+2. **假设**会话文件带 metadata header，**当**会话列表（当前目录 / 全项目 / worktree 模式）返回 `SessionMetadata` 时，**则** `createdAt` 取 header 中的真实创建时间，而非每次扫描生成当前时间。
+3. **假设**会话文件带 `gitBranch`，**当** `wave -r` 选择器渲染会话行时，**则**行尾显示该分支标签（如 `[main]`）；无分支信息时不显示。
+4. **假设**旧版会话文件（无 header 或 header 缺 `createdAt`），**当**列表返回时，**则** `createdAt` 回退为列表生成时的当前时间（legacy 文件无创建时间记录，行为不劣化）。
+5. **假设**git 命令执行失败或超时（非 git 目录、git 不可用、目录被删除），**当**创建会话时，**则** header 省略 `gitBranch`，创建流程不中断、不报错。
+
+---
+
 ### 边界情况
 
 - **权限问题**：如果无法创建或写入会话目录，系统应优雅地失败并给出清晰的错误提示。
@@ -162,3 +180,6 @@ order: 10
 - **长路径解码兜底**：项目目录名被哈希截断时，全项目模式展示编码名兜底；恢复仍按目录内文件定位，不受展示影响。
 - **剪贴板不可用**：跨项目提示的 `cd` 命令复制失败时仍显示命令文本，用户可手动复制。
 - **worktree 目录已删除**：选中的会话属于已删除的 worktree 时按"其他项目"处理，给出 `cd` 命令提示而非报错。
+- **metadata header 向后兼容**：`createSession` 不传 metadata 时仍写空文件（旧调用方不变）；读取侧缺 header 的 legacy 文件走 decodeSync/当前时间回退。
+- **metadata header 只读**：header 是 append-only 文件的首行，创建后不重写；`gitBranch` 为创建时刻快照，不随后续分支切换更新。
+- **gitBranch 为 per-session 数据**：同一 workdir 不同时间创建的会话可能在不同分支，`gitBranch` 按会话文件逐一读取，不做目录级缓存。
