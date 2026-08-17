@@ -21,6 +21,14 @@ if (process.argv.slice(2).some((a) => versionArgs.includes(a))) {
   process.exit(0);
 }
 
+// Force React's production build. react-reconciler picks its development build
+// unless NODE_ENV === "production"; the dev build records a performance.measure()
+// entry for every component render into Node's global perf buffer (never
+// cleared), so long CLI sessions accumulate ~150MB per million entries and
+// eventually trigger MaxPerformanceEntryBufferExceededWarning. Must be set
+// before the dynamic import below evaluates the app graph.
+process.env.NODE_ENV ||= "production";
+
 // Import and start the CLI
 import("../dist/index.js")
   .then(async ({ main }) => {
