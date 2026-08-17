@@ -256,6 +256,53 @@ function insertTextWithPlaceholder(
 }
 
 /**
+ * Delete a placeholder token ([LongText#N] / [Image #N]) as a whole block
+ * when the cursor sits at the token's end, aligned with Claude Code's
+ * Cursor.deleteTokenBefore (Cursor.ts:937-969): the token must be preceded
+ * by start-of-input or whitespace and followed by whitespace or EOL, so a
+ * mid-token cursor or a token glued to following text falls back to
+ * one-character deletion. Also drops the deleted token's longTextMap entry.
+ * Returns null when no token is at the cursor position.
+ */
+function deleteTokenBefore(
+  inputText: string,
+  cursorPosition: number,
+  longTextMap: Record<string, string>,
+): {
+  inputText: string;
+  cursorPosition: number;
+  longTextMap: Record<string, string>;
+} | null {
+  if (cursorPosition <= 0) {
+    return null;
+  }
+
+  // Word-boundary guard (aligned with CC): only trigger when the char after
+  // the cursor is whitespace or the end of the string.
+  const charAfter = inputText[cursorPosition];
+  if (charAfter !== undefined && !/\s/.test(charAfter)) {
+    return null;
+  }
+
+  const textBefore = inputText.slice(0, cursorPosition);
+  const tokenMatch = textBefore.match(/(^|\s)\[(LongText#\d+|Image #\d+)\]$/);
+  if (!tokenMatch) {
+    return null;
+  }
+
+  const tokenStart = tokenMatch.index! + tokenMatch[1]!.length;
+  const token = tokenMatch[0].slice(tokenMatch[1]!.length);
+  const newLongTextMap = { ...longTextMap };
+  delete newLongTextMap[token];
+
+  return {
+    inputText: inputText.slice(0, tokenStart) + inputText.slice(cursorPosition),
+    cursorPosition: tokenStart,
+    longTextMap: newLongTextMap,
+  };
+}
+
+/**
  * Submit the current input text: extract [Image #N] references, route /btw
  * and CLI-internal slash commands, otherwise send as a message. Returns null
  * when there is nothing to submit (empty text).
@@ -823,7 +870,9 @@ export function inputReducer(
       // chunk (e.g. "\x7f\x7f") that ink cannot parse into a key event, so it
       // arrives as raw input and would otherwise be treated as a paste and
       // inserted literally. Treat each DEL as a synchronous backspace instead
-      // (aligned with Claude Code Issue #1853).
+      // (aligned with Claude Code Issue #1853). Each DEL deletes a placeholder
+      // token as a whole block first, falling back to one character (aligned
+      // with Claude Code's useTextInput.ts:442-465).
       if (!key.backspace && !key.delete && input.includes("\x7f")) {
         const delCount = (input.match(/\x7f/g) || []).length;
 
@@ -834,74 +883,92 @@ export function inputReducer(
           };
         }
 
-        if (state.cursorPosition > 0) {
-          const newCursorPosition = Math.max(
-            0,
-            state.cursorPosition - delCount,
-          );
-          const newInputText =
-            state.inputText.substring(0, newCursorPosition) +
-            state.inputText.substring(state.cursorPosition);
-
-          const newState = {
-            ...state,
-            inputText: newInputText,
-            cursorPosition: newCursorPosition,
-            historyIndex: -1,
-          };
-
-          // Deactivate selectors if their trigger character was deleted
-          if (
-            newState.showFileSelector &&
-            newCursorPosition <= newState.atPosition
-          ) {
-            newState.showFileSelector = false;
-            newState.atPosition = -1;
-            newState.fileSearchQuery = "";
-            newState.isFileSearching = false;
-          }
-          if (
-            newState.showCommandSelector &&
-            newCursorPosition <= newState.slashPosition
-          ) {
-            newState.showCommandSelector = false;
-            newState.slashPosition = -1;
-            newState.commandSearchQuery = "";
-          }
-
-          // Reactivate selectors if cursor is within a trigger word
-          const atPos = getAtSelectorPosition(newInputText, newCursorPosition);
-          if (atPos !== -1 && !state.showFileSelector) {
-            newState.showFileSelector = true;
-            newState.atPosition = atPos;
-            newState.isFileSearching = true;
-          }
-          const slashPos = getSlashSelectorPosition(
+        let newInputText = state.inputText;
+        let newCursorPosition = state.cursorPosition;
+        let newLongTextMap = state.longTextMap;
+        for (let i = 0; i < delCount; i++) {
+          const tokenDeletion = deleteTokenBefore(
             newInputText,
             newCursorPosition,
+            newLongTextMap,
           );
-          if (slashPos !== -1 && !state.showCommandSelector) {
-            newState.showCommandSelector = true;
-            newState.slashPosition = slashPos;
+          if (tokenDeletion) {
+            newInputText = tokenDeletion.inputText;
+            newCursorPosition = tokenDeletion.cursorPosition;
+            newLongTextMap = tokenDeletion.longTextMap;
+          } else if (newCursorPosition > 0) {
+            newInputText =
+              newInputText.substring(0, newCursorPosition - 1) +
+              newInputText.substring(newCursorPosition);
+            newCursorPosition -= 1;
           }
-
-          // Update queries
-          if (newState.showFileSelector && newState.atPosition >= 0) {
-            newState.fileSearchQuery = newInputText.substring(
-              newState.atPosition + 1,
-              newCursorPosition,
-            );
-          }
-          if (newState.showCommandSelector && newState.slashPosition >= 0) {
-            newState.commandSearchQuery = newInputText.substring(
-              newState.slashPosition + 1,
-              newCursorPosition,
-            );
-          }
-
-          return newState;
         }
-        return state;
+
+        if (
+          newInputText === state.inputText &&
+          newCursorPosition === state.cursorPosition
+        ) {
+          return state;
+        }
+
+        const newState = {
+          ...state,
+          inputText: newInputText,
+          cursorPosition: newCursorPosition,
+          longTextMap: newLongTextMap,
+          historyIndex: -1,
+        };
+
+        // Deactivate selectors if their trigger character was deleted
+        if (
+          newState.showFileSelector &&
+          newCursorPosition <= newState.atPosition
+        ) {
+          newState.showFileSelector = false;
+          newState.atPosition = -1;
+          newState.fileSearchQuery = "";
+          newState.isFileSearching = false;
+        }
+        if (
+          newState.showCommandSelector &&
+          newCursorPosition <= newState.slashPosition
+        ) {
+          newState.showCommandSelector = false;
+          newState.slashPosition = -1;
+          newState.commandSearchQuery = "";
+        }
+
+        // Reactivate selectors if cursor is within a trigger word
+        const atPos = getAtSelectorPosition(newInputText, newCursorPosition);
+        if (atPos !== -1 && !state.showFileSelector) {
+          newState.showFileSelector = true;
+          newState.atPosition = atPos;
+          newState.isFileSearching = true;
+        }
+        const slashPos = getSlashSelectorPosition(
+          newInputText,
+          newCursorPosition,
+        );
+        if (slashPos !== -1 && !state.showCommandSelector) {
+          newState.showCommandSelector = true;
+          newState.slashPosition = slashPos;
+        }
+
+        // Update queries
+        if (newState.showFileSelector && newState.atPosition >= 0) {
+          newState.fileSearchQuery = newInputText.substring(
+            newState.atPosition + 1,
+            newCursorPosition,
+          );
+        }
+        if (newState.showCommandSelector && newState.slashPosition >= 0) {
+          newState.commandSearchQuery = newInputText.substring(
+            newState.slashPosition + 1,
+            newCursorPosition,
+          );
+        }
+
+        return newState;
       }
 
       // 1. /btw overlay handling (active while a question is displayed, or
@@ -1425,54 +1492,69 @@ export function inputReducer(
 
       // 8. Backspace / Delete (Normal Mode)
       if (key.backspace || key.delete) {
-        if (state.cursorPosition > 0) {
-          const newCursorPosition = state.cursorPosition - 1;
-          const beforeCursor = state.inputText.substring(
-            0,
-            state.cursorPosition - 1,
-          );
-          const afterCursor = state.inputText.substring(state.cursorPosition);
-          const newInputText = beforeCursor + afterCursor;
+        // Placeholder token deletion first (aligned with Claude Code's
+        // deleteTokenBefore, Cursor.ts:937-969): backspace at the end of a
+        // [LongText#N] / [Image #N] token removes the whole token in one
+        // press (and drops its longTextMap entry); otherwise delete one
+        // character. Selector backspace (section 5) stays character-wise —
+        // @mention and /command words are intentionally not tokenized.
+        const tokenDeletion = deleteTokenBefore(
+          state.inputText,
+          state.cursorPosition,
+          state.longTextMap,
+        );
+        if (!tokenDeletion && state.cursorPosition <= 0) {
+          return state;
+        }
+        const newInputText = tokenDeletion
+          ? tokenDeletion.inputText
+          : state.inputText.substring(0, state.cursorPosition - 1) +
+            state.inputText.substring(state.cursorPosition);
+        const newCursorPosition = tokenDeletion
+          ? tokenDeletion.cursorPosition
+          : state.cursorPosition - 1;
 
-          const newState = {
-            ...state,
-            inputText: newInputText,
-            cursorPosition: newCursorPosition,
-            historyIndex: -1,
-          };
+        const newState = {
+          ...state,
+          inputText: newInputText,
+          cursorPosition: newCursorPosition,
+          longTextMap: tokenDeletion
+            ? tokenDeletion.longTextMap
+            : state.longTextMap,
+          historyIndex: -1,
+        };
 
-          // Reactivate selectors if cursor is within word
-          const atPos = getAtSelectorPosition(newInputText, newCursorPosition);
-          if (atPos !== -1 && !state.showFileSelector) {
-            newState.showFileSelector = true;
-            newState.atPosition = atPos;
-            newState.isFileSearching = true;
-          }
+        // Reactivate selectors if cursor is within word
+        const atPos = getAtSelectorPosition(newInputText, newCursorPosition);
+        if (atPos !== -1 && !state.showFileSelector) {
+          newState.showFileSelector = true;
+          newState.atPosition = atPos;
+          newState.isFileSearching = true;
+        }
 
-          const slashPos = getSlashSelectorPosition(
-            newInputText,
+        const slashPos = getSlashSelectorPosition(
+          newInputText,
+          newCursorPosition,
+        );
+        if (slashPos !== -1 && !state.showCommandSelector) {
+          newState.showCommandSelector = true;
+          newState.slashPosition = slashPos;
+        }
+
+        // Update queries
+        if (newState.showFileSelector && newState.atPosition >= 0) {
+          newState.fileSearchQuery = newInputText.substring(
+            newState.atPosition + 1,
             newCursorPosition,
           );
-          if (slashPos !== -1 && !state.showCommandSelector) {
-            newState.showCommandSelector = true;
-            newState.slashPosition = slashPos;
-          }
-
-          // Update queries
-          if (newState.showFileSelector && newState.atPosition >= 0) {
-            newState.fileSearchQuery = newInputText.substring(
-              newState.atPosition + 1,
-              newCursorPosition,
-            );
-          }
-          if (newState.showCommandSelector && newState.slashPosition >= 0) {
-            newState.commandSearchQuery = newInputText.substring(
-              newState.slashPosition + 1,
-              newCursorPosition,
-            );
-          }
-          return newState;
         }
+        if (newState.showCommandSelector && newState.slashPosition >= 0) {
+          newState.commandSearchQuery = newInputText.substring(
+            newState.slashPosition + 1,
+            newCursorPosition,
+          );
+        }
+        return newState;
       }
 
       // 9. Cursor Movement (Normal Mode)

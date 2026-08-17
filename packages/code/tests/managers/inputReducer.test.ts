@@ -1097,6 +1097,198 @@ describe("inputReducer", () => {
       });
     });
 
+    describe("placeholder token deletion (aligned with CC deleteTokenBefore)", () => {
+      const backspaceKey = { backspace: true } as unknown as Key;
+      const longTextMap = { "[LongText#1]": "some very long pasted text" };
+
+      it("should delete a whole [LongText#N] token on backspace at line end", () => {
+        const state = {
+          ...initialState,
+          inputText: "prefix [LongText#1]",
+          cursorPosition: "prefix [LongText#1]".length,
+          longTextMap,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: { input: "", key: backspaceKey, hasSlashCommand },
+        });
+        expect(result.inputText).toBe("prefix ");
+        expect(result.cursorPosition).toBe(7);
+        expect(result.longTextMap).toEqual({});
+      });
+
+      it("should delete a whole [LongText#N] token when followed by whitespace", () => {
+        const state = {
+          ...initialState,
+          inputText: "[LongText#1] suffix",
+          cursorPosition: "[LongText#1]".length,
+          longTextMap,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: { input: "", key: backspaceKey, hasSlashCommand },
+        });
+        expect(result.inputText).toBe(" suffix");
+        expect(result.cursorPosition).toBe(0);
+        expect(result.longTextMap).toEqual({});
+      });
+
+      it("should fall back to single-char delete when cursor is mid-token", () => {
+        const state = {
+          ...initialState,
+          inputText: "[LongText#1]",
+          cursorPosition: 5,
+          longTextMap,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: { input: "", key: backspaceKey, hasSlashCommand },
+        });
+        expect(result.inputText).toBe("[LonText#1]");
+        expect(result.cursorPosition).toBe(4);
+        expect(result.longTextMap).toEqual(longTextMap);
+      });
+
+      it("should fall back to single-char delete when token is glued to following text", () => {
+        const state = {
+          ...initialState,
+          inputText: "[LongText#1]x",
+          cursorPosition: "[LongText#1]".length,
+          longTextMap,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: { input: "", key: backspaceKey, hasSlashCommand },
+        });
+        expect(result.inputText).toBe("[LongText#1x");
+        expect(result.cursorPosition).toBe(11);
+        expect(result.longTextMap).toEqual(longTextMap);
+      });
+
+      it("should delete a whole [Image #N] token on backspace", () => {
+        const state = {
+          ...initialState,
+          inputText: "see [Image #1] here",
+          cursorPosition: "see [Image #1]".length,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: { input: "", key: backspaceKey, hasSlashCommand },
+        });
+        expect(result.inputText).toBe("see  here");
+        expect(result.cursorPosition).toBe(4);
+      });
+
+      it("should not delete anything when backspace at line start", () => {
+        const state = {
+          ...initialState,
+          inputText: "[LongText#1]",
+          cursorPosition: 0,
+          longTextMap,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: { input: "", key: backspaceKey, hasSlashCommand },
+        });
+        expect(result.inputText).toBe("[LongText#1]");
+        expect(result.cursorPosition).toBe(0);
+        expect(result.longTextMap).toEqual(longTextMap);
+      });
+
+      it("should delete a whole [LongText#N] token per raw DEL byte", () => {
+        const state = {
+          ...initialState,
+          inputText: "[LongText#1]",
+          cursorPosition: "[LongText#1]".length,
+          longTextMap,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "\x7f\x7f",
+            key: {} as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.inputText).toBe("");
+        expect(result.cursorPosition).toBe(0);
+        expect(result.longTextMap).toEqual({});
+      });
+
+      it("should handle Ctrl+U clearing a placeholder like ordinary text", () => {
+        const state = {
+          ...initialState,
+          inputText: "[LongText#1] tail",
+          cursorPosition: "[LongText#1] tail".length,
+          longTextMap,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "u",
+            key: { ctrl: true } as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.inputText).toBe("");
+        expect(result.cursorPosition).toBe(0);
+      });
+
+      it("should leave a slice fragment when Ctrl+U cuts mid-placeholder", () => {
+        const state = {
+          ...initialState,
+          inputText: "[LongText#1]",
+          cursorPosition: 5,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "u",
+            key: { ctrl: true } as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.inputText).toBe("Text#1]");
+        expect(result.cursorPosition).toBe(0);
+      });
+
+      it("should handle Ctrl+W deleting the placeholder as one word", () => {
+        const state = {
+          ...initialState,
+          inputText: "hello [LongText#1]",
+          cursorPosition: "hello [LongText#1]".length,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "w",
+            key: { ctrl: true } as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.inputText).toBe("hello ");
+        expect(result.cursorPosition).toBe(6);
+      });
+
+      it("should leave a fragment when Ctrl+K cuts mid-placeholder", () => {
+        const state = {
+          ...initialState,
+          inputText: "[LongText#1]",
+          cursorPosition: 5,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "k",
+            key: { ctrl: true } as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.inputText).toBe("[Long");
+        expect(result.cursorPosition).toBe(5);
+      });
+    });
+
     describe("idle Esc double-press clear", () => {
       const escapeKey = { escape: true } as unknown as Key;
 
