@@ -72,6 +72,7 @@ jobs:
       # the blocking Linux `check` job. Skipping them saves ~48s (~30% of the
       # remaining test time).
       - name: Tests
+        shell: bash
         run: |
           for i in $(seq 1 30); do
             pnpm --filter wave-agent-sdk exec vitest run tests/agent/agent.abort.test.ts -t "aborted queued dispatch must not resurrect" || exit 1
