@@ -1,15 +1,10 @@
 import { spawnSync } from "child_process";
-import { readFileSync } from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import https from "https";
 import chalk from "chalk";
 import { isUpdateAvailable } from "../utils/version.js";
+import { readNearestPackageJson } from "../utils/readPackageJson.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const packageJsonPath = path.resolve(__dirname, "../../package.json");
-const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
-const currentVersion = packageJson.version;
+const currentVersion = readNearestPackageJson().version;
 
 async function getLatestVersion(): Promise<string> {
   return new Promise((resolve, reject) => {

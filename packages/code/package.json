@@ -30,7 +30,7 @@
   ],
   "scripts": {
     "wave": "NODE_OPTIONS='--heapsnapshot-near-heap-limit=1' tsx --tsconfig tsconfig.dev.json src/index.ts",
-    "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && node scripts/bundle.mjs",
     "type-check": "tsc --noEmit --incremental",
     "watch": "tsc -p tsconfig.build.json --watch & tsc-alias -p tsconfig.build.json --watch",
     "test": "vitest run --reporter=dot",
@@ -43,6 +43,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
+    "@vscode/ripgrep": "^1.18.0",
     "chalk": "^5.6.2",
     "diff": "^8.0.2",
     "glob": "^13.0.0",
@@ -64,6 +65,7 @@
     "@types/semver": "^7.7.1",
     "@types/yargs": "^17.0.0",
     "@vitest/coverage-v8": "^4.1.7",
+    "esbuild": "^0.28.1",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "ink-testing-library": "^4.0.0",

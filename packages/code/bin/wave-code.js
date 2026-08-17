@@ -21,8 +21,9 @@ if (process.argv.slice(2).some((a) => versionArgs.includes(a))) {
   process.exit(0);
 }
 
-// Import and start the CLI
-import("../dist/index.js")
+// Import and start the CLI (single-file esbuild bundle — avoids Node's
+// per-import node_modules resolution at startup, ~5s -> ~0.6s module load).
+import("../dist/bundle/wave.mjs")
   .then(async ({ main }) => {
     try {
       await main();

@@ -1,12 +1,7 @@
 import React from "react";
 import { Box, Text, useInput } from "ink";
 import { useChat } from "../contexts/useChat.js";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { readNearestPackageJson } from "../utils/readPackageJson.js";
 
 export interface StatusCommandProps {
   onCancel: () => void;
@@ -27,9 +22,7 @@ export const StatusCommand: React.FC<StatusCommandProps> = ({ onCancel }) => {
 
   let version = "unknown";
   try {
-    const pkgPath = path.resolve(__dirname, "../../package.json");
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-    version = pkg.version;
+    version = readNearestPackageJson().version;
   } catch {
     // Fallback if package.json cannot be read
   }
