@@ -1162,14 +1162,23 @@ describe("Agent - Abort Handling", () => {
       const gates = [createGate(), createGate(), createGate(), createGate()];
       const callStarted: boolean[] = [];
       const callAborted: boolean[] = [];
+      const callRecords: string[] = [];
       let callIndex = 0;
       vi.mocked(aiService.callAgent).mockImplementation(async (options) => {
         const idx = callIndex++;
         callStarted[idx] = true;
+        callRecords.push(
+          `call ${idx} @${Date.now()} msgs=${options.messages?.length ?? "?"} last=${
+            options.messages?.[options.messages.length - 1]?.role
+          }:${String(
+            options.messages?.[options.messages.length - 1]?.content,
+          ).slice(0, 80)} | ${new Error().stack
+            ?.split("\n")
+            .slice(2, 6)
+            .join(" <- ")}`,
+        );
         if (process.env.WINDBG_ABORT) {
-          process.stderr.write(
-            `[WINDBG] callAgent ${idx}\n${new Error().stack?.split("\n").slice(2, 5).join("\n")}\n`,
-          );
+          process.stderr.write(`[WINDBG] callAgent ${idx}\n`);
         }
         try {
           await new Promise<void>((resolve, reject) => {
@@ -1200,7 +1209,7 @@ describe("Agent - Abort Handling", () => {
           },
         };
       });
-      return { gates, callStarted, callAborted };
+      return { gates, callStarted, callAborted, callRecords };
     }
 
     // Wire the freshly-created AIManager's onLoadingChange → tryDispatch
@@ -1217,13 +1226,17 @@ describe("Agent - Abort Handling", () => {
 
     it("aborted queued dispatch must not resurrect with a pending notification", async () => {
       wireLoadingChange();
-      const { gates, callStarted, callAborted } = installGatedCallAgent();
+      const { gates, callStarted, callAborted, callRecords } =
+        installGatedCallAgent();
       const agentInternal = agent as unknown as {
         messageQueue: import("@/managers/messageQueue.js").MessageQueue;
         dispatchPromise: Promise<void> | null;
       };
       const messageQueue = agentInternal.messageQueue;
       process.env.WINDBG_ABORT = "1";
+      const sendAIBase =
+        (globalThis as unknown as { __sendAIEnter?: number }).__sendAIEnter ??
+        0;
 
       try {
         // Agent busy: a queued message auto-dispatch (loop #0) is blocked in
@@ -1252,7 +1265,13 @@ describe("Agent - Abort Handling", () => {
         // Correct behavior: the aborted turn ends. No second AI call starts,
         // and the notification stays queued to be folded into the next
         // user-initiated turn.
-        expect(callStarted.filter(Boolean).length).toBe(1);
+        expect(
+          callStarted.filter(Boolean).length,
+          `${callRecords.join("\n")}\n__sendAIEnter delta=${
+            ((globalThis as unknown as { __sendAIEnter?: number })
+              .__sendAIEnter ?? 0) - sendAIBase
+          }`,
+        ).toBe(1);
         expect(callAborted[0]).toBe(true);
         expect(messageQueue.hasNotifications()).toBe(true);
       } finally {

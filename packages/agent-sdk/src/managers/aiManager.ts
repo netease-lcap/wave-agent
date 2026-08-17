@@ -1643,6 +1643,11 @@ ${question}`;
     // previous turn not finished" race window by marking us busy immediately.
     this.turnGeneration++;
     let myGeneration = this.turnGeneration;
+    // Win-abort diagnostic: unconditional in-memory counter (no I/O, no
+    // timing impact) to prove whether a second sendAIMessage entry exists
+    // when the resurrected callAgent (call 1) is observed in CI.
+    const g = globalThis as unknown as { __sendAIEnter?: number };
+    g.__sendAIEnter = (g.__sendAIEnter ?? 0) + 1;
     if (process.env.WINDBG_ABORT) {
       console.log(
         "[WINDBG] sendAIMessage enter",
