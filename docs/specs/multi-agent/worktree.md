@@ -66,7 +66,7 @@ order: 90
 
 **验收场景**：
 
-1. **假设**我在 worktree 会话中有 1 个新提交，**当**我退出 CLI 时，**则**我看到提示："You have 1 commit on worktree-\<name\>. The branch will be deleted if you remove the worktree."
+1. **假设**我在 worktree 会话中有 1 个新提交，**当**我退出 CLI 时，**则**我看到提示："You have 1 commit on worktree-`<name>`. The branch will be deleted if you remove the worktree."
 2. **假设**退出提示已显示，**当**我选择"Remove worktree"时，**则** worktree 及其关联分支被删除。
 
 ---
@@ -162,7 +162,7 @@ order: 90
 5. **假设** hook-based worktree 属于 stdio 后台会话，**当** 前端通过 RPC 删除其 worktree 时，**则** hook 被触发并接管删除；RPC 校验跳过 repo-root containment 检查（repoRoot 是兜底值，hook 拥有路径）。
 6. **假设** `WorktreeRemove` hook 执行时，**当** stdin JSON 被构造时，**则** 包含 `hook_event_name: "WorktreeRemove"` 与 `worktree_path`（worktree 绝对路径），不含 `name` 字段（名称由 hook 通过 `basename "$worktree_path"` 派生，与 Claude Code 官方输入格式一致）。
 7. **假设** `WorktreeRemove` hook 失败（非 0 退出码）或超时，**当** 删除发生时，**则** 错误仅被记录（不显示为阻止性错误、不重试），worktree 目录是否残留由 hook 脚本负责（对齐 Claude Code：仅记录错误日志）。
-8. **假设** worktree 创建时配置了 `WorktreeCreate` hook（hook-based）但删除时未配置 `WorktreeRemove` hook，**当** 删除发生时，**则** wave 不执行 `git worktree remove`，仅记录警告 "No WorktreeRemove hook configured, hook-based worktree left at: <path>"（对齐 Claude Code）。
+8. **假设** worktree 创建时配置了 `WorktreeCreate` hook（hook-based）但删除时未配置 `WorktreeRemove` hook，**当** 删除发生时，**则** wave 不执行 `git worktree remove`，仅记录警告 "No WorktreeRemove hook configured, hook-based worktree left at: `<path>`"（对齐 Claude Code）。
 9. **假设** worktree 由 wave 通过 git 创建（未配置 `WorktreeCreate` hook），**当** 任何入口删除该 worktree 时，**则** `WorktreeRemove` hook 不触发，wave 照常执行 `git worktree remove --force` 与 `git branch -D`（现有行为不变）。
 
 ---
