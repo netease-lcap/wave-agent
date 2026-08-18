@@ -375,7 +375,12 @@ export class AgentBridge {
         );
       case "removeWorktree":
         return this.removeWorktreeSession(
-          p as unknown as { path: string; branch: string; repoRoot: string },
+          p as unknown as {
+            path: string;
+            branch: string;
+            repoRoot: string;
+            hookBased?: boolean;
+          },
         );
 
       default:
@@ -615,6 +620,7 @@ export class AgentBridge {
     repoRoot: string;
     baseBranch: string;
     isNew: boolean;
+    hookBased: boolean;
   }> {
     if (!params.workdir) {
       throw new RpcError(PROTOCOL_INTERNAL_ERROR, "workdir is required");
@@ -631,6 +637,7 @@ export class AgentBridge {
         repoRoot: session.repoRoot,
         baseBranch: params.baseBranch ?? getDefaultRemoteBranch(params.workdir),
         isNew: session.isNew,
+        hookBased: session.hookBased ?? false,
       };
     } catch (e) {
       throw new RpcError(PROTOCOL_INTERNAL_ERROR, (e as Error).message);
@@ -641,31 +648,24 @@ export class AgentBridge {
     path: string;
     branch: string;
     repoRoot: string;
+    hookBased?: boolean;
   }): Promise<{ ok: true }> {
-    // Align with Claude Code v2.1.216+: refuse to remove a worktree whose path
-    // is a symlink or resolves outside the repo root. Already-removed (missing)
-    // paths pass validation so removal stays idempotent.
-    try {
-      validateWorktreeRemovalPath(params.path, params.repoRoot);
-    } catch (e) {
-      throw new RpcError(PROTOCOL_INTERNAL_ERROR, (e as Error).message);
-    }
-
-    // Trigger the WorktreeRemove hook (before git removal, non-blocking) using
-    // the session that runs in this worktree, if it is still registered.
-    for (const entry of this.sessions.values()) {
-      if (entry.agent.workingDirectory === params.path) {
-        try {
-          await entry.agent.triggerWorktreeRemoveHook(params.path);
-        } catch (e) {
-          logger.warn("WorktreeRemove hooks execution failed:", e);
-        }
-        break;
+    // Hook-based worktrees are owned by the WorktreeRemove hook; the git-root
+    // containment check does not apply to them.
+    if (!params.hookBased) {
+      // Align with Claude Code v2.1.216+: refuse to remove a worktree whose
+      // path is a symlink or resolves outside the repo root. Already-removed
+      // (missing) paths pass validation so removal stays idempotent.
+      try {
+        validateWorktreeRemovalPath(params.path, params.repoRoot);
+      } catch (e) {
+        throw new RpcError(PROTOCOL_INTERNAL_ERROR, (e as Error).message);
       }
     }
 
     // removeWorktree is best-effort/idempotent: already-removed worktrees or
-    // branches only log, never throw.
+    // branches only log, never throw. Hook-based worktrees go through the
+    // WorktreeRemove hook inside removeWorktree.
     await removeWorktree({
       name: "",
       path: params.path,
@@ -674,6 +674,7 @@ export class AgentBridge {
       hasUncommittedChanges: false,
       hasNewCommits: false,
       isNew: false,
+      hookBased: params.hookBased,
     });
     return { ok: true };
   }

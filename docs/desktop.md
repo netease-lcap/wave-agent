@@ -92,7 +92,7 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 - 分支选择器默认选中当前分支；勾选 worktree（默认勾选）后开始会话，应用会基于所选分支创建随机命名的临时分支与 worktree，会话实际工作目录为该 worktree 路径
 - 取消勾选则在所选目录中直接开会话
 - 工作目录不是 git 仓库或 git 不可用时不显示这两项控件
-- 若项目配置了 WorktreeCreate 钩子，新建 worktree 时会在其目录中执行该钩子（与 `wave -w` 一致）
+- 若项目配置了 WorktreeCreate 钩子，worktree 创建由钩子接管（hook 自行执行 `git worktree add` 并在 stdout 输出 worktree 路径，与 `wave -w` 一致）
 
 ## 会话切换快捷键
 

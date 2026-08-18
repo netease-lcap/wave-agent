@@ -92,8 +92,8 @@ Wave supports the following hook events:
 - \`PermissionRequest\`: Triggered when Wave requests permission to use a tool.
 - \`Stop\`: Triggered when Wave finishes its response cycle (no more tool calls).
 - \`SubagentStop\`: Triggered when a subagent finishes its response cycle.
-- \`WorktreeCreate\`: Triggered when a new worktree is created.
-- \`WorktreeRemove\`: Triggered before a worktree is removed (e.g., via ExitWorktree with \`action: "remove"\`). Non-blocking. Fires **before** the worktree directory is deleted so hooks can still read files inside it. The hook receives \`worktree_path\` in the JSON input. Useful for cleanup tasks (e.g., \`docker compose -p $(basename "$worktree_path") down\`).
+- \`WorktreeCreate\`: Triggered to create a new worktree, replacing \`git worktree add\`. The hook performs the creation itself (e.g., \`git worktree add\`, or any other VCS/external provisioning) and must output the worktree's absolute path on stdout (path return). Creation is blocked if all hooks fail or produce no output. Receives \`name\` in the JSON input. The resulting session is marked "hook-based".
+- \`WorktreeRemove\`: Triggered when a hook-based worktree (created by a \`WorktreeCreate\` hook) is removed (e.g., via ExitWorktree with \`action: "remove"\`), replacing \`git worktree remove\` for that worktree: the hook performs the removal itself (e.g., \`git worktree remove --force\` plus external resource cleanup). Fires **before** the worktree directory is deleted so hooks can still read files inside it. Receives \`worktree_path\` in the JSON input. Failures are logged but non-blocking. Git-created worktrees are removed by git directly and do not trigger this hook.
 - \`CwdChanged\`: Triggered when the working directory changes (e.g., entering/exiting a worktree). Non-blocking.
 - \`SessionStart\`: Triggered during session initialization. Hooks can inject \`additionalContext\` and \`initialUserMessage\` via stdout.
 - \`SessionEnd\`: Triggered during agent destruction (fire-and-forget, non-blocking). Useful for cleanup, resource teardown, and analytics.
@@ -245,9 +245,34 @@ SessionEnd hooks receive \`end_source\` in the JSON input indicating how the ses
 }
 \`\`\`
 
+## WorktreeCreate Hooks
+
+\`WorktreeCreate\` hooks replace \`git worktree add\`: when configured, Wave does not create the worktree itself — the hook does. The hook must output the worktree's absolute path on **stdout** (the first successful hook's trimmed stdout is used as the path). All hooks failing or producing no output blocks the creation with \`WorktreeCreate hook failed: ...\`. The resulting session is marked "hook-based" and skips Wave's post-creation setup (\`settings.local.json\` / \`.worktreeinclude\` propagation) — the hook is responsible for any initialization.
+
+### Input
+WorktreeCreate hooks receive \`name\` (the worktree name) in the JSON input, alongside the common fields \`session_id\`, \`transcript_path\`, \`cwd\`, \`hook_event_name\`.
+
+### Example Configuration
+\`\`\`json
+{
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "command": "worktree_path=\\"$WAVE_PROJECT_DIR/.wave/worktrees/$(jq -r '.name')\\" && mkdir -p \\"$worktree_path\\" && git worktree add \\"$worktree_path\\" 2>/dev/null; echo \\"$worktree_path\\"",
+            "description": "Create the worktree and print its path"
+          }
+        ]
+      }
+    ]
+  }
+}
+\`\`\`
+
 ## WorktreeRemove Hooks
 
-\`WorktreeRemove\` hooks fire **before** the worktree directory is deleted, so they can still read files inside it. They are non-blocking (Notification type): the hook never replaces \`git worktree remove\` itself. Useful for cleaning up external resources that were provisioned for the worktree (databases, containers, etc.).
+\`WorktreeRemove\` hooks replace \`git worktree remove\` for **hook-based** worktrees (those created by a \`WorktreeCreate\` hook). When a hook-based worktree is removed from any entry point (CLI exit, ExitWorktree tool, \`wave -p\`, stdio RPC), Wave calls the hook instead of running \`git worktree remove\` — the hook performs the actual removal, so it can clean up external resources it provisioned (databases, containers, etc.) at the same time. Hooks fire **before** the worktree directory is deleted, so they can still read files inside it. Failures are logged but non-blocking. If no \`WorktreeRemove\` hook is configured for a hook-based worktree, Wave logs a warning and leaves the worktree in place. Git-created worktrees (no \`WorktreeCreate\` hook) are removed by git directly and do **not** trigger this hook.
 
 ### Input
 WorktreeRemove hooks receive \`worktree_path\` in the JSON input (alongside the common fields \`session_id\`, \`transcript_path\`, \`cwd\`, \`hook_event_name\`). The worktree name can be derived via \`basename "$worktree_path"\`.
@@ -260,8 +285,8 @@ WorktreeRemove hooks receive \`worktree_path\` in the JSON input (alongside the 
       {
         "hooks": [
           {
-            "command": "worktree_path=$(jq -r '.worktree_path') && docker compose -p \\"$(basename \\"$worktree_path\\")\\" down || true",
-            "description": "Tear down the worktree's docker compose project before removal"
+            "command": "worktree_path=$(jq -r '.worktree_path') && git worktree remove --force \\"$worktree_path\\" && docker compose -p \\"$(basename \\"$worktree_path\\")\\" down",
+            "description": "Remove the worktree and tear down its docker compose project"
           }
         ]
       }
@@ -297,7 +322,7 @@ When hooks are registered via a **plugin**, Wave automatically:
 }
 \`\`\`
 
-The shell also receives \`WAVE_PLUGIN_ROOT\` as an env var, so \`$WAVE_PLUGIN_ROOT\` works in the hook script itself.
+The shell also receives \`WAVE_PLUGIN_ROOT\` as an env var, so \`$WAVE_PLUGIN_ROOT\` works in the hook script itself. For \`WorktreeCreate\`, the script must print the created worktree's absolute path to stdout.
 
 ## Best Practices
 

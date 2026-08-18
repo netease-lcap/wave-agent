@@ -49,7 +49,7 @@ export interface HookExecutionContext {
   toolName?: string; // Present for PreToolUse/PostToolUse events
   projectDir: string; // Absolute path for $WAVE_PROJECT_DIR
   timestamp: Date;
-  worktreeName?: string; // Present for WorktreeCreate
+  name?: string; // Worktree name (WorktreeCreate only, stdin JSON field `name`)
   worktreePath?: string; // Present for WorktreeRemove
   planFilePath?: string; // Present when in plan mode
 }
@@ -62,6 +62,8 @@ export interface HookExecutionResult {
   stderr?: string;
   duration: number; // milliseconds
   timedOut: boolean;
+  /** The executed command, tagged onto results by callers that iterate multiple hooks */
+  command?: string;
 }
 
 // Hook execution options
@@ -236,7 +238,6 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   env?: Record<string, string>; // Additional environment variables (from configuration)
   userPrompt?: string; // User prompt text (UserPromptSubmit only)
   subagentType?: string; // Subagent type when hook is executed by a subagent
-  worktreeName?: string; // Worktree name (WorktreeCreate only)
   oldCwd?: string; // Previous working directory (CwdChanged only)
   newCwd?: string; // New working directory (CwdChanged only)
   source?: SessionStartSource; // Session start source (SessionStart only)

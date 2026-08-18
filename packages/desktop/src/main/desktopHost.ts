@@ -100,6 +100,7 @@ interface WorktreeInfo {
   branch: string;
   baseBranch: string;
   repoRoot: string;
+  hookBased?: boolean;
 }
 
 interface Pane {
@@ -2511,6 +2512,7 @@ export class DesktopHost {
           path: worktree.path,
           branch: worktree.branch,
           repoRoot: worktree.repoRoot,
+          hookBased: worktree.hookBased,
         }),
       );
     }
@@ -2540,6 +2542,7 @@ export class DesktopHost {
         baseBranch: string;
         repoRoot: string;
         isNew: boolean;
+        hookBased: boolean;
       };
       try {
         result = (await this.utilityClientFor(h).request("createWorktree", {
@@ -2567,6 +2570,7 @@ export class DesktopHost {
             branch: result.branch,
             baseBranch: result.baseBranch,
             repoRoot: result.repoRoot,
+            hookBased: result.hookBased,
           },
         });
         await this.activateAgentInPane(this.focusedPaneId, agent);
@@ -2623,7 +2627,12 @@ export class DesktopHost {
   /** Best-effort worktree removal via stdio (FR-053), routed to the entry's host. */
   private async removeWorktree(
     host: string,
-    params: { path: string; branch: string; repoRoot: string },
+    params: {
+      path: string;
+      branch: string;
+      repoRoot: string;
+      hookBased?: boolean;
+    },
   ): Promise<void> {
     try {
       await this.utilityClientFor(host).request("removeWorktree", params);

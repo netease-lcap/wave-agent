@@ -25,13 +25,13 @@ npm install wave-agent-sdk
 ### 基本用法 {#basic-usage}
 
 ```typescript
-import { Agent } from 'wave-agent-sdk';
+import { Agent } from "wave-agent-sdk";
 
 // 创建 Agent
 const agent = await Agent.create({
-  model: 'gpt-4',
+  model: "gpt-4",
   apiKey: process.env.WAVE_API_KEY,
-  baseURL: 'https://api.example.com/v1',
+  baseURL: "https://api.example.com/v1",
   callbacks: {
     onAssistantContentUpdated: ({ chunk }) => {
       process.stdout.write(chunk);
@@ -40,7 +40,7 @@ const agent = await Agent.create({
 });
 
 // 发送消息
-await agent.sendMessage('帮我写一个排序算法');
+await agent.sendMessage("帮我写一个排序算法");
 
 // 销毁 Agent（清理资源）
 await agent.destroy();
@@ -54,11 +54,13 @@ await agent.destroy();
 
 ```typescript
 const agent = await Agent.create({
-  model: 'gpt-4',
-  apiKey: 'your-api-key',
-  baseURL: 'https://api.example.com/v1',
-  workdir: '/path/to/project',
-  callbacks: { /* ... */ },
+  model: "gpt-4",
+  apiKey: "your-api-key",
+  baseURL: "https://api.example.com/v1",
+  workdir: "/path/to/project",
+  callbacks: {
+    /* ... */
+  },
 });
 ```
 
@@ -66,61 +68,61 @@ const agent = await Agent.create({
 
 #### 模型与 API
 
-| 选项 | 类型 | 说明 |
-|------|------|------|
-| `model` | `string` | 主模型名称（也可通过 `WAVE_MODEL` 环境变量设置） |
-| `fastModel` | `string` | 快速模型，用于子代理、摘要等轻量场景（fallback: `WAVE_FAST_MODEL`） |
-| `apiKey` | `string` | API Key（fallback: `WAVE_API_KEY`） |
-| `baseURL` | `string` | API Base URL（fallback: `WAVE_BASE_URL`） |
-| `serverUrl` | `string` | Wave AI 服务端地址，用于 SSO 认证（fallback: `WAVE_SERVER_URL`） |
-| `defaultHeaders` | `Record<string, string>` | 自定义请求头 |
-| `subagentHeaders` | `Record<string, Record<string, string>>` | 按子代理类型设置的请求头 |
-| `fetchOptions` | `ClientOptions["fetchOptions"]` | fetch 选项 |
-| `fetch` | `ClientOptions["fetch"]` | 自定义 fetch 实现 |
-| `maxInputTokens` | `number` | 最大输入 Token 数（fallback: `WAVE_MAX_INPUT_TOKENS`） |
-| `maxTokens` | `number` | 最大输出 Token 数（fallback: `WAVE_MAX_OUTPUT_TOKENS`） |
-| `language` | `string` | Agent 通信首选语言（如 `"zh"`、`"en"`） |
+| 选项              | 类型                                     | 说明                                                                |
+| ----------------- | ---------------------------------------- | ------------------------------------------------------------------- |
+| `model`           | `string`                                 | 主模型名称（也可通过 `WAVE_MODEL` 环境变量设置）                    |
+| `fastModel`       | `string`                                 | 快速模型，用于子代理、摘要等轻量场景（fallback: `WAVE_FAST_MODEL`） |
+| `apiKey`          | `string`                                 | API Key（fallback: `WAVE_API_KEY`）                                 |
+| `baseURL`         | `string`                                 | API Base URL（fallback: `WAVE_BASE_URL`）                           |
+| `serverUrl`       | `string`                                 | Wave AI 服务端地址，用于 SSO 认证（fallback: `WAVE_SERVER_URL`）    |
+| `defaultHeaders`  | `Record<string, string>`                 | 自定义请求头                                                        |
+| `subagentHeaders` | `Record<string, Record<string, string>>` | 按子代理类型设置的请求头                                            |
+| `fetchOptions`    | `ClientOptions["fetchOptions"]`          | fetch 选项                                                          |
+| `fetch`           | `ClientOptions["fetch"]`                 | 自定义 fetch 实现                                                   |
+| `maxInputTokens`  | `number`                                 | 最大输入 Token 数（fallback: `WAVE_MAX_INPUT_TOKENS`）              |
+| `maxTokens`       | `number`                                 | 最大输出 Token 数（fallback: `WAVE_MAX_OUTPUT_TOKENS`）             |
+| `language`        | `string`                                 | Agent 通信首选语言（如 `"zh"`、`"en"`）                             |
 
 #### 会话与工作目录
 
-| 选项 | 类型 | 说明 |
-|------|------|------|
-| `workdir` | `string` | 工作目录（默认 `process.cwd()`） |
-| `restoreSessionId` | `string` | 恢复指定会话 |
-| `continueLastSession` | `boolean` | 继续上一次会话 |
-| `messages` | `Message[]` | 初始消息（主要用于测试） |
-| `systemPrompt` | `string` | 自定义系统提示词（替换默认提示词） |
+| 选项                  | 类型        | 说明                               |
+| --------------------- | ----------- | ---------------------------------- |
+| `workdir`             | `string`    | 工作目录（默认 `process.cwd()`）   |
+| `restoreSessionId`    | `string`    | 恢复指定会话                       |
+| `continueLastSession` | `boolean`   | 继续上一次会话                     |
+| `messages`            | `Message[]` | 初始消息（主要用于测试）           |
+| `systemPrompt`        | `string`    | 自定义系统提示词（替换默认提示词） |
 
 #### 权限与工具
 
-| 选项 | 类型 | 说明 |
-|------|------|------|
-| `permissionMode` | `PermissionMode` | 权限模式（默认 `"default"`） |
-| `canUseTool` | `PermissionCallback` | 自定义权限回调 |
-| `allowedTools` | `string[]` | 始终允许的工具列表 |
-| `disallowedTools` | `string[]` | 始终禁止的工具列表 |
-| `tools` | `string[]` | 启用的工具列表（`undefined` = 全部，`[]` = 禁用全部） |
-| `customTools` | `ToolPlugin[]` | 自定义工具注册 |
-| `hooks` | `PartialHookConfiguration` | 创建时注入的钩子配置 |
+| 选项              | 类型                       | 说明                                                  |
+| ----------------- | -------------------------- | ----------------------------------------------------- |
+| `permissionMode`  | `PermissionMode`           | 权限模式（默认 `"default"`）                          |
+| `canUseTool`      | `PermissionCallback`       | 自定义权限回调                                        |
+| `allowedTools`    | `string[]`                 | 始终允许的工具列表                                    |
+| `disallowedTools` | `string[]`                 | 始终禁止的工具列表                                    |
+| `tools`           | `string[]`                 | 启用的工具列表（`undefined` = 全部，`[]` = 禁用全部） |
+| `customTools`     | `ToolPlugin[]`             | 自定义工具注册                                        |
+| `hooks`           | `PartialHookConfiguration` | 创建时注入的钩子配置                                  |
 
 #### 扩展与集成
 
-| 选项 | 类型 | 说明 |
-|------|------|------|
-| `plugins` | `PluginConfig[]` | 本地插件配置 |
-| `mcpServers` | `Record<string, McpServerConfig>` | MCP 服务器配置（覆盖 .mcp.json） |
-| `lspManager` | `ILspManager` | 自定义 LSP 管理器 |
-| `worktreeName` | `string` | worktree 名称 |
-| `isNewWorktree` | `boolean` | 是否为新创建的 worktree |
-| `watchSkills` | `boolean` | 是否监听 Skill 文件变化（默认 `true`） |
+| 选项            | 类型                              | 说明                                   |
+| --------------- | --------------------------------- | -------------------------------------- |
+| `plugins`       | `PluginConfig[]`                  | 本地插件配置                           |
+| `mcpServers`    | `Record<string, McpServerConfig>` | MCP 服务器配置（覆盖 .mcp.json）       |
+| `lspManager`    | `ILspManager`                     | 自定义 LSP 管理器                      |
+| `name`          | `string`                          | worktree 名称                          |
+| `isNewWorktree` | `boolean`                         | 是否为新创建的 worktree                |
+| `watchSkills`   | `boolean`                         | 是否监听 Skill 文件变化（默认 `true`） |
 
 #### 回调与日志
 
-| 选项 | 类型 | 说明 |
-|------|------|------|
-| `callbacks` | `AgentCallbacks` | 事件回调集合 |
-| `stream` | `boolean` | 是否使用流式模式（默认 `true`） |
-| `logger` | `Logger` | 自定义日志器 |
+| 选项        | 类型             | 说明                            |
+| ----------- | ---------------- | ------------------------------- |
+| `callbacks` | `AgentCallbacks` | 事件回调集合                    |
+| `stream`    | `boolean`        | 是否使用流式模式（默认 `true`） |
+| `logger`    | `Logger`         | 自定义日志器                    |
 
 ### 销毁 Agent {#agent-destroy}
 
@@ -132,47 +134,47 @@ await agent.destroy();
 
 ### Agent 属性 {#agent-properties}
 
-| 属性 | 类型 | 说明 |
-|------|------|------|
-| `sessionId` | `string` | 当前会话 ID |
-| `messages` | `Message[]` | 当前会话消息列表 |
-| `usages` | `Usage[]` | Token 使用记录 |
-| `sessionFilePath` | `string` | 会话文件路径 |
-| `latestTotalTokens` | `number` | 最近一次总 Token 数 |
-| `workingDirectory` | `string` | 当前工作目录 |
-| `projectMemory` | `string` | 项目级记忆内容 |
-| `userMemory` | `string` | 用户级记忆内容 |
-| `isLoading` | `boolean` | 是否正在处理请求 |
-| `isCompacting` | `boolean` | 是否正在压缩 |
-| `isCommandRunning` | `boolean` | 是否有命令正在执行 |
-| `queuedMessages` | `QueuedMessage[]` | 消息队列 |
-| `taskListId` | `string` | 任务列表 ID |
-| `hasRunningBackgroundWork` | `boolean` | 是否有后台任务运行中 |
+| 属性                       | 类型              | 说明                 |
+| -------------------------- | ----------------- | -------------------- |
+| `sessionId`                | `string`          | 当前会话 ID          |
+| `messages`                 | `Message[]`       | 当前会话消息列表     |
+| `usages`                   | `Usage[]`         | Token 使用记录       |
+| `sessionFilePath`          | `string`          | 会话文件路径         |
+| `latestTotalTokens`        | `number`          | 最近一次总 Token 数  |
+| `workingDirectory`         | `string`          | 当前工作目录         |
+| `projectMemory`            | `string`          | 项目级记忆内容       |
+| `userMemory`               | `string`          | 用户级记忆内容       |
+| `isLoading`                | `boolean`         | 是否正在处理请求     |
+| `isCompacting`             | `boolean`         | 是否正在压缩         |
+| `isCommandRunning`         | `boolean`         | 是否有命令正在执行   |
+| `queuedMessages`           | `QueuedMessage[]` | 消息队列             |
+| `taskListId`               | `string`          | 任务列表 ID          |
+| `hasRunningBackgroundWork` | `boolean`         | 是否有后台任务运行中 |
 
 ### Agent 常用方法 {#agent-methods}
 
-| 方法 | 说明 |
-|------|------|
-| `sendMessage(content)` | 发送用户消息 |
-| `destroy()` | 销毁 Agent 并清理资源 |
-| `abortAIMessage()` | 中止当前 AI 响应 |
-| `abortMessage()` | 中止当前消息处理 |
-| `abortBashCommand()` | 中止正在执行的 Bash 命令 |
-| `abortSlashCommand()` | 中止正在执行的斜杠命令 |
-| `clearMessages()` | 清空消息（触发 SessionEnd/SessionStart 钩子） |
-| `compact(instructions?)` | 手动触发上下文压缩 |
-| `setModel(model)` | 切换模型 |
-| `setWorkdir(dir)` | 切换工作目录 |
-| `restoreSession(sessionId)` | 恢复到指定会话 |
-| `truncateHistory(index)` | 截断历史到指定位置 |
-| `getFullMessageThread()` | 获取完整消息链（含压缩前的父会话） |
+| 方法                        | 说明                                          |
+| --------------------------- | --------------------------------------------- |
+| `sendMessage(content)`      | 发送用户消息                                  |
+| `destroy()`                 | 销毁 Agent 并清理资源                         |
+| `abortAIMessage()`          | 中止当前 AI 响应                              |
+| `abortMessage()`            | 中止当前消息处理                              |
+| `abortBashCommand()`        | 中止正在执行的 Bash 命令                      |
+| `abortSlashCommand()`       | 中止正在执行的斜杠命令                        |
+| `clearMessages()`           | 清空消息（触发 SessionEnd/SessionStart 钩子） |
+| `compact(instructions?)`    | 手动触发上下文压缩                            |
+| `setModel(model)`           | 切换模型                                      |
+| `setWorkdir(dir)`           | 切换工作目录                                  |
+| `restoreSession(sessionId)` | 恢复到指定会话                                |
+| `truncateHistory(index)`    | 截断历史到指定位置                            |
+| `getFullMessageThread()`    | 获取完整消息链（含压缩前的父会话）            |
 
 ## 3. 消息处理 {#messaging}
 
 ### 发送消息 {#send-message}
 
 ```typescript
-await agent.sendMessage('帮我重构这个模块');
+await agent.sendMessage("帮我重构这个模块");
 ```
 
 消息进入队列后，Agent 自动处理：解析消息类型、调用 AI 模型、执行工具调用、流式输出结果。如果 Agent 正在处理其他消息，新消息会排入队列等待。
@@ -192,15 +194,15 @@ Agent 内置消息队列管理并发消息：
 
 Agent 支持多种消息块类型，通过回调通知 UI 层：
 
-| 类型 | 回调 | 说明 |
-|------|------|------|
-| 文本内容 | `onAssistantContentUpdated` | AI 文本流式输出，含 `chunk`、`stage`（chunk 为增量片段，消费端自行累积） |
-| 推理内容 | `onAssistantReasoningUpdated` | 推理/思考过程流式输出 |
-| 工具调用 | `onToolBlockUpdated` | 工具执行状态更新 |
-| 压缩摘要 | `onCompactBlockAdded` | 上下文压缩后生成的摘要 |
-| 错误信息 | `onErrorBlockAdded` | 错误消息 |
-| Bang 命令 | `onAddBangMessage` / `onUpdateBangMessage` / `onCompleteBangMessage` | Shell 命令执行（`!command` 语法） |
-| 任务通知 | `onBackgroundTasksChange` | 后台任务状态变更 |
+| 类型      | 回调                                                                 | 说明                                                                     |
+| --------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 文本内容  | `onAssistantContentUpdated`                                          | AI 文本流式输出，含 `chunk`、`stage`（chunk 为增量片段，消费端自行累积） |
+| 推理内容  | `onAssistantReasoningUpdated`                                        | 推理/思考过程流式输出                                                    |
+| 工具调用  | `onToolBlockUpdated`                                                 | 工具执行状态更新                                                         |
+| 压缩摘要  | `onCompactBlockAdded`                                                | 上下文压缩后生成的摘要                                                   |
+| 错误信息  | `onErrorBlockAdded`                                                  | 错误消息                                                                 |
+| Bang 命令 | `onAddBangMessage` / `onUpdateBangMessage` / `onCompleteBangMessage` | Shell 命令执行（`!command` 语法）                                        |
+| 任务通知  | `onBackgroundTasksChange`                                            | 后台任务状态变更                                                         |
 
 ### 流式输出 {#streaming}
 
@@ -229,62 +231,62 @@ callbacks: {
 
 ### 消息回调 {#callbacks-messaging}
 
-| 回调 | 参数 | 说明 |
-|------|------|------|
-| `onSessionIdChange` | `string` | 会话 ID 变更（如压缩后创建新会话） |
-| `onLatestTotalTokensChange` | `number` | Token 总量更新 |
-| `onUsagesChange` | `Usage[]` | Token 使用记录更新 |
-| `onUserMessageAdded` | `UserMessageParams` | 用户消息添加 |
-| `onAssistantMessageAdded` | `messageId: string` | AI 消息创建 |
-| `onAssistantContentUpdated` | `{ messageId, chunk, stage }` | 文本流式输出（chunk 为增量片段） |
-| `onAssistantReasoningUpdated` | `{ messageId, chunk, stage }` | 推理流式输出（chunk 为增量片段） |
-| `onToolBlockUpdated` | `ToolBlockUpdateCallbackParams` | 工具块更新 |
-| `onErrorBlockAdded` | `error: string` | 错误块添加 |
-| `onCompactBlockAdded` | `content: string` | 压缩摘要添加 |
-| `onCompactionStateChange` | `isCompacting: boolean` | 压缩状态变更 |
+| 回调                          | 参数                            | 说明                               |
+| ----------------------------- | ------------------------------- | ---------------------------------- |
+| `onSessionIdChange`           | `string`                        | 会话 ID 变更（如压缩后创建新会话） |
+| `onLatestTotalTokensChange`   | `number`                        | Token 总量更新                     |
+| `onUsagesChange`              | `Usage[]`                       | Token 使用记录更新                 |
+| `onUserMessageAdded`          | `UserMessageParams`             | 用户消息添加                       |
+| `onAssistantMessageAdded`     | `messageId: string`             | AI 消息创建                        |
+| `onAssistantContentUpdated`   | `{ messageId, chunk, stage }`   | 文本流式输出（chunk 为增量片段）   |
+| `onAssistantReasoningUpdated` | `{ messageId, chunk, stage }`   | 推理流式输出（chunk 为增量片段）   |
+| `onToolBlockUpdated`          | `ToolBlockUpdateCallbackParams` | 工具块更新                         |
+| `onErrorBlockAdded`           | `error: string`                 | 错误块添加                         |
+| `onCompactBlockAdded`         | `content: string`               | 压缩摘要添加                       |
+| `onCompactionStateChange`     | `isCompacting: boolean`         | 压缩状态变更                       |
 
 ### Bang 命令回调 {#callbacks-bang}
 
-| 回调 | 参数 | 说明 |
-|------|------|------|
-| `onAddBangMessage` | `command: string, messageId: string` | Bang 命令开始执行 |
-| `onUpdateBangMessage` | `command: string, output: string, messageId: string` | Bang 命令输出更新 |
+| 回调                    | 参数                                                                            | 说明                                                 |
+| ----------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `onAddBangMessage`      | `command: string, messageId: string`                                            | Bang 命令开始执行                                    |
+| `onUpdateBangMessage`   | `command: string, output: string, messageId: string`                            | Bang 命令输出更新                                    |
 | `onCompleteBangMessage` | `command: string, exitCode: number \| null, messageId: string, output?: string` | Bang 命令执行完成（`output` 为最终输出，可能不存在） |
 
 ### 后台任务回调 {#callbacks-background}
 
-| 回调 | 参数 | 说明 |
-|------|------|------|
+| 回调                      | 参数               | 说明             |
+| ------------------------- | ------------------ | ---------------- |
 | `onBackgroundTasksChange` | `BackgroundTask[]` | 后台任务列表变更 |
-| `onBackgroundCurrentTask` | — | 后台当前任务变更 |
+| `onBackgroundCurrentTask` | —                  | 后台当前任务变更 |
 
 ### 子代理回调 {#callbacks-subagent}
 
-| 回调 | 参数 | 说明 |
-|------|------|------|
-| `onSubagentUserMessageAdded` | `subagentId, params` | 子代理收到用户消息 |
-| `onSubagentAssistantMessageAdded` | `subagentId, messageId` | 子代理创建 AI 消息 |
+| 回调                                | 参数                                      | 说明                               |
+| ----------------------------------- | ----------------------------------------- | ---------------------------------- |
+| `onSubagentUserMessageAdded`        | `subagentId, params`                      | 子代理收到用户消息                 |
+| `onSubagentAssistantMessageAdded`   | `subagentId, messageId`                   | 子代理创建 AI 消息                 |
 | `onSubagentAssistantContentUpdated` | `{ subagentId, messageId, chunk, stage }` | 子代理流式输出（chunk 为增量片段） |
-| `onSubagentLatestTotalTokensChange` | `subagentId, tokens` | 子代理 Token 更新 |
+| `onSubagentLatestTotalTokensChange` | `subagentId, tokens`                      | 子代理 Token 更新                  |
 
 ### MCP 回调 {#callbacks-mcp}
 
-| 回调 | 参数 | 说明 |
-|------|------|------|
+| 回调                 | 参数                | 说明               |
+| -------------------- | ------------------- | ------------------ |
 | `onMcpServersChange` | `McpServerStatus[]` | MCP 服务器状态变更 |
 
 ### UI 状态回调 {#callbacks-ui}
 
-| 回调 | 参数 | 说明 |
-|------|------|------|
-| `onPermissionModeChange` | `PermissionMode` | 权限模式变更 |
-| `onModelChange` | `string` | 模型切换 |
-| `onConfiguredModelsChange` | `string[]` | 可用模型列表变更 |
-| `onLoadingChange` | `boolean` | 加载状态变更 |
-| `onCommandRunningChange` | `boolean` | 命令执行状态变更 |
-| `onWorkdirChange` | `string` | 工作目录变更 |
-| `onQueuedMessagesChange` | `QueuedMessage[]` | 消息队列变更 |
-| `onTasksChange` | `Task[]` | 任务列表变更 |
+| 回调                       | 参数              | 说明             |
+| -------------------------- | ----------------- | ---------------- |
+| `onPermissionModeChange`   | `PermissionMode`  | 权限模式变更     |
+| `onModelChange`            | `string`          | 模型切换         |
+| `onConfiguredModelsChange` | `string[]`        | 可用模型列表变更 |
+| `onLoadingChange`          | `boolean`         | 加载状态变更     |
+| `onCommandRunningChange`   | `boolean`         | 命令执行状态变更 |
+| `onWorkdirChange`          | `string`          | 工作目录变更     |
+| `onQueuedMessagesChange`   | `QueuedMessage[]` | 消息队列变更     |
+| `onTasksChange`            | `Task[]`          | 任务列表变更     |
 
 ## 5. 工具系统 {#tool-system}
 
@@ -294,123 +296,123 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 
 #### 文件操作
 
-| 工具 | 说明 |
-|------|------|
-| `Read` | 读取文件内容，支持图片读取和二进制检测 |
-| `Write` | 写入文件（已存在文件需先 Read） |
-| `Edit` | 精确字符串替换，支持 `replace_all` 批量替换 |
+| 工具    | 说明                                        |
+| ------- | ------------------------------------------- |
+| `Read`  | 读取文件内容，支持图片读取和二进制检测      |
+| `Write` | 写入文件（已存在文件需先 Read）             |
+| `Edit`  | 精确字符串替换，支持 `replace_all` 批量替换 |
 
 #### 代码搜索与智能
 
-| 工具 | 说明 |
-|------|------|
-| `Glob` | 文件名模式匹配（如 `**/*.ts`） |
-| `Grep` | 正则表达式内容搜索（基于 ripgrep） |
-| `LSP` | 代码智能（跳转定义、查找引用、悬停信息、符号搜索等） |
+| 工具   | 说明                                                 |
+| ------ | ---------------------------------------------------- |
+| `Glob` | 文件名模式匹配（如 `**/*.ts`）                       |
+| `Grep` | 正则表达式内容搜索（基于 ripgrep）                   |
+| `LSP`  | 代码智能（跳转定义、查找引用、悬停信息、符号搜索等） |
 
 #### 执行与交互
 
-| 工具 | 说明 |
-|------|------|
-| `Bash` | 终端命令执行，支持后台运行和超时控制 |
-| `AskUserQuestion` | 向用户提问，支持单选/多选选项 |
-| `WebFetch` | 网页内容抓取与 AI 摘要 |
-| `Artifact` | 将本地 `.html`/`.md` 文件发布为默认私有的可分享网页（启用 `enableArtifact` 后注册） |
+| 工具              | 说明                                                                                |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| `Bash`            | 终端命令执行，支持后台运行和超时控制                                                |
+| `AskUserQuestion` | 向用户提问，支持单选/多选选项                                                       |
+| `WebFetch`        | 网页内容抓取与 AI 摘要                                                              |
+| `Artifact`        | 将本地 `.html`/`.md` 文件发布为默认私有的可分享网页（启用 `enableArtifact` 后注册） |
 
 #### 任务管理
 
-| 工具 | 说明 |
-|------|------|
+| 工具         | 说明                                         |
+| ------------ | -------------------------------------------- |
 | `TaskCreate` | 创建任务（subject、description、activeForm） |
-| `TaskGet` | 获取任务详情 |
-| `TaskUpdate` | 更新任务状态和属性 |
-| `TaskList` | 列出所有任务 |
-| `TaskStop` | 中止后台任务 |
+| `TaskGet`    | 获取任务详情                                 |
+| `TaskUpdate` | 更新任务状态和属性                           |
+| `TaskList`   | 列出所有任务                                 |
+| `TaskStop`   | 中止后台任务                                 |
 
 #### 定时任务
 
-| 工具 | 说明 |
-|------|------|
+| 工具         | 说明                               |
+| ------------ | ---------------------------------- |
 | `CronCreate` | 创建定时任务（5 字段 cron 表达式） |
-| `CronDelete` | 删除定时任务 |
-| `CronList` | 列出所有定时任务 |
+| `CronDelete` | 删除定时任务                       |
+| `CronList`   | 列出所有定时任务                   |
 
 #### 工作区与流程
 
-| 工具 | 说明 |
-|------|------|
+| 工具            | 说明                         |
+| --------------- | ---------------------------- |
 | `EnterWorktree` | 创建 Git worktree 隔离工作区 |
-| `ExitWorktree` | 退出 worktree（keep/remove） |
-| `EnterPlanMode` | 进入计划模式 |
-| `ExitPlanMode` | 退出计划模式 |
-| `Skill` | 调用 Skill 技能 |
-| `Agent` | 创建子代理 |
-| `Workflow` | 运行工作流脚本 |
+| `ExitWorktree`  | 退出 worktree（keep/remove） |
+| `EnterPlanMode` | 进入计划模式                 |
+| `ExitPlanMode`  | 退出计划模式                 |
+| `Skill`         | 调用 Skill 技能              |
+| `Agent`         | 创建子代理                   |
+| `Workflow`      | 运行工作流脚本               |
 
 ### 工具详情 {#tool-details}
 
 #### Bash — 终端命令执行 {#tool-bash}
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `command` | string | 必需，要执行的命令 |
-| `timeout` | number | 超时时间（秒） |
-| `description` | string | 命令描述 |
-| `run_in_background` | boolean | 是否后台执行 |
+| 参数                | 类型    | 说明               |
+| ------------------- | ------- | ------------------ |
+| `command`           | string  | 必需，要执行的命令 |
+| `timeout`           | number  | 超时时间（秒）     |
+| `description`       | string  | 命令描述           |
+| `run_in_background` | boolean | 是否后台执行       |
 
 执行后显示 `shortResult`（输出最后 3 行摘要）。后台执行时返回任务 ID，可通过任务通知查看结果。
 
 #### Read — 读取文件 {#tool-read}
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `file_path` | string | 必需，文件路径 |
-| `offset` | number | 起始行号（默认 1） |
-| `limit` | number | 最大读取行数（默认 2000） |
+| 参数        | 类型   | 说明                      |
+| ----------- | ------ | ------------------------- |
+| `file_path` | string | 必需，文件路径            |
+| `offset`    | number | 起始行号（默认 1）        |
+| `limit`     | number | 最大读取行数（默认 2000） |
 
 支持图片读取（PNG/JPEG/GIF/WebP），自动检测二进制文档（PDF/DOCX 等返回错误提示）。对未变更的文件返回 "File unchanged" 避免重复内容。
 
 #### Edit — 精确字符串替换 {#tool-edit}
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `file_path` | string | 必需，文件路径 |
-| `old_string` | string | 必需，要替换的原文 |
-| `new_string` | string | 必需，替换后的新文 |
+| 参数          | 类型    | 说明                   |
+| ------------- | ------- | ---------------------- |
+| `file_path`   | string  | 必需，文件路径         |
+| `old_string`  | string  | 必需，要替换的原文     |
+| `new_string`  | string  | 必需，替换后的新文     |
 | `replace_all` | boolean | 是否批量替换所有匹配项 |
 
 非 `replace_all` 时若 `old_string` 在文件中出现多次则报错，提示提供更多上下文。
 
 #### Write — 写入文件 {#tool-write}
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
+| 参数        | 类型   | 说明           |
+| ----------- | ------ | -------------- |
 | `file_path` | string | 必需，文件路径 |
-| `content` | string | 必需，写入内容 |
+| `content`   | string | 必需，写入内容 |
 
 写入已存在文件前必须先 Read 确认当前内容；自动创建不存在的父目录。
 
 #### Glob — 文件名模式匹配 {#tool-glob}
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
+| 参数      | 类型   | 说明                            |
+| --------- | ------ | ------------------------------- |
 | `pattern` | string | 必需，glob 模式（如 `**/*.ts`） |
-| `path` | string | 搜索根目录 |
-| `limit` | number | 最大返回数量（默认 100） |
+| `path`    | string | 搜索根目录                      |
+| `limit`   | number | 最大返回数量（默认 100）        |
 
 #### Grep — 文本内容搜索 {#tool-grep}
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `pattern` | string | 必需，正则表达式 |
-| `path` | string | 搜索目录 |
-| `glob` | string | 文件过滤模式（如 `*.ts`） |
-| `type` | string | 文件类型（如 `ts`、`py`） |
-| `output_mode` | string | `content`、`files_with_matches`、`count` |
-| `-A/-B/-C` | number | 匹配后/前/前后上下文行数 |
-| `-i` | boolean | 大小写无关搜索 |
-| `head_limit` | number | 限制输出行数 |
-| `multiline` | boolean | 多行匹配模式 |
+| 参数          | 类型    | 说明                                     |
+| ------------- | ------- | ---------------------------------------- |
+| `pattern`     | string  | 必需，正则表达式                         |
+| `path`        | string  | 搜索目录                                 |
+| `glob`        | string  | 文件过滤模式（如 `*.ts`）                |
+| `type`        | string  | 文件类型（如 `ts`、`py`）                |
+| `output_mode` | string  | `content`、`files_with_matches`、`count` |
+| `-A/-B/-C`    | number  | 匹配后/前/前后上下文行数                 |
+| `-i`          | boolean | 大小写无关搜索                           |
+| `head_limit`  | number  | 限制输出行数                             |
+| `multiline`   | boolean | 多行匹配模式                             |
 
 #### LSP — 代码智能 {#tool-lsp}
 
@@ -418,19 +420,19 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 
 #### AskUserQuestion — 交互式提问 {#tool-askuser}
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `questions` | array | 必需，问题列表 |
-| `questions[].question` | string | 问题内容 |
-| `questions[].header` | string | 简短标签（最多 12 字符） |
-| `questions[].options` | array | 选项列表（2-4 个），每项含 `label` 和可选 `description` |
-| `questions[].multiSelect` | boolean | 是否允许多选 |
+| 参数                      | 类型    | 说明                                                    |
+| ------------------------- | ------- | ------------------------------------------------------- |
+| `questions`               | array   | 必需，问题列表                                          |
+| `questions[].question`    | string  | 问题内容                                                |
+| `questions[].header`      | string  | 简短标签（最多 12 字符）                                |
+| `questions[].options`     | array   | 选项列表（2-4 个），每项含 `label` 和可选 `description` |
+| `questions[].multiSelect` | boolean | 是否允许多选                                            |
 
 #### WebFetch — 网页内容抓取 {#tool-webfetch}
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `url` | string | 必需，要抓取的 URL |
+| 参数     | 类型   | 说明                       |
+| -------- | ------ | -------------------------- |
+| `url`    | string | 必需，要抓取的 URL         |
 | `prompt` | string | 必需，对抓取内容的处理指令 |
 
 内置 15 分钟 LRU 缓存（最大 50MB），自动将 HTTP 升级到 HTTPS，HTML 自动转 Markdown，使用快速模型处理摘要。内容上限 100K 字符。GitHub URL 提示使用 `gh` CLI。
@@ -446,12 +448,12 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 - **自然语言触发（工具）**：模型可自动调用 `Artifact` 工具，工具描述覆盖「发布 / 分享 / 做成网页 / 给链接」等语义（含中文提示词），无需用户记忆特定命令。
 - **人工触发（内置技能 `/artifact`）**：输入 `/` 即可在命令选择器中看到，适合不熟悉提示词编写的用户。技能内容仅指示模型调用 `Artifact` 工具（参数经 `$ARGUMENTS` 透传），**不含任何发布逻辑**——发布 / 校验 / 权限确认 / 会话映射全部由工具完成。技能声明了 `disable-model-invocation: true`，模型不会自行调用该技能，两个通道互不干扰。
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `file_path` | string | 必需，待发布的 `.html` 或 `.md` 文件路径（不接受内联 content） |
-| `favicon` | string | 页面图标 emoji（如 `📄`） |
-| `url` | string | 已有 artifact 的 URL（同会话重新部署时传入，版本号递增） |
-| `force` | boolean | 冲突时跳过检查直接覆盖发布 |
+| 参数        | 类型    | 说明                                                           |
+| ----------- | ------- | -------------------------------------------------------------- |
+| `file_path` | string  | 必需，待发布的 `.html` 或 `.md` 文件路径（不接受内联 content） |
+| `favicon`   | string  | 页面图标 emoji（如 `📄`）                                      |
+| `url`       | string  | 已有 artifact 的 URL（同会话重新部署时传入，版本号递增）       |
+| `force`     | boolean | 冲突时跳过检查直接覆盖发布                                     |
 
 要点：
 
@@ -464,26 +466,26 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 
 **EnterWorktree**：在 `.wave/worktrees/` 下创建独立分支工作区。要求当前在 git 仓库且不在已有 worktree 中。
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
+| 参数   | 类型   | 说明                            |
+| ------ | ------ | ------------------------------- |
 | `name` | string | worktree 名称（可选，自动生成） |
 
 **ExitWorktree**：
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `keep` | boolean | 是否保留 worktree（默认 false） |
-| `discard_changes` | boolean | 是否丢弃未提交更改 |
+| 参数              | 类型    | 说明                            |
+| ----------------- | ------- | ------------------------------- |
+| `keep`            | boolean | 是否保留 worktree（默认 false） |
+| `discard_changes` | boolean | 是否丢弃未提交更改              |
 
 #### CronCreate / CronDelete / CronList — 定时任务 {#tool-cron}
 
 **CronCreate**：
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `cron` | string | 必需，5 字段 cron 表达式（本地时区） |
-| `prompt` | string | 必需，要执行的内容 |
-| `recurring` | boolean | 是否循环（默认 true） |
+| 参数        | 类型    | 说明                                 |
+| ----------- | ------- | ------------------------------------ |
+| `cron`      | string  | 必需，5 字段 cron 表达式（本地时区） |
+| `prompt`    | string  | 必需，要执行的内容                   |
+| `recurring` | boolean | 是否循环（默认 true）                |
 
 **CronDelete**：`id` — 任务 ID。**CronList**：无参数。
 
@@ -493,11 +495,11 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 
 **TaskCreate**：
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `subject` | string | 必需，任务主题 |
-| `description` | string | 任务描述 |
-| `activeForm` | string | 进行中的动词形式（如 "正在编写测试"） |
+| 参数          | 类型   | 说明                                  |
+| ------------- | ------ | ------------------------------------- |
+| `subject`     | string | 必需，任务主题                        |
+| `description` | string | 任务描述                              |
+| `activeForm`  | string | 进行中的动词形式（如 "正在编写测试"） |
 
 **TaskUpdate**：`id`（必需）、`subject`、`description`、`status`（`pending` -> `in_progress` -> `completed` -> `deleted`）、`blocks`/`blockedBy`。
 
@@ -508,13 +510,13 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 通过 `customTools` 选项注册自定义工具，与内置工具并行可用：
 
 ```typescript
-import { Agent, buildTool } from 'wave-agent-sdk';
+import { Agent, buildTool } from "wave-agent-sdk";
 
 const myTool = buildTool({
-  name: 'MyTool',
-  description: '我的自定义工具',
+  name: "MyTool",
+  description: "我的自定义工具",
   parameters: {
-    query: { type: 'string', description: '搜索查询' },
+    query: { type: "string", description: "搜索查询" },
   },
   execute: async ({ query }, context) => {
     return { content: `结果: ${query}` };
@@ -544,24 +546,24 @@ Agent 支持细粒度的工具权限控制：
 
 **权限模式 (PermissionMode)**：
 
-| 模式 | 说明 |
-|------|------|
-| `default` | 危险操作需用户确认 |
-| `plan` | 计划模式，限制写入操作 |
-| `acceptEdits` | 自动接受文件编辑 |
+| 模式          | 说明                   |
+| ------------- | ---------------------- |
+| `default`     | 危险操作需用户确认     |
+| `plan`        | 计划模式，限制写入操作 |
+| `acceptEdits` | 自动接受文件编辑       |
 
 **权限 API**：
 
 ```typescript
 // 获取/设置权限模式
 agent.getPermissionMode();
-agent.setPermissionMode('acceptEdits');
+agent.setPermissionMode("acceptEdits");
 
 // 检查工具权限
-await agent.checkPermission('Bash', { command: 'rm -rf /tmp/test' });
+await agent.checkPermission("Bash", { command: "rm -rf /tmp/test" });
 
 // 添加权限规则
-await agent.addPermissionRule('Bash(npm *)');
+await agent.addPermissionRule("Bash(npm *)");
 
 // 获取可用工具列表
 agent.getAvailableToolNames();
@@ -571,9 +573,9 @@ agent.getAvailableToolNames();
 
 ```typescript
 const agent = await Agent.create({
-  permissionMode: 'default',
-  allowedTools: ['Read', 'Glob', 'Grep'],
-  disallowedTools: ['Bash(rm *)'],
+  permissionMode: "default",
+  allowedTools: ["Read", "Glob", "Grep"],
+  disallowedTools: ["Bash(rm *)"],
   canUseTool: async (toolName, params) => {
     // 自定义权限判断逻辑
     return { allowed: true };
@@ -589,31 +591,31 @@ SDK 导出所有工具名常量，避免硬编码：
 
 ```typescript
 import {
-  BASH_TOOL_NAME,           // "Bash"
-  READ_TOOL_NAME,           // "Read"
-  WRITE_TOOL_NAME,          // "Write"
-  EDIT_TOOL_NAME,           // "Edit"
-  GLOB_TOOL_NAME,           // "Glob"
-  GREP_TOOL_NAME,           // "Grep"
-  LSP_TOOL_NAME,            // "LSP"
-  WEB_FETCH_TOOL_NAME,      // "WebFetch"
+  BASH_TOOL_NAME, // "Bash"
+  READ_TOOL_NAME, // "Read"
+  WRITE_TOOL_NAME, // "Write"
+  EDIT_TOOL_NAME, // "Edit"
+  GLOB_TOOL_NAME, // "Glob"
+  GREP_TOOL_NAME, // "Grep"
+  LSP_TOOL_NAME, // "LSP"
+  WEB_FETCH_TOOL_NAME, // "WebFetch"
   ASK_USER_QUESTION_TOOL_NAME, // "AskUserQuestion"
-  TASK_CREATE_TOOL_NAME,    // "TaskCreate"
-  TASK_GET_TOOL_NAME,       // "TaskGet"
-  TASK_UPDATE_TOOL_NAME,    // "TaskUpdate"
-  TASK_LIST_TOOL_NAME,      // "TaskList"
-  TASK_STOP_TOOL_NAME,      // "TaskStop"
-  CRON_CREATE_TOOL_NAME,    // "CronCreate"
-  CRON_DELETE_TOOL_NAME,    // "CronDelete"
-  CRON_LIST_TOOL_NAME,      // "CronList"
+  TASK_CREATE_TOOL_NAME, // "TaskCreate"
+  TASK_GET_TOOL_NAME, // "TaskGet"
+  TASK_UPDATE_TOOL_NAME, // "TaskUpdate"
+  TASK_LIST_TOOL_NAME, // "TaskList"
+  TASK_STOP_TOOL_NAME, // "TaskStop"
+  CRON_CREATE_TOOL_NAME, // "CronCreate"
+  CRON_DELETE_TOOL_NAME, // "CronDelete"
+  CRON_LIST_TOOL_NAME, // "CronList"
   ENTER_WORKTREE_TOOL_NAME, // "EnterWorktree"
-  EXIT_WORKTREE_TOOL_NAME,  // "ExitWorktree"
+  EXIT_WORKTREE_TOOL_NAME, // "ExitWorktree"
   ENTER_PLAN_MODE_TOOL_NAME, // "EnterPlanMode"
   EXIT_PLAN_MODE_TOOL_NAME, // "ExitPlanMode"
-  SKILL_TOOL_NAME,          // "Skill"
-  AGENT_TOOL_NAME,          // "Agent"
-  WORKFLOW_TOOL_NAME,       // "Workflow"
-} from 'wave-agent-sdk';
+  SKILL_TOOL_NAME, // "Skill"
+  AGENT_TOOL_NAME, // "Agent"
+  WORKFLOW_TOOL_NAME, // "Workflow"
+} from "wave-agent-sdk";
 ```
 
 ## 6. 会话管理 {#session-management}
@@ -623,7 +625,7 @@ import {
 Agent 创建时自动开始新会话，每个会话有唯一 ID：
 
 ```typescript
-const agent = await Agent.create({ workdir: '/path/to/project' });
+const agent = await Agent.create({ workdir: "/path/to/project" });
 console.log(agent.sessionId); // 自动生成的会话 ID
 ```
 
@@ -634,18 +636,18 @@ console.log(agent.sessionId); // 自动生成的会话 ID
 ```typescript
 // 方式 1：通过 restoreSessionId 恢复指定会话
 const agent = await Agent.create({
-  restoreSessionId: 'session-id-to-restore',
-  workdir: '/path/to/project',
+  restoreSessionId: "session-id-to-restore",
+  workdir: "/path/to/project",
 });
 
 // 方式 2：通过 continueLastSession 恢复最近会话
 const agent = await Agent.create({
   continueLastSession: true,
-  workdir: '/path/to/project',
+  workdir: "/path/to/project",
 });
 
 // 方式 3：运行时恢复
-await agent.restoreSession('another-session-id');
+await agent.restoreSession("another-session-id");
 ```
 
 ### 会话查询 API {#session-api}
@@ -654,20 +656,20 @@ SDK 提供独立的会话查询函数：
 
 ```typescript
 import {
-  listSessions,           // 列出所有会话
-  listSessionsFromJsonl,    // 列出会话（JSONL 格式）
-  loadSessionFromJsonl,     // 加载指定会话数据
+  listSessions, // 列出所有会话
+  listSessionsFromJsonl, // 列出会话（JSONL 格式）
+  loadSessionFromJsonl, // 加载指定会话数据
   getLatestSessionFromJsonl, // 获取最近活跃会话
-  getSessionFilePath,       // 获取会话文件路径
-  deleteSession,            // 删除会话
-} from 'wave-agent-sdk';
+  getSessionFilePath, // 获取会话文件路径
+  deleteSession, // 删除会话
+} from "wave-agent-sdk";
 
 // 列出所有会话
-const sessions = await listSessions('/path/to/project');
+const sessions = await listSessions("/path/to/project");
 // 返回 SessionMetadata[]: { id, createdAt, lastActiveAt, messageCount, ... }
 
 // 加载指定会话
-const data = await loadSessionFromJsonl('session-id', '/path/to/project');
+const data = await loadSessionFromJsonl("session-id", "/path/to/project");
 // 返回 SessionData: { messages, metadata, ... }
 ```
 
@@ -698,9 +700,7 @@ const thread = await agent.getFullMessageThread();
 
 ```typescript
 const agent = await Agent.create({
-  plugins: [
-    { path: '/path/to/my-plugin' },
-  ],
+  plugins: [{ path: "/path/to/my-plugin" }],
 });
 ```
 
@@ -761,10 +761,10 @@ const servers = agent.getMcpServers();
 // 返回 McpServerStatus[]
 
 // 连接指定 MCP 服务器
-await agent.connectMcpServer('github');
+await agent.connectMcpServer("github");
 
 // 断开指定 MCP 服务器
-await agent.disconnectMcpServer('github');
+await agent.disconnectMcpServer("github");
 ```
 
 ### 状态回调 {#mcp-callbacks}
@@ -836,6 +836,7 @@ const combined = await agent.getCombinedMemory();
 Wave 采用多层压缩机制管理对话历史，确保在长对话中不超出模型 token 限制：
 
 **自动压缩 (Auto-Compact)**
+
 - 每次 AI 响应后监控 token 使用量（含 cache 读取/写入 tokens）
 - 当总 token 数超过 `getMaxInputTokens()` 时，自动触发压缩流程
 - 使用快速模型（fastModel）生成对话摘要，`max_tokens: 8192`，`temperature: 0.1`
@@ -847,11 +848,13 @@ Wave 采用多层压缩机制管理对话历史，确保在长对话中不超出
 - 递归压缩时，旧摘要连同整个历史被新摘要替换
 
 **熔断机制 (Circuit Breaker)**
+
 - 跟踪连续压缩失败次数
 - 连续 3 次失败后跳过压缩并记录警告，避免在损坏的上下文中浪费 API 调用
 - 压缩成功后失败计数器重置为 0
 
 **压缩后上下文恢复 (Post-Compact Context Restoration)**
+
 - 最近读取的文件：最多 5 个文件，每个 5000 tokens
 - 当前工作目录路径
 - 计划模式状态及计划文件路径
@@ -866,7 +869,7 @@ AI 生成的摘要包含 9 个结构化章节：Primary Request and Intent、Key
 
 ```typescript
 // 手动触发压缩（可附带自定义指令）
-await agent.compact('重点关注认证模块的修改');
+await agent.compact("重点关注认证模块的修改");
 ```
 
 ## 10. 后台任务与工作流 {#background-tasks}
@@ -940,21 +943,23 @@ callbacks: {
 const commands = agent.getSlashCommands();
 
 // 检查命令是否存在
-agent.hasSlashCommand('compact');
+agent.hasSlashCommand("compact");
 
 // 注册自定义斜杠命令
 agent.registerSlashCommand({
-  id: 'my-command',
-  name: 'my-command',
-  description: '我的自定义命令',
-  handler: async (args, context) => { /* ... */ },
+  id: "my-command",
+  name: "my-command",
+  description: "我的自定义命令",
+  handler: async (args, context) => {
+    /* ... */
+  },
 });
 
 // 重新加载自定义命令
 await agent.reloadCustomCommands();
 
 // 获取自定义命令
-const cmd = agent.getCustomCommand('my-command');
+const cmd = agent.getCustomCommand("my-command");
 const allCmds = agent.getCustomCommands();
 ```
 
@@ -963,7 +968,7 @@ const allCmds = agent.getCustomCommands();
 直接执行 Shell 命令并将输出作为消息注入对话：
 
 ```typescript
-await agent.bang('ls -la');
+await agent.bang("ls -la");
 ```
 
 ### SSO 认证 {#sso}
@@ -971,16 +976,16 @@ await agent.bang('ls -la');
 通过 `AuthService` 单例管理 SSO 认证流程：
 
 ```typescript
-import { AuthService } from 'wave-agent-sdk';
+import { AuthService } from "wave-agent-sdk";
 
 const auth = AuthService.getInstance();
 
 // 设置服务端地址
-auth.setServerUrl('https://wave-admin.example.com');
+auth.setServerUrl("https://wave-admin.example.com");
 
 // 监听认证状态变化
 const unsubscribe = auth.onAuthChange((event) => {
-  console.log('Auth event:', event); // "login" | "logout"
+  console.log("Auth event:", event); // "login" | "logout"
 });
 
 // 检查认证状态
@@ -993,7 +998,7 @@ const token = auth.getToken();
 ### 提示历史 {#prompt-history}
 
 ```typescript
-import { PromptHistoryManager } from 'wave-agent-sdk';
+import { PromptHistoryManager } from "wave-agent-sdk";
 ```
 
 `PromptHistoryManager` 管理用户输入历史，支持上下箭头回忆。
@@ -1004,21 +1009,21 @@ SDK 导出一组 Git 操作工具函数：
 
 ```typescript
 import {
-  isGitRepository,      // 检查是否为 git 仓库
-  getGitRepoRoot,       // 获取仓库根目录
-  getGitCommonDir,      // 获取 .git 目录
-  getGitMainRepoRoot,   // 获取主仓库根目录（worktree 感知）
-  resolveGitDir,        // 解析 git 目录
+  isGitRepository, // 检查是否为 git 仓库
+  getGitRepoRoot, // 获取仓库根目录
+  getGitCommonDir, // 获取 .git 目录
+  getGitMainRepoRoot, // 获取主仓库根目录（worktree 感知）
+  resolveGitDir, // 解析 git 目录
   getDefaultRemoteBranch, // 获取默认远程分支
-  hasUncommittedChanges,  // 检查未提交更改
-  hasNewCommits,         // 检查新提交
-} from 'wave-agent-sdk';
+  hasUncommittedChanges, // 检查未提交更改
+  hasNewCommits, // 检查新提交
+} from "wave-agent-sdk";
 ```
 
 ### 文件搜索 {#file-search}
 
 ```typescript
-import { fileSearch } from 'wave-agent-sdk';
+import { fileSearch } from "wave-agent-sdk";
 ```
 
 提供高性能文件搜索能力，支持 glob 模式和内容搜索。
@@ -1036,7 +1041,7 @@ const planPath = agent.getPlanFilePath();
 
 ```typescript
 // 触发 worktree 移除钩子
-await agent.triggerWorktreeRemoveHook('/path/to/worktree');
+await agent.triggerWorktreeRemoveHook("/path/to/worktree");
 ```
 
 ## 12. 内置 Skills {#builtin-skills}
@@ -1061,6 +1066,7 @@ await agent.triggerWorktreeRemoveHook('/path/to/worktree');
 - **间隔格式**: `Ns`, `Nm`, `Nh`, `Nd`（如 `5m`, `30m`, `2h`, `1d`），最小粒度为 1 分钟，默认 10 分钟
 
 **示例**:
+
 - `/loop 5m /babysit-prs` — 每 5 分钟执行 `/babysit-prs`
 - `/loop 30m check the deploy` — 每 30 分钟检查部署
 - `/loop check the deploy` — 默认每 10 分钟执行
@@ -1174,7 +1180,7 @@ await agent.triggerWorktreeRemoveHook('/path/to/worktree');
 
 ```typescript
 // 获取子代理实例
-const subagent = agent.getSubagentInstance('explore');
+const subagent = agent.getSubagentInstance("explore");
 ```
 
 ### Vision — 图像识别 {#subagent-vision}
@@ -1210,18 +1216,18 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 
 钩子允许在特定事件发生时自动执行任务，实现工作流自动化。Wave 支持以下钩子事件：
 
-| 事件名称 | 触发时机 |
-|----------|----------|
-| `PreToolUse` | 工具执行前（可用于校验、拦截或预处理） |
-| `PostToolUse` | 工具执行完成后（可用于后处理或日志记录） |
-| `UserPromptSubmit` | 用户提交 Prompt 时 |
-| `PermissionRequest` | Wave 请求工具权限时 |
-| `Stop` | Wave 完成响应周期（无更多工具调用）时 |
-| `SubagentStop` | 子代理完成响应周期时 |
-| `WorktreeCreate` | 创建新 worktree 时 |
-| `WorktreeRemove` | 删除 worktree 之前触发（通知型，非阻塞，可读取 worktree 内文件） |
-| `SessionStart` | 会话开始时（来源：`startup` / `resume` / `compact`） |
-| `SessionEnd` | 会话结束时（来源：`exit` / `stop` / `compact`） |
+| 事件名称            | 触发时机                                                         |
+| ------------------- | ---------------------------------------------------------------- |
+| `PreToolUse`        | 工具执行前（可用于校验、拦截或预处理）                           |
+| `PostToolUse`       | 工具执行完成后（可用于后处理或日志记录）                         |
+| `UserPromptSubmit`  | 用户提交 Prompt 时                                               |
+| `PermissionRequest` | Wave 请求工具权限时                                              |
+| `Stop`              | Wave 完成响应周期（无更多工具调用）时                            |
+| `SubagentStop`      | 子代理完成响应周期时                                             |
+| `WorktreeCreate`    | 创建新 worktree 时                                               |
+| `WorktreeRemove`    | 删除 worktree 之前触发（通知型，非阻塞，可读取 worktree 内文件） |
+| `SessionStart`      | 会话开始时（来源：`startup` / `resume` / `compact`）             |
+| `SessionEnd`        | 会话结束时（来源：`exit` / `stop` / `compact`）                  |
 
 **钩子配置要点：**
 
@@ -1236,35 +1242,35 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 
 通过 `env` 字段设置对所有工具和钩子可用的环境变量，也可直接在系统环境中设置。
 
-#### WAVE_* 变量
+#### WAVE\_\* 变量
 
-| 变量 | 描述 |
-|---|---|
-| `WAVE_MODEL` | 默认 AI 模型 |
-| `WAVE_FAST_MODEL` | 快速模型（用于子代理、摘要等轻量场景） |
-| `WAVE_VISION_MODEL` | 视觉模型（用于内置 `vision` 子代理的图像识别；设置后该子代理注册，未设置则禁用） |
-| `WAVE_API_KEY` | API Key |
-| `WAVE_BASE_URL` | API Base URL |
-| `WAVE_SERVER_URL` | Wave AI 服务端地址（用于 SSO） |
-| `WAVE_CUSTOM_HEADERS` | 自定义请求头（JSON 格式） |
-| `WAVE_MAX_INPUT_TOKENS` | 最大输入 Token 数 |
-| `WAVE_MAX_OUTPUT_TOKENS` | 最大输出 Token 数 |
-| `WAVE_DISABLE_AUTO_MEMORY` | 禁用自动记忆 |
-| `WAVE_AUTO_MEMORY_FREQUENCY` | 自动记忆触发频率 |
-| `WAVE_PLUGIN_GIT_TIMEOUT_MS` | 插件 Git 操作超时（毫秒） |
+| 变量                         | 描述                                                                             |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| `WAVE_MODEL`                 | 默认 AI 模型                                                                     |
+| `WAVE_FAST_MODEL`            | 快速模型（用于子代理、摘要等轻量场景）                                           |
+| `WAVE_VISION_MODEL`          | 视觉模型（用于内置 `vision` 子代理的图像识别；设置后该子代理注册，未设置则禁用） |
+| `WAVE_API_KEY`               | API Key                                                                          |
+| `WAVE_BASE_URL`              | API Base URL                                                                     |
+| `WAVE_SERVER_URL`            | Wave AI 服务端地址（用于 SSO）                                                   |
+| `WAVE_CUSTOM_HEADERS`        | 自定义请求头（JSON 格式）                                                        |
+| `WAVE_MAX_INPUT_TOKENS`      | 最大输入 Token 数                                                                |
+| `WAVE_MAX_OUTPUT_TOKENS`     | 最大输出 Token 数                                                                |
+| `WAVE_DISABLE_AUTO_MEMORY`   | 禁用自动记忆                                                                     |
+| `WAVE_AUTO_MEMORY_FREQUENCY` | 自动记忆触发频率                                                                 |
+| `WAVE_PLUGIN_GIT_TIMEOUT_MS` | 插件 Git 操作超时（毫秒）                                                        |
 
-#### OTEL_* 变量（OpenTelemetry）
+#### OTEL\_\* 变量（OpenTelemetry）
 
-| 变量 | 描述 |
-|---|---|
-| `OTEL_ENABLED` | 是否启用遥测（设为 `false` 禁用） |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP 导出端点 |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | 导出协议（`grpc` / `http`） |
-| `OTEL_EXPORTER_OTLP_HEADERS` | 导出附加头（JSON 格式） |
-| `OTEL_LOG_USER_PROMPTS` | 是否记录用户 Prompt |
-| `OTEL_LOG_TOOL_CONTENT` | 是否记录工具调用内容 |
-| `OTEL_SPAN_TTL_MS` | Span 存活时间（毫秒） |
-| `OTEL_SHUTDOWN_TIMEOUT_MS` | 关闭超时时间（毫秒） |
+| 变量                          | 描述                              |
+| ----------------------------- | --------------------------------- |
+| `OTEL_ENABLED`                | 是否启用遥测（设为 `false` 禁用） |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP 导出端点                     |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | 导出协议（`grpc` / `http`）       |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | 导出附加头（JSON 格式）           |
+| `OTEL_LOG_USER_PROMPTS`       | 是否记录用户 Prompt               |
+| `OTEL_LOG_TOOL_CONTENT`       | 是否记录工具调用内容              |
+| `OTEL_SPAN_TTL_MS`            | Span 存活时间（毫秒）             |
+| `OTEL_SHUTDOWN_TIMEOUT_MS`    | 关闭超时时间（毫秒）              |
 
 ### 工具权限 {#settings-permissions}
 
@@ -1431,11 +1437,11 @@ Wave 支持为每种信号类型（Traces、Metrics、Logs）配置不同的导�
 
 Wave 创建三层 Span 结构，完整记录用户交互到工具执行的全链路：
 
-| Span 类型 | 说明 | 关键属性 |
-|-----------|------|----------|
-| **InteractionSpan** | 包裹一次完整的用户消息 -> Agent 响应周期 | `user_prompt`（可选）、`user_prompt_length`、`interaction.sequence` |
-| **LLMRequestSpan** | Interaction 的子 Span，表示单次 API 调用 | `model`、`input_tokens`、`output_tokens`、`cache_read_tokens`、`cache_creation_tokens`、`ttft_ms`、`ttlt_ms`、`success`、`has_tool_call` |
-| **ToolSpan** | Interaction 的子 Span，表示单次工具执行 | `tool_name`、`tool_input`（可选）、`success`、`error`、`duration_ms` |
+| Span 类型           | 说明                                     | 关键属性                                                                                                                                 |
+| ------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **InteractionSpan** | 包裹一次完整的用户消息 -> Agent 响应周期 | `user_prompt`（可选）、`user_prompt_length`、`interaction.sequence`                                                                      |
+| **LLMRequestSpan**  | Interaction 的子 Span，表示单次 API 调用 | `model`、`input_tokens`、`output_tokens`、`cache_read_tokens`、`cache_creation_tokens`、`ttft_ms`、`ttlt_ms`、`success`、`has_tool_call` |
+| **ToolSpan**        | Interaction 的子 Span，表示单次工具执行  | `tool_name`、`tool_input`（可选）、`success`、`error`、`duration_ms`                                                                     |
 
 - **父子关系**：一个 InteractionSpan 包含多个 LLMRequestSpan（多轮递归时）和多个 ToolSpan（并行工具调用时）
 - **并行隔离**：使用 `AsyncLocalStorage` 确保并行工具执行时 Span 上下文不混淆
@@ -1445,14 +1451,14 @@ Wave 创建三层 Span 结构，完整记录用户交互到工具执行的全链
 
 Wave 在关键会话生命周期节点记录结构化事件：
 
-| 事件 | 触发时机 | 关键属性 |
-|------|----------|----------|
-| `session_start` | 会话启动 | `sessionId`、`model`、`workdir` |
-| `session_end` | 会话结束 | `duration`、`totalTokens`、`exitReason` |
-| `user_prompt` | 用户发送消息 | `prompt_length`、`prompt`（若启用） |
-| `tool_decision` | 工具权限决策 | `tool_name`、`decision`、`source` |
-| `compaction` | 自动压缩触发 | `beforeTokens`、`afterTokens`、`model` |
-| `error` | 错误发生 | `error_type`、`message`、`stack`（截断） |
+| 事件            | 触发时机     | 关键属性                                 |
+| --------------- | ------------ | ---------------------------------------- |
+| `session_start` | 会话启动     | `sessionId`、`model`、`workdir`          |
+| `session_end`   | 会话结束     | `duration`、`totalTokens`、`exitReason`  |
+| `user_prompt`   | 用户发送消息 | `prompt_length`、`prompt`（若启用）      |
+| `tool_decision` | 工具权限决策 | `tool_name`、`decision`、`source`        |
+| `compaction`    | 自动压缩触发 | `beforeTokens`、`afterTokens`、`model`   |
+| `error`         | 错误发生     | `error_type`、`message`、`stack`（截断） |
 
 ### PII 保护 {#otel-privacy}
 

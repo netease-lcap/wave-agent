@@ -147,6 +147,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
         worktreeName: worktreeSession.name,
         isNew: worktreeSession.isNew,
         repoRoot: worktreeSession.repoRoot,
+        hookBased: worktreeSession.hookBased,
       };
       agent.setWorktreeSession(session);
     }
@@ -186,8 +187,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     // Display timing information
     displayTimingInfo(startTime, showStats);
 
-    // Trigger WorktreeRemove hook (before destroy — it needs a live agent) and
-    // decide whether the worktree is clean enough to remove
+    // Decide whether the worktree is clean enough to remove
     let cleanWorktree = false;
     if (worktreeSession) {
       const cwd = workdir || worktreeSession.path;
@@ -196,9 +196,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       const hasCommits = hasNewCommits(cwd, baseBranch);
       cleanWorktree = !hasChanges && !hasCommits;
 
-      if (cleanWorktree) {
-        await agent.triggerWorktreeRemoveHook(worktreeSession.path);
-      } else {
+      if (!cleanWorktree) {
         process.stdout.write(
           `\n⚠️ Worktree '${worktreeSession.name}' has changes or commits. Keeping it at: ${worktreeSession.path}\n`,
         );
@@ -211,10 +209,14 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     // Handle worktree cleanup for print mode (git removal stays after destroy)
     if (worktreeSession && cleanWorktree) {
       try {
-        validateWorktreeRemovalPath(
-          worktreeSession.path,
-          worktreeSession.repoRoot,
-        );
+        // Hook-based worktrees are owned by the hook; the git-root
+        // containment check does not apply to them
+        if (!worktreeSession.hookBased) {
+          validateWorktreeRemovalPath(
+            worktreeSession.path,
+            worktreeSession.repoRoot,
+          );
+        }
         await removeWorktree(worktreeSession);
       } catch (error) {
         // Never block print-mode exit on worktree cleanup failures
@@ -242,7 +244,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       // Display timing information even on error
       displayTimingInfo(startTime, showStats);
 
-      // Trigger WorktreeRemove hook (before destroy) when the worktree is clean
+      // Decide whether the worktree is clean enough to remove
       let cleanWorktree = false;
       if (worktreeSession) {
         const cwd = workdir || worktreeSession.path;
@@ -251,9 +253,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
         const hasCommits = hasNewCommits(cwd, baseBranch);
         cleanWorktree = !hasChanges && !hasCommits;
 
-        if (cleanWorktree) {
-          await agent.triggerWorktreeRemoveHook(worktreeSession.path);
-        } else {
+        if (!cleanWorktree) {
           process.stdout.write(
             `\n⚠️ Worktree '${worktreeSession.name}' has changes or commits. Keeping it at: ${worktreeSession.path}\n`,
           );
@@ -265,10 +265,14 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       // Handle worktree cleanup for print mode even on error
       if (worktreeSession && cleanWorktree) {
         try {
-          validateWorktreeRemovalPath(
-            worktreeSession.path,
-            worktreeSession.repoRoot,
-          );
+          // Hook-based worktrees are owned by the hook; the git-root
+          // containment check does not apply to them
+          if (!worktreeSession.hookBased) {
+            validateWorktreeRemovalPath(
+              worktreeSession.path,
+              worktreeSession.repoRoot,
+            );
+          }
           await removeWorktree(worktreeSession);
         } catch (error) {
           process.stdout.write(

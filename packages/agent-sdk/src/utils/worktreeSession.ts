@@ -23,4 +23,10 @@ export interface WorktreeSession {
   repoRoot: string;
   /** The HEAD commit of the original branch at worktree creation time */
   originalHeadCommit?: string;
+  /**
+   * True when this worktree was created by a WorktreeCreate hook (not by git).
+   * Deletion delegates to the WorktreeRemove hook; wave never runs
+   * `git worktree remove` for hook-based worktrees (aligned with Claude Code).
+   */
+  hookBased?: boolean;
 }

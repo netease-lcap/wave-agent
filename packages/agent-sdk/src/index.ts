@@ -1,6 +1,7 @@
 // Export all services
 export * from "./core/session.js";
 export * from "./services/authService.js";
+export * from "./services/worktreeHooks.js";
 
 // Export constants
 export * from "./constants/tools.js";
