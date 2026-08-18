@@ -27,6 +27,7 @@ import {
 } from "../utils/messageOperations.js";
 
 import { Container } from "../utils/container.js";
+import { AsyncWorkRegistry } from "../utils/asyncWorkRegistry.js";
 import type { PermissionManager } from "./permissionManager.js";
 import type { PermissionMode } from "../types/permissions.js";
 import { ConfigurationService } from "../services/configurationService.js";
@@ -123,6 +124,10 @@ export class SubagentManager {
 
   private get configurationService(): ConfigurationService {
     return this.container.get<ConfigurationService>("ConfigurationService")!;
+  }
+
+  private get asyncWorkRegistry(): AsyncWorkRegistry | undefined {
+    return this.container.get<AsyncWorkRegistry>("AsyncWorkRegistry");
   }
 
   /**
@@ -536,7 +541,7 @@ export class SubagentManager {
 
         // Execute in background
         // Note: notification enqueueing is handled by internalExecute when instance.backgroundTaskId is set
-        (async () => {
+        const backgroundPromise = (async () => {
           try {
             const result = await this.internalExecute(
               instance,
@@ -567,6 +572,7 @@ export class SubagentManager {
             this.releaseInstance(instance.subagentId);
           }
         })();
+        this.asyncWorkRegistry?.track(backgroundPromise);
 
         return taskId;
       }

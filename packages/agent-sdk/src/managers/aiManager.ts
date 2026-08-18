@@ -52,6 +52,7 @@ import {
   wrapInSystemReminder,
 } from "../prompts/planModeReminders.js";
 import { Container } from "../utils/container.js";
+import { AsyncWorkRegistry } from "../utils/asyncWorkRegistry.js";
 import type { WorktreeSession } from "../utils/worktreeSession.js";
 import { recoverTruncatedJson } from "../utils/stringUtils.js";
 import { ConfigurationService } from "../services/configurationService.js";
@@ -240,6 +241,10 @@ export class AIManager {
 
   private get backgroundTaskManager(): BackgroundTaskManager | undefined {
     return this.container.get<BackgroundTaskManager>("BackgroundTaskManager");
+  }
+
+  private get asyncWorkRegistry(): AsyncWorkRegistry | undefined {
+    return this.container.get<AsyncWorkRegistry>("AsyncWorkRegistry");
   }
 
   private get hookManager(): HookManager | undefined {
@@ -1241,8 +1246,10 @@ export class AIManager {
     };
 
     // Fire-and-forget: the fork runs to completion in the background; the
-    // caller gets the task ID immediately.
-    (async () => {
+    // caller gets the task ID immediately. Tracked in the async work registry
+    // so destroy() drains it before returning (abort via the task's onStop
+    // makes the loop settle).
+    const forkPromise = (async () => {
       try {
         const result = await this.runForkLoop(
           historyMessages,
@@ -1294,6 +1301,7 @@ export class AIManager {
         abortCleanup?.();
       }
     })();
+    this.asyncWorkRegistry?.track(forkPromise);
 
     return taskId;
   }

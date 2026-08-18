@@ -774,6 +774,211 @@ describe("Agent - Abort Handling", () => {
       sendSpy.mockRestore();
     });
 
+    it("public APIs must throw after destroy", async () => {
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-destroy-public-api",
+        callbacks: { onLoadingChange: vi.fn() },
+      });
+      activeTestAgent = testAgent;
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      const aiManager = (testAgent as unknown as { aiManager: AIManager })
+        .aiManager;
+      const sendSpy = vi
+        .spyOn(aiManager, "sendAIMessage")
+        .mockResolvedValue(undefined);
+
+      await testAgent.destroy();
+      activeTestAgent = undefined; // already destroyed above
+
+      // destroy() is terminal: every public entry point must reject loudly
+      // instead of silently dropping or starting new work on a dead agent.
+      await expect(testAgent.sendMessage("hello")).rejects.toThrow(
+        "Agent destroyed",
+      );
+      await expect(testAgent.bang("ls")).rejects.toThrow("Agent destroyed");
+      await expect(testAgent.askBtw("question")).rejects.toThrow(
+        "Agent destroyed",
+      );
+      await expect(
+        testAgent.forkSubagent("task", { description: "d" }),
+      ).rejects.toThrow("Agent destroyed");
+
+      expect(sendSpy).not.toHaveBeenCalled();
+
+      sendSpy.mockRestore();
+    });
+
+    it("destroy must wait for registered async work to drain", async () => {
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-destroy-drain",
+        callbacks: { onLoadingChange: vi.fn() },
+      });
+      activeTestAgent = testAgent;
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      const asyncWorkRegistry = (
+        testAgent as unknown as {
+          asyncWorkRegistry: import("@/utils/asyncWorkRegistry.js").AsyncWorkRegistry;
+        }
+      ).asyncWorkRegistry;
+
+      // Register a manually-controlled live work item (e.g. an in-flight fork
+      // subagent). destroy() must not return until it settles.
+      let resolveWork!: () => void;
+      const work = new Promise<void>((resolve) => {
+        resolveWork = resolve;
+      });
+      asyncWorkRegistry.track(work);
+      expect(asyncWorkRegistry.size).toBe(1);
+
+      let destroyResolved = false;
+      const destroyPromise = testAgent.destroy().then(() => {
+        destroyResolved = true;
+      });
+      activeTestAgent = undefined; // already destroyed above
+
+      // destroy() must be blocked while the live work is pending
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(destroyResolved).toBe(false);
+
+      // Settle the work: destroy() must now complete and the registry must be empty
+      resolveWork();
+      await destroyPromise;
+      expect(destroyResolved).toBe(true);
+      expect(asyncWorkRegistry.size).toBe(0);
+    });
+
+    it("destroy must return with an error log when async work does not drain", async () => {
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-destroy-drain-timeout",
+        callbacks: { onLoadingChange: vi.fn() },
+      });
+      activeTestAgent = testAgent;
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      // Swap in a short-timeout registry so the timeout fallback fires fast.
+      const loggerError = vi.fn();
+      (
+        testAgent as unknown as {
+          asyncWorkRegistry: import("@/utils/asyncWorkRegistry.js").AsyncWorkRegistry;
+          logger: { error: (msg: string) => void };
+        }
+      ).asyncWorkRegistry = new (
+        await import("@/utils/asyncWorkRegistry.js")
+      ).AsyncWorkRegistry(50);
+      (
+        testAgent as unknown as { logger: { error: typeof loggerError } }
+      ).logger = { error: loggerError };
+
+      // Never-resolving work: destroy must still return after the drain timeout
+      (
+        testAgent as unknown as {
+          asyncWorkRegistry: import("@/utils/asyncWorkRegistry.js").AsyncWorkRegistry;
+        }
+      ).asyncWorkRegistry.track(new Promise<void>(() => {}));
+
+      await testAgent.destroy();
+      activeTestAgent = undefined; // already destroyed above
+
+      expect(loggerError).toHaveBeenCalledWith(
+        expect.stringContaining("Async work did not drain"),
+      );
+    });
+
     it("should reset queue state to idle on abort", async () => {
       const testAgent = await Agent.create({
         apiKey: "test-key",
