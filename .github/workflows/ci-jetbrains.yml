@@ -6,6 +6,12 @@ name: CI (JetBrains)
 # logic has no merge gate.
 
 on:
+  # Merge gate on PRs and post-merge gate on main (aligned with ci.yml).
+  # dorny/paths-filter below skips all steps for non-JetBrains changes.
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -33,7 +39,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Setup Gradle
         if: steps.filter.outputs.jetbrains == 'true'

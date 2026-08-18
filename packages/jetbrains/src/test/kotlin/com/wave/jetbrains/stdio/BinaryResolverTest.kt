@@ -256,6 +256,7 @@ class BinaryResolverTest {
 
     @Test
     fun `inferGitBashFromGitExe maps cmd git exe to bin bash exe`() {
+        assumeWindows()
         assertEquals(
             "C:\\Program Files\\Git\\bin\\bash.exe",
             BinaryResolver.inferGitBashFromGitExe("C:\\Program Files\\Git\\cmd\\git.exe"),
@@ -264,6 +265,7 @@ class BinaryResolverTest {
 
     @Test
     fun `inferGitBashFromGitExe handles a shallow git exe path`() {
+        assumeWindows()
         // e.g. git.exe two levels above a bin dir — parent chain collapses
         assertEquals(
             "C:\\tools\\bin\\bash.exe",
@@ -322,6 +324,19 @@ class BinaryResolverTest {
     }
 
     // ---- helpers -------------------------------------------------------
+
+    /**
+     * Skips the test on non-Windows hosts. [inferGitBashFromGitExe] operates on
+     * Windows drive paths (`C:\...\git.exe`); on POSIX JVMs `\` is an ordinary
+     * filename character, so `File.parentFile` sees a single-element path and
+     * the parent chain collapses to null. The mapping only exists on Windows.
+     */
+    private fun assumeWindows() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            System.getProperty("os.name").lowercase().startsWith("win"),
+            "Git Bash path inference is Windows-only"
+        )
+    }
 
     /**
      * Builds a fake nvm root under [tempDir]: `versions/node/` created, and
