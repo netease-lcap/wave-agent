@@ -180,6 +180,15 @@ interface StreamingUpdateParams {
  * reasoning and text content alike. See docs/specs/core/stream-content-updates.md.
  * The clone must be at least one layer deep (message + blocks) so the in-place
  * block mutation never leaks into consumer state.
+ *
+ * IMPORTANT: the caller must invoke this EAGERLY at callback time and capture
+ * the result before scheduling any state update. React batches setState calls
+ * that happen in the same synchronous tick and runs the updater functions only
+ * at flush time — after the SDK has already written the first chunk into the
+ * shared message. A snapshot evaluated inside the updater (lazily) would copy
+ * the post-mutation blocks, and the first delta append would then double-count
+ * the first word ("HelloHello") whenever `onAssistantMessageAdded` and the
+ * first delta callback land in the same batch.
  */
 const snapshotMessage = (message: Message): Message => ({
   ...message,
@@ -489,20 +498,24 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           const msgs = agentRef.current.messages;
           const last = msgs[msgs.length - 1];
           if (!last || last.role !== "user") return;
+          // Eager snapshot at callback time — React defers updater execution to
+          // the batch flush, so evaluating snapshotMessage inside setMessages
+          // would read the SDK message after its in-place mutations.
+          const snapshot = snapshotMessage(last);
           setMessages((prev) =>
-            prev.some((m) => m.id === last.id)
-              ? prev
-              : [...prev, snapshotMessage(last)],
+            prev.some((m) => m.id === last.id) ? prev : [...prev, snapshot],
           );
         },
         onAssistantMessageAdded: (messageId: string) => {
           if (isExpandedRef.current || !agentRef.current) return;
           const msg = agentRef.current.messages.find((m) => m.id === messageId);
           if (!msg) return;
+          // Eager snapshot (see onUserMessageAdded): `addAssistantMessage()`
+          // fires this callback BEFORE the first delta writes into the shared
+          // message, so capturing here copies the pre-mutation (empty) blocks.
+          const snapshot = snapshotMessage(msg);
           setMessages((prev) =>
-            prev.some((m) => m.id === messageId)
-              ? prev
-              : [...prev, snapshotMessage(msg)],
+            prev.some((m) => m.id === messageId) ? prev : [...prev, snapshot],
           );
         },
         onAssistantContentUpdated: (params) => {

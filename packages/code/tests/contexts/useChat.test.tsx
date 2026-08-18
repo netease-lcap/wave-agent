@@ -1819,6 +1819,208 @@ describe("ChatProvider", () => {
     expect(lastValue?.messages[0]).not.toBe(mockAgent.messages[0]);
   });
 
+  it("does not double-count the first content chunk when messageAdded and the first delta land in the same React batch", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    const assistantMsg = {
+      id: "msg-same-batch-text",
+      role: "assistant" as const,
+      blocks: [] as Array<{
+        type: string;
+        content: string;
+        stage: string;
+      }>,
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [assistantMsg] });
+
+    // Regression (2026-08-17): the real SDK fires addAssistantMessage() →
+    // updateCurrentMessageContent() back-to-back in the SAME synchronous tick
+    // (aiManager.ts onContentUpdate). React batches the two setMessages calls
+    // and runs the updater functions only at flush time — AFTER the SDK has
+    // written the first chunk into the shared message. A snapshot evaluated
+    // lazily inside the updater then copies the post-mutation blocks, and the
+    // first delta append double-counts the first word ("HelloHello"). The
+    // snapshot must be captured eagerly at callback time, pre-mutation. The
+    // older double-count tests above await between messageAdded and the delta,
+    // which commits the batch before the mutation and misses this hole.
+    const sdkMsg = mockAgent.messages[0] as unknown as {
+      blocks: Array<{ type: string; content: string; stage: string }>;
+    };
+    // ── no await between these three calls (real SDK order) ──
+    callbacks.onAssistantMessageAdded!("msg-same-batch-text");
+    sdkMsg.blocks.push({
+      type: "text",
+      content: "Hello",
+      stage: "streaming",
+    });
+    callbacks.onAssistantContentUpdated!({
+      messageId: "msg-same-batch-text",
+      chunk: "Hello",
+      stage: "streaming",
+    });
+    // ───────────────────────────────────────────────────────────
+
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toHaveLength(1);
+      const text = lastValue?.messages[0].blocks[0] as
+        | { content: string }
+        | undefined;
+      // Single "Hello", never "HelloHello"
+      expect(text?.content).toBe("Hello");
+    });
+  });
+
+  it("does not double-count the first reasoning chunk when messageAdded and the first delta land in the same React batch", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    const assistantMsg = {
+      id: "msg-same-batch-reason",
+      role: "assistant" as const,
+      blocks: [] as Array<{
+        type: string;
+        content: string;
+        stage: string;
+      }>,
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [assistantMsg] });
+
+    // Same same-tick scenario as the content case, for the reasoning channel.
+    // The user-visible symptom: the reasoning stream ends and the CONTENT's
+    // first word shows duplicated when the first content delta joins the same
+    // batch as messageAdded (short reasoning + immediate content, or coalesced
+    // stream reads) — the reasoning first word double-counts under the same
+    // mechanism whenever the reasoning delta opens the batch.
+    const sdkMsg = mockAgent.messages[0] as unknown as {
+      blocks: Array<{ type: string; content: string; stage: string }>;
+    };
+    callbacks.onAssistantMessageAdded!("msg-same-batch-reason");
+    sdkMsg.blocks.push({
+      type: "reasoning",
+      content: "Let",
+      stage: "streaming",
+    });
+    callbacks.onAssistantReasoningUpdated!({
+      messageId: "msg-same-batch-reason",
+      chunk: "Let",
+      stage: "streaming",
+    });
+
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toHaveLength(1);
+      const reasoning = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "reasoning",
+      ) as { content: string } | undefined;
+      // Single "Let", never "LetLet"
+      expect(reasoning?.content).toBe("Let");
+    });
+  });
+
+  it("does not double-count when reasoning ends and the first content chunk joins the same batch", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    const assistantMsg = {
+      id: "msg-reason-to-content",
+      role: "assistant" as const,
+      blocks: [] as Array<{
+        type: string;
+        content: string;
+        stage: string;
+      }>,
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [assistantMsg] });
+
+    // User's reported scenario: reasoning stream ends, the content that follows
+    // shows its first word duplicated. All SDK calls below are synchronous in
+    // one tick — messageAdded, reasoning mutation + delta, then the reasoning
+    // finalize + content mutation + first content delta (updateCurrentMessage
+    // Content finalizes the reasoning block first). Neither channel may
+    // double-count.
+    const sdkMsg = mockAgent.messages[0] as unknown as {
+      blocks: Array<{ type: string; content: string; stage: string }>;
+    };
+    callbacks.onAssistantMessageAdded!("msg-reason-to-content");
+    sdkMsg.blocks.push({
+      type: "reasoning",
+      content: "Let me think",
+      stage: "streaming",
+    });
+    callbacks.onAssistantReasoningUpdated!({
+      messageId: "msg-reason-to-content",
+      chunk: "Let me think",
+      stage: "streaming",
+    });
+    // Reasoning finalized, content begins (updateCurrentMessageContent)
+    sdkMsg.blocks[0].stage = "end";
+    callbacks.onAssistantReasoningUpdated!({
+      messageId: "msg-reason-to-content",
+      chunk: "",
+      stage: "end",
+    });
+    sdkMsg.blocks.push({
+      type: "text",
+      content: "Hello world",
+      stage: "streaming",
+    });
+    callbacks.onAssistantContentUpdated!({
+      messageId: "msg-reason-to-content",
+      chunk: "Hello world",
+      stage: "streaming",
+    });
+
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toHaveLength(1);
+      const reasoning = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "reasoning",
+      ) as { content: string; stage: string } | undefined;
+      expect(reasoning?.content).toBe("Let me think");
+      expect(reasoning?.stage).toBe("end");
+      const text = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "text",
+      ) as { content: string } | undefined;
+      // "Hello world", never "HelloHello world"
+      expect(text?.content).toBe("Hello world");
+    });
+  });
+
   it("does not duplicate content when a full-list refresh interleaves mid-stream", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
