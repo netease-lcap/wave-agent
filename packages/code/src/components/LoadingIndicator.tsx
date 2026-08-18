@@ -1,11 +1,16 @@
 import React from "react";
 import { Box, Text } from "ink";
+import { streamingTail } from "../utils/streamingText.js";
 
 export interface LoadingIndicatorProps {
   isLoading?: boolean;
   isCommandRunning?: boolean;
   isCompacting?: boolean;
   latestTotalTokens?: number;
+  /** Accumulated streaming text from the compaction fork; its last 30
+   * characters render after the compacting hint (same tail style as the
+   * main-loop streaming blocks). */
+  compactionStream?: string;
 }
 
 export const LoadingIndicator = ({
@@ -13,6 +18,7 @@ export const LoadingIndicator = ({
   isCommandRunning = false,
   isCompacting = false,
   latestTotalTokens = 0,
+  compactionStream = "",
 }: LoadingIndicatorProps) => {
   return (
     <Box flexDirection="column">
@@ -47,7 +53,15 @@ export const LoadingIndicator = ({
       )}
       {isCommandRunning && <Text color="blue">✻ Command is running...</Text>}
       {isCompacting && (
-        <Text color="magenta">✻ Compacting message history...</Text>
+        <Box>
+          <Text color="magenta">✻ Compacting message history...</Text>
+          {compactionStream && (
+            <Text color="gray" wrap="truncate-end">
+              {" "}
+              {streamingTail(compactionStream)}
+            </Text>
+          )}
+        </Box>
       )}
     </Box>
   );

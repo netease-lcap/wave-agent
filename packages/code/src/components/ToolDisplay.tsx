@@ -3,6 +3,7 @@ import { Box, Text } from "ink";
 import type { ToolBlock } from "wave-agent-sdk";
 import { getLastLines } from "wave-agent-sdk";
 import { DiffDisplay } from "./DiffDisplay.js";
+import { streamingTail } from "../utils/streamingText.js";
 
 interface ToolDisplayProps {
   block: ToolBlock;
@@ -81,10 +82,7 @@ export const ToolDisplay: React.FC<ToolDisplayProps> = ({
           parameters &&
           !compactParams && (
             <Text color="gray" wrap="truncate-end">
-              {` ${(() => {
-                const flat = parameters.replace(/\n/g, "\\n");
-                return flat.length > 30 ? `…${flat.slice(-30)}` : flat;
-              })()}`}
+              {` ${streamingTail(parameters)}`}
             </Text>
           )}
         {/* Display image indicator */}

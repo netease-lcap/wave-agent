@@ -143,6 +143,15 @@ function mapBackgroundTask(
 
 export interface AIManagerCallbacks {
   onCompactionStateChange?: (isCompacting: boolean) => void;
+  /**
+   * Streaming content from the compaction fork (accumulated, same semantics
+   * as `onContentUpdate` in CallAgentOptions). Reasoning chunks fall back to
+   * this channel when no reasoning callback is provided. Consumed by the CLI
+   * to show the compaction loading tail.
+   */
+  onCompactionContentUpdate?: (content: string) => void;
+  /** Streaming reasoning from the compaction fork (accumulated). */
+  onCompactionReasoningUpdate?: (content: string) => void;
   onUsageAdded?: (usage: Usage) => void;
   onCwdChange?: (newCwd: string) => void;
 }
@@ -673,6 +682,8 @@ export class AIManager {
         recentChatMessages,
         compactPrompt,
         options.abortSignal,
+        this.callbacks?.onCompactionContentUpdate,
+        this.callbacks?.onCompactionReasoningUpdate,
       );
       const summaryContent = forkResult.content;
       const compactTokens = forkResult.usage;
@@ -865,6 +876,11 @@ export class AIManager {
       canUseTool?: (name: string, args: Record<string, unknown>) => boolean;
       /** Message fed back to the model when a tool call is denied. */
       deniedToolMessage?: string;
+      /** Surface partial output to the caller (e.g. the compaction loading
+       * tail) as it streams in. Reasoning chunks go to the reasoning channel
+       * when provided, otherwise they fall back to the content channel. */
+      onContentUpdate?: (content: string) => void;
+      onReasoningUpdate?: (content: string) => void;
     },
     abortSignal?: AbortSignal,
   ): Promise<ForkLoopResult> {
@@ -921,6 +937,24 @@ export class AIManager {
         // gateway's idle timeout fires (non-streaming waits for the full
         // response, which exceeds the timeout on large contexts).
         stream: true,
+        // Surface partial output to the caller (e.g. the compaction loading
+        // tail) as it arrives. Reasoning chunks from thinking models go to
+        // the reasoning channel when the caller supplies one; otherwise they
+        // fall back to the content channel (CLI mixes both).
+        onContentUpdate: (content: string) => {
+          if (content.trim()) {
+            options.onContentUpdate?.(content);
+          }
+        },
+        onReasoningUpdate: (reasoning: string) => {
+          if (reasoning.trim()) {
+            if (options.onReasoningUpdate) {
+              options.onReasoningUpdate(reasoning);
+            } else {
+              options.onContentUpdate?.(reasoning);
+            }
+          }
+        },
       });
 
       if (result.usage) {
@@ -995,6 +1029,8 @@ export class AIManager {
     historyMessages: ChatCompletionMessageParam[],
     compactPrompt: string,
     abortSignal?: AbortSignal,
+    onContentUpdate?: (content: string) => void,
+    onReasoningUpdate?: (content: string) => void,
   ): Promise<ForkLoopResult> {
     return this.runForkLoop(
       historyMessages,
@@ -1002,6 +1038,8 @@ export class AIManager {
       {
         maxTurns: MAX_FORK_TURNS,
         deniedToolMessage: "Tool use is not allowed during compaction",
+        onContentUpdate,
+        onReasoningUpdate,
       },
       abortSignal,
     );

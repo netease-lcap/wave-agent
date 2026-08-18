@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { ReasoningBlock } from "wave-agent-sdk";
 import { Markdown } from "./Markdown.js";
+import { streamingTail } from "../utils/streamingText.js";
 
 interface ReasoningDisplayProps {
   block: ReasoningBlock;
@@ -32,10 +33,7 @@ export const ReasoningDisplay: React.FC<ReasoningDisplayProps> = ({
           <Text color="white">{content}</Text>
         ) : stage === "streaming" ? (
           <Text color="gray" wrap="truncate-end">
-            {` ${(() => {
-              const flat = content.replace(/\n/g, "\\n");
-              return flat.length > 30 ? `…${flat.slice(-30)}` : flat;
-            })()}`}
+            {` ${streamingTail(content)}`}
           </Text>
         ) : (
           <Markdown>{content}</Markdown>

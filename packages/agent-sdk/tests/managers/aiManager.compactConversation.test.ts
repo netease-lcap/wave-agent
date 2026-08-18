@@ -70,6 +70,13 @@ describe("AIManager - compactConversation", () => {
   let aiManager: AIManager;
   let mockMessageManager: MessageManager;
   let mockHookManager: HookManager;
+  let container: Container;
+  let onCompactionContentUpdate: ReturnType<
+    typeof vi.fn<(content: string) => void>
+  >;
+  let onCompactionReasoningUpdate: ReturnType<
+    typeof vi.fn<(content: string) => void>
+  >;
 
   const mockGatewayConfig: GatewayConfig = {
     apiKey: "test-api-key",
@@ -93,7 +100,10 @@ describe("AIManager - compactConversation", () => {
       tool_calls: [],
     });
 
-    const container = new Container();
+    onCompactionContentUpdate = vi.fn<(content: string) => void>();
+    onCompactionReasoningUpdate = vi.fn<(content: string) => void>();
+
+    container = new Container();
 
     mockMessageManager = {
       getMessages: vi.fn().mockReturnValue([{ role: "user", blocks: [] }]),
@@ -167,6 +177,8 @@ describe("AIManager - compactConversation", () => {
       stream: false,
       callbacks: {
         onCompactionStateChange: vi.fn(),
+        onCompactionContentUpdate,
+        onCompactionReasoningUpdate,
         onUsageAdded: vi.fn(),
       },
     });
@@ -314,6 +326,97 @@ describe("AIManager - compactConversation", () => {
         mockMessageManager.compactMessagesAndUpdateSession,
       ).mock.calls[0];
       expect(appliedSummary).toContain("plain summary without tags");
+    });
+  });
+
+  describe("fork streaming", () => {
+    it("should forward partial content from the compaction fork to onCompactionContentUpdate", async () => {
+      callAgentMock.mockImplementationOnce(
+        async (options: { onContentUpdate?: (content: string) => void }) => {
+          options.onContentUpdate?.("Partial summary");
+          return {
+            content: "Full summary",
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+            tool_calls: [],
+          };
+        },
+      );
+
+      await aiManager.compactConversation();
+
+      expect(onCompactionContentUpdate).toHaveBeenCalledWith("Partial summary");
+    });
+
+    it("should forward reasoning chunks to onCompactionReasoningUpdate when provided", async () => {
+      callAgentMock.mockImplementationOnce(
+        async (options: { onReasoningUpdate?: (content: string) => void }) => {
+          options.onReasoningUpdate?.("Let me summarize");
+          return {
+            content: "Full summary",
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+            tool_calls: [],
+          };
+        },
+      );
+
+      await aiManager.compactConversation();
+
+      expect(onCompactionReasoningUpdate).toHaveBeenCalledWith(
+        "Let me summarize",
+      );
+      expect(onCompactionContentUpdate).not.toHaveBeenCalled();
+    });
+
+    it("should fall back to the content channel for reasoning chunks when no reasoning callback is provided", async () => {
+      // Rebuild the manager without onCompactionReasoningUpdate (mirrors the
+      // CLI, which only supplies the content channel).
+      const contentOnlyManager = new AIManager(container, {
+        workdir: "/test/workdir",
+        stream: false,
+        callbacks: {
+          onCompactionStateChange: vi.fn(),
+          onCompactionContentUpdate,
+          onUsageAdded: vi.fn(),
+        },
+      });
+      callAgentMock.mockImplementationOnce(
+        async (options: {
+          onReasoningUpdate?: (content: string) => void;
+          onContentUpdate?: (content: string) => void;
+        }) => {
+          options.onReasoningUpdate?.("Thinking step");
+          options.onContentUpdate?.("Summary text");
+          return {
+            content: "Summary text",
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+            tool_calls: [],
+          };
+        },
+      );
+
+      await contentOnlyManager.compactConversation();
+
+      expect(onCompactionContentUpdate).toHaveBeenCalledWith("Thinking step");
+      expect(onCompactionContentUpdate).toHaveBeenCalledWith("Summary text");
+    });
+
+    it("should skip whitespace-only stream chunks", async () => {
+      callAgentMock.mockImplementationOnce(
+        async (options: { onContentUpdate?: (content: string) => void }) => {
+          options.onContentUpdate?.("   ");
+          options.onContentUpdate?.("Real text");
+          return {
+            content: "Real text",
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+            tool_calls: [],
+          };
+        },
+      );
+
+      await aiManager.compactConversation();
+
+      expect(onCompactionContentUpdate).not.toHaveBeenCalledWith("   ");
+      expect(onCompactionContentUpdate).toHaveBeenCalledWith("Real text");
     });
   });
 

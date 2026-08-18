@@ -1,0 +1,11 @@
+/**
+ * Single-line tail representation of in-flight streaming text: newlines are
+ * flattened to `\n` and, when longer than `maxLen` characters, only the last
+ * `maxLen` characters are kept behind an ellipsis. Shared by the streaming
+ * displays (assistant text, reasoning, tool parameters) and the loading
+ * indicators (compaction / /btw) so the tail style stays consistent.
+ */
+export const streamingTail = (content: string, maxLen = 30): string => {
+  const flat = content.replace(/\n/g, "\\n");
+  return flat.length > maxLen ? `…${flat.slice(-maxLen)}` : flat;
+};

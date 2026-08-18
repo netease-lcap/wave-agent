@@ -41,6 +41,9 @@ export interface ChatContextType {
   isLoading: boolean;
   isCommandRunning: boolean;
   isCompacting: boolean;
+  /** Accumulated streaming text from the compaction fork, shown as the
+   * last-30-chars tail on the CLI compacting loading indicator. */
+  compactionStream: string;
   // Message display state
   isExpanded: boolean;
   isTaskListVisible: boolean;
@@ -344,6 +347,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [sessionId, setSessionId] = useState("");
   const [isCommandRunning, setIsCommandRunning] = useState(false);
   const [isCompacting, setIsCompacting] = useState(false);
+  const [compactionStream, setCompactionStream] = useState("");
   const [currentModel, setCurrentModelState] = useState("");
   const [configuredModels, setConfiguredModels] = useState<string[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
@@ -619,6 +623,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         },
         onCompactionStateChange: (isCompactingState) => {
           setIsCompacting(isCompactingState);
+          if (!isCompactingState) {
+            setCompactionStream("");
+          }
+        },
+        onCompactionContentUpdate: (content) => {
+          // The SDK delivers the accumulated compaction text; the loading
+          // indicator renders only its last 30 characters (streaming tail).
+          setCompactionStream(content);
         },
         onBackgroundTasksChange: async (tasks) => {
           setBackgroundTasks([...tasks]);
@@ -1160,6 +1172,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     getConfiguredModels,
     setModel,
     isCompacting,
+    compactionStream,
     mcpServers: mcpServerStatuses,
     connectMcpServer,
     disconnectMcpServer,
