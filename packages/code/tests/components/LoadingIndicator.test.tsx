@@ -12,7 +12,7 @@ describe("LoadingIndicator", () => {
   it("should show the AI thinking indicator with an abort hint", () => {
     const { lastFrame } = render(<LoadingIndicator isLoading />);
     const frame = lastFrame();
-    expect(frame).toContain("✻ AI is thinking...");
+    expect(frame).toContain("✻ Thinking");
     expect(frame).toContain("Esc");
     expect(frame).toContain("to abort");
     expect(frame).not.toContain("Compacting");
@@ -21,8 +21,8 @@ describe("LoadingIndicator", () => {
   it("should show the compacting hint", () => {
     const { lastFrame } = render(<LoadingIndicator isCompacting />);
     const frame = lastFrame();
-    expect(frame).toContain("✻ Compacting message history...");
-    expect(frame).not.toContain("AI is thinking");
+    expect(frame).toContain("✻ Compacting");
+    expect(frame).not.toContain("Thinking");
   });
 
   it("should not show a streaming tail before any compaction output arrives", () => {
@@ -30,7 +30,7 @@ describe("LoadingIndicator", () => {
       <LoadingIndicator isCompacting compactionStream="" />,
     );
     const frame = lastFrame();
-    expect(frame).toContain("✻ Compacting message history...");
+    expect(frame).toContain("✻ Compacting");
     expect(frame).not.toContain("…");
   });
 
@@ -39,7 +39,7 @@ describe("LoadingIndicator", () => {
       <LoadingIndicator isCompacting compactionStream="summarizing" />,
     );
     const frame = lastFrame();
-    expect(frame).toContain("✻ Compacting message history...");
+    expect(frame).toContain("✻ Compacting");
     expect(frame).toContain("summarizing");
   });
 

@@ -38,7 +38,7 @@ export const BtwDisplay: React.FC<BtwDisplayProps> = ({ btwState }) => {
       <Box marginTop={1} flexDirection="column">
         {btwState.isLoading ? (
           <Box>
-            <Text color="gray">✻ Answering...</Text>
+            <Text color="gray">✻ Answering</Text>
             {btwState.answer && (
               <Text color="gray" wrap="truncate-end">
                 {" "}

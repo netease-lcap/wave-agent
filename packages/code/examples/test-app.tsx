@@ -40,11 +40,11 @@ async function testApp() {
     stdin.write("\r"); // Enter key
 
     await waitFor(() =>
-      stripAnsiColors(lastFrame() || "").includes("AI is thinking"),
+      stripAnsiColors(lastFrame() || "").includes("✻ Thinking"),
     );
 
     await waitFor(
-      () => !stripAnsiColors(lastFrame() || "").includes("AI is thinking"),
+      () => !stripAnsiColors(lastFrame() || "").includes("✻ Thinking"),
       20 * 1000,
     );
     console.log("📸 Interface state after AI response:");

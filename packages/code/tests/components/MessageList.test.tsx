@@ -121,7 +121,7 @@ describe("MessageList Component", () => {
       const output = lastFrame();
 
       // Should NOT show loading state
-      expect(output).not.toContain("💭 AI is thinking...");
+      expect(output).not.toContain("✻ Thinking");
     });
 
     it("should NOT show command running message (moved to ChatInterface)", () => {
@@ -143,7 +143,7 @@ describe("MessageList Component", () => {
       const output = lastFrame();
 
       // Should NOT show compacting state
-      expect(output).not.toContain("🗜️ Compacting message history...");
+      expect(output).not.toContain("🗜️ Compacting");
     });
 
     it("should show welcome message in empty state", () => {

@@ -108,14 +108,14 @@ describe("InputBox /btw", () => {
     await vi.waitFor(() => {
       const output = stripAnsiColors(lastFrame() || "");
       expect(output).toContain("/btw what is life?");
-      expect(output).toContain("✻ Answering...");
+      expect(output).toContain("✻ Answering");
     });
 
     // Streaming chunks arrive but are never displayed — only the loading text.
     capturedOnContent?.("42 is the");
     await vi.waitFor(() => {
       const output = stripAnsiColors(lastFrame() || "");
-      expect(output).toContain("✻ Answering...");
+      expect(output).toContain("✻ Answering");
       expect(output).not.toContain("42 is the");
     });
 
@@ -124,7 +124,7 @@ describe("InputBox /btw", () => {
     await vi.waitFor(() => {
       const output = stripAnsiColors(lastFrame() || "");
       expect(output).toContain("42 is the meaning of life");
-      expect(output).not.toContain("Answering...");
+      expect(output).not.toContain("Answering");
       expect(output).toContain("Escape to dismiss");
     });
   });

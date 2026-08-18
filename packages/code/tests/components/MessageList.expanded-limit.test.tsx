@@ -194,7 +194,7 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       const output = lastFrame();
 
       // Should NOT show loading indicator
-      expect(output).not.toContain("💭 AI is thinking...");
+      expect(output).not.toContain("✻ Thinking");
 
       // Should show only the latest 10 messages
       expect(output).not.toContain("Test 1 - Message 1");

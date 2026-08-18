@@ -33,7 +33,7 @@ describe("MessageList Loading State", () => {
     } as unknown as ChatContextType);
   });
 
-  it("should NOT show loading message when AI is thinking (moved to ChatInterface)", () => {
+  it("should NOT show loading message while thinking (moved to ChatInterface)", () => {
     const messages = [
       createMessage("user", "Hello"),
       createMessage("assistant", "Hi there!"),
@@ -45,7 +45,7 @@ describe("MessageList Loading State", () => {
     const output = lastFrame();
 
     // Should NOT show the loading message
-    expect(output).not.toContain("💭 AI is thinking... | Esc to abort");
+    expect(output).not.toContain("✻ Thinking | Esc to abort");
 
     // Should still show the actual messages
     expect(output).toContain("Hello");
@@ -83,7 +83,7 @@ describe("MessageList Loading State", () => {
     const output = lastFrame();
 
     // Should not show any loading message
-    expect(output).not.toContain("💭 AI is thinking...");
+    expect(output).not.toContain("✻ Thinking");
     expect(output).not.toContain("Command is running...");
 
     // Should show the actual messages
@@ -98,7 +98,7 @@ describe("MessageList Loading State", () => {
     const output = lastFrame();
 
     expect(output).toContain("WAVE");
-    expect(output).not.toContain("💭 AI is thinking...");
+    expect(output).not.toContain("✻ Thinking");
     expect(output).not.toContain("Command is running...");
     // No Messages row should be shown when there are no messages
     expect(output).not.toContain("Messages");
