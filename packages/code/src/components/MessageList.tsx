@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import os from "os";
 import { Box, Text, Static, useWindowSize } from "ink";
 import type { Message, MessageBlock } from "wave-agent-sdk";
@@ -103,6 +103,67 @@ export const MessageList = React.memo(
       ...staticBlocks.map((b) => ({ ...b, isWelcome: false })),
     ];
 
+    // Track the content that was written into the append-only <Static> zone for
+    // each block. Ink's <Static> never updates an already-rendered item, so when
+    // a text/reasoning block reopens (stage "end" -> "streaming") the frozen
+    // prefix stays on screen while the dynamic zone would re-render the FULL
+    // accumulated content — duplicating the first words. Rendering only the
+    // delta (content beyond the frozen prefix) in the dynamic zone avoids the
+    // overlap.
+    const frozenContentRef = useRef(new Map<string, string>());
+    // Mirrors <Static>'s internal index (the previous static items.length) so we
+    // know which static items are actually appended to the terminal output in
+    // this render pass. Only those items get their content frozen.
+    const staticIndexRef = useRef(0);
+
+    useLayoutEffect(() => {
+      staticIndexRef.current = staticItems.length;
+    }, [staticItems.length]);
+
+    // Record the content of static items being appended this pass, and prune
+    // keys for blocks that no longer exist (e.g. rewound or cleared messages).
+    // Only text/reasoning blocks carry content and can reopen (end -> streaming).
+    const currentKeys = new Set<string>();
+    staticItems.forEach((item, position) => {
+      if (item.isWelcome) return;
+      currentKeys.add(item.key);
+      if (
+        position >= staticIndexRef.current &&
+        (item.block!.type === "text" || item.block!.type === "reasoning")
+      ) {
+        frozenContentRef.current.set(item.key, item.block!.content);
+      }
+    });
+    for (const item of dynamicBlocks) {
+      currentKeys.add(item.key);
+    }
+    for (const key of frozenContentRef.current.keys()) {
+      if (!currentKeys.has(key)) {
+        frozenContentRef.current.delete(key);
+      }
+    }
+
+    // Reopened blocks (in the dynamic zone but previously written to static)
+    // must render only the content beyond the frozen prefix, otherwise the
+    // already-displayed prefix appears twice on screen.
+    const dynamicBlocksWithDelta = dynamicBlocks.map((item) => {
+      const frozen = frozenContentRef.current.get(item.key);
+      if (
+        frozen !== undefined &&
+        (item.block.type === "text" || item.block.type === "reasoning") &&
+        item.block.content.length > frozen.length
+      ) {
+        return {
+          ...item,
+          block: {
+            ...item.block,
+            content: item.block.content.slice(frozen.length),
+          },
+        };
+      }
+      return item;
+    });
+
     return (
       <Box flexDirection="column" paddingBottom={1}>
         {/* Static items (Welcome message + Static blocks) */}
@@ -136,9 +197,9 @@ export const MessageList = React.memo(
         )}
 
         {/* Dynamic blocks */}
-        {dynamicBlocks.length > 0 && (
+        {dynamicBlocksWithDelta.length > 0 && (
           <Box flexDirection="column">
-            {dynamicBlocks.map((item) => (
+            {dynamicBlocksWithDelta.map((item) => (
               <MessageBlockItem
                 key={item.key}
                 block={item.block}
