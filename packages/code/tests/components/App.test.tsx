@@ -92,10 +92,20 @@ describe("App Component", () => {
 
     render(<App onExit={onExit} worktreeSession={worktreeSession} />);
 
-    // Simulate SIGINT
-    const handleSignal = processOnSpy.mock.calls.find(
-      (call) => call[0] === "SIGINT",
-    )![1] as () => Promise<void>;
+    // Simulate SIGINT. ChatWithExitPrompt registers its handler in a useEffect,
+    // and signal-exit (loaded by Ink on construction) registers its own internal
+    // listener first — so the component handler is always the LAST SIGINT
+    // registration. Wait for it instead of racing the effect, and pick the last
+    // one to avoid invoking signal-exit's internal no-op listener (which would
+    // leave the state mocks uncalled and produce an empty frame on CI).
+    const handleSignal = await vi.waitFor(() => {
+      const sigintCalls = processOnSpy.mock.calls.filter(
+        (call) => call[0] === "SIGINT",
+      );
+      const handler = sigintCalls[sigintCalls.length - 1]?.[1];
+      expect(handler).toBeDefined();
+      return handler as () => Promise<void>;
+    });
     await handleSignal();
 
     expect(onExit).toHaveBeenCalledWith(true);
@@ -121,20 +131,30 @@ describe("App Component", () => {
       <App onExit={onExit} worktreeSession={worktreeSession} />,
     );
 
-    // Simulate SIGINT
-    const handleSignal = processOnSpy.mock.calls.find(
-      (call) => call[0] === "SIGINT",
-    )![1] as () => Promise<void>;
+    // Simulate SIGINT. Same handler lookup as the previous test: the component's
+    // handler is the LAST SIGINT registration (signal-exit registers first).
+    const handleSignal = await vi.waitFor(() => {
+      const sigintCalls = processOnSpy.mock.calls.filter(
+        (call) => call[0] === "SIGINT",
+      );
+      const handler = sigintCalls[sigintCalls.length - 1]?.[1];
+      expect(handler).toBeDefined();
+      return handler as () => Promise<void>;
+    });
     await handleSignal();
 
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain(
-        "Exiting worktree session",
-      );
-      expect(stripAnsiColors(lastFrame() || "")).toContain(
-        "You have uncommitted changes",
-      );
-    });
+    await vi.waitFor(
+      () => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Exiting worktree session",
+        );
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "You have uncommitted changes",
+        );
+      },
+      // Loaded CI runners can be slow; give the prompt render headroom.
+      { timeout: 5000 },
+    );
 
     expect(onExit).not.toHaveBeenCalled();
   });
