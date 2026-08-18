@@ -72,7 +72,8 @@ export class Agent {
   private reversionManager: ReversionManager;
   private messageQueue: MessageQueue; // Unified queue for messages, bang commands, and notifications
   private dispatchPromise: Promise<void> | null = null; // Track current dispatch for teardown
-  private isAborting = false; // Guard: prevents tryDispatch from firing during abortMessage
+  private isAborting = false; // Transient guard: prevents tryDispatch from firing during abortMessage (reset when the abort completes)
+  private isDestroyed = false; // Terminal guard: set in destroy(), never reset — no dispatch may ever start after destroy
   private dispatchAborted = false; // Set on abort while a dispatch is running: suppress the .finally re-check so preserved notifications don't get dispatched after abort
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
@@ -389,6 +390,7 @@ export class Agent {
    * onLoadingChange(false), and onCommandRunningChange(false).
    */
   private tryDispatch(): void {
+    if (this.isDestroyed) return; // Terminal: agent destroyed, never dispatch again
     if (this.isAborting) return; // Suppress dispatch during abort to prevent queued notifications from being dispatched as a side-effect
     if (this.dispatchAborted) return; // Aborted mid-dispatch: don't start a new dispatch (the user interrupted this turn)
     if (this.messageQueue.state !== "idle") return;
@@ -871,6 +873,13 @@ export class Agent {
 
   /** Destroy managers, clean up resources */
   public async destroy(): Promise<void> {
+    // Terminal guard: suppress any dispatch triggered during teardown (e.g. the
+    // onLoadingChange(false) fired by abortAIMessage() below, or the dispatch
+    // .finally re-check). Without this, leftover queued messages would be
+    // dispatched fire-and-forget and outlive the agent. Never reset: destroy()
+    // is terminal, no dispatch should ever start afterwards.
+    this.isDestroyed = true;
+
     // Log session_end event and shutdown telemetry
     await logOTelEvent("session_end", {
       duration: String(Math.round((Date.now() - this.sessionStartTime) / 1000)),
