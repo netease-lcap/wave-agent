@@ -50,12 +50,18 @@ vi.mock("../../src/utils/worktree.js", () => ({
   removeWorktree: vi.fn(),
 }));
 
-describe("App Component DIAG", () => {
+const D = (msg: string) => {
+  process.stderr.write(`[DIAG2] ${msg}\n`);
+};
+
+const handlerSrc = (h: unknown): string => {
+  const s = String(h);
+  return s.slice(0, 60);
+};
+
+describe("App Component DIAG (3-test structure)", () => {
   let processOnSpy: MockInstance<typeof process.on>;
   let processOffSpy: MockInstance<typeof process.off>;
-  const log = (msg: string) => {
-    process.stderr.write(`[DIAG] ${msg}\n`);
-  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -68,90 +74,89 @@ describe("App Component DIAG", () => {
     processOffSpy.mockRestore();
   });
 
-  it("DIAG: trace exit prompt flow", async () => {
-    log(`platform=${process.platform} cwd=${process.cwd()}`);
+  const worktreeSession = {
+    name: "test-feat",
+    path: "/repo/test-feat",
+    branch: "worktree-test-feat",
+    repoRoot: "/repo",
+    hasUncommittedChanges: false,
+    hasNewCommits: false,
+    isNew: false,
+  };
+
+  it("T1 should render the main interface with file count", async () => {
+    const { lastFrame } = render(<App onExit={vi.fn()} />);
+
+    await vi.waitFor(() => {
+      expect(stripAnsiColors(lastFrame() || "")).toContain("WAVE");
+    });
+
+    const sigints = processOnSpy.mock.calls.filter((c) => c[0] === "SIGINT");
+    D(
+      `T1 done. SIGINT regs seen by this spy=${sigints.length} (handler0=${handlerSrc(sigints[0]?.[1])}) lastFrameWAVE=true`,
+    );
+  });
+
+  it("T2 should handle SIGINT and exit directly if no changes in worktree", async () => {
     const onExit = vi.fn();
-    const worktreeSession = {
-      name: "test-feat",
-      path: "/repo/test-feat",
-      branch: "worktree-test-feat",
-      repoRoot: "/repo",
-      hasUncommittedChanges: false,
-      hasNewCommits: false,
-      isNew: false,
-    };
+
+    vi.mocked(hasUncommittedChanges).mockReturnValue(false);
+    vi.mocked(hasNewCommits).mockReturnValue(false);
+    vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
+
+    render(<App onExit={onExit} worktreeSession={worktreeSession} />);
+
+    const sigintCalls = processOnSpy.mock.calls.filter(
+      (c) => c[0] === "SIGINT",
+    );
+    const allSigs = processOnSpy.mock.calls.map((c) => c[0]).join(",");
+    const found = sigintCalls[0]?.[1] as (() => Promise<void>) | undefined;
+    D(
+      `T2 found handler=${handlerSrc(found)} totalRegs=${processOnSpy.mock.calls.length} sigs=[${allSigs}]`,
+    );
+    if (found) {
+      await found();
+    }
+    D(
+      `T2 after invoke: onExit=${onExit.mock.calls.length} hasU=${vi.mocked(hasUncommittedChanges).mock.calls.length} hasN=${vi.mocked(hasNewCommits).mock.calls.length} gdrb=${vi.mocked(getDefaultRemoteBranch).mock.calls.length}`,
+    );
+    expect(onExit).toHaveBeenCalledWith(true);
+  });
+
+  it("T3 should show exit prompt on SIGINT if there are changes in worktree", async () => {
+    const onExit = vi.fn();
 
     vi.mocked(hasUncommittedChanges).mockReturnValue(true);
     vi.mocked(hasNewCommits).mockReturnValue(false);
     vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
 
-    // Restore real process.on/off so uncaughtException handlers actually register
-    processOnSpy.mockRestore();
-    processOffSpy.mockRestore();
-    const errs: unknown[] = [];
-    const onErr = (e: unknown) => {
-      errs.push(e);
-      log(
-        `UNCAUGHT: ${String(e)}\n${e instanceof Error ? (e.stack ?? "") : ""}`,
-      );
-    };
-    process.on("uncaughtException", onErr);
-    process.on("unhandledRejection", onErr);
-    processOnSpy = vi.spyOn(process, "on").mockImplementation(() => process);
-    processOffSpy = vi.spyOn(process, "off").mockImplementation(() => process);
-
-    const { lastFrame, frames } = render(
+    const { lastFrame } = render(
       <App onExit={onExit} worktreeSession={worktreeSession} />,
-    );
-
-    await new Promise((r) => setTimeout(r, 200));
-    log(
-      `initial: hasUncommittedChanges.calls=${vi.mocked(hasUncommittedChanges).mock.calls.length} lastFrame=${JSON.stringify(lastFrame())}`,
     );
 
     const sigintCalls = processOnSpy.mock.calls.filter(
       (c) => c[0] === "SIGINT",
     );
-    log(`SIGINT registrations: ${sigintCalls.length}`);
-    sigintCalls.forEach((c, i) => {
-      log(`  handler#${i}: ${String(c[1]).slice(0, 100)}`);
+    const found = sigintCalls[0]?.[1] as (() => Promise<void>) | undefined;
+    D(
+      `T3 found handler=${handlerSrc(found)} sigintRegs=${sigintCalls.length} totalRegs=${processOnSpy.mock.calls.length}`,
+    );
+    if (found) {
+      await found();
+    }
+    await new Promise((r) => setTimeout(r, 300));
+    D(
+      `T3 after handler+300ms: onExit=${onExit.mock.calls.length} hasU=${vi.mocked(hasUncommittedChanges).mock.calls.length} hasN=${vi.mocked(hasNewCommits).mock.calls.length} gdrb=${vi.mocked(getDefaultRemoteBranch).mock.calls.length}`,
+    );
+    D(`T3 lastFrame=[${JSON.stringify(stripAnsiColors(lastFrame() || ""))}]`);
+
+    await vi.waitFor(() => {
+      expect(stripAnsiColors(lastFrame() || "")).toContain(
+        "Exiting worktree session",
+      );
     });
 
-    const handler = sigintCalls[0][1] as () => Promise<void>;
-    log(`onExit.calls before handler: ${onExit.mock.calls.length}`);
-    await handler();
-    log(
-      `after handler: onExit.calls=${onExit.mock.calls.length} hasUncommittedChanges.calls=${vi.mocked(hasUncommittedChanges).mock.calls.length} hasNewCommits.calls=${vi.mocked(hasNewCommits).mock.calls.length} getDefaultRemoteBranch.calls=${vi.mocked(getDefaultRemoteBranch).mock.calls.length}`,
-    );
-    log(
-      `lastFrame after handler: ${JSON.stringify(stripAnsiColors(lastFrame() ?? ""))}`,
-    );
-
-    await new Promise((r) => setTimeout(r, 500));
-    log(
-      `after 500ms: lastFrame=${JSON.stringify(stripAnsiColors(lastFrame() ?? ""))}`,
-    );
-    log(
-      `frames=${JSON.stringify(frames.map((f) => stripAnsiColors(f ?? "").slice(0, 60)))}`,
-    );
-
-    let asserted = false;
-    try {
-      await vi.waitFor(() => {
-        const f = stripAnsiColors(lastFrame() || "");
-        if (!f.includes("Exiting worktree session")) {
-          throw new Error(`frame=${JSON.stringify(f.slice(0, 100))}`);
-        }
-      });
-      asserted = true;
-    } finally {
-      log(
-        `waitFor ok=${asserted} errs=${errs.map((e) => String(e).slice(0, 200)).join(" | ")}`,
-      );
-      process.off("uncaughtException", onErr);
-      process.off("unhandledRejection", onErr);
-    }
-
-    expect(asserted).toBe(true);
+    expect(onExit).not.toHaveBeenCalled();
+    D("T3 PASS");
   });
 });
