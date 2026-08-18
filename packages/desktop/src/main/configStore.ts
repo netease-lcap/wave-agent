@@ -45,6 +45,7 @@ export interface SessionIndexEntry {
     branch: string;
     baseBranch: string;
     repoRoot: string;
+    hookBased?: boolean;
   };
 }
 

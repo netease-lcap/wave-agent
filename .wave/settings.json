@@ -42,8 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pnpm install && pnpm build",
-            "async": true
+            "command": "cd \"$(dirname \"$(git rev-parse --git-common-dir)\")\" && name=$(jq -r '.name') && git worktree add -B \"worktree-$name\" \".wave/worktrees/$name\" >&2 && echo \"$(pwd)/.wave/worktrees/$name\" && (cd \".wave/worktrees/$name\" && pnpm install && pnpm build >&2 || true)"
           }
         ]
       }

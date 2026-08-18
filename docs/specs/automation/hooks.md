@@ -26,18 +26,18 @@ Hook 通过退出码、stdout 和 stderr 传达状态：
 
 #### 退出码 2 行为
 
-| Hook 事件           | 行为                                              |
-| ------------------- | ------------------------------------------------- |
-| `PreToolUse`        | 阻止工具调用，向 Wave 显示 stderr                 |
-| `PostToolUse`       | 向 Wave 显示 stderr 并允许 AI 继续（工具已执行）  |
-| `UserPromptSubmit`  | 阻止提示处理，清除提示，仅向用户显示 stderr       |
-| `Stop`              | 阻止停止（AI 继续对话），向 Wave 显示 stderr      |
-| `SubagentStop`      | 阻止停止（子代理继续），向 Wave 显示 stderr       |
-| `PermissionRequest` | 阻止（拒绝）权限，仅向用户显示 stderr             |
-| `WorktreeCreate`    | 仅向用户显示 stderr（非阻止）                     |
-| `WorktreeRemove`    | 仅向用户显示 stderr（非阻止）                     |
-| `PreCompact`        | 非阻止；stderr 不显示给用户（静默丢弃），压缩继续 |
-| `PostCompact`       | 仅向用户显示 stderr（非阻止）                     |
+| Hook 事件           | 行为                                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `PreToolUse`        | 阻止工具调用，向 Wave 显示 stderr                                                                                         |
+| `PostToolUse`       | 向 Wave 显示 stderr 并允许 AI 继续（工具已执行）                                                                          |
+| `UserPromptSubmit`  | 阻止提示处理，清除提示，仅向用户显示 stderr                                                                               |
+| `Stop`              | 阻止停止（AI 继续对话），向 Wave 显示 stderr                                                                              |
+| `SubagentStop`      | 阻止停止（子代理继续），向 Wave 显示 stderr                                                                               |
+| `PermissionRequest` | 阻止（拒绝）权限，仅向用户显示 stderr                                                                                     |
+| `WorktreeCreate`    | 接管创建（Path return）：stdout 输出 worktree path；所有 hook 均失败或无输出时创建被阻止                                  |
+| `WorktreeRemove`    | 接管 hook-based worktree 的删除（wave 不执行 `git worktree remove`）；失败仅记录（非阻止），worktree 是否残留由 hook 负责 |
+| `PreCompact`        | 非阻止；stderr 不显示给用户（静默丢弃），压缩继续                                                                         |
+| `PostCompact`       | 仅向用户显示 stderr（非阻止）                                                                                             |
 
 ## 用户场景与测试 _（必填）_
 

@@ -10,6 +10,7 @@ import {
 } from "../utils/worktreeUtils.js";
 import { EXIT_WORKTREE_TOOL_NAME } from "../constants/tools.js";
 import { logger } from "../utils/globalLogger.js";
+import { executeWorktreeRemoveHook } from "../services/worktreeHooks.js";
 
 export const EXIT_WORKTREE_TOOL_PROMPT = `Exit a worktree session created by EnterWorktree and return the session to the original working directory.
 
@@ -162,45 +163,37 @@ export const exitWorktreeTool: ToolPlugin = {
       session.originalHeadCommit,
     ) ?? { changedFiles: 0, commits: 0 };
 
-    // Trigger WorktreeRemove hook (non-blocking) BEFORE git removal so hooks
-    // can still read files inside the worktree to clean up external resources.
-    let hookTriggered = false;
-    if (context.hookManager) {
-      try {
-        const hookResults = await context.hookManager.executeHooks(
-          "WorktreeRemove",
-          {
-            event: "WorktreeRemove",
-            projectDir: originalCwd,
-            timestamp: new Date(),
-            sessionId: context.sessionId ?? "",
-            transcriptPath: context.messageManager?.getTranscriptPath?.() ?? "",
-            cwd: originalCwd,
-            worktreePath,
-            env: Object.fromEntries(
-              Object.entries(context.sessionEnv ?? process.env).filter(
-                (e) => e[1] !== undefined,
-              ),
-            ) as Record<string, string>,
-          },
+    let hookNote = "";
+    if (session.hookBased) {
+      // Hook-based worktree: delegate removal to the WorktreeRemove hook.
+      // wave never runs `git worktree remove` for hook-based worktrees.
+      const configuration = context.hookManager?.getConfiguration();
+      const hookRan = await executeWorktreeRemoveHook(
+        worktreePath,
+        configuration,
+        {
+          projectDir: originalCwd,
+          sessionId: context.sessionId ?? "",
+          transcriptPath: context.messageManager?.getTranscriptPath?.() ?? "",
+          env: Object.fromEntries(
+            Object.entries(context.sessionEnv ?? process.env).filter(
+              (e) => e[1] !== undefined,
+            ),
+          ) as Record<string, string>,
+        },
+      );
+      if (hookRan) {
+        hookNote = " WorktreeRemove hooks were executed.";
+      } else {
+        logger?.warn(
+          `No WorktreeRemove hook configured, hook-based worktree left at: ${worktreePath}`,
         );
-
-        if (context.messageManager) {
-          context.hookManager.processHookResults(
-            "WorktreeRemove",
-            hookResults,
-            context.messageManager,
-          );
-        }
-
-        hookTriggered = true;
-      } catch (error) {
-        // Non-blocking: log but don't fail the tool
-        logger?.warn("WorktreeRemove hooks execution failed:", error);
+        hookNote =
+          " No WorktreeRemove hook configured, hook-based worktree left at the path above.";
       }
+    } else {
+      removeWorktree(worktreeInfo);
     }
-
-    removeWorktree(worktreeInfo);
 
     // Clear session state and restore CWD
     const aiManager = context.aiManager;
@@ -224,9 +217,6 @@ export const exitWorktreeTool: ToolPlugin = {
       discardParts.length > 0
         ? ` Discarded ${discardParts.join(" and ")}.`
         : "";
-    const hookNote = hookTriggered
-      ? " WorktreeRemove hooks were executed."
-      : "";
 
     return {
       success: true,

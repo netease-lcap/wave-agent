@@ -2567,6 +2567,7 @@ test("createWorktree creates worktree with default name", async () => {
     hasUncommittedChanges: false,
     hasNewCommits: false,
     isNew: true,
+    hookBased: true,
   });
   vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
 
@@ -2580,6 +2581,7 @@ test("createWorktree creates worktree with default name", async () => {
     repoRoot: string;
     baseBranch: string;
     isNew: boolean;
+    hookBased: boolean;
   };
 
   expect(result.name).toBe("random-name");
@@ -2588,6 +2590,7 @@ test("createWorktree creates worktree with default name", async () => {
   expect(result.repoRoot).toBe("/repo");
   expect(result.baseBranch).toBe("origin/main");
   expect(result.isNew).toBe(true);
+  expect(result.hookBased).toBe(true);
 
   expect(createWorktree).toHaveBeenCalledWith("random-name", "/repo", {
     baseBranch: "origin/main",
@@ -2739,36 +2742,32 @@ test("removeWorktree rejects paths that fail validation", async () => {
   expect(removeWorktree).not.toHaveBeenCalled();
 });
 
-test("removeWorktree triggers WorktreeRemove hook for the session in that worktree", async () => {
+test("removeWorktree skips path validation and passes hookBased through for hook-based worktrees", async () => {
   const { bridge } = createBridge();
-  const mockAgent = createMockAgent({
-    workingDirectory: "/repo/.wave/worktrees/feat",
-  });
-  mockAgent.triggerWorktreeRemoveHook = vi.fn().mockResolvedValue(undefined);
-  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
-  await bridge.handleRequest("initialize", {
-    workdir: "/repo/.wave/worktrees/feat",
-  });
 
   const result = (await bridge.handleRequest("removeWorktree", {
-    path: "/repo/.wave/worktrees/feat",
-    branch: "worktree-feat",
+    path: "/custom/vcs/feat",
+    branch: "",
     repoRoot: "/repo",
+    hookBased: true,
   })) as { ok: true };
 
   expect(result.ok).toBe(true);
-  expect(mockAgent.triggerWorktreeRemoveHook).toHaveBeenCalledWith(
-    "/repo/.wave/worktrees/feat",
+  // Hook-based worktrees are owned by the WorktreeRemove hook; the git-root
+  // containment check does not apply.
+  expect(validateWorktreeRemovalPath).not.toHaveBeenCalled();
+  expect(removeWorktree).toHaveBeenCalledWith(
+    expect.objectContaining({
+      path: "/custom/vcs/feat",
+      branch: "",
+      repoRoot: "/repo",
+      hookBased: true,
+    }),
   );
-  expect(removeWorktree).toHaveBeenCalledTimes(1);
 });
 
-test("removeWorktree skips the hook when no session runs in that worktree", async () => {
+test("removeWorktree keeps hookBased false/undefined for git-based worktrees", async () => {
   const { bridge } = createBridge();
-  const mockAgent = createMockAgent({ workingDirectory: "/other/dir" });
-  mockAgent.triggerWorktreeRemoveHook = vi.fn().mockResolvedValue(undefined);
-  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
-  await bridge.handleRequest("initialize", { workdir: "/other/dir" });
 
   const result = (await bridge.handleRequest("removeWorktree", {
     path: "/repo/.wave/worktrees/feat",
@@ -2777,29 +2776,14 @@ test("removeWorktree skips the hook when no session runs in that worktree", asyn
   })) as { ok: true };
 
   expect(result.ok).toBe(true);
-  expect(mockAgent.triggerWorktreeRemoveHook).not.toHaveBeenCalled();
-  expect(removeWorktree).toHaveBeenCalledTimes(1);
-});
-
-test("removeWorktree hook failure does not block git removal", async () => {
-  const { bridge } = createBridge();
-  const mockAgent = createMockAgent({
-    workingDirectory: "/repo/.wave/worktrees/feat",
-  });
-  mockAgent.triggerWorktreeRemoveHook = vi
-    .fn()
-    .mockRejectedValue(new Error("hook failed"));
-  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
-  await bridge.handleRequest("initialize", {
-    workdir: "/repo/.wave/worktrees/feat",
-  });
-
-  const result = (await bridge.handleRequest("removeWorktree", {
-    path: "/repo/.wave/worktrees/feat",
-    branch: "worktree-feat",
-    repoRoot: "/repo",
-  })) as { ok: true };
-
-  expect(result.ok).toBe(true);
-  expect(removeWorktree).toHaveBeenCalledTimes(1);
+  expect(validateWorktreeRemovalPath).toHaveBeenCalledWith(
+    "/repo/.wave/worktrees/feat",
+    "/repo",
+  );
+  expect(removeWorktree).toHaveBeenCalledWith(
+    expect.objectContaining({
+      path: "/repo/.wave/worktrees/feat",
+      hookBased: undefined,
+    }),
+  );
 });

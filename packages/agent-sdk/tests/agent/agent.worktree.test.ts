@@ -25,15 +25,11 @@ describe("Agent WorktreeCreate Hook", () => {
     vi.clearAllMocks();
   });
 
-  it("should trigger WorktreeCreate hook when isNewWorktree is true during initialization", async () => {
-    // We need to spy on HookManager.prototype.executeHooks because it's created during Agent.create
+  it("should NOT fire WorktreeCreate hooks during initialization (replace semantics)", async () => {
+    // The notification-style trigger was removed: WorktreeCreate is now a
+    // replace hook driven by EnterWorktree / the CLI createWorktree path,
+    // never by agent initialization.
     const executeHooksSpy = vi.spyOn(HookManager.prototype, "executeHooks");
-    const processHookResultsSpy = vi.spyOn(
-      HookManager.prototype,
-      "processHookResults",
-    );
-
-    executeHooksSpy.mockResolvedValue([]);
 
     const agent = await Agent.create({
       callbacks: mockCallbacks,
@@ -42,51 +38,6 @@ describe("Agent WorktreeCreate Hook", () => {
       worktreeName: "test-worktree",
     });
 
-    expect(executeHooksSpy).toHaveBeenCalledWith(
-      "WorktreeCreate",
-      expect.objectContaining({
-        event: "WorktreeCreate",
-        worktreeName: "test-worktree",
-      }),
-    );
-    expect(processHookResultsSpy).toHaveBeenCalledWith(
-      "WorktreeCreate",
-      [],
-      expect.any(MessageManager),
-    );
-
-    await agent.destroy();
-  });
-
-  it("should handle errors during WorktreeCreate hook execution gracefully", async () => {
-    const executeHooksSpy = vi.spyOn(HookManager.prototype, "executeHooks");
-    executeHooksSpy.mockRejectedValue(new Error("Hook execution failed"));
-
-    // Should not throw
-    const agent = await Agent.create({
-      callbacks: mockCallbacks,
-      workdir: "/tmp/test-workdir",
-      isNewWorktree: true,
-    });
-
-    expect(executeHooksSpy).toHaveBeenCalledWith(
-      "WorktreeCreate",
-      expect.anything(),
-    );
-
-    await agent.destroy();
-  });
-
-  it("should NOT trigger WorktreeCreate hook when isNewWorktree is false", async () => {
-    const executeHooksSpy = vi.spyOn(HookManager.prototype, "executeHooks");
-
-    const agent = await Agent.create({
-      callbacks: mockCallbacks,
-      workdir: "/tmp/test-workdir",
-      isNewWorktree: false,
-    });
-
-    // Check if WorktreeCreate was called
     const worktreeCreateCalls = executeHooksSpy.mock.calls.filter(
       (call) => call[0] === "WorktreeCreate",
     );

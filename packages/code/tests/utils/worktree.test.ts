@@ -12,6 +12,10 @@ import {
   getDefaultRemoteBranch,
   getGitMainRepoRoot,
   performPostCreationSetup,
+  loadMergedWaveConfig,
+  hasWorktreeCreateHook,
+  executeWorktreeCreateHook,
+  executeWorktreeRemoveHook,
 } from "wave-agent-sdk";
 
 interface GitResult {
@@ -69,6 +73,10 @@ vi.mock("wave-agent-sdk", () => ({
   getGitMainRepoRoot: vi.fn(),
   getDefaultRemoteBranch: vi.fn(),
   performPostCreationSetup: vi.fn(),
+  loadMergedWaveConfig: vi.fn(),
+  hasWorktreeCreateHook: vi.fn(),
+  executeWorktreeCreateHook: vi.fn(),
+  executeWorktreeRemoveHook: vi.fn(),
 }));
 
 function gitCallsWith(fragments: string[]) {
@@ -314,6 +322,84 @@ describe("worktree utils", () => {
       expect(session.isNew).toBe(false);
       expect(performPostCreationSetup).not.toHaveBeenCalled();
     });
+
+    it("should create worktree via WorktreeCreate hook when configured", async () => {
+      vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
+      vi.mocked(loadMergedWaveConfig).mockReturnValue({
+        hooks: {
+          WorktreeCreate: [
+            { hooks: [{ type: "command", command: "create.sh" }] },
+          ],
+        },
+      });
+      vi.mocked(hasWorktreeCreateHook).mockReturnValue(true);
+      vi.mocked(executeWorktreeCreateHook).mockResolvedValue({
+        worktreePath: "/custom/vcs/feature",
+      });
+
+      const session = await createWorktree("my-feat", "/repo/root");
+
+      expect(executeWorktreeCreateHook).toHaveBeenCalledWith(
+        "my-feat",
+        expect.objectContaining({
+          WorktreeCreate: expect.any(Array),
+        }),
+        expect.objectContaining({
+          projectDir: "/repo/root",
+          sessionId: "",
+        }),
+      );
+      // Hook replaced git: no git calls, no post-creation setup
+      expect(git.calls).toHaveLength(0);
+      expect(performPostCreationSetup).not.toHaveBeenCalled();
+      expect(session).toMatchObject({
+        name: "my-feat",
+        path: "/custom/vcs/feature",
+        repoRoot: "/repo/root",
+        isNew: true,
+        hookBased: true,
+      });
+    });
+
+    it("should fall back to the workdir as repoRoot for hook-based non-git creation", async () => {
+      vi.mocked(getGitMainRepoRoot).mockReturnValue(undefined as never);
+      vi.mocked(loadMergedWaveConfig).mockReturnValue({
+        hooks: {
+          WorktreeCreate: [
+            { hooks: [{ type: "command", command: "create.sh" }] },
+          ],
+        },
+      });
+      vi.mocked(hasWorktreeCreateHook).mockReturnValue(true);
+      vi.mocked(executeWorktreeCreateHook).mockResolvedValue({
+        worktreePath: "/custom/vcs/feature",
+      });
+
+      const session = await createWorktree("my-feat", "/repo/root");
+
+      expect(session.repoRoot).toBe("/repo/root");
+      expect(session.hookBased).toBe(true);
+    });
+
+    it("should propagate WorktreeCreate hook failure as a thrown error", async () => {
+      vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
+      vi.mocked(loadMergedWaveConfig).mockReturnValue({
+        hooks: {
+          WorktreeCreate: [
+            { hooks: [{ type: "command", command: "create.sh" }] },
+          ],
+        },
+      });
+      vi.mocked(hasWorktreeCreateHook).mockReturnValue(true);
+      vi.mocked(executeWorktreeCreateHook).mockRejectedValue(
+        new Error("WorktreeCreate hook failed: create.sh: boom"),
+      );
+
+      await expect(createWorktree("my-feat", "/repo/root")).rejects.toThrow(
+        "WorktreeCreate hook failed: create.sh: boom",
+      );
+      expect(git.calls).toHaveLength(0);
+    });
   });
 
   describe("removeWorktree", () => {
@@ -432,6 +518,68 @@ describe("worktree utils", () => {
       );
       loggerSpy.mockRestore();
       warnSpy.mockRestore();
+    });
+
+    it("should delegate hook-based worktree removal to the WorktreeRemove hook", async () => {
+      vi.mocked(loadMergedWaveConfig).mockReturnValue({
+        hooks: {
+          WorktreeRemove: [
+            { hooks: [{ type: "command", command: "cleanup.sh" }] },
+          ],
+        },
+      });
+      vi.mocked(executeWorktreeRemoveHook).mockResolvedValue(true);
+
+      await removeWorktree({ ...session, hookBased: true });
+
+      expect(executeWorktreeRemoveHook).toHaveBeenCalledWith(
+        "/repo/root/.wave/worktrees/my-feat",
+        expect.objectContaining({
+          WorktreeRemove: expect.any(Array),
+        }),
+        expect.objectContaining({
+          projectDir: "/repo/root",
+          sessionId: "",
+        }),
+      );
+      // Hook replaced git: wave never runs `git worktree remove`
+      expect(git.calls).toHaveLength(0);
+    });
+
+    it("should warn and leave hook-based worktree in place when no WorktreeRemove hook is configured", async () => {
+      const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      vi.mocked(loadMergedWaveConfig).mockReturnValue({ hooks: undefined });
+      vi.mocked(executeWorktreeRemoveHook).mockResolvedValue(false);
+
+      await removeWorktree({ ...session, hookBased: true });
+
+      expect(warnSpy.mock.calls[0][0]).toContain(
+        "No WorktreeRemove hook configured, hook-based worktree left at",
+      );
+      expect(git.calls).toHaveLength(0);
+      warnSpy.mockRestore();
+    });
+
+    it("should NOT call the WorktreeRemove hook for git-based worktrees", async () => {
+      vi.mocked(loadMergedWaveConfig).mockReturnValue({
+        hooks: {
+          WorktreeRemove: [
+            { hooks: [{ type: "command", command: "cleanup.sh" }] },
+          ],
+        },
+      });
+      vi.mocked(executeWorktreeRemoveHook).mockResolvedValue(true);
+      git.handler = (_cmd, args) => {
+        if (args[0] === "rev-parse") {
+          return { stdout: "worktree-my-feat\n", stderr: "" };
+        }
+        return { stdout: "", stderr: "" };
+      };
+
+      await removeWorktree(session);
+
+      expect(executeWorktreeRemoveHook).not.toHaveBeenCalled();
+      expect(gitCallsWith(["worktree", "remove", "--force"])).toHaveLength(1);
     });
   });
 

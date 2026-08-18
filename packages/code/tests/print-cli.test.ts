@@ -613,13 +613,12 @@ test("startPrintCli waits for pending notifications even when main agent is idle
   }
 });
 
-test("startPrintCli triggers WorktreeRemove hook before destroy and removes clean worktree", async () => {
+test("startPrintCli removes clean worktree after destroy", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
     abortMessage: vi.fn(),
     setWorktreeSession: vi.fn(),
-    triggerWorktreeRemoveHook: vi.fn().mockResolvedValue(undefined),
     usages: [],
     sessionFilePath: "/mock/session.json",
   };
@@ -644,24 +643,19 @@ test("startPrintCli triggers WorktreeRemove hook before destroy and removes clea
     originalCwd: "/repo",
   });
 
-  const hookOrder =
-    mockAgent.triggerWorktreeRemoveHook.mock.invocationCallOrder[0];
   const destroyOrder = mockAgent.destroy.mock.invocationCallOrder[0];
-  expect(hookOrder).toBeLessThan(destroyOrder);
-  expect(mockAgent.triggerWorktreeRemoveHook).toHaveBeenCalledWith(
-    "/repo/.wave/worktrees/feat",
-  );
+  const removeOrder = vi.mocked(removeWorktree).mock.invocationCallOrder[0];
+  expect(destroyOrder).toBeLessThan(removeOrder);
   expect(removeWorktree).toHaveBeenCalledWith(worktreeSession);
   expect(mockExit).toHaveBeenCalledWith(0);
 });
 
-test("startPrintCli does not trigger hook or remove dirty worktree", async () => {
+test("startPrintCli keeps dirty worktree with a warning", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
     abortMessage: vi.fn(),
     setWorktreeSession: vi.fn(),
-    triggerWorktreeRemoveHook: vi.fn().mockResolvedValue(undefined),
     usages: [],
     sessionFilePath: "/mock/session.json",
   };
@@ -688,7 +682,6 @@ test("startPrintCli does not trigger hook or remove dirty worktree", async () =>
     originalCwd: "/repo",
   });
 
-  expect(mockAgent.triggerWorktreeRemoveHook).not.toHaveBeenCalled();
   expect(removeWorktree).not.toHaveBeenCalled();
   expect(
     stdoutSpy.mock.calls.some((call) =>
@@ -706,7 +699,6 @@ test("startPrintCli skips removal when worktree path fails validation", async ()
     destroy: vi.fn(),
     abortMessage: vi.fn(),
     setWorktreeSession: vi.fn(),
-    triggerWorktreeRemoveHook: vi.fn().mockResolvedValue(undefined),
     usages: [],
     sessionFilePath: "/mock/session.json",
   };
@@ -738,8 +730,6 @@ test("startPrintCli skips removal when worktree path fails validation", async ()
     originalCwd: "/repo",
   });
 
-  // Hook still fired (before destroy); only git removal is skipped
-  expect(mockAgent.triggerWorktreeRemoveHook).toHaveBeenCalled();
   expect(removeWorktree).not.toHaveBeenCalled();
   expect(
     stdoutSpy.mock.calls.some((call) =>
@@ -751,13 +741,50 @@ test("startPrintCli skips removal when worktree path fails validation", async ()
   stdoutSpy.mockRestore();
 });
 
-test("startPrintCli triggers WorktreeRemove hook before destroy on sendMessage error", async () => {
+test("startPrintCli skips path validation and delegates removal for hook-based worktrees", async () => {
+  const mockAgent = {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(),
+    abortMessage: vi.fn(),
+    setWorktreeSession: vi.fn(),
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+  vi.mocked(hasUncommittedChanges).mockReturnValue(false);
+  vi.mocked(hasNewCommits).mockReturnValue(false);
+
+  const hookBasedSession = {
+    name: "feat",
+    path: "/custom/vcs/feat",
+    repoRoot: "/repo",
+    branch: "",
+    isNew: true,
+    hookBased: true,
+    hasUncommittedChanges: false,
+    hasNewCommits: false,
+  };
+
+  await startPrintCli({
+    message: "test",
+    worktreeSession: hookBasedSession,
+    workdir: "/custom/vcs/feat",
+    originalCwd: "/repo",
+  });
+
+  // Hook-based worktrees are owned by the hook; git-root containment
+  // validation does not apply, and removal is delegated to removeWorktree.
+  expect(validateWorktreeRemovalPath).not.toHaveBeenCalled();
+  expect(removeWorktree).toHaveBeenCalledWith(hookBasedSession);
+  expect(mockExit).toHaveBeenCalledWith(0);
+});
+
+test("startPrintCli removes clean worktree after destroy on sendMessage error", async () => {
   const mockAgent = {
     sendMessage: vi.fn().mockRejectedValue(new Error("Send message failed")),
     destroy: vi.fn(),
     abortMessage: vi.fn(),
     setWorktreeSession: vi.fn(),
-    triggerWorktreeRemoveHook: vi.fn().mockResolvedValue(undefined),
     usages: [],
     sessionFilePath: "/mock/session.json",
   };
@@ -789,13 +816,9 @@ test("startPrintCli triggers WorktreeRemove hook before destroy on sendMessage e
     originalCwd: "/repo",
   });
 
-  const hookOrder =
-    mockAgent.triggerWorktreeRemoveHook.mock.invocationCallOrder[0];
   const destroyOrder = mockAgent.destroy.mock.invocationCallOrder[0];
-  expect(hookOrder).toBeLessThan(destroyOrder);
-  expect(mockAgent.triggerWorktreeRemoveHook).toHaveBeenCalledWith(
-    "/repo/.wave/worktrees/feat",
-  );
+  const removeOrder = vi.mocked(removeWorktree).mock.invocationCallOrder[0];
+  expect(destroyOrder).toBeLessThan(removeOrder);
   expect(removeWorktree).toHaveBeenCalledTimes(1);
   expect(mockExit).toHaveBeenCalledWith(1);
 

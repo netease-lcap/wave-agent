@@ -725,7 +725,7 @@ describe("Hook Services", () => {
         projectDir: "/test/worktree-path",
         timestamp: new Date(),
         sessionId: "test-session-123",
-        worktreeName: "test-worktree",
+        name: "test-worktree",
       };
 
       const resultPromise = executeCommand("echo test", worktreeContext);
@@ -765,7 +765,7 @@ describe("Hook Services", () => {
         projectDir: "/test/worktree-path",
         timestamp: new Date(),
         sessionId: "test-session-123",
-        worktreeName: "test-worktree",
+        name: "test-worktree",
       };
 
       const resultPromise = executeCommand("echo test", worktreeContext);

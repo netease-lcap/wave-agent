@@ -6,6 +6,10 @@ import {
   getDefaultRemoteBranch,
   getGitMainRepoRoot,
   performPostCreationSetup,
+  loadMergedWaveConfig,
+  hasWorktreeCreateHook,
+  executeWorktreeCreateHook,
+  executeWorktreeRemoveHook,
 } from "wave-agent-sdk";
 import { logger } from "./logger.js";
 
@@ -22,6 +26,12 @@ export interface WorktreeSession {
   hasUncommittedChanges: boolean;
   hasNewCommits: boolean;
   isNew: boolean;
+  /**
+   * True when this worktree was created by a WorktreeCreate hook (not by git).
+   * Removal delegates to the WorktreeRemove hook; wave never runs
+   * `git worktree remove` for hook-based worktrees (aligned with Claude Code).
+   */
+  hookBased?: boolean;
 }
 
 // --- Worktree name validation ------------------------------------------------
@@ -114,6 +124,33 @@ export async function createWorktree(
   options?: { baseRef?: "fresh" | "head"; baseBranch?: string },
 ): Promise<WorktreeSession> {
   validateWorktreeSlug(name);
+
+  // Hook-based creation first (allows user-configured VCS, including non-git).
+  // The hook prints the created worktree's absolute path to stdout; wave never
+  // runs `git worktree add` when a WorktreeCreate hook is configured.
+  const config = loadMergedWaveConfig(cwd);
+  if (hasWorktreeCreateHook(config?.hooks)) {
+    const { worktreePath } = await executeWorktreeCreateHook(
+      name,
+      config?.hooks,
+      {
+        projectDir: cwd,
+        sessionId: "",
+        env: config?.env,
+      },
+    );
+    return {
+      name,
+      path: worktreePath,
+      branch: "",
+      repoRoot: getGitMainRepoRoot(cwd) ?? cwd,
+      hasUncommittedChanges: false,
+      hasNewCommits: false,
+      isNew: true,
+      hookBased: true,
+    };
+  }
+
   const session = await createWorktreeInternal(name, cwd, options);
   if (session.isNew) {
     await performPostCreationSetup(session.path, session.repoRoot);
@@ -298,6 +335,28 @@ function toExtendedLengthPath(worktreePath: string): string {
  * metadata. Failures are logged but never block branch deletion.
  */
 export async function removeWorktree(session: WorktreeSession): Promise<void> {
+  // Hook-based worktrees are removed by the WorktreeRemove hook; wave never
+  // runs `git worktree remove` for them. If no WorktreeRemove hook is
+  // configured, the worktree is left in place with a warning (CC semantics).
+  if (session.hookBased) {
+    const config = loadMergedWaveConfig(session.repoRoot);
+    const hookRan = await executeWorktreeRemoveHook(
+      session.path,
+      config?.hooks,
+      {
+        projectDir: session.repoRoot,
+        sessionId: "",
+        env: config?.env,
+      },
+    );
+    if (!hookRan) {
+      logger.warn(
+        `No WorktreeRemove hook configured, hook-based worktree left at: ${session.path}`,
+      );
+    }
+    return;
+  }
+
   const repoRoot = session.repoRoot;
 
   // Get current branch in worktree before removing it

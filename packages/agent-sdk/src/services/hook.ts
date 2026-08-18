@@ -84,10 +84,10 @@ async function buildHookJsonInput(
     jsonInput.subagent_type = context.subagentType;
   }
 
-  // Add name field for WorktreeCreate events
+  // Add name field for WorktreeCreate events (aligned with Claude Code)
   if (context.event === "WorktreeCreate") {
-    if (context.worktreeName !== undefined) {
-      jsonInput.name = context.worktreeName;
+    if (context.name !== undefined) {
+      jsonInput.name = context.name;
     }
   }
 
