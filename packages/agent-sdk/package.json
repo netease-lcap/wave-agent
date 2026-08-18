@@ -76,7 +76,6 @@
     "@vitest/coverage-v8": "^4.1.7",
     "rimraf": "^6.1.2",
     "tsc-alias": "^1.8.16",
-    "tsx": "^4.20.4",
     "vitest": "^4.1.7"
   },
   "engines": {
