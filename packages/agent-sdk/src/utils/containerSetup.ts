@@ -28,6 +28,7 @@ import { MemoryService } from "../services/memory.js";
 import { AutoMemoryService } from "../services/autoMemoryService.js";
 import { USER_MEMORY_FILE } from "./constants.js";
 import { getGitMainRepoRoot } from "./gitUtils.js";
+import { AsyncWorkRegistry } from "./asyncWorkRegistry.js";
 import type { AgentOptions, McpServerConfig } from "../types/index.js";
 import type {
   PermissionMode,
@@ -92,6 +93,11 @@ export function setupAgentContainer(
 
   const messageQueue = new MessageQueue();
   container.register("MessageQueue", messageQueue);
+
+  // Registry of live async work that must drain before the agent is destroyed
+  // (dispatch, background subagents, fork subagents — the fire-and-forget work
+  // sites). destroy() awaits its drain() so no async work can outlive the agent.
+  container.register("AsyncWorkRegistry", new AsyncWorkRegistry());
 
   const foregroundTaskManager = new ForegroundTaskManager(container);
   container.register("ForegroundTaskManager", foregroundTaskManager);

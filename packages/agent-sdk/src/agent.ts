@@ -75,6 +75,7 @@ export class Agent {
   private isAborting = false; // Transient guard: prevents tryDispatch from firing during abortMessage (reset when the abort completes)
   private isDestroyed = false; // Terminal guard: set in destroy(), never reset — no dispatch may ever start after destroy
   private dispatchAborted = false; // Set on abort while a dispatch is running: suppress the .finally re-check so preserved notifications don't get dispatched after abort
+  private asyncWorkRegistry: import("./utils/asyncWorkRegistry.js").AsyncWorkRegistry; // Registry of live async work that destroy() drains before returning
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private taskManager: TaskManager;
@@ -204,6 +205,7 @@ export class Agent {
     this.bangManager = this.container.get("BangManager")!;
     this.cronManager = this.container.get("CronManager")!;
     this.messageQueue = this.container.get("MessageQueue")!;
+    this.asyncWorkRegistry = this.container.get("AsyncWorkRegistry")!;
 
     // Wire up CWD change callback from AIManager to sync Agent's workdir
     this.aiManager.setOnCwdChange((newCwd) => {
@@ -384,6 +386,18 @@ export class Agent {
   }
 
   /**
+   * Terminal-lifecycle guard for public APIs. destroy() is terminal: after it
+   * returns, no new work may start on this agent. Silent drops hid misuse until
+   * a ghost async side effect surfaced later (issue #1808); throwing surfaces
+   * the contract violation immediately at the call site.
+   */
+  private assertNotDestroyed(): void {
+    if (this.isDestroyed) {
+      throw new Error("Agent destroyed");
+    }
+  }
+
+  /**
    * Unified dispatch trigger — checks state machine before processing.
    * Handles user messages, bang commands, and background task notifications
    * through a single serialized path. Called from onMessageEnqueued,
@@ -398,18 +412,20 @@ export class Agent {
     if (this.aiManager.isLoading || this.isCommandRunning) return;
 
     this.messageQueue.transitionTo("dispatching");
-    this.dispatchPromise = this.processQueuedMessage()
-      .catch((error) => {
-        this.logger?.error("Failed to process queued message:", error);
-      })
-      .finally(() => {
-        this.messageQueue.transitionTo("idle");
-        this.dispatchPromise = null;
-        if (!this.dispatchAborted) {
-          this.tryDispatch(); // Re-check after processing
-        }
-        this.dispatchAborted = false;
-      });
+    this.dispatchPromise = this.asyncWorkRegistry.track(
+      this.processQueuedMessage()
+        .catch((error) => {
+          this.logger?.error("Failed to process queued message:", error);
+        })
+        .finally(() => {
+          this.messageQueue.transitionTo("idle");
+          this.dispatchPromise = null;
+          if (!this.dispatchAborted) {
+            this.tryDispatch(); // Re-check after processing
+          }
+          this.dispatchAborted = false;
+        }),
+    );
   }
 
   /**
@@ -674,6 +690,8 @@ export class Agent {
 
   /** Execute bash command (bang command) */
   public async bang(command: string): Promise<void> {
+    this.assertNotDestroyed();
+
     // If the agent is busy, enqueue the bang command
     if (this.aiManager.isLoading || this.isCommandRunning) {
       this.messageQueue.enqueue({ type: "bang", content: command });
@@ -954,7 +972,15 @@ export class Agent {
     }
     // Cleanup remote settings polling
     remoteSettingsService.shutdown();
-    // Cleanup memory store
+    // Drain live async work (dispatch, background subagents, fork subagents):
+    // abort steps above make them settle; wait for them so no async side
+    // effect outlives the agent. Timeout fallback keeps destroy bounded.
+    const drained = await this.asyncWorkRegistry.drain();
+    if (!drained) {
+      this.logger?.error(
+        `Async work did not drain: ${this.asyncWorkRegistry.size} live work item(s) remain after destroy`,
+      );
+    }
   }
 
   /**
@@ -982,6 +1008,7 @@ export class Agent {
     onContent?: (content: string) => void,
     onReasoning?: (content: string) => void,
   ): Promise<string> {
+    this.assertNotDestroyed();
     const result = await this.aiManager.runBtwFork(
       question,
       abortSignal,
@@ -1017,6 +1044,7 @@ export class Agent {
     },
     abortSignal?: AbortSignal,
   ): Promise<string> {
+    this.assertNotDestroyed();
     return this.aiManager.runForkSubagent(prompt, options, abortSignal);
   }
 
@@ -1050,6 +1078,8 @@ export class Agent {
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
   ): Promise<void> {
+    this.assertNotDestroyed();
+
     // If the agent is busy, enqueue the message — unless it's an immediate
     // slash command (e.g., /clear, /compact) that should execute
     // right away even while AI is processing
