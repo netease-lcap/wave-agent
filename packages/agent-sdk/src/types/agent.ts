@@ -127,4 +127,9 @@ export interface AgentCallbacks
   onCommandRunningChange?: (running: boolean) => void;
   onWorkdirChange?: (newCwd: string) => void;
   onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
+  /** Streaming content from the compaction fork (accumulated). Reasoning
+   * chunks fall back to this channel when no reasoning callback is provided. */
+  onCompactionContentUpdate?: (content: string) => void;
+  /** Streaming reasoning from the compaction fork (accumulated). */
+  onCompactionReasoningUpdate?: (content: string) => void;
 }

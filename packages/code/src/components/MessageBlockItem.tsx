@@ -8,6 +8,7 @@ import { CompactDisplay } from "./CompactDisplay.js";
 import { ReasoningDisplay } from "./ReasoningDisplay.js";
 import { Markdown } from "./Markdown.js";
 import { TaskNotificationMessage } from "./TaskNotificationMessage.js";
+import { streamingTail } from "../utils/streamingText.js";
 
 export interface MessageBlockItemProps {
   block: MessageBlock;
@@ -40,10 +41,7 @@ export const MessageBlockItem = ({
             </Text>
           ) : block.stage === "streaming" ? (
             <Text color="gray" wrap="truncate-end">
-              {(() => {
-                const flat = block.content.replace(/\n/g, "\\n");
-                return flat.length > 30 ? `…${flat.slice(-30)}` : flat;
-              })()}
+              {streamingTail(block.content)}
             </Text>
           ) : (
             <Markdown>{block.content}</Markdown>

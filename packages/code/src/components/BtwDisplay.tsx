@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import { Markdown } from "./Markdown.js";
 import { BtwState } from "../managers/inputReducer.js";
+import { streamingTail } from "../utils/streamingText.js";
 
 interface BtwDisplayProps {
   btwState: BtwState;
@@ -36,7 +37,15 @@ export const BtwDisplay: React.FC<BtwDisplayProps> = ({ btwState }) => {
       )}
       <Box marginTop={1} flexDirection="column">
         {btwState.isLoading ? (
-          <Text color="gray">✻ Answering...</Text>
+          <Box>
+            <Text color="gray">✻ Answering...</Text>
+            {btwState.answer && (
+              <Text color="gray" wrap="truncate-end">
+                {" "}
+                {streamingTail(btwState.answer)}
+              </Text>
+            )}
+          </Box>
         ) : isError ? (
           <Text color="error">{answer}</Text>
         ) : (

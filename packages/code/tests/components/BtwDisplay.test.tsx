@@ -55,7 +55,7 @@ describe("BtwDisplay", () => {
     expect(frame).not.toContain("to dismiss");
   });
 
-  it("should not render the partial answer while loading, only the loading text", () => {
+  it("should show the streaming tail of a short partial answer while loading", () => {
     const { lastFrame } = render(
       <BtwDisplay
         btwState={{
@@ -67,22 +67,25 @@ describe("BtwDisplay", () => {
     );
     const frame = lastFrame() ?? "";
     expect(frame).toContain("✻ Answering...");
-    expect(frame).not.toContain("42 is the meaning");
+    // Short text (≤30 chars) is shown in full as the streaming tail.
+    expect(frame).toContain("42 is the meaning");
   });
 
-  it("should not show a long streaming partial answer while loading", () => {
+  it("should show only the last 30 characters of a long streaming partial answer while loading", () => {
+    const longAnswer = "The meaning of life is a very long answer indeed";
     const { lastFrame } = render(
       <BtwDisplay
         btwState={{
           question: "what is life?",
-          answer: "The meaning of life is a very long answer",
+          answer: longAnswer,
           isLoading: true,
         }}
       />,
     );
     const frame = lastFrame();
     expect(frame).toContain("✻ Answering...");
-    expect(frame).not.toContain("The meaning of life is a very long answer");
+    expect(frame).toContain(`…${longAnswer.slice(-30)}`);
+    expect(frame).not.toContain("The meaning of life is a very");
   });
 
   it("should hide the loading text once the answer has completed", () => {

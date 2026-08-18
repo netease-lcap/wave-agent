@@ -17,6 +17,7 @@ export const ChatInterface: React.FC = () => {
     isLoading,
     isCommandRunning,
     isCompacting,
+    compactionStream,
     sendMessage,
     abortMessage,
     mcpServers,
@@ -92,6 +93,7 @@ export const ChatInterface: React.FC = () => {
               isCommandRunning={isCommandRunning}
               isCompacting={isCompacting}
               latestTotalTokens={latestTotalTokens}
+              compactionStream={compactionStream}
             />
           )}
           <TaskList />
