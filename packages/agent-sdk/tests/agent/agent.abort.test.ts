@@ -700,6 +700,80 @@ describe("Agent - Abort Handling", () => {
       sendSpy.mockRestore();
     });
 
+    it("destroy must not dispatch leftover queued messages", async () => {
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-destroy-leftover",
+        callbacks: { onLoadingChange: vi.fn() },
+      });
+      activeTestAgent = testAgent;
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      const messageQueue = (
+        testAgent as unknown as {
+          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        }
+      ).messageQueue;
+      const aiManager = (testAgent as unknown as { aiManager: AIManager })
+        .aiManager;
+
+      // Leave a queued message undelivered: disconnect the enqueue callback so
+      // it never auto-dispatches (same pattern as the queue-recall tests).
+      messageQueue.onMessageEnqueued = undefined;
+      messageQueue.enqueue({ content: "leftover message" });
+      expect(messageQueue.hasPending()).toBe(true);
+
+      // Spy on sendAIMessage to detect a leaked fire-and-forget dispatch
+      // triggered by destroy()'s abortAIMessage → onLoadingChange(false).
+      const sendSpy = vi
+        .spyOn(aiManager, "sendAIMessage")
+        .mockResolvedValue(undefined);
+
+      await testAgent.destroy();
+      activeTestAgent = undefined; // already destroyed above
+
+      // Let any leaked async dispatch settle before asserting
+      await new Promise((resolve) => setImmediate(resolve));
+
+      // destroy() is terminal: leftover queued messages must NOT be dispatched
+      // as a new AI turn that outlives the agent (regression for #1808).
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(messageQueue.hasPending()).toBe(true);
+      expect(messageQueue.getQueue()).toHaveLength(1);
+
+      sendSpy.mockRestore();
+    });
+
     it("should reset queue state to idle on abort", async () => {
       const testAgent = await Agent.create({
         apiKey: "test-key",
