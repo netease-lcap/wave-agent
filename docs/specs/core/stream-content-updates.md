@@ -139,7 +139,9 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 **为什么是这个优先级**：2026-08-08 起 SDK 回调只携带纯 chunk delta，消费端必须自行累积追加（`content += chunk`）；而 SDK 内部仍将累积全文写入消息块（先写全量、再按"新值 slice 当前长度"计算并回调 chunk delta）。若消费端在 `onAssistantMessageAdded`/`onUserMessageAdded` 时直接把 `agent.messages` 中的消息对象活引用推入自己的状态，第一个 delta 到达时 SDK 已把共享块内容替换为完整累积值，消费端追加逻辑会读到此已更新值再拼接该 delta——首个 delta 被重复计数，表现为"reasoning 第一个单词重复"（如 `LetLet me think about this.`）。文本内容同理受影响，只是文本流通常在消息解耦后才出现而不易暴露。
 
-**独立测试**：构造一个带 reasoning 流式的会话，用与 CLI 相同的消费模式（推入活引用 + 追加 reducer）验证出现首词重复；改用快照推入（`{ ...m, blocks: m.blocks.map(b => ({ ...b })) }`）后同一断言通过。
+2026-08-17 补充：快照必须**在回调触发时刻立即捕获**（`onAssistantMessageAdded`/`onUserMessageAdded` 被调用时同步执行 `snapshotMessage(msg)` 并保存结果），不能在 React state updater 内延迟执行。原因是 React 会把同一同步 tick 内的多次 `setMessages` 批处理，updater 函数到 flush 时才运行——而 SDK 的 `addAssistantMessage()` → 就地写入首个 chunk → 首个 delta 回调恰好处于同一同步 tick（`aiManager.ts` 的 `onContentUpdate`/`onReasoningUpdate`），flush 时延迟快照复制到的已是变异后的消息块，首个 delta 再追加即翻倍（`HelloHello`）。该竞态表现为"推理流结束后正文首个单词重复"（首个 content delta 与 messageAdded 落入同一批时），或首个 reasoning delta 重复（reasoning 折叠区，不易察觉）。
+
+**独立测试**：构造一个带 reasoning 流式的会话，用与 CLI 相同的消费模式（推入活引用 + 追加 reducer）验证出现首词重复；改用快照推入（`{ ...m, blocks: m.blocks.map(b => ({ ...b })) }`）后同一断言通过。另有同批回归测试：在**同一同步 tick** 内连续调用 `onAssistantMessageAdded` → 就地变异消息块 → 首个 delta 回调（无 await 间隔，与真实 SDK 顺序一致），断言消息内容不翻倍（content `Hello` 非 `HelloHello`、reasoning `Let` 非 `LetLet`、reasoning 收尾后首个 content chunk 同批时两通道均不重复）。
 
 **验收场景**：
 
@@ -147,6 +149,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 2. **假设**助手消息流式输出 reasoning，**当**消费端按 `chunk` delta 累积追加时，**则**追加结果与 SDK 存储的完整推理内容一致，首个 delta 不重复（首个单词不翻倍）
 3. **假设**消费端通过拉取通道（`agent.messages` / `getMessages`）获取全量列表，**当**把拉取结果推入状态时，**则**同样以快照推入，不与 SDK 内部对象共享引用
 4. **假设**消费端已按快照推入消息，**当** SDK 继续就地更新其内部消息块时，**则**消费端状态不受影响，仅通过后续 delta 回调获得更新
+5. **假设**消息创建回调与首个 delta 回调落在同一 React 批处理内（同一同步 tick：`addAssistantMessage()` → 就地写入首个 chunk → 首个 delta 回调），**当**消费端把快照推入状态时，**则**快照在回调触发时刻立即捕获（updater 外），复制的是变异前的空块；首个 delta 追加后首个单词不翻倍
 
 ---
 
@@ -168,6 +171,25 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 ---
 
+### 用户故事：CLI 静态块 reopen 不重复渲染冻结前缀（优先级：P1）
+
+作为 CLI 使用者，我希望推理/正文块在一次 AI 调用内交错续写（同块 `end` → `streaming` 重新打开）时，屏幕上已显示的内容不重复，流式增量继续实时可见。
+
+**为什么是这个优先级**：CLI 用 Ink `<Static>` 渲染历史消息，其 append-only 语义（`items.slice(index)` 只追加新项、已渲染项永不更新）与消息列表的"静态/动态分区"叠加产生渲染层重复：文本/推理块一旦进入静态区，其内容就冻结在终端输出中；当同一块因模型交错输出（如 `T→R→T` 或 `R→T→R`）重新打开（`stage` 从 `end` 回到 `streaming`）时，该块从静态区迁移回动态区，动态区以**全量累积内容**重新渲染——屏幕上"冻结前缀 + 全量内容"首词重复（如正文 `The answer is 42` 的 `The answer` 出现两次）。这是第三类首词重复（前两类为状态层：活引用/批处理快照、节流残留竞态），根因在渲染层而非状态层——SDK→CLI 状态始终一致，纯 delta 追加无重复，重复发生在 Ink 输出拼接。
+
+**独立测试**：构造单条消息的阶段序列（推理流 → 收尾 → 正文流 → 推理 reopen 续写 → 收尾），逐阶段 `rerender` 并收集 `ink-testing-library` 全部帧，断言每一帧中每个块内容至多出现一次（`MessageList.block-reopen-duplication.test.tsx`：推理 reopen、正文 reopen=用户症状、reopen 期间增量可见三类用例）。无修复时断言失败（冻结前缀 + 动态全量 → 计数 2），修复后通过。
+
+**验收场景**：
+
+1. **假设**推理块已收尾（`stage="end"`，内容已进入静态区），**当**同一块重新打开流式续写（`stage="streaming"`）时，**则**屏幕上该块已显示的前缀不重复出现，动态区只渲染续写增量（`content` 超出冻结前缀的部分）
+2. **假设**正文块已收尾（如模型先输出正文、再推理、再继续正文，正文块 `end` → `streaming`），**当**正文续写流式输出时，**则**正文首词不重复（用户可感知症状：推理流结束后正文首个单词重复）
+3. **假设**reopen 块在动态区以增量渲染，**当**新增量到达时，**则**续写内容实时可见（增量 + 冻结前缀拼接后等于完整内容，视觉上无跳变）
+4. **假设**reopen 块再次收尾，**当**其回到静态区时，**则**不因位置已被冻结项占据而重新渲染全量内容，屏幕保持稳定
+5. **假设**reopen 块曾被静态写入过多次（多次 reopen），**当**后续续写流式输出时，**则**增量始终相对**首次**冻结内容计算（静态区永不更新已渲染项），多轮续写拼接正确
+6. **假设**消息被 rewind/clear 移除，**当**再次渲染时，**则**冻结内容记录随块移除而清理，不残留过期键
+
+---
+
 ### 边界情况
 
 - 当网络连接较差且流式块乱序到达或延迟时会发生什么？
@@ -185,7 +207,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - **增量回调用途**：为第三方集成、扩展、CLI 与示例（如 `packages/code/src/print-cli.ts` 和 `packages/agent-sdk/examples`）提供实时流式数据；增量回调是消息状态同步的唯一推送通道
 - **SDK 回调负载**：`onAssistantContentUpdated`/`onAssistantReasoningUpdated` 只提供 `chunk`（增量）+ `messageId` + `stage`，不再携带 `accumulated` 累积值，进程内消费者（CLI、print-cli）自行累积追加；`onToolBlockUpdated` 在 `stage="streaming"` 时只提供 `parametersChunk`（增量），`start`/`running`/`end` 阶段携带权威 `parameters`（end 为最终值，一次性权威）。SDK 内部仍将 chunk 追加进内存 `toolBlock.parameters` 保持累积，只是累积值不再暴露到外部回调
 - **跨进程 wire 负载（纯 delta）**：agentBridge 原样透传增量回调负载——`assistantContentUpdated`/`assistantReasoningUpdated` 只携带 `{messageId, chunk, stage}`（SDK 回调本身已无累积字段，无需剥离）；`toolBlockUpdated` 在 `stage="streaming"` 时只携带 `parametersChunk`，`stage="end"` 时携带全量 `parameters` + `result` 作为权威值。消费端负责累积（追加），丢失的 delta 由 `getMessages` 拉取的全量快照自愈
-- **UI 状态流**：CLI 直接订阅增量回调就地更新消息（chunk 追加，原始频率无节流——见「CLI 以原始频率渲染流式内容」用户故事；渲染频率由 Ink 内置 30fps 输出节流兜底）；插件/桌面经 stdio 增量通知（`userMessageAdded`、`assistantContentUpdated`、`toolBlockUpdated` 等，纯 delta 负载）驱动 webview 增量 reducer——文本/推理块追加 chunk、工具块追加 `parametersChunk`，end 时以权威值终结；需要完整列表的场景（初始化、compact、rewind、clear、bang）主动拉取，拉取响应整体替换为权威快照。进程内消费端把 SDK 消息对象推入自有状态时**必须克隆**（消息 + blocks 至少一层），不得持有 SDK 内部活引用——SDK 会就地更新共享块，与消费端累积追加叠加会重复计数（见"增量消费端以快照推入消息"用户故事）
+- **UI 状态流**：CLI 直接订阅增量回调就地更新消息（chunk 追加，原始频率无节流——见「CLI 以原始频率渲染流式内容」用户故事；渲染频率由 Ink 内置 30fps 输出节流兜底）；插件/桌面经 stdio 增量通知（`userMessageAdded`、`assistantContentUpdated`、`toolBlockUpdated` 等，纯 delta 负载）驱动 webview 增量 reducer——文本/推理块追加 chunk、工具块追加 `parametersChunk`，end 时以权威值终结；需要完整列表的场景（初始化、compact、rewind、clear、bang）主动拉取，拉取响应整体替换为权威快照。进程内消费端把 SDK 消息对象推入自有状态时**必须克隆**（消息 + blocks 至少一层）且**在回调触发时刻立即捕获**（不得在 React state updater 内延迟求值——批处理 flush 晚于 SDK 就地变异，见"增量消费端以快照推入消息"用户故事），不得持有 SDK 内部活引用——SDK 会就地更新共享块，与消费端累积追加叠加会重复计数（见"增量消费端以快照推入消息"用户故事）。**渲染层**：CLI 消息列表的静态/动态分区必须遵守 append-only 约束——进入 `<Static>` 区的块（其内容已冻结在终端输出中）若因同块 reopen（`end` → `streaming`）回到动态区，动态区只能渲染"超出冻结前缀"的增量（`content.slice(冻结长度)`），否则冻结前缀与全量重渲染叠加造成首词重复（见「CLI 静态块 reopen 不重复渲染冻结前缀」用户故事）；冻结内容按块 key 记录（写入静态区的时刻），多轮 reopen 恒相对首次冻结内容计算
 - **节流语义**：SDK 回调与 wire 通知均只携带纯 delta。CLI 进程内消费端不再节流（原始频率立即应用，见「CLI 以原始频率渲染流式内容」用户故事）；其余仍选择节流的宿主（如 VSCE/桌面 webview 通道），节流器一律按到达顺序拼接窗口内所有 chunks 为一个合并 delta（window-concat），绝不能 last-value-wins 丢弃中间值。为配合该语义，SDK 必须在每次 running 事件中重复携带 `compactParams` 等稳定展示字段（见"工具块阶段更新"验收场景 4），保证丢弃中间事件不丢失这些字段
 - **清晰分离**：增量回调是消息状态管理的正式对外通道；全量数据按需获取，避免随每次流式 chunk 序列化整个列表
 
@@ -255,6 +277,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 - 问：CLI 中所有 reasoning 第一个单词重复的根因 → 答：进程内增量消费端（CLI useChat）在 `onAssistantMessageAdded` 时把 `agent.messages` 中的 SDK 消息对象**活引用**推入 React 状态；`updateCurrentMessageReasoning` 先就地替换共享块为完整累积值、再按"新值 slice 当前长度"计算并回调 chunk delta。首个 delta 到达时消费端追加逻辑（`content += chunk`）读到已被 SDK 更新的完整值再拼接该 chunk → 首词翻倍（`Let` + `Let me think about this.`）；首个 delta 处理完成、消息与 SDK 解耦后，后续 delta 正常
 - 问：修复位置 → 答：消费端边界。CLI 在推入消息时必须克隆（`{ ...m, blocks: m.blocks.map(b => ({ ...b })) }`），不得持有 SDK 内部消息对象活引用；SDK 就地更新与回调顺序（先写全量、再回 delta）不变。覆盖所有推入点：`onAssistantMessageAdded`、`onUserMessageAdded`、拉取全量（`refreshMessages`、初始 `setMessages(agent.messages)`）
+- 问：快照放在 React state updater 里执行行不行 → 答：不行。`onAssistantMessageAdded` 与首个 delta 回调落在同一同步 tick（`addAssistantMessage()` → 就地写入 → delta 回调），React 将同一 tick 的 `setMessages` 批处理，updater 到 flush 时才运行——此时快照复制的是已被 SDK 写入首个 chunk 的消息块，首个 delta 追加后首词翻倍（`HelloHello`）。快照必须在**回调触发时刻**（`snapshotMessage(msg)` 在 `setMessages` 之外、`onAssistantMessageAdded` 内立即执行）捕获变异前状态。同批回归测试：同一 tick 内依次调用 messageAdded → 变异 → 首个 delta（无 await 间隔），断言不翻倍
 - 问：为什么不在 SDK 侧改 → 答：SDK 就地更新是 `getMessages` 权威快照的基础，先写全量再回 delta 保证回调时刻 SDK 状态已一致；改为先回调再写会让拉取与回调交错时读到过期值。快照克隆成本只在消息创建时发生一次，与流式 delta 数量无关
 
 ### 2026-08-17 会议（CLI 移除 500ms 节流、原始频率渲染）
@@ -263,6 +286,15 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - 问：渲染性能是否受影响 → 答：不会。Ink 7.1.1 内置输出节流（`maxFps: 30` → ~34ms，leading+trailing）约束终端写入频率，与消费端节流无关；`<Static>` append-only 使历史消息永不重绘（`fullStaticOutput += staticOutput`）；`renderInteractiveFrame` 仅在 `output !== lastOutput` 时写入，log-update 再做增量 diff。React commit 频率等于 delta 到达频率，每次 commit 对全量可见消息做 `flatMap` + 元素重建，典型会话规模（≤30 条可见消息）为亚毫秒级
 - 问：受影响范围 → 答：仅 CLI 进程内消费端（`packages/code/src/contexts/useChat.tsx`）——移除内容/reasoning 通道的 `createStreamingWindowThrottle`（500ms）与 tool 通道的 `createToolStreamingThrottle`（同一 pending 窗口 + 全量刷新竞态结构、同一逐 token 高频来源），每个 delta 立即经 reducer 应用。VSCE/桌面跨进程通道保留 window-concat 节流语义不变（wire 通知频率较低，非首词重复来源）
 - 问：原「每秒 2-3 次内容更新」假设为何移除 → 答：该假设是 500ms 节流的设计依据；移除节流后更新频率由模型产出速率决定，终端写入频率由 Ink 30fps 兜底，无需人为限频
+
+### 2026-08-18 会议（CLI Static 块 reopen 渲染层首词重复）
+
+- 问：本次（第三类）首词重复与之前两类的区别 → 答：前两类在状态层——活引用/批处理快照（2026-08-12）与节流残留竞态（2026-08-17），状态先重复再渲染；本次在渲染层——SDK→CLI 状态始终一致（纯 delta 追加、逐帧对账无重复），重复只出现在 Ink 输出拼接。根因：CLI 消息列表的静态/动态分区中，文本/推理块一旦收尾就进入 `<Static>` 区被冻结；同块因模型交错输出（`T→R→T` 或 `R→T→R`）重新打开（`end`→`streaming`）时迁移回动态区，动态区以全量累积内容渲染，与屏幕上已冻结的前缀叠加 → 首词重复。复现概率低，因为需要单次调用内交错续写
+- 问：为什么不能用"reopen 块永久留在静态区"修复 → 答：静态区 append-only、永不更新已渲染项，块留在静态区后续写内容永远不会显示，消息后半段的流式反馈会整体冻结（屏幕停在首个 reopen 时刻），流式体验退化
+- 问：为什么不能整条消息动态化 → 答：reopen 只发生在消息运行期，但"消息运行"包含长工具执行（分钟级）——整条消息动态化会让已完成的超长文本块在每次工具状态更新时全量重建（性能回归），且冻结过的块回到动态区同样重复
+- 问：修复方案 → 答：按块 key 记录"写入静态区时刻的内容"（冻结前缀，镜像 `<Static>` 内部 index 判断哪些项真正被追加）；reopen 块在动态区只渲染 `content.slice(冻结长度)` 增量——冻结前缀 + 动态增量拼接等于完整内容，无重叠、无重复、续写实时可见。多轮 reopen 恒相对首次冻结内容计算（静态区从不更新已渲染项）
+- 问：如何确定哪些静态项真正被写入终端 → 答：镜像 `<Static>` 的 index 语义（`useLayoutEffect` 后 index = 上次 `items.length`），静态列表位置 ≥ index 的项在本 pass 被追加写入，其内容才记录为冻结；位置 < index 的项（reopen 时被顶到已占用位置的"填充块"）从未写入，不记录——它们后续 reopen 时仍以全量渲染（从未显示过，无重复问题）
+- 问：回归测试如何捕获转瞬重复 → 答：逐阶段 `rerender` 后断言**每一帧**（ink-testing-library `frames`）中每个块内容至多出现一次，而非只断言末帧——重复只在 reopen 流式窗口内存在，末帧（块回到静态区）已无重复。无修复时全部 3 用例失败（帧计数 2），修复后通过
 
 ## 假设 _（必填）_
 
