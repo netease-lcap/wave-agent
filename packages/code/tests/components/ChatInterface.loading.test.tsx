@@ -75,7 +75,7 @@ describe("ChatInterface Loading State", () => {
     const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
-    expect(output).toContain("✻ AI is thinking...");
+    expect(output).toContain("✻ Thinking");
     expect(output).toContain("1,234");
     expect(output).toContain("tokens");
     expect(output).toContain("Esc to abort");
@@ -96,7 +96,7 @@ describe("ChatInterface Loading State", () => {
     const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
-    expect(output).not.toContain("✻ AI is thinking...");
+    expect(output).not.toContain("✻ Thinking");
   });
 
   it("should not show loading indicator when confirmation is visible", () => {
@@ -116,7 +116,7 @@ describe("ChatInterface Loading State", () => {
     const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
-    expect(output).not.toContain("✻ AI is thinking...");
+    expect(output).not.toContain("✻ Thinking");
     expect(output).toContain("Tool: test_tool");
   });
 
@@ -153,10 +153,10 @@ describe("ChatInterface Loading State", () => {
     const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
-    expect(output).toContain("✻ Compacting message history...");
+    expect(output).toContain("✻ Compacting");
   });
 
-  it("should not show AI is thinking when isCompacting is true", () => {
+  it("should not show thinking when isCompacting is true", () => {
     vi.mocked(useChat).mockReturnValue({
       ...mockChatContext,
       isLoading: true,
@@ -172,7 +172,7 @@ describe("ChatInterface Loading State", () => {
     const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
-    expect(output).toContain("✻ Compacting message history...");
-    expect(output).not.toContain("✻ AI is thinking...");
+    expect(output).toContain("✻ Compacting");
+    expect(output).not.toContain("✻ Thinking");
   });
 });

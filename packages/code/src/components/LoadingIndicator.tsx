@@ -24,7 +24,7 @@ export const LoadingIndicator = ({
     <Box flexDirection="column">
       {isLoading && !isCompacting && (
         <Box>
-          <Text color="yellow">✻ AI is thinking... </Text>
+          <Text color="yellow">✻ Thinking </Text>
           {latestTotalTokens > 0 && (
             <>
               <Text color="gray" dimColor>
@@ -54,7 +54,7 @@ export const LoadingIndicator = ({
       {isCommandRunning && <Text color="blue">✻ Command is running...</Text>}
       {isCompacting && (
         <Box>
-          <Text color="magenta">✻ Compacting message history...</Text>
+          <Text color="magenta">✻ Compacting</Text>
           {compactionStream && (
             <Text color="gray" wrap="truncate-end">
               {" "}

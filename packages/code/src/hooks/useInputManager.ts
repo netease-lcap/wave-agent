@@ -157,7 +157,7 @@ export const useInputManager = (
                   // Stream partial answers into the overlay so the user sees
                   // the response grow in real time (same visual language as
                   // assistant text / thinking blocks) instead of a static
-                  // "Answering..." indicator.
+                  // "Answering" indicator.
                   if (!btwDismissedRef.current) {
                     dispatch({
                       type: "SET_BTW_STATE",
