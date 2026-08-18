@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$(dirname \"$(git rev-parse --git-common-dir)\")\" && name=$(jq -r '.name') && git worktree add -B \"worktree-$name\" \".wave/worktrees/$name\" >&2 && echo \"$(pwd)/.wave/worktrees/$name\" && (cd \".wave/worktrees/$name\" && pnpm install && pnpm build >&2 || true)"
+            "command": "cd \"$(dirname \"$(git rev-parse --git-common-dir)\")\" && name=$(jq -r '.name') && export name && git worktree add -B \"worktree-$name\" \".wave/worktrees/$name\" >&2 && echo \"$(pwd)/.wave/worktrees/$name\" && (nohup sh -c 'cd \".wave/worktrees/$name\" && pnpm install >> \"/tmp/wave-wt-$name.log\" 2>&1 && pnpm build >> \"/tmp/wave-wt-$name.log\" 2>&1 || true' </dev/null >/dev/null 2>&1 &)"
           }
         ]
       }
