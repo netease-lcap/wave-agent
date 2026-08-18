@@ -144,19 +144,28 @@ describe("App Component DIAG (3-test structure)", () => {
     if (found) {
       await found();
     }
-    await new Promise((r) => setTimeout(r, 300));
     D(
-      `T3 after handler+300ms: onExit=${onExit.mock.calls.length} hasU=${vi.mocked(hasUncommittedChanges).mock.calls.length} hasN=${vi.mocked(hasNewCommits).mock.calls.length} gdrb=${vi.mocked(getDefaultRemoteBranch).mock.calls.length}`,
+      `T3 after handler: onExit=${onExit.mock.calls.length} hasU=${vi.mocked(hasUncommittedChanges).mock.calls.length} hasN=${vi.mocked(hasNewCommits).mock.calls.length} gdrb=${vi.mocked(getDefaultRemoteBranch).mock.calls.length}`,
     );
-    D(`T3 lastFrame=[${JSON.stringify(stripAnsiColors(lastFrame() || ""))}]`);
 
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain(
-        "Exiting worktree session",
+    let ok = true;
+    try {
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Exiting worktree session",
+        );
+      });
+    } catch {
+      ok = false;
+      D(
+        `T3 WAITFOR FAILED lastFrame=[${JSON.stringify(stripAnsiColors(lastFrame() || ""))}]`,
       );
-    });
+    }
 
+    if (ok) {
+      D("T3 PASS");
+    }
     expect(onExit).not.toHaveBeenCalled();
-    D("T3 PASS");
+    expect(ok).toBe(true);
   });
 });
