@@ -9,6 +9,7 @@ import {
   PREVIEW_SIZE_BYTES,
 } from "../constants/toolLimits.js";
 import { logger } from "./globalLogger.js";
+import { resolveShellPath } from "./shellResolver.js";
 
 const execAsync = promisify(exec);
 
@@ -278,12 +279,30 @@ export async function executeBashCommands(
 ): Promise<BashCommandResult[]> {
   const results: BashCommandResult[] = [];
 
-  for (const command of commands) {
+  for (const originalCommand of commands) {
+    let command = originalCommand;
+    const execOptions: { cwd: string; timeout: number; shell?: string } = {
+      cwd: workdir,
+      timeout,
+    };
+
+    // Skill templates (e.g. !`gh pr view ... 2>/dev/null || echo '{}'`) use
+    // bash-only syntax. On Windows, child_process.exec defaults to cmd.exe,
+    // where `/dev/null` fails with a localized "path not found" error whose
+    // GBK bytes get mis-decoded as UTF-8 (mojibake). Run through Git Bash
+    // when available (same contract as the bash tool); otherwise force the
+    // UTF-8 codepage so cmd's own messages decode correctly.
+    if (process.platform === "win32") {
+      const bashPath = resolveShellPath();
+      if (bashPath) {
+        execOptions.shell = bashPath;
+      } else {
+        command = `chcp 65001 >NUL && ${command}`;
+      }
+    }
+
     try {
-      const { stdout, stderr } = await execAsync(command, {
-        cwd: workdir,
-        timeout,
-      });
+      const { stdout, stderr } = await execAsync(command, execOptions);
       results.push({
         command,
         output: (stdout + (stderr || "")).trim(),

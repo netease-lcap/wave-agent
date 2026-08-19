@@ -298,6 +298,23 @@ describe("markdownParser", () => {
       expect(results[0].output).toBe("one");
       expect(results[1].output).toBe("two");
     });
+
+    it.runIf(process.platform === "win32")(
+      "runs bash-only syntax via Git Bash on Windows",
+      async () => {
+        // Regression: skill templates use bash syntax (2>/dev/null, ||).
+        // Under cmd.exe `/dev/null` fails with a localized path-not-found
+        // error (and `true` is not a command); the command must run through
+        // Git Bash instead, where `true 2>/dev/null` succeeds silently.
+        const results = await executeBashCommands(
+          ["true 2>/dev/null || echo fallback"],
+          process.cwd(),
+        );
+        expect(results).toHaveLength(1);
+        expect(results[0].exitCode).toBe(0);
+        expect(results[0].output).toBe("");
+      },
+    );
   });
 
   describe("performance gate", () => {
