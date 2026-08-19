@@ -85,6 +85,26 @@ order: 90
 
 ---
 
+### 用户故事：Worktree 删除进度提示（优先级：P2）
+
+作为在 Windows 上使用 Wave 的开发者，我希望删除 worktree 时能看到"正在删除"和"完成"的进度提示，以便我了解 CLI 正在执行删除而不是卡死。
+
+**为什么是这个优先级**：Windows 上递归删除 worktree 目录（尤其含 node_modules 等深路径时，git 删除失败后的 fs.rmSync 兜底）可能耗时数十秒。CLI 退出对话框选择 "Remove worktree" 后 Ink 界面已卸载，删除是同步阻塞的，完成前终端无任何输出，用户会误以为 CLI 挂死。放弃 Windows 删除速度优化，改为提供明确的进度反馈（`WorktreeRemove` hook 接管删除同理可能耗时）。
+
+**独立测试**：在 Windows 上进入含深路径依赖的 worktree 会话，Ctrl+C 退出并选择 "Remove worktree"，验证终端先显示 "Deleting worktree ..."、删除完成后显示 "Done." 并退出；再运行 `wave -p` 打印模式，clean worktree 退出时验证同样显示两种提示。
+
+**验收场景**：
+
+1. **假设** CLI 退出对话框选择 "Remove worktree"，**当** 删除执行前，**则** 终端显示删除进度提示（如 `Deleting worktree ...`），且提示持续显示直到删除完成。
+2. **假设** 删除成功完成，**当** 删除结束时，**则** 终端显示完成提示（如 `Done.`），随后进程退出。
+3. **假设** 删除失败（git 与 fs.rmSync 兜底均失败），**当** 删除结束时，**则** 显示错误信息而非完成提示，进程照常退出（删除为 best-effort，不阻塞退出）。
+4. **假设** 由 `WorktreeRemove` hook 接管删除（hook 脚本可能耗时），**当** CLI 退出对话框选择 "Remove worktree" 时，**则** 同样显示删除进度提示与完成提示。
+5. **假设** print 模式（`wave -p`）下 clean worktree 自动删除，**当** 删除执行时，**则** 同样显示删除进度提示与完成提示。
+6. **假设** 退出对话框选择 "Keep worktree"，**当** 退出时，**则** 不显示任何删除提示（worktree 未被删除）。
+7. **假设** 会话中 AI 调用 ExitWorktree 工具（`action: "remove"`），**当** 删除执行时，**则** 行为不变——工具结果文本本身就是反馈，不引入终端进度提示。
+
+---
+
 ### 用户故事：会话中 EnterWorktree 工具（优先级：P1）
 
 作为使用 Wave 的开发者，我希望在会话中通过向 AI 请求来创建 worktree，以便在不重启会话的情况下隔离我的工作。

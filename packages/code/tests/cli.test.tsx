@@ -68,6 +68,54 @@ describe("startCli", () => {
     consoleErrorSpy.mockRestore();
   });
 
+  it("shows deleting progress and done messages when removing worktree", async () => {
+    const chdirSpy = vi.spyOn(process, "chdir").mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit called");
+    });
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+
+    const worktreeSession = {
+      name: "test",
+      path: "/repo/root.worktrees/test",
+      branch: "worktree-test",
+      repoRoot: "/repo/root",
+      hasUncommittedChanges: false,
+      hasNewCommits: false,
+      isNew: true,
+    };
+
+    // Mock render to call onExit with true (Remove worktree)
+    vi.mocked(render).mockImplementationOnce((element: unknown) => {
+      const { onExit } = (
+        element as { props: { onExit: (shouldRemove: boolean) => void } }
+      ).props;
+      return {
+        unmount: vi.fn(),
+        waitUntilExit: async () => {
+          onExit(true);
+        },
+      } as unknown as ReturnType<typeof render>;
+    });
+
+    await expect(startCli({ worktreeSession })).rejects.toThrow(
+      "process.exit called",
+    );
+
+    expect(stdoutSpy).toHaveBeenCalledWith("\nDeleting worktree ...\n");
+    expect(stdoutSpy).toHaveBeenCalledWith("Done.\n");
+
+    chdirSpy.mockRestore();
+    exitSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
+    stdoutSpy.mockRestore();
+  });
+
   it("enables and disables bracketed paste when stdout is a TTY", async () => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("process.exit called");

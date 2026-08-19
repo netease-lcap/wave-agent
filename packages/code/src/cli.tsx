@@ -88,10 +88,15 @@ export async function startCli(options: CliOptions): Promise<void> {
       console.warn("Failed to cleanup old logs:", error);
     });
 
-    // Cleanup worktree if requested
+    // Cleanup worktree if requested. The Ink UI is already unmounted, and on
+    // Windows recursive deletion can take a long time (deep paths, Defender
+    // scanning), so show explicit progress feedback instead of leaving the
+    // terminal looking frozen.
     if (shouldRemoveWorktree && worktreeSession) {
+      process.stdout.write("\nDeleting worktree ...\n");
       process.chdir(worktreeSession.repoRoot);
       await removeWorktree(worktreeSession);
+      process.stdout.write("Done.\n");
     }
 
     process.exit(0);

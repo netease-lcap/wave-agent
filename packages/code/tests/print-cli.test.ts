@@ -636,6 +636,10 @@ test("startPrintCli removes clean worktree after destroy", async () => {
     hasNewCommits: false,
   };
 
+  const stdoutSpy = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
+
   await startPrintCli({
     message: "test",
     worktreeSession,
@@ -647,7 +651,17 @@ test("startPrintCli removes clean worktree after destroy", async () => {
   const removeOrder = vi.mocked(removeWorktree).mock.invocationCallOrder[0];
   expect(destroyOrder).toBeLessThan(removeOrder);
   expect(removeWorktree).toHaveBeenCalledWith(worktreeSession);
+  expect(
+    stdoutSpy.mock.calls.some((call) =>
+      String(call[0]).includes("Deleting worktree ..."),
+    ),
+  ).toBe(true);
+  expect(
+    stdoutSpy.mock.calls.some((call) => String(call[0]).includes("Done.")),
+  ).toBe(true);
   expect(mockExit).toHaveBeenCalledWith(0);
+
+  stdoutSpy.mockRestore();
 });
 
 test("startPrintCli keeps dirty worktree with a warning", async () => {
@@ -820,6 +834,14 @@ test("startPrintCli removes clean worktree after destroy on sendMessage error", 
   const removeOrder = vi.mocked(removeWorktree).mock.invocationCallOrder[0];
   expect(destroyOrder).toBeLessThan(removeOrder);
   expect(removeWorktree).toHaveBeenCalledTimes(1);
+  expect(
+    stdoutSpy.mock.calls.some((call) =>
+      String(call[0]).includes("Deleting worktree ..."),
+    ),
+  ).toBe(true);
+  expect(
+    stdoutSpy.mock.calls.some((call) => String(call[0]).includes("Done.")),
+  ).toBe(true);
   expect(mockExit).toHaveBeenCalledWith(1);
 
   consoleErrorSpy.mockRestore();

@@ -217,7 +217,9 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
             worktreeSession.repoRoot,
           );
         }
+        process.stdout.write("\nDeleting worktree ...\n");
         await removeWorktree(worktreeSession);
+        process.stdout.write("Done.\n");
       } catch (error) {
         // Never block print-mode exit on worktree cleanup failures
         process.stdout.write(
@@ -273,7 +275,9 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
               worktreeSession.repoRoot,
             );
           }
+          process.stdout.write("\nDeleting worktree ...\n");
           await removeWorktree(worktreeSession);
+          process.stdout.write("Done.\n");
         } catch (error) {
           process.stdout.write(
             `\n⚠️ Skipping worktree removal: ${(error as Error).message}\n`,
