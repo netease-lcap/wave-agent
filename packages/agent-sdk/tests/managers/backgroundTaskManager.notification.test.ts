@@ -27,6 +27,7 @@ vi.mock("fs", () => {
     writable: true,
     write: vi.fn(),
     end: vi.fn(),
+    on: vi.fn(),
   }));
   const existsSync = vi.fn(() => false);
   return {

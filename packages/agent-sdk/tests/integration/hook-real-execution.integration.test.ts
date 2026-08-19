@@ -15,12 +15,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 
 import { Agent } from "../../src/agent.js";
 import * as aiService from "../../src/services/aiService.js";
 import type { PartialHookConfiguration } from "../../src/types/hooks.js";
+import { longFormTempDir } from "../helpers/tempDir.js";
 
 vi.mock("../../src/services/aiService.js", async (importOriginal) => {
   const actual =
@@ -51,7 +51,7 @@ describe("Hook real-command execution (spec automation/hooks.md)", () => {
   let workdir: string;
 
   beforeEach(async () => {
-    workdir = fs.mkdtempSync(path.join(os.tmpdir(), "wave-hook-real-"));
+    workdir = fs.mkdtempSync(path.join(longFormTempDir(), "wave-hook-real-"));
     callAgent = vi.mocked(aiService.callAgent);
     callAgent.mockClear();
   });

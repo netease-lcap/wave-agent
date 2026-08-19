@@ -95,6 +95,13 @@ export class BackgroundTaskManager {
     // Create log file
     const logPath = path.join(os.tmpdir(), `wave-task-${id}.log`);
     const logStream = fs.createWriteStream(logPath, { flags: "w" });
+    // A failed open/write of the log file (e.g. EBUSY on Windows when a stale
+    // handle from a previous run still locks the temp file) must not surface as
+    // an uncaught stream error — the log is best-effort side output and the
+    // task itself keeps running regardless.
+    logStream.on("error", (error: Error) => {
+      logger.warn(`Failed to write background task log ${logPath}:`, error);
+    });
 
     const shell: BackgroundShell = {
       id,
@@ -295,6 +302,11 @@ export class BackgroundTaskManager {
     // Create log file
     const logPath = path.join(os.tmpdir(), `wave-task-${id}.log`);
     const logStream = fs.createWriteStream(logPath, { flags: "w" });
+    // Same best-effort handling as startShell: a locked temp file (EBUSY on
+    // Windows) must not become an uncaught stream error.
+    logStream.on("error", (error: Error) => {
+      logger.warn(`Failed to write background task log ${logPath}:`, error);
+    });
 
     // Write initial output to log file
     if (initialStdout) {

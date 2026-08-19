@@ -8,6 +8,7 @@ import { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionCallback } from "../../src/types/permissions.js";
 import * as fs from "fs/promises";
 import * as path from "path";
+import { longFormTempDir } from "../helpers/tempDir.js";
 
 // Mock child_process to prevent real command execution (e.g. npm install triggers network I/O)
 vi.mock("child_process");
@@ -20,13 +21,15 @@ describe("Agent Auto-Accept Permissions Integration", () => {
   let activeAgent: Agent | undefined;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "wave-agent-test-"));
+    tempDir = await fs.mkdtemp(
+      path.join(longFormTempDir(), "wave-agent-test-"),
+    );
     process.env = {
       ...originalEnv,
       WAVE_API_KEY: "test-token",
       WAVE_BASE_URL: "https://test.api",
     };
-    vi.mocked(os.homedir).mockReturnValue(os.tmpdir());
+    vi.mocked(os.homedir).mockReturnValue(longFormTempDir());
 
     // Return a mock process that exits successfully without executing anything
     mockSpawn.mockReturnValue({
@@ -167,7 +170,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
   it("should merge global and local rules", async () => {
     // 1. Setup global config
     const userHome = await fs.mkdtemp(
-      path.join(os.tmpdir(), "wave-user-home-"),
+      path.join(longFormTempDir(), "wave-user-home-"),
     );
     vi.mocked(os.homedir).mockReturnValue(userHome);
 

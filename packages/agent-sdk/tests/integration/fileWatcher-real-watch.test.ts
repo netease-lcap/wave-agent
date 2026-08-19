@@ -9,13 +9,13 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 
 import {
   FileWatcherService,
   type FileWatchEvent,
 } from "../../src/services/fileWatcher.js";
+import { longFormTempDir } from "../helpers/tempDir.js";
 
 /** Poll for `count` events; real fs events have no deterministic latency. */
 async function waitForEvents(
@@ -39,7 +39,7 @@ describe("FileWatcherService with real chokidar", () => {
   let service: FileWatcherService;
 
   beforeAll(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "wave-watch-real-"));
+    dir = fs.mkdtempSync(path.join(longFormTempDir(), "wave-watch-real-"));
     service = new FileWatcherService(undefined, {
       // Keep the test fast: lower the awaitWriteFinish stability window.
       stabilityThreshold: 100,
