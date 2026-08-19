@@ -760,6 +760,21 @@ EOF
   });
 
   describe("CWD reset when outside safe zone", () => {
+    // These tests mock `pwd -P` output as unix-style paths. Pin the platform to
+    // non-Windows so the MSYS->Windows conversion (win32 only) doesn't rewrite
+    // them when the suite runs on a Windows machine/CI.
+    let platformSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      platformSpy = vi
+        .spyOn(process, "platform", "get")
+        .mockReturnValue("linux" as NodeJS.Platform);
+    });
+
+    afterEach(() => {
+      platformSpy.mockRestore();
+    });
+
     const createMockProcess = (exitCode: number, newCwd: string) => {
       const mockProcess = {
         pid: 1234,
@@ -889,6 +904,91 @@ EOF
       expect(result.success).toBe(true);
       expect(mockOnCwdChange).toHaveBeenCalledWith("/some/other/dir");
       expect(result.content).not.toContain("Shell cwd was reset to");
+    });
+  });
+
+  describe("CWD tracking on Windows (Git Bash POSIX path conversion)", () => {
+    let platformSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      platformSpy = vi
+        .spyOn(process, "platform", "get")
+        .mockReturnValue("win32" as NodeJS.Platform);
+    });
+
+    afterEach(() => {
+      platformSpy.mockRestore();
+    });
+
+    const createMockProcess = (newCwd: string) => {
+      const mockProcess = {
+        pid: 1234,
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event: string, callback: (code: number) => void) => {
+          if (event === "exit") {
+            setTimeout(() => {
+              // Simulate the temp CWD file being written
+              vi.mocked(fs.existsSync).mockReturnValue(true);
+              vi.mocked(fs.readFileSync).mockReturnValue(newCwd + "\n");
+              callback(0);
+            }, 10);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+      return mockProcess;
+    };
+
+    it("should convert MSYS pwd -P output to a Windows path before onCwdChange", async () => {
+      const mockOnCwdChange = vi.fn();
+      const testContext: ToolContext = {
+        ...context,
+        onCwdChange: mockOnCwdChange,
+        originalWorkdir: "/test/workdir",
+      };
+
+      mockSpawn.mockReturnValue(
+        createMockProcess(
+          "/c/Users/liuyiqi02/github/wave-agent",
+        ) as unknown as ChildProcess,
+      );
+
+      const result = await bashTool.execute(
+        { command: "cd project" },
+        testContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockOnCwdChange).toHaveBeenCalledWith(
+        "C:\\Users\\liuyiqi02\\github\\wave-agent",
+      );
+    });
+
+    it("should keep an already-Windows pwd output unchanged", async () => {
+      const mockOnCwdChange = vi.fn();
+      const testContext: ToolContext = {
+        ...context,
+        onCwdChange: mockOnCwdChange,
+        originalWorkdir: "/test/workdir",
+      };
+
+      mockSpawn.mockReturnValue(
+        createMockProcess(
+          "C:\\Users\\liuyiqi02\\project",
+        ) as unknown as ChildProcess,
+      );
+
+      const result = await bashTool.execute(
+        { command: "cd project" },
+        testContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockOnCwdChange).toHaveBeenCalledWith(
+        "C:\\Users\\liuyiqi02\\project",
+      );
     });
   });
 
