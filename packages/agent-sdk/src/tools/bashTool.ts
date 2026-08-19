@@ -5,7 +5,7 @@ import * as path from "path";
 import * as os from "os";
 import { logger } from "../utils/globalLogger.js";
 import { resolveShellPath } from "../utils/shellResolver.js";
-import { toPosixPath } from "../utils/path.js";
+import { toPosixPath, toWindowsPath } from "../utils/path.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { WindowsStreamDecoder } from "../utils/encoding.js";
 import { processToolResult } from "../utils/toolResultStorage.js";
@@ -603,11 +603,19 @@ The working directory persists between commands. Try to maintain your current wo
         try {
           if (fs.existsSync(tempCwdFile)) {
             newCwd = fs.readFileSync(tempCwdFile, "utf8").trim();
+            // Git Bash `pwd -P` writes MSYS-style POSIX paths (/c/Users/...);
+            // convert back to a native Windows path before validating, otherwise
+            // accessSync resolves /c/... to C:\c\... (ENOENT) on every command.
+            if (process.platform === "win32") {
+              newCwd = toWindowsPath(newCwd);
+            }
             // Validate the path exists before calling the callback
             fs.accessSync(newCwd, fs.constants.F_OK);
           }
         } catch (fileError) {
-          logger.warn(
+          // Best-effort CWD tracking: a stale/deleted target directory (e.g. a
+          // removed worktree) shouldn't fail the command or spam WARN logs.
+          logger.debug(
             `Could not read or validate new CWD from temp file ${tempCwdFile}:`,
             fileError,
           );

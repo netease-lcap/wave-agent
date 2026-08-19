@@ -1,5 +1,9 @@
-import { describe, it, expect } from "vitest";
-import { resolvePath, getDisplayPath } from "../../src/utils/path.js";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import {
+  resolvePath,
+  getDisplayPath,
+  toWindowsPath,
+} from "../../src/utils/path.js";
 import { homedir } from "os";
 import { resolve } from "path";
 
@@ -134,6 +138,40 @@ describe("path utils", () => {
       const absolutePath = "/other/path/file.ts";
       const result2 = getDisplayPath(absolutePath, customWorkdir);
       expect(result2).toBe(absolutePath);
+    });
+  });
+
+  describe("toWindowsPath", () => {
+    let platformSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeAll(() => {
+      platformSpy = vi
+        .spyOn(process, "platform", "get")
+        .mockReturnValue("win32" as NodeJS.Platform);
+    });
+
+    afterAll(() => {
+      platformSpy.mockRestore();
+    });
+
+    it("should convert MSYS /c/ drive paths to Windows paths", () => {
+      expect(toWindowsPath("/c/Users/foo")).toBe("C:\\Users\\foo");
+    });
+
+    it("should convert /cygdrive/c/ paths to Windows paths", () => {
+      expect(toWindowsPath("/cygdrive/d/project")).toBe("D:\\project");
+    });
+
+    it("should convert UNC //server/share paths", () => {
+      expect(toWindowsPath("//server/share")).toBe("\\\\server\\share");
+    });
+
+    it("should uppercase the drive letter and handle bare drive path", () => {
+      expect(toWindowsPath("/c")).toBe("C:\\");
+    });
+
+    it("should pass through already-Windows paths unchanged", () => {
+      expect(toWindowsPath("C:\\Users\\foo")).toBe("C:\\Users\\foo");
     });
   });
 });
