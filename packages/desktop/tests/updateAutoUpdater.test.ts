@@ -81,7 +81,6 @@ describe("AutoUpdaterService.checkForUpdates", () => {
       isUpdateAvailable: true,
     } as never);
     const service = new AutoUpdaterService({
-      onUpdateAvailable: vi.fn(),
       onUpdateDownloaded: vi.fn(),
       onError: vi.fn(),
     });
@@ -106,7 +105,6 @@ describe("AutoUpdaterService.checkForUpdates", () => {
       isUpdateAvailable: false,
     } as never);
     const service = new AutoUpdaterService({
-      onUpdateAvailable: vi.fn(),
       onUpdateDownloaded: vi.fn(),
       onError: vi.fn(),
     });
@@ -119,7 +117,6 @@ describe("AutoUpdaterService.checkForUpdates", () => {
   it('returns "error" when the check rejects', async () => {
     vi.mocked(h.checkForUpdates).mockRejectedValue(new Error("ECONNREFUSED"));
     const service = new AutoUpdaterService({
-      onUpdateAvailable: vi.fn(),
       onUpdateDownloaded: vi.fn(),
       onError: vi.fn(),
     });
@@ -131,25 +128,9 @@ describe("AutoUpdaterService.checkForUpdates", () => {
 });
 
 describe("AutoUpdaterService events and quitAndInstall", () => {
-  it("fires onUpdateAvailable when the update-available event arrives", () => {
-    const onUpdateAvailable = vi.fn();
-    const service = new AutoUpdaterService({
-      onUpdateAvailable,
-      onUpdateDownloaded: vi.fn(),
-      onError: vi.fn(),
-    });
-    // Attach listeners through a check so the wiring is exercised for real.
-    service.checkForUpdates("https://codechat.example.com");
-    service.checkForUpdates("https://codechat.example.com");
-
-    fire("update-available", { version: "0.20.0" });
-    expect(onUpdateAvailable).toHaveBeenCalledWith({ version: "0.20.0" });
-  });
-
   it("fires onUpdateDownloaded when the update-downloaded event arrives", () => {
     const onUpdateDownloaded = vi.fn();
     const service = new AutoUpdaterService({
-      onUpdateAvailable: vi.fn(),
       onUpdateDownloaded,
       onError: vi.fn(),
     });
@@ -162,7 +143,6 @@ describe("AutoUpdaterService events and quitAndInstall", () => {
   it("fires onError when the error event arrives", () => {
     const onError = vi.fn();
     const service = new AutoUpdaterService({
-      onUpdateAvailable: vi.fn(),
       onUpdateDownloaded: vi.fn(),
       onError,
     });
@@ -175,7 +155,6 @@ describe("AutoUpdaterService events and quitAndInstall", () => {
   it("registers each event listener only once across repeated checks", async () => {
     vi.mocked(h.checkForUpdates).mockResolvedValue(null);
     const service = new AutoUpdaterService({
-      onUpdateAvailable: vi.fn(),
       onUpdateDownloaded: vi.fn(),
       onError: vi.fn(),
     });
@@ -183,13 +162,12 @@ describe("AutoUpdaterService events and quitAndInstall", () => {
     await service.checkForUpdates("https://codechat.example.com");
 
     const registered = Object.values(h.listeners);
-    expect(registered.length).toBe(3); // update-available + update-downloaded + error
-    expect(h.on).toHaveBeenCalledTimes(3);
+    expect(registered.length).toBe(2); // update-downloaded + error
+    expect(h.on).toHaveBeenCalledTimes(2);
   });
 
   it("forwards quitAndInstall to electron-updater", () => {
     const service = new AutoUpdaterService({
-      onUpdateAvailable: vi.fn(),
       onUpdateDownloaded: vi.fn(),
       onError: vi.fn(),
     });

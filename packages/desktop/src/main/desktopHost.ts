@@ -4104,10 +4104,6 @@ export class DesktopHost {
     if (serverUrl) {
       if (!this.autoUpdaterService) {
         this.autoUpdaterService = new AutoUpdaterService({
-          onUpdateAvailable: (info) =>
-            this.showToast({
-              message: `发现新版本 v${info.version}（当前 v${app.getVersion()}），正在后台下载…`,
-            }),
           onUpdateDownloaded: (info) =>
             void this.handleUpdateDownloaded(info.version),
           onError: (error) =>
