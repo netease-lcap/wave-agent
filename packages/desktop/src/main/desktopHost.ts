@@ -46,11 +46,7 @@ import { StdioClient } from "./stdio/stdioClient";
 import type { JsonRpcClient } from "./stdio/jsonRpcClient";
 import { StdioAgent, type StdioAgentCallbacks } from "./stdio/stdioAgent";
 import { NotificationRouter } from "./stdio/notificationRouter";
-import {
-  resolveWaveBinary,
-  ensureCliUpToDate,
-  getCliVersion,
-} from "./stdio/binaryResolver";
+import { ensureCliUpToDate, getCliVersion } from "./stdio/binaryResolver";
 import {
   ConfigStore,
   type DesktopConfigData,
@@ -594,6 +590,8 @@ export class DesktopHost {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
+      // The CLI version is pinned to the app version and downloaded to
+      // ~/.wave/cli by the host runtime on first use (no system Node/npm).
       const targetVersion = app.getVersion();
       let binaryPath: string;
       try {
@@ -601,15 +599,10 @@ export class DesktopHost {
           this.showToast({ message: msg }),
         );
       } catch (error) {
-        // Upgrade/install failure — fall back to whatever binary is resolvable.
-        console.warn(
-          "[DesktopHost] ensureCliUpToDate failed, falling back:",
-          error,
-        );
         this.showToast({
-          message: `wave-code CLI 升级失败：${error instanceof Error ? error.message : String(error)}。可通过 npm install -g wave-code@${targetVersion} 手动升级`,
+          message: `wave CLI 获取失败：${error instanceof Error ? error.message : String(error)}`,
         });
-        binaryPath = resolveWaveBinary(undefined, targetVersion);
+        throw error;
       }
       this.cliVersion = getCliVersion(binaryPath);
 

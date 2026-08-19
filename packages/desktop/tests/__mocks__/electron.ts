@@ -1,8 +1,10 @@
 import { vi } from "vitest";
 
 export const app = {
+  isPackaged: false,
   getPath: vi.fn(() => "/tmp/wave-desktop-test-userData"),
   getVersion: vi.fn(() => "0.19.7"),
+  getAppPath: vi.fn(() => "/app/root"),
   requestSingleInstanceLock: vi.fn(() => true),
   on: vi.fn(),
   whenReady: vi.fn(() => Promise.resolve()),

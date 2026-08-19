@@ -10,7 +10,9 @@ order: 220
 
 ## 概述
 
-编辑器插件（VS Code 扩展、JetBrains 插件等）不在插件宿主进程中运行 Agent 逻辑，而是通过 JSON-RPC 2.0 over stdio 与 `wave --stdio` 子进程通信。本规格覆盖该传输层的完整生命周期：CLI 二进制文件的解析/安装/升级、JSON-RPC 通信协议、共享进程的多会话路由、以及错误诊断。本规格以 VSCE 实现为参考基准，JB 插件复用同一协议和架构。
+编辑器插件（VS Code 扩展、JetBrains 插件等）不在插件宿主进程中运行 Agent 逻辑，而是通过 JSON-RPC 2.0 over stdio 与 `wave --stdio` 子进程通信。本规格覆盖该传输层的完整生命周期：CLI 的解析/运行、JSON-RPC 通信协议、共享进程的多会话路由、以及错误诊断。
+
+**CLI 交付方式因客户端而异**：VSCE 将 wave CLI 内置进扩展包（三件套：`bin/wave-code.js` 版本探测 shim + `package.json` + `dist/bundle/wave.mjs`，合计约 2.9MB），运行时由扩展宿主自身的 Node 运行时（`process.execPath`）直接执行，不依赖客户系统安装 Node.js/npm，CLI 版本跟随扩展版本发布。CLI 的 grep 工具依赖 `@vscode/ripgrep`（JS 包装 + 平台 rg 二进制，约 5.2MB）**不打包**，首次使用时按需从 npmmirror 下载到 `~/.wave/cli/node_modules/` 并缓存；该包是 wave.mjs 的顶层 import，下载失败时 CLI 无法启动，必须向用户报错并提示检查网络后重试。JB 插件运行在 JVM 中、没有可用的宿主 Node，保持 npm 全局安装 + 系统 Node.js 的交付方式（PATH → npm 全局 bin → `npm install -g` 自动安装/升级）。两种方式均通过同一套 stdio 协议与架构与 `wave --stdio` 通信。
 
 ### 架构
 
@@ -39,11 +41,31 @@ order: 220
 
 ## 用户场景与测试 _（必填）_
 
-### 用户故事：CLI 二进制自动解析与安装（优先级：P1）
+### 用户故事：VSCE 使用内置 CLI（优先级：P1）
 
-作为编辑器插件用户，我希望插件能自动找到或安装 `wave` CLI 二进制文件，以便无需手动配置即可开始使用。
+作为 VS Code 扩展用户，我希望扩展直接使用随扩展发布的内置 wave CLI，以便无需安装 Node.js/npm、无需任何手动配置即可开始使用。
 
-**为什么是这个优先级**：这是整个 stdio 传输层的前提——没有 CLI 二进制文件，插件无法做任何事情。
+**为什么是这个优先级**：这是整个 stdio 传输层的前提——没有 CLI，插件无法做任何事情。内置方案将 CLI 与扩展捆绑发布，消灭了对客户系统 Node.js（≥ 22）与 npm 的依赖；grep 依赖 rg 不打包，仅在需要时按需下载并缓存，避免安装包膨胀。
+
+**独立测试**：在一台未安装 Node.js 且未安装 `wave-code` 的机器上安装插件，打开聊天面板，验证扩展直接运行内置 CLI 并启动子进程；首次启动后 `~/.wave/cli/node_modules/` 下出现下载的 rg 二进制，再次启动不重复下载。
+
+**验收场景**：
+
+1. **假设** 扩展已安装且内置 CLI（`dist/wave-cli/bin/wave-code.js` + `package.json` + `dist/bundle/wave.mjs`）随扩展发布，**当**插件初始化时，**则**将内置 CLI 复制到用户可写的 `~/.wave/cli/`（扩展安装目录只读），解析到其中的 `bin/wave-code.js` 作为入口，用扩展宿主运行时（`process.execPath`）执行 `bin/wave-code.js --stdio`，不查找系统 PATH、不执行 npm。
+2. **假设** `WAVE_CLI_PATH` 环境变量指向一个存在的工作区构建（开发场景），**当**插件初始化时，**则**优先使用该路径而非内置 CLI，便于本地开发调试。
+3. **假设** 二进制路径已解析成功，**当**同一插件生命周期内再次调用解析时，**则**直接返回缓存的路径，不重复查找、不重复复制。
+4. **假设** 内置 CLI 文件缺失或不可读（安装损坏），**当**插件初始化时，**则**抛出明确错误并提示用户重新安装扩展，不尝试从网络安装。
+5. **假设** 内置 CLI 的 grep 依赖 rg 尚未下载，**当**插件首次启动 CLI 时，**则**从 npmmirror 下载 `@vscode/ripgrep` JS 包装与当前平台的 rg 二进制到 `~/.wave/cli/node_modules/@vscode/`（wave.mjs 通过 createRequire 向上解析该目录），并提示用户正在下载。
+6. **假设** rg 已下载过（`~/.wave/cli/node_modules/@vscode/` 下存在当前平台的 rg 二进制），**当**插件再次启动 CLI 时，**则**直接复用缓存，不重复下载。
+7. **假设** rg 下载失败（网络不可达、registry 超时等），**当**插件初始化时，**则**初始化失败并显示明确错误（提示检查网络后重试）——`@vscode/ripgrep` 是 wave.mjs 的顶层依赖，缺失时 CLI 无法启动，不存在"仅 grep 暂不可用"的降级路径。
+
+---
+
+### 用户故事：JB 插件解析与安装 CLI（优先级：P1）
+
+作为 JetBrains 插件用户，我希望插件能自动找到或安装 `wave` CLI 二进制文件，以便无需手动配置即可开始使用。
+
+**为什么是这个优先级**：JB 插件运行在 JVM 中，没有可用的宿主 Node 运行时，必须依赖系统安装的 Node.js/npm，因此保留解析与自动安装机制。
 
 **独立测试**：在一台未安装 `wave-code` 的机器上安装插件，打开聊天面板，验证插件自动通过 npm 安装 CLI 并启动子进程。
 
@@ -59,20 +81,22 @@ order: 220
 
 ### 用户故事：CLI 版本管理与升级（优先级：P1）
 
-作为编辑器插件用户，我希望插件自动确保 CLI 版本与插件版本匹配，以便获得一致的功能体验。
+作为编辑器插件用户，我希望 CLI 版本与插件版本始终匹配，以便获得一致的功能体验。
 
-**为什么是这个优先级**：CLI 和插件版本不匹配会导致协议不兼容、功能缺失或运行时崩溃。
+**为什么是这个优先级**：CLI 和插件版本不匹配会导致协议不兼容、功能缺失或运行时崩溃。VSCE 通过"内置 + 随扩展发布"从机制上保证版本一致；JB 仍需自动升级机制。
 
-**独立测试**：手动安装一个旧版本的 `wave-code` CLI，然后安装较新版本的插件，打开聊天面板，验证插件自动升级 CLI 到匹配版本。
+**独立测试**：VSCE：安装扩展后确认内置 CLI 版本与扩展版本一致；JB：手动安装旧版本的 `wave-code` CLI，安装较新版本的插件，打开聊天面板，验证插件自动升级 CLI 到匹配版本。
 
 **验收场景**：
 
-1. **假设** 已安装 CLI 版本 >= 插件版本，**当**插件初始化时，**则**不执行升级，直接使用现有二进制。
-2. **假设** 已安装 CLI 版本 < 插件版本，**当**插件初始化时，**则**自动执行 `npm install -g wave-code@<插件版本>` 升级到精确匹配版本。
-3. **假设** `wave` 完全未安装，**当**首次自动安装 CLI 时，**则**安装命令同样携带精确版本（`wave-code@<插件版本>`），与升级路径一致，不解析 `@latest`。
-4. **假设** CLI 二进制存在但损坏（`wave -v` 执行失败或返回空），**当**插件初始化时，**则**视为需要升级，执行升级流程。
-5. **假设** 升级完成后，**当**插件重新解析二进制时，**则**缓存被清除并重新查找，确保使用新安装的二进制。
-6. **假设** 目标版本字符串不匹配 semver 格式，**当**尝试升级时，**则**拒绝执行升级并抛出 "Invalid version" 错误，防止 shell 注入。
+1. **假设** VSCE 扩展已安装，**当**插件初始化时，**则**直接使用内置 CLI，其版本与扩展版本一致（构建时由发布流程保证），无独立运行期升级流程。
+2. **假设** VSCE 扩展升级到新版本（内置 CLI 版本变化），**当**插件初始化时，**则**重新复制内置 CLI 到 `~/.wave/cli/`，但保留 `node_modules/`（已缓存的 rg），不重复下载。
+3. **假设** JB 插件已安装 CLI 版本 >= 插件版本，**当**插件初始化时，**则**不执行升级，直接使用现有二进制。
+4. **假设** JB 插件已安装 CLI 版本 < 插件版本，**当**插件初始化时，**则**自动执行 `npm install -g wave-code@<插件版本>` 升级到精确匹配版本。
+5. **假设** JB 插件 `wave` 完全未安装，**当**首次自动安装 CLI 时，**则**安装命令同样携带精确版本（`wave-code@<插件版本>`），与升级路径一致，不解析 `@latest`。
+6. **假设** JB 插件 CLI 二进制存在但损坏（`wave -v` 执行失败或返回空），**当**插件初始化时，**则**视为需要升级，执行升级流程。
+7. **假设** JB 插件升级完成后，**当**插件重新解析二进制时，**则**缓存被清除并重新查找，确保使用新安装的二进制。
+8. **假设** JB 插件目标版本字符串不匹配 semver 格式，**当**尝试升级时，**则**拒绝执行升级并抛出 "Invalid version" 错误，防止 shell 注入。
 
 ---
 
@@ -80,18 +104,20 @@ order: 220
 
 作为编辑器插件用户，我希望在 CLI 无法启动时获得明确的错误信息和可操作的修复指引，以便快速解决问题而不是面对晦涩的技术错误。
 
-**为什么是这个优先级**：当前缺少 Node.js/npm 的用户会看到 "Failed to determine npm global directory" 这样令人困惑的错误，无法理解根本原因或如何修复。错误诊断是用户体验的关键环节。
+**为什么是这个优先级**：JB 插件依赖系统 Node.js/npm，缺失或版本过低时应给出可理解的引导而非晦涩的 npm 错误；VSCE 内置 CLI 后不再受系统 Node 影响，但子进程启动失败与运行期崩溃仍需清晰诊断。
 
-**独立测试**：在一台未安装 Node.js 的 Windows 机器上安装插件，打开聊天面板，验证错误消息明确告知用户需要安装 Node.js。
+**独立测试**：JB：在一台未安装 Node.js 的 Windows 机器上安装插件，打开聊天面板，验证错误消息明确告知用户需要安装 Node.js。VSCE：删除扩展包内的内置 CLI 文件后打开聊天面板，验证错误提示重新安装扩展。
 
 **验收场景**：
 
-1. **假设** 系统未安装 Node.js（`where npm` / `which npm` 失败，且 `process.execPath` 同目录无 npm），**当**插件尝试解析二进制时，**则**抛出明确错误："未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"，并在编辑器通知中显示该消息。
-2. **假设** 系统已安装 Node.js 但版本低于 22，**当**插件尝试解析二进制时，**则**抛出明确错误："Node.js 版本过低（当前 vX，需要 >= 22）。请升级 Node.js (https://nodejs.org)，然后重启编辑器。"，并在编辑器通知中显示该消息。
-3. **假设** npm 存在但 `npm prefix -g` 执行失败，**当**插件尝试获取全局 bin 目录时，**则**抛出包含 npm 错误输出的问题描述，并建议用户检查 npm 配置。
-4. **假设** npm install 执行失败（网络问题、权限不足等），**当**插件尝试自动安装 CLI 时，**则**抛出包含 npm 错误输出的描述，并建议用户手动执行安装命令。
-5. **假设** CLI 子进程启动后立即退出（exit code 非 0），**当**插件检测到进程退出时，**则**在编辑器通知中显示错误，包含 stderr 输出（如果有），并建议用户检查 CLI 安装。
-6. **假设** 任何初始化错误发生后，**当**用户查看编辑器输出面板的 Wave 通道时，**则**能看到完整的错误堆栈和上下文信息用于诊断。
+1. **假设** VSCE 内置 CLI 文件缺失或无法用宿主运行时执行（安装损坏），**当**插件尝试启动子进程时，**则**在编辑器通知中显示明确错误，提示重新安装扩展，不涉及任何 Node.js 安装指引。
+2. **假设** VSCE 的 rg 下载失败（网络不可达等），**当**插件初始化时，**则**显示明确错误"grep 搜索依赖（ripgrep）下载失败，请检查网络连接后重试"，下次启动自动重试下载。
+3. **假设** JB 系统未安装 Node.js（`where npm` / `which npm` 失败，且无其它可用的 node），**当**插件尝试解析二进制时，**则**抛出明确错误："未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"，并在编辑器通知中显示该消息。
+4. **假设** JB 系统已安装 Node.js 但版本低于 22，**当**插件尝试解析二进制时，**则**抛出明确错误："Node.js 版本过低（当前 vX，需要 >= 22）。请升级 Node.js (https://nodejs.org)，然后重启编辑器。"，并在编辑器通知中显示该消息。
+5. **假设** JB npm 存在但 `npm prefix -g` 执行失败，**当**插件尝试获取全局 bin 目录时，**则**抛出包含 npm 错误输出的问题描述，并建议用户检查 npm 配置。
+6. **假设** JB npm install 执行失败（网络问题、权限不足等），**当**插件尝试自动安装 CLI 时，**则**抛出包含 npm 错误输出的描述，并建议用户手动执行安装命令。
+7. **假设** CLI 子进程启动后立即退出（exit code 非 0），**当**插件检测到进程退出时，**则**在编辑器通知中显示错误，包含 stderr 输出（如果有），并建议用户检查 CLI 安装。
+8. **假设** 任何初始化错误发生后，**当**用户查看编辑器输出面板的 Wave 通道时，**则**能看到完整的错误堆栈和上下文信息用于诊断。
 
 ---
 
@@ -233,11 +259,18 @@ order: 220
 
 ### 边界情况
 
-- **Windows `.cmd` 兼容性**：Node.js（CVE-2024-27980 补丁后）拒绝在没有 shell 的情况下 spawn `.cmd` 文件。所有执行 `npm.cmd` 和 `wave.cmd` 的地方必须设置 `shell: true`（或 `shell: process.platform === 'win32'`）。
-- **`getCliVersion` 超时**：`wave -v` 执行有 5 秒超时，超时返回 `null`（视为二进制损坏，触发升级）。
-- **首次安装同样携带精确版本**：`wave` 完全未安装时的自动安装命令为 `npm install -g wave-code@<插件版本>`（本地与远端一致），不解析 `@latest`，避免装到与插件不匹配的更新版本；若精确版本安装失败，按失败路径报错并提示手动执行带版本号的安装命令，不回退到最新版。
-- **semver 校验防注入**：`upgradeWaveBinary` 中的目标版本来自插件 `package.json`（可信源），但仍通过正则 `SEMVER_RE` 校验，因为 Windows 上 execFile 通过 cmd.exe 执行，严格的 semver 检查保留 "不对版本参数进行 shell 注入" 的保证。
-- **npm 全局目录差异**：`npm prefix -g` 在 Windows 上直接返回全局 bin 目录（如 `C:\Users\xxx\AppData\Roaming\npm`），Unix 上返回 prefix 需要拼接 `/bin`。
+- **Windows `.cmd` 兼容性**（JB 适用）：Node.js（CVE-2024-27980 补丁后）拒绝在没有 shell 的情况下 spawn `.cmd` 文件。所有执行 `npm.cmd` 和 `wave.cmd` 的地方必须设置 `shell: true`（或 `shell: process.platform === 'win32'`）。VSCE 内置 CLI 直接执行 `wave.mjs`（ESM 脚本），不产生 `.cmd` shim。
+- **`getCliVersion` 超时**（JB 适用）：`wave -v` 执行有超时，超时返回 `null`（视为二进制损坏，触发升级）。
+- **首次安装同样携带精确版本**（JB 适用）：`wave` 完全未安装时的自动安装命令为 `npm install -g wave-code@<插件版本>`，不解析 `@latest`，避免装到与插件不匹配的更新版本；若精确版本安装失败，按失败路径报错并提示手动执行带版本号的安装命令，不回退到最新版。
+- **semver 校验防注入**（JB 适用）：`upgradeWaveBinary` 中的目标版本来自插件 `package.json`（可信源），但仍通过正则 `SEMVER_RE` 校验，因为 Windows 上 execFile 通过 cmd.exe 执行，严格的 semver 检查保留 "不对版本参数进行 shell 注入" 的保证。
+- **npm 全局目录差异**（JB 适用）：`npm prefix -g` 在 Windows 上直接返回全局 bin 目录（如 `C:\Users\xxx\AppData\Roaming\npm`），Unix 上返回 prefix 需要拼接 `/bin`。
+- **VSCE 内置 CLI 的宿主运行时**：VSCE 扩展宿主的 `process.execPath` 是有效的 Node 二进制（Electron 扩展宿主运行时），直接以 `process.execPath <bin/wave-code.js> --stdio` 方式 spawn，Windows 上无需 shell、无 `.cmd` 路径注入风险。
+- **VSCE 内置 CLI 布局**：内置内容为三件套——`bin/wave-code.js`（版本探测 shim，处理 `-v` 后 import `../dist/bundle/wave.mjs`）、`package.json`、`dist/bundle/wave.mjs`。wave.mjs 运行时经 `createRequire(import.meta.url)` 向上解析 `@vscode/ripgrep-<platform>-<arch>/bin/rg`，因此下载的 rg 必须放在 CLI 目录的 `node_modules/@vscode/` 下。
+- **VSCE 可写区复制**：扩展安装目录只读，内置 CLI 在首次启动（或版本变更）时复制到用户目录 `~/.wave/cli/`；复制前只删除 `dist/`、入口与 `package.json`，保留 `node_modules/`（rg 缓存），升级扩展不会强制重新下载 rg。
+- **rg 按需下载与缓存**：rg（`@vscode/ripgrep` JS 包装 + 平台二进制）首次使用时从 npmmirror 下载到 `~/.wave/cli/node_modules/@vscode/`，版本取 CLI 声明的 `^range` 内的最高版本（semver `maxSatisfying`）；平台包名 `@vscode/ripgrep-<platform>-<arch>`，rg 二进制存在于预期路径即视为缓存命中，不重复下载。
+- **rg 下载失败即初始化失败**：`@vscode/ripgrep` 是 wave.mjs 的顶层 import（JS 包装加载时就解析平台二进制），JS 包装或平台包任一缺失都会导致 CLI 无法启动。rg 下载失败必须作为初始化错误抛出（提示检查网络后重试），不能静默降级；下次启动自动重试下载。
+- **VSCE 开发覆盖**：`WAVE_CLI_PATH` 环境变量指向工作区构建的 CLI 文件时优先使用，便于本地开发调试；生产环境不设置该变量。
+- **VSCE CLI 版本同步**：内置 CLI 与扩展版本由发布流程绑定（扩展构建时复制对应版本的三件套进包），无运行期独立升级；用户升级扩展即获得新 CLI。
 - **utility 请求无 session 上下文**：FileService（搜索文件）、SessionService（列出会话）、PluginService（管理插件）的请求不需要 sessionId，直接通过共享 StdioClient 发送。
 - **`authUrl` 全局通知**：SSO 登录流程中 CLI 推送的 `authUrl` 通知不带 sessionId，通过 `router.registerGlobal` 注册的处理器接收，直接打开系统浏览器。
 - **CLI 子进程的 env 传递**：StdioClient 构造函数接受可选的 `env` 参数，未传时子进程继承插件宿主的 `process.env`。

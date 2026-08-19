@@ -53,22 +53,24 @@ export class StdioClient {
     onStderr?: StderrHandler,
   ) {
     this.onStderr = onStderr;
-    // On Windows, binaryPath may be a `wave.cmd` shim. Node (since the
-    // CVE-2024-27980 patch) refuses to spawn `.cmd`/`.bat` files without a
-    // shell, throwing ERR_CHILD_PROCESS_INVALID_COMMAND_FILE. `args` is a
-    // fixed flag list (`['--stdio']`) with no metacharacters, so enabling
-    // the shell on Windows is safe; Unix behaviour is unchanged.
-    //
-    // With `shell: true`, Node concatenates file+args into the cmd.exe
-    // command line WITHOUT quoting the file — a path containing spaces
-    // (e.g. `C:\Users\a b\...\wave.cmd`) is split at the space and fails
-    // with "'C:\Users\a' is not recognized". Pre-quote it on Windows.
-    const command =
-      process.platform === "win32" ? `"${binaryPath}"` : binaryPath;
-    this.proc = spawn(command, args, {
+    // The bundled CLI is a `.mjs` script executed by the extension-host Node
+    // runtime (process.execPath). A script is spawned directly with an args
+    // array and no shell — cleaner than the old `wave.cmd` shim path.
+    // WAVE_CLI_PATH overrides may point at other executables (e.g. a
+    // `wave.cmd` shim), which keep the legacy shell behaviour: Node (since
+    // the CVE-2024-27980 patch) refuses to spawn `.cmd`/`.bat` without a
+    // shell, and with `shell: true` the executable must be pre-quoted so a
+    // path containing spaces is not split.
+    const isScript = /\.(mjs|js|cjs)$/i.test(binaryPath);
+    const command = isScript ? process.execPath : binaryPath;
+    const spawnArgs = isScript ? [binaryPath, ...args] : args;
+    const shell = !isScript && process.platform === "win32";
+    const spawnCommand =
+      shell && process.platform === "win32" ? `"${command}"` : command;
+    this.proc = spawn(spawnCommand, spawnArgs, {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...env },
-      shell: process.platform === "win32",
+      shell,
     });
 
     const rl = createInterface({ input: this.proc.stdout! });

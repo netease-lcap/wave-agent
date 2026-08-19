@@ -179,6 +179,41 @@ describe("StdioClient", () => {
     });
   });
 
+  // ── Bundled CLI (.mjs script) ──────────────────────────────
+  // The bundled CLI ships as `dist/wave-cli/wave.mjs` and runs through the
+  // extension-host Node runtime (process.execPath) with an args array and no
+  // shell — on any platform, no `.cmd` shim involved.
+
+  it("spawns a .mjs CLI through process.execPath without shell", () => {
+    withPlatform("win32", () => {
+      const proc = createMockProc();
+      mockSpawn.mockReturnValue(proc);
+      mockCreateInterface.mockReturnValue(new EventEmitter());
+
+      new StdioClient("/ext/dist/wave-cli/wave.mjs", ["--stdio"]);
+
+      const call = mockSpawn.mock.calls[0];
+      expect(call[0]).toBe(process.execPath);
+      expect(call[1]).toEqual(["/ext/dist/wave-cli/wave.mjs", "--stdio"]);
+      expect(call[2].shell).toBe(false);
+    });
+  });
+
+  it("spawns a .mjs CLI without shell on Unix too", () => {
+    withPlatform("linux", () => {
+      const proc = createMockProc();
+      mockSpawn.mockReturnValue(proc);
+      mockCreateInterface.mockReturnValue(new EventEmitter());
+
+      new StdioClient("/ext/dist/wave-cli/wave.mjs", ["--stdio"]);
+
+      const call = mockSpawn.mock.calls[0];
+      expect(call[0]).toBe(process.execPath);
+      expect(call[1]).toEqual(["/ext/dist/wave-cli/wave.mjs", "--stdio"]);
+      expect(call[2].shell).toBe(false);
+    });
+  });
+
   // ── Request / Response ─────────────────────────────────────
 
   it("sends request with auto-incrementing id and returns result", async () => {

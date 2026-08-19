@@ -329,7 +329,7 @@ vi.mock("../src/main/stdio/stdioAgent", () => ({
 }));
 
 vi.mock("../src/main/stdio/binaryResolver", () => ({
-  resolveWaveBinary: vi.fn(() => "/mock/wave"),
+  resolveWaveBinary: vi.fn(async () => "/mock/wave"),
   ensureCliUpToDate: vi.fn(async () => "/mock/wave"),
   getCliVersion: vi.fn(() => "0.19.7"),
 }));
@@ -899,15 +899,7 @@ describe("webviewReady / setInitialState", () => {
     const { ensureCliUpToDate } = await import(
       "../src/main/stdio/binaryResolver"
     );
-    vi.mocked(ensureCliUpToDate).mockRejectedValueOnce(
-      new Error("install failed"),
-    );
-    const { resolveWaveBinary } = await import(
-      "../src/main/stdio/binaryResolver"
-    );
-    vi.mocked(resolveWaveBinary).mockImplementationOnce(() => {
-      throw new Error("no binary");
-    });
+    vi.mocked(ensureCliUpToDate).mockRejectedValueOnce(new Error("no binary"));
 
     const { host, store, sent } = createHost();
     store.addRecentWorkdir({ host: "local", path: "/work/a" });
@@ -919,52 +911,22 @@ describe("webviewReady / setInitialState", () => {
     });
 
     const toasts = shownToasts().filter((t) =>
-      t.message.includes("初始化失败"),
+      t.message.includes("wave CLI 获取失败"),
     );
     expect(toasts).toHaveLength(1);
     expect(
       sent("appendMessage").filter((m) =>
-        JSON.stringify(m).includes("初始化失败"),
+        JSON.stringify(m).includes("wave CLI 获取失败"),
       ),
     ).toHaveLength(0);
   });
 
-  it("surfaces the local CLI upgrade progress as a toast, not a chat message", async () => {
-    const { ensureCliUpToDate } = await import(
-      "../src/main/stdio/binaryResolver"
-    );
-    vi.mocked(ensureCliUpToDate).mockImplementationOnce(
-      async (_target, onInstall) => {
-        onInstall?.("正在升级 wave-code 到 v1.0.7，请稍候…");
-        return "/mock/wave";
-      },
-    );
-
-    const { host, store, sent } = createHost();
-    store.addRecentWorkdir({ host: "local", path: "/work/a" });
-    h.existingPaths.add("/work/a");
-    await host.handleWebviewMessage({ command: "desktopReady" });
-    await host.handleWebviewMessage({
-      command: "desktopSelectRecentWorkdir",
-      path: "/work/a",
-    });
-
-    expect(
-      shownToasts().some((t) => t.message.includes("正在升级 wave-code")),
-    ).toBe(true);
-    expect(
-      sent("appendMessage").filter((m) =>
-        JSON.stringify(m).includes("正在升级 wave-code"),
-      ),
-    ).toHaveLength(0);
-  });
-
-  it("surfaces a CLI upgrade failure as a toast, not a chat message", async () => {
+  it("surfaces a local CLI download failure as a toast, not a chat message", async () => {
     const { ensureCliUpToDate } = await import(
       "../src/main/stdio/binaryResolver"
     );
     vi.mocked(ensureCliUpToDate).mockRejectedValueOnce(
-      new Error("install failed"),
+      new Error("下载失败（HTTP 500）"),
     );
 
     const { host, store, sent } = createHost();
@@ -977,11 +939,11 @@ describe("webviewReady / setInitialState", () => {
     });
 
     expect(
-      shownToasts().some((t) => t.message.includes("wave-code CLI 升级失败")),
+      shownToasts().some((t) => t.message.includes("wave CLI 获取失败")),
     ).toBe(true);
     expect(
       sent("appendMessage").filter((m) =>
-        JSON.stringify(m).includes("wave-code CLI 升级失败"),
+        JSON.stringify(m).includes("wave CLI 获取失败"),
       ),
     ).toHaveLength(0);
   });

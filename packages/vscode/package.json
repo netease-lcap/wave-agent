@@ -12,8 +12,7 @@
   },
   "type": "module",
   "engines": {
-    "vscode": "^1.107.0",
-    "node": ">=22"
+    "vscode": "^1.107.0"
   },
   "files": [
     "dist/",
@@ -88,12 +87,12 @@
     "format": "prettier --write .",
     "clean": "node -e \"import('fs').then(fs => ['dist', 'webview/dist'].forEach(d => {try{fs.rmSync(d, {recursive:true, force:true})}catch(e){}}))\"",
     "prepackage": "pnpm run clean",
-    "compile": "pnpm run compile:backend && pnpm run sync:webview",
+    "compile": "pnpm run compile:backend && pnpm run sync:webview && node scripts/bundleCli.mjs",
     "watch": "pnpm run watch:backend",
     "compile:backend": "node esbuild.config.mjs",
     "watch:backend": "node esbuild.config.mjs --watch",
     "sync:webview": "node scripts/syncWebview.mjs",
-    "esbuild:prod": "node esbuild.config.mjs --production && node scripts/syncWebview.mjs --production",
+    "esbuild:prod": "node esbuild.config.mjs --production && node scripts/syncWebview.mjs --production && node scripts/bundleCli.mjs",
     "package": "node scripts/package.mjs",
     "type-check": "tsc --noEmit --incremental && tsc -p tests --noEmit --incremental",
     "test": "vitest run",
@@ -106,9 +105,12 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.1",
+    "@types/semver": "^7.7.1",
     "@types/vscode": "^1.95.0",
     "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.28.0",
+    "semver": "^7.7.4",
+    "tar": "^7.5.22",
     "typescript": "^5.9.3",
     "vitest": "^4.1.5",
     "wave-agent-sdk": "workspace:*",
