@@ -115,6 +115,7 @@ _输入框中的代码选中标签_
 - **`/tasks`**：打开后台任务管理对话框（详见 [第 5.4 节](#background-task-manager)）
 - **`/workflows`**：打开工作流管理对话框（详见 [第 5.5 节](#workflow-manager)）
 - **`/agents`**：打开 Agents 对话框，查看当前会话中的子代理定义（详见 [第 6.1 节](#agents-dialog)）
+- **`/skills`**：打开 Skills 对话框，查看当前会话可见的技能，按来源分组并可查看详情（详见 [第 6.2 节](#skills-dialog)）
 
 选择这些指令后会直接弹出对应弹窗，无需按回车发送。
 
@@ -552,7 +553,24 @@ _Agents 对话框 - 按来源分组展示代理定义_
 ![Agents - 详情](/screenshots/spec-agents-detail.webp)
 _Agents 对话框 - 代理完整配置_
 
-### 6.2 并发使用子代理 {#subagent-concurrency}
+### 6.2 Skills 对话框（/skills 命令） {#skills-dialog}
+
+输入 `/skills` 斜杠命令可打开 Skills 对话框，查看当前会话中所有可见的技能。技能按来源分组展示——`内置 skills`、`用户 skills`、`项目 skills`、`插件 skills`，数据由扩展通过 `getSkillMetadata` 从 CLI 实时获取。
+
+**列表视图：**
+
+- 每个分组以来源名开头（内置 / 用户 / 项目 / 插件），组内每行展示技能名称、所属插件名（`· <pluginName>`，仅插件技能）与描述。
+- 插件提供的技能以 `插件名:技能名` 的命名空间形式展示，避免与内置或用户技能重名。
+- 点击任意行进入详情。
+
+**详情视图：**
+
+- 展示完整元数据：描述、来源（插件技能附带插件名）、文件路径、配置的模型、关联 Agent、允许的工具与调用方式。
+- 技能设置了 `user-invocable: false` 或 `disable-model-invocation: true` 时，调用方式一栏标注对应的调用限制。
+
+**交互：** 点击遮罩层外部或按 `Esc` 关闭对话框；详情视图按 `Esc` 先返回列表。底部按钮：「返回列表」（仅详情视图可见）与「关闭」。未配置任何技能时显示「暂无可用技能」。
+
+### 6.3 并发使用子代理 {#subagent-concurrency}
 
 AI 可以在同一回合内并行启动多个 Agent 工具块（并发安全的工具会批量并行执行），消息流中会实时显示各个子代理的进度。主要有两种使用方式：
 
@@ -574,7 +592,7 @@ _一条消息触发的 3 个并行子代理（Explore / general-purpose / plan �
 ![后台运行子代理](/screenshots/spec-background-subagent.webp)
 _两个后台子代理并行运行，完成后分别收到任务通知_
 
-### 6.3 多对话并行 {#parallel-conversations}
+### 6.4 多对话并行 {#parallel-conversations}
 
 当需要并行推进多个任务时，可以同时开启多个对话，每个对话独立运行、互不干扰：
 
@@ -584,9 +602,9 @@ _两个后台子代理并行运行，完成后分别收到任务通知_
 ![标题栏与工具栏](/screenshots/spec-chat-header.webp)
 _点击标题栏的"新建对话"图标可开启新的对话_
 
-多个对话并行处理同一仓库的不同任务时，为避免在主线工作区直接改动造成冲突，推荐结合 [6.4 通过 Worktree 创建隔离环境](#worktree-concurrency) 使用。
+多个对话并行处理同一仓库的不同任务时，为避免在主线工作区直接改动造成冲突，推荐结合 [6.5 通过 Worktree 创建隔离环境](#worktree-concurrency) 使用。
 
-### 6.4 通过 Worktree 创建隔离环境 {#worktree-concurrency}
+### 6.5 通过 Worktree 创建隔离环境 {#worktree-concurrency}
 
 多个对话并行修改同一仓库时，直接在主线工作区改动容易互相冲突。此时可以让 AI 调用 `EnterWorktree` 工具，为每个对话创建独立的 git worktree——每个 worktree 拥有独立的分支与工作目录，互不影响。
 
@@ -622,7 +640,7 @@ Skill 是预设的自动化任务模板，用于处理特定的复杂任务（�
 
 > 了解更多：详见 [SDK 文档 - 内置 Skills](/sdk#builtin-skills)
 
-**提示：**用户可以通过内置的 `/settings` skill 来管理 Skill，例如输入 `/settings 帮我写个skill，具体做xxx` 即可快速创建自定义 Skill。
+**提示：**用户可以通过内置的 `/settings` skill 来管理 Skill，例如输入 `/settings 帮我写个skill，具体做xxx` 即可快速创建自定义 Skill。通过 `/skills` 命令（详见 [第 6.2 节 Skills 对话框](#skills-dialog)）可以浏览当前会话可见的所有技能及其来源与调用限制。
 
 ![Skill 系统](/screenshots/spec-skill.webp)
 _Skill 系统_

@@ -20,6 +20,12 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {
+    id: "skills",
+    name: "skills",
+    description: "List available skills",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
+  {
     id: "rewind",
     name: "rewind",
     description:

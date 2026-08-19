@@ -7,6 +7,7 @@ import { HistorySearch } from "./HistorySearch.js";
 import { BackgroundTaskManager } from "./BackgroundTaskManager.js";
 import { McpManager } from "./McpManager.js";
 import { AgentsManager } from "./AgentsManager.js";
+import { SkillsManager } from "./SkillsManager.js";
 import { RewindCommand } from "./RewindCommand.js";
 import { HelpView } from "./HelpView.js";
 import { StatusCommand } from "./StatusCommand.js";
@@ -91,6 +92,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     queuedMessages,
     setIsBtwActive,
     agentDefinitions,
+    skills,
   } = useChat();
 
   // Ref to hold setInputText so queue callbacks can access it before useInputManager returns
@@ -143,6 +145,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showPluginManager,
     showModelSelector,
     showWorkflowManager,
+    showSkillsManager,
     setShowBackgroundTaskManager,
     setShowMcpManager,
     setShowAgentsManager,
@@ -153,6 +156,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setShowPluginManager,
     setShowModelSelector,
     setShowWorkflowManager,
+    setShowSkillsManager,
     // Permission mode
     permissionMode,
     setPermissionMode,
@@ -216,7 +220,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
       showBackgroundTaskManager ||
       showMcpManager ||
       showAgentsManager ||
-      showWorkflowManager
+      showWorkflowManager ||
+      showSkillsManager
     ) {
       return;
     }
@@ -312,6 +317,13 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
+      {showSkillsManager && (
+        <SkillsManager
+          onCancel={() => setShowSkillsManager(false)}
+          skills={skills}
+        />
+      )}
+
       {showWorkflowManager && (
         <WorkflowManager onCancel={() => setShowWorkflowManager(false)} />
       )}
@@ -361,6 +373,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         : showBackgroundTaskManager ||
           showMcpManager ||
           showAgentsManager ||
+          showSkillsManager ||
           showRewindManager ||
           showHelp ||
           showStatusCommand ||

@@ -28,6 +28,7 @@ import type {
   BackgroundTaskSummary,
   SerializableWorkflowRun,
   SubagentConfiguration,
+  SkillMetadata,
 } from "wave-agent-sdk/dist/types/index.js";
 import type {
   SessionMetadata,
@@ -59,6 +60,7 @@ export type {
   BackgroundTaskSummary,
   SerializableWorkflowRun,
   SubagentConfiguration,
+  SkillMetadata,
   ToolBlockUpdateCallbackParams,
 };
 
@@ -583,6 +585,7 @@ export interface ChatState {
     | "tasks"
     | "workflows"
     | "agents"
+    | "skills"
     | null;
   configurationData?: ConfigurationData;
   configurationLoading: boolean;
@@ -725,6 +728,13 @@ export interface AgentsDialogProps {
   onClose: () => void;
 }
 
+/**
+ * Props for the skill metadata dialog component
+ */
+export interface SkillsDialogProps {
+  onClose: () => void;
+}
+
 export interface WorkflowManagerProps {
   onCancel: () => void;
 }
@@ -756,7 +766,8 @@ export type ChatAction =
           | "status"
           | "tasks"
           | "workflows"
-          | "agents";
+          | "agents"
+          | "skills";
         data?: ConfigurationData;
         error?: string;
       };

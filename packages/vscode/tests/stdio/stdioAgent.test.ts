@@ -729,6 +729,32 @@ describe("StdioAgent", () => {
     expect(result).toEqual(commands);
   });
 
+  // ── getSubagentConfigurations / getSkillMetadata ─────────────
+
+  it("unwraps skill metadata from result with sessionId", async () => {
+    const { agent, client } = createAgent();
+    client.request.mockResolvedValue({
+      sessionId: "session-123",
+      workingDirectory: "/w",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+    await agent.initialize({ workdir: "/w" });
+    const skills = [
+      { name: "deep-research", description: "Deep research", type: "builtin" },
+    ];
+    client.request.mockResolvedValue({ skills });
+
+    const result = await agent.getSkillMetadata();
+
+    expect(client.request).toHaveBeenCalledWith(
+      "getSkillMetadata",
+      undefined,
+      "session-123",
+    );
+    expect(result).toEqual(skills);
+  });
+
   // ── handleNotification (called by NotificationRouter) ──────
 
   it("getMessages pulls the full message list and caches it", async () => {

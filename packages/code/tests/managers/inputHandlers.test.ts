@@ -562,6 +562,25 @@ describe("inputHandlers", () => {
       });
     });
 
+    it("should open skills manager when no slash command handler exists", async () => {
+      const state: InputState = {
+        ...initialState,
+        slashPosition: 0,
+        inputText: "/skills",
+        cursorPosition: 7,
+      };
+      vi.mocked(callbacks.onHasSlashCommand!).mockReturnValue(false);
+
+      handleCommandSelect(state, dispatch, callbacks, "skills");
+
+      await vi.waitFor(() => {
+        expect(dispatch).toHaveBeenCalledWith({
+          type: "SET_SHOW_SKILLS_MANAGER",
+          payload: true,
+        });
+      });
+    });
+
     it("should show usage for bare /btw executed via selector", async () => {
       const state: InputState = {
         ...initialState,

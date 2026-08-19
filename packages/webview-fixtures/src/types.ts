@@ -501,6 +501,11 @@ export interface SubagentConfigurationsResponseMessage
   configurations: unknown[];
 }
 
+export interface SkillMetadataResponseMessage extends HostToWebviewMessageBase {
+  command: "skillMetadataResponse";
+  skills: unknown[];
+}
+
 export interface HistoryResponseMessage extends HostToWebviewMessageBase {
   command: "historyResponse";
   history: SessionMetadata[];
@@ -605,6 +610,7 @@ export type HostToWebviewMessage =
   | DesktopWorkdirStateMessage
   | McpServersResponseMessage
   | SubagentConfigurationsResponseMessage
+  | SkillMetadataResponseMessage
   | HistoryResponseMessage
   | FileSuggestionsMessage
   | FileSuggestionsErrorMessage

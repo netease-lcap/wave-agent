@@ -38,6 +38,7 @@ import type {
   BtwResponseMessage,
   McpServersResponseMessage,
   SubagentConfigurationsResponseMessage,
+  SkillMetadataResponseMessage,
   DesktopPanesMessage,
   DesktopSessionTreeMessage,
   DesktopWorkdirStateMessage,
@@ -119,6 +120,10 @@ export interface Fixtures {
     configurations: unknown[],
     overrides?: Overrides<SubagentConfigurationsResponseMessage>,
   ) => SubagentConfigurationsResponseMessage;
+  skillMetadataResponse: (
+    skills: unknown[],
+    overrides?: Overrides<SkillMetadataResponseMessage>,
+  ) => SkillMetadataResponseMessage;
   desktopPanes: (
     overrides?: Overrides<DesktopPanesMessage>,
   ) => DesktopPanesMessage;
@@ -252,6 +257,12 @@ export const fixtures: Fixtures = {
   subagentConfigurationsResponse: (configurations, overrides = {}) => ({
     command: "subagentConfigurationsResponse",
     configurations,
+    ...overrides,
+  }),
+
+  skillMetadataResponse: (skills, overrides = {}) => ({
+    command: "skillMetadataResponse",
+    skills,
     ...overrides,
   }),
 

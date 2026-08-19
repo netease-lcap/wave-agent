@@ -30,6 +30,7 @@ import type {
   Usage,
   PermissionMode,
   ForegroundTask,
+  SkillMetadata,
 } from "./types/index.js";
 import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
 import { LiveConfigManager } from "./managers/liveConfigManager.js";
@@ -1281,6 +1282,15 @@ export class Agent {
    */
   public getSubagentConfigurations(): import("./utils/subagentParser.js").SubagentConfiguration[] {
     return this.subagentManager.getConfigurations();
+  }
+
+  /**
+   * Get all skill metadata visible in this session (builtin, personal,
+   * project, and plugin skills).
+   * @returns The list of skill metadata
+   */
+  public getSkillMetadata(): SkillMetadata[] {
+    return this.skillManager.getAvailableSkills();
   }
 
   /**

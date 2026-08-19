@@ -314,6 +314,9 @@ export class MessageHandler {
       case "getSubagentConfigurations":
         await this.handleGetSubagentConfigurations(viewType, windowId);
         break;
+      case "getSkillMetadata":
+        await this.handleGetSkillMetadata(viewType, windowId);
+        break;
       case "connectMcpServer":
         await this.handleConnectMcpServer(
           msg.serverName as string,
@@ -1256,6 +1259,7 @@ export class MessageHandler {
         { id: "tasks", name: "tasks", description: "查看后台任务" },
         { id: "workflows", name: "workflows", description: "查看工作流运行" },
         { id: "agents", name: "agents", description: "查看可用 agents" },
+        { id: "skills", name: "skills", description: "查看可用技能" },
         { id: "rewind", name: "rewind", description: "回退到之前的用户消息" },
         { id: "model", name: "model", description: "切换 AI 模型" },
         { id: "btw", name: "btw", description: "旁路提问（不进入聊天记录）" },
@@ -1465,6 +1469,22 @@ export class MessageHandler {
       {
         command: "subagentConfigurationsResponse",
         configurations,
+      },
+      viewType,
+      windowId,
+    );
+  }
+
+  private async handleGetSkillMetadata(
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    const session = this.context.getChatSession(viewType || "tab", windowId);
+    const skills = await session.getSkillMetadata();
+    this.context.postMessage(
+      {
+        command: "skillMetadataResponse",
+        skills,
       },
       viewType,
       windowId,
