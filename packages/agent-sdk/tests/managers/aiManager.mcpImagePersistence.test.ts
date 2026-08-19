@@ -104,13 +104,11 @@ function createAIManager(modelConfig: ModelConfig) {
     getToolsConfig: vi.fn().mockReturnValue([]),
     getTools: vi.fn().mockReturnValue([]),
     list: vi.fn().mockReturnValue([]),
-    execute: vi
-      .fn()
-      .mockResolvedValue({
-        success: true,
-        content: "test result",
-        images: mockImages,
-      }),
+    execute: vi.fn().mockResolvedValue({
+      success: true,
+      content: "test result",
+      images: mockImages,
+    }),
     isConcurrencySafe: vi.fn().mockReturnValue(true),
   } as unknown as ToolManager;
 
@@ -127,6 +125,7 @@ function createAIManager(modelConfig: ModelConfig) {
     } as GatewayConfig),
     resolveModelConfig: vi.fn().mockReturnValue(modelConfig),
     resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+    resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
     resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
     resolveLanguage: vi.fn().mockReturnValue(undefined),
     getEnvironmentVars: vi.fn().mockReturnValue({}),

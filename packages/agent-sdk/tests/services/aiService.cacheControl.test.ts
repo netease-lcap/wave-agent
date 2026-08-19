@@ -41,9 +41,10 @@ vi.mock("@/utils/openaiClient.js", () => ({
 }));
 
 // Mock constants
-vi.mock("@/utils/constants", () => ({
-  AGENT_MODEL_ID: "gpt-4o",
-}));
+vi.mock("@/utils/constants", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/constants.js")>();
+  return { ...actual, AGENT_MODEL_ID: "gpt-4o" };
+});
 
 // Mock environment variables
 vi.mock("process", () => ({

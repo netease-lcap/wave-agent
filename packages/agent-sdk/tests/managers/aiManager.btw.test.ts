@@ -96,7 +96,6 @@ describe("AIManager - runBtwFork", () => {
   const mockModelConfig: ModelConfig = {
     model: "test-agent-model",
     fastModel: "test-fast-model",
-    maxTokens: 4096,
     permissionMode: "default",
   };
 
@@ -175,6 +174,7 @@ describe("AIManager - runBtwFork", () => {
       resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
       resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
       resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+      resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
       resolveAutoMemoryEnabled: vi.fn().mockReturnValue(false),
       resolveLanguage: vi.fn().mockReturnValue("en"),
     });

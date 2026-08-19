@@ -77,6 +77,7 @@ describe("Agent - System Prompt", () => {
       resolveGatewayConfig: () => agent.getGatewayConfig(),
       resolveModelConfig: () => agent.getModelConfig(),
       resolveMaxInputTokens: () => agent.getMaxInputTokens(),
+      resolveMaxOutputTokens: () => 4096,
       resolveAutoMemoryEnabled: () => true,
       resolveLanguage: () => agent.getLanguage(),
       getEnvironmentVars: () =>

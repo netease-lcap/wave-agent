@@ -309,7 +309,6 @@ export class AIManager {
     const parentModelConfig = this.configurationService.resolveModelConfig(
       undefined,
       undefined,
-      undefined,
       permissionMode,
     );
     let modelToUse: string | undefined;
@@ -326,7 +325,6 @@ export class AIManager {
 
     return this.configurationService.resolveModelConfig(
       modelToUse,
-      undefined,
       undefined,
       permissionMode,
     );
@@ -955,6 +953,7 @@ export class AIManager {
         workdir,
         tools: toolsConfig,
         systemPrompt,
+        maxTokens: this.configurationService.resolveMaxOutputTokens(),
         toolChoice: this.toolChoiceOverride,
         // Stream so a slow reasoning model emits first bytes before the
         // gateway's idle timeout fires (non-streaming waits for the full
@@ -1491,6 +1490,7 @@ ${question}`;
         workdir,
         tools: toolsConfig,
         systemPrompt,
+        maxTokens: this.configurationService.resolveMaxOutputTokens(),
         toolChoice: this.toolChoiceOverride,
         // Stream so a slow reasoning model emits first bytes before the
         // gateway's idle timeout fires (same rationale as runCompactFork).
@@ -1836,7 +1836,8 @@ ${question}`;
             tools: toolsConfig, // Pass filtered tool configuration
             model: model, // Use passed model
             systemPrompt: mainSystemPrompt, // Pass custom system prompt
-            maxTokens: maxTokens, // Pass max tokens override
+            maxTokens:
+              maxTokens ?? this.configurationService.resolveMaxOutputTokens(), // Pass max tokens override, falling back to the resolved global value
             toolChoice: this.toolChoiceOverride, // Pass tool_choice override
             // Fast-model subagents send disable-thinking params only when
             // explicitly configured (never in the agent loop).

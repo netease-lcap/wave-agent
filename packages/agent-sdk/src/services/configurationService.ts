@@ -575,7 +575,6 @@ export class ConfigurationService {
    * Resolution priority: override > options > env (from settings.json) > process.env > default
    * @param model - Agent model override (optional)
    * @param fastModel - Fast model override (optional)
-   * @param maxTokens - Max output tokens override (optional)
    * @param permissionMode - Permission mode override (optional)
    * @param visionModel - Vision model override (optional)
    * @returns Resolved model configuration with defaults
@@ -583,7 +582,6 @@ export class ConfigurationService {
   resolveModelConfig(
     model?: string,
     fastModel?: string,
-    maxTokens?: number,
     permissionMode?: PermissionMode,
     visionModel?: string,
   ): ModelConfig {
@@ -608,14 +606,10 @@ export class ConfigurationService {
       this.options.visionModel ||
       (this.envSnapshot.WAVE_VISION_MODEL ?? process.env.WAVE_VISION_MODEL);
 
-    // Resolve max output tokens
-    const resolvedMaxTokens = this.resolveMaxOutputTokens(maxTokens);
-
     const baseConfig: ModelConfig = {
       model: resolvedAgentModel,
       fastModel: resolvedFastModel,
       visionModel: resolvedVisionModel,
-      maxTokens: resolvedMaxTokens,
       permissionMode: permissionMode ?? this.options.permissionMode,
     };
 

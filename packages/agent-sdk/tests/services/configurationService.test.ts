@@ -23,10 +23,7 @@ import {
   loadUserConfigEnv,
 } from "../../src/services/configurationService.js";
 import { atomicWriteFile } from "../../src/utils/atomicWrite.js";
-import {
-  DEFAULT_WAVE_MAX_OUTPUT_TOKENS,
-  DEFAULT_WAVE_MAX_INPUT_TOKENS,
-} from "../../src/utils/constants.js";
+import { DEFAULT_WAVE_MAX_INPUT_TOKENS } from "../../src/utils/constants.js";
 import type { WaveConfiguration } from "../../src/types/configuration.js";
 
 const mockExistsSync = vi.mocked(existsSync);
@@ -199,7 +196,7 @@ describe("ConfigurationService", () => {
         env: { VAR1: "user", VAR2: "user" },
         permissions: { allow: ["rule-user"], permissionMode: "default" },
         models: {
-          model1: { options: { temperature: 0.1 }, maxTokens: 500 },
+          model1: { options: { temperature: 0.1 }, maxInputTokens: 500 },
           model2: { options: { temperature: 0.2 } },
         },
       };
@@ -210,7 +207,7 @@ describe("ConfigurationService", () => {
         env: { VAR2: "project", VAR3: "project" },
         permissions: { allow: ["rule-project"], permissionMode: "acceptEdits" },
         models: {
-          model1: { options: { temperature: 0.5 }, maxTokens: 1000 },
+          model1: { options: { temperature: 0.5 }, maxInputTokens: 1000 },
           model2: { options: { temperature: 0.8 } },
         },
       };
@@ -284,7 +281,7 @@ describe("ConfigurationService", () => {
       // Verify models (merged with precedence)
       expect(result?.models?.["model1"]).toEqual({
         options: { temperature: 0.5 },
-        maxTokens: 1000,
+        maxInputTokens: 1000,
       });
       expect(result?.models?.["model2"]).toEqual({
         options: { reasoning_effort: "high" },
@@ -475,13 +472,9 @@ describe("ConfigurationService", () => {
       const expectedAgentModel = process.env.WAVE_MODEL;
       const expectedFastModel = process.env.WAVE_FAST_MODEL;
       const expectedVisionModel = process.env.WAVE_VISION_MODEL;
-      const expectedMaxTokens = process.env.WAVE_MAX_OUTPUT_TOKENS
-        ? parseInt(process.env.WAVE_MAX_OUTPUT_TOKENS, 10)
-        : DEFAULT_WAVE_MAX_OUTPUT_TOKENS;
       expect(config.model).toBe(expectedAgentModel);
       expect(config.fastModel).toBe(expectedFastModel);
       expect(config.visionModel).toBe(expectedVisionModel);
-      expect(config.maxTokens).toBe(expectedMaxTokens);
     });
 
     it("should return undefined model/fastModel when not configured", () => {
@@ -514,7 +507,8 @@ describe("ConfigurationService", () => {
       expect(config.model).toBe("custom-agent");
       expect(config.fastModel).toBe("custom-fast");
       expect(config.visionModel).toBe("custom-vision");
-      expect(config.maxTokens).toBe(1000);
+      // WAVE_MAX_OUTPUT_TOKENS env is still resolved via resolveMaxOutputTokens
+      expect(configService.resolveMaxOutputTokens()).toBe(1000);
     });
 
     it("should merge model-specific settings from configuration", async () => {
@@ -581,7 +575,7 @@ describe("ConfigurationService", () => {
           "gpt-4o-mini": {
             model: "should-be-stripped",
             fastModel: "should-be-stripped",
-            maxTokens: 999,
+            maxInputTokens: 999,
             permissionMode: "default",
             options: { temperature: 0.3 },
           },

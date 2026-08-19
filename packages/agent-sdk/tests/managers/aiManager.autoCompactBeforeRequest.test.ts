@@ -85,6 +85,7 @@ function makeContainer(
     resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
     resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
     resolveMaxInputTokens: vi.fn().mockReturnValue(maxInputTokens),
+    resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
     resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
     resolveLanguage: vi.fn().mockReturnValue(undefined),
     getEnvironmentVars: vi.fn().mockReturnValue({}),

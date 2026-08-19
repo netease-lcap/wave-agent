@@ -123,6 +123,7 @@ describe("AIManager Plan Mode Prompt", () => {
       resolveGatewayConfig: vi.fn().mockReturnValue({}),
       resolveModelConfig: vi.fn().mockReturnValue({ model: "gpt-4" }),
       resolveMaxInputTokens: vi.fn().mockReturnValue(1000),
+      resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
       resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
       resolveLanguage: vi.fn().mockReturnValue(undefined),
     });
