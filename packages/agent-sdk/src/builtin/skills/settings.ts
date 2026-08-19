@@ -29,7 +29,7 @@ Wave uses several environment variables to control its core functionality. Varia
 | \`WAVE_MODEL\` | The primary AI model to use for the agent. | \`gemini-3-flash\` |
 | \`WAVE_FAST_MODEL\` | The fast AI model to use for quick tasks. | \`gemini-2.5-flash\` |
 | \`WAVE_VISION_MODEL\` | Vision-capable model used by the built-in \`vision\` subagent for image recognition. When set, the built-in \`vision\` subagent is registered (its frontmatter \`model: visionModel\` resolves to this value); when unset, the subagent is not loaded. Useful when the main model is fast but non-vision (e.g. DeepSeek). | - (not registered) |
-| \`WAVE_MAX_INPUT_TOKENS\` | Maximum number of input tokens allowed. | \`200000\` |
+| \`WAVE_MAX_INPUT_TOKENS\` | Maximum number of input tokens allowed. Overridden per-model by \`models[<model>].maxInputTokens\`. | \`200000\` |
 | \`WAVE_MAX_OUTPUT_TOKENS\` | Maximum number of output tokens allowed. | \`32000\` |
 | \`WAVE_DISABLE_AUTO_MEMORY\` | Set to \`1\` or \`true\` to disable the auto-memory feature. | \`false\` |
 | \`WAVE_AUTO_MEMORY_FREQUENCY\` | Auto memory update frequency. \`1\` = every turn, \`2\` = every 2 turns, etc. | \`1\` |
@@ -590,6 +590,21 @@ Generation parameters are nested under the \`options\` field within each model's
 - \`thinking\`: (Claude specific) Configures the thinking/reasoning capabilities for Claude 3.7+ models.
   - \`type\`: \`"enabled"\` or \`"disabled"\`.
   - \`budget_tokens\`: Maximum tokens to use for thinking.
+
+## Per-Model Input Context Window
+
+Set \`maxInputTokens\` at the top level of a model entry (not inside \`options\`) to define that model's input context window. It overrides the global \`WAVE_MAX_INPUT_TOKENS\`, so compaction thresholds and usage display follow each model's own value:
+
+\`\`\`json
+{
+  "models": {
+    "deepseek-v4-flash": { "maxInputTokens": 200000 },
+    "kimi-k3": { "maxInputTokens": 131072 }
+  }
+}
+\`\`\`
+
+Resolution priority: constructor > \`options\` > \`models[<model>].maxInputTokens\` > \`WAVE_MAX_INPUT_TOKENS\` > default. Subagents (\`fastModel\`/\`visionModel\`) resolve against the model they actually use.
 
 ## Model Capabilities
 

@@ -330,7 +330,13 @@ export class AIManager {
   }
 
   public getMaxInputTokens(): number {
-    return this.configurationService.resolveMaxInputTokens();
+    // Pass the resolved model (including fastModel/visionModel/override
+    // resolution) so subagents using a different model get that model's
+    // per-model maxInputTokens instead of the main model's value.
+    return this.configurationService.resolveMaxInputTokens(
+      undefined,
+      this.getModelConfig().model,
+    );
   }
 
   public getLanguage(): string | undefined {

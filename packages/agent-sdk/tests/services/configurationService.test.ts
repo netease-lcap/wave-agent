@@ -867,6 +867,101 @@ describe("ConfigurationService", () => {
       configService.setEnvironmentVars({ WAVE_MAX_INPUT_TOKENS: "5000" });
       expect(configService.resolveMaxInputTokens()).toBe(5000);
     });
+
+    it("should resolve from per-model config for the resolved model, beating env", async () => {
+      const config = {
+        model: "kimi-k3",
+        models: { "kimi-k3": { maxInputTokens: 131072 } },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      delete process.env.WAVE_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        configService.setEnvironmentVars({ WAVE_MAX_INPUT_TOKENS: "300000" });
+        expect(configService.resolveMaxInputTokens()).toBe(131072);
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+      }
+    });
+
+    it("should resolve per-model config from env WAVE_MODEL when config has no model field", async () => {
+      const config = {
+        models: { "env-model": { maxInputTokens: 88888 } },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      process.env.WAVE_MODEL = "env-model";
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        expect(configService.resolveMaxInputTokens()).toBe(88888);
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+      }
+    });
+
+    it("should use per-model config of the explicitly passed model (subagent scenario)", async () => {
+      const config = {
+        model: "deepseek-v4-flash",
+        models: {
+          "deepseek-v4-flash": { maxInputTokens: 200000 },
+          "kimi-k3": { maxInputTokens: 131072 },
+        },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      delete process.env.WAVE_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        expect(configService.resolveMaxInputTokens(undefined, "kimi-k3")).toBe(
+          131072,
+        );
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+      }
+    });
+
+    it("should prioritize options.maxInputTokens over per-model config", async () => {
+      const config = {
+        model: "kimi-k3",
+        models: { "kimi-k3": { maxInputTokens: 131072 } },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      await configService.loadMergedConfiguration(tempDir);
+      configService.setOptions({ maxInputTokens: 400000 });
+      expect(configService.resolveMaxInputTokens()).toBe(400000);
+    });
+
+    it("should fall back to env when the model has no maxInputTokens", async () => {
+      const config = {
+        model: "plain-model",
+        models: { "plain-model": {} },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      delete process.env.WAVE_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        configService.setEnvironmentVars({ WAVE_MAX_INPUT_TOKENS: "5000" });
+        expect(configService.resolveMaxInputTokens()).toBe(5000);
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+      }
+    });
   });
 
   describe("resolveLanguage", () => {

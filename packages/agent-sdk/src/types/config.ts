@@ -29,6 +29,8 @@ export interface ModelConfig {
   /** Vision-capable model for image recognition subagents (resolved from WAVE_VISION_MODEL env var). */
   visionModel?: string;
   maxTokens?: number;
+  /** Per-model input context window in tokens. Overrides the global `WAVE_MAX_INPUT_TOKENS` for this model. */
+  maxInputTokens?: number;
   permissionMode?: PermissionMode;
   capabilities?: ModelCapabilities;
   /** Generation params passed through to the API provider (temperature, thinking, etc.) */
