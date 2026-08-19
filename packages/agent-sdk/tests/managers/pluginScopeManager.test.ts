@@ -100,6 +100,44 @@ describe("PluginScopeManager", () => {
       expect(scope).toBeNull();
     });
 
+    it("should return 'user' when workdir is the home dir and paths overlap", () => {
+      // When the workdir is the home directory, projectPaths[1] and userPaths[0]
+      // point at the same ~/.wave/settings.json file — it must be treated as user
+      // scope, not project scope.
+      mockConfigService.getConfigurationPaths.mockReturnValue({
+        projectPaths: [
+          "/test/userhome/.wave/settings.local.json",
+          "/test/userhome/.wave/settings.json",
+        ],
+        userPaths: ["/test/userhome/.wave/settings.json"],
+      });
+      mockConfigService.loadWaveConfigFromFile.mockImplementation(
+        (filePath: string) => {
+          if (filePath === "/test/userhome/.wave/settings.json") {
+            return { enabledPlugins: { "test-plugin": true } };
+          }
+          return null;
+        },
+      );
+
+      const scope = scopeManager.findPluginScope("test-plugin");
+      expect(scope).toBe("user");
+    });
+
+    it("should tolerate undefined user paths", () => {
+      mockConfigService.getConfigurationPaths.mockReturnValue({
+        projectPaths: [
+          "/test/workdir/.wave/settings.local.json",
+          "/test/workdir/.wave/settings.json",
+        ],
+        userPaths: ["/test/userhome/.wave/settings.json"],
+      });
+      mockConfigService.loadWaveConfigFromFile.mockReturnValue(null);
+
+      const scope = scopeManager.findPluginScope("test-plugin");
+      expect(scope).toBeNull();
+    });
+
     it("should respect priority: local > project > user", () => {
       mockConfigService.loadWaveConfigFromFile.mockImplementation(() => {
         return { enabledPlugins: { "test-plugin": true } };

@@ -63,21 +63,25 @@ export class PluginScopeManager {
    * Priority: local > project > user
    */
   findPluginScope(pluginId: string): Scope | null {
-    const projectPaths = this.configurationService.getConfigurationPaths(
-      this.workdir,
-    ).projectPaths; // [local, json]
-    const userPaths = this.configurationService.getConfigurationPaths(
-      this.workdir,
-    ).userPaths; // [local, json]
+    const { projectPaths, userPaths } =
+      this.configurationService.getConfigurationPaths(this.workdir);
+    const userPathSet = new Set(userPaths);
 
+    // When the workdir is the user's home directory, projectPaths overlaps
+    // userPaths (both point at ~/.wave/settings.json). Treat such a file as the
+    // user config, otherwise user-scope plugins would be mislabeled "project".
     const checkPaths: { path: string; scope: Scope }[] = [
       { path: projectPaths[0], scope: "local" },
-      { path: projectPaths[1], scope: "project" },
-      { path: userPaths[0], scope: "user" }, // user local is still user scope
-      { path: userPaths[1], scope: "user" },
+      ...(userPathSet.has(projectPaths[1])
+        ? []
+        : [{ path: projectPaths[1], scope: "project" as Scope }]),
+      ...userPaths.map((path) => ({ path, scope: "user" as Scope })),
     ];
 
+    const seen = new Set<string>();
     for (const { path, scope } of checkPaths) {
+      if (!path || seen.has(path)) continue;
+      seen.add(path);
       const config = this.configurationService.loadWaveConfigFromFile(path);
       if (config?.enabledPlugins && pluginId in config.enabledPlugins) {
         return scope;
