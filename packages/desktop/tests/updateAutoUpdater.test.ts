@@ -166,12 +166,15 @@ describe("AutoUpdaterService events and quitAndInstall", () => {
     expect(h.on).toHaveBeenCalledTimes(2);
   });
 
-  it("forwards quitAndInstall to electron-updater", () => {
+  it("forwards quitAndInstall with silent + force-run to electron-updater", () => {
     const service = new AutoUpdaterService({
       onUpdateDownloaded: vi.fn(),
       onError: vi.fn(),
     });
     service.quitAndInstall();
     expect(h.quitAndInstall).toHaveBeenCalledTimes(1);
+    // isSilent / isForceRunAfter: /S hides the wizard, --force-run makes the
+    // assisted NSIS installer relaunch the app after the silent install.
+    expect(h.quitAndInstall).toHaveBeenCalledWith(true, true);
   });
 });

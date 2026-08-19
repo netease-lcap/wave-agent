@@ -52,8 +52,10 @@ export class AutoUpdaterService {
   }
 
   quitAndInstall(): void {
-    // isSilent=true → NSIS installer runs with /S (no wizard UI), then the app
-    // relaunches automatically. Without it Windows pops the full installer UI.
-    autoUpdater.quitAndInstall(true);
+    // isSilent=true → NSIS installer runs with /S (no wizard UI);
+    // isForceRunAfter=true → the installer gets --force-run, which is what
+    // makes the assisted installer relaunch the app after a silent install.
+    // Without it the update installs but the app never comes back.
+    autoUpdater.quitAndInstall(true, true);
   }
 }
