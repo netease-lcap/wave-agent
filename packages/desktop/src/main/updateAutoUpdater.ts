@@ -2,16 +2,14 @@
  * AutoUpdaterService — electron-updater wrapper for logged-in (serverUrl)
  * installs. The update feed is the codechat downloads endpoint served in
  * electron-builder metadata format (latest-mac.yml / latest.yml), NOT GitHub
- * Releases. Hosts the update-available / update-downloaded callbacks so the
- * desktop host can surface them as chat system messages.
+ * Releases. Hosts the update-downloaded / error callbacks so the desktop host
+ * can surface them as chat system messages. Download progress stays silent.
  */
 
 import { app } from "electron";
 import { autoUpdater, type UpdateInfo } from "electron-updater";
 
 export interface AutoUpdaterCallbacks {
-  /** A newer version was found and the background download has started. */
-  onUpdateAvailable: (info: UpdateInfo) => void;
   /** The new version finished downloading — the host decides whether to install. */
   onUpdateDownloaded: (info: UpdateInfo) => void;
   /** The check or background download failed — the host degrades to the manual flow. */
@@ -33,9 +31,6 @@ export class AutoUpdaterService {
   private attachListeners(): void {
     if (this.listenersAttached) return;
     this.listenersAttached = true;
-    autoUpdater.on("update-available", (info) =>
-      this.callbacks.onUpdateAvailable(info),
-    );
     autoUpdater.on("update-downloaded", (info) =>
       this.callbacks.onUpdateDownloaded(info),
     );
@@ -57,6 +52,8 @@ export class AutoUpdaterService {
   }
 
   quitAndInstall(): void {
-    autoUpdater.quitAndInstall();
+    // isSilent=true → NSIS installer runs with /S (no wizard UI), then the app
+    // relaunches automatically. Without it Windows pops the full installer UI.
+    autoUpdater.quitAndInstall(true);
   }
 }

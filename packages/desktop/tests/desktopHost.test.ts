@@ -339,8 +339,8 @@ vi.mock("../src/main/updateChecker", () => ({
 }));
 
 // electron-updater — the auto-update service for logged-in (serverUrl) installs.
-// The on() mock records listeners so tests can fire update-available /
-// update-downloaded to assert the host's system-message wiring.
+// The on() mock records listeners so tests can fire update-downloaded /
+// error to assert the host's system-message wiring.
 const auListeners: Record<string, Array<(info: unknown) => void>> = {};
 vi.mock("electron-updater", () => ({
   autoUpdater: {
@@ -1684,25 +1684,6 @@ describe("checkForUpdates with a configured serverUrl", () => {
     expect(autoUpdater.checkForUpdates).toHaveBeenCalled();
     // The electron-updater path is authoritative when logged in — no GitHub fallback.
     expect(checkForUpdate).not.toHaveBeenCalled();
-  });
-
-  it("announces the update via a toast on update-available", async () => {
-    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
-      updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
-      isUpdateAvailable: true,
-    } as never);
-    const { host } = await readyHostWithServerUrl();
-
-    await host.handleWebviewMessage({ command: "checkForUpdates" });
-    for (const cb of auListeners["update-available"] ?? []) {
-      cb({ version: "0.20.0" });
-    }
-
-    const toasts = shownToasts().filter((n) => n.message.includes("0.20.0"));
-    expect(toasts).toHaveLength(1);
-    expect(toasts[0].message).toContain("正在后台下载");
-    // Informational only — no action button; the user acts once downloaded.
-    expect(toasts[0].action).toBeUndefined();
   });
 
   it("shows a restart-install toast once the update is downloaded, and quitAndInstall fires on its action", async () => {
