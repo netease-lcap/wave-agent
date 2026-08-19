@@ -248,6 +248,10 @@ export class DesktopHost {
   private lastIsAuthenticated = false;
   /** electron-updater path, created lazily once a serverUrl is configured. */
   private autoUpdaterService: AutoUpdaterService | null = null;
+  /** True once the "已下载完成，重启安装" toast was announced — a later
+   *  install-stage error (e.g. Squirrel signature validation) must not
+   *  double-notify with a conflicting manual download-page toast. */
+  private updateDownloadedAnnounced = false;
 
   /** Latest panel toggle state reported by each pane's webview (drives the 面板 menu). */
   private panePanelState = new Map<string, PanelKind[]>();
@@ -4156,6 +4160,10 @@ export class DesktopHost {
       "[DesktopHost] Auto updater errored, falling back to manual check:",
       error instanceof Error ? error.stack : error,
     );
+    // The download already finished and the restart-install toast is showing —
+    // a later install-stage error (e.g. Squirrel signature validation) must not
+    // announce a conflicting manual download-page toast on top of it.
+    if (this.updateDownloadedAnnounced) return;
     // The packaged app has no visible console — persist the error so it can be
     // collected from the machine that reproduces the failed download.
     try {
@@ -4189,6 +4197,7 @@ export class DesktopHost {
   /** The new version finished downloading — announce it via a toast whose
    *  「重启安装」 button quits and installs directly (no second confirm dialog). */
   private handleUpdateDownloaded(version: string): void {
+    this.updateDownloadedAnnounced = true;
     this.showToast({
       message: `新版本 v${version} 已下载完成，重启应用以完成安装。`,
       actionLabel: "重启安装",

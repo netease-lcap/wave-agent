@@ -1791,6 +1791,43 @@ describe("checkForUpdates with a configured serverUrl", () => {
     vi.mocked(checkForUpdate).mockResolvedValue(null);
   });
 
+  it("does not announce a manual fallback once the restart-install toast is already shown", async () => {
+    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
+      isUpdateAvailable: true,
+    } as never);
+    // If the fallback wrongly fired it would return this and announce a
+    // conflicting download-page toast next to the restart-install one.
+    vi.mocked(checkForUpdate).mockResolvedValue({
+      latestVersion: "0.20.0",
+      currentVersion: "0.19.7",
+      downloadUrl: "https://github.com/release",
+    });
+    const { host } = await readyHostWithServerUrl();
+
+    await host.handleWebviewMessage({ command: "checkForUpdates" });
+    // Download finished → the restart-install toast is announced.
+    for (const cb of auListeners["update-downloaded"] ?? []) {
+      cb({ version: "0.20.0" });
+    }
+    expect(
+      shownToasts().filter((n) => n.message.includes("已下载完成")),
+    ).toHaveLength(1);
+
+    // The install stage then fails (e.g. Squirrel signature validation) —
+    // the user already has the restart-install entry, so no manual fallback.
+    for (const cb of auListeners["error"] ?? []) {
+      cb(new Error("Code signature did not pass validation"));
+    }
+
+    await vi.waitFor(() => expect(checkForUpdate).not.toHaveBeenCalled());
+    const manual = shownToasts().filter((n) =>
+      n.message.includes("发现新版本"),
+    );
+    expect(manual).toHaveLength(0);
+    vi.mocked(checkForUpdate).mockResolvedValue(null);
+  });
+
   it('says "already latest" via a toast without a GitHub round trip when the feed has no update', async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.19.7", files: [], path: "wave-0.19.7.dmg" },
