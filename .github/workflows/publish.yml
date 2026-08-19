@@ -182,6 +182,11 @@ jobs:
       - name: Build webview dist
         run: pnpm -F wave-webview run compile -- --production
 
+      # bundleCli (packages/desktop/scripts/bundleCli.mjs) ships the CLI's
+      # dist/bundle/wave.mjs into the app resources, so build wave-code first.
+      - name: Build wave-code dist
+        run: pnpm -F wave-code build
+
       # `--publish never`: electron-builder only produces the installers; the
       # release upload is handled by action-gh-release below. Apple signing +
       # notarization env vars are injected only on macOS (the p12 and App Store

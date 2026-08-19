@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # upload assets to an existing release
+  contents: write # upload assets to an existing release
 
 concurrency:
   group: refresh-release-assets
@@ -40,8 +40,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: "22"
+          cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
@@ -64,7 +64,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -74,8 +74,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: "22"
+          cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
 
@@ -113,8 +113,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: "22"
+          cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
 
@@ -123,6 +123,9 @@ jobs:
       # `compile -- --production` so the webview bundle is minified; the
       # desktop app's syncWebview step copies dist verbatim.
       - run: pnpm -F wave-webview run compile -- --production
+
+      # bundleCli ships the CLI's dist/bundle/wave.mjs into the app resources.
+      - run: pnpm -F wave-code build
 
       # `--publish never`: electron-builder only produces the installers;
       # the release upload is handled below. Apple signing + notarization
