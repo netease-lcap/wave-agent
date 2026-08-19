@@ -309,6 +309,13 @@ vi.mock("../src/main/stdio/stdioAgent", () => ({
     getSlashCommands = vi.fn(async () => [
       { id: "review", name: "review", description: "Code review" },
     ]);
+    getSkillMetadata = vi.fn(async () => [
+      {
+        name: "deep-research",
+        description: "Deep research",
+        type: "builtin",
+      },
+    ]);
 
     constructor(
       _client: unknown,
@@ -2100,6 +2107,20 @@ describe("misc commands", () => {
     const { host, sent } = await readyHost();
     await host.handleWebviewMessage({ command: "getMcpServers" });
     expect(sent("mcpServersResponse")[0]).toMatchObject({ servers: [] });
+  });
+
+  it("getSkillMetadata replies with the agent skill list", async () => {
+    const { host, sent } = await readyHost();
+    await host.handleWebviewMessage({ command: "getSkillMetadata" });
+    expect(sent("skillMetadataResponse")[0]).toMatchObject({
+      skills: [
+        {
+          name: "deep-research",
+          description: "Deep research",
+          type: "builtin",
+        },
+      ],
+    });
   });
 
   it("connectMcpServer failure surfaces as a toast, not a chat message", async () => {
