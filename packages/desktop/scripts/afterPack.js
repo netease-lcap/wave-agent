@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * electron-builder afterPack hook — re-seal the macOS bundle for ad-hoc
- * (development) installs.
+ * electron-builder afterPack hook — write the electron-updater config that
+ * electron-builder skips (no publish config) and re-seal the macOS bundle for
+ * ad-hoc (development) installs.
  *
  * Two signing modes coexist:
  * - Developer ID (release): electron-builder signs every file individually
@@ -17,9 +18,33 @@
  * them) — both must carry a signature consistent with the bundle.
  */
 import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import path from "node:path";
 
 export default async function afterPack(context) {
-  if (context.electronPlatformName !== "darwin") return;
+  const { electronPlatformName, appOutDir, packager } = context;
+
+  // electron-builder only writes resources/app-update.yml when a publish
+  // config is declared (or the repo resolves to GitHub). Without it
+  // electron-updater's download step throws ENOENT and the app degrades to
+  // the manual "download page" toast. The feed URL is injected at runtime
+  // via setFeedURL, so this file only needs to exist; updaterCacheDirName
+  // is what electron-updater reads from it.
+  const resourcesDir =
+    electronPlatformName === "darwin"
+      ? path.join(
+          appOutDir,
+          `${packager.appInfo.productFilename}.app`,
+          "Contents",
+          "Resources",
+        )
+      : path.join(appOutDir, "resources");
+  writeFileSync(
+    path.join(resourcesDir, "app-update.yml"),
+    "updaterCacheDirName: wave-desktop-updater\n",
+  );
+
+  if (electronPlatformName !== "darwin") return;
   const identity = context.packager.config?.mac?.identity;
   // Developer ID mode signs everything itself — an ad-hoc pass would be
   // redundant (and would be overwritten anyway).
