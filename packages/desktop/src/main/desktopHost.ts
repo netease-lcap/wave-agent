@@ -4117,7 +4117,8 @@ export class DesktopHost {
             }),
           onUpdateDownloaded: (info) =>
             void this.handleUpdateDownloaded(info.version),
-          onError: () => void this.handleAutoUpdaterError(serverUrl),
+          onError: (error) =>
+            void this.handleAutoUpdaterError(serverUrl, error),
         });
       }
       const outcome = await this.autoUpdaterService.checkForUpdates(serverUrl);
@@ -4158,10 +4159,28 @@ export class DesktopHost {
 
   /** The background download (or a later check) errored — degrade to the
    *  manual checker so the user still learns about the update with a URL. */
-  private async handleAutoUpdaterError(serverUrl: string): Promise<void> {
+  private async handleAutoUpdaterError(
+    serverUrl: string,
+    error?: unknown,
+  ): Promise<void> {
     console.warn(
-      "[DesktopHost] Auto updater errored, falling back to manual check",
+      "[DesktopHost] Auto updater errored, falling back to manual check:",
+      error instanceof Error ? error.stack : error,
     );
+    // The packaged app has no visible console — persist the error so it can be
+    // collected from the machine that reproduces the failed download.
+    try {
+      fs.appendFileSync(
+        path.join(app.getPath("userData"), "updater-error.log"),
+        `${new Date().toISOString()} ${error instanceof Error ? error.stack : error}\n`,
+      );
+    } catch (logError) {
+      // Logging must never break the fallback flow.
+      console.warn(
+        "[DesktopHost] Failed to write updater error log:",
+        logError,
+      );
+    }
     let info: ManualUpdateInfo | null = null;
     try {
       info = await checkForUpdate(app.getVersion(), serverUrl);
