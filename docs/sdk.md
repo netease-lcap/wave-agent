@@ -1304,6 +1304,19 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 
 此外还支持 `fastModel` 配置，用于子代理（Explore）和网页抓取摘要等轻量场景。
 
+每个模型还可以通过 `maxInputTokens`（模型条目顶层，不在 `options` 内）设置其输入上下文窗口。该值覆盖全局的 `WAVE_MAX_INPUT_TOKENS`，压缩阈值和用量显示会按各模型自己的值生效：
+
+```json
+{
+  "models": {
+    "deepseek-v4-flash": { "maxInputTokens": 200000 },
+    "kimi-k3": { "maxInputTokens": 131072 }
+  }
+}
+```
+
+`maxInputTokens` 解析优先级：构造函数参数 > options > `models[模型].maxInputTokens` > `WAVE_MAX_INPUT_TOKENS` > 默认值。子代理（如 `fastModel`/`visionModel`）会按实际使用的模型查找对应值。
+
 ### 模型能力配置 {#settings-capabilities}
 
 在 `models` 字段中通过 `capabilities` 声明式配置每个模型的能力，支持以下字段：

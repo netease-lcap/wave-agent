@@ -660,11 +660,12 @@ export class ConfigurationService {
 
   /**
    * Resolves token limit with fallbacks
-   * Resolution priority: override > options > env (from settings.json) > process.env > default
+   * Resolution priority: override > options > models[model].maxInputTokens > env (from settings.json) > process.env > default
    * @param constructorLimit - Token limit override (optional)
+   * @param model - Model to resolve per-model maxInputTokens for (optional; falls back to the resolved agent model chain)
    * @returns Resolved token limit
    */
-  resolveMaxInputTokens(constructorLimit?: number): number {
+  resolveMaxInputTokens(constructorLimit?: number, model?: string): number {
     // If override value provided, use it
     if (constructorLimit !== undefined) {
       return constructorLimit;
@@ -673,6 +674,19 @@ export class ConfigurationService {
     // If options value provided, use it
     if (this.options.maxInputTokens !== undefined) {
       return this.options.maxInputTokens;
+    }
+
+    // Per-model config (models[X].maxInputTokens). Resolve the model with the
+    // same chain as resolveModelConfig: caller > options > currentConfiguration > env.
+    const resolvedModel =
+      model ||
+      this.options.model ||
+      this.currentConfiguration?.model ||
+      (this.envSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
+    const modelConfig =
+      resolvedModel && this.currentConfiguration?.models?.[resolvedModel];
+    if (modelConfig && modelConfig.maxInputTokens !== undefined) {
+      return modelConfig.maxInputTokens;
     }
 
     // Try env (settings.json snapshot) first, then process.env
