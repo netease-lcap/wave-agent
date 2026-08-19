@@ -66,6 +66,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
       resolveGatewayConfig: vi.fn().mockReturnValue({}),
       resolveModelConfig: vi.fn().mockReturnValue({}),
       resolveMaxInputTokens: vi.fn().mockReturnValue(100000),
+      resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
       resolveAutoMemoryEnabled: vi.fn().mockReturnValue(false),
       resolveLanguage: vi.fn().mockReturnValue(undefined),
       getEnvironmentVars: vi.fn().mockReturnValue({}),

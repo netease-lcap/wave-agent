@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { DEFAULT_SYSTEM_PROMPT, buildSystemPrompt } from "@/prompts/index.js";
 import type { CallAgentOptions } from "@/services/aiService.js";
 import type { GatewayConfig, ModelConfig } from "@/types/index.js";
+import { DEFAULT_WAVE_MAX_OUTPUT_TOKENS } from "@/utils/constants.js";
 
 // Test configuration constants
 const TEST_GATEWAY_CONFIG: GatewayConfig = {
@@ -32,9 +33,10 @@ vi.mock("@/utils/openaiClient.js", () => ({
 }));
 
 // Mock constants
-vi.mock("@/utils/constants", () => ({
-  AGENT_MODEL_ID: "gpt-4o",
-}));
+vi.mock("@/utils/constants", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/constants.js")>();
+  return { ...actual, AGENT_MODEL_ID: "gpt-4o" };
+});
 
 // Mock environment variables
 vi.mock("process", () => ({
@@ -237,28 +239,22 @@ describe("AI Service - Basic CallAgent", () => {
       });
     });
 
-    it("should pass max_tokens to OpenAI from modelConfig", async () => {
+    it("should pass default max_tokens when no override is given", async () => {
       await callAgent({
         gatewayConfig: TEST_GATEWAY_CONFIG,
-        modelConfig: {
-          ...TEST_MODEL_CONFIG,
-          maxTokens: 1234,
-        },
+        modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
       });
 
       const callArgs = mockCreate.mock.calls[0][0];
-      expect(callArgs.max_tokens).toBe(1234);
+      expect(callArgs.max_tokens).toBe(DEFAULT_WAVE_MAX_OUTPUT_TOKENS);
     });
 
-    it("should prioritize maxTokens from callAgent options over modelConfig", async () => {
+    it("should prioritize maxTokens from callAgent options over the default", async () => {
       await callAgent({
         gatewayConfig: TEST_GATEWAY_CONFIG,
-        modelConfig: {
-          ...TEST_MODEL_CONFIG,
-          maxTokens: 1234,
-        },
+        modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
         maxTokens: 5678,
@@ -266,6 +262,21 @@ describe("AI Service - Basic CallAgent", () => {
 
       const callArgs = mockCreate.mock.calls[0][0];
       expect(callArgs.max_tokens).toBe(5678);
+    });
+
+    it("should let modelConfig.options.max_tokens override the resolved max_tokens", async () => {
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          options: { max_tokens: 2048 },
+        },
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.max_tokens).toBe(2048);
     });
 
     it("should handle different finish_reason values", async () => {

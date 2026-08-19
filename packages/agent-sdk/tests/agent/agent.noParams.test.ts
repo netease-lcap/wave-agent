@@ -59,6 +59,7 @@ describe("Agent - No Parameters Tool Handling", () => {
       resolveGatewayConfig: () => agent.getGatewayConfig(),
       resolveModelConfig: () => agent.getModelConfig(),
       resolveMaxInputTokens: () => agent.getMaxInputTokens(),
+      resolveMaxOutputTokens: () => 4096,
       resolveAutoMemoryEnabled: () => true,
       resolveLanguage: () => agent.getLanguage(),
       getEnvironmentVars: () =>

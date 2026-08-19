@@ -103,7 +103,6 @@ export class Agent {
     return this.configurationService.resolveModelConfig(
       undefined,
       undefined,
-      undefined,
       this.getPermissionMode(),
     );
   }

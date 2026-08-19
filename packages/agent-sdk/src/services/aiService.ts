@@ -17,6 +17,7 @@ import {
   type ClaudeChatCompletionContentPartText,
 } from "../utils/cacheControlUtils.js";
 import { supportsPromptCaching } from "../utils/modelCapabilities.js";
+import { DEFAULT_WAVE_MAX_OUTPUT_TOKENS } from "../utils/constants.js";
 
 import * as os from "os";
 import * as fs from "fs";
@@ -283,8 +284,12 @@ export async function callAgent(
       fetch: gatewayConfig.fetch,
     });
 
-    // Determine model early (needed for system prompt construction)
-    const resolvedMaxTokens = options.maxTokens ?? modelConfig.maxTokens;
+    // Determine model early (needed for system prompt construction).
+    // Per-model overrides come from modelConfig.options.max_tokens (spread
+    // after this default below); callers pass the resolved global value
+    // (AgentOptions.maxTokens / WAVE_MAX_OUTPUT_TOKENS) via options.maxTokens.
+    const resolvedMaxTokens =
+      options.maxTokens ?? DEFAULT_WAVE_MAX_OUTPUT_TOKENS;
 
     // Build system message content
     let systemMessage: ChatCompletionMessageParam;

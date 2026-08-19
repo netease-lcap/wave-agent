@@ -585,7 +585,7 @@ You can define overrides for specific models in the \`models\` field. The key sh
 Generation parameters are nested under the \`options\` field within each model's configuration. Wave supports passing arbitrary parameters to the underlying AI provider. Common parameters include:
 
 - \`temperature\`: Controls randomness (0.0 to 2.0).
-- \`maxTokens\`: Maximum number of tokens to generate in the response.
+- \`max_tokens\`: Maximum number of tokens to generate in the response.
 - \`reasoning_effort\`: (OpenAI specific) Controls the reasoning effort for models like \`o1\` and \`o3-mini\`. Values: \`low\`, \`medium\`, \`high\`.
 - \`thinking\`: (Claude specific) Configures the thinking/reasoning capabilities for Claude 3.7+ models.
   - \`type\`: \`"enabled"\` or \`"disabled"\`.
