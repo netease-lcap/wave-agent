@@ -1,51 +1,44 @@
 /**
- * BinaryResolver — locates or installs the `wave` CLI binary.
+ * BinaryResolver — prepares the `wave` CLI for the extension.
  *
- * 1. Check PATH for `wave`
- * 2. If missing, run `npm install -g wave-code[@<version>]`
- * 3. Resolve via npm global prefix
+ * 1. WAVE_CLI_PATH env override (development)
+ * 2. The CLI bundled inside the extension (dist/wave-cli, shipped in the
+ *    vsix) is copied into `~/.wave/cli` — the extension dir is read-only, so
+ *    the runtime copy lives under the user home. The CLI version tracks the
+ *    extension version (shipped with the vsix).
+ * 3. The grep tool's runtime dependency `@vscode/ripgrep` (JS wrapper +
+ *    platform rg binary, ~5MB) is downloaded from the npmmirror registry on
+ *    first use and cached in the runtime dir. A failed download does NOT
+ *    block the CLI — grep simply reports "ripgrep is not available" until a
+ *    later launch succeeds.
  *
- * Result is cached for the extension lifetime.
+ * Everything runs on the extension-host Node runtime (`process.execPath`); no
+ * system Node.js/npm is required. Result is cached for the extension lifetime.
  */
 
-import { execSync, execFile, execFileSync } from "child_process";
+import { execFileSync } from "child_process";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
-import { parseVersion, compareVersions } from "../services/version";
+import { x as extract } from "tar";
+import { maxSatisfying } from "semver";
 
 /** npm registry mirror for China users (faster than the default registry). */
 export const NPM_REGISTRY = "https://registry.npmmirror.com";
 
-/**
- * Strict semver — versions are interpolated into shell commands (on Windows
- * through cmd.exe), so a non-semver version must never reach the shell.
- */
-const SEMVER_RE = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
-
-/**
- * `wave-code` package specifier for install/upgrade commands: pins the exact
- * version when one is known, otherwise the bare package (resolves to @latest).
- * Throws "Invalid version" on non-semver input (same no-shell-injection
- * guarantee as upgradeWaveBinary).
- */
-function waveCodeSpec(targetVersion?: string): string {
-  if (targetVersion == null) return "wave-code";
-  if (!SEMVER_RE.test(targetVersion)) {
-    throw new Error(`Invalid version: ${targetVersion}`);
-  }
-  return `wave-code@${targetVersion}`;
-}
-
 let cachedPath: string | undefined;
+let extensionPath: string | undefined;
+
+/** Optional callback invoked when a download starts. */
+export type InstallProgressCallback = (message: string) => void;
 
 /**
  * Decode output of cmd.exe builtins (`where`, `which`). On Chinese Windows
  * those write the system OEM code page (CP936/GBK); decoding GBK bytes as
- * UTF-8 corrupts non-ASCII path segments (`C:\Users\刘一奇\...` → U+FFFD),
- * and spawning the corrupted path fails with ERROR_PATH_NOT_FOUND. Try UTF-8
- * first (covers non-Windows and chcp 65001), fall back to GBK on U+FFFD —
- * same policy as stdioClient.decodeStderr. Exported for reuse (loginPath
- * decodes `where git` output the same way).
+ * UTF-8 corrupts non-ASCII path segments (`C:\Users\刘一奇\...` → U+FFFD).
+ * Try UTF-8 first (covers non-Windows and chcp 65001), fall back to GBK on
+ * U+FFFD — same policy as stdioClient.decodeStderr. Exported for reuse
+ * (loginPath decodes `where git` output the same way).
  */
 export function decodeCommandOutput(out: string | Buffer): string {
   const buf = Buffer.isBuffer(out) ? out : Buffer.from(out);
@@ -58,138 +51,42 @@ export function decodeCommandOutput(out: string | Buffer): string {
   }
 }
 
-/**
- * Pick the executable line from `which`/`where` output. On Windows `where`
- * lists the extensionless bash launcher first (e.g. `C:\Program Files\nodejs\npm`)
- * followed by `npm.cmd` — cmd.exe cannot execute the bash launcher, so prefer
- * `.cmd`/`.exe`/`.bat` lines.
- */
-function pickExecutableLine(lookupOutput: string): string {
-  const lines = lookupOutput
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  if (process.platform === "win32") {
-    const cmdLine = lines.find((l) => /\.(cmd|exe|bat)$/i.test(l));
-    if (cmdLine) return cmdLine;
+/** Set the extension install path (used to locate the bundled CLI). */
+export function setExtensionPath(p: string): void {
+  extensionPath = p;
+}
+
+/** Bundled CLI dir inside the extension: `<ext>/dist/wave-cli`. */
+export function bundledCliDir(): string {
+  if (!extensionPath) {
+    throw new Error("无法解析 wave CLI：缺少扩展路径。");
   }
-  return lines[0] ?? "";
+  return path.join(extensionPath, "dist", "wave-cli");
 }
 
-/**
- * With `shell: true` on Windows, Node concatenates file+args into the cmd.exe
- * command line WITHOUT quoting the file — a path containing spaces (e.g.
- * `C:\Program Files\nodejs\npm.cmd`) is split at the space and fails with
- * "'C:\Program' is not recognized". Pre-quote it.
- */
-function quoteForShell(executable: string): string {
-  return process.platform === "win32" ? `"${executable}"` : executable;
+/** Runtime CLI dir under the user home (writable, mirrors a flat npm install). */
+export function cliInstallDir(): string {
+  return path.join(os.homedir(), ".wave", "cli");
 }
 
-/** Minimum Node.js major version required by `wave --stdio`. */
-const MIN_NODE_MAJOR = 22;
-
-/**
- * Error thrown when Node.js/npm cannot be found on the system.
- * Callers catch this to show a user-friendly "install Node.js" message
- * instead of a cryptic npm failure.
- */
-export class NodeJsNotFoundError extends Error {
-  constructor() {
-    super(
-      "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。",
-    );
-    this.name = "NodeJsNotFoundError";
-  }
+/** Entry point of the runtime CLI (the version-probe shim). */
+export function cliEntryPath(): string {
+  return path.join(cliInstallDir(), "bin", "wave-code.js");
 }
 
-/**
- * Error thrown when the system Node.js version is below the minimum required.
- * Callers catch this to show a user-friendly "upgrade Node.js" message.
- */
-export class NodeJsVersionError extends Error {
-  constructor(currentVersion: string) {
-    super(
-      `Node.js 版本过低（当前 ${currentVersion}，需要 >= ${MIN_NODE_MAJOR}）。请升级 Node.js (https://nodejs.org)，然后重启编辑器。`,
-    );
-    this.name = "NodeJsVersionError";
-  }
+/** Where the downloaded ripgrep packages live inside the runtime CLI dir. */
+function rgInstallDir(): string {
+  return path.join(cliInstallDir(), "node_modules", "@vscode");
 }
 
-/**
- * Find `node` executable: PATH first, then `process.execPath` (the Node
- * running the extension host, which is always a valid node binary).
- */
-function findNode(): string {
-  const cmd = process.platform === "win32" ? "where node" : "which node";
-  try {
-    const result = decodeCommandOutput(
-      execSync(cmd, { encoding: "buffer", stdio: "pipe" }),
-    ).trim();
-    if (result) return result.split("\n")[0].trim();
-  } catch {
-    // not on PATH
-  }
-  // process.execPath is always a Node binary (the extension host runtime).
-  return process.execPath;
-}
-
-/**
- * Check that the system Node.js is >= MIN_NODE_MAJOR.
- * @throws {NodeJsVersionError} if the version is below the minimum.
- */
-function checkNodeVersion(): void {
-  const node = findNode();
-  const output = execFileSync(node, ["-v"], {
-    encoding: "utf-8",
-    stdio: ["ignore", "pipe", "pipe"],
-  }).trim();
-  const match = output.match(/^v?(\d+)/);
-  if (!match) throw new NodeJsVersionError(output);
-  const major = parseInt(match[1], 10);
-  if (major < MIN_NODE_MAJOR) throw new NodeJsVersionError(`v${major}`);
-}
-
-/**
- * Find `npm` CLI executable.
- * Checks PATH first, then falls back to the directory of the running Node binary.
- * @throws {NodeJsNotFoundError} if npm cannot be located anywhere.
- */
-function findNpm(): string {
-  const cmd = process.platform === "win32" ? "where npm" : "which npm";
-  try {
-    const result = decodeCommandOutput(
-      execSync(cmd, { encoding: "buffer", stdio: "pipe" }),
-    ).trim();
-    if (result) return pickExecutableLine(result);
-  } catch {
-    // not on PATH
-  }
-
-  // Fallback: look relative to process.execPath (the Node running VS Code)
-  const nodeDir = path.dirname(process.execPath);
-  const candidates =
-    process.platform === "win32"
-      ? [path.join(nodeDir, "npm.cmd"), path.join(nodeDir, "npm")]
-      : [path.join(nodeDir, "npm"), path.join(nodeDir, "..", "bin", "npm")];
-
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-
-  throw new NodeJsNotFoundError();
-}
-
-/** Resolve the npm global bin directory. */
-function getNpmGlobalBin(): string {
-  const npm = findNpm();
-  const prefix = decodeCommandOutput(
-    execSync(`"${npm}" prefix -g`, {
-      encoding: "buffer",
-      stdio: "pipe",
-    }),
-  ).trim();
-  return process.platform === "win32" ? prefix : path.join(prefix, "bin");
+/** Current platform's rg binary path after install. */
+function rgBinaryPath(): string {
+  return path.join(
+    rgInstallDir(),
+    `ripgrep-${process.platform}-${process.arch}`,
+    "bin",
+    process.platform === "win32" ? "rg.exe" : "rg",
+  );
 }
 
 /** Check if a file exists at the given path. */
@@ -201,110 +98,206 @@ function fileExists(p: string): boolean {
   }
 }
 
-/** Optional callback invoked when an npm install/upgrade starts. */
-export type InstallProgressCallback = (message: string) => void;
-
-/**
- * Resolve the `wave` binary, auto-installing via npm when missing. When
- * [targetVersion] is provided the install pins that exact version — a first
- * install must never grab a mismatched @latest (spec: stdio-transport.md
- * 「CLI 二进制自动解析与安装」 scenario 3).
- */
-export function resolveWaveBinary(
-  onInstall?: InstallProgressCallback,
-  targetVersion?: string,
-): string {
-  if (cachedPath) return cachedPath;
-
-  // 0. Verify Node.js >= 22 — wave --stdio requires it.
-  checkNodeVersion();
-
-  // 1. Try PATH
-  const whichCmd = process.platform === "win32" ? "where wave" : "which wave";
-  try {
-    const result = decodeCommandOutput(
-      execSync(whichCmd, { encoding: "buffer", stdio: "pipe" }),
-    ).trim();
-    if (result) {
-      cachedPath = pickExecutableLine(result);
-      return cachedPath;
-    }
-  } catch {
-    // not on PATH
+/** Download a URL to a Buffer (Node 22+ built-in fetch). */
+async function downloadBuffer(url: string): Promise<Buffer> {
+  const res = await fetch(url, { redirect: "follow" });
+  if (!res.ok) {
+    throw new Error(`下载失败（HTTP ${res.status}）：${url}`);
   }
+  return Buffer.from(await res.arrayBuffer());
+}
 
-  // 2. Try npm global bin directory (might already be installed)
-  let globalBin: string;
-  try {
-    globalBin = getNpmGlobalBin();
-  } catch (e) {
-    // NodeJsNotFoundError / NodeJsVersionError have user-friendly messages — propagate.
-    if (e instanceof NodeJsNotFoundError || e instanceof NodeJsVersionError)
-      throw e;
-    throw new Error(
-      `Failed to determine npm global directory. Please install wave-code manually: npm install -g ${targetVersion ? `wave-code@${targetVersion}` : "wave-code"} --registry=${NPM_REGISTRY}`,
-    );
-  }
-
-  const waveName = process.platform === "win32" ? "wave.cmd" : "wave";
-  const globalPath = path.join(globalBin, waveName);
-  if (fileExists(globalPath)) {
-    cachedPath = globalPath;
-    return cachedPath;
-  }
-
-  // 3. Install globally — pin the exact version (same as the upgrade path).
-  const spec = waveCodeSpec(targetVersion);
-  console.log(`[Wave] wave binary not found, installing ${spec} globally...`);
-  onInstall?.(
-    targetVersion
-      ? `正在安装 wave-code@${targetVersion}，请稍候…`
-      : "正在安装 wave-code，请稍候…",
+/** Extract a `.tgz` (gzip tar) into [dest], stripping the top `package/` dir. */
+async function extractTarball(buffer: Buffer, dest: string): Promise<void> {
+  const tmpFile = path.join(
+    os.tmpdir(),
+    `wave-rg-${process.pid}-${Math.random().toString(36).slice(2)}.tgz`,
   );
-  const npm = findNpm();
-  execSync(`"${npm}" install -g ${spec} --registry=${NPM_REGISTRY}`, {
-    encoding: "utf-8",
-    stdio: "pipe",
+  fs.writeFileSync(tmpFile, buffer);
+  try {
+    await extract({ file: tmpFile, cwd: dest, strip: 1 });
+  } finally {
+    fs.rmSync(tmpFile, { force: true });
+  }
+}
+
+/** Resolve the registry tarball URL for `pkg@version` (from package metadata). */
+async function tarballUrl(pkg: string, version: string): Promise<string> {
+  const res = await fetch(`${NPM_REGISTRY}/${pkg}`, { redirect: "follow" });
+  if (!res.ok) {
+    throw new Error(`获取 ${pkg} 元数据失败（HTTP ${res.status}）`);
+  }
+  const meta = (await res.json()) as {
+    versions?: Record<string, { dist?: { tarball?: string } }>;
+  };
+  const dist = meta.versions?.[version]?.dist?.tarball;
+  if (!dist) {
+    throw new Error(`未找到 ${pkg}@${version} 的下载地址`);
+  }
+  return dist;
+}
+
+/** Highest version of `@vscode/ripgrep` satisfying the CLI's declared range. */
+async function resolveRipgrepVersion(range: string): Promise<string> {
+  const res = await fetch(`${NPM_REGISTRY}/@vscode/ripgrep`, {
+    redirect: "follow",
   });
-
-  // 4. Check npm global bin again
-  if (fileExists(globalPath)) {
-    cachedPath = globalPath;
-    return cachedPath;
+  if (!res.ok) {
+    throw new Error(`获取 @vscode/ripgrep 元数据失败（HTTP ${res.status}）`);
   }
-
-  // 5. Try PATH again (install may have added it)
-  try {
-    const result = decodeCommandOutput(
-      execSync(whichCmd, { encoding: "buffer", stdio: "pipe" }),
-    ).trim();
-    if (result) {
-      cachedPath = pickExecutableLine(result);
-      return cachedPath;
-    }
-  } catch {
-    // still not found
+  const meta = (await res.json()) as { versions?: Record<string, unknown> };
+  const versions = Object.keys(meta.versions ?? {});
+  const best = maxSatisfying(versions, range);
+  if (!best) {
+    throw new Error(`没有满足 ${range} 的 @vscode/ripgrep 版本`);
   }
-
-  throw new Error(
-    `wave binary not found after installation. Please install manually: npm install -g ${targetVersion ? `wave-code@${targetVersion}` : "wave-code"} --registry=${NPM_REGISTRY}`,
-  );
+  return best;
 }
 
 /**
- * Run `<binaryPath> -v` and return the CLI's version (e.g. "0.18.7").
- * Returns null if the binary is missing, corrupt, or `-v` fails/times out —
- * callers treat null as "needs upgrade" rather than crashing.
+ * Download the ripgrep JS wrapper and the current platform's rg binary into
+ * the runtime CLI dir (skipped when already downloaded). Returns true when
+ * the rg binary is in place. Never throws — a failed download only disables
+ * the grep tool until a later launch retries.
  */
-export function getCliVersion(binaryPath: string): string | null {
+export async function ensureRipgrep(
+  onInstall?: InstallProgressCallback,
+): Promise<boolean> {
+  if (fileExists(rgBinaryPath())) return true;
   try {
-    const output = execFileSync(quoteForShell(binaryPath), ["-v"], {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(cliInstallDir(), "package.json"), "utf-8"),
+    ) as { dependencies?: Record<string, string> };
+    const rgRange = pkg.dependencies?.["@vscode/ripgrep"];
+    if (!rgRange) return true; // CLI has no grep dependency — nothing to do.
+
+    onInstall?.("正在下载 grep 搜索依赖（ripgrep），请稍候…");
+    const rgVersion = await resolveRipgrepVersion(rgRange);
+    const dir = rgInstallDir();
+    fs.mkdirSync(dir, { recursive: true });
+    // Each tarball strips its top `package/` dir, so extract into its own
+    // package dir — the JS wrapper and the platform binary must NOT share
+    // a directory (wave.mjs resolves `@vscode/ripgrep` via createRequire).
+    // tar refuses to cd into a missing cwd, so create the dirs first.
+    const jsDir = path.join(dir, "ripgrep");
+    const platformDir = `ripgrep-${process.platform}-${process.arch}`;
+    const binDir = path.join(dir, platformDir);
+    fs.mkdirSync(jsDir, { recursive: true });
+    fs.mkdirSync(binDir, { recursive: true });
+    await extractTarball(
+      await downloadBuffer(await tarballUrl("@vscode/ripgrep", rgVersion)),
+      jsDir,
+    );
+    await extractTarball(
+      await downloadBuffer(
+        await tarballUrl(`@vscode/${platformDir}`, rgVersion),
+      ),
+      binDir,
+    );
+    return fileExists(rgBinaryPath());
+  } catch (error) {
+    console.warn("[Wave] ripgrep 下载失败，grep 工具暂不可用：", error);
+    return false;
+  }
+}
+
+/**
+ * Copy the bundled CLI into the runtime dir when missing or when the bundled
+ * version differs (extension upgrade). The runtime `node_modules/`
+ * (downloaded ripgrep) is preserved across copies so an already-downloaded
+ * rg is never re-downloaded after an upgrade. Returns the runtime entry path.
+ * @throws Error when the bundled CLI itself is missing (corrupt install).
+ */
+function prepareCli(): string {
+  const entry = cliEntryPath();
+  const bundledEntry = path.join(bundledCliDir(), "bin", "wave-code.js");
+  if (!fileExists(bundledEntry)) {
+    throw new Error(`内置 CLI 缺失（${bundledEntry}）。请重新安装扩展。`);
+  }
+
+  const needCopy =
+    !fileExists(entry) ||
+    bundledVersion() !== runtimeVersion() ||
+    !fileExists(path.join(cliInstallDir(), "dist", "bundle", "wave.mjs"));
+
+  if (needCopy) {
+    fs.mkdirSync(cliInstallDir(), { recursive: true });
+    // Replace the CLI files only — keep node_modules/ (the cached rg
+    // download) so an upgrade does not force re-downloading it.
+    fs.rmSync(path.join(cliInstallDir(), "dist"), {
+      recursive: true,
+      force: true,
+    });
+    fs.rmSync(entry, { force: true });
+    fs.rmSync(path.join(cliInstallDir(), "package.json"), { force: true });
+    fs.cpSync(bundledCliDir(), cliInstallDir(), { recursive: true });
+  }
+  return entry;
+}
+
+function bundledVersion(): string {
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(bundledCliDir(), "package.json"), "utf-8"),
+    ) as { version?: string };
+    return pkg.version ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function runtimeVersion(): string {
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(cliInstallDir(), "package.json"), "utf-8"),
+    ) as { version?: string };
+    return pkg.version ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Resolve the `wave` CLI: WAVE_CLI_PATH override first (development), then
+ * the CLI copied from the extension bundle into `~/.wave/cli`, ensuring the
+ * ripgrep search dependency is downloaded.
+ * @throws Error when the bundled CLI is missing (corrupt install) or the
+ * ripgrep download fails — `@vscode/ripgrep` is a top-level import of the
+ * bundled CLI, so without it wave.mjs cannot even start.
+ */
+export async function resolveWaveBinary(
+  _targetVersion?: string,
+  onInstall?: InstallProgressCallback,
+): Promise<string> {
+  if (cachedPath) return cachedPath;
+
+  const envPath = process.env.WAVE_CLI_PATH;
+  if (envPath && fileExists(envPath)) {
+    cachedPath = envPath;
+    return cachedPath;
+  }
+
+  const entry = prepareCli();
+  const rgOk = await ensureRipgrep(onInstall);
+  if (!rgOk) {
+    throw new Error("grep 搜索依赖（ripgrep）下载失败。请检查网络连接后重试。");
+  }
+  cachedPath = entry;
+  return cachedPath;
+}
+
+/**
+ * Run `<cliPath> -v` through the host Node runtime (the extension-host
+ * process, which is always a valid Node binary) and return the CLI's version
+ * (e.g. "0.18.7"). Returns null if the CLI is missing/corrupt or the probe
+ * fails/times out — callers treat null as an error rather than crashing.
+ */
+export function getCliVersion(cliPath: string): string | null {
+  try {
+    const output = execFileSync(process.execPath, [cliPath, "-v"], {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 5000,
-      // `wave` is `wave.cmd` on Windows; Node refuses to execFileSync a
-      // `.cmd` without a shell.
-      shell: process.platform === "win32",
     });
     const line = output.trim().split("\n")[0]?.trim();
     if (!line) return null;
@@ -316,70 +309,15 @@ export function getCliVersion(binaryPath: string): string | null {
 }
 
 /**
- * Ensure the `wave` CLI exists and its version is >= targetVersion.
- * Returns the (possibly upgraded) binary path.
- *
- * 1. resolveWaveBinary() — auto-installs via npm if missing.
- * 2. getCliVersion(path) — read the installed CLI version via `wave -v`.
- * 3. If null (binary corrupt/unreadable) or older than target → upgrade to
- *    targetVersion (which resets the cache and re-resolves).
+ * Ensure the `wave` CLI is ready: bundled CLI copied into `~/.wave/cli` and
+ * ripgrep downloaded (best-effort). The CLI version tracks the extension
+ * version, so there is no separate upgrade step.
  */
 export async function ensureCliUpToDate(
-  targetVersion: string,
+  targetVersion?: string,
   onInstall?: InstallProgressCallback,
 ): Promise<string> {
-  const binaryPath = resolveWaveBinary(onInstall, targetVersion);
-  const current = getCliVersion(binaryPath);
-  if (current !== null) {
-    const cur = parseVersion(current);
-    const target = parseVersion(targetVersion);
-    if (cur && target && compareVersions(cur, target) >= 0) {
-      return binaryPath;
-    }
-  }
-  // current is null (corrupt) or older than target → upgrade.
-  return upgradeWaveBinary(targetVersion, onInstall);
-}
-
-/** Reset cached binary path. Public so callers can force re-resolve after an upgrade. */
-export function resetCache(): void {
-  cachedPath = undefined;
-}
-
-/**
- * Upgrade the globally-installed `wave-code` CLI to a specific version.
- * Uses `execFile` (not a shell string) to avoid shell injection of the version arg.
- * Resets the cached path on success and returns the freshly-resolved binary path.
- */
-export async function upgradeWaveBinary(
-  targetVersion: string,
-  onInstall?: InstallProgressCallback,
-): Promise<string> {
-  // Validate the version before it touches a shell. targetVersion originates
-  // from the extension's package.json (trusted), but on Windows execFile runs
-  // through cmd.exe (see shell option below); a strict semver check preserves
-  // the "no shell injection of the version arg" guarantee this function held
-  // when it used execFile without a shell.
-  const spec = waveCodeSpec(targetVersion);
-
-  onInstall?.(`正在升级 wave-code 到 v${targetVersion}，请稍候…`);
-  const npm = findNpm();
-  await new Promise<void>((resolve, reject) => {
-    execFile(
-      quoteForShell(npm),
-      ["install", "-g", spec, `--registry=${NPM_REGISTRY}`],
-      // `npm` is `npm.cmd` on Windows; Node refuses to execFile a `.cmd`
-      // without a shell (ERR_CHILD_PROCESS_INVALID_COMMAND_FILE). The
-      // validated version above contains no shell metacharacters.
-      { encoding: "utf-8", shell: process.platform === "win32" },
-      (err) => {
-        if (err) reject(err);
-        else resolve();
-      },
-    );
-  });
-  cachedPath = undefined; // invalidate cache so resolveWaveBinary picks up the new binary
-  return resolveWaveBinary();
+  return resolveWaveBinary(targetVersion, onInstall);
 }
 
 /** Reset cached path — for testing only. */

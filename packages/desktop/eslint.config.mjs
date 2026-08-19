@@ -3,7 +3,7 @@ import pluginJs from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default [
-  { ignores: ["dist/", "node_modules/", "webview/", "release/", "coverage/"] },
+  { ignores: ["dist/", "node_modules/", "webview/", "release/", "coverage/", "resources/wave-cli/"] },
   { files: ["**/*.{js,mjs,cjs,ts,tsx}"] },
   {
     languageOptions: {

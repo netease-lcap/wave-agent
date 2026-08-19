@@ -1,0 +1,2 @@
+# Bundled wave CLI (copied from packages/code at build time by scripts/bundleCli.mjs)
+resources/wave-cli/

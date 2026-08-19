@@ -21,6 +21,15 @@ if (process.argv.slice(2).some((a) => versionArgs.includes(a))) {
   process.exit(0);
 }
 
+// Electron RUN_AS_NODE (desktop/vscode bundled runtime) leaves
+// `process.versions.electron` set, so yargs' hideBin() mis-detects the
+// process as a bundled Electron app (bin index 0 instead of 1) and keeps the
+// script path in argv → `Unknown argument: <script>`. Mark the process as the
+// default Electron app so yargs parses argv exactly like plain node would.
+if (process.versions.electron && process.env.ELECTRON_RUN_AS_NODE === "1") {
+  process.defaultApp = true;
+}
+
 // Import and start the CLI (single-file esbuild bundle — avoids Node's
 // per-import node_modules resolution at startup, ~5s -> ~0.6s module load).
 // React's production build is selected at compile time (esbuild define

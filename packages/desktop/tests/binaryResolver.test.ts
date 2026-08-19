@@ -3,168 +3,296 @@ import path from "path";
 
 // ── Mocks ──────────────────────────────────────────────────────
 
-const mockExecSync = vi.hoisted(() => vi.fn());
-const mockExistsSync = vi.hoisted(() => vi.fn());
-const mockExecFile = vi.hoisted(() => vi.fn());
 const mockExecFileSync = vi.hoisted(() => vi.fn());
+const mockTarX = vi.hoisted(() => vi.fn());
+const mockFetch = vi.hoisted(() => vi.fn());
+const mockMaxSatisfying = vi.hoisted(() => vi.fn(() => "1.18.0"));
+
+// Fake fs backed by an in-memory map so the resolver's read/check/copy
+// sequence is observable without touching the real filesystem.
+const memFs = vi.hoisted(() => new Map<string, string>());
+const mockFs = vi.hoisted(() => ({
+  existsSync: vi.fn((p: string) => memFs.has(p)),
+  mkdirSync: vi.fn((p: string) => {
+    // Mirror the real fs: directories are recorded so tar's cwd check
+    // (extract refuses to cd into a missing dir) is observable.
+    memFs.set(p.replace(/[\\/]$/, "") + path.sep, "");
+  }),
+  writeFileSync: vi.fn(),
+  readFileSync: vi.fn((p: string) => {
+    const v = memFs.get(p);
+    if (v == null) throw new Error(`ENOENT ${p}`);
+    return v;
+  }),
+  rmSync: vi.fn((p: string) => {
+    for (const k of [...memFs.keys()]) {
+      if (k === p || k.startsWith(p + path.sep)) memFs.delete(k);
+    }
+  }),
+  cpSync: vi.fn((src: string, dest: string) => {
+    for (const [k, v] of memFs) {
+      if (k === src || k.startsWith(src + path.sep)) {
+        memFs.set(k.replace(src, dest), v);
+      }
+    }
+  }),
+}));
 
 vi.mock("child_process", () => ({
-  default: {
-    execSync: mockExecSync,
-    execFile: mockExecFile,
-    execFileSync: mockExecFileSync,
-  },
-  execSync: mockExecSync,
-  execFile: mockExecFile,
+  default: { execFileSync: mockExecFileSync },
   execFileSync: mockExecFileSync,
 }));
 
-vi.mock("fs", () => ({
-  default: { existsSync: mockExistsSync },
-  existsSync: mockExistsSync,
+vi.mock("fs", () => ({ default: mockFs, ...mockFs }));
+
+vi.mock("os", () => ({
+  default: { homedir: () => "/fake/home", tmpdir: () => "/fake/tmp" },
+  homedir: () => "/fake/home",
+  tmpdir: () => "/fake/tmp",
 }));
+
+vi.mock("electron", () => ({
+  app: {
+    isPackaged: false,
+    getAppPath: vi.fn(() => "/app/root"),
+  },
+}));
+
+vi.mock("tar", () => ({ x: mockTarX }));
+
+vi.mock("semver", () => ({ maxSatisfying: mockMaxSatisfying }));
 
 // ── Import after mocks ─────────────────────────────────────────
 
 import {
   resolveWaveBinary,
+  ensureCliUpToDate,
+  ensureRipgrep,
+  getCliVersion,
+  cliEntryPath,
+  cliInstallDir,
+  bundledCliDir,
+  NPM_REGISTRY,
   _resetCacheForTesting,
 } from "../src/main/stdio/binaryResolver";
 
-describe("binaryResolver", () => {
+const bundledDir = () => path.join("/app/root", "resources", "wave-cli");
+const bundledEntry = () => path.join(bundledDir(), "bin", "wave-code.js");
+const entry = () =>
+  path.join("/fake/home", ".wave", "cli", "bin", "wave-code.js");
+const rgBin = () =>
+  path.join(
+    "/fake/home/.wave/cli/node_modules/@vscode",
+    `ripgrep-${process.platform}-${process.arch}`,
+    "bin",
+    process.platform === "win32" ? "rg.exe" : "rg",
+  );
+
+const PKG_JSON = (version: string) =>
+  JSON.stringify({
+    name: "wave-code",
+    version,
+    dependencies: { "@vscode/ripgrep": "^1.18.0" },
+  });
+
+/** Seed the bundled CLI (as bundleCli.mjs would). */
+function seedBundledCli(version = "1.0.0") {
+  memFs.set(bundledEntry(), "shim");
+  memFs.set(path.join(bundledDir(), "package.json"), PKG_JSON(version));
+  memFs.set(path.join(bundledDir(), "dist", "bundle", "wave.mjs"), "bundle");
+}
+
+/** Seed a fully installed runtime CLI (same version → no re-copy). */
+function seedRuntimeCli(version = "1.0.0") {
+  memFs.set(entry(), "shim");
+  memFs.set(path.join(cliInstallDir(), "package.json"), PKG_JSON(version));
+  memFs.set(path.join(cliInstallDir(), "dist", "bundle", "wave.mjs"), "bundle");
+}
+
+/** Seed an already-downloaded rg binary (→ cached, no fetch). */
+function seedRg() {
+  memFs.set(rgBin(), "rg");
+}
+
+/** Fake registry response. */
+function res(extra: Record<string, unknown> = {}) {
+  return { ok: true, status: 200, statusText: "OK", ...extra };
+}
+
+/** Registry fetch mock that serves metadata + tarballs for ripgrep. */
+function mockRipgrepRegistry() {
+  mockFetch.mockImplementation(async (url: string) => {
+    if (url === `${NPM_REGISTRY}/@vscode/ripgrep`) {
+      return res({
+        json: async () => ({
+          versions: { "1.18.0": { dist: { tarball: "https://x/rg.tgz" } } },
+        }),
+      });
+    }
+    if (
+      url ===
+      `${NPM_REGISTRY}/@vscode/ripgrep-${process.platform}-${process.arch}`
+    ) {
+      return res({
+        json: async () => ({
+          versions: {
+            "1.18.0": { dist: { tarball: "https://x/rg-plat.tgz" } },
+          },
+        }),
+      });
+    }
+    if (url === "https://x/rg.tgz" || url === "https://x/rg-plat.tgz") {
+      return res({ arrayBuffer: async () => Buffer.from("rg-tgz") });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  });
+  mockTarX.mockImplementation(async (opts: { cwd?: string }) => {
+    // tar refuses to cd into a missing cwd — mirror the real extractor so a
+    // resolver that skips mkdirSync before extract fails the tests.
+    const cwd = opts?.cwd ?? "";
+    if (!memFs.has(cwd.replace(/[\\/]$/, "") + path.sep)) {
+      throw new Error(`[CwdError] ENOENT: Cannot cd into '${cwd}'`);
+    }
+    // Simulate extraction: the rg binary lands in place.
+    memFs.set(rgBin(), "rg");
+  });
+}
+
+describe("binaryResolver (bundled CLI + downloaded rg)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockExistsSync.mockReturnValue(false);
-    // checkNodeVersion(): `where node`/`which node` first, then
-    // execFileSync(<node>, ["-v"]) — the desktop main process runs inside
-    // Electron, so that call also carries ELECTRON_RUN_AS_NODE=1.
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (cmd.includes("where node") || cmd.includes("which node")) {
-        return process.platform === "win32"
-          ? "C:\\nodejs\\node.exe\n"
-          : "/usr/bin/node\n";
-      }
-      throw new Error(`unexpected: ${cmd}`);
-    });
-    mockExecFileSync.mockReturnValue("v22.0.0\n");
+    memFs.clear();
     _resetCacheForTesting();
+    vi.stubGlobal("fetch", mockFetch);
+    mockTarX.mockImplementation(async () => undefined);
+    mockExecFileSync.mockReturnValue("v1.0.0\n");
   });
 
   afterEach(() => {
     _resetCacheForTesting();
+    vi.unstubAllGlobals();
   });
 
-  // ── Windows: cmd.exe builtins output GBK on Chinese systems ──
-  // `where` is a cmd.exe builtin — on a Chinese system its stdout is in the
-  // OEM code page (CP936/GBK), NOT UTF-8. Decoding those bytes as UTF-8
-  // corrupts non-ASCII path segments (`C:\Users\刘一奇\...` → U+FFFD
-  // garbage); spawning the corrupted wave.cmd path then fails with
-  // ERROR_PATH_NOT_FOUND and the stdio process dies before initialize —
-  // surfacing as「初始化失败：连接已断开」on Windows (desktop parity with
-  // the vsce fix 08f2c0dc, which only patched packages/vscode).
+  it("exposes bundled and runtime dirs", () => {
+    expect(bundledCliDir()).toBe(bundledDir());
+    expect(cliEntryPath()).toBe(entry());
+  });
 
-  it("on Windows, decodes GBK-encoded Chinese username paths from where output", async () => {
-    // GBK (CP936) bytes of `刘一奇` — what cmd.exe actually writes when
-    // the username contains Chinese characters.
-    const gbkUsername = Buffer.from([0xc1, 0xf5, 0xd2, 0xbb, 0xc6, 0xe6]);
-    const gbkLine = (suffix: string) =>
-      Buffer.concat([
-        Buffer.from("C:\\Users\\", "ascii"),
-        gbkUsername,
-        Buffer.from(suffix, "ascii"),
-      ]);
-    const whereOutput = Buffer.concat([
-      gbkLine("\\AppData\\Roaming\\npm\\wave\r\n"),
-      gbkLine("\\AppData\\Roaming\\npm\\wave.cmd\r\n"),
-    ]);
+  it("prefers WAVE_CLI_PATH override without touching bundle/rg", async () => {
+    process.env.WAVE_CLI_PATH = "/dev/wave-code.js";
+    memFs.set("/dev/wave-code.js", "dev shim");
 
-    await withPlatform("win32", async () => {
-      mockExecSync.mockImplementation(
-        (cmd: string, opts?: { encoding?: string }) => {
-          if (cmd.includes("where wave")) {
-            // Mirror Node's real behaviour: `encoding: "buffer"` yields the
-            // raw cmd.exe bytes, "utf-8" yields them already corrupted.
-            return opts?.encoding === "buffer"
-              ? whereOutput
-              : whereOutput.toString("utf-8");
-          }
-          if (cmd.includes("where node")) return "C:\\nodejs\\node.exe\n";
-          throw new Error(`unexpected: ${cmd}`);
-        },
+    try {
+      await expect(resolveWaveBinary("1.0.0")).resolves.toBe(
+        "/dev/wave-code.js",
       );
-
-      const result = await resolveWaveBinary();
-      expect(result).toBe("C:\\Users\\刘一奇\\AppData\\Roaming\\npm\\wave.cmd");
-    });
+      expect(mockFetch).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.WAVE_CLI_PATH;
+    }
   });
 
-  it("on Windows, decodes GBK-encoded Chinese npm global prefix", async () => {
-    // `npm prefix -g` on a Chinese system echoes the prefix in GBK — a
-    // UTF-8 decode turns `C:\Users\刘一奇\AppData\Roaming\npm` into garbage
-    // and the wave.cmd lookup inside it misses even after a fresh install.
-    const gbkUsername = Buffer.from([0xc1, 0xf5, 0xd2, 0xbb, 0xc6, 0xe6]);
-    const prefix = Buffer.concat([
-      Buffer.from("C:\\Users\\", "ascii"),
-      gbkUsername,
-      Buffer.from("\\AppData\\Roaming\\npm", "ascii"),
-    ]);
-    // Mirror the resolver's own join so the assertion matches on every OS
-    // (path.join follows the host platform, not the faked process.platform).
-    const waveCmd = path.join(
-      "C:\\Users\\刘一奇\\AppData\\Roaming\\npm",
-      "wave.cmd",
+  it("throws a reinstall-guide error when the bundled CLI is missing", async () => {
+    await expect(resolveWaveBinary("1.0.0")).rejects.toThrow("内置 CLI 缺失");
+  });
+
+  it("copies the bundled CLI into ~/.wave/cli on first use and downloads rg", async () => {
+    seedBundledCli("1.0.0");
+    mockRipgrepRegistry();
+
+    const result = await resolveWaveBinary("1.0.0");
+
+    expect(result).toBe(entry());
+    expect(memFs.has(entry())).toBe(true);
+    expect(
+      memFs.has(path.join(cliInstallDir(), "dist", "bundle", "wave.mjs")),
+    ).toBe(true);
+    expect(memFs.has(rgBin())).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(5); // rg meta x2 + plat meta + 2 tarballs
+  });
+
+  it("reuses the runtime CLI and cached rg without re-copy or re-download", async () => {
+    seedBundledCli("1.0.0");
+    seedRuntimeCli("1.0.0");
+    seedRg();
+
+    const result = await resolveWaveBinary("1.0.0");
+
+    expect(result).toBe(entry());
+    expect(mockFs.cpSync).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("re-copies the CLI but keeps the cached rg when the version changes", async () => {
+    seedBundledCli("1.1.0"); // app upgraded
+    seedRuntimeCli("1.0.0");
+    seedRg(); // rg already downloaded
+
+    const result = await resolveWaveBinary("1.1.0");
+
+    expect(result).toBe(entry());
+    expect(mockFs.cpSync).toHaveBeenCalled();
+    // node_modules (rg) preserved: no fetch happened.
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(memFs.has(rgBin())).toBe(true);
+  });
+
+  it("does not download rg when the CLI has no grep dependency", async () => {
+    seedBundledCli();
+    memFs.set(
+      path.join(bundledDir(), "package.json"),
+      JSON.stringify({ name: "wave-code", version: "1.0.0" }),
     );
 
-    await withPlatform("win32", async () => {
-      mockExecSync.mockImplementation(
-        (cmd: string, opts?: { encoding?: string }) => {
-          if (cmd.includes("where wave")) throw new Error("not found");
-          if (cmd.includes("where npm")) return "C:\\nodejs\\npm.cmd\n";
-          if (cmd.includes("prefix -g")) {
-            return opts?.encoding === "buffer"
-              ? prefix
-              : prefix.toString("utf-8");
-          }
-          throw new Error(`unexpected: ${cmd}`);
-        },
-      );
-      mockExistsSync.mockImplementation((p: string) => p === waveCmd);
+    const result = await resolveWaveBinary("1.0.0");
 
-      const result = await resolveWaveBinary();
-      expect(result).toBe(waveCmd);
-    });
+    expect(result).toBe(entry());
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  // ── Found on PATH ──────────────────────────────────────────
+  it("a failed rg download surfaces a clear error", async () => {
+    seedBundledCli("1.0.0");
+    mockFetch.mockImplementation(async () =>
+      res({ ok: false, status: 500, statusText: "Server Error" }),
+    );
 
-  it("returns wave path from where/which command", async () => {
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (cmd.includes("where wave") || cmd.includes("which wave")) {
-        return process.platform === "win32"
-          ? "C:\\nodejs\\wave.cmd\n"
-          : "/usr/bin/wave\n";
-      }
-      throw new Error("unexpected");
+    await expect(resolveWaveBinary("1.0.0")).rejects.toThrow("ripgrep");
+  });
+
+  it("ensureRipgrep returns false when the download fails", async () => {
+    mockFetch.mockImplementation(async () =>
+      res({ ok: false, status: 500, statusText: "Server Error" }),
+    );
+    seedRuntimeCli("1.0.0");
+
+    await expect(ensureRipgrep()).resolves.toBe(false);
+  });
+
+  it("getCliVersion runs the CLI through the host Node with ELECTRON_RUN_AS_NODE", () => {
+    mockExecFileSync.mockReturnValue("v1.2.3\n");
+
+    expect(getCliVersion(entry())).toBe("1.2.3");
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      process.execPath,
+      [entry(), "-v"],
+      expect.objectContaining({
+        env: expect.objectContaining({ ELECTRON_RUN_AS_NODE: "1" }),
+      }),
+    );
+  });
+
+  it("getCliVersion returns null when the probe fails", () => {
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error("boom");
     });
 
-    const result = await resolveWaveBinary();
-    expect(result).toBe(
-      process.platform === "win32" ? "C:\\nodejs\\wave.cmd" : "/usr/bin/wave",
-    );
+    expect(getCliVersion(entry())).toBeNull();
+  });
+
+  it("ensureCliUpToDate resolves the runtime CLI", async () => {
+    seedBundledCli("1.0.0");
+    mockRipgrepRegistry();
+
+    await expect(ensureCliUpToDate("1.0.0")).resolves.toBe(entry());
   });
 });
-
-/** Temporarily fake process.platform (desktop tests run on any OS). */
-function withPlatform<T>(platform: string, fn: () => Promise<T>): Promise<T> {
-  const original = Object.getOwnPropertyDescriptor(process, "platform");
-  Object.defineProperty(process, "platform", { value: platform });
-  const restore = () => {
-    if (original) Object.defineProperty(process, "platform", original);
-  };
-  try {
-    return fn().finally(restore);
-  } catch (e) {
-    restore();
-    throw e;
-  }
-}

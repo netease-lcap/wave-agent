@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "pnpm run compile",
-    "compile": "pnpm run sync:webview && tsup",
+    "compile": "pnpm run sync:webview && node scripts/bundleCli.mjs && tsup",
     "sync:webview": "node scripts/syncWebview.mjs",
     "predev": "node scripts/predev.mjs",
     "dev": "pnpm run compile && node scripts/dev.mjs",
@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.1",
+    "@types/semver": "^7.7.1",
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
     "jsdom": "^29.1.1",
@@ -51,6 +52,12 @@
     "asarUnpack": [
       "**/node_modules/node-pty/build/**",
       "**/node_modules/node-pty/prebuilds/**"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/wave-cli",
+        "to": "wave-cli"
+      }
     ],
     "afterPack": "scripts/afterPack.js",
     "mac": {
@@ -88,6 +95,8 @@
   "dependencies": {
     "electron-updater": "^6.8.9",
     "js-yaml": "^5.2.3",
-    "node-pty": "^1.2.0-beta.14"
+    "node-pty": "^1.2.0-beta.14",
+    "semver": "^7.7.4",
+    "tar": "^7.5.22"
   }
 }

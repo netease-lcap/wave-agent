@@ -25,12 +25,7 @@ import { WebviewManager } from "./session/webviewManager";
 import { MessageHandler } from "./session/messageHandler";
 import { StdioClient } from "./stdio/stdioClient";
 import { NotificationRouter } from "./stdio/notificationRouter";
-import {
-  resolveWaveBinary,
-  ensureCliUpToDate,
-  NodeJsNotFoundError,
-  NodeJsVersionError,
-} from "./stdio/binaryResolver";
+import { ensureCliUpToDate, setExtensionPath } from "./stdio/binaryResolver";
 
 export class ChatProvider implements vscode.WebviewViewProvider {
   private static formatConfigError(error: unknown): string {
@@ -143,16 +138,19 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Spawn the shared stdio client, upgrading the `wave` CLI first (via
-   * `wave -v`) if it is older than the extension. Services/MessageHandler are
-   * constructed AFTER the upgrade so they capture the post-upgrade client —
-   * this is what avoids the "StdioClient is disposed" dangling-reference
-   * failure that the old post-init reinit path had.
+   * Spawn the shared stdio client. The CLI version is pinned to the extension
+   * version and downloaded to ~/.wave/cli by the host runtime on first use
+   * (no system Node/npm required). Services/MessageHandler are constructed
+   * AFTER the client spawn so they capture the live client — this is what
+   * avoids the "StdioClient is disposed" dangling-reference failure that the
+   * old post-init reinit path had.
    */
   private async init(): Promise<void> {
     try {
       const clientVersion: string | undefined =
         this.context.extension.packageJSON?.version;
+      // Locate the CLI bundled inside the extension (dist/wave-cli).
+      setExtensionPath(this.context.extensionPath);
       const binaryPath = await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
@@ -163,7 +161,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           const onInstall = (message: string) => progress.report({ message });
           return clientVersion
             ? ensureCliUpToDate(clientVersion, onInstall)
-            : Promise.resolve(resolveWaveBinary(onInstall));
+            : Promise.reject(
+                new Error("无法确定扩展版本，无法获取 wave CLI。"),
+              );
         },
       );
 
@@ -217,15 +217,11 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       this.outputChannel.appendLine(
         `[Wave] Failed to initialize shared client: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
       );
-      if (err instanceof NodeJsNotFoundError) {
-        vscode.window.showErrorMessage(err.message);
-      } else if (err instanceof NodeJsVersionError) {
-        vscode.window.showErrorMessage(err.message);
-      } else {
-        vscode.window.showErrorMessage(
-          "无法启动 wave 二进制文件。请手动安装: npm install -g wave-code",
-        );
-      }
+      vscode.window.showErrorMessage(
+        err instanceof Error
+          ? err.message
+          : "无法启动 wave CLI。请检查网络连接后重试。",
+      );
     }
   }
 
