@@ -914,10 +914,15 @@ EOF
       platformSpy = vi
         .spyOn(process, "platform", "get")
         .mockReturnValue("win32" as NodeJS.Platform);
+      // resolveWindowsShell() returns WAVE_GIT_BASH_PATH as-is without checking
+      // existence; on a Linux CI runner there is no real Git Bash, so without
+      // this stub execute() would fail with "Git Bash not found".
+      vi.stubEnv("WAVE_GIT_BASH_PATH", "/bin/bash");
     });
 
     afterEach(() => {
       platformSpy.mockRestore();
+      vi.unstubAllEnvs();
     });
 
     const createMockProcess = (newCwd: string) => {
