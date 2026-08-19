@@ -3,7 +3,6 @@ import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
 import type { Usage } from "@/types/index.js";
-import { DEFAULT_WAVE_MAX_INPUT_TOKENS } from "@/utils/constants.js";
 import { generateMessageId } from "@/utils/messageOperations.js";
 
 // Mock AI Service
@@ -301,6 +300,10 @@ describe("Agent Usage Tracking", () => {
     it("should track compaction usage when it occurs", async () => {
       const mockCallAgent = vi.mocked(aiService.callAgent);
 
+      // Lower the input token limit so the short message history exceeds it
+      // and the pre-request estimate triggers compaction
+      process.env.WAVE_MAX_INPUT_TOKENS = "30";
+
       // Set up an agent instance with initial messages to have enough content for compaction
       const initialMessages = [
         {
@@ -374,22 +377,25 @@ describe("Agent Usage Tracking", () => {
 
       vi.clearAllMocks();
 
-      // Mock high token usage to trigger compaction
+      // Both the compaction fork and the main loop reuse callAgent; the
+      // fork result content is used as the summary.
       mockCallAgent.mockResolvedValue({
         content: "Response that triggers compaction",
         usage: {
-          prompt_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS - 20000,
-          completion_tokens: 30000,
-          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 10000, // Exceeds default token limit
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
         },
       });
 
       await agent.sendMessage("Message that triggers compaction");
 
-      // Should track both agent and compaction usage
+      // Should track both compaction and agent usage — the fork runs before
+      // the main-loop request (pre-request compaction), so it is recorded
+      // first
       expect(agent.usages).toHaveLength(2);
-      expect(agent.usages[0].operation_type).toBe("agent");
-      expect(agent.usages[1].operation_type).toBe("compact");
+      expect(agent.usages[0].operation_type).toBe("compact");
+      expect(agent.usages[1].operation_type).toBe("agent");
     });
   });
 });
