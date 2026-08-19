@@ -476,6 +476,15 @@ class MessageHandler(
                 }
                 postMessage("subagentConfigurationsResponse", buildJsonObject { put("configurations", configurations) })
             }
+            "getSkillMetadata" -> {
+                val skills = try {
+                    session.agent?.getSkillMetadata()?.jsonObject?.get("skills") ?: JsonArray(emptyList())
+                } catch (e: StdioClientException) {
+                    LOG.warn("getSkillMetadata failed: ${e.message}")
+                    JsonArray(emptyList())
+                }
+                postMessage("skillMetadataResponse", buildJsonObject { put("skills", skills) })
+            }
             "getBackgroundTaskOutput" -> {
                 val taskId = msg["taskId"]?.jsonPrimitive?.content ?: return
                 val output = try {
@@ -813,6 +822,7 @@ class MessageHandler(
             triple("tasks", "tasks", "查看后台任务"),
             triple("workflows", "workflows", "查看工作流运行"),
             triple("agents", "agents", "查看可用 agents"),
+            triple("skills", "skills", "查看可用技能"),
             triple("clear", "clear", "清除对话历史并重置会话"),
             triple("compact", "compact", "手动压缩对话历史"),
             triple("rewind", "rewind", "回滚到之前的用户消息"),

@@ -70,6 +70,8 @@ export type RequestMethod =
   | "connectMcpServer"
   | "disconnectMcpServer"
   | "getSlashCommands"
+  | "getSubagentConfigurations"
+  | "getSkillMetadata"
   | "searchFiles"
   | "writeArtifactFile"
   | "getPromptHistory"

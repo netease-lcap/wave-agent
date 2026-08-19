@@ -443,6 +443,13 @@ export class ChatSession {
     return [];
   }
 
+  public async getSkillMetadata() {
+    if (this.agent) {
+      return await this.agent.getSkillMetadata();
+    }
+    return [];
+  }
+
   /** Pull the authoritative message list from the server (updates cache). */
   public async getMessages(): Promise<Message[]> {
     if (!this.agent) {

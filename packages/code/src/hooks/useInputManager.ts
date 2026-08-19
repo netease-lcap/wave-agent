@@ -527,6 +527,10 @@ export const useInputManager = (
     dispatch({ type: "SET_SHOW_WORKFLOW_MANAGER", payload: show });
   }, []);
 
+  const setShowSkillsManager = useCallback((show: boolean) => {
+    dispatch({ type: "SET_SHOW_SKILLS_MANAGER", payload: show });
+  }, []);
+
   const setPermissionMode = useCallback(
     (mode: PermissionMode) => {
       dispatch({ type: "SET_PERMISSION_MODE", payload: mode });
@@ -671,6 +675,7 @@ export const useInputManager = (
     showPluginManager: state.showPluginManager,
     showModelSelector: state.showModelSelector,
     showWorkflowManager: state.showWorkflowManager,
+    showSkillsManager: state.showSkillsManager,
     permissionMode: state.permissionMode,
     attachedImages: state.attachedImages,
     btwState: state.btwState,
@@ -717,6 +722,7 @@ export const useInputManager = (
     setShowPluginManager,
     setShowModelSelector,
     setShowWorkflowManager,
+    setShowSkillsManager,
     setPermissionMode,
     setBtwState,
 

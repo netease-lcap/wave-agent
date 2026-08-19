@@ -138,6 +138,7 @@ export interface InputState {
   showPluginManager: boolean;
   showModelSelector: boolean;
   showWorkflowManager: boolean;
+  showSkillsManager: boolean;
   permissionMode: PermissionMode;
   selectorJustUsed: boolean;
   history: PromptEntry[];
@@ -176,6 +177,7 @@ export const initialState: InputState = {
   showPluginManager: false,
   showModelSelector: false,
   showWorkflowManager: false,
+  showSkillsManager: false,
   permissionMode: "default",
   selectorJustUsed: false,
   history: [],
@@ -457,6 +459,7 @@ export type InputAction =
   | { type: "SET_SHOW_PLUGIN_MANAGER"; payload: boolean }
   | { type: "SET_SHOW_MODEL_SELECTOR"; payload: boolean }
   | { type: "SET_SHOW_WORKFLOW_MANAGER"; payload: boolean }
+  | { type: "SET_SHOW_SKILLS_MANAGER"; payload: boolean }
   | { type: "SET_PERMISSION_MODE"; payload: PermissionMode }
   | { type: "SET_SELECTOR_JUST_USED"; payload: boolean }
   | { type: "INSERT_TEXT_WITH_PLACEHOLDER"; payload: string }
@@ -685,6 +688,12 @@ export function inputReducer(
       return {
         ...state,
         showWorkflowManager: action.payload,
+        selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
+      };
+    case "SET_SHOW_SKILLS_MANAGER":
+      return {
+        ...state,
+        showSkillsManager: action.payload,
         selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
       };
     case "SET_PERMISSION_MODE":

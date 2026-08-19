@@ -24,6 +24,7 @@ const SYSTEM_COMMANDS = [
   "tasks",
   "workflows",
   "agents",
+  "skills",
   "clear",
   "compact",
   "rewind",

@@ -27,6 +27,7 @@ import type {
   SlashCommand,
   McpServerConfig,
   SubagentConfiguration,
+  SkillMetadata,
 } from "wave-agent-sdk/types";
 import type { JsonRpcClient } from "./jsonRpcClient";
 import { NotificationRouter } from "./notificationRouter";
@@ -469,6 +470,15 @@ export class StdioAgent {
       this.sessionId,
     )) as { configurations: SubagentConfiguration[] };
     return result.configurations;
+  }
+
+  async getSkillMetadata(): Promise<SkillMetadata[]> {
+    const result = (await this.client.request(
+      "getSkillMetadata",
+      undefined,
+      this.sessionId,
+    )) as { skills: SkillMetadata[] };
+    return result.skills;
   }
 
   // ── Notification dispatch (called by NotificationRouter) ──────

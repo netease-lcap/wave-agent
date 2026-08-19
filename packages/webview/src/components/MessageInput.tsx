@@ -1005,10 +1005,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
           const selRange = selection.getRangeAt(0);
           if (selRange.startContainer.nodeType === Node.TEXT_NODE) {
             const text = selRange.startContainer.textContent || "";
-            const lastAtIndex = text.lastIndexOf(
-              "@",
-              selRange.startOffset - 1,
-            );
+            const lastAtIndex = text.lastIndexOf("@", selRange.startOffset - 1);
             // A zero-length range (caret at the very start, e.g. after focus()
             // reset it) would delete nothing and insert the tag *before* the
             // '@' — reject it and fall back to the atMention snapshot instead.
@@ -1083,6 +1080,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
           "tasks",
           "workflows",
           "agents",
+          "skills",
           "clear",
           "compact",
           "rewind",

@@ -242,6 +242,9 @@ class StdioAgent(
     suspend fun getSubagentConfigurations(): JsonElement? =
         client.request("getSubagentConfigurations", sessionId = sessionId)
 
+    suspend fun getSkillMetadata(): JsonElement? =
+        client.request("getSkillMetadata", sessionId = sessionId)
+
     suspend fun updateConfig(params: JsonObject) {
         val oldSessionId = sessionId
         val result = client.request("updateConfig", params, sessionId)?.jsonObject

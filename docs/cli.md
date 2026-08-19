@@ -78,7 +78,7 @@ wave --model gpt-4o --disallowed-tools Bash,Write
 | -------------------------------- | ------------------------------------------------------------------------------ |
 | `--permission-mode <mode>`       | 设置权限模式：`default`、`acceptEdits`、`bypassPermissions`、`dontAsk`、`plan` |
 | `--dangerously-skip-permissions` | 跳过所有权限检查（危险）                                                       |
-| `--add-dir <path>`               | 将目录加入会话安全区域，可重复指定（仅当前会话生效）                            |
+| `--add-dir <path>`               | 将目录加入会话安全区域，可重复指定（仅当前会话生效）                           |
 
 ```bash
 # 将 /data/exports 加入当前会话的安全区域
@@ -175,24 +175,25 @@ wave daemon respond <sessionId> <requestId> --deny --reason "原因"
 
 在交互模式中，输入 `/` 可触发命令选择器，快速调用以下内置命令：
 
-| 命令         | 描述                           |
-| ------------ | ------------------------------ |
-| `/help`      | 显示帮助和快捷键               |
-| `/status`    | 显示 Agent 状态和配置信息      |
-| `/model`     | 切换 AI 模型                   |
-| `/tasks`     | 管理后台任务                   |
-| `/mcp`       | 管理 MCP 服务器连接            |
-| `/plugin`    | 管理插件                       |
-| `/workflows` | 查看和管理工作流运行           |
-| `/rewind`    | 回滚到历史检查点               |
+| 命令         | 描述                                                                |
+| ------------ | ------------------------------------------------------------------- |
+| `/help`      | 显示帮助和快捷键                                                    |
+| `/status`    | 显示 Agent 状态和配置信息                                           |
+| `/model`     | 切换 AI 模型                                                        |
+| `/tasks`     | 管理后台任务                                                        |
+| `/mcp`       | 管理 MCP 服务器连接                                                 |
+| `/plugin`    | 管理插件                                                            |
+| `/workflows` | 查看和管理工作流运行                                                |
+| `/rewind`    | 回滚到历史检查点                                                    |
 | `/subtask`   | 以当前对话完整上下文在后台启动 fork 子代理（`/subtask <任务描述>`） |
-| `/login`     | SSO 企业认证登录               |
-| `/logout`    | 清除 SSO 认证                  |
-| `/clear`     | 清除当前对话历史               |
-| `/compact`   | 压缩对话历史，减少 Token 占用  |
-| `/add-dir`   | 将目录加入会话安全区域（可带 `--remember` 持久化） |
-| `/agents`    | 查看当前会话可见的所有 agent（子代理）定义，按来源分组展示 |
-| `/btw`       | 旁路提问，不调用工具的快速问答 |
+| `/login`     | SSO 企业认证登录                                                    |
+| `/logout`    | 清除 SSO 认证                                                       |
+| `/clear`     | 清除当前对话历史                                                    |
+| `/compact`   | 压缩对话历史，减少 Token 占用                                       |
+| `/add-dir`   | 将目录加入会话安全区域（可带 `--remember` 持久化）                  |
+| `/agents`    | 查看当前会话可见的所有 agent（子代理）定义，按来源分组展示          |
+| `/skills`    | 查看当前会话可见的所有技能，按来源分组展示并可查看详情              |
+| `/btw`       | 旁路提问，不调用工具的快速问答                                      |
 
 > 了解更多：详见 [SDK 文档 - 斜杠命令](/sdk#slash-commands)
 

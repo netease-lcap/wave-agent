@@ -1129,6 +1129,22 @@ test("getSlashCommands returns command list", async () => {
   expect(r).toEqual({ commands });
 });
 
+test("getSkillMetadata returns skill metadata", async () => {
+  const { bridge } = createBridge();
+  const skills = [
+    { name: "deep-research", description: "Deep research", type: "builtin" },
+  ];
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ getSkillMetadata: vi.fn().mockReturnValue(skills) }),
+  );
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest("getSkillMetadata", {}, sessionId);
+
+  expect(r).toEqual({ skills });
+});
+
 test("getConfiguredModels returns configured models and current model", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(

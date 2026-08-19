@@ -26,6 +26,7 @@ import StatusDialog from "./StatusDialog";
 import BackgroundTaskManager from "./BackgroundTaskManager";
 import WorkflowManager from "./WorkflowManager";
 import AgentsDialog from "./AgentsDialog";
+import SkillsDialog from "./SkillsDialog";
 import WelcomeView from "./WelcomeView";
 import LoadingLogo from "./LoadingLogo";
 import { DesktopHostSelector } from "./DesktopHostSelector";
@@ -1141,6 +1142,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         dispatch({ type: "SHOW_DIALOG", payload: { type: "agents" } });
         return;
       }
+      if (trimmedText === "/skills") {
+        dispatch({ type: "SHOW_DIALOG", payload: { type: "skills" } });
+        return;
+      }
       if (trimmedText === "/rewind") {
         if (stateRef.current.isStreaming) return;
         setRewindPopupOpen(true);
@@ -2099,6 +2104,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       )}
       {state.activeDialog === "agents" && (
         <AgentsDialog vscode={vscode} onClose={handleDialogClose} />
+      )}
+      {state.activeDialog === "skills" && (
+        <SkillsDialog vscode={vscode} onClose={handleDialogClose} />
       )}
       {pendingRewindId && (
         <ConfirmDialog

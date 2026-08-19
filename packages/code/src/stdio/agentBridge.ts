@@ -44,6 +44,7 @@ import {
   type SlashCommand,
   loadUserConfigEnv,
   type SubagentConfiguration,
+  type SkillMetadata,
 } from "wave-agent-sdk";
 import {
   type JsonRpcError,
@@ -241,6 +242,8 @@ export class AgentBridge {
         return this.getSlashCommands(sessionId);
       case "getSubagentConfigurations":
         return this.getSubagentConfigurations(sessionId);
+      case "getSkillMetadata":
+        return this.getSkillMetadata(sessionId);
 
       // ── File / History (global — no session required) ──
       case "searchFiles":
@@ -1074,6 +1077,11 @@ export class AgentBridge {
   } {
     const entry = this.requireSession(sessionId);
     return { configurations: entry.agent.getSubagentConfigurations() };
+  }
+
+  private getSkillMetadata(sessionId?: string): { skills: SkillMetadata[] } {
+    const entry = this.requireSession(sessionId);
+    return { skills: entry.agent.getSkillMetadata() };
   }
 
   // ── File / History (global) ───────────────────────────────────

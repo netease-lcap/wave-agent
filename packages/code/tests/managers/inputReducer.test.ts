@@ -31,6 +31,7 @@ describe("inputReducer", () => {
       showPluginManager: false,
       showRewindManager: false,
       showWorkflowManager: false,
+      showSkillsManager: false,
       showHelp: false,
       showStatusCommand: false,
       showLoginCommand: false,

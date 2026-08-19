@@ -16,6 +16,7 @@ import type {
   Task,
   SlashCommand,
   SubagentConfiguration,
+  SkillMetadata,
   PermissionDecision,
   PermissionMode,
   QueuedMessage,
@@ -101,6 +102,8 @@ export interface ChatContextType {
   hasSlashCommand: (commandId: string) => boolean;
   // Agent definitions (for /agents overlay)
   agentDefinitions: SubagentConfiguration[];
+  // Skill metadata (for /skills overlay)
+  skills: SkillMetadata[];
   // Permission functionality
   permissionMode: PermissionMode;
   setPermissionMode: (mode: PermissionMode) => void;
@@ -467,6 +470,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [agentDefinitions, setAgentDefinitions] = useState<
     SubagentConfiguration[]
   >([]);
+  // Skill metadata (for /skills overlay)
+  const [skills, setSkills] = useState<SkillMetadata[]>([]);
 
   // Permission state
   const [permissionMode, setPermissionModeState] = useState<PermissionMode>(
@@ -885,6 +890,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         const initialAgentDefinitions =
           agent.getSubagentConfigurations?.() || [];
         setAgentDefinitions(initialAgentDefinitions);
+
+        // Get initial skill metadata
+        const initialSkills = agent.getSkillMetadata?.() || [];
+        setSkills(initialSkills);
       } catch (error) {
         console.error("Failed to initialize AI manager:", error);
       }
@@ -924,6 +933,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     setMcpServerStatuses([]);
     setSlashCommands([]);
     setAgentDefinitions([]);
+    setSkills([]);
     setSessionId("");
     setIsLoading(false);
     setLatestTotalTokens(0);
@@ -1300,6 +1310,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     slashCommands,
     hasSlashCommand,
     agentDefinitions,
+    skills,
     permissionMode,
     setPermissionMode,
     isConfirmationVisible,

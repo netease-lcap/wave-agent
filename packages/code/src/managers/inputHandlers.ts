@@ -369,6 +369,8 @@ export const handleCommandSelect = (
           dispatch({ type: "SET_SHOW_MCP_MANAGER", payload: true });
         } else if (command === "agents") {
           dispatch({ type: "SET_SHOW_AGENTS_MANAGER", payload: true });
+        } else if (command === "skills") {
+          dispatch({ type: "SET_SHOW_SKILLS_MANAGER", payload: true });
         } else if (command === "rewind") {
           dispatch({ type: "SET_SHOW_REWIND_MANAGER", payload: true });
         } else if (command === "help") {
