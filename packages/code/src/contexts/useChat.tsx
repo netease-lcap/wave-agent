@@ -5,6 +5,7 @@ import React, {
   useRef,
   useEffect,
   useState,
+  useMemo,
 } from "react";
 import { useInput, useStdout } from "ink";
 import { useAppConfig } from "./useAppConfig.js";
@@ -193,6 +194,200 @@ const snapshotMessage = (message: Message): Message => ({
   blocks: message.blocks.map((block) => ({ ...block })),
 });
 
+/**
+ * Pure updater: appends a text-content delta to the target message's text
+ * block (creating it on first delta), applying the stage signal.
+ */
+const applyContentDelta = (
+  prev: Message[],
+  params: StreamingUpdateParams,
+): Message[] => {
+  const { messageId, chunk, stage } = params;
+  return prev.map((m) => {
+    if (m.id !== messageId) return m;
+    const textBlockIndex = m.blocks.findIndex((b) => b.type === "text");
+    if (textBlockIndex === -1) {
+      return {
+        ...m,
+        blocks: [...m.blocks, { type: "text", content: chunk, stage }],
+      };
+    }
+    return {
+      ...m,
+      blocks: m.blocks.map((b, idx) =>
+        idx === textBlockIndex && b.type === "text"
+          ? {
+              ...b,
+              content: (b.content || "") + chunk,
+              stage,
+            }
+          : b,
+      ),
+    };
+  });
+};
+
+/**
+ * Pure updater: appends a reasoning delta to the target message's reasoning
+ * block (creating it on first delta), applying the stage signal.
+ */
+const applyReasoningDelta = (
+  prev: Message[],
+  params: StreamingUpdateParams,
+): Message[] => {
+  const { messageId, chunk, stage } = params;
+  return prev.map((m) => {
+    if (m.id !== messageId) return m;
+    const reasoningBlockIndex = m.blocks.findIndex(
+      (b) => b.type === "reasoning",
+    );
+    if (reasoningBlockIndex === -1) {
+      return {
+        ...m,
+        blocks: [...m.blocks, { type: "reasoning", content: chunk, stage }],
+      };
+    }
+    return {
+      ...m,
+      blocks: m.blocks.map((b, idx) =>
+        idx === reasoningBlockIndex && b.type === "reasoning"
+          ? {
+              ...b,
+              content: (b.content || "") + chunk,
+              stage,
+            }
+          : b,
+      ),
+    };
+  });
+};
+
+/**
+ * Pure updater: applies a tool block update. Streaming carries only the
+ * `parametersChunk` delta, appended to the accumulated parameters;
+ * start/running/end carry the authoritative value and replace wholesale.
+ */
+const applyToolBlockUpdate = (
+  prev: Message[],
+  params: ToolBlockUpdateCallbackParams,
+): Message[] => {
+  const { messageId, id: toolBlockId, parametersChunk, ...updates } = params;
+  return prev.map((m) => {
+    if (m.id !== messageId) return m;
+    const toolBlockIndex = m.blocks.findIndex(
+      (b) => b.type === "tool" && b.id === toolBlockId,
+    );
+    if (toolBlockIndex === -1) {
+      return {
+        ...m,
+        blocks: [
+          ...m.blocks,
+          {
+            type: "tool",
+            id: toolBlockId,
+            name: updates.name || "",
+            stage: updates.stage || "start",
+            parameters: (updates.parameters || "") + (parametersChunk || ""),
+            result: updates.result || "",
+            ...updates,
+          },
+        ],
+      };
+    }
+    return {
+      ...m,
+      blocks: m.blocks.map((b, idx) =>
+        idx === toolBlockIndex && b.type === "tool"
+          ? {
+              ...b,
+              ...updates,
+              parameters: parametersChunk
+                ? (b.parameters || "") + parametersChunk
+                : updates.parameters !== undefined
+                  ? updates.parameters
+                  : b.parameters,
+            }
+          : b,
+      ),
+    };
+  });
+};
+
+/**
+ * Single throttled updater entry for ALL message-state updates. The one
+ * 500ms window-concat window replaces the previous three-channel throttles
+ * (content/reasoning/tool), so every message-state update — including the
+ * tool `running` stage's high-frequency `shortResult`/`result` updates from
+ * bash — coalesces into the same window.
+ *
+ * Semantics: leading edge applies immediately and opens a window; updates
+ * arriving within the window are queued in arrival order (FIFO) and applied
+ * at the trailing edge as ONE composed updater, so no update is lost and no
+ * update is reordered. `flush` applies queued updates immediately (used by
+ * end signals and one-shot structural updates); `cancel` drops queued
+ * updates (used by refreshMessages after pulling the authoritative snapshot —
+ * the queued updates are already contained in it).
+ *
+ * The FIFO queue structurally replaces the old tool throttle's "drop a
+ * tool's buffered streaming deltas when running arrives" logic: a running
+ * updater is queued BEHIND the streaming chunks that preceded it and applies
+ * after them, so a stale streaming event can never flush after running and
+ * regress the stage (yellow dot -> gray). See
+ * docs/specs/core/stream-content-updates.md.
+ */
+export function createThrottledUpdater<T>(
+  apply: (updater: (prev: T) => T) => void,
+  wait: number,
+): {
+  (updater: (prev: T) => T): void;
+  cancel: () => void;
+  flush: () => void;
+} {
+  let timer: NodeJS.Timeout | null = null;
+  let queued: Array<(prev: T) => T> = [];
+
+  const fire = () => {
+    if (queued.length === 0) return;
+    const batch = queued;
+    queued = [];
+    // Compose the whole batch into a single updater applied in FIFO order —
+    // one state commit per trailing edge, no update dropped, no reordering.
+    apply((prev) => batch.reduce((acc, upd) => upd(acc), prev));
+  };
+
+  const throttled = (updater: (prev: T) => T) => {
+    if (timer) {
+      queued.push(updater);
+      return;
+    }
+    // Leading edge: apply immediately, then open a window whose trailing
+    // edge only carries updates arriving within the window.
+    apply(updater);
+    timer = setTimeout(() => {
+      timer = null;
+      fire();
+    }, wait);
+  };
+
+  throttled.cancel = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    queued = [];
+  };
+
+  throttled.flush = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    fire();
+  };
+
+  return throttled;
+}
+
 export const ChatProvider: React.FC<ChatProviderProps> = ({
   children,
   bypassPermissions,
@@ -223,132 +418,26 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [latestTotalTokens, setLatestTotalTokens] = useState(0);
   const [maxInputTokens, setMaxInputTokens] = useState(200000);
 
-  // Direct incremental streaming updaters — every delta is applied to the
-  // message state immediately, without a cooldown window. The former 500ms
-  // window-concat throttle is gone: its trailing-edge flush could interleave
-  // with a full-list `refreshMessages` snapshot replacement mid-stream and
-  // re-append old deltas on top of the authoritative content (first-word
-  // duplication). Terminal write frequency is bounded downstream by Ink's
-  // built-in ~30fps output throttle. See
-  // docs/specs/core/stream-content-updates.md.
-  const applyContentUpdate = useCallback((params: StreamingUpdateParams) => {
-    const { messageId, chunk, stage } = params;
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== messageId) return m;
-        const textBlockIndex = m.blocks.findIndex((b) => b.type === "text");
-        if (textBlockIndex === -1) {
-          return {
-            ...m,
-            blocks: [...m.blocks, { type: "text", content: chunk, stage }],
-          };
-        }
-        return {
-          ...m,
-          blocks: m.blocks.map((b, idx) =>
-            idx === textBlockIndex && b.type === "text"
-              ? {
-                  ...b,
-                  content: (b.content || "") + chunk,
-                  stage,
-                }
-              : b,
-          ),
-        };
-      }),
-    );
-  }, []);
-
-  const applyReasoningUpdate = useCallback((params: StreamingUpdateParams) => {
-    const { messageId, chunk, stage } = params;
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== messageId) return m;
-        const reasoningBlockIndex = m.blocks.findIndex(
-          (b) => b.type === "reasoning",
-        );
-        if (reasoningBlockIndex === -1) {
-          return {
-            ...m,
-            blocks: [...m.blocks, { type: "reasoning", content: chunk, stage }],
-          };
-        }
-        return {
-          ...m,
-          blocks: m.blocks.map((b, idx) =>
-            idx === reasoningBlockIndex && b.type === "reasoning"
-              ? {
-                  ...b,
-                  content: (b.content || "") + chunk,
-                  stage,
-                }
-              : b,
-          ),
-        };
-      }),
-    );
-  }, []);
-
-  const applyToolBlockUpdate = useCallback(
-    (params: ToolBlockUpdateCallbackParams) => {
-      const {
-        messageId,
-        id: toolBlockId,
-        parametersChunk,
-        ...updates
-      } = params;
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== messageId) return m;
-          const toolBlockIndex = m.blocks.findIndex(
-            (b) => b.type === "tool" && b.id === toolBlockId,
-          );
-          if (toolBlockIndex === -1) {
-            return {
-              ...m,
-              blocks: [
-                ...m.blocks,
-                {
-                  type: "tool",
-                  id: toolBlockId,
-                  name: updates.name || "",
-                  stage: updates.stage || "start",
-                  parameters:
-                    (updates.parameters || "") + (parametersChunk || ""),
-                  result: updates.result || "",
-                  ...updates,
-                },
-              ],
-            };
-          }
-          return {
-            ...m,
-            blocks: m.blocks.map((b, idx) =>
-              idx === toolBlockIndex && b.type === "tool"
-                ? {
-                    ...b,
-                    ...updates,
-                    // Streaming carries only the delta; append it to the
-                    // accumulated parameters. start/running/end carry the
-                    // authoritative value and replace wholesale.
-                    parameters: parametersChunk
-                      ? (b.parameters || "") + parametersChunk
-                      : updates.parameters !== undefined
-                        ? updates.parameters
-                        : b.parameters,
-                  }
-                : b,
-            ),
-          };
-        }),
-      );
-    },
+  // Single throttled entry for ALL message-state updates — one 500ms
+  // window-concat window shared by every callback (content/reasoning deltas,
+  // tool parametersChunk, tool `running` stage shortResult/result, one-shot
+  // structural updates). The tool `running` stage used to bypass throttling
+  // (bash shortResult height changes per chunk → layout flicker); routing it
+  // through the same window as streaming deltas coalesces it to ≤1 render per
+  // window. See createThrottledUpdater + docs/specs/core/stream-content-updates.md.
+  const updateMessages = useMemo(
+    () =>
+      createThrottledUpdater<Message[]>((updater) => setMessages(updater), 500),
     [],
   );
 
   useEffect(() => {
     isExpandedRef.current = isExpanded;
-  }, [isExpanded]);
+    if (isExpanded) {
+      // Cancel pending throttled updates so the frozen expanded view isn't overwritten
+      updateMessages.cancel();
+    }
+  }, [isExpanded, updateMessages]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState("");
@@ -447,10 +536,19 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const refreshMessages = useCallback(() => {
     if (!isExpandedRef.current && agentRef.current) {
       const msgs = agentRef.current.messages.map(snapshotMessage);
+      // Snapshot-safe: the full-list replacement makes the SDK state
+      // authoritative. Any update still queued inside the 500ms throttle
+      // window was applied to the SDK before this pull, so it is already
+      // contained in `msgs` — dropping it prevents the trailing-edge flush
+      // from re-appending the pre-refresh chunk on top of the snapshot
+      // (first-word duplication). Updates arriving after the pull start fresh
+      // windows and append on top of the snapshot. See
+      // docs/specs/core/stream-content-updates.md.
+      updateMessages.cancel();
       setMessages(msgs);
       setLatestTotalTokens(extractLatestTotalTokens(msgs));
     }
-  }, []);
+  }, [updateMessages]);
 
   // Permission confirmation methods with queue support
   const showConfirmation = useCallback(
@@ -491,18 +589,23 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
       const callbacks: AgentCallbacks = {
         // ── Incremental message updates (no full-list pushes) ──────
+        // All of these funnel through the single throttled `updateMessages`
+        // entry, so every message-state update shares one 500ms window.
         onUserMessageAdded: () => {
           if (isExpandedRef.current || !agentRef.current) return;
           const msgs = agentRef.current.messages;
           const last = msgs[msgs.length - 1];
           if (!last || last.role !== "user") return;
           // Eager snapshot at callback time — React defers updater execution to
-          // the batch flush, so evaluating snapshotMessage inside setMessages
+          // the batch flush, so evaluating snapshotMessage inside the updater
           // would read the SDK message after its in-place mutations.
           const snapshot = snapshotMessage(last);
-          setMessages((prev) =>
+          updateMessages((prev) =>
             prev.some((m) => m.id === last.id) ? prev : [...prev, snapshot],
           );
+          // One-shot structural update — flush immediately so the message
+          // card appears at once (queuing it gains no coalescing).
+          updateMessages.flush();
         },
         onAssistantMessageAdded: (messageId: string) => {
           if (isExpandedRef.current || !agentRef.current) return;
@@ -512,25 +615,29 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           // fires this callback BEFORE the first delta writes into the shared
           // message, so capturing here copies the pre-mutation (empty) blocks.
           const snapshot = snapshotMessage(msg);
-          setMessages((prev) =>
+          updateMessages((prev) =>
             prev.some((m) => m.id === messageId) ? prev : [...prev, snapshot],
           );
+          updateMessages.flush();
         },
         onAssistantContentUpdated: (params) => {
           if (isExpandedRef.current) return;
-          applyContentUpdate(params);
+          updateMessages((prev) => applyContentDelta(prev, params));
+          if (params.stage === "end") updateMessages.flush();
         },
         onAssistantReasoningUpdated: (params) => {
           if (isExpandedRef.current) return;
-          applyReasoningUpdate(params);
+          updateMessages((prev) => applyReasoningDelta(prev, params));
+          if (params.stage === "end") updateMessages.flush();
         },
         onToolBlockUpdated: (params) => {
           if (isExpandedRef.current) return;
-          applyToolBlockUpdate(params);
+          updateMessages((prev) => applyToolBlockUpdate(prev, params));
+          if (params.stage === "end") updateMessages.flush();
         },
         onErrorBlockAdded: (error: string) => {
           if (isExpandedRef.current) return;
-          setMessages((prev) => {
+          updateMessages((prev) => {
             // Append to the LAST message only if it is an assistant message
             // (the current turn's in-flight reply). If the last message is a
             // user message, the error belongs BELOW it — create a new
@@ -558,10 +665,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
               },
             ];
           });
+          // One-shot structural update — flush immediately (errors must not be
+          // delayed by a streaming window).
+          updateMessages.flush();
         },
         onAddBangMessage: (command, messageId) => {
           if (isExpandedRef.current) return;
-          setMessages((prev) =>
+          updateMessages((prev) =>
             prev.some((m) => m.id === messageId)
               ? prev
               : [
@@ -582,10 +692,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
                   },
                 ],
           );
+          updateMessages.flush();
         },
         onUpdateBangMessage: (command, output, messageId) => {
           if (isExpandedRef.current) return;
-          setMessages((prev) =>
+          updateMessages((prev) =>
             prev.map((m) =>
               m.id === messageId
                 ? {
@@ -602,7 +713,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         },
         onCompleteBangMessage: (command, exitCode, messageId, output) => {
           if (isExpandedRef.current) return;
-          setMessages((prev) =>
+          updateMessages((prev) =>
             prev.map((m) =>
               m.id === messageId
                 ? {
@@ -622,6 +733,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
                 : m,
             ),
           );
+          // Completion signal — flush so the final state applies immediately.
+          updateMessages.flush();
         },
         onLatestTotalTokensChange: (tokens) => {
           setLatestTotalTokens(tokens);
@@ -791,9 +904,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       originalCwd,
       model,
       initialPermissionMode,
-      applyContentUpdate,
-      applyReasoningUpdate,
-      applyToolBlockUpdate,
+      updateMessages,
       mcpServers,
     ],
   );
@@ -832,6 +943,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      updateMessages.cancel();
       if (agentRef.current) {
         try {
           // Display usage summary before cleanup
@@ -845,7 +957,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         agentRef.current.destroy();
       }
     };
-  }, []);
+  }, [updateMessages]);
 
   // Send message function (including judgment logic)
   const sendMessage = useCallback(

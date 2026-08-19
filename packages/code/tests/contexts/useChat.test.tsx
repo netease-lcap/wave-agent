@@ -5,6 +5,7 @@ import {
   ChatProvider,
   useChat,
   ChatContextType,
+  createThrottledUpdater,
 } from "../../src/contexts/useChat.js";
 import { Agent, BackgroundShell, Task } from "wave-agent-sdk";
 import { AppProvider } from "../../src/contexts/useAppConfig.js";
@@ -1624,7 +1625,122 @@ describe("ChatProvider", () => {
     });
   });
 
-  it("applies reasoning streaming updates immediately without throttling", async () => {
+  describe("createThrottledUpdater", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("applies the leading edge immediately and composes within-window updates FIFO at the trailing edge", () => {
+      vi.useFakeTimers();
+      const applied: Array<(prev: number[]) => number[]> = [];
+      const apply = vi.fn((updater: (prev: number[]) => number[]) => {
+        applied.push(updater);
+      });
+      const throttled = createThrottledUpdater<number[]>(apply, 500);
+
+      throttled((prev) => [...prev, 1]); // leading edge — immediate
+      expect(apply).toHaveBeenCalledTimes(1);
+
+      throttled((prev) => [...prev, 2]);
+      throttled((prev) => [...prev, 3]);
+      // Queued inside the window, not applied yet
+      expect(apply).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(600);
+      expect(apply).toHaveBeenCalledTimes(2);
+      // Trailing edge applies the whole queue as one composed updater in FIFO
+      // order — no update dropped, no reordering
+      const state = applied[1](applied[0]([]));
+      expect(state).toEqual([1, 2, 3]);
+    });
+
+    it("keeps every queued update — no last-value-wins drop of interleaved updates", () => {
+      vi.useFakeTimers();
+      const applied: Array<(prev: string[]) => string[]> = [];
+      const apply = vi.fn((updater: (prev: string[]) => string[]) => {
+        applied.push(updater);
+      });
+      const throttled = createThrottledUpdater<string[]>(apply, 500);
+
+      throttled((prev) => [...prev, "tool-a:1"]);
+      throttled((prev) => [...prev, "tool-b:1"]);
+      throttled((prev) => [...prev, "tool-a:2"]);
+      throttled((prev) => [...prev, "tool-b:2"]);
+
+      vi.advanceTimersByTime(600);
+      expect(apply).toHaveBeenCalledTimes(2);
+      // All four updates survive in arrival order
+      const state = applied[1](applied[0]([]));
+      expect(state).toEqual(["tool-a:1", "tool-b:1", "tool-a:2", "tool-b:2"]);
+    });
+
+    it("queues a running update FIFO behind earlier streaming updates so the stage never regresses", () => {
+      vi.useFakeTimers();
+      let state = { stage: "start" as string, parameters: "" };
+      const apply = vi.fn((updater: (prev: typeof state) => typeof state) => {
+        state = updater(state);
+      });
+      const throttled = createThrottledUpdater<typeof state>(apply, 500);
+
+      throttled((s) => ({
+        ...s,
+        stage: "streaming",
+        parameters: s.parameters + "{",
+      }));
+      throttled((s) => ({
+        ...s,
+        stage: "running",
+        parameters: '{"cmd":"ls"}',
+      }));
+
+      vi.advanceTimersByTime(600);
+      expect(apply).toHaveBeenCalledTimes(2);
+      // The streaming chunk applies first, then the authoritative running
+      // values — no stale flush can regress the stage back to streaming
+      // (replaces the old createToolStreamingThrottle drop-on-running logic)
+      expect(state).toEqual({ stage: "running", parameters: '{"cmd":"ls"}' });
+    });
+
+    it("flush applies queued updates immediately (end signals)", () => {
+      vi.useFakeTimers();
+      const applied: Array<(prev: number[]) => number[]> = [];
+      const apply = vi.fn((updater: (prev: number[]) => number[]) => {
+        applied.push(updater);
+      });
+      const throttled = createThrottledUpdater<number[]>(apply, 500);
+
+      throttled((prev) => [...prev, 1]);
+      throttled((prev) => [...prev, 2]);
+      throttled.flush();
+      expect(apply).toHaveBeenCalledTimes(2);
+      const state = applied[1](applied[0]([]));
+      expect(state).toEqual([1, 2]);
+      // No timer remains armed — advancing time must not re-apply anything
+      vi.advanceTimersByTime(600);
+      expect(apply).toHaveBeenCalledTimes(2);
+    });
+
+    it("cancel drops queued updates so no stale flush re-appends pre-refresh content", () => {
+      vi.useFakeTimers();
+      let state = { content: "" };
+      const apply = vi.fn((updater: (prev: typeof state) => typeof state) => {
+        state = updater(state);
+      });
+      const throttled = createThrottledUpdater<typeof state>(apply, 500);
+
+      throttled((s) => ({ content: s.content + "Let" }));
+      throttled((s) => ({ content: s.content + " me" })); // queued
+      throttled.cancel();
+      vi.advanceTimersByTime(600);
+      // Only the leading edge applied; the queued " me" was dropped (its
+      // content is already contained in the authoritative snapshot pulled by
+      // refreshMessages) — no "Let me me"
+      expect(apply).toHaveBeenCalledTimes(1);
+      expect(state).toEqual({ content: "Let" });
+    });
+  });
+
+  it("throttles reasoning streaming updates and flushes on end", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
       lastValue = val;
@@ -1653,13 +1769,20 @@ describe("ChatProvider", () => {
       expect(lastValue?.messages).toHaveLength(1);
     });
 
-    // Every delta applies immediately — no 500ms cooldown window coalesces
-    // chunks (the former window-concat throttle is removed)
+    // Leading edge appends a new reasoning block immediately
     callbacks.onAssistantReasoningUpdated!({
       messageId: "msg-reason",
       chunk: "Th",
       stage: "streaming",
     });
+    await vi.waitFor(() => {
+      const reasoning = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "reasoning",
+      ) as { content: string } | undefined;
+      expect(reasoning?.content).toBe("Th");
+    });
+
+    // Subsequent chunks within the 500ms window are coalesced (trailing)
     callbacks.onAssistantReasoningUpdated!({
       messageId: "msg-reason",
       chunk: "ink",
@@ -1670,14 +1793,12 @@ describe("ChatProvider", () => {
       chunk: "ing",
       stage: "streaming",
     });
-    await vi.waitFor(() => {
-      const reasoning = lastValue?.messages[0].blocks.find(
-        (b) => b.type === "reasoning",
-      ) as { content: string } | undefined;
-      expect(reasoning?.content).toBe("Thinking");
-    });
+    const beforeFlush = lastValue?.messages[0].blocks.find(
+      (b) => b.type === "reasoning",
+    ) as { content: string } | undefined;
+    expect(beforeFlush?.content).toBe("Th");
 
-    // stage === "end" appends its delta and applies the end signal
+    // stage === "end" flushes pending deltas and applies the end signal
     callbacks.onAssistantReasoningUpdated!({
       messageId: "msg-reason",
       chunk: "…",
@@ -2047,12 +2168,14 @@ describe("ChatProvider", () => {
       expect(lastValue?.messages).toHaveLength(1);
     });
 
-    // Regression (docs/specs/core/stream-content-updates.md, 2026-08-17): the
-    // removed 500ms window-concat throttle could carry a pending delta across
-    // a full-list refresh — the trailing-edge flush then re-appended the
-    // pre-refresh chunk on top of the authoritative snapshot ("Let me me").
-    // With the throttle gone every delta applies immediately, so no pending
-    // window exists for this interleaving to double-count through.
+    // Regression (docs/specs/core/stream-content-updates.md, 2026-08-17
+    // 竞态 / 2026-08-19 修复): the 500ms window-concat throttle carries the
+    // pending " me" delta across the full-list refresh. The trailing-edge
+    // flush would then re-append the pre-refresh chunk on top of the
+    // authoritative snapshot ("Let me" + " me" = "Let me me"). `refreshMessages`
+    // cancels the throttle windows at snapshot time — the pending delta is
+    // already contained in the pulled snapshot, so dropping it is lossless and
+    // the duplication cannot occur.
     const sdkMsg = mockAgent.messages[0] as unknown as {
       blocks: Array<{ type: string; content: string; stage: string }>;
     };
@@ -2089,7 +2212,10 @@ describe("ChatProvider", () => {
     });
 
     // A structural action (e.g. /clear) replaces CLI state with a full
-    // snapshot of the SDK's authoritative messages mid-stream
+    // snapshot of the SDK's authoritative messages mid-stream. The snapshot
+    // pull happens before the throttle windows are cancelled, so the pending
+    // " me" delta (already written into the SDK's message) is dropped, not
+    // flushed on top of the snapshot.
     Object.assign(mockAgent, {
       clearMessages: vi.fn().mockResolvedValue(undefined),
     });
@@ -2101,8 +2227,9 @@ describe("ChatProvider", () => {
       expect(reasoning?.content).toBe("Let me");
     });
 
-    // Let any leftover cooldown timer (old code) fire — the content must stay
-    // byte-identical to the SDK's authoritative content, never "Let me me"
+    // Let any leftover cooldown timer (without the snapshot-safe cancel) fire —
+    // the content must stay byte-identical to the SDK's authoritative content,
+    // never "Let me me"
     vi.advanceTimersByTime(1000);
     await vi.waitFor(() => {
       const reasoning = lastValue?.messages[0].blocks.find(
