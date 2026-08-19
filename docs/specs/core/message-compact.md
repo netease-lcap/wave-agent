@@ -7,7 +7,7 @@ order: 70
 # 功能规格说明：消息压缩
 
 **创建日期**：2026-01-22  
-**更新日期**：2026-08-18
+**更新日期**：2026-08-19
 
 ## 用户场景与测试 _（必填）_
 
@@ -21,9 +21,46 @@ order: 70
 
 **验收场景**：
 
-1. **假设**总 token 计数超过 `getMaxInputTokens()`，**当**处理下一条消息时，**则**代理必须识别要压缩的消息
+1. **假设**估算的上下文 token 数超过 `getMaxInputTokens()`，**当**发送下一个 API 请求前执行检查时，**则**代理必须识别要压缩的消息并在请求发出前触发压缩
 2. **假设**消息被识别用于压缩，**当**总结完成时，**则**原始消息必须被 `compress` 块替换，后跟旧消息列表的最后 2 个 API 轮次
 3. **假设**存在 `compress` 块，**当**向 API 发送消息时，**则**它必须被转换为 **user** 消息（匹配 Claude Code 的自动压缩行为）
+
+---
+
+### 用户故事：请求前自动压缩触发（对齐 Claude Code）（优先级：P1）
+
+作为 AI 代理，我希望在发送 API 请求之前基于估算的上下文大小判断是否压缩，而不是在响应返回后才发现超限，以便超限请求永远不会真正发出。
+
+**为什么是这个优先级**：当前实现是在每次 API 响应返回后检查该次响应的 `usage`，超限时才压缩——判断慢一拍，导致输入超过 `maxInputTokens` 的请求真实发出（可能直接撞上模型 context length / 413 错误）。对齐 Claude Code 的 proactive 机制：请求前用「上次响应的真实 usage + 其后新增消息的估算」预测本次请求的上下文大小，超过阈值先压缩再发。
+
+**独立测试**：模拟一次巨大工具输出后，验证下一次请求发出前即触发压缩（而非等响应返回）；模拟 fork 路径（压缩、auto-memory 提取），验证不触发自动压缩；验证压缩完成后同一轮循环内不再重复触发。
+
+**验收场景**：
+
+1. **假设**存在上次 API 响应的 `usage`，**当**构造本次请求前执行上下文估算时，**则**估算值 = 上次响应的 `total_tokens` + 上次响应之后新增消息的字符估算（CJK 感知，与 `estimateTokens` 一致）
+2. **假设**估算的上下文 token 数超过 `getMaxInputTokens()`，**当**发送请求前检查时，**则**必须触发压缩，超限请求不得发出
+3. **假设**估算的上下文 token 数未超过阈值，**当**发送请求前检查时，**则**请求正常发出，不触发压缩
+4. **假设**agent 循环中一轮工具调用结束、下一轮请求将要发出，**当**发送请求前检查时，**则**每次请求前（包括工具调用后的后续轮次）都必须重新估算并检查
+5. **假设**当前请求是压缩 fork 或 auto-memory 提取等 fork 路径，**当**发送请求前检查时，**则**必须跳过自动压缩判断（fork 继承完整历史，触发压缩会造成递归死锁）
+6. **假设**压缩刚完成、同一轮 agent 循环继续，**当**发送请求前检查时，**则**不得基于压缩前的估算值再次触发压缩（压缩结果已保证在阈值内）
+7. **假设**上次响应后的新消息估算与真实 token 数存在偏差，**当**请求真实发出后返回 413 / context length 错误时，**则**走既有错误处理路径（`invalid_request` + 友好错误消息），不引入新的响应后主动压缩检查
+
+---
+
+### 用户故事：压缩触发仅使用 total_tokens（去除缓存 token 双重计数）（优先级：P1）
+
+作为 AI 代理，我希望自动压缩的判断只依据 `total_tokens`（已包含缓存命中 token），不再叠加 `cache_read_input_tokens` 和 `cache_creation_input_tokens`，以便上下文占用度量准确，压缩不会过早触发。
+
+**为什么是这个优先级**：wave 走 OpenAI 兼容接口（OpenAI SDK + 网关），该格式下 `prompt_tokens = 缓存命中 + 未命中`、`total_tokens = prompt_tokens + completion_tokens`，缓存命中已计入 `total_tokens`（DeepSeek 官方文档明确 `prompt_tokens` 等于 `prompt_cache_hit_tokens + prompt_cache_miss_tokens`）。原实现把 `prompt_tokens_details.cached_tokens` 规范化后与 `total_tokens` 相加，造成缓存命中双重计数——缓存命中通常占上下文绝大部分，导致压缩过早触发（实际上下文远未到 `maxInputTokens` 就压缩）。该加法源自 Anthropic 原生格式（其 `input_tokens` 不含缓存字段），与 wave 实际使用的 OpenAI 兼容格式错配。
+
+**独立测试**：构造含 `cache_read_input_tokens`（大值）和 `cache_creation_input_tokens` 的 usage，验证压缩判断仅使用 `total_tokens`，缓存字段不参与判断；验证 `latestTotalTokens` 展示语义（含缓存，供计费/成本展示）不受影响。
+
+**验收场景**：
+
+1. **假设**响应的 `usage` 包含 `total_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens`，**当**判断是否超过 `getMaxInputTokens()` 时，**则**只使用 `total_tokens`（OpenAI 兼容格式下已含缓存命中），缓存字段不得叠加
+2. **假设**响应仅含 `cache_read_input_tokens`（缓存命中极大）而 `total_tokens` 远低于阈值，**当**判断是否触发压缩时，**则**不得触发压缩
+3. **假设**`usage` 中 `total_tokens` 未超阈值但叠加缓存字段后超过，**当**判断是否触发压缩时，**则**不得触发压缩
+4. **假设**`latestTotalTokens` 仍按含缓存的综合值展示（供 CLI / webview 成本展示），**当**展示 token 使用量时，**则**展示语义保持不变，与压缩触发判断解耦
 
 ---
 
@@ -191,6 +228,8 @@ order: 70
 - **API 轮次边界**：压缩绝对不能将 tool_use/tool_result 对分割在压缩边界两侧
 - **fork 循环无文本输出**：达到最大轮次（3 轮）或 fork 请求抛异常（用户中止除外）即判定压缩失败，计入熔断器；压缩无 fallback 降级路径（快速模型稳定性不足，且 fork 失败多为上下文本身不可恢复）
 - **模型将工具调用语法作为文本输出**：不做内容级拦截，原样透传（与 Claude Code 一致的已知限制——Claude Code 依靠 agent loop 在协议层拒绝真实工具调用，对文本中的乱码双方均不拦截）
+- **无上次响应的 usage 锚点**：会话第一轮请求（或清空后）尚无真实 usage，请求前估算退化为纯字符估算（全部消息按 `estimateTokens` 计算），不得因缺失锚点而跳过检查
+- **请求前估算偏差**：估算可能低于真实 token 数，真实超限由 413 / context length 错误路径兜底；不引入响应后主动压缩检查
 
 ## 假设
 

@@ -7,7 +7,10 @@ import {
   parseTaskNotificationXml,
   taskNotificationToXml,
 } from "../utils/notificationXml.js";
-import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
+import {
+  calculateComprehensiveTotalTokens,
+  estimateContextTokens,
+} from "../utils/tokenCalculation.js";
 import { estimateTokens } from "../utils/tokenEstimate.js";
 import {
   getTaskReminderTurnCounts,
@@ -587,42 +590,51 @@ export class AIManager {
     return "";
   }
 
-  // Private method to handle token statistics and message compaction
-  private async handleTokenUsageAndCompaction(
-    usage: Usage | undefined,
-    abortController: AbortController,
-  ): Promise<void> {
+  // Private method to update the displayed token statistics from a response.
+  // The comprehensive value (including cache tokens) is intentionally kept:
+  // it drives cost/usage display. Auto-compaction is NOT decided here — it
+  // happens pre-request via maybeAutoCompactBeforeRequest so that over-limit
+  // requests never go out (aligned with Claude Code's proactive autocompact).
+  private updateLatestTotalTokens(usage: Usage | undefined): void {
     if (!usage) return;
 
     // Update token statistics - display comprehensive token usage including cache tokens
     const comprehensiveTotalTokens = calculateComprehensiveTotalTokens(usage);
     this.messageManager.setlatestTotalTokens(comprehensiveTotalTokens);
+  }
 
-    // Check if token limit exceeded - use injected configuration
-    if (
-      usage.total_tokens +
-        (usage.cache_read_input_tokens || 0) +
-        (usage.cache_creation_input_tokens || 0) >
-      this.getMaxInputTokens()
-    ) {
-      logger?.debug(
-        `Token usage exceeded ${this.getMaxInputTokens()}, compacting messages...`,
+  /**
+   * Pre-request auto-compaction check (aligned with Claude Code's
+   * autoCompactIfNeeded). Runs before every API request is issued: estimates
+   * the context that is about to be sent (last response's total_tokens plus
+   * character estimates for newer messages) and compacts first when it
+   * exceeds maxInputTokens, so over-limit requests are never sent. Only
+   * total_tokens is used — under OpenAI-compatible usage it already includes
+   * cache hits; adding cache fields would double-count and fire early.
+   * Fork paths (compaction / auto-memory) never reach here: they run in
+   * runForkLoop, not sendAIMessage.
+   */
+  private async maybeAutoCompactBeforeRequest(
+    abortController: AbortController,
+  ): Promise<void> {
+    // Circuit breaker: skip compaction after 3 consecutive failures
+    if (this.consecutiveCompactionFailures >= 3) {
+      logger?.warn(
+        `Skipping compaction: ${this.consecutiveCompactionFailures} consecutive failures`,
       );
+      return;
+    }
 
-      const messagesToCompact = this.messageManager.getMessages();
-      if (messagesToCompact.length === 0) return;
+    const messages = this.messageManager.getMessages();
+    if (messages.length === 0) return;
 
-      // Circuit breaker: skip compaction after 3 consecutive failures
-      if (this.consecutiveCompactionFailures >= 3) {
-        logger?.warn(
-          `Skipping compaction: ${this.consecutiveCompactionFailures} consecutive failures`,
-        );
-        return;
-      }
-
-      await this.compactConversation({
-        abortSignal: abortController.signal,
-      });
+    const maxTokens = this.getMaxInputTokens();
+    const estimatedTokens = estimateContextTokens(messages);
+    if (estimatedTokens > maxTokens) {
+      logger?.debug(
+        `Estimated context tokens ${estimatedTokens} exceeded ${maxTokens}, compacting before request...`,
+      );
+      await this.compactConversation({ abortSignal: abortController.signal });
     }
   }
 
@@ -1780,6 +1792,11 @@ ${question}`;
             });
           }
 
+          // Pre-request auto-compaction: estimate the context about to be sent
+          // and compact BEFORE issuing the request, so an over-limit request
+          // never goes out. Skipped on fork paths (they use runForkLoop).
+          await this.maybeAutoCompactBeforeRequest(abortController);
+
           // Get recent message history
           const rawMessages = this.messageManager.getMessages();
           const currentModelConfig = this.getModelConfig();
@@ -2053,11 +2070,9 @@ ${question}`;
             }
           }
 
-          // Handle token statistics and message compaction
-          await this.handleTokenUsageAndCompaction(
-            result.usage,
-            abortController,
-          );
+          // Update token statistics for display (compaction decision is
+          // pre-request, see maybeAutoCompactBeforeRequest)
+          this.updateLatestTotalTokens(result.usage);
 
           // Finalize text/reasoning blocks for the final response (no tools)
           this.messageManager.finalizeStreamingBlocks();

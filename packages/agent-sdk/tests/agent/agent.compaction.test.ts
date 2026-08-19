@@ -37,7 +37,10 @@ describe("Agent Message Compaction Tests", () => {
   });
 
   // Helper function: generate specified number of message conversations
-  const generateMessages = (count: number): Message[] => {
+  // Pass usageTokens to attach a large total_tokens usage to the last
+  // assistant message — the pre-request estimate anchors on it and triggers
+  // compaction before the request is sent.
+  const generateMessages = (count: number, usageTokens?: number): Message[] => {
     const messages: Message[] = [];
     for (let i = 0; i < count; i++) {
       messages.push({
@@ -60,6 +63,15 @@ describe("Agent Message Compaction Tests", () => {
             content: `Assistant response ${i + 1}: I'll help you with task ${i + 1}`,
           },
         ],
+        ...(usageTokens !== undefined
+          ? {
+              usage: {
+                prompt_tokens: Math.floor(usageTokens * 0.8),
+                completion_tokens: Math.floor(usageTokens * 0.2),
+                total_tokens: usageTokens,
+              },
+            }
+          : {}),
         timestamp: new Date().toISOString(),
       });
     }
@@ -80,9 +92,10 @@ describe("Agent Message Compaction Tests", () => {
     );
   };
 
-  it("should trigger compaction when token usage exceeds 96k", async () => {
-    // Create message history with enough messages (generate 8 pairs of messages, total 16)
-    const messages = generateMessages(8);
+  it("should trigger compaction before the request when the estimated context exceeds the limit", async () => {
+    // Create message history whose last response usage exceeds the limit —
+    // the pre-request estimate anchors on it and compacts before sending.
+    const messages = generateMessages(8, DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000);
 
     // Add a new user message to trigger AI call
     const newUserMessage: Message = {
@@ -121,26 +134,27 @@ describe("Agent Message Compaction Tests", () => {
           },
         };
       }
-      // Main loop: return high token usage to trigger compaction
+      // Main loop: normal response (the compaction decision is pre-request)
       return {
         content: "I understand your request. Let me help you with that.",
         usage: {
-          prompt_tokens: 50000,
-          completion_tokens: 20000,
-          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000, // Exceed default limit to trigger compaction
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
         },
       };
     });
 
-    // Call sendMessage to trigger AI call (this will trigger compaction)
+    // Call sendMessage to trigger AI call (this will trigger compaction
+    // before the request is issued)
     await agent.sendMessage("Test message");
 
-    // Verify AI service was called: main loop + compaction fork
+    // Verify AI service was called: compaction fork + main loop
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
-    expect(isCompactForkCall(mockCallAgent.mock.calls[1][0])).toBe(true);
+    expect(isCompactForkCall(mockCallAgent.mock.calls[0][0])).toBe(true);
 
     // Verify fork call parameters when called
-    const forkCall = mockCallAgent.mock.calls[1];
+    const forkCall = mockCallAgent.mock.calls[0];
     expect(forkCall[0]).toHaveProperty("messages");
     expect(Array.isArray(forkCall[0].messages)).toBe(true);
     expect(forkCall[0].messages.length).toBeGreaterThan(0);
@@ -226,8 +240,8 @@ describe("Agent Message Compaction Tests", () => {
   });
 
   it("should handle compaction errors gracefully", async () => {
-    // Create message history with enough messages (generate 10 pairs of messages, total 20)
-    const messages = generateMessages(10);
+    // Create message history whose last response usage exceeds the limit
+    const messages = generateMessages(10, DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000);
 
     // Add a new user message to trigger AI call
     const newUserMessage: Message = {
@@ -260,25 +274,27 @@ describe("Agent Message Compaction Tests", () => {
       return {
         content: "Response",
         usage: {
-          prompt_tokens: 50000,
-          completion_tokens: 20000,
-          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000, // Exceed default limit to trigger compaction
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
         },
       };
     });
 
-    // Call sendMessage to trigger compaction
+    // Call sendMessage to trigger compaction before the request
     await agent.sendMessage("Test message");
 
-    // Verify call details: main loop + failed fork attempt (no fallback)
+    // Verify call details: failed fork attempt + main loop (no fallback)
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
 
-    // Verify that an error block was added to the messages
-    const lastMessage = agent.messages[agent.messages.length - 1];
-    expect(lastMessage.blocks.some((block) => block.type === "error")).toBe(
-      true,
+    // Verify that an error block was added to the messages (the failed fork
+    // runs before the main-loop request, so the error lands on the user
+    // message, not the final assistant response)
+    const errorMessage = agent.messages.find((msg) =>
+      msg.blocks.some((block) => block.type === "error"),
     );
-    const errorBlock = lastMessage.blocks.find(
+    expect(errorMessage).toBeDefined();
+    const errorBlock = errorMessage!.blocks.find(
       (block) => block.type === "error",
     ) as {
       type: "error";
@@ -301,8 +317,12 @@ describe("Agent Message Compaction Tests", () => {
   it("should compact all messages when session already contains compaction", async () => {
     // Test scenario: When session already contains compaction message, new compaction should compact all content including previous compaction point
 
-    // Create initial 15 pairs of messages (30 messages)
-    const initialMessages = generateMessages(15);
+    // Create initial 15 pairs of messages (30 messages) with an over-limit
+    // last response usage so the pre-request estimate triggers compaction
+    const initialMessages = generateMessages(
+      15,
+      DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+    );
 
     // Insert a compaction message at position 9 (representing previous compaction)
     const messagesWithCompaction: Message[] = [
@@ -436,8 +456,8 @@ describe("Agent Message Compaction Tests", () => {
   });
 
   it("should send compacted message plus subsequent messages to callAgent", async () => {
-    // Create 10 pairs of messages (20 messages) to trigger compaction
-    const messages = generateMessages(10);
+    // Create 10 pairs of messages (20 messages) with over-limit last usage
+    const messages = generateMessages(10, DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000);
 
     // Add the first user message to trigger compaction
     const firstUserMessage: Message = {
@@ -481,27 +501,15 @@ describe("Agent Message Compaction Tests", () => {
         };
       }
 
-      if (callAgentCallCount === 1) {
-        // First call returns high token usage to trigger compaction
-        return {
-          content: "I understand. Let me help you with that task.",
-          usage: {
-            prompt_tokens: 50000,
-            completion_tokens: 20000,
-            total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000, // Exceeds default limit to trigger compaction
-          },
-        };
-      } else {
-        // Subsequent main-loop calls return normal responses
-        return {
-          content: "Here's my response to your second message.",
-          usage: {
-            prompt_tokens: 1000,
-            completion_tokens: 500,
-            total_tokens: 1500,
-          },
-        };
-      }
+      // Main loop: normal response (compaction decision is pre-request)
+      return {
+        content: "Here's my response.",
+        usage: {
+          prompt_tokens: 1000,
+          completion_tokens: 500,
+          total_tokens: 1500,
+        },
+      };
     });
 
     // First call to sendMessage triggers compaction
@@ -562,8 +570,8 @@ describe("Agent Message Compaction Tests", () => {
   });
 
   it("should save session before compaction to preserve original messages", async () => {
-    // Create message history with enough messages to trigger compaction
-    const messages = generateMessages(8);
+    // Create message history whose last response usage exceeds the limit
+    const messages = generateMessages(8, DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000);
 
     // Add a new user message to trigger AI call
     const newUserMessage: Message = {
@@ -593,19 +601,31 @@ describe("Agent Message Compaction Tests", () => {
     // Mock AI service
     const mockCallAgent = vi.mocked(aiService.callAgent);
 
-    mockCallAgent.mockImplementation(async () => {
-      // Return high token usage to trigger compaction
+    mockCallAgent.mockImplementation(async (params) => {
+      if (isCompactForkCall(params)) {
+        // Compaction fork: return the summary text
+        return {
+          content: "Compacted summary",
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+          },
+        };
+      }
+      // Main loop: normal response
       return {
         content: "I understand your request. Let me help you with that.",
         usage: {
-          prompt_tokens: 50000,
-          completion_tokens: 20000,
-          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000, // Exceed default limit to trigger compaction
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
         },
       };
     });
 
-    // Call sendMessage to trigger AI call (this will trigger compaction)
+    // Call sendMessage to trigger AI call (this will trigger compaction
+    // before the request is issued)
     await agent.sendMessage("Test message");
 
     // Verify saveSession was called at least 3rd:
@@ -614,20 +634,20 @@ describe("Agent Message Compaction Tests", () => {
     // 2. At the end of sendAIMessage (normal session save)
     expect(saveSessionSpy).toHaveBeenCalledTimes(3);
 
-    // Verify the order: the pre-compaction saveSession should happen after
-    // the main-loop callAgent call and before the compaction fork call
+    // Verify the order: the pre-compaction saveSession should happen before
+    // the compaction fork call (compaction runs pre-request, so the fork is
+    // the first callAgent call)
     const saveSessionCalls = saveSessionSpy.mock.invocationCallOrder;
     const callAgentCalls = mockCallAgent.mock.invocationCallOrder;
 
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
-    expect(isCompactForkCall(mockCallAgent.mock.calls[1][0])).toBe(true);
-    expect(saveSessionCalls[1]).toBeGreaterThan(callAgentCalls[0]);
-    expect(saveSessionCalls[1]).toBeLessThan(callAgentCalls[1]);
+    expect(isCompactForkCall(mockCallAgent.mock.calls[0][0])).toBe(true);
+    expect(saveSessionCalls[1]).toBeLessThan(callAgentCalls[0]);
   });
 
   it("should skip compaction after 3 consecutive failures (circuit breaker)", async () => {
-    // Create message history with enough messages to trigger compaction
-    const messages = generateMessages(8);
+    // Create message history whose last response usage exceeds the limit
+    const messages = generateMessages(8, DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000);
 
     // Add a new user message to trigger AI call
     const newUserMessage: Message = {
@@ -649,8 +669,10 @@ describe("Agent Message Compaction Tests", () => {
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
 
-    // The main loop always returns high token usage to trigger compaction;
-    // the fork always fails, driving consecutiveCompactionFailures upward.
+    // The over-limit history triggers compaction before each request; the
+    // fork always fails, driving consecutiveCompactionFailures upward. The
+    // main loop also returns over-limit usage so it becomes the new
+    // estimate anchor and keeps triggering on subsequent messages.
     mockCallAgent.mockImplementation(async (params) => {
       if (isCompactForkCall(params)) {
         throw new Error("Fork failed");
@@ -685,7 +707,7 @@ describe("Agent Message Compaction Tests", () => {
   });
 
   it("should reset circuit breaker counter on successful compaction", async () => {
-    const messages = generateMessages(8);
+    const messages = generateMessages(8, DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000);
     const newUserMessage: Message = {
       id: generateMessageId(),
       role: "user",
@@ -803,7 +825,10 @@ describe("Agent Message Compaction Tests", () => {
 
   describe("Background Tasks in Compact Context", () => {
     it("should render killed status with description and id", async () => {
-      const messages = generateMessages(8);
+      const messages = generateMessages(
+        8,
+        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      );
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -838,7 +863,10 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should render running status with duplicate warning", async () => {
-      const messages = generateMessages(8);
+      const messages = generateMessages(
+        8,
+        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      );
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -877,7 +905,10 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should include outputPath for running tasks", async () => {
-      const messages = generateMessages(8);
+      const messages = generateMessages(
+        8,
+        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      );
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -912,7 +943,10 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should render completed status with stdout delta", async () => {
-      const messages = generateMessages(8);
+      const messages = generateMessages(
+        8,
+        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      );
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -948,7 +982,10 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should render failed status with stderr delta", async () => {
-      const messages = generateMessages(8);
+      const messages = generateMessages(
+        8,
+        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      );
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -986,7 +1023,10 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should truncate delta text to 500 characters", async () => {
-      const messages = generateMessages(8);
+      const messages = generateMessages(
+        8,
+        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      );
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -1029,7 +1069,10 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should include outputPath for completed and failed tasks", async () => {
-      const messages = generateMessages(8);
+      const messages = generateMessages(
+        8,
+        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      );
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -1077,7 +1120,10 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should render multiple agents with mixed statuses", async () => {
-      const messages = generateMessages(8);
+      const messages = generateMessages(
+        8,
+        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      );
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -1136,7 +1182,10 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should exclude shell tasks from background tasks section", async () => {
-      const messages = generateMessages(8);
+      const messages = generateMessages(
+        8,
+        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      );
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -1189,7 +1238,10 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should not include background tasks section when no agents exist", async () => {
-      const messages = generateMessages(8);
+      const messages = generateMessages(
+        8,
+        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      );
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
