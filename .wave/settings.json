@@ -46,6 +46,16 @@
           }
         ]
       }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .wave/hooks/worktree-remove.mjs"
+          }
+        ]
+      }
     ]
   }
 }
