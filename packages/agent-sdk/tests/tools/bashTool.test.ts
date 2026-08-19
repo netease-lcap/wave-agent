@@ -64,6 +64,7 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 import { spawn } from "child_process";
 import { logger } from "../../src/utils/globalLogger.js";
 import { resolveShellPath } from "../../src/utils/shellResolver.js";
+import * as shellResolver from "../../src/utils/shellResolver.js";
 const mockSpawn = vi.mocked(spawn);
 
 describe("bashTool", () => {
@@ -762,17 +763,26 @@ EOF
   describe("CWD reset when outside safe zone", () => {
     // These tests mock `pwd -P` output as unix-style paths. Pin the platform to
     // non-Windows so the MSYS->Windows conversion (win32 only) doesn't rewrite
-    // them when the suite runs on a Windows machine/CI.
+    // them when the suite runs on a Windows machine/CI. resolveShellPath() is
+    // stubbed because the platform pin routes it to the unix resolver, which
+    // probes /bin/bash etc. — none exist on a Windows runner (Windows-only
+    // PATH, no $SHELL), and execute() would fail with "No suitable shell
+    // found" before the CWD logic runs.
     let platformSpy: ReturnType<typeof vi.spyOn>;
+    let resolveShellPathSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
       platformSpy = vi
         .spyOn(process, "platform", "get")
         .mockReturnValue("linux" as NodeJS.Platform);
+      resolveShellPathSpy = vi
+        .spyOn(shellResolver, "resolveShellPath")
+        .mockReturnValue("/bin/bash");
     });
 
     afterEach(() => {
       platformSpy.mockRestore();
+      resolveShellPathSpy.mockRestore();
     });
 
     const createMockProcess = (exitCode: number, newCwd: string) => {
