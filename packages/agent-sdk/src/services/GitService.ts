@@ -1,7 +1,7 @@
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export class GitService {
   private getTimeout(): number {
@@ -20,7 +20,7 @@ export class GitService {
    */
   async isGitAvailable(): Promise<boolean> {
     try {
-      await execAsync("git --version");
+      await execFileAsync("git", ["--version"]);
       return true;
     } catch {
       return false;
@@ -58,8 +58,8 @@ export class GitService {
     }
 
     try {
-      const refArgs = ref ? `-b "${ref}"` : "--depth 1";
-      await execAsync(`git clone ${refArgs} "${url}" "${targetPath}"`, {
+      const refArgs = ref ? ["-b", ref] : ["--depth", "1"];
+      await execFileAsync("git", ["clone", ...refArgs, url, targetPath], {
         env: { ...process.env, LC_ALL: "C" },
         timeout: this.getTimeout(),
       });
@@ -83,7 +83,7 @@ export class GitService {
       );
     }
     try {
-      await execAsync(`git -C "${targetPath}" pull`, {
+      await execFileAsync("git", ["-C", targetPath, "pull"], {
         env: { ...process.env, LC_ALL: "C" },
         timeout: this.getTimeout(),
       });

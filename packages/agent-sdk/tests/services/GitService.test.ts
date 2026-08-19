@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { GitService } from "../../src/services/GitService.js";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 
 vi.mock("child_process", () => ({
-  exec: vi.fn(),
+  execFile: vi.fn(),
 }));
 
 describe("GitService", () => {
@@ -22,7 +22,7 @@ describe("GitService", () => {
   });
 
   it("should return true if git is available", async () => {
-    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementation((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -32,16 +32,20 @@ describe("GitService", () => {
           ) => void
         )(null, { stdout: "git version 2.34.1", stderr: "" });
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     const available = await service.isGitAvailable();
     expect(available).toBe(true);
-    expect(exec).toHaveBeenCalledWith("git --version", expect.any(Function));
+    expect(execFile).toHaveBeenCalledWith(
+      "git",
+      ["--version"],
+      expect.any(Function),
+    );
   });
 
   it("should return false if git is not available", async () => {
-    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementation((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -51,7 +55,7 @@ describe("GitService", () => {
           ) => void
         )(new Error("command not found"), { stdout: "", stderr: "" });
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     const available = await service.isGitAvailable();
@@ -59,7 +63,7 @@ describe("GitService", () => {
   });
 
   it("should throw clear error if git is missing during clone", async () => {
-    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementation((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -69,7 +73,7 @@ describe("GitService", () => {
           ) => void
         )(new Error("command not found"), { stdout: "", stderr: "" });
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
@@ -79,7 +83,7 @@ describe("GitService", () => {
 
   it("should handle repository not found error", async () => {
     // Mock git --version success first
-    vi.mocked(exec).mockImplementationOnce((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementationOnce((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -89,13 +93,13 @@ describe("GitService", () => {
           ) => void
         )(null, { stdout: "git version 2.34.1", stderr: "" });
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     const error = new Error("Command failed");
     (error as unknown as { stderr: string }).stderr =
       "fatal: repository 'https://github.com/owner/repo.git/' not found";
-    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementation((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -108,7 +112,7 @@ describe("GitService", () => {
           stderr: (error as unknown as { stderr: string }).stderr,
         });
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
@@ -118,7 +122,7 @@ describe("GitService", () => {
 
   it("should handle authentication failure", async () => {
     // Mock git --version success first
-    vi.mocked(exec).mockImplementationOnce((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementationOnce((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -128,13 +132,13 @@ describe("GitService", () => {
           ) => void
         )(null, { stdout: "git version 2.34.1", stderr: "" });
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     const error = new Error("Command failed");
     (error as unknown as { stderr: string }).stderr =
       "fatal: Authentication failed for 'https://github.com/owner/repo.git/'";
-    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementation((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -147,7 +151,7 @@ describe("GitService", () => {
           stderr: (error as unknown as { stderr: string }).stderr,
         });
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
@@ -157,7 +161,7 @@ describe("GitService", () => {
 
   it("should handle not a git repository error in pull", async () => {
     // Mock git --version success first
-    vi.mocked(exec).mockImplementationOnce((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementationOnce((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -167,13 +171,13 @@ describe("GitService", () => {
           ) => void
         )(null, { stdout: "git version 2.34.1", stderr: "" });
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     const error = new Error("Command failed");
     (error as unknown as { stderr: string }).stderr =
       "fatal: not a git repository (or any of the parent directories): .git";
-    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementation((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -186,7 +190,7 @@ describe("GitService", () => {
           stderr: (error as unknown as { stderr: string }).stderr,
         });
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     await expect(service.pull("/path")).rejects.toThrow(
@@ -196,7 +200,7 @@ describe("GitService", () => {
 
   it("should handle git operation timeout", async () => {
     // Mock git --version success first
-    vi.mocked(exec).mockImplementationOnce((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementationOnce((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -206,12 +210,12 @@ describe("GitService", () => {
           ) => void
         )(null, { stdout: "git version 2.34.1", stderr: "" });
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     const error = new Error("Command failed");
     (error as unknown as { killed: boolean }).killed = true;
-    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementation((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -224,7 +228,7 @@ describe("GitService", () => {
           stderr: "",
         });
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
@@ -234,7 +238,7 @@ describe("GitService", () => {
 
   it("should handle repository not found error", async () => {
     vi.spyOn(service, "isGitAvailable").mockResolvedValue(true);
-    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementation((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -247,7 +251,7 @@ describe("GitService", () => {
           { stdout: "", stderr: "Repository not found" },
         );
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
@@ -257,7 +261,7 @@ describe("GitService", () => {
 
   it("should handle access denied error", async () => {
     vi.spyOn(service, "isGitAvailable").mockResolvedValue(true);
-    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementation((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -270,7 +274,7 @@ describe("GitService", () => {
           { stdout: "", stderr: "Could not read from remote repository" },
         );
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
@@ -280,7 +284,7 @@ describe("GitService", () => {
 
   it("should handle authentication failure", async () => {
     vi.spyOn(service, "isGitAvailable").mockResolvedValue(true);
-    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementation((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -293,7 +297,7 @@ describe("GitService", () => {
           { stdout: "", stderr: "Authentication failed" },
         );
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
@@ -303,7 +307,7 @@ describe("GitService", () => {
 
   it("should handle rate limit error", async () => {
     vi.spyOn(service, "isGitAvailable").mockResolvedValue(true);
-    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementation((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -313,7 +317,7 @@ describe("GitService", () => {
           ) => void
         )({ stderr: "rate limit" }, { stdout: "", stderr: "rate limit" });
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
@@ -323,7 +327,7 @@ describe("GitService", () => {
 
   it("should handle not a git repository error", async () => {
     vi.spyOn(service, "isGitAvailable").mockResolvedValue(true);
-    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementation((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -336,7 +340,7 @@ describe("GitService", () => {
           { stdout: "", stderr: "not a git repository" },
         );
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     await expect(service.pull("/path")).rejects.toThrow(
@@ -346,7 +350,7 @@ describe("GitService", () => {
 
   it("should handle generic git error", async () => {
     vi.spyOn(service, "isGitAvailable").mockResolvedValue(true);
-    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+    vi.mocked(execFile).mockImplementation((file, args, options, cb) => {
       const callback = typeof options === "function" ? options : cb;
       if (typeof callback === "function") {
         (
@@ -356,7 +360,7 @@ describe("GitService", () => {
           ) => void
         )(new Error("Unknown error"), { stdout: "", stderr: "Unknown error" });
       }
-      return {} as unknown as ReturnType<typeof exec>;
+      return {} as unknown as ReturnType<typeof execFile>;
     });
 
     await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
