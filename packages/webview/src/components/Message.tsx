@@ -36,18 +36,53 @@ import { FileToolHeader } from "./FileToolHeader";
 import "../styles/Message.css";
 
 // Configure marked for VS Code webview context
+const renderTaskListitem = (text: string, task: boolean, checked: boolean) => {
+  if (task) {
+    return `<li class="task-list-item${checked ? " checked" : ""}">${text}</li>`;
+  }
+  return `<li>${text}</li>`;
+};
+
 marked.use({
   gfm: true,
   breaks: true,
   renderer: {
-    listitem(text: string, task: boolean, checked: boolean) {
-      if (task) {
-        return `<li class="task-list-item${checked ? " checked" : ""}">${text}</li>`;
-      }
-      return `<li>${text}</li>`;
-    },
+    listitem: renderTaskListitem,
   },
 });
+
+// 行内代码（反引号）中的裸 http(s) URL 提升为可点击链接：仅当剥离首尾
+// 常见标点后整个内容是一个无空白的 URL 时才提升；多 URL、markdown 链接
+// 语法原文、非 http(s) 协议一律保持代码原文（见 specs/ui/markdown-links.md）。
+const extractClickableUrl = (codeText: string): string | null => {
+  const trimmed = codeText.trim();
+  if (!trimmed) return null;
+  const punct = /[\s.,;:!?()[\]{}'"<>，。、；：！？（）「」『』【】]/;
+  let start = 0;
+  let end = trimmed.length;
+  while (start < end && punct.test(trimmed[start]!)) start++;
+  while (end > start && punct.test(trimmed[end - 1]!)) end--;
+  const url = trimmed.slice(start, end);
+  return /^https?:\/\/\S+$/i.test(url) ? url : null;
+};
+
+// 局部 renderer：marked 9 的 parse 传 renderer 会整体替换全局 use 的配置，
+// 因此从完整 Renderer 派生并带上任务列表渲染，避免影响其它 marked 使用点。
+// codespan 收到的 text 已被 marked 的 tokenizer 转义（escape(text, true)），
+// 直接复用即可，URL 提升时 href 与显示文本同为已转义形式（如查询参数中的
+// `&` → `&amp;`，浏览器解析后还原）。
+const messageMarkdownRenderer = (() => {
+  const renderer = new marked.Renderer();
+  renderer.listitem = renderTaskListitem;
+  renderer.codespan = (text: string) => {
+    const url = extractClickableUrl(text);
+    if (url) {
+      return `<code><a href="${url}">${url}</a></code>`;
+    }
+    return `<code>${text}</code>`;
+  };
+  return renderer;
+})();
 
 // Interface for parsed markdown content that may contain mermaid diagrams
 interface ParsedMarkdownContent {
@@ -91,7 +126,7 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
       });
     } else if (part.trim()) {
       // This is regular markdown content
-      const html = marked.parse(part);
+      const html = marked.parse(part, { renderer: messageMarkdownRenderer });
       const sanitizedHtml = DOMPurify.sanitize(html, {
         ALLOWED_TAGS: [
           "p",
