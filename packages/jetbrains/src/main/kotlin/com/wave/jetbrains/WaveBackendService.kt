@@ -1,6 +1,7 @@
 package com.wave.jetbrains
 
 import com.intellij.ide.BrowserUtil
+import com.intellij.notification.Notification
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
@@ -23,8 +24,8 @@ import kotlinx.serialization.json.jsonPrimitive
  * in this project, mirroring the VSCE ChatProvider's shared-client architecture.
  *
  * Session-scoped notifications are demuxed by sessionId via the router; the shared client
- * is never per-session. CLI version upgrade happens pre-spawn in [ensureClient] via
- * BinaryResolver.ensureCliUpToDate, so no post-init reinit is needed.
+ * is never per-session. The bundled CLI is prepared (copied to ~/.wave/cli + ripgrep
+ * download) pre-spawn in [ensureClient] via BinaryResolver, so no post-init reinit is needed.
  */
 @Service(Service.Level.PROJECT)
 class WaveBackendService(private val project: Project) : Disposable {
@@ -33,6 +34,10 @@ class WaveBackendService(private val project: Project) : Disposable {
     private var sharedClient: StdioClient? = null
     @Volatile
     private var router: NotificationRouter? = null
+
+    /** The IDE notification shown while the bundled CLI / ripgrep is being prepared. */
+    @Volatile
+    private var installNotification: Notification? = null
 
     private val initMutex = Mutex()
 
@@ -56,39 +61,52 @@ class WaveBackendService(private val project: Project) : Disposable {
             if (sharedClient == null) {
                 BinaryResolver.onInstall = { message ->
                     Edt.invokeLater {
-                        NotificationGroupManager.getInstance()
+                        // Each progress step replaces the previous notification so the
+                        // user sees the latest stage ("正在准备…" → "正在下载…").
+                        installNotification?.expire()
+                        val notification = NotificationGroupManager.getInstance()
                             .getNotificationGroup("Wave")
                             .createNotification("Wave", message, NotificationType.INFORMATION)
-                            .notify(project)
+                        notification.notify(project)
+                        installNotification = notification
                     }
                 }
-                val pluginVer = WaveSession.pluginVersion()
-                val binary = if (pluginVer.isNotEmpty()) {
-                    BinaryResolver.ensureCliUpToDate(pluginVer)
-                } else {
-                    BinaryResolver.resolveWaveBinary()
-                }
-                BinaryResolver.onInstall = null
-                val c = StdioClient(binary, listOf("--stdio"), BinaryResolver.resolveEnv())
-                val r = NotificationRouter(c)
-                r.attach()
-                r.registerGlobal("authUrl") { p ->
-                    val url = p?.jsonObject?.get("url")?.jsonPrimitive?.content
-                    if (!url.isNullOrEmpty()) {
-                        Edt.invokeLater { BrowserUtil.browse(url) }
+                try {
+                    // Resolve the bundled CLI (copied to ~/.wave/cli + rg download) and
+                    // execute it with the system Node.js — no npm-global wave-code needed.
+                    val entry = BinaryResolver.resolveWaveBinary()
+                    val node = BinaryResolver.findNode()
+                    val c = StdioClient(listOf(node, entry), listOf("--stdio"), BinaryResolver.resolveEnv())
+                    val r = NotificationRouter(c)
+                    r.attach()
+                    r.registerGlobal("authUrl") { p ->
+                        val url = p?.jsonObject?.get("url")?.jsonPrimitive?.content
+                        if (!url.isNullOrEmpty()) {
+                            Edt.invokeLater { BrowserUtil.browse(url) }
+                        }
                     }
+                    sharedClient = c
+                    router = r
+                } finally {
+                    // Dismiss the install-progress notification once the CLI is ready —
+                    // it never auto-expires and would linger forever, making the user
+                    // think the download is still running (the webview only receives
+                    // setInitialState after this returns).
+                    Edt.invokeLater {
+                        installNotification?.expire()
+                        installNotification = null
+                    }
+                    BinaryResolver.onInstall = null
                 }
-                sharedClient = c
-                router = r
             }
         }
         return sharedClient!! to router!!
     }
 
     /**
-     * Initialize a session on the shared client. The CLI is upgraded pre-spawn
-     * in [ensureClient], so no post-init version negotiation is needed here.
-     * Mirrors VSCE chatProvider.ts initializeAgent (post-refactor).
+     * Initialize a session on the shared client. The bundled CLI is prepared
+     * pre-spawn in [ensureClient], so no post-init version negotiation is
+     * needed here. Mirrors VSCE chatProvider.ts initializeAgent (post-refactor).
      */
     suspend fun initializeSession(session: WaveSession, restoreSessionId: String?): Boolean {
         return session.initialize(restoreSessionId)
@@ -96,6 +114,7 @@ class WaveBackendService(private val project: Project) : Disposable {
 
     override fun dispose() {
         runCatching { sharedClient?.close() }
+        runCatching { installNotification?.expire() }
     }
 
     companion object {

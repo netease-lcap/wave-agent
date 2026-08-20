@@ -14,6 +14,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // tar.gz extraction for the on-demand ripgrep download (see BinaryResolver)
+    implementation("org.apache.commons:commons-compress:1.27.1")
     testImplementation(kotlin("test"))
     testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
@@ -60,10 +62,20 @@ val copyWebviewAssets by tasks.registering(Copy::class) {
 
 tasks.named("processResources") {
     mustRunAfter(copyWebviewAssets)
+    mustRunAfter(bundleCli)
 }
 
 tasks.named("classes") {
     dependsOn(copyWebviewAssets)
+    dependsOn(bundleCli)
+}
+
+// Copy the wave CLI 三件套 (bin/wave-code.js + package.json + dist/bundle/wave.mjs)
+// from packages/code into resources so the plugin can run bundled CLI sessions
+// with the customer's system Node.js — no npm-global wave-code needed.
+val bundleCli by tasks.registering(Exec::class) {
+    commandLine("node", "scripts/bundleCli.mjs")
+    workingDir(layout.projectDirectory)
 }
 
 tasks.named<JavaExec>("runIde") {

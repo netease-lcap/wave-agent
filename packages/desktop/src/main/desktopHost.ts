@@ -46,7 +46,7 @@ import { StdioClient } from "./stdio/stdioClient";
 import type { JsonRpcClient } from "./stdio/jsonRpcClient";
 import { StdioAgent, type StdioAgentCallbacks } from "./stdio/stdioAgent";
 import { NotificationRouter } from "./stdio/notificationRouter";
-import { ensureCliUpToDate, getCliVersion } from "./stdio/binaryResolver";
+import { ensureCliUpToDate } from "./stdio/binaryResolver";
 import {
   ConfigStore,
   type DesktopConfigData,
@@ -148,7 +148,6 @@ export class DesktopHost {
   private client: StdioClient | null = null;
   private router: NotificationRouter | null = null;
   private initPromise: Promise<void> | null = null;
-  private cliVersion: string | null = null;
 
   // Remote (ssh) host infrastructure: host name → its own shared JSON-RPC
   // client. Each remote host runs a `wave --daemon` (nohup, survives this app),
@@ -604,7 +603,6 @@ export class DesktopHost {
         });
         throw error;
       }
-      this.cliVersion = getCliVersion(binaryPath);
 
       this.client = new StdioClient(binaryPath, ["--stdio"]);
       this.router = new NotificationRouter(this.client);

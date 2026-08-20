@@ -1,137 +1,386 @@
 package com.wave.jetbrains.stdio
 
 import com.intellij.openapi.diagnostic.logger
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.FileOutputStream
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.nio.charset.Charset
+import java.time.Duration
 
 /** Minimum Node.js major version required by `wave --stdio`. */
 private const val MIN_NODE_MAJOR = 22
 
 /**
- * Resolves the `wave` binary at runtime: PATH → npm global bin → auto-install.
- * Mirrors packages/vscode/src/stdio/binaryResolver.ts.
+ * Resolves the `wave` CLI for local sessions. The CLI 三件套
+ * (`bin/wave-code.js` + `package.json` + `dist/bundle/wave.mjs`) is bundled
+ * inside the plugin jar, copied to the user-writable `~/.wave/cli` at runtime
+ * and executed with the customer's system Node.js (>= 22) — no npm-global
+ * `wave-code` package, no version check/upgrade. The grep dependency
+ * `@vscode/ripgrep` is NOT bundled; it is downloaded from npmmirror on first
+ * use into `~/.wave/cli/node_modules/` and cached.
  */
 object BinaryResolver {
     private val LOG = logger<BinaryResolver>()
-    private const val PACKAGE = "wave-code"
     const val NPM_REGISTRY = "https://registry.npmmirror.com"
 
     @Volatile
-    private var cachedPath: String? = null
+    private var cachedEntry: String? = null
+    @Volatile
+    private var cachedNode: String? = null
     @Volatile
     private var cachedLoginPath: String? = null
     @Volatile
     private var loginPathResolved = false
 
     private val isWindows = System.getProperty("os.name").lowercase().startsWith("win")
-    private val waveName = if (isWindows) "wave.cmd" else "wave"
     private val lookupCmd = if (isWindows) "where" else "which"
 
-    /** Optional callback invoked when an npm install/upgrade starts. */
+    /** Optional callback invoked when a download/copy starts. */
     var onInstall: ((String) -> Unit)? = null
 
-    fun resolveWaveBinary(targetVersion: String? = null): String {
-        cachedPath?.let { return it }
+    /**
+     * Platform dir of the rg binary package, e.g. `ripgrep-win32-x64`. Must
+     * include the `ripgrep-` prefix: the npm package name is
+     * `@vscode/ripgrep-<platform>-<arch>` and the extracted dir has to match it
+     * so the cache check hits and wave.mjs's createRequire resolution works.
+     */
+    internal val rgPlatformDir: String by lazy {
+        val os = System.getProperty("os.name").lowercase()
+        val arch = System.getProperty("os.arch").lowercase()
+        val platform = when {
+            os.contains("win") -> "win32"
+            os.contains("mac") -> "darwin"
+            else -> "linux"
+        }
+        val nodeArch = when {
+            arch == "x86_64" || arch == "amd64" -> "x64"
+            arch == "aarch64" || arch == "arm64" -> "arm64"
+            arch == "x86" || arch == "i386" || arch == "i686" -> "ia32"
+            else -> arch
+        }
+        "ripgrep-$platform-$nodeArch"
+    }
 
-        // 0. Verify Node.js >= 22 — wave --stdio requires it.
+    /**
+     * Resolve the runtime CLI entry (`~/.wave/cli/bin/wave-code.js`), copying
+     * the bundled CLI on first use / version change and downloading ripgrep on
+     * demand. `WAVE_CLI_PATH` env override wins (development).
+     * @throws StdioClientException when the bundled CLI is missing (corrupt
+     * install) or ripgrep cannot be downloaded.
+     */
+    fun resolveWaveBinary(): String {
+        cachedEntry?.let { return it }
+
+        // WAVE_CLI_PATH override (development) — mirrors desktop/vscode.
+        System.getenv("WAVE_CLI_PATH")
+            ?.takeIf { File(it).exists() }
+            ?.let { cachedEntry = it; return it }
+
+        // 0. Node.js >= 22 is required to execute the bundled CLI.
         checkNodeVersion()
 
-        // 0a. nvm-installed binary (GUI-launched IDEs don't inherit shell PATH, so an
-        // nvm-managed npm/wave install is invisible to `which` — probe nvm first).
-        findInNvm(waveName)?.let { return cache(it) }
+        // 1. Copy the bundled CLI into ~/.wave/cli (plugin install dir is
+        //    read-only; version change re-copies but keeps node_modules/ so an
+        //    already-downloaded rg is never re-downloaded).
+        val entry = prepareCli()
 
-        // 1. PATH lookup
-        findOnPath(waveName)?.let { return cache(it) }
-
-        // 2. npm global bin
-        val globalBin = getNpmGlobalBin()
-
-        // 3. global bin direct
-        val globalPath = File(globalBin, waveName).path
-        if (File(globalPath).exists()) return cache(globalPath)
-
-        // 4. auto-install — pin the exact version (same as the upgrade path).
-        val npm = findNpm()
-        val spec = if (targetVersion != null) "$PACKAGE@$targetVersion" else PACKAGE
-        LOG.info("wave not found; running: \"$npm\" install -g $spec --registry=$NPM_REGISTRY")
-        onInstall?.invoke(if (targetVersion != null) "正在安装 wave-code@$targetVersion，请稍候…" else "正在安装 wave-code，请稍候…")
-        runCommand(npm, "install", "-g", spec, "--registry=$NPM_REGISTRY")
-
-        // 5. recheck global bin
-        if (File(globalPath).exists()) return cache(globalPath)
-
-        // 6. recheck PATH
-        findOnPath(waveName)?.let { return cache(it) }
-
-        // 7. fail
-        val manual = if (targetVersion != null) "$PACKAGE@$targetVersion" else PACKAGE
-        throw StdioClientException("wave binary not found after installation. Install manually: npm install -g $manual --registry=$NPM_REGISTRY")
+        // 2. `@vscode/ripgrep` is a top-level import of the bundled CLI —
+        //    without it wave.mjs cannot even start. A failed download must
+        //    therefore surface as a clear init error, not as an opaque
+        //    MODULE_NOT_FOUND crash from the CLI child process.
+        val rgOk = ensureRipgrep()
+        if (!rgOk) {
+            throw StdioClientException(
+                "grep 搜索依赖（ripgrep）下载失败。请检查网络连接后重试。"
+            )
+        }
+        cachedEntry = entry
+        return entry
     }
 
     /**
-     * Upgrade the globally-installed `wave-code` CLI to [targetVersion].
-     * Resets the cached path on success and returns the freshly-resolved binary path.
+     * Resolve the `node` executable used to run the bundled CLI: PATH first,
+     * then nvm, then java.home parent (the JBR Node that ships with some IDEs).
+     * Result cached for the IDE session.
      */
-    fun upgradeWaveBinary(targetVersion: String): String {
-        val npm = findNpm()
-        LOG.info("Upgrading $PACKAGE to $targetVersion via: \"$npm\" install -g $PACKAGE@$targetVersion --registry=$NPM_REGISTRY")
-        onInstall?.invoke("正在升级 wave-code 到 v$targetVersion，请稍候…")
-        runCommand(npm, "install", "-g", "$PACKAGE@$targetVersion", "--registry=$NPM_REGISTRY")
-        resetCache()
-        return resolveWaveBinary()
+    fun findNode(): String {
+        cachedNode?.let { return it }
+        val node = try {
+            val out = runCommand(lookupCmd, "node")
+            pickExecutableLine(out)
+        } catch (_: Exception) { null } ?: findInNvm("node") ?: findJbrNode()
+        cachedNode = node
+        return node
+    }
+
+    private fun findJbrNode(): String {
+        val javaHome = System.getProperty("java.home")
+        val nodeDir = javaHome?.let { File(it).parent }
+        val candidates: List<File?> = if (isWindows) {
+            listOf(nodeDir?.let { File(it, "node.exe") }, nodeDir?.let { File(it, "node") })
+        } else {
+            listOf(
+                nodeDir?.let { File(it, "node") },
+                nodeDir?.let { File(File(it, ".."), "bin").let { File(it, "node") } },
+            )
+        }
+        candidates.filterNotNull().firstOrNull { it.exists() }?.path?.let { return it }
+        throw StdioClientException(
+            "未检测到 Node.js。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
+        )
     }
 
     /**
-     * Runs `<binaryPath> -v` and returns the bare version string (e.g. "0.18.7"),
-     * stripping a leading "v" if present. Returns null if the binary is
-     * missing/corrupt or `-v` fails (callers treat null as "needs upgrade").
-     * Uses a separate timed process rather than [runCommand] (which has no
-     * timeout): if the process hangs it is destroyed and null is returned.
+     * Check that the system Node.js is >= [MIN_NODE_MAJOR].
+     * @throws StdioClientException if the version is below the minimum or cannot be determined.
      */
-    fun getCliVersion(binaryPath: String): String? {
+    private fun checkNodeVersion() {
+        val node = findNode()
+        val output = try {
+            runCommandRaw(node, "-v").trim()
+        } catch (e: Exception) {
+            throw StdioClientException(
+                "未检测到 Node.js。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
+            )
+        }
+        val match = Regex("^v?(\\d+)").find(output)
+        val major = match?.groupValues?.get(1)?.toIntOrNull()
+        if (major == null) {
+            throw StdioClientException(
+                "无法确定 Node.js 版本（输出: $output）。请安装 Node.js >= $MIN_NODE_MAJOR (https://nodejs.org)，然后重启编辑器。"
+            )
+        }
+        if (major < MIN_NODE_MAJOR) {
+            throw StdioClientException(
+                "Node.js 版本过低（当前 v$major，需要 >= $MIN_NODE_MAJOR）。请升级 Node.js (https://nodejs.org)，然后重启编辑器。"
+            )
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Bundled CLI → ~/.wave/cli
+    // ------------------------------------------------------------------
+
+    internal fun cliInstallDir(): File = File(System.getProperty("user.home"), ".wave/cli")
+
+    private fun cliEntryPath(): String = File(cliInstallDir(), "bin/wave-code.js").path
+
+    /**
+     * Copy the bundled CLI into the runtime dir when missing or when the bundled
+     * version differs (plugin upgrade). The runtime `node_modules/` (downloaded
+     * ripgrep) is preserved across copies so an already-downloaded rg is never
+     * re-downloaded after an upgrade. Returns the runtime entry path.
+     * @throws StdioClientException when the bundled CLI itself is missing (corrupt install).
+     */
+    private fun prepareCli(): String {
+        val entry = cliEntryPath()
+        val needCopy =
+            !File(entry).exists() ||
+                bundledVersion() != runtimeVersion() ||
+                !File(cliInstallDir(), "dist/bundle/wave.mjs").exists()
+
+        if (needCopy) {
+            onInstall?.invoke("正在准备内置 wave CLI…")
+            // Replace the CLI files only — keep node_modules/ (the cached rg
+            // download) so an upgrade does not force re-downloading it.
+            File(cliInstallDir(), "dist").deleteRecursively()
+            File(entry).delete()
+            File(cliInstallDir(), "package.json").delete()
+            cliInstallDir().mkdirs()
+            copyResource("wave-cli/bin/wave-code.js", File(cliInstallDir(), "bin/wave-code.js"))
+            copyResource("wave-cli/package.json", File(cliInstallDir(), "package.json"))
+            copyResource("wave-cli/dist/bundle/wave.mjs", File(cliInstallDir(), "dist/bundle/wave.mjs"))
+        }
+        return entry
+    }
+
+    /** Extract a classpath resource (bundled CLI) to [target]. */
+    private fun copyResource(resource: String, target: File) {
+        val stream = javaClass.classLoader.getResourceAsStream(resource)
+            ?: throw StdioClientException("内置 CLI 缺失（$resource）。请重新安装插件。")
+        target.parentFile?.mkdirs()
+        stream.use { input -> FileOutputStream(target).use { output -> input.copyTo(output) } }
+    }
+
+    /** Version of the CLI bundled inside the plugin jar. */
+    private fun bundledVersion(): String {
         return try {
-            val proc = ProcessBuilder(listOf(binaryPath, "-v")).apply {
-                redirectErrorStream(true)
-                environment().putAll(resolveEnv())
-            }.start()
-            val out = proc.inputStream.bufferedReader().readText()
-            if (!proc.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
-                proc.destroyForcibly()
-                return null
-            }
-            val line = out.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }
-                ?: return null
-            line.trimStart('v')
+            val stream = javaClass.classLoader.getResourceAsStream("wave-cli/package.json")
+                ?: return ""
+            val text = stream.bufferedReader().use { it.readText() }
+            versionOf(text)
         } catch (_: Exception) {
-            null
+            ""
         }
     }
 
+    /** Version of the runtime CLI in ~/.wave/cli. */
+    private fun runtimeVersion(): String {
+        return try {
+            val file = File(cliInstallDir(), "package.json")
+            if (!file.isFile) return ""
+            versionOf(file.readText())
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    private fun versionOf(packageJson: String): String {
+        return try {
+            Json.parseToJsonElement(packageJson).jsonObject["version"]?.jsonPrimitive?.content ?: ""
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // ripgrep download + cache
+    // ------------------------------------------------------------------
+
+    internal fun rgInstallDir(): File = File(cliInstallDir(), "node_modules/@vscode")
+
+    internal fun rgBinaryPath(): String =
+        File(rgInstallDir(), "$rgPlatformDir/bin/rg${if (isWindows) ".exe" else ""}").path
+
     /**
-     * Ensure the wave CLI exists and its version is >= [targetVersion]. Returns the
-     * (possibly upgraded) binary path. Mirrors packages/vscode/src/stdio/binaryResolver.ts
-     * ensureCliUpToDate.
+     * Download the ripgrep JS wrapper and the current platform's rg binary into
+     * the runtime CLI dir. Returns true when the rg binary is in place. Never
+     * throws — a failed download only disables the grep tool until a later
+     * launch retries (caller [resolveWaveBinary] turns failure into a hard
+     * init error).
      */
-    fun ensureCliUpToDate(targetVersion: String): String {
-        val binaryPath = resolveWaveBinary(targetVersion)
-        val current = getCliVersion(binaryPath)
-        if (current != null) {
-            val cmp = try { compareVersions(current, targetVersion) } catch (_: Exception) { 0 }
-            if (cmp >= 0) return binaryPath
+    internal fun ensureRipgrep(): Boolean {
+        if (File(rgBinaryPath()).exists()) return true
+        return try {
+            val pkgFile = File(cliInstallDir(), "package.json")
+            if (!pkgFile.isFile) return false
+            val pkg = Json.parseToJsonElement(pkgFile.readText()).jsonObject
+            val rgRange = pkg["dependencies"]?.jsonObject?.get("@vscode/ripgrep")?.jsonPrimitive?.content
+            if (rgRange == null) return true // CLI has no grep dependency — nothing to do.
+
+            onInstall?.invoke("正在下载 grep 搜索依赖（ripgrep），请稍候…")
+            val rgVersion = resolveRipgrepVersion(rgRange)
+            val dir = rgInstallDir()
+            // Each tarball strips its top `package/` dir, so extract into its own
+            // package dir — the JS wrapper and the platform binary must NOT share
+            // a directory (wave.mjs resolves `@vscode/ripgrep` via createRequire).
+            val jsDir = File(dir, "ripgrep")
+            val binDir = File(dir, rgPlatformDir)
+            jsDir.mkdirs()
+            binDir.mkdirs()
+            extractTarball(downloadBuffer(tarballUrl("@vscode/ripgrep", rgVersion)), jsDir)
+            extractTarball(downloadBuffer(tarballUrl("@vscode/$rgPlatformDir", rgVersion)), binDir)
+            File(rgBinaryPath()).exists()
+        } catch (e: Exception) {
+            LOG.warn("[Wave] ripgrep 下载失败，grep 工具暂不可用：", e)
+            false
         }
-        // current is null (corrupt) or older than target → upgrade.
-        return upgradeWaveBinary(targetVersion)
     }
 
+    /** Highest version of `@vscode/ripgrep` satisfying the CLI's declared range. */
+    private fun resolveRipgrepVersion(range: String): String {
+        val meta = Json.parseToJsonElement(fetchText("$NPM_REGISTRY/@vscode/ripgrep")).jsonObject
+        val versions = meta["versions"]?.jsonObject?.keys
+            ?: throw StdioClientException("获取 @vscode/ripgrep 元数据失败")
+        val best = versions
+            .filter { satisfiesCaret(it, range) }
+            .maxWithOrNull(Comparator { a, b -> compareVersions(a, b) })
+            ?: throw StdioClientException("没有满足 $range 的 @vscode/ripgrep 版本")
+        return best
+    }
+
+    /** Resolve the registry tarball URL for `pkg@version` (from package metadata). */
+    private fun tarballUrl(pkg: String, version: String): String {
+        val meta = Json.parseToJsonElement(fetchText("$NPM_REGISTRY/$pkg")).jsonObject
+        val dist = meta["versions"]?.jsonObject?.get(version)?.jsonObject?.get("dist")?.jsonObject
+        val url = dist?.get("tarball")?.jsonPrimitive?.content
+            ?: throw StdioClientException("未找到 $pkg@$version 的下载地址")
+        return url
+    }
+
+    private val http: HttpClient by lazy {
+        HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(30))
+            // npmmirror tarball URLs 302-redirect to the CDN — JDK HttpClient
+            // does NOT follow redirects by default (desktop/vscode rely on
+            // fetch's automatic redirect handling, so this must be explicit).
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build()
+    }
+
+    private fun fetchText(url: String): String {
+        val req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(60)).GET().build()
+        val res = http.send(req, HttpResponse.BodyHandlers.ofString())
+        if (res.statusCode() !in 200..299) {
+            throw StdioClientException("获取 $url 失败（HTTP ${res.statusCode()}）")
+        }
+        return res.body()
+    }
+
+    private fun downloadBuffer(url: String): ByteArray {
+        val req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(120)).GET().build()
+        val res = http.send(req, HttpResponse.BodyHandlers.ofByteArray())
+        if (res.statusCode() !in 200..299) {
+            throw StdioClientException("下载 $url 失败（HTTP ${res.statusCode()}）")
+        }
+        return res.body()
+    }
+
+    /** Extract a `.tar.gz` tarball, stripping the top `package/` dir. */
+    internal fun extractTarball(bytes: ByteArray, destDir: File) {
+        GzipCompressorInputStream(ByteArrayInputStream(bytes)).use { gz ->
+            TarArchiveInputStream(gz).use { tar ->
+                var entry = tar.nextEntry
+                while (entry != null) {
+                    // Each npm tarball has a single top-level `package/` dir — strip it.
+                    val name = entry.name.substringAfter('/')
+                    if (name.isNotEmpty()) {
+                        val out = File(destDir, name)
+                        if (entry.isDirectory) {
+                            out.mkdirs()
+                        } else {
+                            out.parentFile?.mkdirs()
+                            FileOutputStream(out).use { tar.transferTo(it) }
+                        }
+                    }
+                    entry = tar.nextEntry
+                }
+            }
+        }
+    }
+
+    /** True when [version] (pure x.y.z, no prerelease) satisfies a `^a.b.c` range. */
+    internal fun satisfiesCaret(version: String, range: String): Boolean {
+        val rm = Regex("""^\^(\d+)\.(\d+)\.(\d+)$""").find(range) ?: return false
+        val vm = Regex("""^(\d+)\.(\d+)\.(\d+)$""").find(version) ?: return false
+        val (rMajor, rMinor, rPatch) = rm.destructured
+        val (vMajor, vMinor, vPatch) = vm.destructured
+        if (vMajor != rMajor) return false
+        val minor = vMinor.toInt(); val patch = vPatch.toInt()
+        return minor > rMinor.toInt() || (minor == rMinor.toInt() && patch >= rPatch.toInt())
+    }
+
+    // ------------------------------------------------------------------
+    // Environment for spawned processes (login-shell PATH)
+    // ------------------------------------------------------------------
+
     /**
-     * Environment variables to inject into spawned `wave`/`npm` processes.
+     * Environment variables to inject into spawned `node` processes.
      *
      * GUI-launched IDEs inherit a minimal launchd PATH and never source the
      * shell profile, so homebrew, nvm, pnpm, and user-customized bin dirs are
-     * invisible to `System.getenv("PATH")` and the `#!/usr/bin/env node`
-     * shebang can't resolve `node`. We inject the login-shell PATH, which
-     * rebuilds the full PATH (including the nvm bin dir the shebang needs).
-     * Returns an empty map when there's nothing to inject.
+     * invisible to `System.getenv("PATH")`. We inject the login-shell PATH,
+     * which rebuilds the full PATH (so the CLI child can resolve tools like
+     * git). Returns an empty map when there's nothing to inject.
      */
     fun resolveEnv(): Map<String, String> = buildEnv(resolveLoginShellPath())
 
@@ -247,132 +496,17 @@ object BinaryResolver {
         return bash.path
     }
 
-    /** Reset cache (testing). */
-    fun resetCache() { cachedPath = null }
-
-    private fun cache(path: String): String {
-        cachedPath = path
-        return path
-    }
-
-    private fun findOnPath(name: String): String? {
-        return try {
-            val out = runCommand(lookupCmd, name)
-            pickExecutableLine(out)
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    /**
-     * Pick the executable line from `which`/`where` output. On Windows `where`
-     * lists the extensionless bash launcher first (e.g. `C:\Program Files\nodejs\npm`)
-     * followed by `npm.cmd` — CreateProcess cannot execute the bash launcher, so
-     * prefer `.cmd`/`.exe`/`.bat` lines. [windows] is injectable for tests.
-     */
-    internal fun pickExecutableLine(lookupOutput: String, windows: Boolean = isWindows): String? {
-        val lines = lookupOutput.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
-        if (windows) {
-            lines.firstOrNull {
-                val l = it.lowercase()
-                l.endsWith(".cmd") || l.endsWith(".exe") || l.endsWith(".bat")
-            }?.let { return it }
-        }
-        return lines.firstOrNull()
-    }
-
-    /**
-     * Find `node` executable: PATH first, then nvm, then java.home parent
-     * (the JBR Node that ships with some IDEs).
-     */
-    private fun findNode(): String {
-        try {
-            val out = runCommand(lookupCmd, "node")
-            out.lineSequence().firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        } catch (_: Exception) {}
-        findInNvm("node")?.let { return it }
-        // JBR-shipped node lives in jbr/bin/node relative to the IDE install.
-        val javaHome = System.getProperty("java.home") ?: throw StdioClientException(
-            "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
-        )
-        val nodeDir = File(javaHome).parent ?: throw StdioClientException(
-            "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
-        )
-        val candidates: List<File> = if (isWindows) {
-            listOf(File(nodeDir, "node.exe"), File(nodeDir, "node"))
-        } else {
-            listOf(File(nodeDir, "node"), File(File(nodeDir, ".."), "bin").let { File(it, "node") })
-        }
-        candidates.firstOrNull { it.exists() }?.path?.let { return it }
-        throw StdioClientException(
-            "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
-        )
-    }
-
-    /**
-     * Check that the system Node.js is >= [MIN_NODE_MAJOR].
-     * @throws StdioClientException if the version is below the minimum or cannot be determined.
-     */
-    private fun checkNodeVersion() {
-        val node = findNode()
-        val output = try {
-            runCommandRaw(node, "-v").trim()
-        } catch (e: Exception) {
-            throw StdioClientException(
-                "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
-            )
-        }
-        val match = Regex("^v?(\\d+)").find(output)
-        val major = match?.groupValues?.get(1)?.toIntOrNull()
-        if (major == null) {
-            throw StdioClientException(
-                "无法确定 Node.js 版本（输出: $output）。请安装 Node.js >= $MIN_NODE_MAJOR (https://nodejs.org)，然后重启编辑器。"
-            )
-        }
-        if (major < MIN_NODE_MAJOR) {
-            throw StdioClientException(
-                "Node.js 版本过低（当前 v$major，需要 >= $MIN_NODE_MAJOR）。请升级 Node.js (https://nodejs.org)，然后重启编辑器。"
-            )
-        }
-    }
-
-    private fun findNpm(): String {
-        // which/where npm
-        try {
-            val out = runCommand(lookupCmd, "npm")
-            pickExecutableLine(out)?.let { return it }
-        } catch (_: Exception) {}
-        // nvm-installed npm (GUI-launched IDEs don't inherit shell PATH)
-        findInNvm("npm")?.let { return it }
-        // fallback: node dir
-        val javaHome = System.getProperty("java.home") ?: throw StdioClientException(
-            "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
-        )
-        val nodeDir = File(javaHome).parent ?: throw StdioClientException(
-            "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
-        )
-        val candidates: List<File> = if (isWindows) {
-            listOf(File(nodeDir, "npm.cmd"), File(nodeDir, "npm"))
-        } else {
-            listOf(File(nodeDir, "npm"), File(File(nodeDir, ".."), "bin").let { File(it, "npm") })
-        }
-        candidates.firstOrNull { it.exists() }?.path?.let { return it }
-        throw StdioClientException(
-            "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
-        )
-    }
-
-    private fun getNpmGlobalBin(): String {
-        val npm = findNpm()
-        val prefix = runCommand(npm, "prefix", "-g").trim()
-        return if (isWindows) prefix else File(prefix, "bin").path
+    /** Reset caches (testing). */
+    fun resetCache() {
+        cachedEntry = null
+        cachedNode = null
     }
 
     /**
      * Resolves the nvm-managed node bin directory (`<nvm>/versions/node/<ver>/bin`).
      *
      * GUI-launched IDEs on macOS don't inherit the shell PATH, so an nvm-installed
-     * npm/wave is invisible to `which`. nvm itself doesn't symlink a stable entry
+     * node is invisible to `which`. nvm itself doesn't symlink a stable entry
      * outside its own tree (the `~/.nvm/versions/node/<ver>/bin` path only exists
      * once a node version is installed), so we resolve the active version directly
      * from nvm's own bookkeeping.
@@ -413,18 +547,35 @@ object BinaryResolver {
         return File(best, "bin").takeIf { it.isDirectory }
     }
 
-    /** Locates `name` (e.g. `npm`, `wave`) inside the nvm bin dir, if present. */
+    /** Locates `name` inside the nvm bin dir, if present. */
     internal fun findInNvm(name: String, nvmRoot: File? = null): String? {
         val bin = findNvmBinDir(nvmRoot) ?: return null
         return File(bin, name).takeIf { it.exists() }?.path
     }
 
     /**
-     * Compares two nvm-style version dir names (e.g. `v22.14.0` vs `v20.19.0`).
+     * Pick the executable line from `which`/`where` output. On Windows `where`
+     * lists the extensionless bash launcher first (e.g. `C:\Program Files\nodejs\npm`)
+     * followed by `npm.cmd` — CreateProcess cannot execute the bash launcher, so
+     * prefer `.cmd`/`.exe`/`.bat` lines. [windows] is injectable for tests.
+     */
+    internal fun pickExecutableLine(lookupOutput: String, windows: Boolean = isWindows): String? {
+        val lines = lookupOutput.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+        if (windows) {
+            lines.firstOrNull {
+                val l = it.lowercase()
+                l.endsWith(".cmd") || l.endsWith(".exe") || l.endsWith(".bat")
+            }?.let { return it }
+        }
+        return lines.firstOrNull()
+    }
+
+    /**
+     * Compares two version strings (e.g. `v22.14.0` vs `v20.19.0`).
      * Leading `v` is stripped, segments compared numerically; missing/unparseable
      * segments count as 0. Returns negative/zero/positive like [Comparator].
      */
-    fun compareVersions(a: String, b: String): Int {
+    internal fun compareVersions(a: String, b: String): Int {
         val sa = a.trimStart('v').split('.').map { it.toIntOrNull() ?: 0 }
         val sb = b.trimStart('v').split('.').map { it.toIntOrNull() ?: 0 }
         val n = maxOf(sa.size, sb.size)
@@ -437,7 +588,7 @@ object BinaryResolver {
     }
 
     /**
-     * Decode output of cmd.exe builtins (`where`, `which`, `npm prefix -g`). On
+     * Decode output of cmd.exe builtins (`where`, `which`). On
      * Chinese Windows those write the system OEM code page (CP936/GBK); decoding
      * GBK bytes as UTF-8 corrupts non-ASCII path segments (`C:\Users\刘一奇\...`
      * → U+FFFD), and spawning the corrupted path fails with ERROR_PATH_NOT_FOUND.
@@ -457,8 +608,7 @@ object BinaryResolver {
     /**
      * Reads a child process' combined stdout/stderr as text via
      * [decodeCommandOutput]. Explicitly decodes the raw bytes (not the JVM
-     * default charset) so `where`/`npm prefix -g` output survives on
-     * non-UTF-8 Windows systems.
+     * default charset) so `where` output survives on non-UTF-8 Windows systems.
      */
     internal fun readProcessOutput(proc: Process): String {
         return proc.inputStream.use { decodeCommandOutput(it.readBytes()) }

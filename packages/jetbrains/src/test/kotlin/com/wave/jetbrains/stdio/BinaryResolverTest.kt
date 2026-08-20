@@ -87,59 +87,80 @@ class BinaryResolverTest {
         assertTrue(BinaryResolver.compareVersions("v20.19.0", "v23.10.0") < 0)
     }
 
-    // ---- getCliVersion -------------------------------------------------
-    //
-    // getCliVersion spawns `<path> -v` in a timed process. We exercise the
-    // real subprocess path (no mocking) by writing a tiny shim script into
-    // the temp dir that prints a canned version line, then asserting on the
-    // parsed/stripped result. The `__VERSION__` placeholder keeps each case a
-    // one-liner; `assumeFalse(isWindows)` skips the .sh variant on Windows
-    // (where the test harness lacks a POSIX shell), matching the prod guard.
+    // ---- satisfiesCaret ------------------------------------------------
 
-    private fun writeVersionShim(versionLine: String): File {
-        val script = File(tempDir.toFile(), "version-shim-${shimCounter++}.sh").apply {
-            writeText("#!/bin/sh\necho '$versionLine'\n")
-            setExecutable(true)
-        }
-        return script
+    @Test
+    fun `satisfiesCaret accepts versions within a caret range`() {
+        assertTrue(BinaryResolver.satisfiesCaret("1.18.0", "^1.18.0"))
+        assertTrue(BinaryResolver.satisfiesCaret("1.18.5", "^1.18.0"))
+        assertTrue(BinaryResolver.satisfiesCaret("1.19.0", "^1.18.0"))
     }
 
     @Test
-    fun `getCliVersion returns the bare version from -v output`() {
-        org.junit.jupiter.api.Assumptions.assumeFalse(
-            System.getProperty("os.name").lowercase().startsWith("win"),
-            "POSIX shell shim not available on Windows CI"
+    fun `satisfiesCaret rejects versions outside a caret range`() {
+        assertTrue(!BinaryResolver.satisfiesCaret("1.17.9", "^1.18.0"))
+        assertTrue(!BinaryResolver.satisfiesCaret("2.0.0", "^1.18.0"))
+        assertTrue(!BinaryResolver.satisfiesCaret("0.18.0", "^1.18.0"))
+    }
+
+    @Test
+    fun `satisfiesCaret rejects prerelease and malformed versions`() {
+        assertTrue(!BinaryResolver.satisfiesCaret("1.18.1-beta.1", "^1.18.0"))
+        assertTrue(!BinaryResolver.satisfiesCaret("v1.18.0", "^1.18.0"))
+        assertTrue(!BinaryResolver.satisfiesCaret("1.18", "^1.18.0"))
+    }
+
+    @Test
+    fun `satisfiesCaret rejects non-caret ranges`() {
+        assertTrue(!BinaryResolver.satisfiesCaret("1.18.0", "~1.18.0"))
+        assertTrue(!BinaryResolver.satisfiesCaret("1.18.0", ">=1.18.0"))
+    }
+
+    // ---- extractTarball ------------------------------------------------
+
+    @Test
+    fun `rgPlatformDir carries the ripgrep prefix so cache check and npm package name match`() {
+        // Regression: the dir must be `ripgrep-<platform>-<arch>` (mirroring the
+        // npm package `@vscode/ripgrep-<platform>-<arch>` and desktop/vscode's
+        // layout) — without the prefix the cache check at rgBinaryPath() never
+        // hits and the tarball URL resolves to a non-existent npm package.
+        val dir = BinaryResolver.rgPlatformDir
+        assertTrue(
+            dir.matches(Regex("ripgrep-(win32|darwin|linux)-(x64|arm64|ia32)")),
+            "rgPlatformDir was: $dir",
         )
-        val shim = writeVersionShim("0.18.7")
-        assertEquals("0.18.7", BinaryResolver.getCliVersion(shim.absolutePath))
     }
 
+
     @Test
-    fun `getCliVersion strips a leading v`() {
-        org.junit.jupiter.api.Assumptions.assumeFalse(
-            System.getProperty("os.name").lowercase().startsWith("win"),
-            "POSIX shell shim not available on Windows CI"
+    fun `extractTarball strips the top package dir`() {
+        val tarGz = buildTarGz(
+            mapOf(
+                "package/package.json" to "{\"name\":\"x\"}".toByteArray(),
+                "package/bin/rg" to "binary-bytes".toByteArray(),
+            )
         )
-        val shim = writeVersionShim("v1.2.3")
-        assertEquals("1.2.3", BinaryResolver.getCliVersion(shim.absolutePath))
+        val dest = File(tempDir.toFile(), "extract-${shimCounter++}")
+        BinaryResolver.extractTarball(tarGz, dest)
+
+        assertTrue(File(dest, "package.json").isFile)
+        assertEquals("{\"name\":\"x\"}", File(dest, "package.json").readText())
+        assertTrue(File(dest, "bin/rg").isFile)
+        assertEquals("binary-bytes", File(dest, "bin/rg").readText())
+        // The top-level `package/` dir itself must not leak into the output.
+        assertTrue(!File(dest, "package").exists())
     }
 
     @Test
-    fun `getCliVersion uses the first non-empty line`() {
-        org.junit.jupiter.api.Assumptions.assumeFalse(
-            System.getProperty("os.name").lowercase().startsWith("win"),
-            "POSIX shell shim not available on Windows CI"
-        )
-        // A leading blank line (common from banner-printing shells) must be
-        // skipped, and trailing lines ignored.
-        val shim = writeVersionShim("\n4.5.6\nextra-noise")
-        assertEquals("4.5.6", BinaryResolver.getCliVersion(shim.absolutePath))
-    }
+    fun `extractTarball creates nested dirs and preserves binary bytes`() {
+        val payload = ByteArray(256) { (it % 251).toByte() }
+        val tarGz = buildTarGz(mapOf("package/dist/bundle/wave.mjs" to payload))
+        val dest = File(tempDir.toFile(), "extract-${shimCounter++}")
+        BinaryResolver.extractTarball(tarGz, dest)
 
-    @Test
-    fun `getCliVersion returns null when the binary path does not exist`() {
-        val missing = File(tempDir.toFile(), "no-such-binary").absolutePath
-        assertNull(BinaryResolver.getCliVersion(missing))
+        val out = File(dest, "dist/bundle/wave.mjs")
+        assertTrue(out.isFile)
+        assertTrue(out.readBytes().contentEquals(payload))
     }
 
     // ---- decodeCommandOutput / readProcessOutput -----------------------
@@ -239,17 +260,17 @@ class BinaryResolverTest {
         val nvm = newNvmRoot(defaultAlias = "22")
         val binDir = newVersion(nvm, "v22.14.0")
 
-        // Present: place a `wave` file in the bin dir.
-        val waveFile = File(binDir, "wave").apply { createNewFile() }
+        // Present: place a `node` file in the bin dir.
+        val nodeFile = File(binDir, "node").apply { createNewFile() }
         assertEquals(
-            waveFile.absolutePath,
-            BinaryResolver.findInNvm("wave", nvm)?.let { File(it).absolutePath }
+            nodeFile.absolutePath,
+            BinaryResolver.findInNvm("node", nvm)?.let { File(it).absolutePath }
         )
 
-        // Absent: a different nvm root with no `wave` in bin.
+        // Absent: a different nvm root with no `node` in bin.
         val nvm2 = newNvmRoot(defaultAlias = "22")
         newVersion(nvm2, "v22.14.0")
-        assertNull(BinaryResolver.findInNvm("wave", nvm2))
+        assertNull(BinaryResolver.findInNvm("node", nvm2))
     }
 
     // ---- inferGitBashFromGitExe ----------------------------------------
@@ -357,5 +378,23 @@ class BinaryResolverTest {
     /** Creates `<nvm>/versions/node/<version>/bin` and returns the bin dir. */
     private fun newVersion(nvm: File, version: String): File {
         return File(nvm, "versions/node/$version/bin").apply { mkdirs() }
+    }
+
+    /** Builds a `.tar.gz` byte array from `package/...` entries (npm tarball shape). */
+    private fun buildTarGz(entries: Map<String, ByteArray>): ByteArray {
+        java.io.ByteArrayOutputStream().use { bos ->
+            org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream(bos).use { gz ->
+                org.apache.commons.compress.archivers.tar.TarArchiveOutputStream(gz).use { tar ->
+                    entries.forEach { (name, data) ->
+                        val entry = org.apache.commons.compress.archivers.tar.TarArchiveEntry(name)
+                        entry.size = data.size.toLong()
+                        tar.putArchiveEntry(entry)
+                        tar.write(data)
+                        tar.closeArchiveEntry()
+                    }
+                }
+            }
+            return bos.toByteArray()
+        }
     }
 }
