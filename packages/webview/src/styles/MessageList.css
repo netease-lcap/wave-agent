@@ -20,16 +20,27 @@
   position: relative;
 }
 
-/* Sticky user message overlaid at the top of the viewport (设计稿 2248-9471).
-   Absolute rather than sticky: the bar is an overlay and must not consume flow
-   space. In-flow it rendered only after the initial load's scroll ran and grew
-   scrollHeight by its own height, pushing the true bottom ~30-70px below the
-   parked viewport. */
+/* Sticky user message pinned at the top of the viewport (设计稿 2248-9471).
+   position: sticky (not absolute) so the bar stays pinned to the top of the
+   scrollport while the user scrolls history — an absolute bar inside a
+   scrolling container moves away with the content and never sticks (#1855
+   regression). height: 0 keeps the bar an overlay: it consumes no flow space
+   (sticky keeps its flow space by default), so the initial load's pin-to-bottom
+   scroll is not pushed off by the bar's own height. The cap/card/scrim are
+   in-flow children overflowing the zero-height wrapper (overflow visible), so
+   the bar renders below the wrapper's top edge.
+   margin-bottom: -10px cancels the .messages-container flex gap on the plain
+   branch (gap is 0 on the virtualized branch, overridden below), so
+   mounting/unmounting the bar never shifts the message list. */
 .sticky-user-wrapper {
-  position: absolute;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
+  height: 0;
+  margin-bottom: -10px;
+  /* Stretch across the cross axis (the container is flex column with
+     align-items: flex-start) so the bar spans the list width like the old
+     absolute left/right: 0. */
+  align-self: stretch;
   z-index: 20;
 }
 
@@ -103,6 +114,12 @@
    the flex gap would add extra space around the spacer/compaction hint. */
 .messages-container--virtual {
   gap: 0;
+}
+
+/* No flex gap to cancel on the virtualized branch (gap: 0 above); a negative
+   margin would pull the virtualizer's spacer 10px up out of the container. */
+.messages-container--virtual .sticky-user-wrapper {
+  margin-bottom: 0;
 }
 
 .virtual-spacer {
