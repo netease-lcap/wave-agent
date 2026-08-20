@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { streamingTail } from "../utils/streamingText";
 import "../styles/BtwPanel.css";
 
 interface BtwPanelProps {
@@ -93,7 +94,12 @@ export const BtwPanel: React.FC<BtwPanelProps> = ({
       {isLoading && (
         <div className="btw-panel-loading" data-testid="btw-panel-loading">
           <span className="btw-loading-indicator">▋</span>
-          <span className="btw-loading-text">正在回答…</span>
+          <span className="btw-loading-text">正在回答</span>
+          {answer && (
+            <span className="btw-loading-tail" data-testid="btw-loading-tail">
+              {streamingTail(answer)}
+            </span>
+          )}
         </div>
       )}
       {answer && !isLoading && (

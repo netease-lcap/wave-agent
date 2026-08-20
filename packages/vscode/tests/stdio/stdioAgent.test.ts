@@ -883,6 +883,17 @@ describe("StdioAgent", () => {
     expect(onCompactionStateChange).toHaveBeenCalledWith(true);
   });
 
+  it("compactionContentUpdate forwards accumulated content to callback", () => {
+    const onCompactionContentUpdate = vi.fn();
+    const { agent } = createAgent({ onCompactionContentUpdate });
+
+    agent.handleNotification("compactionContentUpdate", {
+      content: "streaming summary",
+    });
+
+    expect(onCompactionContentUpdate).toHaveBeenCalledWith("streaming summary");
+  });
+
   it("loadingChange updates latestTotalTokens and calls callback", () => {
     const onLoadingChange = vi.fn();
     const { agent } = createAgent({ onLoadingChange });

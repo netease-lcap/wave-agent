@@ -137,6 +137,7 @@ export type ServerNotificationMethod =
   | "authUrl"
   | "compactBlockAdded"
   | "compactionStateChange"
+  | "compactionContentUpdate"
   | "backgroundTasksChange"
   | "btwContent";
 

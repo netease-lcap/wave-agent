@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Message } from "./Message";
+import { streamingTail } from "../utils/streamingText";
 import type { MessageListProps } from "../types";
 import type { Message as MessageType } from "wave-agent-sdk";
 import "../styles/MessageList.css";
@@ -50,6 +51,7 @@ export const MessageList = forwardRef<
     queuedMessages,
     isStreaming,
     isCompacting,
+    compactionStream,
     vscode,
     onRewindToMessage,
     workdir,
@@ -658,7 +660,15 @@ export const MessageList = forwardRef<
           turns, after the streaming cursor is gone). */}
       {isCompacting && (
         <div className="compaction-hint" data-testid="compaction-hint">
-          <span className="compaction-hint-cursor">▋</span>正在压缩对话…
+          <span className="compaction-hint-cursor">▋</span>正在压缩对话
+          {compactionStream && (
+            <span
+              className="compaction-hint-tail"
+              data-testid="compaction-hint-tail"
+            >
+              {streamingTail(compactionStream)}
+            </span>
+          )}
         </div>
       )}
 

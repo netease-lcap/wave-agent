@@ -23,6 +23,7 @@ export interface ChatSessionCallbacks {
   onSessionIdChange: (sessionId: string) => void;
   onStreamingChange: (isStreaming: boolean) => void;
   onCompactionStateChange?: (isCompacting: boolean) => void;
+  onCompactionContentUpdate?: (content: string) => void;
   onQueueChange: (queue: QueuedMessage[]) => void;
   onCommandRunningChange: (running: boolean) => void;
   onPermissionModeChange: (mode: PermissionMode) => void;
@@ -141,6 +142,9 @@ export class ChatSession {
         },
         onCompactionStateChange: (isCompacting: boolean) => {
           this.callbacks.onCompactionStateChange?.(isCompacting);
+        },
+        onCompactionContentUpdate: (content: string) => {
+          this.callbacks.onCompactionContentUpdate?.(content);
         },
         onUserMessageAdded: (message: Message) => {
           this.callbacks.onUserMessageAdded?.(message);

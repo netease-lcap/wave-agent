@@ -764,6 +764,15 @@ export class DesktopHost {
             paneId,
           });
       },
+      onCompactionContentUpdate: (content: string) => {
+        const paneId = paneIdOf();
+        if (paneId)
+          this.postMessage({
+            command: "compactionContentUpdate",
+            content,
+            paneId,
+          });
+      },
       onUserMessageAdded: (message: Message) => {
         // Keep the cache mirroring the server (no messagesChange snapshot
         // arrives anymore) — feeds FR-024 title + idle checks.

@@ -3969,6 +3969,16 @@ describe("multi-session parallel (FR-031)", () => {
     });
   });
 
+  it("forwards compactionContentUpdate so the webview can render the streaming tail", async () => {
+    const { sent } = await readyHost();
+    const agent1 = seedActiveSession("sess-1");
+
+    agent1.callbacks.onCompactionContentUpdate("streaming summary");
+    expect(sent("compactionContentUpdate").at(-1)).toMatchObject({
+      content: "streaming summary",
+    });
+  });
+
   it("never evicts idle agents — the pool is unbounded until session deletion", async () => {
     const { host } = await readyHost();
     const agents = [seedActiveSession("sess-1")];

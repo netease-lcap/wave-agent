@@ -1204,7 +1204,7 @@ describe("chatReducer", () => {
     });
 
     it("SET_INITIAL_STATE clears a stale isCompacting so a session switch does not leak the compaction hint", () => {
-      // Session A is mid-compaction: the view shows "正在压缩对话…".
+      // Session A is mid-compaction: the view shows "正在压缩对话".
       let state = chatReducer(initialState, {
         type: "SET_COMPACTING",
         payload: true,

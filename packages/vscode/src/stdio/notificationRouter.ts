@@ -45,6 +45,7 @@ const ALL_NOTIFICATION_METHODS = [
   "authUrl",
   "compactBlockAdded",
   "compactionStateChange",
+  "compactionContentUpdate",
   "backgroundTasksChange",
 ] as const;
 

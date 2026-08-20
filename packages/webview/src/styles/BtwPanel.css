@@ -29,7 +29,7 @@
 }
 
 .btw-panel-prefix {
-  color: var(--vscode-gitDecoration-modifiedResourceForeground);
+  color: var(--vscode-foreground);
   font-weight: bold;
   white-space: nowrap;
 }
@@ -68,13 +68,27 @@
 }
 
 .btw-loading-indicator {
-  color: var(--vscode-gitDecoration-modifiedResourceForeground);
+  flex-shrink: 0;
+  color: var(--vscode-foreground);
   animation: blink 1s ease-in-out infinite;
 }
 
 .btw-loading-text {
-  font-weight: bold;
-  color: var(--vscode-gitDecoration-modifiedResourceForeground);
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* Streaming tail after "正在回答" (last 30 chars of the in-flight btw answer,
+   flattened with "\n" escapes) — same single-line dim style as the CLI. Long
+   text is clamped to the panel width with an ellipsis instead of overflowing. */
+.btw-loading-tail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--vscode-descriptionForeground);
+  white-space: pre;
+  user-select: text;
 }
 
 .btw-panel-answer {

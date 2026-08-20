@@ -191,9 +191,13 @@
 
 .compaction-hint {
   align-self: flex-start;
+  max-width: 100%;
   padding-left: 2px;
   line-height: 1;
   color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .compaction-hint-cursor {
@@ -202,6 +206,14 @@
   margin-right: 2px;
 }
 
+/* Streaming tail after the hint (last 30 chars of the compaction fork's text,
+   flattened with "\n" escapes) — same single-line dim style as the CLI. */
+.compaction-hint-tail {
+  margin-left: 8px;
+  color: var(--vscode-descriptionForeground);
+  white-space: pre;
+  user-select: text;
+}
 /* Content Container for Mixed HTML/Mermaid Content */
 .message-content-container {
   display: flex;
