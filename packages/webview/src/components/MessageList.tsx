@@ -14,22 +14,37 @@ import type { MessageListProps } from "../types";
 import type { Message as MessageType } from "wave-agent-sdk";
 import "../styles/MessageList.css";
 
-// Above this many visible messages the list switches to the virtualized
-// branch (@tanstack/react-virtual); below it the plain render path stays
-// byte-for-byte identical. The threshold keeps small chats (the common case
-// for unit tests and demo harnesses) on the plain path.
-const VIRTUAL_SCROLL_THRESHOLD = 200;
+// Measured row heights by message id, shared across MessageList instances and
+// PERSISTED to localStorage (OpenCode's timelineCache keeps measurements per
+// session in memory; we keep them per message id across webview lifetimes, so
+// a session switch or page reload answers estimateSize with the real measured
+// height instead of the coarse 200px default — a reload lands on the true
+// total height in one shot instead of shrinking one row per frame for seconds
+// as rows are progressively measured (each measurement shrank the spacer,
+// re-anchored the bottom, mounted the next row, and measured it — a chain
+// that kept scrollHeight moving).
+//
+// Foldable blocks (reasoning / compact) break the "finished message height is
+// permanent" assumption, so each entry also records the fold state it was
+// measured in. estimateSize only trusts an entry when its fold state matches
+// the message's current DEFAULT fold state (ReasoningBlockView starts
+// expanded while streaming, collapsed once ended; CompactBlockView starts
+// collapsed). A fold toggle re-measures the row (ResizeObserver) and
+// overwrites the entry with the new height + fold state; a mismatch on load
+// (e.g. the user expanded a block, scrolled away, and the session reloads
+// with the block collapsed) invalidates the entry until the row is measured
+// again. Messages without foldable blocks carry fold: null and stay valid
+// forever.
+type FoldState = "collapsed" | "expanded" | null;
 
-// Measured row heights by message id, shared across MessageList instances
-// (module scope = one webview page lifetime). Session switches / history
-// reloads reuse the SAME message ids, so the virtualizer's estimateSize can
-// answer with the real measured height instead of the coarse 200px default —
-// a reload then lands on the true total height in one shot instead of
-// shrinking one row per frame for seconds as rows are progressively measured
-// (each measurement shrank the spacer, re-anchored the bottom, mounted the
-// next row, and measured it — a chain that kept scrollHeight moving).
-const measuredHeights = new Map<string, number>();
+interface MeasuredEntry {
+  height: number;
+  fold: FoldState;
+}
+
+const measuredHeights = new Map<string, MeasuredEntry>();
 const MEASURED_HEIGHTS_LIMIT = 2000;
+const HEIGHTS_STORAGE_KEY = "wave-webview:measured-heights:v1";
 // Arithmetic mean of measured row heights, used as the estimate for rows not
 // yet measured (e.g. the first load of a conversation). Converges to the real
 // average within the first batch of measurements, so unmeasured rows estimate
@@ -38,8 +53,60 @@ const MEASURED_HEIGHTS_LIMIT = 2000;
 let measuredSum = 0;
 let measuredCount = 0;
 let avgMeasuredHeight = 200;
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
-function recordMeasuredHeight(id: string, height: number) {
+function loadMeasuredHeights() {
+  try {
+    const raw = localStorage.getItem(HEIGHTS_STORAGE_KEY);
+    if (!raw) return;
+    const entries = JSON.parse(raw) as Array<
+      [string, { h: number; f?: 0 | 1 | null }]
+    >;
+    for (const [id, entry] of entries) {
+      if (measuredHeights.size >= MEASURED_HEIGHTS_LIMIT) break;
+      if (typeof id !== "string" || typeof entry?.h !== "number") continue;
+      measuredHeights.set(id, {
+        height: entry.h,
+        fold: entry.f === 0 ? "collapsed" : entry.f === 1 ? "expanded" : null,
+      });
+      measuredSum += entry.h;
+      measuredCount++;
+    }
+    if (measuredCount > 0) avgMeasuredHeight = measuredSum / measuredCount;
+  } catch {
+    // Storage unavailable / corrupted payload — start from an empty cache.
+    measuredHeights.clear();
+    measuredSum = 0;
+    measuredCount = 0;
+    avgMeasuredHeight = 200;
+  }
+}
+
+loadMeasuredHeights();
+
+function scheduleSaveMeasuredHeights() {
+  if (saveTimer !== undefined) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = undefined;
+    try {
+      const payload: Array<[string, { h: number; f: 0 | 1 | null }]> = [];
+      measuredHeights.forEach((entry, id) => {
+        payload.push([
+          id,
+          {
+            h: entry.height,
+            f: entry.fold === null ? null : entry.fold === "expanded" ? 1 : 0,
+          },
+        ]);
+      });
+      localStorage.setItem(HEIGHTS_STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      // Quota exceeded / storage unavailable — keep the in-memory cache.
+    }
+  }, 400);
+}
+
+function recordMeasuredHeight(id: string, height: number, fold: FoldState) {
   if (!measuredHeights.has(id)) {
     measuredSum += height;
     measuredCount++;
@@ -50,7 +117,39 @@ function recordMeasuredHeight(id: string, height: number) {
       if (oldest !== undefined) measuredHeights.delete(oldest);
     }
   }
-  measuredHeights.set(id, height);
+  measuredHeights.set(id, { height, fold });
+  scheduleSaveMeasuredHeights();
+}
+
+// The default fold state a message renders with on mount, mirroring
+// ReasoningBlockView (streaming reasoning starts expanded, ended reasoning
+// and compact blocks start collapsed). Used to validate a cached entry's fold
+// state: the cache only answers when the message is in its default state, so
+// a user-expanded height is never served to a default-collapsed render.
+function defaultFoldState(message: MessageType): FoldState {
+  if (!message.blocks) return null;
+  let hasFoldable = false;
+  for (const block of message.blocks) {
+    if (block.type === "reasoning") {
+      hasFoldable = true;
+      if (block.stage !== "end") return "expanded";
+    } else if (block.type === "compact") {
+      hasFoldable = true;
+    }
+  }
+  return hasFoldable ? "collapsed" : null;
+}
+
+// Read the ACTUAL fold state from the rendered row: a `.reasoning-content`
+// child exists only while its block is expanded. Matches what the cache entry
+// stores so a fold toggle re-measure lands on the right key.
+function detectFoldState(node: HTMLElement): FoldState {
+  const blocks = node.querySelectorAll<HTMLElement>(".reasoning-block");
+  if (blocks.length === 0) return null;
+  for (const block of blocks) {
+    if (block.querySelector(".reasoning-content")) return "expanded";
+  }
+  return "collapsed";
 }
 
 // Count the blocks in an assistant message that Message.tsx wraps in a `.timeline-row`
@@ -93,7 +192,6 @@ export const MessageList = forwardRef<
   },
   ref,
 ) {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const prevMessagesLengthRef = useRef(messages.length);
@@ -110,9 +208,10 @@ export const MessageList = forwardRef<
   // "within the bottom threshold". Cleared only when the user scrolls back down
   // to the bottom region.
   const userScrolledUpRef = useRef(false);
-  // Briefly true around our own scrollIntoView calls so the scroll handler can
-  // ignore those as user intent. Streaming uses 'auto' (instant, single fire),
-  // so a one-frame reset via requestAnimationFrame is sufficient.
+  // Briefly true around our own programmatic scrolls (scrollToEnd /
+  // scrollToIndex) so the scroll handler can ignore those as user intent.
+  // Streaming uses 'auto' (instant, single fire), so a one-frame reset via
+  // requestAnimationFrame is sufficient.
   const isProgrammaticScrollRef = useRef(false);
   // Last seen scrollTop, used to detect scroll direction (up vs down).
   const prevScrollTopRef = useRef(0);
@@ -152,9 +251,8 @@ export const MessageList = forwardRef<
     text: string;
   } | null>(null);
 
-  // Filter out user messages with isMeta (hidden from the list). Extracted from
-  // the render path so both the plain and the virtualized branch index the same
-  // data.
+  // Filter out user messages with isMeta (hidden from the list). Both the
+  // sticky computation and the virtualizer index this filtered list.
   const visibleMessages = useMemo(() => {
     const out: MessageType[] = [];
     for (const msg of messages) {
@@ -164,39 +262,58 @@ export const MessageList = forwardRef<
     return out;
   }, [messages]);
 
-  const virtualized = visibleMessages.length > VIRTUAL_SCROLL_THRESHOLD;
-
-  // Refs mirroring the branch state for stable callbacks (event handlers and
-  // imperative handle must not capture a stale render).
-  const virtualizedRef = useRef(virtualized);
-  virtualizedRef.current = virtualized;
+  // Refs mirroring the current data for stable callbacks (event handlers and
+  // the imperative handle must not capture a stale render).
   const visibleMessagesRef = useRef(visibleMessages);
   visibleMessagesRef.current = visibleMessages;
   stickyRef.current = stickyMessage;
 
   const virtualizer = useVirtualizer({
-    // count: 0 keeps the virtualizer inert on the plain path (it still mounts
-    // its observers, but renders no rows).
-    count: virtualized ? visibleMessages.length : 0,
+    count: visibleMessages.length,
     getScrollElement: () => containerRef.current,
     // Estimate real measured height when known (same message ids reload after
     // a session switch), falling back to the running average of measured rows
     // so unmeasured rows match reality instead of a fixed 200px — this keeps
     // the spacer stable once the visible window has been measured.
     estimateSize: (i) => {
-      const id = visibleMessages[i]?.id;
+      const message = visibleMessages[i];
+      const id = message?.id;
       if (id) {
         const cached = measuredHeights.get(id);
-        if (cached !== undefined) return cached;
+        // Only trust the cache when the message is in the fold state it was
+        // measured in (see defaultFoldState); a mismatch means the entry is
+        // stale — e.g. the user expanded a reasoning block, scrolled away, and
+        // the session reloaded with the block collapsed — and falls back to
+        // the average until the row is measured again.
+        if (cached !== undefined && cached.fold === defaultFoldState(message)) {
+          return cached.height;
+        }
       }
       return avgMeasuredHeight;
     },
+    // Hook the virtualizer's own measurement, which BOTH measurement paths go
+    // through: the ref callback (virtualizer.measureElement method, mount
+    // time) and the shared row ResizeObserver (size changes: streaming row
+    // growth, fold toggles, width reflows). Recording here — instead of only
+    // in the ref callback — keeps the persistent cache in sync with every
+    // re-measure, so a fold toggle overwrites the entry with the new height +
+    // fold state. The default option returns the internal cache for ref-path
+    // re-measures; we always return the live size so a re-mounted row is
+    // measured fresh.
+    measureElement: (node, entry) => {
+      const element = node as HTMLElement;
+      const id = element.getAttribute("data-measured-message-id");
+      const height = entry?.borderBoxSize?.[0]
+        ? Math.round(entry.borderBoxSize[0].blockSize)
+        : element.offsetHeight;
+      if (id) recordMeasuredHeight(id, height, detectFoldState(element));
+      return height;
+    },
     overscan: 20,
     // Inter-row spacing is baked into each row's padding-bottom (see
-    // timelineRuns) instead of the virtualizer's `gap`: the plain path renders
-    // consecutive assistant messages flush (gap 0) so the timeline line is
-    // continuous through a run — a uniform `gap` would break the line at every
-    // message boundary.
+    // timelineRuns) instead of the virtualizer's `gap`: consecutive assistant
+    // messages render flush (gap 0) so the timeline line is continuous through
+    // a run — a uniform `gap` would break the line at every message boundary.
     paddingStart: 10, // .messages-container padding
     paddingEnd: 10,
     // Keep the reading position anchored on appends; follow new content only
@@ -223,30 +340,25 @@ export const MessageList = forwardRef<
     useAnimationFrameWithResizeObserver: true,
   });
 
-  // Stable row ref: records the real measured height (keyed by message id) for
-  // estimateSize, then defers to the virtualizer's own measurement. Must stay
-  // referentially stable — an inline arrow would be recreated every render and
-  // React would detach/reattach every row's ref each render, re-measuring the
-  // whole visible window on every streaming chunk.
+  // Stable row ref: defers to the virtualizer's own measurement (its
+  // measureElement method, which runs our hooked measureElement option). Must
+  // stay referentially stable — an inline arrow would be recreated every
+  // render and React would detach/reattach every row's ref each render,
+  // re-measuring the whole visible window on every streaming chunk.
   const measureRow = useCallback(
     (node: HTMLDivElement | null) => {
-      if (node) {
-        const id = node.getAttribute("data-measured-message-id");
-        if (id) recordMeasuredHeight(id, node.offsetHeight);
-      }
       virtualizer.measureElement(node);
     },
     [virtualizer],
   );
 
-  // Per-message timeline run data for the virtualized branch. A run is a
-  // maximal sequence of consecutive assistant messages (mirrors the
-  // .assistant-group logic of the plain path). Multi-dot runs draw a
-  // continuous vertical line: the run's first row starts it at its first dot,
-  // the last row ends it at its last dot; single-dot runs hide the line.
-  // paddingBottom is the row's bottom spacing: 0 inside a multi-dot run so the
-  // line segments abut (flush, like the plain path's gap:0 group), 10 after
-  // every other row (the plain path's 10px container gap).
+  // Per-message timeline run data. A run is a maximal sequence of consecutive
+  // assistant messages (the virtualized analogue of the old .assistant-group
+  // wrapper). Multi-dot runs draw a continuous vertical line: the run's first
+  // row starts it at its first dot, the last row ends it at its last dot;
+  // single-dot runs hide the line. paddingBottom is the row's bottom spacing:
+  // 0 inside a multi-dot run so the line segments abut (flush), 10 after every
+  // other row (the inter-message spacing).
   const timelineRuns = useMemo(() => {
     const classes: string[] = [];
     const paddings: number[] = [];
@@ -307,96 +419,58 @@ export const MessageList = forwardRef<
       return;
     }
     const scrollTop = container.scrollTop;
-    if (virtualizedRef.current) {
-      // Virtualized branch: the DOM only holds the visible window, so the
-      // sticky candidate is derived from the data + the virtualizer's offset
-      // table. The candidate is the last user message whose top edge sits
-      // above the viewport top, i.e. the last user message at or before the
-      // item currently at the top of the viewport (which is itself a
-      // candidate only when its top edge is strictly above the fold).
-      const at = virtualizer.getVirtualItemForOffset(scrollTop);
-      let idx = at ? at.index : -1;
-      if (at && at.start >= scrollTop) idx = at.index - 1;
-      const rows = visibleMessagesRef.current;
-      let candidate = -1;
-      let candidateText = "";
-      while (idx >= 0) {
-        const row = rows[idx];
-        if (row.role === "user") {
-          // Skip text-less user messages (task notifications): they cannot
-          // render a sticky label, so keep scanning upward for an earlier
-          // text-bearing user message instead of clearing the bar.
-          const text = (row.blocks ?? [])
-            .filter((b) => b.type === "text")
-            .map((b) => b.content || "")
-            .join(" ")
-            .trim();
-          if (text) {
-            candidate = idx;
-            candidateText = text;
-            break;
-          }
+    // The DOM only holds the visible window, so the sticky candidate is
+    // derived from the data + the virtualizer's offset table. The candidate is
+    // the last user message whose top edge sits above the viewport top, i.e.
+    // the last user message at or before the item currently at the top of the
+    // viewport (which is itself a candidate only when its top edge is strictly
+    // above the fold).
+    const at = virtualizer.getVirtualItemForOffset(scrollTop);
+    let idx = at ? at.index : -1;
+    if (at && at.start >= scrollTop) idx = at.index - 1;
+    const rows = visibleMessagesRef.current;
+    let candidate = -1;
+    let candidateText = "";
+    while (idx >= 0) {
+      const row = rows[idx];
+      if (row.role === "user") {
+        // Skip text-less user messages (task notifications): they cannot
+        // render a sticky label, so keep scanning upward for an earlier
+        // text-bearing user message instead of clearing the bar.
+        const text = (row.blocks ?? [])
+          .filter((b) => b.type === "text")
+          .map((b) => b.content || "")
+          .join(" ")
+          .trim();
+        if (text) {
+          candidate = idx;
+          candidateText = text;
+          break;
         }
-        idx--;
       }
-      if (candidate < 0 || !rows[candidate].id) {
-        setSticky(null);
-        return;
-      }
-      setSticky({ id: rows[candidate].id, text: candidateText });
-      return;
+      idx--;
     }
-    // Plain path: scan the fully-rendered DOM, as before.
-    const nodes = container.querySelectorAll<HTMLElement>(
-      '[data-role="user"][data-message-id]',
-    );
-    let candidateNode: HTMLElement | null = null;
-    // Find the last user message whose top edge has scrolled above the viewport
-    // top AND that renders user text. Text-less user messages (background task
-    // notifications) carry no .user-content and would otherwise clear the
-    // sticky bar the moment they scroll past — keep the previous text-bearing
-    // candidate instead so the bar never blinks out between real questions.
-    for (const node of nodes) {
-      if (node.offsetTop >= scrollTop) break;
-      if (node.querySelector(".user-content")?.textContent?.trim()) {
-        candidateNode = node;
-      }
-    }
-    if (!candidateNode) {
+    if (candidate < 0 || !rows[candidate].id) {
       setSticky(null);
       return;
     }
-    const id = candidateNode.getAttribute("data-message-id") || "";
-    const text =
-      candidateNode.querySelector(".user-content")?.textContent?.trim() || "";
-    if (!id || !text) {
-      setSticky(null);
-      return;
-    }
-    setSticky({ id, text });
+    setSticky({ id: rows[candidate].id, text: candidateText });
   }, [virtualizer]);
 
   const scrollToMessage = useCallback(
     (id: string) => {
       const container = containerRef.current;
       if (!container) return;
-      if (virtualizedRef.current) {
-        // The target row is likely not mounted (it scrolled far above the
-        // viewport), so jump via the virtualizer's offset table instead of
-        // querying the DOM.
-        const index = visibleMessagesRef.current.findIndex((m) => m.id === id);
-        if (index >= 0) {
-          virtualizer.scrollToIndex(index, {
-            align: "center",
-            behavior: "smooth",
-          });
-        }
-        return;
+      // The target row is likely not mounted (it scrolled far above the
+      // viewport), so jump via the virtualizer's offset table instead of
+      // querying the DOM.
+      const index = visibleMessagesRef.current.findIndex((m) => m.id === id);
+      if (index >= 0) {
+        virtualizer.scrollToIndex(index, {
+          align: "center",
+          behavior: "smooth",
+        });
       }
-      const node = container.querySelector<HTMLElement>(
-        `[data-message-id="${id}"]`,
-      );
-      node?.scrollIntoView({ behavior: "smooth", block: "center" });
     },
     [virtualizer],
   );
@@ -409,45 +483,41 @@ export const MessageList = forwardRef<
       const container = containerRef.current;
       if (!container) return;
       isProgrammaticScrollRef.current = true;
-      if (virtualizedRef.current) {
-        virtualizer.scrollToEnd({ behavior });
-        // The virtualizer's resizeItem compensation and the scrollToEnd above
-        // both target offsets computed before the spacer height lands in the
-        // DOM (the spacer write happens later in the frame, after the scrollTo
-        // was clamped against the stale scrollHeight; the ResizeObserver →
-        // animation-frame measurement can even trail by a full frame). Keep
-        // re-checking for a few frames and finish the jump once the spacer is
-        // in place, so streaming row growth still pins the viewport.
-        let attempts = 0;
-        const finishPin = () => {
-          if (attempts++ >= 8) return;
-          // Only chase the bottom while the viewport is still parked there; if
-          // the user scrolls away during the compensation window, stop so we
-          // don't yank them back to the bottom.
-          if (
-            container.scrollTop + container.clientHeight <
-            container.scrollHeight - 300
-          ) {
-            return;
-          }
-          if (
-            container.scrollHeight -
-              container.scrollTop -
-              container.clientHeight >
-            2
-          ) {
-            isProgrammaticScrollRef.current = true;
-            virtualizer.scrollToEnd({ behavior: "auto" });
-            requestAnimationFrame(() => {
-              isProgrammaticScrollRef.current = false;
-            });
-          }
-          requestAnimationFrame(finishPin);
-        };
+      virtualizer.scrollToEnd({ behavior });
+      // The virtualizer's resizeItem compensation and the scrollToEnd above
+      // both target offsets computed before the spacer height lands in the
+      // DOM (the spacer write happens later in the frame, after the scrollTo
+      // was clamped against the stale scrollHeight; the ResizeObserver →
+      // animation-frame measurement can even trail by a full frame). Keep
+      // re-checking for a few frames and finish the jump once the spacer is
+      // in place, so streaming row growth still pins the viewport.
+      let attempts = 0;
+      const finishPin = () => {
+        if (attempts++ >= 8) return;
+        // Only chase the bottom while the viewport is still parked there; if
+        // the user scrolls away during the compensation window, stop so we
+        // don't yank them back to the bottom.
+        if (
+          container.scrollTop + container.clientHeight <
+          container.scrollHeight - 300
+        ) {
+          return;
+        }
+        if (
+          container.scrollHeight -
+            container.scrollTop -
+            container.clientHeight >
+          2
+        ) {
+          isProgrammaticScrollRef.current = true;
+          virtualizer.scrollToEnd({ behavior: "auto" });
+          requestAnimationFrame(() => {
+            isProgrammaticScrollRef.current = false;
+          });
+        }
         requestAnimationFrame(finishPin);
-      } else {
-        messagesEndRef.current?.scrollIntoView({ behavior });
-      }
+      };
+      requestAnimationFrame(finishPin);
       // 'auto' is instant (single 'scroll' fire); reset on the next frame.
       requestAnimationFrame(() => {
         isProgrammaticScrollRef.current = false;
@@ -459,8 +529,7 @@ export const MessageList = forwardRef<
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = "smooth", force = false) => {
       const container = containerRef.current;
-      const messagesEnd = messagesEndRef.current;
-      if (!container || !messagesEnd) return;
+      if (!container) return;
 
       const isNearBottom =
         container.scrollTop + container.clientHeight >=
@@ -515,12 +584,13 @@ export const MessageList = forwardRef<
     prevQueuedLengthRef.current = queuedMessages?.length || 0;
 
     // The scroll event fires for user scrolling (wheel, trackpad, keyboard,
-    // scrollbar drag) AND our own programmatic scrollIntoView. We distinguish
-    // them with isProgrammaticScroll: ignore 'scroll' events we caused, so they
-    // can't reset userScrolledUp and yank the user back to the bottom. For real
-    // user scrolling, we use DIRECTION to decide intent — any upward scroll
-    // (even a few px) suspends following, so a light nudge up is respected
-    // instead of being overridden by the bottom-threshold check. Only scrolling
+    // scrollbar drag) AND our own programmatic scrolls (scrollToEnd etc.). We
+    // distinguish them with isProgrammaticScroll: ignore 'scroll' events we
+    // caused, so they can't reset userScrolledUp and yank the user back to the
+    // bottom. For real user scrolling, we use DIRECTION to decide intent — any
+    // upward scroll (even a few px) suspends following, so a light nudge up is
+    // respected instead of being overridden by the bottom-threshold check.
+    // Only scrolling
     // back down to the bottom region resumes following.
     const handleScroll = () => {
       if (!isProgrammaticScrollRef.current) {
@@ -603,71 +673,11 @@ export const MessageList = forwardRef<
     return () => container.removeEventListener("load", repin, true);
   }, [doScrollToBottom]);
 
-  // Plain path (small chats): group consecutive assistant messages into a
-  // single .assistant-group wrapper so the timeline vertical line runs
-  // continuously through all their dots. User messages break the timeline
-  // (rendered as bare bubbles outside any group).
-  const renderedPlain = useMemo(() => {
-    const renderMessage = (message: MessageType) => {
-      return (
-        <Message
-          key={message.id}
-          message={message}
-          vscode={vscode}
-          onRewindToMessage={onRewindToMessage}
-          workdir={workdir}
-          onOpenPreview={onOpenPreview}
-          onOpenFile={onOpenFile}
-        />
-      );
-    };
-
-    const rendered: React.ReactNode[] = [];
-    let group: { message: MessageType }[] = [];
-
-    const flushGroup = () => {
-      if (group.length === 0) return;
-      const dotCount = group.reduce(
-        (sum, g) => sum + countTimelineBlocks(g.message),
-        0,
-      );
-      const single = dotCount <= 1;
-      rendered.push(
-        <div
-          key={group[0].message.id}
-          className={`assistant-group${single ? " assistant-group--single" : ""}`}
-        >
-          {group.map((g) => renderMessage(g.message))}
-        </div>,
-      );
-      group = [];
-    };
-
-    visibleMessages.forEach((message) => {
-      if (message.role === "assistant") {
-        group.push({ message });
-      } else {
-        flushGroup();
-        rendered.push(renderMessage(message));
-      }
-    });
-    flushGroup();
-
-    return rendered;
-  }, [
-    visibleMessages,
-    vscode,
-    onRewindToMessage,
-    workdir,
-    onOpenPreview,
-    onOpenFile,
-  ]);
-
   return (
     <div
       ref={containerRef}
       id="messagesContainer"
-      className={`messages-container${isStreaming ? " streaming" : ""}${isCompacting ? " compacting" : ""}${virtualized ? " messages-container--virtual" : ""}`}
+      className={`messages-container${isStreaming ? " streaming" : ""}${isCompacting ? " compacting" : ""} messages-container--virtual`}
       data-testid="messages-container"
     >
       {stickyMessage && (
@@ -683,45 +693,38 @@ export const MessageList = forwardRef<
           <div className="sticky-user-scrim" />
         </div>
       )}
-      {virtualized ? (
-        <>
-          {/* In-flow spacer carrying the virtualized total height. The
-              virtualizer writes its height directly (directDomUpdates); it
-              must keep its space in the flex column (flex-shrink: 0). */}
-          <div ref={virtualizer.containerRef} className="virtual-spacer" />
-          {virtualizer.getVirtualItems().map((virtualRow) => {
-            const message = visibleMessages[virtualRow.index];
-            const runClass = timelineRuns.classes[virtualRow.index];
-            return (
-              <div
-                key={virtualRow.key}
-                data-index={virtualRow.index}
-                data-measured-message-id={message.id}
-                ref={measureRow}
-                className={`virtual-row${runClass ? ` ${runClass}` : ""}`}
-                style={{
-                  paddingBottom: timelineRuns.paddings[virtualRow.index],
-                }}
-              >
-                <Message
-                  key={message.id}
-                  message={message}
-                  vscode={vscode}
-                  onRewindToMessage={onRewindToMessage}
-                  workdir={workdir}
-                  onOpenPreview={onOpenPreview}
-                  onOpenFile={onOpenFile}
-                />
-              </div>
-            );
-          })}
-        </>
-      ) : (
-        // Plain path (small chats): byte-for-byte the original render, with
-        // consecutive assistant messages grouped into a .assistant-group so
-        // the timeline line runs continuously through their dots.
-        <>{renderedPlain}</>
-      )}
+      <>
+        {/* In-flow spacer carrying the virtualized total height. The
+            virtualizer writes its height directly (directDomUpdates); it
+            must keep its space in the flex column (flex-shrink: 0). */}
+        <div ref={virtualizer.containerRef} className="virtual-spacer" />
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const message = visibleMessages[virtualRow.index];
+          const runClass = timelineRuns.classes[virtualRow.index];
+          return (
+            <div
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              data-measured-message-id={message.id}
+              ref={measureRow}
+              className={`virtual-row${runClass ? ` ${runClass}` : ""}`}
+              style={{
+                paddingBottom: timelineRuns.paddings[virtualRow.index],
+              }}
+            >
+              <Message
+                key={message.id}
+                message={message}
+                vscode={vscode}
+                onRewindToMessage={onRewindToMessage}
+                workdir={workdir}
+                onOpenPreview={onOpenPreview}
+                onOpenFile={onOpenFile}
+              />
+            </div>
+          );
+        })}
+      </>
       {/* Compaction hint: blinking cursor + label pinned to the end of the
           message list, independent of isStreaming (auto-compaction runs between
           turns, after the streaming cursor is gone). */}
@@ -738,9 +741,6 @@ export const MessageList = forwardRef<
           )}
         </div>
       )}
-
-      {/* Invisible div to scroll to */}
-      <div ref={messagesEndRef} />
     </div>
   );
 });

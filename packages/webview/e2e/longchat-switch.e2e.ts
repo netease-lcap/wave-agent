@@ -3,8 +3,8 @@ import { MessageInjector } from "./utils/messageInjector.js";
 import { MockDataGenerator } from "./fixtures/mockData.js";
 import type { Message } from "wave-agent-sdk";
 
-// 220 messages (> VIRTUAL_SCROLL_THRESHOLD=200 → virtualized branch),
-// ending on an assistant message (isUserMessage=false).
+// 220 messages (every message is virtualized), ending on an assistant
+// message (isUserMessage=false).
 const longMessages: Message[] = [];
 for (let i = 0; i < 110; i++) {
   longMessages.push(

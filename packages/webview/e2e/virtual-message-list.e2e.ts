@@ -4,22 +4,23 @@ import { MessageInjector } from "./utils/messageInjector.js";
 import { Message } from "wave-agent-sdk";
 
 /**
- * Virtualized MessageList (VIRTUAL_SCROLL_THRESHOLD = 200) in real Chromium.
+ * Virtualized MessageList (every message renders through the virtualizer) in
+ * real Chromium.
  *
  * jsdom cannot validate layout — every geometry assertion here (bounded DOM
  * row count, spacer height, scroll round trip, sticky jump, streaming
  * bottom-pinning) only makes sense against a real browser.
  */
 
-const VIRTUAL_MESSAGE_COUNT = 300; // > VIRTUAL_SCROLL_THRESHOLD (200)
+const VIRTUAL_MESSAGE_COUNT = 300;
 
-function buildMessages(count: number): Message[] {
+function buildMessages(count: number, prefix = ""): Message[] {
   const msgs: Message[] = [];
   for (let i = 0; i < count; i++) {
     const timestamp = new Date(Date.UTC(2026, 0, 1) + i * 60000).toISOString();
     if (i % 4 === 0 || i % 4 === 3) {
       msgs.push({
-        id: `u${i}`,
+        id: `${prefix}u${i}`,
         role: "user",
         timestamp,
         blocks: [
@@ -28,7 +29,7 @@ function buildMessages(count: number): Message[] {
       });
     } else {
       msgs.push({
-        id: `a${i}`,
+        id: `${prefix}a${i}`,
         role: "assistant",
         timestamp,
         blocks: [{ type: "text", content: `回答 ${i}：好的，我来看一下。` }],

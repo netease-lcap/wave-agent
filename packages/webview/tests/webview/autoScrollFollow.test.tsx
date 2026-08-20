@@ -23,9 +23,9 @@ const assistantMsg = (content: string, id: string) => ({
 });
 
 /**
- * jsdom does not do layout, so offsetTop/scrollTop/clientHeight/scrollHeight are all 0.
- * Fake the geometry by redefining those properties on the container, then dispatch a
- * scroll event so MessageList's scroll handler records the position.
+ * jsdom does not do layout, so scrollTop/clientHeight/scrollHeight are all 0.
+ * Fake the geometry by redefining those properties on the container, then
+ * dispatch a scroll event so MessageList's scroll handler records the position.
  */
 function setGeometryAndScroll(
   scrollTop: number,
@@ -36,14 +36,17 @@ function setGeometryAndScroll(
   Object.defineProperty(container, "scrollTop", {
     value: scrollTop,
     configurable: true,
+    writable: true,
   });
   Object.defineProperty(container, "clientHeight", {
     value: clientHeight,
     configurable: true,
+    writable: true,
   });
   Object.defineProperty(container, "scrollHeight", {
     value: scrollHeight,
     configurable: true,
+    writable: true,
   });
   act(() => {
     fireEvent.scroll(container);
@@ -56,9 +59,10 @@ describe("auto-scroll follow during streaming", () => {
   });
 
   it("keeps following when content above the viewport shrinks (e.g. reasoning collapse) without a user scroll-up", async () => {
-    const scrollIntoView = vi.fn();
-    // jsdom doesn't implement Element.scrollIntoView
-    window.Element.prototype.scrollIntoView = scrollIntoView;
+    // Programmatic scrolls go through the virtualizer → Element.scrollTo
+    // (polyfilled in tests/setup.ts); spy on it to observe auto-follow.
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
 
     renderChatApp();
     act(() => {
@@ -83,14 +87,14 @@ describe("auto-scroll follow during streaming", () => {
 
     // Park the viewport at the bottom: scrollTop 1600 + clientHeight 400 = scrollHeight 2000.
     setGeometryAndScroll(1600, 2000);
-    scrollIntoView.mockClear();
+    scrollTo.mockClear();
 
     // Simulate content above the viewport shrinking (reasoning block auto-collapse,
     // streaming-end reflow, image load reflow, etc.): scrollHeight drops and the
     // browser clamps scrollTop downward to keep it within bounds. This is NOT a user
     // scroll-up gesture, yet the raw scrollTop decreases.
     setGeometryAndScroll(800, 1200);
-    scrollIntoView.mockClear();
+    scrollTo.mockClear();
 
     // A subsequent streaming chunk arrives (messages change → effect runs). The user
     // never scrolled up, so auto-scroll-to-bottom must still fire.
@@ -103,12 +107,12 @@ describe("auto-scroll follow during streaming", () => {
       });
     });
 
-    expect(scrollIntoView).toHaveBeenCalled();
+    expect(scrollTo).toHaveBeenCalled();
   });
 
   it("keeps following when the viewport grows (e.g. confirmation dialog closes) without a user scroll-up", async () => {
-    const scrollIntoView = vi.fn();
-    window.Element.prototype.scrollIntoView = scrollIntoView;
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
 
     renderChatApp();
     act(() => {
@@ -129,14 +133,14 @@ describe("auto-scroll follow during streaming", () => {
 
     // Park the viewport at the bottom: scrollTop 1600 + clientHeight 400 = scrollHeight 2000.
     setGeometryAndScroll(1600, 2000);
-    scrollIntoView.mockClear();
+    scrollTo.mockClear();
 
     // Simulate the confirmation dialog closing: the input area comes back shorter
     // than the dialog, so the container's clientHeight grows 400 → 700 and the
     // browser clamps scrollTop down to the new maximum (2000 - 700 = 1300) with
     // scrollHeight UNCHANGED. This is NOT a user scroll-up gesture.
     setGeometryAndScroll(1300, 2000, 700);
-    scrollIntoView.mockClear();
+    scrollTo.mockClear();
 
     // A subsequent streaming chunk must still auto-scroll to bottom.
     act(() => {
@@ -148,12 +152,12 @@ describe("auto-scroll follow during streaming", () => {
       });
     });
 
-    expect(scrollIntoView).toHaveBeenCalled();
+    expect(scrollTo).toHaveBeenCalled();
   });
 
   it("stops following after a genuine user scroll-up (geometry unchanged)", async () => {
-    const scrollIntoView = vi.fn();
-    window.Element.prototype.scrollIntoView = scrollIntoView;
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
 
     renderChatApp();
     act(() => {
@@ -179,12 +183,12 @@ describe("auto-scroll follow during streaming", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });
-    scrollIntoView.mockClear();
+    scrollTo.mockClear();
 
     // Genuine user scroll-up: scrollTop decreases while scrollHeight AND
     // clientHeight stay the same — no layout clamp involved.
     setGeometryAndScroll(1500, 2000);
-    scrollIntoView.mockClear();
+    scrollTo.mockClear();
 
     // The next streaming chunk must NOT yank the user back to the bottom.
     act(() => {
@@ -196,6 +200,6 @@ describe("auto-scroll follow during streaming", () => {
       });
     });
 
-    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollTo).not.toHaveBeenCalled();
   });
 });

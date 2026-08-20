@@ -1,16 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { renderChatApp, screen, sendCommand } from "./test-utils";
+import { renderChatApp, screen, waitFor, sendCommand, act } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 
 /**
- * Timeline vertical-line grouping (设计稿: assistant 时间线竖线跨消息贯穿).
+ * Timeline vertical-line run classes (设计稿: assistant 时间线竖线跨消息贯穿).
  *
- * MessageList groups consecutive role==='assistant' messages into a single
- * `.assistant-group` wrapper so the timeline line runs continuously through all
- * their dots. User messages break the timeline. A group whose messages
- * contribute only a single timeline dot gets `.assistant-group--single`.
+ * MessageList renders every message as a virtualized row; consecutive
+ * role==='assistant' messages form a timeline run. A multi-dot run marks its
+ * first row `.timeline-run--start` and its last row `.timeline-run--end`
+ * (connecting line drawn); a single-dot run gets `.timeline-run--single`
+ * (isolated dot, no line). User messages break the run and carry no class.
  */
-describe("Timeline assistant grouping", () => {
+describe("Timeline assistant runs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -19,7 +20,16 @@ describe("Timeline assistant grouping", () => {
     return screen.getByTestId("messages-container");
   }
 
-  it("groups consecutive assistant messages and isolates the post-user one", () => {
+  // The run classes live on the .virtual-row wrapper (the inner .message only
+  // carries data-message-id / data-role); the wrapper carries
+  // data-measured-message-id.
+  function rowById(id: string) {
+    return getContainer().querySelector<HTMLElement>(
+      `[data-measured-message-id="${id}"]`,
+    );
+  }
+
+  it("marks consecutive assistant messages as a run and isolates the post-user one", async () => {
     renderChatApp();
 
     const messages = [
@@ -28,35 +38,30 @@ describe("Timeline assistant grouping", () => {
       MockDataGenerator.createUserMessage("a user question", "u1"),
       MockDataGenerator.createAssistantMessage("third assistant", "a3"),
     ];
-    sendCommand("updateMessages", { messages });
-
-    const container = getContainer();
-    const groups = container.querySelectorAll(".assistant-group");
-
-    // Two assistant runs → two groups (the user message breaks the run).
-    expect(groups.length).toBe(2);
-
-    // First group: the two consecutive assistant messages.
-    const firstGroup = groups[0];
-    const firstGroupAssistants =
-      firstGroup.querySelectorAll(".message.assistant");
-    expect(firstGroupAssistants.length).toBe(2);
-    // Two single-block assistant messages → 2 dots → NOT single, line drawn.
-    expect(firstGroup.classList.contains("assistant-group--single")).toBe(
-      false,
+    act(() => {
+      sendCommand("updateMessages", { messages });
+    });
+    await waitFor(() =>
+      expect(getContainer().querySelector(".virtual-row")).not.toBeNull(),
     );
 
-    // Second group: the lone post-user assistant, single dot → --single.
-    const secondGroup = groups[1];
-    const secondGroupAssistants =
-      secondGroup.querySelectorAll(".message.assistant");
-    expect(secondGroupAssistants.length).toBe(1);
-    expect(secondGroup.classList.contains("assistant-group--single")).toBe(
-      true,
-    );
+    // Two assistant runs → the first run spans a1..a2 (start + end), the lone
+    // post-user assistant a3 is a single-dot run.
+    const a1 = rowById("a1");
+    const a2 = rowById("a2");
+    const a3 = rowById("a3");
+    expect(a1?.classList.contains("timeline-run--start")).toBe(true);
+    expect(a2?.classList.contains("timeline-run--end")).toBe(true);
+    expect(a3?.classList.contains("timeline-run--single")).toBe(true);
+
+    // Multi-dot run rows are flush (paddingBottom 0) so the line segments
+    // abut; the single row keeps the inter-message spacing (10px).
+    expect(a1?.style.paddingBottom).toBe("0px");
+    expect(a2?.style.paddingBottom).toBe("10px");
+    expect(a3?.style.paddingBottom).toBe("10px");
   });
 
-  it("does not wrap the user message inside any assistant-group", () => {
+  it("does not wrap the user message in any run class", async () => {
     renderChatApp();
 
     const messages = [
@@ -65,12 +70,18 @@ describe("Timeline assistant grouping", () => {
       MockDataGenerator.createUserMessage("a user question", "u1"),
       MockDataGenerator.createAssistantMessage("third assistant", "a3"),
     ];
-    sendCommand("updateMessages", { messages });
+    act(() => {
+      sendCommand("updateMessages", { messages });
+    });
+    await waitFor(() =>
+      expect(getContainer().querySelector(".virtual-row")).not.toBeNull(),
+    );
 
-    const container = getContainer();
-    const userMessage = container.querySelector('[data-role="user"]');
-    expect(userMessage).not.toBeNull();
-    // The user message must be a direct child of the container, outside any group.
-    expect(userMessage?.closest(".assistant-group")).toBeNull();
+    const userRow = rowById("u1");
+    expect(userRow).not.toBeNull();
+    // The user message is its own virtual row, outside any timeline run.
+    expect(userRow?.classList.contains("timeline-run--start")).toBe(false);
+    expect(userRow?.classList.contains("timeline-run--end")).toBe(false);
+    expect(userRow?.classList.contains("timeline-run--single")).toBe(false);
   });
 });

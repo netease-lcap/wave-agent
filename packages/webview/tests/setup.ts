@@ -13,6 +13,39 @@ if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = function () {};
 }
 
+// jsdom does not implement Element.scrollTo. The virtualizer's scrollToFn uses
+// it (optional-chained, so absence silently no-ops); provide a minimal version
+// that mirrors the browser behavior (set scrollTop/scrollLeft). Tests that need
+// to observe programmatic scrolls replace it with a spy.
+if (typeof Element !== "undefined" && !Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = function (
+    this: Element,
+    opts?: ScrollToOptions | number,
+    y?: number,
+  ) {
+    if (typeof opts === "number") {
+      this.scrollTop = opts;
+      if (typeof y === "number") this.scrollLeft = y;
+    } else if (opts) {
+      if (typeof opts.top === "number") this.scrollTop = opts.top;
+      if (typeof opts.left === "number") this.scrollLeft = opts.left;
+    }
+  };
+}
+
+// jsdom does no layout: offsetHeight/offsetWidth are always 0. Every message
+// now renders through the virtualizer, which reads the scroll container's
+// offsetHeight to size its viewport — with 0 it would render zero rows in
+// every jsdom test. Stub a fixed 600x800 viewport for the whole suite.
+Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+  configurable: true,
+  get: () => 600,
+});
+Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+  configurable: true,
+  get: () => 800,
+});
+
 // jsdom does not have DataTransfer; polyfill a minimal version for paste/drop tests
 if (typeof globalThis.DataTransfer === "undefined") {
   class DataTransferPolyfill {
