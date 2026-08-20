@@ -45,6 +45,35 @@ jobs:
         if: steps.filter.outputs.jetbrains == 'true'
         uses: gradle/actions/setup-gradle@v6
 
+      # The Gradle `classes` task depends on copyWebviewAssets + bundleCli,
+      # which read from packages/webview/dist and packages/code/dist — without
+      # them the build fails (PR #1852's check-jetbrains failure).
+      - uses: pnpm/action-setup@v5
+        if: steps.filter.outputs.jetbrains == 'true'
+
+      - name: Setup Node.js
+        if: steps.filter.outputs.jetbrains == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install deps
+        if: steps.filter.outputs.jetbrains == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build agent-sdk dist
+        if: steps.filter.outputs.jetbrains == 'true'
+        run: pnpm -F wave-agent-sdk build
+
+      - name: Build webview dist
+        if: steps.filter.outputs.jetbrains == 'true'
+        run: pnpm -F wave-webview run compile -- --production
+
+      - name: Build wave-code dist
+        if: steps.filter.outputs.jetbrains == 'true'
+        run: pnpm -F wave-code build
+
       - name: Run tests
         if: steps.filter.outputs.jetbrains == 'true'
         run: ./packages/jetbrains/gradlew -p packages/jetbrains test --no-daemon

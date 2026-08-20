@@ -1,9 +1,22 @@
 name: Publish Package
 
+# 发布按 tag 命名空间路由到独立构建线：
+#   v*                → npm 线（wave-agent-sdk / wave-code 发布到 npm + docs 资产 + GitHub Release 创建）
+#   wave-desktop@*    → 桌面端安装器
+#   wave-vscode@*     → VS Code 扩展 .vsix
+#   wave-jetbrains@*  → JetBrains 插件 .zip
+# 各 GUI 已内置 CLI（构建时从 packages/code 源码拷贝），发布不依赖 npm 上的 wave-code，
+# 因此可单独发布任一 GUI 而无需 bump/发布 CLI 的 npm 包。workflow_dispatch 手动触发时跑全量。
+# 各构建线生成 release notes 时对比同命名空间的上一个 tag（如 wave-desktop@1.1.2 → 1.2.0），
+# 与 npm 线的 v* 历史互不混用。
+
 on:
   push:
     tags:
       - "v*"
+      - "wave-desktop@*"
+      - "wave-vscode@*"
+      - "wave-jetbrains@*"
   workflow_dispatch:
 
 permissions:
@@ -12,6 +25,7 @@ permissions:
 
 jobs:
   publish:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -31,11 +45,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm test
+      # `-r` 自动跳过 private 包，实际只发布 wave-agent-sdk 与 wave-code。
       - run: pnpm -r publish --no-git-checks --provenance --access public
-
-      # --- VS Code extension (.vsix) ---
-      - name: Package .vsix
-        run: pnpm -F wave-vscode run package
 
       # --- Docs (docs-<version>.tar.gz) ---
       - name: Cache Playwright browsers
@@ -74,7 +85,6 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            packages/vscode/releases/*.vsix
             docs-*.tar.gz
           draft: false
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
@@ -83,13 +93,72 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # --- VS Code extension (.vsix) ---
+  build-vscode:
+    if: startsWith(github.ref, 'refs/tags/wave-vscode@') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-tags: true
+
+      - uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      # The extension bundles from wave-agent-sdk/dist and packages/webview/dist
+      # (see syncWebview + bundleCli), so build all three upstreams first.
+      - name: Build agent-sdk dist
+        run: pnpm -F wave-agent-sdk build
+
+      - name: Build webview dist
+        run: pnpm -F wave-webview run compile -- --production
+
+      # bundleCli (packages/vscode/scripts/bundleCli.mjs) ships the CLI's
+      # dist/bundle/wave.mjs into the extension, so build wave-code first.
+      - name: Build wave-code dist
+        run: pnpm -F wave-code build
+
+      - name: Package .vsix
+        run: pnpm -F wave-vscode run package
+
+      # Release notes compare against the previous wave-vscode@ tag (same
+      # namespace), so "last release" means the previous extension release —
+      # not the npm line's v* tags.
+      - name: Get previous tag
+        id: prev-tag
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname --list 'wave-vscode@*' | grep -v "^${GITHUB_REF_NAME}$" | head -1)
+          echo "tag=${PREV_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Attach .vsix to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: packages/vscode/releases/*.vsix
+          draft: false
+          generate_release_notes: true
+          previous_tag: ${{ steps.prev-tag.outputs.tag }}
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # --- JetBrains plugin (.zip) ---
   # Builds the JB plugin distribution and attaches it to the same GitHub Release.
-  # Runs in parallel with `publish`; action-gh-release is idempotent (create-or-update)
-  # and merges assets, so both jobs targeting the same tag's release is safe. Only
-  # `publish` generates release notes / sets the body — this job adds the .zip asset
-  # and mirrors the prerelease flag in case it creates the release first.
+  # Runs in parallel with the other lines; action-gh-release is idempotent
+  # (create-or-update) and merges assets, so multiple jobs targeting the same
+  # tag's release is safe. Only `publish` generates release notes / sets the
+  # body — this job adds the .zip asset and mirrors the prerelease flag in case
+  # it creates the release first.
   build-jetbrains:
+    if: startsWith(github.ref, 'refs/tags/wave-jetbrains@') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -131,16 +200,31 @@ jobs:
       - name: Build webview dist
         run: pnpm -F wave-webview run compile -- --production
 
+      # bundleCli (build.gradle.kts) ships dist/bundle/wave.mjs into the plugin
+      # resources, so build wave-code first (the Gradle `classes` task depends on it).
+      - name: Build wave-code dist
+        run: pnpm -F wave-code build
+
       - name: Run Gradle tests
         run: ./packages/jetbrains/gradlew -p packages/jetbrains test --no-daemon
 
       - name: Build plugin distribution (.zip)
         run: ./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon
 
+      # Release notes compare against the previous wave-jetbrains@ tag.
+      - name: Get previous tag
+        id: prev-tag
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname --list 'wave-jetbrains@*' | grep -v "^${GITHUB_REF_NAME}$" | head -1)
+          echo "tag=${PREV_TAG}" >> $GITHUB_OUTPUT
+
       - name: Attach .zip to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           files: packages/jetbrains/build/distributions/*.zip
+          draft: false
+          generate_release_notes: true
+          previous_tag: ${{ steps.prev-tag.outputs.tag }}
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -152,6 +236,7 @@ jobs:
   # via CSC_LINK/CSC_KEY_PASSWORD (p12) + App Store Connect API key secrets;
   # Windows builds remain unsigned (no code-signing cert configured).
   build-desktop:
+    if: startsWith(github.ref, 'refs/tags/wave-desktop@') || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -160,6 +245,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-tags: true
 
       - uses: pnpm/action-setup@v5
 
@@ -216,6 +303,15 @@ jobs:
         if: runner.os == 'Windows'
         run: pnpm -F wave-desktop run dist -- --publish never
 
+      # Release notes compare against the previous wave-desktop@ tag. Both
+      # matrix runners compute the same value; only Windows generates the notes
+      # so create/update don't race on the release body.
+      - name: Get previous tag
+        id: prev-tag
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname --list 'wave-desktop@*' | grep -v "^${GITHUB_REF_NAME}$" | head -1)
+          echo "tag=${PREV_TAG}" >> $GITHUB_OUTPUT
+
       - name: Attach installers to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
@@ -223,6 +319,9 @@ jobs:
             packages/desktop/release/*.dmg
             packages/desktop/release/*.zip
             packages/desktop/release/*.exe
+          draft: false
+          generate_release_notes: ${{ runner.os == 'Windows' }}
+          previous_tag: ${{ steps.prev-tag.outputs.tag }}
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
