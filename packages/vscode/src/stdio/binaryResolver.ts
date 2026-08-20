@@ -16,7 +16,6 @@
  * system Node.js/npm is required. Result is cached for the extension lifetime.
  */
 
-import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -284,28 +283,6 @@ export async function resolveWaveBinary(
   }
   cachedPath = entry;
   return cachedPath;
-}
-
-/**
- * Run `<cliPath> -v` through the host Node runtime (the extension-host
- * process, which is always a valid Node binary) and return the CLI's version
- * (e.g. "0.18.7"). Returns null if the CLI is missing/corrupt or the probe
- * fails/times out — callers treat null as an error rather than crashing.
- */
-export function getCliVersion(cliPath: string): string | null {
-  try {
-    const output = execFileSync(process.execPath, [cliPath, "-v"], {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 5000,
-    });
-    const line = output.trim().split("\n")[0]?.trim();
-    if (!line) return null;
-    // `wave -v` prints the bare version; tolerate a leading "v" just in case.
-    return line.replace(/^v/, "");
-  } catch {
-    return null;
-  }
 }
 
 /**

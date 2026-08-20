@@ -3,7 +3,6 @@ import path from "path";
 
 // ── Mocks ──────────────────────────────────────────────────────
 
-const mockExecFileSync = vi.hoisted(() => vi.fn());
 const mockTarX = vi.hoisted(() => vi.fn());
 const mockFetch = vi.hoisted(() => vi.fn());
 const mockMaxSatisfying = vi.hoisted(() => vi.fn(() => "1.18.0"));
@@ -38,11 +37,6 @@ const mockFs = vi.hoisted(() => ({
   }),
 }));
 
-vi.mock("child_process", () => ({
-  default: { execFileSync: mockExecFileSync },
-  execFileSync: mockExecFileSync,
-}));
-
 vi.mock("fs", () => ({ default: mockFs, ...mockFs }));
 
 vi.mock("os", () => ({
@@ -68,7 +62,6 @@ import {
   resolveWaveBinary,
   ensureCliUpToDate,
   ensureRipgrep,
-  getCliVersion,
   cliEntryPath,
   cliInstallDir,
   bundledCliDir,
@@ -165,7 +158,6 @@ describe("binaryResolver (bundled CLI + downloaded rg)", () => {
     _resetCacheForTesting();
     vi.stubGlobal("fetch", mockFetch);
     mockTarX.mockImplementation(async () => undefined);
-    mockExecFileSync.mockReturnValue("v1.0.0\n");
   });
 
   afterEach(() => {
@@ -266,27 +258,6 @@ describe("binaryResolver (bundled CLI + downloaded rg)", () => {
     seedRuntimeCli("1.0.0");
 
     await expect(ensureRipgrep()).resolves.toBe(false);
-  });
-
-  it("getCliVersion runs the CLI through the host Node with ELECTRON_RUN_AS_NODE", () => {
-    mockExecFileSync.mockReturnValue("v1.2.3\n");
-
-    expect(getCliVersion(entry())).toBe("1.2.3");
-    expect(mockExecFileSync).toHaveBeenCalledWith(
-      process.execPath,
-      [entry(), "-v"],
-      expect.objectContaining({
-        env: expect.objectContaining({ ELECTRON_RUN_AS_NODE: "1" }),
-      }),
-    );
-  });
-
-  it("getCliVersion returns null when the probe fails", () => {
-    mockExecFileSync.mockImplementation(() => {
-      throw new Error("boom");
-    });
-
-    expect(getCliVersion(entry())).toBeNull();
   });
 
   it("ensureCliUpToDate resolves the runtime CLI", async () => {

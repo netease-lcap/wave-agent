@@ -34,10 +34,13 @@ class StdioClientException(message: String) : RuntimeException(message)
 
 /**
  * Pure transport layer: spawns `wave --stdio`, speaks line-delimited JSON-RPC 2.0.
- * Mirrors packages/vscode/src/stdio/stdioClient.ts.
+ * Mirrors packages/vscode/src/stdio/stdioClient.ts. [command] is the full
+ * executable + script prefix (e.g. `node ~/.wave/cli/bin/wave-code.js`) — the
+ * bundled CLI is a `.js` script executed by the system Node.js, so no shell /
+ * `.cmd` shim is involved on Windows.
  */
 class StdioClient(
-    binaryPath: String,
+    command: List<String>,
     args: List<String> = emptyList(),
     env: Map<String, String> = emptyMap(),
 ) : AutoCloseable {
@@ -56,11 +59,11 @@ class StdioClient(
 
     private val stderrBuffer = StringBuilder()
 
-    private val process: Process = ProcessBuilder(listOf(binaryPath) + args).apply {
+    private val process: Process = ProcessBuilder(command + args).apply {
         redirectErrorStream(false)
         environment().putAll(env)
     }.also {
-        LOG.info("Starting wave stdio: $binaryPath ${args.joinToString(" ")}")
+        LOG.info("Starting wave stdio: ${(command + args).joinToString(" ")}")
     }.start()
 
     private val stdin: PrintWriter = PrintWriter(

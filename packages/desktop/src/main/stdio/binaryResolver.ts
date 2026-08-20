@@ -16,7 +16,6 @@
  * cached for the app lifetime.
  */
 
-import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -263,30 +262,6 @@ export async function resolveWaveBinary(
   }
   cachedPath = entry;
   return cachedPath;
-}
-
-/**
- * Run `<cliPath> -v` through the host Node runtime and return the CLI's
- * version (e.g. "0.18.7"). Returns null if the CLI is missing/corrupt or the
- * probe fails/times out — callers treat null as an error rather than
- * crashing. The host is Electron's bundled Node, so the app binary needs
- * ELECTRON_RUN_AS_NODE=1 (harmless when the override points at a real node).
- */
-export function getCliVersion(cliPath: string): string | null {
-  try {
-    const output = execFileSync(process.execPath, [cliPath, "-v"], {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 30000,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
-    });
-    const line = output.trim().split("\n")[0]?.trim();
-    if (!line) return null;
-    // `wave -v` prints the bare version; tolerate a leading "v" just in case.
-    return line.replace(/^v/, "");
-  } catch {
-    return null;
-  }
 }
 
 /**

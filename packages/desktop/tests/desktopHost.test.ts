@@ -331,7 +331,6 @@ vi.mock("../src/main/stdio/stdioAgent", () => ({
 vi.mock("../src/main/stdio/binaryResolver", () => ({
   resolveWaveBinary: vi.fn(async () => "/mock/wave"),
   ensureCliUpToDate: vi.fn(async () => "/mock/wave"),
-  getCliVersion: vi.fn(() => "0.19.7"),
 }));
 
 vi.mock("../src/main/updateChecker", () => ({

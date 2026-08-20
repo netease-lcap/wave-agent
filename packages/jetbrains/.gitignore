@@ -13,3 +13,5 @@ src/main/resources/webview/chat.js
 src/main/resources/webview/chat.css
 src/main/resources/webview/theme-base.css
 src/main/resources/webview/theme-base-light.css
+# CLI bundle copied at build time by bundleCli (from packages/code/dist + bin)
+src/main/resources/wave-cli/
