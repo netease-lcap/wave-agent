@@ -62,6 +62,33 @@ describe("WriteToolPreview", () => {
     });
   });
 
+  it("routes through onOpenFile when provided (desktop file panel)", async () => {
+    const user = userEvent.setup();
+    const vscode = { postMessage: vi.fn() };
+    const onOpenFile = vi.fn();
+    const block = makeBlock(
+      JSON.stringify({ file_path: "/a/b.md", content: "l1\nl2\nl3" }),
+    );
+    const { getByTestId, container } = render(
+      <WriteToolPreview
+        toolBlock={block}
+        vscode={vscode}
+        onOpenFile={onOpenFile}
+      />,
+    );
+
+    await user.click(getByTestId("write-preview-open"));
+    expect(onOpenFile).toHaveBeenCalledWith("/a/b.md");
+    expect(vscode.postMessage).not.toHaveBeenCalled();
+
+    onOpenFile.mockClear();
+    await user.click(
+      container.querySelector(".write-tool-path") as HTMLElement,
+    );
+    expect(onOpenFile).toHaveBeenCalledWith("/a/b.md");
+    expect(vscode.postMessage).not.toHaveBeenCalled();
+  });
+
   it("fires openFile when the path is clicked", async () => {
     const user = userEvent.setup();
     const vscode = { postMessage: vi.fn() };
