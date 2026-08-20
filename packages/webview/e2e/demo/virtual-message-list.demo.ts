@@ -184,6 +184,20 @@ test.describe("Virtualized message list demo", () => {
   test("streaming bottom-pinning: settled dist ≤ 2, no upward jumps", async ({
     webviewPage,
   }) => {
+    // Regression guard: resizeItem's scroll compensation (streaming row
+    // growth) fires notify(sync) from measureElement, which runs as a ref
+    // callback inside React's commit phase. The virtualizer's default
+    // useFlushSync would call flushSync(rerender) there and React rejects it
+    // with "flushSync was called from inside a lifecycle method". Catch the
+    // warning so it can't silently come back.
+    const reactWarnings: string[] = [];
+    webviewPage.on("console", (msg) => {
+      // React emits dev-mode warnings via console.error (printWarning), not
+      // console.warn — match on the message text.
+      if (msg.text().includes("flushSync")) {
+        reactWarnings.push(msg.text());
+      }
+    });
     const injector = new MessageInjector(webviewPage);
     const msgs = buildMessages(VIRTUAL_MESSAGE_COUNT);
     msgs.push({
@@ -244,5 +258,6 @@ test.describe("Virtualized message list demo", () => {
       expect(state.scrollTop).toBeGreaterThanOrEqual(prevScrollTop - 2);
       prevScrollTop = state.scrollTop;
     }
+    expect(reactWarnings).toEqual([]);
   });
 });
