@@ -315,21 +315,6 @@
 /* Timeline connector lives on the content area only (below the header dot),
    not around the header. The 6px dot starts at x=0, so its center is at 3px;
    the border sits there and content is indented to align with the title. */
-/* Expand/collapse wrapper: animates the content area height via
-   grid-template-rows 0fr → 1fr. Duration is set inline by ReasoningBlockView
-   from COLLAPSE_TRANSITION_MS so JS unmount timing stays in sync. */
-.reasoning-collapse {
-  display: grid;
-  grid-template-rows: 0fr;
-}
-.reasoning-collapse.expanded {
-  grid-template-rows: 1fr;
-}
-.reasoning-collapse-inner {
-  overflow: hidden;
-  min-height: 0;
-}
-
 .reasoning-content {
   margin-left: 3px;
   padding-left: 9px;

@@ -241,30 +241,7 @@ test.describe("Product Specification Screenshots - Rich Content", () => {
       .locator(".reasoning-content")
       .count();
     if (reasoningExpanded === 0) {
-      // 内容区高度过渡（grid-template-rows 0fr → 1fr，0.2s）：先注册 transitionend
-      // 监听再点击，避免截到半展开状态
-      await webviewPage.evaluate(() => {
-        (window as unknown as Record<string, unknown>).__reasoningExpanded =
-          new Promise<void>((resolve) => {
-            const onEnd = (e: Event) => {
-              const t = e as TransitionEvent;
-              if (
-                t.propertyName === "grid-template-rows" &&
-                (e.target as Element)?.classList.contains("reasoning-collapse")
-              ) {
-                document.removeEventListener("transitionend", onEnd);
-                resolve();
-              }
-            };
-            document.addEventListener("transitionend", onEnd);
-          });
-      });
       await webviewPage.click(".reasoning-header");
-      await webviewPage.waitForFunction(() =>
-        Boolean(
-          (window as unknown as Record<string, unknown>).__reasoningExpanded,
-        ),
-      );
     }
     await webviewPage.waitForSelector(".reasoning-chevron.expanded");
     await webviewPage.waitForSelector(".reasoning-content");
