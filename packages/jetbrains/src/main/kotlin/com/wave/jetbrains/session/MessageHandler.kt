@@ -1,8 +1,7 @@
 package com.wave.jetbrains.session
 
-import com.intellij.ide.plugins.PluginManager
+import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
 import com.wave.jetbrains.WaveBackendService
 import com.wave.jetbrains.config.WavePluginService
@@ -678,7 +677,7 @@ class MessageHandler(
         session.agent?.sessionCwd ?: session.agent?.workingDirectory ?: project.basePath ?: System.getProperty("user.dir")
 
     private fun pluginVersion(): String =
-        PluginManager.getInstance().findEnabledPlugin(PluginId.getId("com.wave.jetbrains"))?.version ?: ""
+        PluginManagerCore.getPlugin(WavePluginService::class.java)?.version ?: ""
 
     /** Decode webview file payload → bytes. data may be a base64/data-url string (best effort). */
     private fun decodeFileData(data: JsonElement?): ByteArray {
