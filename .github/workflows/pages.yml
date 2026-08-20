@@ -4,10 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - 'docs/**'
-      - 'packages/webview/e2e/demo/**'
-      - 'packages/vscode/LOGO.png'
-      - '.github/workflows/pages.yml'
+      - "docs/**"
+      - "packages/webview/demo/**"
+      - "packages/webview/e2e/**"
+      - "packages/vscode/LOGO.png"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -31,8 +32,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: "22"
+          cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
