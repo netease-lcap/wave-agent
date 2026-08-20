@@ -161,8 +161,10 @@ test.describe("Product Specification Screenshots - Multi Agent Concurrency", () 
         ],
       },
       {
-        id: "msg_demo_background_subagent",
-        role: "assistant",
+        // Notification is a meta message: hidden from UI, visible to the model
+        id: "msg_demo_background_subagent_notify",
+        role: "user",
+        isMeta: true,
         timestamp: "2025-07-09T10:35:00.000Z",
         blocks: [
           {
@@ -183,9 +185,22 @@ test.describe("Product Specification Screenshots - Multi Agent Concurrency", () 
           },
         ],
       },
+      {
+        // Model's summary of the completed background tasks (what the user sees)
+        id: "msg_demo_background_subagent_report",
+        role: "assistant",
+        timestamp: "2025-07-09T10:35:01.000Z",
+        blocks: [
+          {
+            type: "text",
+            content:
+              "两个后台任务都已完成：\n1. 支付网关兼容性分析：支持 Stripe / PayPal / 支付宝三种网关，建议优先接入 Stripe。\n2. 提现流程边界审查：金额为 0、余额不足、重复提交三类场景存在缺陷，修复建议已生成。",
+          },
+        ],
+      },
     ];
     await injector.updateMessages(backgroundSubagentMessages);
-    await webviewPage.waitForSelector(".task-notification-block");
+    await webviewPage.waitForSelector("text=两个后台任务都已完成");
     await elementScreenshotWebp(
       webviewPage.locator(".messages-container"),
       "../../docs/public/screenshots/spec-background-subagent.webp",

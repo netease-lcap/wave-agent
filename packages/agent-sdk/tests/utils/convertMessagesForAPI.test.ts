@@ -391,6 +391,37 @@ describe("convertMessagesForAPI", () => {
     ]);
   });
 
+  it("should wrap task_notification blocks with completion context for the model", () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [
+          {
+            type: "task_notification",
+            taskId: "task-1",
+            taskType: "shell",
+            status: "completed",
+            summary: "Done",
+          },
+        ],
+        isMeta: true,
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(1);
+    expect(apiMessages[0].role).toBe("user");
+    expect(apiMessages[0].content).toEqual([
+      {
+        type: "text",
+        text: `A background agent completed a task:\n<task-notification>\n<task-id>task-1</task-id>\n<task-type>shell</task-type>\n<status>completed</status>\n<summary>Done</summary>\n</task-notification>`,
+      },
+    ]);
+  });
+
   it("should include reasoning content in assistant messages for API", () => {
     const messages: Message[] = [
       {

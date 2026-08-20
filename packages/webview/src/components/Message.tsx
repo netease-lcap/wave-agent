@@ -22,7 +22,6 @@ import type {
   MessageProps,
   ToolBlock,
   ImageBlock,
-  TaskNotificationBlock,
   ReasoningBlock,
   CompactBlock,
   MessageBlock,
@@ -745,67 +744,6 @@ export const Message: React.FC<MessageProps> = React.memo(
       );
     };
 
-    const renderTaskNotification = (
-      block: TaskNotificationBlock,
-      index: number,
-    ) => {
-      const statusIcon =
-        block.status === "completed"
-          ? "check"
-          : block.status === "failed"
-            ? "error"
-            : "circle-slash";
-      const statusLabel =
-        block.status === "completed"
-          ? "已完成"
-          : block.status === "failed"
-            ? "失败"
-            : "已终止";
-      const statusColor =
-        block.status === "completed"
-          ? "#3fb950"
-          : block.status === "failed"
-            ? "#f85149"
-            : "#8b949e";
-      return (
-        <div
-          key={`task-notification-${index}`}
-          className="task-notification-block"
-          style={{
-            padding: "8px 12px",
-            margin: "4px 0",
-            borderRadius: "6px",
-            border: `1px solid ${statusColor}40`,
-            background: `${statusColor}0d`,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <i
-              className={`codicon codicon-${statusIcon}`}
-              style={{ color: statusColor }}
-            ></i>
-            <span
-              style={{ fontWeight: 500, fontSize: "12px", color: statusColor }}
-            >
-              {statusLabel}
-            </span>
-          </div>
-          {block.summary && (
-            <div style={{ marginTop: "4px", fontSize: "13px" }}>
-              {block.summary}
-            </div>
-          )}
-          {block.outputFile && (
-            <div
-              style={{ marginTop: "4px", fontSize: "12px", color: "#8b949e" }}
-            >
-              输出: {block.outputFile}
-            </div>
-          )}
-        </div>
-      );
-    };
-
     const renderBlock = (block: MessageBlock, index: number) => {
       let rendered: React.ReactNode = null;
       let wrap = false;
@@ -909,8 +847,6 @@ export const Message: React.FC<MessageProps> = React.memo(
           wrap = true;
           dotColor = getStageColor(block.stage);
           break;
-        case "task_notification":
-          return renderTaskNotification(block as TaskNotificationBlock, index);
         default:
           return null;
       }

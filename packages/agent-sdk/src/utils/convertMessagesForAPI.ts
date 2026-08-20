@@ -365,7 +365,7 @@ export function convertMessagesForAPI(
         if (block.type === "task_notification") {
           contentParts.push({
             type: "text",
-            text: taskNotificationToXml(block),
+            text: `A background agent completed a task:\n${taskNotificationToXml(block)}`,
           });
         }
       });

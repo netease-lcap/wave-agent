@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderChatApp, screen, waitFor, act, sendCommand } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 
-describe("Task Notification Block Rendering", () => {
+describe("Task Notification Block Hidden", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("should render completed task notification with proper styling", async () => {
+  it("should not render completed task notification in message flow", async () => {
     renderChatApp();
 
     const message =
@@ -24,18 +24,24 @@ describe("Task Notification Block Rendering", () => {
       sendCommand("updateMessages", { messages: [message] });
     });
 
+    // The text block renders normally, but the task notification is hidden
     await waitFor(() => {
-      expect(screen.getByText("已完成")).toBeInTheDocument();
+      expect(
+        screen.getByText("Background task completed:"),
+      ).toBeInTheDocument();
     });
 
-    const block = document.querySelector(".task-notification-block");
-    expect(block).toBeInTheDocument();
-    expect(block).toHaveTextContent("已完成");
-    expect(block).toHaveTextContent("npm test passed with 42 tests");
-    expect(block).toHaveTextContent("输出: /tmp/test-output.log");
+    expect(document.querySelector(".task-notification-block")).toBeNull();
+    expect(screen.queryByText("已完成")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("npm test passed with 42 tests"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("输出: /tmp/test-output.log"),
+    ).not.toBeInTheDocument();
   });
 
-  it("should render failed task notification with proper styling", async () => {
+  it("should not render failed task notification in message flow", async () => {
     renderChatApp();
 
     const message =
@@ -52,18 +58,18 @@ describe("Task Notification Block Rendering", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("失败")).toBeInTheDocument();
+      expect(document.querySelector(".task-notification-block")).toBeNull();
     });
 
-    const block = document.querySelector(".task-notification-block");
-    expect(block).toBeInTheDocument();
-    expect(block).toHaveTextContent("失败");
-    expect(block).toHaveTextContent(
-      "Explore agent encountered an error during file analysis",
-    );
+    expect(screen.queryByText("失败")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "Explore agent encountered an error during file analysis",
+      ),
+    ).not.toBeInTheDocument();
   });
 
-  it("should render killed task notification with proper styling", async () => {
+  it("should not render killed task notification in message flow", async () => {
     renderChatApp();
 
     const message =
@@ -80,18 +86,16 @@ describe("Task Notification Block Rendering", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("已终止")).toBeInTheDocument();
+      expect(document.querySelector(".task-notification-block")).toBeNull();
     });
 
-    const block = document.querySelector(".task-notification-block");
-    expect(block).toBeInTheDocument();
-    expect(block).toHaveTextContent("已终止");
-    expect(block).toHaveTextContent(
-      "Long-running process was terminated by user",
-    );
+    expect(screen.queryByText("已终止")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Long-running process was terminated by user"),
+    ).not.toBeInTheDocument();
   });
 
-  it("should render multiple task notifications in a single message", async () => {
+  it("should not render multiple task notifications in a single message", async () => {
     renderChatApp();
 
     const messages = [
@@ -116,9 +120,15 @@ describe("Task Notification Block Rendering", () => {
     });
 
     await waitFor(() => {
-      const blocks = document.querySelectorAll(".task-notification-block");
-      expect(blocks).toHaveLength(2);
+      expect(
+        document.querySelectorAll(".task-notification-block"),
+      ).toHaveLength(0);
     });
+
+    expect(screen.queryByText("Build succeeded")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Agent failed to connect"),
+    ).not.toBeInTheDocument();
   });
 
   it("should handle task notification without summary or outputFile", async () => {
@@ -137,11 +147,9 @@ describe("Task Notification Block Rendering", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("已完成")).toBeInTheDocument();
+      expect(document.querySelector(".task-notification-block")).toBeNull();
     });
 
-    const block = document.querySelector(".task-notification-block");
-    expect(block).toBeInTheDocument();
-    expect(block).toHaveTextContent("已完成");
+    expect(screen.queryByText("已完成")).not.toBeInTheDocument();
   });
 });

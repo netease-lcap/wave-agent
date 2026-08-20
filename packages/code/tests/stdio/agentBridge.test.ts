@@ -1861,6 +1861,7 @@ test("onNotificationMessageAdded emits with full message", async () => {
   const notificationMessage: Message = {
     id: "notif-1",
     role: "user",
+    isMeta: true,
     timestamp: new Date().toISOString(),
     blocks: [{ type: "task_notification", taskId: "task-1" } as never],
   };
@@ -1890,6 +1891,8 @@ test("onNotificationMessageAdded emits with full message", async () => {
     },
     sessionId: "test-session-id",
   });
+  // Notification message is meta: hidden from UI message flow, visible to model
+  expect(notificationMessage.isMeta).toBe(true);
 });
 
 // ── Branch coverage: null params, untested switch cases ──────────
