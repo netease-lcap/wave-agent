@@ -16,7 +16,7 @@ try {
   execSync("git pull origin main", { stdio: "inherit" });
 
   // 2. Create a temporary branch
-  const tempBranch = `release-${type}-${Date.now()}`;
+  const tempBranch = `release-${process.argv[2] || "patch"}-${Date.now()}`;
   console.log(`Creating temporary branch: ${tempBranch}`);
   execSync(`git checkout -b ${tempBranch}`, { stdio: "inherit" });
 
