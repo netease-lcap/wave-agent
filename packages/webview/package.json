@@ -23,8 +23,9 @@
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run",
     "test:unit:coverage": "vitest run --coverage",
-    "pretest:demo": "pnpm run type-check && tsc -p e2e --noEmit && pnpm run compile",
-    "test:demo": "playwright test --project=demo"
+    "pretest:demo": "pnpm run type-check && tsc -p e2e --noEmit && tsc -p demo --noEmit && pnpm run compile",
+    "test:demo": "playwright test --project=demo --project=e2e",
+    "test:e2e": "playwright test --project=e2e"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
