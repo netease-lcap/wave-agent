@@ -130,6 +130,17 @@ jobs:
       - name: Package .vsix
         run: pnpm -F wave-vscode run package
 
+      # --- VS Code Marketplace (PAT, transitional until OIDC lands) ---
+      # PATs retire 2026-12-01; the OIDC route (vsce --oidc / --azure-credential)
+      # is blocked on the Marketplace-side trusted publishing policy config, so
+      # use a PAT meanwhile. Tag pushes only — the marketplace rejects duplicate
+      # versions, so workflow_dispatch (asset re-upload) must not re-publish.
+      - name: Publish to VS Code Marketplace
+        if: startsWith(github.ref, 'refs/tags/wave-vscode@')
+        run: pnpm -F wave-vscode exec vsce publish --packagePath releases/*.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
       # Release notes compare against the previous wave-vscode@ tag (same
       # namespace), so "last release" means the previous extension release —
       # not the npm line's v* tags.
