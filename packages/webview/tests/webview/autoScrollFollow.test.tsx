@@ -172,9 +172,9 @@ describe("auto-scroll follow during streaming", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    // Park the viewport at the bottom. (The sticky user-message re-pin fires
-    // here and re-arms the programmatic-scroll flag — let it clear before the
-    // upward gesture below so that gesture is read as user intent.)
+    // Park the viewport at the bottom. (This also renders the sticky user
+    // message — let it settle before the upward gesture below so that gesture
+    // is read as user intent.)
     setGeometryAndScroll(1600, 2000);
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));

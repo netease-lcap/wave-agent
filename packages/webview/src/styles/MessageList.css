@@ -20,12 +20,16 @@
   position: relative;
 }
 
-/* Sticky user message pinned at the top of the viewport (设计稿 2248-9471) */
+/* Sticky user message overlaid at the top of the viewport (设计稿 2248-9471).
+   Absolute rather than sticky: the bar is an overlay and must not consume flow
+   space. In-flow it rendered only after the initial load's scroll ran and grew
+   scrollHeight by its own height, pushing the true bottom ~30-70px below the
+   parked viewport. */
 .sticky-user-wrapper {
-  position: sticky;
+  position: absolute;
   top: 0;
-  align-self: stretch;
-  margin-bottom: -10px;
+  left: 0;
+  right: 0;
   z-index: 20;
 }
 
@@ -152,15 +156,4 @@
 
 .messages-container--virtual .timeline-run--single .timeline-row::after {
   display: none;
-}
-
-/* Sticky user message as an overlay in the virtualized list: it must not
-   consume flow space — the virtualizer's offsets and the spacer height assume
-   the scroll content starts at the container's content box. */
-.sticky-user-wrapper--overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  margin-bottom: 0;
 }
