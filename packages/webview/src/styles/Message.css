@@ -28,50 +28,9 @@
   z-index: 1;
 }
 
-/* Continuous timeline line running through every dot of an assistant group
-   (see MessageList grouping). The line is drawn as per-row segments so its ends
-   anchor exactly to the first/last dot regardless of each row's dot offset. The
-   group wrapper (gap:0) keeps consecutive rows flush so segments abut into one
-   continuous line. */
-.assistant-group {
-  position: relative;
-  align-self: stretch;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  width: 100%;
-}
-
-/* Full-height segment for interior rows: spans the whole row so it joins the
-   rows above and below into a continuous line. */
-.assistant-group .timeline-row::after {
-  content: "";
-  position: absolute;
-  left: 3px;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--vscode-widget-border);
-  z-index: 0;
-}
-
-/* First row of the whole group: line starts at its dot center
-   (dot top 15px + radius 3px = 18px). */
-.assistant-group > .message:first-child .timeline-row:first-child::after {
-  top: 18px;
-}
-
-/* Last row of the whole group: line ends at its dot center. */
-.assistant-group > .message:last-child .timeline-row:last-child::after {
-  bottom: auto;
-  height: 18px;
-}
-
-/* A group whose messages contribute only a single dot shows an isolated dot,
-   no connecting line. */
-.assistant-group--single .timeline-row::after {
-  display: none;
-}
+/* Continuous timeline line runs are drawn as per-row segments by the
+   virtualized MessageList (see timelineRuns in MessageList.tsx and
+   MessageList.css) — no .assistant-group wrapper exists anymore. */
 
 .timeline-row .tool-status-dot,
 .timeline-row .reasoning-dot {

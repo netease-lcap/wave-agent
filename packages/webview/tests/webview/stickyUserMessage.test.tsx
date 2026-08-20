@@ -34,32 +34,29 @@ const notifMsg = (id: string) => ({
 });
 
 /**
- * jsdom does not do layout, so offsetTop/scrollTop/clientHeight are all 0.
- * Fake the geometry: assign an increasing offsetTop to each user message node,
- * set the container scrollTop past the first message, then dispatch a scroll event.
+ * The sticky candidate is computed from the virtualizer's offset table (see
+ * computeSticky): rows are estimated at 600px (the stubbed jsdom viewport
+ * height) plus a 10px paddingStart, so message N occupies
+ * [10 + N*600, 610 + N*600). Fake the container geometry, set scrollTop into
+ * the middle of a row, then dispatch a scroll event so both the virtualizer
+ * and MessageList's handler recompute.
  */
 function fakeGeometryAndScroll(scrollTop: number) {
   const container = screen.getByTestId("messages-container");
   Object.defineProperty(container, "scrollTop", {
     value: scrollTop,
     configurable: true,
+    writable: true,
   });
   Object.defineProperty(container, "clientHeight", {
     value: 400,
     configurable: true,
+    writable: true,
   });
   Object.defineProperty(container, "scrollHeight", {
     value: 2000,
     configurable: true,
-  });
-  const nodes = container.querySelectorAll<HTMLElement>(
-    '[data-role="user"][data-message-id]',
-  );
-  nodes.forEach((node, i) => {
-    Object.defineProperty(node, "offsetTop", {
-      value: i * 500,
-      configurable: true,
-    });
+    writable: true,
   });
   act(() => {
     fireEvent.scroll(container);
@@ -99,8 +96,9 @@ describe("sticky user message", () => {
       expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
     );
 
-    // scrollTop 1200 → u1(0) and u2(500) and u3(1000) are all above; last one is u3
-    fakeGeometryAndScroll(1200);
+    // scrollTop 1300 → u3 (1210..1810) is at the viewport top; u1 (10..610)
+    // and u2 (610..1210) are above the fold; the last one above is u3.
+    fakeGeometryAndScroll(1300);
 
     await waitFor(() => {
       expect(screen.getByTestId("sticky-user-message")).toBeInTheDocument();
@@ -125,8 +123,9 @@ describe("sticky user message", () => {
       expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
     );
 
-    // scrollTop 600 → only u1(0) is above u2(500)? u2 offsetTop 500 < 600 too → last above is u2
-    fakeGeometryAndScroll(600);
+    // scrollTop 700 → u2 (610..1210) tops the viewport; u1 is above the fold,
+    // u3 is below it → the candidate is u2.
+    fakeGeometryAndScroll(700);
     await waitFor(() => {
       expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
         "第二条问题",
@@ -149,14 +148,17 @@ describe("sticky user message", () => {
       expect(screen.getByTestId("sticky-user-message")).toBeInTheDocument(),
     );
 
-    const target = screen
-      .getByTestId("messages-container")
-      .querySelector('[data-message-id="u2"]') as HTMLElement;
-    const spy = vi.spyOn(target, "scrollIntoView").mockImplementation(() => {});
+    // The virtualizer's scrollToFn calls Element.scrollTo (polyfilled in
+    // tests/setup.ts); replace it with a spy to observe the jump.
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
     act(() => {
       fireEvent.click(screen.getByTestId("sticky-user-message"));
     });
-    expect(spy).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
+    expect(scrollTo).toHaveBeenCalledWith({
+      top: 610, // u2 start 610 + (600 - viewport 600) / 2 = 610
+      behavior: "smooth",
+    });
   });
 
   it("renders sticky content with the 3-line clamp class", async () => {
@@ -192,10 +194,11 @@ describe("sticky user message", () => {
       expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
     );
 
-    // scrollTop 1200 → u1(0), u2(500) and n3(1000) are all above the fold;
-    // the notification has no text, so the bar must stay on u2 ("第二条问题")
-    // instead of vanishing (regression: it used to clear the sticky state).
-    fakeGeometryAndScroll(1200);
+    // scrollTop 1300 → u1 (10..610), u2 (610..1210) are above the fold and n3
+    // (1210..1810) tops the viewport; the notification has no text, so the bar
+    // must stay on u2 ("第二条问题") instead of vanishing (regression: it used
+    // to clear the sticky state).
+    fakeGeometryAndScroll(1300);
 
     await waitFor(() => {
       expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
@@ -203,9 +206,9 @@ describe("sticky user message", () => {
       );
     });
 
-    // Once the text-bearing u4 (1500) also scrolls past, it becomes the
+    // Once the text-bearing u4 (1810..2410) also scrolls past, it becomes the
     // candidate.
-    fakeGeometryAndScroll(1800);
+    fakeGeometryAndScroll(1900);
     await waitFor(() => {
       expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
         "第四条问题",
@@ -228,9 +231,9 @@ describe("sticky user message", () => {
       expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
     );
 
-    // scrollTop 1600 → u1(0), n2(500) and u3(1000) are all above the fold;
-    // the newest text-bearing user is u3.
-    fakeGeometryAndScroll(1600);
+    // scrollTop 1300 → u1 (10..610) and n2 (610..1210) are above the fold, u3
+    // (1210..1810) tops the viewport; the newest text-bearing user is u3.
+    fakeGeometryAndScroll(1300);
     await waitFor(() => {
       expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
         "第三条问题",

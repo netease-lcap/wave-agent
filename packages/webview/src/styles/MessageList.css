@@ -106,7 +106,7 @@
   pointer-events: none;
 }
 
-/* ---------- Virtualized list (VIRTUAL_SCROLL_THRESHOLD branch) ---------- */
+/* ---------- Virtualized list (every message is a virtualized row) ---------- */
 
 /* The virtualizer positions rows absolutely; the in-flow spacer carries the
    total height. Row spacing lives in each row's padding-bottom (see
@@ -116,8 +116,8 @@
   gap: 0;
 }
 
-/* No flex gap to cancel on the virtualized branch (gap: 0 above); a negative
-   margin would pull the virtualizer's spacer 10px up out of the container. */
+/* No flex gap to cancel (gap: 0 above); a negative margin would pull the
+   virtualizer's spacer 10px up out of the container. */
 .messages-container--virtual .sticky-user-wrapper {
   margin-bottom: 0;
 }
@@ -136,17 +136,17 @@
 }
 
 /* The full-width row wrapper would stretch user bubbles across the whole
-   column; keep the plain path's shrink-to-fit look. */
+   column; keep the shrink-to-fit look. */
 .messages-container--virtual .message.user {
   width: fit-content;
   max-width: 100%;
 }
 
-/* Timeline vertical line as per-message segments (the plain path draws it via
-   .assistant-group). A run of consecutive assistant messages is a row
-   sequence: the run's first row starts the line at its first dot, the last
-   row ends it at its last dot; interior rows span their full height so the
-   segments abut into a continuous line; single-dot runs hide it. */
+/* Timeline vertical line as per-message segments (the old .assistant-group
+   wrapper drew it as a single box). A run of consecutive assistant messages is
+   a row sequence: the run's first row starts the line at its first dot, the
+   last row ends it at its last dot; interior rows span their full height so
+   the segments abut into a continuous line; single-dot runs hide it. */
 .messages-container--virtual .timeline-row::after {
   content: "";
   position: absolute;

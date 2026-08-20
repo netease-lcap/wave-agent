@@ -31,14 +31,17 @@ function setGeometryAndScroll(
   Object.defineProperty(container, "scrollTop", {
     value: scrollTop,
     configurable: true,
+    writable: true,
   });
   Object.defineProperty(container, "clientHeight", {
     value: clientHeight,
     configurable: true,
+    writable: true,
   });
   Object.defineProperty(container, "scrollHeight", {
     value: scrollHeight,
     configurable: true,
+    writable: true,
   });
   act(() => {
     fireEvent.scroll(container);
@@ -47,6 +50,8 @@ function setGeometryAndScroll(
 
 /**
  * Initial-load scrolling + async-content re-pin.
+ * MessageList scrolls programmatically through the virtualizer, which ends in
+ * Element.scrollTo (polyfilled in tests/setup.ts); these tests spy on it.
  * jsdom does no layout (scrollTop/clientHeight/scrollHeight are 0), so the
  * "near bottom" check is always true there; these tests assert the parts that
  * are deterministic regardless: the initial forced 'auto' scroll, and the
@@ -63,8 +68,8 @@ describe("initial load scroll + async-content re-pin", () => {
   });
 
   it("initial load force-scrolls instantly with behavior auto", async () => {
-    const scrollIntoView = vi.fn();
-    window.Element.prototype.scrollIntoView = scrollIntoView;
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
 
     renderChatApp();
     act(() => {
@@ -79,12 +84,14 @@ describe("initial load scroll + async-content re-pin", () => {
 
     // The mount effect IS the initial load: MessageList only renders once
     // messages exist, so the first scroll must be an instant 'auto' pin.
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "auto" });
+    expect(scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: "auto" }),
+    );
   });
 
   it("re-pins to the bottom when an image finishes loading", async () => {
-    const scrollIntoView = vi.fn();
-    window.Element.prototype.scrollIntoView = scrollIntoView;
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
 
     renderChatApp();
     act(() => {
@@ -96,18 +103,20 @@ describe("initial load scroll + async-content re-pin", () => {
     await waitFor(() =>
       expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
     );
-    scrollIntoView.mockClear();
+    scrollTo.mockClear();
 
     // 'load' does not bubble — the container listens in capture phase, so
     // dispatching a non-bubbling load still reaches it.
     fireEvent.load(screen.getByTestId("messages-container"));
 
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "auto" });
+    expect(scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: "auto" }),
+    );
   });
 
   it("does NOT re-pin on image load after the user scrolled up", async () => {
-    const scrollIntoView = vi.fn();
-    window.Element.prototype.scrollIntoView = scrollIntoView;
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
 
     renderChatApp();
     act(() => {
@@ -132,16 +141,16 @@ describe("initial load scroll + async-content re-pin", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
     setGeometryAndScroll(1500, 2000);
-    scrollIntoView.mockClear();
+    scrollTo.mockClear();
 
     fireEvent.load(screen.getByTestId("messages-container"));
 
-    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollTo).not.toHaveBeenCalled();
   });
 
   it("re-pins once web fonts are ready", async () => {
-    const scrollIntoView = vi.fn();
-    window.Element.prototype.scrollIntoView = scrollIntoView;
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
     // Must be set BEFORE mount: the re-pin effect registers the fonts.ready
     // callback when MessageList mounts. An unresolved promise keeps the re-pin
     // pending so we can resolve it after clearing the initial-scroll call.
@@ -164,19 +173,21 @@ describe("initial load scroll + async-content re-pin", () => {
     await waitFor(() =>
       expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
     );
-    scrollIntoView.mockClear();
+    scrollTo.mockClear();
 
     // Resolve the fonts.ready promise → the re-pin callback fires.
     await act(async () => {
       resolveFonts();
     });
 
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "auto" });
+    expect(scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: "auto" }),
+    );
   });
 
   it("does not scroll when the sticky user message appears (it's an overlay, no flow space)", async () => {
-    const scrollIntoView = vi.fn();
-    window.Element.prototype.scrollIntoView = scrollIntoView;
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
 
     renderChatApp();
     act(() => {
@@ -197,14 +208,14 @@ describe("initial load scroll + async-content re-pin", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });
-    scrollIntoView.mockClear();
+    scrollTo.mockClear();
 
     // Initial load has pinned the viewport at the true bottom: scrollTop is at
     // the end of the scrollHeight.
     setGeometryAndScroll(1600, 2000);
 
     // The sticky user message appears once the viewport has scrolled past it
-    // (jsdom: all offsetTop are 0 < scrollTop, so the last user message wins).
+    // (virtualized candidate: u2 at 1210..1810 tops the viewport at 1600).
     // The bar is absolutely positioned — an overlay that takes no flow space —
     // so scrollHeight is untouched and the parked viewport stays at the true
     // bottom. No re-pin scroll may fire (regression guard for the removed
@@ -213,6 +224,6 @@ describe("initial load scroll + async-content re-pin", () => {
       expect(screen.getByTestId("sticky-user-message")).toBeInTheDocument(),
     );
 
-    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollTo).not.toHaveBeenCalled();
   });
 });
