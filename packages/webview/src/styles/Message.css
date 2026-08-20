@@ -563,23 +563,6 @@
   overflow: hidden;
 }
 
-/* 工具内容区挂载时平滑展开（0fr→1fr 入场动画，与思考块折叠/bash 输出同构）：
-   Write 预览与 Edit diff 在工具完成时一次性挂载，挂载即播放动画，避免瞬间跳高。 */
-.tool-reveal {
-  display: grid;
-  grid-template-rows: 0fr;
-  animation: tool-reveal-in 200ms ease forwards;
-}
-.tool-reveal-inner {
-  overflow: hidden;
-  min-height: 0;
-}
-@keyframes tool-reveal-in {
-  to {
-    grid-template-rows: 1fr;
-  }
-}
-
 .bash-command-unified .bash-command-input {
   margin-top: 0;
   border: none;

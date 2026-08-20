@@ -266,16 +266,10 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
   }
 
   return (
-    <div className="tool-reveal">
-      <div className="tool-reveal-inner">
-        <div className="diff-viewer-container">
-          <div className="diff-viewer-content" tabIndex={0}>
-            {renderExpandedDiff()}
-            {changes.length === 0 && (
-              <div className="diff-empty">No changes</div>
-            )}
-          </div>
-        </div>
+    <div className="diff-viewer-container">
+      <div className="diff-viewer-content" tabIndex={0}>
+        {renderExpandedDiff()}
+        {changes.length === 0 && <div className="diff-empty">No changes</div>}
       </div>
     </div>
   );
