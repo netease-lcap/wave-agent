@@ -20,6 +20,39 @@ import "../styles/MessageList.css";
 // for unit tests and demo harnesses) on the plain path.
 const VIRTUAL_SCROLL_THRESHOLD = 200;
 
+// Measured row heights by message id, shared across MessageList instances
+// (module scope = one webview page lifetime). Session switches / history
+// reloads reuse the SAME message ids, so the virtualizer's estimateSize can
+// answer with the real measured height instead of the coarse 200px default —
+// a reload then lands on the true total height in one shot instead of
+// shrinking one row per frame for seconds as rows are progressively measured
+// (each measurement shrank the spacer, re-anchored the bottom, mounted the
+// next row, and measured it — a chain that kept scrollHeight moving).
+const measuredHeights = new Map<string, number>();
+const MEASURED_HEIGHTS_LIMIT = 2000;
+// Arithmetic mean of measured row heights, used as the estimate for rows not
+// yet measured (e.g. the first load of a conversation). Converges to the real
+// average within the first batch of measurements, so unmeasured rows estimate
+// close to reality and the total height does not keep drifting as rows are
+// progressively measured. Starts conservative (200, the old estimateSize).
+let measuredSum = 0;
+let measuredCount = 0;
+let avgMeasuredHeight = 200;
+
+function recordMeasuredHeight(id: string, height: number) {
+  if (!measuredHeights.has(id)) {
+    measuredSum += height;
+    measuredCount++;
+    avgMeasuredHeight = measuredSum / measuredCount;
+    if (measuredHeights.size >= MEASURED_HEIGHTS_LIMIT) {
+      // Map iterates in insertion order — evict the oldest entry.
+      const oldest = measuredHeights.keys().next().value;
+      if (oldest !== undefined) measuredHeights.delete(oldest);
+    }
+  }
+  measuredHeights.set(id, height);
+}
+
 // Count the blocks in an assistant message that Message.tsx wraps in a `.timeline-row`
 // (i.e. that carry a timeline dot): non-empty text/compact, tool, and reasoning blocks.
 // Mirrors the `wrap` logic in Message.renderBlock so the group can decide whether it has
@@ -146,7 +179,18 @@ export const MessageList = forwardRef<
     // its observers, but renders no rows).
     count: virtualized ? visibleMessages.length : 0,
     getScrollElement: () => containerRef.current,
-    estimateSize: () => 200,
+    // Estimate real measured height when known (same message ids reload after
+    // a session switch), falling back to the running average of measured rows
+    // so unmeasured rows match reality instead of a fixed 200px — this keeps
+    // the spacer stable once the visible window has been measured.
+    estimateSize: (i) => {
+      const id = visibleMessages[i]?.id;
+      if (id) {
+        const cached = measuredHeights.get(id);
+        if (cached !== undefined) return cached;
+      }
+      return avgMeasuredHeight;
+    },
     overscan: 20,
     // Inter-row spacing is baked into each row's padding-bottom (see
     // timelineRuns) instead of the virtualizer's `gap`: the plain path renders
@@ -178,6 +222,22 @@ export const MessageList = forwardRef<
     // growth doesn't trigger layout thrash mid-frame.
     useAnimationFrameWithResizeObserver: true,
   });
+
+  // Stable row ref: records the real measured height (keyed by message id) for
+  // estimateSize, then defers to the virtualizer's own measurement. Must stay
+  // referentially stable — an inline arrow would be recreated every render and
+  // React would detach/reattach every row's ref each render, re-measuring the
+  // whole visible window on every streaming chunk.
+  const measureRow = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node) {
+        const id = node.getAttribute("data-measured-message-id");
+        if (id) recordMeasuredHeight(id, node.offsetHeight);
+      }
+      virtualizer.measureElement(node);
+    },
+    [virtualizer],
+  );
 
   // Per-message timeline run data for the virtualized branch. A run is a
   // maximal sequence of consecutive assistant messages (mirrors the
@@ -630,7 +690,8 @@ export const MessageList = forwardRef<
               <div
                 key={virtualRow.key}
                 data-index={virtualRow.index}
-                ref={virtualizer.measureElement}
+                data-measured-message-id={message.id}
+                ref={measureRow}
                 className={`virtual-row${runClass ? ` ${runClass}` : ""}`}
                 style={{
                   paddingBottom: timelineRuns.paddings[virtualRow.index],
