@@ -100,6 +100,22 @@ export const MessageList = forwardRef<
     id: string;
     text: string;
   } | null>(null);
+  // Mirror of stickyMessage for computeSticky's pre-comparison. computeSticky
+  // runs on every messages update (each streaming chunk) inside the main
+  // effect's passive phase AND from scroll/ResizeObserver callbacks. Its
+  // setStickyMessage is the only setState on the streaming hot path. With a
+  // functional updater React only bails out cheaply when the update queue is
+  // empty; during high-frequency dual-stream (reasoning + text) chunks pile up
+  // while a render is in flight, the queue is never empty, and every
+  // computeSticky call schedules an update — counting toward React's
+  // nestedPassiveUpdateLimit and eventually firing "Maximum update depth
+  // exceeded" (setState inside useEffect, ~50 consecutive passive rounds).
+  // Comparing against the ref and skipping the call entirely when the value is
+  // unchanged avoids scheduling altogether (same UI semantics, zero updates).
+  const stickyRef = useRef<{
+    id: string;
+    text: string;
+  } | null>(null);
 
   // Filter out user messages with isMeta (hidden from the list). Extracted from
   // the render path so both the plain and the virtualized branch index the same
@@ -121,6 +137,7 @@ export const MessageList = forwardRef<
   virtualizedRef.current = virtualized;
   const visibleMessagesRef = useRef(visibleMessages);
   visibleMessagesRef.current = visibleMessages;
+  stickyRef.current = stickyMessage;
 
   const virtualizer = useVirtualizer({
     // count: 0 keeps the virtualizer inert on the plain path (it still mounts
@@ -145,6 +162,16 @@ export const MessageList = forwardRef<
     // row transforms and the spacer height straight to the DOM, re-rendering
     // only when the visible range or isScrolling changes.
     directDomUpdates: true,
+    // The virtualizer's default useFlushSync calls flushSync(rerender) whenever
+    // notify(sync=true) fires — i.e. after a synchronous scroll compensation
+    // (resizeItem on streaming row growth) or while isScrolling. measureElement
+    // runs as a ref callback in React's commit phase, so a growing streaming row
+    // can trigger that flushSync inside a lifecycle method, which React rejects
+    // with "flushSync was called from inside a lifecycle method" (and the flush
+    // is ignored anyway). With directDomUpdates the spacer height and row
+    // transforms are still applied synchronously inside onChange; only the
+    // React re-render (visible range) is deferred to the normal scheduler.
+    useFlushSync: false,
     // Defer measurement resize callbacks to animation frames so streaming row
     // growth doesn't trigger layout thrash mid-frame.
     useAnimationFrameWithResizeObserver: true,
@@ -201,8 +228,20 @@ export const MessageList = forwardRef<
 
   const computeSticky = useCallback(() => {
     const container = containerRef.current;
+    // setSticky compares against stickyRef (synced from stickyMessage every
+    // render) and skips the state update entirely when the computed value is
+    // unchanged — see the stickyRef comment. This keeps the sticky computation
+    // off React's nested-passive-update accounting on the streaming hot path.
+    const setSticky = (next: { id: string; text: string } | null) => {
+      const prev = stickyRef.current;
+      const same =
+        prev === null
+          ? next === null
+          : next !== null && prev.id === next.id && prev.text === next.text;
+      if (!same) setStickyMessage(next);
+    };
     if (!container) {
-      setStickyMessage(null);
+      setSticky(null);
       return;
     }
     const scrollTop = container.scrollTop;
@@ -226,7 +265,7 @@ export const MessageList = forwardRef<
         idx--;
       }
       if (candidate < 0) {
-        setStickyMessage(null);
+        setSticky(null);
         return;
       }
       const msg = rows[candidate];
@@ -236,14 +275,10 @@ export const MessageList = forwardRef<
         .join(" ")
         .trim();
       if (!msg.id || !text) {
-        setStickyMessage(null);
+        setSticky(null);
         return;
       }
-      setStickyMessage((prev) =>
-        prev && prev.id === msg.id && prev.text === text
-          ? prev
-          : { id: msg.id, text },
-      );
+      setSticky({ id: msg.id, text });
       return;
     }
     // Plain path: scan the fully-rendered DOM, as before.
@@ -260,19 +295,17 @@ export const MessageList = forwardRef<
       }
     }
     if (!candidateNode) {
-      setStickyMessage(null);
+      setSticky(null);
       return;
     }
     const id = candidateNode.getAttribute("data-message-id") || "";
     const text =
       candidateNode.querySelector(".user-content")?.textContent?.trim() || "";
     if (!id || !text) {
-      setStickyMessage(null);
+      setSticky(null);
       return;
     }
-    setStickyMessage((prev) =>
-      prev && prev.id === id && prev.text === text ? prev : { id, text },
-    );
+    setSticky({ id, text });
   }, [virtualizer]);
 
   const scrollToMessage = useCallback(
