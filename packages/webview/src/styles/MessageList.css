@@ -90,3 +90,77 @@
   );
   pointer-events: none;
 }
+
+/* ---------- Virtualized list (VIRTUAL_SCROLL_THRESHOLD branch) ---------- */
+
+/* The virtualizer positions rows absolutely; the in-flow spacer carries the
+   total height. Row spacing lives in each row's padding-bottom (see
+   MessageList timelineRuns), so the container gap must be zeroed — otherwise
+   the flex gap would add extra space around the spacer/compaction hint. */
+.messages-container--virtual {
+  gap: 0;
+}
+
+.virtual-spacer {
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.virtual-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* The full-width row wrapper would stretch user bubbles across the whole
+   column; keep the plain path's shrink-to-fit look. */
+.messages-container--virtual .message.user {
+  width: fit-content;
+  max-width: 100%;
+}
+
+/* Timeline vertical line as per-message segments (the plain path draws it via
+   .assistant-group). A run of consecutive assistant messages is a row
+   sequence: the run's first row starts the line at its first dot, the last
+   row ends it at its last dot; interior rows span their full height so the
+   segments abut into a continuous line; single-dot runs hide it. */
+.messages-container--virtual .timeline-row::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--vscode-widget-border);
+  z-index: 0;
+}
+
+.messages-container--virtual
+  .timeline-run--start
+  .timeline-row:first-child::after {
+  top: 18px;
+}
+
+.messages-container--virtual
+  .timeline-run--end
+  .timeline-row:last-child::after {
+  bottom: auto;
+  height: 18px;
+}
+
+.messages-container--virtual .timeline-run--single .timeline-row::after {
+  display: none;
+}
+
+/* Sticky user message as an overlay in the virtualized list: it must not
+   consume flow space — the virtualizer's offsets and the spacer height assume
+   the scroll content starts at the container's content box. */
+.sticky-user-wrapper--overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin-bottom: 0;
+}
