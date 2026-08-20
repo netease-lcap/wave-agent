@@ -676,6 +676,7 @@ export const addNotificationMessageToMessages = ({
     id: generateMessageId(),
     role: "user",
     blocks: [block],
+    isMeta: true,
     timestamp: new Date().toISOString(),
   };
 

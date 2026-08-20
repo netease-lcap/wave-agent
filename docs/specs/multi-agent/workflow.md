@@ -8,7 +8,7 @@ order: 80
 
 **创建日期**：2026-06-07
 
-## 用户场景与测试 *（必填）*
+## 用户场景与测试 _（必填）_
 
 ### 用户故事：运行工作流探索代码库（优先级：P1）
 
@@ -21,7 +21,7 @@ order: 80
 **验收场景**：
 
 1. **假设**有包含源文件的项目目录，**当**用户说"use a workflow to explore this project"时，**则** agent 调用 Workflow 工具，使用包含 `agent()`、`pipeline()` 和 `phase()` 的 JS 脚本。
-2. **假设**有运行中的工作流，**当**工作流完成时，**则** `<task-notification>` 被注入对话中，agent 报告结果。
+2. **假设**有运行中的工作流，**当**工作流完成时，**则** `<task-notification>` 被注入对话中（meta 消息，UI 消息流隐藏、仅模型可见，见 `core/background-task-notification`），agent 报告结果。
 3. **假设**有包含多个阶段的工作流，**当**用户运行 `/workflows` 时，**则**系统列出运行记录，包含名称、状态、agent 计数和 token 使用量。
 
 ---
@@ -99,4 +99,3 @@ order: 80
 - **运行中中止**：如果用户停止工作流，所有飞行中的 agent 被取消，运行状态设置为"aborted"。
 - **子 agent 中的 Workflow 工具**：Workflow 工具在子 agent 中被禁止（防止无限递归）。
 - **脚本持久化**：每次 Workflow 调用都将脚本持久化到会话目录，即使执行失败。
-

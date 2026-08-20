@@ -12,7 +12,7 @@ order: 30
 > wave 复用现有 fork 引擎：`aiManager.runForkLoop` 家族（compaction / 自动记忆 / btw 已在用）保证 perfect-fork 语义（相同系统提示词、工具、模型、消息前缀 → 命中模型 prompt 缓存），`BackgroundTaskManager` + task-notification 机制（subagent 后台执行在用）负责后台注册与结果回传。
 > 范围仅限稳定路径：手动命令触发。Agent 工具隐式触发（省略 subagent_type 自动 fork）与 `/fork` 别名属实验路径，本期不做。
 
-## 用户场景与测试 *（必填）*
+## 用户场景与测试 _（必填）_
 
 ### 用户故事：手动触发 fork 子代理（优先级：P1）
 
@@ -27,6 +27,7 @@ order: 30
 5. **假设** fork 子代理需要调用工具，**则** 允许执行除 Agent 工具与 Task 工具之外的工具（继承父工具集与父权限规则），工具在剥离上下文中执行（不触发权限弹窗）。
 6. **假设** fork 子代理完成，**则** 任务状态置为 completed，最终回复通过 task-notification（含 `<result>`）注入主对话，主对话的 AI 可见结果并可继续应答。
 7. **假设** fork 子代理失败（如 API 错误、达到 maxTurns 无结果），**则** 任务状态置为 failed，错误信息通过 task-notification 注入主对话，主对话不中断。
+8. **假设** fork 子代理完成或失败，**当** 通知注入主对话时，**则** 通知为 meta 消息（`isMeta: true`），不在 CLI 与 Webview 消息流中显示，仅模型可见（对齐 Claude Code，见 `core/background-task-notification`）。
 
 ### 用户故事：fork 内禁止递归（优先级：P1）
 
