@@ -421,6 +421,7 @@ export const Message: React.FC<MessageProps> = React.memo(
                 toolBlock={toolBlock}
                 vscode={props.vscode}
                 workdir={workdir}
+                onOpenFile={openFile}
               />
             )}
             {errorContent && toolHeader}
