@@ -7,10 +7,17 @@ import React, {
   useCallback,
   useState,
 } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Message } from "./Message";
 import type { MessageListProps } from "../types";
 import type { Message as MessageType } from "wave-agent-sdk";
 import "../styles/MessageList.css";
+
+// Above this many visible messages the list switches to the virtualized
+// branch (@tanstack/react-virtual); below it the plain render path stays
+// byte-for-byte identical. The threshold keeps small chats (the common case
+// for unit tests and demo harnesses) on the plain path.
+const VIRTUAL_SCROLL_THRESHOLD = 200;
 
 // Count the blocks in an assistant message that Message.tsx wraps in a `.timeline-row`
 // (i.e. that carry a timeline dot): non-empty text/compact, tool, and reasoning blocks.
@@ -94,6 +101,104 @@ export const MessageList = forwardRef<
     text: string;
   } | null>(null);
 
+  // Filter out user messages with isMeta (hidden from the list). Extracted from
+  // the render path so both the plain and the virtualized branch index the same
+  // data.
+  const visibleMessages = useMemo(() => {
+    const out: MessageType[] = [];
+    for (const msg of messages) {
+      if (msg.role === "user" && msg.isMeta) continue;
+      out.push(msg);
+    }
+    return out;
+  }, [messages]);
+
+  const virtualized = visibleMessages.length > VIRTUAL_SCROLL_THRESHOLD;
+
+  // Refs mirroring the branch state for stable callbacks (event handlers and
+  // imperative handle must not capture a stale render).
+  const virtualizedRef = useRef(virtualized);
+  virtualizedRef.current = virtualized;
+  const visibleMessagesRef = useRef(visibleMessages);
+  visibleMessagesRef.current = visibleMessages;
+
+  const virtualizer = useVirtualizer({
+    // count: 0 keeps the virtualizer inert on the plain path (it still mounts
+    // its observers, but renders no rows).
+    count: virtualized ? visibleMessages.length : 0,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => 200,
+    overscan: 20,
+    // Inter-row spacing is baked into each row's padding-bottom (see
+    // timelineRuns) instead of the virtualizer's `gap`: the plain path renders
+    // consecutive assistant messages flush (gap 0) so the timeline line is
+    // continuous through a run — a uniform `gap` would break the line at every
+    // message boundary.
+    paddingStart: 10, // .messages-container padding
+    paddingEnd: 10,
+    // Keep the reading position anchored on appends; follow new content only
+    // when the user is already at the end (streaming bottom-pin).
+    anchorTo: "end",
+    followOnAppend: true,
+    getItemKey: (i) => visibleMessages[i].id,
+    // Skip React re-renders for scroll-only updates: the virtualizer writes
+    // row transforms and the spacer height straight to the DOM, re-rendering
+    // only when the visible range or isScrolling changes.
+    directDomUpdates: true,
+    // Defer measurement resize callbacks to animation frames so streaming row
+    // growth doesn't trigger layout thrash mid-frame.
+    useAnimationFrameWithResizeObserver: true,
+  });
+
+  // Per-message timeline run data for the virtualized branch. A run is a
+  // maximal sequence of consecutive assistant messages (mirrors the
+  // .assistant-group logic of the plain path). Multi-dot runs draw a
+  // continuous vertical line: the run's first row starts it at its first dot,
+  // the last row ends it at its last dot; single-dot runs hide the line.
+  // paddingBottom is the row's bottom spacing: 0 inside a multi-dot run so the
+  // line segments abut (flush, like the plain path's gap:0 group), 10 after
+  // every other row (the plain path's 10px container gap).
+  const timelineRuns = useMemo(() => {
+    const classes: string[] = [];
+    const paddings: number[] = [];
+    let runStart = -1;
+    let dots = 0;
+    const flushRun = (end: number) => {
+      if (runStart === -1) return;
+      if (dots <= 1) {
+        for (let i = runStart; i <= end; i++) {
+          classes[i] = "timeline-run--single";
+          paddings[i] = 10;
+        }
+      } else {
+        classes[runStart] = "timeline-run--start";
+        paddings[runStart] = 0;
+        classes[end] = "timeline-run--end";
+        paddings[end] = 10;
+        for (let i = runStart + 1; i < end; i++) {
+          paddings[i] = 0;
+        }
+        if (runStart === end) {
+          classes[runStart] = "timeline-run--start timeline-run--end";
+        }
+      }
+      runStart = -1;
+      dots = 0;
+    };
+    visibleMessages.forEach((m, i) => {
+      if (m.role === "assistant") {
+        if (runStart === -1) runStart = i;
+        dots += countTimelineBlocks(m);
+      } else {
+        flushRun(i - 1);
+        classes[i] = "";
+        paddings[i] = 10;
+      }
+    });
+    flushRun(visibleMessages.length - 1);
+    return { classes, paddings };
+  }, [visibleMessages]);
+
   const computeSticky = useCallback(() => {
     const container = containerRef.current;
     if (!container) {
@@ -101,25 +206,66 @@ export const MessageList = forwardRef<
       return;
     }
     const scrollTop = container.scrollTop;
+    if (virtualizedRef.current) {
+      // Virtualized branch: the DOM only holds the visible window, so the
+      // sticky candidate is derived from the data + the virtualizer's offset
+      // table. The candidate is the last user message whose top edge sits
+      // above the viewport top, i.e. the last user message at or before the
+      // item currently at the top of the viewport (which is itself a
+      // candidate only when its top edge is strictly above the fold).
+      const at = virtualizer.getVirtualItemForOffset(scrollTop);
+      let idx = at ? at.index : -1;
+      if (at && at.start >= scrollTop) idx = at.index - 1;
+      const rows = visibleMessagesRef.current;
+      let candidate = -1;
+      while (idx >= 0) {
+        if (rows[idx].role === "user") {
+          candidate = idx;
+          break;
+        }
+        idx--;
+      }
+      if (candidate < 0) {
+        setStickyMessage(null);
+        return;
+      }
+      const msg = rows[candidate];
+      const text = (msg.blocks ?? [])
+        .filter((b) => b.type === "text")
+        .map((b) => b.content || "")
+        .join(" ")
+        .trim();
+      if (!msg.id || !text) {
+        setStickyMessage(null);
+        return;
+      }
+      setStickyMessage((prev) =>
+        prev && prev.id === msg.id && prev.text === text
+          ? prev
+          : { id: msg.id, text },
+      );
+      return;
+    }
+    // Plain path: scan the fully-rendered DOM, as before.
     const nodes = container.querySelectorAll<HTMLElement>(
       '[data-role="user"][data-message-id]',
     );
-    let candidate: HTMLElement | null = null;
+    let candidateNode: HTMLElement | null = null;
     // Find the last user message whose top edge has scrolled above the viewport top.
     for (const node of nodes) {
       if (node.offsetTop < scrollTop) {
-        candidate = node;
+        candidateNode = node;
       } else {
         break;
       }
     }
-    if (!candidate) {
+    if (!candidateNode) {
       setStickyMessage(null);
       return;
     }
-    const id = candidate.getAttribute("data-message-id") || "";
+    const id = candidateNode.getAttribute("data-message-id") || "";
     const text =
-      candidate.querySelector(".user-content")?.textContent?.trim() || "";
+      candidateNode.querySelector(".user-content")?.textContent?.trim() || "";
     if (!id || !text) {
       setStickyMessage(null);
       return;
@@ -127,29 +273,87 @@ export const MessageList = forwardRef<
     setStickyMessage((prev) =>
       prev && prev.id === id && prev.text === text ? prev : { id, text },
     );
-  }, []);
+  }, [virtualizer]);
 
-  const scrollToMessage = useCallback((id: string) => {
-    const container = containerRef.current;
-    const node = container?.querySelector<HTMLElement>(
-      `[data-message-id="${id}"]`,
-    );
-    node?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, []);
+  const scrollToMessage = useCallback(
+    (id: string) => {
+      const container = containerRef.current;
+      if (!container) return;
+      if (virtualizedRef.current) {
+        // The target row is likely not mounted (it scrolled far above the
+        // viewport), so jump via the virtualizer's offset table instead of
+        // querying the DOM.
+        const index = visibleMessagesRef.current.findIndex((m) => m.id === id);
+        if (index >= 0) {
+          virtualizer.scrollToIndex(index, {
+            align: "center",
+            behavior: "smooth",
+          });
+        }
+        return;
+      }
+      const node = container.querySelector<HTMLElement>(
+        `[data-message-id="${id}"]`,
+      );
+      node?.scrollIntoView({ behavior: "smooth", block: "center" });
+    },
+    [virtualizer],
+  );
 
   // Perform a programmatic scroll-to-bottom, guarding it with the
   // isProgrammaticScroll flag so the scroll handler treats the resulting
   // 'scroll' event as ours (not the user's) and leaves userScrolledUp alone.
-  const doScrollToBottom = useCallback((behavior: ScrollBehavior) => {
-    const messagesEnd = messagesEndRef.current;
-    if (!messagesEnd) return;
-    isProgrammaticScrollRef.current = true;
-    messagesEnd.scrollIntoView({ behavior });
-    // 'auto' is instant (single 'scroll' fire); reset on the next frame.
-    requestAnimationFrame(() => {
-      isProgrammaticScrollRef.current = false;
-    });
-  }, []);
+  const doScrollToBottom = useCallback(
+    (behavior: ScrollBehavior) => {
+      const container = containerRef.current;
+      if (!container) return;
+      isProgrammaticScrollRef.current = true;
+      if (virtualizedRef.current) {
+        virtualizer.scrollToEnd({ behavior });
+        // The virtualizer's resizeItem compensation and the scrollToEnd above
+        // both target offsets computed before the spacer height lands in the
+        // DOM (the spacer write happens later in the frame, after the scrollTo
+        // was clamped against the stale scrollHeight; the ResizeObserver →
+        // animation-frame measurement can even trail by a full frame). Keep
+        // re-checking for a few frames and finish the jump once the spacer is
+        // in place, so streaming row growth still pins the viewport.
+        let attempts = 0;
+        const finishPin = () => {
+          if (attempts++ >= 8) return;
+          // Only chase the bottom while the viewport is still parked there; if
+          // the user scrolls away during the compensation window, stop so we
+          // don't yank them back to the bottom.
+          if (
+            container.scrollTop + container.clientHeight <
+            container.scrollHeight - 300
+          ) {
+            return;
+          }
+          if (
+            container.scrollHeight -
+              container.scrollTop -
+              container.clientHeight >
+            2
+          ) {
+            isProgrammaticScrollRef.current = true;
+            virtualizer.scrollToEnd({ behavior: "auto" });
+            requestAnimationFrame(() => {
+              isProgrammaticScrollRef.current = false;
+            });
+          }
+          requestAnimationFrame(finishPin);
+        };
+        requestAnimationFrame(finishPin);
+      } else {
+        messagesEndRef.current?.scrollIntoView({ behavior });
+      }
+      // 'auto' is instant (single 'scroll' fire); reset on the next frame.
+      requestAnimationFrame(() => {
+        isProgrammaticScrollRef.current = false;
+      });
+    },
+    [virtualizer],
+  );
 
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = "smooth", force = false) => {
@@ -307,9 +511,11 @@ export const MessageList = forwardRef<
   // short of the real bottom. Re-pin here, gated on being near the bottom
   // (the push is far smaller than the 300px threshold) and on the user not
   // having scrolled up, so a sticky change while reading history is ignored.
+  // The virtualized branch renders the sticky bar as an overlay (no flow
+  // space), so nothing pushes the bottom there.
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !stickyMessage) return;
+    if (!container || !stickyMessage || virtualizedRef.current) return;
     const isNearBottom =
       container.scrollTop + container.clientHeight >=
       container.scrollHeight - 300;
@@ -318,15 +524,77 @@ export const MessageList = forwardRef<
     }
   }, [stickyMessage, doScrollToBottom]);
 
+  // Plain path (small chats): group consecutive assistant messages into a
+  // single .assistant-group wrapper so the timeline vertical line runs
+  // continuously through all their dots. User messages break the timeline
+  // (rendered as bare bubbles outside any group).
+  const renderedPlain = useMemo(() => {
+    const renderMessage = (message: MessageType) => {
+      return (
+        <Message
+          key={message.id}
+          message={message}
+          vscode={vscode}
+          onRewindToMessage={onRewindToMessage}
+          workdir={workdir}
+          onOpenPreview={onOpenPreview}
+          onOpenFile={onOpenFile}
+        />
+      );
+    };
+
+    const rendered: React.ReactNode[] = [];
+    let group: { message: MessageType }[] = [];
+
+    const flushGroup = () => {
+      if (group.length === 0) return;
+      const dotCount = group.reduce(
+        (sum, g) => sum + countTimelineBlocks(g.message),
+        0,
+      );
+      const single = dotCount <= 1;
+      rendered.push(
+        <div
+          key={group[0].message.id}
+          className={`assistant-group${single ? " assistant-group--single" : ""}`}
+        >
+          {group.map((g) => renderMessage(g.message))}
+        </div>,
+      );
+      group = [];
+    };
+
+    visibleMessages.forEach((message) => {
+      if (message.role === "assistant") {
+        group.push({ message });
+      } else {
+        flushGroup();
+        rendered.push(renderMessage(message));
+      }
+    });
+    flushGroup();
+
+    return rendered;
+  }, [
+    visibleMessages,
+    vscode,
+    onRewindToMessage,
+    workdir,
+    onOpenPreview,
+    onOpenFile,
+  ]);
+
   return (
     <div
       ref={containerRef}
       id="messagesContainer"
-      className={`messages-container${isStreaming ? " streaming" : ""}${isCompacting ? " compacting" : ""}`}
+      className={`messages-container${isStreaming ? " streaming" : ""}${isCompacting ? " compacting" : ""}${virtualized ? " messages-container--virtual" : ""}`}
       data-testid="messages-container"
     >
       {stickyMessage && (
-        <div className="sticky-user-wrapper">
+        <div
+          className={`sticky-user-wrapper${virtualized ? " sticky-user-wrapper--overlay" : ""}`}
+        >
           <div className="sticky-user-cap" />
           <div
             className="sticky-user-message"
@@ -338,73 +606,44 @@ export const MessageList = forwardRef<
           <div className="sticky-user-scrim" />
         </div>
       )}
-      {/* Chat messages - filter out user meta messages */}
-      {useMemo(() => {
-        // Filter out user messages with isMeta (hidden from the list)
-        const visibleMessages: MessageType[] = [];
-        for (const msg of messages) {
-          if (msg.role === "user" && msg.isMeta) continue;
-          visibleMessages.push(msg);
-        }
-
-        const renderMessage = (message: MessageType) => {
-          return (
-            <Message
-              key={message.id}
-              message={message}
-              vscode={vscode}
-              onRewindToMessage={onRewindToMessage}
-              workdir={workdir}
-              onOpenPreview={onOpenPreview}
-              onOpenFile={onOpenFile}
-            />
-          );
-        };
-
-        // Group consecutive assistant messages into a single .assistant-group wrapper so
-        // the timeline vertical line runs continuously through all their dots. User
-        // messages break the timeline (rendered as bare bubbles outside any group).
-        const rendered: React.ReactNode[] = [];
-        let group: { message: MessageType }[] = [];
-
-        const flushGroup = () => {
-          if (group.length === 0) return;
-          const dotCount = group.reduce(
-            (sum, g) => sum + countTimelineBlocks(g.message),
-            0,
-          );
-          const single = dotCount <= 1;
-          rendered.push(
-            <div
-              key={group[0].message.id}
-              className={`assistant-group${single ? " assistant-group--single" : ""}`}
-            >
-              {group.map((g) => renderMessage(g.message))}
-            </div>,
-          );
-          group = [];
-        };
-
-        visibleMessages.forEach((message) => {
-          if (message.role === "assistant") {
-            group.push({ message });
-          } else {
-            flushGroup();
-            rendered.push(renderMessage(message));
-          }
-        });
-        flushGroup();
-
-        return rendered;
-      }, [
-        messages,
-        vscode,
-        onRewindToMessage,
-        workdir,
-        onOpenPreview,
-        onOpenFile,
-      ])}
-
+      {virtualized ? (
+        <>
+          {/* In-flow spacer carrying the virtualized total height. The
+              virtualizer writes its height directly (directDomUpdates); it
+              must keep its space in the flex column (flex-shrink: 0). */}
+          <div ref={virtualizer.containerRef} className="virtual-spacer" />
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            const message = visibleMessages[virtualRow.index];
+            const runClass = timelineRuns.classes[virtualRow.index];
+            return (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
+                className={`virtual-row${runClass ? ` ${runClass}` : ""}`}
+                style={{
+                  paddingBottom: timelineRuns.paddings[virtualRow.index],
+                }}
+              >
+                <Message
+                  key={message.id}
+                  message={message}
+                  vscode={vscode}
+                  onRewindToMessage={onRewindToMessage}
+                  workdir={workdir}
+                  onOpenPreview={onOpenPreview}
+                  onOpenFile={onOpenFile}
+                />
+              </div>
+            );
+          })}
+        </>
+      ) : (
+        // Plain path (small chats): byte-for-byte the original render, with
+        // consecutive assistant messages grouped into a .assistant-group so
+        // the timeline line runs continuously through their dots.
+        <>{renderedPlain}</>
+      )}
       {/* Compaction hint: blinking cursor + label pinned to the end of the
           message list, independent of isStreaming (auto-compaction runs between
           turns, after the streaming cursor is gone). */}

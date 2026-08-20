@@ -45,6 +45,7 @@
     "wave-webview-fixtures": "workspace:*"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.10",
     "@vscode/codicons": "^0.0.43",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",
