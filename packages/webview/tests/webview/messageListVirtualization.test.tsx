@@ -14,7 +14,7 @@ import { MockDataGenerator } from "../fixtures/mockData";
  *
  * jsdom cannot do layout, so geometry assertions (spacer height, scroll
  * pinning, bounded row counts in a real viewport) live in the Playwright demo
- * harness (e2e/demo/virtual-message-list.demo.ts). Here we only pin the
+ * harness (e2e/virtual-message-list.e2e.ts). Here we only pin the
  * structural contract of the virtualized branch: the branch is taken above
  * the threshold, rows are message-granularity with timeline run classes, and
  * the DOM row count stays bounded (never all messages).

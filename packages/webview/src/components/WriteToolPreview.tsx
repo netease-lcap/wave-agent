@@ -8,12 +8,16 @@ interface WriteToolPreviewProps {
   toolBlock: ToolBlock;
   vscode: { postMessage: (message: unknown) => void };
   workdir?: string;
+  /** Host-routed open (desktop opens its file panel via ChatApp.handleOpenFile);
+   *  falls back to the plain openFile RPC when absent (IDE hosts). */
+  onOpenFile?: (path: string) => void;
 }
 
 export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
   toolBlock,
   vscode,
   workdir,
+  onOpenFile,
 }) => {
   let filePath = "";
   let content: string | null = null;
@@ -29,7 +33,11 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
 
   const openFile = () => {
     if (filePath) {
-      vscode.postMessage({ command: "openFile", path: filePath });
+      if (onOpenFile) {
+        onOpenFile(filePath);
+      } else {
+        vscode.postMessage({ command: "openFile", path: filePath });
+      }
     }
   };
 

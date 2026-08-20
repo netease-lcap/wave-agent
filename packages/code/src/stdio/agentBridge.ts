@@ -1570,6 +1570,13 @@ export class AgentBridge {
           ctx.registeredSessionId,
         );
       },
+      onCompactionContentUpdate: (content: string) => {
+        this.emit(
+          "compactionContentUpdate",
+          { content },
+          ctx.registeredSessionId,
+        );
+      },
     };
   }
 

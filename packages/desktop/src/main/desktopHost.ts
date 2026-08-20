@@ -764,6 +764,15 @@ export class DesktopHost {
             paneId,
           });
       },
+      onCompactionContentUpdate: (content: string) => {
+        const paneId = paneIdOf();
+        if (paneId)
+          this.postMessage({
+            command: "compactionContentUpdate",
+            content,
+            paneId,
+          });
+      },
       onUserMessageAdded: (message: Message) => {
         // Keep the cache mirroring the server (no messagesChange snapshot
         // arrives anymore) — feeds FR-024 title + idle checks.
@@ -2529,6 +2538,15 @@ export class DesktopHost {
     paneId?: string,
   ): Promise<void> {
     const h = host ?? this.currentHost;
+    // Success and failure both end the "worktree 创建中" state in the webview
+    // (failure surfaces an error message / toast instead). One-shot so the
+    // success path can ack early without the finally duplicating it.
+    let acked = false;
+    const ackCreated = (): void => {
+      if (acked) return;
+      acked = true;
+      this.postMessage({ command: "desktopWorktreeCreated", paneId });
+    };
     try {
       let result: {
         name: string;
@@ -2575,13 +2593,19 @@ export class DesktopHost {
         });
         return;
       }
+      // Ack now — the worktree exists and the session is live in the pane.
+      // Forwarding the first message must not delay it: the sendMessage RPC
+      // resolves only when the whole AI turn finishes (InteractionService
+      // awaits sendAIMessage), so awaiting it first would keep the webview's
+      // "worktree 创建中…" indicator stuck for the entire first response —
+      // and a pane switched to a new session meanwhile inherits that stale
+      // state until the ack finally lands.
+      ackCreated();
       if (text) {
         await this.handleSendMessage(text, images);
       }
     } finally {
-      // Success and failure both end the "worktree 创建中" state in the webview
-      // (failure surfaces an error message / toast instead).
-      this.postMessage({ command: "desktopWorktreeCreated", paneId });
+      ackCreated();
     }
   }
 

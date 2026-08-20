@@ -35,6 +35,7 @@ import type {
   StartStreamingMessage,
   EndStreamingMessage,
   CompactionStateChangeMessage,
+  CompactionContentUpdateMessage,
   BtwResponseMessage,
   McpServersResponseMessage,
   SubagentConfigurationsResponseMessage,
@@ -107,6 +108,10 @@ export interface Fixtures {
     isCompacting: boolean,
     overrides?: Overrides<CompactionStateChangeMessage>,
   ) => CompactionStateChangeMessage;
+  compactionContentUpdate: (
+    content: string,
+    overrides?: Overrides<CompactionContentUpdateMessage>,
+  ) => CompactionContentUpdateMessage;
   btwResponse: (
     question: string,
     answer: string,
@@ -238,6 +243,12 @@ export const fixtures: Fixtures = {
   compactionStateChange: (isCompacting, overrides = {}) => ({
     command: "compactionStateChange",
     isCompacting,
+    ...overrides,
+  }),
+
+  compactionContentUpdate: (content, overrides = {}) => ({
+    command: "compactionContentUpdate",
+    content,
     ...overrides,
   }),
 

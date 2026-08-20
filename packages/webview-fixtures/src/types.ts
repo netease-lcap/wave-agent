@@ -427,6 +427,12 @@ export interface CompactionStateChangeMessage extends HostToWebviewMessageBase {
   isCompacting: boolean;
 }
 
+export interface CompactionContentUpdateMessage
+  extends HostToWebviewMessageBase {
+  command: "compactionContentUpdate";
+  content: string;
+}
+
 export interface UpdateStreamingContentMessage
   extends HostToWebviewMessageBase {
   command: "updateStreamingContent";

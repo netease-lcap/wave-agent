@@ -40,7 +40,7 @@ describe("Compaction hint", () => {
     sendCommand("compactionStateChange", { isCompacting: true });
 
     const hint = screen.getByTestId("compaction-hint");
-    expect(hint).toHaveTextContent("正在压缩对话…");
+    expect(hint).toHaveTextContent("正在压缩对话");
     expect(screen.getByTestId("messages-container").className).toContain(
       "compacting",
     );
@@ -62,6 +62,35 @@ describe("Compaction hint", () => {
 
     const container = screen.getByTestId("messages-container");
     expect(container.querySelectorAll(".message")).toHaveLength(1);
+  });
+
+  it("shows the streaming tail after the hint and clears it on completion", () => {
+    renderChatApp();
+    addUserMessage();
+
+    sendCommand("compactionStateChange", { isCompacting: true });
+    // No streamed text yet — no tail
+    expect(
+      screen.queryByTestId("compaction-hint-tail"),
+    ).not.toBeInTheDocument();
+
+    // Short text shows verbatim, newlines flattened to "\n"
+    sendCommand("compactionContentUpdate", {
+      content: "line1\nline2",
+    });
+    expect(screen.getByTestId("compaction-hint-tail").textContent).toBe(
+      "line1\\nline2",
+    );
+
+    // Longer than 30 characters: only the last 30 behind an ellipsis
+    const longContent = "a".repeat(40) + "TAIL";
+    sendCommand("compactionContentUpdate", { content: longContent });
+    expect(screen.getByTestId("compaction-hint-tail").textContent).toBe(
+      `…${"a".repeat(26)}TAIL`,
+    );
+
+    sendCommand("compactionStateChange", { isCompacting: false });
+    expect(screen.queryByTestId("compaction-hint")).not.toBeInTheDocument();
   });
 
   it("ignores compaction state tagged for a different pane (desktop split-view)", () => {

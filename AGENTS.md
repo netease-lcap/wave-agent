@@ -98,5 +98,5 @@ Always use `pnpm` as the package manager.
 ### Testing
 
 - **Unit tests**: Vitest in `tests/` — `pnpm -F wave-vscode test`
-- **E2E tests**: Playwright in `e2e/` (requires Chromium)
-- **Demo/screenshot tests**: `pnpm -F wave-webview run test:demo` (regenerates the gitignored screenshots under `docs/public/screenshots/`)
+- **E2E tests**: real-browser Playwright tests in `packages/webview/e2e/` (`.e2e.ts`, requires Chromium) — `pnpm -F wave-webview run test:e2e`
+- **Demo/screenshot tests**: screenshot-only Playwright tests in `packages/webview/demo/` (`.demo.ts`); `pnpm -F wave-webview run test:demo` runs both projects and regenerates the gitignored screenshots under `docs/public/screenshots/`

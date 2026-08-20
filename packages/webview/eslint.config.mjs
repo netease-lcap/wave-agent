@@ -88,9 +88,11 @@ export default [
     },
   },
   {
-    // Playwright demo tests (e2e), build scripts and config files run in Node
+    // Playwright demo/screenshot tests (demo) and real-browser tests (e2e),
+    // build scripts and config files run in Node
     files: [
       "e2e/**/*.{ts,tsx}",
+      "demo/**/*.{ts,tsx}",
       "scripts/**/*.{js,mjs,cjs}",
       "esbuild.config.mjs",
       "vitest.config.ts",

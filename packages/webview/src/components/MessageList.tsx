@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Message } from "./Message";
+import { streamingTail } from "../utils/streamingText";
 import type { MessageListProps } from "../types";
 import type { Message as MessageType } from "wave-agent-sdk";
 import "../styles/MessageList.css";
@@ -18,6 +19,39 @@ import "../styles/MessageList.css";
 // byte-for-byte identical. The threshold keeps small chats (the common case
 // for unit tests and demo harnesses) on the plain path.
 const VIRTUAL_SCROLL_THRESHOLD = 200;
+
+// Measured row heights by message id, shared across MessageList instances
+// (module scope = one webview page lifetime). Session switches / history
+// reloads reuse the SAME message ids, so the virtualizer's estimateSize can
+// answer with the real measured height instead of the coarse 200px default —
+// a reload then lands on the true total height in one shot instead of
+// shrinking one row per frame for seconds as rows are progressively measured
+// (each measurement shrank the spacer, re-anchored the bottom, mounted the
+// next row, and measured it — a chain that kept scrollHeight moving).
+const measuredHeights = new Map<string, number>();
+const MEASURED_HEIGHTS_LIMIT = 2000;
+// Arithmetic mean of measured row heights, used as the estimate for rows not
+// yet measured (e.g. the first load of a conversation). Converges to the real
+// average within the first batch of measurements, so unmeasured rows estimate
+// close to reality and the total height does not keep drifting as rows are
+// progressively measured. Starts conservative (200, the old estimateSize).
+let measuredSum = 0;
+let measuredCount = 0;
+let avgMeasuredHeight = 200;
+
+function recordMeasuredHeight(id: string, height: number) {
+  if (!measuredHeights.has(id)) {
+    measuredSum += height;
+    measuredCount++;
+    avgMeasuredHeight = measuredSum / measuredCount;
+    if (measuredHeights.size >= MEASURED_HEIGHTS_LIMIT) {
+      // Map iterates in insertion order — evict the oldest entry.
+      const oldest = measuredHeights.keys().next().value;
+      if (oldest !== undefined) measuredHeights.delete(oldest);
+    }
+  }
+  measuredHeights.set(id, height);
+}
 
 // Count the blocks in an assistant message that Message.tsx wraps in a `.timeline-row`
 // (i.e. that carry a timeline dot): non-empty text/compact, tool, and reasoning blocks.
@@ -50,6 +84,7 @@ export const MessageList = forwardRef<
     queuedMessages,
     isStreaming,
     isCompacting,
+    compactionStream,
     vscode,
     onRewindToMessage,
     workdir,
@@ -100,6 +135,22 @@ export const MessageList = forwardRef<
     id: string;
     text: string;
   } | null>(null);
+  // Mirror of stickyMessage for computeSticky's pre-comparison. computeSticky
+  // runs on every messages update (each streaming chunk) inside the main
+  // effect's passive phase AND from scroll/ResizeObserver callbacks. Its
+  // setStickyMessage is the only setState on the streaming hot path. With a
+  // functional updater React only bails out cheaply when the update queue is
+  // empty; during high-frequency dual-stream (reasoning + text) chunks pile up
+  // while a render is in flight, the queue is never empty, and every
+  // computeSticky call schedules an update — counting toward React's
+  // nestedPassiveUpdateLimit and eventually firing "Maximum update depth
+  // exceeded" (setState inside useEffect, ~50 consecutive passive rounds).
+  // Comparing against the ref and skipping the call entirely when the value is
+  // unchanged avoids scheduling altogether (same UI semantics, zero updates).
+  const stickyRef = useRef<{
+    id: string;
+    text: string;
+  } | null>(null);
 
   // Filter out user messages with isMeta (hidden from the list). Extracted from
   // the render path so both the plain and the virtualized branch index the same
@@ -121,13 +172,25 @@ export const MessageList = forwardRef<
   virtualizedRef.current = virtualized;
   const visibleMessagesRef = useRef(visibleMessages);
   visibleMessagesRef.current = visibleMessages;
+  stickyRef.current = stickyMessage;
 
   const virtualizer = useVirtualizer({
     // count: 0 keeps the virtualizer inert on the plain path (it still mounts
     // its observers, but renders no rows).
     count: virtualized ? visibleMessages.length : 0,
     getScrollElement: () => containerRef.current,
-    estimateSize: () => 200,
+    // Estimate real measured height when known (same message ids reload after
+    // a session switch), falling back to the running average of measured rows
+    // so unmeasured rows match reality instead of a fixed 200px — this keeps
+    // the spacer stable once the visible window has been measured.
+    estimateSize: (i) => {
+      const id = visibleMessages[i]?.id;
+      if (id) {
+        const cached = measuredHeights.get(id);
+        if (cached !== undefined) return cached;
+      }
+      return avgMeasuredHeight;
+    },
     overscan: 20,
     // Inter-row spacing is baked into each row's padding-bottom (see
     // timelineRuns) instead of the virtualizer's `gap`: the plain path renders
@@ -145,10 +208,36 @@ export const MessageList = forwardRef<
     // row transforms and the spacer height straight to the DOM, re-rendering
     // only when the visible range or isScrolling changes.
     directDomUpdates: true,
+    // The virtualizer's default useFlushSync calls flushSync(rerender) whenever
+    // notify(sync=true) fires — i.e. after a synchronous scroll compensation
+    // (resizeItem on streaming row growth) or while isScrolling. measureElement
+    // runs as a ref callback in React's commit phase, so a growing streaming row
+    // can trigger that flushSync inside a lifecycle method, which React rejects
+    // with "flushSync was called from inside a lifecycle method" (and the flush
+    // is ignored anyway). With directDomUpdates the spacer height and row
+    // transforms are still applied synchronously inside onChange; only the
+    // React re-render (visible range) is deferred to the normal scheduler.
+    useFlushSync: false,
     // Defer measurement resize callbacks to animation frames so streaming row
     // growth doesn't trigger layout thrash mid-frame.
     useAnimationFrameWithResizeObserver: true,
   });
+
+  // Stable row ref: records the real measured height (keyed by message id) for
+  // estimateSize, then defers to the virtualizer's own measurement. Must stay
+  // referentially stable — an inline arrow would be recreated every render and
+  // React would detach/reattach every row's ref each render, re-measuring the
+  // whole visible window on every streaming chunk.
+  const measureRow = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node) {
+        const id = node.getAttribute("data-measured-message-id");
+        if (id) recordMeasuredHeight(id, node.offsetHeight);
+      }
+      virtualizer.measureElement(node);
+    },
+    [virtualizer],
+  );
 
   // Per-message timeline run data for the virtualized branch. A run is a
   // maximal sequence of consecutive assistant messages (mirrors the
@@ -201,8 +290,20 @@ export const MessageList = forwardRef<
 
   const computeSticky = useCallback(() => {
     const container = containerRef.current;
+    // setSticky compares against stickyRef (synced from stickyMessage every
+    // render) and skips the state update entirely when the computed value is
+    // unchanged — see the stickyRef comment. This keeps the sticky computation
+    // off React's nested-passive-update accounting on the streaming hot path.
+    const setSticky = (next: { id: string; text: string } | null) => {
+      const prev = stickyRef.current;
+      const same =
+        prev === null
+          ? next === null
+          : next !== null && prev.id === next.id && prev.text === next.text;
+      if (!same) setStickyMessage(next);
+    };
     if (!container) {
-      setStickyMessage(null);
+      setSticky(null);
       return;
     }
     const scrollTop = container.scrollTop;
@@ -218,32 +319,31 @@ export const MessageList = forwardRef<
       if (at && at.start >= scrollTop) idx = at.index - 1;
       const rows = visibleMessagesRef.current;
       let candidate = -1;
+      let candidateText = "";
       while (idx >= 0) {
-        if (rows[idx].role === "user") {
-          candidate = idx;
-          break;
+        const row = rows[idx];
+        if (row.role === "user") {
+          // Skip text-less user messages (task notifications): they cannot
+          // render a sticky label, so keep scanning upward for an earlier
+          // text-bearing user message instead of clearing the bar.
+          const text = (row.blocks ?? [])
+            .filter((b) => b.type === "text")
+            .map((b) => b.content || "")
+            .join(" ")
+            .trim();
+          if (text) {
+            candidate = idx;
+            candidateText = text;
+            break;
+          }
         }
         idx--;
       }
-      if (candidate < 0) {
-        setStickyMessage(null);
+      if (candidate < 0 || !rows[candidate].id) {
+        setSticky(null);
         return;
       }
-      const msg = rows[candidate];
-      const text = (msg.blocks ?? [])
-        .filter((b) => b.type === "text")
-        .map((b) => b.content || "")
-        .join(" ")
-        .trim();
-      if (!msg.id || !text) {
-        setStickyMessage(null);
-        return;
-      }
-      setStickyMessage((prev) =>
-        prev && prev.id === msg.id && prev.text === text
-          ? prev
-          : { id: msg.id, text },
-      );
+      setSticky({ id: rows[candidate].id, text: candidateText });
       return;
     }
     // Plain path: scan the fully-rendered DOM, as before.
@@ -251,28 +351,29 @@ export const MessageList = forwardRef<
       '[data-role="user"][data-message-id]',
     );
     let candidateNode: HTMLElement | null = null;
-    // Find the last user message whose top edge has scrolled above the viewport top.
+    // Find the last user message whose top edge has scrolled above the viewport
+    // top AND that renders user text. Text-less user messages (background task
+    // notifications) carry no .user-content and would otherwise clear the
+    // sticky bar the moment they scroll past — keep the previous text-bearing
+    // candidate instead so the bar never blinks out between real questions.
     for (const node of nodes) {
-      if (node.offsetTop < scrollTop) {
+      if (node.offsetTop >= scrollTop) break;
+      if (node.querySelector(".user-content")?.textContent?.trim()) {
         candidateNode = node;
-      } else {
-        break;
       }
     }
     if (!candidateNode) {
-      setStickyMessage(null);
+      setSticky(null);
       return;
     }
     const id = candidateNode.getAttribute("data-message-id") || "";
     const text =
       candidateNode.querySelector(".user-content")?.textContent?.trim() || "";
     if (!id || !text) {
-      setStickyMessage(null);
+      setSticky(null);
       return;
     }
-    setStickyMessage((prev) =>
-      prev && prev.id === id && prev.text === text ? prev : { id, text },
-    );
+    setSticky({ id, text });
   }, [virtualizer]);
 
   const scrollToMessage = useCallback(
@@ -595,7 +696,8 @@ export const MessageList = forwardRef<
               <div
                 key={virtualRow.key}
                 data-index={virtualRow.index}
-                ref={virtualizer.measureElement}
+                data-measured-message-id={message.id}
+                ref={measureRow}
                 className={`virtual-row${runClass ? ` ${runClass}` : ""}`}
                 style={{
                   paddingBottom: timelineRuns.paddings[virtualRow.index],
@@ -625,7 +727,15 @@ export const MessageList = forwardRef<
           turns, after the streaming cursor is gone). */}
       {isCompacting && (
         <div className="compaction-hint" data-testid="compaction-hint">
-          <span className="compaction-hint-cursor">▋</span>正在压缩对话…
+          <span className="compaction-hint-cursor">▋</span>正在压缩对话
+          {compactionStream && (
+            <span
+              className="compaction-hint-tail"
+              data-testid="compaction-hint-tail"
+            >
+              {streamingTail(compactionStream)}
+            </span>
+          )}
         </div>
       )}
 

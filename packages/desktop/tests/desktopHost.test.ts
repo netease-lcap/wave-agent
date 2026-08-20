@@ -3167,6 +3167,55 @@ describe("worktree flow", () => {
     );
   });
 
+  it("desktopCreateWorktree acks before the first message's AI turn finishes", async () => {
+    const { host, sent } = await readyHost();
+    h.worktreeResult = worktree;
+    h.existingPaths.add(worktree.path);
+    let resolveInit!: () => void;
+    h.initializeGate = new Promise<void>((r) => {
+      resolveInit = r;
+    });
+
+    const done = host.handleWebviewMessage({
+      command: "desktopCreateWorktree",
+      workdir: "/work/a",
+      baseBranch: "main",
+      text: "hello worktree",
+    });
+    // Pause agent initialization so we can swap in a sendMessage that stays
+    // open — mirroring the real RPC, which resolves only when the whole AI
+    // turn finishes (InteractionService awaits sendAIMessage).
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(2);
+    });
+    const spawned = lastAgent();
+    let releaseSend!: () => void;
+    const sendHeld = new Promise<void>((r) => {
+      releaseSend = r;
+    });
+    spawned.sendMessage = vi.fn(async () => {
+      await sendHeld;
+    });
+
+    h.initializeGate = null;
+    resolveInit();
+    // The worktree is created and the session is live — the ack must already
+    // be out even though the forwarded first message is still in flight.
+    await vi.waitFor(() => {
+      expect(sent("desktopWorktreeCreated").at(-1)).toMatchObject({
+        paneId: "pane-1",
+      });
+    });
+    expect(spawned.sendMessage).toHaveBeenCalledWith(
+      "hello worktree",
+      undefined,
+      false,
+    );
+
+    releaseSend();
+    await done;
+  });
+
   it("desktopCreateWorktree on an existing worktree (isNew: false) does not mark it new", async () => {
     const { host } = await readyHost();
     h.worktreeResult = { ...worktree, isNew: false };
@@ -3917,6 +3966,16 @@ describe("multi-session parallel (FR-031)", () => {
     });
     expect(sent("setInitialState").at(-1)).toMatchObject({
       isCompacting: true,
+    });
+  });
+
+  it("forwards compactionContentUpdate so the webview can render the streaming tail", async () => {
+    const { sent } = await readyHost();
+    const agent1 = seedActiveSession("sess-1");
+
+    agent1.callbacks.onCompactionContentUpdate("streaming summary");
+    expect(sent("compactionContentUpdate").at(-1)).toMatchObject({
+      content: "streaming summary",
     });
   });
 

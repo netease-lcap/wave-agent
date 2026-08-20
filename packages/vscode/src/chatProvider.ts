@@ -290,6 +290,13 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           windowId,
         );
       },
+      onCompactionContentUpdate: (content) => {
+        this.webviewManager.postMessage(
+          { command: "compactionContentUpdate", content },
+          viewType,
+          windowId,
+        );
+      },
       onCommandRunningChange: (running) => {
         this.webviewManager.postMessage(
           { command: "updateCommandRunning", running },

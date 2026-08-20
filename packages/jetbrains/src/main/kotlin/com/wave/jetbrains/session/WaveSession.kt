@@ -1,6 +1,6 @@
 package com.wave.jetbrains.session
 
-import com.intellij.ide.plugins.PluginManager
+import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
@@ -155,9 +155,16 @@ class WaveSession(
     }
 
     // Forward the compaction state to the shared webview, which renders the
-    // "正在压缩对话…" hint after the blinking cursor (mirrors VSCE chatSession.ts).
+    // "正在压缩对话" hint after the blinking cursor (mirrors VSCE chatSession.ts).
     override fun onCompactionStateChange(isCompacting: Boolean) {
         postMessage("compactionStateChange", buildJsonObject { put("isCompacting", isCompacting) })
+    }
+
+    // Forward the accumulated compaction stream to the shared webview, which
+    // renders its last 30 characters after the "正在压缩对话" hint (streaming
+    // tail, mirrors VSCE chatSession.ts).
+    override fun onCompactionContentUpdate(content: String) {
+        postMessage("compactionContentUpdate", buildJsonObject { put("content", content) })
     }
 
     override fun onUserMessageAdded(message: JsonElement?) {
@@ -537,7 +544,7 @@ class WaveSession(
 
     companion object {
         fun pluginVersion(): String =
-            PluginManager.getInstance().findEnabledPlugin(PluginId.getId("com.wave.jetbrains"))?.version ?: ""
+            PluginManagerCore.getPlugin(PluginId.findId("com.wave.jetbrains"))?.version ?: ""
 
         fun parseHeaders(text: String): JsonObject? {
             if (text.isBlank()) return null
