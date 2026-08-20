@@ -23,6 +23,7 @@ interface AgentCallbacks {
     fun onErrorBlockAdded(error: String) {}
     fun onCompactBlockAdded(content: String) {}
     fun onCompactionStateChange(isCompacting: Boolean) {}
+    fun onCompactionContentUpdate(content: String) {}
     fun onLoadingChange(loading: Boolean) {}
     fun onCommandRunningChange(running: Boolean) {}
     fun onQueuedMessagesChange(messages: JsonElement?) {}
@@ -159,6 +160,9 @@ class StdioAgent(
             "compactBlockAdded" -> callbacks.onCompactBlockAdded(params?.jsonObject?.get("content")?.jsonPrimitive?.content ?: "")
             "compactionStateChange" -> callbacks.onCompactionStateChange(
                 params?.jsonObject?.get("isCompacting")?.jsonPrimitive?.content?.toBoolean() ?: false
+            )
+            "compactionContentUpdate" -> callbacks.onCompactionContentUpdate(
+                params?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
             )
             else -> {}
         }

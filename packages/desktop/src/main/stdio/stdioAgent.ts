@@ -90,6 +90,7 @@ export interface StdioAgentCallbacks {
   onErrorBlockAdded?: (error: string) => void;
   onCompactBlockAdded?: (content: string) => void;
   onCompactionStateChange?: (isCompacting: boolean) => void;
+  onCompactionContentUpdate?: (content: string) => void;
   onLoadingChange?: (loading: boolean) => void;
   onCommandRunningChange?: (running: boolean) => void;
   onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
@@ -532,6 +533,11 @@ export class StdioAgent {
         const p = params as { isCompacting: boolean };
         this.isCompacting = p.isCompacting;
         this.callbacks.onCompactionStateChange?.(p.isCompacting);
+        break;
+      }
+      case "compactionContentUpdate": {
+        const p = params as { content: string };
+        this.callbacks.onCompactionContentUpdate?.(p.content);
         break;
       }
       case "loadingChange": {

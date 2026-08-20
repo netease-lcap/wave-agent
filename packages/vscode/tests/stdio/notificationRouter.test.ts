@@ -82,6 +82,7 @@ describe("NotificationRouter", () => {
     expect(methods).toContain("authUrl");
     expect(methods).toContain("compactBlockAdded");
     expect(methods).toContain("compactionStateChange");
+    expect(methods).toContain("compactionContentUpdate");
   });
 
   it("attach is idempotent — does not register handlers twice", () => {
@@ -133,6 +134,24 @@ describe("NotificationRouter", () => {
     expect(agent.handleNotification).toHaveBeenCalledWith(
       "compactionStateChange",
       { isCompacting: true },
+    );
+  });
+
+  it("dispatches compactionContentUpdate to registered agent by sessionId", () => {
+    const router = new NotificationRouter(client as unknown as StdioClient);
+    router.attach();
+
+    const agent = createFakeAgent();
+    router.register(
+      "s1",
+      agent as unknown as Parameters<NotificationRouter["register"]>[1],
+    );
+
+    getHandler(client, "compactionContentUpdate")({ content: "abc" }, "s1");
+
+    expect(agent.handleNotification).toHaveBeenCalledWith(
+      "compactionContentUpdate",
+      { content: "abc" },
     );
   });
 

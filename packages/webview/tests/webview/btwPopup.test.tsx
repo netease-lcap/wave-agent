@@ -79,17 +79,17 @@ describe("/btw Popup", () => {
       "what is the weather?",
     );
     expect(screen.getByTestId("btw-panel-loading")).toBeInTheDocument();
-    expect(screen.getByText("正在回答…")).toBeInTheDocument();
+    expect(screen.getByText("正在回答")).toBeInTheDocument();
     // No emoji — the ▋ cursor blink is aligned with the message list
     expect(screen.getByTestId("btw-panel-loading").textContent).toContain("▋");
   });
 
-  it("does not show streaming chunks while loading and renders the finished answer as markdown", async () => {
+  it("shows only the streaming tail while loading and renders the finished answer as markdown", async () => {
     await sendText("/btw what is the weather?");
     expect(screen.getByTestId("btw-panel-loading")).toBeInTheDocument();
     expect(screen.queryByTestId("btw-panel-streaming")).not.toBeInTheDocument();
 
-    // Streaming chunks (thinking or content) are never displayed while loading
+    // Thinking chunks accumulate into the tail while loading
     act(() => {
       sendCommand("btwStream", {
         question: "what is the weather?",
@@ -97,6 +97,13 @@ describe("/btw Popup", () => {
         type: "thinking",
       });
     });
+    expect(screen.getByTestId("btw-panel-loading").textContent).toContain(
+      "Let me think",
+    );
+
+    // Once the first content chunk arrives the accumulated thinking text is
+    // discarded and only content feeds the tail (user decision: thinking is
+    // not shown after the thinking phase ends).
     act(() => {
       sendCommand("btwStream", {
         question: "what is the weather?",
@@ -122,7 +129,11 @@ describe("/btw Popup", () => {
     expect(screen.getByTestId("btw-panel").textContent).not.toContain(
       "Let me think",
     );
-    expect(screen.getByTestId("btw-panel").textContent).not.toContain("Sunny");
+    // The loading tail shows the last 30 characters of the in-flight answer
+    // (short text verbatim); the full streaming text is never shown.
+    expect(screen.getByTestId("btw-loading-tail").textContent).toBe(
+      "Sunny and 25°C",
+    );
     expect(screen.getByTestId("btw-panel-loading")).toBeInTheDocument();
 
     // The finished answer still lands via btwResponse and renders as markdown
@@ -136,6 +147,7 @@ describe("/btw Popup", () => {
       expect(screen.getByTestId("btw-panel-answer")).toBeInTheDocument();
     });
     expect(screen.queryByTestId("btw-panel-streaming")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("btw-panel-loading")).not.toBeInTheDocument();
   });
 
   it("renders the answer as markdown when btwResponse arrives", async () => {

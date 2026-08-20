@@ -362,6 +362,10 @@ export interface MessageListProps {
   queuedMessages?: QueuedMessage[];
   isStreaming?: boolean;
   isCompacting?: boolean;
+  /** Accumulated streaming text from the compaction fork; its last 30 characters
+   * render after the "正在压缩对话" hint (same tail style as the CLI loading
+   * indicator). */
+  compactionStream?: string;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
   workdir?: string;
@@ -554,7 +558,7 @@ export interface ChatState {
   isQueueCollapsed: boolean;
   editingQueuedId: string | null;
   isStreaming: boolean;
-  // Compaction in progress — shows the "正在压缩对话…" hint after the blinking
+  // Compaction in progress — shows the "正在压缩对话" hint after the blinking
   // cursor at the end of the message list.
   isCompacting: boolean;
   // Session restore in progress (desktop): the pane switched optimistically to

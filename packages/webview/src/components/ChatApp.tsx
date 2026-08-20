@@ -212,6 +212,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // conversation switches (ChatApp is keyed by paneId, not sessionId), so a
   // local useState alone would leak the previous conversation's panel.
   const btwSessionRef = useRef<string | undefined>(undefined);
+  // Accumulated streaming text from the compaction fork; its last 30 characters
+  // render after the "正在压缩对话" hint (streaming tail, same style as the
+  // CLI loading indicator). Cleared when compaction ends.
+  const [compactionStream, setCompactionStream] = useState("");
   // Desktop new-session worktree controls (FR-022/FR-023).
   const [worktreeBranch, setWorktreeBranch] = useState<string>("");
   const [worktreeChecked, setWorktreeChecked] = useState(true);
@@ -916,6 +920,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
             type: "SET_COMPACTING",
             payload: message.isCompacting === true,
           });
+          if (!message.isCompacting) setCompactionStream("");
+          break;
+        case "compactionContentUpdate":
+          if (!forThisPane(message)) break;
+          // The CLI delivers the accumulated compaction text; the hint renders
+          // only its last 30 characters (streaming tail).
+          setCompactionStream(message.content);
           break;
         case "updateStreamingContent":
           if (!forThisPane(message)) break;
@@ -1905,6 +1916,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           queuedMessages={state.queuedMessages}
           isStreaming={state.isStreaming}
           isCompacting={state.isCompacting}
+          compactionStream={compactionStream}
           vscode={vscode}
           onRewindToMessage={handleRewindToMessage}
           workdir={state.workdir}
