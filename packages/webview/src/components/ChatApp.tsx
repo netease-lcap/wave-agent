@@ -1911,6 +1911,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         <LoadingLogo />
       ) : (
         <MessageList
+          // 按会话 id 重挂载：切换会话是全新上下文，初始加载强制滚到底，
+          // 并重置上一会话遗留的 userScrolledUp（否则在旧会话向上翻过历史后
+          // 点开长会话，force 滚动被否决、停在新列表中间——见 longchat-switch e2e）。
+          key={state.currentSession?.id}
           ref={messageListRef}
           messages={state.messages}
           queuedMessages={state.queuedMessages}
