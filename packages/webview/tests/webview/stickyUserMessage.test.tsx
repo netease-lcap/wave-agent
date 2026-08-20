@@ -15,6 +15,24 @@ const userMsg = (content: string, id: string) => ({
   blocks: [{ type: "text", content }],
 });
 
+// A background task notification: user role but NO text block, so it renders
+// no .user-content and must never become the sticky candidate.
+const notifMsg = (id: string) => ({
+  id,
+  role: "user" as const,
+  timestamp: "2025-01-01T00:00:00.000Z",
+  blocks: [
+    {
+      type: "task_notification" as const,
+      taskId: "task_1",
+      taskType: "shell" as const,
+      status: "completed" as const,
+      summary: "Command completed with exit code 0",
+      outputFile: "/tmp/task.log",
+    },
+  ],
+});
+
 /**
  * jsdom does not do layout, so offsetTop/scrollTop/clientHeight are all 0.
  * Fake the geometry: assign an increasing offsetTop to each user message node,
@@ -156,5 +174,67 @@ describe("sticky user message", () => {
       expect(screen.getByTestId("sticky-user-message")).toBeInTheDocument(),
     );
     expect(document.querySelector(".sticky-user-content")).toBeInTheDocument();
+  });
+
+  it("keeps the bar when a text-less notification user message scrolls past", async () => {
+    renderChatApp();
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          userMsg("第一条问题", "u1"),
+          userMsg("第二条问题", "u2"),
+          notifMsg("n3"),
+          userMsg("第四条问题", "u4"),
+        ],
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
+    );
+
+    // scrollTop 1200 → u1(0), u2(500) and n3(1000) are all above the fold;
+    // the notification has no text, so the bar must stay on u2 ("第二条问题")
+    // instead of vanishing (regression: it used to clear the sticky state).
+    fakeGeometryAndScroll(1200);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
+        "第二条问题",
+      );
+    });
+
+    // Once the text-bearing u4 (1500) also scrolls past, it becomes the
+    // candidate.
+    fakeGeometryAndScroll(1800);
+    await waitFor(() => {
+      expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
+        "第四条问题",
+      );
+    });
+  });
+
+  it("keeps the bar when the last user message has no text", async () => {
+    renderChatApp();
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          userMsg("第一条问题", "u1"),
+          notifMsg("n2"),
+          userMsg("第三条问题", "u3"),
+        ],
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
+    );
+
+    // scrollTop 1600 → u1(0), n2(500) and u3(1000) are all above the fold;
+    // the newest text-bearing user is u3.
+    fakeGeometryAndScroll(1600);
+    await waitFor(() => {
+      expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
+        "第三条问题",
+      );
+    });
   });
 });

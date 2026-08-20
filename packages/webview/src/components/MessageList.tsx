@@ -319,28 +319,31 @@ export const MessageList = forwardRef<
       if (at && at.start >= scrollTop) idx = at.index - 1;
       const rows = visibleMessagesRef.current;
       let candidate = -1;
+      let candidateText = "";
       while (idx >= 0) {
-        if (rows[idx].role === "user") {
-          candidate = idx;
-          break;
+        const row = rows[idx];
+        if (row.role === "user") {
+          // Skip text-less user messages (task notifications): they cannot
+          // render a sticky label, so keep scanning upward for an earlier
+          // text-bearing user message instead of clearing the bar.
+          const text = (row.blocks ?? [])
+            .filter((b) => b.type === "text")
+            .map((b) => b.content || "")
+            .join(" ")
+            .trim();
+          if (text) {
+            candidate = idx;
+            candidateText = text;
+            break;
+          }
         }
         idx--;
       }
-      if (candidate < 0) {
+      if (candidate < 0 || !rows[candidate].id) {
         setSticky(null);
         return;
       }
-      const msg = rows[candidate];
-      const text = (msg.blocks ?? [])
-        .filter((b) => b.type === "text")
-        .map((b) => b.content || "")
-        .join(" ")
-        .trim();
-      if (!msg.id || !text) {
-        setSticky(null);
-        return;
-      }
-      setSticky({ id: msg.id, text });
+      setSticky({ id: rows[candidate].id, text: candidateText });
       return;
     }
     // Plain path: scan the fully-rendered DOM, as before.
@@ -348,12 +351,15 @@ export const MessageList = forwardRef<
       '[data-role="user"][data-message-id]',
     );
     let candidateNode: HTMLElement | null = null;
-    // Find the last user message whose top edge has scrolled above the viewport top.
+    // Find the last user message whose top edge has scrolled above the viewport
+    // top AND that renders user text. Text-less user messages (background task
+    // notifications) carry no .user-content and would otherwise clear the
+    // sticky bar the moment they scroll past — keep the previous text-bearing
+    // candidate instead so the bar never blinks out between real questions.
     for (const node of nodes) {
-      if (node.offsetTop < scrollTop) {
+      if (node.offsetTop >= scrollTop) break;
+      if (node.querySelector(".user-content")?.textContent?.trim()) {
         candidateNode = node;
-      } else {
-        break;
       }
     }
     if (!candidateNode) {
