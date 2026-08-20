@@ -51,19 +51,24 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
       {toolBlock.shortResult && (
         <div className="write-tool-stats">{toolBlock.shortResult}</div>
       )}
-      <div className="write-preview-box">
-        <div className="write-preview-scroll">
-          <pre className="write-preview-content">{content}</pre>
+      {/* 挂载即播放 0fr→1fr 入场动画（.tool-reveal），避免预览一次性出现的高度突跳 */}
+      <div className="tool-reveal">
+        <div className="tool-reveal-inner">
+          <div className="write-preview-box">
+            <div className="write-preview-scroll">
+              <pre className="write-preview-content">{content}</pre>
+            </div>
+            <div className="write-preview-scrim" />
+            <button
+              className="write-preview-open"
+              aria-label="打开预览"
+              data-testid="write-preview-open"
+              onClick={openFile}
+            >
+              <ExternalLinkIcon className="write-preview-open-icon" />
+            </button>
+          </div>
         </div>
-        <div className="write-preview-scrim" />
-        <button
-          className="write-preview-open"
-          aria-label="打开预览"
-          data-testid="write-preview-open"
-          onClick={openFile}
-        >
-          <ExternalLinkIcon className="write-preview-open-icon" />
-        </button>
       </div>
     </div>
   );
