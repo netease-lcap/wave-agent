@@ -342,23 +342,24 @@ export const Message: React.FC<MessageProps> = React.memo(
       if ((stage === "running" || stage === "end") && hasValidCommand) {
         const result = (toolBlock.result || toolBlock.shortResult || "").trim();
 
-        // 输出区容器始终挂载（grid 0fr→1fr）：result 首次出现时类名切换触发
-        // 平滑展开过渡，避免"仅命令 → 命令+输出"结构切换造成的高度突跳。
-        // 挂载时即携带 result（如历史会话）直接展开，不播放动画。
-        return (
-          <div className="bash-command-unified">
+        if (result) {
+          // Show both input and output if result is present (even if running)
+          return (
+            <div className="bash-command-unified">
+              <div className="bash-command-input">
+                <span className="bash-command">{command}</span>
+              </div>
+              <div className="bash-command-output">{result}</div>
+            </div>
+          );
+        } else {
+          // Show only input if no result yet
+          return (
             <div className="bash-command-input">
               <span className="bash-command">{command}</span>
             </div>
-            <div
-              className={`bash-command-collapse${result ? " expanded" : ""}`}
-            >
-              <div className="bash-command-collapse-inner">
-                <div className="bash-command-output">{result}</div>
-              </div>
-            </div>
-          </div>
-        );
+          );
+        }
       }
 
       // For all other cases, return null (no additional content)
