@@ -9,7 +9,16 @@ version = providers.gradleProperty("pluginVersion").get()
 
 dependencies {
     intellijPlatform {
-        create(providers.gradleProperty("platformType"), providers.gradleProperty("platformVersion"))
+        // Local-IDE override for development: pass -PlocalIdePath=<dir> to use a
+        // locally installed/unpacked IDE instead of downloading the platform
+        // distribution (useful when JetBrains repos are unreachable). CI and
+        // normal builds omit the property and download via create(...).
+        val localIdePath = providers.gradleProperty("localIdePath")
+        if (localIdePath.isPresent && localIdePath.get().isNotBlank()) {
+            local(localIdePath)
+        } else {
+            create(providers.gradleProperty("platformType"), providers.gradleProperty("platformVersion"))
+        }
     }
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.9.0")
