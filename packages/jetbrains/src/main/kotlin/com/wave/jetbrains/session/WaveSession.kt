@@ -1,8 +1,7 @@
 package com.wave.jetbrains.session
 
-import com.intellij.ide.plugins.PluginManager
+import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
 import com.wave.jetbrains.WaveBackendService
 import com.wave.jetbrains.config.WavePluginService
@@ -537,7 +536,7 @@ class WaveSession(
 
     companion object {
         fun pluginVersion(): String =
-            PluginManager.getInstance().findEnabledPlugin(PluginId.getId("com.wave.jetbrains"))?.version ?: ""
+            PluginManagerCore.getPlugin(WavePluginService::class.java)?.version ?: ""
 
         fun parseHeaders(text: String): JsonObject? {
             if (text.isBlank()) return null
