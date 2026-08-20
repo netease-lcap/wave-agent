@@ -566,6 +566,21 @@
   overflow: hidden;
 }
 
+/* Bash 输出区平滑展开（grid 0fr→1fr，与思考块折叠同构）：输出容器始终挂载，
+   result 首次出现时类名切换触发 transition，避免"仅命令→命令+输出"瞬间跳高。 */
+.bash-command-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 200ms ease;
+}
+.bash-command-collapse.expanded {
+  grid-template-rows: 1fr;
+}
+.bash-command-collapse-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
 .bash-command-unified .bash-command-input {
   margin-top: 0;
   border: none;
