@@ -502,28 +502,6 @@ export const MessageList = forwardRef<
     return () => container.removeEventListener("load", repin, true);
   }, [doScrollToBottom]);
 
-  // Re-pin once the sticky user message renders. The sticky bar is a normal
-  // in-flow child (position: sticky keeps its space), inserted as the first
-  // element AFTER the initial load's scroll ran — so it grows scrollHeight by
-  // its own height and pushes the true bottom ~30-70px below the parked
-  // viewport. That happens after the main effect (stickyMessage isn't one of
-  // its deps) and often before fonts.ready/load fire, leaving the viewport
-  // short of the real bottom. Re-pin here, gated on being near the bottom
-  // (the push is far smaller than the 300px threshold) and on the user not
-  // having scrolled up, so a sticky change while reading history is ignored.
-  // The virtualized branch renders the sticky bar as an overlay (no flow
-  // space), so nothing pushes the bottom there.
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !stickyMessage || virtualizedRef.current) return;
-    const isNearBottom =
-      container.scrollTop + container.clientHeight >=
-      container.scrollHeight - 300;
-    if (isNearBottom && !userScrolledUpRef.current) {
-      doScrollToBottom("auto");
-    }
-  }, [stickyMessage, doScrollToBottom]);
-
   // Plain path (small chats): group consecutive assistant messages into a
   // single .assistant-group wrapper so the timeline vertical line runs
   // continuously through all their dots. User messages break the timeline
@@ -592,9 +570,7 @@ export const MessageList = forwardRef<
       data-testid="messages-container"
     >
       {stickyMessage && (
-        <div
-          className={`sticky-user-wrapper${virtualized ? " sticky-user-wrapper--overlay" : ""}`}
-        >
+        <div className="sticky-user-wrapper">
           <div className="sticky-user-cap" />
           <div
             className="sticky-user-message"
