@@ -7,10 +7,7 @@ import {
   parseTaskNotificationXml,
   taskNotificationToXml,
 } from "../utils/notificationXml.js";
-import {
-  calculateComprehensiveTotalTokens,
-  estimateContextTokens,
-} from "../utils/tokenCalculation.js";
+import { estimateContextTokens } from "../utils/tokenCalculation.js";
 import { estimateTokens } from "../utils/tokenEstimate.js";
 import {
   getTaskReminderTurnCounts,
@@ -595,16 +592,16 @@ export class AIManager {
   }
 
   // Private method to update the displayed token statistics from a response.
-  // The comprehensive value (including cache tokens) is intentionally kept:
-  // it drives cost/usage display. Auto-compaction is NOT decided here — it
-  // happens pre-request via maybeAutoCompactBeforeRequest so that over-limit
-  // requests never go out (aligned with Claude Code's proactive autocompact).
+  // Uses only total_tokens — OpenAI-compatible usage already includes cache
+  // hits there, so adding cache fields would double-count and show an
+  // inflated context percentage. Same semantics as the auto-compaction
+  // threshold (maybeAutoCompactBeforeRequest), keeping display and
+  // compaction judgment consistent.
   private updateLatestTotalTokens(usage: Usage | undefined): void {
     if (!usage) return;
 
-    // Update token statistics - display comprehensive token usage including cache tokens
-    const comprehensiveTotalTokens = calculateComprehensiveTotalTokens(usage);
-    this.messageManager.setlatestTotalTokens(comprehensiveTotalTokens);
+    // Update token statistics - display total_tokens (cache fields excluded)
+    this.messageManager.setlatestTotalTokens(usage.total_tokens);
   }
 
   /**

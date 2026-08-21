@@ -159,7 +159,7 @@ describe("AIManager - latestTotalTokens calculation", () => {
       expect(mockMessageManager.setlatestTotalTokens).toHaveBeenCalledWith(150);
     });
 
-    it("should include cache_read_input_tokens in latestTotalTokens calculation", async () => {
+    it("should ignore cache_read_input_tokens in latestTotalTokens calculation", async () => {
       const usage: Usage = {
         prompt_tokens: 100,
         completion_tokens: 50,
@@ -178,12 +178,12 @@ describe("AIManager - latestTotalTokens calculation", () => {
 
       await aiManager.sendAIMessage();
 
-      // Verify setlatestTotalTokens was called with total_tokens + cache_read_input_tokens
-      // Expected: 150 + 25 + 0 = 175
-      expect(mockMessageManager.setlatestTotalTokens).toHaveBeenCalledWith(175);
+      // Verify setlatestTotalTokens was called with total_tokens only (cache excluded)
+      // Expected: 150 (25 cache_read ignored)
+      expect(mockMessageManager.setlatestTotalTokens).toHaveBeenCalledWith(150);
     });
 
-    it("should include cache_creation_input_tokens in latestTotalTokens calculation", async () => {
+    it("should ignore cache_creation_input_tokens in latestTotalTokens calculation", async () => {
       const usage: Usage = {
         prompt_tokens: 100,
         completion_tokens: 50,
@@ -202,12 +202,12 @@ describe("AIManager - latestTotalTokens calculation", () => {
 
       await aiManager.sendAIMessage();
 
-      // Verify setlatestTotalTokens was called with total_tokens + cache_creation_input_tokens
-      // Expected: 150 + 0 + 30 = 180
-      expect(mockMessageManager.setlatestTotalTokens).toHaveBeenCalledWith(180);
+      // Verify setlatestTotalTokens was called with total_tokens only (cache excluded)
+      // Expected: 150 (30 cache_creation ignored)
+      expect(mockMessageManager.setlatestTotalTokens).toHaveBeenCalledWith(150);
     });
 
-    it("should include both cache token types in latestTotalTokens calculation", async () => {
+    it("should ignore both cache token types in latestTotalTokens calculation", async () => {
       const usage: Usage = {
         prompt_tokens: 100,
         completion_tokens: 50,
@@ -227,9 +227,9 @@ describe("AIManager - latestTotalTokens calculation", () => {
 
       await aiManager.sendAIMessage();
 
-      // Verify setlatestTotalTokens was called with total_tokens + both cache tokens
-      // Expected: 150 + 25 + 30 = 205
-      expect(mockMessageManager.setlatestTotalTokens).toHaveBeenCalledWith(205);
+      // Verify setlatestTotalTokens was called with total_tokens only (cache excluded)
+      // Expected: 150 (25 + 30 cache ignored)
+      expect(mockMessageManager.setlatestTotalTokens).toHaveBeenCalledWith(150);
     });
 
     it("should default undefined cache fields to 0 in latestTotalTokens calculation", async () => {
@@ -283,7 +283,7 @@ describe("AIManager - latestTotalTokens calculation", () => {
       expect(mockMessageManager.setlatestTotalTokens).toHaveBeenCalledWith(150);
     });
 
-    it("should handle large cache token values correctly", async () => {
+    it("should ignore large cache token values in latestTotalTokens calculation", async () => {
       const usage: Usage = {
         prompt_tokens: 1000,
         completion_tokens: 500,
@@ -303,10 +303,10 @@ describe("AIManager - latestTotalTokens calculation", () => {
 
       await aiManager.sendAIMessage();
 
-      // Verify setlatestTotalTokens was called with correct sum of large values
-      // Expected: 1500 + 2000 + 3000 = 6500
+      // Verify setlatestTotalTokens was called with total_tokens only (large cache ignored)
+      // Expected: 1500 (2000 + 3000 cache ignored)
       expect(mockMessageManager.setlatestTotalTokens).toHaveBeenCalledWith(
-        6500,
+        1500,
       );
     });
 
@@ -352,16 +352,16 @@ describe("AIManager - latestTotalTokens calculation", () => {
 
       await aiManager.sendAIMessage();
 
-      // Verify setlatestTotalTokens was called with comprehensive total including cache tokens
-      // Expected: 150000 + 5000 + 7000 = 162000
+      // Verify setlatestTotalTokens was called with total_tokens only (cache excluded)
+      // Expected: 150000 (5000 + 7000 cache ignored)
       expect(mockMessageManager.setlatestTotalTokens).toHaveBeenCalledWith(
-        162000,
+        150000,
       );
     });
   });
 
   describe("edge cases for latestTotalTokens calculation", () => {
-    it("should handle fractional cache token values by truncating to integers", async () => {
+    it("should ignore fractional cache token values in latestTotalTokens calculation", async () => {
       const usage = {
         prompt_tokens: 100,
         completion_tokens: 50,
@@ -381,12 +381,11 @@ describe("AIManager - latestTotalTokens calculation", () => {
 
       await aiManager.sendAIMessage();
 
-      // JavaScript addition will preserve decimals, so we expect the exact sum
-      // Expected: 150 + 25.7 + 30.3 = 206
-      expect(mockMessageManager.setlatestTotalTokens).toHaveBeenCalledWith(206);
+      // Expected: 150 (fractional cache values ignored)
+      expect(mockMessageManager.setlatestTotalTokens).toHaveBeenCalledWith(150);
     });
 
-    it("should handle negative cache token values (edge case)", async () => {
+    it("should ignore negative cache token values (edge case)", async () => {
       const usage: Usage = {
         prompt_tokens: 100,
         completion_tokens: 50,
@@ -406,9 +405,8 @@ describe("AIManager - latestTotalTokens calculation", () => {
 
       await aiManager.sendAIMessage();
 
-      // Verify setlatestTotalTokens handles negative values correctly
-      // Expected: 150 + (-10) + 30 = 170
-      expect(mockMessageManager.setlatestTotalTokens).toHaveBeenCalledWith(170);
+      // Expected: 150 (negative/positive cache values ignored)
+      expect(mockMessageManager.setlatestTotalTokens).toHaveBeenCalledWith(150);
     });
   });
 });

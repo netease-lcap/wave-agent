@@ -44,22 +44,22 @@ order: 90
 
 ---
 
-### 用户故事：启用缓存模型的全面 Token 追踪（优先级：P1）
+### 用户故事：启用缓存模型的 Token 追踪（优先级：P1）
 
-当使用启用缓存的模型（Claude 或其他如 Gemini/DeepSeek 等返回缓存 token 的模型）时，开发者需要准确的 token 追踪，包括所有缓存相关成本（缓存读取、缓存创建）以及基础提示和完成 token，以了解请求的真实成本和 token 使用。
+当使用启用缓存的模型（Claude 或其他如 Gemini/DeepSeek 等返回缓存 token 的模型）时，开发者需要准确的 token 追踪，以了解请求的实际上下文占用和 token 使用。
 
-**为什么是这个优先级**：准确的成本追踪对开发者了解缓存的财务影响并做出关于使用模式的明智决策至关重要。没有全面的 token 追踪，缓存的好处可能看起来具有误导性。
+**为什么是这个优先级**：wave 走 OpenAI 兼容接口（OpenAI SDK + 网关），该格式下 `total_tokens` 已包含缓存命中 token（`prompt_tokens = 缓存命中 + 未命中`）。若再将 `cache_read_input_tokens` / `cache_creation_input_tokens` 叠加进 `latestTotalTokens`，会造成缓存命中双重计数——缓存命中通常占上下文绝大部分，导致 UI 显示接近或超过 `maxInputTokens`（"100% context"）而实际上下文远未到阈值，与压缩判断（仅用 `total_tokens`）口径不一致。缓存字段仍从 usage 中提取并保留（供成本分析等用途），但 `latestTotalTokens` 展示不含它们。
 
-**独立测试**：可以通过使用任何启用缓存的模型进行缓存请求并验证显示的 token 计数包括 prompt_tokens + completion_tokens + cache_read_input_tokens + cache_creation_input_tokens 来完整测试。
+**独立测试**：可以通过使用任何启用缓存的模型进行缓存请求并验证显示的 token 计数为 `total_tokens`（不叠加 `cache_read_input_tokens` / `cache_creation_input_tokens`）来完整测试。
 
 **验收场景**：
 
-1. **假设**带缓存创建的 Claude 模型请求，**当**响应包含 cache_creation_input_tokens（在 usage 顶层）时，**则**latestTotalTokens 显示 total_tokens + cache_creation_input_tokens
-2. **假设**带缓存命中的 Claude 模型请求，**当**响应包含 cache_read_input_tokens（在 usage 顶层）时，**则**latestTotalTokens 显示 total_tokens + cache_read_input_tokens
-3. **假设**非 Claude 模型请求（如 Gemini、DeepSeek），**当**响应包含 prompt_tokens_details.cached_tokens 时，**则**cache_read_input_tokens 从 cached_tokens 填充且 latestTotalTokens 包含它
-4. **假设**非 Claude 模型请求，**当**响应包含 prompt_tokens_details.cache_creation_input_tokens 时，**则**cache_creation_input_tokens 从该字段填充且 latestTotalTokens 包含它
-5. **假设**模型响应同时包含 Claude 顶层缓存字段和 prompt_tokens_details，**当**两者都存在时，**则**Claude 顶层字段优先
-6. **假设**非缓存请求或无缓存 token 的模型，**当**没有缓存 token 时，**则**latestTotalTokens 仅显示 total_tokens
+1. **假设**带缓存创建的 Claude 模型请求，**当**响应包含 cache_creation_input_tokens（在 usage 顶层）时，**则**latestTotalTokens 显示 total_tokens（不叠加 cache_creation_input_tokens）
+2. **假设**带缓存命中的 Claude 模型请求，**当**响应包含 cache_read_input_tokens（在 usage 顶层）时，**则**latestTotalTokens 显示 total_tokens（不叠加 cache_read_input_tokens）
+3. **假设**非 Claude 模型请求（如 Gemini、DeepSeek），**当**响应包含 prompt_tokens_details.cached_tokens 时，**则**cache_read_input_tokens 从 cached_tokens 填充但 latestTotalTokens 不含它（仅 total_tokens）
+4. **假设**非 Claude 模型请求，**当**响应包含 prompt_tokens_details.cache_creation_input_tokens 时，**则**cache_creation_input_tokens 从该字段填充但 latestTotalTokens 不含它（仅 total_tokens）
+5. **假设**模型响应同时包含 Claude 顶层缓存字段和 prompt_tokens_details，**当**两者都存在时，**则**Claude 顶层字段优先（填充到 usage 缓存字段，不影响 latestTotalTokens 展示）
+6. **假设**非缓存请求或无缓存 token 的模型，**当**没有缓存 token 时，**则**latestTotalTokens 显示 total_tokens
 
 ---
 
