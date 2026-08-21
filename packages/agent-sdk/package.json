@@ -39,15 +39,15 @@
     "README.md"
   ],
   "scripts": {
-    "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
     "type-check": "tsc --noEmit --incremental",
-    "watch": "tsc -p tsconfig.build.json --watch & tsc-alias -p tsconfig.build.json --watch",
+    "watch": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run --reporter=dot",
     "test:coverage": "vitest run --coverage --reporter=dot",
     "test:unit": "vitest run --reporter=dot --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
     "test:unit:coverage": "vitest run --coverage --reporter=dot --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
     "test:integration": "vitest run --reporter=dot tests/integration .integration.test",
-    "lint": "eslint --cache",
+    "lint": "oxlint",
     "format": "prettier --write .",
     "prepublishOnly": "pnpm run build"
   },
@@ -75,7 +75,6 @@
     "@types/turndown": "^5.0.6",
     "@vitest/coverage-v8": "^4.1.7",
     "rimraf": "^6.1.2",
-    "tsc-alias": "^1.8.16",
     "vitest": "^4.1.7"
   },
   "engines": {

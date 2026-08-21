@@ -264,7 +264,8 @@ describe("MessageHandler MCP handlers", () => {
     const posted = states[states.length - 1];
 
     expect(posted).toBeDefined();
-    expect(posted.configurationData.serverUrl).toBe(
+    expect(posted.configurationData).toBeDefined();
+    expect(posted.configurationData!.serverUrl).toBe(
       "https://console.example.com",
     );
     expect(posted.isAuthenticated).toBe(true);

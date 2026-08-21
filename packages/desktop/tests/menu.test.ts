@@ -359,8 +359,8 @@ describe("buildApplicationMenuTemplate", () => {
       label: string,
     ) =>
       (
-        template.find((item) => item.label === label)
-          ?.submenu as MenuItemConstructorOptions[]
+        template.find((item) => item.label === label)!
+          .submenu as MenuItemConstructorOptions[]
       ).map((item) => item.role);
     for (const isMac of [true, false]) {
       const template = buildApplicationMenuTemplate(actions, isMac);

@@ -43,19 +43,14 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "@eslint/js": "^9.33.0",
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^4.1.7",
-    "eslint": "^9.33.0",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "globals": "^15.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.5",
+    "oxlint": "^1.79.0",
     "prettier": "3.6.2",
     "tsx": "^4.20.4",
-    "typescript": "^5.9.2",
-    "typescript-eslint": "^8.39.0",
+    "typescript": "^7.0.2",
     "vitepress": "^1.6.4",
     "vitest": "^4.1.7"
   },

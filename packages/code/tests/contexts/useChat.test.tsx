@@ -530,7 +530,9 @@ describe("ChatProvider", () => {
   });
 
   it("handles agent.create error", async () => {
-    vi.spyOn(console, "error").mockImplementation(function () {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(function () {});
     vi.mocked(Agent.create).mockRejectedValue(
       new Error("Failed to create agent"),
     );
@@ -540,7 +542,7 @@ describe("ChatProvider", () => {
     renderWithProvider(onHookValue);
 
     await vi.waitFor(() => {
-      expect(console.error).toHaveBeenCalledWith(
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
         "Failed to initialize AI manager:",
         expect.any(Error),
       );
@@ -1203,7 +1205,7 @@ describe("ChatProvider", () => {
       stage: "streaming",
     });
     await vi.waitFor(() => {
-      expect(lastValue?.messages[0].blocks[0]).toEqual({
+      expect(lastValue!.messages[0].blocks[0]).toEqual({
         type: "text",
         content: "Hel",
         stage: "streaming",
@@ -1219,7 +1221,7 @@ describe("ChatProvider", () => {
     await vi.waitFor(() => {
       expect(lastValue?.messages[0].blocks).toHaveLength(1);
       expect(
-        (lastValue?.messages[0].blocks[0] as { content: string }).content,
+        (lastValue!.messages[0].blocks[0] as { content: string }).content,
       ).toBe("Hello");
     });
 
@@ -1350,7 +1352,7 @@ describe("ChatProvider", () => {
     });
     await vi.waitFor(() => {
       expect(
-        (lastValue?.messages[0].blocks[0] as { content: string }).content,
+        (lastValue!.messages[0].blocks[0] as { content: string }).content,
       ).toBe("Hel");
     });
 
@@ -1367,7 +1369,7 @@ describe("ChatProvider", () => {
     });
     // No timer advanced yet — still shows the leading update
     expect(
-      (lastValue?.messages[0].blocks[0] as { content: string }).content,
+      (lastValue!.messages[0].blocks[0] as { content: string }).content,
     ).toBe("Hel");
 
     // stage === "end" flushes pending deltas and applies the end signal
@@ -1378,7 +1380,7 @@ describe("ChatProvider", () => {
     });
     await vi.waitFor(() => {
       expect(
-        (lastValue?.messages[0].blocks[0] as { content: string }).content,
+        (lastValue!.messages[0].blocks[0] as { content: string }).content,
       ).toBe("Hello World");
     });
 
@@ -1871,7 +1873,7 @@ describe("ChatProvider", () => {
       // Reducer commit replaces the pushed message with a fresh object
       expect(lastValue?.messages[0]).not.toBe(sdkMsg);
       // Single "Hello", never "HelloHello" (first delta double-counted)
-      expect(lastValue?.messages[0].blocks[0]).toEqual({
+      expect(lastValue!.messages[0].blocks[0]).toEqual({
         type: "text",
         content: "Hello",
         stage: "streaming",
@@ -1995,7 +1997,7 @@ describe("ChatProvider", () => {
 
     await vi.waitFor(() => {
       expect(lastValue?.messages).toHaveLength(1);
-      const text = lastValue?.messages[0].blocks[0] as
+      const text = lastValue!.messages[0].blocks[0] as
         | { content: string }
         | undefined;
       // Single "Hello", never "HelloHello"

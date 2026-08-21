@@ -340,5 +340,3 @@ ipcRenderer.on("wave-picker", (_event, msg: PickerMessage) => {
 });
 
 ipcRenderer.sendToHost("wave-picker", { type: "ready" });
-
-export {};

@@ -99,8 +99,8 @@ describe("MessageManager Coverage Improvements", () => {
     const msg1 = messages.find((m) => m.id === id1);
     const msg2 = messages.find((m) => m.id === id2);
 
-    expect((msg1?.blocks[0] as TextBlock).content).toBe("Updated Message 1");
-    expect((msg2?.blocks[0] as TextBlock).content).toBe("Message 2");
+    expect((msg1!.blocks[0] as TextBlock).content).toBe("Updated Message 1");
+    expect((msg2!.blocks[0] as TextBlock).content).toBe("Message 2");
   });
 
   it("should not update if ID does not match", () => {
