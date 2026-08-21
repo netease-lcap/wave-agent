@@ -837,7 +837,7 @@ Wave 采用多层压缩机制管理对话历史，确保在长对话中不超出
 
 **自动压缩 (Auto-Compact)**
 
-- 每次 AI 响应后监控 token 使用量（含 cache 读取/写入 tokens）
+- 每次 AI 响应后监控 token 使用量（`latestTotalTokens` 为 `total_tokens`，不含 cache 读取/写入 tokens——与压缩判断口径一致，避免缓存命中双重计数导致 UI 显示虚高）
 - 当总 token 数超过 `getMaxInputTokens()` 时，自动触发压缩流程
 - 使用快速模型（fastModel）生成对话摘要，`max_tokens: 8192`，`temperature: 0.1`
 - 压缩前从消息中剥离图片以降低 token 消耗

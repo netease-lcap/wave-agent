@@ -7,7 +7,7 @@ order: 70
 # 功能规格说明：消息压缩
 
 **创建日期**：2026-01-22  
-**更新日期**：2026-08-19
+**更新日期**：2026-08-22
 
 ## 用户场景与测试 _（必填）_
 
@@ -53,14 +53,14 @@ order: 70
 
 **为什么是这个优先级**：wave 走 OpenAI 兼容接口（OpenAI SDK + 网关），该格式下 `prompt_tokens = 缓存命中 + 未命中`、`total_tokens = prompt_tokens + completion_tokens`，缓存命中已计入 `total_tokens`（DeepSeek 官方文档明确 `prompt_tokens` 等于 `prompt_cache_hit_tokens + prompt_cache_miss_tokens`）。原实现把 `prompt_tokens_details.cached_tokens` 规范化后与 `total_tokens` 相加，造成缓存命中双重计数——缓存命中通常占上下文绝大部分，导致压缩过早触发（实际上下文远未到 `maxInputTokens` 就压缩）。该加法源自 Anthropic 原生格式（其 `input_tokens` 不含缓存字段），与 wave 实际使用的 OpenAI 兼容格式错配。
 
-**独立测试**：构造含 `cache_read_input_tokens`（大值）和 `cache_creation_input_tokens` 的 usage，验证压缩判断仅使用 `total_tokens`，缓存字段不参与判断；验证 `latestTotalTokens` 展示语义（含缓存，供计费/成本展示）不受影响。
+**独立测试**：构造含 `cache_read_input_tokens`（大值）和 `cache_creation_input_tokens` 的 usage，验证压缩判断仅使用 `total_tokens`，缓存字段不参与判断；验证 `latestTotalTokens` 展示语义同样仅使用 `total_tokens`（与压缩判断口径一致，缓存字段不参与展示）。
 
 **验收场景**：
 
 1. **假设**响应的 `usage` 包含 `total_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens`，**当**判断是否超过 `getMaxInputTokens()` 时，**则**只使用 `total_tokens`（OpenAI 兼容格式下已含缓存命中），缓存字段不得叠加
 2. **假设**响应仅含 `cache_read_input_tokens`（缓存命中极大）而 `total_tokens` 远低于阈值，**当**判断是否触发压缩时，**则**不得触发压缩
 3. **假设**`usage` 中 `total_tokens` 未超阈值但叠加缓存字段后超过，**当**判断是否触发压缩时，**则**不得触发压缩
-4. **假设**`latestTotalTokens` 仍按含缓存的综合值展示（供 CLI / webview 成本展示），**当**展示 token 使用量时，**则**展示语义保持不变，与压缩触发判断解耦
+4. **假设**`latestTotalTokens` 展示（CLI / webview 的 token 用量显示），**当**展示 token 使用量时，**则**同样只使用 `total_tokens`，缓存字段不叠加——与压缩触发判断口径一致，避免 UI 显示"100% context"而压缩迟迟不触发
 
 ---
 
