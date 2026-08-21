@@ -151,7 +151,7 @@ jobs:
       - name: Get previous tag
         id: prev-tag
         run: |
-          PREV_TAG=$(git tag --sort=-v:refname --list 'wave-vscode@*' | grep -v "^${GITHUB_REF_NAME}$" | head -1)
+          PREV_TAG=$(git tag --sort=-v:refname --list 'wave-vscode@*' | grep -v "^${GITHUB_REF_NAME}$" | head -1) || true
           echo "tag=${PREV_TAG}" >> $GITHUB_OUTPUT
 
       - name: Attach .vsix to GitHub Release
@@ -239,7 +239,7 @@ jobs:
       - name: Get previous tag
         id: prev-tag
         run: |
-          PREV_TAG=$(git tag --sort=-v:refname --list 'wave-jetbrains@*' | grep -v "^${GITHUB_REF_NAME}$" | head -1)
+          PREV_TAG=$(git tag --sort=-v:refname --list 'wave-jetbrains@*' | grep -v "^${GITHUB_REF_NAME}$" | head -1) || true
           echo "tag=${PREV_TAG}" >> $GITHUB_OUTPUT
 
       - name: Attach .zip to GitHub Release
@@ -334,9 +334,11 @@ jobs:
         id: prev-tag
         # bash syntax (pipe, $GITHUB_OUTPUT) — the Windows runner's default
         # shell is PowerShell, so pin bash explicitly.
+        # `|| true`: the first tag in a namespace has no predecessor, so grep
+        # -v selects nothing and exits 1 — tolerate that (empty previous_tag).
         shell: bash
         run: |
-          PREV_TAG=$(git tag --sort=-v:refname --list 'wave-desktop@*' | grep -v "^${GITHUB_REF_NAME}$" | head -1)
+          PREV_TAG=$(git tag --sort=-v:refname --list 'wave-desktop@*' | grep -v "^${GITHUB_REF_NAME}$" | head -1) || true
           echo "tag=${PREV_TAG}" >> $GITHUB_OUTPUT
 
       - name: Attach installers to GitHub Release
