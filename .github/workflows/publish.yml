@@ -328,6 +328,9 @@ jobs:
       # so create/update don't race on the release body.
       - name: Get previous tag
         id: prev-tag
+        # bash syntax (pipe, $GITHUB_OUTPUT) — the Windows runner's default
+        # shell is PowerShell, so pin bash explicitly.
+        shell: bash
         run: |
           PREV_TAG=$(git tag --sort=-v:refname --list 'wave-desktop@*' | grep -v "^${GITHUB_REF_NAME}$" | head -1)
           echo "tag=${PREV_TAG}" >> $GITHUB_OUTPUT
