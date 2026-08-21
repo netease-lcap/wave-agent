@@ -137,7 +137,11 @@ jobs:
       # versions, so workflow_dispatch (asset re-upload) must not re-publish.
       - name: Publish to VS Code Marketplace
         if: startsWith(github.ref, 'refs/tags/wave-vscode@')
-        run: pnpm -F wave-vscode exec vsce publish --packagePath releases/*.vsix
+        # pnpm exec spawns vsce without a shell, so the glob must be expanded
+        # here (bash) and passed as an absolute path (vsce cwd = package dir).
+        run: |
+          VSIX=$(ls "$(pwd)/packages/vscode/releases/"*.vsix | head -1)
+          pnpm -F wave-vscode exec vsce publish --packagePath "$VSIX"
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
