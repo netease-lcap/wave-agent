@@ -28,7 +28,7 @@ import { logger } from "../utils/globalLogger.js";
 
 export interface LiveConfigManagerOptions {
   workdir: string;
-  onReload?: (config: WaveConfiguration) => void;
+  onReload?: (config: WaveConfiguration) => void | Promise<void>;
 }
 
 export class LiveConfigManager {
@@ -269,8 +269,11 @@ export class LiveConfigManager {
         );
       }
 
-      // Trigger reload callback
-      this.options.onReload?.(this.currentConfiguration);
+      // Trigger reload callback. Awaited so fire-and-forget work spawned by the
+      // callback (e.g. skill rediscovery) completes before the reload resolves —
+      // otherwise Agent.create() can return with a cleared skill map (see race
+      // where refreshSkills() clears skillMetadata before async discoverSkills).
+      await this.options.onReload?.(this.currentConfiguration);
 
       return this.currentConfiguration;
     } catch (error) {

@@ -306,15 +306,19 @@ export function setupAgentContainer(
 
   const liveConfigManager = new LiveConfigManager(container, {
     workdir,
-    onReload: () => {
+    onReload: async () => {
       const models = configurationService.getConfiguredModels();
       callbacks.onConfiguredModelsChange?.(models);
       // Re-evaluate feature-gated tools (e.g. Artifact behind
       // enableArtifact) so toggling the flag applies without a restart.
       toolManager.reloadFeatureGatedTools();
       // Same gate for the builtin /artifact skill: refresh emits "refreshed"
-      // so slash-command registration follows enableArtifact.
-      void skillManager.reloadFeatureGatedSkills().catch((error) => {
+      // so slash-command registration follows enableArtifact. Awaited (via the
+      // awaited onReload) so skills are re-populated before Agent.create()
+      // returns — reloadFeatureGatedSkills() clears the skill map before
+      // rediscovering asynchronously, which would otherwise expose an empty
+      // skill list to callers right after create().
+      await skillManager.reloadFeatureGatedSkills().catch((error) => {
         logger.error("Failed to reload feature-gated skills:", error);
       });
     },
