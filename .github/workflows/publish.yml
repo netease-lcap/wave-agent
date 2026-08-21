@@ -130,21 +130,6 @@ jobs:
       - name: Package .vsix
         run: pnpm -F wave-vscode run package
 
-      # --- VS Code Marketplace (PAT, transitional until OIDC lands) ---
-      # PATs retire 2026-12-01; the OIDC route (vsce --oidc / --azure-credential)
-      # is blocked on the Marketplace-side trusted publishing policy config, so
-      # use a PAT meanwhile. Tag pushes only — the marketplace rejects duplicate
-      # versions, so workflow_dispatch (asset re-upload) must not re-publish.
-      - name: Publish to VS Code Marketplace
-        if: startsWith(github.ref, 'refs/tags/wave-vscode@')
-        # pnpm exec spawns vsce without a shell, so the glob must be expanded
-        # here (bash) and passed as an absolute path (vsce cwd = package dir).
-        run: |
-          VSIX=$(ls "$(pwd)/packages/vscode/releases/"*.vsix | head -1)
-          pnpm -F wave-vscode exec vsce publish --packagePath "$VSIX"
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-
       # Release notes compare against the previous wave-vscode@ tag (same
       # namespace), so "last release" means the previous extension release —
       # not the npm line's v* tags.
@@ -225,15 +210,6 @@ jobs:
 
       - name: Build plugin distribution (.zip)
         run: ./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon
-
-      # --- JetBrains Marketplace ---
-      # publishPlugin uploads the distribution built above (plugin id
-      # com.wave.jetbrains read from plugin.xml). JetBrains has no OIDC
-      # equivalent, so this needs a permanent marketplace token.
-      # Same duplicate-version guard as the VS Code step: tag pushes only.
-      - name: Publish to JetBrains Marketplace
-        if: startsWith(github.ref, 'refs/tags/wave-jetbrains@')
-        run: ./packages/jetbrains/gradlew -p packages/jetbrains publishPlugin --no-daemon -PintellijPublishToken=${{ secrets.JETBRAINS_TOKEN }}
 
       # Release notes compare against the previous wave-jetbrains@ tag.
       - name: Get previous tag
