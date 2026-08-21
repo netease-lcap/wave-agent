@@ -39,7 +39,12 @@
   margin-bottom: -10px;
   /* Stretch across the cross axis (the container is flex column with
      align-items: flex-start) so the bar spans the list width like the old
-     absolute left/right: 0. */
+     absolute left/right: 0. Stretch alone only reaches the content box (the
+     container's 10px padding insets it), so negative horizontal margins cancel
+     that padding and the bar covers the container edge-to-edge with no
+     left/right gutters. */
+  margin-left: -10px;
+  margin-right: -10px;
   align-self: stretch;
   z-index: 20;
 }

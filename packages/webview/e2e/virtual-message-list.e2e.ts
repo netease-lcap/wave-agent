@@ -117,6 +117,26 @@ async function containerState(webviewPage: Page) {
   });
 }
 
+// The sticky bar must span the message list edge-to-edge: the container's 10px
+// padding would otherwise leave left/right gutters (stretch only reaches the
+// content box; the wrapper's negative margins cancel the padding).
+async function expectStickyBarEdgeToEdge(webviewPage: Page) {
+  const rects = await webviewPage.evaluate(() => {
+    const c = document.getElementById("messagesContainer") as HTMLElement;
+    const w = document.querySelector(
+      ".sticky-user-wrapper",
+    ) as HTMLElement | null;
+    if (!w) return null;
+    const cr = c.getBoundingClientRect();
+    const wr = w.getBoundingClientRect();
+    return { cr, wr };
+  });
+  expect(rects).not.toBeNull();
+  if (!rects) return;
+  expect(Math.abs(rects.wr.left - rects.cr.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(rects.wr.right - rects.cr.right)).toBeLessThanOrEqual(1);
+}
+
 test.describe("Virtualized message list demo", () => {
   test("bounded DOM rows, real spacer height, scrollable, pinned to bottom", async ({
     webviewPage,
@@ -176,6 +196,8 @@ test.describe("Virtualized message list demo", () => {
       c.scrollTop = Math.max(0, c.scrollTop - 3000);
     });
     await webviewPage.waitForSelector('[data-testid="sticky-user-message"]');
+    // The bar must cover the list edge-to-edge (no 10px padding gutters).
+    await expectStickyBarEdgeToEdge(webviewPage);
     // While row measurements are still converging (estimate 200px → real
     // heights), the sticky candidate can briefly flip between two adjacent
     // user messages. Reading the text in that window would pick a target that
