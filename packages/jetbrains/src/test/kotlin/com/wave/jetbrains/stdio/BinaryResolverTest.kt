@@ -131,6 +131,26 @@ class BinaryResolverTest {
         )
     }
 
+    @Test
+    fun `cliInstallDir is per-end under the shared cli root`() {
+        // Each frontend (vscode/desktop/jetbrains) owns its own subdir so they
+        // never overwrite each other's CLI copy.
+        val home = System.getProperty("user.home")
+        val expected = File(home, ".wave/cli/jetbrains")
+        assertEquals(expected.absolutePath, BinaryResolver.cliInstallDir().absolutePath)
+    }
+
+    @Test
+    fun `rgInstallDir stays at the shared root not inside the per-end dir`() {
+        // rg is shared by all three frontends — a sibling of the per-end dir
+        // (under ~/.wave/cli), so a CLI re-copy never wipes the cached download.
+        val cliRoot = BinaryResolver.cliInstallDir().parentFile
+        assertEquals(
+            File(cliRoot, "node_modules/@vscode").absolutePath,
+            BinaryResolver.rgInstallDir().absolutePath,
+        )
+    }
+
 
     @Test
     fun `extractTarball strips the top package dir`() {

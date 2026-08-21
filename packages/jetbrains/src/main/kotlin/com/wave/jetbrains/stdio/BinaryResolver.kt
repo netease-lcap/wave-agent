@@ -22,11 +22,13 @@ private const val MIN_NODE_MAJOR = 22
 /**
  * Resolves the `wave` CLI for local sessions. The CLI 三件套
  * (`bin/wave-code.js` + `package.json` + `dist/bundle/wave.mjs`) is bundled
- * inside the plugin jar, copied to the user-writable `~/.wave/cli` at runtime
- * and executed with the customer's system Node.js (>= 22) — no npm-global
- * `wave-code` package, no version check/upgrade. The grep dependency
- * `@vscode/ripgrep` is NOT bundled; it is downloaded from npmmirror on first
- * use into `~/.wave/cli/node_modules/` and cached.
+ * inside the plugin jar, copied to the user-writable `~/.wave/cli/jetbrains`
+ * at runtime and executed with the customer's system Node.js (>= 22) — no
+ * npm-global `wave-code` package, no version check/upgrade. Each frontend
+ * (vscode/desktop/jetbrains) keeps its own subdir so different versions
+ * never overwrite each other. The grep dependency `@vscode/ripgrep` is NOT
+ * bundled; it is downloaded from npmmirror on first use into the shared
+ * `~/.wave/cli/node_modules/` and cached.
  */
 object BinaryResolver {
     private val LOG = logger<BinaryResolver>()
@@ -71,9 +73,9 @@ object BinaryResolver {
     }
 
     /**
-     * Resolve the runtime CLI entry (`~/.wave/cli/bin/wave-code.js`), copying
-     * the bundled CLI on first use / version change and downloading ripgrep on
-     * demand. `WAVE_CLI_PATH` env override wins (development).
+     * Resolve the runtime CLI entry (`~/.wave/cli/jetbrains/bin/wave-code.js`),
+     * copying the bundled CLI on first use / version change and downloading
+     * ripgrep on demand. `WAVE_CLI_PATH` env override wins (development).
      * @throws StdioClientException when the bundled CLI is missing (corrupt
      * install) or ripgrep cannot be downloaded.
      */
@@ -88,9 +90,10 @@ object BinaryResolver {
         // 0. Node.js >= 22 is required to execute the bundled CLI.
         checkNodeVersion()
 
-        // 1. Copy the bundled CLI into ~/.wave/cli (plugin install dir is
-        //    read-only; version change re-copies but keeps node_modules/ so an
-        //    already-downloaded rg is never re-downloaded).
+        // 1. Copy the bundled CLI into ~/.wave/cli/jetbrains (plugin install
+        //    dir is read-only; version change re-copies but keeps the shared
+        //    rg download in ~/.wave/cli/node_modules so it is never
+        //    re-downloaded).
         val entry = prepareCli()
 
         // 2. `@vscode/ripgrep` is a top-level import of the bundled CLI —
@@ -167,18 +170,26 @@ object BinaryResolver {
     }
 
     // ------------------------------------------------------------------
-    // Bundled CLI → ~/.wave/cli
+    // Bundled CLI → ~/.wave/cli/jetbrains
     // ------------------------------------------------------------------
 
-    internal fun cliInstallDir(): File = File(System.getProperty("user.home"), ".wave/cli")
+    /** Shared root dir for all CLI runtime data under the user home. */
+    private fun cliRootDir(): File = File(System.getProperty("user.home"), ".wave/cli")
+
+    /**
+     * Per-end runtime CLI dir: `~/.wave/cli/jetbrains` — vscode/desktop keep
+     * their own subdirs so they never overwrite each other's CLI copy.
+     */
+    internal fun cliInstallDir(): File = File(cliRootDir(), "jetbrains")
 
     private fun cliEntryPath(): String = File(cliInstallDir(), "bin/wave-code.js").path
 
     /**
      * Copy the bundled CLI into the runtime dir when missing or when the bundled
-     * version differs (plugin upgrade). The runtime `node_modules/` (downloaded
-     * ripgrep) is preserved across copies so an already-downloaded rg is never
-     * re-downloaded after an upgrade. Returns the runtime entry path.
+     * version differs (plugin upgrade). The cached rg download lives in the
+     * shared `~/.wave/cli/node_modules/@vscode` dir — outside this per-end dir —
+     * so an already-downloaded rg is never re-downloaded after an upgrade.
+     * Returns the runtime entry path.
      * @throws StdioClientException when the bundled CLI itself is missing (corrupt install).
      */
     private fun prepareCli(): String {
@@ -190,8 +201,8 @@ object BinaryResolver {
 
         if (needCopy) {
             onInstall?.invoke("正在准备内置 wave CLI…")
-            // Replace the CLI files only — keep node_modules/ (the cached rg
-            // download) so an upgrade does not force re-downloading it.
+            // Replace the CLI files only — the cached rg download lives in the
+            // shared ~/.wave/cli dir, so an upgrade never forces re-downloading it.
             File(cliInstallDir(), "dist").deleteRecursively()
             File(entry).delete()
             File(cliInstallDir(), "package.json").delete()
@@ -223,7 +234,7 @@ object BinaryResolver {
         }
     }
 
-    /** Version of the runtime CLI in ~/.wave/cli. */
+    /** Version of the runtime CLI in ~/.wave/cli/jetbrains. */
     private fun runtimeVersion(): String {
         return try {
             val file = File(cliInstallDir(), "package.json")
@@ -246,17 +257,22 @@ object BinaryResolver {
     // ripgrep download + cache
     // ------------------------------------------------------------------
 
-    internal fun rgInstallDir(): File = File(cliInstallDir(), "node_modules/@vscode")
+    /**
+     * Where the downloaded ripgrep packages live. Shared by all three
+     * frontends (vscode/desktop/jetbrains) — deliberately outside the per-end
+     * CLI dir so each end's CLI copy never wipes the cached rg download.
+     */
+    internal fun rgInstallDir(): File = File(cliRootDir(), "node_modules/@vscode")
 
     internal fun rgBinaryPath(): String =
         File(rgInstallDir(), "$rgPlatformDir/bin/rg${if (isWindows) ".exe" else ""}").path
 
     /**
      * Download the ripgrep JS wrapper and the current platform's rg binary into
-     * the runtime CLI dir. Returns true when the rg binary is in place. Never
-     * throws — a failed download only disables the grep tool until a later
-     * launch retries (caller [resolveWaveBinary] turns failure into a hard
-     * init error).
+     * the shared `~/.wave/cli/node_modules/@vscode` dir. Returns true when the
+     * rg binary is in place. Never throws — a failed download only disables
+     * the grep tool until a later launch retries (caller [resolveWaveBinary]
+     * turns failure into a hard init error).
      */
     internal fun ensureRipgrep(): Boolean {
         if (File(rgBinaryPath()).exists()) return true

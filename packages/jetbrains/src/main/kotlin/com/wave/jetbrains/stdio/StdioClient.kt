@@ -35,7 +35,7 @@ class StdioClientException(message: String) : RuntimeException(message)
 /**
  * Pure transport layer: spawns `wave --stdio`, speaks line-delimited JSON-RPC 2.0.
  * Mirrors packages/vscode/src/stdio/stdioClient.ts. [command] is the full
- * executable + script prefix (e.g. `node ~/.wave/cli/bin/wave-code.js`) — the
+ * executable + script prefix (e.g. `node ~/.wave/cli/jetbrains/bin/wave-code.js`) — the
  * bundled CLI is a `.js` script executed by the system Node.js, so no shell /
  * `.cmd` shim is involved on Windows.
  */
