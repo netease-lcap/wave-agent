@@ -14,6 +14,47 @@ import { Message } from "wave-agent-sdk";
 
 const VIRTUAL_MESSAGE_COUNT = 300;
 
+// The virtualizer's initial estimate is avgMeasuredHeight = 200px. These rows
+// alternate ~30px (short text) and ~1200px (60-line code fence), so the
+// measured average keeps rising as the mounted window measures and the
+// unmeasured rows re-estimate at it — the total keeps GROWING for a couple
+// hundred ms after mount. That is the "growth direction": the opposite of
+// buildMessages (whose ~30px rows SHRINK the spacer, where the browser's
+// scrollTop clamp self-corrects a short pin). A pin chase with a fixed short
+// frame cap gives up mid-growth and leaves the viewport parked above the true
+// bottom.
+function buildMixedHeights(count: number): Message[] {
+  const code = Array.from(
+    { length: 60 },
+    (_, n) => `const value_${n} = compute(${n});`,
+  ).join("\n");
+  const msgs: Message[] = [];
+  for (let i = 0; i < count; i++) {
+    const timestamp = new Date(Date.UTC(2026, 0, 1) + i * 60000).toISOString();
+    if (i % 2 === 0) {
+      msgs.push({
+        id: `mu${i}`,
+        role: "user",
+        timestamp,
+        blocks: [{ type: "text", content: `短消息 ${i}` }],
+      });
+    } else {
+      msgs.push({
+        id: `ma${i}`,
+        role: "assistant",
+        timestamp,
+        blocks: [
+          {
+            type: "text",
+            content: `高回答 ${i}：\n\n\`\`\`ts\n${code}\n\`\`\``,
+          },
+        ],
+      });
+    }
+  }
+  return msgs;
+}
+
 function buildMessages(count: number, prefix = ""): Message[] {
   const msgs: Message[] = [];
   for (let i = 0; i < count; i++) {
@@ -260,5 +301,43 @@ test.describe("Virtualized message list demo", () => {
       prevScrollTop = state.scrollTop;
     }
     expect(reactWarnings).toEqual([]);
+  });
+
+  test("initial load pins to the true bottom while rows measure taller than the estimate (growth direction)", async ({
+    webviewPage,
+  }) => {
+    // The initial estimate starts at avgMeasuredHeight = 200px; the mixed
+    // heights keep the measured average rising as the window measures, so the
+    // total grows for a couple hundred ms after mount (a chase with a fixed
+    // short frame cap gives up mid-growth and leaves the viewport 5.7k px
+    // above the true bottom on the old implementation). The pin must follow
+    // the growth to the end and stay there.
+    const injector = new MessageInjector(webviewPage);
+    await initWithMessages(injector, buildMixedHeights(VIRTUAL_MESSAGE_COUNT));
+
+    await webviewPage.waitForSelector('[data-message-id="ma299"]');
+    await webviewPage.waitForFunction(
+      () => {
+        const c = document.getElementById("messagesContainer") as HTMLElement;
+        return c.scrollHeight - c.scrollTop - c.clientHeight <= 2;
+      },
+      undefined,
+      { timeout: 10000 },
+    );
+
+    // The growth really happened: the final total must be far above the
+    // estimate-based baseline (300 rows × 200px = 60,000).
+    const s = await containerState(webviewPage);
+    expect(s.scrollHeight).toBeGreaterThan(60000 * 2);
+    expect(s.bottomGap).toBeLessThanOrEqual(2);
+    // The pin holds — a later sample is still at the bottom (no slow-drift
+    // recovery was needed).
+    await webviewPage.waitForTimeout(500);
+    const s2 = await containerState(webviewPage);
+    expect(s2.bottomGap).toBeLessThanOrEqual(2);
+    expect(s2.scrollTop).toBeGreaterThanOrEqual(s.scrollTop);
+    console.log(
+      `[growth-direction] scrollHeight=${s.scrollHeight} scrollTop=${s.scrollTop} gap=${s.bottomGap.toFixed(2)} rows=${s.rowCount}`,
+    );
   });
 });

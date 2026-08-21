@@ -7,7 +7,7 @@ import React, {
   useCallback,
   useState,
 } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, elementScroll } from "@tanstack/react-virtual";
 import { Message } from "./Message";
 import { streamingTail } from "../utils/streamingText";
 import type { MessageListProps } from "../types";
@@ -227,6 +227,10 @@ export const MessageList = forwardRef<
   // downward with scrollHeight UNCHANGED — which passes the contentShrank check
   // and would likewise suspend auto-follow without a user gesture.
   const prevClientHeightRef = useRef(0);
+  // The in-flow spacer div carrying the virtualized total height. Observed for
+  // size changes (see the re-pin effect below) so any late growth of the
+  // total — estimate→measure waves after the initial pin — re-pins.
+  const spacerRef = useRef<HTMLDivElement | null>(null);
 
   // The most-recent user message that has scrolled above the viewport top; pinned
   // at the top of the list as a context hint (设计稿 2236-3792).
@@ -338,6 +342,29 @@ export const MessageList = forwardRef<
     // Defer measurement resize callbacks to animation frames so streaming row
     // growth doesn't trigger layout thrash mid-frame.
     useAnimationFrameWithResizeObserver: true,
+    // All virtualizer-initiated scrolls — scrollToEnd/scrollToIndex AND the
+    // internal resizeItem compensations — route through scrollToFn. Two jobs:
+    // (1) OpenCode-aligned: write the spacer height BEFORE the scroll so the
+    // browser clamps against the CURRENT total instead of a stale one (a
+    // scrollToEnd computed from the internal total would otherwise land short
+    // when the DOM spacer write trails by a frame); (2) flag the scroll as
+    // programmatic so the scroll handler can't mistake a size-change
+    // compensation for a user gesture — a row measuring SHORTER than its
+    // estimate shifts scrollTop by the negative delta, and that spurious
+    // downward scroll would otherwise latch userScrolledUpRef and freeze the
+    // bottom-pin mid-growth. The rAF reset mirrors doScrollToBottom's own flag
+    // handling; the browser coalesces all scrollTop writes of a frame into one
+    // 'scroll' event, dispatched before the next frame's rAF callback.
+    scrollToFn: (offset, opts, instance) => {
+      if (spacerRef.current) {
+        spacerRef.current.style.height = `${instance.getTotalSize()}px`;
+      }
+      isProgrammaticScrollRef.current = true;
+      elementScroll(offset, opts, instance);
+      requestAnimationFrame(() => {
+        isProgrammaticScrollRef.current = false;
+      });
+    },
   });
 
   // Stable row ref: defers to the virtualizer's own measurement (its
@@ -478,46 +505,17 @@ export const MessageList = forwardRef<
   // Perform a programmatic scroll-to-bottom, guarding it with the
   // isProgrammaticScroll flag so the scroll handler treats the resulting
   // 'scroll' event as ours (not the user's) and leaves userScrolledUp alone.
+  // scrollToFn writes the spacer height before the scroll (see above), so the
+  // browser clamps against the CURRENT total — no stale-height short pin. Any
+  // later estimate→measure growth is followed event-driven by the spacer
+  // ResizeObserver (see the re-pin effect below) — no frame budget, matching
+  // OpenCode's persistent bottom-anchor.
   const doScrollToBottom = useCallback(
     (behavior: ScrollBehavior) => {
       const container = containerRef.current;
       if (!container) return;
       isProgrammaticScrollRef.current = true;
       virtualizer.scrollToEnd({ behavior });
-      // The virtualizer's resizeItem compensation and the scrollToEnd above
-      // both target offsets computed before the spacer height lands in the
-      // DOM (the spacer write happens later in the frame, after the scrollTo
-      // was clamped against the stale scrollHeight; the ResizeObserver →
-      // animation-frame measurement can even trail by a full frame). Keep
-      // re-checking for a few frames and finish the jump once the spacer is
-      // in place, so streaming row growth still pins the viewport.
-      let attempts = 0;
-      const finishPin = () => {
-        if (attempts++ >= 8) return;
-        // Only chase the bottom while the viewport is still parked there; if
-        // the user scrolls away during the compensation window, stop so we
-        // don't yank them back to the bottom.
-        if (
-          container.scrollTop + container.clientHeight <
-          container.scrollHeight - 300
-        ) {
-          return;
-        }
-        if (
-          container.scrollHeight -
-            container.scrollTop -
-            container.clientHeight >
-          2
-        ) {
-          isProgrammaticScrollRef.current = true;
-          virtualizer.scrollToEnd({ behavior: "auto" });
-          requestAnimationFrame(() => {
-            isProgrammaticScrollRef.current = false;
-          });
-        }
-        requestAnimationFrame(finishPin);
-      };
-      requestAnimationFrame(finishPin);
       // 'auto' is instant (single 'scroll' fire); reset on the next frame.
       requestAnimationFrame(() => {
         isProgrammaticScrollRef.current = false;
@@ -673,6 +671,24 @@ export const MessageList = forwardRef<
     return () => container.removeEventListener("load", repin, true);
   }, [doScrollToBottom]);
 
+  // Persistent bottom-follow on the spacer itself, OpenCode-style (their
+  // resizeItem override re-scrolls to the end on every measurement; ours
+  // observes the spacer, which covers ALL total changes — both resizeItem row
+  // measurements and the avg-based re-estimation of unmeasured rows that
+  // never goes through resizeItem). The estimate→measure waves are not
+  // time-bounded, so a budgeted chase can park above a later wave; any spacer
+  // size change while the user hasn't scrolled up re-pins instead (the shrink
+  // direction harmlessly re-pins to the already-clamped bottom).
+  useEffect(() => {
+    const spacer = spacerRef.current;
+    if (!spacer) return;
+    const observer = new ResizeObserver(() => {
+      if (!userScrolledUpRef.current) doScrollToBottom("auto");
+    });
+    observer.observe(spacer);
+    return () => observer.disconnect();
+  }, [doScrollToBottom]);
+
   return (
     <div
       ref={containerRef}
@@ -697,7 +713,13 @@ export const MessageList = forwardRef<
         {/* In-flow spacer carrying the virtualized total height. The
             virtualizer writes its height directly (directDomUpdates); it
             must keep its space in the flex column (flex-shrink: 0). */}
-        <div ref={virtualizer.containerRef} className="virtual-spacer" />
+        <div
+          ref={(node) => {
+            virtualizer.containerRef(node);
+            spacerRef.current = node;
+          }}
+          className="virtual-spacer"
+        />
         {virtualizer.getVirtualItems().map((virtualRow) => {
           const message = visibleMessages[virtualRow.index];
           const runClass = timelineRuns.classes[virtualRow.index];
