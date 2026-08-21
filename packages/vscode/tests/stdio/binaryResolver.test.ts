@@ -56,6 +56,7 @@ import {
   decodeCommandOutput,
   setExtensionPath,
   cliInstallDir,
+  rgInstallDir,
   NPM_REGISTRY,
   _resetCacheForTesting,
 } from "../../src/stdio/binaryResolver";
@@ -64,7 +65,7 @@ const EXT = "/ext/install";
 const bundledDir = () => path.join(EXT, "dist", "wave-cli");
 const bundledEntry = () => path.join(bundledDir(), "bin", "wave-code.js");
 const entry = () =>
-  path.join("/fake/home", ".wave", "cli", "bin", "wave-code.js");
+  path.join("/fake/home", ".wave", "cli", "vscode", "bin", "wave-code.js");
 const rgBin = () =>
   path.join(
     "/fake/home/.wave/cli/node_modules/@vscode",
@@ -153,6 +154,20 @@ describe("binaryResolver (bundled CLI + downloaded rg)", () => {
     vi.unstubAllGlobals();
   });
 
+  it("cliInstallDir is per-end (vscode) while rg stays at the shared root", () => {
+    // Each frontend (vscode/desktop/jetbrains) owns its own subdir so they
+    // never overwrite each other's CLI copy.
+    expect(cliInstallDir()).toBe(
+      path.join("/fake/home", ".wave", "cli", "vscode"),
+    );
+    expect(entry()).toContain(path.join(".wave", "cli", "vscode"));
+    // rg is shared by all three frontends — a sibling of the per-end dir,
+    // not inside it, so a CLI re-copy never wipes the cached download.
+    expect(rgInstallDir()).toBe(
+      path.join("/fake/home", ".wave", "cli", "node_modules", "@vscode"),
+    );
+  });
+
   it("prefers WAVE_CLI_PATH override without touching bundle/rg", async () => {
     process.env.WAVE_CLI_PATH = "/dev/wave-code.js";
     memFs.set("/dev/wave-code.js", "dev shim");
@@ -176,7 +191,7 @@ describe("binaryResolver (bundled CLI + downloaded rg)", () => {
     await expect(resolveWaveBinary("1.0.0")).rejects.toThrow("缺少扩展路径");
   });
 
-  it("copies the bundled CLI into ~/.wave/cli on first use and downloads rg", async () => {
+  it("copies the bundled CLI into ~/.wave/cli/vscode on first use and downloads rg", async () => {
     seedBundledCli("1.0.0");
     mockRipgrepRegistry();
 

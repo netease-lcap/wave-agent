@@ -3,12 +3,15 @@
  *
  * 1. WAVE_CLI_PATH env override (development)
  * 2. The CLI bundled inside the extension (dist/wave-cli, shipped in the
- *    vsix) is copied into `~/.wave/cli` — the extension dir is read-only, so
- *    the runtime copy lives under the user home. The CLI version tracks the
- *    extension version (shipped with the vsix).
+ *    vsix) is copied into `~/.wave/cli/vscode` — the extension dir is
+ *    read-only, so the runtime copy lives under the user home. The CLI
+ *    version tracks the extension version (shipped with the vsix). Each
+ *    frontend (vscode/desktop/jetbrains) keeps its own subdir so different
+ *    versions never overwrite each other.
  * 3. The grep tool's runtime dependency `@vscode/ripgrep` (JS wrapper +
  *    platform rg binary, ~5MB) is downloaded from the npmmirror registry on
- *    first use and cached in the runtime dir. A failed download does NOT
+ *    first use and cached in the shared `~/.wave/cli/node_modules/@vscode`
+ *    dir (shared by vscode/desktop/jetbrains). A failed download does NOT
  *    block the CLI — grep simply reports "ripgrep is not available" until a
  *    later launch succeeds.
  *
@@ -63,9 +66,18 @@ export function bundledCliDir(): string {
   return path.join(extensionPath, "dist", "wave-cli");
 }
 
-/** Runtime CLI dir under the user home (writable, mirrors a flat npm install). */
-export function cliInstallDir(): string {
+/** Shared root dir for all CLI runtime data under the user home. */
+function cliRootDir(): string {
   return path.join(os.homedir(), ".wave", "cli");
+}
+
+/**
+ * Runtime CLI dir under the user home (writable, mirrors a flat npm
+ * install). Per-end: vscode/desktop/jetbrains each own their own subdir so
+ * they never overwrite each other's CLI copy.
+ */
+export function cliInstallDir(): string {
+  return path.join(cliRootDir(), "vscode");
 }
 
 /** Entry point of the runtime CLI (the version-probe shim). */
@@ -73,9 +85,13 @@ export function cliEntryPath(): string {
   return path.join(cliInstallDir(), "bin", "wave-code.js");
 }
 
-/** Where the downloaded ripgrep packages live inside the runtime CLI dir. */
-function rgInstallDir(): string {
-  return path.join(cliInstallDir(), "node_modules", "@vscode");
+/**
+ * Where the downloaded ripgrep packages live. Shared by all three frontends
+ * (vscode/desktop/jetbrains) — deliberately outside the per-end CLI dir so
+ * each end's CLI copy never wipes the cached rg download.
+ */
+export function rgInstallDir(): string {
+  return path.join(cliRootDir(), "node_modules", "@vscode");
 }
 
 /** Current platform's rg binary path after install. */
@@ -202,9 +218,10 @@ export async function ensureRipgrep(
 
 /**
  * Copy the bundled CLI into the runtime dir when missing or when the bundled
- * version differs (extension upgrade). The runtime `node_modules/`
- * (downloaded ripgrep) is preserved across copies so an already-downloaded
- * rg is never re-downloaded after an upgrade. Returns the runtime entry path.
+ * version differs (extension upgrade). The cached rg download lives in the
+ * shared `~/.wave/cli/node_modules/@vscode` dir — outside this per-end dir —
+ * so an already-downloaded rg is never re-downloaded after an upgrade.
+ * Returns the runtime entry path.
  * @throws Error when the bundled CLI itself is missing (corrupt install).
  */
 function prepareCli(): string {
@@ -221,8 +238,8 @@ function prepareCli(): string {
 
   if (needCopy) {
     fs.mkdirSync(cliInstallDir(), { recursive: true });
-    // Replace the CLI files only — keep node_modules/ (the cached rg
-    // download) so an upgrade does not force re-downloading it.
+    // Replace the CLI files only — the cached rg download lives in the
+    // shared ~/.wave/cli dir, so an upgrade never forces re-downloading it.
     fs.rmSync(path.join(cliInstallDir(), "dist"), {
       recursive: true,
       force: true,
@@ -258,8 +275,8 @@ function runtimeVersion(): string {
 
 /**
  * Resolve the `wave` CLI: WAVE_CLI_PATH override first (development), then
- * the CLI copied from the extension bundle into `~/.wave/cli`, ensuring the
- * ripgrep search dependency is downloaded.
+ * the CLI copied from the extension bundle into `~/.wave/cli/vscode`,
+ * ensuring the ripgrep search dependency is downloaded.
  * @throws Error when the bundled CLI is missing (corrupt install) or the
  * ripgrep download fails — `@vscode/ripgrep` is a top-level import of the
  * bundled CLI, so without it wave.mjs cannot even start.
@@ -286,8 +303,8 @@ export async function resolveWaveBinary(
 }
 
 /**
- * Ensure the `wave` CLI is ready: bundled CLI copied into `~/.wave/cli` and
- * ripgrep downloaded (best-effort). The CLI version tracks the extension
+ * Ensure the `wave` CLI is ready: bundled CLI copied into `~/.wave/cli/vscode`
+ * and ripgrep downloaded (best-effort). The CLI version tracks the extension
  * version, so there is no separate upgrade step.
  */
 export async function ensureCliUpToDate(
