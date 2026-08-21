@@ -52,6 +52,13 @@ import "../styles/ChatApp.css";
 
 /** Desktop conversation-level panels: fixed left→right order regardless of check order. */
 const PANEL_ORDER: DesktopPanelKind[] = ["preview", "diff", "terminal", "file"];
+/** Chinese names for space-replacement hints (「面板空间不足自动替换」). */
+const PANEL_LABELS: Record<DesktopPanelKind, string> = {
+  preview: "预览",
+  diff: "差异",
+  terminal: "终端",
+  file: "文件",
+};
 const PANEL_DEFAULT_WIDTH = 420;
 const PANEL_MIN_WIDTH = 320;
 /** The conversation (message) area never shrinks below this when opening/dragging panels. */
@@ -1564,13 +1571,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     };
   }, [isDesktop]);
 
-  // Check a panel on: it shares its row with the message area, so refuse (with
-  // a hint) when the checked panels would squeeze the conversation below its
-  // minimum width. Mounting is sticky — unchecking only hides.
+  // Check a panel on: it shares its row with the message area. When the
+  // checked panels would squeeze the conversation below its minimum width,
+  // auto-replace already-open panels — oldest-checked first (the array is in
+  // check order) — until the new panel fits, and hint which ones were closed
+  // (「面板空间不足自动替换」). Replaced panels only get unchecked: they stay
+  // mounted so their content survives and re-checking restores it. Only when
+  // even closing every old panel cannot fit the new one (window narrower than
+  // the minimum conversation + panel widths) is the open refused — and then
+  // nothing is closed, so a failed replace never takes old panels down.
   const tryOpenPanel = useCallback(
     (kind: DesktopPanelKind): boolean => {
       const containerW =
         chatContainerRef.current?.getBoundingClientRect().width;
+      const evicted: DesktopPanelKind[] = [];
       if (containerW) {
         const used =
           checkedPanelsRef.current
@@ -1578,9 +1592,24 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
             .reduce((sum, k) => sum + panelWidthsRef.current[k], 0) +
           panelWidthsRef.current[kind];
         if (containerW - used < CHAT_MAIN_MIN_WIDTH) {
-          showPanelHint("空间不足，无法开启面板");
-          return false;
+          let remaining = used;
+          for (const k of checkedPanelsRef.current) {
+            if (k === kind) continue; // never replace the panel being opened
+            remaining -= panelWidthsRef.current[k];
+            evicted.push(k);
+            if (containerW - remaining >= CHAT_MAIN_MIN_WIDTH) break;
+          }
+          if (containerW - remaining < CHAT_MAIN_MIN_WIDTH) {
+            showPanelHint("空间不足，无法开启面板");
+            return false;
+          }
         }
+      }
+      if (evicted.length > 0) {
+        setCheckedPanels((prev) => prev.filter((k) => !evicted.includes(k)));
+        showPanelHint(
+          `空间不足，已自动关闭「${evicted.map((k) => PANEL_LABELS[k]).join("」「")}」面板`,
+        );
       }
       setCheckedPanels((prev) =>
         prev.includes(kind) ? prev : [...prev, kind],

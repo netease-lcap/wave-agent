@@ -279,6 +279,167 @@ describe("ChatApp desktop panel framework", () => {
     }
   });
 
+  it("auto-replaces the oldest checked panel when space runs out (spec 场景 1)", () => {
+    window.waveHostType = "desktop";
+    // 800px fits one 420px panel beside the 360px conversation minimum
+    // (800 - 420 = 380), but not two — opening 终端 replaces the older 文件.
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockReturnValue({ width: 800, right: 800 } as DOMRect);
+    try {
+      const { vscode } = renderDesktop({ workdir: "/work/a" });
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+      fireEvent.click(screen.getByTestId("panel-toggle-item-file"));
+      expect(screen.getByTestId("file-pane")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
+      expect(screen.getByTestId("terminal-pane")).toBeInTheDocument();
+      // 文件 was the oldest checked panel — replaced (hidden, still mounted
+      // so its content survives and re-checking restores it).
+      expect(screen.getByTestId("file-pane").parentElement).toHaveStyle({
+        display: "none",
+      });
+      expect(screen.getByTestId("terminal-pane").parentElement).not.toHaveStyle(
+        { display: "none" },
+      );
+      expect(vscode.postMessage).toHaveBeenCalledWith({
+        command: "desktopShowHint",
+        text: "空间不足，已自动关闭「文件」面板",
+      });
+      expect(lastPanelState(vscode)).toEqual(["terminal"]);
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
+  it("keeps evicting older panels until the new one fits and lists them all (spec 场景 2)", () => {
+    window.waveHostType = "desktop";
+    // 1620px holds three 420px panels + the 360px conversation minimum.
+    let width = 1620;
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockImplementation(() => ({ width, right: width }) as DOMRect);
+    try {
+      const { vscode } = renderDesktop({ workdir: "/work/a" });
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+      fireEvent.click(screen.getByTestId("panel-toggle-item-file"));
+      fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
+      fireEvent.click(screen.getByTestId("panel-toggle-item-preview"));
+      expect(screen.getByTestId("preview-pane-empty")).toBeInTheDocument();
+
+      // Window shrinks; a fourth panel needs more room than one eviction
+      // frees — 文件 → 终端 → 预览 all get replaced before 差异 opens.
+      width = 1000;
+      fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+      expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
+      expect(screen.getByTestId("diff-pane").parentElement).not.toHaveStyle({
+        display: "none",
+      });
+      for (const testid of [
+        "file-pane",
+        "terminal-pane",
+        "preview-pane-empty",
+      ]) {
+        // Replaced panels stay mounted (content preserved), just hidden.
+        expect(screen.getByTestId(testid).parentElement).toHaveStyle({
+          display: "none",
+        });
+      }
+      expect(vscode.postMessage).toHaveBeenCalledWith({
+        command: "desktopShowHint",
+        text: "空间不足，已自动关闭「文件」「终端」「预览」面板",
+      });
+      expect(lastPanelState(vscode)).toEqual(["diff"]);
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
+  it("refuses and closes nothing when even full eviction cannot fit (spec 场景 4)", () => {
+    window.waveHostType = "desktop";
+    // 1200px holds two 420px panels + the 360px conversation minimum.
+    let width = 1200;
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockImplementation(() => ({ width, right: width }) as DOMRect);
+    try {
+      const { vscode } = renderDesktop({ workdir: "/work/a" });
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+      fireEvent.click(screen.getByTestId("panel-toggle-item-file"));
+      fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
+      expect(screen.getByTestId("file-pane")).toBeInTheDocument();
+      expect(screen.getByTestId("terminal-pane")).toBeInTheDocument();
+
+      // Narrower than the conversation minimum + one panel: even after every
+      // old panel is evicted the new one cannot open — refuse and keep the
+      // existing panels untouched (a failed replace must not take them down).
+      width = 700;
+      fireEvent.click(screen.getByTestId("panel-toggle-item-preview"));
+      expect(
+        screen.queryByTestId("preview-pane-empty"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId("file-pane").parentElement).not.toHaveStyle({
+        display: "none",
+      });
+      expect(screen.getByTestId("terminal-pane").parentElement).not.toHaveStyle(
+        { display: "none" },
+      );
+      expect(vscode.postMessage).toHaveBeenCalledWith({
+        command: "desktopShowHint",
+        text: "空间不足，无法开启面板",
+      });
+      expect(lastPanelState(vscode)).toEqual(["file", "terminal"]);
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
+  it("never replaces the panel being re-targeted (spec 场景 5)", () => {
+    window.waveHostType = "desktop";
+    // 1200px holds two 420px panels + the 360px conversation minimum.
+    let width = 1200;
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockImplementation(() => ({ width, right: width }) as DOMRect);
+    try {
+      const { vscode } = renderDesktop({ workdir: "/work/a" });
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+      fireEvent.click(screen.getByTestId("panel-toggle-item-file"));
+      fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
+
+      sendCommand("updateMessages", {
+        messages: [
+          MockDataGenerator.createAssistantMessageWithTool(
+            "Reading a file.",
+            READ_TOOL_NAME,
+            JSON.stringify({ file_path: "/work/a/src/target.ts" }),
+            "done",
+          ),
+        ],
+      });
+      const path = document.querySelector(".write-tool-path") as HTMLElement;
+      expect(path).toBeInTheDocument();
+
+      // Window shrinks below two-panel capacity; clicking a file path keeps
+      // the 文件 panel (it is the one being re-targeted) and replaces 终端.
+      width = 1100;
+      fireEvent.click(path);
+      expect(screen.getByTestId("file-pane").parentElement).not.toHaveStyle({
+        display: "none",
+      });
+      expect(screen.getByTestId("terminal-pane").parentElement).toHaveStyle({
+        display: "none",
+      });
+      expect(vscode.postMessage).toHaveBeenCalledWith({
+        command: "desktopShowHint",
+        text: "空间不足，已自动关闭「终端」面板",
+      });
+      expect(lastPanelState(vscode)).toEqual(["file"]);
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
   it("re-clicking another file path replaces the panel in place (spec 场景 6)", () => {
     window.waveHostType = "desktop";
     // 1000px fits the 420px file panel beside the 360px conversation
