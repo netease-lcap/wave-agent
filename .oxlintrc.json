@@ -1,0 +1,66 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "no-warning-comments": [
+      "error",
+      {
+        "terms": [
+          "todo",
+          "fixme",
+          "hack",
+          "bug",
+          "eslint-disable",
+          "eslint-disable-line",
+          "eslint-disable-next-line"
+        ]
+      }
+    ],
+    "typescript/ban-ts-comment": "error",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn",
+    "react/globals": "off",
+    "react/refs": "off",
+    "react/purity": "off",
+    "react/set-state-in-effect": "off",
+    "react/set-state-in-render": "off",
+    "react/immutability": "off",
+    "react/static-components": "off",
+    "react/incompatible-library": "off",
+    "react/preserve-manual-memoization": "off"
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/tests/**/*.ts",
+        "**/tests/**/*.tsx",
+        "**/*.test.ts",
+        "**/*.test.tsx"
+      ],
+      "rules": {
+        "no-console": "error"
+      }
+    },
+    {
+      "files": [
+        "**/fixtures/**/*",
+        "**/e2e/**/*",
+        "**/demo/**/*",
+        "**/scripts/**/*"
+      ],
+      "rules": {
+        "no-console": "off",
+        "react-hooks/rules-of-hooks": "off"
+      }
+    },
+    {
+      "files": ["**/*.d.ts"],
+      "rules": {
+        "typescript/triple-slash-reference": "off"
+      }
+    }
+  ]
+}

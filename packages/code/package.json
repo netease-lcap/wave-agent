@@ -36,7 +36,7 @@
     "test:unit": "vitest run --reporter=dot --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
     "test:unit:coverage": "vitest run --coverage --reporter=dot --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
     "test:integration": "vitest run --reporter=dot tests/integration .integration.test",
-    "lint": "eslint --cache",
+    "lint": "oxlint",
     "format": "prettier --write .",
     "prepublishOnly": "pnpm run build"
   },

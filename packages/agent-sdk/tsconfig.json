@@ -12,9 +12,8 @@
     "target": "ES2020",
     "module": "NodeNext",
     "lib": ["ES2020", "DOM"],
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src/**/*", "tests/**/*", "examples/**/*", "vitest.config.ts"],

@@ -18,7 +18,7 @@
     "compile": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
     "type-check": "tsc --noEmit --incremental && tsc -p tests --noEmit --incremental",
-    "lint": "eslint --cache",
+    "lint": "oxlint",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run",
@@ -40,7 +40,7 @@
     "jsdom": "^29.1.1",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.5",
     "wave-agent-sdk": "workspace:*",
     "wave-webview-fixtures": "workspace:*"

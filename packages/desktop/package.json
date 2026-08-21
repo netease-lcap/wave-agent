@@ -21,7 +21,7 @@
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run",
     "test:unit:coverage": "vitest run --coverage",
-    "lint": "eslint --cache",
+    "lint": "oxlint",
     "format": "prettier --write ."
   },
   "devDependencies": {
@@ -31,7 +31,7 @@
     "electron-builder": "^26.15.3",
     "jsdom": "^29.1.1",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.7",
     "wave-agent-sdk": "workspace:*",
     "wave-webview": "workspace:*",

@@ -98,7 +98,7 @@ describe("Recovery Message Integration", () => {
     expect(recoveryMessage?.role).toBe("user");
     expect(recoveryMessage?.blocks[0].type).toBe("text");
     expect(
-      (recoveryMessage?.blocks[0] as { type: "text"; content: string }).content,
+      (recoveryMessage!.blocks[0] as { type: "text"; content: string }).content,
     ).toContain("Output token limit hit");
   });
 });

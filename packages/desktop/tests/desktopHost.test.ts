@@ -725,7 +725,7 @@ describe("file suggestions", () => {
     });
     await vi.waitFor(() => {
       expect(
-        (sent("desktopPanes").at(-1)?.panes as Array<{ sessionId?: string }>)[1]
+        (sent("desktopPanes").at(-1)!.panes as Array<{ sessionId?: string }>)[1]
           ?.sessionId,
       ).toBe("sess-2");
     });

@@ -4,7 +4,7 @@
     "paths": {
       "wave-agent-sdk": ["../agent-sdk/src/index.ts"],
       "wave-agent-sdk/*": ["../agent-sdk/src/*"],
-      "@/*": ["src/*", "../agent-sdk/src/*"]
+      "@/*": ["./src/*", "../agent-sdk/src/*"]
     }
   }
 }
