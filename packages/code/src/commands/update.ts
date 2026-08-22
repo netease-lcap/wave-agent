@@ -1,4 +1,4 @@
-import { spawnSync } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import https from "https";
 import chalk from "chalk";
 import { isUpdateAvailable } from "../utils/version.js";
@@ -83,6 +83,25 @@ export async function updateCommand() {
     console.log(chalk.blue(`Updating WAVE Code using ${packageManager}...`));
     console.log(chalk.dim(`Running: ${updateCmd} ${args.join(" ")}`));
 
+    if (process.platform === "win32") {
+      // On Windows the running `wave` process keeps the global bin shims
+      // (e.g. %APPDATA%\npm\wave.cmd) locked, so npm cannot overwrite them
+      // while we are still alive. Exit first and let a detached child process
+      // perform the install after a short delay.
+      console.log(
+        chalk.yellow(
+          "The update will finish in the background. Close and reopen wave afterwards.",
+        ),
+      );
+      const child = spawn(
+        "cmd.exe",
+        ["/c", `timeout /t 2 /nobreak >nul & ${updateCmd} ${args.join(" ")}`],
+        { detached: true, stdio: "ignore", windowsHide: true },
+      );
+      child.unref();
+      process.exit(0);
+    }
+
     const result = spawnSync(updateCmd, args, { stdio: "inherit" });
 
     if (result.status === 0) {
@@ -95,13 +114,11 @@ export async function updateCommand() {
           `Please try running the update command manually: ${updateCmd} ${args.join(" ")}`,
         ),
       );
-      if (process.platform !== "win32") {
-        console.log(
-          chalk.yellow(
-            "You might need to run it with sudo if you encounter permission issues.",
-          ),
-        );
-      }
+      console.log(
+        chalk.yellow(
+          "You might need to run it with sudo if you encounter permission issues.",
+        ),
+      );
       process.exit(1);
     }
   } catch (error) {
