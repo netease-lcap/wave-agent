@@ -34,8 +34,9 @@ class WaveAppLogTest {
         WaveAppLog.info("hello")
 
         val line = f.readLines().single()
+        // Fractional seconds are optional — Instant.toString omits them on whole seconds.
         assertTrue(
-            line.matches(Regex("""^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z] \[INFO\] hello$""")),
+            line.matches(Regex("""^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z] \[INFO\] hello$""")),
             "line was: $line",
         )
     }
