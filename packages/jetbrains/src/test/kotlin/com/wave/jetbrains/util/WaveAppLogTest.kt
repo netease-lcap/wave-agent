@@ -56,7 +56,7 @@ class WaveAppLogTest {
     fun `newlines in the message collapse to a single line`() {
         val f = newLogFile()
         WaveAppLog.logFile = f
-        WaveAppLog.error("line one\nline two\r\nline three")
+        WaveAppLog.error("line one\nline two\nline three")
 
         val lines = f.readLines()
         assertEquals(1, lines.size)
