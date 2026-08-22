@@ -60,7 +60,8 @@ class WaveAppLogTest {
 
         val lines = f.readLines()
         assertEquals(1, lines.size)
-        assertEquals("line one line two line three", lines.single().substringAfter("] "))
+        // The line is `[ts] [ERROR] msg` — the message starts after the last `] `.
+        assertEquals("line one line two line three", lines.single().substringAfterLast("] "))
     }
 
     @Test
