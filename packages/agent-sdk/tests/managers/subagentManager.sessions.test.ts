@@ -62,7 +62,6 @@ vi.mock("../../src/services/session.js", () => ({
   listSessions: vi.fn().mockResolvedValue([]),
   listSessionsFromJsonl: vi.fn().mockResolvedValue([]),
   deleteSessionFromJsonl: vi.fn().mockResolvedValue(true),
-  cleanupExpiredSessionsFromJsonl: vi.fn().mockResolvedValue(0),
   sessionExistsInJsonl: vi.fn().mockResolvedValue(false),
   getSessionFilePath: vi.fn().mockImplementation((sessionId, workdir) => {
     const baseDir = `/mock/session/dir/encoded-${encodeURIComponent(workdir)}`;

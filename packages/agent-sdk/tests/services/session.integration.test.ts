@@ -64,7 +64,6 @@ import {
   loadSessionFromJsonl,
   listSessionsFromJsonl,
   getLatestSessionFromJsonl,
-  cleanupExpiredSessionsFromJsonl,
 } from "@/services/session.js";
 import type { Message } from "@/types/index.js";
 import { generateMessageId } from "@/utils/messageOperations.js";
@@ -360,14 +359,6 @@ describe("Session Integration Tests", () => {
 
       expect(latestSession).toBeTruthy();
       expect(latestSession!.id).toBe(session1Id); // Session1 has more recent activity
-    });
-
-    it("should cleanup expired sessions", async () => {
-      // Since cleanup is disabled in test environment, it should return 0
-      const deletedCount = await cleanupExpiredSessionsFromJsonl(testWorkdir);
-
-      // Should be 0 since cleanup is disabled in test environment
-      expect(deletedCount).toBe(0);
     });
   });
 

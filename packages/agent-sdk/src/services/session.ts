@@ -75,7 +75,6 @@ export function generateSubagentFilename(sessionId: string): string {
 
 // Constants
 export const SESSION_DIR = join(homedir(), ".wave", "projects");
-const MAX_SESSION_AGE_DAYS = 14;
 
 /**
  * Ensure session directory exists
@@ -717,67 +716,6 @@ export async function listAllSessions(options?: {
 }
 
 /**
- * Clean up expired sessions older than 14 days based on file modification time
- *
- * @param workdir - Working directory to clean up sessions for
- * @returns Promise that resolves to the number of sessions that were deleted
- */
-export async function cleanupExpiredSessionsFromJsonl(
-  workdir: string,
-): Promise<number> {
-  // Do not perform cleanup operations in test environment
-  if (process.env.NODE_ENV === "test") {
-    return 0;
-  }
-
-  try {
-    const encoder = new PathEncoder();
-    const projectDir = await encoder.getProjectDirectory(workdir, SESSION_DIR);
-    const files = await fs.readdir(projectDir.encodedPath);
-
-    const now = new Date();
-    const maxAge = MAX_SESSION_AGE_DAYS * 24 * 60 * 60 * 1000; // Convert to milliseconds
-    let deletedCount = 0;
-
-    for (const file of files) {
-      if (!file.endsWith(".jsonl")) {
-        continue;
-      }
-
-      const filePath = join(projectDir.encodedPath, file);
-
-      try {
-        const stat = await fs.stat(filePath);
-        const fileAge = now.getTime() - stat.mtime.getTime();
-
-        if (fileAge > maxAge) {
-          await fs.unlink(filePath);
-          deletedCount++;
-        }
-      } catch {
-        // Skip failed operations and continue processing other files
-        continue;
-      }
-    }
-
-    // Clean up empty project directory if no files remain
-    try {
-      const remainingFiles = await fs.readdir(projectDir.encodedPath);
-      if (remainingFiles.length === 0) {
-        await fs.rmdir(projectDir.encodedPath);
-      }
-    } catch {
-      // Ignore errors if directory is not empty or can't be removed
-    }
-
-    return deletedCount;
-  } catch {
-    // Return 0 if project directory doesn't exist or can't be accessed
-    return 0;
-  }
-}
-
-/**
  * Clean up empty project directories in the session directory
  */
 export async function cleanupEmptyProjectDirectories(): Promise<void> {
@@ -1068,11 +1006,6 @@ export async function handleSessionRestoration(
   if (!workdir) {
     throw new Error("Working directory is required for session restoration");
   }
-
-  // Clean up expired sessions first
-  cleanupExpiredSessionsFromJsonl(workdir).catch((error) => {
-    logger.warn("Failed to cleanup expired sessions:", error);
-  });
 
   if (!restoreSessionId && !continueLastSession) {
     return;

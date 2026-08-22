@@ -24,6 +24,7 @@ import { LiveConfigManager } from "../managers/liveConfigManager.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { ReversionService } from "../services/reversionService.js";
 import { cleanupMetaOnlySessions } from "../services/session.js";
+import { runSessionCleanupInBackground } from "./sessionCleanup.js";
 import { MemoryService } from "../services/memory.js";
 import { AutoMemoryService } from "../services/autoMemoryService.js";
 import { USER_MEMORY_FILE } from "./constants.js";
@@ -227,6 +228,9 @@ export function setupAgentContainer(
     .catch((error) => {
       logger.error("Failed to cleanup meta-only session files:", error);
     });
+  // Global session retention cleanup (cleanupPeriodDays, default 30 days).
+  // Once per process; reads settings itself since config isn't loaded yet.
+  runSessionCleanupInBackground(workdir);
   const reversionManager = new ReversionManager(container);
   container.register("ReversionManager", reversionManager);
 
