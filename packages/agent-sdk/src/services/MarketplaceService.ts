@@ -13,7 +13,7 @@ import {
 import { GitService } from "./GitService.js";
 import { ConfigurationService } from "./configurationService.js";
 import type { MarketplaceConfig, Scope } from "../types/configuration.js";
-import { logger } from "../utils/globalLogger.js";
+import { logger, logError, logWarn } from "../utils/globalLogger.js";
 
 /**
  * Marketplace Service
@@ -368,7 +368,7 @@ export class MarketplaceService {
       }
       return JSON.parse(content);
     } catch (error) {
-      console.error("Failed to load installed plugins:", error);
+      logError("Failed to load installed plugins:", error);
       return { plugins: [] };
     }
   }
@@ -711,7 +711,7 @@ export class MarketplaceService {
             marketplace.source.source === "git"
           ) {
             if (!isGitAvailable) {
-              console.warn(
+              logWarn(
                 `Skipping update for Git/GitHub marketplace "${marketplace.name}" because Git is not installed.`,
               );
               continue;
@@ -763,7 +763,7 @@ export class MarketplaceService {
                     plugin.projectPath,
                   );
                 } catch (error) {
-                  console.error(
+                  logError(
                     `Failed to uninstall orphaned plugin "${plugin.name}" from marketplace "${marketplace.name}":`,
                     error,
                   );
@@ -776,7 +776,7 @@ export class MarketplaceService {
                   plugin.projectPath,
                 );
               } catch (error) {
-                console.error(
+                logError(
                   `Failed to update plugin "${plugin.name}" from marketplace "${marketplace.name}":`,
                   error,
                 );
@@ -785,7 +785,7 @@ export class MarketplaceService {
           }
         } catch (error) {
           const msg = `Failed to update marketplace "${marketplace.name}": ${error instanceof Error ? error.message : String(error)}`;
-          console.error(msg);
+          logError(msg);
           errors.push(msg);
         }
       }
@@ -815,7 +815,7 @@ export class MarketplaceService {
             updatePlugins: true,
           });
         } catch (error) {
-          console.error(
+          logError(
             `Auto-update failed for marketplace "${marketplaceName}":`,
             error,
           );
