@@ -371,10 +371,10 @@ wave -p --show-stats "分析这个项目的依赖关系"
 
 ## 8. 环境变量 {#environment-variables}
 
-| 变量           | 默认值            | 描述                                       |
-| -------------- | ----------------- | ------------------------------------------ |
-| `LOG_LEVEL`    | `INFO`            | 日志级别：`DEBUG`、`INFO`、`WARN`、`ERROR` |
-| `LOG_KEYWORDS` | -                 | 日志关键词过滤，仅输出包含指定关键词的日志 |
-| `LOG_FILE`     | `~/.wave/app.log` | 日志文件路径                               |
+| 变量           | 默认值                 | 描述                                                                       |
+| -------------- | ---------------------- | -------------------------------------------------------------------------- |
+| `LOG_LEVEL`    | `INFO`                 | 日志级别：`DEBUG`、`INFO`、`WARN`、`ERROR`                                 |
+| `LOG_KEYWORDS` | -                      | 日志关键词过滤，仅输出包含指定关键词的日志                                 |
+| `LOG_FILE`     | `~/.wave/logs/cli.log` | 日志文件路径（桌面端/IDE 插件分别为 desktop.log/vscode.log/jetbrains.log） |
 
 > 了解更多：详见 [SDK 文档 - 环境变量](/sdk#settings-env)

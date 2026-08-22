@@ -8,7 +8,7 @@ order: 30
 
 **创建日期**：2026-05-09
 
-## 用户场景与测试 *（必填）*
+## 用户场景与测试 _（必填）_
 
 ### 用户故事：使用 OTLP 导出器的远程遥测（优先级：P1）
 
@@ -30,14 +30,14 @@ order: 30
 
 作为开发者，我希望遥测数据写入专用的 JSONL 文件（`~/.wave/telemetry.jsonl`），以便通过 tail 文件观察 span 和 metric，而无需外部收集器。
 
-**为什么是这个优先级**：JSONL 匹配 Wave 现有的会话文件格式——每行是一个自包含的 JSON 记录，易于 `tail -f`、用 `jq` 解析或流式传输到下游工具。与 `~/.wave/app.log`（文本日志）和 `~/.wave/sessions/*.jsonl`（会话数据）解耦。
+**为什么是这个优先级**：JSONL 匹配 Wave 现有的会话文件格式——每行是一个自包含的 JSON 记录，易于 `tail -f`、用 `jq` 解析或流式传输到下游工具。与 `~/.wave/logs/`（文本日志，cli.log/desktop.log/vscode.log/jetbrains.log）和 `~/.wave/sessions/*.jsonl`（会话数据）解耦。
 
 **独立测试**：使用 `OTEL_METRICS_EXPORTER=jsonl OTEL_TRACES_EXPORTER=jsonl` 运行 Wave，与 agent 交互，并观察 `~/.wave/telemetry.jsonl` 中的结构化 JSONL 记录。
 
 **验收场景**：
 
-1. **假设** Wave 使用 `OTEL_TRACES_EXPORTER=jsonl` 启动，**当** agent 处理消息时，**则** `~/.wave/telemetry.jsonl` 包含每个 span 一行 JSON（交互、LLM 请求、工具）。`~/.wave/app.log` 不受影响。
-2. **假设** Wave 使用 `OTEL_METRICS_EXPORTER=jsonl` 启动，**当** agent 完成一轮时，**则** `~/.wave/telemetry.jsonl` 包含 metric JSON 行。`~/.wave/app.log` 不受影响。
+1. **假设** Wave 使用 `OTEL_TRACES_EXPORTER=jsonl` 启动，**当** agent 处理消息时，**则** `~/.wave/telemetry.jsonl` 包含每个 span 一行 JSON（交互、LLM 请求、工具）。`~/.wave/logs/cli.log` 不受影响。
+2. **假设** Wave 使用 `OTEL_METRICS_EXPORTER=jsonl` 启动，**当** agent 完成一轮时，**则** `~/.wave/telemetry.jsonl` 包含 metric JSON 行。`~/.wave/logs/cli.log` 不受影响。
 3. **假设**有遥测 JSONL 文件，**当**通过 `jq` 管道传输时，**则**每行独立解析为有效 JSON。
 
 ---
@@ -66,4 +66,3 @@ order: 30
 - **并行工具执行期间会怎样？** 每个工具调用必须使用 AsyncLocalStorage 在正确的父交互 span 下创建自己的子 span，以防止 span 上下文混合。
 - **在 100+ 轮的长时间运行会话中会怎样？** 超过 30 分钟的活动 span 必须被清理以防止内存泄漏。
 - **如果遥测初始化失败会怎样？** agent 必须在没有遥测的情况下正常启动；记录警告但不崩溃。
-

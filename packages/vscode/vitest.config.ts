@@ -14,6 +14,10 @@ export default defineConfig({
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     exclude: ["node_modules"],
     setupFiles: ["tests/setup.ts"],
+    env: {
+      // Keep the file logger out of the user's real ~/.wave/logs during tests.
+      DISABLE_LOGGER_IO: "true",
+    },
     server: {
       deps: {
         inline: ["wave-agent-sdk", "wave-webview-fixtures"],

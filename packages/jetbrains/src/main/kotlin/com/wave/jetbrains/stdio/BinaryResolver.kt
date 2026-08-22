@@ -1,6 +1,7 @@
 package com.wave.jetbrains.stdio
 
 import com.intellij.openapi.diagnostic.logger
+import com.wave.jetbrains.util.WaveAppLog
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -298,6 +299,7 @@ object BinaryResolver {
             File(rgBinaryPath()).exists()
         } catch (e: Exception) {
             LOG.warn("[Wave] ripgrep 下载失败，grep 工具暂不可用：", e)
+            WaveAppLog.warn("[Wave] ripgrep 下载失败，grep 工具暂不可用：${e.message}")
             false
         }
     }

@@ -8,6 +8,7 @@
  */
 
 import { type ChildProcess, spawn } from "child_process";
+import { hostLog } from "../hostLog";
 import { JsonRpcClient } from "./jsonRpcClient";
 
 export type { NotificationHandler } from "./jsonRpcClient";
@@ -91,7 +92,12 @@ export class StdioClient extends JsonRpcClient {
         this.stderrChunks.shift();
       }
       const trimmed = decodeStderr(data).trimEnd();
-      if (trimmed) this.onStderr?.(trimmed);
+      if (trimmed) {
+        this.onStderr?.(trimmed);
+        // The CLI child writes its own logs to cli.log; anything on stderr is
+        // runtime noise worth capturing at the host boundary.
+        hostLog.warn("[wave-stdio]", trimmed);
+      }
     });
 
     this.proc.on("exit", (code, signal) => {
@@ -100,11 +106,14 @@ export class StdioClient extends JsonRpcClient {
         `wave --stdio process exited (code: ${code}, signal: ${signal})`,
       ];
       if (stderr) parts.push(`stderr:\n${stderr}`);
-      this.handleClosed(parts.join("\n"));
+      const message = parts.join("\n");
+      hostLog.error("[wave-stdio]", message);
+      this.handleClosed(message);
     });
 
     this.proc.on("error", (err) => {
       console.error("[wave-stdio] Process error:", err);
+      hostLog.error("[wave-stdio] Process error:", err);
     });
   }
 

@@ -7,7 +7,7 @@ import {
   getLogFile,
   cleanupLogs,
 } from "../../src/utils/logger.js";
-import { DATA_DIRECTORY } from "../../src/utils/constants.js";
+import { LOGS_DIRECTORY } from "../../src/utils/constants.js";
 import { stripAnsiColors } from "wave-agent-sdk";
 
 // Mock fs
@@ -175,7 +175,7 @@ describe("Logger Utility", () => {
 
       logger.info("test message");
 
-      expect(fs.mkdirSync).toHaveBeenCalledWith(DATA_DIRECTORY, {
+      expect(fs.mkdirSync).toHaveBeenCalledWith(LOGS_DIRECTORY, {
         recursive: true,
       });
       expect(fs.appendFileSync).toHaveBeenCalled();

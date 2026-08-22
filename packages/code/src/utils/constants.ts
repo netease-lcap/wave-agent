@@ -12,9 +12,14 @@ import os from "os";
 export const DATA_DIRECTORY = path.join(os.homedir(), ".wave");
 
 /**
- * Application log file path
+ * Log directory — one file per surface (cli/desktop/vscode/jetbrains).
  */
-export const LOG_FILE = path.join(DATA_DIRECTORY, "app.log");
+export const LOGS_DIRECTORY = path.join(DATA_DIRECTORY, "logs");
+
+/**
+ * CLI log file path
+ */
+export const LOG_FILE = path.join(LOGS_DIRECTORY, "cli.log");
 
 /**
  * Pagination related constants

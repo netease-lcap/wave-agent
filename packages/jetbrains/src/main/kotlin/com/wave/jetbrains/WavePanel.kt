@@ -16,6 +16,7 @@ import com.wave.jetbrains.bridge.WebviewContentBuilder
 import com.wave.jetbrains.session.MessageHandler
 import com.wave.jetbrains.session.WaveSession
 import com.wave.jetbrains.util.Edt
+import com.wave.jetbrains.util.WaveAppLog
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.buildJsonObject
@@ -121,6 +122,7 @@ class WavePanel(private val project: Project, val tabId: String) : Disposable {
             bridge.loadUrl(assets.indexUrl)
         } catch (e: Exception) {
             LOG.error("Failed to load wave webview", e)
+            WaveAppLog.error("Failed to load wave webview", e)
         }
     }
 

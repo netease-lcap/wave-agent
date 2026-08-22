@@ -10,6 +10,7 @@ import { app, BrowserWindow, ipcMain, nativeImage, shell } from "electron";
 import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { hostLog } from "./hostLog";
 import { WEBVIEW_CHANNEL } from "./channels";
 import { ConfigStore } from "./configStore";
 import { DesktopHost } from "./desktopHost";
@@ -129,6 +130,20 @@ function adoptLoginShellPath(): void {
 
 adoptLoginShellPath();
 
+// Host-side error logging: the wave --stdio children already write cli.log via
+// the CLI logger; these handlers cover the Electron main process itself
+// (desktop.log). uncaughtException keeps the existing crash semantics (log,
+// then exit) — registering a handler otherwise suppresses Node's default
+// termination.
+process.on("uncaughtException", (error) => {
+  hostLog.error("[Wave Desktop] uncaughtException:", error);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  hostLog.error("[Wave Desktop] unhandledRejection:", reason);
+});
+
 // Dev instances get their own userData so they can run alongside an installed
 // app (the single-instance lock is scoped to the userData directory) and never
 // touch the real config/session index.
@@ -197,6 +212,10 @@ if (!gotLock) {
     ipcMain.on(WEBVIEW_CHANNEL, (_event, message: Record<string, unknown>) => {
       void host?.handleWebviewMessage(message).catch((error) => {
         console.error(
+          "[Wave Desktop] Failed to handle webview message:",
+          error,
+        );
+        hostLog.error(
           "[Wave Desktop] Failed to handle webview message:",
           error,
         );
@@ -330,7 +349,11 @@ function createWindow(): void {
 
   // webview/ lives at the package root (synced by scripts/syncWebview.mjs);
   // dist/main → ../.. reaches the package root both in dev and inside app.asar.
-  void mainWindow.loadFile(
-    path.join(__dirname, "..", "..", "webview", "index.html"),
-  );
+  void mainWindow
+    .loadFile(path.join(__dirname, "..", "..", "webview", "index.html"))
+    .catch((error) => {
+      // A failed webview load is otherwise silent — surface it to desktop.log.
+      console.error("[Wave Desktop] Failed to load webview:", error);
+      hostLog.error("[Wave Desktop] Failed to load webview:", error);
+    });
 }

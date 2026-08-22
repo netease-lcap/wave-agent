@@ -12,6 +12,7 @@ import com.wave.jetbrains.stdio.BinaryResolver
 import com.wave.jetbrains.stdio.NotificationRouter
 import com.wave.jetbrains.stdio.StdioClient
 import com.wave.jetbrains.util.Edt
+import com.wave.jetbrains.util.WaveAppLog
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
@@ -87,6 +88,12 @@ class WaveBackendService(private val project: Project) : Disposable {
                     }
                     sharedClient = c
                     router = r
+                } catch (e: Exception) {
+                    // Single chokepoint for every CLI preparation failure (node
+                    // resolution, CLI copy, ripgrep download): record in
+                    // jetbrains.log, then let the caller surface the error.
+                    WaveAppLog.error("ensureClient failed", e)
+                    throw e
                 } finally {
                     // Dismiss the install-progress notification once the CLI is ready —
                     // it never auto-expires and would linger forever, making the user
