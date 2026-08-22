@@ -4,7 +4,6 @@ import {
   truncateContent,
   getFirstMessageContent,
   cleanupEmptyProjectDirectories,
-  cleanupExpiredSessionsFromJsonl,
   cleanupMetaOnlySessions,
   ensureSessionDir,
   SESSION_DIR,
@@ -292,45 +291,6 @@ describe("session service - additional coverage", () => {
     });
   });
 
-  describe("cleanupExpiredSessionsFromJsonl", () => {
-    it("should delete expired files and update index", async () => {
-      const workdir = "/test/workdir";
-      const sessionId = "12345678-1234-4321-8765-123456789012";
-      const filename = `${sessionId}.jsonl`;
-
-      // Reset NODE_ENV to development to allow cleanup
-      const oldEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = "development";
-
-      vi.mocked(fs.readdir).mockResolvedValueOnce([
-        filename,
-      ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
-      vi.mocked(fs.stat).mockResolvedValue({
-        mtime: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000), // 20 days old
-      } as unknown as Awaited<ReturnType<typeof fs.stat>>);
-
-      vi.mocked(fs.readFile).mockResolvedValue(
-        JSON.stringify({
-          sessions: {
-            [sessionId]: {
-              lastActiveAt: new Date().toISOString(),
-              createdAt: new Date().toISOString(),
-            },
-          },
-          lastUpdated: new Date().toISOString(),
-        }),
-      );
-
-      const deleted = await cleanupExpiredSessionsFromJsonl(workdir);
-
-      expect(deleted).toBe(1);
-      expect(fs.unlink).toHaveBeenCalled();
-      // expect(fs.writeFile).toHaveBeenCalled(); // Index updated - might fail if sessionId doesn't match exactly or other issues
-
-      process.env.NODE_ENV = oldEnv;
-    });
-  });
-
   describe("cleanupMetaOnlySessions", () => {
     const metaMessage = {
       role: "user",
@@ -467,7 +427,9 @@ describe("session service - additional coverage", () => {
     });
 
     it("should throw when restoreSessionId is not found (no silent fresh session)", async () => {
-      vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
+      vi.mocked(fs.access).mockRejectedValue(
+        Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+      );
 
       await expect(
         handleSessionRestoration(validSessionId, false, workdir),

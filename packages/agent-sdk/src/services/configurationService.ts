@@ -52,6 +52,216 @@ import { ensureWaveRuntimeFilesExcluded } from "../utils/gitUtils.js";
 import { atomicWriteFile } from "../utils/atomicWrite.js";
 
 /**
+ * Validate a configuration object's structure and values. Module-level so it
+ * can be reused without instantiating ConfigurationService (e.g. background
+ * session cleanup runs before config is loaded).
+ */
+export function validateConfigurationObject(
+  config: WaveConfiguration,
+): ValidationResult {
+  const result: ValidationResult = {
+    isValid: true,
+    errors: [],
+    warnings: [],
+  };
+
+  // Validate basic structure
+  if (!config || typeof config !== "object") {
+    result.isValid = false;
+    result.errors.push("Configuration must be a valid object");
+    return result;
+  }
+
+  // Validate hooks if present
+  if (config.hooks !== undefined) {
+    if (typeof config.hooks !== "object" || config.hooks === null) {
+      result.isValid = false;
+      result.errors.push("Hooks configuration must be an object");
+    } else {
+      for (const [event, eventConfigs] of Object.entries(config.hooks)) {
+        if (!isValidHookEvent(event)) {
+          result.warnings.push(`Unknown hook event: ${event}`);
+          continue;
+        }
+
+        if (!Array.isArray(eventConfigs)) {
+          result.isValid = false;
+          result.errors.push(`Hook event '${event}' must be an array`);
+          continue;
+        }
+
+        // Validate individual hook configurations
+        for (let i = 0; i < eventConfigs.length; i++) {
+          const hookConfig = eventConfigs[i];
+          if (!hookConfig || typeof hookConfig !== "object") {
+            result.isValid = false;
+            result.errors.push(
+              `Hook configuration ${i} for event '${event}' must be an object`,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  // Validate enabledPlugins if present
+  if (config.enabledPlugins !== undefined) {
+    if (
+      typeof config.enabledPlugins !== "object" ||
+      config.enabledPlugins === null
+    ) {
+      result.isValid = false;
+      result.errors.push("enabledPlugins configuration must be an object");
+    } else {
+      for (const [pluginId, enabled] of Object.entries(config.enabledPlugins)) {
+        if (typeof enabled !== "boolean") {
+          result.isValid = false;
+          result.errors.push(
+            `Value for plugin '${pluginId}' in enabledPlugins must be a boolean`,
+          );
+        }
+        if (!pluginId.includes("@")) {
+          result.warnings.push(
+            `Plugin ID '${pluginId}' in enabledPlugins should follow 'name@marketplace' format`,
+          );
+        }
+      }
+    }
+  }
+
+  // Validate environment variables if present
+  if (config.env !== undefined) {
+    const envValidation = validateEnvironmentConfig(config.env);
+    if (!envValidation.isValid) {
+      result.isValid = false;
+      result.errors.push(...envValidation.errors);
+    }
+    result.warnings.push(...envValidation.warnings);
+  }
+
+  // Validate permissions if present
+  if (config.permissions !== undefined) {
+    if (typeof config.permissions !== "object" || config.permissions === null) {
+      result.isValid = false;
+      result.errors.push("Permissions configuration must be an object");
+    } else {
+      // Validate allow if present
+      if (config.permissions.allow !== undefined) {
+        if (!Array.isArray(config.permissions.allow)) {
+          result.isValid = false;
+          result.errors.push("Permissions allow must be an array of strings");
+        } else if (
+          !config.permissions.allow.every((rule) => typeof rule === "string")
+        ) {
+          result.isValid = false;
+          result.errors.push("All permission allow rules must be strings");
+        }
+      }
+
+      // Validate deny if present
+      if (config.permissions.deny !== undefined) {
+        if (!Array.isArray(config.permissions.deny)) {
+          result.isValid = false;
+          result.errors.push("Permissions deny must be an array of strings");
+        } else if (
+          !config.permissions.deny.every((rule) => typeof rule === "string")
+        ) {
+          result.isValid = false;
+          result.errors.push("All permission deny rules must be strings");
+        }
+      }
+
+      // Validate permissionMode if present
+      if (config.permissions.permissionMode !== undefined) {
+        const validModes: PermissionMode[] = [
+          "default",
+          "bypassPermissions",
+          "acceptEdits",
+          "plan",
+          "dontAsk",
+        ];
+        if (!validModes.includes(config.permissions.permissionMode)) {
+          result.isValid = false;
+          result.errors.push(
+            `Invalid permissionMode: "${config.permissions.permissionMode}". Must be one of: ${validModes.join(", ")}`,
+          );
+        }
+      }
+    }
+  }
+
+  // Validate autoMemoryEnabled if present
+  if (
+    config.autoMemoryEnabled !== undefined &&
+    typeof config.autoMemoryEnabled !== "boolean"
+  ) {
+    result.isValid = false;
+    result.errors.push("autoMemoryEnabled configuration must be a boolean");
+  }
+
+  // Validate autoMemoryFrequency if present
+  if (
+    config.autoMemoryFrequency !== undefined &&
+    (typeof config.autoMemoryFrequency !== "number" ||
+      config.autoMemoryFrequency <= 0)
+  ) {
+    result.isValid = false;
+    result.errors.push(
+      "autoMemoryFrequency configuration must be a positive number",
+    );
+  }
+
+  // Validate cleanupPeriodDays if present
+  if (
+    config.cleanupPeriodDays !== undefined &&
+    (typeof config.cleanupPeriodDays !== "number" ||
+      !Number.isInteger(config.cleanupPeriodDays) ||
+      config.cleanupPeriodDays < 0)
+  ) {
+    result.isValid = false;
+    result.errors.push(
+      "cleanupPeriodDays configuration must be a non-negative integer",
+    );
+  }
+
+  // Validate models if present
+  if (config.models !== undefined) {
+    if (typeof config.models !== "object" || config.models === null) {
+      result.isValid = false;
+      result.errors.push("models configuration must be an object");
+    } else {
+      for (const [modelName, modelConfig] of Object.entries(config.models)) {
+        if (typeof modelConfig !== "object" || modelConfig === null) {
+          result.isValid = false;
+          result.errors.push(
+            `Configuration for model '${modelName}' must be an object`,
+          );
+        }
+      }
+    }
+  }
+
+  // Validate worktree if present
+  if (config.worktree !== undefined) {
+    if (typeof config.worktree !== "object" || config.worktree === null) {
+      result.isValid = false;
+      result.errors.push("worktree configuration must be an object");
+    } else if (
+      config.worktree.baseRef !== undefined &&
+      config.worktree.baseRef !== "fresh" &&
+      config.worktree.baseRef !== "head"
+    ) {
+      result.isValid = false;
+      result.errors.push(
+        `Invalid worktree.baseRef: "${config.worktree.baseRef}". Must be "fresh" or "head".`,
+      );
+    }
+  }
+
+  return result;
+}
+
+/**
  * Default ConfigurationService implementation
  *
  * Provides centralized configuration loading, validation, and management.
@@ -172,198 +382,7 @@ export class ConfigurationService {
    * Validate configuration object structure and values
    */
   validateConfiguration(config: WaveConfiguration): ValidationResult {
-    const result: ValidationResult = {
-      isValid: true,
-      errors: [],
-      warnings: [],
-    };
-
-    // Validate basic structure
-    if (!config || typeof config !== "object") {
-      result.isValid = false;
-      result.errors.push("Configuration must be a valid object");
-      return result;
-    }
-
-    // Validate hooks if present
-    if (config.hooks !== undefined) {
-      if (typeof config.hooks !== "object" || config.hooks === null) {
-        result.isValid = false;
-        result.errors.push("Hooks configuration must be an object");
-      } else {
-        for (const [event, eventConfigs] of Object.entries(config.hooks)) {
-          if (!isValidHookEvent(event)) {
-            result.warnings.push(`Unknown hook event: ${event}`);
-            continue;
-          }
-
-          if (!Array.isArray(eventConfigs)) {
-            result.isValid = false;
-            result.errors.push(`Hook event '${event}' must be an array`);
-            continue;
-          }
-
-          // Validate individual hook configurations
-          for (let i = 0; i < eventConfigs.length; i++) {
-            const hookConfig = eventConfigs[i];
-            if (!hookConfig || typeof hookConfig !== "object") {
-              result.isValid = false;
-              result.errors.push(
-                `Hook configuration ${i} for event '${event}' must be an object`,
-              );
-            }
-          }
-        }
-      }
-    }
-
-    // Validate enabledPlugins if present
-    if (config.enabledPlugins !== undefined) {
-      if (
-        typeof config.enabledPlugins !== "object" ||
-        config.enabledPlugins === null
-      ) {
-        result.isValid = false;
-        result.errors.push("enabledPlugins configuration must be an object");
-      } else {
-        for (const [pluginId, enabled] of Object.entries(
-          config.enabledPlugins,
-        )) {
-          if (typeof enabled !== "boolean") {
-            result.isValid = false;
-            result.errors.push(
-              `Value for plugin '${pluginId}' in enabledPlugins must be a boolean`,
-            );
-          }
-          if (!pluginId.includes("@")) {
-            result.warnings.push(
-              `Plugin ID '${pluginId}' in enabledPlugins should follow 'name@marketplace' format`,
-            );
-          }
-        }
-      }
-    }
-
-    // Validate environment variables if present
-    if (config.env !== undefined) {
-      const envValidation = validateEnvironmentConfig(config.env);
-      if (!envValidation.isValid) {
-        result.isValid = false;
-        result.errors.push(...envValidation.errors);
-      }
-      result.warnings.push(...envValidation.warnings);
-    }
-
-    // Validate permissions if present
-    if (config.permissions !== undefined) {
-      if (
-        typeof config.permissions !== "object" ||
-        config.permissions === null
-      ) {
-        result.isValid = false;
-        result.errors.push("Permissions configuration must be an object");
-      } else {
-        // Validate allow if present
-        if (config.permissions.allow !== undefined) {
-          if (!Array.isArray(config.permissions.allow)) {
-            result.isValid = false;
-            result.errors.push("Permissions allow must be an array of strings");
-          } else if (
-            !config.permissions.allow.every((rule) => typeof rule === "string")
-          ) {
-            result.isValid = false;
-            result.errors.push("All permission allow rules must be strings");
-          }
-        }
-
-        // Validate deny if present
-        if (config.permissions.deny !== undefined) {
-          if (!Array.isArray(config.permissions.deny)) {
-            result.isValid = false;
-            result.errors.push("Permissions deny must be an array of strings");
-          } else if (
-            !config.permissions.deny.every((rule) => typeof rule === "string")
-          ) {
-            result.isValid = false;
-            result.errors.push("All permission deny rules must be strings");
-          }
-        }
-
-        // Validate permissionMode if present
-        if (config.permissions.permissionMode !== undefined) {
-          const validModes: PermissionMode[] = [
-            "default",
-            "bypassPermissions",
-            "acceptEdits",
-            "plan",
-            "dontAsk",
-          ];
-          if (!validModes.includes(config.permissions.permissionMode)) {
-            result.isValid = false;
-            result.errors.push(
-              `Invalid permissionMode: "${config.permissions.permissionMode}". Must be one of: ${validModes.join(", ")}`,
-            );
-          }
-        }
-      }
-    }
-
-    // Validate autoMemoryEnabled if present
-    if (
-      config.autoMemoryEnabled !== undefined &&
-      typeof config.autoMemoryEnabled !== "boolean"
-    ) {
-      result.isValid = false;
-      result.errors.push("autoMemoryEnabled configuration must be a boolean");
-    }
-
-    // Validate autoMemoryFrequency if present
-    if (
-      config.autoMemoryFrequency !== undefined &&
-      (typeof config.autoMemoryFrequency !== "number" ||
-        config.autoMemoryFrequency <= 0)
-    ) {
-      result.isValid = false;
-      result.errors.push(
-        "autoMemoryFrequency configuration must be a positive number",
-      );
-    }
-
-    // Validate models if present
-    if (config.models !== undefined) {
-      if (typeof config.models !== "object" || config.models === null) {
-        result.isValid = false;
-        result.errors.push("models configuration must be an object");
-      } else {
-        for (const [modelName, modelConfig] of Object.entries(config.models)) {
-          if (typeof modelConfig !== "object" || modelConfig === null) {
-            result.isValid = false;
-            result.errors.push(
-              `Configuration for model '${modelName}' must be an object`,
-            );
-          }
-        }
-      }
-    }
-
-    // Validate worktree if present
-    if (config.worktree !== undefined) {
-      if (typeof config.worktree !== "object" || config.worktree === null) {
-        result.isValid = false;
-        result.errors.push("worktree configuration must be an object");
-      } else if (
-        config.worktree.baseRef !== undefined &&
-        config.worktree.baseRef !== "fresh" &&
-        config.worktree.baseRef !== "head"
-      ) {
-        result.isValid = false;
-        result.errors.push(
-          `Invalid worktree.baseRef: "${config.worktree.baseRef}". Must be "fresh" or "head".`,
-        );
-      }
-    }
-
-    return result;
+    return validateConfigurationObject(config);
   }
 
   /**
@@ -1337,6 +1356,10 @@ export function loadWaveConfigFromFile(
         config.autoMemoryFrequency !== undefined
           ? config.autoMemoryFrequency
           : undefined,
+      cleanupPeriodDays:
+        config.cleanupPeriodDays !== undefined
+          ? config.cleanupPeriodDays
+          : undefined,
       models: config.models || undefined,
       marketplaces: config.marketplaces || undefined,
       worktree: config.worktree || undefined,
@@ -1495,6 +1518,11 @@ export function loadMergedWaveConfig(
       mergedConfig.autoMemoryFrequency = config.autoMemoryFrequency;
     }
 
+    // Merge cleanupPeriodDays (last one wins)
+    if (config.cleanupPeriodDays !== undefined) {
+      mergedConfig.cleanupPeriodDays = config.cleanupPeriodDays;
+    }
+
     // Merge marketplaces (last one wins for same key)
     if (config.marketplaces) {
       if (!mergedConfig.marketplaces) mergedConfig.marketplaces = {};
@@ -1545,6 +1573,7 @@ export function loadMergedWaveConfig(
     language: mergedConfig.language,
     model: mergedConfig.model,
     autoMemoryEnabled: mergedConfig.autoMemoryEnabled,
+    cleanupPeriodDays: mergedConfig.cleanupPeriodDays,
     marketplaces:
       mergedConfig.marketplaces &&
       Object.keys(mergedConfig.marketplaces).length > 0

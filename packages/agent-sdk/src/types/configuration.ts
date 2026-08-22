@@ -61,6 +61,13 @@ export interface WaveConfiguration {
   };
   /** Whether the Artifact tool is enabled. Unset follows the code default constant (ARTIFACT_DEFAULT_ENABLED). */
   enableArtifact?: boolean;
+  /**
+   * Session transcript retention in days (aligned with Claude Code's
+   * cleanupPeriodDays). Session jsonl files in ~/.wave/projects older than
+   * this many days are cleaned up in the background at startup.
+   * Default: 30. 0 disables cleanup entirely.
+   */
+  cleanupPeriodDays?: number;
 }
 
 /**

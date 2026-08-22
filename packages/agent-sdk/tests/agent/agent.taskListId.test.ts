@@ -15,7 +15,6 @@ vi.mock("../../src/services/session.js", () => ({
   listSessionsFromJsonl: vi.fn(),
   deleteSessionFromJsonl: vi.fn(),
   sessionExistsInJsonl: vi.fn(),
-  cleanupExpiredSessionsFromJsonl: vi.fn(() => Promise.resolve(0)),
   cleanupMetaOnlySessions: vi.fn(() => Promise.resolve(0)),
   getSessionFilePath: vi.fn(),
   ensureSessionDir: vi.fn(),
