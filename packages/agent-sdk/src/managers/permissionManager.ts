@@ -31,6 +31,7 @@ import {
   READ_ONLY_COMMANDS,
 } from "../utils/bashParser.js";
 import { isPathInside } from "../utils/pathSafety.js";
+import { toWindowsPath } from "../utils/path.js";
 import {
   BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
@@ -395,34 +396,45 @@ export class PermissionManager {
   ): { isInside: boolean; resolvedPath: string } {
     const effectiveWorkdir = this.workdir || workdir;
 
+    // Convert MSYS/git-bash style paths (/c/Users/...) to native Windows form
+    // so `cd /c/...` and file args resolve correctly on win32 instead of
+    // becoming bogus C:\c\... paths that never match the Safe Zone.
+    const normalizedTarget = toWindowsPath(targetPath);
+    const normalizedWorkdir = effectiveWorkdir
+      ? toWindowsPath(effectiveWorkdir)
+      : undefined;
+
     // Resolve the target path relative to effectiveWorkdir if it's not absolute
     const absolutePath =
-      effectiveWorkdir && !path.isAbsolute(targetPath)
-        ? path.resolve(effectiveWorkdir, targetPath)
-        : path.resolve(targetPath);
+      normalizedWorkdir && !path.isAbsolute(normalizedTarget)
+        ? path.resolve(normalizedWorkdir, normalizedTarget)
+        : path.resolve(normalizedTarget);
 
     // Check workdir
-    if (effectiveWorkdir && isPathInside(absolutePath, effectiveWorkdir)) {
+    if (
+      effectiveWorkdir &&
+      isPathInside(absolutePath, toWindowsPath(effectiveWorkdir))
+    ) {
       return { isInside: true, resolvedPath: absolutePath };
     }
 
     // Check additional directories
     for (const dir of this.additionalDirectories) {
-      if (isPathInside(absolutePath, dir)) {
+      if (isPathInside(absolutePath, toWindowsPath(dir))) {
         return { isInside: true, resolvedPath: absolutePath };
       }
     }
 
     // Check instance additional directories
     for (const dir of this.instanceAdditionalDirectories) {
-      if (isPathInside(absolutePath, dir)) {
+      if (isPathInside(absolutePath, toWindowsPath(dir))) {
         return { isInside: true, resolvedPath: absolutePath };
       }
     }
 
     // Check system additional directories
     for (const dir of this.systemAdditionalDirectories) {
-      if (isPathInside(absolutePath, dir)) {
+      if (isPathInside(absolutePath, toWindowsPath(dir))) {
         return { isInside: true, resolvedPath: absolutePath };
       }
     }
