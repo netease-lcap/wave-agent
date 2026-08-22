@@ -9,6 +9,7 @@ import {
 } from "wave-agent-sdk";
 import { createWorktree, type WorktreeSession } from "./utils/worktree.js";
 import path from "path";
+import { pathToFileURL } from "url";
 import { readNearestPackageJson } from "./utils/readPackageJson.js";
 
 const version = readNearestPackageJson().version;
@@ -642,8 +643,15 @@ export {
   type ClipboardImageResult,
 } from "./utils/clipboard.js";
 
-// Execute main function if this file is run directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Execute main function if this file is run directly. Compare via
+// pathToFileURL: on Windows process.argv[1] keeps backslashes while
+// import.meta.url is a forward-slash file:// URL, so a naive string
+// concatenation never matches and main() silently never runs.
+const entryFile = process.argv[1];
+if (
+  entryFile &&
+  pathToFileURL(path.resolve(entryFile)).href === import.meta.url
+) {
   main().catch((error) => {
     console.error("Failed to start WAVE Code:", error);
     process.exit(1);
