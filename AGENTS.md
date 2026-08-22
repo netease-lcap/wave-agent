@@ -36,7 +36,7 @@ Always use `pnpm` as the package manager.
 - **Build all**: `pnpm build`
   - **Build specific package**: `pnpm -F <package-name> build` (e.g., `pnpm -F wave-agent-sdk build` or `pnpm -F wave-code build`)
 - **Type-check all**: `pnpm run type-check`
-- **Run the CLI locally**: `pnpm run wave` (runs `packages/code` source directly via tsx, no build needed; `pnpm run wave:debug` for DEBUG logs)
+- **Run the CLI locally**: `pnpm run wave` (runs `packages/code` source directly via tsx, no build needed; set `LOG_LEVEL=DEBUG` for DEBUG logs)
 
 ### Testing
 
