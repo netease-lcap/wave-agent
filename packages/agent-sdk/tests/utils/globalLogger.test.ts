@@ -15,6 +15,8 @@ import {
   clearGlobalLogger,
   isLoggerConfigured,
   logger,
+  logError,
+  logWarn,
 } from "../../src/utils/globalLogger.js";
 import {
   createMockLogger,
@@ -595,6 +597,92 @@ describe("Global Logger Registry", () => {
       expect(returningLogger.info).toHaveBeenCalledWith("test");
       expect(returningLogger.warn).toHaveBeenCalledWith("test");
       expect(returningLogger.error).toHaveBeenCalledWith("test");
+    });
+  });
+
+  // =============================================================================
+  // Context-Aware logError/logWarn Tests
+  // =============================================================================
+
+  describe("logError/logWarn context routing", () => {
+    const originalIsTTY = process.stdout.isTTY;
+    let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+    let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      Object.defineProperty(process.stdout, "isTTY", {
+        value: originalIsTTY,
+        configurable: true,
+      });
+      consoleErrorSpy.mockRestore();
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("should route to the global logger on a TTY with a configured logger", () => {
+      Object.defineProperty(process.stdout, "isTTY", {
+        value: true,
+        configurable: true,
+      });
+      setGlobalLogger(mockLogger);
+
+      const error = new Error("bad");
+      logError("boom", error);
+      logWarn("heads up");
+
+      expectLoggerCall(mockLogger, "error", ["boom", error]);
+      expectLoggerCall(mockLogger, "warn", ["heads up"]);
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+      expect(consoleWarnSpy).not.toHaveBeenCalled();
+    });
+
+    it("should fall back to stderr on a TTY without a configured logger", () => {
+      Object.defineProperty(process.stdout, "isTTY", {
+        value: true,
+        configurable: true,
+      });
+      clearGlobalLogger();
+
+      logError("boom");
+      logWarn("heads up");
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith("boom");
+      expect(consoleWarnSpy).toHaveBeenCalledWith("heads up");
+      expectNoLoggerCalls(mockLogger);
+    });
+
+    it("should use stderr on a non-TTY even with a configured logger", () => {
+      Object.defineProperty(process.stdout, "isTTY", {
+        value: false,
+        configurable: true,
+      });
+      setGlobalLogger(mockLogger);
+
+      logError("boom");
+      logWarn("heads up");
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith("boom");
+      expect(consoleWarnSpy).toHaveBeenCalledWith("heads up");
+      expectNoLoggerCalls(mockLogger);
+    });
+
+    it("should use stderr on a non-TTY without a configured logger", () => {
+      Object.defineProperty(process.stdout, "isTTY", {
+        value: false,
+        configurable: true,
+      });
+      clearGlobalLogger();
+
+      logError("boom");
+      logWarn("heads up");
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith("boom");
+      expect(consoleWarnSpy).toHaveBeenCalledWith("heads up");
+      expectNoLoggerCalls(mockLogger);
     });
   });
 });

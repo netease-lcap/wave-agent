@@ -126,3 +126,30 @@ export const logger = {
     globalLogger.error(...args);
   },
 } as const;
+
+/**
+ * Log an error through the channel matching the execution context:
+ * - Interactive terminals (stdout is a TTY) with a configured global logger
+ *   route through the logger (e.g. a log file), keeping the terminal UI clean.
+ * - Non-interactive hosts (stdio pipes, scripts) and contexts without a
+ *   configured logger fall back to stderr via console.error.
+ */
+export function logError(...args: unknown[]): void {
+  if (process.stdout.isTTY && isLoggerConfigured()) {
+    logger.error(...args);
+  } else {
+    console.error(...args);
+  }
+}
+
+/**
+ * Log a warning through the channel matching the execution context
+ * (see logError for the routing rule).
+ */
+export function logWarn(...args: unknown[]): void {
+  if (process.stdout.isTTY && isLoggerConfigured()) {
+    logger.warn(...args);
+  } else {
+    console.warn(...args);
+  }
+}
