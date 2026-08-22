@@ -1,6 +1,7 @@
 package com.wave.jetbrains.stdio
 
 import com.intellij.openapi.diagnostic.logger
+import com.wave.jetbrains.util.WaveAppLog
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -64,6 +65,7 @@ class StdioClient(
         environment().putAll(env)
     }.also {
         LOG.info("Starting wave stdio: ${(command + args).joinToString(" ")}")
+        WaveAppLog.info("Starting wave stdio: ${(command + args).joinToString(" ")}")
     }.start()
 
     private val stdin: PrintWriter = PrintWriter(
@@ -94,6 +96,7 @@ class StdioClient(
                     var line = reader.readLine()
                     while (line != null) {
                         LOG.warn("[wave-stdio] $line")
+                        WaveAppLog.warn("[wave-stdio] $line")
                         synchronized(stderrBuffer) {
                             stderrBuffer.append(line).append('\n')
                             if (stderrBuffer.length > 4096) {
@@ -113,6 +116,7 @@ class StdioClient(
             val parts = mutableListOf("wave --stdio process exited (code: $code)")
             if (stderr.isNotEmpty()) parts.add("stderr:\n$stderr")
             val error = StdioClientException(parts.joinToString("\n"))
+            WaveAppLog.error(parts.joinToString("\n"))
             pending.values.forEach { it.completeExceptionally(error) }
             pending.clear()
             disposed = true

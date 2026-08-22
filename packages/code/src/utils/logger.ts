@@ -9,9 +9,10 @@
  */
 
 import * as fs from "fs";
+import * as path from "path";
 import { Chalk } from "chalk";
 import { getLastLines } from "wave-agent-sdk";
-import { LOG_FILE, DATA_DIRECTORY } from "./constants.js";
+import { LOG_FILE } from "./constants.js";
 
 const chalk = new Chalk({ level: 3 });
 
@@ -166,9 +167,10 @@ const logMessage = (level: LogLevel, ...args: unknown[]): void => {
   const formattedMessage = `[${chalk.gray(timestamp)}] [${color(levelName)}] ${messageText}\n`;
 
   try {
-    // Ensure directory exists
-    if (!fs.existsSync(DATA_DIRECTORY)) {
-      fs.mkdirSync(DATA_DIRECTORY, { recursive: true });
+    // Ensure the log file's directory exists (LOG_FILE moved to ~/.wave/logs)
+    const logDir = path.dirname(logFile);
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
     }
 
     // Write log to file

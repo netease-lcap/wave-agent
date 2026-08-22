@@ -26,6 +26,7 @@ import { MessageHandler } from "./session/messageHandler";
 import { StdioClient } from "./stdio/stdioClient";
 import { NotificationRouter } from "./stdio/notificationRouter";
 import { ensureCliUpToDate, setExtensionPath } from "./stdio/binaryResolver";
+import { hostLog } from "./hostLog";
 
 export class ChatProvider implements vscode.WebviewViewProvider {
   private static formatConfigError(error: unknown): string {
@@ -217,6 +218,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       this.outputChannel.appendLine(
         `[Wave] Failed to initialize shared client: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
       );
+      hostLog.error("[Wave] Failed to initialize shared client:", err);
       vscode.window.showErrorMessage(
         err instanceof Error
           ? err.message

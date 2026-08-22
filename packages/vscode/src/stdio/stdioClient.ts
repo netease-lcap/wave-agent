@@ -7,6 +7,7 @@
 
 import { type ChildProcess, spawn } from "child_process";
 import { createInterface } from "readline";
+import { hostLog } from "../hostLog";
 
 export type NotificationHandler = (params: unknown, sessionId?: string) => void;
 export type StderrHandler = (data: string) => void;
@@ -90,7 +91,12 @@ export class StdioClient {
         this.stderrChunks.shift();
       }
       const trimmed = decodeStderr(data).trimEnd();
-      if (trimmed) this.onStderr?.(trimmed);
+      if (trimmed) {
+        this.onStderr?.(trimmed);
+        // The CLI child writes its own logs to cli.log; anything on stderr is
+        // runtime noise worth capturing at the host boundary.
+        hostLog.warn("[wave-stdio]", trimmed);
+      }
     });
 
     this.proc.on("exit", (code, signal) => {
@@ -100,6 +106,7 @@ export class StdioClient {
       ];
       if (stderr) parts.push(`stderr:\n${stderr}`);
       const error = new Error(parts.join("\n"));
+      hostLog.error("[wave-stdio]", parts.join("\n"));
       for (const p of this.pending.values()) {
         p.reject(error);
       }
@@ -109,6 +116,7 @@ export class StdioClient {
 
     this.proc.on("error", (err) => {
       console.error("[wave-stdio] Process error:", err);
+      hostLog.error("[wave-stdio] Process error:", err);
     });
   }
 
@@ -170,6 +178,7 @@ export class StdioClient {
       msg = JSON.parse(line);
     } catch {
       console.error("[wave-stdio] Failed to parse:", line);
+      hostLog.error("[wave-stdio] Failed to parse:", line);
       return;
     }
 

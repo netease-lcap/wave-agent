@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { ChatProvider } from "./chatProvider";
 import { adoptLoginPathIntoEnv } from "./stdio/loginPath";
+import { hostLog } from "./hostLog";
 
 let chatProvider: ChatProvider | undefined;
 
@@ -15,7 +16,15 @@ export function activate(context: vscode.ExtensionContext) {
   adoptLoginPathIntoEnv();
 
   // Create a single ChatProvider instance for the extension lifecycle
-  chatProvider = new ChatProvider(context);
+  try {
+    chatProvider = new ChatProvider(context);
+  } catch (error) {
+    // The extension host catches what escapes activate(), but record the
+    // failure in vscode.log — the developer console is invisible to users.
+    console.error("Wave AI 扩展初始化失败:", error);
+    hostLog.error("[Wave] Extension activation failed:", error);
+    throw error;
+  }
 
   // Register sidebar command
   const openChatSidebarCommand = vscode.commands.registerCommand(
@@ -101,9 +110,14 @@ export async function deactivate() {
   console.log("Wave AI 聊天扩展正在停用");
 
   // Clean up the chat provider and its agent
-  if (chatProvider) {
-    await chatProvider.destroy();
-    chatProvider = undefined;
+  try {
+    if (chatProvider) {
+      await chatProvider.destroy();
+      chatProvider = undefined;
+    }
+  } catch (error) {
+    console.error("停用 Wave 扩展时出错:", error);
+    hostLog.error("[Wave] Extension deactivation failed:", error);
   }
 
   console.log("Wave AI 聊天扩展已停用");
