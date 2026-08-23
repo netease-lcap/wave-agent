@@ -1896,6 +1896,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           fileView={fileView}
           onOpenExternal={handleOpenFileExternal}
           workdir={effectiveWorkdir}
+          vscode={vscode}
+          onOpenFileInPanel={(path) => handleOpenFile(path)}
           {...common}
         />
       );

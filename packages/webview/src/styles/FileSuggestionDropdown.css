@@ -15,6 +15,13 @@
   transform-origin: bottom left; /* Dropdown expands upward from bottom */
 }
 
+/* Downward variant for search bars anchored at the top of a panel: no
+   translate, expands below the anchor point instead of above it. */
+.file-suggestion-dropdown--down {
+  transform: none;
+  transform-origin: top left;
+}
+
 .suggestion-item {
   display: flex;
   align-items: center;
