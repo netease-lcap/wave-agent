@@ -141,6 +141,8 @@ wave plugin install my-plugin@official --scope local    # 本地安装
 wave update    # 更新 Wave CLI 到最新版本
 ```
 
+Windows 上更新时提示「更新将在后台完成」并立即退出当前进程，由分离的后台子进程完成安装，避免更新程序自身占用 bin 文件句柄导致安装失败（EPERM/EBUSY）。
+
 ### 3.3 Daemon 客户端命令 {#daemon-commands}
 
 `wave --daemon <socket>` 在远端主机上以守护进程方式启动 Wave，托管后台 agent 会话（桌面端经 SSH 隧道访问）。与之对应，`wave daemon <子命令>` 是访问该 daemon 的客户端命令组，可在远端主机上（或经 `ssh <host> wave daemon ...`）查看、续聊与审批 daemon 托管的会话，无需打开完整 UI。所有子命令非交互式运行：结果输出到 stdout、诊断输出到 stderr，便于脚本与管道消费。
@@ -158,6 +160,9 @@ wave daemon send <sessionId> "继续" [--timeout 600]
 # 处理会话挂起的权限请求：允许 / 拒绝（可附原因）
 wave daemon respond <sessionId> <requestId> --allow
 wave daemon respond <sessionId> <requestId> --deny --reason "原因"
+
+# 中断会话正在生成的回复（含子代理、bash 命令与排队消息）
+wave daemon abort <sessionId>
 ```
 
 要点：
@@ -168,6 +173,7 @@ wave daemon respond <sessionId> <requestId> --deny --reason "原因"
 - `wave daemon list` 仅展示当前 daemon 进程内存中 live 的会话（不扫磁盘索引）；知道 sessionId 时即使不在列表中，也可经 `status` / `send` 重新载入
 - `wave daemon send` 默认 600 秒超时等待回复（`--timeout 0` 不限制）；会话挂起等待审批时超时退出，提示先经 `wave daemon respond` 处理
 - `wave daemon respond` 按工具智能补全决策：`EnterPlanMode` 的 `--allow` 自动附带 plan 模式切换；`AskUserQuestion` 需用 `--answer '{"问题":"答案"}'` 提供答案；`--rule "Bash(ls)"` 持久化允许规则（后续同类调用不再询问）；`--mode acceptEdits` 切换会话权限模式
+- `wave daemon abort` 中断指定会话正在生成的回复（含子代理、bash 命令与排队消息），不清除已完成的对话历史；对空闲会话是幂等 no-op（仍成功退出）；sessionId 不存在时以非零退出码报错；attach 是短暂访问、随用随断，中断后会话在 daemon 中继续存活
 
 ---
 
@@ -219,6 +225,8 @@ wave daemon respond <sessionId> <requestId> --deny --reason "原因"
 | `Ctrl+K`  | 删除光标后到行尾的内容             |
 | `Ctrl+W`  | 删除光标前一个词                   |
 
+**占位符整块删除：** 粘贴长文本或图片会生成 `[LongText#N]` / `[Image #N]` 占位符。当光标位于占位符末尾且其后为空白或行尾时，按 `Backspace` 会整块删除占位符（连同对应的长文本/图片附件），不会留下残缺片段；`Ctrl+U`/`Ctrl+K`/`Ctrl+W` 等行编辑键仍按普通字符串处理。
+
 ### 5.2 视图控制 {#view-control}
 
 | 快捷键   | 功能                   |
@@ -229,12 +237,16 @@ wave daemon respond <sessionId> <requestId> --deny --reason "原因"
 
 ### 5.3 权限与确认 {#permission-control}
 
-| 快捷键      | 功能                                 |
-| ----------- | ------------------------------------ |
-| `Shift+Tab` | 循环切换权限模式                     |
-| `Tab`       | 在确认对话框中切换选项               |
-| `Esc`       | 中断 AI 响应 / 取消选择器 / 关闭帮助 |
-| `Esc ×2`    | 空闲时双击清空输入（并保存到历史）   |
+| 快捷键            | 功能                                 |
+| ----------------- | ------------------------------------ |
+| `Shift+Tab`       | 循环切换权限模式                     |
+| `Tab`             | 在确认对话框中切换选项               |
+| `PgUp`/`PgDn`     | 确认详情超高时翻页滚动内容区         |
+| `Ctrl+U`/`Ctrl+D` | 确认详情超高时上/下滚半页            |
+| `Esc`             | 中断 AI 响应 / 取消选择器 / 关闭帮助 |
+| `Esc ×2`          | 空闲时双击清空输入（并保存到历史）   |
+
+确认详情（超长 plan 或大 diff）超高时，内容区可独立滚动（`PgUp`/`PgDn` 翻页、`Ctrl+U`/`Ctrl+D` 半页），选项列表固定底部始终可见，底部显示滚动快捷键提示（内容不超高时不显示）。
 
 ---
 
@@ -284,6 +296,8 @@ Wave 提供五种权限管理模式，控制 AI 调用工具时的确认行为�
 /btw 这个函数的时间复杂度是多少？
 ```
 
+回答期间显示 `✻ Answering` 加载提示，其后实时展示当前流式文本的最后 30 个字符（超出截断、换行折叠），按 `Esc` 可中止请求。
+
 ### 7.3 Git Worktree {#worktree}
 
 通过 `--worktree` 在隔离的 git worktree 中启动，安全实验新功能而不影响主分支。
@@ -294,6 +308,8 @@ wave -w my-feature
 
 在交互模式中也可通过内置工具 `EnterWorktree` 切换到 worktree。
 
+在退出对话框选择 "Remove worktree"（或打印模式 `-p` 正常退出清理、`WorktreeRemove` hook 接管）删除 worktree 时，会显示 `Deleting worktree ...` 进度提示，完成后显示 `Done.`；删除失败显示错误信息而非完成提示。选择 "Keep worktree" 保留时无提示。
+
 ### 7.4 Compact 压缩 {#compact}
 
 `/compact` 压缩当前对话历史，将冗长的上下文总结为精简摘要，减少后续请求的 Token 占用。支持附加自定义指令引导压缩方向。
@@ -301,6 +317,8 @@ wave -w my-feature
 ```
 /compact 重点保留 API 设计相关的讨论
 ```
+
+压缩进行中消息列表下方显示 `✻ Compacting` 提示，其后实时展示当前流式文本的最后 30 个字符（超出截断、换行折叠），压缩完成后提示消失。
 
 ### 7.5 Rewind 回滚 {#rewind}
 
@@ -342,6 +360,8 @@ wave -c           # 继续上次会话
 wave -r           # 列出可恢复的会话
 wave -r <id>      # 恢复指定会话
 ```
+
+会话文件的元数据头持久化真实的创建时间、工作目录与 git 分支；`wave -r` 选择器中会话行尾显示 git 分支标签（如 `[main]`），多 worktree 场景下可区分同仓库不同分支的会话。
 
 ### 7.13 附加工作目录 {#additional-working-directories}
 

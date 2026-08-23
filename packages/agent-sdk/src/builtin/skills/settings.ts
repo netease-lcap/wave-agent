@@ -164,9 +164,13 @@ Wave provides detailed context to hook processes via \`stdin\` as a JSON object.
 - \`new_cwd\`: (CwdChanged) The new working directory.
 - \`compact_instructions\`: (PreCompact) Custom instructions for the compaction, if any.
 - \`compact_summary\`: (PostCompact) The AI-generated compaction summary text.
-- \`source\`: (SessionStart) The session start source: \`"startup"\`, \`"resume"\`, or \`"compact"\`.
+- \`background_tasks\`: (Stop) Snapshot of running background tasks (array of \`{id, type: "shell"|"subagent"|"workflow", status, description, command?, startedAt}\`).
+- \`session_crons\`: (Stop) Snapshot of session-scoped cron jobs (array of \`{name, schedule, prompt}\`).
+- \`last_assistant_message\`: (Stop, SubagentStop) Text content of the last assistant message.
+- \`plan_file_path\`: (Present when in plan mode) Path to the active plan file.
+- \`source\`: (SessionStart) The session start source: \`"startup"\`, \`"resume"\`, \`"compact"\`, or \`"clear"\`.
 - \`agent_type\`: (SessionStart) The agent type identifier.
-- \`end_source\`: (SessionEnd) The session end source: \`"exit"\`, \`"stop"\`, or \`"compact"\`.
+- \`end_source\`: (SessionEnd) The session end source: \`"exit"\`, \`"resume"\`, \`"stop"\`, \`"compact"\`, or \`"clear"\`.
 
 ## Hook Exit Codes
 
@@ -1049,6 +1053,7 @@ For detailed guidance on creating plugins and marketplaces, see [PLUGINS.md](\${
 - \`autoMemoryEnabled\`: Enable or disable auto-memory (default: \`true\`).
 - \`autoMemoryFrequency\`: Frequency of auto-memory extraction turns (default: \`1\`).
 - \`enableArtifact\`: Enable the Artifact tool, which publishes local \`.html\`/\`.md\` files as shareable (default-private) web pages. Defaults to \`false\` while the frame backend is not live; set to \`true\` to register the tool and enable WebFetch interception for artifact URLs. Toggling it hot-reloads the tool registry.
+- \`worktree.baseRef\`: Base ref for new worktrees. \`"fresh"\` (default) creates a new branch from \`origin/<default branch>\`; \`"head"\` branches from the current local HEAD, skipping origin resolution and network fetch. Use \`"head"\` when working from un-pushed local branches.
 
 \`\`\`json
 {

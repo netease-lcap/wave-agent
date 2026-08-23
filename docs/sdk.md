@@ -132,6 +132,12 @@ const agent = await Agent.create({
 await agent.destroy();
 ```
 
+**生命周期契约：**
+
+- **确定性排空**：`destroy()` 返回前会等待所有已注册的存活异步工作（消息分发、子代理、fork 子代理等 fire-and-forget 工作）排空，销毁后不存在跨生命周期存活的异步副作用；超时（默认 10 秒）时记录 `Async work did not drain` 告警。
+- **终态抛错**：`destroy()` 后调用 `sendMessage` / `bang` / `askBtw` / `forkSubagent` 等公开 API 会同步抛出 `Error("Agent destroyed")`，不会静默丢弃或在已销毁的 Agent 上启动新回合。
+- **幂等**：重复调用 `destroy()` 不抛错（二次销毁是安全 no-op）。
+
 ### Agent 属性 {#agent-properties}
 
 | 属性                       | 类型              | 说明                 |
@@ -153,21 +159,21 @@ await agent.destroy();
 
 ### Agent 常用方法 {#agent-methods}
 
-| 方法                        | 说明                                          |
-| --------------------------- | --------------------------------------------- |
-| `sendMessage(content)`      | 发送用户消息                                  |
-| `destroy()`                 | 销毁 Agent 并清理资源                         |
-| `abortAIMessage()`          | 中止当前 AI 响应                              |
-| `abortMessage()`            | 中止当前消息处理                              |
-| `abortBashCommand()`        | 中止正在执行的 Bash 命令                      |
-| `abortSlashCommand()`       | 中止正在执行的斜杠命令                        |
-| `clearMessages()`           | 清空消息（触发 SessionEnd/SessionStart 钩子） |
-| `compact(instructions?)`    | 手动触发上下文压缩                            |
-| `setModel(model)`           | 切换模型                                      |
-| `setWorkdir(dir)`           | 切换工作目录                                  |
-| `restoreSession(sessionId)` | 恢复到指定会话                                |
-| `truncateHistory(index)`    | 截断历史到指定位置                            |
-| `getFullMessageThread()`    | 获取完整消息链（含压缩前的父会话）            |
+| 方法                        | 说明                                                                                                                |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `sendMessage(content)`      | 发送用户消息                                                                                                        |
+| `destroy()`                 | 销毁 Agent 并清理资源（终态：排空存活异步工作，之后公开 API 抛 `Agent destroyed`，见 [销毁 Agent](#agent-destroy)） |
+| `abortAIMessage()`          | 中止当前 AI 响应                                                                                                    |
+| `abortMessage()`            | 中止当前消息处理                                                                                                    |
+| `abortBashCommand()`        | 中止正在执行的 Bash 命令                                                                                            |
+| `abortSlashCommand()`       | 中止正在执行的斜杠命令                                                                                              |
+| `clearMessages()`           | 清空消息（触发 SessionEnd/SessionStart 钩子）                                                                       |
+| `compact(instructions?)`    | 手动触发上下文压缩                                                                                                  |
+| `setModel(model)`           | 切换模型                                                                                                            |
+| `setWorkdir(dir)`           | 切换工作目录                                                                                                        |
+| `restoreSession(sessionId)` | 恢复到指定会话                                                                                                      |
+| `truncateHistory(index)`    | 截断历史到指定位置                                                                                                  |
+| `getFullMessageThread()`    | 获取完整消息链（含压缩前的父会话）                                                                                  |
 
 ## 3. 消息处理 {#messaging}
 
@@ -194,15 +200,15 @@ Agent 内置消息队列管理并发消息：
 
 Agent 支持多种消息块类型，通过回调通知 UI 层：
 
-| 类型      | 回调                                                                 | 说明                                                                     |
-| --------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| 文本内容  | `onAssistantContentUpdated`                                          | AI 文本流式输出，含 `chunk`、`stage`（chunk 为增量片段，消费端自行累积） |
-| 推理内容  | `onAssistantReasoningUpdated`                                        | 推理/思考过程流式输出                                                    |
-| 工具调用  | `onToolBlockUpdated`                                                 | 工具执行状态更新                                                         |
-| 压缩摘要  | `onCompactBlockAdded`                                                | 上下文压缩后生成的摘要                                                   |
-| 错误信息  | `onErrorBlockAdded`                                                  | 错误消息                                                                 |
-| Bang 命令 | `onAddBangMessage` / `onUpdateBangMessage` / `onCompleteBangMessage` | Shell 命令执行（`!command` 语法）                                        |
-| 任务通知  | `onBackgroundTasksChange`                                            | 后台任务状态变更                                                         |
+| 类型      | 回调                                                                 | 说明                                                                                                                        |
+| --------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 文本内容  | `onAssistantContentUpdated`                                          | AI 文本流式输出，含 `chunk`、`stage`（chunk 为增量片段，消费端自行累积）                                                    |
+| 推理内容  | `onAssistantReasoningUpdated`                                        | 推理/思考过程流式输出                                                                                                       |
+| 工具调用  | `onToolBlockUpdated`                                                 | 工具执行状态更新                                                                                                            |
+| 压缩摘要  | `onCompactBlockAdded`                                                | 上下文压缩后生成的摘要                                                                                                      |
+| 错误信息  | `onErrorBlockAdded`                                                  | 错误消息                                                                                                                    |
+| Bang 命令 | `onAddBangMessage` / `onUpdateBangMessage` / `onCompleteBangMessage` | Shell 命令执行（`!command` 语法）                                                                                           |
+| 任务通知  | `onBackgroundTasksChange`                                            | 后台任务状态变更（后台任务完成的通知消息为 `isMeta: true`，UI 隐藏、模型可见，详见 [后台任务完成通知](#task-notification)） |
 
 ### 流式输出 {#streaming}
 
@@ -692,6 +698,15 @@ const thread = await agent.getFullMessageThread();
 - 压缩后创建新会话，通过 `parentSessionId` 链接到旧会话，保持历史可追溯
 - 子代理会话使用独立文件名（`subagent_` 前缀）
 
+**过期会话清理（对齐 Claude Code）：**
+
+Wave 启动时会在后台执行一次全局会话清理：删除 `~/.wave/projects` 下 mtime 早于保留期的会话 jsonl（含 `subagent-*.jsonl`），清理后为空的项目目录一并删除（目录中仍有文件如 `memory/` 时保留）。
+
+- **保留期**：默认 **30 天**，可通过 settings.json 的 `cleanupPeriodDays` 配置（见 [其他设置](#settings-other)）；jsonl 追加写使 mtime 反映最后活动时间。
+- **`cleanupPeriodDays: 0`**：跳过清理。
+- **记忆保护**：不触碰项目目录下的 `memory/`（auto-memory 数据）。
+- **容错**：`~/.wave/projects` 不存在或不可读时静默跳过，不中断启动。
+
 ## 7. 插件系统 {#plugin-system}
 
 ### 插件配置 {#plugin-config}
@@ -933,6 +948,19 @@ callbacks: {
   },
 }
 ```
+
+### 后台任务完成通知（task-notification）{#task-notification}
+
+后台任务（Bash 后台命令、后台子代理、后台 workflow）完成时，Wave 会将完成通知作为 `task-notification` 消息注入主对话，供模型感知并汇报：
+
+- **UI 隐藏**：通知为 `role: "user"` 的 meta 消息（`isMeta: true`），在 CLI 与 Webview 消息流中均不显示，消息流只呈现真实对话。
+- **模型可见**：模型读取消息上下文时看到包装文本 `A background agent completed a task:` 加 `<task-notification>` XML（含 task-id、task-type、status、summary、output-file）。
+- **持久化**：通知消息与随后的 assistant 回复一同写入会话 jsonl，恢复会话后模型上下文与通知行为不变。
+- **killed 不注入**：被手动终止（killed）的后台任务不注入完成通知。
+- **批量合并**：多个后台任务同时完成时，所有通知合并进同一轮 AI 应答。
+- **/clear 与 abort**：`MessageQueue.clear()` 保留 pending 通知（不丢弃后台结果）；abort 期间不注入通知（折叠进下一轮）。
+
+用户感知路径为模型主动汇报与 `/tasks` 面板，不经消息流。
 
 ## 11. 其他功能 {#other-features}
 
@@ -1216,21 +1244,26 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 
 钩子允许在特定事件发生时自动执行任务，实现工作流自动化。Wave 支持以下钩子事件：
 
-| 事件名称            | 触发时机                                                         |
-| ------------------- | ---------------------------------------------------------------- |
-| `PreToolUse`        | 工具执行前（可用于校验、拦截或预处理）                           |
-| `PostToolUse`       | 工具执行完成后（可用于后处理或日志记录）                         |
-| `UserPromptSubmit`  | 用户提交 Prompt 时                                               |
-| `PermissionRequest` | Wave 请求工具权限时                                              |
-| `Stop`              | Wave 完成响应周期（无更多工具调用）时                            |
-| `SubagentStop`      | 子代理完成响应周期时                                             |
-| `WorktreeCreate`    | 创建新 worktree 时                                               |
-| `WorktreeRemove`    | 删除 worktree 之前触发（通知型，非阻塞，可读取 worktree 内文件） |
-| `SessionStart`      | 会话开始时（来源：`startup` / `resume` / `compact`）             |
-| `SessionEnd`        | 会话结束时（来源：`exit` / `stop` / `compact`）                  |
+| 事件名称            | 触发时机                                                             |
+| ------------------- | -------------------------------------------------------------------- |
+| `PreToolUse`        | 工具执行前（可用于校验、拦截或预处理）                               |
+| `PostToolUse`       | 工具执行完成后（可用于后处理或日志记录）                             |
+| `UserPromptSubmit`  | 用户提交 Prompt 时                                                   |
+| `PermissionRequest` | Wave 请求工具权限时                                                  |
+| `Stop`              | Wave 完成响应周期（无更多工具调用）时                                |
+| `SubagentStop`      | 子代理完成响应周期时                                                 |
+| `WorktreeCreate`    | 创建新 worktree 时（hook 接管创建，见下方说明）                      |
+| `WorktreeRemove`    | 删除 hook-based worktree 时（hook 接管删除，见下方说明）             |
+| `CwdChanged`        | 工作目录变化时（如进入/退出 worktree，非阻塞）                       |
+| `SessionStart`      | 会话开始时（来源：`startup` / `resume` / `compact` / `clear`）       |
+| `SessionEnd`        | 会话结束时（来源：`exit` / `stop` / `compact` / `resume` / `clear`） |
+| `PreCompact`        | 压缩前触发（stdout 作为附加指令合并进压缩 prompt）                   |
+| `PostCompact`       | 压缩完成后触发（接收压缩摘要文本）                                   |
 
 **钩子配置要点：**
 
+- **WorktreeCreate（接管创建）**：配置该 hook 后，Wave 不再执行 `git worktree add`，由 hook 自行完成创建（如 `git worktree add` 或任何其他 VCS/外部资源准备），并将 worktree 的**绝对路径输出到 stdout**（首个成功 hook 的路径生效，async hook 不贡献路径）。所有 hook 失败或无输出时创建被阻止。接收 `name` 输入，创建的会话标记为 hook-based。
+- **WorktreeRemove（接管删除）**：仅对 hook-based worktree（由 `WorktreeCreate` hook 创建）触发，Wave 不执行 `git worktree remove`，由 hook 自行完成删除（如 `git worktree remove --force` 及外部资源清理）。在 worktree 目录被删除**之前**触发，hook 仍可读取目录内文件。失败仅记录日志、不阻塞。git 直接创建的 worktree 由 git 删除，不触发此 hook。
 - **模式匹配**：支持通过 `matcher` 匹配工具名（如 `Write`、`Read*`、`/^Edit/`），适用于 `PreToolUse`、`PostToolUse` 和 `PermissionRequest`。
 - **异步执行**：支持 `async` 字段配置后台异步执行，避免阻塞工作流。
 - **超时控制**：支持 `timeout` 字段设置最大执行时间（默认 600 秒）。
@@ -1258,6 +1291,7 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 | `WAVE_DISABLE_AUTO_MEMORY`   | 禁用自动记忆                                                                     |
 | `WAVE_AUTO_MEMORY_FREQUENCY` | 自动记忆触发频率                                                                 |
 | `WAVE_PLUGIN_GIT_TIMEOUT_MS` | 插件 Git 操作超时（毫秒）                                                        |
+| `WAVE_TASK_LIST_ID`          | 显式指定会话的任务列表 ID（默认取会话 ID）                                       |
 
 #### OTEL\_\* 变量（OpenTelemetry）
 
@@ -1369,6 +1403,7 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 - `autoMemoryFrequency`：自动记忆提取频率（默认：`1`）。
 - `enableArtifact`：启用 Artifact 工具（默认：`false`）。未设置时跟随代码默认值（当前默认禁用）；设为 `true` 后注册 [Artifact 工具](#tool-artifact) 与 `/artifact` 内置技能，将本地 HTML/Markdown 发布为可分享网页。
 - `worktree.baseRef`：新建 worktree 的基准引用。`"fresh"`（默认）基于 `origin/<默认分支>` 创建新分支；`"head"` 基于当前本地 HEAD 创建，跳过 origin 解析与网络 fetch。适用于基于尚未推送的本地分支工作的场景。
+- `cleanupPeriodDays`：会话 jsonl 保留期（天），启动时后台清理过期会话文件（默认：`30`，对齐 Claude Code）。设为 `0` 跳过清理。作用域 user → project → local 依次覆盖（last-wins）。详见 [会话文件存储](#session-storage)。
 
 ## 15. 官方插件市场 {#plugin-marketplaces}
 

@@ -77,6 +77,7 @@ export default {
             { text: "2.6 快捷终端命令", link: "/vsce#bang-shell-command" },
             { text: "2.7 输入框外观与状态", link: "/vsce#input-box" },
             { text: "2.8 旁路提问", link: "/vsce#btw" },
+            { text: "2.9 压缩对话", link: "/vsce#compact" },
           ],
         },
         {
@@ -214,6 +215,7 @@ export default {
               link: "/desktop#localhost-原型预览与元素评论",
             },
             { text: "核心交互", link: "/desktop#核心交互" },
+            { text: "内置 CLI", link: "/desktop#内置-cli" },
             { text: "自动更新", link: "/desktop#自动更新" },
             { text: "登录", link: "/desktop#登录" },
           ],
@@ -399,6 +401,7 @@ export default {
           collapsed: false,
           items: [
             { text: "后台任务", link: "/sdk#background-task-management" },
+            { text: "后台任务完成通知", link: "/sdk#task-notification" },
             { text: "前台任务", link: "/sdk#foreground-tasks" },
             { text: "任务状态回调", link: "/sdk#task-callbacks" },
             { text: "工作流", link: "/sdk#workflow-management" },
