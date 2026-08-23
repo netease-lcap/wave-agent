@@ -239,4 +239,86 @@ test.describe("Desktop file panel", () => {
       "../../docs/public/screenshots/desktop-file-panel-code.webp",
     );
   });
+
+  test("search bar finds and opens a file in the panel", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    await setupReadMessage(injector, `${DIR_A}/src/assets/login-banner.png`);
+    await openFileFromMessage(webviewPage, injector);
+    // Drop the openFile already consumed by opening the panel so the search's
+    // openFile below is the next (only) one in the log.
+    await injector.clearMessageLog();
+
+    const searchInput = webviewPage.getByTestId("file-pane-search-input");
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill("ChatApp");
+
+    // Focus fires a "" request; typing fires the debounced one — take the latest.
+    const requestId = await injector.waitForFileSuggestionRequest();
+
+    const targetPath = `${DIR_A}/src/components/ChatApp.tsx`;
+    await injector.simulateExtensionMessage("fileSuggestionsResponse", {
+      suggestions: [
+        {
+          path: targetPath,
+          relativePath: "src/components/ChatApp.tsx",
+          name: "ChatApp.tsx",
+          extension: "tsx",
+          icon: "codicon-file",
+          isDirectory: false,
+        },
+        {
+          path: `${DIR_A}/src/components`,
+          relativePath: "src/components",
+          name: "components",
+          extension: "",
+          icon: "codicon-folder",
+          isDirectory: true,
+        },
+      ],
+      filterText: "ChatApp",
+      requestId,
+    });
+
+    await expect(
+      webviewPage
+        .locator(".suggestion-name")
+        .filter({ hasText: "ChatApp.tsx" }),
+    ).toBeVisible();
+    // Directories are filtered out — the panel cannot display them.
+    await expect(
+      webviewPage.locator(".suggestion-name").filter({ hasText: "components" }),
+    ).toHaveCount(0);
+
+    await webviewPage
+      .locator(".suggestion-item")
+      .filter({ hasText: "ChatApp.tsx" })
+      .click();
+
+    await injector.waitForMessage("openFile");
+    // waitForMessage resolves to a JSHandle; read the raw log for the payload.
+    const sent = await injector.getMessagesSentToExtension();
+    const openMsg = sent.filter((m) => m.command === "openFile").pop() as {
+      path?: string;
+    };
+    expect(openMsg.path).toBe(targetPath);
+    // The toolbar now shows the searched file (dropdown closed, search cleared).
+    await expect(webviewPage.locator(".file-pane-path")).toHaveText(
+      "src/components/ChatApp.tsx",
+    );
+    await expect(searchInput).toHaveValue("");
+
+    await injector.simulateExtensionMessage("desktopFileContent", {
+      fileView: {
+        path: targetPath,
+        host: "local",
+        loading: false,
+        content:
+          "import React from 'react';\n\nexport function ChatApp() {\n  return <div>chat</div>;\n}\n",
+      },
+    });
+    await expect(webviewPage.locator(".file-pane-code")).toBeVisible();
+  });
 });

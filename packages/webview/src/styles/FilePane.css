@@ -33,6 +33,38 @@
   font-size: 12px;
 }
 
+/* Top search bar: input + icon, anchors the downward suggestion dropdown. */
+.file-pane-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  flex-shrink: 0;
+}
+
+.file-pane-search-icon {
+  flex-shrink: 0;
+  color: var(--vscode-descriptionForeground, #999);
+}
+
+.file-pane-search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  font-size: 12px;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+  border-radius: 2px;
+  outline: none;
+}
+
+.file-pane-search-input:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
 .file-pane-body .desktop-panel-placeholder {
   flex: 1;
   min-height: 100%;

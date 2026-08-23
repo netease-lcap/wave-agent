@@ -461,6 +461,9 @@ export interface FileSuggestionDropdownProps {
   position: { top: number; left: number };
   filterText: string;
   isLoading?: boolean;
+  /** Which way the dropdown expands from its anchor: "up" (message input,
+      the default) or "down" (panel-top search bars). */
+  direction?: "up" | "down";
 }
 
 /** Desktop conversation-level side panels. VSCE/JetBrains hosts never render these. */

@@ -1,12 +1,22 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
-import type { FileViewState } from "../types";
+import type { FileItem, FileViewState, VsCodeApi } from "../types";
 import { toRelativePath } from "../utils/messageUtils";
+import { FileSuggestionDropdown } from "./FileSuggestionDropdown";
 import "../styles/FilePane.css";
 
 const MIN_WIDTH = 320;
+
+/** Debounce for the panel search requests, matching the message input's. */
+const SEARCH_DEBOUNCE_MS = 200;
 
 /** Extension → highlight.js language name (subset shipped by hljs/lib/common). */
 const EXT_LANGUAGE: Record<string, string> = {
@@ -194,6 +204,10 @@ export interface FilePaneProps {
   onOpenExternal?: (path: string) => void;
   /** Owning pane's effective cwd, for the relative-path title display. */
   workdir?: string;
+  /** Host bridge for the top search bar. Absent → the search bar is hidden. */
+  vscode?: VsCodeApi;
+  /** Open a file in the panel (same flow as clicking a message file path). */
+  onOpenFileInPanel?: (path: string) => void;
 }
 
 /**
@@ -211,9 +225,138 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onClose,
   onOpenExternal,
   workdir,
+  vscode,
+  onOpenFileInPanel,
 }) => {
   const asideRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const searchBarRef = useRef<HTMLDivElement>(null);
+
+  // Top search bar state: mirrors the message-input @ mention flow. The host
+  // broadcasts fileSuggestionsResponse to every pane; requestId dedupes it.
+  const [searchFilter, setSearchFilter] = useState("");
+  const [searchSuggestions, setSearchSuggestions] = useState<FileItem[]>([]);
+  const [searchSelectedIndex, setSearchSelectedIndex] = useState(0);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchActive, setSearchActive] = useState(false);
+  const searchRequestIdRef = useRef("");
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** The panel can only display files, not directories. */
+  const fileSuggestions = useMemo(
+    () => searchSuggestions.filter((s) => !s.isDirectory),
+    [searchSuggestions],
+  );
+
+  const requestSearch = useCallback(
+    (filterText: string) => {
+      if (!vscode) return;
+      const requestId = Date.now().toString();
+      searchRequestIdRef.current = requestId;
+      setSearchLoading(true);
+      vscode.postMessage({
+        command: "requestFileSuggestions",
+        filterText,
+        requestId,
+      });
+    },
+    [vscode],
+  );
+
+  const resetSearch = useCallback(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = null;
+    setSearchFilter("");
+    setSearchSuggestions([]);
+    setSearchSelectedIndex(0);
+    setSearchLoading(false);
+    setSearchActive(false);
+  }, []);
+
+  // Request on focus so the dropdown is populated immediately (empty filter
+  // returns the workspace's top files, acting as a file picker).
+  const handleSearchFocus = useCallback(() => {
+    setSearchActive(true);
+    setSearchSuggestions([]);
+    setSearchSelectedIndex(0);
+    requestSearch("");
+  }, [requestSearch]);
+
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setSearchFilter(value);
+      setSearchSelectedIndex(0);
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = setTimeout(() => {
+        searchDebounceRef.current = null;
+        requestSearch(value);
+      }, SEARCH_DEBOUNCE_MS);
+    },
+    [requestSearch],
+  );
+
+  const handleSearchSelect = useCallback(
+    (file: FileItem) => {
+      resetSearch();
+      onOpenFileInPanel?.(file.path);
+    },
+    [onOpenFileInPanel, resetSearch],
+  );
+
+  const handleSearchKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (fileSuggestions.length === 0) {
+        if (event.key === "Escape") resetSearch();
+        return;
+      }
+      const maxIndex = fileSuggestions.length - 1;
+      switch (event.key) {
+        case "ArrowUp":
+          event.preventDefault();
+          setSearchSelectedIndex((prev) => Math.max(0, prev - 1));
+          break;
+        case "ArrowDown":
+          event.preventDefault();
+          setSearchSelectedIndex((prev) => Math.min(maxIndex, prev + 1));
+          break;
+        case "Enter":
+          event.preventDefault();
+          if (fileSuggestions[searchSelectedIndex]) {
+            handleSearchSelect(fileSuggestions[searchSelectedIndex]);
+          }
+          break;
+        case "Escape":
+          event.preventDefault();
+          resetSearch();
+          break;
+      }
+    },
+    [fileSuggestions, searchSelectedIndex, handleSearchSelect, resetSearch],
+  );
+
+  // Listen for the host's file suggestions reply (same channel as @ mention).
+  useEffect(() => {
+    if (!vscode) return;
+    const handleMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (data.command === "fileSuggestionsResponse") {
+        if (data.requestId !== searchRequestIdRef.current) return;
+        setSearchSuggestions(data.suggestions || []);
+        setSearchSelectedIndex(0);
+        setSearchLoading(false);
+      } else if (data.command === "fileSuggestionsError") {
+        if (data.requestId !== searchRequestIdRef.current) return;
+        setSearchSuggestions([]);
+        setSearchLoading(false);
+        console.error("文件搜索失败:", data.error);
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => {
+      window.removeEventListener("message", handleMessage);
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [vscode]);
 
   const onDragStart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -318,6 +461,39 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <i className="codicon codicon-close" />
           </button>
         </div>
+        {vscode && (
+          <div className="file-pane-search" ref={searchBarRef}>
+            <i className="codicon codicon-search file-pane-search-icon" />
+            <input
+              className="file-pane-search-input"
+              data-testid="file-pane-search-input"
+              placeholder="搜索文件…"
+              value={searchFilter}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              onFocus={handleSearchFocus}
+              onKeyDown={handleSearchKeyDown}
+            />
+            <FileSuggestionDropdown
+              suggestions={fileSuggestions}
+              isVisible={
+                searchActive &&
+                (searchFilter !== "" ||
+                  searchLoading ||
+                  fileSuggestions.length > 0)
+              }
+              selectedIndex={searchSelectedIndex}
+              onSelect={handleSearchSelect}
+              onClose={resetSearch}
+              position={{
+                top: (searchBarRef.current?.offsetHeight ?? 34) + 2,
+                left: 0,
+              }}
+              filterText={searchFilter}
+              isLoading={searchLoading}
+              direction="down"
+            />
+          </div>
+        )}
         <div className="preview-pane-body file-pane-body" ref={scrollRef}>
           {!fileView && (
             <div className="desktop-panel-placeholder">

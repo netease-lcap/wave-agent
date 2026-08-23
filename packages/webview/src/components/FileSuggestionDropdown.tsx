@@ -17,6 +17,7 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
   position,
   filterText,
   isLoading = false,
+  direction = "up",
 }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -93,7 +94,7 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
   return (
     <div
       ref={dropdownRef}
-      className="file-suggestion-dropdown"
+      className={`file-suggestion-dropdown${direction === "down" ? " file-suggestion-dropdown--down" : ""}`}
       style={{
         position: "absolute",
         top: `${position.top}px`,

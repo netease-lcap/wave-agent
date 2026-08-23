@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, fireEvent, screen } from "@testing-library/react";
+import {
+  render,
+  fireEvent,
+  screen,
+  act,
+  waitFor,
+} from "@testing-library/react";
 import React from "react";
 import { FilePane } from "../../src/components/FilePane";
-import type { FileViewState } from "../../src/types";
+import type { FileItem, FileViewState, VsCodeApi } from "../../src/types";
 
 function makeFileView(overrides: Partial<FileViewState> = {}): FileViewState {
   return {
@@ -11,6 +17,83 @@ function makeFileView(overrides: Partial<FileViewState> = {}): FileViewState {
     content: "const a = 1;\nconst b = 2;\n",
     ...overrides,
   };
+}
+
+function makeFileItem(
+  name: string,
+  path: string,
+  relativePath: string,
+  isDirectory = false,
+): FileItem {
+  const extensionMatch = name.match(/\.([^.]+)$/);
+  return {
+    path,
+    relativePath,
+    name,
+    extension: extensionMatch ? extensionMatch[1] : "",
+    icon: isDirectory ? "codicon-folder" : "codicon-file",
+    isDirectory,
+  };
+}
+
+function makeVscode() {
+  return {
+    postMessage: vi.fn(),
+    getState: vi.fn(),
+    setState: vi.fn(),
+  };
+}
+
+/** Simulate the host's broadcast reply to a requestFileSuggestions request. */
+function sendSuggestionsResponse(requestId: string, suggestions: FileItem[]) {
+  act(() => {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          command: "fileSuggestionsResponse",
+          suggestions,
+          filterText: "",
+          requestId,
+        },
+      }),
+    );
+  });
+}
+
+function sendSuggestionsError(requestId: string) {
+  act(() => {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { command: "fileSuggestionsError", error: "boom", requestId },
+      }),
+    );
+  });
+}
+
+/** Wait for the (debounced) requestFileSuggestions post and return its id. */
+async function waitForSearchRequest(
+  vscode: ReturnType<typeof makeVscode>,
+  filterText: string,
+): Promise<string> {
+  await waitFor(
+    () => {
+      expect(vscode.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: "requestFileSuggestions",
+          filterText,
+        }),
+      );
+    },
+    { timeout: 3000 },
+  );
+  const calls = vscode.postMessage.mock.calls.map((c) => c[0]);
+  const call = calls
+    .filter(
+      (c) =>
+        c.command === "requestFileSuggestions" && c.filterText === filterText,
+    )
+    .pop();
+  return call.requestId as string;
 }
 
 function renderPane(
@@ -22,35 +105,28 @@ function renderPane(
     onOpenExternal?: (path: string) => void;
     onClose?: () => void;
     onWidthChange?: (width: number) => void;
+    vscode?: VsCodeApi;
+    onOpenFileInPanel?: (path: string) => void;
   } = {},
 ) {
   const onClose = options.onClose ?? vi.fn();
   const onWidthChange = options.onWidthChange ?? vi.fn();
   const fileView =
     options.fileView === undefined ? makeFileView() : options.fileView;
-  const result = render(
-    <FilePane
-      fileView={fileView}
-      width={options.width ?? 420}
-      onWidthChange={onWidthChange}
-      maxWidth={options.maxWidth ?? 716}
-      onClose={onClose}
-      onOpenExternal={options.onOpenExternal}
-      workdir={options.workdir}
-    />,
-  );
+  const props = {
+    fileView,
+    width: options.width ?? 420,
+    onWidthChange,
+    maxWidth: options.maxWidth ?? 716,
+    onClose,
+    onOpenExternal: options.onOpenExternal,
+    workdir: options.workdir,
+    vscode: options.vscode,
+    onOpenFileInPanel: options.onOpenFileInPanel,
+  };
+  const result = render(<FilePane {...props} />);
   const rerenderWith = (next: FileViewState | null) =>
-    result.rerender(
-      <FilePane
-        fileView={next}
-        width={options.width ?? 420}
-        onWidthChange={onWidthChange}
-        maxWidth={options.maxWidth ?? 716}
-        onClose={onClose}
-        onOpenExternal={options.onOpenExternal}
-        workdir={options.workdir}
-      />,
-    );
+    result.rerender(<FilePane {...props} fileView={next} />);
   return { ...result, rerenderWith, onClose, onWidthChange };
 }
 
@@ -304,6 +380,139 @@ describe("FilePane", () => {
     fireEvent.mouseUp(window);
     expect(handle.style.background).toBe("");
     expect(document.body.classList.contains("is-panel-resizing")).toBe(false);
+  });
+
+  describe("FilePane search bar", () => {
+    it("hides the search bar without a host bridge", () => {
+      renderPane({});
+      expect(
+        screen.queryByTestId("file-pane-search-input"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows the search bar when a host bridge is provided", () => {
+      renderPane({ vscode: makeVscode() });
+      expect(screen.getByTestId("file-pane-search-input")).toBeInTheDocument();
+    });
+
+    it("requests suggestions with an empty filter on focus", async () => {
+      const vscode = makeVscode();
+      renderPane({ vscode });
+      fireEvent.focus(screen.getByTestId("file-pane-search-input"));
+      await waitFor(() =>
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            command: "requestFileSuggestions",
+            filterText: "",
+          }),
+        ),
+      );
+    });
+
+    it("debounces typing and applies only the matching response", async () => {
+      const vscode = makeVscode();
+      renderPane({ vscode });
+      const input = screen.getByTestId("file-pane-search-input");
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: "app" } });
+      const reqId = await waitForSearchRequest(vscode, "app");
+
+      // A stale response (from an older request) must not populate the dropdown.
+      sendSuggestionsResponse("stale-request-id", [
+        makeFileItem("Stale.tsx", "/work/a/src/Stale.tsx", "src/Stale.tsx"),
+      ]);
+      expect(screen.queryByText("Stale.tsx")).not.toBeInTheDocument();
+
+      sendSuggestionsResponse(reqId, [
+        makeFileItem("App.tsx", "/work/a/src/App.tsx", "src/App.tsx"),
+      ]);
+      // The name is split by the highlight <span>; the path row is plain text.
+      expect(await screen.findByText("src/App.tsx")).toBeInTheDocument();
+    });
+
+    it("opens the selected file via keyboard (ArrowDown + Enter)", async () => {
+      const vscode = makeVscode();
+      const onOpenFileInPanel = vi.fn();
+      renderPane({ vscode, onOpenFileInPanel });
+      const input = screen.getByTestId("file-pane-search-input");
+      fireEvent.focus(input);
+      const reqId = await waitForSearchRequest(vscode, "");
+      sendSuggestionsResponse(reqId, [
+        makeFileItem("A.tsx", "/work/a/src/A.tsx", "src/A.tsx"),
+        makeFileItem("B.tsx", "/work/a/src/B.tsx", "src/B.tsx"),
+      ]);
+      await screen.findByText("A.tsx");
+
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(onOpenFileInPanel).toHaveBeenCalledWith("/work/a/src/B.tsx");
+      expect(input).toHaveValue("");
+    });
+
+    it("opens the file when a suggestion is clicked", async () => {
+      const vscode = makeVscode();
+      const onOpenFileInPanel = vi.fn();
+      renderPane({ vscode, onOpenFileInPanel });
+      const input = screen.getByTestId("file-pane-search-input");
+      fireEvent.focus(input);
+      const reqId = await waitForSearchRequest(vscode, "");
+      sendSuggestionsResponse(reqId, [
+        makeFileItem("App.tsx", "/work/a/src/App.tsx", "src/App.tsx"),
+      ]);
+      const item = await screen.findByText("App.tsx");
+      fireEvent.click(item);
+      expect(onOpenFileInPanel).toHaveBeenCalledWith("/work/a/src/App.tsx");
+      expect(input).toHaveValue("");
+    });
+
+    it("closes the dropdown and clears the search on Escape", async () => {
+      const vscode = makeVscode();
+      renderPane({ vscode });
+      const input = screen.getByTestId("file-pane-search-input");
+      fireEvent.focus(input);
+      const reqId = await waitForSearchRequest(vscode, "");
+      sendSuggestionsResponse(reqId, [
+        makeFileItem("App.tsx", "/work/a/src/App.tsx", "src/App.tsx"),
+      ]);
+      await screen.findByText("App.tsx");
+
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(screen.queryByText("App.tsx")).not.toBeInTheDocument();
+      expect(input).toHaveValue("");
+    });
+
+    it("filters directory suggestions out of the dropdown", async () => {
+      const vscode = makeVscode();
+      renderPane({ vscode });
+      const input = screen.getByTestId("file-pane-search-input");
+      fireEvent.focus(input);
+      const reqId = await waitForSearchRequest(vscode, "");
+      sendSuggestionsResponse(reqId, [
+        makeFileItem(
+          "components",
+          "/work/a/src/components",
+          "src/components",
+          true,
+        ),
+        makeFileItem("App.tsx", "/work/a/src/App.tsx", "src/App.tsx"),
+      ]);
+      await screen.findByText("App.tsx");
+      expect(screen.queryByText("components")).not.toBeInTheDocument();
+    });
+
+    it("shows a loading state in flight and clears it on error", async () => {
+      const vscode = makeVscode();
+      renderPane({ vscode });
+      const input = screen.getByTestId("file-pane-search-input");
+      fireEvent.focus(input);
+      const reqId = await waitForSearchRequest(vscode, "");
+      expect(screen.getByText("正在搜索文件...")).toBeInTheDocument();
+
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      sendSuggestionsError(reqId);
+      expect(screen.queryByText("正在搜索文件...")).not.toBeInTheDocument();
+      errorSpy.mockRestore();
+    });
   });
 
   afterEach(() => {
