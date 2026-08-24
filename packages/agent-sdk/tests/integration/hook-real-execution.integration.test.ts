@@ -227,6 +227,12 @@ describe("Hook real-command execution (spec automation/hooks.md)", () => {
 
   it("runs async hooks in the background without blocking the turn (hooks.md / 异步 Hook 执行 / 场景 1)", async () => {
     const markerFile = path.join(workdir, "async-hook-done.txt");
+    // The hook's own delay is the observable signal that the turn was not
+    // blocked: a blocking hook would make sendMessage take >= delayMs. 3s
+    // keeps a wide margin over the turn's post-hook work even when the
+    // Windows CI job runs the whole suite in parallel forks (600ms was
+    // flaky under that contention).
+    const delayMs = 3000;
     const hooks: PartialHookConfiguration = {
       Stop: [
         {
@@ -234,7 +240,7 @@ describe("Hook real-command execution (spec automation/hooks.md)", () => {
             {
               type: "command",
               async: true,
-              command: `node -e 'setTimeout(() => require("fs").writeFileSync(process.argv[1], "done"), 600)' ${markerFile}`,
+              command: `node -e 'setTimeout(() => require("fs").writeFileSync(process.argv[1], "done"), ${delayMs})' ${markerFile}`,
             },
           ],
         },
@@ -243,14 +249,18 @@ describe("Hook real-command execution (spec automation/hooks.md)", () => {
     agent = await Agent.create({ workdir, hooks });
     callAgent.mockResolvedValue({ content: "finished", finish_reason: "stop" });
 
+    const turnStart = Date.now();
     await agent.sendMessage("wrap up");
+    const turnElapsed = Date.now() - turnStart;
 
-    // The turn returned before the 600ms async hook finished.
+    // The turn returned before the async hook finished: the marker is not yet
+    // written and the turn itself was far shorter than the hook's delay.
     expect(fs.existsSync(markerFile)).toBe(false);
+    expect(turnElapsed).toBeLessThan(delayMs);
 
     // The async hook completes in the background afterwards.
     const start = Date.now();
-    while (!fs.existsSync(markerFile) && Date.now() - start < 5000) {
+    while (!fs.existsSync(markerFile) && Date.now() - start < delayMs + 3000) {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     expect(fs.existsSync(markerFile)).toBe(true);
