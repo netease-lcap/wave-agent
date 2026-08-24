@@ -2,6 +2,7 @@ import React from "react";
 import { ContextTag } from "./ContextTag";
 import { parseMentions, toRelativePath } from "../utils/messageUtils";
 import { isLocalhostUrl } from "../utils/isLocalhostUrl";
+import { extractClickablePath } from "../utils/clickablePath";
 import { marked } from "marked";
 import { BangBlock } from "./BangBlock";
 import { Tooltip } from "./Tooltip";
@@ -77,6 +78,12 @@ const messageMarkdownRenderer = (() => {
     const url = extractClickableUrl(text);
     if (url) {
       return `<code><a href="${url}">${url}</a></code>`;
+    }
+    // 行内代码中的文件路径提升为可点击（spec: markdown-links.md）。显示文本
+    // 保持已转义形式；点击经 a.clickable-path 委托到 openFile（见
+    // handleContentClick），desktop 打开文件面板、IDE 发 openFile RPC。
+    if (extractClickablePath(text)) {
+      return `<code><a class="clickable-path" href="#">${text}</a></code>`;
     }
     return `<code>${text}</code>`;
   };
@@ -275,10 +282,21 @@ export const Message: React.FC<MessageProps> = React.memo(
       return images;
     };
 
-    // Link routing is a desktop-host feature: localhost links open in
-    // the preview pane, everything else goes to the system browser. IDE hosts
-    // keep their native link handling, so bail BEFORE any preventDefault.
+    // Path links (inline-code file paths) are routed to openFile on every host:
+    // desktop opens the file panel, IDE hosts open the file in the editor. Must
+    // run BEFORE the desktop-only URL routing bail below.
     const handleContentClick = (e: React.MouseEvent) => {
+      const target = e.target as Element | null;
+      const pathLink = target?.closest?.("a.clickable-path");
+      if (pathLink) {
+        e.preventDefault();
+        const clickable = extractClickablePath(pathLink.textContent ?? "");
+        if (clickable) openFile(clickable.path, clickable.startLine);
+        return;
+      }
+      // Link routing is a desktop-host feature: localhost links open in
+      // the preview pane, everything else goes to the system browser. IDE hosts
+      // keep their native link handling, so bail BEFORE any preventDefault.
       if (window.waveHostType !== "desktop") return;
       const anchor = (e.target as Element | null)?.closest?.("a");
       const href = anchor?.getAttribute("href");
