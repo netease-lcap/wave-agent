@@ -43,6 +43,7 @@ const ALL_NOTIFICATION_METHODS = [
   "notificationMessageAdded",
   "permissionRequest",
   "authUrl",
+  "btwContent",
   "compactBlockAdded",
   "compactionStateChange",
   "compactionContentUpdate",
