@@ -720,6 +720,23 @@
   font-size: 0.9em;
 }
 
+/* 行内代码中的文件路径（spec: markdown-links.md）：保留代码样式 + 链接感 */
+.markdown-content code a.clickable-path {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: underline;
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--vscode-textLink-foreground) 40%,
+    transparent
+  );
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.markdown-content code a.clickable-path:hover {
+  color: var(--vscode-textLink-activeForeground);
+}
+
 .markdown-content pre {
   background-color: var(--vscode-textCodeBlock-background);
   color: var(--vscode-textPreformat-foreground);
