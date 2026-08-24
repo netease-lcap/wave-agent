@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import * as os from "os";
 import { ChatSession } from "./chatSession";
 import {
   ConfigurationService,
@@ -594,6 +595,15 @@ export class MessageHandler {
    */
   private resolveFilePath(filePath: string): string {
     if (path.isAbsolute(filePath)) return filePath;
+    // `~`-prefixed paths are home-relative, never workspace-relative
+    // (the extension host runs on the same machine as the workspace, so
+    // os.homedir() is correct for both local and Remote-SSH scenarios).
+    if (filePath === "~" || filePath.startsWith("~/")) {
+      return path.resolve(
+        os.homedir(),
+        filePath === "~" ? "." : filePath.slice(2),
+      );
+    }
     const workdir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workdir) return filePath;
     return path.resolve(workdir, filePath);

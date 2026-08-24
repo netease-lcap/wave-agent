@@ -7298,6 +7298,51 @@ describe("file panel", () => {
     );
   });
 
+  it("openFile expands a ~-prefixed path against the home dir, not the agent cwd", async () => {
+    const { host, sent } = await readyHost();
+    const homeFile = path.join(os.homedir(), ".wave", "neteasecc.json");
+    seedLocalFile(homeFile, '{"token":"x"}\n');
+
+    await host.handleWebviewMessage({
+      command: "openFile",
+      path: "~/.wave/neteasecc.json",
+    });
+
+    const fv = (
+      sent("desktopFileContent").at(-1) as { fileView: Record<string, unknown> }
+    ).fileView;
+    expect(fv).toMatchObject({
+      path: homeFile,
+      host: "local",
+      content: '{"token":"x"}\n',
+    });
+  });
+
+  it("openFile on a remote pane passes a ~-prefixed path through for the shell to expand", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host } = createHost();
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+    await host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      path: "/remote/repo",
+      host: "prod",
+    });
+    vi.mocked(readRemoteFile).mockClear();
+
+    await host.handleWebviewMessage({
+      command: "openFile",
+      path: "~/.wave/neteasecc.json",
+    });
+
+    expect(vi.mocked(readRemoteFile)).toHaveBeenCalledWith(
+      "prod",
+      "~/.wave/neteasecc.json",
+    );
+  });
+
   it("openFile on a remote pane maps an image result to base64", async () => {
     seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
     const { host, sent } = createHost();
