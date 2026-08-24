@@ -20,6 +20,7 @@ import kotlinx.serialization.json.put
 import java.awt.Desktop
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.Paths
 
 /**
  * IDE integration service: handles webview commands that touch IntelliJ IDE capabilities
@@ -40,6 +41,20 @@ object IdeService {
     data class UploadResult(val uploadedFiles: List<String>, val errors: List<String>)
 
     /**
+     * Resolve a message-relative path against the project root. The agent's
+     * real cwd (sessionCwd, possibly cd'd into a subdirectory) is only known
+     * to MessageHandler — IdeService only receives the project, so the project
+     * root is the closest base. Absolute paths (drive-letter or /-rooted)
+     * pass through untouched.
+     */
+    private fun resolveProjectPath(project: Project, path: String): String =
+        if (Paths.get(path).isAbsolute) {
+            path
+        } else {
+            project.basePath?.let { Paths.get(it, path).normalize().toString() } ?: path
+        }
+
+    /**
      * openFile — mirrors VSCE handleOpenFile (messageHandler.ts:221).
      * Params: path (String), optional startLine / endLine (1-based).
      * Opens the file and positions the caret / selection, revealing the range in center.
@@ -49,12 +64,13 @@ object IdeService {
         if (path.isNullOrEmpty()) return
         val startLine = params["startLine"]?.jsonPrimitive?.content?.toIntOrNull()
         val endLine = params["endLine"]?.jsonPrimitive?.content?.toIntOrNull()
+        val resolvedPath = resolveProjectPath(project, path)
 
         Edt.invokeLater {
             try {
-                val file = LocalFileSystem.getInstance().findFileByPath(path)
+                val file = LocalFileSystem.getInstance().findFileByPath(resolvedPath)
                 if (file == null) {
-                    showError(project, "打开文件失败: 文件不存在 $path")
+                    showError(project, "打开文件失败: 文件不存在 $resolvedPath")
                     return@invokeLater
                 }
                 val editors = FileEditorManager.getInstance(project).openFile(file, true)
@@ -86,11 +102,12 @@ object IdeService {
     fun previewImage(project: Project, params: JsonObject) {
         val path = params["path"]?.jsonPrimitive?.content
         if (path.isNullOrEmpty()) return
+        val resolvedPath = resolveProjectPath(project, path)
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                val file = File(path)
+                val file = File(resolvedPath)
                 if (!file.exists()) {
-                    showError(project, "预览图片失败: 文件不存在 $path")
+                    showError(project, "预览图片失败: 文件不存在 $resolvedPath")
                     return@executeOnPooledThread
                 }
                 if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
