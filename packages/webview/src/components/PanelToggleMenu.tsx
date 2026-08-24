@@ -13,12 +13,14 @@ const isMac =
 const PANEL_ITEMS: Array<{
   kind: DesktopPanelKind;
   label: string;
-  shortcut: string;
+  shortcut?: string;
 }> = [
   { kind: "preview", label: "预览", shortcut: isMac ? "⇧⌘P" : "Ctrl+Shift+P" },
   { kind: "diff", label: "差异", shortcut: isMac ? "⇧⌘D" : "Ctrl+Shift+D" },
   { kind: "terminal", label: "终端", shortcut: isMac ? "⌃`" : "Ctrl+`" },
-  { kind: "file", label: "文件", shortcut: isMac ? "⇧⌘F" : "Ctrl+Shift+F" },
+  // 文件面板无快捷键（与 Claude Code Desktop 一致；Ctrl+Shift+F 与 Windows
+  // 输入法简繁切换冲突），仅经菜单栏「面板 → 文件」或点击文件路径打开。
+  { kind: "file", label: "文件" },
 ];
 
 /**
@@ -76,7 +78,9 @@ export const PanelToggleMenu: React.FC<PanelToggleMenuProps> = ({
               className={`codicon codicon-check panel-toggle-menu-check${isChecked ? " panel-toggle-menu-check--on" : ""}`}
             />
             <span className="panel-toggle-menu-label">{label}</span>
-            <span className="panel-toggle-menu-shortcut">{shortcut}</span>
+            {shortcut ? (
+              <span className="panel-toggle-menu-shortcut">{shortcut}</span>
+            ) : null}
           </div>
         );
       })}

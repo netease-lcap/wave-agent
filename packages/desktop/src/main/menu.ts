@@ -75,9 +75,11 @@ export function matchSessionSwitchInput(
 
 /**
  * Map a before-input-event Input to a panel kind, or null when unrelated.
- * macOS: Shift+Cmd+P (preview) / Shift+Cmd+D (diff) / Shift+Cmd+F (file);
- * Windows/Linux: Ctrl+Shift+P / Ctrl+Shift+D / Ctrl+Shift+F; terminal is
- * Ctrl+` on every platform.
+ * macOS: Shift+Cmd+P (preview) / Shift+Cmd+D (diff); Windows/Linux:
+ * Ctrl+Shift+P / Ctrl+Shift+D; terminal is Ctrl+` on every platform.
+ * The file panel deliberately has NO shortcut (aligned with Claude Code
+ * Desktop; Ctrl+Shift+F collides with the Windows IME simplified↔traditional
+ * toggle), it opens via the 面板 → 文件 menu item or by clicking a file path.
  * Letters match on `code` because Shift uppercases them in `key`.
  */
 export function matchPanelToggleInput(
@@ -99,7 +101,6 @@ export function matchPanelToggleInput(
   if (primary && input.shift && !secondary && !input.alt) {
     if (input.code === "KeyP") return "preview";
     if (input.code === "KeyD") return "diff";
-    if (input.code === "KeyF") return "file";
   }
   return null;
 }
@@ -217,8 +218,6 @@ export function buildApplicationMenuTemplate(
           label: "文件",
           type: "checkbox",
           checked: panelChecked.includes("file"),
-          accelerator: isMac ? "Shift+Cmd+F" : "Ctrl+Shift+F",
-          registerAccelerator: false,
           click: () => actions.togglePanel("file"),
         },
       ],

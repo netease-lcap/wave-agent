@@ -140,7 +140,7 @@ describe("matchSessionSwitchInput", () => {
 });
 
 describe("matchPanelToggleInput", () => {
-  it("maps Shift+Cmd+P/D/F to preview/diff/file on macOS, matching on code", () => {
+  it("maps Shift+Cmd+P/D to preview/diff on macOS, matching on code", () => {
     expect(
       matchPanelToggleInput(
         keyEvent({ key: "P", code: "KeyP", meta: true, shift: true }),
@@ -153,15 +153,9 @@ describe("matchPanelToggleInput", () => {
         true,
       ),
     ).toBe("diff");
-    expect(
-      matchPanelToggleInput(
-        keyEvent({ key: "F", code: "KeyF", meta: true, shift: true }),
-        true,
-      ),
-    ).toBe("file");
   });
 
-  it("maps Ctrl+Shift+P/D/F to preview/diff/file on Windows/Linux", () => {
+  it("maps Ctrl+Shift+P/D to preview/diff on Windows/Linux", () => {
     expect(
       matchPanelToggleInput(
         keyEvent({ key: "P", code: "KeyP", control: true, shift: true }),
@@ -174,12 +168,6 @@ describe("matchPanelToggleInput", () => {
         false,
       ),
     ).toBe("diff");
-    expect(
-      matchPanelToggleInput(
-        keyEvent({ key: "F", code: "KeyF", control: true, shift: true }),
-        false,
-      ),
-    ).toBe("file");
   });
 
   it("maps Ctrl+` to terminal on every platform", () => {
@@ -200,50 +188,50 @@ describe("matchPanelToggleInput", () => {
   it("accepts rawKeyDown for non-text presses", () => {
     expect(
       matchPanelToggleInput(
-        keyEvent({ type: "rawKeyDown", code: "KeyF", meta: true, shift: true }),
+        keyEvent({ type: "rawKeyDown", code: "KeyD", meta: true, shift: true }),
         true,
       ),
-    ).toBe("file");
+    ).toBe("diff");
   });
 
   it("ignores keyUp/char events", () => {
     expect(
       matchPanelToggleInput(
-        keyEvent({ type: "keyUp", code: "KeyF", meta: true, shift: true }),
+        keyEvent({ type: "keyUp", code: "KeyP", meta: true, shift: true }),
         true,
       ),
     ).toBeNull();
     expect(
       matchPanelToggleInput(
-        keyEvent({ type: "char", code: "KeyF", meta: true, shift: true }),
+        keyEvent({ type: "char", code: "KeyP", meta: true, shift: true }),
         true,
       ),
     ).toBeNull();
   });
 
   it("rejects the letter combos without Shift, on the wrong platform, or with extra modifiers", () => {
-    // Without Shift: Cmd+F / Cmd+P are not panel toggles.
+    // Without Shift: Cmd+D / Cmd+P are not panel toggles.
     expect(
-      matchPanelToggleInput(keyEvent({ code: "KeyF", meta: true }), true),
+      matchPanelToggleInput(keyEvent({ code: "KeyD", meta: true }), true),
     ).toBeNull();
-    // macOS: Cmd+Shift+F on the wrong primary (control) must not toggle.
+    // macOS: Ctrl+Shift+D on the wrong primary (control) must not toggle.
     expect(
       matchPanelToggleInput(
-        keyEvent({ code: "KeyF", control: true, shift: true }),
+        keyEvent({ code: "KeyD", control: true, shift: true }),
         true,
       ),
     ).toBeNull();
-    // Windows/Linux: Meta(Win)+Shift+F must not toggle.
+    // Windows/Linux: Meta(Win)+Shift+D must not toggle.
     expect(
       matchPanelToggleInput(
-        keyEvent({ code: "KeyF", meta: true, shift: true }),
+        keyEvent({ code: "KeyD", meta: true, shift: true }),
         false,
       ),
     ).toBeNull();
-    // Ctrl+Alt+Shift+F (OS-level) must be left alone.
+    // Ctrl+Alt+Shift+D (OS-level) must be left alone.
     expect(
       matchPanelToggleInput(
-        keyEvent({ code: "KeyF", control: true, shift: true, alt: true }),
+        keyEvent({ code: "KeyD", control: true, shift: true, alt: true }),
         false,
       ),
     ).toBeNull();
@@ -252,6 +240,23 @@ describe("matchPanelToggleInput", () => {
       matchPanelToggleInput(
         keyEvent({ code: "KeyA", meta: true, shift: true }),
         true,
+      ),
+    ).toBeNull();
+  });
+
+  it("does not map Shift+Cmd+F / Ctrl+Shift+F (file panel has no shortcut)", () => {
+    // The file panel deliberately has no shortcut: Ctrl+Shift+F collides with
+    // the Windows IME simplified↔traditional toggle.
+    expect(
+      matchPanelToggleInput(
+        keyEvent({ key: "F", code: "KeyF", meta: true, shift: true }),
+        true,
+      ),
+    ).toBeNull();
+    expect(
+      matchPanelToggleInput(
+        keyEvent({ key: "F", code: "KeyF", control: true, shift: true }),
+        false,
       ),
     ).toBeNull();
   });
@@ -451,7 +456,7 @@ describe("buildApplicationMenuTemplate", () => {
   }
 
   it("shows the panel toggles with informational accelerators (registerAccelerator: false)", () => {
-    // macOS: Shift+Cmd+P / Shift+Cmd+D / Shift+Cmd+F; terminal is Ctrl+`.
+    // macOS: Shift+Cmd+P / Shift+Cmd+D; terminal is Ctrl+`; 文件 has no shortcut.
     expect(panelItemByLabel(true, "预览")).toMatchObject({
       accelerator: "Shift+Cmd+P",
       registerAccelerator: false,
@@ -460,15 +465,12 @@ describe("buildApplicationMenuTemplate", () => {
       accelerator: "Shift+Cmd+D",
       registerAccelerator: false,
     });
-    expect(panelItemByLabel(true, "文件")).toMatchObject({
-      accelerator: "Shift+Cmd+F",
-      registerAccelerator: false,
-    });
+    expect(panelItemByLabel(true, "文件")).not.toHaveProperty("accelerator");
     expect(panelItemByLabel(true, "终端")).toMatchObject({
       accelerator: "Ctrl+`",
       registerAccelerator: false,
     });
-    // Windows/Linux: Ctrl+Shift+P / Ctrl+Shift+D / Ctrl+Shift+F; terminal still Ctrl+`.
+    // Windows/Linux: Ctrl+Shift+P / Ctrl+Shift+D; terminal still Ctrl+`; 文件 no shortcut.
     expect(panelItemByLabel(false, "预览")).toMatchObject({
       accelerator: "Ctrl+Shift+P",
       registerAccelerator: false,
@@ -477,10 +479,7 @@ describe("buildApplicationMenuTemplate", () => {
       accelerator: "Ctrl+Shift+D",
       registerAccelerator: false,
     });
-    expect(panelItemByLabel(false, "文件")).toMatchObject({
-      accelerator: "Ctrl+Shift+F",
-      registerAccelerator: false,
-    });
+    expect(panelItemByLabel(false, "文件")).not.toHaveProperty("accelerator");
     expect(panelItemByLabel(false, "终端")).toMatchObject({
       accelerator: "Ctrl+`",
       registerAccelerator: false,
