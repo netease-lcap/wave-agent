@@ -257,6 +257,11 @@ class StdioAgent(
             router.unregister(oldSessionId)
             sessionId = newSessionId
             router.register(newSessionId, this)
+            // Sync the host session state: the bridge may have downgraded to a
+            // fresh session (session file missing on recreate). Without this the
+            // host keeps the destroyed sessionId and every later request fails
+            // with "Session not found".
+            callbacks.onSessionIdChange(newSessionId)
         }
     }
 

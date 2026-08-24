@@ -209,6 +209,11 @@ export class StdioAgent {
       this.router.unregister(oldSessionId);
       this.sessionId = result.sessionId;
       this.router.register(this.sessionId, this);
+      // Sync ChatSession/UI state: bridge may have downgraded to a fresh
+      // session (session file missing on recreate). Without this the ChatSession
+      // keeps the destroyed sessionId and every later request fails with
+      // "Session not found".
+      this.callbacks.onSessionIdChange?.(this.sessionId);
     }
     return result;
   }

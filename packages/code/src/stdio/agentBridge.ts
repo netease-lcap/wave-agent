@@ -739,7 +739,26 @@ export class AgentBridge {
         this.canUseTool(context, ctx),
     };
 
-    const agent = await Agent.create(options);
+    let agent: Agent;
+    try {
+      agent = await Agent.create(options);
+    } catch (createError) {
+      // The old entry was already destroyed and removed above. If the session
+      // file is missing or unrecoverable (fresh session, cleared chat, or a
+      // never-persisted empty session), fail soft: recreate WITHOUT
+      // restoreSessionId so this session slot keeps working. Without this the
+      // client's sessionId still points at the destroyed entry and every later
+      // request fails with "Session not found" until the window is reloaded.
+      // Non-session errors (bad baseURL/apiKey/config) must surface unchanged.
+      if (!options.restoreSessionId || !isSessionRecoveryError(createError)) {
+        throw createError;
+      }
+      logger?.warn(
+        `updateConfig: failed to restore session ${currentSessionId}, recreating as a fresh session:`,
+        createError,
+      );
+      agent = await Agent.create({ ...options, restoreSessionId: undefined });
+    }
     ctx.agent = agent;
     ctx.registeredSessionId = agent.sessionId;
     this.sessions.set(agent.sessionId, {
@@ -1622,4 +1641,18 @@ export class RpcError extends Error {
   toJsonRpcError(): JsonRpcError {
     return { code: this.code, message: this.message };
   }
+}
+
+/**
+ * True when the error means the restoreSessionId session cannot be recovered
+ * from disk (missing file, corrupt transcript, etc.) — the recovery actions in
+ * updateConfig/restoreSession degrade to a fresh session for these. Anything
+ * else (config validation, plugin load, …) must surface to the client.
+ */
+function isSessionRecoveryError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("not found on disk") ||
+    message.startsWith("Session not found:")
+  );
 }
