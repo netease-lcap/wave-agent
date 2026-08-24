@@ -60,9 +60,20 @@ export interface AgentContainerSetupOptions {
   addUsage: (usage: Usage) => void;
 }
 
+export interface AgentContainerSetupResult {
+  container: Container;
+  /**
+   * Unregister module-level listeners registered during setup (remote settings
+   * hot-update, auth change). Must be called when the agent is destroyed;
+   * without it the module-level callback arrays pin the agent's object graph
+   * (the callback closures capture per-agent managers).
+   */
+  teardown: () => void;
+}
+
 export function setupAgentContainer(
   setupOptions: AgentContainerSetupOptions,
-): Container {
+): AgentContainerSetupResult {
   const {
     options,
     workdir,
@@ -82,6 +93,13 @@ export function setupAgentContainer(
   const container = new Container();
   container.register("AgentOptions", options);
   container.register("Workdir", workdir);
+
+  // Module-level listener teardowns collected during setup and returned to the
+  // agent, which invokes them in destroy(). The remote-settings callback
+  // strongly captures the per-agent LiveConfigManager: without unsubscribing
+  // it in destroy(), the module-level callback array keeps every created
+  // agent's object graph alive even after the host drops its references.
+  const teardowns: Array<() => void> = [];
 
   if (options.worktreeName) {
     container.register("WorktreeName", options.worktreeName);
@@ -168,13 +186,15 @@ export function setupAgentContainer(
   container.register("McpManager", mcpManager);
 
   // Wire up auth change callback to refresh/clear remote settings
-  authService.onAuthChange(async (event) => {
-    if (event === "login") {
-      await remoteSettingsService.refresh();
-    } else if (event === "logout") {
-      remoteSettingsService.clear();
-    }
-  });
+  teardowns.push(
+    authService.onAuthChange(async (event) => {
+      if (event === "login") {
+        await remoteSettingsService.refresh();
+      } else if (event === "logout") {
+        remoteSettingsService.clear();
+      }
+    }),
+  );
 
   const lspManager = options.lspManager || new LspManager(container);
   container.register("LspManager", lspManager);
@@ -331,9 +351,14 @@ export function setupAgentContainer(
 
   // Wire up remote settings hot-update: when polling detects changed settings,
   // reload configuration so admin changes propagate to the running agent.
-  remoteSettingsService.onSettingsUpdate(async () => {
-    await liveConfigManager.reload();
-  });
+  // The callback strongly captures the per-agent LiveConfigManager, so it MUST
+  // be unsubscribed in destroy() via teardown — otherwise the module-level
+  // callback array pins the whole agent object graph.
+  teardowns.push(
+    remoteSettingsService.onSettingsUpdate(async () => {
+      await liveConfigManager.reload();
+    }),
+  );
 
   const subagentManager = new SubagentManager(container, {
     workdir,
@@ -385,5 +410,12 @@ export function setupAgentContainer(
   const workflowManager = new WorkflowManager(container);
   container.register("WorkflowManager", workflowManager);
 
-  return container;
+  return {
+    container,
+    teardown: () => {
+      for (const unsubscribe of teardowns) {
+        unsubscribe();
+      }
+    },
+  };
 }
