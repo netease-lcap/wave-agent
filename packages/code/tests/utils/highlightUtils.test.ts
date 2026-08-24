@@ -23,20 +23,21 @@ vi.mock("highlight.js", () => ({
       return { value: code };
     }),
     registerLanguage: vi.fn(),
-    getLanguage: vi.fn(),
+    getLanguage: vi.fn((language: string) => language === "ts"),
   },
 }));
 
 describe("highlightToAnsi", () => {
   let originalChalkLevel: typeof chalk.level;
   let originalForceColor: string | undefined;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeAll(() => {
     originalChalkLevel = chalk.level;
     originalForceColor = process.env.FORCE_COLOR;
     process.env.FORCE_COLOR = "1";
     chalk.level = 1;
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterAll(() => {
@@ -69,6 +70,13 @@ describe("highlightToAnsi", () => {
     const code = "some random text";
     const highlighted = highlightToAnsi(code, "nonexistent");
     expect(highlighted).toBe(code);
+  });
+
+  it("should not log console errors for unregistered languages", () => {
+    const code = "Get-Process wave";
+    const highlighted = highlightToAnsi(code, "powershell");
+    expect(highlighted).toBe(code);
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
   it("should handle errors gracefully", () => {
