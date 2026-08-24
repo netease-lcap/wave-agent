@@ -2089,6 +2089,60 @@ test("updateConfig preserves worktreeName but never re-marks the worktree as new
   expect(secondCall.isNewWorktree).toBeUndefined();
 });
 
+test("updateConfig falls back to a fresh session when the session file is missing", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create)
+    .mockResolvedValueOnce(createMockAgent())
+    // Recreate with restoreSessionId fails: session file is gone
+    .mockRejectedValueOnce(
+      new Error("Session test-session-id not found on disk"),
+    )
+    // Fallback without restoreSessionId succeeds with a new session id
+    .mockResolvedValueOnce(createMockAgent({ sessionId: "fresh-session-id" }));
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "updateConfig",
+    { model: "gpt-4" },
+    sessionId,
+  );
+
+  // Downgraded to a fresh session — the session slot must survive so the
+  // client keeps working instead of hitting "Session not found" forever
+  expect(r).toEqual({ sessionId: "fresh-session-id" });
+  const fallbackCall = vi.mocked(Agent.create).mock.calls[2][0];
+  expect(fallbackCall.restoreSessionId).toBeUndefined();
+  // The fresh session is live under the new id
+  const info = await bridge.handleRequest(
+    "getSessionInfo",
+    {},
+    "fresh-session-id",
+  );
+  expect(info).toBeDefined();
+  // The old id no longer resolves (entry was re-keyed)
+  await expect(
+    bridge.handleRequest("getSessionInfo", {}, sessionId),
+  ).rejects.toThrow(`Session not found: ${sessionId}`);
+});
+
+test("updateConfig rethrows non-session errors without fallback", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create)
+    .mockResolvedValueOnce(createMockAgent())
+    .mockRejectedValueOnce(
+      new Error("Base URL must be a valid URL format. Received: not-a-url"),
+    );
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await expect(
+    bridge.handleRequest("updateConfig", { model: "gpt-4" }, sessionId),
+  ).rejects.toThrow("Base URL must be a valid URL format");
+  // No fallback attempt was made
+  expect(vi.mocked(Agent.create).mock.calls.length).toBe(2);
+});
+
 test("destroy without agent is a no-op", async () => {
   const { bridge } = createBridge();
   // Don't initialize — agent is undefined

@@ -204,11 +204,35 @@ export class ChatProvider implements vscode.WebviewViewProvider {
             this.initializeAgent(viewType, windowId, restoreSessionId),
           listSessions: (viewType, windowId) =>
             this.listSessions(viewType, windowId),
-          updateAllSessionsConfig: (config) => {
+          updateAllSessionsConfig: async (config) => {
             const cfg = config as ConfigurationData;
-            this.sidebarSession.updateConfig(cfg);
-            this.tabSessions.forEach((session) => session.updateConfig(cfg));
-            this.windowSessions.forEach((session) => session.updateConfig(cfg));
+            // Serial: updateConfig destroys + recreates the agent in the bridge;
+            // concurrent calls on the same sessionId would delete each other's
+            // entry and leave it permanently missing ("Session not found" on
+            // every later request). Await + catch so failures are logged here
+            // instead of becoming unhandled rejections.
+            const sessions = [
+              this.sidebarSession,
+              ...this.tabSessions.values(),
+              ...this.windowSessions.values(),
+            ];
+            let failed = false;
+            for (const session of sessions) {
+              try {
+                await session.updateConfig(cfg);
+              } catch (error) {
+                failed = true;
+                console.error(
+                  `[Wave] ${session.viewType} 更新配置失败:`,
+                  error,
+                );
+              }
+            }
+            if (failed) {
+              vscode.window.showErrorMessage(
+                "部分会话配置更新失败，请重载窗口后重试。",
+              );
+            }
           },
           getVersion: () => this.context.extension.packageJSON?.version || "",
         },
