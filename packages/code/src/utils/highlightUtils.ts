@@ -108,6 +108,12 @@ export function highlightToAnsi(code: string, language?: string): string {
   if (!code) {
     return "";
   }
+  // hljs.highlight logs a console.error (then throws) when the language is not
+  // registered. We bundle a trimmed language set, so check first and fall back
+  // to plain text instead of spamming stderr with LANGUAGE_NOT_FOUND noise.
+  if (language && !hljs.getLanguage(language)) {
+    return code;
+  }
   try {
     const highlighted = language
       ? hljs.highlight(code, { language }).value
