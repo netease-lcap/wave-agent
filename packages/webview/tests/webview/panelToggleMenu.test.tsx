@@ -23,7 +23,7 @@ function renderMenu(overrides?: {
 }
 
 describe("PanelToggleMenu", () => {
-  it("renders the four panel items with labels and shortcuts", () => {
+  it("renders the four panel items with labels and shortcuts (file has none)", () => {
     renderMenu();
     expect(screen.getByTestId("panel-toggle-item-preview")).toHaveTextContent(
       "预览",
@@ -36,10 +36,14 @@ describe("PanelToggleMenu", () => {
     );
     const fileItem = screen.getByTestId("panel-toggle-item-file");
     expect(fileItem).toHaveTextContent("文件");
-    // Shortcut follows the platform: ⇧⌘F on macOS, Ctrl+Shift+F elsewhere.
-    const fileShortcut = fileItem.querySelector(".panel-toggle-menu-shortcut");
-    expect(fileShortcut).not.toBeNull();
-    expect(["⇧⌘F", "Ctrl+Shift+F"]).toContain(fileShortcut!.textContent);
+    // 文件面板无快捷键（对齐 Claude Code Desktop；Ctrl+Shift+F 与 Windows
+    // 输入法简繁切换冲突），预览/差异/终端仍显示平台对应快捷键。
+    expect(fileItem.querySelector(".panel-toggle-menu-shortcut")).toBeNull();
+    expect(
+      screen
+        .getByTestId("panel-toggle-item-preview")
+        .querySelector(".panel-toggle-menu-shortcut"),
+    ).not.toBeNull();
   });
 
   it("reflects checked state via aria-checked and the check icon", () => {
