@@ -226,13 +226,14 @@ describe("Hook real-command execution (spec automation/hooks.md)", () => {
   });
 
   it("runs async hooks in the background without blocking the turn (hooks.md / 异步 Hook 执行 / 场景 1)", async () => {
-    const markerFile = path.join(workdir, "async-hook-done.txt");
-    // The hook's own delay is the observable signal that the turn was not
-    // blocked: a blocking hook would make sendMessage take >= delayMs. 3s
-    // keeps a wide margin over the turn's post-hook work even when the
-    // Windows CI job runs the whole suite in parallel forks (600ms was
-    // flaky under that contention).
-    const delayMs = 3000;
+    // Deterministic handshake instead of a wall-clock race: the async hook
+    // blocks on releaseFile, so when sendMessage returns the done file CANNOT
+    // exist yet — the test has not written release. No fixed delay is part of
+    // the verified behavior; a blocking hook would hang sendMessage on the
+    // same wait and fail via the test timeout. The 15s hook timeout only
+    // guards against a failed test leaving the child process behind.
+    const releaseFile = path.join(workdir, "async-hook-release.txt");
+    const doneFile = path.join(workdir, "async-hook-done.txt");
     const hooks: PartialHookConfiguration = {
       Stop: [
         {
@@ -240,7 +241,13 @@ describe("Hook real-command execution (spec automation/hooks.md)", () => {
             {
               type: "command",
               async: true,
-              command: `node -e 'setTimeout(() => require("fs").writeFileSync(process.argv[1], "done"), ${delayMs})' ${markerFile}`,
+              timeout: 15,
+              command: [
+                `node -e 'const fs=require("fs");const r=process.argv[1],d=process.argv[2];`,
+                `const t=setInterval(()=>{if(fs.existsSync(r)){clearInterval(t);fs.writeFileSync(d,"done")}},10)'`,
+                releaseFile,
+                doneFile,
+              ].join(" "),
             },
           ],
         },
@@ -249,20 +256,18 @@ describe("Hook real-command execution (spec automation/hooks.md)", () => {
     agent = await Agent.create({ workdir, hooks });
     callAgent.mockResolvedValue({ content: "finished", finish_reason: "stop" });
 
-    const turnStart = Date.now();
     await agent.sendMessage("wrap up");
-    const turnElapsed = Date.now() - turnStart;
 
-    // The turn returned before the async hook finished: the marker is not yet
-    // written and the turn itself was far shorter than the hook's delay.
-    expect(fs.existsSync(markerFile)).toBe(false);
-    expect(turnElapsed).toBeLessThan(delayMs);
+    // The turn returned while the hook was still waiting on releaseFile, so
+    // the done marker is guaranteed to be absent — no timing is assumed.
+    expect(fs.existsSync(doneFile)).toBe(false);
 
-    // The async hook completes in the background afterwards.
+    // Release the hook; it completes in the background afterwards.
+    fs.writeFileSync(releaseFile, "go");
     const start = Date.now();
-    while (!fs.existsSync(markerFile) && Date.now() - start < delayMs + 3000) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
+    while (!fs.existsSync(doneFile) && Date.now() - start < 5000) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    expect(fs.existsSync(markerFile)).toBe(true);
+    expect(fs.existsSync(doneFile)).toBe(true);
   });
 });
