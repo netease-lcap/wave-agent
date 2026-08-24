@@ -908,6 +908,56 @@ describe("inputReducer", () => {
       expect(result.pendingEffect).toEqual({ type: "PASTE_IMAGE" });
     });
 
+    it("should handle alt+v to paste image on Windows", () => {
+      // Windows terminals reserve Ctrl+V for system paste, so Alt+V (reported
+      // by Ink as meta) is the paste-image shortcut there (Claude Code parity).
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", {
+        value: "win32",
+        writable: true,
+      });
+      try {
+        const result = inputReducer(initialState, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "v",
+            key: { meta: true } as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.pendingEffect).toEqual({ type: "PASTE_IMAGE" });
+      } finally {
+        Object.defineProperty(process, "platform", {
+          value: originalPlatform,
+          writable: true,
+        });
+      }
+    });
+
+    it("should not treat alt+v as image paste outside Windows", () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", {
+        value: "linux",
+        writable: true,
+      });
+      try {
+        const result = inputReducer(initialState, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "v",
+            key: { meta: true } as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.pendingEffect).toBeNull();
+      } finally {
+        Object.defineProperty(process, "platform", {
+          value: originalPlatform,
+          writable: true,
+        });
+      }
+    });
+
     it("should handle ctrl+r to search history", () => {
       const result = inputReducer(initialState, {
         type: "HANDLE_KEY",

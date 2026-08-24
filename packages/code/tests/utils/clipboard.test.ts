@@ -15,6 +15,7 @@ const mockTmpdir = vi.hoisted(() => vi.fn());
 // Mock child_process with dynamic import support
 vi.mock("child_process", () => ({
   exec: mockExec,
+  execFile: mockExec,
 }));
 
 // Mock util module
@@ -221,6 +222,29 @@ describe("Clipboard Utils", () => {
         );
       });
 
+      it("should pass the script as argv to powershell.exe (no cmd shell)", async () => {
+        // Regression: the script used to be concatenated into a shell command
+        // line (`powershell -Command "..."` via exec), which routes through
+        // cmd /c and mangles the nested double quotes — PowerShell then exits
+        // 0 with empty output, so every paste silently failed on Windows.
+        mockExec
+          .mockResolvedValueOnce({ stdout: "true" }) // hasImage check
+          .mockResolvedValueOnce({ stdout: "true" }); // saveScript
+        mockExistsSync.mockReturnValue(true);
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(true);
+        expect(mockExec).toHaveBeenCalledWith(
+          "powershell.exe",
+          expect.arrayContaining([
+            "-NoProfile",
+            "-Command",
+            expect.stringContaining("Get-Clipboard"),
+          ]),
+        );
+      });
+
       it("should handle unexpected errors in readClipboardImageWindows", async () => {
         // Mock promisify to throw
         const { promisify } = await import("util");
@@ -231,9 +255,7 @@ describe("Clipboard Utils", () => {
         const result = await readClipboardImage();
 
         expect(result.success).toBe(false);
-        expect(result.error).toContain(
-          "Failed to read clipboard image on Windows",
-        );
+        expect(result.error).toContain("Failed to access clipboard on Windows");
       });
     });
 
