@@ -4683,29 +4683,6 @@ export class DesktopHost {
   };
 
   /**
-   * Resolve a message-relative path against the pane agent's cwd. Agent
-   * markdown (行内代码路径, spec markdown-links) routinely writes paths
-   * relative to its working directory; without this the host would stat them
-   * against the Electron process cwd and report 文件不存在. Absolute paths pass
-   * through untouched; remote hosts resolve with posix rules (the agent's cwd
-   * is an absolute path on that host).
-   */
-  private resolvePanelPath(
-    paneId: string,
-    host: string,
-    filePath: string,
-  ): string {
-    const p = host === LOCAL_HOST ? path : path.posix;
-    // Pass absolute paths through untouched: on Windows path.resolve would
-    // rewrite /work/x.ts to C:\work\x.ts (drive-root prefixing).
-    if (p.isAbsolute(filePath)) return filePath;
-    const agent = this.agentForPane(paneId);
-    const cwd = agent?.workingDirectory;
-    if (!cwd) return filePath;
-    return p.resolve(cwd, filePath);
-  }
-
-  /**
    * Read a file for the file panel and push desktopFileContent to its pane.
    * Local files are read straight from disk; remote ones over ssh (base64 for
    * images, NUL-detected text otherwise). Failures land in fileView.error and
@@ -4719,12 +4696,11 @@ export class DesktopHost {
   ): Promise<void> {
     if (!filePath) return;
     const host = this.hostForPane(paneId);
-    const resolved = this.resolvePanelPath(paneId, host, filePath);
     try {
       const fileView =
         host === LOCAL_HOST
-          ? await this.readLocalFileForPanel(resolved)
-          : await this.readRemoteFileForPanel(host, resolved);
+          ? await this.readLocalFileForPanel(filePath)
+          : await this.readRemoteFileForPanel(host, filePath);
       this.postMessage({
         command: "desktopFileContent",
         paneId,
@@ -4735,7 +4711,7 @@ export class DesktopHost {
         command: "desktopFileContent",
         paneId,
         fileView: {
-          path: resolved,
+          path: filePath,
           host,
           error: error instanceof Error ? error.message : String(error),
         },
