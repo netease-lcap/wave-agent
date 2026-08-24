@@ -943,6 +943,37 @@ describe("inputHandlers", () => {
       });
     });
 
+    it("should handle alt+v for image paste on Windows", async () => {
+      // Windows terminals reserve Ctrl+V for system paste, so Alt+V (reported
+      // by Ink as meta) is the paste-image shortcut there (Claude Code parity).
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", {
+        value: "win32",
+        writable: true,
+      });
+      try {
+        const key = { meta: true } as Key;
+        vi.mocked(readClipboardImage).mockResolvedValue({
+          success: true,
+          imagePath: "p.png",
+          mimeType: "i/p",
+        });
+        await handleNormalInput(initialState, dispatch, callbacks, "v", key);
+
+        await vi.waitFor(() => {
+          expect(dispatch).toHaveBeenCalledWith({
+            type: "ADD_IMAGE_AND_INSERT_PLACEHOLDER",
+            payload: { path: "p.png", mimeType: "i/p" },
+          });
+        });
+      } finally {
+        Object.defineProperty(process, "platform", {
+          value: originalPlatform,
+          writable: true,
+        });
+      }
+    });
+
     it("should handle ctrl+r for history search", async () => {
       const key = { ctrl: true } as Key;
       await handleNormalInput(initialState, dispatch, callbacks, "r", key);

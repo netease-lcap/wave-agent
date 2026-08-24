@@ -37,6 +37,15 @@ export const btwOverlayActiveRef: { current: boolean } = { current: false };
 
 export const ESC_DOUBLE_PRESS_TIMEOUT_MS = 1000;
 
+/**
+ * Paste-image shortcut: Ctrl+V everywhere, plus Alt+V on Windows — Windows
+ * terminals reserve Ctrl+V for their own system paste, so the key never
+ * reaches the app (same platform split as Claude Code). Ink reports Alt+V
+ * as meta.
+ */
+export const isPasteImageKey = (key: Key, input: string): boolean =>
+  (key.ctrl || (process.platform === "win32" && key.meta)) && input === "v";
+
 export type PendingEffect =
   | {
       type: "SEND_MESSAGE";
@@ -1121,7 +1130,7 @@ export function inputReducer(
         };
       }
 
-      if (key.ctrl && input === "v") {
+      if (isPasteImageKey(key, input)) {
         return { ...state, pendingEffect: { type: "PASTE_IMAGE" } };
       }
 

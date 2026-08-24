@@ -141,29 +141,49 @@ async function readClipboardImageMac(): Promise<ClipboardImageResult> {
 }
 
 /**
+ * Run a PowerShell script via execFile (no cmd shell), returning stdout.
+ *
+ * The script must be passed as a single argv element: routing
+ * `powershell -Command "<script>"` through exec() / cmd /c mangles the
+ * nested double quotes (cmd strips them), so PowerShell receives garbage
+ * and exits 0 with empty output — image paste silently failed on Windows.
+ */
+async function runPowerShellScript(script: string): Promise<string> {
+  const { execFile } = await import("child_process");
+  const { promisify } = await import("util");
+  const execFileAsync = promisify(execFile);
+  const { stdout } = await execFileAsync("powershell.exe", [
+    "-NoProfile",
+    "-Command",
+    script,
+  ]);
+  return stdout;
+}
+
+// Check script shared by the two Windows clipboard functions. Get-Clipboard
+// is PowerShell 5.1's built-in cmdlet (same as Claude Code): no WinForms/STA
+// ceremony, returns a System.Drawing.Image directly.
+const CLIPBOARD_IMAGE_CHECK_SCRIPT = `
+  $image = Get-Clipboard -Format Image -ErrorAction SilentlyContinue
+  if ($null -ne $image) {
+    Write-Output "true"
+  } else {
+    Write-Output "false"
+  }
+`;
+
+async function hasPowerShellClipboardImage(): Promise<boolean> {
+  const stdout = await runPowerShellScript(CLIPBOARD_IMAGE_CHECK_SCRIPT);
+  return stdout.trim() === "true";
+}
+
+/**
  * Read clipboard image on Windows
  */
 async function readClipboardImageWindows(): Promise<ClipboardImageResult> {
   try {
-    const { exec } = await import("child_process");
-    const { promisify } = await import("util");
-    const execAsync = promisify(exec);
-
-    // Use PowerShell to check if clipboard contains image
-    const checkScript = `
-      Add-Type -AssemblyName System.Windows.Forms
-      if ([System.Windows.Forms.Clipboard]::ContainsImage()) {
-        Write-Output "true"
-      } else {
-        Write-Output "false"
-      }
-    `;
-
     try {
-      const { stdout } = await execAsync(
-        `powershell -Command "${checkScript}"`,
-      );
-      const hasImage = stdout.trim() === "true";
+      const hasImage = await hasPowerShellClipboardImage();
 
       if (!hasImage) {
         return {
@@ -175,22 +195,20 @@ async function readClipboardImageWindows(): Promise<ClipboardImageResult> {
       // Generate temporary file path
       const tempFilePath = join(tmpdir(), `clipboard-image-${Date.now()}.png`);
 
-      // Use PowerShell to save clipboard image
+      // Save the clipboard image via PowerShell (single-quoted path; a single
+      // quote in the path is escaped by doubling it). Keeps its own preamble
+      // because it needs the $image variable.
       const saveScript = `
-        Add-Type -AssemblyName System.Windows.Forms
-        Add-Type -AssemblyName System.Drawing
-        $image = [System.Windows.Forms.Clipboard]::GetImage()
-        if ($image -ne $null) {
-          $image.Save("${tempFilePath.replace(/\\/g, "\\\\")}", [System.Drawing.Imaging.ImageFormat]::Png)
+        $image = Get-Clipboard -Format Image -ErrorAction SilentlyContinue
+        if ($null -ne $image) {
+          $image.Save('${tempFilePath.replace(/'/g, "''")}', [System.Drawing.Imaging.ImageFormat]::Png)
           Write-Output "true"
         } else {
           Write-Output "false"
         }
       `;
 
-      const { stdout: saveResult } = await execAsync(
-        `powershell -Command "${saveScript}"`,
-      );
+      const saveResult = await runPowerShellScript(saveScript);
 
       if (saveResult.trim() !== "true" || !existsSync(tempFilePath)) {
         return {
@@ -354,21 +372,7 @@ async function hasClipboardImageMac(): Promise<boolean> {
  */
 async function hasClipboardImageWindows(): Promise<boolean> {
   try {
-    const { exec } = await import("child_process");
-    const { promisify } = await import("util");
-    const execAsync = promisify(exec);
-
-    const checkScript = `
-      Add-Type -AssemblyName System.Windows.Forms
-      if ([System.Windows.Forms.Clipboard]::ContainsImage()) {
-        Write-Output "true"
-      } else {
-        Write-Output "false"
-      }
-    `;
-
-    const { stdout } = await execAsync(`powershell -Command "${checkScript}"`);
-    return stdout.trim() === "true";
+    return await hasPowerShellClipboardImage();
   } catch {
     return false;
   }

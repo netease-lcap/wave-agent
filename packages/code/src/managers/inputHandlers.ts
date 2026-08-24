@@ -5,6 +5,7 @@ import {
   InputState,
   InputAction,
   InputManagerCallbacks,
+  isPasteImageKey,
 } from "./inputReducer.js";
 
 export const expandLongTextPlaceholders = (
@@ -677,7 +678,7 @@ export const handleNormalInput = async (
     return true;
   }
 
-  if (key.ctrl && input === "v") {
+  if (isPasteImageKey(key, input)) {
     handlePasteImage(dispatch).catch((error) => {
       console.warn("Failed to handle paste image:", error);
     });

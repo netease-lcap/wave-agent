@@ -72,7 +72,12 @@ export const HelpView: React.FC<HelpViewProps> = ({
     { key: "Ctrl+O", description: "Expand/collapse messages" },
     { key: "Ctrl+T", description: "Toggle task list" },
     { key: "Ctrl+B", description: "Background current task" },
-    { key: "Ctrl+V", description: "Paste image" },
+    // Windows terminals reserve Ctrl+V for system paste (it never reaches the
+    // app), so image paste is Alt+V there — same split as Claude Code.
+    {
+      key: process.platform === "win32" ? "Alt+V" : "Ctrl+V",
+      description: "Paste image",
+    },
     { key: "Ctrl+J", description: "Newline" },
     { key: "Ctrl+A", description: "Cursor to line start" },
     { key: "Ctrl+E", description: "Cursor to line end" },
