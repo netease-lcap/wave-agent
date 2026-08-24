@@ -50,10 +50,6 @@ object IdeService {
     private fun resolveProjectPath(project: Project, path: String): String =
         if (Paths.get(path).isAbsolute) {
             path
-        } else if (path == "~" || path.startsWith("~/")) {
-            // `~`-prefixed paths are home-relative, never project-relative.
-            val home = System.getProperty("user.home")
-            if (path == "~") home else Paths.get(home, path.removePrefix("~/")).normalize().toString()
         } else {
             project.basePath?.let { Paths.get(it, path).normalize().toString() } ?: path
         }

@@ -4699,17 +4699,6 @@ export class DesktopHost {
     // Pass absolute paths through untouched: on Windows path.resolve would
     // rewrite /work/x.ts to C:\work\x.ts (drive-root prefixing).
     if (p.isAbsolute(filePath)) return filePath;
-    // `~`-prefixed paths are home-relative, never cwd-relative (resolving
-    // them against the agent cwd would yield <cwd>/~/.wave/… and miss).
-    // Remote shells expand `~` themselves in readRemoteFile/listRemoteDirs,
-    // so pass them through; local hosts expand here (Node never does).
-    if (filePath === "~" || filePath.startsWith("~/")) {
-      if (host !== LOCAL_HOST) return filePath;
-      return path.resolve(
-        os.homedir(),
-        filePath === "~" ? "." : filePath.slice(2),
-      );
-    }
     const agent = this.agentForPane(paneId);
     const cwd = agent?.workingDirectory;
     if (!cwd) return filePath;
