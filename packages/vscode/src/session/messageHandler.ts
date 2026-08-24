@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import * as path from "path";
 import { ChatSession } from "./chatSession";
 import {
   ConfigurationService,
@@ -586,19 +585,6 @@ export class MessageHandler {
     }
   }
 
-  /**
-   * Resolve a message-relative path against the workspace root — the agent's
-   * seeded cwd (chatSession.ts) — without touching the session registry, which
-   * would lazily materialize a tab/window session just to read a file path.
-   * Absolute paths pass through untouched.
-   */
-  private resolveFilePath(filePath: string): string {
-    if (path.isAbsolute(filePath)) return filePath;
-    const workdir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workdir) return filePath;
-    return path.resolve(workdir, filePath);
-  }
-
   private async handleOpenFile(
     filePath: string,
     startLine?: number,
@@ -606,7 +592,7 @@ export class MessageHandler {
   ) {
     if (!filePath) return;
 
-    const uri = vscode.Uri.file(this.resolveFilePath(filePath));
+    const uri = vscode.Uri.file(filePath);
     try {
       const document = await vscode.workspace.openTextDocument(uri);
       const editor = await vscode.window.showTextDocument(document);
@@ -650,7 +636,7 @@ export class MessageHandler {
     if (!filePath) return;
 
     try {
-      const uri = vscode.Uri.file(this.resolveFilePath(filePath));
+      const uri = vscode.Uri.file(filePath);
       await vscode.commands.executeCommand("vscode.open", uri);
     } catch (error) {
       console.error("预览图片失败:", error);
