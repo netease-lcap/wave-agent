@@ -7090,6 +7090,26 @@ describe("file panel", () => {
     ]);
   });
 
+  it("openFile resolves a relative path against the pane agent's cwd", async () => {
+    // Agent markdown writes paths relative to its working directory; the host
+    // must resolve them before reading, not stat against the process cwd.
+    const { host, sent } = await readyHost();
+    const resolved = path.resolve("/work/a", "src.ts"); // platform-correct
+    seedLocalFile(resolved, "const x = 1;\n");
+
+    await host.handleWebviewMessage({ command: "openFile", path: "src.ts" });
+
+    const fv = (
+      sent("desktopFileContent").at(-1) as { fileView: Record<string, unknown> }
+    ).fileView;
+    expect(fv).toMatchObject({
+      path: resolved,
+      host: "local",
+      content: "const x = 1;\n",
+      truncated: false,
+    });
+  });
+
   it("openFile truncates text files past the line cap and still reports the total", async () => {
     const { host, sent } = await readyHost();
     const content = `${"a\n".repeat(REMOTE_FILE_MAX_LINES)}b`; // 2001 lines
@@ -7252,6 +7272,30 @@ describe("file panel", () => {
       startLine: 5,
       endLine: 10,
     });
+  });
+
+  it("openFile on a remote pane resolves a relative path with posix rules", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host } = createHost();
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+    // Bind a remote agent whose cwd is the remote absolute path, so the
+    // relative message path resolves against it (never against a local drive).
+    await host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      path: "/remote/repo",
+      host: "prod",
+    });
+    vi.mocked(readRemoteFile).mockClear();
+
+    await host.handleWebviewMessage({ command: "openFile", path: "src.ts" });
+
+    expect(vi.mocked(readRemoteFile)).toHaveBeenCalledWith(
+      "prod",
+      "/remote/repo/src.ts",
+    );
   });
 
   it("openFile on a remote pane maps an image result to base64", async () => {
