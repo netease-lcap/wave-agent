@@ -82,6 +82,8 @@ export class Agent {
   private taskManager: TaskManager;
   private foregroundTaskManager: ForegroundTaskManager;
   private container: Container;
+  /** Unregister module-level listeners registered during container setup; invoked at the end of destroy(). */
+  private teardown: () => void = () => {};
   private configurationService: ConfigurationService; // Add configuration service
   private workdir: string; // Working directory
   private systemPrompt?: string; // Custom system prompt
@@ -158,7 +160,7 @@ export class Agent {
     // Store options for dynamic configuration resolution
     this.options = options;
 
-    this.container = setupAgentContainer({
+    const { container, teardown } = setupAgentContainer({
       options,
       workdir: this.workdir,
       configurationService: this.configurationService,
@@ -182,6 +184,8 @@ export class Agent {
       addPermissionRule: (rule) => this.addPermissionRule(rule),
       addUsage: (usage) => this.messageManager.addUsage(usage),
     });
+    this.container = container;
+    this.teardown = teardown;
 
     // Retrieve managers from container
     this.foregroundTaskManager = this.container.get("ForegroundTaskManager")!;
@@ -941,6 +945,15 @@ export class Agent {
         `Async work did not drain: ${this.asyncWorkRegistry.size} live work item(s) remain after destroy`,
       );
     }
+
+    // Unregister module-level listeners (remote settings hot-update, auth
+    // change) so the agent's object graph becomes collectable. Without this,
+    // the module-level callback arrays pin every created agent via the
+    // per-agent closure contexts, even after the host drops its references.
+    this.teardown();
+    // Break the DI container's internal references (services/factories) so no
+    // per-agent manager is retained through it after destroy.
+    this.container.clear();
   }
 
   /**

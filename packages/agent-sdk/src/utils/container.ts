@@ -64,6 +64,16 @@ export class Container {
       (this.parent ? this.parent.has(token) : false)
     );
   }
+
+  /**
+   * Remove all registered services and factories. Call during teardown so the
+   * container does not retain references to per-agent services after the
+   * agent is destroyed (breaking the agent's object graph).
+   */
+  clear(): void {
+    this.services.clear();
+    this.factories.clear();
+  }
 }
 
 // Example usage for ToolManager:
