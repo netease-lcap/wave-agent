@@ -5,12 +5,14 @@ import {
   fireEvent,
   act,
   sendCommand,
+  waitFor,
 } from "./test-utils";
 import {
   EDIT_TOOL_NAME,
   BASH_TOOL_NAME,
   WRITE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
+  ASK_USER_QUESTION_TOOL_NAME,
 } from "wave-agent-sdk";
 
 describe("Confirmation Dialog", () => {
@@ -733,5 +735,374 @@ describe("Confirmation Dialog", () => {
 
     expect(document.querySelector(".confirmation-dialog")).toBeInTheDocument();
     expect(screen.getByText("是，并跳过权限确认")).toBeInTheDocument();
+  });
+});
+
+describe("AskUserQuestion Other input", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const showAskUser = (questions: unknown[]) => {
+    act(() => {
+      sendCommand("showConfirmation", {
+        confirmationId: "ask-user-other",
+        toolName: ASK_USER_QUESTION_TOOL_NAME,
+        confirmationType: "需要确认",
+        toolInput: { questions },
+      });
+    });
+  };
+
+  const singleQuestion = [
+    {
+      question: "单选：选哪个方案？",
+      options: [{ label: "方案 A" }, { label: "方案 B" }],
+      multiSelect: false,
+    },
+  ];
+
+  const waitForDialog = () =>
+    waitFor(() => {
+      expect(
+        document.querySelector(".confirmation-dialog"),
+      ).toBeInTheDocument();
+    });
+
+  it("should not show the other textarea until Other is selected", async () => {
+    renderChatApp();
+    showAskUser(singleQuestion);
+    await waitForDialog();
+
+    expect(document.querySelector(".other-text-input")).not.toBeInTheDocument();
+
+    // Selecting a normal option keeps the textarea hidden
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="0"] input[type="radio"]',
+        )!,
+      );
+    });
+    expect(document.querySelector(".other-text-input")).not.toBeInTheDocument();
+
+    // Selecting Other reveals the textarea
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="radio"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+    });
+  });
+
+  it("should submit the typed custom answer for single-select", async () => {
+    const { vscode } = renderChatApp();
+    showAskUser(singleQuestion);
+    await waitForDialog();
+
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="radio"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+    });
+    act(() => {
+      fireEvent.change(document.querySelector(".other-text-input")!, {
+        target: { value: "自定义答案" },
+      });
+    });
+
+    vscode.postMessage.mockClear();
+    act(() => {
+      fireEvent.click(document.querySelector(".confirmation-btn-apply")!);
+    });
+
+    const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
+    const response = sent.find((m) => m.command === "confirmationResponse");
+    expect(response).toBeDefined();
+    const message = JSON.parse(response.decision.message);
+    expect(message["单选：选哪个方案？"]).toBe("自定义答案");
+  });
+
+  it("should keep typed content when switching away from Other and back", async () => {
+    renderChatApp();
+    showAskUser(singleQuestion);
+    await waitForDialog();
+
+    // Select Other and type
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="radio"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+    });
+    act(() => {
+      fireEvent.change(document.querySelector(".other-text-input")!, {
+        target: { value: "自定义答案" },
+      });
+    });
+
+    // Switch back to 方案 A -> textarea hides
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="0"] input[type="radio"]',
+        )!,
+      );
+    });
+    await waitFor(() => {
+      expect(
+        document.querySelector(".other-text-input"),
+      ).not.toBeInTheDocument();
+    });
+
+    // Select Other again -> content is restored
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="radio"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+    });
+    expect(
+      (document.querySelector(".other-text-input") as HTMLTextAreaElement)
+        .value,
+    ).toBe("自定义答案");
+  });
+
+  it("should not let focusing elements change the selected answer", async () => {
+    renderChatApp();
+    showAskUser(singleQuestion);
+    await waitForDialog();
+
+    // Select 方案 A
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="0"] input[type="radio"]',
+        )!,
+      );
+    });
+    expect(
+      document.querySelector('.option-item[data-option-index="0"]')?.className,
+    ).toContain("selected");
+
+    // The textarea must not exist (Other not selected), so it can never
+    // swallow the answer when focus passes over it.
+    expect(document.querySelector(".other-text-input")).not.toBeInTheDocument();
+
+    // Focusing the Other label itself does not change the answer
+    act(() => {
+      fireEvent.focus(document.querySelector(".other-option")!);
+    });
+    expect(
+      document.querySelector('.option-item[data-option-index="0"]')?.className,
+    ).toContain("selected");
+    expect(document.querySelector(".other-option")?.className).not.toContain(
+      "selected",
+    );
+  });
+
+  it("multi-select: shows textarea on checking Other and keeps content", async () => {
+    renderChatApp();
+    showAskUser([
+      {
+        question: "多选：哪些模块？",
+        options: [{ label: "客户档案" }, { label: "合同管理" }],
+        multiSelect: true,
+      },
+    ]);
+    await waitForDialog();
+
+    expect(document.querySelector(".other-text-input")).not.toBeInTheDocument();
+
+    // Check Other -> textarea appears
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="checkbox"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+    });
+    act(() => {
+      fireEvent.change(document.querySelector(".other-text-input")!, {
+        target: { value: "数据看板" },
+      });
+    });
+
+    // Uncheck Other -> textarea hides, content kept
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="checkbox"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(
+        document.querySelector(".other-text-input"),
+      ).not.toBeInTheDocument();
+    });
+
+    // Re-check Other -> content restored
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="checkbox"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+    });
+    expect(
+      (document.querySelector(".other-text-input") as HTMLTextAreaElement)
+        .value,
+    ).toBe("数据看板");
+  });
+
+  it("multi-select: does not submit the other text when Other is unchecked", async () => {
+    const { vscode } = renderChatApp();
+    showAskUser([
+      {
+        question: "多选：哪些模块？",
+        options: [{ label: "客户档案" }, { label: "合同管理" }],
+        multiSelect: true,
+      },
+    ]);
+    await waitForDialog();
+
+    // Select 客户档案
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="0"] input[type="checkbox"]',
+        )!,
+      );
+    });
+    // Check Other and type
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="checkbox"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+    });
+    act(() => {
+      fireEvent.change(document.querySelector(".other-text-input")!, {
+        target: { value: "数据看板" },
+      });
+    });
+    // Uncheck Other again -> typed content must not be submitted
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="checkbox"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(
+        document.querySelector(".other-text-input"),
+      ).not.toBeInTheDocument();
+    });
+
+    vscode.postMessage.mockClear();
+    act(() => {
+      fireEvent.click(document.querySelector(".confirmation-btn-apply")!);
+    });
+
+    const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
+    const response = sent.find((m) => m.command === "confirmationResponse");
+    expect(response).toBeDefined();
+    const message = JSON.parse(response.decision.message);
+    expect(message["多选：哪些模块？"]).toEqual(["客户档案"]);
+  });
+
+  it("multi-select: submits both options and the custom answer", async () => {
+    const { vscode } = renderChatApp();
+    showAskUser([
+      {
+        question: "多选：哪些模块？",
+        options: [{ label: "客户档案" }, { label: "合同管理" }],
+        multiSelect: true,
+      },
+    ]);
+    await waitForDialog();
+
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="0"] input[type="checkbox"]',
+        )!,
+      );
+    });
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="checkbox"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+    });
+    act(() => {
+      fireEvent.change(document.querySelector(".other-text-input")!, {
+        target: { value: "数据看板" },
+      });
+    });
+
+    vscode.postMessage.mockClear();
+    act(() => {
+      fireEvent.click(document.querySelector(".confirmation-btn-apply")!);
+    });
+
+    const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
+    const response = sent.find((m) => m.command === "confirmationResponse");
+    expect(response).toBeDefined();
+    const message = JSON.parse(response.decision.message);
+    expect(message["多选：哪些模块？"]).toEqual(["客户档案", "数据看板"]);
+  });
+
+  it("multi-question: answering q1 enables 下一个 without other input interference", async () => {
+    renderChatApp();
+    showAskUser([
+      ...singleQuestion,
+      {
+        question: "第二个问题：选择语言？",
+        options: [{ label: "TypeScript" }, { label: "Python" }],
+        multiSelect: false,
+      },
+    ]);
+    await waitForDialog();
+
+    // q1: select 方案 A
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="0"] input[type="radio"]',
+        )!,
+      );
+    });
+
+    // 下一个 must be enabled (answer intact) and the textarea must not exist
+    const nextBtn = document.querySelector(
+      ".confirmation-btn-secondary",
+    ) as HTMLButtonElement;
+    expect(nextBtn).toBeInTheDocument();
+    expect(nextBtn.disabled).toBe(false);
+    expect(document.querySelector(".other-text-input")).not.toBeInTheDocument();
+
+    // Navigate to q2
+    act(() => {
+      fireEvent.click(nextBtn);
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "第二个问题",
+      );
+    });
   });
 });
