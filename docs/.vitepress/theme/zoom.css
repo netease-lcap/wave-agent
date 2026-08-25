@@ -1,0 +1,12 @@
+.vp-doc img {
+  cursor: zoom-in;
+}
+
+/* medium-zoom overlay 图片带阴影以贴合浅色/深色主题 */
+.medium-zoom-overlay {
+  z-index: 30;
+}
+
+.medium-zoom-image {
+  z-index: 31;
+}
