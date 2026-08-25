@@ -67,8 +67,14 @@ const AgentsDialog: React.FC<
       }
     };
 
+    // Escape closes only the dialog. A capture-phase listener with
+    // stopPropagation runs before React's synthetic onKeyDown (attached at the
+    // root container), so the keypress never reaches MessageInput's
+    // onAbortMessage and the in-flight agent loop keeps running.
     const handleEscapeKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
         if (selectedName) {
           setSelectedName(null);
         } else {
@@ -82,12 +88,12 @@ const AgentsDialog: React.FC<
     const timer = setTimeout(() => {
       document.addEventListener("mousedown", handleClickOutside);
     }, 0);
-    document.addEventListener("keydown", handleEscapeKey);
+    document.addEventListener("keydown", handleEscapeKey, true);
 
     return () => {
       clearTimeout(timer);
       document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEscapeKey);
+      document.removeEventListener("keydown", handleEscapeKey, true);
     };
   }, [onClose, selectedName]);
 

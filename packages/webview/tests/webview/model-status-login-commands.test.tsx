@@ -80,6 +80,41 @@ describe("Model, Status, and Login Commands", () => {
         ).not.toBeInTheDocument();
       });
     });
+
+    it("Escape while streaming closes the dialog without aborting the conversation", async () => {
+      const { vscode } = renderChatApp();
+
+      await act(async () => {
+        await typeAndSend("/status");
+      });
+
+      await waitFor(() => {
+        expect(
+          document.querySelector(".configuration-dialog-overlay"),
+        ).toBeInTheDocument();
+      });
+
+      // The main conversation is streaming — a plain Escape on the input would
+      // normally fire onAbortMessage (MessageInput.tsx). The dialog's
+      // capture-phase listener must swallow it first (same pattern as the btw
+      // panel), so only the dialog closes and the agent loop keeps running.
+      await act(async () => {
+        sendCommand("startStreaming");
+      });
+
+      const input = screen.getByTestId("message-input");
+      input.focus();
+      await act(async () => {
+        fireEvent.keyDown(input, { key: "Escape" });
+      });
+
+      expect(
+        document.querySelector(".configuration-dialog-overlay"),
+      ).not.toBeInTheDocument();
+      expect(vscode.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ command: "abortMessage" }),
+      );
+    });
   });
 
   describe("/config command", () => {
