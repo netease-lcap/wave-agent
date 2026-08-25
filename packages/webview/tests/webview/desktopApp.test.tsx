@@ -3355,4 +3355,71 @@ describe("DesktopApp", () => {
       expect(screen.getByTestId("chat-container")).toBeInTheDocument();
     });
   });
+
+  describe("background-session toasts follow the focused pane", () => {
+    function renderWithPanes() {
+      renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: "/work/a",
+        recentWorkdirs: [],
+      });
+      sendCommand("desktopPanes", {
+        panes: [
+          { paneId: "pane-0", sessionId: "s1", host: "local" },
+          { paneId: "pane-1", sessionId: "s2", host: "local" },
+          { paneId: "pane-2", sessionId: "s3", host: "local" },
+        ],
+        focusedPaneId: "pane-0",
+      });
+    }
+
+    function toastForS2() {
+      sendCommand("showToast", {
+        toast: {
+          id: "toast-s2",
+          message: "会话「后台任务」已完成",
+          actionLabel: "查看",
+          action: { type: "focusSession", host: "local", sessionId: "s2" },
+        },
+      });
+    }
+
+    it("removes the toast once its session's pane becomes focused (spec scenario 12)", () => {
+      renderWithPanes();
+      toastForS2();
+      expect(screen.getByText("会话「后台任务」已完成")).toBeInTheDocument();
+
+      // Ctrl+Tab / clicking the pane — the focused pane now shows s2.
+      sendCommand("desktopPanes", {
+        panes: [
+          { paneId: "pane-0", sessionId: "s1", host: "local" },
+          { paneId: "pane-1", sessionId: "s2", host: "local" },
+          { paneId: "pane-2", sessionId: "s3", host: "local" },
+        ],
+        focusedPaneId: "pane-1",
+      });
+
+      expect(
+        screen.queryByText("会话「后台任务」已完成"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("keeps the toast while another session gains focus", () => {
+      renderWithPanes();
+      toastForS2();
+      expect(screen.getByText("会话「后台任务」已完成")).toBeInTheDocument();
+
+      // Focus moves to an unrelated pane (s3) — the s2 toast stays.
+      sendCommand("desktopPanes", {
+        panes: [
+          { paneId: "pane-0", sessionId: "s1", host: "local" },
+          { paneId: "pane-1", sessionId: "s2", host: "local" },
+          { paneId: "pane-2", sessionId: "s3", host: "local" },
+        ],
+        focusedPaneId: "pane-2",
+      });
+
+      expect(screen.getByText("会话「后台任务」已完成")).toBeInTheDocument();
+    });
+  });
 });

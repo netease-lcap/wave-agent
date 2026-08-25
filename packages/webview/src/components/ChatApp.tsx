@@ -1068,6 +1068,37 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     [postToHost],
   );
 
+  // Desktop split-view: when the focused session changes (Ctrl+Tab, clicking a
+  // pane, selecting a sidebar session), drop toasts pointing at the newly
+  // focused session — their job (nudge the user over) is done, the confirmation
+  // dialog pops now that the session is visible, and the toast would otherwise
+  // linger as a duplicate prompt (spec「后台会话活动通知」scenario 12).
+  const focusedSessionKey =
+    host?.type === "desktop"
+      ? (() => {
+          const focusedPane = host.panes?.find(
+            (p) => p.paneId === (host.focusedPaneId ?? host.panes?.[0]?.paneId),
+          );
+          return focusedPane?.sessionId
+            ? `${focusedPane.host ?? "local"}:${focusedPane.sessionId}`
+            : null;
+        })()
+      : null;
+
+  useEffect(() => {
+    if (!focusedSessionKey) return;
+    setToasts((prev) => {
+      const next = prev.filter(
+        (t) =>
+          !(
+            t.action?.type === "focusSession" &&
+            `${t.action.host}:${t.action.sessionId}` === focusedSessionKey
+          ),
+      );
+      return next.length === prev.length ? prev : next;
+    });
+  }, [focusedSessionKey]);
+
   // Desktop 的"新对话"入口（侧边栏按钮）：由宿主 spawn 新 agent 承载全新会话，
   // 当前会话在后台继续，因此流式期间保持可用。
   const handleDesktopNewSession = useCallback(() => {
