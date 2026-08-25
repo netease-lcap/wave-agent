@@ -177,6 +177,10 @@ export default {
               text: "10.4 内置插件：规格驱动开发（SDD）",
               link: "/vsce#sdd-plugin",
             },
+            {
+              text: "10.5 规格驱动开发工作流",
+              link: "/vsce#sdd-workflow",
+            },
           ],
         },
         {
