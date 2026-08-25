@@ -298,3 +298,22 @@ export function attachDesktopShortcutKeys(
     }
   });
 }
+
+/**
+ * Right-click context menu for images: 复制图片 → webContents.copyImageAt.
+ * Electron ships no default context menu, so without this a right-click on the
+ * file panel's inline image preview (or any message image) does nothing.
+ * Non-image right-clicks stay menu-less, matching the current behavior.
+ */
+export function attachImageContextMenu(contents: WebContents): void {
+  contents.on("context-menu", (_event, params) => {
+    if (params.mediaType !== "image" || !params.srcURL) return;
+    const menu = Menu.buildFromTemplate([
+      {
+        label: "复制图片",
+        click: () => contents.copyImageAt(params.x, params.y),
+      },
+    ]);
+    menu.popup();
+  });
+}

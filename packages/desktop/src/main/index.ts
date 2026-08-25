@@ -17,6 +17,7 @@ import { DesktopHost } from "./desktopHost";
 import { isLocalhostUrl } from "./isLocalhostUrl";
 import {
   attachDesktopShortcutKeys,
+  attachImageContextMenu,
   installApplicationMenu,
   updateMenuState,
   type DesktopMenuActions,
@@ -283,6 +284,8 @@ function createWindow(): void {
 
   host?.setMainWindow(mainWindow);
   attachDesktopShortcutKeys(mainWindow.webContents, menuActions);
+  // Right-click an image (file panel preview, message image) → 复制图片.
+  attachImageContextMenu(mainWindow.webContents);
 
   // External links always open in the system browser (FR-008).
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -324,6 +327,8 @@ function createWindow(): void {
     // The session-switch/panel-toggle keys must also work while the preview
     // pane has focus.
     attachDesktopShortcutKeys(guest, menuActions);
+    // Preview pages get the same image right-click copy as the main window.
+    attachImageContextMenu(guest);
     // Guest pages must never spawn windows — open them externally instead.
     // (The <webview> `new-window` DOM event was removed in Electron 39.)
     guest.setWindowOpenHandler(({ url }) => {

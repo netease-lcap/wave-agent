@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Input, MenuItemConstructorOptions } from "electron";
+import type {
+  ContextMenuParams,
+  Input,
+  MenuItemConstructorOptions,
+  WebContents,
+} from "electron";
 import { Menu } from "electron";
 import {
+  attachImageContextMenu,
   buildApplicationMenuTemplate,
   installApplicationMenu,
   matchPanelToggleInput,
@@ -574,5 +580,53 @@ describe("installApplicationMenu", () => {
     });
     expect(Menu.buildFromTemplate).toHaveBeenCalledTimes(1);
     expect(Menu.setApplicationMenu).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("attachImageContextMenu", () => {
+  const imageParams = (overrides: Partial<ContextMenuParams> = {}) =>
+    ({
+      mediaType: "image",
+      srcURL: "data:image/png;base64,aGVsbG8=",
+      x: 12,
+      y: 34,
+      ...overrides,
+    }) as ContextMenuParams;
+
+  it("pops a 复制图片 menu on an image right-click and copies the image at that position", () => {
+    const contents = {
+      on: vi.fn(),
+      copyImageAt: vi.fn(),
+    } as unknown as WebContents;
+    attachImageContextMenu(contents);
+
+    const handler = vi
+      .mocked(contents.on)
+      .mock.calls.find(([event]) => event === "context-menu")![1];
+    handler({} as never, imageParams());
+
+    expect(Menu.buildFromTemplate).toHaveBeenCalledTimes(1);
+    const template = (
+      Menu.buildFromTemplate.mock.calls[0][0] as MenuItemConstructorOptions[]
+    ).flat();
+    expect(template).toMatchObject([{ label: "复制图片" }]);
+    template[0].click?.({} as never, {} as never, {} as never);
+    expect(contents.copyImageAt).toHaveBeenCalledWith(12, 34);
+  });
+
+  it("does nothing on non-image right-clicks", () => {
+    const contents = {
+      on: vi.fn(),
+      copyImageAt: vi.fn(),
+    } as unknown as WebContents;
+    attachImageContextMenu(contents);
+    const handler = vi
+      .mocked(contents.on)
+      .mock.calls.find(([event]) => event === "context-menu")![1];
+
+    handler({} as never, imageParams({ mediaType: "none" }));
+    handler({} as never, imageParams({ mediaType: "image", srcURL: "" }));
+    expect(Menu.buildFromTemplate).not.toHaveBeenCalled();
+    expect(contents.copyImageAt).not.toHaveBeenCalled();
   });
 });
