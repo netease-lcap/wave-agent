@@ -92,6 +92,11 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [otherInputs, setOtherInputs] = useState<Record<string, string>>({});
+  // Multi-select only: whether the "Other" option is checked (the input box
+  // appears only after it is checked; typing keeps the check).
+  const [otherSelected, setOtherSelected] = useState<Record<string, boolean>>(
+    {},
+  );
   const [feedback, setFeedback] = useState("");
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
@@ -261,7 +266,12 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
         if (q.multiSelect) {
           const current = (finalAnswers[qKey] as string[]) || [];
-          if (otherVal && otherVal.trim() && !current.includes(otherVal)) {
+          if (
+            otherSelected[qKey] &&
+            otherVal &&
+            otherVal.trim() &&
+            !current.includes(otherVal)
+          ) {
             finalAnswers[qKey] = [...current, otherVal];
           }
         } else if (finalAnswers[qKey] === "__other__") {
@@ -283,6 +293,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     feedback,
     answers,
     otherInputs,
+    otherSelected,
   ]);
 
   const handleAutoConfirm = useCallback(() => {
@@ -490,7 +501,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
               className={`option-item other-option ${
                 (
                   q.multiSelect
-                    ? !!otherInputs[q.question]
+                    ? !!otherSelected[q.question]
                     : answers[q.question] === "__other__"
                 )
                   ? "selected"
@@ -501,17 +512,17 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                 if (e.key === " ") {
                   if (e.target === e.currentTarget) {
                     e.preventDefault();
-                    if (!q.multiSelect) {
+                    if (q.multiSelect) {
+                      setOtherSelected((prev) => ({
+                        ...prev,
+                        [q.question]: !prev[q.question],
+                      }));
+                    } else {
                       setAnswers((prev) => ({
                         ...prev,
                         [q.question]: "__other__",
                       }));
                     }
-                    // Focus the input
-                    const input = (
-                      e.currentTarget as HTMLElement
-                    ).querySelector(".other-text-input") as HTMLInputElement;
-                    input?.focus();
                   }
                 }
               }}
@@ -523,17 +534,20 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                 tabIndex={-1}
                 checked={
                   q.multiSelect
-                    ? !!otherInputs[q.question]
+                    ? !!otherSelected[q.question]
                     : answers[q.question] === "__other__"
                 }
                 onChange={(e) => {
-                  if (!q.multiSelect) {
+                  if (q.multiSelect) {
+                    setOtherSelected((prev) => ({
+                      ...prev,
+                      [q.question]: e.target.checked,
+                    }));
+                  } else {
                     setAnswers((prev) => ({
                       ...prev,
                       [q.question]: "__other__",
                     }));
-                  } else if (!e.target.checked) {
-                    setOtherInputs((prev) => ({ ...prev, [q.question]: "" }));
                   }
                 }}
               />
@@ -543,35 +557,31 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                     multiSelect={!!q.multiSelect}
                     checked={
                       q.multiSelect
-                        ? !!otherInputs[q.question]
+                        ? !!otherSelected[q.question]
                         : answers[q.question] === "__other__"
                     }
                   />
                 </div>
                 <div className="option-label">其他</div>
               </div>
-              <div className="option-other-body">
-                <textarea
-                  className="other-text-input"
-                  placeholder="输入自定义回答..."
-                  value={otherInputs[q.question] || ""}
-                  ref={autoGrowTextarea}
-                  onFocus={() => {
-                    if (!q.multiSelect) {
-                      setAnswers((prev) => ({
-                        ...prev,
-                        [q.question]: "__other__",
-                      }));
-                    }
-                  }}
-                  onChange={(e) => {
-                    autoGrow(e.currentTarget);
-                    handleOtherInputChange(q.question, e.target.value);
-                  }}
-                  onCompositionStart={handleCompositionStart}
-                  onCompositionEnd={handleCompositionEnd}
-                />
-              </div>
+              {(q.multiSelect
+                ? !!otherSelected[q.question]
+                : answers[q.question] === "__other__") && (
+                <div className="option-other-body">
+                  <textarea
+                    className="other-text-input"
+                    placeholder="输入自定义回答..."
+                    value={otherInputs[q.question] || ""}
+                    ref={autoGrowTextarea}
+                    onChange={(e) => {
+                      autoGrow(e.currentTarget);
+                      handleOtherInputChange(q.question, e.target.value);
+                    }}
+                    onCompositionStart={handleCompositionStart}
+                    onCompositionEnd={handleCompositionEnd}
+                  />
+                </div>
+              )}
             </label>
           </div>
         </div>
@@ -610,7 +620,8 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     const other = otherInputs[q.question];
     if (q.multiSelect) {
       return (
-        (Array.isArray(answer) && answer.length > 0) || (other && other.trim())
+        (Array.isArray(answer) && answer.length > 0) ||
+        (otherSelected[q.question] && !!other && other.trim())
       );
     }
     return (
@@ -630,7 +641,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         if (q.multiSelect) {
           return (
             (Array.isArray(answer) && answer.length > 0) ||
-            (other && other.trim())
+            (otherSelected[q.question] && !!other && other.trim())
           );
         }
         return (
