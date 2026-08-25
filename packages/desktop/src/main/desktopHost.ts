@@ -232,8 +232,16 @@ export class DesktopHost {
   private confirmationToastAgents = new WeakSet<StdioAgent>();
   /** Agents whose current turn the user aborted (stop button / denied a
    *  confirmation). Consumed by onLoadingChange(false): an aborted turn never
-   *  announces 「已完成」 (spec scenario 6). */
+   *  announces 「已完成」 (spec scenario 7). */
   private userAbortedAgents = new WeakSet<StdioAgent>();
+  /** Agents that streamed at least once (loading:true observed). Only their
+   *  loading:false can be a real turn finishing — restore re-attach replays
+   *  the settled loading state as a snapshot (agentBridge.restoreSession
+   *  re-attach branch), and for an idle session that snapshot is loading:false
+   *  without a preceding loading:true. Treating the snapshot as a completion
+   *  toasts every historical session the user clicks. Consumed (deleted) by
+   *  each loading:false; a fresh loading:true re-adds for the next turn. */
+  private streamedAgents = new WeakSet<StdioAgent>();
   /**
    * Optimistic session restores in flight (spec「历史会话即时进入与恢复加载动画」):
    * keyed by paneId, holding the target session + a monotonic token. While an
@@ -1018,13 +1026,23 @@ export class DesktopHost {
           // A new turn starts — any earlier abort marker is stale (the user may
           // have aborted the previous turn, then sent a fresh prompt).
           this.userAbortedAgents.delete(agentRef);
+          this.streamedAgents.add(agentRef);
         } else {
           this.touchSessionInIndex(agentRef);
           // Announce a background turn that finished on its own — never the
           // focused session (the user is watching it) and never an aborted one
-          // (spec「后台会话活动通知」scenario 5/6/7).
+          // (spec「后台会话活动通知」scenario 5/7/8). A loading:false without a
+          // preceding loading:true is not a turn finishing: restore re-attach
+          // replays the settled loading state as a snapshot, so clicking a
+          // historical session must not toast its idle state as 「已完成」.
           const aborted = this.userAbortedAgents.delete(agentRef);
-          if (paneId !== this.focusedPaneId && !aborted && agentRef.sessionId) {
+          const finishedTurn = this.streamedAgents.delete(agentRef);
+          if (
+            paneId !== this.focusedPaneId &&
+            !aborted &&
+            finishedTurn &&
+            agentRef.sessionId
+          ) {
             this.showToast({
               message: `会话「${this.sessionTitleFor(agentRef)}」已完成`,
               actionLabel: "查看",

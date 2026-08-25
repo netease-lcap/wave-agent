@@ -1649,6 +1649,7 @@ describe("background session toasts", () => {
     const agent1 = seedSession(store, "sess-1", "任务A");
     await openSecondPane(host);
 
+    agent1.callbacks.onLoadingChange(true);
     agent1.callbacks.onLoadingChange(false);
 
     const toasts = completionToasts(sent);
@@ -1659,6 +1660,43 @@ describe("background session toasts", () => {
       host: "local",
       sessionId: "sess-1",
     });
+  });
+
+  it("does not announce 已完成 from a loading snapshot replayed mid-restore", async () => {
+    const { host, sent } = await readyHost();
+    // Hold the restore agent mid-initialize: it exists but is not yet bound to
+    // any pane (activateAgentInPane runs after restore + getMessages). This is
+    // exactly when agentBridge.restoreSession's re-attach branch replays the
+    // settled loading state — for an idle historical session, loading:false
+    // without any preceding loading:true.
+    let release: () => void;
+    h.initializeGate = new Promise<void>((resolve) => (release = resolve));
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-x",
+    });
+    await vi.waitFor(() => {
+      expect(h.agentInstances.length).toBe(before + 1);
+    });
+    const restoring = lastAgent();
+    restoring.sessionId = "sess-x";
+    restoring.callbacks.onLoadingChange(false); // replayed snapshot, not a finish
+
+    expect(completionToasts(sent)).toHaveLength(0);
+
+    // Once the restore finishes and binds the pane, still no completion toast.
+    release!();
+    await vi.waitFor(() => {
+      expect(
+        sent("desktopPanes")
+          .at(-1)
+          ?.panes?.some((p) => p.sessionId === "sess-x"),
+      ).toBe(true);
+    });
+    expect(completionToasts(sent)).toHaveLength(0);
   });
 
   it("does not toast a turn that finished in the session the user is watching", async () => {
