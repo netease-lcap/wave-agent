@@ -204,25 +204,31 @@
 }
 
 .desktop-session-delete {
-  display: none;
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
   padding: 0 2px;
   border: none;
   background: none;
   color: var(--vscode-foreground);
-  opacity: 0.6;
+  /* Hidden via opacity + pointer-events (not display:none) so the button stays
+     focusable in the Tab order; focusing it reveals it (see below). */
+  opacity: 0;
+  pointer-events: none;
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
 }
 
-.desktop-session-item:hover .desktop-session-delete {
-  display: inline-flex;
-  align-items: center;
+.desktop-session-item:hover .desktop-session-delete,
+.desktop-session-item:focus-within .desktop-session-delete,
+.desktop-session-delete:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 
-.desktop-session-delete:hover {
-  opacity: 1;
+.desktop-session-delete:hover,
+.desktop-session-delete:focus-visible {
   color: var(--vscode-errorForeground, #f14c4c);
 }
 
