@@ -30,7 +30,8 @@
   cursor: pointer;
 }
 
-.panel-toggle-menu-item:hover {
+.panel-toggle-menu-item:hover,
+.panel-toggle-menu-item:focus-visible {
   background-color: var(--vscode-list-hoverBackground);
 }
 

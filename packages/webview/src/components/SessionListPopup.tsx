@@ -20,6 +20,8 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
   loading,
 }) => {
   const [query, setQuery] = useState("");
+  // Keyboard selection index into the filtered list; 0 = first item.
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
@@ -59,9 +61,31 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
     );
   }, [sessions, query]);
 
+  // A new query or session list resets the keyboard selection to the first
+  // match, and the index is clamped so Enter always picks a real item.
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [query, sessions]);
+
   const handleSelect = (sessionId: string) => {
     onSessionSelect(sessionId);
     onClose();
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (filteredSessions.length > 0) {
+        setSelectedIndex((i) => Math.min(i + 1, filteredSessions.length - 1));
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const session = filteredSessions[selectedIndex];
+      if (session) handleSelect(session.id);
+    }
   };
 
   return (
@@ -76,7 +100,11 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
         className="session-list-search"
         placeholder="搜索关键词"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setSelectedIndex(0);
+        }}
+        onKeyDown={handleSearchKeyDown}
       />
       <div className="session-list-label">历史对话</div>
       <SessionList
@@ -85,6 +113,7 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
         onSessionSelect={handleSelect}
         loading={loading}
         highlightQuery={query}
+        selectedIndex={selectedIndex}
       />
     </div>
   );

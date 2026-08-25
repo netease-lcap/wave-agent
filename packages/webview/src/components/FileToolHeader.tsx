@@ -28,7 +28,18 @@ export const FileToolHeader: React.FC<FileToolHeaderProps> = ({
       </span>
       <span className="write-tool-label">{toolBlock.name || "Tool"}</span>
       {filePath && (
-        <span className="write-tool-path" onClick={onOpenFile}>
+        <span
+          className="write-tool-path"
+          role="button"
+          tabIndex={0}
+          onClick={onOpenFile}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onOpenFile();
+            }
+          }}
+        >
           {filePath}
         </span>
       )}

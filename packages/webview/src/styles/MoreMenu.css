@@ -27,7 +27,8 @@
   cursor: pointer;
 }
 
-.more-menu-item:hover {
+.more-menu-item:hover,
+.more-menu-item:focus-visible {
   background-color: var(--vscode-list-hoverBackground);
 }
 

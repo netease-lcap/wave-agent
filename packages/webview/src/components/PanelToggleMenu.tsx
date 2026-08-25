@@ -69,9 +69,23 @@ export const PanelToggleMenu: React.FC<PanelToggleMenuProps> = ({
             key={kind}
             className={`panel-toggle-menu-item${isDisabled ? " panel-toggle-menu-item--disabled" : ""}`}
             onClick={isDisabled ? undefined : () => onToggle(kind)}
+            onKeyDown={
+              isDisabled
+                ? undefined
+                : (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onToggle(kind);
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      onClose();
+                    }
+                  }
+            }
             role="checkbox"
             aria-checked={isChecked}
             aria-disabled={isDisabled}
+            tabIndex={isDisabled ? -1 : 0}
             data-testid={`panel-toggle-item-${kind}`}
           >
             <i

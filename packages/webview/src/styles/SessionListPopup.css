@@ -61,7 +61,9 @@
   gap: 2px;
 }
 
-.session-list-item:hover {
+.session-list-item:hover,
+.session-list-item:focus-visible,
+.session-list-item--selected {
   background-color: var(--vscode-list-hoverBackground);
 }
 

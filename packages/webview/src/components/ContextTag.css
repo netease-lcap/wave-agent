@@ -26,7 +26,8 @@
   transition: all 0.2s ease;
 }
 
-.context-tag.clickable:hover {
+.context-tag.clickable:hover,
+.context-tag.clickable:focus-visible {
   background-color: var(--vscode-editor-selectionBackground);
   color: var(--vscode-button-foreground);
   text-decoration: none;

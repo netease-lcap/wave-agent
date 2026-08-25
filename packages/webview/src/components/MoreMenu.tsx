@@ -73,14 +73,36 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
     <div ref={menuRef} className="more-menu" data-testid="more-menu">
       <div
         className="more-menu-item"
+        role="menuitem"
+        tabIndex={0}
         onClick={handleSettings}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleSettings();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            onClose();
+          }
+        }}
         data-testid="more-menu-settings"
       >
         设置{hostLabel ? `（${hostLabel}）` : ""}
       </div>
       <div
         className="more-menu-item more-menu-item--between"
+        role="menuitem"
+        tabIndex={0}
         onClick={handleEnterprise}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleEnterprise();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            onClose();
+          }
+        }}
         data-testid="more-menu-enterprise"
       >
         <span>企业控制台</span>
@@ -89,7 +111,18 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
       {isAuthenticated ? (
         <div
           className="more-menu-item"
+          role="menuitem"
+          tabIndex={0}
           onClick={handleLogout}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              handleLogout();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              onClose();
+            }
+          }}
           data-testid="more-menu-logout"
         >
           退出登录{hostLabel ? `（${hostLabel}）` : ""}
@@ -97,7 +130,18 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
       ) : (
         <div
           className="more-menu-item"
+          role="menuitem"
+          tabIndex={0}
           onClick={handleLogin}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              handleLogin();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              onClose();
+            }
+          }}
           data-testid="more-menu-login"
         >
           登录{hostLabel ? `（${hostLabel}）` : ""}
