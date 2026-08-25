@@ -344,7 +344,8 @@ export interface DesktopThemeChangeMessage extends HostToWebviewMessageBase {
 /** Action a toast's button triggers when clicked (host-side semantics). */
 export type ToastAction =
   | { type: "quitAndInstall" }
-  | { type: "openDownloadPage"; url: string };
+  | { type: "openDownloadPage"; url: string }
+  | { type: "focusSession"; host: string; sessionId: string };
 
 /** A non-modal in-app toast (VS Code-style, bottom-right). Desktop host only. */
 export interface UpdateToast {

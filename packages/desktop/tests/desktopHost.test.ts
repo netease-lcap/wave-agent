@@ -1528,6 +1528,194 @@ describe("permission confirmations", () => {
 });
 
 // ---------------------------------------------------------------------------
+// background session toasts (desktop-app.md「后台会话活动通知」)
+// ---------------------------------------------------------------------------
+
+describe("background session toasts", () => {
+  /** Give the bound agent a registered session entry (title drives toast copy). */
+  function seedSession(
+    store: ReturnType<typeof createHost>["store"],
+    sessionId: string,
+    title: string,
+  ) {
+    const agent = lastAgent();
+    agent.messages = [{ id: `m-${sessionId}` }];
+    fireSessionId(agent, sessionId);
+    store.upsertSession({
+      sessionId,
+      title,
+      host: "local",
+      workdir: "/work/a",
+      cwd: "/work/a",
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+    });
+    return agent;
+  }
+
+  /** Open a second pane (spawns + focuses its agent) — pane-1's agent goes background. */
+  async function openSecondPane(host: ReturnType<typeof createHost>["host"]) {
+    const before = h.agentInstances.length;
+    await host.handleWebviewMessage({
+      command: "desktopOpenPane",
+      workdir: "/work/a",
+      sessionId: "sess-2",
+    });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+    });
+  }
+
+  const confirmationToasts = (sent: ReturnType<typeof createHost>["sent"]) =>
+    sent("showToast").filter((m) => m.toast.message.includes("需要确认"));
+  const completionToasts = (sent: ReturnType<typeof createHost>["sent"]) =>
+    sent("showToast").filter((m) => m.toast.message.includes("已完成"));
+
+  it("toasts a confirmation request from a background session with a 查看 action", async () => {
+    const { host, store, sent } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await openSecondPane(host);
+
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: {},
+    });
+
+    const toasts = confirmationToasts(sent);
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].toast.message).toBe(
+      "会话「任务A」需要确认：命令执行待确认",
+    );
+    expect(toasts[0].toast.actionLabel).toBe("查看");
+    expect(toasts[0].toast.action).toEqual({
+      type: "focusSession",
+      host: "local",
+      sessionId: "sess-1",
+    });
+  });
+
+  it("does not toast a confirmation for the session the user is watching", async () => {
+    const { store, sent } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: {},
+    });
+
+    expect(sent("showToast")).toHaveLength(0);
+    expect(sent("showConfirmation")).toHaveLength(1); // the dialog pops instead
+  });
+
+  it("announces a waiting session once per cycle, then again once all requests resolve", async () => {
+    const { host, store, sent } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await openSecondPane(host);
+
+    // A burst of follow-up requests while the first is pending: one toast.
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: {},
+    });
+    agent1.callbacks.onPermissionRequest("req-2", {
+      toolName: "Edit",
+      toolInput: { file_path: "/x.ts" },
+    });
+    expect(confirmationToasts(sent)).toHaveLength(1);
+
+    // Resolving both requests ends the wait cycle.
+    const ids = sent("showConfirmation").map((m) => m.confirmationId as string);
+    await host.handleWebviewMessage({
+      command: "confirmationResponse",
+      confirmationId: ids[0],
+      approved: true,
+    });
+    await host.handleWebviewMessage({
+      command: "confirmationResponse",
+      confirmationId: ids[1],
+      approved: true,
+    });
+
+    // A fresh request starts a new cycle and announces again.
+    agent1.callbacks.onPermissionRequest("req-3", {
+      toolName: "Bash",
+      toolInput: {},
+    });
+    expect(confirmationToasts(sent)).toHaveLength(2);
+  });
+
+  it("toasts a background session that finished on its own", async () => {
+    const { host, store, sent } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await openSecondPane(host);
+
+    agent1.callbacks.onLoadingChange(false);
+
+    const toasts = completionToasts(sent);
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].toast.message).toBe("会话「任务A」已完成");
+    expect(toasts[0].toast.action).toEqual({
+      type: "focusSession",
+      host: "local",
+      sessionId: "sess-1",
+    });
+  });
+
+  it("does not toast a turn that finished in the session the user is watching", async () => {
+    const { store, sent } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onLoadingChange(false);
+
+    expect(sent("showToast")).toHaveLength(0);
+  });
+
+  it("never announces 已完成 for a turn the user aborted, and a new turn resets that", async () => {
+    const { host, store, sent } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await openSecondPane(host);
+
+    await host.handleWebviewMessage({
+      command: "abortMessage",
+      paneId: "pane-1",
+    });
+    agent1.callbacks.onLoadingChange(false);
+    expect(completionToasts(sent)).toHaveLength(0);
+
+    // A new turn clears the abort marker — its finish announces normally.
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onLoadingChange(false);
+    expect(completionToasts(sent)).toHaveLength(1);
+  });
+
+  it("查看 on the toast focuses the pane showing the session and re-pops its dialog", async () => {
+    const { host, store, sent } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await openSecondPane(host);
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: {},
+    });
+    expect(sent("showConfirmation")).toHaveLength(1);
+
+    await host.handleWebviewMessage({
+      command: "toastAction",
+      toastId: "t-1",
+      action: { type: "focusSession", host: "local", sessionId: "sess-1" },
+    });
+
+    await vi.waitFor(() => {
+      const layouts = sent("desktopPanes");
+      expect(layouts.at(-1)?.focusedPaneId).toBe("pane-1");
+    });
+    // The pending dialog is re-posted for the freshly focused pane.
+    expect(sent("showConfirmation")).toHaveLength(2);
+    expect(sent("showConfirmation").at(-1)?.paneId).toBe("pane-1");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // configuration / status / external links
 // ---------------------------------------------------------------------------
 

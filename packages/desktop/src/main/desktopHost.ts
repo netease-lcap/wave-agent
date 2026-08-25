@@ -226,6 +226,14 @@ export class DesktopHost {
     }>;
   }> = [];
   private pendingConfirmations = new Map<string, PendingConfirmation>();
+  /** Agents whose waiting-for-confirmation toast has been shown this wait cycle
+   *  (spec「后台会话活动通知」scenario 4): cleared once the agent has no pending
+   *  confirmations left, so a later request starts a fresh cycle. */
+  private confirmationToastAgents = new WeakSet<StdioAgent>();
+  /** Agents whose current turn the user aborted (stop button / denied a
+   *  confirmation). Consumed by onLoadingChange(false): an aborted turn never
+   *  announces 「已完成」 (spec scenario 6). */
+  private userAbortedAgents = new WeakSet<StdioAgent>();
   /**
    * Optimistic session restores in flight (spec「历史会话即时进入与恢复加载动画」):
    * keyed by paneId, holding the target session + a monotonic token. While an
@@ -306,6 +314,16 @@ export class DesktopHost {
   /** Pane currently showing the given agent, if any. */
   private paneIdForAgent(agent: StdioAgent): string | undefined {
     return this.panes.find((p) => p.agent === agent)?.paneId;
+  }
+
+  /** Session display title for toast copy; falls back to a neutral label. */
+  private sessionTitleFor(agent: StdioAgent): string {
+    const sessionId = agent.sessionId;
+    if (!sessionId) return "会话";
+    const entry = this.configStore
+      .getSessionIndex()
+      .find((e) => e.sessionId === sessionId);
+    return entry?.title || "会话";
   }
 
   /** Composite agent registry key — keeps hosts' sessionId namespaces apart. */
@@ -996,8 +1014,27 @@ export class DesktopHost {
             command: loading ? "startStreaming" : "endStreaming",
             paneId,
           });
-        if (!loading) {
+        if (loading) {
+          // A new turn starts — any earlier abort marker is stale (the user may
+          // have aborted the previous turn, then sent a fresh prompt).
+          this.userAbortedAgents.delete(agentRef);
+        } else {
           this.touchSessionInIndex(agentRef);
+          // Announce a background turn that finished on its own — never the
+          // focused session (the user is watching it) and never an aborted one
+          // (spec「后台会话活动通知」scenario 5/6/7).
+          const aborted = this.userAbortedAgents.delete(agentRef);
+          if (paneId !== this.focusedPaneId && !aborted && agentRef.sessionId) {
+            this.showToast({
+              message: `会话「${this.sessionTitleFor(agentRef)}」已完成`,
+              actionLabel: "查看",
+              action: {
+                type: "focusSession",
+                host: this.hostForAgent(agentRef),
+                sessionId: agentRef.sessionId,
+              },
+            });
+          }
         }
         this.refreshSessionTree();
       },
@@ -1834,6 +1871,7 @@ export class DesktopHost {
     for (const agent of released) {
       this.agentHosts.delete(agent);
       this.agentWorktreeInfo.delete(agent);
+      this.confirmationToastAgents.delete(agent);
       for (const [confirmationId, p] of this.pendingConfirmations) {
         if (p.agent === agent) this.pendingConfirmations.delete(confirmationId);
       }
@@ -2096,9 +2134,30 @@ export class DesktopHost {
     });
     this.refreshSessionTree();
 
+    const paneId = this.paneIdForAgent(agent);
+    // Toast the request when the session isn't the one being watched — the
+    // sidebar bell alone is easy to miss (spec「后台会话活动通知」scenario 1/9).
+    // A session shown in the focused pane already pops its dialog, so no toast
+    // (scenario 2). One toast per wait cycle: a burst of follow-up requests
+    // while the first is still pending must not re-announce (scenario 4).
+    if (
+      paneId !== this.focusedPaneId &&
+      !this.confirmationToastAgents.has(agent)
+    ) {
+      this.confirmationToastAgents.add(agent);
+      this.showToast({
+        message: `会话「${this.sessionTitleFor(agent)}」需要确认：${confirmationType}`,
+        actionLabel: "查看",
+        action: {
+          type: "focusSession",
+          host: this.hostForAgent(agent),
+          sessionId: agent.sessionId ?? "",
+        },
+      });
+    }
+
     // Only a visible session pops the dialog; a background session's request
     // stays pending and is surfaced when the user switches back to it.
-    const paneId = this.paneIdForAgent(agent);
     if (paneId) {
       this.postMessage({
         command: "showConfirmation",
@@ -2171,12 +2230,24 @@ export class DesktopHost {
       return;
     }
     this.pendingConfirmations.delete(confirmationId);
+    // The wait cycle ends once the agent has no pending confirmations left —
+    // a later request may announce again (spec「后台会话活动通知」scenario 4).
+    if (
+      ![...this.pendingConfirmations.values()].some(
+        (p) => p.agent === pending.agent,
+      )
+    ) {
+      this.confirmationToastAgents.delete(pending.agent);
+    }
     this.refreshSessionTree();
     if (approved) {
       pending.resolve(
         decision ?? ({ behavior: "allow" } as PermissionDecision),
       );
     } else {
+      // A denied confirmation ends the turn on the user's terms — never
+      // announce it as a completed task (spec「后台会话活动通知」scenario 6).
+      this.userAbortedAgents.add(pending.agent);
       pending.resolve({
         behavior: "deny",
         message: "用户拒绝了操作",
@@ -2770,9 +2841,14 @@ export class DesktopHost {
         );
         break;
 
-      case "abortMessage":
-        await this.agentForPane(pid)?.abortMessage();
+      case "abortMessage": {
+        // The stop button — the turn ends on the user's terms, so its finish
+        // must never announce 「已完成」 (spec「后台会话活动通知」scenario 6).
+        const agent = this.agentForPane(pid);
+        if (agent) this.userAbortedAgents.add(agent);
+        await agent?.abortMessage();
         break;
+      }
 
       case "clearChat": {
         // 与 IDE 插件对齐：/clear 原地清空当前会话（agent.clearMessages 会
@@ -4292,6 +4368,60 @@ export class DesktopHost {
       /^(https?):/.test(action.url)
     ) {
       void shell.openExternal(action.url);
+    } else if (action.type === "focusSession") {
+      void this.focusSessionFromToast(action.host, action.sessionId);
+    }
+  }
+
+  /**
+   * 「查看」 on a background-session toast: bring the session to the front —
+   * focus the pane already showing it, else activate/open it in the focused
+   * pane, then re-surface any pending confirmation dialog that never popped
+   * (spec「后台会话活动通知」scenario 3).
+   */
+  private async focusSessionFromToast(
+    host: string,
+    sessionId: string,
+  ): Promise<void> {
+    if (!sessionId) return;
+    const live = this.agents.get(this.agentKey(host, sessionId));
+    if (live) {
+      const paneId = this.paneIdForAgent(live);
+      if (paneId) {
+        this.handleFocusPane(paneId);
+      } else {
+        await this.activateAgentInPane(this.focusedPaneId, live);
+      }
+      this.replayPendingConfirmations(live);
+    } else {
+      const entry = this.configStore
+        .getSessionIndex()
+        .find((e) => e.sessionId === sessionId);
+      if (entry?.workdir) {
+        await this.handleSelectSession(entry.workdir, sessionId);
+      }
+    }
+  }
+
+  /** Re-post showConfirmation for every pending request of an agent — a
+   *  background/remote session's request may never have popped a dialog. */
+  private replayPendingConfirmations(agent: StdioAgent): void {
+    for (const [confirmationId, p] of this.pendingConfirmations) {
+      if (p.agent !== agent) continue;
+      const paneId = this.paneIdForAgent(agent) ?? this.focusedPaneId;
+      this.postMessage({
+        command: "showConfirmation",
+        paneId,
+        confirmationId,
+        toolName: p.toolName,
+        confirmationType: p.confirmationType,
+        toolInput: p.toolInput,
+        planContent: p.planContent,
+        suggestedPrefix: p.suggestedPrefix,
+        hidePersistentOption: p.hidePersistentOption,
+        permissionMode: p.permissionMode,
+        warning: p.warning,
+      });
     }
   }
 
