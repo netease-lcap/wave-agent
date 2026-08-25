@@ -338,7 +338,8 @@
   color: var(--vscode-foreground);
 }
 
-.desktop-workdir-trigger:hover {
+.desktop-workdir-trigger:hover,
+.desktop-workdir-trigger:focus-visible {
   background: var(--vscode-list-hoverBackground);
 }
 
@@ -392,7 +393,8 @@
   color: var(--vscode-dropdown-foreground);
 }
 
-.desktop-workdir-menu-item:hover {
+.desktop-workdir-menu-item:hover,
+.desktop-workdir-menu-item:focus-visible {
   background: var(--vscode-list-hoverBackground);
 }
 
@@ -431,7 +433,8 @@
   flex-shrink: 0;
 }
 
-.desktop-workdir-menu-remove:hover {
+.desktop-workdir-menu-remove:hover,
+.desktop-workdir-menu-remove:focus-visible {
   opacity: 1;
 }
 
@@ -464,7 +467,8 @@
   color: var(--vscode-foreground);
 }
 
-.desktop-host-trigger:hover {
+.desktop-host-trigger:hover,
+.desktop-host-trigger:focus-visible {
   background: var(--vscode-list-hoverBackground);
 }
 
@@ -544,7 +548,8 @@
   color: var(--vscode-dropdown-foreground);
 }
 
-.desktop-remote-browser-crumb:hover {
+.desktop-remote-browser-crumb:hover,
+.desktop-remote-browser-crumb:focus-visible {
   background: var(--vscode-list-hoverBackground);
 }
 
@@ -615,7 +620,8 @@
   background: var(--vscode-button-background);
 }
 
-.desktop-remote-browser-retry:hover {
+.desktop-remote-browser-retry:hover,
+.desktop-remote-browser-retry:focus-visible {
   background: var(--vscode-button-hoverBackground);
 }
 
@@ -653,7 +659,8 @@
   background: var(--vscode-button-background);
 }
 
-.desktop-remote-browser-select:hover:not(:disabled) {
+.desktop-remote-browser-select:hover:not(:disabled),
+.desktop-remote-browser-select:focus-visible:not(:disabled) {
   background: var(--vscode-button-hoverBackground);
 }
 

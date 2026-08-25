@@ -73,6 +73,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
   const selectedItemRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
   const lastPathRef = useRef("~");
   const isRemote = host !== undefined && host !== "local";
@@ -135,6 +136,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   const handleBrowse = useCallback(() => {
     setMenuOpen(false);
     onSelectWorkdir();
+    triggerRef.current?.focus();
   }, [onSelectWorkdir]);
 
   const openBrowser = useCallback(() => {
@@ -169,6 +171,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
     (path: string) => {
       setMenuOpen(false);
       onSelectRecentWorkdir(path, host);
+      triggerRef.current?.focus();
     },
     [host, onSelectRecentWorkdir],
   );
@@ -239,11 +242,23 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
     <div className="desktop-workdir-container" ref={menuRef}>
       <div
         className="desktop-workdir-trigger"
+        ref={triggerRef}
         onClick={() => setMenuOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setMenuOpen((o) => !o);
+          } else if (e.key === "Escape" && menuOpen) {
+            e.preventDefault();
+            setMenuOpen(false);
+          }
+        }}
         title={workdir ?? (isRemote ? "选择远程目录…" : "选择工作目录…")}
         data-testid="desktop-workdir"
         aria-expanded={menuOpen}
+        aria-haspopup="listbox"
         role="button"
+        tabIndex={0}
       >
         <span className="codicon codicon-folder-opened"></span>
         <span className="desktop-workdir-name">{dirName}</span>
@@ -272,7 +287,21 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
                 key={dir}
                 className="desktop-workdir-menu-item"
                 role="option"
+                tabIndex={0}
                 onClick={() => handleSelectRecent(dir)}
+                onKeyDown={(e) => {
+                  // Let the nested remove button handle its own keys.
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSelectRecent(dir);
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    setMenuOpen(false);
+                    setBrowsing(false);
+                    triggerRef.current?.focus();
+                  }
+                }}
                 title={dir}
                 data-testid="desktop-workdir-recent-item"
               >
@@ -300,7 +329,20 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
           <div
             className="desktop-workdir-menu-item"
             role="option"
+            tabIndex={0}
             onClick={isRemote ? openBrowser : handleBrowse}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                if (isRemote) openBrowser();
+                else handleBrowse();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setMenuOpen(false);
+                setBrowsing(false);
+                triggerRef.current?.focus();
+              }
+            }}
             data-testid="desktop-workdir-browse"
           >
             <span className="codicon codicon-folder-opened"></span>
@@ -324,7 +366,18 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
                 <span
                   key={`${seg}-${i}`}
                   className={`desktop-remote-browser-crumb${i === crumbs.length - 1 ? " active" : ""}`}
+                  tabIndex={0}
                   onClick={() => requestList(target)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      requestList(target);
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      setBrowsing(false);
+                      triggerRef.current?.focus();
+                    }
+                  }}
                 >
                   {seg}
                 </span>
@@ -416,7 +469,9 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
                     submitFilterInput();
                   }
                 } else if (e.key === "Escape") {
+                  e.preventDefault();
                   setBrowsing(false);
+                  triggerRef.current?.focus();
                 }
               }}
               data-testid="desktop-remote-browser-input"

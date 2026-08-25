@@ -34,6 +34,7 @@ export const DesktopWorktreeControls: React.FC<
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -50,6 +51,7 @@ export const DesktopWorktreeControls: React.FC<
     (b: string) => {
       setMenuOpen(false);
       onBranchChange(b);
+      triggerRef.current?.focus();
     },
     [onBranchChange],
   );
@@ -62,11 +64,27 @@ export const DesktopWorktreeControls: React.FC<
       <div className="desktop-workdir-container" ref={menuRef}>
         <div
           className="desktop-workdir-trigger"
+          ref={triggerRef}
           onClick={loading ? undefined : () => setMenuOpen((o) => !o)}
+          onKeyDown={
+            loading
+              ? undefined
+              : (e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setMenuOpen((o) => !o);
+                  } else if (e.key === "Escape" && menuOpen) {
+                    e.preventDefault();
+                    setMenuOpen(false);
+                  }
+                }
+          }
           title={loading ? "分支获取中…" : `基准分支：${branch}`}
           data-testid="desktop-branch-selector"
           aria-expanded={menuOpen}
+          aria-haspopup="listbox"
           role="button"
+          tabIndex={loading ? -1 : 0}
         >
           <span className="codicon codicon-git-branch"></span>
           {loading ? (
@@ -89,7 +107,18 @@ export const DesktopWorktreeControls: React.FC<
                 key={b}
                 className={`desktop-workdir-menu-item${b === branch ? " desktop-branch-active" : ""}`}
                 role="option"
+                tabIndex={0}
                 onClick={() => handleSelectBranch(b)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSelectBranch(b);
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    setMenuOpen(false);
+                    triggerRef.current?.focus();
+                  }
+                }}
                 title={b}
                 data-testid="desktop-branch-item"
               >
