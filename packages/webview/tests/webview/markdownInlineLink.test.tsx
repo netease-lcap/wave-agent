@@ -88,3 +88,55 @@ describe("inline-code link elevation (specs/ui/markdown-links.md)", () => {
     );
   });
 });
+
+describe("bare URL with trailing CJK punctuation (marked GFM autolink)", () => {
+  it("strips a trailing Chinese period from the link target", () => {
+    const { container } = renderAssistantMessage("访问 https://example.com。");
+    const link = container.querySelector(".markdown-content a");
+    expect(link?.getAttribute("href")).toBe("https://example.com");
+    expect(link?.textContent).toBe("https://example.com");
+  });
+
+  it("strips a trailing pair of Chinese brackets as a whole", () => {
+    const { container } = renderAssistantMessage(
+      "详见 https://example.com（帮助文档）。",
+    );
+    const link = container.querySelector(".markdown-content a");
+    expect(link?.getAttribute("href")).toBe("https://example.com");
+    expect(link?.textContent).toBe("https://example.com");
+    expect(container.querySelector(".markdown-content")?.textContent).toContain(
+      "（帮助文档）。",
+    );
+  });
+
+  it("strips a lone trailing Chinese opening bracket", () => {
+    const { container } = renderAssistantMessage("链接 https://example.com（");
+    const link = container.querySelector(".markdown-content a");
+    expect(link?.getAttribute("href")).toBe("https://example.com");
+  });
+
+  it("keeps ASCII punctuation behavior unchanged (trailing period is stripped)", () => {
+    const { container } = renderAssistantMessage("访问 https://example.com.");
+    const link = container.querySelector(".markdown-content a");
+    expect(link?.getAttribute("href")).toBe("https://example.com");
+  });
+
+  it("does not strip legitimate URL characters (underscore, fragment, ASCII parens)", () => {
+    const { container } = renderAssistantMessage(
+      "示例 https://example.com/a_b#frag 与 https://example.com/foo(bar)",
+    );
+    const links = container.querySelectorAll(".markdown-content a");
+    expect(links[0]?.getAttribute("href")).toBe("https://example.com/a_b#frag");
+    expect(links[1]?.getAttribute("href")).toBe("https://example.com/foo(bar)");
+  });
+
+  it("keeps Chinese text inside a query string (not trailing punctuation)", () => {
+    const { container } = renderAssistantMessage(
+      "搜索 https://example.com/search?q=你好",
+    );
+    const link = container.querySelector(".markdown-content a");
+    expect(link?.getAttribute("href")).toBe(
+      "https://example.com/search?q=%E4%BD%A0%E5%A5%BD",
+    );
+  });
+});

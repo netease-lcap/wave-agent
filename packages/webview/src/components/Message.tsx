@@ -50,6 +50,72 @@ marked.use({
   },
 });
 
+// 剥离裸 URL 尾部的中文标点。marked 默认 url tokenizer 的 _backpedal 正则只
+// 剔除 ASCII 标点（?!.,:;*_'"~()&），中文标点（。、（ 等）会被百分号编码进
+// href，点击打开错误链接（如 "https://example.com。" → href 带 %E3%80%82）。
+// 标点集合对齐 extractClickableUrl；成对中文括号（如 "（帮助文档）"）整体
+// 剥离，孤立的开括号（如 "（"）也剥掉。
+const stripTrailingCjkPunct = (url: string): string => {
+  const closingPairs: Record<string, string> = {
+    "）": "（",
+    "」": "「",
+    "』": "『",
+    "】": "【",
+  };
+  const plainPunct = "，。、；：！？…";
+  let s = url;
+  for (;;) {
+    const last = s[s.length - 1];
+    if (!last) break;
+    if (plainPunct.includes(last)) {
+      s = s.slice(0, -1);
+      continue;
+    }
+    const open = closingPairs[last];
+    if (open) {
+      const openIdx = s.lastIndexOf(open);
+      if (openIdx >= 0) {
+        s = s.slice(0, openIdx); // 成对中文括号（注释/说明）整体剥离
+        continue;
+      }
+      s = s.slice(0, -1);
+      continue;
+    }
+    if (Object.values(closingPairs).includes(last)) {
+      s = s.slice(0, -1); // 孤立中文开括号
+      continue;
+    }
+    break;
+  }
+  return s;
+};
+
+// 在默认 url tokenizer 之上剥离尾部中文标点；返回 false 时 marked.use 会
+// 回退到默认实现（url tokenizer 被 marked.use 包装，实例共享默认 rules）。
+const baseUrlTokenizer = new marked.Tokenizer();
+
+marked.use({
+  tokenizer: {
+    url(src: string) {
+      const token = baseUrlTokenizer.url.call(this, src);
+      if (!token) return false;
+      const raw = stripTrailingCjkPunct(token.raw);
+      if (raw === token.raw) return token;
+      // href 可能是 raw 加前缀的形式（www. → "http://" + raw）；token.text
+      // 是 raw 的转义形式（默认实现 escape(cap[0])），中文标点在转义中
+      // 保持不变，同样剥离即可。
+      const prefix = token.href.endsWith(token.raw)
+        ? token.href.slice(0, -token.raw.length)
+        : "";
+      token.raw = raw;
+      token.href = prefix + raw;
+      token.text = stripTrailingCjkPunct(token.text);
+      token.tokens = [{ type: "text", raw: token.text, text: token.text }];
+      return token;
+    },
+  },
+});
+
 // 行内代码（反引号）中的裸 http(s) URL 提升为可点击链接：仅当剥离首尾
 // 常见标点后整个内容是一个无空白的 URL 时才提升；多 URL、markdown 链接
 // 语法原文、非 http(s) 协议一律保持代码原文（见 specs/ui/markdown-links.md）。
