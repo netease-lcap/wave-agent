@@ -170,18 +170,83 @@ export const parseMentions = (
 
 /**
  * Render a tool file path relative to the agent workdir for compact display,
- * e.g. /home/user/repo/src/index.ts → src/index.ts. Falls back to the original
- * absolute path when no workdir is known or the path is outside it. The
- * original (absolute) path is always used for open-file jumps.
+ * mirroring the CLI's `getDisplayPath` (packages/agent-sdk/src/utils/path.ts):
+ * paths inside the workdir are shown relative (posix separators), paths outside
+ * it (or whose relative form starts with `..`) fall back to the absolute path,
+ * and a path equal to the workdir shows ".". The original (absolute) path is
+ * always used for open-file jumps.
  */
 export const toRelativePath = (filePath: string, workdir?: string): string => {
-  if (!filePath || !workdir) return filePath;
-  // Normalize trailing separators on the workdir prefix.
-  const base =
-    workdir.endsWith("/") || workdir.endsWith("\\") ? workdir : workdir + "/";
-  if (filePath.startsWith(base)) {
-    return filePath.slice(base.length);
+  if (!filePath) return filePath;
+  if (!workdir) return toPosixPath(filePath);
+  const relativePath = pathRelative(workdir, filePath);
+  if (relativePath === "") {
+    return ".";
   }
-  // Path equals the workdir exactly, or isn't under it — show as-is.
-  return filePath;
+  if (relativePath.length < filePath.length && !relativePath.startsWith("..")) {
+    return relativePath;
+  }
+  return toPosixPath(filePath);
 };
+
+/**
+ * Lightweight `path.relative` equivalent for the browser bundle (no Node path
+ * module available). Accepts both posix (`/`) and win32 (`\`) separators and
+ * win32 drive letters, so mixed separator styles still relativize correctly.
+ * Returns "" when both paths are equal.
+ */
+const pathRelative = (from: string, to: string): string => {
+  const fromParts = splitPath(from);
+  const toParts = splitPath(to);
+  // Different roots (e.g. different win32 drive letters) cannot be relative.
+  if (fromParts.root !== toParts.root) {
+    return to;
+  }
+  let common = 0;
+  const max = Math.min(fromParts.segments.length, toParts.segments.length);
+  while (
+    common < max &&
+    fromParts.segments[common] === toParts.segments[common]
+  ) {
+    common++;
+  }
+  const parts: string[] = [];
+  for (let i = common; i < fromParts.segments.length; i++) {
+    parts.push("..");
+  }
+  parts.push(...toParts.segments.slice(common));
+  return parts.join("/");
+};
+
+/**
+ * Split a path into its root ("" / "/" / "C:/") and normalized segments.
+ * Treats `\` and `/` as separators and collapses `.` / `..` segments.
+ */
+const splitPath = (p: string): { root: string; segments: string[] } => {
+  const normalized = p.replace(/\\/g, "/");
+  let root = "";
+  let rest = normalized;
+  const driveMatch = normalized.match(/^([A-Za-z]):(\/|$)/);
+  if (driveMatch) {
+    root = `${driveMatch[1]}:/`;
+    rest = normalized.slice(driveMatch[0].length);
+  } else if (normalized.startsWith("/")) {
+    root = "/";
+    rest = normalized.slice(1);
+  }
+  const segments: string[] = [];
+  for (const part of rest.split("/")) {
+    if (part === "" || part === ".") {
+      continue;
+    }
+    if (part === "..") {
+      segments.pop();
+      continue;
+    }
+    segments.push(part);
+  }
+  return { root, segments };
+};
+
+/** Collapse backslashes to forward slashes for consistent display. */
+const toPosixPath = (p: string): string => p.replace(/\\/g, "/");
