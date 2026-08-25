@@ -1,8 +1,6 @@
 package com.wave.jetbrains.session
 
-import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
 import com.wave.jetbrains.WaveBackendService
 import com.wave.jetbrains.config.WavePluginService
@@ -677,8 +675,24 @@ class MessageHandler(
     private fun currentWorkdir(): String =
         session.agent?.sessionCwd ?: session.agent?.workingDirectory ?: project.basePath ?: System.getProperty("user.dir")
 
-    private fun pluginVersion(): String =
-        PluginManagerCore.getPlugin(PluginId.findId("com.wave.jetbrains"))?.version ?: ""
+    private fun pluginVersion(): String {
+        // Read the <version> tag from our own META-INF/plugin.xml: the IntelliJ
+        // Platform Gradle Plugin injects the build version there at package time,
+        // so this avoids the platform's plugin-descriptor APIs (which became
+        // @ApiStatus.Internal in 2026.2).
+        val url = javaClass.classLoader.getResource("META-INF/plugin.xml") ?: return ""
+        return try {
+            url.openStream().use { stream ->
+                stream.bufferedReader().useLines { lines ->
+                    lines.firstOrNull { it.trimStart().startsWith("<version>") }
+                        ?.substringAfter("<version>")?.substringBefore("</version>")?.trim() ?: ""
+                }
+            }
+        } catch (e: Exception) {
+            LOG.warn("Failed to read plugin version: ${e.message}")
+            ""
+        }
+    }
 
     /** Decode webview file payload → bytes. data may be a base64/data-url string (best effort). */
     private fun decodeFileData(data: JsonElement?): ByteArray {
