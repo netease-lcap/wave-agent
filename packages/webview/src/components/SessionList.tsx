@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import type { SessionMetadata } from "wave-agent-sdk";
 import { formatSessionLabel } from "../utils/session";
 
@@ -9,6 +9,9 @@ export interface SessionListProps {
   loading?: boolean;
   // When set, matching fragments of each session label are highlighted.
   highlightQuery?: string;
+  /** Keyboard selection index (roving tabindex); the item at this index gets
+   *  aria-selected + tabIndex 0. Managed by the popup's search input. */
+  selectedIndex?: number;
 }
 
 /**
@@ -57,7 +60,18 @@ export const SessionList: React.FC<SessionListProps> = ({
   onSessionSelect,
   loading = false,
   highlightQuery = "",
+  selectedIndex = 0,
 }) => {
+  const selectedItemRef = useRef<HTMLLIElement>(null);
+
+  // Keep the keyboard-selected item in view while moving with the arrows.
+  useEffect(() => {
+    const el = selectedItemRef.current;
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "nearest" });
+    }
+  }, [selectedIndex]);
+
   return (
     <div className="session-list-results">
       {loading ? (
@@ -68,12 +82,22 @@ export const SessionList: React.FC<SessionListProps> = ({
       ) : sessions.length === 0 ? (
         <div className="session-list-empty">未找到匹配的历史记录</div>
       ) : (
-        <ul className="session-list-items">
-          {sessions.map((session) => (
+        <ul className="session-list-items" role="listbox">
+          {sessions.map((session, i) => (
             <li
               key={session.id}
-              className={`session-list-item ${session.id === currentSession?.id ? "session-list-item--current" : ""}`}
+              ref={i === selectedIndex ? selectedItemRef : undefined}
+              className={`session-list-item ${session.id === currentSession?.id ? "session-list-item--current" : ""} ${i === selectedIndex ? "session-list-item--selected" : ""}`}
+              role="option"
+              aria-selected={i === selectedIndex}
+              tabIndex={i === selectedIndex ? 0 : -1}
               onClick={() => onSessionSelect(session.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSessionSelect(session.id);
+                }
+              }}
               data-testid={`session-list-item-${session.id}`}
             >
               <div className="session-list-item-title">

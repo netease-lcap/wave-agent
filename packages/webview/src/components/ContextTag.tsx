@@ -25,12 +25,23 @@ export const ContextTag: React.FC<ContextTagProps> = ({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (isClickable) onClick();
+    }
+  };
+
   return (
     <Tooltip text={isClickable ? `点击查看 ${name}` : path} position="top">
       <span
         className={`context-tag ${isClickable ? "clickable" : ""} ${isImage ? "is-image" : ""}`}
         onClick={handlePreview}
+        onKeyDown={isClickable ? handleKeyDown : undefined}
         aria-label={isClickable ? `点击查看 ${name}` : path}
+        role={isClickable ? "button" : undefined}
+        tabIndex={isClickable ? 0 : undefined}
         data-path={path}
       >
         <span className="tag-at">@</span>
