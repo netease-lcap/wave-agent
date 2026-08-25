@@ -1363,6 +1363,31 @@ describe("DesktopApp", () => {
       });
     });
 
+    it("keeps the delete button keyboard-reachable: a focusable native button inside the row", () => {
+      renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: "/work/a",
+        recentWorkdirs: ["/work/a"],
+      });
+      sendCommand("desktopSessionTree", {
+        groups: [
+          {
+            host: "local",
+            workdir: "/work/a",
+            sessions: [session("s1", "hello a")],
+          },
+        ],
+      });
+
+      const deleteBtn = screen.getByTestId("desktop-session-delete-s1");
+      // :focus-within reveal (DesktopApp.css) requires the button to be a
+      // native focusable <button> nested inside the row (the li).
+      expect(deleteBtn.tagName).toBe("BUTTON");
+      expect(deleteBtn.closest(".desktop-session-item")).not.toBeNull();
+      deleteBtn.focus();
+      expect(document.activeElement).toBe(deleteBtn);
+    });
+
     it("does not delete when the user cancels the confirm dialog", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", {
