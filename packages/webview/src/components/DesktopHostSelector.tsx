@@ -35,6 +35,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
   const [connectionString, setConnectionString] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
 
   // Close the dropdown when clicking outside of it.
   useEffect(() => {
@@ -54,6 +55,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
       setMenuOpen(false);
       setAdding(false);
       if (h !== host) onSelectHost(h);
+      triggerRef.current?.focus();
     },
     [host, onSelectHost],
   );
@@ -73,6 +75,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
     setAdding(false);
     setConnectionString("");
     onAddHost(s);
+    triggerRef.current?.focus();
   }, [connectionString, onAddHost]);
 
   const isLocal = host === "local";
@@ -81,11 +84,23 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
     <div className="desktop-host-container" ref={menuRef}>
       <div
         className="desktop-host-trigger"
+        ref={triggerRef}
         onClick={() => setMenuOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setMenuOpen((o) => !o);
+          } else if (e.key === "Escape" && menuOpen) {
+            e.preventDefault();
+            setMenuOpen(false);
+          }
+        }}
         title={isLocal ? "本地" : host}
         data-testid="desktop-host"
         aria-expanded={menuOpen}
+        aria-haspopup="listbox"
         role="button"
+        tabIndex={0}
       >
         <span
           className={`codicon ${isLocal ? "codicon-laptop" : "codicon-remote"}`}
@@ -102,7 +117,19 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
           <div
             className="desktop-workdir-menu-item"
             role="option"
+            tabIndex={0}
             onClick={() => handleSelect("local")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleSelect("local");
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setMenuOpen(false);
+                setAdding(false);
+                triggerRef.current?.focus();
+              }
+            }}
             data-testid="desktop-host-local"
           >
             <span className="codicon codicon-laptop"></span>
@@ -116,7 +143,19 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
               key={h}
               className="desktop-workdir-menu-item"
               role="option"
+              tabIndex={0}
               onClick={() => handleSelect(h)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleSelect(h);
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setMenuOpen(false);
+                  setAdding(false);
+                  triggerRef.current?.focus();
+                }
+              }}
               title={h}
               data-testid="desktop-host-item"
             >
@@ -135,7 +174,10 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
                 onChange={(e) => setConnectionString(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") submitAdd();
-                  else if (e.key === "Escape") setAdding(false);
+                  else if (e.key === "Escape") {
+                    setAdding(false);
+                    triggerRef.current?.focus();
+                  }
                 }}
               />
             </div>
@@ -143,7 +185,19 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
             <div
               className="desktop-workdir-menu-item"
               role="option"
+              tabIndex={0}
               onClick={openAdd}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openAdd();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setMenuOpen(false);
+                  setAdding(false);
+                  triggerRef.current?.focus();
+                }
+              }}
               data-testid="desktop-host-add-entry"
             >
               <span className="codicon codicon-add"></span>
