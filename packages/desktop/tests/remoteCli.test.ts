@@ -11,6 +11,7 @@ vi.mock("child_process", () => ({
 import {
   resolveRemoteWaveBinary,
   remotePathExists,
+  RemoteHostUnreachableError,
   listRemoteDirs,
   readRemoteFile,
   REMOTE_FILE_MAX_LINES,
@@ -463,8 +464,57 @@ describe("remotePathExists", () => {
   });
 
   it("returns false when test -d fails", async () => {
-    stubExec([LOGIN_SHELL, { error: new Error("test -d: not found") }]);
+    // `test -d` runs on the remote side and ssh propagates its exit code (1
+    // when the path is missing) — only a clean non-zero exit means "gone".
+    stubExec([
+      LOGIN_SHELL,
+      { error: Object.assign(new Error("test -d: not found"), { code: 1 }) },
+    ]);
     await expect(remotePathExists("prod", "/gone")).resolves.toBe(false);
+  });
+
+  it("throws RemoteHostUnreachableError when ssh transport fails (exit 255)", async () => {
+    // ssh exits 255 on connection/auth failures without ever running the
+    // remote command — the directory's existence is unknown, not disproven.
+    stubExec([
+      LOGIN_SHELL,
+      {
+        error: Object.assign(
+          new Error("ssh: connect to host prod port 22: Connection refused"),
+          { code: 255 },
+        ),
+      },
+    ]);
+    await expect(remotePathExists("prod", "/any")).rejects.toBeInstanceOf(
+      RemoteHostUnreachableError,
+    );
+  });
+
+  it("throws RemoteHostUnreachableError when the probe times out", async () => {
+    stubExec([
+      LOGIN_SHELL,
+      {
+        error: Object.assign(new Error("killed"), {
+          killed: true,
+          signal: "SIGTERM",
+        }),
+      },
+    ]);
+    await expect(remotePathExists("prod", "/any")).rejects.toBeInstanceOf(
+      RemoteHostUnreachableError,
+    );
+  });
+
+  it("throws RemoteHostUnreachableError when ssh cannot be spawned", async () => {
+    stubExec([
+      LOGIN_SHELL,
+      {
+        error: Object.assign(new Error("spawn ssh ENOENT"), { code: "ENOENT" }),
+      },
+    ]);
+    await expect(remotePathExists("prod", "/any")).rejects.toBeInstanceOf(
+      RemoteHostUnreachableError,
+    );
   });
 
   it("quotes the remote path for shell safety", async () => {

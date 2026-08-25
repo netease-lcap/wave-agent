@@ -435,6 +435,7 @@ import {
   ensureRemoteDaemon,
   connectRemoteDaemon,
   remotePathExists,
+  RemoteHostUnreachableError,
   listRemoteDirs,
   readRemoteFile,
   REMOTE_FILE_MAX_LINES,
@@ -2829,6 +2830,75 @@ describe("session tree", () => {
       ).toHaveLength(0);
       expect(states.at(-1)?.isRestoring).toBe(false);
     });
+  });
+
+  it("keeps the session index entry when the remote host is unreachable", async () => {
+    const { host, store, send, sent } = await readyHost();
+    store.upsertSession(
+      makeIndexEntry("down-1", "/work/remote", { host: "ssh.example" }),
+    );
+    send.mockClear();
+    // A dead host is a transport failure, not a vanished directory — the
+    // probe must NOT clean up the session (desktop-app.md「远端主机不可达时
+    // 不得删除会话/最近目录」).
+    vi.mocked(remotePathExists).mockRejectedValueOnce(
+      new RemoteHostUnreachableError(
+        "ssh.example",
+        new Error(
+          "ssh: connect to host ssh.example port 22: Connection refused",
+        ),
+      ),
+    );
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/remote",
+      sessionId: "down-1",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        store.getSessionIndex().some((e) => e.sessionId === "down-1"),
+      ).toBe(true);
+      expect(
+        shownToasts().some((t) =>
+          t.message.includes("无法连接主机 ssh.example"),
+        ),
+      ).toBe(true);
+      expect(shownToasts().some((t) => t.message.includes("目录不存在"))).toBe(
+        false,
+      );
+      // Overlay drops and the previous session's state falls back.
+      expect(sent("setInitialState").at(-1)).toMatchObject({
+        isRestoring: false,
+        session: { id: "sess-1" },
+      });
+    });
+  });
+
+  it("keeps a recent workdir when its remote host is unreachable", async () => {
+    const { host, store, send } = await readyHost();
+    store.addRecentWorkdir({ host: "ssh.example", path: "/work/remote" });
+    send.mockClear();
+    vi.mocked(remotePathExists).mockRejectedValueOnce(
+      new RemoteHostUnreachableError("ssh.example", new Error("host down")),
+    );
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      host: "ssh.example",
+      path: "/work/remote",
+    });
+
+    expect(
+      store.getRecentWorkdirs().some((r) => r.path === "/work/remote"),
+    ).toBe(true);
+    expect(
+      shownToasts().some((t) => t.message.includes("无法连接主机 ssh.example")),
+    ).toBe(true);
+    expect(
+      shownToasts().some((t) => t.message.includes("已从最近列表移除")),
+    ).toBe(false);
   });
 });
 

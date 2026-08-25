@@ -55,6 +55,7 @@ import {
 import { LOCAL_HOST, parseSshConfigHosts, addSshHost } from "./sshHosts";
 import {
   remotePathExists,
+  RemoteHostUnreachableError,
   listRemoteDirs,
   readRemoteFile,
   ensureRemoteDaemon,
@@ -2495,13 +2496,25 @@ export class DesktopHost {
     this.refreshSessionTree();
 
     if (resetSolePane) {
-      if (
-        entry?.worktree &&
-        (await this.pathExistsOn(host, entry.worktree.repoRoot))
-      ) {
+      let repoRootExists = false;
+      const repoRoot = entry?.worktree?.repoRoot;
+      if (repoRoot) {
+        try {
+          repoRootExists = await this.pathExistsOn(host, repoRoot);
+        } catch (error) {
+          // Host unreachable — never navigate into a dead host's repo root;
+          // fall back to a fresh session (the worktree cleanup below fails
+          // best-effort, which is fine: the session is already deleted).
+          if (!(error instanceof RemoteHostUnreachableError)) throw error;
+          console.warn(
+            `[DesktopHost] 删除会话后无法连接主机 ${host}，跳过回到仓库目录`,
+          );
+        }
+      }
+      if (repoRootExists && repoRoot) {
         await this.activateWorkdir({
           host,
-          dir: entry.worktree.repoRoot,
+          dir: repoRoot,
           forceNew: true,
         });
       } else {
@@ -3570,7 +3583,18 @@ export class DesktopHost {
       this.showToast({ message: `未知主机：${host}` });
       return;
     }
-    if (!(await remotePathExists(host, path))) {
+    let exists: boolean;
+    try {
+      exists = await remotePathExists(host, path);
+    } catch (error) {
+      // Host unreachable — not a "directory missing" verdict, so don't claim
+      // the path doesn't exist (desktop-app.md「远端主机不可达时不得删除会话/
+      // 最近目录」).
+      if (!(error instanceof RemoteHostUnreachableError)) throw error;
+      this.showToast({ message: `无法连接主机 ${host}，目录未校验` });
+      return;
+    }
+    if (!exists) {
       this.showToast({ message: `远端目录不存在：${path}` });
       return;
     }
@@ -3628,7 +3652,18 @@ export class DesktopHost {
     host?: string,
   ): Promise<void> {
     const h = host ?? this.hostState.get(this.focusedPaneId) ?? LOCAL_HOST;
-    if (!(await this.pathExistsOn(h, dir))) {
+    let exists: boolean;
+    try {
+      exists = await this.pathExistsOn(h, dir);
+    } catch (error) {
+      // Host unreachable — keep the recent entry; a transient outage must not
+      // drop the user's recently-used directories (desktop-app.md「远端主机不
+      // 可达时不得删除会话/最近目录」).
+      if (!(error instanceof RemoteHostUnreachableError)) throw error;
+      this.showToast({ message: `无法连接主机 ${h}，最近目录已保留` });
+      return;
+    }
+    if (!exists) {
       // Picker-only hygiene: removing a recent dir never touches the
       // index-derived session tree (FR-006), so no refreshSessionTree here.
       this.configStore.removeRecentWorkdir({ host: h, path: dir });
@@ -3698,7 +3733,26 @@ export class DesktopHost {
       // connection reuse) — it must run behind the overlay, not in front of
       // the pane switch, or the user waits for the SSH hop before the
       // "selected" feedback (desktop-app.md「历史会话即时进入」scenario 2).
-      if (!(await this.pathExistsOn(host, targetDir))) {
+      let exists: boolean;
+      try {
+        exists = await this.pathExistsOn(host, targetDir);
+      } catch (error) {
+        // Host unreachable — the probe says nothing about whether the
+        // worktree/session still exists, so the index entry must NOT be
+        // removed (desktop-app.md「远端主机不可达时不得删除会话/最近目录」).
+        // Drop the overlay, fall back to the previous agent, keep the entry
+        // for a retry once the host is back.
+        if (!(error instanceof RemoteHostUnreachableError)) throw error;
+        if (this.pendingRestores.get(pid)?.sessionId === sessionId) {
+          this.pendingRestores.delete(pid);
+          await this.pushPaneSessionState(pid);
+        }
+        this.showToast({
+          message: `无法连接主机 ${host}，会话已保留，可稍后重试`,
+        });
+        return;
+      }
+      if (!exists) {
         // Directory gone — cancel the still-in-flight restore so the overlay
         // drops and the previous agent falls back, then auto-clear the stale
         // index entry (worktree or not, per FR-020 stale-directory behavior).
