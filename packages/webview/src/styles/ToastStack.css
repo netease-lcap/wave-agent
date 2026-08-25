@@ -48,16 +48,16 @@
 .toast-action {
   flex-shrink: 0;
   padding: 3px 10px;
-  border: none;
+  border: 1px solid var(--vscode-button-border, transparent);
   border-radius: 4px;
-  background: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, #ffffff);
+  background: var(--vscode-button-secondaryBackground, #5f6a79);
+  color: var(--vscode-button-secondaryForeground, #ffffff);
   font-size: 13px;
   cursor: pointer;
 }
 
 .toast-action:hover {
-  background: var(--vscode-button-hoverBackground, #1177bb);
+  background: var(--vscode-button-secondaryHoverBackground, #4c5765);
 }
 
 .toast-close {
