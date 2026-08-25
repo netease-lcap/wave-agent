@@ -278,7 +278,8 @@
 }
 
 .permission-mode-item:hover,
-.permission-mode-item.selected {
+.permission-mode-item.selected,
+.permission-mode-item:focus-visible {
   background: var(--vscode-list-hoverBackground);
   color: var(--vscode-list-activeSelectionForeground);
 }
@@ -350,7 +351,8 @@
   color: var(--vscode-menu-foreground);
 }
 
-.plus-menu-item:hover {
+.plus-menu-item:hover,
+.plus-menu-item:focus-visible {
   background: var(--vscode-list-hoverBackground);
   color: var(--vscode-list-activeSelectionForeground);
 }

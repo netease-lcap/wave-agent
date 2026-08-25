@@ -145,6 +145,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
     // Permission mode custom dropdown state
     const [permMenuOpen, setPermMenuOpen] = useState(false);
     const permMenuRef = useRef<HTMLDivElement>(null);
+    const permMenuButtonRef = useRef<HTMLButtonElement>(null);
 
     const handlePermissionModeSelect = useCallback(
       (mode: PermissionMode) => {
@@ -210,6 +211,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
     // "+" (add) custom dropdown state
     const [plusMenuOpen, setPlusMenuOpen] = useState(false);
     const plusMenuRef = useRef<HTMLDivElement>(null);
+    const plusMenuButtonRef = useRef<HTMLButtonElement>(null);
 
     // Close the "+" dropdown when clicking outside of it.
     useEffect(() => {
@@ -1660,6 +1662,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
                 <div className="plus-menu-container" ref={plusMenuRef}>
                   <button
                     type="button"
+                    ref={plusMenuButtonRef}
                     className="toolbar-icon-button"
                     aria-label="添加"
                     aria-expanded={plusMenuOpen}
@@ -1672,20 +1675,45 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
                     <ul className="plus-menu" role="menu">
                       <li
                         role="menuitem"
+                        tabIndex={0}
                         className="plus-menu-item"
                         onClick={() => {
                           handleFileUpload();
                           setPlusMenuOpen(false);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleFileUpload();
+                            setPlusMenuOpen(false);
+                            plusMenuButtonRef.current?.focus();
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            setPlusMenuOpen(false);
+                            plusMenuButtonRef.current?.focus();
+                          }
                         }}
                       >
                         上传文件
                       </li>
                       <li
                         role="menuitem"
+                        tabIndex={0}
                         className="plus-menu-item"
                         onClick={() => {
                           openHistorySearch();
                           setPlusMenuOpen(false);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openHistorySearch();
+                            setPlusMenuOpen(false);
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            setPlusMenuOpen(false);
+                            plusMenuButtonRef.current?.focus();
+                          }
                         }}
                       >
                         历史提示词
@@ -1712,6 +1740,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
               <div className="permission-mode-container" ref={permMenuRef}>
                 <button
                   type="button"
+                  ref={permMenuButtonRef}
                   className={`permission-mode-select mode-${permissionMode || "default"}`}
                   aria-label="权限模式"
                   aria-expanded={permMenuOpen}
@@ -1728,12 +1757,24 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
                       <li
                         key={m.value}
                         role="option"
+                        tabIndex={0}
                         data-value={m.value}
                         aria-selected={
                           m.value === (permissionMode || "default")
                         }
                         className={`permission-mode-item${m.value === (permissionMode || "default") ? " selected" : ""}`}
                         onClick={() => handlePermissionModeSelect(m.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handlePermissionModeSelect(m.value);
+                            permMenuButtonRef.current?.focus();
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            setPermMenuOpen(false);
+                            permMenuButtonRef.current?.focus();
+                          }
+                        }}
                       >
                         {m.label}
                       </li>
