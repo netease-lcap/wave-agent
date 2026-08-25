@@ -71,6 +71,20 @@ function describeError(error: unknown): string {
 }
 
 /**
+ * The ssh transport itself failed (host offline, network down, auth rejected,
+ * probe timeout) — the probe cannot tell whether the remote directory exists.
+ * Callers must NOT treat this as "directory gone": deleting persisted session
+ * index entries on a transient outage would lose sessions whose worktree is
+ * still intact.
+ */
+export class RemoteHostUnreachableError extends Error {
+  constructor(host: string, cause: unknown) {
+    super(`无法连接主机 ${host}：${describeError(cause)}`);
+    this.name = "RemoteHostUnreachableError";
+  }
+}
+
+/**
  * Strip ANSI/OSC escape sequences from remote probe output. Some login shells
  * (zsh with iTerm2/WezTerm-style shell integration) write OSC 1337 markers to
  * stdout on every `-lic` invocation — without a TTY the shell never hides
@@ -266,6 +280,13 @@ export async function ensureRemoteCliUpToDate(
  * Check a directory exists on a remote host via `test -d`. Used to validate
  * user-typed remote workdir paths (spec scenario 3) — the Electron dialog
  * cannot pick remote directories, so the path is a text input.
+ *
+ * Distinguishes the two failure classes so callers can keep persisted state
+ * on transient outages: returns `false` only when the ssh session ran and
+ * `test -d` reported the directory missing; throws
+ * `RemoteHostUnreachableError` when the transport itself failed (ssh exit
+ * code 255 — host down/auth/network — or a probe timeout), where the
+ * directory's existence is simply unknown.
  */
 export async function remotePathExists(
   host: string,
@@ -278,7 +299,15 @@ export async function remotePathExists(
       { timeout: PROBE_TIMEOUT_MS },
     );
     return true;
-  } catch {
+  } catch (error) {
+    const e = error as { code?: unknown; killed?: boolean };
+    // ssh exits 255 on transport failures and never runs the remote command;
+    // a timeout kills the probe; a spawn failure has no numeric exit code.
+    // None of them say anything about the directory, so surface them as
+    // unreachable rather than reporting "not found".
+    if (e.killed || e.code === 255 || typeof e.code !== "number") {
+      throw new RemoteHostUnreachableError(host, error);
+    }
     return false;
   }
 }
