@@ -1865,6 +1865,8 @@ ${question}`;
           // Add streaming callbacks only if streaming is enabled
           if (this.stream) {
             callAgentOptions.onContentUpdate = (content: string) => {
+              // Agent may have been destroyed mid-stream; ignore in-flight updates.
+              if (!this.messageManager) return;
               // Create assistant message on first chunk if not already created
               if (!assistantMessageCreated) {
                 this.messageManager.addAssistantMessage();
@@ -1873,6 +1875,8 @@ ${question}`;
               this.messageManager.updateCurrentMessageContent(content);
             };
             callAgentOptions.onToolUpdate = (toolCall) => {
+              // Agent may have been destroyed mid-stream; ignore in-flight updates.
+              if (!this.messageManager) return;
               // Create assistant message on first tool update if not already created
               if (!assistantMessageCreated) {
                 this.messageManager.addAssistantMessage();
@@ -1897,6 +1901,8 @@ ${question}`;
               });
             };
             callAgentOptions.onReasoningUpdate = (reasoning: string) => {
+              // Agent may have been destroyed mid-stream; ignore in-flight updates.
+              if (!this.messageManager) return;
               // Create assistant message on first reasoning update if not already created
               if (!assistantMessageCreated) {
                 this.messageManager.addAssistantMessage();
