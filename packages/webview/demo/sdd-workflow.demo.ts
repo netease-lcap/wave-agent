@@ -141,9 +141,9 @@ test.describe("SDD Workflow Screenshots", () => {
     await webviewPage.keyboard.press("Escape");
     await specDialog.waitFor({ state: "detached" });
 
-    // ---- Stage 3: optional prototype question ----
-    const protoMsg: Message = {
-      id: "msg_sdd_proto",
+    // ---- Stage 3: optional plan question ----
+    const planMsg: Message = {
+      id: "msg_sdd_plan",
       role: "assistant",
       timestamp: "2025-07-10T09:00:08.000Z",
       blocks: [
@@ -154,71 +154,8 @@ test.describe("SDD Workflow Screenshots", () => {
           parameters: JSON.stringify({
             questions: [
               {
-                header: "原型阶段",
-                question:
-                  "规格已确认。是否需要先制作交互原型？原型仅实现前端界面，数据使用 mock。",
-                options: [
-                  {
-                    label: "制作原型",
-                    description: "先产出可交互前端原型（mock 数据）",
-                  },
-                  {
-                    label: "跳过",
-                    description: "不制作原型，直接进入下一阶段",
-                  },
-                ],
-              },
-            ],
-          }),
-        },
-      ],
-    };
-    await injector.updateMessages([userMessage, specReply, protoMsg]);
-    await injector.simulateExtensionMessage("showConfirmation", {
-      confirmationId: "sdd-confirm-prototype",
-      toolName: ASK_USER_QUESTION_TOOL_NAME,
-      confirmationType: "问题待回答",
-      toolInput: {
-        questions: [
-          {
-            header: "原型阶段",
-            question:
-              "规格已确认。是否需要先制作交互原型？原型仅实现前端界面，数据使用 mock。",
-            options: [
-              {
-                label: "制作原型",
-                description: "先产出可交互前端原型（mock 数据）",
-              },
-              { label: "跳过", description: "不制作原型，直接进入下一阶段" },
-            ],
-          },
-        ],
-      },
-    });
-    const protoDialog = webviewPage.locator(".confirmation-dialog");
-    await protoDialog.waitFor({ state: "visible" });
-    await elementScreenshotWebp(
-      protoDialog,
-      "../../docs/public/screenshots/spec-sdd-confirm-prototype.webp",
-    );
-    await webviewPage.keyboard.press("Escape");
-    await protoDialog.waitFor({ state: "detached" });
-
-    // ---- Stage 4: optional plan question ----
-    const planMsg: Message = {
-      id: "msg_sdd_plan",
-      role: "assistant",
-      timestamp: "2025-07-10T09:00:11.000Z",
-      blocks: [
-        {
-          type: "tool",
-          name: ASK_USER_QUESTION_TOOL_NAME,
-          stage: "running",
-          parameters: JSON.stringify({
-            questions: [
-              {
                 header: "技术方案",
-                question: "原型已完成。是否进入 plan 模式制定技术方案？",
+                question: "规格已确认。是否进入 plan 模式制定技术方案？",
                 options: [
                   {
                     label: "进入 plan 模式",
@@ -244,7 +181,7 @@ test.describe("SDD Workflow Screenshots", () => {
         questions: [
           {
             header: "技术方案",
-            question: "原型已完成。是否进入 plan 模式制定技术方案？",
+            question: "规格已确认。是否进入 plan 模式制定技术方案？",
             options: [
               {
                 label: "进入 plan 模式",
@@ -265,7 +202,7 @@ test.describe("SDD Workflow Screenshots", () => {
     await webviewPage.keyboard.press("Escape");
     await planDialog.waitFor({ state: "detached" });
 
-    // ---- Stage 5: plan approval (ExitPlanMode) ----
+    // ---- Stage 4: plan approval (ExitPlanMode) ----
     await injector.simulateExtensionMessage("showConfirmation", {
       confirmationId: "sdd-plan-approve",
       confirmationType: "计划执行确认",
@@ -287,7 +224,7 @@ test.describe("SDD Workflow Screenshots", () => {
     await webviewPage.keyboard.press("Escape");
     await planApproveDialog.waitFor({ state: "detached" });
 
-    // ---- Stage 6: coding stage with full task progress ----
+    // ---- Stage 5: coding stage with full task progress ----
     const codingReply: Message = {
       id: "msg_sdd_coding",
       role: "assistant",
@@ -307,7 +244,7 @@ test.describe("SDD Workflow Screenshots", () => {
       blocks: [
         {
           type: "text",
-          content: "规格、原型和技术方案都确认了，开始实现吧。",
+          content: "规格和技术方案都确认了，开始实现吧。",
         },
       ],
     };
@@ -329,15 +266,6 @@ test.describe("SDD Workflow Screenshots", () => {
       },
       {
         id: "2",
-        subject: "制作交互原型",
-        description: "仅前端界面 + mock 数据",
-        status: "completed",
-        blocks: [],
-        blockedBy: [],
-        metadata: {},
-      },
-      {
-        id: "3",
         subject: "制定技术方案",
         description: "技术选型、架构设计与实现步骤",
         status: "completed",
@@ -346,7 +274,7 @@ test.describe("SDD Workflow Screenshots", () => {
         metadata: {},
       },
       {
-        id: "4",
+        id: "3",
         subject: "实现功能",
         description: "按规格与方案实现客户管理系统",
         status: "in_progress",
