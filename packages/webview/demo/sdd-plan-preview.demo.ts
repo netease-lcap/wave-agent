@@ -5,13 +5,76 @@ import { screenshotWebp } from "../e2e/utils/screenshot.js";
 import fs from "fs";
 import path from "path";
 
-const PLAN_CONTENT = `## 客户管理系统技术方案
+const PLAN_CONTENT = `# 客户管理系统（CRM）技术方案
 
-**技术选型**：React 18 + TypeScript + Vite；Node.js + Fastify + PostgreSQL；JWT + RBAC 认证
+## 1. 项目背景与目标
 
-**架构设计**：客户档案 / 跟进记录 / 合同管理 / 数据看板四模块；customers、follow_ups、contracts 三张核心表
+本系统面向销售团队核心业务场景，旨在解决客户信息分散、跟进过程不可追溯、合同与客户数据割裂等问题。通过统一客户档案、跟进记录、合同管理与数据看板，建立以客户为中心的运营闭环，提升销售转化率与管理效率。
 
-**实现步骤**：工程骨架 → 客户档案 CRUD → 跟进时间线 → 合同与到期提醒 → 数据看板`;
+## 2. 需求范围
+
+- 客户档案：客户分级、联系人管理、行为标签
+- 跟进记录：跟进时间线、下次跟进提醒
+- 合同管理：合同关联、到期提醒
+- 数据看板：销售漏斗、转化统计
+- 系统管理：组织架构、角色权限、审计日志
+
+## 3. 技术选型
+
+- 前端框架：React 18 + TypeScript + Vite。选择理由：类型安全、组件生态成熟；对比 Vue 3，React Hooks 更适合复杂状态管理，Vite 冷启动与热更新显著快于 Webpack。
+- 后端框架：Node.js 22 + Fastify。选择理由：与前端统一 TypeScript 技术栈，性能约为 Express 的 2 倍；对比 NestJS，Fastify 更轻量，按需引入校验与插件。
+- 数据库：PostgreSQL 16。选择理由：强事务保障合同与跟进数据一致性，JSONB 支持灵活标签存储，内置全文检索与窗口函数；对比 MySQL，更适合复杂报表查询。
+- 认证授权：JWT + RBAC 角色权限模型。选择理由：无状态、易水平扩展；RBAC 满足销售、主管、管理员分级权限控制。
+
+## 4. 系统架构设计
+
+- 前端：客户档案、跟进记录、合同管理、数据看板四个业务模块，叠加通用组件层（表格、表单、权限指令）
+- 后端：模块化单体（认证、客户、跟进、合同、报表五域），按域拆分代码，便于后续演进微服务
+- 数据流：终端 → API 网关 → 业务服务 → 关系数据库；写操作走事务提交，读操作经查询优化与缓存加速
+- 缓存：Redis 承载会话与热点数据（看板统计、客户列表），失效策略按业务容忍度分级
+
+## 5. 数据模型设计
+
+- customers：客户主数据（id、name、level、owner_id、tags、created_at）
+- customer_contacts：联系人（id、customer_id、name、phone、email）
+- follow_ups：跟进记录（id、customer_id、owner_id、type、content、next_follow_at）
+- contracts：合同（id、customer_id、amount、status、start_date、end_date）
+- users、roles、permissions：组织架构与权限体系
+
+## 6. 接口设计
+
+- GET /api/customers：客户列表（支持分级、标签筛选与分页）
+- POST /api/customers：新建客户（自动触发分级计算）
+- POST /api/follow-ups：新增跟进记录（联动下次提醒）
+- GET /api/dashboard/sales-funnel：销售漏斗统计
+- 统一响应格式 { code, message, data }，错误码分段定义
+
+## 7. 安全设计
+
+- 认证：JWT 短时效 + Refresh Token 轮换；RBAC 按角色校验接口权限
+- 数据安全：客户数据按归属人行级权限过滤，敏感字段加密存储
+- 传输安全：全链路 HTTPS，接口限流与防暴力破解
+- 审计：导出、删除、权限变更等关键操作写入审计日志
+
+## 8. 分阶段实施计划
+
+- 阶段一（第 1-2 周）：工程骨架 + 认证与 RBAC + 客户档案 CRUD
+- 阶段二（第 3-4 周）：跟进时间线与下次提醒
+- 阶段三（第 5 周）：合同管理与到期提醒
+- 阶段四（第 6 周）：数据看板与统计报表
+- 阶段五（第 7 周）：联调、性能优化与上线
+
+## 9. 测试与验收
+
+- 单元测试：分级计算、提醒触发等核心业务规则覆盖率不低于 80%
+- 接口测试：全部 RESTful 接口自动化用例
+- 验收标准：对照规格说明的 12 个验收场景逐条通过，核心页面响应小于 500ms
+
+## 10. 风险与应对
+
+- 客户数据迁移与清洗成本高：提供导入模板与工具，上线前完成字段映射评审
+- 标签规则频繁变化：规则配置化，由管理员后台维护，避免发版
+- 分级口径理解不一致：分级规则在规格中明确约定，并纳入验收场景`;
 
 test.describe("SDD Plan Preview Tab Screenshot", () => {
   test("capture VS Code plan-preview tab + compact confirmation", async ({
@@ -117,7 +180,6 @@ test.describe("SDD Plan Preview Tab Screenshot", () => {
       .tab-strip { display: flex; height: 35px; background: var(--vscode-editorGroupHeader-tabsBackground, #252526); border-bottom: 1px solid var(--vscode-tab-border, #454545); padding: 0 8px; }
       .tab { display: flex; align-items: center; padding: 0 14px; font-size: 13px; }
       .tab.active { background: var(--vscode-tab-activeBackground, #1e1e1e); color: var(--vscode-tab-activeForeground, #ffffff); border-top: 1px solid var(--vscode-tab-activeBorderTop, #007fd4); }
-      .tab.inactive { color: var(--vscode-tab-inactiveForeground, #969696); }
       .plan-body { padding: 16px; }
       #plan-preview h1 { font-size: 1.4em; }
     </style>
@@ -125,7 +187,6 @@ test.describe("SDD Plan Preview Tab Screenshot", () => {
 <body>
     <div class="tab-strip">
       <div class="tab active">计划预览</div>
-      <div class="tab inactive">对话</div>
     </div>
     <div class="plan-body"><div id="plan-preview" class="markdown-body"></div></div>
     <script>${planPreviewJs}</script>
@@ -139,9 +200,10 @@ test.describe("SDD Plan Preview Tab Screenshot", () => {
       );
     }, PLAN_CONTENT);
     await expect(planPage.locator("#plan-preview")).toContainText(
-      "客户管理系统技术方案",
+      "客户管理系统（CRM）技术方案",
     );
     await expect(planPage.locator("#plan-preview")).toContainText("技术选型");
+    await expect(planPage.locator("#plan-preview")).toContainText("风险与应对");
     await screenshotWebp(
       planPage,
       "../../docs/public/screenshots/spec-sdd-plan-preview-tab.webp",
