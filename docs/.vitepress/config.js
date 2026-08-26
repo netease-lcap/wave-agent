@@ -209,6 +209,7 @@ export default {
               link: "/desktop#基于分支的-worktree-隔离会话",
             },
             { text: "会话切换快捷键", link: "/desktop#会话切换快捷键" },
+            { text: "权限模式快捷键", link: "/desktop#权限模式快捷键" },
             { text: "并排多对话（分屏）", link: "/desktop#并排多对话分屏" },
             { text: "对话级面板开关", link: "/desktop#对话级面板开关" },
             { text: "差异面板", link: "/desktop#差异面板" },

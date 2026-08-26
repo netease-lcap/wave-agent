@@ -158,4 +158,29 @@ describe("Permission Mode Select", () => {
 
     expect(select.className).toContain("mode-default");
   });
+
+  it("should open the menu via the host triggerShortcut bridge (JetBrains/desktop)", async () => {
+    renderChatApp();
+
+    await act(async () => {
+      sendCommand("setInitialState", {
+        messages: [],
+        permissionMode: "default",
+        configurationData: {},
+      });
+    });
+
+    expect(
+      document.querySelector(".permission-mode-menu"),
+    ).not.toBeInTheDocument();
+
+    // Host forwards the intercepted IDE/desktop shortcut via the message bridge
+    await act(async () => {
+      sendCommand("triggerShortcut", { name: "open-permission-mode" });
+    });
+
+    const menu = document.querySelector(".permission-mode-menu");
+    expect(menu).toBeInTheDocument();
+    expect(document.querySelectorAll(".permission-mode-item").length).toBe(4);
+  });
 });

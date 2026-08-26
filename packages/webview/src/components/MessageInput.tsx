@@ -158,6 +158,24 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       [vscode],
     );
 
+    // Open the permission-mode dropdown. Shared by the in-DOM Cmd/Ctrl+Shift+M
+    // handler (VS Code / desktop when the key reaches the DOM) and the
+    // JetBrains bridge, which forwards the key after swallowing the IDE's
+    // "Move Caret to Matching Brace" action (same pattern as history-search,
+    // issue #1429). Kept as a plain function so the host can invoke it without
+    // a KeyEvent. Focus moves to the currently selected option so Enter/Space
+    // confirm and Escape closes without routing focus back through the
+    // textarea first.
+    const openPermissionModeMenu = useCallback(() => {
+      setPermMenuOpen(true);
+      requestAnimationFrame(() => {
+        const selected = permMenuRef.current?.querySelector<HTMLElement>(
+          ".permission-mode-item.selected",
+        );
+        (selected ?? permMenuButtonRef.current)?.focus();
+      });
+    }, []);
+
     // Close the permission dropdown when clicking outside of it.
     useEffect(() => {
       if (!permMenuOpen) return;
@@ -244,6 +262,8 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       triggerShortcut: (name: string) => {
         if (name === "history-search") {
           openHistorySearch();
+        } else if (name === "open-permission-mode") {
+          openPermissionModeMenu();
         }
       },
       // Appends text at the end of the input, keeping any existing content
@@ -1196,24 +1216,20 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
 
     const handleKeyDown = useCallback(
       (event: KeyboardEvent<HTMLDivElement>) => {
-        // Handle Shift+Tab to cycle permission mode
-        if (event.key === "Tab" && event.shiftKey && !isComposing) {
+        // Handle Cmd/Ctrl+Shift+M to open the permission mode menu (aligned
+        // with Claude Code Desktop). preventDefault+stopPropagation also keeps
+        // the chord away from host defaults that share it: VS Code's "Focus
+        // Problems" and JetBrains' "Move Caret to Matching Brace". Matched on
+        // `code` because Shift uppercases `key`.
+        if (
+          event.code === "KeyM" &&
+          (event.metaKey || event.ctrlKey) &&
+          event.shiftKey &&
+          !isComposing
+        ) {
           event.preventDefault();
-          const modes: PermissionMode[] = [
-            "default",
-            "acceptEdits",
-            "bypassPermissions",
-            "plan",
-          ];
-          const currentMode = permissionMode || "default";
-          const currentIndex = modes.indexOf(currentMode);
-          const nextIndex = (currentIndex + 1) % modes.length;
-          const nextMode = modes[nextIndex];
-
-          vscode.postMessage({
-            command: "setPermissionMode",
-            mode: nextMode,
-          });
+          event.stopPropagation();
+          openPermissionModeMenu();
           return;
         }
 
@@ -1331,9 +1347,9 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
         closeDropdown,
         handleSend,
         isComposing,
-        permissionMode,
         vscode,
         openHistorySearch,
+        openPermissionModeMenu,
         isStreaming,
         onAbortMessage,
       ],

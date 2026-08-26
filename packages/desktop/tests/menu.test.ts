@@ -11,6 +11,7 @@ import {
   buildApplicationMenuTemplate,
   installApplicationMenu,
   matchPanelToggleInput,
+  matchPermissionModeInput,
   matchSessionSwitchInput,
   updateMenuState,
 } from "../src/main/menu";
@@ -268,6 +269,94 @@ describe("matchPanelToggleInput", () => {
   });
 });
 
+describe("matchPermissionModeInput", () => {
+  it("maps Cmd+Shift+M on macOS and Ctrl+Shift+M on Windows/Linux", () => {
+    expect(
+      matchPermissionModeInput(
+        keyEvent({ key: "M", code: "KeyM", meta: true, shift: true }),
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      matchPermissionModeInput(
+        keyEvent({ key: "M", code: "KeyM", control: true, shift: true }),
+        false,
+      ),
+    ).toBe(true);
+  });
+
+  it("accepts rawKeyDown for non-text presses", () => {
+    expect(
+      matchPermissionModeInput(
+        keyEvent({ type: "rawKeyDown", code: "KeyM", meta: true, shift: true }),
+        true,
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores keyUp/char events", () => {
+    expect(
+      matchPermissionModeInput(
+        keyEvent({ type: "keyUp", code: "KeyM", meta: true, shift: true }),
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      matchPermissionModeInput(
+        keyEvent({ type: "char", code: "KeyM", meta: true, shift: true }),
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects missing Shift, the wrong platform primary, extra modifiers, and other keys", () => {
+    // Without Shift: Cmd+M / Ctrl+M are not the permission-mode menu.
+    expect(
+      matchPermissionModeInput(keyEvent({ code: "KeyM", meta: true }), true),
+    ).toBe(false);
+    expect(
+      matchPermissionModeInput(
+        keyEvent({ code: "KeyM", control: true }),
+        false,
+      ),
+    ).toBe(false);
+    // macOS: Ctrl+Shift+M (wrong primary) must not match.
+    expect(
+      matchPermissionModeInput(
+        keyEvent({ code: "KeyM", control: true, shift: true }),
+        true,
+      ),
+    ).toBe(false);
+    // Windows/Linux: Meta(Win)+Shift+M must not match.
+    expect(
+      matchPermissionModeInput(
+        keyEvent({ code: "KeyM", meta: true, shift: true }),
+        false,
+      ),
+    ).toBe(false);
+    // Cmd+Alt+Shift+M / Cmd+Ctrl+Shift+M must be left alone.
+    expect(
+      matchPermissionModeInput(
+        keyEvent({ code: "KeyM", meta: true, shift: true, alt: true }),
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      matchPermissionModeInput(
+        keyEvent({ code: "KeyM", meta: true, shift: true, control: true }),
+        true,
+      ),
+    ).toBe(false);
+    // Non-M keys return false.
+    expect(
+      matchPermissionModeInput(
+        keyEvent({ code: "KeyA", meta: true, shift: true }),
+        true,
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("buildApplicationMenuTemplate", () => {
   const actions = {
     nextSession: vi.fn(),
@@ -276,6 +365,7 @@ describe("buildApplicationMenuTemplate", () => {
     newSessionInPane: vi.fn(),
     closePane: vi.fn(),
     togglePanel: vi.fn(),
+    openPermissionModeMenu: vi.fn(),
   };
 
   function sessionMenuItems(isMac: boolean): MenuItemConstructorOptions[] {
@@ -314,6 +404,22 @@ describe("buildApplicationMenuTemplate", () => {
     });
     expect(itemByLabel(true, "上一个对话")).toMatchObject({
       accelerator: "Cmd+Shift+[",
+      registerAccelerator: false,
+    });
+  });
+
+  it("shows 权限模式… with an informational Cmd/Ctrl+Shift+M accelerator", () => {
+    // macOS: Cmd+Shift+M; Windows/Linux: Ctrl+Shift+M. Handled via
+    // before-input-event like the session-switch / panel-toggle keys, so the
+    // accelerator is display-only (registerAccelerator: false).
+    expect(itemByLabel(true, "权限模式…")).toMatchObject({
+      id: "open-permission-mode",
+      accelerator: "Cmd+Shift+M",
+      registerAccelerator: false,
+    });
+    expect(itemByLabel(false, "权限模式…")).toMatchObject({
+      id: "open-permission-mode",
+      accelerator: "Ctrl+Shift+M",
       registerAccelerator: false,
     });
   });
@@ -541,6 +647,11 @@ describe("buildApplicationMenuTemplate", () => {
       {} as never,
       {} as never,
     );
+    itemByLabel(false, "权限模式…").click?.(
+      {} as never,
+      {} as never,
+      {} as never,
+    );
     expect(actions.nextSession).toHaveBeenCalledTimes(1);
     expect(actions.prevSession).toHaveBeenCalledTimes(1);
     expect(actions.newSession).toHaveBeenCalledTimes(1);
@@ -552,6 +663,7 @@ describe("buildApplicationMenuTemplate", () => {
     expect(actions.togglePanel).toHaveBeenNthCalledWith(3, "terminal");
     expect(actions.togglePanel).toHaveBeenNthCalledWith(4, "plan");
     expect(actions.togglePanel).toHaveBeenNthCalledWith(5, "file");
+    expect(actions.openPermissionModeMenu).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -585,6 +697,7 @@ describe("installApplicationMenu", () => {
       newSessionInPane: vi.fn(),
       closePane: vi.fn(),
       togglePanel: vi.fn(),
+      openPermissionModeMenu: vi.fn(),
     });
     expect(Menu.buildFromTemplate).toHaveBeenCalledTimes(1);
     expect(Menu.setApplicationMenu).toHaveBeenCalledTimes(1);

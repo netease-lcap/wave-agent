@@ -134,6 +134,29 @@ class WavePanel(
             KeyboardShortcut(KeyStroke.getKeyStroke(KeyEvent.VK_R, InputEvent.META_DOWN_MASK), null),
         )
         forwardHistorySearch.registerCustomShortcutSet(historyShortcuts, browser.component, this)
+
+        // Cmd/Ctrl+Shift+M opens the permission-mode menu (aligned with Claude Code Desktop).
+        // The IDE's default binding for this chord is "Move Caret to Matching Brace"; the
+        // component-scoped action outranks it while the webview owns focus and forwards the
+        // intended operation via the triggerShortcut bridge, mirroring history-search above.
+        val openPermissionModeMenu = shortcutAction("open-permission-mode")
+        val permissionModeShortcuts = CustomShortcutSet(
+            KeyboardShortcut(
+                KeyStroke.getKeyStroke(
+                    KeyEvent.VK_M,
+                    InputEvent.CTRL_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK,
+                ),
+                null,
+            ),
+            KeyboardShortcut(
+                KeyStroke.getKeyStroke(
+                    KeyEvent.VK_M,
+                    InputEvent.META_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK,
+                ),
+                null,
+            ),
+        )
+        openPermissionModeMenu.registerCustomShortcutSet(permissionModeShortcuts, browser.component, this)
     }
 
     /** An [AnAction] that forwards a named webview shortcut via the message bridge. */

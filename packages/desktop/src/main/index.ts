@@ -177,6 +177,9 @@ const menuActions: DesktopMenuActions = {
   togglePanel: (kind) => {
     host?.toggleFocusedPanePanel(kind);
   },
+  openPermissionModeMenu: () => {
+    host?.openPermissionModeMenu();
+  },
 };
 
 const gotLock = app.requestSingleInstanceLock();
