@@ -121,15 +121,19 @@ test.describe("SDD Workflow Iterate Screenshots", () => {
               {
                 header: "规格确认",
                 question:
-                  "已更新《客户管理系统》规格：新增「客户自动分级」用户故事、修改「标签自动生成」描述（现共 5 个用户故事、15 个验收场景），是否确认？",
+                  "已更新《客户管理系统》规格：新增「客户自动分级」用户故事、修改「标签自动生成」描述（现共 5 个用户故事、15 个验收场景），请选择后续流程：",
                 options: [
                   {
-                    label: "确认通过",
-                    description: "规格确认通过，按更新后的规格继续",
+                    label: "直接实现",
+                    description: "跳过技术方案，直接开始编码",
                   },
                   {
-                    label: "需要修改",
-                    description: "按你的反馈更新规格后重新确认",
+                    label: "制定技术方案",
+                    description: "制定技术选型、架构设计与实现步骤后请你批准",
+                  },
+                  {
+                    label: "其他",
+                    description: "规格需要调整，按反馈修改后重新决策",
                   },
                 ],
               },
@@ -153,15 +157,19 @@ test.describe("SDD Workflow Iterate Screenshots", () => {
           {
             header: "规格确认",
             question:
-              "已更新《客户管理系统》规格：新增「客户自动分级」用户故事、修改「标签自动生成」描述（现共 5 个用户故事、15 个验收场景），是否确认？",
+              "已更新《客户管理系统》规格：新增「客户自动分级」用户故事、修改「标签自动生成」描述（现共 5 个用户故事、15 个验收场景），请选择后续流程：",
             options: [
               {
-                label: "确认通过",
-                description: "规格确认通过，按更新后的规格继续",
+                label: "直接实现",
+                description: "跳过技术方案，直接开始编码",
               },
               {
-                label: "需要修改",
-                description: "按你的反馈更新规格后重新确认",
+                label: "制定技术方案",
+                description: "制定技术选型、架构设计与实现步骤后请你批准",
+              },
+              {
+                label: "其他",
+                description: "规格需要调整，按反馈修改后重新决策",
               },
             ],
           },
@@ -185,7 +193,7 @@ test.describe("SDD Workflow Iterate Screenshots", () => {
       blocks: [
         {
           type: "text",
-          content: "确认通过，开始实现吧。",
+          content: "直接实现，开始吧。",
         },
       ],
     };
