@@ -33,19 +33,33 @@ const terminalConfig = {
   outfile: "dist/terminal.js",
 };
 
+// VS Code plan-preview chunk (claudePlanPreview equivalent): a tiny standalone
+// bundle loaded by the plan-preview WebviewPanel the extension opens beside the
+// chat panel on ExitPlanMode. It has no global; the panel HTML links chat.css
+// for markdown-body/theme styles, and the extension posts planContent into it.
+const planPreviewConfig = {
+  ...frontendConfig,
+  entryPoints: ["src/plan-preview-entry.ts"],
+  outfile: "dist/plan-preview.js",
+};
+
 async function main() {
   const ctx = await esbuild.context(frontendConfig);
   const terminalCtx = await esbuild.context(terminalConfig);
+  const planPreviewCtx = await esbuild.context(planPreviewConfig);
   if (watch) {
     console.log("[watch] frontend build started");
     await ctx.watch();
     await terminalCtx.watch();
+    await planPreviewCtx.watch();
   } else {
     console.log("[build] frontend started");
     await ctx.rebuild();
     await ctx.dispose();
     await terminalCtx.rebuild();
     await terminalCtx.dispose();
+    await planPreviewCtx.rebuild();
+    await planPreviewCtx.dispose();
     console.log("[build] frontend finished");
   }
 }

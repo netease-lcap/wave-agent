@@ -14,6 +14,8 @@ export class WebviewManager {
   private sidebarView: vscode.WebviewView | undefined;
   private tabPanels: Map<string, vscode.WebviewPanel> = new Map();
   private windowPanels: Map<string, vscode.WebviewPanel> = new Map();
+  /** ExitPlanMode plan-preview panels (claudePlanPreview equivalent), keyed by chat session id. */
+  private planPanels: Map<string, vscode.WebviewPanel> = new Map();
   private context: vscode.ExtensionContext;
   private callbacks: WebviewManagerCallbacks;
 
@@ -108,6 +110,81 @@ export class WebviewManager {
     return this.windowPanels;
   }
 
+  /**
+   * Returns the plan-preview panel for [key] (a chat session id), creating it beside the active
+   * editor when missing (ViewColumn.Beside, mirroring CC's claudePlanPreview placement). One
+   * panel per chat session: repeated ExitPlanMode calls reuse it and just refresh the content.
+   */
+  public getOrCreatePlanPanel(key: string): vscode.WebviewPanel {
+    const existing = this.planPanels.get(key);
+    if (existing) {
+      return existing;
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+      "wavePlanPreview",
+      "计划预览",
+      vscode.ViewColumn.Beside,
+      {
+        enableScripts: true,
+        localResourceRoots: [this.context.extensionUri],
+        retainContextWhenHidden: true,
+      },
+    );
+    panel.webview.html = this.getPlanPreviewContent(panel.webview);
+    panel.onDidDispose(() => {
+      this.planPanels.delete(key);
+    });
+    this.planPanels.set(key, panel);
+    return panel;
+  }
+
+  /** Pushes fresh plan markdown into the plan-preview panel for [key]. */
+  public postPlanContent(key: string, content: string) {
+    this.planPanels.get(key)?.webview.postMessage({
+      command: "planPreview",
+      content,
+    });
+  }
+
+  public getPlanPreviewContent(webview: vscode.Webview): string {
+    const scriptUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this.context.extensionUri,
+        "webview",
+        "dist",
+        "plan-preview.js",
+      ),
+    );
+    const cssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this.context.extensionUri,
+        "webview",
+        "dist",
+        "chat.css",
+      ),
+    );
+
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src ${webview.cspSource} data: blob:; img-src ${webview.cspSource} data: blob: https: http:; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource}; font-src ${webview.cspSource} data:;">
+    <title>计划预览</title>
+    <link rel="stylesheet" href="${cssUri}">
+    <style>
+      body { margin: 0; padding: 16px; background: var(--vscode-editor-background); }
+      #plan-preview h1 { font-size: 1.4em; }
+    </style>
+</head>
+<body>
+    <div id="plan-preview" class="markdown-body"></div>
+    <script src="${scriptUri}"></script>
+</body>
+</html>`;
+  }
+
   private setupWebview(
     webview: vscode.Webview,
     viewType: "sidebar" | "tab" | "window",
@@ -194,5 +271,7 @@ export class WebviewManager {
     this.tabPanels.clear();
     this.windowPanels.forEach((panel) => panel.dispose());
     this.windowPanels.clear();
+    this.planPanels.forEach((panel) => panel.dispose());
+    this.planPanels.clear();
   }
 }
