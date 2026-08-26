@@ -3,32 +3,41 @@ package com.wave.jetbrains
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.VirtualFile
-import com.wave.jetbrains.editor.WaveChatVirtualFile
+import com.intellij.openapi.util.Key
+import com.intellij.openapi.wm.ToolWindow
+import com.intellij.ui.content.Content
+import com.intellij.ui.content.ContentFactory
+import com.wave.jetbrains.bridge.PlanPreviewBuilder
+import com.wave.jetbrains.editor.WavePlanFileEditor
+import com.wave.jetbrains.editor.WavePlanVirtualFile
 import com.wave.jetbrains.session.WaveSession
 import com.wave.jetbrains.util.Edt
 import java.util.concurrent.ConcurrentHashMap
 import javax.swing.SwingUtilities
 
 /**
- * Project-scoped registry of all open Wave chat panels ([WavePanel]s), tracking the active one
- * so IDE actions (e.g. AddSelectionToWaveAction) can locate the focused panel without reaching
- * into the editor tab strip. Mirrors VSCE's `tabSessions`/`tabPanels` parallel Maps in
- * chatProvider.ts: each tab is an independent [WaveSession] sharing one stdio backend, disposed
- * on tab close via [WavePanel.dispose] (driven by the editor tab's FileEditor lifecycle).
+ * Project-scoped registry of all open Wave chat tabs ([WavePanel]s) in the side-bar tool window,
+ * tracking the active one so IDE actions (e.g. AddSelectionToWaveAction) can locate the focused
+ * panel without reaching into the tool window's content manager. Mirrors VSCE's
+ * `tabSessions`/`tabPanels` parallel Maps in chatProvider.ts: each tab is an independent
+ * [WaveSession] sharing one stdio backend, disposed on tab close via [Content.setDisposer].
  *
- * Each session is backed by a unique [WaveChatVirtualFile]; [openChatEditorTab] opens one in the
- * editor area (JetBrains' `createWebviewPanel` equivalent), and [getOrCreatePanel] keeps panel
- * creation idempotent when the platform re-creates editors for the same file.
+ * ExitPlanMode plans render in a separate editor-area tab (per spec, aligned with VSCE's
+ * `createWebviewPanel` plan preview): each chat tab gets one plan tab, reused across repeated
+ * ExitPlanMode calls of the same session, and closed when the chat tab is disposed.
  */
 @Service(Service.Level.PROJECT)
 class WavePanelHolder(private val project: Project) {
     @Volatile
     var activePanel: WavePanel? = null
-        private set
+
+    @Volatile
+    var toolWindow: ToolWindow? = null
 
     private val panels = ConcurrentHashMap<String, WavePanel>()
-    private val titles = ConcurrentHashMap<String, String>()
+    private val contents = ConcurrentHashMap<String, Content>()
+    private val planFiles = ConcurrentHashMap<String, WavePlanVirtualFile>()
+    private val planEditors = ConcurrentHashMap<String, WavePlanFileEditor>()
 
     fun register(tabId: String, panel: WavePanel) {
         panels[tabId] = panel
@@ -41,79 +50,117 @@ class WavePanelHolder(private val project: Project) {
         if (panels.remove(tabId, panel) && activePanel === panel) {
             activePanel = panels.values.firstOrNull()
         }
-        titles.remove(tabId)
+        contents.remove(tabId)
+        closePlanTab(tabId)
     }
 
     fun allPanels(): Collection<WavePanel> = panels.values.toList()
 
-    fun getPanel(tabId: String): WavePanel? = panels[tabId]
-
-    /** Promotes [panel] to the active panel (called from FileEditor.selectNotify). */
-    fun setActivePanel(panel: WavePanel) {
-        activePanel = panel
-    }
-
     /**
-     * Returns the panel backing [file], creating it on first use. [WaveChatFileEditorProvider]
-     * calls this from `createEditor`, which the platform may invoke more than once for the same
-     * file (e.g. editor state restore); the map makes the call idempotent.
-     */
-    fun getOrCreatePanel(project: Project, file: WaveChatVirtualFile): WavePanel =
-        panels.getOrPut(file.tabId) { WavePanel(project, file.tabId, file) }
-
-    /**
-     * Updates the editor-tab display title for [tabId] and forces the tab label to repaint by
-     * renaming the backing virtual file (the tab strip re-queries [WaveEditorTabTitleProvider]
-     * on rename). Mirrors VSCE deriving panel.title from the first user message (webview
-     * getSessionTitle); here the JB backend pushes the derived title.
+     * Updates the tool-window tab display name for [tabId]. Mirrors VSCE deriving panel.title from
+     * the first user message (webview getSessionTitle); here the JB backend pushes the derived title
+     * onto the Content so the tab label tracks the chat header. Must run on the EDT.
      */
     fun setTabTitle(tabId: String, title: String) {
+        val content = contents[tabId] ?: return
         val safe = if (title.isBlank()) "新对话" else title
-        titles[tabId] = safe
-        val panel = panels[tabId] ?: return
-        val rename = {
-            try {
-                panel.chatFile.rename(null, safe)
-            } catch (_: Exception) {
-                // LightVirtualFile rename is in-memory only; ignore any race with dispose.
-            }
-        }
-        if (SwingUtilities.isEventDispatchThread()) rename() else Edt.invokeLater(rename)
-    }
-
-    /** Current tab title for [tabId] (fallback for FileEditor.getName / EditorTabTitleProvider). */
-    fun currentTitle(tabId: String): String = titles[tabId] ?: "新对话"
-
-    /**
-     * Opens a new chat session as an editor-area tab (JetBrains' `createWebviewPanel` tab mode).
-     * The tab is created lazily — the panel/session materialize when the editor tab is actually
-     * shown (FileEditorProvider.createEditor). Mirrors VSCE chatProvider.ts tab mode.
-     */
-    fun openChatEditorTab() {
-        val file = WaveChatVirtualFile("tab_${System.currentTimeMillis()}_${System.nanoTime().toString(36)}")
         if (SwingUtilities.isEventDispatchThread()) {
-            FileEditorManager.getInstance(project).openFile(file, true)
+            content.displayName = safe
         } else {
-            Edt.invokeLater { FileEditorManager.getInstance(project).openFile(file, true) }
+            Edt.invokeLater { content.displayName = safe }
         }
     }
 
     /**
-     * Routes an ExitPlanMode permission request to the panel owning [session] and renders the
-     * plan content in its right-hand preview column. Called from PermissionFlow before the
-     * confirmation dialog is shown, so the plan is visible next to the (now compact) dialog.
+     * Creates and registers a new chat tab in the tool window. Swing content (Content +
+     * JBCefBrowser) must be created on the EDT; if the caller is already on the EDT the work runs
+     * inline, otherwise it is scheduled via [Edt.invokeLater]. Returns the new panel, or null if
+     * the tool window is gone or the work was deferred to the EDT.
+     */
+    fun addChatTab(tabId: String? = null): WavePanel? {
+        val tw = toolWindow ?: return null
+        val id = tabId ?: "tab_${System.currentTimeMillis()}_${System.nanoTime().toString(36)}"
+
+        fun build(): WavePanel {
+            val panel = WavePanel(project, id)
+            val content = ContentFactory.getInstance().createContent(panel.component, "新对话", false)
+            content.putUserData(TAB_KEY, id)
+            content.setDisposer(panel)
+            contents[id] = content
+            tw.contentManager.addContent(content)
+            tw.contentManager.setSelectedContent(content)
+            activePanel = panel
+            return panel
+        }
+
+        return if (SwingUtilities.isEventDispatchThread()) {
+            build()
+        } else {
+            Edt.invokeLater { build() }
+            null
+        }
+    }
+
+    /** Promotes the panel backing [content] (looked up via [TAB_KEY]) to the active panel. */
+    fun setActiveByContent(content: Content?) {
+        if (content == null) return
+        val tabId = content.getUserData(TAB_KEY) ?: return
+        panels[tabId]?.let { activePanel = it }
+    }
+
+    /**
+     * Routes an ExitPlanMode permission request to the plan tab of the panel owning [session] and
+     * renders the plan content there. Called from PermissionFlow before the confirmation dialog
+     * is shown, so the plan is visible in the editor area next to the (now compact) dialog —
+     * the JetBrains equivalent of VSCE's `createWebviewPanel` plan preview panel.
      */
     fun showPlanPreview(session: WaveSession, planContent: String) {
         val panel = panels.values.firstOrNull { it.belongsTo(session) } ?: return
-        val html = com.wave.jetbrains.bridge.PlanPreviewBuilder.buildHtml(planContent)
-        if (SwingUtilities.isEventDispatchThread()) {
-            panel.showPlanPreview(html)
-        } else {
-            Edt.invokeLater { panel.showPlanPreview(html) }
+        openPlanTab(panel.tabId, PlanPreviewBuilder.buildHtml(planContent))
+    }
+
+    /** Registers a plan editor once its tab is created (called from WavePlanFileEditor.init). */
+    fun registerPlanEditor(planId: String, editor: WavePlanFileEditor) {
+        planEditors[planId] = editor
+    }
+
+    fun unregisterPlanEditor(planId: String, editor: WavePlanFileEditor) {
+        planEditors.remove(planId, editor)
+    }
+
+    /**
+     * Opens (or focuses) the plan tab for [tabId], reloading it with [markdownHtml]. The tab is
+     * created lazily on first ExitPlanMode and reused afterwards (spec: repeated ExitPlanMode
+     * calls of one session update the existing tab instead of stacking new ones).
+     */
+    private fun openPlanTab(tabId: String, markdownHtml: String) {
+        val file = planFiles.getOrPut(tabId) { WavePlanVirtualFile(tabId) }
+        val open: () -> Unit = {
+            FileEditorManager.getInstance(project).openFile(file, true)
+            planEditors[tabId]?.showPlan(markdownHtml)
+            Unit
         }
+        if (SwingUtilities.isEventDispatchThread()) open() else Edt.invokeLater(open)
+    }
+
+    /** Closes the plan tab of [tabId] when its chat tab is disposed (no orphan plan tabs). */
+    private fun closePlanTab(tabId: String) {
+        val file = planFiles.remove(tabId) ?: return
+        planEditors.remove(tabId)
+        if (project.isDisposed) return
+        val close = {
+            try {
+                FileEditorManager.getInstance(project).closeFile(file)
+            } catch (_: Exception) {
+                // File may already be closed/disposed; ignore.
+            }
+        }
+        if (SwingUtilities.isEventDispatchThread()) close() else Edt.invokeLater(close)
     }
 
     companion object {
+        val TAB_KEY = Key<String>("waveTabId")
+
         fun getInstance(project: Project): WavePanelHolder =
             project.getService(WavePanelHolder::class.java)
     }

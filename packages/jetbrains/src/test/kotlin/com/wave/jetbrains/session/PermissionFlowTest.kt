@@ -10,11 +10,11 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * Tests for the JB-specific ExitPlanMode handling in [PermissionFlow]: the plan preview lives in
- * the editor-area tab (right column of the chat split pane) instead of inside the confirmation
- * dialog, so the dialog shrinks to just the options row. These pure functions are the decision
- * logic behind the side-effecting [PermissionFlow.handle]; the JCEF rendering itself is exercised
- * via jb:run.
+ * Tests for the JB-specific ExitPlanMode handling in [PermissionFlow]: the plan preview lives in a
+ * separate editor-area tab (per spec, aligned with VSCE's `createWebviewPanel` plan preview)
+ * instead of inside the confirmation dialog, so the dialog shrinks to just the options row. These
+ * pure functions are the decision logic behind the side-effecting [PermissionFlow.handle]; the
+ * JCEF rendering itself is exercised via jb:run.
  */
 class PermissionFlowTest {
 
@@ -75,7 +75,7 @@ class PermissionFlowTest {
         assertEquals("plan", payload["permissionMode"]?.jsonPrimitive?.content)
     }
 
-    // ── plan 移到预览 tab：ExitPlanMode 内容路由到预览列 ──
+    // ── plan 移到独立标签页：ExitPlanMode 内容路由到计划 tab ──
 
     @Test
     fun `ExitPlanMode with content routes to the plan preview column`() {

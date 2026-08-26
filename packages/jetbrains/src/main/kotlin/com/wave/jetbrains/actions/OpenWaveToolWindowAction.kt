@@ -2,30 +2,27 @@ package com.wave.jetbrains.actions
 
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.DumbAware
-import com.wave.jetbrains.WavePanelHolder
-import com.wave.jetbrains.editor.WaveChatVirtualFile
+import com.intellij.openapi.wm.ToolWindowManager
 
 /**
- * Opens (and activates) the Wave chat. Since chats now render as editor-area tabs (not a tool
- * window), this focuses the active chat tab if one is open, otherwise opens a new one. Keeps the
- * registered id "com.wave.jetbrains.openWave" and its Tools menu slot.
+ * Opens (and activates) the Wave side-bar tool window. If the tool window is not created yet
+ * (lazy creation), [ToolWindowManager.getToolWindow] triggers
+ * [com.wave.jetbrains.WaveToolWindowFactory], which registers the tool window on the holder and
+ * adds the first chat tab.
  */
 class OpenWaveToolWindowAction : AnAction(), DumbAware {
     private val LOG = logger<OpenWaveToolWindowAction>()
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        val holder = WavePanelHolder.getInstance(project)
-        val manager = FileEditorManager.getInstance(project)
-        val active = holder.activePanel
-        val activeFile = active?.chatFile
-        if (activeFile != null) {
-            manager.openFile(activeFile, true)
-        } else {
-            holder.openChatEditorTab()
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Wave")
+        if (toolWindow == null) {
+            LOG.warn("Wave tool window not available")
+            return
         }
+        toolWindow.show()
+        toolWindow.activate(null)
     }
 }

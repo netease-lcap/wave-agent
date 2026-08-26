@@ -13,7 +13,6 @@ import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.util.ui.JBUI
 import com.wave.jetbrains.bridge.JcefBrowserBridge
 import com.wave.jetbrains.bridge.WebviewContentBuilder
-import com.wave.jetbrains.editor.WaveChatVirtualFile
 import com.wave.jetbrains.session.MessageHandler
 import com.wave.jetbrains.session.WaveSession
 import com.wave.jetbrains.util.Edt
@@ -25,28 +24,16 @@ import java.awt.BorderLayout
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 import javax.swing.JPanel
-import javax.swing.JSplitPane
 import javax.swing.KeyStroke
 import javax.swing.SwingUtilities
 
 /**
- * Root panel hosting the JCEF browser that renders the shared webview bundle. Rendered as an
- * editor-area tab via [com.wave.jetbrains.editor.WaveChatFileEditor] (the JetBrains equivalent
- * of VSCE's `createWebviewPanel` chat tab).
- *
- * The panel is a horizontal [JSplitPane]: the left column is the chat webview, the right column
- * is a lazily-created plan-preview browser shown only while an ExitPlanMode confirmation is
- * pending (the JetBrains equivalent of CC's adjacent `claudePlanPreview` column). Plan content
- * is rendered as markdown HTML via [showPlanPreview], and the right column collapses back when
- * hidden.
+ * Root panel hosting the JCEF browser that renders the shared webview bundle. Rendered inside the
+ * Wave side-bar tool window (one chat tab per [WaveSession], managed by [WavePanelHolder]).
  *
  * Wires: webview ←→ [JcefBrowserBridge] ←→ [MessageHandler] ←→ [WaveSession] ←→ stdio.
  */
-class WavePanel(
-    private val project: Project,
-    val tabId: String,
-    val chatFile: WaveChatVirtualFile,
-) : Disposable {
+class WavePanel(private val project: Project, val tabId: String) : Disposable {
     private val LOG = logger<WavePanel>()
 
     private val browser: JBCefBrowser = JBCefBrowser()
@@ -60,21 +47,9 @@ class WavePanel(
         postToWebview(command, payload)
     }
 
-    /** Left column: the chat webview. */
-    private val chatPane: JPanel = JPanel(BorderLayout()).apply {
+    val component: JPanel = JPanel(BorderLayout()).apply {
         border = JBUI.Borders.empty()
         add(browser.component, BorderLayout.CENTER)
-    }
-
-    /** Plan-preview browser, created lazily on the first ExitPlanMode and reused afterwards. */
-    private var planBrowser: JBCefBrowser? = null
-
-    val component: JSplitPane = JSplitPane(JSplitPane.HORIZONTAL_SPLIT).apply {
-        leftComponent = chatPane
-        isContinuousLayout = true
-        dividerSize = 4
-        // Keep the chat column wider than the plan preview (CC splits ~60/40).
-        resizeWeight = 0.62
     }
 
     init {
@@ -90,27 +65,6 @@ class WavePanel(
 
     /** Project accessor for collaborators that hold only the panel (e.g. the FileEditor). */
     fun project(): Project = this.project
-
-    /**
-     * Renders the ExitPlanMode plan content in the right column of this panel's split pane.
-     * [markdownHtml] is a fully self-contained HTML document (plan preview builder output);
-     * loading it replaces the previous plan. The right column appears on first use and stays
-     * until the panel is disposed (user closes the editor tab), per spec: plan previews persist
-     * across approvals/denials and are reused for repeated ExitPlanMode calls in one session.
-     */
-    fun showPlanPreview(markdownHtml: String) {
-        val plan = planBrowser ?: JBCefBrowser().also { planBrowser = it }
-        plan.loadHTML(markdownHtml)
-        if (component.rightComponent == null) {
-            component.rightComponent = plan.component
-            // The split pane may not be laid out yet (width == 0); let the divider settle
-            // after layout using resizeWeight instead of computing a pixel position.
-            Edt.invokeLater {
-                if (!component.isShowing) return@invokeLater
-                component.dividerLocation = (component.width * 0.62).toInt()
-            }
-        }
-    }
 
     /**
      * JCEF re-posts keystrokes from the browser back into the AWT event queue (see
@@ -178,11 +132,6 @@ class WavePanel(
             .subscribe(LafManagerListener.TOPIC, LafManagerListener {
                 Edt.invokeLater {
                     bridge.runJavaScript(WebviewContentBuilder.buildLafRefreshScript())
-                    planBrowser?.let { pb ->
-                        pb.cefBrowser.executeJavaScript(
-                            WebviewContentBuilder.buildLafRefreshScript(), "", 0,
-                        )
-                    }
                 }
             })
     }
@@ -214,8 +163,6 @@ class WavePanel(
         session.dispose()
         bridge.dispose()
         browser.dispose()
-        planBrowser?.dispose()
-        planBrowser = null
         runCatching { WavePanelHolder.getInstance(project).unregister(tabId, this) }
     }
 }

@@ -23,13 +23,19 @@
             serviceImplementation="com.wave.jetbrains.WavePanelHolder"/>
         <projectService
             serviceImplementation="com.wave.jetbrains.WaveBackendService"/>
-        <!-- Chat sessions render as editor-area tabs (JetBrains' createWebviewPanel equivalent):
-             WaveChatFileEditorProvider serves WaveChatVirtualFile as an editor tab hosting the
-             WavePanel webview; WaveEditorTabTitleProvider keeps the tab label in sync with the
-             session title (first user message). -->
-        <fileEditorProvider implementation="com.wave.jetbrains.editor.WaveChatFileEditorProvider"/>
-        <editorTabTitleProvider implementation="com.wave.jetbrains.editor.WaveEditorTabTitleProvider"/>
+        <!-- Chat sessions render as tabs in the side-bar Wave tool window; ExitPlanMode plans
+             render in a separate editor-area tab (WavePlanFileEditorProvider serves
+             WavePlanVirtualFile), mirroring VSCE's chat panel + createWebviewPanel plan preview. -->
+        <toolWindow
+            id="Wave"
+            anchor="right"
+            canCloseContents="true"
+            factoryClass="com.wave.jetbrains.WaveToolWindowFactory"
+            icon="com.wave.jetbrains.icons.WaveIcons.Wave"/>
+        <fileEditorProvider implementation="com.wave.jetbrains.editor.WavePlanFileEditorProvider"/>
+        <editorTabTitleProvider implementation="com.wave.jetbrains.editor.WavePlanEditorTabTitleProvider"/>
         <notificationGroup id="Wave" displayType="BALLOON"/>
+        <iconMapper mappingFile="WavePluginIconMappings.json"/>
     </extensions>
 
     <actions>
@@ -37,7 +43,7 @@
             id="com.wave.jetbrains.openWave"
             class="com.wave.jetbrains.actions.OpenWaveToolWindowAction"
             text="Open Wave"
-            description="Open the Wave chat editor tab">
+            description="Open the Wave tool window">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
         <action
@@ -53,7 +59,7 @@
                 id="com.wave.jetbrains.newWaveTab"
                 class="com.wave.jetbrains.actions.NewWaveTabAction"
                 text="New Wave Chat"
-                description="Open a new Wave chat editor tab"/>
+                description="Open a new Wave chat tab"/>
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </group>
     </actions>
