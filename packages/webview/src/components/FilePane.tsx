@@ -287,6 +287,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
     (value: string) => {
       setSearchFilter(value);
       setSearchSelectedIndex(0);
+      // Selecting a file resets the search (searchActive=false) while focus
+      // stays in the input, so typing again must re-activate the dropdown —
+      // onFocus won't fire again until the input loses and regains focus.
+      setSearchActive(true);
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
       searchDebounceRef.current = setTimeout(() => {
         searchDebounceRef.current = null;
