@@ -481,7 +481,7 @@ class WaveSession(
 
     override fun onPermissionRequest(requestId: String, context: JsonElement?) {
         scope.launch {
-            PermissionFlow.handle(this@WaveSession, requestId, context)
+            PermissionFlow.handle(project, this@WaveSession, requestId, context)
         }
     }
 

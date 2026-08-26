@@ -182,7 +182,8 @@ fileMarkdownRenderer.code = (code: string, infostring: string | undefined) => {
   return `<pre><code class="hljs${language ? ` language-${language}` : ""}">${highlighted}</code></pre>`;
 };
 
-const renderFileMarkdown = (content: string): string => {
+/** Shared markdown renderer (marked → hljs → DOMPurify). Reused by PlanPane. */
+export const renderFileMarkdown = (content: string): string => {
   const raw = marked.parse(content, {
     gfm: true,
     breaks: true,

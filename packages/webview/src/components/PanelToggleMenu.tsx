@@ -16,6 +16,8 @@ const PANEL_ITEMS: Array<{
   shortcut?: string;
 }> = [
   { kind: "preview", label: "预览", shortcut: isMac ? "⇧⌘P" : "Ctrl+Shift+P" },
+  // 计划面板无快捷键：ExitPlanMode 时自动打开（对齐 VSCE claudePlanPreview）。
+  { kind: "plan", label: "计划" },
   { kind: "diff", label: "差异", shortcut: isMac ? "⇧⌘D" : "Ctrl+Shift+D" },
   { kind: "terminal", label: "终端", shortcut: isMac ? "⌃`" : "Ctrl+`" },
   // 文件面板无快捷键（与 Claude Code Desktop 一致；Ctrl+Shift+F 与 Windows

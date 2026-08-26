@@ -48,7 +48,12 @@ export interface ThemeState {
 }
 
 /** Desktop conversation-level side panels. VSCE/JetBrains never render these. */
-export type DesktopPanelKind = "preview" | "diff" | "terminal" | "file";
+export type DesktopPanelKind =
+  | "preview"
+  | "diff"
+  | "terminal"
+  | "file"
+  | "plan";
 
 /** State of the desktop file panel, pushed via `desktopFileContent`. */
 export interface FileViewState {

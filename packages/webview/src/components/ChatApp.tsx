@@ -38,6 +38,7 @@ import { PreviewPane } from "./PreviewPane";
 import { DiffPane } from "./DiffPane";
 import { TerminalPane, prefetchTerminalLib } from "./TerminalPane";
 import { FilePane } from "./FilePane";
+import { PlanPane } from "./PlanPane";
 import type {
   ChatAppProps,
   ConfigurationData,
@@ -47,14 +48,22 @@ import type {
   ToolBlockUpdateCallbackParams,
   UpdateToast,
 } from "../types";
+import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/dist/constants/tools.js";
 import { chatReducer, initialState } from "../reducers/chatReducer";
 import "../styles/ChatApp.css";
 
 /** Desktop conversation-level panels: fixed left→right order regardless of check order. */
-const PANEL_ORDER: DesktopPanelKind[] = ["preview", "diff", "terminal", "file"];
+const PANEL_ORDER: DesktopPanelKind[] = [
+  "preview",
+  "plan",
+  "diff",
+  "terminal",
+  "file",
+];
 /** Chinese names for space-replacement hints (「面板空间不足自动替换」). */
 const PANEL_LABELS: Record<DesktopPanelKind, string> = {
   preview: "预览",
+  plan: "计划",
   diff: "差异",
   terminal: "终端",
   file: "文件",
@@ -120,6 +129,8 @@ interface PanelGroupState {
   previewUrl: string | null;
   /** File panel state (which file is open + content); null = never opened. */
   fileView: FileViewState | null;
+  /** Plan panel markdown (ExitPlanMode content); null = no plan yet. */
+  planContent: string | null;
   /**
    * This session's remote port forward (scenario 18). The tunnel is owned by
    * the session, not the pane: it survives panel close, host switches, pane
@@ -156,12 +167,14 @@ function emptyPanelGroup(): PanelGroupState {
     mounted: [],
     widths: {
       preview: PANEL_DEFAULT_WIDTH,
+      plan: PANEL_DEFAULT_WIDTH,
       diff: PANEL_DEFAULT_WIDTH,
       terminal: PANEL_DEFAULT_WIDTH,
       file: PANEL_DEFAULT_WIDTH,
     },
     previewUrl: null,
     fileView: null,
+    planContent: null,
     forward: null,
     forwardError: null,
   };
@@ -313,6 +326,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     () =>
       (groupKey ? panelGroupCache.get(groupKey)?.fileView : undefined) ?? null,
   );
+  // Desktop only: the plan panel's latest ExitPlanMode markdown (null = no plan
+  // yet). Per-session like the file view: approval/rejection keep the panel
+  // open, and pane remounts restore it from the group cache.
+  const [planContent, setPlanContent] = useState<string | null>(
+    () =>
+      (groupKey ? panelGroupCache.get(groupKey)?.planContent : undefined) ??
+      null,
+  );
   // The pane's current remote port forward (see RemoteForwardRef above). State
   // rather than a ref because a pane rebinding to another session must drop its
   // own current forward WITHOUT dropping the previous session's (the host
@@ -337,6 +358,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const forwardSeqRef = useRef(0);
   const previewUrlRef = useRef(previewUrl);
   const fileViewRef = useRef<FileViewState | null>(fileView);
+  const planContentRef = useRef<string | null>(planContent);
   // Desktop only: conversation-level panel group (checked = visible; mounted =
   // rendered but possibly hidden, so panel content survives unchecking). When
   // this session's group was cached (session revisited, or the pane moved
@@ -353,6 +375,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     () =>
       (groupKey ? panelGroupCache.get(groupKey)?.widths : undefined) ?? {
         preview: PANEL_DEFAULT_WIDTH,
+        plan: PANEL_DEFAULT_WIDTH,
         diff: PANEL_DEFAULT_WIDTH,
         terminal: PANEL_DEFAULT_WIDTH,
         file: PANEL_DEFAULT_WIDTH,
@@ -396,6 +419,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   }, [fileView]);
 
   useEffect(() => {
+    planContentRef.current = planContent;
+  }, [planContent]);
+
+  useEffect(() => {
     checkedPanelsRef.current = checkedPanels;
   }, [checkedPanels]);
 
@@ -419,6 +446,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       // loads because the host keeps the tunnel alive for the session.
       previewUrl,
       fileView,
+      planContent,
       forward: currentForward,
       forwardError: previewForwardError,
     });
@@ -429,6 +457,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     panelWidths,
     previewUrl,
     fileView,
+    planContent,
     currentForward,
     previewForwardError,
   ]);
@@ -465,12 +494,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     setPanelWidths(
       group?.widths ?? {
         preview: PANEL_DEFAULT_WIDTH,
+        plan: PANEL_DEFAULT_WIDTH,
         diff: PANEL_DEFAULT_WIDTH,
         terminal: PANEL_DEFAULT_WIDTH,
         file: PANEL_DEFAULT_WIDTH,
       },
     );
     setFileView(group?.fileView ?? null);
+    setPlanContent(group?.planContent ?? null);
   }, [paneId, groupKey]);
 
   useEffect(() => {
@@ -515,6 +546,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
 
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
+
+      // Desktop plan panel: route an ExitPlanMode plan to the plan pane (opens
+      // it on the first plan, then keeps the latest plan until the user closes
+      // the pane). Shared by showConfirmation and the setInitialState replay.
+      const routePlanToPanel = (planContent: unknown) => {
+        if (typeof planContent !== "string" || planContent.trim() === "")
+          return;
+        setPlanContent(planContent);
+        if (!checkedPanelsRef.current.includes("plan")) {
+          togglePanelRef.current("plan");
+        }
+      };
 
       switch (message.command) {
         case "updateMessages":
@@ -707,6 +750,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           break;
         case "showConfirmation":
           if (!forThisPane(message)) break;
+          // Plan panel (desktop): the ExitPlanMode plan full text lives in the
+          // plan pane, not the (compact) confirmation dialog — mirror the VSCE
+          // claudePlanPreview panel and the JB editor column. The dialog gets
+          // the plan stripped so it stays small.
+          if (message.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
+            routePlanToPanel(message.planContent);
+          }
           dispatch({
             type: "SHOW_CONFIRMATION",
             payload: {
@@ -714,7 +764,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
               toolName: message.toolName,
               confirmationType: message.confirmationType,
               toolInput: message.toolInput,
-              planContent: message.planContent,
+              planContent:
+                message.toolName === EXIT_PLAN_MODE_TOOL_NAME
+                  ? undefined
+                  : message.planContent,
               suggestedPrefix: message.suggestedPrefix,
               hidePersistentOption: message.hidePersistentOption,
               permissionMode: message.permissionMode,
@@ -749,6 +802,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           break;
         case "setInitialState":
           if (!forThisPane(message)) break;
+          // Desktop plan panel: replayed pending confirmations (pane rebind to a
+          // session with confirmations in flight) also carry an ExitPlanMode
+          // plan — route it so the panel survives the replay.
+          for (const c of message.pendingConfirmations ||
+            (message.pendingConfirmation
+              ? [message.pendingConfirmation]
+              : [])) {
+            if (c.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
+              routePlanToPanel(c.planContent);
+            }
+          }
           dispatch({
             type: "SET_INITIAL_STATE",
             payload: {
@@ -1932,6 +1996,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           {...common}
         />
       );
+    }
+    if (kind === "plan") {
+      return <PlanPane content={planContent} {...common} />;
     }
     return (
       <TerminalPane

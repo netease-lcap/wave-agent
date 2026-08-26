@@ -699,6 +699,19 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         permissionMode: context.permissionMode,
       });
 
+      // ExitPlanMode: the full plan renders in a dedicated plan-preview panel opened beside the
+      // chat panel (claudePlanPreview equivalent), so the shared confirmation dialog stays
+      // compact and planContent is not forwarded into the chat webview (JB strips it the same
+      // way; see docs/specs/core/plan-mode.md).
+      if (
+        context.toolName === EXIT_PLAN_MODE_TOOL_NAME &&
+        context.planContent
+      ) {
+        const planKey = `plan_${viewType || "tab"}_${windowId || "sidebar"}`;
+        this.webviewManager.getOrCreatePlanPanel(planKey);
+        this.webviewManager.postPlanContent(planKey, context.planContent);
+      }
+
       this.webviewManager.postMessage(
         {
           command: "showConfirmation",
@@ -706,7 +719,10 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           toolName: context.toolName,
           confirmationType: confirmationType,
           toolInput: context.toolInput,
-          planContent: context.planContent,
+          planContent:
+            context.toolName === EXIT_PLAN_MODE_TOOL_NAME
+              ? undefined
+              : context.planContent,
           suggestedPrefix: context.suggestedPrefix,
           hidePersistentOption: context.hidePersistentOption,
           warning: context.warning,

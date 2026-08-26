@@ -462,7 +462,7 @@ describe("buildApplicationMenuTemplate", () => {
   }
 
   it("shows the panel toggles with informational accelerators (registerAccelerator: false)", () => {
-    // macOS: Shift+Cmd+P / Shift+Cmd+D; terminal is Ctrl+`; 文件 has no shortcut.
+    // macOS: Shift+Cmd+P / Shift+Cmd+D; terminal is Ctrl+`; 计划/文件 have no shortcut.
     expect(panelItemByLabel(true, "预览")).toMatchObject({
       accelerator: "Shift+Cmd+P",
       registerAccelerator: false,
@@ -471,12 +471,13 @@ describe("buildApplicationMenuTemplate", () => {
       accelerator: "Shift+Cmd+D",
       registerAccelerator: false,
     });
+    expect(panelItemByLabel(true, "计划")).not.toHaveProperty("accelerator");
     expect(panelItemByLabel(true, "文件")).not.toHaveProperty("accelerator");
     expect(panelItemByLabel(true, "终端")).toMatchObject({
       accelerator: "Ctrl+`",
       registerAccelerator: false,
     });
-    // Windows/Linux: Ctrl+Shift+P / Ctrl+Shift+D; terminal still Ctrl+`; 文件 no shortcut.
+    // Windows/Linux: Ctrl+Shift+P / Ctrl+Shift+D; terminal still Ctrl+`; 计划/文件 no shortcut.
     expect(panelItemByLabel(false, "预览")).toMatchObject({
       accelerator: "Ctrl+Shift+P",
       registerAccelerator: false,
@@ -485,6 +486,7 @@ describe("buildApplicationMenuTemplate", () => {
       accelerator: "Ctrl+Shift+D",
       registerAccelerator: false,
     });
+    expect(panelItemByLabel(false, "计划")).not.toHaveProperty("accelerator");
     expect(panelItemByLabel(false, "文件")).not.toHaveProperty("accelerator");
     expect(panelItemByLabel(false, "终端")).toMatchObject({
       accelerator: "Ctrl+`",
@@ -529,6 +531,11 @@ describe("buildApplicationMenuTemplate", () => {
       {} as never,
       {} as never,
     );
+    panelItemByLabel(false, "计划").click?.(
+      {} as never,
+      {} as never,
+      {} as never,
+    );
     panelItemByLabel(false, "文件").click?.(
       {} as never,
       {} as never,
@@ -539,11 +546,12 @@ describe("buildApplicationMenuTemplate", () => {
     expect(actions.newSession).toHaveBeenCalledTimes(1);
     expect(actions.newSessionInPane).toHaveBeenCalledTimes(1);
     expect(actions.closePane).toHaveBeenCalledTimes(1);
-    expect(actions.togglePanel).toHaveBeenCalledTimes(4);
+    expect(actions.togglePanel).toHaveBeenCalledTimes(5);
     expect(actions.togglePanel).toHaveBeenNthCalledWith(1, "preview");
     expect(actions.togglePanel).toHaveBeenNthCalledWith(2, "diff");
     expect(actions.togglePanel).toHaveBeenNthCalledWith(3, "terminal");
-    expect(actions.togglePanel).toHaveBeenNthCalledWith(4, "file");
+    expect(actions.togglePanel).toHaveBeenNthCalledWith(4, "plan");
+    expect(actions.togglePanel).toHaveBeenNthCalledWith(5, "file");
   });
 });
 
