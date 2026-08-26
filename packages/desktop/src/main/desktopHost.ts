@@ -783,7 +783,7 @@ export class DesktopHost {
     const callbacks: StdioAgentCallbacks = {
       // NOTE: no full-list push here. The server no longer emits messagesChange;
       // the cache is kept fresh via incremental appends below (user/assistant
-      // adds, bang mirroring) and pull-based refreshes on structural transitions
+      // adds) and pull-based refreshes on structural transitions
       // (webviewReady / restore / compact / clearChat / rewind) via
       // getMessages(). Full-list pushes to the webview happen only through
       // pullAndPushMessages (updateMessages) and pushPaneSessionState
@@ -1087,76 +1087,6 @@ export class DesktopHost {
         const paneId = paneIdOf();
         if (paneId)
           this.postMessage({ command: "mcpServersUpdate", paneId, servers });
-      },
-      onBangMessageAdded: (params) => {
-        // Bang commands append a user message with a bang block — no
-        // userMessageAdded fires for it, so mirror it into the cache (same
-        // shape the server builds) to keep full-state pushes coherent, then
-        // forward the params incrementally. Params are nested because they
-        // carry a `command` field that would clobber the postMessage
-        // discriminator.
-        agentRef.messages = [
-          ...agentRef.messages,
-          {
-            id: params.messageId,
-            role: "user",
-            timestamp: new Date().toISOString(),
-            blocks: [
-              {
-                type: "bang",
-                command: params.command,
-                output: "",
-                stage: "running",
-                exitCode: null,
-              },
-            ],
-          } as Message,
-        ];
-        const paneId = paneIdOf();
-        if (paneId)
-          this.postMessage({ command: "bangMessageAdded", paneId, params });
-      },
-      onBangMessageUpdated: (params) => {
-        agentRef.messages = agentRef.messages.map((m) =>
-          m.id === params.messageId
-            ? {
-                ...m,
-                blocks: m.blocks.map((b, idx) =>
-                  idx === m.blocks.length - 1 && b.type === "bang"
-                    ? { ...b, command: params.command, output: params.output }
-                    : b,
-                ),
-              }
-            : m,
-        );
-        const paneId = paneIdOf();
-        if (paneId)
-          this.postMessage({ command: "bangMessageUpdated", paneId, params });
-      },
-      onBangMessageCompleted: (params) => {
-        agentRef.messages = agentRef.messages.map((m) =>
-          m.id === params.messageId
-            ? {
-                ...m,
-                blocks: m.blocks.map((b, idx) =>
-                  idx === m.blocks.length - 1 && b.type === "bang"
-                    ? {
-                        ...b,
-                        command: params.command,
-                        exitCode: params.exitCode,
-                        stage: "end",
-                        ...(params.output !== undefined
-                          ? { output: params.output }
-                          : {}),
-                      }
-                    : b,
-                ),
-              }
-            : m,
-        );
-        const paneId = paneIdOf();
-        if (paneId)
-          this.postMessage({ command: "bangMessageCompleted", paneId, params });
       },
       onNotificationMessageAdded: (params) => {
         const paneId = paneIdOf();

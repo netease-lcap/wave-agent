@@ -599,62 +599,6 @@ test("onMcpServersChange emits mcpServersChange notification", async () => {
   });
 });
 
-test("onAddBangMessage emits bangMessageAdded notification", async () => {
-  const { bridge, notifications } = createBridge();
-  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
-
-  await bridge.handleRequest("initialize", {});
-  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
-    .callbacks as AgentCallbacks;
-
-  callbacks.onAddBangMessage!("ls", "msg-1");
-
-  expect(notifications).toContainEqual({
-    method: "bangMessageAdded",
-    params: { command: "ls", messageId: "msg-1" },
-    sessionId: "test-session-id",
-  });
-});
-
-test("onUpdateBangMessage emits bangMessageUpdated notification", async () => {
-  const { bridge, notifications } = createBridge();
-  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
-
-  await bridge.handleRequest("initialize", {});
-  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
-    .callbacks as AgentCallbacks;
-
-  callbacks.onUpdateBangMessage!("ls", "output", "msg-1");
-
-  expect(notifications).toContainEqual({
-    method: "bangMessageUpdated",
-    params: { command: "ls", output: "output", messageId: "msg-1" },
-    sessionId: "test-session-id",
-  });
-});
-
-test("onCompleteBangMessage emits bangMessageCompleted notification", async () => {
-  const { bridge, notifications } = createBridge();
-  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
-
-  await bridge.handleRequest("initialize", {});
-  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
-    .callbacks as AgentCallbacks;
-
-  callbacks.onCompleteBangMessage!("ls", 0, "msg-1", "file.txt\n");
-
-  expect(notifications).toContainEqual({
-    method: "bangMessageCompleted",
-    params: {
-      command: "ls",
-      exitCode: 0,
-      messageId: "msg-1",
-      output: "file.txt\n",
-    },
-    sessionId: "test-session-id",
-  });
-});
-
 // ── canUseTool permission flow ───────────────────────────────────
 
 test("canUseTool emits permissionRequest and resolves when permissionResponse received", async () => {
@@ -945,7 +889,14 @@ test("listRewindCheckpoints filters to real user messages and flattens content",
     {
       role: "user",
       id: "u6",
-      blocks: [{ type: "bang", command: "deploy", stage: "end", exitCode: 0 }],
+      blocks: [
+        {
+          type: "tool",
+          name: "bash",
+          parameters: "deploy",
+          stage: "end",
+        },
+      ],
     },
   ] as unknown as Message[];
   const mockAgent = createMockAgent({

@@ -47,7 +47,6 @@ export const MessageList = React.memo(
         (b.stage === "running" ||
           b.stage === "streaming" ||
           b.stage === "start")) ||
-      (b.type === "bang" && b.stage === "running") ||
       (b.type === "reasoning" && b.stage === "streaming") ||
       (b.type === "text" && b.stage === "streaming");
 

@@ -73,24 +73,6 @@ export interface AddErrorBlockParams {
   error: string;
 }
 
-export interface AddBangParams {
-  messages: Message[];
-  command: string;
-}
-
-export interface UpdateBangParams {
-  messages: Message[];
-  command: string;
-  output: string;
-}
-
-export interface CompleteBangParams {
-  messages: Message[];
-  command: string;
-  exitCode: number;
-  output?: string;
-}
-
 /**
  * Convert image file path to base64 format
  * @param imagePath Image file path
@@ -447,86 +429,6 @@ export const addErrorBlockToMessage = ({
   return newMessages;
 };
 
-// Add bang block to message list
-export const addBangMessage = ({
-  messages,
-  command,
-}: AddBangParams): Message[] => {
-  const outputMessage: Message = {
-    id: generateMessageId(),
-    role: "user",
-    blocks: [
-      {
-        type: "bang",
-        command,
-        output: "",
-        stage: "running" as const,
-        exitCode: null,
-      },
-    ],
-    timestamp: new Date().toISOString(),
-  };
-
-  return [...messages, outputMessage];
-};
-
-// Update output content of bang block
-export const updateBangInMessage = ({
-  messages,
-  command,
-  output,
-}: UpdateBangParams): Message[] => {
-  const newMessages = [...messages];
-  // Find the last user message with a bang block for this command
-  for (let i = newMessages.length - 1; i >= 0; i--) {
-    const msg = newMessages[i];
-    if (msg.role === "user") {
-      const commandBlock = msg.blocks.find(
-        (block) =>
-          block.type === "bang" &&
-          block.command === command &&
-          block.stage === "running",
-      );
-      if (commandBlock && commandBlock.type === "bang") {
-        commandBlock.output = output.trim();
-        break;
-      }
-    }
-  }
-  return newMessages;
-};
-
-// Complete bang execution, update exit status
-export const completeBangInMessage = ({
-  messages,
-  command,
-  exitCode,
-  output,
-}: CompleteBangParams): Message[] => {
-  const newMessages = [...messages];
-  // Find the last user message with a bang block for this command
-  for (let i = newMessages.length - 1; i >= 0; i--) {
-    const msg = newMessages[i];
-    if (msg.role === "user") {
-      const commandBlock = msg.blocks.find(
-        (block) =>
-          block.type === "bang" &&
-          block.command === command &&
-          block.stage === "running",
-      );
-      if (commandBlock && commandBlock.type === "bang") {
-        commandBlock.stage = "end";
-        commandBlock.exitCode = exitCode;
-        if (output !== undefined) {
-          commandBlock.output = output.trim();
-        }
-        break;
-      }
-    }
-  }
-  return newMessages;
-};
-
 /**
  * Helper to count tool blocks in messages
  */
@@ -628,11 +530,6 @@ export function getMessageContent(message: Message): string {
   const textBlock = message.blocks.find((block) => block.type === "text");
   if (textBlock && "content" in textBlock) {
     return textBlock.content;
-  }
-
-  const bangBlock = message.blocks.find((block) => block.type === "bang");
-  if (bangBlock && "command" in bangBlock) {
-    return `!${bangBlock.command}`;
   }
 
   const compactBlock = message.blocks.find((block) => block.type === "compact");
