@@ -159,7 +159,7 @@ describe("Session Append-Only Compaction", () => {
     process.env.NODE_ENV = originalEnv;
   });
 
-  it("loadSessionFromJsonl returns only messages after the last compact boundary", async () => {
+  it("loadSessionFromJsonl returns the full transcript including pre-compact messages", async () => {
     const sessionId = "test-session-3";
 
     // File contains: [old_user, old_assistant, compact1, user1, assistant1, compact2, user2]
@@ -178,15 +178,11 @@ describe("Session Append-Only Compaction", () => {
     const result = await loadSessionFromJsonl(sessionId, testWorkdir, "main");
 
     expect(result).not.toBeNull();
-    // Should return only [compact2, user2] — last compact boundary forward
-    expect(result!.messages.length).toBe(2);
-    expect(result!.messages[0].blocks[0].type).toBe("compact");
-    expect((result!.messages[0].blocks[0] as { content: string }).content).toBe(
-      "second summary",
-    );
-    expect((result!.messages[1].blocks[0] as { content: string }).content).toBe(
-      "user2",
-    );
+    // The UI displays the full transcript (pre-compaction history included);
+    // the API-context folding at the last compact boundary happens in
+    // MessageManager.initializeFromSession.
+    expect(result!.messages.length).toBe(7);
+    expect(result!.messages).toEqual(allMessagesInFile);
   });
 
   it("loadSessionFromJsonl returns all messages when no compact boundary exists", async () => {

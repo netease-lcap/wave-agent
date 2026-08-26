@@ -540,7 +540,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // the incremental callbacks in initializeAgent below.
   const refreshMessages = useCallback(() => {
     if (!isExpandedRef.current && agentRef.current) {
-      const msgs = agentRef.current.messages.map(snapshotMessage);
+      // Pull the full UI display stream (keeps pre-compaction history);
+      // `agent.messages` would only expose the folded API context.
+      const msgs = agentRef.current.displayMessages.map(snapshotMessage);
       // Snapshot-safe: the full-list replacement makes the SDK state
       // authoritative. Any update still queued inside the 500ms throttle
       // window was applied to the SDK before this pull, so it is already
@@ -865,9 +867,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         }
 
         // Get initial state — snapshot the SDK messages (never hold live
-        // references; see snapshotMessage)
+        // references; see snapshotMessage). Uses the full display stream so a
+        // restored session shows pre-compaction history too.
         setSessionId(agent.sessionId);
-        setMessages(agent.messages.map(snapshotMessage));
+        setMessages(agent.displayMessages.map(snapshotMessage));
         setIsLoading(agent.isLoading);
         setLatestTotalTokens(extractLatestTotalTokens(agent.messages));
         setIsCommandRunning(agent.isCommandRunning);

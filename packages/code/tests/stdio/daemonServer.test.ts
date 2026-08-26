@@ -31,11 +31,12 @@ import type { Message } from "wave-agent-sdk";
 
 function createMockAgent(overrides: Record<string, unknown> = {}) {
   const messages: Message[] = [];
-  return {
+  const agent = {
     sessionId: "test-session-id",
     workingDirectory: "/test/workdir",
     latestTotalTokens: 0,
     messages,
+    displayMessages: messages,
     destroy: vi.fn().mockResolvedValue(undefined),
     restoreSession: vi.fn(),
     sendMessage: vi.fn(),
@@ -58,7 +59,12 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     hasPendingMessages: false,
     hasRunningBackgroundWork: false,
     ...overrides,
-  } as unknown as Agent;
+  };
+  // displayMessages (full UI stream) tracks messages unless overridden.
+  if (!("displayMessages" in overrides)) {
+    agent.displayMessages = agent.messages;
+  }
+  return agent as unknown as Agent;
 }
 
 /** Connect a JSON-RPC client socket to the daemon; resolves once a response arrives. */

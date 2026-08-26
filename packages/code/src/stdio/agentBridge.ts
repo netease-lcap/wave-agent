@@ -533,7 +533,7 @@ export class AgentBridge {
     if (entry.agent.sessionId === restoreId) {
       this.emit(
         "messagesChange",
-        { messages: entry.agent.messages },
+        { messages: entry.agent.displayMessages },
         entry.agent.sessionId,
       );
       // The re-attached client also missed the loading state that settled
@@ -975,7 +975,7 @@ export class AgentBridge {
 
   private getMessages(sessionId?: string): { messages: Message[] } {
     const entry = this.requireSession(sessionId);
-    return { messages: entry.agent.messages };
+    return { messages: entry.agent.displayMessages };
   }
 
   private async getFullMessageThread(sessionId?: string): Promise<{
@@ -1233,7 +1233,7 @@ export class AgentBridge {
         sessionId,
         workingDirectory: entry.agent.workingDirectory,
         isLoading: entry.agent.isLoading,
-        messageCount: entry.agent.messages.length,
+        messageCount: entry.agent.displayMessages.length,
       })),
     };
   }
@@ -1564,7 +1564,7 @@ export class AgentBridge {
         );
       },
       onNotificationMessageAdded: (params) => {
-        const msg = ctx.agent?.messages.find(
+        const msg = ctx.agent?.displayMessages.find(
           (m) =>
             m.role === "user" &&
             m.blocks.some(

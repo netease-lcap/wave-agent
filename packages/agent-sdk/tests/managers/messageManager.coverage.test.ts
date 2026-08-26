@@ -269,6 +269,50 @@ describe("MessageManager Coverage Improvements", () => {
     expect(messageManager.getSessionId()).toBe(initialSessionId);
   });
 
+  it("initializeFromSession keeps the full transcript in displayMessages while folding the context", () => {
+    const makeMsg = (
+      id: string,
+      role: "user" | "assistant",
+      content: string,
+    ): Message => ({
+      id,
+      role,
+      blocks: [{ type: "text", content }],
+      timestamp: "2026-01-01T00:00:00.000Z",
+    });
+    const sessionData = {
+      id: "sess-1",
+      messages: [
+        makeMsg("u1", "user", "old q"),
+        makeMsg("a1", "assistant", "old a"),
+        {
+          id: "c1",
+          role: "assistant",
+          blocks: [{ type: "compact", content: "summary" }],
+          timestamp: "2026-01-01T00:00:00.000Z",
+        },
+        makeMsg("u2", "user", "new q"),
+        makeMsg("a2", "assistant", "new a"),
+      ],
+      metadata: {
+        workdir: "/test/workdir",
+        lastActiveAt: "2026-01-01T00:00:00.000Z",
+        latestTotalTokens: 0,
+      },
+    } as Parameters<MessageManager["initializeFromSession"]>[0];
+
+    messageManager.initializeFromSession(sessionData);
+
+    // API context folds at the last compact boundary (restart semantics)...
+    const context = messageManager.getMessages();
+    expect(context.map((m) => m.id)).toEqual(["c1", "u2", "a2"]);
+
+    // ...while the UI display stream keeps the full transcript, pre-compaction
+    // history included.
+    const display = messageManager.getDisplayMessages();
+    expect(display.map((m) => m.id)).toEqual(["u1", "a1", "c1", "u2", "a2"]);
+  });
+
   it("should handle addFileHistoryBlock", () => {
     messageManager.addAssistantMessage("hello");
     messageManager.addFileHistoryBlock([

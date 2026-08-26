@@ -76,11 +76,12 @@ import type {
 
 function createMockAgent(overrides: Record<string, unknown> = {}) {
   const messages: Message[] = [];
-  return {
+  const agent = {
     sessionId: "test-session-id",
     workingDirectory: "/test/workdir",
     latestTotalTokens: 100,
     messages,
+    displayMessages: messages,
     destroy: vi.fn(),
     restoreSession: vi.fn(),
     sendMessage: vi.fn(),
@@ -101,7 +102,14 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     getSlashCommands: vi.fn().mockReturnValue([]),
     getAvailableToolNames: vi.fn().mockReturnValue(["Bash", "Read", "Write"]),
     ...overrides,
-  } as unknown as Agent;
+  };
+  // displayMessages (full UI stream) tracks messages unless explicitly
+  // overridden — mirrors the real Agent where both stay in sync except
+  // around compaction.
+  if (!("displayMessages" in overrides)) {
+    agent.displayMessages = agent.messages;
+  }
+  return agent as unknown as Agent;
 }
 
 function createBridge() {

@@ -122,6 +122,7 @@ describe("ConfirmationSelector Esc Integration", () => {
   const mockAgent = {
     sessionId: "test-session",
     messages: [],
+    displayMessages: [],
     isLoading: false,
     latestTotalTokens: 0,
     isCommandRunning: false,

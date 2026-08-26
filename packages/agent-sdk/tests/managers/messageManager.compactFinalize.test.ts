@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import type { MessageManagerCallbacks } from "../../src/managers/messageManager.js";
 import { Container } from "../../src/utils/container.js";
-import type { TextBlock } from "../../src/types/index.js";
+import type { TextBlock, Message } from "../../src/types/index.js";
 
 vi.mock("fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
@@ -132,5 +132,55 @@ describe("MessageManager - Compaction finalizes streaming blocks", () => {
       chunk: "",
       stage: "end",
     });
+  });
+
+  it("compaction appends only the compact block to the transcript (write-side dedup)", async () => {
+    const { appendMessages } = await import("../../src/services/session.js");
+    const messageManager = createManager({});
+    messageManager.addUserMessage({ content: "Q1" });
+    messageManager.addAssistantMessage();
+    messageManager.updateCurrentMessageContent("A1");
+    messageManager.addUserMessage({ content: "Q2" });
+    messageManager.addAssistantMessage();
+    messageManager.updateCurrentMessageContent("A2");
+
+    await messageManager.compactMessagesAndUpdateSession("summarized");
+
+    // The preserved last API rounds were already written before compaction
+    // (saveSession), so only the compact block is appended — re-appending the
+    // rounds would duplicate lines in the transcript (dedup-skipped, CC).
+    expect(appendMessages).toHaveBeenCalledTimes(1);
+    const appended = vi.mocked(appendMessages).mock.calls[0][1] as Message[];
+    expect(appended).toHaveLength(1);
+    expect(appended[0].blocks[0].type).toBe("compact");
+    expect(appended[0].blocks[0]).toMatchObject({ content: "summarized" });
+  });
+
+  it("compaction keeps the full pre-compaction history in the display stream", async () => {
+    const messageManager = createManager({});
+    messageManager.addUserMessage({ content: "Q1" });
+    messageManager.addAssistantMessage();
+    messageManager.updateCurrentMessageContent("A1");
+    messageManager.addUserMessage({ content: "Q2" });
+    messageManager.addAssistantMessage();
+    messageManager.updateCurrentMessageContent("A2");
+
+    const displayBefore = messageManager.getDisplayMessages();
+    expect(displayBefore).toHaveLength(4);
+
+    await messageManager.compactMessagesAndUpdateSession("summarized");
+
+    // API context folds to [compact, ...last API rounds]...
+    const context = messageManager.getMessages();
+    expect(context[0].blocks[0].type).toBe("compact");
+    expect(context).toHaveLength(5);
+
+    // ...while the display stream keeps the full history and appends the
+    // compact block at the end (never clearing the pre-compaction messages).
+    const display = messageManager.getDisplayMessages();
+    expect(display).toHaveLength(5);
+    expect(display[0].role).toBe("user");
+    expect(display[4].blocks[0].type).toBe("compact");
+    expect(display[4].blocks[0]).toMatchObject({ content: "summarized" });
   });
 });

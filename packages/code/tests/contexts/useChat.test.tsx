@@ -69,6 +69,11 @@ describe("ChatProvider", () => {
   const mockAgent = {
     sessionId: "test-session",
     messages: [],
+    // Full UI stream follows the context in this mock (tests only exercise
+    // the non-compaction path where the two are identical).
+    get displayMessages() {
+      return this.messages;
+    },
     isLoading: false,
     latestTotalTokens: 0,
     isCommandRunning: false,

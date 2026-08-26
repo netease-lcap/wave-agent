@@ -110,6 +110,13 @@ export class MessageManager {
   // Private state properties
   private sessionId: string;
   private messages: Message[];
+  /** Full display message stream for the UI. Mirrors `messages` (context) on
+   * every normal change; the two diverge only around compaction, where
+   * `messages` is replaced by [compact, ...last API rounds] for the API
+   * context while `displayMessages` keeps the full history and appends the
+   * compact block (aligned with Claude Code desktop/VS Code: compaction
+   * folds the API context but leaves the UI transcript intact). */
+  private displayMessages: Message[] = [];
   private latestTotalTokens: number;
   private workdir: string;
   private encodedWorkdir: string; // Cached encoded workdir
@@ -169,6 +176,11 @@ export class MessageManager {
 
   public getMessages(): Message[] {
     return [...this.messages];
+  }
+
+  /** Full UI display message stream (includes pre-compaction history). */
+  public getDisplayMessages(): Message[] {
+    return [...this.displayMessages];
   }
 
   public getUsages(): Usage[] {
@@ -321,9 +333,19 @@ export class MessageManager {
     );
   }
 
-  public setMessages(messages: Message[]): void {
+  public setMessages(
+    messages: Message[],
+    opts?: { keepDisplay?: boolean },
+  ): void {
     const oldLength = this.messages.length;
     this.messages = [...messages];
+    // The UI display stream follows the context by default. Compaction /
+    // session restore / rewind pass keepDisplay and manage displayMessages
+    // explicitly (the display stream must keep the full pre-compaction
+    // history while the context folds at the last compact boundary).
+    if (!opts?.keepDisplay) {
+      this.displayMessages = [...messages];
+    }
 
     // Incrementally extract metadata from new messages
     const newMessages = messages.slice(oldLength);
@@ -416,7 +438,13 @@ export class MessageManager {
   // Initialize state from session data
   public initializeFromSession(sessionData: SessionData): void {
     this.setSessionId(sessionData.id);
-    this.setMessages([...sessionData.messages]);
+    // The UI displays the full transcript (pre-compaction history included);
+    // the API context folds at the last compact boundary so the model only
+    // sees messages from the latest summary forward.
+    this.setMessages(sliceFromLastCompact(sessionData.messages), {
+      keepDisplay: true,
+    });
+    this.displayMessages = [...sessionData.messages];
     this.setlatestTotalTokens(sessionData.metadata.latestTotalTokens);
 
     // Rebuild loadedRuleIds from persisted meta messages (session restore)
@@ -424,7 +452,7 @@ export class MessageManager {
 
     // Set saved message count to the number of loaded messages since they're already saved
     // This must be done after setSessionId which resets it to 0
-    this.savedMessageCount = sessionData.messages.length;
+    this.savedMessageCount = this.messages.length;
   }
 
   // Encapsulated message operation functions
@@ -616,17 +644,24 @@ export class MessageManager {
     // Build new message array: keep the compacted message and last messages
     const newMessages: Message[] = [compactMessage, ...lastThreeMessages];
 
-    // APPEND to the same session file (append-only, like Claude Code)
+    // APPEND only the compact block to the session file (append-only, like
+    // Claude Code). The preserved last API rounds were already written before
+    // compaction (saveSession ran at the start), so re-appending them would
+    // duplicate those lines in the transcript — the loader relies on each
+    // message id appearing exactly once (dedup-skipped, aligned with CC).
     const { appendMessages } = await import("../services/session.js");
     await appendMessages(
       this.sessionId,
-      newMessages,
+      [compactMessage],
       this.workdir,
       this.sessionType,
     );
 
-    // Update in-memory state
-    this.setMessages(newMessages);
+    // Update in-memory state: the API context folds to [compact, ...last
+    // rounds], while the UI display stream keeps the full history and appends
+    // the compact block at the end.
+    this.setMessages(newMessages, { keepDisplay: true });
+    this.displayMessages = [...this.displayMessages, compactMessage];
     this.savedMessageCount = newMessages.length;
 
     // Trim recent file read cache so contents compacted away are released
@@ -1042,10 +1077,11 @@ export class MessageManager {
 
     // Rewrite file with truncated messages (full history kept on disk)
     await this.rewriteSessionFile(newMessages);
-    // Fold the in-memory messages at the last compact boundary so the agent
-    // only sees messages from the latest compact summary forward — matching
-    // the compact and resume behaviors (which also fold memory).
-    this.setMessages(sliceFromLastCompact(newMessages));
+    // The UI keeps the full truncated thread; the agent context folds at the
+    // last compact boundary so the agent only sees messages from the latest
+    // compact summary forward — matching the compact and resume behaviors.
+    this.setMessages(sliceFromLastCompact(newMessages), { keepDisplay: true });
+    this.displayMessages = newMessages;
     // savedMessageCount tracks in-memory progress, so it must be the folded
     // length. Using the full disk count here would make saveSession's
     // slice(savedMessageCount) empty after a rewind past a compact boundary

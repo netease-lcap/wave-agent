@@ -26,10 +26,7 @@ import { PathEncoder } from "../utils/pathEncoder.js";
 import { JsonlHandler } from "../services/jsonlHandler.js";
 import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
 import { logger } from "../utils/globalLogger.js";
-import {
-  getMessageContent,
-  sliceFromLastCompact,
-} from "../utils/messageOperations.js";
+import { getMessageContent } from "../utils/messageOperations.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -305,8 +302,12 @@ export async function loadSessionFromJsonl(
 
     const allMessages = await jsonlHandler.read(resolvedPath);
 
-    // Find the last compact boundary — only return messages from there forward
-    const messages = sliceFromLastCompact(allMessages);
+    // Return the FULL transcript. The transcript is append-only and compaction
+    // writes only the compact block (preserved last rounds are dedup-skipped),
+    // so every message id appears exactly once — the UI renders the whole
+    // history including pre-compaction messages. The API context folding at
+    // the last compact boundary happens in MessageManager.initializeFromSession.
+    const messages = allMessages;
 
     // Extract metadata from messages
     const lastMessage =
