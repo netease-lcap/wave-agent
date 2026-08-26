@@ -1,0 +1,9 @@
+{
+  "icons": {
+    "expui": {
+      "toolwindow": {
+        "waveToolWindow.svg": "icons/waveToolWindow.svg"
+      }
+    }
+  }
+}
