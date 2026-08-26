@@ -159,6 +159,44 @@ describe("Permission Mode Select", () => {
     expect(select.className).toContain("mode-default");
   });
 
+  it("should navigate options with ArrowUp/ArrowDown and confirm with Enter", async () => {
+    const { vscode } = renderChatApp();
+
+    await act(async () => {
+      sendCommand("setInitialState", {
+        messages: [],
+        permissionMode: "default",
+        configurationData: {},
+      });
+    });
+
+    // Open the menu via the host shortcut; focus lands on the selected option.
+    await act(async () => {
+      sendCommand("triggerShortcut", { name: "open-permission-mode" });
+    });
+    const options = Array.from(
+      document.querySelectorAll<HTMLElement>(".permission-mode-item"),
+    );
+    await waitFor(() => {
+      expect(options[0]).toBe(document.activeElement);
+    });
+
+    // ArrowDown moves focus to the next option, ArrowUp moves it back.
+    fireEvent.keyDown(options[0], { key: "ArrowDown" });
+    expect(options[1]).toBe(document.activeElement);
+    fireEvent.keyDown(options[1], { key: "ArrowUp" });
+    expect(options[0]).toBe(document.activeElement);
+
+    // ArrowDown + Enter picks the second option.
+    vscode.postMessage.mockClear();
+    fireEvent.keyDown(options[0], { key: "ArrowDown" });
+    fireEvent.keyDown(options[1], { key: "Enter" });
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      command: "setPermissionMode",
+      mode: "acceptEdits",
+    });
+  });
+
   it("should open the menu via the host triggerShortcut bridge (JetBrains/desktop)", async () => {
     renderChatApp();
 

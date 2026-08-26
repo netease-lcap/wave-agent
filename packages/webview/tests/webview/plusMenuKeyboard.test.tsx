@@ -1,4 +1,4 @@
-import { renderChatApp, screen, fireEvent } from "./test-utils";
+import { renderChatApp, screen, fireEvent, waitFor } from "./test-utils";
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 
 /**
@@ -65,21 +65,48 @@ describe("Message input dropdown keyboard accessibility", () => {
     );
   });
 
-  it("should make permission-mode options focusable and selectable via keyboard", () => {
+  it("should make the permission menu a roving-tabindex listbox (Arrow keys + Enter)", async () => {
     const { vscode } = renderChatApp();
     fireEvent.click(screen.getByRole("button", { name: "权限模式" }));
 
-    const option = screen.getByRole("option", { name: "自动接受修改" });
-    expect(option).toHaveProperty("tabIndex", 0);
+    // The currently selected option is the single tab stop and takes focus
+    // when the menu opens; the others are removed from the tab order.
+    const selected = screen.getByRole("option", { name: "修改前询问" });
+    const next = screen.getByRole("option", { name: "自动接受修改" });
+    expect(selected).toHaveProperty("tabIndex", 0);
+    expect(next).toHaveProperty("tabIndex", -1);
+    await waitFor(() => {
+      expect(selected).toBe(document.activeElement);
+    });
 
-    option.focus();
-    fireEvent.keyDown(option, { key: "Enter" });
+    // ArrowDown roves focus to the next option (it becomes the tab stop).
+    fireEvent.keyDown(selected, { key: "ArrowDown" });
+    expect(next).toBe(document.activeElement);
+    expect(next).toHaveProperty("tabIndex", 0);
+
+    // Enter activates the focused option and closes the menu.
+    fireEvent.keyDown(next, { key: "Enter" });
 
     expect(vscode.postMessage).toHaveBeenCalledWith({
       command: "setPermissionMode",
       mode: "acceptEdits",
     });
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("should close the permission menu with Tab and leave the mode unchanged", () => {
+    const { vscode } = renderChatApp();
+    fireEvent.click(screen.getByRole("button", { name: "权限模式" }));
+
+    const option = screen.getByRole("option", { name: "计划模式" });
+    option.focus();
+    fireEvent.keyDown(option, { key: "Tab" });
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(vscode.postMessage).not.toHaveBeenCalledWith({
+      command: "setPermissionMode",
+      mode: "plan",
+    });
   });
 
   it("should close the permission menu with Escape and return focus to its button", () => {
