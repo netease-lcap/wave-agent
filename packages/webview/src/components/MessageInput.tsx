@@ -144,6 +144,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
 
     // Permission mode custom dropdown state
     const [permMenuOpen, setPermMenuOpen] = useState(false);
+    const [permMenuFocusIndex, setPermMenuFocusIndex] = useState(0);
     const permMenuRef = useRef<HTMLDivElement>(null);
     const permMenuButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -168,13 +169,19 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
     // textarea first.
     const openPermissionModeMenu = useCallback(() => {
       setPermMenuOpen(true);
+      const selectedIndex = Math.max(
+        0,
+        PERMISSION_MODES.findIndex(
+          (m) => m.value === (permissionMode || "default"),
+        ),
+      );
+      setPermMenuFocusIndex(selectedIndex);
       requestAnimationFrame(() => {
-        const selected = permMenuRef.current?.querySelector<HTMLElement>(
-          ".permission-mode-item.selected",
-        );
-        (selected ?? permMenuButtonRef.current)?.focus();
+        permMenuRef.current
+          ?.querySelectorAll<HTMLElement>(".permission-mode-item")
+          [selectedIndex]?.focus();
       });
-    }, []);
+    }, [permissionMode]);
 
     // Close the permission dropdown when clicking outside of it.
     useEffect(() => {
@@ -1761,7 +1768,13 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
                   aria-label="权限模式"
                   aria-expanded={permMenuOpen}
                   disabled={disabled}
-                  onClick={() => setPermMenuOpen((o) => !o)}
+                  onClick={() => {
+                    if (permMenuOpen) {
+                      setPermMenuOpen(false);
+                    } else {
+                      openPermissionModeMenu();
+                    }
+                  }}
                 >
                   {permissionModeIcon(permissionMode)}
                   {permissionModeLabel(permissionMode)}
@@ -1769,11 +1782,11 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
                 </button>
                 {permMenuOpen && (
                   <ul className="permission-mode-menu" role="listbox">
-                    {PERMISSION_MODES.map((m) => (
+                    {PERMISSION_MODES.map((m, i) => (
                       <li
                         key={m.value}
                         role="option"
-                        tabIndex={0}
+                        tabIndex={i === permMenuFocusIndex ? 0 : -1}
                         data-value={m.value}
                         aria-selected={
                           m.value === (permissionMode || "default")
@@ -1789,6 +1802,26 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
                             e.preventDefault();
                             setPermMenuOpen(false);
                             permMenuButtonRef.current?.focus();
+                          } else if (
+                            e.key === "ArrowDown" ||
+                            e.key === "ArrowUp"
+                          ) {
+                            // Roving focus between options (standard listbox
+                            // navigation); Enter/Space confirm the selection.
+                            e.preventDefault();
+                            const next = i + (e.key === "ArrowDown" ? 1 : -1);
+                            if (next >= 0 && next < PERMISSION_MODES.length) {
+                              setPermMenuFocusIndex(next);
+                              permMenuRef.current
+                                ?.querySelectorAll<HTMLElement>(
+                                  ".permission-mode-item",
+                                )
+                                [next]?.focus();
+                            }
+                          } else if (e.key === "Tab") {
+                            // Leave the menu without changing the mode; the
+                            // focus moves on to the next tab stop naturally.
+                            setPermMenuOpen(false);
                           }
                         }}
                       >
