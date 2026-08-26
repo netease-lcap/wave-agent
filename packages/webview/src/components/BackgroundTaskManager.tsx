@@ -6,7 +6,7 @@
  * output and stop running tasks.
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { BackgroundTaskManagerProps, BackgroundTaskSummary } from "../types";
 import "../styles/ConfigurationDialog.css";
 
@@ -47,9 +47,70 @@ const BackgroundTaskManager: React.FC<
   const [output, setOutput] = useState<BackgroundTaskOutput | null>(null);
   const [loadingOutput, setLoadingOutput] = useState(false);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
+  // Roving focus: index of the task highlighted in the list (the list is a
+  // single Tab stop; ArrowUp/Down move it, Enter opens the selected task).
+  const [rovingIndex, setRovingIndex] = useState<number | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // Element focused before the dialog opened; restored on close.
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) || null;
+
+  // On open: remember the previously focused element, then move focus into the
+  // dialog — the task list when it has tasks, the close button when empty.
+  useEffect(() => {
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    if (tasks.length > 0) {
+      listRef.current?.focus();
+    } else {
+      dialogRef.current?.querySelector<HTMLElement>("button")?.focus();
+    }
+    return () => {
+      const prev = previousFocusRef.current;
+      if (prev && document.contains(prev)) prev.focus();
+    };
+  }, [tasks.length, dialogRef, listRef, previousFocusRef]);
+
+  // Entering the detail view: move focus to the first focusable control there
+  // (the stop button for running tasks, otherwise the back button).
+  useEffect(() => {
+    if (selectedTaskId) {
+      const first = dialogRef.current?.querySelector<HTMLElement>(
+        ".mcp-server-item button, .configuration-actions button",
+      );
+      first?.focus();
+    }
+  }, [selectedTaskId]);
+
+  const handleBackToList = useCallback(() => {
+    setSelectedTaskId(null);
+    // Focus returns to the list selector once the list view is rendered.
+    requestAnimationFrame(() => listRef.current?.focus());
+  }, []);
+
+  const handleListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const count = tasks.length;
+    if (count === 0) return;
+    const current = rovingIndex ?? 0;
+    switch (e.key) {
+      case "ArrowUp":
+        e.preventDefault();
+        setRovingIndex(Math.max(0, current - 1));
+        break;
+      case "ArrowDown":
+        e.preventDefault();
+        setRovingIndex(Math.min(count - 1, current + 1));
+        break;
+      case "Enter":
+        e.preventDefault();
+        setSelectedTaskId(tasks[current].id);
+        break;
+    }
+  };
 
   // Fetch output when a task is selected
   useEffect(() => {
@@ -115,7 +176,7 @@ const BackgroundTaskManager: React.FC<
     const handleEscapeKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (selectedTaskId) {
-          setSelectedTaskId(null);
+          handleBackToList();
         } else {
           onClose();
         }
@@ -130,7 +191,7 @@ const BackgroundTaskManager: React.FC<
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleEscapeKey);
     };
-  }, [onClose, selectedTaskId]);
+  }, [onClose, selectedTaskId, handleBackToList]);
 
   const statusColor = (status: string): string => {
     switch (status) {
@@ -311,11 +372,17 @@ const BackgroundTaskManager: React.FC<
               </div>
             </div>
           ) : (
-            <div className="mcp-server-list">
-              {tasks.map((task) => (
+            <div
+              ref={listRef}
+              className="mcp-server-list"
+              tabIndex={tasks.length > 0 ? 0 : undefined}
+              aria-label="后台任务列表（方向键在任务间移动，Enter 查看任务详情）"
+              onKeyDown={handleListKeyDown}
+            >
+              {tasks.map((task, index) => (
                 <div
                   key={task.id}
-                  className="mcp-server-item"
+                  className={`mcp-server-item${rovingIndex === index ? " roving-selected" : ""}`}
                   style={{ cursor: "pointer" }}
                   onClick={() => setSelectedTaskId(task.id)}
                 >
@@ -393,7 +460,7 @@ const BackgroundTaskManager: React.FC<
             {selectedTask && (
               <button
                 type="button"
-                onClick={() => setSelectedTaskId(null)}
+                onClick={handleBackToList}
                 className="configuration-cancel-btn"
               >
                 返回列表

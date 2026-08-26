@@ -958,3 +958,11 @@ input:checked + .slider:before {
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 12px;
 }
+
+/* Roving selection highlight for the background task list: the task currently
+   selected while the list (a single Tab stop) is focused. */
+.mcp-server-item.roving-selected {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+  border-radius: 6px;
+}
