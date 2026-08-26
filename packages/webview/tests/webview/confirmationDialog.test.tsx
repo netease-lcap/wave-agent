@@ -795,6 +795,59 @@ describe("AskUserQuestion Other input", () => {
     });
   });
 
+  it("shows a grey 输入自定义回答... hint before Other is selected, replaced by the textarea after", async () => {
+    renderChatApp();
+    showAskUser(singleQuestion);
+    await waitForDialog();
+
+    // Not selected: grey hint visible (option-description style), no textarea
+    const hint = document.querySelector(".other-option .option-description");
+    expect(hint).toBeInTheDocument();
+    expect(hint).toHaveTextContent("输入自定义回答...");
+    expect(document.querySelector(".other-text-input")).not.toBeInTheDocument();
+
+    // Select Other: hint is replaced by the textarea
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="radio"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+    });
+    expect(
+      document.querySelector(".other-option .option-description"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("multi-select: shows the hint before checking Other and replaces it after", async () => {
+    renderChatApp();
+    showAskUser([
+      {
+        question: "多选：选择语言？",
+        options: [{ label: "TypeScript" }, { label: "Python" }],
+        multiSelect: true,
+      },
+    ]);
+    await waitForDialog();
+
+    expect(
+      document.querySelector(".other-option .option-description"),
+    ).toHaveTextContent("输入自定义回答...");
+
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="checkbox"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+    });
+    expect(
+      document.querySelector(".other-option .option-description"),
+    ).not.toBeInTheDocument();
+  });
+
   it("should submit the typed custom answer for single-select", async () => {
     const { vscode } = renderChatApp();
     showAskUser(singleQuestion);
@@ -1102,5 +1155,130 @@ describe("AskUserQuestion Other input", () => {
         "第二个问题",
       );
     });
+  });
+
+  it("should focus the other textarea when Other is selected (mouse or Space)", async () => {
+    renderChatApp();
+    showAskUser(singleQuestion);
+    await waitForDialog();
+
+    // Mouse: clicking the Other radio reveals and focuses the textarea
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="radio"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+    });
+    expect(document.activeElement).toHaveClass("other-text-input");
+
+    // Switch back to a normal option: textarea hides again
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="0"] input[type="radio"]',
+        )!,
+      );
+    });
+    await waitFor(() => {
+      expect(
+        document.querySelector(".other-text-input"),
+      ).not.toBeInTheDocument();
+    });
+
+    // Keyboard: selecting Other with Space focuses the textarea
+    act(() => {
+      fireEvent.keyDown(document.querySelector(".other-option")!, {
+        key: " ",
+      });
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+    });
+    expect(document.activeElement).toHaveClass("other-text-input");
+  });
+
+  it("multi-select: checking Other focuses the textarea", async () => {
+    renderChatApp();
+    showAskUser([
+      {
+        question: "多选：选择语言？",
+        options: [{ label: "TypeScript" }, { label: "Python" }],
+        multiSelect: true,
+      },
+    ]);
+    await waitForDialog();
+
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="checkbox"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+    });
+    expect(document.activeElement).toHaveClass("other-text-input");
+  });
+
+  it("should not steal focus when switching to a question that already has Other selected", async () => {
+    renderChatApp();
+    showAskUser([
+      ...singleQuestion,
+      {
+        question: "第二个问题：选择语言？",
+        options: [{ label: "TypeScript" }, { label: "Python" }],
+        multiSelect: false,
+      },
+    ]);
+    await waitForDialog();
+
+    // q1: answer with a normal option so navigation is enabled
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="0"] input[type="radio"]',
+        )!,
+      );
+    });
+
+    // Go to q2 and select Other -> textarea focuses
+    act(() => {
+      fireEvent.click(document.querySelector(".confirmation-btn-secondary")!);
+    });
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="radio"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(document.activeElement).toHaveClass("other-text-input");
+    });
+
+    // Simulate a real user: go back to q1, then forward to q2 again.
+    // Focus must not jump into the textarea.
+    const prevBtn = document.querySelector(
+      '.question-progress-nav[aria-label="上一题"]',
+    ) as HTMLButtonElement;
+    act(() => {
+      fireEvent.click(prevBtn);
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "单选：选哪个方案？",
+      );
+    });
+    const nextBtn = document.querySelector(
+      '.question-progress-nav[aria-label="下一题"]',
+    ) as HTMLButtonElement;
+    act(() => {
+      fireEvent.click(nextBtn);
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "第二个问题",
+      );
+    });
+    expect(document.activeElement).not.toHaveClass("other-text-input");
   });
 });
