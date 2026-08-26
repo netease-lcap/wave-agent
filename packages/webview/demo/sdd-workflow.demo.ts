@@ -129,15 +129,19 @@ order: 1
               {
                 header: "规格确认",
                 question:
-                  "功能规格《客户管理系统》已完成（4 个用户故事、12 个验收场景），是否确认？",
+                  "功能规格《客户管理系统》已完成（4 个用户故事、12 个验收场景），请选择后续流程：",
                 options: [
                   {
-                    label: "确认通过",
-                    description: "规格确认通过，继续后续阶段",
+                    label: "直接实现",
+                    description: "跳过技术方案，直接开始编码",
                   },
                   {
-                    label: "需要修改",
-                    description: "按你的反馈更新规格后重新确认",
+                    label: "制定技术方案",
+                    description: "制定技术选型、架构设计与实现步骤后请你批准",
+                  },
+                  {
+                    label: "其他",
+                    description: "规格需要调整，按反馈修改后重新决策",
                   },
                 ],
               },
@@ -161,12 +165,19 @@ order: 1
           {
             header: "规格确认",
             question:
-              "功能规格《客户管理系统》已完成（4 个用户故事、12 个验收场景），是否确认？",
+              "功能规格《客户管理系统》已完成（4 个用户故事、12 个验收场景），请选择后续流程：",
             options: [
-              { label: "确认通过", description: "规格确认通过，继续后续阶段" },
               {
-                label: "需要修改",
-                description: "按你的反馈更新规格后重新确认",
+                label: "直接实现",
+                description: "跳过技术方案，直接开始编码",
+              },
+              {
+                label: "制定技术方案",
+                description: "制定技术选型、架构设计与实现步骤后请你批准",
+              },
+              {
+                label: "其他",
+                description: "规格需要调整，按反馈修改后重新决策",
               },
             ],
           },
@@ -182,73 +193,8 @@ order: 1
     await webviewPage.keyboard.press("Escape");
     await specDialog.waitFor({ state: "detached" });
 
-    // ---- Stage 3: optional plan question ----
-    const planMsg: Message = {
-      id: "msg_sdd_plan",
-      role: "assistant",
-      timestamp: "2025-07-10T09:00:08.000Z",
-      blocks: [
-        {
-          type: "tool",
-          name: ASK_USER_QUESTION_TOOL_NAME,
-          stage: "running",
-          parameters: JSON.stringify({
-            questions: [
-              {
-                header: "技术方案",
-                question: "规格已确认。是否进入 plan 模式制定技术方案？",
-                options: [
-                  {
-                    label: "进入 plan 模式",
-                    description: "制定技术选型、架构设计与实现步骤后请你批准",
-                  },
-                  {
-                    label: "跳过",
-                    description: "不制定技术方案，直接开始编码",
-                  },
-                ],
-              },
-            ],
-          }),
-        },
-      ],
-    };
-    await injector.updateMessages([
-      userMessage,
-      specReply,
-      writeSpecMsg,
-      planMsg,
-    ]);
-    await injector.simulateExtensionMessage("showConfirmation", {
-      confirmationId: "sdd-confirm-plan",
-      toolName: ASK_USER_QUESTION_TOOL_NAME,
-      confirmationType: "问题待回答",
-      toolInput: {
-        questions: [
-          {
-            header: "技术方案",
-            question: "规格已确认。是否进入 plan 模式制定技术方案？",
-            options: [
-              {
-                label: "进入 plan 模式",
-                description: "制定技术选型、架构设计与实现步骤后请你批准",
-              },
-              { label: "跳过", description: "不制定技术方案，直接开始编码" },
-            ],
-          },
-        ],
-      },
-    });
-    const planDialog = webviewPage.locator(".confirmation-dialog");
-    await planDialog.waitFor({ state: "visible" });
-    await elementScreenshotWebp(
-      planDialog,
-      "../../docs/public/screenshots/spec-sdd-confirm-plan.webp",
-    );
-    await webviewPage.keyboard.press("Escape");
-    await planDialog.waitFor({ state: "detached" });
+    // ---- Stage 3: plan approval (ExitPlanMode) ----
 
-    // ---- Stage 4: plan approval (ExitPlanMode) ----
     await injector.simulateExtensionMessage("showConfirmation", {
       confirmationId: "sdd-plan-approve",
       confirmationType: "计划执行确认",
@@ -333,7 +279,7 @@ order: 1
     await webviewPage.keyboard.press("Escape");
     await planApproveDialog.waitFor({ state: "detached" });
 
-    // ---- Stage 5: coding stage with full task progress ----
+    // ---- Stage 4: coding stage with full task progress ----
     const codingReply: Message = {
       id: "msg_sdd_coding",
       role: "assistant",
