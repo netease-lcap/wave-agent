@@ -55,11 +55,6 @@
         </action>
         <group id="WaveEditorPopupMenu" text="Wave" popup="true">
             <reference ref="com.wave.jetbrains.addSelectionToWave"/>
-            <action
-                id="com.wave.jetbrains.newWaveTab"
-                class="com.wave.jetbrains.actions.NewWaveTabAction"
-                text="New Wave Chat"
-                description="Open a new Wave chat tab"/>
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </group>
     </actions>

@@ -5,7 +5,6 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
-import com.wave.jetbrains.actions.NewWaveTabAction
 
 class WaveToolWindowFactory : ToolWindowFactory {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
@@ -17,22 +16,17 @@ class WaveToolWindowFactory : ToolWindowFactory {
         toolWindow.stripeTitle = "Wave 代码智聊"
         val holder = WavePanelHolder.getInstance(project)
         holder.toolWindow = toolWindow
-        toolWindow.setTitleActions(listOf(NewWaveTabAction()))
         toolWindow.contentManager.addContentManagerListener(object : ContentManagerListener {
-            override fun selectionChanged(e: ContentManagerEvent) {
-                holder.setActiveByContent(e.content)
-            }
             override fun contentRemoved(e: ContentManagerEvent) {
-                // Keep at least one chat tab: closing the last tab would leave the tool window
-                // blank (only the "+" header button remains), which reads as a bug. Re-create a
-                // fresh session so the window always has a chat — mirrors VSCE, where the sidebar
-                // session is always present. Skip during IDE shutdown (project disposed).
+                // Keep the single chat content: if the last content is closed (e.g. tool window
+                // teardown), re-create a fresh session so the window always has a chat — mirrors
+                // VSCE, where the sidebar session is always present. Skip during IDE shutdown.
                 if (project.isDisposed) return
                 if (toolWindow.contentManager.contentCount == 0) {
-                    holder.addChatTab()
+                    holder.ensureChat()
                 }
             }
         })
-        holder.addChatTab()
+        holder.ensureChat()
     }
 }
