@@ -159,21 +159,21 @@ _图片全屏预览模态框_
 ![消息列表中的内联标签](/screenshots/spec-message-inline-tags.webp)
 _消息列表中的内联标签_
 
-### 2.6 快捷终端命令 (Bang Command) {#bang-shell-command}
+### 2.6 Bash 模式 {#bash-mode}
 
 用户可以通过在输入框中以 `!` 开头直接执行终端命令。这允许用户在不离开聊天界面的情况下快速执行系统操作、运行脚本或检查环境。
 
 **主要特性：**
 
 - **快速触发**：只需在命令前加上 `!` 即可触发，如 `!ls -la`。
-- **实时输出**：命令执行过程中的输出会实时显示在专用的 Bang 块中，风格与 AI 触发的终端工具保持一致。
-- **状态反馈**：通过图标直观展示命令的运行状态（运行中、退出代码等）。
-- **可中止性**：对于长时间运行的命令，用户可以点击"停止"按钮随时中止执行。
+- **实时输出**：命令以 user 消息 + bash tool block 形态显示，执行过程中的输出实时更新，风格与 AI 触发的终端工具保持一致。
+- **退出码标注**：命令失败时输出前标注 `[exit code: N]`。
+- **可中止性**：对于长时间运行的命令，用户可以随时中止执行。
 
-![Bang 命令执行成功](/screenshots/bang-command-success.webp)
-_Bang 命令执行成功_
+![Bash 模式命令执行成功](/screenshots/bash-mode-success.webp)
+_Bash 模式命令执行成功_
 
-![长输出展示](/screenshots/bang-command-long-output.webp)
+![长输出展示](/screenshots/bash-mode-long-output.webp)
 _长输出展示_
 
 ### 2.7 输入框外观与状态 {#input-box}

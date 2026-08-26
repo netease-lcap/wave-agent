@@ -74,6 +74,6 @@ order: 145
 
 ### 测试验证需求
 
-- 必须通过 spy `aiManager.sendAIMessage` / `InteractionService.sendMessage` / `bangManager.executeCommand` 验证 destroy 后公开 API 抛错且不产生调用
+- 必须通过 spy `aiManager.sendAIMessage` / `InteractionService.sendMessage` / `bashModeManager.executeCommand` 验证 destroy 后公开 API 抛错且不产生调用
 - 必须通过注册一个手动控制 resolve 的 promise 验证 destroy 等待排空；通过永不 resolve 的 promise + 短超时验证超时兜底与错误日志
 - 必须通过 message queue 遗留消息场景验证 destroy 后 `sendAIMessage` 调用次数为 0（#1817 回归测试保留）
