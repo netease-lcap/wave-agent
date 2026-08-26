@@ -1484,6 +1484,86 @@ describe("permission confirmations", () => {
     });
   });
 
+  it("ExitPlanMode showConfirmation carries the plan content to the webview", async () => {
+    const { sent } = await readyHost();
+    lastAgent().callbacks.onPermissionRequest("req-plan", {
+      toolName: "ExitPlanMode",
+      permissionMode: "plan",
+      planContent: "## 重构方案\n- 步骤一",
+    });
+    await vi.waitFor(() => {
+      expect(sent("showConfirmation")).toHaveLength(1);
+    });
+    const msg = sent("showConfirmation")[0];
+    expect(msg).toMatchObject({
+      toolName: "ExitPlanMode",
+      confirmationType: "计划待确认",
+      planContent: "## 重构方案\n- 步骤一",
+    });
+    expect(msg.paneId).toBeDefined();
+  });
+
+  it("a setInitialState snapshot carries the pending ExitPlanMode plan (pane rebind replay)", async () => {
+    const { host, store, sent } = await readyHost();
+    // Give the first agent a registered session entry (like seedSession).
+    const agent1 = lastAgent();
+    agent1.messages = [{ id: "m-sess-1" }];
+    fireSessionId(agent1, "sess-1");
+    store.upsertSession({
+      sessionId: "sess-1",
+      title: "任务A",
+      host: "local",
+      workdir: "/work/a",
+      cwd: "/work/a",
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+    });
+
+    // Open a second pane, then close the first: sess-1's agent drops out of
+    // the pane but stays live in the pool — an unbound background session,
+    // exactly the state where ExitPlanMode fires with no paneId (no dialog).
+    const before = h.agentInstances.length;
+    await host.handleWebviewMessage({
+      command: "desktopOpenPane",
+      workdir: "/work/a",
+      sessionId: "sess-2",
+    });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+    });
+    await host.handleWebviewMessage({
+      command: "desktopClosePane",
+      paneId: "pane-1",
+    });
+
+    agent1.callbacks.onPermissionRequest("req-plan", {
+      toolName: "ExitPlanMode",
+      permissionMode: "plan",
+      planContent: "## 重构方案\n- 步骤一",
+    });
+    // Unbound agent → the request sits pending; no dialog can pop.
+    expect(sent("showConfirmation")).toHaveLength(0);
+
+    // Sidebar click on the session → activateAgentInPane pushes a fresh
+    // setInitialState snapshot. The replay must carry the pending plan, or the
+    // webview reopens the dialog over an empty「等待计划生成…」pane.
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-1",
+    });
+
+    const last = sent("setInitialState").at(-1);
+    expect(last.paneId).toBe("pane-2");
+    expect(last.pendingConfirmations).toContainEqual(
+      expect.objectContaining({
+        toolName: "ExitPlanMode",
+        confirmationType: "计划待确认",
+        planContent: "## 重构方案\n- 步骤一",
+      }),
+    );
+  });
+
   it("approval resolves an allow decision", async () => {
     const { host, sent } = await readyHost();
     const confirmationId = await triggerPermission(sent, "Bash");
