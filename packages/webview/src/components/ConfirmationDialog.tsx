@@ -13,8 +13,6 @@ import type {
   AskUserQuestionInput,
 } from "../types";
 import "../styles/ConfirmationDialog.css";
-import { marked } from "marked";
-import DOMPurify from "dompurify";
 import { DiffViewer } from "./DiffViewer";
 
 /**
@@ -346,27 +344,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       return `是，且不再询问：${confirmation.toolName}`;
     }
     return "是，且自动接受修改";
-  };
-
-  const renderPlanContent = () => {
-    const planContent =
-      confirmation.planContent || confirmation.toolInput?.plan_content;
-    if (confirmation.toolName !== EXIT_PLAN_MODE_TOOL_NAME || !planContent) {
-      return null;
-    }
-
-    const html = DOMPurify.sanitize(
-      marked.parse(String(planContent)) as string,
-    );
-    return (
-      <div className="plan-content-preview" tabIndex={0}>
-        <h3>计划内容：</h3>
-        <div
-          className="markdown-body"
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      </div>
-    );
   };
 
   const renderQuestions = () => {
@@ -709,7 +686,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           )}
         </div>
 
-        {renderPlanContent()}
         {renderQuestions()}
 
         {[WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(confirmation.toolName) && (

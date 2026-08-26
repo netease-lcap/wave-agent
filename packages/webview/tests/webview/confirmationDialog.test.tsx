@@ -20,7 +20,7 @@ describe("Confirmation Dialog", () => {
     vi.clearAllMocks();
   });
 
-  it("should show confirmation dialog for ExitPlanMode with planContent", async () => {
+  it("should show compact confirmation dialog for ExitPlanMode without inline plan preview", async () => {
     renderChatApp();
 
     const planContent = "## Test Plan\n- Step 1\n- Step 2";
@@ -39,13 +39,11 @@ describe("Confirmation Dialog", () => {
     const confirmationDialog = document.querySelector(".confirmation-dialog");
     expect(confirmationDialog).toBeInTheDocument();
 
-    // Verify plan content is rendered
-    const planPreview = document.querySelector(".plan-content-preview");
-    expect(planPreview).toBeInTheDocument();
-    const h2 = planPreview!.querySelector("h2");
-    expect(h2).toHaveTextContent("Test Plan");
-    const lis = planPreview!.querySelectorAll("li");
-    expect(lis).toHaveLength(2);
+    // The plan is carried by each host (JB editor tab / VSCE preview panel / desktop Plan
+    // panel), never rendered inline inside the shared confirmation dialog (确认框变小).
+    expect(
+      document.querySelector(".plan-content-preview"),
+    ).not.toBeInTheDocument();
 
     // Verify buttons
     const applyBtn = document.querySelector(".confirmation-btn-apply");
