@@ -486,49 +486,4 @@ describe("MessageManager - Streaming Functionality", () => {
       expect(mockToolBlockUpdated).not.toHaveBeenCalled();
     });
   });
-
-  describe("bang message callbacks", () => {
-    it("completeBangMessage forwards the captured output to onCompleteBangMessage", () => {
-      const onCompleteBangMessage = vi.fn();
-
-      const messageManager = new MessageManager(container, {
-        callbacks: { onCompleteBangMessage },
-        workdir: "/test",
-      });
-
-      messageManager.addBangMessage("ls");
-      const messageId = messageManager.getMessages().slice(-1)[0].id;
-
-      messageManager.completeBangMessage("ls", 0, "file.txt\n");
-
-      expect(onCompleteBangMessage).toHaveBeenCalledWith(
-        "ls",
-        0,
-        messageId,
-        "file.txt",
-      );
-    });
-
-    it("completeBangMessage keeps the captured output in the stored message", () => {
-      const messageManager = new MessageManager(container, {
-        callbacks: {},
-        workdir: "/test",
-      });
-
-      messageManager.addBangMessage("ls");
-      messageManager.completeBangMessage("ls", 0, "file.txt\n");
-
-      const bangBlock = messageManager
-        .getMessages()
-        .slice(-1)[0]
-        .blocks.find((b) => b.type === "bang") as
-        | { output?: string; stage?: string; exitCode?: number | null }
-        | undefined;
-      expect(bangBlock).toMatchObject({
-        output: "file.txt",
-        stage: "end",
-        exitCode: 0,
-      });
-    });
-  });
 });

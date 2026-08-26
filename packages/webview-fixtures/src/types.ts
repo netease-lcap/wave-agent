@@ -416,21 +416,6 @@ export interface AppendMessageMessage extends HostToWebviewMessageBase {
   message: Message;
 }
 
-export interface BangMessageAddedMessage extends HostToWebviewMessageBase {
-  command: "bangMessageAdded";
-  params: Record<string, unknown>;
-}
-
-export interface BangMessageUpdatedMessage extends HostToWebviewMessageBase {
-  command: "bangMessageUpdated";
-  params: Record<string, unknown>;
-}
-
-export interface BangMessageCompletedMessage extends HostToWebviewMessageBase {
-  command: "bangMessageCompleted";
-  params: Record<string, unknown>;
-}
-
 export interface CompactionStateChangeMessage extends HostToWebviewMessageBase {
   command: "compactionStateChange";
   isCompacting: boolean;
@@ -609,9 +594,6 @@ export type HostToWebviewMessage =
   | TriggerShortcutMessage
   | ScrollToBottomMessage
   | AppendMessageMessage
-  | BangMessageAddedMessage
-  | BangMessageUpdatedMessage
-  | BangMessageCompletedMessage
   | CompactionStateChangeMessage
   | UpdateStreamingContentMessage
   | UpdateStreamingReasoningMessage

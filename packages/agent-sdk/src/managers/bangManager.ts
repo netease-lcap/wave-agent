@@ -1,8 +1,8 @@
-import { spawn, type ChildProcess } from "child_process";
 import type { MessageManager } from "./messageManager.js";
 import { Container } from "../utils/container.js";
-import { resolveShellPath } from "../utils/shellResolver.js";
+import { bashTool } from "../tools/bashTool.js";
 import type { ConfigurationService } from "../services/configurationService.js";
+import type { TaskManager } from "../services/taskManager.js";
 
 export interface BangManagerOptions {
   workdir: string;
@@ -16,7 +16,7 @@ export interface CommandExecutionResult {
 export class BangManager {
   private workdir: string;
   public isCommandRunning = false;
-  private currentProcess: ChildProcess | null = null;
+  private abortController: AbortController | null = null;
   onCommandRunningChange?: (running: boolean) => void;
 
   constructor(
@@ -48,6 +48,13 @@ export class BangManager {
     this.onCommandRunningChange?.(isRunning);
   }
 
+  /**
+   * Execute a `!` command. The command is surfaced as a user-message tool
+   * block (name: "bash") — the same rendering as fork-skill / `/plan` outputs
+   * (⎿ prefix + markdown, result stays out of the model context) — and
+   * executed through the shared bash tool engine (shell resolution, CWD
+   * tracking, timeout, output handling).
+   */
   public async executeCommand(command: string): Promise<number> {
     if (this.isCommandRunning) {
       throw new Error("Command already running");
@@ -55,65 +62,61 @@ export class BangManager {
 
     this.setCommandRunning(true);
 
-    // Add bang placeholder
-    this.messageManager.addBangMessage(command);
+    try {
+      // User message + running tool block (incremental toolBlockUpdated
+      // notifications drive the live UI on all three hosts).
+      const messageId = this.messageManager.addUserMessage({
+        content: command,
+      });
+      const blockId = this.messageManager.addToolBlockToMessage(messageId, {
+        name: "bash",
+        parameters: command,
+        stage: "running",
+      });
 
-    return new Promise<number>((resolve) => {
-      const child = spawn(command, {
-        shell: resolveShellPath() ?? true,
-        stdio: "pipe",
-        cwd: this.workdir,
-        env: {
-          ...process.env,
-          ...this.sessionEnv,
+      this.abortController = new AbortController();
+
+      const taskManager = this.container.get<TaskManager>("TaskManager")!;
+      // No permissionManager in the context: bang is an explicit user command,
+      // it must not be blocked by the permission gate.
+      const result = await bashTool.execute(
+        { command },
+        {
+          workdir: this.workdir,
+          taskManager,
+          sessionEnv: this.sessionEnv,
+          abortSignal: this.abortController.signal,
         },
+      );
+
+      const exitCode =
+        typeof result.metadata?.exitCode === "number"
+          ? result.metadata.exitCode
+          : result.success
+            ? 0
+            : 1;
+      const resultText = result.success
+        ? result.content
+        : `[exit code: ${exitCode}]` +
+          (result.content ? `\n\n${result.content}` : "");
+      this.messageManager.updateToolBlock({
+        id: blockId,
+        messageId,
+        result: resultText,
+        stage: "end",
+        success: result.success,
       });
 
-      this.currentProcess = child;
-      let outputBuffer = "";
-
-      const updateOutput = (newData: string) => {
-        outputBuffer += newData;
-      };
-
-      child.stdout?.on("data", (data) => {
-        updateOutput(data.toString());
-      });
-
-      child.stderr?.on("data", (data) => {
-        updateOutput(data.toString());
-      });
-
-      child.on("exit", (code, signal) => {
-        const exitCode = code === null && signal ? 130 : (code ?? 0);
-
-        this.messageManager.completeBangMessage(
-          command,
-          exitCode,
-          outputBuffer,
-        );
-
-        this.setCommandRunning(false);
-        this.currentProcess = null;
-        resolve(exitCode);
-      });
-
-      child.on("error", (error) => {
-        updateOutput(`\nError: ${error.message}\n`);
-        this.messageManager.completeBangMessage(command, 1, outputBuffer);
-
-        this.setCommandRunning(false);
-        this.currentProcess = null;
-        resolve(1);
-      });
-    });
+      return exitCode;
+    } finally {
+      this.abortController = null;
+      this.setCommandRunning(false);
+    }
   }
 
   public abortCommand(): void {
-    if (this.currentProcess && this.isCommandRunning) {
-      this.currentProcess.kill("SIGKILL");
-      this.currentProcess = null;
-      this.isCommandRunning = false;
-    }
+    this.abortController?.abort();
+    this.abortController = null;
+    this.isCommandRunning = false;
   }
 }

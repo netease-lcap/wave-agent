@@ -2241,69 +2241,6 @@ describe("ChatProvider", () => {
     });
   });
 
-  it("handles bang message callbacks", async () => {
-    let lastValue: ChatContextType | undefined;
-    const onHookValue = (val: ChatContextType) => {
-      lastValue = val;
-    };
-
-    renderWithProvider(onHookValue);
-
-    await vi.waitFor(() => {
-      expect(Agent.create).toHaveBeenCalled();
-    });
-
-    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
-    const callbacks = agentCreateArgs.callbacks!;
-
-    // onAddBangMessage appends a new user message with a bang block
-    callbacks.onAddBangMessage!("ls", "bang-1");
-    await vi.waitFor(() => {
-      expect(lastValue?.messages.some((m) => m.id === "bang-1")).toBe(true);
-    });
-
-    // A duplicate messageId must not append a second message
-    callbacks.onAddBangMessage!("ls", "bang-1");
-    await vi.waitFor(() => {
-      expect(lastValue?.messages.filter((m) => m.id === "bang-1")).toHaveLength(
-        1,
-      );
-    });
-
-    // onUpdateBangMessage patches the trailing bang block in place
-    callbacks.onUpdateBangMessage!("ls -la", "file.txt\n", "bang-1");
-    await vi.waitFor(() => {
-      const msg = lastValue!.messages.find((m) => m.id === "bang-1")!;
-      const bangBlock = msg.blocks[msg.blocks.length - 1];
-      expect(bangBlock).toMatchObject({
-        type: "bang",
-        command: "ls -la",
-        output: "file.txt\n",
-      });
-    });
-
-    // onCompleteBangMessage records the exit code, final stage AND the
-    // captured output (regression: output was dropped after 9cea65ea).
-    // bangManager streams nothing — output arrives only at completion, so it
-    // must be delivered here with a value distinct from the earlier update.
-    callbacks.onCompleteBangMessage!("ls -la", 0, "bang-1", "final-output\n");
-    await vi.waitFor(() => {
-      const msg = lastValue!.messages.find((m) => m.id === "bang-1")!;
-      const bangBlock = msg.blocks[msg.blocks.length - 1];
-      expect(bangBlock).toMatchObject({
-        type: "bang",
-        output: "final-output\n",
-        exitCode: 0,
-        stage: "end",
-      });
-    });
-
-    // Unknown messageId is a no-op for update/complete
-    callbacks.onUpdateBangMessage!("x", "y", "nonexistent");
-    callbacks.onCompleteBangMessage!("x", 1, "nonexistent");
-    expect(lastValue?.messages).toHaveLength(1);
-  });
-
   it("updates tasks only when the task list actually changes", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {

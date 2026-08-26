@@ -4,9 +4,6 @@ import {
   addErrorBlockToMessage,
   addUserMessageToMessages,
   updateUserMessageInMessages,
-  addBangMessage,
-  updateBangInMessage,
-  completeBangInMessage,
   removeLastUserMessage,
   addToolBlockToMessageInMessages,
   addNotificationMessageToMessages,
@@ -69,19 +66,6 @@ export interface MessageManagerCallbacks {
   onErrorBlockAdded?: (error: string) => void;
   onCompactBlockAdded?: (content: string) => void;
   onCompactionStateChange?: (isCompacting: boolean) => void;
-  // Bang callback
-  onAddBangMessage?: (command: string, messageId: string) => void;
-  onUpdateBangMessage?: (
-    command: string,
-    output: string,
-    messageId: string,
-  ) => void;
-  onCompleteBangMessage?: (
-    command: string,
-    exitCode: number,
-    messageId: string,
-    output?: string,
-  ) => void;
   onInfoBlockAdded?: (content: string) => void;
   // Rewind callbacks
   onShowRewind?: () => void;
@@ -657,65 +641,8 @@ export class MessageManager {
   }
 
   // Bang related message operations
-  public addBangMessage(command: string): void {
-    const updatedMessages = addBangMessage({
-      messages: this.messages,
-      command,
-    });
-    this.setMessages(updatedMessages);
-    // The bang message is appended as the last message
-    const messageId = this.messages[this.messages.length - 1]?.id ?? "";
-    this.callbacks.onAddBangMessage?.(command, messageId);
-  }
-
-  public updateBangMessage(command: string, output: string): void {
-    const updatedMessages = updateBangInMessage({
-      messages: this.messages,
-      command,
-      output,
-    });
-    this.setMessages(updatedMessages);
-    const messageId = this.findBangMessageId(command) ?? "";
-    this.callbacks.onUpdateBangMessage?.(command, output, messageId);
-  }
-
-  public completeBangMessage(
-    command: string,
-    exitCode: number,
-    output?: string,
-  ): void {
-    const updatedMessages = completeBangInMessage({
-      messages: this.messages,
-      command,
-      exitCode,
-      output,
-    });
-    this.setMessages(updatedMessages);
-    const messageId = this.findBangMessageId(command) ?? "";
-    this.callbacks.onCompleteBangMessage?.(
-      command,
-      exitCode,
-      messageId,
-      output?.trim(),
-    );
-  }
-
-  /**
-   * Find the message ID of the most recent message containing a bang block
-   * for the given command. Bang callbacks do not carry a block ID, so the
-   * message is located by matching the command against bang blocks.
-   */
-  private findBangMessageId(command: string): string | undefined {
-    for (let i = this.messages.length - 1; i >= 0; i--) {
-      const message = this.messages[i];
-      if (message.role !== "user") continue;
-      const hasBangBlock = message.blocks?.some(
-        (block) => block.type === "bang" && block.command === command,
-      );
-      if (hasBangBlock) return message.id;
-    }
-    return undefined;
-  }
+  // (bang output now rides on user-message tool blocks via addUserMessage /
+  // addToolBlockToMessage / updateToolBlock — no dedicated bang block types.)
 
   public addNotificationMessage(
     params: Omit<AddNotificationMessageParams, "messages">,
