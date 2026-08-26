@@ -100,18 +100,6 @@ export interface StdioAgentCallbacks {
   onPermissionModeChange?: (mode: PermissionMode) => void;
   onMcpServersChange?: (servers: McpServerStatus[]) => void;
   onWorkdirChange?: (workdir: string) => void;
-  onBangMessageAdded?: (params: { command: string; messageId: string }) => void;
-  onBangMessageUpdated?: (params: {
-    command: string;
-    output: string;
-    messageId: string;
-  }) => void;
-  onBangMessageCompleted?: (params: {
-    command: string;
-    exitCode: number;
-    messageId: string;
-    output?: string;
-  }) => void;
   onNotificationMessageAdded?: (params: {
     taskId: string;
     taskType: string;
@@ -618,30 +606,6 @@ export class StdioAgent {
         const p = params as { workdir: string };
         this.workingDirectory = p.workdir;
         this.callbacks.onWorkdirChange?.(p.workdir);
-        break;
-      }
-      case "bangMessageAdded": {
-        const p = params as { command: string; messageId: string };
-        this.callbacks.onBangMessageAdded?.(p);
-        break;
-      }
-      case "bangMessageUpdated": {
-        const p = params as {
-          command: string;
-          output: string;
-          messageId: string;
-        };
-        this.callbacks.onBangMessageUpdated?.(p);
-        break;
-      }
-      case "bangMessageCompleted": {
-        const p = params as {
-          command: string;
-          exitCode: number;
-          messageId: string;
-          output?: string;
-        };
-        this.callbacks.onBangMessageCompleted?.(p);
         break;
       }
       case "notificationMessageAdded":

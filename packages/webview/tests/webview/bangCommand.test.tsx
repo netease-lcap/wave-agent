@@ -40,7 +40,7 @@ describe("Bang Command", () => {
     expect(sendMessage.text).toBe("!ls -la");
   });
 
-  it("should display bang block correctly", async () => {
+  it("should display bang output as a user-message tool block", async () => {
     renderChatApp();
 
     const messages = [
@@ -60,6 +60,7 @@ describe("Bang Command", () => {
       );
     });
 
+    // Bang output renders via the generic bash tool block display.
     await waitFor(() => {
       const bangBlock = document.querySelector(".bash-command-unified");
       expect(bangBlock).toBeInTheDocument();
@@ -106,30 +107,7 @@ describe("Bang Command", () => {
     expect(output).toHaveTextContent("line 20");
   });
 
-  it("should show running state with loading icon", async () => {
-    renderChatApp();
-
-    const messages = [
-      MockDataGenerator.createBangMessage("sleep 10", "", true, null),
-    ];
-
-    await act(async () => {
-      window.dispatchEvent(
-        new MessageEvent("message", {
-          data: { command: "updateMessages", messages },
-        }),
-      );
-    });
-
-    await waitFor(() => {
-      const loading = document.querySelector(
-        ".bash-command-unified .codicon-loading",
-      );
-      expect(loading).toBeInTheDocument();
-    });
-  });
-
-  it("should show failure state with exit code", async () => {
+  it("should show failure exit code in the result", async () => {
     renderChatApp();
 
     const messages = [
@@ -148,15 +126,19 @@ describe("Bang Command", () => {
       const output = document.querySelector(
         ".bash-command-unified .bash-command-output",
       );
-      expect(output).toHaveTextContent(/退出代码: 1/);
+      expect(output).toHaveTextContent(/\[exit code: 1\]/);
     });
   });
 
-  it("should show success exit code when no output", async () => {
+  it("should show success output with no exit-code prefix", async () => {
     renderChatApp();
 
+    const longOutput = Array.from(
+      { length: 20 },
+      (_, i) => `line ${i + 1}`,
+    ).join("\n");
     const messages = [
-      MockDataGenerator.createBangMessage("mkdir test-dir", "", false, 0),
+      MockDataGenerator.createBangMessage("seq 1 20", longOutput, false, 0),
     ];
 
     await act(async () => {
@@ -171,135 +153,10 @@ describe("Bang Command", () => {
       const output = document.querySelector(
         ".bash-command-unified .bash-command-output",
       );
-      expect(output).toHaveTextContent(/退出代码: 0/);
-    });
-  });
-
-  // Incremental bang events (VSCE host path): the webview receives
-  // bangMessageAdded/Updated/Completed keyed by messageId and updates in place.
-  const dispatchBang = (command: string, params: Record<string, unknown>) => {
-    window.dispatchEvent(
-      new MessageEvent("message", {
-        data: { command, params },
-      }),
-    );
-  };
-
-  it("should render running state from incremental bangMessageAdded", async () => {
-    renderChatApp();
-
-    await act(async () => {
-      dispatchBang("bangMessageAdded", {
-        command: "sleep 10",
-        messageId: "bang-1",
-      });
-    });
-
-    await waitFor(() => {
-      const bangBlock = document.querySelector(".bash-command-unified");
-      expect(bangBlock).toBeInTheDocument();
-    });
-    const bangBlock = document.querySelector(".bash-command-unified")!;
-    const cmdEl = bangBlock.querySelector(".bash-command");
-    expect(cmdEl).toHaveTextContent("sleep 10");
-    expect(
-      document.querySelector(".bash-command-unified .codicon-loading"),
-    ).toBeInTheDocument();
-  });
-
-  it("should stream output via bangMessageUpdated", async () => {
-    renderChatApp();
-
-    await act(async () => {
-      dispatchBang("bangMessageAdded", {
-        command: "seq 1 20",
-        messageId: "bang-1",
-      });
-    });
-    await act(async () => {
-      dispatchBang("bangMessageUpdated", {
-        command: "seq 1 20",
-        output: "line 1\nline 2",
-        messageId: "bang-1",
-      });
-    });
-    await act(async () => {
-      dispatchBang("bangMessageCompleted", {
-        command: "seq 1 20",
-        exitCode: 0,
-        messageId: "bang-1",
-      });
-    });
-
-    // BangBlock only renders output after completion (stage 'end').
-    await waitFor(() => {
-      const output = document.querySelector(
-        ".bash-command-unified .bash-command-output",
-      );
+      expect(output).toBeInTheDocument();
       expect(output).toHaveTextContent("line 1");
-      expect(output).toHaveTextContent("line 2");
+      expect(output).toHaveTextContent("line 20");
+      expect(output).not.toHaveTextContent("[exit code: 0]");
     });
-  });
-
-  it("should show output delivered only via bangMessageCompleted", async () => {
-    renderChatApp();
-
-    // bangManager buffers output and only delivers it at completion
-    // (no bangMessageUpdated fires) — the completed notification must
-    // carry the output.
-    await act(async () => {
-      dispatchBang("bangMessageAdded", { command: "ls", messageId: "bang-1" });
-    });
-    await act(async () => {
-      dispatchBang("bangMessageCompleted", {
-        command: "ls",
-        exitCode: 0,
-        messageId: "bang-1",
-        output: "file.txt",
-      });
-    });
-
-    await waitFor(() => {
-      const output = document.querySelector(
-        ".bash-command-unified .bash-command-output",
-      );
-      expect(output).toHaveTextContent("file.txt");
-    });
-  });
-
-  it("should show failure exit code after bangMessageCompleted", async () => {
-    renderChatApp();
-
-    await act(async () => {
-      dispatchBang("bangMessageAdded", {
-        command: "false",
-        messageId: "bang-1",
-      });
-    });
-    await act(async () => {
-      dispatchBang("bangMessageUpdated", {
-        command: "false",
-        output: "",
-        messageId: "bang-1",
-      });
-    });
-    await act(async () => {
-      dispatchBang("bangMessageCompleted", {
-        command: "false",
-        exitCode: 1,
-        messageId: "bang-1",
-      });
-    });
-
-    await waitFor(() => {
-      const output = document.querySelector(
-        ".bash-command-unified .bash-command-output",
-      );
-      expect(output).toHaveTextContent(/退出代码: 1/);
-    });
-    // Loading icon cleared after completion
-    expect(
-      document.querySelector(".bash-command-unified .codicon-loading"),
-    ).not.toBeInTheDocument();
   });
 });

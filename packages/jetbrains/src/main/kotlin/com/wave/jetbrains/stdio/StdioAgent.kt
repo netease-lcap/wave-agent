@@ -34,9 +34,6 @@ interface AgentCallbacks {
     fun onMcpServersChange(servers: JsonElement?) {}
     fun onWorkdirChange(workdir: String) {}
     fun onPermissionRequest(requestId: String, context: JsonElement?) {}
-    fun onBangMessageAdded(command: String, messageId: String) {}
-    fun onBangMessageUpdated(command: String, output: String, messageId: String) {}
-    fun onBangMessageCompleted(command: String, exitCode: Int, messageId: String, output: String?) {}
     fun onNotificationMessageAdded(message: JsonObject) {}
     fun onBtwContent(question: String, content: String, type: String) {}
     fun onError(message: String) {}
@@ -122,30 +119,6 @@ class StdioAgent(
                 callbacks.onPermissionRequest(
                     o?.get("requestId")?.jsonPrimitive?.content ?: "",
                     o?.get("context"),
-                )
-            }
-            "bangMessageAdded" -> {
-                val o = params?.jsonObject
-                callbacks.onBangMessageAdded(
-                    o?.get("command")?.jsonPrimitive?.content ?: "",
-                    o?.get("messageId")?.jsonPrimitive?.content ?: "",
-                )
-            }
-            "bangMessageUpdated" -> {
-                val o = params?.jsonObject
-                callbacks.onBangMessageUpdated(
-                    o?.get("command")?.jsonPrimitive?.content ?: "",
-                    o?.get("output")?.jsonPrimitive?.content ?: "",
-                    o?.get("messageId")?.jsonPrimitive?.content ?: "",
-                )
-            }
-            "bangMessageCompleted" -> {
-                val o = params?.jsonObject
-                callbacks.onBangMessageCompleted(
-                    o?.get("command")?.jsonPrimitive?.content ?: "",
-                    o?.get("exitCode")?.jsonPrimitive?.intOrNull ?: 0,
-                    o?.get("messageId")?.jsonPrimitive?.content ?: "",
-                    o?.get("output")?.jsonPrimitive?.content,
                 )
             }
             "notificationMessageAdded" -> callbacks.onNotificationMessageAdded(params?.jsonObject ?: JsonObject(emptyMap()))

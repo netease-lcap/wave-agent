@@ -13,7 +13,6 @@ import type {
   ErrorBlock,
   ToolBlock,
   ImageBlock,
-  BangBlock,
   CompactBlock,
   ReasoningBlock,
   PermissionMode,
@@ -43,7 +42,6 @@ export type {
   ErrorBlock,
   ToolBlock,
   ImageBlock,
-  BangBlock,
   CompactBlock,
   ReasoningBlock,
   TaskNotificationBlock,
@@ -840,23 +838,4 @@ export type ChatAction =
       payload: { messageId: string; chunk: string; stage: "streaming" | "end" };
     }
   | { type: "UPDATE_TOOL_BLOCK"; payload: ToolBlockUpdateCallbackParams }
-  | { type: "APPEND_ERROR_BLOCK"; payload: { error: string } }
-  // Bang message incremental updates (keyed by messageId). The bang block is
-  // constructed in the reducer because it needs a Message wrapper (id/timestamp).
-  | {
-      type: "APPEND_BANG_MESSAGE";
-      payload: { command: string; messageId: string };
-    }
-  | {
-      type: "UPDATE_BANG_MESSAGE";
-      payload: { command: string; output: string; messageId: string };
-    }
-  | {
-      type: "COMPLETE_BANG_MESSAGE";
-      payload: {
-        command: string;
-        exitCode: number;
-        messageId: string;
-        output?: string;
-      };
-    };
+  | { type: "APPEND_ERROR_BLOCK"; payload: { error: string } };

@@ -196,7 +196,7 @@ describe("Rewind Feature", () => {
 
     // Rewind buttons should only appear on user messages
     const rewindButtons = document.querySelectorAll(".message-action-btn");
-    // Only 1 user message (non-bang) should have a rewind button
+    // Only the single user message should have a rewind button
     expect(rewindButtons).toHaveLength(1);
   });
 

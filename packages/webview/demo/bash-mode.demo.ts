@@ -3,8 +3,8 @@ import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
-test.describe("Bang Command Demo", () => {
-  test("should demonstrate bang command execution and output", async ({
+test.describe("Bash Mode Demo", () => {
+  test("should demonstrate bash mode command execution and output", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
@@ -20,7 +20,7 @@ test.describe("Bang Command Demo", () => {
     ]);
     await screenshotWebp(
       webviewPage,
-      "../../docs/public/screenshots/bang-command-success.webp",
+      "../../docs/public/screenshots/bash-mode-success.webp",
     );
 
     // 2. Show a long output
@@ -33,7 +33,7 @@ test.describe("Bang Command Demo", () => {
     ]);
     await screenshotWebp(
       webviewPage,
-      "../../docs/public/screenshots/bang-command-long-output.webp",
+      "../../docs/public/screenshots/bash-mode-long-output.webp",
     );
   });
 });

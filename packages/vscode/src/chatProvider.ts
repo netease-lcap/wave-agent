@@ -417,30 +417,6 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           windowId,
         );
       },
-      // Bang message callbacks - incremental updates keyed by messageId.
-      // Params are nested (not spread) because they contain a `command`
-      // field that would clobber the postMessage command discriminator.
-      onBangMessageAdded: (params) => {
-        this.webviewManager.postMessage(
-          { command: "bangMessageAdded", params },
-          viewType,
-          windowId,
-        );
-      },
-      onBangMessageUpdated: (params) => {
-        this.webviewManager.postMessage(
-          { command: "bangMessageUpdated", params },
-          viewType,
-          windowId,
-        );
-      },
-      onBangMessageCompleted: (params) => {
-        this.webviewManager.postMessage(
-          { command: "bangMessageCompleted", params },
-          viewType,
-          windowId,
-        );
-      },
       onBtwContent: (params) => {
         this.webviewManager.postMessage(
           { command: "btwStream", ...params },

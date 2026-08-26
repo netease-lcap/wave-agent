@@ -14,7 +14,7 @@ import { HookManager } from "../managers/hookManager.js";
 import { SkillManager } from "../managers/skillManager.js";
 import { SlashCommandManager } from "../managers/slashCommandManager.js";
 import { PluginManager } from "../managers/pluginManager.js";
-import { BangManager } from "../managers/bangManager.js";
+import { BashModeManager } from "../managers/bashModeManager.js";
 import { CronManager } from "../managers/cronManager.js";
 import { WorkflowManager } from "../managers/workflowManager.js";
 import { MemoryRuleManager } from "../managers/MemoryRuleManager.js";
@@ -400,8 +400,8 @@ export function setupAgentContainer(
   const pluginManager = new PluginManager(container, { workdir });
   container.register("PluginManager", pluginManager);
 
-  const bangManager = new BangManager(container, { workdir });
-  container.register("BangManager", bangManager);
+  const bashModeManager = new BashModeManager(container, { workdir });
+  container.register("BashModeManager", bashModeManager);
 
   const cronManager = new CronManager(container, messageManager.getSessionId());
   container.register("CronManager", cronManager);

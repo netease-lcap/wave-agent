@@ -74,9 +74,6 @@ describe("NotificationRouter", () => {
     expect(methods).toContain("sessionIdChange");
     expect(methods).toContain("permissionModeChange");
     expect(methods).toContain("mcpServersChange");
-    expect(methods).toContain("bangMessageAdded");
-    expect(methods).toContain("bangMessageUpdated");
-    expect(methods).toContain("bangMessageCompleted");
     expect(methods).toContain("notificationMessageAdded");
     expect(methods).toContain("permissionRequest");
     expect(methods).toContain("authUrl");

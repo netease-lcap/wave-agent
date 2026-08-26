@@ -90,9 +90,6 @@ describe("StdioAgent", () => {
     expect(registeredMethods).toContain("permissionModeChange");
     expect(registeredMethods).toContain("mcpServersChange");
     expect(registeredMethods).toContain("workdirChange");
-    expect(registeredMethods).toContain("bangMessageAdded");
-    expect(registeredMethods).toContain("bangMessageUpdated");
-    expect(registeredMethods).toContain("bangMessageCompleted");
     expect(registeredMethods).toContain("notificationMessageAdded");
     expect(registeredMethods).toContain("permissionRequest");
     expect(registeredMethods).toContain("authUrl");
@@ -1001,28 +998,6 @@ describe("StdioAgent", () => {
     expect(onWorkdirChange).toHaveBeenCalledWith(
       "/repo/.wave/worktrees/feat-a",
     );
-  });
-
-  it("bangMessageAdded/Updated/Completed forward params to callbacks", () => {
-    const onBangMessageAdded = vi.fn();
-    const onBangMessageUpdated = vi.fn();
-    const onBangMessageCompleted = vi.fn();
-    const { agent } = createAgent({
-      onBangMessageAdded,
-      onBangMessageUpdated,
-      onBangMessageCompleted,
-    });
-
-    const added = { command: "ls", messageId: "m1" };
-    const updated = { command: "ls", output: "file.txt", messageId: "m1" };
-    const completed = { command: "ls", exitCode: 0, messageId: "m1" };
-    agent.handleNotification("bangMessageAdded", added);
-    agent.handleNotification("bangMessageUpdated", updated);
-    agent.handleNotification("bangMessageCompleted", completed);
-
-    expect(onBangMessageAdded).toHaveBeenCalledWith(added);
-    expect(onBangMessageUpdated).toHaveBeenCalledWith(updated);
-    expect(onBangMessageCompleted).toHaveBeenCalledWith(completed);
   });
 
   it("notificationMessageAdded forwards params to callback", () => {

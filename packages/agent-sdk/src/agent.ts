@@ -5,7 +5,7 @@ import { ToolManager } from "./managers/toolManager.js";
 import { SubagentManager } from "./managers/subagentManager.js";
 import { McpManager } from "./managers/mcpManager.js";
 import { LspManager } from "./managers/lspManager.js";
-import { BangManager } from "./managers/bangManager.js";
+import { BashModeManager } from "./managers/bashModeManager.js";
 import { CronManager } from "./managers/cronManager.js";
 import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
 import { MessageQueue, type QueuedMessage } from "./managers/messageQueue.js";
@@ -56,7 +56,7 @@ export class Agent {
   private messageManager: MessageManager;
   private aiManager: AIManager;
 
-  private bangManager: BangManager | null = null;
+  private bashModeManager: BashModeManager | null = null;
   private backgroundTaskManager: BackgroundTaskManager;
   private logger?: Logger; // Add optional logger property
   private toolManager: ToolManager; // Add tool registry instance
@@ -206,7 +206,7 @@ export class Agent {
     this.aiManager = this.container.get("AIManager")!;
     this.slashCommandManager = this.container.get("SlashCommandManager")!;
     this.pluginManager = this.container.get("PluginManager")!;
-    this.bangManager = this.container.get("BangManager")!;
+    this.bashModeManager = this.container.get("BashModeManager")!;
     this.cronManager = this.container.get("CronManager")!;
     this.messageQueue = this.container.get("MessageQueue")!;
     this.asyncWorkRegistry = this.container.get("AsyncWorkRegistry")!;
@@ -229,7 +229,7 @@ export class Agent {
     };
 
     // Wire up bang manager callback for command running changes
-    this.bangManager.onCommandRunningChange = (running: boolean) => {
+    this.bashModeManager.onCommandRunningChange = (running: boolean) => {
       this.options.callbacks?.onCommandRunningChange?.(running);
       if (!running) this.tryDispatch();
     };
@@ -327,7 +327,7 @@ export class Agent {
 
   /** Get bash command execution status */
   public get isCommandRunning(): boolean {
-    return this.bangManager?.isCommandRunning ?? false;
+    return this.bashModeManager?.isCommandRunning ?? false;
   }
 
   /** Get queued user-facing messages (excludes background notifications) */
@@ -451,7 +451,7 @@ export class Agent {
     this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
 
     if (next.type === "bang") {
-      await this.bangManager?.executeCommand(next.content);
+      await this.bashModeManager?.executeCommand(next.content);
       await this.messageManager.saveSession();
     } else if (next.type === "notification") {
       // Drain all pending notifications and batch them into a single AI turn
@@ -699,7 +699,7 @@ export class Agent {
     this.aiManager.abortAIMessage();
   }
 
-  /** Execute bash command (bang command) */
+  /** Execute a bash-mode command (`!command`) */
   public async bang(command: string): Promise<void> {
     this.assertNotDestroyed();
 
@@ -710,7 +710,7 @@ export class Agent {
       return;
     }
 
-    await this.bangManager?.executeCommand(command);
+    await this.bashModeManager?.executeCommand(command);
     await this.messageManager.saveSession();
   }
 
@@ -830,7 +830,7 @@ export class Agent {
 
   /** Interrupt bash command execution */
   public abortBashCommand(): void {
-    this.bangManager?.abortCommand();
+    this.bashModeManager?.abortCommand();
   }
 
   /** Interrupt slash command execution */

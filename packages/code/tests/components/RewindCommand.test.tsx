@@ -57,18 +57,18 @@ describe("RewindCommand Content", () => {
     });
   });
 
-  it("should exclude bang command messages", async () => {
+  it("should include bash-mode command messages as checkpoints", async () => {
     const mockMessages: Partial<Message>[] = [
       {
         id: "1",
         role: "user",
         blocks: [
+          { type: "text", content: "ls -la" },
           {
-            type: "bang",
-            command: "ls -la",
-            output: "",
-            stage: "end" as const,
-            exitCode: 0,
+            type: "tool",
+            name: "bash",
+            parameters: "ls -la",
+            stage: "end",
           },
         ],
       },
@@ -84,9 +84,8 @@ describe("RewindCommand Content", () => {
 
     await vi.waitFor(() => {
       const output = stripAnsiColors(lastFrame() || "");
-      // bang 命令消息是系统执行结果，不作为回滚点
-      expect(output).not.toContain("!ls -la");
-      expect(output).toContain("No user messages found to rewind to.");
+      // bash 模式命令是用户真实输入，与 fork skill 一致，可作为回滚点
+      expect(output).toContain("ls -la");
     });
   });
 

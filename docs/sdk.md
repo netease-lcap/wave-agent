@@ -200,15 +200,14 @@ Agent 内置消息队列管理并发消息：
 
 Agent 支持多种消息块类型，通过回调通知 UI 层：
 
-| 类型      | 回调                                                                 | 说明                                                                                                                        |
-| --------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| 文本内容  | `onAssistantContentUpdated`                                          | AI 文本流式输出，含 `chunk`、`stage`（chunk 为增量片段，消费端自行累积）                                                    |
-| 推理内容  | `onAssistantReasoningUpdated`                                        | 推理/思考过程流式输出                                                                                                       |
-| 工具调用  | `onToolBlockUpdated`                                                 | 工具执行状态更新                                                                                                            |
-| 压缩摘要  | `onCompactBlockAdded`                                                | 上下文压缩后生成的摘要                                                                                                      |
-| 错误信息  | `onErrorBlockAdded`                                                  | 错误消息                                                                                                                    |
-| Bang 命令 | `onAddBangMessage` / `onUpdateBangMessage` / `onCompleteBangMessage` | Shell 命令执行（`!command` 语法）                                                                                           |
-| 任务通知  | `onBackgroundTasksChange`                                            | 后台任务状态变更（后台任务完成的通知消息为 `isMeta: true`，UI 隐藏、模型可见，详见 [后台任务完成通知](#task-notification)） |
+| 类型     | 回调                          | 说明                                                                                                                        |
+| -------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 文本内容 | `onAssistantContentUpdated`   | AI 文本流式输出，含 `chunk`、`stage`（chunk 为增量片段，消费端自行累积）                                                    |
+| 推理内容 | `onAssistantReasoningUpdated` | 推理/思考过程流式输出                                                                                                       |
+| 工具调用 | `onToolBlockUpdated`          | 工具执行状态更新（bash 模式命令输出经此实时推送）                                                                           |
+| 压缩摘要 | `onCompactBlockAdded`         | 上下文压缩后生成的摘要                                                                                                      |
+| 错误信息 | `onErrorBlockAdded`           | 错误消息                                                                                                                    |
+| 任务通知 | `onBackgroundTasksChange`     | 后台任务状态变更（后台任务完成的通知消息为 `isMeta: true`，UI 隐藏、模型可见，详见 [后台任务完成通知](#task-notification)） |
 
 ### 流式输出 {#streaming}
 
@@ -250,14 +249,6 @@ callbacks: {
 | `onErrorBlockAdded`           | `error: string`                 | 错误块添加                         |
 | `onCompactBlockAdded`         | `content: string`               | 压缩摘要添加                       |
 | `onCompactionStateChange`     | `isCompacting: boolean`         | 压缩状态变更                       |
-
-### Bang 命令回调 {#callbacks-bang}
-
-| 回调                    | 参数                                                                            | 说明                                                 |
-| ----------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `onAddBangMessage`      | `command: string, messageId: string`                                            | Bang 命令开始执行                                    |
-| `onUpdateBangMessage`   | `command: string, output: string, messageId: string`                            | Bang 命令输出更新                                    |
-| `onCompleteBangMessage` | `command: string, exitCode: number \| null, messageId: string, output?: string` | Bang 命令执行完成（`output` 为最终输出，可能不存在） |
 
 ### 后台任务回调 {#callbacks-background}
 
@@ -991,9 +982,9 @@ const cmd = agent.getCustomCommand("my-command");
 const allCmds = agent.getCustomCommands();
 ```
 
-### Bang 命令 {#bang}
+### Bash 模式命令 {#bash-mode}
 
-直接执行 Shell 命令并将输出作为消息注入对话：
+直接执行 Shell 命令，输出以 user 消息 bash tool block 形态注入对话（不触发 AI 回复）：
 
 ```typescript
 await agent.bang("ls -la");
