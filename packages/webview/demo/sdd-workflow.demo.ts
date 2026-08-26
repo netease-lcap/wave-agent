@@ -3,6 +3,7 @@ import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import {
   ASK_USER_QUESTION_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
+  WRITE_TOOL_NAME,
   type Message,
   type Task,
 } from "wave-agent-sdk";
@@ -56,7 +57,42 @@ test.describe("SDD Workflow Screenshots", () => {
         },
       ],
     };
-    await injector.updateMessages([userMessage, specReply]);
+    // 编写规格文件的 Write 工具卡：消息列表展示写入的文件内容预览
+    const writeSpecMsg: Message = {
+      id: "msg_sdd_write_spec",
+      role: "assistant",
+      timestamp: "2025-07-10T09:00:03.000Z",
+      blocks: [
+        {
+          type: "tool",
+          name: WRITE_TOOL_NAME,
+          stage: "end",
+          compactParams:
+            "docs/specs/crm/customer-management.md 19 lines, 380 chars",
+          parameters: JSON.stringify({
+            file_path: "docs/specs/crm/customer-management.md",
+            content: `---
+name: 客户管理系统
+description: 客户档案、跟进记录、合同管理与数据看板的统一规格说明
+order: 1
+---
+
+# 客户管理系统功能规格
+
+## 用户场景与测试
+
+- P1 客户档案管理：作为销售，我希望维护客户档案，以便集中管理客户信息
+- P1 跟进记录：作为销售，我希望记录跟进时间线，以便掌握客户沟通进展
+- P2 合同管理：作为销售，我希望管理合同信息，以便跟踪合同状态
+- P2 数据看板：作为管理者，我希望查看销售漏斗，以便了解转化情况`,
+          }),
+          result: "File created (19 lines, 380 characters)",
+          shortResult: "File created (19 lines, 380 characters)",
+        },
+      ],
+    };
+    await injector.updateMessages([userMessage, specReply, writeSpecMsg]);
+    await expect(webviewPage.locator(".write-preview-box")).toBeVisible();
 
     // 任务列表：规格编写进行中
     await injector.simulateExtensionMessage("updateTasks", {
@@ -110,7 +146,12 @@ test.describe("SDD Workflow Screenshots", () => {
         },
       ],
     };
-    await injector.updateMessages([userMessage, specReply, confirmMsg]);
+    await injector.updateMessages([
+      userMessage,
+      specReply,
+      writeSpecMsg,
+      confirmMsg,
+    ]);
     await injector.simulateExtensionMessage("showConfirmation", {
       confirmationId: "sdd-confirm-spec",
       toolName: ASK_USER_QUESTION_TOOL_NAME,
@@ -172,7 +213,12 @@ test.describe("SDD Workflow Screenshots", () => {
         },
       ],
     };
-    await injector.updateMessages([userMessage, specReply, planMsg]);
+    await injector.updateMessages([
+      userMessage,
+      specReply,
+      writeSpecMsg,
+      planMsg,
+    ]);
     await injector.simulateExtensionMessage("showConfirmation", {
       confirmationId: "sdd-confirm-plan",
       toolName: ASK_USER_QUESTION_TOOL_NAME,
@@ -251,6 +297,7 @@ test.describe("SDD Workflow Screenshots", () => {
     await injector.updateMessages([
       userMessage,
       specReply,
+      writeSpecMsg,
       codeUserMessage,
       codingReply,
     ]);
