@@ -1448,5 +1448,52 @@ describe("AskUserQuestion Other input", () => {
         expect(document.activeElement).toBe(input);
       });
     });
+
+    it("switching to the next question moves focus to its option group (never drops to body)", async () => {
+      renderChatApp();
+      showAskUser([
+        {
+          question: "Q1",
+          options: [{ label: "A" }, { label: "B" }],
+          multiSelect: false,
+        },
+        {
+          question: "Q2",
+          options: [{ label: "C" }, { label: "D" }],
+          multiSelect: false,
+        },
+      ]);
+      await waitFor(() => {
+        expect(
+          document.querySelector(".confirmation-dialog"),
+        ).toBeInTheDocument();
+      });
+
+      // Answer Q1 (the "下一个" button becomes enabled).
+      act(() => {
+        fireEvent.click(
+          document.querySelector(
+            '.option-item[data-option-index="0"] input[type="radio"]',
+          )!,
+        );
+      });
+      // Click "下一个": the nav button the user is on becomes disabled on the
+      // unanswered Q2, which would drop focus to body — focus must instead
+      // land on Q2's roving option so the user can keep answering.
+      act(() => {
+        fireEvent.click(
+          document.querySelector(
+            ".question-navigation .confirmation-btn-secondary",
+          )!,
+        );
+      });
+      await waitFor(() => {
+        expect(
+          document.querySelector(".question-header-chip"),
+        ).toHaveTextContent("Q2");
+      });
+      expect(document.activeElement).toHaveClass("option-item");
+      expect(document.activeElement?.textContent).toContain("C");
+    });
   });
 });
