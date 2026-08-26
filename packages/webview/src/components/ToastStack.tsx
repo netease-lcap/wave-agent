@@ -27,8 +27,9 @@ const Toast: React.FC<{
 
   return (
     <div className="toast" role="status" data-testid="toast">
+      {toast.loading && <span className="toast-spinner" aria-hidden="true" />}
       <span className="toast-message">{toast.message}</span>
-      {toast.actionLabel && toast.action && (
+      {toast.actionLabel && toast.action && !toast.loading && (
         <button className="toast-action" onClick={() => onAction(toast)}>
           {toast.actionLabel}
         </button>

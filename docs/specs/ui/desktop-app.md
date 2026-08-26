@@ -299,6 +299,7 @@ desktop 还支持**并排多对话**：`Cmd/Ctrl+Click` 或拖拽侧边栏中的
 7. **假设**已登录企业版且 codechat 端点返回更新信息，**当**updateChecker 构造下载地址，**则** downloadUrl 必须指向真实下载入口（安装包 / 下载页），不得指向 manifest.json 自身（修复 updateChecker.ts:99）。
 8. **假设**macOS 上应用运行于不可写位置（如非 /Applications），**当**更新下载完成但无法原地安装，**则**必须通过应用内 toast 提示用户手动下载安装（带「打开下载页」按钮）并给出下载 URL，不得静默失败。
 9. **假设**构建安装包（mac/win），**当**electron-builder 打包完成，**则**产物 `resources/app-update.yml` 必须存在（afterPack 写入 `updaterCacheDirName`）——electron-updater 下载前会读取该文件（`configOnDisk`），缺失时下载阶段抛 ENOENT 并降级为下载页提示（修复：构建未声明 publish 配置时 electron-builder 不生成该文件）。
+10. **假设**用户点击「重启安装」按钮，**当**应用正在退出以安装新版本（Windows 上退出前耗时数秒），**则**原 toast 必须立即原地切换为「正在重启应用以完成安装…」的加载状态（带 loading 指示、无操作按钮），直至应用退出，点击与退出之间的空窗期不得表现为无任何反馈。
 
 ---
 

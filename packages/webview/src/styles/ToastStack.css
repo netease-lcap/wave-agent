@@ -45,6 +45,24 @@
   word-break: break-word;
 }
 
+/* Loading indicator shown while the toast's action is being performed
+ * (e.g. quit-and-install waiting for the app to exit). */
+.toast-spinner {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--vscode-notifications-foreground, #cccccc);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: toast-spin 0.8s linear infinite;
+}
+
+@keyframes toast-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .toast-action {
   flex-shrink: 0;
   padding: 3px 10px;

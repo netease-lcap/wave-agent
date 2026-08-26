@@ -33,10 +33,11 @@ describe("ChatApp showToast integration", () => {
       toastId: "t1",
       action: { type: "quitAndInstall" },
     });
-    // The toast is removed once acted upon.
-    expect(
-      screen.queryByText("新版本 v0.20.0 已下载完成，重启应用以完成安装。"),
-    ).not.toBeInTheDocument();
+    // quitAndInstall waits for the app to exit (seconds on Windows) — the toast
+    // stays up as a loading state instead of vanishing (spec scenario 10).
+    expect(screen.getByText("正在重启应用以完成安装…")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重启安装" })).toBeNull();
+    expect(document.querySelector(".toast-spinner")).not.toBeNull();
   });
 
   it("dismisses a toast via its close button without echoing an action", () => {
