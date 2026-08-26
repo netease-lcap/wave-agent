@@ -6,8 +6,13 @@ import { HookTester, HookTesterRef } from "../helpers/HookTester.js";
 
 type InputManagerState = ReturnType<typeof useInputManager>;
 
+// /plan is now a builtin slashCommandManager command (aligned with /subtask):
+// once registered, hasSlashCommand("plan") is true and the command routes to
+// onSendMessage → agent.slashCommandManager (which surfaces the output as a
+// user-message tool block). No CLI-local plan handler remains.
 describe("useInputManager /plan command", () => {
-  const onPlanCommand = vi.fn();
+  const onSendMessage = vi.fn();
+  const onHasSlashCommand = (command: string) => command === "plan";
 
   const setup = () => {
     const ref = createRef<HookTesterRef<unknown>>();
@@ -16,8 +21,8 @@ describe("useInputManager /plan command", () => {
         ref={ref}
         hook={() =>
           useInputManager({
-            onPlanCommand,
-            onHasSlashCommand: () => false,
+            onSendMessage,
+            onHasSlashCommand,
           })
         }
       />,
@@ -27,10 +32,10 @@ describe("useInputManager /plan command", () => {
   };
 
   beforeEach(() => {
-    onPlanCommand.mockClear();
+    onSendMessage.mockClear();
   });
 
-  it("should call onPlanCommand with undefined when bare /plan is selected from the command selector", async () => {
+  it("should route bare /plan from the command selector to onSendMessage", async () => {
     const { getState } = setup();
     await vi.waitFor(() => {
       expect(refReady(getState)).toBe(true);
@@ -45,12 +50,12 @@ describe("useInputManager /plan command", () => {
     getState().handleCommandSelect("plan");
 
     await vi.waitFor(() => {
-      expect(onPlanCommand).toHaveBeenCalledTimes(1);
+      expect(onSendMessage).toHaveBeenCalledTimes(1);
     });
-    expect(onPlanCommand).toHaveBeenCalledWith(undefined);
+    expect(onSendMessage).toHaveBeenCalledWith("/plan", undefined, {});
   });
 
-  it("should call onPlanCommand with the description for /plan <desc>", async () => {
+  it("should route /plan <desc> to onSendMessage with the full command", async () => {
     const { getState } = setup();
     await vi.waitFor(() => {
       expect(refReady(getState)).toBe(true);
@@ -60,11 +65,15 @@ describe("useInputManager /plan command", () => {
     await getState().handleSubmit();
 
     await vi.waitFor(() => {
-      expect(onPlanCommand).toHaveBeenCalledWith("Add user auth");
+      expect(onSendMessage).toHaveBeenCalledWith(
+        "/plan Add user auth",
+        undefined,
+        {},
+      );
     });
   });
 
-  it("should call onPlanCommand with open for /plan open", async () => {
+  it("should route /plan open to onSendMessage", async () => {
     const { getState } = setup();
     await vi.waitFor(() => {
       expect(refReady(getState)).toBe(true);
@@ -74,19 +83,17 @@ describe("useInputManager /plan command", () => {
     await getState().handleSubmit();
 
     await vi.waitFor(() => {
-      expect(onPlanCommand).toHaveBeenCalledWith("open");
+      expect(onSendMessage).toHaveBeenCalledWith("/plan open", undefined, {});
     });
   });
 
-  it("should not send unknown /commands to onPlanCommand", async () => {
-    const onSendMessage = vi.fn();
+  it("should not treat unknown /commands as /plan", async () => {
     const ref = createRef<HookTesterRef<unknown>>();
     render(
       <HookTester
         ref={ref}
         hook={() =>
           useInputManager({
-            onPlanCommand,
             onSendMessage,
             onHasSlashCommand: () => false,
           })
@@ -110,7 +117,6 @@ describe("useInputManager /plan command", () => {
         {},
       );
     });
-    expect(onPlanCommand).not.toHaveBeenCalled();
   });
 });
 

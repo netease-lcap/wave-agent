@@ -9,7 +9,6 @@ import { McpManager } from "./McpManager.js";
 import { AgentsManager } from "./AgentsManager.js";
 import { SkillsManager } from "./SkillsManager.js";
 import { RewindCommand } from "./RewindCommand.js";
-import { PlanView } from "./PlanView.js";
 import { HelpView } from "./HelpView.js";
 import { StatusCommand } from "./StatusCommand.js";
 import { LoginCommand } from "./LoginCommand.js";
@@ -76,9 +75,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     permissionMode: chatPermissionMode,
     setPermissionMode: setChatPermissionMode,
     handleRewindSelect,
-    handlePlanCommand,
-    planView,
-    setPlanView,
     backgroundCurrentTask,
     messages,
     getFullMessageThread,
@@ -184,7 +180,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     onAbortMessage: abortMessage,
     onBackgroundCurrentTask: backgroundCurrentTask,
     onPermissionModeChange: setChatPermissionMode,
-    onPlanCommand: handlePlanCommand,
     sessionId,
     workdir: workingDirectory,
     getFullMessageThread,
@@ -217,7 +212,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     // duplicate dispatches or state update conflicts.
     if (
       showRewindManager ||
-      !!planView ||
       showHelp ||
       showStatusCommand ||
       showLoginCommand ||
@@ -343,15 +337,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
-      {planView && (
-        <PlanView
-          path={planView.path}
-          content={planView.content}
-          message={planView.message}
-          onCancel={() => setPlanView(null)}
-        />
-      )}
-
       {showHelp && (
         <HelpView
           onCancel={() => setShowHelp(false)}
@@ -383,7 +368,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
-      {btwState.question || btwState.answer || !!planView
+      {btwState.question || btwState.answer
         ? null
         : showBackgroundTaskManager ||
           showMcpManager ||

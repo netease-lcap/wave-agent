@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useInput, useApp } from "ink";
+import { useInput } from "ink";
 import { ChatInterface } from "./ChatInterface.js";
 import { ChatProvider } from "../contexts/useChat.js";
 import { AppProvider } from "../contexts/useAppConfig.js";
@@ -11,8 +11,6 @@ import {
 } from "wave-agent-sdk";
 import { BaseAppProps } from "../types.js";
 import { btwOverlayActiveRef } from "../managers/inputReducer.js";
-import { registerInkInstance } from "../utils/externalEditor.js";
-
 interface AppProps extends BaseAppProps {
   restoreSessionId?: string;
   continueLastSession?: boolean;
@@ -105,14 +103,6 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   mcpServers,
   onExit,
 }) => {
-  // Hand the Ink suspendTerminal handle to the external-editor util so
-  // `/plan open` can release the terminal to a terminal editor (vim/nano)
-  // and restore Ink afterwards. Only available inside the Ink root.
-  const { suspendTerminal } = useApp();
-  useEffect(() => {
-    registerInkInstance({ suspendTerminal });
-  }, [suspendTerminal]);
-
   // Handle Ctrl-C for non-worktree sessions (immediate exit)
   // Ink runs terminal in raw mode, so Ctrl+C arrives as useInput event, not SIGINT
   useInput((input, key) => {

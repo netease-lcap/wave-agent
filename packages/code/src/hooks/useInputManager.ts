@@ -62,7 +62,6 @@ export const useInputManager = (
     onClearMessages,
     onCompact,
     onAddDir,
-    onPlanCommand,
     isIdle: isIdleProp,
   } = callbacks;
 
@@ -227,7 +226,9 @@ export const useInputManager = (
             break;
           case "EXECUTE_COMMAND":
             if (onSendMessage && onHasSlashCommand?.(effect.command)) {
-              const fullCommand = `/${effect.command}`;
+              const fullCommand = effect.args
+                ? `/${effect.command} ${effect.args}`
+                : `/${effect.command}`;
               try {
                 await onSendMessage(fullCommand, undefined, {});
               } catch (error) {
@@ -278,8 +279,6 @@ export const useInputManager = (
                 await onCompact?.(effect.args);
               } else if (command === "add-dir") {
                 await onAddDir?.(effect.args);
-              } else if (command === "plan") {
-                await onPlanCommand?.(effect.args);
               }
             }
             break;
@@ -309,7 +308,6 @@ export const useInputManager = (
     onClearMessages,
     onCompact,
     onAddDir,
-    onPlanCommand,
   ]);
 
   useEffect(() => {
