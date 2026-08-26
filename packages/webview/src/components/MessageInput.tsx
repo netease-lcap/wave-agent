@@ -1114,6 +1114,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
           "compact",
           "rewind",
           "model",
+          "plan",
         ];
         if (localCommands.includes(command.name)) {
           textareaRef.current.innerHTML = "";
