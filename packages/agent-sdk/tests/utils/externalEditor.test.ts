@@ -55,6 +55,7 @@ describe("externalEditor", () => {
   describe("openInExternalEditor", () => {
     it("should fall back to the platform default opener when no editor is configured", async () => {
       mockSpawn.mockReturnValue(mockChildProcess());
+      Object.defineProperty(process, "platform", { value: "win32" });
 
       const result = await openInExternalEditor("/tmp/plan.md");
 
@@ -63,6 +64,20 @@ describe("externalEditor", () => {
       expect(mockSpawn).toHaveBeenCalledWith(
         "cmd",
         ["/c", "start", "", "/tmp/plan.md"],
+        expect.objectContaining({ detached: true, stdio: "ignore" }),
+      );
+    });
+
+    it("should use xdg-open on non-win32 platforms as the default opener", async () => {
+      mockSpawn.mockReturnValue(mockChildProcess());
+      Object.defineProperty(process, "platform", { value: "linux" });
+
+      const result = await openInExternalEditor("/tmp/plan.md");
+
+      expect(result).toEqual({ ok: true });
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "xdg-open",
+        ["/tmp/plan.md"],
         expect.objectContaining({ detached: true, stdio: "ignore" }),
       );
     });
