@@ -126,6 +126,14 @@ interface PanelGroupState {
   checked: DesktopPanelKind[];
   mounted: DesktopPanelKind[];
   widths: Record<DesktopPanelKind, number>;
+  /**
+   * Panels the user has manually resized (dragged off the default width).
+   * A panel that is NOT marked manual auto-fills the space beyond the
+   * conversation's minimum width when it opens (「面板自动铺满剩余空间」); a
+   * manual one keeps its width. Stored per group so the flag survives session
+   * switches the same way widths do.
+   */
+  manualWidths: Record<DesktopPanelKind, boolean>;
   previewUrl: string | null;
   /** File panel state (which file is open + content); null = never opened. */
   fileView: FileViewState | null;
@@ -171,6 +179,13 @@ function emptyPanelGroup(): PanelGroupState {
       diff: PANEL_DEFAULT_WIDTH,
       terminal: PANEL_DEFAULT_WIDTH,
       file: PANEL_DEFAULT_WIDTH,
+    },
+    manualWidths: {
+      preview: false,
+      plan: false,
+      diff: false,
+      terminal: false,
+      file: false,
     },
     previewUrl: null,
     fileView: null,
@@ -381,9 +396,23 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         file: PANEL_DEFAULT_WIDTH,
       },
   );
+  // Panels the user manually resized; see PanelGroupState.manualWidths.
+  const [manualWidths, setManualWidths] = useState<
+    Record<DesktopPanelKind, boolean>
+  >(
+    () =>
+      (groupKey ? panelGroupCache.get(groupKey)?.manualWidths : undefined) ?? {
+        preview: false,
+        plan: false,
+        diff: false,
+        terminal: false,
+        file: false,
+      },
+  );
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const checkedPanelsRef = useRef(checkedPanels);
   const panelWidthsRef = useRef(panelWidths);
+  const manualWidthsRef = useRef(manualWidths);
   // Mirrors so the stable message listener can reach the panel toggle logic
   // (defined below) without re-subscribing.
   const togglePanelRef = useRef<(kind: DesktopPanelKind) => void>(() => {});
@@ -430,6 +459,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     panelWidthsRef.current = panelWidths;
   }, [panelWidths]);
 
+  useEffect(() => {
+    manualWidthsRef.current = manualWidths;
+  }, [manualWidths]);
+
   // Cache the whole panel group under the current session so it survives this
   // ChatApp being unmounted/remounted (pane moved across window rows) and so a
   // later session switch can restore it. Skipped on the render where the key
@@ -440,6 +473,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       checked: checkedPanels,
       mounted: mountedPanels,
       widths: panelWidths,
+      manualWidths,
       // A forwarded URL's tunnel is session-scoped (scenario 18) — it survives
       // pane remounts and session switches, so the URL is cached like a local
       // one: switching away and back restores the same address, which still
@@ -455,6 +489,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     checkedPanels,
     mountedPanels,
     panelWidths,
+    manualWidths,
     previewUrl,
     fileView,
     planContent,
@@ -498,6 +533,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         diff: PANEL_DEFAULT_WIDTH,
         terminal: PANEL_DEFAULT_WIDTH,
         file: PANEL_DEFAULT_WIDTH,
+      },
+    );
+    setManualWidths(
+      group?.manualWidths ?? {
+        preview: false,
+        plan: false,
+        diff: false,
+        terminal: false,
+        file: false,
       },
     );
     setFileView(group?.fileView ?? null);
@@ -1698,7 +1742,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           checkedPanelsRef.current
             .filter((k) => k !== kind)
             .reduce((sum, k) => sum + panelWidthsRef.current[k], 0) +
-          panelWidthsRef.current[kind];
+          // An auto-filling panel (never manually resized) only needs its
+          // minimum width to fit: opening re-computes the width from the space
+          // then available, so its possibly-large current width (from a
+          // previous fill in a wider window) must not block the open
+          // (「面板自动铺满剩余空间」).
+          (manualWidthsRef.current[kind]
+            ? panelWidthsRef.current[kind]
+            : PANEL_MIN_WIDTH);
         if (containerW - used < CHAT_MAIN_MIN_WIDTH) {
           let remaining = used;
           for (const k of checkedPanelsRef.current) {
@@ -1718,6 +1769,23 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         showPanelHint(
           `空间不足，已自动关闭「${evicted.map((k) => PANEL_LABELS[k]).join("」「")}」面板`,
         );
+      }
+      // 「面板自动铺满剩余空间」(spec): a panel the user has never manually
+      // resized fills the space beyond the conversation's minimum width when it
+      // opens — a wide pane no longer leaves the panel at the fixed default
+      // width with dead space to its right. A manual drag marks the panel
+      // (handlePanelWidthChange) and locks its width from then on.
+      if (containerW && !manualWidthsRef.current[kind]) {
+        const others = checkedPanelsRef.current
+          .filter((k) => k !== kind && !evicted.includes(k))
+          .reduce((sum, k) => sum + panelWidthsRef.current[k], 0);
+        setPanelWidths((prev) => ({
+          ...prev,
+          [kind]: Math.max(
+            PANEL_MIN_WIDTH,
+            containerW - others - CHAT_MAIN_MIN_WIDTH,
+          ),
+        }));
       }
       setCheckedPanels((prev) =>
         prev.includes(kind) ? prev : [...prev, kind],
@@ -1793,7 +1861,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   );
 
   // Authoritative clamp at drag time: keep the panel within [320, container -
-  // other checked panels - conversation minimum].
+  // other checked panels - conversation minimum]. A drag marks the panel as
+  // manually resized, which stops the auto-fill behavior in tryOpenPanel
+  // (「面板自动铺满剩余空间」).
   const handlePanelWidthChange = useCallback(
     (kind: DesktopPanelKind, width: number) => {
       let clamped = Math.max(width, PANEL_MIN_WIDTH);
@@ -1806,6 +1876,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         clamped = Math.min(clamped, containerW - others - CHAT_MAIN_MIN_WIDTH);
       }
       setPanelWidths((prev) => ({ ...prev, [kind]: clamped }));
+      setManualWidths((prev) => ({ ...prev, [kind]: true }));
     },
     [],
   );

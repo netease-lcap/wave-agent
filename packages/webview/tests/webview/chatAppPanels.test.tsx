@@ -122,7 +122,9 @@ describe("ChatApp desktop panel framework", () => {
       fireEvent.click(screen.getByTestId("panel-toggle-item-preview"));
 
       const empty = screen.getByTestId("preview-pane-empty");
-      expect(empty.style.width).toBe("420px"); // default width, no URL loaded yet
+      // Auto-fills the space beyond the 360px conversation minimum
+      // (「面板自动铺满剩余空间」): 1024 - 360 = 664, not the 420px default.
+      expect(empty.style.width).toBe("664px");
       // The empty state must carry the same drag affordance as loaded panels.
       expect(empty.querySelector(".preview-pane-drag-handle")).not.toBeNull();
 
@@ -134,6 +136,56 @@ describe("ChatApp desktop panel framework", () => {
       fireEvent.mouseMove(window, { clientX: 624 }); // 1024 - 624 = 400
       expect(empty.style.width).toBe("400px");
       fireEvent.mouseUp(window);
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
+  it("an auto-filling panel opens at the default width when the window is too narrow", () => {
+    window.waveHostType = "desktop";
+    // 800px: auto-fill would be 800 - 360 = 440, which fits — the panel
+    // fills the space beyond the conversation minimum instead of staying at
+    // the 420px default (「面板自动铺满剩余空间」).
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockReturnValue({ width: 800, right: 800 } as DOMRect);
+    try {
+      renderDesktop({ workdir: "/work/a" });
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+      fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+      expect(screen.getByTestId("diff-pane").style.width).toBe("440px");
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
+  it("a manually resized panel keeps its width after close/reopen (spec 场景 3)", () => {
+    window.waveHostType = "desktop";
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockReturnValue({ width: 1400, right: 1400 } as DOMRect);
+    try {
+      renderDesktop({ workdir: "/work/a" });
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+      fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+      // Auto-fills the space beyond the conversation minimum.
+      const pane = screen.getByTestId("diff-pane");
+      expect(pane.style.width).toBe("1040px"); // 1400 - 360
+
+      // A drag moves the panel off the auto-filled width and locks it.
+      const handle = pane.querySelector(
+        ".preview-pane-drag-handle",
+      ) as HTMLElement;
+      fireEvent.mouseDown(handle);
+      fireEvent.mouseMove(window, { clientX: 1000 }); // 1400 - 1000 = 400
+      expect(pane.style.width).toBe("400px");
+      fireEvent.mouseUp(window);
+
+      // Close, then re-check: the manual width is kept — no auto-fill again.
+      fireEvent.click(screen.getByTestId("diff-close"));
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+      fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+      expect(screen.getByTestId("diff-pane").style.width).toBe("400px");
     } finally {
       rectSpy.mockRestore();
     }
@@ -314,7 +366,9 @@ describe("ChatApp desktop panel framework", () => {
 
   it("keeps evicting older panels until the new one fits and lists them all (spec 场景 2)", () => {
     window.waveHostType = "desktop";
-    // 1620px holds three 420px panels + the 360px conversation minimum.
+    // Each auto-filling panel fills the whole space beyond the 360px
+    // conversation minimum, so 1620px holds exactly one panel — opening the
+    // next one replaces the previously checked panel each time.
     let width = 1620;
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
@@ -323,12 +377,29 @@ describe("ChatApp desktop panel framework", () => {
       const { vscode } = renderDesktop({ workdir: "/work/a" });
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
       fireEvent.click(screen.getByTestId("panel-toggle-item-file"));
+      expect(screen.getByTestId("file-pane")).toBeInTheDocument();
+
       fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
+      expect(screen.getByTestId("terminal-pane")).toBeInTheDocument();
+      expect(screen.getByTestId("file-pane").parentElement).toHaveStyle({
+        display: "none",
+      });
+      expect(vscode.postMessage).toHaveBeenCalledWith({
+        command: "desktopShowHint",
+        text: "空间不足，已自动关闭「文件」面板",
+      });
+
       fireEvent.click(screen.getByTestId("panel-toggle-item-preview"));
       expect(screen.getByTestId("preview-pane-empty")).toBeInTheDocument();
+      expect(screen.getByTestId("terminal-pane").parentElement).toHaveStyle({
+        display: "none",
+      });
+      expect(vscode.postMessage).toHaveBeenCalledWith({
+        command: "desktopShowHint",
+        text: "空间不足，已自动关闭「终端」面板",
+      });
 
-      // Window shrinks; a fourth panel needs more room than one eviction
-      // frees — 文件 → 终端 → 预览 all get replaced before 差异 opens.
+      // Window shrinks; 差异 replaces the only checked panel (预览).
       width = 1000;
       fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
       expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
@@ -347,7 +418,7 @@ describe("ChatApp desktop panel framework", () => {
       }
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopShowHint",
-        text: "空间不足，已自动关闭「文件」「终端」「预览」面板",
+        text: "空间不足，已自动关闭「预览」面板",
       });
       expect(lastPanelState(vscode)).toEqual(["diff"]);
     } finally {
@@ -357,8 +428,9 @@ describe("ChatApp desktop panel framework", () => {
 
   it("refuses and closes nothing when even full eviction cannot fit (spec 场景 4)", () => {
     window.waveHostType = "desktop";
-    // 1200px holds two 420px panels + the 360px conversation minimum.
-    let width = 1200;
+    // 700px fits one auto-filled panel (700 - 360 = 340) beside the 360px
+    // conversation minimum.
+    let width = 700;
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockImplementation(() => ({ width, right: width }) as DOMRect);
@@ -366,29 +438,23 @@ describe("ChatApp desktop panel framework", () => {
       const { vscode } = renderDesktop({ workdir: "/work/a" });
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
       fireEvent.click(screen.getByTestId("panel-toggle-item-file"));
-      fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
       expect(screen.getByTestId("file-pane")).toBeInTheDocument();
-      expect(screen.getByTestId("terminal-pane")).toBeInTheDocument();
 
-      // Narrower than the conversation minimum + one panel: even after every
-      // old panel is evicted the new one cannot open — refuse and keep the
-      // existing panels untouched (a failed replace must not take them down).
-      width = 700;
-      fireEvent.click(screen.getByTestId("panel-toggle-item-preview"));
-      expect(
-        screen.queryByTestId("preview-pane-empty"),
-      ).not.toBeInTheDocument();
+      // Narrower than the conversation minimum + one panel's minimum width
+      // (650 - 320 = 330 < 360): even after the file panel is evicted the new
+      // one cannot open — refuse and keep the existing panel untouched (a
+      // failed replace must not take it down).
+      width = 650;
+      fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
+      expect(screen.queryByTestId("terminal-pane")).not.toBeInTheDocument();
       expect(screen.getByTestId("file-pane").parentElement).not.toHaveStyle({
         display: "none",
       });
-      expect(screen.getByTestId("terminal-pane").parentElement).not.toHaveStyle(
-        { display: "none" },
-      );
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopShowHint",
         text: "空间不足，无法开启面板",
       });
-      expect(lastPanelState(vscode)).toEqual(["file", "terminal"]);
+      expect(lastPanelState(vscode)).toEqual(["file"]);
     } finally {
       rectSpy.mockRestore();
     }
