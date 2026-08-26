@@ -41,6 +41,7 @@ export interface DesktopMenuActions {
   newSessionInPane: () => void;
   closePane: () => void;
   togglePanel: (kind: PanelKind) => void;
+  openPermissionModeMenu: () => void;
 }
 
 export interface SessionMenuState {
@@ -103,6 +104,24 @@ export function matchPanelToggleInput(
     if (input.code === "KeyD") return "diff";
   }
   return null;
+}
+
+/**
+ * Map a before-input-event Input to the permission-mode-menu request (Cmd+Shift+M
+ * on macOS / Ctrl+Shift+M on Windows/Linux, aligned with Claude Code Desktop).
+ * Returns true only for an exact modifier match — letters match on `code`
+ * because Shift uppercases them in `key`.
+ */
+export function matchPermissionModeInput(
+  input: Input,
+  isMac: boolean,
+): boolean {
+  if (input.type !== "keyDown" && input.type !== "rawKeyDown") return false;
+  const primary = isMac ? input.meta : input.control;
+  const secondary = isMac ? input.control : input.meta;
+  return (
+    primary && input.shift && !secondary && !input.alt && input.code === "KeyM"
+  );
 }
 
 /** Full application menu: platform defaults + 对话/面板 menus. */
@@ -184,6 +203,14 @@ export function buildApplicationMenuTemplate(
           accelerator: isMac ? "Cmd+Shift+[" : "Ctrl+Shift+Tab",
           registerAccelerator: false,
           click: () => actions.prevSession(),
+        },
+        { type: "separator" },
+        {
+          id: "open-permission-mode",
+          label: "权限模式…",
+          accelerator: isMac ? "Cmd+Shift+M" : "Ctrl+Shift+M",
+          registerAccelerator: false,
+          click: () => actions.openPermissionModeMenu(),
         },
       ],
     },
@@ -301,6 +328,11 @@ export function attachDesktopShortcutKeys(
     if (kind) {
       event.preventDefault();
       actions.togglePanel(kind);
+      return;
+    }
+    if (matchPermissionModeInput(input, isMac)) {
+      event.preventDefault();
+      actions.openPermissionModeMenu();
     }
   });
 }

@@ -533,6 +533,19 @@ export class DesktopHost {
     });
   }
 
+  /**
+   * Open the permission-mode dropdown in the focused pane. Triggered by the
+   * 对话 → 权限模式… menu item and the Cmd/Ctrl+Shift+M shortcut; the webview
+   * renders the existing dropdown via its triggerShortcut bridge.
+   */
+  openPermissionModeMenu(): void {
+    this.postMessage({
+      command: "triggerShortcut",
+      paneId: this.focusedPaneId,
+      name: "open-permission-mode",
+    });
+  }
+
   private emitPanelState(): void {
     this.onPanelStateChanged?.(
       this.panePanelState.get(this.focusedPaneId) ?? [],
