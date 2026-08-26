@@ -177,8 +177,8 @@ test.describe("SDD Plan Preview Tab Screenshot", () => {
     <style>${chatCss}</style>
     <style>
       body { margin: 0; background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); font-family: var(--vscode-font-family); }
-      .tab-strip { display: flex; height: 35px; background: var(--vscode-editorGroupHeader-tabsBackground, #252526); border-bottom: 1px solid var(--vscode-tab-border, #454545); padding: 0 8px; }
-      .tab { display: flex; align-items: center; padding: 0 14px; font-size: 13px; }
+      .tab-strip { display: flex; height: 42px; background: var(--vscode-editorGroupHeader-tabsBackground, #252526); border-bottom: 1px solid var(--vscode-tab-border, #454545); padding: 0 8px; }
+      .tab { display: flex; align-items: center; padding: 0 14px; font-size: 13px; line-height: 1.4; }
       .tab.active { background: var(--vscode-tab-activeBackground, #1e1e1e); color: var(--vscode-tab-activeForeground, #ffffff); border-top: 1px solid var(--vscode-tab-activeBorderTop, #007fd4); }
       .plan-body { padding: 16px; }
       #plan-preview h1 { font-size: 1.4em; }
