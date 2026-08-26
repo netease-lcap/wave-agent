@@ -204,7 +204,7 @@ describe("ExitPlanMode Integration", () => {
 
     expect(result.success).toBe(false);
     expect(result.content).toBe(
-      `Please update your proposal based on the following user feedback: ${feedback}`,
+      `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:\n${feedback}`,
     );
     expect(agent.getPermissionMode()).toBe("plan");
   });
