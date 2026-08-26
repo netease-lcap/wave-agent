@@ -125,7 +125,7 @@ describe("MessageList roving focus circle", () => {
     otherLinks.forEach((a) => expect(a.tabIndex).toBe(-1));
   });
 
-  it("Tab on the activated row's last inner focusable returns to the list selector", async () => {
+  it("Tab on the activated row's last inner focusable returns to the list selector and deactivates the row", async () => {
     const container = await renderList(urlMessages());
     act(() => {
       container.focus();
@@ -141,6 +141,9 @@ describe("MessageList roving focus circle", () => {
       fireEvent.keyDown(row2Links[row2Links.length - 1], { key: "Tab" });
     });
     expect(document.activeElement).toBe(container);
+    // Returning to the selector deactivates the row: its inner focusables are
+    // frozen again, so the next Tab leaves the list instead of re-entering it.
+    links(container).forEach((a) => expect(a.tabIndex).toBe(-1));
   });
 
   it("Escape returns to the list selector and re-freezes the row", async () => {
@@ -173,6 +176,29 @@ describe("MessageList roving focus circle", () => {
     act(() => {
       fireEvent.blur(container, { relatedTarget: document.body });
     });
+    links(container).forEach((a) => expect(a.tabIndex).toBe(-1));
+  });
+
+  it("focus re-entering the container (Tab/click) deactivates a leftover active row", async () => {
+    const container = await renderList(urlMessages());
+    act(() => {
+      container.focus();
+    });
+    act(() => {
+      fireEvent.keyDown(container, { key: "Enter" });
+    });
+    // The active row's links are tabbable while focus stays inside the row.
+    const row2 = container.querySelector(
+      '.virtual-row[data-index="2"]',
+    ) as HTMLElement;
+    const row2Links = Array.from(row2.querySelectorAll<HTMLElement>("a[href]"));
+    expect(row2Links[0].tabIndex).toBe(0);
+    // Focus returns to the selector itself (e.g. the user clicks it): the
+    // leftover activation is cleared so Tab cannot walk back into the row.
+    act(() => {
+      container.focus();
+    });
+    expect(document.activeElement).toBe(container);
     links(container).forEach((a) => expect(a.tabIndex).toBe(-1));
   });
 });
