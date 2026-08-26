@@ -109,7 +109,6 @@ export interface InputManagerCallbacks {
   onClearMessages?: () => Promise<void>;
   onCompact?: (instructions?: string) => Promise<void>;
   onAddDir?: (args?: string) => Promise<void>;
-  onPlanCommand?: (args?: string) => Promise<void> | void;
   sessionId?: string;
   workdir?: string;
   getFullMessageThread?: () => Promise<{

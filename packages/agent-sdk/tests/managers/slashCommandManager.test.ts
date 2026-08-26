@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { TaskManager } from "../../src/services/taskManager.js";
@@ -14,6 +14,8 @@ import type { SubagentManager } from "../../src/managers/subagentManager.js";
 import type { SkillManager } from "../../src/managers/skillManager.js";
 import type { TextBlock } from "../../src/types/index.js";
 import type { MemoryService } from "../../src/services/memory.js";
+import fs from "node:fs/promises";
+import { openInExternalEditor } from "../../src/utils/externalEditor.js";
 // Mock child_process for bash command execution tests
 const mockExec = vi.hoisted(() => vi.fn());
 vi.mock("child_process", () => ({
@@ -35,6 +37,15 @@ vi.mock("../../src/utils/markdownParser.js", async (importOriginal) => {
         exitCode: 0,
       },
     ]),
+  };
+});
+
+vi.mock("../../src/utils/externalEditor.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../src/utils/externalEditor.js")>();
+  return {
+    ...actual,
+    openInExternalEditor: vi.fn(),
   };
 });
 
@@ -813,6 +824,153 @@ describe("SlashCommandManager", () => {
 
       expect(aiManager.setIsLoading).toHaveBeenCalledWith(false);
       expect(errorSpy).toHaveBeenCalledWith("Failed to execute /subtask: boom");
+    });
+  });
+
+  describe("/plan command", () => {
+    const planPath = "/home/user/.wave/plans/plan.md";
+    let mockPlanManager: {
+      awaitPlanFilePath: ReturnType<typeof vi.fn>;
+    };
+    let mockToolManager: {
+      getPermissionMode: ReturnType<typeof vi.fn>;
+    };
+    let mockPermissionManager: {
+      getPlanFilePath: ReturnType<typeof vi.fn>;
+    };
+    let transition: ReturnType<typeof vi.fn>;
+    let readFileSpy: ReturnType<typeof vi.spyOn>;
+
+    const registerPlanServices = () => {
+      mockPlanManager = {
+        awaitPlanFilePath: vi.fn().mockResolvedValue(planPath),
+      };
+      mockToolManager = {
+        getPermissionMode: vi.fn().mockReturnValue("default"),
+      };
+      mockPermissionManager = {
+        getPlanFilePath: vi.fn().mockReturnValue(planPath),
+      };
+      transition = vi.fn();
+      slashCommandManager["container"].register("PlanManager", mockPlanManager);
+      slashCommandManager["container"].register("ToolManager", mockToolManager);
+      slashCommandManager["container"].register(
+        "PermissionManager",
+        mockPermissionManager,
+      );
+      slashCommandManager["container"].register(
+        "PermissionModeTransition",
+        transition,
+      );
+    };
+
+    beforeEach(() => {
+      registerPlanServices();
+      readFileSpy = vi.spyOn(fs, "readFile") as ReturnType<typeof vi.spyOn>;
+    });
+
+    afterEach(() => {
+      readFileSpy.mockRestore();
+      vi.mocked(openInExternalEditor).mockReset();
+    });
+
+    it("should switch to plan mode and surface an entry tool block for bare /plan", async () => {
+      const addUserMessageSpy = vi.spyOn(messageManager, "addUserMessage");
+      const updateToolBlockSpy = vi.spyOn(messageManager, "updateToolBlock");
+
+      const result = await slashCommandManager.executeCommand("plan");
+
+      expect(result).toBe(true);
+      expect(transition).toHaveBeenCalledWith("plan");
+      expect(mockPlanManager.awaitPlanFilePath).toHaveBeenCalled();
+      // Entry output lands on a user-message tool block; no main-agent query.
+      expect(addUserMessageSpy).toHaveBeenCalledWith({ content: "/plan" });
+      expect(updateToolBlockSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          result: expect.stringContaining("Enabled plan mode"),
+          stage: "end",
+          success: true,
+        }),
+      );
+      expect(aiManager.sendAIMessage).not.toHaveBeenCalled();
+    });
+
+    it("should surface the entry tool block and trigger a query for /plan <description>", async () => {
+      const addUserMessageSpy = vi.spyOn(messageManager, "addUserMessage");
+
+      const result = await slashCommandManager.executeCommand(
+        "plan",
+        "Add user auth",
+      );
+
+      expect(result).toBe(true);
+      expect(transition).toHaveBeenCalledWith("plan");
+      // Entry output + the description as a user message, then the query.
+      expect(addUserMessageSpy).toHaveBeenNthCalledWith(1, {
+        content: "/plan Add user auth",
+      });
+      expect(addUserMessageSpy).toHaveBeenNthCalledWith(2, {
+        content: "Add user auth",
+      });
+      expect(aiManager.sendAIMessage).toHaveBeenCalled();
+    });
+
+    it("should show the current plan as markdown when already in plan mode", async () => {
+      mockToolManager.getPermissionMode.mockReturnValue("plan");
+      readFileSpy.mockResolvedValue("# My plan\n\nStep 1" as never);
+      const updateToolBlockSpy = vi.spyOn(messageManager, "updateToolBlock");
+
+      const result = await slashCommandManager.executeCommand("plan");
+
+      expect(result).toBe(true);
+      expect(transition).not.toHaveBeenCalled();
+      expect(updateToolBlockSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          result: expect.stringContaining("# Current Plan"),
+        }),
+      );
+      expect(updateToolBlockSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          result: expect.stringContaining("Step 1"),
+        }),
+      );
+      expect(aiManager.sendAIMessage).not.toHaveBeenCalled();
+    });
+
+    it("should show a no-plan-written message when the plan file is empty", async () => {
+      mockToolManager.getPermissionMode.mockReturnValue("plan");
+      readFileSpy.mockRejectedValue(new Error("ENOENT"));
+      const updateToolBlockSpy = vi.spyOn(messageManager, "updateToolBlock");
+
+      await slashCommandManager.executeCommand("plan");
+
+      expect(updateToolBlockSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          result: "Already in plan mode. No plan written yet.",
+          stage: "end",
+          success: true,
+        }),
+      );
+    });
+
+    it("should surface an error entry when /plan open fails to open the editor", async () => {
+      mockToolManager.getPermissionMode.mockReturnValue("plan");
+      vi.mocked(openInExternalEditor).mockResolvedValue({
+        ok: false,
+        error: "ENOENT",
+      });
+      const updateToolBlockSpy = vi.spyOn(messageManager, "updateToolBlock");
+
+      await slashCommandManager.executeCommand("plan", "open");
+
+      expect(vi.mocked(openInExternalEditor)).toHaveBeenCalledWith(planPath);
+      expect(updateToolBlockSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          result: expect.stringContaining("Failed to open plan in editor"),
+          stage: "end",
+          success: true,
+        }),
+      );
     });
   });
 });

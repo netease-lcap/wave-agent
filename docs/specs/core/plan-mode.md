@@ -244,3 +244,26 @@ order: 140
 5. **假设**外部编辑器不可用（`$EDITOR`/`$VISUAL` 均未设置且无平台默认），**当**用户输入 `/plan open` 时，**则**显示错误提示（如 "No external editor found"），不阻塞会话。
 
 ---
+
+### 用户故事：/plan 输出以消息流条目呈现（优先级：P2，CLI + GUI 三端）
+
+作为用户（CLI / VS Code / JetBrains / 桌面端），我希望 `/plan` 的全部输出（"Enabled plan mode"、当前计划内容、"Opened plan in editor" 等）作为普通消息条目出现在对话消息流中，以便与 Claude Code 一致——输出随滚动历史可回溯，而不是显示在临时弹层中（CLI 当前为输入框上方的 PlanView 弹层，弹层消失后输出不可回溯；GUI 三端当前没有 `/plan` 命令，借此机会一并补齐）。
+
+**为什么是这个优先级**：Claude Code 将 `/plan` 输出（"Enabled plan mode" 等）作为 `<local-command-stdout>` 消息条目写入消息流，并通过过滤器将其排除出模型上下文。wave 的 user 消息 tool block 已具备同款承载能力（`⎿` 缩进前缀 + markdown 全量渲染，见 agent-skills.md「将技能派生到子代理」场景 6），且该 block 的 result 天然不进模型 API——`/plan` 输出以 user 消息 tool block 注入即可同时获得「消息流形态」与「上下文排除」双重对齐。实现上 `/plan` 注册为 agent-sdk 内置斜杠命令（slashCommandManager，与 `/subtask` 同级），CLI 与 GUI 三端共享同一执行路径与输出形态；CLI 端删除 PlanView 弹层。
+
+**独立测试**：CLI 非 plan 模式输入 `/plan`，验证消息流出现 "Enabled plan mode" 条目且输入框上方不再出现弹层；输入 `/plan` 查看计划，验证消息流出现 "Current Plan" 条目；GUI 端 `/` 菜单出现 `/plan`，执行后消息流出现同款条目；触发一次 AI 查询后验证该查询未把 `/plan` 输出带入模型上下文。
+
+**验收场景**：
+
+1. **假设**系统处于非 plan 模式（CLI 或任一 GUI 端），**当**用户输入 `/plan` 时，**则**消息流中新增 "Enabled plan mode" 命令输出条目（对齐 Claude Code 文案，含计划文件路径），输入框上方不再显示临时弹层（CLI 的 PlanView 移除）。
+2. **假设**系统处于 plan 模式且 plan 文件已写入内容，**当**用户输入 `/plan` 时，**则**消息流中新增 "Current Plan" 命令输出条目（计划文件路径 + 完整内容 + `/plan open` 提示）。
+3. **假设**系统处于 plan 模式但 plan 文件尚无内容，**当**用户输入 `/plan` 时，**则**消息流中新增 "Already in plan mode. No plan written yet." 命令输出条目。
+4. **假设**用户输入 `/plan open` 成功打开计划文件，**当**操作完成时，**则**消息流中新增 "Opened plan in editor" 命令输出条目；失败时新增对应错误条目（CLI 用外部编辑器 `$EDITOR`/`$VISUAL`；GUI 端用宿主编辑器打开计划文件，宿主不支持时给出错误提示）。
+5. **假设**用户输入 `/plan <描述>`（非 open）触发模式切换，**当** AI 查询发起时，**则**消息流中的 `/plan` 输出条目（"Enabled plan mode"）不被带入模型上下文（对齐 Claude Code 对 local-command-stdout 的过滤语义）。
+6. **假设**用户输入 `/plan` 查看计划，**当**后续任意轮次发起 AI 查询时，**则** "Current Plan" 条目的内容不被带入模型上下文（模型不会重复读到已展示过的计划全文）。
+7. **假设**消息流已包含 `/plan` 输出条目，**当**用户滚动历史时，**则**条目持久可见、无需手动关闭（替代原弹层的取消交互）。
+8. **假设** `/plan` 输出条目已生成，**当**条目在消息流中渲染时，**则**以命令输出条目形态呈现（对齐 Claude Code：输出内容 markdown 渲染、`⎿` 缩进前缀标识），完整展示不截断不折叠（CLI 与 GUI 共用 user 消息 tool block 渲染）。
+9. **假设**用户打开命令选择器（CLI 或 GUI 的 `/` 菜单），**当**浏览命令列表时，**则** `/plan` 命令可见（描述：启用计划模式或查看当前计划）；`/help` 帮助视图与 GUI 命令选择器中同样可见。
+10. **假设** GUI 端用户输入 `/plan <描述>`，**当**命令执行时，**则**进入 plan 模式并将 `<描述>` 作为用户消息触发一次 AI 查询，模型在计划模式提醒（含 plan 文件路径）下开始规划。
+
+---

@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   getExternalEditor,
   openInExternalEditor,
-  registerInkInstance,
 } from "../../src/utils/externalEditor.js";
 
 const mockSpawn = vi.hoisted(() => vi.fn());
@@ -19,6 +18,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 
 describe("externalEditor", () => {
   const originalEnv = { ...process.env };
+  const originalPlatform = process.platform;
 
   const mockChildProcess = () => ({
     on: vi.fn(),
@@ -33,6 +33,7 @@ describe("externalEditor", () => {
 
   afterEach(() => {
     process.env = { ...originalEnv };
+    Object.defineProperty(process, "platform", { value: originalPlatform });
   });
 
   describe("getExternalEditor", () => {
@@ -52,12 +53,18 @@ describe("externalEditor", () => {
   });
 
   describe("openInExternalEditor", () => {
-    it("should return an error when no editor is configured", async () => {
+    it("should fall back to the platform default opener when no editor is configured", async () => {
+      mockSpawn.mockReturnValue(mockChildProcess());
+
       const result = await openInExternalEditor("/tmp/plan.md");
-      expect(result).toEqual({
-        ok: false,
-        error: expect.stringContaining("No external editor found"),
-      });
+
+      expect(result).toEqual({ ok: true });
+      // On win32 the default opener is `cmd /c start "" <file>`.
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "cmd",
+        ["/c", "start", "", "/tmp/plan.md"],
+        expect.objectContaining({ detached: true, stdio: "ignore" }),
+      );
     });
 
     it("should return an error for an invalid editor config", async () => {
@@ -94,18 +101,13 @@ describe("externalEditor", () => {
       );
     });
 
-    it("should run a terminal editor through suspendTerminal when an ink instance is registered", async () => {
+    it("should run a terminal editor synchronously and return ok", async () => {
       process.env.EDITOR = "vim";
       mockSpawnSync.mockReturnValue({ error: undefined });
-      const suspendTerminal = vi.fn((callback: () => void) =>
-        Promise.resolve(callback()),
-      );
-      registerInkInstance({ suspendTerminal });
 
       const result = await openInExternalEditor("/tmp/plan.md");
 
       expect(result).toEqual({ ok: true });
-      expect(suspendTerminal).toHaveBeenCalledTimes(1);
       expect(mockSpawnSync).toHaveBeenCalledWith(
         "vim",
         ["/tmp/plan.md"],
@@ -113,20 +115,8 @@ describe("externalEditor", () => {
       );
     });
 
-    it("should run a terminal editor directly when no ink instance is registered", async () => {
-      process.env.EDITOR = "vim";
-      registerInkInstance(null);
-      mockSpawnSync.mockReturnValue({ error: undefined });
-
-      const result = await openInExternalEditor("/tmp/plan.md");
-
-      expect(result).toEqual({ ok: true });
-      expect(mockSpawnSync).toHaveBeenCalledTimes(1);
-    });
-
     it("should return an error when the terminal editor fails to spawn", async () => {
       process.env.EDITOR = "vim";
-      registerInkInstance(null);
       mockSpawnSync.mockReturnValue({ error: new Error("ENOENT") });
 
       const result = await openInExternalEditor("/tmp/plan.md");
