@@ -1104,31 +1104,14 @@ export class PermissionManager {
         const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
         if (commandMatch) {
           const cmd = commandMatch[1];
-          const args = commandMatch[2]?.trim() || "";
 
           if (
             DANGEROUS_COMMANDS.includes(cmd) ||
             isDangerousFind(part) ||
-            hasSedInPlace(part)
+            hasSedInPlace(part) ||
+            this.isOutOfSafeZonePart(part, workdir)
           ) {
             continue;
-          }
-
-          if (cmd === "cd") {
-            const pathArgs =
-              (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
-                (arg) => !arg.startsWith("-"),
-              ) || [];
-
-            const isOutOfBounds = pathArgs.some((pathArg) => {
-              const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
-              const { isInside } = this.isInsideSafeZone(cleanPath, workdir);
-              return !isInside;
-            });
-
-            if (isOutOfBounds) {
-              continue;
-            }
           }
         }
 
