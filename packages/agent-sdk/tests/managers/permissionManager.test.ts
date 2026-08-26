@@ -2437,12 +2437,11 @@ describe("PermissionManager", () => {
 
     beforeEach(() => {
       vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
-        const pathStr = p.toString();
-        if (pathStr.includes("src")) return "/home/user/project/src";
-        if (pathStr.includes("..") || pathStr === "/home/user")
-          return "/home/user";
-        if (pathStr === "/etc") return "/etc";
-        return "/home/user/project";
+        const resolved = path.resolve(p.toString());
+        if (resolved.includes("src")) return path.resolve(workdir, "src");
+        if (resolved === path.resolve(workdir, "..")) return resolved;
+        if (resolved === path.resolve("/etc")) return resolved;
+        return path.resolve(workdir);
       });
     });
 
