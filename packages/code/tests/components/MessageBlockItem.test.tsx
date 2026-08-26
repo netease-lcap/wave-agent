@@ -6,9 +6,6 @@ import { MessageBlockItem } from "../../src/components/MessageBlockItem.js";
 import { MessageSource, type Message, type MessageBlock } from "wave-agent-sdk";
 
 // Mock sub-components to isolate MessageBlockItem
-vi.mock("../../src/components/BangDisplay.js", () => ({
-  BangDisplay: () => <Text>MOCKED_BANG</Text>,
-}));
 vi.mock("../../src/components/ToolDisplay.js", () => ({
   ToolDisplay: () => <Text>MOCKED_TOOL_RESULT</Text>,
 }));
@@ -72,26 +69,6 @@ describe("MessageBlockItem Component", () => {
         <MessageBlockItem block={block} message={message} isExpanded={false} />,
       );
       expect(lastFrame()).toContain("Error: something failed");
-    });
-
-    it("should render bang block", () => {
-      const message: Message = {
-        id: "test-id",
-        role: "assistant",
-        blocks: [],
-        timestamp: new Date().toISOString(),
-      };
-      const block: MessageBlock = {
-        type: "bang",
-        output: "output",
-        command: "ls",
-        stage: "end",
-        exitCode: 0,
-      };
-      const { lastFrame } = render(
-        <MessageBlockItem block={block} message={message} isExpanded={false} />,
-      );
-      expect(lastFrame()).toContain("MOCKED_BANG");
     });
 
     it("should render tool block", () => {
