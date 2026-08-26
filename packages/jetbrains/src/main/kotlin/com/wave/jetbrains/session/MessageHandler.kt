@@ -3,6 +3,8 @@ package com.wave.jetbrains.session
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.wave.jetbrains.WaveBackendService
+import com.wave.jetbrains.WavePanelHolder
+import com.wave.jetbrains.bridge.PlanPreviewBuilder
 import com.wave.jetbrains.config.WavePluginService
 import com.wave.jetbrains.ide.IdeService
 import com.wave.jetbrains.stdio.StdioClientException
@@ -141,6 +143,10 @@ class MessageHandler(
             "requestSlashCommands" -> {
                 val filterText = msg["filterText"]?.jsonPrimitive?.content ?: ""
                 handleSlashCommands(filterText)
+            }
+            "planCommand" -> {
+                val args = msg["args"]?.jsonPrimitive?.content
+                handlePlanCommand(args)
             }
 
             // ── Session list ───────────────────────────────────────────
@@ -842,6 +848,7 @@ class MessageHandler(
             triple("rewind", "rewind", "回滚到之前的用户消息"),
             triple("model", "model", "切换 AI 模型"),
             triple("btw", "btw", "旁路提问（不进入聊天记录）"),
+            triple("plan", "plan", "启用规划模式或查看当前方案"),
         )
         val all = sdkCommands + local
         // VSCE messageHandler.ts:618-624: filter by id/name (case-insensitive includes)
@@ -858,6 +865,40 @@ class MessageHandler(
         postMessage("slashCommandsResponse", buildJsonObject {
             put("commands", JsonArray(filtered))
         })
+    }
+
+    /**
+     * /plan command (spec plan-mode.md): delegate to [PlanCommand.decide] and
+     * execute the decided action — switch to plan mode (optionally starting a
+     * plan query), or fetch the current plan file via the stdio getPlanFile RPC
+     * and open it in the editor-area plan tab.
+     */
+    private suspend fun handlePlanCommand(args: String?) {
+        val agent = session.agent ?: return
+        try {
+            when (val decision = PlanCommand.decide(args, agent.permissionMode)) {
+                is PlanCommand.Decision.Switch -> {
+                    agent.setPermissionMode("plan")
+                    // Bare /plan outside plan mode: mode switched; the plan tab opens
+                    // on its own once ExitPlanMode delivers content via PermissionFlow.
+                }
+                is PlanCommand.Decision.Query -> {
+                    agent.setPermissionMode("plan")
+                    agent.sendMessage(decision.description)
+                }
+                PlanCommand.Decision.Show -> {
+                    // Already in plan mode — display the current plan file contents.
+                    val planFile = agent.getPlanFile()
+                    val content = planFile?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
+                    if (!content.isNullOrEmpty()) {
+                        WavePanelHolder.getInstance(project)
+                            .showPlanPreview(session, PlanPreviewBuilder.buildHtml(content))
+                    }
+                }
+            }
+        } catch (e: StdioClientException) {
+            LOG.warn("/plan failed: ${e.message}", e)
+        }
     }
 
     private fun triple(id: String, name: String, description: String): JsonObject = buildJsonObject {

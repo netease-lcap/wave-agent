@@ -35,6 +35,9 @@ export interface MessageHandlerContext {
   ) => Promise<void>;
   updateAllSessionsConfig: (config: unknown) => void;
   getVersion: () => string;
+  /** Opens (or refreshes) the plan-preview panel for a session (claudePlanPreview
+   *  equivalent) with the given plan markdown content. */
+  openPlanPreview: (key: string, content: string) => void;
 }
 
 export class MessageHandler {
@@ -107,6 +110,13 @@ export class MessageHandler {
       case "requestSlashCommands":
         await this.handleSlashCommandsRequest(
           msg.filterText as string,
+          viewType,
+          windowId,
+        );
+        break;
+      case "planCommand":
+        await this.handlePlanCommand(
+          msg.args as string | undefined,
           viewType,
           windowId,
         );
@@ -1263,6 +1273,11 @@ export class MessageHandler {
         { id: "rewind", name: "rewind", description: "回退到之前的用户消息" },
         { id: "model", name: "model", description: "切换 AI 模型" },
         { id: "btw", name: "btw", description: "旁路提问（不进入聊天记录）" },
+        {
+          id: "plan",
+          name: "plan",
+          description: "启用规划模式或查看当前方案",
+        },
       ];
 
       const allCommands = [...sdkCommands, ...localCommands];
@@ -1299,6 +1314,50 @@ export class MessageHandler {
         viewType,
         windowId,
       );
+    }
+  }
+
+  /**
+   * /plan command (spec plan-mode.md):
+   * - Outside plan mode: switch to plan mode; with a description (and not the
+   *   removed `/plan open`), immediately start the plan query.
+   * - Inside plan mode: fetch the current plan file via the stdio getPlanFile
+   *   RPC and open it in the plan-preview panel (claudePlanPreview equivalent).
+   */
+  private async handlePlanCommand(
+    args?: string,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    const session = this.context.getChatSession(viewType || "tab", windowId);
+    const agent = session.agent;
+    if (!agent) return;
+
+    const description = args?.trim() ?? "";
+    const wantsOpen = description.split(/\s+/)[0] === "open";
+    try {
+      if (agent.getPermissionMode() !== "plan") {
+        await agent.setPermissionMode("plan");
+        if (description && !wantsOpen) {
+          await agent.sendMessage(description);
+          return;
+        }
+        // Bare /plan outside plan mode: mode switched; the plan-preview panel
+        // opens on its own once ExitPlanMode delivers content.
+        return;
+      }
+
+      // Already in plan mode — display the current plan file contents.
+      const planFile = await agent.getPlanFile();
+      if (planFile?.content) {
+        this.context.openPlanPreview(
+          `plan_${viewType || "tab"}_${windowId || "sidebar"}`,
+          planFile.content,
+        );
+      }
+    } catch (error) {
+      console.error("执行 /plan 失败:", error);
+      vscode.window.showErrorMessage("执行 /plan 失败: " + error);
     }
   }
 

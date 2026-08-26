@@ -235,6 +235,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
             }
           },
           getVersion: () => this.context.extension.packageJSON?.version || "",
+          openPlanPreview: (key, content) => this.openPlanPreview(key, content),
         },
       );
     } catch (err) {
@@ -707,9 +708,10 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         context.toolName === EXIT_PLAN_MODE_TOOL_NAME &&
         context.planContent
       ) {
-        const planKey = `plan_${viewType || "tab"}_${windowId || "sidebar"}`;
-        this.webviewManager.getOrCreatePlanPanel(planKey);
-        this.webviewManager.postPlanContent(planKey, context.planContent);
+        this.openPlanPreview(
+          `plan_${viewType || "tab"}_${windowId || "sidebar"}`,
+          context.planContent,
+        );
       }
 
       this.webviewManager.postMessage(
@@ -757,6 +759,14 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       );
       await this.listSessions(viewType, windowId);
     }
+  }
+
+  /** Opens (or refreshes) the plan-preview panel for a session key with the
+   *  given plan markdown — shared by the ExitPlanMode flow and the /plan
+   *  command (claudePlanPreview equivalent; see docs/specs/core/plan-mode.md). */
+  private openPlanPreview(key: string, content: string) {
+    this.webviewManager.getOrCreatePlanPanel(key);
+    this.webviewManager.postPlanContent(key, content);
   }
 
   /**

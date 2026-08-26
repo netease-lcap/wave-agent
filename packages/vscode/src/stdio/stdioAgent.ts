@@ -348,6 +348,22 @@ export class StdioAgent {
     await this.client.request("setPermissionMode", { mode }, this.sessionId);
   }
 
+  /**
+   * Reads the session's current plan file (path + contents). Used by the
+   * /plan command to display the plan when already in plan mode; the CLI side
+   * awaits the path if it is still being generated after setPermissionMode.
+   */
+  async getPlanFile(): Promise<{
+    path: string | null;
+    content: string | null;
+  }> {
+    return (await this.client.request(
+      "getPlanFile",
+      undefined,
+      this.sessionId,
+    )) as { path: string | null; content: string | null };
+  }
+
   /** Returns cached permission mode (updated via notification). */
   getPermissionMode(): PermissionMode | undefined {
     return this.permissionMode;

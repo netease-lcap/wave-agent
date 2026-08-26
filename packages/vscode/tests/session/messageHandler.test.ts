@@ -50,6 +50,7 @@ function createHandler(session: ChatSession) {
     listSessions: vi.fn(),
     updateAllSessionsConfig: vi.fn(),
     getVersion: vi.fn().mockReturnValue("1.2.3"),
+    openPlanPreview: vi.fn(),
   };
   const handler = new MessageHandler(
     {} as unknown as ConfigurationService,
@@ -65,7 +66,13 @@ function createHandler(session: ChatSession) {
 function createReadySession(): ChatSession {
   return {
     agent: {
-      getPermissionMode: vi.fn(),
+      getPermissionMode: vi.fn(() => "default"),
+      setPermissionMode: vi.fn(async () => undefined),
+      sendMessage: vi.fn(async () => undefined),
+      getPlanFile: vi.fn(async () => ({
+        path: "/tmp/plan.md",
+        content: "# 当前方案",
+      })),
       workingDirectory: "/tmp",
       latestTotalTokens: 0,
     },
@@ -120,6 +127,7 @@ function createReadyHandler(session: ChatSession) {
     listSessions: vi.fn(),
     updateAllSessionsConfig: vi.fn(),
     getVersion: vi.fn().mockReturnValue("1.2.3"),
+    openPlanPreview: vi.fn(),
   } as unknown as MessageHandlerContext;
   const handler = new MessageHandler(
     configService as unknown as ConfigurationService,
@@ -507,6 +515,7 @@ describe("MessageHandler MCP handlers", () => {
       listSessions: vi.fn(),
       updateAllSessionsConfig: vi.fn(),
       getVersion: vi.fn().mockReturnValue("1.2.3"),
+      openPlanPreview: vi.fn(),
     };
     const handler = new MessageHandler(
       configService as unknown as ConfigurationService,
@@ -545,5 +554,111 @@ describe("MessageHandler MCP handlers", () => {
     };
     expect(posted.command).toBe("projectSettings");
     expect(posted.enabledPlugins).toEqual({ "sdd@builtin": true });
+  });
+});
+
+// ── /plan command ───────────────────────────────────────────────
+
+describe("MessageHandler /plan command", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("/plan outside plan mode switches to plan mode without sending a message", async () => {
+    const session = createReadySession();
+    const agent = session.agent as unknown as {
+      getPermissionMode: ReturnType<typeof vi.fn>;
+      setPermissionMode: ReturnType<typeof vi.fn>;
+      sendMessage: ReturnType<typeof vi.fn>;
+      getPlanFile: ReturnType<typeof vi.fn>;
+    };
+    agent.getPermissionMode.mockReturnValue("default");
+
+    const { handler, context } = createReadyHandler(session);
+    await handler.handleMessage({ command: "planCommand" }, "tab");
+
+    expect(agent.setPermissionMode).toHaveBeenCalledWith("plan");
+    expect(agent.sendMessage).not.toHaveBeenCalled();
+    expect(context.openPlanPreview).not.toHaveBeenCalled();
+  });
+
+  test("/plan with a description outside plan mode starts the plan query", async () => {
+    const session = createReadySession();
+    const agent = session.agent as unknown as {
+      getPermissionMode: ReturnType<typeof vi.fn>;
+      setPermissionMode: ReturnType<typeof vi.fn>;
+      sendMessage: ReturnType<typeof vi.fn>;
+      getPlanFile: ReturnType<typeof vi.fn>;
+    };
+    agent.getPermissionMode.mockReturnValue("default");
+
+    const { handler } = createReadyHandler(session);
+    await handler.handleMessage(
+      { command: "planCommand", args: "Add user auth" },
+      "tab",
+    );
+
+    expect(agent.setPermissionMode).toHaveBeenCalledWith("plan");
+    expect(agent.sendMessage).toHaveBeenCalledWith("Add user auth");
+  });
+
+  test("/plan open is treated as a bare /plan (no external editor)", async () => {
+    const session = createReadySession();
+    const agent = session.agent as unknown as {
+      getPermissionMode: ReturnType<typeof vi.fn>;
+      setPermissionMode: ReturnType<typeof vi.fn>;
+      sendMessage: ReturnType<typeof vi.fn>;
+    };
+    agent.getPermissionMode.mockReturnValue("default");
+
+    const { handler, context } = createReadyHandler(session);
+    await handler.handleMessage(
+      { command: "planCommand", args: "open" },
+      "tab",
+    );
+
+    expect(agent.setPermissionMode).toHaveBeenCalledWith("plan");
+    expect(agent.sendMessage).not.toHaveBeenCalled();
+    expect(context.openPlanPreview).not.toHaveBeenCalled();
+  });
+
+  test("/plan inside plan mode opens the plan-preview panel with the plan file", async () => {
+    const session = createReadySession();
+    const agent = session.agent as unknown as {
+      getPermissionMode: ReturnType<typeof vi.fn>;
+      getPlanFile: ReturnType<typeof vi.fn>;
+      setPermissionMode: ReturnType<typeof vi.fn>;
+    };
+    agent.getPermissionMode.mockReturnValue("plan");
+    agent.getPlanFile.mockResolvedValue({
+      path: "/tmp/plan.md",
+      content: "# 当前方案",
+    });
+
+    const { handler, context } = createReadyHandler(session);
+    await handler.handleMessage({ command: "planCommand" }, "tab");
+
+    expect(agent.setPermissionMode).not.toHaveBeenCalled();
+    expect(agent.getPlanFile).toHaveBeenCalled();
+    expect(context.openPlanPreview).toHaveBeenCalledWith(
+      "plan_tab_sidebar",
+      "# 当前方案",
+    );
+  });
+
+  test("/plan with no plan file does not open the preview panel", async () => {
+    const session = createReadySession();
+    const agent = session.agent as unknown as {
+      getPermissionMode: ReturnType<typeof vi.fn>;
+      getPlanFile: ReturnType<typeof vi.fn>;
+    };
+    agent.getPermissionMode.mockReturnValue("plan");
+    agent.getPlanFile.mockResolvedValue({ path: null, content: null });
+
+    const { handler, context } = createReadyHandler(session);
+    await handler.handleMessage({ command: "planCommand" }, "tab");
+
+    expect(agent.getPlanFile).toHaveBeenCalled();
+    expect(context.openPlanPreview).not.toHaveBeenCalled();
   });
 });

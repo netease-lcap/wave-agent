@@ -2229,6 +2229,102 @@ describe("inputReducer", () => {
       });
     });
 
+    it("should execute bare /plan as CLI-internal command without arguments", () => {
+      // Bare /plan (submitted when the command selector is bypassed) is an
+      // internal CLI command — should be EXECUTE_COMMAND with no args
+      const state: InputState = {
+        ...initialState,
+        inputText: "/plan",
+        cursorPosition: 5,
+      };
+
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand: () => false,
+        },
+      });
+
+      expect(result.inputText).toBe("");
+      expect(result.pendingEffect).toEqual({
+        type: "EXECUTE_COMMAND",
+        command: "plan",
+      });
+    });
+
+    it("should execute /plan with description as CLI-internal command with arguments", () => {
+      const state: InputState = {
+        ...initialState,
+        inputText: "/plan Add user auth",
+        cursorPosition: 18,
+      };
+
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand: () => false,
+        },
+      });
+
+      expect(result.inputText).toBe("");
+      expect(result.pendingEffect).toEqual({
+        type: "EXECUTE_COMMAND",
+        command: "plan",
+        args: "Add user auth",
+      });
+    });
+
+    it("should execute /plan open as CLI-internal command (no external editor)", () => {
+      const state: InputState = {
+        ...initialState,
+        inputText: "/plan open",
+        cursorPosition: 10,
+      };
+
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand: () => false,
+        },
+      });
+
+      expect(result.inputText).toBe("");
+      expect(result.pendingEffect).toEqual({
+        type: "EXECUTE_COMMAND",
+        command: "plan",
+        args: "open",
+      });
+    });
+
+    it("should route bare /plan selected from the command selector to EXECUTE_COMMAND", () => {
+      // Typing "/plan" opens the command selector; selecting the command
+      // produces EXECUTE_COMMAND via SELECT_COMMAND (no args).
+      const state: InputState = {
+        ...initialState,
+        inputText: "/plan",
+        cursorPosition: 5,
+        slashPosition: 0,
+        showCommandSelector: true,
+      };
+
+      const result = inputReducer(state, {
+        type: "SELECT_COMMAND",
+        payload: "plan",
+      });
+
+      expect(result.showCommandSelector).toBe(false);
+      expect(result.pendingEffect).toEqual({
+        type: "EXECUTE_COMMAND",
+        command: "plan",
+      });
+    });
+
     it("should send agent slash command as message even without arguments", () => {
       // Agent commands (registered via hasSlashCommand) are NOT internal CLI
       // commands — they should always be sent as SEND_MESSAGE

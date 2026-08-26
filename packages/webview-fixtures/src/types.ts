@@ -304,6 +304,13 @@ export interface ShowConfirmationMessage extends HostToWebviewMessageBase {
   hidePersistentOption?: boolean;
 }
 
+/** Desktop /plan display: the host pushes the current plan file contents to
+ *  the shared Plan pane (opened on first delivery, like ExitPlanMode plans). */
+export interface PlanContentMessage extends HostToWebviewMessageBase {
+  command: "planContent";
+  content: string;
+}
+
 export interface ConfigurationResponseMessage extends HostToWebviewMessageBase {
   command: "configurationResponse";
   configurationData: ConfigurationData;
@@ -594,6 +601,7 @@ export type HostToWebviewMessage =
   | UpdateSessionsMessage
   | UpdateCurrentSessionMessage
   | ShowConfirmationMessage
+  | PlanContentMessage
   | ConfigurationResponseMessage
   | ProjectSettingsMessage
   | SetInitialStateMessage

@@ -224,6 +224,13 @@ class StdioAgent(
         client.request("setPermissionMode", buildJsonObject { put("mode", mode) }, sessionId)
     }
 
+    /**
+     * Reads the session's current plan file ({ path, content } JSON). Used by
+     * the /plan command to display the plan when already in plan mode; the CLI
+     * side awaits the path if it is still being generated after setPermissionMode.
+     */
+    suspend fun getPlanFile(): JsonElement? = client.request("getPlanFile", sessionId = sessionId)
+
     suspend fun deleteQueuedMessage(index: Int) {
         client.request("deleteQueuedMessage", buildJsonObject { put("index", index) }, sessionId)
     }

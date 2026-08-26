@@ -828,6 +828,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
             }
           }, 0);
           break;
+        case "planContent":
+          // Desktop /plan display: host pushes the current plan file contents
+          // to the shared Plan pane (same routing as an ExitPlanMode plan).
+          if (!forThisPane(message)) break;
+          routePlanToPanel(message.content);
+          break;
         case "configurationResponse":
           dispatch({
             type: "SET_CONFIGURATION_DATA",
@@ -1351,6 +1357,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           contentStarted: false,
         });
         postToHost({ command: "askBtw", question });
+        return;
+      }
+      // /plan — host-local command (CLI Ink overlay / IDE plan preview /
+      // desktop Plan panel). Forwarded to the host instead of being sent to the
+      // agent; the host switches to plan mode or shows the current plan.
+      if (trimmedText === "/plan" || trimmedText.startsWith("/plan ")) {
+        const args = trimmedText.slice("/plan".length).trim() || undefined;
+        postToHost({ command: "planCommand", args });
         return;
       }
 

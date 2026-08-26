@@ -66,6 +66,7 @@ export type RequestMethod =
   | "getFullMessageThread"
   | "setPermissionMode"
   | "getPermissionMode"
+  | "getPlanFile"
   | "getMcpServers"
   | "connectMcpServer"
   | "disconnectMcpServer"

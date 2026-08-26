@@ -62,6 +62,7 @@ export const useInputManager = (
     onClearMessages,
     onCompact,
     onAddDir,
+    onPlanCommand,
     isIdle: isIdleProp,
   } = callbacks;
 
@@ -277,6 +278,8 @@ export const useInputManager = (
                 await onCompact?.(effect.args);
               } else if (command === "add-dir") {
                 await onAddDir?.(effect.args);
+              } else if (command === "plan") {
+                await onPlanCommand?.(effect.args);
               }
             }
             break;
@@ -306,6 +309,7 @@ export const useInputManager = (
     onClearMessages,
     onCompact,
     onAddDir,
+    onPlanCommand,
   ]);
 
   useEffect(() => {
