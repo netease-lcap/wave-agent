@@ -163,6 +163,40 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     [autoGrow],
   );
 
+  // Auto-focus the "Other" textarea when the user selects "Other" (keyboard
+  // Space or mouse click). Only focus on an explicit unselected → selected
+  // transition, never when navigating between questions.
+  const otherInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const wasOtherSelectedRef = useRef(false);
+  const prevQuestionIndexRef = useRef(currentQuestionIndex);
+
+  useEffect(() => {
+    const questions = (
+      confirmation.toolInput as unknown as AskUserQuestionInput
+    )?.questions;
+    const q = questions?.[currentQuestionIndex];
+    if (!q) {
+      wasOtherSelectedRef.current = false;
+      return;
+    }
+    const isOtherChecked = q.multiSelect
+      ? !!otherSelected[q.question]
+      : answers[q.question] === "__other__";
+
+    if (prevQuestionIndexRef.current !== currentQuestionIndex) {
+      // Question switched: record the new question's state without focusing
+      // (the user just used a nav button; don't steal its focus).
+      prevQuestionIndexRef.current = currentQuestionIndex;
+      wasOtherSelectedRef.current = isOtherChecked;
+      return;
+    }
+
+    if (isOtherChecked && !wasOtherSelectedRef.current) {
+      otherInputRef.current?.focus();
+    }
+    wasOtherSelectedRef.current = isOtherChecked;
+  }, [currentQuestionIndex, answers, otherSelected, confirmation.toolInput]);
+
   const confirmationRef = useRef(confirmation);
 
   useEffect(() => {
@@ -473,93 +507,89 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                 )}
               </label>
             ))}
-            <label
-              data-option-index="other"
-              className={`option-item other-option ${
-                (
-                  q.multiSelect
-                    ? !!otherSelected[q.question]
-                    : answers[q.question] === "__other__"
-                )
-                  ? "selected"
-                  : ""
-              }`}
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === " ") {
-                  if (e.target === e.currentTarget) {
-                    e.preventDefault();
-                    if (q.multiSelect) {
-                      setOtherSelected((prev) => ({
-                        ...prev,
-                        [q.question]: !prev[q.question],
-                      }));
-                    } else {
-                      setAnswers((prev) => ({
-                        ...prev,
-                        [q.question]: "__other__",
-                      }));
-                    }
-                  }
-                }
-              }}
-            >
-              <input
-                type={q.multiSelect ? "checkbox" : "radio"}
-                name={`question-${currentQuestionIndex}`}
-                className="option-input-hidden"
-                tabIndex={-1}
-                checked={
-                  q.multiSelect
-                    ? !!otherSelected[q.question]
-                    : answers[q.question] === "__other__"
-                }
-                onChange={(e) => {
-                  if (q.multiSelect) {
-                    setOtherSelected((prev) => ({
-                      ...prev,
-                      [q.question]: e.target.checked,
-                    }));
-                  } else {
-                    setAnswers((prev) => ({
-                      ...prev,
-                      [q.question]: "__other__",
-                    }));
-                  }
-                }}
-              />
-              <div className="option-row">
-                <div className="option-indicator">
-                  <OptionIndicator
-                    multiSelect={!!q.multiSelect}
-                    checked={
-                      q.multiSelect
-                        ? !!otherSelected[q.question]
-                        : answers[q.question] === "__other__"
-                    }
-                  />
-                </div>
-                <div className="option-label">其他</div>
-              </div>
-              {(q.multiSelect
+            {(() => {
+              const isOtherChecked = q.multiSelect
                 ? !!otherSelected[q.question]
-                : answers[q.question] === "__other__") && (
-                <div className="option-other-body">
-                  <textarea
-                    className="other-text-input"
-                    placeholder="输入自定义回答..."
-                    value={otherInputs[q.question] || ""}
-                    ref={autoGrowTextarea}
+                : answers[q.question] === "__other__";
+              return (
+                <label
+                  data-option-index="other"
+                  className={`option-item other-option ${
+                    isOtherChecked ? "selected" : ""
+                  }`}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === " ") {
+                      if (e.target === e.currentTarget) {
+                        e.preventDefault();
+                        if (q.multiSelect) {
+                          setOtherSelected((prev) => ({
+                            ...prev,
+                            [q.question]: !prev[q.question],
+                          }));
+                        } else {
+                          setAnswers((prev) => ({
+                            ...prev,
+                            [q.question]: "__other__",
+                          }));
+                        }
+                      }
+                    }
+                  }}
+                >
+                  <input
+                    type={q.multiSelect ? "checkbox" : "radio"}
+                    name={`question-${currentQuestionIndex}`}
+                    className="option-input-hidden"
+                    tabIndex={-1}
+                    checked={isOtherChecked}
                     onChange={(e) => {
-                      autoGrow(e.currentTarget);
-                      handleOtherInputChange(q.question, e.target.value);
+                      if (q.multiSelect) {
+                        setOtherSelected((prev) => ({
+                          ...prev,
+                          [q.question]: e.target.checked,
+                        }));
+                      } else {
+                        setAnswers((prev) => ({
+                          ...prev,
+                          [q.question]: "__other__",
+                        }));
+                      }
                     }}
-                    onCompositionStart={handleCompositionStart}
-                    onCompositionEnd={handleCompositionEnd}
                   />
-                </div>
-              )}
-            </label>
+                  <div className="option-row">
+                    <div className="option-indicator">
+                      <OptionIndicator
+                        multiSelect={!!q.multiSelect}
+                        checked={isOtherChecked}
+                      />
+                    </div>
+                    <div className="option-label">其他</div>
+                  </div>
+                  {isOtherChecked ? (
+                    <div className="option-other-body">
+                      <textarea
+                        className="other-text-input"
+                        placeholder="输入自定义回答..."
+                        value={otherInputs[q.question] || ""}
+                        ref={(el) => {
+                          autoGrowTextarea(el);
+                          otherInputRef.current = el;
+                        }}
+                        onChange={(e) => {
+                          autoGrow(e.currentTarget);
+                          handleOtherInputChange(q.question, e.target.value);
+                        }}
+                        onCompositionStart={handleCompositionStart}
+                        onCompositionEnd={handleCompositionEnd}
+                      />
+                    </div>
+                  ) : (
+                    <div className="option-description">输入自定义回答...</div>
+                  )}
+                </label>
+              );
+            })()}
           </div>
         </div>
 
