@@ -299,8 +299,12 @@ export class SlashCommandManager {
                     success: true,
                   });
 
-                  // Trigger AI to process the tool result
-                  await this.aiManager.sendAIMessage();
+                  // Forked skill result is surfaced via the tool block only —
+                  // the main agent is NOT triggered to continue (aligned with
+                  // Claude Code's forked slash commands, which run to
+                  // completion and return their output without a follow-up
+                  // main-agent turn).
+                  this.aiManager.setIsLoading(false);
                 } finally {
                   this.subagentManager.cleanupInstance(instance.subagentId);
                 }

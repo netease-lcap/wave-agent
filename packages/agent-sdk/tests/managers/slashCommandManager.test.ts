@@ -521,8 +521,9 @@ describe("SlashCommandManager", () => {
         }),
       );
 
-      // Verify that main agent is triggered to process the tool result
-      expect(aiManager.sendAIMessage).toHaveBeenCalled();
+      // Verify that the main agent is NOT triggered to continue
+      // (aligned with Claude Code's forked slash commands)
+      expect(aiManager.sendAIMessage).not.toHaveBeenCalled();
     });
 
     it("should set success:true on tool block when forked skill completes", async () => {
@@ -728,9 +729,11 @@ describe("SlashCommandManager", () => {
       expect(textBlock.content).toBe("/test:test-args arg1 arg2");
     });
 
-    it("should set isLoading to false after forked skill completes before calling sendAIMessage", async () => {
-      // Forked slash commands need to reset isLoading before calling sendAIMessage
-      // because sendAIMessage() has an early return guard when isLoading is true
+    it("should reset isLoading after forked skill completes without triggering the main agent", async () => {
+      // Aligned with Claude Code's forked slash commands: the forked skill's
+      // result is surfaced via the tool block only — the main agent is not
+      // triggered to continue, so isLoading must be reset manually (previously
+      // sendAIMessage() did that).
       const skillMetadata = {
         name: "fork-skill",
         description: "Forked skill",
@@ -760,12 +763,13 @@ describe("SlashCommandManager", () => {
       const cmd = slashCommandManager.getCommand("fork-skill");
       await cmd?.handler();
 
-      // Verify setIsLoading was called with true
+      // Verify setIsLoading was called with true then false
       const setIsLoadingCalls = vi.mocked(aiManager.setIsLoading).mock.calls;
       expect(setIsLoadingCalls).toContainEqual([true]);
+      expect(setIsLoadingCalls).toContainEqual([false]);
 
-      // Verify sendAIMessage was called (no early return due to isLoading guard)
-      expect(aiManager.sendAIMessage).toHaveBeenCalled();
+      // Verify the main agent was NOT triggered to continue
+      expect(aiManager.sendAIMessage).not.toHaveBeenCalled();
     });
   });
 
