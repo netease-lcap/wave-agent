@@ -97,7 +97,7 @@ test.describe("SDD Plan Preview Tab Screenshot", () => {
       permissionMode: "default",
     });
 
-    // SDD 流程推进到 plan 阶段：需求 → 规格确认 → 进入 plan 模式 → 方案产出
+    // SDD 流程推进到 plan 阶段：需求 → 规格决策选择「制定技术方案」→ 方案产出
     const messages: Message[] = [
       {
         id: "msg_plan_user",
@@ -118,7 +118,7 @@ test.describe("SDD Plan Preview Tab Screenshot", () => {
         blocks: [
           {
             type: "text",
-            content: "规格确认通过，进入 plan 模式制定技术方案吧。",
+            content: "规格确认了，进入技术方案模式制定技术方案吧。",
           },
         ],
       },
