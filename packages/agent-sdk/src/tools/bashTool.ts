@@ -503,7 +503,6 @@ The working directory persists between commands. Try to maintain your current wo
                 ? `${processedOutput}\n\n${reason}`
                 : reason,
             error: reason,
-            metadata: { exitCode: 130 },
           });
         }
       };
@@ -673,7 +672,6 @@ The working directory persists between commands. Try to maintain your current wo
             exitCode !== 0
               ? `Command failed with exit code: ${exitCode}`
               : undefined,
-          metadata: { exitCode },
         });
       };
 

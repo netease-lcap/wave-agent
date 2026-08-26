@@ -81,12 +81,6 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {
-    id: "plan",
-    name: "plan",
-    description: "Enable plan mode or view the current session plan",
-    handler: () => {}, // Handler here won't be used, actual processing is in the hook
-  },
-  {
     id: "clear",
     name: "clear",
     description: "Clear conversation history and reset session",

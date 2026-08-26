@@ -1243,16 +1243,6 @@ export class Agent {
   }
 
   /**
-   * Resolve once the plan file path has been generated and set after entering
-   * plan mode. Resolves `undefined` when no generation is in flight.
-   * Used by the CLI /plan command to avoid querying the model before the path
-   * is known (the plan mode reminder needs the path to be set).
-   */
-  public async awaitPlanFilePath(): Promise<string | undefined> {
-    return this.planManager.awaitPlanFilePath();
-  }
-
-  /**
    * Get all currently allowed rules (user-defined and default)
    */
   public getAllowedRules(): string[] {

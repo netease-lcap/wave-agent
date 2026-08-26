@@ -71,6 +71,14 @@ export function roughTokenCountForMessages(messages: Message[]): number {
             total += estimateTokens(block.result);
           }
           break;
+        case "bang":
+          if (block.command) {
+            total += estimateTokens(block.command);
+          }
+          if (block.output) {
+            total += estimateTokens(block.output);
+          }
+          break;
         case "task_notification":
           total += estimateTokens(block.summary);
           break;

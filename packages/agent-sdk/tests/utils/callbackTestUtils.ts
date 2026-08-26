@@ -22,6 +22,9 @@ export function createMockCallbacks(): MessageManagerCallbacks {
     onErrorBlockAdded: vi.fn(),
     onCompactBlockAdded: vi.fn(),
     onCompactionStateChange: vi.fn(),
+    onAddBangMessage: vi.fn(),
+    onUpdateBangMessage: vi.fn(),
+    onCompleteBangMessage: vi.fn(),
     // Note: Subagent-specific callbacks have been moved to SubagentManagerCallbacks
   };
 }

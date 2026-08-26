@@ -44,7 +44,6 @@ describe("SlashCommandsPopup grouping", () => {
       { id: "clear", name: "clear", description: "清空" },
       { id: "compact", name: "compact", description: "压缩" },
       { id: "subtask", name: "subtask", description: "后台子任务" },
-      { id: "plan", name: "plan", description: "启用计划模式" },
       { id: "settings", name: "settings", description: "设置技能" },
       { id: "loop", name: "loop", description: "循环技能" },
       { id: "deepwiki:ask", name: "deepwiki:ask", description: "DeepWiki" },
@@ -72,7 +71,7 @@ describe("SlashCommandsPopup grouping", () => {
       within(pluginGroup).queryByTestId("slash-command-config"),
     ).not.toBeInTheDocument();
 
-    // config/mcp/status/clear/compact/subtask/plan -> 系统指令
+    // config/mcp/status/clear/compact/subtask -> 系统指令
     const systemGroup = getGroup("系统指令");
     for (const id of [
       "config",
@@ -81,7 +80,6 @@ describe("SlashCommandsPopup grouping", () => {
       "clear",
       "compact",
       "subtask",
-      "plan",
     ]) {
       expect(
         within(systemGroup).getByTestId(`slash-command-${id}`),

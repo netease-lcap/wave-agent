@@ -48,6 +48,19 @@ export interface ChatSessionCallbacks {
   }) => void;
   onToolBlockUpdate?: (params: ToolBlockUpdateCallbackParams) => void;
   onErrorBlockAdded?: (error: string) => void;
+  // Bang message callbacks (incremental; messageId identifies the message)
+  onBangMessageAdded?: (params: { command: string; messageId: string }) => void;
+  onBangMessageUpdated?: (params: {
+    command: string;
+    output: string;
+    messageId: string;
+  }) => void;
+  onBangMessageCompleted?: (params: {
+    command: string;
+    exitCode: number;
+    messageId: string;
+    output?: string;
+  }) => void;
   onBtwContent?: (params: {
     question: string;
     content: string;
@@ -192,6 +205,15 @@ export class ChatSession {
         },
         onMcpServersChange: (servers: McpServerStatus[]) => {
           this.callbacks.onMcpServersChange?.(servers);
+        },
+        onBangMessageAdded: (params) => {
+          this.callbacks.onBangMessageAdded?.(params);
+        },
+        onBangMessageUpdated: (params) => {
+          this.callbacks.onBangMessageUpdated?.(params);
+        },
+        onBangMessageCompleted: (params) => {
+          this.callbacks.onBangMessageCompleted?.(params);
         },
         onNotificationMessageAdded: (params) => {
           if (params.message) {

@@ -674,6 +674,73 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           // delayed by a streaming window).
           updateMessages.flush();
         },
+        onAddBangMessage: (command, messageId) => {
+          if (isExpandedRef.current) return;
+          updateMessages((prev) =>
+            prev.some((m) => m.id === messageId)
+              ? prev
+              : [
+                  ...prev,
+                  {
+                    id: messageId,
+                    role: "user",
+                    timestamp: new Date().toISOString(),
+                    blocks: [
+                      {
+                        type: "bang",
+                        command,
+                        output: "",
+                        stage: "running",
+                        exitCode: null,
+                      },
+                    ],
+                  },
+                ],
+          );
+          updateMessages.flush();
+        },
+        onUpdateBangMessage: (command, output, messageId) => {
+          if (isExpandedRef.current) return;
+          updateMessages((prev) =>
+            prev.map((m) =>
+              m.id === messageId
+                ? {
+                    ...m,
+                    blocks: m.blocks.map((b, idx) =>
+                      idx === m.blocks.length - 1 && b.type === "bang"
+                        ? { ...b, command, output }
+                        : b,
+                    ),
+                  }
+                : m,
+            ),
+          );
+        },
+        onCompleteBangMessage: (command, exitCode, messageId, output) => {
+          if (isExpandedRef.current) return;
+          updateMessages((prev) =>
+            prev.map((m) =>
+              m.id === messageId
+                ? {
+                    ...m,
+                    blocks: m.blocks.map((b, idx) =>
+                      idx === m.blocks.length - 1 && b.type === "bang"
+                        ? {
+                            ...b,
+                            command,
+                            exitCode,
+                            stage: "end",
+                            ...(output !== undefined ? { output } : {}),
+                          }
+                        : b,
+                    ),
+                  }
+                : m,
+            ),
+          );
+          // Completion signal — flush so the final state applies immediately.
+          updateMessages.flush();
+        },
         onLatestTotalTokensChange: (tokens) => {
           setLatestTotalTokens(tokens);
         },
@@ -1258,6 +1325,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     forceRemount,
     handleRewindSelect,
     getFullMessageThread,
+
     getGatewayConfig,
     getModelConfig,
     workingDirectory,
