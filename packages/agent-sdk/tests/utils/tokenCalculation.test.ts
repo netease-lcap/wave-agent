@@ -271,24 +271,6 @@ describe("roughTokenCountForMessages", () => {
     expect(roughTokenCountForMessages(messages)).toBe(300);
   });
 
-  it("should count bang command and output", () => {
-    const messages = [
-      makeMessage({
-        role: "assistant",
-        blocks: [
-          {
-            type: "bang",
-            command: "d".repeat(400),
-            output: "e".repeat(400),
-            stage: "end",
-            exitCode: 0,
-          },
-        ],
-      }),
-    ];
-    expect(roughTokenCountForMessages(messages)).toBe(TEXT_TOKENS * 2);
-  });
-
   it("should count task_notification summary", () => {
     const messages = [
       makeMessage({

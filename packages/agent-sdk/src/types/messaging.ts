@@ -25,7 +25,6 @@ export type MessageBlock =
   | ErrorBlock
   | ToolBlock
   | ImageBlock
-  | BangBlock
   | CompactBlock
   | ReasoningBlock
   | FileHistoryBlock
@@ -82,14 +81,6 @@ export interface ToolBlock {
 export interface ImageBlock {
   type: "image";
   imageUrls?: string[];
-}
-
-export interface BangBlock {
-  type: "bang";
-  command: string;
-  output: string;
-  stage: "running" | "end";
-  exitCode: number | null;
 }
 
 export interface CompactBlock {
