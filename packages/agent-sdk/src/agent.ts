@@ -249,6 +249,13 @@ export class Agent {
     return this.messageManager.getMessages();
   }
 
+  /** Full UI display message stream (includes pre-compaction history).
+   * Consumed by hosts for the full-list message view (getMessages RPC,
+   * CLI structural refresh); the API context stays on `messages`. */
+  public get displayMessages(): Message[] {
+    return this.messageManager.getDisplayMessages();
+  }
+
   public get usages(): Usage[] {
     return this.messageManager.getUsages();
   }

@@ -75,6 +75,7 @@ describe("Confirmation Escape - Background Safety", () => {
   const mockAgent = {
     sessionId: "test-session",
     messages: [],
+    displayMessages: [],
     isLoading: false,
     latestTotalTokens: 0,
     isCommandRunning: false,

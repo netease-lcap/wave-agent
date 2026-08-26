@@ -65,6 +65,7 @@ describe("BackgroundTaskManager", () => {
   const mockAgent = {
     sessionId: "test-session",
     messages: [],
+    displayMessages: [],
     backgroundTasks: mockTasks,
     getBackgroundTaskOutput: vi.fn((id) => {
       const task = [

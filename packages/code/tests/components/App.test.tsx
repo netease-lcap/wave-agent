@@ -27,6 +27,7 @@ vi.mock("wave-agent-sdk", async () => {
         abortMessage: vi.fn(),
         sessionId: "test-session-id",
         messages: [],
+        displayMessages: [],
         isLoading: false,
         isCommandRunning: false,
         isCompacting: false,
