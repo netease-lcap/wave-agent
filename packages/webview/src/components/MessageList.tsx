@@ -269,10 +269,19 @@ export const MessageList = forwardRef<
   );
 
   const handleContainerFocus = useCallback(() => {
+    const container = containerRef.current;
+    // React onFocus bubbles from child focus events (focus inside an active
+    // row); only handle the selector itself being focused (direct Tab/click).
+    if (container && document.activeElement !== container) return;
     const count = visibleMessagesRef.current.length;
     if (count > 0 && selectedIndexRef.current === null) {
       setSelectedIndex(count - 1);
     }
+    // Focus reaching the selector enters the outer loop: deactivate any active
+    // row so the next Tab leaves the list instead of re-entering the row
+    // (e.g. clicking the selector right after Enter-activated focusables).
+    setRovingIndex(null);
+    applyRovingRef.current(null);
   }, []);
 
   // Focus leaving the container (to anything outside) deactivates the active
@@ -476,7 +485,10 @@ export const MessageList = forwardRef<
         active !== null && target !== container && container.contains(target);
 
       // Tab on the active row's first (Shift+Tab) / last (Tab) inner focusable
-      // returns to the list selector; another Tab then leaves the list.
+      // returns to the list selector and deactivates the row (re-freezes its
+      // inner focusables), so the next Tab leaves the list instead of re-entering
+      // the row (ARIA APG roving-tabindex: the selector is the component's single
+      // Tab stop and Tab exits the component; Enter re-activates the row).
       if (e.key === "Tab" && insideActiveRow) {
         const row = container.querySelector(`[data-index="${active}"]`);
         const focusables = row ? rowFocusables(row) : [];
@@ -485,6 +497,8 @@ export const MessageList = forwardRef<
           const isLast = target === focusables[focusables.length - 1];
           if ((!e.shiftKey && isLast) || (e.shiftKey && isFirst)) {
             e.preventDefault();
+            setRovingIndex(null);
+            applyRovingRef.current(null);
             container.focus();
           }
         }
