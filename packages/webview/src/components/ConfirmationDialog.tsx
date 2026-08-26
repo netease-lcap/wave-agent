@@ -15,6 +15,19 @@ import type {
 import "../styles/ConfirmationDialog.css";
 import { DiffViewer } from "./DiffViewer";
 
+// Selector for the dialog's focusable elements. Used by the modal focus trap:
+// Tab/Shift+Tab cycle within the dialog so focus never leaks into the message
+// list behind it. Elements with an explicit tabIndex="-1" (the hidden radio /
+// checkbox inputs inside option labels) are excluded, as are disabled buttons.
+const DIALOG_FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function getDialogFocusables(dialog: HTMLElement): HTMLElement[] {
+  return Array.from(
+    dialog.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE_SELECTOR),
+  ).filter((el) => el.tabIndex !== -1);
+}
+
 /**
  * Radio / Checkbox indicator that matches the Figma design (16×16).
  * - Radio unchecked: hollow ring; checked: accent ring + center dot.
@@ -99,7 +112,81 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
 
+  // ---- Roving focus in the AskUserQuestion option group ----
+  // Per-question index of the option holding the group's single Tab stop
+  // (0..options.length, where options.length = the "Other" item). Arrow keys
+  // move it; the index is remembered per question so Tab away and back
+  // restores the position. -1 means "no explicit position yet" (fall back to
+  // the default: the currently-selected option, or the first one).
+  const [optionFocusByQuestion, setOptionFocusByQuestion] = useState<
+    Record<string, number>
+  >({});
+
+  // ---- Modal focus management ----
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const questionsListRef = useRef<HTMLDivElement>(null);
+  // The element focused before the dialog took focus; restored on dismiss.
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  // Where the option group's Tab stop should land when the user first enters
+  // the question (no remembered position): the currently selected option, or
+  // the first one.
+  const getDefaultOptionFocus = useCallback(
+    (q: AskUserQuestionInput["questions"][number]): number => {
+      const answer = answers[q.question];
+      if (q.multiSelect) return 0;
+      if (answer === "__other__") return q.options.length;
+      if (typeof answer === "string") {
+        const idx = q.options.findIndex((o) => o.label === answer);
+        if (idx >= 0) return idx;
+      }
+      return 0;
+    },
+    [answers],
+  );
+
+  const restoreFocus = useCallback(() => {
+    const prev = previousFocusRef.current;
+    if (prev && document.contains(prev) && !dialogRef.current?.contains(prev)) {
+      prev.focus();
+    } else {
+      document
+        .querySelector<HTMLElement>(
+          'textarea[data-testid="message-input"], .message-input textarea',
+        )
+        ?.focus();
+    }
+  }, []);
+
+  // On mount / when a new confirmation replaces the current one: remember the
+  // previously focused element and move focus into the dialog. AskUserQuestion
+  // focuses the option group's current Tab stop (the roving item); every other
+  // confirmation focuses the first focusable control.
+  useEffect(() => {
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (
+      confirmation.toolName === ASK_USER_QUESTION_TOOL_NAME &&
+      questionsListRef.current
+    ) {
+      const rovingItem = questionsListRef.current.querySelector<HTMLElement>(
+        '[data-option-index][tabindex="0"]',
+      );
+      if (rovingItem) {
+        rovingItem.focus();
+        return;
+      }
+    }
+    const focusables = getDialogFocusables(dialog);
+    (focusables[0] ?? dialog).focus();
+  }, [confirmation.confirmationId, confirmation.toolName]);
+
   const handleReject = useCallback(() => {
+    restoreFocus();
     if (confirmation.toolName === ENTER_PLAN_MODE_TOOL_NAME) {
       onConfirm(confirmation.confirmationId, {
         behavior: "deny",
@@ -108,7 +195,13 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     } else {
       onReject(confirmation.confirmationId);
     }
-  }, [onReject, onConfirm, confirmation.confirmationId, confirmation.toolName]);
+  }, [
+    restoreFocus,
+    onReject,
+    onConfirm,
+    confirmation.confirmationId,
+    confirmation.toolName,
+  ]);
 
   const handleOptionChange = useCallback(
     (
@@ -221,6 +314,32 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         return;
       }
 
+      // Modal focus trap: Tab/Shift+Tab cycle within the dialog so focus never
+      // leaks into the message list / input behind it. When focus is somehow
+      // outside the dialog (e.g. a queued confirmation replaced the current
+      // one), the next Tab pulls it back in.
+      if (e.key === "Tab") {
+        const dialog = dialogRef.current;
+        if (dialog) {
+          const focusables = getDialogFocusables(dialog);
+          if (focusables.length > 0) {
+            const active = document.activeElement;
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            if (e.shiftKey) {
+              if (active === first || !dialog.contains(active)) {
+                e.preventDefault();
+                last.focus();
+              }
+            } else if (active === last || !dialog.contains(active)) {
+              e.preventDefault();
+              first.focus();
+            }
+          }
+        }
+        return;
+      }
+
       const isAskUser =
         currentConfirmation.toolName === ASK_USER_QUESTION_TOOL_NAME;
 
@@ -250,6 +369,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   }, [handleReject, isComposing]);
 
   const handleConfirm = useCallback(() => {
+    restoreFocus();
     if (confirmation.toolName === ENTER_PLAN_MODE_TOOL_NAME) {
       onConfirm(confirmation.confirmationId, {
         behavior: "allow",
@@ -326,9 +446,11 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     answers,
     otherInputs,
     otherSelected,
+    restoreFocus,
   ]);
 
   const handleAutoConfirm = useCallback(() => {
+    restoreFocus();
     let decision: unknown;
     if (confirmation.toolName === BASH_TOOL_NAME) {
       const rule = confirmation.suggestedPrefix
@@ -355,14 +477,15 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       };
     }
     onConfirm(confirmation.confirmationId, decision as ConfirmationDecision);
-  }, [confirmation, onConfirm]);
+  }, [confirmation, onConfirm, restoreFocus]);
 
   const handleBypassConfirm = useCallback(() => {
+    restoreFocus();
     onConfirm(confirmation.confirmationId, {
       behavior: "allow",
       newPermissionMode: "bypassPermissions",
     });
-  }, [onConfirm, confirmation.confirmationId]);
+  }, [onConfirm, confirmation.confirmationId, restoreFocus]);
 
   const getAutoOptionText = () => {
     if (confirmation.toolName === BASH_TOOL_NAME) {
@@ -395,6 +518,21 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     if (!q) return null;
 
     const isLastQuestion = currentQuestionIndex === questions.length - 1;
+
+    // Roving focus: the option currently holding the group's single Tab stop.
+    // otherIndex (== options.length) addresses the "Other" item.
+    const otherIndex = q.options.length;
+    const focusIndex =
+      optionFocusByQuestion[q.question] ?? getDefaultOptionFocus(q);
+
+    const moveOptionFocus = (from: number, delta: number) => {
+      const next = Math.max(0, Math.min(otherIndex, from + delta));
+      setOptionFocusByQuestion((prev) => ({ ...prev, [q.question]: next }));
+      const target = questionsListRef.current?.querySelector<HTMLElement>(
+        `[data-option-index="${next === otherIndex ? "other" : next}"]`,
+      );
+      target?.focus();
+    };
 
     return (
       <div className="ask-user-questions">
@@ -433,7 +571,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
               </div>
             )}
           </div>
-          <div className="options-list">
+          <div className="options-list" ref={questionsListRef}>
             {q.options.map((opt, oIndex) => (
               <label
                 key={oIndex}
@@ -449,8 +587,18 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                     ? "selected"
                     : ""
                 }`}
-                tabIndex={0}
+                tabIndex={oIndex === focusIndex ? 0 : -1}
                 onKeyDown={(e) => {
+                  if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+                    e.preventDefault();
+                    moveOptionFocus(focusIndex, -1);
+                    return;
+                  }
+                  if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+                    e.preventDefault();
+                    moveOptionFocus(focusIndex, 1);
+                    return;
+                  }
                   if (e.key === " ") {
                     e.preventDefault();
                     handleOptionChange(
@@ -517,8 +665,18 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   className={`option-item other-option ${
                     isOtherChecked ? "selected" : ""
                   }`}
-                  tabIndex={0}
+                  tabIndex={focusIndex === otherIndex ? 0 : -1}
                   onKeyDown={(e) => {
+                    if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+                      e.preventDefault();
+                      moveOptionFocus(focusIndex, -1);
+                      return;
+                    }
+                    if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+                      e.preventDefault();
+                      moveOptionFocus(focusIndex, 1);
+                      return;
+                    }
                     if (e.key === " ") {
                       if (e.target === e.currentTarget) {
                         e.preventDefault();
@@ -673,7 +831,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   };
 
   return (
-    <div className="confirmation-dialog">
+    <div ref={dialogRef} className="confirmation-dialog">
       <div className="confirmation-dialog-inner">
         <div className="confirmation-header">
           <div className="confirmation-header-top">

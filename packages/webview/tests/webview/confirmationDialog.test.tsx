@@ -1281,4 +1281,172 @@ describe("AskUserQuestion Other input", () => {
     });
     expect(document.activeElement).not.toHaveClass("other-text-input");
   });
+
+  describe("AskUserQuestion option group roving + modal focus trap", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    const showAskUser = (questions: unknown[]) => {
+      act(() => {
+        sendCommand("showConfirmation", {
+          confirmationId: "ask-user-roving",
+          toolName: ASK_USER_QUESTION_TOOL_NAME,
+          confirmationType: "需要确认",
+          toolInput: { questions },
+        });
+      });
+    };
+
+    const twoOptionQuestion = [
+      {
+        question: "选哪个方案？",
+        options: [{ label: "方案 A" }, { label: "方案 B" }],
+        multiSelect: false,
+      },
+    ];
+
+    const optionLabels = () =>
+      Array.from(document.querySelectorAll<HTMLElement>(".option-item"));
+
+    it("opens with focus on the option group's single Tab stop", async () => {
+      renderChatApp();
+      showAskUser(twoOptionQuestion);
+      await waitFor(() => {
+        expect(
+          document.querySelector(".confirmation-dialog"),
+        ).toBeInTheDocument();
+      });
+      // Exactly one option label holds the Tab stop (the first by default).
+      const labels = optionLabels();
+      expect(labels.filter((l) => l.tabIndex === 0).length).toBe(1);
+      expect(labels[0].tabIndex).toBe(0);
+      expect(document.activeElement).toBe(labels[0]);
+    });
+
+    it("Arrow keys move focus within the group, clamping at the ends", async () => {
+      renderChatApp();
+      showAskUser(twoOptionQuestion);
+      await waitFor(() => {
+        expect(
+          document.querySelector(".confirmation-dialog"),
+        ).toBeInTheDocument();
+      });
+      const labels = optionLabels();
+      act(() => {
+        fireEvent.keyDown(labels[0], { key: "ArrowDown" });
+      });
+      expect(document.activeElement).toBe(labels[1]);
+      expect(labels[1].tabIndex).toBe(0);
+      expect(labels[0].tabIndex).toBe(-1);
+      // ArrowDown past the last option ("Other") clamps there.
+      act(() => {
+        fireEvent.keyDown(labels[1], { key: "ArrowDown" });
+      });
+      const other = document.querySelector<HTMLElement>(".other-option")!;
+      expect(document.activeElement).toBe(other);
+      // ArrowDown again clamps (stays on "Other").
+      act(() => {
+        fireEvent.keyDown(other, { key: "ArrowDown" });
+      });
+      expect(document.activeElement).toBe(other);
+      // ArrowUp returns to the previous option.
+      act(() => {
+        fireEvent.keyDown(other, { key: "ArrowUp" });
+      });
+      expect(document.activeElement).toBe(labels[1]);
+    });
+
+    it("Space on the focused option selects it; selection survives focus moves", async () => {
+      renderChatApp();
+      showAskUser(twoOptionQuestion);
+      await waitFor(() => {
+        expect(
+          document.querySelector(".confirmation-dialog"),
+        ).toBeInTheDocument();
+      });
+      const labels = optionLabels();
+      act(() => {
+        fireEvent.keyDown(labels[1], { key: "ArrowUp" });
+      });
+      act(() => {
+        fireEvent.keyDown(labels[0], { key: " " });
+      });
+      expect(
+        document.querySelector('.option-item[data-option-index="0"] input')!,
+      ).toBeChecked();
+      // Moving focus away and back keeps the roving position.
+      act(() => {
+        fireEvent.keyDown(labels[0], { key: "ArrowDown" });
+      });
+      expect(document.activeElement).toBe(labels[1]);
+      act(() => {
+        fireEvent.keyDown(labels[1], { key: "ArrowUp" });
+      });
+      expect(document.activeElement).toBe(labels[0]);
+      expect(labels[0].tabIndex).toBe(0);
+    });
+
+    it("Tab cycles inside the dialog (modal trap): last element wraps to first", async () => {
+      renderChatApp();
+      showAskUser(twoOptionQuestion);
+      await waitFor(() => {
+        expect(
+          document.querySelector(".confirmation-dialog"),
+        ).toBeInTheDocument();
+      });
+      const dialog = document.querySelector(".confirmation-dialog")!;
+      // With the question unanswered the only enabled focusables are the
+      // roving option label and the close button (nav + submit disabled).
+      const enabled = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.tabIndex !== -1);
+      const first = enabled[0];
+      const last = enabled[enabled.length - 1];
+      expect(enabled.length).toBe(2);
+
+      // Tab from the last wraps to the first.
+      last.focus();
+      act(() => {
+        fireEvent.keyDown(window, { key: "Tab" });
+      });
+      expect(document.activeElement).toBe(first);
+      // Shift+Tab from the first wraps to the last.
+      first.focus();
+      act(() => {
+        fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+      });
+      expect(document.activeElement).toBe(last);
+      // Wrapping again keeps focus inside the dialog.
+      act(() => {
+        fireEvent.keyDown(window, { key: "Tab" });
+      });
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    });
+
+    it("dismissing restores focus to the element focused before the dialog", async () => {
+      renderChatApp();
+      const input = document.querySelector<HTMLElement>(
+        '[data-testid="message-input"]',
+      )!;
+      act(() => {
+        input.focus();
+      });
+      showAskUser(twoOptionQuestion);
+      await waitFor(() => {
+        expect(
+          document.querySelector(".confirmation-dialog"),
+        ).toBeInTheDocument();
+      });
+      expect(document.activeElement).not.toBe(input);
+      act(() => {
+        fireEvent.click(document.querySelector(".confirmation-close-btn")!);
+      });
+      await waitFor(() => {
+        expect(document.activeElement).toBe(input);
+      });
+    });
+  });
 });
