@@ -465,6 +465,32 @@ describe("FilePane", () => {
       expect(input).toHaveValue("");
     });
 
+    it("re-opens the dropdown when typing again after selecting a file", async () => {
+      const vscode = makeVscode();
+      const onOpenFileInPanel = vi.fn();
+      renderPane({ vscode, onOpenFileInPanel });
+      const input = screen.getByTestId("file-pane-search-input");
+      fireEvent.focus(input);
+      let reqId = await waitForSearchRequest(vscode, "");
+      sendSuggestionsResponse(reqId, [
+        makeFileItem("App.tsx", "/work/a/src/App.tsx", "src/App.tsx"),
+      ]);
+      await screen.findByText("App.tsx");
+
+      // Select the file; focus stays in the input (no blur event fires).
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(onOpenFileInPanel).toHaveBeenCalledWith("/work/a/src/App.tsx");
+      expect(screen.queryByText("App.tsx")).not.toBeInTheDocument();
+
+      // Type again without refocusing — the dropdown must come back.
+      fireEvent.change(input, { target: { value: "main" } });
+      reqId = await waitForSearchRequest(vscode, "main");
+      sendSuggestionsResponse(reqId, [
+        makeFileItem("main.ts", "/work/a/src/main.ts", "src/main.ts"),
+      ]);
+      expect(await screen.findByText("src/main.ts")).toBeInTheDocument();
+    });
+
     it("closes the dropdown and clears the search on Escape", async () => {
       const vscode = makeVscode();
       renderPane({ vscode });
