@@ -54,6 +54,7 @@ import {
 } from "./protocol.js";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, existsSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { createWorktree, removeWorktree } from "../utils/worktree.js";
@@ -228,6 +229,8 @@ export class AgentBridge {
         return this.setPermissionMode(p.mode as PermissionMode, sessionId);
       case "getPermissionMode":
         return this.getPermissionMode(sessionId);
+      case "getPlanFile":
+        return this.getPlanFile(sessionId);
 
       // ── MCP ──
       case "getMcpServers":
@@ -1057,6 +1060,32 @@ export class AgentBridge {
   private getPermissionMode(sessionId?: string): { mode: PermissionMode } {
     const entry = this.requireSession(sessionId);
     return { mode: entry.agent.getPermissionMode() };
+  }
+
+  /**
+   * Returns the current plan file path and its contents for the session.
+   * When the path generation is still in flight (e.g. the host just switched
+   * to plan mode via setPermissionMode), awaits it so the caller can read the
+   * plan before triggering a query (the plan mode reminder needs the path).
+   */
+  private async getPlanFile(sessionId?: string): Promise<{
+    path: string | null;
+    content: string | null;
+  }> {
+    const entry = this.requireSession(sessionId);
+    const agent = entry.agent;
+    const planPath =
+      agent.getPlanFilePath() ?? (await agent.awaitPlanFilePath());
+    if (!planPath) {
+      return { path: null, content: null };
+    }
+    try {
+      const content = await readFile(planPath, "utf8");
+      return { path: planPath, content };
+    } catch (error) {
+      logger?.warn("Failed to read plan file", error);
+      return { path: planPath, content: null };
+    }
   }
 
   // ── MCP ───────────────────────────────────────────────────────

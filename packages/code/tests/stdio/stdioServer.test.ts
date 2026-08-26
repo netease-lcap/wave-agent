@@ -1,9 +1,18 @@
 import { test, expect, vi, beforeEach, afterEach } from "vitest";
 import { PassThrough } from "stream";
+import * as fsPromises from "node:fs/promises";
 import { Agent, loadUserConfigEnv } from "wave-agent-sdk";
 
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
+
+// Partially mock node:fs/promises so getPlanFile tests can stub plan-file
+// contents without touching the real filesystem (built-in module properties
+// are non-configurable, so vi.spyOn cannot redefine them).
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, readFile: vi.fn() };
+});
 
 // Mock process.stderr.write to suppress noise
 const stderrWriteSpy = vi
@@ -36,6 +45,8 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
       .mockResolvedValue({ messages, sessionIds: ["test-session-id"] }),
     getPermissionMode: vi.fn().mockReturnValue("default"),
     setPermissionMode: vi.fn(),
+    getPlanFilePath: vi.fn().mockReturnValue(undefined),
+    awaitPlanFilePath: vi.fn().mockResolvedValue(undefined),
     getMcpServers: vi.fn().mockReturnValue([]),
     connectMcpServer: vi.fn().mockResolvedValue(true),
     disconnectMcpServer: vi.fn().mockResolvedValue(true),
@@ -83,6 +94,7 @@ function createServer() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(fsPromises.readFile).mockReset();
   vi.mocked(loadUserConfigEnv).mockReturnValue({});
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
 });
@@ -135,6 +147,76 @@ test("multiple sequential requests get correct responses", async () => {
   const resp2 = msgs[1] as { id: number; result: unknown };
   expect(resp2.id).toBe(2);
   expect(resp2.result).toEqual({ mode: "default" });
+
+  server.stop();
+});
+
+test("getPlanFile returns path and content when the plan file exists", async () => {
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({
+      getPlanFilePath: vi.fn().mockReturnValue("/tmp/plan-file.md"),
+      awaitPlanFilePath: vi.fn().mockResolvedValue("/tmp/plan-file.md"),
+    }),
+  );
+  vi.mocked(fsPromises.readFile).mockResolvedValue("# Plan\n\nStep 1");
+  const { server, send, waitForMessages } = createServer();
+  server.start();
+
+  send({ id: 1, method: "initialize", params: {} });
+  const initMsgs = await waitForMessages(1);
+  const initResp = initMsgs[0] as { result: { sessionId: string } };
+  const sessionId = initResp.result.sessionId;
+
+  send({ id: 2, method: "getPlanFile", params: {}, sessionId });
+  const msgs = await waitForMessages(2);
+  const resp = msgs[1] as { id: number; result: unknown };
+  expect(resp.id).toBe(2);
+  expect(resp.result).toEqual({
+    path: "/tmp/plan-file.md",
+    content: "# Plan\n\nStep 1",
+  });
+  expect(fsPromises.readFile).toHaveBeenCalledWith("/tmp/plan-file.md", "utf8");
+
+  server.stop();
+});
+
+test("getPlanFile returns nulls when no plan file path exists", async () => {
+  const { server, send, waitForMessages } = createServer();
+  server.start();
+
+  send({ id: 1, method: "initialize", params: {} });
+  const initMsgs = await waitForMessages(1);
+  const initResp = initMsgs[0] as { result: { sessionId: string } };
+  const sessionId = initResp.result.sessionId;
+
+  send({ id: 2, method: "getPlanFile", params: {}, sessionId });
+  const msgs = await waitForMessages(2);
+  const resp = msgs[1] as { id: number; result: unknown };
+  expect(resp.result).toEqual({ path: null, content: null });
+
+  server.stop();
+});
+
+test("getPlanFile returns content null when reading the plan file fails", async () => {
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({
+      getPlanFilePath: vi.fn().mockReturnValue("/tmp/plan-file.md"),
+      awaitPlanFilePath: vi.fn().mockResolvedValue("/tmp/plan-file.md"),
+    }),
+  );
+  vi.mocked(fsPromises.readFile).mockRejectedValue(new Error("ENOENT"));
+  const { server, send, waitForMessages } = createServer();
+  server.start();
+
+  send({ id: 1, method: "initialize", params: {} });
+  const initMsgs = await waitForMessages(1);
+  const initResp = initMsgs[0] as { result: { sessionId: string } };
+  const sessionId = initResp.result.sessionId;
+
+  send({ id: 2, method: "getPlanFile", params: {}, sessionId });
+  const msgs = await waitForMessages(2);
+  const resp = msgs[1] as { id: number; result: unknown };
+  expect(resp.result).toEqual({ path: "/tmp/plan-file.md", content: null });
 
   server.stop();
 });

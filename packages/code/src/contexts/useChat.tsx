@@ -34,10 +34,17 @@ import {
 import { logger } from "../utils/logger.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
 import { expandLongTextPlaceholders } from "../managers/inputHandlers.js";
+import { readFile } from "node:fs/promises";
 
 import { BaseAppProps } from "../types.js";
 
 // Main Chat Context
+export interface PlanViewData {
+  path?: string;
+  content?: string;
+  message?: string;
+}
+
 export interface ChatContextType {
   messages: Message[];
   isLoading: boolean;
@@ -107,6 +114,10 @@ export interface ChatContextType {
   // Permission functionality
   permissionMode: PermissionMode;
   setPermissionMode: (mode: PermissionMode) => void;
+  // /plan overlay state + handler
+  planView: PlanViewData | null;
+  setPlanView: (view: PlanViewData | null) => void;
+  handlePlanCommand: (args?: string) => Promise<void>;
   // Permission confirmation state
   isConfirmationVisible: boolean;
   hasPendingConfirmations: boolean;
@@ -478,6 +489,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     initialPermissionMode ||
       (bypassPermissions ? "bypassPermissions" : "default"),
   );
+
+  // Plan view state for the /plan command overlay
+  const [planView, setPlanView] = useState<PlanViewData | null>(null);
 
   // Confirmation state with queue-based architecture
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
@@ -1114,6 +1128,52 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     });
   }, []);
 
+  // /plan command handler:
+  // - Outside plan mode: switch to plan mode, wait for the plan file path
+  //   (generated asynchronously by PlanManager), then either send the given
+  //   description as a message (starting a plan query) or show a confirmation.
+  // - Inside plan mode: display the current plan file contents; `/plan open`
+  //   is not supported on any end (spec: plan-mode.md "三端均不支持").
+  const handlePlanCommand = useCallback(
+    async (args?: string) => {
+      const agent = agentRef.current;
+      const description = args?.trim() ?? "";
+      const argList = description.split(/\s+/).filter(Boolean);
+      const wantsOpen = argList[0] === "open";
+
+      if (permissionMode !== "plan") {
+        setPermissionMode("plan");
+        // Wait for the plan file path to be generated before triggering a
+        // query so the model always receives the plan file location (spec:
+        // plan-mode.md "路径生成必须先于查询触发").
+        const planPath = await agent?.awaitPlanFilePath();
+
+        if (description && !wantsOpen) {
+          await sendMessage(description);
+          return;
+        }
+        setPlanView({ message: "Enabled plan mode", path: planPath });
+        return;
+      }
+
+      // Already in plan mode — display the current plan file contents.
+      const planPath =
+        agent?.getPlanFilePath() ?? (await agent?.awaitPlanFilePath());
+      if (!planPath) {
+        setPlanView({ message: "No plan written yet." });
+        return;
+      }
+      try {
+        const content = await readFile(planPath, "utf8");
+        setPlanView({ path: planPath, content });
+      } catch (error) {
+        logger.warn("Failed to read plan file:", error);
+        setPlanView({ message: "No plan written yet." });
+      }
+    },
+    [permissionMode, sendMessage, setPermissionMode],
+  );
+
   // MCP management methods - delegate to Agent
   const connectMcpServer = useCallback(async (serverName: string) => {
     return (await agentRef.current?.connectMcpServer(serverName)) ?? false;
@@ -1316,6 +1376,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     skills,
     permissionMode,
     setPermissionMode,
+    planView,
+    setPlanView,
+    handlePlanCommand,
     isConfirmationVisible,
     hasPendingConfirmations: confirmationQueue.length > 0,
     confirmingTool,

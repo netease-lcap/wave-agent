@@ -18,6 +18,7 @@ import { WorkflowManager } from "./WorkflowManager.js";
 import { StatusLine } from "./StatusLine.js";
 import { Notifications } from "./Notifications.js";
 import { BtwDisplay } from "./BtwDisplay.js";
+import { PlanView } from "./PlanView.js";
 import { useInputManager } from "../hooks/useInputManager.js";
 import { useChat } from "../contexts/useChat.js";
 
@@ -93,6 +94,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setIsBtwActive,
     agentDefinitions,
     skills,
+    planView,
+    setPlanView,
+    handlePlanCommand,
   } = useChat();
 
   // Ref to hold setInputText so queue callbacks can access it before useInputManager returns
@@ -180,6 +184,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     onAbortMessage: abortMessage,
     onBackgroundCurrentTask: backgroundCurrentTask,
     onPermissionModeChange: setChatPermissionMode,
+    onPlanCommand: handlePlanCommand,
     sessionId,
     workdir: workingDirectory,
     getFullMessageThread,
@@ -211,6 +216,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     // If they are active, we should skip InputBox's global input handling to avoid
     // duplicate dispatches or state update conflicts.
     if (
+      planView ||
       showRewindManager ||
       showHelp ||
       showStatusCommand ||
@@ -368,56 +374,67 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
+      {planView && (
+        <PlanView
+          path={planView.path}
+          content={planView.content}
+          message={planView.message}
+          onCancel={() => setPlanView(null)}
+        />
+      )}
+
       {btwState.question || btwState.answer
         ? null
-        : showBackgroundTaskManager ||
-          showMcpManager ||
-          showAgentsManager ||
-          showSkillsManager ||
-          showRewindManager ||
-          showHelp ||
-          showStatusCommand ||
-          showLoginCommand ||
-          showPluginManager ||
-          showModelSelector ||
-          showWorkflowManager || (
-            <Box flexDirection="column">
-              {escClearPending && (
-                <Text color="gray">Press Esc again to clear input</Text>
-              )}
-              <Box
-                borderStyle="single"
-                borderColor="gray"
-                borderLeft={false}
-                borderRight={false}
-              >
-                <Text color={isPlaceholder ? "gray" : "white"}>
-                  {shouldShowCursor ? (
-                    <>
-                      {beforeCursor}
-                      <Text backgroundColor="white" color="black">
-                        {atCursor}
-                      </Text>
-                      {afterCursor}
-                    </>
-                  ) : (
-                    displayText
-                  )}
-                </Text>
+        : planView
+          ? null
+          : showBackgroundTaskManager ||
+            showMcpManager ||
+            showAgentsManager ||
+            showSkillsManager ||
+            showRewindManager ||
+            showHelp ||
+            showStatusCommand ||
+            showLoginCommand ||
+            showPluginManager ||
+            showModelSelector ||
+            showWorkflowManager || (
+              <Box flexDirection="column">
+                {escClearPending && (
+                  <Text color="gray">Press Esc again to clear input</Text>
+                )}
+                <Box
+                  borderStyle="single"
+                  borderColor="gray"
+                  borderLeft={false}
+                  borderRight={false}
+                >
+                  <Text color={isPlaceholder ? "gray" : "white"}>
+                    {shouldShowCursor ? (
+                      <>
+                        {beforeCursor}
+                        <Text backgroundColor="white" color="black">
+                          {atCursor}
+                        </Text>
+                        {afterCursor}
+                      </>
+                    ) : (
+                      displayText
+                    )}
+                  </Text>
+                </Box>
+                <Box justifyContent="space-between">
+                  <StatusLine
+                    permissionMode={permissionMode}
+                    isShellCommand={isShellCommand}
+                  />
+                  <Notifications
+                    latestTotalTokens={latestTotalTokens}
+                    maxInputTokens={maxInputTokens}
+                    showLoginHint={showLoginHint}
+                  />
+                </Box>
               </Box>
-              <Box justifyContent="space-between">
-                <StatusLine
-                  permissionMode={permissionMode}
-                  isShellCommand={isShellCommand}
-                />
-                <Notifications
-                  latestTotalTokens={latestTotalTokens}
-                  maxInputTokens={maxInputTokens}
-                  showLoginHint={showLoginHint}
-                />
-              </Box>
-            </Box>
-          )}
+            )}
     </Box>
   );
 };
