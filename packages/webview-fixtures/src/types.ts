@@ -353,6 +353,9 @@ export interface UpdateToast {
   message: string;
   actionLabel?: string;
   action?: ToastAction;
+  /** The toast's action is being performed — render a loading state instead of
+   *  the action button (e.g. quit-and-install waiting for the app to exit). */
+  loading?: boolean;
 }
 
 export interface ShowToastMessage extends HostToWebviewMessageBase {

@@ -50,6 +50,47 @@ describe("ToastStack", () => {
     expect(screen.queryByRole("button", { name: "重启安装" })).toBeNull();
   });
 
+  it("renders a loading state (spinner, no action button) while the action is in flight", () => {
+    render(
+      <ToastStack
+        toasts={[
+          toast({
+            loading: true,
+            message: "正在重启应用以完成安装…",
+            actionLabel: "重启安装",
+            action: { type: "quitAndInstall" },
+          }),
+        ]}
+        onDismiss={vi.fn()}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("正在重启应用以完成安装…")).toBeInTheDocument();
+    expect(document.querySelector(".toast-spinner")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "重启安装" })).toBeNull();
+    expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
+  });
+
+  it("does not auto-dismiss a loading toast (the action is still in flight)", () => {
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    render(
+      <ToastStack
+        toasts={[
+          toast({
+            loading: true,
+            actionLabel: "重启安装",
+            action: { type: "quitAndInstall" },
+          }),
+        ]}
+        onDismiss={onDismiss}
+        onAction={vi.fn()}
+      />,
+    );
+    vi.advanceTimersByTime(60000);
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
   it("stacks multiple toasts vertically", () => {
     render(
       <ToastStack

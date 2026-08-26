@@ -1063,7 +1063,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         toastId: toast.id,
         action: toast.action,
       });
-      setToasts((prev) => prev.filter((t) => t.id !== toast.id));
+      if (toast.action.type === "quitAndInstall") {
+        // Windows 上 quitAndInstall 要等应用完全退出才启动安装器（数秒）——
+        // 原地把 toast 切成 loading 态，避免退出前的空窗期无反馈（spec「桌面端
+        // 自动更新」场景 10）。loading toast 保留 action 字段，不会自动关闭。
+        setToasts((prev) =>
+          prev.map((t) =>
+            t.id === toast.id
+              ? { ...t, loading: true, message: "正在重启应用以完成安装…" }
+              : t,
+          ),
+        );
+      } else {
+        setToasts((prev) => prev.filter((t) => t.id !== toast.id));
+      }
     },
     [postToHost],
   );
