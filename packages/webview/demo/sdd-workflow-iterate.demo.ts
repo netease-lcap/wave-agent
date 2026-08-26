@@ -2,6 +2,7 @@ import { test, expect } from "../e2e/utils/webviewTestHarness.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import {
   ASK_USER_QUESTION_TOOL_NAME,
+  EDIT_TOOL_NAME,
   type Message,
   type Task,
 } from "wave-agent-sdk";
@@ -55,7 +56,34 @@ test.describe("SDD Workflow Iterate Screenshots", () => {
         },
       ],
     };
-    await injector.updateMessages([userMessage, specUpdateReply]);
+    // 更新规格文件的 Edit 工具卡：消息列表内联展示修改 diff
+    const editSpecMsg: Message = {
+      id: "msg_sdd_iterate_edit",
+      role: "assistant",
+      timestamp: "2025-07-10T10:00:03.000Z",
+      blocks: [
+        {
+          type: "tool",
+          name: EDIT_TOOL_NAME,
+          stage: "end",
+          compactParams: "docs/specs/crm/customer-management.md",
+          parameters: JSON.stringify({
+            file_path: "docs/specs/crm/customer-management.md",
+            old_string:
+              "## 用户故事\n\n- P1 客户档案管理：作为销售，我希望维护客户档案（标签手动维护），以便集中管理客户信息\n- P2 跟进记录：作为销售，我希望记录跟进时间线，以便掌握客户沟通进展\n- P2 合同管理：作为销售，我希望管理合同信息，以便跟踪合同状态\n- P2 数据看板：作为管理者，我希望查看销售漏斗，以便了解转化情况",
+            new_string:
+              "## 用户故事\n\n- P1 客户档案管理：作为销售，我希望维护客户档案（标签按客户行为自动生成），以便集中管理客户信息\n- P1 客户自动分级：作为销售，我希望系统按跟进频率和合同金额自动计算客户等级，以便优先服务高价值客户\n- P2 跟进记录：作为销售，我希望记录跟进时间线，以便掌握客户沟通进展\n- P2 合同管理：作为销售，我希望管理合同信息，以便跟踪合同状态\n- P2 数据看板：作为管理者，我希望查看销售漏斗，以便了解转化情况",
+          }),
+          result: "Text replaced successfully",
+        },
+      ],
+    };
+    await injector.updateMessages([userMessage, specUpdateReply, editSpecMsg]);
+    await expect(
+      webviewPage.locator(".tool-container", {
+        hasText: "customer-management.md",
+      }),
+    ).toBeVisible();
 
     // 任务列表：规格更新进行中
     await injector.simulateExtensionMessage("updateTasks", {
@@ -110,7 +138,12 @@ test.describe("SDD Workflow Iterate Screenshots", () => {
         },
       ],
     };
-    await injector.updateMessages([userMessage, specUpdateReply, confirmMsg]);
+    await injector.updateMessages([
+      userMessage,
+      specUpdateReply,
+      editSpecMsg,
+      confirmMsg,
+    ]);
     await injector.simulateExtensionMessage("showConfirmation", {
       confirmationId: "sdd-iterate-confirm",
       toolName: ASK_USER_QUESTION_TOOL_NAME,
@@ -171,6 +204,7 @@ test.describe("SDD Workflow Iterate Screenshots", () => {
     await injector.updateMessages([
       userMessage,
       specUpdateReply,
+      editSpecMsg,
       confirmUserMessage,
       codingReply,
     ]);
