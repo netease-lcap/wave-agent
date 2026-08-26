@@ -4,6 +4,14 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { EXIT_PLAN_MODE_TOOL_NAME } from "../constants/tools.js";
 import { OPERATION_CANCELLED_BY_USER } from "../types/permissions.js";
 
+// Rejection feedback format aligned with Claude Code (messages.ts):
+// the model reads the fixed prefix + the user's verbatim feedback, without
+// any additional prompt injection.
+const REJECT_MESSAGE =
+  "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.";
+const REJECT_MESSAGE_WITH_REASON_PREFIX =
+  "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:\n";
+
 /**
  * Exit Plan Mode Tool Plugin
  */
@@ -110,10 +118,13 @@ Ensure your plan is complete and unambiguous:
             content: OPERATION_CANCELLED_BY_USER,
           };
         }
+        const feedback = permissionResult.message?.trim();
         return {
           success: false,
-          content: `Please update your proposal based on the following user feedback: ${permissionResult.message || "Plan rejected by user"}`,
-          error: permissionResult.message ? undefined : "Plan rejected by user",
+          content: feedback
+            ? `${REJECT_MESSAGE_WITH_REASON_PREFIX}${feedback}`
+            : REJECT_MESSAGE,
+          error: feedback ? undefined : "Plan rejected by user",
         };
       }
 

@@ -144,7 +144,31 @@ describe("exitPlanModeTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.content).toBe(
-      `Please update your proposal based on the following user feedback: ${feedback}`,
+      `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:\n${feedback}`,
+    );
+    expect(result.error).toBeUndefined();
+  });
+
+  it("should trim whitespace from rejection feedback", async () => {
+    const feedback = "  Needs more work  ";
+    vi.mocked(mockPermissionManager.getPlanFilePath).mockReturnValue(
+      "/test/plan.md",
+    );
+    vi.mocked(readFile).mockResolvedValue("My awesome plan");
+    vi.mocked(mockPermissionManager.createContext).mockReturnValue({
+      toolName: "ExitPlanMode",
+      permissionMode: "plan",
+    });
+    vi.mocked(mockPermissionManager.checkPermission).mockResolvedValue({
+      behavior: "deny",
+      message: feedback,
+    });
+
+    const result = await exitPlanModeTool.execute({}, mockContext);
+
+    expect(result.success).toBe(false);
+    expect(result.content).toBe(
+      `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:\nNeeds more work`,
     );
     expect(result.error).toBeUndefined();
   });
@@ -166,7 +190,7 @@ describe("exitPlanModeTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.content).toBe(
-      "Please update your proposal based on the following user feedback: Plan rejected by user",
+      "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.",
     );
     expect(result.error).toBe("Plan rejected by user");
   });
