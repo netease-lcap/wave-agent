@@ -432,6 +432,39 @@ class WaveSession(
         postMessage("mcpServersUpdate", buildJsonObject { put("servers", servers ?: JsonArray(emptyList())) })
     }
 
+    // Bang notifications carry messageId for incremental updates (mirrors VSCE
+    // chatProvider.ts:297-308). Params are nested (not spread) because they contain
+    // a `command` field that would clobber the postMessage command discriminator.
+    override fun onBangMessageAdded(command: String, messageId: String) {
+        postMessage("bangMessageAdded", buildJsonObject {
+            put("params", buildJsonObject {
+                put("command", command)
+                put("messageId", messageId)
+            })
+        })
+    }
+
+    override fun onBangMessageUpdated(command: String, output: String, messageId: String) {
+        postMessage("bangMessageUpdated", buildJsonObject {
+            put("params", buildJsonObject {
+                put("command", command)
+                put("output", output)
+                put("messageId", messageId)
+            })
+        })
+    }
+
+    override fun onBangMessageCompleted(command: String, exitCode: Int, messageId: String, output: String?) {
+        postMessage("bangMessageCompleted", buildJsonObject {
+            put("params", buildJsonObject {
+                put("command", command)
+                put("exitCode", exitCode)
+                put("messageId", messageId)
+                if (output != null) put("output", output)
+            })
+        })
+    }
+
     // VSCE chatSession.ts:142-146: if params.message is present, forward to appendMessage.
     override fun onNotificationMessageAdded(message: JsonObject) {
         val msg = message["message"]

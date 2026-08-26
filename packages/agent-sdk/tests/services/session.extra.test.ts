@@ -124,16 +124,16 @@ describe("session service - additional coverage", () => {
       expect(content).toBe("hello");
     });
 
-    it("should return command from bang-generated user message", async () => {
+    it("should return command from bang block", async () => {
       const fileUtils = await import("../../src/utils/fileUtils.js");
       vi.mocked(fileUtils.readFirstNLines).mockResolvedValue([
         JSON.stringify({
-          blocks: [{ type: "text", content: "ls" }],
+          blocks: [{ type: "bang", command: "ls" }],
         }),
       ]);
 
       const content = await getFirstMessageContent(sessionId, workdir);
-      expect(content).toBe("ls");
+      expect(content).toBe("!ls");
     });
 
     it("should return content from compact block", async () => {

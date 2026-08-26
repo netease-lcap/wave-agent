@@ -2,6 +2,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { readFileSync } from "fs";
 import {
   convertImageToBase64,
+  addBangMessage,
+  updateBangInMessage,
+  completeBangInMessage,
   addUserMessageToMessages,
   updateUserMessageInMessages,
   addErrorBlockToMessage,
@@ -294,6 +297,383 @@ describe("convertImageToBase64", () => {
     // Should default to PNG MIME type
     expect(result).toMatch(/^data:image\/png;base64,/);
     expect(readFileSync).toHaveBeenCalledWith("/test/image.unknown");
+  });
+});
+
+describe("Bang Message Operations", () => {
+  describe("addBangMessage", () => {
+    it("should add a new command output message", () => {
+      const initialMessages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [{ type: "text", content: "!echo hello" }],
+          timestamp: expect.any(String),
+        },
+      ];
+
+      const result = addBangMessage({
+        messages: initialMessages,
+        command: "echo hello",
+      });
+
+      expect(result).toHaveLength(2);
+      expect(result[1]).toMatchObject({
+        role: "user",
+        blocks: [
+          {
+            type: "bang",
+            command: "echo hello",
+            output: "",
+            stage: "running",
+            exitCode: null,
+          },
+        ],
+        timestamp: expect.any(String),
+      });
+    });
+
+    it("should work with empty message list", () => {
+      const initialMessages: Message[] = [];
+
+      const result = addBangMessage({
+        messages: initialMessages,
+        command: "ls -la",
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        role: "user",
+        blocks: [
+          {
+            type: "bang",
+            command: "ls -la",
+            output: "",
+            stage: "running",
+            exitCode: null,
+          },
+        ],
+        timestamp: expect.any(String),
+      });
+    });
+
+    it("should not modify the original messages array", () => {
+      const initialMessages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [{ type: "text", content: "test" }],
+          timestamp: expect.any(String),
+        },
+      ];
+
+      const result = addBangMessage({
+        messages: initialMessages,
+        command: "pwd",
+      });
+
+      expect(initialMessages).toHaveLength(1);
+      expect(result).toHaveLength(2);
+      expect(result).not.toBe(initialMessages);
+    });
+  });
+
+  describe("updateBangInMessage", () => {
+    it("should update output in the correct command block", () => {
+      const initialMessages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            {
+              type: "bang",
+              command: "echo hello",
+              output: "",
+              stage: "running",
+              exitCode: null,
+            },
+          ],
+          timestamp: expect.any(String),
+        },
+      ];
+
+      const result = updateBangInMessage({
+        messages: initialMessages,
+        command: "echo hello",
+        output: "hello\n",
+      });
+
+      expect(result[0].blocks[0]).toMatchObject({
+        type: "bang",
+        command: "echo hello",
+        output: "hello",
+        stage: "running",
+        exitCode: null,
+      });
+    });
+
+    it("should update the correct command when multiple commands exist", () => {
+      const initialMessages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            {
+              type: "bang",
+              command: "echo first",
+              output: "first",
+              stage: "end",
+              exitCode: 0,
+            },
+          ],
+          timestamp: expect.any(String),
+        },
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            {
+              type: "bang",
+              command: "echo second",
+              output: "",
+              stage: "running",
+              exitCode: null,
+            },
+          ],
+          timestamp: expect.any(String),
+        },
+      ];
+
+      const result = updateBangInMessage({
+        messages: initialMessages,
+        command: "echo second",
+        output: "second\n",
+      });
+
+      // First command should remain unchanged
+      expect(result[0].blocks[0]).toMatchObject({
+        command: "echo first",
+        output: "first",
+        stage: "end",
+      });
+
+      // Second command should be updated
+      expect(result[1].blocks[0]).toMatchObject({
+        command: "echo second",
+        output: "second",
+        stage: "running",
+      });
+    });
+
+    it("should trim the output", () => {
+      const initialMessages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            {
+              type: "bang",
+              command: "echo test",
+              output: "",
+              stage: "running",
+              exitCode: null,
+            },
+          ],
+          timestamp: expect.any(String),
+        },
+      ];
+
+      const result = updateBangInMessage({
+        messages: initialMessages,
+        command: "echo test",
+        output: "  test output  \n",
+      });
+
+      expect(result[0].blocks[0]).toMatchObject({
+        output: "test output",
+      });
+    });
+
+    it("should not update if no matching running command is found", () => {
+      const initialMessages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            {
+              type: "bang",
+              command: "echo hello",
+              output: "hello",
+              stage: "end",
+              exitCode: 0,
+            },
+          ],
+          timestamp: expect.any(String),
+        },
+      ];
+
+      const result = updateBangInMessage({
+        messages: initialMessages,
+        command: "echo hello",
+        output: "new output",
+      });
+
+      // Should not update because the command is not running
+      expect(result[0].blocks[0]).toMatchObject({
+        output: "hello",
+        stage: "end",
+      });
+    });
+  });
+
+  describe("completeBangInMessage", () => {
+    it("should mark command as completed with exit code and output", () => {
+      const initialMessages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            {
+              type: "bang",
+              command: "echo hello",
+              output: "",
+              stage: "running",
+              exitCode: null,
+            },
+          ],
+          timestamp: expect.any(String),
+        },
+      ];
+
+      const result = completeBangInMessage({
+        messages: initialMessages,
+        command: "echo hello",
+        exitCode: 0,
+        output: "hello\n",
+      });
+
+      expect(result[0].blocks[0]).toMatchObject({
+        type: "bang",
+        command: "echo hello",
+        output: "hello",
+        stage: "end",
+        exitCode: 0,
+      });
+    });
+
+    it("should handle error exit codes", () => {
+      const initialMessages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            {
+              type: "bang",
+              command: "ls /nonexistent",
+              output: "ls: /nonexistent: No such file or directory",
+              stage: "running",
+              exitCode: null,
+            },
+          ],
+          timestamp: expect.any(String),
+        },
+      ];
+
+      const result = completeBangInMessage({
+        messages: initialMessages,
+        command: "ls /nonexistent",
+        exitCode: 1,
+      });
+
+      expect(result[0].blocks[0]).toMatchObject({
+        stage: "end",
+        exitCode: 1,
+      });
+    });
+
+    it("should complete the correct command when multiple commands exist", () => {
+      const initialMessages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            {
+              type: "bang",
+              command: "echo first",
+              output: "first",
+              stage: "end",
+              exitCode: 0,
+            },
+          ],
+          timestamp: expect.any(String),
+        },
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            {
+              type: "bang",
+              command: "echo second",
+              output: "second",
+              stage: "running",
+              exitCode: null,
+            },
+          ],
+          timestamp: expect.any(String),
+        },
+      ];
+
+      const result = completeBangInMessage({
+        messages: initialMessages,
+        command: "echo second",
+        exitCode: 0,
+      });
+
+      // First command should remain unchanged
+      expect(result[0].blocks[0]).toMatchObject({
+        command: "echo first",
+        stage: "end",
+        exitCode: 0,
+      });
+
+      // Second command should be completed
+      expect(result[1].blocks[0]).toMatchObject({
+        command: "echo second",
+        stage: "end",
+        exitCode: 0,
+      });
+    });
+
+    it("should not modify if no matching running command is found", () => {
+      const initialMessages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            {
+              type: "bang",
+              command: "echo hello",
+              output: "hello",
+              stage: "end",
+              exitCode: 0,
+            },
+          ],
+          timestamp: expect.any(String),
+        },
+      ];
+
+      const result = completeBangInMessage({
+        messages: initialMessages,
+        command: "echo hello",
+        exitCode: 1,
+      });
+
+      // Should not modify because command is not running
+      expect(result[0].blocks[0]).toMatchObject({
+        stage: "end",
+        exitCode: 0, // Original exit code should remain
+      });
+    });
   });
 });
 
@@ -732,6 +1112,24 @@ describe("getMessageContent", () => {
       timestamp: expect.any(String),
     };
     expect(getMessageContent(message)).toBe("hello world");
+  });
+
+  it("should extract bang command", () => {
+    const message: Message = {
+      id: "msg-1",
+      role: "user",
+      blocks: [
+        {
+          type: "bang",
+          command: "ls -la",
+          output: "",
+          stage: "running",
+          exitCode: null,
+        },
+      ],
+      timestamp: expect.any(String),
+    };
+    expect(getMessageContent(message)).toBe("!ls -la");
   });
 
   it("should extract compact block content", () => {

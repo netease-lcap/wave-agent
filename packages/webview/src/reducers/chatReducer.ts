@@ -471,9 +471,73 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         messages: [...state.messages, errorMessage],
       };
     }
-    // Bang output rides on user-message tool blocks via the generic
-    // APPEND_USER_MESSAGE / UPDATE_TOOL_BLOCK actions (bangManager adds a
-    // user message + bash tool block, no dedicated bang actions needed).
+    // Bang message incremental updates (keyed by messageId). Mirrors the CLI's
+    // incremental bang handlers in useChat.tsx: add creates the user message
+    // wrapper, update merges command/output, complete stamps exitCode + stage.
+    case "APPEND_BANG_MESSAGE": {
+      const { command, messageId } = action.payload;
+      if (state.messages.some((m) => m.id === messageId)) return state;
+      const bangMessage: Message = {
+        id: messageId,
+        role: "user",
+        timestamp: new Date().toISOString(),
+        blocks: [
+          {
+            type: "bang",
+            command,
+            output: "",
+            stage: "running",
+            exitCode: null,
+          },
+        ],
+      };
+      const messages = [...state.messages, bangMessage];
+      return {
+        ...state,
+        messages,
+        currentSession: pinSessionTitle(state.currentSession, messages),
+      };
+    }
+    case "UPDATE_BANG_MESSAGE": {
+      const { command, output, messageId } = action.payload;
+      const messageIndex = state.messages.findIndex((m) => m.id === messageId);
+      if (messageIndex === -1) return state;
+      const newMessages = state.messages.map((m, idx) => {
+        if (idx !== messageIndex) return m;
+        return {
+          ...m,
+          blocks: m.blocks.map((b, bidx) =>
+            bidx === m.blocks.length - 1 && b.type === "bang"
+              ? { ...b, command, output }
+              : b,
+          ),
+        };
+      });
+      return { ...state, messages: newMessages };
+    }
+    case "COMPLETE_BANG_MESSAGE": {
+      const { command, exitCode, messageId, output } = action.payload;
+      const messageIndex = state.messages.findIndex((m) => m.id === messageId);
+      if (messageIndex === -1) return state;
+      const newMessages = state.messages.map((m, idx) => {
+        if (idx !== messageIndex) return m;
+        return {
+          ...m,
+          blocks: m.blocks.map((b, bidx) =>
+            bidx === m.blocks.length - 1 && b.type === "bang"
+              ? {
+                  ...b,
+                  command,
+                  exitCode,
+                  stage: "end" as const,
+                  ...(output !== undefined ? { output } : {}),
+                }
+              : b,
+          ),
+        };
+      });
+      return { ...state, messages: newMessages };
+    }
     default:
       return state;
   }

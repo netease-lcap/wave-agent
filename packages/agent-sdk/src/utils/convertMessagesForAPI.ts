@@ -353,14 +353,13 @@ export function convertMessagesForAPI(
           }
         }
 
-        // Tool blocks on user messages (forked skills) are UI-only: their
-        // result is surfaced in the tool block and deliberately NOT sent to
-        // the model — aligned with Claude Code, where forked slash command
-        // output (<local-command-stdout>) is excluded from the model context
-        // (selectableUserMessagesFilter). The main agent never sees the
-        // forked skill's result.
-        // Note: tool blocks on assistant messages are handled above as
-        // proper role:"tool" messages; this branch only covers user messages.
+        // If there is a tool block in user message, add its result
+        if (block.type === "tool" && block.stage === "end" && block.result) {
+          contentParts.push({
+            type: "text",
+            text: `<local-command-stdout>\n${stripAnsiColors(block.result)}\n</local-command-stdout>`,
+          });
+        }
 
         // If there is a task notification block, convert it back to XML
         if (block.type === "task_notification") {

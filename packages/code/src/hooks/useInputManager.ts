@@ -226,9 +226,7 @@ export const useInputManager = (
             break;
           case "EXECUTE_COMMAND":
             if (onSendMessage && onHasSlashCommand?.(effect.command)) {
-              const fullCommand = effect.args
-                ? `/${effect.command} ${effect.args}`
-                : `/${effect.command}`;
+              const fullCommand = `/${effect.command}`;
               try {
                 await onSendMessage(fullCommand, undefined, {});
               } catch (error) {

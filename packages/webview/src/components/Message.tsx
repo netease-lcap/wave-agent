@@ -3,6 +3,7 @@ import { ContextTag } from "./ContextTag";
 import { parseMentions, toRelativePath } from "../utils/messageUtils";
 import { isLocalhostUrl } from "../utils/isLocalhostUrl";
 import { marked } from "marked";
+import { BangBlock } from "./BangBlock";
 import { Tooltip } from "./Tooltip";
 
 // ... (existing imports)
@@ -252,13 +253,12 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
 };
 
 // 与 CLI /rewind 检查点判定（isUserCheckpointMessage）保持一致：后台任务
-// 通知与 hook 注入的系统生成消息不作为回滚目标，bang 命令消息（bash tool
-// block）也不显示按钮。
+// 通知与 hook 注入的系统生成消息不作为回滚目标，bang 命令消息也不显示按钮。
 const isRewindTargetMessage = (message: MessageType): boolean =>
   message.role === "user" &&
   !message.isMeta &&
   !!message.id &&
-  !message.blocks.some((b) => b.type === "tool" && b.name === "bash") &&
+  !message.blocks.some((b) => b.type === "bang") &&
   !message.blocks.some((b) => b.type === "task_notification") &&
   !message.blocks.some((b) => b.type === "text" && b.source === "hook");
 
@@ -287,8 +287,12 @@ export const Message: React.FC<MessageProps> = React.memo(
     const getMessageClassName = () => {
       const classes = ["message"];
 
+      const hasBangBlock = message.blocks?.some((b) => b.type === "bang");
+
       if (message.role === "user") {
-        classes.push("user");
+        if (!hasBangBlock) {
+          classes.push("user");
+        }
         if (isQueued) {
           classes.push("queued");
         }
@@ -474,48 +478,6 @@ export const Message: React.FC<MessageProps> = React.memo(
           </pre>
         </div>
       ) : null;
-
-      // User-message tool blocks carry local-command / forked-skill output
-      // (e.g. /plan, /deep-research). Mirror Claude Code's
-      // <local-command-stdout> entry: ⎿ prefix + full result rendered as
-      // markdown (shortResult progress summary while running, no result yet).
-      if (message.role === "user") {
-        const output = toolBlock.result ?? toolBlock.shortResult;
-        if (output && !errorContent) {
-          const parsed = parseMarkdownWithMermaid(String(output));
-          return (
-            <div key={index} className="command-output">
-              <div className="command-output-line">
-                <span className="command-output-prefix">⎿ </span>
-                <div className="command-output-content">
-                  {parsed.elements.map((element, elIndex) =>
-                    element.type === "mermaid" ? (
-                      <MermaidRenderer
-                        key={element.id || `mermaid-${index}-${elIndex}`}
-                        content={element.content}
-                      />
-                    ) : (
-                      <div
-                        key={`html-${index}-${elIndex}`}
-                        className="message-content markdown-content"
-                        dangerouslySetInnerHTML={{ __html: element.content }}
-                      />
-                    ),
-                  )}
-                </div>
-              </div>
-              {errorContent}
-            </div>
-          );
-        }
-        // No output yet (e.g. stage "start"); fall back to the plain tool header.
-        return (
-          <div key={index} className="tool-container">
-            {toolHeader}
-            {errorContent}
-          </div>
-        );
-      }
 
       // For Bash tools, add the bash-specific content below the header
       if (toolBlock.name === BASH_TOOL_NAME) {
@@ -978,6 +940,8 @@ export const Message: React.FC<MessageProps> = React.memo(
           dotColor = getToolStatusColor(block as ToolBlock);
           break;
         }
+        case "bang":
+          return <BangBlock key={index} block={block} />;
         case "image":
           return renderImageBlock(block as ImageBlock, index);
         case "reasoning":

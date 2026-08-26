@@ -64,10 +64,11 @@ describe("RewindCommand Content", () => {
         role: "user",
         blocks: [
           {
-            type: "tool",
-            name: "bash",
-            parameters: "ls -la",
-            stage: "end",
+            type: "bang",
+            command: "ls -la",
+            output: "",
+            stage: "end" as const,
+            exitCode: 0,
           },
         ],
       },

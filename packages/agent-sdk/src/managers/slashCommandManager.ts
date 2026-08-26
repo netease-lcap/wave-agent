@@ -2,15 +2,6 @@ import type { MessageManager } from "./messageManager.js";
 import type { AIManager } from "./aiManager.js";
 import type { SlashCommand, CustomSlashCommand } from "../types/index.js";
 import { loadCustomSlashCommands } from "../utils/customCommands.js";
-import type { PlanManager } from "./planManager.js";
-import type { PermissionManager } from "./permissionManager.js";
-import type { ToolManager } from "./toolManager.js";
-import type { PermissionMode } from "../types/permissions.js";
-import {
-  getExternalEditor,
-  openInExternalEditor,
-} from "../utils/externalEditor.js";
-import fs from "node:fs/promises";
 
 import {
   substituteCommandParameters,
@@ -90,106 +81,6 @@ export class SlashCommandManager {
             }`,
           );
         }
-      },
-    });
-
-    // Builtin /plan: enable plan mode / show the current plan (aligned with
-    // Claude Code's /plan local command). The output lands on a user-message
-    // tool block so it renders as a ⎿ stdout entry (CLI + GUI) and stays out
-    // of the model context (user-message tool blocks are UI-only).
-    this.registerCommand({
-      id: "plan",
-      name: "plan",
-      description: "Enable plan mode or show the current plan",
-      handler: async (args?: string) => {
-        const planManager = this.container.get<PlanManager>("PlanManager");
-        const toolManager = this.container.get<ToolManager>("ToolManager");
-        const permissionManager =
-          this.container.get<PermissionManager>("PermissionManager");
-        const transition = this.container.get<(mode: PermissionMode) => void>(
-          "PermissionModeTransition",
-        );
-
-        const description = args?.trim() ?? "";
-        const wantsOpen = description.split(/\s+/)[0] === "open";
-
-        // Surface /plan output as a user-message tool block: the entry renders
-        // with the ⎿ stdout prefix + markdown, and its result is never sent to
-        // the model API (aligned with CC's local-command-stdout filter).
-        const addPlanOutput = (output: string) => {
-          const messageId = this.messageManager.addUserMessage({
-            content: `/plan${args ? ` ${args}` : ""}`,
-          });
-          const blockId = this.messageManager.addToolBlockToMessage(messageId, {
-            name: "plan",
-            parameters: "",
-            stage: "running",
-          });
-          this.messageManager.updateToolBlock({
-            id: blockId,
-            messageId,
-            result: output,
-            stage: "end",
-            success: true,
-          });
-        };
-
-        // Not in plan mode yet: switch to plan mode and surface the entry
-        // output. The plan file path must be generated before triggering a
-        // query so the model always receives the plan file location
-        // (plan-mode.md "路径生成必须先于查询触发").
-        if (toolManager?.getPermissionMode() !== "plan") {
-          transition?.("plan");
-          const planPath = await planManager?.awaitPlanFilePath();
-          const entry = planPath
-            ? `Enabled plan mode\n\nPlan file: \`${planPath}\``
-            : "Enabled plan mode";
-
-          if (description && !wantsOpen) {
-            addPlanOutput(entry);
-            // The description drives the plan query: add it as a user message
-            // so the model receives it, while the entry output stays out of
-            // the model context (user-message tool blocks are UI-only).
-            this.messageManager.addUserMessage({ content: description });
-            await this.aiManager.sendAIMessage();
-            return;
-          }
-          addPlanOutput(entry);
-          return;
-        }
-
-        // Already in plan mode: show the current plan (aligned with Claude Code).
-        const planPath = permissionManager?.getPlanFilePath();
-        if (!planPath) {
-          addPlanOutput("Already in plan mode. No plan written yet.");
-          return;
-        }
-
-        // /plan open: open the plan file in the external editor.
-        if (wantsOpen) {
-          const result = await openInExternalEditor(planPath);
-          addPlanOutput(
-            result.ok
-              ? `Opened plan in editor: ${planPath}`
-              : `Failed to open plan in editor: ${result.error}`,
-          );
-          return;
-        }
-
-        let content = "";
-        try {
-          content = await fs.readFile(planPath, "utf8");
-        } catch {
-          content = "";
-        }
-        if (!content.trim()) {
-          addPlanOutput("Already in plan mode. No plan written yet.");
-          return;
-        }
-        const editor = getExternalEditor();
-        addPlanOutput(
-          `# Current Plan\n\n**${planPath}**\n\n${content}\n\n> \`/plan open\` to edit this plan in ${editor || "your editor"}`,
-        );
       },
     });
 
@@ -408,12 +299,8 @@ export class SlashCommandManager {
                     success: true,
                   });
 
-                  // Forked skill result is surfaced via the tool block only —
-                  // the main agent is NOT triggered to continue (aligned with
-                  // Claude Code's forked slash commands, which run to
-                  // completion and return their output without a follow-up
-                  // main-agent turn).
-                  this.aiManager.setIsLoading(false);
+                  // Trigger AI to process the tool result
+                  await this.aiManager.sendAIMessage();
                 } finally {
                   this.subagentManager.cleanupInstance(instance.subagentId);
                 }

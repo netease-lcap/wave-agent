@@ -1542,6 +1542,27 @@ export class AgentBridge {
       onMcpServersChange: (servers: McpServerStatus[]) => {
         this.emit("mcpServersChange", { servers }, ctx.registeredSessionId);
       },
+      onAddBangMessage: (command, messageId) => {
+        this.emit(
+          "bangMessageAdded",
+          { command, messageId },
+          ctx.registeredSessionId,
+        );
+      },
+      onUpdateBangMessage: (command, output, messageId) => {
+        this.emit(
+          "bangMessageUpdated",
+          { command, output, messageId },
+          ctx.registeredSessionId,
+        );
+      },
+      onCompleteBangMessage: (command, exitCode, messageId, output) => {
+        this.emit(
+          "bangMessageCompleted",
+          { command, exitCode, messageId, output },
+          ctx.registeredSessionId,
+        );
+      },
       onNotificationMessageAdded: (params) => {
         const msg = ctx.agent?.messages.find(
           (m) =>

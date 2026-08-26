@@ -11,6 +11,7 @@ import {
 } from "wave-agent-sdk";
 import { BaseAppProps } from "../types.js";
 import { btwOverlayActiveRef } from "../managers/inputReducer.js";
+
 interface AppProps extends BaseAppProps {
   restoreSessionId?: string;
   continueLastSession?: boolean;

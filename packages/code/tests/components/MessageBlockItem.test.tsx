@@ -6,6 +6,9 @@ import { MessageBlockItem } from "../../src/components/MessageBlockItem.js";
 import { MessageSource, type Message, type MessageBlock } from "wave-agent-sdk";
 
 // Mock sub-components to isolate MessageBlockItem
+vi.mock("../../src/components/BangDisplay.js", () => ({
+  BangDisplay: () => <Text>MOCKED_BANG</Text>,
+}));
 vi.mock("../../src/components/ToolDisplay.js", () => ({
   ToolDisplay: () => <Text>MOCKED_TOOL_RESULT</Text>,
 }));
@@ -71,6 +74,26 @@ describe("MessageBlockItem Component", () => {
       expect(lastFrame()).toContain("Error: something failed");
     });
 
+    it("should render bang block", () => {
+      const message: Message = {
+        id: "test-id",
+        role: "assistant",
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      };
+      const block: MessageBlock = {
+        type: "bang",
+        output: "output",
+        command: "ls",
+        stage: "end",
+        exitCode: 0,
+      };
+      const { lastFrame } = render(
+        <MessageBlockItem block={block} message={message} isExpanded={false} />,
+      );
+      expect(lastFrame()).toContain("MOCKED_BANG");
+    });
+
     it("should render tool block", () => {
       const message: Message = {
         id: "test-id",
@@ -90,78 +113,6 @@ describe("MessageBlockItem Component", () => {
         <MessageBlockItem block={block} message={message} isExpanded={false} />,
       );
       expect(lastFrame()).toContain("MOCKED_TOOL_RESULT");
-    });
-
-    it("should render full result with ⎿ prefix for user tool blocks", () => {
-      const message: Message = {
-        id: "test-id",
-        role: "user",
-        blocks: [],
-        timestamp: new Date().toISOString(),
-      };
-      const block: MessageBlock = {
-        type: "tool",
-        id: "1",
-        name: "deep-research",
-        parameters: "{}",
-        result: "# Full report",
-        shortResult: "Research complete, 5 sources",
-        stage: "end",
-        success: true,
-      };
-      const { lastFrame } = render(
-        <MessageBlockItem block={block} message={message} isExpanded={false} />,
-      );
-      const frame = lastFrame();
-      // Full result is shown (markdown mock passes children through), not the
-      // shortResult summary, and the stdout prefix mirrors CC's ⎿ entry.
-      expect(frame).toContain("⎿");
-      expect(frame).toContain("# Full report");
-      expect(frame).not.toContain("Research complete");
-    });
-
-    it("should render shortResult while running for user tool blocks", () => {
-      const message: Message = {
-        id: "test-id",
-        role: "user",
-        blocks: [],
-        timestamp: new Date().toISOString(),
-      };
-      const block: MessageBlock = {
-        type: "tool",
-        id: "1",
-        name: "deep-research",
-        parameters: "{}",
-        shortResult: "Working on it...",
-        stage: "running",
-      };
-      const { lastFrame } = render(
-        <MessageBlockItem block={block} message={message} isExpanded={false} />,
-      );
-      expect(lastFrame()).toContain("Working on it...");
-    });
-
-    it("should render error for user tool blocks", () => {
-      const message: Message = {
-        id: "test-id",
-        role: "user",
-        blocks: [],
-        timestamp: new Date().toISOString(),
-      };
-      const block: MessageBlock = {
-        type: "tool",
-        id: "1",
-        name: "deep-research",
-        parameters: "{}",
-        result: "partial",
-        error: "research failed",
-        stage: "end",
-        success: false,
-      };
-      const { lastFrame } = render(
-        <MessageBlockItem block={block} message={message} isExpanded={false} />,
-      );
-      expect(lastFrame()).toContain("Error: research failed");
     });
 
     it("should render image block without imageUrls", () => {

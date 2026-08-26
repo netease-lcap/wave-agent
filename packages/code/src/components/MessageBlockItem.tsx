@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { Message, MessageBlock } from "wave-agent-sdk";
 import { MessageSource } from "wave-agent-sdk";
+import { BangDisplay } from "./BangDisplay.js";
 import { ToolDisplay } from "./ToolDisplay.js";
 import { CompactDisplay } from "./CompactDisplay.js";
 import { ReasoningDisplay } from "./ReasoningDisplay.js";
@@ -53,28 +54,11 @@ export const MessageBlockItem = ({
         </Box>
       )}
 
-      {block.type === "tool" && message.role === "user" && (
-        <Box flexDirection="column">
-          {(block.result || block.shortResult) && (
-            <Box>
-              <Text dimColor>⎿ </Text>
-              <Box flexShrink={1}>
-                <Markdown>{block.result ?? block.shortResult ?? ""}</Markdown>
-              </Box>
-            </Box>
-          )}
-          {block.error && (
-            <Text color="red">
-              Error:{" "}
-              {typeof block.error === "string"
-                ? block.error
-                : String(block.error)}
-            </Text>
-          )}
-        </Box>
+      {block.type === "bang" && (
+        <BangDisplay block={block} isExpanded={isExpanded} />
       )}
 
-      {block.type === "tool" && message.role !== "user" && (
+      {block.type === "tool" && (
         <ToolDisplay block={block} isExpanded={isExpanded} />
       )}
 

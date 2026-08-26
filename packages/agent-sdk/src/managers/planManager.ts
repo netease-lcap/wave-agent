@@ -17,9 +17,6 @@ export class PlanManager {
   private planDir: string;
   private currentPlanFilePath: string | null = null;
   private planEntryReminderPending: boolean = false;
-  /** Promise for the in-flight plan file path generation, resolved when the
-   * path is set on the PermissionManager. Cleared when leaving plan mode. */
-  private planFilePathPromise: Promise<string | undefined> | null = null;
 
   constructor(private container: Container) {
     this.planDir = path.join(os.homedir(), ".wave", "plans");
@@ -86,20 +83,13 @@ export class PlanManager {
       permissionManager?.setNeedsPlanModeExitAttachment(false);
       this.planEntryReminderPending = true;
 
-      // Store the promise so callers (e.g. the CLI /plan command) can await
-      // path readiness before triggering a query — the plan mode reminder
-      // injected by AIManager only fires once the path is set.
-      this.planFilePathPromise = this.getOrGeneratePlanFilePath(
-        messageManager?.getRootSessionId(),
-      )
+      this.getOrGeneratePlanFilePath(messageManager?.getRootSessionId())
         .then(({ path }) => {
           logger?.debug("Plan file path generated", { path });
           permissionManager?.setPlanFilePath(path);
-          return path;
         })
         .catch((error) => {
           logger?.error("Failed to generate plan file path", error);
-          return undefined;
         });
     } else if (previousMode === "plan") {
       // Leaving plan mode: set flags for exit notification and re-entry detection
@@ -107,20 +97,9 @@ export class PlanManager {
       permissionManager?.setNeedsPlanModeExitAttachment(true);
       permissionManager?.setPlanFilePath(undefined);
       this.planEntryReminderPending = false;
-      this.planFilePathPromise = null;
     } else {
       permissionManager?.setPlanFilePath(undefined);
-      this.planFilePathPromise = null;
     }
-  }
-
-  /**
-   * Resolve once the plan file path for the current plan-mode entry has been
-   * generated and set on the PermissionManager. Resolves `undefined` when no
-   * path generation is in flight (not in plan mode, or generation failed).
-   */
-  public awaitPlanFilePath(): Promise<string | undefined> {
-    return this.planFilePathPromise ?? Promise.resolve(undefined);
   }
 
   public isPlanEntryReminderPending(): boolean {

@@ -110,11 +110,7 @@ describe("convertMessagesForAPI", () => {
     );
   });
 
-  it("should NOT include tool block result on user messages in API conversion", () => {
-    // Tool blocks on user messages are forked-skill UI output: the result is
-    // surfaced in the tool block but deliberately excluded from the model
-    // context (aligned with Claude Code, where forked slash command output
-    // (<local-command-stdout>) is filtered out of the model context).
+  it("should include tool block result in API conversion", () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -143,6 +139,10 @@ describe("convertMessagesForAPI", () => {
     expect(apiMessages[0].role).toBe("user");
     expect(apiMessages[0].content).toEqual([
       { type: "text", text: "/test-fork" },
+      {
+        type: "text",
+        text: `<local-command-stdout>\nSubagent result\n</local-command-stdout>`,
+      },
     ]);
   });
 
