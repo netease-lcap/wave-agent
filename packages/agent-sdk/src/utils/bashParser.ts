@@ -548,6 +548,80 @@ export const READ_ONLY_COMMANDS = [
 ];
 
 /**
+ * Subset of READ_ONLY_COMMANDS whose arguments are file paths (as opposed to
+ * strings, names, or flags, e.g. echo, pwd, which, basename). These commands
+ * must stay within the Safe Zone: a read-only command accessing a path outside
+ * the working directory / additional directories requires confirmation.
+ * Aligned with Claude Code's PathCommand list.
+ */
+export const PATH_COMMANDS = [
+  "ls",
+  "find",
+  "cat",
+  "head",
+  "tail",
+  "wc",
+  "sort",
+  "uniq",
+  "grep",
+  "egrep",
+  "fgrep",
+  "rg",
+  "file",
+  "stat",
+  "du",
+  "df",
+  "tree",
+  "diff",
+  "cmp",
+  "md5sum",
+  "sha256sum",
+  "sha1sum",
+  "xxd",
+  "od",
+  "hexdump",
+  "strings",
+  "readlink",
+  "realpath",
+  "jq",
+  "yq",
+  "cut",
+  "paste",
+  "column",
+  "tr",
+  "awk",
+  "sed",
+];
+
+/**
+ * Extract file path arguments from a command's argument string.
+ * Tokens starting with "-" are treated as flags and skipped; everything after
+ * a "--" separator counts as a path. Quoted path arguments are unquoted.
+ * Non-path tokens (e.g. a grep pattern) are harmless: they resolve against the
+ * working directory and typically do not exist, so isPathInside falls back to
+ * the nearest existing parent (the workdir itself) and stays inside.
+ */
+export function extractPathArgs(args: string): string[] {
+  const tokens = args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
+  const pathArgs: string[] = [];
+  let afterDoubleDash = false;
+  for (const token of tokens) {
+    if (afterDoubleDash) {
+      pathArgs.push(token);
+      continue;
+    }
+    if (token === "--") {
+      afterDoubleDash = true;
+      continue;
+    }
+    if (!token.startsWith("-")) {
+      pathArgs.push(token);
+    }
+  }
+  return pathArgs.map((p) => p.replace(/^['"](.*)['"]$/, "$1"));
+}
+
+/**
  * Registry of commands and their expected subcommand depth for smart prefix extraction.
  * For example, 'git: 2' means 'git commit' is a valid prefix, but 'git' alone is not.
  * Multi-word keys can be used for more specific rules.
