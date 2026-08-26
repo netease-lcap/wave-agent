@@ -90,3 +90,59 @@ describe("PlanManager", () => {
     expect(fs.unlink).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("PlanManager awaitPlanFilePath", () => {
+  let container: Container;
+
+  const setupPlanModeContainer = (): {
+    planManager: PlanManager;
+    setPlanFilePath: ReturnType<typeof vi.fn>;
+  } => {
+    const setPlanFilePath = vi.fn();
+    const permissionManager = {
+      setPlanFilePath,
+      setHasExitedPlanMode: vi.fn(),
+      setNeedsPlanModeExitAttachment: vi.fn(),
+    };
+    container.register("PermissionManager", permissionManager);
+    container.register("MessageManager", {
+      getRootSessionId: () => "test-seed",
+    });
+    container.register("PermissionMode", "default");
+    const planManager = new PlanManager(container);
+    return { planManager, setPlanFilePath };
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(os.homedir).mockReturnValue("/home/user");
+    container = new Container();
+  });
+
+  it("should resolve undefined when no path generation is in flight", async () => {
+    const { planManager } = setupPlanModeContainer();
+    await expect(planManager.awaitPlanFilePath()).resolves.toBeUndefined();
+  });
+
+  it("should resolve with the generated path after entering plan mode", async () => {
+    const { planManager, setPlanFilePath } = setupPlanModeContainer();
+    planManager.handlePlanModeTransition("plan");
+
+    const planFilePath = await planManager.awaitPlanFilePath();
+    expect(planFilePath).toBeDefined();
+    expect(planFilePath).toContain(path.join("/home/user", ".wave", "plans"));
+    expect(planFilePath).toMatch(/\.md$/);
+    expect(setPlanFilePath).toHaveBeenCalledWith(planFilePath);
+  });
+
+  it("should resolve undefined after leaving plan mode", async () => {
+    const { planManager } = setupPlanModeContainer();
+    planManager.handlePlanModeTransition("plan");
+    const planFilePath = await planManager.awaitPlanFilePath();
+    expect(planFilePath).toBeDefined();
+
+    container.register("PermissionMode", "plan");
+    planManager.handlePlanModeTransition("default");
+    await expect(planManager.awaitPlanFilePath()).resolves.toBeUndefined();
+  });
+});
