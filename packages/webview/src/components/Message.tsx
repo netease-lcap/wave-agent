@@ -479,6 +479,48 @@ export const Message: React.FC<MessageProps> = React.memo(
         </div>
       ) : null;
 
+      // User-message tool blocks carry local-command / forked-skill output
+      // (e.g. /plan, /deep-research). Mirror Claude Code's
+      // <local-command-stdout> entry: ⎿ prefix + full result rendered as
+      // markdown (shortResult progress summary while running, no result yet).
+      if (message.role === "user") {
+        const output = toolBlock.result ?? toolBlock.shortResult;
+        if (output && !errorContent) {
+          const parsed = parseMarkdownWithMermaid(String(output));
+          return (
+            <div key={index} className="command-output">
+              <div className="command-output-line">
+                <span className="command-output-prefix">⎿ </span>
+                <div className="command-output-content">
+                  {parsed.elements.map((element, elIndex) =>
+                    element.type === "mermaid" ? (
+                      <MermaidRenderer
+                        key={element.id || `mermaid-${index}-${elIndex}`}
+                        content={element.content}
+                      />
+                    ) : (
+                      <div
+                        key={`html-${index}-${elIndex}`}
+                        className="message-content markdown-content"
+                        dangerouslySetInnerHTML={{ __html: element.content }}
+                      />
+                    ),
+                  )}
+                </div>
+              </div>
+              {errorContent}
+            </div>
+          );
+        }
+        // No output yet (e.g. stage "start"); fall back to the plain tool header.
+        return (
+          <div key={index} className="tool-container">
+            {toolHeader}
+            {errorContent}
+          </div>
+        );
+      }
+
       // For Bash tools, add the bash-specific content below the header
       if (toolBlock.name === BASH_TOOL_NAME) {
         const bashContent = renderBashIO(toolBlock);

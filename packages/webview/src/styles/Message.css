@@ -614,6 +614,29 @@
   text-overflow: ellipsis;
 }
 
+/* User-message tool output (forked skill / local-command stdout): ⎿ prefix
+   + markdown content, mirroring Claude Code's stdout entries. */
+.command-output {
+  display: flex;
+  flex-direction: column;
+}
+
+.command-output-line {
+  display: flex;
+  align-items: flex-start;
+}
+
+.command-output-prefix {
+  color: var(--vscode-descriptionForeground, #888);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.command-output-content {
+  flex: 1;
+  min-width: 0;
+}
+
 /* AskUserQuestion Q&A cards (Figma 2261:9773):
    indented under the tool header, question line above an answer "DiffHeader"
    box. */

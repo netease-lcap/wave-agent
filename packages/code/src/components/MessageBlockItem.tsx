@@ -58,7 +58,28 @@ export const MessageBlockItem = ({
         <BangDisplay block={block} isExpanded={isExpanded} />
       )}
 
-      {block.type === "tool" && (
+      {block.type === "tool" && message.role === "user" && (
+        <Box flexDirection="column">
+          {(block.result || block.shortResult) && (
+            <Box>
+              <Text dimColor>⎿ </Text>
+              <Box flexShrink={1}>
+                <Markdown>{block.result ?? block.shortResult ?? ""}</Markdown>
+              </Box>
+            </Box>
+          )}
+          {block.error && (
+            <Text color="red">
+              Error:{" "}
+              {typeof block.error === "string"
+                ? block.error
+                : String(block.error)}
+            </Text>
+          )}
+        </Box>
+      )}
+
+      {block.type === "tool" && message.role !== "user" && (
         <ToolDisplay block={block} isExpanded={isExpanded} />
       )}
 
