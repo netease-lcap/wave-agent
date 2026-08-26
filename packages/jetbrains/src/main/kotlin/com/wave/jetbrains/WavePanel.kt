@@ -29,19 +29,23 @@ import javax.swing.SwingUtilities
 
 /**
  * Root panel hosting the JCEF browser that renders the shared webview bundle. Rendered inside the
- * Wave side-bar tool window (one chat tab per [WaveSession], managed by [WavePanelHolder]).
+ * Wave side-bar tool window as the single chat panel (backed by one [WaveSession] on the shared
+ * stdio backend, managed by [WavePanelHolder]).
  *
  * Wires: webview ←→ [JcefBrowserBridge] ←→ [MessageHandler] ←→ [WaveSession] ←→ stdio.
  */
-class WavePanel(private val project: Project, val tabId: String) : Disposable {
+class WavePanel(private val project: Project) : Disposable {
     private val LOG = logger<WavePanel>()
+
+    /** Stable internal id, used to key this chat's plan tab. */
+    val tabId: String = "wave-chat"
 
     private val browser: JBCefBrowser = JBCefBrowser()
     private val bridge: JcefBrowserBridge = JcefBrowserBridge(browser)
 
     private val session: WaveSession = WaveSession(project,
         postMessageFn = { command, payload -> postToWebview(command, payload) },
-        tabTitleFn = { title -> WavePanelHolder.getInstance(project).setTabTitle(tabId, title) },
+        tabTitleFn = { title -> WavePanelHolder.getInstance(project).setTabTitle(title) },
     )
     private val handler: MessageHandler = MessageHandler(project, session) { command, payload ->
         postToWebview(command, payload)
@@ -54,7 +58,7 @@ class WavePanel(private val project: Project, val tabId: String) : Disposable {
 
     init {
         bridge.onMessage = { msg -> handler.handle(msg) }
-        WavePanelHolder.getInstance(project).register(tabId, this)
+        WavePanelHolder.getInstance(project).register(this)
         loadWebview()
         subscribeToLafChanges()
         registerWebviewShortcuts()
@@ -163,6 +167,6 @@ class WavePanel(private val project: Project, val tabId: String) : Disposable {
         session.dispose()
         bridge.dispose()
         browser.dispose()
-        runCatching { WavePanelHolder.getInstance(project).unregister(tabId, this) }
+        runCatching { WavePanelHolder.getInstance(project).unregister(this) }
     }
 }
