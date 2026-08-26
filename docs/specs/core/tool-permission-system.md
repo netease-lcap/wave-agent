@@ -78,7 +78,7 @@ order: 130
 
 ### 用户故事：内置安全命令与只读命令自动放行（优先级：P2）
 
-作为用户，我希望常见的只读命令（如 `cat`、`sed`、`grep`、`awk`、`jq`、`find`）默认自动允许执行而无需逐次确认，以便代理在探查代码库时不被频繁打断；但能改写文件系统或执行任意命令的变体（如 `sed -i`、`find -delete`、写重定向、命令替换）仍须提示确认。`cd` 应限制在当前工作目录内。
+作为用户，我希望常见的只读命令（如 `cat`、`sed`、`grep`、`awk`、`jq`、`find`）默认自动允许执行而无需逐次确认，以便代理在探查代码库时不被频繁打断；但能改写文件系统或执行任意命令的变体（如 `sed -i`、`find -delete`、写重定向、命令替换）仍须提示确认。只读命令（含 `cd`、`ls`、`cat`、`grep` 等）访问安全区域（工作目录 + 附加目录）之外的路径时须提示确认（对齐 Claude Code 的路径范围检查）；路径在安全区域内、或命令不访问任何文件系统路径时自动允许。
 
 **验收场景**：
 
@@ -93,6 +93,12 @@ order: 130
 9. **假设**链式命令 `sed -n '1,10p' a.txt | grep foo`，**当** 执行时，**则** 系统应该自动允许（每段均为只读）。
 10. **假设**任何 git 仓库，**当**用户执行 `git -C /path/to/repo status`、`git -C /path/to/repo diff --stat` 或 `git -C /path/to/repo log --oneline` 时，**则** 系统应该自动允许（`git` 的全局作用域选项如 `-C <path>`、`-c <key>=<value>`、`--git-dir <path>` 只改变目标仓库或配置，不改变子命令的只读属性；匹配 `Bash(git status*)` 等规则时忽略这些前缀）。
 11. **假设**任何目录，**当**用户执行 `git -C /path/to/repo commit -m "msg"`、`git -C /path/to/repo push` 或 `git -C /path/to/repo branch -D feature` 时，**则** 系统不得自动允许，必须提示权限确认。
+12. **假设** CWD 是 `/home/user/project`，**当**用户执行 `ls src` 时，**则**系统应该自动允许（相对路径解析后在工作目录内）。
+13. **假设** CWD 是 `/home/user/project`，**当**用户执行 `ls /etc` 时，**则**系统不得自动允许，必须提示权限确认（只读命令访问工作目录外路径）。
+14. **假设** CWD 是 `/home/user/project`，**当**用户执行 `cat /etc/passwd` 或 `grep root /etc/passwd` 时，**则**系统不得自动允许，必须提示权限确认（只读命令访问工作目录外路径，与 `ls` 一致）。
+15. **假设** CWD 是 `/home/user/project`，**当**用户执行 `cat ../secret.txt` 时，**则**系统不得自动允许（`..` 解析到真实路径后在工作目录外）。
+16. **假设** `permissions.additionalDirectories` 包含 `/data/exports`，**当**用户执行 `ls /data/exports` 时，**则**系统应该自动允许（路径在附加目录内，属于安全区域）。
+17. **假设** CWD 是 `/home/user/project`，**当**用户执行 `pwd` 或 `echo hello` 时，**则**系统应该自动允许（不访问文件系统路径，无路径范围可检查）。
 
 ### 用户故事：MCP 工具权限（优先级：P1）
 

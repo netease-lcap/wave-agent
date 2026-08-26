@@ -54,22 +54,24 @@ describe("PermissionManager", () => {
 
   describe("checkPermission method", () => {
     describe("find command", () => {
+      const workdir = "/home/user/project";
+
       it("should allow safe find commands by default", async () => {
         const contexts = [
           {
             toolName: "Bash",
             permissionMode: "default",
-            toolInput: { command: "find ." },
+            toolInput: { command: "find .", workdir },
           },
           {
             toolName: "Bash",
             permissionMode: "default",
-            toolInput: { command: "find . -name '*.ts'" },
+            toolInput: { command: "find . -name '*.ts'", workdir },
           },
           {
             toolName: "Bash",
             permissionMode: "default",
-            toolInput: { command: "find src -type f" },
+            toolInput: { command: "find src -type f", workdir },
           },
         ];
 
@@ -1706,10 +1708,14 @@ describe("PermissionManager", () => {
         expect(context.hidePersistentOption).toBe(true);
       });
 
-      it("should NOT set hidePersistentOption for out-of-bounds ls", () => {
+      it("should set hidePersistentOption for out-of-bounds ls", () => {
         vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
-          if (p.toString() === "/etc") return "/etc";
-          return "/home/user/project";
+          const resolved = path.resolve(p.toString());
+          const workdirResolved = path.resolve(workdir);
+          if (path.relative(workdirResolved, resolved).startsWith("..")) {
+            return resolved;
+          }
+          return workdirResolved;
         });
 
         const context = permissionManager.createContext(
@@ -1722,7 +1728,7 @@ describe("PermissionManager", () => {
           },
         );
 
-        expect(context.hidePersistentOption).toBeFalsy();
+        expect(context.hidePersistentOption).toBe(true);
       });
 
       it("should NOT set hidePersistentOption for safe commands", () => {
@@ -2130,11 +2136,14 @@ describe("PermissionManager", () => {
       expect(result.behavior).toBe("deny");
     });
 
-    it("should allow 'ls /etc' even if it is outside workdir because of default allowed rule", async () => {
+    it("should NOT allow 'ls /etc' when it is outside workdir", async () => {
       vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
-        const pathStr = p.toString();
-        if (pathStr === "/etc") return "/etc";
-        return "/home/user/project";
+        const resolved = path.resolve(p.toString());
+        const workdirResolved = path.resolve(workdir);
+        if (path.relative(workdirResolved, resolved).startsWith("..")) {
+          return resolved;
+        }
+        return workdirResolved;
       });
 
       const context: ToolPermissionContext = {
@@ -2144,7 +2153,140 @@ describe("PermissionManager", () => {
       };
 
       const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should allow 'ls src' when inside workdir", async () => {
+      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        const resolved = path.resolve(p.toString());
+        const workdirResolved = path.resolve(workdir);
+        if (path.relative(workdirResolved, resolved).startsWith("..")) {
+          return resolved;
+        }
+        return workdirResolved;
+      });
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "ls src", workdir },
+      };
+
+      const result = await permissionManager.checkPermission(context);
       expect(result.behavior).toBe("allow");
+    });
+
+    it("should allow 'ls -l src' with flags when inside workdir", async () => {
+      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        const resolved = path.resolve(p.toString());
+        const workdirResolved = path.resolve(workdir);
+        if (path.relative(workdirResolved, resolved).startsWith("..")) {
+          return resolved;
+        }
+        return workdirResolved;
+      });
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "ls -l src", workdir },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should NOT allow 'cat /etc/passwd' when outside workdir", async () => {
+      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        const resolved = path.resolve(p.toString());
+        const workdirResolved = path.resolve(workdir);
+        if (path.relative(workdirResolved, resolved).startsWith("..")) {
+          return resolved;
+        }
+        return workdirResolved;
+      });
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "cat /etc/passwd", workdir },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should NOT allow 'grep root /etc/passwd' when outside workdir", async () => {
+      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        const resolved = path.resolve(p.toString());
+        const workdirResolved = path.resolve(workdir);
+        if (path.relative(workdirResolved, resolved).startsWith("..")) {
+          return resolved;
+        }
+        return workdirResolved;
+      });
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "grep root /etc/passwd", workdir },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should NOT allow 'cat ../secret.txt' when escaping workdir", async () => {
+      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        const resolved = path.resolve(p.toString());
+        const workdirResolved = path.resolve(workdir);
+        if (path.relative(workdirResolved, resolved).startsWith("..")) {
+          return resolved;
+        }
+        return workdirResolved;
+      });
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "cat ../secret.txt", workdir },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should allow 'ls /data/exports' when in additional directories", async () => {
+      const container = createContainer(workdir);
+      const manager = new PermissionManager(container, {
+        additionalDirectories: ["/data/exports"],
+      });
+      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        const pathStr = p.toString();
+        if (pathStr.includes("exports")) return pathStr;
+        return path.resolve(workdir);
+      });
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "ls /data/exports", workdir },
+      };
+
+      const result = await manager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should allow 'echo hello' and 'pwd' by default", async () => {
+      for (const command of ["echo hello", "pwd"]) {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command, workdir },
+        };
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      }
     });
 
     it("should allow 'cd src && ls' if both are safe", async () => {
@@ -2183,7 +2325,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "grep pattern file" },
+        toolInput: { command: "grep pattern file", workdir },
       };
 
       const result = await permissionManager.checkPermission(context);
@@ -2194,7 +2336,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "rg pattern" },
+        toolInput: { command: "rg pattern", workdir },
       };
 
       const result = await permissionManager.checkPermission(context);
@@ -2205,7 +2347,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "cat file" },
+        toolInput: { command: "cat file", workdir },
       };
 
       const result = await permissionManager.checkPermission(context);
@@ -2216,7 +2358,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "head file" },
+        toolInput: { command: "head file", workdir },
       };
 
       const result = await permissionManager.checkPermission(context);
@@ -2227,7 +2369,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "tail file" },
+        toolInput: { command: "tail file", workdir },
       };
 
       const result = await permissionManager.checkPermission(context);
@@ -2238,7 +2380,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "wc file" },
+        toolInput: { command: "wc file", workdir },
       };
 
       const result = await permissionManager.checkPermission(context);
@@ -2450,11 +2592,13 @@ describe("PermissionManager", () => {
   });
 
   describe("Default Allowed Rules", () => {
+    const workdir = "/home/user/project";
+
     it("should allow 'wc -l *' by default", async () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "wc -l *" },
+        toolInput: { command: "wc -l *", workdir },
       };
 
       const result = await permissionManager.checkPermission(context);
@@ -2465,7 +2609,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "wc -l file.txt" },
+        toolInput: { command: "wc -l file.txt", workdir },
       };
 
       const result = await permissionManager.checkPermission(context);
@@ -2474,6 +2618,8 @@ describe("PermissionManager", () => {
   });
 
   describe("sort command", () => {
+    const workdir = "/home/user/project";
+
     it("should allow 'sort' by default", async () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
@@ -2489,7 +2635,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "sort -n file.txt" },
+        toolInput: { command: "sort -n file.txt", workdir },
       };
 
       const result = await permissionManager.checkPermission(context);
@@ -2500,7 +2646,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "sort file.txt | head" },
+        toolInput: { command: "sort file.txt | head", workdir },
       };
 
       const result = await permissionManager.checkPermission(context);

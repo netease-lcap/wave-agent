@@ -29,6 +29,8 @@ import {
   stripGitScopePrefix,
   DANGEROUS_COMMANDS,
   READ_ONLY_COMMANDS,
+  PATH_COMMANDS,
+  extractPathArgs,
 } from "../utils/bashParser.js";
 import { isPathInside } from "../utils/pathSafety.js";
 import { toWindowsPath } from "../utils/path.js";
@@ -825,26 +827,14 @@ export class PermissionManager {
         const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
         if (commandMatch) {
           const cmd = commandMatch[1];
-          const args = commandMatch[2]?.trim() || "";
 
           // Check blacklist
           if (DANGEROUS_COMMANDS.includes(cmd)) {
             return true;
           }
 
-          // Check out-of-bounds for cd
-          if (cmd === "cd") {
-            const pathArgs =
-              (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
-                (arg) => !arg.startsWith("-"),
-              ) || [];
-
-            return pathArgs.some((pathArg) => {
-              const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
-              const { isInside } = this.isInsideSafeZone(cleanPath, workdir);
-              return !isInside;
-            });
-          }
+          // Check out-of-bounds for cd and path-taking read-only commands
+          return this.isOutOfSafeZonePart(part, workdir);
         }
         return false;
       });
@@ -969,6 +959,22 @@ export class PermissionManager {
     if (READ_ONLY_COMMANDS.includes(cmd)) {
       // find with dangerous flags (e.g. -exec, -delete) disqualifies
       if (cmd === "find" && isDangerousFind(part)) return false;
+      // Path-taking read-only commands must stay within the Safe Zone:
+      // accessing a path outside workdir / additional directories
+      // disqualifies (aligned with Claude Code's path constraints)
+      if (PATH_COMMANDS.includes(cmd)) {
+        const pathArgs = extractPathArgs(args);
+        if (pathArgs.length > 0) {
+          if (!workdir) return false;
+          if (
+            !pathArgs.every(
+              (pathArg) => this.isInsideSafeZone(pathArg, workdir).isInside,
+            )
+          ) {
+            return false;
+          }
+        }
+      }
       return true;
     }
 
@@ -988,6 +994,26 @@ export class PermissionManager {
     }
 
     return false;
+  }
+
+  /**
+   * Check whether a bash command part takes path arguments (cd or a
+   * path-taking read-only command) that escape the Safe Zone. Used to
+   * disqualify auto-allow via DEFAULT_ALLOWED_RULES and to hide the
+   * "don't ask again" persistence option for out-of-bounds access.
+   */
+  private isOutOfSafeZonePart(part: string, workdir?: string): boolean {
+    const processedPart = stripRedirections(stripEnvVars(part));
+    const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
+    if (!commandMatch) return false;
+    const cmd = commandMatch[1];
+    if (cmd !== "cd" && !PATH_COMMANDS.includes(cmd)) return false;
+    const args = commandMatch[2]?.trim() || "";
+    const pathArgs = extractPathArgs(args);
+    if (pathArgs.length === 0) return false;
+    return pathArgs.some(
+      (pathArg) => !this.isInsideSafeZone(pathArg, workdir).isInside,
+    );
   }
 
   /**
@@ -1027,14 +1053,15 @@ export class PermissionManager {
         }
 
         // Default rules must not auto-allow dangerous variants (write
-        // redirections, substitutions, sed -i, dangerous find) through broad
-        // rules like Bash(echo*) or Bash(cat*)
+        // redirections, substitutions, sed -i, dangerous find, out-of-safe-zone
+        // paths) through broad rules like Bash(echo*) or Bash(cat*)
         const isDangerousVariant =
           hasWriteRedirections(part) ||
           isDangerousFind(part) ||
           hasCommandSubstitution(part) ||
           hasProcessSubstitution(part) ||
-          hasSedInPlace(part);
+          hasSedInPlace(part) ||
+          this.isOutOfSafeZonePart(part, workdir);
         if (
           !isDangerousVariant &&
           DEFAULT_ALLOWED_RULES.some((rule) =>
