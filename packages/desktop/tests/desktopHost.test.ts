@@ -217,6 +217,7 @@ vi.mock("../src/main/stdio/stdioAgent", () => ({
     isStreaming = false;
     isCommandRunning = false;
     isCompacting = false;
+    permissionMode: "default" | "plan" | undefined;
     callbacks: Record<string, (...args: never[]) => void>;
 
     initialize = vi.fn(async function (
@@ -298,6 +299,10 @@ vi.mock("../src/main/stdio/stdioAgent", () => ({
     removeQueuedMessageById = vi.fn(async () => undefined);
     setPermissionMode = vi.fn(async () => undefined);
     getPermissionMode = vi.fn(() => undefined);
+    getPlanFile = vi.fn(async () => ({
+      path: "/mock/plan.md",
+      content: "mock plan content",
+    }));
     sendPermissionResponse = vi.fn();
     getBackgroundTaskOutput = vi.fn(async () => null);
     stopBackgroundTask = vi.fn(async () => true);
@@ -2374,6 +2379,93 @@ describe("misc commands", () => {
     const resp = sent("slashCommandsResponse")[0];
     const names = (resp.commands as Array<{ name: string }>).map((c) => c.name);
     expect(names).toEqual(["clear"]);
+  });
+
+  it("requestSlashCommands includes plan in the merged list", async () => {
+    const { host, sent } = await readyHost();
+    await host.handleWebviewMessage({
+      command: "requestSlashCommands",
+      filterText: "",
+    });
+
+    const resp = sent("slashCommandsResponse")[0];
+    const names = (resp.commands as Array<{ name: string }>).map((c) => c.name);
+    expect(names).toContain("plan");
+  });
+
+  it("/plan outside plan mode switches to plan mode without sending a message", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    agent.permissionMode = "default";
+
+    await host.handleWebviewMessage({ command: "planCommand" });
+
+    expect(agent.setPermissionMode).toHaveBeenCalledWith("plan");
+    expect(agent.sendMessage).not.toHaveBeenCalled();
+    expect(
+      sent("showToast").some((m) => m.toast.message.includes("已启用规划模式")),
+    ).toBe(true);
+  });
+
+  it("/plan with a description outside plan mode starts the plan query", async () => {
+    const { host } = await readyHost();
+    const agent = lastAgent();
+    agent.permissionMode = "default";
+
+    await host.handleWebviewMessage({
+      command: "planCommand",
+      args: "Add user auth",
+    });
+
+    expect(agent.setPermissionMode).toHaveBeenCalledWith("plan");
+    expect(agent.sendMessage).toHaveBeenCalledWith("Add user auth");
+  });
+
+  it("/plan open is treated as a bare /plan (no external editor)", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    agent.permissionMode = "default";
+
+    await host.handleWebviewMessage({
+      command: "planCommand",
+      args: "open",
+    });
+
+    expect(agent.setPermissionMode).toHaveBeenCalledWith("plan");
+    expect(agent.sendMessage).not.toHaveBeenCalled();
+    expect(
+      sent("showToast").some((m) => m.toast.message.includes("已启用规划模式")),
+    ).toBe(true);
+  });
+
+  it("/plan inside plan mode pushes the current plan file to the Plan pane", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    agent.permissionMode = "plan";
+    agent.getPlanFile.mockResolvedValueOnce({
+      path: "/tmp/plan.md",
+      content: "# 当前方案",
+    });
+
+    await host.handleWebviewMessage({ command: "planCommand" });
+
+    expect(agent.setPermissionMode).not.toHaveBeenCalled();
+    expect(agent.getPlanFile).toHaveBeenCalled();
+    expect(sent("planContent")[0]).toMatchObject({
+      content: "# 当前方案",
+    });
+  });
+
+  it("/plan with no plan file yet does not open the Plan pane", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    agent.permissionMode = "plan";
+    agent.getPlanFile.mockResolvedValueOnce({ path: null, content: null });
+
+    await host.handleWebviewMessage({ command: "planCommand" });
+
+    expect(agent.getPlanFile).toHaveBeenCalled();
+    expect(sent("planContent")).toHaveLength(0);
   });
 
   it("updateQueuedMessage notifies the webview when the message is gone", async () => {

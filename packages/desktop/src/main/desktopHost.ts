@@ -3481,6 +3481,10 @@ export class DesktopHost {
         await this.handleSlashCommandsRequest(msg.filterText as string, pid);
         break;
 
+      case "planCommand":
+        await this.handlePlanCommand(msg.args as string | undefined, pid);
+        break;
+
       default:
         console.warn("[DesktopHost] Unhandled webview command:", msg.command);
     }
@@ -5037,6 +5041,11 @@ export class DesktopHost {
         { id: "rewind", name: "rewind", description: "回滚到之前的用户消息" },
         { id: "model", name: "model", description: "切换 AI 模型" },
         { id: "btw", name: "btw", description: "旁路提问（不进入聊天记录）" },
+        {
+          id: "plan",
+          name: "plan",
+          description: "启用规划模式或查看当前方案",
+        },
       ];
 
       const allCommands = [...sdkCommands, ...localCommands];
@@ -5065,6 +5074,53 @@ export class DesktopHost {
         command: "slashCommandsError",
         paneId: pid,
         error: `获取指令失败: ${error}`,
+      });
+    }
+  }
+
+  /**
+   * /plan command (spec plan-mode.md):
+   * - Outside plan mode: switch to plan mode; with a description (and not the
+   *   removed `/plan open`), immediately start the plan query.
+   * - Inside plan mode: fetch the current plan file via the stdio getPlanFile
+   *   RPC and push its contents to the shared Plan pane.
+   */
+  private async handlePlanCommand(
+    args?: string,
+    paneId?: string,
+  ): Promise<void> {
+    const pid = paneId ?? this.focusedPaneId;
+    const agent = this.agentForPane(pid);
+    if (!agent) return;
+
+    const description = args?.trim() ?? "";
+    const wantsOpen = description.split(/\s+/)[0] === "open";
+    try {
+      if (agent.permissionMode !== "plan") {
+        await agent.setPermissionMode("plan");
+        if (description && !wantsOpen) {
+          await agent.sendMessage(description);
+          return;
+        }
+        // Bare /plan outside plan mode: mode switched; the Plan pane opens on
+        // its own once ExitPlanMode delivers content via showConfirmation.
+        this.showToast({ message: "已启用规划模式" });
+        return;
+      }
+
+      // Already in plan mode — display the current plan file contents.
+      const planFile = await agent.getPlanFile();
+      if (planFile?.content) {
+        this.postMessage({
+          command: "planContent",
+          paneId: pid,
+          content: planFile.content,
+        });
+      }
+    } catch (error) {
+      console.error("[DesktopHost] /plan 处理失败:", error);
+      this.showToast({
+        message: `执行 /plan 失败: ${error instanceof Error ? error.message : String(error)}`,
       });
     }
   }
