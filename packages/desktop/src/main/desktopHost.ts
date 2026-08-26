@@ -2344,6 +2344,7 @@ export class DesktopHost {
         toolName: p.toolName,
         confirmationType: p.confirmationType,
         toolInput: p.toolInput,
+        planContent: p.planContent,
         suggestedPrefix: p.suggestedPrefix,
         permissionMode: p.permissionMode,
       }));

@@ -1457,4 +1457,90 @@ describe("desktop plan panel", () => {
     expect(pane).toBeInTheDocument();
     expect(pane).toHaveTextContent("等待计划生成…");
   });
+
+  it("split-view pane: ExitPlanMode after AskUserQuestion/EnterPlanMode opens the plan panel with the plan", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+    // Split-view layout: pane-1 is bound to session s1 (DesktopShell renders a
+    // paneId-scoped ChatApp; pane-tagged host messages route by paneId).
+    sendHostMessage(
+      fixtures.desktopSessionTree({
+        groups: [
+          {
+            host: "local",
+            workdir: "/work/a",
+            sessions: [
+              {
+                sessionId: "s1",
+                title: "s1",
+                lastActiveAt: Date.now(),
+                hasWorktree: false,
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    sendHostMessage(
+      fixtures.desktopPanes({
+        panes: [
+          {
+            paneId: "pane-1",
+            sessionId: "s1",
+            row: 0,
+            host: "local",
+            width: 0.5,
+          },
+        ],
+        focusedPaneId: "pane-1",
+      }),
+    );
+
+    const ask = (
+      toolName: string,
+      confirmationId: string,
+      extra: Record<string, unknown> = {},
+    ) =>
+      sendCommand("showConfirmation", {
+        confirmationId,
+        toolName,
+        confirmationType: "计划待确认",
+        paneId: "pane-1",
+        ...extra,
+      });
+    // Full permission sequence like the real agent flow: AskUserQuestion →
+    // approve → EnterPlanMode → approve → ExitPlanMode (carrying the plan).
+    ask("AskUserQuestion", "conf_q_1", {
+      toolInput: {
+        questions: [
+          {
+            question: "plan?",
+            options: [{ label: "先做 plan", description: "" }],
+            multiSelect: false,
+          },
+        ],
+      },
+    });
+    fireEvent.click(
+      document.querySelector(
+        '.option-item[data-option-index="0"] input[type="radio"]',
+      ) as HTMLElement,
+    );
+    fireEvent.click(
+      document.querySelector(
+        ".question-navigation .confirmation-btn-apply",
+      ) as HTMLElement,
+    );
+    ask("EnterPlanMode", "conf_epm_1");
+    fireEvent.click(
+      document.querySelector(".confirmation-btn-apply") as HTMLElement,
+    );
+    ask(EXIT_PLAN_MODE_TOOL_NAME, "conf_exit_1", {
+      planContent: "## 分屏方案\n- 步骤一",
+    });
+
+    const content = screen.getByTestId("plan-pane-content");
+    expect(content.querySelector("h2")).toHaveTextContent("分屏方案");
+    expect(content.querySelectorAll("li")).toHaveLength(1);
+  });
 });
