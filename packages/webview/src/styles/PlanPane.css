@@ -1,0 +1,16 @@
+/* Plan panel (desktop): plan full text beside the conversation. Reuses the
+   shared preview-pane frame (drag handle / toolbar) from DesktopApp.css. */
+
+.plan-pane-markdown {
+  padding: 12px 16px;
+}
+
+.plan-pane-markdown pre {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.plan-pane-placeholder-icon {
+  font-size: 16px;
+  opacity: 0.6;
+}

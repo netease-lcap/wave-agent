@@ -32,7 +32,7 @@ import {
   type WebContents,
 } from "electron";
 
-export type PanelKind = "preview" | "diff" | "terminal" | "file";
+export type PanelKind = "preview" | "diff" | "terminal" | "file" | "plan";
 
 export interface DesktopMenuActions {
   nextSession: () => void;
@@ -197,6 +197,12 @@ export function buildApplicationMenuTemplate(
           accelerator: isMac ? "Shift+Cmd+P" : "Ctrl+Shift+P",
           registerAccelerator: false,
           click: () => actions.togglePanel("preview"),
+        },
+        {
+          label: "计划",
+          type: "checkbox",
+          checked: panelChecked.includes("plan"),
+          click: () => actions.togglePanel("plan"),
         },
         {
           label: "差异",

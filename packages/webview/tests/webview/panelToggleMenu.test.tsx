@@ -2,11 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent, screen } from "@testing-library/react";
 import React from "react";
 import { PanelToggleMenu } from "../../src/components/PanelToggleMenu";
+import type { DesktopPanelKind } from "../../src/types";
 
 function renderMenu(overrides?: {
-  checked?: Array<"preview" | "diff" | "terminal" | "file">;
-  disabled?: Array<"preview" | "diff" | "terminal" | "file">;
-  onToggle?: (kind: "preview" | "diff" | "terminal" | "file") => void;
+  checked?: DesktopPanelKind[];
+  disabled?: DesktopPanelKind[];
+  onToggle?: (kind: DesktopPanelKind) => void;
   onClose?: () => void;
 }) {
   const onToggle = overrides?.onToggle ?? vi.fn();
@@ -23,11 +24,16 @@ function renderMenu(overrides?: {
 }
 
 describe("PanelToggleMenu", () => {
-  it("renders the four panel items with labels and shortcuts (file has none)", () => {
+  it("renders the five panel items with labels and shortcuts (plan/file have none)", () => {
     renderMenu();
     expect(screen.getByTestId("panel-toggle-item-preview")).toHaveTextContent(
       "预览",
     );
+    const planItem = screen.getByTestId("panel-toggle-item-plan");
+    expect(planItem).toHaveTextContent("计划");
+    // 计划/文件面板无快捷键（计划对齐 VSCE claudePlanPreview 自动打开；文件
+    // 对齐 Claude Code Desktop，Ctrl+Shift+F 与 Windows 输入法简繁切换冲突）。
+    expect(planItem.querySelector(".panel-toggle-menu-shortcut")).toBeNull();
     expect(screen.getByTestId("panel-toggle-item-diff")).toHaveTextContent(
       "差异",
     );
@@ -36,8 +42,6 @@ describe("PanelToggleMenu", () => {
     );
     const fileItem = screen.getByTestId("panel-toggle-item-file");
     expect(fileItem).toHaveTextContent("文件");
-    // 文件面板无快捷键（对齐 Claude Code Desktop；Ctrl+Shift+F 与 Windows
-    // 输入法简繁切换冲突），预览/差异/终端仍显示平台对应快捷键。
     expect(fileItem.querySelector(".panel-toggle-menu-shortcut")).toBeNull();
     expect(
       screen

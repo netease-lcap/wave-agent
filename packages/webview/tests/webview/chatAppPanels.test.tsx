@@ -4,7 +4,7 @@ import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { ChatApp, prunePanelGroupCache } from "../../src/components/ChatApp";
 import type { WebviewTagElement } from "../../src/components/PreviewPane";
-import { READ_TOOL_NAME } from "wave-agent-sdk";
+import { READ_TOOL_NAME, EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk";
 import {
   createMockVscode,
   sendCommand,
@@ -1362,5 +1362,99 @@ describe("remote preview port forwarding", () => {
     expect(vscode.postMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({ command: "sendMessage" }),
     );
+  });
+});
+
+describe("desktop plan panel", () => {
+  it("ExitPlanMode showConfirmation auto-opens the plan panel with the plan and keeps the dialog compact", () => {
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop({ workdir: "/work/a" });
+
+    sendCommand("showConfirmation", {
+      confirmationId: "conf_plan_1",
+      toolName: EXIT_PLAN_MODE_TOOL_NAME,
+      confirmationType: "计划待确认",
+      planContent: "## 重构方案\n- 步骤一\n- 步骤二",
+    });
+
+    // The plan panel is auto-opened (visible, not display:none).
+    const pane = screen.getByTestId("plan-pane");
+    expect(pane).toBeInTheDocument();
+    expect(pane.parentElement).not.toHaveStyle({ display: "none" });
+    // The plan full text renders in the panel, not the confirmation dialog.
+    const content = screen.getByTestId("plan-pane-content");
+    expect(content.querySelector("h2")).toHaveTextContent("重构方案");
+    expect(content.querySelectorAll("li")).toHaveLength(2);
+    expect(
+      document.querySelector(".plan-content-preview"),
+    ).not.toBeInTheDocument();
+    // The host is told the plan panel is checked (menu checkbox state).
+    expect(lastPanelState(vscode)).toContain("plan");
+  });
+
+  it("re-checks an ExitPlanMode plan update into an already-open panel", () => {
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop({ workdir: "/work/a" });
+
+    sendCommand("showConfirmation", {
+      confirmationId: "conf_plan_1",
+      toolName: EXIT_PLAN_MODE_TOOL_NAME,
+      confirmationType: "计划待确认",
+      planContent: "## v1\n- 旧步骤",
+    });
+    sendCommand("showConfirmation", {
+      confirmationId: "conf_plan_2",
+      toolName: EXIT_PLAN_MODE_TOOL_NAME,
+      confirmationType: "计划待确认",
+      planContent: "## v2\n- 新步骤",
+    });
+
+    const content = screen.getByTestId("plan-pane-content");
+    expect(content.querySelector("h2")).toHaveTextContent("v2");
+    expect(content.querySelectorAll("li")).toHaveLength(1);
+    // Single pane reused — only one plan panel instance.
+    expect(screen.getAllByTestId("plan-pane")).toHaveLength(1);
+    expect(lastPanelState(vscode)).toContain("plan");
+  });
+
+  it("keeps the plan after approval until the user closes the panel", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+
+    sendCommand("showConfirmation", {
+      confirmationId: "conf_plan_1",
+      toolName: EXIT_PLAN_MODE_TOOL_NAME,
+      confirmationType: "计划待确认",
+      planContent: "## 重构方案\n- 步骤一",
+    });
+    // Approve: dialog closes, plan panel stays.
+    fireEvent.click(
+      document.querySelector(".confirmation-btn-apply") as HTMLElement,
+    );
+    expect(
+      document.querySelector(".confirmation-dialog"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("plan-pane")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-pane-content")).toHaveTextContent(
+      "重构方案",
+    );
+
+    // User closes the panel — hidden but still mounted (content survives).
+    fireEvent.click(screen.getByTestId("plan-close"));
+    expect(screen.getByTestId("plan-pane").parentElement).toHaveStyle({
+      display: "none",
+    });
+  });
+
+  it("the header toggle opens the plan panel in its empty state (no plan yet)", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+
+    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+    fireEvent.click(screen.getByTestId("panel-toggle-item-plan"));
+
+    const pane = screen.getByTestId("plan-pane");
+    expect(pane).toBeInTheDocument();
+    expect(pane).toHaveTextContent("等待计划生成…");
   });
 });

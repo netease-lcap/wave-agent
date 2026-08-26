@@ -468,7 +468,12 @@ export interface FileSuggestionDropdownProps {
 }
 
 /** Desktop conversation-level side panels. VSCE/JetBrains hosts never render these. */
-export type DesktopPanelKind = "preview" | "diff" | "terminal" | "file";
+export type DesktopPanelKind =
+  | "preview"
+  | "diff"
+  | "terminal"
+  | "file"
+  | "plan";
 
 /**
  * State of the desktop file panel (one per conversation): which file is open,
