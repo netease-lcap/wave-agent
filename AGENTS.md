@@ -64,7 +64,7 @@ Always use `pnpm` as the package manager.
 
 ### Desktop App (`packages/desktop`)
 
-- **Run dev**: `cd packages/desktop && pnpm run dev` (compiles, then launches Electron; dev uses a separate `wave-desktop-dev` userData so it coexists with the installed app)
+- **Run dev**: `cd packages/desktop && pnpm run run` (compiles, then launches Electron; dev uses a separate `wave-desktop-dev` userData so it coexists with the installed app)
 - **Build installer**: `pnpm run dist` (electron-builder → `release/`). **Do not bypass `scripts/afterPack.js`**: electron-builder's bundle mutation breaks the ad-hoc linker seal, and without the re-sign step LaunchServices silently refuses to launch the app.
 - **Install/update installed app**: `pnpm run desktop:install` (run from repo root). Does a full `pnpm build` → `electron-builder --dir` → `rsync -a --delete` over `/Applications/Wave.app/`. Full build (not selective) is required because the user consumes `wave-code` via npm link. **Do not quit/kill/relaunch the user's running Wave.app** — rsync over a running `.app` is safe on macOS; restart is manual.
 - **Test**: `pnpm -F wave-desktop test`

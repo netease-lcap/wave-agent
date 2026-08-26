@@ -295,7 +295,7 @@ describe("getWorkspaceDiff", () => {
     // double up the prefix, miss the file, and fall back to "binary".
     const SUBCWD = "/repo/packages/desktop";
     const ROOT = "/repo";
-    const relPath = "packages/desktop/scripts/predev.mjs";
+    const relPath = "packages/desktop/scripts/prerun.mjs";
     stubGit({ status: `?? ${relPath}\0` });
     const inner = h.gitHandler;
     h.gitHandler = (args) => {
