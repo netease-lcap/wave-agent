@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import React, {
   createContext,
   useContext,
@@ -9,6 +10,7 @@ import React, {
 } from "react";
 import { useInput, useStdout } from "ink";
 import { useAppConfig } from "./useAppConfig.js";
+import { openInExternalEditor } from "../utils/externalEditor.js";
 import type {
   Message,
   McpServerStatus,
@@ -36,6 +38,13 @@ import { displayUsageSummary } from "../utils/usageSummary.js";
 import { expandLongTextPlaceholders } from "../managers/inputHandlers.js";
 
 import { BaseAppProps } from "../types.js";
+
+/** Data for the /plan overlay view (Current Plan or message-only state). */
+export interface PlanViewData {
+  path?: string;
+  content?: string;
+  message?: string;
+}
 
 // Main Chat Context
 export interface ChatContextType {
@@ -142,6 +151,10 @@ export interface ChatContextType {
     messages: Message[];
     sessionIds: string[];
   }>;
+  // Plan functionality (/plan command)
+  planView: PlanViewData | null;
+  setPlanView: (view: PlanViewData | null) => void;
+  handlePlanCommand: (args?: string) => Promise<void>;
   // Status metadata
   getGatewayConfig: () => import("wave-agent-sdk").GatewayConfig;
   getModelConfig: () => import("wave-agent-sdk").ModelConfig;
@@ -1207,6 +1220,69 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     [forceRemount, refreshMessages],
   );
 
+  // Plan view state for the /plan command overlay
+  const [planView, setPlanView] = useState<PlanViewData | null>(null);
+
+  // /plan command handler:
+  // - Outside plan mode: switch to plan mode, wait for the plan file path
+  //   (generated asynchronously by PlanManager), then either send the given
+  //   description as a message (starting a plan query) or show a confirmation.
+  // - Inside plan mode: `/plan open` opens the plan file in the external
+  //   editor; bare `/plan` displays the current plan file contents.
+  const handlePlanCommand = useCallback(
+    async (args?: string) => {
+      const agent = agentRef.current;
+      const description = args?.trim() ?? "";
+      const argList = description.split(/\s+/).filter(Boolean);
+      const wantsOpen = argList[0] === "open";
+
+      if (permissionMode !== "plan") {
+        setPermissionMode("plan");
+        // Wait for the plan file path to be generated before triggering a
+        // query so the model always receives the plan file location (spec:
+        // plan-mode.md "路径生成必须先于查询触发").
+        const planPath = await agent?.awaitPlanFilePath();
+
+        if (description && !wantsOpen) {
+          await sendMessage(description);
+          return;
+        }
+        setPlanView({ message: "Enabled plan mode", path: planPath });
+        return;
+      }
+
+      // Already in plan mode
+      if (wantsOpen) {
+        const planPath =
+          agent?.getPlanFilePath() ?? (await agent?.awaitPlanFilePath());
+        if (!planPath) {
+          setPlanView({ message: "No plan file yet." });
+          return;
+        }
+        const result = await openInExternalEditor(planPath);
+        if (!result.ok) {
+          setPlanView({ message: result.error });
+        }
+        return;
+      }
+
+      const planPath =
+        agent?.getPlanFilePath() ?? (await agent?.awaitPlanFilePath());
+      if (!planPath) {
+        setPlanView({ message: "Already in plan mode. No plan written yet." });
+        return;
+      }
+      try {
+        const content = await readFile(planPath, "utf8");
+        setPlanView({ path: planPath, content });
+      } catch (error) {
+        logger.warn("Failed to read plan file:", error);
+        setPlanView({ message: "Already in plan mode. No plan written yet." });
+      }
+    },
+    [permissionMode, sendMessage, setPermissionMode],
+  );
+
   const getFullMessageThread = useCallback(async () => {
     if (agentRef.current) {
       return await agentRef.current.getFullMessageThread();
@@ -1325,6 +1401,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     forceRemount,
     handleRewindSelect,
     getFullMessageThread,
+    planView,
+    setPlanView,
+    handlePlanCommand,
 
     getGatewayConfig,
     getModelConfig,
