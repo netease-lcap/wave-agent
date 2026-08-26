@@ -277,10 +277,22 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       : answers[q.question] === "__other__";
 
     if (prevQuestionIndexRef.current !== currentQuestionIndex) {
-      // Question switched: record the new question's state without focusing
-      // (the user just used a nav button; don't steal its focus).
+      // Question switched: record the new question's state and move focus to
+      // its roving option so the user can keep answering with the keyboard.
+      // (The nav button they just used becomes disabled on the unanswered next
+      // question; leaving focus on it would drop to body as browsers remove
+      // focus from a disabled element.)
       prevQuestionIndexRef.current = currentQuestionIndex;
       wasOtherSelectedRef.current = isOtherChecked;
+      const focusIndex =
+        optionFocusByQuestion[q.question] ?? getDefaultOptionFocus(q);
+      questionsListRef.current
+        ?.querySelector<HTMLElement>(
+          `[data-option-index="${
+            focusIndex === q.options.length ? "other" : focusIndex
+          }"]`,
+        )
+        ?.focus();
       return;
     }
 
@@ -288,7 +300,14 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       otherInputRef.current?.focus();
     }
     wasOtherSelectedRef.current = isOtherChecked;
-  }, [currentQuestionIndex, answers, otherSelected, confirmation.toolInput]);
+  }, [
+    currentQuestionIndex,
+    answers,
+    otherSelected,
+    confirmation.toolInput,
+    optionFocusByQuestion,
+    getDefaultOptionFocus,
+  ]);
 
   const confirmationRef = useRef(confirmation);
 
