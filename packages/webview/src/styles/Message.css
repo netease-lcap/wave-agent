@@ -845,6 +845,11 @@
 }
 
 /* Markdown Tables */
+.markdown-content .markdown-table-wrapper {
+  overflow-x: auto; /* 超宽表格的横向滚动容器；tabindex="0" 由 Message.tsx renderer 输出 */
+  max-width: 100%;
+}
+
 .markdown-content table {
   border-collapse: collapse;
   width: 100%;

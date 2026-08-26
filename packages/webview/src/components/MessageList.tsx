@@ -221,20 +221,37 @@ export const MessageList = forwardRef<
 
   // Freeze every focusable inside the container to tabIndex -1, then restore
   // tabIndex 0 on the focusables of the activated row (if any). Idempotent.
+  // The circle membership is tracked with a data-roving sentinel instead of
+  // re-querying [tabindex]: elements that match FOCUSABLE_SELECTOR only via
+  // [tabindex] (markdown <pre>, table wrappers) become tabindex="-1" during
+  // the freeze, and a [tabindex]:not([tabindex="-1"]) query on a later pass
+  // would miss them — an earlier applyRoving(null) (mount, container focus,
+  // blur) freezes them before the user ever activates a row, so a restore
+  // built on re-querying would leave them frozen forever. The sentinel is set
+  // on every focusable BEFORE the freeze (freshly mounted rows are adopted
+  // each pass) and is stable across freezes, so the restore always finds them.
   const applyRoving = useCallback((activeIndex: number | null) => {
     const container = containerRef.current;
     if (!container) return;
     container
       .querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
       .forEach((el) => {
-        el.tabIndex = -1;
+        el.dataset.roving = "true";
       });
+    const rovingEls = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-roving]"),
+    );
+    rovingEls.forEach((el) => {
+      el.tabIndex = -1;
+    });
     if (activeIndex !== null) {
       const row = container.querySelector(`[data-index="${activeIndex}"]`);
       if (row) {
-        row.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR).forEach((el) => {
-          el.tabIndex = 0;
-        });
+        rovingEls
+          .filter((el) => row.contains(el))
+          .forEach((el) => {
+            el.tabIndex = 0;
+          });
       }
     }
   }, []);
