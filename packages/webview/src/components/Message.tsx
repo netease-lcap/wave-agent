@@ -3,7 +3,6 @@ import { ContextTag } from "./ContextTag";
 import { parseMentions, toRelativePath } from "../utils/messageUtils";
 import { isLocalhostUrl } from "../utils/isLocalhostUrl";
 import { marked } from "marked";
-import { BangBlock } from "./BangBlock";
 import { Tooltip } from "./Tooltip";
 
 // ... (existing imports)
@@ -253,12 +252,12 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
 };
 
 // 与 CLI /rewind 检查点判定（isUserCheckpointMessage）保持一致：后台任务
-// 通知与 hook 注入的系统生成消息不作为回滚目标，bang 命令消息也不显示按钮。
+// 通知与 hook 注入的系统生成消息不作为回滚目标。bash 模式命令消息（`!ls`）
+// 是用户真实输入，与 fork skill 命令一致，可显示回滚按钮。
 const isRewindTargetMessage = (message: MessageType): boolean =>
   message.role === "user" &&
   !message.isMeta &&
   !!message.id &&
-  !message.blocks.some((b) => b.type === "bang") &&
   !message.blocks.some((b) => b.type === "task_notification") &&
   !message.blocks.some((b) => b.type === "text" && b.source === "hook");
 
@@ -287,12 +286,8 @@ export const Message: React.FC<MessageProps> = React.memo(
     const getMessageClassName = () => {
       const classes = ["message"];
 
-      const hasBangBlock = message.blocks?.some((b) => b.type === "bang");
-
       if (message.role === "user") {
-        if (!hasBangBlock) {
-          classes.push("user");
-        }
+        classes.push("user");
         if (isQueued) {
           classes.push("queued");
         }
@@ -388,19 +383,24 @@ export const Message: React.FC<MessageProps> = React.memo(
     const renderBashIO = (toolBlock: ToolBlock) => {
       const stage = toolBlock.stage;
 
-      // Parse the command from parameters
+      // Parse the command from parameters. AI-invoked bash calls carry JSON
+      // (`{"command": "..."}`); bash-mode blocks carry the bare command string.
       let command = "";
       let hasValidCommand = false;
       try {
         if (toolBlock.parameters) {
           const params = JSON.parse(toolBlock.parameters);
-          command = params.command || "";
-          hasValidCommand = !!command;
+          if (params && typeof params === "object") {
+            command = params.command || "";
+            hasValidCommand = !!command;
+          }
         }
       } catch {
-        // If parsing fails, use compactParams or fallback
-        command = toolBlock.compactParams || "";
-        hasValidCommand = !!toolBlock.compactParams;
+        // Not JSON — fall through to the raw parameters below.
+      }
+      if (!hasValidCommand) {
+        command = toolBlock.compactParams || toolBlock.parameters || "";
+        hasValidCommand = !!command;
       }
 
       // Only render bash-specific content if we have a valid command and appropriate stage
@@ -940,8 +940,6 @@ export const Message: React.FC<MessageProps> = React.memo(
           dotColor = getToolStatusColor(block as ToolBlock);
           break;
         }
-        case "bang":
-          return <BangBlock key={index} block={block} />;
         case "image":
           return renderImageBlock(block as ImageBlock, index);
         case "reasoning":

@@ -250,7 +250,9 @@ export class MockDataGenerator {
     };
   }
   /**
-   * Create a bang message
+   * Create a bang command message — a user message carrying a bash tool block
+   * (bangManager now executes through bashTool and surfaces the output as a
+   * user-message tool block, same rendering as /plan outputs).
    */
   static createBangMessage(
     command: string,
@@ -264,11 +266,15 @@ export class MockDataGenerator {
       timestamp: "2024-01-01T00:00:00.000Z",
       blocks: [
         {
-          type: "bang",
-          command,
-          output,
+          type: "tool",
+          name: BASH_TOOL_NAME,
+          parameters: command,
           stage: isRunning ? "running" : "end",
-          exitCode,
+          result:
+            exitCode !== null && exitCode !== 0
+              ? `[exit code: ${exitCode}]` + (output ? `\n\n${output}` : "")
+              : output,
+          success: exitCode === 0,
         } as MessageBlock,
       ],
     };
