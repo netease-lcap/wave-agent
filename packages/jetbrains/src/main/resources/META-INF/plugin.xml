@@ -23,14 +23,13 @@
             serviceImplementation="com.wave.jetbrains.WavePanelHolder"/>
         <projectService
             serviceImplementation="com.wave.jetbrains.WaveBackendService"/>
-        <toolWindow
-            id="Wave"
-            anchor="right"
-            canCloseContents="true"
-            factoryClass="com.wave.jetbrains.WaveToolWindowFactory"
-            icon="com.wave.jetbrains.icons.WaveIcons.Wave"/>
+        <!-- Chat sessions render as editor-area tabs (JetBrains' createWebviewPanel equivalent):
+             WaveChatFileEditorProvider serves WaveChatVirtualFile as an editor tab hosting the
+             WavePanel webview; WaveEditorTabTitleProvider keeps the tab label in sync with the
+             session title (first user message). -->
+        <fileEditorProvider implementation="com.wave.jetbrains.editor.WaveChatFileEditorProvider"/>
+        <editorTabTitleProvider implementation="com.wave.jetbrains.editor.WaveEditorTabTitleProvider"/>
         <notificationGroup id="Wave" displayType="BALLOON"/>
-        <iconMapper mappingFile="WavePluginIconMappings.json"/>
     </extensions>
 
     <actions>
@@ -38,7 +37,7 @@
             id="com.wave.jetbrains.openWave"
             class="com.wave.jetbrains.actions.OpenWaveToolWindowAction"
             text="Open Wave"
-            description="Open the Wave tool window">
+            description="Open the Wave chat editor tab">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
         <action
@@ -50,6 +49,11 @@
         </action>
         <group id="WaveEditorPopupMenu" text="Wave" popup="true">
             <reference ref="com.wave.jetbrains.addSelectionToWave"/>
+            <action
+                id="com.wave.jetbrains.newWaveTab"
+                class="com.wave.jetbrains.actions.NewWaveTabAction"
+                text="New Wave Chat"
+                description="Open a new Wave chat editor tab"/>
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </group>
     </actions>

@@ -35,10 +35,17 @@ object WebviewContentBuilder {
 
     private fun isLightTheme(): Boolean = try { JBColor.isBright() } catch (_: Exception) { false }
 
-    private fun themeBaseText(): String {
+    /** Text of the theme-base CSS (light or dark `--vscode-*` variable sheet). Public so the
+     *  plan-preview page (PlanPreviewBuilder) can inline the same theme. */
+    fun themeBaseText(): String {
         val name = if (isLightTheme()) "theme-base-light.css" else "theme-base.css"
         return javaClass.getResourceAsStream("$RESOURCE_DIR/$name")?.use { it.bufferedReader().readText() } ?: ""
     }
+
+    /** Text of the shared webview chat.css (includes `.markdown-body` styles). Public so the
+     *  plan-preview page renders markdown identically to the webview it replaces. */
+    fun chatCssText(): String =
+        javaClass.getResourceAsStream("$RESOURCE_DIR/chat.css")?.use { it.bufferedReader().readText() } ?: ""
 
     /**
      * JS that rewrites the [LAF_STYLE_ID] style element with freshly computed LaF overrides.

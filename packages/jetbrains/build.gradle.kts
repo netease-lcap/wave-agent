@@ -23,6 +23,12 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // Markdown → HTML for the plan-preview column of the chat editor tab (PlanPreviewBuilder).
+    // GFM extensions (tables/strikethrough/task lists) match the webview's marked.js feature set.
+    implementation("com.vladsch.flexmark:flexmark:0.64.8")
+    implementation("com.vladsch.flexmark:flexmark-ext-tables:0.64.8")
+    implementation("com.vladsch.flexmark:flexmark-ext-gfm-strikethrough:0.64.8")
+    implementation("com.vladsch.flexmark:flexmark-ext-gfm-tasklist:0.64.8")
     // tar.gz extraction for the on-demand ripgrep download (see BinaryResolver)
     implementation("org.apache.commons:commons-compress:1.27.1")
     testImplementation(kotlin("test"))
@@ -102,5 +108,10 @@ tasks.named<JavaExec>("runIde") {
     // contains a future Java version it can't parse (e.g. "25"): GradleJvmSupportMatrix throws
     // IllegalArgumentException. It is irrelevant to developing this plugin, so suppress it in the
     // sandbox to keep the log clean.
-    jvmArgs("-Didea.suppressed.plugins.id=org.jetbrains.plugins.gradle,com.intellij.gradle")
+    jvmArgs(
+        "-Didea.suppressed.plugins.id=org.jetbrains.plugins.gradle,com.intellij.gradle",
+        // Skip the first-run Terms of Service dialog so headless CI runs can reach the
+        // welcome/project screen without manual consent (sandbox-only convenience).
+        "-Djb.consents.confirmation.enabled=false",
+    )
 }
