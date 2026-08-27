@@ -17,8 +17,10 @@ test.describe("Product Specification Screenshots - Confirmations", () => {
   test("capture confirmation features", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
 
-    // Set viewport size for better screenshots (simulating VS Code sidebar)
-    await webviewPage.setViewportSize({ width: 400, height: 800 });
+    // Set viewport size for better screenshots. The dialog grows up to its
+    // 640px max-width, enough for the four-button bash action bar to show
+    // full labels; narrower viewports truncate the button texts.
+    await webviewPage.setViewportSize({ width: 700, height: 800 });
 
     // Provide initial state with valid configuration
     await injector.simulateExtensionMessage("setInitialState", {
@@ -149,8 +151,10 @@ test.describe("Product Specification Screenshots - Confirmations", () => {
     });
     const multiQuestionDialog = webviewPage.locator(".confirmation-dialog");
     await multiQuestionDialog.waitFor({ state: "visible" });
-    // 选中当前问题的一个选项，展示分页启用态
+    // 选中当前问题的一个选项，展示分页启用态；等已答段着色过渡（0.15s）走完再截
     await webviewPage.locator(".option-item").first().click();
+    await multiQuestionDialog.locator(".question-progress-seg.done").waitFor();
+    await webviewPage.waitForTimeout(300);
     await elementScreenshotWebp(
       multiQuestionDialog,
       "../../docs/public/screenshots/spec-ask-user-multi.webp",

@@ -204,6 +204,7 @@ export default {
             { text: "远程会话的面板", link: "/desktop#远程会话的面板" },
             { text: "侧边栏会话树", link: "/desktop#侧边栏会话树" },
             { text: "侧边栏「更多」菜单", link: "/desktop#侧边栏更多菜单" },
+            { text: "侧边栏收起与展开", link: "/desktop#侧边栏收起与展开" },
             {
               text: "基于分支的 worktree 隔离会话",
               link: "/desktop#基于分支的-worktree-隔离会话",
