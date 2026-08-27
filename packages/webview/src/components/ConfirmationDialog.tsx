@@ -371,9 +371,20 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           activeElement?.classList.contains("other-text-input");
 
         if (isOptionFocused || isInputFocused) {
-          const applyBtn = document.querySelector(
-            ".confirmation-dialog .confirmation-btn-apply",
-          ) as HTMLButtonElement;
+          // Wizard flow: Enter advances to the next question while one remains,
+          // and submits only on the last question.
+          const nav = dialogRef.current?.querySelector(".question-navigation");
+          const nextBtn = nav?.querySelector<HTMLButtonElement>(
+            '.confirmation-btn-secondary[aria-label="下一个"]',
+          );
+          if (nextBtn && !nextBtn.disabled) {
+            e.preventDefault();
+            nextBtn.click();
+            return;
+          }
+          const applyBtn = nav?.querySelector<HTMLButtonElement>(
+            ".confirmation-btn-apply",
+          );
           if (applyBtn && !applyBtn.disabled) {
             e.preventDefault();
             applyBtn.click();
@@ -560,33 +571,9 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             <span className="question-header-chip">{q.question}</span>
             {questions.length > 1 && (
               <div className="question-progress">
-                <button
-                  type="button"
-                  className="question-progress-nav"
-                  aria-label="上一题"
-                  disabled={currentQuestionIndex === 0}
-                  onClick={() =>
-                    setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))
-                  }
-                >
-                  <i className="codicon codicon-chevron-left"></i>
-                </button>
                 <span className="question-progress-text">
                   {currentQuestionIndex + 1} / {questions.length}
                 </span>
-                <button
-                  type="button"
-                  className="question-progress-nav"
-                  aria-label="下一题"
-                  disabled={isLastQuestion || !isCurrentQuestionAnswered()}
-                  onClick={() =>
-                    setCurrentQuestionIndex((prev) =>
-                      Math.min(questions.length - 1, prev + 1),
-                    )
-                  }
-                >
-                  <i className="codicon codicon-chevron-right"></i>
-                </button>
               </div>
             )}
           </div>
@@ -771,22 +758,39 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         </div>
 
         <div className="question-navigation">
-          {!isLastQuestion && (
+          {currentQuestionIndex > 0 && (
             <button
               className="confirmation-btn confirmation-btn-secondary"
+              aria-label="上一个"
+              onClick={() =>
+                setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))
+              }
+            >
+              上一个
+            </button>
+          )}
+          {!isLastQuestion ? (
+            <button
+              className="confirmation-btn confirmation-btn-secondary"
+              aria-label="下一个"
               disabled={!isCurrentQuestionAnswered()}
-              onClick={() => setCurrentQuestionIndex((prev) => prev + 1)}
+              onClick={() =>
+                setCurrentQuestionIndex((prev) =>
+                  Math.min(questions.length - 1, prev + 1),
+                )
+              }
             >
               下一个
             </button>
+          ) : (
+            <button
+              className="confirmation-btn confirmation-btn-apply"
+              onClick={handleConfirm}
+              disabled={isConfirmDisabled()}
+            >
+              提交回答
+            </button>
           )}
-          <button
-            className="confirmation-btn confirmation-btn-apply"
-            onClick={handleConfirm}
-            disabled={isConfirmDisabled()}
-          >
-            提交回答
-          </button>
         </div>
       </div>
     );
