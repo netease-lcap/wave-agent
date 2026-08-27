@@ -14,7 +14,9 @@
 }
 
 /* Desktop drag-and-drop upload overlay, shown while a file hovers the pane.
-   pointer-events: none keeps normal input working while dragging. */
+   pointer-events: none keeps normal input working while dragging. Highlight
+   uses the theme focus color (same semantics as the config dialog's active
+   tab): red is reserved for the brand CTA, not interaction states. */
 .chat-drag-overlay {
   position: absolute;
   inset: 0;
@@ -24,22 +26,22 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background-color: rgba(193, 41, 46, 0.06);
-  border: 1.5px solid var(--vscode-brand-primary, #c1292e);
+  background-color: rgba(0, 120, 212, 0.06);
+  border: 1.5px solid var(--vscode-focusBorder, #0078d4);
   border-radius: 4px;
   pointer-events: none;
 }
 
 .chat-drag-overlay .codicon {
   font-size: 36px;
-  color: var(--vscode-brand-primary, #c1292e);
+  color: var(--vscode-focusBorder, #0078d4);
   margin-bottom: 6px;
 }
 
 .chat-drag-overlay-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--vscode-brand-primary, #c1292e);
+  color: var(--vscode-focusBorder, #0078d4);
 }
 
 .chat-drag-overlay-sub {

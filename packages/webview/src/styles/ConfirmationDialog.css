@@ -345,11 +345,13 @@
 }
 
 .question-progress-seg.done {
-  background-color: var(--vscode-brand-primary, #c1292e);
+  /* Theme focus color (config-tab active semantics), not the brand red —
+     answered is an interaction state, red stays reserved for the CTA. */
+  background-color: var(--vscode-focusBorder, #0078d4);
 }
 
 .question-progress-seg.done:hover {
-  background-color: var(--vscode-brand-primary, #c1292e);
+  background-color: var(--vscode-focusBorder, #0078d4);
 }
 
 .question-navigation {

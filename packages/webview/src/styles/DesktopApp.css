@@ -763,7 +763,7 @@ body.is-panel-resizing * {
 .preview-tab.active {
   background: var(--vscode-tab-activeBackground, var(--vscode-editor-background));
   border-color: var(--vscode-tab-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.2)));
-  border-top-color: var(--vscode-brand-primary, #c1292e);
+  border-top-color: var(--vscode-focusBorder, #0078d4);
   color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
 }
 
