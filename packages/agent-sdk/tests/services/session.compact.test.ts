@@ -207,6 +207,34 @@ describe("Session Append-Only Compaction", () => {
     );
   });
 
+  it("loadSessionFromJsonl dedups duplicate ids from legacy transcripts (old compaction re-appended preserved rounds)", async () => {
+    const sessionId = "test-session-dup";
+
+    const oldUser = makeMessage("user", "old_user");
+    const retainedUser = makeMessage("user", "retained");
+    // Legacy write side re-appended the preserved rounds at each compaction
+    // point, so an id can appear twice with identical content.
+    const allMessagesInFile: Message[] = [
+      oldUser,
+      retainedUser,
+      makeCompactMessage("summary"),
+      { ...retainedUser },
+      makeMessage("user", "fresh after compact"),
+    ];
+
+    mockRead.mockResolvedValue(allMessagesInFile);
+
+    const result = await loadSessionFromJsonl(sessionId, testWorkdir, "main");
+
+    expect(result!.messages.length).toBe(4);
+    // The first occurrence (original pre-compaction position) survives,
+    // and the duplicated id appears exactly once.
+    expect(result!.messages[1].id).toBe(retainedUser.id);
+    expect(
+      result!.messages.filter((m) => m.id === retainedUser.id).length,
+    ).toBe(1);
+  });
+
   it("loadFullMessageThread returns the complete message thread including pre-compact messages", async () => {
     const sessionId = "test-session-5";
 
