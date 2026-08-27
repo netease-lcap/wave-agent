@@ -34,6 +34,14 @@
   padding: 12px 12px 4px;
 }
 
+/* Grouped header buttons (gap matches the chat header's .header-buttons) —
+   keeps them adjacent under the space-between title. */
+.desktop-sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .desktop-sidebar-more-btn {
   width: 22px;
   height: 22px;
