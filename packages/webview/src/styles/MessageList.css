@@ -140,16 +140,6 @@
   box-sizing: border-box;
 }
 
-/* Roving selection highlight: the message currently selected while the list
-   container (a single Tab stop) is focused. A subtle focus ring on the message
-   itself — same color language as --vscode-focusBorder — reads as "keyboard
-   selection" rather than an error/active state. */
-.virtual-row.roving-selected .message {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-  border-radius: 6px;
-}
-
 /* The full-width row wrapper would stretch user bubbles across the whole
    column; keep the shrink-to-fit look. */
 .messages-container--virtual .message.user {

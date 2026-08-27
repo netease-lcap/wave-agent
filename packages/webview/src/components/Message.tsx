@@ -135,11 +135,6 @@ const extractClickableUrl = (codeText: string): string | null => {
 // codespan 收到的 text 已被 marked 的 tokenizer 转义（escape(text, true)），
 // 直接复用即可，URL 提升时 href 与显示文本同为已转义形式（如查询参数中的
 // `&` → `&amp;`，浏览器解析后还原）。
-// marked 9 默认 code/table renderer，仅在 <pre> 与表格包裹层上补 tabindex="0"：
-// 两个横向 overflow 容器（代码块 overflow-x:auto、超宽表格的
-// .markdown-table-wrapper）由此进入消息列表 roving 焦点圈（FOCUSABLE_SELECTOR
-// 的 [tabindex] 分支），激活行后 Tab 可聚焦、方向键横向滚动；未激活时被
-// applyRoving 冻结为 tabIndex -1，不占 Tab 位。
 const messageMarkdownRenderer = (() => {
   const renderer = new marked.Renderer();
   renderer.listitem = renderTaskListitem;
@@ -150,15 +145,6 @@ const messageMarkdownRenderer = (() => {
     }
     return `<code>${text}</code>`;
   };
-  const defaultCodeRenderer = new marked.Renderer().code;
-  renderer.code = (code, infostring, escaped) =>
-    defaultCodeRenderer(code, infostring, escaped).replace(
-      "<pre>",
-      '<pre tabindex="0">',
-    );
-  const defaultTableRenderer = new marked.Renderer().table;
-  renderer.table = (header, body) =>
-    `<div class="markdown-table-wrapper" tabindex="0">${defaultTableRenderer(header, body)}</div>\n`;
   return renderer;
 })();
 
@@ -215,7 +201,6 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
           "i",
           "code",
           "pre",
-          "div",
           "h1",
           "h2",
           "h3",
@@ -248,7 +233,6 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
           "class",
           "src",
           "alt",
-          "tabindex",
         ],
         ALLOW_DATA_ATTR: false,
         FORBID_ATTR: [],

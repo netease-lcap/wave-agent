@@ -37,15 +37,6 @@ import "../styles/MessageList.css";
 // forever.
 type FoldState = "collapsed" | "expanded" | null;
 
-// Selector for focusable elements inside a message row. Used by the roving
-// focus circle (see the rovingIndex state below): the list itself is a single
-// Tab stop, and every focusable element inside a message row is frozen to
-// tabIndex -1 until the user activates that row with Enter. Elements with an
-// explicit tabIndex="-1" (hidden radios etc.) are excluded — they were never
-// part of the Tab order and stay that way.
-const FOCUSABLE_SELECTOR =
-  'a[href], button, input, textarea, select, [tabindex]:not([tabindex="-1"])';
-
 interface MeasuredEntry {
   height: number;
   fold: FoldState;
@@ -202,117 +193,6 @@ export const MessageList = forwardRef<
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // ---- Roving focus circle (single Tab stop for the whole list) ----
-  // selectedIndex: the message highlighted while the list container itself is
-  // focused (roving selection; ArrowUp/Down move it). rovingIndex: the message
-  // whose inner focusables are ACTIVE (tabIndex 0); null means every inner
-  // focusable is frozen to -1 and only the container is a Tab stop. Enter on
-  // the container activates the selected row; Escape (or focus leaving the
-  // container) deactivates. Refs mirror the states so the stable row ref
-  // (measureRow) can re-apply the freeze to newly mounted virtualized rows
-  // without re-creating the callback.
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [rovingIndex, setRovingIndex] = useState<number | null>(null);
-  const selectedIndexRef = useRef<number | null>(null);
-  selectedIndexRef.current = selectedIndex;
-  const rovingIndexRef = useRef<number | null>(null);
-  rovingIndexRef.current = rovingIndex;
-
-  // Freeze every focusable inside the container to tabIndex -1, then restore
-  // tabIndex 0 on the focusables of the activated row (if any). Idempotent.
-  // The circle membership is tracked with a data-roving sentinel instead of
-  // re-querying [tabindex]: elements that match FOCUSABLE_SELECTOR only via
-  // [tabindex] (markdown <pre>, table wrappers) become tabindex="-1" during
-  // the freeze, and a [tabindex]:not([tabindex="-1"]) query on a later pass
-  // would miss them — an earlier applyRoving(null) (mount, container focus,
-  // blur) freezes them before the user ever activates a row, so a restore
-  // built on re-querying would leave them frozen forever. The sentinel is set
-  // on every focusable BEFORE the freeze (freshly mounted rows are adopted
-  // each pass) and is stable across freezes, so the restore always finds them.
-  const applyRoving = useCallback((activeIndex: number | null) => {
-    const container = containerRef.current;
-    if (!container) return;
-    container
-      .querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-      .forEach((el) => {
-        el.dataset.roving = "true";
-      });
-    const rovingEls = Array.from(
-      container.querySelectorAll<HTMLElement>("[data-roving]"),
-    );
-    rovingEls.forEach((el) => {
-      el.tabIndex = -1;
-    });
-    if (activeIndex !== null) {
-      const row = container.querySelector(`[data-index="${activeIndex}"]`);
-      if (row) {
-        rovingEls
-          .filter((el) => row.contains(el))
-          .forEach((el) => {
-            el.tabIndex = 0;
-          });
-      }
-    }
-  }, []);
-  const applyRovingRef = useRef(applyRoving);
-  applyRovingRef.current = applyRoving;
-
-  // Re-apply the freeze whenever the activated row changes (also covers the
-  // container focusout deactivation below).
-  useEffect(() => {
-    applyRovingRef.current(rovingIndexRef.current);
-  }, [rovingIndex]);
-
-  // List focusables of a mounted row (frozen ones excluded).
-  const rowFocusables = useCallback((row: Element) => {
-    return Array.from(
-      row.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-    ).filter((el) => el.tabIndex !== -1);
-  }, []);
-
-  const activateRow = useCallback(
-    (index: number) => {
-      const container = containerRef.current;
-      if (!container) return;
-      const row = container.querySelector(`[data-index="${index}"]`);
-      if (!row) return;
-      setRovingIndex(index);
-      applyRovingRef.current(index);
-      const first = rowFocusables(row)[0];
-      if (first) first.focus();
-    },
-    [rowFocusables],
-  );
-
-  const handleContainerFocus = useCallback(() => {
-    const container = containerRef.current;
-    // React onFocus bubbles from child focus events (focus inside an active
-    // row); only handle the selector itself being focused (direct Tab/click).
-    if (container && document.activeElement !== container) return;
-    const count = visibleMessagesRef.current.length;
-    if (count > 0 && selectedIndexRef.current === null) {
-      setSelectedIndex(count - 1);
-    }
-    // Focus reaching the selector enters the outer loop: deactivate any active
-    // row so the next Tab leaves the list instead of re-entering the row
-    // (e.g. clicking the selector right after Enter-activated focusables).
-    setRovingIndex(null);
-    applyRovingRef.current(null);
-  }, []);
-
-  // Focus leaving the container (to anything outside) deactivates the active
-  // row; the effect on rovingIndex re-freezes all inner focusables.
-  const handleContainerBlur = useCallback(
-    (e: React.FocusEvent<HTMLDivElement>) => {
-      const container = containerRef.current;
-      if (!container) return;
-      const next = e.relatedTarget as Node | null;
-      if (next && container.contains(next)) return;
-      setRovingIndex(null);
-    },
-    [],
-  );
 
   const prevMessagesLengthRef = useRef(messages.length);
   const prevQueuedLengthRef = useRef(queuedMessages?.length || 0);
@@ -492,87 +372,9 @@ export const MessageList = forwardRef<
   // stay referentially stable — an inline arrow would be recreated every
   // render and React would detach/reattach every row's ref each render,
   // re-measuring the whole visible window on every streaming chunk.
-  const handleContainerKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      const container = containerRef.current;
-      if (!container) return;
-      const target = e.target as HTMLElement;
-      const active = rovingIndexRef.current;
-      const insideActiveRow =
-        active !== null && target !== container && container.contains(target);
-
-      // Tab on the active row's first (Shift+Tab) / last (Tab) inner focusable
-      // returns to the list selector and deactivates the row (re-freezes its
-      // inner focusables), so the next Tab leaves the list instead of re-entering
-      // the row (ARIA APG roving-tabindex: the selector is the component's single
-      // Tab stop and Tab exits the component; Enter re-activates the row).
-      if (e.key === "Tab" && insideActiveRow) {
-        const row = container.querySelector(`[data-index="${active}"]`);
-        const focusables = row ? rowFocusables(row) : [];
-        if (focusables.length > 0) {
-          const isFirst = target === focusables[0];
-          const isLast = target === focusables[focusables.length - 1];
-          if ((!e.shiftKey && isLast) || (e.shiftKey && isFirst)) {
-            e.preventDefault();
-            setRovingIndex(null);
-            applyRovingRef.current(null);
-            container.focus();
-          }
-        }
-        return;
-      }
-
-      // Escape on an inner focusable returns to the list selector.
-      if (e.key === "Escape" && insideActiveRow) {
-        e.preventDefault();
-        setRovingIndex(null);
-        applyRovingRef.current(null);
-        container.focus();
-        return;
-      }
-
-      // The rest only applies while the container itself is focused.
-      if (target !== container) return;
-      const count = visibleMessagesRef.current.length;
-      if (count === 0) return;
-
-      const current = selectedIndexRef.current ?? count - 1;
-      let next: number | null = null;
-      switch (e.key) {
-        case "ArrowUp":
-          next = Math.max(0, current - 1);
-          break;
-        case "ArrowDown":
-          next = Math.min(count - 1, current + 1);
-          break;
-        case "Home":
-          next = 0;
-          break;
-        case "End":
-          next = count - 1;
-          break;
-        case "Enter":
-          activateRow(current);
-          return;
-        default:
-          return;
-      }
-      e.preventDefault();
-      setSelectedIndex(next);
-      // The target row is likely virtualized out of the viewport; scroll via
-      // the virtualizer so the row mounts and the highlight is visible.
-      virtualizer.scrollToIndex(next, { align: "auto", behavior: "auto" });
-    },
-    [activateRow, rowFocusables, virtualizer],
-  );
-
   const measureRow = useCallback(
     (node: HTMLDivElement | null) => {
       virtualizer.measureElement(node);
-      // A freshly mounted virtualized row carries default tabIndex on its
-      // focusables; re-apply the roving freeze so newly scrolled-in rows don't
-      // re-enter the Tab order.
-      applyRovingRef.current(rovingIndexRef.current);
     },
     [virtualizer],
   );
@@ -893,15 +695,6 @@ export const MessageList = forwardRef<
       id="messagesContainer"
       className={`messages-container${isStreaming ? " streaming" : ""}${isCompacting ? " compacting" : ""} messages-container--virtual`}
       data-testid="messages-container"
-      tabIndex={visibleMessages.length > 0 ? 0 : undefined}
-      aria-label={
-        visibleMessages.length > 0
-          ? "消息列表（方向键在消息间移动，Enter 进入消息操作，Escape 返回列表）"
-          : undefined
-      }
-      onKeyDown={handleContainerKeyDown}
-      onFocus={handleContainerFocus}
-      onBlur={handleContainerBlur}
     >
       {stickyMessage && (
         <div className="sticky-user-wrapper">
@@ -936,7 +729,7 @@ export const MessageList = forwardRef<
               data-index={virtualRow.index}
               data-measured-message-id={message.id}
               ref={measureRow}
-              className={`virtual-row${runClass ? ` ${runClass}` : ""}${selectedIndex === virtualRow.index ? " roving-selected" : ""}`}
+              className={`virtual-row${runClass ? ` ${runClass}` : ""}`}
               style={{
                 paddingBottom: timelineRuns.paddings[virtualRow.index],
               }}
