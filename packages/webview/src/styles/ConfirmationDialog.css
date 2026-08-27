@@ -402,11 +402,15 @@
    far right while keeping it first in the Tab cycle — visual order is
    [最次] [次] [主] left-to-right, Tab order is 主 → 次 → 最次.
    align-items: center keeps the shorter text-style 提供反馈 button on the
-   same horizontal midline as the 32px action buttons. */
+   same horizontal midline as the 32px action buttons.
+   flex-wrap: wrap lets buttons that don't fit drop onto a right-aligned
+   second line instead of squeezing label text (aligns with claude.ai's
+   confirm action row); ellipsis stays as the extreme-narrow fallback. */
 .confirmation-actions {
   flex: 0 0 auto;
   display: flex;
   flex-direction: row-reverse;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -423,6 +427,7 @@
 .feedback-actions {
   display: flex;
   flex-direction: row-reverse;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
