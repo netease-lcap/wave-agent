@@ -313,6 +313,65 @@ describe("MessageManager Coverage Improvements", () => {
     expect(display.map((m) => m.id)).toEqual(["u1", "a1", "c1", "u2", "a2"]);
   });
 
+  it("compaction then new messages keep the pre-compaction history in displayMessages", async () => {
+    messageManager.addUserMessage({ content: "q1" });
+    messageManager.addAssistantMessage("a1");
+    messageManager.addUserMessage({ content: "q2" });
+    messageManager.addAssistantMessage("a2");
+
+    await messageManager.compactMessagesAndUpdateSession("summary");
+
+    // A new round after compaction must not clobber the display stream with
+    // the folded context ([compact, ...last rounds]).
+    messageManager.addUserMessage({ content: "q3" });
+    messageManager.addAssistantMessage("a3");
+
+    const display = messageManager.getDisplayMessages();
+    expect(
+      display.map((m) => (m.blocks[0] as { content: string }).content),
+    ).toEqual(["q1", "a1", "q2", "a2", "summary", "q3", "a3"]);
+  });
+
+  it("compaction then tool block updates sync the display stream without dropping history", async () => {
+    messageManager.addUserMessage({ content: "q1" });
+    messageManager.addAssistantMessage("a1");
+    messageManager.addUserMessage({ content: "q2" });
+    messageManager.addAssistantMessage("a2");
+
+    await messageManager.compactMessagesAndUpdateSession("summary");
+
+    const lastAssistantId = [...messageManager.getMessages()]
+      .reverse()
+      .find(
+        (m) =>
+          m.role === "assistant" && !m.blocks.some((b) => b.type === "compact"),
+      )!.id;
+    messageManager.addToolBlockToMessage(lastAssistantId, {
+      name: "Write",
+      parameters: '{"path": "/tmp/a"}',
+      stage: "start",
+    } as Parameters<MessageManager["addToolBlockToMessage"]>[1]);
+
+    const display = messageManager.getDisplayMessages();
+    expect(
+      display.map((m) => (m.blocks[0] as { content: string }).content),
+    ).toEqual(["q1", "a1", "q2", "a2", "summary"]);
+    // The updated message (not the trailing compact block) carries the tool
+    // block in the display stream too.
+    const updated = display.find((m) => m.id === lastAssistantId)!;
+    expect(
+      updated.blocks.some((b) => b.type === "tool" && b.name === "Write"),
+    ).toBe(true);
+  });
+
+  it("clearMessages after compaction empties the display stream", async () => {
+    messageManager.addUserMessage({ content: "q1" });
+    messageManager.addAssistantMessage("a1");
+    await messageManager.compactMessagesAndUpdateSession("summary");
+    messageManager.clearMessages();
+    expect(messageManager.getDisplayMessages()).toEqual([]);
+  });
+
   it("should handle addFileHistoryBlock", () => {
     messageManager.addAssistantMessage("hello");
     messageManager.addFileHistoryBlock([
