@@ -38,6 +38,10 @@ export interface DesktopSidebarProps {
   onOpenPane: (workdir: string, sessionId: string) => void;
   /** Delete a session from the index (also cleans up worktree if applicable). */
   onDeleteSession: (sessionId: string) => void;
+  /** Sidebar fully hidden (chat takes the whole width); the header's expand
+   *  button restores it. */
+  collapsed?: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
 }
 
 const dirName = (workdir: string): string =>
@@ -76,6 +80,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onSelectSession,
   onOpenPane,
   onDeleteSession,
+  collapsed = false,
+  onCollapsedChange,
 }) => {
   // Explicit expand/collapse overrides; groups without an entry are expanded
   // by default — the tree starts fully expanded on every app launch (expansion
@@ -96,9 +102,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   // session rows, the button for 新对话), so both hints start at the row's
   // visual right edge. Per-session ref objects are created lazily and reused
   // across renders — a fresh object per render would re-attach the refs.
-  const sessionAnchorsRef = useRef(
-    new Map<string, RefObject<HTMLLIElement>>(),
-  );
+  const sessionAnchorsRef = useRef(new Map<string, RefObject<HTMLLIElement>>());
   const getAnchorRef = (sessionId: string) => {
     let anchor = sessionAnchorsRef.current.get(sessionId);
     if (!anchor) {
@@ -225,6 +229,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     );
   };
 
+  // Fully collapsed: nothing renders, no reserved width, no overlay — the chat
+  // takes the whole pane width (spec 「侧边栏收起/展开」scenario 1).
+  if (collapsed) return null;
+
   return (
     <div className="desktop-sidebar" data-testid="desktop-sidebar">
       <div className="desktop-sidebar-header">
@@ -237,6 +245,19 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             aria-label="更多"
           >
             <MoreIcon />
+          </button>
+        </Tooltip>
+        <Tooltip text="收起侧边栏" position="bottom">
+          <button
+            className="desktop-sidebar-more-btn"
+            onClick={() => {
+              setShowMoreMenu(false);
+              onCollapsedChange(true);
+            }}
+            data-testid="desktop-sidebar-collapse"
+            aria-label="收起侧边栏"
+          >
+            <span className="codicon codicon-layout-panel-left"></span>
           </button>
         </Tooltip>
       </div>

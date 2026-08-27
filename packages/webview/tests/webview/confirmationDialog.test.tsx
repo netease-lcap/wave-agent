@@ -108,6 +108,34 @@ describe("Confirmation Dialog", () => {
     expect(title).toHaveTextContent("命令执行待确认");
   });
 
+  it("initial focus lands on the dialog container, not the primary action", async () => {
+    renderChatApp();
+
+    await act(async () => {
+      sendCommand("showConfirmation", {
+        confirmationId: "focus_check",
+        toolName: BASH_TOOL_NAME,
+        confirmationType: "命令执行待确认",
+        toolInput: { command: "npm install" },
+      });
+    });
+
+    // Focus moves into the dialog but never onto the primary action on open
+    // (an accidental Enter would approve); the container holds it.
+    expect(document.activeElement).toHaveClass("confirmation-dialog");
+
+    // The primary action is first in the Tab cycle: it is the first focusable
+    // element inside the dialog (DOM order), so a Tab lands on it.
+    const dialog = document.querySelector(".confirmation-dialog")!;
+    const focusables = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([type="hidden"]), textarea, [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((el) => el.tabIndex !== -1);
+    expect(focusables[0]).toHaveClass("confirmation-btn-apply");
+    expect(focusables[0]).toHaveTextContent("批准并继续");
+  });
+
   it("should send approval response when clicking apply button", async () => {
     const { vscode } = renderChatApp();
     vscode.postMessage.mockClear();
@@ -1157,7 +1185,7 @@ describe("AskUserQuestion Other input", () => {
     });
   });
 
-  it("wizard navigation: buttons per question position, submit only on the last", async () => {
+  it("carousel navigation: fixed 上一个/下一个/提交回答, questions wrap around", async () => {
     const { vscode } = renderChatApp();
     showAskUser([
       ...singleQuestion,
@@ -1181,17 +1209,28 @@ describe("AskUserQuestion Other input", () => {
         ),
       ).map((b) => b.textContent!.trim());
 
-    // Q1 (first question): only 下一个, no 提交回答; disabled until answered
-    expect(navButtonLabels()).toEqual(["下一个"]);
+    // Q1: the carousel shows all three buttons — 提交回答 (primary, DOM-first)
+    // plus 下一个/上一个. 提交 disabled until every question is answered;
+    // 上一个/下一个 always enabled regardless of answer state.
+    expect(navButtonLabels()).toEqual(["提交回答", "下一个", "上一个"]);
     const nextBtn = document.querySelector(
       '.question-navigation .confirmation-btn-secondary[aria-label="下一个"]',
     ) as HTMLButtonElement;
-    expect(nextBtn.disabled).toBe(true);
+    expect(nextBtn.disabled).toBe(false);
+    const prevBtn = document.querySelector(
+      '.question-navigation .confirmation-btn-secondary[aria-label="上一个"]',
+    ) as HTMLButtonElement;
+    expect(prevBtn.disabled).toBe(false);
+    const submitBtn = document.querySelector(
+      ".question-navigation .confirmation-btn-apply",
+    ) as HTMLButtonElement;
+    expect(submitBtn.disabled).toBe(true);
+    // The ⏎ hint only shows when submit is enabled.
     expect(
-      document.querySelector(".question-navigation .confirmation-btn-apply"),
+      document.querySelector(".question-navigation .btn-enter-hint"),
     ).not.toBeInTheDocument();
 
-    // Answer Q1 -> 下一个 enabled, click into Q2
+    // Answer Q1 -> 提交 still disabled (Q2/Q3 unanswered); click into Q2
     act(() => {
       fireEvent.click(
         document.querySelector(
@@ -1199,7 +1238,7 @@ describe("AskUserQuestion Other input", () => {
         )!,
       );
     });
-    expect(nextBtn.disabled).toBe(false);
+    expect(submitBtn.disabled).toBe(true);
     act(() => {
       fireEvent.click(nextBtn);
     });
@@ -1209,17 +1248,14 @@ describe("AskUserQuestion Other input", () => {
       );
     });
 
-    // Q2 (middle question): 上一个 + 下一个, no 提交回答; 下一个 disabled until
-    // answered, 上一个 always available (back to edit previous answers)
-    expect(navButtonLabels()).toEqual(["上一个", "下一个"]);
-    const prevBtn = document.querySelector(
-      '.question-navigation .confirmation-btn-secondary[aria-label="上一个"]',
-    ) as HTMLButtonElement;
+    // Q2 (middle question): the same fixed three buttons — 提交 disabled, both
+    // nav buttons enabled (上一个 always lets you revisit previous answers).
+    expect(navButtonLabels()).toEqual(["提交回答", "下一个", "上一个"]);
     expect(prevBtn.disabled).toBe(false);
     const nextBtn2 = document.querySelector(
       '.question-navigation .confirmation-btn-secondary[aria-label="下一个"]',
     ) as HTMLButtonElement;
-    expect(nextBtn2.disabled).toBe(true);
+    expect(nextBtn2.disabled).toBe(false);
 
     // 上一个 works even though Q2 is unanswered; Q1 answer kept
     act(() => {
@@ -1234,12 +1270,193 @@ describe("AskUserQuestion Other input", () => {
       document.querySelector('.option-item[data-option-index="0"] input')!,
     ).toBeChecked();
 
-    // Forward again, answer Q2, advance to Q3
+    // Wrap-around: on Q1 the 上一个 button jumps to the LAST question.
+    act(() => {
+      fireEvent.click(prevBtn);
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "第三个问题",
+      );
+    });
+
+    // And 下一个 on the last question wraps back to Q1.
+    act(() => {
+      fireEvent.click(nextBtn2);
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "单选：选哪个方案？",
+      );
+    });
+
+    // Arrow keys cycle the carousel too (← back to the last question, → back).
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowLeft" });
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "第三个问题",
+      );
+    });
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowRight" });
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "单选：选哪个方案？",
+      );
+    });
+
+    // Clickable segmented progress: segment 1 is done (Q1 answered), others
+    // not; clicking a segment jumps straight to that question.
+    const segs = document.querySelectorAll<HTMLButtonElement>(
+      ".question-progress-seg",
+    );
+    expect(segs.length).toBe(3);
+    expect(segs[0]).toHaveClass("done");
+    expect(segs[1]).not.toHaveClass("done");
+    act(() => {
+      fireEvent.click(segs[2]);
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "第三个问题",
+      );
+    });
+
+    // Q3 (last question): same fixed buttons — 提交 disabled until every
+    // question has a valid answer
+    expect(navButtonLabels()).toEqual(["提交回答", "下一个", "上一个"]);
+    expect(submitBtn.disabled).toBe(true);
+
+    // Jump back to Q2 via the progress bar, answer it, then return to Q3.
+    act(() => {
+      fireEvent.click(segs[1]);
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "第二个问题",
+      );
+    });
     act(() => {
       fireEvent.click(
         document.querySelector(
-          '.question-navigation .confirmation-btn-secondary[aria-label="下一个"]',
+          '.option-item[data-option-index="0"] input[type="radio"]',
         )!,
+      );
+    });
+    expect(submitBtn.disabled).toBe(true); // Q3 still unanswered
+    act(() => {
+      fireEvent.click(segs[2]);
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "第三个问题",
+      );
+    });
+
+    // Answer Q3 -> submit enabled with the ⏎ hint; clicking submits all answers
+    // at once
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="0"] input[type="radio"]',
+        )!,
+      );
+    });
+    expect(submitBtn.disabled).toBe(false);
+    expect(
+      document.querySelector(".question-navigation .btn-enter-hint"),
+    ).toBeInTheDocument();
+    // Every answered segment is marked done.
+    expect(
+      Array.from(
+        document.querySelectorAll<HTMLButtonElement>(".question-progress-seg"),
+      ).every((s) => s.classList.contains("done")),
+    ).toBe(true);
+    vscode.postMessage.mockClear();
+    act(() => {
+      fireEvent.click(submitBtn);
+    });
+
+    const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
+    const response = sent.find((m) => m.command === "confirmationResponse");
+    expect(response).toBeDefined();
+    const message = JSON.parse(response.decision.message);
+    expect(message["单选：选哪个方案？"]).toBe("方案 A");
+    expect(message["第二个问题：选择语言？"]).toBe("TypeScript");
+    expect(message["第三个问题：确认发布？"]).toBe("是");
+  });
+
+  it("carousel: Enter inside the Other textarea submits only when all questions are answered", async () => {
+    const { vscode } = renderChatApp();
+    showAskUser([
+      ...singleQuestion,
+      {
+        question: "第二个问题：选择语言？",
+        options: [{ label: "TypeScript" }, { label: "Python" }],
+        multiSelect: false,
+      },
+      {
+        question: "第三个问题：确认发布？",
+        options: [{ label: "是" }, { label: "否" }],
+        multiSelect: false,
+      },
+    ]);
+    await waitForDialog();
+
+    // Answer Q1, then jump to Q3 via the progress bar, leaving Q2 unanswered.
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="0"] input[type="radio"]',
+        )!,
+      );
+    });
+    act(() => {
+      fireEvent.click(
+        document.querySelectorAll<HTMLButtonElement>(
+          ".question-progress-seg",
+        )[2],
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "第三个问题",
+      );
+    });
+    // Pick Other on Q3 and type a custom answer.
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="radio"]')!,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+    });
+    act(() => {
+      fireEvent.change(document.querySelector(".other-text-input")!, {
+        target: { value: "自定义发布" },
+      });
+    });
+
+    // Enter with questions still unanswered: no action (no submission).
+    vscode.postMessage.mockClear();
+    act(() => {
+      fireEvent.keyDown(document.querySelector(".other-text-input")!, {
+        key: "Enter",
+      });
+    });
+    expect(vscode.postMessage).not.toHaveBeenCalled();
+    expect(document.querySelector(".confirmation-dialog")).toBeInTheDocument();
+
+    // Answer Q2, come back to Q3, Enter now submits everything at once.
+    act(() => {
+      fireEvent.click(
+        document.querySelectorAll<HTMLButtonElement>(
+          ".question-progress-seg",
+        )[1],
       );
     });
     await waitFor(() => {
@@ -1256,9 +1473,9 @@ describe("AskUserQuestion Other input", () => {
     });
     act(() => {
       fireEvent.click(
-        document.querySelector(
-          '.question-navigation .confirmation-btn-secondary[aria-label="下一个"]',
-        )!,
+        document.querySelectorAll<HTMLButtonElement>(
+          ".question-progress-seg",
+        )[2],
       );
     });
     await waitFor(() => {
@@ -1266,27 +1483,10 @@ describe("AskUserQuestion Other input", () => {
         "第三个问题",
       );
     });
-
-    // Q3 (last question): 上一个 + 提交回答, no 下一个; submit disabled until
-    // every question has a valid answer
-    expect(navButtonLabels()).toEqual(["上一个", "提交回答"]);
-    const submitBtn = document.querySelector(
-      ".question-navigation .confirmation-btn-apply",
-    ) as HTMLButtonElement;
-    expect(submitBtn.disabled).toBe(true);
-
-    // Answer Q3 -> submit enabled; clicking submits all answers at once
     act(() => {
-      fireEvent.click(
-        document.querySelector(
-          '.option-item[data-option-index="0"] input[type="radio"]',
-        )!,
-      );
-    });
-    expect(submitBtn.disabled).toBe(false);
-    vscode.postMessage.mockClear();
-    act(() => {
-      fireEvent.click(submitBtn);
+      fireEvent.keyDown(document.querySelector(".other-text-input")!, {
+        key: "Enter",
+      });
     });
 
     const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
@@ -1295,7 +1495,7 @@ describe("AskUserQuestion Other input", () => {
     const message = JSON.parse(response.decision.message);
     expect(message["单选：选哪个方案？"]).toBe("方案 A");
     expect(message["第二个问题：选择语言？"]).toBe("TypeScript");
-    expect(message["第三个问题：确认发布？"]).toBe("是");
+    expect(message["第三个问题：确认发布？"]).toBe("自定义发布");
   });
 
   it("should focus the other textarea when Other is selected (mouse or Space)", async () => {

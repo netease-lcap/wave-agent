@@ -31,6 +31,7 @@ function renderPane(options?: {
   onAddComment?: (text: string) => void;
   originalUrl?: string;
   onRetry?: () => void;
+  onLastTabClosed?: () => void;
 }) {
   const vscode = createMockVscode();
   const url = options?.url ?? "http://localhost:5173/app";
@@ -38,6 +39,7 @@ function renderPane(options?: {
   const onAddComment = options?.onAddComment ?? vi.fn();
   const originalUrl = options?.originalUrl;
   const onRetry = options?.onRetry;
+  const onLastTabClosed = options?.onLastTabClosed ?? vi.fn();
   // Controlled-width harness: PreviewPane no longer owns its width state.
   const Harness = ({ url: u }: { url: string }) => {
     const [width, setWidth] = React.useState(420);
@@ -52,6 +54,7 @@ function renderPane(options?: {
         onAddComment={onAddComment}
         originalUrl={originalUrl}
         onRetry={onRetry}
+        onLastTabClosed={onLastTabClosed}
       />
     );
   };
@@ -65,7 +68,16 @@ function renderPane(options?: {
   wv.reloadIgnoringCache = vi.fn();
   wv.getURL = vi.fn(() => url);
   const rerenderWithUrl = (u: string) => result.rerender(<Harness url={u} />);
-  return { ...result, rerenderWithUrl, vscode, wv, url, onClose, onAddComment };
+  return {
+    ...result,
+    rerenderWithUrl,
+    vscode,
+    wv,
+    url,
+    onClose,
+    onAddComment,
+    onLastTabClosed,
+  };
 }
 
 const fireDomReady = (wv: MockWebview) => fireEvent(wv, new Event("dom-ready"));
@@ -397,6 +409,132 @@ describe("PreviewPane", () => {
     expect(onRetry).toHaveBeenCalled();
     expect(screen.queryByTestId("preview-error")).not.toBeInTheDocument();
   });
+
+  describe("preview tabs (spec 预览多标签页)", () => {
+    const tabCount = () =>
+      screen.getByTestId("preview-tab-bar").querySelectorAll(".preview-tab")
+        .length;
+
+    it("opens a second tab for a new URL and selects it (scenario 1)", () => {
+      const { wv, rerenderWithUrl } = renderPane();
+      fireDomReady(wv);
+      rerenderWithUrl("http://localhost:3000/other");
+
+      expect(tabCount()).toBe(2);
+      const bar = screen.getByTestId("preview-tab-bar");
+      const active = bar.querySelector(".preview-tab.active") as HTMLElement;
+      expect(active.textContent).toContain("localhost:3000");
+      expect(wv.loadURL).toHaveBeenCalledWith("http://localhost:3000/other");
+    });
+
+    it("reuses an existing tab when the same URL is requested again", () => {
+      const { wv, rerenderWithUrl } = renderPane();
+      fireDomReady(wv);
+      rerenderWithUrl("http://localhost:3000/other");
+      expect(tabCount()).toBe(2);
+
+      rerenderWithUrl("http://localhost:3000/other");
+      expect(tabCount()).toBe(2);
+      // Switching back to the reused tab does not re-navigate the guest.
+      expect(wv.loadURL).toHaveBeenCalledTimes(1);
+    });
+
+    it("switches tabs on click (scenario 2)", () => {
+      const { rerenderWithUrl } = renderPane();
+      rerenderWithUrl("http://localhost:3000/other");
+      const bar = screen.getByTestId("preview-tab-bar");
+      const first = bar.querySelectorAll(".preview-tab")[0] as HTMLElement;
+
+      fireEvent.click(first);
+
+      expect(first.classList.contains("active")).toBe(true);
+      expect(bar.querySelector(".preview-tab.active")).toBe(first);
+      // Address bar shows the selected tab's URL.
+      expect(screen.getByTestId("preview-address-display")).toHaveTextContent(
+        "http://localhost:5173/app",
+      );
+    });
+
+    it("closing the selected tab falls back to its left neighbor (scenario 4)", () => {
+      const { onClose, rerenderWithUrl } = renderPane();
+      rerenderWithUrl("http://localhost:3000/other");
+      rerenderWithUrl("http://localhost:3000/third");
+      const bar = screen.getByTestId("preview-tab-bar");
+      expect(tabCount()).toBe(3);
+
+      // Close the currently active (rightmost) tab.
+      const tabs = bar.querySelectorAll(".preview-tab");
+      fireEvent.click(
+        tabs[2].querySelector(".preview-tab-close") as HTMLElement,
+      );
+
+      const remaining = bar.querySelectorAll(".preview-tab");
+      expect(remaining).toHaveLength(2);
+      expect(remaining[1].classList.contains("active")).toBe(true);
+      expect(remaining[1].textContent).toContain("localhost:3000/other");
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("closing the last tab collapses the panel (scenario 4)", () => {
+      const onClose = vi.fn();
+      const onLastTabClosed = vi.fn();
+      renderPane({ onClose, onLastTabClosed });
+      expect(tabCount()).toBe(1);
+
+      fireEvent.click(
+        screen
+          .getByTestId("preview-tab-bar")
+          .querySelector(".preview-tab-close") as HTMLElement,
+      );
+
+      expect(onLastTabClosed).toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalled();
+    });
+
+    it("add-blank button shows the new-tab placeholder; committing the address loads it (scenario 5)", () => {
+      const { wv, rerenderWithUrl } = renderPane();
+      fireDomReady(wv);
+      rerenderWithUrl("http://localhost:3000/other");
+      wv.loadURL.mockClear();
+
+      fireEvent.click(screen.getByTestId("preview-tab-add"));
+
+      expect(tabCount()).toBe(3);
+      expect(screen.getByTestId("preview-tab-new")).toBeInTheDocument();
+      expect(screen.getByTestId("preview-address-input")).toBeInTheDocument();
+
+      // Commit a bare hostname — normalized with http:// and loaded.
+      fireEvent.change(screen.getByTestId("preview-address-input"), {
+        target: { value: "localhost:4000" },
+      });
+      fireEvent.keyDown(screen.getByTestId("preview-address-input"), {
+        key: "Enter",
+      });
+
+      expect(screen.queryByTestId("preview-tab-new")).not.toBeInTheDocument();
+      expect(screen.getByTestId("preview-address-display")).toHaveTextContent(
+        "http://localhost:4000",
+      );
+      expect(wv.loadURL).toHaveBeenCalledWith("http://localhost:4000");
+    });
+
+    it("Escape cancels address editing back to the tab's URL", () => {
+      const { rerenderWithUrl } = renderPane();
+      rerenderWithUrl("http://localhost:3000/other");
+      fireEvent.click(screen.getByTestId("preview-address-display"));
+
+      const input = screen.getByTestId("preview-address-input");
+      expect(input).toHaveValue("http://localhost:3000/other");
+      fireEvent.change(input, { target: { value: "localhost:9999" } });
+      fireEvent.keyDown(input, { key: "Escape" });
+
+      // Editing abandoned — display restored, tab untouched.
+      expect(screen.getByTestId("preview-address-display")).toHaveTextContent(
+        "http://localhost:3000/other",
+      );
+      expect(tabCount()).toBe(2);
+    });
+  });
 });
 
 describe("formatPreviewComment", () => {
@@ -493,6 +631,52 @@ describe("PreviewPane integration (DesktopApp)", () => {
     fireEvent.click(screen.getByTestId("preview-close"));
     // Close = uncheck: the panel stays mounted (guest not reloaded), just hidden.
     const slot = screen.getByTestId("preview-pane").parentElement;
+    expect(slot).toHaveClass("desktop-panel-slot");
+    expect(slot).toHaveStyle({ display: "none" });
+  });
+
+  it("multi-tab: a second link opens a new tab; closing the last tab collapses the panel", () => {
+    window.waveHostType = "desktop";
+    render(<DesktopApp vscode={createMockVscode()} />);
+    sendCommand("desktopWorkdirState", {
+      workdir: "/work/a",
+      recentWorkdirs: ["/work/a"],
+    });
+    sendCommand("authStatusResponse", { isAuthenticated: true });
+    sendCommand("updateMessages", {
+      messages: [
+        MockDataGenerator.createAssistantMessage(
+          "[一](http://localhost:5173/a) 与 [二](http://localhost:5173/b)",
+        ),
+      ],
+    });
+
+    fireEvent.click(screen.getByText("一"));
+    const wv = screen
+      .getByTestId("preview-pane")
+      .querySelector("webview") as unknown as MockWebview;
+    wv.send = vi.fn();
+    wv.loadURL = vi.fn().mockResolvedValue(undefined);
+    wv.reload = vi.fn();
+    wv.reloadIgnoringCache = vi.fn();
+    wv.getURL = vi.fn(() => "http://localhost:5173/a");
+
+    // Second localhost link → a second tab, selected.
+    fireEvent.click(screen.getByText("二"));
+    const bar = screen.getByTestId("preview-tab-bar");
+    expect(bar.querySelectorAll(".preview-tab")).toHaveLength(2);
+    expect(bar.querySelector(".preview-tab.active")?.textContent).toContain(
+      "localhost:5173/b",
+    );
+
+    // Close the active tab, then the last one → panel collapses.
+    fireEvent.click(
+      bar.querySelectorAll(".preview-tab-close")[1] as HTMLElement,
+    );
+    fireEvent.click(
+      bar.querySelectorAll(".preview-tab-close")[0] as HTMLElement,
+    );
+    const slot = screen.getByTestId("preview-pane-empty").parentElement;
     expect(slot).toHaveClass("desktop-panel-slot");
     expect(slot).toHaveStyle({ display: "none" });
   });

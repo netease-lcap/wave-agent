@@ -1,5 +1,6 @@
 /* Chat Layout */
 .chat-container {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -10,6 +11,40 @@
        (the editor-area chrome), which would otherwise bleed through the
        transparent wrappers around .messages-container. */
   background-color: var(--vscode-panel-background);
+}
+
+/* Desktop drag-and-drop upload overlay, shown while a file hovers the pane.
+   pointer-events: none keeps normal input working while dragging. */
+.chat-drag-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background-color: rgba(193, 41, 46, 0.06);
+  border: 1.5px solid var(--vscode-brand-primary, #c1292e);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.chat-drag-overlay .codicon {
+  font-size: 36px;
+  color: var(--vscode-brand-primary, #c1292e);
+  margin-bottom: 6px;
+}
+
+.chat-drag-overlay-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vscode-brand-primary, #c1292e);
+}
+
+.chat-drag-overlay-sub {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #6b6b6b);
 }
 
 .input-area-container {

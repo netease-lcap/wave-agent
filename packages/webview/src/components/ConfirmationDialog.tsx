@@ -169,8 +169,12 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         return;
       }
     }
-    const focusables = getDialogFocusables(dialog);
-    (focusables[0] ?? dialog).focus();
+    // Every other confirmation: move focus into the dialog container itself.
+    // The primary action sits first in the Tab cycle (see button layout
+    // story), so focusing it on open would make an accidental Enter approve;
+    // the container keeps the initial focus neutral and Tab lands on the
+    // primary button.
+    dialog.focus();
   }, [confirmation.confirmationId, confirmation.toolName]);
 
   const handleReject = useCallback(() => {
@@ -311,6 +315,32 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         return;
       }
 
+      // Carousel navigation: ← / → cycle questions (AskUserQuestion with more
+      // than one question). Option labels and the "Other" textarea stop their
+      // own keys (the textarea stopPropagation's text-editing keys), so an
+      // arrow pressed while browsing questions rotates the carousel; when the
+      // focus is in the textarea the key never reaches here.
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        if (confirmation.toolName === ASK_USER_QUESTION_TOOL_NAME) {
+          const questions = (
+            confirmation.toolInput as unknown as AskUserQuestionInput
+          )?.questions;
+          if (questions && questions.length > 1) {
+            e.preventDefault();
+            setCurrentQuestionIndex((prev) =>
+              e.key === "ArrowRight"
+                ? prev >= questions.length - 1
+                  ? 0
+                  : prev + 1
+                : prev <= 0
+                  ? questions.length - 1
+                  : prev - 1,
+            );
+            return;
+          }
+        }
+      }
+
       // Modal focus trap: Tab/Shift+Tab cycle within the dialog so focus never
       // leaks into the message list / input behind it. When focus is somehow
       // outside the dialog (e.g. a queued confirmation replaced the current
@@ -340,7 +370,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleReject]);
+  }, [handleReject, confirmation.toolName, confirmation.toolInput]);
 
   const handleConfirm = useCallback(() => {
     restoreFocus();
@@ -491,20 +521,32 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     const q = questions[currentQuestionIndex];
     if (!q) return null;
 
-    const isLastQuestion = currentQuestionIndex === questions.length - 1;
-
     return (
       <div className="ask-user-questions">
         <div className="question-item">
+          {questions.length > 1 && (
+            <div
+              className="question-progress-bar"
+              data-testid="question-progress-bar"
+              aria-label={`共 ${questions.length} 个问题`}
+            >
+              {questions.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  tabIndex={-1}
+                  className={`question-progress-seg ${
+                    isQuestionAnswered(i) ? "done" : "todo"
+                  }`}
+                  aria-label={`定位到第 ${i + 1} 题`}
+                  title={`第 ${i + 1} 题`}
+                  onClick={() => setCurrentQuestionIndex(i)}
+                />
+              ))}
+            </div>
+          )}
           <div className="question-header-row">
             <span className="question-header-chip">{q.question}</span>
-            {questions.length > 1 && (
-              <div className="question-progress">
-                <span className="question-progress-text">
-                  {currentQuestionIndex + 1} / {questions.length}
-                </span>
-              </div>
-            )}
           </div>
           <div className="options-list" ref={questionsListRef}>
             {q.options.map((opt, oIndex) => (
@@ -661,21 +703,11 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                           if (e.key === "Enter" && !e.shiftKey) {
                             if (e.nativeEvent.isComposing) return;
                             e.preventDefault();
-                            // Wizard flow: advance to the next question while
-                            // one remains, submit only on the last one.
-                            const nav = dialogRef.current?.querySelector(
-                              ".question-navigation",
-                            );
-                            const nextBtn =
-                              nav?.querySelector<HTMLButtonElement>(
-                                '.confirmation-btn-secondary[aria-label="下一个"]',
-                              );
-                            if (nextBtn && !nextBtn.disabled) {
-                              nextBtn.click();
-                              return;
-                            }
+                            // Enter submits only when every question has a
+                            // valid answer; it never advances to the next
+                            // question (see "多问题循环轮播" spec).
                             const applyBtn =
-                              nav?.querySelector<HTMLButtonElement>(
+                              dialogRef.current?.querySelector<HTMLButtonElement>(
                                 ".confirmation-btn-apply",
                               );
                             if (applyBtn && !applyBtn.disabled) {
@@ -695,87 +727,97 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             })()}
           </div>
         </div>
-
-        <div className="question-navigation">
-          {currentQuestionIndex > 0 && (
-            <button
-              className="confirmation-btn confirmation-btn-secondary"
-              aria-label="上一个"
-              onClick={() =>
-                setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))
-              }
-            >
-              上一个
-            </button>
-          )}
-          {!isLastQuestion ? (
-            <button
-              className="confirmation-btn confirmation-btn-secondary"
-              aria-label="下一个"
-              disabled={!isCurrentQuestionAnswered()}
-              onClick={() =>
-                setCurrentQuestionIndex((prev) =>
-                  Math.min(questions.length - 1, prev + 1),
-                )
-              }
-            >
-              下一个
-            </button>
-          ) : (
-            <button
-              className="confirmation-btn confirmation-btn-apply"
-              onClick={handleConfirm}
-              disabled={isConfirmDisabled()}
-            >
-              提交回答
-            </button>
-          )}
-        </div>
       </div>
     );
   };
 
-  const isCurrentQuestionAnswered = () => {
-    if (confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME) return true;
+  // Bottom action bar for AskUserQuestion: a fixed three-button carousel
+  // ([上一个] [下一个] [提交回答]) when multiple questions, submit-only for a
+  // single question. DOM order is 提交 → 下一个 → 上一个 so the primary action
+  // is first in the Tab cycle; row-reverse CSS renders it at the far right.
+  const renderQuestionNavigation = () => {
+    if (confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME) return null;
     const questions = (
       confirmation.toolInput as unknown as AskUserQuestionInput
     ).questions;
-    const q = questions[currentQuestionIndex];
-    if (!q) return true;
-
-    const answer = answers[q.question];
-    const other = otherInputs[q.question];
-    if (q.multiSelect) {
-      return (
-        (Array.isArray(answer) && answer.length > 0) ||
-        (otherSelected[q.question] && !!other && other.trim())
-      );
-    }
+    if (!questions || questions.length === 0) return null;
+    const multi = questions.length > 1;
+    const canSubmit = !isConfirmDisabled();
     return (
-      (answer && answer !== "__other__") ||
-      (answer === "__other__" && other && other.trim())
+      <div className="question-navigation">
+        <button
+          type="button"
+          className="confirmation-btn confirmation-btn-apply"
+          onClick={handleConfirm}
+          disabled={!canSubmit}
+        >
+          <span className="btn-text">
+            提交回答
+            {canSubmit && <span className="btn-enter-hint">⏎</span>}
+          </span>
+        </button>
+        {multi && (
+          <button
+            type="button"
+            className="confirmation-btn confirmation-btn-secondary"
+            aria-label="下一个"
+            onClick={() =>
+              setCurrentQuestionIndex((prev) =>
+                prev >= questions.length - 1 ? 0 : prev + 1,
+              )
+            }
+          >
+            <span className="btn-text">下一个</span>
+          </button>
+        )}
+        {multi && (
+          <button
+            type="button"
+            className="confirmation-btn confirmation-btn-secondary"
+            aria-label="上一个"
+            onClick={() =>
+              setCurrentQuestionIndex((prev) =>
+                prev <= 0 ? questions.length - 1 : prev - 1,
+              )
+            }
+          >
+            <span className="btn-text">上一个</span>
+          </button>
+        )}
+      </div>
     );
   };
 
-  const isConfirmDisabled = () => {
+  const isQuestionAnswered = useCallback(
+    (index: number): boolean => {
+      if (confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME) return true;
+      const questions = (
+        confirmation.toolInput as unknown as AskUserQuestionInput
+      ).questions;
+      const q = questions[index];
+      if (!q) return true;
+      const answer = answers[q.question];
+      const other = otherInputs[q.question];
+      if (q.multiSelect) {
+        return (
+          (Array.isArray(answer) && answer.length > 0) ||
+          (otherSelected[q.question] && !!other && !!other.trim())
+        );
+      }
+      return (
+        !!(answer && answer !== "__other__") ||
+        (answer === "__other__" && !!other && !!other.trim())
+      );
+    },
+    [confirmation, answers, otherInputs, otherSelected],
+  );
+
+  const isConfirmDisabled = useCallback(() => {
     if (confirmation.toolName === ASK_USER_QUESTION_TOOL_NAME) {
       const questions = (
         confirmation.toolInput as unknown as AskUserQuestionInput
       ).questions;
-      return !questions.every((q) => {
-        const answer = answers[q.question];
-        const other = otherInputs[q.question];
-        if (q.multiSelect) {
-          return (
-            (Array.isArray(answer) && answer.length > 0) ||
-            (otherSelected[q.question] && !!other && other.trim())
-          );
-        }
-        return (
-          (answer && answer !== "__other__") ||
-          (answer === "__other__" && other && other.trim())
-        );
-      });
+      return !questions.every((q, i) => isQuestionAnswered(i));
     }
     const isPlanModeTool =
       confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
@@ -790,62 +832,61 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       return !feedback.trim();
     }
     return false;
-  };
+  }, [confirmation, showFeedbackInput, feedback, isQuestionAnswered]);
 
   return (
-    <div ref={dialogRef} className="confirmation-dialog">
+    <div ref={dialogRef} className="confirmation-dialog" tabIndex={-1}>
       <div className="confirmation-dialog-inner">
-        <div className="confirmation-header">
-          <div className="confirmation-header-top">
-            <div className="confirmation-title">
-              {confirmation.confirmationType}
+        <div className="confirmation-body">
+          <div className="confirmation-header">
+            <div className="confirmation-header-top">
+              <div className="confirmation-title">
+                {confirmation.confirmationType}
+              </div>
             </div>
-            <button
-              type="button"
-              className="confirmation-close-btn"
-              onClick={handleReject}
-              aria-label="关闭"
-              title="关闭"
-            >
-              <i className="codicon codicon-close"></i>
-            </button>
+            {confirmation.toolName === BASH_TOOL_NAME &&
+              !!confirmation.toolInput?.command && (
+                <div className="confirmation-command">
+                  {String(confirmation.toolInput.command)}
+                </div>
+              )}
+            {confirmation.toolName.startsWith("mcp__") &&
+              confirmation.toolInput && (
+                <div className="confirmation-mcp-params">
+                  <pre>{JSON.stringify(confirmation.toolInput, null, 2)}</pre>
+                </div>
+              )}
+            {[WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(
+              confirmation.toolName,
+            ) &&
+              !!confirmation.toolInput?.file_path && (
+                <div className="confirmation-file-path">
+                  <strong>文件:</strong>{" "}
+                  {String(confirmation.toolInput.file_path)}
+                </div>
+              )}
+            {confirmation.warning && (
+              <div className="confirmation-warning">
+                ⚠ {confirmation.warning}
+              </div>
+            )}
           </div>
-          {confirmation.toolName === BASH_TOOL_NAME &&
-            !!confirmation.toolInput?.command && (
-              <div className="confirmation-command">
-                {String(confirmation.toolInput.command)}
-              </div>
-            )}
-          {confirmation.toolName.startsWith("mcp__") &&
-            confirmation.toolInput && (
-              <div className="confirmation-mcp-params">
-                <pre>{JSON.stringify(confirmation.toolInput, null, 2)}</pre>
-              </div>
-            )}
-          {[WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(confirmation.toolName) &&
-            !!confirmation.toolInput?.file_path && (
-              <div className="confirmation-file-path">
-                <strong>文件:</strong>{" "}
-                {String(confirmation.toolInput.file_path)}
-              </div>
-            )}
-          {confirmation.warning && (
-            <div className="confirmation-warning">
-              ⚠ {confirmation.warning}
+
+          {renderQuestions()}
+
+          {[WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(
+            confirmation.toolName,
+          ) && (
+            <div className="confirmation-diff-viewer">
+              <DiffViewer
+                toolName={confirmation.toolName}
+                parameters={confirmation.toolInput}
+              />
             </div>
           )}
         </div>
 
-        {renderQuestions()}
-
-        {[WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(confirmation.toolName) && (
-          <div className="confirmation-diff-viewer">
-            <DiffViewer
-              toolName={confirmation.toolName}
-              parameters={confirmation.toolInput}
-            />
-          </div>
-        )}
+        {renderQuestionNavigation()}
 
         {confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME && (
           <div className="confirmation-actions">
@@ -961,6 +1002,16 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             )}
           </div>
         )}
+
+        <button
+          type="button"
+          className="confirmation-close-btn"
+          onClick={handleReject}
+          aria-label="关闭"
+          title="关闭"
+        >
+          <i className="codicon codicon-close"></i>
+        </button>
       </div>
     </div>
   );

@@ -24,6 +24,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   hideSessionButtons = false,
   hideMoreButton = false,
   panelToggle,
+  leading,
 }) => {
   const [showSessionList, setShowSessionList] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -33,6 +34,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
   return (
     <div className="chat-header" data-testid="chat-header">
+      {leading}
       <div className="header-title">{title}</div>
       <div className="header-buttons">
         {!hideSessionButtons && (

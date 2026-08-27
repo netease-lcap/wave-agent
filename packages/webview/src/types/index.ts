@@ -198,6 +198,12 @@ export interface ChatAppProps {
    * Undefined for the IDE hosts and for a single-pane desktop layout.
    */
   paneId?: string;
+  /**
+   * Desktop sidebar collapsed → the leftmost chat header (first pane of the
+   * top row in split view) shows an expand button. Built by the root ChatApp
+   * instance that owns the collapse state and threaded through DesktopShell.
+   */
+  sidebarExpandButton?: React.ReactNode;
 }
 
 /**
@@ -441,6 +447,9 @@ export interface MessageInputProps {
   btwPopup?: React.ReactNode;
   /** Disable the whole input area (e.g. desktop host without a workdir). */
   disabled?: boolean;
+  /** Desktop split-view pane this input belongs to; tagged on upload requests
+   *  so the host can route uploadSuccess back to the originating pane. */
+  paneId?: string;
 }
 
 /**
@@ -534,6 +543,8 @@ export interface ChatHeaderProps {
   hideMoreButton?: boolean;
   // Desktop host: conversation-level panel toggle (preview/diff/terminal).
   panelToggle?: PanelToggleProps;
+  /** Optional slot at the header's left edge (desktop sidebar expand button). */
+  leading?: React.ReactNode;
 }
 
 // Matches wave-agent-sdk's QueuedMessage type

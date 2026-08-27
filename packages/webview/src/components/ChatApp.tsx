@@ -10,6 +10,7 @@ import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
 import type { MessageInputHandle } from "./MessageInput";
 import { ChatHeader } from "./ChatHeader";
+import { Tooltip } from "./Tooltip";
 import { TaskList } from "./TaskList";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ConfirmationDialog } from "./ConfirmationDialog";
@@ -206,7 +207,32 @@ export function prunePanelGroupCache(keepKeys: Set<string>): void {
   }
 }
 
-export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
+/**
+ * Desktop sidebar collapsed → the leftmost chat header shows this expand button
+ * (spec 「侧边栏收起/展开」scenario 4). In split view the root instance builds it
+ * once and DesktopShell threads it into the first pane of the top row.
+ */
+const SidebarExpandButton: React.FC<{ onClick: () => void }> = ({
+  onClick,
+}) => (
+  <Tooltip text="展开侧边栏" position="bottom">
+    <button
+      className="header-button"
+      onClick={onClick}
+      data-testid="desktop-sidebar-expand"
+      aria-label="展开侧边栏"
+    >
+      <span className="codicon codicon-layout-panel-left"></span>
+    </button>
+  </Tooltip>
+);
+
+export const ChatApp: React.FC<ChatAppProps> = ({
+  vscode,
+  host,
+  paneId,
+  sidebarExpandButton,
+}) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const [queueEditWarning, setQueueEditWarning] = useState<string | null>(null);
   // In-app toasts (VS Code-style, bottom-right). Desktop host only: pushed via
@@ -294,6 +320,34 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         : (host?.recentWorkdirs?.[0] ?? host?.workdir)
       : effectiveWorkdir;
   const isDesktop = host?.type === "desktop";
+  // Desktop sidebar collapsed (spec 「侧边栏收起/展开」): fully hidden, chat takes
+  // the whole width; the leftmost chat header's expand button restores it.
+  // Persisted so a restart keeps the choice (scenario 7). Only the root
+  // instance (paneId undefined) owns this — panes receive the expand button
+  // as a ready-made ReactNode via sidebarExpandButton.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    () =>
+      typeof localStorage !== "undefined" &&
+      localStorage.getItem("wave.desktopSidebarCollapsed") === "1",
+  );
+  const handleSidebarCollapsedChange = useCallback((collapsed: boolean) => {
+    setSidebarCollapsed(collapsed);
+    try {
+      localStorage.setItem(
+        "wave.desktopSidebarCollapsed",
+        collapsed ? "1" : "0",
+      );
+    } catch {
+      // localStorage unavailable (sandboxed webview): the collapse still works
+      // for this session, it just won't persist.
+    }
+  }, []);
+  const expandBtn =
+    paneId === undefined && sidebarCollapsed ? (
+      <SidebarExpandButton
+        onClick={() => handleSidebarCollapsedChange(false)}
+      />
+    ) : null;
   // The pane's effective host ('local' or an SSH host name): a pane-bound
   // session's host (authoritative `desktopPanes` push) wins; the single-pane
   // layout reads the host-level current host. Remote sessions run the whole
@@ -410,6 +464,42 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       },
   );
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  // Desktop drag-and-drop file upload: a counter tracks nested dragenter /
+  // dragleave so quick in/out passes don't flicker the overlay.
+  const [dragActive, setDragActive] = useState(false);
+  const dragCounterRef = useRef(0);
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    setDragActive(true);
+  }, []);
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    // Visual "copy" cursor hint. jsdom's DataTransferPolyfill exposes
+    // dropEffect as read-only, so guard for the test environment.
+    try {
+      e.dataTransfer.dropEffect = "copy";
+    } catch {
+      // ignore: dropEffect is only a cursor hint
+    }
+  }, []);
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setDragActive(false);
+    }
+  }, []);
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setDragActive(false);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      messageInputRef.current?.uploadFiles(files);
+    }
+  }, []);
   const checkedPanelsRef = useRef(checkedPanels);
   const panelWidthsRef = useRef(panelWidths);
   const manualWidthsRef = useRef(manualWidths);
@@ -2005,6 +2095,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           onRetry={currentForward ? handleRemotePreviewRetry : undefined}
           vscode={vscode}
           onAddComment={handleAddComment}
+          onLastTabClosed={() => setPreviewUrl(null)}
           {...common}
         />
       ) : (
@@ -2187,6 +2278,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
             sessionId={state.currentSession?.id}
             permissionMode={state.permissionMode}
             initialAttachedImages={state.attachedImages}
+            paneId={paneId}
             disabled={host?.type === "desktop" && !effectiveWorkdir}
             workdirSelector={
               host?.type === "desktop" && !hasVisibleMessages ? (
@@ -2349,10 +2441,23 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
 
   const chatContainer = (
     <div
-      className="chat-container"
+      className={`chat-container${dragActive ? " drag-active" : ""}`}
       data-testid="chat-container"
       ref={isDesktop ? chatContainerRef : undefined}
+      onDragEnter={isDesktop ? handleDragEnter : undefined}
+      onDragOver={isDesktop ? handleDragOver : undefined}
+      onDragLeave={isDesktop ? handleDragLeave : undefined}
+      onDrop={isDesktop ? handleDrop : undefined}
     >
+      {dragActive && (
+        <div className="chat-drag-overlay" data-testid="chat-drag-overlay">
+          <i className="codicon codicon-cloud-upload"></i>
+          <span className="chat-drag-overlay-title">释放以上传文件</span>
+          <span className="chat-drag-overlay-sub">
+            支持多文件，上传到当前对话
+          </span>
+        </div>
+      )}
       {queueEditWarning && (
         <div
           className="queue-edit-warning-banner"
@@ -2370,6 +2475,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         </div>
       )}
       <ChatHeader
+        leading={paneId !== undefined ? sidebarExpandButton : expandBtn}
         onNewSession={handleClearChat}
         newSessionDisabled={state.isStreaming}
         onAbortMessage={handleAbortMessage}
@@ -2434,6 +2540,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
             onLogin={handleLogin}
             onLogout={handleLogout}
             isAuthenticated={state.isAuthenticated}
+            sidebarExpandButton={expandBtn}
+            collapsed={sidebarCollapsed}
+            onCollapsedChange={handleSidebarCollapsedChange}
           />
           {dialogs}
         </>
@@ -2469,6 +2578,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           onSelectSession={host.onSelectSession}
           onOpenPane={host.onOpenPane}
           onDeleteSession={host.onDeleteSession}
+          collapsed={sidebarCollapsed}
+          onCollapsedChange={handleSidebarCollapsedChange}
         />
         {chatContainer}
         {dialogs}

@@ -725,6 +725,138 @@ body.is-panel-resizing * {
   flex-shrink: 0;
 }
 
+/* ---- Preview tabs (spec desktop-app.md 预览多标签页) ---- */
+
+.preview-tab-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 6px 0;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.preview-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 160px;
+  min-width: 56px;
+  padding: 3px 4px 3px 8px;
+  border: 1px solid transparent;
+  border-top: 2px solid transparent;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  font-size: 12px;
+  color: var(--vscode-tab-inactiveForeground, var(--vscode-foreground));
+  background: var(--vscode-tab-inactiveBackground, transparent);
+  cursor: pointer;
+  user-select: none;
+}
+
+.preview-tab:hover {
+  background: var(--vscode-tab-hoverBackground, var(--vscode-list-hoverBackground));
+}
+
+.preview-tab.active {
+  background: var(--vscode-tab-activeBackground, var(--vscode-editor-background));
+  border-color: var(--vscode-tab-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.2)));
+  border-top-color: var(--vscode-brand-primary, #c1292e);
+  color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+}
+
+.preview-tab.active .preview-tab-label {
+  opacity: 1;
+  font-weight: 500;
+}
+
+.preview-tab-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.preview-tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.preview-tab-close:hover {
+  opacity: 1;
+  background: var(--vscode-list-hoverBackground);
+}
+
+.preview-tab-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0 0 2px 2px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.preview-tab-add:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.preview-pane-address {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  outline: none;
+}
+
+.preview-pane-address:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+/* Blank-tab placeholder over the webview body (spec scenario 5). */
+.preview-tab-new {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #999);
+  background: var(--vscode-editor-background);
+}
+
+.preview-tab-new .codicon {
+  font-size: 28px;
+  opacity: 0.4;
+}
+
 .preview-pane-url {
   flex: 1;
   min-width: 0;
@@ -1020,5 +1152,5 @@ body.is-panel-resizing * {
 .desktop-chat-main .input-area-container--confirm .confirmation-dialog-inner {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
 }

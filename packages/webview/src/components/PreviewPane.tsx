@@ -2,9 +2,16 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { VsCodeApi } from "../types";
 
 /**
- * Desktop-only preview pane: renders a localhost dev server in a
- * sandboxed <webview> next to the chat, with an element picker whose comments
- * are appended to the chat input so several can be edited and sent together.
+ * Desktop-only preview pane: renders localhost dev servers in a sandboxed
+ * <webview> next to the chat, with an element picker whose comments are
+ * appended to the chat input so several can be edited and sent together.
+ *
+ * Multiple tabs (spec desktop-app.md 预览多标签页): each tab carries one
+ * preview page; the tab bar scrolls horizontally when it overflows, clicking a
+ * tab switches it, closing a tab removes it (the active tab falls back to its
+ * left neighbor), and closing the last tab collapses the panel. Tabs are
+ * internal state — the parent only feeds new URLs via the `url` prop, which
+ * reuses an existing tab with the same URL or appends a new one.
  *
  * Communication with the picker preload inside the guest:
  *   host → guest : wv.send('wave-picker', { action, palette? })
@@ -93,6 +100,45 @@ const readPalette = (): Record<string, string> => {
   };
 };
 
+/** One preview tab (spec 预览多标签页 scenario 1). */
+interface PreviewTab {
+  id: string;
+  /** URL the guest loads; "" = blank tab awaiting an address. */
+  url: string;
+  /** URL actually shown in the address bar — follows in-guest navigation. */
+  displayUrl: string;
+  loadError: string | null;
+}
+
+let tabSeq = 0;
+const genTabId = (): string => `preview-tab-${++tabSeq}`;
+
+/** Address-bar input → loadable URL: bare hostnames get http://. */
+const normalizeUrl = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  // "localhost:5173" reads like a scheme to the generic regex — a colon
+  // followed by digits is a port, not a scheme, so those stay bare-host.
+  if (
+    /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed) &&
+    !/^[a-zA-Z][a-zA-Z0-9+.-]*:\d/.test(trimmed)
+  ) {
+    return trimmed;
+  }
+  return `http://${trimmed}`;
+};
+
+/** Tab label: host + non-root path — the panel is narrow, full URLs overflow. */
+const shortLabel = (u: string): string => {
+  if (!u) return "新标签页";
+  try {
+    const parsed = new URL(u);
+    return `${parsed.host}${parsed.pathname === "/" ? "" : parsed.pathname}`;
+  } catch {
+    return u;
+  }
+};
+
 export interface PreviewPaneProps {
   url: string;
   vscode: VsCodeApi;
@@ -110,6 +156,9 @@ export interface PreviewPaneProps {
   /** Remote sessions: re-establish the port forward on error retry (scenario
    * 16). Undefined for local URLs, where the retry reloads the guest instead. */
   onRetry?: () => void;
+  /** Closing the LAST tab collapses the panel — the parent resets its preview
+   * URL to the empty stub so a later link click reopens cleanly. */
+  onLastTabClosed?: () => void;
 }
 
 export const PreviewPane: React.FC<PreviewPaneProps> = ({
@@ -122,9 +171,16 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   onAddComment,
   originalUrl,
   onRetry,
+  onLastTabClosed,
 }) => {
-  const [displayUrl, setDisplayUrl] = useState(url);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [tabs, setTabs] = useState<PreviewTab[]>(() =>
+    url ? [{ id: genTabId(), url, displayUrl: url, loadError: null }] : [],
+  );
+  // "" until the mount effect below selects the initial tab — keeps the first
+  // render free of the "active tab is null" branch flicker.
+  const [activeTabId, setActiveTabId] = useState("");
+  const [addressEditing, setAddressEditing] = useState(false);
+  const [editingUrl, setEditingUrl] = useState("");
   const [pickerActive, setPickerActive] = useState(false);
   const [pickerUnsupported, setPickerUnsupported] = useState(false);
   const webviewRef = useRef<WebviewTagElement | null>(null);
@@ -139,6 +195,10 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   pickerActiveRef.current = pickerActive;
   const onAddCommentRef = useRef(onAddComment);
   onAddCommentRef.current = onAddComment;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const onLastTabClosedRef = useRef(onLastTabClosed);
+  onLastTabClosedRef.current = onLastTabClosed;
   // Prop mirrors for the []-deps wiring effect below: the ipc handler runs
   // long after the effect captured its closures, so it reads current values
   // from refs (same pattern as onAddCommentRef).
@@ -146,6 +206,16 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   urlPropRef.current = url;
   const originalUrlRef = useRef(originalUrl);
   originalUrlRef.current = originalUrl;
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+  // (tabId, url) already handed to the guest — dedups tab switches and the
+  // same-url reuse in openUrlInTab, like the old single-tab [url] effect.
+  const lastLoadedRef = useRef("");
+  const addressInputRef = useRef<HTMLInputElement | null>(null);
+
+  const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
 
   const sendPicker = useCallback((action: "activate" | "deactivate") => {
     const wv = webviewRef.current;
@@ -162,6 +232,12 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     sendPicker("deactivate");
   }, [sendPicker]);
 
+  // Focus the address bar on a blank tab / while editing it.
+  useEffect(() => {
+    const tab = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
+    if (addressEditing || !tab?.url) addressInputRef.current?.focus();
+  }, [addressEditing, activeTabId]);
+
   // Wire the <webview> once. `src` is set imperatively (never from JSX) so
   // React re-renders can't reload the guest; later navigations use loadURL.
   useEffect(() => {
@@ -176,11 +252,15 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     };
     const onDidNavigate = (e: Event) => {
       const navUrl = (e as { url?: string }).url;
-      if (navUrl) {
-        currentUrlRef.current = navUrl;
-        setDisplayUrl(navUrl);
-      }
-      setLoadError(null);
+      const tabId = activeTabIdRef.current;
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === tabId
+            ? { ...t, displayUrl: navUrl ?? t.displayUrl, loadError: null }
+            : t,
+        ),
+      );
+      if (navUrl) currentUrlRef.current = navUrl;
       // Fresh document → guest preload restarts inactive.
       pickerReadyRef.current = false;
       pickerActiveRef.current = false;
@@ -189,9 +269,12 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     };
     const onDidNavigateInPage = (e: Event) => {
       const navUrl = (e as { url?: string }).url;
+      const tabId = activeTabIdRef.current;
       if (navUrl) {
         currentUrlRef.current = navUrl;
-        setDisplayUrl(navUrl);
+        setTabs((prev) =>
+          prev.map((t) => (t.id === tabId ? { ...t, displayUrl: navUrl } : t)),
+        );
       }
       // SPA navigation keeps the SAME preload alive — tell it to stand down.
       deactivatePicker();
@@ -204,7 +287,14 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       };
       if (detail.isMainFrame === false) return;
       if (detail.errorCode === -3) return; // ERR_ABORTED: superseded by a newer load
-      setLoadError(detail.errorDescription || "ERR_FAILED");
+      const tabId = activeTabIdRef.current;
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === tabId
+            ? { ...t, loadError: detail.errorDescription || "ERR_FAILED" }
+            : t,
+        ),
+      );
     };
     const onIpcMessage = (e: Event) => {
       const { channel, args } = e as unknown as {
@@ -239,7 +329,6 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     wv.addEventListener("did-navigate-in-page", onDidNavigateInPage);
     wv.addEventListener("did-fail-load", onDidFailLoad);
     wv.addEventListener("ipc-message", onIpcMessage);
-    wv.setAttribute("src", urlPropRef.current);
     return () => {
       wv.removeEventListener("dom-ready", onDomReady);
       wv.removeEventListener("did-navigate", onDidNavigate);
@@ -251,23 +340,131 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     // runs once per mount.
   }, [deactivatePicker, sendPicker]);
 
-  // Navigate when a different localhost link is clicked while the panel is open.
-  const lastUrlRef = useRef(url);
+  // Select the initial tab once mounted (tabs may start empty for a blank pane).
   useEffect(() => {
-    if (url === lastUrlRef.current) return;
-    lastUrlRef.current = url;
-    currentUrlRef.current = url;
-    setDisplayUrl(url);
-    setLoadError(null);
+    if (tabsRef.current.length > 0) {
+      setActiveTabId(tabsRef.current[0].id);
+    }
+  }, []);
+
+  // Parent asked for a URL (localhost link click / forward established): reuse
+  // a tab already showing it, else append a new one (spec scenario 1).
+  const openUrlInTab = useCallback((target: string) => {
+    const existing = tabsRef.current.find((t) => t.url === target);
+    if (existing) {
+      setActiveTabId(existing.id);
+      return;
+    }
+    const tab: PreviewTab = {
+      id: genTabId(),
+      url: target,
+      displayUrl: target,
+      loadError: null,
+    };
+    setTabs((prev) => [...prev, tab]);
+    setActiveTabId(tab.id);
+  }, []);
+
+  const lastRequestedUrlRef = useRef(url);
+  useEffect(() => {
+    if (!url || url === lastRequestedUrlRef.current) return;
+    lastRequestedUrlRef.current = url;
+    openUrlInTab(url);
+  }, [url, openUrlInTab]);
+
+  // Load the active tab into the single guest; switching tabs navigates it
+  // (no per-tab page state survives, dev-server reloads are cheap).
+  useEffect(() => {
+    const tab = tabs.find((t) => t.id === activeTabId);
+    if (!tab || !tab.url) return;
+    const key = `${tab.id}:${tab.url}`;
+    if (lastLoadedRef.current === key) return;
+    lastLoadedRef.current = key;
     const wv = webviewRef.current;
     if (!wv) return;
+    currentUrlRef.current = tab.url;
     if (domReadyRef.current) {
-      void wv.loadURL(url);
+      void wv.loadURL(tab.url);
     } else {
       // Guest hasn't finished its first load yet — retarget the initial src.
-      wv.setAttribute("src", url);
+      wv.setAttribute("src", tab.url);
     }
-  }, [url]);
+  }, [activeTabId, tabs]);
+
+  /** Commit the address bar into the active tab (spec scenario 5). */
+  const navigateActiveTab = useCallback((target: string) => {
+    const finalUrl = normalizeUrl(target);
+    if (!finalUrl) return;
+    const tabId = activeTabIdRef.current;
+    setTabs((prev) => {
+      if (!prev.some((t) => t.id === tabId)) {
+        // No active tab (edge case): promote the navigation to a new tab.
+        const tab: PreviewTab = {
+          id: genTabId(),
+          url: finalUrl,
+          displayUrl: finalUrl,
+          loadError: null,
+        };
+        setActiveTabId(tab.id);
+        return [...prev, tab];
+      }
+      return prev.map((t) =>
+        t.id === tabId
+          ? { ...t, url: finalUrl, displayUrl: finalUrl, loadError: null }
+          : t,
+      );
+    });
+  }, []);
+
+  const addBlankTab = useCallback(() => {
+    const tab: PreviewTab = {
+      id: genTabId(),
+      url: "",
+      displayUrl: "",
+      loadError: null,
+    };
+    setTabs((prev) => [...prev, tab]);
+    setActiveTabId(tab.id);
+    setEditingUrl("");
+    setAddressEditing(true);
+  }, []);
+
+  const closeTab = useCallback((tabId: string) => {
+    setTabs((prev) => {
+      const idx = prev.findIndex((t) => t.id === tabId);
+      if (idx === -1) return prev;
+      const next = prev.filter((t) => t.id !== tabId);
+      if (next.length === 0) {
+        // Last tab closed → collapse the panel; the parent resets to the
+        // empty stub so a later link click reopens (spec scenario 4).
+        onLastTabClosedRef.current?.();
+        onCloseRef.current?.();
+        return next;
+      }
+      if (activeTabIdRef.current === tabId) {
+        // Closing the selected tab → fall back to its left neighbor.
+        const nextActive = next[Math.max(0, idx - 1)];
+        setActiveTabId(nextActive.id);
+      }
+      return next;
+    });
+  }, []);
+
+  const startEditing = () => {
+    const tab = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
+    setEditingUrl(tab?.displayUrl ?? "");
+    setAddressEditing(true);
+  };
+  const commitAddress = () => {
+    const target = editingUrl;
+    setAddressEditing(false);
+    navigateActiveTab(target);
+  };
+  const cancelAddress = () => {
+    setAddressEditing(false);
+    const tab = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
+    setEditingUrl(tab?.displayUrl ?? "");
+  };
 
   const togglePicker = () => {
     const next = !pickerActiveRef.current;
@@ -290,7 +487,10 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   }, [pickerUnsupported]);
 
   const handleRefresh = () => {
-    setLoadError(null);
+    const tabId = activeTabIdRef.current;
+    setTabs((prev) =>
+      prev.map((t) => (t.id === tabId ? { ...t, loadError: null } : t)),
+    );
     // Force-refresh: plain reload() honors the HTTP cache, which can hide a
     // dev server's latest output behind stale cache headers.
     webviewRef.current?.reloadIgnoringCache();
@@ -334,10 +534,65 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     >
       <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
+        <div className="preview-tab-bar" data-testid="preview-tab-bar">
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={`preview-tab${tab.id === activeTabId ? " active" : ""}`}
+              onClick={() => setActiveTabId(tab.id)}
+              title={tab.displayUrl || "新标签页"}
+              data-testid={`preview-tab-${tab.id}`}
+            >
+              <span className="preview-tab-label">
+                {shortLabel(tab.displayUrl)}
+              </span>
+              <button
+                className="preview-tab-close"
+                title="关闭标签页"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeTab(tab.id);
+                }}
+                data-testid={`preview-tab-close-${tab.id}`}
+              >
+                <i className="codicon codicon-close" />
+              </button>
+            </div>
+          ))}
+          <button
+            className="preview-tab-add"
+            title="新建标签页"
+            aria-label="新建标签页"
+            onClick={addBlankTab}
+            data-testid="preview-tab-add"
+          >
+            <i className="codicon codicon-add" />
+          </button>
+        </div>
         <div className="preview-pane-toolbar">
-          <span className="preview-pane-url" title={displayUrl}>
-            {displayUrl}
-          </span>
+          {addressEditing || !activeTab?.url ? (
+            <input
+              ref={addressInputRef}
+              className="preview-pane-address"
+              value={editingUrl}
+              onChange={(e) => setEditingUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitAddress();
+                else if (e.key === "Escape") cancelAddress();
+              }}
+              placeholder="输入网址，例如 localhost:5173"
+              data-testid="preview-address-input"
+            />
+          ) : (
+            <span
+              className="preview-pane-url"
+              title={activeTab.displayUrl}
+              onClick={startEditing}
+              data-testid="preview-address-display"
+            >
+              {activeTab.displayUrl}
+            </span>
+          )}
           <button
             className={`preview-pane-button${pickerActive ? " active" : ""}`}
             title="选择元素并评论"
@@ -387,14 +642,25 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
             preload={window.wavePickerPreloadPath}
             webpreferences="sandbox=yes, contextIsolation=yes"
           />
-          {loadError && (
+          {activeTab && !activeTab.url && (
+            <div className="preview-tab-new" data-testid="preview-tab-new">
+              <span className="codicon codicon-globe" />
+              <span>在上方地址栏输入网址开始预览</span>
+            </div>
+          )}
+          {activeTab?.loadError && (
             <div className="preview-pane-error" data-testid="preview-error">
-              <span>页面加载失败：{loadError}</span>
+              <span>页面加载失败：{activeTab.loadError}</span>
               <button
                 className="preview-pane-button"
                 data-testid="preview-retry"
                 onClick={() => {
-                  setLoadError(null);
+                  const tabId = activeTabIdRef.current;
+                  setTabs((prev) =>
+                    prev.map((t) =>
+                      t.id === tabId ? { ...t, loadError: null } : t,
+                    ),
+                  );
                   (onRetry ?? handleRefresh)();
                 }}
               >
