@@ -325,11 +325,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // Persisted so a restart keeps the choice (scenario 7). Only the root
   // instance (paneId undefined) owns this — panes receive the expand button
   // as a ready-made ReactNode via sidebarExpandButton.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
-    () =>
-      typeof localStorage !== "undefined" &&
-      localStorage.getItem("wave.desktopSidebarCollapsed") === "1",
-  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("wave.desktopSidebarCollapsed") === "1";
+    } catch {
+      // localStorage unavailable (sandboxed webview): default to expanded.
+      return false;
+    }
+  });
   const handleSidebarCollapsedChange = useCallback((collapsed: boolean) => {
     setSidebarCollapsed(collapsed);
     try {
