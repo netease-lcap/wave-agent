@@ -328,7 +328,25 @@ export class MessageManager {
     // explicitly (the display stream must keep the full pre-compaction
     // history while the context folds at the last compact boundary).
     if (!opts?.keepDisplay) {
-      this.displayMessages = [...messages];
+      if (messages.length === 0) {
+        // Clear path — nothing to merge.
+        this.displayMessages = [...messages];
+      } else {
+        // Routine changes (new messages, tool block updates) still touch the
+        // display stream, but after compaction the display holds the full
+        // pre-compaction history while the context is folded. Merge by id so
+        // new messages append to the display stream and updated messages
+        // replace their display copy without dropping that history.
+        const byId = new Map(messages.map((m) => [m.id, m]));
+        const merged = this.displayMessages.map((m) => byId.get(m.id) ?? m);
+        const known = new Set(this.displayMessages.map((m) => m.id));
+        for (const m of messages) {
+          if (!known.has(m.id)) {
+            merged.push(m);
+          }
+        }
+        this.displayMessages = merged;
+      }
     }
 
     // Incrementally extract metadata from new messages
