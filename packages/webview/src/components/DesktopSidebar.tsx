@@ -237,29 +237,33 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     <div className="desktop-sidebar" data-testid="desktop-sidebar">
       <div className="desktop-sidebar-header">
         <span className="desktop-sidebar-title">Wave 代码智聊</span>
-        <Tooltip text="更多" position="bottom">
-          <button
-            className="desktop-sidebar-more-btn"
-            onClick={() => setShowMoreMenu((prev) => !prev)}
-            data-testid="desktop-more-btn"
-            aria-label="更多"
-          >
-            <MoreIcon />
-          </button>
-        </Tooltip>
-        <Tooltip text="收起侧边栏" position="bottom">
-          <button
-            className="desktop-sidebar-more-btn"
-            onClick={() => {
-              setShowMoreMenu(false);
-              onCollapsedChange(true);
-            }}
-            data-testid="desktop-sidebar-collapse"
-            aria-label="收起侧边栏"
-          >
-            <span className="codicon codicon-layout-panel-left"></span>
-          </button>
-        </Tooltip>
+        {/* The header is space-between, so both buttons must live in one
+            grouped flex row — otherwise "更多" gets pushed to the middle. */}
+        <div className="desktop-sidebar-actions">
+          <Tooltip text="更多" position="bottom">
+            <button
+              className="desktop-sidebar-more-btn"
+              onClick={() => setShowMoreMenu((prev) => !prev)}
+              data-testid="desktop-more-btn"
+              aria-label="更多"
+            >
+              <MoreIcon />
+            </button>
+          </Tooltip>
+          <Tooltip text="收起侧边栏" position="bottom">
+            <button
+              className="desktop-sidebar-more-btn"
+              onClick={() => {
+                setShowMoreMenu(false);
+                onCollapsedChange(true);
+              }}
+              data-testid="desktop-sidebar-collapse"
+              aria-label="收起侧边栏"
+            >
+              <span className="codicon codicon-layout-panel-left"></span>
+            </button>
+          </Tooltip>
+        </div>
       </div>
       {showMoreMenu && (
         <MoreMenu
