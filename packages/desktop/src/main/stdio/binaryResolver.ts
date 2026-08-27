@@ -5,9 +5,10 @@
  * 2. The CLI bundled inside the app (resources/wave-cli, shipped in the
  *    installer) is copied into `~/.wave/cli/desktop` — the packaged install
  *    dir is read-only on macOS/Windows, so the runtime copy lives under the
- *    user home. The CLI version tracks the app version (shipped with the
- *    app). Each frontend (vscode/desktop/jetbrains) keeps its own subdir so
- *    different versions never overwrite each other.
+ *    user home. The runtime copy is refreshed whenever its bundle bytes drift
+ *    from the app's (app upgrades AND same-version dev reinstalls like
+ *    `desktop:install`). Each frontend (vscode/desktop/jetbrains) keeps its
+ *    own subdir so different versions never overwrite each other.
  * 3. The grep tool's runtime dependency `@vscode/ripgrep` (JS wrapper +
  *    platform rg binary, ~5MB) is downloaded from the npmmirror registry on
  *    first use and cached in the shared `~/.wave/cli/node_modules/@vscode`
@@ -20,6 +21,7 @@
  * cached for the app lifetime.
  */
 
+import { createHash } from "node:crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -194,7 +196,10 @@ export async function ensureRipgrep(
 
 /**
  * Copy the bundled CLI into the runtime dir when missing or when the bundled
- * version differs (app upgrade). The cached rg download lives in the shared
+ * bundle bytes differ from the runtime copy. Content comparison instead of a
+ * version-string check: local dev reinstalls (`desktop:install`) refresh the
+ * app without bumping its version, so an unchanged version number cannot be
+ * trusted as "same CLI". The cached rg download lives in the shared
  * `~/.wave/cli/node_modules/@vscode` dir — outside this per-end dir — so an
  * already-downloaded rg is never re-downloaded after an upgrade. Returns the
  * runtime entry path.
@@ -207,10 +212,17 @@ function prepareCli(): string {
     throw new Error(`内置 CLI 缺失（${bundledEntry}）。请重新安装应用。`);
   }
 
+  const runtimeBundle = path.join(
+    cliInstallDir(),
+    "dist",
+    "bundle",
+    "wave.mjs",
+  );
   const needCopy =
     !fileExists(entry) ||
-    bundledVersion() !== runtimeVersion() ||
-    !fileExists(path.join(cliInstallDir(), "dist", "bundle", "wave.mjs"));
+    !fileExists(runtimeBundle) ||
+    fileHash(path.join(bundledCliDir(), "dist", "bundle", "wave.mjs")) !==
+      fileHash(runtimeBundle);
 
   if (needCopy) {
     fs.mkdirSync(cliInstallDir(), { recursive: true });
@@ -227,23 +239,10 @@ function prepareCli(): string {
   return entry;
 }
 
-function bundledVersion(): string {
+/** sha256 of a file's bytes, or "" when it can't be read (missing/corrupt). */
+function fileHash(p: string): string {
   try {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(bundledCliDir(), "package.json"), "utf-8"),
-    ) as { version?: string };
-    return pkg.version ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function runtimeVersion(): string {
-  try {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(cliInstallDir(), "package.json"), "utf-8"),
-    ) as { version?: string };
-    return pkg.version ?? "";
+    return createHash("sha256").update(fs.readFileSync(p)).digest("hex");
   } catch {
     return "";
   }
