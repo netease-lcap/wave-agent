@@ -3,8 +3,10 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 
 /**
  * Keyboard accessibility of the custom dropdowns in the message input:
- * items must be Tab-focusable and activatable with Enter/Space, and Escape
- * must close the menu and return focus to its trigger button.
+ * both dropdowns use roving tabindex — opening focuses an item which becomes
+ * the single tab stop, Arrow keys move between items, Enter/Space activate,
+ * Escape closes and returns focus to the trigger button, and Tab leaves the
+ * menu without activating anything.
  */
 describe("Message input dropdown keyboard accessibility", () => {
   beforeEach(() => {
@@ -19,7 +21,48 @@ describe("Message input dropdown keyboard accessibility", () => {
     fireEvent.click(screen.getByRole("button", { name: "添加" }));
   };
 
-  it("should make + menu items Tab-focusable and activate them with Enter", () => {
+  it("should open the + menu focused on its first item as the single tab stop", async () => {
+    renderChatApp();
+    openPlusMenu();
+
+    const uploadItem = screen.getByRole("menuitem", { name: "上传文件" });
+    const historyItem = screen.getByRole("menuitem", { name: "历史提示词" });
+    expect(uploadItem).toHaveProperty("tabIndex", 0);
+    expect(historyItem).toHaveProperty("tabIndex", -1);
+
+    await waitFor(() => {
+      expect(uploadItem).toBe(document.activeElement);
+    });
+  });
+
+  it("should rove focus between + menu items with Arrow keys without leaving bounds", () => {
+    renderChatApp();
+    openPlusMenu();
+
+    const uploadItem = screen.getByRole("menuitem", { name: "上传文件" });
+    const historyItem = screen.getByRole("menuitem", { name: "历史提示词" });
+    uploadItem.focus();
+
+    // Already on the first item — ArrowUp does not wrap.
+    fireEvent.keyDown(uploadItem, { key: "ArrowUp" });
+    expect(uploadItem).toBe(document.activeElement);
+
+    // ArrowDown moves focus to the next item, which becomes the tab stop.
+    fireEvent.keyDown(uploadItem, { key: "ArrowDown" });
+    expect(historyItem).toBe(document.activeElement);
+    expect(historyItem).toHaveProperty("tabIndex", 0);
+    expect(uploadItem).toHaveProperty("tabIndex", -1);
+
+    // Already on the last item — ArrowDown does not wrap.
+    fireEvent.keyDown(historyItem, { key: "ArrowDown" });
+    expect(historyItem).toBe(document.activeElement);
+
+    fireEvent.keyDown(historyItem, { key: "ArrowUp" });
+    expect(uploadItem).toBe(document.activeElement);
+    expect(uploadItem).toHaveProperty("tabIndex", 0);
+  });
+
+  it("should trigger the hidden file input when pressing Enter on 上传文件", () => {
     renderChatApp();
     // jsdom has no real file dialog; silence the hidden file input click.
     const clickSpy = vi
@@ -28,11 +71,6 @@ describe("Message input dropdown keyboard accessibility", () => {
     openPlusMenu();
 
     const uploadItem = screen.getByRole("menuitem", { name: "上传文件" });
-    const historyItem = screen.getByRole("menuitem", { name: "历史提示词" });
-    expect(uploadItem).toHaveProperty("tabIndex", 0);
-    expect(historyItem).toHaveProperty("tabIndex", 0);
-
-    // Enter activates the item and closes the menu.
     uploadItem.focus();
     fireEvent.keyDown(uploadItem, { key: "Enter" });
     expect(clickSpy).toHaveBeenCalled();
@@ -63,6 +101,21 @@ describe("Message input dropdown keyboard accessibility", () => {
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "添加" }),
     );
+  });
+
+  it("should close the + menu with Tab without activating any item", () => {
+    renderChatApp();
+    const clickSpy = vi
+      .spyOn(HTMLInputElement.prototype, "click")
+      .mockImplementation(() => {});
+    openPlusMenu();
+
+    const uploadItem = screen.getByRole("menuitem", { name: "上传文件" });
+    uploadItem.focus();
+    fireEvent.keyDown(uploadItem, { key: "Tab" });
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(clickSpy).not.toHaveBeenCalled();
   });
 
   it("should make the permission menu a roving-tabindex listbox (Arrow keys + Enter)", async () => {
