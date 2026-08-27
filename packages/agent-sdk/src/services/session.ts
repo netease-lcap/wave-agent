@@ -302,12 +302,18 @@ export async function loadSessionFromJsonl(
 
     const allMessages = await jsonlHandler.read(resolvedPath);
 
-    // Return the FULL transcript. The transcript is append-only and compaction
-    // writes only the compact block (preserved last rounds are dedup-skipped),
-    // so every message id appears exactly once — the UI renders the whole
-    // history including pre-compaction messages. The API context folding at
-    // the last compact boundary happens in MessageManager.initializeFromSession.
-    const messages = allMessages;
+    // Transcripts written by older CLI versions re-appended the preserved
+    // rounds at each compaction point, so a message id can appear twice.
+    // Keep the first occurrence — duplicates would render twice once the
+    // full-history restore below feeds them to displayMessages. Append-only
+    // transcripts (current write side) have unique ids, making this a no-op.
+    const seenIds = new Set<string>();
+    const messages: Message[] = [];
+    for (const message of allMessages) {
+      if (message.id && seenIds.has(message.id)) continue;
+      if (message.id) seenIds.add(message.id);
+      messages.push(message);
+    }
 
     // Extract metadata from messages
     const lastMessage =
