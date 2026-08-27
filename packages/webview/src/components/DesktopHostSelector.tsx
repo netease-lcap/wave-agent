@@ -103,7 +103,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
         tabIndex={0}
       >
         <span
-          className={`codicon ${isLocal ? "codicon-laptop" : "codicon-remote"}`}
+          className={`codicon ${isLocal ? "codicon-device-desktop" : "codicon-remote"}`}
         ></span>
         <span className="desktop-host-name">{isLocal ? "本地" : host}</span>
         <span className="codicon codicon-chevron-down desktop-host-caret"></span>
@@ -132,7 +132,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
             }}
             data-testid="desktop-host-local"
           >
-            <span className="codicon codicon-laptop"></span>
+            <span className="codicon codicon-device-desktop"></span>
             <span>本地</span>
           </div>
           {hosts.length > 0 && (

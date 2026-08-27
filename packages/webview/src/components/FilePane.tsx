@@ -454,7 +454,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               data-testid="file-open-external"
               onClick={() => onOpenExternal(fileView.path)}
             >
-              <i className="codicon codicon-open-external" />
+              <i className="codicon codicon-link-external" />
             </button>
           )}
           <button
