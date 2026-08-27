@@ -524,9 +524,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                 }`}
                 tabIndex={0}
                 onKeyDown={(e) => {
-                  // Keys pressed inside a child (e.g. a textarea) are text
-                  // editing, not option selection.
-                  if (e.target !== e.currentTarget) return;
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     handleOptionChange(
@@ -595,9 +592,8 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   }`}
                   tabIndex={0}
                   onKeyDown={(e) => {
-                    // Keys pressed inside the Other textarea are text
-                    // editing, not option selection.
-                    if (e.target !== e.currentTarget) return;
+                    // The Other textarea stopPropagation's its own keys, so
+                    // keydown here always originates from the label itself.
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       if (q.multiSelect) {
