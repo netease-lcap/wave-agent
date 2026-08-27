@@ -3,21 +3,39 @@
   background-color: var(--vscode-panel-background);
   padding: 12px 16px;
   color: var(--vscode-editor-foreground);
+  /* The container receives programmatic focus on open (tabIndex=-1) so the
+     initial focus never lands on the primary action; no focus ring. */
+  outline: none;
 }
 
 .confirmation-dialog-inner {
   max-width: 640px;
+  max-height: min(70vh, 560px);
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
+  position: relative;
   background-color: var(--vscode-menu-background);
   border: 1px solid var(--vscode-widget-border);
   border-radius: 8px;
   padding: 8px 12px 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+}
+
+/* Scrollable body: header, questions and diff grow here; the action bar below
+   stays pinned to the bottom so the primary button is always reachable even
+   with a very tall diff / plan / command (see "确认弹窗主体滚动与按钮栏固定"). */
+.confirmation-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .confirmation-header {
@@ -42,6 +60,11 @@
 }
 
 .confirmation-close-btn {
+  /* Pinned to the dialog's top-right corner and placed last in the DOM so the
+     primary action stays first in the Tab cycle. */
+  position: absolute;
+  top: 8px;
+  right: 12px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -296,25 +319,47 @@
   outline-offset: -1px;
 }
 
-/* Pagination in question header (multi-question) */
-.question-progress {
+/* Clickable segmented progress (multi-question): one segment per question,
+   answered segments filled. Segments are positioned above the question chip;
+   they are clickable but intentionally left out of the Tab cycle (tabIndex=-1)
+   so the primary submit button stays first in the dialog's Tab order. */
+.question-progress-bar {
   display: flex;
-  align-items: center;
   gap: 4px;
-  flex-shrink: 0;
-  white-space: nowrap;
+  margin-bottom: 2px;
 }
 
-.question-progress-text {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 18px;
-  color: var(--vscode-editor-foreground);
+.question-progress-seg {
+  flex: 1;
+  padding: 6px 0;
+  height: 3px;
+  border: none;
+  border-radius: 2px;
+  background-color: var(--vscode-input-border, rgba(128, 128, 128, 0.35));
+  background-clip: content-box;
+  transition: background-color 0.15s ease;
+  cursor: pointer;
+}
+
+.question-progress-seg:hover {
+  background-color: var(--vscode-input-border, rgba(128, 128, 128, 0.6));
+}
+
+.question-progress-seg.done {
+  background-color: var(--vscode-brand-primary, #c1292e);
+}
+
+.question-progress-seg.done:hover {
+  background-color: var(--vscode-brand-primary, #c1292e);
 }
 
 .question-navigation {
+  /* Carousel action bar, pinned below the scrollable body. DOM order is
+     提交 → 下一个 → 上一个; row-reverse renders [上一个] [下一个] [提交回答]
+     left-to-right while keeping the primary action first in the Tab cycle. */
+  flex: 0 0 auto;
   display: flex;
-  flex-direction: row;
+  flex-direction: row-reverse;
   gap: 8px;
   margin-top: 4px;
 }
@@ -351,11 +396,15 @@
   border-color: var(--vscode-focusBorder);
 }
 
-/* Actions */
+/* Actions: pinned to the dialog bottom (sibling of the scrollable body).
+   flex-direction: row-reverse renders the DOM-first primary button at the
+   far right while keeping it first in the Tab cycle — visual order is
+   [最次] [次] [主] left-to-right, Tab order is 主 → 次 → 最次. */
 .confirmation-actions {
+  flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
+  flex-direction: row-reverse;
+  align-items: flex-start;
   gap: 8px;
 }
 
@@ -366,9 +415,11 @@
   width: 100%;
 }
 
+/* Same primary-last visual / primary-first Tab pattern as the action bar:
+   DOM is 发送反馈 → 取消, row-reverse shows 取消 → 发送反馈. */
 .feedback-actions {
   display: flex;
-  flex-direction: row;
+  flex-direction: row-reverse;
   gap: 8px;
 }
 
@@ -396,6 +447,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Enter-key hint on the primary submit button when it is enabled. */
+.confirmation-btn .btn-enter-hint {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.75;
 }
 
 .confirmation-btn-apply {

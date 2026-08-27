@@ -33,6 +33,15 @@ interface DesktopShellProps {
   onLogin: () => void;
   onLogout: () => void;
   isAuthenticated: boolean;
+  /**
+   * Sidebar collapsed → the first pane of the top row shows an expand button.
+   * A ready-made ReactNode built by the delegating ChatApp (it owns the
+   * collapse state); undefined when the sidebar is expanded.
+   */
+  sidebarExpandButton?: React.ReactNode;
+  /** Sidebar fully hidden — threaded through to the shell's own DesktopSidebar. */
+  collapsed?: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
 }
 
 /**
@@ -62,6 +71,9 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   onLogin,
   onLogout,
   isAuthenticated,
+  sidebarExpandButton,
+  collapsed = false,
+  onCollapsedChange,
 }) => {
   const panes: DesktopPane[] = useMemo(() => host.panes ?? [], [host.panes]);
   const focusedPaneId = host.focusedPaneId ?? panes[0]?.paneId ?? null;
@@ -636,6 +648,8 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         onSelectSession={host.onSelectSession}
         onOpenPane={handleOpenPane}
         onDeleteSession={host.onDeleteSession}
+        collapsed={collapsed}
+        onCollapsedChange={onCollapsedChange}
       />
       <div
         className="desktop-pane-rows"
@@ -731,6 +745,11 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                         vscode={vscode}
                         host={host}
                         paneId={pane.paneId}
+                        sidebarExpandButton={
+                          rowIdx === 0 && index === 0
+                            ? sidebarExpandButton
+                            : undefined
+                        }
                       />
                     </div>
                   </React.Fragment>

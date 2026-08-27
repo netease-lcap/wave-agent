@@ -116,6 +116,9 @@ export interface MessageInputHandle {
   triggerShortcut: (name: string) => void;
   appendText: (text: string) => void;
   loadQueuedEditContent: (text: string) => void;
+  /** Upload a dropped file selection to the host, tagging this pane so the
+   *  uploadSuccess reply routes back only to this input. */
+  uploadFiles: (files: FileList | File[]) => void;
 }
 
 export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
@@ -139,6 +142,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       modelPopup,
       btwPopup,
       disabled,
+      paneId,
     } = props;
     const [message, setMessage] = useState("");
 
@@ -314,6 +318,10 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       // Called via ref from ChatApp so it only affects this pane's input, not every
       // pane in a split-view layout (window.postMessage would be received by all panes).
       loadQueuedEditContent,
+      // Upload a dropped file selection (desktop drag-and-drop).
+      uploadFiles: (files: FileList | File[]) => {
+        readAndUploadFiles(files);
+      },
     }));
 
     // Auto-focus input on component mount
@@ -837,7 +845,10 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
           setSlashCommands([]);
           console.error("指令错误:", data.error);
         } else if (data.command === "uploadSuccess") {
-          // Insert uploaded file paths into the input after the @ symbol
+          // Insert uploaded file paths into the input after the @ symbol.
+          // In split view the host echoes the originating paneId; a reply for
+          // another pane must not insert into this input.
+          if (paneId !== undefined && data.paneId !== paneId) return;
           if (data.uploadedFiles && data.uploadedFiles.length > 0) {
             insertUploadedFilePaths(data.uploadedFiles);
           }
@@ -851,7 +862,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
 
       window.addEventListener("message", handleMessage);
       return () => window.removeEventListener("message", handleMessage);
-    }, [insertUploadedFilePaths, insertSelectionTag, closeDropdown]);
+    }, [insertUploadedFilePaths, insertSelectionTag, closeDropdown, paneId]);
 
     // Handle image preview
     const handleImagePreview = useCallback((url: string, name: string) => {
@@ -874,6 +885,48 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       document.body.appendChild(modal);
     }, []);
 
+    // Read files as base64 and post them to the host for upload. The paneId is
+    // tagged on the request so the host can echo it back on uploadSuccess and
+    // only the originating pane's input inserts the path chips (split view).
+    const readAndUploadFiles = useCallback(
+      (files: FileList | File[]) => {
+        const fileArray = Array.from(files);
+        if (fileArray.length === 0) return;
+        const readers = fileArray.map((file) => {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve({
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                data: reader.result,
+              });
+            };
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+          });
+        });
+
+        Promise.all(readers)
+          .then((fileDataArray) => {
+            vscode.postMessage({
+              command: "uploadFilesToArtifacts",
+              files: fileDataArray,
+              ...(paneId !== undefined ? { paneId } : {}),
+            });
+          })
+          .catch((error) => {
+            console.error("Error reading files:", error);
+            vscode.postMessage({
+              command: "showError",
+              message: "读取文件失败: " + error.message,
+            });
+          });
+      },
+      [vscode, paneId],
+    );
+
     // Handle file upload
     const handleFileUpload = useCallback(() => {
       // Create a hidden file input element
@@ -885,40 +938,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       fileInput.onchange = (event) => {
         const files = (event.target as HTMLInputElement).files;
         if (files && files.length > 0) {
-          // Send files to backend for upload
-          const fileArray = Array.from(files);
-
-          // Read files as base64 for upload
-          const readers = fileArray.map((file) => {
-            return new Promise((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => {
-                resolve({
-                  name: file.name,
-                  size: file.size,
-                  type: file.type,
-                  data: reader.result,
-                });
-              };
-              reader.onerror = reject;
-              reader.readAsArrayBuffer(file);
-            });
-          });
-
-          Promise.all(readers)
-            .then((fileDataArray) => {
-              vscode.postMessage({
-                command: "uploadFilesToArtifacts",
-                files: fileDataArray,
-              });
-            })
-            .catch((error) => {
-              console.error("Error reading files:", error);
-              vscode.postMessage({
-                command: "showError",
-                message: "读取文件失败: " + error.message,
-              });
-            });
+          readAndUploadFiles(files);
         }
 
         // Cleanup
@@ -931,7 +951,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
 
       // Close the dropdown after triggering upload
       closeDropdown();
-    }, [vscode, closeDropdown]);
+    }, [readAndUploadFiles, closeDropdown]);
 
     // Handle "/" toolbar button: focus the input and insert a "/" at the cursor/end so the
     // existing handleInput -> detectSlashCommand -> requestSlashCommands flow opens the popup.

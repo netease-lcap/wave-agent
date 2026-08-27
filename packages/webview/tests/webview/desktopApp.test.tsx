@@ -3422,4 +3422,128 @@ describe("DesktopApp", () => {
       expect(screen.getByText("会话「后台任务」已完成")).toBeInTheDocument();
     });
   });
+
+  describe("sidebar collapse/expand (spec 侧边栏收起/展开)", () => {
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    function renderReady() {
+      const result = renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: "/work/a",
+        recentWorkdirs: ["/work/a"],
+      });
+      return result;
+    }
+
+    function renderWithPanes(
+      panes: Array<{ paneId: string; sessionId?: string; width?: number }>,
+      focusedPaneId: string | null,
+    ) {
+      const result = renderReady();
+      sendCommand("desktopSessionTree", {
+        groups: [
+          {
+            workdir: "/work/a",
+            sessions: [
+              {
+                sessionId: "s1",
+                title: "chat one",
+                lastActiveAt: Date.now(),
+                hasWorktree: false,
+              },
+              {
+                sessionId: "s2",
+                title: "chat two",
+                lastActiveAt: Date.now(),
+                hasWorktree: false,
+              },
+            ],
+          },
+        ],
+      });
+      sendCommand("desktopPanes", { panes, focusedPaneId });
+      return result;
+    }
+
+    it("collapses the sidebar fully and restores it via the header expand button", () => {
+      renderReady();
+      expect(screen.getByTestId("desktop-sidebar")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("desktop-sidebar-collapse"));
+
+      // Fully hidden: not rendered, no reserved space, chat stays.
+      expect(screen.queryByTestId("desktop-sidebar")).not.toBeInTheDocument();
+      expect(screen.getByTestId("chat-container")).toBeInTheDocument();
+      // Leftmost chat header shows the expand button (scenario 2).
+      expect(screen.getByTestId("desktop-sidebar-expand")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("desktop-sidebar-expand"));
+      expect(screen.getByTestId("desktop-sidebar")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("desktop-sidebar-expand"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("closes an open more menu when collapsing (scenario 3)", () => {
+      renderReady();
+      fireEvent.click(screen.getByTestId("desktop-more-btn"));
+      expect(screen.getByTestId("more-menu")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("desktop-sidebar-collapse"));
+
+      expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("desktop-sidebar")).not.toBeInTheDocument();
+    });
+
+    it("persists the collapsed state and restores it on a fresh mount (scenario 7)", () => {
+      const first = renderReady();
+      fireEvent.click(screen.getByTestId("desktop-sidebar-collapse"));
+      expect(localStorage.getItem("wave.desktopSidebarCollapsed")).toBe("1");
+
+      // Remount: a brand-new DesktopApp reads the persisted state.
+      first.unmount();
+      renderReady();
+      expect(screen.queryByTestId("desktop-sidebar")).not.toBeInTheDocument();
+      expect(screen.getByTestId("desktop-sidebar-expand")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("desktop-sidebar-expand"));
+      expect(localStorage.getItem("wave.desktopSidebarCollapsed")).toBe("0");
+      expect(screen.getByTestId("desktop-sidebar")).toBeInTheDocument();
+    });
+
+    it("split view: expand button only in the leftmost pane; collapse is global (scenarios 4-5)", () => {
+      renderWithPanes(
+        [
+          { paneId: "pane-0", sessionId: "s1" },
+          { paneId: "pane-1", sessionId: "s2" },
+        ],
+        "pane-0",
+      );
+
+      fireEvent.click(screen.getByTestId("desktop-sidebar-collapse"));
+      expect(screen.queryByTestId("desktop-sidebar")).not.toBeInTheDocument();
+
+      const leftmostHeader = within(
+        screen.getByTestId("desktop-pane-pane-0"),
+      ).getByTestId("chat-header");
+      const rightHeader = within(
+        screen.getByTestId("desktop-pane-pane-1"),
+      ).getByTestId("chat-header");
+
+      expect(
+        within(leftmostHeader).getByTestId("desktop-sidebar-expand"),
+      ).toBeInTheDocument();
+      expect(
+        within(rightHeader).queryByTestId("desktop-sidebar-expand"),
+      ).not.toBeInTheDocument();
+
+      // Expanding from the pane restores the sidebar globally.
+      fireEvent.click(
+        within(leftmostHeader).getByTestId("desktop-sidebar-expand"),
+      );
+      expect(screen.getByTestId("desktop-sidebar")).toBeInTheDocument();
+    });
+  });
 });
