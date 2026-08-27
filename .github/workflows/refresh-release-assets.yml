@@ -87,6 +87,11 @@ jobs:
       # syncTargets, shipping the unminified dev bundle and bloating the .zip.
       - run: pnpm -F wave-webview run compile -- --production
 
+      # Gradle's bundleCli task requires the CLI dist (packages/code/dist/
+      # bundle/wave.mjs) — same upstream build publish.yml's jetbrains job
+      # depends on; without it bundleCli fails on "缺少 wave CLI 构建产物".
+      - run: pnpm -F wave-code build
+
       - name: Build plugin distribution (.zip)
         run: ./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon
 
