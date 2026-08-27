@@ -312,33 +312,6 @@
   color: var(--vscode-editor-foreground);
 }
 
-.question-progress-nav {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  background: none;
-  border: none;
-  border-radius: 3px;
-  color: var(--vscode-icon-foreground);
-  cursor: pointer;
-}
-
-.question-progress-nav:hover:not(:disabled) {
-  background-color: var(--vscode-toolbar-hoverBackground);
-}
-
-.question-progress-nav:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.question-progress-nav .codicon {
-  font-size: 16px;
-}
-
 .question-navigation {
   display: flex;
   flex-direction: row;
