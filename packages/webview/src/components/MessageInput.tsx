@@ -8,6 +8,7 @@ import React, {
   KeyboardEvent,
 } from "react";
 import { convertToMarkdown } from "../utils/messageUtils";
+import { useRovingMenu } from "../utils/useRovingMenu";
 import { ContextTag } from "./ContextTag";
 import { Tooltip } from "./Tooltip";
 import ReactDOM from "react-dom/client";
@@ -146,61 +147,44 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
     } = props;
     const [message, setMessage] = useState("");
 
-    // Permission mode custom dropdown state
-    const [permMenuOpen, setPermMenuOpen] = useState(false);
-    const [permMenuFocusIndex, setPermMenuFocusIndex] = useState(0);
+    // Permission mode custom dropdown (roving-tabindex listbox shared with
+    // the "+" menu via useRovingMenu; Escape returns to the trigger, Tab
+    // leaves without changing the mode).
     const permMenuRef = useRef<HTMLDivElement>(null);
     const permMenuButtonRef = useRef<HTMLButtonElement>(null);
 
-    const handlePermissionModeSelect = useCallback(
-      (mode: PermissionMode) => {
+    const selectedPermissionIndex = Math.max(
+      0,
+      PERMISSION_MODES.findIndex(
+        (m) => m.value === (permissionMode || "default"),
+      ),
+    );
+
+    const permMenu = useRovingMenu(permMenuRef, {
+      itemSelector: ".permission-mode-item",
+      itemCount: PERMISSION_MODES.length,
+      triggerRef: permMenuButtonRef,
+      closeOnActivate: true,
+      onActivate: (i) => {
         vscode.postMessage({
           command: "setPermissionMode",
-          mode: mode,
+          mode: PERMISSION_MODES[i].value,
         });
-        setPermMenuOpen(false);
       },
-      [vscode],
-    );
+    });
 
     // Open the permission-mode dropdown. Shared by the in-DOM Cmd/Ctrl+Shift+M
     // handler (VS Code / desktop when the key reaches the DOM) and the
     // JetBrains bridge, which forwards the key after swallowing the IDE's
     // "Move Caret to Matching Brace" action (same pattern as history-search,
-    // issue #1429). Kept as a plain function so the host can invoke it without
-    // a KeyEvent. Focus moves to the currently selected option so Enter/Space
+    // issue #1429). Focus moves to the currently selected option so Enter/Space
     // confirm and Escape closes without routing focus back through the
     // textarea first.
     const openPermissionModeMenu = useCallback(() => {
-      setPermMenuOpen(true);
-      const selectedIndex = Math.max(
-        0,
-        PERMISSION_MODES.findIndex(
-          (m) => m.value === (permissionMode || "default"),
-        ),
-      );
-      setPermMenuFocusIndex(selectedIndex);
-      requestAnimationFrame(() => {
-        permMenuRef.current
-          ?.querySelectorAll<HTMLElement>(".permission-mode-item")
-          [selectedIndex]?.focus();
-      });
-    }, [permissionMode]);
+      permMenu.openMenu(selectedPermissionIndex);
+    }, [permMenu, selectedPermissionIndex]);
 
-    // Close the permission dropdown when clicking outside of it.
-    useEffect(() => {
-      if (!permMenuOpen) return;
-      const onMouseDown = (e: MouseEvent) => {
-        if (
-          permMenuRef.current &&
-          !permMenuRef.current.contains(e.target as Node)
-        ) {
-          setPermMenuOpen(false);
-        }
-      };
-      document.addEventListener("mousedown", onMouseDown);
-      return () => document.removeEventListener("mousedown", onMouseDown);
-    }, [permMenuOpen]);
+    const { open: permMenuOpen } = permMenu;
 
     const [atMention, setAtMention] = useState<AtMentionState>({
       isActive: false,
@@ -236,26 +220,6 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
     const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(
       initialAttachedImages || [],
     );
-
-    // "+" (add) custom dropdown state
-    const [plusMenuOpen, setPlusMenuOpen] = useState(false);
-    const plusMenuRef = useRef<HTMLDivElement>(null);
-    const plusMenuButtonRef = useRef<HTMLButtonElement>(null);
-
-    // Close the "+" dropdown when clicking outside of it.
-    useEffect(() => {
-      if (!plusMenuOpen) return;
-      const onMouseDown = (e: MouseEvent) => {
-        if (
-          plusMenuRef.current &&
-          !plusMenuRef.current.contains(e.target as Node)
-        ) {
-          setPlusMenuOpen(false);
-        }
-      };
-      document.addEventListener("mousedown", onMouseDown);
-      return () => document.removeEventListener("mousedown", onMouseDown);
-    }, [plusMenuOpen]);
 
     const textareaRef = useRef<HTMLDivElement>(null);
     const requestIdRef = useRef<string>("");
@@ -1242,6 +1206,31 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       setIsHistorySearchVisible(true);
     }, [calculateDropdownPosition]);
 
+    const plusMenuItems = [
+      {
+        label: "上传文件",
+        run: () => handleFileUpload(),
+      },
+      {
+        label: "历史提示词",
+        run: () => openHistorySearch(),
+      },
+    ];
+
+    // "+" (add) custom dropdown, same roving keyboard model as the
+    // permission-mode listbox via useRovingMenu. Declared after its
+    // collaborators so onActivate can close over them.
+    const plusMenuRef = useRef<HTMLDivElement>(null);
+    const plusMenuButtonRef = useRef<HTMLButtonElement>(null);
+
+    const plusMenu = useRovingMenu(plusMenuRef, {
+      itemSelector: ".plus-menu-item",
+      itemCount: plusMenuItems.length,
+      triggerRef: plusMenuButtonRef,
+      closeOnActivate: true,
+      onActivate: (i) => plusMenuItems[i].run(),
+    });
+
     const handleKeyDown = useCallback(
       (event: KeyboardEvent<HTMLDivElement>) => {
         // Handle Cmd/Ctrl+Shift+M to open the permission mode menu (aligned
@@ -1709,59 +1698,33 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
                     ref={plusMenuButtonRef}
                     className="toolbar-icon-button"
                     aria-label="添加"
-                    aria-expanded={plusMenuOpen}
+                    aria-haspopup="menu"
+                    aria-expanded={plusMenu.open}
                     disabled={disabled}
-                    onClick={() => setPlusMenuOpen((o) => !o)}
+                    onClick={() => {
+                      if (plusMenu.open) {
+                        plusMenu.closeMenu();
+                      } else {
+                        // Focus moves to the first item so Enter/Space
+                        // activate and Escape returns to this button.
+                        plusMenu.openMenu();
+                      }
+                    }}
                   >
                     <PlusIcon className="toolbar-icon" />
                   </button>
-                  {plusMenuOpen && (
+                  {plusMenu.open && (
                     <ul className="plus-menu" role="menu">
-                      <li
-                        role="menuitem"
-                        tabIndex={0}
-                        className="plus-menu-item"
-                        onClick={() => {
-                          handleFileUpload();
-                          setPlusMenuOpen(false);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            handleFileUpload();
-                            setPlusMenuOpen(false);
-                            plusMenuButtonRef.current?.focus();
-                          } else if (e.key === "Escape") {
-                            e.preventDefault();
-                            setPlusMenuOpen(false);
-                            plusMenuButtonRef.current?.focus();
-                          }
-                        }}
-                      >
-                        上传文件
-                      </li>
-                      <li
-                        role="menuitem"
-                        tabIndex={0}
-                        className="plus-menu-item"
-                        onClick={() => {
-                          openHistorySearch();
-                          setPlusMenuOpen(false);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            openHistorySearch();
-                            setPlusMenuOpen(false);
-                          } else if (e.key === "Escape") {
-                            e.preventDefault();
-                            setPlusMenuOpen(false);
-                            plusMenuButtonRef.current?.focus();
-                          }
-                        }}
-                      >
-                        历史提示词
-                      </li>
+                      {plusMenuItems.map((item, i) => (
+                        <li
+                          key={item.label}
+                          role="menuitem"
+                          className="plus-menu-item"
+                          {...plusMenu.getItemProps(i)}
+                        >
+                          {item.label}
+                        </li>
+                      ))}
                     </ul>
                   )}
                 </div>
@@ -1787,11 +1750,12 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
                   ref={permMenuButtonRef}
                   className={`permission-mode-select mode-${permissionMode || "default"}`}
                   aria-label="权限模式"
+                  aria-haspopup="listbox"
                   aria-expanded={permMenuOpen}
                   disabled={disabled}
                   onClick={() => {
-                    if (permMenuOpen) {
-                      setPermMenuOpen(false);
+                    if (permMenu.open) {
+                      permMenu.closeMenu();
                     } else {
                       openPermissionModeMenu();
                     }
@@ -1807,44 +1771,12 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
                       <li
                         key={m.value}
                         role="option"
-                        tabIndex={i === permMenuFocusIndex ? 0 : -1}
                         data-value={m.value}
                         aria-selected={
                           m.value === (permissionMode || "default")
                         }
                         className={`permission-mode-item${m.value === (permissionMode || "default") ? " selected" : ""}`}
-                        onClick={() => handlePermissionModeSelect(m.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            handlePermissionModeSelect(m.value);
-                            permMenuButtonRef.current?.focus();
-                          } else if (e.key === "Escape") {
-                            e.preventDefault();
-                            setPermMenuOpen(false);
-                            permMenuButtonRef.current?.focus();
-                          } else if (
-                            e.key === "ArrowDown" ||
-                            e.key === "ArrowUp"
-                          ) {
-                            // Roving focus between options (standard listbox
-                            // navigation); Enter/Space confirm the selection.
-                            e.preventDefault();
-                            const next = i + (e.key === "ArrowDown" ? 1 : -1);
-                            if (next >= 0 && next < PERMISSION_MODES.length) {
-                              setPermMenuFocusIndex(next);
-                              permMenuRef.current
-                                ?.querySelectorAll<HTMLElement>(
-                                  ".permission-mode-item",
-                                )
-                                [next]?.focus();
-                            }
-                          } else if (e.key === "Tab") {
-                            // Leave the menu without changing the mode; the
-                            // focus moves on to the next tab stop naturally.
-                            setPermMenuOpen(false);
-                          }
-                        }}
+                        {...permMenu.getItemProps(i)}
                       >
                         {m.label}
                       </li>
