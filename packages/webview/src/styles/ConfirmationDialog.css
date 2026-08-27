@@ -398,12 +398,14 @@
 /* Actions: pinned to the dialog bottom (sibling of the scrollable body).
    flex-direction: row-reverse renders the DOM-first primary button at the
    far right while keeping it first in the Tab cycle — visual order is
-   [最次] [次] [主] left-to-right, Tab order is 主 → 次 → 最次. */
+   [最次] [次] [主] left-to-right, Tab order is 主 → 次 → 最次.
+   align-items: center keeps the shorter text-style 提供反馈 button on the
+   same horizontal midline as the 32px action buttons. */
 .confirmation-actions {
   flex: 0 0 auto;
   display: flex;
   flex-direction: row-reverse;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
 }
 
