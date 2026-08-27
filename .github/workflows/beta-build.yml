@@ -1,0 +1,169 @@
+name: Beta Build
+
+# Manually triggered internal-test builds: compile the IDE plugins and
+# desktop installers from the current main and upload them as run ARTIFACTS
+# (not Release assets). Share the run URL in the team chat; colleagues with
+# repo access download from the run's Artifacts section.
+#
+# Why artifacts instead of a prerelease:
+# - no git tag, no version bump, no npm/marketplace publishing — pure
+#   throwaway bits for manual verification;
+# - replaces refresh-release-assets.yml, whose `--clobber`-overwrite of the
+#   latest stable release shipped same-version-different-binary confusion
+#   that version-gated installs can never pick up.
+#
+# Artifacts expire after 30 days (beta lifetimes are short; keeps the list
+# self-cleaning). Everyone on the team logs into GitHub anyway, so the
+# artifact login requirement is a non-issue.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beta-build
+  cancel-in-progress: false # don't kill a colleague's queued build
+
+jobs:
+  beta-vsce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm -F wave-vscode run package
+
+      - name: Upload .vsix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave-vscode-beta
+          path: packages/vscode/releases/*.vsix
+          retention-days: 30
+
+  beta-jetbrains:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      # The webview bundles from wave-agent-sdk/dist, so build the SDK first.
+      - run: pnpm -F wave-agent-sdk build
+
+      # `compile -- --production` (not `build`) so the bundle is minified and
+      # source maps are omitted — `build` would also trigger postbuild
+      # syncTargets, shipping the unminified dev bundle and bloating the .zip.
+      - run: pnpm -F wave-webview run compile -- --production
+
+      # Gradle's bundleCli task requires the CLI dist (packages/code/dist/
+      # bundle/wave.mjs) — without it bundleCli fails on "缺少 wave CLI 构建产物".
+      - run: pnpm -F wave-code build
+
+      - name: Build plugin distribution (.zip)
+        run: ./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon
+
+      - name: Upload .zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave-jetbrains-beta
+          path: packages/jetbrains/build/distributions/*.zip
+          retention-days: 30
+
+  beta-desktop:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm -F wave-agent-sdk build
+
+      # `compile -- --production` so the webview bundle is minified; the
+      # desktop app's syncWebview step copies dist verbatim.
+      - run: pnpm -F wave-webview run compile -- --production
+
+      # bundleCli ships the CLI's dist/bundle/wave.mjs into the app resources.
+      - run: pnpm -F wave-code build
+
+      # `--publish never`: electron-builder only produces the installers;
+      # upload is handled below. macOS signing/notarization env vars match
+      # publish.yml build-desktop — without them the artifacts would be
+      # unsigned (acceptable for an internal-test channel).
+      #
+      # APPLE_API_KEY must be a PATH to the .p8 file: @electron/notarize
+      # forwards it verbatim as `notarytool --key <value>`, so the raw PEM
+      # content would be parsed as an option → "Invalid option". Materialize
+      # the secret into a runner-local file first.
+      - name: Build desktop installers (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p "$HOME/private_keys"
+          printf '%s' "$APPLE_API_KEY_CONTENT" > "$HOME/private_keys/AuthKey_$APPLE_API_KEY_ID.p8"
+          chmod 600 "$HOME/private_keys/AuthKey_$APPLE_API_KEY_ID.p8"
+          APPLE_API_KEY="$HOME/private_keys/AuthKey_$APPLE_API_KEY_ID.p8" pnpm -F wave-desktop run dist -- --publish never
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+
+      - name: Build desktop installers (Windows)
+        if: runner.os == 'Windows'
+        run: pnpm -F wave-desktop run dist -- --publish never
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave-desktop-beta-${{ runner.os }}
+          # Only files existing on this OS match — macOS produces .dmg + .zip,
+          # Windows produces .exe; missing globs are simply skipped.
+          path: |
+            packages/desktop/release/*.dmg
+            packages/desktop/release/*.zip
+            packages/desktop/release/*.exe
+          retention-days: 30
+
+      - name: Summarize download hints
+        shell: bash
+        run: echo "Download [wave-desktop-beta-${{ runner.os }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) from this run's Artifacts section." >> "$GITHUB_STEP_SUMMARY"
