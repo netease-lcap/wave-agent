@@ -90,17 +90,17 @@ const PKG_JSON = (version: string) =>
   });
 
 /** Seed the bundled CLI (as bundleCli.mjs would). */
-function seedBundledCli(version = "1.0.0") {
+function seedBundledCli(version = "1.0.0", content = "bundle") {
   memFs.set(bundledEntry(), "shim");
   memFs.set(path.join(bundledDir(), "package.json"), PKG_JSON(version));
-  memFs.set(path.join(bundledDir(), "dist", "bundle", "wave.mjs"), "bundle");
+  memFs.set(path.join(bundledDir(), "dist", "bundle", "wave.mjs"), content);
 }
 
-/** Seed a fully installed runtime CLI (same version → no re-copy). */
-function seedRuntimeCli(version = "1.0.0") {
+/** Seed a fully installed runtime CLI (same version + bytes → no re-copy). */
+function seedRuntimeCli(version = "1.0.0", content = "bundle") {
   memFs.set(entry(), "shim");
   memFs.set(path.join(cliInstallDir(), "package.json"), PKG_JSON(version));
-  memFs.set(path.join(cliInstallDir(), "dist", "bundle", "wave.mjs"), "bundle");
+  memFs.set(path.join(cliInstallDir(), "dist", "bundle", "wave.mjs"), content);
 }
 
 /** Seed an already-downloaded rg binary (→ cached, no fetch). */
@@ -230,8 +230,8 @@ describe("binaryResolver (bundled CLI + downloaded rg)", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("re-copies the CLI but keeps the cached rg when the version changes", async () => {
-    seedBundledCli("1.1.0"); // app upgraded
+  it("re-copies the CLI but keeps the cached rg when the bundle content changes (app upgrade)", async () => {
+    seedBundledCli("1.1.0", "upgraded-bundle"); // app upgraded
     seedRuntimeCli("1.0.0");
     seedRg(); // rg already downloaded
 
@@ -242,6 +242,24 @@ describe("binaryResolver (bundled CLI + downloaded rg)", () => {
     // node_modules (rg) preserved: no fetch happened.
     expect(mockFetch).not.toHaveBeenCalled();
     expect(memFs.has(rgBin())).toBe(true);
+  });
+
+  it("re-copies when a same-version reinstall ships different bundle bytes (desktop:install)", async () => {
+    // desktop:install refreshes the app without bumping the version — a
+    // version-only staleness check would keep running the old runtime copy
+    // forever (regression: stale CLI missed the compaction display fix).
+    seedBundledCli("1.1.5", "rebuilt-with-fix");
+    seedRuntimeCli("1.1.5", "stale-aug26-copy");
+    seedRg();
+
+    const result = await resolveWaveBinary("1.1.5");
+
+    expect(result).toBe(entry());
+    expect(mockFs.cpSync).toHaveBeenCalled();
+    expect(
+      memFs.get(path.join(cliInstallDir(), "dist", "bundle", "wave.mjs")),
+    ).toBe("rebuilt-with-fix");
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("does not download rg when the CLI has no grep dependency", async () => {
