@@ -1450,7 +1450,7 @@ describe("AskUserQuestion Other input", () => {
     const optionLabels = () =>
       Array.from(document.querySelectorAll<HTMLElement>(".option-item"));
 
-    it("opens with focus on the option group's single Tab stop", async () => {
+    it("opens with focus on the first option; every option is a Tab stop", async () => {
       renderChatApp();
       showAskUser(twoOptionQuestion);
       await waitFor(() => {
@@ -1458,14 +1458,14 @@ describe("AskUserQuestion Other input", () => {
           document.querySelector(".confirmation-dialog"),
         ).toBeInTheDocument();
       });
-      // Exactly one option label holds the Tab stop (the first by default).
+      // Every option holds its own Tab stop (plain Tab traversal, matching
+      // Claude's IDE/desktop AskUserQuestion); focus lands on the first one.
       const labels = optionLabels();
-      expect(labels.filter((l) => l.tabIndex === 0).length).toBe(1);
-      expect(labels[0].tabIndex).toBe(0);
+      expect(labels.filter((l) => l.tabIndex === 0).length).toBe(labels.length);
       expect(document.activeElement).toBe(labels[0]);
     });
 
-    it("Arrow keys move focus within the group, clamping at the ends", async () => {
+    it("Arrow keys do not move focus between options; Tab does", async () => {
       renderChatApp();
       showAskUser(twoOptionQuestion);
       await waitFor(() => {
@@ -1474,31 +1474,32 @@ describe("AskUserQuestion Other input", () => {
         ).toBeInTheDocument();
       });
       const labels = optionLabels();
-      act(() => {
-        fireEvent.keyDown(labels[0], { key: "ArrowDown" });
-      });
-      expect(document.activeElement).toBe(labels[1]);
-      expect(labels[1].tabIndex).toBe(0);
-      expect(labels[0].tabIndex).toBe(-1);
-      // ArrowDown past the last option ("Other") clamps there.
-      act(() => {
-        fireEvent.keyDown(labels[1], { key: "ArrowDown" });
-      });
+      // Arrow keys are not option navigation: focus stays put (matching CC).
+      for (const key of ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"]) {
+        act(() => {
+          fireEvent.keyDown(labels[0], { key });
+        });
+        expect(document.activeElement).toBe(labels[0]);
+      }
+      // Tab steps through the option labels in DOM order (the "Other" item is
+      // in the sequence). jsdom does not move focus on Tab, so step manually.
       const other = document.querySelector<HTMLElement>(".other-option")!;
-      expect(document.activeElement).toBe(other);
-      // ArrowDown again clamps (stays on "Other").
+      expect(optionLabels().map((l) => l.dataset.optionIndex)).toEqual([
+        "0",
+        "1",
+        "other",
+      ]);
       act(() => {
-        fireEvent.keyDown(other, { key: "ArrowDown" });
-      });
-      expect(document.activeElement).toBe(other);
-      // ArrowUp returns to the previous option.
-      act(() => {
-        fireEvent.keyDown(other, { key: "ArrowUp" });
+        labels[1].focus();
       });
       expect(document.activeElement).toBe(labels[1]);
+      act(() => {
+        other.focus();
+      });
+      expect(document.activeElement).toBe(other);
     });
 
-    it("Space on the focused option selects it; selection survives focus moves", async () => {
+    it("Space or Enter on the focused option selects it; selection survives focus moves", async () => {
       renderChatApp();
       showAskUser(twoOptionQuestion);
       await waitFor(() => {
@@ -1507,25 +1508,27 @@ describe("AskUserQuestion Other input", () => {
         ).toBeInTheDocument();
       });
       const labels = optionLabels();
-      act(() => {
-        fireEvent.keyDown(labels[1], { key: "ArrowUp" });
-      });
       act(() => {
         fireEvent.keyDown(labels[0], { key: " " });
       });
       expect(
         document.querySelector('.option-item[data-option-index="0"] input')!,
       ).toBeChecked();
-      // Moving focus away and back keeps the roving position.
+      // Enter selects like Space (matches CC).
       act(() => {
-        fireEvent.keyDown(labels[0], { key: "ArrowDown" });
+        fireEvent.keyDown(labels[1], { key: "Enter" });
       });
-      expect(document.activeElement).toBe(labels[1]);
+      expect(
+        document.querySelector('.option-item[data-option-index="1"] input')!,
+      ).toBeChecked();
+      // Moving focus away and back keeps the selection.
       act(() => {
-        fireEvent.keyDown(labels[1], { key: "ArrowUp" });
+        labels[0].focus();
       });
       expect(document.activeElement).toBe(labels[0]);
-      expect(labels[0].tabIndex).toBe(0);
+      expect(
+        document.querySelector('.option-item[data-option-index="1"] input')!,
+      ).toBeChecked();
     });
 
     it("Tab cycles inside the dialog (modal trap): last element wraps to first", async () => {
@@ -1537,8 +1540,8 @@ describe("AskUserQuestion Other input", () => {
         ).toBeInTheDocument();
       });
       const dialog = document.querySelector(".confirmation-dialog")!;
-      // With the question unanswered the only enabled focusables are the
-      // roving option label and the close button (nav + submit disabled).
+      // With the question unanswered the enabled focusables are the three
+      // option labels and the close button (nav + submit disabled).
       const enabled = Array.from(
         dialog.querySelectorAll<HTMLElement>(
           'button:not([disabled]), [tabindex]:not([tabindex="-1"])',
@@ -1546,7 +1549,7 @@ describe("AskUserQuestion Other input", () => {
       ).filter((el) => el.tabIndex !== -1);
       const first = enabled[0];
       const last = enabled[enabled.length - 1];
-      expect(enabled.length).toBe(2);
+      expect(enabled.length).toBe(4);
 
       // Tab from the last wraps to the first.
       last.focus();
@@ -1635,6 +1638,45 @@ describe("AskUserQuestion Other input", () => {
       });
       expect(document.activeElement).toHaveClass("option-item");
       expect(document.activeElement?.textContent).toContain("C");
+    });
+
+    it("Arrow keys inside the Other textarea edit text, not roving navigation", async () => {
+      renderChatApp();
+      showAskUser(twoOptionQuestion);
+      await waitFor(() => {
+        expect(
+          document.querySelector(".confirmation-dialog"),
+        ).toBeInTheDocument();
+      });
+
+      // Select "Other" (Space) so the textarea appears and is focused.
+      const other = document.querySelector<HTMLElement>(".other-option")!;
+      act(() => {
+        fireEvent.keyDown(other, { key: " " });
+      });
+      await waitFor(() => {
+        expect(document.querySelector(".other-text-input")).toBeInTheDocument();
+      });
+      const textarea =
+        document.querySelector<HTMLTextAreaElement>(".other-text-input")!;
+      expect(document.activeElement).toBe(textarea);
+
+      // Keys while typing must keep text-editing semantics (caret movement),
+      // not trigger any dialog-level shortcut.
+      for (const key of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]) {
+        act(() => {
+          fireEvent.keyDown(textarea, { key });
+        });
+        expect(document.activeElement).toBe(textarea);
+      }
+      // Space typed inside the textarea must not toggle the "Other" option.
+      act(() => {
+        fireEvent.keyDown(textarea, { key: " " });
+      });
+      expect(document.activeElement).toBe(textarea);
+      expect(other).toHaveClass("selected");
+      // Every option remains a Tab stop.
+      expect(other.tabIndex).toBe(0);
     });
   });
 });

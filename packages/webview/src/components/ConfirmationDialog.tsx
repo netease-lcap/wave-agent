@@ -112,25 +112,15 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
 
-  // ---- Roving focus in the AskUserQuestion option group ----
-  // Per-question index of the option holding the group's single Tab stop
-  // (0..options.length, where options.length = the "Other" item). Arrow keys
-  // move it; the index is remembered per question so Tab away and back
-  // restores the position. -1 means "no explicit position yet" (fall back to
-  // the default: the currently-selected option, or the first one).
-  const [optionFocusByQuestion, setOptionFocusByQuestion] = useState<
-    Record<string, number>
-  >({});
-
   // ---- Modal focus management ----
   const dialogRef = useRef<HTMLDivElement>(null);
   const questionsListRef = useRef<HTMLDivElement>(null);
   // The element focused before the dialog took focus; restored on dismiss.
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
-  // Where the option group's Tab stop should land when the user first enters
-  // the question (no remembered position): the currently selected option, or
-  // the first one.
+  // Which option to focus when the dialog opens or the question switches:
+  // the currently selected option (or "Other" when it is selected), else the
+  // first one. options.length addresses the "Other" item.
   const getDefaultOptionFocus = useCallback(
     (q: AskUserQuestionInput["questions"][number]): number => {
       const answer = answers[q.question];
@@ -160,8 +150,9 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
   // On mount / when a new confirmation replaces the current one: remember the
   // previously focused element and move focus into the dialog. AskUserQuestion
-  // focuses the option group's current Tab stop (the roving item); every other
-  // confirmation focuses the first focusable control.
+  // focuses its first option (answers are empty on first mount, so "selected
+  // option" cannot exist yet); every other confirmation focuses the first
+  // focusable control.
   useEffect(() => {
     previousFocusRef.current =
       document.activeElement instanceof HTMLElement
@@ -169,15 +160,12 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         : null;
     const dialog = dialogRef.current;
     if (!dialog) return;
-    if (
-      confirmation.toolName === ASK_USER_QUESTION_TOOL_NAME &&
-      questionsListRef.current
-    ) {
-      const rovingItem = questionsListRef.current.querySelector<HTMLElement>(
-        '[data-option-index][tabindex="0"]',
+    if (confirmation.toolName === ASK_USER_QUESTION_TOOL_NAME) {
+      const first = questionsListRef.current?.querySelector<HTMLElement>(
+        '[data-option-index="0"]',
       );
-      if (rovingItem) {
-        rovingItem.focus();
+      if (first) {
+        first.focus();
         return;
       }
     }
@@ -278,14 +266,13 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
     if (prevQuestionIndexRef.current !== currentQuestionIndex) {
       // Question switched: record the new question's state and move focus to
-      // its roving option so the user can keep answering with the keyboard.
-      // (The nav button they just used becomes disabled on the unanswered next
-      // question; leaving focus on it would drop to body as browsers remove
-      // focus from a disabled element.)
+      // its first option (or the currently selected one) so the user can keep
+      // answering with the keyboard. (The nav button they just used becomes
+      // disabled on the unanswered next question; leaving focus on it would
+      // drop to body as browsers remove focus from a disabled element.)
       prevQuestionIndexRef.current = currentQuestionIndex;
       wasOtherSelectedRef.current = isOtherChecked;
-      const focusIndex =
-        optionFocusByQuestion[q.question] ?? getDefaultOptionFocus(q);
+      const focusIndex = getDefaultOptionFocus(q);
       questionsListRef.current
         ?.querySelector<HTMLElement>(
           `[data-option-index="${
@@ -305,15 +292,8 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     answers,
     otherSelected,
     confirmation.toolInput,
-    optionFocusByQuestion,
     getDefaultOptionFocus,
   ]);
-
-  const confirmationRef = useRef(confirmation);
-
-  useEffect(() => {
-    confirmationRef.current = confirmation;
-  }, [confirmation]);
 
   const handleCompositionStart = useCallback(() => {
     setIsComposing(true);
@@ -326,8 +306,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   useEffect(() => {
     // Add keyboard listener for confirmation dialog
     const handleKeyDown = (e: KeyboardEvent) => {
-      const currentConfirmation = confirmationRef.current;
-
       if (e.key === "Escape") {
         handleReject();
         return;
@@ -358,45 +336,11 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         }
         return;
       }
-
-      const isAskUser =
-        currentConfirmation.toolName === ASK_USER_QUESTION_TOOL_NAME;
-
-      if (e.key === "Enter" && !e.shiftKey && isAskUser && !isComposing) {
-        const activeElement = document.activeElement;
-        const isOptionFocused =
-          activeElement?.classList.contains("option-item") ||
-          activeElement?.closest(".option-item");
-        const isInputFocused =
-          activeElement?.classList.contains("other-text-input");
-
-        if (isOptionFocused || isInputFocused) {
-          // Wizard flow: Enter advances to the next question while one remains,
-          // and submits only on the last question.
-          const nav = dialogRef.current?.querySelector(".question-navigation");
-          const nextBtn = nav?.querySelector<HTMLButtonElement>(
-            '.confirmation-btn-secondary[aria-label="下一个"]',
-          );
-          if (nextBtn && !nextBtn.disabled) {
-            e.preventDefault();
-            nextBtn.click();
-            return;
-          }
-          const applyBtn = nav?.querySelector<HTMLButtonElement>(
-            ".confirmation-btn-apply",
-          );
-          if (applyBtn && !applyBtn.disabled) {
-            e.preventDefault();
-            applyBtn.click();
-            return;
-          }
-        }
-      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleReject, isComposing]);
+  }, [handleReject]);
 
   const handleConfirm = useCallback(() => {
     restoreFocus();
@@ -549,21 +493,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
     const isLastQuestion = currentQuestionIndex === questions.length - 1;
 
-    // Roving focus: the option currently holding the group's single Tab stop.
-    // otherIndex (== options.length) addresses the "Other" item.
-    const otherIndex = q.options.length;
-    const focusIndex =
-      optionFocusByQuestion[q.question] ?? getDefaultOptionFocus(q);
-
-    const moveOptionFocus = (from: number, delta: number) => {
-      const next = Math.max(0, Math.min(otherIndex, from + delta));
-      setOptionFocusByQuestion((prev) => ({ ...prev, [q.question]: next }));
-      const target = questionsListRef.current?.querySelector<HTMLElement>(
-        `[data-option-index="${next === otherIndex ? "other" : next}"]`,
-      );
-      target?.focus();
-    };
-
     return (
       <div className="ask-user-questions">
         <div className="question-item">
@@ -593,19 +522,12 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                     ? "selected"
                     : ""
                 }`}
-                tabIndex={oIndex === focusIndex ? 0 : -1}
+                tabIndex={0}
                 onKeyDown={(e) => {
-                  if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
-                    e.preventDefault();
-                    moveOptionFocus(focusIndex, -1);
-                    return;
-                  }
-                  if (e.key === "ArrowDown" || e.key === "ArrowRight") {
-                    e.preventDefault();
-                    moveOptionFocus(focusIndex, 1);
-                    return;
-                  }
-                  if (e.key === " ") {
+                  // Keys pressed inside a child (e.g. a textarea) are text
+                  // editing, not option selection.
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     handleOptionChange(
                       q.question,
@@ -671,32 +593,23 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   className={`option-item other-option ${
                     isOtherChecked ? "selected" : ""
                   }`}
-                  tabIndex={focusIndex === otherIndex ? 0 : -1}
+                  tabIndex={0}
                   onKeyDown={(e) => {
-                    if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+                    // Keys pressed inside the Other textarea are text
+                    // editing, not option selection.
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      moveOptionFocus(focusIndex, -1);
-                      return;
-                    }
-                    if (e.key === "ArrowDown" || e.key === "ArrowRight") {
-                      e.preventDefault();
-                      moveOptionFocus(focusIndex, 1);
-                      return;
-                    }
-                    if (e.key === " ") {
-                      if (e.target === e.currentTarget) {
-                        e.preventDefault();
-                        if (q.multiSelect) {
-                          setOtherSelected((prev) => ({
-                            ...prev,
-                            [q.question]: !prev[q.question],
-                          }));
-                        } else {
-                          setAnswers((prev) => ({
-                            ...prev,
-                            [q.question]: "__other__",
-                          }));
-                        }
+                      if (q.multiSelect) {
+                        setOtherSelected((prev) => ({
+                          ...prev,
+                          [q.question]: !prev[q.question],
+                        }));
+                      } else {
+                        setAnswers((prev) => ({
+                          ...prev,
+                          [q.question]: "__other__",
+                        }));
                       }
                     }
                   }}
@@ -743,6 +656,36 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                         onChange={(e) => {
                           autoGrow(e.currentTarget);
                           handleOtherInputChange(q.question, e.target.value);
+                        }}
+                        onKeyDown={(e) => {
+                          // Inside the textarea every key is text editing;
+                          // keep it from reaching dialog-level shortcuts
+                          // (matches Claude's IDE/desktop AskUserQuestion).
+                          if (!e.metaKey && !e.ctrlKey) e.stopPropagation();
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            if (e.nativeEvent.isComposing) return;
+                            e.preventDefault();
+                            // Wizard flow: advance to the next question while
+                            // one remains, submit only on the last one.
+                            const nav = dialogRef.current?.querySelector(
+                              ".question-navigation",
+                            );
+                            const nextBtn =
+                              nav?.querySelector<HTMLButtonElement>(
+                                '.confirmation-btn-secondary[aria-label="下一个"]',
+                              );
+                            if (nextBtn && !nextBtn.disabled) {
+                              nextBtn.click();
+                              return;
+                            }
+                            const applyBtn =
+                              nav?.querySelector<HTMLButtonElement>(
+                                ".confirmation-btn-apply",
+                              );
+                            if (applyBtn && !applyBtn.disabled) {
+                              applyBtn.click();
+                            }
+                          }
                         }}
                         onCompositionStart={handleCompositionStart}
                         onCompositionEnd={handleCompositionEnd}
