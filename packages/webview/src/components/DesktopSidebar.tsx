@@ -1,4 +1,4 @@
-import React, { useState, useRef, RefObject } from "react";
+import React, { useEffect, useState, useRef, RefObject } from "react";
 import { Tooltip } from "./Tooltip";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { MoreIcon } from "./HeaderIcons";
@@ -101,6 +101,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   // the Tab order entirely and are reached with ←/→ instead.
   const [rovingSessionId, setRovingSessionId] = useState<string | null>(null);
   const treeRef = useRef<HTMLDivElement | null>(null);
+  // Sessions switched in without a focus event (Ctrl+Tab, host-driven pane
+  // changes) must still become the Tab stop: drop the roving record when the
+  // current session changes so the fallback chain lands on the new session.
+  // Arrow-key navigation keeps currentSessionId unchanged, so it is unaffected.
+  useEffect(() => {
+    setRovingSessionId(null);
+  }, [currentSessionId]);
   // Modifier key label for the side-by-side hints, same platform branch as the
   // click handlers below (Cmd on macOS / Ctrl elsewhere).
   const modKeyLabel = isMacPlatform() ? "Cmd" : "Ctrl";
@@ -142,11 +149,15 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       }
     }
   }
+  // A stale roving record (its row was deleted or its group collapsed) must
+  // not leave the tree without any Tab stop — fall through to the current
+  // session, else the first rendered session.
   const tabStopId =
-    rovingSessionId ??
-    (currentSessionId && orderedSessionIds.includes(currentSessionId)
-      ? currentSessionId
-      : orderedSessionIds[0]);
+    rovingSessionId && orderedSessionIds.includes(rovingSessionId)
+      ? rovingSessionId
+      : currentSessionId && orderedSessionIds.includes(currentSessionId)
+        ? currentSessionId
+        : orderedSessionIds[0];
 
   // Tree-level keyboard navigation, mirroring Claude's sidebar model:
   // - ↑/↓/Home/End move focus between session main buttons (skipping group

@@ -131,6 +131,32 @@ test.describe("Desktop sidebar keyboard navigation", () => {
     await webviewPage.keyboard.press("End");
     expect(await activeTestId(webviewPage)).toBe("desktop-session-main-s3");
 
+    // ── Ctrl+Tab regression: a session switched in WITHOUT a focus event ──
+    // (host-driven shortcut switch) must still host the Tab stop. The roving
+    // record above sits on s2; switching the current session to s3 drops it.
+    await injector.simulateExtensionMessage("updateCurrentSession", {
+      session: {
+        id: "s3",
+        sessionType: "main",
+        workdir: DIR_B,
+        createdAt: "2026-08-28T00:00:00.000Z",
+        lastActiveAt: "2026-08-28T00:00:00.000Z",
+        latestTotalTokens: 0,
+        firstMessage: "会话三",
+      },
+    });
+    await expect(mainS3).toHaveAttribute("tabindex", "0");
+    await expect(mainS2).toHaveAttribute("tabindex", "-1");
+    // Tab from outside the tree lands on the newly current session. With s1/s2
+    // now at -1 the sweep is: group header A → group header B → s3.
+    await webviewPage.getByTestId("desktop-new-session").focus();
+    await webviewPage.keyboard.press("Tab"); // group header A
+    await webviewPage.keyboard.press("Tab"); // group header B
+    await webviewPage.keyboard.press("Tab");
+    expect(await activeTestId(webviewPage)).toBe("desktop-session-main-s3");
+    // Put the roving stop back on s1 for the Enter section below.
+    await mainS1.focus();
+
     // ── Scenario 17 (first half): Enter on the main button restores ──
     await webviewPage.evaluate(() => window.clearTestMessages());
     await mainS1.focus();

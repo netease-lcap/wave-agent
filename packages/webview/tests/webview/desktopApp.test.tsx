@@ -1391,6 +1391,126 @@ describe("DesktopApp", () => {
       );
     });
 
+    it("re-points the Tab stop at a session switched in without a focus event (e.g. Ctrl+Tab)", () => {
+      renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: "/work/a",
+        recentWorkdirs: ["/work/a"],
+      });
+      sendCommand("desktopSessionTree", {
+        groups: [
+          {
+            host: "local",
+            workdir: "/work/a",
+            sessions: [session("s1", "hello a"), session("s2", "hello b")],
+          },
+        ],
+      });
+      sendCommand("updateCurrentSession", {
+        session: {
+          id: "s1",
+          sessionType: "main",
+          workdir: "/work/a",
+          createdAt: "2026-08-28T00:00:00.000Z",
+          lastActiveAt: "2026-08-28T00:00:00.000Z",
+          latestTotalTokens: 0,
+          firstMessage: "hello a",
+        },
+      });
+      expect(screen.getByTestId("desktop-session-main-s1")).toHaveAttribute(
+        "tabindex",
+        "0",
+      );
+
+      // Clicking s2 focuses its row (the host then switches the current
+      // session to s2), pinning the roving record on s2.
+      act(() => {
+        screen.getByTestId("desktop-session-main-s2").focus();
+      });
+      sendCommand("updateCurrentSession", {
+        session: {
+          id: "s2",
+          sessionType: "main",
+          workdir: "/work/a",
+          createdAt: "2026-08-28T00:00:00.000Z",
+          lastActiveAt: "2026-08-28T00:00:00.000Z",
+          latestTotalTokens: 0,
+          firstMessage: "hello b",
+        },
+      });
+      expect(screen.getByTestId("desktop-session-main-s2")).toHaveAttribute(
+        "tabindex",
+        "0",
+      );
+
+      // Ctrl+Tab back to s1: no focus event fires on the sidebar, yet the
+      // Tab stop must follow the newly current session.
+      sendCommand("updateCurrentSession", {
+        session: {
+          id: "s1",
+          sessionType: "main",
+          workdir: "/work/a",
+          createdAt: "2026-08-28T00:00:00.000Z",
+          lastActiveAt: "2026-08-28T00:00:00.000Z",
+          latestTotalTokens: 0,
+          firstMessage: "hello a",
+        },
+      });
+      expect(screen.getByTestId("desktop-session-main-s1")).toHaveAttribute(
+        "tabindex",
+        "0",
+      );
+      expect(screen.getByTestId("desktop-session-main-s2")).toHaveAttribute(
+        "tabindex",
+        "-1",
+      );
+    });
+
+    it("keeps a Tab stop when the roving record points at a removed row", () => {
+      renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: "/work/a",
+        recentWorkdirs: ["/work/a"],
+      });
+      sendCommand("desktopSessionTree", {
+        groups: [
+          {
+            host: "local",
+            workdir: "/work/a",
+            sessions: [session("s1", "hello a"), session("s2", "hello b")],
+          },
+        ],
+      });
+
+      // Arrow onto s2 — the roving record now sits on s2.
+      act(() => {
+        screen.getByTestId("desktop-session-main-s1").focus();
+      });
+      fireEvent.keyDown(screen.getByTestId("desktop-session-main-s1"), {
+        key: "ArrowDown",
+      });
+      expect(screen.getByTestId("desktop-session-main-s2")).toHaveAttribute(
+        "tabindex",
+        "0",
+      );
+
+      // s2 leaves the tree (deleted / group collapsed): the stop must fall
+      // back instead of leaving the tree without any tabbable row.
+      sendCommand("desktopSessionTree", {
+        groups: [
+          {
+            host: "local",
+            workdir: "/work/a",
+            sessions: [session("s1", "hello a")],
+          },
+        ],
+      });
+      expect(screen.getByTestId("desktop-session-main-s1")).toHaveAttribute(
+        "tabindex",
+        "0",
+      );
+    });
+
     it("moves focus between rows with ↑/↓ including wrap-around, and follows with Home/End", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", {
