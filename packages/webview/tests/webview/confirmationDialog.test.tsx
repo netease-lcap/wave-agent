@@ -88,8 +88,9 @@ describe("Confirmation Dialog", () => {
     const rejectBtns = document.querySelectorAll(".confirmation-btn-reject");
     expect(rejectBtns.length).toBe(0);
 
-    // Verify input is hidden when confirmation is showing (display:none, not removed from DOM)
-    expect(screen.queryByTestId("message-input")).not.toBeVisible();
+    // The input stays visible while the confirmation is showing: the dialog
+    // must not interrupt the user (spec「确认弹窗不打断输入」).
+    expect(screen.getByTestId("message-input")).toBeVisible();
   });
 
   it("should show confirmation dialog for command execution tools", async () => {
@@ -110,8 +111,14 @@ describe("Confirmation Dialog", () => {
     expect(title).toHaveTextContent("命令执行待确认");
   });
 
-  it("initial focus lands on the dialog container, not the primary action", async () => {
+  it("opening the dialog does not steal focus from the message input", async () => {
     renderChatApp();
+
+    const input = screen.getByTestId("message-input");
+    act(() => {
+      input.focus();
+    });
+    expect(document.activeElement).toBe(input);
 
     await act(async () => {
       sendCommand("showConfirmation", {
@@ -122,9 +129,9 @@ describe("Confirmation Dialog", () => {
       });
     });
 
-    // Focus moves into the dialog but never onto the primary action on open
-    // (an accidental Enter would approve); the container holds it.
-    expect(document.activeElement).toHaveClass("confirmation-dialog");
+    // The dialog pops up without moving focus: the user may be mid-sentence
+    // (same pane, sibling pane, another window) and must not be interrupted.
+    expect(document.activeElement).toBe(input);
 
     // The primary action is last in the Tab cycle within the action bar:
     // DOM order matches the visual left-to-right order (最次 → 次 → 主,
@@ -138,6 +145,36 @@ describe("Confirmation Dialog", () => {
     const primary = buttons[buttons.length - 1]!;
     expect(primary).toHaveClass("confirmation-btn-apply");
     expect(primary).toHaveTextContent("批准并继续");
+  });
+
+  it("keys pressed outside the dialog keep their normal meaning", async () => {
+    renderChatApp();
+
+    const input = screen.getByTestId("message-input");
+    act(() => {
+      input.focus();
+    });
+    await act(async () => {
+      sendCommand("showConfirmation", {
+        confirmationId: "outside_keys",
+        toolName: BASH_TOOL_NAME,
+        confirmationType: "命令执行待确认",
+        toolInput: { command: "npm install" },
+      });
+    });
+
+    // Escape with the focus on the input aborts the answer — it must not
+    // reject the pending confirmation (that would be a destructive surprise).
+    act(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+    expect(document.querySelector(".confirmation-dialog")).toBeInTheDocument();
+
+    // Tab from the input is not hijacked into the dialog.
+    act(() => {
+      fireEvent.keyDown(window, { key: "Tab" });
+    });
+    expect(document.activeElement).toBe(input);
   });
 
   it("should send approval response when clicking apply button", async () => {
@@ -200,7 +237,14 @@ describe("Confirmation Dialog", () => {
       });
     });
 
-    // Press Escape to reject
+    // Press Escape to reject (the focus is inside the dialog — the Esc
+    // shortcut only applies there; see the "does not steal focus" test).
+    const dialogEl = document.querySelector<HTMLElement>(
+      ".confirmation-dialog",
+    )!;
+    act(() => {
+      dialogEl.focus();
+    });
     await act(async () => {
       fireEvent.keyDown(window, { key: "Escape" });
     });
@@ -301,7 +345,10 @@ describe("Confirmation Dialog", () => {
       "操作待确认",
     );
 
-    // Reject second confirmation via Esc key
+    // Reject second confirmation via Esc key (focus inside the dialog).
+    act(() => {
+      (document.querySelector(".confirmation-dialog") as HTMLElement).focus();
+    });
     await act(async () => {
       fireEvent.keyDown(
         document.querySelector(".confirmation-dialog") || document.body,
@@ -450,7 +497,7 @@ describe("Confirmation Dialog", () => {
     }
   });
 
-  it("should prevent user interaction with input while confirmation is shown", async () => {
+  it("input stays visible and usable while a confirmation is shown", async () => {
     renderChatApp();
 
     // Verify input is initially visible
@@ -459,17 +506,16 @@ describe("Confirmation Dialog", () => {
     // Show confirmation
     await act(async () => {
       sendCommand("showConfirmation", {
-        confirmationId: "test_input_hidden",
+        confirmationId: "test_input_stays",
         toolName: EDIT_TOOL_NAME,
         confirmationType: "代码修改待确认",
         toolInput: {},
       });
     });
 
-    // Verify input is hidden (display:none wrapper, not removed from DOM)
-    expect(screen.queryByTestId("message-input")).not.toBeVisible();
-
-    // Verify confirmation dialog is visible
+    // The input remains visible next to the dialog — the user can keep
+    // typing / queue messages while the confirmation waits.
+    expect(screen.getByTestId("message-input")).toBeVisible();
     expect(document.querySelector(".confirmation-dialog")).toBeInTheDocument();
 
     // Approve confirmation
@@ -479,7 +525,7 @@ describe("Confirmation Dialog", () => {
       );
     });
 
-    // Verify input becomes visible again
+    // Input is still visible after the dialog resolves
     expect(screen.getByTestId("message-input")).toBeVisible();
     expect(
       document.querySelector(".confirmation-dialog"),
@@ -1654,8 +1700,12 @@ describe("AskUserQuestion Other input", () => {
     const optionLabels = () =>
       Array.from(document.querySelectorAll<HTMLElement>(".option-item"));
 
-    it("opens with focus on the first option; every option is a Tab stop", async () => {
+    it("opens without stealing focus; every option is a Tab stop", async () => {
       renderChatApp();
+      const input = screen.getByTestId("message-input");
+      act(() => {
+        input.focus();
+      });
       showAskUser(twoOptionQuestion);
       await waitFor(() => {
         expect(
@@ -1663,10 +1713,12 @@ describe("AskUserQuestion Other input", () => {
         ).toBeInTheDocument();
       });
       // Every option holds its own Tab stop (plain Tab traversal, matching
-      // Claude's IDE/desktop AskUserQuestion); focus lands on the first one.
+      // Claude's IDE/desktop AskUserQuestion)...
       const labels = optionLabels();
       expect(labels.filter((l) => l.tabIndex === 0).length).toBe(labels.length);
-      expect(document.activeElement).toBe(labels[0]);
+      // ...but the dialog does not grab focus on open — the user may be
+      // typing and reaches the options with Tab or a click.
+      expect(document.activeElement).toBe(input);
     });
 
     it("Arrow keys do not move focus between options; Tab does", async () => {
@@ -1678,6 +1730,11 @@ describe("AskUserQuestion Other input", () => {
         ).toBeInTheDocument();
       });
       const labels = optionLabels();
+      // The dialog no longer grabs focus on open — enter it like a keyboard
+      // user would (Tab) before testing in-dialog key behavior.
+      act(() => {
+        labels[0].focus();
+      });
       // Arrow keys are not option navigation: focus stays put (matching CC).
       for (const key of ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"]) {
         act(() => {
@@ -1774,6 +1831,45 @@ describe("AskUserQuestion Other input", () => {
       expect(dialog.contains(document.activeElement)).toBe(true);
     });
 
+    it("Arrow keys outside the dialog do not rotate the carousel", async () => {
+      renderChatApp();
+      const input = screen.getByTestId("message-input");
+      act(() => {
+        input.focus();
+      });
+      showAskUser([
+        {
+          question: "Q1",
+          options: [{ label: "A" }, { label: "B" }],
+          multiSelect: false,
+        },
+        {
+          question: "Q2",
+          options: [{ label: "C" }, { label: "D" }],
+          multiSelect: false,
+        },
+      ]);
+      await waitFor(() => {
+        expect(
+          document.querySelector(".confirmation-dialog"),
+        ).toBeInTheDocument();
+      });
+      // The focus is on the input: →/← keep their caret meaning and must not
+      // switch questions.
+      act(() => {
+        fireEvent.keyDown(window, { key: "ArrowRight" });
+      });
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "Q1",
+      );
+      act(() => {
+        fireEvent.keyDown(window, { key: "ArrowLeft" });
+      });
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "Q1",
+      );
+    });
+
     it("dismissing restores focus to the element focused before the dialog", async () => {
       renderChatApp();
       const input = document.querySelector<HTMLElement>(
@@ -1788,7 +1884,15 @@ describe("AskUserQuestion Other input", () => {
           document.querySelector(".confirmation-dialog"),
         ).toBeInTheDocument();
       });
-      expect(document.activeElement).not.toBe(input);
+      // The dialog never took focus (non-intrusive open).
+      expect(document.activeElement).toBe(input);
+      // The user Tabbed into the dialog, then dismissed it with the close
+      // button: focus returns to where it was before entering the dialog.
+      const firstOption = optionLabels()[0];
+      act(() => {
+        firstOption.focus();
+      });
+      expect(document.activeElement).toBe(firstOption);
       act(() => {
         fireEvent.click(document.querySelector(".confirmation-close-btn")!);
       });

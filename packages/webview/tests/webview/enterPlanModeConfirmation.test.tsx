@@ -168,8 +168,12 @@ describe("EnterPlanMode Confirmation Dialog", () => {
       });
     });
 
-    // Wait for dialog to be visible, then press Escape
+    // Wait for dialog to be visible, enter it (focus), then press Escape —
+    // the Esc shortcut only applies while the focus is inside the dialog.
     expect(document.querySelector(".confirmation-dialog")).toBeInTheDocument();
+    act(() => {
+      (document.querySelector(".confirmation-dialog") as HTMLElement).focus();
+    });
     await act(async () => {
       fireEvent.keyDown(
         document.querySelector(".confirmation-dialog") || document.body,
