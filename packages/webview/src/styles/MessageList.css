@@ -135,8 +135,13 @@
 .virtual-row {
   position: absolute;
   top: 0;
-  left: 0;
-  width: 100%;
+  /* Absolute rows resolve against the container's padding box, so left: 0 +
+     width: 100% would cover the container's 10px padding and butt against
+     the pane edges whenever the pane is narrower than the 800px column.
+     Inset both sides instead so rows stay inside the padding, matching the
+     input area's 10px gutters. */
+  left: 10px;
+  right: 10px;
   box-sizing: border-box;
 }
 

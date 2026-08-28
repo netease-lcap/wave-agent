@@ -138,6 +138,36 @@ async function expectStickyBarEdgeToEdge(webviewPage: Page) {
 }
 
 test.describe("Virtualized message list demo", () => {
+  test("narrow pane: rows keep the container's 10px side padding (match the input)", async ({
+    webviewPage,
+  }) => {
+    // Regression guard: rows are absolutely positioned against the container's
+    // padding box, so left: 0 + width: 100% covered the container's 10px
+    // padding and butted against the pane edges whenever the pane is narrower
+    // than the 800px column (the input area keeps 10px gutters there).
+    await webviewPage.setViewportSize({ width: 480, height: 720 });
+    const injector = new MessageInjector(webviewPage);
+    await initWithMessages(injector, buildMessages(40));
+
+    await webviewPage.waitForSelector('[data-message-id="u39"]');
+    const rects = await webviewPage.evaluate(() => {
+      const c = document.getElementById("messagesContainer") as HTMLElement;
+      const row = c.querySelector<HTMLElement>(".virtual-row");
+      if (!row) return null;
+      const cr = c.getBoundingClientRect();
+      const rr = row.getBoundingClientRect();
+      return { cr, rr };
+    });
+    expect(rects).not.toBeNull();
+    if (!rects) return;
+    expect(Math.abs(rects.rr.left - (rects.cr.left + 10))).toBeLessThanOrEqual(
+      1,
+    );
+    expect(
+      Math.abs(rects.rr.right - (rects.cr.right - 10)),
+    ).toBeLessThanOrEqual(1);
+  });
+
   test("bounded DOM rows, real spacer height, scrollable, pinned to bottom", async ({
     webviewPage,
   }) => {
