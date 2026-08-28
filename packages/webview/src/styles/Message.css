@@ -149,6 +149,13 @@
 }
 
 .compaction-hint {
+  /* The hint sits after the virtualizer's in-flow spacer (flex-shrink: 0) in
+     the flex-column message container. Without an explicit flex-shrink: 0 the
+     hint — the only remaining shrinkable item once the spacer fills the
+     column — absorbs all the negative free space and collapses to zero height
+     (overflow: hidden then clips the streaming tail too), making the loading
+     text and tail invisible. */
+  flex-shrink: 0;
   align-self: flex-start;
   max-width: 100%;
   padding-left: 2px;

@@ -689,6 +689,19 @@ export const MessageList = forwardRef<
     return () => observer.disconnect();
   }, [doScrollToBottom]);
 
+  // The compaction hint mounts below the last message (after the virtualizer's
+  // in-flow spacer). scrollToEnd only accounts for row heights, so a pinned
+  // viewport stays short by the hint's own height — the loading text and its
+  // streaming tail would sit just below the fold. Re-pin to the true bottom
+  // (scrollHeight includes the hint) when compaction starts; the hint is a
+  // static one-liner, so no re-pin is needed as its tail grows. Respect an
+  // opt-out: a user reading history isn't yanked back down.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!isCompacting || !container || userScrolledUpRef.current) return;
+    container.scrollTop = container.scrollHeight;
+  }, [isCompacting]);
+
   return (
     <div
       ref={containerRef}
