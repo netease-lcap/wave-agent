@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, RefObject } from "react";
+import React, { useState, useRef, RefObject } from "react";
 import { Tooltip } from "./Tooltip";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { MoreIcon } from "./HeaderIcons";
@@ -94,20 +94,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     title: string;
     description?: string;
   } | null>(null);
-  // Roving tabindex for the session tree (keyboard nav modeled on Claude's
-  // sidebar): exactly ONE session main button is in the Tab order — it falls
-  // back to the current session (else the first rendered session) and follows
-  // whichever row was last focused via arrow keys. Delete buttons live outside
-  // the Tab order entirely and are reached with ←/→ instead.
-  const [rovingSessionId, setRovingSessionId] = useState<string | null>(null);
   const treeRef = useRef<HTMLDivElement | null>(null);
-  // Sessions switched in without a focus event (Ctrl+Tab, host-driven pane
-  // changes) must still become the Tab stop: drop the roving record when the
-  // current session changes so the fallback chain lands on the new session.
-  // Arrow-key navigation keeps currentSessionId unchanged, so it is unaffected.
-  useEffect(() => {
-    setRovingSessionId(null);
-  }, [currentSessionId]);
   // Modifier key label for the side-by-side hints, same platform branch as the
   // click handlers below (Cmd on macOS / Ctrl elsewhere).
   const modKeyLabel = isMacPlatform() ? "Cmd" : "Ctrl";
@@ -139,34 +126,15 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     }));
   };
 
-  // Sessions currently rendered in visible groups, in display order — the
-  // roving fallback chain needs this to pick the single Tab stop.
-  const orderedSessionIds: string[] = [];
-  for (const group of sessionTree) {
-    if (isExpanded(group)) {
-      for (const entry of group.sessions) {
-        orderedSessionIds.push(entry.sessionId);
-      }
-    }
-  }
-  // A stale roving record (its row was deleted or its group collapsed) must
-  // not leave the tree without any Tab stop — fall through to the current
-  // session, else the first rendered session.
-  const tabStopId =
-    rovingSessionId && orderedSessionIds.includes(rovingSessionId)
-      ? rovingSessionId
-      : currentSessionId && orderedSessionIds.includes(currentSessionId)
-        ? currentSessionId
-        : orderedSessionIds[0];
-
-  // Tree-level keyboard navigation, mirroring Claude's sidebar model:
+  // Tree-level keyboard navigation (modeled on Claude's sidebar):
+  // - Session main buttons are all natively Tab-focusable — Tab walks the rows
+  //   one by one (group headers included); the arrows are an accelerator, not
+  //   the only way in.
   // - ↑/↓/Home/End move focus between session main buttons (skipping group
   //   headers; ↓ past the last row wraps to the first), scrolling the target
   //   into view. When focus sits on a delete button, the movement continues
   //   from that row's main button.
   // - ←/→ move within one row between its main and delete buttons.
-  // Focus events on the main buttons keep rovingSessionId in sync so the
-  // Tab stop always follows the keyboard user.
   const handleTreeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const tree = treeRef.current;
@@ -288,9 +256,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           <button
             type="button"
             className="desktop-session-item-main"
-            // Roving tabindex: exactly one row main button sits in the Tab
-            // order; arrows move real focus and onFocus updates the stop.
-            tabIndex={session.sessionId === tabStopId ? 0 : -1}
             aria-current={isCurrent || undefined}
             data-session-main=""
             onClick={(e) => {
@@ -303,7 +268,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 onSelectSession(group.workdir, session.sessionId);
               }
             }}
-            onFocus={() => setRovingSessionId(session.sessionId)}
             data-testid={`desktop-session-main-${session.sessionId}`}
           >
             {running || waiting ? (

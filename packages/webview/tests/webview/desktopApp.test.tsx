@@ -1363,7 +1363,7 @@ describe("DesktopApp", () => {
       });
     });
 
-    it("keeps exactly one Tab stop in the session tree: the current session's main button", () => {
+    it("keeps every session main button in the Tab order; delete buttons stay out", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", {
         workdir: "/work/a",
@@ -1379,136 +1379,15 @@ describe("DesktopApp", () => {
         ],
       });
 
-      // Spec 「会话管理」scenario 13: one single Tab stop, no per-button Tab
-      // traversal. The current session hosts it by default.
+      // Spec 「会话管理」scenario 13: session main buttons are natively
+      // Tab-focusable — Tab walks the tree row by row (claude.ai model).
+      // Delete buttons never enter the Tab order (←/→ only).
       const mainS1 = screen.getByTestId("desktop-session-main-s1");
       const mainS2 = screen.getByTestId("desktop-session-main-s2");
-      expect(mainS1).toHaveAttribute("tabindex", "0");
-      expect(mainS2).toHaveAttribute("tabindex", "-1");
-      expect(screen.getByTestId("desktop-session-delete-s1")).toHaveAttribute(
-        "tabindex",
-        "-1",
-      );
-    });
-
-    it("re-points the Tab stop at a session switched in without a focus event (e.g. Ctrl+Tab)", () => {
-      renderDesktopApp();
-      sendCommand("desktopWorkdirState", {
-        workdir: "/work/a",
-        recentWorkdirs: ["/work/a"],
-      });
-      sendCommand("desktopSessionTree", {
-        groups: [
-          {
-            host: "local",
-            workdir: "/work/a",
-            sessions: [session("s1", "hello a"), session("s2", "hello b")],
-          },
-        ],
-      });
-      sendCommand("updateCurrentSession", {
-        session: {
-          id: "s1",
-          sessionType: "main",
-          workdir: "/work/a",
-          createdAt: "2026-08-28T00:00:00.000Z",
-          lastActiveAt: "2026-08-28T00:00:00.000Z",
-          latestTotalTokens: 0,
-          firstMessage: "hello a",
-        },
-      });
-      expect(screen.getByTestId("desktop-session-main-s1")).toHaveAttribute(
-        "tabindex",
-        "0",
-      );
-
-      // Clicking s2 focuses its row (the host then switches the current
-      // session to s2), pinning the roving record on s2.
-      act(() => {
-        screen.getByTestId("desktop-session-main-s2").focus();
-      });
-      sendCommand("updateCurrentSession", {
-        session: {
-          id: "s2",
-          sessionType: "main",
-          workdir: "/work/a",
-          createdAt: "2026-08-28T00:00:00.000Z",
-          lastActiveAt: "2026-08-28T00:00:00.000Z",
-          latestTotalTokens: 0,
-          firstMessage: "hello b",
-        },
-      });
-      expect(screen.getByTestId("desktop-session-main-s2")).toHaveAttribute(
-        "tabindex",
-        "0",
-      );
-
-      // Ctrl+Tab back to s1: no focus event fires on the sidebar, yet the
-      // Tab stop must follow the newly current session.
-      sendCommand("updateCurrentSession", {
-        session: {
-          id: "s1",
-          sessionType: "main",
-          workdir: "/work/a",
-          createdAt: "2026-08-28T00:00:00.000Z",
-          lastActiveAt: "2026-08-28T00:00:00.000Z",
-          latestTotalTokens: 0,
-          firstMessage: "hello a",
-        },
-      });
-      expect(screen.getByTestId("desktop-session-main-s1")).toHaveAttribute(
-        "tabindex",
-        "0",
-      );
-      expect(screen.getByTestId("desktop-session-main-s2")).toHaveAttribute(
-        "tabindex",
-        "-1",
-      );
-    });
-
-    it("keeps a Tab stop when the roving record points at a removed row", () => {
-      renderDesktopApp();
-      sendCommand("desktopWorkdirState", {
-        workdir: "/work/a",
-        recentWorkdirs: ["/work/a"],
-      });
-      sendCommand("desktopSessionTree", {
-        groups: [
-          {
-            host: "local",
-            workdir: "/work/a",
-            sessions: [session("s1", "hello a"), session("s2", "hello b")],
-          },
-        ],
-      });
-
-      // Arrow onto s2 — the roving record now sits on s2.
-      act(() => {
-        screen.getByTestId("desktop-session-main-s1").focus();
-      });
-      fireEvent.keyDown(screen.getByTestId("desktop-session-main-s1"), {
-        key: "ArrowDown",
-      });
-      expect(screen.getByTestId("desktop-session-main-s2")).toHaveAttribute(
-        "tabindex",
-        "0",
-      );
-
-      // s2 leaves the tree (deleted / group collapsed): the stop must fall
-      // back instead of leaving the tree without any tabbable row.
-      sendCommand("desktopSessionTree", {
-        groups: [
-          {
-            host: "local",
-            workdir: "/work/a",
-            sessions: [session("s1", "hello a")],
-          },
-        ],
-      });
-      expect(screen.getByTestId("desktop-session-main-s1")).toHaveAttribute(
-        "tabindex",
-        "0",
-      );
+      expect(mainS1.tabIndex).toBe(0);
+      expect(mainS2.tabIndex).toBe(0);
+      expect(screen.getByTestId("desktop-session-delete-s1").tabIndex).toBe(-1);
+      expect(screen.getByTestId("desktop-session-delete-s2").tabIndex).toBe(-1);
     });
 
     it("moves focus between rows with ↑/↓ including wrap-around, and follows with Home/End", () => {
@@ -1535,9 +1414,6 @@ describe("DesktopApp", () => {
       // ↓ wraps past the last row to the first.
       fireEvent.keyDown(mainS2, { key: "ArrowDown" });
       expect(document.activeElement).toBe(mainS1);
-      // The roving Tab stop follows the focused row.
-      expect(mainS1).toHaveAttribute("tabindex", "0");
-      expect(mainS2).toHaveAttribute("tabindex", "-1");
 
       fireEvent.keyDown(mainS1, { key: "ArrowUp" });
       expect(document.activeElement).toBe(mainS2);
