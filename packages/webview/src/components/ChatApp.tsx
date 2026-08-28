@@ -116,6 +116,15 @@ function canonicalForwardUrl(raw: string): string {
 }
 
 /**
+ * True when the dragged payload is OS file(s) (dataTransfer "Files").
+ * Session/pane split drags carry a custom MIME type without "Files" and are
+ * highlighted by DesktopShell's insertion indicators, not the upload overlay.
+ */
+function isFileDragEvent(e: React.DragEvent): boolean {
+  return e.dataTransfer.types.includes("Files");
+}
+
+/**
  * Panel group snapshot, remembered per session. Keys are session ids, plus one
  * `new:<paneId>` bucket per pane for the new-session state (no session bound
  * yet); the bucket migrates to the session id once the first message binds
@@ -468,15 +477,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
   const chatContainerRef = useRef<HTMLDivElement>(null);
   // Desktop drag-and-drop file upload: a counter tracks nested dragenter /
-  // dragleave so quick in/out passes don't flicker the overlay.
+  // dragleave so quick in/out passes don't flicker the overlay. Only real
+  // file drags ("Files" in dataTransfer) raise the overlay — session/pane
+  // split drags carry custom MIME types and are highlighted by
+  // DesktopShell's insertion indicators instead.
   const [dragActive, setDragActive] = useState(false);
   const dragCounterRef = useRef(0);
   const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (!isFileDragEvent(e)) return;
     e.preventDefault();
     dragCounterRef.current += 1;
     setDragActive(true);
   }, []);
   const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!isFileDragEvent(e)) return;
     e.preventDefault();
     // Visual "copy" cursor hint. jsdom's DataTransferPolyfill exposes
     // dropEffect as read-only, so guard for the test environment.
@@ -487,6 +501,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     }
   }, []);
   const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!isFileDragEvent(e)) return;
     e.preventDefault();
     dragCounterRef.current -= 1;
     if (dragCounterRef.current <= 0) {

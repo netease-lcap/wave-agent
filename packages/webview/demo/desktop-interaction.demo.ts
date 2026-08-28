@@ -75,12 +75,20 @@ test.describe("Desktop interaction refinements", () => {
     await webviewPage.setViewportSize({ width: 960, height: 640 });
     await setupSinglePane(injector);
 
-    // Drag events are attached only in the desktop host; dispatch a real
-    // dragenter on the chat container to raise the overlay.
-    await webviewPage.dispatchEvent(
-      '[data-testid="chat-container"]',
-      "dragenter",
-    );
+    // Drag events are attached only in the desktop host and only react to
+    // file drags (dataTransfer "Files"); dispatch a real DragEvent carrying
+    // a File on the chat container to raise the overlay.
+    await webviewPage.evaluate(() => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(new File([""], "hello.txt"));
+      document.querySelector('[data-testid="chat-container"]')?.dispatchEvent(
+        new DragEvent("dragenter", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer,
+        }),
+      );
+    });
     await expect(webviewPage.getByTestId("chat-drag-overlay")).toBeVisible();
     await expect(webviewPage.getByTestId("chat-drag-overlay")).toContainText(
       "释放以上传文件",

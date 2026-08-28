@@ -2,6 +2,7 @@ import { render, fireEvent, waitFor, act } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ChatApp } from "../../src/components/ChatApp";
+import { SESSION_DRAG_MIME } from "../../src/components/DesktopSidebar";
 import { createMockVscode, sendCommand } from "./test-utils";
 import type { VsCodeApi } from "../../src/types";
 
@@ -34,13 +35,13 @@ function renderPane(paneId: string) {
   };
 }
 
-const dragEnter = (container: Element) =>
+const dragEnter = (container: Element, types: string[] = ["Files"]) =>
   act(() => {
-    fireEvent.dragEnter(container);
+    fireEvent.dragEnter(container, { dataTransfer: { types } });
   });
-const dragLeave = (container: Element) =>
+const dragLeave = (container: Element, types: string[] = ["Files"]) =>
   act(() => {
-    fireEvent.dragLeave(container);
+    fireEvent.dragLeave(container, { dataTransfer: { types } });
   });
 
 describe("Desktop file drag-and-drop upload", () => {
@@ -80,6 +81,21 @@ describe("Desktop file drag-and-drop upload", () => {
 
     // Second leave clears the counter -> overlay hides.
     dragLeave(chatContainer);
+    expect(container.querySelector(".chat-drag-overlay")).toBeNull();
+  });
+
+  it("does not show the upload overlay for session/split drags (custom MIME)", () => {
+    const { container } = renderPane("pane-1");
+    const chatContainer = document.querySelector(
+      '[data-testid="chat-container"]',
+    )!;
+
+    // Session/pane split drags carry a custom MIME type without "Files";
+    // DesktopShell's insertion indicators highlight them instead.
+    dragEnter(chatContainer, [SESSION_DRAG_MIME]);
+    expect(container.querySelector(".chat-drag-overlay")).toBeNull();
+
+    dragLeave(chatContainer, [SESSION_DRAG_MIME]);
     expect(container.querySelector(".chat-drag-overlay")).toBeNull();
   });
 
