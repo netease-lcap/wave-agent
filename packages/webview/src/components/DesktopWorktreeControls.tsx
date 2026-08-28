@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useRef } from "react";
+import { useRovingMenu } from "../utils/useRovingMenu";
 import "../styles/DesktopApp.css";
 
 export interface DesktopWorktreeControlsProps {
@@ -19,7 +20,8 @@ export interface DesktopWorktreeControlsProps {
  * Branch selector + worktree checkbox shown next to the workdir selector on
  * the new-session page (FR-022/FR-023). Only rendered when the current workdir
  * is a git repo. Same dropdown pattern as DesktopWorkdirSelector: relative
- * container, menu expands upward, click-outside closes.
+ * container, menu expands upward, click-outside closes. Keyboard: roving
+ * tabindex + Arrow keys via useRovingMenu; opening focuses the current branch.
  */
 export const DesktopWorktreeControls: React.FC<
   DesktopWorktreeControlsProps
@@ -32,28 +34,22 @@ export const DesktopWorktreeControls: React.FC<
   onBranchChange,
   onWorktreeChange,
 }) => {
-  const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onMouseDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [menuOpen]);
+  // Opening focuses the currently selected branch (permission-mode dropdown
+  // precedent), so Enter re-confirms it and Arrow keys move from there.
+  const selectedBranchIndex = Math.max(0, branches.indexOf(branch));
 
-  const handleSelectBranch = useCallback(
-    (b: string) => {
-      setMenuOpen(false);
-      onBranchChange(b);
-      triggerRef.current?.focus();
+  const { open, openMenu, closeReturningFocus, getItemProps } = useRovingMenu(
+    menuRef,
+    {
+      itemSelector: ".desktop-workdir-menu-item",
+      itemCount: branches.length,
+      triggerRef,
+      closeOnActivate: true,
+      onActivate: (i) => onBranchChange(branches[i]),
     },
-    [onBranchChange],
   );
 
   return (
@@ -65,23 +61,30 @@ export const DesktopWorktreeControls: React.FC<
         <div
           className="desktop-workdir-trigger"
           ref={triggerRef}
-          onClick={loading ? undefined : () => setMenuOpen((o) => !o)}
+          onClick={
+            loading
+              ? undefined
+              : () => {
+                  if (open) closeReturningFocus();
+                  else openMenu(selectedBranchIndex);
+                }
+          }
           onKeyDown={
             loading
               ? undefined
               : (e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    setMenuOpen((o) => !o);
-                  } else if (e.key === "Escape" && menuOpen) {
+                    openMenu(selectedBranchIndex);
+                  } else if (e.key === "Escape" && open) {
                     e.preventDefault();
-                    setMenuOpen(false);
+                    closeReturningFocus();
                   }
                 }
           }
           title={loading ? "分支获取中…" : `基准分支：${branch}`}
           data-testid="desktop-branch-selector"
-          aria-expanded={menuOpen}
+          aria-expanded={open}
           aria-haspopup="listbox"
           role="button"
           tabIndex={loading ? -1 : 0}
@@ -96,29 +99,19 @@ export const DesktopWorktreeControls: React.FC<
           )}
           <span className="codicon codicon-chevron-down desktop-workdir-caret"></span>
         </div>
-        {menuOpen && (
+        {open && (
           <div
             className="desktop-workdir-menu"
             role="listbox"
             data-testid="desktop-branch-menu"
           >
-            {branches.map((b) => (
+            {branches.map((b, i) => (
               <div
                 key={b}
                 className={`desktop-workdir-menu-item${b === branch ? " desktop-branch-active" : ""}`}
                 role="option"
-                tabIndex={0}
-                onClick={() => handleSelectBranch(b)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    handleSelectBranch(b);
-                  } else if (e.key === "Escape") {
-                    e.preventDefault();
-                    setMenuOpen(false);
-                    triggerRef.current?.focus();
-                  }
-                }}
+                aria-selected={b === branch}
+                {...getItemProps(i)}
                 title={b}
                 data-testid="desktop-branch-item"
               >

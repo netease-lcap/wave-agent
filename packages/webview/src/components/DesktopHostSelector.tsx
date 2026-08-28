@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useRovingMenu } from "../utils/useRovingMenu";
 import "../styles/DesktopApp.css";
 
 export interface DesktopHostSelectorProps {
@@ -23,6 +24,7 @@ export interface DesktopHostSelectorProps {
  * Same dropdown pattern as DesktopWorkdirSelector: relative container, trigger,
  * absolutely-positioned menu expanding UPWARD (bottom:100%) — the input sits at
  * the bottom of the viewport and a native <select> popup would be clipped.
+ * Keyboard model shared too: roving tabindex + Arrow keys via useRovingMenu.
  */
 export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
   host,
@@ -30,34 +32,40 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
   onSelectHost,
   onAddHost,
 }) => {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [connectionString, setConnectionString] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
 
-  // Close the dropdown when clicking outside of it.
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onMouseDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-        setAdding(false);
-      }
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [menuOpen]);
+  // Selectable SSH host entries; some mount paths render before the host
+  // list arrives (undefined), so default here rather than only in the menu.
+  const sshHosts = hosts ?? [];
 
-  const handleSelect = useCallback(
+  // 添加主机… expands inline with the menu staying open — selection branches
+  // close explicitly (closeOnActivate stays off).
+  const { open, openMenu, closeReturningFocus, getItemProps } = useRovingMenu(
+    menuRef,
+    {
+      itemSelector: ".desktop-workdir-menu-item",
+      itemCount: sshHosts.length + (adding ? 1 : 2),
+      triggerRef,
+      closeOnActivate: false,
+      onActivate: (i) => {
+        if (i === 0) selectHost("local");
+        else if (i <= sshHosts.length) selectHost(sshHosts[i - 1]);
+        else openAdd();
+      },
+    },
+  );
+
+  const selectHost = useCallback(
     (h: string) => {
-      setMenuOpen(false);
       setAdding(false);
       if (h !== host) onSelectHost(h);
-      triggerRef.current?.focus();
+      closeReturningFocus();
     },
-    [host, onSelectHost],
+    [host, onSelectHost, closeReturningFocus],
   );
 
   const openAdd = useCallback(() => {
@@ -71,12 +79,17 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
   const submitAdd = useCallback(() => {
     const s = connectionString.trim();
     if (!s) return;
-    setMenuOpen(false);
     setAdding(false);
     setConnectionString("");
     onAddHost(s);
-    triggerRef.current?.focus();
-  }, [connectionString, onAddHost]);
+    closeReturningFocus();
+  }, [connectionString, onAddHost, closeReturningFocus]);
+
+  // Leaving the menu (any close path, including click-outside in the hook)
+  // also collapses an in-progress add-host input.
+  useEffect(() => {
+    if (!open && adding) setAdding(false);
+  }, [open, adding]);
 
   const isLocal = host === "local";
 
@@ -85,19 +98,22 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
       <div
         className="desktop-host-trigger"
         ref={triggerRef}
-        onClick={() => setMenuOpen((o) => !o)}
+        onClick={() => {
+          if (open) closeReturningFocus();
+          else openMenu();
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            setMenuOpen((o) => !o);
-          } else if (e.key === "Escape" && menuOpen) {
+            openMenu();
+          } else if (e.key === "Escape" && open) {
             e.preventDefault();
-            setMenuOpen(false);
+            closeReturningFocus();
           }
         }}
         title={isLocal ? "本地" : host}
         data-testid="desktop-host"
-        aria-expanded={menuOpen}
+        aria-expanded={open}
         aria-haspopup="listbox"
         role="button"
         tabIndex={0}
@@ -108,7 +124,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
         <span className="desktop-host-name">{isLocal ? "本地" : host}</span>
         <span className="codicon codicon-chevron-down desktop-host-caret"></span>
       </div>
-      {menuOpen && (
+      {open && (
         <div
           className="desktop-workdir-menu"
           role="listbox"
@@ -117,45 +133,23 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
           <div
             className="desktop-workdir-menu-item"
             role="option"
-            tabIndex={0}
-            onClick={() => handleSelect("local")}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                handleSelect("local");
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                setMenuOpen(false);
-                setAdding(false);
-                triggerRef.current?.focus();
-              }
-            }}
+            aria-selected={isLocal}
+            {...getItemProps(0)}
             data-testid="desktop-host-local"
           >
             <span className="codicon codicon-device-desktop"></span>
             <span>本地</span>
           </div>
-          {hosts.length > 0 && (
+          {sshHosts.length > 0 && (
             <div className="desktop-workdir-menu-label">SSH 主机</div>
           )}
-          {hosts.map((h) => (
+          {sshHosts.map((h, i) => (
             <div
               key={h}
               className="desktop-workdir-menu-item"
               role="option"
-              tabIndex={0}
-              onClick={() => handleSelect(h)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handleSelect(h);
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  setMenuOpen(false);
-                  setAdding(false);
-                  triggerRef.current?.focus();
-                }
-              }}
+              aria-selected={h === host}
+              {...getItemProps(i + 1)}
               title={h}
               data-testid="desktop-host-item"
             >
@@ -176,7 +170,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
                   if (e.key === "Enter") submitAdd();
                   else if (e.key === "Escape") {
                     setAdding(false);
-                    triggerRef.current?.focus();
+                    closeReturningFocus();
                   }
                 }}
               />
@@ -185,19 +179,8 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
             <div
               className="desktop-workdir-menu-item"
               role="option"
-              tabIndex={0}
-              onClick={openAdd}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  openAdd();
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  setMenuOpen(false);
-                  setAdding(false);
-                  triggerRef.current?.focus();
-                }
-              }}
+              aria-selected={false}
+              {...getItemProps(sshHosts.length + 1)}
               data-testid="desktop-host-add-entry"
             >
               <span className="codicon codicon-add"></span>

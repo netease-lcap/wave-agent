@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useRovingMenu } from "../utils/useRovingMenu";
 import "../styles/DesktopApp.css";
 
 export interface DesktopWorkdirSelectorProps {
@@ -61,7 +62,6 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   onSelectRecentWorkdir,
   onRemoveRecentWorkdir,
 }) => {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [browsing, setBrowsing] = useState(false);
   const [currentPath, setCurrentPath] = useState("~");
   const [filterKeyword, setFilterKeyword] = useState("");
@@ -77,19 +77,48 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   const requestIdRef = useRef(0);
   const lastPathRef = useRef("~");
   const isRemote = host !== undefined && host !== "local";
+  // Some mount paths render before the recents list arrives (undefined), so
+  // default here rather than only inside the menu JSX.
+  const recents = recentWorkdirs ?? [];
 
-  // Close the dropdown / browser when clicking outside of it.
+  // The recents menu runs the shared roving-tabindex keyboard model (Arrow
+  // keys move the focused item). Item order: 最近打开 entries, then 浏览….
+  // Activation closes explicitly per branch (remote 浏览… opens the browser
+  // panel instead of returning focus), so closeOnActivate stays off.
+  const {
+    open: menuOpen,
+    openMenu,
+    closeMenu,
+    closeReturningFocus,
+    getItemProps,
+  } = useRovingMenu(menuRef, {
+    itemSelector: ".desktop-workdir-menu-item",
+    itemCount: recents.length + 1,
+    triggerRef,
+    closeOnActivate: false,
+    onActivate: (i) => {
+      if (i < recents.length) {
+        handleSelectRecent(recents[i]);
+      } else if (isRemote) {
+        openBrowser();
+      } else {
+        handleBrowse();
+      }
+    },
+  });
+
+  // Only the remote browser owns click-outside here — closing the main menu
+  // on outside clicks is handled inside useRovingMenu.
   useEffect(() => {
-    if (!menuOpen && !browsing) return;
+    if (!browsing) return;
     const onMouseDown = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
         setBrowsing(false);
       }
     };
     document.addEventListener("mousedown", onMouseDown);
     return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [menuOpen, browsing]);
+  }, [browsing]);
 
   const dirName = workdir
     ? workdir.split(/[\\/]/).filter(Boolean).pop() || workdir
@@ -134,19 +163,18 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   }, [browsing]);
 
   const handleBrowse = useCallback(() => {
-    setMenuOpen(false);
     onSelectWorkdir();
-    triggerRef.current?.focus();
-  }, [onSelectWorkdir]);
+    closeReturningFocus();
+  }, [onSelectWorkdir, closeReturningFocus]);
 
   const openBrowser = useCallback(() => {
-    setMenuOpen(false);
+    closeMenu();
     setBrowsing(true);
     // Location memory: reopen at the last visited directory (or home on the
     // first open of a session), spec scenario 22.
     requestList(lastPathRef.current || "~");
     requestAnimationFrame(() => filterInputRef.current?.focus());
-  }, [requestList]);
+  }, [closeMenu, requestList]);
 
   const selectCurrent = useCallback(() => {
     if (!currentPath || loading || error) return;
@@ -169,11 +197,10 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
 
   const handleSelectRecent = useCallback(
     (path: string) => {
-      setMenuOpen(false);
       onSelectRecentWorkdir(path, host);
-      triggerRef.current?.focus();
+      closeReturningFocus();
     },
-    [host, onSelectRecentWorkdir],
+    [host, onSelectRecentWorkdir, closeReturningFocus],
   );
 
   const handleRemoveRecent = useCallback(
@@ -243,14 +270,17 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
       <div
         className="desktop-workdir-trigger"
         ref={triggerRef}
-        onClick={() => setMenuOpen((o) => !o)}
+        onClick={() => {
+          if (menuOpen) closeReturningFocus();
+          else openMenu();
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            setMenuOpen((o) => !o);
+            openMenu();
           } else if (e.key === "Escape" && menuOpen) {
             e.preventDefault();
-            setMenuOpen(false);
+            closeReturningFocus();
           }
         }}
         title={workdir ?? (isRemote ? "选择远程目录…" : "选择工作目录…")}
@@ -270,10 +300,10 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
           role="listbox"
           data-testid="desktop-workdir-menu"
         >
-          {recentWorkdirs.length > 0 && (
+          {recents.length > 0 && (
             <div className="desktop-workdir-menu-label">最近打开</div>
           )}
-          {recentWorkdirs.map((dir) => {
+          {recents.map((dir, i) => {
             // VS Code-style two-line entry: basename on top, parent path
             // below in de-emphasized text (keeps long paths readable and
             // disambiguates same-named folders).
@@ -282,25 +312,18 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
             const parent = dir
               .slice(0, dir.length - base.length)
               .replace(/[\\/]+$/, "");
+            // Nested remove button owns its own keys — the row's roving key
+            // handling must ignore events bubbling up from it.
+            const itemProps = getItemProps(i);
             return (
               <div
                 key={dir}
                 className="desktop-workdir-menu-item"
                 role="option"
-                tabIndex={0}
-                onClick={() => handleSelectRecent(dir)}
+                {...itemProps}
                 onKeyDown={(e) => {
-                  // Let the nested remove button handle its own keys.
                   if (e.target !== e.currentTarget) return;
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    handleSelectRecent(dir);
-                  } else if (e.key === "Escape") {
-                    e.preventDefault();
-                    setMenuOpen(false);
-                    setBrowsing(false);
-                    triggerRef.current?.focus();
-                  }
+                  itemProps.onKeyDown(e);
                 }}
                 title={dir}
                 data-testid="desktop-workdir-recent-item"
@@ -329,20 +352,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
           <div
             className="desktop-workdir-menu-item"
             role="option"
-            tabIndex={0}
-            onClick={isRemote ? openBrowser : handleBrowse}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                if (isRemote) openBrowser();
-                else handleBrowse();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                setMenuOpen(false);
-                setBrowsing(false);
-                triggerRef.current?.focus();
-              }
-            }}
+            {...getItemProps(recents.length)}
             data-testid="desktop-workdir-browse"
           >
             <span className="codicon codicon-folder-opened"></span>

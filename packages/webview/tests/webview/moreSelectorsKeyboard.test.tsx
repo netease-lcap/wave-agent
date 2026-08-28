@@ -14,11 +14,16 @@ import { fixtures } from "wave-webview-fixtures";
 
 vi.mock("../../src/styles/DesktopApp.css", () => ({}));
 
+/** Flushes the hook's rAF-deferred initial item focus. */
+const flushOpenFocus = () =>
+  new Promise((resolve) => requestAnimationFrame(resolve));
+
 /**
  * Keyboard accessibility of the remaining custom interactive elements:
  * MoreMenu items, panel-toggle checkboxes, session-history list, context tags,
- * and tool file paths. Same pattern as plusMenuKeyboard.test.tsx: Tab-focusable
- * + Enter/Space activation, Escape closes menus.
+ * and tool file paths. Popup dropdowns (MoreMenu/PanelToggleMenu) share the
+ * roving-tabindex keyboard model: Arrow keys move, Enter/Space activate,
+ * Escape closes back to the trigger.
  */
 describe("remaining keyboard accessibility", () => {
   beforeEach(() => {
@@ -41,6 +46,27 @@ describe("remaining keyboard accessibility", () => {
         command: "getConfiguration",
       });
       expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
+    });
+
+    it("opens focused on the first item; ArrowDown moves roving focus; Escape returns to the trigger", async () => {
+      renderChatApp();
+      const trigger = screen.getByTestId("more-btn");
+      fireEvent.click(trigger);
+      await flushOpenFocus();
+
+      // Controlled menus auto-focus their first item after the open frame.
+      const settings = screen.getByTestId("more-menu-settings");
+      const enterprise = screen.getByTestId("more-menu-enterprise");
+      expect(document.activeElement).toBe(settings);
+
+      fireEvent.keyDown(settings, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(enterprise);
+      expect(enterprise).toHaveProperty("tabIndex", 0);
+      expect(settings).toHaveProperty("tabIndex", -1);
+
+      fireEvent.keyDown(enterprise, { key: "Escape" });
+      expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
+      expect(document.activeElement).toBe(trigger);
     });
 
     it("activates the logout item with Space", () => {
@@ -87,7 +113,8 @@ describe("remaining keyboard accessibility", () => {
 
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
       const diffItem = screen.getByTestId("panel-toggle-item-diff");
-      expect(diffItem).toHaveProperty("tabIndex", 0);
+      // Roving tabindex: only the focused item is a tab stop.
+      expect(diffItem).toHaveProperty("tabIndex", -1);
 
       diffItem.focus();
       fireEvent.keyDown(diffItem, { key: " " });
@@ -98,6 +125,29 @@ describe("remaining keyboard accessibility", () => {
       expect(diffItem).toHaveAttribute("aria-checked", "true");
       // Multi-select menu stays open after toggling.
       expect(screen.getByTestId("panel-toggle-menu")).toBeInTheDocument();
+    });
+
+    it("moves with Arrow keys without wrapping and skips nothing (disabled stays reachable but inert)", async () => {
+      window.waveHostType = "desktop";
+      renderDesktop();
+
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+      await flushOpenFocus();
+
+      // Opening focuses the first item (预览).
+      const preview = screen.getByTestId("panel-toggle-item-preview");
+      expect(document.activeElement).toBe(preview);
+
+      const kinds = ["preview", "plan", "diff", "terminal", "file"].map(
+        (kind) => screen.getByTestId(`panel-toggle-item-${kind}`),
+      );
+      for (let i = 0; i < kinds.length - 1; i++) {
+        fireEvent.keyDown(kinds[i], { key: "ArrowDown" });
+        expect(document.activeElement).toBe(kinds[i + 1]);
+      }
+      // Below the last item: clamped (no wrap to the top).
+      fireEvent.keyDown(kinds[kinds.length - 1], { key: "ArrowDown" });
+      expect(document.activeElement).toBe(kinds[kinds.length - 1]);
     });
 
     it("closes the panel menu with Escape", () => {
