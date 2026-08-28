@@ -121,7 +121,7 @@ test.describe("SDD Workflow Iterate Screenshots", () => {
               {
                 header: "规格确认",
                 question:
-                  "已更新《客户管理系统》规格：新增「客户自动分级」用户故事、修改「标签自动生成」描述（现共 5 个用户故事、15 个验收场景），请选择后续流程：",
+                  "已更新《客户管理系统》规格：新增「客户自动分级」用户故事、修改「标签自动生成」描述（现共 5 个用户故事、15 个验收场景），请选择后续流程（如需调整规格，选「其他」并输入修改意见）：",
                 options: [
                   {
                     label: "直接实现",
@@ -130,10 +130,6 @@ test.describe("SDD Workflow Iterate Screenshots", () => {
                   {
                     label: "制定技术方案",
                     description: "制定技术选型、架构设计与实现步骤后请你批准",
-                  },
-                  {
-                    label: "其他",
-                    description: "规格需要调整，按反馈修改后重新决策",
                   },
                 ],
               },
@@ -157,7 +153,7 @@ test.describe("SDD Workflow Iterate Screenshots", () => {
           {
             header: "规格确认",
             question:
-              "已更新《客户管理系统》规格：新增「客户自动分级」用户故事、修改「标签自动生成」描述（现共 5 个用户故事、15 个验收场景），请选择后续流程：",
+              "已更新《客户管理系统》规格：新增「客户自动分级」用户故事、修改「标签自动生成」描述（现共 5 个用户故事、15 个验收场景），请选择后续流程（如需调整规格，选「其他」并输入修改意见）：",
             options: [
               {
                 label: "直接实现",
@@ -166,10 +162,6 @@ test.describe("SDD Workflow Iterate Screenshots", () => {
               {
                 label: "制定技术方案",
                 description: "制定技术选型、架构设计与实现步骤后请你批准",
-              },
-              {
-                label: "其他",
-                description: "规格需要调整，按反馈修改后重新决策",
               },
             ],
           },
