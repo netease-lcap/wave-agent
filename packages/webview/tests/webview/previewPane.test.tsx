@@ -16,13 +16,23 @@ vi.mock("../../src/styles/DesktopApp.css", () => ({}));
 
 type MockWebview = Omit<
   WebviewTagElement,
-  "send" | "loadURL" | "reload" | "reloadIgnoringCache" | "getURL"
+  | "send"
+  | "loadURL"
+  | "reload"
+  | "reloadIgnoringCache"
+  | "getURL"
+  | "setZoomFactor"
+  | "getZoomFactor"
+  | "executeJavaScript"
 > & {
   send: ReturnType<typeof vi.fn>;
   loadURL: ReturnType<typeof vi.fn>;
   reload: ReturnType<typeof vi.fn>;
   reloadIgnoringCache: ReturnType<typeof vi.fn>;
   getURL: ReturnType<typeof vi.fn>;
+  setZoomFactor: ReturnType<typeof vi.fn>;
+  getZoomFactor: ReturnType<typeof vi.fn>;
+  executeJavaScript: ReturnType<typeof vi.fn>;
 };
 
 function renderPane(options?: {
@@ -41,14 +51,22 @@ function renderPane(options?: {
   const onRetry = options?.onRetry;
   const onLastTabClosed = options?.onLastTabClosed ?? vi.fn();
   // Controlled-width harness: PreviewPane no longer owns its width state.
-  const Harness = ({ url: u }: { url: string }) => {
+  // `width` prop on rerender overrides the internal state so tests can drive
+  // panel resizes without going through the drag handle.
+  const Harness = ({
+    url: u,
+    width: wProp,
+  }: {
+    url: string;
+    width?: number;
+  }) => {
     const [width, setWidth] = React.useState(420);
     return (
       <PreviewPane
         url={u}
         vscode={vscode}
         onClose={onClose}
-        width={width}
+        width={wProp ?? width}
         onWidthChange={setWidth}
         maxWidth={716}
         onAddComment={onAddComment}
@@ -67,7 +85,11 @@ function renderPane(options?: {
   wv.reload = vi.fn();
   wv.reloadIgnoringCache = vi.fn();
   wv.getURL = vi.fn(() => url);
-  const rerenderWithUrl = (u: string) => result.rerender(<Harness url={u} />);
+  wv.setZoomFactor = vi.fn();
+  wv.getZoomFactor = vi.fn(() => 1);
+  wv.executeJavaScript = vi.fn(async () => 0);
+  const rerenderWithUrl = (u: string, width?: number) =>
+    result.rerender(<Harness url={u} width={width} />);
   return {
     ...result,
     rerenderWithUrl,
@@ -93,6 +115,21 @@ const fireDidNavigate = (wv: MockWebview, url: string) =>
   fireEvent(wv, Object.assign(new Event("did-navigate"), { url }));
 const fireInPageNavigate = (wv: MockWebview, url: string) =>
   fireEvent(wv, Object.assign(new Event("did-navigate-in-page"), { url }));
+const fireDidFinishLoad = (wv: MockWebview) =>
+  fireEvent(wv, new Event("did-finish-load"));
+
+/** Stub the guest metric APIs for the overflow auto-fit: the guest reports a
+ * fixed `contentWidth` (the natural width of an overflowing document — stable
+ * at any zoom, which is exactly what the fit pass relies on); the zoom is
+ * mutable so consecutive fit rounds see the value previous rounds set. */
+function mockGuestMetrics(wv: MockWebview, contentWidth: number) {
+  let zoom = 1;
+  wv.setZoomFactor = vi.fn((f: number) => {
+    zoom = f;
+  });
+  wv.getZoomFactor = vi.fn(() => zoom);
+  wv.executeJavaScript = vi.fn(async () => contentWidth);
+}
 const firePickerSubmit = (wv: MockWebview, payload: Record<string, unknown>) =>
   fireEvent(
     wv,
@@ -533,6 +570,93 @@ describe("PreviewPane", () => {
         "http://localhost:3000/other",
       );
       expect(tabCount()).toBe(2);
+    });
+  });
+
+  describe("overflow auto-fit (spec scenario 7)", () => {
+    it("shrinks the guest when the page is wider than the panel", async () => {
+      const { wv } = renderPane();
+      // Panel 420, content 1200 → zoom 420/1200 = 0.35; at 0.35 the viewport
+      // is 1200 so the re-measure fits and the pass stops.
+      mockGuestMetrics(wv, 1200);
+      fireDomReady(wv);
+      fireDidFinishLoad(wv);
+
+      await vi.waitFor(() =>
+        expect(wv.setZoomFactor).toHaveBeenCalledWith(0.35),
+      );
+      await vi.waitFor(() =>
+        expect(wv.executeJavaScript).toHaveBeenCalledTimes(2),
+      );
+      expect(wv.setZoomFactor.mock.calls).toEqual([[0.35]]);
+    });
+
+    it("leaves pages that fit the panel untouched (never zooms above 100%)", async () => {
+      const { wv } = renderPane();
+      mockGuestMetrics(wv, 420);
+      fireDomReady(wv);
+      fireDidFinishLoad(wv);
+
+      await vi.waitFor(() =>
+        expect(wv.executeJavaScript).toHaveBeenCalledTimes(1),
+      );
+      expect(wv.setZoomFactor).not.toHaveBeenCalled();
+    });
+
+    it("zooms back in when the panel grows wider than the content needs", async () => {
+      const { wv, rerenderWithUrl } = renderPane();
+      mockGuestMetrics(wv, 1200);
+      fireDomReady(wv);
+      fireDidFinishLoad(wv);
+      // Fit at 420 → zoom 420/1200 = 0.35.
+      await vi.waitFor(() =>
+        expect(wv.setZoomFactor).toHaveBeenCalledWith(0.35),
+      );
+
+      // Panel 840 → viewport 840/0.35 = 2400 > 1200: zoom 840/1200 = 0.7.
+      rerenderWithUrl("http://localhost:5173/app", 840);
+      await vi.waitFor(() =>
+        expect(wv.setZoomFactor).toHaveBeenCalledWith(0.7),
+      );
+
+      // Panel 1300 ≥ content 1200 → zoom back to exactly 1.
+      rerenderWithUrl("http://localhost:5173/app", 1300);
+      await vi.waitFor(() =>
+        expect(wv.setZoomFactor).toHaveBeenLastCalledWith(1),
+      );
+      expect(wv.setZoomFactor.mock.calls.map((c) => c[0])).toEqual([
+        0.35, 0.7, 1,
+      ]);
+    });
+
+    it("resets to 100% on navigation so a page that fits isn't stuck scaled down", async () => {
+      const { wv } = renderPane();
+      mockGuestMetrics(wv, 1200);
+      fireDomReady(wv);
+      fireDidFinishLoad(wv);
+      await vi.waitFor(() =>
+        expect(wv.setZoomFactor).toHaveBeenCalledWith(0.35),
+      );
+
+      fireDidNavigate(wv, "http://localhost:5173/other");
+      expect(wv.setZoomFactor).toHaveBeenCalledWith(1);
+    });
+
+    it("stops shrinking at the 0.3 floor for extremely wide pages", async () => {
+      const { wv } = renderPane();
+      // 420/10000 = 0.042 → clamped to 0.3; at 0.3 the next candidate is the
+      // same clamped value → converged, no further adjustment.
+      mockGuestMetrics(wv, 10000);
+      fireDomReady(wv);
+      fireDidFinishLoad(wv);
+
+      await vi.waitFor(() =>
+        expect(wv.setZoomFactor).toHaveBeenCalledWith(0.3),
+      );
+      await vi.waitFor(() =>
+        expect(wv.executeJavaScript).toHaveBeenCalledTimes(2),
+      );
+      expect(wv.setZoomFactor.mock.calls).toEqual([[0.3]]);
     });
   });
 });

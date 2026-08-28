@@ -726,6 +726,14 @@ body.is-panel-resizing * {
   cursor: col-resize !important;
 }
 
+/* The preview guest <webview> is a separate web contents: hit-testing over it
+ * routes mousemove/mouseup to the guest, so a drag that crosses the pane dies
+ * there (and its mouseup never releases the host). Make the webview transparent
+ * to hit-testing while a panel drag is in progress. */
+body.is-panel-resizing webview {
+  pointer-events: none;
+}
+
 .preview-pane-inner {
   display: flex;
   flex-direction: column;
