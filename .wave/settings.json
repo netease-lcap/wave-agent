@@ -25,12 +25,12 @@
       "Bash(wave *)",
       "Bash(acpx *)",
       "Bash(rm *packages/*/tests/*)",
-      "Bash(node scripts*)"
+      "Bash(node scripts*)",
+      "Bash(git fetch*)",
+      "Bash(gh run view*)",
+      "Bash(gh run list*)"
     ],
-    "additionalDirectories": [
-      "../wave-plugins-official",
-      "../../../wave-plugins-official"
-    ]
+    "additionalDirectories": ["~/github"]
   },
   "enabledPlugins": {
     "sdd@builtin": true

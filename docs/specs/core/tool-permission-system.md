@@ -183,6 +183,7 @@ order: 130
 6. **假设** 用户输入 `/add-dir --remember /data/exports`，**当** 命令执行后，**则** `/data/exports` 除当前会话生效外，还被追加到 `.wave/settings.local.json` 的 `permissions.additionalDirectories`，后续会话自动加载。
 7. **假设** 用户输入无参数的 `/add-dir`，**当** 命令执行时，**则** 显示用法说明及当前会话的附加目录列表。
 8. **假设** agent 派生子 agent，**当** 子 agent 的系统提示词构建时，**则** `<env>` 中包含单行 `Additional working directories: /data/exports`（附加目录并集），且子 agent 的权限检查同样将附加目录视为安全区域。
+9. **假设** `permissions.additionalDirectories` 的某项路径以 `~` 或 `~/` 开头（如 `~/github`），**当** 该路径被解析进安全区域时，**则** 按当前用户主目录展开为绝对路径（`~/github` → `<主目录>/github`，对齐 Claude Code），安全区域判定与系统提示词均使用展开后的路径；配置文件中保留 `~` 写法，不暴露本机用户名。
 
 ### 用户故事：CLI 模式切换（优先级：P2）
 
@@ -238,7 +239,7 @@ _已移除。基于 Heredoc 的 bash 命令不再被自动拒绝。用户应依�
 - **智能通配符**：用 `*` 替换动态参数的启发式生成模式。
 - **PermissionDecision**：权限检查的结果，扩展为包含可选的 `newPermissionMode` 和 `newPermissionRule` 以通知系统更新其状态。
 - **安全区域**：允许 agent 执行文件操作而无需每次操作都经用户明确确认的文件系统路径集合。
-- **附加目录**：用户可配置的路径列表，将安全区域扩展到默认工作目录之外。可通过 `settings.json` 的 `permissions.additionalDirectories`、CLI 的 `--add-dir` 启动选项或 `/add-dir` 斜杠命令（会话级）加入；其中 `--add-dir` 与 `/add-dir` 为 CLI 专属入口。
+- **附加目录**：用户可配置的路径列表，将安全区域扩展到默认工作目录之外。可通过 `settings.json` 的 `permissions.additionalDirectories`、CLI 的 `--add-dir` 启动选项或 `/add-dir` 斜杠命令（会话级）加入；其中 `--add-dir` 与 `/add-dir` 为 CLI 专属入口。路径支持相对路径（相对工作目录解析）与 `~`/`~/` 前缀（按用户主目录展开）。
 
 ## 边界情况
 

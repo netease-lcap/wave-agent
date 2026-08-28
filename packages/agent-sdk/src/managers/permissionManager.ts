@@ -7,6 +7,7 @@
  */
 
 import path from "node:path";
+import os from "node:os";
 import { minimatch } from "minimatch";
 import type {
   PermissionDecision,
@@ -89,6 +90,27 @@ const DEFAULT_ALLOWED_RULES = [
 ];
 
 import { logger } from "../utils/globalLogger.js";
+
+/**
+ * Resolve an additional-directory config entry to an absolute path.
+ * Supports `~` / `~/` prefixes (expanded against the user home directory,
+ * aligned with Claude Code's expandPath) alongside absolute paths and paths
+ * relative to the working directory.
+ */
+export function resolveAdditionalDirectory(
+  dir: string,
+  workdir: string | undefined,
+): string {
+  if (dir === "~" || dir.startsWith("~/")) {
+    const expanded =
+      dir === "~" ? os.homedir() : path.join(os.homedir(), dir.slice(2));
+    return path.resolve(expanded);
+  }
+  if (workdir && !path.isAbsolute(dir)) {
+    return path.resolve(workdir, dir);
+  }
+  return path.resolve(dir);
+}
 
 export interface PermissionManagerOptions {
   /** Configured permission mode from settings */
@@ -313,24 +335,16 @@ export class PermissionManager {
    * Update the additional directories (e.g., when configuration reloads)
    */
   updateAdditionalDirectories(directories: string[]): void {
-    const workdir = this.workdir;
-    this.additionalDirectories = directories.map((dir) => {
-      if (workdir && !path.isAbsolute(dir)) {
-        return path.resolve(workdir, dir);
-      }
-      return path.resolve(dir);
-    });
+    this.additionalDirectories = directories.map((dir) =>
+      resolveAdditionalDirectory(dir, this.workdir),
+    );
   }
 
   /**
    * Add an instance-level additional directory (session-level, e.g. /add-dir command)
    */
   public addInstanceAdditionalDirectory(directory: string): void {
-    const workdir = this.workdir;
-    const resolvedPath =
-      workdir && !path.isAbsolute(directory)
-        ? path.resolve(workdir, directory)
-        : path.resolve(directory);
+    const resolvedPath = resolveAdditionalDirectory(directory, this.workdir);
 
     if (!this.instanceAdditionalDirectories.includes(resolvedPath)) {
       this.instanceAdditionalDirectories.push(resolvedPath);
@@ -341,11 +355,7 @@ export class PermissionManager {
    * Add a system-level additional directory that is persistent across configuration reloads
    */
   public addSystemAdditionalDirectory(directory: string): void {
-    const workdir = this.workdir;
-    const resolvedPath =
-      workdir && !path.isAbsolute(directory)
-        ? path.resolve(workdir, directory)
-        : path.resolve(directory);
+    const resolvedPath = resolveAdditionalDirectory(directory, this.workdir);
 
     if (!this.systemAdditionalDirectories.includes(resolvedPath)) {
       this.systemAdditionalDirectories.push(resolvedPath);
