@@ -97,13 +97,11 @@ test.describe("Confirmation dialog does not steal focus", () => {
     expect(landed.inside).toBe(true);
 
     // From the first focusable, Shift+Tab wraps to the last (close button) —
-    // the in-dialog cycle. Enter the dialog at its first element first (the
-    // action order follows the visual left-to-right layout, so resolve it
-    // dynamically instead of assuming a specific action).
+    // the in-dialog cycle. Enter the dialog at its first element first.
     await webviewPage.evaluate(() => {
       const dialog = document.querySelector(".confirmation-dialog");
       const first = dialog?.querySelector<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ".confirmation-btn-apply",
       );
       first?.focus();
     });
