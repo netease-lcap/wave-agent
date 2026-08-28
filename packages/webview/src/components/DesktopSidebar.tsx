@@ -94,6 +94,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     title: string;
     description?: string;
   } | null>(null);
+  // Roving tabindex for the session tree (keyboard nav modeled on Claude's
+  // sidebar): exactly ONE session main button is in the Tab order — it falls
+  // back to the current session (else the first rendered session) and follows
+  // whichever row was last focused via arrow keys. Delete buttons live outside
+  // the Tab order entirely and are reached with ←/→ instead.
+  const [rovingSessionId, setRovingSessionId] = useState<string | null>(null);
+  const treeRef = useRef<HTMLDivElement | null>(null);
   // Modifier key label for the side-by-side hints, same platform branch as the
   // click handlers below (Cmd on macOS / Ctrl elsewhere).
   const modKeyLabel = isMacPlatform() ? "Cmd" : "Ctrl";
@@ -121,6 +128,94 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       ...prev,
       [groupKey(group)]: !(prev[groupKey(group)] ?? true),
     }));
+  };
+
+  // Sessions currently rendered in visible groups, in display order — the
+  // roving fallback chain needs this to pick the single Tab stop.
+  const orderedSessionIds: string[] = [];
+  for (const group of sessionTree) {
+    if (isExpanded(group)) {
+      for (const entry of group.sessions) {
+        orderedSessionIds.push(entry.sessionId);
+      }
+    }
+  }
+  const tabStopId =
+    rovingSessionId ??
+    (currentSessionId && orderedSessionIds.includes(currentSessionId)
+      ? currentSessionId
+      : orderedSessionIds[0]);
+
+  // Tree-level keyboard navigation, mirroring Claude's sidebar model:
+  // - ↑/↓/Home/End move focus between session main buttons (skipping group
+  //   headers; ↓ past the last row wraps to the first), scrolling the target
+  //   into view. When focus sits on a delete button, the movement continues
+  //   from that row's main button.
+  // - ←/→ move within one row between its main and delete buttons.
+  // Focus events on the main buttons keep rovingSessionId in sync so the
+  // Tab stop always follows the keyboard user.
+  const handleTreeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const tree = treeRef.current;
+    const active = document.activeElement;
+    if (!tree || !(active instanceof HTMLElement) || !tree.contains(active))
+      return;
+
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      const row = active.closest<HTMLElement>(".desktop-session-item");
+      if (!row) return;
+      const parts = Array.from(
+        row.querySelectorAll<HTMLElement>(
+          "[data-session-main], [data-session-delete]",
+        ),
+      );
+      if (parts.length < 2 || !parts.includes(active)) return;
+      const step = e.key === "ArrowRight" ? 1 : -1;
+      const nextIdx = Math.max(
+        0,
+        Math.min(parts.length - 1, parts.indexOf(active) + step),
+      );
+      if (nextIdx === parts.indexOf(active)) return;
+      e.preventDefault();
+      parts[nextIdx].focus();
+      return;
+    }
+
+    if (
+      e.key !== "ArrowUp" &&
+      e.key !== "ArrowDown" &&
+      e.key !== "Home" &&
+      e.key !== "End"
+    ) {
+      return;
+    }
+
+    // Collapsed groups don't render their <ul> at all, so everything matching
+    // here is visible — no layout-based filtering (jsdom has none either).
+    const mains = Array.from(
+      tree.querySelectorAll<HTMLElement>("[data-session-main]"),
+    );
+    if (mains.length === 0) return;
+    const currentRow = active.closest<HTMLElement>(".desktop-session-item");
+    const currentMain =
+      currentRow?.querySelector<HTMLElement>("[data-session-main]") ?? null;
+    let next: HTMLElement;
+    if (e.key === "Home") {
+      next = mains[0];
+    } else if (e.key === "End") {
+      next = mains[mains.length - 1];
+    } else {
+      const from = currentMain ? mains.indexOf(currentMain) : -1;
+      if (from === -1) return;
+      const dir = e.key === "ArrowDown" ? 1 : -1;
+      next = mains[(from + dir + mains.length) % mains.length];
+    }
+    if (next === active) return;
+    e.preventDefault();
+    next.focus();
+    if (typeof next.scrollIntoView === "function") {
+      next.scrollIntoView({ block: "nearest" });
+    }
   };
 
   const renderSession = (
@@ -161,15 +256,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             // jsdom's DataTransfer polyfill exposes a read-only effectAllowed.
           }
         }}
-        onClick={(e) => {
-          // Cmd on macOS / Ctrl elsewhere opens the session in a new pane to
-          // the right; a plain click keeps the replace-focused-pane behavior.
-          if (isMacPlatform() ? e.metaKey : e.ctrlKey) {
-            onOpenPane(group.workdir, session.sessionId);
-          } else {
-            onSelectSession(group.workdir, session.sessionId);
-          }
-        }}
         data-testid={`desktop-session-item-${session.sessionId}`}
         ref={getAnchorRef(session.sessionId)}
       >
@@ -186,7 +272,27 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           className="desktop-session-item-tooltip"
           anchorRef={getAnchorRef(session.sessionId)}
         >
-          <div className="desktop-session-item-main">
+          <button
+            type="button"
+            className="desktop-session-item-main"
+            // Roving tabindex: exactly one row main button sits in the Tab
+            // order; arrows move real focus and onFocus updates the stop.
+            tabIndex={session.sessionId === tabStopId ? 0 : -1}
+            aria-current={isCurrent || undefined}
+            data-session-main=""
+            onClick={(e) => {
+              // Cmd on macOS / Ctrl elsewhere opens the session in a new pane
+              // to the right; a plain click keeps the replace-focused-pane
+              // behavior.
+              if (isMacPlatform() ? e.metaKey : e.ctrlKey) {
+                onOpenPane(group.workdir, session.sessionId);
+              } else {
+                onSelectSession(group.workdir, session.sessionId);
+              }
+            }}
+            onFocus={() => setRovingSessionId(session.sessionId)}
+            data-testid={`desktop-session-main-${session.sessionId}`}
+          >
             {running || waiting ? (
               <i
                 className={`codicon codicon-${waiting ? "bell" : "loading codicon-modifier-spin"} desktop-session-status-icon`}
@@ -203,11 +309,16 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             <span className="desktop-session-title">
               {session.title || "新对话"}
             </span>
-          </div>
+          </button>
         </Tooltip>
         <button
+          type="button"
           className="desktop-session-delete"
           title="删除会话"
+          aria-label="删除会话"
+          data-session-delete=""
+          // Reached via ←/→ from the row's main button, never via Tab.
+          tabIndex={-1}
           onClick={(e) => {
             e.stopPropagation();
             // Worktree sessions warn about the worktree dir + temp branch and
@@ -309,7 +420,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           <span>新对话</span>
         </button>
       </Tooltip>
-      <div className="desktop-session-tree" data-testid="desktop-session-tree">
+      <div
+        ref={treeRef}
+        onKeyDown={handleTreeKeyDown}
+        className="desktop-session-tree"
+        data-testid="desktop-session-tree"
+      >
         {sessionTree.map((group) => {
           const expanded = isExpanded(group);
           return (
@@ -318,9 +434,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               className="desktop-session-group"
               data-testid={`desktop-session-group-${groupKey(group)}`}
             >
-              <div
+              <button
+                type="button"
                 className="desktop-session-group-header"
                 onClick={() => toggleGroup(group)}
+                aria-expanded={expanded}
+                aria-label={`${expanded ? "收起分组" : "展开分组"} ${dirName(group.workdir)}`}
                 title={group.workdir}
               >
                 <span
@@ -337,7 +456,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                     {group.host}
                   </span>
                 )}
-              </div>
+              </button>
               {expanded &&
                 (group.sessions.length === 0 ? (
                   <div className="desktop-session-empty">无会话</div>
