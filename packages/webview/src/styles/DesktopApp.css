@@ -112,15 +112,23 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  width: 100%;
   padding: 4px 6px;
+  border: none;
   border-radius: 4px;
+  /* Native <button> reset — the header is a real button so Enter/Space can
+     toggle the group from the keyboard (spec 「会话管理」scenario 18). */
+  background: none;
+  text-align: left;
+  font-family: inherit;
   cursor: pointer;
   font-size: 12px;
   color: var(--vscode-foreground);
   user-select: none;
 }
 
-.desktop-session-group-header:hover {
+.desktop-session-group-header:hover,
+.desktop-session-group-header:focus-visible {
   background: var(--vscode-list-hoverBackground);
 }
 
@@ -269,6 +277,15 @@
   gap: 6px;
   flex: 1 1 0%;
   min-width: 0;
+  /* Native <button> reset — the row main is a real button so Enter/Space
+     restores the session from the keyboard (spec 「会话管理」scenario 17). */
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  text-align: left;
 }
 
 .desktop-session-empty {

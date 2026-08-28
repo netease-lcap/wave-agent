@@ -1133,7 +1133,7 @@ describe("DesktopApp", () => {
       });
       vscode.postMessage.mockClear();
 
-      fireEvent.click(screen.getByTestId("desktop-session-item-s1"));
+      fireEvent.click(screen.getByTestId("desktop-session-main-s1"));
 
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopSelectSession",
@@ -1363,7 +1363,7 @@ describe("DesktopApp", () => {
       });
     });
 
-    it("keeps the delete button keyboard-reachable: a focusable native button inside the row", () => {
+    it("keeps exactly one Tab stop in the session tree: the current session's main button", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", {
         workdir: "/work/a",
@@ -1374,18 +1374,97 @@ describe("DesktopApp", () => {
           {
             host: "local",
             workdir: "/work/a",
-            sessions: [session("s1", "hello a")],
+            sessions: [session("s1", "hello a"), session("s2", "hello b")],
           },
         ],
       });
 
-      const deleteBtn = screen.getByTestId("desktop-session-delete-s1");
-      // :focus-within reveal (DesktopApp.css) requires the button to be a
-      // native focusable <button> nested inside the row (the li).
-      expect(deleteBtn.tagName).toBe("BUTTON");
-      expect(deleteBtn.closest(".desktop-session-item")).not.toBeNull();
-      deleteBtn.focus();
-      expect(document.activeElement).toBe(deleteBtn);
+      // Spec 「会话管理」scenario 13: one single Tab stop, no per-button Tab
+      // traversal. The current session hosts it by default.
+      const mainS1 = screen.getByTestId("desktop-session-main-s1");
+      const mainS2 = screen.getByTestId("desktop-session-main-s2");
+      expect(mainS1).toHaveAttribute("tabindex", "0");
+      expect(mainS2).toHaveAttribute("tabindex", "-1");
+      expect(screen.getByTestId("desktop-session-delete-s1")).toHaveAttribute(
+        "tabindex",
+        "-1",
+      );
+    });
+
+    it("moves focus between rows with ↑/↓ including wrap-around, and follows with Home/End", () => {
+      renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: "/work/a",
+        recentWorkdirs: ["/work/a"],
+      });
+      sendCommand("desktopSessionTree", {
+        groups: [
+          {
+            host: "local",
+            workdir: "/work/a",
+            sessions: [session("s1", "hello a"), session("s2", "hello b")],
+          },
+        ],
+      });
+      const mainS1 = screen.getByTestId("desktop-session-main-s1");
+      const mainS2 = screen.getByTestId("desktop-session-main-s2");
+
+      act(() => {
+        mainS2.focus();
+      });
+      // ↓ wraps past the last row to the first.
+      fireEvent.keyDown(mainS2, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(mainS1);
+      // The roving Tab stop follows the focused row.
+      expect(mainS1).toHaveAttribute("tabindex", "0");
+      expect(mainS2).toHaveAttribute("tabindex", "-1");
+
+      fireEvent.keyDown(mainS1, { key: "ArrowUp" });
+      expect(document.activeElement).toBe(mainS2);
+
+      fireEvent.keyDown(mainS2, { key: "End" });
+      expect(document.activeElement).toBe(mainS2);
+      fireEvent.keyDown(mainS2, { key: "Home" });
+      expect(document.activeElement).toBe(mainS1);
+    });
+
+    it("crosses within one row via ←/→ between the main button and the delete button", () => {
+      renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: "/work/a",
+        recentWorkdirs: ["/work/a"],
+      });
+      sendCommand("desktopSessionTree", {
+        groups: [
+          {
+            host: "local",
+            workdir: "/work/a",
+            sessions: [session("s1", "hello a"), session("s2", "hello b")],
+          },
+        ],
+      });
+      const mainS1 = screen.getByTestId("desktop-session-main-s1");
+      const deleteS1 = screen.getByTestId("desktop-session-delete-s1");
+
+      act(() => {
+        mainS1.focus();
+      });
+      fireEvent.keyDown(mainS1, { key: "ArrowRight" });
+      expect(document.activeElement).toBe(deleteS1);
+      // Clamped at the row's edge: a second → stays put.
+      fireEvent.keyDown(deleteS1, { key: "ArrowRight" });
+      expect(document.activeElement).toBe(deleteS1);
+      // ← returns to the row's main button.
+      fireEvent.keyDown(deleteS1, { key: "ArrowLeft" });
+      expect(document.activeElement).toBe(mainS1);
+
+      // Vertical movement from the delete button resumes from that row.
+      const mainS2 = screen.getByTestId("desktop-session-main-s2");
+      act(() => {
+        deleteS1.focus();
+      });
+      fireEvent.keyDown(deleteS1, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(mainS2);
     });
 
     it("does not delete when the user cancels the confirm dialog", () => {
@@ -1957,7 +2036,7 @@ describe("DesktopApp", () => {
       );
       vscode.postMessage.mockClear();
 
-      fireEvent.click(screen.getByTestId("desktop-session-item-s2"));
+      fireEvent.click(screen.getByTestId("desktop-session-main-s2"));
 
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopSelectSession",
@@ -2160,7 +2239,7 @@ describe("DesktopApp", () => {
       mockRowWidth(1200);
       vscode.postMessage.mockClear();
 
-      fireEvent.click(screen.getByTestId("desktop-session-item-s2"), {
+      fireEvent.click(screen.getByTestId("desktop-session-main-s2"), {
         ctrlKey: true,
       });
 
@@ -2185,7 +2264,7 @@ describe("DesktopApp", () => {
         mockRowWidth(1200);
         vscode.postMessage.mockClear();
 
-        fireEvent.click(screen.getByTestId("desktop-session-item-s2"), {
+        fireEvent.click(screen.getByTestId("desktop-session-main-s2"), {
           metaKey: true,
         });
 
@@ -2209,7 +2288,7 @@ describe("DesktopApp", () => {
       );
       vscode.postMessage.mockClear();
 
-      fireEvent.click(screen.getByTestId("desktop-session-item-s2"), {
+      fireEvent.click(screen.getByTestId("desktop-session-main-s2"), {
         metaKey: true,
       });
 
@@ -2231,7 +2310,7 @@ describe("DesktopApp", () => {
       mockRowWidth(1200);
       vscode.postMessage.mockClear();
 
-      fireEvent.click(screen.getByTestId("desktop-session-item-s1"), {
+      fireEvent.click(screen.getByTestId("desktop-session-main-s1"), {
         ctrlKey: true,
       });
 
@@ -2251,7 +2330,7 @@ describe("DesktopApp", () => {
       mockRowsContainerHeight(800);
       vscode.postMessage.mockClear();
 
-      fireEvent.click(screen.getByTestId("desktop-session-item-s2"), {
+      fireEvent.click(screen.getByTestId("desktop-session-main-s2"), {
         ctrlKey: true,
       });
 
@@ -2272,7 +2351,7 @@ describe("DesktopApp", () => {
       mockRowsContainerHeight(400);
       vscode.postMessage.mockClear();
 
-      fireEvent.click(screen.getByTestId("desktop-session-item-s2"), {
+      fireEvent.click(screen.getByTestId("desktop-session-main-s2"), {
         ctrlKey: true,
       });
 
@@ -3261,7 +3340,7 @@ describe("DesktopApp", () => {
       mockRowRect("desktop-pane-row-1", 300, 300);
       vscode.postMessage.mockClear();
 
-      fireEvent.click(screen.getByTestId("desktop-session-item-s3"), {
+      fireEvent.click(screen.getByTestId("desktop-session-main-s3"), {
         ctrlKey: true,
       });
 
@@ -3303,7 +3382,7 @@ describe("DesktopApp", () => {
       ).mockReturnValue(narrow as DOMRect);
       vscode.postMessage.mockClear();
 
-      fireEvent.click(screen.getByTestId("desktop-session-item-s3"), {
+      fireEvent.click(screen.getByTestId("desktop-session-main-s3"), {
         ctrlKey: true,
       });
 
