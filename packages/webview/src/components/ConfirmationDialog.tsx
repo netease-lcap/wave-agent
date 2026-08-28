@@ -149,17 +149,33 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   }, []);
 
   // On mount / when a new confirmation replaces the current one: remember the
-  // previously focused element so it can be restored on dismiss. Focus is
-  // deliberately NOT moved into the dialog — it may pop up while the user is
-  // typing (same pane, a sibling pane, or another window) and must not
-  // interrupt (spec「确认弹窗不打断输入」). Keyboard users reach it with Tab
-  // or a click; the message input is the previous Tab stop in DOM order.
+  // previously focused element and move focus into the dialog. AskUserQuestion
+  // focuses its first option (answers are empty on first mount, so "selected
+  // option" cannot exist yet); every other confirmation focuses the first
+  // focusable control.
   useEffect(() => {
     previousFocusRef.current =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
-  }, [confirmation.confirmationId]);
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (confirmation.toolName === ASK_USER_QUESTION_TOOL_NAME) {
+      const first = questionsListRef.current?.querySelector<HTMLElement>(
+        '[data-option-index="0"]',
+      );
+      if (first) {
+        first.focus();
+        return;
+      }
+    }
+    // Every other confirmation: move focus into the dialog container itself.
+    // The primary action sits first in the Tab cycle (see button layout
+    // story), so focusing it on open would make an accidental Enter approve;
+    // the container keeps the initial focus neutral and Tab lands on the
+    // primary button.
+    dialog.focus();
+  }, [confirmation.confirmationId, confirmation.toolName]);
 
   const handleReject = useCallback(() => {
     restoreFocus();
@@ -294,15 +310,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   useEffect(() => {
     // Add keyboard listener for confirmation dialog
     const handleKeyDown = (e: KeyboardEvent) => {
-      const dialog = dialogRef.current;
-      // The dialog never steals focus on open (spec「确认弹窗不打断输入」),
-      // so while the focus is elsewhere — the user typing in the message
-      // input, working in a sibling pane — every key keeps its normal
-      // meaning: Escape aborts the answer, arrows move the caret, Tab walks
-      // the page. The dialog intercepts keys only once the focus is inside
-      // it (user clicked or Tabbed in).
-      if (!dialog || !dialog.contains(document.activeElement)) return;
-
       if (e.key === "Escape") {
         handleReject();
         return;
@@ -334,22 +341,27 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         }
       }
 
-      // Focus trap: while the focus is inside the dialog, Tab/Shift+Tab cycle
-      // within it so focus never leaks into the message list / input behind.
+      // Modal focus trap: Tab/Shift+Tab cycle within the dialog so focus never
+      // leaks into the message list / input behind it. When focus is somehow
+      // outside the dialog (e.g. a queued confirmation replaced the current
+      // one), the next Tab pulls it back in.
       if (e.key === "Tab") {
-        const focusables = getDialogFocusables(dialog);
-        if (focusables.length > 0) {
-          const active = document.activeElement;
-          const first = focusables[0];
-          const last = focusables[focusables.length - 1];
-          if (e.shiftKey) {
-            if (active === first) {
+        const dialog = dialogRef.current;
+        if (dialog) {
+          const focusables = getDialogFocusables(dialog);
+          if (focusables.length > 0) {
+            const active = document.activeElement;
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            if (e.shiftKey) {
+              if (active === first || !dialog.contains(active)) {
+                e.preventDefault();
+                last.focus();
+              }
+            } else if (active === last || !dialog.contains(active)) {
               e.preventDefault();
-              last.focus();
+              first.focus();
             }
-          } else if (active === last) {
-            e.preventDefault();
-            first.focus();
           }
         }
         return;
