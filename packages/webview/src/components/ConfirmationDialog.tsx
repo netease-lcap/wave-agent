@@ -733,8 +733,9 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
   // Bottom action bar for AskUserQuestion: a fixed three-button carousel
   // ([上一个] [下一个] [提交回答]) when multiple questions, submit-only for a
-  // single question. DOM order is 提交 → 下一个 → 上一个 so the primary action
-  // is first in the Tab cycle; row-reverse CSS renders it at the far right.
+  // single question. DOM order matches the visual left-to-right order, so
+  // the Tab cycle runs 上一个 → 下一个 → 提交回答 with the primary action
+  // last (aligned with Claude's confirm UIs).
   const renderQuestionNavigation = () => {
     if (confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME) return null;
     const questions = (
@@ -745,31 +746,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     const canSubmit = !isConfirmDisabled();
     return (
       <div className="question-navigation">
-        <button
-          type="button"
-          className="confirmation-btn confirmation-btn-apply"
-          onClick={handleConfirm}
-          disabled={!canSubmit}
-        >
-          <span className="btn-text">
-            提交回答
-            {canSubmit && <span className="btn-enter-hint">⏎</span>}
-          </span>
-        </button>
-        {multi && (
-          <button
-            type="button"
-            className="confirmation-btn confirmation-btn-secondary"
-            aria-label="下一个"
-            onClick={() =>
-              setCurrentQuestionIndex((prev) =>
-                prev >= questions.length - 1 ? 0 : prev + 1,
-              )
-            }
-          >
-            <span className="btn-text">下一个</span>
-          </button>
-        )}
         {multi && (
           <button
             type="button"
@@ -784,6 +760,31 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             <span className="btn-text">上一个</span>
           </button>
         )}
+        {multi && (
+          <button
+            type="button"
+            className="confirmation-btn confirmation-btn-secondary"
+            aria-label="下一个"
+            onClick={() =>
+              setCurrentQuestionIndex((prev) =>
+                prev >= questions.length - 1 ? 0 : prev + 1,
+              )
+            }
+          >
+            <span className="btn-text">下一个</span>
+          </button>
+        )}
+        <button
+          type="button"
+          className="confirmation-btn confirmation-btn-apply"
+          onClick={handleConfirm}
+          disabled={!canSubmit}
+        >
+          <span className="btn-text">
+            提交回答
+            {canSubmit && <span className="btn-enter-hint">⏎</span>}
+          </span>
+        </button>
       </div>
     );
   };
@@ -892,6 +893,62 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           <div className="confirmation-actions">
             {!showFeedbackInput ? (
               <>
+                {(confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
+                  confirmation.toolName === BASH_TOOL_NAME ||
+                  [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(
+                    confirmation.toolName,
+                  ) ||
+                  confirmation.toolName.startsWith("mcp__")) && (
+                  <button
+                    className="confirmation-btn confirmation-btn-feedback"
+                    onClick={() => setShowFeedbackInput(true)}
+                  >
+                    <span className="btn-text">提供反馈</span>
+                  </button>
+                )}
+
+                {(confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
+                  (confirmation.toolName === BASH_TOOL_NAME &&
+                    confirmation.permissionMode !== "plan")) && (
+                  <button
+                    className="confirmation-btn confirmation-btn-auto"
+                    onClick={handleBypassConfirm}
+                  >
+                    <span className="btn-text">是，并跳过权限确认</span>
+                  </button>
+                )}
+
+                {confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME &&
+                  confirmation.toolName !== EXIT_PLAN_MODE_TOOL_NAME &&
+                  confirmation.toolName !== ENTER_PLAN_MODE_TOOL_NAME &&
+                  !showFeedbackInput &&
+                  !confirmation.hidePersistentOption && (
+                    <button
+                      className="confirmation-btn confirmation-btn-auto"
+                      onClick={handleAutoConfirm}
+                    >
+                      <span className="btn-text">{getAutoOptionText()}</span>
+                    </button>
+                  )}
+
+                {confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME && (
+                  <button
+                    className="confirmation-btn confirmation-btn-auto"
+                    onClick={handleAutoConfirm}
+                  >
+                    <span className="btn-text">批准并自动接受后续修改</span>
+                  </button>
+                )}
+
+                {confirmation.toolName === ENTER_PLAN_MODE_TOOL_NAME && (
+                  <button
+                    className="confirmation-btn confirmation-btn-reject"
+                    onClick={handleReject}
+                  >
+                    <span className="btn-text">不，现在开始实现</span>
+                  </button>
+                )}
+
                 <button
                   className="confirmation-btn confirmation-btn-apply"
                   onClick={handleConfirm}
@@ -909,62 +966,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                       : "是"}
                   </span>
                 </button>
-
-                {confirmation.toolName === ENTER_PLAN_MODE_TOOL_NAME && (
-                  <button
-                    className="confirmation-btn confirmation-btn-reject"
-                    onClick={handleReject}
-                  >
-                    <span className="btn-text">不，现在开始实现</span>
-                  </button>
-                )}
-
-                {confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME && (
-                  <button
-                    className="confirmation-btn confirmation-btn-auto"
-                    onClick={handleAutoConfirm}
-                  >
-                    <span className="btn-text">批准并自动接受后续修改</span>
-                  </button>
-                )}
-
-                {confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME &&
-                  confirmation.toolName !== EXIT_PLAN_MODE_TOOL_NAME &&
-                  confirmation.toolName !== ENTER_PLAN_MODE_TOOL_NAME &&
-                  !showFeedbackInput &&
-                  !confirmation.hidePersistentOption && (
-                    <button
-                      className="confirmation-btn confirmation-btn-auto"
-                      onClick={handleAutoConfirm}
-                    >
-                      <span className="btn-text">{getAutoOptionText()}</span>
-                    </button>
-                  )}
-
-                {(confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
-                  (confirmation.toolName === BASH_TOOL_NAME &&
-                    confirmation.permissionMode !== "plan")) && (
-                  <button
-                    className="confirmation-btn confirmation-btn-auto"
-                    onClick={handleBypassConfirm}
-                  >
-                    <span className="btn-text">是，并跳过权限确认</span>
-                  </button>
-                )}
-
-                {(confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
-                  confirmation.toolName === BASH_TOOL_NAME ||
-                  [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(
-                    confirmation.toolName,
-                  ) ||
-                  confirmation.toolName.startsWith("mcp__")) && (
-                  <button
-                    className="confirmation-btn confirmation-btn-feedback"
-                    onClick={() => setShowFeedbackInput(true)}
-                  >
-                    <span className="btn-text">提供反馈</span>
-                  </button>
-                )}
               </>
             ) : (
               <div className="feedback-flow">
@@ -985,17 +986,17 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                 />
                 <div className="feedback-actions">
                   <button
+                    className="confirmation-btn confirmation-btn-reject"
+                    onClick={() => setShowFeedbackInput(false)}
+                  >
+                    取消
+                  </button>
+                  <button
                     className="confirmation-btn confirmation-btn-apply"
                     onClick={handleConfirm}
                     disabled={!feedback.trim()}
                   >
                     发送反馈
-                  </button>
-                  <button
-                    className="confirmation-btn confirmation-btn-reject"
-                    onClick={() => setShowFeedbackInput(false)}
-                  >
-                    取消
                   </button>
                 </div>
               </div>

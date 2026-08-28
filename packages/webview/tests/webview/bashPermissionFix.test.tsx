@@ -52,10 +52,11 @@ describe("Bash Permission Fix", () => {
       ).toBeInTheDocument();
     });
 
-    // Click "Yes, and don't ask again" button
-    const autoButton = document.querySelector(
-      ".confirmation-btn-auto",
-    ) as HTMLButtonElement;
+    // Click "Yes, and don't ask again" button (matched by label text; the
+    // bash action bar also contains the bypass button with the same class)
+    const autoButton = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".confirmation-btn-auto"),
+    ).find((b) => b.textContent?.includes(`不再询问：${suggestedPrefix}`))!;
     expect(autoButton).toBeInTheDocument();
     expect(autoButton).toHaveTextContent(`不再询问：${suggestedPrefix}`);
 

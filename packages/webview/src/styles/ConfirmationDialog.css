@@ -356,11 +356,11 @@
 
 .question-navigation {
   /* Carousel action bar, pinned below the scrollable body. DOM order is
-     提交 → 下一个 → 上一个; row-reverse renders [上一个] [下一个] [提交回答]
-     left-to-right while keeping the primary action first in the Tab cycle. */
+     上一个 → 下一个 → 提交回答, matching the visual left-to-right order and
+     the Tab cycle (primary submit button last, aligned with Claude's
+     confirm UIs). */
   flex: 0 0 auto;
   display: flex;
-  flex-direction: row-reverse;
   gap: 8px;
   margin-top: 4px;
 }
@@ -398,19 +398,19 @@
 }
 
 /* Actions: pinned to the dialog bottom (sibling of the scrollable body).
-   flex-direction: row-reverse renders the DOM-first primary button at the
-   far right while keeping it first in the Tab cycle — visual order is
-   [最次] [次] [主] left-to-right, Tab order is 主 → 次 → 最次.
+   DOM order matches the visual left-to-right order — [提供反馈] [自动类]
+   [主按钮] — so the Tab cycle also runs left-to-right with the primary
+   button last (aligned with Claude's confirm UIs: Deny/Cancel first,
+   Allow last). justify-content: flex-end pins the row right, including
+   the overflow line when wrapped (same as claude.ai's confirm action row;
+   ellipsis stays as the extreme-narrow fallback).
    align-items: center keeps the shorter text-style 提供反馈 button on the
-   same horizontal midline as the 32px action buttons.
-   flex-wrap: wrap lets buttons that don't fit drop onto a right-aligned
-   second line instead of squeezing label text (aligns with claude.ai's
-   confirm action row); ellipsis stays as the extreme-narrow fallback. */
+   same horizontal midline as the 32px action buttons. */
 .confirmation-actions {
   flex: 0 0 auto;
   display: flex;
-  flex-direction: row-reverse;
   flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 8px;
 }
@@ -422,12 +422,13 @@
   width: 100%;
 }
 
-/* Same primary-last visual / primary-first Tab pattern as the action bar:
-   DOM is 发送反馈 → 取消, row-reverse shows 取消 → 发送反馈. */
+/* Same primary-last pattern as the action bar, with DOM order matching the
+   visual order: DOM is 取消 → 发送反馈, Tab cycle runs left-to-right and the
+   row stays right-aligned. */
 .feedback-actions {
   display: flex;
-  flex-direction: row-reverse;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
 }
 
