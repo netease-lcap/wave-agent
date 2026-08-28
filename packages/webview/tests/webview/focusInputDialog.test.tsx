@@ -9,11 +9,12 @@ import {
 import { MockDataGenerator } from "../fixtures/mockData";
 import { EDIT_TOOL_NAME } from "wave-agent-sdk";
 
-// Switching to a side-by-side pane fires `focusInput`. When a confirm/rewind
-// dialog is open in that pane the message input is hidden (display:none during
-// a tool confirmation) or covered (rewind modal), so focusing it silently
-// no-ops. Instead the dialog's primary action should receive focus so the
-// keyboard works on it immediately after the switch.
+// Switching to a side-by-side pane fires `focusInput`. A tool-permission
+// dialog never steals focus (spec「确认弹窗不打断输入」), and the message
+// input stays visible while one is open — so focusInput lands on the input
+// as usual and the user reaches the dialog with Tab or a click. Exception:
+// the rewind modal is a real overlay covering the input, so its primary
+// action receives the focus instead.
 describe("focusInput with an open dialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -34,7 +35,7 @@ describe("focusInput with an open dialog", () => {
     expect(document.activeElement).toBe(screen.getByTestId("message-input"));
   });
 
-  it("focuses the confirmation dialog primary button when a tool confirmation is open", async () => {
+  it("focuses the message input when a tool confirmation is open", async () => {
     renderChatApp();
 
     await act(async () => {
@@ -50,19 +51,20 @@ describe("focusInput with an open dialog", () => {
       });
     });
 
+    // The dialog is up but does not hijack pane focus: the input stays
+    // visible and is the focusInput target (no accidental Enter-approves).
     const applyBtn = document.querySelector(
       ".confirmation-btn-apply",
     ) as HTMLElement;
     expect(applyBtn).not.toBeNull();
-    // The message input is hidden while the confirmation is showing.
-    expect(screen.getByTestId("message-input")).not.toBeVisible();
+    expect(screen.getByTestId("message-input")).toBeVisible();
 
     blurActive();
     act(() => {
       sendCommand("focusInput");
     });
 
-    expect(document.activeElement).toBe(applyBtn);
+    expect(document.activeElement).toBe(screen.getByTestId("message-input"));
   });
 
   it("focuses the rewind confirm button when the rewind modal is open", async () => {
