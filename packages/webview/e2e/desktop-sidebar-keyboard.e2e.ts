@@ -2,11 +2,12 @@ import { test, expect } from "./utils/desktopTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
 
 // Real-browser verification of the sidebar session-tree keyboard model
-// (spec docs/specs/ui/desktop-app.md 「会话管理」scenarios 13-19): roving
-// tabindex + arrow keys, delete buttons outside the Tab order, no delete
-// shortcut. jsdom covers the roving logic; this file covers what jsdom
-// cannot: native button Enter/Space activation, :focus-within reveal and
-// real Tab-order traversal.
+// (spec docs/specs/ui/desktop-app.md 「会话管理」scenarios 13-19): every
+// session row is natively Tab-focusable (claude.ai model), ↑/↓/Home/End
+// move between rows as an accelerator, delete buttons sit outside the Tab
+// order (←/→ only), and no delete shortcut exists. jsdom covers the focus
+// logic; this file covers what jsdom cannot: native button Enter/Space
+// activation, :focus-within reveal and real Tab-order traversal.
 
 const DIR_A = "/Users/dev/projects/wave-agent";
 const DIR_B = "/Users/dev/projects/shop-server";
@@ -49,7 +50,7 @@ const activeIsGroupHeader = (page: import("@playwright/test").Page) =>
   );
 
 test.describe("Desktop sidebar keyboard navigation", () => {
-  test("roving Tab stop, arrows, Enter semantics and group collapse", async ({
+  test("Tab walks every row, arrows, Enter semantics and group collapse", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
@@ -80,19 +81,18 @@ test.describe("Desktop sidebar keyboard navigation", () => {
     await expect(sidebar).toBeVisible();
 
     const mainS1 = webviewPage.getByTestId("desktop-session-main-s1");
-    const mainS2 = webviewPage.getByTestId("desktop-session-main-s2");
     const mainS3 = webviewPage.getByTestId("desktop-session-main-s3");
     const deleteS1 = webviewPage.getByTestId("desktop-session-delete-s1");
     const headerA = webviewPage
       .getByTestId("desktop-session-group-local:" + DIR_A)
       .locator(".desktop-session-group-header");
 
-    // ── Scenario 13: the whole tree occupies a single Tab stop ──────
-    // Tab from before the tree into it and past it: exactly one
-    // [data-session-main] is in the Tab order, zero delete buttons.
+    // ── Scenario 13: Tab walks the tree row by row ──────────────────
+    // Tab from before the tree: group headers and session mains are ALL in
+    // the Tab order (claude.ai model); delete buttons never are.
     await webviewPage.getByTestId("desktop-new-session").focus();
     const tabStops: (string | null)[] = [];
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 5; i++) {
       await webviewPage.keyboard.press("Tab");
       tabStops.push(
         (await activeIsGroupHeader(webviewPage))
@@ -100,25 +100,19 @@ test.describe("Desktop sidebar keyboard navigation", () => {
           : await activeTestId(webviewPage),
       );
     }
-    // Order: group header A → the one roving main → group header B → ...
-    expect(
-      tabStops.filter((t) => t?.startsWith("desktop-session-main-")),
-    ).toHaveLength(1);
-    expect(
-      tabStops.filter((t) => t?.startsWith("desktop-session-delete-")),
-    ).toHaveLength(0);
-    expect(tabStops[1]).toBe("desktop-session-main-s1");
-    expect(tabStops[0]).toBe("group-header");
+    // Order: header A → s1 → s2 → header B → s3 (delete buttons skipped).
+    expect(tabStops).toEqual([
+      "group-header",
+      "desktop-session-main-s1",
+      "desktop-session-main-s2",
+      "group-header",
+      "desktop-session-main-s3",
+    ]);
 
     // ── Scenario 14/15: ↑/↓ move across groups with wrap-around; Home/End ──
-    // Put focus back on the tree: the Tab sweep above left it further down.
-    await expect(mainS1).toHaveAttribute("tabindex", "0");
     await mainS1.focus();
     await webviewPage.keyboard.press("ArrowDown");
     expect(await activeTestId(webviewPage)).toBe("desktop-session-main-s2");
-    // The roving stop follows the focused row.
-    await expect(mainS2).toHaveAttribute("tabindex", "0");
-    await expect(mainS1).toHaveAttribute("tabindex", "-1");
     // Past the last row wraps to the first (crossing group A → B → A).
     await webviewPage.keyboard.press("ArrowDown");
     expect(await activeTestId(webviewPage)).toBe("desktop-session-main-s3");
@@ -130,32 +124,6 @@ test.describe("Desktop sidebar keyboard navigation", () => {
     expect(await activeTestId(webviewPage)).toBe("desktop-session-main-s1");
     await webviewPage.keyboard.press("End");
     expect(await activeTestId(webviewPage)).toBe("desktop-session-main-s3");
-
-    // ── Ctrl+Tab regression: a session switched in WITHOUT a focus event ──
-    // (host-driven shortcut switch) must still host the Tab stop. The roving
-    // record above sits on s2; switching the current session to s3 drops it.
-    await injector.simulateExtensionMessage("updateCurrentSession", {
-      session: {
-        id: "s3",
-        sessionType: "main",
-        workdir: DIR_B,
-        createdAt: "2026-08-28T00:00:00.000Z",
-        lastActiveAt: "2026-08-28T00:00:00.000Z",
-        latestTotalTokens: 0,
-        firstMessage: "会话三",
-      },
-    });
-    await expect(mainS3).toHaveAttribute("tabindex", "0");
-    await expect(mainS2).toHaveAttribute("tabindex", "-1");
-    // Tab from outside the tree lands on the newly current session. With s1/s2
-    // now at -1 the sweep is: group header A → group header B → s3.
-    await webviewPage.getByTestId("desktop-new-session").focus();
-    await webviewPage.keyboard.press("Tab"); // group header A
-    await webviewPage.keyboard.press("Tab"); // group header B
-    await webviewPage.keyboard.press("Tab");
-    expect(await activeTestId(webviewPage)).toBe("desktop-session-main-s3");
-    // Put the roving stop back on s1 for the Enter section below.
-    await mainS1.focus();
 
     // ── Scenario 17 (first half): Enter on the main button restores ──
     await webviewPage.evaluate(() => window.clearTestMessages());
@@ -216,8 +184,8 @@ test.describe("Desktop sidebar keyboard navigation", () => {
     await webviewPage.keyboard.press("Enter");
     await expect(headerA).toHaveAttribute("aria-expanded", "false");
     await expect(mainS1).toBeHidden();
-    // Collapsed rows leave the roving set entirely: only s3 remains, so ↓
-    // wraps onto itself.
+    // Collapsed rows leave the arrow-navigation set entirely: only s3
+    // remains, so ↓ wraps onto itself.
     await mainS3.focus();
     await webviewPage.keyboard.press("ArrowDown");
     expect(await activeTestId(webviewPage)).toBe("desktop-session-main-s3");
