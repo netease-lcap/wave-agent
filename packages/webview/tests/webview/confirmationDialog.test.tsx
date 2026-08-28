@@ -110,8 +110,13 @@ describe("Confirmation Dialog", () => {
     expect(title).toHaveTextContent("命令执行待确认");
   });
 
-  it("initial focus lands on the dialog container, not the primary action", async () => {
+  it("keeps focus where it was when the dialog opens (no focus steal)", async () => {
     renderChatApp();
+
+    // renderChatApp() focuses the message input on mount; record it as the
+    // pre-dialog focus. (Don't compare against body — jsdom has already
+    // focused the input.)
+    const initialFocus = document.activeElement;
 
     await act(async () => {
       sendCommand("showConfirmation", {
@@ -122,9 +127,10 @@ describe("Confirmation Dialog", () => {
       });
     });
 
-    // Focus moves into the dialog but never onto the primary action on open
-    // (an accidental Enter would approve); the container holds it.
-    expect(document.activeElement).toHaveClass("confirmation-dialog");
+    // Opening the dialog deliberately does NOT move focus (spec「确认弹窗
+    // 焦点圈」场景 1：焦点保持原位) — the user may be typing when it pops
+    // up, in this pane or a sibling one.
+    expect(document.activeElement).toBe(initialFocus);
 
     // The primary action is last in the Tab cycle within the action bar:
     // DOM order matches the visual left-to-right order (最次 → 次 → 主,
@@ -1654,19 +1660,23 @@ describe("AskUserQuestion Other input", () => {
     const optionLabels = () =>
       Array.from(document.querySelectorAll<HTMLElement>(".option-item"));
 
-    it("opens with focus on the first option; every option is a Tab stop", async () => {
+    it("opens without moving focus; every option is a Tab stop", async () => {
       renderChatApp();
+      // Opening the dialog deliberately does NOT move focus (spec「确认弹窗
+      // 焦点圈」场景 1)：the user may be typing when it pops up and reaches
+      // the options with Tab or a click.
+      const initialFocus = document.activeElement;
       showAskUser(twoOptionQuestion);
       await waitFor(() => {
         expect(
           document.querySelector(".confirmation-dialog"),
         ).toBeInTheDocument();
       });
-      // Every option holds its own Tab stop (plain Tab traversal, matching
-      // Claude's IDE/desktop AskUserQuestion); focus lands on the first one.
+      expect(document.activeElement).toBe(initialFocus);
+      // Every option still holds its own Tab stop (plain Tab traversal,
+      // matching Claude's IDE/desktop AskUserQuestion).
       const labels = optionLabels();
       expect(labels.filter((l) => l.tabIndex === 0).length).toBe(labels.length);
-      expect(document.activeElement).toBe(labels[0]);
     });
 
     it("Arrow keys do not move focus between options; Tab does", async () => {
@@ -1678,6 +1688,12 @@ describe("AskUserQuestion Other input", () => {
         ).toBeInTheDocument();
       });
       const labels = optionLabels();
+      // Opening doesn't move focus, so simulate the keyboard user Tabbing
+      // into the dialog first (jsdom doesn't move focus on fireEvent either).
+      act(() => {
+        labels[0].focus();
+      });
+      expect(document.activeElement).toBe(labels[0]);
       // Arrow keys are not option navigation: focus stays put (matching CC).
       for (const key of ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"]) {
         act(() => {
@@ -1774,7 +1790,7 @@ describe("AskUserQuestion Other input", () => {
       expect(dialog.contains(document.activeElement)).toBe(true);
     });
 
-    it("dismissing restores focus to the element focused before the dialog", async () => {
+    it("keeps focus on the pre-dialog element across open and dismiss", async () => {
       renderChatApp();
       const input = document.querySelector<HTMLElement>(
         '[data-testid="message-input"]',
@@ -1788,7 +1804,10 @@ describe("AskUserQuestion Other input", () => {
           document.querySelector(".confirmation-dialog"),
         ).toBeInTheDocument();
       });
-      expect(document.activeElement).not.toBe(input);
+      // Opening never moved focus (jsdom keeps it on the hidden input; a real
+      // browser drops it to body and restoreFocus's fallback re-focuses the
+      // input on dismiss).
+      expect(document.activeElement).toBe(input);
       act(() => {
         fireEvent.click(document.querySelector(".confirmation-close-btn")!);
       });
