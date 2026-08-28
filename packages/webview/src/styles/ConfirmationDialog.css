@@ -21,9 +21,10 @@
   position: relative;
   background-color: var(--vscode-menu-background);
   border: 1px solid var(--vscode-widget-border);
-  border-radius: 8px;
+  /* Prototype approval-dialog: 12px radius, large soft drop shadow. */
+  border-radius: 12px;
   padding: 8px 12px 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 12px 40px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
 }
 
 /* Scrollable body: header, questions and diff grow here; the action bar below
@@ -221,7 +222,13 @@
 }
 
 .option-item.selected {
-  background-color: var(--vscode-list-activeSelectionBackground);
+  /* Neutral pressed-gray selection (prototype fill), not the blue list
+     active-selection — keeps the dialog quiet; label color unchanged. */
+  background-color: color-mix(
+    in srgb,
+    var(--vscode-foreground) 10%,
+    transparent
+  );
   border-color: transparent;
 }
 
@@ -262,7 +269,9 @@
 }
 
 .option-item.selected .option-label {
-  color: var(--vscode-list-activeSelectionForeground);
+  /* Neutral selection: keep the normal foreground (the old blue-selection
+     foreground would be unreadable on the light gray fill). */
+  color: var(--vscode-foreground);
 }
 
 .recommended-tag {
@@ -440,7 +449,7 @@
   min-width: 64px;
   padding: 7px 12px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
   line-height: 18px;

@@ -384,8 +384,8 @@ export const MessageList = forwardRef<
   // wrapper). Multi-dot runs draw a continuous vertical line: the run's first
   // row starts it at its first dot, the last row ends it at its last dot;
   // single-dot runs hide the line. paddingBottom is the row's bottom spacing:
-  // 0 inside a multi-dot run so the line segments abut (flush), 10 after every
-  // other row (the inter-message spacing).
+  // 0 inside a multi-dot run so the line segments abut (flush), 14 after every
+  // other row (the inter-message spacing, prototype .design-timeline gap).
   const timelineRuns = useMemo(() => {
     const classes: string[] = [];
     const paddings: number[] = [];
@@ -396,13 +396,13 @@ export const MessageList = forwardRef<
       if (dots <= 1) {
         for (let i = runStart; i <= end; i++) {
           classes[i] = "timeline-run--single";
-          paddings[i] = 10;
+          paddings[i] = 14;
         }
       } else {
         classes[runStart] = "timeline-run--start";
         paddings[runStart] = 0;
         classes[end] = "timeline-run--end";
-        paddings[end] = 10;
+        paddings[end] = 14;
         for (let i = runStart + 1; i < end; i++) {
           paddings[i] = 0;
         }
@@ -420,7 +420,7 @@ export const MessageList = forwardRef<
       } else {
         flushRun(i - 1);
         classes[i] = "";
-        paddings[i] = 10;
+        paddings[i] = 14;
       }
     });
     flushRun(visibleMessages.length - 1);

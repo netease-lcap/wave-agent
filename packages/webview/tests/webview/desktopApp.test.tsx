@@ -1344,7 +1344,9 @@ describe("DesktopApp", () => {
       });
       vscode.postMessage.mockClear();
 
-      fireEvent.click(screen.getByTestId("desktop-session-delete-s1"));
+      // Delete lives inside the row's 更多 menu (并排打开/删除会话).
+      fireEvent.click(screen.getByTestId("desktop-session-more-s1"));
+      fireEvent.click(screen.getByTestId("desktop-session-menu-delete"));
 
       // Deletion only proceeds after confirming the in-webview dialog
       expect(screen.getByTestId("confirm-dialog-overlay")).toBeInTheDocument();
@@ -1363,7 +1365,44 @@ describe("DesktopApp", () => {
       });
     });
 
-    it("keeps every session main button in the Tab order; delete buttons stay out", () => {
+    it("offers 并排打开 and 删除会话 in the row's 更多 menu; 并排打开 posts desktopOpenPane", () => {
+      const { vscode } = renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: "/work/a",
+        recentWorkdirs: ["/work/a"],
+      });
+      sendCommand("desktopSessionTree", {
+        groups: [
+          {
+            host: "local",
+            workdir: "/work/a",
+            sessions: [session("s1", "hello a")],
+          },
+        ],
+      });
+      vscode.postMessage.mockClear();
+
+      fireEvent.click(screen.getByTestId("desktop-session-more-s1"));
+
+      const menu = screen.getByTestId("desktop-session-menu");
+      expect(menu).toHaveTextContent("并排打开");
+      expect(menu).toHaveTextContent("删除会话");
+
+      fireEvent.click(screen.getByTestId("desktop-session-menu-split"));
+
+      expect(vscode.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: "desktopOpenPane",
+          sessionId: "s1",
+        }),
+      );
+      // The menu closes after activating an item.
+      expect(
+        screen.queryByTestId("desktop-session-menu"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("keeps every session main button in the Tab order; 更多 buttons stay out", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", {
         workdir: "/work/a",
@@ -1386,8 +1425,8 @@ describe("DesktopApp", () => {
       const mainS2 = screen.getByTestId("desktop-session-main-s2");
       expect(mainS1.tabIndex).toBe(0);
       expect(mainS2.tabIndex).toBe(0);
-      expect(screen.getByTestId("desktop-session-delete-s1").tabIndex).toBe(-1);
-      expect(screen.getByTestId("desktop-session-delete-s2").tabIndex).toBe(-1);
+      expect(screen.getByTestId("desktop-session-more-s1").tabIndex).toBe(-1);
+      expect(screen.getByTestId("desktop-session-more-s2").tabIndex).toBe(-1);
     });
 
     it("moves focus between rows with ↑/↓ including wrap-around, and follows with Home/End", () => {
@@ -1424,7 +1463,7 @@ describe("DesktopApp", () => {
       expect(document.activeElement).toBe(mainS1);
     });
 
-    it("crosses within one row via ←/→ between the main button and the delete button", () => {
+    it("crosses within one row via ←/→ between the main button and the 更多 button", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", {
         workdir: "/work/a",
@@ -1440,26 +1479,26 @@ describe("DesktopApp", () => {
         ],
       });
       const mainS1 = screen.getByTestId("desktop-session-main-s1");
-      const deleteS1 = screen.getByTestId("desktop-session-delete-s1");
+      const moreS1 = screen.getByTestId("desktop-session-more-s1");
 
       act(() => {
         mainS1.focus();
       });
       fireEvent.keyDown(mainS1, { key: "ArrowRight" });
-      expect(document.activeElement).toBe(deleteS1);
+      expect(document.activeElement).toBe(moreS1);
       // Clamped at the row's edge: a second → stays put.
-      fireEvent.keyDown(deleteS1, { key: "ArrowRight" });
-      expect(document.activeElement).toBe(deleteS1);
+      fireEvent.keyDown(moreS1, { key: "ArrowRight" });
+      expect(document.activeElement).toBe(moreS1);
       // ← returns to the row's main button.
-      fireEvent.keyDown(deleteS1, { key: "ArrowLeft" });
+      fireEvent.keyDown(moreS1, { key: "ArrowLeft" });
       expect(document.activeElement).toBe(mainS1);
 
-      // Vertical movement from the delete button resumes from that row.
+      // Vertical movement from the 更多 button resumes from that row.
       const mainS2 = screen.getByTestId("desktop-session-main-s2");
       act(() => {
-        deleteS1.focus();
+        moreS1.focus();
       });
-      fireEvent.keyDown(deleteS1, { key: "ArrowDown" });
+      fireEvent.keyDown(moreS1, { key: "ArrowDown" });
       expect(document.activeElement).toBe(mainS2);
     });
 
@@ -1480,7 +1519,8 @@ describe("DesktopApp", () => {
       });
       vscode.postMessage.mockClear();
 
-      fireEvent.click(screen.getByTestId("desktop-session-delete-s1"));
+      fireEvent.click(screen.getByTestId("desktop-session-more-s1"));
+      fireEvent.click(screen.getByTestId("desktop-session-menu-delete"));
       fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
 
       expect(
@@ -1514,7 +1554,8 @@ describe("DesktopApp", () => {
         ],
       });
 
-      fireEvent.click(screen.getByTestId("desktop-session-delete-wt"));
+      fireEvent.click(screen.getByTestId("desktop-session-more-wt"));
+      fireEvent.click(screen.getByTestId("desktop-session-menu-delete"));
 
       expect(screen.getByTestId("confirm-dialog-overlay")).toHaveTextContent(
         "worktree 目录与临时分支将一并删除",

@@ -145,12 +145,8 @@
   box-sizing: border-box;
 }
 
-/* The full-width row wrapper would stretch user bubbles across the whole
-   column; keep the shrink-to-fit look. */
-.messages-container--virtual .message.user {
-  width: fit-content;
-  max-width: 100%;
-}
+/* User messages span the full column (prototype quiet bar); the previous
+   shrink-to-fit override was removed with the visual refresh. */
 
 /* Timeline vertical line as per-message segments (the old .assistant-group
    wrapper drew it as a single box). A run of consecutive assistant messages is
@@ -160,7 +156,8 @@
 .messages-container--virtual .timeline-row::after {
   content: "";
   position: absolute;
-  left: 3px;
+  /* Centered under the 8px dot (dot center x = 4px, line width 1px). */
+  left: 3.5px;
   top: 0;
   bottom: 0;
   width: 1px;

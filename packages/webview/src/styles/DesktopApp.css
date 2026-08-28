@@ -60,11 +60,6 @@
   background-color: var(--vscode-toolbar-hoverBackground);
 }
 
-.desktop-sidebar-title {
-  font-weight: 600;
-  font-size: 13px;
-}
-
 .desktop-sidebar-new-chat {
   display: flex;
   align-items: center;
@@ -186,8 +181,15 @@
 }
 
 .desktop-session-item--current {
-  background: var(--vscode-list-activeSelectionBackground);
-  color: var(--vscode-list-activeSelectionForeground);
+  /* Neutral pressed-gray selection (prototype fill-pressed), NOT the blue
+     list-activeSelectionBackground — the sidebar stays quiet, text color
+     unchanged. --visible keeps the VS Code inactive-selection gray so the
+     two states stay distinguishable (current is a touch darker). */
+  background: color-mix(
+    in srgb,
+    var(--vscode-foreground) 12%,
+    transparent
+  );
 }
 
 /* Weak counterpart of --current: the session is shown in a non-focused pane. */
@@ -219,12 +221,16 @@
   white-space: nowrap;
 }
 
-.desktop-session-delete {
+.desktop-session-more-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  padding: 0 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
   border: none;
+  border-radius: 4px;
   background: none;
   color: var(--vscode-foreground);
   /* Hidden via opacity + pointer-events (not display:none) so the button stays
@@ -236,15 +242,56 @@
   line-height: 1;
 }
 
-.desktop-session-item:hover .desktop-session-delete,
-.desktop-session-item:focus-within .desktop-session-delete,
-.desktop-session-delete:focus-visible {
+.desktop-session-item:hover .desktop-session-more-btn,
+.desktop-session-item:focus-within .desktop-session-more-btn,
+.desktop-session-more-btn:focus-visible {
   opacity: 1;
   pointer-events: auto;
 }
 
-.desktop-session-delete:hover,
-.desktop-session-delete:focus-visible {
+.desktop-session-more-btn:hover,
+.desktop-session-more-btn:focus-visible {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+/* Session row menu (并排打开 / 删除会话): fixed-position dropdown anchored
+   under the row's 更多 button — fixed so it escapes .desktop-sidebar's
+   overflow:hidden. */
+.desktop-session-menu {
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px var(--vscode-widget-shadow);
+  padding: 4px;
+  z-index: 10000;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.desktop-session-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.desktop-session-menu-item:hover,
+.desktop-session-menu-item:focus-visible {
+  background: var(--vscode-list-hoverBackground);
+  outline: none;
+}
+
+.desktop-session-menu-item .codicon {
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.desktop-session-menu-item--danger {
   color: var(--vscode-errorForeground, #f14c4c);
 }
 
@@ -750,13 +797,15 @@ body.is-panel-resizing * {
   flex-shrink: 0;
 }
 
-/* ---- Preview tabs (spec desktop-app.md 预览多标签页) ---- */
+/* ---- Preview tabs (spec desktop-app.md 预览多标签页) ----
+   Prototype pill tabs: 26px capsules on a transparent strip; the active tab
+   gets a neutral fill; 1px separators sit between inactive neighbors. */
 
 .preview-tab-bar {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 2px;
-  padding: 4px 6px 0;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
   flex-shrink: 0;
   overflow-x: auto;
@@ -764,32 +813,50 @@ body.is-panel-resizing * {
 }
 
 .preview-tab {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
+  height: 26px;
   max-width: 160px;
   min-width: 56px;
-  padding: 3px 4px 3px 8px;
-  border: 1px solid transparent;
-  border-top: 2px solid transparent;
-  border-bottom: none;
-  border-radius: 4px 4px 0 0;
+  padding: 0 4px 0 10px;
+  border: none;
+  border-radius: 13px;
   font-size: 12px;
-  color: var(--vscode-tab-inactiveForeground, var(--vscode-foreground));
-  background: var(--vscode-tab-inactiveBackground, transparent);
+  color: var(--vscode-foreground);
+  background: transparent;
   cursor: pointer;
   user-select: none;
+  opacity: 0.8;
+}
+
+/* 1px separator between neighboring inactive tabs; hidden next to the
+   active (filled) pill so it doesn't touch its edges. */
+.preview-tab + .preview-tab::before {
+  content: "";
+  position: absolute;
+  left: -1.5px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+}
+
+.preview-tab.active + .preview-tab::before,
+.preview-tab.active::before {
+  display: none;
 }
 
 .preview-tab:hover {
-  background: var(--vscode-tab-hoverBackground, var(--vscode-list-hoverBackground));
+  background: var(--vscode-list-hoverBackground);
+  opacity: 1;
 }
 
 .preview-tab.active {
-  background: var(--vscode-tab-activeBackground, var(--vscode-editor-background));
-  border-color: var(--vscode-tab-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.2)));
-  border-top-color: var(--vscode-focusBorder, #0078d4);
-  color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+  background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+  color: var(--vscode-foreground);
+  opacity: 1;
 }
 
 .preview-tab.active .preview-tab-label {
@@ -833,7 +900,7 @@ body.is-panel-resizing * {
   justify-content: center;
   width: 22px;
   height: 22px;
-  margin: 0 0 2px 2px;
+  margin: 0 0 0 2px;
   padding: 0;
   border: none;
   border-radius: 4px;

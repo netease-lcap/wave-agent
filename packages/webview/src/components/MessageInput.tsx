@@ -1661,15 +1661,6 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
           {/* Single bordered box wrapping the text area and toolbar (设计稿 2237-5088).
             Focus turns the whole box's border red via :focus-within. */}
           <div className="input-content">
-            {/* Desktop host, new-session state: workdir selector at the top-left */}
-            {workdirSelector && (
-              <div
-                className="input-workdir-row"
-                data-testid="input-workdir-row"
-              >
-                {workdirSelector}
-              </div>
-            )}
             {/* ContentEditable - full width */}
             <div
               ref={textareaRef}
@@ -1815,6 +1806,18 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
                 </Tooltip>
               )}
             </div>
+
+            {/* Desktop host, new-session state: context bar BELOW the toolbar
+                (prototype welcome composer), as a quiet footer strip of the
+                card. Its dropdown still expands upward. */}
+            {workdirSelector && (
+              <div
+                className="input-workdir-row"
+                data-testid="input-workdir-row"
+              >
+                {workdirSelector}
+              </div>
+            )}
           </div>
 
           {/* File Suggestion Dropdown */}
