@@ -107,4 +107,25 @@ describe("timeline dot color by stage", () => {
     const row = getLastMessage().querySelector(".timeline-row") as HTMLElement;
     expect(row.style.getPropertyValue("--dot-color")).toContain("Passed");
   });
+
+  it("compact block is wrapped in a timeline row with the link-accent dot", () => {
+    renderChatApp();
+
+    sendCommand("updateMessages", {
+      messages: [
+        {
+          id: "m4",
+          role: "assistant",
+          timestamp: "2024-01-01T00:00:00.000Z",
+          blocks: [{ type: "compact", content: "对话摘要" }],
+        },
+      ],
+    });
+    const row = getLastMessage().querySelector(".timeline-row") as HTMLElement;
+    // The compact block renders inside a .timeline-row so it gets the dot and
+    // the 10px top spacing like text/tool/reasoning blocks.
+    expect(row).not.toBeNull();
+    expect(row.querySelector(".compact-block")).not.toBeNull();
+    expect(row.style.getPropertyValue("--dot-color")).toContain("textLink");
+  });
 });

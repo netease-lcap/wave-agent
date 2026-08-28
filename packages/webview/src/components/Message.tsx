@@ -836,15 +836,12 @@ export const Message: React.FC<MessageProps> = React.memo(
       );
     };
 
-    const renderCompactBlock = (compactBlock: CompactBlock, index: number) => {
-      return (
-        <CompactBlockView
-          key={`compact-${index}`}
-          block={compactBlock}
-          renderContent={(content) => renderMarkdownContent(content, index)}
-        />
-      );
-    };
+    const renderCompactBlock = (compactBlock: CompactBlock, index: number) => (
+      <CompactBlockView
+        block={compactBlock}
+        renderContent={(content) => renderMarkdownContent(content, index)}
+      />
+    );
 
     const renderBlock = (block: MessageBlock, index: number) => {
       let rendered: React.ReactNode = null;
@@ -853,7 +850,12 @@ export const Message: React.FC<MessageProps> = React.memo(
 
       switch (block.type) {
         case "compact":
-          return renderCompactBlock(block, index);
+          // Same color as .compact-dot so the timeline dot matches the in-block dot.
+          rendered = renderCompactBlock(block, index);
+          wrap = true;
+          dotColor =
+            "var(--vscode-textLink-foreground, var(--vscode-descriptionForeground))";
+          break;
         case "text": {
           const content = block.content || "";
           if (!content.trim()) return null;
