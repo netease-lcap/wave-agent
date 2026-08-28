@@ -1042,20 +1042,16 @@ export class DesktopHost {
           this.streamedAgents.add(agentRef);
         } else {
           this.touchSessionInIndex(agentRef);
-          // Announce a background turn that finished on its own — never the
-          // focused session (the user is watching it) and never an aborted one
+          // Announce a background turn that finished on its own — only for
+          // sessions not shown in any pane (one displayed in a pane, focused
+          // or not, is directly visible) and never an aborted one
           // (spec「后台会话活动通知」scenario 5/7/8). A loading:false without a
           // preceding loading:true is not a turn finishing: restore re-attach
           // replays the settled loading state as a snapshot, so clicking a
           // historical session must not toast its idle state as 「已完成」.
           const aborted = this.userAbortedAgents.delete(agentRef);
           const finishedTurn = this.streamedAgents.delete(agentRef);
-          if (
-            paneId !== this.focusedPaneId &&
-            !aborted &&
-            finishedTurn &&
-            agentRef.sessionId
-          ) {
+          if (!paneId && !aborted && finishedTurn && agentRef.sessionId) {
             this.showToast({
               message: `会话「${this.sessionTitleFor(agentRef)}」已完成`,
               actionLabel: "查看",
@@ -2096,15 +2092,13 @@ export class DesktopHost {
     this.refreshSessionTree();
 
     const paneId = this.paneIdForAgent(agent);
-    // Toast the request when the session isn't the one being watched — the
+    // Toast the request only when the session isn't shown in any pane — the
     // sidebar bell alone is easy to miss (spec「后台会话活动通知」scenario 1/9).
-    // A session shown in the focused pane already pops its dialog, so no toast
-    // (scenario 2). One toast per wait cycle: a burst of follow-up requests
-    // while the first is still pending must not re-announce (scenario 4).
-    if (
-      paneId !== this.focusedPaneId &&
-      !this.confirmationToastAgents.has(agent)
-    ) {
+    // A session displayed in a pane, focused or not, already pops its dialog
+    // where the user can see it, so no toast (scenario 2). One toast per wait
+    // cycle: a burst of follow-up requests while the first is still pending
+    // must not re-announce (scenario 4).
+    if (!paneId && !this.confirmationToastAgents.has(agent)) {
       this.confirmationToastAgents.add(agent);
       this.showToast({
         message: `会话「${this.sessionTitleFor(agent)}」需要确认：${confirmationType}`,
