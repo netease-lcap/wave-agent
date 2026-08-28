@@ -13,6 +13,14 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
   },
 }));
 
+const HOME = "/home/tester";
+
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  const mockOs = { ...actual, homedir: () => HOME };
+  return { ...mockOs, default: mockOs };
+});
+
 function createContainer(workdir?: string): Container {
   const c = new Container();
   if (workdir) {
@@ -52,6 +60,56 @@ describe("PermissionManager - instance additional directories", () => {
       expect(manager.getInstanceAdditionalDirectories()).toContain(
         path.resolve("/b/absolute"),
       );
+    });
+  });
+
+  describe("home directory (~) expansion", () => {
+    it("should expand a bare ~ to the user home directory", () => {
+      const manager = new PermissionManager(createContainer("/a"), {
+        additionalDirectories: ["~"],
+      });
+
+      expect(manager.getAdditionalDirectories()).toEqual([path.resolve(HOME)]);
+    });
+
+    it("should expand ~/ prefixed paths against the home directory", () => {
+      const manager = new PermissionManager(createContainer("/a"), {
+        additionalDirectories: ["~/github"],
+      });
+
+      expect(manager.getAdditionalDirectories()).toEqual([
+        path.resolve(HOME, "github"),
+      ]);
+    });
+
+    it("should expand ~ in instance additional directories", () => {
+      const manager = new PermissionManager(createContainer("/a"), {
+        instanceAdditionalDirectories: ["~/session"],
+      });
+
+      expect(manager.getInstanceAdditionalDirectories()).toEqual([
+        path.resolve(HOME, "session"),
+      ]);
+    });
+
+    it("should not resolve ~-prefixed paths against the workdir", () => {
+      const manager = new PermissionManager(createContainer("/a"), {
+        additionalDirectories: ["~/data"],
+      });
+
+      expect(manager.getAdditionalDirectories()).not.toContain(
+        path.resolve("/a", "~", "data"),
+      );
+    });
+
+    it("should expand ~ in system additional directories", () => {
+      const container = createContainer("/a");
+      const manager = new PermissionManager(container);
+      manager.addSystemAdditionalDirectory("~/tools");
+
+      expect(manager.getSystemAdditionalDirectories()).toEqual([
+        path.resolve(HOME, "tools"),
+      ]);
     });
   });
 
