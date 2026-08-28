@@ -48,8 +48,10 @@ describe("Confirmation Dialog", () => {
     // Verify buttons
     const applyBtn = document.querySelector(".confirmation-btn-apply");
     expect(applyBtn).toHaveTextContent("批准并继续");
-    const autoBtn = document.querySelector(".confirmation-btn-auto");
-    expect(autoBtn).toHaveTextContent("批准并自动接受后续修改");
+    const autoButtons = document.querySelectorAll(".confirmation-btn-auto");
+    expect(Array.from(autoButtons).map((b) => b.textContent)).toContain(
+      "批准并自动接受后续修改",
+    );
   });
 
   it("should show confirmation dialog for code modification tools", async () => {
@@ -124,16 +126,18 @@ describe("Confirmation Dialog", () => {
     // (an accidental Enter would approve); the container holds it.
     expect(document.activeElement).toHaveClass("confirmation-dialog");
 
-    // The primary action is first in the Tab cycle: it is the first focusable
-    // element inside the dialog (DOM order), so a Tab lands on it.
-    const dialog = document.querySelector(".confirmation-dialog")!;
-    const focusables = Array.from(
-      dialog.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([type="hidden"]), textarea, [tabindex]:not([tabindex="-1"])',
-      ),
-    ).filter((el) => el.tabIndex !== -1);
-    expect(focusables[0]).toHaveClass("confirmation-btn-apply");
-    expect(focusables[0]).toHaveTextContent("批准并继续");
+    // The primary action is last in the Tab cycle within the action bar:
+    // DOM order matches the visual left-to-right order (最次 → 次 → 主,
+    // aligned with Claude's confirm UIs where Deny/Cancel come first and
+    // Allow last), so the primary button is the last action Tab reaches.
+    const actionBar = document.querySelector(".confirmation-actions")!;
+    const buttons = Array.from(
+      actionBar.querySelectorAll<HTMLButtonElement>("button:not([disabled])"),
+    );
+    expect(buttons[0]).toHaveTextContent("提供反馈");
+    const primary = buttons[buttons.length - 1]!;
+    expect(primary).toHaveClass("confirmation-btn-apply");
+    expect(primary).toHaveTextContent("批准并继续");
   });
 
   it("should send approval response when clicking apply button", async () => {
@@ -1209,10 +1213,10 @@ describe("AskUserQuestion Other input", () => {
         ),
       ).map((b) => b.textContent!.trim());
 
-    // Q1: the carousel shows all three buttons — 提交回答 (primary, DOM-first)
-    // plus 下一个/上一个. 提交 disabled until every question is answered;
-    // 上一个/下一个 always enabled regardless of answer state.
-    expect(navButtonLabels()).toEqual(["提交回答", "下一个", "上一个"]);
+    // Q1: the carousel shows all three buttons — DOM/visual order is
+    // 上一个 → 下一个 → 提交回答 (primary last). 提交 disabled until every
+    // question is answered; 上一个/下一个 always enabled regardless of answer state.
+    expect(navButtonLabels()).toEqual(["上一个", "下一个", "提交回答"]);
     const nextBtn = document.querySelector(
       '.question-navigation .confirmation-btn-secondary[aria-label="下一个"]',
     ) as HTMLButtonElement;
@@ -1250,7 +1254,7 @@ describe("AskUserQuestion Other input", () => {
 
     // Q2 (middle question): the same fixed three buttons — 提交 disabled, both
     // nav buttons enabled (上一个 always lets you revisit previous answers).
-    expect(navButtonLabels()).toEqual(["提交回答", "下一个", "上一个"]);
+    expect(navButtonLabels()).toEqual(["上一个", "下一个", "提交回答"]);
     expect(prevBtn.disabled).toBe(false);
     const nextBtn2 = document.querySelector(
       '.question-navigation .confirmation-btn-secondary[aria-label="下一个"]',
@@ -1327,7 +1331,7 @@ describe("AskUserQuestion Other input", () => {
 
     // Q3 (last question): same fixed buttons — 提交 disabled until every
     // question has a valid answer
-    expect(navButtonLabels()).toEqual(["提交回答", "下一个", "上一个"]);
+    expect(navButtonLabels()).toEqual(["上一个", "下一个", "提交回答"]);
     expect(submitBtn.disabled).toBe(true);
 
     // Jump back to Q2 via the progress bar, answer it, then return to Q3.

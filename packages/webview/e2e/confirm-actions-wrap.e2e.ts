@@ -112,15 +112,17 @@ test.describe("Confirmation actions wrap", () => {
     const rowTops = [...new Set(boxes.map((b) => Math.round(b.top)))];
     expect(rowTops.length).toBeGreaterThan(1);
 
-    // The primary button shares the top line with at least one secondary —
-    // wrap order (row-reverse + wrap fills each line from the DOM tail)
-    // keeps 批准并继续 top-right rather than pushed down alone.
-    const minTop = Math.min(...boxes.map((b) => b.top));
-    const topRow = boxes.filter(
-      (b) => Math.round(b.top) === Math.round(minTop),
+    // The primary button is last in the DOM/visual order (aligned with
+    // Claude's confirm UIs: secondary actions first, primary last), so on a
+    // narrow bar it wraps onto the bottom line and stays pinned right.
+    const maxTop = Math.max(...boxes.map((b) => b.top));
+    const bottomRow = boxes.filter(
+      (b) => Math.round(b.top) === Math.round(maxTop),
     );
-    expect(topRow.some((b) => b.label === "批准并继续")).toBe(true);
-    expect(topRow.length).toBeGreaterThanOrEqual(2);
+    const primary = bottomRow.find((b) => b.label === "批准并继续");
+    expect(primary).toBeDefined();
+    const bottomMaxRight = Math.max(...bottomRow.map((b) => b.right));
+    expect(Math.abs(primary!.right - bottomMaxRight)).toBeLessThan(2);
 
     // Every occupied row ends flush with the same right edge (right-aligned).
     // Row identity comes from the 32px buttons only — the shorter 提供反馈
