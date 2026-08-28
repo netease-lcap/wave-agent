@@ -27,6 +27,9 @@ export interface WebviewTagElement extends HTMLElement {
    * server's stale cache headers can't hide the latest build. */
   reloadIgnoringCache(): void;
   getURL(): string;
+  setZoomFactor(factor: number): void;
+  getZoomFactor(): number;
+  executeJavaScript<T>(code: string): Promise<T>;
 }
 
 export interface PreviewComment {
@@ -81,6 +84,25 @@ export function rewriteCommentUrl(
 }
 
 const MIN_WIDTH = 320;
+
+/**
+ * Overflow auto-fit (spec desktop-app.md「localhost 原型预览」scenario 7, aligned
+ * with Claude Desktop's browser pane): when the guest page is wider than the
+ * panel and offers no horizontal scroll of its own, scale the whole page down
+ * so the overflowing part stays visible and clickable instead of being clipped.
+ * Only shrink — a page that already fits is never zoomed above 100%.
+ */
+const MIN_FIT_ZOOM = 0.3;
+// scrollWidth of <html> alone misses pages that clip on <body> itself
+// (overflow-x: hidden admin layouts) — the body then becomes the scroll
+// container and its own scrollWidth still reports the full content width.
+// Only the width is read: the guest's clientWidth can lag behind a resize
+// (its layout viewport resizes asynchronously), while the overflowing
+// content's natural width is stable at any zoom.
+const FIT_MEASURE_JS =
+  "(() => Math.max(document.documentElement.scrollWidth, document.body ? document.body.scrollWidth : 0))()";
+const clampFitZoom = (z: number): number =>
+  Math.max(MIN_FIT_ZOOM, Math.min(1, z));
 
 /** Colors the guest picker can't read cross-origin — sampled from the host theme. */
 const readPalette = (): Record<string, string> => {
@@ -214,6 +236,60 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   // same-url reuse in openUrlInTab, like the old single-tab [url] effect.
   const lastLoadedRef = useRef("");
   const addressInputRef = useRef<HTMLInputElement | null>(null);
+  // Overflow auto-fit: guest content width (CSS px) remembered while zoomed
+  // out, so a wider panel can zoom back in without re-measuring it.
+  const fitContentWidthRef = useRef<number | null>(null);
+  // Generation guard: a newer pass (reload / resize) invalidates the in-flight
+  // one so two passes can't fight over the zoom factor.
+  const fitGenRef = useRef(0);
+  // Host-side panel width for the did-finish-load pass (the width effect can't
+  // see prop changes that happened while the guest was still loading).
+  const widthRef = useRef(width);
+  widthRef.current = width;
+
+  /** One auto-fit pass: measure the guest's content width and set the zoom so
+   * it fits the panel. The viewport width comes from the HOST's panel width,
+   * not the guest's clientWidth — the guest layout viewport resizes
+   * asynchronously and can be stale mid-drag, while the overflowing content's
+   * natural width is stable at any zoom. */
+  const runFitPass = useCallback(
+    async (panelWidth: number, initialDelay = 0) => {
+      const wv = webviewRef.current;
+      if (!wv || !domReadyRef.current || panelWidth <= 0) return;
+      const gen = ++fitGenRef.current;
+      for (let i = 0; i < 4; i++) {
+        // First round waits for the initial paint; later rounds let the layout
+        // settle after a zoom change (media queries may change the width need).
+        await new Promise((r) => setTimeout(r, i === 0 ? initialDelay : 180));
+        if (gen !== fitGenRef.current || !domReadyRef.current) return;
+        let sw: number;
+        try {
+          sw = await wv.executeJavaScript<number>(FIT_MEASURE_JS);
+        } catch {
+          return; // guest torn down mid-pass
+        }
+        if (gen !== fitGenRef.current || !domReadyRef.current || sw <= 0)
+          return;
+        const z = wv.getZoomFactor();
+        const viewport = panelWidth / z;
+        let next: number;
+        if (sw > viewport + 1) {
+          // Content needs more width than the viewport: scale down to fit.
+          next = clampFitZoom(panelWidth / sw);
+          fitContentWidthRef.current = sw;
+        } else if (fitContentWidthRef.current !== null) {
+          // Content fits: zoom back in toward the remembered natural width.
+          next = clampFitZoom(panelWidth / fitContentWidthRef.current);
+          if (next >= 1) fitContentWidthRef.current = null;
+        } else {
+          break; // fluid page already at its natural zoom — nothing to do
+        }
+        if (Math.abs(next - z) <= 0.004) break; // converged / at the floor
+        wv.setZoomFactor(next);
+      }
+    },
+    [],
+  );
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
 
@@ -266,6 +342,20 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       pickerActiveRef.current = false;
       setPickerActive(false);
       setPickerUnsupported(false);
+      // Fresh document → any fit zoom is stale: back to 100% and let the fit
+      // pass after did-finish-load re-shrink if the new page overflows.
+      fitContentWidthRef.current = null;
+      fitGenRef.current++; // invalidate an in-flight pass
+      try {
+        wv.setZoomFactor(1);
+      } catch {
+        /* guest not attached yet */
+      }
+    };
+    const onDidFinishLoad = () => {
+      // 200ms: give the initial paint a chance before measuring (SPAs render
+      // after load; the pass re-measures anyway).
+      void runFitPass(widthRef.current, 200);
     };
     const onDidNavigateInPage = (e: Event) => {
       const navUrl = (e as { url?: string }).url;
@@ -328,17 +418,28 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     wv.addEventListener("did-navigate", onDidNavigate);
     wv.addEventListener("did-navigate-in-page", onDidNavigateInPage);
     wv.addEventListener("did-fail-load", onDidFailLoad);
+    wv.addEventListener("did-finish-load", onDidFinishLoad);
     wv.addEventListener("ipc-message", onIpcMessage);
     return () => {
       wv.removeEventListener("dom-ready", onDomReady);
       wv.removeEventListener("did-navigate", onDidNavigate);
       wv.removeEventListener("did-navigate-in-page", onDidNavigateInPage);
       wv.removeEventListener("did-fail-load", onDidFailLoad);
+      wv.removeEventListener("did-finish-load", onDidFinishLoad);
       wv.removeEventListener("ipc-message", onIpcMessage);
     };
-    // deactivatePicker/sendPicker are stable useCallbacks, so this still only
-    // runs once per mount.
-  }, [deactivatePicker, sendPicker]);
+    // deactivatePicker/sendPicker/runFitPass are stable useCallbacks, so this
+    // still only runs once per mount.
+  }, [deactivatePicker, sendPicker, runFitPass]);
+
+  // Panel resized → re-fit (debounced; drag resizes fire this continuously).
+  // 250ms after the debounce: the guest's layout viewport also updates
+  // asynchronously, so give it a beat before the first measurement.
+  useEffect(() => {
+    if (!domReadyRef.current) return;
+    const t = window.setTimeout(() => void runFitPass(width, 250), 150);
+    return () => window.clearTimeout(t);
+  }, [width, runFitPass]);
 
   // Select the initial tab once mounted (tabs may start empty for a blank pane).
   useEffect(() => {
