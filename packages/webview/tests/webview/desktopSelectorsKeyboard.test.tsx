@@ -12,11 +12,15 @@ function renderDesktopApp() {
   return { ...result, vscode };
 }
 
+/** Flushes the hook's rAF-deferred initial item focus. */
+const flushOpenFocus = () =>
+  new Promise((resolve) => requestAnimationFrame(resolve));
+
 /**
  * Keyboard accessibility of the desktop new-session selectors (host, workdir,
  * branch): triggers must be Tab-focusable, menu items activatable with
- * Enter/Space, and Escape must close the menu and return focus to the trigger.
- * Same pattern as the + / permission-mode dropdowns (plusMenuKeyboard.test.tsx).
+ * Enter/Space, Escape must close the menu and return focus to the trigger,
+ * and Arrow keys move the roving-tabindex focus without wrapping.
  */
 describe("desktop selector keyboard accessibility", () => {
   it("host trigger opens the menu with Enter and host items are Tab-focusable", () => {
@@ -38,10 +42,71 @@ describe("desktop selector keyboard accessibility", () => {
     const localItem = screen.getByTestId("desktop-host-local");
     const sshItems = screen.getAllByTestId("desktop-host-item");
     const addItem = screen.getByTestId("desktop-host-add-entry");
+    // Roving tabindex: the initially-focused item (本地) is the only tab stop.
     expect(localItem).toHaveProperty("tabIndex", 0);
     expect(sshItems).toHaveLength(2);
-    expect(sshItems[0]).toHaveProperty("tabIndex", 0);
-    expect(addItem).toHaveProperty("tabIndex", 0);
+    expect(sshItems[0]).toHaveProperty("tabIndex", -1);
+    expect(addItem).toHaveProperty("tabIndex", -1);
+  });
+
+  it("opens with focus on the first item which is activatable right away", async () => {
+    const { vscode } = renderDesktopApp();
+    sendCommand("desktopWorkdirState", {
+      host: "prod",
+      hosts: ["prod"],
+      recentWorkdirs: [],
+    });
+    vscode.postMessage.mockClear();
+
+    fireEvent.click(screen.getByTestId("desktop-host"));
+    await flushOpenFocus();
+
+    // Opening focuses 本地 so Enter immediately selects it.
+    expect(document.activeElement).toBe(
+      screen.getByTestId("desktop-host-local"),
+    );
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Enter" });
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      command: "desktopSelectHost",
+      host: "local",
+    });
+    expect(screen.queryByTestId("desktop-host-menu")).not.toBeInTheDocument();
+  });
+
+  it("moves the roving focus with Arrow keys without wrapping at the edges", () => {
+    renderDesktopApp();
+    sendCommand("desktopWorkdirState", {
+      host: "prod",
+      hosts: ["prod"],
+      recentWorkdirs: [],
+    });
+
+    fireEvent.click(screen.getByTestId("desktop-host"));
+    const localItem = screen.getByTestId("desktop-host-local");
+    const sshItem = screen.getAllByTestId("desktop-host-item")[0];
+    const addItem = screen.getByTestId("desktop-host-add-entry");
+
+    localItem.focus();
+    fireEvent.keyDown(localItem, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(sshItem);
+    expect(sshItem).toHaveProperty("tabIndex", 0);
+    expect(localItem).toHaveProperty("tabIndex", -1);
+
+    fireEvent.keyDown(sshItem, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(addItem);
+
+    // Below the last item: clamped, focus stays on 添加主机….
+    fireEvent.keyDown(addItem, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(addItem);
+
+    fireEvent.keyDown(addItem, { key: "ArrowUp" });
+    fireEvent.keyDown(document.activeElement as HTMLElement, {
+      key: "ArrowUp",
+    });
+    expect(document.activeElement).toBe(localItem);
+    // Above the first item: clamped too.
+    fireEvent.keyDown(localItem, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(localItem);
   });
 
   it("selects a host item with Enter and returns focus to the trigger", () => {
@@ -230,7 +295,39 @@ describe("desktop selector keyboard accessibility", () => {
 
     const items = screen.getAllByTestId("desktop-branch-item");
     expect(items).toHaveLength(2);
+    // Roving tabindex: the initially-focused item (main, the current branch)
+    // is the only tab stop.
     expect(items[0]).toHaveProperty("tabIndex", 0);
+    expect(items[1]).toHaveProperty("tabIndex", -1);
+  });
+
+  it("opens focused on the currently selected branch even when it is not first", async () => {
+    renderDesktopApp();
+    sendCommand("desktopWorkdirState", {
+      workdir: "/work/a",
+      recentWorkdirs: ["/work/a"],
+    });
+    sendCommand("desktopGitBranches", {
+      workdir: "/work/a",
+      result: { branches: ["main", "dev"], current: "dev" },
+    });
+
+    fireEvent.click(screen.getByTestId("desktop-branch-selector"));
+    await flushOpenFocus();
+
+    const items = screen.getAllByTestId("desktop-branch-item");
+    // Opening focuses the current branch (permission-mode dropdown precedent).
+    expect(document.activeElement).toBe(items[1]);
+
+    fireEvent.keyDown(items[1], { key: "ArrowUp" });
+    expect(document.activeElement).toBe(items[0]);
+    expect(items[0]).toHaveProperty("tabIndex", 0);
+
+    fireEvent.keyDown(items[0], { key: "Escape" });
+    expect(screen.queryByTestId("desktop-branch-menu")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(
+      screen.getByTestId("desktop-branch-selector"),
+    );
   });
 
   it("selects a branch with Enter and returns focus to the trigger", () => {

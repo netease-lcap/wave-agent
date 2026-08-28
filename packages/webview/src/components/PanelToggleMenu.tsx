@@ -1,9 +1,13 @@
 import React, { useEffect, useRef } from "react";
+import type { RefObject } from "react";
+import { useRovingMenu } from "../utils/useRovingMenu";
 import type { DesktopPanelKind, PanelToggleProps } from "../types";
 import "../styles/PanelToggleMenu.css";
 
 interface PanelToggleMenuProps extends PanelToggleProps {
   onClose: () => void;
+  /** Trigger button (面板 in the header); Escape returns focus here. */
+  triggerRef?: RefObject<HTMLElement | null>;
 }
 
 const isMac =
@@ -29,15 +33,35 @@ const PANEL_ITEMS: Array<{
  * Desktop header panel-toggle dropdown: multi-select checkboxes for the
  * conversation-level side panels. Clicking an item toggles it WITHOUT closing
  * the menu (consecutive multi-select); click-outside / Esc closes.
+ *
+ * Keyboard: roving tabindex + Arrow keys via useRovingMenu. Disabled items
+ * stay arrow-key reachable (perceivable) but activation is a no-op.
  */
 export const PanelToggleMenu: React.FC<PanelToggleMenuProps> = ({
   checked,
   onToggle,
   disabled = [],
   onClose,
+  triggerRef,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // Roving keyboard model shared with the other custom dropdowns; toggling
+  // keeps the menu open (closeOnActivate off), Escape returns to the trigger.
+  const { getItemProps } = useRovingMenu(menuRef, {
+    itemSelector: ".panel-toggle-menu-item",
+    itemCount: PANEL_ITEMS.length,
+    triggerRef,
+    closeOnActivate: false,
+    onRequestClose: onClose,
+    onActivate: (i) => {
+      const kind = PANEL_ITEMS[i].kind;
+      if (!disabled.includes(kind)) onToggle(kind);
+    },
+  });
+
+  // Click-outside + global Escape fallback (the hook only handles Escape from
+  // a focused item).
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -63,31 +87,17 @@ export const PanelToggleMenu: React.FC<PanelToggleMenuProps> = ({
       className="panel-toggle-menu"
       data-testid="panel-toggle-menu"
     >
-      {PANEL_ITEMS.map(({ kind, label, shortcut }) => {
+      {PANEL_ITEMS.map(({ kind, label, shortcut }, i) => {
         const isChecked = checked.includes(kind);
         const isDisabled = disabled.includes(kind);
         return (
           <div
             key={kind}
+            {...getItemProps(i)}
             className={`panel-toggle-menu-item${isDisabled ? " panel-toggle-menu-item--disabled" : ""}`}
-            onClick={isDisabled ? undefined : () => onToggle(kind)}
-            onKeyDown={
-              isDisabled
-                ? undefined
-                : (e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onToggle(kind);
-                    } else if (e.key === "Escape") {
-                      e.preventDefault();
-                      onClose();
-                    }
-                  }
-            }
             role="checkbox"
             aria-checked={isChecked}
             aria-disabled={isDisabled}
-            tabIndex={isDisabled ? -1 : 0}
             data-testid={`panel-toggle-item-${kind}`}
           >
             <i

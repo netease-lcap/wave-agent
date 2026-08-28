@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Tooltip } from "./Tooltip";
 import { NewSessionIcon, HistoryIcon, MoreIcon } from "./HeaderIcons";
 import { SessionListPopup } from "./SessionListPopup";
@@ -29,6 +29,9 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   const [showSessionList, setShowSessionList] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showPanelMenu, setShowPanelMenu] = useState(false);
+  // Menu triggers; the popups return focus here on Escape / item activation.
+  const moreBtnRef = useRef<HTMLButtonElement>(null);
+  const panelBtnRef = useRef<HTMLButtonElement>(null);
 
   const title = getSessionTitle(currentSession, messages);
 
@@ -65,10 +68,13 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         {!hideMoreButton && (
           <Tooltip text="更多" position="bottom">
             <button
+              ref={moreBtnRef}
               className="header-button"
               onClick={() => setShowMoreMenu((prev) => !prev)}
               data-testid="more-btn"
               aria-label="更多"
+              aria-haspopup="menu"
+              aria-expanded={showMoreMenu}
             >
               <MoreIcon />
             </button>
@@ -77,10 +83,13 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         {panelToggle && (
           <Tooltip text="面板" position="bottom">
             <button
+              ref={panelBtnRef}
               className="header-button header-panel-toggle"
               onClick={() => setShowPanelMenu((prev) => !prev)}
               data-testid="panel-toggle-btn"
               aria-label="面板"
+              aria-haspopup="menu"
+              aria-expanded={showPanelMenu}
             >
               <i className="codicon codicon-layout-sidebar-right" />
               <i className="codicon codicon-chevron-down header-panel-toggle-caret" />
@@ -105,6 +114,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           onLogout={onLogout}
           isAuthenticated={isAuthenticated}
           onClose={() => setShowMoreMenu(false)}
+          triggerRef={moreBtnRef}
         />
       )}
       {showPanelMenu && panelToggle && (
@@ -113,6 +123,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           onToggle={panelToggle.onToggle}
           disabled={panelToggle.disabled}
           onClose={() => setShowPanelMenu(false)}
+          triggerRef={panelBtnRef}
         />
       )}
     </div>

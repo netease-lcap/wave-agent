@@ -112,6 +112,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     return anchor;
   };
   const newChatAnchorRef = useRef<HTMLButtonElement | null>(null);
+  // 更多 trigger; the menu returns focus here on Escape / item activation.
+  const moreBtnRef = useRef<HTMLButtonElement>(null);
 
   const isExpanded = (group: DesktopSessionGroup): boolean =>
     overrides[groupKey(group)] ?? true;
@@ -242,10 +244,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         <div className="desktop-sidebar-actions">
           <Tooltip text="更多" position="bottom">
             <button
+              ref={moreBtnRef}
               className="desktop-sidebar-more-btn"
               onClick={() => setShowMoreMenu((prev) => !prev)}
               data-testid="desktop-more-btn"
               aria-label="更多"
+              aria-haspopup="menu"
+              aria-expanded={showMoreMenu}
             >
               <MoreIcon />
             </button>
@@ -276,6 +281,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           // subject, so its 登录/退出登录 entry stays unlabeled.
           hostLabel={hostLabel === "local" ? undefined : hostLabel}
           onClose={() => setShowMoreMenu(false)}
+          triggerRef={moreBtnRef}
         />
       )}
       <Tooltip
