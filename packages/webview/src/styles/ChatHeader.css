@@ -1,6 +1,7 @@
 /* Header */
 .chat-header {
-  height: 35px;
+  /* Prototype workspace-header height (tokens --cc-topbar-height: 44px). */
+  height: 44px;
   padding: 0 12px;
   border-bottom: 1px solid var(--vscode-widget-border);
   background-color: var(--vscode-panel-background);

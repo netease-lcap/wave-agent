@@ -431,19 +431,21 @@ export const Message: React.FC<MessageProps> = React.memo(
       return null;
     };
 
+    // Running/streaming dots are neutral gray (prototype: running = gray,
+    // red/green reserved for outcome states).
     const getToolStatusColor = (toolBlock: ToolBlock) =>
       toolBlock.stage === "running" || toolBlock.stage === "streaming"
-        ? "var(--vscode-editorWarning-foreground, #cca700)"
+        ? "var(--vscode-descriptionForeground, #888)"
         : toolBlock.success === true
           ? "var(--vscode-testing-iconPassed, #73c991)"
           : toolBlock.error || toolBlock.success === false
             ? "var(--vscode-testing-iconFailed, #f14c4c)"
             : "var(--vscode-descriptionForeground, #888)";
 
-    // Dot color for text/reasoning blocks: yellow while streaming, green once done.
+    // Dot color for text/reasoning blocks: gray while streaming, green once done.
     const getStageColor = (stage?: "streaming" | "end") =>
       stage === "streaming"
-        ? "var(--vscode-editorWarning-foreground, #cca700)"
+        ? "var(--vscode-descriptionForeground, #888)"
         : "var(--vscode-testing-iconPassed, #73c991)";
 
     const renderToolBlock = (toolBlock: ToolBlock, index: number) => {

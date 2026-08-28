@@ -100,10 +100,12 @@ desktopTest.describe(
           ],
         });
 
-        // Hover the session item to reveal its delete button, then click it
+        // Hover the session item to reveal its 更多 button, open the row menu
+        // and pick 删除会话
         const item = webviewPage.getByTestId("desktop-session-item-sess-a1");
         await item.hover();
-        await webviewPage.getByTestId("desktop-session-delete-sess-a1").click();
+        await webviewPage.getByTestId("desktop-session-more-sess-a1").click();
+        await webviewPage.getByTestId("desktop-session-menu-delete").click();
 
         // Worktree sessions also warn about the worktree dir + temp branch
         const overlay = webviewPage.getByTestId("confirm-dialog-overlay");

@@ -35,23 +35,38 @@
         var(--vscode-widget-border, rgba(128, 128, 128, 0.4))
       )
     );
-  border-radius: 6px;
+  border-radius: 16px;
   max-height: 176px;
 }
 
-/* Focus state: the whole box border turns brand red (设计稿 Focus state). */
+/* Focus state: neutral border emphasis + a soft popover shadow (prototype
+   composer focus) — the brand red stays reserved for blocking confirmations. */
 .input-content:focus-within {
-  border-color: var(--vscode-brand-primary, #c1292e);
+  border-color: color-mix(
+    in srgb,
+    var(--vscode-foreground) 35%,
+    transparent
+  );
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.2));
 }
 
-/* Desktop host, new-session state: workdir selector row at the top-left of
-   the input box. Sits above the text area; its dropdown expands upward. */
+/* Desktop host, new-session state: quiet context bar pinned to the BOTTOM of
+   the input card (prototype welcome composer) — host/workdir selectors in a
+   footer strip with its own top divider and bottom-rounded corners. Its
+   dropdowns expand upward, escaping the card like the toolbar menus. */
 .input-workdir-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px 0;
+  padding: 6px 12px;
   min-width: 0;
+  border-top: 1px solid
+    var(
+      --vscode-panel-border,
+      var(--vscode-widget-border, rgba(128, 128, 128, 0.2))
+    );
+  border-radius: 0 0 16px 16px;
+  background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
 }
 
 .message-input {
@@ -123,14 +138,15 @@
   background-color: transparent;
 }
 
-/* Figma design: red send/abort buttons, 28x28 rounded square, white glyph */
+/* Send/abort: neutral dark square (prototype — red is NOT a button), 32x32
+   with an 8px radius; colors map to the theme's button tokens. */
 .ai-send-btn,
 .ai-abort-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: var(--vscode-brand-primary, #c1292e);
-  color: #fff;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground, #fff);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -142,9 +158,7 @@
 
 .ai-send-btn:hover:not(:disabled),
 .ai-abort-btn:hover {
-  background: var(--vscode-brand-primary, #c1292e);
-  background-color: var(--vscode-brand-primary, #c1292e);
-  filter: brightness(0.92);
+  background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
 }
 
 .ai-send-btn:disabled {
@@ -153,8 +167,7 @@
 }
 
 .ai-send-btn:disabled:hover {
-  background-color: var(--vscode-brand-primary, #c1292e);
-  filter: none;
+  background: var(--vscode-button-background);
 }
 
 .ai-send-icon,

@@ -55,10 +55,10 @@ describe("Timeline assistant runs", () => {
     expect(a3?.classList.contains("timeline-run--single")).toBe(true);
 
     // Multi-dot run rows are flush (paddingBottom 0) so the line segments
-    // abut; the single row keeps the inter-message spacing (10px).
+    // abut; the single row keeps the inter-message spacing (14px).
     expect(a1?.style.paddingBottom).toBe("0px");
-    expect(a2?.style.paddingBottom).toBe("10px");
-    expect(a3?.style.paddingBottom).toBe("10px");
+    expect(a2?.style.paddingBottom).toBe("14px");
+    expect(a3?.style.paddingBottom).toBe("14px");
   });
 
   it("does not wrap the user message in any run class", async () => {

@@ -17,7 +17,7 @@ describe("timeline dot color by stage", () => {
   it("text block dot is yellow while streaming and green when done", () => {
     renderChatApp();
 
-    // streaming text → yellow dot
+    // streaming text → neutral gray dot
     sendCommand("updateMessages", {
       messages: [
         {
@@ -32,7 +32,7 @@ describe("timeline dot color by stage", () => {
       ".timeline-row",
     ) as HTMLElement;
     expect(streamingRow.style.getPropertyValue("--dot-color")).toContain(
-      "Warning",
+      "descriptionForeground",
     );
 
     // finished text → green dot
@@ -52,7 +52,7 @@ describe("timeline dot color by stage", () => {
     expect(doneRow.style.getPropertyValue("--dot-color")).toContain("Passed");
   });
 
-  it("reasoning block dot is yellow while streaming and green when done", () => {
+  it("reasoning block dot is gray while streaming and green when done", () => {
     renderChatApp();
 
     sendCommand("updateMessages", {
@@ -71,7 +71,7 @@ describe("timeline dot color by stage", () => {
       ".timeline-row",
     ) as HTMLElement;
     expect(streamingRow.style.getPropertyValue("--dot-color")).toContain(
-      "Warning",
+      "descriptionForeground",
     );
 
     sendCommand("updateMessages", {

@@ -82,7 +82,7 @@ test.describe("Desktop sidebar keyboard navigation", () => {
 
     const mainS1 = webviewPage.getByTestId("desktop-session-main-s1");
     const mainS3 = webviewPage.getByTestId("desktop-session-main-s3");
-    const deleteS1 = webviewPage.getByTestId("desktop-session-delete-s1");
+    const moreS1 = webviewPage.getByTestId("desktop-session-more-s1");
     const headerA = webviewPage
       .getByTestId("desktop-session-group-local:" + DIR_A)
       .locator(".desktop-session-group-header");
@@ -137,24 +137,24 @@ test.describe("Desktop sidebar keyboard navigation", () => {
       }),
     );
 
-    // ── Scenario 16: ←/→ cross one row; the delete button reveals on
+    // ── Scenario 16: ←/→ cross one row; the 更多 button reveals on
     // focus (:focus-within) and stays clamped at the row's edge ──
     await webviewPage.keyboard.press("ArrowRight");
-    expect(await activeTestId(webviewPage)).toBe("desktop-session-delete-s1");
-    await expect(deleteS1).toHaveCSS("opacity", "1");
-    // Second → stays clamped on the delete button.
+    expect(await activeTestId(webviewPage)).toBe("desktop-session-more-s1");
+    await expect(moreS1).toHaveCSS("opacity", "1");
+    // Second → stays clamped on the 更多 button.
     await webviewPage.keyboard.press("ArrowRight");
-    expect(await activeTestId(webviewPage)).toBe("desktop-session-delete-s1");
-    // ← returns to the row's main button; the delete button STAYS visible —
+    expect(await activeTestId(webviewPage)).toBe("desktop-session-more-s1");
+    // ← returns to the row's main button; the 更多 button STAYS visible —
     // the row is still :focus-within (mirrors Claude's group-focus-within).
     await webviewPage.keyboard.press("ArrowLeft");
     expect(await activeTestId(webviewPage)).toBe("desktop-session-main-s1");
-    await expect(deleteS1).toHaveCSS("opacity", "1");
+    await expect(moreS1).toHaveCSS("opacity", "1");
 
     // Focus leaving the row hides it again.
     await webviewPage.keyboard.press("ArrowDown");
     expect(await activeTestId(webviewPage)).toBe("desktop-session-main-s2");
-    await expect(deleteS1).toHaveCSS("opacity", "0");
+    await expect(moreS1).toHaveCSS("opacity", "0");
 
     // Vertical movement resumes from that row while on the delete button.
     await webviewPage.keyboard.press("ArrowUp");
@@ -163,11 +163,16 @@ test.describe("Desktop sidebar keyboard navigation", () => {
     await webviewPage.keyboard.press("ArrowDown");
     expect(await activeTestId(webviewPage)).toBe("desktop-session-main-s2");
 
-    // ── Scenario 17 (second half): Enter on the delete button opens the
-    // confirm dialog; Escape cancels ──
+    // ── Scenario 17 (second half): Enter on the 更多 button opens the row
+    // menu; activating 删除会话 opens the confirm dialog; Escape cancels ──
     await webviewPage.keyboard.press("ArrowLeft");
     await webviewPage.keyboard.press("ArrowRight");
     await webviewPage.keyboard.press("Enter");
+    // The menu mounts open and auto-focuses its first item (并排打开).
+    const menuSplit = webviewPage.getByTestId("desktop-session-menu-split");
+    await expect(menuSplit).toBeFocused();
+    await webviewPage.keyboard.press("ArrowDown");
+    await webviewPage.keyboard.press("Enter"); // 删除会话
     const overlay = webviewPage.getByTestId("confirm-dialog-overlay");
     await expect(overlay).toBeVisible();
     await webviewPage.keyboard.press("Escape");
