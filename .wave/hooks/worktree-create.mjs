@@ -3,7 +3,7 @@
 // <repo-root>/.wave/worktrees/<name>, prints the worktree path to stdout,
 // then kicks off pnpm install + build in the background.
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
 import path from "node:path";
 
 // Resolve the repo root from git (git-common-dir may be relative to CWD)
@@ -44,6 +44,18 @@ if (add.error) {
   process.exit(1);
 }
 if (add.status !== 0) process.exit(add.status);
+
+// --- Copy local settings into the worktree ---------------------------------
+// Mirrors wave's built-in post-creation setup (copyLocalSettingsToWorktree):
+// with a WorktreeCreate hook configured, wave skips that setup entirely, so
+// the hook must carry .wave/settings.local.json over itself or every session
+// would start without the main repo's local permissions/env.
+const localSettings = path.join(repoRoot, ".wave", "settings.local.json");
+if (existsSync(localSettings)) {
+  const destDir = path.join(worktreePath, ".wave");
+  mkdirSync(destDir, { recursive: true });
+  copyFileSync(localSettings, path.join(destDir, "settings.local.json"));
+}
 
 // --- Kick off install + build in the background ---------------------------
 const bg = spawn(

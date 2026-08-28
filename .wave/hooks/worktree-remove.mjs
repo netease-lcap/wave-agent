@@ -4,7 +4,7 @@
 // worktrees: `git worktree remove --force` + branch delete + prune, with an
 // fs.rmSync fallback for Windows MAX_PATH-limited removals.
 import { spawnSync } from "node:child_process";
-import { readFileSync, existsSync, rmSync } from "node:fs";
+import { readFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 // --- Read payload { worktree_path } from stdin -----------------------------
@@ -33,6 +33,54 @@ if (gitCommonDir.error || gitCommonDir.status !== 0) {
   process.exit(1);
 }
 const repoRoot = path.resolve(gitCommonDir.stdout.trim(), "..");
+
+// --- Sync .wave/settings.local.json back to the main repo ------------------
+// Local settings are gitignored, so any changes made inside the worktree
+// would otherwise be lost when the worktree is deleted. Merge into the
+// main repo's file (if any) instead of overwriting it: arrays are unioned,
+// scalars/objects from the worktree win. This mirrors how wave itself
+// merges local settings (read-modify-write with deduped rule arrays).
+function mergeSettings(base, override) {
+  const result = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    const current = result[key];
+    if (Array.isArray(value) && Array.isArray(current)) {
+      result[key] = [...new Set([...current, ...value])];
+    } else if (
+      value !== null &&
+      typeof value === "object" &&
+      current !== null &&
+      typeof current === "object"
+    ) {
+      result[key] = mergeSettings(current, value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function parseJsonFile(filePath) {
+  try {
+    return JSON.parse(readFileSync(filePath, "utf8"));
+  } catch {
+    return null; // missing or corrupted -> treated as empty
+  }
+}
+
+const localSettingsPath = path.join(
+  worktreePath,
+  ".wave",
+  "settings.local.json",
+);
+if (existsSync(localSettingsPath)) {
+  const mainSettingsPath = path.join(repoRoot, ".wave", "settings.local.json");
+  const merged = mergeSettings(
+    parseJsonFile(mainSettingsPath) ?? {},
+    parseJsonFile(localSettingsPath) ?? {},
+  );
+  writeFileSync(mainSettingsPath, `${JSON.stringify(merged, null, 2)}\n`);
+}
 
 // --- Remove the worktree (best-effort, non-blocking like wave's git path) ---
 const name = path.basename(worktreePath);
