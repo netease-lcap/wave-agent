@@ -153,14 +153,6 @@ describe("prompts", () => {
       expect(result).not.toContain("## Memory Context");
     });
 
-    it("should include model identity prompt in static block", () => {
-      const blocks = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {});
-      const staticBlock = blocks.find((b) => b.cacheable);
-      expect(staticBlock).toBeDefined();
-      expect(staticBlock!.text).toContain("# Model identity");
-      expect(staticBlock!.text).toContain("coding agent developed by NetEase");
-    });
-
     it("should include worktree warning when worktree session is active", () => {
       const result = flattenBlocks(
         buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
