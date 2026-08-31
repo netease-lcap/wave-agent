@@ -51,6 +51,50 @@
   line-height: 20px;
 }
 
+/* IDE hosts (VS Code / JetBrains) chat body wrappers (.ide-chat-wrap/main):
+   always rendered — plain flex-column pass-throughs in normal chat, and
+   group-centering on the welcome page. Keeping the wrappers constant means
+   entering/leaving the welcome page never unmounts the input card (e.g. the
+   abort button survives clearing the chat while streaming). */
+.ide-chat-wrap,
+.ide-chat-main {
+  display: flex;
+  flex-direction: column;
+}
+.ide-chat-wrap {
+  flex: 1;
+  min-height: 0;
+}
+.ide-chat-main {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Welcome page (IDE hosts): brand mark + input card center as one group —
+   same layout as the desktop welcome scene. The header is taken out of flow
+   (pinned to the top) so the group centers against the whole viewport;
+   without this the mark would center in the area above the input and sit
+   ~280px away from it on a typical 800px window. */
+.chat-container--welcome-ide > .chat-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+}
+.chat-container--welcome-ide > .ide-chat-wrap {
+  height: auto;
+  align-items: center;
+  justify-content: center;
+}
+.chat-container--welcome-ide .ide-chat-main {
+  flex: none;
+  height: auto;
+  width: 100%;
+  gap: 44px;
+}
+
 /* Desktop drag-and-drop upload overlay, shown while a file hovers the pane.
    pointer-events: none keeps normal input working while dragging. Highlight
    uses the theme focus color (same semantics as the config dialog's active
