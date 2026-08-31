@@ -283,12 +283,10 @@ describe("SettingsPage 子代理选项卡视图（4 Tab + 项目分组卡片）"
     const { unmount } = render(
       <SettingsPage
         configurationData={null}
-        onSave={() => {}}
         onClose={() => {}}
         userAgentsContent={null}
         projectAgentsContent={null}
         onLoadAgentsContent={() => {}}
-        onSaveAgentsContent={() => {}}
         initialNav="subagents"
         vscode={mockVscode}
         workdir="/work/a"
