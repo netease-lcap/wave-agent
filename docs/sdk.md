@@ -134,8 +134,8 @@ await agent.destroy();
 
 **生命周期契约：**
 
-- **确定性排空**：`destroy()` 返回前会等待所有已注册的存活异步工作（消息分发、子代理、fork 子代理等 fire-and-forget 工作）排空，销毁后不存在跨生命周期存活的异步副作用；超时（默认 10 秒）时记录 `Async work did not drain` 告警。
-- **终态抛错**：`destroy()` 后调用 `sendMessage` / `bang` / `askBtw` / `forkSubagent` 等公开 API 会同步抛出 `Error("Agent destroyed")`，不会静默丢弃或在已销毁的 Agent 上启动新回合。
+- **确定性排空**：`destroy()` 返回前会等待所有已注册的存活异步工作（消息分发、子代理等 fire-and-forget 工作）排空，销毁后不存在跨生命周期存活的异步副作用；超时（默认 10 秒）时记录 `Async work did not drain` 告警。
+- **终态抛错**：`destroy()` 后调用 `sendMessage` / `bang` / `askBtw` 等公开 API 会同步抛出 `Error("Agent destroyed")`，不会静默丢弃或在已销毁的 Agent 上启动新回合。
 - **幂等**：重复调用 `destroy()` 不抛错（二次销毁是安全 no-op）。
 
 ### Agent 属性 {#agent-properties}

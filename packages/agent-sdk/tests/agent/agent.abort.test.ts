@@ -833,9 +833,6 @@ describe("Agent - Abort Handling", () => {
       await expect(testAgent.askBtw("question")).rejects.toThrow(
         "Agent destroyed",
       );
-      await expect(
-        testAgent.forkSubagent("task", { description: "d" }),
-      ).rejects.toThrow("Agent destroyed");
 
       expect(sendSpy).not.toHaveBeenCalled();
 

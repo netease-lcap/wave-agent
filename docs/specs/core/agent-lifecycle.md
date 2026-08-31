@@ -12,33 +12,32 @@ order: 145
 
 ### 用户故事：destroy 后公开 API 抛错（优先级：P1）
 
-作为 Agent SDK 的使用者，我希望在调用 `destroy()` 之后继续调用 `sendMessage` / `bang` / `askBtw` / `forkSubagent` 等公开 API 时得到一个明确的 `Agent destroyed` 错误，而不是被静默丢弃或在新生命周期上执行，以便在开发阶段就能立即发现生命周期误用（destroy 是终态操作，之后不允许任何新工作开始）。
+作为 Agent SDK 的使用者，我希望在调用 `destroy()` 之后继续调用 `sendMessage` / `bang` / `askBtw` 等公开 API 时得到一个明确的 `Agent destroyed` 错误，而不是被静默丢弃或在新生命周期上执行，以便在开发阶段就能立即发现生命周期误用（destroy 是终态操作，之后不允许任何新工作开始）。
 
 **为什么是这个优先级**：这是生命周期契约显式化的最小改动（几行 guard）。当前 destroy 后 `sendMessage` 会因 `isLoading=false` 直接走 `InteractionService.sendMessage` 在已销毁的 agent 上启动新的 AI 回合（幽灵的另一条路径），静默丢弃只会让误用靠幽灵暴露。
 
-**独立测试**：创建 Agent、调用 `destroy()`，随后分别调用 `sendMessage`、`bang`、`askBtw`、`forkSubagent`，验证每个调用都同步抛出 `Error("Agent destroyed")`，且不产生任何 AI 调用。
+**独立测试**：创建 Agent、调用 `destroy()`，随后分别调用 `sendMessage`、`bang`、`askBtw`，验证每个调用都同步抛出 `Error("Agent destroyed")`，且不产生任何 AI 调用。
 
 **验收场景**：
 
 1. **假设** agent 已调用 `destroy()`，**当** 调用 `sendMessage("hello")` 时，**则** 抛出 `Error("Agent destroyed")`，且不会调用 `InteractionService.sendMessage` / `aiManager.sendAIMessage`
 2. **假设** agent 已调用 `destroy()`，**当** 调用 `bang("ls")` 时，**则** 抛出 `Error("Agent destroyed")`，且不会执行 bash 命令
 3. **假设** agent 已调用 `destroy()`，**当** 调用 `askBtw("question")` 时，**则** 抛出 `Error("Agent destroyed")`
-4. **假设** agent 已调用 `destroy()`，**当** 调用 `forkSubagent(prompt, { description })` 时，**则** 抛出 `Error("Agent destroyed")`
-5. **假设** agent 尚未销毁，**当** 调用上述任一公开 API 时，**则** 行为与现状完全一致（不抛错，正常入队或执行）
+4. **假设** agent 尚未销毁，**当** 调用上述任一公开 API 时，**则** 行为与现状完全一致（不抛错，正常入队或执行）
 
 ---
 
 ### 用户故事：destroy 确定性排空存活工作（优先级：P1）
 
-作为 Agent SDK 的使用者，我希望 `destroy()` 在返回前等待所有已注册的存活异步工作（dispatch、subagent、fork subagent 等 fire-and-forget 工作）排空，以便销毁后不存在任何跨生命周期存活的异步副作用（幽灵物理上不可能存在）。
+作为 Agent SDK 的使用者，我希望 `destroy()` 在返回前等待所有已注册的存活异步工作（dispatch、subagent 等 fire-and-forget 工作）排空，以便销毁后不存在任何跨生命周期存活的异步副作用（幽灵物理上不可能存在）。
 
-**为什么是这个优先级**：这是 #1808（destroy 后幽灵 dispatch）的治本方案。当前 destroy 仅等待 `dispatchPromise`，subagent / fork subagent 的 fire-and-forget IIFE（`subagentManager.executeAgent` 后台执行、`aiManager.runForkSubagent`）不在等待范围内——它们通过 `backgroundTaskManager.cleanup()` 被中止但未被 await。将「尽力清理」升级为「注册 → 中止 → await 排空（带超时兜底）→ 断言工作集为空」。
+**为什么是这个优先级**：这是 #1808（destroy 后幽灵 dispatch）的治本方案。当前 destroy 仅等待 `dispatchPromise`，subagent 的 fire-and-forget IIFE（`subagentManager.executeAgent` 后台执行）不在等待范围内——它们通过 `backgroundTaskManager.cleanup()` 被中止但未被 await。将「尽力清理」升级为「注册 → 中止 → await 排空（带超时兜底）→ 断言工作集为空」。
 
 **独立测试**：注册一个手动控制的存活工作（延迟 resolve 的 promise），调用 `destroy()`，验证 destroy 在控制 promise resolve 之前不返回；resolve 后 destroy 正常返回且工作集为空。
 
 **验收场景**：
 
-1. **假设** agent 有已注册的存活异步工作（如进行中的 fork subagent），**当** 调用 `destroy()` 时，**则** destroy 等待所有存活工作排空后才返回，工作集最终为空
+1. **假设** agent 有已注册的存活异步工作（如进行中的 subagent），**当** 调用 `destroy()` 时，**则** destroy 等待所有存活工作排空后才返回，工作集最终为空
 2. **假设** 存活工作在超时时间内未排空（如挂起的 promise），**当** destroy 等待超时后，**则** destroy 仍返回（超时兜底），但记录错误日志说明仍有 N 个存活工作（`Async work did not drain`）
 3. **假设** 存活工作排空后又有新的工作被注册（注册发生在 await 点之后），**当** destroy 的排空循环运行时，**则** 排空循环持续等待直到工作集为空或超时（循环直到空）
 4. **假设** agent 无任何存活工作，**当** 调用 `destroy()` 时，**则** 排空步骤立即返回，不引入额外延迟
