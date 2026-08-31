@@ -2750,7 +2750,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         onLogin={handleLogin}
         onLogout={handleLogout}
         isAuthenticated={state.isAuthenticated}
-        showLoginButton={!isDesktop && !state.isAuthenticated}
+        // Gate on `initialized`: until the host's initial snapshot (which
+        // carries isAuthenticated for every host that shows this button) has
+        // arrived, the reducer's default `false` would flash a fake 登 录
+        // button during auth loading. Only show it once the state is known.
+        showLoginButton={
+          !isDesktop && state.initialized && !state.isAuthenticated
+        }
         hideSessionButtons={isDesktop}
         hideMoreButton={isDesktop}
         panelToggle={
