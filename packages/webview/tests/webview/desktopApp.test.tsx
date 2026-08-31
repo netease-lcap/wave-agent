@@ -35,6 +35,7 @@ describe("DesktopApp", () => {
     renderDesktopApp();
 
     sendCommand("desktopWorkdirState", { recentWorkdirs: [] });
+    sendCommand("setInitialState", { messages: [] });
 
     expect(screen.getByTestId("desktop-sidebar")).toBeInTheDocument();
     expect(screen.getByTestId("desktop-new-session")).toBeInTheDocument();
@@ -52,6 +53,7 @@ describe("DesktopApp", () => {
   it("should toggle the workdir dropdown and post desktopSelectWorkdir when clicking 浏览…", () => {
     const { vscode } = renderDesktopApp();
     sendCommand("desktopWorkdirState", { recentWorkdirs: [] });
+    sendCommand("setInitialState", { messages: [] });
     vscode.postMessage.mockClear();
 
     // Closed by default
@@ -75,6 +77,7 @@ describe("DesktopApp", () => {
   it("should close the dropdown when clicking outside", () => {
     renderDesktopApp();
     sendCommand("desktopWorkdirState", { recentWorkdirs: [] });
+    sendCommand("setInitialState", { messages: [] });
 
     fireEvent.click(screen.getByTestId("desktop-workdir"));
     expect(screen.getByTestId("desktop-workdir-menu")).toBeInTheDocument();
@@ -91,6 +94,7 @@ describe("DesktopApp", () => {
       workdir: "/home/user/project",
       recentWorkdirs: ["/home/user/project-a", "/home/user/project-b"],
     });
+    sendCommand("setInitialState", { messages: [] });
     vscode.postMessage.mockClear();
 
     fireEvent.click(screen.getByTestId("desktop-workdir"));
@@ -133,6 +137,7 @@ describe("DesktopApp", () => {
       workdir: "/home/user/project",
       recentWorkdirs: [],
     });
+    sendCommand("setInitialState", { messages: [] });
 
     // New-session state: selector visible inside the input
     expect(screen.getByTestId("input-workdir-row")).toBeInTheDocument();
@@ -156,6 +161,7 @@ describe("DesktopApp", () => {
     it("opens the browser on a remote host and lists the home directory", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
       openRemoteBrowser();
@@ -212,6 +218,7 @@ describe("DesktopApp", () => {
     it("navigates into a subdirectory and shows the parent … entry", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
       openRemoteBrowser();
@@ -255,6 +262,7 @@ describe("DesktopApp", () => {
     it("jumps to a breadcrumb level on click", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
       openRemoteBrowser();
@@ -291,6 +299,7 @@ describe("DesktopApp", () => {
     it("shows a retryable error and disables selection when listing fails", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
       openRemoteBrowser();
@@ -334,6 +343,7 @@ describe("DesktopApp", () => {
     it("选择此目录 posts desktopSelectRemotePath with the browsed path", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
       openRemoteBrowser();
@@ -361,6 +371,7 @@ describe("DesktopApp", () => {
     it("submits a typed path with Enter, bypassing the listing", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
       openRemoteBrowser();
@@ -381,6 +392,7 @@ describe("DesktopApp", () => {
     it("filters subdirectories by keyword and hides non-matching entries", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
 
       openRemoteBrowser();
       sendCommand("desktopRemoteDirList", {
@@ -404,6 +416,7 @@ describe("DesktopApp", () => {
     it("highlights every keyword occurrence in matching entries", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
 
       openRemoteBrowser();
       sendCommand("desktopRemoteDirList", {
@@ -433,6 +446,7 @@ describe("DesktopApp", () => {
     it("shows a no-match hint when the keyword filters everything out", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
 
       openRemoteBrowser();
       sendCommand("desktopRemoteDirList", {
@@ -457,6 +471,7 @@ describe("DesktopApp", () => {
     it("does not submit a bare keyword with Enter — only absolute paths", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
 
       openRemoteBrowser();
       fireEvent.change(screen.getByTestId("desktop-remote-browser-input"), {
@@ -474,6 +489,7 @@ describe("DesktopApp", () => {
     it("clears the filter keyword when navigating into a subdirectory", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
 
       openRemoteBrowser();
       sendCommand("desktopRemoteDirList", {
@@ -510,6 +526,7 @@ describe("DesktopApp", () => {
     it("remembers the last visited directory across opens", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
       openRemoteBrowser();
@@ -550,6 +567,7 @@ describe("DesktopApp", () => {
     it("moves the selection with ArrowDown/ArrowUp and enters the highlighted dir with Enter", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
       openRemoteBrowser();
@@ -606,6 +624,7 @@ describe("DesktopApp", () => {
     it("auto-selects the first filtered match and enters it with Enter", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
       openRemoteBrowser();
@@ -640,6 +659,7 @@ describe("DesktopApp", () => {
     it("re-selects the first match as the keyword changes, and clears when no match", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
       openRemoteBrowser();
@@ -676,6 +696,7 @@ describe("DesktopApp", () => {
     it("clears the selection after navigating and on filter changes", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
       openRemoteBrowser();
@@ -727,6 +748,7 @@ describe("DesktopApp", () => {
       workdir: "/home/user/project",
       recentWorkdirs: [],
     });
+    sendCommand("setInitialState", { messages: [] });
 
     expect(screen.getByTestId("desktop-sidebar")).toBeInTheDocument();
     expect(screen.getByTestId("chat-container")).toBeInTheDocument();
@@ -749,6 +771,7 @@ describe("DesktopApp", () => {
       workdir: "/home/user/project",
       recentWorkdirs: [],
     });
+    sendCommand("setInitialState", { messages: [] });
     vscode.postMessage.mockClear();
 
     fireEvent.click(screen.getByTestId("desktop-new-session"));
@@ -762,6 +785,7 @@ describe("DesktopApp", () => {
       workdir: "/home/user/project",
       recentWorkdirs: [],
     });
+    sendCommand("setInitialState", { messages: [] });
 
     const btn = screen.getByTestId("desktop-new-session");
     // The hint moved off the native title attribute onto the Tooltip.
@@ -783,6 +807,7 @@ describe("DesktopApp", () => {
   it("should update the workdir name and enable new-chat when a new workdir state arrives", () => {
     renderDesktopApp();
     sendCommand("desktopWorkdirState", { recentWorkdirs: [] });
+    sendCommand("setInitialState", { messages: [] });
     expect(screen.getByTestId("desktop-workdir")).toHaveTextContent(
       "选择工作目录…",
     );
@@ -792,6 +817,7 @@ describe("DesktopApp", () => {
       workdir: "/home/user/other",
       recentWorkdirs: ["/home/user/other"],
     });
+    sendCommand("setInitialState", { messages: [] });
 
     expect(screen.getByTestId("desktop-workdir")).toHaveTextContent("other");
     expect(screen.getByTestId("desktop-new-session")).toBeEnabled();
@@ -801,6 +827,7 @@ describe("DesktopApp", () => {
   it("should disable the input area when no workdir is selected, and enable it once a workdir arrives", () => {
     renderDesktopApp();
     sendCommand("desktopWorkdirState", { recentWorkdirs: [] });
+    sendCommand("setInitialState", { messages: [] });
 
     expect(screen.getByTestId("message-input")).toHaveAttribute(
       "contenteditable",
@@ -815,6 +842,7 @@ describe("DesktopApp", () => {
       workdir: "/home/user/project",
       recentWorkdirs: [],
     });
+    sendCommand("setInitialState", { messages: [] });
 
     expect(screen.getByTestId("message-input")).toHaveAttribute(
       "contenteditable",
@@ -844,6 +872,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a", "/work/b"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -879,6 +908,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a/.wave/worktrees/gentle-pike-147",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -909,6 +939,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a", "/work/b"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -947,6 +978,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -973,6 +1005,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -1013,6 +1046,7 @@ describe("DesktopApp", () => {
           workdir: "/work/a",
           recentWorkdirs: ["/work/a"],
         });
+        sendCommand("setInitialState", { messages: [] });
         sendCommand("desktopSessionTree", {
           groups: [
             {
@@ -1050,6 +1084,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -1092,6 +1127,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -1143,6 +1179,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [{ host: "local", workdir: "/work/a", sessions: [] }],
       });
@@ -1158,6 +1195,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -1196,6 +1234,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -1233,6 +1272,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -1260,6 +1300,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -1294,6 +1335,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -1333,6 +1375,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -1362,6 +1405,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -1397,6 +1441,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
 
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopListGitBranches",
@@ -1428,6 +1473,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopGitBranches", { workdir: "/work/a", result: null });
 
       expect(
@@ -1441,6 +1487,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopGitBranches", {
         workdir: "/work/a",
         result: branches,
@@ -1453,6 +1500,7 @@ describe("DesktopApp", () => {
         workdir: "/work/b",
         recentWorkdirs: ["/work/b", "/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
 
       // Stale branch list cleared — loading placeholder shown instead
       expect(screen.getByTestId("desktop-branch-selector")).toHaveTextContent(
@@ -1475,6 +1523,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopGitBranches", {
         workdir: "/work/a",
         result: branches,
@@ -1499,6 +1548,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopGitBranches", {
         workdir: "/work/a",
         result: branches,
@@ -1584,6 +1634,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopGitBranches", {
         workdir: "/work/a",
         result: branches,
@@ -1619,6 +1670,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopGitBranches", {
         workdir: "/work/a",
         result: branches,
@@ -1654,6 +1706,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -1663,6 +1716,12 @@ describe("DesktopApp", () => {
         ],
       });
       sendCommand("desktopPanes", { panes, focusedPaneId });
+      // The pane-scoped ChatApp instances mount on desktopPanes; initialize
+      // each with its pane-tagged empty snapshot so input areas render —
+      // pane-scoped instances only accept messages tagged with their paneId.
+      for (const p of panes) {
+        sendCommand("setInitialState", { messages: [], paneId: p.paneId });
+      }
       return result;
     }
 
@@ -1943,6 +2002,7 @@ describe("DesktopApp", () => {
         workdir: "/home/user/project-a",
         recentWorkdirs: ["/home/user/project-a", "/home/user/project-b"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopPanes", {
         panes: [{ paneId: "pane-0", sessionId: "s1" }, { paneId: "pane-1" }],
         focusedPaneId: "pane-0",
@@ -2073,6 +2133,7 @@ describe("DesktopApp", () => {
         workdir: worktreePath,
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
 
       const pane1 = () => within(screen.getByTestId("desktop-pane-pane-1"));
       // effectiveWorkdir must be recents[0] (repo root basename), NOT the
@@ -2674,6 +2735,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -3275,6 +3337,7 @@ describe("DesktopApp", () => {
         workdir: "/home/user/project",
         recentWorkdirs: [],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendInitialState({ effective: "dark" });
 
       expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
@@ -3286,6 +3349,7 @@ describe("DesktopApp", () => {
         workdir: "/home/user/project",
         recentWorkdirs: [],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendInitialState({ effective: "dark" });
       expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
 
@@ -3304,6 +3368,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: [],
       });
+      sendCommand("setInitialState", { messages: [] });
       sendCommand("desktopPanes", {
         panes: [
           { paneId: "pane-0", sessionId: "s1", host: "local" },
@@ -3375,6 +3440,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
+      sendCommand("setInitialState", { messages: [] });
       return result;
     }
 

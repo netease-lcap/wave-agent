@@ -22,8 +22,11 @@ describe("Unauthenticated input enabled", () => {
   it("keeps the message input editable when unauthenticated (no authStatusResponse sent)", () => {
     const vscode = createMockVscode();
     // Render WITHOUT sending authStatusResponse so isAuthenticated stays at its
-    // initial value of false — the real unauthenticated state.
+    // initial value of false — the real unauthenticated state. setInitialState
+    // (empty snapshot, no isAuthenticated field) marks the webview initialized
+    // so the input area renders instead of the sweep loading animation.
     render(<ChatApp vscode={vscode as unknown as never} />);
+    sendExtensionMessage({ command: "setInitialState", messages: [] });
 
     const input = screen.getByTestId("message-input");
     expect(input.getAttribute("contentEditable")).toBe("true");

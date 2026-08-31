@@ -30,6 +30,7 @@ describe("desktop selector keyboard accessibility", () => {
       hosts: ["prod", "stage"],
       recentWorkdirs: [],
     });
+    sendCommand("setInitialState", { messages: [] });
     vscode.postMessage.mockClear();
 
     const trigger = screen.getByTestId("desktop-host");
@@ -56,6 +57,7 @@ describe("desktop selector keyboard accessibility", () => {
       hosts: ["prod"],
       recentWorkdirs: [],
     });
+    sendCommand("setInitialState", { messages: [] });
     vscode.postMessage.mockClear();
 
     fireEvent.click(screen.getByTestId("desktop-host"));
@@ -80,6 +82,7 @@ describe("desktop selector keyboard accessibility", () => {
       hosts: ["prod"],
       recentWorkdirs: [],
     });
+    sendCommand("setInitialState", { messages: [] });
 
     fireEvent.click(screen.getByTestId("desktop-host"));
     const localItem = screen.getByTestId("desktop-host-local");
@@ -116,6 +119,7 @@ describe("desktop selector keyboard accessibility", () => {
       hosts: ["prod", "stage"],
       recentWorkdirs: [],
     });
+    sendCommand("setInitialState", { messages: [] });
     vscode.postMessage.mockClear();
 
     fireEvent.click(screen.getByTestId("desktop-host"));
@@ -138,6 +142,7 @@ describe("desktop selector keyboard accessibility", () => {
       hosts: ["prod"],
       recentWorkdirs: [],
     });
+    sendCommand("setInitialState", { messages: [] });
     vscode.postMessage.mockClear();
 
     fireEvent.click(screen.getByTestId("desktop-host"));
@@ -158,6 +163,7 @@ describe("desktop selector keyboard accessibility", () => {
       hosts: ["prod"],
       recentWorkdirs: [],
     });
+    sendCommand("setInitialState", { messages: [] });
 
     fireEvent.click(screen.getByTestId("desktop-host"));
     const sshItem = screen.getAllByTestId("desktop-host-item")[0];
@@ -175,6 +181,7 @@ describe("desktop selector keyboard accessibility", () => {
       hosts: [],
       recentWorkdirs: [],
     });
+    sendCommand("setInitialState", { messages: [] });
     vscode.postMessage.mockClear();
 
     fireEvent.click(screen.getByTestId("desktop-host"));
@@ -201,6 +208,7 @@ describe("desktop selector keyboard accessibility", () => {
       workdir: "/home/user/project",
       recentWorkdirs: ["/home/user/project-a", "/home/user/project-b"],
     });
+    sendCommand("setInitialState", { messages: [] });
     vscode.postMessage.mockClear();
 
     const trigger = screen.getByTestId("desktop-workdir");
@@ -221,6 +229,7 @@ describe("desktop selector keyboard accessibility", () => {
       workdir: "/home/user/project",
       recentWorkdirs: ["/home/user/project-a"],
     });
+    sendCommand("setInitialState", { messages: [] });
     vscode.postMessage.mockClear();
 
     fireEvent.click(screen.getByTestId("desktop-workdir"));
@@ -245,6 +254,7 @@ describe("desktop selector keyboard accessibility", () => {
       workdir: "/home/user/project",
       recentWorkdirs: ["/home/user/project-a"],
     });
+    sendCommand("setInitialState", { messages: [] });
 
     fireEvent.click(screen.getByTestId("desktop-workdir"));
     const item = screen.getByTestId("desktop-workdir-recent-item");
@@ -260,6 +270,7 @@ describe("desktop selector keyboard accessibility", () => {
   it("activates 浏览… with Enter and posts desktopSelectWorkdir", () => {
     const { vscode } = renderDesktopApp();
     sendCommand("desktopWorkdirState", { recentWorkdirs: [] });
+    sendCommand("setInitialState", { messages: [] });
     vscode.postMessage.mockClear();
 
     fireEvent.click(screen.getByTestId("desktop-workdir"));
@@ -281,6 +292,7 @@ describe("desktop selector keyboard accessibility", () => {
       workdir: "/work/a",
       recentWorkdirs: ["/work/a"],
     });
+    sendCommand("setInitialState", { messages: [] });
     sendCommand("desktopGitBranches", {
       workdir: "/work/a",
       result: { branches: ["main", "dev"], current: "main" },
@@ -307,6 +319,7 @@ describe("desktop selector keyboard accessibility", () => {
       workdir: "/work/a",
       recentWorkdirs: ["/work/a"],
     });
+    sendCommand("setInitialState", { messages: [] });
     sendCommand("desktopGitBranches", {
       workdir: "/work/a",
       result: { branches: ["main", "dev"], current: "dev" },
@@ -336,6 +349,7 @@ describe("desktop selector keyboard accessibility", () => {
       workdir: "/work/a",
       recentWorkdirs: ["/work/a"],
     });
+    sendCommand("setInitialState", { messages: [] });
     sendCommand("desktopGitBranches", {
       workdir: "/work/a",
       result: { branches: ["main", "dev"], current: "main" },
@@ -361,6 +375,7 @@ describe("desktop selector keyboard accessibility", () => {
       workdir: "/work/a",
       recentWorkdirs: ["/work/a"],
     });
+    sendCommand("setInitialState", { messages: [] });
     sendCommand("desktopGitBranches", {
       workdir: "/work/a",
       result: { branches: ["main", "dev"], current: "main" },
