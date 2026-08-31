@@ -273,7 +273,7 @@ function createWindow(): void {
     height: 840,
     minWidth: 720,
     minHeight: 480,
-    title: "Wave",
+    title: "Codewave IDE",
     backgroundColor: "#1e1e1e",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
