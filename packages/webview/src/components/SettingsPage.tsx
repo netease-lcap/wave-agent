@@ -4,7 +4,6 @@
  * Read-only views (2026-08-31 用户拍板：设置页为只读浏览视图，不做表单编辑与保存，
  * 配置修改走 CLI 命令与配置文件；对齐技能/子代理的只读列表形态):
  * - 全局设置 (global): 只读展示系统语言 + 上下文长度
- * - 直连设置 (connection): 只读展示 API Key / Base URL / Agent Model / Fast Model
  * - 项目设置 (project): SDD 内置插件开关（唯一交互控件，即时启停插件）
  * - 个性化 (personalization): AGENTS.md 只读 + 自动记忆规则只读
  * - 钩子 (hooks): 用户级/项目级双 tab，按事件分组只读展示已配置命令
@@ -60,7 +59,6 @@ export interface SettingsPageProps {
 
 export type NavKey =
   | "global"
-  | "connection"
   | "personalization"
   | "project"
   | "skills"
@@ -81,13 +79,12 @@ interface NavGroup {
   items: NavItem[];
 }
 
-/** 导航：8 项分 3 组（对齐原型 settings-navigation.ts） */
+/** 导航：7 项分 3 组（对齐原型 settings-navigation.ts；直连设置随私有化部署移除 2026-09） */
 const NAV_GROUPS: NavGroup[] = [
   {
     label: "通用",
     items: [
       { key: "global", label: "全局设置", icon: "settings-gear" },
-      { key: "connection", label: "直连设置", icon: "plug" },
       { key: "personalization", label: "个性化", icon: "person" },
     ],
   },
@@ -143,12 +140,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const [autoMemoryEnabled, setAutoMemoryEnabled] = useState(true);
   const [autoMemoryFrequency, setAutoMemoryFrequency] = useState(1);
 
-  // 直连设置展示值（API Key / Base URL / Agent Model / Fast Model）
-  const [apiKey, setApiKey] = useState("");
-  const [baseURL, setBaseURL] = useState("");
-  const [model, setModel] = useState("");
-  const [fastModel, setFastModel] = useState("");
-
   // 项目设置（SDD 开关）：切换中标记，防止重复请求
   const [pluginToggling, setPluginToggling] = useState(false);
 
@@ -164,10 +155,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     setContextLength(configurationData.contextLength ?? 200);
     setAutoMemoryEnabled(configurationData.autoMemoryEnabled ?? true);
     setAutoMemoryFrequency(configurationData.autoMemoryFrequency ?? 1);
-    setApiKey(configurationData.apiKey || "");
-    setBaseURL(configurationData.baseURL || "");
-    setModel(configurationData.model || "");
-    setFastModel(configurationData.fastModel || "");
   }, [configurationData]);
 
   // AGENTS.md 内容回填后同步 textarea 草稿
@@ -278,70 +265,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                     <div className="settings-number-control">
                       <span className="settings-readonly-value">
                         {contextLength} K
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </div>
-          )}
-
-          {activeNav === "connection" && (
-            <div className="settings-view">
-              <header className="settings-page-header">
-                <h1>直连设置</h1>
-                <p>配置直连模式下的 API 地址与模型参数。</p>
-              </header>
-              <section className="settings-section">
-                <div className="settings-section-heading">
-                  <h2>直连 LLM</h2>
-                  <p>
-                    配置直连模式下的 API
-                    地址与模型参数，保存后优先使用此配置，无需登录即可正常使用插件。
-                  </p>
-                </div>
-                <div className="settings-card">
-                  <div className="settings-row">
-                    <div className="settings-row-copy">
-                      <h3>API Key</h3>
-                      <p>LLM 服务的访问密钥</p>
-                    </div>
-                    <div className="settings-control">
-                      <span className="settings-readonly-value">
-                        {apiKey || "未配置"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="settings-row">
-                    <div className="settings-row-copy">
-                      <h3>Base URL</h3>
-                      <p>LLM 服务的 API 基础地址</p>
-                    </div>
-                    <div className="settings-control">
-                      <span className="settings-readonly-value">
-                        {baseURL || "未配置"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="settings-row">
-                    <div className="settings-row-copy">
-                      <h3>Agent Model</h3>
-                      <p>主代理使用的模型</p>
-                    </div>
-                    <div className="settings-control">
-                      <span className="settings-readonly-value">
-                        {model || "未配置"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="settings-row">
-                    <div className="settings-row-copy">
-                      <h3>Fast Model</h3>
-                      <p>用于轻量任务（如目标评估、摘要）的快速模型</p>
-                    </div>
-                    <div className="settings-control">
-                      <span className="settings-readonly-value">
-                        {fastModel || "未配置"}
                       </span>
                     </div>
                   </div>
