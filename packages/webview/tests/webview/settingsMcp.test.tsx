@@ -45,12 +45,10 @@ function renderSettingsPage(
   render(
     <SettingsPage
       configurationData={null}
-      onSave={() => {}}
       onClose={() => {}}
       userAgentsContent={null}
       projectAgentsContent={null}
       onLoadAgentsContent={() => {}}
-      onSaveAgentsContent={() => {}}
       initialNav="mcp"
       vscode={mockVscode}
       workdir="/work/a"

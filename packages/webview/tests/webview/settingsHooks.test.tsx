@@ -21,12 +21,10 @@ function renderSettingsPage(
   render(
     <SettingsPage
       configurationData={null}
-      onSave={() => {}}
       onClose={() => {}}
       userAgentsContent={null}
       projectAgentsContent={null}
       onLoadAgentsContent={() => {}}
-      onSaveAgentsContent={() => {}}
       initialNav="hooks"
       vscode={mockVscode}
       workdir="/work/a"
