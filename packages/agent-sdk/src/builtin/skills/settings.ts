@@ -1104,10 +1104,6 @@ The \`SKILL.md\` file uses YAML frontmatter for configuration and Markdown for i
 ---
 name: my-skill
 description: A brief description of what the skill does.
-context: fork
-allowed-tools:
-  - Bash
-  - Read
 ---
 
 # My Skill Instructions
@@ -1116,6 +1112,8 @@ When this skill is invoked, follow these steps:
 1. Use the \`Read\` tool to examine the project structure.
 2. Use the \`Bash\` tool to run \`npm test\`.
 \`\`\`
+
+By default, new skills only include \`name\` and \`description\`. Only add \`context: fork\` or \`allowed-tools\` when the user explicitly asks for them.
 
 ### YAML Frontmatter Fields
 
