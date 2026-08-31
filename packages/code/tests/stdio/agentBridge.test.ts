@@ -442,6 +442,28 @@ test("onLoadingChange emits loadingChange notification", async () => {
     params: { loading: true, latestTotalTokens: 100 },
     sessionId: "test-session-id",
   });
+  // Context usage is pushed via onLatestTotalTokensChange, not piggybacked on
+  // loading transitions (aligned with the CLI's own token-tracking callback).
+  expect(notifications).not.toContainEqual(
+    expect.objectContaining({ method: "contextUsage" }),
+  );
+});
+
+test("onLatestTotalTokensChange emits contextUsage notification", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  callbacks.onLatestTotalTokensChange!(50000);
+
+  expect(notifications).toContainEqual({
+    method: "contextUsage",
+    params: { percent: 25 },
+    sessionId: "test-session-id",
+  });
 });
 
 test("onErrorBlockAdded emits errorBlockAdded notification", async () => {
