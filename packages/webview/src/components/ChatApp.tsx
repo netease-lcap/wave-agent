@@ -1228,7 +1228,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           }));
           break;
         case "contextUsage":
-          // Context-window usage push (batch 2 压缩上下文 button). Session-scoped
+          // Context-window usage push (batch 2 上下文用量指示器). Session-scoped
           // on desktop (each pane's session reports its own usage), so the reply
           // is pane-routed like the other per-session pushes.
           if (!forThisPane(message)) break;
@@ -1474,13 +1474,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const handleLogout = useCallback(() => {
     vscode.postMessage({ command: "logout" });
   }, [vscode]);
-
-  // Batch 2 压缩上下文 button: equivalent to typing /compact. The host (CLI
-  // agentBridge) routes the compact command; usage updates flow back via the
-  // contextUsage push so the button's percentage refreshes after the sweep.
-  const handleCompress = useCallback(() => {
-    postToHost({ command: "compact" });
-  }, [postToHost]);
 
   // Batch 2 settings full-page (desktop): close returns to the conversation
   // view; the next 设置 click re-opens it (spec 场景 1/11). The AGENTS.md
@@ -2517,7 +2510,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
               initialAttachedImages={state.attachedImages}
               paneId={paneId}
               contextUsage={contextUsage}
-              onCompress={hasVisibleMessages ? handleCompress : undefined}
+              showContextUsage={hasVisibleMessages}
               disabled={host?.type === "desktop" && !effectiveWorkdir}
               workdirSelector={
                 host?.type === "desktop" && !hasVisibleMessages ? (

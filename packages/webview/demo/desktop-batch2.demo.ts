@@ -6,7 +6,7 @@ import { screenshotWebp } from "../e2e/utils/screenshot.js";
 /**
  * Batch 2 desktop features (spec desktop-app.md 批次 2): screenshots for the
  * settings full-page (全局设置 / 个性化), session status board, context
- * compress button, and account card (plan usage + API quota). The shared
+ * usage indicator, and account card (plan usage + API quota). The shared
  * webview bundle must be rebuilt first (node esbuild.config.mjs) or these
  * shots capture the old UI.
  */
@@ -44,15 +44,15 @@ async function setupSinglePane(injector: MessageInjector) {
 }
 
 test.describe("Desktop batch 2 feature screenshots", () => {
-  test("settings / session board / compress / account card", async ({
+  test("settings / session board / usage indicator / account card", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 1000, height: 720 });
     await setupSinglePane(injector);
 
-    // 1. 上下文压缩按钮：host 推送 contextUsage 后输入框工具栏显示
-    //    圆环进度 + 百分比数字（「64%」，完整文案在 aria-label）。
+    // 1. 上下文用量指示器：host 推送 contextUsage 后输入框工具栏显示
+    //    圆环进度 + 百分比数字（「64%」，说明在 aria-label/title）。
     await injector.simulateExtensionMessage("contextUsage", { percent: 64 });
     await expect(webviewPage.locator(".compress-context-button")).toBeVisible();
     await expect(webviewPage.locator(".compress-context-button")).toContainText(
@@ -60,7 +60,7 @@ test.describe("Desktop batch 2 feature screenshots", () => {
     );
     await expect(
       webviewPage.locator(".compress-context-button"),
-    ).toHaveAttribute("aria-label", "压缩上下文，已使用 64%");
+    ).toHaveAttribute("aria-label", "已使用 64%");
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-compress-button.webp",

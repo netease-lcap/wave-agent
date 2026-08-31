@@ -34,15 +34,15 @@ import {
 import "../styles/MessageInput.css";
 import "../styles/HistorySearchPopup.css";
 
-// Compress-context button props. MessageInputProps lives in ../types (host
+// Compress-context props. MessageInputProps lives in ../types (host
 // wires these in ChatApp); extending it here keeps the change inside the
 // two-file edit boundary. All added fields are optional, so existing callers
 // keep type-checking unchanged.
 interface MessageInputPropsWithCompress extends MessageInputProps {
   /** Host-reported context usage percentage (0-100). Undefined = unknown. */
   contextUsage?: number;
-  /** Trigger a /compact-equivalent context compression. */
-  onCompress?: () => void;
+  /** Show the context-usage indicator (hidden on the welcome composer). */
+  showContextUsage?: boolean;
 }
 
 interface AtMentionState {
@@ -158,21 +158,19 @@ export const MessageInput = forwardRef<
     disabled,
     paneId,
     contextUsage,
-    onCompress,
+    showContextUsage,
   } = props;
   const [message, setMessage] = useState("");
 
-  // Compress-context button: the ring fill and the trailing number both
-  // reflect the current usage (rounded up per spec); the full description
-  // lives in the aria-label/title, matching the designer's compact glyph.
+  // Context-usage indicator: the ring fill and the trailing number both
+  // reflect the current usage (rounded up per spec); the description lives
+  // in the aria-label/title. Pure display — not a button, no click action.
   const contextUsagePct =
     contextUsage !== undefined
       ? Math.min(100, Math.max(0, Math.ceil(contextUsage)))
       : undefined;
-  const contextCompressLabel =
-    contextUsagePct !== undefined
-      ? `压缩上下文，已使用 ${contextUsagePct}%`
-      : "压缩上下文";
+  const contextUsageLabel =
+    contextUsagePct !== undefined ? `已使用 ${contextUsagePct}%` : "";
   const ringCircumference = 2 * Math.PI * 8;
 
   // Permission mode custom dropdown (roving-tabindex listbox shared with
@@ -1759,19 +1757,18 @@ export const MessageInput = forwardRef<
             {/* Left side - Permission Mode Select (custom dropdown, expands upward) */}
             <div className="button-spacer" />
 
-            {/* Compress context button. Hidden on the welcome composer in
+            {/* Context-usage indicator. Hidden on the welcome composer in
                   either flavor: desktop signals that via workdirSelector being
-                  present, IDE hosts via ChatApp withholding onCompress when no
-                  visible messages yet (spec 场景 3). The host wires the
-                  /compact trigger through onCompress; usage may still be
-                  undefined until the first push (spec 场景 4). */}
-            {!workdirSelector && onCompress && (
-              <button
-                type="button"
+                  present, IDE hosts via ChatApp withholding showContextUsage
+                  when no visible messages yet (spec 场景 3). The indicator is
+                  display-only — compression stays on /compact and auto
+                  compaction; usage may still be undefined until the first
+                  push (spec 场景 4). */}
+            {!workdirSelector && showContextUsage && (
+              <span
                 className="compress-context-button"
-                aria-label={contextCompressLabel}
-                title={contextCompressLabel}
-                onClick={onCompress}
+                aria-label={contextUsageLabel}
+                title={contextUsageLabel}
               >
                 <svg
                   className="compress-context-ring"
@@ -1803,7 +1800,7 @@ export const MessageInput = forwardRef<
                     {contextUsagePct}%
                   </span>
                 )}
-              </button>
+              </span>
             )}
 
             <div className="permission-mode-container" ref={permMenuRef}>
