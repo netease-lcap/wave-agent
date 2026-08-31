@@ -357,6 +357,18 @@ class StdioAgent(
     suspend fun getProjectSettings(workdir: String): JsonElement =
         client.request("getProjectSettings", buildJsonObject { put("workdir", workdir) }) ?: JsonObject(emptyMap())
 
+    suspend fun getHooksConfig(scope: String?, workdir: String): JsonElement =
+        client.request("getHooksConfig", buildJsonObject {
+            if (scope != null) put("scope", scope)
+            put("workdir", workdir)
+        }) ?: JsonObject(emptyMap())
+
+    suspend fun getMcpConfig(scope: String?, workdir: String): JsonElement =
+        client.request("getMcpConfig", buildJsonObject {
+            if (scope != null) put("scope", scope)
+            put("workdir", workdir)
+        }) ?: JsonObject(emptyMap())
+
     suspend fun setBuiltinPluginEnabled(pluginId: String, enabled: Boolean, workdir: String, scope: String? = null): JsonElement =
         client.request("setBuiltinPluginEnabled", buildJsonObject {
             put("pluginId", pluginId)

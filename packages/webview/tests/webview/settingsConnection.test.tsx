@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "./test-utils";
+import { render, screen } from "./test-utils";
 import SettingsPage from "../../src/components/SettingsPage";
 import type { ConfigurationData } from "../../src/types";
 
@@ -13,85 +13,57 @@ const savedConfiguration: ConfigurationData = {
   contextLength: 200,
 };
 
-function renderConnectionView() {
-  const onSave = vi.fn();
+function renderConnectionView(
+  configurationData: ConfigurationData | null = savedConfiguration,
+) {
   render(
     <SettingsPage
-      configurationData={savedConfiguration}
-      onSave={onSave}
+      configurationData={configurationData}
       onClose={() => {}}
       userAgentsContent={null}
       projectAgentsContent={null}
       onLoadAgentsContent={() => {}}
-      onSaveAgentsContent={() => {}}
       initialNav="connection"
     />,
   );
-  return { onSave };
 }
 
-describe("SettingsPage 直连设置视图（内容自 ConfigDialog 直连设置选项卡迁移）", () => {
+describe("SettingsPage 直连设置视图（只读展示，2026-08-31 用户拍板）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("渲染四个字段并回填已保存配置", () => {
+  it("只读展示四个字段的当前值并回填已保存配置", () => {
     renderConnectionView();
 
     expect(
       screen.getByRole("heading", { name: "直连设置" }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("API Key")).toHaveValue("sk-ant-api03-TEST");
-    expect(screen.getByLabelText("Base URL")).toHaveValue(
-      "https://api.example.com/v1",
-    );
-    expect(screen.getByLabelText("Agent Model")).toHaveValue(
-      "claude-sonnet-4-20250514",
-    );
-    expect(screen.getByLabelText("Fast Model")).toHaveValue(
-      "claude-haiku-4-20250514",
-    );
+    expect(screen.getByText("sk-ant-api03-TEST")).toBeInTheDocument();
+    expect(screen.getByText("https://api.example.com/v1")).toBeInTheDocument();
+    expect(screen.getByText("claude-sonnet-4-20250514")).toBeInTheDocument();
+    expect(screen.getByText("claude-haiku-4-20250514")).toBeInTheDocument();
   });
 
-  it("修改字段后保存，onSave 收到含直连字段的完整配置", () => {
-    const { onSave } = renderConnectionView();
-
-    fireEvent.change(screen.getByLabelText("API Key"), {
-      target: { value: "sk-new-key" },
-    });
-    fireEvent.change(screen.getByLabelText("Base URL"), {
-      target: { value: "https://new.example.com/v1" },
-    });
-    fireEvent.change(screen.getByLabelText("Agent Model"), {
-      target: { value: "claude-opus-4" },
-    });
-    fireEvent.change(screen.getByLabelText("Fast Model"), {
-      target: { value: "claude-sonnet-4" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-
-    expect(onSave).toHaveBeenCalledWith({
+  it("未配置字段显示「未配置」占位文本", () => {
+    renderConnectionView({
       ...savedConfiguration,
-      apiKey: "sk-new-key",
-      baseURL: "https://new.example.com/v1",
-      model: "claude-opus-4",
-      fastModel: "claude-sonnet-4",
+      apiKey: "",
+      baseURL: "",
     });
+
+    expect(screen.getAllByText("未配置").length).toBeGreaterThanOrEqual(2);
   });
 
-  it("配置未加载（null）时保存按钮禁用", () => {
-    render(
-      <SettingsPage
-        configurationData={null}
-        onSave={() => {}}
-        onClose={() => {}}
-        userAgentsContent={null}
-        projectAgentsContent={null}
-        onLoadAgentsContent={() => {}}
-        onSaveAgentsContent={() => {}}
-        initialNav="connection"
-      />,
-    );
-    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+  it("视图不提供任何编辑控件与保存按钮", () => {
+    renderConnectionView();
+
+    // 无输入框（文本输入类）与保存按钮
+    expect(screen.queryAllByRole("textbox").length).toBe(0);
+    expect(
+      screen.queryByRole("button", { name: "保存" }),
+    ).not.toBeInTheDocument();
+    // 只读值以文本呈现
+    expect(screen.getByText("sk-ant-api03-TEST")).toBeInTheDocument();
   });
 });

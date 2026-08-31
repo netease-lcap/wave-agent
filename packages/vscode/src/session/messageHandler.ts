@@ -466,6 +466,18 @@ export class MessageHandler {
           msg.workdir as string | undefined,
         );
         break;
+      case "getHooksConfig":
+        await this.handleSettingsGetHooksConfig(
+          msg.scope as "user" | "project" | undefined,
+          msg.workdir as string | undefined,
+        );
+        break;
+      case "getMcpConfig":
+        await this.handleSettingsGetMcpConfig(
+          msg.scope as "user" | "project" | undefined,
+          msg.workdir as string | undefined,
+        );
+        break;
       case "closeSettings":
         this.context.closeSettings();
         break;
@@ -533,6 +545,56 @@ export class MessageHandler {
         command: "agentsContentResponse",
         scope,
         content: "",
+      });
+    }
+  }
+
+  /** Settings page hooks read-only view: fetch scope-scoped hooks config. */
+  private async handleSettingsGetHooksConfig(
+    scope: "user" | "project" | undefined,
+    workdir: string | undefined,
+  ): Promise<void> {
+    try {
+      const result = (await this.utilityClient.request("getHooksConfig", {
+        scope,
+        workdir,
+      })) as { hooks?: Record<string, unknown> };
+      this.context.postSettingsMessage({
+        command: "hooksConfigResponse",
+        scope: scope ?? "user",
+        hooks: result.hooks,
+      });
+    } catch (error) {
+      console.error("获取钩子配置失败:", error);
+      this.context.postSettingsMessage({
+        command: "hooksConfigResponse",
+        scope: scope ?? "user",
+        hooks: undefined,
+      });
+    }
+  }
+
+  /** Settings page MCP read-only view: fetch scope-scoped mcp.json config. */
+  private async handleSettingsGetMcpConfig(
+    scope: "user" | "project" | undefined,
+    workdir: string | undefined,
+  ): Promise<void> {
+    try {
+      const result = (await this.utilityClient.request("getMcpConfig", {
+        scope,
+        workdir,
+      })) as { mcpServers: Record<string, unknown> };
+      this.context.postSettingsMessage({
+        command: "mcpConfigResponse",
+        scope: scope ?? "user",
+        mcpServers: result.mcpServers,
+      });
+    } catch (error) {
+      console.error("获取 MCP 配置失败:", error);
+      this.context.postSettingsMessage({
+        command: "mcpConfigResponse",
+        scope: scope ?? "user",
+        mcpServers: {},
       });
     }
   }

@@ -1,17 +1,17 @@
 /**
  * SettingsPage - Full-height settings page (left navigation + right content)
  *
- * Functional views in this batch:
- * - 全局设置 (global): system language + context length
- * - 直连设置 (connection): API Key / Base URL / Agent Model / Fast Model
- *   （自 ConfigDialog 直连设置选项卡迁移，2026-08-29 用户拍板）
- * - 项目设置 (project): SDD 内置插件开关
- *   （自 ConfigDialog 项目设置选项卡迁移，2026-08-29 用户拍板）
- * - 个性化 (personalization): AGENTS.md editor + auto-memory rules
+ * Read-only views (2026-08-31 用户拍板：设置页为只读浏览视图，不做表单编辑与保存，
+ * 配置修改走 CLI 命令与配置文件；对齐技能/子代理的只读列表形态):
+ * - 全局设置 (global): 只读展示系统语言 + 上下文长度
+ * - 直连设置 (connection): 只读展示 API Key / Base URL / Agent Model / Fast Model
+ * - 项目设置 (project): SDD 内置插件开关（唯一交互控件，即时启停插件）
+ * - 个性化 (personalization): AGENTS.md 只读 + 自动记忆规则只读
+ * - 钩子 (hooks): 用户级/项目级双 tab，按事件分组只读展示已配置命令
+ * - MCP 服务 (mcp): 用户级/项目级双 tab，服务器列表 + 连接状态 + 连接/断开
  * - 子代理 (subagents) / 技能 (skills): agent 定义与技能列表，内容自
  *   /agents、/skills 弹窗迁移而来（2026-08-29 用户拍板：斜杠命令唤起设置页
  *   对应选项卡，不再弹窗）
- * The remaining two navigation entries render a "coming soon" placeholder.
  *
  * Layout/dimensions follow the designer's high-fidelity prototype
  * (codechat-ui settings feature) mapped onto wave's native React + VS Code
@@ -19,7 +19,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { ConfigurationData } from "../types";
+import { ConfigurationData, McpServerStatus } from "../types";
 import SettingsSubagentsView from "./SettingsSubagentsView";
 import SettingsSkillsView from "./SettingsSkillsView";
 import "../styles/SettingsPage.css";
@@ -27,8 +27,6 @@ import "../styles/SettingsPage.css";
 export interface SettingsPageProps {
   /** 当前配置（getConfiguration 已回），null 表示尚未加载 */
   configurationData: ConfigurationData | null;
-  /** 保存配置（全局设置 / 直连设置视图的保存按钮触发，含 language/contextLength/apiKey/baseURL/model/fastModel 等） */
-  onSave: (data: ConfigurationData) => void;
   /** 关闭设置页（desktop 返回会话视图 / 标签页关闭） */
   onClose: () => void;
   /** 用户级 AGENTS.md 内容（null=尚未加载） */
@@ -37,14 +35,8 @@ export interface SettingsPageProps {
   projectAgentsContent: string | null;
   /** 加载 AGENTS.md（scope: "user"|"project"），ChatApp 收到 agentsContentResponse 后回填 */
   onLoadAgentsContent: (scope: "user" | "project") => void;
-  /** 保存 AGENTS.md（scope + 内容） */
-  onSaveAgentsContent: (scope: "user" | "project", content: string) => void;
   /** 当前工作目录路径（用于个性化项目列表展示项目名），可空 */
   workdir?: string;
-  /** 保存 AGENTS.md / 配置的进行中标记 */
-  saving?: boolean;
-  /** 保存成功/失败提示消息 */
-  saveMessage?: string | null;
   /** 初始选中的导航项（/agents → subagents、/skills → skills 斜杠命令唤起时由外层传入） */
   initialNav?: NavKey;
   /** Host 消息桥，供「子代理」「技能」选项卡请求数据 */
@@ -55,6 +47,18 @@ export interface SettingsPageProps {
   onLoadProjectSettings?: () => void;
   /** 切换内置插件开关（写回项目 .wave/settings.json） */
   onToggleBuiltinPlugin?: (pluginId: string, enabled: boolean) => void;
+  /** 用户级/项目级 hooks 配置（settings.json hooks，getHooksConfig RPC 回填），「钩子」视图使用 */
+  hooksConfig?: Partial<
+    Record<"user" | "project", Record<string, unknown> | undefined>
+  >;
+  /** 加载某 scope 的 hooks 配置（触发 host 经 stdio 读取配置文件） */
+  onLoadHooksConfig?: (scope: "user" | "project") => void;
+  /** 用户级/项目级 MCP 服务器配置（mcp.json，getMcpConfig RPC 回填），「MCP 服务」视图使用 */
+  mcpConfig?: Partial<
+    Record<"user" | "project", Record<string, unknown> | undefined>
+  >;
+  /** 加载某 scope 的 MCP 配置（触发 host 经 stdio 读取配置文件） */
+  onLoadMcpConfig?: (scope: "user" | "project") => void;
 }
 
 export type NavKey =
@@ -105,15 +109,21 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-/** 其余暂未实现的导航项标题与说明 */
-const PLACEHOLDER_VIEWS: Record<
-  Exclude<NavKey, "global" | "personalization" | "connection" | "project">,
-  { title: string; description: string }
-> = {
-  skills: { title: "技能", description: "管理可复用的技能。" },
-  subagents: { title: "子代理", description: "配置用于并行处理任务的子代理。" },
-  hooks: { title: "钩子", description: "配置会话生命周期事件的钩子脚本。" },
-  mcp: { title: "MCP 服务", description: "管理 MCP 服务器连接。" },
+/** 钩子事件中文名（展示用） */
+const HOOK_EVENT_LABELS: Record<string, string> = {
+  PreToolUse: "工具使用前",
+  PostToolUse: "工具使用后",
+  UserPromptSubmit: "用户提示提交",
+  Stop: "停止",
+  SubagentStop: "子代理停止",
+  PermissionRequest: "权限请求",
+  WorktreeCreate: "工作树创建",
+  WorktreeRemove: "工作树删除",
+  CwdChanged: "工作目录变更",
+  SessionStart: "会话开始",
+  SessionEnd: "会话结束",
+  PreCompact: "压缩前",
+  PostCompact: "压缩后",
 };
 
 /** 从工作目录路径提取项目名（兼容 Windows/posix 分隔符） */
@@ -125,20 +135,20 @@ function getProjectName(workdir?: string): string {
 
 const SettingsPage: React.FC<SettingsPageProps> = ({
   configurationData,
-  onSave,
   onClose,
   userAgentsContent,
   projectAgentsContent,
   onLoadAgentsContent,
-  onSaveAgentsContent,
   workdir,
-  saving = false,
-  saveMessage = null,
   initialNav,
   vscode,
   projectSettings,
   onLoadProjectSettings,
   onToggleBuiltinPlugin,
+  hooksConfig,
+  onLoadHooksConfig,
+  mcpConfig,
+  onLoadMcpConfig,
 }) => {
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav ?? "global");
 
@@ -149,13 +159,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     if (initialNav) setActiveNav(initialNav);
   }, [initialNav]);
 
-  // 表单草稿（配置），configurationData 回填后同步
+  // 展示值（configurationData 回填后同步）
   const [language, setLanguage] = useState("zh-CN");
   const [contextLength, setContextLength] = useState(200);
   const [autoMemoryEnabled, setAutoMemoryEnabled] = useState(true);
   const [autoMemoryFrequency, setAutoMemoryFrequency] = useState(1);
 
-  // 直连设置草稿（API Key / Base URL / Agent Model / Fast Model）
+  // 直连设置展示值（API Key / Base URL / Agent Model / Fast Model）
   const [apiKey, setApiKey] = useState("");
   const [baseURL, setBaseURL] = useState("");
   const [model, setModel] = useState("");
@@ -205,28 +215,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     onLoadAgentsContent,
   ]);
 
-  const handleSaveGlobal = () => {
-    if (!configurationData) return;
-    onSave({ ...configurationData, language, contextLength });
-  };
-
-  const handleSaveConnection = () => {
-    if (!configurationData) return;
-    onSave({ ...configurationData, apiKey, baseURL, model, fastModel });
-  };
-
-  const handleSaveMemory = () => {
-    if (!configurationData) return;
-    onSave({ ...configurationData, autoMemoryEnabled, autoMemoryFrequency });
-  };
-
-  const handleSaveAgents = () => {
-    onSaveAgentsContent(
-      activeScope,
-      activeScope === "user" ? userContent : projectContent,
-    );
-  };
-
   // 进入「项目设置」视图时加载项目级 enabledPlugins（切换成功后 host 会回发
   // projectSettings 消息自动刷新）
   useEffect(() => {
@@ -248,15 +236,60 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     setPluginToggling(false);
   }, [projectSettings]);
 
-  const placeholder =
-    activeNav !== "global" &&
-    activeNav !== "personalization" &&
-    activeNav !== "subagents" &&
-    activeNav !== "skills" &&
-    activeNav !== "connection" &&
-    activeNav !== "project"
-      ? PLACEHOLDER_VIEWS[activeNav]
-      : null;
+  // ── 钩子 / MCP 视图（只读）───────────────────────────────────────
+  // MCP 服务器运行时状态（getMcpServers RPC 返回，含连接状态/工具数/错误）
+  const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
+  const [mcpConnecting, setMcpConnecting] = useState<Record<string, boolean>>(
+    {},
+  );
+
+  // 进入「钩子」/「MCP 服务」视图时，双 tab（用户级/项目级）配置各加载一次
+  useEffect(() => {
+    if (activeNav === "hooks" && onLoadHooksConfig) {
+      if (!hooksConfig?.user) onLoadHooksConfig("user");
+      if (!hooksConfig?.project) onLoadHooksConfig("project");
+    }
+  }, [activeNav, hooksConfig, onLoadHooksConfig]);
+
+  useEffect(() => {
+    if (activeNav === "mcp" && onLoadMcpConfig) {
+      if (!mcpConfig?.user) onLoadMcpConfig("user");
+      if (!mcpConfig?.project) onLoadMcpConfig("project");
+    }
+  }, [activeNav, mcpConfig, onLoadMcpConfig]);
+
+  // 进入「MCP 服务」视图时拉取一次服务器状态（连接/断开后 host 会回发
+  // mcpServersResponse / mcpServersUpdate 刷新）
+  useEffect(() => {
+    if (activeNav === "mcp") {
+      vscode?.postMessage({ command: "getMcpServers" });
+    }
+  }, [activeNav, vscode]);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const message = event.data;
+      if (
+        message.command === "mcpServersResponse" ||
+        message.command === "mcpServersUpdate"
+      ) {
+        setMcpServers(message.servers || []);
+        setMcpConnecting({});
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  const handleConnectMcpServer = (serverName: string) => {
+    setMcpConnecting((prev) => ({ ...prev, [serverName]: true }));
+    vscode?.postMessage({ command: "connectMcpServer", serverName });
+  };
+
+  const handleDisconnectMcpServer = (serverName: string) => {
+    setMcpConnecting((prev) => ({ ...prev, [serverName]: true }));
+    vscode?.postMessage({ command: "disconnectMcpServer", serverName });
+  };
 
   return (
     <div className="settings-page">
@@ -298,9 +331,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <h1>全局设置</h1>
                 <p>管理 Wave 的界面、模型和基础行为。</p>
               </header>
-              {saveMessage && (
-                <p className="settings-save-message">{saveMessage}</p>
-              )}
               <section className="settings-section">
                 <div className="settings-section-heading">
                   <h2>基础设置</h2>
@@ -312,15 +342,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <p>设置 Wave 界面和系统提示使用的语言</p>
                     </div>
                     <div className="settings-control">
-                      <select
-                        className="settings-select"
-                        aria-label="系统语言"
-                        value={language}
-                        onChange={(e) => setLanguage(e.target.value)}
-                      >
-                        <option value="zh-CN">中文</option>
-                        <option value="en-US">English</option>
-                      </select>
+                      <span className="settings-readonly-value">
+                        {language === "en-US" ? "English" : "中文"}
+                      </span>
                     </div>
                   </div>
                   <div className="settings-row">
@@ -329,32 +353,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <p>设置新对话默认可以使用的最大上下文长度</p>
                     </div>
                     <div className="settings-number-control">
-                      <input
-                        className="settings-number-input"
-                        type="number"
-                        aria-label="上下文长度"
-                        min={16}
-                        max={1000}
-                        step={16}
-                        value={contextLength}
-                        onChange={(e) => {
-                          const value = Number(e.target.value);
-                          if (!Number.isNaN(value)) setContextLength(value);
-                        }}
-                      />
-                      <span>K</span>
+                      <span className="settings-readonly-value">
+                        {contextLength} K
+                      </span>
                     </div>
                   </div>
-                </div>
-                <div className="settings-actions">
-                  <button
-                    type="button"
-                    className="settings-save-btn"
-                    disabled={!configurationData || saving}
-                    onClick={handleSaveGlobal}
-                  >
-                    保存
-                  </button>
                 </div>
               </section>
             </div>
@@ -366,13 +369,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <h1>直连设置</h1>
                 <p>配置直连模式下的 API 地址与模型参数。</p>
               </header>
-              {saveMessage && (
-                <p className="settings-save-message">{saveMessage}</p>
-              )}
               <section className="settings-section">
                 <div className="settings-section-heading">
                   <h2>直连 LLM</h2>
-                  <p>保存后，优先使用此配置，无需登录即可正常使用插件。</p>
+                  <p>
+                    配置直连模式下的 API
+                    地址与模型参数，保存后优先使用此配置，无需登录即可正常使用插件。
+                  </p>
                 </div>
                 <div className="settings-card">
                   <div className="settings-row">
@@ -381,14 +384,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <p>LLM 服务的访问密钥</p>
                     </div>
                     <div className="settings-control">
-                      <input
-                        className="settings-text-input"
-                        type="text"
-                        aria-label="API Key"
-                        placeholder="请输入 API Key"
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                      />
+                      <span className="settings-readonly-value">
+                        {apiKey || "未配置"}
+                      </span>
                     </div>
                   </div>
                   <div className="settings-row">
@@ -397,14 +395,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <p>LLM 服务的 API 基础地址</p>
                     </div>
                     <div className="settings-control">
-                      <input
-                        className="settings-text-input"
-                        type="text"
-                        aria-label="Base URL"
-                        placeholder="请输入 Base URL"
-                        value={baseURL}
-                        onChange={(e) => setBaseURL(e.target.value)}
-                      />
+                      <span className="settings-readonly-value">
+                        {baseURL || "未配置"}
+                      </span>
                     </div>
                   </div>
                   <div className="settings-row">
@@ -413,14 +406,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <p>主代理使用的模型</p>
                     </div>
                     <div className="settings-control">
-                      <input
-                        className="settings-text-input"
-                        type="text"
-                        aria-label="Agent Model"
-                        placeholder="请输入 Agent Model"
-                        value={model}
-                        onChange={(e) => setModel(e.target.value)}
-                      />
+                      <span className="settings-readonly-value">
+                        {model || "未配置"}
+                      </span>
                     </div>
                   </div>
                   <div className="settings-row">
@@ -429,26 +417,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <p>用于轻量任务（如目标评估、摘要）的快速模型</p>
                     </div>
                     <div className="settings-control">
-                      <input
-                        className="settings-text-input"
-                        type="text"
-                        aria-label="Fast Model"
-                        placeholder="请输入 Fast Model"
-                        value={fastModel}
-                        onChange={(e) => setFastModel(e.target.value)}
-                      />
+                      <span className="settings-readonly-value">
+                        {fastModel || "未配置"}
+                      </span>
                     </div>
                   </div>
-                </div>
-                <div className="settings-actions">
-                  <button
-                    type="button"
-                    className="settings-save-btn"
-                    disabled={!configurationData || saving}
-                    onClick={handleSaveConnection}
-                  >
-                    保存
-                  </button>
                 </div>
               </section>
             </div>
@@ -460,9 +433,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <h1>项目设置</h1>
                 <p>管理当前项目的专属配置。</p>
               </header>
-              {saveMessage && (
-                <p className="settings-save-message">{saveMessage}</p>
-              )}
               <section className="settings-section">
                 <div className="settings-section-heading">
                   <h2>内置插件</h2>
@@ -495,9 +465,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <h1>个性化</h1>
                 <p>配置用户级和项目级 AGENTS.md，以及自动记忆规则。</p>
               </header>
-              {saveMessage && (
-                <p className="settings-save-message">{saveMessage}</p>
-              )}
               <section className="settings-section">
                 <div className="settings-section-heading">
                   <h2>AGENTS.md</h2>
@@ -553,24 +520,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       value={
                         activeScope === "user" ? userContent : projectContent
                       }
-                      disabled={saving}
-                      onChange={(e) => {
-                        if (activeScope === "user") {
-                          setUserContent(e.target.value);
-                        } else {
-                          setProjectContent(e.target.value);
-                        }
-                      }}
+                      readOnly
                     />
-                    <button
-                      type="button"
-                      className="settings-save-btn"
-                      disabled={saving}
-                      onClick={handleSaveAgents}
-                    >
-                      保存
-                      {activeScope === "project" ? "项目级" : "用户级"}配置
-                    </button>
                   </div>
                 </div>
               </section>
@@ -585,15 +536,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <h3>开启自动记忆</h3>
                       <p>自动从对话中提取稳定偏好并写入记忆，默认开启</p>
                     </div>
-                    <label className="settings-switch">
-                      <input
-                        type="checkbox"
-                        aria-label="开启自动记忆"
-                        checked={autoMemoryEnabled}
-                        onChange={(e) => setAutoMemoryEnabled(e.target.checked)}
-                      />
-                      <span className="settings-switch-slider"></span>
-                    </label>
+                    <span className="settings-readonly-value">
+                      {autoMemoryEnabled ? "已开启" : "已关闭"}
+                    </span>
                   </div>
                   <div className="settings-row">
                     <div className="settings-row-copy">
@@ -601,33 +546,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <p>达到指定对话轮次后执行记忆提取，默认 1 轮</p>
                     </div>
                     <div className="memory-turns">
-                      <input
-                        className="settings-number-input memory-turns-input"
-                        type="number"
-                        aria-label="触发记忆提取会话轮次"
-                        min={1}
-                        max={100}
-                        value={autoMemoryFrequency}
-                        onChange={(e) => {
-                          const value = Number(e.target.value);
-                          if (!Number.isNaN(value)) {
-                            setAutoMemoryFrequency(value);
-                          }
-                        }}
-                      />
-                      <span>轮</span>
+                      <span className="settings-readonly-value">
+                        {autoMemoryFrequency} 轮
+                      </span>
                     </div>
                   </div>
-                </div>
-                <div className="settings-actions">
-                  <button
-                    type="button"
-                    className="settings-save-btn"
-                    disabled={!configurationData || saving}
-                    onClick={handleSaveMemory}
-                  >
-                    保存
-                  </button>
                 </div>
               </section>
             </div>
@@ -639,16 +562,87 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
           {activeNav === "skills" && <SettingsSkillsView vscode={vscode} />}
 
-          {placeholder && (
+          {activeNav === "hooks" && (
             <div className="settings-view">
               <header className="settings-page-header">
-                <h1>{placeholder.title}</h1>
-                <p>{placeholder.description}</p>
+                <h1>钩子</h1>
+                <p>
+                  配置会话生命周期事件的钩子脚本（只读，修改请编辑配置文件）。
+                </p>
               </header>
-              <div className="settings-placeholder">
-                <i className="codicon codicon-rocket" />
-                <p>该功能即将推出，敬请期待。</p>
+              <div
+                className="settings-tabs"
+                role="tablist"
+                aria-label="配置范围"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeScope === "user"}
+                  className={`settings-tab${
+                    activeScope === "user" ? " is-active" : ""
+                  }`}
+                  onClick={() => setActiveScope("user")}
+                >
+                  用户级
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeScope === "project"}
+                  className={`settings-tab${
+                    activeScope === "project" ? " is-active" : ""
+                  }`}
+                  onClick={() => setActiveScope("project")}
+                >
+                  项目级
+                </button>
               </div>
+              {renderHooks(hooksConfig?.[activeScope])}
+            </div>
+          )}
+
+          {activeNav === "mcp" && (
+            <div className="settings-view">
+              <header className="settings-page-header">
+                <h1>MCP 服务</h1>
+                <p>管理 MCP 服务器连接（配置只读，修改请编辑配置文件）。</p>
+              </header>
+              <div
+                className="settings-tabs"
+                role="tablist"
+                aria-label="配置范围"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeScope === "user"}
+                  className={`settings-tab${
+                    activeScope === "user" ? " is-active" : ""
+                  }`}
+                  onClick={() => setActiveScope("user")}
+                >
+                  用户级
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeScope === "project"}
+                  className={`settings-tab${
+                    activeScope === "project" ? " is-active" : ""
+                  }`}
+                  onClick={() => setActiveScope("project")}
+                >
+                  项目级
+                </button>
+              </div>
+              {renderMcpServers(
+                mcpConfig?.[activeScope],
+                mcpServers,
+                mcpConnecting,
+                handleConnectMcpServer,
+                handleDisconnectMcpServer,
+              )}
             </div>
           )}
         </main>
@@ -656,5 +650,163 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     </div>
   );
 };
+
+/** 钩子只读视图：按事件分组展示已配置的命令（含异步/超时/匹配器标注） */
+function renderHooks(
+  hooks: Record<string, unknown> | undefined,
+): React.ReactNode {
+  const events = Object.entries(hooks ?? {});
+  if (events.length === 0) {
+    return (
+      <div className="settings-empty-state">
+        <p>当前层级未配置钩子。</p>
+        <p className="settings-empty-hint">
+          在对应层级的 settings.json 的 hooks 字段中配置
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-hooks-list">
+      {events.map(([event, configs]) => {
+        const configList = Array.isArray(configs) ? configs : [];
+        const commands = configList.flatMap((config) => {
+          const cfg = config as Record<string, unknown>;
+          const hooksList = Array.isArray(cfg.hooks) ? cfg.hooks : [];
+          const matcher =
+            typeof cfg.matcher === "string" ? cfg.matcher : undefined;
+          return hooksList.map((hook) => ({
+            command: String((hook as Record<string, unknown>).command ?? ""),
+            async: (hook as Record<string, unknown>).async === true,
+            timeout: (hook as Record<string, unknown>).timeout,
+            matcher,
+          }));
+        });
+        if (commands.length === 0) return null;
+        return (
+          <div className="settings-section" key={event}>
+            <div className="settings-section-heading hooks-event-heading">
+              <h2>{HOOK_EVENT_LABELS[event] ?? event}</h2>
+              <code className="hooks-event-key">{event}</code>
+            </div>
+            <div className="settings-card">
+              {commands.map((cmd, index) => (
+                <div className="settings-row" key={index}>
+                  <div className="settings-row-copy hooks-command-copy">
+                    <code className="hooks-command">{cmd.command}</code>
+                    <p>
+                      {[
+                        cmd.matcher ? `匹配: ${cmd.matcher}` : "",
+                        cmd.async ? "异步" : "",
+                        cmd.timeout ? `超时: ${cmd.timeout}s` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "同步执行"}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** MCP 只读视图：当前层级配置的服务器列表 + 运行时状态 + 连接/断开 */
+function renderMcpServers(
+  mcpServers: Record<string, unknown> | undefined,
+  statuses: McpServerStatus[],
+  connecting: Record<string, boolean>,
+  onConnect: (name: string) => void,
+  onDisconnect: (name: string) => void,
+): React.ReactNode {
+  const entries = Object.entries(mcpServers ?? {});
+  if (entries.length === 0) {
+    return (
+      <div className="settings-empty-state">
+        <p>当前层级未配置 MCP 服务器。</p>
+        <p className="settings-empty-hint">
+          在 ~/.wave/mcp.json（用户级）或项目根 .mcp.json（项目级）中配置
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-mcp-list">
+      {entries.map(([name, cfg]) => {
+        const status = statuses.find((s) => s.name === name);
+        return (
+          <div className="settings-section" key={name}>
+            <div className="settings-card mcp-server-item">
+              <div className="settings-row">
+                <div className="settings-row-copy">
+                  <h3>
+                    <span
+                      className={`mcp-status-dot mcp-status-${status?.status ?? "disconnected"}`}
+                      title={status?.status ?? "disconnected"}
+                    />
+                    {name}
+                  </h3>
+                  <p>{describeMcpServer(cfg)}</p>
+                  {status?.error && (
+                    <p className="mcp-server-error">{status.error}</p>
+                  )}
+                  {status?.toolCount !== undefined &&
+                    status.status === "connected" && (
+                      <p className="mcp-server-tools">
+                        {status.toolCount} tools
+                      </p>
+                    )}
+                </div>
+                <div className="settings-control">
+                  {status &&
+                    (status.status === "disconnected" ||
+                      status.status === "error") && (
+                      <button
+                        type="button"
+                        className="settings-secondary-btn"
+                        onClick={() => onConnect(name)}
+                        disabled={connecting[name]}
+                      >
+                        {connecting[name] ? "连接中..." : "连接"}
+                      </button>
+                    )}
+                  {status?.status === "connected" && (
+                    <button
+                      type="button"
+                      className="settings-secondary-btn"
+                      onClick={() => onDisconnect(name)}
+                      disabled={connecting[name]}
+                    >
+                      {connecting[name] ? "断开中..." : "断开"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 描述 MCP 服务器配置（类型 + 命令或端点） */
+function describeMcpServer(cfg: unknown): string {
+  const config = cfg as Record<string, unknown> | undefined;
+  if (!config) return "";
+  const type = typeof config.type === "string" ? config.type : "stdio";
+  if (typeof config.url === "string" && config.url) {
+    return `类型: ${type} · 端点: ${config.url}`;
+  }
+  const command =
+    typeof config.command === "string" ? config.command : "未知命令";
+  const args = Array.isArray(config.args) ? config.args.join(" ") : "";
+  return `类型: ${type} · 命令: ${command}${args ? ` ${args}` : ""}`;
+}
 
 export default SettingsPage;

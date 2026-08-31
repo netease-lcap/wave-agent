@@ -318,6 +318,41 @@ class MessageHandler(
                 }
                 postMessage("projectSettings", buildJsonObject { put("enabledPlugins", enabledPlugins) })
             }
+            // Settings page hooks read-only view: fetch scope-scoped settings.json hooks.
+            "getHooksConfig" -> {
+                val scope = msg["scope"]?.jsonPrimitive?.content
+                val result = try {
+                    session.agent?.getHooksConfig(scope, currentWorkdir())
+                } catch (e: StdioClientException) {
+                    LOG.warn("getHooksConfig failed: ${e.message}")
+                    null
+                }
+                postMessage(
+                    "hooksConfigResponse",
+                    buildJsonObject {
+                        put("scope", scope ?: "user")
+                        put("hooks", result?.jsonObject?.get("hooks") ?: JsonNull)
+                    },
+                )
+            }
+            // Settings page MCP read-only view: fetch scope-scoped mcp.json config.
+            // Runtime status still comes from the existing getMcpServers RPC.
+            "getMcpConfig" -> {
+                val scope = msg["scope"]?.jsonPrimitive?.content
+                val result = try {
+                    session.agent?.getMcpConfig(scope, currentWorkdir())
+                } catch (e: StdioClientException) {
+                    LOG.warn("getMcpConfig failed: ${e.message}")
+                    null
+                }
+                postMessage(
+                    "mcpConfigResponse",
+                    buildJsonObject {
+                        put("scope", scope ?: "user")
+                        put("mcpServers", result?.jsonObject?.get("mcpServers") ?: JsonObject(emptyMap()))
+                    },
+                )
+            }
             // Toggle a builtin plugin (e.g. SDD) in project settings. Same restart path as
             // handlePluginMutation: persist, then reload the agent so changes apply immediately.
             "setBuiltinPluginEnabled" -> {

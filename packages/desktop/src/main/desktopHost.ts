@@ -3375,6 +3375,14 @@ export class DesktopHost {
         await this.handleGetProjectSettings(pid);
         break;
 
+      case "getHooksConfig":
+        await this.handleGetHooksConfig(pid, msg.scope as string | undefined);
+        break;
+
+      case "getMcpConfig":
+        await this.handleGetMcpConfig(pid, msg.scope as string | undefined);
+        break;
+
       case "setBuiltinPluginEnabled":
         await this.handleSetBuiltinPluginEnabled(
           pid,
@@ -4815,6 +4823,56 @@ export class DesktopHost {
       });
     } catch (error) {
       this.showToast({ message: `获取项目设置失败: ${error}` });
+    }
+  }
+
+  private async handleGetHooksConfig(
+    paneId: string,
+    scope?: string,
+  ): Promise<void> {
+    try {
+      const workdir =
+        this.agentForPane(paneId)?.workingDirectory ?? this.workdir;
+      const result = (await this.utilityClientFor(
+        this.hostForPane(paneId),
+      ).request("getHooksConfig", {
+        scope,
+        workdir,
+        sessionId: this.agentForPane(paneId)?.sessionId,
+      })) as { hooks?: Record<string, unknown> };
+      this.postMessage({
+        command: "hooksConfigResponse",
+        paneId,
+        scope: scope ?? "user",
+        hooks: result.hooks,
+      });
+    } catch (error) {
+      this.showToast({ message: `获取钩子配置失败: ${error}` });
+    }
+  }
+
+  private async handleGetMcpConfig(
+    paneId: string,
+    scope?: string,
+  ): Promise<void> {
+    try {
+      const workdir =
+        this.agentForPane(paneId)?.workingDirectory ?? this.workdir;
+      const result = (await this.utilityClientFor(
+        this.hostForPane(paneId),
+      ).request("getMcpConfig", {
+        scope,
+        workdir,
+        sessionId: this.agentForPane(paneId)?.sessionId,
+      })) as { mcpServers: Record<string, unknown> };
+      this.postMessage({
+        command: "mcpConfigResponse",
+        paneId,
+        scope: scope ?? "user",
+        mcpServers: result.mcpServers,
+      });
+    } catch (error) {
+      this.showToast({ message: `获取 MCP 配置失败: ${error}` });
     }
   }
 

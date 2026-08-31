@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import { join } from "path";
+import { homedir } from "os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
@@ -127,6 +128,7 @@ export class McpManager {
   private servers: Map<string, McpServerStatus> = new Map();
   private connections: Map<string, McpConnection> = new Map();
   private configPath: string = "";
+  private userConfigPath: string = "";
   private workdir: string = "";
   private callbacks: McpManagerCallbacks;
   private mcpServers: Record<string, McpServerConfig> | undefined;
@@ -163,6 +165,7 @@ export class McpManager {
     autoConnect: boolean = false,
   ): Promise<void> {
     this.configPath = join(workdir, ".mcp.json");
+    this.userConfigPath = join(homedir(), ".wave", "mcp.json");
     this.workdir = workdir;
 
     // Register constructor-provided servers before loading .mcp.json
@@ -223,24 +226,50 @@ export class McpManager {
     }
 
     try {
-      const configContent = await fs.readFile(this.configPath, "utf-8");
-      const rawConfig: McpConfig = JSON.parse(configContent);
-      const workspaceConfig = resolveMcpConfig(rawConfig, this.envSnapshot);
-
-      // Extract original (pre-resolution) URLs for safe display
+      // Read user-level (~/.wave/mcp.json) and project-level (.mcp.json)
+      // sources, then merge with project taking precedence for same-named
+      // servers (constructor-provided servers win over both).
+      const fileSources: McpConfig[] = [];
       const originalUrls: Record<string, string | undefined> = {};
-      for (const [name, serverConfig] of Object.entries(rawConfig.mcpServers)) {
-        originalUrls[name] = serverConfig.url;
+
+      const readSource = async (
+        path: string,
+        logLabel: string,
+      ): Promise<void> => {
+        try {
+          const content = await fs.readFile(path, "utf-8");
+          const raw = JSON.parse(content) as McpConfig;
+          fileSources.push(resolveMcpConfig(raw, this.envSnapshot));
+          for (const [name, serverConfig] of Object.entries(
+            raw.mcpServers ?? {},
+          )) {
+            originalUrls[name] = serverConfig.url;
+          }
+        } catch (error) {
+          // ENOENT = source not configured, skip silently
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            logger?.error(`Failed to load ${logLabel}:`, error);
+          }
+        }
+      };
+
+      await readSource(this.userConfigPath, "~/.wave/mcp.json");
+      await readSource(this.configPath, ".mcp.json");
+
+      // No file source, no previously registered (plugin/constructor) servers
+      // and no constructor option: nothing is configured anywhere.
+      if (fileSources.length === 0 && !this.config && !this.mcpServers) {
+        return null;
       }
 
-      // Merge workspace config with any existing config (e.g., from plugins or constructor)
-      // Constructor-provided servers take precedence, then workspace config, then existing config
+      // Merge: existing config (e.g. plugin servers) -> user -> project -> constructor
       const merged: McpConfig = { mcpServers: {} };
       if (this.config) {
         Object.assign(merged.mcpServers, this.config.mcpServers);
       }
-      Object.assign(merged.mcpServers, workspaceConfig.mcpServers);
-      // Constructor-provided servers override both for same names
+      for (const source of fileSources) {
+        Object.assign(merged.mcpServers, source.mcpServers);
+      }
       if (this.mcpServers) {
         Object.assign(merged.mcpServers, this.mcpServers);
       }
@@ -272,10 +301,7 @@ export class McpManager {
 
       return this.config;
     } catch (error) {
-      // Only log error if it's not a "file not found" error
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        logger?.error("Failed to load .mcp.json:", error);
-      }
+      logger?.error("Failed to load MCP configuration:", error);
       return null;
     }
   }

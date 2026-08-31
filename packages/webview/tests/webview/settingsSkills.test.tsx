@@ -66,12 +66,10 @@ function renderSettingsPage(vscode?: { postMessage: (msg: unknown) => void }) {
   render(
     <SettingsPage
       configurationData={null}
-      onSave={() => {}}
       onClose={() => {}}
       userAgentsContent={null}
       projectAgentsContent={null}
       onLoadAgentsContent={() => {}}
-      onSaveAgentsContent={() => {}}
       initialNav="skills"
       vscode={mockVscode}
     />,

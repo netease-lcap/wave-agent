@@ -327,6 +327,20 @@ export interface ProjectSettingsMessage extends HostToWebviewMessageBase {
   enabledPlugins: Record<string, boolean>;
 }
 
+/** Settings page hooks read-only view: scope-scoped settings.json hooks. */
+export interface HooksConfigResponseMessage extends HostToWebviewMessageBase {
+  command: "hooksConfigResponse";
+  scope: "user" | "project";
+  hooks?: Record<string, unknown>;
+}
+
+/** Settings page MCP read-only view: scope-scoped mcp.json servers config. */
+export interface McpConfigResponseMessage extends HostToWebviewMessageBase {
+  command: "mcpConfigResponse";
+  scope: "user" | "project";
+  mcpServers: Record<string, unknown>;
+}
+
 export interface SetInitialStateMessage extends HostToWebviewMessageBase {
   command: "setInitialState";
   messages: Message[];
@@ -652,6 +666,8 @@ export type HostToWebviewMessage =
   | PlanContentMessage
   | ConfigurationResponseMessage
   | ProjectSettingsMessage
+  | HooksConfigResponseMessage
+  | McpConfigResponseMessage
   | SetInitialStateMessage
   | DesktopThemeChangeMessage
   | ShowToastMessage

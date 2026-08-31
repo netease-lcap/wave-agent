@@ -8,10 +8,12 @@
  * `__wavePostMessage`/`__waveReceive` bridge in JetBrains).
  *
  * Protocol (same command names the chat webview already uses):
- * - webview → host: `getConfiguration`, `updateConfiguration`, `getAgentsContent`,
- *   `setAgentsContent`, `closeSettings`
- * - host → webview: `configurationResponse`, `configurationUpdated`, `configurationError`,
- *   `agentsContentResponse`, `agentsContentSaved`, `settingsState` (workdir push on open)
+ * - webview → host: `getConfiguration`, `getAgentsContent`, `getHooksConfig`,
+ *   `getMcpConfig`, `getMcpServers`, `connectMcpServer`, `disconnectMcpServer`,
+ *   `closeSettings`
+ * - host → webview: `configurationResponse`, `agentsContentResponse`,
+ *   `hooksConfigResponse`, `mcpConfigResponse`, `mcpServersResponse`,
+ *   `mcpServersUpdate`, `settingsState` (workdir push on open)
  */
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -35,8 +37,12 @@ function SettingsPreview() {
   const [projectAgentsContent, setProjectAgentsContent] = useState<
     string | null
   >(null);
-  const [saving, setSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [hooksConfig, setHooksConfig] = useState<
+    Partial<Record<"user" | "project", Record<string, unknown> | undefined>>
+  >({});
+  const [mcpConfig, setMcpConfig] = useState<
+    Partial<Record<"user" | "project", Record<string, unknown> | undefined>>
+  >({});
   // /agents、/skills 斜杠命令经 openSettings(nav) → settingsState 下发，选中对应选项卡
   const [initialNav, setInitialNav] = useState<NavKey | undefined>(undefined);
 
@@ -60,12 +66,6 @@ function SettingsPreview() {
         case "configurationResponse":
           setConfigurationData(msg.configurationData as ConfigurationData);
           break;
-        case "configurationUpdated":
-          setSaving(false);
-          break;
-        case "configurationError":
-          setSaving(false);
-          break;
         case "agentsContentResponse":
           if (msg.scope === "project") {
             setProjectAgentsContent(
@@ -77,14 +77,22 @@ function SettingsPreview() {
             );
           }
           break;
-        case "agentsContentSaved":
-          setSaving(false);
-          setSaveMessage(
-            msg.ok === true
-              ? "保存成功"
-              : `保存失败：${(msg.error as string) ?? "未知错误"}`,
-          );
+        case "hooksConfigResponse": {
+          const scope = msg.scope === "project" ? "project" : "user";
+          setHooksConfig((prev) => ({
+            ...prev,
+            [scope]: (msg.hooks as Record<string, unknown>) ?? undefined,
+          }));
           break;
+        }
+        case "mcpConfigResponse": {
+          const scope = msg.scope === "project" ? "project" : "user";
+          setMcpConfig((prev) => ({
+            ...prev,
+            [scope]: (msg.mcpServers as Record<string, unknown>) ?? {},
+          }));
+          break;
+        }
       }
     };
     window.addEventListener("message", handleMessage);
@@ -94,13 +102,6 @@ function SettingsPreview() {
   return (
     <SettingsPage
       configurationData={configurationData}
-      onSave={(data) => {
-        setSaving(true);
-        vscode.postMessage({
-          command: "updateConfiguration",
-          configurationData: data,
-        });
-      }}
       onClose={() => vscode.postMessage({ command: "closeSettings" })}
       userAgentsContent={userAgentsContent}
       projectAgentsContent={projectAgentsContent}
@@ -111,20 +112,17 @@ function SettingsPreview() {
           workdir: scope === "project" ? workdir : undefined,
         })
       }
-      onSaveAgentsContent={(scope, content) => {
-        setSaveMessage(null);
-        vscode.postMessage({
-          command: "setAgentsContent",
-          scope,
-          content,
-          workdir: scope === "project" ? workdir : undefined,
-        });
-      }}
       workdir={workdir}
-      saving={saving}
-      saveMessage={saveMessage}
       initialNav={initialNav}
       vscode={vscode}
+      hooksConfig={hooksConfig}
+      onLoadHooksConfig={(scope) =>
+        vscode.postMessage({ command: "getHooksConfig", scope, workdir })
+      }
+      mcpConfig={mcpConfig}
+      onLoadMcpConfig={(scope) =>
+        vscode.postMessage({ command: "getMcpConfig", scope, workdir })
+      }
     />
   );
 }
