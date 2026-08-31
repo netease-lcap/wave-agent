@@ -1,6 +1,6 @@
 ---
 name: "Webview 链接解析"
-description: "webview 消息 markdown 中链接的解析与点击行为：普通链接、行内代码内的 URL 提升为可点击链接"
+description: "webview 中链接的解析与点击行为：消息 markdown、行内代码内的 URL、bash 命令输出中的 URL"
 order: 245
 ---
 
@@ -8,7 +8,9 @@ order: 245
 
 **创建日期**：2026-08-21
 
-> 本规格覆盖 VS Code / JetBrains / Desktop 共享 webview（`packages/webview`）中消息 markdown 渲染的链接行为。链接点击后的宿主路由（desktop 的 localhost 预览面板分流）见 [桌面应用](desktop-app.md)，此处不重复。
+**最近更新**：2026-08-28（新增 bash 命令输出中的 URL 链接化）
+
+> 本规格覆盖 VS Code / JetBrains / Desktop 共享 webview（`packages/webview`）中链接的解析与点击行为，包括消息 markdown 渲染与 bash 命令输出。链接点击后的宿主路由（desktop 的 localhost 预览面板分流）见 [桌面应用](desktop-app.md)，此处不重复。
 
 ## 用户场景与测试 _（必填）_
 
@@ -30,9 +32,29 @@ order: 245
 
 ---
 
+## 用户故事：bash 命令输出中的 URL 可点击（优先级：P1）
+
+作为用户，我希望 bash 命令输出（`.bash-command-output`）中的 http(s) URL 被解析为可点击链接，且点击行为与消息文本链接一致（desktop 上 localhost 链接在预览面板打开、其余链接用系统浏览器，IDE 上按原生链接处理），以便运行本地服务或查看命令日志时直接点击访问，无需手动复制。
+
+**为什么是这个优先级**：运行 `python -m http.server`、`npm run dev` 等命令时，输出中的 `http://localhost:8000/` 类地址是高频操作目标；当前 bash 输出为纯文本、不可点击，用户只能复制粘贴。
+
+**独立测试**：渲染包含裸 URL（如 `Server running at http://localhost:8000/`）的 bash tool result，验证 URL 渲染为可点击链接、其余文本保持原样，点击行为与消息文本链接一致。
+
+**验收场景**：
+
+1. **假设** bash 命令输出含裸 http(s) URL（如 `Server started at http://localhost:8000/`），**当**渲染时，**则** URL 渲染为可点击链接，其余文本保持原样；点击行为与消息文本链接一致——desktop 上 localhost 链接在预览面板打开、其余链接用系统浏览器，IDE 上按原生链接处理。
+2. **假设** URL 首尾带标点（如 `visit https://example.com.` 或 `（https://example.com）`），**当**渲染时，**则**链接可点击，且首尾标点（含中文标点）不进入链接目标。
+3. **假设**输出含 `javascript:`、`file:` 等非 http(s) 协议、`<script>` 等 HTML 片段或 `&`、`<` 等需转义字符，**当**渲染时，**则**不生成链接，非 URL 文本经 HTML 转义后按原文展示，无注入风险。
+4. **假设**输出为纯文本无 URL（如错误信息），**当**渲染时，**则**保持原样展示，渲染路径无行为变化。
+5. **假设**命令输出为多行且部分行含 URL，**当**渲染时，**则**仅含 URL 的行内生成链接，其余行保持原样，换行结构不变。
+
+---
+
 ## 边界情况
 
+- **bash 命令输入行（`.bash-command-input`）里的 URL 怎么办？** 不处理——仅链接化输出（result），命令本身保持代码样式原文。命令是 agent 执行的代码而非用户阅读的地址。
+- **其他工具 result（`.result-raw`、`.lsp-output` 等）里的 URL 怎么办？** 不在本次范围内，保持纯文本；如后续需要可复用同一链接化函数扩展。
 - **行内代码内含多个 URL（如 `` `https://a.com https://b.com` ``）怎么办？** 内容整体不是单个 URL，保持代码原文、不生成链接，避免歧义。
 - **围栏代码块中的 URL 怎么办？** 不处理，保持代码块原文，用户仅期望行内代码场景。
 - **推理（reasoning）文本块中的行内代码怎么办？** 与助手文本一致——共用同一 markdown 渲染路径，行为自然对齐。
-- **安全如何保证？** 仅 http(s) 协议被提升为链接，`javascript:` 等危险协议不生成链接；渲染结果仍经 DOMPurify 过滤。
+- **安全如何保证？** 仅 http(s) 协议被提升为链接，`javascript:` 等危险协议不生成链接；非 URL 文本在注入前完整 HTML 转义；渲染结果仍经 DOMPurify 过滤。

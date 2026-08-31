@@ -567,6 +567,16 @@
   font-family: var(--vscode-editor-font-family);
 }
 
+.bash-command-output a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.bash-command-output a:hover {
+  color: var(--vscode-textLink-activeForeground);
+}
+
 .lsp-output {
   padding: 4px 8px;
   background-color: var(--vscode-textCodeBlock-background);
