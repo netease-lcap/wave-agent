@@ -850,6 +850,47 @@ describe("uploadFilesToArtifacts", () => {
       h.files.has(path.join(os.tmpdir(), "wave-artifacts", "note.txt")),
     ).toBe(false);
   });
+
+  it("echoes the originating paneId on uploadSuccess so a pane-scoped input can insert the chip", async () => {
+    // Regression: the reply must carry the request's paneId — the webview's
+    // MessageInput rejects uploadSuccess without a matching paneId for
+    // pane-scoped ChatApp instances (the desktop app renders every chat
+    // pane-scoped once a session is bound, so the chip silently never
+    // appeared in conversations with messages).
+    const { host, sent } = await readyHost();
+    const data = new TextEncoder().encode("hello").buffer;
+
+    await host.handleWebviewMessage({
+      command: "uploadFilesToArtifacts",
+      paneId: "pane-1",
+      files: [{ name: "note.txt", data }],
+    });
+
+    const success = sent("uploadSuccess").at(-1) as {
+      uploadedFiles: string[];
+      paneId?: string;
+    };
+    expect(success.paneId).toBe("pane-1");
+  });
+
+  it("falls back to the focused pane when the request carries no paneId", async () => {
+    // A request without paneId (e.g. the root, pre-pane instance) routes the
+    // reply to the focused pane — still deliverable because the root input's
+    // paneId guard only applies to pane-scoped instances.
+    const { host, sent } = await readyHost();
+    const data = new TextEncoder().encode("hello").buffer;
+
+    await host.handleWebviewMessage({
+      command: "uploadFilesToArtifacts",
+      files: [{ name: "note.txt", data }],
+    });
+
+    const success = sent("uploadSuccess").at(-1) as {
+      uploadedFiles: string[];
+      paneId?: string;
+    };
+    expect(success.paneId).toBe("pane-1");
+  });
 });
 
 // ---------------------------------------------------------------------------

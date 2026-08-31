@@ -3506,6 +3506,7 @@ export class DesktopHost {
       case "uploadFilesToArtifacts":
         await this.handleUploadFilesToArtifacts(
           msg.files as Array<{ name: string; data: ArrayBuffer }>,
+          pid,
         );
         break;
 
@@ -5058,6 +5059,7 @@ export class DesktopHost {
 
   private async handleUploadFilesToArtifacts(
     files: Array<{ name: string; data: ArrayBuffer }>,
+    paneId?: string,
   ): Promise<void> {
     try {
       const host = this.currentHost;
@@ -5109,6 +5111,7 @@ export class DesktopHost {
           command: "uploadSuccess",
           uploadedFiles,
           message: `成功上传 ${uploadedFiles.length} 个文件到临时目录`,
+          ...(paneId !== undefined ? { paneId } : {}),
         });
       }
       if (errors.length > 0) {
@@ -5116,6 +5119,7 @@ export class DesktopHost {
           command: "uploadError",
           errors,
           message: `部分文件上传失败: ${errors.length} 个错误`,
+          ...(paneId !== undefined ? { paneId } : {}),
         });
       }
     } catch (error) {
@@ -5123,6 +5127,7 @@ export class DesktopHost {
       this.postMessage({
         command: "uploadError",
         error: `文件上传处理失败: ${error}`,
+        ...(paneId !== undefined ? { paneId } : {}),
       });
     }
   }
