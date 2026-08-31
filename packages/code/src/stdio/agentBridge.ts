@@ -31,7 +31,10 @@ import {
   type QueuedMessage,
   type SessionMetadata,
   type McpServerConfig,
+  type McpConfig,
   type Scope,
+  type PartialHookConfiguration,
+  isValidHookEvent,
   listSessions,
   searchFiles,
   generateRandomName,
@@ -43,6 +46,9 @@ import {
   validateWorktreeRemovalPath,
   type SlashCommand,
   loadUserConfigEnv,
+  loadWaveConfigFromFile,
+  getUserConfigPaths,
+  getProjectConfigPaths,
   type SubagentConfiguration,
   type SkillMetadata,
 } from "wave-agent-sdk";
@@ -53,7 +59,7 @@ import {
   METHOD_NOT_FOUND as PROTOCOL_METHOD_NOT_FOUND,
 } from "./protocol.js";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, existsSync, writeFileSync } from "node:fs";
+import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
@@ -325,6 +331,18 @@ export class AgentBridge {
         );
       case "getProjectSettings":
         return this.getProjectSettings(
+          p.workdir as string | undefined,
+          sessionId,
+        );
+      case "getHooksConfig":
+        return this.getHooksConfig(
+          p.scope as "user" | "project" | undefined,
+          p.workdir as string | undefined,
+          sessionId,
+        );
+      case "getMcpConfig":
+        return this.getMcpConfig(
+          p.scope as "user" | "project" | undefined,
           p.workdir as string | undefined,
           sessionId,
         );
@@ -1511,6 +1529,81 @@ export class AgentBridge {
         sessionId,
       ).getMergedEnabledPlugins(),
     };
+  }
+
+  /**
+   * Read the hooks fragment from a single config scope (user or project), for
+   * the settings page read-only hooks view. Hooks come from settings.json
+   * (user: ~/.wave/settings.json; project: .wave/settings.json +
+   * settings.local.json merged, append per event).
+   */
+  private async getHooksConfig(
+    scope: "user" | "project" | undefined,
+    workdir?: string,
+    sessionId?: string,
+  ): Promise<{ hooks: PartialHookConfiguration | undefined }> {
+    const resolvedScope = scope ?? "user";
+
+    if (resolvedScope === "user") {
+      const config = loadWaveConfigFromFile(getUserConfigPaths()[0]);
+      return { hooks: config?.hooks };
+    }
+
+    const resolvedWorkdir =
+      workdir || this.getSessionWorkdir(sessionId) || process.cwd();
+    const [localPath, jsonPath] = getProjectConfigPaths(resolvedWorkdir);
+    const hooks: PartialHookConfiguration = {};
+    for (const config of [
+      loadWaveConfigFromFile(jsonPath),
+      loadWaveConfigFromFile(localPath),
+    ]) {
+      if (!config?.hooks) continue;
+      for (const [event, eventConfigs] of Object.entries(config.hooks)) {
+        if (!isValidHookEvent(event)) continue;
+        hooks[event] = [...(hooks[event] ?? []), ...(eventConfigs ?? [])];
+      }
+    }
+    return { hooks: Object.keys(hooks).length > 0 ? hooks : undefined };
+  }
+
+  /**
+   * Read the mcpServers fragment from a single config scope (user or project),
+   * for the settings page read-only MCP view. MCP servers come from mcp.json
+   * (user: ~/.wave/mcp.json; project: <workdir>/.mcp.json). Runtime status
+   * (connect/disconnect/tools) is served by the existing getMcpServers RPC.
+   */
+  private async getMcpConfig(
+    scope: "user" | "project" | undefined,
+    workdir?: string,
+    sessionId?: string,
+  ): Promise<{ mcpServers: Record<string, McpServerConfig> }> {
+    const resolvedScope = scope ?? "user";
+
+    if (resolvedScope === "user") {
+      return {
+        mcpServers: this.readMcpServersFile(
+          join(homedir(), ".wave", "mcp.json"),
+        ),
+      };
+    }
+
+    const resolvedWorkdir =
+      workdir || this.getSessionWorkdir(sessionId) || process.cwd();
+    return {
+      mcpServers: this.readMcpServersFile(join(resolvedWorkdir, ".mcp.json")),
+    };
+  }
+
+  private readMcpServersFile(
+    filePath: string,
+  ): Record<string, McpServerConfig> {
+    try {
+      if (!existsSync(filePath)) return {};
+      const raw = JSON.parse(readFileSync(filePath, "utf-8")) as McpConfig;
+      return raw.mcpServers ?? {};
+    } catch {
+      return {};
+    }
   }
 
   private async setBuiltinPluginEnabled(

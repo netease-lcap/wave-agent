@@ -142,7 +142,7 @@ describe("Model, Status, and Login Commands", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("desktop 模式打开设置页「全局设置」选项卡并保存配置", async () => {
+    it("desktop 模式打开设置页「全局设置」选项卡并只读展示配置", async () => {
       const mockVscode = createMockVscode();
       const host = {
         type: "desktop",
@@ -169,7 +169,7 @@ describe("Model, Status, and Login Commands", () => {
       );
       sendHostMessage(fixtures.authStatusResponse());
       sendCommand("configurationResponse", {
-        configurationData: { language: "zh-CN" },
+        configurationData: { language: "zh-CN", contextLength: 200 },
       });
 
       const input = screen.getByTestId("message-input");
@@ -185,39 +185,25 @@ describe("Model, Status, and Login Commands", () => {
       });
       fireEvent.keyDown(input, { key: "Enter" });
 
-      // 设置页「全局设置」选项卡激活（导航项 is-active 且内容区渲染语言选择）
+      // 设置页「全局设置」选项卡激活（导航项 is-active 且内容区只读展示语言）
       expect(
         await screen.findByText("管理 Wave 的界面、模型和基础行为。"),
       ).toBeInTheDocument();
       const navItem = screen.getByRole("button", { name: /全局设置/ });
       expect(navItem).toHaveClass("is-active");
 
-      const languageSelect = document.querySelector(
-        ".settings-select",
-      ) as HTMLSelectElement;
-      expect(languageSelect).toBeInTheDocument();
-      await act(async () => {
-        fireEvent.change(languageSelect, { target: { value: "en-US" } });
-      });
-
-      const saveButton = document.querySelector(
-        ".settings-save-btn",
-      ) as HTMLButtonElement;
-      mockVscode.postMessage.mockClear();
-      await act(async () => {
-        fireEvent.click(saveButton);
-      });
-
-      await waitFor(() => {
-        expect(mockVscode.postMessage).toHaveBeenCalledWith(
-          expect.objectContaining({
-            command: "updateConfiguration",
-            configurationData: expect.objectContaining({
-              language: "en-US",
-            }),
-          }),
-        );
-      });
+      // 只读展示：无 select/input/保存按钮，当前值以文本呈现
+      expect(
+        document.querySelector(".settings-select"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("中文")).toBeInTheDocument();
+      expect(screen.getByText("200 K")).toBeInTheDocument();
+      expect(
+        document.querySelector(".settings-save-btn"),
+      ).not.toBeInTheDocument();
+      expect(mockVscode.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ command: "updateConfiguration" }),
+      );
     });
   });
 });

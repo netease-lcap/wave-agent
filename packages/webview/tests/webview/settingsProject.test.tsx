@@ -11,12 +11,10 @@ function renderProjectView(options?: {
   render(
     <SettingsPage
       configurationData={{ language: "zh-CN" }}
-      onSave={() => {}}
       onClose={() => {}}
       userAgentsContent={null}
       projectAgentsContent={null}
       onLoadAgentsContent={() => {}}
-      onSaveAgentsContent={() => {}}
       initialNav="project"
       projectSettings={options?.projectSettings}
       onLoadProjectSettings={onLoadProjectSettings}

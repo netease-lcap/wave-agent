@@ -621,6 +621,17 @@ export interface ChatState {
   // Project-scoped settings (read from .wave/settings.json merged config via
   // stdio RPC). Holds the merged enabledPlugins map for the 项目设置 view.
   projectSettings?: { enabledPlugins: Record<string, boolean> };
+  // Scope-scoped hooks config (settings.json hooks) for the settings page
+  // read-only hooks view (loaded per scope via the getHooksConfig RPC).
+  hooksConfig?: Partial<
+    Record<"user" | "project", Record<string, unknown> | undefined>
+  >;
+  // Scope-scoped MCP servers config (mcp.json) for the settings page read-only
+  // MCP view (loaded per scope via the getMcpConfig RPC; runtime status comes
+  // from the existing getMcpServers RPC).
+  mcpConfig?: Partial<
+    Record<"user" | "project", Record<string, unknown> | undefined>
+  >;
   // Permission mode state
   permissionMode?: PermissionMode;
   // Attached images state
@@ -776,6 +787,17 @@ export type ChatAction =
   | {
       type: "SET_PROJECT_SETTINGS";
       payload: { enabledPlugins: Record<string, boolean> };
+    }
+  | {
+      type: "SET_HOOKS_CONFIG";
+      payload: { scope: "user" | "project"; hooks?: Record<string, unknown> };
+    }
+  | {
+      type: "SET_MCP_CONFIG";
+      payload: {
+        scope: "user" | "project";
+        mcpServers?: Record<string, unknown>;
+      };
     }
   | { type: "UPDATE_SELECTION"; payload: SelectionInfo | undefined }
   | { type: "SET_PERMISSION_MODE"; payload: PermissionMode }

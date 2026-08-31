@@ -497,6 +497,146 @@
   width: 120px;
 }
 
+/* ---- Read-only value (settings page is a read-only browser) ---- */
+
+.settings-readonly-value {
+  color: var(--vscode-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+/* ---- Hooks read-only view ---- */
+
+.settings-hooks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.hooks-event-heading {
+  align-items: baseline;
+  gap: 8px;
+}
+
+.hooks-event-key {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.hooks-command-copy {
+  max-width: 100%;
+}
+
+.hooks-command {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  color: var(--vscode-foreground);
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: 4px;
+  padding: 4px 8px;
+  display: block;
+  overflow-wrap: break-word;
+  word-break: break-all;
+}
+
+/* ---- MCP read-only view ---- */
+
+.settings-mcp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mcp-server-item .settings-row {
+  align-items: flex-start;
+}
+
+.mcp-server-item h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mcp-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.mcp-status-dot.mcp-status-connected {
+  background: var(--vscode-testing-iconPassed, #89d185);
+}
+
+.mcp-status-dot.mcp-status-connecting,
+.mcp-status-dot.mcp-status-reconnecting {
+  background: var(--vscode-charts-foreground, #aaaaaa);
+}
+
+.mcp-status-dot.mcp-status-error {
+  background: var(--vscode-errorForeground, #f14c4c);
+}
+
+.mcp-status-dot.mcp-status-disconnected {
+  background: var(--vscode-disabledForeground, #6e6e6e);
+}
+
+.mcp-server-error {
+  color: var(--vscode-errorForeground);
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+.mcp-server-tools {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+.settings-secondary-btn {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: 1px solid var(--vscode-button-secondaryBorder, transparent);
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.settings-secondary-btn:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.settings-secondary-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- Empty state ---- */
+
+.settings-empty-state {
+  padding: 32px 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 13px;
+}
+
+.settings-empty-state p {
+  margin: 0 0 4px;
+}
+
+.settings-empty-hint {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
 /* ---- Coming-soon placeholder ---- */
 
 .settings-placeholder {

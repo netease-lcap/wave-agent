@@ -44,7 +44,6 @@ import { FilePane } from "./FilePane";
 import { PlanPane } from "./PlanPane";
 import type {
   ChatAppProps,
-  ConfigurationData,
   ConfirmationDecision,
   DesktopPanelKind,
   FileViewState,
@@ -387,12 +386,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [projectAgentsContent, setProjectAgentsContent] = useState<
     string | null
   >(null);
-  // Last save outcome for the AGENTS.md editor feedback (null = idle).
-  const [agentsSaveFeedback, setAgentsSaveFeedback] = useState<{
-    ok: boolean;
-    scope: "user" | "project";
-    error?: string;
-  } | null>(null);
   const expandBtn =
     paneId === undefined && sidebarCollapsed ? (
       <SidebarExpandButton
@@ -1001,6 +994,27 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             payload: { enabledPlugins: message.enabledPlugins },
           });
           break;
+        case "hooksConfigResponse":
+          // Scope-scoped settings.json hooks for the settings page read-only
+          // hooks view — pane-guarded like projectSettings (per-workdir on Desktop).
+          if (!forThisPane(message)) break;
+          dispatch({
+            type: "SET_HOOKS_CONFIG",
+            payload: { scope: message.scope, hooks: message.hooks },
+          });
+          break;
+        case "mcpConfigResponse":
+          // Scope-scoped mcp.json servers config for the settings page read-only
+          // MCP view — pane-guarded like projectSettings.
+          if (!forThisPane(message)) break;
+          dispatch({
+            type: "SET_MCP_CONFIG",
+            payload: {
+              scope: message.scope,
+              mcpServers: message.mcpServers,
+            },
+          });
+          break;
         case "setInitialState":
           if (!forThisPane(message)) break;
           // Desktop plan panel: replayed pending confirmations (pane rebind to a
@@ -1253,14 +1267,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             );
           }
           break;
-        case "agentsContentSaved":
-          setAgentsSaveFeedback({
-            ok: message.ok === true,
-            scope: message.scope === "project" ? "project" : "user",
-            error:
-              typeof message.error === "string" ? message.error : undefined,
-          });
-          break;
         case "loginResponse":
           if (message.success) {
             dispatch({ type: "SET_AUTHENTICATED", payload: true });
@@ -1501,23 +1507,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setSessionBoardOpen(false);
   }, []);
 
-  // Batch 2 AGENTS.md editor save (settings 个性化 view): writes the file via
-  // the setAgentsContent RPC; the agentsContentSaved push reports the outcome
-  // and the editor shows feedback (spec 场景 7). The project scope carries the
-  // current workdir so the host resolves <workdir>/AGENTS.md.
-  const handleSaveAgentsContent = useCallback(
-    (scope: "user" | "project", content: string) => {
-      setAgentsSaveFeedback(null);
-      vscode.postMessage({
-        command: "setAgentsContent",
-        scope,
-        content,
-        workdir: scope === "project" ? effectiveWorkdir : undefined,
-      });
-    },
-    [vscode, effectiveWorkdir],
-  );
-
   const handleSendMessage = useCallback(
     (
       text: string,
@@ -1753,18 +1742,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const handleCancelQueuedEdit = useCallback(() => {
     dispatch({ type: "SET_EDITING_QUEUED_ID", payload: null });
   }, []);
-
-  // Configuration handlers
-  const handleConfigurationSave = useCallback(
-    (configData: ConfigurationData) => {
-      dispatch({ type: "SET_CONFIGURATION_LOADING", payload: true });
-      vscode.postMessage({
-        command: "updateConfiguration",
-        configurationData: configData,
-      });
-    },
-    [vscode],
-  );
 
   const handleDialogClose = useCallback(() => {
     dispatch({ type: "HIDE_DIALOG" });
@@ -2610,7 +2587,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const settingsPage = isDesktop ? (
     <SettingsPage
       configurationData={state.configurationData ?? null}
-      onSave={handleConfigurationSave}
       onClose={handleCloseSettings}
       userAgentsContent={userAgentsContent}
       projectAgentsContent={projectAgentsContent}
@@ -2621,21 +2597,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           workdir: scope === "project" ? effectiveWorkdir : undefined,
         })
       }
-      onSaveAgentsContent={handleSaveAgentsContent}
       workdir={effectiveWorkdir}
-      saving={state.configurationLoading}
-      saveMessage={
-        agentsSaveFeedback
-          ? agentsSaveFeedback.ok
-            ? "保存成功"
-            : `保存失败：${agentsSaveFeedback.error ?? "未知错误"}`
-          : null
-      }
       initialNav={settingsNav}
       vscode={vscode}
       projectSettings={state.projectSettings}
       onLoadProjectSettings={() =>
         postToHost({ command: "getProjectSettings" })
+      }
+      hooksConfig={state.hooksConfig}
+      onLoadHooksConfig={(scope) =>
+        postToHost({ command: "getHooksConfig", scope })
+      }
+      mcpConfig={state.mcpConfig}
+      onLoadMcpConfig={(scope) =>
+        postToHost({ command: "getMcpConfig", scope })
       }
       onToggleBuiltinPlugin={(pluginId, enabled) =>
         postToHost({

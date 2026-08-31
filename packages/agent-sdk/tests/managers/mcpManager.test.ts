@@ -151,6 +151,67 @@ describe("McpManager", () => {
       expect(Object.keys(config!.mcpServers)).toHaveLength(2);
     });
 
+    it("should load user-level servers from ~/.wave/mcp.json when project has none", async () => {
+      const { promises: fs } = await import("fs");
+
+      const userConfig = {
+        mcpServers: {
+          "user-server": { command: "user-mcp" },
+        },
+      };
+      // 项目 .mcp.json 不存在（ENOENT），仅用户级 ~/.wave/mcp.json 存在
+      vi.mocked(fs.readFile).mockImplementation(async (path) => {
+        if (String(path).includes(".mcp.json")) {
+          const err = new Error("not found") as NodeJS.ErrnoException;
+          err.code = "ENOENT";
+          throw err;
+        }
+        return JSON.stringify(userConfig);
+      });
+
+      await mcpManager.loadConfig();
+      const config = mcpManager.getConfig();
+
+      expect(config?.mcpServers).toHaveProperty("user-server");
+      // 用户级路径为 ~/.wave/mcp.json
+      expect(fs.readFile).toHaveBeenCalledWith(
+        expect.stringContaining(".wave"),
+        "utf-8",
+      );
+    });
+
+    it("should let project .mcp.json override user-level same-named server", async () => {
+      const { promises: fs } = await import("fs");
+
+      const userConfig = {
+        mcpServers: {
+          "shared-server": { command: "user-mcp", args: ["--user"] },
+        },
+      };
+      const projectConfig = {
+        mcpServers: {
+          "shared-server": { command: "project-mcp" },
+          "project-only": { command: "project-only-mcp" },
+        },
+      };
+      vi.mocked(fs.readFile).mockImplementation(async (path) => {
+        // 用户级 = ~/.wave/mcp.json；项目级 = <workdir>/.mcp.json
+        if (String(path).includes(".mcp.json")) {
+          return JSON.stringify(projectConfig);
+        }
+        return JSON.stringify(userConfig);
+      });
+
+      await mcpManager.loadConfig();
+      const config = mcpManager.getConfig();
+
+      expect(config?.mcpServers["shared-server"]).toEqual({
+        command: "project-mcp",
+      });
+      expect(config?.mcpServers["project-only"]).toBeDefined();
+      expect(Object.keys(config!.mcpServers)).toHaveLength(2);
+    });
+
     it("should preserve plugin server status when merging", async () => {
       const { promises: fs } = await import("fs");
 

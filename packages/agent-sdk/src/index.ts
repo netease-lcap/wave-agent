@@ -35,7 +35,12 @@ export * from "./utils/worktreeUtils.js";
 export {
   loadMergedWaveConfig,
   loadUserConfigEnv,
+  loadWaveConfigFromFile,
 } from "./services/configurationService.js";
+export {
+  getUserConfigPaths,
+  getProjectConfigPaths,
+} from "./utils/configPaths.js";
 export * from "./types/index.js";
 
 // Export subagent types (used by CLI /agents overlay)
