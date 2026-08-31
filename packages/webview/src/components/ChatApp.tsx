@@ -49,10 +49,12 @@ import type {
   ConfirmationDecision,
   DesktopPanelKind,
   FileViewState,
+  ToolBlock,
   ToolBlockUpdateCallbackParams,
   UpdateToast,
 } from "../types";
 import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/dist/constants/tools.js";
+import { collectWriteEditBlocks, pathsMatch } from "../utils/fileAutoRefresh";
 import { chatReducer, initialState } from "../reducers/chatReducer";
 import "../styles/ChatApp.css";
 
@@ -2137,6 +2139,44 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     },
     [isDesktop, tryOpenPanel, effectiveHost, postToHost, vscode],
   );
+
+  // Desktop file panel auto-refresh (spec: 文件面板自动刷新): when the agent
+  // finishes a Write/Edit on the file currently shown, re-read it (soft refresh
+  // via the same openFile → desktopFileContent chain, so the host resolves the
+  // path and the panel keeps its old content until the reply lands). Only the
+  // FIRST observation of a block's completion triggers a refresh: each block's
+  // last-seen stage is remembered, so a repeated end-state update (result
+  // enrichment, images) or switching back to a session whose history already
+  // contains the block never re-fires.
+  const fileToolStagesRef = useRef<Map<string, ToolBlock["stage"]>>(new Map());
+  useEffect(() => {
+    if (!isDesktop) return;
+    const path = fileViewRef.current?.path;
+    const workdir = effectiveWorkdirRef.current;
+    const stages = fileToolStagesRef.current;
+    for (const ref of collectWriteEditBlocks(state.messages)) {
+      const key = `${ref.messageId}:${ref.blockId}`;
+      const prev = stages.get(key);
+      const completed = ref.stage === "end" && ref.success === true;
+      if (prev === undefined) {
+        // First observation (history loaded via setInitialState/SET_MESSAGES or
+        // the block's earlier stages arrived): record, never fire for a block
+        // that is already completed on arrival.
+        stages.set(key, ref.stage);
+        continue;
+      }
+      if (
+        prev !== "end" &&
+        completed &&
+        ref.targetPath &&
+        path &&
+        pathsMatch(ref.targetPath, path, workdir)
+      ) {
+        handleOpenFile(path);
+      }
+      stages.set(key, ref.stage);
+    }
+  }, [state.messages, isDesktop, handleOpenFile]);
 
   // Local sessions only: leave the panel and open the file in the OS default
   // app (remote hosts have no local file — the button is hidden).
