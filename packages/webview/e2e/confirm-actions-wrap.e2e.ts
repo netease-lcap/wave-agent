@@ -15,19 +15,22 @@ test.describe("Confirmation actions wrap", () => {
     first: boolean,
   ) {
     const injector = new MessageInjector(webviewPage);
+    // ChatApp renders the input area (and the confirmation dialog) only once
+    // initialized — the loading sweep keeps it hidden until setInitialState —
+    // so both tests initialize up front, matching the real host flow.
+    await injector.simulateExtensionMessage("setInitialState", {
+      messages: [],
+      isStreaming: false,
+      sessions: [],
+      configurationData: {
+        apiKey: "sk-ant-api03-CXB9pH2k...mH8wQz",
+        baseURL: "https://api.anthropic.com/v1",
+        model: "claude-sonnet-4-20250514",
+        fastModel: "claude-haiku-4-20250514",
+      },
+      permissionMode: "default",
+    });
     if (first) {
-      await injector.simulateExtensionMessage("setInitialState", {
-        messages: [],
-        isStreaming: false,
-        sessions: [],
-        configurationData: {
-          apiKey: "sk-ant-api03-CXB9pH2k...mH8wQz",
-          baseURL: "https://api.anthropic.com/v1",
-          model: "claude-sonnet-4-20250514",
-          fastModel: "claude-haiku-4-20250514",
-        },
-        permissionMode: "default",
-      });
       const msg: Message = {
         id: "msg_wrap_bash",
         role: "assistant",

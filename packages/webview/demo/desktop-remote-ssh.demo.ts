@@ -195,6 +195,10 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
       hosts: REMOTE_HOSTS,
     });
     await injector.waitForChatAppReady();
+    // Initialize so the input area renders — the loading sweep keeps it
+    // hidden until setInitialState (no conversation messages here to bring
+    // it up, and the scenario intentionally has no workdir yet).
+    await injector.simulateExtensionMessage("setInitialState", initialState);
 
     await webviewPage.getByTestId("desktop-workdir").click();
     await webviewPage.getByTestId("desktop-workdir-browse").click();

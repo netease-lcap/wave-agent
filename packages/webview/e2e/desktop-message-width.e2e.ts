@@ -30,15 +30,21 @@ test.describe("Desktop message column width", () => {
     // Wide window so the 800px cap leaves visible gutters on both sides.
     await webviewPage.setViewportSize({ width: 1280, height: 800 });
 
-    await injector.simulateExtensionMessage("setInitialState", initialState);
+    // The desktop layout only mounts ChatApp after desktopWorkdirState, so
+    // push the initial state only once the mount's message listener exists
+    // (webviewReady) — a setInitialState sent before that lands in the gap
+    // and is dropped, leaving ChatApp uninitialized with the input area
+    // hidden behind the loading sweep.
     await injector.simulateExtensionMessage("desktopWorkdirState", {
       workdir: WORKDIR,
       recentWorkdirs: [WORKDIR],
     });
+    await injector.waitForChatAppReady();
+    await injector.simulateExtensionMessage("setInitialState", initialState);
 
-    // Wait for the desktop layout to mount ChatApp and attach its message
-    // listener before pushing messages — otherwise updateMessages lands in
-    // the gap before workdirState triggers the mount and is dropped.
+    // Wait for the layout to attach its message listener before pushing
+    // messages — otherwise updateMessages lands in the gap before workdirState
+    // triggers the mount and is dropped.
     await expect(webviewPage.getByTestId("desktop-workdir")).toBeVisible();
 
     await injector.updateMessages([
