@@ -582,7 +582,7 @@ describe("session-level panel groups", () => {
     lastActiveAt: Date.now(),
     hasWorktree: false,
   });
-  const pushPanes = (sessionId?: string) =>
+  const pushPanes = (sessionId?: string) => {
     sendHostMessage(
       fixtures.desktopPanes({
         panes: [
@@ -591,6 +591,11 @@ describe("session-level panel groups", () => {
         focusedPaneId: "pane-1",
       }),
     );
+    // The pane-scoped ChatApp mounts on desktopPanes; initialize it so the
+    // input area renders (pane-scoped instances only accept paneId-tagged
+    // messages).
+    sendCommand("setInitialState", { messages: [], paneId: "pane-1" });
+  };
   const pushTree = (ids: string[]) =>
     sendHostMessage(
       fixtures.desktopSessionTree({
@@ -1561,6 +1566,10 @@ describe("desktop plan panel", () => {
         focusedPaneId: "pane-1",
       }),
     );
+    // The pane-scoped ChatApp mounts on desktopPanes; initialize it (pane-
+    // tagged snapshot) so the input area — and the confirmation dialogs that
+    // render inside it — appear instead of the sweep loading animation.
+    sendCommand("setInitialState", { messages: [], paneId: "pane-1" });
 
     const ask = (
       toolName: string,

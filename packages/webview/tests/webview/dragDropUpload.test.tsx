@@ -29,6 +29,9 @@ function renderPane(paneId: string) {
       paneId={paneId}
     />,
   );
+  // Initialize the pane-scoped instance (pane-tagged snapshot) so the input
+  // area renders instead of the sweep loading animation.
+  sendCommand("setInitialState", { messages: [], paneId });
   return {
     vscode: vscode as unknown as ReturnType<typeof createMockVscode>,
     ...view,

@@ -2457,140 +2457,150 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         />
       )}
 
-      <div
-        className={`input-area-container${isDesktop && state.pendingConfirmations.length > 0 ? " input-area-container--confirm" : ""}`}
-      >
+      {/* 扫光加载动画期间（初始状态尚未就绪且无消息）不展示输入区域，
+          只让 LoadingLogo 单独占据主体；就绪后由欢迎页/消息列表带出输入框。 */}
+      {showWelcomeReady || !showWelcome ? (
         <div
-          style={{
-            display: state.pendingConfirmations.length === 0 ? "block" : "none",
-          }}
+          className={`input-area-container${isDesktop && state.pendingConfirmations.length > 0 ? " input-area-container--confirm" : ""}`}
         >
-          <TaskList
-            // 按会话 id 重挂载：切换会话时重置“观察过未完成任务”的跟踪，
-            // 使全部已完成的新会话立即隐藏，而不是沿用上一会话的 5 秒宽限
-            key={state.currentSession?.id}
-            tasks={state.tasks}
-            isCollapsed={state.isTaskListCollapsed}
-            onToggleCollapse={() =>
-              dispatch({ type: "TOGGLE_TASK_LIST_COLLAPSE" })
-            }
-          />
-          <QueuedMessageList
-            queuedMessages={state.queuedMessages}
-            isCollapsed={state.isQueueCollapsed}
-            onToggleCollapse={() => dispatch({ type: "TOGGLE_QUEUE_COLLAPSE" })}
-            onEdit={handleEditQueuedMessage}
-            onSend={handleSendQueuedMessage}
-            onDelete={handleDeleteQueuedMessage}
-            editingQueuedId={state.editingQueuedId}
-            vscode={vscode}
-          />
-        </div>
+          <div
+            style={{
+              display:
+                state.pendingConfirmations.length === 0 ? "block" : "none",
+            }}
+          >
+            <TaskList
+              // 按会话 id 重挂载：切换会话时重置“观察过未完成任务”的跟踪，
+              // 使全部已完成的新会话立即隐藏，而不是沿用上一会话的 5 秒宽限
+              key={state.currentSession?.id}
+              tasks={state.tasks}
+              isCollapsed={state.isTaskListCollapsed}
+              onToggleCollapse={() =>
+                dispatch({ type: "TOGGLE_TASK_LIST_COLLAPSE" })
+              }
+            />
+            <QueuedMessageList
+              queuedMessages={state.queuedMessages}
+              isCollapsed={state.isQueueCollapsed}
+              onToggleCollapse={() =>
+                dispatch({ type: "TOGGLE_QUEUE_COLLAPSE" })
+              }
+              onEdit={handleEditQueuedMessage}
+              onSend={handleSendQueuedMessage}
+              onDelete={handleDeleteQueuedMessage}
+              editingQueuedId={state.editingQueuedId}
+              vscode={vscode}
+            />
+          </div>
 
-        <div
-          style={{
-            display: state.pendingConfirmations.length === 0 ? "block" : "none",
-          }}
-        >
-          <MessageInput
-            ref={messageInputRef}
-            onSendMessage={handleSendMessage}
-            isStreaming={state.isStreaming}
-            onAbortMessage={handleAbortMessage}
-            onSubmitQueuedEdit={handleSubmitQueuedEdit}
-            editingQueuedId={state.editingQueuedId}
-            onCancelQueuedEdit={handleCancelQueuedEdit}
-            shouldClearInput={state.shouldClearInput}
-            onInputCleared={handleInputCleared}
-            vscode={vscode}
-            selection={state.selection}
-            inputContent={state.inputContent}
-            sessionId={state.currentSession?.id}
-            permissionMode={state.permissionMode}
-            initialAttachedImages={state.attachedImages}
-            paneId={paneId}
-            contextUsage={contextUsage}
-            onCompress={hasVisibleMessages ? handleCompress : undefined}
-            disabled={host?.type === "desktop" && !effectiveWorkdir}
-            workdirSelector={
-              host?.type === "desktop" && !hasVisibleMessages ? (
-                <>
-                  <DesktopHostSelector
-                    host={effectiveHost}
-                    hosts={host.hosts}
-                    onSelectHost={host.onSelectHost}
-                    onAddHost={host.onAddHost}
-                  />
-                  <DesktopWorkdirSelector
-                    host={effectiveHost}
-                    workdir={pickerWorkdir}
-                    recentWorkdirs={host.recentWorkdirs}
-                    onSelectWorkdir={host.onSelectWorkdir}
-                    onSelectRemotePath={(path) =>
-                      host.onSelectRemotePath(path, effectiveHost)
-                    }
-                    onListRemoteDir={(path, requestId) =>
-                      host.onListRemoteDir(path, effectiveHost, requestId)
-                    }
-                    onSelectRecentWorkdir={host.onSelectRecentWorkdir}
-                    onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
-                  />
-                  {pickerWorkdir && (gitBranches || branchesLoading) && (
-                    <DesktopWorktreeControls
-                      branches={gitBranches?.branches ?? []}
-                      branch={worktreeBranch || gitBranches?.current || ""}
-                      worktreeChecked={worktreeChecked}
-                      creating={worktreeCreating}
-                      loading={!gitBranches && branchesLoading}
-                      onBranchChange={setWorktreeBranch}
-                      onWorktreeChange={setWorktreeChecked}
+          <div
+            style={{
+              display:
+                state.pendingConfirmations.length === 0 ? "block" : "none",
+            }}
+          >
+            <MessageInput
+              ref={messageInputRef}
+              onSendMessage={handleSendMessage}
+              isStreaming={state.isStreaming}
+              onAbortMessage={handleAbortMessage}
+              onSubmitQueuedEdit={handleSubmitQueuedEdit}
+              editingQueuedId={state.editingQueuedId}
+              onCancelQueuedEdit={handleCancelQueuedEdit}
+              shouldClearInput={state.shouldClearInput}
+              onInputCleared={handleInputCleared}
+              vscode={vscode}
+              selection={state.selection}
+              inputContent={state.inputContent}
+              sessionId={state.currentSession?.id}
+              permissionMode={state.permissionMode}
+              initialAttachedImages={state.attachedImages}
+              paneId={paneId}
+              contextUsage={contextUsage}
+              onCompress={hasVisibleMessages ? handleCompress : undefined}
+              disabled={host?.type === "desktop" && !effectiveWorkdir}
+              workdirSelector={
+                host?.type === "desktop" && !hasVisibleMessages ? (
+                  <>
+                    <DesktopHostSelector
+                      host={effectiveHost}
+                      hosts={host.hosts}
+                      onSelectHost={host.onSelectHost}
+                      onAddHost={host.onAddHost}
                     />
-                  )}
-                </>
-              ) : undefined
-            }
-            rewindPopup={
-              <RewindPopup
-                isVisible={rewindPopupOpen}
-                isLoading={rewindCheckpointsLoading}
-                checkpoints={rewindCheckpoints}
-                onSelect={handleRewindCheckpointSelect}
-                onClose={handleRewindPopupClose}
-              />
-            }
-            modelPopup={
-              <ModelPopup
-                isVisible={modelPopupOpen}
-                isLoading={modelLoading}
-                models={configuredModels}
-                currentModel={currentModel}
-                onSelect={handleModelSelect}
-                onClose={handleModelPopupClose}
-              />
-            }
-            btwPopup={
-              btwPanel ? (
-                <BtwPanel
-                  question={btwPanel.question}
-                  answer={btwPanel.answer}
-                  isLoading={btwPanel.loading}
-                  onClose={handleBtwClose}
+                    <DesktopWorkdirSelector
+                      host={effectiveHost}
+                      workdir={pickerWorkdir}
+                      recentWorkdirs={host.recentWorkdirs}
+                      onSelectWorkdir={host.onSelectWorkdir}
+                      onSelectRemotePath={(path) =>
+                        host.onSelectRemotePath(path, effectiveHost)
+                      }
+                      onListRemoteDir={(path, requestId) =>
+                        host.onListRemoteDir(path, effectiveHost, requestId)
+                      }
+                      onSelectRecentWorkdir={host.onSelectRecentWorkdir}
+                      onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
+                    />
+                    {pickerWorkdir && (gitBranches || branchesLoading) && (
+                      <DesktopWorktreeControls
+                        branches={gitBranches?.branches ?? []}
+                        branch={worktreeBranch || gitBranches?.current || ""}
+                        worktreeChecked={worktreeChecked}
+                        creating={worktreeCreating}
+                        loading={!gitBranches && branchesLoading}
+                        onBranchChange={setWorktreeBranch}
+                        onWorktreeChange={setWorktreeChecked}
+                      />
+                    )}
+                  </>
+                ) : undefined
+              }
+              rewindPopup={
+                <RewindPopup
+                  isVisible={rewindPopupOpen}
+                  isLoading={rewindCheckpointsLoading}
+                  checkpoints={rewindCheckpoints}
+                  onSelect={handleRewindCheckpointSelect}
+                  onClose={handleRewindPopupClose}
                 />
-              ) : undefined
-            }
-          />
-        </div>
+              }
+              modelPopup={
+                <ModelPopup
+                  isVisible={modelPopupOpen}
+                  isLoading={modelLoading}
+                  models={configuredModels}
+                  currentModel={currentModel}
+                  onSelect={handleModelSelect}
+                  onClose={handleModelPopupClose}
+                />
+              }
+              btwPopup={
+                btwPanel ? (
+                  <BtwPanel
+                    question={btwPanel.question}
+                    answer={btwPanel.answer}
+                    isLoading={btwPanel.loading}
+                    onClose={handleBtwClose}
+                  />
+                ) : undefined
+              }
+            />
+          </div>
 
-        {state.pendingConfirmations.length > 0 && (
-          <ConfirmationDialog
-            key={state.pendingConfirmations[0].confirmationId}
-            data-confirmation-id={state.pendingConfirmations[0].confirmationId}
-            confirmation={state.pendingConfirmations[0]}
-            onConfirm={handleConfirmation}
-            onReject={handleRejection}
-          />
-        )}
-      </div>
+          {state.pendingConfirmations.length > 0 && (
+            <ConfirmationDialog
+              key={state.pendingConfirmations[0].confirmationId}
+              data-confirmation-id={
+                state.pendingConfirmations[0].confirmationId
+              }
+              confirmation={state.pendingConfirmations[0]}
+              onConfirm={handleConfirmation}
+              onReject={handleRejection}
+            />
+          )}
+        </div>
+      ) : null}
     </>
   );
 
