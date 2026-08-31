@@ -9,6 +9,7 @@ import { readFileSync, existsSync, promises as fs } from "fs";
 import * as path from "path";
 import * as os from "os";
 import { isValidHookEvent } from "../types/hooks.js";
+import type { HookEvent, HookEventConfig } from "../types/hooks.js";
 import { logger } from "../utils/globalLogger.js";
 import type {
   ConfigurationLoadResult,
@@ -1043,6 +1044,146 @@ export class ConfigurationService {
   }
 
   /**
+   * Resolve the settings.json path for a hook scope.
+   * user → ~/.wave/settings.json; project → <workdir>/.wave/settings.json
+   */
+  private resolveHookConfigPath(
+    workdir: string,
+    scope: Scope,
+  ): { configPath: string; configDir: string } {
+    const configPath =
+      scope === "user"
+        ? getUserConfigPaths()[0]
+        : getProjectConfigPaths(workdir)[1];
+    return { configPath, configDir: path.dirname(configPath) };
+  }
+
+  /**
+   * Get hook configurations at a specific scope (user or project settings.json)
+   */
+  async getHooksByScope(
+    workdir: string,
+    scope: Scope,
+  ): Promise<Partial<Record<HookEvent, HookEventConfig[]>>> {
+    if (scope !== "user" && !existsSync(workdir)) {
+      return {};
+    }
+    const { configPath } = this.resolveHookConfigPath(workdir, scope);
+    if (!existsSync(configPath)) {
+      return {};
+    }
+    try {
+      const content = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(content) as WaveConfiguration;
+      return config.hooks || {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Set the enabled state of a hook at a specific scope, identified by
+   * hookName of the form `Event:Matcher` (e.g. `PreToolUse:Write`).
+   * Persists to the scope's settings.json hooks block.
+   */
+  async setHookEnabled(
+    workdir: string,
+    scope: Scope,
+    hookName: string,
+    enabled: boolean,
+  ): Promise<void> {
+    if (scope !== "user" && !existsSync(workdir)) {
+      throw new Error(`Working directory does not exist: ${workdir}`);
+    }
+
+    const { configPath, configDir } = this.resolveHookConfigPath(
+      workdir,
+      scope,
+    );
+    if (!existsSync(configDir)) {
+      await fs.mkdir(configDir, { recursive: true });
+    }
+
+    let config: WaveConfiguration = {};
+    if (existsSync(configPath)) {
+      try {
+        const content = await fs.readFile(configPath, "utf-8");
+        config = JSON.parse(content);
+      } catch {
+        // Start with empty config if file is corrupted
+      }
+    }
+
+    const { event, matcher } = parseHookName(hookName);
+    if (!isValidHookEvent(event)) {
+      throw new Error(`Invalid hook event: ${event}`);
+    }
+    const hooks = config.hooks || {};
+    const eventConfigs = hooks[event] || [];
+    const target = eventConfigs.find(
+      (cfg) => (cfg.matcher || "") === (matcher || ""),
+    );
+    if (target) {
+      target.enabled = enabled;
+      hooks[event] = eventConfigs;
+      config.hooks = hooks;
+      await atomicWriteFile(configPath, JSON.stringify(config, null, 2));
+    }
+  }
+
+  /**
+   * Delete a hook at a specific scope, identified by hookName of the form
+   * `Event:Matcher`. Removes the matching entry from the scope's settings.json
+   * hooks block.
+   */
+  async deleteHook(
+    workdir: string,
+    scope: Scope,
+    hookName: string,
+  ): Promise<void> {
+    if (scope !== "user" && !existsSync(workdir)) {
+      throw new Error(`Working directory does not exist: ${workdir}`);
+    }
+
+    const { configPath, configDir } = this.resolveHookConfigPath(
+      workdir,
+      scope,
+    );
+    if (!existsSync(configDir)) {
+      await fs.mkdir(configDir, { recursive: true });
+    }
+
+    let config: WaveConfiguration = {};
+    if (existsSync(configPath)) {
+      try {
+        const content = await fs.readFile(configPath, "utf-8");
+        config = JSON.parse(content);
+      } catch {
+        // Start with empty config if file is corrupted
+      }
+    }
+
+    const hooks = config.hooks || {};
+    const { event, matcher } = parseHookName(hookName);
+    if (!isValidHookEvent(event)) {
+      throw new Error(`Invalid hook event: ${event}`);
+    }
+    const eventConfigs = hooks[event];
+    if (eventConfigs) {
+      const remaining = eventConfigs.filter(
+        (cfg) => (cfg.matcher || "") !== (matcher || ""),
+      );
+      if (remaining.length > 0) {
+        hooks[event] = remaining;
+      } else {
+        delete hooks[event];
+      }
+      config.hooks = hooks;
+      await atomicWriteFile(configPath, JSON.stringify(config, null, 2));
+    }
+  }
+
+  /**
    * Get merged marketplaces from all scopes
    */
   getMergedMarketplaces(workdir: string): Record<string, MarketplaceConfig> {
@@ -1585,5 +1726,24 @@ export function loadMergedWaveConfig(
         : undefined,
     worktree: mergedConfig.worktree,
     enableArtifact: mergedConfig.enableArtifact,
+  };
+}
+
+/**
+ * Parse a hookName of the form `Event:Matcher` (e.g. `PreToolUse:Write`)
+ * into its event and matcher parts. Hooks without a matcher use the event
+ * name alone (e.g. `SessionStart`).
+ */
+export function parseHookName(hookName: string): {
+  event: HookEvent;
+  matcher: string;
+} {
+  const separator = hookName.indexOf(":");
+  if (separator === -1) {
+    return { event: hookName as HookEvent, matcher: "" };
+  }
+  return {
+    event: hookName.slice(0, separator) as HookEvent,
+    matcher: hookName.slice(separator + 1),
   };
 }

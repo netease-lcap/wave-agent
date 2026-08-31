@@ -18,6 +18,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -148,6 +149,16 @@ class MessageHandler(
                 .openSettings(msg["nav"]?.jsonPrimitive?.contentOrNull)
             // Settings tab webview close button; mirrors VSCE handleSettingsMessage → closeSettings.
             "closeSettings" -> WavePanelHolder.getInstance(project).closeSettings()
+            // Settings tab「新建/编辑」预填提示词 → 关闭设置 tab 后转发给聊天 webview，
+            // ChatApp 收到 prefillPrompt 后 loadDraft（spec：AI 对话框在当前会话继续）。
+            "prefillPrompt" -> {
+                val prompt = msg["prompt"]?.jsonPrimitive?.content ?: return
+                WavePanelHolder.getInstance(project).closeSettings()
+                WavePanelHolder.getInstance(project).panel?.postMessage(
+                    "prefillPrompt",
+                    buildJsonObject { put("prompt", prompt) },
+                )
+            }
             "updateInputContent" -> {
                 session.inputContent = msg["content"]?.jsonPrimitive?.content ?: ""
             }
@@ -652,6 +663,81 @@ class MessageHandler(
                 } catch (e: StdioClientException) {
                     LOG.warn("disconnectMcpServer failed: ${e.message}")
                     IdeService.showError(project, "断开 MCP 服务器失败: ${e.message}")
+                }
+            }
+            "getMcpConfigPaths" -> {
+                val paths = try {
+                    session.agent?.getMcpConfigPaths()?.jsonObject
+                } catch (e: StdioClientException) {
+                    LOG.warn("getMcpConfigPaths failed: ${e.message}")
+                    null
+                }
+                postMessage("mcpConfigPathsResponse", buildJsonObject {
+                    put("userPath", paths?.get("userPath") ?: JsonNull)
+                    put("projectPath", paths?.get("projectPath") ?: JsonNull)
+                })
+            }
+            "removeMcpServer" -> {
+                val scope = msg["scope"]?.jsonPrimitive?.content ?: return
+                val name = msg["serverName"]?.jsonPrimitive?.content ?: return
+                try {
+                    session.agent?.removeMcpServer(scope, name)
+                } catch (e: StdioClientException) {
+                    LOG.warn("removeMcpServer failed: ${e.message}")
+                    IdeService.showError(project, "移除 MCP 服务器失败: ${e.message}")
+                }
+            }
+            "deleteSkill" -> {
+                val name = msg["name"]?.jsonPrimitive?.content ?: return
+                try {
+                    session.agent?.deleteSkill(name)
+                } catch (e: StdioClientException) {
+                    LOG.warn("deleteSkill failed: ${e.message}")
+                    IdeService.showError(project, "删除技能失败: ${e.message}")
+                }
+            }
+            "deleteSubagent" -> {
+                val name = msg["name"]?.jsonPrimitive?.content ?: return
+                try {
+                    session.agent?.deleteSubagent(name)
+                } catch (e: StdioClientException) {
+                    LOG.warn("deleteSubagent failed: ${e.message}")
+                    IdeService.showError(project, "删除子代理失败: ${e.message}")
+                }
+            }
+            "getHooksByScope" -> {
+                val scope = msg["scope"]?.jsonPrimitive?.content ?: return
+                val hooks = try {
+                    session.agent?.getHooksByScope(scope) ?: JsonObject(emptyMap())
+                } catch (e: StdioClientException) {
+                    LOG.warn("getHooksByScope failed: ${e.message}")
+                    JsonObject(emptyMap())
+                }
+                postMessage("hooksResponse", buildJsonObject { put("hooks", hooks) })
+            }
+            "setHookEnabled" -> {
+                val scope = msg["scope"]?.jsonPrimitive?.content ?: return
+                val hookName = msg["hookName"]?.jsonPrimitive?.content ?: return
+                val enabled = msg["enabled"]?.jsonPrimitive?.booleanOrNull ?: return
+                try {
+                    session.agent?.setHookEnabled(scope, hookName, enabled)
+                    val hooks = session.agent?.getHooksByScope(scope) ?: JsonObject(emptyMap())
+                    postMessage("hooksResponse", buildJsonObject { put("hooks", hooks) })
+                } catch (e: StdioClientException) {
+                    LOG.warn("setHookEnabled failed: ${e.message}")
+                    IdeService.showError(project, "更新钩子开关失败: ${e.message}")
+                }
+            }
+            "deleteHook" -> {
+                val scope = msg["scope"]?.jsonPrimitive?.content ?: return
+                val hookName = msg["hookName"]?.jsonPrimitive?.content ?: return
+                try {
+                    session.agent?.deleteHook(scope, hookName)
+                    val hooks = session.agent?.getHooksByScope(scope) ?: JsonObject(emptyMap())
+                    postMessage("hooksResponse", buildJsonObject { put("hooks", hooks) })
+                } catch (e: StdioClientException) {
+                    LOG.warn("deleteHook failed: ${e.message}")
+                    IdeService.showError(project, "删除钩子失败: ${e.message}")
                 }
             }
 

@@ -226,40 +226,31 @@ export class McpManager {
     }
 
     try {
-      // Read user-level (~/.wave/mcp.json) and project-level (.mcp.json)
-      // sources, then merge with project taking precedence for same-named
-      // servers (constructor-provided servers win over both).
-      const fileSources: McpConfig[] = [];
+      // Load user-level (~/.wave/mcp.json) and project-level (<workdir>/.mcp.json)
+      // configs, then merge with project taking precedence over user-level.
+      const userConfig = await this.readConfigFile(this.userConfigPath);
+      const projectConfig = await this.readConfigFile(this.configPath);
+
+      // Neither file exists: preserve the original null contract (constructor-
+      // provided servers may still be present in this.config).
+      if (!userConfig && !projectConfig) {
+        return this.config;
+      }
+
+      const userResolved = userConfig
+        ? resolveMcpConfig(userConfig, this.envSnapshot)
+        : null;
+      const projectResolved = projectConfig
+        ? resolveMcpConfig(projectConfig, this.envSnapshot)
+        : null;
+
+      // Extract original (pre-resolution) URLs for safe display
       const originalUrls: Record<string, string | undefined> = {};
-
-      const readSource = async (
-        path: string,
-        logLabel: string,
-      ): Promise<void> => {
-        try {
-          const content = await fs.readFile(path, "utf-8");
-          const raw = JSON.parse(content) as McpConfig;
-          fileSources.push(resolveMcpConfig(raw, this.envSnapshot));
-          for (const [name, serverConfig] of Object.entries(
-            raw.mcpServers ?? {},
-          )) {
-            originalUrls[name] = serverConfig.url;
-          }
-        } catch (error) {
-          // ENOENT = source not configured, skip silently
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-            logger?.error(`Failed to load ${logLabel}:`, error);
-          }
-        }
-      };
-
-      await readSource(this.userConfigPath, "~/.wave/mcp.json");
-      await readSource(this.configPath, ".mcp.json");
-
-      // No file source, no previously registered (plugin/constructor) servers
-      // and no constructor option: nothing is configured anywhere.
-      if (fileSources.length === 0 && !this.config && !this.mcpServers) {
-        return null;
+      for (const [name, serverConfig] of Object.entries({
+        ...(userConfig?.mcpServers || {}),
+        ...(projectConfig?.mcpServers || {}),
+      })) {
+        originalUrls[name] = serverConfig.url;
       }
 
       // Merge: existing config (e.g. plugin servers) -> user -> project -> constructor
@@ -267,8 +258,11 @@ export class McpManager {
       if (this.config) {
         Object.assign(merged.mcpServers, this.config.mcpServers);
       }
-      for (const source of fileSources) {
-        Object.assign(merged.mcpServers, source.mcpServers);
+      if (userResolved) {
+        Object.assign(merged.mcpServers, userResolved.mcpServers);
+      }
+      if (projectResolved) {
+        Object.assign(merged.mcpServers, projectResolved.mcpServers);
       }
       if (this.mcpServers) {
         Object.assign(merged.mcpServers, this.mcpServers);
@@ -280,12 +274,26 @@ export class McpManager {
         for (const [name, config] of Object.entries(this.config.mcpServers)) {
           const existingServer = this.servers.get(name);
 
+          // Determine scope: plugin servers registered with pluginRoot keep
+          // their plugin scope; user-level names come from ~/.wave/mcp.json.
+          let scope: McpServerStatus["scope"] = existingServer?.scope;
+          if (!scope) {
+            if (config.pluginRoot) {
+              scope = "plugin";
+            } else if (userConfig?.mcpServers?.[name]) {
+              scope = "user";
+            } else {
+              scope = "project";
+            }
+          }
+
           if (existingServer) {
             // Update config but preserve status and other runtime info
             this.servers.set(name, {
               ...existingServer,
               config, // Update config in case it changed
               originalUrl: originalUrls[name] ?? existingServer.originalUrl,
+              scope,
             });
           } else {
             // New server, initialize with disconnected status
@@ -293,6 +301,7 @@ export class McpManager {
               name,
               config,
               originalUrl: originalUrls[name],
+              scope,
               status: "disconnected",
             });
           }
@@ -301,9 +310,42 @@ export class McpManager {
 
       return this.config;
     } catch (error) {
-      logger?.error("Failed to load MCP configuration:", error);
+      // Only log error if it's not a "file not found" error
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        logger?.error("Failed to load MCP config:", error);
+      }
       return null;
     }
+  }
+
+  /**
+   * Read a raw MCP config file, tolerating ENOENT and corrupt JSON.
+   */
+  private async readConfigFile(configPath: string): Promise<McpConfig | null> {
+    if (!configPath) return null;
+    try {
+      const content = await fs.readFile(configPath, "utf-8");
+      return JSON.parse(content) as McpConfig;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return null;
+      logger?.error("Failed to load .mcp.json:", error);
+      return null;
+    }
+  }
+
+  /**
+   * The user-level MCP config path (~/.wave/mcp.json).
+   */
+  getUserConfigPath(): string {
+    return this.userConfigPath;
+  }
+
+  /**
+   * The project-level MCP config path (<workdir>/.mcp.json).
+   */
+  getProjectConfigPath(): string {
+    return this.configPath;
   }
 
   async saveConfig(config: McpConfig): Promise<boolean> {
@@ -379,6 +421,7 @@ export class McpManager {
       name,
       config: resolvedConfig,
       originalUrl,
+      scope: resolvedConfig.pluginRoot ? "plugin" : undefined,
       status: "disconnected",
     };
 
@@ -409,6 +452,42 @@ export class McpManager {
     }
 
     return removed;
+  }
+
+  /**
+   * Remove a server from a persisted config file (user or project scope),
+   * then disconnect and drop it from the in-memory registry.
+   * @param scope - "user" removes from ~/.wave/mcp.json; "project" removes from <workdir>/.mcp.json
+   * @param name - The server name
+   * @returns true if the server was found and removed
+   */
+  async removeServerFromConfig(
+    scope: "user" | "project",
+    name: string,
+  ): Promise<boolean> {
+    const configPath = scope === "user" ? this.userConfigPath : this.configPath;
+    if (!configPath) return false;
+
+    const rawConfig = await this.readConfigFile(configPath);
+    if (
+      !rawConfig ||
+      !rawConfig.mcpServers ||
+      !(name in rawConfig.mcpServers)
+    ) {
+      return false;
+    }
+
+    delete rawConfig.mcpServers[name];
+
+    if (Object.keys(rawConfig.mcpServers).length === 0) {
+      await fs.rm(configPath, { force: true });
+    } else {
+      await fs.writeFile(configPath, JSON.stringify(rawConfig, null, 2));
+    }
+
+    // Drop from memory (disconnects if connected)
+    this.removeServer(name);
+    return true;
   }
 
   // Real MCP connection implementation

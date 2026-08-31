@@ -1,4 +1,4 @@
-import { readdir, stat } from "fs/promises";
+import { readdir, stat, rm } from "fs/promises";
 import { join } from "path";
 import { homedir } from "os";
 import { EventEmitter } from "events";
@@ -607,5 +607,41 @@ export class SkillManager extends EventEmitter {
     logger?.debug(
       `Registered ${skills.length} plugin skills from ${pluginName}. Total skills: ${this.skillMetadata.size}`,
     );
+  }
+
+  /**
+   * Delete a user/personal or project skill by removing its directory
+   * (containing SKILL.md). Builtin and plugin skills are read-only and
+   * cannot be deleted.
+   * @param name - The skill name as shown in skill metadata
+   * @returns true if the skill was deleted
+   */
+  async deleteSkill(name: string): Promise<boolean> {
+    if (!this.initialized) {
+      throw new Error("SkillManager not initialized. Call initialize() first.");
+    }
+
+    const metadata = this.skillMetadata.get(name);
+    if (!metadata) {
+      return false;
+    }
+
+    // Builtin and plugin skills are read-only
+    if (metadata.type === "builtin" || metadata.pluginName) {
+      return false;
+    }
+
+    if (!metadata.skillPath) {
+      return false;
+    }
+
+    await rm(metadata.skillPath, { recursive: true, force: true });
+
+    // Remove from all caches
+    this.skillMetadata.delete(name);
+    this.skillContent.delete(name);
+
+    logger?.debug(`Deleted skill '${name}' at ${metadata.skillPath}`);
+    return true;
   }
 }

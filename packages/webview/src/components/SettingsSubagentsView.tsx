@@ -1,18 +1,25 @@
 /**
  * SettingsSubagentsView - 设置页「子代理」选项卡
  *
- * 由 /agents 斜杠命令（或手动点击设置页「子代理」导航）打开：展示当前会话
- * 可见的 subagent 定义，按来源分组，点击进入详情视图。内容自弹窗
- * AgentsDialog 迁移而来（2026-08-29 用户拍板：/agents、/skills 不再弹窗，
- * 改为唤起设置页并选中对应选项卡）；去掉 overlay/关闭逻辑，数据仍通过
+ * 由 /agents 斜杠命令（或手动点击设置页「子代理」导航）打开：按来源 Tab
+ * （插件 / 内置 / 用户 / 项目）展示 subagent 定义，项目子代理按所属项目分组
+ * 卡片展示。提供新建（预填 AI 对话框提示词）、编辑（预填提示词 + 打开
+ * markdown 文件）、删除（二次确认 + 直接删文件）。数据通过
  * getSubagentConfigurations RPC 由 host 下发。
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { SubagentConfiguration } from "../types";
+import { ConfirmDialog } from "./ConfirmDialog";
+import {
+  SettingsTabs,
+  ProjectCard,
+  inferProjectName,
+  type SettingsTabDef,
+} from "./SettingsManageComponents";
 import "../styles/ConfigurationDialog.css";
+import "../styles/SettingsPage.css";
 
-const SCOPE_ORDER = ["builtin", "user", "project", "plugin"] as const;
 const SCOPE_LABELS: Record<string, string> = {
   builtin: "内置",
   user: "用户",
@@ -20,24 +27,49 @@ const SCOPE_LABELS: Record<string, string> = {
   plugin: "插件",
 };
 
+const TABS: SettingsTabDef[] = [
+  { key: "plugin", label: "插件子代理" },
+  { key: "builtin", label: "内置子代理" },
+  { key: "user", label: "用户子代理" },
+  { key: "project", label: "项目子代理" },
+];
+
 export interface SettingsSubagentsViewProps {
   /** Host 消息桥（ChatApp desktop 分支 / settings-preview-entry 传入） */
   vscode?: { postMessage: (msg: unknown) => void };
+  /** 当前工作目录（用于项目分组展示项目名） */
+  workdir?: string;
+  /** 关闭设置页并预填 AI 对话框提示词 */
+  onPrefillPrompt?: (prompt: string) => void;
+  /** 用系统编辑器打开文件（desktop 走 desktopOpenFileExternal；IDE 回退 openFile） */
+  onOpenExternalFile?: (path: string) => void;
 }
 
 const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
   vscode,
+  workdir,
+  onPrefillPrompt,
+  onOpenExternalFile,
 }) => {
   const [configurations, setConfigurations] = useState<SubagentConfiguration[]>(
     [],
   );
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<string>(TABS[0].key);
   const [selectedName, setSelectedName] = useState<string | null>(null);
+  // 待删除子代理（null = 无确认框）
+  const [pendingDelete, setPendingDelete] =
+    useState<SubagentConfiguration | null>(null);
+
+  const fetchConfigurations = useCallback(() => {
+    vscode?.postMessage({ command: "getSubagentConfigurations" });
+  }, [vscode]);
 
   // Fetch agent definitions on mount (fresh each time the tab opens)
   useEffect(() => {
-    vscode?.postMessage({ command: "getSubagentConfigurations" });
-  }, [vscode]);
+    setLoading(true);
+    fetchConfigurations();
+  }, [fetchConfigurations]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -54,12 +86,57 @@ const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
   const selectedAgent =
     configurations.find((c) => c.name === selectedName) || null;
 
-  // Group by scope, keeping a stable order; agents already carry effective
-  // (non-shadowed) definitions and plugin names are `pluginName:agentName`.
-  const grouped = SCOPE_ORDER.map((scope) => ({
-    scope,
-    agents: configurations.filter((c) => c.scope === scope),
-  })).filter((group) => group.agents.length > 0);
+  const tabAgents = configurations.filter((c) => c.scope === activeTab);
+  const activeTabDef = TABS.find((t) => t.key === activeTab) ?? TABS[0];
+  const projectGroups = tabAgents.reduce<Map<string, SubagentConfiguration[]>>(
+    (groups, agent) => {
+      const project = inferProjectName(agent.filePath, workdir);
+      const list = groups.get(project) ?? [];
+      list.push(agent);
+      groups.set(project, list);
+      return groups;
+    },
+    new Map(),
+  );
+
+  const projectName = workdir
+    ? (workdir
+        .split(/[\\/]+/)
+        .filter(Boolean)
+        .pop() ?? workdir)
+    : "当前项目";
+
+  const handleCreate = (scope: "user" | "project") => {
+    const prompt =
+      scope === "user"
+        ? "帮我新建用户级子代理<名字>：用于<用途>，工具用<工具列表>，模型用<模型>"
+        : `帮我在【${projectName}】新建子代理<名字>：用于<用途>，工具用<工具列表>，模型用<模型>`;
+    onPrefillPrompt?.(prompt);
+  };
+
+  const handleEdit = (agent: SubagentConfiguration) => {
+    onPrefillPrompt?.(
+      `帮我编辑子代理${agent.name}：把<要改的内容>改成<新内容>`,
+    );
+    if (onOpenExternalFile) {
+      onOpenExternalFile(agent.filePath);
+      return;
+    }
+    vscode?.postMessage({ command: "openFile", path: agent.filePath });
+  };
+
+  const handleConfirmDelete = () => {
+    if (!pendingDelete) return;
+    vscode?.postMessage({
+      command: "deleteSubagent",
+      name: pendingDelete.name,
+    });
+    setPendingDelete(null);
+    fetchConfigurations();
+  };
+
+  const isEditable = (agent: SubagentConfiguration) =>
+    agent.scope === "user" || agent.scope === "project";
 
   return (
     <div className="settings-view">
@@ -68,6 +145,23 @@ const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
         <p>配置用于并行处理任务的子代理。</p>
       </header>
       <section className="settings-section">
+        <SettingsTabs
+          tabs={TABS}
+          activeTab={activeTab}
+          onChange={setActiveTab}
+          actions={
+            activeTab === "user" ? (
+              <button
+                type="button"
+                className="settings-save-btn"
+                onClick={() => handleCreate("user")}
+              >
+                <i className="codicon codicon-add" aria-hidden="true" />
+                新增子代理
+              </button>
+            ) : undefined
+          }
+        />
         <div className="settings-card">
           {loading ? (
             <div className="empty-state">
@@ -158,45 +252,47 @@ const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
                   </div>
                 )}
               </div>
+
+              <div className="settings-actions">
+                <button
+                  type="button"
+                  onClick={() => setSelectedName(null)}
+                  className="settings-save-btn"
+                >
+                  返回列表
+                </button>
+              </div>
             </div>
-          ) : configurations.length === 0 ? (
+          ) : tabAgents.length === 0 ? (
             <div className="empty-state">
-              <p>暂无可用 agents</p>
+              <p>{activeTabDef.label}暂无内容</p>
             </div>
-          ) : (
-            <div className="mcp-server-list">
-              {grouped.map((group) => (
-                <div key={group.scope}>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: "bold",
-                      color: "var(--vscode-descriptionForeground)",
-                      margin: "8px 0 4px 0",
-                    }}
-                  >
-                    {SCOPE_LABELS[group.scope]} agents
-                  </div>
-                  {group.agents.map((agent) => (
-                    <div
-                      key={agent.name}
-                      className="mcp-server-item"
-                      style={{ cursor: "pointer" }}
-                      onClick={() => setSelectedName(agent.name)}
+          ) : activeTab === "project" ? (
+            <div className="settings-project-cards">
+              {[...projectGroups.entries()].map(([project, list]) => (
+                <ProjectCard
+                  key={project}
+                  projectName={project}
+                  action={
+                    <button
+                      type="button"
+                      className="settings-card-link-btn"
+                      onClick={() => handleCreate("project")}
                     >
-                      <div className="mcp-server-info">
+                      <i className="codicon codicon-add" aria-hidden="true" />
+                      新增指令
+                    </button>
+                  }
+                >
+                  {list.map((agent) => (
+                    <div key={agent.name} className="mcp-server-item">
+                      <div
+                        className="mcp-server-info"
+                        style={{ cursor: "pointer" }}
+                        onClick={() => setSelectedName(agent.name)}
+                      >
                         <div className="mcp-server-header">
                           <span className="mcp-server-name">{agent.name}</span>
-                          {agent.model && (
-                            <span
-                              style={{
-                                fontSize: "12px",
-                                color: "var(--vscode-descriptionForeground)",
-                              }}
-                            >
-                              · {agent.model}
-                            </span>
-                          )}
                         </div>
                         {agent.description && (
                           <div
@@ -210,28 +306,96 @@ const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
                         )}
                       </div>
                       <div className="mcp-server-actions">
-                        <span className="mcp-tool-count">›</span>
+                        <button
+                          type="button"
+                          className="settings-row-btn"
+                          onClick={() => handleEdit(agent)}
+                        >
+                          编辑
+                        </button>
+                        <button
+                          type="button"
+                          className="settings-row-btn settings-row-btn-danger"
+                          onClick={() => setPendingDelete(agent)}
+                        >
+                          删除
+                        </button>
                       </div>
                     </div>
                   ))}
+                </ProjectCard>
+              ))}
+            </div>
+          ) : (
+            <div className="mcp-server-list">
+              {tabAgents.map((agent) => (
+                <div key={agent.name} className="mcp-server-item">
+                  <div
+                    className="mcp-server-info"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setSelectedName(agent.name)}
+                  >
+                    <div className="mcp-server-header">
+                      <span className="mcp-server-name">{agent.name}</span>
+                      {agent.model && (
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            color: "var(--vscode-descriptionForeground)",
+                          }}
+                        >
+                          · {agent.model}
+                        </span>
+                      )}
+                    </div>
+                    {agent.description && (
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: "var(--vscode-descriptionForeground)",
+                        }}
+                      >
+                        {agent.description}
+                      </div>
+                    )}
+                  </div>
+                  <div className="mcp-server-actions">
+                    {isEditable(agent) && (
+                      <>
+                        <button
+                          type="button"
+                          className="settings-row-btn"
+                          onClick={() => handleEdit(agent)}
+                        >
+                          编辑
+                        </button>
+                        <button
+                          type="button"
+                          className="settings-row-btn settings-row-btn-danger"
+                          onClick={() => setPendingDelete(agent)}
+                        >
+                          删除
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           )}
-
-          {selectedAgent && (
-            <div className="settings-actions">
-              <button
-                type="button"
-                onClick={() => setSelectedName(null)}
-                className="settings-save-btn"
-              >
-                返回列表
-              </button>
-            </div>
-          )}
         </div>
       </section>
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title={`删除子代理「${pendingDelete.name}」`}
+          description={`将删除子代理文件${pendingDelete.filePath ? `（${pendingDelete.filePath}）` : ""}，此操作不可撤销。`}
+          confirmText="确认删除"
+          cancelText="取消"
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </div>
   );
 };

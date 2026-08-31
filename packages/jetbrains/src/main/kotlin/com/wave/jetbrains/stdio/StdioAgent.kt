@@ -297,6 +297,45 @@ class StdioAgent(
         return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false
     }
 
+    suspend fun getMcpConfigPaths(): JsonElement =
+        client.request("getMcpConfigPaths", sessionId = sessionId) ?: JsonObject(emptyMap())
+
+    suspend fun removeMcpServer(scope: String, serverName: String): Boolean {
+        val result = client.request("removeMcpServer", buildJsonObject {
+            put("scope", scope)
+            put("serverName", serverName)
+        }, sessionId)
+        return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false
+    }
+
+    suspend fun deleteSkill(name: String): Boolean {
+        val result = client.request("deleteSkill", buildJsonObject { put("name", name) }, sessionId)
+        return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false
+    }
+
+    suspend fun deleteSubagent(name: String): Boolean {
+        val result = client.request("deleteSubagent", buildJsonObject { put("name", name) }, sessionId)
+        return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false
+    }
+
+    suspend fun getHooksByScope(scope: String): JsonElement =
+        client.request("getHooksByScope", buildJsonObject { put("scope", scope) }, sessionId) ?: JsonObject(emptyMap())
+
+    suspend fun setHookEnabled(scope: String, hookName: String, enabled: Boolean) {
+        client.request("setHookEnabled", buildJsonObject {
+            put("scope", scope)
+            put("hookName", hookName)
+            put("enabled", enabled)
+        }, sessionId)
+    }
+
+    suspend fun deleteHook(scope: String, hookName: String) {
+        client.request("deleteHook", buildJsonObject {
+            put("scope", scope)
+            put("hookName", hookName)
+        }, sessionId)
+    }
+
     // ── RPC notification (fire-and-forget) ────────────────────────
 
     suspend fun sendPermissionResponse(requestId: String, decision: JsonObject) {

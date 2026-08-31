@@ -351,6 +351,47 @@ export class MessageHandler {
       case "getMcpServers":
         await this.handleGetMcpServers(viewType, windowId);
         break;
+      case "getMcpConfigPaths":
+        await this.handleGetMcpConfigPaths(viewType, windowId);
+        break;
+      case "removeMcpServer":
+        await this.handleRemoveMcpServer(
+          msg.scope as "user" | "project",
+          msg.serverName as string,
+          viewType,
+          windowId,
+        );
+        break;
+      case "deleteSkill":
+        await this.handleDeleteSkill(msg.name as string, viewType, windowId);
+        break;
+      case "deleteSubagent":
+        await this.handleDeleteSubagent(msg.name as string, viewType, windowId);
+        break;
+      case "getHooksByScope":
+        await this.handleGetHooksByScope(
+          msg.scope as "user" | "project" | "plugin",
+          viewType,
+          windowId,
+        );
+        break;
+      case "setHookEnabled":
+        await this.handleSetHookEnabled(
+          msg.scope as "user" | "project",
+          msg.hookName as string,
+          msg.enabled as boolean,
+          viewType,
+          windowId,
+        );
+        break;
+      case "deleteHook":
+        await this.handleDeleteHook(
+          msg.scope as "user" | "project",
+          msg.hookName as string,
+          viewType,
+          windowId,
+        );
+        break;
       case "getSubagentConfigurations":
         await this.handleGetSubagentConfigurations(viewType, windowId);
         break;
@@ -480,6 +521,70 @@ export class MessageHandler {
         break;
       case "closeSettings":
         this.context.closeSettings();
+        break;
+      case "getSubagentConfigurations":
+        await this.handleSettingsGetSubagentConfigurations();
+        break;
+      case "getSkillMetadata":
+        await this.handleSettingsGetSkillMetadata();
+        break;
+      case "deleteSkill":
+        await this.handleSettingsDeleteSkill(msg.name as string);
+        break;
+      case "deleteSubagent":
+        await this.handleSettingsDeleteSubagent(msg.name as string);
+        break;
+      case "getHooksByScope":
+        await this.handleSettingsGetHooksByScope(
+          msg.scope as "user" | "project" | "plugin",
+        );
+        break;
+      case "setHookEnabled":
+        await this.handleSettingsSetHookEnabled(
+          msg.scope as "user" | "project",
+          msg.hookName as string,
+          msg.enabled as boolean,
+        );
+        break;
+      case "deleteHook":
+        await this.handleSettingsDeleteHook(
+          msg.scope as "user" | "project",
+          msg.hookName as string,
+        );
+        break;
+      case "getMcpServers":
+        await this.handleSettingsGetMcpServers();
+        break;
+      case "getMcpConfigPaths":
+        await this.handleSettingsGetMcpConfigPaths();
+        break;
+      case "connectMcpServer":
+        await this.handleSettingsConnectMcpServer(msg.serverName as string);
+        break;
+      case "disconnectMcpServer":
+        await this.handleSettingsDisconnectMcpServer(msg.serverName as string);
+        break;
+      case "removeMcpServer":
+        await this.handleSettingsRemoveMcpServer(
+          msg.scope as "user" | "project",
+          msg.serverName as string,
+        );
+        break;
+      case "openFile":
+        await this.handleOpenFile(
+          msg.path as string,
+          msg.startLine as number,
+          msg.endLine as number,
+        );
+        break;
+      case "prefillPrompt":
+        // 设置页「新建/编辑」预填提示词 → 关闭设置 tab 后转发给聊天 webview，
+        // ChatApp 收到后 loadDraft（spec：AI 对话框在当前会话继续）。
+        this.context.closeSettings();
+        this.context.postMessage({
+          command: "prefillPrompt",
+          prompt: msg.prompt as string,
+        });
         break;
     }
   }
@@ -624,6 +729,199 @@ export class MessageHandler {
         ok: false,
         error: String(error),
       });
+    }
+  }
+
+  /** 技能/子代理/钩子/MCP 管理 RPC 服务端：设置 tab 独立于会话，数据经
+   *   sidebar 会话的 CLI agent 读取（getSubagentConfigurations 等同源）。 */
+  private getSettingsSession(): ChatSession {
+    return this.context.getChatSession("sidebar");
+  }
+
+  private async handleSettingsGetSubagentConfigurations(): Promise<void> {
+    try {
+      const session = this.getSettingsSession();
+      const configurations = await session.getSubagentConfigurations();
+      this.context.postSettingsMessage({
+        command: "subagentConfigurationsResponse",
+        configurations,
+      });
+    } catch (error) {
+      console.error("Failed to get subagent configurations:", error);
+    }
+  }
+
+  private async handleSettingsGetSkillMetadata(): Promise<void> {
+    try {
+      const session = this.getSettingsSession();
+      const skills = await session.getSkillMetadata();
+      this.context.postSettingsMessage({
+        command: "skillMetadataResponse",
+        skills,
+      });
+    } catch (error) {
+      console.error("Failed to get skill metadata:", error);
+    }
+  }
+
+  private async handleSettingsDeleteSkill(name: string): Promise<void> {
+    try {
+      const session = this.getSettingsSession();
+      const success = await session.deleteSkill(name);
+      if (success) {
+        vscode.window.showInformationMessage(`技能 "${name}" 已删除`);
+      }
+      const skills = await session.getSkillMetadata();
+      this.context.postSettingsMessage({
+        command: "skillMetadataResponse",
+        skills,
+      });
+    } catch (error) {
+      console.error("Failed to delete skill:", error);
+      vscode.window.showErrorMessage("删除技能失败: " + error);
+    }
+  }
+
+  private async handleSettingsDeleteSubagent(name: string): Promise<void> {
+    try {
+      const session = this.getSettingsSession();
+      const success = await session.deleteSubagent(name);
+      if (success) {
+        vscode.window.showInformationMessage(`子代理 "${name}" 已删除`);
+      }
+      const configurations = await session.getSubagentConfigurations();
+      this.context.postSettingsMessage({
+        command: "subagentConfigurationsResponse",
+        configurations,
+      });
+    } catch (error) {
+      console.error("Failed to delete subagent:", error);
+      vscode.window.showErrorMessage("删除子代理失败: " + error);
+    }
+  }
+
+  private async handleSettingsGetHooksByScope(
+    scope: "user" | "project" | "plugin",
+  ): Promise<void> {
+    try {
+      const session = this.getSettingsSession();
+      const hooks = await session.getHooksByScope(scope);
+      this.context.postSettingsMessage({
+        command: "hooksResponse",
+        hooks,
+      });
+    } catch (error) {
+      console.error("Failed to get hooks by scope:", error);
+    }
+  }
+
+  private async handleSettingsSetHookEnabled(
+    scope: "user" | "project",
+    hookName: string,
+    enabled: boolean,
+  ): Promise<void> {
+    try {
+      const session = this.getSettingsSession();
+      await session.setHookEnabled(scope, hookName, enabled);
+      const hooks = await session.getHooksByScope(scope);
+      this.context.postSettingsMessage({
+        command: "hooksResponse",
+        hooks,
+      });
+    } catch (error) {
+      console.error("Failed to set hook enabled:", error);
+      vscode.window.showErrorMessage("更新钩子开关失败: " + error);
+    }
+  }
+
+  private async handleSettingsDeleteHook(
+    scope: "user" | "project",
+    hookName: string,
+  ): Promise<void> {
+    try {
+      const session = this.getSettingsSession();
+      await session.deleteHook(scope, hookName);
+      const hooks = await session.getHooksByScope(scope);
+      this.context.postSettingsMessage({
+        command: "hooksResponse",
+        hooks,
+      });
+    } catch (error) {
+      console.error("Failed to delete hook:", error);
+      vscode.window.showErrorMessage("删除钩子失败: " + error);
+    }
+  }
+
+  private async handleSettingsGetMcpServers(): Promise<void> {
+    try {
+      const session = this.getSettingsSession();
+      const servers = await session.getMcpServers();
+      this.context.postSettingsMessage({
+        command: "mcpServersResponse",
+        servers,
+      });
+    } catch (error) {
+      console.error("Failed to get MCP servers:", error);
+    }
+  }
+
+  private async handleSettingsGetMcpConfigPaths(): Promise<void> {
+    try {
+      const session = this.getSettingsSession();
+      this.context.postSettingsMessage({
+        command: "mcpConfigPathsResponse",
+        userPath: await session.getUserMcpConfigPath(),
+        projectPath: await session.getProjectMcpConfigPath(),
+      });
+    } catch (error) {
+      console.error("Failed to get MCP config paths:", error);
+    }
+  }
+
+  private async handleSettingsConnectMcpServer(
+    serverName: string,
+  ): Promise<void> {
+    try {
+      const session = this.getSettingsSession();
+      await session.connectMcpServer(serverName);
+    } catch (error) {
+      console.error("Failed to connect MCP server:", error);
+      vscode.window.showErrorMessage("连接 MCP 服务器失败: " + error);
+    }
+  }
+
+  private async handleSettingsDisconnectMcpServer(
+    serverName: string,
+  ): Promise<void> {
+    try {
+      const session = this.getSettingsSession();
+      await session.disconnectMcpServer(serverName);
+    } catch (error) {
+      console.error("Failed to disconnect MCP server:", error);
+      vscode.window.showErrorMessage("断开 MCP 服务器失败: " + error);
+    }
+  }
+
+  private async handleSettingsRemoveMcpServer(
+    scope: "user" | "project",
+    serverName: string,
+  ): Promise<void> {
+    try {
+      const session = this.getSettingsSession();
+      const success = await session.removeMcpServer(scope, serverName);
+      if (success) {
+        vscode.window.showInformationMessage(
+          `MCP 服务器 "${serverName}" 已从配置中移除`,
+        );
+      }
+      const servers = await session.getMcpServers();
+      this.context.postSettingsMessage({
+        command: "mcpServersResponse",
+        servers,
+      });
+    } catch (error) {
+      console.error("Failed to remove MCP server:", error);
+      vscode.window.showErrorMessage("移除 MCP 服务器失败: " + error);
     }
   }
 
@@ -1813,6 +2111,143 @@ export class MessageHandler {
       viewType,
       windowId,
     );
+  }
+
+  private async handleGetMcpConfigPaths(
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    const session = this.context.getChatSession(viewType || "tab", windowId);
+    this.context.postMessage(
+      {
+        command: "mcpConfigPathsResponse",
+        userPath: await session.getUserMcpConfigPath(),
+        projectPath: await session.getProjectMcpConfigPath(),
+      },
+      viewType,
+      windowId,
+    );
+  }
+
+  private async handleRemoveMcpServer(
+    scope: "user" | "project",
+    serverName: string,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    const session = this.context.getChatSession(viewType || "tab", windowId);
+    try {
+      const success = await session.removeMcpServer(scope, serverName);
+      if (success) {
+        vscode.window.showInformationMessage(
+          `MCP 服务器 "${serverName}" 已从配置中移除`,
+        );
+      }
+    } catch (error) {
+      console.error("移除 MCP 服务器失败:", error);
+      vscode.window.showErrorMessage("移除 MCP 服务器失败: " + error);
+    }
+  }
+
+  private async handleDeleteSkill(
+    name: string,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    const session = this.context.getChatSession(viewType || "tab", windowId);
+    try {
+      const success = await session.deleteSkill(name);
+      if (success) {
+        vscode.window.showInformationMessage(`技能 "${name}" 已删除`);
+      }
+    } catch (error) {
+      console.error("删除技能失败:", error);
+      vscode.window.showErrorMessage("删除技能失败: " + error);
+    }
+  }
+
+  private async handleDeleteSubagent(
+    name: string,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    const session = this.context.getChatSession(viewType || "tab", windowId);
+    try {
+      const success = await session.deleteSubagent(name);
+      if (success) {
+        vscode.window.showInformationMessage(`子代理 "${name}" 已删除`);
+      }
+    } catch (error) {
+      console.error("删除子代理失败:", error);
+      vscode.window.showErrorMessage("删除子代理失败: " + error);
+    }
+  }
+
+  private async handleGetHooksByScope(
+    scope: "user" | "project" | "plugin",
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    const session = this.context.getChatSession(viewType || "tab", windowId);
+    const hooks = await session.getHooksByScope(scope);
+    this.context.postMessage(
+      {
+        command: "hooksResponse",
+        hooks,
+      },
+      viewType,
+      windowId,
+    );
+  }
+
+  private async handleSetHookEnabled(
+    scope: "user" | "project",
+    hookName: string,
+    enabled: boolean,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    const session = this.context.getChatSession(viewType || "tab", windowId);
+    try {
+      await session.setHookEnabled(scope, hookName, enabled);
+      // 回发最新钩子配置（settings.json 已更新）
+      const hooks = await session.getHooksByScope(scope);
+      this.context.postMessage(
+        {
+          command: "hooksResponse",
+          hooks,
+        },
+        viewType,
+        windowId,
+      );
+    } catch (error) {
+      console.error("更新钩子开关失败:", error);
+      vscode.window.showErrorMessage("更新钩子开关失败: " + error);
+    }
+  }
+
+  private async handleDeleteHook(
+    scope: "user" | "project",
+    hookName: string,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    const session = this.context.getChatSession(viewType || "tab", windowId);
+    try {
+      await session.deleteHook(scope, hookName);
+      const hooks = await session.getHooksByScope(scope);
+      this.context.postMessage(
+        {
+          command: "hooksResponse",
+          hooks,
+        },
+        viewType,
+        windowId,
+      );
+    } catch (error) {
+      console.error("删除钩子失败:", error);
+      vscode.window.showErrorMessage("删除钩子失败: " + error);
+    }
   }
 
   private async handleGetSubagentConfigurations(

@@ -585,6 +585,20 @@ export interface SkillMetadataResponseMessage extends HostToWebviewMessageBase {
   skills: unknown[];
 }
 
+export interface HooksResponseMessage extends HostToWebviewMessageBase {
+  command: "hooksResponse";
+  hooks: Record<string, unknown[]>;
+  /** 该 scope 钩子所在 settings.json 路径（删除确认框展示用），可空 */
+  configPath?: string | null;
+}
+
+export interface McpConfigPathsResponseMessage
+  extends HostToWebviewMessageBase {
+  command: "mcpConfigPathsResponse";
+  userPath: string | null;
+  projectPath: string | null;
+}
+
 export interface HistoryResponseMessage extends HostToWebviewMessageBase {
   command: "historyResponse";
   history: SessionMetadata[];
@@ -693,6 +707,8 @@ export type HostToWebviewMessage =
   | McpServersResponseMessage
   | SubagentConfigurationsResponseMessage
   | SkillMetadataResponseMessage
+  | HooksResponseMessage
+  | McpConfigPathsResponseMessage
   | HistoryResponseMessage
   | FileSuggestionsMessage
   | FileSuggestionsErrorMessage

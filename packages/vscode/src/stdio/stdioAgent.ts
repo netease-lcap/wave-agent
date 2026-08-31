@@ -458,6 +458,79 @@ export class StdioAgent {
     return result.success;
   }
 
+  async removeMcpServer(
+    scope: "user" | "project",
+    serverName: string,
+  ): Promise<boolean> {
+    const result = (await this.client.request(
+      "removeMcpServer",
+      { scope, serverName },
+      this.sessionId,
+    )) as { success: boolean };
+    return result.success;
+  }
+
+  async getMcpConfigPaths(): Promise<{
+    userPath: string | null;
+    projectPath: string | null;
+  }> {
+    const result = (await this.client.request(
+      "getMcpConfigPaths",
+      undefined,
+      this.sessionId,
+    )) as { userPath: string | null; projectPath: string | null };
+    return result;
+  }
+
+  async deleteSkill(name: string): Promise<boolean> {
+    const result = (await this.client.request(
+      "deleteSkill",
+      { name },
+      this.sessionId,
+    )) as { success: boolean };
+    return result.success;
+  }
+
+  async deleteSubagent(name: string): Promise<boolean> {
+    const result = (await this.client.request(
+      "deleteSubagent",
+      { name },
+      this.sessionId,
+    )) as { success: boolean };
+    return result.success;
+  }
+
+  async getHooksByScope(
+    scope: "user" | "project" | "plugin",
+  ): Promise<Partial<Record<string, unknown[]>>> {
+    const result = (await this.client.request(
+      "getHooksByScope",
+      { scope },
+      this.sessionId,
+    )) as Partial<Record<string, unknown[]>>;
+    return result;
+  }
+
+  async setHookEnabled(
+    scope: "user" | "project",
+    hookName: string,
+    enabled: boolean,
+  ): Promise<void> {
+    await this.client.request(
+      "setHookEnabled",
+      { scope, hookName, enabled },
+      this.sessionId,
+    );
+  }
+
+  async deleteHook(scope: "user" | "project", hookName: string): Promise<void> {
+    await this.client.request(
+      "deleteHook",
+      { scope, hookName },
+      this.sessionId,
+    );
+  }
+
   // ── Commands ──────────────────────────────────────────────────
 
   async getSlashCommands(): Promise<SlashCommand[]> {

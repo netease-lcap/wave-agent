@@ -373,6 +373,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // /skills → skills）。desktop 每次打开都会重挂载 SettingsPage，此值经
   // initialNav 传入；IDE 由 openSettings message 的 nav 走 host 下发。
   const [settingsNav, setSettingsNav] = useState<NavKey>("global");
+  // 设置页「新建/编辑」预填的 AI 对话框提示词（desktop 关设置页后写入输入框；
+  // 见 handlePrefillPrompt）。
+  const [pendingPrefillPrompt, setPendingPrefillPrompt] = useState<
+    string | null
+  >(null);
   const [sessionBoardOpen, setSessionBoardOpen] = useState(false);
   // Context-usage percentage pushed by the host (batch 2 compress button).
   // Undefined = no usage info received yet (spec 场景 4: label without %).
@@ -994,27 +999,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             payload: { enabledPlugins: message.enabledPlugins },
           });
           break;
-        case "hooksConfigResponse":
-          // Scope-scoped settings.json hooks for the settings page read-only
-          // hooks view — pane-guarded like projectSettings (per-workdir on Desktop).
-          if (!forThisPane(message)) break;
-          dispatch({
-            type: "SET_HOOKS_CONFIG",
-            payload: { scope: message.scope, hooks: message.hooks },
-          });
-          break;
-        case "mcpConfigResponse":
-          // Scope-scoped mcp.json servers config for the settings page read-only
-          // MCP view — pane-guarded like projectSettings.
-          if (!forThisPane(message)) break;
-          dispatch({
-            type: "SET_MCP_CONFIG",
-            payload: {
-              scope: message.scope,
-              mcpServers: message.mcpServers,
-            },
-          });
-          break;
         case "setInitialState":
           if (!forThisPane(message)) break;
           // Desktop plan panel: replayed pending confirmations (pane rebind to a
@@ -1116,6 +1100,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         case "configurationError":
           if (!forThisPane(message)) break;
           dispatch({ type: "SET_CONFIGURATION_ERROR", payload: message.error });
+          break;
+        case "prefillPrompt":
+          if (!forThisPane(message)) break;
+          // IDE 设置页（settings-preview-entry）「新建/编辑」经 host 转发：
+          // 关闭设置 tab 后向聊天 webview 下发预填提示词（spec：AI 对话框
+          // 在当前会话继续，预填文本可编辑）。
+          if (typeof message.prompt === "string") {
+            messageInputRef.current?.loadDraft(message.prompt);
+          }
           break;
         case "focusInput":
           if (!forThisPane(message)) break;
@@ -1478,6 +1471,23 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setSettingsOpen(false);
   }, []);
 
+  // 设置页「新建/编辑」→ 关闭设置页并预填 AI 对话框提示词（desktop）。设置页
+  // 打开期间 chatContainer 卸载（settingsOpen 替换视图），MessageInput 重挂载
+  // 后才能写入——用 pendingPrefillPrompt + effect 在渲染后写入并聚焦。
+  const handlePrefillPrompt = useCallback((prompt: string) => {
+    setSettingsOpen(false);
+    setSessionBoardOpen(false);
+    setPendingPrefillPrompt(prompt);
+  }, []);
+
+  // chatContainer 重挂载完成后把待填提示词写入输入框
+  useEffect(() => {
+    if (!settingsOpen && pendingPrefillPrompt !== null) {
+      messageInputRef.current?.loadDraft(pendingPrefillPrompt);
+      setPendingPrefillPrompt(null);
+    }
+  }, [settingsOpen, pendingPrefillPrompt]);
+
   // Batch 2 session board (desktop): 活动 button toggles the board view; the
   // board's 返回当前会话 closes it (spec 场景 6). Settings and board are
   // mutually exclusive — opening one closes the other.
@@ -1525,7 +1535,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         return;
       }
       if (trimmedText === "/mcp") {
-        dispatch({ type: "SHOW_DIALOG", payload: { type: "mcp" } });
+        // 不再弹窗：唤起设置页并选中「MCP 服务」选项卡（2026-08-29 用户拍板，
+        // 弹窗内容已迁移到设置页，见 SettingsMcpView）。
+        handleOpenSettings("mcp");
         return;
       }
       if (trimmedText === "/status") {
@@ -2587,14 +2599,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       onLoadProjectSettings={() =>
         postToHost({ command: "getProjectSettings" })
       }
-      hooksConfig={state.hooksConfig}
-      onLoadHooksConfig={(scope) =>
-        postToHost({ command: "getHooksConfig", scope })
-      }
-      mcpConfig={state.mcpConfig}
-      onLoadMcpConfig={(scope) =>
-        postToHost({ command: "getMcpConfig", scope })
-      }
       onToggleBuiltinPlugin={(pluginId, enabled) =>
         postToHost({
           command: "setBuiltinPluginEnabled",
@@ -2603,6 +2607,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           scope: "project",
         })
       }
+      onPrefillPrompt={handlePrefillPrompt}
+      onOpenExternalFile={handleOpenFileExternal}
     />
   ) : null;
 

@@ -128,6 +128,10 @@ export interface MessageInputHandle {
   triggerShortcut: (name: string) => void;
   appendText: (text: string) => void;
   loadQueuedEditContent: (text: string) => void;
+  /** Replace the whole input with a plain-text draft (no queued-edit chip) and
+   *  focus it. Used to prefill AI-dialog prompts from the settings page
+   *  (新建/编辑 技能/子代理/钩子/MCP). */
+  loadDraft: (text: string) => void;
   /** Upload a dropped file selection to the host, tagging this pane so the
    *  uploadSuccess reply routes back only to this input. */
   uploadFiles: (files: FileList | File[]) => void;
@@ -295,6 +299,36 @@ export const MessageInput = forwardRef<
       });
       div.focus();
       // Caret to the end so the user can keep typing seamlessly.
+      const sel = window.getSelection();
+      if (sel) {
+        const range = document.createRange();
+        range.selectNodeContents(div);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    },
+    // Replaces the input content entirely with a plain-text draft (no chip).
+    // Unlike appendText, any existing content is discarded — the settings page
+    // uses this to hand the AI a prefilled prompt for creating/editing a
+    // skill/subagent/hook/MCP entry.
+    loadDraft: (text: string) => {
+      const div = textareaRef.current;
+      if (!div) return;
+      div.replaceChildren();
+      text.split("\n").forEach((line, i) => {
+        if (i > 0) div.appendChild(document.createElement("br"));
+        div.appendChild(document.createTextNode(line));
+      });
+      const mirror = div.innerText ?? div.textContent ?? "";
+      setMessage(mirror);
+      inputContentRef.current = mirror;
+      vscode.postMessage({
+        command: "updateInputContent",
+        sessionId,
+        content: mirror,
+      });
+      div.focus();
       const sel = window.getSelection();
       if (sel) {
         const range = document.createRange();

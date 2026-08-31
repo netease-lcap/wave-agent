@@ -236,6 +236,26 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 ![设置 - 个性化](/screenshots/desktop-settings-personalization.webp)
 
+「AI 与扩展」分组提供技能 / 子代理 / 钩子 / MCP 服务四个管理视图，均按来源以 Tab 展示（插件 / 内置 / 用户 / 项目），插件与内置为只读来源，用户与项目级可管理，项目级内容按所属项目分组卡片展示：
+
+- **技能**：点击「新建技能」或项目卡片「新增指令」，关闭设置页回到对话，AI 对话框预填提示词（如 `/settings 帮我新建一个用户级技能：<技能名>，用于<场景>`），补充描述发送后由 AI 创建 `SKILL.md`；「编辑」同时预填提示词并用系统编辑器打开 `SKILL.md`；「删除」二次确认后直接删除技能目录：
+
+![设置 - 技能](/screenshots/desktop-settings-skills.webp)
+
+- **子代理**：与技能同形态——新建预填提示词由 AI 创建 `AGENTS.md`，编辑打开 `AGENTS.md`，删除二次确认后直接删除定义文件：
+
+![设置 - 子代理](/screenshots/desktop-settings-subagents.webp)
+
+- **钩子**：按来源 Tab 展示钩子（如 `PreToolUse:Write`），每条带启用开关（创建后默认开启）、编辑与删除；「新增钩子」预填提示词，编辑打开对应 `settings.json`：
+
+![设置 - 钩子](/screenshots/desktop-settings-hooks.webp)
+
+- **MCP 服务**：按来源 Tab 展示 MCP 服务器（用户级存于 `~/.wave/mcp.json`，项目级存于项目根目录 `.mcp.json`，插件只读），支持连接 / 断开、新建（预填提示词）、编辑（打开配置文件）与删除（二次确认）；`/mcp` 斜杠命令直接唤起本视图：
+
+![设置 - MCP 服务](/screenshots/desktop-settings-mcp.webp)
+
+> 各视图的交互细节与 IDE 插件一致，详见 [VS Code / JetBrains 文档 - 第 6 章 多 Agents 与并发](/vsce#multi-agent-concurrency) 与 [第 7.4 节 钩子](/vsce#hooks-settings)。
+
 ## 核心交互
 
 对话体验与 IDE 插件一致 —— 思考过程、工具调用、权限确认、斜杠命令、消息队列、图片粘贴等全部可用：

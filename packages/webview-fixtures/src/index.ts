@@ -43,6 +43,8 @@ import type {
   McpServersResponseMessage,
   SubagentConfigurationsResponseMessage,
   SkillMetadataResponseMessage,
+  HooksResponseMessage,
+  McpConfigPathsResponseMessage,
   DesktopPanesMessage,
   DesktopSessionTreeMessage,
   DesktopWorkdirStateMessage,
@@ -146,6 +148,15 @@ export interface Fixtures {
     skills: unknown[],
     overrides?: Overrides<SkillMetadataResponseMessage>,
   ) => SkillMetadataResponseMessage;
+  hooksResponse: (
+    hooks: Record<string, unknown[]>,
+    overrides?: Overrides<HooksResponseMessage>,
+  ) => HooksResponseMessage;
+  mcpConfigPathsResponse: (
+    userPath: string | null,
+    projectPath: string | null,
+    overrides?: Overrides<McpConfigPathsResponseMessage>,
+  ) => McpConfigPathsResponseMessage;
   desktopPanes: (
     overrides?: Overrides<DesktopPanesMessage>,
   ) => DesktopPanesMessage;
@@ -314,6 +325,18 @@ export const fixtures: Fixtures = {
   skillMetadataResponse: (skills, overrides = {}) => ({
     command: "skillMetadataResponse",
     skills,
+    ...overrides,
+  }),
+
+  hooksResponse: (hooks, overrides = {}) => ({
+    command: "hooksResponse",
+    hooks,
+    ...overrides,
+  }),
+  mcpConfigPathsResponse: (userPath, projectPath, overrides = {}) => ({
+    command: "mcpConfigPathsResponse",
+    userPath,
+    projectPath,
     ...overrides,
   }),
 

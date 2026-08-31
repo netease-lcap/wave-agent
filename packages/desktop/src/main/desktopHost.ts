@@ -3323,6 +3323,125 @@ export class DesktopHost {
         }
         break;
 
+      case "getMcpConfigPaths": {
+        const paths = await this.agentForPane(pid)?.getMcpConfigPaths();
+        this.postMessage({
+          command: "mcpConfigPathsResponse",
+          paneId: pid,
+          userPath: paths?.userPath ?? null,
+          projectPath: paths?.projectPath ?? null,
+        });
+        break;
+      }
+
+      case "removeMcpServer":
+        try {
+          await this.agentForPane(pid)?.removeMcpServer(
+            msg.scope as "user" | "project",
+            msg.serverName as string,
+          );
+          // 删除后刷新服务器列表
+          const paneAgent = this.agentForPane(pid);
+          const servers = paneAgent ? await paneAgent.getMcpServers() : [];
+          this.postMessage({
+            command: "mcpServersResponse",
+            paneId: pid,
+            servers,
+          });
+        } catch (error) {
+          this.showToast({ message: `移除 MCP 服务器失败: ${error}` });
+        }
+        break;
+
+      case "deleteSkill":
+        try {
+          await this.agentForPane(pid)?.deleteSkill(msg.name as string);
+          // 删除后刷新技能列表
+          const paneAgent2 = this.agentForPane(pid);
+          const skills = paneAgent2 ? await paneAgent2.getSkillMetadata() : [];
+          this.postMessage({
+            command: "skillMetadataResponse",
+            paneId: pid,
+            skills,
+          });
+        } catch (error) {
+          this.showToast({ message: `删除技能失败: ${error}` });
+        }
+        break;
+
+      case "deleteSubagent":
+        try {
+          await this.agentForPane(pid)?.deleteSubagent(msg.name as string);
+          const paneAgent3 = this.agentForPane(pid);
+          const configurations = paneAgent3
+            ? await paneAgent3.getSubagentConfigurations()
+            : [];
+          this.postMessage({
+            command: "subagentConfigurationsResponse",
+            paneId: pid,
+            configurations,
+          });
+        } catch (error) {
+          this.showToast({ message: `删除子代理失败: ${error}` });
+        }
+        break;
+
+      case "getHooksByScope": {
+        const paneAgent4 = this.agentForPane(pid);
+        const hooks = paneAgent4
+          ? await paneAgent4.getHooksByScope(
+              msg.scope as "user" | "project" | "plugin",
+            )
+          : {};
+        this.postMessage({
+          command: "hooksResponse",
+          paneId: pid,
+          hooks,
+        });
+        break;
+      }
+
+      case "setHookEnabled":
+        try {
+          await this.agentForPane(pid)?.setHookEnabled(
+            msg.scope as "user" | "project",
+            msg.hookName as string,
+            msg.enabled as boolean,
+          );
+          const paneAgent5 = this.agentForPane(pid);
+          const hooks2 = paneAgent5
+            ? await paneAgent5.getHooksByScope(msg.scope as "user" | "project")
+            : {};
+          this.postMessage({
+            command: "hooksResponse",
+            paneId: pid,
+            hooks: hooks2,
+          });
+        } catch (error) {
+          this.showToast({ message: `更新钩子开关失败: ${error}` });
+        }
+        break;
+
+      case "deleteHook":
+        try {
+          await this.agentForPane(pid)?.deleteHook(
+            msg.scope as "user" | "project",
+            msg.hookName as string,
+          );
+          const paneAgent6 = this.agentForPane(pid);
+          const hooks3 = paneAgent6
+            ? await paneAgent6.getHooksByScope(msg.scope as "user" | "project")
+            : {};
+          this.postMessage({
+            command: "hooksResponse",
+            paneId: pid,
+            hooks: hooks3,
+          });
+        } catch (error) {
+          this.showToast({ message: `删除钩子失败: ${error}` });
+        }
+        break;
+
       // -- plugins / marketplace ---------------------------------------------------
       case "listPlugins":
         await this.handleListPlugins();

@@ -172,6 +172,11 @@ export class HookManager {
     ) {
       const config = eventConfigs[configIndex];
 
+      // Skip disabled hook entries (enabled: false) — they must not execute
+      if (config.enabled === false) {
+        continue;
+      }
+
       // Check if this config applies to the current context
       if (!this.configApplies(config, event, context.toolName)) {
         continue;
@@ -924,6 +929,14 @@ export class HookManager {
 
     this.mergeHooksConfiguration(this.pluginHooks, stampedHooks);
     this.rebuildConfiguration();
+  }
+
+  /**
+   * Get hooks registered by plugins (read-only view for the settings UI).
+   * Plugin hooks carry pluginRoot on each command and are read-only in the UI.
+   */
+  getPluginHooks(): PartialHookConfiguration {
+    return this.pluginHooks;
   }
 
   /**

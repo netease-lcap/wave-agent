@@ -10,10 +10,8 @@ import {
   fixtures,
   createMockVscode,
 } from "./test-utils";
-import { ChatApp } from "../../src/components/ChatApp";
 import SettingsPage from "../../src/components/SettingsPage";
 import type { SubagentConfiguration } from "wave-agent-sdk/dist/types/index.js";
-import type { VsCodeApi } from "../../src/types";
 
 const builtinAgent: SubagentConfiguration = {
   name: "explore",
@@ -47,6 +45,16 @@ const userAgent: SubagentConfiguration = {
   filePath: "~/.wave/agents/code-review.md",
 };
 
+const projectAgent: SubagentConfiguration = {
+  name: "deploy-agent",
+  description: "项目部署专用子代理",
+  tools: ["Bash"],
+  systemPrompt: "你是项目部署专家。",
+  scope: "project",
+  priority: 0,
+  filePath: "/work/a/.wave/agents/deploy-agent.md",
+};
+
 async function openAgentsCommand() {
   const { vscode } = renderChatApp();
   const input = screen.getByTestId("message-input");
@@ -65,7 +73,10 @@ async function openAgentsCommand() {
   return { vscode };
 }
 
-function renderSettingsPage(vscode?: { postMessage: (msg: unknown) => void }) {
+function renderSettingsPage(
+  vscode?: { postMessage: (msg: unknown) => void },
+  props?: { onPrefillPrompt?: (prompt: string) => void },
+) {
   const mockVscode =
     vscode ||
     (createMockVscode() as unknown as { postMessage: (msg: unknown) => void });
@@ -78,6 +89,8 @@ function renderSettingsPage(vscode?: { postMessage: (msg: unknown) => void }) {
       onLoadAgentsContent={() => {}}
       initialNav="subagents"
       vscode={mockVscode}
+      workdir="/work/a"
+      onPrefillPrompt={props?.onPrefillPrompt}
     />,
   );
   return { vscode: mockVscode };
@@ -99,63 +112,14 @@ describe("/agents 斜杠命令 → 设置页「子代理」选项卡", () => {
     // 弹窗已删除：不渲染 agents-dialog，也不发旧的请求命令（数据由设置页视图请求）
     expect(screen.queryByTestId("agents-dialog")).not.toBeInTheDocument();
   });
-
-  it("desktop 模式打开设置页并选中「子代理」选项卡，视图请求 agent 定义", async () => {
-    const mockVscode = createMockVscode();
-    const host = {
-      type: "desktop",
-      host: "local",
-      hosts: ["local"],
-      recentWorkdirs: [],
-      workdir: "/work/a",
-      sessionTree: [],
-      panes: [],
-      focusedPaneId: undefined,
-      onSelectWorkdir: () => {},
-      onSelectRecentWorkdir: () => {},
-      onRemoveRecentWorkdir: () => {},
-      onSelectHost: () => {},
-      onAddHost: () => {},
-      onSelectRemotePath: () => {},
-      onListRemoteDir: () => {},
-      onSelectSession: () => {},
-      onDeleteSession: () => {},
-      onOpenPane: () => {},
-    } as unknown as React.ComponentProps<typeof ChatApp>["host"];
-    render(<ChatApp vscode={mockVscode as unknown as VsCodeApi} host={host} />);
-    sendHostMessage(fixtures.authStatusResponse());
-
-    const input = screen.getByTestId("message-input");
-    input.focus();
-    await act(async () => {
-      input.textContent = "/agents";
-      const range = document.createRange();
-      range.selectNodeContents(input);
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-      fireEvent.input(input, { data: "/agents", inputType: "insertText" });
-    });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    // 设置页打开且「子代理」选项卡激活（nav header + 导航项 is-active）
-    expect(
-      await screen.findByText("配置用于并行处理任务的子代理。"),
-    ).toBeInTheDocument();
-    expect(
-      mockVscode.postMessage.mock.calls.find(
-        (c) => c[0]?.command === "getSubagentConfigurations",
-      ),
-    ).toBeDefined();
-  });
 });
 
-describe("SettingsPage 子代理选项卡视图（内容自 AgentsDialog 迁移）", () => {
+describe("SettingsPage 子代理选项卡视图（4 Tab + 项目分组卡片）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("请求 agent 定义并按来源分组展示（内置 / 用户 / 插件）", async () => {
+  it("请求 agent 定义并展示四个来源 Tab（插件/内置/用户/项目）", async () => {
     const { vscode } = renderSettingsPage();
 
     expect(vscode.postMessage).toHaveBeenCalledWith({
@@ -170,31 +134,64 @@ describe("SettingsPage 子代理选项卡视图（内容自 AgentsDialog 迁移�
       ]),
     );
 
-    expect(await screen.findByText("内置 agents")).toBeInTheDocument();
-    expect(screen.getByText("插件 agents")).toBeInTheDocument();
-    expect(screen.getByText("用户 agents")).toBeInTheDocument();
+    expect(await screen.findByText("插件子代理")).toBeInTheDocument();
+    expect(screen.getByText("内置子代理")).toBeInTheDocument();
+    expect(screen.getByText("用户子代理")).toBeInTheDocument();
+    expect(screen.getByText("项目子代理")).toBeInTheDocument();
 
-    // Row shows name + model
-    expect(screen.getByText("explore")).toBeInTheDocument();
-    expect(screen.getByText("· glm-5.2")).toBeInTheDocument();
-    // Plugin agent shows its namespaced name
+    // 默认选中第一个 Tab（插件子代理）：展示插件子代理
     expect(screen.getByText("sdd:specify")).toBeInTheDocument();
-    // Description is shown in the row
+    expect(screen.getByText("· deepseek-v4-flash")).toBeInTheDocument();
+  });
+
+  it("点击 Tab 切换来源，用户子代理 Tab 提供「新增子代理」入口", async () => {
+    renderSettingsPage();
+    sendHostMessage(
+      fixtures.subagentConfigurationsResponse([builtinAgent, userAgent]),
+    );
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText("用户子代理"));
+    });
+    expect(screen.getByText("code-review")).toBeInTheDocument();
     expect(
       screen.getByText("代码评审助手，检查潜在缺陷与改进点"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /新增子代理/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("项目子代理 Tab 按项目分组卡片展示（+ 新增指令）", async () => {
+    renderSettingsPage();
+    sendHostMessage(fixtures.subagentConfigurationsResponse([projectAgent]));
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText("项目子代理"));
+    });
+
+    // 项目卡片（workdir 推断项目名 a）+ 新增指令
+    expect(screen.getByText("a")).toBeInTheDocument();
+    expect(screen.getByText("deploy-agent")).toBeInTheDocument();
+    expect(screen.getByText("项目部署专用子代理")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /新增指令/ }),
     ).toBeInTheDocument();
   });
 
   it("shows an empty state when no agents are configured", async () => {
     renderSettingsPage();
     sendHostMessage(fixtures.subagentConfigurationsResponse([]));
-    expect(await screen.findByText("暂无可用 agents")).toBeInTheDocument();
+    expect(await screen.findByText("插件子代理暂无内容")).toBeInTheDocument();
   });
 
   it("enters detail view on click and shows full configuration", async () => {
     renderSettingsPage();
     sendHostMessage(fixtures.subagentConfigurationsResponse([builtinAgent]));
 
+    await act(async () => {
+      fireEvent.click(await screen.findByText("内置子代理"));
+    });
     const row = await screen.findByText("explore");
     await act(async () => {
       fireEvent.click(row);
@@ -204,7 +201,6 @@ describe("SettingsPage 子代理选项卡视图（内容自 AgentsDialog 迁移�
     expect(screen.getByText("模型：")).toBeInTheDocument();
     expect(screen.getByText("glm-5.2")).toBeInTheDocument();
     expect(screen.getByText("来源：")).toBeInTheDocument();
-    // Scope badge in the detail header and the 来源 field both render the label
     const sourceField = screen.getByText("来源：").parentElement;
     expect(sourceField).toHaveTextContent("内置");
     expect(screen.getByText("工具：")).toBeInTheDocument();
@@ -220,7 +216,7 @@ describe("SettingsPage 子代理选项卡视图（内容自 AgentsDialog 迁移�
     await act(async () => {
       fireEvent.click(screen.getByText("返回列表"));
     });
-    expect(screen.getByText("内置 agents")).toBeInTheDocument();
+    expect(screen.getByText("内置子代理")).toBeInTheDocument();
   });
 
   it("shows a placeholder model when none is configured", async () => {
@@ -232,8 +228,143 @@ describe("SettingsPage 子代理选项卡视图（内容自 AgentsDialog 迁移�
     sendHostMessage(fixtures.subagentConfigurationsResponse([noModelAgent]));
 
     await act(async () => {
+      fireEvent.click(await screen.findByText("用户子代理"));
+    });
+    await act(async () => {
       fireEvent.click(await screen.findByText("code-review"));
     });
     expect(screen.getByText("默认（未显式配置）")).toBeInTheDocument();
+  });
+
+  it("「新增子代理」→ onPrefillPrompt 预填用户级提示词", async () => {
+    const onPrefillPrompt = vi.fn();
+    renderSettingsPage(undefined, { onPrefillPrompt });
+    sendHostMessage(fixtures.subagentConfigurationsResponse([userAgent]));
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText("用户子代理"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /新增子代理/ }));
+    });
+
+    expect(onPrefillPrompt).toHaveBeenCalledWith(
+      expect.stringContaining("帮我新建用户级子代理"),
+    );
+  });
+
+  it("「编辑」→ 预填编辑提示词并发送 openFile（IDE 回退）", async () => {
+    const onPrefillPrompt = vi.fn();
+    const { vscode } = renderSettingsPage(undefined, { onPrefillPrompt });
+    sendHostMessage(fixtures.subagentConfigurationsResponse([userAgent]));
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText("用户子代理"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /编辑/ }));
+    });
+
+    expect(onPrefillPrompt).toHaveBeenCalledWith(
+      expect.stringContaining("帮我编辑子代理code-review"),
+    );
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      command: "openFile",
+      path: "~/.wave/agents/code-review.md",
+    });
+  });
+
+  it("「编辑」优先走 onOpenExternalFile（desktop 系统编辑器）", async () => {
+    const onOpenExternalFile = vi.fn();
+    const onPrefillPrompt = vi.fn();
+    const mockVscode = createMockVscode() as unknown as {
+      postMessage: (msg: unknown) => void;
+    };
+    const { unmount } = render(
+      <SettingsPage
+        configurationData={null}
+        onSave={() => {}}
+        onClose={() => {}}
+        userAgentsContent={null}
+        projectAgentsContent={null}
+        onLoadAgentsContent={() => {}}
+        onSaveAgentsContent={() => {}}
+        initialNav="subagents"
+        vscode={mockVscode}
+        workdir="/work/a"
+        onPrefillPrompt={onPrefillPrompt}
+        onOpenExternalFile={onOpenExternalFile}
+      />,
+    );
+    sendHostMessage(fixtures.subagentConfigurationsResponse([userAgent]));
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText("用户子代理"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /编辑/ }));
+    });
+
+    expect(onOpenExternalFile).toHaveBeenCalledWith(
+      "~/.wave/agents/code-review.md",
+    );
+    expect(mockVscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "openFile" }),
+    );
+    unmount();
+  });
+
+  it("「删除」→ 二次确认 → deleteSubagent RPC", async () => {
+    const { vscode } = renderSettingsPage();
+    sendHostMessage(fixtures.subagentConfigurationsResponse([userAgent]));
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText("用户子代理"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /删除/ }));
+    });
+
+    // 确认框出现（含子代理名与路径）
+    expect(
+      await screen.findByText("删除子代理「code-review」"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/~\/\.wave\/agents\/code-review\.md/),
+    ).toBeInTheDocument();
+
+    // 取消不删除
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
+    });
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "deleteSubagent" }),
+    );
+
+    // 再次打开并确认
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /删除/ }));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId("confirm-dialog-confirm"));
+    });
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      command: "deleteSubagent",
+      name: "code-review",
+    });
+  });
+
+  it("插件/内置子代理不提供「删除」入口（只读来源）", async () => {
+    renderSettingsPage();
+    sendHostMessage(
+      fixtures.subagentConfigurationsResponse([builtinAgent, pluginAgent]),
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /删除/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /编辑/ }),
+    ).not.toBeInTheDocument();
   });
 });

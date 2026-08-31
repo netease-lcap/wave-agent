@@ -41,6 +41,8 @@ export interface HookCommand {
 export interface HookEventConfig {
   matcher?: string; // Required for PreToolUse/PostToolUse, omitted for others
   hooks: HookCommand[];
+  /** Whether this hook entry executes. Absent defaults to true. */
+  enabled?: boolean;
 }
 
 // Context passed to hook during execution
@@ -170,6 +172,9 @@ export function isValidHookEventConfig(
 
   // Validate optional matcher
   if ("matcher" in cfg && typeof cfg.matcher !== "string") return false;
+
+  // Validate optional enabled
+  if ("enabled" in cfg && typeof cfg.enabled !== "boolean") return false;
 
   return true;
 }
