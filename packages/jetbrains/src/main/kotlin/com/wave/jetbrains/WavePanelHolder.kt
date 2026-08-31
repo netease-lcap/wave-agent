@@ -58,19 +58,6 @@ class WavePanelHolder(private val project: Project) {
     }
 
     /**
-     * Updates the tool-window content display name (the chat header title). Mirrors VSCE deriving
-     * panel.title from the first user message (webview getSessionTitle); here the JB backend
-     * pushes the derived title. Must run on the EDT.
-     */
-    fun setTabTitle(title: String) {
-        val safe = if (title.isBlank()) "新对话" else title
-        val update = {
-            toolWindow?.contentManager?.getContent(0)?.displayName = safe
-        }
-        if (SwingUtilities.isEventDispatchThread()) update() else Edt.invokeLater(update)
-    }
-
-    /**
      * Ensures the tool window has a chat: creates the single [WavePanel] content if none exists
      * (or it was disposed). Swing content (Content + JBCefBrowser) must be created on the EDT; if
      * the caller is already on the EDT the work runs inline, otherwise it is scheduled via
@@ -83,7 +70,10 @@ class WavePanelHolder(private val project: Project) {
 
         fun build(): WavePanel {
             val p = WavePanel(project)
-            val content = ContentFactory.getInstance().createContent(p.component, "新对话", false)
+            // Empty display name on purpose: the IDE appends the single content's displayName to
+            // the tool-window header title (legacy UI), and we keep the header to just the fixed
+            // product title — the webview header shows the session title instead.
+            val content = ContentFactory.getInstance().createContent(p.component, "", false)
             content.setDisposer(p)
             tw.contentManager.addContent(content)
             tw.contentManager.setSelectedContent(content)

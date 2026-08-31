@@ -23,15 +23,15 @@
             serviceImplementation="com.wave.jetbrains.WavePanelHolder"/>
         <projectService
             serviceImplementation="com.wave.jetbrains.WaveBackendService"/>
-        <!-- Chat sessions render as tabs in the side-bar Wave tool window; ExitPlanMode plans
-             render in a separate editor-area tab (WavePlanFileEditorProvider serves
-             WavePlanVirtualFile), mirroring VSCE's chat panel + createWebviewPanel plan preview.
-             The settings webview likewise renders in an editor-area tab (WaveSettingsFileEditor
-             serves WaveSettingsVirtualFile), mirroring VSCE's settings panel. -->
+        <!-- The single chat panel renders as the side-bar Wave tool window content (cannot be
+             closed; its title comes from toolWindow.title). ExitPlanMode plans render in a
+             separate editor-area tab (WavePlanFileEditorProvider serves WavePlanVirtualFile),
+             mirroring VSCE's chat panel + createWebviewPanel plan preview. The settings webview
+             likewise renders in an editor-area tab (WaveSettingsFileEditor serves
+             WaveSettingsVirtualFile), mirroring VSCE's settings panel. -->
         <toolWindow
             id="Wave"
             anchor="right"
-            canCloseContents="true"
             factoryClass="com.wave.jetbrains.WaveToolWindowFactory"
             icon="com.wave.jetbrains.icons.WaveIcons.Wave"/>
         <fileEditorProvider implementation="com.wave.jetbrains.editor.WavePlanFileEditorProvider"/>
