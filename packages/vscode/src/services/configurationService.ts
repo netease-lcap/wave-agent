@@ -8,6 +8,12 @@ export interface ConfigurationData {
   fastModel?: string;
   language?: string;
   serverUrl?: string;
+  /** Per-model input context window in K tokens (e.g. 200 = 200K), 16–1000 */
+  contextLength?: number;
+  /** Whether auto-memory extraction is enabled */
+  autoMemoryEnabled?: boolean;
+  /** Auto-memory extraction turn frequency, 1–100 */
+  autoMemoryFrequency?: number;
 }
 
 export class ConfigurationService {
@@ -22,6 +28,13 @@ export class ConfigurationService {
       fastModel: this.context.globalState.get<string>("fastModel") || "",
       language: this.context.globalState.get<string>("language") || "Chinese",
       serverUrl: this.context.globalState.get<string>("serverUrl") || "",
+      contextLength:
+        this.context.globalState.get<number>("contextLength") ?? undefined,
+      autoMemoryEnabled:
+        this.context.globalState.get<boolean>("autoMemoryEnabled") ?? undefined,
+      autoMemoryFrequency:
+        this.context.globalState.get<number>("autoMemoryFrequency") ??
+        undefined,
     };
   }
 
@@ -48,6 +61,21 @@ export class ConfigurationService {
         await this.context.globalState.update(
           "serverUrl",
           configData.serverUrl,
+        );
+      if (configData.contextLength !== undefined)
+        await this.context.globalState.update(
+          "contextLength",
+          configData.contextLength,
+        );
+      if (configData.autoMemoryEnabled !== undefined)
+        await this.context.globalState.update(
+          "autoMemoryEnabled",
+          configData.autoMemoryEnabled,
+        );
+      if (configData.autoMemoryFrequency !== undefined)
+        await this.context.globalState.update(
+          "autoMemoryFrequency",
+          configData.autoMemoryFrequency,
         );
     } catch (error) {
       console.error("Failed to save configuration:", error);

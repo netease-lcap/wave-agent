@@ -31,15 +31,13 @@ test.describe("Product Specification Screenshots - UI Basic", () => {
     });
 
     // 1. Welcome View (logged-in empty state)
-    await expect(
-      webviewPage.getByText("Hi~ 欢迎使用 Wave 代码智聊"),
-    ).toBeVisible();
+    await expect(webviewPage.getByTestId("welcome-wordmark")).toBeVisible();
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/spec-welcome.webp",
     );
 
-    // 1.1 Welcome View (unauthenticated state — with login button)
+    // 1.1 Welcome View (unauthenticated state — login entry in the chat header)
     await injector.simulateExtensionMessage("setInitialState", {
       messages: [],
       isStreaming: false,
@@ -52,37 +50,33 @@ test.describe("Product Specification Screenshots - UI Basic", () => {
       },
       permissionMode: "default",
     });
-    await expect(webviewPage.getByText("登 录")).toBeVisible();
+    // The welcome page itself shows only the wordmark; the login button lives
+    // in the chat header (spec sso-auth: IDE header login entry).
+    await expect(webviewPage.getByTestId("welcome-wordmark")).toBeVisible();
+    await expect(webviewPage.getByTestId("header-login-btn")).toBeVisible();
 
-    // Verify layout geometry: logo svg present, login button full-width & horizontally centered
+    // Verify layout geometry: wordmark horizontally centered
     const geometry = await webviewPage.evaluate(() => {
-      const svg = document.querySelector("button svg, div svg");
-      const btn = Array.from(document.querySelectorAll("button")).find((b) =>
-        b.textContent?.includes("登"),
+      const wordmark = document.querySelector(
+        "[data-testid='welcome-wordmark']",
       );
       const container = document.querySelector(
         ".chat-container",
       ) as HTMLElement | null;
-      if (!svg || !btn || !container) return null;
-      const bb = btn.getBoundingClientRect();
+      if (!wordmark || !container) return null;
+      const wb = wordmark.getBoundingClientRect();
       const cb = container.getBoundingClientRect();
       return {
-        hasSvg: !!svg,
-        btnWidth: Math.round(bb.width),
-        containerWidth: Math.round(cb.width),
-        btnLeftOffset: Math.round(bb.left - cb.left),
-        btnRightOffset: Math.round(cb.right - bb.right),
-        btnCenterDelta: Math.round(
-          (bb.left + bb.right) / 2 - (cb.left + cb.right) / 2,
+        hasWordmark: !!wordmark,
+        wordmarkCenterDelta: Math.round(
+          (wb.left + wb.right) / 2 - (cb.left + cb.right) / 2,
         ),
       };
     });
     expect(geometry).not.toBeNull();
-    expect(geometry!.hasSvg).toBe(true);
-    // Button spans (nearly) the full container width
-    expect(geometry!.btnWidth).toBeGreaterThan(geometry!.containerWidth - 40);
-    // Button is horizontally centered within the container
-    expect(Math.abs(geometry!.btnCenterDelta)).toBeLessThan(5);
+    expect(geometry!.hasWordmark).toBe(true);
+    // Wordmark is horizontally centered within the container
+    expect(Math.abs(geometry!.wordmarkCenterDelta)).toBeLessThan(5);
 
     await screenshotWebp(
       webviewPage,

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:," />
+  <title>Wave webview 原型预览</title>
+  <script>
+    // ── mock vscode API（必须在应用 module 之前同步执行）───────────────
+    // 对齐 packages/webview/e2e/utils/webviewTestHarness.ts 的 mock 模式，
+    // 扩展 responders：webview → host 请求按 command 命中回发响应。
+    window.process = { env: { NODE_ENV: "development" } };
+    window.__waveMockSent = [];
+    window.__waveMockResponders = {};
+    window.__waveMockReady = false;
+    window.__waveMockReadyCallbacks = [];
+
+    function __waveMockSendHost(message) {
+      window.dispatchEvent(new MessageEvent("message", { data: message }));
+    }
+    window.__waveMockPendingTimers = [];
+    window.__waveMockSendAfter = function (ms, message) {
+      var id = setTimeout(function () { __waveMockSendHost(message); }, ms);
+      window.__waveMockPendingTimers.push(id);
+    };
+    // 取消未触发的延时消息：用例切换不再整页 reload，必须显式清旧 timer
+    // 防止旧用例的延时消息注入到新用例（串台）。
+    window.__waveMockCancelPending = function () {
+      window.__waveMockPendingTimers.splice(0).forEach(clearTimeout);
+    };
+    window.simulateExtensionMessage = __waveMockSendHost;
+
+    window.acquireVsCodeApi = function () {
+      return {
+        postMessage: function (message) {
+          window.__waveMockSent.push(message);
+          // 挂载完成信号（消息监听就绪后发出）：IDE 外壳发 webviewReady，
+          // 桌面端外壳发 desktopReady，两者都视为宿主就绪。
+          if (
+            (message.command === "webviewReady" ||
+              message.command === "desktopReady") &&
+            !window.__waveMockReady
+          ) {
+            window.__waveMockReady = true;
+            window.__waveMockReadyCallbacks.splice(0).forEach(function (cb) { cb(); });
+          }
+          var responder = window.__waveMockResponders[message.command];
+          if (responder) {
+            responder(message, {
+              send: __waveMockSendHost,
+              sendAfter: window.__waveMockSendAfter,
+            });
+          }
+        },
+        setState: function () {},
+        getState: function () { return {}; },
+      };
+    };
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  <div id="wave-preview-bar"></div>
+  <script type="module" src="/preview-entry.tsx"></script>
+</body>
+</html>

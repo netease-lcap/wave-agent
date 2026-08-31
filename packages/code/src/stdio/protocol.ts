@@ -86,8 +86,12 @@ export type RequestMethod =
   | "listDaemonSessions"
   // Auth
   | "getAuthStatus"
+  | "getAccountInfo"
   | "login"
   | "logout"
+  // Memory files (user-level ~/.wave/AGENTS.md and project-level <workdir>/AGENTS.md)
+  | "getAgentsContent"
+  | "setAgentsContent"
   // Plugins
   | "listPlugins"
   | "installPlugin"
@@ -137,7 +141,8 @@ export type ServerNotificationMethod =
   | "compactionStateChange"
   | "compactionContentUpdate"
   | "backgroundTasksChange"
-  | "btwContent";
+  | "btwContent"
+  | "contextUsage";
 
 // ── Helper: is this a request (has id)? ─────────────────────────
 

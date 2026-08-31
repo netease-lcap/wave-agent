@@ -63,6 +63,19 @@ export function activate(context: vscode.ExtensionContext) {
     },
   );
 
+  // Register open settings command (editor-area settings tab, spec 场景 10)
+  const openSettingsCommand = vscode.commands.registerCommand(
+    "wave-code.openSettings",
+    async () => {
+      try {
+        await chatProvider!.openSettings();
+      } catch (error) {
+        console.error("打开设置时出错:", error);
+        vscode.window.showErrorMessage("打开设置失败: " + error);
+      }
+    },
+  );
+
   // Register add to wave command
   const addToWaveCommand = vscode.commands.registerCommand(
     "wave-code.addToWave",
@@ -101,6 +114,7 @@ export function activate(context: vscode.ExtensionContext) {
     openChatWindowCommand,
     focusViewCommand,
     addToWaveCommand,
+    openSettingsCommand,
   );
 
   console.log("Wave 聊天命令注册成功");

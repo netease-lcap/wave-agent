@@ -43,13 +43,13 @@
 }
 
 .desktop-sidebar-more-btn {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   background-color: transparent;
   color: var(--vscode-foreground);
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -58,6 +58,24 @@
 
 .desktop-sidebar-more-btn:hover {
   background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+/* Batch 2 会话状态看板: brand-row 活动 button active state — icon fills
+   brand red + a light red tint background (prototype #c1292e icon on
+   #ffebe8 tint, 6px radius). */
+.desktop-sidebar-more-btn.is-active {
+  color: var(--vscode-brand-primary, #c1292e);
+  background-color: #ffebe8;
+}
+
+/* Dark theme: the fixed #ffebe8 light tint would glare — use a red-tinted
+   translucent wash over the sidebar background instead. */
+html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
+  background-color: color-mix(
+    in srgb,
+    var(--vscode-brand-primary, #c1292e) 18%,
+    transparent
+  );
 }
 
 .desktop-sidebar-new-chat {
@@ -81,9 +99,13 @@
   text-align: left;
 }
 
-/* Icon left edge + size match the session-tree group chevron below it. */
-.desktop-sidebar-new-chat .codicon {
-  font-size: 12px;
+/* Icon left edge + size match the session-tree group chevron below it
+   (both 16px: the codicons.css baseline `.codicon[class*="codicon-"]`
+   beats the 12px local rule at equal specificity — see DiffPane.css). */
+.desktop-sidebar-new-chat svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 .desktop-sidebar-new-chat:hover:not(:disabled) {
@@ -1198,6 +1220,17 @@ body.is-panel-resizing * {
   flex: 1;
   min-width: 0;
   height: 100%;
+}
+
+/* Preview fullscreen (spec: 预览面板全屏): the conversation column is hidden
+   and the preview pane fills the content area. The pane's inline width is
+   overridden with !important — the pane keeps its controlled-width prop for
+   the restored layout, only this scoped rule widens it. */
+.desktop-chat-body.preview-fullscreen .desktop-panel-slot {
+  flex: 1;
+}
+.desktop-chat-body.preview-fullscreen .preview-pane {
+  width: 100% !important;
 }
 
 /* Wrapper that keeps an unchecked panel mounted (display:none) so its content

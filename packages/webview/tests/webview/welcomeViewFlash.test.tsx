@@ -9,24 +9,21 @@ import {
 import { ChatApp } from "../../src/components/ChatApp";
 
 /**
- * Reproduces the welcome-page login-button flash:
- * Before the backend pushes `setInitialState` (which carries the real auth
- * status), the webview's initial `isAuthenticated` is `false`. A logged-in user
- * would briefly see the "登 录" CTA, which then disappears once the real status
- * arrives — a visible flash. The welcome page (incl. login button) must not
- * render until the initial state is available.
+ * The welcome page (brand wordmark) must not flash before the backend pushes
+ * `setInitialState`: the welcome state depends on the initial snapshot, and the
+ * wordmark is its only visual content (the login entry lives in the chat
+ * header / sidebar account card, not on the welcome page).
  */
-describe("WelcomeView login button flash", () => {
-  it("does not show the login button before initial state arrives", () => {
+describe("WelcomeView render timing", () => {
+  it("does not show the welcome page before initial state arrives", () => {
     // Render directly (bypassing renderChatApp's auto authStatusResponse) to
     // simulate the very first frame before setInitialState reaches the webview.
     render(<ChatApp vscode={createMockVscode()} />);
 
-    expect(screen.queryByText("登 录")).not.toBeInTheDocument();
-    expect(screen.queryByText("登录后即可开始使用~")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("welcome-wordmark")).not.toBeInTheDocument();
   });
 
-  it("shows the login button once initial state arrives with isAuthenticated:false", () => {
+  it("shows the welcome page once initial state arrives", () => {
     render(<ChatApp vscode={createMockVscode()} />);
 
     act(() => {
@@ -40,10 +37,10 @@ describe("WelcomeView login button flash", () => {
       });
     });
 
-    expect(screen.getByText("登 录")).toBeVisible();
+    expect(screen.getByTestId("welcome-wordmark")).toBeVisible();
   });
 
-  it("does not show the login button when initial state arrives with isAuthenticated:true", () => {
+  it("shows the welcome page regardless of the initial auth state", () => {
     render(<ChatApp vscode={createMockVscode()} />);
 
     act(() => {
@@ -57,7 +54,7 @@ describe("WelcomeView login button flash", () => {
       });
     });
 
-    expect(screen.queryByText("登 录")).not.toBeInTheDocument();
+    expect(screen.getByTestId("welcome-wordmark")).toBeVisible();
   });
 
   /**
@@ -96,7 +93,7 @@ describe("WelcomeView login button flash", () => {
     });
 
     // Welcome page still shown (not a blank message area).
-    expect(screen.getByText("登 录")).toBeVisible();
+    expect(screen.getByTestId("welcome-wordmark")).toBeVisible();
   });
 
   it("switches away from the welcome page once a visible message arrives", () => {
@@ -132,6 +129,6 @@ describe("WelcomeView login button flash", () => {
       });
     });
 
-    expect(screen.queryByText("登 录")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("welcome-wordmark")).not.toBeInTheDocument();
   });
 });

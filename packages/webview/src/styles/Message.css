@@ -20,12 +20,29 @@
   content: "";
   position: absolute;
   left: 0;
-  top: 14px;
-  width: 8px;
-  height: 8px;
+  top: 16px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--dot-color, #cccccc);
   z-index: 1;
+}
+
+/* Running/streaming rows get the prototype's breathing halo (status-pulse):
+   a ring of the dot's color expands to 5px and fades out, 1.4s loop. */
+.timeline-row--running::before {
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--dot-color, #888) 28%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px transparent;
+  }
 }
 
 /* Continuous timeline line runs are drawn as per-row segments by the

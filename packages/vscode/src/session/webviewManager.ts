@@ -8,6 +8,8 @@ export interface WebviewManagerCallbacks {
   ) => Promise<void>;
   onTabDispose: (tabId: string) => void;
   onWindowDispose: (windowId: string) => void;
+  /** Messages posted from the settings tab webview (see getOrCreateSettingsPanel). */
+  onSettingsMessage: (message: unknown) => void | Promise<void>;
 }
 
 export class WebviewManager {
@@ -16,6 +18,8 @@ export class WebviewManager {
   private windowPanels: Map<string, vscode.WebviewPanel> = new Map();
   /** ExitPlanMode plan-preview panels (claudePlanPreview equivalent), keyed by chat session id. */
   private planPanels: Map<string, vscode.WebviewPanel> = new Map();
+  /** Editor-area settings tab (single instance, see getOrCreateSettingsPanel). */
+  private settingsPanel: vscode.WebviewPanel | undefined;
   private context: vscode.ExtensionContext;
   private callbacks: WebviewManagerCallbacks;
 
@@ -147,6 +151,89 @@ export class WebviewManager {
     });
   }
 
+  /**
+   * Returns the editor-area settings tab (single instance), creating it in the
+   * active editor column when missing (wave.openSettings command + the chat
+   * webview's "openSettings" message; spec 场景 10). Unlike plan panels the
+   * settings tab is not keyed by session — it serves config/AGENTS.md through
+   * the shared configService/utilityClient. Repeated opens reuse the panel.
+   */
+  public getOrCreateSettingsPanel(): vscode.WebviewPanel {
+    if (this.settingsPanel) {
+      this.settingsPanel.reveal(vscode.ViewColumn.Active);
+      return this.settingsPanel;
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+      "waveSettingsPreview",
+      "设置",
+      vscode.ViewColumn.Active,
+      {
+        enableScripts: true,
+        localResourceRoots: [this.context.extensionUri],
+        retainContextWhenHidden: true,
+      },
+    );
+    panel.webview.html = this.getSettingsPreviewContent(panel.webview);
+    panel.webview.onDidReceiveMessage((message) => {
+      void this.callbacks.onSettingsMessage(message);
+    });
+    panel.onDidDispose(() => {
+      if (this.settingsPanel === panel) {
+        this.settingsPanel = undefined;
+      }
+    });
+    this.settingsPanel = panel;
+    return panel;
+  }
+
+  /** Posts a message to the settings tab webview (no-op while it is closed). */
+  public postSettingsMessage(message: unknown) {
+    this.settingsPanel?.webview.postMessage(message);
+  }
+
+  /** Closes the settings tab (webview "closeSettings" message). */
+  public disposeSettingsPanel() {
+    if (this.settingsPanel) {
+      this.settingsPanel.dispose();
+      this.settingsPanel = undefined;
+    }
+  }
+
+  public getSettingsPreviewContent(webview: vscode.Webview): string {
+    const scriptUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this.context.extensionUri,
+        "webview",
+        "dist",
+        "settings.js",
+      ),
+    );
+    const cssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this.context.extensionUri,
+        "webview",
+        "dist",
+        "settings.css",
+      ),
+    );
+
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src ${webview.cspSource} data: blob:; img-src ${webview.cspSource} data: blob: https: http:; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource}; font-src ${webview.cspSource} data:;">
+    <title>设置</title>
+    <link rel="stylesheet" href="${cssUri}">
+</head>
+<body>
+    <div id="root"></div>
+    <script src="${scriptUri}"></script>
+</body>
+</html>`;
+  }
+
   public getPlanPreviewContent(webview: vscode.Webview): string {
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(
@@ -273,5 +360,7 @@ export class WebviewManager {
     this.windowPanels.clear();
     this.planPanels.forEach((panel) => panel.dispose());
     this.planPanels.clear();
+    this.settingsPanel?.dispose();
+    this.settingsPanel = undefined;
   }
 }

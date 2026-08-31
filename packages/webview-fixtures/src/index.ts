@@ -24,6 +24,9 @@ import type {
   SessionMetadata,
   SetInitialStateMessage,
   AuthStatusResponseMessage,
+  AgentsContentResponseMessage,
+  AgentsContentSavedMessage,
+  ContextUsageMessage,
   UpdateMessagesMessage,
   AppendMessageMessage,
   UpdatePermissionModeMessage,
@@ -45,6 +48,7 @@ import type {
   DesktopWorkdirStateMessage,
   DesktopTogglePanelMessage,
   DesktopPanelKind,
+  DesktopAccountInfoMessage,
   ToolBlockUpdateCallbackParams,
   ConfigurationData,
   ConfirmationRequest,
@@ -66,6 +70,19 @@ export interface Fixtures {
   authStatusResponse: (
     overrides?: Overrides<AuthStatusResponseMessage>,
   ) => AuthStatusResponseMessage;
+  agentsContentResponse: (
+    scope: "user" | "project",
+    content: string,
+    overrides?: Overrides<AgentsContentResponseMessage>,
+  ) => AgentsContentResponseMessage;
+  agentsContentSaved: (
+    scope: "user" | "project",
+    overrides?: Overrides<AgentsContentSavedMessage>,
+  ) => AgentsContentSavedMessage;
+  contextUsage: (
+    percent: number,
+    overrides?: Overrides<ContextUsageMessage>,
+  ) => ContextUsageMessage;
   updateMessages: (
     messages: Message[],
     overrides?: Overrides<UpdateMessagesMessage>,
@@ -142,6 +159,9 @@ export interface Fixtures {
     kind: DesktopPanelKind,
     overrides?: Overrides<DesktopTogglePanelMessage>,
   ) => DesktopTogglePanelMessage;
+  desktopAccountInfo: (
+    overrides?: Overrides<DesktopAccountInfoMessage>,
+  ) => DesktopAccountInfoMessage;
 }
 
 const noopSession = (): SessionMetadata => ({
@@ -179,6 +199,26 @@ export const fixtures: Fixtures = {
   authStatusResponse: (overrides = {}) => ({
     command: "authStatusResponse",
     isAuthenticated: true,
+    ...overrides,
+  }),
+
+  agentsContentResponse: (scope, content, overrides = {}) => ({
+    command: "agentsContentResponse",
+    scope,
+    content,
+    ...overrides,
+  }),
+
+  agentsContentSaved: (scope, overrides = {}) => ({
+    command: "agentsContentSaved",
+    scope,
+    ok: true,
+    ...overrides,
+  }),
+
+  contextUsage: (percent, overrides = {}) => ({
+    command: "contextUsage",
+    percent,
     ...overrides,
   }),
 
@@ -303,6 +343,16 @@ export const fixtures: Fixtures = {
   desktopTogglePanel: (kind, overrides = {}) => ({
     command: "desktopTogglePanel",
     kind,
+    ...overrides,
+  }),
+
+  desktopAccountInfo: (overrides = {}) => ({
+    command: "desktopAccountInfo",
+    isAuthenticated: true,
+    user: { id: "user-1", email: "alice@example.com" },
+    plan: null,
+    apiQuota: null,
+    update: undefined,
     ...overrides,
   }),
 };

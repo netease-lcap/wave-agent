@@ -349,6 +349,7 @@ const auListeners: Record<string, Array<(info: unknown) => void>> = {};
 vi.mock("electron-updater", () => ({
   autoUpdater: {
     checkForUpdates: vi.fn(async () => null),
+    downloadUpdate: vi.fn(),
     setFeedURL: vi.fn(),
     quitAndInstall: vi.fn(),
     on: vi.fn((event: string, cb: (info: unknown) => void) => {
@@ -2063,35 +2064,81 @@ describe("checkForUpdates with a configured serverUrl", () => {
     expect(checkForUpdate).not.toHaveBeenCalled();
   });
 
-  it("shows a restart-install toast once the update is downloaded, and quitAndInstall fires on its action", async () => {
+  it("drives the account-card update state machine: available → downloading → ready, restart via desktopRestartApp", async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
       isUpdateAvailable: true,
     } as never);
-    const { host } = await readyHostWithServerUrl();
+    const { host, sent } = await readyHostWithServerUrl();
 
+    // 发现更新 → desktopAccountInfo.update = available
     await host.handleWebviewMessage({ command: "checkForUpdates" });
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      update: "available",
+    });
+
+    // 用户确认下载（desktopUpdateApp）→ downloading + electron-updater 下载开始
+    await host.handleWebviewMessage({ command: "desktopUpdateApp" });
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      update: "downloading",
+    });
+    expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
+
+    // 下载完成 → ready；无「已下载完成」toast（重启确认由 webview 弹出）
     for (const cb of auListeners["update-downloaded"] ?? []) {
       cb({ version: "0.20.0" });
     }
-
-    const toasts = shownToasts().filter((n) =>
-      n.message.includes("已下载完成"),
-    );
-    expect(toasts).toHaveLength(1);
-    expect(toasts[0].actionLabel).toBe("重启安装");
-    expect(toasts[0].action).toEqual({ type: "quitAndInstall" });
-    // No native confirm dialog anymore (spec: the toast button installs directly).
-    expect(dialog.showMessageBox).not.toHaveBeenCalled();
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      update: "ready",
+    });
+    expect(
+      shownToasts().filter((n) => n.message.includes("已下载完成")),
+    ).toHaveLength(0);
     expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled();
 
-    // The webview echoes the action back; the host performs it.
-    await host.handleWebviewMessage({
-      command: "toastAction",
-      toastId: "x",
-      action: { type: "quitAndInstall" },
-    });
+    // 「重启」→ quitAndInstall（不弹原生对话框）
+    await host.handleWebviewMessage({ command: "desktopRestartApp" });
     expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(dialog.showMessageBox).not.toHaveBeenCalled();
+  });
+
+  it("reverts to available when the download errors, and ignores duplicate update commands", async () => {
+    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
+      isUpdateAvailable: true,
+    } as never);
+    const { host, sent } = await readyHostWithServerUrl();
+
+    await host.handleWebviewMessage({ command: "checkForUpdates" });
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      update: "available",
+    });
+
+    await host.handleWebviewMessage({ command: "desktopUpdateApp" });
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      update: "downloading",
+    });
+    // 下载失败 → 回退 available（按钮可重试），且不弹手动下载页 toast
+    for (const cb of auListeners["error"] ?? []) {
+      cb(new Error("download failed"));
+    }
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      update: "available",
+    });
+    expect(checkForUpdate).not.toHaveBeenCalled();
+    expect(
+      shownToasts().filter((n) => n.message.includes("0.20.0")),
+    ).toHaveLength(0);
+
+    // ready 之后重复 desktopUpdateApp 无效（已下载完成，只应重启）
+    for (const cb of auListeners["update-downloaded"] ?? []) {
+      cb({ version: "0.20.0" });
+    }
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      update: "ready",
+    });
+    await host.handleWebviewMessage({ command: "desktopUpdateApp" });
+    expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("opens the download page when the toast action is openDownloadPage", async () => {
@@ -2115,10 +2162,9 @@ describe("checkForUpdates with a configured serverUrl", () => {
       currentVersion: "0.19.7",
       downloadUrl: "https://github.com/release",
     });
-    const { host } = await readyHostWithServerUrl();
-
     // electron-updater emits 'error' and then rejects the check — both signal
     // the same failure. The host must fall back once, not twice.
+    const { host } = await readyHostWithServerUrl();
     await host.handleWebviewMessage({ command: "checkForUpdates" });
     for (const cb of auListeners["error"] ?? []) {
       cb(new Error("ECONNREFUSED"));
@@ -2168,31 +2214,31 @@ describe("checkForUpdates with a configured serverUrl", () => {
     vi.mocked(checkForUpdate).mockResolvedValue(null);
   });
 
-  it("does not announce a manual fallback once the restart-install toast is already shown", async () => {
+  it("does not announce a manual fallback once the update is downloaded (ready)", async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
       isUpdateAvailable: true,
     } as never);
     // If the fallback wrongly fired it would return this and announce a
-    // conflicting download-page toast next to the restart-install one.
+    // conflicting download-page toast next to the ready state.
     vi.mocked(checkForUpdate).mockResolvedValue({
       latestVersion: "0.20.0",
       currentVersion: "0.19.7",
       downloadUrl: "https://github.com/release",
     });
-    const { host } = await readyHostWithServerUrl();
+    const { host, sent } = await readyHostWithServerUrl();
 
     await host.handleWebviewMessage({ command: "checkForUpdates" });
-    // Download finished → the restart-install toast is announced.
+    // Download finished → the state machine reaches ready.
     for (const cb of auListeners["update-downloaded"] ?? []) {
       cb({ version: "0.20.0" });
     }
-    expect(
-      shownToasts().filter((n) => n.message.includes("已下载完成")),
-    ).toHaveLength(1);
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      update: "ready",
+    });
 
     // The install stage then fails (e.g. Squirrel signature validation) —
-    // the user already has the restart-install entry, so no manual fallback.
+    // the update button already offers 重启, so no manual fallback toast.
     for (const cb of auListeners["error"] ?? []) {
       cb(new Error("Code signature did not pass validation"));
     }
@@ -2219,6 +2265,205 @@ describe("checkForUpdates with a configured serverUrl", () => {
     // check announces it.
     const toasts = shownToasts().filter((n) => n.message.includes("已是最新"));
     expect(toasts).toHaveLength(1);
+  });
+});
+
+describe("account card (desktopAccountInfo)", () => {
+  /** getAuthStatus/getAccountInfo/login return rich payloads (email + usage). */
+  function stubAccountRpc(
+    user: { id: string; email: string },
+    account: { plan: unknown; apiQuota: unknown },
+    authenticated: boolean,
+  ): () => void {
+    const orig = h.handleClientRequest;
+    h.handleClientRequest = (m: string, params?: unknown) => {
+      if (m === "getAuthStatus")
+        return {
+          isAuthenticated: authenticated,
+          user,
+          serverUrl: "",
+        };
+      if (m === "getAccountInfo") return account;
+      if (m === "login") return { user };
+      return orig(m, params);
+    };
+    return () => {
+      h.handleClientRequest = orig;
+    };
+  }
+
+  it("pushes the account card on webviewReady with the auth user and usage", async () => {
+    const restore = stubAccountRpc(
+      { id: "u1", email: "alice@example.com" },
+      {
+        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        apiQuota: { limit: null, used: 1.15314 },
+      },
+      true,
+    );
+    const { sent } = await readyHost();
+
+    await vi.waitFor(() => {
+      const card = sent("desktopAccountInfo").at(-1);
+      expect(card).toMatchObject({
+        isAuthenticated: true,
+        user: { id: "u1", email: "alice@example.com" },
+        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        apiQuota: { limit: null, used: 1.15314 },
+        update: null,
+      });
+    });
+    restore();
+  });
+
+  it("keeps the last successful usage when the getAccountInfo RPC fails (spec 场景 9)", async () => {
+    const restoreStub = stubAccountRpc(
+      { id: "u1", email: "alice@example.com" },
+      {
+        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        apiQuota: { limit: null, used: 1 },
+      },
+      true,
+    );
+    const { host, sent } = await readyHost();
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+      });
+    });
+
+    // The next usage query fails (401/网络) — the card keeps the last data.
+    const restore = failRpc("getAccountInfo", "Account query failed (401)");
+    await host.dispose();
+    restore();
+    // Re-seed via a fresh webviewReady on a new host: pushInitialState's usage
+    // refresh now fails, but the card must keep the previously cached usage.
+    const restore2 = failRpc("getAccountInfo", "Account query failed (401)");
+    h.authStatusResults = [true];
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    restore2();
+
+    await vi.waitFor(() => {
+      const card = sent("desktopAccountInfo").at(-1);
+      expect(card).toMatchObject({
+        isAuthenticated: true,
+        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        apiQuota: { limit: null, used: 1 },
+      });
+    });
+    restoreStub();
+  });
+
+  it("seeds the account card on login and fetches usage", async () => {
+    const restore = stubAccountRpc(
+      { id: "u1", email: "carol@example.com" },
+      {
+        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        apiQuota: { limit: null, used: 0 },
+      },
+      false,
+    );
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({ command: "login" });
+
+    await vi.waitFor(() => {
+      const card = sent("desktopAccountInfo").at(-1);
+      expect(card).toMatchObject({
+        isAuthenticated: true,
+        user: { id: "u1", email: "carol@example.com" },
+        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+      });
+    });
+    restore();
+  });
+
+  it("clears the account card on logout", async () => {
+    const restore = stubAccountRpc(
+      { id: "u1", email: "bob@example.com" },
+      {
+        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        apiQuota: { limit: null, used: 0 },
+      },
+      true,
+    );
+    const { host, sent } = await readyHost();
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        isAuthenticated: true,
+      });
+    });
+
+    await host.handleWebviewMessage({ command: "logout" });
+
+    await vi.waitFor(() => {
+      const card = sent("desktopAccountInfo").at(-1);
+      expect(card).toMatchObject({
+        isAuthenticated: false,
+        user: null,
+        plan: null,
+        apiQuota: null,
+      });
+    });
+    restore();
+  });
+
+  it("pushes the newly focused pane's host account (spec 场景 8)", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: "local", path: "/work/a" });
+    store.upsertSession({
+      sessionId: "sess-remote",
+      title: "remote",
+      host: "prod",
+      workdir: "/work/a",
+      cwd: "/work/a",
+      createdAt: 1,
+      lastActiveAt: 1,
+    });
+    h.existingPaths.add("/work/a");
+    // webview-ready 本地 logged in → focus 本地 pane (cached) → focus prod (logged out).
+    h.authStatusResults = [true, false, false];
+
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      path: "/work/a",
+    });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    await host.handleWebviewMessage({
+      command: "desktopOpenPane",
+      workdir: "/work/a",
+      sessionId: "sess-remote",
+    });
+    const panes = (
+      sent("desktopPanes").at(-1) as {
+        panes: Array<{ paneId: string; host: string }>;
+      }
+    ).panes;
+    expect(panes[1]).toMatchObject({ host: "prod" });
+
+    // 本地 pane：卡片保持已登录（本地缓存）
+    await host.handleWebviewMessage({
+      command: "desktopFocusPane",
+      paneId: panes[0].paneId,
+    });
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        isAuthenticated: true,
+      });
+    });
+
+    // prod pane：卡片跟随为未登录
+    await host.handleWebviewMessage({
+      command: "desktopFocusPane",
+      paneId: panes[1].paneId,
+    });
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        isAuthenticated: false,
+      });
+    });
   });
 });
 

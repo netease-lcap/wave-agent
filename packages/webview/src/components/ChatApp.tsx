@@ -26,13 +26,16 @@ import McpDialog from "./McpDialog";
 import StatusDialog from "./StatusDialog";
 import BackgroundTaskManager from "./BackgroundTaskManager";
 import WorkflowManager from "./WorkflowManager";
-import AgentsDialog from "./AgentsDialog";
-import SkillsDialog from "./SkillsDialog";
 import WelcomeView from "./WelcomeView";
 import LoadingLogo from "./LoadingLogo";
+import { CollapseIcon } from "./HeaderIcons";
 import { DesktopHostSelector } from "./DesktopHostSelector";
 import { DesktopSidebar } from "./DesktopSidebar";
 import { DesktopShell } from "./DesktopShell";
+import type { AccountCardAccount } from "./AccountCard";
+import SettingsPage from "./SettingsPage";
+import type { NavKey } from "./SettingsPage";
+import { SessionBoard } from "./SessionBoard";
 import { DesktopWorkdirSelector } from "./DesktopWorkdirSelector";
 import { DesktopWorktreeControls } from "./DesktopWorktreeControls";
 import { PreviewPane } from "./PreviewPane";
@@ -231,7 +234,7 @@ const SidebarExpandButton: React.FC<{ onClick: () => void }> = ({
       data-testid="desktop-sidebar-expand"
       aria-label="展开侧边栏"
     >
-      <span className="codicon codicon-layout-panel-left"></span>
+      <CollapseIcon />
     </button>
   </Tooltip>
 );
@@ -247,6 +250,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // In-app toasts (VS Code-style, bottom-right). Desktop host only: pushed via
   // `showToast` (update announcements), acknowledged via `toastAction`.
   const [toasts, setToasts] = useState<UpdateToast[]>([]);
+  // 桌面侧边栏账户卡片快照（desktopAccountInfo push，窗口级）。null = 宿主尚未推送
+  //（此时不渲染卡片）；已登录态由 host 逐主机维护（跟随聚焦分屏）。
+  const [accountInfo, setAccountInfo] = useState<AccountCardAccount | null>(
+    null,
+  );
   // Message id awaiting rewind confirmation; non-null shows the ConfirmDialog.
   const [pendingRewindId, setPendingRewindId] = useState<string | null>(null);
   // /rewind popup: checkpoint list requested from the host on open.
@@ -354,6 +362,35 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // for this session, it just won't persist.
     }
   }, []);
+  // Batch 2 (designer prototype): desktop settings full-page and session board
+  // view switches. Only the root instance (paneId undefined) owns these — a
+  // split-view pane never renders them. settingsOpen covers the desktop
+  // "设置" entry (MoreMenu); VSCE/JetBrains open a host-side editor tab webview
+  // instead and never set this.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // 打开设置页时选中的初始导航项（更多菜单打开 → global；/agents → subagents、
+  // /skills → skills）。desktop 每次打开都会重挂载 SettingsPage，此值经
+  // initialNav 传入；IDE 由 openSettings message 的 nav 走 host 下发。
+  const [settingsNav, setSettingsNav] = useState<NavKey>("global");
+  const [sessionBoardOpen, setSessionBoardOpen] = useState(false);
+  // Context-usage percentage pushed by the host (batch 2 compress button).
+  // Undefined = no usage info received yet (spec 场景 4: label without %).
+  const [contextUsage, setContextUsage] = useState<number | undefined>();
+  // AGENTS.md editor contents (batch 2 personalization view). null = not yet
+  // loaded; loaded on demand when the settings page opens, saved via the
+  // setAgentsContent RPC.
+  const [userAgentsContent, setUserAgentsContent] = useState<string | null>(
+    null,
+  );
+  const [projectAgentsContent, setProjectAgentsContent] = useState<
+    string | null
+  >(null);
+  // Last save outcome for the AGENTS.md editor feedback (null = idle).
+  const [agentsSaveFeedback, setAgentsSaveFeedback] = useState<{
+    ok: boolean;
+    scope: "user" | "project";
+    error?: string;
+  } | null>(null);
   const expandBtn =
     paneId === undefined && sidebarCollapsed ? (
       <SidebarExpandButton
@@ -462,6 +499,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         file: PANEL_DEFAULT_WIDTH,
       },
   );
+  // Desktop preview fullscreen (spec: 预览面板全屏): the pane fills the content
+  // area, the conversation column and the other panels are hidden until the
+  // user toggles back (button or Esc). Per-pane: each ChatApp owns its panes.
+  const [previewFullscreen, setPreviewFullscreen] = useState(false);
   // Panels the user manually resized; see PanelGroupState.manualWidths.
   const [manualWidths, setManualWidths] = useState<
     Record<DesktopPanelKind, boolean>
@@ -1022,6 +1063,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             message.toast,
           ]);
           break;
+        case "desktopAccountInfo":
+          // Sidebar account card — window-global like showToast (the sidebar
+          // renders on the root instance only), so pane instances ignore it.
+          if (myPane !== undefined) break;
+          setAccountInfo({
+            isAuthenticated: message.isAuthenticated === true,
+            user: message.user ?? null,
+            plan: message.plan ?? null,
+            apiQuota: message.apiQuota ?? null,
+            update: message.update ?? null,
+          });
+          break;
         case "desktopTogglePanel":
           if (!forThisPane(message)) break;
           togglePanelRef.current(message.kind as DesktopPanelKind);
@@ -1178,15 +1231,71 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             type: "SET_AUTHENTICATED",
             payload: message.isAuthenticated || false,
           });
+          // The account card mirrors the host's per-host auth state; the user
+          // came along with the response (desktop host forwards it).
+          setAccountInfo((prev) => ({
+            ...(prev ?? { isAuthenticated: false }),
+            isAuthenticated: message.isAuthenticated === true,
+            user: message.user ?? prev?.user ?? null,
+          }));
+          break;
+        case "contextUsage":
+          // Context-window usage push (batch 2 压缩上下文 button). Session-scoped
+          // on desktop (each pane's session reports its own usage), so the reply
+          // is pane-routed like the other per-session pushes.
+          if (!forThisPane(message)) break;
+          setContextUsage(
+            typeof message.percent === "number"
+              ? Math.min(100, Math.max(0, message.percent))
+              : undefined,
+          );
+          break;
+        case "agentsContentResponse":
+          // AGENTS.md editor contents (settings 个性化 view). Requested by the
+          // settings page (root instance only), so replies are untagged — the
+          // pane guard below would drop them in a split-view pane, which is
+          // correct: panes never render the settings page.
+          if (message.scope === "project") {
+            setProjectAgentsContent(
+              typeof message.content === "string" ? message.content : "",
+            );
+          } else {
+            setUserAgentsContent(
+              typeof message.content === "string" ? message.content : "",
+            );
+          }
+          break;
+        case "agentsContentSaved":
+          setAgentsSaveFeedback({
+            ok: message.ok === true,
+            scope: message.scope === "project" ? "project" : "user",
+            error:
+              typeof message.error === "string" ? message.error : undefined,
+          });
           break;
         case "loginResponse":
           if (message.success) {
             dispatch({ type: "SET_AUTHENTICATED", payload: true });
+            setAccountInfo((prev) => ({
+              isAuthenticated: true,
+              user: message.user ?? prev?.user ?? null,
+              plan: prev?.plan ?? null,
+              apiQuota: prev?.apiQuota ?? null,
+              update: prev?.update ?? null,
+            }));
           }
           break;
         case "logoutResponse":
           if (message.success) {
             dispatch({ type: "SET_AUTHENTICATED", payload: false });
+            // 登出即清空用量 —— host 随后会推 desktopAccountInfo 全量快照。
+            setAccountInfo((prev) => ({
+              isAuthenticated: false,
+              user: null,
+              plan: null,
+              apiQuota: null,
+              update: prev?.update ?? null,
+            }));
           }
           break;
       }
@@ -1326,16 +1435,26 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     vscode.postMessage({ command: "login" });
   }, [vscode]);
 
-  const handleOpenSettings = useCallback(() => {
-    dispatch({
-      type: "SHOW_DIALOG",
-      payload: {
-        type: "config",
-        data: stateRef.current.configurationData || {},
-      },
-    });
-    vscode.postMessage({ command: "getConfiguration" });
-  }, [vscode]);
+  const handleOpenSettings = useCallback(
+    (nav?: NavKey) => {
+      if (isDesktop) {
+        // Batch 2: desktop opens the settings full-page (spec 场景 1). Load the
+        // configuration + AGENTS.md editor contents on entry; the page reads the
+        // latest from its own props when it renders. /agents、/skills 斜杠命令
+        // 携带 nav（subagents/skills）选中对应选项卡（spec agents-command.md）。
+        setSettingsOpen(true);
+        if (nav) setSettingsNav(nav);
+        vscode.postMessage({ command: "getConfiguration" });
+        vscode.postMessage({ command: "getAgentsContent", scope: "user" });
+        return;
+      }
+      // IDE hosts (VSCE/JetBrains): the host opens the settings tab webview in
+      // the editor area (spec 场景 10) and serves the shared SettingsPage there.
+      // nav 随 openSettings 透传，host 经 settingsState 下发给设置页。
+      vscode.postMessage({ command: "openSettings", ...(nav ? { nav } : {}) });
+    },
+    [vscode, isDesktop],
+  );
 
   const handleOpenEnterpriseConsole = useCallback(() => {
     const url = stateRef.current.configurationData?.serverUrl;
@@ -1344,9 +1463,72 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     }
   }, [vscode]);
 
+  // 账户卡片的「帮助文档」：serverUrl + /docs 走系统浏览器（spec 场景 4）.
+  const handleOpenHelpDocs = useCallback(() => {
+    const url = stateRef.current.configurationData?.serverUrl;
+    if (url) {
+      vscode.postMessage({
+        command: "openExternal",
+        url: `${url.replace(/\/+$/, "")}/docs`,
+      });
+    }
+  }, [vscode]);
+
+  // 更新状态机动作（desktopUpdateApp = 确认下载，desktopRestartApp = 重启安装）.
+  const handleUpdateApp = useCallback(() => {
+    postToHost({ command: "desktopUpdateApp" });
+  }, [postToHost]);
+
+  const handleRestartApp = useCallback(() => {
+    postToHost({ command: "desktopRestartApp" });
+  }, [postToHost]);
+
   const handleLogout = useCallback(() => {
     vscode.postMessage({ command: "logout" });
   }, [vscode]);
+
+  // Batch 2 压缩上下文 button: equivalent to typing /compact. The host (CLI
+  // agentBridge) routes the compact command; usage updates flow back via the
+  // contextUsage push so the button's percentage refreshes after the sweep.
+  const handleCompress = useCallback(() => {
+    postToHost({ command: "compact" });
+  }, [postToHost]);
+
+  // Batch 2 settings full-page (desktop): close returns to the conversation
+  // view; the next 设置 click re-opens it (spec 场景 1/11). The AGENTS.md
+  // editor contents are re-fetched on open so unsaved edits are discarded.
+  const handleCloseSettings = useCallback(() => {
+    setSettingsOpen(false);
+  }, []);
+
+  // Batch 2 session board (desktop): 活动 button toggles the board view; the
+  // board's 返回当前会话 closes it (spec 场景 6). Settings and board are
+  // mutually exclusive — opening one closes the other.
+  const handleOpenSessionBoard = useCallback(() => {
+    setSessionBoardOpen(true);
+    setSettingsOpen(false);
+  }, []);
+
+  const handleCloseSessionBoard = useCallback(() => {
+    setSessionBoardOpen(false);
+  }, []);
+
+  // Batch 2 AGENTS.md editor save (settings 个性化 view): writes the file via
+  // the setAgentsContent RPC; the agentsContentSaved push reports the outcome
+  // and the editor shows feedback (spec 场景 7). The project scope carries the
+  // current workdir so the host resolves <workdir>/AGENTS.md.
+  const handleSaveAgentsContent = useCallback(
+    (scope: "user" | "project", content: string) => {
+      setAgentsSaveFeedback(null);
+      vscode.postMessage({
+        command: "setAgentsContent",
+        scope,
+        content,
+        workdir: scope === "project" ? effectiveWorkdir : undefined,
+      });
+    },
+    [vscode, effectiveWorkdir],
+  );
 
   const handleSendMessage = useCallback(
     (
@@ -1403,11 +1585,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         return;
       }
       if (trimmedText === "/agents") {
-        dispatch({ type: "SHOW_DIALOG", payload: { type: "agents" } });
+        // 不再弹窗：唤起设置页并选中「子代理」选项卡（2026-08-29 用户拍板，
+        // 弹窗内容已迁移到设置页，见 SettingsSubagentsView）。
+        handleOpenSettings("subagents");
         return;
       }
       if (trimmedText === "/skills") {
-        dispatch({ type: "SHOW_DIALOG", payload: { type: "skills" } });
+        // 不再弹窗：唤起设置页并选中「技能」选项卡（见 SettingsSkillsView）。
+        handleOpenSettings("skills");
         return;
       }
       if (trimmedText === "/rewind") {
@@ -1491,6 +1676,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     },
     [
       handleClearChat,
+      handleOpenSettings,
       host,
       worktreeChecked,
       worktreeBranch,
@@ -2059,6 +2245,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     postToHost({ command: "desktopPanelState", checked: checkedPanels });
   }, [checkedPanels, isDesktop, postToHost]);
 
+  // Esc exits preview fullscreen (spec 场景 2). Registered only while
+  // fullscreen is active; pane-level dialogs handle their own Esc first
+  // (document capture + stopPropagation), so they close without exiting.
+  useEffect(() => {
+    if (!isDesktop || !previewFullscreen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPreviewFullscreen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isDesktop, previewFullscreen]);
+
   // Width ceiling for one panel: container minus the other checked panels and
   // the conversation-area minimum. Render-time estimate — the drag handler
   // re-clamps authoritatively on every mousemove.
@@ -2114,6 +2312,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           vscode={vscode}
           onAddComment={handleAddComment}
           onLastTabClosed={() => setPreviewUrl(null)}
+          fullscreen={previewFullscreen}
+          onToggleFullscreen={() => setPreviewFullscreen((v) => !v)}
           {...common}
         />
       ) : (
@@ -2213,16 +2413,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   ) : (
     <>
       {showWelcomeReady ? (
-        <WelcomeView
-          isAuthenticated={state.isAuthenticated}
-          hasDirectConnectConfig={
-            !!(
-              state.configurationData?.apiKey &&
-              state.configurationData?.baseURL
-            )
-          }
-          onLogin={handleLogin}
-        />
+        <WelcomeView />
       ) : showWelcome ? (
         <LoadingLogo />
       ) : (
@@ -2297,6 +2488,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             permissionMode={state.permissionMode}
             initialAttachedImages={state.attachedImages}
             paneId={paneId}
+            contextUsage={contextUsage}
+            onCompress={hasVisibleMessages ? handleCompress : undefined}
             disabled={host?.type === "desktop" && !effectiveWorkdir}
             workdirSelector={
               host?.type === "desktop" && !hasVisibleMessages ? (
@@ -2380,6 +2573,55 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     </>
   );
 
+  // Batch 2 settings full-page (desktop): rendered in place of chatContainer
+  // when settingsOpen. The board and settings are mutually exclusive (opening
+  // one closes the other, see handleOpenSessionBoard).
+  const settingsPage = isDesktop ? (
+    <SettingsPage
+      configurationData={state.configurationData ?? null}
+      onSave={handleConfigurationSave}
+      onClose={handleCloseSettings}
+      userAgentsContent={userAgentsContent}
+      projectAgentsContent={projectAgentsContent}
+      onLoadAgentsContent={(scope) =>
+        vscode.postMessage({
+          command: "getAgentsContent",
+          scope,
+          workdir: scope === "project" ? effectiveWorkdir : undefined,
+        })
+      }
+      onSaveAgentsContent={handleSaveAgentsContent}
+      workdir={effectiveWorkdir}
+      saving={state.configurationLoading}
+      saveMessage={
+        agentsSaveFeedback
+          ? agentsSaveFeedback.ok
+            ? "保存成功"
+            : `保存失败：${agentsSaveFeedback.error ?? "未知错误"}`
+          : null
+      }
+      initialNav={settingsNav}
+      vscode={vscode}
+    />
+  ) : null;
+
+  // Batch 2 session board (desktop): rendered in place of chatContainer when
+  // sessionBoardOpen. Clicking a card restores that session — workdir resolved
+  // from the board's own group data so the host can route the switch.
+  const sessionBoard = isDesktop ? (
+    <SessionBoard
+      groups={host?.sessionTree ?? []}
+      onSelectSession={(sessionId) => {
+        const group = (host?.sessionTree ?? []).find((g) =>
+          g.sessions.some((s) => s.sessionId === sessionId),
+        );
+        const workdir = group?.workdir ?? host?.workdir;
+        if (workdir) host?.onSelectSession(workdir, sessionId);
+      }}
+      onBack={handleCloseSessionBoard}
+    />
+  ) : null;
+
   // Dialogs render at the component root — not inside chatContainer — so they
   // stay visible in every layout: the desktop split-view shell (where the root
   // ChatApp never mounts its own chatContainer) still shows the config dialog
@@ -2435,12 +2677,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           onCancel={handleDialogClose}
         />
       )}
-      {state.activeDialog === "agents" && (
-        <AgentsDialog vscode={vscode} onClose={handleDialogClose} />
-      )}
-      {state.activeDialog === "skills" && (
-        <SkillsDialog vscode={vscode} onClose={handleDialogClose} />
-      )}
       {pendingRewindId && (
         <ConfirmDialog
           title="确定要回滚到此消息吗？"
@@ -2459,7 +2695,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   const chatContainer = (
     <div
-      className={`chat-container${dragActive ? " drag-active" : ""}`}
+      className={`chat-container${
+        isDesktop && showWelcomeReady ? " chat-container--welcome" : ""
+      }${dragActive ? " drag-active" : ""}`}
       data-testid="chat-container"
       ref={isDesktop ? chatContainerRef : undefined}
       onDragEnter={isDesktop ? handleDragEnter : undefined}
@@ -2504,9 +2742,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         sessionsLoading={state.sessionsLoading}
         onOpenSettings={handleOpenSettings}
         onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
+        onOpenHelpDocs={handleOpenHelpDocs}
         onLogin={handleLogin}
         onLogout={handleLogout}
         isAuthenticated={state.isAuthenticated}
+        showLoginButton={!isDesktop && !state.isAuthenticated}
         hideSessionButtons={isDesktop}
         hideMoreButton={isDesktop}
         panelToggle={
@@ -2520,21 +2760,29 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         }
       />
       {isDesktop ? (
-        <div className="desktop-chat-body">
-          <div className="desktop-chat-main">{chatBodyContent}</div>
-          {PANEL_ORDER.filter((kind) => mountedPanels.includes(kind)).map(
-            (kind) => (
-              <div
-                key={kind}
-                className="desktop-panel-slot"
-                style={{
-                  display: checkedPanels.includes(kind) ? undefined : "none",
-                }}
-              >
-                {renderPanelSlot(kind)}
-              </div>
-            ),
+        <div
+          className={`desktop-chat-body${
+            previewFullscreen ? " preview-fullscreen" : ""
+          }`}
+        >
+          {!previewFullscreen && (
+            <div className="desktop-chat-main">{chatBodyContent}</div>
           )}
+          {PANEL_ORDER.filter(
+            (kind) =>
+              mountedPanels.includes(kind) &&
+              (kind === "preview" || !previewFullscreen),
+          ).map((kind) => (
+            <div
+              key={kind}
+              className="desktop-panel-slot"
+              style={{
+                display: checkedPanels.includes(kind) ? undefined : "none",
+              }}
+            >
+              {renderPanelSlot(kind)}
+            </div>
+          ))}
         </div>
       ) : (
         chatBodyContent
@@ -2555,12 +2803,23 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             host={host}
             onOpenSettings={handleOpenSettings}
             onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
+            onOpenHelpDocs={handleOpenHelpDocs}
             onLogin={handleLogin}
             onLogout={handleLogout}
-            isAuthenticated={state.isAuthenticated}
+            account={accountInfo}
+            onUpdateApp={handleUpdateApp}
+            onRestartApp={handleRestartApp}
             sidebarExpandButton={expandBtn}
             collapsed={sidebarCollapsed}
             onCollapsedChange={handleSidebarCollapsedChange}
+            settingsOpen={settingsOpen}
+            onCloseSettings={handleCloseSettings}
+            sessionBoardOpen={sessionBoardOpen}
+            onCloseSessionBoard={handleCloseSessionBoard}
+            settingsPage={settingsPage}
+            sessionBoard={sessionBoard}
+            sessionBoardActive={sessionBoardOpen}
+            onOpenSessionBoard={handleOpenSessionBoard}
           />
           {dialogs}
         </>
@@ -2587,9 +2846,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           disabled={!host.workdir}
           onOpenSettings={handleOpenSettings}
           onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
+          onOpenHelpDocs={handleOpenHelpDocs}
           onLogin={handleLogin}
           onLogout={handleLogout}
-          isAuthenticated={state.isAuthenticated}
+          account={accountInfo}
+          onUpdateApp={handleUpdateApp}
+          onRestartApp={handleRestartApp}
           hostLabel={effectiveHost}
           sessionTree={host.sessionTree}
           currentSessionId={state.currentSession?.id}
@@ -2598,8 +2860,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           onDeleteSession={host.onDeleteSession}
           collapsed={sidebarCollapsed}
           onCollapsedChange={handleSidebarCollapsedChange}
+          sessionBoardActive={sessionBoardOpen}
+          onOpenSessionBoard={handleOpenSessionBoard}
         />
-        {chatContainer}
+        {settingsOpen
+          ? settingsPage
+          : sessionBoardOpen
+            ? sessionBoard
+            : chatContainer}
         {dialogs}
       </div>
     );

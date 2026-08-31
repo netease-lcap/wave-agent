@@ -199,7 +199,7 @@ test.describe("Desktop dropdown roving keyboard", () => {
     await expect(trigger).toBeFocused();
   });
 
-  test("sidebar more menu: auto-focus on open, arrows move, Escape returns", async ({
+  test("account card more menu: auto-focus on open, arrows move, Escape returns", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
@@ -214,8 +214,14 @@ test.describe("Desktop dropdown roving keyboard", () => {
       ...initialState,
       isAuthenticated: true,
     });
+    await injector.simulateExtensionMessage("desktopAccountInfo", {
+      isAuthenticated: true,
+      user: { id: "user-1", email: "alice@example.com" },
+      plan: null,
+      apiQuota: null,
+    });
 
-    const trigger = webviewPage.getByTestId("desktop-more-btn");
+    const trigger = webviewPage.getByTestId("account-card-more");
     await trigger.click();
     const menu = webviewPage.getByTestId("more-menu");
     await expect(menu).toBeVisible();

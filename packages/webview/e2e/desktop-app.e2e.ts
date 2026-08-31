@@ -143,7 +143,7 @@ test.describe("Desktop App Screenshots", () => {
     // page, not the LoadingLogo sweep. The sweep appeared before because
     // setInitialState was dispatched before ChatApp's listener attached.
     await expect(webviewPage.locator(".loading-logo")).toHaveCount(0);
-    await expect(webviewPage.getByText("欢迎使用 Wave")).toBeVisible();
+    await expect(webviewPage.getByTestId("welcome-wordmark")).toBeVisible();
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-first-launch.webp",
@@ -276,7 +276,7 @@ test.describe("Desktop App Screenshots", () => {
     );
   });
 
-  test("sidebar more menu lists settings / enterprise / logout", async ({
+  test("account card more menu lists settings / enterprise / logout", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
@@ -297,16 +297,24 @@ test.describe("Desktop App Screenshots", () => {
       ...initialState,
       isAuthenticated: true,
     });
+    // The sidebar account card only appears once the host pushes a
+    // desktopAccountInfo snapshot.
+    await injector.simulateExtensionMessage("desktopAccountInfo", {
+      isAuthenticated: true,
+      user: { id: "user-1", email: "alice@example.com" },
+      plan: null,
+      apiQuota: null,
+    });
 
     await expect(webviewPage.getByTestId("desktop-sidebar")).toBeVisible();
-    await webviewPage.getByTestId("desktop-more-btn").click();
+    await webviewPage.getByTestId("account-card-more").click();
     await expect(webviewPage.getByTestId("more-menu")).toBeVisible();
     await expect(webviewPage.getByTestId("more-menu-settings")).toBeVisible();
     await expect(webviewPage.getByTestId("more-menu-enterprise")).toBeVisible();
     await expect(webviewPage.getByTestId("more-menu-logout")).toBeVisible();
     await screenshotWebp(
       webviewPage,
-      "../../docs/public/screenshots/desktop-more-menu.webp",
+      "../../docs/public/screenshots/desktop-account-card-more.webp",
     );
   });
 });

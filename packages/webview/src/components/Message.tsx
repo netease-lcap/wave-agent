@@ -957,10 +957,19 @@ export const Message: React.FC<MessageProps> = React.memo(
 
       if (!wrap || rendered === null) return rendered;
 
+      // The running pulse animation (prototype .design-activity.is-running)
+      // only applies while a block is actively streaming/running; outcome
+      // states keep the static dot.
+      const isRunning =
+        block.type === "tool"
+          ? block.stage === "running" || block.stage === "streaming"
+          : (block.type === "reasoning" || block.type === "text") &&
+            block.stage === "streaming";
+
       return (
         <div
           key={index}
-          className="timeline-row"
+          className={`timeline-row${isRunning ? " timeline-row--running" : ""}`}
           style={
             dotColor
               ? ({ ["--dot-color"]: dotColor } as React.CSSProperties)

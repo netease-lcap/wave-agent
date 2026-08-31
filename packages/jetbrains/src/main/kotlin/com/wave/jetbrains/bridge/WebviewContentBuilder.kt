@@ -9,12 +9,13 @@ import java.nio.file.StandardCopyOption
 import javax.swing.UIManager
 
 /**
- * Extracts the shared webview bundle (chat.js / chat.css / vscode-shim.js + index.html) from
- * the plugin jar resources to a temp directory.
+ * Extracts the shared webview bundles (chat.js / chat.css / vscode-shim.js + index.html, or
+ * settings.js / settings.css / vscode-shim.js + settings.html) from the plugin jar resources to
+ * a temp directory.
  *
  * JCEF cannot read from inside a jar directly, and `loadHTML` uses a non-file origin that
  * blocks `file://` sub-resources via same-origin policy. So we extract everything to a real
- * temp dir and load `index.html` via `loadURL("file://...")`, giving the page a `file://`
+ * temp dir and load the entry html via `loadURL("file://...")`, giving the page a `file://`
  * origin that can freely load sibling assets.
  *
  * VS Code injects `--vscode-*` CSS variables into the webview body; JetBrains/JCEF does not,
@@ -25,7 +26,8 @@ object WebviewContentBuilder {
     private val LOG = logger<WebviewContentBuilder>()
 
     private const val RESOURCE_DIR = "/webview"
-    private val ASSETS = listOf("chat.js", "chat.css", "vscode-shim.js")
+    private val CHAT_ASSETS = listOf("chat.js", "chat.css", "vscode-shim.js")
+    private val SETTINGS_ASSETS = listOf("settings.js", "settings.css", "vscode-shim.js")
 
     /** id of the <style> element holding the LaF-derived `--vscode-*` overrides. */
     const val LAF_STYLE_ID = "wave-laf-overrides"
@@ -60,14 +62,25 @@ object WebviewContentBuilder {
         return "(function(){var b=document.getElementById('$THEME_BASE_STYLE_ID');if(b){b.textContent=`${esc(baseCss)}`;}var s=document.getElementById('$LAF_STYLE_ID');if(s){s.textContent=`${esc(lafCss)}`;}})();"
     }
 
-    /** Extracted temp dir + the file:// URL of index.html to load. */
+    /** Extracted temp dir + the file:// URL of the entry html to load. */
     data class ExtractedAssets(val dir: File, val indexUrl: String)
 
-    fun extractAssets(): ExtractedAssets {
+    /** Extracts the chat webview bundle (chat.js/chat.css + vscode-shim + index.html). */
+    fun extractAssets(): ExtractedAssets =
+        extract(CHAT_ASSETS, "index.html", "chat.js", "chat.css")
+
+    /**
+     * Extracts the settings webview bundle (settings.js/settings.css + vscode-shim + settings.html),
+     * loaded by the editor-area settings tab ([com.wave.jetbrains.editor.WaveSettingsFileEditor]).
+     */
+    fun extractSettingsAssets(): ExtractedAssets =
+        extract(SETTINGS_ASSETS, "settings.html", "settings.js", "settings.css")
+
+    private fun extract(assets: List<String>, htmlName: String, jsName: String, cssName: String): ExtractedAssets {
         val dir = Files.createTempDirectory("wave-webview").toFile()
         dir.deleteOnExit()
         val paths = mutableMapOf<String, File>()
-        for (name in ASSETS) {
+        for (name in assets) {
             val stream = javaClass.getResourceAsStream("$RESOURCE_DIR/$name")
             if (stream == null) {
                 LOG.warn("Webview asset not found in plugin resources: $name")
@@ -78,8 +91,8 @@ object WebviewContentBuilder {
             paths[name] = target
         }
 
-        val chatJs = paths["chat.js"]?.name ?: "chat.js"
-        val chatCss = paths["chat.css"]?.name ?: "chat.css"
+        val js = paths[jsName]?.name ?: jsName
+        val css = paths[cssName]?.name ?: cssName
         val shimJs = paths["vscode-shim.js"]?.name ?: "vscode-shim.js"
         val themeBase = themeBaseText()
         val lafOverrides = buildLafOverrides()
@@ -102,19 +115,19 @@ object WebviewContentBuilder {
 $lafOverrides
         }
     </style>
-    <link rel="stylesheet" href="$chatCss">
+    <link rel="stylesheet" href="$css">
 </head>
 <body>
     <div id="root"></div>
     <script src="$shimJs"></script>
-    <script src="$chatJs"></script>
+    <script src="$js"></script>
 </body>
 </html>"""
 
-        val indexFile = File(dir, "index.html")
-        indexFile.writeText(html, Charsets.UTF_8)
-        LOG.info("Wave webview extracted to ${dir.path}, index=${indexFile.path}")
-        return ExtractedAssets(dir, indexFile.toURI().toString())
+        val htmlFile = File(dir, htmlName)
+        htmlFile.writeText(html, Charsets.UTF_8)
+        LOG.info("Wave webview extracted to ${dir.path}, entry=${htmlFile.path}")
+        return ExtractedAssets(dir, htmlFile.toURI().toString())
     }
 
     /**

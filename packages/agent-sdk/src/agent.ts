@@ -315,6 +315,52 @@ export class Agent {
     return this.messageManager.getCombinedMemory();
   }
 
+  /**
+   * Read the user-level memory file (~/.wave/AGENTS.md). Unlike the cached
+   * `userMemory` getter this always reads fresh content (the settings UI edits
+   * the file while the agent may already hold a cache).
+   */
+  public async readUserMemoryContent(): Promise<string> {
+    const memoryService =
+      this.container.get<import("./services/memory.js").MemoryService>(
+        "MemoryService",
+      );
+    return (await memoryService?.getUserMemoryContent()) ?? "";
+  }
+
+  /**
+   * Read the project-level memory file (<workdir>/AGENTS.md, CLAUDE.md
+   * fallback). Always reads fresh content for the settings UI.
+   */
+  public async readProjectMemoryContent(workdir: string): Promise<string> {
+    const memoryService =
+      this.container.get<import("./services/memory.js").MemoryService>(
+        "MemoryService",
+      );
+    return (await memoryService?.readMemoryFile(workdir)) ?? "";
+  }
+
+  /** Persist the user-level memory file (~/.wave/AGENTS.md). */
+  public async writeUserMemoryContent(content: string): Promise<void> {
+    const memoryService =
+      this.container.get<import("./services/memory.js").MemoryService>(
+        "MemoryService",
+      );
+    await memoryService?.writeUserMemoryContent(content);
+  }
+
+  /** Persist the project-level memory file (<workdir>/AGENTS.md). */
+  public async writeProjectMemoryContent(
+    workdir: string,
+    content: string,
+  ): Promise<void> {
+    const memoryService =
+      this.container.get<import("./services/memory.js").MemoryService>(
+        "MemoryService",
+      );
+    await memoryService?.writeProjectMemoryContent(workdir, content);
+  }
+
   /** Get AI loading status */
   public get isLoading(): boolean {
     return this.aiManager.isLoading;

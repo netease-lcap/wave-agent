@@ -733,9 +733,10 @@ describe("DesktopApp", () => {
     // Header session buttons are replaced by the sidebar
     expect(screen.queryByTestId("new-session-btn")).not.toBeInTheDocument();
     expect(screen.queryByTestId("history-btn")).not.toBeInTheDocument();
-    // The header more button moves to the sidebar on desktop
+    // No header more button on desktop — settings/login entries live in the
+    // account card menu (sidebar header 更多 was a duplicate, removed 2026-08-29)
     expect(screen.queryByTestId("more-btn")).not.toBeInTheDocument();
-    expect(screen.getByTestId("desktop-more-btn")).toBeInTheDocument();
+    expect(screen.queryByTestId("desktop-more-btn")).not.toBeInTheDocument();
     // ChatApp still announces readiness to the host
     expect(vscode.postMessage).toHaveBeenCalledWith({
       command: "webviewReady",
@@ -822,182 +823,6 @@ describe("DesktopApp", () => {
     expect(screen.getByLabelText("添加")).toBeEnabled();
     expect(screen.getByLabelText("快捷指令")).toBeEnabled();
     expect(screen.getByLabelText("权限模式")).toBeEnabled();
-  });
-
-  describe("sidebar more menu (FR-037)", () => {
-    function openSidebarMoreMenu() {
-      fireEvent.click(screen.getByTestId("desktop-more-btn"));
-      return screen.getByTestId("more-menu");
-    }
-
-    it("renders the more button in the sidebar header, not the chat header", () => {
-      renderDesktopApp();
-      sendCommand("desktopWorkdirState", {
-        workdir: "/work/a",
-        recentWorkdirs: [],
-      });
-
-      const sidebar = screen.getByTestId("desktop-sidebar");
-      expect(
-        sidebar.querySelector('[data-testid="desktop-more-btn"]'),
-      ).not.toBeNull();
-      expect(
-        screen
-          .getByTestId("chat-header")
-          .querySelector('[data-testid="more-btn"]'),
-      ).toBeNull();
-    });
-
-    it("opens the shared menu with all items and closes on Escape", () => {
-      renderDesktopApp();
-      sendCommand("desktopWorkdirState", {
-        workdir: "/work/a",
-        recentWorkdirs: [],
-      });
-      sendCommand("authStatusResponse", { isAuthenticated: true });
-
-      openSidebarMoreMenu();
-
-      expect(screen.getByTestId("more-menu-settings")).toHaveTextContent(
-        "设置",
-      );
-      expect(screen.getByTestId("more-menu-enterprise")).toHaveTextContent(
-        "企业控制台",
-      );
-      expect(screen.getByTestId("more-menu-logout")).toHaveTextContent(
-        "退出登录",
-      );
-
-      fireEvent.keyDown(document, { key: "Escape" });
-      expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
-    });
-
-    it("stays available when no workdir is selected", () => {
-      renderDesktopApp();
-      sendCommand("desktopWorkdirState", { recentWorkdirs: [] });
-
-      openSidebarMoreMenu();
-
-      expect(screen.getByTestId("more-menu-settings")).toBeInTheDocument();
-    });
-
-    it("requests configuration when 设置 is clicked", () => {
-      const { vscode } = renderDesktopApp();
-      sendCommand("desktopWorkdirState", {
-        workdir: "/work/a",
-        recentWorkdirs: [],
-      });
-      vscode.postMessage.mockClear();
-
-      openSidebarMoreMenu();
-      fireEvent.click(screen.getByTestId("more-menu-settings"));
-
-      expect(vscode.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ command: "getConfiguration" }),
-      );
-      expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
-    });
-
-    it("opens the config dialog from the sidebar when panes are present (DesktopShell layout)", () => {
-      renderDesktopApp();
-      sendCommand("desktopWorkdirState", {
-        workdir: "/work/a",
-        recentWorkdirs: [],
-      });
-      // Once desktopPanes arrives the root ChatApp renders DesktopShell and
-      // never mounts its own chatContainer — the config dialog must still
-      // appear (regression: 更多-设置 did nothing while /config worked).
-      sendCommand("desktopPanes", {
-        panes: [{ paneId: "pane-0", sessionId: "s1", host: "local" }],
-        focusedPaneId: "pane-0",
-      });
-
-      openSidebarMoreMenu();
-      fireEvent.click(screen.getByTestId("more-menu-settings"));
-
-      expect(screen.getByRole("heading", { name: "设置" })).toBeInTheDocument();
-      expect(screen.getByRole("tab", { name: "全局设置" })).toBeInTheDocument();
-    });
-
-    it("posts login when 登录 is clicked while unauthenticated", () => {
-      const { vscode } = renderDesktopApp();
-      sendCommand("desktopWorkdirState", {
-        workdir: "/work/a",
-        recentWorkdirs: [],
-      });
-      sendCommand("authStatusResponse", { isAuthenticated: false });
-      vscode.postMessage.mockClear();
-
-      openSidebarMoreMenu();
-      expect(screen.queryByTestId("more-menu-logout")).not.toBeInTheDocument();
-      fireEvent.click(screen.getByTestId("more-menu-login"));
-
-      expect(vscode.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ command: "login" }),
-      );
-    });
-
-    it("labels the login/logout entry with the focused pane's host", () => {
-      renderDesktopApp();
-      sendCommand("desktopWorkdirState", {
-        workdir: "/work/a",
-        recentWorkdirs: ["/work/a"],
-      });
-      // The focused pane runs on the SSH host 'prod' — the login/logout
-      // entry must name the host it acts on (spec SSO scenario 5).
-      sendCommand("desktopPanes", {
-        panes: [{ paneId: "pane-0", sessionId: "s1", host: "prod" }],
-        focusedPaneId: "pane-0",
-      });
-      sendCommand("authStatusResponse", { isAuthenticated: true });
-
-      openSidebarMoreMenu();
-
-      expect(screen.getByTestId("more-menu-logout")).toHaveTextContent(
-        "退出登录（prod）",
-      );
-      // The 设置 entry names the host its config applies to, same as login
-      expect(screen.getByTestId("more-menu-settings")).toHaveTextContent(
-        "设置（prod）",
-      );
-    });
-
-    it("re-labels the login/logout entry when the focused pane switches host", () => {
-      renderDesktopApp();
-      sendCommand("desktopWorkdirState", {
-        workdir: "/work/a",
-        recentWorkdirs: ["/work/a"],
-      });
-      sendCommand("desktopPanes", {
-        panes: [
-          { paneId: "pane-0", sessionId: "s1", host: "local" },
-          { paneId: "pane-1", sessionId: "s2", host: "prod" },
-        ],
-        focusedPaneId: "pane-0",
-      });
-      sendCommand("authStatusResponse", { isAuthenticated: false });
-
-      openSidebarMoreMenu();
-      // The local host is the default subject — no annotation.
-      expect(screen.getByTestId("more-menu-login").textContent).toBe("登录");
-      expect(screen.getByTestId("more-menu-settings").textContent).toBe("设置");
-      fireEvent.keyDown(document, { key: "Escape" });
-
-      sendCommand("desktopPanes", {
-        panes: [
-          { paneId: "pane-0", sessionId: "s1", host: "local" },
-          { paneId: "pane-1", sessionId: "s2", host: "prod" },
-        ],
-        focusedPaneId: "pane-1",
-      });
-      openSidebarMoreMenu();
-      expect(screen.getByTestId("more-menu-login")).toHaveTextContent(
-        "登录（prod）",
-      );
-      expect(screen.getByTestId("more-menu-settings")).toHaveTextContent(
-        "设置（prod）",
-      );
-    });
   });
 
   describe("session tree (FR-020)", () => {
@@ -3600,17 +3425,6 @@ describe("DesktopApp", () => {
       expect(
         screen.queryByTestId("desktop-sidebar-expand"),
       ).not.toBeInTheDocument();
-    });
-
-    it("closes an open more menu when collapsing (scenario 3)", () => {
-      renderReady();
-      fireEvent.click(screen.getByTestId("desktop-more-btn"));
-      expect(screen.getByTestId("more-menu")).toBeInTheDocument();
-
-      fireEvent.click(screen.getByTestId("desktop-sidebar-collapse"));
-
-      expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
-      expect(screen.queryByTestId("desktop-sidebar")).not.toBeInTheDocument();
     });
 
     it("persists the collapsed state and restores it on a fresh mount (scenario 7)", () => {

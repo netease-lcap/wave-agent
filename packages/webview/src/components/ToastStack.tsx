@@ -8,8 +8,12 @@ interface ToastStackProps {
   onAction: (toast: UpdateToast) => void;
 }
 
-/** How long a button-less toast stays up before auto-dismissing (ms). */
-const AUTO_DISMISS_MS = 8000;
+/**
+ * How long a button-less toast stays up before auto-dismissing (ms). ~1s:
+ * informational toasts are fleeting (spec「账户卡片」场景 7); actionable toasts
+ * never auto-dismiss.
+ */
+const AUTO_DISMISS_MS = 1000;
 
 /** One VS Code-style toast: message text + optional action button + close. */
 const Toast: React.FC<{

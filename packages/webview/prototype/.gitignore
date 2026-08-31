@@ -1,0 +1,3 @@
+# 本地 mock 用例（整体 gitignore，不提交仓库；格式见 mock/README.md）
+mock/*
+!mock/README.md

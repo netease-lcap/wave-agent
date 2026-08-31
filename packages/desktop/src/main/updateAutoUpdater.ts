@@ -40,6 +40,10 @@ export class AutoUpdaterService {
   /** Point the generic provider at the codechat feed and check for updates. */
   async checkForUpdates(serverUrl: string): Promise<UpdateCheckOutcome> {
     this.attachListeners();
+    // No silent background download: the update flow is user-confirmed (spec
+    // 「账户卡片」场景 5). checkForUpdates only reports availability; the host
+    // calls downloadUpdate() after the user confirms.
+    autoUpdater.autoDownload = false;
     autoUpdater.setFeedURL({ provider: "generic", url: feedUrlFor(serverUrl) });
     try {
       const result = await autoUpdater.checkForUpdates();
@@ -49,6 +53,11 @@ export class AutoUpdaterService {
       console.warn("[AutoUpdater] update check failed:", error);
       return "error";
     }
+  }
+
+  /** Download the available update (the user confirmed). Emits update-downloaded on success. */
+  downloadUpdate(): void {
+    void autoUpdater.downloadUpdate();
   }
 
   quitAndInstall(): void {

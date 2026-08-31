@@ -38,6 +38,14 @@ export interface MessageHandlerContext {
   /** Opens (or refreshes) the plan-preview panel for a session (claudePlanPreview
    *  equivalent) with the given plan markdown content. */
   openPlanPreview: (key: string, content: string) => void;
+  /** Opens (or focuses) the editor-area settings tab (wave.openSettings).
+   *  nav 可选（"subagents" | "skills"），/agents、/skills 斜杠命令经
+   *  openSettings message 透传，host 随 settingsState 下发到设置页选中选项卡。 */
+  openSettings: (nav?: string) => void | Promise<void>;
+  /** Posts a message to the editor-area settings tab webview. */
+  postSettingsMessage: (message: unknown) => void;
+  /** Closes the editor-area settings tab (webview "closeSettings" message). */
+  closeSettings: () => void;
 }
 
 export class MessageHandler {
@@ -128,6 +136,11 @@ export class MessageHandler {
           msg.decision,
           viewType,
           windowId,
+        );
+        break;
+      case "openSettings":
+        await this.context.openSettings(
+          (msg as { nav?: string }).nav as string | undefined,
         );
         break;
       case "getConfiguration":
@@ -315,6 +328,23 @@ export class MessageHandler {
       case "logout":
         await this.handleLogout(viewType, windowId);
         break;
+      case "getAgentsContent":
+        await this.handleGetAgentsContent(
+          msg.scope as "user" | "project",
+          msg.workdir as string | undefined,
+          viewType,
+          windowId,
+        );
+        break;
+      case "setAgentsContent":
+        await this.handleSetAgentsContent(
+          msg.scope as "user" | "project",
+          msg.content as string,
+          msg.workdir as string | undefined,
+          viewType,
+          windowId,
+        );
+        break;
       case "getStatus":
         await this.handleGetStatus(viewType, windowId);
         break;
@@ -404,6 +434,134 @@ export class MessageHandler {
         );
         break;
       }
+    }
+  }
+
+  /**
+   * Routes messages from the standalone editor-area settings tab (see
+   * WebviewManager.getOrCreateSettingsPanel). The settings panel is independent
+   * of any chat session — configuration + AGENTS.md RPCs are served by the
+   * shared configService/utilityClient and responses are posted back to the
+   * settings panel itself (never the chat webviews).
+   */
+  public async handleSettingsMessage(message: unknown) {
+    const msg = message as Record<string, unknown>;
+    switch (msg.command as string) {
+      case "getConfiguration":
+        await this.handleSettingsGetConfiguration();
+        break;
+      case "updateConfiguration":
+        await this.handleSettingsUpdateConfiguration(msg.configurationData);
+        break;
+      case "getAgentsContent":
+        await this.handleSettingsGetAgentsContent(
+          msg.scope as "user" | "project",
+          msg.workdir as string | undefined,
+        );
+        break;
+      case "setAgentsContent":
+        await this.handleSettingsSetAgentsContent(
+          msg.scope as "user" | "project",
+          msg.content as string,
+          msg.workdir as string | undefined,
+        );
+        break;
+      case "closeSettings":
+        this.context.closeSettings();
+        break;
+    }
+  }
+
+  private async handleSettingsGetConfiguration(): Promise<void> {
+    try {
+      const config = await this.configService.loadConfiguration();
+      this.context.postSettingsMessage({
+        command: "configurationResponse",
+        configurationData: config,
+      });
+    } catch (error) {
+      console.error("Failed to get settings configuration:", error);
+      this.context.postSettingsMessage({
+        command: "configurationError",
+        error: "Failed to load configuration: " + error,
+      });
+    }
+  }
+
+  private async handleSettingsUpdateConfiguration(
+    configData: unknown,
+  ): Promise<void> {
+    try {
+      await this.configService.saveConfiguration(
+        configData as Partial<ConfigurationData>,
+      );
+      const config = await this.configService.loadConfiguration();
+      // Recreate agents so the new config takes effect (same as the chat path).
+      this.context.updateAllSessionsConfig(config);
+      this.context.postSettingsMessage({ command: "configurationUpdated" });
+      this.context.postSettingsMessage({
+        command: "configurationResponse",
+        configurationData: config,
+      });
+    } catch (error) {
+      console.error("Failed to save settings configuration:", error);
+      this.context.postSettingsMessage({
+        command: "configurationError",
+        error: "Failed to save configuration: " + error,
+      });
+    }
+  }
+
+  /** AGENTS.md settings UI: fetch user/project memory file content (settings tab). */
+  private async handleSettingsGetAgentsContent(
+    scope: "user" | "project",
+    workdir: string | undefined,
+  ): Promise<void> {
+    try {
+      const result = (await this.utilityClient.request("getAgentsContent", {
+        scope,
+        workdir,
+      })) as { content: string; path?: string };
+      this.context.postSettingsMessage({
+        command: "agentsContentResponse",
+        scope,
+        content: result.content,
+      });
+    } catch (error) {
+      console.error("获取 AGENTS.md 内容失败:", error);
+      this.context.postSettingsMessage({
+        command: "agentsContentResponse",
+        scope,
+        content: "",
+      });
+    }
+  }
+
+  /** AGENTS.md settings UI: persist content via the stdio setAgentsContent RPC (settings tab). */
+  private async handleSettingsSetAgentsContent(
+    scope: "user" | "project",
+    content: string,
+    workdir: string | undefined,
+  ): Promise<void> {
+    try {
+      await this.utilityClient.request("setAgentsContent", {
+        scope,
+        content,
+        workdir,
+      });
+      this.context.postSettingsMessage({
+        command: "agentsContentSaved",
+        scope,
+        ok: true,
+      });
+    } catch (error) {
+      console.error("保存 AGENTS.md 失败:", error);
+      this.context.postSettingsMessage({
+        command: "agentsContentSaved",
+        scope,
+        ok: false,
+        error: String(error),
+      });
     }
   }
 
@@ -1358,6 +1516,83 @@ export class MessageHandler {
     } catch (error) {
       console.error("执行 /plan 失败:", error);
       vscode.window.showErrorMessage("执行 /plan 失败: " + error);
+    }
+  }
+
+  /**
+   * AGENTS.md settings UI: fetch the user-level (~/.wave/AGENTS.md) or
+   * project-level (<workdir>/AGENTS.md) memory file content via the stdio
+   * getAgentsContent RPC.
+   */
+  private async handleGetAgentsContent(
+    scope: "user" | "project",
+    workdir: string | undefined,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    try {
+      const result = (await this.utilityClient.request("getAgentsContent", {
+        scope,
+        workdir,
+      })) as { content: string; path?: string };
+      this.context.postMessage(
+        {
+          command: "agentsContentResponse",
+          scope,
+          content: result.content,
+        },
+        viewType,
+        windowId,
+      );
+    } catch (error) {
+      console.error("获取 AGENTS.md 内容失败:", error);
+      this.context.postMessage(
+        {
+          command: "agentsContentResponse",
+          scope,
+          content: "",
+        },
+        viewType,
+        windowId,
+      );
+    }
+  }
+
+  /** AGENTS.md settings UI: persist content via the stdio setAgentsContent RPC. */
+  private async handleSetAgentsContent(
+    scope: "user" | "project",
+    content: string,
+    workdir: string | undefined,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    try {
+      await this.utilityClient.request("setAgentsContent", {
+        scope,
+        content,
+        workdir,
+      });
+      this.context.postMessage(
+        {
+          command: "agentsContentSaved",
+          scope,
+          ok: true,
+        },
+        viewType,
+        windowId,
+      );
+    } catch (error) {
+      console.error("保存 AGENTS.md 失败:", error);
+      this.context.postMessage(
+        {
+          command: "agentsContentSaved",
+          scope,
+          ok: false,
+          error: String(error),
+        },
+        viewType,
+        windowId,
+      );
     }
   }
 

@@ -69,6 +69,9 @@ export interface UpdateConfigParams {
   model?: string;
   fastModel?: string;
   language?: string;
+  contextLength?: number;
+  autoMemoryEnabled?: boolean;
+  autoMemoryFrequency?: number;
 }
 
 // ── Callbacks (mirror AgentCallbacks) ────────────────────────────
@@ -92,6 +95,7 @@ export interface StdioAgentCallbacks {
   onCompactionStateChange?: (isCompacting: boolean) => void;
   onCompactionContentUpdate?: (content: string) => void;
   onLoadingChange?: (loading: boolean) => void;
+  onContextUsage?: (percent: number) => void;
   onCommandRunningChange?: (running: boolean) => void;
   onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
   onTasksChange?: (tasks: Task[]) => void;
@@ -559,6 +563,11 @@ export class StdioAgent {
         }
         this.isStreaming = p.loading;
         this.callbacks.onLoadingChange?.(p.loading);
+        break;
+      }
+      case "contextUsage": {
+        const p = params as { percent: number };
+        this.callbacks.onContextUsage?.(p.percent);
         break;
       }
       case "commandRunningChange": {

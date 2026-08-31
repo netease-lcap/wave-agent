@@ -60,15 +60,15 @@ intellijPlatform {
     }
 }
 
-// Copy webview assets (chat.js/chat.css) from packages/webview/dist into resources.
-// Also copy the full VS Code theme variable set (theme-base-dark.css + theme-base-light.css)
-// from the webview theme dir — JetBrains JCEF is a bare browser and does NOT inject
-// --vscode-* CSS variables the way VS Code's webview does, so we ship a complete theme
+// Copy webview assets (chat.js/chat.css + settings.js/settings.css) from packages/webview/dist
+// into resources. Also copy the full VS Code theme variable set (theme-base-dark.css +
+// theme-base-light.css) from the webview theme dir — JetBrains JCEF is a bare browser and does
+// NOT inject --vscode-* CSS variables the way VS Code's webview does, so we ship a complete theme
 // (dark + light bases) as the styling base.
 val copyWebviewAssets by tasks.registering(Copy::class) {
     val webviewDir = rootProject.projectDir.parentFile.resolve("webview")
     from(webviewDir.resolve("dist")) {
-        include("chat.js", "chat.css")
+        include("chat.js", "chat.css", "settings.js", "settings.css")
     }
     from(webviewDir.resolve("theme")) {
         include("theme-base-dark.css")

@@ -34,6 +34,17 @@ import {
 import "../styles/MessageInput.css";
 import "../styles/HistorySearchPopup.css";
 
+// Compress-context button props. MessageInputProps lives in ../types (host
+// wires these in ChatApp); extending it here keeps the change inside the
+// two-file edit boundary. All added fields are optional, so existing callers
+// keep type-checking unchanged.
+interface MessageInputPropsWithCompress extends MessageInputProps {
+  /** Host-reported context usage percentage (0-100). Undefined = unknown. */
+  contextUsage?: number;
+  /** Trigger a /compact-equivalent context compression. */
+  onCompress?: () => void;
+}
+
 interface AtMentionState {
   isActive: boolean;
   filterText: string;
@@ -122,1751 +133,1804 @@ export interface MessageInputHandle {
   uploadFiles: (files: FileList | File[]) => void;
 }
 
-export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
-  (props, ref) => {
-    const {
-      onSendMessage,
-      isStreaming,
-      onAbortMessage,
-      onSubmitQueuedEdit,
-      editingQueuedId,
-      onCancelQueuedEdit,
-      shouldClearInput,
-      onInputCleared,
-      vscode,
-      inputContent,
-      sessionId,
-      permissionMode,
-      initialAttachedImages,
-      workdirSelector,
-      rewindPopup,
-      modelPopup,
-      btwPopup,
-      disabled,
-      paneId,
-    } = props;
-    const [message, setMessage] = useState("");
+export const MessageInput = forwardRef<
+  MessageInputHandle,
+  MessageInputPropsWithCompress
+>((props, ref) => {
+  const {
+    onSendMessage,
+    isStreaming,
+    onAbortMessage,
+    onSubmitQueuedEdit,
+    editingQueuedId,
+    onCancelQueuedEdit,
+    shouldClearInput,
+    onInputCleared,
+    vscode,
+    inputContent,
+    sessionId,
+    permissionMode,
+    initialAttachedImages,
+    workdirSelector,
+    rewindPopup,
+    modelPopup,
+    btwPopup,
+    disabled,
+    paneId,
+    contextUsage,
+    onCompress,
+  } = props;
+  const [message, setMessage] = useState("");
 
-    // Permission mode custom dropdown (roving-tabindex listbox shared with
-    // the "+" menu via useRovingMenu; Escape returns to the trigger, Tab
-    // leaves without changing the mode).
-    const permMenuRef = useRef<HTMLDivElement>(null);
-    const permMenuButtonRef = useRef<HTMLButtonElement>(null);
+  // Compress-context button: the ring fill and the trailing number both
+  // reflect the current usage (rounded up per spec); the full description
+  // lives in the aria-label/title, matching the designer's compact glyph.
+  const contextUsagePct =
+    contextUsage !== undefined
+      ? Math.min(100, Math.max(0, Math.ceil(contextUsage)))
+      : undefined;
+  const contextCompressLabel =
+    contextUsagePct !== undefined
+      ? `压缩上下文，已使用 ${contextUsagePct}%`
+      : "压缩上下文";
+  const ringCircumference = 2 * Math.PI * 8;
 
-    const selectedPermissionIndex = Math.max(
-      0,
-      PERMISSION_MODES.findIndex(
-        (m) => m.value === (permissionMode || "default"),
-      ),
-    );
+  // Permission mode custom dropdown (roving-tabindex listbox shared with
+  // the "+" menu via useRovingMenu; Escape returns to the trigger, Tab
+  // leaves without changing the mode).
+  const permMenuRef = useRef<HTMLDivElement>(null);
+  const permMenuButtonRef = useRef<HTMLButtonElement>(null);
 
-    const permMenu = useRovingMenu(permMenuRef, {
-      itemSelector: ".permission-mode-item",
-      itemCount: PERMISSION_MODES.length,
-      triggerRef: permMenuButtonRef,
-      closeOnActivate: true,
-      onActivate: (i) => {
-        vscode.postMessage({
-          command: "setPermissionMode",
-          mode: PERMISSION_MODES[i].value,
-        });
-      },
-    });
+  const selectedPermissionIndex = Math.max(
+    0,
+    PERMISSION_MODES.findIndex(
+      (m) => m.value === (permissionMode || "default"),
+    ),
+  );
 
-    // Open the permission-mode dropdown. Shared by the in-DOM Cmd/Ctrl+Shift+M
-    // handler (VS Code / desktop when the key reaches the DOM) and the
-    // JetBrains bridge, which forwards the key after swallowing the IDE's
-    // "Move Caret to Matching Brace" action (same pattern as history-search,
-    // issue #1429). Focus moves to the currently selected option so Enter/Space
-    // confirm and Escape closes without routing focus back through the
-    // textarea first.
-    const openPermissionModeMenu = useCallback(() => {
-      permMenu.openMenu(selectedPermissionIndex);
-    }, [permMenu, selectedPermissionIndex]);
-
-    const { open: permMenuOpen } = permMenu;
-
-    const [atMention, setAtMention] = useState<AtMentionState>({
-      isActive: false,
-      filterText: "",
-      startPos: 0,
-      endPos: 0,
-    });
-    const [slashCommand, setSlashCommand] = useState<SlashCommandState>({
-      isActive: false,
-      filterText: "",
-      startPos: 0,
-      endPos: 0,
-    });
-    const [suggestions, setSuggestions] = useState<FileItem[]>([]);
-    const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
-    const [selectedIndex, setSelectedIndex] = useState(0);
-    const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
-    const [dropdownPosition, setDropdownPosition] = useState({
-      top: 0,
-      left: 0,
-    });
-    const [slashPopupPosition, setSlashPopupPosition] = useState({
-      top: 0,
-      left: 0,
-    });
-    const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
-    const [isHistorySearchVisible, setIsHistorySearchVisible] = useState(false);
-    const [historyPopupPosition, setHistoryPopupPosition] = useState({
-      top: 0,
-      left: 0,
-    });
-    const [isComposing, setIsComposing] = useState(false);
-    const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(
-      initialAttachedImages || [],
-    );
-
-    const textareaRef = useRef<HTMLDivElement>(null);
-    const requestIdRef = useRef<string>("");
-    const inputContentTimerRef = useRef<NodeJS.Timeout | null>(null);
-    const selectionChangeTimerRef = useRef<NodeJS.Timeout | null>(null);
-    const lastSelectionChangePosRef = useRef<number>(0);
-
-    // Expose focus method to parent component
-    useImperativeHandle(ref, () => ({
-      focus: () => {
-        if (textareaRef.current) {
-          textareaRef.current.focus();
-        }
-      },
-      triggerShortcut: (name: string) => {
-        if (name === "history-search") {
-          openHistorySearch();
-        } else if (name === "open-permission-mode") {
-          openPermissionModeMenu();
-        }
-      },
-      // Appends text at the end of the input, keeping any existing content
-      // (including @file chips and images) intact. Used by the desktop preview
-      // element picker to batch element comments before sending.
-      appendText: (text: string) => {
-        const div = textareaRef.current;
-        if (!div || !text) return;
-        if ((div.textContent ?? "").trim() === "") {
-          div.replaceChildren();
-        } else {
-          div.appendChild(document.createElement("br"));
-          div.appendChild(document.createElement("br"));
-        }
-        text.split("\n").forEach((line, i) => {
-          if (i > 0) div.appendChild(document.createElement("br"));
-          div.appendChild(document.createTextNode(line));
-        });
-        // jsdom lacks a real innerText, so fall back to textContent for the
-        // state mirror (only its trim() emptiness check is consumed).
-        const mirror = div.innerText ?? div.textContent ?? "";
-        setMessage(mirror);
-        inputContentRef.current = mirror;
-        vscode.postMessage({
-          command: "updateInputContent",
-          sessionId,
-          content: mirror,
-        });
-        div.focus();
-        // Caret to the end so the user can keep typing seamlessly.
-        const sel = window.getSelection();
-        if (sel) {
-          const range = document.createRange();
-          range.selectNodeContents(div);
-          range.collapse(false);
-          sel.removeAllRanges();
-          sel.addRange(range);
-        }
-      },
-      // Loads a queued message's content into the input for editing (chip + body).
-      // Called via ref from ChatApp so it only affects this pane's input, not every
-      // pane in a split-view layout (window.postMessage would be received by all panes).
-      loadQueuedEditContent,
-      // Upload a dropped file selection (desktop drag-and-drop).
-      uploadFiles: (files: FileList | File[]) => {
-        readAndUploadFiles(files);
-      },
-    }));
-
-    // Auto-focus input on component mount
-    useEffect(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-      }
-    }, []);
-
-    // Initialize message from inputContent prop
-    // Use a ref to avoid re-running effect on every local message change
-    const inputContentRef = useRef(inputContent);
-    const prevSessionRef = useRef(sessionId);
-    // Mirror the latest local message so the session-switch flush can read it
-    // without depending on `message` in the effect deps: a message dep would
-    // re-run this effect after every keystroke/appendText and wipe the input
-    // with the (stale) inputContent prop the host last pushed.
-    const messageRef = useRef(message);
-    messageRef.current = message;
-    useEffect(() => {
-      const prevSession = prevSessionRef.current;
-      const sessionChanged = prevSession !== sessionId;
-      prevSessionRef.current = sessionId;
-      if (sessionChanged) {
-        // A session switch is in flight. Cancel the pending debounce so the old
-        // text can't land on the incoming session's draft, then flush the
-        // outgoing session's draft — tagged with its sessionId so the host saves
-        // it to the right conversation even if the pane has already switched.
-        if (inputContentTimerRef.current) {
-          clearTimeout(inputContentTimerRef.current);
-          inputContentTimerRef.current = null;
-        }
-        const text = textareaRef.current?.innerText ?? messageRef.current;
-        if (text) {
-          vscode.postMessage({
-            command: "updateInputContent",
-            sessionId: prevSession,
-            content: text,
-          });
-        }
-      }
-      // Reset unconditionally on a session switch — the old and new drafts can
-      // be equal, which the value-equality guard below can't distinguish.
-      if (
-        sessionChanged ||
-        (inputContent !== undefined && inputContent !== inputContentRef.current)
-      ) {
-        inputContentRef.current = inputContent ?? "";
-        setMessage(inputContent ?? "");
-        if (textareaRef.current) {
-          textareaRef.current.innerText = inputContent ?? "";
-        }
-      }
-    }, [inputContent, sessionId, vscode]);
-
-    // Initialize attached images from initialAttachedImages prop
-    useEffect(() => {
-      if (initialAttachedImages !== undefined) {
-        setAttachedImages(initialAttachedImages);
-      }
-    }, [initialAttachedImages]);
-
-    // Close dropdown helper
-    const closeDropdown = useCallback(() => {
-      setAtMention({ isActive: false, filterText: "", startPos: 0, endPos: 0 });
-      setSuggestions([]);
-      setSelectedIndex(0);
-      setIsLoadingSuggestions(false);
-    }, []);
-
-    // Close 指令 popup helper
-    const closeSlashCommandPopup = useCallback(() => {
-      setSlashCommand({
-        isActive: false,
-        filterText: "",
-        startPos: 0,
-        endPos: 0,
+  const permMenu = useRovingMenu(permMenuRef, {
+    itemSelector: ".permission-mode-item",
+    itemCount: PERMISSION_MODES.length,
+    triggerRef: permMenuButtonRef,
+    closeOnActivate: true,
+    onActivate: (i) => {
+      vscode.postMessage({
+        command: "setPermissionMode",
+        mode: PERMISSION_MODES[i].value,
       });
-      setSlashCommands([]);
-      setSelectedSlashIndex(0);
-    }, []);
+    },
+  });
 
-    const closeHistorySearch = useCallback(() => {
-      setIsHistorySearchVisible(false);
+  // Open the permission-mode dropdown. Shared by the in-DOM Cmd/Ctrl+Shift+M
+  // handler (VS Code / desktop when the key reaches the DOM) and the
+  // JetBrains bridge, which forwards the key after swallowing the IDE's
+  // "Move Caret to Matching Brace" action (same pattern as history-search,
+  // issue #1429). Focus moves to the currently selected option so Enter/Space
+  // confirm and Escape closes without routing focus back through the
+  // textarea first.
+  const openPermissionModeMenu = useCallback(() => {
+    permMenu.openMenu(selectedPermissionIndex);
+  }, [permMenu, selectedPermissionIndex]);
+
+  const { open: permMenuOpen } = permMenu;
+
+  const [atMention, setAtMention] = useState<AtMentionState>({
+    isActive: false,
+    filterText: "",
+    startPos: 0,
+    endPos: 0,
+  });
+  const [slashCommand, setSlashCommand] = useState<SlashCommandState>({
+    isActive: false,
+    filterText: "",
+    startPos: 0,
+    endPos: 0,
+  });
+  const [suggestions, setSuggestions] = useState<FileItem[]>([]);
+  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
+  const [dropdownPosition, setDropdownPosition] = useState({
+    top: 0,
+    left: 0,
+  });
+  const [slashPopupPosition, setSlashPopupPosition] = useState({
+    top: 0,
+    left: 0,
+  });
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [isHistorySearchVisible, setIsHistorySearchVisible] = useState(false);
+  const [historyPopupPosition, setHistoryPopupPosition] = useState({
+    top: 0,
+    left: 0,
+  });
+  const [isComposing, setIsComposing] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(
+    initialAttachedImages || [],
+  );
+
+  const textareaRef = useRef<HTMLDivElement>(null);
+  const requestIdRef = useRef<string>("");
+  const inputContentTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const selectionChangeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSelectionChangePosRef = useRef<number>(0);
+
+  // Expose focus method to parent component
+  useImperativeHandle(ref, () => ({
+    focus: () => {
       if (textareaRef.current) {
-        // Use setTimeout to ensure focus is returned after any other click events are processed
-        const textarea = textareaRef.current;
-        setTimeout(() => {
-          textarea.focus();
-        }, 0);
+        textareaRef.current.focus();
       }
-    }, []);
+    },
+    triggerShortcut: (name: string) => {
+      if (name === "history-search") {
+        openHistorySearch();
+      } else if (name === "open-permission-mode") {
+        openPermissionModeMenu();
+      }
+    },
+    // Appends text at the end of the input, keeping any existing content
+    // (including @file chips and images) intact. Used by the desktop preview
+    // element picker to batch element comments before sending.
+    appendText: (text: string) => {
+      const div = textareaRef.current;
+      if (!div || !text) return;
+      if ((div.textContent ?? "").trim() === "") {
+        div.replaceChildren();
+      } else {
+        div.appendChild(document.createElement("br"));
+        div.appendChild(document.createElement("br"));
+      }
+      text.split("\n").forEach((line, i) => {
+        if (i > 0) div.appendChild(document.createElement("br"));
+        div.appendChild(document.createTextNode(line));
+      });
+      // jsdom lacks a real innerText, so fall back to textContent for the
+      // state mirror (only its trim() emptiness check is consumed).
+      const mirror = div.innerText ?? div.textContent ?? "";
+      setMessage(mirror);
+      inputContentRef.current = mirror;
+      vscode.postMessage({
+        command: "updateInputContent",
+        sessionId,
+        content: mirror,
+      });
+      div.focus();
+      // Caret to the end so the user can keep typing seamlessly.
+      const sel = window.getSelection();
+      if (sel) {
+        const range = document.createRange();
+        range.selectNodeContents(div);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    },
+    // Loads a queued message's content into the input for editing (chip + body).
+    // Called via ref from ChatApp so it only affects this pane's input, not every
+    // pane in a split-view layout (window.postMessage would be received by all panes).
+    loadQueuedEditContent,
+    // Upload a dropped file selection (desktop drag-and-drop).
+    uploadFiles: (files: FileList | File[]) => {
+      readAndUploadFiles(files);
+    },
+  }));
 
-    const handleHistorySelect = useCallback(
-      (prompt: string) => {
-        if (!textareaRef.current) return;
+  // Auto-focus input on component mount
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, []);
 
-        // Set the prompt as the new message
-        textareaRef.current.innerText = prompt;
-        setMessage(prompt);
-
-        // Update extension state
+  // Initialize message from inputContent prop
+  // Use a ref to avoid re-running effect on every local message change
+  const inputContentRef = useRef(inputContent);
+  const prevSessionRef = useRef(sessionId);
+  // Mirror the latest local message so the session-switch flush can read it
+  // without depending on `message` in the effect deps: a message dep would
+  // re-run this effect after every keystroke/appendText and wipe the input
+  // with the (stale) inputContent prop the host last pushed.
+  const messageRef = useRef(message);
+  messageRef.current = message;
+  useEffect(() => {
+    const prevSession = prevSessionRef.current;
+    const sessionChanged = prevSession !== sessionId;
+    prevSessionRef.current = sessionId;
+    if (sessionChanged) {
+      // A session switch is in flight. Cancel the pending debounce so the old
+      // text can't land on the incoming session's draft, then flush the
+      // outgoing session's draft — tagged with its sessionId so the host saves
+      // it to the right conversation even if the pane has already switched.
+      if (inputContentTimerRef.current) {
+        clearTimeout(inputContentTimerRef.current);
+        inputContentTimerRef.current = null;
+      }
+      const text = textareaRef.current?.innerText ?? messageRef.current;
+      if (text) {
         vscode.postMessage({
           command: "updateInputContent",
-          content: prompt,
+          sessionId: prevSession,
+          content: text,
         });
+      }
+    }
+    // Reset unconditionally on a session switch — the old and new drafts can
+    // be equal, which the value-equality guard below can't distinguish.
+    if (
+      sessionChanged ||
+      (inputContent !== undefined && inputContent !== inputContentRef.current)
+    ) {
+      inputContentRef.current = inputContent ?? "";
+      setMessage(inputContent ?? "");
+      if (textareaRef.current) {
+        textareaRef.current.innerText = inputContent ?? "";
+      }
+    }
+  }, [inputContent, sessionId, vscode]);
 
-        // Focus and move cursor to end
-        textareaRef.current.focus();
-        const range = document.createRange();
-        const selection = window.getSelection();
-        range.selectNodeContents(textareaRef.current);
-        range.collapse(false);
-        selection?.removeAllRanges();
-        selection?.addRange(range);
+  // Initialize attached images from initialAttachedImages prop
+  useEffect(() => {
+    if (initialAttachedImages !== undefined) {
+      setAttachedImages(initialAttachedImages);
+    }
+  }, [initialAttachedImages]);
 
-        closeHistorySearch();
-      },
-      [vscode, closeHistorySearch],
-    );
+  // Close dropdown helper
+  const closeDropdown = useCallback(() => {
+    setAtMention({ isActive: false, filterText: "", startPos: 0, endPos: 0 });
+    setSuggestions([]);
+    setSelectedIndex(0);
+    setIsLoadingSuggestions(false);
+  }, []);
 
-    // Load content for editing a queued message.
-    // Per design (Figma 2196:1055): the input starts with a read-only inline chip
-    // "编辑队列消息" (contentEditable=false, blue-teal text) followed by a space and
-    // the editable message body. Deleting the chip exits edit mode; convertToMarkdown
-    // skips the chip so the sent markdown is just the body.
-    const loadQueuedEditContent = useCallback(
-      (text: string) => {
-        if (!textareaRef.current) return;
+  // Close 指令 popup helper
+  const closeSlashCommandPopup = useCallback(() => {
+    setSlashCommand({
+      isActive: false,
+      filterText: "",
+      startPos: 0,
+      endPos: 0,
+    });
+    setSlashCommands([]);
+    setSelectedSlashIndex(0);
+  }, []);
 
-        // Reset the editor content, then build chip + space + body.
-        textareaRef.current.innerHTML = "";
-
-        const chip = document.createElement("span");
-        chip.className = "queued-edit-chip";
-        chip.contentEditable = "false";
-        chip.setAttribute("data-queued-edit-chip", "true");
-        chip.innerText = "编辑队列消息";
-        textareaRef.current.appendChild(chip);
-
-        // Space between chip and body.
-        textareaRef.current.appendChild(document.createTextNode(" "));
-
-        // Editable body.
-        const bodyNode = document.createTextNode(text);
-        textareaRef.current.appendChild(bodyNode);
-
-        setMessage(textareaRef.current.innerText);
-
-        vscode.postMessage({
-          command: "updateInputContent",
-          content: textareaRef.current.innerText,
-        });
-
-        // Focus and move cursor to end of the body.
-        textareaRef.current.focus();
-        const range = document.createRange();
-        const selection = window.getSelection();
-        range.selectNodeContents(textareaRef.current);
-        range.collapse(false);
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-      },
-      [vscode],
-    );
-
-    // Detect 指令 in text
-    const detectSlashCommand = useCallback(
-      (text: string, cursorPos: number): SlashCommandState => {
-        // Find the last / symbol before cursor position
-        let slashPos = -1;
-        for (let i = cursorPos - 1; i >= 0; i--) {
-          if (text[i] === "/") {
-            slashPos = i;
-            break;
-          }
-          // Stop if we hit whitespace or newline
-          if (text[i] === " " || text[i] === "\n") {
-            break;
-          }
-        }
-
-        if (slashPos === -1) {
-          return { isActive: false, filterText: "", startPos: 0, endPos: 0 };
-        }
-
-        // Check if / is at start of line or preceded by whitespace
-        const isValidPosition = slashPos === 0 || /\s/.test(text[slashPos - 1]);
-        if (!isValidPosition) {
-          return { isActive: false, filterText: "", startPos: 0, endPos: 0 };
-        }
-
-        // Extract filter text after /
-        const afterSlash = text.slice(slashPos + 1, cursorPos);
-
-        // Check if filter text contains invalid characters
-        if (/\s/.test(afterSlash)) {
-          return { isActive: false, filterText: "", startPos: 0, endPos: 0 };
-        }
-
-        return {
-          isActive: true,
-          filterText: afterSlash,
-          startPos: slashPos,
-          endPos: cursorPos,
-        };
-      },
-      [],
-    );
-
-    // Detect @ mention in text
-    const detectAtMention = useCallback(
-      (text: string, cursorPos: number): AtMentionState => {
-        // Find the last @ symbol before cursor position
-        let atPos = -1;
-        for (let i = cursorPos - 1; i >= 0; i--) {
-          if (text[i] === "@") {
-            atPos = i;
-            break;
-          }
-          // Stop if we hit whitespace or newline
-          if (text[i] === " " || text[i] === "\n") {
-            break;
-          }
-        }
-
-        if (atPos === -1) {
-          return { isActive: false, filterText: "", startPos: 0, endPos: 0 };
-        }
-
-        // Check if @ is at start of line or preceded by whitespace
-        const charBefore = text[atPos - 1];
-        const isValidPosition = atPos === 0 || /\s/.test(charBefore);
-        if (!isValidPosition) {
-          return { isActive: false, filterText: "", startPos: 0, endPos: 0 };
-        }
-
-        // Extract filter text after @
-        const afterAt = text.slice(atPos + 1, cursorPos);
-
-        // Check if filter text contains invalid characters
-        if (/\s/.test(afterAt)) {
-          return { isActive: false, filterText: "", startPos: 0, endPos: 0 };
-        }
-
-        return {
-          isActive: true,
-          filterText: afterAt,
-          startPos: atPos,
-          endPos: cursorPos,
-        };
-      },
-      [],
-    );
-
-    // Calculate dropdown position based on cursor
-    const calculateDropdownPosition = useCallback(() => {
-      if (!textareaRef.current) return { top: 0, left: 0 };
-
+  const closeHistorySearch = useCallback(() => {
+    setIsHistorySearchVisible(false);
+    if (textareaRef.current) {
+      // Use setTimeout to ensure focus is returned after any other click events are processed
       const textarea = textareaRef.current;
+      setTimeout(() => {
+        textarea.focus();
+      }, 0);
+    }
+  }, []);
 
-      // Position at textarea top - CSS transform will move it up by dropdown height
-      // This ensures the dropdown appears above the input with proper spacing
-      return {
-        top: textarea.offsetTop,
-        left: textarea.offsetLeft,
-      };
-    }, []);
-
-    // Handle input clearing when requested by parent
-    useEffect(() => {
-      if (shouldClearInput) {
-        setMessage("");
-        // Clear persisted input content
-        vscode.postMessage({
-          command: "updateInputContent",
-          sessionId,
-          content: "",
-        });
-        setAttachedImages([]);
-        closeDropdown();
-        onInputCleared?.();
-      }
-    }, [shouldClearInput, onInputCleared, vscode, closeDropdown, sessionId]);
-
-    // Request file suggestions from extension
-    const requestFileSuggestions = useCallback(
-      (filterText: string) => {
-        const requestId = Date.now().toString();
-        requestIdRef.current = requestId;
-        setIsLoadingSuggestions(true);
-
-        vscode.postMessage({
-          command: "requestFileSuggestions",
-          filterText: filterText,
-          requestId: requestId,
-        });
-      },
-      [vscode],
-    );
-
-    // Request 指令 from extension
-    const requestSlashCommands = useCallback(
-      (filterText: string) => {
-        vscode.postMessage({
-          command: "requestSlashCommands",
-          filterText: filterText,
-        });
-      },
-      [vscode],
-    );
-
-    // Remembers the caret position when the input loses focus. The browser
-    // resets the caret to the start when focus() is called from an async
-    // insertion (e.g. upload success), so those paths restore the pre-blur
-    // position instead of inserting at the wrong spot.
-    const lastCaretOffsetRef = useRef<number | null>(null);
-
-    const handleInputBlur = useCallback(() => {
-      const selection = window.getSelection();
-      if (
-        selection &&
-        selection.rangeCount > 0 &&
-        textareaRef.current?.contains(selection.getRangeAt(0).startContainer)
-      ) {
-        const range = selection.getRangeAt(0);
-        if (range.startContainer.nodeType === Node.TEXT_NODE) {
-          lastCaretOffsetRef.current = textOffsetOf(
-            textareaRef.current,
-            range.startContainer,
-            range.startOffset,
-          );
-        }
-      }
-    }, []);
-
-    // The insertion point for async tag insertions: the pre-blur caret
-    // snapshot first, then the live selection when the input never lost focus,
-    // else null (caller falls back to the end of the input).
-    const resolveInsertionPoint = useCallback((): {
-      node: Node;
-      offset: number;
-    } | null => {
-      const input = textareaRef.current;
-      if (!input) return null;
-
-      if (lastCaretOffsetRef.current !== null) {
-        return findTextOffset(input, lastCaretOffsetRef.current);
-      }
-
-      const selection = window.getSelection();
-      if (
-        selection &&
-        selection.rangeCount > 0 &&
-        input.contains(selection.getRangeAt(0).startContainer)
-      ) {
-        const range = selection.getRangeAt(0);
-        return { node: range.startContainer, offset: range.startOffset };
-      }
-      return null;
-    }, []);
-
-    // Handle inserting uploaded file paths into the input
-    const insertUploadedFilePaths = useCallback(
-      (uploadedFiles: string[]) => {
-        if (!textareaRef.current || uploadedFiles.length === 0) return;
-
-        // Focus the input first; the browser resets the caret to the start, so
-        // the insertion point must come from the pre-blur snapshot (or the
-        // live selection when the input never lost focus).
-        textareaRef.current.focus();
-
-        // Insert at the saved/pre-blur caret position; fall back to the end of
-        // the input when no reliable position exists.
-        let range: Range;
-        const insertPoint = resolveInsertionPoint();
-        if (insertPoint) {
-          range = document.createRange();
-          range.setStart(insertPoint.node, insertPoint.offset);
-          range.collapse(true);
-        } else {
-          range = document.createRange();
-          range.selectNodeContents(textareaRef.current);
-          range.collapse(false);
-        }
-
-        uploadedFiles.forEach((filePath) => {
-          const fileName = filePath.split(/[/\\]/).pop() || filePath;
-          const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(fileName);
-
-          const tagSpan = document.createElement("span");
-          tagSpan.className = "context-tag-container";
-          tagSpan.contentEditable = "false";
-          tagSpan.setAttribute("data-path", filePath);
-          tagSpan.setAttribute("data-name", fileName);
-          tagSpan.setAttribute("data-is-image", String(isImage));
-          tagSpan.innerText = isImage ? "[image]" : `[@file:${filePath}]`;
-
-          const root = ReactDOM.createRoot(tagSpan);
-          root.render(
-            <ContextTag name={fileName} path={filePath} isImage={isImage} />,
-          );
-
-          range.insertNode(tagSpan);
-          range.setStartAfter(tagSpan);
-
-          // Add space after each tag
-          const space = document.createTextNode(" ");
-          range.insertNode(space);
-          range.setStartAfter(space);
-        });
-
-        range.collapse(true);
-        window.getSelection()?.removeAllRanges();
-        window.getSelection()?.addRange(range);
-
-        // Trigger input event to update message state
-        const inputEvent = new Event("input", { bubbles: true });
-        textareaRef.current?.dispatchEvent(inputEvent);
-
-        closeDropdown();
-      },
-      [closeDropdown, resolveInsertionPoint],
-    );
-
-    // Handle inserting selection tags into the input
-    const insertSelectionTag = useCallback(
-      (selection: {
-        fileName: string;
-        filePath: string;
-        startLine: number;
-        endLine: number;
-        isEmpty?: boolean;
-      }) => {
-        if (!textareaRef.current || !selection || selection.isEmpty) return;
-
-        // Focus the input first; the browser resets the caret to the start, so
-        // the insertion point must come from the pre-blur snapshot (or the
-        // live selection when the input never lost focus).
-        textareaRef.current.focus();
-
-        const insertPoint = resolveInsertionPoint();
-        if (!insertPoint) return;
-
-        const range = document.createRange();
-        range.setStart(insertPoint.node, insertPoint.offset);
-        range.setEnd(insertPoint.node, insertPoint.offset);
-
-        const fileName =
-          selection.fileName.split(/[/\\]/).pop() || selection.fileName;
-        const displayName = `${fileName}#${selection.startLine}-${selection.endLine}`;
-
-        const tagSpan = document.createElement("span");
-        tagSpan.className = "context-tag-container";
-        tagSpan.contentEditable = "false";
-        tagSpan.setAttribute("data-path", selection.filePath);
-        tagSpan.setAttribute("data-name", fileName);
-        tagSpan.setAttribute("data-start-line", String(selection.startLine));
-        tagSpan.setAttribute("data-end-line", String(selection.endLine));
-        tagSpan.setAttribute("data-is-selection", "true");
-        tagSpan.innerText = `[Selection: ${selection.filePath}|${fileName}#${selection.startLine}-${selection.endLine}]`;
-
-        const root = ReactDOM.createRoot(tagSpan);
-        root.render(
-          <ContextTag
-            name={displayName}
-            path={selection.filePath}
-            onClick={() => {
-              vscode.postMessage({
-                command: "openFile",
-                path: selection.filePath,
-                startLine: selection.startLine,
-                endLine: selection.endLine,
-              });
-            }}
-          />,
-        );
-
-        range.deleteContents();
-        range.insertNode(tagSpan);
-        range.setStartAfter(tagSpan);
-
-        // Add space after the tag
-        const space = document.createTextNode(" ");
-        range.insertNode(space);
-        range.setStartAfter(space);
-
-        range.collapse(true);
-        window.getSelection()?.removeAllRanges();
-        window.getSelection()?.addRange(range);
-
-        // Trigger input event to update message state
-        const inputEvent = new Event("input", { bubbles: true });
-        textareaRef.current?.dispatchEvent(inputEvent);
-      },
-      [vscode, resolveInsertionPoint],
-    );
-
-    // Listen for file suggestions response from extension
-    useEffect(() => {
-      const handleMessage = (event: MessageEvent) => {
-        const data = event.data;
-
-        if (data.command === "fileSuggestionsResponse") {
-          // Only process if this is the latest request
-          if (data.requestId === requestIdRef.current) {
-            setSuggestions(data.suggestions || []);
-            setSelectedIndex(0);
-            setIsLoadingSuggestions(false);
-          }
-        } else if (data.command === "fileSuggestionsError") {
-          if (data.requestId === requestIdRef.current) {
-            setSuggestions([]);
-            setIsLoadingSuggestions(false);
-            console.error("File suggestions error:", data.error);
-          }
-        } else if (data.command === "slashCommandsResponse") {
-          setSlashCommands(data.commands || []);
-          setSelectedSlashIndex(0);
-        } else if (data.command === "slashCommandsError") {
-          setSlashCommands([]);
-          console.error("指令错误:", data.error);
-        } else if (data.command === "uploadSuccess") {
-          // Insert uploaded file paths into the input after the @ symbol.
-          // In split view the host echoes the originating paneId; a reply for
-          // another pane must not insert into this input.
-          if (paneId !== undefined && data.paneId !== paneId) return;
-          if (data.uploadedFiles && data.uploadedFiles.length > 0) {
-            insertUploadedFilePaths(data.uploadedFiles);
-          }
-        } else if (data.command === "uploadError") {
-          console.error("文件上传失败:", data.error);
-          // Could show an error notification here if needed
-        } else if (data.command === "addSelectionToInput") {
-          insertSelectionTag(data.selection);
-        }
-      };
-
-      window.addEventListener("message", handleMessage);
-      return () => window.removeEventListener("message", handleMessage);
-    }, [insertUploadedFilePaths, insertSelectionTag, closeDropdown, paneId]);
-
-    // Handle image preview
-    const handleImagePreview = useCallback((url: string, name: string) => {
-      // Create a temporary modal for image preview
-      const modal = document.createElement("div");
-      modal.className = "image-preview-modal";
-      modal.onclick = () => document.body.removeChild(modal);
-
-      const img = document.createElement("img");
-      img.src = url;
-      img.alt = name;
-      img.onclick = (e) => e.stopPropagation();
-
-      const closeBtn = document.createElement("div");
-      closeBtn.className = "image-preview-close";
-      closeBtn.innerHTML = '<i class="codicon codicon-close"></i>';
-
-      modal.appendChild(img);
-      modal.appendChild(closeBtn);
-      document.body.appendChild(modal);
-    }, []);
-
-    // Read files as base64 and post them to the host for upload. The paneId is
-    // tagged on the request so the host can echo it back on uploadSuccess and
-    // only the originating pane's input inserts the path chips (split view).
-    const readAndUploadFiles = useCallback(
-      (files: FileList | File[]) => {
-        const fileArray = Array.from(files);
-        if (fileArray.length === 0) return;
-        const readers = fileArray.map((file) => {
-          return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              resolve({
-                name: file.name,
-                size: file.size,
-                type: file.type,
-                data: reader.result,
-              });
-            };
-            reader.onerror = reject;
-            reader.readAsArrayBuffer(file);
-          });
-        });
-
-        Promise.all(readers)
-          .then((fileDataArray) => {
-            vscode.postMessage({
-              command: "uploadFilesToArtifacts",
-              files: fileDataArray,
-              ...(paneId !== undefined ? { paneId } : {}),
-            });
-          })
-          .catch((error) => {
-            console.error("Error reading files:", error);
-            vscode.postMessage({
-              command: "showError",
-              message: "读取文件失败: " + error.message,
-            });
-          });
-      },
-      [vscode, paneId],
-    );
-
-    // Handle file upload
-    const handleFileUpload = useCallback(() => {
-      // Create a hidden file input element
-      const fileInput = document.createElement("input");
-      fileInput.type = "file";
-      fileInput.multiple = true; // Support multiple file selection
-      fileInput.style.display = "none";
-
-      fileInput.onchange = (event) => {
-        const files = (event.target as HTMLInputElement).files;
-        if (files && files.length > 0) {
-          readAndUploadFiles(files);
-        }
-
-        // Cleanup
-        document.body.removeChild(fileInput);
-      };
-
-      // Trigger file selection dialog
-      document.body.appendChild(fileInput);
-      fileInput.click();
-
-      // Close the dropdown after triggering upload
-      closeDropdown();
-    }, [readAndUploadFiles, closeDropdown]);
-
-    // Handle "/" toolbar button: focus the input and insert a "/" at the cursor/end so the
-    // existing handleInput -> detectSlashCommand -> requestSlashCommands flow opens the popup.
-    const handleSlashButtonClick = useCallback(() => {
+  const handleHistorySelect = useCallback(
+    (prompt: string) => {
       if (!textareaRef.current) return;
 
+      // Set the prompt as the new message
+      textareaRef.current.innerText = prompt;
+      setMessage(prompt);
+
+      // Update extension state
+      vscode.postMessage({
+        command: "updateInputContent",
+        content: prompt,
+      });
+
+      // Focus and move cursor to end
+      textareaRef.current.focus();
+      const range = document.createRange();
+      const selection = window.getSelection();
+      range.selectNodeContents(textareaRef.current);
+      range.collapse(false);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+
+      closeHistorySearch();
+    },
+    [vscode, closeHistorySearch],
+  );
+
+  // Load content for editing a queued message.
+  // Per design (Figma 2196:1055): the input starts with a read-only inline chip
+  // "编辑队列消息" (contentEditable=false, blue-teal text) followed by a space and
+  // the editable message body. Deleting the chip exits edit mode; convertToMarkdown
+  // skips the chip so the sent markdown is just the body.
+  const loadQueuedEditContent = useCallback(
+    (text: string) => {
+      if (!textareaRef.current) return;
+
+      // Reset the editor content, then build chip + space + body.
+      textareaRef.current.innerHTML = "";
+
+      const chip = document.createElement("span");
+      chip.className = "queued-edit-chip";
+      chip.contentEditable = "false";
+      chip.setAttribute("data-queued-edit-chip", "true");
+      chip.innerText = "编辑队列消息";
+      textareaRef.current.appendChild(chip);
+
+      // Space between chip and body.
+      textareaRef.current.appendChild(document.createTextNode(" "));
+
+      // Editable body.
+      const bodyNode = document.createTextNode(text);
+      textareaRef.current.appendChild(bodyNode);
+
+      setMessage(textareaRef.current.innerText);
+
+      vscode.postMessage({
+        command: "updateInputContent",
+        content: textareaRef.current.innerText,
+      });
+
+      // Focus and move cursor to end of the body.
+      textareaRef.current.focus();
+      const range = document.createRange();
+      const selection = window.getSelection();
+      range.selectNodeContents(textareaRef.current);
+      range.collapse(false);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    },
+    [vscode],
+  );
+
+  // Detect 指令 in text
+  const detectSlashCommand = useCallback(
+    (text: string, cursorPos: number): SlashCommandState => {
+      // Find the last / symbol before cursor position
+      let slashPos = -1;
+      for (let i = cursorPos - 1; i >= 0; i--) {
+        if (text[i] === "/") {
+          slashPos = i;
+          break;
+        }
+        // Stop if we hit whitespace or newline
+        if (text[i] === " " || text[i] === "\n") {
+          break;
+        }
+      }
+
+      if (slashPos === -1) {
+        return { isActive: false, filterText: "", startPos: 0, endPos: 0 };
+      }
+
+      // Check if / is at start of line or preceded by whitespace
+      const isValidPosition = slashPos === 0 || /\s/.test(text[slashPos - 1]);
+      if (!isValidPosition) {
+        return { isActive: false, filterText: "", startPos: 0, endPos: 0 };
+      }
+
+      // Extract filter text after /
+      const afterSlash = text.slice(slashPos + 1, cursorPos);
+
+      // Check if filter text contains invalid characters
+      if (/\s/.test(afterSlash)) {
+        return { isActive: false, filterText: "", startPos: 0, endPos: 0 };
+      }
+
+      return {
+        isActive: true,
+        filterText: afterSlash,
+        startPos: slashPos,
+        endPos: cursorPos,
+      };
+    },
+    [],
+  );
+
+  // Detect @ mention in text
+  const detectAtMention = useCallback(
+    (text: string, cursorPos: number): AtMentionState => {
+      // Find the last @ symbol before cursor position
+      let atPos = -1;
+      for (let i = cursorPos - 1; i >= 0; i--) {
+        if (text[i] === "@") {
+          atPos = i;
+          break;
+        }
+        // Stop if we hit whitespace or newline
+        if (text[i] === " " || text[i] === "\n") {
+          break;
+        }
+      }
+
+      if (atPos === -1) {
+        return { isActive: false, filterText: "", startPos: 0, endPos: 0 };
+      }
+
+      // Check if @ is at start of line or preceded by whitespace
+      const charBefore = text[atPos - 1];
+      const isValidPosition = atPos === 0 || /\s/.test(charBefore);
+      if (!isValidPosition) {
+        return { isActive: false, filterText: "", startPos: 0, endPos: 0 };
+      }
+
+      // Extract filter text after @
+      const afterAt = text.slice(atPos + 1, cursorPos);
+
+      // Check if filter text contains invalid characters
+      if (/\s/.test(afterAt)) {
+        return { isActive: false, filterText: "", startPos: 0, endPos: 0 };
+      }
+
+      return {
+        isActive: true,
+        filterText: afterAt,
+        startPos: atPos,
+        endPos: cursorPos,
+      };
+    },
+    [],
+  );
+
+  // Calculate dropdown position based on cursor
+  const calculateDropdownPosition = useCallback(() => {
+    if (!textareaRef.current) return { top: 0, left: 0 };
+
+    const textarea = textareaRef.current;
+
+    // Position at textarea top - CSS transform will move it up by dropdown height
+    // This ensures the dropdown appears above the input with proper spacing
+    return {
+      top: textarea.offsetTop,
+      left: textarea.offsetLeft,
+    };
+  }, []);
+
+  // Handle input clearing when requested by parent
+  useEffect(() => {
+    if (shouldClearInput) {
+      setMessage("");
+      // Clear persisted input content
+      vscode.postMessage({
+        command: "updateInputContent",
+        sessionId,
+        content: "",
+      });
+      setAttachedImages([]);
+      closeDropdown();
+      onInputCleared?.();
+    }
+  }, [shouldClearInput, onInputCleared, vscode, closeDropdown, sessionId]);
+
+  // Request file suggestions from extension
+  const requestFileSuggestions = useCallback(
+    (filterText: string) => {
+      const requestId = Date.now().toString();
+      requestIdRef.current = requestId;
+      setIsLoadingSuggestions(true);
+
+      vscode.postMessage({
+        command: "requestFileSuggestions",
+        filterText: filterText,
+        requestId: requestId,
+      });
+    },
+    [vscode],
+  );
+
+  // Request 指令 from extension
+  const requestSlashCommands = useCallback(
+    (filterText: string) => {
+      vscode.postMessage({
+        command: "requestSlashCommands",
+        filterText: filterText,
+      });
+    },
+    [vscode],
+  );
+
+  // Remembers the caret position when the input loses focus. The browser
+  // resets the caret to the start when focus() is called from an async
+  // insertion (e.g. upload success), so those paths restore the pre-blur
+  // position instead of inserting at the wrong spot.
+  const lastCaretOffsetRef = useRef<number | null>(null);
+
+  const handleInputBlur = useCallback(() => {
+    const selection = window.getSelection();
+    if (
+      selection &&
+      selection.rangeCount > 0 &&
+      textareaRef.current?.contains(selection.getRangeAt(0).startContainer)
+    ) {
+      const range = selection.getRangeAt(0);
+      if (range.startContainer.nodeType === Node.TEXT_NODE) {
+        lastCaretOffsetRef.current = textOffsetOf(
+          textareaRef.current,
+          range.startContainer,
+          range.startOffset,
+        );
+      }
+    }
+  }, []);
+
+  // The insertion point for async tag insertions: the pre-blur caret
+  // snapshot first, then the live selection when the input never lost focus,
+  // else null (caller falls back to the end of the input).
+  const resolveInsertionPoint = useCallback((): {
+    node: Node;
+    offset: number;
+  } | null => {
+    const input = textareaRef.current;
+    if (!input) return null;
+
+    if (lastCaretOffsetRef.current !== null) {
+      return findTextOffset(input, lastCaretOffsetRef.current);
+    }
+
+    const selection = window.getSelection();
+    if (
+      selection &&
+      selection.rangeCount > 0 &&
+      input.contains(selection.getRangeAt(0).startContainer)
+    ) {
+      const range = selection.getRangeAt(0);
+      return { node: range.startContainer, offset: range.startOffset };
+    }
+    return null;
+  }, []);
+
+  // Handle inserting uploaded file paths into the input
+  const insertUploadedFilePaths = useCallback(
+    (uploadedFiles: string[]) => {
+      if (!textareaRef.current || uploadedFiles.length === 0) return;
+
+      // Focus the input first; the browser resets the caret to the start, so
+      // the insertion point must come from the pre-blur snapshot (or the
+      // live selection when the input never lost focus).
       textareaRef.current.focus();
 
-      const selection = window.getSelection();
-      if (!selection) return;
-
+      // Insert at the saved/pre-blur caret position; fall back to the end of
+      // the input when no reliable position exists.
       let range: Range;
-      if (
-        selection.rangeCount > 0 &&
-        textareaRef.current.contains(selection.getRangeAt(0).startContainer)
-      ) {
-        range = selection.getRangeAt(0);
+      const insertPoint = resolveInsertionPoint();
+      if (insertPoint) {
+        range = document.createRange();
+        range.setStart(insertPoint.node, insertPoint.offset);
+        range.collapse(true);
       } else {
         range = document.createRange();
         range.selectNodeContents(textareaRef.current);
         range.collapse(false);
       }
 
-      const slashNode = document.createTextNode("/");
-      range.insertNode(slashNode);
-      range.setStartAfter(slashNode);
+      uploadedFiles.forEach((filePath) => {
+        const fileName = filePath.split(/[/\\]/).pop() || filePath;
+        const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(fileName);
+
+        const tagSpan = document.createElement("span");
+        tagSpan.className = "context-tag-container";
+        tagSpan.contentEditable = "false";
+        tagSpan.setAttribute("data-path", filePath);
+        tagSpan.setAttribute("data-name", fileName);
+        tagSpan.setAttribute("data-is-image", String(isImage));
+        tagSpan.innerText = isImage ? "[image]" : `[@file:${filePath}]`;
+
+        const root = ReactDOM.createRoot(tagSpan);
+        root.render(
+          <ContextTag name={fileName} path={filePath} isImage={isImage} />,
+        );
+
+        range.insertNode(tagSpan);
+        range.setStartAfter(tagSpan);
+
+        // Add space after each tag
+        const space = document.createTextNode(" ");
+        range.insertNode(space);
+        range.setStartAfter(space);
+      });
+
       range.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(range);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
 
-      // Trigger input event so the slash-command detection runs and the popup appears.
+      // Trigger input event to update message state
       const inputEvent = new Event("input", { bubbles: true });
-      textareaRef.current.dispatchEvent(inputEvent);
-    }, []);
+      textareaRef.current?.dispatchEvent(inputEvent);
 
-    // Handle file selection
-    const handleFileSelect = useCallback(
-      (file: FileItem) => {
-        if (!textareaRef.current) return;
+      closeDropdown();
+    },
+    [closeDropdown, resolveInsertionPoint],
+  );
+
+  // Handle inserting selection tags into the input
+  const insertSelectionTag = useCallback(
+    (selection: {
+      fileName: string;
+      filePath: string;
+      startLine: number;
+      endLine: number;
+      isEmpty?: boolean;
+    }) => {
+      if (!textareaRef.current || !selection || selection.isEmpty) return;
+
+      // Focus the input first; the browser resets the caret to the start, so
+      // the insertion point must come from the pre-blur snapshot (or the
+      // live selection when the input never lost focus).
+      textareaRef.current.focus();
+
+      const insertPoint = resolveInsertionPoint();
+      if (!insertPoint) return;
+
+      const range = document.createRange();
+      range.setStart(insertPoint.node, insertPoint.offset);
+      range.setEnd(insertPoint.node, insertPoint.offset);
+
+      const fileName =
+        selection.fileName.split(/[/\\]/).pop() || selection.fileName;
+      const displayName = `${fileName}#${selection.startLine}-${selection.endLine}`;
+
+      const tagSpan = document.createElement("span");
+      tagSpan.className = "context-tag-container";
+      tagSpan.contentEditable = "false";
+      tagSpan.setAttribute("data-path", selection.filePath);
+      tagSpan.setAttribute("data-name", fileName);
+      tagSpan.setAttribute("data-start-line", String(selection.startLine));
+      tagSpan.setAttribute("data-end-line", String(selection.endLine));
+      tagSpan.setAttribute("data-is-selection", "true");
+      tagSpan.innerText = `[Selection: ${selection.filePath}|${fileName}#${selection.startLine}-${selection.endLine}]`;
+
+      const root = ReactDOM.createRoot(tagSpan);
+      root.render(
+        <ContextTag
+          name={displayName}
+          path={selection.filePath}
+          onClick={() => {
+            vscode.postMessage({
+              command: "openFile",
+              path: selection.filePath,
+              startLine: selection.startLine,
+              endLine: selection.endLine,
+            });
+          }}
+        />,
+      );
+
+      range.deleteContents();
+      range.insertNode(tagSpan);
+      range.setStartAfter(tagSpan);
+
+      // Add space after the tag
+      const space = document.createTextNode(" ");
+      range.insertNode(space);
+      range.setStartAfter(space);
+
+      range.collapse(true);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+
+      // Trigger input event to update message state
+      const inputEvent = new Event("input", { bubbles: true });
+      textareaRef.current?.dispatchEvent(inputEvent);
+    },
+    [vscode, resolveInsertionPoint],
+  );
+
+  // Listen for file suggestions response from extension
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const data = event.data;
+
+      if (data.command === "fileSuggestionsResponse") {
+        // Only process if this is the latest request
+        if (data.requestId === requestIdRef.current) {
+          setSuggestions(data.suggestions || []);
+          setSelectedIndex(0);
+          setIsLoadingSuggestions(false);
+        }
+      } else if (data.command === "fileSuggestionsError") {
+        if (data.requestId === requestIdRef.current) {
+          setSuggestions([]);
+          setIsLoadingSuggestions(false);
+          console.error("File suggestions error:", data.error);
+        }
+      } else if (data.command === "slashCommandsResponse") {
+        setSlashCommands(data.commands || []);
+        setSelectedSlashIndex(0);
+      } else if (data.command === "slashCommandsError") {
+        setSlashCommands([]);
+        console.error("指令错误:", data.error);
+      } else if (data.command === "uploadSuccess") {
+        // Insert uploaded file paths into the input after the @ symbol.
+        // In split view the host echoes the originating paneId; a reply for
+        // another pane must not insert into this input.
+        if (paneId !== undefined && data.paneId !== paneId) return;
+        if (data.uploadedFiles && data.uploadedFiles.length > 0) {
+          insertUploadedFilePaths(data.uploadedFiles);
+        }
+      } else if (data.command === "uploadError") {
+        console.error("文件上传失败:", data.error);
+        // Could show an error notification here if needed
+      } else if (data.command === "addSelectionToInput") {
+        insertSelectionTag(data.selection);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [insertUploadedFilePaths, insertSelectionTag, closeDropdown, paneId]);
+
+  // Handle image preview
+  const handleImagePreview = useCallback((url: string, name: string) => {
+    // Create a temporary modal for image preview
+    const modal = document.createElement("div");
+    modal.className = "image-preview-modal";
+    modal.onclick = () => document.body.removeChild(modal);
+
+    const img = document.createElement("img");
+    img.src = url;
+    img.alt = name;
+    img.onclick = (e) => e.stopPropagation();
+
+    const closeBtn = document.createElement("div");
+    closeBtn.className = "image-preview-close";
+    closeBtn.innerHTML = '<i class="codicon codicon-close"></i>';
+
+    modal.appendChild(img);
+    modal.appendChild(closeBtn);
+    document.body.appendChild(modal);
+  }, []);
+
+  // Read files as base64 and post them to the host for upload. The paneId is
+  // tagged on the request so the host can echo it back on uploadSuccess and
+  // only the originating pane's input inserts the path chips (split view).
+  const readAndUploadFiles = useCallback(
+    (files: FileList | File[]) => {
+      const fileArray = Array.from(files);
+      if (fileArray.length === 0) return;
+      const readers = fileArray.map((file) => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            resolve({
+              name: file.name,
+              size: file.size,
+              type: file.type,
+              data: reader.result,
+            });
+          };
+          reader.onerror = reject;
+          reader.readAsArrayBuffer(file);
+        });
+      });
+
+      Promise.all(readers)
+        .then((fileDataArray) => {
+          vscode.postMessage({
+            command: "uploadFilesToArtifacts",
+            files: fileDataArray,
+            ...(paneId !== undefined ? { paneId } : {}),
+          });
+        })
+        .catch((error) => {
+          console.error("Error reading files:", error);
+          vscode.postMessage({
+            command: "showError",
+            message: "读取文件失败: " + error.message,
+          });
+        });
+    },
+    [vscode, paneId],
+  );
+
+  // Handle file upload
+  const handleFileUpload = useCallback(() => {
+    // Create a hidden file input element
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.multiple = true; // Support multiple file selection
+    fileInput.style.display = "none";
+
+    fileInput.onchange = (event) => {
+      const files = (event.target as HTMLInputElement).files;
+      if (files && files.length > 0) {
+        readAndUploadFiles(files);
+      }
+
+      // Cleanup
+      document.body.removeChild(fileInput);
+    };
+
+    // Trigger file selection dialog
+    document.body.appendChild(fileInput);
+    fileInput.click();
+
+    // Close the dropdown after triggering upload
+    closeDropdown();
+  }, [readAndUploadFiles, closeDropdown]);
+
+  // Handle "/" toolbar button: focus the input and insert a "/" at the cursor/end so the
+  // existing handleInput -> detectSlashCommand -> requestSlashCommands flow opens the popup.
+  const handleSlashButtonClick = useCallback(() => {
+    if (!textareaRef.current) return;
+
+    textareaRef.current.focus();
+
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    let range: Range;
+    if (
+      selection.rangeCount > 0 &&
+      textareaRef.current.contains(selection.getRangeAt(0).startContainer)
+    ) {
+      range = selection.getRangeAt(0);
+    } else {
+      range = document.createRange();
+      range.selectNodeContents(textareaRef.current);
+      range.collapse(false);
+    }
+
+    const slashNode = document.createTextNode("/");
+    range.insertNode(slashNode);
+    range.setStartAfter(slashNode);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    // Trigger input event so the slash-command detection runs and the popup appears.
+    const inputEvent = new Event("input", { bubbles: true });
+    textareaRef.current.dispatchEvent(inputEvent);
+  }, []);
+
+  // Handle file selection
+  const handleFileSelect = useCallback(
+    (file: FileItem) => {
+      if (!textareaRef.current) return;
+      if (!atMention.isActive) {
+        closeDropdown();
+        return;
+      }
+
+      // Create the tag element
+      const tagSpan = document.createElement("span");
+      tagSpan.className = "context-tag-container"; // Wrapper for React component
+      tagSpan.contentEditable = "false";
+      tagSpan.setAttribute("data-path", file.relativePath);
+      tagSpan.setAttribute("data-name", file.name);
+      tagSpan.setAttribute(
+        "data-is-image",
+        String(
+          !file.isDirectory &&
+            /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name),
+        ),
+      );
+      tagSpan.innerText = `[@file:${file.relativePath}]`;
+
+      // Render the React component into the span
+      const isImage =
+        !file.isDirectory && /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name);
+      const root = ReactDOM.createRoot(tagSpan);
+      root.render(
+        <ContextTag
+          name={file.name}
+          path={file.relativePath}
+          isImage={isImage}
+          onClick={
+            isImage
+              ? () => {
+                  vscode.postMessage({
+                    command: "previewImage",
+                    path: file.path,
+                  });
+                }
+              : undefined
+          }
+        />,
+      );
+
+      // Locate the '@' + filter text to replace. Prefer the live DOM selection
+      // when it still points into the input's text node (keyboard Enter): the
+      // atMention snapshot may be stale if the 200ms detection debounce has not
+      // fired yet, so it would only cover the '@'. Fall back to atMention when
+      // the selection sits on the popup item (mouse click), where the old
+      // text-node check silently no-op'd (same failure mode as the slash popup).
+      textareaRef.current.focus();
+
+      let start: { node: Text; offset: number } | null = null;
+      let end: { node: Text; offset: number } | null = null;
+
+      const selection = window.getSelection();
+      if (
+        selection &&
+        selection.rangeCount > 0 &&
+        textareaRef.current.contains(selection.getRangeAt(0).startContainer)
+      ) {
+        const selRange = selection.getRangeAt(0);
+        if (selRange.startContainer.nodeType === Node.TEXT_NODE) {
+          const text = selRange.startContainer.textContent || "";
+          const lastAtIndex = text.lastIndexOf("@", selRange.startOffset - 1);
+          // A zero-length range (caret at the very start, e.g. after focus()
+          // reset it) would delete nothing and insert the tag *before* the
+          // '@' — reject it and fall back to the atMention snapshot instead.
+          if (lastAtIndex !== -1 && selRange.startOffset > lastAtIndex) {
+            start = {
+              node: selRange.startContainer as Text,
+              offset: lastAtIndex,
+            };
+            end = {
+              node: selRange.startContainer as Text,
+              offset: selRange.startOffset,
+            };
+          }
+        }
+      }
+
+      if (!start || !end) {
         if (!atMention.isActive) {
           closeDropdown();
           return;
         }
+        start = findTextOffset(textareaRef.current, atMention.startPos);
+        end = findTextOffset(textareaRef.current, atMention.endPos);
+      }
 
-        // Create the tag element
-        const tagSpan = document.createElement("span");
-        tagSpan.className = "context-tag-container"; // Wrapper for React component
-        tagSpan.contentEditable = "false";
-        tagSpan.setAttribute("data-path", file.relativePath);
-        tagSpan.setAttribute("data-name", file.name);
-        tagSpan.setAttribute(
-          "data-is-image",
-          String(
-            !file.isDirectory &&
-              /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name),
-          ),
-        );
-        tagSpan.innerText = `[@file:${file.relativePath}]`;
+      if (start && end) {
+        const range = document.createRange();
+        range.setStart(start.node, start.offset);
+        range.setEnd(end.node, end.offset);
+        range.deleteContents();
 
-        // Render the React component into the span
-        const isImage =
-          !file.isDirectory &&
-          /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name);
-        const root = ReactDOM.createRoot(tagSpan);
-        root.render(
-          <ContextTag
-            name={file.name}
-            path={file.relativePath}
-            isImage={isImage}
-            onClick={
-              isImage
-                ? () => {
-                    vscode.postMessage({
-                      command: "previewImage",
-                      path: file.path,
-                    });
-                  }
-                : undefined
-            }
-          />,
-        );
+        // Insert the tag
+        range.insertNode(tagSpan);
 
-        // Locate the '@' + filter text to replace. Prefer the live DOM selection
-        // when it still points into the input's text node (keyboard Enter): the
-        // atMention snapshot may be stale if the 200ms detection debounce has not
-        // fired yet, so it would only cover the '@'. Fall back to atMention when
-        // the selection sits on the popup item (mouse click), where the old
-        // text-node check silently no-op'd (same failure mode as the slash popup).
-        textareaRef.current.focus();
+        // Insert a space after the tag
+        const space = document.createTextNode(" ");
+        range.setStartAfter(tagSpan);
+        range.insertNode(space);
 
-        let start: { node: Text; offset: number } | null = null;
-        let end: { node: Text; offset: number } | null = null;
-
+        // Move cursor after the space
+        range.setStartAfter(space);
+        range.setEndAfter(space);
         const selection = window.getSelection();
-        if (
-          selection &&
-          selection.rangeCount > 0 &&
-          textareaRef.current.contains(selection.getRangeAt(0).startContainer)
-        ) {
-          const selRange = selection.getRangeAt(0);
-          if (selRange.startContainer.nodeType === Node.TEXT_NODE) {
-            const text = selRange.startContainer.textContent || "";
-            const lastAtIndex = text.lastIndexOf("@", selRange.startOffset - 1);
-            // A zero-length range (caret at the very start, e.g. after focus()
-            // reset it) would delete nothing and insert the tag *before* the
-            // '@' — reject it and fall back to the atMention snapshot instead.
-            if (lastAtIndex !== -1 && selRange.startOffset > lastAtIndex) {
-              start = {
-                node: selRange.startContainer as Text,
-                offset: lastAtIndex,
-              };
-              end = {
-                node: selRange.startContainer as Text,
-                offset: selRange.startOffset,
-              };
-            }
-          }
-        }
+        selection?.removeAllRanges();
+        selection?.addRange(range);
 
-        if (!start || !end) {
-          if (!atMention.isActive) {
+        // Trigger input event to update message state
+        const inputEvent = new Event("input", { bubbles: true });
+        textareaRef.current?.dispatchEvent(inputEvent);
+      }
+
+      closeDropdown();
+    },
+    [closeDropdown, vscode, atMention],
+  );
+
+  // Handle 指令 selection
+  const handleSlashCommandSelect = useCallback(
+    (command: SlashCommand) => {
+      if (!textareaRef.current) return;
+
+      // Local commands (config/plugin/mcp/status/clear) just open a dialog; their
+      // behavior does not depend on the cursor position. Handle them first so a
+      // mouse click on the popup works even when the browser selection is no
+      // longer inside the input's text node (which made getSelection()-based
+      // logic below silently no-op on click).
+      const localCommands = [
+        "config",
+        "plugin",
+        "mcp",
+        "status",
+        "tasks",
+        "workflows",
+        "agents",
+        "skills",
+        "clear",
+        "compact",
+        "rewind",
+        "model",
+        "plan",
+      ];
+      if (localCommands.includes(command.name)) {
+        textareaRef.current.innerHTML = "";
+        setMessage("");
+        vscode.postMessage({ command: "updateInputContent", content: "" });
+        closeSlashCommandPopup();
+        onSendMessage(`/${command.name}`);
+        return;
+      }
+
+      // Skill commands replace the '/' plus any filter text with the command name.
+      // Locate the [startPos, endPos) span recorded by detectSlashCommand by walking
+      // the text nodes, instead of relying on window.getSelection()'s startContainer
+      // being a text node — which is not guaranteed when the user picks the command
+      // with the mouse (the selection may collapse onto the contenteditable div
+      // itself, nodeType 1, making the old text-node check silently no-op and the
+      // first click fail to insert anything).
+      textareaRef.current.focus();
+
+      const start = findTextOffset(textareaRef.current, slashCommand.startPos);
+      const end = findTextOffset(textareaRef.current, slashCommand.endPos);
+      if (start && end) {
+        const range = document.createRange();
+        range.setStart(start.node, start.offset);
+        range.setEnd(end.node, end.offset);
+        range.deleteContents();
+
+        const commandText = `/${command.name} `;
+        const newNode = document.createTextNode(commandText);
+        range.insertNode(newNode);
+
+        // Move cursor after the inserted text
+        range.setStartAfter(newNode);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+
+        // Trigger input event to update message state
+        const inputEvent = new Event("input", { bubbles: true });
+        textareaRef.current.dispatchEvent(inputEvent);
+      }
+
+      closeSlashCommandPopup();
+    },
+    [closeSlashCommandPopup, onSendMessage, vscode, slashCommand],
+  );
+
+  const handleSend = useCallback(() => {
+    if (disabled) return;
+    if (!textareaRef.current) return;
+
+    const { markdown: rawMarkdown, images: extractedImages } =
+      convertToMarkdown(textareaRef.current);
+    const markdown = rawMarkdown.replace(/\u00A0/g, " ");
+    const allImages = [...attachedImages, ...extractedImages];
+
+    if (markdown.trim() || allImages.length > 0) {
+      // Convert attached images to base64 format for SDK
+      const images = allImages.map((img) => ({
+        data: img.data, // This is already base64 data URL
+        mediaType: img.mimeType,
+      }));
+
+      if (editingQueuedId) {
+        // Editing a queued message: update the queue entry instead of sending to AI
+        onSubmitQueuedEdit?.(
+          editingQueuedId,
+          markdown,
+          images.length > 0 ? images : undefined,
+        );
+      } else {
+        onSendMessage(markdown, images.length > 0 ? images : undefined);
+      }
+
+      // Clear contenteditable
+      textareaRef.current.innerHTML = "";
+      setMessage("");
+      // Clear persisted input content
+      vscode.postMessage({
+        command: "updateInputContent",
+        content: "",
+      });
+      setAttachedImages([]);
+      closeDropdown();
+    }
+  }, [
+    disabled,
+    attachedImages,
+    onSendMessage,
+    closeDropdown,
+    vscode,
+    editingQueuedId,
+    onSubmitQueuedEdit,
+  ]);
+
+  // Open the history-search popup. Shared by the in-DOM Ctrl/Cmd+R handler and the
+  // JetBrains bridge (which forwards the key after swallowing the IDE action — see
+  // issue #1429). Kept as a plain function so the host can invoke it without a KeyEvent.
+  const openHistorySearch = useCallback(() => {
+    setHistoryPopupPosition(calculateDropdownPosition());
+    setIsHistorySearchVisible(true);
+  }, [calculateDropdownPosition]);
+
+  const plusMenuItems = [
+    {
+      label: "上传文件",
+      run: () => handleFileUpload(),
+    },
+    {
+      label: "历史提示词",
+      run: () => openHistorySearch(),
+    },
+  ];
+
+  // "+" (add) custom dropdown, same roving keyboard model as the
+  // permission-mode listbox via useRovingMenu. Declared after its
+  // collaborators so onActivate can close over them.
+  const plusMenuRef = useRef<HTMLDivElement>(null);
+  const plusMenuButtonRef = useRef<HTMLButtonElement>(null);
+
+  const plusMenu = useRovingMenu(plusMenuRef, {
+    itemSelector: ".plus-menu-item",
+    itemCount: plusMenuItems.length,
+    triggerRef: plusMenuButtonRef,
+    closeOnActivate: true,
+    onActivate: (i) => plusMenuItems[i].run(),
+  });
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      // Handle Cmd/Ctrl+Shift+M to open the permission mode menu (aligned
+      // with Claude Code Desktop). preventDefault+stopPropagation also keeps
+      // the chord away from host defaults that share it: VS Code's "Focus
+      // Problems" and JetBrains' "Move Caret to Matching Brace". Matched on
+      // `code` because Shift uppercases `key`.
+      if (
+        event.code === "KeyM" &&
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        !isComposing
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        openPermissionModeMenu();
+        return;
+      }
+
+      // Handle Ctrl+R for history search
+      if (
+        event.key === "r" &&
+        (event.ctrlKey || event.metaKey) &&
+        !isComposing
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        openHistorySearch();
+        return;
+      }
+
+      // Handle Ctrl+B to background the current foreground task (same as CLI).
+      // Only intercepted while a turn is running — when idle the key falls
+      // through so the host keeps its own Ctrl+B binding (e.g. VS Code's
+      // Toggle Sidebar).
+      if (
+        event.key === "b" &&
+        (event.ctrlKey || event.metaKey) &&
+        !isComposing
+      ) {
+        if (isStreaming) {
+          event.preventDefault();
+          event.stopPropagation();
+          vscode.postMessage({ command: "backgroundCurrentTask" });
+          return;
+        }
+      }
+
+      // Handle 指令 navigation. Navigate over the display-ordered list so the
+      // highlighted item, up/down movement, and Enter selection all match the
+      // grouped order shown in the popup.
+      if (slashCommand.isActive && slashCommands.length > 0) {
+        const orderedCommands = orderSlashCommands(slashCommands);
+        switch (event.key) {
+          case "ArrowUp":
+            event.preventDefault();
+            setSelectedSlashIndex((prev: number) => Math.max(0, prev - 1));
+            return;
+          case "ArrowDown":
+            event.preventDefault();
+            setSelectedSlashIndex((prev: number) =>
+              Math.min(orderedCommands.length - 1, prev + 1),
+            );
+            return;
+          case "Tab":
+          case "Enter":
+            event.preventDefault();
+            if (orderedCommands[selectedSlashIndex]) {
+              handleSlashCommandSelect(orderedCommands[selectedSlashIndex]);
+            }
+            return;
+          case "Escape":
+            event.preventDefault();
+            closeSlashCommandPopup();
+            return;
+        }
+      }
+
+      // Handle dropdown navigation
+      if (atMention.isActive && suggestions.length > 0) {
+        const maxIndex = suggestions.length - 1;
+
+        switch (event.key) {
+          case "ArrowUp":
+            event.preventDefault();
+            setSelectedIndex((prev: number) => Math.max(0, prev - 1));
+            return;
+          case "ArrowDown":
+            event.preventDefault();
+            setSelectedIndex((prev: number) => Math.min(maxIndex, prev + 1));
+            return;
+          case "Enter":
+            event.preventDefault();
+            if (suggestions[selectedIndex]) {
+              handleFileSelect(suggestions[selectedIndex]);
+            }
+            return;
+          case "Escape":
+            event.preventDefault();
+            if (isStreaming) {
+              onAbortMessage();
+            }
             closeDropdown();
             return;
-          }
-          start = findTextOffset(textareaRef.current, atMention.startPos);
-          end = findTextOffset(textareaRef.current, atMention.endPos);
         }
+      }
 
-        if (start && end) {
-          const range = document.createRange();
-          range.setStart(start.node, start.offset);
-          range.setEnd(end.node, end.offset);
+      // Handle Esc key for interruption when focused and streaming
+      if (event.key === "Escape" && isStreaming) {
+        event.preventDefault();
+        onAbortMessage();
+        return;
+      }
+
+      // Normal behavior for Enter key
+      if (event.key === "Enter" && !event.shiftKey && !isComposing) {
+        event.preventDefault();
+        handleSend();
+      }
+    },
+    [
+      slashCommand.isActive,
+      slashCommands,
+      selectedSlashIndex,
+      handleSlashCommandSelect,
+      closeSlashCommandPopup,
+      atMention.isActive,
+      suggestions,
+      selectedIndex,
+      handleFileSelect,
+      closeDropdown,
+      handleSend,
+      isComposing,
+      vscode,
+      openHistorySearch,
+      openPermissionModeMenu,
+      isStreaming,
+      onAbortMessage,
+    ],
+  );
+
+  // Handle cursor position changes - debounced to wait for user to stop moving cursor
+  const handleSelectionChange = useCallback(() => {
+    if (!textareaRef.current) return;
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    const preCaretRange = range.cloneRange();
+    preCaretRange.selectNodeContents(textareaRef.current);
+    preCaretRange.setEnd(range.endContainer, range.endOffset);
+
+    const cursorPos = preCaretRange.toString().length;
+
+    // Skip if cursor position hasn't changed (avoid redundant work)
+    if (cursorPos === lastSelectionChangePosRef.current) {
+      return;
+    }
+    lastSelectionChangePosRef.current = cursorPos;
+
+    // Debounce: reset timer on each cursor change, only execute when user stops
+    if (selectionChangeTimerRef.current) {
+      clearTimeout(selectionChangeTimerRef.current);
+    }
+
+    selectionChangeTimerRef.current = setTimeout(() => {
+      if (!textareaRef.current) return;
+
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+
+      const rng = sel.getRangeAt(0);
+      const pre = rng.cloneRange();
+      pre.selectNodeContents(textareaRef.current!);
+      pre.setEnd(rng.endContainer, rng.endOffset);
+
+      const textBeforeCursor = pre.toString();
+
+      // Use textBeforeCursor for detection as it's more reliable for cursor position
+      const mentionState = detectAtMention(
+        textBeforeCursor,
+        textBeforeCursor.length,
+      );
+      const slashCommandState = detectSlashCommand(
+        textBeforeCursor,
+        textBeforeCursor.length,
+      );
+
+      if (!mentionState.isActive) {
+        closeDropdown();
+        setSuggestions([]);
+        setIsLoadingSuggestions(false);
+      } else {
+        setAtMention(mentionState);
+        setDropdownPosition(calculateDropdownPosition());
+        requestFileSuggestions(mentionState.filterText);
+      }
+
+      if (!slashCommandState.isActive) {
+        closeSlashCommandPopup();
+      } else {
+        setSlashCommand(slashCommandState);
+        setSlashPopupPosition(calculateDropdownPosition());
+        requestSlashCommands(slashCommandState.filterText);
+      }
+      selectionChangeTimerRef.current = null;
+    }, 200);
+  }, [
+    detectAtMention,
+    detectSlashCommand,
+    closeDropdown,
+    closeSlashCommandPopup,
+    calculateDropdownPosition,
+    requestFileSuggestions,
+    requestSlashCommands,
+  ]);
+
+  const handleInput = useCallback(
+    (event: React.FormEvent<HTMLDivElement>) => {
+      const target = event.currentTarget;
+      const newValue = target.innerText;
+
+      setMessage(newValue);
+
+      // If we're editing a queued message and the read-only chip has been deleted
+      // (e.g. via backspace), exit edit mode. The remaining body text is kept.
+      if (editingQueuedId && !target.querySelector(".queued-edit-chip")) {
+        onCancelQueuedEdit?.();
+      }
+
+      // Debounce sending updated content to extension for persistence. The
+      // sessionId is captured at keystroke time so a save landing after the pane
+      // switched sessions still routes to the conversation it was typed in.
+      const draftSession = sessionId;
+      if (inputContentTimerRef.current) {
+        clearTimeout(inputContentTimerRef.current);
+      }
+      inputContentTimerRef.current = setTimeout(() => {
+        vscode.postMessage({
+          command: "updateInputContent",
+          sessionId: draftSession,
+          content: target.innerText,
+        });
+        inputContentTimerRef.current = null;
+      }, 150);
+
+      // Debounced selection change detection (for @mention and /command)
+      handleSelectionChange();
+    },
+    [
+      handleSelectionChange,
+      vscode,
+      editingQueuedId,
+      onCancelQueuedEdit,
+      sessionId,
+    ],
+  );
+
+  // Handle IME composition events
+  const handleCompositionStart = useCallback(() => {
+    setIsComposing(true);
+  }, []);
+
+  const handleCompositionEnd = useCallback(() => {
+    setIsComposing(false);
+  }, []);
+
+  // Image handling functions
+  const createDataUrlFromBlob = useCallback((blob: Blob): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        resolve(reader.result as string);
+      };
+      reader.readAsDataURL(blob);
+    });
+  }, []);
+
+  const handleImagePaste = useCallback(
+    async (files: FileList) => {
+      const imageFiles = Array.from(files).filter((file) =>
+        file.type.startsWith("image/"),
+      );
+
+      for (const file of imageFiles) {
+        try {
+          const dataUrl = await createDataUrlFromBlob(file);
+
+          // Insert inline tag for the image
+          if (!textareaRef.current) continue;
+
+          // Count existing images in the input to determine the next index
+          const existingImageTags = textareaRef.current.querySelectorAll(
+            '.context-tag-container[data-is-image="true"]',
+          );
+          const nextIndex = existingImageTags.length + 1;
+          const displayName = `图片 ${nextIndex}`;
+
+          const selection = window.getSelection();
+          if (!selection || selection.rangeCount === 0) continue;
+
+          const range = selection.getRangeAt(0);
+
+          const tagSpan = document.createElement("span");
+          tagSpan.className = "context-tag-container";
+          tagSpan.contentEditable = "false";
+          tagSpan.setAttribute("data-path", `pasted-image-${Date.now()}.png`);
+
+          tagSpan.setAttribute("data-name", displayName);
+          tagSpan.setAttribute("data-is-image", "true");
+          tagSpan.setAttribute("data-image-url", dataUrl);
+          tagSpan.innerText = `[image]`;
+
+          const root = ReactDOM.createRoot(tagSpan);
+          root.render(
+            <ContextTag
+              name={displayName}
+              path={`pasted-image-${Date.now()}.png`}
+              isImage={true}
+              onClick={() => handleImagePreview(dataUrl, displayName)}
+            />,
+          );
+
           range.deleteContents();
-
-          // Insert the tag
           range.insertNode(tagSpan);
 
           // Insert a space after the tag
           const space = document.createTextNode(" ");
           range.setStartAfter(tagSpan);
           range.insertNode(space);
-
-          // Move cursor after the space
           range.setStartAfter(space);
           range.setEndAfter(space);
-          const selection = window.getSelection();
-          selection?.removeAllRanges();
-          selection?.addRange(range);
-
-          // Trigger input event to update message state
-          const inputEvent = new Event("input", { bubbles: true });
-          textareaRef.current?.dispatchEvent(inputEvent);
-        }
-
-        closeDropdown();
-      },
-      [closeDropdown, vscode, atMention],
-    );
-
-    // Handle 指令 selection
-    const handleSlashCommandSelect = useCallback(
-      (command: SlashCommand) => {
-        if (!textareaRef.current) return;
-
-        // Local commands (config/plugin/mcp/status/clear) just open a dialog; their
-        // behavior does not depend on the cursor position. Handle them first so a
-        // mouse click on the popup works even when the browser selection is no
-        // longer inside the input's text node (which made getSelection()-based
-        // logic below silently no-op on click).
-        const localCommands = [
-          "config",
-          "plugin",
-          "mcp",
-          "status",
-          "tasks",
-          "workflows",
-          "agents",
-          "skills",
-          "clear",
-          "compact",
-          "rewind",
-          "model",
-          "plan",
-        ];
-        if (localCommands.includes(command.name)) {
-          textareaRef.current.innerHTML = "";
-          setMessage("");
-          vscode.postMessage({ command: "updateInputContent", content: "" });
-          closeSlashCommandPopup();
-          onSendMessage(`/${command.name}`);
-          return;
-        }
-
-        // Skill commands replace the '/' plus any filter text with the command name.
-        // Locate the [startPos, endPos) span recorded by detectSlashCommand by walking
-        // the text nodes, instead of relying on window.getSelection()'s startContainer
-        // being a text node — which is not guaranteed when the user picks the command
-        // with the mouse (the selection may collapse onto the contenteditable div
-        // itself, nodeType 1, making the old text-node check silently no-op and the
-        // first click fail to insert anything).
-        textareaRef.current.focus();
-
-        const start = findTextOffset(
-          textareaRef.current,
-          slashCommand.startPos,
-        );
-        const end = findTextOffset(textareaRef.current, slashCommand.endPos);
-        if (start && end) {
-          const range = document.createRange();
-          range.setStart(start.node, start.offset);
-          range.setEnd(end.node, end.offset);
-          range.deleteContents();
-
-          const commandText = `/${command.name} `;
-          const newNode = document.createTextNode(commandText);
-          range.insertNode(newNode);
-
-          // Move cursor after the inserted text
-          range.setStartAfter(newNode);
-          range.collapse(true);
-          const selection = window.getSelection();
-          selection?.removeAllRanges();
-          selection?.addRange(range);
+          selection.removeAllRanges();
+          selection.addRange(range);
 
           // Trigger input event to update message state
           const inputEvent = new Event("input", { bubbles: true });
           textareaRef.current.dispatchEvent(inputEvent);
+        } catch (error) {
+          console.error("Failed to process image:", error);
         }
-
-        closeSlashCommandPopup();
-      },
-      [closeSlashCommandPopup, onSendMessage, vscode, slashCommand],
-    );
-
-    const handleSend = useCallback(() => {
-      if (disabled) return;
-      if (!textareaRef.current) return;
-
-      const { markdown: rawMarkdown, images: extractedImages } =
-        convertToMarkdown(textareaRef.current);
-      const markdown = rawMarkdown.replace(/\u00A0/g, " ");
-      const allImages = [...attachedImages, ...extractedImages];
-
-      if (markdown.trim() || allImages.length > 0) {
-        // Convert attached images to base64 format for SDK
-        const images = allImages.map((img) => ({
-          data: img.data, // This is already base64 data URL
-          mediaType: img.mimeType,
-        }));
-
-        if (editingQueuedId) {
-          // Editing a queued message: update the queue entry instead of sending to AI
-          onSubmitQueuedEdit?.(
-            editingQueuedId,
-            markdown,
-            images.length > 0 ? images : undefined,
-          );
-        } else {
-          onSendMessage(markdown, images.length > 0 ? images : undefined);
-        }
-
-        // Clear contenteditable
-        textareaRef.current.innerHTML = "";
-        setMessage("");
-        // Clear persisted input content
-        vscode.postMessage({
-          command: "updateInputContent",
-          content: "",
-        });
-        setAttachedImages([]);
-        closeDropdown();
       }
-    }, [
-      disabled,
-      attachedImages,
-      onSendMessage,
-      closeDropdown,
-      vscode,
-      editingQueuedId,
-      onSubmitQueuedEdit,
-    ]);
+    },
+    [createDataUrlFromBlob, textareaRef, handleImagePreview],
+  );
 
-    // Open the history-search popup. Shared by the in-DOM Ctrl/Cmd+R handler and the
-    // JetBrains bridge (which forwards the key after swallowing the IDE action — see
-    // issue #1429). Kept as a plain function so the host can invoke it without a KeyEvent.
-    const openHistorySearch = useCallback(() => {
-      setHistoryPopupPosition(calculateDropdownPosition());
-      setIsHistorySearchVisible(true);
-    }, [calculateDropdownPosition]);
+  // Paste event handler
+  const handlePaste = useCallback(
+    (event: ClipboardEvent) => {
+      const items = event.clipboardData?.items;
+      if (!items) return;
 
-    const plusMenuItems = [
-      {
-        label: "上传文件",
-        run: () => handleFileUpload(),
-      },
-      {
-        label: "历史提示词",
-        run: () => openHistorySearch(),
-      },
-    ];
-
-    // "+" (add) custom dropdown, same roving keyboard model as the
-    // permission-mode listbox via useRovingMenu. Declared after its
-    // collaborators so onActivate can close over them.
-    const plusMenuRef = useRef<HTMLDivElement>(null);
-    const plusMenuButtonRef = useRef<HTMLButtonElement>(null);
-
-    const plusMenu = useRovingMenu(plusMenuRef, {
-      itemSelector: ".plus-menu-item",
-      itemCount: plusMenuItems.length,
-      triggerRef: plusMenuButtonRef,
-      closeOnActivate: true,
-      onActivate: (i) => plusMenuItems[i].run(),
-    });
-
-    const handleKeyDown = useCallback(
-      (event: KeyboardEvent<HTMLDivElement>) => {
-        // Handle Cmd/Ctrl+Shift+M to open the permission mode menu (aligned
-        // with Claude Code Desktop). preventDefault+stopPropagation also keeps
-        // the chord away from host defaults that share it: VS Code's "Focus
-        // Problems" and JetBrains' "Move Caret to Matching Brace". Matched on
-        // `code` because Shift uppercases `key`.
-        if (
-          event.code === "KeyM" &&
-          (event.metaKey || event.ctrlKey) &&
-          event.shiftKey &&
-          !isComposing
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-          openPermissionModeMenu();
-          return;
+      const files: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) files.push(file);
         }
-
-        // Handle Ctrl+R for history search
-        if (
-          event.key === "r" &&
-          (event.ctrlKey || event.metaKey) &&
-          !isComposing
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-          openHistorySearch();
-          return;
-        }
-
-        // Handle Ctrl+B to background the current foreground task (same as CLI).
-        // Only intercepted while a turn is running — when idle the key falls
-        // through so the host keeps its own Ctrl+B binding (e.g. VS Code's
-        // Toggle Sidebar).
-        if (
-          event.key === "b" &&
-          (event.ctrlKey || event.metaKey) &&
-          !isComposing
-        ) {
-          if (isStreaming) {
-            event.preventDefault();
-            event.stopPropagation();
-            vscode.postMessage({ command: "backgroundCurrentTask" });
-            return;
-          }
-        }
-
-        // Handle 指令 navigation. Navigate over the display-ordered list so the
-        // highlighted item, up/down movement, and Enter selection all match the
-        // grouped order shown in the popup.
-        if (slashCommand.isActive && slashCommands.length > 0) {
-          const orderedCommands = orderSlashCommands(slashCommands);
-          switch (event.key) {
-            case "ArrowUp":
-              event.preventDefault();
-              setSelectedSlashIndex((prev: number) => Math.max(0, prev - 1));
-              return;
-            case "ArrowDown":
-              event.preventDefault();
-              setSelectedSlashIndex((prev: number) =>
-                Math.min(orderedCommands.length - 1, prev + 1),
-              );
-              return;
-            case "Tab":
-            case "Enter":
-              event.preventDefault();
-              if (orderedCommands[selectedSlashIndex]) {
-                handleSlashCommandSelect(orderedCommands[selectedSlashIndex]);
-              }
-              return;
-            case "Escape":
-              event.preventDefault();
-              closeSlashCommandPopup();
-              return;
-          }
-        }
-
-        // Handle dropdown navigation
-        if (atMention.isActive && suggestions.length > 0) {
-          const maxIndex = suggestions.length - 1;
-
-          switch (event.key) {
-            case "ArrowUp":
-              event.preventDefault();
-              setSelectedIndex((prev: number) => Math.max(0, prev - 1));
-              return;
-            case "ArrowDown":
-              event.preventDefault();
-              setSelectedIndex((prev: number) => Math.min(maxIndex, prev + 1));
-              return;
-            case "Enter":
-              event.preventDefault();
-              if (suggestions[selectedIndex]) {
-                handleFileSelect(suggestions[selectedIndex]);
-              }
-              return;
-            case "Escape":
-              event.preventDefault();
-              if (isStreaming) {
-                onAbortMessage();
-              }
-              closeDropdown();
-              return;
-          }
-        }
-
-        // Handle Esc key for interruption when focused and streaming
-        if (event.key === "Escape" && isStreaming) {
-          event.preventDefault();
-          onAbortMessage();
-          return;
-        }
-
-        // Normal behavior for Enter key
-        if (event.key === "Enter" && !event.shiftKey && !isComposing) {
-          event.preventDefault();
-          handleSend();
-        }
-      },
-      [
-        slashCommand.isActive,
-        slashCommands,
-        selectedSlashIndex,
-        handleSlashCommandSelect,
-        closeSlashCommandPopup,
-        atMention.isActive,
-        suggestions,
-        selectedIndex,
-        handleFileSelect,
-        closeDropdown,
-        handleSend,
-        isComposing,
-        vscode,
-        openHistorySearch,
-        openPermissionModeMenu,
-        isStreaming,
-        onAbortMessage,
-      ],
-    );
-
-    // Handle cursor position changes - debounced to wait for user to stop moving cursor
-    const handleSelectionChange = useCallback(() => {
-      if (!textareaRef.current) return;
-
-      const selection = window.getSelection();
-      if (!selection || selection.rangeCount === 0) return;
-
-      const range = selection.getRangeAt(0);
-      const preCaretRange = range.cloneRange();
-      preCaretRange.selectNodeContents(textareaRef.current);
-      preCaretRange.setEnd(range.endContainer, range.endOffset);
-
-      const cursorPos = preCaretRange.toString().length;
-
-      // Skip if cursor position hasn't changed (avoid redundant work)
-      if (cursorPos === lastSelectionChangePosRef.current) {
-        return;
-      }
-      lastSelectionChangePosRef.current = cursorPos;
-
-      // Debounce: reset timer on each cursor change, only execute when user stops
-      if (selectionChangeTimerRef.current) {
-        clearTimeout(selectionChangeTimerRef.current);
       }
 
-      selectionChangeTimerRef.current = setTimeout(() => {
-        if (!textareaRef.current) return;
+      if (files.length > 0) {
+        event.preventDefault();
+        const fileList = new DataTransfer();
+        files.forEach((file) => fileList.items.add(file));
+        handleImagePaste(fileList.files);
+      } else {
+        // Handle text paste to avoid rich text styles
+        const text = event.clipboardData?.getData("text/plain");
+        if (text) {
+          event.preventDefault();
 
-        const sel = window.getSelection();
-        if (!sel || sel.rangeCount === 0) return;
-
-        const rng = sel.getRangeAt(0);
-        const pre = rng.cloneRange();
-        pre.selectNodeContents(textareaRef.current!);
-        pre.setEnd(rng.endContainer, rng.endOffset);
-
-        const textBeforeCursor = pre.toString();
-
-        // Use textBeforeCursor for detection as it's more reliable for cursor position
-        const mentionState = detectAtMention(
-          textBeforeCursor,
-          textBeforeCursor.length,
-        );
-        const slashCommandState = detectSlashCommand(
-          textBeforeCursor,
-          textBeforeCursor.length,
-        );
-
-        if (!mentionState.isActive) {
-          closeDropdown();
-          setSuggestions([]);
-          setIsLoadingSuggestions(false);
-        } else {
-          setAtMention(mentionState);
-          setDropdownPosition(calculateDropdownPosition());
-          requestFileSuggestions(mentionState.filterText);
-        }
-
-        if (!slashCommandState.isActive) {
-          closeSlashCommandPopup();
-        } else {
-          setSlashCommand(slashCommandState);
-          setSlashPopupPosition(calculateDropdownPosition());
-          requestSlashCommands(slashCommandState.filterText);
-        }
-        selectionChangeTimerRef.current = null;
-      }, 200);
-    }, [
-      detectAtMention,
-      detectSlashCommand,
-      closeDropdown,
-      closeSlashCommandPopup,
-      calculateDropdownPosition,
-      requestFileSuggestions,
-      requestSlashCommands,
-    ]);
-
-    const handleInput = useCallback(
-      (event: React.FormEvent<HTMLDivElement>) => {
-        const target = event.currentTarget;
-        const newValue = target.innerText;
-
-        setMessage(newValue);
-
-        // If we're editing a queued message and the read-only chip has been deleted
-        // (e.g. via backspace), exit edit mode. The remaining body text is kept.
-        if (editingQueuedId && !target.querySelector(".queued-edit-chip")) {
-          onCancelQueuedEdit?.();
-        }
-
-        // Debounce sending updated content to extension for persistence. The
-        // sessionId is captured at keystroke time so a save landing after the pane
-        // switched sessions still routes to the conversation it was typed in.
-        const draftSession = sessionId;
-        if (inputContentTimerRef.current) {
-          clearTimeout(inputContentTimerRef.current);
-        }
-        inputContentTimerRef.current = setTimeout(() => {
-          vscode.postMessage({
-            command: "updateInputContent",
-            sessionId: draftSession,
-            content: target.innerText,
-          });
-          inputContentTimerRef.current = null;
-        }, 150);
-
-        // Debounced selection change detection (for @mention and /command)
-        handleSelectionChange();
-      },
-      [
-        handleSelectionChange,
-        vscode,
-        editingQueuedId,
-        onCancelQueuedEdit,
-        sessionId,
-      ],
-    );
-
-    // Handle IME composition events
-    const handleCompositionStart = useCallback(() => {
-      setIsComposing(true);
-    }, []);
-
-    const handleCompositionEnd = useCallback(() => {
-      setIsComposing(false);
-    }, []);
-
-    // Image handling functions
-    const createDataUrlFromBlob = useCallback((blob: Blob): Promise<string> => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          resolve(reader.result as string);
-        };
-        reader.readAsDataURL(blob);
-      });
-    }, []);
-
-    const handleImagePaste = useCallback(
-      async (files: FileList) => {
-        const imageFiles = Array.from(files).filter((file) =>
-          file.type.startsWith("image/"),
-        );
-
-        for (const file of imageFiles) {
-          try {
-            const dataUrl = await createDataUrlFromBlob(file);
-
-            // Insert inline tag for the image
-            if (!textareaRef.current) continue;
-
-            // Count existing images in the input to determine the next index
-            const existingImageTags = textareaRef.current.querySelectorAll(
-              '.context-tag-container[data-is-image="true"]',
-            );
-            const nextIndex = existingImageTags.length + 1;
-            const displayName = `图片 ${nextIndex}`;
-
-            const selection = window.getSelection();
-            if (!selection || selection.rangeCount === 0) continue;
-
+          // Fallback to manual insertion as execCommand('insertText') is unreliable in some environments
+          const selection = window.getSelection();
+          if (selection && selection.rangeCount > 0) {
             const range = selection.getRangeAt(0);
-
-            const tagSpan = document.createElement("span");
-            tagSpan.className = "context-tag-container";
-            tagSpan.contentEditable = "false";
-            tagSpan.setAttribute("data-path", `pasted-image-${Date.now()}.png`);
-
-            tagSpan.setAttribute("data-name", displayName);
-            tagSpan.setAttribute("data-is-image", "true");
-            tagSpan.setAttribute("data-image-url", dataUrl);
-            tagSpan.innerText = `[image]`;
-
-            const root = ReactDOM.createRoot(tagSpan);
-            root.render(
-              <ContextTag
-                name={displayName}
-                path={`pasted-image-${Date.now()}.png`}
-                isImage={true}
-                onClick={() => handleImagePreview(dataUrl, displayName)}
-              />,
-            );
-
             range.deleteContents();
-            range.insertNode(tagSpan);
 
-            // Insert a space after the tag
-            const space = document.createTextNode(" ");
-            range.setStartAfter(tagSpan);
-            range.insertNode(space);
-            range.setStartAfter(space);
-            range.setEndAfter(space);
+            const textNode = document.createTextNode(text);
+            range.insertNode(textNode);
+
+            // Move cursor to the end of inserted text
+            range.setStartAfter(textNode);
+            range.setEndAfter(textNode);
             selection.removeAllRanges();
             selection.addRange(range);
 
-            // Trigger input event to update message state
+            // Trigger input event manually to update React state
             const inputEvent = new Event("input", { bubbles: true });
-            textareaRef.current.dispatchEvent(inputEvent);
-          } catch (error) {
-            console.error("Failed to process image:", error);
+            textareaRef.current?.dispatchEvent(inputEvent);
           }
         }
-      },
-      [createDataUrlFromBlob, textareaRef, handleImagePreview],
-    );
+      }
+    },
+    [handleImagePaste],
+  );
 
-    // Paste event handler
-    const handlePaste = useCallback(
-      (event: ClipboardEvent) => {
-        const items = event.clipboardData?.items;
-        if (!items) return;
+  // Add event listeners for paste only
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
 
-        const files: File[] = [];
-        for (let i = 0; i < items.length; i++) {
-          const item = items[i];
-          if (item.type.startsWith("image/")) {
-            const file = item.getAsFile();
-            if (file) files.push(file);
-          }
-        }
+    const pasteHandler = (e: ClipboardEvent) => handlePaste(e);
 
-        if (files.length > 0) {
-          event.preventDefault();
-          const fileList = new DataTransfer();
-          files.forEach((file) => fileList.items.add(file));
-          handleImagePaste(fileList.files);
-        } else {
-          // Handle text paste to avoid rich text styles
-          const text = event.clipboardData?.getData("text/plain");
-          if (text) {
-            event.preventDefault();
+    textarea.addEventListener("paste", pasteHandler);
 
-            // Fallback to manual insertion as execCommand('insertText') is unreliable in some environments
-            const selection = window.getSelection();
-            if (selection && selection.rangeCount > 0) {
-              const range = selection.getRangeAt(0);
-              range.deleteContents();
+    return () => {
+      textarea.removeEventListener("paste", pasteHandler);
+    };
+  }, [handlePaste]);
 
-              const textNode = document.createTextNode(text);
-              range.insertNode(textNode);
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (inputContentTimerRef.current) {
+        clearTimeout(inputContentTimerRef.current);
+      }
+      if (selectionChangeTimerRef.current) {
+        clearTimeout(selectionChangeTimerRef.current);
+      }
+    };
+  }, []);
 
-              // Move cursor to the end of inserted text
-              range.setStartAfter(textNode);
-              range.setEndAfter(textNode);
-              selection.removeAllRanges();
-              selection.addRange(range);
-
-              // Trigger input event manually to update React state
-              const inputEvent = new Event("input", { bubbles: true });
-              textareaRef.current?.dispatchEvent(inputEvent);
-            }
-          }
-        }
-      },
-      [handleImagePaste],
-    );
-
-    // Add event listeners for paste only
-    useEffect(() => {
-      const textarea = textareaRef.current;
-      if (!textarea) return;
-
-      const pasteHandler = (e: ClipboardEvent) => handlePaste(e);
-
-      textarea.addEventListener("paste", pasteHandler);
-
-      return () => {
-        textarea.removeEventListener("paste", pasteHandler);
-      };
-    }, [handlePaste]);
-
-    // Cleanup timers on unmount
-    useEffect(() => {
-      return () => {
-        if (inputContentTimerRef.current) {
-          clearTimeout(inputContentTimerRef.current);
-        }
-        if (selectionChangeTimerRef.current) {
-          clearTimeout(selectionChangeTimerRef.current);
-        }
-      };
-    }, []);
-
-    return (
-      <div className="input-container" data-testid="input-container">
-        <div className="input-wrapper">
-          {/* Single bordered box wrapping the text area and toolbar (设计稿 2237-5088).
+  return (
+    <div className="input-container" data-testid="input-container">
+      <div className="input-wrapper">
+        {/* Single bordered box wrapping the text area and toolbar (设计稿 2237-5088).
             Focus turns the whole box's border red via :focus-within. */}
-          <div className="input-content">
-            {/* ContentEditable - full width */}
-            <div
-              ref={textareaRef}
-              id="messageInput"
-              className="message-input content-editable-input"
-              contentEditable={!disabled}
-              onInput={handleInput}
-              onKeyDown={handleKeyDown}
-              onSelect={handleSelectionChange}
-              onClick={handleSelectionChange}
-              onBlur={handleInputBlur}
-              onCompositionStart={handleCompositionStart}
-              onCompositionEnd={handleCompositionEnd}
-              data-testid="message-input"
-              data-placeholder="/快捷指令，@添加上下文，粘贴图片，Enter发送..."
-            />
+        <div className="input-content">
+          {/* ContentEditable - full width */}
+          <div
+            ref={textareaRef}
+            id="messageInput"
+            className="message-input content-editable-input"
+            contentEditable={!disabled}
+            onInput={handleInput}
+            onKeyDown={handleKeyDown}
+            onSelect={handleSelectionChange}
+            onClick={handleSelectionChange}
+            onBlur={handleInputBlur}
+            onCompositionStart={handleCompositionStart}
+            onCompositionEnd={handleCompositionEnd}
+            data-testid="message-input"
+            data-placeholder="/快捷指令，@添加上下文，粘贴图片，Enter发送..."
+          />
 
-            {/* Buttons row */}
-            <div className="input-buttons-row">
-              {/* Context actions ("+" add menu + "/" slash command), 4px gap per design */}
-              <div className="context-actions">
-                {/* "+" add menu (custom dropdown, expands upward) */}
-                <div className="plus-menu-container" ref={plusMenuRef}>
-                  <button
-                    type="button"
-                    ref={plusMenuButtonRef}
-                    className="toolbar-icon-button"
-                    aria-label="添加"
-                    aria-haspopup="menu"
-                    aria-expanded={plusMenu.open}
-                    disabled={disabled}
-                    onClick={() => {
-                      if (plusMenu.open) {
-                        plusMenu.closeMenu();
-                      } else {
-                        // Focus moves to the first item so Enter/Space
-                        // activate and Escape returns to this button.
-                        plusMenu.openMenu();
-                      }
-                    }}
-                  >
-                    <PlusIcon className="toolbar-icon" />
-                  </button>
-                  {plusMenu.open && (
-                    <ul className="plus-menu" role="menu">
-                      {plusMenuItems.map((item, i) => (
-                        <li
-                          key={item.label}
-                          role="menuitem"
-                          className="plus-menu-item"
-                          {...plusMenu.getItemProps(i)}
-                        >
-                          {item.label}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-
-                {/* "/" slash command button */}
+          {/* Buttons row */}
+          <div className="input-buttons-row">
+            {/* Context actions ("+" add menu + "/" slash command), 4px gap per design */}
+            <div className="context-actions">
+              {/* "+" add menu (custom dropdown, expands upward) */}
+              <div className="plus-menu-container" ref={plusMenuRef}>
                 <button
                   type="button"
+                  ref={plusMenuButtonRef}
                   className="toolbar-icon-button"
-                  aria-label="快捷指令"
-                  disabled={disabled}
-                  onClick={handleSlashButtonClick}
-                >
-                  <SlashBoxIcon className="toolbar-icon" />
-                </button>
-              </div>
-
-              {/* Left side - Permission Mode Select (custom dropdown, expands upward) */}
-              <div className="button-spacer" />
-
-              <div className="permission-mode-container" ref={permMenuRef}>
-                <button
-                  type="button"
-                  ref={permMenuButtonRef}
-                  className={`permission-mode-select mode-${permissionMode || "default"}`}
-                  aria-label="权限模式"
-                  aria-haspopup="listbox"
-                  aria-expanded={permMenuOpen}
+                  aria-label="添加"
+                  aria-haspopup="menu"
+                  aria-expanded={plusMenu.open}
                   disabled={disabled}
                   onClick={() => {
-                    if (permMenu.open) {
-                      permMenu.closeMenu();
+                    if (plusMenu.open) {
+                      plusMenu.closeMenu();
                     } else {
-                      openPermissionModeMenu();
+                      // Focus moves to the first item so Enter/Space
+                      // activate and Escape returns to this button.
+                      plusMenu.openMenu();
                     }
                   }}
                 >
-                  {permissionModeIcon(permissionMode)}
-                  {permissionModeLabel(permissionMode)}
-                  <i className="codicon codicon-chevron-down permission-mode-caret" />
+                  <PlusIcon className="toolbar-icon" />
                 </button>
-                {permMenuOpen && (
-                  <ul className="permission-mode-menu" role="listbox">
-                    {PERMISSION_MODES.map((m, i) => (
+                {plusMenu.open && (
+                  <ul className="plus-menu" role="menu">
+                    {plusMenuItems.map((item, i) => (
                       <li
-                        key={m.value}
-                        role="option"
-                        data-value={m.value}
-                        aria-selected={
-                          m.value === (permissionMode || "default")
-                        }
-                        className={`permission-mode-item${m.value === (permissionMode || "default") ? " selected" : ""}`}
-                        {...permMenu.getItemProps(i)}
+                        key={item.label}
+                        role="menuitem"
+                        className="plus-menu-item"
+                        {...plusMenu.getItemProps(i)}
                       >
-                        {m.label}
+                        {item.label}
                       </li>
                     ))}
                   </ul>
                 )}
               </div>
 
-              {isStreaming ? (
-                <Tooltip text="停止" position="top">
-                  <button
-                    className="abort-button ai-abort-btn"
-                    id="abortButton"
-                    onClick={onAbortMessage}
-                    data-testid="abort-btn"
-                    aria-label="停止"
-                  >
-                    <span className="abort-glyph" />
-                  </button>
-                </Tooltip>
-              ) : (
-                <Tooltip text="发送" position="top">
-                  <button
-                    id="sendButton"
-                    className="send-button ai-send-btn"
-                    onClick={handleSend}
-                    disabled={
-                      disabled ||
-                      (!message.trim() && attachedImages.length === 0)
-                    }
-                    data-testid="send-btn"
-                    aria-label="发送"
-                  >
-                    <QueueSendIcon className="ai-send-icon" />
-                  </button>
-                </Tooltip>
+              {/* "/" slash command button */}
+              <button
+                type="button"
+                className="toolbar-icon-button"
+                aria-label="快捷指令"
+                disabled={disabled}
+                onClick={handleSlashButtonClick}
+              >
+                <SlashBoxIcon className="toolbar-icon" />
+              </button>
+            </div>
+
+            {/* Left side - Permission Mode Select (custom dropdown, expands upward) */}
+            <div className="button-spacer" />
+
+            {/* Compress context button. Hidden on the welcome composer in
+                  either flavor: desktop signals that via workdirSelector being
+                  present, IDE hosts via ChatApp withholding onCompress when no
+                  visible messages yet (spec 场景 3). The host wires the
+                  /compact trigger through onCompress; usage may still be
+                  undefined until the first push (spec 场景 4). */}
+            {!workdirSelector && onCompress && (
+              <button
+                type="button"
+                className="compress-context-button"
+                aria-label={contextCompressLabel}
+                title={contextCompressLabel}
+                onClick={onCompress}
+              >
+                <svg
+                  className="compress-context-ring"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  {/* The designer's track is a left half-ring (right side
+                        open); the progress arc sweeps counter-clockwise from
+                        the 3 o'clock anchor. */}
+                  <path
+                    className="compress-context-ring-track"
+                    d="M 20 12 A 8 8 0 0 0 4 12"
+                  />
+                  <circle
+                    className="compress-context-ring-fill"
+                    cx="12"
+                    cy="12"
+                    r="8"
+                    strokeDasharray={`${
+                      (ringCircumference * (contextUsagePct ?? 0)) / 100
+                    } ${ringCircumference}`}
+                    // Mirror the circle so its stroke sweeps
+                    // counter-clockwise from 3 o'clock like the designer's.
+                    transform="scale(-1, 1) translate(-24, 0)"
+                  />
+                </svg>
+                {contextUsagePct !== undefined && (
+                  <span className="compress-context-pct">
+                    {contextUsagePct}%
+                  </span>
+                )}
+              </button>
+            )}
+
+            <div className="permission-mode-container" ref={permMenuRef}>
+              <button
+                type="button"
+                ref={permMenuButtonRef}
+                className={`permission-mode-select mode-${permissionMode || "default"}`}
+                aria-label="权限模式"
+                aria-haspopup="listbox"
+                aria-expanded={permMenuOpen}
+                disabled={disabled}
+                onClick={() => {
+                  if (permMenu.open) {
+                    permMenu.closeMenu();
+                  } else {
+                    openPermissionModeMenu();
+                  }
+                }}
+              >
+                {permissionModeIcon(permissionMode)}
+                {permissionModeLabel(permissionMode)}
+                <i className="codicon codicon-chevron-down permission-mode-caret" />
+              </button>
+              {permMenuOpen && (
+                <ul className="permission-mode-menu" role="listbox">
+                  {PERMISSION_MODES.map((m, i) => (
+                    <li
+                      key={m.value}
+                      role="option"
+                      data-value={m.value}
+                      aria-selected={m.value === (permissionMode || "default")}
+                      className={`permission-mode-item${m.value === (permissionMode || "default") ? " selected" : ""}`}
+                      {...permMenu.getItemProps(i)}
+                    >
+                      {m.label}
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
 
-            {/* Desktop host, new-session state: context bar BELOW the toolbar
-                (prototype welcome composer), as a quiet footer strip of the
-                card. Its dropdown still expands upward. */}
-            {workdirSelector && (
-              <div
-                className="input-workdir-row"
-                data-testid="input-workdir-row"
-              >
-                {workdirSelector}
-              </div>
+            {isStreaming ? (
+              <Tooltip text="停止" position="top">
+                <button
+                  className="abort-button ai-abort-btn"
+                  id="abortButton"
+                  onClick={onAbortMessage}
+                  data-testid="abort-btn"
+                  aria-label="停止"
+                >
+                  <span className="abort-glyph" />
+                </button>
+              </Tooltip>
+            ) : (
+              <Tooltip text="发送" position="top">
+                <button
+                  id="sendButton"
+                  className="send-button ai-send-btn"
+                  onClick={handleSend}
+                  disabled={
+                    disabled || (!message.trim() && attachedImages.length === 0)
+                  }
+                  data-testid="send-btn"
+                  aria-label="发送"
+                >
+                  <QueueSendIcon className="ai-send-icon" />
+                </button>
+              </Tooltip>
             )}
           </div>
 
-          {/* File Suggestion Dropdown */}
-          <FileSuggestionDropdown
-            suggestions={suggestions}
-            isVisible={
-              !!(
-                atMention.isActive &&
-                (suggestions.length > 0 || isLoadingSuggestions)
-              )
-            }
-            selectedIndex={selectedIndex}
-            onSelect={handleFileSelect}
-            onClose={closeDropdown}
-            position={dropdownPosition}
-            filterText={atMention.filterText}
-            isLoading={isLoadingSuggestions}
-          />
-
-          {/* 指令弹窗 */}
-          <SlashCommandsPopup
-            commands={slashCommands}
-            isVisible={slashCommand.isActive && slashCommands.length > 0}
-            selectedIndex={selectedSlashIndex}
-            onSelect={handleSlashCommandSelect}
-            onClose={closeSlashCommandPopup}
-            position={slashPopupPosition}
-          />
-
-          {/* 历史记录搜索弹窗 */}
-          <HistorySearchPopup
-            isVisible={isHistorySearchVisible}
-            onSelect={handleHistorySelect}
-            onClose={closeHistorySearch}
-            position={historyPopupPosition}
-            vscode={vscode}
-          />
-
-          {/* /rewind 检查点弹窗，与历史记录弹窗共用 .input-wrapper 定位上下文 */}
-          {rewindPopup}
-
-          {/* /model 模型选择弹窗，与 rewind 弹窗共用 .input-wrapper 定位上下文 */}
-          {modelPopup}
-
-          {/* /btw 旁路提问面板，锚定 .input-wrapper 顶部 */}
-          {btwPopup}
+          {/* Desktop host, new-session state: context bar BELOW the toolbar
+                (prototype welcome composer), as a quiet footer strip of the
+                card. Its dropdown still expands upward. */}
+          {workdirSelector && (
+            <div className="input-workdir-row" data-testid="input-workdir-row">
+              {workdirSelector}
+            </div>
+          )}
         </div>
+
+        {/* File Suggestion Dropdown */}
+        <FileSuggestionDropdown
+          suggestions={suggestions}
+          isVisible={
+            !!(
+              atMention.isActive &&
+              (suggestions.length > 0 || isLoadingSuggestions)
+            )
+          }
+          selectedIndex={selectedIndex}
+          onSelect={handleFileSelect}
+          onClose={closeDropdown}
+          position={dropdownPosition}
+          filterText={atMention.filterText}
+          isLoading={isLoadingSuggestions}
+        />
+
+        {/* 指令弹窗 */}
+        <SlashCommandsPopup
+          commands={slashCommands}
+          isVisible={slashCommand.isActive && slashCommands.length > 0}
+          selectedIndex={selectedSlashIndex}
+          onSelect={handleSlashCommandSelect}
+          onClose={closeSlashCommandPopup}
+          position={slashPopupPosition}
+        />
+
+        {/* 历史记录搜索弹窗 */}
+        <HistorySearchPopup
+          isVisible={isHistorySearchVisible}
+          onSelect={handleHistorySelect}
+          onClose={closeHistorySearch}
+          position={historyPopupPosition}
+          vscode={vscode}
+        />
+
+        {/* /rewind 检查点弹窗，与历史记录弹窗共用 .input-wrapper 定位上下文 */}
+        {rewindPopup}
+
+        {/* /model 模型选择弹窗，与 rewind 弹窗共用 .input-wrapper 定位上下文 */}
+        {modelPopup}
+
+        {/* /btw 旁路提问面板，锚定 .input-wrapper 顶部 */}
+        {btwPopup}
       </div>
-    );
-  },
-);
+    </div>
+  );
+});
 MessageInput.displayName = "MessageInput";

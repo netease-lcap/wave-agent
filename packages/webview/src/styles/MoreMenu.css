@@ -36,6 +36,26 @@
   justify-content: space-between;
 }
 
+/* 退出登录：危险色 + 上分隔线（spec「账户卡片」场景 4）. */
+.more-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background-color: var(
+    --vscode-menu-separatorBackground,
+    rgba(128, 128, 128, 0.3)
+  );
+}
+
+.more-menu-item--danger {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.more-menu-item--danger:hover,
+.more-menu-item--danger:focus-visible {
+  background-color: var(--vscode-list-hoverBackground);
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
 .more-menu-item-icon {
   flex-shrink: 0;
 }

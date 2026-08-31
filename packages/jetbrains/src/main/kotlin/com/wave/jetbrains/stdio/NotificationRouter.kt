@@ -69,6 +69,7 @@ class NotificationRouter(private val client: StdioClient) {
             "toolBlockUpdated",
             "errorBlockAdded",
             "loadingChange",
+            "contextUsage",
             "commandRunningChange",
             "queuedMessagesChange",
             "tasksChange",

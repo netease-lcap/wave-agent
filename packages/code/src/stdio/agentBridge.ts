@@ -54,9 +54,9 @@ import {
 } from "./protocol.js";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, existsSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { basename, extname, join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, extname, join } from "node:path";
 import { createWorktree, removeWorktree } from "../utils/worktree.js";
 import { logger } from "../utils/logger.js";
 import { isUserCheckpointMessage } from "../utils/rewindCheckpoints.js";
@@ -270,10 +270,28 @@ export class AgentBridge {
       // ── Auth (global — no session required) ──
       case "getAuthStatus":
         return this.getAuthStatus();
+      case "getAccountInfo":
+        return this.getAccountInfo();
       case "login":
         return this.login(p.serverUrl as string | undefined);
       case "logout":
         return this.logout();
+
+      // ── Memory files (settings UI — user-level ~/.wave/AGENTS.md and
+      //    project-level <workdir>/AGENTS.md) ──
+      case "getAgentsContent":
+        return this.getAgentsContent(
+          p.scope as "user" | "project",
+          p.workdir as string | undefined,
+          sessionId,
+        );
+      case "setAgentsContent":
+        return this.setAgentsContent(
+          p.scope as "user" | "project",
+          p.content as string,
+          p.workdir as string | undefined,
+          sessionId,
+        );
 
       // ── Plugins (global — no session required) ──
       case "listPlugins":
@@ -1283,6 +1301,31 @@ export class AgentBridge {
     };
   }
 
+  private async getAccountInfo(): Promise<{
+    plan?: { monthlyQuota: number; months: number; used: number } | null;
+    apiQuota?: { limit: number | null; used: number } | null;
+  }> {
+    const authService = AuthService.getInstance();
+    await authService.checkAndRefreshTokenIfNeeded();
+    if (!authService.isSSOAuthenticated()) return {};
+    const token = authService.getSSOToken();
+    if (!token) return {};
+    const response = await fetch(
+      `${authService.getServerUrl()}/api/v1/account`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    if (!response.ok) {
+      // 401 / 5xx — 让调用方（desktop host）保留上次成功数据（spec 场景 9）。
+      throw new Error(`Account query failed (${response.status})`);
+    }
+    return (await response.json()) as {
+      plan?: { monthlyQuota: number; months: number; used: number } | null;
+      apiQuota?: { limit: number | null; used: number } | null;
+    };
+  }
+
   private async login(
     serverUrl?: string,
   ): Promise<{ user: { id: string; email?: string } | undefined }> {
@@ -1300,6 +1343,88 @@ export class AgentBridge {
     const authService = AuthService.getInstance();
     await authService.clearAuth();
     return null;
+  }
+
+  // ── Memory files (settings UI) ───────────────────────────────
+
+  /**
+   * Read an AGENTS.md file for the settings UI: user-level reads
+   * ~/.wave/AGENTS.md, project-level reads <workdir>/AGENTS.md. Prefers the
+   * live agent (clears its caches on write) and falls back to direct file
+   * access when no session is bound (e.g. desktop before any session exists).
+   */
+  private async getAgentsContent(
+    scope: "user" | "project",
+    workdir?: string,
+    sessionId?: string,
+  ): Promise<{ content: string; path?: string }> {
+    const agent = this.sessions.get(sessionId ?? "")?.agent;
+    if (scope === "user") {
+      if (agent) {
+        return { content: await agent.readUserMemoryContent() };
+      }
+      const path = this.getUserMemoryFilePath();
+      return { content: await readTextFileSafe(path), path };
+    }
+    const resolvedWorkdir =
+      workdir || (agent?.workingDirectory as string | undefined);
+    if (!resolvedWorkdir) {
+      throw new RpcError(
+        PROTOCOL_INVALID_PARAMS,
+        "Project-scope AGENTS.md requires a workdir",
+      );
+    }
+    if (agent) {
+      return {
+        content: await agent.readProjectMemoryContent(resolvedWorkdir),
+      };
+    }
+    const path = join(resolvedWorkdir, "AGENTS.md");
+    return { content: await readTextFileSafe(path), path };
+  }
+
+  /**
+   * Write an AGENTS.md file from the settings UI: user-level writes
+   * ~/.wave/AGENTS.md, project-level writes <workdir>/AGENTS.md. Goes through
+   * the live agent when available so its memory caches are invalidated.
+   */
+  private async setAgentsContent(
+    scope: "user" | "project",
+    content: string,
+    workdir?: string,
+    sessionId?: string,
+  ): Promise<{ ok: boolean; path?: string }> {
+    const agent = this.sessions.get(sessionId ?? "")?.agent;
+    if (scope === "user") {
+      if (agent) {
+        await agent.writeUserMemoryContent(content);
+      } else {
+        const path = this.getUserMemoryFilePath();
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, content, "utf-8");
+      }
+      return { ok: true };
+    }
+    const resolvedWorkdir =
+      workdir || (agent?.workingDirectory as string | undefined);
+    if (!resolvedWorkdir) {
+      throw new RpcError(
+        PROTOCOL_INVALID_PARAMS,
+        "Project-scope AGENTS.md requires a workdir",
+      );
+    }
+    if (agent) {
+      await agent.writeProjectMemoryContent(resolvedWorkdir, content);
+    } else {
+      const path = join(resolvedWorkdir, "AGENTS.md");
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, content, "utf-8");
+    }
+    return { ok: true };
+  }
+
+  private getUserMemoryFilePath(): string {
+    return join(homedir(), ".wave", "AGENTS.md");
   }
 
   // ── Plugins (global) ─────────────────────────────────────────
@@ -1511,6 +1636,21 @@ export class AgentBridge {
           },
           ctx.registeredSessionId,
         );
+        // Batch 2 压缩上下文 button: push the context usage percentage on
+        // every loading transition (start of a turn carries the previous
+        // turn's usage; end carries the fresh total, so post-compaction
+        // drops are picked up too — spec 场景 5).
+        const agent = ctx.agent;
+        if (agent) {
+          const max = agent.getMaxInputTokens();
+          if (max > 0) {
+            const percent = Math.min(
+              100,
+              Math.round((agent.latestTotalTokens / max) * 100),
+            );
+            this.emit("contextUsage", { percent }, ctx.registeredSessionId);
+          }
+        }
       },
       onCommandRunningChange: (running: boolean) => {
         this.emit("commandRunningChange", { running }, ctx.registeredSessionId);
@@ -1663,4 +1803,16 @@ function isSessionRecoveryError(error: unknown): boolean {
     message.includes("not found on disk") ||
     message.startsWith("Session not found:")
   );
+}
+
+/** Read a text file, returning "" when it does not exist. */
+async function readTextFileSafe(filePath: string): Promise<string> {
+  try {
+    return await readFile(filePath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  }
 }

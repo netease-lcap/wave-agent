@@ -18,11 +18,13 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   sessionsLoading,
   onOpenSettings,
   onOpenEnterpriseConsole,
+  onOpenHelpDocs,
   onLogin,
   onLogout,
   isAuthenticated,
   hideSessionButtons = false,
   hideMoreButton = false,
+  showLoginButton = false,
   panelToggle,
   leading,
 }) => {
@@ -64,6 +66,17 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               </button>
             </Tooltip>
           </>
+        )}
+        {showLoginButton && (
+          <button
+            type="button"
+            className="header-login-button"
+            data-testid="header-login-btn"
+            aria-label="登录"
+            onClick={onLogin}
+          >
+            登 录
+          </button>
         )}
         {!hideMoreButton && (
           <Tooltip text="更多" position="bottom">
@@ -110,6 +123,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <MoreMenu
           onOpenSettings={onOpenSettings}
           onOpenEnterpriseConsole={onOpenEnterpriseConsole}
+          onOpenHelpDocs={onOpenHelpDocs}
           onLogin={onLogin}
           onLogout={onLogout}
           isAuthenticated={isAuthenticated}

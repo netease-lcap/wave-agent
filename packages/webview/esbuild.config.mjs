@@ -43,15 +43,27 @@ const planPreviewConfig = {
   outfile: "dist/plan-preview.js",
 };
 
+// Settings chunk: the shared SettingsPage rendered inside the editor-area
+// settings tab that VSCE (createWebviewPanel) and JetBrains
+// (WaveSettingsFileEditor) host open. esbuild emits a matching dist/settings.css
+// (globals + codicons + SettingsPage.css) that the tab HTML links alongside it.
+const settingsConfig = {
+  ...frontendConfig,
+  entryPoints: ["src/settings-preview-entry.tsx"],
+  outfile: "dist/settings.js",
+};
+
 async function main() {
   const ctx = await esbuild.context(frontendConfig);
   const terminalCtx = await esbuild.context(terminalConfig);
   const planPreviewCtx = await esbuild.context(planPreviewConfig);
+  const settingsCtx = await esbuild.context(settingsConfig);
   if (watch) {
     console.log("[watch] frontend build started");
     await ctx.watch();
     await terminalCtx.watch();
     await planPreviewCtx.watch();
+    await settingsCtx.watch();
   } else {
     console.log("[build] frontend started");
     await ctx.rebuild();
@@ -60,6 +72,8 @@ async function main() {
     await terminalCtx.dispose();
     await planPreviewCtx.rebuild();
     await planPreviewCtx.dispose();
+    await settingsCtx.rebuild();
+    await settingsCtx.dispose();
     console.log("[build] frontend finished");
   }
 }

@@ -13,6 +13,44 @@
   background-color: var(--vscode-panel-background);
 }
 
+/* Welcome page (desktop, new empty conversation): the brand mark and the
+   input card sit together, vertically centered as one group; the header
+   stays pinned to the top. Matches the designer's welcome scene where the
+   big input card is the sole visual focus (spec 场景 5).
+   NOTE: the input area lives INSIDE desktop-chat-main (it is part of
+   chatBodyContent), so centering happens on desktop-chat-body (row flex)
+   via align-items, and the brand→input gap on desktop-chat-main (column). */
+.chat-container--welcome > .chat-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+}
+.chat-container--welcome > .desktop-chat-body {
+  flex: 1;
+  height: auto;
+  align-items: center;
+  justify-content: center;
+}
+.chat-container--welcome .desktop-chat-main {
+  flex: none;
+  height: auto;
+  width: 100%;
+  gap: 44px;
+}
+/* Welcome input card: taller composer and centered at a capped width so the
+   big input is the visual focus, not a full-width strip. */
+.chat-container--welcome .input-area-container {
+  padding-left: max(10px, calc((100% - 760px) / 2));
+  padding-right: max(10px, calc((100% - 760px) / 2));
+}
+.chat-container--welcome .message-input {
+  min-height: 48px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
 /* Desktop drag-and-drop upload overlay, shown while a file hovers the pane.
    pointer-events: none keeps normal input working while dragging. Highlight
    uses the theme focus color (same semantics as the config dialog's active

@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { ChatApp } from "./ChatApp";
 import { DesktopSidebar, SESSION_DRAG_MIME } from "./DesktopSidebar";
+import type { AccountCardAccount } from "./AccountCard";
 import type {
   DesktopHostProps,
   DesktopPane,
@@ -30,18 +31,32 @@ interface DesktopShellProps {
   /** Sidebar more-menu actions — owned by the delegating ChatApp instance. */
   onOpenSettings: () => void;
   onOpenEnterpriseConsole: () => void;
+  onOpenHelpDocs: () => void;
   onLogin: () => void;
   onLogout: () => void;
-  isAuthenticated: boolean;
-  /**
+  /** 侧边栏底部账户卡片 (desktopAccountInfo push). */
+  account?: AccountCardAccount | null;
+  onUpdateApp?: () => void;
+  onRestartApp?: () => void /**
    * Sidebar collapsed → the first pane of the top row shows an expand button.
    * A ready-made ReactNode built by the delegating ChatApp (it owns the
    * collapse state); undefined when the sidebar is expanded.
-   */
+   */;
   sidebarExpandButton?: React.ReactNode;
   /** Sidebar fully hidden — threaded through to the shell's own DesktopSidebar. */
   collapsed?: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
+  /** Batch 2 settings full-page: rendered over the pane rows when open. */
+  settingsOpen?: boolean;
+  onCloseSettings?: () => void;
+  settingsPage?: React.ReactNode;
+  /** Batch 2 session board: rendered over the pane rows when open. */
+  sessionBoardOpen?: boolean;
+  onCloseSessionBoard?: () => void;
+  sessionBoard?: React.ReactNode;
+  /** 活动 button highlight while the board view is open (spec 场景 1). */
+  sessionBoardActive?: boolean;
+  onOpenSessionBoard?: () => void;
 }
 
 /**
@@ -68,12 +83,21 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   host,
   onOpenSettings,
   onOpenEnterpriseConsole,
+  onOpenHelpDocs,
   onLogin,
   onLogout,
-  isAuthenticated,
+  account,
+  onUpdateApp,
+  onRestartApp,
   sidebarExpandButton,
   collapsed = false,
   onCollapsedChange,
+  settingsOpen = false,
+  settingsPage,
+  sessionBoardOpen = false,
+  sessionBoard,
+  sessionBoardActive = false,
+  onOpenSessionBoard,
 }) => {
   const panes: DesktopPane[] = useMemo(() => host.panes ?? [], [host.panes]);
   const focusedPaneId = host.focusedPaneId ?? panes[0]?.paneId ?? null;
@@ -638,9 +662,12 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         disabled={!host.workdir}
         onOpenSettings={onOpenSettings}
         onOpenEnterpriseConsole={onOpenEnterpriseConsole}
+        onOpenHelpDocs={onOpenHelpDocs}
         onLogin={onLogin}
         onLogout={onLogout}
-        isAuthenticated={isAuthenticated}
+        account={account}
+        onUpdateApp={onUpdateApp}
+        onRestartApp={onRestartApp}
         hostLabel={focusedHost}
         sessionTree={host.sessionTree}
         currentSessionId={focusedSessionId}
@@ -650,121 +677,131 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         onDeleteSession={host.onDeleteSession}
         collapsed={collapsed}
         onCollapsedChange={onCollapsedChange}
+        sessionBoardActive={sessionBoardActive}
+        onOpenSessionBoard={onOpenSessionBoard}
       />
       <div
         className="desktop-pane-rows"
         ref={rowsContainerRef}
         data-testid="desktop-pane-rows"
       >
-        {paneRows.map((rowPanes, rowIdx) => (
-          <React.Fragment key={rowIdx}>
-            {rowIdx > 0 && (
-              <div
-                className={`desktop-row-separator${rowSeparatorActive ? " desktop-row-separator--active" : ""}`}
-                onMouseDown={handleRowSeparatorMouseDown}
-                data-testid="desktop-row-separator"
-              />
-            )}
-            <div
-              ref={(el) => {
-                rowRefs.current[rowIdx] = el;
-              }}
-              className="desktop-pane-row"
-              style={rowStyle(rowIdx)}
-              data-testid={
-                rowIdx === 0 ? "desktop-pane-row" : `desktop-pane-row-${rowIdx}`
-              }
-              onDragOver={(e) => handleSessionDragOver(e, rowIdx)}
-              onDrop={(e) => handleSessionDrop(e, rowIdx)}
-              onDragLeave={(e) => handleRowDragLeave(e, rowIdx)}
-            >
-              {rowPanes.map((pane, index) => {
-                const paneStyle: React.CSSProperties = {
-                  minWidth: MIN_PANE_WIDTH,
-                };
-                if (
-                  resizePreview &&
-                  resizePreview.row === rowIdx &&
-                  resizePreview.widths[index] != null
-                ) {
-                  // Live preview while a separator drags (pixel widths).
-                  paneStyle.flex = `0 0 ${resizePreview.widths[index]}px`;
-                } else if (pane.width != null) {
-                  // flex-shrink:1 lets panes absorb the few px of overflow that
-                  // otherwise accumulates from each pane's border-right (content-
-                  // box, not counted in the % basis) plus the separators' net
-                  // width — and triggers an overflow-x scrollbar by ~5px even
-                  // when every pane is far above MIN_PANE_WIDTH. Grow stays 0
-                  // (sizes are authoritative ratios); shrink bottoms out at the
-                  // min-width above.
-                  paneStyle.flex = `0 1 ${pane.width * 100}%`;
-                }
-                return (
-                  <React.Fragment key={pane.paneId}>
-                    {index > 0 && (
+        {settingsOpen && settingsPage
+          ? settingsPage
+          : sessionBoardOpen && sessionBoard
+            ? sessionBoard
+            : paneRows.map((rowPanes, rowIdx) => (
+                <React.Fragment key={rowIdx}>
+                  {rowIdx > 0 && (
+                    <div
+                      className={`desktop-row-separator${rowSeparatorActive ? " desktop-row-separator--active" : ""}`}
+                      onMouseDown={handleRowSeparatorMouseDown}
+                      data-testid="desktop-row-separator"
+                    />
+                  )}
+                  <div
+                    ref={(el) => {
+                      rowRefs.current[rowIdx] = el;
+                    }}
+                    className="desktop-pane-row"
+                    style={rowStyle(rowIdx)}
+                    data-testid={
+                      rowIdx === 0
+                        ? "desktop-pane-row"
+                        : `desktop-pane-row-${rowIdx}`
+                    }
+                    onDragOver={(e) => handleSessionDragOver(e, rowIdx)}
+                    onDrop={(e) => handleSessionDrop(e, rowIdx)}
+                    onDragLeave={(e) => handleRowDragLeave(e, rowIdx)}
+                  >
+                    {rowPanes.map((pane, index) => {
+                      const paneStyle: React.CSSProperties = {
+                        minWidth: MIN_PANE_WIDTH,
+                      };
+                      if (
+                        resizePreview &&
+                        resizePreview.row === rowIdx &&
+                        resizePreview.widths[index] != null
+                      ) {
+                        // Live preview while a separator drags (pixel widths).
+                        paneStyle.flex = `0 0 ${resizePreview.widths[index]}px`;
+                      } else if (pane.width != null) {
+                        // flex-shrink:1 lets panes absorb the few px of overflow that
+                        // otherwise accumulates from each pane's border-right (content-
+                        // box, not counted in the % basis) plus the separators' net
+                        // width — and triggers an overflow-x scrollbar by ~5px even
+                        // when every pane is far above MIN_PANE_WIDTH. Grow stays 0
+                        // (sizes are authoritative ratios); shrink bottoms out at the
+                        // min-width above.
+                        paneStyle.flex = `0 1 ${pane.width * 100}%`;
+                      }
+                      return (
+                        <React.Fragment key={pane.paneId}>
+                          {index > 0 && (
+                            <div
+                              className={`desktop-pane-separator${activeSeparator?.row === rowIdx && activeSeparator.index === index - 1 ? " desktop-pane-separator--active" : ""}`}
+                              onMouseDown={(e) =>
+                                handleSeparatorMouseDown(e, rowIdx, index - 1)
+                              }
+                              onDragOver={(e) =>
+                                handleSeparatorDragOver(e, rowIdx, index)
+                              }
+                              onDrop={(e) => handlePaneDrop(e, rowIdx)}
+                              data-testid={
+                                rowIdx === 0
+                                  ? `desktop-pane-separator-${index - 1}`
+                                  : `desktop-pane-separator-${rowIdx}-${index - 1}`
+                              }
+                            />
+                          )}
+                          <div
+                            ref={(el) => {
+                              if (el) paneNodes.current.set(pane.paneId, el);
+                              else paneNodes.current.delete(pane.paneId);
+                            }}
+                            className={`desktop-pane${pane.paneId === focusedPaneId ? " desktop-pane--focused" : ""}${panes.length > 1 ? " desktop-pane--closable" : ""}`}
+                            style={paneStyle}
+                            onMouseDown={() => handleFocusPane(pane.paneId)}
+                            onDragOver={(e) =>
+                              handlePaneDragOver(e, rowIdx, index)
+                            }
+                            onDrop={(e) => handlePaneDrop(e, rowIdx)}
+                            data-testid={`desktop-pane-${pane.paneId}`}
+                          >
+                            {panes.length > 1 && (
+                              <button
+                                className="desktop-pane-close"
+                                title="关闭分屏"
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={() => handleClosePane(pane.paneId)}
+                                data-testid={`desktop-pane-close-${pane.paneId}`}
+                              >
+                                <span className="codicon codicon-close"></span>
+                              </button>
+                            )}
+                            <ChatApp
+                              vscode={vscode}
+                              host={host}
+                              paneId={pane.paneId}
+                              sidebarExpandButton={
+                                rowIdx === 0 && index === 0
+                                  ? sidebarExpandButton
+                                  : undefined
+                              }
+                            />
+                          </div>
+                        </React.Fragment>
+                      );
+                    })}
+                    {dropIndicator && dropIndicator.row === rowIdx && (
                       <div
-                        className={`desktop-pane-separator${activeSeparator?.row === rowIdx && activeSeparator.index === index - 1 ? " desktop-pane-separator--active" : ""}`}
-                        onMouseDown={(e) =>
-                          handleSeparatorMouseDown(e, rowIdx, index - 1)
-                        }
-                        onDragOver={(e) =>
-                          handleSeparatorDragOver(e, rowIdx, index)
-                        }
-                        onDrop={(e) => handlePaneDrop(e, rowIdx)}
-                        data-testid={
-                          rowIdx === 0
-                            ? `desktop-pane-separator-${index - 1}`
-                            : `desktop-pane-separator-${rowIdx}-${index - 1}`
-                        }
+                        className="desktop-pane-drop-indicator"
+                        style={{ left: dropIndicator.x }}
+                        data-testid="desktop-pane-drop-indicator"
                       />
                     )}
-                    <div
-                      ref={(el) => {
-                        if (el) paneNodes.current.set(pane.paneId, el);
-                        else paneNodes.current.delete(pane.paneId);
-                      }}
-                      className={`desktop-pane${pane.paneId === focusedPaneId ? " desktop-pane--focused" : ""}${panes.length > 1 ? " desktop-pane--closable" : ""}`}
-                      style={paneStyle}
-                      onMouseDown={() => handleFocusPane(pane.paneId)}
-                      onDragOver={(e) => handlePaneDragOver(e, rowIdx, index)}
-                      onDrop={(e) => handlePaneDrop(e, rowIdx)}
-                      data-testid={`desktop-pane-${pane.paneId}`}
-                    >
-                      {panes.length > 1 && (
-                        <button
-                          className="desktop-pane-close"
-                          title="关闭分屏"
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={() => handleClosePane(pane.paneId)}
-                          data-testid={`desktop-pane-close-${pane.paneId}`}
-                        >
-                          <span className="codicon codicon-close"></span>
-                        </button>
-                      )}
-                      <ChatApp
-                        vscode={vscode}
-                        host={host}
-                        paneId={pane.paneId}
-                        sidebarExpandButton={
-                          rowIdx === 0 && index === 0
-                            ? sidebarExpandButton
-                            : undefined
-                        }
-                      />
-                    </div>
-                  </React.Fragment>
-                );
-              })}
-              {dropIndicator && dropIndicator.row === rowIdx && (
-                <div
-                  className="desktop-pane-drop-indicator"
-                  style={{ left: dropIndicator.x }}
-                  data-testid="desktop-pane-drop-indicator"
-                />
-              )}
-            </div>
-          </React.Fragment>
-        ))}
+                  </div>
+                </React.Fragment>
+              ))}
         {dropZone && (
           <div
             className={`desktop-pane-dropzone desktop-pane-dropzone--${dropZone}`}

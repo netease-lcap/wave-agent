@@ -43,7 +43,7 @@ describe("remaining keyboard accessibility", () => {
       fireEvent.keyDown(settings, { key: "Enter" });
 
       expect(vscode.postMessage).toHaveBeenCalledWith({
-        command: "getConfiguration",
+        command: "openSettings",
       });
       expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
     });

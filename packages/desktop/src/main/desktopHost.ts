@@ -63,7 +63,13 @@ import {
   REMOTE_FILE_MAX_LINES,
   REMOTE_FILE_MAX_BYTES,
 } from "./remoteCli";
-import type { ToastAction, UpdateToast } from "wave-webview-fixtures";
+import type {
+  ToastAction,
+  UpdateToast,
+  AccountPlanInfo,
+  AccountApiQuotaInfo,
+  DesktopUpdateState,
+} from "wave-webview-fixtures";
 import type { ChildProcess } from "child_process";
 import { getWorkspaceDiff } from "./gitDiff";
 import { TerminalManager } from "./terminal";
@@ -268,6 +274,30 @@ export class DesktopHost {
    *  install-stage error (e.g. Squirrel signature validation) must not
    *  double-notify with a conflicting manual download-page toast. */
   private updateDownloadedAnnounced = false;
+
+  /**
+   * 更新状态机 (serverUrl/electron-updater 安装): null = 无更新 / 未知,
+   * available → (用户确认) → downloading → ready。状态变化经 desktopAccountInfo
+   * 推给侧边栏账户卡片的更新按钮。GitHub 手动流程 (无 serverUrl) 保持原 toast。
+   */
+  private updateState: DesktopUpdateState | null = null;
+
+  /**
+   * 账户卡片快照 per host (登录态 + 用量), 跟随聚焦分屏的主机 (spec 场景 8)。
+   * 用量每 60s 轮询一次 (仅登录态)；失败保留上次成功数据 (spec 场景 9)。
+   */
+  private accountCache = new Map<
+    string,
+    {
+      isAuthenticated: boolean;
+      user?: { id: string; email?: string } | null;
+      plan?: AccountPlanInfo | null;
+      apiQuota?: AccountApiQuotaInfo | null;
+    }
+  >();
+  /** 60s 账户用量轮询 (spec 场景 8). Static so tests can shrink or disable it. */
+  private static accountPollIntervalMs = 60_000;
+  private accountPollTimer: NodeJS.Timeout | null = null;
 
   /** Latest panel toggle state reported by each pane's webview (drives the 面板 menu). */
   private panePanelState = new Map<string, PanelKind[]>();
@@ -504,6 +534,10 @@ export class DesktopHost {
     this.client = null;
     this.router = null;
     this.initPromise = null;
+    if (this.accountPollTimer) {
+      clearInterval(this.accountPollTimer);
+      this.accountPollTimer = null;
+    }
   }
 
   private getCurrentEffectiveTheme(): "light" | "dark" {
@@ -566,6 +600,90 @@ export class DesktopHost {
         ...toast,
       },
     });
+  }
+
+  /**
+   * 推侧边栏账户卡片快照 (desktopAccountInfo)。Window-global — 不加 paneId，
+   * 由 webview 根实例消费。数据 = 聚焦分屏所属主机的缓存；update 为应用全局。
+   */
+  private pushAccountInfo(): void {
+    const entry = this.accountCache.get(this.currentHost);
+    this.postMessage({
+      command: "desktopAccountInfo",
+      isAuthenticated: entry?.isAuthenticated ?? false,
+      user: entry?.user ?? null,
+      plan: entry?.plan ?? null,
+      apiQuota: entry?.apiQuota ?? null,
+      update: this.updateState,
+    });
+  }
+
+  /**
+   * 把一次 getAuthStatus 结果写入账户缓存（登录态跟随聚焦主机）。复用既有
+   * getAuthStatus 查询 — 不新增 RPC；用量字段保留旧值，由 refreshUsageForHost 刷新。
+   */
+  private seedAccountFromAuth(
+    host: string,
+    authResult: {
+      isAuthenticated: boolean;
+      user?: { id: string; email?: string } | null;
+    },
+  ): void {
+    const prev = this.accountCache.get(host);
+    this.accountCache.set(host, {
+      isAuthenticated: authResult.isAuthenticated,
+      user: authResult.user ?? prev?.user ?? null,
+      plan: prev?.plan ?? null,
+      apiQuota: prev?.apiQuota ?? null,
+    });
+  }
+
+  /**
+   * 拉取一个已登录主机的用量（GET /api/v1/account）。失败保留上次成功数据
+   * (spec 场景 9)；未登录无用量可拉。若该主机当前聚焦则推送。
+   */
+  private async refreshUsageForHost(host: string): Promise<void> {
+    const prev = this.accountCache.get(host);
+    if (!prev?.isAuthenticated) return;
+    let plan = prev.plan ?? null;
+    let apiQuota = prev.apiQuota ?? null;
+    try {
+      const account = (await this.utilityClientFor(host).request(
+        "getAccountInfo",
+      )) as {
+        plan?: AccountPlanInfo | null;
+        apiQuota?: AccountApiQuotaInfo | null;
+      };
+      plan = account.plan ?? null;
+      apiQuota = account.apiQuota ?? null;
+    } catch (error) {
+      console.warn(
+        `[DesktopHost] Account usage query failed for host ${host}:`,
+        error,
+      );
+    }
+    this.accountCache.set(host, { ...prev, plan, apiQuota });
+    if (host === this.currentHost) this.pushAccountInfo();
+  }
+
+  /** 聚焦分屏切换后同步账户卡片：推缓存 + 后台刷新用量（auth 由 refreshAuthStatus 处理）。 */
+  private syncAccountCard(): void {
+    this.pushAccountInfo();
+    void this.refreshUsageForHost(this.currentHost);
+  }
+
+  /** 每 60s 轮询当前聚焦主机的用量（仅登录态才拉取，spec 场景 8）。 */
+  private startAccountPolling(): void {
+    if (this.accountPollTimer) return;
+    this.accountPollTimer = setInterval(() => {
+      void this.refreshUsageForHost(this.currentHost);
+    }, DesktopHost.accountPollIntervalMs);
+  }
+
+  /** 更新状态机状态变更 → 推送账户卡片（webview 更新按钮随之刷新）。 */
+  private setUpdateState(state: DesktopUpdateState | null): void {
+    this.updateState = state;
+    this.pushAccountInfo();
   }
 
   /** Insert a host-generated system message into a pane's chat stream (focused pane by default). */
@@ -1065,6 +1183,11 @@ export class DesktopHost {
         }
         this.refreshSessionTree();
       },
+      onContextUsage: (percent: number) => {
+        const paneId = paneIdOf();
+        if (paneId)
+          this.postMessage({ command: "contextUsage", paneId, percent });
+      },
       onCommandRunningChange: (running: boolean) => {
         const paneId = paneIdOf();
         if (paneId)
@@ -1185,6 +1308,9 @@ export class DesktopHost {
     pane.agent = agent;
     this.focusedPaneId = paneId;
     if (agent) this.touchAgentAsRecent(agent);
+    // The pane may now run on a different host — the sidebar account card
+    // follows the focused pane's host (spec 场景 8).
+    this.syncAccountCard();
     // Replacing or releasing a blank agent (worktree/workdir/host switch)
     // would otherwise leak it in the pool until the app quits.
     if (outgoing && outgoing !== agent && this.isBlankAgent(outgoing)) {
@@ -1633,6 +1759,8 @@ export class DesktopHost {
       this.sendWorkdirState();
       this.postMessage({ command: "focusInput", paneId: neighbor.paneId });
       this.emitPanelState();
+      // The account card follows the newly focused neighbor's host.
+      this.syncAccountCard();
     }
     this.pushPanes();
   }
@@ -2221,11 +2349,17 @@ export class DesktopHost {
   private async pushInitialState(): Promise<void> {
     const configurationData = this.configStore.getConfiguration();
     let isAuthenticated = false;
+    let authUser: { id: string; email?: string } | undefined;
     try {
       const authResult = (await this.utilityClientFor(this.currentHost).request(
         "getAuthStatus",
-      )) as { isAuthenticated: boolean; serverUrl: string };
+      )) as {
+        isAuthenticated: boolean;
+        user?: { id: string; email?: string };
+        serverUrl: string;
+      };
       isAuthenticated = authResult.isAuthenticated;
+      authUser = authResult.user;
       if (authResult.serverUrl) {
         this.configStore.setConfiguration({ serverUrl: authResult.serverUrl });
         configurationData.serverUrl = authResult.serverUrl;
@@ -2237,6 +2371,14 @@ export class DesktopHost {
       );
     }
     this.lastIsAuthenticated = isAuthenticated;
+    // Seed the account card from the same auth query, then fetch usage in the
+    // background (the card renders immediately with plan/apiQuota still null).
+    this.seedAccountFromAuth(this.currentHost, {
+      isAuthenticated,
+      user: authUser ?? null,
+    });
+    this.pushAccountInfo();
+    void this.refreshUsageForHost(this.currentHost);
     await this.pushPaneSessionState(this.focusedPaneId);
   }
 
@@ -3110,6 +3252,14 @@ export class DesktopHost {
         await this.handleCheckForUpdates(true);
         break;
 
+      case "desktopUpdateApp":
+        this.handleUpdateApp();
+        break;
+
+      case "desktopRestartApp":
+        this.handleRestartApp();
+        break;
+
       // -- auth ----------------------------------------------------------------
       case "getAuthStatus":
         await this.handleGetAuthStatus();
@@ -3121,6 +3271,22 @@ export class DesktopHost {
 
       case "logout":
         await this.handleLogout();
+        break;
+
+      // -- AGENTS.md (memory files) -------------------------------------------
+      case "getAgentsContent":
+        await this.handleGetAgentsContent(
+          msg.scope as "user" | "project",
+          msg.workdir as string | undefined,
+        );
+        break;
+
+      case "setAgentsContent":
+        await this.handleSetAgentsContent(
+          msg.scope as "user" | "project",
+          msg.content as string,
+          msg.workdir as string | undefined,
+        );
         break;
 
       // -- MCP --------------------------------------------------------------------
@@ -3438,6 +3604,9 @@ export class DesktopHost {
       await this.pushInitialState();
       this.refreshSessionTree();
 
+      // Account usage poll: keep the sidebar card's 套餐用量/API 额度 fresh.
+      this.startAccountPolling();
+
       // Auto update check: once per app launch after the first agent is ready.
       if (!this.updateCheckTriggered) {
         this.updateCheckTriggered = true;
@@ -3484,6 +3653,11 @@ export class DesktopHost {
         user: authResult.user,
         serverUrl: authResult.serverUrl,
       });
+      // The sidebar account card follows the same host (spec 场景 8): seed the
+      // cache from this very query (no extra RPC), push the card, fetch usage.
+      this.seedAccountFromAuth(host, authResult);
+      this.pushAccountInfo();
+      void this.refreshUsageForHost(host);
     } catch (error) {
       console.error(
         `[DesktopHost] Failed to get auth status for host ${host}:`,
@@ -4193,6 +4367,9 @@ export class DesktopHost {
       model: config.model,
       fastModel: config.fastModel,
       language: config.language,
+      contextLength: config.contextLength,
+      autoMemoryEnabled: config.autoMemoryEnabled,
+      autoMemoryFrequency: config.autoMemoryFrequency,
     };
     for (const [oldSid, agent] of [...this.agents]) {
       const wasStreaming = agent.isStreaming;
@@ -4220,14 +4397,18 @@ export class DesktopHost {
     if (serverUrl) {
       if (!this.autoUpdaterService) {
         this.autoUpdaterService = new AutoUpdaterService({
-          onUpdateDownloaded: (info) =>
-            void this.handleUpdateDownloaded(info.version),
+          onUpdateDownloaded: () => void this.handleUpdateDownloaded(),
           onError: (error) =>
             void this.handleAutoUpdaterError(serverUrl, error),
         });
       }
       const outcome = await this.autoUpdaterService.checkForUpdates(serverUrl);
-      if (outcome === "update") return;
+      if (outcome === "update") {
+        // 新状态机（spec「账户卡片」场景 5/6）：发现更新 → 更新按钮「更新」，
+        // 用户确认后下载，下载完成 → 「重启」。不再后台静默下载。
+        this.setUpdateState("available");
+        return;
+      }
       if (outcome === "no-update") {
         if (manual) this.showToast({ message: "当前已是最新版本" });
         return;
@@ -4262,19 +4443,25 @@ export class DesktopHost {
     }
   }
 
-  /** The background download (or a later check) errored — degrade to the
-   *  manual checker so the user still learns about the update with a URL. */
+  /**
+   * electron-updater 出错。下载中途失败：状态机回退 available（更新按钮可重试），
+   * 不弹手动下载页 toast。检查阶段失败（updateState 仍 null）：沿用原手动降级。
+   */
   private async handleAutoUpdaterError(
     serverUrl: string,
     error?: unknown,
   ): Promise<void> {
     console.warn(
-      "[DesktopHost] Auto updater errored, falling back to manual check:",
+      "[DesktopHost] Auto updater errored:",
       error instanceof Error ? error.stack : error,
     );
-    // The download already finished and the restart-install toast is showing —
-    // a later install-stage error (e.g. Squirrel signature validation) must not
-    // announce a conflicting manual download-page toast on top of it.
+    if (this.updateState === "downloading") {
+      this.setUpdateState("available");
+      return;
+    }
+    // The download already finished and the restart button is showing — a later
+    // install-stage error (e.g. Squirrel signature validation) must not announce
+    // a conflicting manual download-page toast on top of it.
     if (this.updateDownloadedAnnounced) return;
     // The packaged app has no visible console — persist the error so it can be
     // collected from the machine that reproduces the failed download.
@@ -4306,15 +4493,33 @@ export class DesktopHost {
     }
   }
 
-  /** The new version finished downloading — announce it via a toast whose
-   *  「重启安装」 button quits and installs directly (no second confirm dialog). */
-  private handleUpdateDownloaded(version: string): void {
+  /**
+   * 新版本下载完成（electron-updater update-downloaded）→ 状态机进入 ready：
+   * 账户卡片的更新按钮变为「重启」。webview 侧在 downloading→ready 转变时自动弹
+   * 重启确认框（spec 场景 6）；「稍后」→ 按钮保持「重启」可再次触发。
+   */
+  private handleUpdateDownloaded(): void {
     this.updateDownloadedAnnounced = true;
-    this.showToast({
-      message: `新版本 v${version} 已下载完成，重启应用以完成安装。`,
-      actionLabel: "重启安装",
-      action: { type: "quitAndInstall" },
-    });
+    this.setUpdateState("ready");
+  }
+
+  /** 账户卡片更新按钮「更新」被确认 → 开始下载（downloading）。 */
+  private handleUpdateApp(): void {
+    if (this.updateState !== "available") return;
+    if (!this.autoUpdaterService) return;
+    this.setUpdateState("downloading");
+    try {
+      this.autoUpdaterService.downloadUpdate();
+    } catch (error) {
+      console.warn("[DesktopHost] Failed to start update download:", error);
+      this.setUpdateState("available");
+    }
+  }
+
+  /** 账户卡片「重启」被确认 → 立即退出并安装。 */
+  private handleRestartApp(): void {
+    if (this.updateState !== "ready") return;
+    this.autoUpdaterService?.quitAndInstall();
   }
 
   /** A toast's button was clicked: quit-and-install the downloaded update, or
@@ -4385,6 +4590,62 @@ export class DesktopHost {
     }
   }
 
+  /** AGENTS.md settings UI: fetch user (~/.wave/AGENTS.md) or project (<workdir>/AGENTS.md) memory file content. */
+  private async handleGetAgentsContent(
+    scope: "user" | "project",
+    workdir?: string,
+  ): Promise<void> {
+    try {
+      const result = (await this.utilityClientFor(this.currentHost).request(
+        "getAgentsContent",
+        { scope, workdir },
+      )) as { content: string; path?: string };
+      this.postMessage({
+        command: "agentsContentResponse",
+        scope,
+        content: result.content,
+      });
+    } catch (error) {
+      console.error("[DesktopHost] 获取 AGENTS.md 内容失败:", error);
+      this.postMessage({
+        command: "agentsContentResponse",
+        scope,
+        content: "",
+      });
+    }
+  }
+
+  /** AGENTS.md settings UI: persist content via the stdio setAgentsContent RPC. */
+  private async handleSetAgentsContent(
+    scope: "user" | "project",
+    content: string,
+    workdir?: string,
+  ): Promise<void> {
+    try {
+      await this.utilityClientFor(this.currentHost).request(
+        "setAgentsContent",
+        {
+          scope,
+          content,
+          workdir,
+        },
+      );
+      this.postMessage({
+        command: "agentsContentSaved",
+        scope,
+        ok: true,
+      });
+    } catch (error) {
+      console.error("[DesktopHost] 保存 AGENTS.md 失败:", error);
+      this.postMessage({
+        command: "agentsContentSaved",
+        scope,
+        ok: false,
+        error: String(error),
+      });
+    }
+  }
+
   private async handleGetAuthStatus(): Promise<void> {
     try {
       const result = (await this.utilityClientFor(this.currentHost).request(
@@ -4403,6 +4664,9 @@ export class DesktopHost {
         user: result.user,
         serverUrl: result.serverUrl,
       });
+      this.seedAccountFromAuth(this.currentHost, result);
+      this.pushAccountInfo();
+      void this.refreshUsageForHost(this.currentHost);
       this.postMessage({
         command: "configurationResponse",
         configurationData: this.configStore.getConfiguration(),
@@ -4452,6 +4716,13 @@ export class DesktopHost {
         success: true,
         user: result.user,
       });
+      // 登录完成：seed 账户卡片 + 拉用量。登录态进入不弹重启确认（重启确认
+      // 只在 downloading→ready 转变时由 webview 侧触发）。
+      this.seedAccountFromAuth(host, {
+        isAuthenticated: true,
+        user: result.user ?? null,
+      });
+      this.syncAccountCard();
       // Reinitialize agent to pick up SSO config
       await this.updateAgentConfig(this.configStore.getConfiguration());
     } catch (error) {
@@ -4477,6 +4748,14 @@ export class DesktopHost {
     try {
       await this.utilityClientFor(this.currentHost).request("logout");
       this.postMessage({ command: "logoutResponse", success: true });
+      // 登出：清空账户卡片的登录态与用量（spec 场景 8/9）。
+      this.accountCache.set(this.currentHost, {
+        isAuthenticated: false,
+        user: null,
+        plan: null,
+        apiQuota: null,
+      });
+      this.pushAccountInfo();
       await this.updateAgentConfig(this.configStore.getConfiguration());
     } catch (error) {
       console.error("[DesktopHost] 登出失败:", error);

@@ -8,6 +8,8 @@ import com.intellij.ui.content.ContentFactory
 import com.wave.jetbrains.bridge.PlanPreviewBuilder
 import com.wave.jetbrains.editor.WavePlanFileEditor
 import com.wave.jetbrains.editor.WavePlanVirtualFile
+import com.wave.jetbrains.editor.WaveSettingsFileEditor
+import com.wave.jetbrains.editor.WaveSettingsVirtualFile
 import com.wave.jetbrains.session.WaveSession
 import com.wave.jetbrains.util.Edt
 import java.util.concurrent.ConcurrentHashMap
@@ -21,7 +23,10 @@ import javax.swing.SwingUtilities
  * The plugin supports one chat at a time (single [WavePanel], backed by one [WaveSession] on the
  * shared stdio backend). ExitPlanMode plans render in a separate editor-area tab (per spec,
  * aligned with VSCE's `createWebviewPanel` plan preview): the chat's plan tab is reused across
- * repeated ExitPlanMode calls and closed when the chat panel is disposed.
+ * repeated ExitPlanMode calls and closed when the chat panel is disposed. The settings webview
+ * likewise renders in a single editor-area tab, but — unlike the plan tab — it is independent of
+ * the chat session lifecycle ([openSettings] works with no active chat and [closeSettings] only
+ * runs on explicit close).
  */
 @Service(Service.Level.PROJECT)
 class WavePanelHolder(private val project: Project) {
@@ -33,6 +38,13 @@ class WavePanelHolder(private val project: Project) {
 
     private val planFiles = ConcurrentHashMap<String, WavePlanVirtualFile>()
     private val planEditors = ConcurrentHashMap<String, WavePlanFileEditor>()
+
+    @Volatile
+    private var settingsFile: WaveSettingsVirtualFile? = null
+
+    @Volatile
+    var settingsEditor: WaveSettingsFileEditor? = null
+        private set
 
     fun register(panel: WavePanel) {
         this.panel = panel
@@ -135,6 +147,67 @@ class WavePanelHolder(private val project: Project) {
             }
         }
         if (SwingUtilities.isEventDispatchThread()) close() else Edt.invokeLater(close)
+    }
+
+    // ── Settings tab (editor-area, session-independent) ────────────────
+
+    /**
+     * The chat panel's session (null while no chat exists). The settings tab reuses it for its
+     * RPCs so getAgentsContent/setAgentsContent can reach the live agent; without one the
+     * settings tab still serves configuration RPCs (which need no agent).
+     */
+    fun chatSession(): WaveSession? = panel?.session
+
+    /** Registers the settings editor once its tab is created (WaveSettingsFileEditor.init). */
+    fun registerSettingsEditor(editor: WaveSettingsFileEditor) {
+        settingsEditor = editor
+    }
+
+    fun unregisterSettingsEditor(editor: WaveSettingsFileEditor) {
+        if (settingsEditor === editor) settingsEditor = null
+    }
+
+    /**
+     * Opens (or focuses) the editor-area settings tab (chat webview "openSettings" message +
+     * OpenWaveSettingsAction; spec 场景 10). The tab is created lazily on first open and reused
+     * afterwards (mirrors VSCE getOrCreateSettingsPanel). Unlike the plan tab it is independent
+     * of the chat session lifecycle, so it opens even with no active chat and is not closed when
+     * the chat panel is disposed. Pushes the project workdir via `settingsState` so the 个性化
+     * view's project-scope AGENTS.md editor knows which project it targets (mirrors VSCE
+     * chatProvider.openSettings). nav（"subagents" | "skills"）随 settingsState 下发，
+     * /agents、/skills 斜杠命令据此选中设置页对应选项卡。
+     */
+    fun openSettings(nav: String? = null) {
+        val open: () -> Unit = {
+            val file = settingsFile ?: WaveSettingsVirtualFile().also { settingsFile = it }
+            FileEditorManager.getInstance(project).openFile(file, true)
+            settingsEditor?.pushWorkdir(settingsWorkdir(), nav)
+        }
+        if (SwingUtilities.isEventDispatchThread()) open() else Edt.invokeLater(open)
+    }
+
+    /** Closes the settings tab (webview "closeSettings" message). */
+    fun closeSettings() {
+        if (project.isDisposed) return
+        val close = {
+            val file = settingsFile
+            settingsFile = null
+            settingsEditor = null
+            if (file != null) {
+                try {
+                    FileEditorManager.getInstance(project).closeFile(file)
+                } catch (_: Exception) {
+                    // File may already be closed/disposed; ignore.
+                }
+            }
+        }
+        if (SwingUtilities.isEventDispatchThread()) close() else Edt.invokeLater(close)
+    }
+
+    /** Workdir the settings 个性化 view targets: the chat session's root, else the project. */
+    private fun settingsWorkdir(): String {
+        val agent = panel?.session?.agent
+        return agent?.sessionCwd ?: agent?.workingDirectory ?: project.basePath ?: System.getProperty("user.dir")
     }
 
     companion object {

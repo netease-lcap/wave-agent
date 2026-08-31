@@ -231,4 +231,42 @@ export class MemoryService {
     this._cachedCombinedMemory = combined;
     return combined;
   }
+
+  /**
+   * Persist the user-level memory file (~/.wave/AGENTS.md), creating it if
+   * missing. Clears the user-memory cache so subsequent reads see the new
+   * content (the default-template fallback to ~/.claude/AGENTS.md is also
+   * bypassed once the user writes real content).
+   */
+  async writeUserMemoryContent(content: string): Promise<void> {
+    await this.ensureUserMemoryFile();
+    await fs.writeFile(USER_MEMORY_FILE, content, "utf-8");
+    this._cachedUserMemory = null;
+    this._cachedCombinedMemory = null;
+    logger.debug("User memory content written", {
+      userMemoryFile: USER_MEMORY_FILE,
+      contentLength: content.length,
+    });
+  }
+
+  /**
+   * Persist the project-level memory file (<workdir>/AGENTS.md), creating it
+   * if missing. Reads fall back to CLAUDE.md but writes always target
+   * AGENTS.md (the canonical project memory file). Clears the project-memory
+   * cache so subsequent reads see the new content.
+   */
+  async writeProjectMemoryContent(
+    workdir: string,
+    content: string,
+  ): Promise<void> {
+    const memoryFilePath = path.join(workdir, "AGENTS.md");
+    await fs.mkdir(workdir, { recursive: true });
+    await fs.writeFile(memoryFilePath, content, "utf-8");
+    this._cachedProjectMemory = null;
+    this._cachedCombinedMemory = null;
+    logger.debug("Project memory content written", {
+      memoryFilePath,
+      contentLength: content.length,
+    });
+  }
 }
