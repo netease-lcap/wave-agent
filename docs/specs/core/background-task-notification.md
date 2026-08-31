@@ -8,7 +8,7 @@ order: 150
 
 **创建日期**：2026-08-21
 
-> 对齐 Claude Code 的后台任务完成通知行为：Bash 后台任务与 Agent 子代理（fork/subtask、后台化 subagent、后台 workflow）完成时，其完成通知作为 `task-notification` 消息注入主对话——该消息对 UI 消息流隐藏（`isMeta: true`），对模型上下文可见（包装为 "A background agent completed a task:" + XML），并照常持久化到会话 jsonl。用户感知路径为模型主动汇报、`/tasks` 面板与后台任务面板，不经消息流。
+> 对齐 Claude Code 的后台任务完成通知行为：Bash 后台任务与 Agent 子代理（fork 子代理、后台化 subagent、后台 workflow）完成时，其完成通知作为 `task-notification` 消息注入主对话——该消息对 UI 消息流隐藏（`isMeta: true`），对模型上下文可见（包装为 "A background agent completed a task:" + XML），并照常持久化到会话 jsonl。用户感知路径为模型主动汇报、`/tasks` 面板与后台任务面板，不经消息流。
 
 ## 用户场景与测试 _（必填）_
 

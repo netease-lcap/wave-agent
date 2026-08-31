@@ -1045,36 +1045,6 @@ export class Agent {
   }
 
   /**
-   * Start a fork subagent in the background (the "/subtask" command path).
-   *
-   * The fork inherits the parent's full conversation context — same system
-   * prompt, tools, model, and message prefix — so the prompt cache is reused,
-   * then works independently in the background. On completion its final
-   * response is delivered back to the main conversation as a task notification
-   * carrying the `<result>` tag. Recursion is prevented inside the fork (the
-   * Agent tool and Task tools are denied).
-   *
-   * @param prompt - The task description for the fork subagent
-   * @param options - Background task label and optional loose turn bound
-   * @param options.description - Display label for the background task
-   * @param options.maxTurns - Loose turn bound (defaults to 200, aligned with
-   * Claude Code's fork subagent)
-   * @param abortSignal - Optional signal to abort the fork
-   * @returns Promise that resolves to the background task ID
-   */
-  public async forkSubagent(
-    prompt: string,
-    options: {
-      description: string;
-      maxTurns?: number;
-    },
-    abortSignal?: AbortSignal,
-  ): Promise<string> {
-    this.assertNotDestroyed();
-    return this.aiManager.runForkSubagent(prompt, options, abortSignal);
-  }
-
-  /**
    * Send a message to the AI agent with optional images
    *
    * @param content - The text content of the message to send

@@ -50,7 +50,7 @@ describe("notificationXml", () => {
         taskId: "task_789",
         taskType: "agent",
         status: "completed",
-        summary: "Subtask done",
+        summary: "Background task done",
         result: "The findings are in /tmp/report.md",
       };
 
@@ -67,7 +67,7 @@ describe("notificationXml", () => {
         taskId: "task_789",
         taskType: "agent",
         status: "failed",
-        summary: "Subtask failed",
+        summary: "Background task failed",
       };
 
       const xml = taskNotificationToXml(block);
@@ -122,7 +122,7 @@ describe("notificationXml", () => {
 <task-id>task_789</task-id>
 <task-type>agent</task-type>
 <status>completed</status>
-<summary>Subtask done</summary>
+<summary>Background task done</summary>
 <result>The findings are in /tmp/report.md</result>
 </task-notification>`;
 
@@ -133,7 +133,7 @@ describe("notificationXml", () => {
         taskId: "task_789",
         taskType: "agent",
         status: "completed",
-        summary: "Subtask done",
+        summary: "Background task done",
         result: "The findings are in /tmp/report.md",
       });
     });

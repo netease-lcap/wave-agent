@@ -3,10 +3,7 @@ import * as aiService from "../services/aiService.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { supportsVision } from "../utils/modelCapabilities.js";
 import { persistToolImages } from "../utils/toolImagePersistence.js";
-import {
-  parseTaskNotificationXml,
-  taskNotificationToXml,
-} from "../utils/notificationXml.js";
+import { parseTaskNotificationXml } from "../utils/notificationXml.js";
 import { estimateContextTokens } from "../utils/tokenCalculation.js";
 import { estimateTokens } from "../utils/tokenEstimate.js";
 import {
@@ -14,8 +11,7 @@ import {
   maybeInjectTaskReminder,
   TASK_REMINDER_CONFIG,
 } from "../utils/taskReminder.js";
-import { createWriteStream, existsSync, type WriteStream } from "node:fs";
-import * as os from "node:os";
+import { existsSync } from "node:fs";
 import * as path from "node:path";
 import type {
   GatewayConfig,
@@ -57,15 +53,6 @@ import type { WorktreeSession } from "../utils/worktreeSession.js";
 import { recoverTruncatedJson } from "../utils/stringUtils.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import type { MessageQueue } from "./messageQueue.js";
-import {
-  AGENT_TOOL_NAME,
-  TASK_CREATE_TOOL_NAME,
-  TASK_GET_TOOL_NAME,
-  TASK_LIST_TOOL_NAME,
-  TASK_UPDATE_TOOL_NAME,
-} from "../constants/tools.js";
-import { addConsolidatedAbortListener } from "../utils/abortUtils.js";
-
 import { logger } from "../utils/globalLogger.js";
 import {
   startInteractionSpan,
@@ -1108,216 +1095,6 @@ export class AIManager {
       });
     }
     return result;
-  }
-
-  /**
-   * Fork subagent ("/subtask"): spawn a background agent that inherits the
-   * parent's full conversation context — the same system prompt, tools, model,
-   * and message prefix as the main loop — so the forked request prefix matches
-   * exactly and the prompt cache is reused. The fork runs to completion in the
-   * background via the shared BackgroundTaskManager (visible in /tasks, log at
-   * `os.tmpdir()/wave-subagent-<taskId>.log`); its final response is enqueued
-   * as a task notification carrying the `<result>` tag, so the main agent
-   * picks it up on the next turn and can act on it.
-   *
-   * Recursion is prevented by denying the Agent tool and the Task management
-   * tools (the fork cannot spawn further subagents or mutate the shared task
-   * list), and by honoring the parent's denied rules for everything else.
-   * Gate-approved tools execute locally in the stripped fork context (no
-   * permission prompts), mirroring the other fork paths.
-   *
-   * Returns the background task ID (empty string when no BackgroundTaskManager
-   * is registered, in which case the fork still runs but without task
-   * bookkeeping or notification).
-   */
-  public async runForkSubagent(
-    prompt: string,
-    options: {
-      description: string;
-      maxTurns?: number;
-    },
-    abortSignal?: AbortSignal,
-  ): Promise<string> {
-    const modelConfig = this.getModelConfig();
-    // Snapshot the conversation synchronously: the /subtask handler records
-    // the command echo in the transcript after this call, so the fork never
-    // sees its own trigger message duplicated.
-    const historyMessages = convertMessagesForAPI(
-      this.messageManager.getMessages(),
-      { supportsVision: supportsVision(modelConfig.capabilities) },
-    );
-
-    const backgroundTaskManager = this.backgroundTaskManager;
-    const permissionManager = this.permissionManager;
-    const messageQueue = this.container.has("MessageQueue")
-      ? this.container.get<MessageQueue>("MessageQueue")
-      : undefined;
-
-    // Combine the caller's signal with an internal one so a task kill
-    // (BackgroundTaskManager.stopTask / cleanup) aborts the in-flight fork.
-    const abortController = new AbortController();
-    let abortCleanup: (() => void) | undefined;
-    if (abortSignal) {
-      abortCleanup = addConsolidatedAbortListener(abortSignal, [
-        () => abortController.abort(),
-      ]);
-    }
-
-    // Recursion prevention: deny the Agent tool and Task tools, then honor the
-    // parent's denied rules for everything else.
-    const deniedTools = new Set([
-      AGENT_TOOL_NAME,
-      TASK_CREATE_TOOL_NAME,
-      TASK_GET_TOOL_NAME,
-      TASK_UPDATE_TOOL_NAME,
-      TASK_LIST_TOOL_NAME,
-    ]);
-    const canUseTool = (name: string): boolean => {
-      if (deniedTools.has(name)) return false;
-      if (permissionManager?.isToolDenied(name)) return false;
-      return true;
-    };
-    const deniedToolMessage =
-      "The Agent tool and Task tools are not available in a fork subagent.";
-
-    // Background task bookkeeping mirrors subagentManager.executeAgent.
-    let taskId = "";
-    let logStream: WriteStream | undefined;
-    if (backgroundTaskManager) {
-      taskId = backgroundTaskManager.generateId();
-      const startTime = Date.now();
-      const logPath = path.join(os.tmpdir(), `wave-subagent-${taskId}.log`);
-      logStream = createWriteStream(logPath, { flags: "a" });
-
-      backgroundTaskManager.addTask({
-        id: taskId,
-        type: "subagent",
-        status: "running",
-        startTime,
-        description: truncateWithMarker(options.description, 1000),
-        stdout: "",
-        stderr: "",
-        outputPath: logPath,
-        onStop: () => {
-          logStream?.destroy();
-          logStream = undefined;
-          abortController.abort();
-        },
-      });
-
-      logStream.write(
-        `[${new Date().toISOString()}] Fork subagent started: ${options.description}\n`,
-      );
-    }
-
-    const finish = async (
-      status: "completed" | "failed",
-      content: string,
-    ): Promise<void> => {
-      if (!backgroundTaskManager || !taskId) return;
-      const task = backgroundTaskManager.getTask(taskId);
-      if (!task) return;
-
-      const wasAlreadyKilled = task.status === "killed";
-      const endTime = Date.now();
-      if (status === "completed") {
-        task.status = "completed";
-        task.stdout = content;
-        logStream?.write(
-          `[${new Date().toISOString()}] Final response:\n${content}\n`,
-        );
-      } else {
-        task.status = "failed";
-        task.stderr = content;
-        logStream?.write(
-          `[${new Date().toISOString()}] Fork subagent failed: ${content}\n`,
-        );
-      }
-      task.endTime = endTime;
-      if (task.startTime) task.runtime = endTime - task.startTime;
-      logStream?.end();
-      logStream = undefined;
-
-      // Skip the notification when the task was already stopped (e.g. by main
-      // agent shutdown) — mirrors subagentManager's wasAlreadyKilled guard.
-      if (!wasAlreadyKilled && messageQueue) {
-        const description = truncateWithMarker(options.description, 1000);
-        const summary =
-          status === "completed"
-            ? `Subtask "${description}" completed`
-            : `Subtask "${description}" failed: ${content}`;
-        messageQueue.enqueueNotification(
-          taskNotificationToXml({
-            type: "task_notification",
-            taskId,
-            taskType: "agent",
-            status,
-            summary,
-            ...(status === "completed" && { result: content }),
-          }),
-        );
-      }
-    };
-
-    // Fire-and-forget: the fork runs to completion in the background; the
-    // caller gets the task ID immediately. Tracked in the async work registry
-    // so destroy() drains it before returning (abort via the task's onStop
-    // makes the loop settle).
-    const forkPromise = (async () => {
-      try {
-        const result = await this.runForkLoop(
-          historyMessages,
-          prompt,
-          {
-            // /subtask aligns with Claude Code's fork subagent
-            // (forkSubagent.ts:65): a loose upper bound that practically
-            // never binds.
-            maxTurns: options.maxTurns ?? 200,
-            canUseTool,
-            deniedToolMessage,
-          },
-          abortController.signal,
-        );
-
-        if (result.usage && this.callbacks?.onUsageAdded) {
-          this.callbacks.onUsageAdded({
-            ...result.usage,
-            model: modelConfig.model,
-            operation_type: "agent",
-          });
-        }
-
-        if (result.content?.trim()) {
-          await finish("completed", result.content);
-        } else {
-          await finish("failed", "Fork subagent produced no text response");
-        }
-      } catch (error) {
-        // Abort is the expected exit for a killed task; stopTask has already
-        // marked it "killed", so no notification is sent.
-        if (abortController.signal.aborted) {
-          const task = backgroundTaskManager?.getTask(taskId);
-          if (task && task.status === "running") {
-            task.status = "killed";
-            task.endTime = Date.now();
-            if (task.startTime) task.runtime = task.endTime - task.startTime;
-          }
-          logStream?.end();
-          logStream = undefined;
-        } else {
-          logger?.error("Fork subagent execution failed:", error);
-          await finish(
-            "failed",
-            error instanceof Error ? error.message : String(error),
-          );
-        }
-      } finally {
-        abortCleanup?.();
-      }
-    })();
-    this.asyncWorkRegistry?.track(forkPromise);
-
-    return taskId;
   }
 
   /**

@@ -44,46 +44,6 @@ export class SlashCommandManager {
   public initialize(): void {
     this.loadCustomCommands();
 
-    // Builtin /subtask: manual fork subagent (aligned with Claude Code's
-    // /subtask — inherits the parent's full context, runs in the background,
-    // result returns to the main conversation via a task notification).
-    this.registerCommand({
-      id: "subtask",
-      name: "subtask",
-      description:
-        "Start a fork subagent with the current conversation context in the background",
-      handler: async (args?: string, signal?: AbortSignal) => {
-        const taskDescription = args?.trim();
-        if (!taskDescription) {
-          this.messageManager.addErrorBlock(
-            "Usage: /subtask <task description>",
-          );
-          return;
-        }
-
-        try {
-          // The fork snapshots its context synchronously on entry, so the
-          // transcript echo below never duplicates the prompt inside the fork.
-          await this.aiManager.runForkSubagent(
-            taskDescription,
-            { description: taskDescription },
-            signal,
-          );
-          this.messageManager.addUserMessage({
-            content: `/subtask ${taskDescription}`,
-          });
-        } catch (error) {
-          this.aiManager.setIsLoading(false);
-          logger?.error("Failed to execute /subtask:", error);
-          this.messageManager.addErrorBlock(
-            `Failed to execute /subtask: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
-      },
-    });
-
     // Listen for skill refreshes and update skill commands
     const skillManager = this.container.get<SkillManager>("SkillManager");
     if (skillManager) {
