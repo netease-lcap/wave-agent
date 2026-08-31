@@ -2413,7 +2413,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   ) : (
     <>
       {showWelcomeReady ? (
-        <WelcomeView />
+        <WelcomeView isDesktop={isDesktop} />
       ) : showWelcome ? (
         <LoadingLogo />
       ) : (
@@ -2696,7 +2696,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const chatContainer = (
     <div
       className={`chat-container${
-        isDesktop && showWelcomeReady ? " chat-container--welcome" : ""
+        showWelcomeReady
+          ? isDesktop
+            ? " chat-container--welcome"
+            : " chat-container--welcome-ide"
+          : ""
       }${dragActive ? " drag-active" : ""}`}
       data-testid="chat-container"
       ref={isDesktop ? chatContainerRef : undefined}
@@ -2785,7 +2789,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           ))}
         </div>
       ) : (
-        chatBodyContent
+        // IDE hosts: the chat body always renders inside two flex wrappers.
+        // Outside the welcome page they are plain flex-column pass-throughs
+        // (layout equivalent to the old flat fragment); on the welcome page the
+        // CSS switches them to group-centering (brand + input card together,
+        // same as the desktop welcome scene). The wrappers are always present
+        // so entering/leaving the welcome page never unmounts the input card
+        // (e.g. the abort button must survive clearing the chat while
+        // streaming).
+        <div className="ide-chat-wrap">
+          <div className="ide-chat-main">{chatBodyContent}</div>
+        </div>
       )}
     </div>
   );
