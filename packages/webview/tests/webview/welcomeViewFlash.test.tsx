@@ -96,6 +96,35 @@ describe("WelcomeView render timing", () => {
     expect(screen.getByTestId("welcome-wordmark")).toBeVisible();
   });
 
+  /**
+   * Regression: the header 登 录 button must not flash during auth loading.
+   * The reducer defaults isAuthenticated to false, and the button used to
+   * render on the very first frame — before the host's snapshot (which carries
+   * the real auth state) arrived — briefly claiming "logged out".
+   */
+  it("does not render the login button before the auth state is known", () => {
+    render(<ChatApp vscode={createMockVscode()} />);
+
+    expect(screen.queryByTestId("header-login-btn")).not.toBeInTheDocument();
+  });
+
+  it("renders the login button once the snapshot confirms logged out", () => {
+    render(<ChatApp vscode={createMockVscode()} />);
+
+    act(() => {
+      sendCommand("setInitialState", {
+        messages: [],
+        isStreaming: false,
+        sessions: [],
+        isAuthenticated: false,
+        configurationData: {},
+        pendingConfirmations: [],
+      });
+    });
+
+    expect(screen.getByTestId("header-login-btn")).toBeVisible();
+  });
+
   it("switches away from the welcome page once a visible message arrives", () => {
     render(<ChatApp vscode={createMockVscode()} />);
 
