@@ -1,13 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   renderChatApp,
+  render,
   screen,
   waitFor,
   fireEvent,
   act,
   sendCommand,
+  sendHostMessage,
+  fixtures,
   fireInput,
+  createMockVscode,
 } from "./test-utils";
+import React from "react";
+import { ChatApp } from "../../src/components/ChatApp";
+import type { VsCodeApi } from "../../src/types";
 
 async function typeAndSend(text: string) {
   const input = screen.getByTestId("message-input");
@@ -118,70 +125,95 @@ describe("Model, Status, and Login Commands", () => {
   });
 
   describe("/config command", () => {
-    it("should open config dialog via /config", async () => {
-      renderChatApp();
-
-      await act(async () => {
-        sendCommand("configurationResponse", {
-          configurationData: {
-            language: "Chinese",
-          },
-        });
-      });
-
-      await act(async () => {
-        await typeAndSend("/config");
-      });
-
-      await waitFor(() => {
-        expect(
-          document.querySelector(".configuration-dialog-overlay"),
-        ).toBeInTheDocument();
-      });
-      // Config dialog should have language select
-      expect(document.querySelector("#language")).toBeInTheDocument();
-    });
-
-    it("should send updateConfiguration when save is clicked", async () => {
+    it("IDE 模式发送 openSettings（默认全局设置），不再弹配置弹窗", async () => {
       const { vscode } = renderChatApp();
 
       await act(async () => {
-        sendCommand("configurationResponse", {
-          configurationData: {
-            language: "Chinese",
-          },
-        });
-      });
-
-      await act(async () => {
         await typeAndSend("/config");
       });
 
-      await waitFor(() => {
-        expect(document.querySelector("#language")).toBeInTheDocument();
+      const call = vscode.postMessage.mock.calls.find(
+        (c) => c[0]?.command === "openSettings",
+      );
+      expect(call).toBeDefined();
+      expect(call?.[0]?.nav).toBeUndefined();
+      expect(
+        document.querySelector(".configuration-dialog-overlay"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("desktop 模式打开设置页「全局设置」选项卡并保存配置", async () => {
+      const mockVscode = createMockVscode();
+      const host = {
+        type: "desktop",
+        host: "local",
+        hosts: ["local"],
+        recentWorkdirs: [],
+        workdir: "/work/a",
+        sessionTree: [],
+        panes: [],
+        focusedPaneId: undefined,
+        onSelectWorkdir: () => {},
+        onSelectRecentWorkdir: () => {},
+        onRemoveRecentWorkdir: () => {},
+        onSelectHost: () => {},
+        onAddHost: () => {},
+        onSelectRemotePath: () => {},
+        onListRemoteDir: () => {},
+        onSelectSession: () => {},
+        onDeleteSession: () => {},
+        onOpenPane: () => {},
+      } as unknown as React.ComponentProps<typeof ChatApp>["host"];
+      render(
+        <ChatApp vscode={mockVscode as unknown as VsCodeApi} host={host} />,
+      );
+      sendHostMessage(fixtures.authStatusResponse());
+      sendCommand("configurationResponse", {
+        configurationData: { language: "zh-CN" },
       });
 
-      const languageSelect = document.querySelector(
-        "#language",
-      ) as HTMLSelectElement;
+      const input = screen.getByTestId("message-input");
+      input.focus();
       await act(async () => {
-        fireEvent.change(languageSelect, { target: { value: "English" } });
+        input.textContent = "/config";
+        const range = document.createRange();
+        range.selectNodeContents(input);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+        fireEvent.input(input, { data: "/config", inputType: "insertText" });
+      });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      // 设置页「全局设置」选项卡激活（导航项 is-active 且内容区渲染语言选择）
+      expect(
+        await screen.findByText("管理 Wave 的界面、模型和基础行为。"),
+      ).toBeInTheDocument();
+      const navItem = screen.getByRole("button", { name: /全局设置/ });
+      expect(navItem).toHaveClass("is-active");
+
+      const languageSelect = document.querySelector(
+        ".settings-select",
+      ) as HTMLSelectElement;
+      expect(languageSelect).toBeInTheDocument();
+      await act(async () => {
+        fireEvent.change(languageSelect, { target: { value: "en-US" } });
       });
 
       const saveButton = document.querySelector(
-        ".configuration-save-btn",
+        ".settings-save-btn",
       ) as HTMLButtonElement;
-      vscode.postMessage.mockClear();
+      mockVscode.postMessage.mockClear();
       await act(async () => {
         fireEvent.click(saveButton);
       });
 
       await waitFor(() => {
-        expect(vscode.postMessage).toHaveBeenCalledWith(
+        expect(mockVscode.postMessage).toHaveBeenCalledWith(
           expect.objectContaining({
             command: "updateConfiguration",
             configurationData: expect.objectContaining({
-              language: "English",
+              language: "en-US",
             }),
           }),
         );

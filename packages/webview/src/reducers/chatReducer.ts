@@ -147,9 +147,6 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         ...state,
         activeDialog: action.payload.type,
-        configurationData: action.payload.data ?? state.configurationData,
-        configurationLoading: false,
-        configurationError: action.payload.error,
       };
     case "HIDE_DIALOG":
       return {

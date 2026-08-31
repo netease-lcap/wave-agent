@@ -267,7 +267,8 @@
 }
 
 .settings-select,
-.settings-number-input {
+.settings-number-input,
+.settings-text-input {
   width: 100%;
   min-height: 32px;
   box-sizing: border-box;
@@ -282,6 +283,7 @@
 
 .settings-select:focus,
 .settings-number-input:focus,
+.settings-text-input:focus,
 .settings-textarea:focus {
   outline: none;
   border-color: var(--vscode-focusBorder);
@@ -289,6 +291,7 @@
 
 .settings-select:disabled,
 .settings-number-input:disabled,
+.settings-text-input:disabled,
 .settings-textarea:disabled {
   opacity: 0.6;
   cursor: not-allowed;

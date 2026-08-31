@@ -3,11 +3,15 @@
  *
  * Functional views in this batch:
  * - 全局设置 (global): system language + context length
+ * - 直连设置 (connection): API Key / Base URL / Agent Model / Fast Model
+ *   （自 ConfigDialog 直连设置选项卡迁移，2026-08-29 用户拍板）
+ * - 项目设置 (project): SDD 内置插件开关
+ *   （自 ConfigDialog 项目设置选项卡迁移，2026-08-29 用户拍板）
  * - 个性化 (personalization): AGENTS.md editor + auto-memory rules
  * - 子代理 (subagents) / 技能 (skills): agent 定义与技能列表，内容自
  *   /agents、/skills 弹窗迁移而来（2026-08-29 用户拍板：斜杠命令唤起设置页
  *   对应选项卡，不再弹窗）
- * The remaining four navigation entries render a "coming soon" placeholder.
+ * The remaining two navigation entries render a "coming soon" placeholder.
  *
  * Layout/dimensions follow the designer's high-fidelity prototype
  * (codechat-ui settings feature) mapped onto wave's native React + VS Code
@@ -23,7 +27,7 @@ import "../styles/SettingsPage.css";
 export interface SettingsPageProps {
   /** 当前配置（getConfiguration 已回），null 表示尚未加载 */
   configurationData: ConfigurationData | null;
-  /** 保存配置（全局设置视图的保存按钮触发，含 language/contextLength/autoMemoryEnabled/autoMemoryFrequency） */
+  /** 保存配置（全局设置 / 直连设置视图的保存按钮触发，含 language/contextLength/apiKey/baseURL/model/fastModel 等） */
   onSave: (data: ConfigurationData) => void;
   /** 关闭设置页（desktop 返回会话视图 / 标签页关闭） */
   onClose: () => void;
@@ -45,6 +49,12 @@ export interface SettingsPageProps {
   initialNav?: NavKey;
   /** Host 消息桥，供「子代理」「技能」选项卡请求数据 */
   vscode?: { postMessage: (msg: unknown) => void };
+  /** 项目级设置（.wave/settings.json 合并后的 enabledPlugins），「项目设置」视图使用 */
+  projectSettings?: { enabledPlugins: Record<string, boolean> };
+  /** 加载项目设置（触发 host 读取项目 .wave/settings.json） */
+  onLoadProjectSettings?: () => void;
+  /** 切换内置插件开关（写回项目 .wave/settings.json） */
+  onToggleBuiltinPlugin?: (pluginId: string, enabled: boolean) => void;
 }
 
 export type NavKey =
@@ -97,14 +107,9 @@ const NAV_GROUPS: NavGroup[] = [
 
 /** 其余暂未实现的导航项标题与说明 */
 const PLACEHOLDER_VIEWS: Record<
-  Exclude<NavKey, "global" | "personalization">,
+  Exclude<NavKey, "global" | "personalization" | "connection" | "project">,
   { title: string; description: string }
 > = {
-  connection: {
-    title: "直连设置",
-    description: "配置直连模式下的 API 地址与模型参数。",
-  },
-  project: { title: "项目设置", description: "管理当前项目的专属配置。" },
   skills: { title: "技能", description: "管理可复用的技能。" },
   subagents: { title: "子代理", description: "配置用于并行处理任务的子代理。" },
   hooks: { title: "钩子", description: "配置会话生命周期事件的钩子脚本。" },
@@ -131,6 +136,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   saveMessage = null,
   initialNav,
   vscode,
+  projectSettings,
+  onLoadProjectSettings,
+  onToggleBuiltinPlugin,
 }) => {
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav ?? "global");
 
@@ -147,18 +155,31 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const [autoMemoryEnabled, setAutoMemoryEnabled] = useState(true);
   const [autoMemoryFrequency, setAutoMemoryFrequency] = useState(1);
 
+  // 直连设置草稿（API Key / Base URL / Agent Model / Fast Model）
+  const [apiKey, setApiKey] = useState("");
+  const [baseURL, setBaseURL] = useState("");
+  const [model, setModel] = useState("");
+  const [fastModel, setFastModel] = useState("");
+
+  // 项目设置（SDD 开关）：切换中标记，防止重复请求
+  const [pluginToggling, setPluginToggling] = useState(false);
+
   // AGENTS.md 编辑器
   const [activeScope, setActiveScope] = useState<AgentsScope>("user");
   const [userContent, setUserContent] = useState("");
   const [projectContent, setProjectContent] = useState("");
 
-  // 配置数据变化时同步表单草稿（参照 ConfigDialog 的做法）
+  // 配置数据变化时同步表单草稿
   useEffect(() => {
     if (!configurationData) return;
     setLanguage(configurationData.language || "zh-CN");
     setContextLength(configurationData.contextLength ?? 200);
     setAutoMemoryEnabled(configurationData.autoMemoryEnabled ?? true);
     setAutoMemoryFrequency(configurationData.autoMemoryFrequency ?? 1);
+    setApiKey(configurationData.apiKey || "");
+    setBaseURL(configurationData.baseURL || "");
+    setModel(configurationData.model || "");
+    setFastModel(configurationData.fastModel || "");
   }, [configurationData]);
 
   // AGENTS.md 内容回填后同步 textarea 草稿
@@ -189,6 +210,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     onSave({ ...configurationData, language, contextLength });
   };
 
+  const handleSaveConnection = () => {
+    if (!configurationData) return;
+    onSave({ ...configurationData, apiKey, baseURL, model, fastModel });
+  };
+
   const handleSaveMemory = () => {
     if (!configurationData) return;
     onSave({ ...configurationData, autoMemoryEnabled, autoMemoryFrequency });
@@ -201,11 +227,34 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     );
   };
 
+  // 进入「项目设置」视图时加载项目级 enabledPlugins（切换成功后 host 会回发
+  // projectSettings 消息自动刷新）
+  useEffect(() => {
+    if (activeNav === "project" && !projectSettings && onLoadProjectSettings) {
+      onLoadProjectSettings();
+    }
+  }, [activeNav, projectSettings, onLoadProjectSettings]);
+
+  const sddEnabled = projectSettings?.enabledPlugins?.["sdd@builtin"] === true;
+
+  const handleToggleSdd = () => {
+    if (!onToggleBuiltinPlugin || pluginToggling) return;
+    setPluginToggling(true);
+    onToggleBuiltinPlugin("sdd@builtin", !sddEnabled);
+  };
+
+  // 切换结果（projectSettings 消息）到达后解除禁用
+  useEffect(() => {
+    setPluginToggling(false);
+  }, [projectSettings]);
+
   const placeholder =
     activeNav !== "global" &&
     activeNav !== "personalization" &&
     activeNav !== "subagents" &&
-    activeNav !== "skills"
+    activeNav !== "skills" &&
+    activeNav !== "connection" &&
+    activeNav !== "project"
       ? PLACEHOLDER_VIEWS[activeNav]
       : null;
 
@@ -306,6 +355,135 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                   >
                     保存
                   </button>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {activeNav === "connection" && (
+            <div className="settings-view">
+              <header className="settings-page-header">
+                <h1>直连设置</h1>
+                <p>配置直连模式下的 API 地址与模型参数。</p>
+              </header>
+              {saveMessage && (
+                <p className="settings-save-message">{saveMessage}</p>
+              )}
+              <section className="settings-section">
+                <div className="settings-section-heading">
+                  <h2>直连 LLM</h2>
+                  <p>保存后，优先使用此配置，无需登录即可正常使用插件。</p>
+                </div>
+                <div className="settings-card">
+                  <div className="settings-row">
+                    <div className="settings-row-copy">
+                      <h3>API Key</h3>
+                      <p>LLM 服务的访问密钥</p>
+                    </div>
+                    <div className="settings-control">
+                      <input
+                        className="settings-text-input"
+                        type="text"
+                        aria-label="API Key"
+                        placeholder="请输入 API Key"
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="settings-row">
+                    <div className="settings-row-copy">
+                      <h3>Base URL</h3>
+                      <p>LLM 服务的 API 基础地址</p>
+                    </div>
+                    <div className="settings-control">
+                      <input
+                        className="settings-text-input"
+                        type="text"
+                        aria-label="Base URL"
+                        placeholder="请输入 Base URL"
+                        value={baseURL}
+                        onChange={(e) => setBaseURL(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="settings-row">
+                    <div className="settings-row-copy">
+                      <h3>Agent Model</h3>
+                      <p>主代理使用的模型</p>
+                    </div>
+                    <div className="settings-control">
+                      <input
+                        className="settings-text-input"
+                        type="text"
+                        aria-label="Agent Model"
+                        placeholder="请输入 Agent Model"
+                        value={model}
+                        onChange={(e) => setModel(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="settings-row">
+                    <div className="settings-row-copy">
+                      <h3>Fast Model</h3>
+                      <p>用于轻量任务（如目标评估、摘要）的快速模型</p>
+                    </div>
+                    <div className="settings-control">
+                      <input
+                        className="settings-text-input"
+                        type="text"
+                        aria-label="Fast Model"
+                        placeholder="请输入 Fast Model"
+                        value={fastModel}
+                        onChange={(e) => setFastModel(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="settings-actions">
+                  <button
+                    type="button"
+                    className="settings-save-btn"
+                    disabled={!configurationData || saving}
+                    onClick={handleSaveConnection}
+                  >
+                    保存
+                  </button>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {activeNav === "project" && (
+            <div className="settings-view">
+              <header className="settings-page-header">
+                <h1>项目设置</h1>
+                <p>管理当前项目的专属配置。</p>
+              </header>
+              {saveMessage && (
+                <p className="settings-save-message">{saveMessage}</p>
+              )}
+              <section className="settings-section">
+                <div className="settings-section-heading">
+                  <h2>内置插件</h2>
+                </div>
+                <div className="settings-card">
+                  <div className="settings-row">
+                    <div className="settings-row-copy">
+                      <h3>SDD（规格驱动开发）</h3>
+                      <p>自动创建或更新功能规格说明，切换后自动生效</p>
+                    </div>
+                    <label className="settings-switch">
+                      <input
+                        type="checkbox"
+                        aria-label="启用 SDD 插件"
+                        checked={sddEnabled}
+                        disabled={pluginToggling || !projectSettings}
+                        onChange={handleToggleSdd}
+                      />
+                      <span className="settings-switch-slider"></span>
+                    </label>
+                  </div>
                 </div>
               </section>
             </div>

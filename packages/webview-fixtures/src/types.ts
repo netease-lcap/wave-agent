@@ -386,12 +386,6 @@ export interface DesktopTogglePanelMessage extends HostToWebviewMessageBase {
   kind: DesktopPanelKind;
 }
 
-export interface ShowConfigurationMessage extends HostToWebviewMessageBase {
-  command: "showConfiguration";
-  configurationData?: ConfigurationData;
-  error?: unknown;
-}
-
 export interface ShowDialogMessage extends HostToWebviewMessageBase {
   command: "showDialog";
   dialogType: string;
@@ -662,7 +656,6 @@ export type HostToWebviewMessage =
   | DesktopThemeChangeMessage
   | ShowToastMessage
   | DesktopTogglePanelMessage
-  | ShowConfigurationMessage
   | ShowDialogMessage
   | ConfigurationUpdatedMessage
   | StatusResponseMessage
