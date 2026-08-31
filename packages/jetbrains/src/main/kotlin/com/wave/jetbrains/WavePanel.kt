@@ -50,7 +50,6 @@ class WavePanel(private val project: Project) : Disposable {
      */
     val session: WaveSession = WaveSession(project,
         postMessageFn = { command, payload -> postToWebview(command, payload) },
-        tabTitleFn = { title -> WavePanelHolder.getInstance(project).setTabTitle(title) },
     )
     private val handler: MessageHandler = MessageHandler(project, session) { command, payload ->
         postToWebview(command, payload)

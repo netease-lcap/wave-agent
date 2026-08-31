@@ -2,6 +2,7 @@ package com.wave.jetbrains
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.wm.ToolWindowContentUiType
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
@@ -14,6 +15,10 @@ class WaveToolWindowFactory : ToolWindowFactory {
         // header / stripe show the localized product name, matching VSCE.
         toolWindow.title = "Wave 代码智聊"
         toolWindow.stripeTitle = "Wave 代码智聊"
+        // COMBO shows no tab strip for a single content (like Project/Git tool windows), so the
+        // chat panel renders directly without a closable "新对话" tab; TABBED is the default and
+        // would keep the strip visible even with one content.
+        toolWindow.setContentUiType(ToolWindowContentUiType.COMBO, null)
         val holder = WavePanelHolder.getInstance(project)
         holder.toolWindow = toolWindow
         toolWindow.contentManager.addContentManagerListener(object : ContentManagerListener {
