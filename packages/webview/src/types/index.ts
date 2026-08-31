@@ -204,6 +204,12 @@ export interface ChatAppProps {
    * instance that owns the collapse state and threaded through DesktopShell.
    */
   sidebarExpandButton?: React.ReactNode;
+  /**
+   * Desktop split-view: extra actions rendered at the right edge of the chat
+   * header's button row (pane close button). Kept out of the shared header's
+   * own JSX so split-view concerns stay in the desktop layer.
+   */
+  headerActions?: React.ReactNode;
 }
 
 /**
@@ -549,6 +555,8 @@ export interface ChatHeaderProps {
   panelToggle?: PanelToggleProps;
   /** Optional slot at the header's left edge (desktop sidebar expand button). */
   leading?: React.ReactNode;
+  /** Extra actions at the right edge of the button row (desktop pane close). */
+  headerActions?: React.ReactNode;
 }
 
 // Matches wave-agent-sdk's QueuedMessage type

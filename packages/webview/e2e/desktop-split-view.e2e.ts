@@ -59,6 +59,12 @@ test.describe("Desktop split-view panes", () => {
       closeBox!.y + closeBox!.height > toggleBox!.y;
     expect(intersects).toBe(false);
 
+    // The close button must be vertically centered with the header buttons
+    // (44px header, 22px button) — not pinned to the top edge.
+    const closeCenterY = closeBox!.y + closeBox!.height / 2;
+    const toggleCenterY = toggleBox!.y + toggleBox!.height / 2;
+    expect(Math.abs(closeCenterY - toggleCenterY)).toBeLessThanOrEqual(1.5);
+
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-split-view.webp",
