@@ -1088,7 +1088,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             user: message.user ?? null,
             plan: message.plan ?? null,
             apiQuota: message.apiQuota ?? null,
-            update: message.update ?? null,
           });
           break;
         case "desktopTogglePanel":
@@ -1275,7 +1274,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
               user: message.user ?? prev?.user ?? null,
               plan: prev?.plan ?? null,
               apiQuota: prev?.apiQuota ?? null,
-              update: prev?.update ?? null,
             }));
           }
           break;
@@ -1283,13 +1281,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           if (message.success) {
             dispatch({ type: "SET_AUTHENTICATED", payload: false });
             // 登出即清空用量 —— host 随后会推 desktopAccountInfo 全量快照。
-            setAccountInfo((prev) => ({
+            setAccountInfo({
               isAuthenticated: false,
               user: null,
               plan: null,
               apiQuota: null,
-              update: prev?.update ?? null,
-            }));
+            });
           }
           break;
       }
@@ -1468,15 +1465,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     }
   }, [vscode]);
 
-  // 更新状态机动作（desktopUpdateApp = 确认下载，desktopRestartApp = 重启安装）.
-  const handleUpdateApp = useCallback(() => {
-    postToHost({ command: "desktopUpdateApp" });
-  }, [postToHost]);
-
-  const handleRestartApp = useCallback(() => {
-    postToHost({ command: "desktopRestartApp" });
-  }, [postToHost]);
-
+  // 更新提醒由宿主 toast 承载（spec「桌面端自动更新」）：发现新版本自动后台
+  // 下载，下载完成 toast 提供「重启安装」按钮（quitAndInstall）。
   const handleLogout = useCallback(() => {
     vscode.postMessage({ command: "logout" });
   }, [vscode]);
@@ -2815,8 +2805,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             onLogin={handleLogin}
             onLogout={handleLogout}
             account={accountInfo}
-            onUpdateApp={handleUpdateApp}
-            onRestartApp={handleRestartApp}
             sidebarExpandButton={expandBtn}
             collapsed={sidebarCollapsed}
             onCollapsedChange={handleSidebarCollapsedChange}
@@ -2858,8 +2846,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           onLogin={handleLogin}
           onLogout={handleLogout}
           account={accountInfo}
-          onUpdateApp={handleUpdateApp}
-          onRestartApp={handleRestartApp}
           hostLabel={effectiveHost}
           sessionTree={host.sessionTree}
           currentSessionId={state.currentSession?.id}

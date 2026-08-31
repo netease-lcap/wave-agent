@@ -2,14 +2,17 @@
  * AutoUpdaterService — electron-updater wrapper for logged-in (serverUrl)
  * installs. The update feed is the codechat downloads endpoint served in
  * electron-builder metadata format (latest-mac.yml / latest.yml), NOT GitHub
- * Releases. Hosts the update-downloaded / error callbacks so the desktop host
- * can surface them as chat system messages. Download progress stays silent.
+ * Releases. Updates download automatically in the background once an update is
+ * found; the host surfaces 发现新版本 / 下载完成 via in-app toasts (spec
+ * 「桌面端自动更新」场景 3-4). Download progress stays silent.
  */
 
 import { app } from "electron";
 import { autoUpdater, type UpdateInfo } from "electron-updater";
 
 export interface AutoUpdaterCallbacks {
+  /** An update was found and the background download has started. */
+  onUpdateAvailable: (info: UpdateInfo) => void;
   /** The new version finished downloading — the host decides whether to install. */
   onUpdateDownloaded: (info: UpdateInfo) => void;
   /** The check or background download failed — the host degrades to the manual flow. */
@@ -31,19 +34,22 @@ export class AutoUpdaterService {
   private attachListeners(): void {
     if (this.listenersAttached) return;
     this.listenersAttached = true;
+    autoUpdater.on("update-available", (info) =>
+      this.callbacks.onUpdateAvailable(info),
+    );
     autoUpdater.on("update-downloaded", (info) =>
       this.callbacks.onUpdateDownloaded(info),
     );
     autoUpdater.on("error", (error) => this.callbacks.onError(error));
   }
 
-  /** Point the generic provider at the codechat feed and check for updates. */
+  /** Point the generic provider at the codechat feed and check for updates.
+   *  autoDownload=true: finding an update starts the background download right
+   *  away (no user confirmation — the account card no longer offers a 更新
+   *  button), then update-available fires the host's toast. */
   async checkForUpdates(serverUrl: string): Promise<UpdateCheckOutcome> {
     this.attachListeners();
-    // No silent background download: the update flow is user-confirmed (spec
-    // 「账户卡片」场景 5). checkForUpdates only reports availability; the host
-    // calls downloadUpdate() after the user confirms.
-    autoUpdater.autoDownload = false;
+    autoUpdater.autoDownload = true;
     autoUpdater.setFeedURL({ provider: "generic", url: feedUrlFor(serverUrl) });
     try {
       const result = await autoUpdater.checkForUpdates();
@@ -53,11 +59,6 @@ export class AutoUpdaterService {
       console.warn("[AutoUpdater] update check failed:", error);
       return "error";
     }
-  }
-
-  /** Download the available update (the user confirmed). Emits update-downloaded on success. */
-  downloadUpdate(): void {
-    void autoUpdater.downloadUpdate();
   }
 
   quitAndInstall(): void {
