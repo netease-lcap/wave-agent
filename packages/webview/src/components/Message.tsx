@@ -2,6 +2,10 @@ import React from "react";
 import { ContextTag } from "./ContextTag";
 import { parseMentions, toRelativePath } from "../utils/messageUtils";
 import { isLocalhostUrl } from "../utils/isLocalhostUrl";
+import {
+  linkifyPlainText,
+  stripTrailingUrlPunct,
+} from "../utils/linkifyPlainText";
 import { marked } from "marked";
 import { Tooltip } from "./Tooltip";
 
@@ -49,48 +53,9 @@ marked.use({
   },
 });
 
-// 剥离裸 URL 尾部的中文标点。marked 默认 url tokenizer 的 _backpedal 正则只
-// 剔除 ASCII 标点（?!.,:;*_'"~()&），中文标点（。、（ 等）会被百分号编码进
-// href，点击打开错误链接（如 "https://example.com。" → href 带 %E3%80%82）。
-// 标点集合对齐 extractClickableUrl；成对中文括号（如 "（帮助文档）"）整体
-// 剥离，孤立的开括号（如 "（"）也剥掉。
-const stripTrailingCjkPunct = (url: string): string => {
-  const closingPairs: Record<string, string> = {
-    "）": "（",
-    "」": "「",
-    "』": "『",
-    "】": "【",
-  };
-  const plainPunct = "，。、；：！？…";
-  let s = url;
-  for (;;) {
-    const last = s[s.length - 1];
-    if (!last) break;
-    if (plainPunct.includes(last)) {
-      s = s.slice(0, -1);
-      continue;
-    }
-    const open = closingPairs[last];
-    if (open) {
-      const openIdx = s.lastIndexOf(open);
-      if (openIdx >= 0) {
-        s = s.slice(0, openIdx); // 成对中文括号（注释/说明）整体剥离
-        continue;
-      }
-      s = s.slice(0, -1);
-      continue;
-    }
-    if (Object.values(closingPairs).includes(last)) {
-      s = s.slice(0, -1); // 孤立中文开括号
-      continue;
-    }
-    break;
-  }
-  return s;
-};
-
 // 在默认 url tokenizer 之上剥离尾部中文标点；返回 false 时 marked.use 会
 // 回退到默认实现（url tokenizer 被 marked.use 包装，实例共享默认 rules）。
+// ASCII 标点已由默认实现的 _backpedal 剔除，剥离函数对 ASCII 是 no-op。
 const baseUrlTokenizer = new marked.Tokenizer();
 
 marked.use({
@@ -98,7 +63,7 @@ marked.use({
     url(src: string) {
       const token = baseUrlTokenizer.url.call(this, src);
       if (!token) return false;
-      const raw = stripTrailingCjkPunct(token.raw);
+      const raw = stripTrailingUrlPunct(token.raw);
       if (raw === token.raw) return token;
       // href 可能是 raw 加前缀的形式（www. → "http://" + raw）；token.text
       // 是 raw 的转义形式（默认实现 escape(cap[0])），中文标点在转义中
@@ -108,7 +73,7 @@ marked.use({
         : "";
       token.raw = raw;
       token.href = prefix + raw;
-      token.text = stripTrailingCjkPunct(token.text);
+      token.text = stripTrailingUrlPunct(token.text);
       token.tokens = [{ type: "text", raw: token.text, text: token.text }];
       return token;
     },
@@ -410,11 +375,19 @@ export const Message: React.FC<MessageProps> = React.memo(
         if (result) {
           // Show both input and output if result is present (even if running)
           return (
-            <div className="bash-command-unified">
+            <div className="bash-command-unified" onClick={handleContentClick}>
               <div className="bash-command-input">
                 <span className="bash-command">{command}</span>
               </div>
-              <div className="bash-command-output">{result}</div>
+              {/* 输出中的裸 http(s) URL 链接化（见 specs/ui/markdown-links.md），
+                  点击路由复用 handleContentClick：desktop 上 localhost → 预览
+                  面板、其余 → 系统浏览器；IDE 保持原生链接处理。 */}
+              <div
+                className="bash-command-output"
+                dangerouslySetInnerHTML={{
+                  __html: linkifyPlainText(result),
+                }}
+              />
             </div>
           );
         } else {
