@@ -758,7 +758,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                               if (el) paneNodes.current.set(pane.paneId, el);
                               else paneNodes.current.delete(pane.paneId);
                             }}
-                            className={`desktop-pane${pane.paneId === focusedPaneId ? " desktop-pane--focused" : ""}${panes.length > 1 ? " desktop-pane--closable" : ""}`}
+                            className={`desktop-pane${pane.paneId === focusedPaneId ? " desktop-pane--focused" : ""}`}
                             style={paneStyle}
                             onMouseDown={() => handleFocusPane(pane.paneId)}
                             onDragOver={(e) =>
@@ -767,17 +767,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                             onDrop={(e) => handlePaneDrop(e, rowIdx)}
                             data-testid={`desktop-pane-${pane.paneId}`}
                           >
-                            {panes.length > 1 && (
-                              <button
-                                className="desktop-pane-close"
-                                title="关闭分屏"
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onClick={() => handleClosePane(pane.paneId)}
-                                data-testid={`desktop-pane-close-${pane.paneId}`}
-                              >
-                                <span className="codicon codicon-close"></span>
-                              </button>
-                            )}
                             <ChatApp
                               vscode={vscode}
                               host={host}
@@ -786,6 +775,18 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                                 rowIdx === 0 && index === 0
                                   ? sidebarExpandButton
                                   : undefined
+                              }
+                              headerActions={
+                                panes.length > 1 ? (
+                                  <button
+                                    className="desktop-pane-close"
+                                    title="关闭分屏"
+                                    onClick={() => handleClosePane(pane.paneId)}
+                                    data-testid={`desktop-pane-close-${pane.paneId}`}
+                                  >
+                                    <span className="codicon codicon-close"></span>
+                                  </button>
+                                ) : undefined
                               }
                             />
                           </div>

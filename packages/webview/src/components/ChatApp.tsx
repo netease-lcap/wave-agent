@@ -245,6 +245,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   host,
   paneId,
   sidebarExpandButton,
+  headerActions,
 }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const [queueEditWarning, setQueueEditWarning] = useState<string | null>(null);
@@ -2776,6 +2777,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
               }
             : undefined
         }
+        headerActions={headerActions}
       />
       {isDesktop ? (
         <div

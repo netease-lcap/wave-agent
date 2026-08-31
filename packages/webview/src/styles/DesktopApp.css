@@ -1183,32 +1183,27 @@ body.is-panel-resizing webview {
   pointer-events: none;
 }
 
-/* Multi-pane: reserve top-right header space for the overlay close button so
-   it never covers the header's right-most button (panel toggle). */
-.desktop-pane--closable .chat-header {
-  padding-right: 34px;
-}
-
+/* Pane close button lives inside the header's button row (flex, vertically
+   centered like every other header button) — threaded in via ChatApp's
+   headerActions slot. Slightly dimmed: closing a split is a secondary action. */
 .desktop-pane-close {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 6;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background-color: transparent;
+  color: var(--vscode-foreground);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 3px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--vscode-foreground);
-  opacity: 0.6;
-  cursor: pointer;
+  opacity: 0.7;
 }
 
 .desktop-pane-close:hover {
   opacity: 1;
-  background: var(--vscode-list-hoverBackground);
+  background-color: var(--vscode-toolbar-hoverBackground);
 }
 
 /* ---- Conversation-level panel group: message column + side panels ----

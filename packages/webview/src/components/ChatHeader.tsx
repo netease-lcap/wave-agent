@@ -27,6 +27,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   showLoginButton = false,
   panelToggle,
   leading,
+  headerActions,
 }) => {
   const [showSessionList, setShowSessionList] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -109,6 +110,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             </button>
           </Tooltip>
         )}
+        {headerActions}
       </div>
       {showSessionList && (
         <SessionListPopup
