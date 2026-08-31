@@ -1636,20 +1636,17 @@ export class AgentBridge {
           },
           ctx.registeredSessionId,
         );
+      },
+      onLatestTotalTokensChange: (tokens: number) => {
         // Batch 2 压缩上下文 button: push the context usage percentage on
-        // every loading transition (start of a turn carries the previous
-        // turn's usage; end carries the fresh total, so post-compaction
-        // drops are picked up too — spec 场景 5).
-        const agent = ctx.agent;
-        if (agent) {
-          const max = agent.getMaxInputTokens();
-          if (max > 0) {
-            const percent = Math.min(
-              100,
-              Math.round((agent.latestTotalTokens / max) * 100),
-            );
-            this.emit("contextUsage", { percent }, ctx.registeredSessionId);
-          }
+        // every token-count change. The SDK fires this on each finished
+        // request (fresh total) and on session restore (the persisted total),
+        // so the webview button shows real usage without waiting for a turn —
+        // aligned with the CLI, which reads the same callback (spec 场景 5/6).
+        const max = ctx.agent?.getMaxInputTokens() ?? 0;
+        if (max > 0) {
+          const percent = Math.min(100, Math.round((tokens / max) * 100));
+          this.emit("contextUsage", { percent }, ctx.registeredSessionId);
         }
       },
       onCommandRunningChange: (running: boolean) => {
