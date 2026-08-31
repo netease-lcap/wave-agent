@@ -56,6 +56,21 @@ test.describe("Product Spec: /btw side question", () => {
   });
 
   test("should capture the bare /btw usage hint", async ({ webviewPage }) => {
+    const injector = new MessageInjector(webviewPage);
+    // Initialize first — the loading sweep keeps the input area hidden until
+    // setInitialState, and this scenario has no conversation messages to bring
+    // it up.
+    await injector.simulateExtensionMessage("setInitialState", {
+      messages: [],
+      isStreaming: false,
+      sessions: [],
+      configurationData: {
+        baseURL: "https://api.anthropic.com/v1",
+        model: "claude-sonnet-4-20250514",
+        fastModel: "claude-haiku-4-20250514",
+      },
+      permissionMode: "default",
+    });
     // Type bare /btw and send it — shows usage, sends no RPC
     await webviewPage.focus('[data-testid="message-input"]');
     await webviewPage.keyboard.type("/btw");

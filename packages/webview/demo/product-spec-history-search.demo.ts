@@ -6,10 +6,28 @@ import {
 } from "../e2e/utils/screenshot.js";
 
 test.describe("Product Spec: History Search", () => {
+  // Both scenarios operate the input area with no conversation messages, so
+  // they must initialize up front — the loading sweep keeps the input area
+  // hidden until setInitialState (matching the real host flow).
+  async function initialize(injector: MessageInjector) {
+    await injector.simulateExtensionMessage("setInitialState", {
+      messages: [],
+      isStreaming: false,
+      sessions: [],
+      configurationData: {
+        baseURL: "https://api.anthropic.com/v1",
+        model: "claude-sonnet-4-20250514",
+        fastModel: "claude-haiku-4-20250514",
+      },
+      permissionMode: "default",
+    });
+  }
+
   test("should capture history search popup screenshot", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
+    await initialize(injector);
 
     // 1. Focus input
     const messageInput = webviewPage.getByTestId("message-input");
@@ -54,6 +72,9 @@ test.describe("Product Spec: History Search", () => {
   test("should capture plus menu with history prompt entry", async ({
     webviewPage,
   }) => {
+    const injector = new MessageInjector(webviewPage);
+    await initialize(injector);
+
     // Open the "+" (添加) menu in the input toolbar
     await webviewPage.getByRole("button", { name: "添加" }).click();
 
