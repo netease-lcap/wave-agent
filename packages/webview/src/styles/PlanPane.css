@@ -1,6 +1,13 @@
 /* Plan panel (desktop): plan full text beside the conversation. Reuses the
    shared preview-pane frame (drag handle / toolbar) from DesktopApp.css. */
 
+/* The shared .preview-pane-body has no overflow (its iframe-based panels
+   scroll internally); the plan text is a static div, so scroll here or the
+   .preview-pane-inner overflow:hidden clips it. */
+.plan-pane .preview-pane-body {
+  overflow-y: auto;
+}
+
 .plan-pane-markdown {
   padding: 12px 16px;
 }
