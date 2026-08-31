@@ -25,7 +25,9 @@
             serviceImplementation="com.wave.jetbrains.WaveBackendService"/>
         <!-- Chat sessions render as tabs in the side-bar Wave tool window; ExitPlanMode plans
              render in a separate editor-area tab (WavePlanFileEditorProvider serves
-             WavePlanVirtualFile), mirroring VSCE's chat panel + createWebviewPanel plan preview. -->
+             WavePlanVirtualFile), mirroring VSCE's chat panel + createWebviewPanel plan preview.
+             The settings webview likewise renders in an editor-area tab (WaveSettingsFileEditor
+             serves WaveSettingsVirtualFile), mirroring VSCE's settings panel. -->
         <toolWindow
             id="Wave"
             anchor="right"
@@ -34,6 +36,8 @@
             icon="com.wave.jetbrains.icons.WaveIcons.Wave"/>
         <fileEditorProvider implementation="com.wave.jetbrains.editor.WavePlanFileEditorProvider"/>
         <editorTabTitleProvider implementation="com.wave.jetbrains.editor.WavePlanEditorTabTitleProvider"/>
+        <fileEditorProvider implementation="com.wave.jetbrains.editor.WaveSettingsFileEditorProvider"/>
+        <editorTabTitleProvider implementation="com.wave.jetbrains.editor.WaveSettingsEditorTabTitleProvider"/>
         <notificationGroup id="Wave" displayType="BALLOON"/>
         <iconMapper mappingFile="WavePluginIconMappings.json"/>
     </extensions>
@@ -44,6 +48,13 @@
             class="com.wave.jetbrains.actions.OpenWaveToolWindowAction"
             text="Open Wave"
             description="Open the Wave tool window">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+        <action
+            id="com.wave.jetbrains.openWaveSettings"
+            class="com.wave.jetbrains.actions.OpenWaveSettingsAction"
+            text="Wave: 打开设置"
+            description="Open the Wave settings tab in the editor area">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
         <action

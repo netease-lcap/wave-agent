@@ -55,7 +55,7 @@ export function renderChatApp(vscode?: VsCodeApi) {
   >;
   const result = render(<ChatApp vscode={mockVscode} />);
   // Default to authenticated so the message input is enabled and MessageList
-  // (not the unauthenticated WelcomeView) renders for empty-state assertions.
+  // (not the empty-state WelcomeView) renders for empty-state assertions.
   sendHostMessage(fixtures.authStatusResponse());
   const user = userEvent.setup();
   return { ...result, vscode: mockVscode, user };

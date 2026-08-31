@@ -534,9 +534,13 @@ export interface ChatHeaderProps {
   sessionsLoading: boolean;
   onOpenSettings: () => void;
   onOpenEnterpriseConsole: () => void;
+  onOpenHelpDocs: () => void;
   onLogin: () => void;
   onLogout: () => void;
   isAuthenticated: boolean;
+  /** IDE hosts: show a persistent login button next to the more button while
+   *  logged out (desktop has the sidebar account card instead). */
+  showLoginButton?: boolean;
   // Desktop host: session new/list buttons live in DesktopSidebar instead.
   hideSessionButtons?: boolean;
   // Desktop host: the more button + menu live in DesktopSidebar instead.
@@ -609,8 +613,6 @@ export interface ChatState {
     | "status"
     | "tasks"
     | "workflows"
-    | "agents"
-    | "skills"
     | null;
   configurationData?: ConfigurationData;
   configurationLoading: boolean;
@@ -676,6 +678,12 @@ export interface ConfigurationData {
   language?: string;
   /** CodeChat server URL (reported by SDK, used for update checks) */
   serverUrl?: string;
+  /** Per-model input context window in K tokens (e.g. 200 = 200K), 16–1000 */
+  contextLength?: number;
+  /** Whether auto-memory extraction is enabled */
+  autoMemoryEnabled?: boolean;
+  /** Auto-memory extraction turn frequency, 1–100 */
+  autoMemoryFrequency?: number;
 }
 
 // Plugin related types
@@ -746,20 +754,6 @@ export interface BackgroundTaskManagerProps {
   onClose: () => void;
 }
 
-/**
- * Props for the agent definitions dialog component
- */
-export interface AgentsDialogProps {
-  onClose: () => void;
-}
-
-/**
- * Props for the skill metadata dialog component
- */
-export interface SkillsDialogProps {
-  onClose: () => void;
-}
-
 export interface WorkflowManagerProps {
   onCancel: () => void;
 }
@@ -784,15 +778,7 @@ export type ChatAction =
   | {
       type: "SHOW_DIALOG";
       payload: {
-        type:
-          | "config"
-          | "plugin"
-          | "mcp"
-          | "status"
-          | "tasks"
-          | "workflows"
-          | "agents"
-          | "skills";
+        type: "config" | "plugin" | "mcp" | "status" | "tasks" | "workflows";
         data?: ConfigurationData;
         error?: string;
       };

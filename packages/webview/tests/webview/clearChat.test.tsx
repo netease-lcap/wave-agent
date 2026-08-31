@@ -28,7 +28,7 @@ describe("Clear Chat Functionality", () => {
     });
 
     // Verify welcome view is shown (empty + authenticated)
-    expect(screen.getByText("Hi~ 欢迎使用 Wave 代码智聊")).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-wordmark")).toBeInTheDocument();
   });
 
   it("should request clear chat via header button", () => {
@@ -183,7 +183,7 @@ describe("Clear Chat Functionality", () => {
     });
 
     // Verify chat is cleared (welcome view shown) but streaming state is preserved
-    expect(screen.getByText("Hi~ 欢迎使用 Wave 代码智聊")).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-wordmark")).toBeInTheDocument();
 
     // Streaming state should still be active (abort button still present)
     expect(abortBtn).toBeInTheDocument();
@@ -220,7 +220,7 @@ describe("Clear Chat Functionality", () => {
     });
 
     // Verify welcome view is shown
-    expect(screen.getByText("Hi~ 欢迎使用 Wave 代码智聊")).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-wordmark")).toBeInTheDocument();
 
     // Error message should no longer be visible
     expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
@@ -245,7 +245,7 @@ describe("Clear Chat Functionality", () => {
     });
 
     // Verify cleared (welcome view shown)
-    expect(screen.getByText("Hi~ 欢迎使用 Wave 代码智聊")).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-wordmark")).toBeInTheDocument();
 
     // Clear message log
     vscode.postMessage.mockClear();

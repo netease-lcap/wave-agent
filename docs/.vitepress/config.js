@@ -131,8 +131,8 @@ export default {
           text: "6. 多 Agents 与并发",
           collapsed: false,
           items: [
-            { text: "6.1 Agents 对话框", link: "/vsce#agents-dialog" },
-            { text: "6.2 Skills 对话框", link: "/vsce#skills-dialog" },
+            { text: "6.1 设置页 - 子代理", link: "/vsce#agents-dialog" },
+            { text: "6.2 设置页 - 技能", link: "/vsce#skills-dialog" },
             { text: "6.3 并发使用子代理", link: "/vsce#subagent-concurrency" },
             { text: "6.4 多对话并行", link: "/vsce#parallel-conversations" },
             {
@@ -203,7 +203,8 @@ export default {
             { text: "SSH 远程主机", link: "/desktop#ssh-远程主机" },
             { text: "远程会话的面板", link: "/desktop#远程会话的面板" },
             { text: "侧边栏会话树", link: "/desktop#侧边栏会话树" },
-            { text: "侧边栏「更多」菜单", link: "/desktop#侧边栏更多菜单" },
+            { text: "会话状态看板", link: "/desktop#会话状态看板" },
+            { text: "账户卡片", link: "/desktop#账户卡片" },
             { text: "侧边栏收起与展开", link: "/desktop#侧边栏收起与展开" },
             {
               text: "基于分支的 worktree 隔离会话",
@@ -220,6 +221,7 @@ export default {
               text: "localhost 原型预览与元素评论",
               link: "/desktop#localhost-原型预览与元素评论",
             },
+            { text: "设置", link: "/desktop#设置" },
             { text: "核心交互", link: "/desktop#核心交互" },
             { text: "内置 CLI", link: "/desktop#内置-cli" },
             { text: "自动更新", link: "/desktop#自动更新" },

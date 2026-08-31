@@ -2,24 +2,28 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const h = vi.hoisted(() => {
   const listeners: Record<string, Array<(info: unknown) => void>> = {};
-  return {
-    listeners,
+  const autoUpdater = {
+    autoDownload: undefined as boolean | undefined,
     checkForUpdates: vi.fn(),
+    downloadUpdate: vi.fn(),
     setFeedURL: vi.fn(),
     quitAndInstall: vi.fn(),
     on: vi.fn((event: string, cb: (info: unknown) => void) => {
       (listeners[event] ??= []).push(cb);
     }),
   };
+  return {
+    listeners,
+    autoUpdater,
+    checkForUpdates: autoUpdater.checkForUpdates,
+    setFeedURL: autoUpdater.setFeedURL,
+    quitAndInstall: autoUpdater.quitAndInstall,
+    on: autoUpdater.on,
+  };
 });
 
 vi.mock("electron-updater", () => ({
-  autoUpdater: {
-    checkForUpdates: (...args: unknown[]) => h.checkForUpdates(...args),
-    setFeedURL: (...args: unknown[]) => h.setFeedURL(...args),
-    quitAndInstall: (...args: unknown[]) => h.quitAndInstall(...args),
-    on: h.on,
-  },
+  autoUpdater: h.autoUpdater,
 }));
 
 import { AutoUpdaterService, feedUrlFor } from "../src/main/updateAutoUpdater";
@@ -124,6 +128,32 @@ describe("AutoUpdaterService.checkForUpdates", () => {
     expect(await service.checkForUpdates("https://codechat.example.com")).toBe(
       "error",
     );
+  });
+
+  it("disables autoDownload so the download waits for the user's confirmation", async () => {
+    vi.mocked(h.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
+      isUpdateAvailable: true,
+    } as never);
+    const service = new AutoUpdaterService({
+      onUpdateDownloaded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    await service.checkForUpdates("https://codechat.example.com");
+
+    expect(h.autoUpdater.autoDownload).toBe(false);
+  });
+
+  it("downloadUpdate forwards to electron-updater", () => {
+    const service = new AutoUpdaterService({
+      onUpdateDownloaded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    service.downloadUpdate();
+
+    expect(h.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
   });
 });
 

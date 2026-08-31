@@ -35,7 +35,7 @@ describe("Basic Message Flow", () => {
     const { vscode } = renderChatApp();
 
     // Verify initial state - empty + authenticated shows the welcome view
-    expect(screen.getByText("Hi~ 欢迎使用 Wave 代码智聊")).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-wordmark")).toBeInTheDocument();
 
     // Clear message log
     vscode.postMessage.mockClear();

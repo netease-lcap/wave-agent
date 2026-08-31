@@ -245,6 +245,63 @@
   border-color: var(--vscode-focusBorder);
 }
 
+/* Compress-context button — ring progress glyph + percentage number, matching
+   the designer's compact indicator. The full description lives in
+   aria-label/title. Sits between the spacer and the permission selector. */
+.compress-context-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  padding: 4px 6px;
+  outline: none;
+  font-family: inherit;
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.compress-context-ring {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.compress-context-ring-track {
+  fill: none;
+  stroke: var(--vscode-descriptionForeground);
+  stroke-opacity: 0.4;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+
+.compress-context-ring-fill {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+
+.compress-context-pct {
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.compress-context-button:hover,
+.compress-context-button:focus {
+  background-color: var(--vscode-toolbar-hoverBackground);
+  border-color: var(--vscode-focusBorder);
+}
+
 .permission-mode-select.mode-default {
   color: var(--vscode-testing-iconPassed, #73c991);
 }

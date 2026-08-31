@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -25,6 +26,7 @@ interface AgentCallbacks {
     fun onCompactionStateChange(isCompacting: Boolean) {}
     fun onCompactionContentUpdate(content: String) {}
     fun onLoadingChange(loading: Boolean) {}
+    fun onContextUsage(percent: Double) {}
     fun onCommandRunningChange(running: Boolean) {}
     fun onQueuedMessagesChange(messages: JsonElement?) {}
     fun onTasksChange(tasks: JsonElement?) {}
@@ -92,6 +94,9 @@ class StdioAgent(
                 o?.get("latestTotalTokens")?.jsonPrimitive?.intOrNull?.let { latestTotalTokens = it }
                 callbacks.onLoadingChange(o?.get("loading")?.jsonPrimitive?.content?.toBoolean() ?: false)
             }
+            "contextUsage" -> callbacks.onContextUsage(
+                params?.jsonObject?.get("percent")?.jsonPrimitive?.doubleOrNull ?: 0.0
+            )
             "commandRunningChange" -> callbacks.onCommandRunningChange(
                 params?.jsonObject?.get("running")?.jsonPrimitive?.content?.toBoolean() ?: false
             )
@@ -389,6 +394,19 @@ class StdioAgent(
 
     suspend fun getAuthStatus(): JsonElement =
         client.request("getAuthStatus") ?: JsonObject(emptyMap())
+
+    suspend fun getAgentsContent(scope: String, workdir: String? = null): JsonElement =
+        client.request("getAgentsContent", buildJsonObject {
+            put("scope", scope)
+            if (workdir != null) put("workdir", workdir)
+        }) ?: JsonObject(emptyMap())
+
+    suspend fun setAgentsContent(scope: String, content: String, workdir: String? = null): JsonElement =
+        client.request("setAgentsContent", buildJsonObject {
+            put("scope", scope)
+            put("content", content)
+            if (workdir != null) put("workdir", workdir)
+        }) ?: JsonObject(emptyMap())
 
     suspend fun login(): JsonElement =
         client.request("login") ?: JsonObject(emptyMap())

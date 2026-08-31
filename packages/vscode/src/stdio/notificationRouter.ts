@@ -30,6 +30,7 @@ const ALL_NOTIFICATION_METHODS = [
   "toolBlockUpdated",
   "errorBlockAdded",
   "loadingChange",
+  "contextUsage",
   "commandRunningChange",
   "queuedMessagesChange",
   "tasksChange",

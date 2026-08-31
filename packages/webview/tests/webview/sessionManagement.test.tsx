@@ -298,7 +298,7 @@ describe("Session Management", () => {
 
     // VERIFY EXPECTED BEHAVIOR:
     // - Chat should be cleared (welcome view shown, no messages container)
-    expect(screen.getByText("Hi~ 欢迎使用 Wave 代码智聊")).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-wordmark")).toBeInTheDocument();
 
     // - Header title should show the NEW session, not the original
     expect(screen.getByTestId("chat-header")).toHaveTextContent(

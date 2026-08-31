@@ -350,6 +350,10 @@ class WaveSession(
         postMessage(if (loading) "startStreaming" else "endStreaming", JsonObject(emptyMap()))
     }
 
+    override fun onContextUsage(percent: Double) {
+        postMessage("contextUsage", buildJsonObject { put("percent", percent) })
+    }
+
     override fun onCommandRunningChange(running: Boolean) {
         isCommandRunning = running
         postMessage("updateCommandRunning", buildJsonObject { put("running", running) })

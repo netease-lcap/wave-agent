@@ -1,14 +1,19 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import React from "react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   renderChatApp,
+  render,
   screen,
-  waitFor,
   fireEvent,
   act,
   sendHostMessage,
   fixtures,
+  createMockVscode,
 } from "./test-utils";
+import { ChatApp } from "../../src/components/ChatApp";
+import SettingsPage from "../../src/components/SettingsPage";
 import type { SubagentConfiguration } from "wave-agent-sdk/dist/types/index.js";
+import type { VsCodeApi } from "../../src/types";
 
 const builtinAgent: SubagentConfiguration = {
   name: "explore",
@@ -42,7 +47,7 @@ const userAgent: SubagentConfiguration = {
   filePath: "~/.wave/agents/code-review.md",
 };
 
-async function openAgentsDialog() {
+async function openAgentsCommand() {
   const { vscode } = renderChatApp();
   const input = screen.getByTestId("message-input");
   input.focus();
@@ -60,27 +65,104 @@ async function openAgentsDialog() {
   return { vscode };
 }
 
-describe("AgentsDialog", () => {
+function renderSettingsPage(vscode?: { postMessage: (msg: unknown) => void }) {
+  const mockVscode =
+    vscode ||
+    (createMockVscode() as unknown as { postMessage: (msg: unknown) => void });
+  render(
+    <SettingsPage
+      configurationData={null}
+      onSave={() => {}}
+      onClose={() => {}}
+      userAgentsContent={null}
+      projectAgentsContent={null}
+      onLoadAgentsContent={() => {}}
+      onSaveAgentsContent={() => {}}
+      initialNav="subagents"
+      vscode={mockVscode}
+    />,
+  );
+  return { vscode: mockVscode };
+}
+
+describe("/agents 斜杠命令 → 设置页「子代理」选项卡", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  it("IDE 模式（VSCE/JB）发送 openSettings + nav=subagents，不再弹窗", async () => {
+    const { vscode } = await openAgentsCommand();
 
-  it("opens via /agents and requests agent definitions from the host", async () => {
-    const { vscode } = await openAgentsDialog();
-
-    expect(await screen.findByTestId("agents-dialog")).toBeInTheDocument();
-    const getConfigCall = vscode.postMessage.mock.calls.find(
-      (c) => c[0]?.command === "getSubagentConfigurations",
+    const call = vscode.postMessage.mock.calls.find(
+      (c) => c[0]?.command === "openSettings",
     );
-    expect(getConfigCall).toBeDefined();
+    expect(call).toBeDefined();
+    expect(call?.[0]?.nav).toBe("subagents");
+    // 弹窗已删除：不渲染 agents-dialog，也不发旧的请求命令（数据由设置页视图请求）
+    expect(screen.queryByTestId("agents-dialog")).not.toBeInTheDocument();
   });
 
-  it("groups agents by scope (内置 / 用户 / 项目 / 插件) with name · model · description rows", async () => {
-    await openAgentsDialog();
+  it("desktop 模式打开设置页并选中「子代理」选项卡，视图请求 agent 定义", async () => {
+    const mockVscode = createMockVscode();
+    const host = {
+      type: "desktop",
+      host: "local",
+      hosts: ["local"],
+      recentWorkdirs: [],
+      workdir: "/work/a",
+      sessionTree: [],
+      panes: [],
+      focusedPaneId: undefined,
+      onSelectWorkdir: () => {},
+      onSelectRecentWorkdir: () => {},
+      onRemoveRecentWorkdir: () => {},
+      onSelectHost: () => {},
+      onAddHost: () => {},
+      onSelectRemotePath: () => {},
+      onListRemoteDir: () => {},
+      onSelectSession: () => {},
+      onDeleteSession: () => {},
+      onOpenPane: () => {},
+    } as unknown as React.ComponentProps<typeof ChatApp>["host"];
+    render(<ChatApp vscode={mockVscode as unknown as VsCodeApi} host={host} />);
+    sendHostMessage(fixtures.authStatusResponse());
+
+    const input = screen.getByTestId("message-input");
+    input.focus();
+    await act(async () => {
+      input.textContent = "/agents";
+      const range = document.createRange();
+      range.selectNodeContents(input);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      fireEvent.input(input, { data: "/agents", inputType: "insertText" });
+    });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // 设置页打开且「子代理」选项卡激活（nav header + 导航项 is-active）
+    expect(
+      await screen.findByText("配置用于并行处理任务的子代理。"),
+    ).toBeInTheDocument();
+    expect(
+      mockVscode.postMessage.mock.calls.find(
+        (c) => c[0]?.command === "getSubagentConfigurations",
+      ),
+    ).toBeDefined();
+  });
+});
+
+describe("SettingsPage 子代理选项卡视图（内容自 AgentsDialog 迁移）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("请求 agent 定义并按来源分组展示（内置 / 用户 / 插件）", async () => {
+    const { vscode } = renderSettingsPage();
+
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      command: "getSubagentConfigurations",
+    });
 
     sendHostMessage(
       fixtures.subagentConfigurationsResponse([
@@ -106,16 +188,13 @@ describe("AgentsDialog", () => {
   });
 
   it("shows an empty state when no agents are configured", async () => {
-    await openAgentsDialog();
-
+    renderSettingsPage();
     sendHostMessage(fixtures.subagentConfigurationsResponse([]));
-
     expect(await screen.findByText("暂无可用 agents")).toBeInTheDocument();
   });
 
   it("enters detail view on click and shows full configuration", async () => {
-    await openAgentsDialog();
-
+    renderSettingsPage();
     sendHostMessage(fixtures.subagentConfigurationsResponse([builtinAgent]));
 
     const row = await screen.findByText("explore");
@@ -151,52 +230,12 @@ describe("AgentsDialog", () => {
       ...userAgent,
       model: undefined,
     };
-    await openAgentsDialog();
-
+    renderSettingsPage();
     sendHostMessage(fixtures.subagentConfigurationsResponse([noModelAgent]));
 
     await act(async () => {
       fireEvent.click(await screen.findByText("code-review"));
     });
     expect(screen.getByText("默认（未显式配置）")).toBeInTheDocument();
-  });
-
-  it("closes via Esc, and Esc in detail returns to the list first", async () => {
-    await openAgentsDialog();
-    sendHostMessage(fixtures.subagentConfigurationsResponse([builtinAgent]));
-
-    await act(async () => {
-      fireEvent.click(await screen.findByText("explore"));
-    });
-    expect(screen.getByText("系统提示词：")).toBeInTheDocument();
-
-    // Esc in detail → back to list
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.getByText("内置 agents")).toBeInTheDocument();
-    expect(screen.queryByText("系统提示词：")).not.toBeInTheDocument();
-
-    // Esc in list → closes the dialog
-    fireEvent.keyDown(document, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByTestId("agents-dialog")).not.toBeInTheDocument();
-    });
-  });
-
-  it("closes when clicking outside the dialog", async () => {
-    vi.useFakeTimers();
-    try {
-      await openAgentsDialog();
-      sendHostMessage(fixtures.subagentConfigurationsResponse([builtinAgent]));
-
-      // Let the deferred mousedown listener register, then click the overlay (outside the dialog)
-      vi.advanceTimersByTime(0);
-      const overlay = document.querySelector(".configuration-dialog-overlay");
-      expect(overlay).not.toBeNull();
-      fireEvent.mouseDown(overlay as HTMLElement);
-
-      expect(screen.queryByTestId("agents-dialog")).not.toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });

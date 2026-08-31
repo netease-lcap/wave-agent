@@ -22,6 +22,7 @@ export interface ChatSessionCallbacks {
   onWorkflowRunsChange?: (runs: SerializableWorkflowRun[]) => void;
   onSessionIdChange: (sessionId: string) => void;
   onStreamingChange: (isStreaming: boolean) => void;
+  onContextUsage?: (percent: number) => void;
   onCompactionStateChange?: (isCompacting: boolean) => void;
   onCompactionContentUpdate?: (content: string) => void;
   onQueueChange: (queue: QueuedMessage[]) => void;
@@ -181,6 +182,9 @@ export class ChatSession {
         onLoadingChange: (loading: boolean) => {
           this.isStreaming = loading;
           this.callbacks.onStreamingChange(loading);
+        },
+        onContextUsage: (percent: number) => {
+          this.callbacks.onContextUsage?.(percent);
         },
         onCommandRunningChange: (running: boolean) => {
           this.isCommandRunning = running;

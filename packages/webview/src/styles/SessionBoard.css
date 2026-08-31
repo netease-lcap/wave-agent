@@ -1,0 +1,174 @@
+/* Session status board (desktop-only): three columns of session cards
+   (等待中 / 运行中 / 已完成) with a project filter, replacing the chat
+   pane while open. Colors reuse the message timeline status dots and the
+   sidebar list conventions — all through --vscode-* variables. */
+
+.session-board {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  background: var(--vscode-editor-background, var(--vscode-panel-background));
+  color: var(--vscode-foreground);
+  overflow: hidden;
+}
+
+/* ---- Header ---- */
+
+.session-board-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  flex-shrink: 0;
+}
+
+.session-board-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.session-board-back:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.session-board-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.session-board-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.session-board-filter {
+  padding: 2px 6px;
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+  border-radius: 4px;
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  font-size: 12px;
+  max-width: 180px;
+  cursor: pointer;
+}
+
+/* ---- Columns ---- */
+
+.session-board-columns {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.session-board-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  border-radius: 6px;
+  background: var(--vscode-sideBar-background, var(--vscode-panel-background));
+}
+
+.session-board-column-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  flex-shrink: 0;
+}
+
+.session-board-column-dot {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.session-board-column-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.session-board-column-count {
+  font-size: 11px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  border-radius: 9px;
+  padding: 0 6px;
+  line-height: 15px;
+  min-width: 15px;
+  text-align: center;
+}
+
+.session-board-column-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.session-board-empty {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  text-align: center;
+  padding: 18px 0;
+}
+
+/* ---- Session cards ---- */
+
+.session-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.session-card:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.session-card:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.session-card-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-card-project {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

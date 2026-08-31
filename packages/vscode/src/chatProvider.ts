@@ -100,6 +100,19 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           });
         }
       },
+      onSettingsMessage: async (message) => {
+        // Settings tab messages hit the shared services only; gate on init so
+        // configService/utilityClient exist before dispatch.
+        await this.initPromise.catch(() => {});
+        if (!this.messageHandler) {
+          console.error(
+            "[Wave] Shared client not initialized; dropping settings message:",
+            message,
+          );
+          return;
+        }
+        await this.messageHandler.handleSettingsMessage(message);
+      },
     });
 
     this.sidebarSession = this.createChatSession("sidebar");
@@ -236,6 +249,10 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           },
           getVersion: () => this.context.extension.packageJSON?.version || "",
           openPlanPreview: (key, content) => this.openPlanPreview(key, content),
+          openSettings: () => this.openSettings(),
+          postSettingsMessage: (message) =>
+            this.webviewManager.postSettingsMessage(message),
+          closeSettings: () => this.webviewManager.disposeSettingsPanel(),
         },
       );
     } catch (err) {
@@ -306,6 +323,13 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       onStreamingChange: (isStreaming) => {
         this.webviewManager.postMessage(
           { command: isStreaming ? "startStreaming" : "endStreaming" },
+          viewType,
+          windowId,
+        );
+      },
+      onContextUsage: (percent) => {
+        this.webviewManager.postMessage(
+          { command: "contextUsage", percent },
           viewType,
           windowId,
         );
@@ -743,6 +767,39 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   private openPlanPreview(key: string, content: string) {
     this.webviewManager.getOrCreatePlanPanel(key);
     this.webviewManager.postPlanContent(key, content);
+  }
+
+  /**
+   * Opens (or focuses) the editor-area settings tab (wave.openSettings command
+   * + the chat webview's "openSettings" message; spec 场景 10). The settings
+   * panel is independent of any chat session — it serves config/AGENTS.md via
+   * the shared configService/utilityClient (messageHandler.handleSettingsMessage).
+   * The project workdir is pushed on open so the 个性化 view's project-scope
+   * AGENTS.md editor knows which project it targets (settings-preview-entry
+   * reads the settingsState message). nav（"subagents" | "skills"）随
+   * settingsState 下发，/agents、/skills 斜杠命令据此选中对应选项卡。
+   */
+  public async openSettings(nav?: string) {
+    const panel = this.webviewManager.getOrCreateSettingsPanel();
+    panel.reveal(vscode.ViewColumn.Active);
+    this.webviewManager.postSettingsMessage({
+      command: "settingsState",
+      workdir: this.getSettingsWorkdir(),
+      ...(nav ? { nav } : {}),
+    });
+  }
+
+  private getSettingsWorkdir(): string | undefined {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (folder) {
+      return folder.uri.fsPath;
+    }
+    // No workspace folder (single-file window): fall back to the sidebar
+    // session root so project AGENTS.md edits still target a real project.
+    return (
+      this.sidebarSession.agent?.sessionCwd ||
+      this.sidebarSession.agent?.workingDirectory
+    );
   }
 
   /**

@@ -1,13 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import React from "react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   renderChatApp,
+  render,
   screen,
-  waitFor,
   fireEvent,
   act,
   sendHostMessage,
   fixtures,
+  createMockVscode,
 } from "./test-utils";
+import SettingsPage from "../../src/components/SettingsPage";
 import type { SkillMetadata } from "wave-agent-sdk/dist/types/index.js";
 
 const builtinSkill: SkillMetadata = {
@@ -38,7 +41,7 @@ const userSkill: SkillMetadata = {
   userInvocable: true,
 };
 
-async function openSkillsDialog() {
+async function openSkillsCommand() {
   const { vscode } = renderChatApp();
   const input = screen.getByTestId("message-input");
   input.focus();
@@ -56,27 +59,54 @@ async function openSkillsDialog() {
   return { vscode };
 }
 
-describe("SkillsDialog", () => {
+function renderSettingsPage(vscode?: { postMessage: (msg: unknown) => void }) {
+  const mockVscode =
+    vscode ||
+    (createMockVscode() as unknown as { postMessage: (msg: unknown) => void });
+  render(
+    <SettingsPage
+      configurationData={null}
+      onSave={() => {}}
+      onClose={() => {}}
+      userAgentsContent={null}
+      projectAgentsContent={null}
+      onLoadAgentsContent={() => {}}
+      onSaveAgentsContent={() => {}}
+      initialNav="skills"
+      vscode={mockVscode}
+    />,
+  );
+  return { vscode: mockVscode };
+}
+
+describe("/skills 斜杠命令 → 设置页「技能」选项卡", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  it("IDE 模式（VSCE/JB）发送 openSettings + nav=skills，不再弹窗", async () => {
+    const { vscode } = await openSkillsCommand();
 
-  it("opens via /skills and requests skill metadata from the host", async () => {
-    const { vscode } = await openSkillsDialog();
-
-    expect(await screen.findByTestId("skills-dialog")).toBeInTheDocument();
-    const getSkillsCall = vscode.postMessage.mock.calls.find(
-      (c) => c[0]?.command === "getSkillMetadata",
+    const call = vscode.postMessage.mock.calls.find(
+      (c) => c[0]?.command === "openSettings",
     );
-    expect(getSkillsCall).toBeDefined();
+    expect(call).toBeDefined();
+    expect(call?.[0]?.nav).toBe("skills");
+    expect(screen.queryByTestId("skills-dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("SettingsPage 技能选项卡视图（内容自 SkillsDialog 迁移）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it("groups skills by scope (内置 / 用户 / 项目 / 插件) with name · pluginName · description rows", async () => {
-    await openSkillsDialog();
+  it("请求技能元数据并按来源分组展示（内置 / 用户 / 插件）", async () => {
+    const { vscode } = renderSettingsPage();
+
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      command: "getSkillMetadata",
+    });
 
     sendHostMessage(
       fixtures.skillMetadataResponse([builtinSkill, pluginSkill, userSkill]),
@@ -97,16 +127,13 @@ describe("SkillsDialog", () => {
   });
 
   it("shows an empty state when no skills are configured", async () => {
-    await openSkillsDialog();
-
+    renderSettingsPage();
     sendHostMessage(fixtures.skillMetadataResponse([]));
-
     expect(await screen.findByText("暂无可用技能")).toBeInTheDocument();
   });
 
   it("enters detail view on click and shows full metadata", async () => {
-    await openSkillsDialog();
-
+    renderSettingsPage();
     sendHostMessage(fixtures.skillMetadataResponse([userSkill]));
 
     const row = await screen.findByText("my-skill");
@@ -140,8 +167,7 @@ describe("SkillsDialog", () => {
       userInvocable: false,
       disableModelInvocation: true,
     };
-    await openSkillsDialog();
-
+    renderSettingsPage();
     sendHostMessage(fixtures.skillMetadataResponse([restrictedSkill]));
 
     await act(async () => {
@@ -150,44 +176,5 @@ describe("SkillsDialog", () => {
     expect(
       screen.getByText("不可通过 /命令 调用，模型自动调用已禁用"),
     ).toBeInTheDocument();
-  });
-
-  it("closes via Esc, and Esc in detail returns to the list first", async () => {
-    await openSkillsDialog();
-    sendHostMessage(fixtures.skillMetadataResponse([builtinSkill]));
-
-    await act(async () => {
-      fireEvent.click(await screen.findByText("deep-research"));
-    });
-    expect(screen.getByText("路径：")).toBeInTheDocument();
-
-    // Esc in detail → back to list
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.getByText("内置 skills")).toBeInTheDocument();
-    expect(screen.queryByText("路径：")).not.toBeInTheDocument();
-
-    // Esc in list → closes the dialog
-    fireEvent.keyDown(document, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByTestId("skills-dialog")).not.toBeInTheDocument();
-    });
-  });
-
-  it("closes when clicking outside the dialog", async () => {
-    vi.useFakeTimers();
-    try {
-      await openSkillsDialog();
-      sendHostMessage(fixtures.skillMetadataResponse([builtinSkill]));
-
-      // Let the deferred mousedown listener register, then click the overlay (outside the dialog)
-      vi.advanceTimersByTime(0);
-      const overlay = document.querySelector(".configuration-dialog-overlay");
-      expect(overlay).not.toBeNull();
-      fireEvent.mouseDown(overlay as HTMLElement);
-
-      expect(screen.queryByTestId("skills-dialog")).not.toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });

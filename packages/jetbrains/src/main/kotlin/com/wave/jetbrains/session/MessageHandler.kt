@@ -130,6 +130,9 @@ class MessageHandler(
                     fastModel = data["fastModel"]?.jsonPrimitive?.content ?: ""
                     language = data["language"]?.jsonPrimitive?.content ?: "Chinese"
                     serverUrl = data["serverUrl"]?.jsonPrimitive?.content ?: this.serverUrl
+                    contextLength = data["contextLength"]?.jsonPrimitive?.content?.toIntOrNull() ?: this.contextLength
+                    autoMemoryEnabled = data["autoMemoryEnabled"]?.jsonPrimitive?.content?.toBoolean() ?: this.autoMemoryEnabled
+                    autoMemoryFrequency = data["autoMemoryFrequency"]?.jsonPrimitive?.content?.toIntOrNull() ?: this.autoMemoryFrequency
                 }
                 WavePluginService.getInstance().saveConfiguration(config)
                 reloadAgentConfig()
@@ -137,6 +140,14 @@ class MessageHandler(
                 postMessage("focusInput", JsonObject(emptyMap()))
                 postMessage("scrollToBottom", JsonObject(emptyMap()))
             }
+            // Settings tab (editor-area webview): open/focus it (spec 场景 10). Sent by the chat
+            // webview's handleOpenSettings IDE branch (ChatApp.tsx) and by the settings tab's own
+            // webview to re-focus; mirrors VSCE messageHandler.ts:139-141 → context.openSettings().
+            // nav（"subagents" | "skills"）由 /agents、/skills 斜杠命令携带，随 settingsState 下发。
+            "openSettings" -> WavePanelHolder.getInstance(project)
+                .openSettings(msg["nav"]?.jsonPrimitive?.contentOrNull)
+            // Settings tab webview close button; mirrors VSCE handleSettingsMessage → closeSettings.
+            "closeSettings" -> WavePanelHolder.getInstance(project).closeSettings()
             "updateInputContent" -> {
                 session.inputContent = msg["content"]?.jsonPrimitive?.content ?: ""
             }
@@ -441,6 +452,54 @@ class MessageHandler(
                 }
             }
 
+            // ── AGENTS.md (memory files) ───────────────────────────────
+            // VSCE messageHandler.ts → agentsContentResponse { scope, content }
+            "getAgentsContent" -> {
+                val scope = msg["scope"]?.jsonPrimitive?.content ?: return
+                val workdir = msg["workdir"]?.jsonPrimitive?.content
+                val content = try {
+                    session.agent?.getAgentsContent(scope, workdir)?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+                } catch (e: StdioClientException) {
+                    LOG.warn("getAgentsContent failed: ${e.message}")
+                    ""
+                }
+                postMessage("agentsContentResponse", buildJsonObject {
+                    put("scope", scope)
+                    put("content", content)
+                })
+            }
+            // VSCE messageHandler.ts → agentsContentSaved { scope, ok }
+            "setAgentsContent" -> {
+                val scope = msg["scope"]?.jsonPrimitive?.content ?: return
+                val content = msg["content"]?.jsonPrimitive?.content ?: ""
+                val workdir = msg["workdir"]?.jsonPrimitive?.content
+                val agent = session.agent
+                if (agent == null) {
+                    // No live agent (e.g. settings tab opened standalone without a chat session):
+                    // report an honest failure instead of a false-positive ok=true no-op save.
+                    postMessage("agentsContentSaved", buildJsonObject {
+                        put("scope", scope)
+                        put("ok", false)
+                        put("error", "智能体未初始化")
+                    })
+                    return
+                }
+                try {
+                    agent.setAgentsContent(scope, content, workdir)
+                    postMessage("agentsContentSaved", buildJsonObject {
+                        put("scope", scope)
+                        put("ok", true)
+                    })
+                } catch (e: StdioClientException) {
+                    LOG.warn("setAgentsContent failed: ${e.message}")
+                    postMessage("agentsContentSaved", buildJsonObject {
+                        put("scope", scope)
+                        put("ok", false)
+                        put("error", e.message ?: "保存失败")
+                    })
+                }
+            }
+
             // ── Status ─────────────────────────────────────────────────
             // VSCE :152/:713 → statusResponse { version, sessionId, workdir, configurationData }
             "getStatus" -> {
@@ -456,6 +515,9 @@ class MessageHandler(
                         put("model", config.model)
                         put("fastModel", config.fastModel)
                         put("language", config.language)
+                        config.contextLength?.let { put("contextLength", it) }
+                        config.autoMemoryEnabled?.let { put("autoMemoryEnabled", it) }
+                        config.autoMemoryFrequency?.let { put("autoMemoryFrequency", it) }
                     })
                 })
             }
@@ -723,6 +785,9 @@ class MessageHandler(
                 put("fastModel", config.fastModel)
                 put("language", config.language)
                 put("serverUrl", config.serverUrl)
+                config.contextLength?.let { put("contextLength", it) }
+                config.autoMemoryEnabled?.let { put("autoMemoryEnabled", it) }
+                config.autoMemoryFrequency?.let { put("autoMemoryFrequency", it) }
             })
         })
     }
@@ -800,6 +865,9 @@ class MessageHandler(
                 put("fastModel", config.fastModel)
                 put("language", config.language)
                 put("serverUrl", config.serverUrl)
+                config.contextLength?.let { put("contextLength", it) }
+                config.autoMemoryEnabled?.let { put("autoMemoryEnabled", it) }
+                config.autoMemoryFrequency?.let { put("autoMemoryFrequency", it) }
             })
             put("permissionMode", session.permissionMode ?: "default")
             put("queuedMessages", session.messageQueue ?: JsonArray(emptyList()))

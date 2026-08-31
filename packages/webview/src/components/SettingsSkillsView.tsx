@@ -1,13 +1,15 @@
 /**
- * SkillsDialog - skill metadata dialog
+ * SettingsSkillsView - 设置页「技能」选项卡
  *
- * Opened via the /skills slash command. Shows the current session's visible
- * skills grouped by scope, with a click-to-detail view mirroring the CLI
- * SkillsManager.
+ * 由 /skills 斜杠命令（或手动点击设置页「技能」导航）打开：展示当前
+ * 会话可见的技能，按来源分组，点击进入详情视图。内容自弹窗 SkillsDialog
+ * 迁移而来（2026-08-29 用户拍板：/agents、/skills 不再弹窗，改为唤起设置页
+ * 并选中对应选项卡）；去掉 overlay/关闭逻辑，数据仍通过 getSkillMetadata
+ * RPC 由 host 下发。
  */
 
-import React, { useState, useEffect, useRef } from "react";
-import { SkillsDialogProps, SkillMetadata } from "../types";
+import React, { useState, useEffect } from "react";
+import { SkillMetadata } from "../types";
 import "../styles/ConfigurationDialog.css";
 
 const SCOPE_ORDER = ["builtin", "user", "project", "plugin"] as const;
@@ -31,17 +33,17 @@ function getSkillScope(skill: SkillMetadata): string {
   return skill.type;
 }
 
-const SkillsDialog: React.FC<
-  SkillsDialogProps & {
-    vscode: { postMessage: (msg: unknown) => void };
-  }
-> = ({ onClose, vscode }) => {
+export interface SettingsSkillsViewProps {
+  /** Host 消息桥（ChatApp desktop 分支 / settings-preview-entry 传入） */
+  vscode?: { postMessage: (msg: unknown) => void };
+}
+
+const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({ vscode }) => {
   const [skills, setSkills] = useState<SkillMetadata[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedName, setSelectedName] = useState<string | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Fetch skill metadata on mount
+  // Fetch skill metadata on mount (fresh each time the tab opens)
   useEffect(() => {
     vscode?.postMessage({ command: "getSkillMetadata" });
   }, [vscode]);
@@ -66,46 +68,6 @@ const SkillsDialog: React.FC<
     skills: skills.filter((s) => getSkillScope(s) === scope),
   })).filter((group) => group.skills.length > 0);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dialogRef.current &&
-        !dialogRef.current.contains(event.target as Node)
-      ) {
-        onClose();
-      }
-    };
-
-    // Escape closes only the dialog. A capture-phase listener with
-    // stopPropagation runs before React's synthetic onKeyDown (attached at the
-    // root container), so the keypress never reaches MessageInput's
-    // onAbortMessage and the in-flight agent loop keeps running.
-    const handleEscapeKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        if (selectedName) {
-          setSelectedName(null);
-        } else {
-          onClose();
-        }
-      }
-    };
-
-    // Defer registration to the next tick so the click that opened this dialog
-    // (still bubbling to document) doesn't immediately trigger the outside-close.
-    const timer = setTimeout(() => {
-      document.addEventListener("mousedown", handleClickOutside);
-    }, 0);
-    document.addEventListener("keydown", handleEscapeKey, true);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEscapeKey, true);
-    };
-  }, [onClose, selectedName]);
-
   const invocationLabel = (skill: SkillMetadata): string => {
     const restrictions: string[] = [];
     if (skill.userInvocable === false) {
@@ -120,18 +82,13 @@ const SkillsDialog: React.FC<
   };
 
   return (
-    <div className="configuration-dialog-overlay">
-      <div
-        ref={dialogRef}
-        className="configuration-dialog"
-        data-testid="skills-dialog"
-        style={{ maxWidth: "760px" }}
-      >
-        <div className="configuration-dialog-header">
-          <h3>Skills</h3>
-        </div>
-
-        <div className="mcp-container">
+    <div className="settings-view">
+      <header className="settings-page-header">
+        <h1>技能</h1>
+        <p>管理可复用的技能。</p>
+      </header>
+      <section className="settings-section">
+        <div className="settings-card">
           {loading ? (
             <div className="empty-state">
               <p>加载中...</p>
@@ -274,28 +231,21 @@ const SkillsDialog: React.FC<
             </div>
           )}
 
-          <div className="configuration-actions">
-            {selectedSkill && (
+          {selectedSkill && (
+            <div className="settings-actions">
               <button
                 type="button"
                 onClick={() => setSelectedName(null)}
-                className="configuration-cancel-btn"
+                className="settings-save-btn"
               >
                 返回列表
               </button>
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="configuration-cancel-btn"
-            >
-              关闭
-            </button>
-          </div>
+            </div>
+          )}
         </div>
-      </div>
+      </section>
     </div>
   );
 };
 
-export default SkillsDialog;
+export default SettingsSkillsView;

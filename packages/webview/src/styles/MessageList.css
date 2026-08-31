@@ -156,12 +156,15 @@
 .messages-container--virtual .timeline-row::after {
   content: "";
   position: absolute;
-  /* Centered under the 8px dot (dot center x = 4px, line width 1px). */
-  left: 3.5px;
+  /* Centered under the 6px dot (dot center x = 3px, line width 1px). */
+  left: 2.5px;
   top: 0;
   bottom: 0;
   width: 1px;
+  /* The prototype's connector is a faint hairline (--cc-border-subtle on
+     white); fade the widget border so it reads as light as that. */
   background: var(--vscode-widget-border);
+  opacity: 0.5;
   z-index: 0;
 }
 

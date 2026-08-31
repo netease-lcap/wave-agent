@@ -42,6 +42,8 @@ function renderPane(options?: {
   originalUrl?: string;
   onRetry?: () => void;
   onLastTabClosed?: () => void;
+  fullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }) {
   const vscode = createMockVscode();
   const url = options?.url ?? "http://localhost:5173/app";
@@ -50,6 +52,8 @@ function renderPane(options?: {
   const originalUrl = options?.originalUrl;
   const onRetry = options?.onRetry;
   const onLastTabClosed = options?.onLastTabClosed ?? vi.fn();
+  const fullscreen = options?.fullscreen ?? false;
+  const onToggleFullscreen = options?.onToggleFullscreen ?? vi.fn();
   // Controlled-width harness: PreviewPane no longer owns its width state.
   // `width` prop on rerender overrides the internal state so tests can drive
   // panel resizes without going through the drag handle.
@@ -73,6 +77,8 @@ function renderPane(options?: {
         originalUrl={originalUrl}
         onRetry={onRetry}
         onLastTabClosed={onLastTabClosed}
+        fullscreen={fullscreen}
+        onToggleFullscreen={onToggleFullscreen}
       />
     );
   };
@@ -99,6 +105,7 @@ function renderPane(options?: {
     onClose,
     onAddComment,
     onLastTabClosed,
+    onToggleFullscreen,
   };
 }
 
@@ -315,6 +322,35 @@ describe("PreviewPane", () => {
     fireDomReady(wv);
     rerenderWithUrl("http://localhost:3000/other");
     expect(wv.loadURL).toHaveBeenCalledWith("http://localhost:3000/other");
+  });
+
+  it("fullscreen toggle button calls onToggleFullscreen and switches icon (spec 场景 1)", () => {
+    const onToggleFullscreen = vi.fn();
+    const { rerender } = renderPane({ onToggleFullscreen });
+
+    const btn = screen.getByTestId("preview-fullscreen");
+    expect(btn).toHaveAttribute("title", "全屏预览");
+    expect(btn.querySelector(".codicon-screen-full")).not.toBeNull();
+    fireEvent.click(btn);
+    expect(onToggleFullscreen).toHaveBeenCalledTimes(1);
+
+    // Fullscreen state: icon flips to 退出全屏 (screen-normal).
+    rerender(
+      <PreviewPane
+        url="http://localhost:5173/app"
+        vscode={createMockVscode()}
+        onClose={vi.fn()}
+        width={420}
+        onWidthChange={vi.fn()}
+        maxWidth={716}
+        fullscreen
+        onToggleFullscreen={onToggleFullscreen}
+      />,
+    );
+    const fsBtn = screen.getByTestId("preview-fullscreen");
+    expect(fsBtn).toHaveAttribute("title", "退出全屏");
+    expect(fsBtn.querySelector(".codicon-screen-normal")).not.toBeNull();
+    expect(fsBtn).toHaveAttribute("aria-pressed", "true");
   });
 
   it("drag handle resizes within min/max bounds", () => {
@@ -888,5 +924,53 @@ describe("PreviewPane integration (DesktopApp)", () => {
       "aria-pressed",
       "true",
     );
+  });
+
+  it("fullscreen hides the conversation column and other panels; button and Esc restore (spec 场景 1-4)", () => {
+    window.waveHostType = "desktop";
+    render(<DesktopApp vscode={createMockVscode()} />);
+    sendCommand("desktopWorkdirState", {
+      workdir: "/work/a",
+      recentWorkdirs: ["/work/a"],
+    });
+    sendCommand("authStatusResponse", { isAuthenticated: true });
+    sendCommand("updateMessages", {
+      messages: [
+        MockDataGenerator.createAssistantMessage(
+          "[这里](http://localhost:5173/proto)",
+        ),
+      ],
+    });
+    fireEvent.click(screen.getByText("这里"));
+    // Open diff as well so fullscreen hides it (spec 场景 3).
+    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+    fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+    expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" }); // close the toggle menu
+
+    const body = screen
+      .getByTestId("preview-pane")
+      .closest(".desktop-chat-body") as HTMLElement;
+    expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
+    expect(document.querySelectorAll(".desktop-panel-slot")).toHaveLength(2);
+
+    // Enter fullscreen via the toolbar button.
+    fireEvent.click(screen.getByTestId("preview-fullscreen"));
+    expect(body).toHaveClass("preview-fullscreen");
+    expect(body.querySelector(".desktop-chat-main")).toBeNull();
+    expect(screen.queryByTestId("diff-pane")).not.toBeInTheDocument();
+    expect(screen.getByTestId("preview-pane")).toBeInTheDocument();
+
+    // Esc exits fullscreen and restores the previous layout (spec 场景 2).
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(body).not.toHaveClass("preview-fullscreen");
+    expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
+    expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
+
+    // The button toggles back as well (spec 场景 2).
+    fireEvent.click(screen.getByTestId("preview-fullscreen"));
+    expect(body).toHaveClass("preview-fullscreen");
+    fireEvent.click(screen.getByTestId("preview-fullscreen"));
+    expect(body).not.toHaveClass("preview-fullscreen");
   });
 });

@@ -115,6 +115,12 @@ export interface ConfigurationData {
   fastModel?: string;
   language?: string;
   serverUrl?: string;
+  /** Per-model input context window in K tokens (e.g. 200 = 200K), 16–1000 */
+  contextLength?: number;
+  /** Whether auto-memory extraction is enabled */
+  autoMemoryEnabled?: boolean;
+  /** Auto-memory extraction turn frequency, 1–100 */
+  autoMemoryFrequency?: number;
   [key: string]: unknown;
 }
 
@@ -463,16 +469,79 @@ export interface UpdateErrorBlockMessage extends HostToWebviewMessageBase {
 export interface AuthStatusResponseMessage extends HostToWebviewMessageBase {
   command: "authStatusResponse";
   isAuthenticated: boolean;
+  /** Authenticated account (desktop host forwards it for the account card). */
+  user?: { id: string; email?: string } | null;
+}
+
+/** Reply to a getAgentsContent request (settings UI AGENTS.md editor). */
+export interface AgentsContentResponseMessage extends HostToWebviewMessageBase {
+  command: "agentsContentResponse";
+  /** "user" reads ~/.wave/AGENTS.md, "project" reads <workdir>/AGENTS.md. */
+  scope: "user" | "project";
+  content: string;
+}
+
+/** Reply to a setAgentsContent request (settings UI AGENTS.md editor). */
+export interface AgentsContentSavedMessage extends HostToWebviewMessageBase {
+  command: "agentsContentSaved";
+  scope: "user" | "project";
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Context-window usage push for the 压缩上下文 button (percentage of the
+ * current context window consumed, 0–100). Sent by the host when usage
+ * changes (message stream, compaction, session switch).
+ */
+export interface ContextUsageMessage extends HostToWebviewMessageBase {
+  command: "contextUsage";
+  /** Percentage of the context window used, rounded up (0–100). */
+  percent: number;
 }
 
 export interface LoginResponseMessage extends HostToWebviewMessageBase {
   command: "loginResponse";
   success: boolean;
+  /** Authenticated account (desktop host forwards it for the account card). */
+  user?: { id: string; email?: string } | null;
 }
 
 export interface LogoutResponseMessage extends HostToWebviewMessageBase {
   command: "logoutResponse";
   success: boolean;
+}
+
+/** 套餐用量 (codechat `GET /api/v1/account` → `plan`). */
+export interface AccountPlanInfo {
+  monthlyQuota: number;
+  months: number;
+  used: number;
+}
+
+/** API 额度 (codechat `GET /api/v1/account` → `apiQuota`). */
+export interface AccountApiQuotaInfo {
+  /** 额度上限（元）；null = 不限额. */
+  limit: number | null;
+  used: number;
+}
+
+/** 桌面端更新状态机 (electron-updater, serverUrl 安装). */
+export type DesktopUpdateState = "available" | "downloading" | "ready";
+
+/**
+ * 桌面侧边栏账户卡片快照 (spec desktop-app.md「账户卡片」). Window-global like
+ * showToast — the sidebar renders on the root webview instance only, so the
+ * host never pane-tags it. Auth/usage follow the focused pane's host; `update`
+ * is app-global (electron-updater).
+ */
+export interface DesktopAccountInfoMessage extends HostToWebviewMessageBase {
+  command: "desktopAccountInfo";
+  isAuthenticated: boolean;
+  user?: { id: string; email?: string } | null;
+  plan?: AccountPlanInfo | null;
+  apiQuota?: AccountApiQuotaInfo | null;
+  update?: DesktopUpdateState | null;
 }
 
 // ---- Host-only commands (consumed outside the ChatApp switch). ----
@@ -608,8 +677,12 @@ export type HostToWebviewMessage =
   | UpdateToolBlockMessage
   | UpdateErrorBlockMessage
   | AuthStatusResponseMessage
+  | AgentsContentResponseMessage
+  | AgentsContentSavedMessage
+  | ContextUsageMessage
   | LoginResponseMessage
   | LogoutResponseMessage
+  | DesktopAccountInfoMessage
   | DesktopPanesMessage
   | DesktopSessionTreeMessage
   | DesktopWorkdirStateMessage

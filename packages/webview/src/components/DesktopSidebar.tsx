@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef, RefObject } from "react";
 import { Tooltip } from "./Tooltip";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { MoreIcon } from "./HeaderIcons";
-import { MoreMenu } from "./MoreMenu";
+import { AccountCard, type AccountCardAccount } from "./AccountCard";
+import { CodewaveLogo } from "./CodewaveLogo";
+import { NewSessionIcon, CollapseIcon } from "./HeaderIcons";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import type { DesktopSessionGroup, DesktopSessionEntry } from "../types";
 import "../styles/DesktopApp.css";
@@ -10,42 +11,21 @@ import "../styles/DesktopApp.css";
 /** dataTransfer MIME carrying { workdir, sessionId } while a sidebar session drags. */
 export const SESSION_DRAG_MIME = "application/x-wave-session";
 
-/**
- * Codewave wordmark from the designer prototype (figma/logo.svg). The
- * letterforms follow the current text color (theme-adaptive); the "IDE"
- * suffix keeps its lighter weight via opacity; the brand-red slashes stay
- * fixed — red is the brand mark and reads on both light and dark themes.
- */
-const CodewaveLogo: React.FC<{ height?: number }> = ({ height = 14 }) => (
+/** 会话状态看板入口图标（对齐原型 figma/activity.svg）。常态跟随文本色，
+ *  看板打开时（is-active）品牌红填充——原型 active 图标 #c1292e。 */
+const ActivityIcon: React.FC = () => (
   <svg
-    width={(height * 212) / 24}
-    height={height}
-    viewBox="0 0 212 24"
-    fill="none"
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="currentColor"
     xmlns="http://www.w3.org/2000/svg"
     style={{ display: "block" }}
-    role="img"
-    aria-label="Wave 代码智聊"
+    aria-hidden="true"
   >
-    <g fill="currentColor" opacity="0.55">
-      <path d="M198.935 5.51074H211.581V7.80325H201.622V12.9306H210.989V15.2231H201.622V20.8188H212V23.1113H198.935V5.51074Z" />
-      <path d="M181.266 5.51074H187.676C190.51 5.51074 192.655 6.29956 194.134 7.90186C195.515 9.3809 196.205 11.5255 196.205 14.311C196.205 17.0719 195.49 19.2165 194.085 20.7449C192.606 22.3225 190.461 23.1113 187.626 23.1113H181.266V5.51074ZM183.953 7.80325V20.8188H187.133C189.352 20.8188 191.003 20.2765 192.039 19.2165C193.049 18.1565 193.567 16.5296 193.567 14.311C193.567 12.0432 193.049 10.4162 192.063 9.3809C191.028 8.32092 189.401 7.80325 187.183 7.80325H183.953Z" />
-      <path d="M175.105 5.5105H177.767V23.1111H175.105V5.5105Z" />
-    </g>
-    <g fill="currentColor">
-      <path d="M19.1857 23.034H12.0057C5.75216 23.034 0.579474 18.0929 0.50227 11.8393C0.425066 5.50859 5.52054 0.335938 11.8513 0.335938H21.193C21.3474 0.335938 21.4246 0.490353 21.3474 0.644761L19.4945 3.34689C19.4173 3.4241 19.4173 3.42411 19.3401 3.42411H12.0057C7.52785 3.50132 3.74487 7.05267 3.66766 11.5305C3.59046 16.1627 7.29624 19.8686 11.8513 19.8686H21.0386C21.193 19.8686 21.2702 20.023 21.193 20.1774L19.3401 22.8795C19.3401 22.9567 19.2629 23.034 19.1857 23.034Z" />
-      <path d="M60.3354 20.9495C59.6405 20.9495 59.1001 20.409 59.1001 19.7142V0.490392C59.1001 0.335984 59.0229 0.258789 58.8685 0.258789H56.3208C56.1664 0.258789 56.0892 0.335984 56.0892 0.490392V8.51962C54.6223 7.12995 52.615 6.2807 50.3761 6.2807C45.7438 6.2807 42.038 10.0637 42.038 14.6187C42.038 19.251 45.821 22.9568 50.3761 22.9568C52.6922 22.9568 54.6995 22.0303 56.2436 20.5634C56.7068 21.9531 57.942 22.9568 59.4861 22.9568H60.2582C60.3354 22.9568 60.4898 22.8796 60.4898 22.7252V21.1039C60.567 21.0267 60.4898 20.9495 60.3354 20.9495ZM50.4533 20.1002C47.4423 20.1002 45.049 17.6297 45.049 14.696C45.049 11.685 47.5195 9.29165 50.4533 9.29165C53.4642 9.29165 55.8576 11.7622 55.8576 14.696C55.8576 17.6297 53.4642 20.1002 50.4533 20.1002Z" />
-      <path d="M124.029 20.9495C123.334 20.9495 122.793 20.4091 122.793 19.7143V7.20718C122.793 7.05278 122.716 6.97552 122.562 6.97552H120.014C119.86 6.97552 119.782 7.05278 119.782 7.20718V8.05637C118.161 6.66671 116.077 5.81748 113.761 5.97189C109.514 6.2035 106.117 9.60049 105.809 13.7695C105.5 18.7106 109.36 22.8024 114.224 22.8024C116.385 22.8024 118.393 21.9531 119.937 20.5635C120.323 21.9531 121.635 23.034 123.179 23.034H123.951C124.106 23.034 124.183 22.9568 124.183 22.8024V21.1039C124.26 21.0267 124.183 20.9495 124.029 20.9495ZM114.301 19.8686C111.29 19.8686 108.819 17.3981 108.819 14.3872C108.819 11.3762 111.29 8.90562 114.301 8.90562C117.312 8.90562 119.782 11.3762 119.782 14.3872C119.782 17.3981 117.312 19.8686 114.301 19.8686Z" />
-      <path d="M78.7872 16.1626C78.8644 15.6994 78.9415 15.159 78.9415 14.6958C78.9415 9.90911 74.8496 5.97169 69.9858 6.35771C65.894 6.66653 62.497 9.9863 62.2654 14.0781C61.9566 18.942 65.8168 23.0338 70.6035 23.0338C73.6145 23.0338 76.2394 21.4897 77.7063 19.0964C77.7834 18.942 77.7063 18.7876 77.5519 18.7876H74.2321C74.1549 18.7876 74.1549 18.7876 74.0777 18.8648C73.1513 19.6368 71.916 20.1 70.6035 20.1C68.133 20.1 66.0484 18.4015 65.3536 16.1626H78.7872ZM70.5263 9.21428C72.9967 9.21428 75.0813 10.9128 75.7762 13.1517H65.2764C65.9712 10.9128 68.0557 9.21428 70.5263 9.21428Z" />
-      <path d="M156.686 16.0855C156.763 15.6222 156.84 15.0818 156.84 14.6186C156.84 9.83196 152.749 5.89454 147.885 6.28056C143.793 6.58938 140.396 9.90915 140.164 14.001C139.855 18.8648 143.716 22.9567 148.502 22.9567C151.513 22.9567 154.138 21.4126 155.605 19.0192C155.682 18.8648 155.605 18.7104 155.451 18.7104H152.131C152.054 18.7104 152.054 18.7104 151.977 18.7876C151.05 19.5597 149.815 20.0229 148.502 20.0229C146.032 20.0229 143.947 18.3244 143.252 16.0855H156.686ZM148.425 9.21435C150.896 9.21435 152.98 10.9128 153.675 13.1517H143.252C143.87 10.9128 145.955 9.21435 148.425 9.21435Z" />
-      <path d="M99.864 22.8795L105.037 6.43504C105.114 6.28064 104.959 6.12622 104.805 6.12622H102.18C102.103 6.12622 102.026 6.2034 101.949 6.2806L97.9339 18.8649L93.9193 6.35782C93.9193 6.28062 93.8421 6.20344 93.6877 6.20344H91.1399C91.0627 6.20344 90.9855 6.28062 90.9083 6.35782L86.9709 19.2509L82.8019 6.35782C82.8019 6.28062 82.7247 6.20344 82.5703 6.20344H79.9453C79.7909 6.20344 79.7137 6.35786 79.7137 6.51226L84.9636 22.9567C84.9636 23.0339 85.0408 23.1111 85.1953 23.1111H88.6694C88.7466 23.1111 88.8238 23.0339 88.901 22.9567L92.4524 11.5305L96.1582 22.9567C96.1582 23.0339 96.2354 23.1111 96.3898 23.1111H99.6324C99.7096 23.0339 99.7868 22.9567 99.864 22.8795Z" />
-      <path d="M125.11 6.51219L130.359 23.0339H134.22L139.315 6.51219C139.392 6.35779 139.238 6.20337 139.084 6.20337H136.381C136.304 6.20337 136.227 6.28055 136.15 6.35775L132.135 19.2509L128.043 6.35775C128.043 6.28055 127.966 6.20337 127.812 6.20337H125.187C125.11 6.20337 125.032 6.35778 125.11 6.51219Z" />
-    </g>
-    <g fill="#c1292e">
-      <path d="M161.627 19.7913H158.385V23.0338H161.627V19.7913Z" />
-      <path d="M31.0751 22.725L26.52 14.5414L30.9979 6.51219C31.0751 6.35778 30.9979 6.20337 30.8435 6.20337H27.9097C27.8582 6.20337 27.8067 6.22912 27.7553 6.28059L23.123 14.5414L27.8325 22.9566C27.8325 23.0338 27.9097 23.0339 27.9869 23.0339H30.9206C30.9978 23.0339 31.1523 22.8794 31.0751 22.725Z" />
-      <path d="M32.5419 22.725L37.097 14.5414L32.6191 6.51219C32.5419 6.35778 32.6191 6.20337 32.7735 6.20337H35.7073C35.7587 6.20337 35.8102 6.22912 35.8617 6.28059L40.494 14.5414L35.7845 22.9566C35.7845 23.0338 35.7073 23.0339 35.6301 23.0339H32.6963C32.6191 23.0339 32.4647 22.8794 32.5419 22.725Z" />
-    </g>
+    <path d="M10.6318 13.1409C10.9908 13.1409 11.2822 13.4323 11.2822 13.7913C11.2821 14.1502 10.9908 14.4417 10.6318 14.4417H5.25C4.89118 14.4415 4.60069 14.1501 4.60059 13.7913C4.60059 13.4324 4.89112 13.141 5.25 13.1409H10.6318Z" />
+    <path d="M10.7354 4.92407C10.9867 4.66806 11.3981 4.66405 11.6543 4.91528C11.9102 5.16665 11.9142 5.57807 11.6631 5.83423L9.57031 7.96704L9.4834 8.04126C9.26851 8.19441 8.97705 8.20377 8.75 8.05493L6.59375 6.63989L5.26074 7.97192C5.00704 8.22533 4.59558 8.2252 4.3418 7.97192C4.08796 7.71808 4.08795 7.30584 4.3418 7.052L6.04785 5.34595C6.26572 5.12833 6.6068 5.09394 6.86426 5.26294L9.0166 6.67603L10.7354 4.92407Z" />
+    <path d="M12.1553 0.891846C13.6188 0.891846 14.8056 2.07871 14.8057 3.54224V9.84888C14.8057 11.0363 13.8427 11.9993 12.6553 11.9993H3.84375C2.38039 11.9991 1.19434 10.8123 1.19434 9.34888V3.54224C1.19437 2.0788 2.38034 0.891991 3.84375 0.891846H12.1553ZM3.84375 2.19263C3.09831 2.19277 2.49417 2.79677 2.49414 3.54224V9.34888C2.49414 10.0943 3.09829 10.6983 3.84375 10.6985H12.6553C13.1247 10.6985 13.5049 10.3183 13.5049 9.84888V3.54224C13.5048 2.79668 12.9008 2.19263 12.1553 2.19263H3.84375Z" />
   </svg>
 );
 
@@ -129,9 +109,14 @@ export interface DesktopSidebarProps {
   /** Desktop host: the more menu (settings/enterprise console/login) lives here. */
   onOpenSettings: () => void;
   onOpenEnterpriseConsole: () => void;
+  onOpenHelpDocs: () => void;
   onLogin: () => void;
   onLogout: () => void;
-  isAuthenticated: boolean;
+  /** 侧边栏底部账户卡片 (desktopAccountInfo push). */
+  account?: AccountCardAccount | null;
+  /** 更新状态机动作：确认下载 / 重启安装. */
+  onUpdateApp?: () => void;
+  onRestartApp?: () => void;
   /**
    * Host the focused pane runs on ('local' or an SSH host name). Labels the
    * more menu's 登录/退出登录 entry so it names the auth subject it acts on.
@@ -152,6 +137,10 @@ export interface DesktopSidebarProps {
    *  button restores it. */
   collapsed?: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
+  /** Batch 2 会话状态看板: brand-row 活动 button opens the board view. When
+   *  active the icon renders brand-red (spec 场景 1 highlight state). */
+  sessionBoardActive?: boolean;
+  onOpenSessionBoard?: () => void;
 }
 
 const dirName = (workdir: string): string =>
@@ -180,9 +169,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   disabled,
   onOpenSettings,
   onOpenEnterpriseConsole,
+  onOpenHelpDocs,
   onLogin,
   onLogout,
-  isAuthenticated,
+  account,
+  onUpdateApp,
+  onRestartApp,
   hostLabel,
   sessionTree,
   currentSessionId,
@@ -192,12 +184,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onDeleteSession,
   collapsed = false,
   onCollapsedChange,
+  sessionBoardActive = false,
+  onOpenSessionBoard,
 }) => {
   // Explicit expand/collapse overrides; groups without an entry are expanded
   // by default — the tree starts fully expanded on every app launch (expansion
   // state is not persisted).
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
   // Session awaiting delete confirmation; non-null shows the ConfirmDialog.
   const [pendingDelete, setPendingDelete] = useState<{
     sessionId: string;
@@ -229,8 +222,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     return anchor;
   };
   const newChatAnchorRef = useRef<HTMLButtonElement | null>(null);
-  // 更多 trigger; the menu returns focus here on Escape / item activation.
-  const moreBtnRef = useRef<HTMLButtonElement>(null);
   // Per-row 更多 trigger refs (same lazy-map pattern as the tooltip anchors).
   const moreBtnAnchorsRef = useRef(
     new Map<string, RefObject<HTMLButtonElement>>(),
@@ -485,48 +476,31 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         {/* The header is space-between, so both buttons must live in one
             grouped flex row — otherwise "更多" gets pushed to the middle. */}
         <div className="desktop-sidebar-actions">
-          <Tooltip text="更多" position="bottom">
-            <button
-              ref={moreBtnRef}
-              className="desktop-sidebar-more-btn"
-              onClick={() => setShowMoreMenu((prev) => !prev)}
-              data-testid="desktop-more-btn"
-              aria-label="更多"
-              aria-haspopup="menu"
-              aria-expanded={showMoreMenu}
-            >
-              <MoreIcon />
-            </button>
-          </Tooltip>
+          {onOpenSessionBoard && (
+            <Tooltip text="活动" position="bottom">
+              <button
+                className={`desktop-sidebar-more-btn${sessionBoardActive ? " is-active" : ""}`}
+                onClick={onOpenSessionBoard}
+                data-testid="desktop-sidebar-activity"
+                aria-label="活动"
+                aria-pressed={sessionBoardActive}
+              >
+                <ActivityIcon />
+              </button>
+            </Tooltip>
+          )}
           <Tooltip text="收起侧边栏" position="bottom">
             <button
               className="desktop-sidebar-more-btn"
-              onClick={() => {
-                setShowMoreMenu(false);
-                onCollapsedChange(true);
-              }}
+              onClick={() => onCollapsedChange(true)}
               data-testid="desktop-sidebar-collapse"
               aria-label="收起侧边栏"
             >
-              <span className="codicon codicon-layout-panel-left"></span>
+              <CollapseIcon />
             </button>
           </Tooltip>
         </div>
       </div>
-      {showMoreMenu && (
-        <MoreMenu
-          onOpenSettings={onOpenSettings}
-          onOpenEnterpriseConsole={onOpenEnterpriseConsole}
-          onLogin={onLogin}
-          onLogout={onLogout}
-          isAuthenticated={isAuthenticated}
-          // Only remote hosts get annotated — the local host is the default
-          // subject, so its 登录/退出登录 entry stays unlabeled.
-          hostLabel={hostLabel === "local" ? undefined : hostLabel}
-          onClose={() => setShowMoreMenu(false)}
-          triggerRef={moreBtnRef}
-        />
-      )}
       <Tooltip
         text={
           isMacPlatform()
@@ -554,7 +528,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           disabled={disabled}
           data-testid="desktop-new-session"
         >
-          <span className="codicon codicon-add"></span>
+          <NewSessionIcon className="" />
           <span>新对话</span>
         </button>
       </Tooltip>
@@ -609,6 +583,19 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           );
         })}
       </div>
+      {account !== undefined && account !== null && (
+        <AccountCard
+          account={account}
+          hostLabel={hostLabel === "local" ? undefined : hostLabel}
+          onLogin={onLogin}
+          onLogout={onLogout}
+          onOpenSettings={onOpenSettings}
+          onOpenEnterpriseConsole={onOpenEnterpriseConsole}
+          onOpenHelpDocs={onOpenHelpDocs}
+          onUpdateApp={onUpdateApp ?? (() => {})}
+          onRestartApp={onRestartApp ?? (() => {})}
+        />
+      )}
       {pendingDelete && (
         <ConfirmDialog
           title={pendingDelete.title}

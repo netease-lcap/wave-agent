@@ -146,5 +146,17 @@ test.describe("Desktop interaction refinements", () => {
       webviewPage,
       "../../docs/public/screenshots/desktop-preview-tabs.webp",
     );
+
+    // Fullscreen (spec 预览面板全屏): the pane fills the content area and the
+    // conversation column is hidden; Esc restores the layout.
+    await webviewPage.getByTestId("preview-fullscreen").click();
+    await expect(webviewPage.locator(".desktop-chat-main")).toHaveCount(0);
+    await expect(webviewPage.getByTestId("preview-pane")).toBeVisible();
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-preview-fullscreen.webp",
+    );
+    await webviewPage.keyboard.press("Escape");
+    await expect(webviewPage.locator(".desktop-chat-main")).toHaveCount(1);
   });
 });

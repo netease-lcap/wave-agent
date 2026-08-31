@@ -51,6 +51,9 @@ function createHandler(session: ChatSession) {
     updateAllSessionsConfig: vi.fn(),
     getVersion: vi.fn().mockReturnValue("1.2.3"),
     openPlanPreview: vi.fn(),
+    openSettings: vi.fn(),
+    postSettingsMessage: vi.fn(),
+    closeSettings: vi.fn(),
   };
   const handler = new MessageHandler(
     {} as unknown as ConfigurationService,
@@ -128,6 +131,9 @@ function createReadyHandler(session: ChatSession) {
     updateAllSessionsConfig: vi.fn(),
     getVersion: vi.fn().mockReturnValue("1.2.3"),
     openPlanPreview: vi.fn(),
+    openSettings: vi.fn(),
+    postSettingsMessage: vi.fn(),
+    closeSettings: vi.fn(),
   } as unknown as MessageHandlerContext;
   const handler = new MessageHandler(
     configService as unknown as ConfigurationService,
@@ -516,6 +522,9 @@ describe("MessageHandler MCP handlers", () => {
       updateAllSessionsConfig: vi.fn(),
       getVersion: vi.fn().mockReturnValue("1.2.3"),
       openPlanPreview: vi.fn(),
+      openSettings: vi.fn(),
+      postSettingsMessage: vi.fn(),
+      closeSettings: vi.fn(),
     };
     const handler = new MessageHandler(
       configService as unknown as ConfigurationService,
@@ -660,5 +669,132 @@ describe("MessageHandler /plan command", () => {
 
     expect(agent.getPlanFile).toHaveBeenCalled();
     expect(context.openPlanPreview).not.toHaveBeenCalled();
+  });
+});
+
+// ── Editor-area settings tab ────────────────────────────────────
+
+describe("MessageHandler settings tab", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("openSettings from the chat webview opens the editor-area settings tab", async () => {
+    const session = createReadySession();
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage({ command: "openSettings" }, "tab");
+
+    expect(context.openSettings).toHaveBeenCalled();
+  });
+
+  test("getConfiguration posts configurationResponse to the settings panel, not the chat webviews", async () => {
+    const session = createReadySession();
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleSettingsMessage({ command: "getConfiguration" });
+
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as { command: string; configurationData: unknown };
+    expect(posted.command).toBe("configurationResponse");
+    expect(posted.configurationData).toEqual({
+      serverUrl: "",
+      language: "Chinese",
+    });
+    expect(context.postMessage).not.toHaveBeenCalled();
+  });
+
+  test("updateConfiguration saves, recreates agents and replies to the settings panel", async () => {
+    const session = createReadySession();
+    const { handler, context, configService } = createReadyHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "updateConfiguration",
+      configurationData: { language: "en-US" },
+    });
+
+    expect(configService.saveConfiguration).toHaveBeenCalledWith({
+      language: "en-US",
+    });
+    expect(context.updateAllSessionsConfig).toHaveBeenCalled();
+    const commands = (
+      context.postSettingsMessage as ReturnType<typeof vi.fn>
+    ).mock.calls.map((call) => (call[0] as { command: string }).command);
+    expect(commands).toEqual(["configurationUpdated", "configurationResponse"]);
+  });
+
+  test("getAgentsContent forwards scope/workdir and replies to the settings panel", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    utilityClient.request.mockResolvedValue({ content: "# rules" });
+
+    await handler.handleSettingsMessage({
+      command: "getAgentsContent",
+      scope: "project",
+      workdir: "/tmp",
+    });
+
+    expect(utilityClient.request).toHaveBeenCalledWith("getAgentsContent", {
+      scope: "project",
+      workdir: "/tmp",
+    });
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as {
+      command: string;
+      scope: string;
+      content: string;
+    };
+    expect(posted.command).toBe("agentsContentResponse");
+    expect(posted.scope).toBe("project");
+    expect(posted.content).toBe("# rules");
+  });
+
+  test("setAgentsContent replies agentsContentSaved ok:true", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "setAgentsContent",
+      scope: "user",
+      content: "# new rules",
+    });
+
+    expect(utilityClient.request).toHaveBeenCalledWith("setAgentsContent", {
+      scope: "user",
+      content: "# new rules",
+      workdir: undefined,
+    });
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as { command: string; ok: boolean };
+    expect(posted.command).toBe("agentsContentSaved");
+    expect(posted.ok).toBe(true);
+  });
+
+  test("setAgentsContent replies agentsContentSaved ok:false on failure", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    utilityClient.request.mockRejectedValue(new Error("boom"));
+
+    await handler.handleSettingsMessage({
+      command: "setAgentsContent",
+      scope: "project",
+      content: "# x",
+      workdir: "/tmp",
+    });
+
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as { command: string; ok: boolean; error: string };
+    expect(posted.command).toBe("agentsContentSaved");
+    expect(posted.ok).toBe(false);
+    expect(posted.error).toContain("boom");
+  });
+
+  test("closeSettings closes the settings panel", async () => {
+    const session = createReadySession();
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleSettingsMessage({ command: "closeSettings" });
+
+    expect(context.closeSettings).toHaveBeenCalled();
   });
 });

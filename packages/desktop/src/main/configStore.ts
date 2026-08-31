@@ -15,6 +15,12 @@ export interface DesktopConfigData {
   fastModel?: string;
   language?: string;
   serverUrl?: string;
+  /** Per-model input context window in K tokens (e.g. 200 = 200K), 16–1000 */
+  contextLength?: number;
+  /** Whether auto-memory extraction is enabled */
+  autoMemoryEnabled?: boolean;
+  /** Auto-memory extraction turn frequency, 1–100 */
+  autoMemoryFrequency?: number;
 }
 
 /**

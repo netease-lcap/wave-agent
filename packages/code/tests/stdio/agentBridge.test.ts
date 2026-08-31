@@ -80,6 +80,7 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     sessionId: "test-session-id",
     workingDirectory: "/test/workdir",
     latestTotalTokens: 100,
+    getMaxInputTokens: vi.fn().mockReturnValue(200000),
     messages,
     displayMessages: messages,
     destroy: vi.fn(),

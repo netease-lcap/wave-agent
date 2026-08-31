@@ -181,6 +181,11 @@ export interface PreviewPaneProps {
   /** Closing the LAST tab collapses the panel — the parent resets its preview
    * URL to the empty stub so a later link click reopens cleanly. */
   onLastTabClosed?: () => void;
+  /** Fullscreen mode (desktop): the pane fills the content area, the
+   * conversation column and other panels are hidden (spec: 预览面板全屏). */
+  fullscreen?: boolean;
+  /** Toggles fullscreen mode (desktop). */
+  onToggleFullscreen?: () => void;
 }
 
 export const PreviewPane: React.FC<PreviewPaneProps> = ({
@@ -194,6 +199,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   originalUrl,
   onRetry,
   onLastTabClosed,
+  fullscreen,
+  onToggleFullscreen,
 }) => {
   const [tabs, setTabs] = useState<PreviewTab[]>(() =>
     url ? [{ id: genTabId(), url, displayUrl: url, loadError: null }] : [],
@@ -719,6 +726,22 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
           >
             <i className="codicon codicon-link-external" />
           </button>
+          {onToggleFullscreen && (
+            <button
+              className="preview-pane-button"
+              title={fullscreen ? "退出全屏" : "全屏预览"}
+              aria-label={fullscreen ? "退出全屏" : "全屏预览"}
+              aria-pressed={fullscreen}
+              data-testid="preview-fullscreen"
+              onClick={onToggleFullscreen}
+            >
+              <i
+                className={`codicon ${
+                  fullscreen ? "codicon-screen-normal" : "codicon-screen-full"
+                }`}
+              />
+            </button>
+          )}
           <button
             className="preview-pane-button"
             title="关闭"

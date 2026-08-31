@@ -1,0 +1,211 @@
+/* 桌面侧边栏账户卡片 (spec desktop-app.md「账户卡片」). */
+.account-card {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  font-size: 12px;
+}
+
+/* 未登录：登录按钮 + 右侧「更多」按钮同行（对齐原型 sidebar-login-button：
+   品牌红实心、白字、圆角 6px、登录按钮占满剩余宽度）。 */
+.account-card--logged-out {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-card-login {
+  flex: 1;
+  height: 32px;
+  line-height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: var(--vscode-brand-primary, #c1292e);
+  color: var(--vscode-button-foreground, white);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.account-card-login:hover,
+.account-card-login:focus-visible {
+  background: color-mix(in srgb, var(--vscode-brand-primary, #c1292e) 88%, black);
+  outline: none;
+}
+
+/* 已登录：头像+姓名热区 与 热区右侧「更多」按钮同行。 */
+.account-card-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.account-card-hotzone {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.account-card-hotzone:hover,
+.account-card-hotzone:focus-visible {
+  background-color: var(--vscode-list-hoverBackground);
+  outline: none;
+}
+
+.account-card-avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  /* Match the box height so the initial letter sits vertically centered
+     (inline-flex centers the content box, not the glyph's own line box). */
+  line-height: 24px;
+  border-radius: 50%;
+  background-color: var(--vscode-button-background, #2f81ae);
+  color: var(--vscode-button-foreground, #e9e9e9);
+  font-size: 12px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.account-card-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-foreground);
+  font-weight: 500;
+}
+
+.account-card-more-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.account-card-more-btn:hover,
+.account-card-more-btn:focus-visible {
+  background-color: var(--vscode-list-hoverBackground);
+  outline: none;
+}
+
+/* 更新按钮（热区之外的一行）。 */
+.account-card-update-btn {
+  width: 100%;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background-color: var(--vscode-button-background, #2f81ae);
+  color: var(--vscode-button-foreground, #e9e9e9);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.account-card-update-btn:hover:not(:disabled) {
+  background-color: var(--vscode-button-hoverBackground, #2690c7);
+}
+
+.account-card-update-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+/* 用量浮层：fixed 定位逃逸 .desktop-sidebar 的 overflow:hidden（SessionItemMenu 先例）。 */
+.account-usage-popup {
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 216px;
+  box-sizing: border-box;
+  padding: 10px;
+  background-color: var(--vscode-menu-background);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+}
+
+.account-usage-host {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+
+.account-usage-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.account-usage-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--vscode-foreground);
+  font-weight: 500;
+}
+
+.account-usage-percent {
+  color: var(--vscode-descriptionForeground);
+  font-weight: 500;
+}
+
+.account-usage-percent.is-empty {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.account-usage-bar {
+  height: 4px;
+  border-radius: 2px;
+  background-color: var(--vscode-progressBar-background, rgba(128, 128, 128, 0.3));
+  overflow: hidden;
+}
+
+.account-usage-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background-color: var(--vscode-button-background, #2f81ae);
+  transition: width 0.2s ease;
+}
+
+.account-usage-bar-fill.is-empty {
+  background-color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.account-usage-exhausted {
+  color: var(--vscode-errorForeground, #f14c4c);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.account-usage-value {
+  color: var(--vscode-foreground);
+}
+
+.account-usage-value.is-empty {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.account-usage-empty {
+  color: var(--vscode-descriptionForeground);
+}

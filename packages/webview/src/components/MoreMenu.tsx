@@ -7,6 +7,7 @@ import "../styles/MoreMenu.css";
 interface MoreMenuProps {
   onOpenSettings: () => void;
   onOpenEnterpriseConsole: () => void;
+  onOpenHelpDocs: () => void;
   onLogin: () => void;
   onLogout: () => void;
   onClose: () => void;
@@ -23,17 +24,27 @@ interface MoreMenuProps {
    * focus here.
    */
   triggerRef?: RefObject<HTMLElement | null>;
+  /**
+   * Anchor rect for fixed-position anchoring (AccountCard's 更多 button, which
+   * sits at the sidebar bottom). When present the menu positions itself ABOVE
+   * the anchor — the sidebar's overflow:hidden clips absolute descendants, so
+   * the card's menu must escape via fixed (SessionItemMenu pattern). The
+   * header trigger omits it and keeps the absolute header-anchored layout.
+   */
+  anchorRect?: DOMRect;
 }
 
 export const MoreMenu: React.FC<MoreMenuProps> = ({
   onOpenSettings,
   onOpenEnterpriseConsole,
+  onOpenHelpDocs,
   onLogin,
   onLogout,
   onClose,
   isAuthenticated,
   hostLabel,
   triggerRef,
+  anchorRect,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -43,7 +54,7 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   // its own click-outside / global-Escape listeners (see below).
   const { getItemProps } = useRovingMenu(menuRef, {
     itemSelector: ".more-menu-item",
-    itemCount: 3,
+    itemCount: 4,
     triggerRef,
     closeOnActivate: true,
     onRequestClose: onClose,
@@ -52,11 +63,18 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
 
   const handleSettings = () => onOpenSettings();
   const handleEnterprise = () => onOpenEnterpriseConsole();
+  const handleHelpDocs = () => onOpenHelpDocs();
   const authLabelSuffix = hostLabel ? `（${hostLabel}）` : "";
 
-  // Entry order matches focus order; the third slot is 登录/退出登录 by auth.
-  // 设置 and 登录/退出登录 name the subject host they act on; 企业控制台 stays global.
-  const entries = [
+  // Entry order matches focus order; the fourth slot is 登录/退出登录 by auth,
+  // danger-styled and separated when it is 退出登录 (spec 场景 4).
+  const entries: Array<{
+    id: string;
+    run: () => void;
+    content: React.ReactNode;
+    className?: string;
+    separator?: boolean;
+  }> = [
     {
       id: "more-menu-settings",
       run: handleSettings,
@@ -73,9 +91,22 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
         </>
       ),
     },
+    {
+      id: "more-menu-help-docs",
+      className: "more-menu-item--between",
+      run: handleHelpDocs,
+      content: (
+        <>
+          <span>帮助文档</span>
+          <ExternalLinkIcon className="more-menu-item-icon" />
+        </>
+      ),
+    },
     isAuthenticated
       ? {
           id: "more-menu-logout",
+          className: "more-menu-item--danger",
+          separator: true,
           run: onLogout,
           content: <span>退出登录{authLabelSuffix}</span>,
         }
@@ -108,16 +139,35 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   }, [onClose]);
 
   return (
-    <div ref={menuRef} className="more-menu" data-testid="more-menu">
+    <div
+      ref={menuRef}
+      className="more-menu"
+      data-testid="more-menu"
+      style={
+        anchorRect
+          ? {
+              position: "fixed",
+              top: "auto",
+              bottom: window.innerHeight - anchorRect.top + 4,
+              right: Math.max(8, window.innerWidth - anchorRect.right),
+              left: "auto",
+            }
+          : undefined
+      }
+    >
       {entries.map((entry, i) => (
-        <div
-          key={entry.id}
-          {...getItemProps(i)}
-          className={`more-menu-item${entry.className ? ` ${entry.className}` : ""}`}
-          role="menuitem"
-          data-testid={entry.id}
-        >
-          {entry.content}
+        <div key={`${entry.separator ? "sep-" : ""}${entry.id}`}>
+          {entry.separator && (
+            <div className="more-menu-separator" aria-hidden="true" />
+          )}
+          <div
+            {...getItemProps(i)}
+            className={`more-menu-item${entry.className ? ` ${entry.className}` : ""}`}
+            role="menuitem"
+            data-testid={entry.id}
+          >
+            {entry.content}
+          </div>
         </div>
       ))}
     </div>

@@ -29,6 +29,30 @@
   align-items: center;
 }
 
+/* IDE hosts: persistent login entry while logged out (brand-red pill). */
+.header-login-button {
+  height: 22px;
+  line-height: 22px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 4px;
+  background: var(--vscode-brand-primary, #c1292e);
+  color: var(--vscode-button-foreground, white);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.header-login-button:hover,
+.header-login-button:focus-visible {
+  background: color-mix(
+    in srgb,
+    var(--vscode-brand-primary, #c1292e) 88%,
+    black
+  );
+  outline: none;
+}
+
 .header-button {
   width: 22px;
   height: 22px;

@@ -43,7 +43,12 @@ class WavePanel(private val project: Project) : Disposable {
     private val browser: JBCefBrowser = JBCefBrowser()
     private val bridge: JcefBrowserBridge = JcefBrowserBridge(browser)
 
-    private val session: WaveSession = WaveSession(project,
+    /**
+     * The chat session backing this panel. Public so the settings tab (WavePanelHolder) can share
+     * it for its RPCs — the settings webview's getAgentsContent/setAgentsContent need the live
+     * agent, while configuration RPCs work without one.
+     */
+    val session: WaveSession = WaveSession(project,
         postMessageFn = { command, payload -> postToWebview(command, payload) },
         tabTitleFn = { title -> WavePanelHolder.getInstance(project).setTabTitle(title) },
     )

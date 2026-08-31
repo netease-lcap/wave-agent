@@ -33,6 +33,28 @@ describe("More Menu", () => {
     );
   });
 
+  it("should show a persistent login button next to the more button when logged out (IDE)", () => {
+    const { vscode } = renderChatApp();
+
+    // Authenticated by default: no login button in the header.
+    expect(screen.queryByTestId("header-login-btn")).not.toBeInTheDocument();
+
+    // Switch to unauthenticated.
+    sendCommand("authStatusResponse", { isAuthenticated: false });
+
+    const loginBtn = screen.getByTestId("header-login-btn");
+    expect(loginBtn).toHaveTextContent("登 录");
+    vscode.postMessage.mockClear();
+    fireEvent.click(loginBtn);
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "login" }),
+    );
+
+    // Login again clears the button.
+    sendCommand("authStatusResponse", { isAuthenticated: true });
+    expect(screen.queryByTestId("header-login-btn")).not.toBeInTheDocument();
+  });
+
   it("should not show 退出登录 when unauthenticated", () => {
     renderChatApp();
 
@@ -48,7 +70,7 @@ describe("More Menu", () => {
     expect(screen.getByTestId("more-menu-login")).toHaveTextContent("登录");
   });
 
-  it("should open settings dialog and request configuration when 设置 is clicked", () => {
+  it("should ask the IDE host to open the settings tab when 设置 is clicked", () => {
     const { vscode } = renderChatApp();
 
     vscode.postMessage.mockClear();
@@ -58,9 +80,9 @@ describe("More Menu", () => {
       fireEvent.click(screen.getByTestId("more-menu-settings"));
     });
 
-    // Config dialog should open and configuration should be requested
+    // IDE hosts open the settings tab webview in the editor area (spec 场景 10)
     expect(vscode.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ command: "getConfiguration" }),
+      expect.objectContaining({ command: "openSettings" }),
     );
     // Menu closes after selection
     expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
@@ -99,6 +121,46 @@ describe("More Menu", () => {
 
     act(() => {
       fireEvent.click(screen.getByTestId("more-menu-enterprise"));
+    });
+
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "openExternal" }),
+    );
+  });
+
+  it("should post openExternal to serverUrl + /docs when 帮助文档 is clicked", () => {
+    const { vscode } = renderChatApp();
+
+    act(() => {
+      sendCommand("configurationResponse", {
+        configurationData: { serverUrl: "https://codechat.example.com/" },
+      });
+    });
+
+    vscode.postMessage.mockClear();
+    openMoreMenu();
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("more-menu-help-docs"));
+    });
+
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "openExternal",
+        url: "https://codechat.example.com/docs",
+      }),
+    );
+    expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
+  });
+
+  it("should not post openExternal for 帮助文档 when serverUrl is missing", () => {
+    const { vscode } = renderChatApp();
+
+    vscode.postMessage.mockClear();
+    openMoreMenu();
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("more-menu-help-docs"));
     });
 
     expect(vscode.postMessage).not.toHaveBeenCalledWith(

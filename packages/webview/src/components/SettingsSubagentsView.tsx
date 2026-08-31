@@ -1,13 +1,15 @@
 /**
- * AgentsDialog - agent definitions dialog
+ * SettingsSubagentsView - 设置页「子代理」选项卡
  *
- * Opened via the /agents slash command. Shows the current session's
- * visible subagent definitions grouped by scope, with a click-to-detail
- * view mirroring the CLI AgentsManager.
+ * 由 /agents 斜杠命令（或手动点击设置页「子代理」导航）打开：展示当前会话
+ * 可见的 subagent 定义，按来源分组，点击进入详情视图。内容自弹窗
+ * AgentsDialog 迁移而来（2026-08-29 用户拍板：/agents、/skills 不再弹窗，
+ * 改为唤起设置页并选中对应选项卡）；去掉 overlay/关闭逻辑，数据仍通过
+ * getSubagentConfigurations RPC 由 host 下发。
  */
 
-import React, { useState, useEffect, useRef } from "react";
-import { AgentsDialogProps, SubagentConfiguration } from "../types";
+import React, { useState, useEffect } from "react";
+import { SubagentConfiguration } from "../types";
 import "../styles/ConfigurationDialog.css";
 
 const SCOPE_ORDER = ["builtin", "user", "project", "plugin"] as const;
@@ -18,19 +20,21 @@ const SCOPE_LABELS: Record<string, string> = {
   plugin: "插件",
 };
 
-const AgentsDialog: React.FC<
-  AgentsDialogProps & {
-    vscode: { postMessage: (msg: unknown) => void };
-  }
-> = ({ onClose, vscode }) => {
+export interface SettingsSubagentsViewProps {
+  /** Host 消息桥（ChatApp desktop 分支 / settings-preview-entry 传入） */
+  vscode?: { postMessage: (msg: unknown) => void };
+}
+
+const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
+  vscode,
+}) => {
   const [configurations, setConfigurations] = useState<SubagentConfiguration[]>(
     [],
   );
   const [loading, setLoading] = useState(true);
   const [selectedName, setSelectedName] = useState<string | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Fetch agent definitions on mount
+  // Fetch agent definitions on mount (fresh each time the tab opens)
   useEffect(() => {
     vscode?.postMessage({ command: "getSubagentConfigurations" });
   }, [vscode]);
@@ -57,59 +61,14 @@ const AgentsDialog: React.FC<
     agents: configurations.filter((c) => c.scope === scope),
   })).filter((group) => group.agents.length > 0);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dialogRef.current &&
-        !dialogRef.current.contains(event.target as Node)
-      ) {
-        onClose();
-      }
-    };
-
-    // Escape closes only the dialog. A capture-phase listener with
-    // stopPropagation runs before React's synthetic onKeyDown (attached at the
-    // root container), so the keypress never reaches MessageInput's
-    // onAbortMessage and the in-flight agent loop keeps running.
-    const handleEscapeKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        if (selectedName) {
-          setSelectedName(null);
-        } else {
-          onClose();
-        }
-      }
-    };
-
-    // Defer registration to the next tick so the click that opened this dialog
-    // (still bubbling to document) doesn't immediately trigger the outside-close.
-    const timer = setTimeout(() => {
-      document.addEventListener("mousedown", handleClickOutside);
-    }, 0);
-    document.addEventListener("keydown", handleEscapeKey, true);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEscapeKey, true);
-    };
-  }, [onClose, selectedName]);
-
   return (
-    <div className="configuration-dialog-overlay">
-      <div
-        ref={dialogRef}
-        className="configuration-dialog"
-        data-testid="agents-dialog"
-        style={{ maxWidth: "760px" }}
-      >
-        <div className="configuration-dialog-header">
-          <h3>Agents</h3>
-        </div>
-
-        <div className="mcp-container">
+    <div className="settings-view">
+      <header className="settings-page-header">
+        <h1>子代理</h1>
+        <p>配置用于并行处理任务的子代理。</p>
+      </header>
+      <section className="settings-section">
+        <div className="settings-card">
           {loading ? (
             <div className="empty-state">
               <p>加载中...</p>
@@ -260,28 +219,21 @@ const AgentsDialog: React.FC<
             </div>
           )}
 
-          <div className="configuration-actions">
-            {selectedAgent && (
+          {selectedAgent && (
+            <div className="settings-actions">
               <button
                 type="button"
                 onClick={() => setSelectedName(null)}
-                className="configuration-cancel-btn"
+                className="settings-save-btn"
               >
                 返回列表
               </button>
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="configuration-cancel-btn"
-            >
-              关闭
-            </button>
-          </div>
+            </div>
+          )}
         </div>
-      </div>
+      </section>
     </div>
   );
 };
 
-export default AgentsDialog;
+export default SettingsSubagentsView;
