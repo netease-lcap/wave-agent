@@ -606,19 +606,12 @@ export interface ChatState {
   // Agent working directory, used to render tool file paths as relative.
   workdir?: string;
   // Dialog state
-  activeDialog:
-    | "config"
-    | "plugin"
-    | "mcp"
-    | "status"
-    | "tasks"
-    | "workflows"
-    | null;
+  activeDialog: "plugin" | "mcp" | "status" | "tasks" | "workflows" | null;
   configurationData?: ConfigurationData;
   configurationLoading: boolean;
   configurationError?: string;
   // Project-scoped settings (read from .wave/settings.json merged config via
-  // stdio RPC). Holds the merged enabledPlugins map for the 项目设置 tab.
+  // stdio RPC). Holds the merged enabledPlugins map for the 项目设置 view.
   projectSettings?: { enabledPlugins: Record<string, boolean> };
   // Permission mode state
   permissionMode?: PermissionMode;
@@ -716,20 +709,6 @@ export interface SelectionInfo {
 }
 
 /**
- * Props for the general settings dialog component
- */
-export interface ConfigDialogProps {
-  configurationData: ConfigurationData;
-  isLoading: boolean;
-  error?: string;
-  onSave: (config: ConfigurationData) => void;
-  onCancel: () => void;
-  projectSettings?: { enabledPlugins: Record<string, boolean> };
-  onLoadProjectSettings?: () => void;
-  onToggleBuiltinPlugin?: (pluginId: string, enabled: boolean) => void;
-}
-
-/**
  * Props for the plugin management dialog component
  */
 export interface PluginDialogProps {
@@ -778,9 +757,7 @@ export type ChatAction =
   | {
       type: "SHOW_DIALOG";
       payload: {
-        type: "config" | "plugin" | "mcp" | "status" | "tasks" | "workflows";
-        data?: ConfigurationData;
-        error?: string;
+        type: "plugin" | "mcp" | "status" | "tasks" | "workflows";
       };
     }
   | { type: "HIDE_DIALOG" }

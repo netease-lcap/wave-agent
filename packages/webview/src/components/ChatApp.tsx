@@ -20,7 +20,6 @@ import type { RewindCheckpoint } from "./RewindPopup";
 import { ModelPopup } from "./ModelPopup";
 import { ToastStack } from "./ToastStack";
 import { BtwPanel } from "./BtwPanel";
-import ConfigDialog from "./ConfigDialog";
 import PluginDialog from "./PluginDialog";
 import McpDialog from "./McpDialog";
 import StatusDialog from "./StatusDialog";
@@ -1079,20 +1078,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           if (!forThisPane(message)) break;
           togglePanelRef.current(message.kind as DesktopPanelKind);
           break;
-        case "showConfiguration":
-          if (!forThisPane(message)) break;
-          dispatch({
-            type: "SHOW_DIALOG",
-            payload: {
-              type: "config" as const,
-              data:
-                message.configurationData ||
-                stateRef.current.configurationData ||
-                {},
-              error: message.error,
-            },
-          });
-          break;
         case "showDialog":
           if (!forThisPane(message)) break;
           dispatch({
@@ -1554,14 +1539,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         return;
       }
       if (trimmedText === "/config") {
-        dispatch({
-          type: "SHOW_DIALOG",
-          payload: {
-            type: "config",
-            data: stateRef.current.configurationData || {},
-          },
-        });
-        vscode.postMessage({ command: "getConfiguration" });
+        // 不再弹窗：与点击头部设置按钮一致，打开设置页「全局设置」选项卡
+        // （2026-08-29 用户拍板，对齐 /agents → subagents、/skills → skills；
+        // 见 SettingsPage 全局设置视图）。
+        handleOpenSettings();
         return;
       }
       if (trimmedText === "/plugin") {
@@ -1683,7 +1664,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       postToHost,
       paneId,
       gitBranches,
-      vscode,
     ],
   );
 
@@ -2602,6 +2582,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }
       initialNav={settingsNav}
       vscode={vscode}
+      projectSettings={state.projectSettings}
+      onLoadProjectSettings={() =>
+        postToHost({ command: "getProjectSettings" })
+      }
+      onToggleBuiltinPlugin={(pluginId, enabled) =>
+        postToHost({
+          command: "setBuiltinPluginEnabled",
+          pluginId,
+          enabled,
+          scope: "project",
+        })
+      }
     />
   ) : null;
 
@@ -2623,33 +2615,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   ) : null;
 
   // Dialogs render at the component root — not inside chatContainer — so they
-  // stay visible in every layout: the desktop split-view shell (where the root
-  // ChatApp never mounts its own chatContainer) still shows the config dialog
-  // opened from the sidebar 更多 menu.
+  // stay visible in every layout, including the desktop split-view shell.
   const dialogs = (
     <>
-      {state.activeDialog === "config" && (
-        <ConfigDialog
-          configurationData={state.configurationData || {}}
-          isLoading={state.configurationLoading}
-          error={state.configurationError}
-          onSave={handleConfigurationSave}
-          onCancel={handleDialogClose}
-          projectSettings={state.projectSettings}
-          onLoadProjectSettings={() =>
-            postToHost({ command: "getProjectSettings" })
-          }
-          onToggleBuiltinPlugin={(pluginId, enabled) =>
-            postToHost({
-              command: "setBuiltinPluginEnabled",
-              pluginId,
-              enabled,
-              scope: "project",
-            })
-          }
-          vscode={vscode}
-        />
-      )}
       {state.activeDialog === "plugin" && (
         <PluginDialog vscode={vscode} onClose={handleDialogClose} />
       )}

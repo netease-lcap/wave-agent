@@ -204,26 +204,7 @@ test.describe("Product Specification Screenshots - Confirmations", () => {
       state: "hidden",
     });
 
-    // 11. Configuration Dialog (opened via /config or showConfiguration message)
-    await injector.simulateExtensionMessage("showConfiguration", {
-      configurationData: {
-        apiKey: "sk-ant-api03-CXB9pH2k...mH8wQz",
-        baseURL: "https://api.anthropic.com/v1",
-        model: "claude-sonnet-4-20250514",
-        fastModel: "claude-haiku-4-20250514",
-      },
-    });
-    await webviewPage.waitForSelector(".configuration-dialog");
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/spec-configuration.webp",
-    );
-    await webviewPage.keyboard.press("Escape");
-    await webviewPage.waitForSelector(".configuration-dialog", {
-      state: "hidden",
-    });
-
-    // 12. Permission Mode Select - Show all three modes
+    // 11. Permission Mode Select - Show all three modes
     const inputContainer = webviewPage.locator(".input-container");
     const permissionModeSelect = webviewPage.locator(".permission-mode-select");
 

@@ -22,6 +22,7 @@ order: 65
 
 1. **假设** `enabledPlugins` 中没有 `sdd@builtin` 条目，**当**我启动会话时，**则** SDD 插件的技能、会话引导与校验命令均不可用。
 2. **假设** 我在 `enabledPlugins` 中设置 `"sdd@builtin": true`，**当**我切换开关后，**则** SDD 插件的技能与引导立即生效，无需重启会话。
+3. **假设** 设置页「项目设置」视图已打开，**当**我切换 SDD 开关时，**则** 写入项目 `.wave/settings.json` 的 `enabledPlugins` 并立即生效（开关状态与配置文件保持同步，切换结果自动刷新）。
 
 ---
 
