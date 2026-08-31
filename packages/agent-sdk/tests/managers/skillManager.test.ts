@@ -7,7 +7,7 @@ import type {
   SkillMetadata,
   Skill,
 } from "../../src/types/index.js";
-import { readdir, stat } from "fs/promises";
+import { readdir, stat, rm } from "fs/promises";
 import * as path from "path";
 import { logger } from "../../src/utils/globalLogger.js";
 import { FileWatcherService } from "../../src/services/fileWatcher.js";
@@ -435,6 +435,82 @@ describe("SkillManager", () => {
       expect(logger.debug).toHaveBeenCalledWith(
         expect.stringContaining("Registered 1 plugin skills from my-plugin"),
       );
+    });
+  });
+
+  describe("deleteSkill", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      vi.mocked(rm).mockReset();
+      vi.mocked(rm).mockResolvedValue(undefined);
+    });
+
+    it("should delete a personal skill directory", async () => {
+      // Initialize with one personal skill
+      vi.mocked(readdir).mockImplementation(async (path) => {
+        if (path.toString().replace(/\\/g, "/").includes("skills")) {
+          return [
+            { name: "skill1", isDirectory: () => true },
+          ] as unknown as Awaited<ReturnType<typeof readdir>>;
+        }
+        return [] as unknown as Awaited<ReturnType<typeof readdir>>;
+      });
+      vi.mocked(stat).mockResolvedValue(
+        {} as unknown as Awaited<ReturnType<typeof stat>>,
+      );
+      vi.mocked(parseSkillFile).mockReturnValue({
+        isValid: true,
+        skillMetadata: { name: "skill1", skillPath: "/skills/skill1" },
+        content: "content",
+        frontmatter: { name: "skill1" },
+        validationErrors: [],
+      } as unknown as ReturnType<typeof parseSkillFile>);
+
+      await skillManager.initialize();
+
+      const deleted = await skillManager.deleteSkill("skill1");
+
+      expect(deleted).toBe(true);
+      expect(rm).toHaveBeenCalledWith("/skills/skill1", {
+        recursive: true,
+        force: true,
+      });
+      expect(
+        skillManager.getAvailableSkills().find((s) => s.name === "skill1"),
+      ).toBeUndefined();
+    });
+
+    it("should return false for unknown skill", async () => {
+      vi.mocked(readdir).mockResolvedValue([]);
+      await skillManager.initialize();
+
+      const deleted = await skillManager.deleteSkill("nonexistent");
+
+      expect(deleted).toBe(false);
+      expect(rm).not.toHaveBeenCalled();
+    });
+
+    it("should refuse to delete builtin skills", async () => {
+      vi.mocked(readdir).mockResolvedValue([]);
+      await skillManager.initialize();
+
+      // Register a builtin skill directly through the plugin-style map path
+      const builtinSkill: Skill = {
+        name: "builtin-skill",
+        description: "builtin",
+        type: "builtin",
+        skillPath: "/builtin/skills/builtin-skill",
+        content: "content",
+        frontmatter: { name: "builtin-skill", description: "builtin" },
+        isValid: true,
+        errors: [],
+      };
+      skillManager.registerPluginSkills("builtin", [builtinSkill]);
+
+      const deleted = await skillManager.deleteSkill("builtin:builtin-skill");
+
+      expect(deleted).toBe(false);
+      expect(rm).not.toHaveBeenCalled();
     });
   });
 

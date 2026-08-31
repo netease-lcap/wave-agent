@@ -549,6 +549,124 @@ describe("McpManager", () => {
     });
   });
 
+  describe("user-level config (~/.wave/mcp.json)", () => {
+    // Project config path ends with ".mcp.json"; user config path ends with
+    // ".wave/mcp.json". readFile mock distinguishes by the leading dot.
+    const isProjectPath = (p: string) => p.endsWith(".mcp.json");
+
+    it("should merge user-level config with project-level, project taking precedence", async () => {
+      const { promises: fs } = await import("fs");
+
+      // Project config defines shared-server + project-server
+      const projectConfig = {
+        mcpServers: {
+          "shared-server": { command: "project-shared" },
+          "project-server": { command: "project-only" },
+        },
+      };
+      // User config defines shared-server + user-server
+      const userConfig = {
+        mcpServers: {
+          "shared-server": { command: "user-shared" },
+          "user-server": { command: "user-only" },
+        },
+      };
+
+      vi.mocked(fs.readFile).mockImplementation(async (filePath: unknown) => {
+        if (isProjectPath(String(filePath))) {
+          return JSON.stringify(projectConfig);
+        }
+        return JSON.stringify(userConfig);
+      });
+
+      await mcpManager.loadConfig();
+      const config = mcpManager.getConfig();
+
+      expect(config?.mcpServers["shared-server"].command).toBe("project-shared");
+      expect(config?.mcpServers["project-server"]).toBeDefined();
+      expect(config?.mcpServers["user-server"]).toBeDefined();
+    });
+
+    it("should mark server scope as user/project/plugin", async () => {
+      const { promises: fs } = await import("fs");
+
+      const projectConfig = {
+        mcpServers: {
+          "project-server": { command: "p" },
+        },
+      };
+      const userConfig = {
+        mcpServers: {
+          "user-server": { command: "u" },
+        },
+      };
+
+      vi.mocked(fs.readFile).mockImplementation(async (filePath: unknown) => {
+        if (isProjectPath(String(filePath))) {
+          return JSON.stringify(projectConfig);
+        }
+        return JSON.stringify(userConfig);
+      });
+
+      mcpManager.addServer("plugin-server", {
+        command: "plg",
+        pluginRoot: "/path/to/plugin",
+      });
+
+      await mcpManager.loadConfig();
+
+      expect(mcpManager.getServer("user-server")?.scope).toBe("user");
+      expect(mcpManager.getServer("project-server")?.scope).toBe("project");
+      expect(mcpManager.getServer("plugin-server")?.scope).toBe("plugin");
+    });
+
+    it("should expose user and project config paths", async () => {
+      expect(mcpManager.getUserConfigPath()).toContain(".wave");
+      expect(mcpManager.getUserConfigPath()).toContain("mcp.json");
+      expect(mcpManager.getProjectConfigPath()).toContain(".mcp.json");
+    });
+  });
+
+  describe("removeServerFromConfig", () => {
+    beforeEach(async () => {
+      const { promises: fs } = await import("fs");
+      vi.mocked(fs.writeFile).mockReset();
+      vi.mocked(fs.rm).mockReset();
+      vi.mocked(fs.rm).mockResolvedValue(undefined);
+      const twoServerConfig = {
+        mcpServers: {
+          "test-server": { command: "test" },
+          "other-server": { command: "other" },
+        },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(twoServerConfig));
+      await mcpManager.loadConfig();
+    });
+
+    it("should remove server from project config file", async () => {
+      const { promises: fs } = await import("fs");
+
+      const result = await mcpManager.removeServerFromConfig(
+        "project",
+        "test-server",
+      );
+
+      expect(result).toBe(true);
+      expect(fs.writeFile).toHaveBeenCalled();
+      expect(mcpManager.getServer("test-server")).toBeUndefined();
+      expect(mcpManager.getServer("other-server")).toBeDefined();
+    });
+
+    it("should return false when server not in config file", async () => {
+      const result = await mcpManager.removeServerFromConfig(
+        "project",
+        "missing-server",
+      );
+
+      expect(result).toBe(false);
+    });
+  });
+
   describe("connectServer", () => {
     let mockClient: MockClient;
     let mockTransport: MockTransport;

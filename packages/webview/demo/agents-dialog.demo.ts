@@ -4,10 +4,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * 设置页「子代理」选项卡 demo（/agents 斜杠命令落地页）：
+ * 设置页「子代理」「技能」选项卡 demo（/agents、/skills 斜杠命令落地页）：
  * 独立加载 settings.js bundle（settings-preview-entry），模拟 host 下发
- * settingsState(nav: "subagents") 选中选项卡，再回 subagentConfigurationsResponse
- * 展示按来源分组的 agent 定义列表与详情。
+ * settingsState(nav) 选中选项卡，再回 subagentConfigurationsResponse /
+ * skillMetadataResponse 展示 4 个来源 Tab（插件 / 内置 / 用户 / 项目）的
+ * agent 定义与技能列表，以及项目技能按项目分组的卡片形态。
  */
 
 // SettingsPage 的颜色全部走 --vscode-* 变量，独立 settings.html 没有宿主注入，
@@ -48,6 +49,8 @@ const settingsHtml = `
     <script src="vscode-webview://mock-extension-id/settings.js"></script>
 </body>
 </html>`;
+
+const WORKDIR = "/work/wave-agent";
 
 const agentConfigurations = [
   {
@@ -112,7 +115,7 @@ const agentConfigurations = [
 ];
 
 test.describe("设置页子代理选项卡 Demo", () => {
-  test("should show agent definitions list and detail", async ({
+  test("should show 4 source tabs, grouped list and detail", async ({
     webviewPage,
   }) => {
     // Settings full-page is wider than the default 400px demo viewport
@@ -150,9 +153,12 @@ test.describe("设置页子代理选项卡 Demo", () => {
       });
     }, agentConfigurations);
 
-    // 子代理 tab is active and the grouped list is visible
-    await expect(webviewPage.getByText("内置 agents")).toBeVisible();
-    await expect(webviewPage.getByText("插件 agents")).toBeVisible();
+    // 4 source tabs exist and the default tab is 插件子代理
+    await expect(webviewPage.getByText("插件子代理")).toBeVisible();
+    await expect(webviewPage.getByText("内置子代理")).toBeVisible();
+    await expect(webviewPage.getByText("用户子代理")).toBeVisible();
+    await expect(webviewPage.getByText("项目子代理")).toBeVisible();
+    await expect(webviewPage.getByText("sdd:specify")).toBeVisible();
 
     // Screenshot the whole settings page (left nav included, 子代理 highlighted)
     // so the shot reads as "settings page — subagents tab" in the docs.
@@ -162,7 +168,11 @@ test.describe("设置页子代理选项卡 Demo", () => {
       "../../docs/public/screenshots/spec-agents-list.webp",
     );
 
-    // Click the Explore agent to enter the detail view
+    // Switch to the builtin tab and open the Explore agent detail view
+    await view.getByText("内置子代理", { exact: true }).click();
+    await expect(
+      webviewPage.getByText("Explore", { exact: true }),
+    ).toBeVisible();
     await view.getByText("Explore", { exact: true }).click();
     await expect(webviewPage.getByText("系统提示词：")).toBeVisible();
 
@@ -199,22 +209,38 @@ const skills = [
     allowedTools: ["Read", "Write"],
     userInvocable: true,
   },
+  {
+    name: "deploy",
+    description: "部署检查技能：验证构建产物与发布清单",
+    type: "project",
+    skillPath: "/work/wave-agent/.wave/skills/deploy/SKILL.md",
+    userInvocable: true,
+  },
+  {
+    name: "code-review",
+    description: "项目级代码评审技能",
+    type: "project",
+    skillPath: "/work/wave-agent/.wave/skills/code-review/SKILL.md",
+    userInvocable: true,
+  },
 ];
 
 test.describe("设置页技能选项卡 Demo", () => {
-  test("should show skills grouped by scope", async ({ webviewPage }) => {
+  test("should show 4 source tabs with project-grouped cards", async ({
+    webviewPage,
+  }) => {
     await webviewPage.setViewportSize({ width: 1000, height: 760 });
     await webviewPage.setContent(settingsHtml);
     await expect(webviewPage.locator(".settings-page")).toBeVisible();
 
     // /skills → openSettings(nav:"skills") → settingsState
-    await webviewPage.evaluate(() => {
+    await webviewPage.evaluate((workdir) => {
       window.simulateExtensionMessage({
         command: "settingsState",
-        workdir: "/work/wave-agent",
+        workdir,
         nav: "skills",
       });
-    });
+    }, WORKDIR);
     await webviewPage.evaluate(() => {
       window.simulateExtensionMessage({
         command: "configurationResponse",
@@ -228,11 +254,26 @@ test.describe("设置页技能选项卡 Demo", () => {
       });
     }, skills);
 
-    await expect(webviewPage.getByText("内置 skills")).toBeVisible();
-    await expect(webviewPage.getByText("插件 skills")).toBeVisible();
-    await expect(webviewPage.getByText("用户 skills")).toBeVisible();
+    // 4 source tabs exist
+    await expect(webviewPage.getByText("插件技能")).toBeVisible();
+    await expect(webviewPage.getByText("内置技能")).toBeVisible();
+    await expect(webviewPage.getByText("用户技能")).toBeVisible();
+    await expect(webviewPage.getByText("项目技能")).toBeVisible();
 
     const view = webviewPage.locator(".settings-page");
+
+    // 项目技能按所属项目分组卡片展示（当前项目 = workdir 末段 wave-agent）
+    await view.getByText("项目技能", { exact: true }).click();
+    await expect(
+      webviewPage.getByText("wave-agent", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      webviewPage.getByText("/deploy", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      webviewPage.getByText("/code-review", { exact: true }),
+    ).toBeVisible();
+
     await elementScreenshotWebp(
       view,
       "../../docs/public/screenshots/spec-skills-list.webp",

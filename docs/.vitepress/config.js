@@ -148,6 +148,7 @@ export default {
             { text: "7.1 子代理状态", link: "/vsce#subagent-display" },
             { text: "7.2 Skill 技能系统", link: "/vsce#skill-system" },
             { text: "7.3 MCP 协议集成", link: "/vsce#mcp-integration" },
+            { text: "7.4 钩子（Hooks）", link: "/vsce#hooks-settings" },
           ],
         },
         {

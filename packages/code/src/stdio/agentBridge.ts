@@ -245,6 +245,14 @@ export class AgentBridge {
         return this.connectMcpServer(p.serverName as string, sessionId);
       case "disconnectMcpServer":
         return this.disconnectMcpServer(p.serverName as string, sessionId);
+      case "removeMcpServer":
+        return this.removeMcpServer(
+          p.scope as "user" | "project",
+          p.serverName as string,
+          sessionId,
+        );
+      case "getMcpConfigPaths":
+        return this.getMcpConfigPaths(sessionId);
 
       // ── Commands ──
       case "getSlashCommands":
@@ -253,6 +261,28 @@ export class AgentBridge {
         return this.getSubagentConfigurations(sessionId);
       case "getSkillMetadata":
         return this.getSkillMetadata(sessionId);
+      case "deleteSkill":
+        return this.deleteSkill(p.name as string, sessionId);
+      case "deleteSubagent":
+        return this.deleteSubagent(p.name as string, sessionId);
+      case "getHooksByScope":
+        return this.getHooksByScope(
+          p.scope as "user" | "project" | "plugin",
+          sessionId,
+        );
+      case "setHookEnabled":
+        return this.setHookEnabled(
+          p.scope as "user" | "project",
+          p.hookName as string,
+          p.enabled as boolean,
+          sessionId,
+        );
+      case "deleteHook":
+        return this.deleteHook(
+          p.scope as "user" | "project",
+          p.hookName as string,
+          sessionId,
+        );
 
       // ── File / History (global — no session required) ──
       case "searchFiles":
@@ -1149,6 +1179,27 @@ export class AgentBridge {
     return { success };
   }
 
+  private async removeMcpServer(
+    scope: "user" | "project",
+    serverName: string,
+    sessionId?: string,
+  ): Promise<{ success: boolean }> {
+    const entry = this.requireSession(sessionId);
+    const success = await entry.agent.removeMcpServer(scope, serverName);
+    return { success };
+  }
+
+  private getMcpConfigPaths(sessionId?: string): {
+    userPath: string | null;
+    projectPath: string | null;
+  } {
+    const entry = this.requireSession(sessionId);
+    return {
+      userPath: entry.agent.getUserMcpConfigPath(),
+      projectPath: entry.agent.getProjectMcpConfigPath(),
+    };
+  }
+
   // ── Commands ──────────────────────────────────────────────────
 
   private getSlashCommands(sessionId?: string): { commands: SlashCommand[] } {
@@ -1166,6 +1217,53 @@ export class AgentBridge {
   private getSkillMetadata(sessionId?: string): { skills: SkillMetadata[] } {
     const entry = this.requireSession(sessionId);
     return { skills: entry.agent.getSkillMetadata() };
+  }
+
+  private async deleteSkill(
+    name: string,
+    sessionId?: string,
+  ): Promise<{ success: boolean }> {
+    const entry = this.requireSession(sessionId);
+    const success = await entry.agent.deleteSkill(name);
+    return { success };
+  }
+
+  private async deleteSubagent(
+    name: string,
+    sessionId?: string,
+  ): Promise<{ success: boolean }> {
+    const entry = this.requireSession(sessionId);
+    const success = await entry.agent.deleteSubagent(name);
+    return { success };
+  }
+
+  private getHooksByScope(
+    scope: "user" | "project" | "plugin",
+    sessionId?: string,
+  ): Promise<Partial<Record<string, unknown[]>>> {
+    const entry = this.requireSession(sessionId);
+    return entry.agent.getHooksByScope(scope);
+  }
+
+  private async setHookEnabled(
+    scope: "user" | "project",
+    hookName: string,
+    enabled: boolean,
+    sessionId?: string,
+  ): Promise<{ success: boolean }> {
+    const entry = this.requireSession(sessionId);
+    await entry.agent.setHookEnabled(scope, hookName, enabled);
+    return { success: true };
+  }
+
+  private async deleteHook(
+    scope: "user" | "project",
+    hookName: string,
+    sessionId?: string,
+  ): Promise<{ success: boolean }> {
+    const entry = this.requireSession(sessionId);
+    await entry.agent.deleteHook(scope, hookName);
+    return { success: true };
   }
 
   // ── File / History (global) ───────────────────────────────────

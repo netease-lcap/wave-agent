@@ -19,9 +19,11 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { ConfigurationData, McpServerStatus } from "../types";
+import { ConfigurationData } from "../types";
 import SettingsSubagentsView from "./SettingsSubagentsView";
 import SettingsSkillsView from "./SettingsSkillsView";
+import SettingsHooksView from "./SettingsHooksView";
+import SettingsMcpView from "./SettingsMcpView";
 import "../styles/SettingsPage.css";
 
 export interface SettingsPageProps {
@@ -47,18 +49,13 @@ export interface SettingsPageProps {
   onLoadProjectSettings?: () => void;
   /** 切换内置插件开关（写回项目 .wave/settings.json） */
   onToggleBuiltinPlugin?: (pluginId: string, enabled: boolean) => void;
-  /** 用户级/项目级 hooks 配置（settings.json hooks，getHooksConfig RPC 回填），「钩子」视图使用 */
-  hooksConfig?: Partial<
-    Record<"user" | "project", Record<string, unknown> | undefined>
-  >;
-  /** 加载某 scope 的 hooks 配置（触发 host 经 stdio 读取配置文件） */
-  onLoadHooksConfig?: (scope: "user" | "project") => void;
-  /** 用户级/项目级 MCP 服务器配置（mcp.json，getMcpConfig RPC 回填），「MCP 服务」视图使用 */
-  mcpConfig?: Partial<
-    Record<"user" | "project", Record<string, unknown> | undefined>
-  >;
-  /** 加载某 scope 的 MCP 配置（触发 host 经 stdio 读取配置文件） */
-  onLoadMcpConfig?: (scope: "user" | "project") => void;
+  /** 关闭设置页并预填 AI 对话框提示词（新建/编辑 技能/子代理/钩子/MCP）。
+   *  desktop 由 ChatApp 实现（关设置页 + 主输入框预填）；IDE 由
+   *  settings-preview-entry 转发 prefillPrompt RPC 给 host。 */
+  onPrefillPrompt?: (prompt: string) => void;
+  /** 用系统编辑器打开文件（desktop 走 desktopOpenFileExternal；IDE 缺省时
+   *  视图内回退 openFile RPC）。 */
+  onOpenExternalFile?: (path: string) => void;
 }
 
 export type NavKey =
@@ -109,23 +106,6 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-/** 钩子事件中文名（展示用） */
-const HOOK_EVENT_LABELS: Record<string, string> = {
-  PreToolUse: "工具使用前",
-  PostToolUse: "工具使用后",
-  UserPromptSubmit: "用户提示提交",
-  Stop: "停止",
-  SubagentStop: "子代理停止",
-  PermissionRequest: "权限请求",
-  WorktreeCreate: "工作树创建",
-  WorktreeRemove: "工作树删除",
-  CwdChanged: "工作目录变更",
-  SessionStart: "会话开始",
-  SessionEnd: "会话结束",
-  PreCompact: "压缩前",
-  PostCompact: "压缩后",
-};
-
 /** 从工作目录路径提取项目名（兼容 Windows/posix 分隔符） */
 function getProjectName(workdir?: string): string {
   if (!workdir) return "当前项目";
@@ -145,10 +125,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   projectSettings,
   onLoadProjectSettings,
   onToggleBuiltinPlugin,
-  hooksConfig,
-  onLoadHooksConfig,
-  mcpConfig,
-  onLoadMcpConfig,
+  onPrefillPrompt,
+  onOpenExternalFile,
 }) => {
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav ?? "global");
 
@@ -235,61 +213,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   useEffect(() => {
     setPluginToggling(false);
   }, [projectSettings]);
-
-  // ── 钩子 / MCP 视图（只读）───────────────────────────────────────
-  // MCP 服务器运行时状态（getMcpServers RPC 返回，含连接状态/工具数/错误）
-  const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
-  const [mcpConnecting, setMcpConnecting] = useState<Record<string, boolean>>(
-    {},
-  );
-
-  // 进入「钩子」/「MCP 服务」视图时，双 tab（用户级/项目级）配置各加载一次
-  useEffect(() => {
-    if (activeNav === "hooks" && onLoadHooksConfig) {
-      if (!hooksConfig?.user) onLoadHooksConfig("user");
-      if (!hooksConfig?.project) onLoadHooksConfig("project");
-    }
-  }, [activeNav, hooksConfig, onLoadHooksConfig]);
-
-  useEffect(() => {
-    if (activeNav === "mcp" && onLoadMcpConfig) {
-      if (!mcpConfig?.user) onLoadMcpConfig("user");
-      if (!mcpConfig?.project) onLoadMcpConfig("project");
-    }
-  }, [activeNav, mcpConfig, onLoadMcpConfig]);
-
-  // 进入「MCP 服务」视图时拉取一次服务器状态（连接/断开后 host 会回发
-  // mcpServersResponse / mcpServersUpdate 刷新）
-  useEffect(() => {
-    if (activeNav === "mcp") {
-      vscode?.postMessage({ command: "getMcpServers" });
-    }
-  }, [activeNav, vscode]);
-
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-      if (
-        message.command === "mcpServersResponse" ||
-        message.command === "mcpServersUpdate"
-      ) {
-        setMcpServers(message.servers || []);
-        setMcpConnecting({});
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
-
-  const handleConnectMcpServer = (serverName: string) => {
-    setMcpConnecting((prev) => ({ ...prev, [serverName]: true }));
-    vscode?.postMessage({ command: "connectMcpServer", serverName });
-  };
-
-  const handleDisconnectMcpServer = (serverName: string) => {
-    setMcpConnecting((prev) => ({ ...prev, [serverName]: true }));
-    vscode?.postMessage({ command: "disconnectMcpServer", serverName });
-  };
 
   return (
     <div className="settings-page">
@@ -557,256 +480,44 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           )}
 
           {activeNav === "subagents" && (
-            <SettingsSubagentsView vscode={vscode} />
+            <SettingsSubagentsView
+              vscode={vscode}
+              workdir={workdir}
+              onPrefillPrompt={onPrefillPrompt}
+              onOpenExternalFile={onOpenExternalFile}
+            />
           )}
 
-          {activeNav === "skills" && <SettingsSkillsView vscode={vscode} />}
+          {activeNav === "skills" && (
+            <SettingsSkillsView
+              vscode={vscode}
+              workdir={workdir}
+              onPrefillPrompt={onPrefillPrompt}
+              onOpenExternalFile={onOpenExternalFile}
+            />
+          )}
 
           {activeNav === "hooks" && (
-            <div className="settings-view">
-              <header className="settings-page-header">
-                <h1>钩子</h1>
-                <p>
-                  配置会话生命周期事件的钩子脚本（只读，修改请编辑配置文件）。
-                </p>
-              </header>
-              <div
-                className="settings-tabs"
-                role="tablist"
-                aria-label="配置范围"
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeScope === "user"}
-                  className={`settings-tab${
-                    activeScope === "user" ? " is-active" : ""
-                  }`}
-                  onClick={() => setActiveScope("user")}
-                >
-                  用户级
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeScope === "project"}
-                  className={`settings-tab${
-                    activeScope === "project" ? " is-active" : ""
-                  }`}
-                  onClick={() => setActiveScope("project")}
-                >
-                  项目级
-                </button>
-              </div>
-              {renderHooks(hooksConfig?.[activeScope])}
-            </div>
+            <SettingsHooksView
+              vscode={vscode}
+              workdir={workdir}
+              onPrefillPrompt={onPrefillPrompt}
+              onOpenExternalFile={onOpenExternalFile}
+            />
           )}
 
           {activeNav === "mcp" && (
-            <div className="settings-view">
-              <header className="settings-page-header">
-                <h1>MCP 服务</h1>
-                <p>管理 MCP 服务器连接（配置只读，修改请编辑配置文件）。</p>
-              </header>
-              <div
-                className="settings-tabs"
-                role="tablist"
-                aria-label="配置范围"
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeScope === "user"}
-                  className={`settings-tab${
-                    activeScope === "user" ? " is-active" : ""
-                  }`}
-                  onClick={() => setActiveScope("user")}
-                >
-                  用户级
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeScope === "project"}
-                  className={`settings-tab${
-                    activeScope === "project" ? " is-active" : ""
-                  }`}
-                  onClick={() => setActiveScope("project")}
-                >
-                  项目级
-                </button>
-              </div>
-              {renderMcpServers(
-                mcpConfig?.[activeScope],
-                mcpServers,
-                mcpConnecting,
-                handleConnectMcpServer,
-                handleDisconnectMcpServer,
-              )}
-            </div>
+            <SettingsMcpView
+              vscode={vscode}
+              workdir={workdir}
+              onPrefillPrompt={onPrefillPrompt}
+              onOpenExternalFile={onOpenExternalFile}
+            />
           )}
         </main>
       </div>
     </div>
   );
 };
-
-/** 钩子只读视图：按事件分组展示已配置的命令（含异步/超时/匹配器标注） */
-function renderHooks(
-  hooks: Record<string, unknown> | undefined,
-): React.ReactNode {
-  const events = Object.entries(hooks ?? {});
-  if (events.length === 0) {
-    return (
-      <div className="settings-empty-state">
-        <p>当前层级未配置钩子。</p>
-        <p className="settings-empty-hint">
-          在对应层级的 settings.json 的 hooks 字段中配置
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="settings-hooks-list">
-      {events.map(([event, configs]) => {
-        const configList = Array.isArray(configs) ? configs : [];
-        const commands = configList.flatMap((config) => {
-          const cfg = config as Record<string, unknown>;
-          const hooksList = Array.isArray(cfg.hooks) ? cfg.hooks : [];
-          const matcher =
-            typeof cfg.matcher === "string" ? cfg.matcher : undefined;
-          return hooksList.map((hook) => ({
-            command: String((hook as Record<string, unknown>).command ?? ""),
-            async: (hook as Record<string, unknown>).async === true,
-            timeout: (hook as Record<string, unknown>).timeout,
-            matcher,
-          }));
-        });
-        if (commands.length === 0) return null;
-        return (
-          <div className="settings-section" key={event}>
-            <div className="settings-section-heading hooks-event-heading">
-              <h2>{HOOK_EVENT_LABELS[event] ?? event}</h2>
-              <code className="hooks-event-key">{event}</code>
-            </div>
-            <div className="settings-card">
-              {commands.map((cmd, index) => (
-                <div className="settings-row" key={index}>
-                  <div className="settings-row-copy hooks-command-copy">
-                    <code className="hooks-command">{cmd.command}</code>
-                    <p>
-                      {[
-                        cmd.matcher ? `匹配: ${cmd.matcher}` : "",
-                        cmd.async ? "异步" : "",
-                        cmd.timeout ? `超时: ${cmd.timeout}s` : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ") || "同步执行"}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** MCP 只读视图：当前层级配置的服务器列表 + 运行时状态 + 连接/断开 */
-function renderMcpServers(
-  mcpServers: Record<string, unknown> | undefined,
-  statuses: McpServerStatus[],
-  connecting: Record<string, boolean>,
-  onConnect: (name: string) => void,
-  onDisconnect: (name: string) => void,
-): React.ReactNode {
-  const entries = Object.entries(mcpServers ?? {});
-  if (entries.length === 0) {
-    return (
-      <div className="settings-empty-state">
-        <p>当前层级未配置 MCP 服务器。</p>
-        <p className="settings-empty-hint">
-          在 ~/.wave/mcp.json（用户级）或项目根 .mcp.json（项目级）中配置
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="settings-mcp-list">
-      {entries.map(([name, cfg]) => {
-        const status = statuses.find((s) => s.name === name);
-        return (
-          <div className="settings-section" key={name}>
-            <div className="settings-card mcp-server-item">
-              <div className="settings-row">
-                <div className="settings-row-copy">
-                  <h3>
-                    <span
-                      className={`mcp-status-dot mcp-status-${status?.status ?? "disconnected"}`}
-                      title={status?.status ?? "disconnected"}
-                    />
-                    {name}
-                  </h3>
-                  <p>{describeMcpServer(cfg)}</p>
-                  {status?.error && (
-                    <p className="mcp-server-error">{status.error}</p>
-                  )}
-                  {status?.toolCount !== undefined &&
-                    status.status === "connected" && (
-                      <p className="mcp-server-tools">
-                        {status.toolCount} tools
-                      </p>
-                    )}
-                </div>
-                <div className="settings-control">
-                  {status &&
-                    (status.status === "disconnected" ||
-                      status.status === "error") && (
-                      <button
-                        type="button"
-                        className="settings-secondary-btn"
-                        onClick={() => onConnect(name)}
-                        disabled={connecting[name]}
-                      >
-                        {connecting[name] ? "连接中..." : "连接"}
-                      </button>
-                    )}
-                  {status?.status === "connected" && (
-                    <button
-                      type="button"
-                      className="settings-secondary-btn"
-                      onClick={() => onDisconnect(name)}
-                      disabled={connecting[name]}
-                    >
-                      {connecting[name] ? "断开中..." : "断开"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** 描述 MCP 服务器配置（类型 + 命令或端点） */
-function describeMcpServer(cfg: unknown): string {
-  const config = cfg as Record<string, unknown> | undefined;
-  if (!config) return "";
-  const type = typeof config.type === "string" ? config.type : "stdio";
-  if (typeof config.url === "string" && config.url) {
-    return `类型: ${type} · 端点: ${config.url}`;
-  }
-  const command =
-    typeof config.command === "string" ? config.command : "未知命令";
-  const args = Array.isArray(config.args) ? config.args.join(" ") : "";
-  return `类型: ${type} · 命令: ${command}${args ? ` ${args}` : ""}`;
-}
 
 export default SettingsPage;

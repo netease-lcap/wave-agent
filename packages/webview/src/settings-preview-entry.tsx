@@ -8,12 +8,10 @@
  * `__wavePostMessage`/`__waveReceive` bridge in JetBrains).
  *
  * Protocol (same command names the chat webview already uses):
- * - webview → host: `getConfiguration`, `getAgentsContent`, `getHooksConfig`,
- *   `getMcpConfig`, `getMcpServers`, `connectMcpServer`, `disconnectMcpServer`,
- *   `closeSettings`
+ * - webview → host: `getConfiguration`, `getAgentsContent`, `closeSettings`,
+ *   `prefillPrompt`
  * - host → webview: `configurationResponse`, `agentsContentResponse`,
- *   `hooksConfigResponse`, `mcpConfigResponse`, `mcpServersResponse`,
- *   `mcpServersUpdate`, `settingsState` (workdir push on open)
+ *   `settingsState` (workdir push on open)
  */
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -37,12 +35,6 @@ function SettingsPreview() {
   const [projectAgentsContent, setProjectAgentsContent] = useState<
     string | null
   >(null);
-  const [hooksConfig, setHooksConfig] = useState<
-    Partial<Record<"user" | "project", Record<string, unknown> | undefined>>
-  >({});
-  const [mcpConfig, setMcpConfig] = useState<
-    Partial<Record<"user" | "project", Record<string, unknown> | undefined>>
-  >({});
   // /agents、/skills 斜杠命令经 openSettings(nav) → settingsState 下发，选中对应选项卡
   const [initialNav, setInitialNav] = useState<NavKey | undefined>(undefined);
 
@@ -77,22 +69,6 @@ function SettingsPreview() {
             );
           }
           break;
-        case "hooksConfigResponse": {
-          const scope = msg.scope === "project" ? "project" : "user";
-          setHooksConfig((prev) => ({
-            ...prev,
-            [scope]: (msg.hooks as Record<string, unknown>) ?? undefined,
-          }));
-          break;
-        }
-        case "mcpConfigResponse": {
-          const scope = msg.scope === "project" ? "project" : "user";
-          setMcpConfig((prev) => ({
-            ...prev,
-            [scope]: (msg.mcpServers as Record<string, unknown>) ?? {},
-          }));
-          break;
-        }
       }
     };
     window.addEventListener("message", handleMessage);
@@ -115,13 +91,8 @@ function SettingsPreview() {
       workdir={workdir}
       initialNav={initialNav}
       vscode={vscode}
-      hooksConfig={hooksConfig}
-      onLoadHooksConfig={(scope) =>
-        vscode.postMessage({ command: "getHooksConfig", scope, workdir })
-      }
-      mcpConfig={mcpConfig}
-      onLoadMcpConfig={(scope) =>
-        vscode.postMessage({ command: "getMcpConfig", scope, workdir })
+      onPrefillPrompt={(prompt) =>
+        vscode.postMessage({ command: "prefillPrompt", prompt })
       }
     />
   );

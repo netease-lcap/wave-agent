@@ -32,6 +32,7 @@ import type {
   ForegroundTask,
   SkillMetadata,
 } from "./types/index.js";
+import type { HookEvent, HookEventConfig } from "./types/hooks.js";
 import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
 import { LiveConfigManager } from "./managers/liveConfigManager.js";
 import { configValidator } from "./utils/configValidator.js";
@@ -1170,6 +1171,27 @@ export class Agent {
     return await this.mcpManager.disconnectServer(serverName);
   }
 
+  /**
+   * Remove an MCP server from a persisted config file (user ~/.wave/mcp.json
+   * or project <workdir>/.mcp.json), then disconnect and drop it from memory.
+   */
+  public async removeMcpServer(
+    scope: "user" | "project",
+    serverName: string,
+  ): Promise<boolean> {
+    return await this.mcpManager.removeServerFromConfig(scope, serverName);
+  }
+
+  /** The user-level MCP config path (~/.wave/mcp.json) */
+  public getUserMcpConfigPath(): string {
+    return this.mcpManager.getUserConfigPath();
+  }
+
+  /** The project-level MCP config path (<workdir>/.mcp.json) */
+  public getProjectMcpConfigPath(): string {
+    return this.mcpManager.getProjectConfigPath();
+  }
+
   // ========== Slash Command Management Methods ==========
 
   /** Get all available slash commands */
@@ -1337,6 +1359,67 @@ export class Agent {
    */
   public getSkillMetadata(): SkillMetadata[] {
     return this.skillManager.getAvailableSkills();
+  }
+
+  /**
+   * Delete a user/personal or project skill by removing its directory.
+   * Builtin and plugin skills are read-only and cannot be deleted.
+   * @param name - The skill name as shown in skill metadata
+   * @returns true if the skill was deleted
+   */
+  public async deleteSkill(name: string): Promise<boolean> {
+    return await this.skillManager.deleteSkill(name);
+  }
+
+  /**
+   * Delete a user-level or project-level subagent by removing its markdown
+   * file. Builtin and plugin agents are read-only and cannot be deleted.
+   * @param name - The subagent name as shown in configurations
+   * @returns true if the subagent was deleted
+   */
+  public async deleteSubagent(name: string): Promise<boolean> {
+    return await this.subagentManager.deleteSubagent(name);
+  }
+
+  /**
+   * Get hook configurations at a specific scope (user or project settings.json;
+   * plugin hooks come from the hook manager's plugin-registered set).
+   */
+  public async getHooksByScope(
+    scope: "user" | "project" | "plugin",
+  ): Promise<Partial<Record<HookEvent, HookEventConfig[]>>> {
+    if (scope === "plugin") {
+      return this.hookManager.getPluginHooks();
+    }
+    return await this.configurationService.getHooksByScope(this.workdir, scope);
+  }
+
+  /**
+   * Set the enabled state of a hook at a specific scope, identified by
+   * hookName of the form `Event:Matcher` (e.g. `PreToolUse:Write`).
+   */
+  public async setHookEnabled(
+    scope: "user" | "project",
+    hookName: string,
+    enabled: boolean,
+  ): Promise<void> {
+    await this.configurationService.setHookEnabled(
+      this.workdir,
+      scope,
+      hookName,
+      enabled,
+    );
+  }
+
+  /**
+   * Delete a hook at a specific scope, identified by hookName of the form
+   * `Event:Matcher`.
+   */
+  public async deleteHook(
+    scope: "user" | "project",
+    hookName: string,
+  ): Promise<void> {
+    await this.configurationService.deleteHook(this.workdir, scope, hookName);
   }
 
   /**

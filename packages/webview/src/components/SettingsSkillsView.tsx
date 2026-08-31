@@ -1,18 +1,25 @@
 /**
  * SettingsSkillsView - 设置页「技能」选项卡
  *
- * 由 /skills 斜杠命令（或手动点击设置页「技能」导航）打开：展示当前
- * 会话可见的技能，按来源分组，点击进入详情视图。内容自弹窗 SkillsDialog
- * 迁移而来（2026-08-29 用户拍板：/agents、/skills 不再弹窗，改为唤起设置页
- * 并选中对应选项卡）；去掉 overlay/关闭逻辑，数据仍通过 getSkillMetadata
- * RPC 由 host 下发。
+ * 由 /skills 斜杠命令（或手动点击设置页「技能」导航）打开：按来源 Tab
+ * （插件技能 / 内置技能 / 用户技能 / 项目技能）展示技能，项目技能按所属项目
+ * 分组卡片展示（2026-08-29 用户拍板）。提供新建（预填 AI 对话框提示词）、
+ * 编辑（预填提示词 + 打开 SKILL.md）、删除（二次确认 + 直接删文件）。
+ * 数据通过 getSkillMetadata RPC 由 host 下发。
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { SkillMetadata } from "../types";
+import { ConfirmDialog } from "./ConfirmDialog";
+import {
+  SettingsTabs,
+  ProjectCard,
+  inferProjectName,
+  type SettingsTabDef,
+} from "./SettingsManageComponents";
 import "../styles/ConfigurationDialog.css";
+import "../styles/SettingsPage.css";
 
-const SCOPE_ORDER = ["builtin", "user", "project", "plugin"] as const;
 const SCOPE_LABELS: Record<string, string> = {
   builtin: "内置",
   user: "用户",
@@ -20,33 +27,55 @@ const SCOPE_LABELS: Record<string, string> = {
   plugin: "插件",
 };
 
-/** Group scope for a skill: plugin skills (pluginName set) get their own
- * group, everything else groups by its discovery type ("personal" skills
- * are shown under the user scope). Mirrors the CLI SkillsManager. */
-function getSkillScope(skill: SkillMetadata): string {
-  if (skill.pluginName) {
-    return "plugin";
-  }
-  if (skill.type === "personal") {
-    return "user";
-  }
-  return skill.type;
-}
+const TABS: SettingsTabDef[] = [
+  { key: "plugin", label: "插件技能" },
+  { key: "builtin", label: "内置技能" },
+  { key: "user", label: "用户技能" },
+  { key: "project", label: "项目技能" },
+];
 
 export interface SettingsSkillsViewProps {
   /** Host 消息桥（ChatApp desktop 分支 / settings-preview-entry 传入） */
   vscode?: { postMessage: (msg: unknown) => void };
+  /** 当前工作目录（用于项目分组展示项目名） */
+  workdir?: string;
+  /** 关闭设置页并预填 AI 对话框提示词 */
+  onPrefillPrompt?: (prompt: string) => void;
+  /** 用系统编辑器打开文件（desktop 走 desktopOpenFileExternal；IDE 回退 openFile） */
+  onOpenExternalFile?: (path: string) => void;
 }
 
-const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({ vscode }) => {
+/** 技能来源 tab：插件技能（pluginName 设置）归 plugin，personal 归 user，其余按 type */
+function getSkillScope(skill: SkillMetadata): string {
+  if (skill.pluginName) return "plugin";
+  if (skill.type === "personal") return "user";
+  return skill.type;
+}
+
+const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
+  vscode,
+  workdir,
+  onPrefillPrompt,
+  onOpenExternalFile,
+}) => {
   const [skills, setSkills] = useState<SkillMetadata[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<string>(TABS[0].key);
   const [selectedName, setSelectedName] = useState<string | null>(null);
+  // 待删除技能（null = 无确认框）
+  const [pendingDelete, setPendingDelete] = useState<SkillMetadata | null>(
+    null,
+  );
+
+  const fetchSkills = useCallback(() => {
+    vscode?.postMessage({ command: "getSkillMetadata" });
+  }, [vscode]);
 
   // Fetch skill metadata on mount (fresh each time the tab opens)
   useEffect(() => {
-    vscode?.postMessage({ command: "getSkillMetadata" });
-  }, [vscode]);
+    setLoading(true);
+    fetchSkills();
+  }, [fetchSkills]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -62,11 +91,58 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({ vscode }) => {
 
   const selectedSkill = skills.find((s) => s.name === selectedName) || null;
 
-  // Group by scope, keeping a stable order; plugin skills are `pluginName:skill`.
-  const grouped = SCOPE_ORDER.map((scope) => ({
-    scope,
-    skills: skills.filter((s) => getSkillScope(s) === scope),
-  })).filter((group) => group.skills.length > 0);
+  const tabSkills = skills.filter((s) => getSkillScope(s) === activeTab);
+  const activeTabDef = TABS.find((t) => t.key === activeTab) ?? TABS[0];
+  // 项目技能按所属项目分组（路径前缀推断）
+  const projectGroups = tabSkills.reduce<Map<string, SkillMetadata[]>>(
+    (groups, skill) => {
+      const project = inferProjectName(skill.skillPath, workdir);
+      const list = groups.get(project) ?? [];
+      list.push(skill);
+      groups.set(project, list);
+      return groups;
+    },
+    new Map(),
+  );
+
+  const projectName = workdir
+    ? (workdir
+        .split(/[\\/]+/)
+        .filter(Boolean)
+        .pop() ?? workdir)
+    : "当前项目";
+
+  const handleCreate = (scope: "user" | "project") => {
+    const prompt =
+      scope === "user"
+        ? "/settings 帮我新建一个用户级技能：<技能名>，用于<场景>，内容是<做什么>"
+        : `/settings 帮我在【${projectName}】下新建一个技能：<技能名>，用于<场景>，内容是<做什么>`;
+    onPrefillPrompt?.(prompt);
+  };
+
+  const handleEdit = (skill: SkillMetadata) => {
+    onPrefillPrompt?.(
+      `/settings 帮我改技能${skill.name}：把<要改的地方>改成<新内容/新行为>`,
+    );
+    openSkillFile(skill);
+  };
+
+  const openSkillFile = (skill: SkillMetadata) => {
+    if (!skill.skillPath) return;
+    if (onOpenExternalFile) {
+      onOpenExternalFile(skill.skillPath);
+      return;
+    }
+    vscode?.postMessage({ command: "openFile", path: skill.skillPath });
+  };
+
+  const handleConfirmDelete = () => {
+    if (!pendingDelete) return;
+    vscode?.postMessage({ command: "deleteSkill", name: pendingDelete.name });
+    setPendingDelete(null);
+    // 列表刷新依赖 host 回发 skillMetadataResponse（删除后重新拉取）
+    fetchSkills();
+  };
 
   const invocationLabel = (skill: SkillMetadata): string => {
     const restrictions: string[] = [];
@@ -81,6 +157,9 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({ vscode }) => {
       : "用户与模型均可调用";
   };
 
+  const isEditable = (skill: SkillMetadata) =>
+    getSkillScope(skill) === "user" || getSkillScope(skill) === "project";
+
   return (
     <div className="settings-view">
       <header className="settings-page-header">
@@ -88,6 +167,23 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({ vscode }) => {
         <p>管理可复用的技能。</p>
       </header>
       <section className="settings-section">
+        <SettingsTabs
+          tabs={TABS}
+          activeTab={activeTab}
+          onChange={setActiveTab}
+          actions={
+            activeTab === "user" ? (
+              <button
+                type="button"
+                className="settings-save-btn"
+                onClick={() => handleCreate("user")}
+              >
+                <i className="codicon codicon-add" aria-hidden="true" />
+                新建技能
+              </button>
+            ) : undefined
+          }
+        />
         <div className="settings-card">
           {loading ? (
             <div className="empty-state">
@@ -170,45 +266,47 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({ vscode }) => {
                   <strong>调用方式：</strong> {invocationLabel(selectedSkill)}
                 </div>
               </div>
+
+              <div className="settings-actions">
+                <button
+                  type="button"
+                  onClick={() => setSelectedName(null)}
+                  className="settings-save-btn"
+                >
+                  返回列表
+                </button>
+              </div>
             </div>
-          ) : skills.length === 0 ? (
+          ) : tabSkills.length === 0 ? (
             <div className="empty-state">
-              <p>暂无可用技能</p>
+              <p>{activeTabDef.label}暂无内容</p>
             </div>
-          ) : (
-            <div className="mcp-server-list">
-              {grouped.map((group) => (
-                <div key={group.scope}>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: "bold",
-                      color: "var(--vscode-descriptionForeground)",
-                      margin: "8px 0 4px 0",
-                    }}
-                  >
-                    {SCOPE_LABELS[group.scope]} skills
-                  </div>
-                  {group.skills.map((skill) => (
-                    <div
-                      key={skill.name}
-                      className="mcp-server-item"
-                      style={{ cursor: "pointer" }}
-                      onClick={() => setSelectedName(skill.name)}
+          ) : activeTab === "project" ? (
+            <div className="settings-project-cards">
+              {[...projectGroups.entries()].map(([project, list]) => (
+                <ProjectCard
+                  key={project}
+                  projectName={project}
+                  action={
+                    <button
+                      type="button"
+                      className="settings-card-link-btn"
+                      onClick={() => handleCreate("project")}
                     >
-                      <div className="mcp-server-info">
+                      <i className="codicon codicon-add" aria-hidden="true" />
+                      新增指令
+                    </button>
+                  }
+                >
+                  {list.map((skill) => (
+                    <div key={skill.name} className="mcp-server-item">
+                      <div
+                        className="mcp-server-info"
+                        style={{ cursor: "pointer" }}
+                        onClick={() => setSelectedName(skill.name)}
+                      >
                         <div className="mcp-server-header">
-                          <span className="mcp-server-name">{skill.name}</span>
-                          {skill.pluginName && (
-                            <span
-                              style={{
-                                fontSize: "12px",
-                                color: "var(--vscode-descriptionForeground)",
-                              }}
-                            >
-                              · {skill.pluginName}
-                            </span>
-                          )}
+                          <span className="mcp-server-name">/{skill.name}</span>
                         </div>
                         {skill.description && (
                           <div
@@ -222,28 +320,96 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({ vscode }) => {
                         )}
                       </div>
                       <div className="mcp-server-actions">
-                        <span className="mcp-tool-count">›</span>
+                        <button
+                          type="button"
+                          className="settings-row-btn"
+                          onClick={() => handleEdit(skill)}
+                        >
+                          编辑
+                        </button>
+                        <button
+                          type="button"
+                          className="settings-row-btn settings-row-btn-danger"
+                          onClick={() => setPendingDelete(skill)}
+                        >
+                          删除
+                        </button>
                       </div>
                     </div>
                   ))}
+                </ProjectCard>
+              ))}
+            </div>
+          ) : (
+            <div className="mcp-server-list">
+              {tabSkills.map((skill) => (
+                <div key={skill.name} className="mcp-server-item">
+                  <div
+                    className="mcp-server-info"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setSelectedName(skill.name)}
+                  >
+                    <div className="mcp-server-header">
+                      <span className="mcp-server-name">{skill.name}</span>
+                      {skill.pluginName && (
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            color: "var(--vscode-descriptionForeground)",
+                          }}
+                        >
+                          · {skill.pluginName}
+                        </span>
+                      )}
+                    </div>
+                    {skill.description && (
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: "var(--vscode-descriptionForeground)",
+                        }}
+                      >
+                        {skill.description}
+                      </div>
+                    )}
+                  </div>
+                  <div className="mcp-server-actions">
+                    {isEditable(skill) && (
+                      <>
+                        <button
+                          type="button"
+                          className="settings-row-btn"
+                          onClick={() => handleEdit(skill)}
+                        >
+                          编辑
+                        </button>
+                        <button
+                          type="button"
+                          className="settings-row-btn settings-row-btn-danger"
+                          onClick={() => setPendingDelete(skill)}
+                        >
+                          删除
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           )}
-
-          {selectedSkill && (
-            <div className="settings-actions">
-              <button
-                type="button"
-                onClick={() => setSelectedName(null)}
-                className="settings-save-btn"
-              >
-                返回列表
-              </button>
-            </div>
-          )}
         </div>
       </section>
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title={`删除技能「${pendingDelete.name}」`}
+          description={`将删除技能目录${pendingDelete.skillPath ? `（${pendingDelete.skillPath}）` : ""}，此操作不可撤销。`}
+          confirmText="确认删除"
+          cancelText="取消"
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </div>
   );
 };

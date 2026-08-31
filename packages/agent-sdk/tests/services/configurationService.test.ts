@@ -1488,4 +1488,146 @@ describe("ConfigurationService", () => {
       expect(loadUserConfigEnv()).toEqual({});
     });
   });
+
+  describe("Hook CRUD", () => {
+    const userSettingsPath = () =>
+      path.join(userHome, ".wave", "settings.json");
+
+    beforeEach(() => {
+      // existsSync is mocked at module level; report existence for paths
+      // under the fake user home so configurationService sees the files
+      // written by these tests.
+      mockExistsSync.mockImplementation(
+        (p) =>
+          p.toString().startsWith(userHome) ||
+          p.toString().startsWith("/tmp/workdir"),
+      );
+    });
+
+    it("getHooksByScope returns hooks from user settings.json", async () => {
+      await fs.mkdir(path.dirname(userSettingsPath()), { recursive: true });
+      await fs.writeFile(
+        userSettingsPath(),
+        JSON.stringify({
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: "Write",
+                hooks: [{ type: "command", command: "echo hi" }],
+              },
+            ],
+          },
+        }),
+      );
+
+      const hooks = await configService.getHooksByScope("/tmp/workdir", "user");
+
+      expect(hooks).toEqual({
+        PreToolUse: [
+          {
+            matcher: "Write",
+            hooks: [{ type: "command", command: "echo hi" }],
+          },
+        ],
+      });
+    });
+
+    it("getHooksByScope returns empty when file missing", async () => {
+      mockExistsSync.mockReturnValue(false);
+      const hooks = await configService.getHooksByScope("/tmp/workdir", "user");
+      expect(hooks).toEqual({});
+    });
+
+    it("setHookEnabled updates the enabled flag in the scope's settings.json", async () => {
+      await fs.mkdir(path.dirname(userSettingsPath()), { recursive: true });
+      await fs.writeFile(
+        userSettingsPath(),
+        JSON.stringify({
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: "Write",
+                hooks: [{ type: "command", command: "echo hi" }],
+              },
+            ],
+          },
+        }),
+      );
+
+      await configService.setHookEnabled(
+        "/tmp/workdir",
+        "user",
+        "PreToolUse:Write",
+        false,
+      );
+
+      const written = JSON.parse(
+        await fs.readFile(userSettingsPath(), "utf-8"),
+      );
+      expect(written.hooks.PreToolUse[0].enabled).toBe(false);
+    });
+
+    it("setHookEnabled throws on invalid hook event", async () => {
+      await expect(
+        configService.setHookEnabled(
+          "/tmp/workdir",
+          "user",
+          "BadEvent:x",
+          true,
+        ),
+      ).rejects.toThrow("Invalid hook event");
+    });
+
+    it("deleteHook removes the matching hook entry", async () => {
+      await fs.mkdir(path.dirname(userSettingsPath()), { recursive: true });
+      await fs.writeFile(
+        userSettingsPath(),
+        JSON.stringify({
+          hooks: {
+            PreToolUse: [
+              { matcher: "Write", hooks: [{ type: "command", command: "a" }] },
+              { matcher: "Read", hooks: [{ type: "command", command: "b" }] },
+            ],
+          },
+        }),
+      );
+
+      await configService.deleteHook(
+        "/tmp/workdir",
+        "user",
+        "PreToolUse:Write",
+      );
+
+      const written = JSON.parse(
+        await fs.readFile(userSettingsPath(), "utf-8"),
+      );
+      expect(written.hooks.PreToolUse).toHaveLength(1);
+      expect(written.hooks.PreToolUse[0].matcher).toBe("Read");
+    });
+
+    it("deleteHook removes the whole event key when last hook removed", async () => {
+      await fs.mkdir(path.dirname(userSettingsPath()), { recursive: true });
+      await fs.writeFile(
+        userSettingsPath(),
+        JSON.stringify({
+          hooks: {
+            PreToolUse: [
+              { matcher: "Write", hooks: [{ type: "command", command: "a" }] },
+            ],
+          },
+        }),
+      );
+
+      await configService.deleteHook(
+        "/tmp/workdir",
+        "user",
+        "PreToolUse:Write",
+      );
+
+      const written = JSON.parse(
+        await fs.readFile(userSettingsPath(), "utf-8"),
+      );
+      expect(written.hooks.PreToolUse).toBeUndefined();
+    });
+  });
 });

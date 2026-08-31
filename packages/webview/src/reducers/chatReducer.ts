@@ -182,22 +182,6 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         projectSettings: action.payload,
       };
-    case "SET_HOOKS_CONFIG":
-      return {
-        ...state,
-        hooksConfig: {
-          ...(state.hooksConfig ?? {}),
-          [action.payload.scope]: action.payload.hooks,
-        },
-      };
-    case "SET_MCP_CONFIG":
-      return {
-        ...state,
-        mcpConfig: {
-          ...(state.mcpConfig ?? {}),
-          [action.payload.scope]: action.payload.mcpServers,
-        },
-      };
     case "SET_INITIAL_STATE":
       return {
         ...state,

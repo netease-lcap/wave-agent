@@ -232,6 +232,36 @@ export class SubagentManager {
   }
 
   /**
+   * Delete a user-level or project-level subagent by removing its markdown
+   * file. Builtin and plugin agents are read-only and cannot be deleted.
+   * @param name - The subagent name as shown in configurations
+   * @returns true if the subagent was deleted
+   */
+  async deleteSubagent(name: string): Promise<boolean> {
+    const configs = this.cachedConfigurations ?? [];
+    const config = configs.find((c) => c.name === name);
+    if (!config) {
+      return false;
+    }
+
+    // Builtin and plugin agents are read-only
+    if (config.scope !== "user" && config.scope !== "project") {
+      return false;
+    }
+
+    const { unlink } = await import("fs/promises");
+    await unlink(config.filePath);
+
+    // Drop the deleted agent from the cached configurations immediately.
+    // A later refreshConfigurations() re-scans the filesystem and reflects
+    // the deletion persistently.
+    this.cachedConfigurations = configs.filter((c) => c.name !== name);
+
+    logger?.debug(`Deleted subagent '${name}' at ${config.filePath}`);
+    return true;
+  }
+
+  /**
    * Get cached configurations synchronously (must call loadConfigurations first)
    */
   getConfigurations(): SubagentConfiguration[] {

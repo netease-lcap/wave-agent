@@ -678,4 +678,74 @@ export class ChatSession {
     }
     return this.agent.disconnectMcpServer(serverName);
   }
+
+  public async removeMcpServer(
+    scope: "user" | "project",
+    serverName: string,
+  ): Promise<boolean> {
+    if (!this.agent) {
+      return false;
+    }
+    return this.agent.removeMcpServer(scope, serverName);
+  }
+
+  public async getUserMcpConfigPath(): Promise<string | null> {
+    if (!this.agent) {
+      return null;
+    }
+    const paths = await this.agent.getMcpConfigPaths();
+    return paths.userPath;
+  }
+
+  public async getProjectMcpConfigPath(): Promise<string | null> {
+    if (!this.agent) {
+      return null;
+    }
+    const paths = await this.agent.getMcpConfigPaths();
+    return paths.projectPath;
+  }
+
+  public async deleteSkill(name: string): Promise<boolean> {
+    if (!this.agent) {
+      return false;
+    }
+    return this.agent.deleteSkill(name);
+  }
+
+  public async deleteSubagent(name: string): Promise<boolean> {
+    if (!this.agent) {
+      return false;
+    }
+    return this.agent.deleteSubagent(name);
+  }
+
+  public async getHooksByScope(
+    scope: "user" | "project" | "plugin",
+  ): Promise<Partial<Record<string, unknown[]>>> {
+    if (!this.agent) {
+      return {};
+    }
+    return this.agent.getHooksByScope(scope);
+  }
+
+  public async setHookEnabled(
+    scope: "user" | "project",
+    hookName: string,
+    enabled: boolean,
+  ): Promise<void> {
+    if (!this.agent) {
+      return;
+    }
+    await this.agent.setHookEnabled(scope, hookName, enabled);
+  }
+
+  public async deleteHook(
+    scope: "user" | "project",
+    hookName: string,
+  ): Promise<void> {
+    if (!this.agent) {
+      return;
+    }
+    await this.agent.deleteHook(scope, hookName);
+  }
 }

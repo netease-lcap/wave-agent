@@ -41,6 +41,14 @@ const userSkill: SkillMetadata = {
   userInvocable: true,
 };
 
+const projectSkill: SkillMetadata = {
+  name: "deploy",
+  description: "项目专用部署技能",
+  type: "project",
+  skillPath: "/work/a/.wave/skills/deploy/SKILL.md",
+  userInvocable: true,
+};
+
 async function openSkillsCommand() {
   const { vscode } = renderChatApp();
   const input = screen.getByTestId("message-input");
@@ -59,7 +67,10 @@ async function openSkillsCommand() {
   return { vscode };
 }
 
-function renderSettingsPage(vscode?: { postMessage: (msg: unknown) => void }) {
+function renderSettingsPage(
+  vscode?: { postMessage: (msg: unknown) => void },
+  props?: { onPrefillPrompt?: (prompt: string) => void },
+) {
   const mockVscode =
     vscode ||
     (createMockVscode() as unknown as { postMessage: (msg: unknown) => void });
@@ -72,6 +83,8 @@ function renderSettingsPage(vscode?: { postMessage: (msg: unknown) => void }) {
       onLoadAgentsContent={() => {}}
       initialNav="skills"
       vscode={mockVscode}
+      workdir="/work/a"
+      onPrefillPrompt={props?.onPrefillPrompt}
     />,
   );
   return { vscode: mockVscode };
@@ -94,12 +107,12 @@ describe("/skills 斜杠命令 → 设置页「技能」选项卡", () => {
   });
 });
 
-describe("SettingsPage 技能选项卡视图（内容自 SkillsDialog 迁移）", () => {
+describe("SettingsPage 技能选项卡视图（4 Tab + 项目分组卡片）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("请求技能元数据并按来源分组展示（内置 / 用户 / 插件）", async () => {
+  it("请求技能元数据并展示四个来源 Tab（插件/内置/用户/项目）", async () => {
     const { vscode } = renderSettingsPage();
 
     expect(vscode.postMessage).toHaveBeenCalledWith({
@@ -110,30 +123,64 @@ describe("SettingsPage 技能选项卡视图（内容自 SkillsDialog 迁移）"
       fixtures.skillMetadataResponse([builtinSkill, pluginSkill, userSkill]),
     );
 
-    expect(await screen.findByText("内置 skills")).toBeInTheDocument();
-    expect(screen.getByText("用户 skills")).toBeInTheDocument();
-    expect(screen.getByText("插件 skills")).toBeInTheDocument();
+    expect(await screen.findByText("插件技能")).toBeInTheDocument();
+    expect(screen.getByText("内置技能")).toBeInTheDocument();
+    expect(screen.getByText("用户技能")).toBeInTheDocument();
+    expect(screen.getByText("项目技能")).toBeInTheDocument();
 
-    // Row shows name + plugin name for plugin skills
-    expect(screen.getByText("deep-research")).toBeInTheDocument();
+    // 默认选中第一个 Tab（插件技能）：展示插件技能
     expect(screen.getByText("sdd:specify")).toBeInTheDocument();
     expect(screen.getByText("· sdd")).toBeInTheDocument();
-    // Description is shown in the row
+  });
+
+  it("点击 Tab 切换来源，用户技能 Tab 提供「新建技能」入口", async () => {
+    renderSettingsPage();
+    sendHostMessage(
+      fixtures.skillMetadataResponse([builtinSkill, pluginSkill, userSkill]),
+    );
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText("用户技能"));
+    });
+    expect(screen.getByText("my-skill")).toBeInTheDocument();
     expect(
       screen.getByText("个人自定义技能，用于日常代码审查"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /新建技能/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("项目技能 Tab 按项目分组卡片展示（/技能名 样式 + 新增指令）", async () => {
+    renderSettingsPage();
+    sendHostMessage(fixtures.skillMetadataResponse([projectSkill]));
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText("项目技能"));
+    });
+
+    // 项目卡片（workdir 推断项目名 a）+ /技能名 样式 + 新增指令
+    expect(screen.getByText("a")).toBeInTheDocument();
+    expect(screen.getByText("/deploy")).toBeInTheDocument();
+    expect(screen.getByText("项目专用部署技能")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /新增指令/ }),
     ).toBeInTheDocument();
   });
 
   it("shows an empty state when no skills are configured", async () => {
     renderSettingsPage();
     sendHostMessage(fixtures.skillMetadataResponse([]));
-    expect(await screen.findByText("暂无可用技能")).toBeInTheDocument();
+    expect(await screen.findByText("插件技能暂无内容")).toBeInTheDocument();
   });
 
   it("enters detail view on click and shows full metadata", async () => {
     renderSettingsPage();
     sendHostMessage(fixtures.skillMetadataResponse([userSkill]));
 
+    await act(async () => {
+      fireEvent.click(await screen.findByText("用户技能"));
+    });
     const row = await screen.findByText("my-skill");
     await act(async () => {
       fireEvent.click(row);
@@ -156,7 +203,7 @@ describe("SettingsPage 技能选项卡视图（内容自 SkillsDialog 迁移）"
     await act(async () => {
       fireEvent.click(screen.getByText("返回列表"));
     });
-    expect(screen.getByText("用户 skills")).toBeInTheDocument();
+    expect(screen.getByText("用户技能")).toBeInTheDocument();
   });
 
   it("shows invocation restrictions in the detail view", async () => {
@@ -169,10 +216,120 @@ describe("SettingsPage 技能选项卡视图（内容自 SkillsDialog 迁移）"
     sendHostMessage(fixtures.skillMetadataResponse([restrictedSkill]));
 
     await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: "内置技能" }));
+    });
+    await act(async () => {
       fireEvent.click(await screen.findByText("deep-research"));
     });
     expect(
       screen.getByText("不可通过 /命令 调用，模型自动调用已禁用"),
     ).toBeInTheDocument();
+  });
+
+  it("用户技能「新建技能」→ onPrefillPrompt 预填用户级提示词", async () => {
+    const onPrefillPrompt = vi.fn();
+    renderSettingsPage(undefined, { onPrefillPrompt });
+    sendHostMessage(fixtures.skillMetadataResponse([userSkill]));
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText("用户技能"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /新建技能/ }));
+    });
+
+    expect(onPrefillPrompt).toHaveBeenCalledWith(
+      expect.stringContaining("帮我新建一个用户级技能"),
+    );
+  });
+
+  it("项目卡片「新增指令」→ 预填带项目名的项目级提示词", async () => {
+    const onPrefillPrompt = vi.fn();
+    renderSettingsPage(undefined, { onPrefillPrompt });
+    sendHostMessage(fixtures.skillMetadataResponse([projectSkill]));
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText("项目技能"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /新增指令/ }));
+    });
+
+    expect(onPrefillPrompt).toHaveBeenCalledWith(
+      expect.stringContaining("帮我在【a】下新建一个技能"),
+    );
+  });
+
+  it("「编辑」→ 预填编辑提示词并发送 openFile（IDE 回退）", async () => {
+    const onPrefillPrompt = vi.fn();
+    const { vscode } = renderSettingsPage(undefined, { onPrefillPrompt });
+    sendHostMessage(fixtures.skillMetadataResponse([userSkill]));
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText("用户技能"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /编辑/ }));
+    });
+
+    expect(onPrefillPrompt).toHaveBeenCalledWith(
+      expect.stringContaining("帮我改技能my-skill"),
+    );
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      command: "openFile",
+      path: "~/.wave/skills/my-skill.md",
+    });
+  });
+
+  it("「删除」→ 二次确认 → deleteSkill RPC", async () => {
+    const { vscode } = renderSettingsPage();
+    sendHostMessage(fixtures.skillMetadataResponse([userSkill]));
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText("用户技能"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /删除/ }));
+    });
+
+    // 确认框出现（含技能名与路径）
+    expect(await screen.findByText("删除技能「my-skill」")).toBeInTheDocument();
+    expect(
+      screen.getByText(/~\/\.wave\/skills\/my-skill\.md/),
+    ).toBeInTheDocument();
+
+    // 取消不删除
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
+    });
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "deleteSkill" }),
+    );
+
+    // 再次打开并确认
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /删除/ }));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId("confirm-dialog-confirm"));
+    });
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      command: "deleteSkill",
+      name: "my-skill",
+    });
+  });
+
+  it("插件/内置技能不提供「删除」入口（只读来源）", async () => {
+    renderSettingsPage();
+    sendHostMessage(
+      fixtures.skillMetadataResponse([builtinSkill, pluginSkill]),
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /删除/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /编辑/ }),
+    ).not.toBeInTheDocument();
   });
 });

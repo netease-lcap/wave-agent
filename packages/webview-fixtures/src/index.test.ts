@@ -76,6 +76,18 @@ describe("fixtures factory", () => {
       command: "subagentConfigurationsResponse",
       configurations: configs,
     });
+    const hooks = { PreToolUse: [{ matcher: "Write", hooks: [] }] };
+    expect(fixtures.hooksResponse(hooks)).toMatchObject({
+      command: "hooksResponse",
+      hooks,
+    });
+    expect(
+      fixtures.mcpConfigPathsResponse("/tmp/u.json", "/tmp/p.json"),
+    ).toMatchObject({
+      command: "mcpConfigPathsResponse",
+      userPath: "/tmp/u.json",
+      projectPath: "/tmp/p.json",
+    });
   });
 
   it("nested value helpers carry realistic defaults", () => {

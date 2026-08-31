@@ -440,3 +440,136 @@ describe("SubagentManager.cleanup()", () => {
     expect(instances.size).toBe(0);
   });
 });
+
+describe("SubagentManager.deleteSubagent()", () => {
+  let container: Container;
+  let subagentManager: SubagentManager;
+
+  const { unlink } = vi.hoisted(() => ({ unlink: vi.fn() }));
+
+  vi.mock("fs/promises", async () => {
+    const actual = await vi.importActual("fs/promises");
+    return { ...actual, unlink };
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    unlink.mockReset();
+    unlink.mockResolvedValue(undefined);
+
+    container = new Container();
+    container.register("BackgroundTaskManager", {
+      generateId: vi.fn().mockReturnValue("task_1"),
+    });
+    container.register("ToolManager", {
+      initializeBuiltInTools: vi.fn(),
+    });
+    container.register("ConfigurationService", {});
+
+    subagentManager = new SubagentManager(container, {
+      workdir: "/tmp/test",
+      stream: false,
+    });
+  });
+
+  it("should delete a user-level subagent file and refresh configurations", async () => {
+    // Seed a user-level config via loadConfigurations
+    const { loadSubagentConfigurations } = await import(
+      "../../src/utils/subagentParser.js"
+    );
+    vi.mocked(loadSubagentConfigurations).mockResolvedValue([
+      {
+        name: "user-agent",
+        description: "User agent",
+        systemPrompt: "Prompt",
+        tools: [],
+        model: "test-model",
+        filePath: "/home/user/.wave/agents/user-agent.md",
+        scope: "user",
+        priority: 2,
+      },
+      {
+        name: "builtin-agent",
+        description: "Builtin agent",
+        systemPrompt: "Prompt",
+        tools: [],
+        model: "test-model",
+        filePath: "/builtin/agents/builtin-agent.md",
+        scope: "builtin",
+        priority: 3,
+      },
+    ]);
+
+    await subagentManager.loadConfigurations();
+
+    const deleted = await subagentManager.deleteSubagent("user-agent");
+
+    expect(deleted).toBe(true);
+    expect(unlink).toHaveBeenCalledWith(
+      "/home/user/.wave/agents/user-agent.md",
+    );
+    const remaining = subagentManager.getConfigurations().map((c) => c.name);
+    expect(remaining).toContain("builtin-agent");
+    expect(remaining).not.toContain("user-agent");
+  });
+
+  it("should return false for unknown subagent", async () => {
+    await subagentManager.loadConfigurations();
+
+    const deleted = await subagentManager.deleteSubagent("nonexistent");
+
+    expect(deleted).toBe(false);
+    expect(unlink).not.toHaveBeenCalled();
+  });
+
+  it("should refuse to delete builtin agents", async () => {
+    const { loadSubagentConfigurations } = await import(
+      "../../src/utils/subagentParser.js"
+    );
+    vi.mocked(loadSubagentConfigurations).mockResolvedValue([
+      {
+        name: "builtin-agent",
+        description: "Builtin agent",
+        systemPrompt: "Prompt",
+        tools: [],
+        model: "test-model",
+        filePath: "/builtin/agents/builtin-agent.md",
+        scope: "builtin",
+        priority: 3,
+      },
+    ]);
+
+    await subagentManager.loadConfigurations();
+
+    const deleted = await subagentManager.deleteSubagent("builtin-agent");
+
+    expect(deleted).toBe(false);
+    expect(unlink).not.toHaveBeenCalled();
+  });
+
+  it("should refuse to delete plugin agents", async () => {
+    const { loadSubagentConfigurations } = await import(
+      "../../src/utils/subagentParser.js"
+    );
+    vi.mocked(loadSubagentConfigurations).mockResolvedValue([
+      {
+        name: "plugin-a:agent-z",
+        description: "Plugin agent",
+        systemPrompt: "Prompt",
+        tools: [],
+        model: "test-model",
+        filePath: "/plugin-a/agents/agent-z.md",
+        scope: "plugin",
+        priority: 2,
+        pluginRoot: "/plugin-a",
+      },
+    ]);
+
+    await subagentManager.loadConfigurations();
+
+    const deleted = await subagentManager.deleteSubagent("plugin-a:agent-z");
+
+    expect(deleted).toBe(false);
+    expect(unlink).not.toHaveBeenCalled();
+  });
+});
