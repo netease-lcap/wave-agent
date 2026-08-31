@@ -3,13 +3,12 @@ name: CI (JetBrains)
 # Runs the JetBrains plugin's Gradle (JUnit) test suite.
 # The Node-based `pnpm -r test` in ci.yml skips this package (it has no
 # package.json), so without this workflow BinaryResolver and other Kotlin
-# logic has no merge gate.
+# logic has no test coverage.
 
 on:
-  # Merge gate on PRs and post-merge gate on main (aligned with ci.yml).
+  # Post-merge only (aligned with ci.yml's integration job and ci-windows.yml):
+  # not gating PRs; runs after merge to main or manually via workflow_dispatch.
   # dorny/paths-filter below skips all steps for non-JetBrains changes.
-  pull_request:
-    branches: [main, develop]
   push:
     branches: [main]
   workflow_dispatch:
