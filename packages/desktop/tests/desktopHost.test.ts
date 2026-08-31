@@ -349,7 +349,6 @@ const auListeners: Record<string, Array<(info: unknown) => void>> = {};
 vi.mock("electron-updater", () => ({
   autoUpdater: {
     checkForUpdates: vi.fn(async () => null),
-    downloadUpdate: vi.fn(),
     setFeedURL: vi.fn(),
     quitAndInstall: vi.fn(),
     on: vi.fn((event: string, cb: (info: unknown) => void) => {
@@ -2064,81 +2063,50 @@ describe("checkForUpdates with a configured serverUrl", () => {
     expect(checkForUpdate).not.toHaveBeenCalled();
   });
 
-  it("drives the account-card update state machine: available → downloading → ready, restart via desktopRestartApp", async () => {
+  it("announces updates via toasts: 发现新版本 → 已下载完成 + 重启安装 action", async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
       isUpdateAvailable: true,
     } as never);
-    const { host, sent } = await readyHostWithServerUrl();
+    const { host } = await readyHostWithServerUrl();
 
-    // 发现更新 → desktopAccountInfo.update = available
-    await host.handleWebviewMessage({ command: "checkForUpdates" });
-    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
-      update: "available",
-    });
-
-    // 用户确认下载（desktopUpdateApp）→ downloading + electron-updater 下载开始
-    await host.handleWebviewMessage({ command: "desktopUpdateApp" });
-    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
-      update: "downloading",
-    });
-    expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
-
-    // 下载完成 → ready；无「已下载完成」toast（重启确认由 webview 弹出）
-    for (const cb of auListeners["update-downloaded"] ?? []) {
-      cb({ version: "0.20.0" });
+    // 发现更新 → electron-updater 自动开始后台下载，update-available toast 告知
+    for (const cb of auListeners["update-available"] ?? []) {
+      cb({ version: "0.20.0", files: [], path: "wave-0.20.0.dmg" });
     }
-    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
-      update: "ready",
-    });
-    expect(
-      shownToasts().filter((n) => n.message.includes("已下载完成")),
-    ).toHaveLength(0);
+    const found = shownToasts().at(-1);
+    expect(found?.message).toContain("发现新版本 v0.20.0");
+    expect(found?.message).toContain("正在后台下载");
+    expect(found?.actionLabel).toBeUndefined();
     expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled();
 
-    // 「重启」→ quitAndInstall（不弹原生对话框）
-    await host.handleWebviewMessage({ command: "desktopRestartApp" });
+    // 下载完成 → 「已下载完成，重启应用以完成安装」toast + 重启安装按钮
+    for (const cb of auListeners["update-downloaded"] ?? []) {
+      cb({ version: "0.20.0", files: [], path: "wave-0.20.0.dmg" });
+    }
+    const done = shownToasts().at(-1);
+    expect(done?.message).toBe(
+      "新版本 v0.20.0 已下载完成，重启应用以完成安装。",
+    );
+    expect(done?.actionLabel).toBe("重启安装");
+    expect(done?.action).toEqual({ type: "quitAndInstall" });
+
+    // 重复 update-downloaded 不重复弹「重启安装」toast
+    for (const cb of auListeners["update-downloaded"] ?? []) {
+      cb({ version: "0.20.0", files: [], path: "wave-0.20.0.dmg" });
+    }
+    expect(
+      shownToasts().filter((n) => n.message.includes("已下载完成")),
+    ).toHaveLength(1);
+
+    // 点击「重启安装」→ quitAndInstall（不弹原生对话框）
+    await host.handleWebviewMessage({
+      command: "toastAction",
+      toastId: "x",
+      action: { type: "quitAndInstall" },
+    });
     expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
     expect(dialog.showMessageBox).not.toHaveBeenCalled();
-  });
-
-  it("reverts to available when the download errors, and ignores duplicate update commands", async () => {
-    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
-      updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
-      isUpdateAvailable: true,
-    } as never);
-    const { host, sent } = await readyHostWithServerUrl();
-
-    await host.handleWebviewMessage({ command: "checkForUpdates" });
-    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
-      update: "available",
-    });
-
-    await host.handleWebviewMessage({ command: "desktopUpdateApp" });
-    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
-      update: "downloading",
-    });
-    // 下载失败 → 回退 available（按钮可重试），且不弹手动下载页 toast
-    for (const cb of auListeners["error"] ?? []) {
-      cb(new Error("download failed"));
-    }
-    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
-      update: "available",
-    });
-    expect(checkForUpdate).not.toHaveBeenCalled();
-    expect(
-      shownToasts().filter((n) => n.message.includes("0.20.0")),
-    ).toHaveLength(0);
-
-    // ready 之后重复 desktopUpdateApp 无效（已下载完成，只应重启）
-    for (const cb of auListeners["update-downloaded"] ?? []) {
-      cb({ version: "0.20.0" });
-    }
-    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
-      update: "ready",
-    });
-    await host.handleWebviewMessage({ command: "desktopUpdateApp" });
-    expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("opens the download page when the toast action is openDownloadPage", async () => {
@@ -2214,31 +2182,31 @@ describe("checkForUpdates with a configured serverUrl", () => {
     vi.mocked(checkForUpdate).mockResolvedValue(null);
   });
 
-  it("does not announce a manual fallback once the update is downloaded (ready)", async () => {
+  it("does not announce a manual fallback once the update is downloaded", async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
       isUpdateAvailable: true,
     } as never);
     // If the fallback wrongly fired it would return this and announce a
-    // conflicting download-page toast next to the ready state.
+    // conflicting download-page toast next to the 重启安装 toast.
     vi.mocked(checkForUpdate).mockResolvedValue({
       latestVersion: "0.20.0",
       currentVersion: "0.19.7",
       downloadUrl: "https://github.com/release",
     });
-    const { host, sent } = await readyHostWithServerUrl();
+    const { host } = await readyHostWithServerUrl();
 
     await host.handleWebviewMessage({ command: "checkForUpdates" });
-    // Download finished → the state machine reaches ready.
+    // Download finished → the 重启安装 toast is announced.
     for (const cb of auListeners["update-downloaded"] ?? []) {
       cb({ version: "0.20.0" });
     }
-    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
-      update: "ready",
-    });
+    expect(
+      shownToasts().filter((n) => n.message.includes("已下载完成")),
+    ).toHaveLength(1);
 
     // The install stage then fails (e.g. Squirrel signature validation) —
-    // the update button already offers 重启, so no manual fallback toast.
+    // the 重启安装 toast already offers restart, so no manual fallback toast.
     for (const cb of auListeners["error"] ?? []) {
       cb(new Error("Code signature did not pass validation"));
     }
@@ -2310,7 +2278,6 @@ describe("account card (desktopAccountInfo)", () => {
         user: { id: "u1", email: "alice@example.com" },
         plan: { monthlyQuota: 9999, months: 12, used: 0 },
         apiQuota: { limit: null, used: 1.15314 },
-        update: null,
       });
     });
     restore();

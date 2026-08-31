@@ -534,14 +534,10 @@ export interface AccountApiQuotaInfo {
   used: number;
 }
 
-/** 桌面端更新状态机 (electron-updater, serverUrl 安装). */
-export type DesktopUpdateState = "available" | "downloading" | "ready";
-
 /**
  * 桌面侧边栏账户卡片快照 (spec desktop-app.md「账户卡片」). Window-global like
  * showToast — the sidebar renders on the root webview instance only, so the
- * host never pane-tags it. Auth/usage follow the focused pane's host; `update`
- * is app-global (electron-updater).
+ * host never pane-tags it. Auth/usage follow the focused pane's host.
  */
 export interface DesktopAccountInfoMessage extends HostToWebviewMessageBase {
   command: "desktopAccountInfo";
@@ -549,7 +545,6 @@ export interface DesktopAccountInfoMessage extends HostToWebviewMessageBase {
   user?: { id: string; email?: string } | null;
   plan?: AccountPlanInfo | null;
   apiQuota?: AccountApiQuotaInfo | null;
-  update?: DesktopUpdateState | null;
 }
 
 // ---- Host-only commands (consumed outside the ChatApp switch). ----

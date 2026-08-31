@@ -109,28 +109,6 @@
   outline: none;
 }
 
-/* 更新按钮（热区之外的一行）。 */
-.account-card-update-btn {
-  width: 100%;
-  height: 24px;
-  border: none;
-  border-radius: 4px;
-  background-color: var(--vscode-button-background, #2f81ae);
-  color: var(--vscode-button-foreground, #e9e9e9);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.account-card-update-btn:hover:not(:disabled) {
-  background-color: var(--vscode-button-hoverBackground, #2690c7);
-}
-
-.account-card-update-btn:disabled {
-  opacity: 0.7;
-  cursor: default;
-}
-
 /* 用量浮层：fixed 定位逃逸 .desktop-sidebar 的 overflow:hidden（SessionItemMenu 先例）。 */
 .account-usage-popup {
   z-index: 1000;

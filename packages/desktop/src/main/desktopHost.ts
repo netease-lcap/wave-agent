@@ -68,7 +68,6 @@ import type {
   UpdateToast,
   AccountPlanInfo,
   AccountApiQuotaInfo,
-  DesktopUpdateState,
 } from "wave-webview-fixtures";
 import type { ChildProcess } from "child_process";
 import { getWorkspaceDiff } from "./gitDiff";
@@ -78,6 +77,7 @@ import {
   checkForUpdate,
   type UpdateInfo as ManualUpdateInfo,
 } from "./updateChecker";
+import type { UpdateInfo as ElectronUpdateInfo } from "electron-updater";
 import { AutoUpdaterService } from "./updateAutoUpdater";
 import { HOST_CHANNEL } from "./channels";
 import type { PanelKind } from "./menu";
@@ -274,13 +274,6 @@ export class DesktopHost {
    *  install-stage error (e.g. Squirrel signature validation) must not
    *  double-notify with a conflicting manual download-page toast. */
   private updateDownloadedAnnounced = false;
-
-  /**
-   * 更新状态机 (serverUrl/electron-updater 安装): null = 无更新 / 未知,
-   * available → (用户确认) → downloading → ready。状态变化经 desktopAccountInfo
-   * 推给侧边栏账户卡片的更新按钮。GitHub 手动流程 (无 serverUrl) 保持原 toast。
-   */
-  private updateState: DesktopUpdateState | null = null;
 
   /**
    * 账户卡片快照 per host (登录态 + 用量), 跟随聚焦分屏的主机 (spec 场景 8)。
@@ -604,7 +597,7 @@ export class DesktopHost {
 
   /**
    * 推侧边栏账户卡片快照 (desktopAccountInfo)。Window-global — 不加 paneId，
-   * 由 webview 根实例消费。数据 = 聚焦分屏所属主机的缓存；update 为应用全局。
+   * 由 webview 根实例消费。数据 = 聚焦分屏所属主机的缓存。
    */
   private pushAccountInfo(): void {
     const entry = this.accountCache.get(this.currentHost);
@@ -614,7 +607,6 @@ export class DesktopHost {
       user: entry?.user ?? null,
       plan: entry?.plan ?? null,
       apiQuota: entry?.apiQuota ?? null,
-      update: this.updateState,
     });
   }
 
@@ -678,12 +670,6 @@ export class DesktopHost {
     this.accountPollTimer = setInterval(() => {
       void this.refreshUsageForHost(this.currentHost);
     }, DesktopHost.accountPollIntervalMs);
-  }
-
-  /** 更新状态机状态变更 → 推送账户卡片（webview 更新按钮随之刷新）。 */
-  private setUpdateState(state: DesktopUpdateState | null): void {
-    this.updateState = state;
-    this.pushAccountInfo();
   }
 
   /** Insert a host-generated system message into a pane's chat stream (focused pane by default). */
@@ -3252,14 +3238,6 @@ export class DesktopHost {
         await this.handleCheckForUpdates(true);
         break;
 
-      case "desktopUpdateApp":
-        this.handleUpdateApp();
-        break;
-
-      case "desktopRestartApp":
-        this.handleRestartApp();
-        break;
-
       // -- auth ----------------------------------------------------------------
       case "getAuthStatus":
         await this.handleGetAuthStatus();
@@ -4405,16 +4383,20 @@ export class DesktopHost {
     if (serverUrl) {
       if (!this.autoUpdaterService) {
         this.autoUpdaterService = new AutoUpdaterService({
-          onUpdateDownloaded: () => void this.handleUpdateDownloaded(),
+          onUpdateAvailable: (info) =>
+            this.showToast({
+              message: `发现新版本 v${info.version}（当前 v${app.getVersion()}），正在后台下载…`,
+            }),
+          onUpdateDownloaded: (info) => void this.handleUpdateDownloaded(info),
           onError: (error) =>
             void this.handleAutoUpdaterError(serverUrl, error),
         });
       }
       const outcome = await this.autoUpdaterService.checkForUpdates(serverUrl);
       if (outcome === "update") {
-        // 新状态机（spec「账户卡片」场景 5/6）：发现更新 → 更新按钮「更新」，
-        // 用户确认后下载，下载完成 → 「重启」。不再后台静默下载。
-        this.setUpdateState("available");
+        // 发现更新 → electron-updater 已自动开始后台下载，update-available
+        // 事件经 onUpdateAvailable 弹出 toast 告知（spec「桌面端自动更新」
+        // 场景 3），无需额外处理。
         return;
       }
       if (outcome === "no-update") {
@@ -4452,8 +4434,10 @@ export class DesktopHost {
   }
 
   /**
-   * electron-updater 出错。下载中途失败：状态机回退 available（更新按钮可重试），
-   * 不弹手动下载页 toast。检查阶段失败（updateState 仍 null）：沿用原手动降级。
+   * electron-updater 出错。下载未完成即失败：降级为手动下载页 toast（spec
+   * 「桌面端自动更新」场景 5「不得静默失败」）。下载完成后的安装阶段错误
+   * （updateDownloadedAnnounced 已置位）不弹手动下载页 toast，避免与
+   * 「已下载完成，重启安装」toast 冲突。
    */
   private async handleAutoUpdaterError(
     serverUrl: string,
@@ -4463,13 +4447,6 @@ export class DesktopHost {
       "[DesktopHost] Auto updater errored:",
       error instanceof Error ? error.stack : error,
     );
-    if (this.updateState === "downloading") {
-      this.setUpdateState("available");
-      return;
-    }
-    // The download already finished and the restart button is showing — a later
-    // install-stage error (e.g. Squirrel signature validation) must not announce
-    // a conflicting manual download-page toast on top of it.
     if (this.updateDownloadedAnnounced) return;
     // The packaged app has no visible console — persist the error so it can be
     // collected from the machine that reproduces the failed download.
@@ -4501,33 +4478,16 @@ export class DesktopHost {
     }
   }
 
-  /**
-   * 新版本下载完成（electron-updater update-downloaded）→ 状态机进入 ready：
-   * 账户卡片的更新按钮变为「重启」。webview 侧在 downloading→ready 转变时自动弹
-   * 重启确认框（spec 场景 6）；「稍后」→ 按钮保持「重启」可再次触发。
-   */
-  private handleUpdateDownloaded(): void {
+  /** 新版本下载完成（electron-updater update-downloaded）→ 应用内 toast 提供
+   *  「重启安装」按钮（spec「桌面端自动更新」场景 4），点击后 quitAndInstall。 */
+  private handleUpdateDownloaded(info: ElectronUpdateInfo): void {
+    if (this.updateDownloadedAnnounced) return;
     this.updateDownloadedAnnounced = true;
-    this.setUpdateState("ready");
-  }
-
-  /** 账户卡片更新按钮「更新」被确认 → 开始下载（downloading）。 */
-  private handleUpdateApp(): void {
-    if (this.updateState !== "available") return;
-    if (!this.autoUpdaterService) return;
-    this.setUpdateState("downloading");
-    try {
-      this.autoUpdaterService.downloadUpdate();
-    } catch (error) {
-      console.warn("[DesktopHost] Failed to start update download:", error);
-      this.setUpdateState("available");
-    }
-  }
-
-  /** 账户卡片「重启」被确认 → 立即退出并安装。 */
-  private handleRestartApp(): void {
-    if (this.updateState !== "ready") return;
-    this.autoUpdaterService?.quitAndInstall();
+    this.showToast({
+      message: `新版本 v${info.version} 已下载完成，重启应用以完成安装。`,
+      actionLabel: "重启安装",
+      action: { type: "quitAndInstall" },
+    });
   }
 
   /** A toast's button was clicked: quit-and-install the downloaded update, or

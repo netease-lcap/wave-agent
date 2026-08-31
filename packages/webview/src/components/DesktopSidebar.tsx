@@ -114,9 +114,6 @@ export interface DesktopSidebarProps {
   onLogout: () => void;
   /** 侧边栏底部账户卡片 (desktopAccountInfo push). */
   account?: AccountCardAccount | null;
-  /** 更新状态机动作：确认下载 / 重启安装. */
-  onUpdateApp?: () => void;
-  onRestartApp?: () => void;
   /**
    * Host the focused pane runs on ('local' or an SSH host name). Labels the
    * more menu's 登录/退出登录 entry so it names the auth subject it acts on.
@@ -173,8 +170,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onLogin,
   onLogout,
   account,
-  onUpdateApp,
-  onRestartApp,
   hostLabel,
   sessionTree,
   currentSessionId,
@@ -592,8 +587,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           onOpenSettings={onOpenSettings}
           onOpenEnterpriseConsole={onOpenEnterpriseConsole}
           onOpenHelpDocs={onOpenHelpDocs}
-          onUpdateApp={onUpdateApp ?? (() => {})}
-          onRestartApp={onRestartApp ?? (() => {})}
         />
       )}
       {pendingDelete && (
