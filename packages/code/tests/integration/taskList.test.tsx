@@ -66,6 +66,7 @@ describe("TaskList Integration", () => {
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getMcpServers: vi.fn().mockReturnValue([]),
       getSlashCommands: vi.fn().mockReturnValue([]),
+      getHooksByScope: vi.fn().mockReturnValue(Promise.resolve({})),
       getGatewayConfig: vi.fn().mockReturnValue({ baseURL: "" }),
       getMaxInputTokens: vi.fn(() => 128000),
       getModelConfig: vi.fn().mockReturnValue({
