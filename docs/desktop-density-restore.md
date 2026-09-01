@@ -703,3 +703,27 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 
 - `src/styles/host-desktop.css`（遮罩透明 + 第十五轮弹窗规格段 + 移除两处 resting 阴影）
 - `src/components/HeaderIcons.tsx`（`PlusIcon` 换 Figma composer-add 形状）
+
+## 第十六轮：面板切换菜单项间距 / 深色 timeline 节点白圈（2 项评论）
+
+评论：panel-toggle-menu-item「预览⇧⌘P」检查选项内边距；timeline-row 运行状态「深色背景下不应该是白色的圈」。
+
+### 变更点清单
+
+| #   | 对象                             | 修复前                                     | 修复后（权威依据）                                                                                                                                      |
+| --- | -------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `.panel-toggle-menu-shortcut`    | label↔快捷键间距 8px                      | 最小 16px（codechat `workspace-header-menu-item` `gap: 16px`；wave 有 16px 选中勾占位，label flex:1 已右对齐快捷键，shortcut 补 8px margin-left = 8+8） |
+| 2   | `.timeline-row::before` 深色描边 | 2px `#FFFFFF` 白描边（深色底上呈白圈突兀） | `#191A1B`（深色会话底同色描边，节点呈纯绿点；浅色白描边与白底融合保留）                                                                                 |
+
+### 验证结果（Playwright 探针实测）
+
+| 项                   | 实测                 | 期望 |
+| -------------------- | -------------------- | ---- |
+| label↔快捷键间距    | 16px（真实点击菜单） | ✓    |
+| 深色节点描边         | `rgb(25,26,27)`      | ✓    |
+| 浅色节点描边（回归） | `rgb(255,255,255)`   | ✓    |
+| compile              | 通过                 | ✓    |
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（timeline 深色描边 + panel-toggle shortcut 间距）
