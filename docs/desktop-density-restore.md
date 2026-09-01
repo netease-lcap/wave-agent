@@ -851,3 +851,34 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 ### 实现文件
 
 - `src/styles/host-desktop.css`（第二十轮段：权限按钮 112px 固定/居中/无 caret；菜单项 500 字重、非选中同色、selected 浅 #E7E9ED / 深 12% 白 + hover 保持 pressed）
+
+## 第二十一轮：全局滚动条统一（1 项评论）
+
+评论：`#messagesContainer`「滚动条的样式参考项目，所有滚动条要保持统一，不同状态是分不同色值的，默认状态比现在更浅」。
+
+### 变更点清单
+
+| #   | 对象                      | 修复前                                                                                              | 修复后（权威依据 = Figma 5809:55691 / codechat global.css 2304-2351）                                                 |
+| --- | ------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| 1   | 所有滚动容器 thumb 默认色 | vscode-scrollbarSlider token：light `rgba(100,100,100,0.75)` / dark `rgba(121,121,121,0.4)`（过深） | 8% 黑 `rgb(0 0 0 / 8%)`（--cc-fill-scrollbar）/ 深色 8% 白 `rgb(255 255 255 / 8%)` —— 默认态显著变浅                  |
+| 2   | thumb hover               | vscode-scrollbarSlider-hoverBackground（无桌面端定制）                                              | 24% `rgb(0 0 0 / 24%)`（--cc-fill-scrollbar-container-hover）/ 深色 24% 白                                            |
+| 3   | thumb active（拖动）      | vscode-scrollbarSlider-activeBackground                                                             | 50% `rgb(0 0 0 / 50%)`（--cc-fill-scrollbar-hover）/ 深色 50% 白                                                      |
+| 4   | 轨道/宽度/圆角            | 16px 轨道 8px pill 已一致，但 DiffViewer 特化 10px 轨道 + `--vscode-scrollbar-shadow` 深色 track    | 全桌面端统一 16px 轨道 / 8px pill（4px 透明边 + padding-box）/ 轨道恒透明；DiffViewer 特化被同 specificity 后加载覆盖 |
+
+### 验证结果（Playwright 探针 + 真实鼠标）
+
+| 项                           | 实测                                                                | 期望 |
+| ---------------------------- | ------------------------------------------------------------------- | ---- |
+| 默认色 light/dark            | `rgba(0,0,0,0.08)` / `rgba(255,255,255,0.08)`（基线 75% 灰/40% 灰） | ✓    |
+| hover（真实鼠标在 thumb 上） | light `rgba(0,0,0,0.24)` / dark `rgba(255,255,255,0.24)`            | ✓    |
+| active（按住 thumb 拖动）    | dark `rgba(255,255,255,0.5)`（light 规则同构 50% 黑）               | ✓    |
+| 轨道透明 / 16px / 8px 圆角   | transparent / 16 / 8px + 4px 透明边 + padding-box                   | ✓    |
+| DiffViewer 统一              | 16px 轨道、透明 track、8% thumb（不再 10px/阴影 track）             | ✓    |
+| thumb 真实渲染可交互         | 拖动 thumb 150px → scrollTop 0→32（滚动条渲染且可拖动）             | ✓    |
+| compile                      | 通过                                                                | ✓    |
+
+注：headless 截图（headless shell 与完整 Chrome headless）均不显示滚动条像素，属 headless 合成限制；CSS 计算值 + 伪类 :hover/:active 匹配 + 真实拖动交互均验证滚动条已渲染，Electron 真机不受影响。
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（第二十一轮段：`[data-host="desktop"] ::-webkit-scrollbar*` 三态 + 深色映射）
