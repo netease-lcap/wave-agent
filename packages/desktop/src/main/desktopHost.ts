@@ -148,6 +148,23 @@ interface ReconnectTarget {
   entry?: SessionIndexEntry;
 }
 
+/**
+ * Recognize a session whose working directory lives inside a wave-managed
+ * worktree (`<repoRoot>/.wave/worktrees/<name>`). Sessions created by the CLI
+ * inside a worktree have no desktop session index entry, so the history popup
+ * identifies them by path: they display under the repo root with a "worktree"
+ * tag, and restoring them must target the worktree directory (desktop-app.md
+ * 「历史对话弹窗」场景 3). Returns null for any other path.
+ */
+function worktreeInfoFromWorkdir(
+  workdir: string,
+): { path: string; repoRoot: string } | null {
+  if (!workdir) return null;
+  const match = /^(.*)[\\/]\.wave[\\/]worktrees[\\/].+$/i.exec(workdir);
+  if (!match || !match[1]) return null;
+  return { path: workdir, repoRoot: match[1] };
+}
+
 export class DesktopHost {
   private mainWindow: BrowserWindow | null = null;
 
@@ -214,6 +231,13 @@ export class DesktopHost {
   private topRowHeight?: number;
   private inputDrafts = new Map<string, string>(); // keyed by `session:<sessionId>` or `new:<paneId>`
   private agentWorktreeInfo = new Map<StdioAgent, WorktreeInfo>();
+  /**
+   * Worktree metadata for index-less (CLI-created) sessions, filled by the
+   * history popup scan (handleListSessions) so restoring such a session from
+   * the popup targets the worktree directory and re-registers it under the
+   * repo root. Rebuilt on every scan; never persisted.
+   */
+  private historyWorktrees = new Map<string, WorktreeInfo>();
   private workdir: string | undefined;
 
   // Per-pane view state. messages/tasks/backgroundTasks/queuedMessages/isStreaming/
@@ -1825,6 +1849,10 @@ export class DesktopHost {
       workdir: string;
       host: string;
       entry?: SessionIndexEntry;
+      /** Index-less (CLI-created) worktree session metadata from the history
+       *  popup scan — carried so the restored agent re-registers under the
+       *  repo root like a desktop-created worktree session. */
+      worktreeInfo?: WorktreeInfo;
       autoReconnect?: boolean;
     },
   ): Promise<boolean> {
@@ -1834,7 +1862,7 @@ export class DesktopHost {
       agent = await this.spawnAgent({
         host: opts.host,
         workdir: opts.workdir,
-        worktreeInfo: opts.entry?.worktree,
+        worktreeInfo: opts.entry?.worktree ?? opts.worktreeInfo,
         sessionId: opts.sessionId,
       });
       if (this.pendingRestores.get(paneId)?.token !== token) {
@@ -4018,7 +4046,11 @@ export class DesktopHost {
     // listed sessions belong to) — CLI-created sessions on a remote host are
     // not in the index, so without it they'd wrongly resolve to LOCAL_HOST.
     const host = hostArg ?? entry?.host ?? LOCAL_HOST;
-    const targetDir = entry?.worktree ? entry.cwd : workdir;
+    // Index-less (CLI-created) worktree sessions restore into the worktree
+    // directory the popup scan recorded — never the repo root shown in the
+    // list, where the session's transcript would not be found.
+    const wt = entry?.worktree ?? this.historyWorktrees.get(sessionId);
+    const targetDir = entry?.worktree ? entry.cwd : wt ? wt.path : workdir;
 
     // A live agent activates with zero network round trips — checked before
     // the optimistic switch, so clicking a session that is already running
@@ -4102,6 +4134,7 @@ export class DesktopHost {
         workdir: targetDir,
         host,
         entry,
+        worktreeInfo: wt,
       });
     })();
   }
@@ -4331,6 +4364,9 @@ export class DesktopHost {
    * 创建的 worktree 会话合并本地索引元数据：workdir 替换为主仓库路径并标记
    * worktree，弹窗按主仓库分组展示（desktop-app.md「历史对话弹窗」场景 3/10）。
    * 索引合并仅取该主机自身的条目，避免跨主机误并（desktop-app.md 场景 10）。
+   * CLI 侧在 worktree 目录创建的会话（不在本地索引）按工作目录路径识别，
+   * 同样标记 worktree 并显示主仓库路径，恢复时经 historyWorktrees 定位
+   * worktree 目录（desktop-app.md「历史对话弹窗」场景 3/边界情况）。
    */
   private async handleListSessions(host = this.currentHost): Promise<void> {
     try {
@@ -4341,12 +4377,26 @@ export class DesktopHost {
         "listAllSessions",
       )) as { sessions: SessionMetadata[] };
       const index = this.configStore.getSessionIndex();
+      // Rebuild the index-less worktree map each scan — the popup is the only
+      // entry point for these sessions, and a stale path from a worktree that
+      // has since been removed must not resurface in a later restore.
+      this.historyWorktrees.clear();
       const sessions = (result.sessions ?? []).map((s) => {
         const entry = index.find(
           (e) => e.sessionId === s.id && e.host === host,
         );
         if (entry?.worktree) {
           return { ...s, workdir: entry.workdir, worktree: true };
+        }
+        const wt = worktreeInfoFromWorkdir(s.workdir);
+        if (wt) {
+          this.historyWorktrees.set(s.id, {
+            path: wt.path,
+            branch: s.branch ?? "",
+            baseBranch: "",
+            repoRoot: wt.repoRoot,
+          });
+          return { ...s, workdir: wt.repoRoot, worktree: true };
         }
         return s;
       });
