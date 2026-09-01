@@ -34,9 +34,15 @@
   justify-content: center;
 }
 .chat-container--welcome .desktop-chat-main {
-  flex: none;
+  /* flex:1 (not flex:none + width:100%) so an open side panel shares the row:
+     with no panel it fills the whole body (basis 0 + grow), with a panel the
+     welcome group centers inside the remaining column instead of spilling
+     left over the sidebar (the row-level justify-content:center would center
+     chat-main(100%) + panel as one overflowing group). min-width:0 lets the
+     column shrink to the panel's width. */
+  flex: 1;
+  min-width: 0;
   height: auto;
-  width: 100%;
   gap: 44px;
 }
 /* Welcome input card: taller composer and centered at a capped width so the
