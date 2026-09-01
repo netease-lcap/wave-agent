@@ -27,7 +27,7 @@ import BackgroundTaskManager from "./BackgroundTaskManager";
 import WorkflowManager from "./WorkflowManager";
 import WelcomeView from "./WelcomeView";
 import LoadingLogo from "./LoadingLogo";
-import { CollapseIcon } from "./HeaderIcons";
+import { NewSessionIcon, SidebarExpandIcon } from "./HeaderIcons";
 import { DesktopHostSelector } from "./DesktopHostSelector";
 import { DesktopSidebar } from "./DesktopSidebar";
 import { DesktopShell } from "./DesktopShell";
@@ -224,6 +224,8 @@ export function prunePanelGroupCache(keepKeys: Set<string>): void {
  * Desktop sidebar collapsed → the leftmost chat header shows this expand button
  * (spec 「侧边栏收起/展开」scenario 4). In split view the root instance builds it
  * once and DesktopShell threads it into the first pane of the top row.
+ * Icon = Figma sidebar-expand（外框 + 朝右箭头 →，与侧栏内收起按钮的
+ * sidebar-collapse 外框+左条区分方向）。
  */
 const SidebarExpandButton: React.FC<{ onClick: () => void }> = ({
   onClick,
@@ -235,7 +237,7 @@ const SidebarExpandButton: React.FC<{ onClick: () => void }> = ({
       data-testid="desktop-sidebar-expand"
       aria-label="展开侧边栏"
     >
-      <CollapseIcon />
+      <SidebarExpandIcon />
     </button>
   </Tooltip>
 );
@@ -401,6 +403,28 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       <SidebarExpandButton
         onClick={() => handleSidebarCollapsedChange(false)}
       />
+    ) : null;
+  // 收起态 header leading：展开侧边栏 + 新对话 + 分割线（对齐原型
+  // WorkspaceHeader.vue `workspace-header-start` 收起分支：sidebar-expand /
+  // new-chat-header 按钮 / 1px divider / 标题）。单 pane（root）与分屏第一
+  // pane 共用；`expand` 为 null（侧边栏展开）时不渲染整组。
+  const collapsedLeading = (expand: React.ReactNode) =>
+    expand ? (
+      <>
+        {expand}
+        <Tooltip text="新建对话" position="bottom">
+          <button
+            className="header-button"
+            onClick={handleClearChat}
+            disabled={state.isStreaming}
+            data-testid="collapsed-new-session-btn"
+            aria-label="新建对话"
+          >
+            <NewSessionIcon />
+          </button>
+        </Tooltip>
+        <span className="header-collapsed-divider" />
+      </>
     ) : null;
   // The pane's effective host ('local' or an SSH host name): a pane-bound
   // session's host (authoritative `desktopPanes` push) wins; the single-pane
@@ -2783,7 +2807,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         </div>
       )}
       <ChatHeader
-        leading={paneId !== undefined ? sidebarExpandButton : expandBtn}
+        leading={
+          paneId !== undefined
+            ? collapsedLeading(sidebarExpandButton)
+            : collapsedLeading(expandBtn)
+        }
         onNewSession={handleClearChat}
         newSessionDisabled={state.isStreaming}
         onAbortMessage={handleAbortMessage}

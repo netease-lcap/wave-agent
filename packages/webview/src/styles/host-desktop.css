@@ -868,6 +868,19 @@
   color: #ffffff;
 }
 
+/* ═══ 第十九轮：侧边栏收起态 header leading（对齐原型 WorkspaceHeader）═══
+   参考 codechat WorkspaceHeader.vue 收起分支：sidebar-expand（外框+右箭头）
+   + new-chat-header 按钮 + workspace-header-divider（1px×16px，--cc-border
+   #DCDEE6）/ 标题。展开按钮图标/新对话按钮/分割线 DOM 在 ChatApp 构造，
+   此处只覆盖分割线颜色（浅 #DCDEE6，深 12% 白沿用 wave 边框约定）。 */
+
+[data-host="desktop"][data-theme="light"] .header-collapsed-divider {
+  background-color: #dcdfe6;
+}
+[data-host="desktop"][data-theme="dark"] .header-collapsed-divider {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
 /* ═══ 第十三轮：下拉菜单/弹层统一（对齐 codechat 菜单规格）═══════
    参考 codechat-ui：面板白底 + #EBEEF5 边框 + r12 + --cc-shadow-popover
    (0 0 12px / 12%) + pad 8；菜单项 32px 高 / 14px / 500 / r6 / hover
