@@ -1008,3 +1008,39 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 - `src/components/ChatApp.tsx`（collapsedLeading 包 `.header-collapsed-leading` 容器）
 - `src/styles/ChatHeader.css`（新增 leading 容器 flex gap 8；divider margin 归零）
 - `src/styles/host-desktop.css`（第二十四轮段：收起态按钮 24×24/r6/hover 双主题；chat-header padding 保持 12px）
+
+## 第二十五轮：panel-toggle 菜单选中态去对号（1 项评论）
+
+评论：`div.panel-toggle-menu-item`「预览⇧⌘P」——「参考下拉菜单的选中状态，不要对号，下拉菜单需要符合规范」。
+
+### 变更点清单
+
+| #   | 对象             | 修复前                                          | 修复后                                                                                                        |
+| --- | ---------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 1   | 选中态指示       | codicon-check 对号（16px 占位，选中时 visible） | 移除对号元素，选中项改用背景高亮（对齐 codechat workspace-header-menu-item.active）                           |
+| 2   | 选中态样式 light | 无背景，仅对号                                  | 背景 #E7E9ED + 文字 #1F2329（`panel-toggle-menu-item--active`，active:hover/focus 保持 pressed 不漂回 hover） |
+| 3   | 选中态样式 dark  | 无背景，仅对号                                  | 背景 rgba(255,255,255,0.12) + 白字                                                                            |
+| 4   | base 死代码      | `.panel-toggle-menu-check` / `--on`（对号控制） | 删除（TSX 不再渲染对号）                                                                                      |
+
+说明：菜单面板/菜单项外观第 13 轮已统一为 codechat 规格（白底 r12 柔影、item 32px/14px/500/r6/hover #EEF0F3），本轮仅补选中态；role="checkbox"/aria-checked 保留（无障碍语义）。label flex:1 + shortcut margin-left 8 维持 16px 最小间距（codechat gap 16）。
+
+### 验证结果（Playwright 探针 + 截图实测）
+
+| 项                        | 实测                                                   | 期望 |
+| ------------------------- | ------------------------------------------------------ | ---- |
+| 对号元素                  | 0（无 .panel-toggle-menu-check / .codicon-check）      | ✓    |
+| 选中项 light              | #E7E9ED 底 + #1F2329 字（rgb(231,233,237)/(31,35,41)） | ✓    |
+| 选中项 dark               | rgba(255,255,255,0.12) 底 + #fff 字                    | ✓    |
+| active:hover 保持 pressed | light #E7E9ED + #1F2329（真实鼠标实测）                | ✓    |
+| 未选中项                  | 透明底                                                 | ✓    |
+| 菜单项                    | 32px 高 / shortcut margin-left 8px                     | ✓    |
+| smoke-ui / type-check     | 无 JS 错误 / 通过                                      | ✓    |
+
+注：mock 初始无面板开启（checked=[]），探针需先点击菜单项制造选中态再断言；
+双 pane 下 1440px 宽 chat-main < 680px 会拒绝开面板 → 探针用 2000px 宽（同第 16 轮坑）。
+
+### 实现文件
+
+- `src/components/PanelToggleMenu.tsx`（移除对号 `<i>`，选中项加 `panel-toggle-menu-item--active` 类）
+- `src/styles/PanelToggleMenu.css`（删除 check 对号死代码）
+- `src/styles/host-desktop.css`（第二十五轮段：浅/深选中态 + active:hover 保持 pressed）

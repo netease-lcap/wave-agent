@@ -44,16 +44,6 @@
   background-color: transparent;
 }
 
-.panel-toggle-menu-check {
-  width: 16px;
-  flex-shrink: 0;
-  visibility: hidden;
-}
-
-.panel-toggle-menu-check--on {
-  visibility: visible;
-}
-
 .panel-toggle-menu-label {
   flex: 1;
   min-width: 0;
