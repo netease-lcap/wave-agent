@@ -18,6 +18,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   sessionsLoading,
   onOpenSessionList,
   showWorkdir,
+  sessionListHostLabel,
   onOpenSettings,
   onOpenEnterpriseConsole,
   onOpenHelpDocs,
@@ -128,6 +129,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           loading={sessionsLoading}
           onClose={() => setShowSessionList(false)}
           showWorkdir={showWorkdir}
+          hostLabel={sessionListHostLabel}
         />
       )}
       {showMoreMenu && !hideMoreButton && (

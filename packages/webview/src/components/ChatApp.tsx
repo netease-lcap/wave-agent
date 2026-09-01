@@ -274,6 +274,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     undefined,
   );
   const [modelLoading, setModelLoading] = useState(false);
+  // 历史对话弹窗所属主机（desktop）：弹窗打开瞬间当前 pane 的有效主机快照。
+  // 弹窗列表只含该主机会话，恢复时按此主机路由；弹窗标题据此标注主机名。
+  const [sessionListHost, setSessionListHost] = useState<string>("local");
   // /btw side-question panel (webview spec story 3). Non-null while the panel is
   // open; `loading` while the askBtw RPC is in flight, `answer` afterwards
   // (including the bare-/btw usage hint and API-error strings).
@@ -1813,11 +1816,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // 桌面端跨目录恢复：把列表项的工作目录一并传给 host——CLI 创建的
         // 会话不在本地索引，host 无法自行解析 workdir；命中索引的 worktree
         // 会话仍由 host 侧索引元数据接管（desktop-app.md「历史对话弹窗」）。
+        // 弹窗列表只含一个主机的会话（打开时快照），恢复必须按该主机路由：
+        // 远程主机上 CLI 创建的会话不在索引中，缺 host 会被误判为本地。
         const session = state.sessions.find((s) => s.id === sessionId);
         postToHost({
           command: "desktopSelectSession",
           workdir: session?.workdir,
           sessionId,
+          host: sessionListHost,
         });
         return;
       }
@@ -1827,14 +1833,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         sessionId,
       });
     },
-    [state.isStreaming, state.sessions, isDesktop, postToHost],
+    [state.isStreaming, state.sessions, isDesktop, postToHost, sessionListHost],
   );
 
-  // Desktop: refresh the cross-workdir session list each time the history popup
-  // opens (data comes from the CLI's listAllSessions scan, not the local index).
+  // Desktop: refresh the history popup's session list each time it opens. The
+  // data comes from the host's listAllSessions scan of the pane's effective
+  // host — the popup must list THAT host's sessions, so the host is sent along
+  // and snapshotted here (恢复 + 标题标注都跟随该快照，desktop-app.md 场景 10).
   const handleOpenSessionList = useCallback(() => {
-    postToHost({ command: "listSessions" });
-  }, [postToHost]);
+    setSessionListHost(effectiveHost);
+    postToHost({ command: "listSessions", host: effectiveHost });
+  }, [postToHost, effectiveHost]);
 
   const handleInputCleared = useCallback(() => {
     dispatch({ type: "INPUT_CLEARED" });
@@ -2801,6 +2810,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         hideNewSessionButton={isDesktop}
         onOpenSessionList={isDesktop ? handleOpenSessionList : undefined}
         showWorkdir={isDesktop}
+        sessionListHostLabel={
+          isDesktop && sessionListHost !== "local" ? sessionListHost : undefined
+        }
         hideMoreButton={isDesktop}
         panelToggle={
           isDesktop
