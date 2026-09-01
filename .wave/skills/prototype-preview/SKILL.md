@@ -21,7 +21,7 @@ pnpm -F wave-webview preview
 
 页面右上角固定工具条（可拖拽移开）：
 
-- **用例下拉**：切换 mock 用例（state 驱动 + key 重挂载，**无整页 reload**；dev 下记住上次选择，沙箱无存储则回默认 desktop-full）
+- **用例下拉**：切换 mock 用例（state 驱动 + key 重挂载，**无整页 reload**；dev 下记住上次选择，沙箱无存储则回默认 desktop-new-chat）
 - **深色/浅色按钮**：切 `<html data-theme>`，与真机 desktop 主题机制一致
 - **拖拽手柄**：拖动工具条位置，避免遮挡 header（位置存 `sessionStorage["wave-preview-bar-pos"]`，沙箱无存储时静默降级）
 
