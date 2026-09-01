@@ -819,3 +819,35 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 - `src/components/ChatApp.tsx`（SidebarExpandButton 换图标；collapsedLeading = 展开+新对话+分割线，root/pane 共用）
 - `src/styles/ChatHeader.css`（.header-collapsed-divider 布局 1px×16px margin 0 8px）
 - `src/styles/host-desktop.css`（第十九轮段：divider 浅 #DCDEE6 / 深 12% 白）
+
+## 第二十轮：权限模式按钮（1 项评论）
+
+评论：`button.permission-mode-select.mode-default`「修改前询问」——「这里不要箭头了，是固定宽度，检查下拉菜单的选中项问题，和字体颜色的统一性」。
+
+### 变更点清单
+
+| #   | 对象                      | 修复前                                                              | 修复后（权威依据 = 原型 ComposerBox.vue permission-button + element-plus.css el-dropdown-menu\_\_item）                                                                                                                                       |
+| --- | ------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 权限按钮宽度/布局         | 内容自适应 padding、带 caret 箭头                                   | 固定 112px（codechat permission-button 固定宽规格）/ min-height 32 / pad 0 / 内容居中（justify-content center / gap 6）盒模型修正 box-sizing: border-box；caret 移除（`.permission-mode-caret { display: none }`，JSX 保留元素不影响 IDE 端） |
+| 2   | 按钮/非选中项字体颜色统一 | 依赖 vscode 语义 token，主题间不一致                                | 固定字体色：按钮 resting light #565A60 / dark #9A9EA5（--cc-text-regular / 深色映射惯例）；非选中菜单项同色统一                                                                                                                               |
+| 3   | 下拉菜单选中项无视觉      | selected 只有 vscode activeSelection 依赖，desktop 下近透明无选中感 | selected = #E7E9ED 底 + #1F2329 字（light，element-plus is-active 同值）/ 12% 白底 + #fff（dark）；selected:hover 保持 pressed 不漂回 hover                                                                                                   |
+| 4   | 菜单项字重                | 默认 400                                                            | font-weight 500（el-dropdown-menu\_\_item --cc-font-weight-medium 统一）                                                                                                                                                                      |
+
+### 验证结果（Playwright 探针 + 截图实测）
+
+| 项                         | 实测                                                                  | 期望 |
+| -------------------------- | --------------------------------------------------------------------- | ---- |
+| 按钮 112×32/14px/居中      | width 112、height 32、font-size 14、text-align center、pad 0          | ✓    |
+| caret 隐藏                 | display none（JSX 元素保留，IDE 端不受影响）                          | ✓    |
+| 按钮 resting 色 light/dark | #565A60 / #9A9EA5（移开鼠标后实测，此前误读为 hover 态 #1F2329/#fff） | ✓    |
+| 非选中项色 light/dark      | #565A60 / #9A9EA5（与按钮同色，字体颜色统一）                         | ✓    |
+| 菜单项 14px/字重 500       | 14/500                                                                | ✓    |
+| 选中项 light/dark          | #E7E9ED 底+#1F2329 字 / 12% 白底+#fff                                 | ✓    |
+| hover（真实鼠标）light     | 非选中项 #EEF0F3 底 + #1F2329 字                                      | ✓    |
+| hover（真实鼠标）dark      | 非选中项 rgba(255,255,255,0.08) 底 + #fff                             | ✓    |
+| danger 项（绕过权限）      | 红 #F4655C（light #E5484D），hover 红色系底                           | ✓    |
+| compile                    | 通过                                                                  | ✓    |
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（第二十轮段：权限按钮 112px 固定/居中/无 caret；菜单项 500 字重、非选中同色、selected 浅 #E7E9ED / 深 12% 白 + hover 保持 pressed）

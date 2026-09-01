@@ -133,13 +133,20 @@
 
 /* 权限模式选择器（修改前询问）：14px 字号、32px 高（codechat permission-button）。
    Figma 文字/图标统一中性 #565A60（base 按模式着色绿/黄/蓝是错位）；
-   仅「跳过权限确认」为 danger 红 #D92D20（codechat is-danger） */
+   仅「跳过权限确认」为 danger 红 #D92D20（codechat is-danger）。
+   第二十轮：固定宽度 112px + 居中（codechat .permission-button width:112px
+   justify-content:center）、无 caret（codechat 权限按钮只有 icon+label，
+   chevron 仅 contextbar picker 有） */
 [data-host="desktop"] .permission-mode-select {
   font-size: 14px;
   min-height: 32px;
-  padding: 0 6px;
+  width: 112px;
+  padding: 0;
+  justify-content: center;
   gap: 6px;
   color: #565a60;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 [data-host="desktop"] .permission-mode-select.mode-default,
 [data-host="desktop"] .permission-mode-select.mode-acceptEdits,
@@ -176,11 +183,10 @@
   color: #f4655c;
 }
 
-/* 权限下拉 chevron：Figma composer-chevron 8×5（base codicon 16px 方形偏大） */
+/* 权限下拉 caret：第二十轮起 desktop 移除（codechat permission-button 无
+   chevron；8×5 箭头仅 contextbar picker 保留） */
 [data-host="desktop"] .permission-mode-caret {
-  width: 8px;
-  height: 5px;
-  opacity: 1;
+  display: none;
 }
 
 /* 权限下拉菜单：Figma/codechat composer-permission-popper —— 面板底白、
@@ -206,14 +212,22 @@
   border-radius: 6px;
   color: #565a60;
   font-size: 14px;
+  font-weight: 500;
   box-sizing: border-box;
 }
 [data-host="desktop"] .permission-mode-item:hover {
   background: #eef0f3;
   color: #1f2329;
 }
+/* 选中项：codechat el-dropdown-menu__item.is-active = pressed fill #E7E9ED
+   （第二十轮修复：此前 background: transparent 无选中视觉）；
+   选中项 hover 保持 pressed（codechat is-active:hover 同值） */
 [data-host="desktop"] .permission-mode-item.selected {
-  background: transparent;
+  background: #e7e9ed;
+  color: #1f2329;
+}
+[data-host="desktop"] .permission-mode-item.selected:hover {
+  background: #e7e9ed;
   color: #1f2329;
 }
 [data-host="desktop"] .permission-mode-item.mode-bypassPermissions {
@@ -239,6 +253,11 @@
   color: #fff;
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-item.selected {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+[data-host="desktop"][data-theme="dark"] .permission-mode-item.selected:hover {
+  background: rgba(255, 255, 255, 0.12);
   color: #fff;
 }
 [data-host="desktop"][data-theme="dark"]
