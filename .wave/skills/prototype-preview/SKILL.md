@@ -1,6 +1,7 @@
 ---
 name: prototype-preview
 description: webview 原型预览服务（设计师验收/视觉还原用）。当需要启动本地原型预览、切换 mock 用例、新增 mock 场景（工具状态/会话恢复/账户卡片/未登录等）、或对比 wave 实现与设计师原型差异时使用。
+user-invocable: false
 ---
 
 # Webview 原型预览（prototype preview）
