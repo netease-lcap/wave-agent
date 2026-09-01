@@ -1,8 +1,11 @@
 /**
  * `wave daemon` client subcommands — talk to the wave daemon's unix socket
- * (JSON-RPC over newline-delimited JSON) to list hosted sessions, inspect
- * progress, inject messages, respond to pending permission requests and abort
- * in-flight message generation.
+ * (JSON-RPC over newline-delimited JSON) to create/destroy sessions, list
+ * hosted sessions, inspect progress, inject messages, respond to pending
+ * permission requests and abort in-flight message generation. When the daemon
+ * is not running, any subcommand starts one on demand (detached --daemon
+ * spawn, the local equivalent of the remote nohup launcher) and retries the
+ * connection — the daemon needs no permanent host, it is used on demand.
  *
  * All subcommands are non-interactive: results go to stdout, diagnostics to
  * stderr, and every handler calls process.exit() itself (yargs would fall
@@ -19,6 +22,7 @@
  * must be destroyed via the envelope sessionId returned by `initialize`.
  */
 
+import { execFile, spawn } from "node:child_process";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -26,7 +30,10 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
+  getGitMainRepoRoot,
   getMessageContent,
+  hasWorktreeCreateHook,
+  loadMergedWaveConfig,
   type Message,
   type PermissionDecision,
   type PermissionMode,
@@ -49,6 +56,10 @@ const PERMISSION_MODES: PermissionMode[] = [
   "dontAsk",
 ];
 
+/** How long to wait for an auto-started daemon's socket to come up (mutable so tests can shorten it). */
+export const daemonStartTimeout = { ms: 10_000 };
+const DAEMON_POLL_INTERVAL_MS = 500;
+
 // ── Connection helpers ─────────────────────────────────────────
 
 function connectDaemon(socketPath: string): Promise<SocketClient> {
@@ -62,14 +73,49 @@ function connectDaemon(socketPath: string): Promise<SocketClient> {
   });
 }
 
-/** Connect or fail fast with the spec'd error; daemon idle-exits after 60s. */
+/**
+ * Start a wave daemon on demand, detached — the local equivalent of the remote
+ * nohup launcher `nohup <wave> --daemon <socket> </dev/null >/dev/null 2>&1 &`
+ * (spec: daemon-command.md 按需即用). Re-execs the current wave CLI (`node
+ * <this script> --daemon <socket>`) with no stdio and unrefs the child so the
+ * client exits without waiting; the daemon cleans stale socket files itself on
+ * start.
+ */
+function startDaemon(socketPath: string): void {
+  const entry = process.argv[1];
+  if (!entry) {
+    fail("Cannot start the wave daemon: unknown CLI entry path");
+  }
+  const child = spawn(process.execPath, [entry, "--daemon", socketPath], {
+    detached: true,
+    stdio: "ignore",
+  });
+  child.unref();
+}
+
+/**
+ * Connect or start the daemon on demand: try the socket, and when the daemon is
+ * not running, launch one detached and retry until its socket accepts a
+ * connection (or daemonStartTimeout.ms elapses). Exits (nonzero) with the
+ * spec'd error when the daemon cannot be started/reached.
+ */
 async function connectDaemonOrExit(socketPath: string): Promise<SocketClient> {
   try {
     return await connectDaemon(socketPath);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
+    startDaemon(socketPath);
+    const deadline = Date.now() + daemonStartTimeout.ms;
+    while (Date.now() < deadline) {
+      await sleep(DAEMON_POLL_INTERVAL_MS);
+      try {
+        return await connectDaemon(socketPath);
+      } catch {
+        // Daemon still coming up — keep polling.
+      }
+    }
     console.error(
-      `Cannot connect to daemon socket ${socketPath}: is the daemon running? (it auto-exits after 60s idle)` +
+      `Cannot connect to daemon socket ${socketPath}: started a daemon but it did not come up` +
         (code ? ` (${code})` : ""),
     );
     process.exit(1);
@@ -134,6 +180,70 @@ async function listPendingPermissions(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ── create ─────────────────────────────────────────────────────
+
+export interface CreateOptions {
+  /** Working directory for the new session (default: current directory). */
+  workdir?: string;
+  /** Permission mode for the new session (default: bypassPermissions). */
+  permissionMode?: string;
+  /** Model override for the new session (default: configured model). */
+  model?: string;
+  /** Create the session in a new git worktree (name auto-generated when omitted). */
+  worktree?: string;
+}
+
+/**
+ * Create a fresh session in the daemon. initialize WITHOUT restoreSessionId
+ * always creates a brand-new session (never an attach), so no existence checks
+ * are needed. Defaults mirror the daemon's background-task use case: workdir =
+ * current directory, permissionMode = bypassPermissions. With --worktree the
+ * daemon first creates a git worktree (protocol createWorktree) and the session
+ * is created inside it. Prints the new sessionId (first line, for scripts),
+ * plus the worktree path/branch when --worktree was used.
+ */
+export async function daemonCreateCommand(
+  socketPath: string,
+  options: CreateOptions = {},
+): Promise<void> {
+  const mode = options.permissionMode ?? "bypassPermissions";
+  if (!PERMISSION_MODES.includes(mode as PermissionMode)) {
+    fail(
+      `Invalid permission mode: ${mode} (options: ${PERMISSION_MODES.join(", ")})`,
+    );
+  }
+  let client: SocketClient | undefined;
+  try {
+    client = await connectDaemonOrExit(socketPath);
+    let workdir = options.workdir ?? process.cwd();
+    let worktreePath: string | undefined;
+    let worktreeBranch: string | undefined;
+    if (options.worktree !== undefined) {
+      const wt = (await client.request("createWorktree", {
+        workdir,
+        name: options.worktree,
+      })) as { name: string; path: string; branch: string; repoRoot: string };
+      workdir = wt.path;
+      worktreePath = wt.path;
+      worktreeBranch = wt.branch;
+    }
+    const result = (await client.request("initialize", {
+      workdir,
+      permissionMode: mode,
+      model: options.model,
+    })) as { sessionId: string };
+    console.log(result.sessionId);
+    if (worktreePath !== undefined) {
+      console.log(`Worktree: ${worktreePath} (branch: ${worktreeBranch})`);
+    }
+  } catch (err) {
+    fail(`wave daemon create failed: ${(err as Error).message}`);
+  } finally {
+    await client?.dispose();
+  }
+  process.exit(0);
 }
 
 // ── list ───────────────────────────────────────────────────────
@@ -353,7 +463,16 @@ export async function daemonSendCommand(
     // reach stdout (spec: send 输出纯净性).
     if (reply) {
       const content = getMessageContent(reply).replace(/\s+/g, " ").trim();
-      if (content) console.log(content);
+      if (content) {
+        console.log(content);
+      } else if (reply.blocks.some((b) => b.type === "reasoning")) {
+        // Interrupted mid-generation (e.g. `wave daemon abort`): the reply was
+        // finalized with reasoning but no text. Surface the interruption
+        // instead of silently exiting 0 with no output (spec: 中断需明确提示).
+        fail("Message aborted before producing a reply");
+      }
+    } else {
+      fail("No reply received for the message");
     }
   } catch (err) {
     fail(`wave daemon send failed: ${(err as Error).message}`);
@@ -467,6 +586,109 @@ export async function daemonAbortCommand(
     console.log(`Aborted session: ${sessionId}`);
   } catch (err) {
     fail(`wave daemon abort failed: ${(err as Error).message}`);
+  } finally {
+    await client?.dispose();
+  }
+  process.exit(0);
+}
+
+// ── destroy ────────────────────────────────────────────────────
+
+export interface DestroyOptions {
+  /** Also remove the session's git worktree before destroying (protocol removeWorktree). */
+  removeWorktree?: boolean;
+}
+
+/** Run one git command and return trimmed stdout (rejects on git failure). */
+function runGit(cwd: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile("git", args, { cwd }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(stdout.trim());
+    });
+  });
+}
+
+/**
+ * Resolve the worktree hosting `workingDirectory` for removal, mirroring the
+ * values protocol createWorktree returns: worktree path via
+ * `git rev-parse --show-toplevel`, branch via `git branch --show-current`, and
+ * repoRoot = the MAIN repo root (first entry of `git worktree list` — where
+ * git worktree/branch operations run from). Refuses to remove the main working
+ * tree: a plain session is not a worktree, and the protocol's path-containment
+ * check would pass trivially while removeWorktree's fs.rmSync fallback could
+ * delete the whole repository.
+ */
+async function resolveWorktreeForRemoval(workingDirectory: string): Promise<{
+  path: string;
+  branch: string;
+  repoRoot: string;
+  hookBased: boolean;
+}> {
+  let worktreePath: string;
+  let branch: string;
+  try {
+    const [toplevel, current] = await Promise.all([
+      runGit(workingDirectory, ["rev-parse", "--show-toplevel"]),
+      runGit(workingDirectory, ["branch", "--show-current"]),
+    ]);
+    worktreePath = toplevel;
+    branch = current;
+  } catch {
+    throw new Error(
+      `Cannot remove worktree: ${workingDirectory} is not inside a git repository`,
+    );
+  }
+  const repoRoot = getGitMainRepoRoot(workingDirectory);
+  if (path.resolve(worktreePath) === path.resolve(repoRoot)) {
+    throw new Error(
+      `Refusing to remove the main working tree: ${repoRoot} (not a linked worktree)`,
+    );
+  }
+  // Hook-based worktrees (created via a WorktreeCreate hook) are removed by the
+  // WorktreeRemove hook — mirror createWorktree's own hookBased decision so
+  // removal never runs `git worktree remove` on a hook-managed worktree.
+  const config = loadMergedWaveConfig(repoRoot);
+  const hookBased = hasWorktreeCreateHook(config?.hooks);
+  return { path: worktreePath, branch, repoRoot, hookBased };
+}
+
+/**
+ * Destroy a hosted session (protocol destroy, idempotent — a session not in
+ * the daemon's in-memory registry is a harmless no-op). Unlike status / send /
+ * abort there is no attach step: destroy is a pure registry operation keyed by
+ * the envelope sessionId, so unknown sessions succeed without touching disk.
+ * With --remove-worktree the session's git worktree is resolved from its
+ * workingDirectory (getSessionInfo) and removed via protocol removeWorktree
+ * first, then the session is destroyed.
+ */
+export async function daemonDestroyCommand(
+  socketPath: string,
+  sessionId: string,
+  options: DestroyOptions = {},
+): Promise<void> {
+  let client: SocketClient | undefined;
+  try {
+    client = await connectDaemonOrExit(socketPath);
+    if (options.removeWorktree) {
+      const info = (await client.request(
+        "getSessionInfo",
+        undefined,
+        sessionId,
+      )) as { workingDirectory: string };
+      const wt = await resolveWorktreeForRemoval(info.workingDirectory);
+      await client.request("removeWorktree", {
+        path: wt.path,
+        branch: wt.branch,
+        repoRoot: wt.repoRoot,
+        hookBased: wt.hookBased,
+      });
+      console.log(`Removed worktree: ${wt.path} (branch: ${wt.branch})`);
+    }
+    await client.request("destroy", undefined, sessionId);
+    console.log(`Destroyed session: ${sessionId}`);
+  } catch (err) {
+    fail(`wave daemon destroy failed: ${(err as Error).message}`);
   } finally {
     await client?.dispose();
   }
