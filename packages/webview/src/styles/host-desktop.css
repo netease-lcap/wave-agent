@@ -1294,7 +1294,8 @@
 
 /* ② 按钮布局：codechat approval-actions —— flex-direction column / gap 8 /
    margin-top 16；按钮全宽（width 100%）min-height 32 / pad 0 12 / 字重 500。
-   DOM 顺序即视觉顺序：提供反馈(ghost) → 自动类(secondary) → 批准并继续(primary) 在底。 */
+   DOM 顺序即视觉顺序：自动类(secondary) → 批准并继续(primary) → 提供反馈
+   (ghost) 在底（第三十轮按用户反馈把提供反馈移到最下面）。 */
 [data-host="desktop"] .confirmation-actions {
   flex-direction: column;
   align-items: stretch;

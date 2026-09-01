@@ -1195,3 +1195,38 @@ Figma 对照（`13497-15325` 预览区展开帧，vision 复核渲染图）：�
 - `src/components/DesktopSidebar.tsx`（更多按钮 MoreIcon、菜单项 SplitIcon/QueueTrashIcon）
 - `src/components/AccountCard.tsx`（2 处 more 按钮 codicon → MoreIcon）
 - `src/styles/host-desktop.css`（第二十九轮段：按钮 24×24、hover pressed、菜单项 svg 15px）
+
+## 第三十轮：确认弹窗「提供反馈」移到最下面（1 项评论）
+
+评论：`button.confirmation-btn.confirmation-btn-feedback`「提供反馈」——「提供反馈应该放在最下面」。
+
+### 背景
+
+第二十二轮把确认弹窗按钮改为竖排全宽，当时 DOM 顺序为 提供反馈(ghost) → 自动类(secondary) → 批准并继续(primary)。用户反馈「提供反馈」应在最下面。参考 codechat ApprovalDialog.vue：`approval-actions` 内 DOM 顺序为 primary（批准并继续）→ secondary（自动类）→ ghost（提供反馈/取消）——ghost 弱按钮放最底部符合规范。
+
+### 变更点清单
+
+| #   | 对象              | 修复前                                           | 修复后                                                  |
+| --- | ----------------- | ------------------------------------------------ | ------------------------------------------------------- |
+| 1   | 按钮 DOM/视觉顺序 | 提供反馈(ghost) → 自动类(secondary) → 批准并继续 | 自动类 → 批准并继续(primary) → **提供反馈(ghost) 在底** |
+| 2   | 提供反馈渲染条件  | Bash/Edit/Write/ExitPlanMode/mcp\_\_ 白名单      | 保持（仅移动位置，条件不变）                            |
+| 3   | 按钮样式层级      | ghost 透明 / secondary 浅灰 / primary 实底       | 保持（第三十轮仅调顺序，样式不变）                      |
+| 4   | CSS 注释（两处）  | 顺序描述「提供反馈 → 自动类 → 批准并继续」       | 更新为「自动类 → 批准并继续 → 提供反馈」                |
+
+### 验证结果（Playwright 探针 + 截图实测 + vision 复核）
+
+| 项               | 实测                                                                                          | 期望 |
+| ---------------- | --------------------------------------------------------------------------------------------- | ---- |
+| 按钮从上到下顺序 | 是，并跳过权限确认 → 是，且不再询问：npm → 批准并继续 → **提供反馈**（y 1019→1059→1099→1139） | ✓    |
+| 浅色主按钮/ghost | 批准并继续炭黑实底白字；提供反馈透明无底文字（vision 复核）                                   | ✓    |
+| 深色主按钮/ghost | 批准并继续浅灰实底；提供反馈 ghost（vision 复核）                                             | ✓    |
+| 竖排间距/宽度    | gap 8 均匀、等宽全宽（vision 复核）                                                           | ✓    |
+| type-check       | 通过                                                                                          | ✓    |
+
+探针路径：desktop-full mock 的 showConfirmation（delay 1100，Bash 工具 → 触发 auto×2 + apply + feedback 四按钮）。
+
+### 实现文件
+
+- `src/components/ConfirmationDialog.tsx`（提供反馈按钮移到按钮列表末尾）
+- `src/styles/host-desktop.css`（注释更新顺序描述）
+- `src/styles/ConfirmationDialog.css`（注释更新顺序描述）
