@@ -3,7 +3,13 @@ import { Tooltip } from "./Tooltip";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AccountCard, type AccountCardAccount } from "./AccountCard";
 import { CodewaveLogo } from "./CodewaveLogo";
-import { NewSessionIcon, CollapseIcon } from "./HeaderIcons";
+import {
+  NewSessionIcon,
+  CollapseIcon,
+  MoreIcon,
+  QueueTrashIcon,
+  SplitIcon,
+} from "./HeaderIcons";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import type { DesktopSessionGroup, DesktopSessionEntry } from "../types";
 import "../styles/DesktopApp.css";
@@ -83,7 +89,7 @@ const SessionItemMenu: React.FC<{
         {...getItemProps(0)}
         data-testid="desktop-session-menu-split"
       >
-        <span className="codicon codicon-split-horizontal"></span>
+        <SplitIcon className="desktop-session-menu-icon" />
         <span>并排打开</span>
       </div>
       <div
@@ -92,7 +98,7 @@ const SessionItemMenu: React.FC<{
         {...getItemProps(1)}
         data-testid="desktop-session-menu-delete"
       >
-        <span className="codicon codicon-trash"></span>
+        <QueueTrashIcon className="desktop-session-menu-icon" />
         <span>删除会话</span>
       </div>
     </div>
@@ -430,7 +436,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           }}
           data-testid={`desktop-session-more-${session.sessionId}`}
         >
-          <span className="codicon codicon-ellipsis"></span>
+          <MoreIcon className="desktop-session-more-icon" />
         </button>
         {openMenuFor?.sessionId === session.sessionId && (
           <SessionItemMenu

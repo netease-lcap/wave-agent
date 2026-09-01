@@ -915,6 +915,37 @@
   background: transparent;
 }
 
+/* ═══ 第二十九轮：会话行更多按钮 + 菜单图标（用户评论「检查更多操作按钮尺寸，
+   及更多按钮点开下拉菜单内部样式是否正确，包括图标，和下拉菜单规范」）═══
+   对齐 codechat TaskSidebar.vue + global.css：
+   ① 按钮 18×18 → 24×24（task-row-more-btn），图标 16×16（more.svg）；
+   ② hover 背景 vscode 蓝灰 → --cc-fill-pressed #E7E9ED（深 12% 白）；
+   ③ 菜单项图标 codicon 字体 → SVG（SplitIcon = lucide columns-2 15px /
+      QueueTrashIcon = Figma trash 15px，对齐 el-dropdown-menu__item svg）；
+   菜单面板/项尺寸第十三轮已统一（白底 r12 柔影 / 32px / 14px / 500 / gap 8）。 */
+
+[data-host="desktop"] .desktop-session-more-btn {
+  width: 24px;
+  height: 24px;
+}
+[data-host="desktop"] .desktop-session-more-btn .desktop-session-more-icon {
+  width: 16px;
+  height: 16px;
+}
+[data-host="desktop"][data-theme="light"] .desktop-session-more-btn:hover,
+[data-host="desktop"][data-theme="light"] .desktop-session-more-btn:focus-visible {
+  background: #e7e9ed;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-session-more-btn:hover,
+[data-host="desktop"][data-theme="dark"] .desktop-session-more-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+}
+[data-host="desktop"] .desktop-session-menu-item svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
 [data-host="desktop"][data-theme="light"] .preview-pane-button {
   color: #565a60;
 }

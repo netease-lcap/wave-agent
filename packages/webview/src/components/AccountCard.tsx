@@ -4,6 +4,7 @@ import type {
   AccountPlanInfo,
 } from "wave-webview-fixtures";
 import { MoreMenu } from "./MoreMenu";
+import { MoreIcon } from "./HeaderIcons";
 import "../styles/AccountCard.css";
 import "../styles/ConfirmDialog.css";
 
@@ -150,7 +151,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             setShowMenu((v) => !v);
           }}
         >
-          <span className="codicon codicon-ellipsis" aria-hidden="true"></span>
+          <MoreIcon className="account-card-more-icon" />
         </button>
         {showMenu && menuAnchor && (
           <MoreMenu
@@ -230,7 +231,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             setShowMenu((v) => !v);
           }}
         >
-          <span className="codicon codicon-ellipsis" aria-hidden="true"></span>
+          <MoreIcon className="account-card-more-icon" />
         </button>
       </div>
       {showUsage && (
