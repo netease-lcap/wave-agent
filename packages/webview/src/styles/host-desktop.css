@@ -712,13 +712,31 @@
 }
 
 /* Composer 外间距：Figma 13497-15726 Container pad 16 四边（base 左右 10 上下 10
-   = 20，总 20 偏大；对齐后上下 16、左右 16）。welcome 态的居中 padding 由
-   .chat-container--welcome .input-area-container（specificity 更高）保持 */
+   = 20，总 20 偏大；对齐后上下 16、左右 16）。
+   注意：本规则与 base 的 .chat-container--welcome .input-area-container 居中规则
+   specificity 相同（属性选择器与类同为类级），本文件后加载会覆盖它；welcome 态
+   的居中限宽在下方同文件内显式恢复（specificity 更高，见下）。 */
 [data-host="desktop"] .input-area-container {
   padding: 16px;
 }
 [data-host="desktop"] .input-container {
   padding: 0;
+}
+
+/* Welcome 态输入卡片居中限宽：Figma 13498:18357 composer 768px（Container 800 -
+   pad 16×2）。specificity (0,3,0) 高于上方 padding: 16px 的 (0,2,0)，且同文件后置，
+   双保险不被覆盖；760 → 768 对齐 Figma 卡片宽。 */
+[data-host="desktop"] .chat-container--welcome .input-area-container {
+  padding-left: max(10px, calc((100% - 768px) / 2));
+  padding-right: max(10px, calc((100% - 768px) / 2));
+}
+
+/* 账户区底部贴合：Figma 17131 账户区高 41 = pad-top 8 + 内容 32 + 分隔线 1
+   （无 pad-bottom）；base padding 8px 0 使总高 49，区底与侧栏底空 8px。
+   区底与侧栏底的 12px 间距由 sidebar 的 padding-bottom 提供（Figma 17131 底
+   5058 → 帧底 5070 = 12）。 */
+[data-host="desktop"] .account-card {
+  padding: 8px 0 0;
 }
 
 /* Composer 卡片最大宽：Figma Form - 发送消息 768px（Container 800 = 768 + pad 16×2；

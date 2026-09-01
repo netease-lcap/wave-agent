@@ -43,19 +43,15 @@
   flex: 1;
   min-width: 0;
   height: auto;
-  gap: 44px;
+  /* Figma 13498:18408 itemSpacing 40（logo → composer） */
+  gap: 40px;
 }
-/* Welcome input card: taller composer and centered at a capped width so the
-   big input is the visual focus, not a full-width strip. */
-.chat-container--welcome .input-area-container {
-  padding-left: max(10px, calc((100% - 760px) / 2));
-  padding-right: max(10px, calc((100% - 760px) / 2));
-}
-.chat-container--welcome .message-input {
-  min-height: 48px;
-  font-size: 13px;
-  line-height: 20px;
-}
+/* Welcome 输入卡片的居中限宽由 host-desktop.css 的
+   [data-host="desktop"] .chat-container--welcome .input-area-container 提供：
+   与 desktop 覆盖同文件后置，且 specificity 高于 padding: 16px 简写，
+   不会被压掉（base 版同 specificity 规则实测被覆盖，见 host-desktop.css）。
+   输入框规格不再特化：Figma welcome 复用标准 Form，统一 desktop
+   44px / 14px / 22px。 */
 
 /* IDE hosts (VS Code / JetBrains) chat body wrappers (.ide-chat-wrap/main):
    always rendered — plain flex-column pass-throughs in normal chat, and

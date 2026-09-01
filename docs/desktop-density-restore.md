@@ -493,7 +493,7 @@
 | 7   | Composer 卡片最大宽    | `--cc-conversation-max-width: 768px`   | Form - 发送消息 768px（Container 800）                    | `input-wrapper` 800px（宽 pane 下卡片宽 32px） | `max-width: 768px`                                              |
 | 8   | 预览标签               | —（组件库同款 tab）                    | 13561:39645 **r8** / 文字 14px / pad 8 / active `#F0F2F5` | 胶囊 r13 / 12px / pad 10 / active 10% 前景     | `r8` / 14px / pad 0 4px 0 8px / 浅色 active `#f0f2f5`           |
 
-welcome 态输入区不受影响：`.chat-container--welcome .input-area-container`（specificity 0,2,0）高于 `[data-host="desktop"] .input-area-container`（0,1,1），居中 padding 保持。
+welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-area-container` 与 `[data-host="desktop"] .input-area-container` specificity **相等**（属性选择器与类同为类级 (0,2,0)），desktop 规则后加载会覆盖居中 padding——已在第十一轮移入 host-desktop.css 显式恢复（见第十一轮章节）。
 
 ## 验证结果（Playwright 探针实测）
 
@@ -514,3 +514,39 @@ welcome 态输入区不受影响：`.chat-container--welcome .input-area-contain
 - 消息区 padding 10px vs Figma Article 16px：仍受虚拟列表行 inset 联动约束（第九轮结论不变，本轮仅修输入区）。
 - 对话列宽度 585 vs 800：三栏分屏产品形态差异（前轮结论）。
 - 预览标签深色 active 态：Figma 仅浅色，深色沿用中性 10% 前景。
+
+---
+
+# 第十一轮：welcome 帧细节对齐（gap / 居中限宽 / 输入规格 / 账户区底部）
+
+基准：Figma welcome 帧（13437:781）权威值 + codechat-ui 参考；本轮**仅改样式，未推送 git**。
+
+## 变更点清单
+
+| #   | 项                         | Figma 权威值                                               | wave 修复前                        | 修复后                                                        |
+| --- | -------------------------- | ---------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------- |
+| 1   | welcome logo→composer 间距 | 13498:18408 itemSpacing **40**                             | gap 44px                           | `gap: 40px`（ChatApp.css）                                    |
+| 2   | welcome 输入卡片居中限宽   | 13498:18357 composer **768px**（Container 800 − pad 16×2） | max(10, (100% − 760px)/2)          | 760 → **768px**，规则移入 host-desktop.css 并提高 specificity |
+| 3   | welcome 输入框规格         | welcome 复用标准 Form：**44px / 14px / 22px**              | 特化 48px / 13px / 20px            | 删除特化规则，统一 desktop 44px / 14px / 22px                 |
+| 4   | 账户区底部贴合             | 17131 账户区高 **41** = pt 8 + 内容 32 + 分隔线 1（无 pb） | padding 8px 0（总高 49，底空 8px） | `padding: 8px 0 0`（总高 41 ✓）；底距 12px 由 sidebar pb 提供 |
+
+## 重要发现：welcome 居中规则此前被 desktop 覆盖压掉（第十轮文档结论有误）
+
+第十轮文档称 `.chat-container--welcome .input-area-container`（0,2,0）高于 `[data-host="desktop"] .input-area-container`（0,1,1）——**该 specificity 计算错误**：属性选择器与类选择器同为类级（b 级），两条规则实际都是 **(0,2,0)** 相等，host-desktop.css 后加载 → `padding: 16px` 覆盖 welcome 居中规则（探针实测 welcome 态 pl=16px，移除 desktop 规则后回落到 10px 证实）。
+
+修复：welcome 居中规则从 ChatApp.css 移入 host-desktop.css，写成 `[data-host="desktop"] .chat-container--welcome .input-area-container`（specificity (0,3,0)），同文件后置双保险。
+
+## 验证结果（Playwright 探针实测）
+
+| 项                                   | wave 实测                          | Figma 权威值 |
+| ------------------------------------ | ---------------------------------- | ------------ |
+| welcome 品牌→输入间距                | gap 40px ✓                         | 40           |
+| welcome 输入区 pl/pr（窄 pane 589）  | 10px ✓（max(10, (589−768)/2)=10）  | 响应式       |
+| welcome 输入区 pl/pr（宽 pane 1069） | 150px ✓（=(1069−768)/2，居中生效） | 768 限宽     |
+| message-input                        | min-height 44px / 14px / 22px ✓    | 44/14/22     |
+| account-card                         | padding `8px 0 0`、总高 41px ✓     | 41           |
+
+## 本轮未修（记录）
+
+- timeline run 内活动间距 10px vs Figma 16px（8008 Frame itemSpacing 16）：行间距由 MessageList.tsx 的 timelineRuns.paddings 内联 paddingBottom 驱动（run 内 0、消息级 14），CSS 无法覆盖内联值；改共享 TSX 影响 IDE host，负 margin 对虚拟列表测量有风险——暂缓。
+- welcome 消息区（对话列表为空，无内容）、Header 右侧多 pane 按钮、对话列宽度 585 vs 800——既有产品形态差异（前轮结论）。
