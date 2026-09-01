@@ -743,6 +743,34 @@
   color: #6c7076;
 }
 
+/* ═══ 第二十六轮：消息内链接统一（颜色 + hover 下划线）═══
+   颜色：浅色 #2F5EDB（Figma --cc-text-link，write-tool-path/bash 已对齐、
+   markdown 链接原为 VS Code 蓝 #0069cc）；深色 #4daafc（theme-base-dark
+   链接 token，write-tool-path 原 #9A9EA5 普通灰改链接蓝）。
+   下划线：常态无（write-tool-path base 常驻 dotted 已移除），hover 出现
+   underline（统一 text-decoration 机制，markdown 原 border-bottom 机制移除）。 */
+
+[data-host="desktop"] .markdown-content a {
+  color: #2f5edb;
+  border-bottom: none;
+}
+[data-host="desktop"] .markdown-content a:hover {
+  color: #2f5edb;
+  text-decoration: underline;
+}
+[data-host="desktop"][data-theme="dark"] .write-tool-path,
+[data-host="desktop"][data-theme="dark"] .markdown-content a,
+[data-host="desktop"][data-theme="dark"] .markdown-content a:hover {
+  color: #4daafc;
+}
+[data-host="desktop"] .write-tool-path:hover {
+  text-decoration: underline;
+}
+[data-host="desktop"] .bash-command-output a:hover {
+  color: #2f5edb;
+  text-decoration: underline;
+}
+
 /* 修改前询问（Figma 纯文字按钮，无下拉 chevron）——桌面端隐藏箭头
    （已由 8×5 Figma chevron 取代，此残留规则移除） */
 
