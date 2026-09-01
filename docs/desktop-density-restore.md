@@ -981,7 +981,7 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 | 2   | NewSessionIcon 气泡 path | 同源异构气泡 path（坐标偏移 ~0.1）                                         | 替换为 Figma 同款气泡 path（与加号同源，fill-rule evenodd）                                                          |
 | 3   | 收起态按钮间距           | 两个按钮间 **0px**（leading 是 fragment 无容器，.chat-header 无 gap）      | 包一层 `.header-collapsed-leading`（flex gap 8 align-center）→ 按钮间距 8px（实测 48-40=8）                          |
 | 4   | 收起态按钮尺寸           | 22×22（继承 base .header-button）                                          | **24×24 + r6**（对齐 codechat figma-icon-button）                                                                    |
-| 5   | header 左右 padding      | 0 12px                                                                     | 0 **16px**（对齐 Figma workspace-header）                                                                            |
+| 5   | header 左右 padding      | 0 12px                                                                     | 保持 12px（Figma 权威；codechat 0 16px 与 Figma 冲突，按既有结论勿改）                                               |
 | 6   | 收起态按钮 hover 背景    | base `--vscode-toolbar-hoverBackground`（VS Code 蓝灰）                    | `--cc-fill-hover`：浅 #EEF0F3 / 深 rgba(255,255,255,0.08)（对齐 codechat figma-icon-button:hover）                   |
 | 7   | divider 间距机制         | margin 0 8px（手写双 8px）                                                 | margin 0，由容器 gap 8 提供两侧 8px（与 codechat workspace-header-start 同构）                                       |
 
@@ -993,7 +993,7 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 | 按钮间距              | 8px（rect: x 16 → 48）                                              | ✓    |
 | leading 容器          | flex / gap 8px / align-items center                                 | ✓    |
 | divider               | 1×16、margin 0                                                      | ✓    |
-| chat-header padding   | left/right 16px（展开态同样生效，无回归）                           | ✓    |
+| chat-header padding   | left/right 12px（保持 Figma 权威值；不随 codechat 改 16px）         | ✓    |
 | 加号 path             | 含 `C11.8384` 圆角曲线（直角 path 已移除）                          | ✓    |
 | hover 背景 light/dark | rgb(238,240,243) = #EEF0F3 / rgba(255,255,255,0.08)（真实鼠标实测） | ✓    |
 | vision 复核           | 两按钮形状正确（外框+右箭头 / 气泡+圆角加号）、间距均匀、对比度良好 | ✓    |
@@ -1007,4 +1007,4 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 - `src/components/HeaderIcons.tsx`（NewSessionIcon 双 path 替换为 Figma 权威版）
 - `src/components/ChatApp.tsx`（collapsedLeading 包 `.header-collapsed-leading` 容器）
 - `src/styles/ChatHeader.css`（新增 leading 容器 flex gap 8；divider margin 归零）
-- `src/styles/host-desktop.css`（第二十四轮段：chat-header padding 16、收起态按钮 24×24/r6/hover 双主题）
+- `src/styles/host-desktop.css`（第二十四轮段：收起态按钮 24×24/r6/hover 双主题；chat-header padding 保持 12px）
