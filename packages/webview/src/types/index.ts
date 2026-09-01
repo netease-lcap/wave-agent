@@ -34,6 +34,10 @@ import type {
   SessionData,
 } from "wave-agent-sdk/dist/services/session.js";
 import type { ToolBlockUpdateCallbackParams } from "wave-agent-sdk/dist/utils/messageOperations.js";
+// Type-only: NavKey is defined in the SettingsPage component module; erased at
+// compile time so the type-level cycle (SettingsPage imports ConfigurationData
+// from here) never becomes a runtime import.
+import type { NavKey } from "../components/SettingsPage";
 
 export type {
   Message,
@@ -210,6 +214,14 @@ export interface ChatAppProps {
    * own JSX so split-view concerns stay in the desktop layer.
    */
   headerActions?: React.ReactNode;
+  /**
+   * Desktop pane layout: the root instance's settings opener, threaded through
+   * DesktopShell. Pane-scoped instances render no settings view of their own
+   * (their render branch only emits the chat container), so /config、/agents、
+   * /skills、/mcp 斜杠命令 must delegate to the root instance whose shell
+   * renders the full-page settings (spec agent-config.md scenario 5).
+   */
+  onOpenSettingsFromPane?: (nav?: NavKey) => void;
 }
 
 /**

@@ -246,6 +246,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   paneId,
   sidebarExpandButton,
   headerActions,
+  onOpenSettingsFromPane,
 }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const [queueEditWarning, setQueueEditWarning] = useState<string | null>(null);
@@ -1423,6 +1424,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const handleOpenSettings = useCallback(
     (nav?: NavKey) => {
       if (isDesktop) {
+        if (paneId !== undefined && onOpenSettingsFromPane) {
+          // Pane layout (single or split, spec agent-config.md 场景 5): this
+          // instance only renders its chat container — the full-page settings
+          // live on the root instance's DesktopShell. Delegate so /config、
+          // /agents、/skills、/mcp 在任一对话（含发过消息的）都能打开设置页。
+          onOpenSettingsFromPane(nav);
+          return;
+        }
         // Batch 2: desktop opens the settings full-page (spec 场景 1). Load the
         // configuration + AGENTS.md editor contents on entry; the page reads the
         // latest from its own props when it renders. /agents、/skills、/hooks
@@ -1439,7 +1448,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // nav 随 openSettings 透传，host 经 settingsState 下发给设置页。
       vscode.postMessage({ command: "openSettings", ...(nav ? { nav } : {}) });
     },
-    [vscode, isDesktop],
+    [vscode, isDesktop, paneId, onOpenSettingsFromPane],
   );
 
   const handleOpenEnterpriseConsole = useCallback(() => {
