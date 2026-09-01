@@ -20,7 +20,8 @@ const h = vi.hoisted(() => ({
   // Shared RPC implementation for the local StdioClient mock and the remote
   // daemon client returned by the connectRemoteDaemon mock — both must answer
   // the same utility methods so auth/worktree/git flows work on every host.
-  handleClientRequest: (method: string, params?: unknown) => {
+  // `host` is the remote ssh host name (undefined for the local client).
+  handleClientRequest: (method: string, params?: unknown, host?: string) => {
     switch (method) {
       case "listSessions": {
         const workdir =
@@ -28,7 +29,14 @@ const h = vi.hoisted(() => ({
         return { sessions: h.dirSessions.get(workdir) ?? [] };
       }
       case "listAllSessions":
-        return { sessions: h.allSessions };
+        // Remote hosts answer from their own per-host scan (empty unless the
+        // test seeds it); the local client falls back to the shared list.
+        return {
+          sessions:
+            host && h.allSessionsByHost.has(host)
+              ? (h.allSessionsByHost.get(host) ?? [])
+              : h.allSessions,
+        };
       case "getAuthStatus":
         return {
           isAuthenticated: h.authStatusResults.shift() ?? false,
@@ -74,6 +82,9 @@ const h = vi.hoisted(() => ({
   dirSessions: new Map<string, unknown[]>(),
   // Cross-workdir listAllSessions result for the 历史对话弹窗 (desktop-app.md).
   allSessions: [] as unknown[],
+  // Per-remote-host listAllSessions results (keyed by ssh host name) — the
+  // history popup lists one host's sessions (desktop-app.md 场景 10).
+  allSessionsByHost: new Map<string, unknown[]>(),
   // FR-052..054: stdio git method stubs. `worktreeError` makes createWorktree
   // reject; `branchesResult: null` simulates a non-git workdir.
   worktreeResult: null as null | {
@@ -391,7 +402,7 @@ vi.mock("../src/main/remoteCli", async () => {
     ensureRemoteDaemon: vi.fn(
       async (host: string) => `/home/${host}/.wave/daemon.sock`,
     ),
-    connectRemoteDaemon: vi.fn(async () => ({
+    connectRemoteDaemon: vi.fn(async (host: string) => ({
       client: {
         onNotification: vi.fn(),
         onClosed: vi.fn((handler: () => void) => {
@@ -400,7 +411,7 @@ vi.mock("../src/main/remoteCli", async () => {
         dispose: vi.fn(),
         request: vi.fn(async (method: string, params?: unknown) => {
           h.clientRequests.push({ method, params });
-          return h.handleClientRequest(method, params);
+          return h.handleClientRequest(method, params, host);
         }),
       },
       tunnel: { kill: vi.fn() },
@@ -567,6 +578,7 @@ beforeEach(() => {
   h.authStatusResults.length = 0;
   h.authUrlHandler = null;
   h.dirSessions.clear();
+  h.allSessionsByHost.clear();
   h.worktreeResult = null;
   h.worktreeError = null;
   h.branchesResult = null;
@@ -3727,6 +3739,138 @@ describe("history popup session list (desktop-app.md 历史对话弹窗)", () =>
       shownToasts().some((t) => t.message.includes("获取历史会话失败")),
     ).toBe(true);
     expect(sent("updateSessions")).toHaveLength(0);
+  });
+
+  it("lists a remote host's sessions via its daemon client, not the local CLI (desktop-app.md 场景 10)", async () => {
+    const { host, sent } = await readyHost();
+    // The local machine has its own sessions; the remote host has different ones.
+    h.allSessions = [
+      {
+        id: "s-local",
+        sessionType: "main",
+        workdir: "/work/local",
+        firstMessage: "Local CLI session",
+        lastActiveAt: new Date("2023-12-01T11:00:00Z"),
+        latestTotalTokens: 1,
+      },
+    ];
+    h.allSessionsByHost.set("prod", [
+      {
+        id: "s-remote-cli",
+        sessionType: "main",
+        workdir: "/remote/repo",
+        firstMessage: "Remote CLI session",
+        lastActiveAt: new Date("2023-12-01T12:00:00Z"),
+        latestTotalTokens: 2,
+      },
+    ]);
+
+    await host.handleWebviewMessage({
+      command: "listSessions",
+      host: "prod",
+    });
+
+    // The remote host's daemon tunnel is established and its scan is used.
+    expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalled();
+    const sessions = sent("updateSessions").at(-1)?.sessions;
+    expect(sessions).toHaveLength(1);
+    expect(sessions?.[0]).toMatchObject({
+      id: "s-remote-cli",
+      workdir: "/remote/repo",
+    });
+    // The local scan is untouched — the popup must not mix hosts.
+    await host.handleWebviewMessage({ command: "listSessions" });
+    expect(sent("updateSessions").at(-1)?.sessions).toHaveLength(1);
+    expect(sent("updateSessions").at(-1)?.sessions?.[0]).toMatchObject({
+      id: "s-local",
+    });
+  });
+
+  it("merges worktree metadata only from the same host's index entry", async () => {
+    const { host, store, sent } = await readyHost();
+    store.upsertSession({
+      sessionId: "s-wt",
+      title: "Remote worktree",
+      host: "prod",
+      workdir: "/remote/repo",
+      cwd: "/remote/repo-wt",
+      createdAt: 1000,
+      lastActiveAt: 1000,
+      worktree: {
+        path: "/remote/repo-wt",
+        branch: "feature/x",
+        baseBranch: "main",
+        repoRoot: "/remote/repo",
+      },
+    });
+    // The remote host's scan returns the session at the worktree path; the
+    // local scan coincidentally sees the same id at a local path (session ids
+    // never actually collide across hosts — the merge must be host-scoped).
+    h.allSessionsByHost.set("prod", [
+      {
+        id: "s-wt",
+        sessionType: "main",
+        workdir: "/remote/repo-wt",
+        firstMessage: "Remote worktree",
+        lastActiveAt: new Date("2023-12-01T10:00:00Z"),
+        latestTotalTokens: 20,
+      },
+    ]);
+    h.allSessions = [
+      {
+        id: "s-wt",
+        sessionType: "main",
+        workdir: "/work/repo-wt",
+        firstMessage: "Remote worktree",
+        lastActiveAt: new Date("2023-12-01T10:00:00Z"),
+        latestTotalTokens: 20,
+      },
+    ];
+
+    await host.handleWebviewMessage({
+      command: "listSessions",
+      host: "prod",
+    });
+    expect(sent("updateSessions").at(-1)?.sessions?.[0]).toMatchObject({
+      id: "s-wt",
+      workdir: "/remote/repo", // repo root for display
+      worktree: true,
+    });
+
+    // The local list must NOT inherit the remote host's worktree metadata.
+    await host.handleWebviewMessage({ command: "listSessions" });
+    const local = sent("updateSessions").at(-1)?.sessions?.[0];
+    expect(local).toMatchObject({ id: "s-wt", workdir: "/work/repo-wt" });
+    expect(local?.worktree).toBeUndefined();
+  });
+
+  it("desktopSelectSession restores a remote CLI session through its host (desktop-app.md 场景 11)", async () => {
+    const { host, sent } = await readyHost();
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/remote/repo",
+      sessionId: "s-remote-cli",
+      host: "prod",
+    });
+
+    // Spawn + restore run behind the sweep overlay, connected through the
+    // remote host's daemon tunnel.
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith("s-remote-cli");
+    });
+    expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalled();
+    // The restored agent binds the pane as a remote session (FR-032 panes push).
+    await vi.waitFor(() => {
+      const panes = (
+        sent("desktopPanes").at(-1) as {
+          panes: Array<{ paneId: string; host?: string }>;
+        }
+      ).panes;
+      expect(panes[0]).toMatchObject({ host: "prod" });
+    });
   });
 });
 

@@ -2908,11 +2908,18 @@ export class DesktopHost {
         await this.handleSelectSession(
           msg.workdir as string,
           msg.sessionId as string,
+          undefined,
+          msg.host as string | undefined,
         );
         break;
 
       case "listSessions":
-        await this.handleListSessions();
+        // The webview sends the pane's effective host so the popup lists that
+        // host's sessions (desktop-app.md「历史对话弹窗」场景 10); absent it,
+        // fall back to the current pane's host.
+        await this.handleListSessions(
+          (msg.host as string | undefined) ?? this.hostForPane(pid),
+        );
         break;
 
       // -- chat lifecycle ----------------------------------------------
@@ -3985,6 +3992,7 @@ export class DesktopHost {
     workdir: string,
     sessionId: string,
     paneId?: string,
+    hostArg?: string,
   ): Promise<void> {
     if (!workdir || !sessionId) return;
     const pid = paneId ?? this.focusedPaneId;
@@ -4006,7 +4014,10 @@ export class DesktopHost {
     const entry = this.configStore
       .getSessionIndex()
       .find((e) => e.sessionId === sessionId);
-    const host = entry?.host ?? LOCAL_HOST;
+    // hostArg comes from the history popup (webview remembers which host the
+    // listed sessions belong to) — CLI-created sessions on a remote host are
+    // not in the index, so without it they'd wrongly resolve to LOCAL_HOST.
+    const host = hostArg ?? entry?.host ?? LOCAL_HOST;
     const targetDir = entry?.worktree ? entry.cwd : workdir;
 
     // A live agent activates with zero network round trips — checked before
@@ -4314,19 +4325,26 @@ export class DesktopHost {
   }
 
   /**
-   * 历史对话弹窗数据源：全项目会话列表（跨工作目录，含 CLI 创建的会话），
-   * 走本地 CLI 扫盘（对齐 `wave -r` 的 Ctrl+A 全项目模式）。desktop 系统
+   * 历史对话弹窗数据源：指定主机上的全项目会话列表（跨工作目录，含 CLI
+   * 创建的会话），走该主机 CLI 扫盘（对齐 `wave -r` 的 Ctrl+A 全项目模式；
+   * 远程主机即经隧道连其 daemon 扫描远端 `~/.wave/projects/`）。desktop 系统
    * 创建的 worktree 会话合并本地索引元数据：workdir 替换为主仓库路径并标记
-   * worktree，弹窗按主仓库分组展示（desktop-app.md「历史对话弹窗」场景 3）。
+   * worktree，弹窗按主仓库分组展示（desktop-app.md「历史对话弹窗」场景 3/10）。
+   * 索引合并仅取该主机自身的条目，避免跨主机误并（desktop-app.md 场景 10）。
    */
-  private async handleListSessions(): Promise<void> {
+  private async handleListSessions(host = this.currentHost): Promise<void> {
     try {
-      const result = (await this.utilityClientFor(LOCAL_HOST).request(
+      // utilityClientFor only resolves an initialized client — a remote host's
+      // daemon tunnel must be established first (lazy connect, same as auth).
+      await this.ensureClientFor(host);
+      const result = (await this.utilityClientFor(host).request(
         "listAllSessions",
       )) as { sessions: SessionMetadata[] };
       const index = this.configStore.getSessionIndex();
       const sessions = (result.sessions ?? []).map((s) => {
-        const entry = index.find((e) => e.sessionId === s.id);
+        const entry = index.find(
+          (e) => e.sessionId === s.id && e.host === host,
+        );
         if (entry?.worktree) {
           return { ...s, workdir: entry.workdir, worktree: true };
         }
