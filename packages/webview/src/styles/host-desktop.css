@@ -107,13 +107,13 @@
 }
 
 /* 工具行图标按钮：22px → 32px（codechat composer-icon-button 32×32），
-   圆角 4px → 6px；图标保持 16px；Figma 图标色 #4E5969（base 用 vscode
+   圆角 4px → 6px；图标保持 16px；Figma 图标色 #565A60（base 用 vscode
    icon-foreground 偏暗） */
 [data-host="desktop"] .toolbar-icon-button {
   width: 32px;
   height: 32px;
   border-radius: 6px;
-  color: #4e5969;
+  color: #565a60;
 }
 [data-host="desktop"] .toolbar-icon-button:hover {
   background: #f0f2f5;
@@ -256,11 +256,11 @@
 [data-host="desktop"] .ai-send-btn {
   border-radius: 8px;
   background: #f0f2f5;
-  color: #adb0bb;
+  color: #bec1c6;
 }
 [data-host="desktop"] .ai-send-btn:disabled {
   background: #f0f2f5;
-  color: #adb0bb;
+  color: #bec1c6;
   opacity: 1;
 }
 [data-host="desktop"] .ai-send-btn:not(:disabled) {
@@ -470,8 +470,8 @@
   border-right-color: #ebEEF5;
 }
 
-/* 账户热区：Figma sidebar-account hotzone 实底 #EBEDF0 r6（非透明），
-   hover 微深；深色中性 8% 白 */
+/* 账户热区：Figma sidebar-account hotzone 常驻实底 #EBEDF0 r6（13497-15325
+   13498:17132 195×32），hover 微深 #E2E4E8；深色中性 8% 白 */
 [data-host="desktop"][data-theme="light"] .account-card-hotzone {
   background: #ebedf0;
 }
@@ -540,6 +540,23 @@
 
 /* ── 消息流：Figma「02 · 对话 / 预览区展开」权威值 ──────────────── */
 
+/* Header：Figma 1180×44（含底部 stroke #EBEEF5），标题 14px/600 #1F2329。
+   base 为 content-box 44 + 1px border = 45 总高、标题 13px */
+[data-host="desktop"] .chat-header {
+  box-sizing: border-box;
+}
+[data-host="desktop"][data-theme="light"] .chat-header {
+  border-bottom-color: #ebeef5;
+}
+[data-host="desktop"] .header-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
+}
+[data-host="desktop"][data-theme="light"] .header-title {
+  color: #1f2329;
+}
+
 /* 用户气泡：Figma Article 内 counterMAX = 右对齐收缩气泡（非全宽条），
    pad 12,12,8,8、文字 14px/500 */
 [data-host="desktop"] .message.user {
@@ -607,10 +624,14 @@
   border-left: 2px solid rgba(255, 255, 255, 0.14);
 }
 
-/* 工具块（bash-unified）：Figma r8、命令区底 #F0F2F5、13px Menlo、
-   命令/输出间无分隔线（输出区自带边框）；链接 #2F5EDB 无下划线 */
+/* 工具块（bash-unified）：Figma 13497-15325 r12、外层灰底 #F0F2F5 stroke
+   #DCDFE6、命令区 13px Menlo pad 8,8,4,4、输出区白底独立描边 #DCDFE6；
+   链接 #2F5EDB 无下划线 */
 [data-host="desktop"] .bash-command-unified {
-  border-radius: 8px;
+  border-radius: 12px;
+}
+[data-host="desktop"][data-theme="light"] .bash-command-unified {
+  border-color: #dcdfe6;
 }
 [data-host="desktop"] .bash-command-unified .bash-command-input {
   border-bottom: none;
@@ -622,9 +643,37 @@
   font-size: 13px;
   padding: 4px 12px 8px;
 }
+[data-host="desktop"][data-theme="light"]
+  .bash-command-unified
+  .bash-command-output {
+  border: 1px solid #dcdfe6;
+  background: #ffffff;
+}
 [data-host="desktop"] .bash-command-output a {
   color: #2f5edb;
   text-decoration: none;
+}
+
+/* Write 工具块：Figma 标题 14px/600、路径 13px Menlo #2F5EDB 无下划线、
+   文件统计 12px #6C7076（base 13px/600、12px 蓝虚线链接、11px 统计） */
+[data-host="desktop"] .write-tool-label {
+  font-size: 14px;
+}
+[data-host="desktop"] .write-tool-path {
+  font-size: 13px;
+  text-decoration: none;
+}
+[data-host="desktop"][data-theme="light"] .write-tool-path {
+  color: #2f5edb;
+}
+[data-host="desktop"][data-theme="dark"] .write-tool-path {
+  color: #9a9ea5;
+}
+[data-host="desktop"] .write-tool-stats {
+  font-size: 12px;
+}
+[data-host="desktop"][data-theme="light"] .write-tool-stats {
+  color: #6c7076;
 }
 
 /* 修改前询问（Figma 纯文字按钮，无下拉 chevron）——桌面端隐藏箭头
