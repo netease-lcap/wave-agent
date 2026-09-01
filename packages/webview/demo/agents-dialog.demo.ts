@@ -8,7 +8,7 @@ import path from "node:path";
  * 独立加载 settings.js bundle（settings-preview-entry），模拟 host 下发
  * settingsState(nav) 选中选项卡，再回 subagentConfigurationsResponse /
  * skillMetadataResponse 展示 4 个来源 Tab（插件 / 内置 / 用户 / 项目）的
- * agent 定义与技能列表，以及项目技能按项目分组的卡片形态。
+ * agent 定义与技能列表，以及项目技能在当前项目下的平铺列表形态。
  */
 
 // SettingsPage 的颜色全部走 --vscode-* 变量，独立 settings.html 没有宿主注入，
@@ -226,7 +226,7 @@ const skills = [
 ];
 
 test.describe("设置页技能选项卡 Demo", () => {
-  test("should show 4 source tabs with project-grouped cards", async ({
+  test("should show 4 source tabs with flat project skill list", async ({
     webviewPage,
   }) => {
     await webviewPage.setViewportSize({ width: 1000, height: 760 });
@@ -262,11 +262,8 @@ test.describe("设置页技能选项卡 Demo", () => {
 
     const view = webviewPage.locator(".settings-page");
 
-    // 项目技能按所属项目分组卡片展示（当前项目 = workdir 末段 wave-agent）
+    // 项目技能平铺展示（仅当前项目，无分组卡片，2026-09-01 拍板）
     await view.getByText("项目技能", { exact: true }).click();
-    await expect(
-      webviewPage.getByText("wave-agent", { exact: true }),
-    ).toBeVisible();
     await expect(
       webviewPage.getByText("/deploy", { exact: true }),
     ).toBeVisible();
