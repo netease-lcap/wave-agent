@@ -19,7 +19,7 @@
     "watch": "node esbuild.config.mjs --watch",
     "preview": "vite --config prototype/vite.config.ts",
     "build:prototype": "vite build --config prototype/vite.config.ts",
-    "type-check": "tsc --noEmit --incremental && tsc -p tests --noEmit --incremental",
+    "type-check": "tsc --noEmit --incremental && tsc -p tests --noEmit --incremental && tsc -p e2e --noEmit && tsc -p demo --noEmit",
     "lint": "oxlint",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
