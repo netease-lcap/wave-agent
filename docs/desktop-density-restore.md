@@ -1073,3 +1073,47 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 ### 实现文件
 
 - `src/styles/host-desktop.css`（第二十六轮段：markdown a 颜色/下划线机制、dark 链接统一 #4daafc、write-tool-path/bash hover underline）
+
+## 第二十七轮：预览头部背景（toolbar 深色去背景 / tab-bar 浅色补白底）（2 项评论）
+
+评论①：`div.preview-pane-toolbar`「http://localhost:8899/」——「深色模式下这里不应该有背景色」。
+评论②：`div.preview-tab-bar`「localhost:8899」——「浅色模式下这里不应该有背景色」。
+
+### 背景：第 18 轮后头部状态与用户感知
+
+第 18 轮按 codechat InspectorPanel.vue 把浅色 toolbar 改为白底 #FFF，但 tab-bar 保持透明（原型 pill tabs 设计），于是：
+
+| 主题 | tab-bar（透明）      | toolbar（第 18 轮） | 用户感知                                              |
+| ---- | -------------------- | ------------------- | ----------------------------------------------------- |
+| 浅色 | 露出 pane 灰 #F7F8FB | 白 #FFF             | tab-bar 区域是灰色条带，与白色 toolbar 不连续 → 评论② |
+| 深色 | 露出 pane 黑 #181818 | #27292B             | toolbar 比 pane 亮一档，成悬浮色块 → 评论①            |
+
+Figma 对照（`13497-15325` 预览区展开帧，vision 复核渲染图）：头部标签栏+地址栏为连续浅灰带（约 #F5F6F8，≈ wave pane 背景）、选中标签为白色胶囊、URL 输入框为白色胶囊。wave 采用 codechat 白底方案后，用户以「头部连续无色带」为准。
+
+### 变更点清单
+
+| #   | 对象                         | 修复前                                       | 修复后                                                               |
+| --- | ---------------------------- | -------------------------------------------- | -------------------------------------------------------------------- |
+| 1   | 浅色 `.preview-tab-bar`      | 透明（露出 pane 灰 #F7F8FB，被感知为背景色） | 白底 #FFFFFF + 底分隔线 #EBEEF5，与浅色 toolbar 连续成统一白色头部   |
+| 2   | 深色 `.preview-pane-toolbar` | 背景 #27292B（比 pane #181818 亮一档）       | 背景 transparent，头部与 pane 底色融为一体                           |
+| 3   | 深色 `.preview-tab-bar`      | 透明（已露 pane #181818）                    | 保持透明（无需改）                                                   |
+| 4   | 浅色 `.preview-pane-toolbar` | 白 #FFF（第 18 轮）                          | 保持白 #FFF（与 tab-bar 白连续）                                     |
+| 5   | 选中标签/URL 胶囊（两主题）  | light #F0F2F5 / dark 10%·6% 白               | 保持（白底上 #F0F2F5 灰胶囊、深底上亮档胶囊均清晰可见，vision 复核） |
+
+### 验证结果（Playwright 探针 + 截图实测）
+
+| 项                            | 实测                                                  | 期望 |
+| ----------------------------- | ----------------------------------------------------- | ---- |
+| 浅色 tab-bar 背景             | #FFFFFF（rgb(255,255,255)）                           | ✓    |
+| 浅色 toolbar 背景             | #FFFFFF，与 tab-bar 连续                              | ✓    |
+| 深色 tab-bar 背景             | 透明 rgba(0,0,0,0)（露出 pane #181818）               | ✓    |
+| 深色 toolbar 背景             | 透明 rgba(0,0,0,0)（露出 pane #181818），不再有色块   | ✓    |
+| 选中标签可见性（vision 复核） | light 浅灰胶囊 on 白、dark 亮一档胶囊 on 深底，均可辨 | ✓    |
+| 头部整体（vision 复核）       | 浅色连续白、深色与 pane 融为一体，无灰色条带/突兀色块 | ✓    |
+| smoke-ui / type-check         | 无 JS 错误 / 通过                                     | ✓    |
+
+探针路径：mock sa-msg-8 的 localhost 链接点击 → PreviewPane 完整挂载（tab-bar 仅在 previewUrl 非空时渲染，ChatApp L2325）。
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（第二十七轮段：浅色 `.preview-tab-bar` 白底 + 深色 `.preview-pane-toolbar` 透明）

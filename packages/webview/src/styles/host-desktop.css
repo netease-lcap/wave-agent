@@ -857,14 +857,25 @@
    #FFF（--cc-bg-panel）/ 底分隔线 #EBEEF5（--cc-border-lighter）；地址输入框
    26px 高 / 浅灰底 #F0F2F5（--cc-fill）/ 无边框 / r8 / 14px；按钮 24×24
    （figma-icon-button）/ r4 / 图标 #565A60 / hover #EEF0F3（--cc-fill-hover）；
-   深色映射沿用 wave 约定：#27292B / 12% 白边 / 6% 白底 / 8% 白 hover。 */
+   深色映射沿用 wave 约定：12% 白边 / 6% 白底 / 8% 白 hover。 */
+
+/* ═══ 第二十七轮：预览头部背景（用户评论 ①toolbar 深色不应有背景 ②tab-bar
+   浅色不应有背景）═══════
+   ① 深色 toolbar 去 #27292B 背景 → 透明，头部与 pane 底色 #181818 连为一体；
+   ② 浅色 tab-bar 透明时露出 pane 灰 #F7F8FB，被感知为背景色 → 补白底 #FFF，
+      与浅色 toolbar 白底连续成统一头部（对齐 codechat preview-tabbar 白底）。 */
+
+[data-host="desktop"][data-theme="light"] .preview-tab-bar {
+  background: #ffffff;
+  border-bottom-color: #ebeef5;
+}
 
 [data-host="desktop"][data-theme="light"] .preview-pane-toolbar {
   background: #ffffff;
   border-bottom-color: #ebeef5;
 }
 [data-host="desktop"][data-theme="dark"] .preview-pane-toolbar {
-  background: #27292b;
+  background: transparent;
   border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
