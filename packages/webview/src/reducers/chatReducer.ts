@@ -175,6 +175,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         ...state,
         configurationData: action.payload,
+        configurationError: undefined,
         configurationLoading: false,
       };
     case "SET_PROJECT_SETTINGS":
