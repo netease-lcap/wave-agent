@@ -1154,3 +1154,44 @@ Figma 对照（`13497-15325` 预览区展开帧，vision 复核渲染图）：�
 ### 实现文件
 
 - `src/styles/host-desktop.css`（第二十八轮段：plan/file/diff/terminal 面板 `.preview-pane-url` 去背景）
+
+## 第二十九轮：会话行更多按钮 + 菜单图标（1 项评论）
+
+评论：`span.codicon.codicon-ellipsis`（会话行更多按钮）——「检查更多操作按钮尺寸，及更多按钮点开下拉菜单内部样式是否正确，包括图标，和下拉菜单规范」。
+
+### 背景
+
+侧边栏会话行「更多操作」按钮（`.desktop-session-more-btn`）为 18×18 codicon-ellipsis 字体图标；点开的下拉菜单（SessionItemMenu：并排打开 / 删除会话）面板与项尺寸第十三轮已统一（白底 r12 柔影 / 32px / 14px / 500 / gap 8 / 危险项 #D92D20），但**图标仍是 codicon 字体**（split-horizontal / trash），与 codechat 的 SVG 图标体系不符。
+
+参考 codechat TaskSidebar.vue + global.css（element-plus.css task-row-more-popper）：按钮 24×24（task-row-more-btn）+ 图标 16×16（more.svg）；菜单项 `el-dropdown-menu__item` gap 8 / min-w 124 / min-h 32 / 14px / 500，图标 lucide Columns2/Trash2 `:size="15"`；按钮 hover `--cc-fill-pressed`。
+
+### 变更点清单
+
+| #   | 对象                         | 修复前                                                                  | 修复后                                                                      |
+| --- | ---------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| 1   | 更多按钮尺寸                 | 18×18、r4、codicon-ellipsis 字体 14px                                   | **24×24**（对齐 task-row-more-btn）+ Figma more.svg 图标 16×16（MoreIcon）  |
+| 2   | 更多按钮 hover               | `--vscode-toolbar-hoverBackground`（VS Code 蓝灰）                      | `--cc-fill-pressed`：light #E7E9ED / dark 12% 白                            |
+| 3   | 菜单项「并排打开」图标       | codicon-split-horizontal（字体）                                        | **SplitIcon**（HeaderIcons 新增，codechat 同款 lucide columns-2，stroke 2） |
+| 4   | 菜单项「删除会话」图标       | codicon-trash（字体）                                                   | **QueueTrashIcon**（Figma trash 复用）                                      |
+| 5   | 菜单项图标尺寸               | codicon 字体 16px                                                       | SVG 15×15（对齐 el-dropdown-menu\_\_item svg `:size=15`）                   |
+| 6   | 账户卡片更多按钮图标（顺带） | codicon-ellipsis（2 处：登录态/未登录态）                               | MoreIcon 16×16（同一 Figma 图标，按钮本身 32×32 保持）                      |
+| 7   | 菜单面板/项规范              | 第十三轮已达标（白底 r12 柔影 / 32px / 14px / 500 / gap 8 / danger 红） | 保持（vision 复核确认）                                                     |
+
+### 验证结果（Playwright 探针 + 截图实测）
+
+| 项                      | 实测                                                                | 期望 |
+| ----------------------- | ------------------------------------------------------------------- | ---- |
+| 更多按钮尺寸            | 24×24、图标 16×16                                                   | ✓    |
+| 按钮 hover light/dark   | #E7E9ED（rgb 231,233,237）/ rgba(255,255,255,0.12)（真实鼠标）      | ✓    |
+| 菜单项图标              | 2 个 svg 均 15×15（desktop-session-menu-icon），无 codicon          | ✓    |
+| 菜单面板 light/dark     | #FFF / #27292B、r12、pad 8、边框 #EBEEF5 / 12% 白                   | ✓    |
+| 菜单项                  | 32px / 14px / 500，普通 #565A60 / #9A9EA5，danger #D92D20 / #F4655C | ✓    |
+| 菜单观感（vision 复核） | 两主题图标清晰、颜色语义正确（普通灰/删除红）、尺寸协调、无错位溢出 | ✓    |
+| type-check / smoke-ui   | 通过 / 无 JS 错误                                                   | ✓    |
+
+### 实现文件
+
+- `src/components/HeaderIcons.tsx`（新增 SplitIcon = lucide columns-2）
+- `src/components/DesktopSidebar.tsx`（更多按钮 MoreIcon、菜单项 SplitIcon/QueueTrashIcon）
+- `src/components/AccountCard.tsx`（2 处 more 按钮 codicon → MoreIcon）
+- `src/styles/host-desktop.css`（第二十九轮段：按钮 24×24、hover pressed、菜单项 svg 15px）

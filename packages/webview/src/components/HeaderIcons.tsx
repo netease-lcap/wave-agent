@@ -497,6 +497,27 @@ export const QueueTrashIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+// 会话行更多菜单「并排打开」— codechat TaskSidebar 同款 lucide columns-2
+// （18×18 rx2 外框 + 中竖线，stroke 2 / currentColor）。
+export const SplitIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={15}
+    height={15}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M12 3v18" />
+  </svg>
+);
+
 // Header 面板切换 — Figma preview-toggle（40×24：左侧「右侧面板布局」+ 右侧
 // chevron-down，codechat WorkspaceHeader 同款，fill #4E5969 → currentColor）。
 export const PanelToggleIcon: React.FC<IconProps> = ({
