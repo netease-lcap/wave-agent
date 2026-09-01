@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { test, expect } from "../e2e/utils/webviewTestHarness.js";
 import { elementScreenshotWebp } from "../e2e/utils/screenshot.js";
 import fs from "node:fs";
@@ -50,7 +51,7 @@ const settingsHtml = `
 </html>`;
 
 /** 打开设置页 + 初始化配置（settings entry 挂载时会请求 getConfiguration） */
-async function openSettings(webviewPage, nav: string) {
+async function openSettings(webviewPage: Page, nav: string) {
   await webviewPage.setViewportSize({ width: 1000, height: 760 });
   await webviewPage.setContent(settingsHtml);
   await expect(webviewPage.locator(".settings-page")).toBeVisible();
