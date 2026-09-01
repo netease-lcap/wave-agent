@@ -1744,11 +1744,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   }, []);
 
   // 设置页保存配置（全局设置/个性化视图）：经 updateConfiguration RPC 写回，
-  // 清旧错误后等待 host 回发 configurationResponse（成功）或 configurationError（失败）。
+  // 等待 host 回发 configurationResponse（成功）或 configurationError（失败）。
+  // 注意：不能在此 dispatch SET_CONFIGURATION_ERROR undefined —— 该 reducer
+  // case 会把 configurationLoading 复位为 false，与上一条 LOADING true 在
+  // React 批处理下合并后 saving 从未变 true，SettingsPage 的保存反馈 effect
+  // 将永不触发（真机实测复现）。
   const handleConfigurationSave = useCallback(
     (configData: ConfigurationData) => {
       dispatch({ type: "SET_CONFIGURATION_LOADING", payload: true });
-      dispatch({ type: "SET_CONFIGURATION_ERROR", payload: undefined });
       vscode.postMessage({
         command: "updateConfiguration",
         configurationData: configData,
