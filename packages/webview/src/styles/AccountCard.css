@@ -4,7 +4,8 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 10px;
+  /* 左右缩进由 .desktop-sidebar 的 12px 提供（codechat sidebar-account 同款） */
+  padding: 8px 0;
   border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
   font-size: 12px;
 }
@@ -50,7 +51,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 2px;
+  /* Figma hotzone 32px：24px 头像 + 上下各 4px */
+  padding: 4px 8px 4px 4px;
   border-radius: 6px;
   cursor: pointer;
 }
@@ -72,8 +74,10 @@
      (inline-flex centers the content box, not the glyph's own line box). */
   line-height: 24px;
   border-radius: 50%;
-  background-color: var(--vscode-button-background, #2f81ae);
-  color: var(--vscode-button-foreground, #e9e9e9);
+  /* codechat sidebar-account 头像：浅红底 + 品牌红首字母（primary-soft 底 /
+     primary 字），对齐 5175 基准。 */
+  background-color: #ffebe8;
+  color: #c1292e;
   font-size: 12px;
   font-weight: 600;
   user-select: none;
@@ -87,6 +91,8 @@
   white-space: nowrap;
   color: var(--vscode-foreground);
   font-weight: 500;
+  /* Figma sidebar-account：14px / 500（base 12px 偏小） */
+  font-size: 14px;
 }
 
 .account-card-more-btn {

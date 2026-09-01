@@ -1,0 +1,631 @@
+/* host-desktop.css — cc 桌面端（desktop host）中密度样式参数
+ *
+ * 同一套 --vscode-* token，两套参数：
+ * - 默认（VS Code 插件 / JetBrains 插件）：高信息密度（13px 字号、紧凑排布）
+ * - [data-host="desktop"]（cc 桌面端）：中信息密度，参照 codechat-ui
+ *   （src/styles/tokens.css 的 --cc-* 设计令牌）：炭黑主按钮、中性灰用户气泡、
+ *   纯白会话区、浅灰导航侧栏，浅色下与 5175 原型视觉对齐。
+ *
+ * data-host 属性由入口设置：
+ * - src/index.tsx（真机）：waveHostType === "desktop" 时置 "desktop"
+ * - prototype/preview-entry.tsx（原型）：按当前 mock 用例的 host 切换
+ * - packages/desktop/scripts/syncWebview.mjs 生成的 index.html 静态声明
+ *
+ * 本文件经 esbuild 打包进 dist/chat.css（desktop syncWebview 内联到
+ * index.html，插件端同样加载但 data-host 永不为 desktop，故不受影响）。
+ */
+
+/* ── 浅色：桌面端中密度（对齐 codechat-ui 浅色基准）────────────── */
+:root[data-host="desktop"][data-theme="light"] {
+  /* 主按钮：品牌蓝 → 炭黑（--cc-action-primary: #1f2329 / hover #34383f） */
+  --vscode-button-background: #1f2329;
+  --vscode-button-hoverBackground: #34383f;
+  --vscode-button-secondaryBackground: #f0f0f1;
+  --vscode-button-secondaryForeground: #1f2329;
+  --vscode-button-secondaryHoverBackground: #e7e9ed;
+
+  /* 用户消息气泡：浅蓝 → 中性浅灰（--cc-fill: #f0f2f5） */
+  --vscode-chat-requestBubbleBackground: #f0f2f5;
+  --vscode-chat-requestBubbleHoverBackground: #e7e9ed;
+
+  /* 面板背景：会话区纯白（--cc-bg-conversation: #ffffff） */
+  --vscode-panel-background: #ffffff;
+  /* 侧栏导航：浅灰（--cc-bg-navigation: #f7f8fb） */
+  --vscode-sideBar-background: #f7f8fb;
+  /* 代码块背景（--cc-bg-code: #f7f8fa） */
+  --vscode-textCodeBlock-background: #f7f8fa;
+  /* 终端/命令输出区：白底（--cc-bg-panel: #ffffff） */
+  --vscode-terminal-background: #ffffff;
+
+  /* 边框：quiet lines（--cc-border-light: #e4e7ed / --cc-border: #dcdfe6） */
+  --vscode-panel-border: #e4e7ed;
+  --vscode-widget-border: #e4e7ed;
+  --vscode-input-border: #dcdfe6;
+
+  /* 中密度字号：插件 13px → 桌面 14px */
+  --vscode-font-size: 14px;
+  --vscode-editor-font-size: 13px;
+}
+
+/* ── 深色：桌面端中性化（去掉品牌蓝，主操作保持中性炭灰）────────── */
+:root[data-host="desktop"][data-theme="dark"] {
+  /* 主按钮：蓝 #0078d4 → 中性炭灰 */
+  --vscode-button-background: #3d424a;
+  --vscode-button-hoverBackground: #4a5057;
+  --vscode-button-secondaryBackground: #313131;
+  --vscode-button-secondaryForeground: #e6e6e6;
+  --vscode-button-secondaryHoverBackground: #3a3a3a;
+
+  /* 用户消息气泡：蓝调 rgba(38,79,120,.3) → 中性白 8% */
+  --vscode-chat-requestBubbleBackground: rgba(255, 255, 255, 0.08);
+  --vscode-chat-requestBubbleHoverBackground: rgba(255, 255, 255, 0.14);
+
+  /* 命令输出区：终端底 → 面板底（与输入条分区） */
+  --vscode-terminal-background: #1d1e20;
+
+  /* 中密度字号 */
+  --vscode-font-size: 14px;
+  --vscode-editor-font-size: 13px;
+}
+
+/* ── 组件级覆盖：桌面端 vs 插件端的行为差异 ─────────────────────── */
+
+/* 发送按钮禁用态：桌面端空输入 = 浅灰禁用（codechat composer 规范），
+   不透明度不衰减，用底色区分而非透明度。 */
+[data-host="desktop"] .ai-send-btn:disabled {
+  background: var(--vscode-chat-requestBubbleBackground, #f0f2f5);
+  color: var(--vscode-text-disabled, #bec1c6);
+  opacity: 1;
+}
+
+/* 确认弹窗：桌面端遮罩弱化（codechat 审批为轻量浮层，不遮死上下文），
+   卡片投影保持柔和大范围。 */
+[data-host="desktop"] .confirmation-dialog {
+  background-color: var(--vscode-overlay-scrim, rgba(31, 35, 41, 0.05));
+}
+
+/* 「修改前询问」默认模式：桌面端中性文字 #565A60（Figma 权威，非彩色语义；
+   4 模式的统一中性色规则见下方 composer 区） */
+
+/* 焦点 pane 顶部指示条：桌面端中性边框色（淡化活动指示的视觉突兀，
+   避免与 codechat 全白会话区冲突）。 */
+[data-host="desktop"] .desktop-pane--focused::before {
+  background: var(--vscode-widget-border, rgba(128, 128, 128, 0.5));
+}
+
+/* ── AI 对话框（composer）：对齐 codechat 规格 ─────────────────── */
+
+/* 输入框：44px 起步高度（codechat composer textarea min-height 44px） */
+[data-host="desktop"] .message-input {
+  min-height: 44px;
+  padding: 0 12px;
+}
+
+/* 输入卡聚焦：codechat 聚焦用 popover 级柔影，而非高对比描边 */
+[data-host="desktop"] .input-content:focus-within {
+  box-shadow: 0 0 12px rgb(31 35 41 / 12%);
+}
+
+/* 工具行图标按钮：22px → 32px（codechat composer-icon-button 32×32），
+   圆角 4px → 6px；图标保持 16px；Figma 图标色 #4E5969（base 用 vscode
+   icon-foreground 偏暗） */
+[data-host="desktop"] .toolbar-icon-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  color: #4e5969;
+}
+[data-host="desktop"] .toolbar-icon-button:hover {
+  background: #f0f2f5;
+}
+[data-host="desktop"][data-theme="dark"] .toolbar-icon-button {
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"] .toolbar-icon-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* 压缩上下文按钮：32px 高（codechat 59×32 图形按钮） */
+[data-host="desktop"] .compress-context-button {
+  height: 32px;
+  padding: 0 6px;
+}
+
+/* 权限模式选择器（修改前询问）：14px 字号、32px 高（codechat permission-button）。
+   Figma 文字/图标统一中性 #565A60（base 按模式着色绿/黄/蓝是错位）；
+   仅「跳过权限确认」为 danger 红 #D92D20（codechat is-danger） */
+[data-host="desktop"] .permission-mode-select {
+  font-size: 14px;
+  min-height: 32px;
+  padding: 0 6px;
+  gap: 6px;
+  color: #565a60;
+}
+[data-host="desktop"] .permission-mode-select.mode-default,
+[data-host="desktop"] .permission-mode-select.mode-acceptEdits,
+[data-host="desktop"] .permission-mode-select.mode-plan {
+  color: #565a60;
+  font-weight: 400;
+}
+[data-host="desktop"] .permission-mode-select.mode-bypassPermissions {
+  color: #d92d20;
+  font-weight: 400;
+}
+[data-host="desktop"] .permission-mode-select:hover,
+[data-host="desktop"] .permission-mode-select:focus {
+  background: #eef0f3;
+  color: #1f2329;
+  border-color: transparent;
+}
+[data-host="desktop"] .permission-mode-select.mode-bypassPermissions:hover {
+  color: #d92d20;
+}
+[data-host="desktop"][data-theme="dark"] .permission-mode-select {
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"]
+  .permission-mode-select.mode-bypassPermissions {
+  color: #f4655c;
+}
+[data-host="desktop"][data-theme="dark"] .permission-mode-select:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+[data-host="desktop"][data-theme="dark"]
+  .permission-mode-select.mode-bypassPermissions:hover {
+  color: #f4655c;
+}
+
+/* 权限下拉 chevron：Figma composer-chevron 8×5（base codicon 16px 方形偏大） */
+[data-host="desktop"] .permission-mode-caret {
+  width: 8px;
+  height: 5px;
+  opacity: 1;
+}
+
+/* 权限下拉菜单：Figma/codechat composer-permission-popper —— 面板底白、
+   border #EBEEF5、r12、popover 阴影、pad 8；item 32 高带图标 gap 10、
+   14px #565A60、hover #EEF0F3、active #1F2329、danger hover #FFF0EF。
+   （覆盖 base 的 vscode token 深色菜单，仅 desktop host 生效） */
+[data-host="desktop"] .permission-mode-menu {
+  background: #ffffff;
+  color: #565a60;
+  border: 1px solid #ebeef5;
+  border-radius: 12px;
+  box-shadow: 0 0 12px rgb(0 0 0 / 12%);
+  padding: 8px;
+  min-width: 168px;
+  font-size: 14px;
+}
+[data-host="desktop"] .permission-mode-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: #565a60;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+[data-host="desktop"] .permission-mode-item:hover {
+  background: #eef0f3;
+  color: #1f2329;
+}
+[data-host="desktop"] .permission-mode-item.selected {
+  background: transparent;
+  color: #1f2329;
+}
+[data-host="desktop"] .permission-mode-item.mode-bypassPermissions {
+  color: #d92d20;
+}
+[data-host="desktop"] .permission-mode-item.mode-bypassPermissions:hover {
+  background: #fff0ef;
+  color: #d92d20;
+}
+[data-host="desktop"] .permission-mode-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+[data-host="desktop"][data-theme="dark"] .permission-mode-menu {
+  background: #27292b;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #9a9ea5;
+  box-shadow: 0 0 12px rgb(0 0 0 / 40%);
+}
+[data-host="desktop"][data-theme="dark"] .permission-mode-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+[data-host="desktop"][data-theme="dark"] .permission-mode-item.selected {
+  color: #fff;
+}
+[data-host="desktop"][data-theme="dark"]
+  .permission-mode-item.mode-bypassPermissions {
+  color: #f4655c;
+}
+[data-host="desktop"][data-theme="dark"]
+  .permission-mode-item.mode-bypassPermissions:hover {
+  background: rgb(217 45 32 / 20%);
+  color: #f4655c;
+}
+
+/* 发送按钮：Figma 32×32 r8 —— 未激活 #F0F2F5 底 + #ADB0BB 图标（disabled），
+   激活 #1F2329 底 + 白图标（:not(:disabled) 即 canSend） */
+[data-host="desktop"] .ai-send-btn {
+  border-radius: 8px;
+  background: #f0f2f5;
+  color: #adb0bb;
+}
+[data-host="desktop"] .ai-send-btn:disabled {
+  background: #f0f2f5;
+  color: #adb0bb;
+  opacity: 1;
+}
+[data-host="desktop"] .ai-send-btn:not(:disabled) {
+  background: #1f2329;
+  color: #ffffff;
+}
+[data-host="desktop"] .ai-send-btn:not(:disabled):hover {
+  background: #34383f;
+}
+[data-host="desktop"][data-theme="dark"] .ai-send-btn,
+[data-host="desktop"][data-theme="dark"] .ai-send-btn:disabled {
+  background: rgb(255 255 255 / 8%);
+  color: rgb(255 255 255 / 45%);
+}
+[data-host="desktop"][data-theme="dark"] .ai-send-btn:not(:disabled) {
+  background: rgb(255 255 255 / 92%);
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .ai-send-btn:not(:disabled):hover {
+  background: #ffffff;
+}
+
+/* 新会话上下文栏：Figma 13439-9245 —— 卡片外独立横条（非卡片脚条）。
+   768×62、底部圆角 rectangleCornerRadii [0,0,16,16]（顶部被卡片遮 18px 无需圆角）、
+   #f5f7fa、drop(0 8 24)、pad 12,12,6,6；
+   上移 18px 与卡片底重叠（工具行 32 高 + gap 8 + pad 12 = 52，卡片底 12 →
+   62 = 12+32+8+10，10 = 62-52 冗余 10px，-18px 使顶边正好压到卡片 pad 底） */
+[data-host="desktop"] .input-workdir-row {
+  margin: -18px 0 0;
+  /* Figma「Form - 发送消息」pad=(12,6,12,6) 但按钮 absolute y = 卡片底+6：
+     重叠 18px 使视觉 padT = 18+6 = 24，故 padding-top 用 24，总高 62 */
+  padding: 24px 12px 6px;
+  border: none;
+  border-radius: 0 0 16px 16px;
+  background: var(--vscode-fill-light, #f5f7fa);
+  box-shadow: 0 8px 24px rgb(31 35 41 / 6%);
+  align-items: flex-end;
+}
+
+/* 深色模式：--vscode-fill-light 未定义会回退浅灰 #f5f7fa 突兀；
+   用比卡片(#313131)略深的灰形成「卡片在上、灰条在下」层次 */
+[data-host="desktop"][data-theme="dark"] .input-workdir-row {
+  background: #27292b;
+}
+
+/* 灰条内控件按钮化：Figma「本地 / 选择工作目录」按钮 32 高、r8（base
+   trigger 20 高、4px 圆角偏小；功能仍为 wave 扩展的 host/workdir/branch） */
+[data-host="desktop"] .input-workdir-row .desktop-host-trigger,
+[data-host="desktop"] .input-workdir-row .desktop-workdir-trigger {
+  min-height: 32px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  align-items: center;
+}
+
+/* 灰条 trigger 内容：Figma 图标 16px、文字 14px #565A60、chevron 8×5。
+   base 用 codicon 16px 与 12px 字号偏小；branch/worktree 控件保持原样 */
+[data-host="desktop"] .desktop-host-trigger,
+[data-host="desktop"] .desktop-workdir-trigger {
+  font-size: 14px;
+  color: #565a60;
+  gap: 6px;
+}
+[data-host="desktop"] .desktop-host-icon,
+[data-host="desktop"] .desktop-workdir-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+[data-host="desktop"] .desktop-host-caret,
+[data-host="desktop"] .desktop-workdir-caret {
+  width: 8px;
+  height: 5px;
+  opacity: 1;
+  font-size: 0;
+}
+[data-host="desktop"] .desktop-host-trigger:hover,
+[data-host="desktop"] .desktop-host-trigger:focus-visible,
+[data-host="desktop"] .desktop-workdir-trigger:hover,
+[data-host="desktop"] .desktop-workdir-trigger:focus-visible {
+  background: #eef0f3;
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-host-trigger,
+[data-host="desktop"][data-theme="dark"] .desktop-workdir-trigger {
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-host-trigger:hover,
+[data-host="desktop"][data-theme="dark"] .desktop-host-trigger:focus-visible,
+[data-host="desktop"][data-theme="dark"] .desktop-workdir-trigger:hover,
+[data-host="desktop"][data-theme="dark"] .desktop-workdir-trigger:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+/* ── 消息流：时间线节点 6px → 8px（codechat design-node 8px）────────── */
+[data-host="desktop"] .timeline-row::before {
+  width: 8px;
+  height: 8px;
+  left: -1px;
+  top: 15px;
+}
+
+/* "+ 添加"菜单：对齐 codechat composer-add-menu —— 面板底白、border
+   #EBEEF5、r12、popover 阴影、pad 8、item 32 高 14px/500 */
+[data-host="desktop"] .plus-menu {
+  background: #ffffff;
+  color: #565a60;
+  border: 1px solid #ebeef5;
+  border-radius: 12px;
+  box-shadow: 0 0 12px rgb(0 0 0 / 12%);
+  width: 160px;
+}
+[data-host="desktop"] .plus-menu-item {
+  min-height: 32px;
+  height: auto;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  box-sizing: border-box;
+}
+[data-host="desktop"] .plus-menu-item:hover,
+[data-host="desktop"] .plus-menu-item:focus-visible {
+  background: #eef0f3;
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .plus-menu {
+  background: #27292b;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"] .plus-menu-item:hover,
+[data-host="desktop"][data-theme="dark"] .plus-menu-item:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+/* ── 左侧导航细节（对齐 codechat 规格）──────────────────────────── */
+
+/* 侧栏文字密度：13px → 14px（codechat --cc-font-size-md） */
+[data-host="desktop"] .desktop-sidebar-new-chat,
+[data-host="desktop"] .desktop-session-group-header,
+[data-host="desktop"] .desktop-session-item {
+  font-size: 14px;
+}
+
+/* 分组折叠 chevron：12px → 16px（codechat 16px） */
+[data-host="desktop"] .desktop-session-group-header .codicon {
+  font-size: 16px;
+}
+
+/* 分组头文字色：descriptionForeground（浅色 #606060）偏暗 →
+   codechat --cc-text-secondary #6c7076 */
+[data-host="desktop"][data-theme="light"] .desktop-session-group-header {
+  color: #6c7076;
+}
+
+/* hover：codechat --cc-fill-hover #eef0f3（浅色）；深色用中性 8% 白
+   （替换 VS Code list-hoverBackground 的蓝灰调） */
+[data-host="desktop"][data-theme="light"] .desktop-session-group-header:hover,
+[data-host="desktop"][data-theme="light"] .desktop-session-group-header:focus-visible,
+[data-host="desktop"][data-theme="light"] .desktop-session-item:hover {
+  background: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-session-group-header:hover,
+[data-host="desktop"][data-theme="dark"] .desktop-session-group-header:focus-visible,
+[data-host="desktop"][data-theme="dark"] .desktop-session-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* 选中态：Figma task-row 选中 fill #EBEDF0（浅色）；深色中性 12% 白。
+   —— 以 Figma 权威值为准，替换此前 codechat 推断的 #e7e9ed */
+[data-host="desktop"][data-theme="light"] .desktop-session-item--current {
+  background: #ebedf0;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-session-item--current {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* 分组间距：task-group gap 4px */
+[data-host="desktop"] .desktop-session-group + .desktop-session-group {
+  margin-top: 4px;
+}
+
+/* ── 第三轮 Figma 权威值（Figma 组件库「CC桌面端组件库」实测）───────── */
+
+/* 新对话按钮：Figma 为实底按钮（fill #EBEDF0 / r8 / 文字 14px/400），
+   非无背景行 —— 覆盖 DesktopApp.css 的透明底 + 500 字重 */
+[data-host="desktop"][data-theme="light"] .desktop-sidebar-new-chat {
+  background: #ebedf0;
+  font-weight: 400;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat {
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 400;
+}
+[data-host="desktop"][data-theme="light"] .desktop-sidebar-new-chat:hover:not(:disabled) {
+  background: #e2e4e8;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* 侧栏右边框：Figma Sidebar stroke #EBEEF5（比 panel-border #e4e7ed 更浅） */
+[data-host="desktop"][data-theme="light"] .desktop-sidebar {
+  border-right-color: #ebEEF5;
+}
+
+/* 账户热区：Figma sidebar-account hotzone 实底 #EBEDF0 r6（非透明），
+   hover 微深；深色中性 8% 白 */
+[data-host="desktop"][data-theme="light"] .account-card-hotzone {
+  background: #ebedf0;
+}
+[data-host="desktop"][data-theme="dark"] .account-card-hotzone {
+  background: rgba(255, 255, 255, 0.08);
+}
+[data-host="desktop"][data-theme="light"] .account-card-hotzone:hover,
+[data-host="desktop"][data-theme="light"] .account-card-hotzone:focus-visible {
+  background: #e2e4e8;
+}
+[data-host="desktop"][data-theme="dark"] .account-card-hotzone:hover,
+[data-host="desktop"][data-theme="dark"] .account-card-hotzone:focus-visible {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* 消息流时间线节点：Figma design-node 12px / #16A34A / 白描边（覆盖此前
+   codechat 推断的 8px 灰点）；行 padding-left 12px → 20px（节点 12 + gap 8） */
+[data-host="desktop"] .timeline-row {
+  padding-left: 20px;
+}
+[data-host="desktop"] .timeline-row::before {
+  width: 12px;
+  height: 12px;
+  left: 0;
+  top: 15px;
+  background: #16a34a;
+  border: 2px solid #ffffff;
+  box-sizing: border-box;
+}
+
+/* Composer 输入文字：Figma 14px / 行高 22px（base 12px/16px 偏小） */
+[data-host="desktop"] .message-input {
+  font-size: 14px;
+  line-height: 22px;
+}
+
+/* Composer 卡片布局：Figma 13439-9245 卡片 768×110 = pad 12 + 输入区 44 +
+   gap 8 + 工具行 32 + pad 12（base 实现 86px：无 pad-top、工具行 40 贴底）。
+   输入区自带 padding 0 12px（左右留白），pad-top 由卡片承担。
+   z-index 1：灰条是卡片后的兄弟元素，默认绘制在卡片之上会盖住卡片底 18px
+   （Figma 中灰条在卡片后面，顶部 18px 被卡片遮住）——卡片需提到上层；
+   灰条内 dropdown 的 absolute z-index 10000 仍在根层，不受影响。 */
+[data-host="desktop"] .input-content {
+  position: relative;
+  z-index: 1;
+  padding-top: 12px;
+}
+[data-host="desktop"] .input-buttons-row {
+  height: 32px;
+  margin-top: 8px;
+  margin-bottom: 12px;
+  padding: 0 12px;
+}
+
+/* placeholder：Figma #8B8F95（base 用 input-placeholderForeground 偏暗） */
+[data-host="desktop"] .content-editable-input:empty:before {
+  color: #8b8f95;
+}
+
+/* Composer 卡片常态：Figma 白底卡片 stroke #DCDFE6 + drop(0 8 24)
+   （base 用 vscode input-border 半透明深色） */
+[data-host="desktop"][data-theme="light"] .input-content {
+  border-color: #dcdfe6;
+  box-shadow: 0 8px 24px rgb(31 35 41 / 6%);
+}
+
+/* ── 消息流：Figma「02 · 对话 / 预览区展开」权威值 ──────────────── */
+
+/* 用户气泡：Figma Article 内 counterMAX = 右对齐收缩气泡（非全宽条），
+   pad 12,12,8,8、文字 14px/500 */
+[data-host="desktop"] .message.user {
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+}
+[data-host="desktop"] .user-text-block {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+/* 时间线竖线：节点已放大到 12px（中心 6px），竖线左缘 2.5px → 5.5px；
+   起始/终止端对齐节点中心（top/bottom 18px → 21px）；颜色对齐 Figma
+   浅灰连接线（base widget-border 50% 中灰偏深） */
+[data-host="desktop"] .messages-container--virtual .timeline-row::after {
+  left: 5.5px;
+}
+[data-host="desktop"][data-theme="light"]
+  .messages-container--virtual
+  .timeline-row::after {
+  background: #e4e7ed;
+  opacity: 1;
+}
+[data-host="desktop"][data-theme="dark"]
+  .messages-container--virtual
+  .timeline-row::after {
+  background: rgba(255, 255, 255, 0.14);
+  opacity: 1;
+}
+[data-host="desktop"]
+  .messages-container--virtual
+  .timeline-run--start
+  .timeline-row:first-child::after {
+  top: 21px;
+}
+[data-host="desktop"]
+  .messages-container--virtual
+  .timeline-run--end
+  .timeline-row:last-child::after {
+  bottom: auto;
+  height: 21px;
+}
+
+/* 思考块：Figma 标题 14px/600 #1F2329、正文 14px/400 #6C7076、
+   左侧竖条 2px #E4E7ED（base 1px textBlockQuote-border 偏弱） */
+[data-host="desktop"] .reasoning-block {
+  font-size: 14px;
+  line-height: 22px;
+}
+[data-host="desktop"] .reasoning-title {
+  font-size: 14px;
+}
+[data-host="desktop"][data-theme="light"] .reasoning-title {
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="light"] .reasoning-content {
+  color: #6c7076;
+  border-left: 2px solid #e4e7ed;
+}
+[data-host="desktop"][data-theme="dark"] .reasoning-content {
+  border-left: 2px solid rgba(255, 255, 255, 0.14);
+}
+
+/* 工具块（bash-unified）：Figma r8、命令区底 #F0F2F5、13px Menlo、
+   命令/输出间无分隔线（输出区自带边框）；链接 #2F5EDB 无下划线 */
+[data-host="desktop"] .bash-command-unified {
+  border-radius: 8px;
+}
+[data-host="desktop"] .bash-command-unified .bash-command-input {
+  border-bottom: none;
+  background: var(--vscode-chat-requestBubbleBackground);
+  font-size: 13px;
+  padding: 8px 12px 4px;
+}
+[data-host="desktop"] .bash-command-unified .bash-command-output {
+  font-size: 13px;
+  padding: 4px 12px 8px;
+}
+[data-host="desktop"] .bash-command-output a {
+  color: #2f5edb;
+  text-decoration: none;
+}
+
+/* 修改前询问（Figma 纯文字按钮，无下拉 chevron）——桌面端隐藏箭头
+   （已由 8×5 Figma chevron 取代，此残留规则移除） */

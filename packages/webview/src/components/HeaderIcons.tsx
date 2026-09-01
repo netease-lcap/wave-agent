@@ -151,8 +151,72 @@ export const PlusIcon: React.FC<IconProps> = ({
   </svg>
 );
 
-// Toolbar "/" (slash inside a rounded square) — Figma 13x13 glyph centered in a padded 16x16 box.
+// Composer "/" 快捷指令按钮 — Figma composer-settings（圆角方块 + 斜线，
+// Subtract + Line 325，20×20 viewBox，glyph 16×16 居中），fill #4E5969。
 export const SlashBoxIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={20}
+    height={20}
+    viewBox="0 0 20 20"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M14.7186 1.93726C16.5826 1.93726 18.0939 3.44854 18.0939 5.3125V14.6875C18.0939 16.5515 16.5826 18.0627 14.7186 18.0627H5.28137C3.41741 18.0627 1.90613 16.5515 1.90613 14.6875V5.3125C1.90613 3.44854 3.41741 1.93726 5.28137 1.93726H14.7186ZM5.28137 3.68774C4.38391 3.68774 3.65662 4.41504 3.65662 5.3125V14.6875C3.65662 15.585 4.38391 16.3123 5.28137 16.3123H14.7186C15.6161 16.3123 16.3434 15.585 16.3434 14.6875V5.3125C16.3434 4.41504 15.6161 3.68774 14.7186 3.68774H5.28137Z"
+      fill="currentColor"
+    />
+    <path
+      d="M8.46039 14.4167C8.21873 14.8352 7.68305 14.9786 7.26458 14.737C6.84614 14.4954 6.70269 13.9597 6.9443 13.5412L11.5395 5.58334C11.7812 5.16489 12.3169 5.02144 12.7353 5.26306C13.1536 5.50479 13.2961 6.03986 13.0546 6.45824L8.46039 14.4167Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+// Composer 发送按钮 — Figma send.svg（stroke 上箭头 1.5、未激活 #ADB0BB）。
+// 与 QueueSendIcon（queue 面板实心上箭头）不同：此图标是描边版。
+export const SendArrowIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 18 18"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M3.75 9L9 3.75L14.25 9"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M9 14.25V3.75"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+// 权限/灰条下拉 chevron — Figma composer-chevron（8×5 细箭头）。
+export const PermCaretIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg width={8} height={5} viewBox="0 0 8 5" fill="none" className={className}>
+    <path
+      d="M3.99977 1.48341L1.1474 4.33577C0.88492 4.59824 0.459358 4.59825 0.196873 4.33577C-0.06562 4.07329 -0.0656245 3.64771 0.196863 3.38523L3.28674 0.295345C3.68053 -0.098449 4.319 -0.0984486 4.71279 0.295346L7.80267 3.38523C8.06515 3.64772 8.06515 4.07329 7.80266 4.33577C7.54017 4.59825 7.11461 4.59824 6.85213 4.33576L3.99977 1.48341Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+// 灰条「本地」— Figma composer-context-local（终端/运行环境 16×16，fill #565A60）。
+export const ContextLocalIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
   <svg
@@ -162,16 +226,42 @@ export const SlashBoxIcon: React.FC<IconProps> = ({
     fill="none"
     className={className}
   >
-    <g transform="translate(1.5 1.5)">
-      <path
-        d="M4.82275 10.3555H3.72607L8.16748 2.64453H9.27393L4.82275 10.3555Z"
-        fill="currentColor"
-      />
-      <path
-        d="M0.5 0H12.5L13 0.5V12.5L12.5 13H0.5L0 12.5V0.5L0.5 0ZM1 12H12V1H1V12Z"
-        fill="currentColor"
-      />
-    </g>
+    <path
+      d="M10.6318 13.1409C10.9908 13.1409 11.2822 13.4323 11.2822 13.7913C11.2821 14.1502 10.9908 14.4417 10.6318 14.4417H5.25C4.89118 14.4415 4.60069 14.1501 4.60059 13.7913C4.60059 13.4324 4.89112 13.141 5.25 13.1409H10.6318Z"
+      fill="currentColor"
+    />
+    <path
+      d="M12.1553 0.891846C13.6188 0.891846 14.8056 2.07871 14.8057 3.54224V9.84888C14.8057 11.0363 13.8427 11.9993 12.6553 11.9993H3.84375C2.38039 11.9991 1.19434 10.8123 1.19434 9.34888V3.54224C1.19437 2.0788 2.38034 0.891991 3.84375 0.891846H12.1553ZM3.84375 2.19263C3.09831 2.19277 2.49417 2.79677 2.49414 3.54224V9.34888C2.49414 10.0943 3.09829 10.6983 3.84375 10.6985H12.6553C13.1247 10.6985 13.5049 10.3183 13.5049 9.84888V3.54224C13.5048 2.79668 12.9008 2.19263 12.1553 2.19263H3.84375Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+// 灰条「工作目录」— Figma composer-context-directory（文件夹 16×16，stroke 1.4）。
+export const ContextDirectoryIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M13.333 13.9452C13.6866 13.9452 14.0258 13.8047 14.2758 13.5547C14.5259 13.3046 14.6663 12.9655 14.6663 12.6119L14.6667 5.38802C14.6667 5.0344 14.5262 4.69526 14.2761 4.44521C14.0261 4.19516 13.687 4.05469 13.3333 4.05469H8.06667C7.84368 4.05687 7.6237 4.0031 7.42687 3.89827C7.23004 3.79345 7.06264 3.64094 6.94 3.45469L6.4 2.65469C6.27859 2.47033 6.11332 2.31901 5.919 2.21429C5.72468 2.10956 5.50741 2.05472 5.28667 2.05469H2.66667C2.31304 2.05469 1.97391 2.19516 1.72386 2.44521C1.47381 2.69526 1.33333 3.0344 1.33333 3.38802L1.33301 12.6119C1.33301 12.9655 1.47348 13.3046 1.72353 13.5547C1.97358 13.8047 2.31272 13.9452 2.66634 13.9452H13.333Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M2 7.05469H14"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </svg>
 );
 
@@ -233,7 +323,7 @@ export const QueueSendIcon: React.FC<IconProps> = ({
   </svg>
 );
 
-// Permission mode: default ("修改前询问") — shield + checkmark, Figma 12 x 14.001 glyph centered.
+// Permission mode: default ("修改前询问") — Figma permission-ask（stroke 盾 + 对勾 1.4）。
 export const PermModeAskIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
@@ -245,14 +335,24 @@ export const PermModeAskIcon: React.FC<IconProps> = ({
     className={className}
   >
     <path
-      transform="translate(2 1)"
-      d="M11.399 2C9.56199 2 7.913 1.667 6.425 0.176C6.308 0.059 6.154 0 6 0C5.847 0 5.694 0.059 5.577 0.176C4.085 1.667 2.435 2 0.6 2C0.269 2 0 2.269 0 2.6V6.202C0 10.064 1.97 12.689 5.81 13.97C5.872 13.991 5.936 14.001 6 14.001C6.064 14.001 6.128 13.991 6.19 13.97C10.031 12.69 12 10.064 12 6.202V2.6C12 2.269 11.73 2 11.399 2ZM10.999 6.201C10.999 9.597 9.36299 11.815 5.999 12.977C2.635 11.815 0.999 9.597 0.999 6.201V2.995C2.578 2.956 4.351 2.646 6 1.152C7.646 2.645 9.41999 2.955 10.999 2.995V6.201ZM5.577 7.80926L8.22299 5.16326L8.93099 5.87126L5.931 8.87126C5.833 8.96926 5.705 9.01726 5.577 9.01726C5.449 9.01726 5.321 8.96826 5.223 8.87126L3.723 7.37126L4.431 6.66326L5.577 7.80926Z"
-      fill="currentColor"
+      d="M13.3337 8.66664C13.3337 12 11.0003 13.6666 8.22699 14.6333C8.08177 14.6825 7.92402 14.6802 7.78033 14.6266C5.00033 13.6666 2.66699 12 2.66699 8.66664V3.99997C2.66699 3.82316 2.73723 3.65359 2.86225 3.52857C2.98728 3.40355 3.15685 3.33331 3.33366 3.33331C4.66699 3.33331 6.33366 2.53331 7.49366 1.51997C7.6349 1.39931 7.81456 1.33301 8.00033 1.33301C8.18609 1.33301 8.36576 1.39931 8.50699 1.51997C9.67366 2.53997 11.3337 3.33331 12.667 3.33331C12.8438 3.33331 13.0134 3.40355 13.1384 3.52857C13.2634 3.65359 13.3337 3.82316 13.3337 3.99997V8.66664Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M6 8.00081L7.33333 9.33415L10 6.66748"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     />
   </svg>
 );
 
-// Permission mode: acceptEdits ("自动接受修改") — shield + edit arrow, Figma 12 x 14.001 glyph centered.
+// Permission mode: acceptEdits ("自动接受修改") — Figma permission-auto-accept
+// （stroke 盾 + 左箭头 + 右横线 1.4）。
 export const PermModeAcceptIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
@@ -263,24 +363,32 @@ export const PermModeAcceptIcon: React.FC<IconProps> = ({
     fill="none"
     className={className}
   >
-    <g transform="translate(2 1)">
-      <path
-        d="M8.76472 8.24069V9.24167H5.81113V8.24069H8.76472Z"
-        fill="currentColor"
-      />
-      <path
-        d="M3.64649 4.95115L5.20508 6.50974C5.29875 6.6034 5.35144 6.73081 5.35156 6.86326C5.35157 6.99587 5.29885 7.123 5.20508 7.21677L3.54395 8.87888L2.83692 8.17185L4.14453 6.86326L2.93945 5.65818L3.64649 4.95115Z"
-        fill="currentColor"
-      />
-      <path
-        d="M6 0C6.15391 0 6.30783 0.0589187 6.4248 0.175781C7.9128 1.66678 9.56241 2 11.3994 2C11.7301 2.00023 11.9998 2.26893 12 2.59961V6.20215C11.9999 10.0639 10.0311 12.6897 6.19043 13.9697C6.12843 13.9907 6.064 14.001 6 14.001C5.936 14.001 5.87157 13.9907 5.80957 13.9697C1.96993 12.6887 5.0428e-05 10.0639 0 6.20215V2.59961C0.000211403 2.26892 0.268919 2.00021 0.599609 2C2.43461 2 4.08515 1.66678 5.57715 0.175781C5.69412 0.058903 5.84708 0 6 0ZM6 1.15234C4.35106 2.6462 2.57796 2.95612 0.999023 2.99512V6.20117C0.999079 9.59704 2.63516 11.8146 5.99902 12.9766C9.36285 11.8146 10.999 9.59702 10.999 6.20117V2.99512C9.42008 2.95512 7.64595 2.64521 6 1.15234Z"
-        fill="currentColor"
-      />
-    </g>
+    <path
+      d="M13.3337 8.66664C13.3337 12 11.0003 13.6666 8.22699 14.6333C8.08177 14.6825 7.92402 14.6802 7.78033 14.6266C5.00033 13.6666 2.66699 12 2.66699 8.66664V3.99997C2.66699 3.82316 2.73723 3.65359 2.86225 3.52857C2.98728 3.40355 3.15685 3.33331 3.33366 3.33331C4.66699 3.33331 6.33366 2.53331 7.49366 1.51997C7.6349 1.39931 7.81456 1.33301 8.00033 1.33301C8.18609 1.33301 8.36576 1.39931 8.50699 1.51997C9.67366 2.53997 11.3337 3.33331 12.667 3.33331C12.8438 3.33331 13.0134 3.40355 13.1384 3.52857C13.2634 3.65359 13.3337 3.82316 13.3337 3.99997V8.66664Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M5.37305 9.3335L6.70638 8.00016L5.37298 6.66683"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M8.62012 9.3335L10.5057 9.3335"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </svg>
 );
 
-// Permission mode: bypassPermissions ("跳过权限确认") — shield + exclamation, Figma 12 x 14.002 glyph centered.
+// Permission mode: bypassPermissions ("跳过权限确认") — Figma permission-skip
+// （stroke 盾 + 感叹号 1.4，danger 色由 CSS 控制）。
 export const PermModeBypassIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
@@ -291,30 +399,31 @@ export const PermModeBypassIcon: React.FC<IconProps> = ({
     fill="none"
     className={className}
   >
-    <g transform="translate(2 1)">
-      <path
-        d="M6.48951 4.23685L6.48853 7.96732H5.4952V4.23685H6.48951Z"
-        fill="currentColor"
-      />
-      <rect
-        x="5.49"
-        y="9.4"
-        width="1"
-        height="1.2"
-        rx="0.5"
-        fill="currentColor"
-      />
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M6 0C6.154 0 6.3068 0.0597578 6.4248 0.176758C7.91279 1.66773 9.56243 2.00098 11.3994 2.00098C11.7302 2.0012 12 2.26972 12 2.60059V6.20215C12 10.064 10.0302 12.6897 6.19043 13.9707C6.12843 13.9917 6.064 14.002 6 14.002C5.936 14.002 5.87157 13.9917 5.80957 13.9707C1.96878 12.6907 0 10.064 0 6.20215V2.60059C0 2.26972 0.268788 2.00119 0.599609 2.00098C2.43458 2.00098 4.08516 1.66771 5.57715 0.176758C5.69415 0.0597578 5.847 0.001 6 0ZM6.00098 1.15234C4.35298 2.64534 2.579 2.95512 1 2.99512V6.20117C1 9.59717 2.636 11.8155 6 12.9775C9.364 11.8155 11 9.59717 11 6.20117V2.99512C9.42 2.95512 7.64597 2.64634 6.00098 1.15234Z"
-        fill="currentColor"
-      />
-    </g>
+    <path
+      d="M13.3337 8.66664C13.3337 12 11.0003 13.6666 8.22699 14.6333C8.08177 14.6825 7.92402 14.6802 7.78033 14.6266C5.00033 13.6666 2.66699 12 2.66699 8.66664V3.99997C2.66699 3.82316 2.73723 3.65359 2.86225 3.52857C2.98728 3.40355 3.15685 3.33331 3.33366 3.33331C4.66699 3.33331 6.33366 2.53331 7.49366 1.51997C7.6349 1.39931 7.81456 1.33301 8.00033 1.33301C8.18609 1.33301 8.36576 1.39931 8.50699 1.51997C9.67366 2.53997 11.3337 3.33331 12.667 3.33331C12.8438 3.33331 13.0134 3.40355 13.1384 3.52857C13.2634 3.65359 13.3337 3.82316 13.3337 3.99997V8.66664Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M8 5.43555V7.91448"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M8 10.3403L7.99954 10.3936"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </svg>
 );
 
-// Permission mode: plan ("计划模式") — calendar + checklist, Figma 12 x 13.2715 glyph centered.
+// Permission mode: plan ("计划模式") — Figma permission-plan（stroke 清单/时间表 1.4）。
 export const PermModePlanIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
@@ -325,28 +434,32 @@ export const PermModePlanIcon: React.FC<IconProps> = ({
     fill="none"
     className={className}
   >
-    <g transform="translate(2 1.36)">
-      <path
-        d="M3.51758 9.45996H2.51758V8.45996H3.51758V9.45996Z"
-        fill="currentColor"
-      />
-      <path
-        d="M9.4834 9.45996H4.51758V8.45996H9.4834V9.45996Z"
-        fill="currentColor"
-      />
-      <path
-        d="M3.51758 5.63574V6.63574H2.51758V5.63574H3.51758Z"
-        fill="currentColor"
-      />
-      <path
-        d="M9.4834 6.63574H4.51758V5.63574H9.4834V6.63574Z"
-        fill="currentColor"
-      />
-      <path
-        d="M7.74219 0C8.45145 8.95954e-05 9.02726 0.568427 9.04102 1.27441H10.5V1.27148C11.3284 1.27148 12 1.94306 12 2.77148V11.7715C11.9999 12.5998 11.3283 13.2715 10.5 13.2715H1.5C0.671654 13.2715 0.000131928 12.5998 0 11.7715V2.77148C0 1.94306 0.671573 1.27148 1.5 1.27148H2.95898C2.97429 0.566868 3.54955 0.000104104 4.25781 0H7.74219ZM1.5 2.27148C1.22386 2.27148 1 2.49534 1 2.77148V11.7715C1.00013 12.0475 1.22394 12.2715 1.5 12.2715H10.5C10.7761 12.2715 10.9999 12.0475 11 11.7715V2.77148C11 2.49599 10.7772 2.27254 10.502 2.27148L9.04004 2.27246C9.02405 2.97647 8.45002 3.5419 7.74219 3.54199H4.25781C3.54966 3.54189 2.97544 2.97594 2.95996 2.27148H1.5ZM4.25781 1C4.09236 1.00011 3.95825 1.13439 3.95801 1.2998V2.24219C3.95802 2.40779 4.09223 2.54189 4.25781 2.54199H7.74219C7.90779 2.5419 8.04198 2.4078 8.04199 2.24219V1.2998C8.04176 1.13438 7.90765 1.00009 7.74219 1H4.25781Z"
-        fill="currentColor"
-      />
-    </g>
+    <path
+      d="M6.19434 7.59692L9.80565 7.59692"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M6.19434 10.8096L9.80565 10.8096"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M5.39648 2.24825C5.39648 1.80642 5.75466 1.44825 6.19648 1.44825L9.80332 1.44824C10.2451 1.44824 10.6033 1.80642 10.6033 2.24824V3.2373C10.6033 3.67913 10.2452 4.0373 9.80332 4.0373H6.19649C5.75466 4.0373 5.39648 3.67913 5.39648 3.2373L5.39648 2.24825Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M11.0958 2.74271H11.7891C12.8495 2.74271 13.7091 3.60233 13.7091 4.66271V8.64719V12.6317C13.7091 13.6921 12.8495 14.5517 11.7891 14.5517L4.21101 14.5516C3.15063 14.5516 2.29102 13.692 2.29102 12.6316L2.29102 4.6627C2.29102 3.60231 3.15063 2.7427 4.21101 2.7427L5.3301 2.74269"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+    />
   </svg>
 );
 

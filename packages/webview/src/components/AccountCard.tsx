@@ -95,7 +95,8 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const hotzoneRef = useRef<HTMLDivElement | null>(null);
 
   const isAuthenticated = account?.isAuthenticated === true;
-  const name = displayNameFor(account?.user);
+  // Figma sidebar-account 显示完整邮箱（admin@corp.netease），非 email 前缀。
+  const name = account?.user?.email ?? displayNameFor(account?.user);
   const plan = account?.plan ?? null;
   const apiQuota = account?.apiQuota ?? null;
 

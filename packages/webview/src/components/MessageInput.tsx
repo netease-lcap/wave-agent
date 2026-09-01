@@ -25,7 +25,8 @@ import { HistorySearchPopup } from "./HistorySearchPopup";
 import {
   PlusIcon,
   SlashBoxIcon,
-  QueueSendIcon,
+  SendArrowIcon,
+  PermCaretIcon,
   PermModeAskIcon,
   PermModeAcceptIcon,
   PermModeBypassIcon,
@@ -1857,7 +1858,7 @@ export const MessageInput = forwardRef<
               >
                 {permissionModeIcon(permissionMode)}
                 {permissionModeLabel(permissionMode)}
-                <i className="codicon codicon-chevron-down permission-mode-caret" />
+                <PermCaretIcon className="permission-mode-caret" />
               </button>
               {permMenuOpen && (
                 <ul className="permission-mode-menu" role="listbox">
@@ -1867,9 +1868,10 @@ export const MessageInput = forwardRef<
                       role="option"
                       data-value={m.value}
                       aria-selected={m.value === (permissionMode || "default")}
-                      className={`permission-mode-item${m.value === (permissionMode || "default") ? " selected" : ""}`}
+                      className={`permission-mode-item mode-${m.value}${m.value === (permissionMode || "default") ? " selected" : ""}`}
                       {...permMenu.getItemProps(i)}
                     >
+                      {permissionModeIcon(m.value)}
                       {m.label}
                     </li>
                   ))}
@@ -1901,21 +1903,23 @@ export const MessageInput = forwardRef<
                   data-testid="send-btn"
                   aria-label="发送"
                 >
-                  <QueueSendIcon className="ai-send-icon" />
+                  <SendArrowIcon className="ai-send-icon" />
                 </button>
               </Tooltip>
             )}
           </div>
-
-          {/* Desktop host, new-session state: context bar BELOW the toolbar
-                (prototype welcome composer), as a quiet footer strip of the
-                card. Its dropdown still expands upward. */}
-          {workdirSelector && (
-            <div className="input-workdir-row" data-testid="input-workdir-row">
-              {workdirSelector}
-            </div>
-          )}
         </div>
+
+        {/* Desktop host, new-session state: context bar BELOW the toolbar
+              (prototype welcome composer). Figma 13439-9245: an independent
+              strip OUTSIDE the card (overlaps card bottom by 18px, no radius,
+              own shadow), not a card footer. Its dropdown still expands
+              upward. */}
+        {workdirSelector && (
+          <div className="input-workdir-row" data-testid="input-workdir-row">
+            {workdirSelector}
+          </div>
+        )}
 
         {/* File Suggestion Dropdown */}
         <FileSuggestionDropdown
