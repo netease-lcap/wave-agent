@@ -866,9 +866,11 @@ body.is-panel-resizing webview {
 
 .preview-pane-toolbar {
   display: flex;
+  flex: 0 0 44px;
   align-items: center;
-  gap: 2px;
-  padding: 4px 6px;
+  height: 44px;
+  gap: 8px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
   flex-shrink: 0;
 }
@@ -1001,10 +1003,13 @@ body.is-panel-resizing webview {
 .preview-pane-address {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
-  padding: 2px 6px;
-  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
-  border-radius: 4px;
+  height: 26px;
+  box-sizing: border-box;
+  font-size: 14px;
+  line-height: 22px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   outline: none;
@@ -1036,18 +1041,28 @@ body.is-panel-resizing webview {
 .preview-pane-url {
   flex: 1;
   min-width: 0;
+  height: 26px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  opacity: 0.8;
+  font-size: 14px;
+  line-height: 22px;
+  padding: 0 8px;
+  border-radius: 8px;
+  cursor: text;
+  color: var(--vscode-input-foreground);
 }
 
 .preview-pane-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   border: none;
   border-radius: 4px;
   background: transparent;
@@ -1063,12 +1078,6 @@ body.is-panel-resizing webview {
 .preview-pane-button.active {
   background: var(--vscode-list-activeSelectionBackground);
   color: var(--vscode-list-activeSelectionForeground);
-}
-
-/* The global .codicon rule sets an explicit icon color, which beats the
-   inherited button color — give the active icon its own selection color. */
-.preview-pane-button.active .codicon {
-  color: var(--vscode-list-activeSelectionIconForeground, currentColor);
 }
 
 .preview-pane-body {

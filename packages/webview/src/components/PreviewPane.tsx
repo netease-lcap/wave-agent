@@ -1,5 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { VsCodeApi } from "../types";
+import {
+  CloseIcon,
+  InspectorCursorIcon,
+  MaximizeIcon,
+  OpenBrowserIcon,
+  RefreshIcon,
+  UnmaximizeIcon,
+} from "./HeaderIcons";
 
 /**
  * Desktop-only preview pane: renders localhost dev servers in a sandboxed
@@ -708,7 +716,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
             data-testid="preview-picker-toggle"
             onClick={togglePicker}
           >
-            <i className="codicon codicon-inspect" />
+            <InspectorCursorIcon className="preview-pane-icon" />
           </button>
           <button
             className="preview-pane-button"
@@ -716,7 +724,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
             data-testid="preview-refresh"
             onClick={handleRefresh}
           >
-            <i className="codicon codicon-refresh" />
+            <RefreshIcon className="preview-pane-icon" />
           </button>
           <button
             className="preview-pane-button"
@@ -724,7 +732,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
             data-testid="preview-open-external"
             onClick={handleOpenExternal}
           >
-            <i className="codicon codicon-link-external" />
+            <OpenBrowserIcon className="preview-pane-icon" />
           </button>
           {onToggleFullscreen && (
             <button
@@ -735,11 +743,11 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
               data-testid="preview-fullscreen"
               onClick={onToggleFullscreen}
             >
-              <i
-                className={`codicon ${
-                  fullscreen ? "codicon-screen-normal" : "codicon-screen-full"
-                }`}
-              />
+              {fullscreen ? (
+                <UnmaximizeIcon className="preview-pane-icon" />
+              ) : (
+                <MaximizeIcon className="preview-pane-icon" />
+              )}
             </button>
           )}
           <button
@@ -748,7 +756,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
             data-testid="preview-close"
             onClick={onClose}
           >
-            <i className="codicon codicon-close" />
+            <CloseIcon className="preview-pane-icon" />
           </button>
         </div>
         {pickerUnsupported && (
