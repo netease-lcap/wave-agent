@@ -882,3 +882,32 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 ### 实现文件
 
 - `src/styles/host-desktop.css`（第二十一轮段：`[data-host="desktop"] ::-webkit-scrollbar*` 三态 + 深色映射）
+
+### 第二十一轮补充（用户反馈「还是不太对」：三态触发范围修正）
+
+用户规则：「正常是最浅，hover 到滚动区域，hover 到滚动条上和操作滚动条时最深」—— 对应 codechat 三态触发范围：**容器 hover（鼠标在滚动区域内任意位置）24%**，而非上一版实现的 thumb hover 才 24%。
+
+| #   | 对象           | 上版（已废弃）                                                | 修正后（codechat main.ts 同款机制）                                                                                                                                                                                     |
+| --- | -------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 三态触发机制   | 纯 CSS `::-webkit-scrollbar-thumb:hover`（仅 thumb 上才 24%） | **mousemove 委托 + CSS 变量驱动**：鼠标在滚动容器内（非轨道）→ inline `--cc-fill-scrollbar-active: 24%`；在轨道区（右缘 20px 内）→ 50%；离开容器 → 清除回落 8%                                                          |
+| 2   | JS 位置        | —                                                             | `src/index.tsx`（产品入口，仅 `waveHostType === "desktop"` 注册；preview-entry.tsx 同款仅本地）                                                                                                                         |
+| 3   | CSS 变量作用域 | —                                                             | 新增 `[data-host="desktop"] * { --cc-fill-scrollbar-active: var(--cc-fill-scrollbar) }` 通配声明 —— **阻断祖先 inline 变量继承**（否则鼠标在全局滚动层时所有子孙滚动容器 thumb 被迫变深）；JS inline 优先级最高仍可覆盖 |
+| 4   | 拖动兜底       | `:active` 50%                                                 | 保留 `[data-host="desktop"] ::-webkit-scrollbar-thumb:active { background-color: var(--cc-fill-scrollbar-hover) }`（拖动中 50%，JS 委托同时覆盖轨道区）                                                                 |
+
+补充验证（探针 + 真实鼠标，light/dark）：
+
+| 项                                   | 实测                                                   | 期望 |
+| ------------------------------------ | ------------------------------------------------------ | ---- |
+| 默认（鼠标离开滚动容器）             | light 8% 黑 / dark 8% 白（inline 清除）                | ✓    |
+| 鼠标在滚动区域内（非轨道）           | 24%（inline container-hover）                          | ✓    |
+| 鼠标在轨道区（右缘 20px 内）         | 50%（inline hover）                                    | ✓    |
+| 拖动 thumb（:active 兜底）           | dark 50% 白                                            | ✓    |
+| 双滚动容器互不干扰（A/B 注入元素）   | 鼠标在 A → A 24%/B 8%；移 B → A 8%/B 24%；离开 → 全 8% | ✓    |
+| 修复前的继承 bug（鼠标在全局滚动层） | 消息区 thumb 被迫 24% → 修复后恢复 8%                  | ✓    |
+| compile / type-check                 | 通过                                                   | ✓    |
+
+### 实现文件（补充）
+
+- `src/index.tsx`（mousemove 委托：滚动容器查找 + overTrack 判定 + inline 变量设置，desktop only）
+- `src/styles/host-desktop.css`（三态变量化：--cc-fill-scrollbar{-container-hover,-hover,-active}；通配声明阻断继承；:active 兜底）
+- `prototype/preview-entry.tsx`（同款委托，仅本地预览验证，不提交）
