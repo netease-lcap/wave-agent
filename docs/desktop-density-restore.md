@@ -1044,3 +1044,32 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 - `src/components/PanelToggleMenu.tsx`（移除对号 `<i>`，选中项加 `panel-toggle-menu-item--active` 类）
 - `src/styles/PanelToggleMenu.css`（删除 check 对号死代码）
 - `src/styles/host-desktop.css`（第二十五轮段：浅/深选中态 + active:hover 保持 pressed）
+
+## 第二十六轮：消息内链接统一（颜色 + hover 下划线）（1 项评论）
+
+评论：`span.write-tool-path`「src/styles/login.css」——「检查所有链接字体颜色，hover后出现下划线」。
+
+### 变更点清单
+
+| #   | 对象                    | 修复前                                                                                                                                           | 修复后                                                                                         |
+| --- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| 1   | 链接颜色统一（浅色）    | write-tool-path/bash 输出 #2F5EDB（--cc-text-link）✓，但 **markdown 链接仍是 VS Code 蓝 #0069cc**（theme-base-light token，无 desktop override） | 全部 #2F5EDB（Figma --cc-text-link）：新增 `.markdown-content a` 覆盖                          |
+| 2   | 链接颜色统一（深色）    | write-tool-path **#9A9EA5（普通次级灰，不像链接）**；markdown 链接 #4daafc；bash 链接 #4daafc                                                    | write-tool-path/markdown 链接统一 #4daafc（theme-base-dark 链接 token，深底亮蓝可读）          |
+| 3   | hover 下划线            | write-tool-path **hover 无任何反馈**（常态 dotted 下划线被 desktop 移除后裸奔）；bash 链接 hover 仅变色无下划线                                  | write-tool-path / bash 链接 hover `text-decoration: underline`（真实鼠标验证）                 |
+| 4   | markdown 链接下划线机制 | base 用 `border-bottom` 伪下划线 + hover 变色（VS Code 蓝）                                                                                      | desktop 下 border-bottom 移除，统一用 `text-decoration: underline`，hover 保持链接色（不变色） |
+| 5   | write-tool-path 常态    | base `underline dotted` 常驻虚线（desktop 已移除）                                                                                               | 保持无下划线（Figma 规范），仅 hover 出现                                                      |
+
+### 验证结果（Playwright 探针 + 截图实测）
+
+| 项                         | 实测                                             | 期望 |
+| -------------------------- | ------------------------------------------------ | ---- |
+| write-tool-path light/dark | #2F5EDB / #4daafc，常态无下划线，13px Menlo      | ✓    |
+| write-tool-path hover      | #2F5EDB + underline（真实鼠标）                  | ✓    |
+| markdown 链接 light/dark   | #2F5EDB / #4daafc，border-bottom 0，常态无下划线 | ✓    |
+| markdown 链接 hover        | #2F5EDB + underline（真实鼠标，颜色不变）        | ✓    |
+| bash 输出链接 hover        | #2F5EDB + underline（真实鼠标）                  | ✓    |
+| smoke-ui / type-check      | 无 JS 错误 / 通过                                | ✓    |
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（第二十六轮段：markdown a 颜色/下划线机制、dark 链接统一 #4daafc、write-tool-path/bash hover underline）
