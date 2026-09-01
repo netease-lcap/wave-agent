@@ -678,3 +678,64 @@
 
 /* 修改前询问（Figma 纯文字按钮，无下拉 chevron）——桌面端隐藏箭头
    （已由 8×5 Figma chevron 取代，此残留规则移除） */
+
+/* ── 第十轮：codechat-ui 参考对齐（Figma 权威值）────────────────── */
+
+/* 侧栏品牌行（codechat sidebar-brand-row）：Figma 13497-15325 17095 高 32px、
+   pad-left 8px；base 为 4+内容+8 不定高（实测 36px），logo 垂直居中于 32px */
+[data-host="desktop"] .desktop-sidebar-header {
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 0 0 8px;
+}
+
+/* 品牌行右侧图标组：Figma 17097 itemSpacing 8（base gap 4 偏挤） */
+[data-host="desktop"] .desktop-sidebar-actions {
+  gap: 8px;
+}
+
+/* 新对话按钮与品牌行间距：Figma 17094 itemSpacing 12（base margin-top 4） */
+[data-host="desktop"] .desktop-sidebar-new-chat {
+  margin: 12px 0 4px;
+}
+
+/* 账户区分隔线：Figma Sidebar 底部分隔 #EBEEF5（codechat --cc-border-lighter），
+   base 用 panel-border #e4e7ed 偏深；深色保持中性 */
+[data-host="desktop"][data-theme="light"] .account-card {
+  border-top-color: #ebeef5;
+}
+
+/* 账户热区左右内边距：Figma 17132 pad 左右 8px（base 左 4 使头像偏左；
+   codechat sidebar-account-details pad 0 8px 同款） */
+[data-host="desktop"] .account-card-hotzone {
+  padding: 4px 8px;
+}
+
+/* Composer 外间距：Figma 13497-15726 Container pad 16 四边（base 左右 10 上下 10
+   = 20，总 20 偏大；对齐后上下 16、左右 16）。welcome 态的居中 padding 由
+   .chat-container--welcome .input-area-container（specificity 更高）保持 */
+[data-host="desktop"] .input-area-container {
+  padding: 16px;
+}
+[data-host="desktop"] .input-container {
+  padding: 0;
+}
+
+/* Composer 卡片最大宽：Figma Form - 发送消息 768px（Container 800 = 768 + pad 16×2；
+   base input-wrapper 800 使卡片在宽 pane 下宽出 32px） */
+[data-host="desktop"] .input-wrapper {
+  max-width: 768px;
+}
+
+/* 预览标签（Figma 13561:39645）：r8 圆角（非胶囊 r13）、文字 14px、
+   pad 左右 8、激活底色 #F0F2F5（--cc-fill）；深色保持中性 10% 前景 */
+[data-host="desktop"] .preview-tab {
+  border-radius: 8px;
+  font-size: 14px;
+  padding: 0 4px 0 8px;
+}
+[data-host="desktop"][data-theme="light"] .preview-tab.active {
+  background: #f0f2f5;
+  color: #1f2329;
+}
+
