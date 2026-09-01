@@ -611,8 +611,6 @@
    base 为 content-box 44 + 1px border = 45 总高、标题 13px */
 [data-host="desktop"] .chat-header {
   box-sizing: border-box;
-  /* Figma workspace-header：padding 0 16px（base 为 0 12px） */
-  padding: 0 16px;
 }
 [data-host="desktop"][data-theme="light"] .chat-header {
   border-bottom-color: #ebeef5;
