@@ -666,3 +666,40 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 - `src/components/HeaderIcons.tsx`（新增 `PanelToggleIcon`、`ConversationCloseIcon`）
 - `src/components/ChatHeader.tsx` / `src/styles/ChatHeader.css`（面板切换图标 + 40×24 尺寸）
 - `src/components/DesktopShell.tsx`（pane 关闭图标）
+
+## 第十五轮：确认弹窗 / composer 阴影时机 / 工具栏加号图标（3 项评论）
+
+评论：确认弹窗「不应该出现背景色」「整个弹窗的规范参考项目中的弹窗进行调整」、composer「输入激活后在输入框出 shadow，不激活时背景与输入框都不出 shadow」、toolbar「图标不对」。
+
+### 变更点清单
+
+| #   | 对象                                  | 修复前                                                                    | 修复后（权威依据）                                                                                                                                |
+| --- | ------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 确认弹窗遮罩 `.confirmation-dialog`   | `panel-background` / 桌面端 5% scrim                                      | `transparent`（codechat `approval-layer` 无背景，轻量浮层不遮上下文）                                                                             |
+| 2   | 弹窗卡片 `.confirmation-dialog-inner` | pad 8 12 16 / maxW 640 / 边框 widget-border / 影 0 12 40 36% / 深 #1F1F1F | pad 16 / maxW 768 / 边框 `#E4E7ED`（浅）/ 影 `0 18px 48px rgb(31 35 41/18%)`（codechat `--cc-shadow-approval`）/ 深 #27292B + 12% 白边框 + 40% 影 |
+| 3   | 弹窗标题 `.confirmation-title`        | 13px / 600                                                                | 16px / 600 / lh32（codechat `approval-header h2` = `--cc-font-size-lg` 16px）                                                                     |
+| 4   | command / mcp 参数块                  | bg code-block / r4 / pad 6 10                                             | bg `#F7F8FA` / r8 / pad 12（codechat `approval-command` = `--cc-bg-code` + `--cc-radius-md`；深色 #27292B）                                       |
+| 5   | 弹窗动作按钮 `.confirmation-btn`      | r8                                                                        | r6（codechat `--cc-radius-sm`）                                                                                                                   |
+| 6   | composer 卡片 resting 阴影            | light 常驻 `0 8px 24px 6%`（第八轮按 Figma drop(0 8 24) 弱化）            | 移除 —— 不激活时无阴影；仅 `:focus-within` 出 `0 0 12px 12%` 柔影（skill 契约：composer flat at rest, gains shadow while textarea owns focus）    |
+| 7   | workdir 灰条阴影 `.input-workdir-row` | 常驻 `0 8px 24px 6%`                                                      | 移除（背景常态无影）                                                                                                                              |
+| 8   | toolbar「+」添加图标 `PlusIcon`       | 自绘 13×13 细加号（16×16 盒，笔画 1px）                                   | Figma `composer-add`（20×20 全幅加号，笔画 ~1.7px，codechat 同款）                                                                                |
+
+### 验证结果（Playwright 探针实测，light/dark）
+
+| 项                                  | 实测                                    | 期望 |
+| ----------------------------------- | --------------------------------------- | ---- |
+| 遮罩背景（light/dark）              | transparent                             | ✓    |
+| 浅色卡片 bg/边框/阴影/pad/maxW      | #FFF / #E4E7ED / 18% 18×48 / 16 / 768   | ✓    |
+| 深色卡片 bg/边框/阴影               | #27292B / 12% 白 / 40% 18×48            | ✓    |
+| 标题 16/600/32                      | ✓                                       | ✓    |
+| command 浅/深 bg、r8、pad12         | #F7F8FA / #27292B                       | ✓    |
+| 按钮 r6                             | ✓                                       | ✓    |
+| 未聚焦 input-content / workdir 阴影 | none / none                             | ✓    |
+| 聚焦 input-content 阴影             | `0 0 12px 12%`（focus-within 真实点击） | ✓    |
+| toolbar「+」20×20 Figma 形状        | ✓                                       | ✓    |
+| compile                             | 通过                                    | ✓    |
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（遮罩透明 + 第十五轮弹窗规格段 + 移除两处 resting 阴影）
+- `src/components/HeaderIcons.tsx`（`PlusIcon` 换 Figma composer-add 形状）

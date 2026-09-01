@@ -132,20 +132,20 @@ export const MoreIcon: React.FC<IconProps> = ({
   </svg>
 );
 
-// Toolbar "+" (thin plus) — Figma 13x13 glyph centered in a padded 16x16 box (+1.5,+1.5).
+// Composer "+" 添加按钮 — Figma composer-add（20×20 全幅加号，笔画 ~1.7px，
+// codechat 同款；此前自绘 13×13 细加号视觉过细）。
 export const PlusIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
   <svg
-    width={16}
-    height={16}
-    viewBox="0 0 16 16"
+    width={20}
+    height={20}
+    viewBox="0 0 20 20"
     fill="none"
     className={className}
   >
     <path
-      transform="translate(1.5 1.5)"
-      d="M13 6V7H7V13H6V7H0V6H6V0H7V6H13Z"
+      d="M10.0097 2.50153C10.4735 2.50154 10.8493 2.87766 10.8496 3.34137V9.17971H16.6682C17.132 9.17999 17.5081 9.55576 17.5081 10.0196C17.5081 10.4833 17.132 10.8591 16.6682 10.8594H10.8496V16.6582C10.8493 17.122 10.4735 17.4981 10.0097 17.4981C9.54591 17.4981 9.17014 17.122 9.16988 16.6582V10.8594H3.3316C2.86787 10.8591 2.49176 10.4833 2.49176 10.0196C2.49177 9.55576 2.86788 9.17998 3.3316 9.17971H9.16988V3.34137C9.17018 2.87765 9.54594 2.50153 10.0097 2.50153Z"
       fill="currentColor"
     />
   </svg>

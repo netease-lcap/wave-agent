@@ -78,10 +78,10 @@
   opacity: 1;
 }
 
-/* 确认弹窗：桌面端遮罩弱化（codechat 审批为轻量浮层，不遮死上下文），
-   卡片投影保持柔和大范围。 */
+/* 确认弹窗：桌面端遮罩透明（codechat approval-layer 无背景 —— 轻量浮层
+   不遮上下文；第十五轮用户反馈「不应该出现背景色」）。 */
 [data-host="desktop"] .confirmation-dialog {
-  background-color: var(--vscode-overlay-scrim, rgba(31, 35, 41, 0.05));
+  background-color: transparent;
 }
 
 /* 「修改前询问」默认模式：桌面端中性文字 #565A60（Figma 权威，非彩色语义；
@@ -296,7 +296,7 @@
   border: none;
   border-radius: 0 0 16px 16px;
   background: var(--vscode-fill-light, #f5f7fa);
-  box-shadow: 0 8px 24px rgb(31 35 41 / 6%);
+  /* 第十五轮：移除 resting 阴影（仅聚焦时输入卡出柔影，灰条与背景常态无影） */
   align-items: flex-end;
 }
 
@@ -544,11 +544,10 @@
   color: #8b8f95;
 }
 
-/* Composer 卡片常态：Figma 白底卡片 stroke #DCDFE6 + drop(0 8 24)
-   （base 用 vscode input-border 半透明深色） */
+/* Composer 卡片常态：Figma 白底卡片 stroke #DCDFE6。无 resting 阴影 ——
+   第十五轮起仅聚焦（textarea :focus-within）时出柔影（见 .input-content:focus-within）。 */
 [data-host="desktop"][data-theme="light"] .input-content {
   border-color: #dcdfe6;
-  box-shadow: 0 8px 24px rgb(31 35 41 / 6%);
 }
 
 /* ── 消息流：Figma「02 · 对话 / 预览区展开」权威值 ──────────────── */
@@ -979,3 +978,52 @@
   border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
+
+/* ── 第十五轮：确认弹窗对齐 codechat approval 浮层 ────────────────── */
+
+/* 卡片：codechat approval-dialog —— padding 16 / 边框 --cc-border-light #e4e7ed /
+   radius 12 / 阴影 --cc-shadow-approval 0 18px 48px rgb(31 35 41 / 18%)；
+   宽度上限 768（codechat 弹窗 = min(--cc-conversation-max-width 768, 面板-48)）；
+   深色沿用第十三轮面板族 #27292B + 12% 白边框 + 40% 柔影。 */
+[data-host="desktop"][data-theme="light"] .confirmation-dialog-inner {
+  background-color: #ffffff;
+  border-color: #e4e7ed;
+  box-shadow: 0 18px 48px rgb(31 35 41 / 18%);
+  padding: 16px;
+  max-width: 768px;
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-dialog-inner {
+  background-color: #27292b;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 40%);
+  padding: 16px;
+  max-width: 768px;
+}
+
+/* 标题：codechat approval-header h2 16px（--cc-font-size-lg）/ lh 32 */
+[data-host="desktop"] .confirmation-title {
+  font-size: 16px;
+  line-height: 32px;
+}
+
+/* command / mcp 参数块：codechat approval-command —— padding 12 /
+   r8（--cc-radius-md）/ bg --cc-bg-code #f7f8fa / 边框 #ebEEF5 */
+[data-host="desktop"][data-theme="light"] .confirmation-command,
+[data-host="desktop"][data-theme="light"] .confirmation-mcp-params {
+  background-color: #f7f8fa;
+  border-color: #ebEEF5;
+  border-radius: 8px;
+  padding: 12px;
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-command,
+[data-host="desktop"][data-theme="dark"] .confirmation-mcp-params {
+  background-color: #27292b;
+  border-color: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+/* 动作按钮：codechat approval-actions —— 32px 高 / r6（--cc-radius-sm） */
+[data-host="desktop"] .confirmation-btn {
+  border-radius: 6px;
+}
