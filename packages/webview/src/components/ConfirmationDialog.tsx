@@ -879,20 +879,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             {!showFeedbackInput ? (
               <>
                 {(confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
-                  confirmation.toolName === BASH_TOOL_NAME ||
-                  [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(
-                    confirmation.toolName,
-                  ) ||
-                  confirmation.toolName.startsWith("mcp__")) && (
-                  <button
-                    className="confirmation-btn confirmation-btn-feedback"
-                    onClick={() => setShowFeedbackInput(true)}
-                  >
-                    <span className="btn-text">提供反馈</span>
-                  </button>
-                )}
-
-                {(confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
                   (confirmation.toolName === BASH_TOOL_NAME &&
                     confirmation.permissionMode !== "plan")) && (
                   <button
@@ -951,6 +937,20 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                       : "是"}
                   </span>
                 </button>
+
+                {(confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
+                  confirmation.toolName === BASH_TOOL_NAME ||
+                  [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(
+                    confirmation.toolName,
+                  ) ||
+                  confirmation.toolName.startsWith("mcp__")) && (
+                  <button
+                    className="confirmation-btn confirmation-btn-feedback"
+                    onClick={() => setShowFeedbackInput(true)}
+                  >
+                    <span className="btn-text">提供反馈</span>
+                  </button>
+                )}
               </>
             ) : (
               <div className="feedback-flow">
