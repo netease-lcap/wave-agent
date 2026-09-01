@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { ChatApp } from "./ChatApp";
 import { DesktopSidebar, SESSION_DRAG_MIME } from "./DesktopSidebar";
+import { ConversationCloseIcon } from "./HeaderIcons";
 import type { AccountCardAccount } from "./AccountCard";
 import type {
   DesktopHostProps,
@@ -786,7 +787,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                                     onClick={() => handleClosePane(pane.paneId)}
                                     data-testid={`desktop-pane-close-${pane.paneId}`}
                                   >
-                                    <span className="codicon codicon-close"></span>
+                                    <ConversationCloseIcon />
                                   </button>
                                 ) : undefined
                               }

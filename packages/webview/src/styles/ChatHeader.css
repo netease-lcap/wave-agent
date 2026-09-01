@@ -109,18 +109,18 @@
   background-color: transparent;
 }
 
-/* Desktop panel toggle: icon + caret, slightly wider than the square buttons. */
+/* Desktop panel toggle: Figma preview-toggle (40×24 composite icon: panel
+   layout glyph + chevron-down). Wider than the square 22×22 buttons, matching
+   codechat's workspace-header-panel-toggle (40×24). */
 .header-panel-toggle {
-  width: auto;
-  padding: 0 4px;
-  gap: 2px;
+  width: 40px;
+  height: 24px;
+  padding: 0;
 }
 
-.header-panel-toggle .codicon {
-  font-size: 14px;
-}
-
-.header-panel-toggle-caret {
-  font-size: 10px !important;
-  opacity: 0.7;
+/* The generic .header-button .header-icon rule (16×16) would squeeze the
+   40×24 composite icon; keep its native aspect ratio. */
+.header-panel-toggle .header-icon {
+  width: 40px;
+  height: 24px;
 }

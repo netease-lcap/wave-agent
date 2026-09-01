@@ -384,13 +384,14 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
 /* New-chat hint tooltip: the tooltip positions against the button itself (its
    hover-highlight container, passed via Tooltip anchorRef) — same row-edge x
    as the session-item tooltips. This wrapper span defaults to inline-flex and
-   shrink-fits the button; block-level makes it fill the row, and the side
-   padding keeps the button's hover background aligned with the session items'
-   inset. The two selectors beat .tooltip-container's single-class rule
-   regardless of the bundled CSS order. */
+   shrink-fits the button; block-level makes it fill the row so the button's
+   hover background spans the full sidebar width (same inset as session items).
+   No side padding: the button's own 8px insets align its icon with codechat's
+   sidebar-tool-button (icon left edge = sidebar 12px + 8px). The two selectors
+   beat .tooltip-container's single-class rule regardless of bundled CSS order. */
 .desktop-sidebar .desktop-sidebar-new-chat-tooltip {
   display: block;
-  padding: 0 6px;
+  padding: 0;
 }
 
 .desktop-session-item-main {

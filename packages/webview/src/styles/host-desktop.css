@@ -432,13 +432,35 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* 选中态：Figma task-row 选中 fill #EBEDF0（浅色）；深色中性 12% 白。
-   —— 以 Figma 权威值为准，替换此前 codechat 推断的 #e7e9ed */
+/* 选中态：浅色 codechat --cc-fill-pressed #e7e9ed（skill 契约：导航/列表选中
+   用中性 pressed fill，非品牌红软底 --cc-fill-selected；codechat 桌面壳
+   .task-row.is-active 同值）。深色中性 12% 白。
+   --visible（同一会话在非聚焦 pane 的弱化态）：同族中性灰，比选中更浅 ——
+   替换 VS Code 蓝灰 inactiveSelectionBackground（light #E4E6F1 / dark #37373d）。 */
 [data-host="desktop"][data-theme="light"] .desktop-session-item--current {
-  background: #ebedf0;
+  background: #e7e9ed;
 }
 [data-host="desktop"][data-theme="dark"] .desktop-session-item--current {
   background: rgba(255, 255, 255, 0.12);
+}
+[data-host="desktop"][data-theme="light"] .desktop-session-item--visible {
+  background: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-session-item--visible {
+  background: rgba(255, 255, 255, 0.06);
+}
+/* 选中项 hover 保持 pressed（codechat 桌面壳 .task-row-wrap:hover .task-row.is-active
+   同样用 --cc-fill-pressed），不回落 hover 色。 */
+[data-host="desktop"][data-theme="light"] .desktop-session-item--current:hover {
+  background: #e7e9ed;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-session-item--current:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+/* 选中项标题字重：codechat 桌面壳 .task-row.is-active .task-title 500
+   （--cc-font-weight-medium），skill 契约菜单/导航选中同值。 */
+[data-host="desktop"] .desktop-session-item--current .desktop-session-title {
+  font-weight: 500;
 }
 
 /* 分组间距：task-group gap 4px */
@@ -454,8 +476,9 @@
 [data-host="desktop"] .desktop-sidebar-new-chat {
   font-weight: 400;
 }
+/* hover 与 codechat sidebar-tool-button 一致（--cc-fill-hover #eef0f3）。 */
 [data-host="desktop"][data-theme="light"] .desktop-sidebar-new-chat:hover:not(:disabled) {
-  background: #e2e4e8;
+  background: #eef0f3;
 }
 [data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.14);
