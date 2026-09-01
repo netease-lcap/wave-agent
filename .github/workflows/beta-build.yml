@@ -44,7 +44,7 @@ jobs:
       - run: pnpm -F wave-vscode run package
 
       - name: Upload .vsix artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wave-vscode-beta
           path: packages/vscode/releases/*.vsix
@@ -90,7 +90,7 @@ jobs:
         run: ./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon
 
       - name: Upload .zip artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wave-jetbrains-beta
           path: packages/jetbrains/build/distributions/*.zip
@@ -153,7 +153,7 @@ jobs:
         run: pnpm -F wave-desktop run dist -- --publish never
 
       - name: Upload installer artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wave-desktop-beta-${{ runner.os }}
           # Only files existing on this OS match — macOS produces .dmg + .zip,
