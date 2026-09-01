@@ -114,7 +114,7 @@ describe("/agents 斜杠命令 → 设置页「子代理」选项卡", () => {
   });
 });
 
-describe("SettingsPage 子代理选项卡视图（4 Tab + 项目分组卡片）", () => {
+describe("SettingsPage 子代理选项卡视图（4 Tab + 项目 Tab 平铺）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -162,7 +162,7 @@ describe("SettingsPage 子代理选项卡视图（4 Tab + 项目分组卡片）"
     ).toBeInTheDocument();
   });
 
-  it("项目子代理 Tab 按项目分组卡片展示（+ 新增指令）", async () => {
+  it("项目子代理 Tab 平铺展示（+ 新增指令）", async () => {
     renderSettingsPage();
     sendHostMessage(fixtures.subagentConfigurationsResponse([projectAgent]));
 
@@ -170,8 +170,8 @@ describe("SettingsPage 子代理选项卡视图（4 Tab + 项目分组卡片）"
       fireEvent.click(await screen.findByText("项目子代理"));
     });
 
-    // 项目卡片（workdir 推断项目名 a）+ 新增指令
-    expect(screen.getByText("a")).toBeInTheDocument();
+    // 单项目模型：平铺展示，无项目分组卡片（2026-09-01 用户拍板）+ 新增指令
+    expect(screen.queryByText("a")).not.toBeInTheDocument();
     expect(screen.getByText("deploy-agent")).toBeInTheDocument();
     expect(screen.getByText("项目部署专用子代理")).toBeInTheDocument();
     expect(

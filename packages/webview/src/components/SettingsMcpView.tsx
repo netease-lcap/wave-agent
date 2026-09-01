@@ -2,20 +2,17 @@
  * SettingsMcpView - 设置页「MCP 服务」选项卡
  *
  * 由 /mcp 斜杠命令（或手动点击设置页「MCP 服务」导航）打开：按来源 Tab
- * （用户级 MCP / 项目级 MCP / 插件 MCP）展示服务器，项目级按所属项目分组
- * 卡片展示。提供连接/断开、新建（预填 AI 对话框提示词）、编辑（预填提示词 +
- * 打开配置文件）、删除（二次确认 + 直接删配置）。数据通过 getMcpServers RPC
- * 由 host 下发（含 scope 字段）。
+ * （用户级 MCP / 项目级 MCP / 插件 MCP）展示服务器，项目级在「项目级 MCP」
+ * Tab 平铺展示（仅当前项目，2026-09-01 用户拍板删项目分组卡片）。提供
+ * 连接/断开、新建（预填 AI 对话框提示词）、编辑（预填提示词 + 打开配置文件）、
+ * 删除（二次确认 + 直接删配置）。数据通过 getMcpServers RPC 由 host 下发
+ * （含 scope 字段）。
  */
 
 import React, { useState, useEffect, useCallback } from "react";
 import { McpServerStatus } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
-import {
-  SettingsTabs,
-  ProjectCard,
-  type SettingsTabDef,
-} from "./SettingsManageComponents";
+import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
 import "../styles/ConfigurationDialog.css";
 import "../styles/SettingsPage.css";
 
@@ -263,58 +260,38 @@ const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
           activeTab={activeTab}
           onChange={setActiveTab}
           actions={
-            activeTab === "user" ? (
+            activeTab === "user" || activeTab === "project" ? (
               <button
                 type="button"
                 className="settings-save-btn"
-                onClick={() => handleCreate("user")}
+                onClick={() => handleCreate(activeTab as "user" | "project")}
               >
                 <i className="codicon codicon-add" aria-hidden="true" />
-                新增用户级 MCP 服务
+                {activeTab === "project"
+                  ? "新增 MCP 服务"
+                  : "新增用户级 MCP 服务"}
               </button>
             ) : undefined
           }
         />
-        <div className="settings-card">
-          {loading ? (
-            <div className="empty-state">
-              <p>加载中...</p>
-            </div>
-          ) : tabServers.length === 0 ? (
-            <div className="empty-state">
-              <p>{activeTabDef.label}暂无内容</p>
-              <p className="mcp-hint">
-                {activeTab === "user"
-                  ? "用户级配置存于 ~/.wave/mcp.json，全局可用"
-                  : activeTab === "project"
-                    ? "项目级配置存于项目根目录 .mcp.json，仅当前项目可用"
-                    : "插件 MCP 服务由插件提供，只读"}
-              </p>
-            </div>
-          ) : activeTab === "project" ? (
-            <div className="settings-project-cards">
-              <ProjectCard
-                projectName={projectName}
-                action={
-                  <button
-                    type="button"
-                    className="settings-card-link-btn"
-                    onClick={() => handleCreate("project")}
-                  >
-                    <i className="codicon codicon-add" aria-hidden="true" />
-                    新增 MCP 服务
-                  </button>
-                }
-              >
-                {tabServers.map(renderServer)}
-              </ProjectCard>
-            </div>
-          ) : (
-            <div className="mcp-server-list">
-              {tabServers.map(renderServer)}
-            </div>
-          )}
-        </div>
+        {loading ? (
+          <div className="empty-state">
+            <p>加载中...</p>
+          </div>
+        ) : tabServers.length === 0 ? (
+          <div className="empty-state">
+            <p>{activeTabDef.label}暂无内容</p>
+            <p className="mcp-hint">
+              {activeTab === "user"
+                ? "用户级配置存于 ~/.wave/mcp.json，全局可用"
+                : activeTab === "project"
+                  ? "项目级配置存于项目根目录 .mcp.json，仅当前项目可用"
+                  : "插件 MCP 服务由插件提供，只读"}
+            </p>
+          </div>
+        ) : (
+          <div className="mcp-server-list">{tabServers.map(renderServer)}</div>
+        )}
       </section>
 
       {pendingDelete && (

@@ -2,21 +2,16 @@
  * SettingsSkillsView - 设置页「技能」选项卡
  *
  * 由 /skills 斜杠命令（或手动点击设置页「技能」导航）打开：按来源 Tab
- * （插件技能 / 内置技能 / 用户技能 / 项目技能）展示技能，项目技能按所属项目
- * 分组卡片展示（2026-08-29 用户拍板）。提供新建（预填 AI 对话框提示词）、
- * 编辑（预填提示词 + 打开 SKILL.md）、删除（二次确认 + 直接删文件）。
- * 数据通过 getSkillMetadata RPC 由 host 下发。
+ * （插件技能 / 内置技能 / 用户技能 / 项目技能）展示技能，项目技能在「项目技能」
+ * Tab 平铺展示（仅当前项目，2026-09-01 用户拍板删项目分组卡片）。提供新建
+ * （预填 AI 对话框提示词）、编辑（预填提示词 + 打开 SKILL.md）、删除（二次
+ * 确认 + 直接删文件）。数据通过 getSkillMetadata RPC 由 host 下发。
  */
 
 import React, { useState, useEffect, useCallback } from "react";
 import { SkillMetadata } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
-import {
-  SettingsTabs,
-  ProjectCard,
-  inferProjectName,
-  type SettingsTabDef,
-} from "./SettingsManageComponents";
+import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
 import "../styles/ConfigurationDialog.css";
 import "../styles/SettingsPage.css";
 
@@ -93,17 +88,6 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
 
   const tabSkills = skills.filter((s) => getSkillScope(s) === activeTab);
   const activeTabDef = TABS.find((t) => t.key === activeTab) ?? TABS[0];
-  // 项目技能按所属项目分组（路径前缀推断）
-  const projectGroups = tabSkills.reduce<Map<string, SkillMetadata[]>>(
-    (groups, skill) => {
-      const project = inferProjectName(skill.skillPath, workdir);
-      const list = groups.get(project) ?? [];
-      list.push(skill);
-      groups.set(project, list);
-      return groups;
-    },
-    new Map(),
-  );
 
   const projectName = workdir
     ? (workdir
@@ -172,232 +156,172 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
           activeTab={activeTab}
           onChange={setActiveTab}
           actions={
-            activeTab === "user" ? (
+            activeTab === "user" || activeTab === "project" ? (
               <button
                 type="button"
                 className="settings-save-btn"
-                onClick={() => handleCreate("user")}
+                onClick={() => handleCreate(activeTab as "user" | "project")}
               >
                 <i className="codicon codicon-add" aria-hidden="true" />
-                新建技能
+                {activeTab === "project" ? "新增指令" : "新建技能"}
               </button>
             ) : undefined
           }
         />
-        <div className="settings-card">
-          {loading ? (
-            <div className="empty-state">
-              <p>加载中...</p>
+        {loading ? (
+          <div className="empty-state">
+            <p>加载中...</p>
+          </div>
+        ) : selectedSkill ? (
+          <div className="mcp-server-list">
+            <div className="mcp-server-item">
+              <div className="mcp-server-info">
+                <div className="mcp-server-header">
+                  <span className="mcp-server-name">{selectedSkill.name}</span>
+                  {selectedSkill.pluginName && (
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        color: "var(--vscode-descriptionForeground)",
+                      }}
+                    >
+                      · {selectedSkill.pluginName}
+                    </span>
+                  )}
+                </div>
+                {selectedSkill.description && (
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--vscode-descriptionForeground)",
+                    }}
+                  >
+                    {selectedSkill.description}
+                  </div>
+                )}
+              </div>
             </div>
-          ) : selectedSkill ? (
-            <div className="mcp-server-list">
-              <div className="mcp-server-item">
-                <div className="mcp-server-info">
+
+            <div
+              style={{
+                marginTop: "12px",
+                fontSize: "13px",
+                lineHeight: "1.6",
+              }}
+            >
+              {selectedSkill.description && (
+                <div>
+                  <strong>描述：</strong> {selectedSkill.description}
+                </div>
+              )}
+              <div>
+                <strong>来源：</strong>{" "}
+                {SCOPE_LABELS[getSkillScope(selectedSkill)]}
+                {selectedSkill.pluginName
+                  ? ` (${selectedSkill.pluginName})`
+                  : ""}
+              </div>
+              {selectedSkill.skillPath && (
+                <div style={{ wordBreak: "break-all" }}>
+                  <strong>路径：</strong> {selectedSkill.skillPath}
+                </div>
+              )}
+              {selectedSkill.model && (
+                <div>
+                  <strong>模型：</strong> {selectedSkill.model}
+                </div>
+              )}
+              {selectedSkill.agent && (
+                <div>
+                  <strong>Agent：</strong> {selectedSkill.agent}
+                </div>
+              )}
+              {selectedSkill.allowedTools &&
+                selectedSkill.allowedTools.length > 0 && (
+                  <div>
+                    <strong>允许的工具：</strong>{" "}
+                    {selectedSkill.allowedTools.join(", ")}
+                  </div>
+                )}
+              <div>
+                <strong>调用方式：</strong> {invocationLabel(selectedSkill)}
+              </div>
+            </div>
+
+            <div className="settings-actions">
+              <button
+                type="button"
+                onClick={() => setSelectedName(null)}
+                className="settings-save-btn"
+              >
+                返回列表
+              </button>
+            </div>
+          </div>
+        ) : tabSkills.length === 0 ? (
+          <div className="empty-state">
+            <p>{activeTabDef.label}暂无内容</p>
+          </div>
+        ) : (
+          <div className="mcp-server-list">
+            {tabSkills.map((skill) => (
+              <div key={skill.name} className="mcp-server-item">
+                <div
+                  className="mcp-server-info"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => setSelectedName(skill.name)}
+                >
                   <div className="mcp-server-header">
                     <span className="mcp-server-name">
-                      {selectedSkill.name}
+                      {getSkillScope(skill) === "project" ? "/" : ""}
+                      {skill.name}
                     </span>
-                    {selectedSkill.pluginName && (
+                    {skill.pluginName && (
                       <span
                         style={{
                           fontSize: "12px",
                           color: "var(--vscode-descriptionForeground)",
                         }}
                       >
-                        · {selectedSkill.pluginName}
+                        · {skill.pluginName}
                       </span>
                     )}
                   </div>
-                  {selectedSkill.description && (
+                  {skill.description && (
                     <div
                       style={{
                         fontSize: "12px",
                         color: "var(--vscode-descriptionForeground)",
                       }}
                     >
-                      {selectedSkill.description}
+                      {skill.description}
                     </div>
                   )}
                 </div>
-              </div>
-
-              <div
-                style={{
-                  marginTop: "12px",
-                  fontSize: "13px",
-                  lineHeight: "1.6",
-                }}
-              >
-                {selectedSkill.description && (
-                  <div>
-                    <strong>描述：</strong> {selectedSkill.description}
-                  </div>
-                )}
-                <div>
-                  <strong>来源：</strong>{" "}
-                  {SCOPE_LABELS[getSkillScope(selectedSkill)]}
-                  {selectedSkill.pluginName
-                    ? ` (${selectedSkill.pluginName})`
-                    : ""}
-                </div>
-                {selectedSkill.skillPath && (
-                  <div style={{ wordBreak: "break-all" }}>
-                    <strong>路径：</strong> {selectedSkill.skillPath}
-                  </div>
-                )}
-                {selectedSkill.model && (
-                  <div>
-                    <strong>模型：</strong> {selectedSkill.model}
-                  </div>
-                )}
-                {selectedSkill.agent && (
-                  <div>
-                    <strong>Agent：</strong> {selectedSkill.agent}
-                  </div>
-                )}
-                {selectedSkill.allowedTools &&
-                  selectedSkill.allowedTools.length > 0 && (
-                    <div>
-                      <strong>允许的工具：</strong>{" "}
-                      {selectedSkill.allowedTools.join(", ")}
-                    </div>
+                <div className="mcp-server-actions">
+                  {isEditable(skill) && (
+                    <>
+                      <button
+                        type="button"
+                        className="settings-row-btn"
+                        onClick={() => handleEdit(skill)}
+                      >
+                        编辑
+                      </button>
+                      <button
+                        type="button"
+                        className="settings-row-btn settings-row-btn-danger"
+                        onClick={() => setPendingDelete(skill)}
+                      >
+                        删除
+                      </button>
+                    </>
                   )}
-                <div>
-                  <strong>调用方式：</strong> {invocationLabel(selectedSkill)}
                 </div>
               </div>
-
-              <div className="settings-actions">
-                <button
-                  type="button"
-                  onClick={() => setSelectedName(null)}
-                  className="settings-save-btn"
-                >
-                  返回列表
-                </button>
-              </div>
-            </div>
-          ) : tabSkills.length === 0 ? (
-            <div className="empty-state">
-              <p>{activeTabDef.label}暂无内容</p>
-            </div>
-          ) : activeTab === "project" ? (
-            <div className="settings-project-cards">
-              {[...projectGroups.entries()].map(([project, list]) => (
-                <ProjectCard
-                  key={project}
-                  projectName={project}
-                  action={
-                    <button
-                      type="button"
-                      className="settings-card-link-btn"
-                      onClick={() => handleCreate("project")}
-                    >
-                      <i className="codicon codicon-add" aria-hidden="true" />
-                      新增指令
-                    </button>
-                  }
-                >
-                  {list.map((skill) => (
-                    <div key={skill.name} className="mcp-server-item">
-                      <div
-                        className="mcp-server-info"
-                        style={{ cursor: "pointer" }}
-                        onClick={() => setSelectedName(skill.name)}
-                      >
-                        <div className="mcp-server-header">
-                          <span className="mcp-server-name">/{skill.name}</span>
-                        </div>
-                        {skill.description && (
-                          <div
-                            style={{
-                              fontSize: "12px",
-                              color: "var(--vscode-descriptionForeground)",
-                            }}
-                          >
-                            {skill.description}
-                          </div>
-                        )}
-                      </div>
-                      <div className="mcp-server-actions">
-                        <button
-                          type="button"
-                          className="settings-row-btn"
-                          onClick={() => handleEdit(skill)}
-                        >
-                          编辑
-                        </button>
-                        <button
-                          type="button"
-                          className="settings-row-btn settings-row-btn-danger"
-                          onClick={() => setPendingDelete(skill)}
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </ProjectCard>
-              ))}
-            </div>
-          ) : (
-            <div className="mcp-server-list">
-              {tabSkills.map((skill) => (
-                <div key={skill.name} className="mcp-server-item">
-                  <div
-                    className="mcp-server-info"
-                    style={{ cursor: "pointer" }}
-                    onClick={() => setSelectedName(skill.name)}
-                  >
-                    <div className="mcp-server-header">
-                      <span className="mcp-server-name">{skill.name}</span>
-                      {skill.pluginName && (
-                        <span
-                          style={{
-                            fontSize: "12px",
-                            color: "var(--vscode-descriptionForeground)",
-                          }}
-                        >
-                          · {skill.pluginName}
-                        </span>
-                      )}
-                    </div>
-                    {skill.description && (
-                      <div
-                        style={{
-                          fontSize: "12px",
-                          color: "var(--vscode-descriptionForeground)",
-                        }}
-                      >
-                        {skill.description}
-                      </div>
-                    )}
-                  </div>
-                  <div className="mcp-server-actions">
-                    {isEditable(skill) && (
-                      <>
-                        <button
-                          type="button"
-                          className="settings-row-btn"
-                          onClick={() => handleEdit(skill)}
-                        >
-                          编辑
-                        </button>
-                        <button
-                          type="button"
-                          className="settings-row-btn settings-row-btn-danger"
-                          onClick={() => setPendingDelete(skill)}
-                        >
-                          删除
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {pendingDelete && (

@@ -1,12 +1,13 @@
 /**
  * SettingsPage - Full-height settings page (left navigation + right content)
  *
- * Read-only views (2026-08-31 用户拍板：设置页为只读浏览视图，不做表单编辑与保存，
- * 配置修改走 CLI 命令与配置文件；对齐技能/子代理的只读列表形态):
- * - 全局设置 (global): 只读展示系统语言 + 上下文长度
+ * Editable views (2026-09-01 用户拍板：语言/上下文长度/自动记忆恢复可编辑，
+ * 经 updateConfiguration 写回，与旧设置弹窗一致；设置页只针对当前项目，
+ * 删除项目切换按钮与 4 个管理视图的项目分组卡片):
+ * - 全局设置 (global): 系统语言下拉 + 上下文长度输入 + 保存
  * - 项目设置 (project): SDD 内置插件开关（唯一交互控件，即时启停插件）
- * - 个性化 (personalization): AGENTS.md 只读 + 自动记忆规则只读
- * - 钩子 (hooks): 用户级/项目级双 tab，按事件分组只读展示已配置命令
+ * - 个性化 (personalization): AGENTS.md 只读 + 自动记忆开关/轮次输入 + 保存
+ * - 钩子 (hooks): 用户级/项目级双 tab，按来源平铺展示已配置命令
  * - MCP 服务 (mcp): 用户级/项目级双 tab，服务器列表 + 连接状态 + 连接/断开
  * - 子代理 (subagents) / 技能 (skills): agent 定义与技能列表，内容自
  *   /agents、/skills 弹窗迁移而来（2026-08-29 用户拍板：斜杠命令唤起设置页
@@ -17,7 +18,7 @@
  * theme tokens; no Element Plus dependency is used.
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ConfigurationData } from "../types";
 import SettingsSubagentsView from "./SettingsSubagentsView";
 import SettingsSkillsView from "./SettingsSkillsView";
@@ -28,8 +29,15 @@ import "../styles/SettingsPage.css";
 export interface SettingsPageProps {
   /** 当前配置（getConfiguration 已回），null 表示尚未加载 */
   configurationData: ConfigurationData | null;
+  /** 保存配置（全局设置 / 个性化视图的保存按钮触发，含 language/contextLength/
+   *  autoMemoryEnabled/autoMemoryFrequency） */
+  onSave?: (data: ConfigurationData) => void;
   /** 关闭设置页（desktop 返回会话视图 / 标签页关闭） */
   onClose: () => void;
+  /** 保存进行中标记（host 回包前为 true，用于禁用保存按钮与显示反馈） */
+  saving?: boolean;
+  /** 配置保存失败的错误信息（host 回发 configurationError），保存成功应为空 */
+  configurationError?: string | null;
   /** 用户级 AGENTS.md 内容（null=尚未加载） */
   userAgentsContent: string | null;
   /** 项目级 AGENTS.md 内容（按当前项目） */
@@ -103,16 +111,12 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-/** 从工作目录路径提取项目名（兼容 Windows/posix 分隔符） */
-function getProjectName(workdir?: string): string {
-  if (!workdir) return "当前项目";
-  const parts = workdir.split(/[\\/]+/).filter(Boolean);
-  return parts.length > 0 ? parts[parts.length - 1] : workdir;
-}
-
 const SettingsPage: React.FC<SettingsPageProps> = ({
   configurationData,
+  onSave,
   onClose,
+  saving = false,
+  configurationError = null,
   userAgentsContent,
   projectAgentsContent,
   onLoadAgentsContent,
@@ -190,6 +194,34 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
   const sddEnabled = projectSettings?.enabledPlugins?.["sdd@builtin"] === true;
 
+  // 保存反馈（「保存中…」由外层 saving 驱动；host 回包后按结果生成成功/失败消息）
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const saveRequestedRef = useRef(false);
+
+  const handleSaveGlobal = () => {
+    if (!configurationData || !onSave) return;
+    setSaveMessage(null);
+    saveRequestedRef.current = true;
+    onSave({ ...configurationData, language, contextLength });
+  };
+
+  const handleSaveMemory = () => {
+    if (!configurationData || !onSave) return;
+    setSaveMessage(null);
+    saveRequestedRef.current = true;
+    onSave({ ...configurationData, autoMemoryEnabled, autoMemoryFrequency });
+  };
+
+  // saving 从 true → false（host 回发 configurationResponse/configurationError）
+  // 即保存完成，生成反馈；回包前不显示。
+  useEffect(() => {
+    if (saving || !saveRequestedRef.current) return;
+    saveRequestedRef.current = false;
+    setSaveMessage(
+      configurationError ? `保存失败：${configurationError}` : "保存成功",
+    );
+  }, [saving, configurationError]);
+
   const handleToggleSdd = () => {
     if (!onToggleBuiltinPlugin || pluginToggling) return;
     setPluginToggling(true);
@@ -241,6 +273,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <h1>全局设置</h1>
                 <p>管理 Wave 的界面、模型和基础行为。</p>
               </header>
+              {saveMessage && (
+                <p className="settings-save-message">{saveMessage}</p>
+              )}
               <section className="settings-section">
                 <div className="settings-section-heading">
                   <h2>基础设置</h2>
@@ -252,9 +287,15 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <p>设置 Wave 界面和系统提示使用的语言</p>
                     </div>
                     <div className="settings-control">
-                      <span className="settings-readonly-value">
-                        {language === "en-US" ? "English" : "中文"}
-                      </span>
+                      <select
+                        className="settings-select"
+                        aria-label="系统语言"
+                        value={language}
+                        onChange={(e) => setLanguage(e.target.value)}
+                      >
+                        <option value="zh-CN">中文</option>
+                        <option value="en-US">English</option>
+                      </select>
                     </div>
                   </div>
                   <div className="settings-row">
@@ -263,11 +304,32 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <p>设置新对话默认可以使用的最大上下文长度</p>
                     </div>
                     <div className="settings-number-control">
-                      <span className="settings-readonly-value">
-                        {contextLength} K
-                      </span>
+                      <input
+                        className="settings-number-input"
+                        type="number"
+                        aria-label="上下文长度"
+                        min={16}
+                        max={1000}
+                        step={16}
+                        value={contextLength}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          if (!Number.isNaN(value)) setContextLength(value);
+                        }}
+                      />
+                      <span>K</span>
                     </div>
                   </div>
+                </div>
+                <div className="settings-actions">
+                  <button
+                    type="button"
+                    className="settings-save-btn"
+                    disabled={!configurationData || saving}
+                    onClick={handleSaveGlobal}
+                  >
+                    保存
+                  </button>
                 </div>
               </section>
             </div>
@@ -311,6 +373,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <h1>个性化</h1>
                 <p>配置用户级和项目级 AGENTS.md，以及自动记忆规则。</p>
               </header>
+              {saveMessage && (
+                <p className="settings-save-message">{saveMessage}</p>
+              )}
               <section className="settings-section">
                 <div className="settings-section-heading">
                   <h2>AGENTS.md</h2>
@@ -346,16 +411,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                     </button>
                   </div>
                   <div className="agents-editor">
-                    {activeScope === "project" && (
-                      <div className="project-list" aria-label="项目">
-                        <button
-                          type="button"
-                          className="project-item is-active"
-                        >
-                          {getProjectName(workdir)}
-                        </button>
-                      </div>
-                    )}
                     <textarea
                       className="settings-textarea"
                       aria-label={
@@ -382,9 +437,15 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <h3>开启自动记忆</h3>
                       <p>自动从对话中提取稳定偏好并写入记忆，默认开启</p>
                     </div>
-                    <span className="settings-readonly-value">
-                      {autoMemoryEnabled ? "已开启" : "已关闭"}
-                    </span>
+                    <label className="settings-switch">
+                      <input
+                        type="checkbox"
+                        aria-label="开启自动记忆"
+                        checked={autoMemoryEnabled}
+                        onChange={(e) => setAutoMemoryEnabled(e.target.checked)}
+                      />
+                      <span className="settings-switch-slider"></span>
+                    </label>
                   </div>
                   <div className="settings-row">
                     <div className="settings-row-copy">
@@ -392,11 +453,33 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <p>达到指定对话轮次后执行记忆提取，默认 1 轮</p>
                     </div>
                     <div className="memory-turns">
-                      <span className="settings-readonly-value">
-                        {autoMemoryFrequency} 轮
-                      </span>
+                      <input
+                        className="settings-number-input memory-turns-input"
+                        type="number"
+                        aria-label="触发记忆提取会话轮次"
+                        min={1}
+                        max={100}
+                        value={autoMemoryFrequency}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          if (!Number.isNaN(value)) {
+                            setAutoMemoryFrequency(value);
+                          }
+                        }}
+                      />
+                      <span>轮</span>
                     </div>
                   </div>
+                </div>
+                <div className="settings-actions">
+                  <button
+                    type="button"
+                    className="settings-save-btn"
+                    disabled={!configurationData || saving}
+                    onClick={handleSaveMemory}
+                  >
+                    保存
+                  </button>
                 </div>
               </section>
             </div>

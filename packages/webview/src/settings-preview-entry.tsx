@@ -28,6 +28,10 @@ const root = ReactDOM.createRoot(document.getElementById("root")!);
 function SettingsPreview() {
   const [configurationData, setConfigurationData] =
     useState<ConfigurationData | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [configurationError, setConfigurationError] = useState<
+    string | null | undefined
+  >(undefined);
   const [workdir, setWorkdir] = useState<string | undefined>(undefined);
   const [userAgentsContent, setUserAgentsContent] = useState<string | null>(
     null,
@@ -57,6 +61,13 @@ function SettingsPreview() {
           break;
         case "configurationResponse":
           setConfigurationData(msg.configurationData as ConfigurationData);
+          setSaving(false);
+          break;
+        case "configurationError":
+          setConfigurationError(
+            typeof msg.error === "string" ? msg.error : "未知错误",
+          );
+          setSaving(false);
           break;
         case "agentsContentResponse":
           if (msg.scope === "project") {
@@ -78,6 +89,14 @@ function SettingsPreview() {
   return (
     <SettingsPage
       configurationData={configurationData}
+      onSave={(data) => {
+        setSaving(true);
+        setConfigurationError(undefined);
+        vscode.postMessage({
+          command: "updateConfiguration",
+          configurationData: data,
+        });
+      }}
       onClose={() => vscode.postMessage({ command: "closeSettings" })}
       userAgentsContent={userAgentsContent}
       projectAgentsContent={projectAgentsContent}
@@ -89,6 +108,8 @@ function SettingsPreview() {
         })
       }
       workdir={workdir}
+      saving={saving}
+      configurationError={configurationError}
       initialNav={initialNav}
       vscode={vscode}
       onPrefillPrompt={(prompt) =>
