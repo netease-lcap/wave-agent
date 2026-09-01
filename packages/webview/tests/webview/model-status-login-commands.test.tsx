@@ -142,7 +142,7 @@ describe("Model, Status, and Login Commands", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("desktop 模式打开设置页「全局设置」选项卡并只读展示配置", async () => {
+    it("desktop 模式打开设置页「全局设置」选项卡并可编辑展示配置", async () => {
       const mockVscode = createMockVscode();
       const host = {
         type: "desktop",
@@ -185,24 +185,39 @@ describe("Model, Status, and Login Commands", () => {
       });
       fireEvent.keyDown(input, { key: "Enter" });
 
-      // 设置页「全局设置」选项卡激活（导航项 is-active 且内容区只读展示语言）
+      // 设置页「全局设置」选项卡激活（导航项 is-active 且内容区可编辑展示语言）
       expect(
         await screen.findByText("管理 Wave 的界面、模型和基础行为。"),
       ).toBeInTheDocument();
       const navItem = screen.getByRole("button", { name: /全局设置/ });
       expect(navItem).toHaveClass("is-active");
 
-      // 只读展示：无 select/input/保存按钮，当前值以文本呈现
-      expect(
-        document.querySelector(".settings-select"),
-      ).not.toBeInTheDocument();
-      expect(screen.getByText("中文")).toBeInTheDocument();
-      expect(screen.getByText("200 K")).toBeInTheDocument();
-      expect(
-        document.querySelector(".settings-save-btn"),
-      ).not.toBeInTheDocument();
-      expect(mockVscode.postMessage).not.toHaveBeenCalledWith(
-        expect.objectContaining({ command: "updateConfiguration" }),
+      // 可编辑：语言下拉 + 上下文长度输入 + 保存按钮，当前值回填
+      const langSelect =
+        document.querySelector<HTMLSelectElement>(".settings-select");
+      expect(langSelect).toBeInTheDocument();
+      expect(langSelect?.value).toBe("zh-CN");
+      const contextInput = document.querySelector<HTMLInputElement>(
+        ".settings-number-input",
+      );
+      expect(contextInput).toBeInTheDocument();
+      expect(contextInput?.value).toBe("200");
+      expect(document.querySelector(".settings-save-btn")).toBeInTheDocument();
+
+      // 修改语言并保存 → updateConfiguration RPC
+      await act(async () => {
+        fireEvent.change(langSelect!, { target: { value: "en-US" } });
+      });
+      await act(async () => {
+        fireEvent.click(
+          document.querySelector(".settings-save-btn") as HTMLButtonElement,
+        );
+      });
+      expect(mockVscode.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: "updateConfiguration",
+          configurationData: expect.objectContaining({ language: "en-US" }),
+        }),
       );
     });
   });

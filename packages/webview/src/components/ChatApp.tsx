@@ -45,6 +45,7 @@ import { PlanPane } from "./PlanPane";
 import type {
   ChatAppProps,
   ConfirmationDecision,
+  ConfigurationData,
   DesktopPanelKind,
   FileViewState,
   ToolBlock,
@@ -1742,6 +1743,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     dispatch({ type: "HIDE_DIALOG" });
   }, []);
 
+  // 设置页保存配置（全局设置/个性化视图）：经 updateConfiguration RPC 写回，
+  // 清旧错误后等待 host 回发 configurationResponse（成功）或 configurationError（失败）。
+  const handleConfigurationSave = useCallback(
+    (configData: ConfigurationData) => {
+      dispatch({ type: "SET_CONFIGURATION_LOADING", payload: true });
+      dispatch({ type: "SET_CONFIGURATION_ERROR", payload: undefined });
+      vscode.postMessage({
+        command: "updateConfiguration",
+        configurationData: configData,
+      });
+    },
+    [vscode],
+  );
+
   // A message counts as chat content only when the UI renders it — hidden meta
   // user messages (e.g. SessionStart hook additionalContext, isMeta: true) do
   // not, so they must not suppress the welcome page, the desktop new-session
@@ -2582,6 +2597,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const settingsPage = isDesktop ? (
     <SettingsPage
       configurationData={state.configurationData ?? null}
+      onSave={handleConfigurationSave}
       onClose={handleCloseSettings}
       userAgentsContent={userAgentsContent}
       projectAgentsContent={projectAgentsContent}
@@ -2593,6 +2609,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         })
       }
       workdir={effectiveWorkdir}
+      saving={state.configurationLoading}
+      configurationError={state.configurationError}
       initialNav={settingsNav}
       vscode={vscode}
       projectSettings={state.projectSettings}

@@ -1,20 +1,17 @@
 /**
  * SettingsHooksView - 设置页「钩子」选项卡
  *
- * 按来源 Tab（用户级钩子 / 项目级钩子 / 插件钩子）展示钩子，项目级按所属
- * 项目分组卡片展示。提供新建（预填 AI 对话框提示词）、编辑（预填提示词）、
- * 开关（enabled 字段，关闭后不执行）、删除（二次确认 + 直接删配置）。
+ * 按来源 Tab（用户级钩子 / 项目级钩子 / 插件钩子）展示钩子，项目级在
+ * 「项目级钩子」Tab 平铺展示（仅当前项目，2026-09-01 用户拍板删项目分组
+ * 卡片）。提供新建（预填 AI 对话框提示词）、编辑（预填提示词）、开关
+ * （enabled 字段，关闭后不执行）、删除（二次确认 + 直接删配置）。
  * 数据通过 getHooksByScope RPC 由 host 下发，开关/删除走 setHookEnabled /
  * deleteHook RPC。
  */
 
 import React, { useState, useEffect, useCallback } from "react";
 import { ConfirmDialog } from "./ConfirmDialog";
-import {
-  SettingsTabs,
-  ProjectCard,
-  type SettingsTabDef,
-} from "./SettingsManageComponents";
+import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
 import "../styles/ConfigurationDialog.css";
 import "../styles/SettingsPage.css";
 
@@ -273,11 +270,11 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
           activeTab={activeTab}
           onChange={setActiveTab}
           actions={
-            activeTab === "user" ? (
+            activeTab === "user" || activeTab === "project" ? (
               <button
                 type="button"
                 className="settings-save-btn"
-                onClick={() => handleCreate("user")}
+                onClick={() => handleCreate(activeTab as "user" | "project")}
               >
                 <i className="codicon codicon-add" aria-hidden="true" />
                 新增钩子
@@ -285,37 +282,17 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
             ) : undefined
           }
         />
-        <div className="settings-card">
-          {loading ? (
-            <div className="empty-state">
-              <p>加载中...</p>
-            </div>
-          ) : entries.length === 0 ? (
-            <div className="empty-state">
-              <p>{activeTabDef.label}暂无内容</p>
-            </div>
-          ) : activeTab === "project" ? (
-            <div className="settings-project-cards">
-              <ProjectCard
-                projectName={projectName}
-                action={
-                  <button
-                    type="button"
-                    className="settings-card-link-btn"
-                    onClick={() => handleCreate("project")}
-                  >
-                    <i className="codicon codicon-add" aria-hidden="true" />
-                    新增钩子
-                  </button>
-                }
-              >
-                {renderEntries(entries)}
-              </ProjectCard>
-            </div>
-          ) : (
-            <div className="mcp-server-list">{renderEntries(entries)}</div>
-          )}
-        </div>
+        {loading ? (
+          <div className="empty-state">
+            <p>加载中...</p>
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="empty-state">
+            <p>{activeTabDef.label}暂无内容</p>
+          </div>
+        ) : (
+          <div className="mcp-server-list">{renderEntries(entries)}</div>
+        )}
       </section>
 
       {pendingDelete && (

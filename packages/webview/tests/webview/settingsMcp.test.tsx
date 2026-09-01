@@ -91,7 +91,7 @@ describe("SettingsPage MCP 服务选项卡视图（用户/项目/插件 Tab）",
     ).toBeInTheDocument();
   });
 
-  it("项目级 Tab 按项目分组卡片展示（+ 新增 MCP 服务）", async () => {
+  it("项目级 Tab 平铺展示（+ 新增 MCP 服务）", async () => {
     renderSettingsPage();
     sendHostMessage(
       fixtures.mcpServersResponse([userServer, projectServer, pluginServer]),
@@ -105,8 +105,8 @@ describe("SettingsPage MCP 服务选项卡视图（用户/项目/插件 Tab）",
     });
     expect(await screen.findByText("project-db")).toBeInTheDocument();
     expect(screen.getByText("http://localhost:3400/mcp")).toBeInTheDocument();
-    // 项目卡片名 + 新增按钮
-    expect(screen.getByText("a")).toBeInTheDocument();
+    // 单项目模型：平铺展示（无项目卡片名）+ 新增按钮
+    expect(screen.queryByText("a")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /新增 MCP 服务/ }),
     ).toBeInTheDocument();

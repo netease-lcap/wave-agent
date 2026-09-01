@@ -107,7 +107,7 @@ describe("/skills 斜杠命令 → 设置页「技能」选项卡", () => {
   });
 });
 
-describe("SettingsPage 技能选项卡视图（4 Tab + 项目分组卡片）", () => {
+describe("SettingsPage 技能选项卡视图（4 Tab + 项目 Tab 平铺）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -151,7 +151,7 @@ describe("SettingsPage 技能选项卡视图（4 Tab + 项目分组卡片）", (
     ).toBeInTheDocument();
   });
 
-  it("项目技能 Tab 按项目分组卡片展示（/技能名 样式 + 新增指令）", async () => {
+  it("项目技能 Tab 平铺展示（/技能名 样式 + 新增指令）", async () => {
     renderSettingsPage();
     sendHostMessage(fixtures.skillMetadataResponse([projectSkill]));
 
@@ -159,8 +159,8 @@ describe("SettingsPage 技能选项卡视图（4 Tab + 项目分组卡片）", (
       fireEvent.click(await screen.findByText("项目技能"));
     });
 
-    // 项目卡片（workdir 推断项目名 a）+ /技能名 样式 + 新增指令
-    expect(screen.getByText("a")).toBeInTheDocument();
+    // 单项目模型：平铺展示（无项目分组卡片）+ /技能名 样式 + 新增指令
+    expect(screen.queryByText("a")).not.toBeInTheDocument();
     expect(screen.getByText("/deploy")).toBeInTheDocument();
     expect(screen.getByText("项目专用部署技能")).toBeInTheDocument();
     expect(

@@ -1,8 +1,9 @@
 /**
  * SettingsManageComponents - 设置页管理视图共享组件（技能 / 子代理 / 钩子 / MCP）
  *
- * 四个管理视图共用同一形态（2026-08-29 用户拍板）：来源 Tab + 项目分组卡片。
- * 这里只放纯展示的共享件；每个视图自己的数据获取 / 分组 / 操作逻辑留在各视图内。
+ * 四个管理视图共用同一形态（2026-08-29 用户拍板：来源 Tab；2026-09-01 用户
+ * 拍板：设置页只针对当前项目，删除项目分组卡片，项目 Tab 直接平铺）。
+ * 这里只放纯展示的共享件；每个视图自己的数据获取 / 操作逻辑留在各视图内。
  */
 
 import React from "react";
@@ -45,40 +46,3 @@ export const SettingsTabs: React.FC<SettingsTabsProps> = ({
     {actions && <div className="settings-toolbar-actions">{actions}</div>}
   </div>
 );
-
-export interface ProjectCardProps {
-  /** 项目名（卡片头显示） */
-  projectName: string;
-  /** 卡片头右侧操作（如「新增指令」），可空 */
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}
-
-/** 项目分组卡片：项目技能/子代理/钩子/MCP 按所属项目分组，每项目一张卡片 */
-export const ProjectCard: React.FC<ProjectCardProps> = ({
-  projectName,
-  action,
-  children,
-}) => (
-  <div className="settings-project-card">
-    <div className="settings-project-card-header">
-      <i className="codicon codicon-repo" aria-hidden="true" />
-      <span className="settings-project-card-name">{projectName}</span>
-      {action && <div className="settings-project-card-action">{action}</div>}
-    </div>
-    <div className="settings-project-card-body">{children}</div>
-  </div>
-);
-
-/** 从文件路径推断所属项目名；无法推断时归入「其他项目」 */
-export function inferProjectName(
-  filePath: string | undefined,
-  workdir?: string,
-): string {
-  if (!filePath) return "其他项目";
-  if (workdir && filePath.startsWith(workdir)) {
-    const parts = workdir.split(/[\\/]+/).filter(Boolean);
-    return parts.length > 0 ? parts[parts.length - 1] : workdir;
-  }
-  return "其他项目";
-}

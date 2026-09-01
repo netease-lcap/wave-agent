@@ -228,7 +228,7 @@ describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab + 开关
     });
   });
 
-  it("项目级钩子 Tab 按项目分组卡片展示（+ 新增钩子）", async () => {
+  it("项目级钩子 Tab 平铺展示（+ 新增钩子）", async () => {
     renderSettingsPage();
     sendHostMessage(
       fixtures.hooksResponse(
@@ -262,8 +262,8 @@ describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab + 开关
       ),
     );
     expect(await screen.findByText("PostToolUse:Bash")).toBeInTheDocument();
-    // 项目卡片名 + 新增钩子按钮
-    expect(screen.getByText("a")).toBeInTheDocument();
+    // 单项目模型：平铺展示（无项目卡片名）+ 新增钩子按钮
+    expect(screen.queryByText("a")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /新增钩子/ }),
     ).toBeInTheDocument();
