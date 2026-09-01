@@ -903,6 +903,18 @@
   color: #e6e6e6;
 }
 
+/* ═══ 第二十八轮：非预览面板标题去背景（用户评论「计划」标题不应有背景色）═══
+   plan/file/diff/terminal 面板 toolbar 里的 .preview-pane-url 是面板标题
+   （「计划/文件/差异/终端」），不是地址 URL——第 18 轮地址栏灰底胶囊误用于标题，
+   这里去掉背景回归普通文字标题；PreviewPane 地址栏（真 URL）保留灰底胶囊。 */
+
+[data-host="desktop"] .plan-pane .preview-pane-url,
+[data-host="desktop"] .file-pane .preview-pane-url,
+[data-host="desktop"] .diff-pane .preview-pane-url,
+[data-host="desktop"] .terminal-pane .preview-pane-url {
+  background: transparent;
+}
+
 [data-host="desktop"][data-theme="light"] .preview-pane-button {
   color: #565a60;
 }

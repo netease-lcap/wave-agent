@@ -1117,3 +1117,40 @@ Figma 对照（`13497-15325` 预览区展开帧，vision 复核渲染图）：�
 ### 实现文件
 
 - `src/styles/host-desktop.css`（第二十七轮段：浅色 `.preview-tab-bar` 白底 + 深色 `.preview-pane-toolbar` 透明）
+
+## 第二十八轮：非预览面板标题去背景（1 项评论）
+
+评论：`span.preview-pane-url`「计划」——「通过下拉菜单打开这里标题加粗，不应该有背景色」。
+
+### 背景
+
+`span.preview-pane-url` 类被 5 处复用：PreviewPane 地址栏（真 URL）+ 4 个面板标题（PlanPane「计划」/ FilePane 空态「文件」/ DiffPane「差异」/ TerminalPane「终端」）。第 18 轮为地址栏对齐 codechat `preview-address-input` 加了灰底胶囊（light #F0F2F5 / dark 6% 白），该胶囊被误套到面板标题上，标题呈「灰底标签」观感。
+
+用户经 panel-toggle 下拉菜单「计划」项打开计划面板，评论标题「加粗 + 有背景色」。实测字重 400（未加粗，灰底胶囊观感误判为加粗），背景 #F0F2F5 / 6% 白为实。
+
+### 变更点清单
+
+| #   | 对象                                        | 修复前                       | 修复后                                                |
+| --- | ------------------------------------------- | ---------------------------- | ----------------------------------------------------- |
+| 1   | `.plan-pane .preview-pane-url`「计划」      | 灰底胶囊 #F0F2F5（深 6% 白） | background: transparent（普通文字标题）               |
+| 2   | `.file-pane .preview-pane-url`「文件」      | 同                           | 同（统一处理，避免逐面板评论）                        |
+| 3   | `.diff-pane .preview-pane-url`「差异」      | 同                           | 同                                                    |
+| 4   | `.terminal-pane .preview-pane-url`「终端」  | 同                           | 同                                                    |
+| 5   | `.preview-pane .preview-pane-url`（真地址） | 灰底胶囊 #F0F2F5 / 6% 白     | **保留**（地址输入框有意样式，第 18 轮对齐 codechat） |
+| 6   | 标题字重                                    | 400（无加粗规则）            | 保持 400（用户「加粗」为灰底胶囊观感误判，实测非粗）  |
+
+### 验证结果（Playwright 探针 + 截图实测）
+
+| 项                            | 实测                                                       | 期望 |
+| ----------------------------- | ---------------------------------------------------------- | ---- |
+| 计划标题背景 light/dark       | 均 transparent rgba(0,0,0,0)，字重 400                     | ✓    |
+| 地址栏背景 light/dark（保留） | #F0F2F5 / rgba(255,255,255,0.06)                           | ✓    |
+| 标题观感（vision 复核）       | 两主题均无背景胶囊、常规字重、垂直居中、与关闭按钮对齐良好 | ✓    |
+| 工具栏行背景 light/dark       | 白 / pane 深色，标题直接落底                               | ✓    |
+| smoke-ui / type-check         | 无 JS 错误 / 通过                                          | ✓    |
+
+探针路径：panel-toggle 菜单「计划」项点击 → PlanPane 挂载；打开后需按 Escape 关闭菜单再截图（菜单浮层会遮挡/污染截图）。
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（第二十八轮段：plan/file/diff/terminal 面板 `.preview-pane-url` 去背景）
