@@ -1,6 +1,11 @@
 import React, { useRef, useState } from "react";
 import { Tooltip } from "./Tooltip";
-import { NewSessionIcon, HistoryIcon, MoreIcon } from "./HeaderIcons";
+import {
+  NewSessionIcon,
+  HistoryIcon,
+  MoreIcon,
+  PanelToggleIcon,
+} from "./HeaderIcons";
 import { SessionListPopup } from "./SessionListPopup";
 import { MoreMenu } from "./MoreMenu";
 import { PanelToggleMenu } from "./PanelToggleMenu";
@@ -114,8 +119,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               aria-haspopup="menu"
               aria-expanded={showPanelMenu}
             >
-              <i className="codicon codicon-layout-sidebar-right" />
-              <i className="codicon codicon-chevron-down header-panel-toggle-caret" />
+              <PanelToggleIcon />
             </button>
           </Tooltip>
         )}

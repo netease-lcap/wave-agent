@@ -627,3 +627,42 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 - 复杂弹层 item 的 padding/radius 保留各自内容布局（slash 双行 40px、file-suggestion 40px 双行），仅统一面板外观与交互色。
 - `.queued-message-list-container`（排队消息浮层）为悬浮面板非下拉菜单，未纳入。
 - session-list-popup 在桌面端 header 无触发按钮（IDE 场景使用），样式规则已覆盖但未在桌面端实测。
+
+## 第十四轮：4 项元素评论修复（会话项选中色 / 新对话边距 / 面板切换图标 / pane 关闭图标）
+
+评论：会话项「选中色值不对」、新对话 tooltip「图标边距等不对」、header「面板切换图标不对」、pane「关闭按钮图标不对」。
+
+### 变更点清单
+
+| #   | 对象                     | 修复前                                                                | 修复后（权威依据）                                                                                                          |
+| --- | ------------------------ | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 会话项选中色（浅色）     | `#EBEDF0`（第三轮 Figma 读数）                                        | `#E7E9ED` = `--cc-fill-pressed`（skill 契约：导航/列表选中用中性 pressed fill；codechat 桌面壳 `.task-row.is-active` 同值） |
+| 2   | 会话项弱化态 `--visible` | VS Code 蓝灰 `inactiveSelectionBackground`（浅 #E4E6F1 / 深 #37373D） | 中性灰：浅 `#EEF0F3`（= --cc-fill-hover）、深 `rgba(255,255,255,0.06)`，弱于选中态                                          |
+| 3   | 选中项标题字重           | 400                                                                   | 500（codechat 桌面壳 `.task-row.is-active .task-title` 同值）                                                               |
+| 4   | 选中项 hover             | 回落 hover 色 #EEF0F3                                                 | 保持 pressed `#E7E9ED`（codechat `.task-row-wrap:hover .task-row.is-active` 同值）                                          |
+| 5   | 新对话按钮横向位置       | tooltip 锚点 `padding: 0 6px` 把按钮右移 6px（图标左缘 26px）         | `padding: 0`，按钮贴侧栏 12px、图标左缘 20px（codechat `sidebar-tool-button`：容器 10px + 8px）                             |
+| 6   | 新对话按钮 hover 色      | `#E2E4E8`                                                             | `#EEF0F3` = `--cc-fill-hover`（codechat `sidebar-tool-button:hover` 同值）                                                  |
+| 7   | header 面板切换图标      | `codicon-layout-sidebar-right` + `codicon-chevron-down`（36×22）      | Figma `preview-toggle` 复合图标（40×24：右侧面板布局 + chevron-down），codechat `workspace-header-panel-toggle` 同款        |
+| 8   | pane 关闭图标            | `codicon-close`（VSCode 粗 ×）                                        | Figma `conversation-close`（16×16 细 ×）                                                                                    |
+
+### 验证结果（Playwright 探针实测）
+
+| 项                                   | 实测                         | 期望 |
+| ------------------------------------ | ---------------------------- | ---- |
+| 浅色 `--current` 背景                | `rgb(231,233,237)` = #E7E9ED | ✓    |
+| 浅色 `--visible` 背景                | `rgb(238,240,243)` = #EEF0F3 | ✓    |
+| 深色 `--current` / `--visible`       | 12% 白 / 6% 白               | ✓    |
+| 选中项 hover（浅色）                 | #E7E9ED（保持 pressed）      | ✓    |
+| 选中项标题字重                       | 500                          | ✓    |
+| 新对话按钮 图标左缘 / hover 背景     | 20px / #EEF0F3               | ✓    |
+| 面板切换按钮 40×24（图标同尺寸）     | ✓                            | ✓    |
+| pane 关闭 16×16 细 ×（22×22 按钮内） | ✓                            | ✓    |
+| compile                              | 通过                         | ✓    |
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（选中/弱化/hover/字重）
+- `src/styles/DesktopApp.css`（新对话 tooltip 锚点 padding）
+- `src/components/HeaderIcons.tsx`（新增 `PanelToggleIcon`、`ConversationCloseIcon`）
+- `src/components/ChatHeader.tsx` / `src/styles/ChatHeader.css`（面板切换图标 + 40×24 尺寸）
+- `src/components/DesktopShell.tsx`（pane 关闭图标）
