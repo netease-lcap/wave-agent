@@ -460,3 +460,57 @@
 - **消息区/输入区外边距**：wave 10px vs Figma Article pad 16——虚拟列表行 inset（`virtual-row` left/right 10px）与 sticky 补偿强联动，且对话列宽度 585px（三栏分屏）vs Figma 800px 属既有产品形态差异，边距随列宽一并记录，不单独改。
 - 对话列宽度 585 vs 800、右侧第三栏内容（wave「新对话」面板 vs Figma 浏览器预览区）、Header 右侧多 pane 按钮——既有产品差异，沿用前轮结论。
 - 设置页 / 会话状态页为独立页面，未纳入本轮。
+
+---
+
+# 第十轮：codechat-ui 样式参考再走查（侧栏密度 / 账户区 / composer 间距 / 预览标签）
+
+基准：以 codechat-ui（`src/styles/global.css` + `tokens.css`）为样式参考再修改一轮；冲突点以 Figma「CC桌面端组件库」权威值（REST API 直读 13497-15325 节点树）为准。本轮**仅改样式，未推送 git**（用户指示多轮修改完成后再统一推送）。
+
+## 走查结论：codechat 与 Figma 冲突、wave 保持 Figma 的项（不修）
+
+| 项                  | codechat 源码值        | Figma 权威值                   | wave 现状   |
+| ------------------- | ---------------------- | ------------------------------ | ----------- |
+| header 左右 padding | `0 16px`               | 12px（13497:15329）            | 12px ✓      |
+| 新对话按钮          | 透明底 / 500           | 实底 `#EBEDF0` / 400           | Figma 值 ✓  |
+| 会话行选中态        | `#e7e9ed`（pressed）   | `#EBEDF0`                      | Figma 值 ✓  |
+| 发送按钮            | 34×34                  | 32×32（13437:958）             | 32×32 ✓     |
+| 权限按钮字号        | 13px（--font-size-sm） | 14px（13498:16766）            | 14px ✓      |
+| 消息气泡            | 10px 13px / `#f5f7fa`  | 8px 12px / `#F0F2F5`           | Figma 值 ✓  |
+| 时间线节点          | 14px                   | 12px / `#16A34A` 白描边        | 12px ✓      |
+| composer 阴影       | 8%                     | drop(0 8 24) **visible:false** | 6%（弱化）✓ |
+
+## 变更点清单（host-desktop.css）
+
+| #   | 项                     | codechat 参考                          | Figma 权威值                                              | wave 修复前                                    | 修复后                                                          |
+| --- | ---------------------- | -------------------------------------- | --------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------- |
+| 1   | 品牌行高度             | `sidebar-brand-row` 32px               | 13498:17095 高 32px                                       | 不定高（实测 36px = 4+24+8）                   | `height: 32px` + 垂直居中、pad-left 8                           |
+| 2   | 品牌行右侧图标组间距   | gap 8px                                | 13498:17097 itemSpacing 8                                 | gap 4px                                        | `gap: 8px`                                                      |
+| 3   | 新对话按钮与品牌行间距 | `task-sidebar` 内 12px                 | 13498:17094 itemSpacing 12                                | margin-top 4px                                 | `margin: 12px 0 4px`                                            |
+| 4   | 账户区分隔线           | `border-top: var(--cc-border-lighter)` | Sidebar 分隔 `#EBEEF5`                                    | `#e4e7ed`（panel-border）                      | 浅色 `#ebeef5`                                                  |
+| 5   | 账户热区左右内边距     | `sidebar-account-details` pad 0 8px    | 13498:17132 padL/R 8                                      | 左 4px（头像偏左）                             | `padding: 4px 8px`（对称 8）                                    |
+| 6   | Composer 外间距        | `composer-wrap` 20 24 18               | 13497:15726 Container pad **16** 四边                     | 左右 10 + 上下 10 = 20                         | `input-area-container` 16px + `input-container` 0（总 16 四边） |
+| 7   | Composer 卡片最大宽    | `--cc-conversation-max-width: 768px`   | Form - 发送消息 768px（Container 800）                    | `input-wrapper` 800px（宽 pane 下卡片宽 32px） | `max-width: 768px`                                              |
+| 8   | 预览标签               | —（组件库同款 tab）                    | 13561:39645 **r8** / 文字 14px / pad 8 / active `#F0F2F5` | 胶囊 r13 / 12px / pad 10 / active 10% 前景     | `r8` / 14px / pad 0 4px 0 8px / 浅色 active `#f0f2f5`           |
+
+welcome 态输入区不受影响：`.chat-container--welcome .input-area-container`（specificity 0,2,0）高于 `[data-host="desktop"] .input-area-container`（0,1,1），居中 padding 保持。
+
+## 验证结果（Playwright 探针实测）
+
+| 项                        | wave 实测                      | Figma / codechat |
+| ------------------------- | ------------------------------ | ---------------- |
+| 品牌行高                  | 32px ✓                         | 32px             |
+| 新对话按钮 margin-top     | 12px ✓                         | 12px             |
+| 账户区分隔线（浅色）      | `rgb(235,238,245)` = #EBEEF5 ✓ | #EBEEF5          |
+| 账户热区 padding          | `4px 8px` ✓                    | pad 左右 8       |
+| input-area-container      | `16px` 四边 ✓                  | pad 16           |
+| input-container           | `padding: 0` ✓（总 16）        | —                |
+| composer 卡片宽           | 557px（pane 内 = 589 − 32）✓   | 响应式           |
+| 用户消息（回归）          | 右对齐 fit-content、14px/500 ✓ | counterMAX ✓     |
+| 侧栏/账户热区实底（回归） | `#EBEDF0` ✓                    | #EBEDF0          |
+
+## 本轮未修（记录）
+
+- 消息区 padding 10px vs Figma Article 16px：仍受虚拟列表行 inset 联动约束（第九轮结论不变，本轮仅修输入区）。
+- 对话列宽度 585 vs 800：三栏分屏产品形态差异（前轮结论）。
+- 预览标签深色 active 态：Figma 仅浅色，深色沿用中性 10% 前景。
