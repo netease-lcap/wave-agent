@@ -16,6 +16,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   currentSession,
   onSessionSelect,
   sessionsLoading,
+  onOpenSessionList,
+  showWorkdir,
   onOpenSettings,
   onOpenEnterpriseConsole,
   onOpenHelpDocs,
@@ -23,6 +25,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onLogout,
   isAuthenticated,
   hideSessionButtons = false,
+  hideNewSessionButton = false,
   hideMoreButton = false,
   showLoginButton = false,
   panelToggle,
@@ -43,30 +46,35 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
       {leading}
       <div className="header-title">{title}</div>
       <div className="header-buttons">
+        {!hideSessionButtons && !hideNewSessionButton && (
+          <Tooltip text="新建对话" position="bottom">
+            <button
+              className="header-button"
+              onClick={onNewSession}
+              disabled={newSessionDisabled}
+              data-testid="new-session-btn"
+              aria-label="新建对话"
+            >
+              <NewSessionIcon />
+            </button>
+          </Tooltip>
+        )}
         {!hideSessionButtons && (
-          <>
-            <Tooltip text="新建对话" position="bottom">
-              <button
-                className="header-button"
-                onClick={onNewSession}
-                disabled={newSessionDisabled}
-                data-testid="new-session-btn"
-                aria-label="新建对话"
-              >
-                <NewSessionIcon />
-              </button>
-            </Tooltip>
-            <Tooltip text="历史对话" position="bottom">
-              <button
-                className="header-button"
-                onClick={() => setShowSessionList((prev) => !prev)}
-                data-testid="history-btn"
-                aria-label="历史对话"
-              >
-                <HistoryIcon />
-              </button>
-            </Tooltip>
-          </>
+          <Tooltip text="历史对话" position="bottom">
+            <button
+              className="header-button"
+              onClick={() => {
+                setShowSessionList((prev) => {
+                  if (!prev) onOpenSessionList?.();
+                  return !prev;
+                });
+              }}
+              data-testid="history-btn"
+              aria-label="历史对话"
+            >
+              <HistoryIcon />
+            </button>
+          </Tooltip>
         )}
         {showLoginButton && (
           <button
@@ -119,6 +127,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           onSessionSelect={onSessionSelect}
           loading={sessionsLoading}
           onClose={() => setShowSessionList(false)}
+          showWorkdir={showWorkdir}
         />
       )}
       {showMoreMenu && !hideMoreButton && (

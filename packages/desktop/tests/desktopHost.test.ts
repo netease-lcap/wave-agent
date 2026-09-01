@@ -27,6 +27,8 @@ const h = vi.hoisted(() => ({
           (params as { workdir?: string } | undefined)?.workdir ?? "";
         return { sessions: h.dirSessions.get(workdir) ?? [] };
       }
+      case "listAllSessions":
+        return { sessions: h.allSessions };
       case "getAuthStatus":
         return {
           isAuthenticated: h.authStatusResults.shift() ?? false,
@@ -70,6 +72,8 @@ const h = vi.hoisted(() => ({
   authStatusResults: [] as boolean[],
   // Per-workdir listSessions results, keyed by directory (FR-020 session tree).
   dirSessions: new Map<string, unknown[]>(),
+  // Cross-workdir listAllSessions result for the 历史对话弹窗 (desktop-app.md).
+  allSessions: [] as unknown[],
   // FR-052..054: stdio git method stubs. `worktreeError` makes createWorktree
   // reject; `branchesResult: null` simulates a non-git workdir.
   worktreeResult: null as null | {
@@ -3616,6 +3620,113 @@ describe("session tree", () => {
     expect(
       shownToasts().some((t) => t.message.includes("已从最近列表移除")),
     ).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// history popup session list (desktop-app.md「历史对话弹窗」)
+// ---------------------------------------------------------------------------
+
+describe("history popup session list (desktop-app.md 历史对话弹窗)", () => {
+  it("merges desktop worktree metadata into the cross-workdir list", async () => {
+    const { host, store, sent } = await readyHost();
+    // Desktop-created worktree session: the index carries worktree metadata.
+    store.upsertSession({
+      sessionId: "s-wt",
+      title: "Worktree session",
+      workdir: "/work/repo",
+      cwd: "/work/repo-wt",
+      createdAt: 1000,
+      lastActiveAt: 1000,
+      worktree: {
+        path: "/work/repo-wt",
+        branch: "feature/x",
+        baseBranch: "main",
+        repoRoot: "/work/repo",
+      },
+    });
+    // The CLI scan returns it at the worktree path, plus a pure CLI session
+    // that is not in the desktop index at all.
+    h.allSessions = [
+      {
+        id: "s-cli",
+        sessionType: "main",
+        workdir: "/work/other-project",
+        firstMessage: "CLI session",
+        lastActiveAt: new Date("2023-12-01T11:00:00Z"),
+        latestTotalTokens: 10,
+      },
+      {
+        id: "s-wt",
+        sessionType: "main",
+        workdir: "/work/repo-wt",
+        firstMessage: "Worktree session",
+        lastActiveAt: new Date("2023-12-01T10:00:00Z"),
+        latestTotalTokens: 20,
+      },
+    ];
+
+    await host.handleWebviewMessage({ command: "listSessions" });
+
+    const sessions = sent("updateSessions").at(-1)?.sessions;
+    expect(sessions).toHaveLength(2);
+    const wt = sessions?.find((s) => s.id === "s-wt");
+    expect(wt).toMatchObject({
+      id: "s-wt",
+      workdir: "/work/repo", // repo root for display
+      worktree: true,
+    });
+    const cli = sessions?.find((s) => s.id === "s-cli");
+    expect(cli).toMatchObject({
+      id: "s-cli",
+      workdir: "/work/other-project",
+    });
+    expect(cli?.worktree).toBeUndefined();
+  });
+
+  it("keeps non-worktree sessions untouched and passes empty list through", async () => {
+    const { host, sent } = await readyHost();
+    h.allSessions = [
+      {
+        id: "s-cli",
+        sessionType: "main",
+        workdir: "/work/other-project",
+        firstMessage: "CLI session",
+        lastActiveAt: new Date("2023-12-01T11:00:00Z"),
+        latestTotalTokens: 10,
+      },
+    ];
+
+    await host.handleWebviewMessage({ command: "listSessions" });
+
+    expect(sent("updateSessions").at(-1)?.sessions).toEqual([
+      {
+        id: "s-cli",
+        sessionType: "main",
+        workdir: "/work/other-project",
+        firstMessage: "CLI session",
+        lastActiveAt: new Date("2023-12-01T11:00:00Z"),
+        latestTotalTokens: 10,
+      },
+    ]);
+
+    h.allSessions = [];
+    await host.handleWebviewMessage({ command: "listSessions" });
+    expect(sent("updateSessions").at(-1)?.sessions).toEqual([]);
+  });
+
+  it("listAllSessions failure surfaces as a toast, not a session update", async () => {
+    const { host, sent } = await readyHost();
+    const restore = failRpc("listAllSessions", "scan failed");
+    try {
+      await host.handleWebviewMessage({ command: "listSessions" });
+    } finally {
+      restore();
+    }
+    expect(
+      shownToasts().some((t) => t.message.includes("获取历史会话失败")),
+    ).toBe(true);
+    expect(sent("updateSessions")).toHaveLength(0);
   });
 });
 

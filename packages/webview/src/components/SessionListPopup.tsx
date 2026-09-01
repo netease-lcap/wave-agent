@@ -10,6 +10,8 @@ interface SessionListPopupProps {
   onSessionSelect: (sessionId: string) => void;
   onClose: () => void;
   loading: boolean;
+  /** Show per-session workdir + worktree/branch labels (desktop cross-workdir list). */
+  showWorkdir?: boolean;
 }
 
 export const SessionListPopup: React.FC<SessionListPopupProps> = ({
@@ -18,6 +20,7 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
   onSessionSelect,
   onClose,
   loading,
+  showWorkdir,
 }) => {
   const [query, setQuery] = useState("");
   // Keyboard selection index into the filtered list; 0 = first item.
@@ -114,6 +117,7 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
         loading={loading}
         highlightQuery={query}
         selectedIndex={selectedIndex}
+        showWorkdir={showWorkdir}
       />
     </div>
   );

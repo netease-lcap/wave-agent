@@ -1809,13 +1809,32 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // 并让新会话任务从空状态进入（若全部已完成则直接保持隐藏）
       dispatch({ type: "SET_TASKS", payload: [] });
 
+      if (isDesktop) {
+        // 桌面端跨目录恢复：把列表项的工作目录一并传给 host——CLI 创建的
+        // 会话不在本地索引，host 无法自行解析 workdir；命中索引的 worktree
+        // 会话仍由 host 侧索引元数据接管（desktop-app.md「历史对话弹窗」）。
+        const session = state.sessions.find((s) => s.id === sessionId);
+        postToHost({
+          command: "desktopSelectSession",
+          workdir: session?.workdir,
+          sessionId,
+        });
+        return;
+      }
+
       postToHost({
         command: "restoreSession",
         sessionId,
       });
     },
-    [state.isStreaming, postToHost],
+    [state.isStreaming, state.sessions, isDesktop, postToHost],
   );
+
+  // Desktop: refresh the cross-workdir session list each time the history popup
+  // opens (data comes from the CLI's listAllSessions scan, not the local index).
+  const handleOpenSessionList = useCallback(() => {
+    postToHost({ command: "listSessions" });
+  }, [postToHost]);
 
   const handleInputCleared = useCallback(() => {
     dispatch({ type: "INPUT_CLEARED" });
@@ -2777,7 +2796,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         showLoginButton={
           !isDesktop && state.initialized && !state.isAuthenticated
         }
-        hideSessionButtons={isDesktop}
+        // Desktop keeps its own 新建对话 entry in the sidebar; the header only
+        // gains the 历史对话 button (cross-workdir popup, spec「历史对话弹窗」).
+        hideNewSessionButton={isDesktop}
+        onOpenSessionList={isDesktop ? handleOpenSessionList : undefined}
+        showWorkdir={isDesktop}
         hideMoreButton={isDesktop}
         panelToggle={
           isDesktop
