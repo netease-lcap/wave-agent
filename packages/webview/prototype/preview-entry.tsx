@@ -71,14 +71,14 @@ const writeSession = (k: string, v: string) => {
 };
 
 // ── 初始用例（模块顶层，render 前确定；responders 先于子树挂载注册）──
-// 默认加载「桌面端：全功能」用例，避免打开原型预览看到无限扫光 loading
+// 默认加载「桌面端-新对话」用例，避免打开原型预览看到无限扫光 loading
 // （ChatApp 无任何宿主消息时停留在 showWelcome）。dev 下记住上次选择；
 // 若存储的用例文件已不存在（mock/ 是 gitignore 的本地目录），回退到默认。
 const getCase = (key: string) =>
   key ? mockModules[`./mock/${key}.ts`]?.default : undefined;
 const mockKeys = Object.keys(mockModules);
-const defaultKey = mockKeys.includes("./mock/desktop-full.ts")
-  ? "desktop-full"
+const defaultKey = mockKeys.includes("./mock/desktop-new-chat.ts")
+  ? "desktop-new-chat"
   : (mockKeys[0]?.slice("./mock/".length, -3) ?? "");
 const initialKey = (() => {
   const candidate = readSession("wave-preview-case");
