@@ -788,3 +788,34 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 - `src/components/PreviewPane.tsx`（工具栏 5 按钮 codicon → SVG 图标）
 - `src/styles/DesktopApp.css`（工具栏 44px/0 12/8、地址栏 26px/14px/r8 两态统一、按钮 24×24）
 - `src/styles/host-desktop.css`（第十八轮段：工具栏/地址栏/按钮 light+dark 颜色）
+
+## 第十九轮：侧边栏收起态 header leading（1 项评论）
+
+评论：`button.header-button`「收起后图标不对，这里还应该保留个新对话的图标，和后面的标题之间也应该有个分割线」。
+
+### 变更点清单
+
+| #   | 对象                   | 修复前                                                   | 修复后（权威依据 = 原型 WorkspaceHeader.vue + TaskSidebar.vue）                                                                                                                            |
+| --- | ---------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | 展开侧边栏按钮图标     | CollapseIcon（外框+左条，无方向指示）                    | Figma `sidebar-expand.svg`（外框 + 朝右箭头 →，表示向左侧展开）；新增 HeaderIcons `SidebarExpandIcon`。侧栏内收起按钮保持 sidebar-collapse（外框+左条）—— 方向语义区分：收起朝左、展开朝右 |
+| 2   | 收起态缺少新对话按钮   | desktop 下 `hideSessionButtons` 隐藏全部 header 会话按钮 | 收起态 leading = 展开按钮 + 新对话按钮（NewSessionIcon，pane 用各自 handleClearChat + isStreaming 禁用）+ 分割线（对齐 codechat `workspace-header-start` 收起分支）；展开态无此组          |
+| 3   | 按钮组与标题间无分割线 | 无                                                       | `header-collapsed-divider` 1px×16px / margin 0 8px（codechat workspace-header-divider 同值）；浅色 #DCDEE6（--cc-border），深色 12% 白沿用 wave 边框约定                                   |
+
+### 验证结果（Playwright 探针 + 截图实测）
+
+| 项                          | 实测                                                       | 期望 |
+| --------------------------- | ---------------------------------------------------------- | ---- |
+| 收起态 leading 顺序         | expand → new-session → divider → title → buttons           | ✓    |
+| 展开按钮图标                | svg 2 paths（外框+箭头），首 path = sidebar-expand 箭头    | ✓    |
+| 新对话按钮                  | 22×22、aria-label「新建对话」；真实点击 → 标题变「新对话」 | ✓    |
+| divider 1px×16px light/dark | #DCDEE6 / rgba(255,255,255,0.12)                           | ✓    |
+| 展开态回归                  | 无 expand/new-session/divider，sidebar 显示                | ✓    |
+| 深色对比度                  | vision 复核：图标/分割线清晰，无变黑消失                   | ✓    |
+| compile                     | 通过                                                       | ✓    |
+
+### 实现文件
+
+- `src/components/HeaderIcons.tsx`（新增 SidebarExpandIcon = sidebar-expand.svg 外框+右箭头）
+- `src/components/ChatApp.tsx`（SidebarExpandButton 换图标；collapsedLeading = 展开+新对话+分割线，root/pane 共用）
+- `src/styles/ChatHeader.css`（.header-collapsed-divider 布局 1px×16px margin 0 8px）
+- `src/styles/host-desktop.css`（第十九轮段：divider 浅 #DCDEE6 / 深 12% 白）

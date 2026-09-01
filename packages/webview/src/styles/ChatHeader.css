@@ -29,6 +29,16 @@
   align-items: center;
 }
 
+/* Sidebar collapsed → 收起态 leading（展开按钮 + 新对话）与标题之间的 1px
+   分割线（对齐原型 workspace-header-divider，颜色在 host-desktop.css 覆盖）。 */
+.header-collapsed-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 8px;
+  flex-shrink: 0;
+  background-color: var(--vscode-widget-border, rgba(128, 128, 128, 0.4));
+}
+
 /* IDE hosts: persistent login entry while logged out (brand-red pill). */
 .header-login-button {
   height: 22px;
