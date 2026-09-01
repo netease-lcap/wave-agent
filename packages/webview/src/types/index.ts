@@ -550,6 +550,12 @@ export interface ChatHeaderProps {
   currentSession?: SessionMetadata;
   onSessionSelect: (sessionId: string) => void;
   sessionsLoading: boolean;
+  /** Desktop host: fired when the history popup opens, so the host can refresh
+   *  the cross-workdir session list before it renders. */
+  onOpenSessionList?: () => void;
+  /** Desktop host: show each session's workdir + worktree/branch labels in the
+   *  popup (the desktop list spans multiple workdirs; IDE lists are single-dir). */
+  showWorkdir?: boolean;
   onOpenSettings: () => void;
   onOpenEnterpriseConsole: () => void;
   onOpenHelpDocs: () => void;
@@ -561,6 +567,9 @@ export interface ChatHeaderProps {
   showLoginButton?: boolean;
   // Desktop host: session new/list buttons live in DesktopSidebar instead.
   hideSessionButtons?: boolean;
+  // Desktop host: the 新建对话 header button stays in the sidebar; the header
+  // shows only the 历史对话 button (cross-workdir popup).
+  hideNewSessionButton?: boolean;
   // Desktop host: the more button + menu live in DesktopSidebar instead.
   hideMoreButton?: boolean;
   // Desktop host: conversation-level panel toggle (preview/diff/terminal).

@@ -39,7 +39,7 @@
 }
 
 .session-list-results {
-  max-height: 300px;
+  max-height: 400px;
   overflow-y: auto;
 }
 
@@ -80,12 +80,54 @@
   text-overflow: ellipsis;
 }
 
+.session-list-item-meta {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.session-list-item-path {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Tags (worktree / branch) share the time row so the workdir path gets the
+   full meta line — desktop 历史对话弹窗: pills must not truncate the path. */
+.session-list-item-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.session-list-item-tag {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 110px;
+  font-size: 10px;
+  line-height: 14px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background-color: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .session-list-highlight {
   color: var(--vscode-textLink-foreground);
   font-weight: 500;
 }
 
 .session-list-item-time {
+  margin-left: auto;
+  flex-shrink: 0;
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
