@@ -94,15 +94,12 @@ export const PanelToggleMenu: React.FC<PanelToggleMenuProps> = ({
           <div
             key={kind}
             {...getItemProps(i)}
-            className={`panel-toggle-menu-item${isDisabled ? " panel-toggle-menu-item--disabled" : ""}`}
+            className={`panel-toggle-menu-item${isChecked ? " panel-toggle-menu-item--active" : ""}${isDisabled ? " panel-toggle-menu-item--disabled" : ""}`}
             role="checkbox"
             aria-checked={isChecked}
             aria-disabled={isDisabled}
             data-testid={`panel-toggle-item-${kind}`}
           >
-            <i
-              className={`codicon codicon-check panel-toggle-menu-check${isChecked ? " panel-toggle-menu-check--on" : ""}`}
-            />
             <span className="panel-toggle-menu-label">{label}</span>
             {shortcut ? (
               <span className="panel-toggle-menu-shortcut">{shortcut}</span>

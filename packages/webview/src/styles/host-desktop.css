@@ -1031,6 +1031,14 @@
   background-color: #e7e9ed;
   color: #1f2329;
 }
+/* 第二十五轮：面板切换菜单选中态对齐 codechat workspace-header-menu-item.active
+   （背景 #E7E9ED + 文字 #1F2329，无对号；active:hover 保持 pressed 不漂回 hover） */
+[data-host="desktop"] .panel-toggle-menu-item--active,
+[data-host="desktop"] .panel-toggle-menu-item--active:hover,
+[data-host="desktop"] .panel-toggle-menu-item--active:focus-visible {
+  background-color: #e7e9ed;
+  color: #1f2329;
+}
 [data-host="desktop"] .suggestion-item,
 [data-host="desktop"] .rewind-popup-item,
 [data-host="desktop"] .model-popup-item,
@@ -1110,6 +1118,13 @@
 [data-host="desktop"][data-theme="dark"] .rewind-popup-item.selected,
 [data-host="desktop"][data-theme="dark"] .model-popup-item.selected,
 [data-host="desktop"][data-theme="dark"] .history-search-item.selected {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+/* 第二十五轮：面板切换菜单选中态深色（12% 白底 + 白字） */
+[data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item--active,
+[data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item--active:hover,
+[data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item--active:focus-visible {
   background-color: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
