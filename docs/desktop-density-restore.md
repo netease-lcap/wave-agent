@@ -727,3 +727,30 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 ### 实现文件
 
 - `src/styles/host-desktop.css`（timeline 深色描边 + panel-toggle shortcut 间距）
+
+## 第十七轮：灰条触发器箭头方向/位置 / worktree 复选框样式（3 项评论）
+
+评论：host-trigger「本地」下拉箭头方向错了；workdir-trigger「main」下拉箭头位置不对；worktree 复选框「参考其他选项的样式延展」。
+
+### 变更点清单
+
+| #   | 对象                                                                        | 修复前                                                                                      | 修复后（权威依据）                                                                                                                                                      |
+| --- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `.desktop-host-caret` / `.desktop-workdir-caret`（本地/CC02/main 三个箭头） | 未旋转（朝上 ⌃，方向与 Figma 相反）；展开时不翻转                                           | `rotate(180deg)`（收起朝下 ⌄，codechat `picker-chevron` 默认旋转同值）；`aria-expanded="true"` 时 `transform: none`（展开朝上 ⌃，codechat `.is-open` 同值）+ 0.15s 过渡 |
+| 2   | branch trigger「main」箭头                                                  | `codicon-chevron-down`（16px 字体被 CSS 压成 8×5 占位，视觉间距 16px 且方向与其他两个相反） | 换 `PermCaretIcon`（8×5 svg，与其他触发器同款），间距回到 6px；方向随统一规则旋转                                                                                       |
+| 3   | `.desktop-worktree-checkbox`                                                | 无 padding/无 min-height/12px/无 hover（原生 checkbox 直接放入灰条，明显矮小）              | 参考同灰条选项（codechat `context-picker` 规格）延展：min-height 32 / pad 0 6 / r8 / 14px / hover 灰底 #EEF0F3（深色 8% 白）                                            |
+
+### 验证结果（Playwright 探针 + 截图实测）
+
+| 项                              | 实测                                           | 期望 |
+| ------------------------------- | ---------------------------------------------- | ---- |
+| 三个 caret 收起 transform       | `matrix(-1,0,0,-1)` = rotate(180deg)（统一 ⌄） | ✓    |
+| main 与 CC02 箭头间距           | 均 6px                                         | ✓    |
+| 展开态箭头（过渡后）            | `transform: none`（⌃）                         | ✓    |
+| worktree checkbox minH/pad/r/fs | 32 / 0 6 / 8 / 14px                            | ✓    |
+| compile                         | 通过                                           | ✓    |
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（caret 旋转 + 展开翻转 + checkbox 样式）
+- `src/components/DesktopWorktreeControls.tsx`（branch 箭头 codicon → PermCaretIcon）
