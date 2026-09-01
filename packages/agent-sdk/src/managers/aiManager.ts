@@ -1536,6 +1536,23 @@ ${question}`;
 
         toolAbortController = new AbortController();
         this.toolAbortController = toolAbortController;
+
+        // Every tool call in a turn wires its own abort listener onto the
+        // shared tool signal (see toolAbortController.signal in executeTool),
+        // so a fan-out of >=11 parallel calls trips Node's default 10-listener
+        // cap and spams MaxListenersExceededWarning. The signal dies with the
+        // turn (toolAbortController is cleared in the tool loop), so there is
+        // no real leak — raise the cap to silence the noise. Optional chaining
+        // keeps this a no-op on Node >=26, which removed the EventTarget
+        // warning mechanism (and the setMaxListeners method) entirely.
+        const toolSignal = toolAbortController.signal as EventTarget & {
+          setMaxListeners?: (n: number) => void;
+        };
+        const turnSignal = abortController.signal as EventTarget & {
+          setMaxListeners?: (n: number) => void;
+        };
+        toolSignal.setMaxListeners?.(0);
+        turnSignal.setMaxListeners?.(0);
       } else {
         // Reuse existing controllers
         abortController = this.abortController!;
