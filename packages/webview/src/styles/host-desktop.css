@@ -448,14 +448,10 @@
 
 /* ── 第三轮 Figma 权威值（Figma 组件库「CC桌面端组件库」实测）───────── */
 
-/* 新对话按钮：Figma 为实底按钮（fill #EBEDF0 / r8 / 文字 14px/400），
-   非无背景行 —— 覆盖 DesktopApp.css 的透明底 + 500 字重 */
-[data-host="desktop"][data-theme="light"] .desktop-sidebar-new-chat {
-  background: #ebedf0;
-  font-weight: 400;
-}
-[data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat {
-  background: rgba(255, 255, 255, 0.08);
+/* 新对话按钮：常态透明底（用户反馈实底 #EBEDF0 形似「始终选中」——
+   第十二轮取消第三轮 Figma 实底化，改回无背景行；hover 保留浅灰反馈）。
+   字重保持 Figma 400。 */
+[data-host="desktop"] .desktop-sidebar-new-chat {
   font-weight: 400;
 }
 [data-host="desktop"][data-theme="light"] .desktop-sidebar-new-chat:hover:not(:disabled) {
@@ -470,14 +466,8 @@
   border-right-color: #ebEEF5;
 }
 
-/* 账户热区：Figma sidebar-account hotzone 常驻实底 #EBEDF0 r6（13497-15325
-   13498:17132 195×32），hover 微深 #E2E4E8；深色中性 8% 白 */
-[data-host="desktop"][data-theme="light"] .account-card-hotzone {
-  background: #ebedf0;
-}
-[data-host="desktop"][data-theme="dark"] .account-card-hotzone {
-  background: rgba(255, 255, 255, 0.08);
-}
+/* 账户热区：常态透明底（用户反馈常驻实底 #EBEDF0 形似「始终选中」——
+   第十二轮取消第三轮 Figma 实底化）；hover/focus 保留浅灰反馈 */
 [data-host="desktop"][data-theme="light"] .account-card-hotzone:hover,
 [data-host="desktop"][data-theme="light"] .account-card-hotzone:focus-visible {
   background: #e2e4e8;
