@@ -410,7 +410,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // pane 共用；`expand` 为 null（侧边栏展开）时不渲染整组。
   const collapsedLeading = (expand: React.ReactNode) =>
     expand ? (
-      <>
+      <div className="header-collapsed-leading">
         {expand}
         <Tooltip text="新建对话" position="bottom">
           <button
@@ -424,7 +424,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           </button>
         </Tooltip>
         <span className="header-collapsed-divider" />
-      </>
+      </div>
     ) : null;
   // The pane's effective host ('local' or an SSH host name): a pane-bound
   // session's host (authoritative `desktopPanes` push) wins; the single-pane

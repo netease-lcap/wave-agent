@@ -611,6 +611,8 @@
    base 为 content-box 44 + 1px border = 45 总高、标题 13px */
 [data-host="desktop"] .chat-header {
   box-sizing: border-box;
+  /* Figma workspace-header：padding 0 16px（base 为 0 12px） */
+  padding: 0 16px;
 }
 [data-host="desktop"][data-theme="light"] .chat-header {
   border-bottom-color: #ebeef5;
@@ -891,13 +893,32 @@
    参考 codechat WorkspaceHeader.vue 收起分支：sidebar-expand（外框+右箭头）
    + new-chat-header 按钮 + workspace-header-divider（1px×16px，--cc-border
    #DCDEE6）/ 标题。展开按钮图标/新对话按钮/分割线 DOM 在 ChatApp 构造，
-   此处只覆盖分割线颜色（浅 #DCDEE6，深 12% 白沿用 wave 边框约定）。 */
+   此处只覆盖分割线颜色（浅 #DCDEE6，深 12% 白沿用 wave 边框约定）。
+
+   第二十四轮：按钮尺寸 22→24×24（codechat figma-icon-button）、按钮间距
+   8px（ChatHeader.css .header-collapsed-leading gap 8）、hover 背景
+   --cc-fill-hover（浅 #EEF0F3 / 深 8% 白）。 */
 
 [data-host="desktop"][data-theme="light"] .header-collapsed-divider {
   background-color: #dcdfe6;
 }
 [data-host="desktop"][data-theme="dark"] .header-collapsed-divider {
   background-color: rgba(255, 255, 255, 0.12);
+}
+
+/* 收起态按钮：对齐 codechat .figma-icon-button（24×24，r6，hover --cc-fill-hover） */
+[data-host="desktop"] .header-collapsed-leading .header-button {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+[data-host="desktop"] .header-collapsed-leading .header-button:hover {
+  background-color: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"]
+  .header-collapsed-leading
+  .header-button:hover {
+  background-color: rgba(255, 255, 255, 0.08);
 }
 
 /* ═══ 第十三轮：下拉菜单/弹层统一（对齐 codechat 菜单规格）═══════

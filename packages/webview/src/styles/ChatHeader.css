@@ -29,12 +29,18 @@
   align-items: center;
 }
 
-/* Sidebar collapsed → 收起态 leading（展开按钮 + 新对话）与标题之间的 1px
-   分割线（对齐原型 workspace-header-divider，颜色在 host-desktop.css 覆盖）。 */
+/* Sidebar collapsed → 收起态 leading（展开按钮 + 新对话 + 分割线）：对齐原型
+   workspace-header-start（flex gap 8）。分割线两侧间距由容器 gap 提供。 */
+.header-collapsed-leading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .header-collapsed-divider {
   width: 1px;
   height: 16px;
-  margin: 0 8px;
+  margin: 0;
   flex-shrink: 0;
   background-color: var(--vscode-widget-border, rgba(128, 128, 128, 0.4));
 }
