@@ -967,3 +967,44 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 ### 实现文件
 
 - `src/styles/host-desktop.css`（第二十三轮段：sticky wrapper margin 归零 + sticky content 字重 500）
+
+## 第二十四轮：收起态 header 图标与间距（2 项评论）
+
+评论①：`svg`（收起态新对话按钮）「检查和设计稿中图标的一致性，包括收起时的新对话图标」；
+评论②：`button.header-button`「检查图标和其他地方的间距问题」。
+
+### 变更点清单
+
+| #   | 对象                     | 修复前                                                                     | 修复后                                                                                                               |
+| --- | ------------------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 1   | NewSessionIcon 加号 path | 直角小加号（`M11.9518 10.8213H14.4781…`，笔画 1px 无圆角，跨度 5.88×6.02） | 替换为 Figma new-chat-header.svg 权威圆角加号（`M11.4518 8.15918C11.8384…`，C 曲线圆角、笔画 1.4px、跨度 6.28×6.42） |
+| 2   | NewSessionIcon 气泡 path | 同源异构气泡 path（坐标偏移 ~0.1）                                         | 替换为 Figma 同款气泡 path（与加号同源，fill-rule evenodd）                                                          |
+| 3   | 收起态按钮间距           | 两个按钮间 **0px**（leading 是 fragment 无容器，.chat-header 无 gap）      | 包一层 `.header-collapsed-leading`（flex gap 8 align-center）→ 按钮间距 8px（实测 48-40=8）                          |
+| 4   | 收起态按钮尺寸           | 22×22（继承 base .header-button）                                          | **24×24 + r6**（对齐 codechat figma-icon-button）                                                                    |
+| 5   | header 左右 padding      | 0 12px                                                                     | 0 **16px**（对齐 Figma workspace-header）                                                                            |
+| 6   | 收起态按钮 hover 背景    | base `--vscode-toolbar-hoverBackground`（VS Code 蓝灰）                    | `--cc-fill-hover`：浅 #EEF0F3 / 深 rgba(255,255,255,0.08)（对齐 codechat figma-icon-button:hover）                   |
+| 7   | divider 间距机制         | margin 0 8px（手写双 8px）                                                 | margin 0，由容器 gap 8 提供两侧 8px（与 codechat workspace-header-start 同构）                                       |
+
+### 验证结果（Playwright 探针 + 截图实测）
+
+| 项                    | 实测                                                                | 期望 |
+| --------------------- | ------------------------------------------------------------------- | ---- |
+| 收起态按钮            | 2 个，24×24、r6                                                     | ✓    |
+| 按钮间距              | 8px（rect: x 16 → 48）                                              | ✓    |
+| leading 容器          | flex / gap 8px / align-items center                                 | ✓    |
+| divider               | 1×16、margin 0                                                      | ✓    |
+| chat-header padding   | left/right 16px（展开态同样生效，无回归）                           | ✓    |
+| 加号 path             | 含 `C11.8384` 圆角曲线（直角 path 已移除）                          | ✓    |
+| hover 背景 light/dark | rgb(238,240,243) = #EEF0F3 / rgba(255,255,255,0.08)（真实鼠标实测） | ✓    |
+| vision 复核           | 两按钮形状正确（外框+右箭头 / 气泡+圆角加号）、间距均匀、对比度良好 | ✓    |
+| smoke-ui / type-check | 无 JS 错误 / 通过                                                   | ✓    |
+
+注：1px #DCDEE6 分割线在浅底上细不可见属设计预期（codechat --cc-border 同款）；本页探针改用
+`setAttribute` 设置主题（`dataset.theme` 赋值会被 vite HMR 偶发重置）。
+
+### 实现文件
+
+- `src/components/HeaderIcons.tsx`（NewSessionIcon 双 path 替换为 Figma 权威版）
+- `src/components/ChatApp.tsx`（collapsedLeading 包 `.header-collapsed-leading` 容器）
+- `src/styles/ChatHeader.css`（新增 leading 容器 flex gap 8；divider margin 归零）
+- `src/styles/host-desktop.css`（第二十四轮段：chat-header padding 16、收起态按钮 24×24/r6/hover 双主题）
