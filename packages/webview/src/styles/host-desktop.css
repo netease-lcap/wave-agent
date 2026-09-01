@@ -514,6 +514,11 @@
   border: 2px solid #ffffff;
   box-sizing: border-box;
 }
+/* 深色：2px 白描边在深色会话底（#191A1B）上呈突兀白圈 → 同色描边，
+   节点呈纯绿点（浅色白描边与白底融合保留） */
+[data-host="desktop"][data-theme="dark"] .timeline-row::before {
+  border-color: #191a1b;
+}
 
 /* Composer 输入文字：Figma 14px / 行高 22px（base 12px/16px 偏小） */
 [data-host="desktop"] .message-input {
@@ -832,6 +837,13 @@
 [data-host="desktop"] .desktop-workdir-menu-item:focus-visible {
   background: #eef0f3;
   color: #1f2329;
+}
+
+/* 面板切换菜单项 label ↔ 快捷键最小间距：codechat workspace-header-menu-item
+   gap 16（wave 有 16px 选中勾占位，label flex:1 已让快捷键右对齐；
+   在 gap 8 基础上给快捷键补 8px margin-left = 16px 最小间距） */
+[data-host="desktop"] .panel-toggle-menu-shortcut {
+  margin-left: 8px;
 }
 
 /* 危险项：codechat --cc-color-danger #D92D20 + hover 红软底 #FFF0EF */
