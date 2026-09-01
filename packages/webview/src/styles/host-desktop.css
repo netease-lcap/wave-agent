@@ -1301,3 +1301,20 @@
 [data-host="desktop"] ::-webkit-scrollbar-thumb:active {
   background-color: var(--cc-fill-scrollbar-hover);
 }
+
+
+/* ── 第二十三轮：sticky 用户消息对齐普通用户气泡（用户反馈：悬浮后缺左边距 / 字重变细） ── */
+
+/* ① 左边距：wrapper 原 margin-left/right -10px 把卡片拉伸到容器 border box
+   （贴左缘 x=容器 x，比内容左缘 10px 更靠外）→ 归零，卡片左缘回到容器
+   padding 10px 内，与普通消息行左缘对齐（普通气泡 padding 12 → 文字 2px 微差忽略）。 */
+[data-host="desktop"] .sticky-user-wrapper {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+/* ② 字重：sticky 内容 400（继承默认）→ 500，与普通用户气泡 14px/500 一致
+   （悬浮前后文字粗细保持不变）。字号 14px 已一致。 */
+[data-host="desktop"] .sticky-user-content {
+  font-weight: 500;
+}
