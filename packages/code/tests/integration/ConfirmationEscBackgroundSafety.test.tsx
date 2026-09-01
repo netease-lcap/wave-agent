@@ -84,6 +84,7 @@ describe("Confirmation Escape - Background Safety", () => {
     getPermissionMode: vi.fn(() => "default"),
     getMcpServers: vi.fn(() => []),
     getSlashCommands: vi.fn(() => []),
+    getHooksByScope: vi.fn(async () => ({})),
     sendMessage: vi.fn(),
     bang: vi.fn(),
     abortMessage: vi.fn(), // We'll verify this IS called

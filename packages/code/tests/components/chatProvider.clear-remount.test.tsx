@@ -58,6 +58,7 @@ function createMockAgent() {
     getMaxInputTokens: () => 200000,
     getMcpServers: () => [],
     getSlashCommands: () => [],
+    getHooksByScope: async () => ({}),
     clearMessages: vi.fn().mockImplementation(() => {
       agent.messages = [];
       return Promise.resolve();

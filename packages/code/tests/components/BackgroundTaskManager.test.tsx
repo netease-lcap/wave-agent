@@ -91,6 +91,7 @@ describe("BackgroundTaskManager", () => {
     getPermissionMode: vi.fn(() => "default"),
     getMcpServers: vi.fn(() => []),
     getSlashCommands: vi.fn(() => []),
+    getHooksByScope: vi.fn(async () => ({})),
     destroy: vi.fn(),
     isLoading: false,
     latestTotalTokens: 0,
