@@ -4189,7 +4189,10 @@ export class DesktopHost {
       }
     } catch (error) {
       console.error("[DesktopHost] 发送消息失败:", error);
-      this.pushSystemMessage(`发送消息失败: ${error}`, pid);
+      this.pushSystemMessage(
+        `发送消息失败: ${error}。详情见 ~/.wave/logs/cli.log`,
+        pid,
+      );
     }
   }
 
