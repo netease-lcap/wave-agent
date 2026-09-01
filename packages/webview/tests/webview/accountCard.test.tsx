@@ -202,7 +202,7 @@ describe("AccountCard (desktop sidebar)", () => {
     expect(vscode.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         command: "openExternal",
-        url: "https://codechat.example.com/docs",
+        url: "https://codechat.example.com/docs/",
       }),
     );
     expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();

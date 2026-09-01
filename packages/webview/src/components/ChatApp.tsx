@@ -1464,7 +1464,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     if (url) {
       vscode.postMessage({
         command: "openExternal",
-        url: `${url.replace(/\/+$/, "")}/docs`,
+        url: `${url.replace(/\/+$/, "")}/docs/`,
       });
     }
   }, [vscode]);
