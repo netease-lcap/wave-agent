@@ -15,6 +15,7 @@ import type {
   OpenPaneOptions,
   VsCodeApi,
 } from "../types";
+import type { NavKey } from "./SettingsPage";
 import "../styles/DesktopApp.css";
 
 const MIN_PANE_WIDTH = 360;
@@ -28,8 +29,13 @@ type DropZone = "above" | "below";
 interface DesktopShellProps {
   vscode: VsCodeApi;
   host: DesktopHostProps;
-  /** Sidebar more-menu actions — owned by the delegating ChatApp instance. */
-  onOpenSettings: () => void;
+  /**
+   * Sidebar more-menu actions — owned by the delegating ChatApp instance. The
+   * optional nav also serves pane-scoped ChatApp instances (threaded as
+   * `onOpenSettingsFromPane`) so /config、/agents、/skills、/mcp 在 pane 内
+   * 也能打开设置页并选中对应选项卡（spec agent-config.md 场景 5）。
+   */
+  onOpenSettings: (nav?: NavKey) => void;
   onOpenEnterpriseConsole: () => void;
   onOpenHelpDocs: () => void;
   onLogin: () => void;
@@ -771,6 +777,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                                   ? sidebarExpandButton
                                   : undefined
                               }
+                              onOpenSettingsFromPane={onOpenSettings}
                               headerActions={
                                 panes.length > 1 ? (
                                   <button
