@@ -754,3 +754,37 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 
 - `src/styles/host-desktop.css`（caret 旋转 + 展开翻转 + checkbox 样式）
 - `src/components/DesktopWorktreeControls.tsx`（branch 箭头 codicon → PermCaretIcon）
+
+## 第十八轮：预览面板工具栏图标/地址栏字号/背景色（1 项评论）
+
+评论：`div.preview-pane-toolbar`「http://localhost:8899/」图标不对，输入区域字号，背景色不对。
+
+### 变更点清单
+
+| #   | 对象                                         | 修复前                                                                      | 修复后（权威依据 = 原型 InspectorPanel.vue + global.css）                                                                                                                                                                                                                                    |
+| --- | -------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 工具栏按钮图标（拾取/刷新/浏览器/全屏/关闭） | codicon 字体图标（inspect/refresh/link-external/screen-full/close）         | Figma 导出 SVG（codechat `src/assets/figma/` 直接导出，fill 改 currentColor 适配深色）：inspector-cursor / refresh / open-browser / maximize·unmaximize；关闭复用 wave CloseIcon。新增 HeaderIcons 组件：InspectorCursorIcon / RefreshIcon / OpenBrowserIcon / MaximizeIcon / UnmaximizeIcon |
+| 2   | 地址栏（显示态 span + 编辑态 input）字号     | 12px                                                                        | 14px / line-height 22（--cc-font-size-md）；显示态 span 与编辑态 input 同为 26px 高、pad 0 8px、r8、浅灰底 → 两态视觉一致无跳动（codechat 地址栏常显输入框）                                                                                                                                 |
+| 3   | 地址栏/工具栏背景色                          | 工具栏继承 aside 侧栏背景 #F7F8FB；地址输入框 vscode-input 背景（无浅灰底） | 工具栏 44px 高 / pad 0 12 / gap 8 / 白底（深 #27292B）/ 底分隔线 #EBEEF5（深 12% 白）；地址栏浅灰底 #F0F2F5（深 6% 白）r8 无边框；placeholder #6C7076（深 #8B8F95）                                                                                                                          |
+| 4   | 工具栏按钮尺寸/颜色                          | padding 4px 自适应、vscode foreground                                       | 24×24（figma-icon-button）/ r4 / 图标 #565A60（深 #9A9EA5）/ hover #EEF0F3（深 8% 白）/ 拾取 active #E7E9ED（深 12% 白）+ 文字转深                                                                                                                                                           |
+
+### 验证结果（Playwright 探针 + 截图实测）
+
+| 项                                | 实测                                                                                   | 期望 |
+| --------------------------------- | -------------------------------------------------------------------------------------- | ---- |
+| 工具栏高/pad/gap                  | 45（44+1 边框）/ 0 12 / 8                                                              | ✓    |
+| 工具栏背景 light/dark             | #FFF / #27292B                                                                         | ✓    |
+| 地址输入框 14px/26px/r8/无边框    | 14/22、26、8px、0px none                                                               | ✓    |
+| 输入框背景 light/dark             | #F0F2F5 / 6% 白（placeholder #6C7076 / #8B8F95）                                       | ✓    |
+| 按钮 24×24、svg 16×16、无 codicon | 5 按钮均 24×24、svgW 16、codicon false                                                 | ✓    |
+| 按钮色 light/dark / hover light   | #565A60 / #9A9EA5 / #EEF0F3（深 8% 白）                                                | ✓    |
+| 拾取 active light/dark            | #E7E9ED / 12% 白（直接加类验证；浏览器 mock 无 webview preload，点击不激活属环境限制） | ✓    |
+| 显示态地址栏浅灰圆角底板          | vision 复核：浅色清晰可见、深色低调自洽，与按钮组对齐良好                              | ✓    |
+| compile                           | 通过                                                                                   | ✓    |
+
+### 实现文件
+
+- `src/components/HeaderIcons.tsx`（新增 5 个 Figma 导出图标：InspectorCursor/Refresh/OpenBrowser/Maximize/Unmaximize）
+- `src/components/PreviewPane.tsx`（工具栏 5 按钮 codicon → SVG 图标）
+- `src/styles/DesktopApp.css`（工具栏 44px/0 12/8、地址栏 26px/14px/r8 两态统一、按钮 24×24）
+- `src/styles/host-desktop.css`（第十八轮段：工具栏/地址栏/按钮 light+dark 颜色）
