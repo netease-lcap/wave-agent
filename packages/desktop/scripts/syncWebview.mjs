@@ -77,7 +77,7 @@ const lightThemeCss = rewriteThemeBase(
   "light",
 );
 const html = `<!DOCTYPE html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="zh-CN" data-theme="dark" data-host="desktop">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="${CSP}" />

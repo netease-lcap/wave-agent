@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import { ContextLocalIcon, PermCaretIcon } from "./HeaderIcons";
 import "../styles/DesktopApp.css";
 
 export interface DesktopHostSelectorProps {
@@ -118,11 +119,9 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
         role="button"
         tabIndex={0}
       >
-        <span
-          className={`codicon ${isLocal ? "codicon-device-desktop" : "codicon-remote"}`}
-        ></span>
+        <ContextLocalIcon className="desktop-host-icon" />
         <span className="desktop-host-name">{isLocal ? "本地" : host}</span>
-        <span className="codicon codicon-chevron-down desktop-host-caret"></span>
+        <PermCaretIcon className="desktop-host-caret" />
       </div>
       {open && (
         <div

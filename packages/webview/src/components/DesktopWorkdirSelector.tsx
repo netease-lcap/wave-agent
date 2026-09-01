@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import { ContextDirectoryIcon, PermCaretIcon } from "./HeaderIcons";
 import "../styles/DesktopApp.css";
 
 export interface DesktopWorkdirSelectorProps {
@@ -290,9 +291,9 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
         role="button"
         tabIndex={0}
       >
-        <span className="codicon codicon-folder-opened"></span>
+        <ContextDirectoryIcon className="desktop-workdir-icon" />
         <span className="desktop-workdir-name">{dirName}</span>
-        <span className="codicon codicon-chevron-down desktop-workdir-caret"></span>
+        <PermCaretIcon className="desktop-workdir-caret" />
       </div>
       {menuOpen && !browsing && (
         <div

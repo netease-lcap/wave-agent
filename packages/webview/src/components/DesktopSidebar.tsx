@@ -466,6 +466,18 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 
   return (
     <div className="desktop-sidebar" data-testid="desktop-sidebar">
+      {/* macOS 窗口控制行（对齐 codechat 侧栏：44px 红绿灯行）。真机 Electron
+          用系统原生标题栏（已有红绿灯），仅在原型预览（waveHostType 未注入）
+          中渲染，避免红绿灯重复。 */}
+      {typeof window !== "undefined" && window.waveHostType !== "desktop" && (
+        <div className="sidebar-window-row" aria-hidden="true">
+          <span className="window-controls">
+            <span className="window-dot window-dot--close" />
+            <span className="window-dot window-dot--minimize" />
+            <span className="window-dot window-dot--maximize" />
+          </span>
+        </div>
+      )}
       <div className="desktop-sidebar-header">
         <CodewaveLogo height={14} />
         {/* The header is space-between, so both buttons must live in one
@@ -549,12 +561,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 aria-label={`${expanded ? "收起分组" : "展开分组"} ${dirName(group.workdir)}`}
                 title={group.workdir}
               >
-                <span
-                  className={`codicon codicon-chevron-${expanded ? "down" : "right"}`}
-                ></span>
                 <span className="desktop-session-group-name">
                   {dirName(group.workdir)}
                 </span>
+                <span
+                  className={`codicon codicon-chevron-${expanded ? "down" : "right"}`}
+                ></span>
                 {group.host !== "local" && (
                   <span
                     className="desktop-session-group-host"
