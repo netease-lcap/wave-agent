@@ -1082,56 +1082,6 @@ export class ConfigurationService {
   }
 
   /**
-   * Set the enabled state of a hook at a specific scope, identified by
-   * hookName of the form `Event:Matcher` (e.g. `PreToolUse:Write`).
-   * Persists to the scope's settings.json hooks block.
-   */
-  async setHookEnabled(
-    workdir: string,
-    scope: Scope,
-    hookName: string,
-    enabled: boolean,
-  ): Promise<void> {
-    if (scope !== "user" && !existsSync(workdir)) {
-      throw new Error(`Working directory does not exist: ${workdir}`);
-    }
-
-    const { configPath, configDir } = this.resolveHookConfigPath(
-      workdir,
-      scope,
-    );
-    if (!existsSync(configDir)) {
-      await fs.mkdir(configDir, { recursive: true });
-    }
-
-    let config: WaveConfiguration = {};
-    if (existsSync(configPath)) {
-      try {
-        const content = await fs.readFile(configPath, "utf-8");
-        config = JSON.parse(content);
-      } catch {
-        // Start with empty config if file is corrupted
-      }
-    }
-
-    const { event, matcher } = parseHookName(hookName);
-    if (!isValidHookEvent(event)) {
-      throw new Error(`Invalid hook event: ${event}`);
-    }
-    const hooks = config.hooks || {};
-    const eventConfigs = hooks[event] || [];
-    const target = eventConfigs.find(
-      (cfg) => (cfg.matcher || "") === (matcher || ""),
-    );
-    if (target) {
-      target.enabled = enabled;
-      hooks[event] = eventConfigs;
-      config.hooks = hooks;
-      await atomicWriteFile(configPath, JSON.stringify(config, null, 2));
-    }
-  }
-
-  /**
    * Delete a hook at a specific scope, identified by hookName of the form
    * `Event:Matcher`. Removes the matching entry from the scope's settings.json
    * hooks block.

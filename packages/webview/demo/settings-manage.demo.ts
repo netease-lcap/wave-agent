@@ -8,7 +8,7 @@ import path from "node:path";
  * 设置页「钩子」「MCP 服务」选项卡 demo（/hooks、/mcp 斜杠命令落地页）：
  * 独立加载 settings.js bundle（settings-preview-entry），模拟 host 下发
  * settingsState(nav) 选中选项卡，再回 hooksResponse / mcpServersResponse +
- * mcpConfigPathsResponse 展示来源 Tab 列表、钩子开关与 MCP 连接状态。
+ * mcpConfigPathsResponse 展示来源 Tab 列表、钩子事件摘要与 MCP 连接状态。
  */
 
 // SettingsPage 的颜色全部走 --vscode-* 变量，独立 settings.html 没有宿主注入，
@@ -73,7 +73,6 @@ const userHooks = {
     {
       matcher: "Write",
       hooks: [{ type: "command", command: "node scripts/lint-check.js" }],
-      enabled: true,
     },
     {
       matcher: "Read",
@@ -83,7 +82,6 @@ const userHooks = {
           command: "node scripts/audit-read.js --scope=$FILE",
         },
       ],
-      enabled: false,
     },
   ],
   SessionStart: [
@@ -95,13 +93,12 @@ const userHooks = {
           timeout: 30,
         },
       ],
-      enabled: true,
     },
   ],
 };
 
 test.describe("设置页钩子选项卡 Demo", () => {
-  test("should show hook entries with toggle and actions", async ({
+  test("should show hook entries with event summary and actions", async ({
     webviewPage,
   }) => {
     await openSettings(webviewPage, "hooks");
@@ -116,12 +113,16 @@ test.describe("设置页钩子选项卡 Demo", () => {
       });
     }, userHooks);
 
-    // 3 source tabs + 钩子条目与开关
+    // 3 source tabs + 钩子条目、事件摘要与命令
     await expect(webviewPage.getByText("用户级钩子")).toBeVisible();
     await expect(webviewPage.getByText("项目级钩子")).toBeVisible();
     await expect(webviewPage.getByText("插件钩子")).toBeVisible();
     await expect(webviewPage.getByText("PreToolUse:Write")).toBeVisible();
-    await expect(webviewPage.getByText("已关闭")).toBeVisible();
+    await expect(webviewPage.getByText("工具执行前").first()).toBeVisible();
+    await expect(webviewPage.getByText("新会话启动时").first()).toBeVisible();
+    await expect(
+      webviewPage.getByText("node scripts/load-project-context.js"),
+    ).toBeVisible();
 
     const view = webviewPage.locator(".settings-page");
     await elementScreenshotWebp(

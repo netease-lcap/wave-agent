@@ -375,15 +375,6 @@ export class MessageHandler {
           windowId,
         );
         break;
-      case "setHookEnabled":
-        await this.handleSetHookEnabled(
-          msg.scope as "user" | "project",
-          msg.hookName as string,
-          msg.enabled as boolean,
-          viewType,
-          windowId,
-        );
-        break;
       case "deleteHook":
         await this.handleDeleteHook(
           msg.scope as "user" | "project",
@@ -537,13 +528,6 @@ export class MessageHandler {
       case "getHooksByScope":
         await this.handleSettingsGetHooksByScope(
           msg.scope as "user" | "project" | "plugin",
-        );
-        break;
-      case "setHookEnabled":
-        await this.handleSettingsSetHookEnabled(
-          msg.scope as "user" | "project",
-          msg.hookName as string,
-          msg.enabled as boolean,
         );
         break;
       case "deleteHook":
@@ -812,25 +796,6 @@ export class MessageHandler {
       });
     } catch (error) {
       console.error("Failed to get hooks by scope:", error);
-    }
-  }
-
-  private async handleSettingsSetHookEnabled(
-    scope: "user" | "project",
-    hookName: string,
-    enabled: boolean,
-  ): Promise<void> {
-    try {
-      const session = this.getSettingsSession();
-      await session.setHookEnabled(scope, hookName, enabled);
-      const hooks = await session.getHooksByScope(scope);
-      this.context.postSettingsMessage({
-        command: "hooksResponse",
-        hooks,
-      });
-    } catch (error) {
-      console.error("Failed to set hook enabled:", error);
-      vscode.window.showErrorMessage("更新钩子开关失败: " + error);
     }
   }
 
@@ -1790,6 +1755,7 @@ export class MessageHandler {
         { id: "workflows", name: "workflows", description: "查看工作流运行" },
         { id: "agents", name: "agents", description: "查看可用 agents" },
         { id: "skills", name: "skills", description: "查看可用技能" },
+        { id: "hooks", name: "hooks", description: "查看已配置钩子" },
         { id: "rewind", name: "rewind", description: "回退到之前的用户消息" },
         { id: "model", name: "model", description: "切换 AI 模型" },
         { id: "btw", name: "btw", description: "旁路提问（不进入聊天记录）" },
@@ -2200,32 +2166,6 @@ export class MessageHandler {
       viewType,
       windowId,
     );
-  }
-
-  private async handleSetHookEnabled(
-    scope: "user" | "project",
-    hookName: string,
-    enabled: boolean,
-    viewType?: "sidebar" | "tab" | "window",
-    windowId?: string,
-  ) {
-    const session = this.context.getChatSession(viewType || "tab", windowId);
-    try {
-      await session.setHookEnabled(scope, hookName, enabled);
-      // 回发最新钩子配置（settings.json 已更新）
-      const hooks = await session.getHooksByScope(scope);
-      this.context.postMessage(
-        {
-          command: "hooksResponse",
-          hooks,
-        },
-        viewType,
-        windowId,
-      );
-    } catch (error) {
-      console.error("更新钩子开关失败:", error);
-      vscode.window.showErrorMessage("更新钩子开关失败: " + error);
-    }
   }
 
   private async handleDeleteHook(

@@ -10,6 +10,7 @@ import {
   type HookEvent,
   type HookCommand,
   type HookEventConfig,
+  HOOK_EVENT_SUMMARIES,
   isValidHookEvent,
   isValidHookCommand,
   isValidHookEventConfig,
@@ -18,6 +19,37 @@ import {
 } from "../../src/types/hooks.js";
 
 describe("Hook Types", () => {
+  describe("HOOK_EVENT_SUMMARIES", () => {
+    it("should provide a summary for every supported hook event", () => {
+      const events: HookEvent[] = [
+        "PreToolUse",
+        "PostToolUse",
+        "UserPromptSubmit",
+        "Stop",
+        "SubagentStop",
+        "PermissionRequest",
+        "WorktreeCreate",
+        "WorktreeRemove",
+        "CwdChanged",
+        "SessionStart",
+        "SessionEnd",
+        "PreCompact",
+        "PostCompact",
+      ];
+      for (const event of events) {
+        expect(HOOK_EVENT_SUMMARIES[event]).toBeTruthy();
+        expect(typeof HOOK_EVENT_SUMMARIES[event]).toBe("string");
+      }
+    });
+
+    it("should align summaries with Claude Code HookEventMetadata.summary", () => {
+      expect(HOOK_EVENT_SUMMARIES.PreToolUse).toBe("Before tool execution");
+      expect(HOOK_EVENT_SUMMARIES.Stop).toBe(
+        "Right before Claude concludes its response",
+      );
+    });
+  });
+
   describe("isValidHookEvent", () => {
     it("should validate correct hook events", () => {
       expect(isValidHookEvent("PreToolUse")).toBe(true);

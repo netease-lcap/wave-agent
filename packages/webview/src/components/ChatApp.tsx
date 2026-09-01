@@ -1425,8 +1425,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       if (isDesktop) {
         // Batch 2: desktop opens the settings full-page (spec 场景 1). Load the
         // configuration + AGENTS.md editor contents on entry; the page reads the
-        // latest from its own props when it renders. /agents、/skills 斜杠命令
-        // 携带 nav（subagents/skills）选中对应选项卡（spec agents-command.md）。
+        // latest from its own props when it renders. /agents、/skills、/hooks
+        // 斜杠命令携带 nav（subagents/skills/hooks）选中对应选项卡
+        // （spec agents-command.md / hooks-command.md）。
         setSettingsOpen(true);
         if (nav) setSettingsNav(nav);
         vscode.postMessage({ command: "getConfiguration" });
@@ -1562,6 +1563,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       if (trimmedText === "/skills") {
         // 不再弹窗：唤起设置页并选中「技能」选项卡（见 SettingsSkillsView）。
         handleOpenSettings("skills");
+        return;
+      }
+      if (trimmedText === "/hooks") {
+        // 唤起设置页并选中「钩子」选项卡（对齐 /agents → subagents、/skills →
+        // skills 的现有模式；见 SettingsHooksView）。
+        handleOpenSettings("hooks");
         return;
       }
       if (trimmedText === "/rewind") {

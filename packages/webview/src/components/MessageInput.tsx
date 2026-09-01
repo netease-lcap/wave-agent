@@ -1153,6 +1153,7 @@ export const MessageInput = forwardRef<
         "workflows",
         "agents",
         "skills",
+        "hooks",
         "clear",
         "compact",
         "rewind",

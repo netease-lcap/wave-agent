@@ -28,6 +28,27 @@ export type HookEvent =
   | "PreCompact"
   | "PostCompact";
 
+// One-line summary per hook event, aligned with Claude Code's
+// HookEventMetadata.summary (hooksConfigManager.ts). Shared by the CLI
+// /hooks detail view and the webview settings hooks page; unknown/plugin
+// events fall back to displaying the event name itself.
+export const HOOK_EVENT_SUMMARIES: Record<HookEvent, string> = {
+  PreToolUse: "Before tool execution",
+  PostToolUse: "After tool execution",
+  UserPromptSubmit: "When the user submits a prompt",
+  Stop: "Right before Claude concludes its response",
+  SubagentStop:
+    "Right before a subagent (Agent tool call) concludes its response",
+  PermissionRequest: "When a permission dialog is displayed",
+  WorktreeCreate: "Create an isolated worktree for VCS-agnostic isolation",
+  WorktreeRemove: "Remove a previously created worktree",
+  CwdChanged: "After the working directory changes",
+  SessionStart: "When a new session is started",
+  SessionEnd: "When a session is ending",
+  PreCompact: "Before conversation compaction",
+  PostCompact: "After conversation compaction",
+};
+
 // Individual hook command configuration
 export interface HookCommand {
   type: "command";
@@ -41,8 +62,6 @@ export interface HookCommand {
 export interface HookEventConfig {
   matcher?: string; // Required for PreToolUse/PostToolUse, omitted for others
   hooks: HookCommand[];
-  /** Whether this hook entry executes. Absent defaults to true. */
-  enabled?: boolean;
 }
 
 // Context passed to hook during execution
@@ -172,9 +191,6 @@ export function isValidHookEventConfig(
 
   // Validate optional matcher
   if ("matcher" in cfg && typeof cfg.matcher !== "string") return false;
-
-  // Validate optional enabled
-  if ("enabled" in cfg && typeof cfg.enabled !== "boolean") return false;
 
   return true;
 }

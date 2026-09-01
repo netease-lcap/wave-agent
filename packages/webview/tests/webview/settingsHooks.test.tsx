@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
+  renderChatApp,
   render,
   screen,
   fireEvent,
@@ -39,12 +40,10 @@ const userHooks = {
     {
       matcher: "Write",
       hooks: [{ type: "command", command: "node scripts/lint-check.js" }],
-      enabled: true,
     },
     {
       matcher: "Read",
       hooks: [{ type: "command", command: "echo 'read' > /tmp/log" }],
-      enabled: false,
     },
   ],
 };
@@ -53,12 +52,40 @@ const pluginHooks = {
   SessionStart: [
     {
       hooks: [{ type: "command", command: "echo plugin-start" }],
-      enabled: true,
     },
   ],
 };
 
-describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab + 开关）", () => {
+describe("/hooks 斜杠命令 → 设置页「钩子」选项卡", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("IDE 模式（VSCE/JB）发送 openSettings + nav=hooks，不再弹窗", async () => {
+    const { vscode } = renderChatApp();
+    const input = screen.getByTestId("message-input");
+    input.focus();
+    await act(async () => {
+      input.textContent = "/hooks";
+      const range = document.createRange();
+      range.selectNodeContents(input);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      fireEvent.input(input, { data: "/hooks", inputType: "insertText" });
+    });
+    // Send the command (Enter)
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    const call = vscode.postMessage.mock.calls.find(
+      (c) => c[0]?.command === "openSettings",
+    );
+    expect(call).toBeDefined();
+    expect(call?.[0]?.nav).toBe("hooks");
+  });
+});
+
+describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -82,15 +109,13 @@ describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab + 开关
     expect(screen.getByText("node scripts/lint-check.js")).toBeInTheDocument();
   });
 
-  it("disabled 钩子显示「已关闭」标记且开关未勾选", async () => {
+  it("列表项展示事件摘要（对齐 CC HookEventMetadata.summary）", async () => {
     renderSettingsPage();
     sendHostMessage(fixtures.hooksResponse(userHooks));
 
-    expect(await screen.findByText("已关闭")).toBeInTheDocument();
-    const toggle = screen.getByRole("checkbox", {
-      name: "启用钩子 PreToolUse:Read",
-    }) as HTMLInputElement;
-    expect(toggle.checked).toBe(false);
+    // 两个 PreToolUse 条目（Write/Read）都展示事件摘要
+    const summaries = await screen.findAllByText("工具执行前");
+    expect(summaries).toHaveLength(2);
   });
 
   it("切换 Tab 重新请求对应 scope 的钩子", async () => {
@@ -108,7 +133,7 @@ describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab + 开关
     expect(await screen.findByText("项目级钩子暂无内容")).toBeInTheDocument();
   });
 
-  it("插件 Tab 展示插件钩子且无编辑/删除/开关（只读）", async () => {
+  it("插件 Tab 展示插件钩子且无编辑/删除（只读）", async () => {
     renderSettingsPage();
     sendHostMessage(fixtures.hooksResponse(pluginHooks));
 
@@ -125,31 +150,6 @@ describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab + 开关
     expect(
       screen.queryByRole("button", { name: /编辑/ }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("checkbox", { name: /启用钩子/ }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("开关切换 → setHookEnabled RPC + 乐观更新", async () => {
-    const { vscode } = renderSettingsPage();
-    sendHostMessage(fixtures.hooksResponse(userHooks));
-
-    const toggle = (await screen.findByRole("checkbox", {
-      name: "启用钩子 PreToolUse:Write",
-    })) as HTMLInputElement;
-    await act(async () => {
-      fireEvent.click(toggle);
-    });
-
-    expect(vscode.postMessage).toHaveBeenCalledWith({
-      command: "setHookEnabled",
-      scope: "user",
-      hookName: "PreToolUse:Write",
-      enabled: false,
-    });
-    // 乐观更新：开关变为关闭，出现「已关闭」标记
-    expect((toggle as HTMLInputElement).checked).toBe(false);
-    expect(screen.getAllByText("已关闭")).toHaveLength(2);
   });
 
   it("「新增钩子」→ onPrefillPrompt 预填用户级提示词", async () => {

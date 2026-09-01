@@ -1395,23 +1395,6 @@ export class Agent {
   }
 
   /**
-   * Set the enabled state of a hook at a specific scope, identified by
-   * hookName of the form `Event:Matcher` (e.g. `PreToolUse:Write`).
-   */
-  public async setHookEnabled(
-    scope: "user" | "project",
-    hookName: string,
-    enabled: boolean,
-  ): Promise<void> {
-    await this.configurationService.setHookEnabled(
-      this.workdir,
-      scope,
-      hookName,
-      enabled,
-    );
-  }
-
-  /**
    * Delete a hook at a specific scope, identified by hookName of the form
    * `Event:Matcher`.
    */

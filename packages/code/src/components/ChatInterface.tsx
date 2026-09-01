@@ -29,6 +29,7 @@ export const ChatInterface: React.FC = () => {
     maxInputTokens,
     slashCommands,
     hasSlashCommand,
+    hooks,
     isConfirmationVisible,
     confirmingTool,
     handleConfirmationDecision,
@@ -109,6 +110,7 @@ export const ChatInterface: React.FC = () => {
             disconnectMcpServer={disconnectMcpServer}
             slashCommands={slashCommands}
             hasSlashCommand={hasSlashCommand}
+            hooks={hooks}
             latestTotalTokens={latestTotalTokens}
             maxInputTokens={maxInputTokens}
             showLoginHint={showLoginHint}

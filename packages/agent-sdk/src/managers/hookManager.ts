@@ -172,11 +172,6 @@ export class HookManager {
     ) {
       const config = eventConfigs[configIndex];
 
-      // Skip disabled hook entries (enabled: false) — they must not execute
-      if (config.enabled === false) {
-        continue;
-      }
-
       // Check if this config applies to the current context
       if (!this.configApplies(config, event, context.toolName)) {
         continue;

@@ -728,17 +728,6 @@ export class ChatSession {
     return this.agent.getHooksByScope(scope);
   }
 
-  public async setHookEnabled(
-    scope: "user" | "project",
-    hookName: string,
-    enabled: boolean,
-  ): Promise<void> {
-    if (!this.agent) {
-      return;
-    }
-    await this.agent.setHookEnabled(scope, hookName, enabled);
-  }
-
   public async deleteHook(
     scope: "user" | "project",
     hookName: string,

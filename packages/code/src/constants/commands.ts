@@ -26,6 +26,12 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {
+    id: "hooks",
+    name: "hooks",
+    description: "View configured hooks",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
+  {
     id: "rewind",
     name: "rewind",
     description:

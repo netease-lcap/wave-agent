@@ -105,9 +105,7 @@ test.describe("Desktop settings manage views screenshots", () => {
       ],
     });
     await webviewPage.getByText("项目技能", { exact: true }).click();
-    await expect(
-      webviewPage.getByText("wave-agent", { exact: true }),
-    ).toBeVisible();
+    // 单项目模型：平铺展示（无项目分组卡片名），/技能名 样式
     await expect(
       webviewPage.getByText("/deploy", { exact: true }),
     ).toBeVisible();
@@ -158,7 +156,7 @@ test.describe("Desktop settings manage views screenshots", () => {
       "../../docs/public/screenshots/desktop-settings-subagents.webp",
     );
 
-    // ── 3. 钩子：3 个来源 Tab，默认「用户级钩子」列表 + 开关 ──
+    // ── 3. 钩子：3 个来源 Tab，默认「用户级钩子」列表 + 事件摘要 ──
     await webviewPage.getByRole("button", { name: "钩子" }).click();
     await expect(webviewPage.getByText("用户级钩子")).toBeVisible();
     await injector.simulateExtensionMessage("hooksResponse", {
@@ -167,7 +165,6 @@ test.describe("Desktop settings manage views screenshots", () => {
           {
             matcher: "Write",
             hooks: [{ type: "command", command: "node scripts/lint-check.js" }],
-            enabled: true,
           },
           {
             matcher: "Read",
@@ -177,7 +174,6 @@ test.describe("Desktop settings manage views screenshots", () => {
                 command: "node scripts/audit-read.js --scope=$FILE",
               },
             ],
-            enabled: false,
           },
         ],
         SessionStart: [
@@ -189,14 +185,13 @@ test.describe("Desktop settings manage views screenshots", () => {
                 timeout: 30,
               },
             ],
-            enabled: true,
           },
         ],
       },
       configPath: "~/.wave/settings.json",
     });
     await expect(webviewPage.getByText("PreToolUse:Write")).toBeVisible();
-    await expect(webviewPage.getByText("已关闭")).toBeVisible();
+    await expect(webviewPage.getByText("工具执行前").first()).toBeVisible();
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-settings-hooks.webp",
