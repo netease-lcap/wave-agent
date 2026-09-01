@@ -574,3 +574,56 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 ## 本轮未修（记录）
 
 - 无。改动仅 2 项，深色主题 hover 沿用既有 14% 白反馈。
+
+---
+
+# 第十三轮：统一所有下拉菜单/弹层样式（对齐 codechat 菜单规格）
+
+用户指示「参考设计稿和项目代码，统一所有下拉菜单的样式」。盘点发现：仅 permission-mode-menu 与 plus-menu 此前按 codechat 对齐（白底/#EBEEF5/r12/柔影/32px item），其余 15 个下拉菜单/弹层仍沿用 VS Code token（r4-8、深影、item 24px/12px、蓝灰选中态），视觉割裂。
+
+## 权威规格（codechat-ui src/styles/global.css + tokens.css）
+
+| 维度         | 值                                                           | 变量                                     |
+| ------------ | ------------------------------------------------------------ | ---------------------------------------- |
+| 面板背景     | #FFFFFF                                                      | --cc-bg-panel                            |
+| 面板边框     | #EBEEF5                                                      | --cc-border-lighter                      |
+| 面板圆角     | 12px                                                         | --cc-radius-lg                           |
+| 面板阴影     | 0 0 12px rgb(0 0 0 / 12%)                                    | --cc-shadow-popover                      |
+| 面板 padding | 8px                                                          | --cc-space-2                             |
+| 菜单项       | min-height 32px / 14px / 500 / r6 / pad 0 8px / 默认 #565A60 | --cc-control-height-sm 等                |
+| item hover   | 背景 #EEF0F3、文字 #1F2329                                   | --cc-fill-hover                          |
+| item 选中    | 背景 #E7E9ED、文字 #1F2329                                   | --cc-fill-pressed                        |
+| 危险项       | 文字 #D92D20、hover 背景 #FFF0EF                             | --cc-color-danger / --cc-diff-removed-bg |
+| 分隔线       | 1px #EBEEF5                                                  | --cc-border-lighter                      |
+
+## 变更点清单（host-desktop.css「第十三轮」段）
+
+| #   | 对象                                                                                                                                                                                                         | 统一前                                                        | 统一后                                                                                                    |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| 1   | 简单菜单面板：`.more-menu` `.panel-toggle-menu` `.desktop-session-menu` `.desktop-workdir-menu`                                                                                                              | menu/dropdown-background token、r8、`0 2px 8px 36%`、pad 4-8  | 白底 / #EBEEF5 / r12 / 12% 柔影 / pad 8                                                                   |
+| 2   | 简单菜单项                                                                                                                                                                                                   | 24px / 12px / 500 / r4                                        | 32px / 14px / 500 / r6 / pad 0 8px / 默认 #565A60 / gap 8                                                 |
+| 3   | 危险项（more、session-menu）                                                                                                                                                                                 | errorForeground #F14C4C + list-hover                          | #D92D20 + hover 红软底 #FFF0EF                                                                            |
+| 4   | 分隔线 `.more-menu-separator`                                                                                                                                                                                | menu-separatorBackground                                      | #EBEEF5（深色 12% 白）                                                                                    |
+| 5   | 复杂弹层面板：`.session-list-popup` `.slash-commands-popup` `.file-suggestion-dropdown` `.rewind-popup` `.model-popup` `.btw-panel` `.history-search-popup` `.account-usage-popup` `.desktop-remote-browser` | dropdown-background、r4-8、`0 4px 12px`                       | 白底 / #EBEEF5 / r12 / 12% 柔影                                                                           |
+| 6   | 复杂弹层 item 交互                                                                                                                                                                                           | list-hoverBackground / list-activeSelectionBackground（蓝灰） | hover #EEF0F3 / 选中 #E7E9ED / 文字 #1F2329                                                               |
+| 7   | 面板内分隔线与 header                                                                                                                                                                                        | dropdown-border / editor-background                           | #EBEEF5（header 与面板同底）                                                                              |
+| 8   | 弹层主文字                                                                                                                                                                                                   | 12-13px                                                       | 14px（rewind/model/history/slash-name/session-list-title）                                                |
+| 9   | 深色主题全套                                                                                                                                                                                                 | —                                                             | 面板 #27292B / 12% 白边框 / 40% 柔影 / item #9A9EA5 / hover 8% 白 / 选中 12% 白 / 危险 #F4655C + 20% 红底 |
+
+## 验证结果（Playwright 探针实测，light/dark）
+
+| 项                                                            | wave 实测                             | codechat          |
+| ------------------------------------------------------------- | ------------------------------------- | ----------------- |
+| 面板（more/panel/session/workdir/slash/permission/plus 回归） | 白底 / #EBEEF5 / r12 / 12% 柔影 ✓     | 同                |
+| 简单菜单项                                                    | minH 32 / 14px / 500 / r6 / #565A60 ✓ | 同                |
+| 危险项（浅色）                                                | #D92D20 ✓                             | 同                |
+| 深色面板                                                      | #27292B / 12% 白边框 / 40% 影 ✓       | —                 |
+| 深色 item / danger                                            | #9A9EA5 / #F4655C，hover 20% 红底 ✓   | —                 |
+| slash 项选中态                                                | #E7E9ED ✓（输入 / 自动高亮首项实测）  | --cc-fill-pressed |
+| compile                                                       | 通过 ✓                                | —                 |
+
+## 本轮未修（记录）
+
+- 复杂弹层 item 的 padding/radius 保留各自内容布局（slash 双行 40px、file-suggestion 40px 双行），仅统一面板外观与交互色。
+- `.queued-message-list-container`（排队消息浮层）为悬浮面板非下拉菜单，未纳入。
+- session-list-popup 在桌面端 header 无触发按钮（IDE 场景使用），样式规则已覆盖但未在桌面端实测。

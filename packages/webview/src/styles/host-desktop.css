@@ -747,3 +747,212 @@
   color: #1f2329;
 }
 
+/* ═══ 第十三轮：下拉菜单/弹层统一（对齐 codechat 菜单规格）═══════
+   参考 codechat-ui：面板白底 + #EBEEF5 边框 + r12 + --cc-shadow-popover
+   (0 0 12px / 12%) + pad 8；菜单项 32px 高 / 14px / 500 / r6 / hover
+   #EEF0F3 / 选中 #E7E9ED / 危险 #D92D20 + hover #FFF0EF。
+   统一对象：账户更多、面板开关、会话项更多、工作目录/主机/分支、
+   会话列表、斜杠命令、@文件补全、回退/模型/边聊边问/历史弹层、
+   远程目录浏览、账户用量。permission/plus 菜单此前已按同规格对齐。
+   （base 各弹层沿用 vscode token：r4-8、深影、item 24px/12px，视觉割裂） */
+
+/* 面板外观：白底（深色 #27292B）/ #EBEEF5 边框 / r12 / 柔影 */
+[data-host="desktop"] .more-menu,
+[data-host="desktop"] .panel-toggle-menu,
+[data-host="desktop"] .desktop-session-menu,
+[data-host="desktop"] .desktop-workdir-menu,
+[data-host="desktop"] .session-list-popup,
+[data-host="desktop"] .slash-commands-popup,
+[data-host="desktop"] .file-suggestion-dropdown,
+[data-host="desktop"] .rewind-popup,
+[data-host="desktop"] .model-popup,
+[data-host="desktop"] .btw-panel,
+[data-host="desktop"] .history-search-popup,
+[data-host="desktop"] .account-usage-popup,
+[data-host="desktop"] .desktop-remote-browser {
+  background-color: #ffffff;
+  border-color: #ebeef5;
+  border-radius: 12px;
+  box-shadow: 0 0 12px rgb(0 0 0 / 12%);
+  color: #565a60;
+}
+
+/* 简单菜单容器 padding 统一 8px（base 4px/4px 0 偏挤） */
+[data-host="desktop"] .more-menu,
+[data-host="desktop"] .panel-toggle-menu,
+[data-host="desktop"] .desktop-session-menu,
+[data-host="desktop"] .desktop-workdir-menu {
+  padding: 8px;
+}
+
+/* 简单菜单项：32px 高 / 14px / 500 / r6 / 默认 #565A60 */
+[data-host="desktop"] .more-menu-item,
+[data-host="desktop"] .panel-toggle-menu-item,
+[data-host="desktop"] .desktop-session-menu-item,
+[data-host="desktop"] .desktop-workdir-menu-item {
+  min-height: 32px;
+  height: auto;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #565a60;
+  gap: 8px;
+  box-sizing: border-box;
+}
+[data-host="desktop"] .more-menu-item:hover,
+[data-host="desktop"] .more-menu-item:focus-visible,
+[data-host="desktop"] .panel-toggle-menu-item:hover,
+[data-host="desktop"] .panel-toggle-menu-item:focus-visible,
+[data-host="desktop"] .desktop-session-menu-item:hover,
+[data-host="desktop"] .desktop-session-menu-item:focus-visible,
+[data-host="desktop"] .desktop-workdir-menu-item:hover,
+[data-host="desktop"] .desktop-workdir-menu-item:focus-visible {
+  background: #eef0f3;
+  color: #1f2329;
+}
+
+/* 危险项：codechat --cc-color-danger #D92D20 + hover 红软底 #FFF0EF */
+[data-host="desktop"] .more-menu-item--danger,
+[data-host="desktop"] .desktop-session-menu-item--danger {
+  color: #d92d20;
+}
+[data-host="desktop"] .more-menu-item--danger:hover,
+[data-host="desktop"] .more-menu-item--danger:focus-visible,
+[data-host="desktop"] .desktop-session-menu-item--danger:hover,
+[data-host="desktop"] .desktop-session-menu-item--danger:focus-visible {
+  background: #fff0ef;
+  color: #d92d20;
+}
+
+/* 分隔线：codechat divided → #EBEEF5 */
+[data-host="desktop"] .more-menu-separator {
+  background-color: #ebeef5;
+  margin: 8px 0;
+}
+
+/* 复杂弹层菜单项交互：hover #EEF0F3 / 选中 #E7E9ED（替换 vscode
+   list-activeSelection 蓝灰）；面板内分隔线统一 #EBEEF5 */
+[data-host="desktop"] .session-list-item:hover,
+[data-host="desktop"] .session-list-item:focus-visible,
+[data-host="desktop"] .slash-command-item:hover,
+[data-host="desktop"] .suggestion-item:hover,
+[data-host="desktop"] .rewind-popup-item:hover,
+[data-host="desktop"] .model-popup-item:hover,
+[data-host="desktop"] .history-search-item:hover {
+  background-color: #eef0f3;
+}
+[data-host="desktop"] .session-list-item--selected,
+[data-host="desktop"] .session-list-item--current,
+[data-host="desktop"] .slash-command-item.selected,
+[data-host="desktop"] .suggestion-item.selected,
+[data-host="desktop"] .rewind-popup-item.selected,
+[data-host="desktop"] .model-popup-item.selected,
+[data-host="desktop"] .history-search-item.selected {
+  background-color: #e7e9ed;
+  color: #1f2329;
+}
+[data-host="desktop"] .suggestion-item,
+[data-host="desktop"] .rewind-popup-item,
+[data-host="desktop"] .model-popup-item,
+[data-host="desktop"] .history-search-item,
+[data-host="desktop"] .desktop-remote-browser-crumbs {
+  border-bottom-color: #ebeef5;
+}
+
+/* 弹层 header 与面板同底、分隔线 #EBEEF5 */
+[data-host="desktop"] .rewind-popup-header,
+[data-host="desktop"] .model-popup-header,
+[data-host="desktop"] .btw-panel-header,
+[data-host="desktop"] .history-search-header {
+  background-color: #ffffff;
+  border-bottom-color: #ebeef5;
+}
+
+/* 弹层主文字 13→14px（codechat --cc-font-size-md）；次级信息保持小号 */
+[data-host="desktop"] .rewind-popup-item,
+[data-host="desktop"] .model-popup-item,
+[data-host="desktop"] .history-item-prompt,
+[data-host="desktop"] .slash-command-name,
+[data-host="desktop"] .session-list-item-title {
+  font-size: 14px;
+}
+
+/* 深色主题：面板 #27292B / 12% 白边框 / 40% 黑柔影；item 交互中性白 */
+[data-host="desktop"][data-theme="dark"] .more-menu,
+[data-host="desktop"][data-theme="dark"] .panel-toggle-menu,
+[data-host="desktop"][data-theme="dark"] .desktop-session-menu,
+[data-host="desktop"][data-theme="dark"] .desktop-workdir-menu,
+[data-host="desktop"][data-theme="dark"] .session-list-popup,
+[data-host="desktop"][data-theme="dark"] .slash-commands-popup,
+[data-host="desktop"][data-theme="dark"] .file-suggestion-dropdown,
+[data-host="desktop"][data-theme="dark"] .rewind-popup,
+[data-host="desktop"][data-theme="dark"] .model-popup,
+[data-host="desktop"][data-theme="dark"] .btw-panel,
+[data-host="desktop"][data-theme="dark"] .history-search-popup,
+[data-host="desktop"][data-theme="dark"] .account-usage-popup,
+[data-host="desktop"][data-theme="dark"] .desktop-remote-browser {
+  background-color: #27292b;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #9a9ea5;
+  box-shadow: 0 0 12px rgb(0 0 0 / 40%);
+}
+/* 深色下菜单项基础文字：覆盖浅色的 #565A60（含此前已统一的 permission/plus） */
+[data-host="desktop"][data-theme="dark"] .permission-mode-item,
+[data-host="desktop"][data-theme="dark"] .plus-menu-item,
+[data-host="desktop"][data-theme="dark"] .more-menu-item,
+[data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item,
+[data-host="desktop"][data-theme="dark"] .desktop-session-menu-item,
+[data-host="desktop"][data-theme="dark"] .desktop-workdir-menu-item {
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"] .more-menu-item:hover,
+[data-host="desktop"][data-theme="dark"] .more-menu-item:focus-visible,
+[data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item:hover,
+[data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item:focus-visible,
+[data-host="desktop"][data-theme="dark"] .desktop-session-menu-item:hover,
+[data-host="desktop"][data-theme="dark"] .desktop-session-menu-item:focus-visible,
+[data-host="desktop"][data-theme="dark"] .desktop-workdir-menu-item:hover,
+[data-host="desktop"][data-theme="dark"] .desktop-workdir-menu-item:focus-visible,
+[data-host="desktop"][data-theme="dark"] .session-list-item:hover,
+[data-host="desktop"][data-theme="dark"] .session-list-item:focus-visible,
+[data-host="desktop"][data-theme="dark"] .slash-command-item:hover,
+[data-host="desktop"][data-theme="dark"] .suggestion-item:hover,
+[data-host="desktop"][data-theme="dark"] .rewind-popup-item:hover,
+[data-host="desktop"][data-theme="dark"] .model-popup-item:hover,
+[data-host="desktop"][data-theme="dark"] .history-search-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+[data-host="desktop"][data-theme="dark"] .session-list-item--selected,
+[data-host="desktop"][data-theme="dark"] .session-list-item--current,
+[data-host="desktop"][data-theme="dark"] .slash-command-item.selected,
+[data-host="desktop"][data-theme="dark"] .suggestion-item.selected,
+[data-host="desktop"][data-theme="dark"] .rewind-popup-item.selected,
+[data-host="desktop"][data-theme="dark"] .model-popup-item.selected,
+[data-host="desktop"][data-theme="dark"] .history-search-item.selected {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+[data-host="desktop"][data-theme="dark"] .more-menu-item--danger,
+[data-host="desktop"][data-theme="dark"] .desktop-session-menu-item--danger {
+  color: #f4655c;
+}
+[data-host="desktop"][data-theme="dark"] .more-menu-item--danger:hover,
+[data-host="desktop"][data-theme="dark"] .more-menu-item--danger:focus-visible,
+[data-host="desktop"][data-theme="dark"] .desktop-session-menu-item--danger:hover,
+[data-host="desktop"][data-theme="dark"] .desktop-session-menu-item--danger:focus-visible {
+  background: rgb(217 45 32 / 20%);
+  color: #f4655c;
+}
+[data-host="desktop"][data-theme="dark"] .more-menu-separator {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+[data-host="desktop"][data-theme="dark"] .rewind-popup-header,
+[data-host="desktop"][data-theme="dark"] .model-popup-header,
+[data-host="desktop"][data-theme="dark"] .btw-panel-header,
+[data-host="desktop"][data-theme="dark"] .history-search-header {
+  background-color: #27292b;
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
