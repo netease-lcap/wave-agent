@@ -8,6 +8,7 @@ import { BackgroundTaskManager } from "./BackgroundTaskManager.js";
 import { McpManager } from "./McpManager.js";
 import { AgentsManager } from "./AgentsManager.js";
 import { SkillsManager } from "./SkillsManager.js";
+import { HooksManager } from "./HooksManager.js";
 import { RewindCommand } from "./RewindCommand.js";
 import { HelpView } from "./HelpView.js";
 import { StatusCommand } from "./StatusCommand.js";
@@ -22,7 +23,11 @@ import { PlanView } from "./PlanView.js";
 import { useInputManager } from "../hooks/useInputManager.js";
 import { useChat } from "../contexts/useChat.js";
 
-import type { McpServerStatus, SlashCommand } from "wave-agent-sdk";
+import type {
+  McpServerStatus,
+  SlashCommand,
+  HookEventConfig,
+} from "wave-agent-sdk";
 
 export const INPUT_PLACEHOLDER_TEXT =
   "Type your message (use /help for more info)...";
@@ -50,6 +55,10 @@ export interface InputBoxProps {
   // Slash Command related properties
   slashCommands?: SlashCommand[];
   hasSlashCommand?: (commandId: string) => boolean;
+  // Hooks related properties (for /hooks overlay)
+  hooks?: Partial<
+    Record<"user" | "project" | "plugin", Record<string, HookEventConfig[]>>
+  >;
   // Token usage
   latestTotalTokens?: number;
   maxInputTokens?: number;
@@ -68,6 +77,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   disconnectMcpServer = async () => false,
   slashCommands = [],
   hasSlashCommand = () => false,
+  hooks = {},
   latestTotalTokens = 0,
   maxInputTokens = 200000,
   showLoginHint = false,
@@ -150,6 +160,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showModelSelector,
     showWorkflowManager,
     showSkillsManager,
+    showHooksManager,
     setShowBackgroundTaskManager,
     setShowMcpManager,
     setShowAgentsManager,
@@ -161,6 +172,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setShowModelSelector,
     setShowWorkflowManager,
     setShowSkillsManager,
+    setShowHooksManager,
     // Permission mode
     permissionMode,
     setPermissionMode,
@@ -227,7 +239,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
       showMcpManager ||
       showAgentsManager ||
       showWorkflowManager ||
-      showSkillsManager
+      showSkillsManager ||
+      showHooksManager
     ) {
       return;
     }
@@ -327,6 +340,13 @@ export const InputBox: React.FC<InputBoxProps> = ({
         <SkillsManager
           onCancel={() => setShowSkillsManager(false)}
           skills={skills}
+        />
+      )}
+
+      {showHooksManager && (
+        <HooksManager
+          onCancel={() => setShowHooksManager(false)}
+          hooks={hooks}
         />
       )}
 

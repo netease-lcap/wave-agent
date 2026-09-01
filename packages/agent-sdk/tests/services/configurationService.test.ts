@@ -1538,46 +1538,6 @@ describe("ConfigurationService", () => {
       expect(hooks).toEqual({});
     });
 
-    it("setHookEnabled updates the enabled flag in the scope's settings.json", async () => {
-      await fs.mkdir(path.dirname(userSettingsPath()), { recursive: true });
-      await fs.writeFile(
-        userSettingsPath(),
-        JSON.stringify({
-          hooks: {
-            PreToolUse: [
-              {
-                matcher: "Write",
-                hooks: [{ type: "command", command: "echo hi" }],
-              },
-            ],
-          },
-        }),
-      );
-
-      await configService.setHookEnabled(
-        "/tmp/workdir",
-        "user",
-        "PreToolUse:Write",
-        false,
-      );
-
-      const written = JSON.parse(
-        await fs.readFile(userSettingsPath(), "utf-8"),
-      );
-      expect(written.hooks.PreToolUse[0].enabled).toBe(false);
-    });
-
-    it("setHookEnabled throws on invalid hook event", async () => {
-      await expect(
-        configService.setHookEnabled(
-          "/tmp/workdir",
-          "user",
-          "BadEvent:x",
-          true,
-        ),
-      ).rejects.toThrow("Invalid hook event");
-    });
-
     it("deleteHook removes the matching hook entry", async () => {
       await fs.mkdir(path.dirname(userSettingsPath()), { recursive: true });
       await fs.writeFile(

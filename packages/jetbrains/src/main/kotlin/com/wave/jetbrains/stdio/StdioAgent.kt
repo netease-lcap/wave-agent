@@ -321,14 +321,6 @@ class StdioAgent(
     suspend fun getHooksByScope(scope: String): JsonElement =
         client.request("getHooksByScope", buildJsonObject { put("scope", scope) }, sessionId) ?: JsonObject(emptyMap())
 
-    suspend fun setHookEnabled(scope: String, hookName: String, enabled: Boolean) {
-        client.request("setHookEnabled", buildJsonObject {
-            put("scope", scope)
-            put("hookName", hookName)
-            put("enabled", enabled)
-        }, sessionId)
-    }
-
     suspend fun deleteHook(scope: String, hookName: String) {
         client.request("deleteHook", buildJsonObject {
             put("scope", scope)

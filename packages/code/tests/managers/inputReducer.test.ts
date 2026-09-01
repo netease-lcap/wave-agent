@@ -32,6 +32,7 @@ describe("inputReducer", () => {
       showRewindManager: false,
       showWorkflowManager: false,
       showSkillsManager: false,
+      showHooksManager: false,
       showHelp: false,
       showStatusCommand: false,
       showLoginCommand: false,
@@ -2251,6 +2252,29 @@ describe("inputReducer", () => {
       expect(result.pendingEffect).toEqual({
         type: "EXECUTE_COMMAND",
         command: "plan",
+      });
+    });
+
+    it("should execute /hooks as CLI-internal command (opens hooks manager)", () => {
+      const state: InputState = {
+        ...initialState,
+        inputText: "/hooks",
+        cursorPosition: 6,
+      };
+
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand: () => false,
+        },
+      });
+
+      expect(result.inputText).toBe("");
+      expect(result.pendingEffect).toEqual({
+        type: "EXECUTE_COMMAND",
+        command: "hooks",
       });
     });
 

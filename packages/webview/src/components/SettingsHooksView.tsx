@@ -3,10 +3,10 @@
  *
  * 按来源 Tab（用户级钩子 / 项目级钩子 / 插件钩子）展示钩子，项目级在
  * 「项目级钩子」Tab 平铺展示（仅当前项目，2026-09-01 用户拍板删项目分组
- * 卡片）。提供新建（预填 AI 对话框提示词）、编辑（预填提示词）、开关
- * （enabled 字段，关闭后不执行）、删除（二次确认 + 直接删配置）。
- * 数据通过 getHooksByScope RPC 由 host 下发，开关/删除走 setHookEnabled /
- * deleteHook RPC。
+ * 卡片）。提供新建（预填 AI 对话框提示词）、编辑（预填提示词）、删除
+ * （二次确认 + 直接删配置）。
+ * 数据通过 getHooksByScope RPC 由 host 下发，删除走 deleteHook RPC。
+ * 2026-09-02：移除钩子启停开关与 enabled 字段（对齐 CC，钩子始终执行）。
  */
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -25,10 +25,27 @@ interface HookCommand {
 interface HookEntry {
   matcher?: string;
   hooks: HookCommand[];
-  enabled?: boolean;
 }
 
 type HooksByEvent = Record<string, HookEntry[]>;
+
+// 事件摘要（一句说明，对齐 CC HookEventMetadata.summary；GUI 中文）。未知
+// 事件（如插件自定义事件）不展示摘要，回退显示事件名本身（见 hook 名）。
+const HOOK_EVENT_SUMMARIES_ZH: Record<string, string> = {
+  PreToolUse: "工具执行前",
+  PostToolUse: "工具执行后",
+  UserPromptSubmit: "用户提交提示词时",
+  Stop: "助手即将结束回复时",
+  SubagentStop: "子代理即将结束回复时",
+  PermissionRequest: "显示权限确认对话框时",
+  WorktreeCreate: "创建隔离 worktree（VCS 无关隔离）",
+  WorktreeRemove: "移除已创建的 worktree",
+  CwdChanged: "工作目录变更后",
+  SessionStart: "新会话启动时",
+  SessionEnd: "会话结束时",
+  PreCompact: "上下文压缩前",
+  PostCompact: "上下文压缩后",
+};
 
 const TABS: SettingsTabDef[] = [
   { key: "user", label: "用户级钩子" },
@@ -74,8 +91,6 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
     event: string;
     matcher?: string;
   } | null>(null);
-  // 开关操作中的条目（防止连点）
-  const [toggling, setToggling] = useState<Record<string, boolean>>({});
 
   const fetchHooks = useCallback(
     (scope: string) => {
@@ -141,31 +156,6 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
     vscode?.postMessage({ command: "openFile", path });
   };
 
-  const handleToggle = (
-    item: { event: string; matcher?: string },
-    enabled: boolean,
-  ) => {
-    const name = formatHookName(item.event, item.matcher);
-    setToggling((prev) => ({ ...prev, [name]: true }));
-    vscode?.postMessage({
-      command: "setHookEnabled",
-      scope: activeTab,
-      hookName: name,
-      enabled,
-    });
-    // host 回发 hooksResponse 后刷新，此处乐观更新开关显示
-    setHooks((prev) => {
-      const next: HooksByEvent = { ...prev };
-      const configs = next[item.event]?.map((entry) =>
-        (entry.matcher || "") === (item.matcher || "")
-          ? { ...entry, enabled }
-          : entry,
-      );
-      if (configs) next[item.event] = configs;
-      return next;
-    });
-  };
-
   const handleConfirmDelete = () => {
     if (!pendingDelete) return;
     const name = formatHookName(pendingDelete.event, pendingDelete.matcher);
@@ -194,7 +184,7 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
   const renderEntries = (list: typeof entries) =>
     list.map((item) => {
       const name = formatHookName(item.event, item.matcher);
-      const enabled = item.entry.enabled !== false;
+      const summary = HOOK_EVENT_SUMMARIES_ZH[item.event];
       const commands = (item.entry.hooks ?? [])
         .map((h) => h.command)
         .join("; ");
@@ -203,10 +193,17 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
           <div className="mcp-server-info">
             <div className="mcp-server-header">
               <span className="mcp-server-name">{name}</span>
-              {item.entry.enabled === false && (
-                <span className="settings-tag settings-tag-off">已关闭</span>
-              )}
             </div>
+            {summary && (
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "var(--vscode-descriptionForeground)",
+                }}
+              >
+                {summary}
+              </div>
+            )}
             {commands && (
               <div
                 style={{
@@ -222,16 +219,6 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
           <div className="mcp-server-actions">
             {isEditable && (
               <>
-                <label className="settings-switch settings-switch-small">
-                  <input
-                    type="checkbox"
-                    aria-label={`启用钩子 ${name}`}
-                    checked={enabled}
-                    disabled={toggling[name]}
-                    onChange={(e) => handleToggle(item, e.target.checked)}
-                  />
-                  <span className="settings-switch-slider"></span>
-                </label>
                 <button
                   type="button"
                   className="settings-row-btn"

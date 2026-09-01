@@ -715,19 +715,6 @@ class MessageHandler(
                 }
                 postMessage("hooksResponse", buildJsonObject { put("hooks", hooks) })
             }
-            "setHookEnabled" -> {
-                val scope = msg["scope"]?.jsonPrimitive?.content ?: return
-                val hookName = msg["hookName"]?.jsonPrimitive?.content ?: return
-                val enabled = msg["enabled"]?.jsonPrimitive?.booleanOrNull ?: return
-                try {
-                    session.agent?.setHookEnabled(scope, hookName, enabled)
-                    val hooks = session.agent?.getHooksByScope(scope) ?: JsonObject(emptyMap())
-                    postMessage("hooksResponse", buildJsonObject { put("hooks", hooks) })
-                } catch (e: StdioClientException) {
-                    LOG.warn("setHookEnabled failed: ${e.message}")
-                    IdeService.showError(project, "更新钩子开关失败: ${e.message}")
-                }
-            }
             "deleteHook" -> {
                 val scope = msg["scope"]?.jsonPrimitive?.content ?: return
                 val hookName = msg["hookName"]?.jsonPrimitive?.content ?: return
@@ -1032,6 +1019,7 @@ class MessageHandler(
             triple("workflows", "workflows", "查看工作流运行"),
             triple("agents", "agents", "查看可用 agents"),
             triple("skills", "skills", "查看可用技能"),
+            triple("hooks", "hooks", "查看已配置钩子"),
             triple("clear", "clear", "清除对话历史并重置会话"),
             triple("compact", "compact", "手动压缩对话历史"),
             triple("rewind", "rewind", "回滚到之前的用户消息"),

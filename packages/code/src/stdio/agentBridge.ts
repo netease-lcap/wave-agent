@@ -270,13 +270,6 @@ export class AgentBridge {
           p.scope as "user" | "project" | "plugin",
           sessionId,
         );
-      case "setHookEnabled":
-        return this.setHookEnabled(
-          p.scope as "user" | "project",
-          p.hookName as string,
-          p.enabled as boolean,
-          sessionId,
-        );
       case "deleteHook":
         return this.deleteHook(
           p.scope as "user" | "project",
@@ -1243,17 +1236,6 @@ export class AgentBridge {
   ): Promise<Partial<Record<string, unknown[]>>> {
     const entry = this.requireSession(sessionId);
     return entry.agent.getHooksByScope(scope);
-  }
-
-  private async setHookEnabled(
-    scope: "user" | "project",
-    hookName: string,
-    enabled: boolean,
-    sessionId?: string,
-  ): Promise<{ success: boolean }> {
-    const entry = this.requireSession(sessionId);
-    await entry.agent.setHookEnabled(scope, hookName, enabled);
-    return { success: true };
   }
 
   private async deleteHook(

@@ -272,6 +272,10 @@ export const useInputManager = (
                 dispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: true });
               } else if (command === "workflows") {
                 dispatch({ type: "SET_SHOW_WORKFLOW_MANAGER", payload: true });
+              } else if (command === "skills") {
+                dispatch({ type: "SET_SHOW_SKILLS_MANAGER", payload: true });
+              } else if (command === "hooks") {
+                dispatch({ type: "SET_SHOW_HOOKS_MANAGER", payload: true });
               } else if (command === "clear") {
                 await onClearMessages?.();
               } else if (command === "compact") {
@@ -535,6 +539,10 @@ export const useInputManager = (
     dispatch({ type: "SET_SHOW_SKILLS_MANAGER", payload: show });
   }, []);
 
+  const setShowHooksManager = useCallback((show: boolean) => {
+    dispatch({ type: "SET_SHOW_HOOKS_MANAGER", payload: show });
+  }, []);
+
   const setPermissionMode = useCallback(
     (mode: PermissionMode) => {
       dispatch({ type: "SET_PERMISSION_MODE", payload: mode });
@@ -680,6 +688,7 @@ export const useInputManager = (
     showModelSelector: state.showModelSelector,
     showWorkflowManager: state.showWorkflowManager,
     showSkillsManager: state.showSkillsManager,
+    showHooksManager: state.showHooksManager,
     permissionMode: state.permissionMode,
     attachedImages: state.attachedImages,
     btwState: state.btwState,
@@ -727,6 +736,7 @@ export const useInputManager = (
     setShowModelSelector,
     setShowWorkflowManager,
     setShowSkillsManager,
+    setShowHooksManager,
     setPermissionMode,
     setBtwState,
 

@@ -581,6 +581,25 @@ describe("inputHandlers", () => {
       });
     });
 
+    it("should open hooks manager when no slash command handler exists", async () => {
+      const state: InputState = {
+        ...initialState,
+        slashPosition: 0,
+        inputText: "/hooks",
+        cursorPosition: 6,
+      };
+      vi.mocked(callbacks.onHasSlashCommand!).mockReturnValue(false);
+
+      handleCommandSelect(state, dispatch, callbacks, "hooks");
+
+      await vi.waitFor(() => {
+        expect(dispatch).toHaveBeenCalledWith({
+          type: "SET_SHOW_HOOKS_MANAGER",
+          payload: true,
+        });
+      });
+    });
+
     it("should show usage for bare /btw executed via selector", async () => {
       const state: InputState = {
         ...initialState,

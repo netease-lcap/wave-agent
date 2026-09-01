@@ -17,6 +17,7 @@ import type {
   SlashCommand,
   SubagentConfiguration,
   SkillMetadata,
+  HookEventConfig,
   PermissionDecision,
   PermissionMode,
   QueuedMessage,
@@ -111,6 +112,10 @@ export interface ChatContextType {
   agentDefinitions: SubagentConfiguration[];
   // Skill metadata (for /skills overlay)
   skills: SkillMetadata[];
+  // Hook configs per scope (for /hooks overlay)
+  hooks: Partial<
+    Record<"user" | "project" | "plugin", Record<string, HookEventConfig[]>>
+  >;
   // Permission functionality
   permissionMode: PermissionMode;
   setPermissionMode: (mode: PermissionMode) => void;
@@ -483,6 +488,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   >([]);
   // Skill metadata (for /skills overlay)
   const [skills, setSkills] = useState<SkillMetadata[]>([]);
+  // Hook configs per scope (for /hooks overlay)
+  const [hooks, setHooks] = useState<
+    Partial<
+      Record<"user" | "project" | "plugin", Record<string, HookEventConfig[]>>
+    >
+  >({});
 
   // Permission state
   const [permissionMode, setPermissionModeState] = useState<PermissionMode>(
@@ -844,6 +855,19 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         // Get initial skill metadata
         const initialSkills = agent.getSkillMetadata?.() || [];
         setSkills(initialSkills);
+
+        // Get initial hooks (user/project from settings.json, plugin from
+        // the hook manager's plugin-registered set) — snapshot for /hooks.
+        const [userHooks, projectHooks, pluginHooks] = await Promise.all([
+          agent.getHooksByScope("user"),
+          agent.getHooksByScope("project"),
+          agent.getHooksByScope("plugin"),
+        ]);
+        setHooks({
+          user: userHooks,
+          project: projectHooks,
+          plugin: pluginHooks,
+        });
       } catch (error) {
         console.error("Failed to initialize AI manager:", error);
       }
@@ -1307,6 +1331,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     hasSlashCommand,
     agentDefinitions,
     skills,
+    hooks,
     permissionMode,
     setPermissionMode,
     planView,

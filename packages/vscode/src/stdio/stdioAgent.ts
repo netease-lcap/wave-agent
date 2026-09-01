@@ -511,18 +511,6 @@ export class StdioAgent {
     return result;
   }
 
-  async setHookEnabled(
-    scope: "user" | "project",
-    hookName: string,
-    enabled: boolean,
-  ): Promise<void> {
-    await this.client.request(
-      "setHookEnabled",
-      { scope, hookName, enabled },
-      this.sessionId,
-    );
-  }
-
   async deleteHook(scope: "user" | "project", hookName: string): Promise<void> {
     await this.client.request(
       "deleteHook",

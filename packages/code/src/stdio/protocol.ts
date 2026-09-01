@@ -78,7 +78,6 @@ export type RequestMethod =
   | "deleteSkill"
   | "deleteSubagent"
   | "getHooksByScope"
-  | "setHookEnabled"
   | "deleteHook"
   | "searchFiles"
   | "writeArtifactFile"

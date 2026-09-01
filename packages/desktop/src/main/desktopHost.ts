@@ -3401,27 +3401,6 @@ export class DesktopHost {
         break;
       }
 
-      case "setHookEnabled":
-        try {
-          await this.agentForPane(pid)?.setHookEnabled(
-            msg.scope as "user" | "project",
-            msg.hookName as string,
-            msg.enabled as boolean,
-          );
-          const paneAgent5 = this.agentForPane(pid);
-          const hooks2 = paneAgent5
-            ? await paneAgent5.getHooksByScope(msg.scope as "user" | "project")
-            : {};
-          this.postMessage({
-            command: "hooksResponse",
-            paneId: pid,
-            hooks: hooks2,
-          });
-        } catch (error) {
-          this.showToast({ message: `更新钩子开关失败: ${error}` });
-        }
-        break;
-
       case "deleteHook":
         try {
           await this.agentForPane(pid)?.deleteHook(
@@ -5386,6 +5365,7 @@ export class DesktopHost {
         { id: "workflows", name: "workflows", description: "查看工作流运行" },
         { id: "agents", name: "agents", description: "查看可用 agents" },
         { id: "skills", name: "skills", description: "查看可用技能" },
+        { id: "hooks", name: "hooks", description: "查看已配置钩子" },
         { id: "rewind", name: "rewind", description: "回滚到之前的用户消息" },
         { id: "model", name: "model", description: "切换 AI 模型" },
         { id: "btw", name: "btw", description: "旁路提问（不进入聊天记录）" },
