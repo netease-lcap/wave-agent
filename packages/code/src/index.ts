@@ -256,6 +256,43 @@ export async function main() {
           return yargs
             .help()
             .command(
+              "create",
+              "Create a new session hosted by the daemon and print its sessionId",
+              (yargs) => {
+                return yargs
+                  .option("workdir", {
+                    describe:
+                      "Working directory for the new session (default: current directory)",
+                    type: "string",
+                  })
+                  .option("permission-mode", {
+                    describe:
+                      "Permission mode for the new session (default: bypassPermissions; options: default, bypassPermissions, acceptEdits, plan, dontAsk)",
+                    type: "string",
+                  })
+                  .option("model", {
+                    describe:
+                      "Model override for the new session (default: configured model)",
+                    type: "string",
+                  })
+                  .option("worktree", {
+                    describe:
+                      "Create the session in a new git worktree (name optional — auto-generated when omitted)",
+                    type: "string",
+                  });
+              },
+              async (argv) => {
+                const { daemonCreateCommand, DEFAULT_DAEMON_SOCKET } =
+                  await import("./daemon/commands.js");
+                await daemonCreateCommand(DEFAULT_DAEMON_SOCKET, {
+                  workdir: argv.workdir as string | undefined,
+                  permissionMode: argv.permissionMode as string | undefined,
+                  model: argv.model as string | undefined,
+                  worktree: argv.worktree as string | undefined,
+                });
+              },
+            )
+            .command(
               "list",
               "List sessions hosted by the daemon (in-memory registry)",
               {},
@@ -391,6 +428,33 @@ export async function main() {
                 await daemonAbortCommand(
                   DEFAULT_DAEMON_SOCKET,
                   argv.sessionId as string,
+                );
+              },
+            )
+            .command(
+              "destroy <sessionId>",
+              "Destroy a daemon session (idempotent)",
+              (yargs) => {
+                return yargs
+                  .positional("sessionId", {
+                    describe: "Session ID of the session to destroy",
+                    type: "string",
+                  })
+                  .option("remove-worktree", {
+                    describe:
+                      "Also remove the session's git worktree (resolved via git, removed via protocol removeWorktree) before destroying",
+                    type: "boolean",
+                  });
+              },
+              async (argv) => {
+                const { daemonDestroyCommand, DEFAULT_DAEMON_SOCKET } =
+                  await import("./daemon/commands.js");
+                await daemonDestroyCommand(
+                  DEFAULT_DAEMON_SOCKET,
+                  argv.sessionId as string,
+                  {
+                    removeWorktree: argv.removeWorktree as boolean | undefined,
+                  },
                 );
               },
             )

@@ -17,8 +17,10 @@ import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import {
   Agent,
+  hasWorktreeCreateHook,
   loadUserConfigEnv,
   type AgentCallbacks,
   type Message,
@@ -36,8 +38,54 @@ vi.mock("wave-agent-sdk", async (importOriginal) => {
     ...actual,
     Agent: { create: vi.fn() },
     loadUserConfigEnv: vi.fn(() => ({})),
+    getGitMainRepoRoot: vi.fn(() => "/repo/main"),
+    hasWorktreeCreateHook: vi.fn(() => false),
+    loadMergedWaveConfig: vi.fn(() => ({})),
+    validateWorktreeRemovalPath: vi.fn(),
   };
 });
+
+// Daemon commands auto-start a daemon on connect failure (spec: 按需即用);
+// stub spawn so tests never launch a real `wave --daemon` child process.
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return { ...actual, spawn: vi.fn(), execFile: vi.fn() };
+});
+
+// destroy --remove-worktree runs git lookups through execFile; these
+// module-level variables drive the mock per-test (set inside each test).
+let gitTopLevel = "";
+let gitBranch = "";
+let gitLookupError: Error | null = null;
+const execFileMock = vi.mocked(execFile) as unknown as ReturnType<typeof vi.fn>;
+execFileMock.mockImplementation(
+  (
+    cmd: string,
+    args: readonly string[] | null | undefined,
+    _opts: unknown,
+    cb: ((err: Error | null, stdout: string) => void) | null | undefined,
+  ) => {
+    if (!cb) return;
+    if (gitLookupError) {
+      cb(gitLookupError, "");
+      return;
+    }
+    if (cmd === "git" && args?.[0] === "rev-parse") {
+      cb(null, gitTopLevel + "\n");
+      return;
+    }
+    if (cmd === "git" && args?.[0] === "branch") {
+      cb(null, gitBranch + "\n");
+      return;
+    }
+    cb(null, "");
+  },
+);
+
+vi.mock("../../src/utils/worktree.js", () => ({
+  createWorktree: vi.fn(),
+  removeWorktree: vi.fn(),
+}));
 
 // vitest.config onConsoleLog throws on any stderr console output — commands use
 // console.error for diagnostics, so capture it (and raw writes) here.
@@ -64,12 +112,32 @@ const exitSpy = vi
 
 import { DaemonServer } from "../../src/stdio/daemonServer.js";
 import {
+  daemonCreateCommand,
+  daemonDestroyCommand,
   daemonListCommand,
   daemonStatusCommand,
   daemonSendCommand,
   daemonRespondCommand,
   daemonAbortCommand,
+  daemonStartTimeout,
 } from "../../src/daemon/commands.js";
+import { createWorktree, removeWorktree } from "../../src/utils/worktree.js";
+
+/** When set, the spawn mock starts a real daemon here so the retry succeeds. */
+let autoStartSocket: string | undefined;
+let autoStartServer: DaemonServer | undefined;
+// Simulate the detached `wave --daemon` child the commands spawn: start a real
+// DaemonServer at autoStartSocket (success path); without one the daemon never
+// comes up (failure path).
+vi.mocked(spawn).mockImplementation(() => {
+  if (autoStartSocket) {
+    const s = new DaemonServer({ socketPath: autoStartSocket });
+    void s.start().then(() => {
+      autoStartServer = s;
+    });
+  }
+  return { unref: () => {} } as unknown as ChildProcess;
+});
 
 function userMsg(id: string, content: string): Message {
   return {
@@ -192,6 +260,9 @@ let socketPath: string;
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  gitTopLevel = "";
+  gitBranch = "";
+  gitLookupError = null;
   vi.mocked(loadUserConfigEnv).mockReturnValue({});
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
   socketPath = path.join(
@@ -204,6 +275,10 @@ beforeEach(async () => {
 
 afterEach(async () => {
   stderrWriteSpy.mockRestore();
+  daemonStartTimeout.ms = 10_000;
+  await autoStartServer?.stop();
+  autoStartServer = undefined;
+  autoStartSocket = undefined;
   await server.stop();
   try {
     fs.unlinkSync(socketPath);
@@ -254,17 +329,86 @@ test("list: prints a padded table of hosted sessions (in-memory registry)", asyn
   expect(exitSpy).toHaveBeenCalledWith(0);
 });
 
-test("list: daemon not running exits 1 with the spec'd hint", async () => {
+test("list: auto-starts a daemon on demand and retries when the socket is missing", async () => {
+  const missing = path.join(
+    os.tmpdir(),
+    `wave-daemon-autostart-${process.pid}-${Date.now()}.sock`,
+  );
+  autoStartSocket = missing;
+  await expect(daemonListCommand(missing)).rejects.toThrow("exit(0)");
+  expect(spawn).toHaveBeenCalledWith(
+    process.execPath,
+    [process.argv[1], "--daemon", missing],
+    expect.objectContaining({ detached: true }),
+  );
+  // The on-demand daemon is now live — an empty registry is not an error.
+  expect(stdoutLines()).toEqual(["No sessions"]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("list: daemon that never comes up after auto-start exits 1 with the spec'd hint", async () => {
   const missing = path.join(
     os.tmpdir(),
     `wave-daemon-missing-${process.pid}-${Date.now()}.sock`,
   );
+  daemonStartTimeout.ms = 200;
   await expect(daemonListCommand(missing)).rejects.toThrow("exit(1)");
-  expect(stderrText()).toContain(`Cannot connect to daemon socket ${missing}`);
-  expect(stderrText()).toContain(
-    "is the daemon running? (it auto-exits after 60s idle)",
+  expect(spawn).toHaveBeenCalledWith(
+    process.execPath,
+    [process.argv[1], "--daemon", missing],
+    expect.objectContaining({ detached: true }),
   );
+  expect(stderrText()).toContain(`Cannot connect to daemon socket ${missing}`);
+  expect(stderrText()).toContain("started a daemon but it did not come up");
   expect(stderrText()).toContain("(ENOENT)");
+  expect(exitSpy).toHaveBeenCalledWith(1);
+});
+
+// ── create ─────────────────────────────────────────────────────
+
+test("create: prints the new sessionId, uses defaults, and hosts the session", async () => {
+  await expect(daemonCreateCommand(socketPath)).rejects.toThrow("exit(0)");
+  expect(stdoutLines()).toEqual(["test-session-id"]);
+  const options = vi.mocked(Agent.create).mock.calls[0][0];
+  expect(options.workdir).toBe(process.cwd());
+  expect(options.permissionMode).toBe("bypassPermissions");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+
+  // The new session is hosted in the daemon's registry.
+  const client = connectClient(socketPath);
+  const msgs = await client.send({
+    id: 9,
+    method: "listDaemonSessions",
+    params: {},
+  });
+  const result = msgs[0] as { result: { sessions: unknown[] } };
+  expect(result.result.sessions).toHaveLength(1);
+  client.close();
+});
+
+test("create: --workdir / --permission-mode / --model are forwarded", async () => {
+  await expect(
+    daemonCreateCommand(socketPath, {
+      workdir: "/tmp/wave-create-test",
+      permissionMode: "acceptEdits",
+      model: "gpt-test",
+    }),
+  ).rejects.toThrow("exit(0)");
+  const options = vi.mocked(Agent.create).mock.calls[0][0];
+  expect(options.workdir).toBe("/tmp/wave-create-test");
+  expect(options.permissionMode).toBe("acceptEdits");
+  expect(options.model).toBe("gpt-test");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("create: invalid --permission-mode fails without connecting or creating", async () => {
+  await expect(
+    daemonCreateCommand(socketPath, { permissionMode: "bogus" }),
+  ).rejects.toThrow("exit(1)");
+  expect(stderrText()).toContain(
+    "Invalid permission mode: bogus (options: default, bypassPermissions, acceptEdits, plan, dontAsk)",
+  );
+  expect(vi.mocked(Agent.create)).not.toHaveBeenCalled();
   expect(exitSpy).toHaveBeenCalledWith(1);
 });
 
@@ -459,6 +603,40 @@ test("send: times out with the generic message when nothing is pending", async (
   expect(stderrText()).toContain(
     "Timed out waiting for a reply (0.2s), no assistant reply received",
   );
+  expect(exitSpy).toHaveBeenCalledWith(1);
+});
+
+test("send: an interrupted reply (reasoning only, no text) exits 1 with an interruption hint", async () => {
+  let agent!: ReturnType<typeof createMockAgent>;
+  let callbacks!: AgentCallbacks;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks!;
+    agent = createMockAgent();
+    agent.sendMessage = vi.fn(async () => {
+      agent.messages.push(userMsg("u1", "继续"));
+      // Aborted mid-generation: the final reply carries only reasoning.
+      agent.messages.push({
+        id: "a1",
+        role: "assistant",
+        blocks: [{ type: "reasoning", content: "思考了一半…" }],
+        timestamp: "t",
+      });
+      callbacks.onUserMessageAdded?.({ content: "继续" });
+      callbacks.onAssistantMessageAdded?.("a1");
+      callbacks.onLoadingChange?.(false);
+    });
+    return agent;
+  });
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonSendCommand(socketPath, "test-session-id", "继续", { timeout: 5 }),
+  ).rejects.toThrow("exit(1)");
+  expect(stderrText()).toContain("Message aborted before producing a reply");
+  expect(stdoutLines()).toEqual([]);
   expect(exitSpy).toHaveBeenCalledWith(1);
 });
 
@@ -761,4 +939,213 @@ test("abort: nonexistent session fails, destroys the junk fresh session, no abor
   expect(exitSpy).toHaveBeenCalledWith(1);
   expect(junk.destroy).toHaveBeenCalled();
   expect(junk.abortMessage).not.toHaveBeenCalled();
+});
+
+// ── destroy ────────────────────────────────────────────────────
+
+test("destroy: removes a hosted session from the registry", async () => {
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonDestroyCommand(socketPath, "test-session-id"),
+  ).rejects.toThrow("exit(0)");
+  expect(logSpy).toHaveBeenCalledWith("Destroyed session: test-session-id");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+
+  // The registry is now empty — the session is gone.
+  const b = connectClient(socketPath);
+  const msgs = await b.send({
+    id: 9,
+    method: "listDaemonSessions",
+    params: {},
+  });
+  const result = msgs[0] as { result: { sessions: unknown[] } };
+  expect(result.result.sessions).toEqual([]);
+  b.close();
+});
+
+test("destroy: unknown session is an idempotent no-op that still exits 0", async () => {
+  await expect(daemonDestroyCommand(socketPath, "ghost")).rejects.toThrow(
+    "exit(0)",
+  );
+  expect(logSpy).toHaveBeenCalledWith("Destroyed session: ghost");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+  expect(vi.mocked(Agent.create)).not.toHaveBeenCalled();
+});
+
+// ── create --worktree ──────────────────────────────────────────
+
+test("create: --worktree creates a worktree first, then the session inside it", async () => {
+  vi.mocked(createWorktree).mockResolvedValue({
+    name: "feature-x",
+    path: "/repo/main/.wave/worktrees/feature-x",
+    branch: "feature-x",
+    repoRoot: "/repo/main",
+    hasUncommittedChanges: false,
+    hasNewCommits: false,
+    isNew: true,
+    hookBased: false,
+  });
+  await expect(
+    daemonCreateCommand(socketPath, { worktree: "feature-x" }),
+  ).rejects.toThrow("exit(0)");
+  // sessionId first (script-compatible), worktree info second.
+  expect(stdoutLines()).toEqual([
+    "test-session-id",
+    "Worktree: /repo/main/.wave/worktrees/feature-x (branch: feature-x)",
+  ]);
+  expect(vi.mocked(createWorktree)).toHaveBeenCalledWith(
+    "feature-x",
+    process.cwd(),
+    { baseBranch: undefined },
+  );
+  const options = vi.mocked(Agent.create).mock.calls[0][0];
+  expect(options.workdir).toBe("/repo/main/.wave/worktrees/feature-x");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("create: bare --worktree auto-generates the worktree name", async () => {
+  vi.mocked(createWorktree).mockResolvedValue({
+    name: "generated-name",
+    path: "/repo/main/.wave/worktrees/generated-name",
+    branch: "generated-name",
+    repoRoot: "/repo/main",
+    hasUncommittedChanges: false,
+    hasNewCommits: false,
+    isNew: true,
+    hookBased: false,
+  });
+  await expect(
+    daemonCreateCommand(socketPath, { worktree: "" }),
+  ).rejects.toThrow("exit(0)");
+  // The daemon normalizes the empty name to a generated one.
+  expect(vi.mocked(createWorktree)).toHaveBeenCalledWith(
+    expect.any(String),
+    process.cwd(),
+    { baseBranch: undefined },
+  );
+  expect(vi.mocked(createWorktree).mock.calls[0][0]).not.toBe("");
+  expect(stdoutLines()[0]).toBe("test-session-id");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+// ── destroy --remove-worktree ──────────────────────────────────
+
+test("destroy: --remove-worktree resolves the worktree via git and removes it before destroying", async () => {
+  gitTopLevel = "/repo/main/.wave/worktrees/feature-x";
+  gitBranch = "feature-x";
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonDestroyCommand(socketPath, "test-session-id", {
+      removeWorktree: true,
+    }),
+  ).rejects.toThrow("exit(0)");
+  // git lookups ran against the session's workingDirectory.
+  expect(execFile).toHaveBeenCalledWith(
+    "git",
+    ["rev-parse", "--show-toplevel"],
+    { cwd: "/test/workdir" },
+    expect.any(Function),
+  );
+  expect(execFile).toHaveBeenCalledWith(
+    "git",
+    ["branch", "--show-current"],
+    { cwd: "/test/workdir" },
+    expect.any(Function),
+  );
+  // The daemon's removeWorktree ran with the resolved values (bridge fills the
+  // remaining WorktreeSession fields).
+  expect(vi.mocked(removeWorktree)).toHaveBeenCalledWith({
+    name: "",
+    path: "/repo/main/.wave/worktrees/feature-x",
+    branch: "feature-x",
+    repoRoot: "/repo/main",
+    hasUncommittedChanges: false,
+    hasNewCommits: false,
+    isNew: false,
+    hookBased: false,
+  });
+  expect(stdoutLines()).toEqual([
+    "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: feature-x)",
+    "Destroyed session: test-session-id",
+  ]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("destroy: --remove-worktree refuses to remove the main working tree", async () => {
+  // rev-parse resolves to the main repo root itself (a plain session).
+  gitTopLevel = "/repo/main";
+  gitBranch = "main";
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonDestroyCommand(socketPath, "test-session-id", {
+      removeWorktree: true,
+    }),
+  ).rejects.toThrow("exit(1)");
+  expect(stderrText()).toContain(
+    "wave daemon destroy failed: Refusing to remove the main working tree: /repo/main (not a linked worktree)",
+  );
+  expect(vi.mocked(removeWorktree)).not.toHaveBeenCalled();
+  expect(exitSpy).toHaveBeenCalledWith(1);
+
+  // The session is still hosted — nothing was removed or destroyed.
+  const b = connectClient(socketPath);
+  const msgs = await b.send({
+    id: 9,
+    method: "listDaemonSessions",
+    params: {},
+  });
+  const result = msgs[0] as { result: { sessions: unknown[] } };
+  expect(result.result.sessions).toHaveLength(1);
+  b.close();
+});
+
+test("destroy: --remove-worktree forwards hookBased when the repo uses a WorktreeCreate hook", async () => {
+  gitTopLevel = "/repo/main/.wave/worktrees/feature-x";
+  gitBranch = "feature-x";
+  vi.mocked(hasWorktreeCreateHook).mockReturnValue(true);
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonDestroyCommand(socketPath, "test-session-id", {
+      removeWorktree: true,
+    }),
+  ).rejects.toThrow("exit(0)");
+  expect(vi.mocked(removeWorktree)).toHaveBeenCalledWith(
+    expect.objectContaining({ hookBased: true }),
+  );
+  expect(stdoutLines()).toContain(
+    "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: feature-x)",
+  );
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("destroy: --remove-worktree on a non-git working directory fails with a clear message", async () => {
+  gitLookupError = new Error(
+    "fatal: not a git repository (or any of the parent directories): .git",
+  );
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonDestroyCommand(socketPath, "test-session-id", {
+      removeWorktree: true,
+    }),
+  ).rejects.toThrow("exit(1)");
+  expect(stderrText()).toContain(
+    "wave daemon destroy failed: Cannot remove worktree: /test/workdir is not inside a git repository",
+  );
+  expect(vi.mocked(removeWorktree)).not.toHaveBeenCalled();
+  expect(exitSpy).toHaveBeenCalledWith(1);
 });
