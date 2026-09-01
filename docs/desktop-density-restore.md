@@ -911,3 +911,33 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 - `src/index.tsx`（mousemove 委托：滚动容器查找 + overTrack 判定 + inline 变量设置，desktop only）
 - `src/styles/host-desktop.css`（三态变量化：--cc-fill-scrollbar{-container-hover,-hover,-active}；通配声明阻断继承；:active 兜底）
 - `prototype/preview-entry.tsx`（同款委托，仅本地预览验证，不提交）
+
+## 第二十二轮：确认弹窗对齐 codechat approval-dialog（1 项评论）
+
+评论：`div.confirmation-dialog`「executeBash npm install」——「多了灰色的背景色、按钮布局参考项目中的弹窗、关闭按钮错位，检查间距边距」。
+
+### 变更点清单
+
+| #   | 对象             | 修复前                                                                                                                  | 修复后（权威依据 = 原型 ApprovalDialog.vue + global.css approval-\* 段）                                                                                                                                                                  |
+| --- | ---------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 弹窗外围灰色背景 | 弹窗容器 `input-area-container--confirm` 继承桌面统一 padding 16 → dark 下透出容器底 #191A1B 深灰，围住卡片形成一圈灰缝 | 弹窗模式下容器 padding 归零（`[data-host="desktop"] .input-area-container--confirm { padding: 0 }`）→ 卡片贴满，外围灰缝消失（codechat approval-layer 无背景、弹窗悬浮）                                                                  |
+| 2   | 按钮布局         | 横排一行右对齐（flex-end wrap）                                                                                         | **竖排全宽**（codechat approval-actions：flex-direction column / gap 8 / margin-top 16）；按钮 width 100% / min-height 32 / pad 0 12 / 字重 500 / r6。DOM 顺序 = 视觉顺序：提供反馈(ghost) → 自动类(secondary) → 批准并继续(primary) 在底 |
+| 3   | 按钮三态配色     | apply 炭黑 ✓；auto 用 vscode secondary token；feedback 文本型 24px                                                      | secondary（auto/reject）：light #f0f2f5 底 + #ebeef5 边 + #1f2329 字（dark 6% 白/12% 白/#E6E6E6）；ghost（feedback）：透明 + #565A60（dark #9A9EA5），hover #eef0f3（dark 8% 白）；apply 保持 token（light #1f2329 / dark #3d424a）白字   |
+| 4   | 关闭按钮错位     | absolute top 8 / right 12（base 12px padding 时代旧值）→ 偏上偏外，与标题行不对齐                                       | top 22 / right 16（= 卡片 padding 16；标题 16px/lh32 → 行中心 32px，按钮 20×20 → 22）→ close 中心 y 与标题行中心完全重合（实测 799=799）、右缘与内容右端对齐（gap 17px）；hover 色统一 #eef0f3 / 8% 白                                    |
+| 5   | 间距节奏         | header 内 gap 6px                                                                                                       | 8px（codechat 8/12/16 节奏：卡片 pad 16、title→command 8、command→按钮 16）                                                                                                                                                               |
+
+### 验证结果（Playwright 探针 + 截图实测 + vision 复核）
+
+| 项                     | 实测                                                                                                     | 期望 |
+| ---------------------- | -------------------------------------------------------------------------------------------------------- | ---- |
+| 弹窗容器 padding       | 0px（原 16px），dark 灰缝消失                                                                            | ✓    |
+| 按钮竖排全宽           | flex-direction column / gap 8 / margin-top 16 / 全宽 734×32                                              | ✓    |
+| 三态配色 light/dark    | feedback 透明 #565A60/#9A9EA5；auto #f0f2f5·#ebeef5·#1f2329 / 6%·12% 白·#E6E6E6；apply 炭黑/#3d424a 白字 | ✓    |
+| 关闭按钮对齐           | top 22/right 16；closeCenterY 799 = titleCenterY 799；右 gap 17                                          | ✓    |
+| header 间距            | 8px                                                                                                      | ✓    |
+| vision 复核 light/dark | 灰缝消失、竖排均匀、配色正确、× 同行居中、间距协调                                                       | ✓    |
+| compile / type-check   | 通过                                                                                                     | ✓    |
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（第二十二轮段：弹窗容器 padding 0、actions 竖排全宽、按钮三态、close 定位、header 间距）

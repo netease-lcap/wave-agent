@@ -1167,6 +1167,96 @@
 }
 
 
+/* ── 第二十二轮：确认弹窗对齐 codechat approval-dialog（用户反馈：多了灰色背景/按钮布局/关闭按钮错位/间距） ── */
+
+/* ① 弹窗外围灰色背景：input-area-container 桌面统一 padding 16 在弹窗模式下
+   透出容器底（dark #191A1B 环境灰围住卡片）→ 弹窗容器 padding 归零，卡片贴满，
+   外围灰缝消失（codechat approval-layer 无背景、弹窗悬浮于对话区）。 */
+[data-host="desktop"] .input-area-container--confirm {
+  padding: 0;
+}
+
+/* ② 按钮布局：codechat approval-actions —— flex-direction column / gap 8 /
+   margin-top 16；按钮全宽（width 100%）min-height 32 / pad 0 12 / 字重 500。
+   DOM 顺序即视觉顺序：提供反馈(ghost) → 自动类(secondary) → 批准并继续(primary) 在底。 */
+[data-host="desktop"] .confirmation-actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 16px;
+}
+[data-host="desktop"] .confirmation-actions .confirmation-btn {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 12px;
+  font-weight: 500;
+  justify-content: center;
+}
+/* secondary（是，并跳过权限确认 / 自动接受）：--cc-fill #f0f2f5 底 +
+   --cc-border-lighter #ebeef5 边 + --cc-text-primary 字（codechat approval-secondary） */
+[data-host="desktop"][data-theme="light"] .confirmation-btn-auto,
+[data-host="desktop"][data-theme="light"] .confirmation-btn-reject {
+  background-color: #f0f2f5;
+  border-color: #ebeef5;
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="light"] .confirmation-btn-auto:hover,
+[data-host="desktop"][data-theme="light"] .confirmation-btn-reject:hover {
+  background-color: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-auto,
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-reject {
+  background-color: rgb(255 255 255 / 6%);
+  border-color: rgb(255 255 255 / 12%);
+  color: #e6e6e6;
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-auto:hover,
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-reject:hover {
+  background-color: rgb(255 255 255 / 8%);
+}
+/* ghost（提供反馈）：透明底 + --cc-text-regular #565A60（codechat approval-ghost） */
+[data-host="desktop"][data-theme="light"] .confirmation-btn-feedback {
+  background-color: transparent;
+  border-color: transparent;
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="light"] .confirmation-btn-feedback:hover {
+  background-color: #eef0f3;
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-feedback {
+  background-color: transparent;
+  border-color: transparent;
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-feedback:hover {
+  background-color: rgb(255 255 255 / 8%);
+  color: #9a9ea5;
+}
+
+/* ③ 关闭按钮对齐：标题 16px/lh32 + 卡片 pad 16 → 标题行中心 = 32px，
+   按钮 20×20 → top 22 / right 16（= padding，右缘与内容右端对齐）；
+   原来 top 8/right 12 是 base 12px padding 时代的旧值，偏上偏外。 */
+[data-host="desktop"] .confirmation-close-btn {
+  top: 22px;
+  right: 16px;
+  border-radius: 4px;
+}
+[data-host="desktop"][data-theme="light"] .confirmation-close-btn:hover {
+  background-color: #eef0f3;
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-close-btn:hover {
+  background-color: rgb(255 255 255 / 8%);
+  color: #ffffff;
+}
+
+/* ④ 间距节奏：header 内 title→command 6px → 8px（codechat 8/12/16 节奏） */
+[data-host="desktop"] .confirmation-header {
+  gap: 8px;
+}
+
+
 /* ── 第二十一轮：全局滚动条统一（Figma 5809:55691 / codechat global.css 2304-2351） ── */
 
 /* 视觉：8px 胶囊 thumb、16px 轨道 + 4px 透明边距（padding-box 裁剪）、轨道恒透明。
