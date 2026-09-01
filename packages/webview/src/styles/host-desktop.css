@@ -336,6 +336,37 @@
   height: 5px;
   opacity: 1;
   font-size: 0;
+  /* codechat picker-chevron：收起时 rotate(180deg)（箭头朝下 ⌄），
+     展开时还原（朝上 ⌃）；第十七轮对齐 —— 此前未旋转方向与 Figma 相反 */
+  transform: rotate(180deg);
+  transition: transform 0.15s ease;
+}
+[data-host="desktop"] .desktop-host-trigger[aria-expanded="true"] .desktop-host-caret,
+[data-host="desktop"] .desktop-workdir-trigger[aria-expanded="true"] .desktop-workdir-caret {
+  transform: none;
+}
+
+/* worktree 复选框：参考同灰条选项（context-picker 规格）延展 —— 32px 高、
+   pad 0 6、r8、14px、hover 灰底；深色同 trigger 族 */
+[data-host="desktop"] .desktop-worktree-checkbox {
+  min-height: 32px;
+  padding: 0 6px;
+  border-radius: 8px;
+  gap: 4px;
+  font-size: 14px;
+  color: #565a60;
+  box-sizing: border-box;
+}
+[data-host="desktop"] .desktop-worktree-checkbox:hover {
+  background: #eef0f3;
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-worktree-checkbox {
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-worktree-checkbox:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
 }
 [data-host="desktop"] .desktop-host-trigger:hover,
 [data-host="desktop"] .desktop-host-trigger:focus-visible,

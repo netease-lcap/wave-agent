@@ -1,5 +1,6 @@
 import React, { useRef } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import { PermCaretIcon } from "./HeaderIcons";
 import "../styles/DesktopApp.css";
 
 export interface DesktopWorktreeControlsProps {
@@ -97,7 +98,7 @@ export const DesktopWorktreeControls: React.FC<
           ) : (
             <span className="desktop-workdir-name">{branch}</span>
           )}
-          <span className="codicon codicon-chevron-down desktop-workdir-caret"></span>
+          <PermCaretIcon className="desktop-workdir-caret" />
         </div>
         {open && (
           <div
