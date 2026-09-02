@@ -50,7 +50,7 @@ describe("PanelToggleMenu", () => {
     ).not.toBeNull();
   });
 
-  it("reflects checked state via aria-checked and the check icon", () => {
+  it("reflects checked state via aria-checked and the active highlight", () => {
     renderMenu({ checked: ["preview", "terminal"] });
     expect(screen.getByTestId("panel-toggle-item-preview")).toHaveAttribute(
       "aria-checked",
@@ -64,16 +64,14 @@ describe("PanelToggleMenu", () => {
       "aria-checked",
       "true",
     );
-    expect(
-      screen
-        .getByTestId("panel-toggle-item-preview")
-        .querySelector(".panel-toggle-menu-check--on"),
-    ).not.toBeNull();
-    expect(
-      screen
-        .getByTestId("panel-toggle-item-diff")
-        .querySelector(".panel-toggle-menu-check--on"),
-    ).toBeNull();
+    // 第 25 轮去对号：选中态由根元素上的背景高亮 class 呈现（对齐 codechat
+    // 菜单规格），非子元素对号图标。
+    expect(screen.getByTestId("panel-toggle-item-preview")).toHaveClass(
+      "panel-toggle-menu-item--active",
+    );
+    expect(screen.getByTestId("panel-toggle-item-diff")).not.toHaveClass(
+      "panel-toggle-menu-item--active",
+    );
   });
 
   it("toggles items WITHOUT closing the menu (consecutive multi-select)", () => {
