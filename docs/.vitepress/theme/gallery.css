@@ -1,0 +1,36 @@
+/* Screenshot gallery for docs (vsce.md 画廊). 3-up on wide viewports,
+   2-up on narrow — screenshots share one app UI so a row of identical-width
+   frames keeps the page tidy. */
+.screenshot-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin: 16px 0 24px;
+}
+
+.screenshot-gallery figure {
+  margin: 0;
+}
+
+.screenshot-gallery img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  display: block;
+}
+
+.screenshot-gallery figcaption {
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+  margin-top: 6px;
+}
+
+@media (max-width: 720px) {
+  .screenshot-gallery {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+}
