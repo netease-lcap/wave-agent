@@ -403,10 +403,10 @@
 }
 
 /* Actions: pinned to the dialog bottom (sibling of the scrollable body).
-   DOM order matches the visual top-to-bottom order — [自动类] [主按钮]
-   [提供反馈] — so the Tab cycle also runs top-to-bottom with the ghost
-   提供反馈 button last (desktop: feedback below the primary action).
-   justify-content: flex-end pins the row right, including
+   DOM order matches the visual left-to-right order — [提供反馈] [自动类]
+   [主按钮] — so the Tab cycle also runs left-to-right with the primary
+   button last (aligned with Claude's confirm UIs: Deny/Cancel first,
+   Allow last). justify-content: flex-end pins the row right, including
    the overflow line when wrapped (same as claude.ai's confirm action row;
    ellipsis stays as the extreme-narrow fallback).
    align-items: center keeps the shorter text-style 提供反馈 button on the

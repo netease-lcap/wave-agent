@@ -132,20 +132,21 @@ describe("Confirmation Dialog", () => {
     // up, in this pane or a sibling one.
     expect(document.activeElement).toBe(initialFocus);
 
-    // The primary action is second-to-last in the Tab cycle within the
-    // action bar: DOM order matches the visual top-to-bottom order
-    // ([自动类] [主按钮] [提供反馈] — 第 30 轮将 ghost 提供反馈 移到 actions
-    // 最底部，对齐 codechat ApprovalDialog), so Tab reaches the primary
-    // button before the trailing 提供反馈 ghost.
+    // The primary action is last in the Tab cycle within the action bar:
+    // DOM order matches the visual left-to-right order ([提供反馈] [自动类]
+    // [主按钮] — primary last, aligned with Claude's confirm UIs; the 第 30 轮
+    // ghost-to-bottom reorder served the vertical layout and was reverted when
+    // the bar went horizontal again), so Tab reaches the primary button last.
     const actionBar = document.querySelector(".confirmation-actions")!;
     const buttons = Array.from(
       actionBar.querySelectorAll<HTMLButtonElement>("button:not([disabled])"),
     );
-    const primary = buttons[buttons.length - 2]!;
+    const feedback = buttons[0]!;
+    expect(feedback).toHaveClass("confirmation-btn-feedback");
+    expect(feedback).toHaveTextContent("提供反馈");
+    const primary = buttons[buttons.length - 1]!;
     expect(primary).toHaveClass("confirmation-btn-apply");
     expect(primary).toHaveTextContent("批准并继续");
-    const feedback = buttons[buttons.length - 1]!;
-    expect(feedback).toHaveTextContent("提供反馈");
   });
 
   it("should send approval response when clicking apply button", async () => {

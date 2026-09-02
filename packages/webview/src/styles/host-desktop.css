@@ -1410,8 +1410,10 @@
 /* ② 按钮布局：按钮保持水平并排（用户拍板：工具确认弹窗按钮维持既有水平对齐，
    不随 codechat approval-dialog 改竖排全宽——2026-09-02 反馈）；其余视觉按
    codechat 节奏：margin-top 16、按钮 min-height 32 / pad 0 12 / 字重 500 /
-   r6、secondary/primary/ghost 三态配色（见下）。DOM 顺序即视觉顺序：
-   自动类(secondary) → 批准并继续(primary) → 提供反馈(ghost)。 */
+   r6、secondary/primary/ghost 三态配色（见下）。DOM 顺序即视觉顺序（水平
+   从左到右）：提供反馈(ghost) → 自动类(secondary) → 批准并继续(primary)
+   最右（对齐 Claude 确认 UI primary-last，spec confirm-ui.md 场景 1；
+   第 30 轮为竖排布局把提供反馈移到末尾的 DOM 位移已随水平布局恢复撤销）。 */
 [data-host="desktop"] .confirmation-actions {
   gap: 8px;
   margin-top: 16px;
