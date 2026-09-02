@@ -1560,3 +1560,54 @@ codechat 权威：`workspace-header-menu` / el-dropdown-menu 菜单项**连续�
 ### 实现文件
 
 - `src/styles/host-desktop.css`（41① `.input-workdir-row` dark 背景段；41③ `.permission-mode-select` 深色 hover/focus 段）
+
+---
+
+## 0902 新基线第 2 轮（2026-09）：任务列表/消息队列卡片对齐输入框规格 + 状态色合规
+
+用户预览评论 `div.task-list-inline` / `div.queued-item` / `div.queued-message-list-container`：「任务列表和消息列队的整体宽度应该和下方的输入框保持一致，圆角也和下方输入框保持统一，字号14px，消息列队选项高度32px」「hover状态圆角等要符合规范」「整体卡片和下方对话框要有间距8px」；随后追加「检查任务列表、消息列表中的颜色，看看是否符合规范」。
+
+### A. 卡片布局对齐输入框规格（host-desktop.css）
+
+| 项               | base                             | 桌面规范（= 输入框）                          | 修复                                                      |
+| ---------------- | -------------------------------- | --------------------------------------------- | --------------------------------------------------------- |
+| 卡片宽度         | max-width 800px                  | 768px（input-wrapper）                        | 两卡统一 768                                              |
+| 圆角             | 8px                              | 16px（input-content r16）                     | 统一 16                                                   |
+| 主体字号         | 12px / lh16                      | 14px / lh20                                   | 标题/任务行/队列标题/队列条目统一 14                      |
+| 统计文字         | 12px / editor-foreground         | 12px 次级弱化（codechat xs + text-secondary） | #6C7076 / dark #9A9EA5                                    |
+| 队列选项高       | 24px / r4                        | 32px / r6                                     | height 32 + radius 6                                      |
+| 队列 hover 底    | vscode list-hoverBackground 蓝灰 | codechat fill-hover                           | #EEF0F3 / dark 8% 白                                      |
+| 卡片↔输入框间距 | 无                               | 8px                                           | queued 卡 margin-bottom 8；连体时 task 卡贴齐、归零连接处 |
+| 滚动上限         | 102px                            | 110px                                         | 4 任务 × 20px 行高 + 3 × 10px 间距                        |
+
+连体结构沿用 base `:has(+ .queued-message-list-container)` 归零逻辑，仅半径 8→16。
+
+### B. 状态色对齐 codechat state tokens（host-desktop.css + TaskList.tsx）
+
+权威：codechat TaskList.vue `task-stat-dot`/`task-list-item-icon` 共用 `--cc-state-succeeded #16a34a / --cc-state-running #2f5edb / --cc-state-idle #98a2b3`（dot 与行 icon 同状态同色）；wave 内部同色先例：时间线节点 #16a34a、SessionBoard dot 深浅同值、桌面链接 #2f5edb/#4daafc。
+
+| 元素                | base/修复前                       | 规范                         | 修复                                                                                                     |
+| ------------------- | --------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------- |
+| stat dot 已完成     | #73C991（iconPassed token）       | #16a34a                      | TaskList.tsx stats 加 `is-succeeded/is-running/is-pending` 类，desktop 覆盖（inline style → !important） |
+| stat dot 进行中     | #75BEFF（--wave-blue 未定义回退） | #2f5edb                      | 同上                                                                                                     |
+| stat dot 待执行     | #606060/#ccc                      | #98a2b3                      | 同上                                                                                                     |
+| 行 icon 已完成      | svg fill #89D185 硬编码           | #16a34a                      | svg fill 为 presentation attribute，CSS `fill` 普通规则覆盖；按行内 title 状态 class 以 `:has()` 定位    |
+| 行 icon 进行中      | fill #CCCCCC                      | #2f5edb                      | 同上                                                                                                     |
+| 行 icon 待执行      | fill #CCCCCC                      | #98a2b3                      | 同上（mock 无待执行行，规则生效不可视验证）                                                              |
+| 依赖行「依赖 #x」   | textLink #0069cc                  | 链接 #2f5edb / dark #4daafc  | desktop 覆盖（mock 无依赖任务，规则生效不可视验证）                                                      |
+| 两卡 header chevron | vscode-foreground 黑              | 控件图标灰 #565A60 / #9A9EA5 | 并入第 38 轮图标清单同值                                                                                 |
+| queue action 图标   | icon-foreground #606060/#ccc      | 图标灰 #565A60 / #9A9EA5     | 常态灰；hover 底 #E7E9ED / 12% 白、字 #1F2329/#FFF（session-more-btn 先例）                              |
+
+深色不做单独状态色：codechat 无 dark token，状态色与时间线/会话看板一致深浅同值。
+
+### 验证结果（8899 Playwright 探针，两主题）
+
+- dot/行 icon 三状态 = rgb(22,163,74)/(47,94,219)/(152,162,179)，两主题一致 ✓
+- stat-text #6C7076（light）/ #9A9EA5（dark）✓；chevron/action 图标 #565A60 / #9A9EA5 ✓
+- action hover light #1F2329 + #E7E9ED、dark #FFF + 12% 白 ✓；队列项 hover #EEF0F3 / 8% 白 ✓
+- title 弱化：completed 行 #606060/#9D9D9D + 删除线（保持 base 语义）✓
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（0902 新基线第 2 轮段：布局规格 + 颜色覆盖）
+- `src/components/TaskList.tsx`（stats 数组补 `is-succeeded/is-running/is-pending` 类并应用到 stat dot span）
