@@ -1,10 +1,9 @@
 import { test, expect } from "./utils/desktopTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
 import { MockDataGenerator } from "./fixtures/mockData.js";
-import { screenshotWebp } from "./utils/screenshot.js";
 
 /**
- * Desktop preview pane + element picker screenshots.
+ * Desktop preview pane + element picker e2e coverage.
  *
  * Chromium can't host a real Electron <webview>, so the guest side is faked:
  * the test stubs the element's IPC surface (send/loadURL/reload), dispatches
@@ -13,7 +12,7 @@ import { screenshotWebp } from "./utils/screenshot.js";
  * card mirrors pickerPreload.ts's real card (280px, panel background, footer
  * with element tag + accent "add to input" button). The submit ipc event,
  * however, flows through the real PreviewPane → MessageInput path so the
- * "comment lands in the chat input" shot shows the actual behavior.
+ * "comment lands in the chat input" behavior is exercised for real.
  */
 const DIR_A = "/Users/dev/projects/wave-agent";
 
@@ -138,10 +137,6 @@ test.describe("Desktop Preview Pane Screenshots", () => {
       body?.insertAdjacentHTML("beforeend", html);
     }, MOCK_PROTOTYPE_HTML);
     await expect(webviewPage.locator("#mock-prototype")).toBeVisible();
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-preview-pane.webp",
-    );
 
     // ── 2. Picker active: toggle on + hover highlight outline ─────
     await webviewPage.getByTestId("preview-picker-toggle").click();
@@ -157,10 +152,6 @@ test.describe("Desktop Preview Pane Screenshots", () => {
         chip.style.outlineOffset = "-2px";
       }
     });
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-preview-picker.webp",
-    );
 
     // ── 3. Comment card pinned to the picked element ──────────────
     await webviewPage.evaluate((html) => {
@@ -181,10 +172,6 @@ test.describe("Desktop Preview Pane Screenshots", () => {
       body.appendChild(card);
     }, mockCardHtml("这里改成主要按钮样式，并加上加载中状态"));
     await expect(webviewPage.locator("#mock-picker-card")).toBeVisible();
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-preview-comment.webp",
-    );
 
     // ── 4. Submit dismisses the card; the comment lands in the chat ─
     // input (nothing sent to the agent yet) so several can be batched.
@@ -213,10 +200,6 @@ test.describe("Desktop Preview Pane Screenshots", () => {
     // The real MessageInput now carries the formatted comment.
     await expect(webviewPage.getByTestId("message-input")).toContainText(
       "这里改成主要按钮样式",
-    );
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-preview-comment-input.webp",
     );
   });
 });
