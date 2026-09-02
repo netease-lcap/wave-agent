@@ -1633,3 +1633,165 @@
 [data-host="desktop"] .panel-toggle-menu {
   gap: 0;
 }
+
+/* ═══ 0902 新基线第 2 轮：任务列表/消息队列卡片对齐输入框规格 ═══
+   用户评论 div.task-list-inline「任务列表和消息列队的整体宽度应该和下方的
+   输入框保持一致，圆角也和下方输入框保持统一，字号14px，消息列队选项高度32px」。
+   desktop 输入框规格：.input-wrapper 768px / .input-content r16 / 字号 14；
+   base 两卡 max-width 800、r8、字号 12、队列项高 24 → 全部覆盖对齐。
+   注意：task 卡 + queued 卡连体（:has 归零）时外轮廓 = task 顶角 + queued
+   底角，中间连接处归零保持连体单卡外观（同 base 结构，仅半径 8 → 16）。 */
+
+[data-host="desktop"] .task-list-inline,
+[data-host="desktop"] .queued-message-list-container {
+  max-width: 768px;
+  border-radius: 16px;
+}
+
+/* 连体组合态（task 卡下缘 / queued 卡上缘）圆角归零——base 同结构规则
+   specificity (0,2,0) 会被上方简写 border-radius (0,2,0) 后加载覆盖，
+   此处加 [data-host] 提升到 (0,3,0) 显式重写归零。 */
+[data-host="desktop"]
+  .task-list-inline:has(+ .queued-message-list-container) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+[data-host="desktop"] .task-list-inline + .queued-message-list-container {
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* 字号：主体文字 12 → 14（标题/任务行/队列标题/队列条目），行高同步 16 → 20。
+   注意：统计文字「已完成 3」等为次级信息，保持 codechat 层级弱化
+   （--cc-text-secondary #6C7076 + --cc-font-size-xs 12px），不并入 14px 组。 */
+[data-host="desktop"] .task-list-title,
+[data-host="desktop"] .task-title,
+[data-host="desktop"] .queued-message-list-title,
+[data-host="desktop"] .queued-item-text {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+/* 统计文字「已完成 3 进行中 1 待执行 0」：12px 次级弱化（用户评论「字号应该是
+   12px，字体层级弱化」；codechat .task-list-stat 同值）。行高 16 保持 base。 */
+[data-host="desktop"] .task-list-stat-text {
+  font-size: 12px;
+  line-height: 16px;
+  color: #6c7076;
+}
+[data-host="desktop"][data-theme="dark"] .task-list-stat-text {
+  color: #9a9ea5;
+}
+
+/* 消息队列选项高 24 → 32（用户评论「消息列队选项高度32px」）；hover 底对齐
+   规范：r6（--cc-radius-sm，base 4px 过小）+ fill-hover 底色（light #EEF0F3 /
+   dark 8% 白），替换 base 的 vscode list-hoverBackground 蓝灰调。 */
+[data-host="desktop"] .queued-item {
+  height: 32px;
+  border-radius: 6px;
+}
+[data-host="desktop"] .queued-item:hover {
+  background: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .queued-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* 卡片组合与下方输入框间距 8px（用户评论「整体卡片和下方对话框要有间距8px」；
+   codechat .composer-task-list margin: 0 auto 8px 同值）。连体时 task 卡与
+   queued 卡之间不留间距（8px 由 queued 卡的 margin-bottom 提供），
+   单独出现（无连体兄弟）的卡自行带 8px。 */
+[data-host="desktop"] .queued-message-list-container {
+  margin-bottom: 8px;
+}
+[data-host="desktop"] .task-list-inline {
+  margin-bottom: 8px;
+}
+[data-host="desktop"]
+  .task-list-inline:has(+ .queued-message-list-container) {
+  margin-bottom: 0;
+}
+
+/* 任务列表滚动上限 102 → 110：字号 14 后行高 20px，保持「最多同屏 4 个
+   任务」（4 × 20 + 3 × 10 = 110），避免第 4 个任务被裁半。 */
+[data-host="desktop"] .task-list-items {
+  max-height: 110px;
+}
+
+/* ═══ 0902 新基线第 2 轮 · 颜色合规：任务/队列状态色对齐 codechat state tokens ═══
+   用户评论「检查任务列表、消息列表中的颜色，看看是否符合规范」。
+   权威值：codechat tokens.css --cc-state-succeeded #16a34a / --cc-state-running
+   #2f5edb / --cc-state-idle #98a2b3（TaskList.vue 的 dot 与行 icon 共用这三色）；
+   wave 内部同色系先例：时间线节点 #16a34a、桌面链接 #2f5edb/#4daafc。
+   base 违规点：① TaskList.tsx stats 内联色用 vscode token（完成 #73c991、
+   运行中 #75beff、待执行 #606060/#ccc，与 codechat 不同）；② 行 icon svg
+   fill 硬编码 PassIcon #89D185、Loading/Pending #cccccc，与 dot 同状态不同色。
+
+   修复：TaskList.tsx 为 dot 与行容器补 is-succeeded/is-running/is-pending
+   状态类（对齐 codechat task-stat-dot / task-list-item-icon 命名），此处按类
+   覆盖。dot 为组件内联 style，需 !important；svg fill 为 presentation
+   attribute，普通 fill 规则即可覆盖（无需 important）。深色沿用浅色值：
+   codechat 无 dark token，状态色与 wave 时间线/会话看板一致深浅同值。 */
+
+[data-host="desktop"] .task-list-stat-dot.is-succeeded {
+  background-color: #16a34a !important;
+}
+[data-host="desktop"] .task-list-stat-dot.is-running {
+  background-color: #2f5edb !important;
+}
+[data-host="desktop"] .task-list-stat-dot.is-pending {
+  background-color: #98a2b3 !important;
+}
+
+/* 行内状态图标与 dot 同色（codechat task-list-item-icon 三状态同 token）：
+   行容器 .task-status 无状态类，用行内标题状态 class 反推（:has） */
+[data-host="desktop"]
+  .task-row:has(.task-title.completed)
+  .task-status-svg
+  path {
+  fill: #16a34a;
+}
+[data-host="desktop"]
+  .task-row:has(.task-title.in_progress)
+  .task-status-svg
+  path {
+  fill: #2f5edb;
+}
+[data-host="desktop"] .task-row:has(.task-title.pending) .task-status-svg path {
+  fill: #98a2b3;
+}
+
+/* 依赖行「依赖 #x」：桌面链接蓝（base var(--vscode-textLink-foreground)
+   light #0069cc 偏深蓝，不符合桌面链接规范；dark #4daafc 已对） */
+[data-host="desktop"] .task-dep {
+  color: #2f5edb;
+}
+[data-host="desktop"][data-theme="dark"] .task-dep {
+  color: #4daafc;
+}
+
+/* 队列卡其余控件颜色：① 两卡 header 展开 chevron 加入「控件图标统一灰」
+   （base var(--vscode-foreground) 黑 → #565a60，同第 38 轮 sidebar 分组
+   chevron / header 图标清单）；② queued-action-button（hover 编辑图标等）
+   常态色 base icon-foreground #606060 → 图标灰 #565a60；hover 底色对齐
+   行内操作按钮先例（session-more-btn hover：#e7e9ed 在浅灰行上仍可辨，
+   深色 12% 白），hover 文字加深为 #1f2329/#ffffff。 */
+[data-host="desktop"] .task-list-chevron,
+[data-host="desktop"] .queued-chevron,
+[data-host="desktop"] .queued-action-button {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="dark"] .task-list-chevron,
+[data-host="desktop"][data-theme="dark"] .queued-chevron,
+[data-host="desktop"][data-theme="dark"] .queued-action-button {
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="light"] .queued-action-button:hover {
+  background-color: #e7e9ed;
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .queued-action-button:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}

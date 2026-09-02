@@ -164,16 +164,25 @@ export const TaskList: React.FC<TaskListProps> = ({
   ).length;
   const pending = visibleTasks.filter((t) => t.status === "pending").length;
 
+  // 状态 class 对齐 codechat .task-list-stat-dot.is-succeeded/is-running/is-pending，
+  // 供桌面端 host-desktop.css 覆盖为 codechat state 色（--cc-state-succeeded/running/idle）。
   const stats = [
     {
       count: completed,
       label: "已完成",
+      cls: "is-succeeded",
       color: "var(--vscode-testing-iconPassed, #73c991)",
     },
-    { count: inProgress, label: "进行中", color: "var(--wave-blue, #75beff)" },
+    {
+      count: inProgress,
+      label: "进行中",
+      cls: "is-running",
+      color: "var(--wave-blue, #75beff)",
+    },
     {
       count: pending,
       label: "待执行",
+      cls: "is-pending",
       color: "var(--vscode-icon-foreground, #cccccc)",
     },
   ];
@@ -195,7 +204,7 @@ export const TaskList: React.FC<TaskListProps> = ({
           {stats.map((s) => (
             <div key={s.label} className="task-list-stat">
               <span
-                className="task-list-stat-dot"
+                className={`task-list-stat-dot ${s.cls}`}
                 style={{ backgroundColor: s.color }}
               />
               <span className="task-list-stat-text">
