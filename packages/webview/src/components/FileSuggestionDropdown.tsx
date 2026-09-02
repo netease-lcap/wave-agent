@@ -18,14 +18,11 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
   filterText,
   isLoading = false,
   direction = "up",
-  disableClickOutside = false,
 }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Handle clicks outside dropdown to close it (skipped when the parent owns
-  // its own dismiss handling, e.g. the file-panel search popover).
+  // Handle clicks outside dropdown to close it
   useEffect(() => {
-    if (disableClickOutside) return;
     const handleClickOutside = (event: MouseEvent) => {
       if (
         dropdownRef.current &&
@@ -40,7 +37,7 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
       return () =>
         document.removeEventListener("mousedown", handleClickOutside);
     }
-  }, [isVisible, onClose, disableClickOutside]);
+  }, [isVisible, onClose]);
 
   // Scroll selected item into view
   useEffect(() => {

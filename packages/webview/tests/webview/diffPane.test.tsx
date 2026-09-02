@@ -26,15 +26,18 @@ function renderPane(options?: {
   isStreaming?: boolean;
   sessionId?: string;
   workdir?: string;
+  onClose?: () => void;
   onAddComment?: (text: string) => void;
 }) {
   const vscode = createMockVscode();
+  const onClose = options?.onClose ?? vi.fn();
   const result = render(
     <DiffPane
       vscode={vscode}
       width={420}
       onWidthChange={vi.fn()}
       maxWidth={716}
+      onClose={onClose}
       paneId={options?.paneId}
       visible={options?.visible ?? true}
       isStreaming={options?.isStreaming ?? false}
@@ -55,6 +58,7 @@ function renderPane(options?: {
         width={420}
         onWidthChange={vi.fn()}
         maxWidth={716}
+        onClose={onClose}
         paneId={options?.paneId}
         visible={props.visible ?? true}
         isStreaming={props.isStreaming ?? false}
@@ -63,7 +67,7 @@ function renderPane(options?: {
         onAddComment={options?.onAddComment}
       />,
     );
-  return { ...result, rerenderWith, vscode };
+  return { ...result, rerenderWith, vscode, onClose };
 }
 
 function sendDiffResult(files: WorkspaceDiffFile[], paneId?: string) {
@@ -336,9 +340,11 @@ describe("DiffPane", () => {
     expect(lastDiffRequest(vscode)).toHaveLength(2);
   });
 
-  it("has no in-pane close button (关闭统一由一级 tab 控制)", () => {
-    renderPane();
-    expect(screen.queryByTestId("diff-close")).not.toBeInTheDocument();
+  it("close button calls onClose", () => {
+    const onClose = vi.fn();
+    renderPane({ onClose });
+    fireEvent.click(screen.getByTestId("diff-close"));
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("tags requests with paneId and ignores responses for other panes", () => {
@@ -434,6 +440,7 @@ describe("DiffPane", () => {
         width={420}
         onWidthChange={onWidthChange}
         maxWidth={716}
+        onClose={vi.fn()}
         visible={true}
         isStreaming={false}
       />,

@@ -43,10 +43,9 @@ test.describe("Desktop welcome page with a side panel", () => {
 
     await expect(webviewPage.getByTestId("welcome-wordmark")).toBeVisible();
 
-    // Open the 计划 panel from the header toggle (empty slot → empty-state
-    // entry; tabs render once a panel is open).
+    // Open the 计划 panel from the header toggle.
     await webviewPage.getByTestId("panel-toggle-btn").click();
-    await webviewPage.getByTestId("panel-empty-item-plan").click();
+    await webviewPage.getByTestId("panel-toggle-item-plan").click();
     await expect(webviewPage.getByTestId("plan-pane")).toBeVisible();
 
     const geom = await webviewPage.evaluate(() => {

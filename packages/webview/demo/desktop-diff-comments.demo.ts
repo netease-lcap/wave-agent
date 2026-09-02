@@ -112,9 +112,11 @@ test.describe("Desktop Diff Pane Screenshots", () => {
       ),
     ]);
 
-    // ── 1. Open the diff pane via the header toggle (empty slot → empty-state) ─
+    // ── 1. Open the diff pane via the header panel toggle ─────────
     await webviewPage.getByTestId("panel-toggle-btn").click();
-    await webviewPage.getByTestId("panel-empty-item-diff").click();
+    await expect(webviewPage.getByTestId("panel-toggle-menu")).toBeVisible();
+    await webviewPage.getByTestId("panel-toggle-item-diff").click();
+    await webviewPage.keyboard.press("Escape"); // close the multi-select menu
     await expect(webviewPage.getByTestId("diff-pane")).toBeVisible();
 
     // DiffPane just requested desktopGetWorkspaceDiff; inject the response.

@@ -238,8 +238,6 @@ test.describe("Desktop file panel", () => {
     // openFile below is the next (only) one in the log.
     await injector.clearMessageLog();
 
-    // 搜索改为 toolbar 右侧的 search icon 呼出浮层：点击后输入框出现并聚焦。
-    await webviewPage.getByTestId("file-pane-search-trigger").click();
     const searchInput = webviewPage.getByTestId("file-pane-search-input");
     await expect(searchInput).toBeVisible();
     await searchInput.fill("ChatApp");
@@ -293,14 +291,11 @@ test.describe("Desktop file panel", () => {
       path?: string;
     };
     expect(openMsg.path).toBe(targetPath);
-    // Selecting a file closes the whole search popover.
-    await expect(
-      webviewPage.getByTestId("file-pane-search-popover"),
-    ).toHaveCount(0);
-    // The toolbar now shows the searched file.
+    // The toolbar now shows the searched file (dropdown closed, search cleared).
     await expect(webviewPage.locator(".file-pane-path")).toHaveText(
       "src/components/ChatApp.tsx",
     );
+    await expect(searchInput).toHaveValue("");
 
     await injector.simulateExtensionMessage("desktopFileContent", {
       fileView: {

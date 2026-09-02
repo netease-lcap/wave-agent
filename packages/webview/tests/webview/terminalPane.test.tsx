@@ -56,9 +56,11 @@ function renderPane(options?: {
   visible?: boolean;
   sessionId?: string;
   workdir?: string;
+  onClose?: () => void;
   onOpenPreview?: (url: string) => void;
 }) {
   const vscode = createMockVscode();
+  const onClose = options?.onClose ?? vi.fn();
   const onOpenPreview = options?.onOpenPreview ?? vi.fn();
   const result = render(
     <TerminalPane
@@ -66,6 +68,7 @@ function renderPane(options?: {
       width={420}
       onWidthChange={vi.fn()}
       maxWidth={716}
+      onClose={onClose}
       paneId={options?.paneId}
       visible={options?.visible ?? true}
       sessionId={options?.sessionId}
@@ -84,6 +87,7 @@ function renderPane(options?: {
         width={420}
         onWidthChange={vi.fn()}
         maxWidth={716}
+        onClose={onClose}
         paneId={options?.paneId}
         visible={props.visible ?? true}
         sessionId={props.sessionId}
@@ -91,7 +95,7 @@ function renderPane(options?: {
         onOpenPreview={onOpenPreview}
       />,
     );
-  return { ...result, rerenderWith, vscode, onOpenPreview };
+  return { ...result, rerenderWith, vscode, onClose, onOpenPreview };
 }
 
 const postsOf = (
@@ -256,10 +260,12 @@ describe("TerminalPane", () => {
     expect(mockTerminals[0].disposed).toBe(true);
   });
 
-  it("has no in-pane close button (关闭统一由一级 tab 控制)", async () => {
-    renderPane();
+  it("close button calls onClose", async () => {
+    const onClose = vi.fn();
+    renderPane({ onClose });
     await act(async () => {});
-    expect(screen.queryByTestId("terminal-close")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("terminal-close"));
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("follows the app theme on desktopThemeChange", async () => {
@@ -326,6 +332,7 @@ describe("TerminalPane", () => {
         width={420}
         onWidthChange={vi.fn()}
         maxWidth={716}
+        onClose={vi.fn()}
         visible={true}
       />,
     );
@@ -351,6 +358,7 @@ describe("TerminalPane", () => {
         width={420}
         onWidthChange={vi.fn()}
         maxWidth={716}
+        onClose={vi.fn()}
         visible={true}
       />,
     );

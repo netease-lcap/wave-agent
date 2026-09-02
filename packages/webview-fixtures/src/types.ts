@@ -546,18 +546,6 @@ export interface AccountApiQuotaInfo {
 }
 
 /**
- * 更新提示 (spec desktop-app.md「桌面端自动更新」交互设计 §4 更新按钮状态机).
- * 宿主在发现新版本后推 `available: true`（→ 卡片显示「更新」按钮）；
- * 下载中/已就绪通过 `status` 流转。S0 无更新 = 不带该字段或 `available: false`。
- */
-export interface AccountUpdateInfo {
-  available: boolean;
-  /** 新版本号（对话框与 toast 文案使用）。 */
-  version?: string;
-  status?: "idle" | "downloading" | "ready";
-}
-
-/**
  * 桌面侧边栏账户卡片快照 (spec desktop-app.md「账户卡片」). Window-global like
  * showToast — the sidebar renders on the root webview instance only, so the
  * host never pane-tags it. Auth/usage follow the focused pane's host.
@@ -568,7 +556,6 @@ export interface DesktopAccountInfoMessage extends HostToWebviewMessageBase {
   user?: { id: string; email?: string } | null;
   plan?: AccountPlanInfo | null;
   apiQuota?: AccountApiQuotaInfo | null;
-  update?: AccountUpdateInfo | null;
 }
 
 // ---- Host-only commands (consumed outside the ChatApp switch). ----

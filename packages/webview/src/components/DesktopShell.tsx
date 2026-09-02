@@ -41,9 +41,6 @@ interface DesktopShellProps {
   onOpenHelpDocs: () => void;
   onLogin: () => void;
   onLogout: () => void;
-  /** 更新按钮状态机（S2 下载确认 / S4 重启确认后的宿主命令）。 */
-  onDownloadUpdate?: () => void;
-  onRestartApp?: () => void;
   /** 侧边栏底部账户卡片 (desktopAccountInfo push). */
   account?: AccountCardAccount | null;
   /**
@@ -95,8 +92,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   onOpenHelpDocs,
   onLogin,
   onLogout,
-  onDownloadUpdate,
-  onRestartApp,
   account,
   sidebarExpandButton,
   collapsed = false,
@@ -674,8 +669,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         onOpenHelpDocs={onOpenHelpDocs}
         onLogin={onLogin}
         onLogout={onLogout}
-        onDownloadUpdate={onDownloadUpdate}
-        onRestartApp={onRestartApp}
         account={account}
         hostLabel={focusedHost}
         sessionTree={host.sessionTree}

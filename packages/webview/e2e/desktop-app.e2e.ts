@@ -282,8 +282,7 @@ test.describe("Desktop App Screenshots", () => {
     });
 
     await expect(webviewPage.getByTestId("desktop-sidebar")).toBeVisible();
-    // v3 account card: the personal-info row is the hotzone opening the menu.
-    await webviewPage.getByTestId("account-card-hotzone").click();
+    await webviewPage.getByTestId("account-card-more").click();
     await expect(webviewPage.getByTestId("more-menu")).toBeVisible();
     await expect(webviewPage.getByTestId("more-menu-settings")).toBeVisible();
     await expect(webviewPage.getByTestId("more-menu-enterprise")).toBeVisible();
