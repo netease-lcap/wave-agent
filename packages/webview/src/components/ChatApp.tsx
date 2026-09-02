@@ -2492,7 +2492,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   ) : (
     <>
       {showWelcomeReady ? (
-        <WelcomeView isDesktop={isDesktop} />
+        <WelcomeView
+          isDesktop={isDesktop}
+          isAuthenticated={state.isAuthenticated}
+          // Login is optional: a direct-connect config (baseURL + apiKey) works
+          // without SSO auth, so an unauthenticated user with one must not be
+          // nudged to log in (spec sso-auth「更多菜单与欢迎页」场景 5).
+          hasDirectConnectConfig={
+            !!(
+              state.configurationData?.apiKey &&
+              state.configurationData?.baseURL
+            )
+          }
+          onLogin={handleLogin}
+        />
       ) : showWelcome ? (
         <LoadingLogo />
       ) : (
@@ -2826,13 +2839,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         onLogin={handleLogin}
         onLogout={handleLogout}
         isAuthenticated={state.isAuthenticated}
-        // Gate on `initialized`: until the host's initial snapshot (which
-        // carries isAuthenticated for every host that shows this button) has
-        // arrived, the reducer's default `false` would flash a fake 登 录
-        // button during auth loading. Only show it once the state is known.
-        showLoginButton={
-          !isDesktop && state.initialized && !state.isAuthenticated
-        }
         // Desktop keeps its own 新建对话 entry in the sidebar; the header only
         // gains the 历史对话 button (cross-workdir popup, spec「历史对话弹窗」).
         hideNewSessionButton={isDesktop}

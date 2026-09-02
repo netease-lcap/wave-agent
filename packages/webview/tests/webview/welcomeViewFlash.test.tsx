@@ -3,16 +3,22 @@ import {
   render,
   screen,
   act,
+  fireEvent,
   sendCommand,
   createMockVscode,
 } from "./test-utils";
 import { ChatApp } from "../../src/components/ChatApp";
+import WelcomeView from "../../src/components/WelcomeView";
 
 /**
  * The welcome page (brand wordmark) must not flash before the backend pushes
- * `setInitialState`: the welcome state depends on the initial snapshot, and the
- * wordmark is its only visual content (the login entry lives in the chat
- * header / sidebar account card, not on the welcome page).
+ * `setInitialState`: the welcome state depends on the initial snapshot.
+ *
+ * The login entry for IDE hosts lives on the welcome page itself (spec
+ * sso-auth「更多菜单与欢迎页」场景 5/7) — a 登录后即可开始使用~ hint + 登 录
+ * button shown while unauthenticated without a direct-connect config. Desktop
+ * logs in via the sidebar account card instead, so its welcome page never
+ * shows the button.
  */
 describe("WelcomeView render timing", () => {
   it("does not show the welcome page before initial state arrives", () => {
@@ -21,6 +27,8 @@ describe("WelcomeView render timing", () => {
     render(<ChatApp vscode={createMockVscode()} />);
 
     expect(screen.queryByTestId("welcome-wordmark")).not.toBeInTheDocument();
+    // The login button is part of the welcome page — it must not flash either.
+    expect(screen.queryByTestId("welcome-login-btn")).not.toBeInTheDocument();
   });
 
   it("shows the welcome page once initial state arrives", () => {
@@ -55,6 +63,8 @@ describe("WelcomeView render timing", () => {
     });
 
     expect(screen.getByTestId("welcome-wordmark")).toBeVisible();
+    // Authenticated users get no login nudge on the welcome page.
+    expect(screen.queryByTestId("welcome-login-btn")).not.toBeInTheDocument();
   });
 
   /**
@@ -97,19 +107,21 @@ describe("WelcomeView render timing", () => {
   });
 
   /**
-   * Regression: the header 登 录 button must not flash during auth loading.
-   * The reducer defaults isAuthenticated to false, and the button used to
-   * render on the very first frame — before the host's snapshot (which carries
-   * the real auth state) arrived — briefly claiming "logged out".
+   * Regression: the welcome-page 登 录 button must not appear before the host's
+   * snapshot. The reducer defaults isAuthenticated to false, and the welcome
+   * page (with its login button) used to render on the very first frame —
+   * before the snapshot (which carries the real auth state) arrived — briefly
+   * claiming "logged out".
    */
-  it("does not render the login button before the auth state is known", () => {
+  it("does not render the welcome login button before the auth state is known", () => {
     render(<ChatApp vscode={createMockVscode()} />);
 
-    expect(screen.queryByTestId("header-login-btn")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("welcome-login-btn")).not.toBeInTheDocument();
   });
 
-  it("renders the login button once the snapshot confirms logged out", () => {
-    render(<ChatApp vscode={createMockVscode()} />);
+  it("shows the welcome login button once the snapshot confirms logged out", () => {
+    const vscode = createMockVscode();
+    render(<ChatApp vscode={vscode} />);
 
     act(() => {
       sendCommand("setInitialState", {
@@ -122,7 +134,44 @@ describe("WelcomeView render timing", () => {
       });
     });
 
-    expect(screen.getByTestId("header-login-btn")).toBeVisible();
+    const loginBtn = screen.getByTestId("welcome-login-btn");
+    expect(loginBtn).toBeVisible();
+    expect(loginBtn).toHaveTextContent("登 录");
+    expect(screen.getByTestId("welcome-login-hint")).toHaveTextContent(
+      "登录后即可开始使用~",
+    );
+
+    // Clicking fires the same login flow as the 更多 menu's 登录 item.
+    vscode.postMessage.mockClear();
+    act(() => {
+      fireEvent.click(loginBtn);
+    });
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "login" }),
+    );
+  });
+
+  it("hides the welcome login button when a direct-connect config is present", () => {
+    // baseURL + apiKey work without SSO auth, so login must stay optional
+    // (spec sso-auth「更多菜单与欢迎页」场景 5).
+    render(<ChatApp vscode={createMockVscode()} />);
+
+    act(() => {
+      sendCommand("setInitialState", {
+        messages: [],
+        isStreaming: false,
+        sessions: [],
+        isAuthenticated: false,
+        configurationData: {
+          apiKey: "sk-test",
+          baseURL: "https://api.example.com/v1",
+        },
+        pendingConfirmations: [],
+      });
+    });
+
+    expect(screen.getByTestId("welcome-wordmark")).toBeVisible();
+    expect(screen.queryByTestId("welcome-login-btn")).not.toBeInTheDocument();
   });
 
   it("switches away from the welcome page once a visible message arrives", () => {
@@ -159,5 +208,25 @@ describe("WelcomeView render timing", () => {
     });
 
     expect(screen.queryByTestId("welcome-wordmark")).not.toBeInTheDocument();
+  });
+});
+
+describe("WelcomeView login entry", () => {
+  it("never shows a login button on the desktop welcome page", () => {
+    // Desktop's login entry is the sidebar account card (desktop-app spec),
+    // so even an unauthenticated desktop user without a direct-connect config
+    // gets no login button here.
+    render(
+      <WelcomeView
+        isDesktop
+        isAuthenticated={false}
+        hasDirectConnectConfig={false}
+        onLogin={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("welcome-wordmark")).toBeVisible();
+    expect(screen.queryByTestId("welcome-login-btn")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("welcome-login-hint")).not.toBeInTheDocument();
   });
 });

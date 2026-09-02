@@ -37,7 +37,7 @@ test.describe("Product Specification Screenshots - UI Basic", () => {
       "../../docs/public/screenshots/spec-welcome.webp",
     );
 
-    // 1.1 Welcome View (unauthenticated state — login entry in the chat header)
+    // 1.1 Welcome View (unauthenticated state — login entry on the welcome page)
     await injector.simulateExtensionMessage("setInitialState", {
       messages: [],
       isStreaming: false,
@@ -50,10 +50,10 @@ test.describe("Product Specification Screenshots - UI Basic", () => {
       },
       permissionMode: "default",
     });
-    // The welcome page itself shows only the wordmark; the login button lives
-    // in the chat header (spec sso-auth: IDE header login entry).
+    // Unauthenticated + no direct-connect: the welcome page shows the login
+    // hint + 登 录 button under the brand mark (spec sso-auth 场景 5/7).
     await expect(webviewPage.getByTestId("welcome-wordmark")).toBeVisible();
-    await expect(webviewPage.getByTestId("header-login-btn")).toBeVisible();
+    await expect(webviewPage.getByTestId("welcome-login-btn")).toBeVisible();
 
     // Verify layout geometry: wordmark horizontally centered
     const geometry = await webviewPage.evaluate(() => {
