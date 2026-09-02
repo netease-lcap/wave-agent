@@ -7,6 +7,7 @@ import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
 } from "wave-agent-sdk/dist/constants/tools.js";
+import { CloseIcon } from "./HeaderIcons";
 import type {
   ConfirmationDialogProps,
   ConfirmationDecision,
@@ -996,7 +997,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           aria-label="关闭"
           title="关闭"
         >
-          <i className="codicon codicon-close"></i>
+          <CloseIcon className="confirmation-close-btn-icon" />
         </button>
       </div>
     </div>

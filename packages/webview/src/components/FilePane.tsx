@@ -10,6 +10,7 @@ import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
 import type { FileItem, FileViewState, VsCodeApi } from "../types";
 import { toRelativePath } from "../utils/messageUtils";
+import { CloseIcon } from "./HeaderIcons";
 import { FileSuggestionDropdown } from "./FileSuggestionDropdown";
 import "../styles/FilePane.css";
 
@@ -463,7 +464,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             data-testid="file-close"
             onClick={onClose}
           >
-            <i className="codicon codicon-close" />
+            <CloseIcon className="pane-close-icon" />
           </button>
         </div>
         {vscode && (

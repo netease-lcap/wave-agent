@@ -27,7 +27,7 @@ import BackgroundTaskManager from "./BackgroundTaskManager";
 import WorkflowManager from "./WorkflowManager";
 import WelcomeView from "./WelcomeView";
 import LoadingLogo from "./LoadingLogo";
-import { NewSessionIcon, SidebarExpandIcon } from "./HeaderIcons";
+import { NewSessionIcon, SidebarExpandIcon, CloseIcon } from "./HeaderIcons";
 import { DesktopHostSelector } from "./DesktopHostSelector";
 import { DesktopSidebar } from "./DesktopSidebar";
 import { DesktopShell } from "./DesktopShell";
@@ -2414,7 +2414,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                 data-testid="preview-close"
                 onClick={common.onClose}
               >
-                <i className="codicon codicon-close" />
+                <CloseIcon className="preview-pane-icon" />
               </button>
             </div>
             <div className="desktop-panel-placeholder">
@@ -2802,7 +2802,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             onClick={() => setQueueEditWarning(null)}
             aria-label="关闭"
           >
-            <i className="codicon codicon-close"></i>
+            <CloseIcon className="queue-edit-warning-close-icon" />
           </button>
         </div>
       )}

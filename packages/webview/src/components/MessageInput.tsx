@@ -903,7 +903,8 @@ export const MessageInput = forwardRef<
 
     const closeBtn = document.createElement("div");
     closeBtn.className = "image-preview-close";
-    closeBtn.innerHTML = '<i class="codicon codicon-close"></i>';
+    closeBtn.innerHTML =
+      '<svg width="24" height="24" viewBox="0 0 17 17" fill="none"><path d="M8.51 2.5 L9.19 3.17 V7.84 H13.84 L14.51 8.51 H13.84 V9.19 H9.19 V13.83 L8.51 14.5 V13.83 H7.84 V9.19 H3.17 L2.5 8.51 H3.17 V7.84 H7.84 V3.17 Z" fill="currentColor" transform="rotate(45 8.5 8.5)"/></svg>';
 
     modal.appendChild(img);
     modal.appendChild(closeBtn);

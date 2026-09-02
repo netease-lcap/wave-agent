@@ -85,10 +85,6 @@
   color: var(--vscode-foreground);
 }
 
-.confirmation-close-btn .codicon {
-  font-size: 16px;
-}
-
 .confirmation-command {
   background-color: var(--vscode-textCodeBlock-background);
   padding: 6px 10px;

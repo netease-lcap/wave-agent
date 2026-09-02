@@ -671,7 +671,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
                 }}
                 data-testid={`preview-tab-close-${tab.id}`}
               >
-                <i className="codicon codicon-close" />
+                <CloseIcon className="preview-tab-close-icon" />
               </button>
             </div>
           ))}
