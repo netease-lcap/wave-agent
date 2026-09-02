@@ -1534,3 +1534,29 @@ codechat 权威：`workspace-header-menu` / el-dropdown-menu 菜单项**连续�
 ### 实现文件
 
 - `src/styles/host-desktop.css`（第三十九轮段：`.more-menu`/`.panel-toggle-menu` gap 0）
+
+---
+
+## 0902 新基线第 1 轮（2026-09）：41① 灰条去蓝偏 + 41③ 权限按钮深色 :focus 修复
+
+> **新基线说明**：本地 40-42 轮工作已删除，仓库重置回 `origin/main`（`129d1757`，第 39 轮为最新）。**本轮起为新代码基线上的第 1 轮**，内容对应桌面记录 `~/Desktop/CC02-wave-41a-41c-42-style-changes.md` 的 **41① + 41③**（该文件的 42 轮 MoreMenu 不在本轮范围，后续如需再应用）。
+
+### 41① 新会话上下文栏（灰条）深色背景中性化 `#27292b` → `#292929`
+
+用户评审「本地 CC02 main worktree」灰条：「深色模式的这里的灰感觉有些偏蓝，可以更中性一些」。
+
+- **根因**：深色背景原用 `#27292B` = rgb(39,41,43)，B 通道（43）比 R/G 偏高，紧邻中性卡片 `#313131` 时显偏蓝。
+- **修改**：`[data-host="desktop"][data-theme="dark"] .input-workdir-row` 的 `background` `#27292b` → `#292929`（等亮度中性灰，去蓝偏；「卡片 #313131 在上、灰条略深在下」层次保持）。
+- **验证**（8899 Playwright 探针）：dark computed `rgb(41, 41, 41)` ✓；light 仍 `#f5f7fa`（浅色规则不受影响）✓。
+
+### 41③ 权限按钮（permission-mode-select）深色 :focus 反白修复
+
+用户评审「自动接受修改」按钮：「深色模式这个按钮会有反白的情况，不应该出现」。
+
+- **根因**：深色规则只有 `:hover` 覆盖，`:focus` 落入浅色规则 `background:#EEF0F3 / color:#1F2329` → 点击按钮获得焦点后即浅底深字反白。
+- **修改**：深色段 `:hover` 扩展为 `:hover, :focus`（`.permission-mode-select` 与 `.mode-bypassPermissions` 两处），hover/focus 统一深色覆盖，bypass 红字保持。
+- **验证**（8899 Playwright 探针，focus 后等待 ≥400ms 覆盖 0.2s transition）：非 bypass focus = `rgba(255,255,255,0.08)` / `#fff` ✓；bypass focus 保持红字 `#f4655c` 且背景同深色覆盖 ✓；light `:focus` 浅色规则照旧无回归 ✓；0 console errors ✓。
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（41① `.input-workdir-row` dark 背景段；41③ `.permission-mode-select` 深色 hover/focus 段）
