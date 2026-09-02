@@ -1407,18 +1407,16 @@
   padding: 0;
 }
 
-/* ② 按钮布局：codechat approval-actions —— flex-direction column / gap 8 /
-   margin-top 16；按钮全宽（width 100%）min-height 32 / pad 0 12 / 字重 500。
-   DOM 顺序即视觉顺序：自动类(secondary) → 批准并继续(primary) → 提供反馈
-   (ghost) 在底（第三十轮按用户反馈把提供反馈移到最下面）。 */
+/* ② 按钮布局：按钮保持水平并排（用户拍板：工具确认弹窗按钮维持既有水平对齐，
+   不随 codechat approval-dialog 改竖排全宽——2026-09-02 反馈）；其余视觉按
+   codechat 节奏：margin-top 16、按钮 min-height 32 / pad 0 12 / 字重 500 /
+   r6、secondary/primary/ghost 三态配色（见下）。DOM 顺序即视觉顺序：
+   自动类(secondary) → 批准并继续(primary) → 提供反馈(ghost)。 */
 [data-host="desktop"] .confirmation-actions {
-  flex-direction: column;
-  align-items: stretch;
   gap: 8px;
   margin-top: 16px;
 }
 [data-host="desktop"] .confirmation-actions .confirmation-btn {
-  width: 100%;
   min-height: 32px;
   padding: 0 12px;
   font-weight: 500;
