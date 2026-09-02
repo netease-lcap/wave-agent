@@ -36,7 +36,6 @@ import {
   type PartialHookConfiguration,
   isValidHookEvent,
   listSessions,
-  listAllSessions,
   searchFiles,
   generateRandomName,
   getDefaultRemoteBranch,
@@ -180,8 +179,6 @@ export class AgentBridge {
         return this.restoreSession(p.sessionId as string, sessionId);
       case "listSessions":
         return this.listSessions(p.workdir as string | undefined, sessionId);
-      case "listAllSessions":
-        return this.listAllSessions(p.worktreePaths as string[] | undefined);
       case "getSessionInfo":
         return this.getSessionInfo(sessionId);
       case "listPendingPermissions":
@@ -626,18 +623,6 @@ export class AgentBridge {
     const sessions = await listSessions(
       workdir || this.getSessionWorkdir(sessionId) || process.cwd(),
     );
-    return { sessions };
-  }
-
-  /**
-   * List sessions across ALL project directories (desktop 历史对话弹窗).
-   * Mirrors `wave -r`'s Ctrl+A 全项目 mode: scan every project dir, dedupe by
-   * sessionId (newest lastActiveAt wins), sorted by lastActiveAt descending.
-   */
-  private async listAllSessions(
-    worktreePaths?: string[],
-  ): Promise<{ sessions: SessionMetadata[] }> {
-    const sessions = await listAllSessions({ worktreePaths });
     return { sessions };
   }
 

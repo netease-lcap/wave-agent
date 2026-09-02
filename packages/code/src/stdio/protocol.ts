@@ -51,7 +51,6 @@ export type RequestMethod =
   | "destroy"
   | "restoreSession"
   | "listSessions"
-  | "listAllSessions"
   | "getSessionInfo"
   | "sendMessage"
   | "bang"
