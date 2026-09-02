@@ -34,6 +34,7 @@ import {
   getMessageContent,
   hasWorktreeCreateHook,
   loadMergedWaveConfig,
+  type AskUserQuestion,
   type Message,
   type PermissionDecision,
   type PermissionMode,
@@ -304,6 +305,96 @@ function summarizeToolInput(context: ToolPermissionContext): string {
   return text.length > 80 ? `${text.slice(0, 80)}…` : text;
 }
 
+/** The questions array of an AskUserQuestion toolInput (SDK schema), if any. */
+function getAskUserQuestions(
+  context: ToolPermissionContext,
+): AskUserQuestion[] | undefined {
+  const raw = context.toolInput?.questions;
+  return Array.isArray(raw) && raw.length > 0
+    ? (raw as AskUserQuestion[])
+    : undefined;
+}
+
+/**
+ * Multi-line full render of an AskUserQuestion tool input, mirroring the
+ * desktop ConfirmationDialog layout so the CLI user sees every question and
+ * option (spec: daemon-command.md AskUserQuestion 多行完整渲染). Question
+ * lines carry the 1-based question number + header; option lines carry the
+ * 0-based number that `respond --answer` accepts.
+ */
+function renderAskUserQuestions(context: ToolPermissionContext): string {
+  const questions = getAskUserQuestions(context);
+  if (!questions) return "";
+  return questions
+    .map((q, qi) => {
+      const title = `    Q${qi + 1} [${q.header}] ${q.question}`;
+      const options = (q.options ?? []).map(
+        (o, oi) =>
+          `      ${oi}. ${o.label}${o.description ? ` — ${o.description}` : ""}`,
+      );
+      return [title, ...options].join("\n");
+    })
+    .join("\n");
+}
+
+/**
+ * Parse `respond --answer` for an AskUserQuestion request. Legacy format — a
+ * valid JSON object keyed by the full question text (value = the option label,
+ * exactly what the desktop dialog would submit) — passes through untouched.
+ * Anything else is parsed as comma-separated option numbers: the i-th number
+ * answers the i-th question (as numbered Q1..Qn by `wave daemon status`),
+ * 0-based like the status rendering, and is mapped to that option's label so
+ * the model sees the same answers the GUI would produce.
+ */
+function parseAskUserQuestionAnswer(
+  raw: string,
+  context: ToolPermissionContext,
+): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed)
+    ) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Not JSON — fall through to per-question option numbers below.
+  }
+  const questions = getAskUserQuestions(context);
+  if (!questions) {
+    fail(
+      `Cannot parse --answer "${raw}": not a JSON object of {question: answer} and the pending request has no questions to answer by number`,
+    );
+  }
+  const numbers = raw.split(",").map((n) => n.trim());
+  if (numbers.length !== questions.length) {
+    fail(
+      `--answer must give one option number per question (${questions.length} question${questions.length > 1 ? "s" : ""}, comma-separated, matching the numbering in \`wave daemon status\`): got ${numbers.length} number${numbers.length > 1 ? "s" : ""} in "${raw}"`,
+    );
+  }
+  const answers: Record<string, unknown> = {};
+  numbers.forEach((n, qi) => {
+    const q = questions[qi];
+    if (!/^\d+$/.test(n)) {
+      fail(
+        `--answer contains a non-numeric option number "${n}" for question ${qi + 1} (${q.question})`,
+      );
+    }
+    const options = q.options ?? [];
+    const idx = Number(n);
+    if (idx >= options.length) {
+      fail(
+        `Option number ${n} is out of range for question ${qi + 1} (${q.question}): options are numbered 0..${options.length - 1}`,
+      );
+    }
+    const label = options[idx].label;
+    answers[q.question] = q.multiSelect ? [label] : label;
+  });
+  return answers;
+}
+
 export async function daemonStatusCommand(
   socketPath: string,
   sessionId: string,
@@ -350,6 +441,14 @@ export async function daemonStatusCommand(
       console.log("");
       console.log("Pending approval requests:");
       for (const r of pending) {
+        if (r.context.toolName === ASK_USER_QUESTION_TOOL_NAME) {
+          const questions = renderAskUserQuestions(r.context);
+          if (questions) {
+            console.log(`  ${r.requestId}  ${r.context.toolName}`);
+            console.log(questions);
+            continue;
+          }
+        }
         const params = summarizeToolInput(r.context);
         console.log(
           `  ${r.requestId}  ${r.context.toolName}${params ? `  ${params}` : ""}`,
@@ -532,15 +631,10 @@ export async function daemonRespondCommand(
       } else if (toolName === ASK_USER_QUESTION_TOOL_NAME) {
         if (!options.answer) {
           fail(
-            "AskUserQuestion requests require --answer with the answer JSON",
+            'AskUserQuestion requests require --answer: a JSON object of {question: answer}, or option numbers per question (e.g. "0" or "1,0", see the numbering in `wave daemon status`)',
           );
         }
-        let answers: unknown;
-        try {
-          answers = JSON.parse(options.answer);
-        } catch {
-          fail("--answer is not valid JSON");
-        }
+        const answers = parseAskUserQuestionAnswer(options.answer, req.context);
         decision = { behavior: "allow", message: JSON.stringify(answers) };
       } else {
         decision = { behavior: "allow" };

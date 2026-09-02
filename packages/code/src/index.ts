@@ -383,7 +383,8 @@ export async function main() {
                     type: "string",
                   })
                   .option("answer", {
-                    describe: "Answers JSON for AskUserQuestion requests",
+                    describe:
+                      'AskUserQuestion answers: JSON object of {question: answer} or option numbers per question (e.g. "0" or "1,0")',
                     type: "string",
                   })
                   .option("rule", {

@@ -79,7 +79,7 @@ order: 270
 1. **假设** 目标会话正在生成回复，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 命令经 `initialize {restoreSessionId}` + `restoreSession` attach 该会话，依据重放的 `loadingChange` 快照显示 generating（生成中）状态。
 2. **假设** 目标会话空闲（未在生成、无排队消息、无后台任务），**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 显示 idle 状态。
 3. **假设** 目标会话挂起等待权限审批，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 状态显示为 waiting for approval（`loadingChange` 保持 loading 即视为未空闲），与桌面端「待确认」语义一致。
-4. **假设** 目标会话挂起等待权限审批，**当** 查看最近消息时，**则** 最后一条 assistant 消息含一个冻结在 `stage: "running"` 的 tool 块：有工具名与参数（`name`/`parameters`/`compactParams`），但无 `result`/`success`/`error`/`shortResult`/`timestamp`——这些字段只在工具完成后（`stage: "end"`）写入，无独立的 pending stage；消息形态上「等审批」与「执行中」无法区分，status 须同时列出 `listPendingPermissions` 返回的待审批请求（工具名 + 参数摘要），作为审批态的确凿信号。
+4. **假设** 目标会话挂起等待权限审批，**当** 查看最近消息时，**则** 最后一条 assistant 消息含一个冻结在 `stage: "running"` 的 tool 块：有工具名与参数（`name`/`parameters`/`compactParams`），但无 `result`/`success`/`error`/`shortResult`/`timestamp`——这些字段只在工具完成后（`stage: "end"`）写入，无独立的 pending stage；消息形态上「等审批」与「执行中」无法区分，status 须同时列出 `listPendingPermissions` 返回的待审批请求（工具名 + 参数摘要），作为审批态的确凿信号；其中 AskUserQuestion 请求不做单行截断，改为与桌面确认弹窗同构的多行完整渲染——每题一行标题（含题号与 header 标签，如 `Q1 [删除文案] 删除会话后转录…`）、每选项一行（含从 0 起的序号与说明，如 `  0. 更新文案明示可恢复（推荐） — 说明…`），完整展示问题与选项；其余工具的请求仍按单行参数摘要展示。
 5. **假设** 会话已有历史消息，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 经 `getMessages` 拉取并显示最近若干条消息的文本（含用户消息与助手回复，默认数量可经参数调整，如 `--lines 20`），足以判断任务进展。
 6. **假设** 指定的 sessionId 不存在于该 daemon，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 以非零退出码退出并给出明确错误（Session not found or not hosted by this daemon）。
 7. **假设** status 命令完成展示后，**当** 命令退出时，**则** 断开与 daemon 的连接（attach 是短暂查看，不常驻），daemon 与目标会话不受影响、继续运行。
@@ -88,11 +88,11 @@ order: 270
 
 ### 用户故事：响应会话挂起的权限审批（优先级：P0）
 
-作为在远端主机驱动后台会话的用户，我希望 `wave daemon respond <sessionId> <requestId> [--allow|--deny] [--answer <答案JSON>] [--rule <规则>] [--mode <模式>]` 处理会话挂起的权限请求（允许/拒绝、回答提问、记住规则、切换权限模式），以便推进卡在等待审批的会话。
+作为在远端主机驱动后台会话的用户，我希望 `wave daemon respond <sessionId> <requestId> [--allow|--deny] [--answer <答案JSON|选项序号>] [--rule <规则>] [--mode <模式>]` 处理会话挂起的权限请求（允许/拒绝、回答提问、记住规则、切换权限模式），以便推进卡在等待审批的会话。
 
 **为什么是这个优先级**：等待审批的会话会一直保持 loading（等同未空闲），不处理就无法继续；协议已有 `permissionResponse` 通知方法（客户端 → 服务端，requestId 进程内全局唯一，见 protocol.ts / agentBridge.ts），无需新增协议方法，纯 CLI 封装即可解锁。审批决策并非单一 allow/deny——`PermissionDecision` 含 behavior/message/newPermissionMode/newPermissionRule 四个字段（桌面端按工具类型组合：EnterPlanMode 附带 `newPermissionMode:"plan"`、AskUserQuestion 用 message 携带答案 JSON、Bash 可带 `newPermissionRule`），命令须按工具智能补全并与桌面端语义一致。
 
-**独立测试**：对一条挂起 Bash 审批的会话运行 `wave daemon respond <sessionId> <requestId> --allow`，验证工具继续执行、会话恢复生成；对一条挂起 AskUserQuestion 的会话运行 `--answer '{"问题":"答案"}'`，验证答案送达；对 EnterPlanMode 运行 `--allow`，验证自动附带 plan 模式切换。
+**独立测试**：对一条挂起 Bash 审批的会话运行 `wave daemon respond <sessionId> <requestId> --allow`，验证工具继续执行、会话恢复生成；对一条挂起 AskUserQuestion 的会话运行 `--answer '{"问题":"答案"}'` 或按 `wave daemon status` 渲染的选项序号运行 `--answer "0"`（多题逗号分隔，如 `--answer "1,0"`），验证答案送达且等价；对 EnterPlanMode 运行 `--allow`，验证自动附带 plan 模式切换。
 
 **验收场景**：
 
@@ -105,6 +105,7 @@ order: 270
 7. **假设** 指定的 requestId 不存在（已被其他客户端处理或已过期），**当** 用户运行 respond 时，**则** 命令提示「Request not found or already handled」并以非零退出码退出（服务端对未知 requestId 静默忽略，命令应先行校验避免误导）。
 8. **假设** 指定的 sessionId 不存在于该 daemon，**当** 用户运行 `wave daemon respond <sessionId> <requestId> --allow` 时，**则** 以非零退出码退出并给出明确错误（Session not found or not hosted by this daemon），不发送任何通知。
 9. **假设** respond 命令完成（成功或失败）后，**当** 命令退出时，**则** 断开与 daemon 的连接；会话恢复生成或回到空闲，不因客户端退出而终止。
+10. **假设** 目标会话挂起 AskUserQuestion 审批、`wave daemon status` 已多行渲染题目与带序号的选项，**当** 用户运行 `wave daemon respond <sessionId> <requestId> --answer "1,0"`（逗号分隔的选项序号，第 i 个数字 = 第 i 题的选项序号、从 0 起，与 status 渲染的序号一致）时，**则** 命令将序号映射为该题对应选项的 label，构造与桌面端一致的答案对象（key=问题原文、value=选项 label；multiSelect 题取 label 数组）并经 `{behavior:"allow", message: JSON.stringify(答案对象)}` 送达；序号数量与题目数不符、含非数字或越界时以非零退出码报错并提示合法范围；`--answer` 为合法 JSON 对象（key=问题原文）时仍按既有格式解析（向后兼容），仅 JSON 解析失败或非对象内容才走序号解析。
 
 ---
 
@@ -174,8 +175,8 @@ order: 270
 - **destroy 是幂等注册表操作**：协议 `destroy` 按信封 sessionId 直接删除注册表项（未知会话静默 no-op），无 attach、不创建会话；与 `abort` 不同，destroy 不检查会话是否存活、也不关心是否生成中，只负责销毁。
 - **create --worktree 的 workdir 语义**：worktree 路径是链接 worktree 的顶层（`git rev-parse --show-toplevel` 从该目录的返回），而非主仓根；`--worktree` 与 `--workdir` 同时给出时以 `--worktree` 为准（workdir 仅作为 createWorktree 的源仓库起点）。name 缺省（裸 `--worktree`）时由服务端自动生成随机名。
 - **destroy --remove-worktree 的守卫**：repoRoot 语义与 `createWorktree` 返回值一致（主仓根，`git worktree list --porcelain` 第一项），worktree 路径用 `rev-parse --show-toplevel`（从链接 worktree 返回其自身路径）；两者相等即普通工作目录而非链接 worktree——拒绝移除主工作树，防止 removeWorktree 的 fs.rmSync 回退删掉整个仓库。hookBased 按该仓库是否配置 WorktreeCreate hook 判定（与 createWorktree 的返回一致），hook 管理的工作树交给 WorktreeRemove hook 清理、wave 不跑 `git worktree remove`。git 反查失败（非 git 仓库）时报错退出，不销毁会话。
-- **会话挂起等待审批**：daemon 语义下「等待审批」的会话保持 loading 状态（等同未空闲）；消息中该工具块冻结在 `stage: "running"`（有工具名与参数、无结果字段，结果字段只在 `stage: "end"` 写入），单凭消息无法区分「等审批」与「执行中」，须结合 `listPendingPermissions` 判断；`send` 须有 `--timeout` 兜底避免无限挂起，`status` 应如实显示该状态，`respond` 是处理挂起请求的入口。
-- **respond 的决策并非单一 allow/deny**：`PermissionDecision` 含 behavior/message/newPermissionMode/newPermissionRule 四个字段；EnterPlanMode 的 allow 必须附带 `newPermissionMode:"plan"`（按工具智能补全），AskUserQuestion 必须用 `--answer` 提供答案（allow 且 message 为答案 JSON），Bash/Edit 可选 `--rule`/`--mode`；命令须与桌面端行为一致，不得把多选项压成裸 allow/deny。
+- **会话挂起等待审批**：daemon 语义下「等待审批」的会话保持 loading 状态（等同未空闲）；消息中该工具块冻结在 `stage: "running"`（有工具名与参数、无结果字段，结果字段只在 `stage: "end"` 写入），单凭消息无法区分「等审批」与「执行中」，须结合 `listPendingPermissions` 判断；`send` 须有 `--timeout` 兜底避免无限挂起，`status` 应如实显示该状态（AskUserQuestion 请求多行完整渲染、其余工具单行摘要，见「查看会话进度与最近消息」场景 4），`respond` 是处理挂起请求的入口。
+- **respond 的决策并非单一 allow/deny**：`PermissionDecision` 含 behavior/message/newPermissionMode/newPermissionRule 四个字段；EnterPlanMode 的 allow 必须附带 `newPermissionMode:"plan"`（按工具智能补全），AskUserQuestion 必须用 `--answer` 提供答案（allow 且 message 为答案 JSON），Bash/Edit 可选 `--rule`/`--mode`；命令须与桌面端行为一致，不得把多选项压成裸 allow/deny。`--answer` 支持两种格式：合法 JSON 对象（key=问题原文、value=选项 label，与桌面端提交的答案对象同构，向后兼容）或逗号分隔的选项序号（第 i 个数字 = 第 i 题的选项序号、从 0 起，与 `status` 渲染序号一致；仅 JSON 解析失败或非对象内容才走序号解析）。
 - **requestId 幂等与过期**：服务端对未知 requestId 的 `permissionResponse` 静默忽略；respond 应先行校验（如经 `listPendingPermissions`）并在 requestId 已处理时明确提示，避免用户误以为审批已生效。
 - **`send` 输出纯净性**：命令输出助手最终回复文本，流式通知与子代理内部信息不得泄漏到 stdout（与打印模式一致），诊断信息走 stderr。
 - **`abort` 中断是幂等操作**：在空闲会话上是无害 no-op，命令仍成功返回；对正在生成（含子代理、bash 命令、slash 命令）或挂起审批的会话，中断后回到空闲（与桌面端中断按钮语义一致）。`abort` 不清除已完成的对话历史，只打断进行中的生成并清空消息队列；无需先经 `status` 确认是否正在生成。

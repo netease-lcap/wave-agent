@@ -476,6 +476,58 @@ test("status: pending approval shows waiting for approval + the request list", a
   expect(exitSpy).toHaveBeenCalledWith(0);
 });
 
+test("status: AskUserQuestion pending renders every question + numbered option in full, not a truncated JSON summary", async () => {
+  await createPendingRequest("AskUserQuestion", {
+    questions: [
+      {
+        question: "删除会话后转录内容如何处理？",
+        header: "删除会话",
+        options: [
+          { label: "保留现状（推荐）", description: "jsonl 与目录共存" },
+          { label: "一并清理", description: "删除 jsonl 并清理痕迹" },
+        ],
+      },
+      {
+        question: "历史对话弹窗列出哪些会话？",
+        header: "恢复范围",
+        options: [{ label: "全部项目" }, { label: "仅当前项目" }],
+      },
+    ],
+  });
+
+  await expect(
+    daemonStatusCommand(socketPath, "test-session-id"),
+  ).rejects.toThrow("exit(0)");
+  const block = stdoutLines().join("\n");
+  expect(block).toContain("Status: waiting for approval");
+  expect(block).toContain("perm_1  AskUserQuestion");
+  expect(block).toContain("Q1 [删除会话] 删除会话后转录内容如何处理？");
+  expect(block).toContain("0. 保留现状（推荐） — jsonl 与目录共存");
+  expect(block).toContain("1. 一并清理 — 删除 jsonl 并清理痕迹");
+  expect(block).toContain("Q2 [恢复范围] 历史对话弹窗列出哪些会话？");
+  expect(block).toContain("0. 全部项目");
+  expect(block).toContain("1. 仅当前项目");
+  // Rendered as readable lines, never as the single-line truncated JSON blob.
+  expect(block).not.toContain('"questions":');
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("status: malformed AskUserQuestion input falls back to the single-line summary", async () => {
+  await createPendingRequest("AskUserQuestion", {
+    question: "没有 questions 数组的旧形态",
+  });
+
+  await expect(
+    daemonStatusCommand(socketPath, "test-session-id"),
+  ).rejects.toThrow("exit(0)");
+  const out = stdoutLines();
+  expect(out).toContain("Status: waiting for approval");
+  expect(
+    out.some((l) => l.includes("perm_1") && l.includes("AskUserQuestion")),
+  ).toBe(true);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
 test("status: nonexistent session fails, destroys the junk fresh session, registry stays clean", async () => {
   const junk = createMockAgent({
     sessionId: "fresh",
@@ -748,12 +800,12 @@ test("respond: AskUserQuestion without --answer fails", async () => {
     }),
   ).rejects.toThrow("exit(1)");
   expect(stderrText()).toContain(
-    "AskUserQuestion requests require --answer with the answer JSON",
+    "AskUserQuestion requests require --answer: a JSON object of {question: answer}, or option numbers per question",
   );
   expect(exitSpy).toHaveBeenCalledWith(1);
 });
 
-test("respond: AskUserQuestion with invalid JSON --answer fails", async () => {
+test("respond: AskUserQuestion with an unparseable --answer fails", async () => {
   await createPendingRequest("AskUserQuestion", { question: "继续吗" });
 
   await expect(
@@ -762,7 +814,141 @@ test("respond: AskUserQuestion with invalid JSON --answer fails", async () => {
       answer: "not-json",
     }),
   ).rejects.toThrow("exit(1)");
-  expect(stderrText()).toContain("--answer is not valid JSON");
+  expect(stderrText()).toContain(
+    'Cannot parse --answer "not-json": not a JSON object of {question: answer} and the pending request has no questions to answer by number',
+  );
+  expect(exitSpy).toHaveBeenCalledWith(1);
+});
+
+test("respond: --answer with comma-separated option numbers maps to the question option labels", async () => {
+  const { permissionPromise } = await createPendingRequest("AskUserQuestion", {
+    questions: [
+      {
+        question: "Q1 继续处理吗？",
+        header: "继续",
+        options: [{ label: "保留现状" }, { label: "一并清理" }],
+      },
+      {
+        question: "Q2 范围多大？",
+        header: "范围",
+        options: [
+          { label: "仅当前项目" },
+          { label: "全部项目" },
+          { label: "其他" },
+        ],
+      },
+    ],
+  });
+
+  await expect(
+    daemonRespondCommand(socketPath, "test-session-id", "perm_1", {
+      allow: true,
+      answer: "1,0",
+    }),
+  ).rejects.toThrow("exit(0)");
+  // The i-th number answers the i-th question (0-based options, matching the
+  // numbering `wave daemon status` renders): 1 -> 一并清理, 0 -> 仅当前项目.
+  await expect(permissionPromise).resolves.toEqual({
+    behavior: "allow",
+    message: JSON.stringify({
+      "Q1 继续处理吗？": "一并清理",
+      "Q2 范围多大？": "仅当前项目",
+    }),
+  });
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("respond: --answer by option number on a multiSelect question submits a label array like the dialog", async () => {
+  const { permissionPromise } = await createPendingRequest("AskUserQuestion", {
+    questions: [
+      {
+        question: "开启哪些功能？",
+        header: "功能",
+        multiSelect: true,
+        options: [{ label: "钩子" }, { label: "技能" }],
+      },
+    ],
+  });
+
+  await expect(
+    daemonRespondCommand(socketPath, "test-session-id", "perm_1", {
+      allow: true,
+      answer: "1",
+    }),
+  ).rejects.toThrow("exit(0)");
+  await expect(permissionPromise).resolves.toEqual({
+    behavior: "allow",
+    message: JSON.stringify({ "开启哪些功能？": ["技能"] }),
+  });
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("respond: --answer option numbers must match the question count", async () => {
+  await createPendingRequest("AskUserQuestion", {
+    questions: [
+      {
+        question: "Q1 继续吗？",
+        header: "继续",
+        options: [{ label: "是" }, { label: "否" }],
+      },
+    ],
+  });
+
+  await expect(
+    daemonRespondCommand(socketPath, "test-session-id", "perm_1", {
+      allow: true,
+      answer: "0,1",
+    }),
+  ).rejects.toThrow("exit(1)");
+  expect(stderrText()).toContain(
+    "--answer must give one option number per question (1 question",
+  );
+  expect(exitSpy).toHaveBeenCalledWith(1);
+});
+
+test("respond: --answer option number out of range fails with the valid range", async () => {
+  await createPendingRequest("AskUserQuestion", {
+    questions: [
+      {
+        question: "Q1 继续吗？",
+        header: "继续",
+        options: [{ label: "是" }, { label: "否" }],
+      },
+    ],
+  });
+
+  await expect(
+    daemonRespondCommand(socketPath, "test-session-id", "perm_1", {
+      allow: true,
+      answer: "5",
+    }),
+  ).rejects.toThrow("exit(1)");
+  expect(stderrText()).toContain(
+    "Option number 5 is out of range for question 1 (Q1 继续吗？): options are numbered 0..1",
+  );
+  expect(exitSpy).toHaveBeenCalledWith(1);
+});
+
+test("respond: --answer with a non-numeric option number fails", async () => {
+  await createPendingRequest("AskUserQuestion", {
+    questions: [
+      {
+        question: "Q1 继续吗？",
+        header: "继续",
+        options: [{ label: "是" }, { label: "否" }],
+      },
+    ],
+  });
+
+  await expect(
+    daemonRespondCommand(socketPath, "test-session-id", "perm_1", {
+      allow: true,
+      answer: "yes",
+    }),
+  ).rejects.toThrow("exit(1)");
+  expect(stderrText()).toContain(
+    '--answer contains a non-numeric option number "yes" for question 1 (Q1 继续吗？)',
+  );
   expect(exitSpy).toHaveBeenCalledWith(1);
 });
 
