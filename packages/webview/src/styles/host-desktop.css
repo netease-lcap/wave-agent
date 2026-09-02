@@ -218,12 +218,15 @@
   .permission-mode-select.mode-bypassPermissions {
   color: #f4655c;
 }
-[data-host="desktop"][data-theme="dark"] .permission-mode-select:hover {
+[data-host="desktop"][data-theme="dark"] .permission-mode-select:hover,
+[data-host="desktop"][data-theme="dark"] .permission-mode-select:focus {
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
 [data-host="desktop"][data-theme="dark"]
-  .permission-mode-select.mode-bypassPermissions:hover {
+  .permission-mode-select.mode-bypassPermissions:hover,
+[data-host="desktop"][data-theme="dark"]
+  .permission-mode-select.mode-bypassPermissions:focus {
   color: #f4655c;
 }
 
@@ -366,7 +369,7 @@
 /* 深色模式：--vscode-fill-light 未定义会回退浅灰 #f5f7fa 突兀；
    用比卡片(#313131)略深的灰形成「卡片在上、灰条在下」层次 */
 [data-host="desktop"][data-theme="dark"] .input-workdir-row {
-  background: #27292b;
+  background: #292929;
 }
 
 /* 灰条内控件按钮化：Figma「本地 / 选择工作目录」按钮 32 高、r8（base
