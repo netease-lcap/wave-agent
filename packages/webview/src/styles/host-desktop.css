@@ -1619,3 +1619,14 @@
 [data-host="desktop"][data-theme="dark"] .desktop-workdir-trigger .codicon {
   color: #9a9ea5;
 }
+
+/* ═══ 第三十九轮：简单菜单选项间距归零（用户：panel-toggle-menu 选项之间不应有间距）═══
+   codechat workspace-header-menu / el-dropdown-menu 菜单项连续排列（容器 pad 8、
+   item 32px 高、item 之间无 gap）；wave base 的 .more-menu / .panel-toggle-menu
+   有 gap: 4px 造成选项间距。移除 gap 后 item 依次紧贴，视觉同 codechat。
+   分隔线间距由 .more-menu-separator margin 提供，不受影响。 */
+
+[data-host="desktop"] .more-menu,
+[data-host="desktop"] .panel-toggle-menu {
+  gap: 0;
+}
