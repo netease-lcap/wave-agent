@@ -1,4 +1,5 @@
 import { test, expect } from "../e2e/utils/desktopTestHarness.js";
+import { seedSidebarSessions } from "./sidebarSeed.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { WRITE_TOOL_NAME } from "wave-agent-sdk";
@@ -33,6 +34,15 @@ test.describe("chrome-devtools MCP tutorial screenshots", () => {
       hosts: ["local"],
     });
     await injector.waitForChatAppReady();
+    await seedSidebarSessions(injector, DIR_A, [
+      { sessionId: "s-cd-1", title: "DevTools 调试登录页跳转", running: true },
+      {
+        sessionId: "s-cd-2",
+        title: "补全注册流程自动化用例",
+        hasWorktree: true,
+      },
+      { sessionId: "s-cd-3", title: "排查接口超时与等待策略" },
+    ]);
     await injector.simulateExtensionMessage("setInitialState", baseConfig);
 
     await injector.updateMessages([

@@ -1,4 +1,5 @@
 import { test, expect } from "../e2e/utils/desktopTestHarness.js";
+import { seedSidebarSessions } from "./sidebarSeed.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
@@ -35,6 +36,19 @@ test.describe("Desktop Update Toast Screenshots", () => {
       recentWorkdirs: [DIR_A],
     });
     await injector.waitForChatAppReady();
+    await seedSidebarSessions(injector, DIR_A, [
+      { sessionId: "s-ut-1", title: "修复登录页样式问题" },
+      {
+        sessionId: "s-ut-2",
+        title: "为支付服务接入监控告警",
+        hasWorktree: true,
+      },
+      {
+        sessionId: "s-ut-3",
+        title: "梳理灰度发布流程",
+        waitingConfirmation: true,
+      },
+    ]);
     await injector.simulateExtensionMessage("setInitialState", initialState);
     await injector.updateMessages([
       MockDataGenerator.createUserMessage("帮我修复登录页的样式问题", "msg-u1"),

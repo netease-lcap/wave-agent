@@ -1,4 +1,5 @@
 import { test, expect } from "../e2e/utils/desktopTestHarness.js";
+import { seedSidebarSessions } from "./sidebarSeed.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import {
@@ -40,6 +41,15 @@ async function setup(injector: MessageInjector, messages: unknown[] = []) {
     hosts: ["local"],
   });
   await injector.waitForChatAppReady();
+  await seedSidebarSessions(injector, DIR_A, [
+    { sessionId: "s-mt-1", title: "分析支付服务分布式事务", running: true },
+    {
+      sessionId: "s-mt-2",
+      title: "为乐观锁实现补单元测试",
+      hasWorktree: true,
+    },
+    { sessionId: "s-mt-3", title: "梳理支付模块接口定义" },
+  ]);
   await injector.simulateExtensionMessage("setInitialState", {
     messages,
     ...baseConfig,

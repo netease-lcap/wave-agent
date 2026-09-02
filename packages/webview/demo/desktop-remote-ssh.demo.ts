@@ -1,4 +1,5 @@
 import { test, expect } from "../e2e/utils/desktopTestHarness.js";
+import { seedSidebarSessions } from "./sidebarSeed.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
@@ -36,6 +37,20 @@ async function setupRemoteSession(injector: MessageInjector, host: string) {
     hosts: REMOTE_HOSTS,
   });
   await injector.waitForChatAppReady();
+  await seedSidebarSessions(
+    injector,
+    REMOTE_WORKDIR,
+    [
+      { sessionId: "s-rs-1", title: "修复远程部署脚本失败", running: true },
+      {
+        sessionId: "s-rs-2",
+        title: "检查容器日志与磁盘占用",
+        waitingConfirmation: true,
+      },
+      { sessionId: "s-rs-3", title: "调整启动命令绑定监听地址" },
+    ],
+    host,
+  );
   await injector.simulateExtensionMessage("setInitialState", initialState);
   await injector.updateMessages([
     MockDataGenerator.createUserMessage(
@@ -65,6 +80,15 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
       hosts: REMOTE_HOSTS,
     });
     await injector.waitForChatAppReady();
+    await seedSidebarSessions(injector, REMOTE_WORKDIR, [
+      { sessionId: "s-rs-1", title: "修复远程部署脚本失败", running: true },
+      {
+        sessionId: "s-rs-2",
+        title: "检查容器日志与磁盘占用",
+        waitingConfirmation: true,
+      },
+      { sessionId: "s-rs-3", title: "调整启动命令绑定监听地址" },
+    ]);
     await injector.simulateExtensionMessage("setInitialState", initialState);
 
     await expect(webviewPage.getByTestId("desktop-host")).toBeVisible();
@@ -93,6 +117,15 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
       hosts: REMOTE_HOSTS,
     });
     await injector.waitForChatAppReady();
+    await seedSidebarSessions(injector, REMOTE_WORKDIR, [
+      { sessionId: "s-rs-1", title: "修复远程部署脚本失败", running: true },
+      {
+        sessionId: "s-rs-2",
+        title: "检查容器日志与磁盘占用",
+        waitingConfirmation: true,
+      },
+      { sessionId: "s-rs-3", title: "调整启动命令绑定监听地址" },
+    ]);
     await injector.simulateExtensionMessage("setInitialState", initialState);
 
     // Open the host menu and expand 添加主机… into the connection-string input.
@@ -227,6 +260,24 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
       hosts: REMOTE_HOSTS,
     });
     await injector.waitForChatAppReady();
+    await seedSidebarSessions(
+      injector,
+      REMOTE_WORKDIR,
+      [
+        {
+          sessionId: "s-rs-1",
+          title: "修复远程部署脚本失败",
+          running: true,
+        },
+        {
+          sessionId: "s-rs-2",
+          title: "检查容器日志与磁盘占用",
+          waitingConfirmation: true,
+        },
+        { sessionId: "s-rs-3", title: "调整启动命令绑定监听地址" },
+      ],
+      REMOTE_HOST,
+    );
     // Initialize so the input area renders — the loading sweep keeps it
     // hidden until setInitialState (no conversation messages here to bring
     // it up, and the scenario intentionally has no workdir yet).

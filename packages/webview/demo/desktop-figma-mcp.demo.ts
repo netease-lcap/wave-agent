@@ -1,4 +1,5 @@
 import { test, expect } from "../e2e/utils/desktopTestHarness.js";
+import { seedSidebarSessions } from "./sidebarSeed.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { WRITE_TOOL_NAME } from "wave-agent-sdk";
@@ -33,6 +34,15 @@ test.describe("Figma MCP tutorial screenshots", () => {
       hosts: ["local"],
     });
     await injector.waitForChatAppReady();
+    await seedSidebarSessions(injector, DIR_A, [
+      { sessionId: "s-fm-1", title: "按 Figma 还原登录页视觉", running: true },
+      {
+        sessionId: "s-fm-2",
+        title: "适配移动端断点布局",
+        hasWorktree: true,
+      },
+      { sessionId: "s-fm-3", title: "替换设计稿图标资源" },
+    ]);
     await injector.simulateExtensionMessage("setInitialState", baseConfig);
 
     await injector.updateMessages([

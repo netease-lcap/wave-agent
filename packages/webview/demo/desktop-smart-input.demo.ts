@@ -1,4 +1,5 @@
 import { test, expect } from "../e2e/utils/desktopTestHarness.js";
+import { seedSidebarSessions } from "./sidebarSeed.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
@@ -32,6 +33,19 @@ async function setupSinglePane(injector: MessageInjector) {
     hosts: ["local"],
   });
   await injector.waitForChatAppReady();
+  await seedSidebarSessions(injector, DIR_A, [
+    { sessionId: "s-si-1", title: "分析支付服务并发问题", running: true },
+    {
+      sessionId: "s-si-2",
+      title: "为乐观锁中间件补测试",
+      hasWorktree: true,
+    },
+    {
+      sessionId: "s-si-3",
+      title: "梳理登录页样式适配",
+      waitingConfirmation: true,
+    },
+  ]);
   await injector.simulateExtensionMessage("setInitialState", initialState);
 }
 
