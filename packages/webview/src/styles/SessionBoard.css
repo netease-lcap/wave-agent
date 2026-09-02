@@ -1,7 +1,9 @@
 /* Session status board (desktop-only): three columns of session cards
    (等待中 / 运行中 / 已完成) with a project filter, replacing the chat
-   pane while open. Colors reuse the message timeline status dots and the
-   sidebar list conventions — all through --vscode-* variables. */
+   pane while open. 第三十一轮按 Figma 权威节点 13561:39312「04 · 会话状态」
+   还原：顶栏返回按钮独立一行、标题 16/600、Select r6 白底、列头整行色块 +
+   胶囊点、卡片区 #F5F7FA、卡片白底 r12 带状态行。深色沿用桌面端面板惯例
+   （#27292B / 12% 白边框 / 6-10% 白填充 / #E6E6E6 #9A9EA5）。 */
 
 .session-board {
   display: flex;
@@ -9,70 +11,88 @@
   flex: 1;
   height: 100%;
   min-height: 0;
-  background: var(--vscode-editor-background, var(--vscode-panel-background));
-  color: var(--vscode-foreground);
+  padding: 16px;
+  gap: 16px;
+  background: var(--vscode-editor-background, #ffffff);
+  color: var(--vscode-foreground, #1f2329);
   overflow: hidden;
+  box-sizing: border-box;
 }
 
-/* ---- Header ---- */
+/* ---- 顶栏：返回当前会话（Figma Header 行，底边 #EBEEF5） ---- */
 
-.session-board-header {
+.session-board-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  padding: 0 0 8px;
+  border-bottom: 1px solid #ebEEF5;
   flex-shrink: 0;
 }
 
 .session-board-back {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   padding: 4px 8px;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
   background: transparent;
-  color: var(--vscode-foreground);
-  font-size: 12px;
+  color: #6c7076;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
 }
 
-.session-board-back:hover {
-  background: var(--vscode-toolbar-hoverBackground);
+.session-board-back .codicon {
+  font-size: 16px;
+  line-height: 1;
 }
 
-.session-board-header-right {
+.session-board-back:hover {
+  background: #f0f2f5;
+}
+
+/* ---- 标题行：会话状态 + 项目筛选 ---- */
+
+.session-board-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .session-board-title {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
+  line-height: 32px;
+  color: #1f2329;
 }
 
+/* Figma Select Input：r6 / 白底 / 1px #DCDFE6 / padding 4 8 / label 14px */
 .session-board-filter {
-  padding: 2px 6px;
-  border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
-  border-radius: 4px;
-  background: var(--vscode-dropdown-background);
-  color: var(--vscode-dropdown-foreground);
-  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1f2329;
+  font-size: 14px;
+  font-weight: 400;
   max-width: 180px;
   cursor: pointer;
 }
 
-/* ---- Columns ---- */
+.session-board-filter:hover {
+  border-color: #c0c4cc;
+}
+
+/* ---- 列区（Figma 13561:39319：itemSpacing 12） ---- */
 
 .session-board-columns {
   display: flex;
   flex: 1;
   min-height: 0;
   gap: 12px;
-  padding: 12px 14px;
 }
 
 .session-board-column {
@@ -81,46 +101,63 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
-  border-radius: 6px;
-  background: var(--vscode-sideBar-background, var(--vscode-panel-background));
 }
 
+/* 列头色块与胶囊点：浅色为 Figma 权威值，深色在文件底部覆盖 */
+.session-board-column--waiting {
+  --sb-col-bg: #fcf6ec;
+  --sb-dot-bg: #f2d09f;
+}
+.session-board-column--running {
+  --sb-col-bg: #eaeffb;
+  --sb-dot-bg: #6d8ee6;
+}
+.session-board-column--done {
+  --sb-col-bg: #f0f9eb;
+  --sb-dot-bg: #16a34a;
+}
+
+/* Figma 列头 13561:7557：整行色块 / padding 12 / gap 8 */
 .session-board-column-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  gap: 8px;
+  padding: 12px;
+  background: var(--sb-col-bg);
+  border-radius: 6px 6px 0 0;
   flex-shrink: 0;
 }
 
 .session-board-column-dot {
-  font-size: 10px;
-  line-height: 1;
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--sb-dot-bg);
+  flex-shrink: 0;
 }
 
 .session-board-column-name {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
+  color: #1f2329;
 }
 
 .session-board-column-count {
-  font-size: 11px;
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-  border-radius: 9px;
-  padding: 0 6px;
-  line-height: 15px;
-  min-width: 15px;
-  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6c7076;
+  line-height: 20px;
 }
+
+/* ---- 卡片区（Figma 13561:7560：#F5F7FA / padding 12 / gap 8） ---- */
 
 .session-board-column-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 8px;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 0 0 6px 6px;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
@@ -128,47 +165,148 @@
 
 .session-board-empty {
   font-size: 12px;
-  color: var(--vscode-descriptionForeground);
+  color: #6c7076;
   text-align: center;
-  padding: 18px 0;
+  margin: auto;
 }
 
-/* ---- Session cards ---- */
+/* ---- 会话卡片（Figma Container：白底 r12 / padding 12 / 1px #EBEEF5） ---- */
 
 .session-card {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 6px 8px;
-  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
-  border-radius: 4px;
-  background: transparent;
-  color: var(--vscode-foreground);
-  font-size: 12px;
+  padding: 12px;
+  border: 1px solid #ebEEF5;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #1f2329;
   text-align: left;
   cursor: pointer;
   flex-shrink: 0;
 }
 
 .session-card:hover {
-  background: var(--vscode-list-hoverBackground);
+  box-shadow: 0 2px 8px rgb(31 35 41 / 8%);
+  border-color: #dcdfe6;
 }
 
 .session-card:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
+  outline: 1px solid #2f5edb;
   outline-offset: -1px;
 }
 
+.session-card-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
 .session-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2329;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .session-card-project {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  font-weight: 400;
+  color: #6c7076;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.session-card-status {
+  font-size: 12px;
+  font-weight: 400;
+  color: #6c7076;
+}
+
+/* ---- 深色主题（桌面端面板惯例：12% 白边框 / 白 6-10% 填充） ---- */
+
+[data-host="desktop"][data-theme="dark"] .session-board {
+  background: var(--vscode-editor-background, #1e1e1e);
+  color: #e6e6e6;
+}
+
+[data-host="desktop"][data-theme="dark"] .session-board-toolbar {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-host="desktop"][data-theme="dark"] .session-board-back {
+  color: #9a9ea5;
+}
+
+[data-host="desktop"][data-theme="dark"] .session-board-back:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+[data-host="desktop"][data-theme="dark"] .session-board-title {
+  color: #e6e6e6;
+}
+
+[data-host="desktop"][data-theme="dark"] .session-board-filter {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #27292b;
+  color: #e6e6e6;
+}
+
+[data-host="desktop"][data-theme="dark"] .session-board-filter:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+/* 深色列头色块：状态色 12% 透明底；胶囊点用状态色本身 */
+[data-host="desktop"][data-theme="dark"] .session-board-column--waiting {
+  --sb-col-bg: rgba(204, 167, 0, 0.12);
+  --sb-dot-bg: #cca700;
+}
+[data-host="desktop"][data-theme="dark"] .session-board-column--running {
+  --sb-col-bg: rgba(109, 142, 230, 0.12);
+  --sb-dot-bg: #6d8ee6;
+}
+[data-host="desktop"][data-theme="dark"] .session-board-column--done {
+  --sb-col-bg: rgba(22, 163, 74, 0.12);
+  --sb-dot-bg: #16a34a;
+}
+
+[data-host="desktop"][data-theme="dark"] .session-board-column-name {
+  color: #e6e6e6;
+}
+
+[data-host="desktop"][data-theme="dark"] .session-board-column-count,
+[data-host="desktop"][data-theme="dark"] .session-board-empty {
+  color: #9a9ea5;
+}
+
+[data-host="desktop"][data-theme="dark"] .session-board-column-body {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+[data-host="desktop"][data-theme="dark"] .session-card {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #27292b;
+  color: #e6e6e6;
+}
+
+[data-host="desktop"][data-theme="dark"] .session-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+[data-host="desktop"][data-theme="dark"] .session-card-title {
+  color: #e6e6e6;
+}
+
+[data-host="desktop"][data-theme="dark"] .session-card-project,
+[data-host="desktop"][data-theme="dark"] .session-card-status {
+  color: #9a9ea5;
 }
