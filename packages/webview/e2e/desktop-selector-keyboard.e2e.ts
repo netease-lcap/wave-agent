@@ -221,7 +221,8 @@ test.describe("Desktop dropdown roving keyboard", () => {
       apiQuota: null,
     });
 
-    const trigger = webviewPage.getByTestId("account-card-more");
+    // v3 account card: the personal-info hotzone opens the menu.
+    const trigger = webviewPage.getByTestId("account-card-hotzone");
     await trigger.click();
     const menu = webviewPage.getByTestId("more-menu");
     await expect(menu).toBeVisible();
@@ -238,7 +239,7 @@ test.describe("Desktop dropdown roving keyboard", () => {
     await expect(trigger).toBeFocused();
   });
 
-  test("panel toggle menu: Space toggles without closing, arrows move, Escape returns", async ({
+  test("panel tabs ＋ menu: opens focused, Space activates + closes, arrows move, Escape returns", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
@@ -253,26 +254,35 @@ test.describe("Desktop dropdown roving keyboard", () => {
       ...initialState,
     });
 
-    const trigger = webviewPage.getByTestId("panel-toggle-btn");
-    await trigger.click();
+    // The "＋" menu lives in the tab bar, so a first tab must exist: open the
+    // terminal panel via the header toggle (empty slot → empty-state entry).
+    await webviewPage.getByTestId("panel-toggle-btn").click();
+    await webviewPage.getByTestId("panel-empty-item-terminal").click();
+    await expect(webviewPage.getByTestId("terminal-pane")).toBeVisible();
+
+    const add = webviewPage.getByTestId("panel-tabs-add");
+    await add.click();
     const menu = webviewPage.getByTestId("panel-toggle-menu");
     await expect(menu).toBeVisible();
 
-    // Opening focuses the first item (预览); Space checks it WITHOUT closing
-    // (multi-select menu) and posts the toggle.
+    // Opening focuses the first item (预览).
     const preview = webviewPage.getByTestId("panel-toggle-item-preview");
     await expect(preview).toBeFocused();
-    await webviewPage.keyboard.press(" ");
-    await expect(preview).toHaveAttribute("aria-checked", "true");
-    await expect(menu).toBeVisible();
 
+    // Arrows move between items without activating.
     await webviewPage.keyboard.press("ArrowDown");
     await expect(
       webviewPage.getByTestId("panel-toggle-item-plan"),
     ).toBeFocused();
+    await webviewPage.keyboard.press("ArrowDown");
+    const diff = webviewPage.getByTestId("panel-toggle-item-diff");
+    await expect(diff).toBeFocused();
 
-    await webviewPage.keyboard.press("Escape");
+    // Space activates the focused item; the tab-bar menu is closeOnActivate —
+    // the diff panel opens and the menu closes back to the "＋" trigger.
+    await webviewPage.keyboard.press(" ");
     await expect(menu).toBeHidden();
-    await expect(trigger).toBeFocused();
+    await expect(webviewPage.getByTestId("diff-pane")).toBeVisible();
+    await expect(add).toBeFocused();
   });
 });

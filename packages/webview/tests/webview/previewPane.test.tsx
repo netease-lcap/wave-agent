@@ -14,6 +14,17 @@ import { MockDataGenerator } from "../fixtures/mockData";
 
 vi.mock("../../src/styles/DesktopApp.css", () => ({}));
 
+// Multi-instance tabs can render several preview panes at once. Find the one
+// belonging to the ACTIVE tab — the only visible .desktop-panel-stack.
+const activePane = (testId: string) =>
+  screen
+    .getAllByTestId(testId)
+    .find(
+      (p) =>
+        (p.closest(".desktop-panel-stack") as HTMLElement | null)?.style
+          .display !== "none",
+    );
+
 type MockWebview = Omit<
   WebviewTagElement,
   | "send"
@@ -37,23 +48,19 @@ type MockWebview = Omit<
 
 function renderPane(options?: {
   url?: string;
-  onClose?: () => void;
   onAddComment?: (text: string) => void;
   originalUrl?: string;
   onRetry?: () => void;
   onLastTabClosed?: () => void;
-  fullscreen?: boolean;
-  onToggleFullscreen?: () => void;
+  onTitleChange?: (title: string) => void;
 }) {
   const vscode = createMockVscode();
   const url = options?.url ?? "http://localhost:5173/app";
-  const onClose = options?.onClose ?? vi.fn();
   const onAddComment = options?.onAddComment ?? vi.fn();
   const originalUrl = options?.originalUrl;
   const onRetry = options?.onRetry;
   const onLastTabClosed = options?.onLastTabClosed ?? vi.fn();
-  const fullscreen = options?.fullscreen ?? false;
-  const onToggleFullscreen = options?.onToggleFullscreen ?? vi.fn();
+  const onTitleChange = options?.onTitleChange ?? vi.fn();
   // Controlled-width harness: PreviewPane no longer owns its width state.
   // `width` prop on rerender overrides the internal state so tests can drive
   // panel resizes without going through the drag handle.
@@ -69,7 +76,6 @@ function renderPane(options?: {
       <PreviewPane
         url={u}
         vscode={vscode}
-        onClose={onClose}
         width={wProp ?? width}
         onWidthChange={setWidth}
         maxWidth={716}
@@ -77,8 +83,7 @@ function renderPane(options?: {
         originalUrl={originalUrl}
         onRetry={onRetry}
         onLastTabClosed={onLastTabClosed}
-        fullscreen={fullscreen}
-        onToggleFullscreen={onToggleFullscreen}
+        onTitleChange={onTitleChange}
       />
     );
   };
@@ -102,10 +107,9 @@ function renderPane(options?: {
     vscode,
     wv,
     url,
-    onClose,
     onAddComment,
     onLastTabClosed,
-    onToggleFullscreen,
+    onTitleChange,
   };
 }
 
@@ -151,6 +155,18 @@ describe("PreviewPane", () => {
     const { wv, url } = renderPane();
     expect(wv.getAttribute("src")).toBe(url);
     expect(screen.getByText(url)).toBeInTheDocument();
+  });
+
+  it("reports the guest page title via page-title-updated (tab 显示页面名称)", () => {
+    const { wv, onTitleChange } = renderPane();
+    fireDomReady(wv);
+    fireEvent(
+      wv,
+      Object.assign(new Event("page-title-updated"), {
+        title: "登录页 · 我的应用",
+      }),
+    );
+    expect(onTitleChange).toHaveBeenCalledWith("登录页 · 我的应用");
   });
 
   it("toggles the picker: activate sends palette, second click deactivates", () => {
@@ -310,50 +326,11 @@ describe("PreviewPane", () => {
     });
   });
 
-  it("close button calls onClose", () => {
-    const onClose = vi.fn();
-    renderPane({ onClose });
-    fireEvent.click(screen.getByTestId("preview-close"));
-    expect(onClose).toHaveBeenCalled();
-  });
-
   it("navigates via loadURL when a different URL arrives after dom-ready", () => {
     const { wv, rerenderWithUrl } = renderPane();
     fireDomReady(wv);
     rerenderWithUrl("http://localhost:3000/other");
     expect(wv.loadURL).toHaveBeenCalledWith("http://localhost:3000/other");
-  });
-
-  it("fullscreen toggle button calls onToggleFullscreen and switches icon (spec 场景 1)", () => {
-    const onToggleFullscreen = vi.fn();
-    const { rerender } = renderPane({ onToggleFullscreen });
-
-    const btn = screen.getByTestId("preview-fullscreen");
-    expect(btn).toHaveAttribute("title", "全屏预览");
-    // 第 32 轮图标 SVG 化：全屏态渲染 MaximizeIcon（Figma 图标，非 codicon 字体）。
-    const iconPath = () => btn.querySelector("svg")!.innerHTML;
-    const pathBefore = iconPath();
-    expect(pathBefore).not.toBe("");
-    fireEvent.click(btn);
-    expect(onToggleFullscreen).toHaveBeenCalledTimes(1);
-
-    // Fullscreen state: icon flips to 退出全屏 (UnmaximizeIcon).
-    rerender(
-      <PreviewPane
-        url="http://localhost:5173/app"
-        vscode={createMockVscode()}
-        onClose={vi.fn()}
-        width={420}
-        onWidthChange={vi.fn()}
-        maxWidth={716}
-        fullscreen
-        onToggleFullscreen={onToggleFullscreen}
-      />,
-    );
-    const fsBtn = screen.getByTestId("preview-fullscreen");
-    expect(fsBtn).toHaveAttribute("title", "退出全屏");
-    expect(fsBtn.querySelector("svg")!.innerHTML).not.toBe(pathBefore);
-    expect(fsBtn).toHaveAttribute("aria-pressed", "true");
   });
 
   it("drag handle resizes within min/max bounds", () => {
@@ -486,115 +463,30 @@ describe("PreviewPane", () => {
     expect(screen.queryByTestId("preview-error")).not.toBeInTheDocument();
   });
 
-  describe("preview tabs (spec 预览多标签页)", () => {
-    const tabCount = () =>
-      screen.getByTestId("preview-tab-bar").querySelectorAll(".preview-tab")
-        .length;
-
-    it("opens a second tab for a new URL and selects it (scenario 1)", () => {
+  describe("preview 单窗口（去掉浏览器标签条后的导航语义）", () => {
+    it("a new URL from the parent navigates the single window (loadURL + address bar)", () => {
       const { wv, rerenderWithUrl } = renderPane();
       fireDomReady(wv);
       rerenderWithUrl("http://localhost:3000/other");
 
-      expect(tabCount()).toBe(2);
-      const bar = screen.getByTestId("preview-tab-bar");
-      const active = bar.querySelector(".preview-tab.active") as HTMLElement;
-      expect(active.textContent).toContain("localhost:3000");
       expect(wv.loadURL).toHaveBeenCalledWith("http://localhost:3000/other");
+      expect(screen.getByTestId("preview-address-display")).toHaveTextContent(
+        "http://localhost:3000/other",
+      );
+      // Single-window: no tab bar, no "+" tab button.
+      expect(screen.queryByTestId("preview-tab-bar")).not.toBeInTheDocument();
     });
 
-    it("reuses an existing tab when the same URL is requested again", () => {
+    it("re-navigating the same URL does not reload the guest", () => {
       const { wv, rerenderWithUrl } = renderPane();
       fireDomReady(wv);
       rerenderWithUrl("http://localhost:3000/other");
-      expect(tabCount()).toBe(2);
-
       rerenderWithUrl("http://localhost:3000/other");
-      expect(tabCount()).toBe(2);
-      // Switching back to the reused tab does not re-navigate the guest.
+
       expect(wv.loadURL).toHaveBeenCalledTimes(1);
     });
 
-    it("switches tabs on click (scenario 2)", () => {
-      const { rerenderWithUrl } = renderPane();
-      rerenderWithUrl("http://localhost:3000/other");
-      const bar = screen.getByTestId("preview-tab-bar");
-      const first = bar.querySelectorAll(".preview-tab")[0] as HTMLElement;
-
-      fireEvent.click(first);
-
-      expect(first.classList.contains("active")).toBe(true);
-      expect(bar.querySelector(".preview-tab.active")).toBe(first);
-      // Address bar shows the selected tab's URL.
-      expect(screen.getByTestId("preview-address-display")).toHaveTextContent(
-        "http://localhost:5173/app",
-      );
-    });
-
-    it("closing the selected tab falls back to its left neighbor (scenario 4)", () => {
-      const { onClose, rerenderWithUrl } = renderPane();
-      rerenderWithUrl("http://localhost:3000/other");
-      rerenderWithUrl("http://localhost:3000/third");
-      const bar = screen.getByTestId("preview-tab-bar");
-      expect(tabCount()).toBe(3);
-
-      // Close the currently active (rightmost) tab.
-      const tabs = bar.querySelectorAll(".preview-tab");
-      fireEvent.click(
-        tabs[2].querySelector(".preview-tab-close") as HTMLElement,
-      );
-
-      const remaining = bar.querySelectorAll(".preview-tab");
-      expect(remaining).toHaveLength(2);
-      expect(remaining[1].classList.contains("active")).toBe(true);
-      expect(remaining[1].textContent).toContain("localhost:3000/other");
-      expect(onClose).not.toHaveBeenCalled();
-    });
-
-    it("closing the last tab collapses the panel (scenario 4)", () => {
-      const onClose = vi.fn();
-      const onLastTabClosed = vi.fn();
-      renderPane({ onClose, onLastTabClosed });
-      expect(tabCount()).toBe(1);
-
-      fireEvent.click(
-        screen
-          .getByTestId("preview-tab-bar")
-          .querySelector(".preview-tab-close") as HTMLElement,
-      );
-
-      expect(onLastTabClosed).toHaveBeenCalled();
-      expect(onClose).toHaveBeenCalled();
-    });
-
-    it("add-blank button shows the new-tab placeholder; committing the address loads it (scenario 5)", () => {
-      const { wv, rerenderWithUrl } = renderPane();
-      fireDomReady(wv);
-      rerenderWithUrl("http://localhost:3000/other");
-      wv.loadURL.mockClear();
-
-      fireEvent.click(screen.getByTestId("preview-tab-add"));
-
-      expect(tabCount()).toBe(3);
-      expect(screen.getByTestId("preview-tab-new")).toBeInTheDocument();
-      expect(screen.getByTestId("preview-address-input")).toBeInTheDocument();
-
-      // Commit a bare hostname — normalized with http:// and loaded.
-      fireEvent.change(screen.getByTestId("preview-address-input"), {
-        target: { value: "localhost:4000" },
-      });
-      fireEvent.keyDown(screen.getByTestId("preview-address-input"), {
-        key: "Enter",
-      });
-
-      expect(screen.queryByTestId("preview-tab-new")).not.toBeInTheDocument();
-      expect(screen.getByTestId("preview-address-display")).toHaveTextContent(
-        "http://localhost:4000",
-      );
-      expect(wv.loadURL).toHaveBeenCalledWith("http://localhost:4000");
-    });
-
-    it("Escape cancels address editing back to the tab's URL", () => {
+    it("Escape cancels address editing back to the shown URL", () => {
       const { rerenderWithUrl } = renderPane();
       rerenderWithUrl("http://localhost:3000/other");
       fireEvent.click(screen.getByTestId("preview-address-display"));
@@ -604,11 +496,10 @@ describe("PreviewPane", () => {
       fireEvent.change(input, { target: { value: "localhost:9999" } });
       fireEvent.keyDown(input, { key: "Escape" });
 
-      // Editing abandoned — display restored, tab untouched.
+      // Editing abandoned — display restored.
       expect(screen.getByTestId("preview-address-display")).toHaveTextContent(
         "http://localhost:3000/other",
       );
-      expect(tabCount()).toBe(2);
     });
   });
 
@@ -791,14 +682,16 @@ describe("PreviewPane integration (DesktopApp)", () => {
       "http://localhost:5173/proto",
     );
 
-    fireEvent.click(screen.getByTestId("preview-close"));
-    // Close = uncheck: the panel stays mounted (guest not reloaded), just hidden.
-    const slot = screen.getByTestId("preview-pane").parentElement;
-    expect(slot).toHaveClass("desktop-panel-slot");
-    expect(slot).toHaveStyle({ display: "none" });
+    // 关闭统一走一级 tab 的关闭按钮。
+    fireEvent.click(screen.getByTestId("panel-tab-close-preview-1"));
+    // Closing the panel's only tab unmounts the pane; the still-expanded
+    // panel falls back to its empty-state guide.
+    expect(screen.getByTestId("desktop-panel-slot")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+    expect(screen.queryByTestId("preview-pane")).not.toBeInTheDocument();
   });
 
-  it("multi-tab: a second link opens a new tab; closing the last tab collapses the panel", () => {
+  it("single window: a second localhost link opens a new preview tab (新链接新 tab)", () => {
     window.waveHostType = "desktop";
     render(<DesktopApp vscode={createMockVscode()} />);
     sendCommand("desktopWorkdirState", {
@@ -823,25 +716,29 @@ describe("PreviewPane integration (DesktopApp)", () => {
     wv.reload = vi.fn();
     wv.reloadIgnoringCache = vi.fn();
     wv.getURL = vi.fn(() => "http://localhost:5173/a");
+    fireDomReady(wv);
 
-    // Second localhost link → a second tab, selected.
+    // Second localhost link → a NEW preview tab opens (「新链接新 tab」): both
+    // addresses stay open side by side, the new tab is active.
     fireEvent.click(screen.getByText("二"));
-    const bar = screen.getByTestId("preview-tab-bar");
-    expect(bar.querySelectorAll(".preview-tab")).toHaveLength(2);
-    expect(bar.querySelector(".preview-tab.active")?.textContent).toContain(
-      "localhost:5173/b",
+    expect(screen.getAllByTestId("preview-pane")).toHaveLength(2);
+    expect(screen.getByTestId("panel-tab-preview-2")).toBeInTheDocument();
+    const active = activePane("preview-pane");
+    expect(active?.querySelector("webview")?.getAttribute("src")).toBe(
+      "http://localhost:5173/b",
     );
+    expect(
+      active?.querySelector("[data-testid=preview-address-display]"),
+    ).toHaveTextContent("http://localhost:5173/b");
+    // The first tab keeps its own address.
+    expect(screen.getAllByTestId("preview-address-display")).toHaveLength(2);
+    expect(screen.queryByTestId("preview-tab-bar")).not.toBeInTheDocument();
 
-    // Close the active tab, then the last one → panel collapses.
-    fireEvent.click(
-      bar.querySelectorAll(".preview-tab-close")[1] as HTMLElement,
-    );
-    fireEvent.click(
-      bar.querySelectorAll(".preview-tab-close")[0] as HTMLElement,
-    );
-    const slot = screen.getByTestId("preview-pane-empty").parentElement;
-    expect(slot).toHaveClass("desktop-panel-slot");
-    expect(slot).toHaveStyle({ display: "none" });
+    // Close the second (active) tab → falls back to the first preview tab.
+    fireEvent.click(screen.getByTestId("panel-tab-close-preview-2"));
+    expect(
+      activePane("preview-pane")?.querySelector("webview")?.getAttribute("src"),
+    ).toBe("http://localhost:5173/a");
   });
 
   it("picker comments land in the chat input (batched), nothing sent directly", () => {
@@ -929,7 +826,7 @@ describe("PreviewPane integration (DesktopApp)", () => {
     );
   });
 
-  it("fullscreen hides the conversation column and other panels; button and Esc restore (spec 场景 1-4)", () => {
+  it("fullscreen hides the conversation column; button and Esc restore (spec 场景 1-4)", () => {
     window.waveHostType = "desktop";
     render(<DesktopApp vscode={createMockVscode()} />);
     sendCommand("desktopWorkdirState", {
@@ -946,23 +843,29 @@ describe("PreviewPane integration (DesktopApp)", () => {
     });
     fireEvent.click(screen.getByText("这里"));
     // Open diff as well so fullscreen hides it (spec 场景 3).
-    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+    fireEvent.click(screen.getByTestId("panel-tabs-add"));
     fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
     expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
-    fireEvent.keyDown(document, { key: "Escape" }); // close the toggle menu
+    fireEvent.keyDown(document, { key: "Escape" }); // close the + menu
+    // Switch back to the preview tab — fullscreen shows the ACTIVE panel.
+    fireEvent.click(screen.getByTestId("panel-tab-preview-1"));
 
     const body = screen
       .getByTestId("preview-pane")
       .closest(".desktop-chat-body") as HTMLElement;
     expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
-    expect(document.querySelectorAll(".desktop-panel-slot")).toHaveLength(2);
+    // Tabbed layout: one shared slot for both panels.
+    expect(document.querySelectorAll(".desktop-panel-slot")).toHaveLength(1);
 
-    // Enter fullscreen via the toolbar button.
-    fireEvent.click(screen.getByTestId("preview-fullscreen"));
+    // Enter fullscreen via the tab-bar button.
+    fireEvent.click(screen.getByTestId("panel-fullscreen"));
     expect(body).toHaveClass("preview-fullscreen");
     expect(body.querySelector(".desktop-chat-main")).toBeNull();
-    expect(screen.queryByTestId("diff-pane")).not.toBeInTheDocument();
     expect(screen.getByTestId("preview-pane")).toBeInTheDocument();
+    // The inactive diff tab stays mounted but hidden (content survives).
+    expect(screen.getByTestId("diff-pane").parentElement).toHaveStyle({
+      display: "none",
+    });
 
     // Esc exits fullscreen and restores the previous layout (spec 场景 2).
     fireEvent.keyDown(window, { key: "Escape" });
@@ -971,9 +874,9 @@ describe("PreviewPane integration (DesktopApp)", () => {
     expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
 
     // The button toggles back as well (spec 场景 2).
-    fireEvent.click(screen.getByTestId("preview-fullscreen"));
+    fireEvent.click(screen.getByTestId("panel-fullscreen"));
     expect(body).toHaveClass("preview-fullscreen");
-    fireEvent.click(screen.getByTestId("preview-fullscreen"));
+    fireEvent.click(screen.getByTestId("panel-fullscreen"));
     expect(body).not.toHaveClass("preview-fullscreen");
   });
 });

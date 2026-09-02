@@ -106,7 +106,8 @@
 
 /* Desktop panel toggle: Figma preview-toggle (40×24 composite icon: panel
    layout glyph + chevron-down). Wider than the square 22×22 buttons, matching
-   codechat's workspace-header-panel-toggle (40×24). */
+   codechat's workspace-header-panel-toggle (40×24). Clicking expands/collapses
+   the right-hand panel (expanded state mirrors .header-button.active). */
 .header-panel-toggle {
   width: 40px;
   height: 24px;
@@ -118,4 +119,9 @@
 .header-panel-toggle .header-icon {
   width: 40px;
   height: 24px;
+}
+
+.header-panel-toggle--expanded {
+  background-color: var(--vscode-toolbar-activeBackground);
+  color: var(--vscode-button-background);
 }

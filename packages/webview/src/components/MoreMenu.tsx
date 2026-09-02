@@ -148,9 +148,12 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   // a focused item). Focus returns to the trigger on those in-menu paths.
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        onClose();
-      }
+      const target = event.target as Node;
+      if (menuRef.current && menuRef.current.contains(target)) return;
+      // The trigger itself is excluded from click-outside so clicking it again
+      // toggles the menu closed (AccountCard hotzone / header 更多).
+      if (triggerRef?.current?.contains(target)) return;
+      onClose();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -163,7 +166,9 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose]);
+    // triggerRef is a stable prop ref object (callers pass a useRef result), so
+    // the listener set still only installs once per mount.
+  }, [onClose, triggerRef]);
 
   return (
     <div
@@ -178,6 +183,9 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
               bottom: window.innerHeight - anchorRect.top + 4,
               right: Math.max(8, window.innerWidth - anchorRect.right),
               left: "auto",
+              // 与锚点（账户卡片）等宽，保证菜单项不超出面板；内容不足时以
+              // 216px 为下限避免换行局促。
+              width: Math.max(anchorRect.width, 216),
             }
           : undefined
       }

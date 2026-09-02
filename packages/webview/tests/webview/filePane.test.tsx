@@ -103,13 +103,11 @@ function renderPane(
     maxWidth?: number;
     workdir?: string;
     onOpenExternal?: (path: string) => void;
-    onClose?: () => void;
     onWidthChange?: (width: number) => void;
     vscode?: VsCodeApi;
     onOpenFileInPanel?: (path: string) => void;
   } = {},
 ) {
-  const onClose = options.onClose ?? vi.fn();
   const onWidthChange = options.onWidthChange ?? vi.fn();
   const fileView =
     options.fileView === undefined ? makeFileView() : options.fileView;
@@ -118,7 +116,6 @@ function renderPane(
     width: options.width ?? 420,
     onWidthChange,
     maxWidth: options.maxWidth ?? 716,
-    onClose,
     onOpenExternal: options.onOpenExternal,
     workdir: options.workdir,
     vscode: options.vscode,
@@ -127,7 +124,7 @@ function renderPane(
   const result = render(<FilePane {...props} />);
   const rerenderWith = (next: FileViewState | null) =>
     result.rerender(<FilePane {...props} fileView={next} />);
-  return { ...result, rerenderWith, onClose, onWidthChange };
+  return { ...result, rerenderWith, onWidthChange };
 }
 
 describe("FilePane", () => {
@@ -139,20 +136,15 @@ describe("FilePane", () => {
     expect(screen.queryByTestId("file-open-external")).not.toBeInTheDocument();
   });
 
-  it("keeps the 文件 title and right-aligned close button in the empty state", () => {
+  it("keeps the 文件 title in the empty state (no close button — 一级 tab 控制关闭)", () => {
     renderPane({ fileView: null });
     const toolbar = screen
       .getByTestId("file-pane")
       .querySelector(".preview-pane-toolbar");
-    expect(toolbar?.querySelector(".preview-pane-url")?.textContent).toBe(
-      "文件",
-    );
-    const close = screen.getByTestId("file-close");
     expect(
-      close.compareDocumentPosition(
-        toolbar!.querySelector(".preview-pane-url") as Node,
-      ),
-    ).toBe(Node.DOCUMENT_POSITION_PRECEDING);
+      toolbar?.querySelector(".desktop-panel-toolbar-title")?.textContent,
+    ).toBe("文件");
+    expect(screen.queryByTestId("file-close")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/本地|^prod$/, { selector: ".file-pane-host" }),
     ).not.toBeInTheDocument();
@@ -350,10 +342,9 @@ describe("FilePane", () => {
     expect(screen.queryByTestId("file-open-external")).not.toBeInTheDocument();
   });
 
-  it("close button calls onClose", () => {
-    const { onClose } = renderPane();
-    fireEvent.click(screen.getByTestId("file-close"));
-    expect(onClose).toHaveBeenCalled();
+  it("has no in-pane close button (关闭统一由一级 tab 控制)", () => {
+    renderPane();
+    expect(screen.queryByTestId("file-close")).not.toBeInTheDocument();
   });
 
   it("drag handle resizes within min/max bounds", () => {
@@ -382,23 +373,54 @@ describe("FilePane", () => {
     expect(document.body.classList.contains("is-panel-resizing")).toBe(false);
   });
 
-  describe("FilePane search bar", () => {
-    it("hides the search bar without a host bridge", () => {
+  describe("FilePane search (toolbar trigger + popover)", () => {
+    /** Click the toolbar's search trigger and wait for the popover input. */
+    const openSearchPopup = async () => {
+      fireEvent.click(screen.getByTestId("file-pane-search-trigger"));
+      return await screen.findByTestId("file-pane-search-input");
+    };
+
+    it("hides the search trigger without a host bridge", () => {
       renderPane({});
+      expect(
+        screen.queryByTestId("file-pane-search-trigger"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("file-pane-search-popover"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("opens a popover with the input focused when the trigger is clicked", async () => {
+      const vscode = makeVscode();
+      renderPane({ vscode });
+      const trigger = screen.getByTestId("file-pane-search-trigger");
+      expect(
+        screen.queryByTestId("file-pane-search-popover"),
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(trigger);
+      const input = await screen.findByTestId("file-pane-search-input");
+      expect(
+        screen.getByTestId("file-pane-search-popover"),
+      ).toBeInTheDocument();
+      // 呼出时自动聚焦搜索框
+      expect(input).toHaveFocus();
+
+      // Clicking the trigger again toggles the popover closed.
+      fireEvent.click(screen.getByTestId("file-pane-search-trigger"));
+      expect(
+        screen.queryByTestId("file-pane-search-popover"),
+      ).not.toBeInTheDocument();
       expect(
         screen.queryByTestId("file-pane-search-input"),
       ).not.toBeInTheDocument();
     });
 
-    it("shows the search bar when a host bridge is provided", () => {
-      renderPane({ vscode: makeVscode() });
-      expect(screen.getByTestId("file-pane-search-input")).toBeInTheDocument();
-    });
-
     it("requests suggestions with an empty filter on focus", async () => {
       const vscode = makeVscode();
       renderPane({ vscode });
-      fireEvent.focus(screen.getByTestId("file-pane-search-input"));
+      const input = await openSearchPopup();
+      fireEvent.focus(input);
       await waitFor(() =>
         expect(vscode.postMessage).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -412,7 +434,7 @@ describe("FilePane", () => {
     it("debounces typing and applies only the matching response", async () => {
       const vscode = makeVscode();
       renderPane({ vscode });
-      const input = screen.getByTestId("file-pane-search-input");
+      const input = await openSearchPopup();
       fireEvent.focus(input);
       fireEvent.change(input, { target: { value: "app" } });
       const reqId = await waitForSearchRequest(vscode, "app");
@@ -434,7 +456,7 @@ describe("FilePane", () => {
       const vscode = makeVscode();
       const onOpenFileInPanel = vi.fn();
       renderPane({ vscode, onOpenFileInPanel });
-      const input = screen.getByTestId("file-pane-search-input");
+      const input = await openSearchPopup();
       fireEvent.focus(input);
       const reqId = await waitForSearchRequest(vscode, "");
       sendSuggestionsResponse(reqId, [
@@ -446,14 +468,17 @@ describe("FilePane", () => {
       fireEvent.keyDown(input, { key: "ArrowDown" });
       fireEvent.keyDown(input, { key: "Enter" });
       expect(onOpenFileInPanel).toHaveBeenCalledWith("/work/a/src/B.tsx");
-      expect(input).toHaveValue("");
+      // Selecting a file closes the whole popover.
+      expect(
+        screen.queryByTestId("file-pane-search-popover"),
+      ).not.toBeInTheDocument();
     });
 
     it("opens the file when a suggestion is clicked", async () => {
       const vscode = makeVscode();
       const onOpenFileInPanel = vi.fn();
       renderPane({ vscode, onOpenFileInPanel });
-      const input = screen.getByTestId("file-pane-search-input");
+      const input = await openSearchPopup();
       fireEvent.focus(input);
       const reqId = await waitForSearchRequest(vscode, "");
       sendSuggestionsResponse(reqId, [
@@ -462,14 +487,16 @@ describe("FilePane", () => {
       const item = await screen.findByText("App.tsx");
       fireEvent.click(item);
       expect(onOpenFileInPanel).toHaveBeenCalledWith("/work/a/src/App.tsx");
-      expect(input).toHaveValue("");
+      expect(
+        screen.queryByTestId("file-pane-search-popover"),
+      ).not.toBeInTheDocument();
     });
 
-    it("re-opens the dropdown when typing again after selecting a file", async () => {
+    it("re-opens a fresh search when opening the popover again after selecting", async () => {
       const vscode = makeVscode();
       const onOpenFileInPanel = vi.fn();
       renderPane({ vscode, onOpenFileInPanel });
-      const input = screen.getByTestId("file-pane-search-input");
+      const input = await openSearchPopup();
       fireEvent.focus(input);
       let reqId = await waitForSearchRequest(vscode, "");
       sendSuggestionsResponse(reqId, [
@@ -477,13 +504,18 @@ describe("FilePane", () => {
       ]);
       await screen.findByText("App.tsx");
 
-      // Select the file; focus stays in the input (no blur event fires).
+      // Select the file; the popover closes entirely.
       fireEvent.keyDown(input, { key: "Enter" });
       expect(onOpenFileInPanel).toHaveBeenCalledWith("/work/a/src/App.tsx");
-      expect(screen.queryByText("App.tsx")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("file-pane-search-popover"),
+      ).not.toBeInTheDocument();
 
-      // Type again without refocusing — the dropdown must come back.
-      fireEvent.change(input, { target: { value: "main" } });
+      // Open it again: the input comes back empty and searches afresh.
+      const reopenedInput = await openSearchPopup();
+      expect(reopenedInput).toHaveValue("");
+      fireEvent.focus(reopenedInput);
+      fireEvent.change(reopenedInput, { target: { value: "main" } });
       reqId = await waitForSearchRequest(vscode, "main");
       sendSuggestionsResponse(reqId, [
         makeFileItem("main.ts", "/work/a/src/main.ts", "src/main.ts"),
@@ -491,10 +523,10 @@ describe("FilePane", () => {
       expect(await screen.findByText("src/main.ts")).toBeInTheDocument();
     });
 
-    it("closes the dropdown and clears the search on Escape", async () => {
+    it("closes the popover and clears the search on Escape", async () => {
       const vscode = makeVscode();
       renderPane({ vscode });
-      const input = screen.getByTestId("file-pane-search-input");
+      const input = await openSearchPopup();
       fireEvent.focus(input);
       const reqId = await waitForSearchRequest(vscode, "");
       sendSuggestionsResponse(reqId, [
@@ -503,14 +535,45 @@ describe("FilePane", () => {
       await screen.findByText("App.tsx");
 
       fireEvent.keyDown(input, { key: "Escape" });
+      expect(
+        screen.queryByTestId("file-pane-search-popover"),
+      ).not.toBeInTheDocument();
+
+      // Re-opening starts from an empty filter (no stale App.tsx suggestions).
+      const reopened = await openSearchPopup();
+      fireEvent.focus(reopened);
+      expect(reopened).toHaveValue("");
       expect(screen.queryByText("App.tsx")).not.toBeInTheDocument();
-      expect(input).toHaveValue("");
+    });
+
+    it("dismisses on a click outside the popover (but not inside it)", async () => {
+      const vscode = makeVscode();
+      renderPane({ vscode });
+      const input = await openSearchPopup();
+      fireEvent.focus(input);
+      const reqId = await waitForSearchRequest(vscode, "");
+      sendSuggestionsResponse(reqId, [
+        makeFileItem("App.tsx", "/work/a/src/App.tsx", "src/App.tsx"),
+      ]);
+      await screen.findByText("App.tsx");
+
+      // Clicking inside the popover (e.g. the input) keeps it open.
+      fireEvent.mouseDown(input);
+      expect(
+        screen.getByTestId("file-pane-search-popover"),
+      ).toBeInTheDocument();
+
+      // Clicking the file content (outside) dismisses it.
+      fireEvent.mouseDown(screen.getByTestId("file-pane"));
+      expect(
+        screen.queryByTestId("file-pane-search-popover"),
+      ).not.toBeInTheDocument();
     });
 
     it("filters directory suggestions out of the dropdown", async () => {
       const vscode = makeVscode();
       renderPane({ vscode });
-      const input = screen.getByTestId("file-pane-search-input");
+      const input = await openSearchPopup();
       fireEvent.focus(input);
       const reqId = await waitForSearchRequest(vscode, "");
       sendSuggestionsResponse(reqId, [
@@ -529,7 +592,7 @@ describe("FilePane", () => {
     it("shows a loading state in flight and clears it on error", async () => {
       const vscode = makeVscode();
       renderPane({ vscode });
-      const input = screen.getByTestId("file-pane-search-input");
+      const input = await openSearchPopup();
       fireEvent.focus(input);
       const reqId = await waitForSearchRequest(vscode, "");
       expect(screen.getByText("正在搜索文件...")).toBeInTheDocument();

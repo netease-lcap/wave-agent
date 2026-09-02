@@ -6,7 +6,7 @@ import type { UpdateToast } from "../../src/types";
 
 const toast = (overrides: Partial<UpdateToast> = {}): UpdateToast => ({
   id: "t1",
-  message: "新版本 v0.20.0 已下载完成",
+  message: "发现新版本 v0.20.0",
   ...overrides,
 });
 
@@ -27,17 +27,20 @@ describe("ToastStack", () => {
       <ToastStack
         toasts={[
           toast({
-            actionLabel: "重启安装",
-            action: { type: "quitAndInstall" },
+            actionLabel: "打开下载页",
+            action: {
+              type: "openDownloadPage",
+              url: "https://github.com/release",
+            },
           }),
         ]}
         onDismiss={vi.fn()}
         onAction={vi.fn()}
       />,
     );
-    expect(screen.getByText("新版本 v0.20.0 已下载完成")).toBeInTheDocument();
+    expect(screen.getByText("发现新版本 v0.20.0")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "重启安装" }),
+      screen.getByRole("button", { name: "打开下载页" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
   });
@@ -46,8 +49,8 @@ describe("ToastStack", () => {
     render(
       <ToastStack toasts={[toast()]} onDismiss={vi.fn()} onAction={vi.fn()} />,
     );
-    expect(screen.getByText("新版本 v0.20.0 已下载完成")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "重启安装" })).toBeNull();
+    expect(screen.getByText("发现新版本 v0.20.0")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开下载页" })).toBeNull();
   });
 
   it("renders a loading state (spinner, no action button) while the action is in flight", () => {
@@ -56,18 +59,21 @@ describe("ToastStack", () => {
         toasts={[
           toast({
             loading: true,
-            message: "正在重启应用以完成安装…",
-            actionLabel: "重启安装",
-            action: { type: "quitAndInstall" },
+            message: "正在打开下载页…",
+            actionLabel: "打开下载页",
+            action: {
+              type: "openDownloadPage",
+              url: "https://github.com/release",
+            },
           }),
         ]}
         onDismiss={vi.fn()}
         onAction={vi.fn()}
       />,
     );
-    expect(screen.getByText("正在重启应用以完成安装…")).toBeInTheDocument();
+    expect(screen.getByText("正在打开下载页…")).toBeInTheDocument();
     expect(document.querySelector(".toast-spinner")).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "重启安装" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "打开下载页" })).toBeNull();
     expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
   });
 
@@ -79,8 +85,11 @@ describe("ToastStack", () => {
         toasts={[
           toast({
             loading: true,
-            actionLabel: "重启安装",
-            action: { type: "quitAndInstall" },
+            actionLabel: "打开下载页",
+            action: {
+              type: "openDownloadPage",
+              url: "https://github.com/release",
+            },
           }),
         ]}
         onDismiss={onDismiss}
@@ -130,8 +139,11 @@ describe("ToastStack", () => {
       <ToastStack
         toasts={[
           toast({
-            actionLabel: "重启安装",
-            action: { type: "quitAndInstall" },
+            actionLabel: "打开下载页",
+            action: {
+              type: "openDownloadPage",
+              url: "https://github.com/release",
+            },
           }),
         ]}
         onDismiss={onDismiss}
@@ -145,13 +157,13 @@ describe("ToastStack", () => {
   it("fires onAction with the whole toast when the action button is clicked", () => {
     const onAction = vi.fn();
     const item = toast({
-      actionLabel: "重启安装",
-      action: { type: "quitAndInstall" },
+      actionLabel: "打开下载页",
+      action: { type: "openDownloadPage", url: "https://github.com/release" },
     });
     render(
       <ToastStack toasts={[item]} onDismiss={vi.fn()} onAction={onAction} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "重启安装" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开下载页" }));
     expect(onAction).toHaveBeenCalledWith(item);
   });
 

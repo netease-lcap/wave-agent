@@ -384,9 +384,10 @@ export interface DesktopThemeSourceMessage extends HostToWebviewMessageBase {
   source: ThemeSource;
 }
 
-/** Action a toast's button triggers when clicked (host-side semantics). */
+/** Action a toast's button triggers when clicked (host-side semantics).
+ *  (更新下载/重启已由账户卡片 S0–S6 按钮状态机接管，toast 不再承载
+ *  quit-and-install 动作。) */
 export type ToastAction =
-  | { type: "quitAndInstall" }
   | { type: "openDownloadPage"; url: string }
   | { type: "focusSession"; host: string; sessionId: string };
 
@@ -397,7 +398,7 @@ export interface UpdateToast {
   actionLabel?: string;
   action?: ToastAction;
   /** The toast's action is being performed — render a loading state instead of
-   *  the action button (e.g. quit-and-install waiting for the app to exit). */
+   *  the action button (e.g. opening a download page while the browser launches). */
   loading?: boolean;
 }
 
@@ -546,6 +547,20 @@ export interface AccountApiQuotaInfo {
 }
 
 /**
+ * 桌面端应用更新状态（spec desktop-account-card-and-panel-tabs.md「更新按钮
+ * 状态机 S0–S6」）。宿主把 electron-updater 事件映射为 status 并随
+ * `desktopAccountInfo` 快照下发；webview 侧据此渲染卡片更新按钮与确认对话框。
+ */
+export interface AccountUpdateInfo {
+  /** 检测到新版本（无更新时宿主可不带 update 或置 false）。 */
+  available: boolean;
+  /** 新版本号（S2 对话框 / 按钮 tooltip 文案使用）。 */
+  version?: string;
+  /** 更新过程状态：idle=未开始/已失败复位；downloading=宿主下载中；ready=已就绪待重启。 */
+  status?: "idle" | "downloading" | "ready";
+}
+
+/**
  * 桌面侧边栏账户卡片快照 (spec desktop-app.md「账户卡片」). Window-global like
  * showToast — the sidebar renders on the root webview instance only, so the
  * host never pane-tags it. Auth/usage follow the focused pane's host.
@@ -556,6 +571,8 @@ export interface DesktopAccountInfoMessage extends HostToWebviewMessageBase {
   user?: { id: string; email?: string } | null;
   plan?: AccountPlanInfo | null;
   apiQuota?: AccountApiQuotaInfo | null;
+  /** 应用更新状态（S0–S6 按钮状态机输入）；未下发/available=false = 无更新。 */
+  update?: AccountUpdateInfo | null;
 }
 
 // ---- Host-only commands (consumed outside the ChatApp switch). ----

@@ -4,7 +4,6 @@ import type { Terminal as XtermTerminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { WebLinksAddon } from "@xterm/addon-web-links";
 import { isLocalhostUrl } from "../utils/isLocalhostUrl";
-import { CloseIcon } from "./HeaderIcons";
 import "../styles/TerminalPane.css";
 
 declare global {
@@ -82,7 +81,6 @@ export interface TerminalPaneProps {
   width: number;
   onWidthChange: (width: number) => void;
   maxWidth: number;
-  onClose: () => void;
   /** Split-view pane identity: tags PTY create requests for cwd resolution. */
   paneId?: string;
   /** Hidden panels stay mounted; the PTY survives hiding. */
@@ -100,7 +98,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   width,
   onWidthChange,
   maxWidth,
-  onClose,
   paneId,
   visible,
   sessionId,
@@ -329,7 +326,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
         <div className="preview-pane-toolbar">
-          <span className="preview-pane-url">终端</span>
+          <span className="desktop-panel-toolbar-title">终端</span>
           <button
             className="preview-pane-button"
             title="重启终端"
@@ -337,14 +334,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             onClick={restart}
           >
             <i className="codicon codicon-debug-restart" />
-          </button>
-          <button
-            className="preview-pane-button"
-            title="关闭"
-            data-testid="terminal-close"
-            onClick={onClose}
-          >
-            <CloseIcon className="pane-close-icon" />
           </button>
         </div>
         <div

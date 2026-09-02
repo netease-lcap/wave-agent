@@ -154,8 +154,7 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
     await setupRemoteSession(injector, REMOTE_HOST);
 
     await webviewPage.getByTestId("panel-toggle-btn").click();
-    await webviewPage.getByTestId("panel-toggle-item-terminal").click();
-    await webviewPage.keyboard.press("Escape");
+    await webviewPage.getByTestId("panel-empty-item-terminal").click();
 
     // TerminalPane lazily loads the xterm chunk, then asks the host to create
     // the remote PTY; the demo replies with remote-shell output.
@@ -193,8 +192,7 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
     await setupRemoteSession(injector, REMOTE_HOST);
 
     await webviewPage.getByTestId("panel-toggle-btn").click();
-    await webviewPage.getByTestId("panel-toggle-item-diff").click();
-    await webviewPage.keyboard.press("Escape");
+    await webviewPage.getByTestId("panel-empty-item-diff").click();
 
     // DiffPane asks the host for the workspace diff; the host runs git over
     // ssh — the demo replies with a remote-repo sample.

@@ -5,6 +5,7 @@ const h = vi.hoisted(() => {
   const autoUpdater = {
     autoDownload: undefined as boolean | undefined,
     checkForUpdates: vi.fn(),
+    downloadUpdate: vi.fn(),
     setFeedURL: vi.fn(),
     quitAndInstall: vi.fn(),
     on: vi.fn((event: string, cb: (info: unknown) => void) => {
@@ -15,6 +16,7 @@ const h = vi.hoisted(() => {
     listeners,
     autoUpdater,
     checkForUpdates: autoUpdater.checkForUpdates,
+    downloadUpdate: autoUpdater.downloadUpdate,
     setFeedURL: autoUpdater.setFeedURL,
     quitAndInstall: autoUpdater.quitAndInstall,
     on: autoUpdater.on,
@@ -132,7 +134,7 @@ describe("AutoUpdaterService.checkForUpdates", () => {
     );
   });
 
-  it("enables autoDownload so an update downloads in the background without confirmation", async () => {
+  it("keeps autoDownload off — a check only announces the update (S1), it does not download", async () => {
     vi.mocked(h.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
       isUpdateAvailable: true,
@@ -145,7 +147,20 @@ describe("AutoUpdaterService.checkForUpdates", () => {
 
     await service.checkForUpdates("https://codechat.example.com");
 
-    expect(h.autoUpdater.autoDownload).toBe(true);
+    expect(h.autoUpdater.autoDownload).toBe(false);
+    expect(h.downloadUpdate).not.toHaveBeenCalled();
+  });
+
+  it("startDownload runs electron-updater downloadUpdate (S2 确认后)", async () => {
+    const service = new AutoUpdaterService({
+      onUpdateAvailable: vi.fn(),
+      onUpdateDownloaded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    await service.startDownload();
+
+    expect(h.downloadUpdate).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -200,7 +215,8 @@ describe("AutoUpdaterService events and quitAndInstall", () => {
     await service.checkForUpdates("https://codechat.example.com");
 
     const registered = Object.values(h.listeners);
-    expect(registered.length).toBe(3); // update-available + update-downloaded + error
+    // update-available + update-downloaded + error
+    expect(registered.length).toBe(3);
     expect(h.on).toHaveBeenCalledTimes(3);
   });
 
