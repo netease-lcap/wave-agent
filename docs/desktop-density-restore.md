@@ -1335,3 +1335,76 @@ Figma 权威（2026-CodeWave-交互视觉稿，dump 12953:61026「功能」COMPO
 - `src/components/Message.tsx` / `MessageInput.tsx`（图片预览 modal innerHTML → 内联权威 SVG）
 - `src/styles/host-desktop.css`（第三十二轮段：空态标题去背景 + 标题加粗 600）
 - `src/styles/ConfirmationDialog.css`（删除 `.confirmation-close-btn .codicon` 死规则）
+
+---
+
+## 第三十四轮（2026-03）：极限状态 6 项样式修复（修复不推送）
+
+用户对第 33 轮极限消息流逐元素评审，提出 6 项样式问题；本轮全部修复，**不 commit 不 push**（用户检查后再定）。
+
+### 问题与修复对照
+
+| #   | 元素                                         | 问题                                                                                                                                                        | 修复                                                                                                                                                                                                                            |
+| --- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ①   | `.message-content.user-content`              | 超长用户消息被 `max-height: 200px + overflow-y: auto` 截断，气泡内滚动条缩在 `.user-text-block` padding 内 12px，未贴气泡右缘（不符合滚动条「贴右缘」规范） | 气泡 padding 移到内容区：`.user-text-block` padding 归零 + `.user-content` 补 `box-sizing: border-box; padding: 8px 12px`，滚动条轨道贴气泡右缘（gap=0）；max-height 200px 截断与滚动条保留（用户确认滚动条应存在，只需调位置） |
+| ②   | `.markdown-content blockquote`               | 背景用 VSCode 默认 textBlockQuote-background（light #eaeaea / dark #2b2b2b），非设计系统色                                                                  | light token → `#f0f2f5`（--cc-fill）；dark token → `rgba(255,255,255,.06)`（fill 6% 白）；左边条 border 同步 `#dcdfe6` / 12% 白                                                                                                 |
+| ③   | `.markdown-content code`（行内）             | 背景 textCodeBlock-background light #f7f8fa 过浅、dark 与 pre 同色无区分                                                                                    | 桌面覆盖 `:not(pre) > code`：light `#eef0f3`（--cc-fill-hover）、dark `rgba(255,255,255,.08)`                                                                                                                                   |
+| ④   | `.bash-command-unified .bash-command-output` | light 下 unified 外框（r12 #dcdfe6）+ 输出区独立描边 #dcdfe6 构成双层边框线                                                                                 | 去掉内层 output 的 light `border: 1px solid #dcdfe6`，保留白底分层，只留 unified 外框一圈                                                                                                                                       |
+| ⑤   | `.write-preview-box`                         | 圆角 base 6px，与 bash-unified 12px 不一致                                                                                                                  | 桌面覆盖 `border-radius: 12px`                                                                                                                                                                                                  |
+| ⑥   | `.markdown-content pre`                      | 圆角 base 6px 不一致；dark 下背景 VSCode 默认 #2b2b2b、边框 #616161 与消息区违和                                                                            | 圆角 12px 统一；dark token 补 `--vscode-textCodeBlock-background: #27292b`（面板色）+ `--vscode-textBlockQuote-border: rgba(255,255,255,.12)`                                                                                   |
+
+### Token 层变更（host-desktop.css）
+
+- light 层新增：`--vscode-textBlockQuote-background: #f0f2f5`、`--vscode-textBlockQuote-border: #dcdfe6`
+- dark 层新增：`--vscode-textCodeBlock-background: #27292b`（原缺失，VSCode 默认 #2b2b2b 是 ⑥ 违和根源）、`--vscode-textBlockQuote-background: rgba(255,255,255,.06)`、`--vscode-textBlockQuote-border: rgba(255,255,255,.12)`
+
+影响面核查：textBlockQuote-border 还被 reasoning-content（桌面有专用 2px #E4E7ED / 14% 白覆盖，不受影响）、lsp-output、TodoList（同步变设计系统边框，合理）使用。
+
+### 验证结果（Playwright 探针双主题 computed + vision 复核）
+
+| 项                       | light                                                                                     | dark                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| ① 气泡内滚动条贴右缘     | `.user-content` 右缘 = 气泡右缘（gap 0，双主题）、max-height 200px / overflow-y auto 保留 | 同                                                     |
+| ② blockquote 背景        | rgb(240,242,245)=#f0f2f5 ✓                                                                | rgba(255,255,255,.06) ✓                                |
+| ③ 行内 code 背景         | rgb(238,240,243)=#eef0f3 ✓                                                                | rgba(255,255,255,.08) ✓                                |
+| ④ bash 输出边框          | border 0（外层 unified 一圈）✓                                                            | border 0 ✓                                             |
+| ⑤ write-preview-box 圆角 | 12px ✓                                                                                    | 12px ✓                                                 |
+| ⑥ pre 圆角/背景/边框     | 12px / #f7f8fa / #dcdfe6 ✓                                                                | 12px / rgb(39,41,43)=#27292b / rgba(255,255,255,.12) ✓ |
+
+vision 复核：双层边框消除、圆角肉眼一致、深色 pre 与消息区层次自然、引用块/行内 code 对比清晰。sticky 用户消息 line-clamp 3 为设计意图（置顶卡折叠预览），非缺陷。
+
+备注：滚动条 thumb 在 headless Chromium 下不渲染（overlay 行为），无法截图验证；滚动条规范（16px 轨道 / 8px pill / 三态）已由第二十一、二十二轮实现并验证，thumb 几何（scrollTop 比例 → 轨道内位置）实测正确。
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（第三十四轮段：token 层 2 处新增 + bash output 去边框 + write/pre 圆角 + 行内 code 覆盖 + user-content padding 转移使滚动条贴右缘）
+
+---
+
+## 第三十五轮（2026-03）：极限状态 4 项修正（不推送）
+
+用户对第 34 轮修复后状态继续评审，提出 4 项新问题；本轮全部修复，**不 commit 不 push**。
+
+### 问题与修复对照
+
+| #   | 元素                     | 问题                                                     | 根因                                                                                                                        | 修复                                                                                        |
+| --- | ------------------------ | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| ①   | `.markdown-content ol`   | 列表编号（1./2./3.）渲染在 ol 左边界左侧，溢出列表区域   | `list-style-position: outside` 的 marker 从 li 左缘向左延伸约 28px（数字+句点+后缀空格），而 base `padding-left: 20px` 不足 | 桌面端 `padding-left: 28px`，编号完整容纳（实测编号左缘 282→ 移入 ol 内，元素截图编号完整） |
+| ②   | `.diff-viewer-container` | 圆角 base 4px，与其他工具块（bash/write/pre 12px）不一致 | base DiffViewer.css L7 `border-radius: 4px`                                                                                 | 桌面覆盖 `border-radius: 12px`                                                              |
+| ③   | `.compact-params`        | 字号 base 11px，应为 12px                                | base Message.css L514 `font-size: 11px`                                                                                     | 桌面覆盖 `font-size: 12px`（与 Figma 文件统计 12px 同档）                                   |
+| ④   | `.write-preview-content` | Write 预览内容字号 12px 偏小                             | base Message.css L409 `font-size: 12px`                                                                                     | 桌面覆盖 `font-size: 13px; line-height: 18px`（与 bash 输出 13px 统一）                     |
+
+### 验证结果（Playwright 探针双主题 computed + vision 复核）
+
+| 项                    | light                                                       | dark        |
+| --------------------- | ----------------------------------------------------------- | ----------- |
+| ① 列表 padding / 编号 | padding-left 28px，元素截图编号 1./2./3. 完整、左侧留白正常 | 同          |
+| ② diff 圆角           | 12px                                                        | 12px        |
+| ③ compact-params 字号 | 12px                                                        | 12px        |
+| ④ write 预览字号      | 13px / 行高 18px                                            | 13px / 18px |
+
+vision 复核：编号完整可见无裁切、嵌套缩进清晰、compact-params 与正文协调。
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（第三十五轮段：列表 padding 28px + diff 圆角 12px + compact-params 12px + write-preview-content 13px）

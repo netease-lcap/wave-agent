@@ -34,6 +34,10 @@
   --vscode-sideBar-background: #f7f8fb;
   /* 代码块背景（--cc-bg-code: #f7f8fa） */
   --vscode-textCodeBlock-background: #f7f8fa;
+  /* 引用块：背景 --cc-fill #f0f2f5（原 VSCode 默认 #eaeaea 非设计系统色）、
+     左边条/代码块边框 --cc-border #dcdfe6 */
+  --vscode-textBlockQuote-background: #f0f2f5;
+  --vscode-textBlockQuote-border: #dcdfe6;
   /* 终端/命令输出区：白底（--cc-bg-panel: #ffffff） */
   --vscode-terminal-background: #ffffff;
 
@@ -62,6 +66,14 @@
 
   /* 命令输出区：终端底 → 面板底（与输入条分区） */
   --vscode-terminal-background: #1d1e20;
+
+  /* 代码块/行内 code/命令输入条背景：VSCode 默认 #2b2b2b → 面板色 #27292b
+     （wave 深色映射惯例；pre 深色与消息区同色的违和根源在此 token 缺失） */
+  --vscode-textCodeBlock-background: #27292b;
+  /* 引用块：背景 fill 6% 白、左边条/代码块边框 12% 白
+     （原 VSCode 默认背景 #2b2b2b、边框 #616161 突兀） */
+  --vscode-textBlockQuote-background: rgba(255, 255, 255, 0.06);
+  --vscode-textBlockQuote-border: rgba(255, 255, 255, 0.12);
 
   /* 中密度字号 */
   --vscode-font-size: 14px;
@@ -692,8 +704,8 @@
 }
 
 /* 工具块（bash-unified）：Figma 13497-15325 r12、外层灰底 #F0F2F5 stroke
-   #DCDFE6、命令区 13px Menlo pad 8,8,4,4、输出区白底独立描边 #DCDFE6；
-   链接 #2F5EDB 无下划线 */
+   #DCDFE6、命令区 13px Menlo pad 8,8,4,4、输出区白底（第 34 轮起不再
+   独立描边，避免与 unified 外框构成双层边框线）；链接 #2F5EDB 无下划线 */
 [data-host="desktop"] .bash-command-unified {
   border-radius: 12px;
 }
@@ -710,10 +722,12 @@
   font-size: 13px;
   padding: 4px 12px 8px;
 }
+/* 输出区白底区分命令/输出（不再独立描边：第 34 轮用户反馈「两层边框线」，
+   保留 unified 外框一圈即可；border 由 base .bash-command-output 提供但
+   unified 子元素规则已置 none，此处只保留背景分层） */
 [data-host="desktop"][data-theme="light"]
   .bash-command-unified
   .bash-command-output {
-  border: 1px solid #dcdfe6;
   background: #ffffff;
 }
 [data-host="desktop"] .bash-command-output a {
@@ -741,6 +755,69 @@
 }
 [data-host="desktop"][data-theme="light"] .write-tool-stats {
   color: #6c7076;
+}
+
+/* ── 第三十四轮：极限状态样式修正（bash/write/pre 圆角统一 + 代码块配色）──
+   ① 圆角统一：write-preview-box、markdown pre 与 bash-unified 同为 12px
+   （base 均为 6px，用户反馈「圆角和 bash 保持统一」）。
+   ② 行内 code：base 用 textCodeBlock-background（light #f7f8fa 过浅，
+   dark #27292b 与 pre 同色无区分）→ light #eef0f3（--cc-fill-hover）、
+   dark 8% 白，均与 pre/引用块区分。 */
+
+/* Write 预览框圆角与 bash-unified 统一 */
+[data-host="desktop"] .write-preview-box {
+  border-radius: 12px;
+}
+
+/* markdown 代码块圆角与 bash-unified 统一 */
+[data-host="desktop"] .markdown-content pre {
+  border-radius: 12px;
+}
+
+/* 行内 code（非 pre 内）背景加深：light #eef0f3 / dark 8% 白 */
+[data-host="desktop"] .markdown-content :not(pre) > code {
+  background-color: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .markdown-content :not(pre) > code {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ① 用户消息气泡内滚动条贴右缘：base .user-text-block 的 padding 12px 让
+   内部 .user-content（max-height 200px + overflow-y auto）的滚动条缩进气泡
+   右缘 12px，与消息容器等滚动条「贴右缘」规范不一致 → padding 移到内容区，
+   滚动条贴气泡右缘（第 34 轮用户反馈「滚动条的位置要符合滚动条规范」） */
+[data-host="desktop"] .user-text-block {
+  padding: 0;
+}
+[data-host="desktop"] .user-text-block .message-content.user-content {
+  box-sizing: border-box;
+  padding: 8px 12px;
+}
+
+/* ── 第三十五轮：极限状态 4 项修正（不推送）──────────────────────
+   ① 列表编号溢出：ol/ul padding-left 20px < outside marker 总宽
+     （「1.」+ 后缀空格约 28px，双位数字更宽）→ 编号渲染在 ol 左边界
+     左侧，溢出列表区域 → 加大 padding 到 28px 完整容纳 marker。
+   ② diff-viewer-container 圆角 base 4px → 12px，与 bash/write/pre 统一。
+   ③ compact-params 字号 base 11px → 12px（Figma 文件统计同档）。
+   ④ write-preview-content 字号 base 12px → 13px，与 bash 输出 13px 统一。 */
+
+[data-host="desktop"] .markdown-content ul,
+[data-host="desktop"] .markdown-content ol {
+  padding-left: 28px;
+}
+
+[data-host="desktop"] .diff-viewer-container {
+  border-radius: 12px;
+}
+
+[data-host="desktop"] .compact-params {
+  font-size: 12px;
+}
+
+[data-host="desktop"] .write-preview-content {
+  font-size: 13px;
+  line-height: 18px;
 }
 
 /* ═══ 第二十六轮：消息内链接统一（颜色 + hover 下划线）═══
