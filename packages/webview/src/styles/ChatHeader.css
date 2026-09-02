@@ -40,7 +40,10 @@
 .header-collapsed-divider {
   width: 1px;
   height: 16px;
-  margin: 0;
+  /* 右侧 8px：divider 是 leading 末子元素，容器 gap 只提供其左侧间距；
+     与后面的标题（header-title 在 leading 容器外）之间需显式留 8px，
+     对齐 codechat workspace-header-start 的 gap 8。 */
+  margin-right: 8px;
   flex-shrink: 0;
   background-color: var(--vscode-widget-border, rgba(128, 128, 128, 0.4));
 }
