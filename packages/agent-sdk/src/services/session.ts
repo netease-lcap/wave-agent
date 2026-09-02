@@ -51,12 +51,6 @@ export interface SessionMetadata {
   firstMessage?: string;
   /** Git branch at session creation time (from the metadata header). */
   branch?: string;
-  /**
-   * Desktop host only: set when the session was created in a desktop-managed
-   * worktree and the listing host merged its worktree metadata — `workdir`
-   * then holds the main-repo root for display. SDK listing never fills this.
-   */
-  worktree?: boolean;
 }
 
 /**

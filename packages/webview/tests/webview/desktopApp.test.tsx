@@ -741,7 +741,7 @@ describe("DesktopApp", () => {
     });
   });
 
-  it("should render ChatApp with sidebar, no header new-session button but the history button when workdir is set", () => {
+  it("should render ChatApp with sidebar and hidden header session buttons when workdir is set", () => {
     const { vscode } = renderDesktopApp();
 
     sendCommand("desktopWorkdirState", {
@@ -752,10 +752,9 @@ describe("DesktopApp", () => {
 
     expect(screen.getByTestId("desktop-sidebar")).toBeInTheDocument();
     expect(screen.getByTestId("chat-container")).toBeInTheDocument();
-    // The header keeps only the 历史对话 button (cross-workdir popup);
-    // 新建对话 lives in the sidebar.
+    // Header session buttons are replaced by the sidebar
     expect(screen.queryByTestId("new-session-btn")).not.toBeInTheDocument();
-    expect(screen.getByTestId("history-btn")).toBeInTheDocument();
+    expect(screen.queryByTestId("history-btn")).not.toBeInTheDocument();
     // No header more button on desktop — settings/login entries live in the
     // account card menu (sidebar header 更多 was a duplicate, removed 2026-08-29)
     expect(screen.queryByTestId("more-btn")).not.toBeInTheDocument();
@@ -3542,92 +3541,5 @@ describe("DesktopApp", () => {
       );
       expect(screen.getByTestId("desktop-sidebar")).toBeInTheDocument();
     });
-  });
-});
-
-describe("history popup (desktop-app.md 历史对话弹窗)", () => {
-  const cliSession = {
-    id: "session-cli",
-    sessionType: "main",
-    workdir: "/home/user/other-project",
-    firstMessage: "CLI session",
-    lastActiveAt: new Date("2023-12-01T11:00:00Z"),
-    latestTotalTokens: 200,
-  };
-  const worktreeSession = {
-    id: "session-wt",
-    sessionType: "main",
-    workdir: "/home/user/project",
-    worktree: true,
-    branch: "feature/x",
-    firstMessage: "Worktree session",
-    lastActiveAt: new Date("2023-12-01T10:00:00Z"),
-    latestTotalTokens: 100,
-  };
-
-  function renderDesktopWithChat() {
-    const result = renderDesktopApp();
-    sendCommand("desktopWorkdirState", {
-      workdir: "/home/user/project",
-      recentWorkdirs: [],
-    });
-    sendCommand("setInitialState", { messages: [] });
-    return result;
-  }
-
-  it("opening the history popup requests the cross-workdir session list", () => {
-    const { vscode } = renderDesktopWithChat();
-    vscode.postMessage.mockClear();
-
-    fireEvent.click(screen.getByTestId("history-btn"));
-
-    expect(vscode.postMessage).toHaveBeenCalledWith({
-      command: "listSessions",
-    });
-    expect(screen.getByTestId("session-list-popup")).toBeInTheDocument();
-  });
-
-  it("shows workdir, worktree tag and branch label per row", () => {
-    renderDesktopWithChat();
-
-    act(() => {
-      sendCommand("updateSessions", {
-        sessions: [worktreeSession, cliSession],
-      });
-    });
-
-    fireEvent.click(screen.getByTestId("history-btn"));
-
-    // Worktree session: main-repo path + worktree tag + branch label.
-    const wtItem = screen.getByTestId("session-list-item-session-wt");
-    expect(wtItem).toHaveTextContent("/home/user/project");
-    expect(wtItem).toHaveTextContent("worktree");
-    expect(wtItem).toHaveTextContent("feature/x");
-    // Plain CLI session: its workdir shown, no tags.
-    const cliItem = screen.getByTestId("session-list-item-session-cli");
-    expect(cliItem).toHaveTextContent("/home/user/other-project");
-    expect(cliItem).not.toHaveTextContent("worktree");
-  });
-
-  it("selecting a row posts desktopSelectSession with the row workdir", () => {
-    const { vscode } = renderDesktopWithChat();
-
-    act(() => {
-      sendCommand("updateSessions", {
-        sessions: [cliSession],
-      });
-    });
-    vscode.postMessage.mockClear();
-
-    fireEvent.click(screen.getByTestId("history-btn"));
-    fireEvent.click(screen.getByTestId("session-list-item-session-cli"));
-
-    expect(vscode.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        command: "desktopSelectSession",
-        workdir: "/home/user/other-project",
-        sessionId: "session-cli",
-      }),
-    );
   });
 });

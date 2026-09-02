@@ -2922,10 +2922,6 @@ export class DesktopHost {
         );
         break;
 
-      case "listSessions":
-        await this.handleListSessions();
-        break;
-
       // -- chat lifecycle ----------------------------------------------
       case "webviewReady":
         await this.handleWebviewReady();
@@ -4326,31 +4322,6 @@ export class DesktopHost {
       if (agent && agent.queuedMessages.length > 0) {
         await agent.abortMessage();
       }
-    }
-  }
-
-  /**
-   * 历史对话弹窗数据源：全项目会话列表（跨工作目录，含 CLI 创建的会话），
-   * 走本地 CLI 扫盘（对齐 `wave -r` 的 Ctrl+A 全项目模式）。desktop 系统
-   * 创建的 worktree 会话合并本地索引元数据：workdir 替换为主仓库路径并标记
-   * worktree，弹窗按主仓库分组展示（desktop-app.md「历史对话弹窗」场景 3）。
-   */
-  private async handleListSessions(): Promise<void> {
-    try {
-      const result = (await this.utilityClientFor(LOCAL_HOST).request(
-        "listAllSessions",
-      )) as { sessions: SessionMetadata[] };
-      const index = this.configStore.getSessionIndex();
-      const sessions = (result.sessions ?? []).map((s) => {
-        const entry = index.find((e) => e.sessionId === s.id);
-        if (entry?.worktree) {
-          return { ...s, workdir: entry.workdir, worktree: true };
-        }
-        return s;
-      });
-      this.postMessage({ command: "updateSessions", sessions });
-    } catch (error) {
-      this.showToast({ message: `获取历史会话失败: ${error}` });
     }
   }
 

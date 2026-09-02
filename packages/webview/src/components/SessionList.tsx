@@ -12,9 +12,6 @@ export interface SessionListProps {
   /** Keyboard selection index (roving tabindex); the item at this index gets
    *  aria-selected + tabIndex 0. Managed by the popup's search input. */
   selectedIndex?: number;
-  /** Show the session's workdir (and worktree/branch labels) under the title —
-   *  used by desktop's cross-workdir history popup. */
-  showWorkdir?: boolean;
 }
 
 /**
@@ -64,7 +61,6 @@ export const SessionList: React.FC<SessionListProps> = ({
   loading = false,
   highlightQuery = "",
   selectedIndex = 0,
-  showWorkdir = false,
 }) => {
   const selectedItemRef = useRef<HTMLLIElement>(null);
 
@@ -107,30 +103,8 @@ export const SessionList: React.FC<SessionListProps> = ({
               <div className="session-list-item-title">
                 {highlightMatch(formatSessionLabel(session), highlightQuery)}
               </div>
-              {showWorkdir && (
-                <div className="session-list-item-meta">
-                  <span className="session-list-item-path">
-                    {highlightMatch(session.workdir, highlightQuery)}
-                  </span>
-                </div>
-              )}
-              <div className="session-list-item-tags">
-                {showWorkdir && session.worktree && (
-                  <span className="session-list-item-tag" title="worktree">
-                    worktree
-                  </span>
-                )}
-                {showWorkdir && session.branch && (
-                  <span
-                    className="session-list-item-tag"
-                    title={session.branch}
-                  >
-                    {session.branch}
-                  </span>
-                )}
-                <span className="session-list-item-time">
-                  {new Date(session.lastActiveAt).toLocaleString()}
-                </span>
+              <div className="session-list-item-time">
+                {new Date(session.lastActiveAt).toLocaleString()}
               </div>
             </li>
           ))}
