@@ -111,11 +111,7 @@ describe("remaining keyboard accessibility", () => {
       const { vscode } = renderDesktop();
       vscode.postMessage.mockClear();
 
-      // Open one tab so the tab strip's "＋" menu (the PanelToggleMenu
-      // instance under test) exists.
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-      fireEvent.click(screen.getByTestId("panel-empty-item-preview"));
-      fireEvent.click(screen.getByTestId("panel-tabs-add"));
       const diffItem = screen.getByTestId("panel-toggle-item-diff");
       // Roving tabindex: only the focused item is a tab stop.
       expect(diffItem).toHaveProperty("tabIndex", -1);
@@ -126,8 +122,9 @@ describe("remaining keyboard accessibility", () => {
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopGetWorkspaceDiff",
       });
-      // The tab-bar menu closes after activating (closeOnActivate).
-      expect(screen.queryByTestId("panel-toggle-menu")).not.toBeInTheDocument();
+      expect(diffItem).toHaveAttribute("aria-checked", "true");
+      // Multi-select menu stays open after toggling.
+      expect(screen.getByTestId("panel-toggle-menu")).toBeInTheDocument();
     });
 
     it("moves with Arrow keys without wrapping and skips nothing (disabled stays reachable but inert)", async () => {
@@ -135,8 +132,6 @@ describe("remaining keyboard accessibility", () => {
       renderDesktop();
 
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-      fireEvent.click(screen.getByTestId("panel-empty-item-preview"));
-      fireEvent.click(screen.getByTestId("panel-tabs-add"));
       await flushOpenFocus();
 
       // Opening focuses the first item (预览).
@@ -160,8 +155,6 @@ describe("remaining keyboard accessibility", () => {
       renderDesktop();
 
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-      fireEvent.click(screen.getByTestId("panel-empty-item-preview"));
-      fireEvent.click(screen.getByTestId("panel-tabs-add"));
       const previewItem = screen.getByTestId("panel-toggle-item-preview");
       previewItem.focus();
       fireEvent.keyDown(previewItem, { key: "Escape" });

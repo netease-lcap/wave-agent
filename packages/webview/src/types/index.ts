@@ -498,9 +498,6 @@ export interface FileSuggestionDropdownProps {
   /** Which way the dropdown expands from its anchor: "up" (message input,
       the default) or "down" (panel-top search bars). */
   direction?: "up" | "down";
-  /** Skip the built-in click-outside-to-close listener (the parent owns
-      dismiss, e.g. the file-panel search popover). */
-  disableClickOutside?: boolean;
 }
 
 /** Desktop conversation-level side panels. VSCE/JetBrains hosts never render these. */
@@ -510,31 +507,6 @@ export type DesktopPanelKind =
   | "terminal"
   | "file"
   | "plan";
-
-/**
- * One open panel tab in the desktop panel slot. Multi-instance kinds (preview /
- * diff / file) may open several tabs at once; single-instance kinds (terminal /
- * plan) are unique per conversation, and the handlers activate the existing tab
- * instead of adding a second one. Per-tab payload state (URL / file) travels on
- * the tab so each instance keeps its own content.
- */
-export interface PanelTab {
-  /** Instance id (unique within the conversation), e.g. `preview-3`. */
-  id: string;
-  kind: DesktopPanelKind;
-  /** preview tab: the URL it shows; undefined = blank tab. */
-  previewUrl?: string;
-  /** preview tab: the guest page's title (from the webview's
-   *  page-title-updated event), shown on the tab like a regular browser tab. */
-  previewTitle?: string;
-  /** file tab: the path being viewed (undefined = blank tab). */
-  filePath?: string;
-  /** file tab: lines to jump to (1-based), from read offset/limit. */
-  startLine?: number;
-  endLine?: number;
-  /** file tab: view state (loading stub / filled by desktopFileContent). */
-  fileView?: FileViewState;
-}
 
 /**
  * State of the desktop file panel (one per conversation): which file is open,
@@ -574,16 +546,6 @@ export interface PanelToggleProps {
   disabled?: DesktopPanelKind[];
 }
 
-/** Header panel control: expand/collapse the right-hand panel. Collapsing only
- *  hides the slot — the open tabs, their active tab and the dragged width all
- *  survive, and the next expand restores them. */
-export interface PanelExpandProps {
-  /** Whether the panel is currently expanded (visible). */
-  expanded: boolean;
-  /** Expand/collapse the panel. */
-  onToggle: () => void;
-}
-
 export interface ChatHeaderProps {
   onNewSession: () => void;
   newSessionDisabled?: boolean;
@@ -603,8 +565,8 @@ export interface ChatHeaderProps {
   hideSessionButtons?: boolean;
   // Desktop host: the more button + menu live in DesktopSidebar instead.
   hideMoreButton?: boolean;
-  // Desktop host: conversation-level panel expand/collapse control.
-  panelToggle?: PanelExpandProps;
+  // Desktop host: conversation-level panel toggle (preview/diff/terminal).
+  panelToggle?: PanelToggleProps;
   /** Optional slot at the header's left edge (desktop sidebar expand button). */
   leading?: React.ReactNode;
   /** Extra actions at the right edge of the button row (desktop pane close). */

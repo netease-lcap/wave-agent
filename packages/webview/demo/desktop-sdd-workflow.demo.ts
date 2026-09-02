@@ -494,9 +494,11 @@ test.describe("Desktop SDD workflow screenshots", () => {
     });
     await expect(webviewPage.getByTestId("task-list")).toBeVisible();
 
-    // 打开差异面板（空面板槽经空态入口），注入 spec 文件修改 diff
+    // 打开差异面板，注入 spec 文件修改 diff
     await webviewPage.getByTestId("panel-toggle-btn").click();
-    await webviewPage.getByTestId("panel-empty-item-diff").click();
+    await expect(webviewPage.getByTestId("panel-toggle-menu")).toBeVisible();
+    await webviewPage.getByTestId("panel-toggle-item-diff").click();
+    await webviewPage.keyboard.press("Escape");
     await expect(webviewPage.getByTestId("diff-pane")).toBeVisible();
     await injector.simulateExtensionMessage("desktopWorkspaceDiff", {
       result: {

@@ -42,15 +42,12 @@ import { DiffPane } from "./DiffPane";
 import { TerminalPane, prefetchTerminalLib } from "./TerminalPane";
 import { FilePane } from "./FilePane";
 import { PlanPane } from "./PlanPane";
-import { DesktopPanelTabs } from "./DesktopPanelTabs";
-import { PanelEmptyState } from "./PanelEmptyState";
 import type {
   ChatAppProps,
   ConfirmationDecision,
   ConfigurationData,
   DesktopPanelKind,
   FileViewState,
-  PanelTab,
   ThemeSource,
   ToolBlock,
   ToolBlockUpdateCallbackParams,
@@ -62,15 +59,15 @@ import { chatReducer, initialState } from "../reducers/chatReducer";
 import "../styles/ChatApp.css";
 
 /** Desktop conversation-level panels: fixed left→right order regardless of check order. */
-export const PANEL_ORDER: DesktopPanelKind[] = [
+const PANEL_ORDER: DesktopPanelKind[] = [
   "preview",
   "plan",
   "diff",
   "terminal",
   "file",
 ];
-/** Chinese names shown in the panel tabs / space hints. */
-export const PANEL_LABELS: Record<DesktopPanelKind, string> = {
+/** Chinese names for space-replacement hints (「面板空间不足自动替换」). */
+const PANEL_LABELS: Record<DesktopPanelKind, string> = {
   preview: "预览",
   plan: "计划",
   diff: "差异",
@@ -141,12 +138,20 @@ function isFileDragEvent(e: React.DragEvent): boolean {
  * the same session's entry. DesktopApp prunes entries whose owner is gone.
  */
 interface PanelGroupState {
-  /** Open panel tabs in tab order (multi-instance kinds may repeat). */
-  checked: PanelTab[];
-  /** Shared panel-slot width (tabbed layout: one slot, one width). */
-  panelWidth: number;
-  /** Currently active tab id; null when no tab is open. */
-  activePanel: string | null;
+  checked: DesktopPanelKind[];
+  mounted: DesktopPanelKind[];
+  widths: Record<DesktopPanelKind, number>;
+  /**
+   * Panels the user has manually resized (dragged off the default width).
+   * A panel that is NOT marked manual auto-fills the space beyond the
+   * conversation's minimum width when it opens (「面板自动铺满剩余空间」); a
+   * manual one keeps its width. Stored per group so the flag survives session
+   * switches the same way widths do.
+   */
+  manualWidths: Record<DesktopPanelKind, boolean>;
+  previewUrl: string | null;
+  /** File panel state (which file is open + content); null = never opened. */
+  fileView: FileViewState | null;
   /** Plan panel markdown (ExitPlanMode content); null = no plan yet. */
   planContent: string | null;
   /**
@@ -182,8 +187,23 @@ const panelGroupCache = new Map<string, PanelGroupState>();
 function emptyPanelGroup(): PanelGroupState {
   return {
     checked: [],
-    panelWidth: PANEL_DEFAULT_WIDTH,
-    activePanel: null,
+    mounted: [],
+    widths: {
+      preview: PANEL_DEFAULT_WIDTH,
+      plan: PANEL_DEFAULT_WIDTH,
+      diff: PANEL_DEFAULT_WIDTH,
+      terminal: PANEL_DEFAULT_WIDTH,
+      file: PANEL_DEFAULT_WIDTH,
+    },
+    manualWidths: {
+      preview: false,
+      plan: false,
+      diff: false,
+      terminal: false,
+      file: false,
+    },
+    previewUrl: null,
+    fileView: null,
     planContent: null,
     forward: null,
     forwardError: null,
@@ -437,6 +457,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // new-session bucket migrates to the session id only when that message binds
   // one — a sidebar switch to an existing session must not inherit the bucket.
   const sentFromNewSessionRef = useRef(false);
+  // Desktop only: localhost URL shown in the preview pane. Null = never opened.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(
+    () => (groupKey ? panelGroupCache.get(groupKey)?.previewUrl : null) ?? null,
+  );
   // Desktop remote sessions: port-forward failure shown in the empty-preview
   // stub with a retry entry (scenario 16). Null = no error. Restored from the
   // session's cached group so a pane rebinding away and back keeps the error.
@@ -449,10 +473,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // in PreviewPane would otherwise early-return and skip the forced reload a
   // retry after a guest load failure needs. Remounting restarts the webview.
   const [previewEpoch, setPreviewEpoch] = useState(0);
+  // Desktop only: the file panel's open file + content (null = never opened).
+  // Set locally to a loading stub when a path is clicked, then filled by the
+  // host's desktopFileContent reply (routed by paneId).
+  const [fileView, setFileView] = useState<FileViewState | null>(
+    () =>
+      (groupKey ? panelGroupCache.get(groupKey)?.fileView : undefined) ?? null,
+  );
   // Desktop only: the plan panel's latest ExitPlanMode markdown (null = no plan
-  // yet). Per-session: approval/rejection keep the panel open, and pane
-  // remounts restore it from the group cache. The plan tab is unique, so the
-  // content stays a single per-conversation value rather than per-tab.
+  // yet). Per-session like the file view: approval/rejection keep the panel
+  // open, and pane remounts restore it from the group cache.
   const [planContent, setPlanContent] = useState<string | null>(
     () =>
       (groupKey ? panelGroupCache.get(groupKey)?.planContent : undefined) ??
@@ -480,84 +510,48 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const previewForwardErrorRef = useRef(previewForwardError);
   previewForwardErrorRef.current = previewForwardError;
   const forwardSeqRef = useRef(0);
+  const previewUrlRef = useRef(previewUrl);
+  const fileViewRef = useRef<FileViewState | null>(fileView);
   const planContentRef = useRef<string | null>(planContent);
-  // Desktop only: conversation-level panel tabs. Multi-instance kinds (preview /
-  // diff / file) may open several tabs at once; terminal / plan are unique (the
-  // open handlers activate the existing tab instead of adding a second). When
+  // Desktop only: conversation-level panel group (checked = visible; mounted =
+  // rendered but possibly hidden, so panel content survives unchecking). When
   // this session's group was cached (session revisited, or the pane moved
-  // across window rows), restore it. A ref mirror lets the memoized Message
-  // handlers read the current tabs at click time without pinning the first
-  // render's values (same pattern as the forward refs above).
-  const [tabs, setTabs] = useState<PanelTab[]>(
+  // across window rows), restore it.
+  const [checkedPanels, setCheckedPanels] = useState<DesktopPanelKind[]>(
     () => (groupKey ? panelGroupCache.get(groupKey)?.checked : undefined) ?? [],
   );
-  const tabsRef = useRef(tabs);
-  tabsRef.current = tabs;
-  // Desktop panel expand/collapse (spec「面板展开/折叠」): the header button
-  // toggles whether the panel slot is visible. Collapsing only HIDES the slot —
-  // the open tabs, their active tab and the dragged width all survive, and the
-  // next expand restores them (「折叠/收起不影响面板内已打开的 tab 数量和状态，
-  // 再次展开保留上次宽度并自动打开上一次查看的 tab」). A session that restores
-  // tabs starts expanded (legacy "tabs visible" behavior); one with no tabs
-  // starts collapsed so the empty-state page only appears after an explicit
-  // expand.
-  const [panelExpanded, setPanelExpanded] = useState<boolean>(() =>
-    groupKey
-      ? (panelGroupCache.get(groupKey)?.checked?.length ?? 0) > 0
-      : false,
+  const [mountedPanels, setMountedPanels] = useState<DesktopPanelKind[]>(
+    () => (groupKey ? panelGroupCache.get(groupKey)?.mounted : undefined) ?? [],
   );
-  // Per-kind sequential tab-id source (preview-1, preview-2, …). Restored ids
-  // are absorbed into the counters (see the groupKey effect below) so a tab
-  // minted after a session switch can never collide with a restored one.
-  const tabSeqRef = useRef<Record<DesktopPanelKind, number>>({
-    preview: 0,
-    plan: 0,
-    diff: 0,
-    terminal: 0,
-    file: 0,
-  });
-  useEffect(() => {
-    // Absorb every restored tab id into its kind's counter (initial mount and
-    // each session switch — the key change runs this after the swap effect
-    // re-seeded `tabs`).
-    const current = tabsRef.current;
-    for (const t of current) {
-      const m = /^(\w+)-(\d+)$/.exec(t.id);
-      if (m && m[1] in tabSeqRef.current) {
-        const kind = m[1] as DesktopPanelKind;
-        tabSeqRef.current[kind] = Math.max(
-          tabSeqRef.current[kind],
-          Number(m[2]),
-        );
-      }
-    }
-    // Intentional: only run when the session group key changes — the swap
-    // effect above re-seeds `tabs` first, so re-running per tab tweak is
-    // unnecessary (the max() absorption is idempotent anyway).
-  }, [groupKey]);
-  // Tabbed panels: one shared slot width for every panel type.
-  const [panelWidth, setPanelWidth] = useState<number>(
+  const [panelWidths, setPanelWidths] = useState<
+    Record<DesktopPanelKind, number>
+  >(
     () =>
-      (groupKey ? panelGroupCache.get(groupKey)?.panelWidth : undefined) ??
-      PANEL_DEFAULT_WIDTH,
+      (groupKey ? panelGroupCache.get(groupKey)?.widths : undefined) ?? {
+        preview: PANEL_DEFAULT_WIDTH,
+        plan: PANEL_DEFAULT_WIDTH,
+        diff: PANEL_DEFAULT_WIDTH,
+        terminal: PANEL_DEFAULT_WIDTH,
+        file: PANEL_DEFAULT_WIDTH,
+      },
   );
-  // The active panel tab id; null when no panel is open.
-  const [activeTabId, setActiveTabId] = useState<string | null>(
-    () =>
-      (groupKey ? panelGroupCache.get(groupKey)?.activePanel : undefined) ??
-      null,
-  );
-  const activeTabIdRef = useRef(activeTabId);
-  activeTabIdRef.current = activeTabId;
-  // Remote forward replies (desktopForwardPortResult) carry the requestId minted
-  // in acquireForward; the map routes the reply to the preview tab that asked
-  // for the tunnel so a sibling preview tab's URL is never overwritten.
-  const forwardTabIdRef = useRef<Map<string, string>>(new Map());
   // Desktop preview fullscreen (spec: 预览面板全屏): the pane fills the content
   // area, the conversation column and the other panels are hidden until the
   // user toggles back (button or Esc). Per-pane: each ChatApp owns its panes.
-  // Generalized to the tabbed panel slot (any active panel can go fullscreen).
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
+  // Panels the user manually resized; see PanelGroupState.manualWidths.
+  const [manualWidths, setManualWidths] = useState<
+    Record<DesktopPanelKind, boolean>
+  >(
+    () =>
+      (groupKey ? panelGroupCache.get(groupKey)?.manualWidths : undefined) ?? {
+        preview: false,
+        plan: false,
+        diff: false,
+        terminal: false,
+        file: false,
+      },
+  );
   const chatContainerRef = useRef<HTMLDivElement>(null);
   // Desktop drag-and-drop file upload: a counter tracks nested dragenter /
   // dragleave so quick in/out passes don't flicker the overlay. Only real
@@ -601,13 +595,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       messageInputRef.current?.uploadFiles(files);
     }
   }, []);
-  const panelWidthRef = useRef(panelWidth);
-  // Mirrors so the stable message listener can reach the panel logic (defined
-  // below) without re-subscribing.
+  const checkedPanelsRef = useRef(checkedPanels);
+  const panelWidthsRef = useRef(panelWidths);
+  const manualWidthsRef = useRef(manualWidths);
+  // Mirrors so the stable message listener can reach the panel toggle logic
+  // (defined below) without re-subscribing.
   const togglePanelRef = useRef<(kind: DesktopPanelKind) => void>(() => {});
-  const ensureTabRef = useRef<(kind: DesktopPanelKind) => string | null>(
-    () => null,
-  );
   const panelDisabledRef = useRef<DesktopPanelKind[]>([]);
   const messageInputRef = useRef<MessageInputHandle>(null);
   const messageListRef = useRef<{
@@ -632,12 +625,28 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   }, [effectiveHost]);
 
   useEffect(() => {
+    previewUrlRef.current = previewUrl;
+  }, [previewUrl]);
+
+  useEffect(() => {
+    fileViewRef.current = fileView;
+  }, [fileView]);
+
+  useEffect(() => {
     planContentRef.current = planContent;
   }, [planContent]);
 
   useEffect(() => {
-    panelWidthRef.current = panelWidth;
-  }, [panelWidth]);
+    checkedPanelsRef.current = checkedPanels;
+  }, [checkedPanels]);
+
+  useEffect(() => {
+    panelWidthsRef.current = panelWidths;
+  }, [panelWidths]);
+
+  useEffect(() => {
+    manualWidthsRef.current = manualWidths;
+  }, [manualWidths]);
 
   // Cache the whole panel group under the current session so it survives this
   // ChatApp being unmounted/remounted (pane moved across window rows) and so a
@@ -646,18 +655,28 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   useEffect(() => {
     if (!groupKey || groupKey !== groupKeyRef.current) return;
     panelGroupCache.set(groupKey, {
-      checked: tabs,
-      panelWidth,
-      activePanel: activeTabId,
+      checked: checkedPanels,
+      mounted: mountedPanels,
+      widths: panelWidths,
+      manualWidths,
+      // A forwarded URL's tunnel is session-scoped (scenario 18) — it survives
+      // pane remounts and session switches, so the URL is cached like a local
+      // one: switching away and back restores the same address, which still
+      // loads because the host keeps the tunnel alive for the session.
+      previewUrl,
+      fileView,
       planContent,
       forward: currentForward,
       forwardError: previewForwardError,
     });
   }, [
     groupKey,
-    tabs,
-    panelWidth,
-    activeTabId,
+    checkedPanels,
+    mountedPanels,
+    panelWidths,
+    manualWidths,
+    previewUrl,
+    fileView,
     planContent,
     currentForward,
     previewForwardError,
@@ -687,22 +706,30 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }
     }
     sentFromNewSessionRef.current = false;
+    setPreviewUrl(group?.previewUrl ?? null);
     setPreviewForwardError(group?.forwardError ?? null);
     setCurrentForward(group?.forward ?? null);
-    setTabs(group?.checked ?? []);
-    setPanelWidth(group?.panelWidth ?? PANEL_DEFAULT_WIDTH);
-    // A session that restores tabs shows them (legacy behavior); one without
-    // tabs starts collapsed — the empty state needs an explicit expand.
-    setPanelExpanded((group?.checked?.length ?? 0) > 0);
-    // The restored active tab must be one of the restored open tabs; a stale
-    // cache entry (active pointing at a closed tab) falls back to the first.
-    const restoredActive = group?.activePanel ?? null;
-    const active =
-      restoredActive !== null &&
-      (group?.checked ?? []).some((t) => t.id === restoredActive)
-        ? restoredActive
-        : (group?.checked?.[0]?.id ?? null);
-    setActiveTabId(active);
+    setCheckedPanels(group?.checked ?? []);
+    setMountedPanels(group?.mounted ?? []);
+    setPanelWidths(
+      group?.widths ?? {
+        preview: PANEL_DEFAULT_WIDTH,
+        plan: PANEL_DEFAULT_WIDTH,
+        diff: PANEL_DEFAULT_WIDTH,
+        terminal: PANEL_DEFAULT_WIDTH,
+        file: PANEL_DEFAULT_WIDTH,
+      },
+    );
+    setManualWidths(
+      group?.manualWidths ?? {
+        preview: false,
+        plan: false,
+        diff: false,
+        terminal: false,
+        file: false,
+      },
+    );
+    setFileView(group?.fileView ?? null);
     setPlanContent(group?.planContent ?? null);
   }, [paneId, groupKey]);
 
@@ -756,10 +783,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         if (typeof planContent !== "string" || planContent.trim() === "")
           return;
         setPlanContent(planContent);
-        // The plan tab is unique — only open it when none is open yet, so an
-        // updated plan never yanks the active tab away mid-conversation.
-        if (!tabsRef.current.some((t) => t.kind === "plan")) {
-          ensureTabRef.current("plan");
+        if (!checkedPanelsRef.current.includes("plan")) {
+          togglePanelRef.current("plan");
         }
       };
 
@@ -816,9 +841,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           // session-scoped, so the reply is matched against the session whose
           // cached forward carries this requestId — a reply that lands after
           // the pane rebinds to another session still updates the owning
-          // session's cached forward instead of being dropped. The forwarded
-          // URL is applied to the preview TAB that requested the tunnel (map in
-          // forwardTabIdRef) so a sibling preview tab's URL is never clobbered.
+          // session's cached URL instead of being dropped.
           if (!forThisPane(message)) break;
           {
             let targetKey: string | undefined;
@@ -828,72 +851,30 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             if (targetKey === undefined) break;
             const target = panelGroupCache.get(targetKey);
             if (!target) break;
-            const tabId = message.requestId
-              ? forwardTabIdRef.current.get(message.requestId)
-              : undefined;
-            const patchCachedTabUrl = (url: string) => {
-              // Keep the cached group's tabs in sync for remounts/session
-              // switches even when this pane is not the current one.
-              target.checked = target.checked.map((t) =>
-                t.id === tabId ? { ...t, previewUrl: url } : t,
-              );
-            };
             if (message.error) {
               target.forwardError = String(message.error);
               if (targetKey === groupKeyRef.current)
                 setPreviewForwardError(String(message.error));
             } else {
               target.forwardError = null;
+              target.previewUrl = message.url as string;
               if (targetKey === groupKeyRef.current) {
                 setPreviewForwardError(null);
-                if (tabId) {
-                  const prevUrl = tabsRef.current.find(
-                    (t) => t.id === tabId,
-                  )?.previewUrl;
-                  setTabs((prev) =>
-                    prev.map((t) =>
-                      t.id === tabId
-                        ? { ...t, previewUrl: message.url as string }
-                        : t,
-                    ),
-                  );
-                  patchCachedTabUrl(message.url as string);
-                  // Same URL as before (re-acquire after a guest load failure):
-                  // remount so the webview actually reloads instead of the [url]
-                  // effect early-returning on an unchanged prop.
-                  if (message.url === prevUrl) setPreviewEpoch((e) => e + 1);
-                }
-              } else if (tabId) {
-                // A reply for a session this pane is NOT bound to only touches
-                // that session's cached tabs — never this pane's live tabs.
-                patchCachedTabUrl(message.url as string);
+                setPreviewUrl(message.url as string);
+                // Same URL as before (re-acquire after a guest load failure):
+                // remount so the webview actually reloads instead of the [url]
+                // effect early-returning on an unchanged prop.
+                if (message.url === previewUrlRef.current)
+                  setPreviewEpoch((e) => e + 1);
               }
             }
           }
           break;
         case "desktopFileContent":
           // File panel content reply (file panel spec scenario 1/2). Routed by
-          // paneId so a sibling pane's reply never overwrites this pane's view;
-          // within the pane it lands on the file tab showing the same path. When
-          // no tab shows that path yet (a blank tab opened from "＋" before the
-          // host resolved a path), the reply binds the ACTIVE file tab to it.
+          // paneId so a sibling pane's reply never overwrites this pane's view.
           if (!forThisPane(message)) break;
-          {
-            const fv = message.fileView as FileViewState;
-            setTabs((prev) =>
-              prev.some((t) => t.kind === "file" && t.filePath === fv.path)
-                ? prev.map((t) =>
-                    t.kind === "file" && t.filePath === fv.path
-                      ? { ...t, fileView: fv }
-                      : t,
-                  )
-                : prev.map((t) =>
-                    t.id === activeTabIdRef.current && t.kind === "file"
-                      ? { ...t, filePath: fv.path, fileView: fv }
-                      : t,
-                  ),
-            );
-          }
+          setFileView(message.fileView as FileViewState);
           break;
         case "updateQueue":
           if (!forThisPane(message)) break;
@@ -1133,7 +1114,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             user: message.user ?? null,
             plan: message.plan ?? null,
             apiQuota: message.apiQuota ?? null,
-            update: message.update ?? null,
           });
           break;
         case "desktopTogglePanel":
@@ -1533,15 +1513,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 下载，下载完成 toast 提供「重启安装」按钮（quitAndInstall）。
   const handleLogout = useCallback(() => {
     vscode.postMessage({ command: "logout" });
-  }, [vscode]);
-
-  // 更新按钮状态机（交互设计 §4）：S2 确认后通知宿主下载；S4 确认后通知宿主
-  // 安装并重启。宿主随后推回 desktopAccountInfo.update 流转状态。
-  const handleDownloadUpdate = useCallback(() => {
-    vscode.postMessage({ command: "desktopUpdateDownload" });
-  }, [vscode]);
-  const handleRestartApp = useCallback(() => {
-    vscode.postMessage({ command: "desktopUpdateRestart" });
   }, [vscode]);
 
   // Batch 2 settings full-page (desktop): close returns to the conversation
@@ -2015,7 +1986,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // preview pane then loads. Repeated clicks on the SAME link while the forward
   // is established or connecting are no-ops — the tunnel is reused, not rebuilt.
   const acquireForward = useCallback(
-    (host: string, url: string, tabId?: string) => {
+    (host: string, url: string) => {
       // The forward is keyed by the session's panel-group key; without one (a
       // pane-less desktop view) there is nothing to cache the reference under.
       if (!groupKey) return;
@@ -2034,9 +2005,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       const requestId = `fwd-${++forwardSeqRef.current}`;
       const fwd = { host, remotePort, originalUrl: url, requestId };
       setCurrentForward(fwd);
-      // Remember which preview tab asked for this tunnel so the port-forward
-      // reply lands on that tab (a sibling preview tab keeps its own URL).
-      if (tabId) forwardTabIdRef.current.set(requestId, tabId);
       // Keep the reference in the session's cached group immediately (not via the
       // state-sync effect below) so a desktopForwardPortResult reply — which may
       // arrive on the very next event-loop turn — can match this forward even if
@@ -2081,141 +2049,80 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // even closing every old panel cannot fit the new one (window narrower than
   // the minimum conversation + panel widths) is the open refused — and then
   // nothing is closed, so a failed replace never takes old panels down.
-  // Generates a fresh tab id (kind-prefixed, monotonically increasing per kind).
-  const genTabId = useCallback((kind: DesktopPanelKind): string => {
-    tabSeqRef.current[kind] += 1;
-    return `${kind}-${tabSeqRef.current[kind]}`;
-  }, []);
-
-  // Shared space guard: the conversation column must keep its minimum width
-  // next to the panel; a shrunken window clamps the shared slot width before
-  // the panel shows. Refuses (with a hint) when even that cannot fit.
-  const ensurePanelSpace = useCallback((): boolean => {
-    const containerW = chatContainerRef.current?.getBoundingClientRect().width;
-    if (containerW) {
-      // Tabbed layout: one slot, so the only space guard is whether the
-      // conversation column keeps its minimum width next to the panel.
-      if (containerW - PANEL_MIN_WIDTH < CHAT_MAIN_MIN_WIDTH) {
-        showPanelHint("空间不足，无法开启面板");
-        return false;
-      }
-      if (panelWidthRef.current > containerW - CHAT_MAIN_MIN_WIDTH) {
-        // The shared width is wider than the room available (window shrank
-        // since the last open) — clamp it before showing the panel.
-        setPanelWidth(containerW - CHAT_MAIN_MIN_WIDTH);
-      }
-    }
-    return true;
-  }, [showPanelHint]);
-
-  // Append a NEW tab instance and activate it. Multi-instance kinds (preview /
-  // diff / file) call this for every open action; single-instance kinds route
-  // through ensureUniqueTab instead. Returns the new id, or null when the space
-  // guard refuses (nothing is opened in that case).
-  const addTab = useCallback(
-    (tab: Omit<PanelTab, "id">): string | null => {
-      if (!ensurePanelSpace()) return null;
-      const id = genTabId(tab.kind);
-      setTabs((prev) => [...prev, { ...tab, id }]);
-      setActiveTabId(id);
-      // Opening a tab via any path (link, file path, "＋", empty-state entry)
-      // brings the panel back if it was collapsed — the raised tab wins over
-      // the previously viewed one (「除非用户通过其他方式调起新的 tab 那么以调起
-      // 时候的 tab 为优先」).
-      setPanelExpanded(true);
-      return id;
-    },
-    [ensurePanelSpace, genTabId],
-  );
-
-  // Open-or-activate a single-instance kind (terminal / plan): the existing tab
-  // is activated, never duplicated.
-  const ensureUniqueTab = useCallback(
-    (kind: DesktopPanelKind): string | null => {
-      const existing = tabsRef.current.find((t) => t.kind === kind);
-      if (existing) {
-        setActiveTabId(existing.id);
-        setPanelExpanded(true);
-        return existing.id;
-      }
-      return addTab({ kind });
-    },
-    [addTab],
-  );
-
-  useEffect(() => {
-    ensureTabRef.current = ensureUniqueTab;
-  }, [ensureUniqueTab]);
-
-  // "＋" tab-bar menu: only preview is multi-instance — every click adds a
-  // fresh blank tab (its address bar lets the user type a new URL). All other
-  // kinds (plan/diff/terminal/file) are single-instance: open-or-activate the
-  // unique tab, never duplicating.
   const tryOpenPanel = useCallback(
     (kind: DesktopPanelKind): boolean => {
-      if (kind === "preview") {
-        return addTab({ kind }) !== null;
+      const containerW =
+        chatContainerRef.current?.getBoundingClientRect().width;
+      const evicted: DesktopPanelKind[] = [];
+      if (containerW) {
+        const used =
+          checkedPanelsRef.current
+            .filter((k) => k !== kind)
+            .reduce((sum, k) => sum + panelWidthsRef.current[k], 0) +
+          // An auto-filling panel (never manually resized) only needs its
+          // minimum width to fit: opening re-computes the width from the space
+          // then available, so its possibly-large current width (from a
+          // previous fill in a wider window) must not block the open
+          // (「面板自动铺满剩余空间」).
+          (manualWidthsRef.current[kind]
+            ? panelWidthsRef.current[kind]
+            : PANEL_MIN_WIDTH);
+        if (containerW - used < CHAT_MAIN_MIN_WIDTH) {
+          let remaining = used;
+          for (const k of checkedPanelsRef.current) {
+            if (k === kind) continue; // never replace the panel being opened
+            remaining -= panelWidthsRef.current[k];
+            evicted.push(k);
+            if (containerW - remaining >= CHAT_MAIN_MIN_WIDTH) break;
+          }
+          if (containerW - remaining < CHAT_MAIN_MIN_WIDTH) {
+            showPanelHint("空间不足，无法开启面板");
+            return false;
+          }
+        }
       }
-      return ensureUniqueTab(kind) !== null;
+      if (evicted.length > 0) {
+        setCheckedPanels((prev) => prev.filter((k) => !evicted.includes(k)));
+        showPanelHint(
+          `空间不足，已自动关闭「${evicted.map((k) => PANEL_LABELS[k]).join("」「")}」面板`,
+        );
+      }
+      // 「面板自动铺满剩余空间」(spec): a panel the user has never manually
+      // resized fills the space beyond the conversation's minimum width when it
+      // opens — a wide pane no longer leaves the panel at the fixed default
+      // width with dead space to its right. A manual drag marks the panel
+      // (handlePanelWidthChange) and locks its width from then on.
+      if (containerW && !manualWidthsRef.current[kind]) {
+        const others = checkedPanelsRef.current
+          .filter((k) => k !== kind && !evicted.includes(k))
+          .reduce((sum, k) => sum + panelWidthsRef.current[k], 0);
+        setPanelWidths((prev) => ({
+          ...prev,
+          [kind]: Math.max(
+            PANEL_MIN_WIDTH,
+            containerW - others - CHAT_MAIN_MIN_WIDTH,
+          ),
+        }));
+      }
+      setCheckedPanels((prev) =>
+        prev.includes(kind) ? prev : [...prev, kind],
+      );
+      setMountedPanels((prev) =>
+        prev.includes(kind) ? prev : [...prev, kind],
+      );
+      return true;
     },
-    [ensureUniqueTab, addTab],
+    [showPanelHint],
   );
 
-  // Close one tab: removes it from the open set; closing the active tab falls
-  // back to its left neighbor (PreviewPane closeTab convention); closing the
-  // last tab collapses the whole slot and exits panel fullscreen. Browser-tab
-  // semantics: closing destroys the instance — re-opening via a link or "＋"
-  // creates a fresh one (terminal PTYs / preview guests do not survive close).
-  const handleCloseTab = useCallback((tabId: string) => {
-    const tabs = tabsRef.current;
-    const idx = tabs.findIndex((t) => t.id === tabId);
-    if (idx === -1) return;
-    const closed = tabs[idx];
-    const next = tabs.filter((t) => t.id !== tabId);
-    setTabs(next);
-    if (activeTabIdRef.current === tabId) {
-      setActiveTabId(next.length ? next[Math.max(0, idx - 1)].id : null);
-    }
-    if (closed.kind === "preview" || next.length === 0) {
-      setPreviewFullscreen(false);
-    }
-  }, []);
-
-  // Header 面板按钮: expand/collapse the right-hand panel (spec「面板展开/折
-  // 叠」). Collapsing hides the slot but keeps every tab instance mounted
-  // (display:none in the slot JSX) — tabs, the active tab and the dragged width
-  // all survive, and the next expand restores them. Fullscreen can't stay on
-  // while collapsed (the slot hides the whole chat column), so collapsing
-  // exits it; expanding leaves it untouched.
-  const handleTogglePanelExpanded = useCallback(() => {
-    setPanelExpanded((prev) => {
-      const next = !prev;
-      if (!next) setPreviewFullscreen(false);
-      return next;
-    });
-  }, []);
-
-  // Clicking a tab: switch the active panel without closing anything.
-  const handleActivatePanel = useCallback((tabId: string) => {
-    setActiveTabId(tabId);
-  }, []);
-
-  // Header 面板 menu (checkbox per kind). Checking a multi-instance kind opens
-  // a fresh tab; unchecking closes ALL tabs of that kind — the checkbox mirrors
-  // "any tab of this kind is open" (a single-instance kind has at most one).
   const handleTogglePanel = useCallback(
     (kind: DesktopPanelKind) => {
       if (panelDisabledRef.current.includes(kind)) return;
-      if (tabsRef.current.some((t) => t.kind === kind)) {
-        const next = tabsRef.current.filter((t) => t.kind !== kind);
-        setTabs(next);
-        const active = activeTabIdRef.current;
-        if (active && !next.some((t) => t.id === active)) {
-          setActiveTabId(next.length ? next[next.length - 1].id : null);
-        }
-        if (kind === "preview" || next.length === 0) {
-          setPreviewFullscreen(false);
-        }
+      if (checkedPanelsRef.current.includes(kind)) {
+        setCheckedPanels((prev) => prev.filter((k) => k !== kind));
+        // Closing the preview hides the pane but never releases a remote tunnel
+        // (scenario 18): the URL stays cached so re-checking shows the same page,
+        // and the host keeps the ssh forward alive until the session is deleted.
       } else {
         tryOpenPanel(kind);
       }
@@ -2241,58 +2148,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         vscode.postMessage({ command: "openFile", path, startLine, endLine });
         return;
       }
-      // The file panel is single-instance: any file click activates the one
-      // file tab and switches it to the new path (soft-refresh — the old
-      // content stays until the host reply lands, matching the diff pane).
-      // Only when no file tab exists yet is a fresh one added.
-      const existing = tabsRef.current.find((t) => t.kind === "file");
-      if (existing) {
-        setActiveTabId(existing.id);
-        setPanelExpanded(true);
-        setTabs((prev) =>
-          prev.map((t) =>
-            t.id === existing.id
-              ? {
-                  ...t,
-                  filePath: path,
-                  startLine,
-                  endLine,
-                  fileView: t.fileView
-                    ? {
-                        ...t.fileView,
-                        path,
-                        loading: true,
-                        startLine,
-                        endLine,
-                      }
-                    : {
-                        path,
-                        host: effectiveHost,
-                        loading: true,
-                        startLine,
-                        endLine,
-                      },
-                }
-              : t,
-          ),
-        );
-      } else if (
-        addTab({
-          kind: "file",
-          filePath: path,
-          startLine,
-          endLine,
-          fileView: {
-            path,
-            host: effectiveHost,
-            loading: true,
-            startLine,
-            endLine,
-          },
-        }) === null
-      ) {
-        return; // space guard refused — nothing opened
-      }
+      if (!tryOpenPanel("file")) return;
+      // Re-clicking the file already shown re-reads it (soft refresh: keep the
+      // old content until the host reply lands, matching the diff pane).
+      setFileView((prev) =>
+        prev && prev.path === path
+          ? { ...prev, loading: true, startLine, endLine }
+          : { path, host: effectiveHost, loading: true, startLine, endLine },
+      );
       postToHost({
         command: "openFile",
         path,
@@ -2301,7 +2164,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         endLine,
       });
     },
-    [isDesktop, addTab, effectiveHost, postToHost, vscode],
+    [isDesktop, tryOpenPanel, effectiveHost, postToHost, vscode],
   );
 
   // Desktop file panel auto-refresh (spec: 文件面板自动刷新): when the agent
@@ -2315,10 +2178,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const fileToolStagesRef = useRef<Map<string, ToolBlock["stage"]>>(new Map());
   useEffect(() => {
     if (!isDesktop) return;
-    const filePaths = tabsRef.current
-      .filter((t) => t.kind === "file" && t.filePath)
-      .map((t) => t.filePath)
-      .filter((p): p is string => p !== undefined);
+    const path = fileViewRef.current?.path;
     const workdir = effectiveWorkdirRef.current;
     const stages = fileToolStagesRef.current;
     for (const ref of collectWriteEditBlocks(state.messages)) {
@@ -2332,13 +2192,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         stages.set(key, ref.stage);
         continue;
       }
-      if (prev !== "end" && completed && ref.targetPath) {
-        // Re-read every open file tab the block touched.
-        for (const path of filePaths) {
-          if (pathsMatch(ref.targetPath, path, workdir)) {
-            handleOpenFile(path);
-          }
-        }
+      if (
+        prev !== "end" &&
+        completed &&
+        ref.targetPath &&
+        path &&
+        pathsMatch(ref.targetPath, path, workdir)
+      ) {
+        handleOpenFile(path);
       }
       stages.set(key, ref.stage);
     }
@@ -2354,63 +2215,70 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [isDesktop, postToHost],
   );
 
-  // Authoritative clamp at drag time: keep the shared panel slot within
-  // [320, container - conversation minimum].
-  const handlePanelWidthChange = useCallback((width: number) => {
-    let clamped = Math.max(width, PANEL_MIN_WIDTH);
-    const containerW = chatContainerRef.current?.getBoundingClientRect().width;
-    if (containerW) {
-      clamped = Math.min(clamped, containerW - CHAT_MAIN_MIN_WIDTH);
-    }
-    setPanelWidth(clamped);
-  }, []);
-
-  // Desktop only: clicking a localhost link opens a NEW preview tab ("新链接新
-  // tab") instead of navigating the existing one — several addresses can be
-  // previewed side by side. Message.tsx gates on waveHostType, so this never
-  // fires in IDE hosts.
-  const handleOpenPreview = useCallback(
-    (url: string) => {
-      addTab({ kind: "preview", previewUrl: url });
+  // Authoritative clamp at drag time: keep the panel within [320, container -
+  // other checked panels - conversation minimum]. A drag marks the panel as
+  // manually resized, which stops the auto-fill behavior in tryOpenPanel
+  // (「面板自动铺满剩余空间」).
+  const handlePanelWidthChange = useCallback(
+    (kind: DesktopPanelKind, width: number) => {
+      let clamped = Math.max(width, PANEL_MIN_WIDTH);
+      const containerW =
+        chatContainerRef.current?.getBoundingClientRect().width;
+      if (containerW) {
+        const others = checkedPanelsRef.current
+          .filter((k) => k !== kind)
+          .reduce((sum, k) => sum + panelWidthsRef.current[k], 0);
+        clamped = Math.min(clamped, containerW - others - CHAT_MAIN_MIN_WIDTH);
+      }
+      setPanelWidths((prev) => ({ ...prev, [kind]: clamped }));
+      setManualWidths((prev) => ({ ...prev, [kind]: true }));
     },
-    [addTab],
+    [],
   );
 
-  // Remote localhost link handler: open a NEW preview tab and forward. The same
-  // URL — under any loopback/all-interfaces host spelling — with the tunnel
-  // already established just re-activates the tab that owns it (the tunnel is
-  // reused, not rebuilt, scenario 15/16). Every other click — a different path,
-  // a different origin, another service entirely — opens a fresh preview tab;
-  // tunnels are session-scoped and only die when the session is deleted
-  // (scenario 18).
+  // Desktop only: open/re-target the preview panel. Clicking a localhost link
+  // checks the preview item (refused with a hint when space runs out) and loads
+  // the URL. Message.tsx gates on waveHostType, so this never fires in IDE hosts.
+  const handleOpenPreview = useCallback(
+    (url: string) => {
+      if (
+        !checkedPanelsRef.current.includes("preview") &&
+        !tryOpenPanel("preview")
+      )
+        return;
+      setPreviewUrl(url);
+    },
+    [tryOpenPanel],
+  );
+
+  // Remote localhost link handler: open the preview panel (creating it when
+  // absent) and forward. The same URL — under any loopback/all-interfaces
+  // host spelling — is a no-op unless the previous attempt failed (scenario
+  // 15/16). Every other click — a different path, a different origin, another
+  // service entirely — just re-targets the panel; tunnels are session-scoped
+  // and only die when the session is deleted (scenario 18).
   const handleOpenRemotePreview = useCallback(
     (url: string) => {
+      if (
+        !checkedPanelsRef.current.includes("preview") &&
+        !tryOpenPanel("preview")
+      )
+        return;
       // Read the refs, not the state values: this callback is captured by the
       // memoized Message component at mount, so closing over state would freeze
       // the first render's values and break the same-link dedup below.
       const current = currentForwardRef.current;
-      const sameUrl =
+      if (
         current &&
         canonicalForwardUrl(current.originalUrl) === canonicalForwardUrl(url) &&
-        previewForwardErrorRef.current === null;
-      const owningTab = current
-        ? tabsRef.current.find(
-            (t) =>
-              t.id === forwardTabIdRef.current.get(current.requestId) &&
-              t.kind === "preview",
-          )
-        : undefined;
-      if (sameUrl && owningTab) {
-        setActiveTabId(owningTab.id);
-        setPanelExpanded(true);
+        previewForwardErrorRef.current === null
+      )
         return;
-      }
-      const tabId = addTab({ kind: "preview" });
-      if (tabId === null) return; // space refused
       setPreviewForwardError(null);
-      acquireForward(effectiveHostRef.current, url, tabId);
+      setPreviewUrl(null); // show the connecting stub while the tunnel comes up
+      acquireForward(effectiveHostRef.current, url);
     },
-    [addTab, acquireForward],
+    [tryOpenPanel, acquireForward],
   );
 
   // Retry after a failed forward (scenario 16): re-request the same tunnel.
@@ -2419,11 +2287,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     const fwd = currentForwardRef.current;
     if (!fwd) return;
     setPreviewForwardError(null);
-    acquireForward(
-      fwd.host,
-      fwd.originalUrl,
-      forwardTabIdRef.current.get(fwd.requestId),
-    );
+    acquireForward(fwd.host, fwd.originalUrl);
   }, [acquireForward]);
 
   const openPreviewHandler =
@@ -2442,15 +2306,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   }, [panelDisabled]);
 
   // Report this pane's toggle state so the desktop app menu's 面板 checkboxes
-  // reflect the focused pane (one checkbox per kind — any tab of that kind
-  // counts as checked).
+  // reflect the focused pane.
   useEffect(() => {
     if (!isDesktop) return;
-    postToHost({
-      command: "desktopPanelState",
-      checked: Array.from(new Set(tabs.map((t) => t.kind))),
-    });
-  }, [tabs, isDesktop, postToHost]);
+    postToHost({ command: "desktopPanelState", checked: checkedPanels });
+  }, [checkedPanels, isDesktop, postToHost]);
 
   // Esc exits preview fullscreen (spec 场景 2). Registered only while
   // fullscreen is active; pane-level dialogs handle their own Esc first
@@ -2464,76 +2324,105 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isDesktop, previewFullscreen]);
 
-  // Width ceiling for the shared panel slot: container minus the
-  // conversation-area minimum. Render-time estimate — the drag handler
+  // Width ceiling for one panel: container minus the other checked panels and
+  // the conversation-area minimum. Render-time estimate — the drag handler
   // re-clamps authoritatively on every mousemove.
-  const panelMaxWidth = (): number => {
+  const panelMaxWidth = (kind: DesktopPanelKind): number => {
     const containerW =
       chatContainerRef.current?.getBoundingClientRect().width ??
       window.innerWidth;
-    return containerW - CHAT_MAIN_MIN_WIDTH;
+    const others = checkedPanels
+      .filter((k) => k !== kind)
+      .reduce((sum, k) => sum + panelWidths[k], 0);
+    return containerW - others - CHAT_MAIN_MIN_WIDTH;
   };
 
-  const renderPanelSlot = (tab: PanelTab) => {
-    const { id, kind } = tab;
-    const isActive = activeTabId === id;
+  const renderPanelSlot = (kind: DesktopPanelKind) => {
     const common = {
-      width: panelWidth,
-      onWidthChange: (w: number) => handlePanelWidthChange(w),
-      maxWidth: panelMaxWidth(),
+      width: panelWidths[kind],
+      onWidthChange: (w: number) => handlePanelWidthChange(kind, w),
+      maxWidth: panelMaxWidth(kind),
+      onClose: () => handleTogglePanel(kind),
+    };
+
+    // Empty preview (no URL yet) reuses the same left-edge resize handle so it
+    // can be widened like the loaded preview/diff/terminal panels.
+    const onEmptyPreviewDragStart = (e: React.MouseEvent) => {
+      e.preventDefault();
+      const handle = e.currentTarget as HTMLElement;
+      handle.style.background = "var(--vscode-focusBorder, #007fd4)";
+      document.body.classList.add("is-panel-resizing");
+      const rect = handle.parentElement?.getBoundingClientRect();
+      const onMove = (ev: MouseEvent) => {
+        const next = (rect?.right ?? 0) - ev.clientX;
+        common.onWidthChange(
+          Math.min(Math.max(next, PANEL_MIN_WIDTH), common.maxWidth),
+        );
+      };
+      const onUp = () => {
+        handle.style.background = "";
+        document.body.classList.remove("is-panel-resizing");
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
     };
 
     if (kind === "preview") {
-      const url = tab.previewUrl ?? "";
-      const isForwardOwner =
-        currentForward !== null &&
-        forwardTabIdRef.current.get(currentForward.requestId) === id;
-      const pane = (
+      return previewUrl ? (
         <PreviewPane
-          key={`${id}:${previewEpoch}`}
-          url={url}
+          key={previewEpoch}
+          url={previewUrl}
           originalUrl={currentForward?.originalUrl}
           onRetry={currentForward ? handleRemotePreviewRetry : undefined}
           vscode={vscode}
           onAddComment={handleAddComment}
-          onLastTabClosed={() => handleCloseTab(id)}
-          onTitleChange={(title) => {
-            setTabs((prev) =>
-              prev.map((t) =>
-                t.id === id ? { ...t, previewTitle: title } : t,
-              ),
-            );
-          }}
+          onLastTabClosed={() => setPreviewUrl(null)}
+          fullscreen={previewFullscreen}
+          onToggleFullscreen={() => setPreviewFullscreen((v) => !v)}
           {...common}
         />
-      );
-      if (url) return pane;
-      // Empty preview: reuse PreviewPane with a blank tab so the address bar
-      // and "+" tab actions stay available — typing a URL starts previewing.
-      // A remote forward error (no URL yet) overlays a retry stub instead.
-      return (
-        <div
-          className="preview-pane-empty-wrap"
+      ) : (
+        <aside
+          className="preview-pane"
           style={{ width: common.width }}
           data-testid="preview-pane-empty"
         >
-          {pane}
-          {isForwardOwner && previewForwardError && (
-            <div
-              className="preview-pane-forward-error"
-              data-testid="preview-forward-error"
-            >
-              <span>远程预览加载失败：{previewForwardError}</span>
+          <div
+            className="preview-pane-drag-handle"
+            onMouseDown={onEmptyPreviewDragStart}
+          />
+          <div className="preview-pane-inner">
+            <div className="preview-pane-toolbar">
+              <span className="preview-pane-url">预览</span>
               <button
                 className="preview-pane-button"
-                data-testid="preview-forward-retry"
-                onClick={handleRemotePreviewRetry}
+                title="关闭"
+                data-testid="preview-close"
+                onClick={common.onClose}
               >
-                重试
+                <CloseIcon className="preview-pane-icon" />
               </button>
             </div>
-          )}
-        </div>
+            <div className="desktop-panel-placeholder">
+              {previewForwardError ? (
+                <>
+                  <span>远程预览加载失败：{previewForwardError}</span>
+                  <button
+                    className="preview-pane-button"
+                    data-testid="preview-forward-retry"
+                    onClick={handleRemotePreviewRetry}
+                  >
+                    重试
+                  </button>
+                </>
+              ) : (
+                <>点击消息或终端中的 localhost 链接加载预览</>
+              )}
+            </div>
+          </div>
+        </aside>
       );
     }
     if (kind === "diff") {
@@ -2541,7 +2430,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         <DiffPane
           vscode={vscode}
           paneId={paneId}
-          visible={isActive}
+          visible={checkedPanels.includes("diff")}
           isStreaming={state.isStreaming}
           sessionId={state.currentSession?.id}
           workdir={effectiveWorkdir}
@@ -2553,7 +2442,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     if (kind === "file") {
       return (
         <FilePane
-          fileView={tab.fileView ?? null}
+          fileView={fileView}
           onOpenExternal={handleOpenFileExternal}
           workdir={effectiveWorkdir}
           vscode={vscode}
@@ -2569,7 +2458,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       <TerminalPane
         vscode={vscode}
         paneId={paneId}
-        visible={isActive}
+        visible={checkedPanels.includes("terminal")}
         sessionId={state.currentSession?.id}
         workdir={effectiveWorkdir}
         onOpenPreview={openPreviewHandler}
@@ -2951,8 +2840,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         panelToggle={
           isDesktop
             ? {
-                expanded: panelExpanded,
-                onToggle: handleTogglePanelExpanded,
+                checked: checkedPanels,
+                onToggle: handleTogglePanel,
+                disabled: panelDisabled,
               }
             : undefined
         }
@@ -2967,54 +2857,21 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           {!previewFullscreen && (
             <div className="desktop-chat-main">{chatBodyContent}</div>
           )}
-          {panelExpanded || tabs.length > 0 ? (
+          {PANEL_ORDER.filter(
+            (kind) =>
+              mountedPanels.includes(kind) &&
+              (kind === "preview" || !previewFullscreen),
+          ).map((kind) => (
             <div
+              key={kind}
               className="desktop-panel-slot"
-              data-testid="desktop-panel-slot"
               style={{
-                width: panelWidth,
-                // Collapsed: keep the slot mounted (display:none) so preview
-                // guests / terminal PTYs survive; the next expand restores it
-                // instantly with tabs, active tab and width intact. When there
-                // is nothing to keep mounted (no tabs) the slot is simply not
-                // rendered above.
-                display: panelExpanded ? undefined : "none",
+                display: checkedPanels.includes(kind) ? undefined : "none",
               }}
             >
-              {tabs.length > 0 ? (
-                <>
-                  <DesktopPanelTabs
-                    tabs={tabs}
-                    activeTabId={activeTabId}
-                    disabled={panelDisabled}
-                    onActivate={handleActivatePanel}
-                    onClose={handleCloseTab}
-                    onAdd={tryOpenPanel}
-                    fullscreen={previewFullscreen}
-                    onToggleFullscreen={() => setPreviewFullscreen((v) => !v)}
-                  />
-                  <div className="desktop-panel-body">
-                    {tabs.map((tab) => (
-                      <div
-                        key={tab.id}
-                        className="desktop-panel-stack"
-                        style={{
-                          display: activeTabId === tab.id ? undefined : "none",
-                        }}
-                      >
-                        {renderPanelSlot(tab)}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <PanelEmptyState
-                  disabled={panelDisabled}
-                  onOpen={tryOpenPanel}
-                />
-              )}
+              {renderPanelSlot(kind)}
             </div>
-          ) : null}
+          ))}
         </div>
       ) : (
         // IDE hosts: the chat body always renders inside two flex wrappers.
@@ -3048,8 +2905,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             onOpenHelpDocs={handleOpenHelpDocs}
             onLogin={handleLogin}
             onLogout={handleLogout}
-            onDownloadUpdate={handleDownloadUpdate}
-            onRestartApp={handleRestartApp}
             account={accountInfo}
             sidebarExpandButton={expandBtn}
             collapsed={sidebarCollapsed}
@@ -3091,8 +2946,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           onOpenHelpDocs={handleOpenHelpDocs}
           onLogin={handleLogin}
           onLogout={handleLogout}
-          onDownloadUpdate={handleDownloadUpdate}
-          onRestartApp={handleRestartApp}
           account={accountInfo}
           hostLabel={effectiveHost}
           sessionTree={host.sessionTree}

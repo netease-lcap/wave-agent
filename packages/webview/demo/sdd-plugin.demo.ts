@@ -54,8 +54,8 @@ test.describe("Built-in SDD Plugin Demo", () => {
       update: undefined,
     });
 
-    // 打开设置页 → 「项目设置」视图（v3：个人信息行热区打开菜单）。
-    await webviewPage.getByTestId("account-card-hotzone").click();
+    // 打开设置页 → 「项目设置」视图。
+    await webviewPage.getByTestId("account-card-more").click();
     await webviewPage.getByTestId("more-menu-settings").click();
     await expect(
       webviewPage.getByRole("heading", { name: "全局设置" }),

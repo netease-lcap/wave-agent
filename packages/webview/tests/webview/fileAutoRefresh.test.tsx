@@ -46,10 +46,8 @@ function renderDesktop(options?: { workdir?: string }) {
 }
 
 const openFilePanel = () => {
-  // Expand the panel: with no tab open the empty state lists the five
-  // capabilities — pick 文件 there.
   fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-  fireEvent.click(screen.getByTestId("panel-empty-item-file"));
+  fireEvent.click(screen.getByTestId("panel-toggle-item-file"));
   expect(screen.getByTestId("file-pane")).toBeInTheDocument();
 };
 

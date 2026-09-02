@@ -33,26 +33,15 @@
   font-size: 12px;
 }
 
-/* Search popover: floats over the file content, anchored under the toolbar.
-   The trigger button lives in the toolbar (right of the file name). */
-.file-pane-search-popover {
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  padding: 4px 6px;
-  background: var(--vscode-dropdown-background);
-  border: 1px solid var(--vscode-dropdown-border);
-  border-radius: 4px;
-  box-shadow: 0 2px 8px var(--vscode-widget-shadow);
-}
-
-.file-pane-search-input-row {
+/* Top search bar: input + icon, anchors the downward suggestion dropdown. */
+.file-pane-search {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  flex-shrink: 0;
 }
 
 .file-pane-search-icon {
