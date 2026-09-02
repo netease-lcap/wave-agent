@@ -78,7 +78,6 @@ import {
   checkForUpdate,
   type UpdateInfo as ManualUpdateInfo,
 } from "./updateChecker";
-import type { UpdateInfo as ElectronUpdateInfo } from "electron-updater";
 import { AutoUpdaterService } from "./updateAutoUpdater";
 import { HOST_CHANNEL } from "./channels";
 import type { PanelKind } from "./menu";
@@ -271,10 +270,17 @@ export class DesktopHost {
   private lastIsAuthenticated = false;
   /** electron-updater path, created lazily once a serverUrl is configured. */
   private autoUpdaterService: AutoUpdaterService | null = null;
-  /** True once the "已下载完成，重启安装" toast was announced — a later
-   *  install-stage error (e.g. Squirrel signature validation) must not
-   *  double-notify with a conflicting manual download-page toast. */
-  private updateDownloadedAnnounced = false;
+  /**
+   * 更新按钮状态机 (spec desktop-account-card-and-panel-tabs.md「更新按钮状态机
+   * S0–S6」) 的宿主侧状态：electron-updater 事件 → `update.status` 随
+   * desktopAccountInfo 推送。null = 无更新可知 (S0)；status 流转
+   * idle(已发现未下载) → downloading(用户 S2 确认后) → ready(下载完成)。
+   * 下载失败/取消回退 idle (场景 8，可重试)。App-global，不跟随聚焦主机。
+   */
+  private updateState: {
+    version: string;
+    status: "idle" | "downloading" | "ready";
+  } | null = null;
 
   /**
    * 账户卡片快照 per host (登录态 + 用量), 跟随聚焦分屏的主机 (spec 场景 8)。
@@ -615,6 +621,15 @@ export class DesktopHost {
       user: entry?.user ?? null,
       plan: entry?.plan ?? null,
       apiQuota: entry?.apiQuota ?? null,
+      // 应用更新状态（S0–S6 按钮状态机输入）。App-global：不管侧边栏当前显示
+      // 哪个主机，新版本都属于本机应用本身。
+      update: this.updateState
+        ? {
+            available: true,
+            version: this.updateState.version,
+            status: this.updateState.status,
+          }
+        : null,
     });
   }
 
@@ -3254,6 +3269,14 @@ export class DesktopHost {
         await this.handleCheckForUpdates(true);
         break;
 
+      case "desktopUpdateDownload":
+        await this.handleDesktopUpdateDownload();
+        break;
+
+      case "desktopUpdateRestart":
+        this.handleDesktopUpdateRestart();
+        break;
+
       // -- auth ----------------------------------------------------------------
       case "getAuthStatus":
         await this.handleGetAuthStatus();
@@ -4513,39 +4536,113 @@ export class DesktopHost {
     await this.clearQueue();
   }
 
+  /** Lazily create the electron-updater service bound to the S0–S6 state
+   *  machine: electron-updater events map to `update.status` pushes (no
+   *  toasts — the account-card button owns the whole download/restart flow,
+   *  spec desktop-account-card-and-panel-tabs.md「更新按钮状态机」). */
+  private ensureAutoUpdaterService(): AutoUpdaterService {
+    if (this.autoUpdaterService) return this.autoUpdaterService;
+    this.autoUpdaterService = new AutoUpdaterService({
+      onUpdateAvailable: (info) => {
+        // 检查发现新版本 → S1「更新」按钮。已处于 downloading/ready 时忽略
+        // （手动复查不得把下载中/已就绪降级回 idle）。
+        if (this.updateState && this.updateState.status !== "idle") return;
+        this.updateState = { version: info.version, status: "idle" };
+        this.pushAccountInfo();
+      },
+      // downloading（S3）由 handleDesktopUpdateDownload 在 startDownload 前
+      // 置位并推送——electron-updater 无下载开始事件，RPC 路径即唯一入口。
+      onUpdateDownloaded: (info) => {
+        this.updateState = { version: info.version, status: "ready" };
+        this.pushAccountInfo();
+      },
+      onError: (error) => this.handleAutoUpdaterError(error),
+    });
+    return this.autoUpdaterService;
+  }
+
+  /**
+   * electron-updater 出错。下载失败/取消（S3 中）：回退 idle → 按钮恢复
+   * 「更新」，用户可重新走 S2 下载确认（spec 场景 8，无手动下载页 toast）；
+   * 已就绪 (ready) 后的安装阶段错误不降级（重启由用户决定）；检查失败但尚
+   * 未发现任何更新时静默（手动检查的失败反馈在 handleCheckForUpdates 给）。
+   */
+  private handleAutoUpdaterError(error?: unknown): void {
+    console.warn(
+      "[DesktopHost] Auto updater errored:",
+      error instanceof Error ? error.stack : error,
+    );
+    // The packaged app has no visible console — persist the error so it can be
+    // collected from the machine that reproduces the failed download.
+    try {
+      fs.appendFileSync(
+        path.join(app.getPath("userData"), "updater-error.log"),
+        `${new Date().toISOString()} ${error instanceof Error ? error.stack : String(error)}\n`,
+      );
+    } catch (logError) {
+      // Logging must never break the fallback flow.
+      console.warn(
+        "[DesktopHost] Failed to write updater error log:",
+        logError,
+      );
+    }
+    if (!this.updateState || this.updateState.status === "ready") return;
+    this.updateState = { ...this.updateState, status: "idle" };
+    this.pushAccountInfo();
+  }
+
+  /** S2 确认下载（webview desktopUpdateDownload）→ 开始后台下载。 */
+  private async handleDesktopUpdateDownload(): Promise<void> {
+    const serverUrl = this.configStore.getConfiguration().serverUrl;
+    if (!serverUrl) return;
+    if (!this.updateState || this.updateState.status !== "idle") return;
+    this.updateState = { ...this.updateState, status: "downloading" };
+    this.pushAccountInfo();
+    try {
+      await this.ensureAutoUpdaterService().startDownload();
+    } catch (error) {
+      // downloadUpdate rejects in addition to the 'error' event — downgrade
+      // once (idempotent with the event path).
+      console.warn(
+        "[DesktopHost] Update download failed:",
+        error instanceof Error ? error.stack : error,
+      );
+      if (this.updateState?.status === "downloading") {
+        this.updateState = { ...this.updateState, status: "idle" };
+        this.pushAccountInfo();
+      }
+    }
+  }
+
+  /** S4/S5 立即重启（webview desktopUpdateRestart）→ 复位状态 + quitAndInstall。 */
+  private handleDesktopUpdateRestart(): void {
+    this.updateState = null;
+    this.pushAccountInfo();
+    this.autoUpdaterService?.quitAndInstall();
+  }
+
   private async handleCheckForUpdates(manual: boolean): Promise<void> {
     const serverUrl = this.configStore.getConfiguration().serverUrl;
 
-    // Logged in → the codechat feed drives updates via electron-updater
-    // (background download + one-shot install). Unauthenticated installs fall
-    // back to the GitHub Releases flow (system message + download URL).
+    // Logged in → the codechat feed drives updates via electron-updater. The
+    // check only announces an update (S1 更新按钮); the download starts after
+    // the user confirms in the S2 dialog (desktopUpdateDownload). Unauthenticated
+    // installs fall back to the GitHub Releases flow (toast + download URL).
     if (serverUrl) {
-      if (!this.autoUpdaterService) {
-        this.autoUpdaterService = new AutoUpdaterService({
-          onUpdateAvailable: (info) =>
-            this.showToast({
-              message: `发现新版本 v${info.version}（当前 v${app.getVersion()}），正在后台下载…`,
-            }),
-          onUpdateDownloaded: (info) => void this.handleUpdateDownloaded(info),
-          onError: (error) =>
-            void this.handleAutoUpdaterError(serverUrl, error),
-        });
-      }
-      const outcome = await this.autoUpdaterService.checkForUpdates(serverUrl);
+      const outcome =
+        await this.ensureAutoUpdaterService().checkForUpdates(serverUrl);
       if (outcome === "update") {
-        // 发现更新 → electron-updater 已自动开始后台下载，update-available
-        // 事件经 onUpdateAvailable 弹出 toast 告知（spec「桌面端自动更新」
-        // 场景 3），无需额外处理。
+        // 发现更新 → update-available 事件已把 updateState 置 idle 并推送
+        // （卡片出现「更新」按钮），无需额外处理。
         return;
       }
       if (outcome === "no-update") {
         if (manual) this.showToast({ message: "当前已是最新版本" });
         return;
       }
-      // outcome === 'error': electron-updater already emitted 'error' on this
-      // failure (routed above to handleAutoUpdaterError, the single manual
-      // fallback). Falling back again here would show two identical
-      // "发现新版本" toasts.
+      // outcome === 'error'：检查阶段失败（尚未发现任何更新）——手动检查给
+      // 反馈；自动（启动）检查静默。
+      if (manual) this.showToast({ message: "检查更新失败，请稍后重试" });
       return;
     }
 
@@ -4572,73 +4669,13 @@ export class DesktopHost {
     }
   }
 
-  /**
-   * electron-updater 出错。下载未完成即失败：降级为手动下载页 toast（spec
-   * 「桌面端自动更新」场景 5「不得静默失败」）。下载完成后的安装阶段错误
-   * （updateDownloadedAnnounced 已置位）不弹手动下载页 toast，避免与
-   * 「已下载完成，重启安装」toast 冲突。
-   */
-  private async handleAutoUpdaterError(
-    serverUrl: string,
-    error?: unknown,
-  ): Promise<void> {
-    console.warn(
-      "[DesktopHost] Auto updater errored:",
-      error instanceof Error ? error.stack : error,
-    );
-    if (this.updateDownloadedAnnounced) return;
-    // The packaged app has no visible console — persist the error so it can be
-    // collected from the machine that reproduces the failed download.
-    try {
-      fs.appendFileSync(
-        path.join(app.getPath("userData"), "updater-error.log"),
-        `${new Date().toISOString()} ${error instanceof Error ? error.stack : error}\n`,
-      );
-    } catch (logError) {
-      // Logging must never break the fallback flow.
-      console.warn(
-        "[DesktopHost] Failed to write updater error log:",
-        logError,
-      );
-    }
-    let info: ManualUpdateInfo | null = null;
-    try {
-      info = await checkForUpdate(app.getVersion(), serverUrl);
-    } catch (error) {
-      console.warn("[DesktopHost] Update check failed:", error);
-      return;
-    }
-    if (info) {
-      this.showToast({
-        message: `发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}）`,
-        actionLabel: "打开下载页",
-        action: { type: "openDownloadPage", url: info.downloadUrl },
-      });
-    }
-  }
-
-  /** 新版本下载完成（electron-updater update-downloaded）→ 应用内 toast 提供
-   *  「重启安装」按钮（spec「桌面端自动更新」场景 4），点击后 quitAndInstall。 */
-  private handleUpdateDownloaded(info: ElectronUpdateInfo): void {
-    if (this.updateDownloadedAnnounced) return;
-    this.updateDownloadedAnnounced = true;
-    this.showToast({
-      message: `新版本 v${info.version} 已下载完成，重启应用以完成安装。`,
-      actionLabel: "重启安装",
-      action: { type: "quitAndInstall" },
-    });
-  }
-
-  /** A toast's button was clicked: quit-and-install the downloaded update, or
-   *  open the manual download page. The webview sends the opaque action payload
-   *  back verbatim, so the host stays the single source of the action semantics. */
+  /** A toast's button was clicked: open the manual download page, or focus a
+   *  background session. The webview sends the opaque action payload back
+   *  verbatim, so the host stays the single source of the action semantics.
+   *  (更新下载/重启不再走 toast action —— S0–S6 按钮状态机经
+   *  desktopUpdateDownload / desktopUpdateRestart 命令直连宿主。) */
   private handleToastAction(action: ToastAction): void {
-    if (action.type === "quitAndInstall") {
-      this.autoUpdaterService?.quitAndInstall();
-    } else if (
-      action.type === "openDownloadPage" &&
-      /^(https?):/.test(action.url)
-    ) {
+    if (action.type === "openDownloadPage" && /^(https?):/.test(action.url)) {
       void shell.openExternal(action.url);
     } else if (action.type === "focusSession") {
       void this.focusSessionFromToast(action.host, action.sessionId);

@@ -8,13 +8,29 @@ interface PanelToggleMenuProps extends PanelToggleProps {
   onClose: () => void;
   /** Trigger button (面板 in the header); Escape returns focus here. */
   triggerRef?: RefObject<HTMLElement | null>;
+  /** Close the menu after activating an item (the tab-bar "＋" menu) instead of
+   *  keeping it open for consecutive multi-select (the header checkbox menu). */
+  closeOnActivate?: boolean;
+  /** Extra class for positioning overrides (e.g. anchored to the tab bar). */
+  className?: string;
+  /** Position override (e.g. left offset anchoring the menu under the "＋"). */
+  style?: React.CSSProperties;
+  /** Checkbox semantics (multi-select, keeps open): false switches to a plain
+   *  menu where activating an item just opens that panel (tab-bar "＋" menu). */
+  checklist?: boolean;
+  /** Show already-checked items: false hides them so the menu only lists the
+   *  panels that aren't open yet (the tab bar already shows open ones). */
+  showChecked?: boolean;
+  /** Kinds that never render a checkmark even in checklist mode — e.g. preview,
+   *  whose menu click ALWAYS adds a fresh tab, so a check would mislead. */
+  noCheckKinds?: DesktopPanelKind[];
 }
 
 const isMac =
   typeof navigator !== "undefined" &&
   navigator.platform.toLowerCase().includes("mac");
 
-const PANEL_ITEMS: Array<{
+export const PANEL_ITEMS: Array<{
   kind: DesktopPanelKind;
   label: string;
   shortcut?: string;
@@ -43,20 +59,36 @@ export const PanelToggleMenu: React.FC<PanelToggleMenuProps> = ({
   disabled = [],
   onClose,
   triggerRef,
+  closeOnActivate = false,
+  className,
+  style,
+  checklist = true,
+  showChecked = true,
+  noCheckKinds = [],
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Tab-bar "＋" menu (showChecked=false) lists only the panels that aren't
+  // open yet — the tab strip already visualizes the open ones.
+  const visibleItems = PANEL_ITEMS.map((item, index) => ({
+    item,
+    index,
+  })).filter(({ item }) => showChecked || !checked.includes(item.kind));
 
   // Roving keyboard model shared with the other custom dropdowns; toggling
   // keeps the menu open (closeOnActivate off), Escape returns to the trigger.
   const { getItemProps } = useRovingMenu(menuRef, {
     itemSelector: ".panel-toggle-menu-item",
-    itemCount: PANEL_ITEMS.length,
+    itemCount: visibleItems.length,
     triggerRef,
-    closeOnActivate: false,
+    closeOnActivate,
     onRequestClose: onClose,
     onActivate: (i) => {
-      const kind = PANEL_ITEMS[i].kind;
-      if (!disabled.includes(kind)) onToggle(kind);
+      const kind = visibleItems[i].item.kind;
+      if (!disabled.includes(kind)) {
+        onToggle(kind);
+        if (closeOnActivate) onClose();
+      }
     },
   });
 
@@ -84,19 +116,22 @@ export const PanelToggleMenu: React.FC<PanelToggleMenuProps> = ({
   return (
     <div
       ref={menuRef}
-      className="panel-toggle-menu"
+      className={`panel-toggle-menu${className ? ` ${className}` : ""}`}
+      style={style}
       data-testid="panel-toggle-menu"
     >
-      {PANEL_ITEMS.map(({ kind, label, shortcut }, i) => {
+      {visibleItems.map(({ item }, vi) => {
+        const { kind, label, shortcut } = item;
         const isChecked = checked.includes(kind);
         const isDisabled = disabled.includes(kind);
+        const noCheck = noCheckKinds.includes(kind);
         return (
           <div
             key={kind}
-            {...getItemProps(i)}
-            className={`panel-toggle-menu-item${isChecked ? " panel-toggle-menu-item--active" : ""}${isDisabled ? " panel-toggle-menu-item--disabled" : ""}`}
-            role="checkbox"
-            aria-checked={isChecked}
+            {...getItemProps(vi)}
+            className={`panel-toggle-menu-item${checklist && isChecked && !noCheck ? " panel-toggle-menu-item--active" : ""}${isDisabled ? " panel-toggle-menu-item--disabled" : ""}`}
+            role={checklist ? "checkbox" : "menuitem"}
+            aria-checked={checklist && !noCheck ? isChecked : undefined}
             aria-disabled={isDisabled}
             data-testid={`panel-toggle-item-${kind}`}
           >

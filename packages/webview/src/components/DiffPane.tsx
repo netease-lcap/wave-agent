@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { VsCodeApi } from "../types";
 import { renderWordLevelDiff } from "../utils/diffHighlight";
-import { CloseIcon } from "./HeaderIcons";
 import "../styles/DiffViewer.css";
 import "../styles/DiffPane.css";
 
@@ -66,7 +65,6 @@ export interface DiffPaneProps {
   width: number;
   onWidthChange: (width: number) => void;
   maxWidth: number;
-  onClose: () => void;
   /** Split-view pane this diff panel belongs to; filters host responses. */
   paneId?: string;
   /** Hidden panels stay mounted; a re-show triggers a fresh load. */
@@ -86,7 +84,6 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   width,
   onWidthChange,
   maxWidth,
-  onClose,
   paneId,
   visible,
   isStreaming,
@@ -485,7 +482,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
       <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
         <div className="preview-pane-toolbar">
-          <span className="preview-pane-url">差异</span>
+          <span className="desktop-panel-toolbar-title">差异</span>
           <button
             className="preview-pane-button"
             title="刷新"
@@ -495,14 +492,6 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
             <i
               className={`codicon codicon-refresh${refreshing ? " codicon-modifier-spin" : ""}`}
             />
-          </button>
-          <button
-            className="preview-pane-button"
-            title="关闭"
-            data-testid="diff-close"
-            onClick={onClose}
-          >
-            <CloseIcon className="pane-close-icon" />
           </button>
         </div>
         <div className="diff-pane-body">

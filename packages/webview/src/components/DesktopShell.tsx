@@ -43,6 +43,9 @@ interface DesktopShellProps {
   onLogout: () => void;
   /** 侧边栏底部账户卡片 (desktopAccountInfo push). */
   account?: AccountCardAccount | null;
+  /** 账户卡片更新按钮 S0–S6（spec desktop-account-card-and-panel-tabs.md）. */
+  onDownloadUpdate?: () => void;
+  onRestartApp?: () => void;
   /**
    * Sidebar collapsed → the first pane of the top row shows an expand button.
    * A ready-made ReactNode built by the delegating ChatApp (it owns the
@@ -93,6 +96,8 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   onLogin,
   onLogout,
   account,
+  onDownloadUpdate,
+  onRestartApp,
   sidebarExpandButton,
   collapsed = false,
   onCollapsedChange,
@@ -670,6 +675,8 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         onLogin={onLogin}
         onLogout={onLogout}
         account={account}
+        onDownloadUpdate={onDownloadUpdate}
+        onRestartApp={onRestartApp}
         hostLabel={focusedHost}
         sessionTree={host.sessionTree}
         currentSessionId={focusedSessionId}

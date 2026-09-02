@@ -10,7 +10,6 @@ import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
 import type { FileItem, FileViewState, VsCodeApi } from "../types";
 import { toRelativePath } from "../utils/messageUtils";
-import { CloseIcon } from "./HeaderIcons";
 import { FileSuggestionDropdown } from "./FileSuggestionDropdown";
 import "../styles/FilePane.css";
 
@@ -201,7 +200,6 @@ export interface FilePaneProps {
   width: number;
   onWidthChange: (width: number) => void;
   maxWidth: number;
-  onClose: () => void;
   /** Local sessions only: open the file in the OS default app. */
   onOpenExternal?: (path: string) => void;
   /** Owning pane's effective cwd, for the relative-path title display. */
@@ -224,7 +222,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   width,
   onWidthChange,
   maxWidth,
-  onClose,
   onOpenExternal,
   workdir,
   vscode,
@@ -232,10 +229,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
 }) => {
   const asideRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const searchBarRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchPopoverRef = useRef<HTMLDivElement>(null);
+  const searchInputRowRef = useRef<HTMLDivElement>(null);
 
-  // Top search bar state: mirrors the message-input @ mention flow. The host
-  // broadcasts fileSuggestionsResponse to every pane; requestId dedupes it.
+  // Search popover: the toolbar's search icon toggles a floating panel (input +
+  // suggestions). Host broadcasts fileSuggestionsResponse to every pane;
+  // requestId dedupes it.
+  const [searchOpen, setSearchOpen] = useState(false);
   const [searchFilter, setSearchFilter] = useState("");
   const [searchSuggestions, setSearchSuggestions] = useState<FileItem[]>([]);
   const [searchSelectedIndex, setSearchSelectedIndex] = useState(0);
@@ -275,12 +277,48 @@ export const FilePane: React.FC<FilePaneProps> = ({
     setSearchActive(false);
   }, []);
 
-  // Request on focus so the dropdown is populated immediately (empty filter
-  // returns the workspace's top files, acting as a file picker).
-  const handleSearchFocus = useCallback(() => {
-    setSearchActive(true);
+  /** Close the whole popover and clear the search state. */
+  const closeSearch = useCallback(() => {
+    resetSearch();
+    setSearchOpen(false);
+  }, [resetSearch]);
+
+  // Open: reset + autofocus. The actual empty-filter request fires from the
+  // input's onFocus (handled below) so the dropdown populates immediately —
+  // empty filter returns the workspace's top files, acting as a file picker.
+  const openSearch = useCallback(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = null;
+    setSearchFilter("");
     setSearchSuggestions([]);
     setSearchSelectedIndex(0);
+    setSearchLoading(false);
+    setSearchActive(true);
+    setSearchOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
+
+  // Dismiss when clicking outside the popover (and not on the trigger button).
+  useEffect(() => {
+    if (!searchOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (searchPopoverRef.current?.contains(target)) return;
+      const trigger = document.querySelector(
+        "[data-testid='file-pane-search-trigger']",
+      );
+      if (trigger?.contains(target)) return;
+      closeSearch();
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [searchOpen, closeSearch]);
+
+  const handleSearchFocus = useCallback(() => {
+    setSearchActive(true);
     requestSearch("");
   }, [requestSearch]);
 
@@ -303,16 +341,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const handleSearchSelect = useCallback(
     (file: FileItem) => {
-      resetSearch();
+      closeSearch();
       onOpenFileInPanel?.(file.path);
     },
-    [onOpenFileInPanel, resetSearch],
+    [closeSearch, onOpenFileInPanel],
   );
 
   const handleSearchKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>) => {
       if (fileSuggestions.length === 0) {
-        if (event.key === "Escape") resetSearch();
+        if (event.key === "Escape") closeSearch();
         return;
       }
       const maxIndex = fileSuggestions.length - 1;
@@ -333,11 +371,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
           break;
         case "Escape":
           event.preventDefault();
-          resetSearch();
+          closeSearch();
           break;
       }
     },
-    [fileSuggestions, searchSelectedIndex, handleSearchSelect, resetSearch],
+    [fileSuggestions, searchSelectedIndex, handleSearchSelect, closeSearch],
   );
 
   // Listen for the host's file suggestions reply (same channel as @ mention).
@@ -435,7 +473,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     >
       <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
-        <div className="preview-pane-toolbar">
+        <div className="preview-pane-toolbar" ref={toolbarRef}>
           {fileView ? (
             <>
               <span className="file-pane-host">
@@ -446,7 +484,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               </span>
             </>
           ) : (
-            <span className="preview-pane-url">文件</span>
+            <span className="desktop-panel-toolbar-title">文件</span>
           )}
           {fileView && isLocal && onOpenExternal && (
             <button
@@ -458,27 +496,42 @@ export const FilePane: React.FC<FilePaneProps> = ({
               <i className="codicon codicon-link-external" />
             </button>
           )}
-          <button
-            className="preview-pane-button"
-            title="关闭"
-            data-testid="file-close"
-            onClick={onClose}
-          >
-            <CloseIcon className="pane-close-icon" />
-          </button>
+          {vscode && (
+            <button
+              type="button"
+              className={`preview-pane-button file-pane-search-trigger${searchOpen ? " active" : ""}`}
+              data-testid="file-pane-search-trigger"
+              title={searchOpen ? "收起文件搜索" : "搜索文件"}
+              aria-label="搜索文件"
+              aria-expanded={searchOpen}
+              onClick={searchOpen ? closeSearch : openSearch}
+            >
+              <i className="codicon codicon-search" />
+            </button>
+          )}
         </div>
-        {vscode && (
-          <div className="file-pane-search" ref={searchBarRef}>
-            <i className="codicon codicon-search file-pane-search-icon" />
-            <input
-              className="file-pane-search-input"
-              data-testid="file-pane-search-input"
-              placeholder="搜索文件…"
-              value={searchFilter}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              onFocus={handleSearchFocus}
-              onKeyDown={handleSearchKeyDown}
-            />
+        {vscode && searchOpen && (
+          <div
+            className="file-pane-search-popover"
+            ref={searchPopoverRef}
+            data-testid="file-pane-search-popover"
+            style={{
+              top: (toolbarRef.current?.offsetHeight ?? 28) + 6,
+            }}
+          >
+            <div className="file-pane-search-input-row" ref={searchInputRowRef}>
+              <i className="codicon codicon-search file-pane-search-icon" />
+              <input
+                ref={searchInputRef}
+                className="file-pane-search-input"
+                data-testid="file-pane-search-input"
+                placeholder="搜索文件…"
+                value={searchFilter}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onFocus={handleSearchFocus}
+                onKeyDown={handleSearchKeyDown}
+              />
+            </div>
             <FileSuggestionDropdown
               suggestions={fileSuggestions}
               isVisible={
@@ -490,8 +543,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
               selectedIndex={searchSelectedIndex}
               onSelect={handleSearchSelect}
               onClose={resetSearch}
+              disableClickOutside
               position={{
-                top: (searchBarRef.current?.offsetHeight ?? 34) + 2,
+                top: (searchInputRowRef.current?.offsetHeight ?? 28) + 6,
                 left: 0,
               }}
               filterText={searchFilter}

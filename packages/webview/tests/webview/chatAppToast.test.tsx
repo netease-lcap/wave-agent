@@ -6,7 +6,7 @@ import {
   fireEvent,
 } from "./test-utils";
 
-// Desktop-host update toasts (showToast → in-app ToastStack → toastAction echo).
+// Desktop-host toasts (showToast → in-app ToastStack → toastAction echo).
 describe("ChatApp showToast integration", () => {
   it("renders a host-pushed toast and echoes its action button back as toastAction", () => {
     const { vscode } = renderChatApp();
@@ -15,29 +15,29 @@ describe("ChatApp showToast integration", () => {
       command: "showToast",
       toast: {
         id: "t1",
-        message: "新版本 v0.20.0 已下载完成，重启应用以完成安装。",
-        actionLabel: "重启安装",
-        action: { type: "quitAndInstall" },
+        message: "发现新版本 v0.20.0",
+        actionLabel: "打开下载页",
+        action: {
+          type: "openDownloadPage",
+          url: "https://github.com/release",
+        },
       },
     });
 
-    expect(
-      screen.getByText("新版本 v0.20.0 已下载完成，重启应用以完成安装。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("发现新版本 v0.20.0")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "重启安装" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开下载页" }));
 
-    // The webview echoes the opaque action back; the host performs it.
+    // The webview echoes the opaque action back; the host performs it, and the
+    // toast closes (host-side semantics — no update action needs a waiting
+    // state now that 更新下载/重启 live in the account-card S0–S6 machine).
     expect(vscode.postMessage).toHaveBeenCalledWith({
       command: "toastAction",
       toastId: "t1",
-      action: { type: "quitAndInstall" },
+      action: { type: "openDownloadPage", url: "https://github.com/release" },
     });
-    // quitAndInstall waits for the app to exit (seconds on Windows) — the toast
-    // stays up as a loading state instead of vanishing (spec scenario 10).
-    expect(screen.getByText("正在重启应用以完成安装…")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "重启安装" })).toBeNull();
-    expect(document.querySelector(".toast-spinner")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "打开下载页" })).toBeNull();
+    expect(screen.queryByText("发现新版本 v0.20.0")).not.toBeInTheDocument();
   });
 
   it("dismisses a toast via its close button without echoing an action", () => {
