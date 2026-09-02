@@ -329,7 +329,7 @@ export async function main() {
             )
             .command(
               "send <sessionId> <message>",
-              "Inject a message into a session and wait for the reply",
+              "Inject a message into a session (async by default; --wait N to get the reply)",
               (yargs) => {
                 return yargs
                   .positional("sessionId", {
@@ -340,9 +340,10 @@ export async function main() {
                     describe: "Message to send",
                     type: "string",
                   })
-                  .option("timeout", {
-                    describe: "Seconds to wait for the reply (0 = no limit)",
-                    default: 600,
+                  .option("wait", {
+                    describe:
+                      "Seconds to wait for the reply and print it (0 = fire-and-forget, the default)",
+                    default: 0,
                     type: "number",
                   });
               },
@@ -353,7 +354,7 @@ export async function main() {
                   DEFAULT_DAEMON_SOCKET,
                   argv.sessionId as string,
                   argv.message as string,
-                  { timeout: argv.timeout as number },
+                  { wait: argv.wait as number },
                 );
               },
             )
