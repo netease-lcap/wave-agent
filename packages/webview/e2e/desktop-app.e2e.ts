@@ -1,7 +1,6 @@
 import { test, expect } from "./utils/desktopTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
 import { MockDataGenerator } from "./fixtures/mockData.js";
-import { screenshotWebp } from "./utils/screenshot.js";
 
 const DIR_A = "/Users/dev/projects/wave-agent";
 const DIR_B = "/Users/dev/projects/shop-server";
@@ -144,10 +143,6 @@ test.describe("Desktop App Screenshots", () => {
     // setInitialState was dispatched before ChatApp's listener attached.
     await expect(webviewPage.locator(".loading-logo")).toHaveCount(0);
     await expect(webviewPage.getByTestId("welcome-wordmark")).toBeVisible();
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-first-launch.webp",
-    );
 
     // ── 2. Session tree: workdir selected, all groups expanded ────
     // The active session shows a green running dot; a session awaiting a
@@ -184,21 +179,13 @@ test.describe("Desktop App Screenshots", () => {
     await expect(
       webviewPage.getByTestId("desktop-session-item-sess-b1"),
     ).toBeVisible();
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-session-tree.webp",
-    );
 
     // Collapse a group to show collapse/expand interactivity
     await webviewPage.getByText("shop-server").click();
     await expect(
       webviewPage.getByTestId("desktop-session-item-sess-b1"),
     ).toBeHidden();
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-session-tree-collapsed.webp",
-    );
-    // Re-expand so later screenshots show the default all-expanded state
+    // Re-expand so the following steps see the default all-expanded state
     await webviewPage.getByText("shop-server").click();
     await expect(
       webviewPage.getByTestId("desktop-session-item-sess-b1"),
@@ -207,10 +194,6 @@ test.describe("Desktop App Screenshots", () => {
     // ── 3. Workdir dropdown in the input area ─────────────────────
     await webviewPage.getByTestId("desktop-workdir").click();
     await expect(webviewPage.getByTestId("desktop-workdir-menu")).toBeVisible();
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-workdir-dropdown.webp",
-    );
     await webviewPage.keyboard.press("Escape");
 
     // ── 4. Core chat interaction (same as IDE plugins) ────────────
@@ -225,10 +208,6 @@ test.describe("Desktop App Screenshots", () => {
     // session (no messages yet) — by design (ChatApp.tsx).
     await expect(webviewPage.locator(".message.user")).toBeVisible();
     await expect(webviewPage.locator(".message.assistant")).toBeVisible();
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-chat.webp",
-    );
   });
 
   test("worktree-isolated new-session page shows branch selector", async ({
@@ -270,10 +249,6 @@ test.describe("Desktop App Screenshots", () => {
     await webviewPage.getByTestId("desktop-branch-selector").click();
     await expect(webviewPage.getByTestId("desktop-branch-menu")).toBeVisible();
     await expect(webviewPage.getByTestId("desktop-branch-item")).toHaveCount(3);
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-worktree-controls.webp",
-    );
   });
 
   test("account card more menu lists settings / enterprise / logout", async ({
@@ -312,9 +287,5 @@ test.describe("Desktop App Screenshots", () => {
     await expect(webviewPage.getByTestId("more-menu-settings")).toBeVisible();
     await expect(webviewPage.getByTestId("more-menu-enterprise")).toBeVisible();
     await expect(webviewPage.getByTestId("more-menu-logout")).toBeVisible();
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-account-card-more.webp",
-    );
   });
 });

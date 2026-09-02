@@ -3,13 +3,13 @@ import path from "node:path";
 import { SPECS_DIR, specTitle, collectSpecs } from "./spec-stats.mjs";
 
 const nav = [
-  { text: "首页", link: "/" },
-  { text: "企业管控台", link: "/guide" },
-  { text: "VS Code 扩展 / JetBrains 插件", link: "/vsce" },
-  { text: "桌面版", link: "/desktop" },
+  { text: "产品概览", link: "/" },
+  { text: "教程&最佳实践", link: "/tutorials" },
+  { text: "桌面端", link: "/desktop" },
+  { text: "VSCode/JetBrains插件", link: "/vsce" },
   { text: "CLI", link: "/cli" },
   { text: "SDK", link: "/sdk" },
-  { text: "规格说明", link: "/specs/" },
+  { text: "企业管控台", link: "/guide" },
 ];
 
 // specs sidebar: generated from docs/specs/<group>/*.md, ordered the same as
@@ -28,205 +28,216 @@ const specsSidebar = collectSpecs().groups.map(({ dir, text, specs }) => ({
 
 export default {
   base: "/wave-agent/",
-  title: "CodeChat",
+  title: "CodeWave IDE",
   description: "AI 辅助编程工具链 — SDK、CLI、VS Code 扩展与 JetBrains 插件",
   themeConfig: {
     nav,
     search: { provider: "local" },
     sidebar: {
       "/specs/": specsSidebar,
+      "/index": [
+        {
+          text: "产品概览",
+          collapsed: false,
+          items: [
+            { text: "产品矩阵：五种形态", link: "/#产品矩阵-五种形态" },
+            { text: "使用场景", link: "/#使用场景" },
+            { text: "支持的操作系统", link: "/#支持的操作系统" },
+          ],
+        },
+      ],
+      "/tutorials": [
+        {
+          text: "一、研发场景实用工具推荐",
+          link: "/tutorials#一、研发场景实用工具推荐",
+          collapsed: false,
+          items: [
+            { text: "需求与规划", link: "/tutorials#_1-需求与规划" },
+            { text: "编码实现", link: "/tutorials#_2-编码实现" },
+            { text: "代码质量与提交", link: "/tutorials#_3-代码质量与提交" },
+            { text: "测试与调试", link: "/tutorials#_4-测试与调试" },
+            { text: "文档与知识沉淀", link: "/tutorials#_5-文档与知识沉淀" },
+            { text: "调研与日常效率", link: "/tutorials#_6-调研与日常效率" },
+          ],
+        },
+        {
+          text: "二、将 Figma 设计稿转化为前端代码",
+          link: "/tutorials#二、将-figma-设计稿转化为前端代码",
+          collapsed: false,
+          items: [
+            {
+              text: "准备：获取 Figma Access Token",
+              link: "/tutorials#_1-准备-获取-figma-access-token",
+            },
+            {
+              text: "在 CodeWave IDE 中添加 Figma MCP 服务器",
+              link: "/tutorials#_2-在-codewave-ide-中添加-figma-mcp-服务器",
+            },
+            {
+              text: "对话中粘贴设计稿链接，提出需求",
+              link: "/tutorials#_3-对话中粘贴设计稿链接-提出需求",
+            },
+            { text: "预览与迭代", link: "/tutorials#_4-预览与迭代" },
+            { text: "常见问题", link: "/tutorials#常见问题" },
+          ],
+        },
+        {
+          text: "三、SDD开发案例",
+          link: "/tutorials#三、sdd开发案例",
+          collapsed: false,
+          items: [
+            { text: "启用 SDD 插件", link: "/tutorials#_1-启用-sdd-插件" },
+            {
+              text: "规格驱动开发工作流",
+              link: "/tutorials#_2-规格驱动开发工作流",
+            },
+            { text: "实际产出统计", link: "/tutorials#_3-实际产出统计" },
+          ],
+        },
+        {
+          text: "四、实现网页自动化测试",
+          link: "/tutorials#四、实现网页自动化测试",
+          collapsed: false,
+          items: [
+            {
+              text: "安装 chrome-devtools 插件",
+              link: "/tutorials#_1-安装-chrome-devtools-插件",
+            },
+            {
+              text: "对话驱动自动化测试",
+              link: "/tutorials#_2-对话驱动自动化测试",
+            },
+            { text: "常用测试指令", link: "/tutorials#_3-常用测试指令" },
+            { text: "测试报告与回归", link: "/tutorials#_4-测试报告与回归" },
+          ],
+        },
+      ],
       "/guide": [
         {
           text: "管控台使用说明",
           collapsed: false,
           items: [
             { text: "一、企业管理员账号开通", link: "/guide#admin-account" },
-            { text: "二、下载插件", link: "/guide#download-plugin" },
-            { text: "三、添加团队成员", link: "/guide#add-members" },
+            { text: "二、添加团队成员", link: "/guide#add-members" },
             {
               text: "方式一：通过邀请链接邀请成员加入",
               link: "/guide#invite-link",
             },
             { text: "方式二：配置 SSO 登录", link: "/guide#sso-login" },
-            { text: "四、查看积分", link: "/guide#view-credits" },
+            { text: "三、查看积分", link: "/guide#view-credits" },
+            { text: "四、用量统计", link: "/guide#usage-stats" },
+            { text: "套餐产品", link: "/guide#套餐产品" },
+            { text: "API 额度", link: "/guide#api-额度" },
+            { text: "使用明细", link: "/guide#使用明细" },
+            { text: "五、订单管理", link: "/guide#orders" },
           ],
         },
       ],
       "/vsce": [
         {
-          text: "1. 核心聊天体验",
+          text: "插件使用文档",
           collapsed: false,
           items: [
-            { text: "1.1 基础对话", link: "/vsce#basic-chat" },
-            { text: "1.2 AI 思考过程", link: "/vsce#ai-reasoning" },
-            { text: "1.3 用户消息吸顶", link: "/vsce#sticky-user-message" },
-          ],
-        },
-        {
-          text: "2. 智能输入与上下文",
-          collapsed: false,
-          items: [
-            { text: "2.1 消息队列", link: "/vsce#message-queuing" },
-            { text: "2.2 历史提示词", link: "/vsce#history-search" },
+            { text: "快速入门", link: "/vsce#快速入门" },
+            { text: "VS Code 扩展", link: "/vsce#vs-code-扩展" },
+            { text: "JetBrains 插件", link: "/vsce#jetbrains-插件" },
+            { text: "AI 核心能力", link: "/vsce#ai-核心能力" },
+            { text: "代码选择与引用", link: "/vsce#代码选择与引用" },
             {
-              text: "2.3 代码选择与引用",
-              link: "/vsce#code-selection-reference",
+              text: "通过 Worktree 创建隔离环境",
+              link: "/vsce#通过-worktree-创建隔离环境",
             },
-            { text: "2.4 指令系统", link: "/vsce#slash-commands" },
-            { text: "2.5 文件建议与预览", link: "/vsce#file-suggestions" },
-            { text: "2.6 Bash 模式", link: "/vsce#bash-mode" },
-            { text: "2.7 输入框外观与状态", link: "/vsce#input-box" },
-            { text: "2.8 旁路提问", link: "/vsce#btw" },
-            { text: "2.9 压缩对话", link: "/vsce#compact" },
-          ],
-        },
-        {
-          text: "3. 代码理解与操作",
-          collapsed: false,
-          items: [
-            { text: "3.1 终端工具", link: "/vsce#bash-tool" },
-            { text: "3.2 文件搜索与探索", link: "/vsce#file-exploration" },
-            { text: "3.3 文件操作工具", link: "/vsce#file-operations" },
-            { text: "3.4 文件差异对比", link: "/vsce#diff-viewer" },
-            { text: "3.5 LSP 代码智能", link: "/vsce#lsp-intelligence" },
-            { text: "3.6 视觉理解", link: "/vsce#vision-understanding" },
-          ],
-        },
-        {
-          text: "4. 权限与安全",
-          collapsed: false,
-          items: [
-            { text: "4.1 权限模式管理", link: "/vsce#permission-modes" },
-            { text: "4.2 代码修改确认", link: "/vsce#code-edit-confirmation" },
-            {
-              text: "4.3 命令执行确认",
-              link: "/vsce#bash-command-confirmation",
-            },
-            { text: "4.4 MCP 工具确认", link: "/vsce#mcp-tool-confirmation" },
-            { text: "4.5 计划执行确认", link: "/vsce#plan-confirmation" },
-            { text: "4.6 进入计划模式确认", link: "/vsce#enter-plan-mode" },
-            { text: "4.7 交互式提问", link: "/vsce#ask-user" },
-            { text: "4.8 错误消息展示", link: "/vsce#error-message-display" },
-            { text: "4.9 确认反馈机制", link: "/vsce#confirmation-feedback" },
-          ],
-        },
-        {
-          text: "5. 任务管理",
-          collapsed: false,
-          items: [
-            { text: "5.1 任务列表", link: "/vsce#task-list" },
-            { text: "5.2 后台任务通知", link: "/vsce#task-notification" },
-            {
-              text: "5.3 后台任务系统",
-              link: "/vsce#mechanism-background-tasks",
-            },
-            {
-              text: "5.4 后台任务管理对话框",
-              link: "/vsce#background-task-manager",
-            },
-            { text: "5.5 工作流管理对话框", link: "/vsce#workflow-manager" },
-          ],
-        },
-        {
-          text: "6. 多 Agents 与并发",
-          collapsed: false,
-          items: [
-            { text: "6.1 设置页 - 子代理", link: "/vsce#agents-dialog" },
-            { text: "6.2 设置页 - 技能", link: "/vsce#skills-dialog" },
-            { text: "6.3 并发使用子代理", link: "/vsce#subagent-concurrency" },
-            { text: "6.4 多对话并行", link: "/vsce#parallel-conversations" },
-            {
-              text: "6.5 通过 Worktree 创建隔离环境",
-              link: "/vsce#worktree-concurrency",
-            },
-          ],
-        },
-        {
-          text: "7. 能力扩展",
-          collapsed: false,
-          items: [
-            { text: "7.1 子代理状态", link: "/vsce#subagent-display" },
-            { text: "7.2 Skill 技能系统", link: "/vsce#skill-system" },
-            { text: "7.3 MCP 协议集成", link: "/vsce#mcp-integration" },
-            { text: "7.4 钩子（Hooks）", link: "/vsce#hooks-settings" },
-          ],
-        },
-        {
-          text: "8. 会话与持久化",
-          collapsed: true,
-          items: [
-            { text: "8.1 对话回滚", link: "/vsce#rewind-feature" },
-            { text: "8.2 会话管理", link: "/vsce#session-management" },
-          ],
-        },
-        {
-          text: "9. 配置管理",
-          collapsed: false,
-          items: [
-            { text: "9.1 配置设置", link: "/vsce#configuration-settings" },
-            { text: "9.2 语言设置", link: "/vsce#language-settings" },
-          ],
-        },
-        {
-          text: "10. 插件系统",
-          collapsed: false,
-          items: [
-            { text: "10.1 概述", link: "/vsce#plugin-overview" },
-            { text: "10.2 探索新插件", link: "/vsce#explore-plugins" },
-            { text: "10.3 已激活插件", link: "/vsce#installed-plugins" },
-            {
-              text: "10.4 内置插件：规格驱动开发（SDD）",
-              link: "/vsce#sdd-plugin",
-            },
-            {
-              text: "10.5 规格驱动开发工作流",
-              link: "/vsce#sdd-workflow",
-            },
-          ],
-        },
-        {
-          text: "产品特色总结",
-          collapsed: false,
-          items: [
-            { text: "产品特色总结", link: "/vsce#product-features-summary" },
+            { text: "多对话并行", link: "/vsce#多对话并行" },
           ],
         },
       ],
       "/desktop": [
         {
-          text: "桌面版",
+          text: "1. 快速开始",
           collapsed: false,
           items: [
             {
-              text: "首次启动：选择工作目录",
-              link: "/desktop#首次启动选择工作目录",
+              text: "1.1 安装 CodeWave IDE 桌面端",
+              link: "/desktop#_1-1-安装-codewave-ide-桌面端",
             },
-            { text: "SSH 远程主机", link: "/desktop#ssh-远程主机" },
-            { text: "远程会话的面板", link: "/desktop#远程会话的面板" },
-            { text: "侧边栏会话树", link: "/desktop#侧边栏会话树" },
-            { text: "会话状态看板", link: "/desktop#会话状态看板" },
-            { text: "账户卡片", link: "/desktop#账户卡片" },
-            { text: "侧边栏收起与展开", link: "/desktop#侧边栏收起与展开" },
+            { text: "1.2 打开项目", link: "/desktop#_1-2-打开项目" },
+            { text: "1.3 智能输入", link: "/desktop#_1-3-智能输入" },
+            { text: "1.4 面板介绍", link: "/desktop#_1-4-面板介绍" },
+          ],
+        },
+        {
+          text: "2. Agent核心",
+          collapsed: false,
+          items: [
+            { text: "2.1 对话", link: "/desktop#_2-1-对话" },
+            { text: "2.2 模型", link: "/desktop#_2-2-模型" },
+            { text: "2.3 上下文", link: "/desktop#_2-3-上下文" },
             {
-              text: "基于分支的 worktree 隔离会话",
-              link: "/desktop#基于分支的-worktree-隔离会话",
+              text: "2.4 代码理解与操作",
+              link: "/desktop#_2-4-代码理解与操作",
             },
-            { text: "会话切换快捷键", link: "/desktop#会话切换快捷键" },
-            { text: "权限模式快捷键", link: "/desktop#权限模式快捷键" },
-            { text: "并排多对话（分屏）", link: "/desktop#并排多对话分屏" },
-            { text: "对话级面板开关", link: "/desktop#对话级面板开关" },
-            { text: "差异面板", link: "/desktop#差异面板" },
-            { text: "文件面板", link: "/desktop#文件面板" },
-            { text: "终端面板", link: "/desktop#终端面板" },
+            { text: "2.5 权限与安全", link: "/desktop#_2-5-权限与安全" },
+            { text: "2.6 任务管理", link: "/desktop#_2-6-任务管理" },
+            { text: "2.7 多Agent与并发", link: "/desktop#_2-7-多agent与并发" },
+            { text: "2.8 SubAgent", link: "/desktop#_2-8-subagent" },
+            { text: "2.9 技能", link: "/desktop#_2-9-技能" },
+            { text: "2.10 记忆", link: "/desktop#_2-10-记忆" },
             {
-              text: "localhost 原型预览与元素评论",
-              link: "/desktop#localhost-原型预览与元素评论",
+              text: "2.11 工作流（WorkFlow）",
+              link: "/desktop#_2-11-工作流-workflow",
             },
-            { text: "设置", link: "/desktop#设置" },
-            { text: "核心交互", link: "/desktop#核心交互" },
-            { text: "内置 CLI", link: "/desktop#内置-cli" },
-            { text: "自动更新", link: "/desktop#自动更新" },
-            { text: "登录", link: "/desktop#登录" },
+          ],
+        },
+        {
+          text: "3. 自动化",
+          collapsed: false,
+          items: [
+            { text: "3.1 钩子（Hooks）", link: "/desktop#_3-1-钩子-hooks" },
+            {
+              text: "3.2 定时循环任务（loop）",
+              link: "/desktop#_3-2-定时循环任务-loop",
+            },
+          ],
+        },
+        {
+          text: "4. 编程辅助",
+          collapsed: false,
+          items: [
+            { text: "4.1 SDD", link: "/desktop#_4-1-sdd" },
+            {
+              text: "4.2 Localhost原型预览与元素评论",
+              link: "/desktop#_4-2-localhost原型预览与元素评论",
+            },
+            {
+              text: "4.3 Artifacts产物分享",
+              link: "/desktop#_4-3-artifacts产物分享",
+            },
+          ],
+        },
+        {
+          text: "5. 扩展",
+          collapsed: false,
+          items: [
+            { text: "5.1 MCP", link: "/desktop#_5-1-mcp" },
+            { text: "5.2 插件", link: "/desktop#_5-2-插件" },
+          ],
+        },
+        {
+          text: "6. 设置",
+          collapsed: false,
+          items: [
+            {
+              text: "6.1 账户卡片与设置入口",
+              link: "/desktop#_6-1-账户卡片与设置入口",
+            },
+            { text: "6.2 全局设置", link: "/desktop#_6-2-全局设置" },
+            { text: "6.3 个性化", link: "/desktop#_6-3-个性化" },
+            { text: "6.4 项目设置", link: "/desktop#_6-4-项目设置" },
+            {
+              text: "6.5 技能、子代理、钩子与 MCP 服务",
+              link: "/desktop#_6-5-技能、子代理、钩子与-mcp-服务",
+            },
+            { text: "6.6 更新", link: "/desktop#_6-6-更新" },
           ],
         },
       ],
@@ -484,7 +495,6 @@ export default {
             { text: "code2spec", link: "/sdk#plugin-code2spec" },
             { text: "code2cwspec", link: "/sdk#plugin-code2cwspec" },
             { text: "commit-skills", link: "/sdk#plugin-commit-skills" },
-            { text: "speckit", link: "/sdk#plugin-speckit" },
             { text: "deep-wiki", link: "/sdk#plugin-deep-wiki" },
             { text: "tavily-search", link: "/sdk#plugin-tavily-search" },
             { text: "frontend-design", link: "/sdk#plugin-frontend-design" },

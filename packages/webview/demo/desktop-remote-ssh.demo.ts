@@ -81,6 +81,38 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
     );
   });
 
+  test("add-host entry expands to a connection-string input", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    await injector.simulateExtensionMessage("desktopWorkdirState", {
+      workdir: REMOTE_WORKDIR,
+      recentWorkdirs: [REMOTE_WORKDIR],
+      host: "local",
+      hosts: REMOTE_HOSTS,
+    });
+    await injector.waitForChatAppReady();
+    await injector.simulateExtensionMessage("setInitialState", initialState);
+
+    // Open the host menu and expand 添加主机… into the connection-string input.
+    await webviewPage.getByTestId("desktop-host").click();
+    await webviewPage.getByTestId("desktop-host-add-entry").click();
+    await expect(webviewPage.getByTestId("desktop-host-add")).toBeVisible();
+    await webviewPage
+      .getByTestId("desktop-host-add")
+      .locator("input")
+      .fill("ssh deploy@dev-server -p 2222");
+    await expect(
+      webviewPage.getByTestId("desktop-host-add").locator("input"),
+    ).toHaveValue("ssh deploy@dev-server -p 2222");
+
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-ssh-add-host.webp",
+    );
+  });
+
   test("remote session terminal panel runs a PTY over ssh", async ({
     webviewPage,
   }) => {

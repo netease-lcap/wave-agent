@@ -67,6 +67,25 @@ test.describe("Desktop settings manage views screenshots", () => {
       webviewPage.getByRole("heading", { name: "全局设置" }),
     ).toBeVisible();
 
+    // ── 0. 项目设置：SDD 内置插件开关 ──
+    await webviewPage.getByRole("button", { name: "项目设置" }).click();
+    await expect(
+      webviewPage.getByRole("heading", { name: "项目设置" }),
+    ).toBeVisible();
+    // Host 回发项目设置（sdd@builtin 已启用）→ 开关为勾选态。
+    await injector.simulateExtensionMessage("projectSettings", {
+      enabledPlugins: { "sdd@builtin": true },
+    });
+    const sddToggle = webviewPage.getByLabel("启用 SDD 插件");
+    await expect(sddToggle).toBeChecked();
+    await expect(webviewPage.getByText("SDD（规格驱动开发）")).toBeVisible();
+    // 等待开关 0.2s 过渡完成，避免截图停在过渡起始态（视觉关闭）
+    await webviewPage.waitForTimeout(500);
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-settings-project.webp",
+    );
+
     // ── 1. 技能：4 个来源 Tab，切到「项目技能」展示项目分组卡片 ──
     await webviewPage.getByRole("button", { name: "技能" }).click();
     await expect(webviewPage.getByText("插件技能")).toBeVisible();

@@ -2,7 +2,6 @@ import { test, expect } from "./utils/desktopTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
 import { MockDataGenerator } from "./fixtures/mockData.js";
 import { READ_TOOL_NAME } from "wave-agent-sdk";
-import { screenshotWebp } from "./utils/screenshot.js";
 
 const DIR_A = "/Users/dev/projects/wave-agent";
 
@@ -128,10 +127,6 @@ test.describe("Desktop file panel", () => {
     });
 
     await expectImageDecoded(webviewPage);
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-file-panel-image.webp",
-    );
   });
 
   test("remote images preview inline with the ssh host label", async ({
@@ -155,10 +150,6 @@ test.describe("Desktop file panel", () => {
 
     await expectImageDecoded(webviewPage);
     await expect(webviewPage.getByText("prod")).toBeVisible();
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-file-panel-image-remote.webp",
-    );
   });
 
   test("code files render highlighted lines with a jump range", async ({
@@ -234,10 +225,6 @@ test.describe("Desktop file panel", () => {
     await expect(
       webviewPage.locator(".file-pane-truncated-hint"),
     ).toBeVisible();
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-file-panel-code.webp",
-    );
   });
 
   test("search bar finds and opens a file in the panel", async ({

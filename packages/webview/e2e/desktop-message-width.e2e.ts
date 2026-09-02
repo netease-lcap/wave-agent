@@ -1,7 +1,6 @@
 import { test, expect } from "./utils/desktopTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
 import { MockDataGenerator } from "./fixtures/mockData.js";
-import { screenshotWebp } from "./utils/screenshot.js";
 
 const WORKDIR = "/Users/dev/projects/wave-agent";
 
@@ -92,10 +91,5 @@ test.describe("Desktop message column width", () => {
     expect(geom.centered).toBeTruthy();
     expect(geom.columnAlignsInput).toBeTruthy();
     expect(geom.gutterBg).toBe(geom.msgBg);
-
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-chat-centered.webp",
-    );
   });
 });

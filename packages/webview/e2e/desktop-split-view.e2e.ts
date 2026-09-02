@@ -1,7 +1,6 @@
 import { test, expect } from "./utils/desktopTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
 import { MockDataGenerator } from "./fixtures/mockData.js";
-import { screenshotWebp } from "./utils/screenshot.js";
 
 const DIR_A = "/Users/dev/projects/wave-agent";
 
@@ -64,11 +63,6 @@ test.describe("Desktop split-view panes", () => {
     const closeCenterY = closeBox!.y + closeBox!.height / 2;
     const toggleCenterY = toggleBox!.y + toggleBox!.height / 2;
     expect(Math.abs(closeCenterY - toggleCenterY)).toBeLessThanOrEqual(1.5);
-
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-split-view.webp",
-    );
   });
 
   test("two-row split layout packs overflow into a second row", async ({
@@ -119,10 +113,5 @@ test.describe("Desktop split-view panes", () => {
     await expect(
       webviewPage.getByTestId("desktop-row-separator"),
     ).toBeVisible();
-
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-two-row-split.webp",
-    );
   });
 });
