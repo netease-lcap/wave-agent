@@ -115,29 +115,24 @@ test.describe("Confirmation actions wrap", () => {
     const rowTops = [...new Set(boxes.map((b) => Math.round(b.top)))];
     expect(rowTops.length).toBeGreaterThan(1);
 
-    // 第 30 轮对齐 codechat ApprovalDialog：ghost 提供反馈 移到 actions 最
-    // 底部（DOM/visual 顺序 [自动类][主按钮][提供反馈]），narrow 换行后独占
-    // 最底行并保持右对齐；主按钮「批准并继续」在其上一行的右端。
+    // The primary button is last in the DOM/visual order ([提供反馈] [自动类]
+    // [批准并继续] — primary last, aligned with Claude's confirm UIs; the
+    // 第 30 轮 ghost-to-bottom reorder served the vertical layout and was
+    // reverted when the bar went horizontal again), so on a narrow bar it
+    // wraps onto the bottom line and stays pinned right.
     const maxTop = Math.max(...boxes.map((b) => b.top));
     const bottomRow = boxes.filter(
       (b) => Math.round(b.top) === Math.round(maxTop),
     );
-    const feedback = bottomRow.find((b) => b.label === "提供反馈");
-    expect(feedback).toBeDefined();
+    const primary = bottomRow.find((b) => b.label === "批准并继续");
+    expect(primary).toBeDefined();
     const bottomMaxRight = Math.max(...bottomRow.map((b) => b.right));
-    expect(Math.abs(feedback!.right - bottomMaxRight)).toBeLessThan(2);
-
-    const applyBtn = boxes.find((b) => b.label === "批准并继续")!;
-    const applyRow = boxes.filter(
-      (b) => Math.round(b.top) === Math.round(applyBtn.top),
-    );
-    const applyMaxRight = Math.max(...applyRow.map((b) => b.right));
-    expect(Math.abs(applyBtn.right - applyMaxRight)).toBeLessThan(2);
+    expect(Math.abs(primary!.right - bottomMaxRight)).toBeLessThan(2);
 
     // Every occupied row ends flush with the same right edge (right-aligned).
-    // Row identity comes from the 32px buttons only — the 24px 提供反馈 ghost
-    // (第 30 轮起独占最底行) 与最近高按钮行垂直中线相近，归组到该行，避免
-    // 按 raw top 分组造出幻影行。
+    // Row identity comes from the 32px buttons only — the shorter 提供反馈
+    // button shares a row's vertical middle (align-items:center) but its top
+    // differs, so grouping on raw tops would invent an extra phantom row.
     const rowKeyOf = (b: BtnBox) => {
       if (b.height >= 32) return Math.round(b.top);
       const mid = b.top + b.height / 2;
