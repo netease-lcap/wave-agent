@@ -36,24 +36,6 @@
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
   padding: 0 4px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* Remote SSH host the popup belongs to (desktop 历史对话弹窗). Styled like a
-   badge so a long host name truncates instead of stretching the label row. */
-.session-list-host-label {
-  max-width: 140px;
-  font-size: 10px;
-  line-height: 14px;
-  padding: 0 5px;
-  border-radius: 3px;
-  background-color: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .session-list-results {

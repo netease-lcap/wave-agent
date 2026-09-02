@@ -599,9 +599,6 @@ export interface ChatHeaderProps {
   /** Desktop host: show each session's workdir + worktree/branch labels in the
    *  popup (the desktop list spans multiple workdirs; IDE lists are single-dir). */
   showWorkdir?: boolean;
-  /** Desktop host: label shown next to the popup title when the listed sessions
-   *  belong to a remote SSH host (undefined/local → no label). */
-  sessionListHostLabel?: string;
   onOpenSettings: () => void;
   onOpenEnterpriseConsole: () => void;
   onOpenHelpDocs: () => void;
