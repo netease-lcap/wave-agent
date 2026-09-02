@@ -986,6 +986,19 @@
   color: #1f2329;
 }
 
+/* hover 底色对齐设计系统 fill-hover（base vscode list-hoverBackground 蓝灰
+   调 #2a2d2e / rgba(0,0,0,.08) 未入规范；桌面同类 hover 统一 #EEF0F3 /
+   dark 8% 白 —— queued-item/菜单项先例）。active 标签 hover 保持激活底
+   （激活色更浅，hover 不覆盖为深一档的 fill-hover）。 */
+[data-host="desktop"][data-theme="light"] .preview-tab:not(.active):hover,
+[data-host="desktop"][data-theme="light"] .preview-tab:not(.active):focus-visible {
+  background: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .preview-tab:not(.active):hover,
+[data-host="desktop"][data-theme="dark"] .preview-tab:not(.active):focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 /* ═══ 第十八轮：预览面板工具栏（对齐原型 InspectorPanel.vue）═══════
    参考 codechat-ui InspectorPanel.vue + global.css：地址栏 44px 高 / 白底
    #FFF（--cc-bg-panel）/ 底分隔线 #EBEEF5（--cc-border-lighter）；地址输入框

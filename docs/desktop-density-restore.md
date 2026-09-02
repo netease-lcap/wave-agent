@@ -1680,3 +1680,17 @@ codechat 权威：`workspace-header-menu` / el-dropdown-menu 菜单项**连续�
 ### 实现文件
 
 - `src/components/HeaderIcons.tsx`、`src/components/AccountCard.tsx`、`src/components/MoreMenu.tsx`、`src/styles/host-desktop.css`
+
+---
+
+## 0902 新基线第 6 轮（2026-09）：预览标签 hover 底色对齐 fill-hover
+
+用户预览评论 `div.preview-tab`「localhost:8899」：「检查这里hover状态下的颜色是否符合规范」。
+
+- **根因**：`.preview-tab:hover` 用 base 的 `var(--vscode-list-hoverBackground)`——桌面下实际渲染 light `rgba(0,0,0,0.08)`（≈#EBEBEB）、dark `#2a2d2e`，是 VS Code 默认蓝灰/中性黑调，未纳入桌面设计系统色板（同类 hover 早已统一 `--cc-fill-hover`：queued-item/菜单项/账户热区）。
+- **修改**：host-desktop.css 预览标签段补 hover 覆盖 —— 非激活 hover light `#EEF0F3` / dark 8% 白；active 标签 hover 用 `:not(.active)` 限定保持激活底不漂移。
+- **验证**（8899 探针，注入真实 class 元素取 computed）：light hover = rgb(238,240,243) ✓、dark = rgba(255,255,255,0.08) ✓、active hover 保持 #F0F2F5 / dark 原激活色 ✓。
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（预览标签段补 hover fill-hover 覆盖）
