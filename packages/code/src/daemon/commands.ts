@@ -477,27 +477,35 @@ export async function daemonStatusCommand(
 // ── send ───────────────────────────────────────────────────────
 
 export interface SendOptions {
-  timeout: number; // seconds; 0 = no limit (default 600)
+  /** Seconds to wait for the reply; 0 (default) = async dispatch: inject the
+   * message and exit immediately without waiting (fire-and-forget). */
+  wait: number;
 }
 
 /**
- * Send a message and wait for the reply that corresponds to it.
+ * Inject a message into a session and, when `--wait <N>` is given, wait for the
+ * reply that corresponds to it and print the pure final reply text.
  *
- * Completion detection: `sendMessage` on an idle session resolves only after
- * the whole turn finishes (InteractionService awaits sendAIMessage), while on a
- * busy session it enqueues and returns immediately — so stopping on a bare
- * `loadingChange:false` would exit early on the PREVIOUS turn's completion when
- * queued behind a busy session. Instead, track the message IDs: `ourUserMessage`
- * is the user message added when OUR turn starts (userMessageAdded), and the
- * reply is the last assistantMessageAdded observed after it. A stale
- * loading:false can then never satisfy the wait condition early (the reply has
- * not been added yet).
+ * Default (no --wait) is async dispatch: the command exits 0 as soon as the
+ * message is delivered (the message lands in history on an idle session, or is
+ * enqueued when the session is busy) — the sender never blocks on the reply,
+ * progress is tracked via `status` (spec: send 默认异步派单).
+ *
+ * Completion detection (wait mode): `sendMessage` on an idle session resolves
+ * only after the whole turn finishes (InteractionService awaits
+ * sendAIMessage), while on a busy session it enqueues and returns immediately —
+ * so stopping on a bare `loadingChange:false` would exit early on the PREVIOUS
+ * turn's completion when queued behind a busy session. Instead, track the
+ * message IDs: `ourUserMessage` is the user message added when OUR turn starts
+ * (userMessageAdded), and the reply is the last assistantMessageAdded observed
+ * after it. A stale loading:false can then never satisfy the wait condition
+ * early (the reply has not been added yet).
  */
 export async function daemonSendCommand(
   socketPath: string,
   sessionId: string,
   message: string,
-  options: SendOptions = { timeout: 600 },
+  options: SendOptions = { wait: 0 },
 ): Promise<void> {
   // connectDaemonOrExit exits on failure — no client to dispose in that case.
   const client = await connectDaemonOrExit(socketPath);
@@ -522,15 +530,54 @@ export async function daemonSendCommand(
   try {
     initId = (await attachSession(client, sessionId)).sessionId;
     sent = true;
+  } catch (err) {
+    client.dispose();
+    fail(`wave daemon send failed: ${(err as Error).message}`);
+  }
+
+  if (options.wait <= 0) {
+    // Async dispatch mode (default, --wait 0): exit as soon as the message is
+    // DELIVERED, not when the turn completes. The sendMessage RPC resolves only
+    // after the whole turn on an idle session (InteractionService awaits
+    // sendAIMessage) but returns right after enqueueing on a busy session — so
+    // delivery is the earlier of our userMessageAdded notification (idle: the
+    // message lands in history before the turn starts) and the RPC response
+    // itself (busy: enqueued immediately). The daemon keeps running the turn
+    // after this client disconnects (attach 语义) — progress is tracked via
+    // `status` (spec: send 默认异步派单).
+    const sendPromise = client.request(
+      "sendMessage",
+      { text: message },
+      initId,
+    );
+    const userMessage = new Promise<"userMessageAdded">((resolve) => {
+      client.onNotification("userMessageAdded", () => {
+        if (ourUserMessageId !== undefined) resolve("userMessageAdded");
+      });
+    });
+    try {
+      await Promise.race([sendPromise, userMessage]);
+    } catch (err) {
+      client.dispose();
+      fail(`wave daemon send failed: ${(err as Error).message}`);
+    }
+    client.dispose();
+    console.log(`Sent message to session: ${sessionId}`);
+    process.exit(0);
+  }
+
+  try {
     await client.request("sendMessage", { text: message }, initId);
   } catch (err) {
     client.dispose();
     fail(`wave daemon send failed: ${(err as Error).message}`);
   }
 
-  // Wait for the reply that corresponds to our message.
+  // Wait for the reply that corresponds to our message (--wait N mode). N is
+  // the seconds bound of the wait; the loop never hangs indefinitely (spec:
+  // --wait 兜底避免无限挂起).
   const started = Date.now();
-  const timeoutMs = options.timeout === 0 ? Infinity : options.timeout * 1000;
+  const timeoutMs = options.wait * 1000;
   while (!(loading === false && replyMessageId !== undefined)) {
     if (Date.now() - started > timeoutMs) {
       // Timeout backstop: the most likely cause is a session waiting on a
@@ -545,9 +592,7 @@ export async function daemonSendCommand(
         );
       }
       fail(
-        options.timeout === 0
-          ? "Timed out waiting for a reply"
-          : `Timed out waiting for a reply (${options.timeout}s), no assistant reply received`,
+        `Timed out waiting for a reply (${options.wait}s), no assistant reply received`,
       );
     }
     await sleep(200);

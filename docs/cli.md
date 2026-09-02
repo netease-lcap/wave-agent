@@ -154,8 +154,10 @@ wave daemon list
 # 查看指定会话的实时状态（生成中/空闲/等待审批）与最近消息
 wave daemon status <sessionId> [--lines 20]
 
-# 向会话注入一条消息并等待回复完成，输出助手最终回复
-wave daemon send <sessionId> "继续" [--timeout 600]
+# 向会话注入一条消息（默认异步派单：发完即退，不等待回复；进度用 status 查看）
+wave daemon send <sessionId> "继续"
+# 需要同步等待回复时传 --wait <秒>：等待该消息对应的回复完成后输出助手最终回复
+wave daemon send <sessionId> "继续" --wait 600
 
 # 处理会话挂起的权限请求：允许 / 拒绝（可附原因）
 wave daemon respond <sessionId> <requestId> --allow
@@ -171,7 +173,7 @@ wave daemon abort <sessionId>
 - **语义区分**：`wave --daemon <socket>` 是启动 daemon（服务端），`wave daemon <子命令>` 是访问 daemon（客户端），两者互不干扰
 - daemon 空闲 60 秒自动退出属正常现象；daemon 未运行时任一子命令快速报错退出（非零退出码），不进入 TUI、不挂起
 - `wave daemon list` 仅展示当前 daemon 进程内存中 live 的会话（不扫磁盘索引）；知道 sessionId 时即使不在列表中，也可经 `status` / `send` 重新载入
-- `wave daemon send` 默认 600 秒超时等待回复（`--timeout 0` 不限制）；会话挂起等待审批时超时退出，提示先经 `wave daemon respond` 处理
+- `wave daemon send` 默认异步派单：注入消息后立即退出码 0（stdout 输出 `Sent message to session: <sessionId>` 确认，不等待回复、不输出回复文本），消息照常在 daemon 中处理，进度用 `wave daemon status` 查看；需要同步等待回复时传 `--wait <秒>`（如 `--wait 600`，等待超过 N 秒无回复即以非零退出码退出；会话挂起等待审批时超时退出，提示先经 `wave daemon respond` 处理）
 - `wave daemon respond` 按工具智能补全决策：`EnterPlanMode` 的 `--allow` 自动附带 plan 模式切换；`AskUserQuestion` 需用 `--answer '{"问题":"答案"}'` 提供答案；`--rule "Bash(ls)"` 持久化允许规则（后续同类调用不再询问）；`--mode acceptEdits` 切换会话权限模式
 - `wave daemon abort` 中断指定会话正在生成的回复（含子代理、bash 命令与排队消息），不清除已完成的对话历史；对空闲会话是幂等 no-op（仍成功退出）；sessionId 不存在时以非零退出码报错；attach 是短暂访问、随用随断，中断后会话在 daemon 中继续存活
 

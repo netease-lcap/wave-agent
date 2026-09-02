@@ -109,23 +109,25 @@ order: 270
 
 ---
 
-### 用户故事：向会话注入消息继续对话（优先级：P0）
+### 用户故事：向会话注入消息派单（优先级：P0）
 
-作为在远端主机续聊后台任务的用户，我希望 `wave daemon send <sessionId> <消息>` 向指定会话注入一条用户消息、等待回复完成，并输出助手最终回复，以便不打开完整 UI 即可驱动后台 agent 继续工作。
+作为在远端主机派单后台任务的用户，我希望 `wave daemon send <sessionId> <消息>` 默认以异步派单方式向指定会话注入一条用户消息并立即返回（发完即退，不等待回复、不输出回复文本），需要同步收尾时再用 `--wait <秒>` 等待该消息对应的回复完成并输出助手最终回复，以便不打开完整 UI 即可驱动后台 agent 继续工作。
 
-**为什么是这个优先级**：这是「继续对话」的核心命令，也是用户「本地电脑关机后从另一台机器驱动 daemon 会话」场景的最终诉求；复用已验证的 attach → `sendMessage` → 流式通知 → `loadingChange:false` 收尾流程，非交互式运行便于脚本调用。
+**为什么是这个优先级**：这是「继续对话/派单」的核心命令，也是用户「本地电脑关机后从另一台机器驱动 daemon 会话」场景的最终诉求；派单方（如主代理对委托会话转达消息）是 fire-and-forget 心智——消息送达即完成，进度用 `status` 盯——同步等待语义（默认 600 秒超时）反而让每条派单都阻塞到超时才返回，因此默认改为异步派单，`--wait <秒>` 保留显式等待能力（复用已验证的 attach → `sendMessage` → 流式通知 → `loadingChange:false` 收尾流程，非交互式运行便于脚本调用）。
 
-**独立测试**：对一条空闲会话运行 `wave daemon send <sessionId> "继续"`，验证会话收到该消息、助手产出回复、命令输出最终回复文本后退出；对正在生成中的会话发送则消息进入队列、命令等待该消息对应的回复完成后退出。
+**独立测试**：对一条空闲会话运行 `wave daemon send <sessionId> "继续"`（不带 `--wait`），验证会话收到该消息、命令立即以退出码 0 退出且不输出回复文本；对空闲会话运行 `--wait 5`，验证命令等待该消息对应的回复完成后输出最终回复文本再退出；对正在生成中的会话发送则消息进入队列、`--wait` 模式等待该消息对应的回复完成后退出。
 
 **验收场景**：
 
-1. **假设** 目标会话空闲，**当** 用户运行 `wave daemon send <sessionId> "继续"` 时，**则** 命令经 attach 后调用 `sendMessage` 注入消息，订阅流式通知（`assistantContentUpdated` 等），直到 `loadingChange:false` 表示该回复完成。
-2. **假设** 助手回复完成，**当** 命令结束时，**则** stdout 输出该条消息对应的助手最终回复文本（与 `wave -p` 的纯净输出一致，不含子代理内部信息与流式杂讯），退出码为 0。
-3. **假设** 目标会话正在生成中，**当** 用户运行 `wave daemon send <sessionId> "消息"` 时，**则** 消息按现有队列语义入队等待，命令持续等待直到该消息对应的回复完成（依据 `loadingChange` 与消息 ID 对应）后输出最终回复。
-4. **假设** 目标会话挂起等待权限审批，**当** 用户运行 `wave daemon send <sessionId> "消息"` 时，**则** 命令不无限期挂起：等待超过 `--timeout`（默认 600 秒，`0` 表示不限制）后以非零退出码退出，并提示「Session is waiting for permission approval; handle it with `wave daemon respond <sessionId> <requestId>` and retry」。
-5. **假设** 指定的 sessionId 不存在于该 daemon，**当** 用户运行 `wave daemon send <sessionId> "消息"` 时，**则** 以非零退出码退出并给出明确错误，不注入任何消息。
-6. **假设** send 命令完成或失败退出后，**当** 命令结束时，**则** 断开与 daemon 的连接，会话在 daemon 中继续存活、不因客户端退出而终止（与 attach 语义一致）。
-7. **假设** 等待期间回复被中断（如另一客户端对该会话运行 `wave daemon abort`，最终 assistant 消息只有 reasoning、无正文），**当** 命令收尾时，**则** 命令明确提示已中断（stderr 输出「Message aborted before producing a reply」）并以非零退出码退出，而不是静默以退出码 0 退出且无输出。
+1. **假设** 目标会话空闲、用户未传 `--wait`，**当** 用户运行 `wave daemon send <sessionId> "继续"` 时，**则** 命令经 attach 后调用 `sendMessage` 注入消息，注入成功即视为送达并立即返回：stdout 输出派单确认（`Sent message to session: <sessionId>`）、退出码为 0，不等待回复、不输出助手回复文本——send 默认是异步派单（fire-and-forget），后续进度经 `wave daemon status` / `wave daemon list` 查看。
+2. **假设** 目标会话正在生成中、用户未传 `--wait`，**当** 用户运行 `wave daemon send <sessionId> "消息"` 时，**则** 消息按现有队列语义入队等待，命令同样在注入成功后立即返回（退出码 0），不等待该消息的回复完成。
+3. **假设** 用户传入 `--wait <N>`（N 为秒数）且目标会话空闲，**当** 运行 `wave daemon send <sessionId> "继续" --wait 300` 时，**则** 命令注入消息后持续等待，直到该条消息对应的助手回复完成（订阅 `userMessageAdded` / `assistantMessageAdded` / `loadingChange`，按消息 ID 对应——前一轮次的 stale `loading:false` 不会提前结束等待），stdout 输出该条消息对应的助手最终回复文本（与 `wave -p` 的纯净输出一致，不含子代理内部信息与流式杂讯），退出码为 0。
+4. **假设** 用户传入 `--wait <N>` 且目标会话正在生成中，**当** 运行 send 时，**则** 消息入队等待，命令持续等待直到该消息对应的回复完成后输出最终回复（与场景 3 同一套消息 ID 对应逻辑）。
+5. **假设** 用户传入 `--wait <N>` 且目标会话挂起等待权限审批，**当** 等待超过 N 秒仍未收到回复时，**则** 命令以非零退出码退出（不无限期挂起），并提示「Session is waiting for permission approval; handle it with `wave daemon respond <sessionId> <requestId>` and retry」。
+6. **假设** 用户传入 `--wait <N>` 且 N 秒内既无回复也无挂起审批（如模型卡死），**当** 命令超时时，**则** 以非零退出码退出并提示 `Timed out waiting for a reply (<N>s), no assistant reply received`。
+7. **假设** 指定的 sessionId 不存在于该 daemon（无论是否传 `--wait`），**当** 用户运行 `wave daemon send <sessionId> "消息"` 时，**则** 以非零退出码退出并给出明确错误，不注入任何消息。
+8. **假设** send 命令完成或失败退出后，**当** 命令结束时，**则** 断开与 daemon 的连接，会话在 daemon 中继续存活、不因客户端退出而终止（与 attach 语义一致；异步派单模式下回复仍在 daemon 中照常生成，可用 `status` 查看）。
+9. **假设** 用户传入 `--wait <N>` 且等待期间回复被中断（如另一客户端对该会话运行 `wave daemon abort`，最终 assistant 消息只有 reasoning、无正文），**当** 命令收尾时，**则** 命令明确提示已中断（stderr 输出「Message aborted before producing a reply」）并以非零退出码退出，而不是静默以退出码 0 退出且无输出。
 
 ---
 
@@ -175,9 +177,9 @@ order: 270
 - **destroy 是幂等注册表操作**：协议 `destroy` 按信封 sessionId 直接删除注册表项（未知会话静默 no-op），无 attach、不创建会话；与 `abort` 不同，destroy 不检查会话是否存活、也不关心是否生成中，只负责销毁。
 - **create --worktree 的 workdir 语义**：worktree 路径是链接 worktree 的顶层（`git rev-parse --show-toplevel` 从该目录的返回），而非主仓根；`--worktree` 与 `--workdir` 同时给出时以 `--worktree` 为准（workdir 仅作为 createWorktree 的源仓库起点）。name 缺省（裸 `--worktree`）时由服务端自动生成随机名。
 - **destroy --remove-worktree 的守卫**：repoRoot 语义与 `createWorktree` 返回值一致（主仓根，`git worktree list --porcelain` 第一项），worktree 路径用 `rev-parse --show-toplevel`（从链接 worktree 返回其自身路径）；两者相等即普通工作目录而非链接 worktree——拒绝移除主工作树，防止 removeWorktree 的 fs.rmSync 回退删掉整个仓库。hookBased 按该仓库是否配置 WorktreeCreate hook 判定（与 createWorktree 的返回一致），hook 管理的工作树交给 WorktreeRemove hook 清理、wave 不跑 `git worktree remove`。git 反查失败（非 git 仓库）时报错退出，不销毁会话。
-- **会话挂起等待审批**：daemon 语义下「等待审批」的会话保持 loading 状态（等同未空闲）；消息中该工具块冻结在 `stage: "running"`（有工具名与参数、无结果字段，结果字段只在 `stage: "end"` 写入），单凭消息无法区分「等审批」与「执行中」，须结合 `listPendingPermissions` 判断；`send` 须有 `--timeout` 兜底避免无限挂起，`status` 应如实显示该状态（AskUserQuestion 请求多行完整渲染、其余工具单行摘要，见「查看会话进度与最近消息」场景 4），`respond` 是处理挂起请求的入口。
+- **会话挂起等待审批**：daemon 语义下「等待审批」的会话保持 loading 状态（等同未空闲）；消息中该工具块冻结在 `stage: "running"`（有工具名与参数、无结果字段，结果字段只在 `stage: "end"` 写入），单凭消息无法区分「等审批」与「执行中」，须结合 `listPendingPermissions` 判断；`send` 默认异步派单不进入等待（不存在挂起风险），`--wait <N>` 模式的等待阶段以 N 秒为兜底避免无限挂起，`status` 应如实显示该状态（AskUserQuestion 请求多行完整渲染、其余工具单行摘要，见「查看会话进度与最近消息」场景 4），`respond` 是处理挂起请求的入口。
 - **respond 的决策并非单一 allow/deny**：`PermissionDecision` 含 behavior/message/newPermissionMode/newPermissionRule 四个字段；EnterPlanMode 的 allow 必须附带 `newPermissionMode:"plan"`（按工具智能补全），AskUserQuestion 必须用 `--answer` 提供答案（allow 且 message 为答案 JSON），Bash/Edit 可选 `--rule`/`--mode`；命令须与桌面端行为一致，不得把多选项压成裸 allow/deny。`--answer` 支持两种格式：合法 JSON 对象（key=问题原文、value=选项 label，与桌面端提交的答案对象同构，向后兼容）或逗号分隔的选项序号（第 i 个数字 = 第 i 题的选项序号、从 0 起，与 `status` 渲染序号一致；仅 JSON 解析失败或非对象内容才走序号解析）。
 - **requestId 幂等与过期**：服务端对未知 requestId 的 `permissionResponse` 静默忽略；respond 应先行校验（如经 `listPendingPermissions`）并在 requestId 已处理时明确提示，避免用户误以为审批已生效。
-- **`send` 输出纯净性**：命令输出助手最终回复文本，流式通知与子代理内部信息不得泄漏到 stdout（与打印模式一致），诊断信息走 stderr。
+- **`send` 默认异步派单、`--wait` 模式输出纯净**：不带 `--wait` 时命令注入消息后立即退出码 0，stdout 仅输出派单确认（`Sent message to session: <sessionId>`），不输出助手回复文本；`--wait <N>` 模式输出助手最终回复文本，流式通知与子代理内部信息不得泄漏到 stdout（与打印模式一致），诊断信息走 stderr。
 - **`abort` 中断是幂等操作**：在空闲会话上是无害 no-op，命令仍成功返回；对正在生成（含子代理、bash 命令、slash 命令）或挂起审批的会话，中断后回到空闲（与桌面端中断按钮语义一致）。`abort` 不清除已完成的对话历史，只打断进行中的生成并清空消息队列；无需先经 `status` 确认是否正在生成。
 - **attach 是短暂访问**：`status` / `send` / `respond` / `abort` 完成即断开连接，不常驻客户端（`create` 为纯注册表操作、`destroy` 按信封 sessionId 无需 attach，仅 `destroy --remove-worktree` 额外调用 `getSessionInfo` 取工作目录）；daemon 与会话的生命周期不受客户端连接影响（attach/detach 语义，会话持续运行至空闲自动退出或用户销毁）。

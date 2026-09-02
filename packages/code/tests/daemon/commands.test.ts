@@ -580,7 +580,7 @@ test("send: prints the pure final reply text and exits 0 (idle session)", async 
   client.close();
 
   await expect(
-    daemonSendCommand(socketPath, "test-session-id", "继续", { timeout: 5 }),
+    daemonSendCommand(socketPath, "test-session-id", "继续", { wait: 5 }),
   ).rejects.toThrow("exit(0)");
   expect(stdoutLines()).toEqual(["好的，我继续。"]);
   expect(exitSpy).toHaveBeenCalledWith(0);
@@ -596,6 +596,54 @@ test("send: prints the pure final reply text and exits 0 (idle session)", async 
   const result = msgs[0] as { result: { sessions: unknown[] } };
   expect(result.result.sessions).toHaveLength(1);
   b.close();
+});
+
+test("send: default (no --wait) is async dispatch — delivers, confirms, and exits without waiting for the reply", async () => {
+  let agent!: ReturnType<typeof createMockAgent>;
+  let callbacks!: AgentCallbacks;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks!;
+    agent = createMockAgent();
+    agent.sendMessage = vi.fn(async () => {
+      // The message lands in history (delivery confirmed by userMessageAdded)
+      // but the turn never completes — async send must NOT wait for the reply.
+      agent.messages.push(userMsg("u1", "继续"));
+      callbacks.onUserMessageAdded?.({ content: "继续" });
+    });
+    return agent;
+  });
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonSendCommand(socketPath, "test-session-id", "继续"),
+  ).rejects.toThrow("exit(0)");
+  expect(agent.sendMessage).toHaveBeenCalledWith("继续", undefined);
+  expect(stdoutLines()).toEqual(["Sent message to session: test-session-id"]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("send: default async also returns immediately when the session is busy (message enqueued)", async () => {
+  vi.mocked(Agent.create).mockImplementation(async () => {
+    const agent = createMockAgent({ isLoading: true });
+    // Busy session: sendMessage enqueues and returns immediately — no user
+    // message is added until the queue drains. Delivery is confirmed by the
+    // RPC response itself.
+    agent.sendMessage = vi.fn(async () => {});
+    return agent;
+  });
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonSendCommand(socketPath, "test-session-id", "继续"),
+  ).rejects.toThrow("exit(0)");
+  expect(stdoutLines()).toEqual(["Sent message to session: test-session-id"]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
 });
 
 test("send: a stale loading:false from the previous turn must not end the wait", async () => {
@@ -626,7 +674,7 @@ test("send: a stale loading:false from the previous turn must not end the wait",
   client.close();
 
   await expect(
-    daemonSendCommand(socketPath, "test-session-id", "继续", { timeout: 5 }),
+    daemonSendCommand(socketPath, "test-session-id", "继续", { wait: 5 }),
   ).rejects.toThrow("exit(0)");
   expect(stdoutLines()).toEqual(["好，等前一个任务结束我就开始。"]);
   expect(exitSpy).toHaveBeenCalledWith(0);
@@ -636,7 +684,7 @@ test("send: times out and points at respond when a permission approval is pendin
   await createPendingRequest("Bash", { command: "ls" });
 
   await expect(
-    daemonSendCommand(socketPath, "test-session-id", "继续", { timeout: 0.2 }),
+    daemonSendCommand(socketPath, "test-session-id", "继续", { wait: 0.2 }),
   ).rejects.toThrow("exit(1)");
   expect(stderrText()).toContain(
     "Session is waiting for permission approval; handle it with `wave daemon respond test-session-id perm_1` and retry",
@@ -650,7 +698,7 @@ test("send: times out with the generic message when nothing is pending", async (
   client.close();
 
   await expect(
-    daemonSendCommand(socketPath, "test-session-id", "继续", { timeout: 0.2 }),
+    daemonSendCommand(socketPath, "test-session-id", "继续", { wait: 0.2 }),
   ).rejects.toThrow("exit(1)");
   expect(stderrText()).toContain(
     "Timed out waiting for a reply (0.2s), no assistant reply received",
@@ -685,7 +733,7 @@ test("send: an interrupted reply (reasoning only, no text) exits 1 with an inter
   client.close();
 
   await expect(
-    daemonSendCommand(socketPath, "test-session-id", "继续", { timeout: 5 }),
+    daemonSendCommand(socketPath, "test-session-id", "继续", { wait: 5 }),
   ).rejects.toThrow("exit(1)");
   expect(stderrText()).toContain("Message aborted before producing a reply");
   expect(stdoutLines()).toEqual([]);
