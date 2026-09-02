@@ -20,16 +20,26 @@ export const test = base.extend<DesktopTestContext>({
     });
 
     const webviewDistPath = path.join(process.cwd(), "dist");
-    const vscodeStylesPath = path.join(
-      process.cwd(),
-      "theme",
-      "theme-base-dark.css",
-    );
+    const themeDir = path.join(process.cwd(), "theme");
 
-    let vscodeStyles = "";
-    if (fs.existsSync(vscodeStylesPath)) {
-      vscodeStyles = fs.readFileSync(vscodeStylesPath, "utf8");
-    }
+    // Same dual-theme inlining as packages/desktop/scripts/syncWebview.mjs:
+    // both variable sets coexist, each scoped to <html data-theme="…">. The
+    // static data-theme="dark" (mirroring the real index.html) makes the
+    // [data-host="desktop"][data-theme="…"] rules in host-desktop.css actually
+    // resolve — without it the designer light/dark pairs collapsed to the
+    // unscoped light values and screenshots rendered white popups on dark UI.
+    const rewriteThemeBase = (css: string, theme: string) =>
+      css.replace(/:root\s*\{/g, `:root[data-theme="${theme}"] {`);
+    const readTheme = (file: string, theme: string) =>
+      fs.existsSync(path.join(themeDir, file))
+        ? rewriteThemeBase(
+            fs.readFileSync(path.join(themeDir, file), "utf8"),
+            theme,
+          )
+        : "";
+    const vscodeStyles =
+      readTheme("theme-base-dark.css", "dark") +
+      readTheme("theme-base-light.css", "light");
 
     const codiconsCssPath = path.join(
       process.cwd(),
@@ -107,7 +117,7 @@ export const test = base.extend<DesktopTestContext>({
 
     const testHtml = `
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
