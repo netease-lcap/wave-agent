@@ -147,7 +147,6 @@ export default {
                 { text: "JetBrains 插件", link: "/vsce#jetbrains-插件" },
               ],
             },
-            { text: "AI 核心能力", link: "/vsce#ai-核心能力" },
             {
               text: "画廊",
               collapsed: false,
