@@ -728,3 +728,413 @@ export const UnmaximizeIcon: React.FC<IconProps> = ({
     </g>
   </svg>
 );
+
+// ═══ 设置界面图标（第三十八轮，Figma 13383:4078 图标规范 + codechat-ui
+//   settings-*.svg 直接导出）════
+// 全部 16×16、stroke/fill currentColor（color 由 CSS 控制：light #565A60 /
+// dark #9A9EA5，规范 normal/hover 同色，hover 只变底 #EEF0F3）。
+
+/** 设置-全局设置（settings-global.svg）：滑块/调节 */
+export const SettingsGlobalIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M9.33333 11.3333H3.33333"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12.6667 4.66667H6.66667"
+      stroke="currentColor"
+      strokeWidth="1.33333"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M11.3333 13.3333C12.4379 13.3333 13.3333 12.4379 13.3333 11.3333C13.3333 10.2288 12.4379 9.33333 11.3333 9.33333C10.2288 9.33333 9.33333 10.2288 9.33333 11.3333C9.33333 12.4379 10.2288 13.3333 11.3333 13.3333Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M4.66667 6.66667C5.77124 6.66667 6.66667 5.77124 6.66667 4.66667C6.66667 3.5621 5.77124 2.66667 4.66667 2.66667C3.5621 2.66667 2.66667 3.5621 2.66667 4.66667C2.66667 5.77124 3.5621 6.66667 4.66667 6.66667Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+/** 设置-个性化（settings-personalization.svg）：齿轮 + 加号 */
+export const SettingsPersonalizationIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M7.34467 1.876C7.37323 1.72307 7.45438 1.58494 7.57406 1.48555C7.69375 1.38615 7.84442 1.33174 8 1.33174C8.15558 1.33174 8.30625 1.38615 8.42594 1.48555C8.54562 1.58494 8.62677 1.72307 8.65533 1.876L9.356 5.58133C9.40576 5.84477 9.53378 6.08708 9.72335 6.27665C9.91292 6.46622 10.1552 6.59424 10.4187 6.644L14.124 7.34467C14.2769 7.37323 14.4151 7.45438 14.5145 7.57406C14.6139 7.69375 14.6683 7.84442 14.6683 8C14.6683 8.15558 14.6139 8.30625 14.5145 8.42594C14.4151 8.54562 14.2769 8.62677 14.124 8.65533L10.4187 9.356C10.1552 9.40576 9.91292 9.53378 9.72335 9.72335C9.53378 9.91292 9.40576 10.1552 9.356 10.4187L8.65533 14.124C8.62677 14.2769 8.54562 14.4151 8.42594 14.5145C8.30625 14.6139 8.15558 14.6683 8 14.6683C7.84442 14.6683 7.69375 14.6139 7.57406 14.5145C7.45438 14.4151 7.37323 14.2769 7.34467 14.124L6.644 10.4187C6.59424 10.1552 6.46622 9.91292 6.27665 9.72335C6.08708 9.53378 5.84477 9.40576 5.58133 9.356L1.876 8.65533C1.72307 8.62677 1.58494 8.54562 1.48555 8.42594C1.38615 8.30625 1.33174 8.15558 1.33174 8C1.33174 7.84442 1.38615 7.69375 1.48555 7.57406C1.58494 7.45438 1.72307 7.37323 1.876 7.34467L5.58133 6.644C5.84477 6.59424 6.08708 6.46622 6.27665 6.27665C6.46622 6.08708 6.59424 5.84477 6.644 5.58133L7.34467 1.876Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M13.3333 1.33333V4"
+      stroke="currentColor"
+      strokeWidth="1.33333"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M14.6667 2.66667H12"
+      stroke="currentColor"
+      strokeWidth="1.33333"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M2.66667 14.6667C3.40305 14.6667 4 14.0697 4 13.3333C4 12.597 3.40305 12 2.66667 12C1.93029 12 1.33333 12.597 1.33333 13.3333C1.33333 14.0697 1.93029 14.6667 2.66667 14.6667Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+/** 设置-项目设置（settings-project.svg）：文件夹 + 齿轮角 */
+export const SettingsProjectIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M6.86667 13.3333H2.66667C2.31304 13.3333 1.97391 13.1929 1.72386 12.9428C1.47381 12.6928 1.33333 12.3536 1.33333 12V3.33333C1.33333 2.97971 1.47381 2.64057 1.72386 2.39052C1.97391 2.14048 2.31304 2 2.66667 2H5.32C5.54299 1.99781 5.76297 2.05159 5.9598 2.15641C6.15663 2.26123 6.32403 2.41375 6.44667 2.6L6.88667 3.4C7.00807 3.58435 7.17335 3.73568 7.36767 3.8404C7.56198 3.94512 7.77926 3.99996 8 4H13.3333C13.687 4 14.0261 4.14048 14.2761 4.39052C14.5262 4.64057 14.6667 4.97971 14.6667 5.33333V7.53333"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M9.53667 13.02L10.152 12.7653"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M10.152 11.2347L9.53667 10.9793"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M11.2347 10.152L10.9793 9.53667"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M11.2347 13.848L10.9793 14.464"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12.7653 10.152L13.0207 9.53667"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M13.02 14.464L12.7653 13.848"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M13.848 11.2347L14.464 10.9793"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M13.848 12.7653L14.464 13.0207"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12 14C13.1046 14 14 13.1046 14 12C14 10.8954 13.1046 10 12 10C10.8954 10 10 10.8954 10 12C10 13.1046 10.8954 14 12 14Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+/** 设置-技能（settings-skills.svg）：网格 */
+export const SettingsSkillsIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M6.66667 5.33333H6.67333"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M8 8H8.00667"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M9.33333 5.33333H9.34"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M10.6667 8H10.6733"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12 5.33333H12.0067"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M4 5.33333H4.00667"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M4.66667 10.6667H11.3333"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M5.33333 8H5.34"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M13.3333 2.66667H2.66667C1.93029 2.66667 1.33333 3.26362 1.33333 4V12C1.33333 12.7364 1.93029 13.3333 2.66667 13.3333H13.3333C14.0697 13.3333 14.6667 12.7364 14.6667 12V4C14.6667 3.26362 14.0697 2.66667 13.3333 2.66667Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+/** 设置-子代理（settings-subagents.svg）：文档 + 分支 */
+export const SettingsSubagentsIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M8 5.33333V2.66667H5.33333"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12 5.33333H4C3.26362 5.33333 2.66667 5.93029 2.66667 6.66667V12C2.66667 12.7364 3.26362 13.3333 4 13.3333H12C12.7364 13.3333 13.3333 12.7364 13.3333 12V6.66667C13.3333 5.93029 12.7364 5.33333 12 5.33333Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M1.33333 9.33333H2.66667"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M13.3333 9.33333H14.6667"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M10 8.66667V10"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M6 8.66667V10"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+/** 设置-钩子（settings-hooks.svg）：钩子 */
+export const SettingsHooksIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M10 4C8.4087 4 6.88258 4.63214 5.75736 5.75736C4.63214 6.88258 4 8.4087 4 10V2"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12 6C13.1046 6 14 5.10457 14 4C14 2.89543 13.1046 2 12 2C10.8954 2 10 2.89543 10 4C10 5.10457 10.8954 6 12 6Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M4 14C5.10457 14 6 13.1046 6 12C6 10.8954 5.10457 10 4 10C2.89543 10 2 10.8954 2 12C2 13.1046 2.89543 14 4 14Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+/** 设置-MCP 服务（settings-mcp.svg）：地球 + 链接 */
+export const SettingsMcpIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M4.2 13.5333C4.34865 13.6825 4.52527 13.8008 4.71976 13.8816C4.91424 13.9624 5.12275 14.0039 5.33333 14.0039C5.54392 14.0039 5.75243 13.9624 5.94691 13.8816C6.14139 13.8008 6.31802 13.6825 6.46667 13.5333L8 12L4 8L2.46667 9.53333C2.3175 9.68198 2.19915 9.85861 2.1184 10.0531C2.03764 10.2476 1.99607 10.4561 1.99607 10.6667C1.99607 10.8772 2.03764 11.0858 2.1184 11.2802C2.19915 11.4747 2.3175 11.6514 2.46667 11.8L4.2 13.5333Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M1.33333 14.6667L3.33333 12.6667"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M5 9L6.66667 7.33333"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M7 11L8.66667 9.33333"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12 2L9.33333 4.66667H13.3333L10.6667 7.33333"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+/** 设置-返回（settings-back.svg）：左箭头 */
+export const SettingsBackIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+  >
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M7.69977 12.4311C7.43942 12.6914 7.01731 12.6914 6.75696 12.4311L2.7974 8.47151C2.53705 8.21116 2.53705 7.78905 2.7974 7.5287L6.75696 3.56914C7.01731 3.30879 7.43942 3.30879 7.69977 3.56914C7.96012 3.82949 7.96012 4.2516 7.69977 4.51195L4.87828 7.33344L12.7308 7.33292C13.099 7.33292 13.3975 7.6314 13.3975 7.99959C13.3975 8.36778 13.099 8.66625 12.7308 8.66625L4.87828 8.66677L7.69977 11.4883C7.96012 11.7486 7.96012 12.1707 7.69977 12.4311Z"
+      fill="currentColor"
+    />
+  </svg>
+);

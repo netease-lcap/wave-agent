@@ -24,6 +24,16 @@ import SettingsSubagentsView from "./SettingsSubagentsView";
 import SettingsSkillsView from "./SettingsSkillsView";
 import SettingsHooksView from "./SettingsHooksView";
 import SettingsMcpView from "./SettingsMcpView";
+import {
+  SettingsBackIcon,
+  SettingsGlobalIcon,
+  SettingsHooksIcon,
+  SettingsMcpIcon,
+  SettingsPersonalizationIcon,
+  SettingsProjectIcon,
+  SettingsSkillsIcon,
+  SettingsSubagentsIcon,
+} from "./HeaderIcons";
 import "../styles/SettingsPage.css";
 
 export interface SettingsPageProps {
@@ -79,7 +89,7 @@ type AgentsScope = "user" | "project";
 interface NavItem {
   key: NavKey;
   label: string;
-  icon: string;
+  icon: React.ComponentType<{ className?: string }>;
 }
 
 interface NavGroup {
@@ -87,26 +97,31 @@ interface NavGroup {
   items: NavItem[];
 }
 
-/** 导航：7 项分 3 组（对齐原型 settings-navigation.ts；直连设置随私有化部署移除 2026-09） */
+/** 导航：7 项分 3 组（对齐原型 settings-navigation.ts；直连设置随私有化部署移除 2026-09）。
+    图标 = Figma 导出 SVG（codechat-ui settings-*.svg 同源），非 codicon 字体。 */
 const NAV_GROUPS: NavGroup[] = [
   {
     label: "通用",
     items: [
-      { key: "global", label: "全局设置", icon: "settings-gear" },
-      { key: "personalization", label: "个性化", icon: "person" },
+      { key: "global", label: "全局设置", icon: SettingsGlobalIcon },
+      {
+        key: "personalization",
+        label: "个性化",
+        icon: SettingsPersonalizationIcon,
+      },
     ],
   },
   {
     label: "工作区",
-    items: [{ key: "project", label: "项目设置", icon: "repo" }],
+    items: [{ key: "project", label: "项目设置", icon: SettingsProjectIcon }],
   },
   {
     label: "AI 与扩展",
     items: [
-      { key: "skills", label: "技能", icon: "lightbulb" },
-      { key: "subagents", label: "子代理", icon: "account" },
-      { key: "hooks", label: "钩子", icon: "link" },
-      { key: "mcp", label: "MCP 服务", icon: "globe" },
+      { key: "skills", label: "技能", icon: SettingsSkillsIcon },
+      { key: "subagents", label: "子代理", icon: SettingsSubagentsIcon },
+      { key: "hooks", label: "钩子", icon: SettingsHooksIcon },
+      { key: "mcp", label: "MCP 服务", icon: SettingsMcpIcon },
     ],
   },
 ];
@@ -238,7 +253,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
       <div className="settings-layout">
         <aside className="settings-sidebar">
           <button type="button" className="settings-back" onClick={onClose}>
-            <i className="codicon codicon-arrow-left" />
+            <SettingsBackIcon />
             <span>返回</span>
           </button>
           <nav className="settings-navigation" aria-label="设置">
@@ -256,7 +271,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       aria-current={activeNav === item.key ? "page" : undefined}
                       onClick={() => setActiveNav(item.key)}
                     >
-                      <i className={`codicon codicon-${item.icon}`} />
+                      <item.icon />
                       <span>{item.label}</span>
                     </button>
                   ))}

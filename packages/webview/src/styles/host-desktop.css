@@ -1550,3 +1550,72 @@
 [data-host="desktop"] .sticky-user-content {
   font-weight: 500;
 }
+
+/* ═══ 第三十八轮：设置界面图标对齐 Figma 13383:4078 图标规范 ═══
+   规范（功能图标集 dump）：normal 与 hover 图标色均 #565A60（24×24 画布，
+   16px glyph 同值；仅「活动器 hover」#C1292E）；hover 变化的是按钮底
+   #EEF0F3，图标色保持不变。设置页 7 导航 + 返回按钮已由 codicon 字体
+   替换为 Figma 导出 SVG（HeaderIcons Settings*Icon），此处统一图标色：
+   light #565A60 / dark #9A9EA5（wave 深色惯例），选中项保持同色（codechat
+   settings-nav-item 选中只变文字与底，图标不动）。 */
+
+[data-host="desktop"] .settings-nav-item svg,
+[data-host="desktop"] .settings-back svg {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="dark"] .settings-nav-item svg,
+[data-host="desktop"][data-theme="dark"] .settings-back svg {
+  color: #9a9ea5;
+}
+
+/* 交互底/文字对齐 codechat settings.css（--cc-fill-hover #EEF0F3 悬停、
+   --cc-fill-pressed #E7E9ED 选中、--cc-text-primary #1F2329 选中文字）；
+   base 用 vscode token（hover 半透明黑、选中 VS Code 蓝）在桌面端违和 */
+[data-host="desktop"] .settings-nav-item:hover,
+[data-host="desktop"] .settings-back:hover {
+  background: #eef0f3;
+}
+[data-host="desktop"] .settings-nav-item.is-active {
+  color: #1f2329;
+  background: #e7e9ed;
+}
+[data-host="desktop"][data-theme="dark"] .settings-nav-item:hover,
+[data-host="desktop"][data-theme="dark"] .settings-back:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+[data-host="desktop"][data-theme="dark"] .settings-nav-item.is-active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* 桌面端其余控件图标统一 #565A60（同一图标规范；base 各按钮继承
+   vscode-foreground，light 下 #202020 深黑偏重）。保留：
+   - `.desktop-sidebar-more-btn.is-active` 品牌红 #C1292E（规范「活动器」）
+   - workdir-trigger / session-group-header 只覆盖内部 codicon 图标，
+     触发按钮文字色不动 */
+[data-host="desktop"] .desktop-sidebar-more-btn:not(.is-active),
+[data-host="desktop"] .desktop-sidebar-new-chat,
+[data-host="desktop"] .desktop-session-more-btn,
+[data-host="desktop"] .account-card-more-btn,
+[data-host="desktop"] .header-panel-toggle,
+[data-host="desktop"] .desktop-pane-close,
+[data-host="desktop"] .write-preview-open,
+[data-host="desktop"] .toast-close,
+[data-host="desktop"] .confirmation-close-btn,
+[data-host="desktop"] .desktop-session-group-header .codicon,
+[data-host="desktop"] .desktop-workdir-trigger .codicon {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-sidebar-more-btn:not(.is-active),
+[data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat,
+[data-host="desktop"][data-theme="dark"] .desktop-session-more-btn,
+[data-host="desktop"][data-theme="dark"] .account-card-more-btn,
+[data-host="desktop"][data-theme="dark"] .header-panel-toggle,
+[data-host="desktop"][data-theme="dark"] .desktop-pane-close,
+[data-host="desktop"][data-theme="dark"] .write-preview-open,
+[data-host="desktop"][data-theme="dark"] .toast-close,
+[data-host="desktop"][data-theme="dark"] .confirmation-close-btn,
+[data-host="desktop"][data-theme="dark"] .desktop-session-group-header .codicon,
+[data-host="desktop"][data-theme="dark"] .desktop-workdir-trigger .codicon {
+  color: #9a9ea5;
+}

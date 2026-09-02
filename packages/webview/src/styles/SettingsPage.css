@@ -67,6 +67,12 @@
   background: var(--vscode-list-hoverBackground);
 }
 
+.settings-back svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
 .settings-navigation {
   display: flex;
   flex: 1 1 auto;
@@ -117,11 +123,11 @@
   cursor: pointer;
 }
 
-.settings-nav-item .codicon {
+.settings-nav-item svg {
   width: 16px;
   height: 16px;
   flex: 0 0 16px;
-  font-size: 16px;
+  color: var(--vscode-icon-foreground);
 }
 
 .settings-nav-item:hover {
@@ -134,7 +140,7 @@
   background: var(--cc-settings-selected-bg);
 }
 
-.settings-nav-item.is-active .codicon {
+.settings-nav-item.is-active svg {
   color: var(--cc-settings-selected-text);
 }
 
