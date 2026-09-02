@@ -757,7 +757,7 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 
 ## 第十八轮：预览面板工具栏图标/地址栏字号/背景色（1 项评论）
 
-评论：`div.preview-pane-toolbar`「http://localhost:8899/」图标不对，输入区域字号，背景色不对。
+评论：`div.preview-pane-toolbar`「`http://localhost:8899/`」图标不对，输入区域字号，背景色不对。
 
 ### 变更点清单
 
@@ -1076,8 +1076,8 @@ welcome 态输入区：第十轮实测发现 `.chat-container--welcome .input-ar
 
 ## 第二十七轮：预览头部背景（toolbar 深色去背景 / tab-bar 浅色补白底）（2 项评论）
 
-评论①：`div.preview-pane-toolbar`「http://localhost:8899/」——「深色模式下这里不应该有背景色」。
-评论②：`div.preview-tab-bar`「localhost:8899」——「浅色模式下这里不应该有背景色」。
+评论①：`div.preview-pane-toolbar`「`http://localhost:8899/`」——「深色模式下这里不应该有背景色」。
+评论②：`div.preview-tab-bar`「`localhost:8899`」——「浅色模式下这里不应该有背景色」。
 
 ### 背景：第 18 轮后头部状态与用户感知
 
