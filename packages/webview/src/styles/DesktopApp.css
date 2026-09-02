@@ -1109,7 +1109,9 @@ body.is-panel-resizing webview {
 }
 
 .preview-pane-error .preview-pane-button {
+  width: auto;
   padding: 4px 12px;
+  white-space: nowrap;
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground, #ffffff);
 }
