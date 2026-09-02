@@ -1408,3 +1408,60 @@ vision 复核：编号完整可见无裁切、嵌套缩进清晰、compact-param
 ### 实现文件
 
 - `src/styles/host-desktop.css`（第三十五轮段：列表 padding 28px + diff 圆角 12px + compact-params 12px + write-preview-content 13px）
+
+---
+
+## 第三十六轮（2026-03）：context-usage 环形进度对齐 Figma 13438:8668（不推送）
+
+用户评审 `span.compress-context-button`（「64%」）：「检查环形进度条大小、进度字体字号颜色等，添加和/ 图标颜色不统一」，参考 Figma 13438:8668「功能」组件集。本轮全部修复，**不 commit 不 push**。
+
+### Figma 权威值（13438:8668「功能」组件集 dump）
+
+| 组件           | 尺寸  | 值                                                                                                  |
+| -------------- | ----- | --------------------------------------------------------------------------------------------------- |
+| 压缩上下文     | 59×32 | 图标 16×16：track 半环 `#D4D7DE` + fill 弧 `#565A60`；文字「24%」14px/400 `#565A60`，31×20，gap 4px |
+| 添加（normal） | 32×32 | 16×16 图标内 Union 12×12 `#565A60`（cap=round）                                                     |
+| 设置（normal） | 32×32 | Subtract 13×13 `#565A60` + Line 325 6×8 `#565A60`                                                   |
+| hover 底       | —     | `#EEF0F3` r6                                                                                        |
+
+### 问题与修复对照
+
+| #   | 元素                           | 问题                                                                  | 修复                                                                                             |
+| --- | ------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| ①   | `.compress-context-ring`       | base 14×14；track stroke descriptionForeground@0.4、fill currentColor | 桌面 16×16；track `#D4D7DE` op 1（dark 12% 白）、fill `#565A60`（dark `#9A9EA5`），线宽 2.6 保持 |
+| ②   | `.compress-context-pct`        | base 11px/400、color vscode-foreground（light #202020 深黑）          | 桌面 14px/400/lh 20px、color `#565A60`（dark `#9A9EA5`）—— 与 +/ 图标 #565A60 统一               |
+| ③   | `.compress-context-button`     | padding 0 6px → 按钮 62px，宽于 Figma 59px                            | padding 0 4px → 按钮 58×32 ≈ 59×32（16+4+30+8）                                                  |
+| ④   | +/ 图标（toolbar-icon-button） | 颜色 base vscode-icon-foreground                                      | 前轮已改 `#565A60`/dark `#9A9EA5`；本轮复核确认统一，不改                                        |
+
+### 验证结果（Playwright 探针双主题 computed + vision 复核）
+
+- 探针环境注意：desktop mock 的 focused pane composer 被 inline `style="display:none"` 的无 class div 包裹（mock 宿主隐藏容器，非 CSS 缺陷），compress 默认 0×0 不可见 → 验证时 JS 强制显示该层。
+- computed：ring 16×16；track light `rgb(212,215,222)`=#D4D7DE op 1 / dark `rgba(255,255,255,.12)`；fill light #565A60 / dark #9A9EA5（dasharray 32.17/50.27 = 64% 周长 ✓）；pct 14px/400/lh 20px #565A60 / #9A9EA5，宽 30px；按钮 58×32。
+- vision 复核：图标完整、文字 14px 清晰、垂直居中对齐良好；track #D4D7DE 在白色上对比低、64% 进度下 fill 弧接近整圈是 Figma 设计属性（进度表达），非缺陷。
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（第三十六轮段：compress-context-ring 16×16 + track/fill 色值 + pct 14px + 按钮 padding 0 4px；dark 映射 track 12% 白 / fill #9A9EA5）
+
+---
+
+## 第三十七轮（2026-03）：收起态 header 分割线与标题间距（不推送）
+
+用户评审 `span.header-collapsed-divider`：「分割线和后面标题距离过近」。
+
+### 问题与修复
+
+| 元素                        | 问题                            | 根因                                                                                                                                                                                               | 修复                                                                                                                                           |
+| --------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.header-collapsed-divider` | 分割线右缘紧贴后面标题（gap 0） | divider 是 `.header-collapsed-leading`（flex gap 8）的**末子元素**，容器 gap 只作用于子元素之间、不覆盖它后面；标题 `.header-title` 在 leading 容器外（`.chat-header` 的直接子元素），两者间无间距 | base ChatHeader.css `.header-collapsed-divider` 补 `margin-right: 8px`（与 leading 内 gap 一致，对齐 codechat `workspace-header-start` gap 8） |
+
+codechat 参照：`WorkspaceHeader.vue` 收起分支中 divider 与 h1 标题同属 `.workspace-header-start`（global.css L2033-2039，flex gap 8）→ divider↔标题间距 8px；wave 的标题移出 leading 容器导致 gap 失效，需显式 margin-right。
+
+### 验证结果（Playwright 探针双主题）
+
+- light：divider 右缘 77 → 标题左缘 85，gap 8px；divider 色 rgb(220,223,230)=#DCDEE6 ✓
+- dark：gap 8px；divider 色 rgba(255,255,255,.12) ✓
+
+### 实现文件
+
+- `src/styles/ChatHeader.css`（`.header-collapsed-divider` margin 0 → `margin-right: 8px`）
