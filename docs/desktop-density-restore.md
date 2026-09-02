@@ -1501,3 +1501,36 @@ codechat 参照：`WorkspaceHeader.vue` 收起分支中 divider 与 h1 标题同
 - `src/components/SettingsPage.tsx`（导航 icon 字段改 React 组件、返回按钮换 SVG）
 - `src/styles/SettingsPage.css`（codicon 尺寸规则 → svg 规则）
 - `src/styles/host-desktop.css`（第三十八轮段：设置图标色 + 导航 hover/active 底 + 11 处控件图标色）
+
+---
+
+## 第三十九轮（2026-03）：下拉菜单选项间距归零（用户：panel-toggle-menu 选项之间不应有间距）
+
+用户评审 `div.panel-toggle-menu`（预览/计划/差异/终端/文件面板切换菜单）：「选项之间不应该有间距，检查所有下拉菜单是否有类似问题后修复」。
+
+### 问题与修复
+
+| 菜单                 | 问题                | 根因                                    | 修复                  |
+| -------------------- | ------------------- | --------------------------------------- | --------------------- |
+| `.panel-toggle-menu` | 选项之间有 4px 间距 | base PanelToggleMenu.css L10 `gap: 4px` | desktop 覆盖 `gap: 0` |
+| `.more-menu`         | 同（4px 间距）      | base MoreMenu.css L8 `gap: 4px`         | desktop 覆盖 `gap: 0` |
+
+codechat 权威：`workspace-header-menu` / el-dropdown-menu 菜单项**连续排列**（容器 pad 8、item 32px 高、item 之间无 gap）。
+
+### 全量菜单间距核查（其余无问题）
+
+- `.desktop-session-menu` / `.desktop-workdir-menu`：item 之间无 gap ✓（gap 6px 是 item 内部图标↔文字间距）
+- `.session-list-popup` gap 8px = 搜索框与列表的间距（codechat session-list 同布局），非选项间距 ✓
+- `.account-usage-popup` gap 10px = 浮层内容行距（wave 独有组件，codechat 无参照）✓
+- `.more-menu` 中 logout 前 17px 间距 = 分隔线（margin 8×2 + 1px 线），设计意图 ✓
+
+### 验证结果（Playwright 探针 + vision 复核）
+
+- panel-toggle-menu：gap CSS 0、相邻项间距 [0,0,0,0]、项 32px 高、容器 pad 8 ✓
+- more-menu：gap 0、项间距 [0,0,17]（17 = logout 前分隔线）✓
+- session-menu：gap normal、项间距 [0] ✓
+- vision 复核：五项均匀紧密排列、文字/快捷键各自成列；「预览项 focus ring 描边」是键盘焦点样式（无障碍）、「计划/文件无快捷键」为数据未配置，均非样式缺陷
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（第三十九轮段：`.more-menu`/`.panel-toggle-menu` gap 0）
