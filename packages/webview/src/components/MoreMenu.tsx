@@ -1,7 +1,13 @@
 import React, { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
-import { ExternalLinkIcon } from "./HeaderIcons";
+import {
+  ExternalLinkIcon,
+  HelpCircleIcon,
+  HouseIcon,
+  LogOutIcon,
+  SettingsGearIcon,
+} from "./HeaderIcons";
 import "../styles/MoreMenu.css";
 
 interface MoreMenuProps {
@@ -78,7 +84,12 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
     {
       id: "more-menu-settings",
       run: handleSettings,
-      content: <span>设置{authLabelSuffix}</span>,
+      content: (
+        <>
+          <SettingsGearIcon className="more-menu-item-icon" />
+          <span>设置{authLabelSuffix}</span>
+        </>
+      ),
     },
     {
       id: "more-menu-enterprise",
@@ -86,7 +97,10 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
       run: handleEnterprise,
       content: (
         <>
-          <span>企业控制台</span>
+          <span className="more-menu-item-leading">
+            <HouseIcon className="more-menu-item-icon" />
+            <span>企业控制台</span>
+          </span>
           <ExternalLinkIcon className="more-menu-item-icon" />
         </>
       ),
@@ -97,7 +111,10 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
       run: handleHelpDocs,
       content: (
         <>
-          <span>帮助文档</span>
+          <span className="more-menu-item-leading">
+            <HelpCircleIcon className="more-menu-item-icon" />
+            <span>帮助文档</span>
+          </span>
           <ExternalLinkIcon className="more-menu-item-icon" />
         </>
       ),
@@ -108,12 +125,22 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
           className: "more-menu-item--danger",
           separator: true,
           run: onLogout,
-          content: <span>退出登录{authLabelSuffix}</span>,
+          content: (
+            <>
+              <LogOutIcon className="more-menu-item-icon" />
+              <span>退出登录{authLabelSuffix}</span>
+            </>
+          ),
         }
       : {
           id: "more-menu-login",
           run: onLogin,
-          content: <span>登录{authLabelSuffix}</span>,
+          content: (
+            <>
+              <LogOutIcon className="more-menu-item-icon" />
+              <span>登录{authLabelSuffix}</span>
+            </>
+          ),
         },
   ];
 

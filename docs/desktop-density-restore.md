@@ -1611,3 +1611,45 @@ codechat 权威：`workspace-header-menu` / el-dropdown-menu 菜单项**连续�
 
 - `src/styles/host-desktop.css`（0902 新基线第 2 轮段：布局规格 + 颜色覆盖）
 - `src/components/TaskList.tsx`（stats 数组补 `is-succeeded/is-running/is-pending` 类并应用到 stat dot span）
+
+---
+
+## 0902 新基线第 3 轮（2026-09）：more-menu 菜单项前置图标（对齐 codechat TaskSidebar）
+
+用户预览评论 `div.more-menu`「设置/企业控制台/帮助文档/退出登录」：「参考 ccui 的项目，给这里添加图标，但是企业控制台、帮助文档 末尾的跳转图标保留」。
+
+### 母版（ccui TaskSidebar.vue sidebar-more 弹层）
+
+菜单项前置 lucide 图标（Settings/House/CircleHelp/LogOut，`<… :size="17"/>`，`.el-dropdown-menu__item` flex + gap）；wave 桌面菜单统一规格已在第十三/三十九轮对齐（32px 高 / 14px / r6 / fill-hover），图标按 wave 控件图标尺度 16×16 渲染、stroke currentColor 跟随文字色（危险项自动随红）。
+
+### 修改
+
+| 文件              | 内容                                                                                                                                                                                                     |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HeaderIcons.tsx` | 新增 4 个 lucide 图标组件：SettingsGearIcon / HouseIcon / HelpCircleIcon / LogOutIcon（16×16 渲染、24 viewBox、stroke 2 currentColor，路径取自 ccui node_modules lucide 源）                             |
+| `MoreMenu.tsx`    | entries 前置图标：设置=齿轮；企业控制台=房子、帮助文档=问号圆圈，图标+文字包进 `more-menu-item-leading` 左组、行尾保留 ExternalLinkIcon（space-between 需两直接子）；退出登录=门+箭头（danger 红色跟随） |
+| `MoreMenu.css`    | `.more-menu-item` 补 `gap: 8px`；新增 `.more-menu-item-leading { display:inline-flex; align-items:center; gap:8px; min-width:0 }`                                                                        |
+
+### 验证（8899 Playwright 探针 + 截图，两主题）
+
+- 四行前置图标均可见，企业/帮助行尾 ↗ 保留 ✓
+- item 32px 高、图标 16×16、gap 8px、菜单宽 160px 文字无挤压溢出 ✓
+- 图标色跟随文字：light #565A60 / dark #9A9EA5；退出登录 light/dark 均 #D92D20 系（dark 稍柔）✓
+
+### 实现文件
+
+- `src/components/HeaderIcons.tsx`、`src/components/MoreMenu.tsx`、`src/styles/MoreMenu.css`
+
+---
+
+## 0902 新基线第 4 轮（2026-09）：bash 命令输出内链接深色补覆盖（dark #4daafc）
+
+用户预览评论 `#messagesContainer … a:nth-of-type(1)`（bash 输出内的 `http://localhost:8899/` 链接）：「检查下深色模式这里链接的颜色为什么和其他地方不一样」。
+
+- **根因**：第二十六轮消息内链接统一时 dark 覆盖组只写了 `.write-tool-path` 与 `.markdown-content a`，遗漏 `.bash-command-output a`——其第 768 行规则固定浅色链接蓝 #2f5edb，dark 下比 markdown 链接 #4daafc 暗且发蓝。
+- **修改**：dark 覆盖组补入 `.bash-command-output a` 及 `:hover` → #4daafc（与 write-tool-path / markdown 一致）；light 保持 #2f5edb 不变。
+- **验证**（8899 探针）：目标链接 dark = rgb(77,170,252) ✓，与容器内 markdown 链接同色；light 仍 #2f5edb ✓。
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（第二十六轮链接统一段内补 dark bash 链接覆盖）
