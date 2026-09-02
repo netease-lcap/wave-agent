@@ -60,7 +60,11 @@ test.describe("Desktop conversation-level panels", () => {
     await webviewPage.setViewportSize({ width: 1280, height: 720 });
     await setupSinglePane(injector);
 
+    // The "＋" menu lives in the tab bar: open a first panel via the header
+    // toggle (empty slot → empty-state entry), then list the panel types.
     await webviewPage.getByTestId("panel-toggle-btn").click();
+    await webviewPage.getByTestId("panel-empty-item-terminal").click();
+    await webviewPage.getByTestId("panel-tabs-add").click();
     await expect(webviewPage.getByTestId("panel-toggle-menu")).toBeVisible();
     await expect(
       webviewPage.getByTestId("panel-toggle-item-preview"),
@@ -84,11 +88,9 @@ test.describe("Desktop conversation-level panels", () => {
     await webviewPage.setViewportSize({ width: 1280, height: 720 });
     await setupSinglePane(injector);
 
-    // Open the panel menu, toggle the diff panel on, then close the menu so it
-    // does not cover the panel in the screenshot.
+    // Open the diff panel via the header toggle (empty slot → empty-state).
     await webviewPage.getByTestId("panel-toggle-btn").click();
-    await webviewPage.getByTestId("panel-toggle-item-diff").click();
-    await webviewPage.keyboard.press("Escape");
+    await webviewPage.getByTestId("panel-empty-item-diff").click();
 
     // DiffPane asks the host for the workspace diff; reply with a sample.
     await injector.waitForMessage("desktopGetWorkspaceDiff");
@@ -157,8 +159,7 @@ test.describe("Desktop conversation-level panels", () => {
     await setupSinglePane(injector);
 
     await webviewPage.getByTestId("panel-toggle-btn").click();
-    await webviewPage.getByTestId("panel-toggle-item-terminal").click();
-    await webviewPage.keyboard.press("Escape");
+    await webviewPage.getByTestId("panel-empty-item-terminal").click();
 
     // TerminalPane lazily loads the terminal chunk, builds the xterm instance,
     // then asks the host to create a PTY (term-main for the single pane).

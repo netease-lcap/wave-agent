@@ -37,12 +37,70 @@
   outline: none;
 }
 
-/* 已登录：头像+姓名热区 与 热区右侧「更多」按钮同行。 */
+/* 已登录：头像+姓名热区 与 热区右侧「更新/收起」按钮同行。 */
 .account-card-main {
   display: flex;
   align-items: center;
   gap: 4px;
   width: 100%;
+}
+
+/* 个人信息行右侧「更新」按钮（交互设计 §4 更新按钮状态机；不在热区内）。 */
+.account-card-update-btn {
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--vscode-button-secondaryBorder, rgba(255, 255, 255, 0.25));
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vscode-button-secondaryForeground, #e9e9e9);
+  font-size: 12px;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.account-card-update-btn:hover,
+.account-card-update-btn:focus-visible {
+  background: var(--vscode-button-secondaryHoverBackground, rgba(255, 255, 255, 0.1));
+  outline: none;
+}
+
+.account-card-update-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* 用量常驻区 收起/展开 chevron。 */
+.account-card-collapse-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  cursor: pointer;
+}
+
+.account-card-collapse-btn:hover,
+.account-card-collapse-btn:focus-visible {
+  background-color: var(--vscode-list-hoverBackground);
+  outline: none;
+}
+
+/* 用量常驻概要区（交互设计 §3：卡片上半部分、横线上方）。 */
+.account-card-usage-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 2px 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
 }
 
 .account-card-hotzone {
@@ -115,26 +173,7 @@
   outline: none;
 }
 
-/* 用量浮层：fixed 定位逃逸 .desktop-sidebar 的 overflow:hidden（SessionItemMenu 先例）。 */
-.account-usage-popup {
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 216px;
-  box-sizing: border-box;
-  padding: 10px;
-  background-color: var(--vscode-menu-background);
-  border: 1px solid var(--vscode-widget-border);
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
-}
-
-.account-usage-host {
-  color: var(--vscode-descriptionForeground);
-  font-size: 11px;
-}
-
+/* 用量区（常驻概要区）。 */
 .account-usage-section {
   display: flex;
   flex-direction: column;
@@ -161,7 +200,13 @@
 .account-usage-bar {
   height: 4px;
   border-radius: 2px;
-  background-color: var(--vscode-progressBar-background, rgba(128, 128, 128, 0.3));
+  /* 中性轨道色：0% 时显示「空条」，不能用主题蓝（progressBar-background），
+     否则用尽态看起来像满格蓝条（交互设计 §3.1 余量用完 = 空条）。 */
+  background-color: color-mix(
+    in srgb,
+    var(--vscode-descriptionForeground, #9d9d9d) 28%,
+    transparent
+  );
   overflow: hidden;
 }
 
@@ -186,10 +231,132 @@
   color: var(--vscode-foreground);
 }
 
+/* API 余额：标签与金额同行优先；同行放不下时金额整体换行到下一行（完整一行，
+   不拆两段）。右侧 ⓘ 图标为明细气泡触发区（hover/focus 展示）。 */
+.account-usage-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-usage-row .account-usage-label {
+  flex-shrink: 0;
+  color: var(--vscode-foreground);
+  font-weight: 500;
+}
+
+/* 金额组（文本 + ⓘ）作为整体参与行布局：与标签放得下则同行，
+   放不下则整段换行；组内右对齐。 */
+.account-usage-row .account-usage-value {
+  flex: 1 1 auto;
+  min-width: max-content;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+
+.account-usage-row .account-usage-value-text {
+  white-space: nowrap;
+}
+
+/* ⓘ 明细触发钮：仅图标热区，hover/focus 高亮（hover 弹气泡由组件状态管理） */
+.account-api-info-btn {
+  border: none;
+  background: transparent;
+  padding: 0 2px;
+  margin: 0;
+  border-radius: 3px;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.account-api-info-btn:hover,
+.account-api-info-btn:focus-visible {
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  outline: none;
+}
+
+.account-api-info-btn .codicon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* 余额不足（剩余 < 限额 20%）：仅金额变色（琥珀警示），行内其他元素不变。 */
+.account-usage-value.is-warning {
+  color: #d18616;
+}
+
+/* 金额段内部不拆（数字/语义整体）——换行只发生在「label/金额」之间 */
+.account-usage-row .account-usage-seg {
+  white-space: nowrap;
+}
+
+.account-usage-row .account-usage-sep {
+  white-space: nowrap;
+  opacity: 0.55;
+}
+
 .account-usage-value.is-empty {
   color: var(--vscode-errorForeground, #f14c4c);
 }
 
-.account-usage-empty {
-  color: var(--vscode-descriptionForeground);
+/* API 余额明细气泡：贴剩余金额行向上弹出，与卡片等宽；金额列右对齐便于比较。 */
+.api-quota-popover {
+  position: fixed;
+  z-index: 1200;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  background: var(--vscode-panel-background, #131415);
+  border: 1px solid var(--vscode-widget-border, #1f2021);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.42);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.api-popover-title {
+  font-weight: 600;
+  color: var(--vscode-foreground, #e9e9e9);
+  margin-bottom: 6px;
+}
+
+.api-popover-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+}
+
+/* 金额列统一右对齐（便于已用/剩余快速比较）。 */
+.api-popover-amt {
+  color: var(--vscode-foreground, #e9e9e9);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.api-popover-amt.is-empty {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.api-popover-warn {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+}
+
+.api-popover-warn.is-warning {
+  color: #d18616;
+}
+
+.api-popover-warn.is-empty {
+  color: var(--vscode-errorForeground, #f14c4c);
 }

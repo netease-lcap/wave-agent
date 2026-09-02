@@ -53,6 +53,28 @@ function rewriteThemeBase(): Plugin {
   };
 }
 
+/**
+ * 终端懒加载 chunk（src/terminal-entry.ts → dist/terminal.js）只在桌面构建
+ * 产出；原型 dev 环境没有该文件，ChatApp 空闲预加载会 404（控制台红字）。
+ * 返回空 JS 消除 404（window.WaveTerminal 保持 undefined，prefetch 的
+ * onload 走既有「未导出」reject 分支，不影响功能）。
+ */
+function stubTerminalChunk(): Plugin {
+  return {
+    name: "wave-preview-terminal-stub",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url === "/terminal.js") {
+          res.setHeader("Content-Type", "application/javascript");
+          res.end("");
+          return;
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig(({ command }) => {
   const isBuild = command === "build";
   return {
@@ -60,7 +82,12 @@ export default defineConfig(({ command }) => {
     // build 用相对 base：单 HTML 会被塞进 srcdoc iframe / file:// 打开，
     // 绝对路径会解析到错误位置。
     base: isBuild ? "./" : "/",
-    plugins: [react(), rewriteThemeBase(), viteSingleFile()],
+    plugins: [
+      react(),
+      rewriteThemeBase(),
+      stubTerminalChunk(),
+      viteSingleFile(),
+    ],
     resolve: {
       alias: isBuild
         ? [

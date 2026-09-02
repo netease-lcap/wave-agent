@@ -118,6 +118,9 @@ export interface DesktopSidebarProps {
   onOpenHelpDocs: () => void;
   onLogin: () => void;
   onLogout: () => void;
+  /** 更新按钮状态机（S2 下载确认 / S4 重启确认后的宿主命令）。 */
+  onDownloadUpdate?: () => void;
+  onRestartApp?: () => void;
   /** 侧边栏底部账户卡片 (desktopAccountInfo push). */
   account?: AccountCardAccount | null;
   /**
@@ -175,6 +178,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onOpenHelpDocs,
   onLogin,
   onLogout,
+  onDownloadUpdate,
+  onRestartApp,
   account,
   hostLabel,
   sessionTree,
@@ -605,6 +610,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           onOpenSettings={onOpenSettings}
           onOpenEnterpriseConsole={onOpenEnterpriseConsole}
           onOpenHelpDocs={onOpenHelpDocs}
+          onDownloadUpdate={onDownloadUpdate}
+          onRestartApp={onRestartApp}
         />
       )}
       {pendingDelete && (

@@ -47,6 +47,18 @@ const lastPanelState = (vscode: ReturnType<typeof createMockVscode>) => {
   return posts[posts.length - 1];
 };
 
+// Multi-instance tabs can render several panes of the same kind at once (e.g.
+// two preview tabs). Find the pane belonging to the ACTIVE tab — the only one
+// whose .desktop-panel-stack is visible.
+const activePane = (testId: string) =>
+  screen
+    .getAllByTestId(testId)
+    .find(
+      (p) =>
+        (p.closest(".desktop-panel-stack") as HTMLElement | null)?.style
+          .display !== "none",
+    );
+
 beforeEach(() => {
   // The panel-group cache is module-level — isolate tests from each other.
   prunePanelGroupCache(new Set());
@@ -72,41 +84,83 @@ describe("ChatApp desktop panel framework", () => {
     expect(screen.queryByTestId("panel-toggle-btn")).not.toBeInTheDocument();
   });
 
-  it("checking 差异 mounts the diff pane and requests the workspace diff", () => {
+  it("expanding the panel and picking 差异 from the empty state mounts the diff pane", () => {
     window.waveHostType = "desktop";
     const { vscode } = renderDesktop({ workdir: "/work/a" });
     fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-    fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+    fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
 
     expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
     expect(vscode.postMessage).toHaveBeenCalledWith({
       command: "desktopGetWorkspaceDiff",
     });
-    // The menu stays open for consecutive multi-select.
-    expect(screen.getByTestId("panel-toggle-menu")).toBeInTheDocument();
-    expect(screen.getByTestId("panel-toggle-item-diff")).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
+    // The header button is now an expand/collapse switch — no dropdown menu;
+    // the empty state opened the tab directly.
+    expect(screen.queryByTestId("panel-toggle-menu")).not.toBeInTheDocument();
+    expect(screen.getByTestId("panel-tab-diff-1")).toBeInTheDocument();
   });
 
-  it("multiple panels stack side-by-side in the fixed Preview→Diff→Terminal order", () => {
+  it("multiple panels open as tabs in one shared slot; clicking a tab switches the active panel", () => {
     window.waveHostType = "desktop";
     renderDesktop({ workdir: "/work/a" });
     fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-    fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
+    fireEvent.click(screen.getByTestId("panel-empty-item-terminal"));
+    fireEvent.click(screen.getByTestId("panel-tabs-add"));
     fireEvent.click(screen.getByTestId("panel-toggle-item-preview"));
+    fireEvent.click(screen.getByTestId("panel-tabs-add"));
     fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
 
-    const slots = document.querySelectorAll(".desktop-panel-slot");
-    expect(slots).toHaveLength(3);
+    // One shared slot hosts all three panels as tabs.
+    expect(document.querySelectorAll(".desktop-panel-slot")).toHaveLength(1);
+    expect(screen.getByTestId("panel-tab-terminal-1")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-tab-preview-1")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-tab-diff-1")).toBeInTheDocument();
+    // The last opened panel is active; the others stay mounted but hidden.
+    expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
+    expect(screen.getByTestId("diff-pane").parentElement).not.toHaveStyle({
+      display: "none",
+    });
+    expect(screen.getByTestId("terminal-pane").parentElement).toHaveStyle({
+      display: "none",
+    });
+    expect(screen.getByTestId("preview-pane-empty").parentElement).toHaveStyle({
+      display: "none",
+    });
+
+    // Clicking the preview tab switches the active panel.
+    fireEvent.click(screen.getByTestId("panel-tab-preview-1"));
     expect(
-      slots[0].querySelector('[data-testid="preview-pane-empty"]'),
-    ).not.toBeNull();
-    expect(slots[1].querySelector('[data-testid="diff-pane"]')).not.toBeNull();
-    expect(
-      slots[2].querySelector('[data-testid="terminal-pane"]'),
-    ).not.toBeNull();
+      screen.getByTestId("preview-pane-empty").parentElement,
+    ).not.toHaveStyle({ display: "none" });
+    expect(screen.getByTestId("diff-pane").parentElement).toHaveStyle({
+      display: "none",
+    });
+  });
+
+  it("a preview tab shows the guest page title once the page reports one", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+    sendHostMessage(
+      fixtures.updateMessages([
+        MockDataGenerator.createAssistantMessage(
+          "原型在 [这里](http://localhost:5173/app)",
+        ),
+      ]),
+    );
+    fireEvent.click(screen.getByText("这里"));
+    // Until the page reports a title, the tab falls back to host+path.
+    expect(screen.getByTestId("panel-tab-preview-1")).toHaveTextContent(
+      "localhost:5173/app",
+    );
+    const wv = document.querySelector("webview") as unknown as Element;
+    fireEvent(
+      wv,
+      Object.assign(new Event("page-title-updated"), { title: "登录页" }),
+    );
+    // The tab label follows the page title, like a regular browser tab.
+    expect(screen.getByTestId("panel-tab-preview-1")).toHaveTextContent(
+      "登录页",
+    );
   });
 
   it("the empty preview pane (no URL) resizes via its left-edge handle", () => {
@@ -119,12 +173,11 @@ describe("ChatApp desktop panel framework", () => {
     try {
       renderDesktop({ workdir: "/work/a" });
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-      fireEvent.click(screen.getByTestId("panel-toggle-item-preview"));
+      fireEvent.click(screen.getByTestId("panel-empty-item-preview"));
 
       const empty = screen.getByTestId("preview-pane-empty");
-      // Auto-fills the space beyond the 360px conversation minimum
-      // (「面板自动铺满剩余空间」): 1024 - 360 = 664, not the 420px default.
-      expect(empty.style.width).toBe("664px");
+      // The tabbed layout opens at the shared default width (no auto-fill).
+      expect(empty.style.width).toBe("420px");
       // The empty state must carry the same drag affordance as loaded panels.
       expect(empty.querySelector(".preview-pane-drag-handle")).not.toBeNull();
 
@@ -141,25 +194,24 @@ describe("ChatApp desktop panel framework", () => {
     }
   });
 
-  it("an auto-filling panel opens at the default width when the window is too narrow", () => {
+  it("a panel opens at the default width, which fits in a narrow window", () => {
     window.waveHostType = "desktop";
-    // 800px: auto-fill would be 800 - 360 = 440, which fits — the panel
-    // fills the space beyond the conversation minimum instead of staying at
-    // the 420px default (「面板自动铺满剩余空间」).
+    // 800px: 800 - 360 = 440 ≥ the 420px default — the panel opens at the
+    // default width (no auto-fill in the tabbed layout).
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockReturnValue({ width: 800, right: 800 } as DOMRect);
     try {
       renderDesktop({ workdir: "/work/a" });
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-      fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
-      expect(screen.getByTestId("diff-pane").style.width).toBe("440px");
+      fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
+      expect(screen.getByTestId("diff-pane").style.width).toBe("420px");
     } finally {
       rectSpy.mockRestore();
     }
   });
 
-  it("a manually resized panel keeps its width after close/reopen (spec 场景 3)", () => {
+  it("the shared panel width persists after close/reopen (spec 场景 3)", () => {
     window.waveHostType = "desktop";
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
@@ -167,12 +219,11 @@ describe("ChatApp desktop panel framework", () => {
     try {
       renderDesktop({ workdir: "/work/a" });
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-      fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
-      // Auto-fills the space beyond the conversation minimum.
+      fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
       const pane = screen.getByTestId("diff-pane");
-      expect(pane.style.width).toBe("1040px"); // 1400 - 360
+      expect(pane.style.width).toBe("420px"); // default, not auto-filled
 
-      // A drag moves the panel off the auto-filled width and locks it.
+      // A drag moves the panel off the default width and locks it.
       const handle = pane.querySelector(
         ".preview-pane-drag-handle",
       ) as HTMLElement;
@@ -181,51 +232,47 @@ describe("ChatApp desktop panel framework", () => {
       expect(pane.style.width).toBe("400px");
       fireEvent.mouseUp(window);
 
-      // Close, then re-check: the manual width is kept — no auto-fill again.
-      fireEvent.click(screen.getByTestId("diff-close"));
-      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-      fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+      // Close (last tab → the expanded panel falls back to its empty state),
+      // then open 差异 again: the shared width is kept — no reset to default.
+      fireEvent.click(screen.getByTestId("panel-tab-close-diff-1"));
+      expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
       expect(screen.getByTestId("diff-pane").style.width).toBe("400px");
     } finally {
       rectSpy.mockRestore();
     }
   });
 
-  it("unchecking hides the panel (display:none) but keeps it mounted", () => {
+  it("closing the last tab falls back to the empty state; reopening remounts the panel", () => {
     window.waveHostType = "desktop";
     renderDesktop({ workdir: "/work/a" });
     fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-    fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+    fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
     expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
-    expect(screen.getByTestId("diff-pane")).toBeInTheDocument(); // still mounted
-    expect(screen.getByTestId("diff-pane").parentElement).toHaveStyle({
-      display: "none",
-    });
-    expect(screen.getByTestId("panel-toggle-item-diff")).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
+    // Closing the only open tab leaves the (still expanded) panel on its
+    // empty-state guide — the tab instance is destroyed with the close.
+    fireEvent.click(screen.getByTestId("panel-tab-close-diff-1"));
+    expect(screen.getByTestId("desktop-panel-slot")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+    expect(screen.queryByTestId("diff-pane")).not.toBeInTheDocument();
 
-    // Re-check shows the same mounted instance.
-    fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
-    expect(screen.getByTestId("diff-pane").parentElement).not.toHaveStyle({
-      display: "none",
-    });
+    // Opening again from the empty state mounts a fresh panel.
+    fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
+    expect(screen.getByTestId("desktop-panel-slot")).toBeInTheDocument();
+    expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
   });
 
-  it("the panel close button unchecks it", () => {
+  it("the tab close button removes the only tab and the empty state takes over", () => {
     window.waveHostType = "desktop";
     renderDesktop({ workdir: "/work/a" });
     fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-    fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
-    fireEvent.mouseDown(document.body); // dismiss the menu
+    fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
 
-    fireEvent.click(screen.getByTestId("diff-close"));
-    expect(screen.getByTestId("diff-pane").parentElement).toHaveStyle({
-      display: "none",
-    });
+    fireEvent.click(screen.getByTestId("panel-tab-close-diff-1"));
+    expect(screen.getByTestId("desktop-panel-slot")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+    expect(screen.queryByTestId("diff-pane")).not.toBeInTheDocument();
   });
 
   it("reports toggle state to the host via desktopPanelState", () => {
@@ -235,13 +282,16 @@ describe("ChatApp desktop panel framework", () => {
     expect(lastPanelState(vscode)).toEqual([]);
 
     fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-    fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+    fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
     expect(lastPanelState(vscode)).toEqual(["diff"]);
 
+    fireEvent.click(screen.getByTestId("panel-tabs-add"));
     fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
     expect(lastPanelState(vscode)).toEqual(["diff", "terminal"]);
 
-    fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+    // Closing the diff tab unchecks its kind (the header has no checkbox
+    // menu anymore — closing happens on the tab).
+    fireEvent.click(screen.getByTestId("panel-tab-close-diff-1"));
     expect(lastPanelState(vscode)).toEqual(["terminal"]);
   });
 
@@ -252,10 +302,10 @@ describe("ChatApp desktop panel framework", () => {
     expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
     expect(lastPanelState(vscode)).toEqual(["diff"]);
 
+    // Toggling off closes the only tab — the expanded panel shows the empty
+    // state instead of the tab strip.
     sendHostMessage(fixtures.desktopTogglePanel("diff"));
-    expect(screen.getByTestId("diff-pane").parentElement).toHaveStyle({
-      display: "none",
-    });
+    expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
     expect(lastPanelState(vscode)).toEqual([]);
   });
 
@@ -264,20 +314,11 @@ describe("ChatApp desktop panel framework", () => {
     const { vscode } = renderDesktop();
     fireEvent.click(screen.getByTestId("panel-toggle-btn"));
 
-    expect(screen.getByTestId("panel-toggle-item-diff")).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(screen.getByTestId("panel-toggle-item-terminal")).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(screen.getByTestId("panel-toggle-item-preview")).toHaveAttribute(
-      "aria-disabled",
-      "false",
-    );
+    expect(screen.getByTestId("panel-empty-item-diff")).toBeDisabled();
+    expect(screen.getByTestId("panel-empty-item-terminal")).toBeDisabled();
+    expect(screen.getByTestId("panel-empty-item-preview")).not.toBeDisabled();
 
-    fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+    fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
     expect(screen.queryByTestId("diff-pane")).not.toBeInTheDocument();
     expect(vscode.postMessage).not.toHaveBeenCalledWith({
       command: "desktopGetWorkspaceDiff",
@@ -299,7 +340,7 @@ describe("ChatApp desktop panel framework", () => {
     try {
       const { vscode } = renderDesktop({ workdir: "/work/a" });
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-      fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+      fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
       expect(screen.queryByTestId("diff-pane")).not.toBeInTheDocument();
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopShowHint",
@@ -320,7 +361,7 @@ describe("ChatApp desktop panel framework", () => {
     try {
       const { vscode } = renderDesktop({ workdir: "/work/a" });
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-      fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+      fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
       expect(screen.queryByTestId("diff-pane")).not.toBeInTheDocument();
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopShowHint",
@@ -331,105 +372,88 @@ describe("ChatApp desktop panel framework", () => {
     }
   });
 
-  it("auto-replaces the oldest checked panel when space runs out (spec 场景 1)", () => {
+  it("two panels fit as tabs in one slot with a shared width (no eviction)", () => {
     window.waveHostType = "desktop";
-    // 800px fits one 420px panel beside the 360px conversation minimum
-    // (800 - 420 = 380), but not two — opening 终端 replaces the older 文件.
+    // 800px fits one 420px panel beside the 360px conversation minimum; the
+    // tabbed layout opens both as tabs in the SAME slot — nothing is evicted.
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockReturnValue({ width: 800, right: 800 } as DOMRect);
     try {
       const { vscode } = renderDesktop({ workdir: "/work/a" });
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-      fireEvent.click(screen.getByTestId("panel-toggle-item-file"));
+      fireEvent.click(screen.getByTestId("panel-empty-item-file"));
       expect(screen.getByTestId("file-pane")).toBeInTheDocument();
 
+      fireEvent.click(screen.getByTestId("panel-tabs-add"));
       fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
       expect(screen.getByTestId("terminal-pane")).toBeInTheDocument();
-      // 文件 was the oldest checked panel — replaced (hidden, still mounted
-      // so its content survives and re-checking restores it).
+      // Both tabs open; terminal is active, file stays mounted but hidden.
+      expect(screen.getByTestId("panel-tab-file-1")).toBeInTheDocument();
+      expect(screen.getByTestId("panel-tab-terminal-1")).toBeInTheDocument();
       expect(screen.getByTestId("file-pane").parentElement).toHaveStyle({
         display: "none",
       });
       expect(screen.getByTestId("terminal-pane").parentElement).not.toHaveStyle(
         { display: "none" },
       );
-      expect(vscode.postMessage).toHaveBeenCalledWith({
+      // No eviction hint — both coexist.
+      expect(vscode.postMessage).not.toHaveBeenCalledWith({
         command: "desktopShowHint",
-        text: "空间不足，已自动关闭「文件」面板",
+        text: expect.stringContaining("已自动关闭"),
       });
-      expect(lastPanelState(vscode)).toEqual(["terminal"]);
+      expect(lastPanelState(vscode)).toEqual(["file", "terminal"]);
     } finally {
       rectSpy.mockRestore();
     }
   });
 
-  it("keeps evicting older panels until the new one fits and lists them all (spec 场景 2)", () => {
+  it("opening more panels keeps earlier ones as tabs; closing the active tab falls back left", () => {
     window.waveHostType = "desktop";
-    // Each auto-filling panel fills the whole space beyond the 360px
-    // conversation minimum, so 1620px holds exactly one panel — opening the
-    // next one replaces the previously checked panel each time.
-    let width = 1620;
+    // Wide window: all four panels coexist as tabs in the single slot.
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
-      .mockImplementation(() => ({ width, right: width }) as DOMRect);
+      .mockReturnValue({ width: 1620, right: 1620 } as DOMRect);
     try {
       const { vscode } = renderDesktop({ workdir: "/work/a" });
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-      fireEvent.click(screen.getByTestId("panel-toggle-item-file"));
-      expect(screen.getByTestId("file-pane")).toBeInTheDocument();
-
+      fireEvent.click(screen.getByTestId("panel-empty-item-file"));
+      fireEvent.click(screen.getByTestId("panel-tabs-add"));
       fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
-      expect(screen.getByTestId("terminal-pane")).toBeInTheDocument();
-      expect(screen.getByTestId("file-pane").parentElement).toHaveStyle({
-        display: "none",
-      });
-      expect(vscode.postMessage).toHaveBeenCalledWith({
-        command: "desktopShowHint",
-        text: "空间不足，已自动关闭「文件」面板",
-      });
-
+      fireEvent.click(screen.getByTestId("panel-tabs-add"));
       fireEvent.click(screen.getByTestId("panel-toggle-item-preview"));
-      expect(screen.getByTestId("preview-pane-empty")).toBeInTheDocument();
-      expect(screen.getByTestId("terminal-pane").parentElement).toHaveStyle({
-        display: "none",
-      });
-      expect(vscode.postMessage).toHaveBeenCalledWith({
-        command: "desktopShowHint",
-        text: "空间不足，已自动关闭「终端」面板",
-      });
-
-      // Window shrinks; 差异 replaces the only checked panel (预览).
-      width = 1000;
+      fireEvent.click(screen.getByTestId("panel-tabs-add"));
       fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
-      expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
+
+      for (const kind of ["file", "terminal", "preview", "diff"]) {
+        expect(screen.getByTestId(`panel-tab-${kind}-1`)).toBeInTheDocument();
+      }
       expect(screen.getByTestId("diff-pane").parentElement).not.toHaveStyle({
         display: "none",
       });
-      for (const testid of [
-        "file-pane",
-        "terminal-pane",
-        "preview-pane-empty",
-      ]) {
-        // Replaced panels stay mounted (content preserved), just hidden.
-        expect(screen.getByTestId(testid).parentElement).toHaveStyle({
-          display: "none",
-        });
-      }
-      expect(vscode.postMessage).toHaveBeenCalledWith({
+      // No eviction hints at any point.
+      expect(vscode.postMessage).not.toHaveBeenCalledWith({
         command: "desktopShowHint",
-        text: "空间不足，已自动关闭「预览」面板",
+        text: expect.stringContaining("已自动关闭"),
       });
-      expect(lastPanelState(vscode)).toEqual(["diff"]);
+
+      // Closing the ACTIVE diff tab falls back to its left neighbor
+      // (preview — the previous tab in open order).
+      fireEvent.click(screen.getByTestId("panel-tab-close-diff-1"));
+      expect(
+        screen.getByTestId("preview-pane-empty").parentElement,
+      ).not.toHaveStyle({ display: "none" });
+      // The closed tab is destroyed (browser-tab semantics): its pane
+      // unmounts, the other tabs stay open.
+      expect(screen.queryByTestId("diff-pane")).not.toBeInTheDocument();
+      expect(lastPanelState(vscode)).toEqual(["file", "terminal", "preview"]);
     } finally {
       rectSpy.mockRestore();
     }
   });
 
-  it("refuses and closes nothing when even full eviction cannot fit (spec 场景 4)", () => {
+  it("refuses to open when the window is too narrow and keeps the existing tab", () => {
     window.waveHostType = "desktop";
-    // 700px fits one auto-filled panel (700 - 360 = 340) beside the 360px
-    // conversation minimum.
     let width = 700;
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
@@ -437,19 +461,18 @@ describe("ChatApp desktop panel framework", () => {
     try {
       const { vscode } = renderDesktop({ workdir: "/work/a" });
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-      fireEvent.click(screen.getByTestId("panel-toggle-item-file"));
+      fireEvent.click(screen.getByTestId("panel-empty-item-file"));
       expect(screen.getByTestId("file-pane")).toBeInTheDocument();
+      // 700 - 360 = 340 ≥ the 320px minimum → opens, clamped to 340.
+      expect(screen.getByTestId("file-pane").style.width).toBe("340px");
 
-      // Narrower than the conversation minimum + one panel's minimum width
-      // (650 - 320 = 330 < 360): even after the file panel is evicted the new
-      // one cannot open — refuse and keep the existing panel untouched (a
-      // failed replace must not take it down).
+      // 650px: 650 - 360 = 290 < the 320px minimum → the new panel is
+      // refused and the existing tab is untouched.
       width = 650;
+      fireEvent.click(screen.getByTestId("panel-tabs-add"));
       fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
       expect(screen.queryByTestId("terminal-pane")).not.toBeInTheDocument();
-      expect(screen.getByTestId("file-pane").parentElement).not.toHaveStyle({
-        display: "none",
-      });
+      expect(screen.getByTestId("file-pane")).toBeInTheDocument();
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopShowHint",
         text: "空间不足，无法开启面板",
@@ -460,9 +483,9 @@ describe("ChatApp desktop panel framework", () => {
     }
   });
 
-  it("never replaces the panel being re-targeted (spec 场景 5)", () => {
+  it("clicking a file path switches the existing file tab to it (single-instance)", () => {
     window.waveHostType = "desktop";
-    // 1200px holds two 420px panels + the 360px conversation minimum.
+    // 1200px: both panels fit as tabs in the shared slot.
     let width = 1200;
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
@@ -470,7 +493,8 @@ describe("ChatApp desktop panel framework", () => {
     try {
       const { vscode } = renderDesktop({ workdir: "/work/a" });
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-      fireEvent.click(screen.getByTestId("panel-toggle-item-file"));
+      fireEvent.click(screen.getByTestId("panel-empty-item-file"));
+      fireEvent.click(screen.getByTestId("panel-tabs-add"));
       fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
 
       sendCommand("updateMessages", {
@@ -486,32 +510,31 @@ describe("ChatApp desktop panel framework", () => {
       const path = document.querySelector(".write-tool-path") as HTMLElement;
       expect(path).toBeInTheDocument();
 
-      // Window shrinks below two-panel capacity; clicking a file path keeps
-      // the 文件 panel (it is the one being re-targeted) and replaces 终端.
+      // The file panel is single-instance: clicking the path reuses the one
+      // file tab (no second tab) and activates it with a loading stub.
       width = 1100;
       fireEvent.click(path);
-      expect(screen.getByTestId("file-pane").parentElement).not.toHaveStyle({
-        display: "none",
-      });
+      expect(activePane("file-pane")).toBeDefined();
+      expect(screen.getByTestId("panel-tab-file-1")).toBeInTheDocument();
+      expect(screen.queryByTestId("panel-tab-file-2")).not.toBeInTheDocument();
       expect(screen.getByTestId("terminal-pane").parentElement).toHaveStyle({
         display: "none",
       });
-      expect(vscode.postMessage).toHaveBeenCalledWith({
+      expect(screen.getByTestId("panel-tab-terminal-1")).toBeInTheDocument();
+      expect(vscode.postMessage).not.toHaveBeenCalledWith({
         command: "desktopShowHint",
-        text: "空间不足，已自动关闭「终端」面板",
       });
-      expect(lastPanelState(vscode)).toEqual(["file"]);
+      expect(lastPanelState(vscode)).toEqual(["file", "terminal"]);
     } finally {
       rectSpy.mockRestore();
     }
   });
 
-  it("re-clicking another file path replaces the panel in place (spec 场景 6)", () => {
+  it("clicking different file paths reuses the single file tab (spec 场景 6 单实例)", () => {
     window.waveHostType = "desktop";
     // 1000px fits the 420px file panel beside the 360px conversation
-    // minimum. tryOpenPanel used to double-count an already-open panel's
-    // own width in the fit check, overflowing the space and silently
-    // spilling the panel out of view on the second click.
+    // minimum. The file panel is single-instance: a second path switches the
+    // one tab's content instead of opening a parallel tab.
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockReturnValue({ width: 1000, right: 1000 } as DOMRect);
@@ -534,14 +557,14 @@ describe("ChatApp desktop panel framework", () => {
       expect(firstPath).toBeInTheDocument();
       fireEvent.click(firstPath);
 
-      const pane = screen.getByTestId("file-pane");
-      expect(pane).toBeInTheDocument();
-      expect(pane.closest(".desktop-panel-slot")).toHaveClass(
+      const pane = activePane("file-pane");
+      expect(pane).toBeDefined();
+      expect(pane?.closest(".desktop-panel-slot")).toHaveClass(
         "desktop-panel-slot",
       );
 
-      // A different file link re-targets the same panel — the content
-      // swaps but the panel stays mounted in place.
+      // A different file link reuses the SAME file tab — still one tab, the
+      // fileView switches to the new path (loading until the host replies).
       sendCommand("updateMessages", {
         messages: [readMessage("/work/a/src/second.ts")],
       });
@@ -549,9 +572,14 @@ describe("ChatApp desktop panel framework", () => {
         document.querySelector(".write-tool-path") as HTMLElement,
       );
 
+      expect(screen.getAllByTestId("file-pane")).toHaveLength(1);
+      expect(screen.getByTestId("panel-tab-file-1")).toBeInTheDocument();
+      expect(screen.queryByTestId("panel-tab-file-2")).not.toBeInTheDocument();
       expect(
-        screen.getByTestId("file-pane").closest(".desktop-panel-slot"),
+        activePane("file-pane")?.closest(".desktop-panel-slot"),
       ).toHaveClass("desktop-panel-slot");
+      // The tab is a loading stub pointing at the second path.
+      expect(activePane("file-pane")).toHaveTextContent("second.ts");
       expect(
         screen.queryByTestId("desktop-panel-row-separator"),
       ).not.toBeInTheDocument();
@@ -566,6 +594,119 @@ describe("ChatApp desktop panel framework", () => {
     sendHostMessage(fixtures.authStatusResponse());
     expect(screen.queryByTestId("panel-toggle-btn")).not.toBeInTheDocument();
     expect(document.querySelector(".desktop-panel-slot")).toBeNull();
+  });
+
+  it("collapsing keeps the tabs, width and active tab; expanding restores them", () => {
+    window.waveHostType = "desktop";
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockReturnValue({ width: 1400, right: 1400 } as DOMRect);
+    try {
+      renderDesktop({ workdir: "/work/a" });
+      // Open two tabs; diff is active.
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+      fireEvent.click(screen.getByTestId("panel-empty-item-preview"));
+      fireEvent.click(screen.getByTestId("panel-tabs-add"));
+      fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+
+      // Drag the shared width off the default.
+      const handle = screen
+        .getByTestId("diff-pane")
+        .querySelector(".preview-pane-drag-handle") as HTMLElement;
+      fireEvent.mouseDown(handle);
+      fireEvent.mouseMove(window, { clientX: 1000 }); // 1400-1000 = 400
+      fireEvent.mouseUp(window);
+      expect(screen.getByTestId("diff-pane").style.width).toBe("400px");
+
+      // Collapse: the slot hides (display:none) but stays mounted — the open
+      // tabs and the active tab keep their state.
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+      expect(screen.getByTestId("panel-toggle-btn")).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      expect(screen.getByTestId("desktop-panel-slot")).toHaveStyle({
+        display: "none",
+      });
+      expect(screen.getByTestId("panel-tab-diff-1")).toBeInTheDocument();
+      expect(screen.getByTestId("panel-tab-preview-1")).toBeInTheDocument();
+
+      // Expand again: the dragged width and the previously viewed tab return.
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+      expect(screen.getByTestId("panel-toggle-btn")).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+      expect(screen.getByTestId("desktop-panel-slot")).not.toHaveStyle({
+        display: "none",
+      });
+      expect(screen.getByTestId("diff-pane").style.width).toBe("400px");
+      expect(screen.getByTestId("diff-pane").parentElement).not.toHaveStyle({
+        display: "none",
+      });
+      expect(
+        screen.getByTestId("preview-pane-empty").parentElement,
+      ).toHaveStyle({ display: "none" });
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
+  it("opening a tab through a message link auto-expands a collapsed panel", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+    fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
+    expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
+
+    // Collapse while the diff tab stays open.
+    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+    expect(screen.getByTestId("desktop-panel-slot")).toHaveStyle({
+      display: "none",
+    });
+
+    // A link click raises a NEW preview tab and brings the panel back — the
+    // newly raised tab wins over the previously viewed one.
+    sendHostMessage(
+      fixtures.updateMessages([
+        MockDataGenerator.createAssistantMessage(
+          "原型在 [这里](http://localhost:5173/app)",
+        ),
+      ]),
+    );
+    fireEvent.click(screen.getByText("这里"));
+    expect(screen.getByTestId("desktop-panel-slot")).not.toHaveStyle({
+      display: "none",
+    });
+    expect(screen.getByTestId("panel-tab-preview-1")).toBeInTheDocument();
+    expect(screen.getByTestId("preview-pane").parentElement).not.toHaveStyle({
+      display: "none",
+    });
+    expect(screen.getByTestId("diff-pane").parentElement).toHaveStyle({
+      display: "none",
+    });
+  });
+
+  it("expanding with no tabs shows the empty-state guide listing the five capabilities", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+    // Initial state: no tabs, panel collapsed — nothing on the right.
+    expect(screen.queryByTestId("desktop-panel-slot")).not.toBeInTheDocument();
+
+    // Expand: the empty-state guide appears with all five capabilities.
+    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+    expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+    for (const kind of ["preview", "plan", "diff", "terminal", "file"]) {
+      expect(
+        screen.getByTestId(`panel-empty-item-${kind}`),
+      ).toBeInTheDocument();
+    }
+
+    // Picking one opens the matching tab and leaves the empty state.
+    fireEvent.click(screen.getByTestId("panel-empty-item-plan"));
+    expect(screen.queryByTestId("panel-empty-state")).not.toBeInTheDocument();
+    expect(screen.getByTestId("plan-pane")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-tab-plan-1")).toBeInTheDocument();
   });
 });
 
@@ -605,9 +746,21 @@ describe("session-level panel groups", () => {
       }),
     );
   const openPanel = (kind: string) => {
-    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-    fireEvent.click(screen.getByTestId(`panel-toggle-item-${kind}`));
-    fireEvent.mouseDown(document.body); // dismiss the menu
+    // Expand the panel if it isn't already; with no tab open the empty-state
+    // guide offers the five capabilities. When tabs exist, the "＋" menu adds
+    // another instance.
+    const btn = screen.getByTestId("panel-toggle-btn");
+    if (btn.getAttribute("aria-expanded") === "false") {
+      fireEvent.click(btn);
+    }
+    const emptyItem = screen.queryByTestId(`panel-empty-item-${kind}`);
+    if (emptyItem) {
+      fireEvent.click(emptyItem);
+    } else {
+      fireEvent.click(screen.getByTestId("panel-tabs-add"));
+      fireEvent.click(screen.getByTestId(`panel-toggle-item-${kind}`));
+    }
+    fireEvent.mouseDown(document.body); // dismiss any menu
   };
 
   it("switching sessions swaps the panel group; switching back restores it", () => {
@@ -782,9 +935,9 @@ describe("remote preview port forwarding", () => {
       },
     ]);
     expect(screen.getByTestId("preview-pane-empty")).toBeInTheDocument();
-    expect(screen.getByTestId("preview-pane-empty")).toHaveTextContent(
-      "点击消息或终端中的 localhost 链接加载预览",
-    );
+    // The empty stub hosts the blank-tab PreviewPane: address bar is ready
+    // for typing a URL while the tunnel comes up.
+    expect(screen.getByTestId("preview-address-input")).toBeInTheDocument();
   });
 
   it("the forward reply loads the rewritten address in the preview pane", () => {
@@ -899,7 +1052,7 @@ describe("remote preview port forwarding", () => {
       originalUrl: "http://localhost:5173/app",
     });
 
-    // Same conversation, different service: the panel re-targets and a new
+    // Same conversation, different service: a NEW preview tab opens and a new
     // forward is requested, but the session's tunnels are NOT released —
     // deletion is the only teardown (scenario 18).
     openLink("http://localhost:8080/other");
@@ -916,11 +1069,10 @@ describe("remote preview port forwarding", () => {
       url: "http://127.0.0.1:8080/other",
       originalUrl: "http://localhost:8080/other",
     });
+    // The second preview tab is active and shows the second URL.
+    expect(screen.getAllByTestId("preview-pane")).toHaveLength(2);
     expect(
-      screen
-        .getByTestId("preview-pane")
-        .querySelector("webview")
-        ?.getAttribute("src"),
+      activePane("preview-pane")?.querySelector("webview")?.getAttribute("src"),
     ).toBe("http://127.0.0.1:8080/other");
   });
 
@@ -957,10 +1109,7 @@ describe("remote preview port forwarding", () => {
       originalUrl: "http://localhost:5173/other",
     });
     expect(
-      screen
-        .getByTestId("preview-pane")
-        .querySelector("webview")
-        ?.getAttribute("src"),
+      activePane("preview-pane")?.querySelector("webview")?.getAttribute("src"),
     ).toBe("http://127.0.0.1:5173/other");
   });
 
@@ -1022,11 +1171,11 @@ describe("remote preview port forwarding", () => {
     pushRemotePane();
     openLink();
 
-    fireEvent.click(screen.getByTestId("preview-close"));
+    fireEvent.click(screen.getByTestId("panel-tab-close-preview-1"));
 
     // The tunnel is scoped to the session, not the pane (scenario 18):
     // closing the preview panel must not release the forward, and must not
-    // re-request it either. Re-checking the panel restores the same URL.
+    // re-request it either.
     expect(releasePosts(vscode)).toHaveLength(0);
     expect(forwardPosts(vscode)).toHaveLength(1);
   });
@@ -1080,22 +1229,15 @@ describe("remote preview port forwarding", () => {
     });
     expect(screen.getByTestId("preview-pane")).toBeInTheDocument();
 
-    // Close the panel, then re-open it from the 面板 menu.
-    fireEvent.click(screen.getByTestId("preview-close"));
-    expect(screen.getByTestId("preview-pane").parentElement).toHaveStyle({
-      display: "none",
-    });
-    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-    fireEvent.click(screen.getByTestId("panel-toggle-item-preview"));
+    // Close the panel, then re-open it from the empty state.
+    fireEvent.click(screen.getByTestId("panel-tab-close-preview-1"));
+    expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("panel-empty-item-preview"));
 
-    // The URL survived the close — re-checking shows it directly, no new
-    // forward request (the tunnel was never released).
-    expect(
-      screen
-        .getByTestId("preview-pane")
-        .querySelector("webview")
-        ?.getAttribute("src"),
-    ).toBe("http://127.0.0.1:5173/app");
+    // Browser-tab semantics: closing destroyed the tab, so re-opening starts
+    // a NEW blank preview tab. The tunnel stays held the whole time — no
+    // release, no re-acquire (nothing was clicked to load).
+    expect(screen.getByTestId("preview-pane-empty")).toBeInTheDocument();
     expect(forwardPosts(vscode)).toHaveLength(1);
   });
 
@@ -1239,6 +1381,7 @@ describe("remote preview port forwarding", () => {
     expect(forwardPosts(vscode)[1].requestId).toBe("fwd-2");
 
     // A late fwd-1 reply (for the superseded attempt) must not load a URL
+    // A late fwd-1 reply (for the superseded attempt) must not load a URL
     // or resurrect the error behind the retry's back — it is dropped, and
     // the stub stays in its connecting state awaiting the fwd-2 result.
     sendCommand("desktopForwardPortResult", {
@@ -1247,10 +1390,11 @@ describe("remote preview port forwarding", () => {
       url: "http://127.0.0.1:5173/app",
       originalUrl: "http://localhost:5173/app",
     });
-    expect(screen.queryByTestId("preview-pane")).not.toBeInTheDocument();
-    expect(screen.getByTestId("preview-pane-empty")).toHaveTextContent(
-      "点击消息或终端中的 localhost 链接加载预览",
-    );
+    // Still the empty stub: the blank-tab PreviewPane is mounted (address
+    // bar ready) but no URL was loaded.
+    expect(screen.getByTestId("preview-pane")).toBeInTheDocument();
+    expect(screen.getByTestId("preview-pane-empty")).toBeInTheDocument();
+    expect(screen.getByTestId("preview-address-input")).toBeInTheDocument();
   });
 
   it("rebinding the pane to another session keeps both sessions' tunnels", () => {
@@ -1510,11 +1654,11 @@ describe("desktop plan panel", () => {
       "重构方案",
     );
 
-    // User closes the panel — hidden but still mounted (content survives).
-    fireEvent.click(screen.getByTestId("plan-close"));
-    expect(screen.getByTestId("plan-pane").parentElement).toHaveStyle({
-      display: "none",
-    });
+    // User closes the panel — the last tab closes and the (still expanded)
+    // panel falls back to its empty state.
+    fireEvent.click(screen.getByTestId("panel-tab-close-plan-1"));
+    expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-pane")).not.toBeInTheDocument();
   });
 
   it("the header toggle opens the plan panel in its empty state (no plan yet)", () => {
@@ -1522,7 +1666,7 @@ describe("desktop plan panel", () => {
     renderDesktop({ workdir: "/work/a" });
 
     fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-    fireEvent.click(screen.getByTestId("panel-toggle-item-plan"));
+    fireEvent.click(screen.getByTestId("panel-empty-item-plan"));
 
     const pane = screen.getByTestId("plan-pane");
     expect(pane).toBeInTheDocument();

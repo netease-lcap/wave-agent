@@ -27,6 +27,17 @@
   right: 0;
   z-index: 5;
 }
+/* Welcome page (desktop) with the side panel open: the floating header above
+   is out of flow, so the panel slot would start at the very top and its tab
+   strip would hide under the header (header z-index 5 sits over the body).
+   Stretch the slot with a top margin equal to the header height so the panel
+   starts below the header — the same top edge the in-flow header gives the
+   non-welcome layout (align-self:stretch overrides the row's centering). */
+.chat-container--welcome .desktop-panel-slot {
+  margin-top: 45px;
+  align-self: stretch;
+  height: auto;
+}
 .chat-container--welcome > .desktop-chat-body {
   flex: 1;
   height: auto;
@@ -100,7 +111,10 @@
 /* Desktop drag-and-drop upload overlay, shown while a file hovers the pane.
    pointer-events: none keeps normal input working while dragging. Highlight
    uses the theme focus color (same semantics as the config dialog's active
-   tab): red is reserved for the brand CTA, not interaction states. */
+   tab): red is reserved for the brand CTA, not interaction states.
+   The overlay is a frosted veil: a theme-aware translucent fill plus a
+   backdrop blur so message content behind stays dimmed and can't fight
+   the "release to upload" hint for legibility. */
 .chat-drag-overlay {
   position: absolute;
   inset: 0;
@@ -110,7 +124,13 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background-color: rgba(0, 120, 212, 0.06);
+  background-color: color-mix(
+    in srgb,
+    var(--vscode-editor-background) 55%,
+    transparent
+  );
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
   border: 1.5px solid var(--vscode-focusBorder, #0078d4);
   border-radius: 4px;
   pointer-events: none;
@@ -126,11 +146,41 @@
   font-size: 14px;
   font-weight: 600;
   color: var(--vscode-focusBorder, #0078d4);
+  /* Halo in the theme background color keeps the hint readable even where
+     it overlaps leftover message content beneath the frosted veil. */
+  text-shadow:
+    0 0 4px var(--vscode-editor-background),
+    0 0 10px var(--vscode-editor-background);
 }
 
 .chat-drag-overlay-sub {
   font-size: 12px;
   color: var(--vscode-descriptionForeground, #6b6b6b);
+  text-shadow: 0 0 4px var(--vscode-editor-background);
+}
+
+/* Empty preview: hosts the blank-tab PreviewPane (address bar + "+" tab) and,
+   when a remote port forward fails before any URL exists, an overlay retry stub. */
+.preview-pane-empty-wrap {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+}
+
+.preview-pane-forward-error {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  background-color: var(--vscode-editor-background, #1f1f1f);
 }
 
 .input-area-container {

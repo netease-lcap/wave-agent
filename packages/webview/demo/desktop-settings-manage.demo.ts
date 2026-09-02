@@ -74,8 +74,8 @@ test.describe("Desktop settings manage views screenshots", () => {
     });
     await expect(webviewPage.getByTestId("account-card")).toBeVisible();
 
-    // 打开设置页：账户卡片「更多」→「设置」→ 全页设置
-    await webviewPage.getByTestId("account-card-more").click();
+    // 打开设置页：账户卡片热区（个人信息行）→「设置」→ 全页设置
+    await webviewPage.getByTestId("account-card-hotzone").click();
     await webviewPage.getByTestId("more-menu-settings").click();
     await expect(
       webviewPage.getByRole("heading", { name: "全局设置" }),
