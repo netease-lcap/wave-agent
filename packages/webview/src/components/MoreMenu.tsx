@@ -3,7 +3,7 @@ import type { RefObject } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import {
   ExternalLinkIcon,
-  HelpCircleIcon,
+  FileTextIcon,
   HouseIcon,
   LogOutIcon,
   SettingsGearIcon,
@@ -112,7 +112,7 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
       content: (
         <>
           <span className="more-menu-item-leading">
-            <HelpCircleIcon className="more-menu-item-icon" />
+            <FileTextIcon className="more-menu-item-icon" />
             <span>帮助文档</span>
           </span>
           <ExternalLinkIcon className="more-menu-item-icon" />
