@@ -1,6 +1,6 @@
 # VS Code 扩展 / JetBrains 插件使用文档
 
-Wave 代码智聊是一款集成在 VS Code 与 JetBrains IDE（WebStorm、IntelliJ IDEA 等）中的 AI 辅助编程插件，两者共享同一聊天界面。本文档介绍插件的安装登录与差异化能力，其余 AI 能力与桌面端保持一致。
+Wave 代码智聊是一款集成在 VS Code 与 JetBrains IDE（WebStorm、IntelliJ IDEA 等）中的 AI 辅助编程插件，两者共享同一聊天界面。本文档介绍插件的安装登录与差异化能力，其余 AI 能力与桌面端保持一致，详见 [桌面端产品文档](/desktop)。
 
 ## 快速入门
 
@@ -19,10 +19,6 @@ Wave 代码智聊是一款集成在 VS Code 与 JetBrains IDE（WebStorm、Intel
 ### JetBrains 插件
 
 在 JetBrains 插件市场（IDE「设置 → 插件」）搜索 **Wave Code Chat** 安装。打开聊天面板点击欢迎页的「登录」按钮完成 SSO 登录。
-
-## AI 核心能力
-
-所有操作和 AI 能力与桌面端保持同步，详见 [桌面端产品文档](/desktop)。
 
 ## 画廊
 
