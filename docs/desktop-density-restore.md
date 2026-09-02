@@ -1465,3 +1465,39 @@ codechat 参照：`WorkspaceHeader.vue` 收起分支中 divider 与 h1 标题同
 ### 实现文件
 
 - `src/styles/ChatHeader.css`（`.header-collapsed-divider` margin 0 → `margin-right: 8px`）
+
+---
+
+## 第三十八轮（2026-03）：图标规范走查 + 设置界面图标替换（Figma 13383:4078 权威）
+
+用户：「参考图标规范，检查所有 icon 默认颜色、交互色是否正确，参考设计稿和应用替换设置界面图标」。Figma 节点 **13383:4078「图标」**（功能组件集）dump 权威值。
+
+### Figma 图标规范（13383:4078「功能」组件集）
+
+- 所有图标 **normal 与 hover 图标色均 #565A60**（24×24 画布 / 16px glyph；仅「活动器 hover」#C1292E 品牌红）
+- hover 变化的是**按钮底** #EEF0F3（--cc-fill-hover），图标色保持不变
+- 设置界面图标 = codechat-ui `src/assets/figma/settings-*.svg`（Figma 直接导出，16×16 stroke 1.4）
+
+### 问题与修复对照
+
+| #   | 元素                     | 问题                                                                                                                                                                                                                                              | 修复                                                                                                                                                                                   |
+| --- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ①   | 设置页 7 导航 + 返回按钮 | codicon 字体图标（settings-gear/person/repo/lightbulb/account/link/globe/arrow-left）                                                                                                                                                             | HeaderIcons 新增 8 个 Figma SVG（SettingsGlobal/Personalization/Project/Skills/Subagents/Hooks/Mcp/BackIcon，stroke currentColor），SettingsPage.tsx 换用、删 codicon                  |
+| ②   | 设置导航图标色           | base `--vscode-icon-foreground`（light 偏暗）                                                                                                                                                                                                     | desktop 覆盖 `#565A60` / dark `#9A9EA5`（16×16 保持）                                                                                                                                  |
+| ③   | 设置导航 hover/active 底 | base vscode token：hover 半透明黑、**active VS Code 蓝**（dark rgb(4,57,94)）明显违和                                                                                                                                                             | hover `#EEF0F3`（dark 8% 白）、active `#E7E9ED` + 文字 `#1F2329`（dark 12% 白 + #FFF）；图标色 active 保持 #565A60（codechat 选中只变文字与底）                                        |
+| ④   | 桌面控件图标色（11 处）  | 继承 `--vscode-foreground`（light #202020 深黑）：sidebar-more/new-chat/session-more/account-more/panel-toggle/pane-close/write-preview-open/toast-close/confirmation-close + 2 处 codicon 残留（group-header caret、workdir-trigger git-branch） | 统一 `#565A60` / dark `#9A9EA5`；**`.desktop-sidebar-more-btn.is-active` 品牌红 #C1292E 保留**（规范「活动器」）；workdir-trigger/session-group-header 只覆盖 .codicon，按钮文字色不动 |
+
+保留：品牌 wordmark（logo）多色、send 禁用态浅灰 #BEC1C6、活动器红色态。
+
+### 验证结果（Playwright 探针双主题 computed + vision 复核）
+
+- 设置页：7 导航 + 返回 svg 16×16 全 `#565A60`（dark `#9A9EA5`）；active 底 #E7E9ED/文字 #1F2329（dark 12% 白/#FFF）、hover 底 #EEF0F3（dark 8% 白）、active/hover 图标色不变 ✓
+- 11 处控件图标双主题全部 `#565A60`/`#9A9EA5` ✓
+- vision 复核：设置导航图标完整清晰、无字体残留、各主题下颜色统一；「新对话/返回箭头偏深」为 16px 小图标在缩略截图中的感知偏差（computed 均为 #565A60，与第 23 轮教训一致：以 computed 为准）
+
+### 实现文件
+
+- `src/components/HeaderIcons.tsx`（新增 8 个 Settings\*Icon）
+- `src/components/SettingsPage.tsx`（导航 icon 字段改 React 组件、返回按钮换 SVG）
+- `src/styles/SettingsPage.css`（codicon 尺寸规则 → svg 规则）
+- `src/styles/host-desktop.css`（第三十八轮段：设置图标色 + 导航 hover/active 底 + 11 处控件图标色）
