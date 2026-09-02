@@ -18,6 +18,7 @@
 .more-menu-item {
   display: flex;
   align-items: center;
+  gap: 8px;
   height: 24px;
   padding: 0 12px;
   border-radius: 4px;
@@ -34,6 +35,15 @@
 
 .more-menu-item--between {
   justify-content: space-between;
+}
+
+/* 前置图标与文字组合（企业控制台/帮助文档带尾部跳转图标时，图标需和文字
+   组成左组，避免 space-between 将其散开） */
+.more-menu-item-leading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 /* 退出登录：危险色 + 上分隔线（spec「账户卡片」场景 4）. */
