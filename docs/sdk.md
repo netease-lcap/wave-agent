@@ -1424,10 +1424,6 @@ Chrome DevTools Protocol MCP 服务器，通过 `npx chrome-devtools-mcp` 启动
 
 简化的 Git 工作流技能集，包含 **5 个技能**：commit（提交）、commit-push-mr（提交并推送 MR）、commit-push-pr（提交并推送 PR）、watch-merge-mr（等待合并 MR）、watch-merge-pr（等待合并 PR）。支持从代码审查到合并的全流程自动化。
 
-### speckit {#plugin-speckit}
-
-规范驱动开发工具包（中文版），包含 **8 个技能**：analyze、checklist、clarify、constitution、implement、plan、specify、tasks。适用于软件工程任务的规格说明与规划。
-
 ### deep-wiki {#plugin-deep-wiki}
 
 AI 驱动的 Wiki 生成器，支持 Mermaid 图表、源码引用、入职指南和 llms.txt 生成。包含 **3 个子代理**（wiki-architect、wiki-researcher、wiki-writer）和 **3 个命令**（ask、build、generate）。

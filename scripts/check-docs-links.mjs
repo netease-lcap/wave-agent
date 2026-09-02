@@ -8,40 +8,47 @@
 //      used by the pre-commit hook where screenshots don't exist locally — images are
 //      covered by CI and the docs build)
 
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { join, dirname, extname, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { join, dirname, extname, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, '..');
-const docsDir = join(root, 'docs');
+const root = join(__dirname, "..");
+const docsDir = join(root, "docs");
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|svg|webp)$/i;
 
 // Skip image reference validation entirely (pre-commit hook: screenshots are gitignored
 // build artifacts, so missing-image warnings are pure noise there).
-const skipImages = process.argv.includes('--skip-images');
+const skipImages = process.argv.includes("--skip-images");
 
+// Mirror VitePress's auto-slugging (github-slugger): punctuation/whitespace
+// collapses to '-', and a slug starting with a digit gets a '_' prefix (HTML ids
+// cannot start with a digit) — e.g. "4.1 SDD" -> "_4-1-sdd".
 function slugify(text) {
-  return text
+  let slug = text
     .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^\p{L}\p{N}-]+/gu, '');
+    .trim()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (/^\d/.test(slug)) slug = "_" + slug;
+  return slug;
 }
 
 function normalize(s) {
-  return s.toLowerCase().replace(/\s+/g, '');
+  return s.toLowerCase().replace(/\s+/g, "");
 }
 
 // Collect heading metadata from markdown text (fenced code blocks stripped).
 function collectHeadings(content) {
   const headings = [];
-  const lines = content.split('\n');
+  const lines = content.split("\n");
   for (const line of lines) {
     // Windows CRLF checkouts leave a trailing \r. `.` does not match \r (it is
     // a line terminator), so without stripping it every heading regex fails on
     // CRLF files — strip it once here instead of in every regex.
-    const clean = line.endsWith('\r') ? line.slice(0, -1) : line;
+    const clean = line.endsWith("\r") ? line.slice(0, -1) : line;
     const m = clean.match(/^(#{1,6})\s+(.*)$/);
     if (m) {
       let text = m[2];
@@ -49,13 +56,17 @@ function collectHeadings(content) {
       const idMatch = text.match(/\{#([^}]+)\}/);
       if (idMatch) {
         explicitId = idMatch[1];
-        text = text.replace(/\s*\{#[^}]+\}\s*$/, '').trim();
+        text = text.replace(/\s*\{#[^}]+\}\s*$/, "").trim();
       }
       headings.push({ text, explicitId, slug: slugify(text) });
     } else {
       const idMatch = clean.match(/\{#([^}]+)\}/);
       if (idMatch) {
-        headings.push({ text: clean, explicitId: idMatch[1], slug: idMatch[1] });
+        headings.push({
+          text: clean,
+          explicitId: idMatch[1],
+          slug: idMatch[1],
+        });
       }
     }
   }
@@ -80,17 +91,17 @@ function anchorMatches(anchor, headings) {
 }
 
 function stripCodeBlocks(content) {
-  return content.replace(/```[\s\S]*?```/g, '');
+  return content.replace(/```[\s\S]*?```/g, "");
 }
 
 function collectMarkdown(dir, files = []) {
   for (const entry of readdirSync(dir)) {
-    if (entry === 'node_modules' || entry === '.vitepress') continue;
+    if (entry === "node_modules" || entry === ".vitepress") continue;
     const full = join(dir, entry);
     const st = statSync(full);
     if (st.isDirectory()) {
       collectMarkdown(full, files);
-    } else if (extname(full) === '.md') {
+    } else if (extname(full) === ".md") {
       files.push(full);
     }
   }
@@ -98,25 +109,27 @@ function collectMarkdown(dir, files = []) {
 }
 
 function splitHash(url) {
-  const i = url.indexOf('#');
+  const i = url.indexOf("#");
   if (i < 0) return [url, null];
   return [url.slice(0, i), url.slice(i + 1)];
 }
 
 function resolvePage(url, currentFile) {
   const [pathPart, anchor] = splitHash(url);
-  const isAbsolute = pathPart.startsWith('/');
+  const isAbsolute = pathPart.startsWith("/");
   const base = isAbsolute ? docsDir : dirname(currentFile);
-  let rel = pathPart.replace(/^\//, '').replace(/^\.\//, '');
-  if (rel === '') return { filePath: null, anchor };
-  if (!/\.[a-z0-9]+$/i.test(rel)) rel += '.md';
+  let rel = pathPart.replace(/^\//, "").replace(/^\.\//, "");
+  if (rel === "") return { filePath: null, anchor };
+  if (rel.endsWith("/")) rel += "index";
+  if (!/\.[a-z0-9]+$/i.test(rel)) rel += ".md";
   return { filePath: join(base, rel), anchor };
 }
 
 function resolveImage(url, currentFile) {
   const [pathPart] = splitHash(url);
-  if (pathPart.startsWith('/')) return join(docsDir, 'public', pathPart.slice(1));
-  return join(dirname(currentFile), pathPart.replace(/^\.\//, ''));
+  if (pathPart.startsWith("/"))
+    return join(docsDir, "public", pathPart.slice(1));
+  return join(dirname(currentFile), pathPart.replace(/^\.\//, ""));
 }
 
 const linkRegex = /\]\(([^)]+)\)/g;
@@ -130,7 +143,7 @@ const errors = [];
 const mdFiles = collectMarkdown(docsDir).sort();
 
 for (const file of mdFiles) {
-  const raw = readFileSync(file, 'utf8');
+  const raw = readFileSync(file, "utf8");
   const content = stripCodeBlocks(raw);
   const headings = collectHeadings(content);
   const relFile = relative(docsDir, file);
@@ -138,7 +151,7 @@ for (const file of mdFiles) {
   let match;
   linkRegex.lastIndex = 0;
   while ((match = linkRegex.exec(content)) !== null) {
-    let url = match[1].replace(/\s*"[^"]*"\s*$/, '').trim();
+    let url = match[1].replace(/\s*"[^"]*"\s*$/, "").trim();
     if (!url) continue;
 
     if (/^(https?:|mailto:)/i.test(url)) {
@@ -146,7 +159,7 @@ for (const file of mdFiles) {
       continue;
     }
 
-    if (url.startsWith('#')) {
+    if (url.startsWith("#")) {
       const anchor = url.slice(1);
       if (anchorMatches(anchor, headings)) {
         okCount++;
@@ -157,8 +170,11 @@ for (const file of mdFiles) {
       continue;
     }
 
-    const pathPart = url.split('#')[0];
-    if (IMAGE_EXT.test(pathPart) || /(^|\/)(public|screenshots)\//i.test(pathPart)) {
+    const pathPart = url.split("#")[0];
+    if (
+      IMAGE_EXT.test(pathPart) ||
+      /(^|\/)(public|screenshots)\//i.test(pathPart)
+    ) {
       if (skipImages) {
         okCount++;
         continue;
@@ -169,14 +185,14 @@ for (const file of mdFiles) {
       } else {
         warnCount++;
         warnings.push(
-          `${relFile}: missing image '${url}' (screenshot build artifact — run \`pnpm run docs:screenshots\` to generate)`
+          `${relFile}: missing image '${url}' (screenshot build artifact — run \`pnpm run docs:screenshots\` to generate)`,
         );
       }
       continue;
     }
 
     // Internal page link: starts with ./ or / (covers ./cli.md, /sdk, /sdk#anchor)
-    if (url.startsWith('./') || url.startsWith('/')) {
+    if (url.startsWith("./") || url.startsWith("/")) {
       const { filePath, anchor } = resolvePage(url, file);
       if (!filePath) {
         // bare "/" home link — can't statically validate
@@ -185,15 +201,19 @@ for (const file of mdFiles) {
       }
       if (!existsSync(filePath)) {
         errorCount++;
-        errors.push(`${relFile}: broken page link '${url}' (file not found: ${relative(root, filePath)})`);
+        errors.push(
+          `${relFile}: broken page link '${url}' (file not found: ${relative(root, filePath)})`,
+        );
         continue;
       }
       if (anchor) {
-        const targetHeadings = collectHeadings(stripCodeBlocks(readFileSync(filePath, 'utf8')));
+        const targetHeadings = collectHeadings(
+          stripCodeBlocks(readFileSync(filePath, "utf8")),
+        );
         if (!anchorMatches(anchor, targetHeadings)) {
           errorCount++;
           errors.push(
-            `${relFile}: broken anchor in '${url}' (anchor '${anchor}' not found in ${relative(root, filePath)})`
+            `${relFile}: broken anchor in '${url}' (anchor '${anchor}' not found in ${relative(root, filePath)})`,
           );
           continue;
         }
@@ -207,14 +227,18 @@ for (const file of mdFiles) {
   }
 }
 
-for (const w of warnings) console.log('WARNING: ' + w);
-for (const e of errors) console.log('ERROR: ' + e);
+for (const w of warnings) console.log("WARNING: " + w);
+for (const e of errors) console.log("ERROR: " + e);
 
-console.log('');
+console.log("");
 if (errorCount > 0) {
-  console.log(`FAIL: ${okCount} links OK, ${warnCount} images missing (warnings), ${errorCount} broken (errors)`);
+  console.log(
+    `FAIL: ${okCount} links OK, ${warnCount} images missing (warnings), ${errorCount} broken (errors)`,
+  );
 } else {
-  console.log(`PASS: ${okCount} links OK, ${warnCount} images missing (warnings), ${errorCount} broken (errors)`);
+  console.log(
+    `PASS: ${okCount} links OK, ${warnCount} images missing (warnings), ${errorCount} broken (errors)`,
+  );
 }
 
 process.exit(errorCount > 0 ? 1 : 0);
