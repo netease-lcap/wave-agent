@@ -138,9 +138,15 @@ export default {
           text: "插件使用文档",
           collapsed: false,
           items: [
-            { text: "快速入门", link: "/vsce#快速入门" },
-            { text: "VS Code 扩展", link: "/vsce#vs-code-扩展" },
-            { text: "JetBrains 插件", link: "/vsce#jetbrains-插件" },
+            {
+              text: "快速入门",
+              link: "/vsce#快速入门",
+              collapsed: false,
+              items: [
+                { text: "VS Code 扩展", link: "/vsce#vs-code-扩展" },
+                { text: "JetBrains 插件", link: "/vsce#jetbrains-插件" },
+              ],
+            },
             { text: "AI 核心能力", link: "/vsce#ai-核心能力" },
             {
               text: "画廊",
