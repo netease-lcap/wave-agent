@@ -20,27 +20,44 @@ type ColumnKind = "waiting" | "running" | "done";
 interface ColumnDef {
   kind: ColumnKind;
   name: string;
-  /** 列头状态点颜色，复用消息时间线的状态色方案（--vscode-* 变量 + 兜底色）。 */
-  color: string;
+  /** 列头色块/胶囊点取色 class（浅色为 Figma 权威值，深色在 CSS 覆盖）。 */
+  className: string;
 }
 
 const COLUMNS: ColumnDef[] = [
   {
     kind: "waiting",
     name: "等待中",
-    color: "var(--vscode-editorWarning-foreground, #cca700)",
+    className: "session-board-column--waiting",
   },
   {
     kind: "running",
     name: "运行中",
-    color: "var(--vscode-descriptionForeground, #888)",
+    className: "session-board-column--running",
   },
-  {
-    kind: "done",
-    name: "已完成",
-    color: "var(--vscode-testing-iconPassed, #73c991)",
-  },
+  { kind: "done", name: "已完成", className: "session-board-column--done" },
 ];
+
+/** 卡片状态行（Figma 权威：「刚刚创建 / 运行 4 分钟 / 今天 17:32」）。 */
+const formatStatus = (
+  session: DesktopSessionEntry,
+  kind: ColumnKind,
+): string => {
+  const elapsedMin = Math.floor((Date.now() - session.lastActiveAt) / 60000);
+  if (elapsedMin < 1) return "刚刚创建";
+  if (kind === "running") return `运行 ${elapsedMin} 分钟`;
+  if (elapsedMin < 60) return `${elapsedMin} 分钟前`;
+  const d = new Date(session.lastActiveAt);
+  const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(
+    d.getMinutes(),
+  ).padStart(2, "0")}`;
+  const dayKey = (t: Date) =>
+    `${t.getFullYear()}-${t.getMonth()}-${t.getDate()}`;
+  if (dayKey(d) === dayKey(new Date())) return `今天 ${hhmm}`;
+  const yesterday = new Date(Date.now() - 86400000);
+  if (dayKey(d) === dayKey(yesterday)) return `昨天 ${hhmm}`;
+  return `${d.getMonth() + 1}/${d.getDate()} ${hhmm}`;
+};
 
 /** 三列分类（对齐 spec 场景 2）：待确认优先于运行中（spec 场景 5 同款规则）。 */
 const classify = (session: DesktopSessionEntry): ColumnKind => {
@@ -97,7 +114,8 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
 
   return (
     <div className="session-board" data-testid="session-board">
-      <div className="session-board-header">
+      {/* 顶栏（Figma Header）：返回当前会话，独立一行 */}
+      <div className="session-board-toolbar">
         <button
           type="button"
           className="session-board-back"
@@ -107,33 +125,32 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
           <span className="codicon codicon-arrow-left" aria-hidden="true" />
           返回当前会话
         </button>
-        <div className="session-board-header-right">
-          <span className="session-board-title">会话状态</span>
-          <select
-            className="session-board-filter"
-            aria-label="筛选项目"
-            value={selectedWorkdir}
-            onChange={(event) => setSelectedWorkdir(event.target.value)}
-          >
-            <option value="">全部项目</option>
-            {filterOptions.map((option, index) => (
-              <option key={`${option.workdir}-${index}`} value={option.workdir}>
-                {option.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      </div>
+      {/* 标题行：会话状态 + 项目筛选 */}
+      <div className="session-board-header">
+        <span className="session-board-title">会话状态</span>
+        <select
+          className="session-board-filter"
+          aria-label="筛选项目"
+          value={selectedWorkdir}
+          onChange={(event) => setSelectedWorkdir(event.target.value)}
+        >
+          <option value="">全部项目</option>
+          {filterOptions.map((option, index) => (
+            <option key={`${option.workdir}-${index}`} value={option.workdir}>
+              {option.name}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="session-board-columns">
         {columns.map((column) => (
-          <section key={column.kind} className="session-board-column">
+          <section
+            key={column.kind}
+            className={`session-board-column ${column.className}`}
+          >
             <header className="session-board-column-header">
-              <span
-                className="session-board-column-dot"
-                style={{ color: column.color }}
-              >
-                ●
-              </span>
+              <span className="session-board-column-dot" />
               <span className="session-board-column-name">{column.name}</span>
               <span className="session-board-column-count">
                 {column.sessions.length}
@@ -152,11 +169,16 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
                     onClick={() => onSelectSession(session.sessionId)}
                     title={session.title || "新对话"}
                   >
-                    <span className="session-card-title">
-                      {session.title || "新对话"}
+                    <span className="session-card-title-row">
+                      <span className="session-card-title">
+                        {session.title || "新对话"}
+                      </span>
+                      <span className="session-card-project">
+                        {dirName(workdir)}
+                      </span>
                     </span>
-                    <span className="session-card-project">
-                      {dirName(workdir)}
+                    <span className="session-card-status">
+                      {formatStatus(session, column.kind)}
                     </span>
                   </button>
                 ))

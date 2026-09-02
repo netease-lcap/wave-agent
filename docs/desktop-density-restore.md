@@ -1230,3 +1230,60 @@ Figma 对照（`13497-15325` 预览区展开帧，vision 复核渲染图）：�
 - `src/components/ConfirmationDialog.tsx`（提供反馈按钮移到按钮列表末尾）
 - `src/styles/host-desktop.css`（注释更新顺序描述）
 - `src/styles/ConfirmationDialog.css`（注释更新顺序描述）
+
+## 第三十一轮：会话状态看板（SessionBoard）整个界面还原（1 项评论）
+
+评论：`div.session-board-header`「返回当前会话会话状态全部项目CC02」——「整个界面参考设计稿和项目进行还原」。
+
+### 背景
+
+会话状态看板（`.session-board`）为 wave 桌面端独有功能（codechat 无对应界面），此前样式全部走 `--vscode-*` token（VS Code 默认：filter vscode-dropdown r4、count vscode-badge 蓝底、card 透明 r4 边框），与桌面端已还原的 codechat 中密度规范脱节。本轮以 **Figma 权威节点 13561:39312「04 · 会话状态」**（卡片列表视图）为基准整体还原。Figma dump 关键值：
+
+- 页面白底、内容 padding 16、标题行与列区 gap 16
+- 顶栏 Header（返回按钮独立一行）：r8、icon+文字 gap 8、文字 14/500/#6C7076；行底边框 #EBEEF5
+- 「会话状态」标题：16/600（PingFangSC-Semibold）/ #1F2329 / line-height 32
+- Select Input：r6 / 白底 / 1px #DCDFE6 / padding 4 8 / label 14/400/#1F2329 / 箭头 #8B8F97
+- 列头（13561:7557）：整行色块 + padding 12 + gap 8；等待 #FCF6EC / 运行 #EAEFFB / 完成 #F0F9EB；胶囊点（cornerRadius 全圆）等待 #F2D09F / 运行 #6D8EE6 / 完成 #16A34A；列名 14/600/#1F2329；数量 12/500/#6C7076 无底色
+- 卡片区（13561:7560）：#F5F7FA + padding 12 + gap 8
+- 卡片 Container：白底 r12 / padding 12 / 1px #EBEEF5；标题 14/600/#1F2329 + 项目 12/400/#6C7076 同行两端；状态行 12/400/#6C7076（「刚刚创建 / 运行 4 分钟 / 今天 17:32」）
+
+### 变更点清单
+
+| #   | 对象               | 修复前                                     | 修复后                                                                                                                                   |
+| --- | ------------------ | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 页面结构           | 单行 header（back + 标题 + select 挤一行） | **两行**：顶栏（返回当前会话，独立一行，底边 #EBEEF5）+ 标题行                                                                           |
+| 2   | 返回按钮           | r4 / 12px / vscode-foreground              | r8 / gap 8 / 14px 500 / #6C7076（hover #F0F2F5）                                                                                         |
+| 3   | 「会话状态」标题   | 13/600 / vscode-foreground                 | **16/600 / #1F2329 / line-height 32**                                                                                                    |
+| 4   | 项目筛选 select    | vscode-dropdown（r4 / 12px / 灰底）        | **r6 / 白底 / #DCDFE6 边框 / padding 4 8 / 14px**                                                                                        |
+| 5   | 列头               | 透明底 + 列边框 + r6                       | **整行色块**（等待 #FCF6EC / 运行 #EAEFFB / 完成 #F0F9EB）pad 12                                                                         |
+| 6   | 状态点             | `●` 字符（vscode token 颜色）              | **8×8 胶囊圆点**（#F2D09F / #6D8EE6 / #16A34A）                                                                                          |
+| 7   | 列名/数量          | 列名 12/600；数量 vscode-badge（蓝底胶囊） | 列名 **14/600/#1F2329**；数量 **12/500/#6C7076 纯文字无底**                                                                              |
+| 8   | 卡片区             | 无底色（透明）+ padding 8 10               | **#F5F7FA / padding 12 / gap 8**                                                                                                         |
+| 9   | 会话卡片           | 透明底 r4 12px + 边框 + 单行标题           | **白底 r12 / padding 12 / 1px #EBEEF5** + 标题行（标题+项目两端）+ **状态行**                                                            |
+| 10  | 卡片状态行（新增） | 无                                         | 相对时间：刚刚创建 / N 分钟前 / 运行 N 分钟 / 今天 HH:mm / 昨天 HH:mm                                                                    |
+| 11  | 卡片 hover         | vscode-list-hoverBackground                | 柔影 0 2px 8px rgb(31 35 41/8%) + 边框加深（深色 8% 白底）                                                                               |
+| 12  | 空态               | padding 18 0 顶部                          | flex 居中（margin auto）                                                                                                                 |
+| 13  | 深色主题           | 沿用 VS Code 深色 token                    | 桌面端惯例：filter/卡片 #27292B、卡片区 6% 白、边框 12% 白、列头色块改状态色 12% 透明底（#CCA700/#6D8EE6/#16A34A）、文字 #E6E6E6/#9A9EA5 |
+
+### 验证结果（Playwright 探针 + 截图实测 + vision 复核）
+
+| 项                  | 实测（light / dark）                                                          | 期望 |
+| ------------------- | ----------------------------------------------------------------------------- | ---- |
+| 页面                | 白底 padding 16（dark：跟随会话区底）                                         | ✓    |
+| 返回按钮            | 14px/500/#6C7076、r8（dark #9A9EA5）                                          | ✓    |
+| 标题                | 16/600/#1F2329、line-height 32（dark #E6E6E6）                                | ✓    |
+| select              | r6、白底、#DCDFE6、pad 4 8、14px（dark #27292B + 12% 白边框）                 | ✓    |
+| 列头色块            | #FCF6EC / #EAEFFB / #F0F9EB（dark 状态色 12% 透明底）                         | ✓    |
+| 胶囊点              | 8×8 r4、#F2D09F / #6D8EE6 / #16A34A                                           | ✓    |
+| 列名 / 数量         | 14/600 #1F2329；12/500 #6C7076 无底（dark #E6E6E6 / #9A9EA5）                 | ✓    |
+| 卡片区              | #F5F7FA、pad 12、gap 8（dark 6% 白）                                          | ✓    |
+| 卡片                | 白底 r12、#EBEEF5、pad 12、标题+项目两端+状态行（dark #27292B + 12% 白）      | ✓    |
+| 观感（vision 复核） | 两主题结构一致、色块语义正确、无错位溢出；深色略偏橄榄（状态色 12% 底）可接受 | ✓    |
+| type-check          | 通过                                                                          | ✓    |
+
+探针路径：desktop-full mock 侧边栏 activity 按钮（`desktop-sidebar-activity`）→ `.session-board`；mock 3 个会话均 running=false → 全部落入「已完成」列，等待/运行列验证空态。
+
+### 实现文件
+
+- `src/components/SessionBoard.tsx`（header 拆两行、列头色块 class + 胶囊点、卡片状态行 formatStatus）
+- `src/styles/SessionBoard.css`（全量重写为 Figma 权威值 + 深色桌面惯例覆盖）
