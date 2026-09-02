@@ -20,41 +20,226 @@ Wave 代码智聊是一款集成在 VS Code 与 JetBrains IDE（WebStorm、Intel
 
 在 JetBrains 插件市场（IDE「设置 → 插件」）搜索 **Wave Code Chat** 安装。打开聊天面板点击欢迎页的「登录」按钮完成 SSO 登录。
 
-![欢迎页](/screenshots/spec-welcome.webp)
-
 ## AI 核心能力
 
 所有操作和 AI 能力与桌面端保持同步，详见 [桌面端产品文档](/desktop)。
 
-## 代码选择与引用
+## 画廊
 
-用户可以通过编辑器右键菜单中的"添加到 CodeWave"选项，将选中的代码手动添加到对话上下文中。选中的代码会以蓝色内联标签的形式插入到输入框当前光标位置。在消息历史中，点击该标签可快速跳转回编辑器中的对应文件及行号。
+### 1. 核心聊天体验
 
-![输入框中的代码选中标签](/screenshots/spec-selection-inline-tag.webp)
+<div class="screenshot-gallery">
 
-![消息历史中的内联标签](/screenshots/spec-message-inline-tags.webp)
+<figure><img src="/screenshots/spec-welcome.webp" alt="欢迎页" /><figcaption>欢迎页</figcaption></figure>
 
-## 通过 Worktree 创建隔离环境
+<figure><img src="/screenshots/spec-welcome-login.webp" alt="未登录欢迎页" /><figcaption>未登录欢迎页</figcaption></figure>
 
-多个对话并行修改同一仓库时，直接在主线工作区改动容易互相冲突。此时可以让 AI 调用 `EnterWorktree` 工具，为每个对话创建独立的 git worktree——每个 worktree 拥有独立的分支与工作目录，互不影响。
+<figure><img src="/screenshots/spec-basic-chat.webp" alt="基础对话" /><figcaption>基础对话</figcaption></figure>
 
-在对话中直接以自然语言提出即可，例如：
+<figure><img src="/screenshots/spec-reasoning.webp" alt="AI 思考过程" /><figcaption>AI 思考过程</figcaption></figure>
 
-> 把支付模块的重构放到独立的 worktree 里做，避免影响主线。
+<figure><img src="/screenshots/spec-sticky-user-message.webp" alt="用户消息吸顶" /><figcaption>用户消息吸顶</figcaption></figure>
 
-AI 会调用 `EnterWorktree` 工具，创建 `.wave/worktrees/<name>` 目录并将当前会话的工作目录切换到该 worktree：
+</div>
 
-![创建 Worktree](/screenshots/spec-worktree-enter.webp)
+### 2. 智能输入与上下文
 
-创建成功后，该对话的所有文件修改都会落在独立的 worktree 中，不会影响主线分支与其他对话。需要离开时，可要求 AI 调用 `ExitWorktree` 工具退出 worktree。
+<div class="screenshot-gallery">
 
-## 多对话并行
+<figure><img src="/screenshots/spec-queue-collapsed.webp" alt="消息队列（收起）" /><figcaption>消息队列（收起）</figcaption></figure>
 
-当需要并行推进多个任务时，可以同时开启多个对话，每个对话独立运行、互不干扰：
+<figure><img src="/screenshots/spec-queued-message.webp" alt="消息队列（展开）" /><figcaption>消息队列（展开）</figcaption></figure>
 
-- **VS Code**：打开多个编辑器标签页（或独立窗口），每个标签页拥有独立的并行会话。
-- **JetBrains**：在 Wave 工具窗口点击「+」按钮新建聊天标签页，多个标签页并行会话。
+<figure><img src="/screenshots/spec-queue-editing.webp" alt="编辑队列消息" /><figcaption>编辑队列消息</figcaption></figure>
 
-![标题栏与工具栏](/screenshots/spec-chat-header.webp)
+<figure><img src="/screenshots/spec-plus-menu.webp" alt="通过&quot;+&quot;菜单打开历史提示词" /><figcaption>通过&quot;+&quot;菜单打开历史提示词</figcaption></figure>
 
-多个对话并行处理同一仓库的不同任务时，为避免在主线工作区直接改动造成冲突，推荐结合 worktree 创建隔离环境使用。
+<figure><img src="/screenshots/spec-history-search.webp" alt="历史提示词弹窗" /><figcaption>历史提示词弹窗</figcaption></figure>
+
+<figure><img src="/screenshots/spec-selection-inline-tag.webp" alt="输入框中的代码选中标签" /><figcaption>输入框中的代码选中标签</figcaption></figure>
+
+<figure><img src="/screenshots/spec-slash-commands.webp" alt="指令系统" /><figcaption>指令系统</figcaption></figure>
+
+<figure><img src="/screenshots/spec-model-popup.webp" alt="模型选择菜单" /><figcaption>模型选择菜单</figcaption></figure>
+
+<figure><img src="/screenshots/spec-file-suggestions.webp" alt="文件建议下拉列表" /><figcaption>文件建议下拉列表</figcaption></figure>
+
+<figure><img src="/screenshots/spec-inline-mentions.webp" alt="输入框中的内联标签" /><figcaption>输入框中的内联标签</figcaption></figure>
+
+<figure><img src="/screenshots/spec-image-preview.webp" alt="图片全屏预览模态框" /><figcaption>图片全屏预览模态框</figcaption></figure>
+
+<figure><img src="/screenshots/spec-message-inline-tags.webp" alt="消息列表中的内联标签" /><figcaption>消息列表中的内联标签</figcaption></figure>
+
+<figure><img src="/screenshots/bash-mode-success.webp" alt="Bash 模式命令执行成功" /><figcaption>Bash 模式命令执行成功</figcaption></figure>
+
+<figure><img src="/screenshots/bash-mode-long-output.webp" alt="长输出展示" /><figcaption>长输出展示</figcaption></figure>
+
+<figure><img src="/screenshots/spec-input-empty.webp" alt="输入框（空态）" /><figcaption>输入框（空态）</figcaption></figure>
+
+<figure><img src="/screenshots/spec-input-focus.webp" alt="输入框（聚焦态）" /><figcaption>输入框（聚焦态）</figcaption></figure>
+
+<figure><img src="/screenshots/spec-input-multiline.webp" alt="输入框（多行）" /><figcaption>输入框（多行）</figcaption></figure>
+
+<figure><img src="/screenshots/spec-btw-panel.webp" alt="旁路提问面板" /><figcaption>旁路提问面板</figcaption></figure>
+
+<figure><img src="/screenshots/spec-btw-usage.webp" alt="旁路提问使用提示" /><figcaption>旁路提问使用提示</figcaption></figure>
+
+</div>
+
+### 3. 代码理解与操作
+
+<div class="screenshot-gallery">
+
+<figure><img src="/screenshots/spec-bash.webp" alt="终端工具" /><figcaption>终端工具</figcaption></figure>
+
+<figure><img src="/screenshots/spec-exploration.webp" alt="文件探索" /><figcaption>文件探索</figcaption></figure>
+
+<figure><img src="/screenshots/spec-file-ops.webp" alt="文件操作" /><figcaption>文件操作</figcaption></figure>
+
+<figure><img src="/screenshots/spec-diff-viewer.webp" alt="文件差异对比" /><figcaption>文件差异对比</figcaption></figure>
+
+<figure><img src="/screenshots/spec-lsp.webp" alt="LSP 智能" /><figcaption>LSP 智能</figcaption></figure>
+
+<figure><img src="/screenshots/spec-vision.webp" alt="视觉理解" /><figcaption>视觉理解</figcaption></figure>
+
+</div>
+
+### 4. 权限与安全
+
+<div class="screenshot-gallery">
+
+<figure><img src="/screenshots/spec-permission-mode-default.webp" alt="权限模式 - 默认" /><figcaption>权限模式 - 默认</figcaption></figure>
+
+<figure><img src="/screenshots/spec-permission-mode-accept.webp" alt="权限模式 - 自动接受修改" /><figcaption>权限模式 - 自动接受修改</figcaption></figure>
+
+<figure><img src="/screenshots/spec-permission-mode-plan.webp" alt="权限模式 - 计划模式" /><figcaption>权限模式 - 计划模式</figcaption></figure>
+
+<figure><img src="/screenshots/spec-edit-confirm.webp" alt="代码修改确认" /><figcaption>代码修改确认</figcaption></figure>
+
+<figure><img src="/screenshots/spec-bash-confirm.webp" alt="命令执行确认" /><figcaption>命令执行确认</figcaption></figure>
+
+<figure><img src="/screenshots/spec-mcp-tool-confirm.webp" alt="MCP 工具确认" /><figcaption>MCP 工具确认</figcaption></figure>
+
+<figure><img src="/screenshots/spec-plan-confirm.webp" alt="计划执行确认" /><figcaption>计划执行确认</figcaption></figure>
+
+<figure><img src="/screenshots/spec-enter-plan-mode.webp" alt="进入计划模式确认" /><figcaption>进入计划模式确认</figcaption></figure>
+
+<figure><img src="/screenshots/spec-ask-user.webp" alt="交互式提问表单" /><figcaption>交互式提问表单</figcaption></figure>
+
+<figure><img src="/screenshots/spec-ask-user-multi.webp" alt="交互式提问（多个问题轮播）" /><figcaption>交互式提问（多个问题轮播）</figcaption></figure>
+
+<figure><img src="/screenshots/spec-ask-user-multiselect.webp" alt="交互式提问（多选）" /><figcaption>交互式提问（多选）</figcaption></figure>
+
+<figure><img src="/screenshots/ask-user-question-vertical.webp" alt="交互式提问结果（垂直布局）" /><figcaption>交互式提问结果（垂直布局）</figcaption></figure>
+
+<figure><img src="/screenshots/tool-error-scrollable.webp" alt="工具执行错误" /><figcaption>工具执行错误</figcaption></figure>
+
+<figure><img src="/screenshots/error-block-scrollable.webp" alt="通用错误消息" /><figcaption>通用错误消息</figcaption></figure>
+
+</div>
+
+### 5. 任务管理
+
+<div class="screenshot-gallery">
+
+<figure><img src="/screenshots/spec-task-list.webp" alt="任务列表（展开状态）" /><figcaption>任务列表（展开状态）</figcaption></figure>
+
+<figure><img src="/screenshots/spec-task-list-collapsed.webp" alt="任务列表（折叠状态）" /><figcaption>任务列表（折叠状态）</figcaption></figure>
+
+<figure><img src="/screenshots/spec-background-task-list.webp" alt="后台任务管理 - 列表" /><figcaption>后台任务管理 - 列表</figcaption></figure>
+
+<figure><img src="/screenshots/spec-background-task-detail.webp" alt="后台任务管理 - 详情" /><figcaption>后台任务管理 - 详情</figcaption></figure>
+
+<figure><img src="/screenshots/spec-workflow-list.webp" alt="工作流管理 - 列表" /><figcaption>工作流管理 - 列表</figcaption></figure>
+
+<figure><img src="/screenshots/spec-workflow-detail.webp" alt="工作流管理 - 详情" /><figcaption>工作流管理 - 详情</figcaption></figure>
+
+</div>
+
+### 6. 多 Agents 与并发
+
+<div class="screenshot-gallery">
+
+<figure><img src="/screenshots/spec-agents-list.webp" alt="Agents - 列表" /><figcaption>Agents - 列表</figcaption></figure>
+
+<figure><img src="/screenshots/spec-agents-detail.webp" alt="Agents - 详情" /><figcaption>Agents - 详情</figcaption></figure>
+
+<figure><img src="/screenshots/spec-skills-list.webp" alt="技能 - 列表" /><figcaption>技能 - 列表</figcaption></figure>
+
+<figure><img src="/screenshots/spec-subagent-concurrency.webp" alt="并发子代理" /><figcaption>并发子代理</figcaption></figure>
+
+<figure><img src="/screenshots/spec-background-subagent.webp" alt="后台运行子代理" /><figcaption>后台运行子代理</figcaption></figure>
+
+<figure><img src="/screenshots/spec-chat-header.webp" alt="标题栏与工具栏" /><figcaption>标题栏与工具栏</figcaption></figure>
+
+<figure><img src="/screenshots/spec-worktree-enter.webp" alt="创建 Worktree" /><figcaption>创建 Worktree</figcaption></figure>
+
+</div>
+
+### 7. 能力扩展
+
+<div class="screenshot-gallery">
+
+<figure><img src="/screenshots/spec-subagent.webp" alt="子代理状态" /><figcaption>子代理状态</figcaption></figure>
+
+<figure><img src="/screenshots/spec-skill.webp" alt="Skill 系统" /><figcaption>Skill 系统</figcaption></figure>
+
+<figure><img src="/screenshots/spec-mcp.webp" alt="MCP 集成" /><figcaption>MCP 集成</figcaption></figure>
+
+<figure><img src="/screenshots/spec-mcp-server-tab.webp" alt="MCP 服务器管理" /><figcaption>MCP 服务器管理</figcaption></figure>
+
+</div>
+
+### 8. 会话与持久化
+
+<div class="screenshot-gallery">
+
+<figure><img src="/screenshots/spec-rewind-button.webp" alt="用户消息上的回滚按钮" /><figcaption>用户消息上的回滚按钮</figcaption></figure>
+
+<figure><img src="/screenshots/spec-rewind-popup.webp" alt="/rewind 检查点列表" /><figcaption>/rewind 检查点列表</figcaption></figure>
+
+<figure><img src="/screenshots/spec-confirm-rewind.webp" alt="回滚确认对话框" /><figcaption>回滚确认对话框</figcaption></figure>
+
+<figure><img src="/screenshots/spec-session-search.webp" alt="历史对话搜索与关键词高亮" /><figcaption>历史对话搜索与关键词高亮</figcaption></figure>
+
+<figure><img src="/screenshots/spec-more-menu.webp" alt="更多菜单" /><figcaption>更多菜单</figcaption></figure>
+
+</div>
+
+### 9. 配置管理
+
+<div class="screenshot-gallery">
+
+<figure><img src="/screenshots/spec-status-dialog.webp" alt="状态信息" /><figcaption>状态信息</figcaption></figure>
+
+</div>
+
+### 10. 插件系统
+
+<div class="screenshot-gallery">
+
+<figure><img src="/screenshots/spec-plugin-explore.webp" alt="探索新插件（支持关键词搜索）" /><figcaption>探索新插件（支持关键词搜索）</figcaption></figure>
+
+<figure><img src="/screenshots/plugin-search-filtered.webp" alt="关键词过滤效果" /><figcaption>关键词过滤效果</figcaption></figure>
+
+<figure><img src="/screenshots/spec-plugin-installed.webp" alt="已激活插件管理" /><figcaption>已激活插件管理</figcaption></figure>
+
+<figure><img src="/screenshots/spec-sdd-plugin.webp" alt="内置 SDD 插件开关（项目设置）" /><figcaption>内置 SDD 插件开关（项目设置）</figcaption></figure>
+
+<figure><img src="/screenshots/spec-sdd-workflow-spec.webp" alt="规格编写阶段" /><figcaption>规格编写阶段</figcaption></figure>
+
+<figure><img src="/screenshots/spec-sdd-confirm-spec.webp" alt="规格决策" /><figcaption>规格决策</figcaption></figure>
+
+<figure><img src="/screenshots/spec-sdd-plan-preview-tab.webp" alt="技术方案预览" /><figcaption>技术方案预览</figcaption></figure>
+
+<figure><img src="/screenshots/spec-sdd-plan-approve.webp" alt="计划批准交互" /><figcaption>计划批准交互</figcaption></figure>
+
+<figure><img src="/screenshots/spec-sdd-tasklist-progress.webp" alt="编码阶段任务列表" /><figcaption>编码阶段任务列表</figcaption></figure>
+
+<figure><img src="/screenshots/spec-sdd-iterate-update.webp" alt="迭代需求-更新规格" /><figcaption>迭代需求-更新规格</figcaption></figure>
+
+<figure><img src="/screenshots/spec-sdd-iterate-confirm.webp" alt="迭代需求-规格确认" /><figcaption>迭代需求-规格确认</figcaption></figure>
+
+<figure><img src="/screenshots/spec-sdd-iterate-continue.webp" alt="迭代需求-继续实现" /><figcaption>迭代需求-继续实现</figcaption></figure>
+
+</div>

@@ -4,6 +4,7 @@ import DefaultTheme from "vitepress/theme";
 import mediumZoom from "medium-zoom";
 
 import "./zoom.css";
+import "./gallery.css";
 
 let zoom = null;
 

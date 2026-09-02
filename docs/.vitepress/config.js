@@ -142,12 +142,34 @@ export default {
             { text: "VS Code 扩展", link: "/vsce#vs-code-扩展" },
             { text: "JetBrains 插件", link: "/vsce#jetbrains-插件" },
             { text: "AI 核心能力", link: "/vsce#ai-核心能力" },
-            { text: "代码选择与引用", link: "/vsce#代码选择与引用" },
             {
-              text: "通过 Worktree 创建隔离环境",
-              link: "/vsce#通过-worktree-创建隔离环境",
+              text: "画廊",
+              collapsed: false,
+              items: [
+                {
+                  text: "1. 核心聊天体验",
+                  link: "/vsce#_1-核心聊天体验",
+                },
+                {
+                  text: "2. 智能输入与上下文",
+                  link: "/vsce#_2-智能输入与上下文",
+                },
+                {
+                  text: "3. 代码理解与操作",
+                  link: "/vsce#_3-代码理解与操作",
+                },
+                { text: "4. 权限与安全", link: "/vsce#_4-权限与安全" },
+                { text: "5. 任务管理", link: "/vsce#_5-任务管理" },
+                {
+                  text: "6. 多 Agents 与并发",
+                  link: "/vsce#_6-多-agents-与并发",
+                },
+                { text: "7. 能力扩展", link: "/vsce#_7-能力扩展" },
+                { text: "8. 会话与持久化", link: "/vsce#_8-会话与持久化" },
+                { text: "9. 配置管理", link: "/vsce#_9-配置管理" },
+                { text: "10. 插件系统", link: "/vsce#_10-插件系统" },
+              ],
             },
-            { text: "多对话并行", link: "/vsce#多对话并行" },
           ],
         },
       ],
