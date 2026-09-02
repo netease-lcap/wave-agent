@@ -23,6 +23,9 @@ export interface DesktopConfigData {
   autoMemoryFrequency?: number;
 }
 
+/** App appearance preference — 设置页「全局设置」三态选择（仅桌面端 UI）。 */
+export type ThemeSource = "system" | "light" | "dark";
+
 /**
  * A recent workdir, tagged with the host it lives on. `host` is the ssh config
  * host name, or LOCAL_HOST ('local') for this machine. (host, path) is the
@@ -57,6 +60,8 @@ export interface SessionIndexEntry {
 
 interface StoreData {
   configuration: DesktopConfigData;
+  /** App appearance preference: follow the OS, or force light/dark. Defaults to "system". */
+  theme: ThemeSource;
   /** Disk form: WorkdirRef, or legacy plain strings migrated to {host:'local', path} on load. */
   recentWorkdirs: Array<string | WorkdirRef>;
   sessions: SessionIndexEntry[];
@@ -80,6 +85,7 @@ export class ConfigStore {
       const parsed = JSON.parse(raw) as Partial<StoreData>;
       return {
         configuration: parsed.configuration ?? {},
+        theme: isThemeSource(parsed.theme) ? parsed.theme : "system",
         // Legacy plain-string entries (pre-remote) become local-host refs.
         // Deduped on load so older data where one directory was persisted with
         // two slash styles (e.g. `C:\a` and `C:/a`) collapses into one entry.
@@ -109,7 +115,12 @@ export class ConfigStore {
       };
     } catch {
       // Missing or corrupt file — start fresh (loadWaveConfigFromFile precedent).
-      return { configuration: {}, recentWorkdirs: [], sessions: [] };
+      return {
+        configuration: {},
+        theme: "system",
+        recentWorkdirs: [],
+        sessions: [],
+      };
     }
   }
 
@@ -148,6 +159,17 @@ export class ConfigStore {
       }
     }
     this.data.configuration = merged as DesktopConfigData;
+    this.save();
+  }
+
+  /** App appearance preference (defaults to following the OS). */
+  getThemeSource(): ThemeSource {
+    return this.data.theme;
+  }
+
+  /** Persist the appearance preference (desktop host applies it to nativeTheme). */
+  setThemeSource(source: ThemeSource): void {
+    this.data.theme = source;
     this.save();
   }
 
@@ -298,4 +320,9 @@ function normalizeLocalPath(p: string): string {
   return normalized.length > 3 && normalized.endsWith("\\")
     ? normalized.slice(0, -1)
     : normalized;
+}
+
+/** Type guard for theme preference values loaded from disk. */
+function isThemeSource(value: unknown): value is ThemeSource {
+  return value === "system" || value === "light" || value === "dark";
 }

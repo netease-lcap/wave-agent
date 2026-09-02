@@ -202,7 +202,7 @@ export const fixtures: Fixtures = {
     queuedMessages: [],
     isAuthenticated: true,
     workdir: "/tmp/test",
-    theme: { effective: "dark" },
+    theme: { effective: "dark", source: "system" },
     inputContent: "",
     ...overrides,
   }),

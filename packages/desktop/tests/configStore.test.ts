@@ -435,4 +435,32 @@ describe("ConfigStore", () => {
     store.getSessionIndex()[0].title = "tampered";
     expect(store.getSessionIndex()[0].title).toBe("Original");
   });
+
+  // ── Theme preference ────────────────────────────────────────────
+
+  it("defaults the theme source to following the system", () => {
+    const store = new ConfigStore(STORE_PATH);
+    expect(store.getThemeSource()).toBe("system");
+  });
+
+  it("persists the theme source across instances", () => {
+    const store = new ConfigStore(STORE_PATH);
+    store.setThemeSource("dark");
+    expect(store.getThemeSource()).toBe("dark");
+    expect(new ConfigStore(STORE_PATH).getThemeSource()).toBe("dark");
+  });
+
+  it("falls back to system for a corrupt theme value on disk", () => {
+    h.files.set(
+      STORE_PATH,
+      JSON.stringify({
+        configuration: {},
+        theme: "neon",
+        recentWorkdirs: [],
+        sessions: [],
+      }),
+    );
+    const store = new ConfigStore(STORE_PATH);
+    expect(store.getThemeSource()).toBe("system");
+  });
 });

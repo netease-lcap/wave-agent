@@ -48,6 +48,7 @@ import type {
   ConfigurationData,
   DesktopPanelKind,
   FileViewState,
+  ThemeSource,
   ToolBlock,
   ToolBlockUpdateCallbackParams,
   UpdateToast,
@@ -386,6 +387,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     string | null
   >(null);
   const [sessionBoardOpen, setSessionBoardOpen] = useState(false);
+  // 桌面端主题偏好（host 为真源）：初值取 setInitialState.theme.source，此后随
+  // host 广播（desktopThemeSource / 重推快照）同步，设置页「全局设置」主题行据此
+  // 显示当前选中项。VSCE/JetBrains 无此偏好，恒为默认 "system" 且不渲染主题行。
+  const [themeSource, setThemeSource] = useState<ThemeSource>(
+    () => state.theme?.source ?? "system",
+  );
+  useEffect(() => {
+    if (state.theme?.source) setThemeSource(state.theme.source);
+  }, [state.theme?.source]);
   // Context-usage percentage pushed by the host (batch 2 compress button).
   // Undefined = no usage info received yet (spec 场景 4: label without %).
   const [contextUsage, setContextUsage] = useState<number | undefined>();
@@ -1081,6 +1091,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             "data-theme",
             message.effective,
           );
+          break;
+        case "desktopThemeSource":
+          // Theme preference broadcast — keeps the settings selection in sync
+          // on every instance after 跟随系统/浅色/深色 is picked (the theme
+          // itself was already applied by the desktopThemeChange above).
+          setThemeSource(message.source);
           break;
         case "showToast":
           // Toasts are window-global (no paneId) — only the root instance (the
@@ -2682,6 +2698,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     <SettingsPage
       configurationData={state.configurationData ?? null}
       onSave={handleConfigurationSave}
+      themeSource={themeSource}
+      onThemeChange={(source) => {
+        // 乐观更新本实例选中态；host 持久化后回广播 desktopThemeSource（幂等）。
+        setThemeSource(source);
+        postToHost({ command: "setThemeSource", source });
+      }}
       onClose={handleCloseSettings}
       userAgentsContent={userAgentsContent}
       projectAgentsContent={projectAgentsContent}
