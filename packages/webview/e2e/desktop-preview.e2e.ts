@@ -202,4 +202,69 @@ test.describe("Desktop Preview Pane Screenshots", () => {
       "这里改成主要按钮样式",
     );
   });
+
+  test("load-failure retry button stays a single-line button", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1100, height: 680 });
+
+    await injector.simulateExtensionMessage("desktopWorkdirState", {
+      workdir: DIR_A,
+      recentWorkdirs: [DIR_A],
+    });
+    await injector.waitForChatAppReady();
+    await injector.simulateExtensionMessage("setInitialState", initialState);
+
+    await injector.updateMessages([
+      MockDataGenerator.createUserMessage("帮我预览一下页面", "msg-u1"),
+      MockDataGenerator.createAssistantMessage(
+        "开发服务器已启动，点击 [http://localhost:5173](http://localhost:5173) 预览。",
+        "msg-a1",
+      ),
+    ]);
+
+    // Open the preview pane, then stub the guest IPC surface (the harness
+    // cannot host a real Electron <webview>).
+    await webviewPage.locator('a[href="http://localhost:5173"]').click();
+    await expect(webviewPage.getByTestId("preview-pane")).toBeVisible();
+    await webviewPage.evaluate(() => {
+      const wv = document.querySelector("webview") as unknown as Record<
+        string,
+        unknown
+      > &
+        HTMLElement;
+      wv.send = () => {};
+      wv.loadURL = async () => {};
+      wv.reload = () => {};
+      wv.dispatchEvent(new Event("dom-ready"));
+    });
+
+    // Simulate the dev server going away: the guest fires did-fail-load and
+    // PreviewPane shows the load-error state with a "重试" button.
+    await webviewPage.evaluate(() => {
+      const wv = document.querySelector("webview") as HTMLElement;
+      const fail = new Event("did-fail-load") as Event & {
+        errorCode?: number;
+        errorDescription?: string;
+        isMainFrame?: boolean;
+      };
+      fail.errorCode = -324; // ERR_EMPTY_RESPONSE
+      fail.errorDescription = "ERR_EMPTY_RESPONSE";
+      fail.isMainFrame = true;
+      wv.dispatchEvent(fail);
+    });
+
+    const errorBox = webviewPage.getByTestId("preview-error");
+    await expect(errorBox).toBeVisible();
+    await expect(errorBox).toContainText("页面加载失败：ERR_EMPTY_RESPONSE");
+
+    // Regression: the retry text button reuses the toolbar icon-button class
+    // (24×24, no wrap). The error-state override must widen it to fit its
+    // label — otherwise "重试" stacks vertically into a narrow pill.
+    const retry = webviewPage.getByTestId("preview-retry");
+    const box = (await retry.boundingBox())!;
+    expect(box.width).toBeGreaterThan(box.height);
+    await expect(retry).toHaveText("重试");
+  });
 });
