@@ -565,9 +565,6 @@ export interface ChatHeaderProps {
   onLogin: () => void;
   onLogout: () => void;
   isAuthenticated: boolean;
-  /** IDE hosts: show a persistent login button next to the more button while
-   *  logged out (desktop has the sidebar account card instead). */
-  showLoginButton?: boolean;
   // Desktop host: session new/list buttons live in DesktopSidebar instead.
   hideSessionButtons?: boolean;
   // Desktop host: the 新建对话 header button stays in the sidebar; the header

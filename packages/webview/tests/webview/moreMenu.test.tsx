@@ -33,28 +33,6 @@ describe("More Menu", () => {
     );
   });
 
-  it("should show a persistent login button next to the more button when logged out (IDE)", () => {
-    const { vscode } = renderChatApp();
-
-    // Authenticated by default: no login button in the header.
-    expect(screen.queryByTestId("header-login-btn")).not.toBeInTheDocument();
-
-    // Switch to unauthenticated.
-    sendCommand("authStatusResponse", { isAuthenticated: false });
-
-    const loginBtn = screen.getByTestId("header-login-btn");
-    expect(loginBtn).toHaveTextContent("登 录");
-    vscode.postMessage.mockClear();
-    fireEvent.click(loginBtn);
-    expect(vscode.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ command: "login" }),
-    );
-
-    // Login again clears the button.
-    sendCommand("authStatusResponse", { isAuthenticated: true });
-    expect(screen.queryByTestId("header-login-btn")).not.toBeInTheDocument();
-  });
-
   it("should not show 退出登录 when unauthenticated", () => {
     renderChatApp();
 

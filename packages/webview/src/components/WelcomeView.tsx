@@ -3,9 +3,13 @@
  *
  * Shown in place of MessageList when there are no messages yet. On desktop the
  * surrounding layout centers this brand mark together with the input card
- * (`.chat-container--welcome`); on IDE hosts it centers on its own. The login
- * entry lives in the chat header (IDE hosts) or the sidebar account card
- * (desktop) instead of the welcome page.
+ * (`.chat-container--welcome`); on IDE hosts it centers on its own.
+ *
+ * The login entry lives here on IDE hosts — an unauthenticated user without a
+ * direct-connect config sees a「登录后即可开始使用~」hint and a 登 录 button
+ * under the brand mark (spec sso-auth「更多菜单与欢迎页」场景 5/7). Desktop
+ * keeps its login entry in the sidebar account card, so the welcome page never
+ * shows a login button there.
  *
  * Brand mark differs by host: IDE plugins show the classic red rounded square
  * with the Wave "W" (the original welcome logo); desktop keeps the designer
@@ -18,6 +22,13 @@ import { CodewaveLogo } from "./CodewaveLogo";
 export interface WelcomeViewProps {
   /** Desktop renders the designer wordmark; IDE hosts render the classic W mark. */
   isDesktop?: boolean;
+  /** Host-reported SSO auth state (setInitialState). */
+  isAuthenticated: boolean;
+  /** A direct-connect config (apiKey + baseURL) works without SSO login, so it
+   *  suppresses the login UI (login stays optional). */
+  hasDirectConnectConfig: boolean;
+  /** Fires the host login flow (identical to the 更多 menu's 登录 item). */
+  onLogin: () => void;
 }
 
 // Wave "W" mark from the Figma design (node 2171:1482 logo vector).
@@ -37,7 +48,17 @@ const WaveLogo: React.FC<{ size?: number }> = ({ size = 20 }) => (
   </svg>
 );
 
-const WelcomeView: React.FC<WelcomeViewProps> = ({ isDesktop = false }) => {
+const WelcomeView: React.FC<WelcomeViewProps> = ({
+  isDesktop = false,
+  isAuthenticated,
+  hasDirectConnectConfig,
+  onLogin,
+}) => {
+  // Login UI is IDE-only (desktop logs in via the sidebar account card) and
+  // only relevant when the user can neither use a direct-connect config nor is
+  // already authenticated.
+  const showLogin = !isDesktop && !isAuthenticated && !hasDirectConnectConfig;
+
   return (
     <div
       style={{
@@ -99,6 +120,63 @@ const WelcomeView: React.FC<WelcomeViewProps> = ({ isDesktop = false }) => {
             }}
           >
             Hi~ 欢迎使用 Wave 代码智聊
+          </div>
+        )}
+        {/* Login entry (IDE hosts, unauthenticated + no direct-connect) — hint
+            line plus a full-width brand-red button, matching the pre-batch-2
+            welcome page (spec sso-auth「更多菜单与欢迎页」场景 5/7). */}
+        {showLogin && (
+          <div
+            style={{
+              width: "400px",
+              maxWidth: "100%",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "16px",
+            }}
+          >
+            <div
+              data-testid="welcome-login-hint"
+              style={{
+                fontSize: "13px",
+                fontFamily:
+                  '"PingFang SC", var(--vscode-font-family, sans-serif)',
+                fontWeight: 400,
+                color: "var(--vscode-descriptionForeground, #8c8c8c)",
+                lineHeight: "18px",
+              }}
+            >
+              登录后即可开始使用~
+            </div>
+            <button
+              type="button"
+              onClick={onLogin}
+              data-testid="welcome-login-btn"
+              aria-label="登录"
+              style={{
+                width: "100%",
+                height: "32px",
+                minHeight: "32px",
+                background: "var(--vscode-brand-primary, #c1292e)",
+                color: "var(--vscode-button-foreground, white)",
+                border: "none",
+                borderRadius: "6px",
+                fontSize: "13px",
+                fontFamily:
+                  '"PingFang SC", var(--vscode-font-family, sans-serif)',
+                fontWeight: 600,
+                lineHeight: "18px",
+                cursor: "pointer",
+                padding: "7px 12px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              登 录
+            </button>
           </div>
         )}
       </div>

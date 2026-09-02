@@ -33,7 +33,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   hideSessionButtons = false,
   hideNewSessionButton = false,
   hideMoreButton = false,
-  showLoginButton = false,
   panelToggle,
   leading,
   headerActions,
@@ -81,17 +80,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               <HistoryIcon />
             </button>
           </Tooltip>
-        )}
-        {showLoginButton && (
-          <button
-            type="button"
-            className="header-login-button"
-            data-testid="header-login-btn"
-            aria-label="登录"
-            onClick={onLogin}
-          >
-            登 录
-          </button>
         )}
         {!hideMoreButton && (
           <Tooltip text="更多" position="bottom">
