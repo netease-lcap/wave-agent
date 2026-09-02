@@ -17,11 +17,15 @@ const initialState = {
   permissionMode: "default",
 };
 
-// Demonstrates that the conversation column is capped at 800px and centered,
-// lining up with the input box — instead of messages spanning the full pane
-// width on a wide window. A wide viewport makes the side gutters obvious.
+// 桌面端消息列与输入卡宽度关系（第 24 轮后以设计师 Figma 规范为准）：
+//   - 消息列 .messages-container 保持既有 cap 800px 居中（base 产品形态，
+//     desktop-density-restore 记录：虚拟列表行 inset 联动，列宽不单独改）；
+//   - 输入卡 .input-wrapper cap 768px 居中（Figma「Form - 发送消息」768 =
+//     Container 800 − pad 16×2，host-desktop.css [data-host=desktop] 覆盖）；
+//   - 两列各自居中 → 水平中心对齐，消息列每侧比输入卡宽 16px。
+// 宽视口让两侧 gutter 可见，用于断言 cap 与居中不漂移。
 test.describe("Desktop message column width", () => {
-  test("messages are centered and aligned with the input", async ({
+  test("message column and input card stay capped and centered (composer 768 spec)", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
@@ -60,12 +64,9 @@ test.describe("Desktop message column width", () => {
     await expect(webviewPage.locator(".message.user")).toBeVisible();
     await expect(webviewPage.locator(".message.assistant")).toBeVisible();
 
-    // The conversation column is capped at 800px (matching .input-wrapper's
-    // own 800px cap) and centered, so the message column's outer edges line
-    // up with the input box's edges exactly. .messages-container is
-    // border-box, so its 10px message padding lives inside the 800px column
-    // (content 780) rather than overflowing it — the column aligns with
-    // .input-wrapper instead of sitting 20px wider.
+    // .messages-container 是 border-box：其 10px 消息 padding 在 800px 列内
+    // （content 780）。输入卡 768px cap 是 [data-host=desktop] 覆盖，welcome
+    // 态输入卡限宽同 768（host-desktop.css），两态一致。
     const geom = await webviewPage.evaluate(() => {
       const r = (sel: string) =>
         document.querySelector(sel)!.getBoundingClientRect();
@@ -74,12 +75,17 @@ test.describe("Desktop message column width", () => {
       const msg = r(".messages-container");
       const input = r(".input-wrapper");
       const main = r(".desktop-chat-main");
+      const center = (b: DOMRect) => b.left + b.width / 2;
       return {
         msgCapped: msg.width < main.width,
         centered: Math.abs(msg.left - main.left - (main.right - msg.right)) < 1,
-        columnAlignsInput:
-          Math.abs(msg.left - input.left) < 1 &&
-          Math.abs(msg.right - input.right) < 1,
+        inputCapped: input.width < main.width,
+        inputCentered:
+          Math.abs(input.left - main.left - (main.right - input.right)) < 1,
+        // 两列独立居中 → 中心对齐；消息列 800 比输入卡 768 每侧宽 16px
+        // （800−768=32，±2 容差）。
+        centersAlign: Math.abs(center(msg) - center(input)) < 1,
+        msgWiderBy32: Math.abs(msg.width - input.width - 32) < 2,
         // The gutter (chat-area background showing through the transparent
         // wrappers around the message column) must match the message list's
         // own background, not the host's editor-background body.
@@ -89,7 +95,10 @@ test.describe("Desktop message column width", () => {
     });
     expect(geom.msgCapped).toBeTruthy();
     expect(geom.centered).toBeTruthy();
-    expect(geom.columnAlignsInput).toBeTruthy();
+    expect(geom.inputCapped).toBeTruthy();
+    expect(geom.inputCentered).toBeTruthy();
+    expect(geom.centersAlign).toBeTruthy();
+    expect(geom.msgWiderBy32).toBeTruthy();
     expect(geom.gutterBg).toBe(geom.msgBg);
   });
 });

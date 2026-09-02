@@ -330,11 +330,14 @@ describe("PreviewPane", () => {
 
     const btn = screen.getByTestId("preview-fullscreen");
     expect(btn).toHaveAttribute("title", "全屏预览");
-    expect(btn.querySelector(".codicon-screen-full")).not.toBeNull();
+    // 第 32 轮图标 SVG 化：全屏态渲染 MaximizeIcon（Figma 图标，非 codicon 字体）。
+    const iconPath = () => btn.querySelector("svg")!.innerHTML;
+    const pathBefore = iconPath();
+    expect(pathBefore).not.toBe("");
     fireEvent.click(btn);
     expect(onToggleFullscreen).toHaveBeenCalledTimes(1);
 
-    // Fullscreen state: icon flips to 退出全屏 (screen-normal).
+    // Fullscreen state: icon flips to 退出全屏 (UnmaximizeIcon).
     rerender(
       <PreviewPane
         url="http://localhost:5173/app"
@@ -349,7 +352,7 @@ describe("PreviewPane", () => {
     );
     const fsBtn = screen.getByTestId("preview-fullscreen");
     expect(fsBtn).toHaveAttribute("title", "退出全屏");
-    expect(fsBtn.querySelector(".codicon-screen-normal")).not.toBeNull();
+    expect(fsBtn.querySelector("svg")!.innerHTML).not.toBe(pathBefore);
     expect(fsBtn).toHaveAttribute("aria-pressed", "true");
   });
 
