@@ -51,6 +51,7 @@ import {
   ConfigStore,
   type DesktopConfigData,
   type SessionIndexEntry,
+  type ThemeSource,
 } from "./configStore";
 import { LOCAL_HOST, parseSshConfigHosts, addSshHost } from "./sshHosts";
 import {
@@ -443,10 +444,11 @@ export class DesktopHost {
   }
 
   /**
-   * Posted to the renderer whenever the OS appearance flips so it can swap the
-   * `data-theme` attribute and the inlined `--vscode-*` variable set without a
-   * reload (FR-018). Desktop follows the OS appearance only — no in-app toggle
-   * (FR-016), matching the IDE plugins.
+   * Posted to the renderer whenever the effective appearance flips so it can
+   * swap the `data-theme` attribute and the inlined `--vscode-*` variable set
+   * without a reload (FR-018). The appearance is either the OS appearance
+   * ("system") or the user's fixed preference from the settings page
+   * (浅色/深色) — both resolve through nativeTheme.themeSource.
    */
   private readonly onNativeThemeUpdated = () => {
     this.postMessage({
@@ -456,6 +458,10 @@ export class DesktopHost {
   };
 
   constructor(private readonly configStore: ConfigStore) {
+    // Apply the persisted appearance preference (system/light/dark) before
+    // anything reads nativeTheme, so the first frame and initial snapshots
+    // already match the user's choice (no flash, FR-019).
+    nativeTheme.themeSource = configStore.getThemeSource();
     nativeTheme.on("updated", this.onNativeThemeUpdated);
     powerMonitor.on("resume", this.onSystemResume);
   }
@@ -508,8 +514,8 @@ export class DesktopHost {
 
   /**
    * Effective theme for the preload's sync IPC — applied to <html data-theme>
-   * before first paint so the initial frame already matches the OS appearance
-   * (FR-019, no light↔dark flash on launch).
+   * before first paint so the initial frame already matches the resolved
+   * appearance (OS or the user's fixed preference, FR-019, no flash on launch).
    */
   getInitialEffectiveTheme(): "light" | "dark" {
     return this.getCurrentEffectiveTheme();
@@ -557,6 +563,8 @@ export class DesktopHost {
     }
   }
 
+  /** Resolved appearance: the OS colors under nativeTheme.themeSource, honoring
+   *  a fixed 浅色/深色 preference when set ("system" follows the OS). */
   private getCurrentEffectiveTheme(): "light" | "dark" {
     try {
       return nativeTheme.shouldUseDarkColors ? "dark" : "light";
@@ -2482,7 +2490,10 @@ export class DesktopHost {
       queuedMessages: current?.queuedMessages ?? [],
       isAuthenticated: this.lastIsAuthenticated,
       workdir: current?.workingDirectory,
-      theme: { effective: this.getCurrentEffectiveTheme() },
+      theme: {
+        effective: this.getCurrentEffectiveTheme(),
+        source: this.configStore.getThemeSource(),
+      },
     });
   }
 
@@ -3251,6 +3262,11 @@ export class DesktopHost {
         await this.handleUpdateConfiguration(
           msg.configurationData as DesktopConfigData,
         );
+        break;
+
+      case "setThemeSource":
+        // 设置页「全局设置」主题选择（跟随系统/浅色/深色，仅桌面端有 UI）。
+        this.handleSetThemeSource(msg.source as string);
         break;
 
       // -- status / updates (FR-009/010) -------------------------------------
@@ -4541,6 +4557,27 @@ export class DesktopHost {
         error: `Failed to save configuration: ${error}`,
       });
     }
+  }
+
+  /**
+   * Set the app appearance preference (跟随系统/浅色/深色) from the settings
+   * page: persist it, drive Electron's nativeTheme (whose `shouldUseDarkColors`
+   * then resolves the effective theme), and broadcast both the applied
+   * effective theme (data-theme swap, FR-018) and the preference itself so
+   * every instance's settings selection stays in sync. `nativeTheme.themeSource`
+   * emits `updated` when it actually changes, but we broadcast unconditionally
+   * so re-picking the current value still converges state.
+   */
+  private handleSetThemeSource(raw: string): void {
+    const source: ThemeSource =
+      raw === "light" || raw === "dark" ? raw : "system";
+    this.configStore.setThemeSource(source);
+    nativeTheme.themeSource = source;
+    this.postMessage({
+      command: "desktopThemeChange",
+      effective: this.getCurrentEffectiveTheme(),
+    });
+    this.postMessage({ command: "desktopThemeSource", source });
   }
 
   /** Server-side destroy + recreate with restored session, applied to every live agent (FR-031). */

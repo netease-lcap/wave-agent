@@ -4,7 +4,8 @@
  * Editable views (2026-09-01 用户拍板：语言/上下文长度/自动记忆恢复可编辑，
  * 经 updateConfiguration 写回，与旧设置弹窗一致；设置页只针对当前项目，
  * 删除项目切换按钮与 4 个管理视图的项目分组卡片):
- * - 全局设置 (global): 系统语言下拉 + 上下文长度输入 + 保存
+ * - 全局设置 (global): 系统语言下拉 + 主题选择（仅桌面端，即时生效）
+ *   + 上下文长度输入 + 保存
  * - 项目设置 (project): SDD 内置插件开关（唯一交互控件，即时启停插件）
  * - 个性化 (personalization): AGENTS.md 只读 + 自动记忆开关/轮次输入 + 保存
  * - 钩子 (hooks): 用户级/项目级双 tab，按来源平铺展示已配置命令
@@ -19,7 +20,7 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
-import { ConfigurationData } from "../types";
+import { ConfigurationData, ThemeSource } from "../types";
 import SettingsSubagentsView from "./SettingsSubagentsView";
 import SettingsSkillsView from "./SettingsSkillsView";
 import SettingsHooksView from "./SettingsHooksView";
@@ -42,6 +43,11 @@ export interface SettingsPageProps {
   /** 保存配置（全局设置 / 个性化视图的保存按钮触发，含 language/contextLength/
    *  autoMemoryEnabled/autoMemoryFrequency） */
   onSave?: (data: ConfigurationData) => void;
+  /** 主题偏好（仅桌面端传入；未传入 = IDE 宿主，不显示主题行）。
+   *  选择即时生效（onThemeChange 触发 host setThemeSource），不依赖保存按钮。 */
+  themeSource?: ThemeSource;
+  /** 用户选择新主题偏好（"system" | "light" | "dark"），host 持久化并应用。 */
+  onThemeChange?: (source: ThemeSource) => void;
   /** 关闭设置页（desktop 返回会话视图 / 标签页关闭） */
   onClose: () => void;
   /** 保存进行中标记（host 回包前为 true，用于禁用保存按钮与显示反馈） */
@@ -129,6 +135,8 @@ const NAV_GROUPS: NavGroup[] = [
 const SettingsPage: React.FC<SettingsPageProps> = ({
   configurationData,
   onSave,
+  themeSource,
+  onThemeChange,
   onClose,
   saving = false,
   configurationError = null,
@@ -158,6 +166,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const [contextLength, setContextLength] = useState(200);
   const [autoMemoryEnabled, setAutoMemoryEnabled] = useState(true);
   const [autoMemoryFrequency, setAutoMemoryFrequency] = useState(1);
+  // 主题偏好（仅桌面端有值）：选择即生效（onThemeChange 已即时上送 host），
+  // 此处本地 state 保持选中态直到 host 广播 desktopThemeSource 回写。
+  const [theme, setTheme] = useState<ThemeSource>(themeSource ?? "system");
 
   // 项目设置（SDD 开关）：切换中标记，防止重复请求
   const [pluginToggling, setPluginToggling] = useState(false);
@@ -175,6 +186,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     setAutoMemoryEnabled(configurationData.autoMemoryEnabled ?? true);
     setAutoMemoryFrequency(configurationData.autoMemoryFrequency ?? 1);
   }, [configurationData]);
+
+  // host 广播（desktopThemeSource / 重推 setInitialState）同步主题选中态
+  useEffect(() => {
+    if (themeSource) setTheme(themeSource);
+  }, [themeSource]);
 
   // AGENTS.md 内容回填后同步 textarea 草稿
   useEffect(() => {
@@ -313,6 +329,30 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       </select>
                     </div>
                   </div>
+                  {themeSource !== undefined && (
+                    <div className="settings-row">
+                      <div className="settings-row-copy">
+                        <h3>主题</h3>
+                        <p>选择应用的显示外观，跟随系统或固定浅色/深色</p>
+                      </div>
+                      <div className="settings-control">
+                        <select
+                          className="settings-select"
+                          aria-label="主题"
+                          value={theme}
+                          onChange={(e) => {
+                            const next = e.target.value as ThemeSource;
+                            setTheme(next);
+                            onThemeChange?.(next);
+                          }}
+                        >
+                          <option value="system">跟随系统</option>
+                          <option value="light">浅色</option>
+                          <option value="dark">深色</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
                   <div className="settings-row">
                     <div className="settings-row-copy">
                       <h3>上下文长度</h3>

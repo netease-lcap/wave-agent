@@ -4821,14 +4821,14 @@ describe("worktree flow", () => {
 });
 
 // ---------------------------------------------------------------------------
-// theme switching (FR-016..FR-019)
+// theme switching & preference (FR-018/FR-019 + 设置页「主题」三态)
 // ---------------------------------------------------------------------------
 
 describe("theme", () => {
-  it("setInitialState carries the resolved effective theme (no in-app preference)", async () => {
+  it("setInitialState carries the resolved effective theme (default follows the OS)", async () => {
     const { sent } = await readyHost();
     expect(sent("setInitialState")[0]).toMatchObject({
-      theme: { effective: "light" },
+      theme: { effective: "light", source: "system" },
     });
   });
 
@@ -4859,6 +4859,64 @@ describe("theme", () => {
     const before = sent("desktopThemeChange").length;
     nativeTheme.__setSystemDark(true);
     expect(sent("desktopThemeChange").length).toBe(before);
+  });
+
+  it("applies a persisted theme preference at construction (首帧即按所选主题)", async () => {
+    // 预置磁盘偏好（固定深色），再启动 host —— 构造时须应用到 nativeTheme，
+    // 使首帧与初始快照都呈现深色，即使系统外观为浅色。
+    new ConfigStore(STORE_PATH).setThemeSource("dark");
+    const { host, sent } = await readyHost();
+
+    expect(host.getInitialEffectiveTheme()).toBe("dark");
+    expect(sent("setInitialState")[0]).toMatchObject({
+      theme: { effective: "dark", source: "dark" },
+    });
+  });
+
+  it("setThemeSource persists, applies to nativeTheme and broadcasts both messages", async () => {
+    const { host, store, sent } = createHost();
+    await host.handleWebviewMessage({ command: "desktopReady" });
+
+    await host.handleWebviewMessage({
+      command: "setThemeSource",
+      source: "light",
+    });
+    expect(store.getThemeSource()).toBe("light");
+    expect(nativeTheme.themeSource).toBe("light");
+    const sourceMessages = sent("desktopThemeSource");
+    expect(sourceMessages[sourceMessages.length - 1]).toMatchObject({
+      source: "light",
+    });
+    const changes = sent("desktopThemeChange");
+    expect(changes[changes.length - 1]).toMatchObject({ effective: "light" });
+
+    // 固定浅色时不跟随系统外观（spec 场景 4）
+    nativeTheme.__setSystemDark(true);
+    expect(host.getInitialEffectiveTheme()).toBe("light");
+
+    // 切回「跟随系统」→ 恢复 OS 外观驱动（此时系统为暗色）
+    await host.handleWebviewMessage({
+      command: "setThemeSource",
+      source: "system",
+    });
+    expect(store.getThemeSource()).toBe("system");
+    expect(host.getInitialEffectiveTheme()).toBe("dark");
+    const sourcesBack = sent("desktopThemeSource");
+    expect(sourcesBack[sourcesBack.length - 1]).toMatchObject({
+      source: "system",
+    });
+  });
+
+  it("setThemeSource ignores malformed sources (falls back to system)", async () => {
+    const { host, store } = createHost();
+    await host.handleWebviewMessage({ command: "desktopReady" });
+
+    await host.handleWebviewMessage({
+      command: "setThemeSource",
+      source: "neon",
+    });
+    expect(store.getThemeSource()).toBe("system");
+    expect(nativeTheme.themeSource).toBe("system");
   });
 });
 

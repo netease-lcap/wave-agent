@@ -345,14 +345,19 @@ export interface DesktopSessionEntry {
 
 /**
  * The resolved theme applied to the DOM via the `data-theme` attribute (FR-018).
- * The desktop host resolves the OS appearance to one of these before reaching
- * the renderer; desktop follows the OS only, no in-app preference (FR-016).
+ * The desktop host resolves the OS appearance (or the user's fixed preference)
+ * to one of these before reaching the renderer.
  */
 export type EffectiveTheme = "light" | "dark";
 
-/** Theme snapshot pushed by the desktop host (effective only, no preference). */
+/** Desktop theme preference (设置页「全局设置」三态选择，仅 desktop 有 UI)。 */
+export type ThemeSource = "system" | "light" | "dark";
+
+/** Theme snapshot pushed by the desktop host: resolved effective theme plus the
+ *  user's preference (source, absent on hosts without the in-app preference). */
 export interface ThemeState {
   effective: EffectiveTheme;
+  source?: ThemeSource;
 }
 
 /** Action a toast's button triggers when clicked (host-side semantics). */

@@ -42,9 +42,14 @@ export type {
 
 export type EffectiveTheme = "light" | "dark";
 
-/** Desktop host theme snapshot (effective only; desktop follows the OS). */
+/** Desktop theme preference (三态，设置页「全局设置」可选，仅 desktop 有 UI）。 */
+export type ThemeSource = "system" | "light" | "dark";
+
+/** Desktop host theme snapshot: resolved effective theme + the user preference
+ *  (source; absent on hosts without the in-app preference). */
 export interface ThemeState {
   effective: EffectiveTheme;
+  source?: ThemeSource;
 }
 
 /** Desktop conversation-level side panels. VSCE/JetBrains never render these. */
@@ -373,6 +378,12 @@ export interface DesktopThemeChangeMessage extends HostToWebviewMessageBase {
   effective: EffectiveTheme;
 }
 
+/** Desktop theme preference change broadcast (source 设置变更后同步各实例)。 */
+export interface DesktopThemeSourceMessage extends HostToWebviewMessageBase {
+  command: "desktopThemeSource";
+  source: ThemeSource;
+}
+
 /** Action a toast's button triggers when clicked (host-side semantics). */
 export type ToastAction =
   | { type: "quitAndInstall" }
@@ -679,6 +690,7 @@ export type HostToWebviewMessage =
   | McpConfigResponseMessage
   | SetInitialStateMessage
   | DesktopThemeChangeMessage
+  | DesktopThemeSourceMessage
   | ShowToastMessage
   | DesktopTogglePanelMessage
   | ShowDialogMessage
