@@ -1,4 +1,5 @@
 import { test, expect } from "../e2e/utils/desktopTestHarness.js";
+import { seedSidebarSessions } from "./sidebarSeed.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
@@ -31,6 +32,19 @@ async function setupSinglePane(injector: MessageInjector) {
     recentWorkdirs: [DIR_A],
   });
   await injector.waitForChatAppReady();
+  await seedSidebarSessions(injector, DIR_A, [
+    { sessionId: "s-in-1", title: "修复登录页样式问题", running: true },
+    {
+      sessionId: "s-in-2",
+      title: "搭建订单管理页原型",
+      hasWorktree: true,
+    },
+    {
+      sessionId: "s-in-3",
+      title: "排查构建产物样式丢失",
+      waitingConfirmation: true,
+    },
+  ]);
   await injector.simulateExtensionMessage("setInitialState", initialState);
   await injector.updateMessages([
     MockDataGenerator.createUserMessage("帮我修复登录页的样式问题", "msg-u1"),
@@ -109,6 +123,11 @@ test.describe("Desktop interaction refinements", () => {
       recentWorkdirs: [DIR_A],
     });
     await injector.waitForChatAppReady();
+    await seedSidebarSessions(injector, DIR_A, [
+      { sessionId: "s-in-4", title: "搭建订单管理页原型", running: true },
+      { sessionId: "s-in-5", title: "修复登录页样式问题", hasWorktree: true },
+      { sessionId: "s-in-6", title: "排查构建产物样式丢失" },
+    ]);
     await injector.simulateExtensionMessage("setInitialState", initialState);
 
     await injector.updateMessages([

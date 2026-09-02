@@ -7,6 +7,7 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
+  type Message,
 } from "wave-agent-sdk";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
@@ -39,11 +40,56 @@ async function setup(
   });
   await injector.waitForChatAppReady();
   await injector.simulateExtensionMessage("setInitialState", baseConfig);
+  // Seed the sidebar session tree (same message the desktop host pushes) so
+  // screenshots don't show an empty conversation list.
+  await injector.simulateExtensionMessage("desktopSessionTree", {
+    groups: [
+      {
+        host: "local",
+        workdir: DIR_A,
+        sessions: [
+          {
+            sessionId: "s-perm-running",
+            title: "SQL 参数化改造 PaymentService",
+            lastActiveAt: 1782000100000,
+            hasWorktree: false,
+            running: true,
+          },
+          {
+            sessionId: "s-perm-waiting",
+            title: "高并发重构方案评审",
+            lastActiveAt: 1782000200000,
+            hasWorktree: false,
+            running: false,
+            waitingConfirmation: true,
+          },
+          {
+            sessionId: "s-perm-done",
+            title: "修复支付回调幂等",
+            lastActiveAt: 1781990000000,
+            hasWorktree: false,
+            running: false,
+          },
+        ],
+      },
+    ],
+  });
   // Wait until the pane is fully mounted so follow-up messages are not lost
   // to the mount race (e.g. showConfirmation).
   await webviewPage.waitForSelector('[data-testid="message-input"]', {
     state: "visible",
   });
+}
+
+/** Seed a short conversation so dialogs render over real-looking context. */
+async function seedMessages(
+  webviewPage: Parameters<typeof screenshotWebp>[0],
+  injector: MessageInjector,
+  msgs: Message[],
+  waitForText: string,
+) {
+  await injector.updateMessages(msgs);
+  await expect(webviewPage.getByText(waitForText)).toBeVisible();
 }
 
 /** Show a confirmation dialog and screenshot the whole desktop layout. */
@@ -85,6 +131,28 @@ test.describe("Desktop 2.5 权限与安全 screenshots", () => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 960, height: 640 });
     await setup(webviewPage, injector);
+    await seedMessages(
+      webviewPage,
+      injector,
+      [
+        MockDataGenerator.createUserMessage(
+          "PaymentService 的 SQL 是字符串拼接的，有注入风险，帮我参数化改造一下",
+          "msg-edit-u1",
+        ),
+        MockDataGenerator.createAssistantMessageWithTool(
+          "好的，我来把 PaymentService 里的动态 SQL 改成参数化查询。",
+          EDIT_TOOL_NAME,
+          JSON.stringify({
+            file_path: "/src/services/payment/PaymentService.ts",
+            old_string:
+              'const result = await this.db.query("SELECT * FROM payments WHERE id = ?", tx.id);',
+            new_string:
+              'const result = await this.db.query("SELECT * FROM payments WHERE id = $1", [tx.id]);',
+          }),
+        ),
+      ],
+      "有注入风险",
+    );
     await captureConfirmation(
       webviewPage,
       injector,
@@ -108,6 +176,31 @@ test.describe("Desktop 2.5 权限与安全 screenshots", () => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 960, height: 640 });
     await setup(webviewPage, injector);
+    const bashMsgs = [
+      MockDataGenerator.createUserMessage(
+        "帮我跑一下支付服务的测试，要带覆盖率报告",
+        "msg-bash-u1",
+      ),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "我来运行支付服务测试套件并生成覆盖率报告。",
+        BASH_TOOL_NAME,
+        JSON.stringify({
+          command: "pnpm -F @nebula/payment-service test -- --coverage",
+          description: "运行支付服务测试套件并生成覆盖率报告",
+        }),
+      ),
+    ];
+    // generator 的 BASH 默认摘要 "npm install" 与本次命令不符 → 换成与命令一致的摘要
+    const bashTool = bashMsgs[1].blocks.find((b) => b.type === "tool");
+    if (bashTool && bashTool.type === "tool") {
+      bashTool.compactParams = "pnpm test -- --coverage";
+    }
+    await seedMessages(
+      webviewPage,
+      injector,
+      bashMsgs,
+      "我来运行支付服务测试套件",
+    );
     await captureConfirmation(
       webviewPage,
       injector,
@@ -128,6 +221,33 @@ test.describe("Desktop 2.5 权限与安全 screenshots", () => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 960, height: 640 });
     await setup(webviewPage, injector);
+    const mcpMsgs = [
+      MockDataGenerator.createUserMessage(
+        "乐观锁改造的方案评审过了，帮我在 Jira 上建一个高优先级 issue 跟踪",
+        "msg-mcp-u1",
+      ),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "需求已整理，正在 Jira 创建 issue。",
+        "mcp__jira__create_issue",
+        JSON.stringify({
+          title: "PaymentService 乐观锁支持",
+          description: "为支付服务引入乐观锁机制，处理并发更新冲突",
+          priority: "high",
+          tags: ["payment", "concurrency", "refactor"],
+        }),
+      ),
+    ];
+    // 非 Bash/Read/Write 工具，generator 默认摘要 = 工具名 → 与标题重复；换友好摘要
+    const mcpTool = mcpMsgs[1].blocks.find((b) => b.type === "tool");
+    if (mcpTool && mcpTool.type === "tool") {
+      mcpTool.compactParams = "Jira · 创建 issue";
+    }
+    await seedMessages(
+      webviewPage,
+      injector,
+      mcpMsgs,
+      "需求已整理，正在 Jira 创建 issue",
+    );
     await captureConfirmation(
       webviewPage,
       injector,
@@ -150,6 +270,21 @@ test.describe("Desktop 2.5 权限与安全 screenshots", () => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 960, height: 640 });
     await setup(webviewPage, injector);
+    await seedMessages(
+      webviewPage,
+      injector,
+      [
+        MockDataGenerator.createUserMessage(
+          "高并发下支付服务扛不住了，先别急着改代码，给我一个完整的重构方案",
+          "msg-plan-u1",
+        ),
+        MockDataGenerator.createAssistantMessage(
+          "我分析了当前实现，计划分三阶段推进（乐观锁 → 缓存层 → 异步化），确认后开始实施：",
+          "msg-plan-a1",
+        ),
+      ],
+      "确认后开始实施",
+    );
     await captureConfirmation(
       webviewPage,
       injector,
@@ -182,6 +317,21 @@ test.describe("Desktop 2.5 权限与安全 screenshots", () => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 960, height: 640 });
     await setup(webviewPage, injector);
+    await seedMessages(
+      webviewPage,
+      injector,
+      [
+        MockDataGenerator.createUserMessage(
+          "接下来进入计划模式吧，先梳理重构方案，不要直接改代码",
+          "msg-epm-u1",
+        ),
+        MockDataGenerator.createAssistantMessage(
+          "好的，我先切换到计划模式，只做方案调研与规划。",
+          "msg-epm-a1",
+        ),
+      ],
+      "切换到计划模式",
+    );
     await captureConfirmation(
       webviewPage,
       injector,
@@ -200,6 +350,21 @@ test.describe("Desktop 2.5 权限与安全 screenshots", () => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 960, height: 640 });
     await setup(webviewPage, injector);
+    await seedMessages(
+      webviewPage,
+      injector,
+      [
+        MockDataGenerator.createUserMessage(
+          "订单量上来了，缓存方案你帮我拿个主意",
+          "msg-ask-u1",
+        ),
+        MockDataGenerator.createAssistantMessage(
+          "两种缓存方案各有取舍，想先跟你确认一下偏好再动手：",
+          "msg-ask-a1",
+        ),
+      ],
+      "确认一下偏好",
+    );
     await captureConfirmation(
       webviewPage,
       injector,

@@ -1,4 +1,5 @@
 import { test, expect } from "../e2e/utils/desktopTestHarness.js";
+import { seedSidebarSessions } from "./sidebarSeed.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
@@ -86,6 +87,19 @@ test.describe("Desktop Diff Pane Screenshots", () => {
     await webviewPage.waitForSelector('[data-testid="chat-container"]', {
       timeout: 5000,
     });
+    await seedSidebarSessions(injector, DIR_A, [
+      { sessionId: "s-dc-1", title: "重构登录模块并补表单校验" },
+      {
+        sessionId: "s-dc-2",
+        title: "认证端点对齐后端接口",
+        hasWorktree: true,
+      },
+      {
+        sessionId: "s-dc-3",
+        title: "梳理改动并回复评审意见",
+        waitingConfirmation: true,
+      },
+    ]);
 
     await injector.updateMessages([
       MockDataGenerator.createUserMessage(

@@ -1,4 +1,5 @@
 import { test, expect } from "../e2e/utils/desktopTestHarness.js";
+import { seedSidebarSessions } from "./sidebarSeed.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
@@ -28,6 +29,19 @@ async function setupSinglePane(injector: MessageInjector) {
     recentWorkdirs: [DIR_A],
   });
   await injector.waitForChatAppReady();
+  await seedSidebarSessions(injector, DIR_A, [
+    { sessionId: "s-pn-1", title: "修复登录页样式问题", running: true },
+    {
+      sessionId: "s-pn-2",
+      title: "新增订单列表页组件",
+      hasWorktree: true,
+    },
+    {
+      sessionId: "s-pn-3",
+      title: "拆分配置到独立模块",
+      waitingConfirmation: true,
+    },
+  ]);
   await injector.simulateExtensionMessage("setInitialState", initialState);
   await injector.updateMessages([
     MockDataGenerator.createUserMessage("帮我修复登录页的样式问题", "msg-u1"),

@@ -1,4 +1,5 @@
 import { test, expect } from "../e2e/utils/desktopTestHarness.js";
+import { seedSidebarSessions } from "./sidebarSeed.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { AGENT_TOOL_NAME, type Message } from "wave-agent-sdk";
@@ -37,6 +38,19 @@ async function setup(
     hosts: ["local"],
   });
   await injector.waitForChatAppReady();
+  await seedSidebarSessions(injector, DIR_A, [
+    { sessionId: "s-ta-1", title: "后台调研支付网关兼容性", running: true },
+    {
+      sessionId: "s-ta-2",
+      title: "审查提现流程边界条件",
+      waitingConfirmation: true,
+    },
+    {
+      sessionId: "s-ta-3",
+      title: "重构支付模块并发处理",
+      hasWorktree: true,
+    },
+  ]);
   await injector.simulateExtensionMessage("setInitialState", {
     ...baseConfig,
     messages,
