@@ -597,6 +597,21 @@
   background: rgba(255, 255, 255, 0.14);
 }
 
+/* 账户卡片「更多」按钮（问号圆图标）：与热区同行同规格——r6、hover 底同
+   热区（ccui figma-icon-button / sidebar-account-more 32×32 r6 fill-hover；
+   base r4 + vscode list-hoverBackground 蓝灰与热区两档灰不一致） */
+[data-host="desktop"] .account-card-more-btn {
+  border-radius: 6px;
+}
+[data-host="desktop"][data-theme="light"] .account-card-more-btn:hover,
+[data-host="desktop"][data-theme="light"] .account-card-more-btn:focus-visible {
+  background: #e2e4e8;
+}
+[data-host="desktop"][data-theme="dark"] .account-card-more-btn:hover,
+[data-host="desktop"][data-theme="dark"] .account-card-more-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.14);
+}
+
 /* 消息流时间线节点：Figma design-node 12px / #16A34A / 白描边（覆盖此前
    codechat 推断的 8px 灰点）；行 padding-left 12px → 20px（节点 12 + gap 8） */
 [data-host="desktop"] .timeline-row {

@@ -1653,3 +1653,30 @@ codechat 权威：`workspace-header-menu` / el-dropdown-menu 菜单项**连续�
 ### 实现文件
 
 - `src/styles/host-desktop.css`（第二十六轮链接统一段内补 dark bash 链接覆盖）
+
+---
+
+## 0902 新基线第 5 轮（2026-09）：账户更多按钮换问号圆 + 帮助文档图标改文档（对齐 ccui figma-icon-button）
+
+用户预览评论 `svg.account-card-more-icon`（账户卡片「更多」按钮三点图标）：「把这个三个点图标换成现在帮助文档的图标，把帮助文档的图标，换成类似文档的图标，再检查下这个区域背景色、圆角是否符合规范」。
+
+### 修改（图标职责对调 + 区域规格检查）
+
+| 文件               | 内容                                                                                                                                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HeaderIcons.tsx`  | 新增 `FileTextIcon`（lucide file-text 文档：纸页折角+文字横线，24 viewBox stroke 2，与既有 lucide 菜单图标同风格）                                                                                                     |
+| `AccountCard.tsx`  | 登录/未登录两处更多按钮 `MoreIcon`（三点）→ `HelpCircleIcon`（问号圆圈，即第 3 轮帮助文档图标）                                                                                                                        |
+| `MoreMenu.tsx`     | 帮助文档项图标 `HelpCircleIcon` → `FileTextIcon`（↗ 行尾跳转图标保留）                                                                                                                                                |
+| `host-desktop.css` | 更多按钮区域规格检查：base r4 + vscode list-hoverBackground 蓝灰 → 对齐热区 r6 + hover #E2E4E8 / dark 14% 白（ccui figma-icon-button / sidebar-account-more 32×32 r6 fill-hover；同排热区与按钮两档灰/两档圆角不一致） |
+
+背景/圆角检查结论：账户卡片整体仍透明贴合侧栏 + 上分隔线 #EBEEF5（ccui sidebar-account 同款，无独立卡片底），仅按钮自身规格补齐。
+
+### 验证（8899 Playwright 探针 + 截图，两主题）
+
+- 更多按钮图标 = 问号圆圈（circle×1 + path×2）✓；帮助文档 = 文档页（path×5）✓；企业/帮助行尾 ↗ 保留 ✓
+- 更多按钮 hover 与热区同色：light #E2E4E8 / dark 14% 白，同 r6 ✓（修改前按钮 hover 为 vscode list-hoverBackground 蓝灰、r4）
+- type-check + accountCard/moreMenu 21 测试全绿 ✓
+
+### 实现文件
+
+- `src/components/HeaderIcons.tsx`、`src/components/AccountCard.tsx`、`src/components/MoreMenu.tsx`、`src/styles/host-desktop.css`

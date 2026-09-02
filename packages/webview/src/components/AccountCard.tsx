@@ -5,7 +5,9 @@ import type {
   AccountUpdateInfo,
 } from "wave-webview-fixtures";
 import { MoreMenu } from "./MoreMenu";
-import { MoreIcon } from "./HeaderIcons";
+// HelpCircleIcon：未登录态「更多」按钮图标（v3 已登录态改为个人信息热区唤
+// 菜单、不再有更多按钮；未登录态保留按钮结构，图标沿用 0902 第 5 轮问号圆）。
+import { HelpCircleIcon } from "./HeaderIcons";
 import { ConfirmDialog } from "./ConfirmDialog";
 import "../styles/AccountCard.css";
 import "../styles/ConfirmDialog.css";
@@ -225,7 +227,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             setShowMenu((v) => !v);
           }}
         >
-          <MoreIcon className="account-card-more-icon" />
+          <HelpCircleIcon className="account-card-more-icon" />
         </button>
         {showMenu && menuAnchor && (
           <MoreMenu
