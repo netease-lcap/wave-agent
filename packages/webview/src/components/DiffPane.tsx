@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { VsCodeApi } from "../types";
 import { renderWordLevelDiff } from "../utils/diffHighlight";
+import { CloseIcon } from "./HeaderIcons";
 import "../styles/DiffViewer.css";
 import "../styles/DiffPane.css";
 
@@ -501,7 +502,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
             data-testid="diff-close"
             onClick={onClose}
           >
-            <i className="codicon codicon-close" />
+            <CloseIcon className="pane-close-icon" />
           </button>
         </div>
         <div className="diff-pane-body">

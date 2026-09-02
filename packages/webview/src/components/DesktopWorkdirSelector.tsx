@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
-import { ContextDirectoryIcon, PermCaretIcon } from "./HeaderIcons";
+import { ContextDirectoryIcon, PermCaretIcon, CloseIcon } from "./HeaderIcons";
 import "../styles/DesktopApp.css";
 
 export interface DesktopWorkdirSelectorProps {
@@ -344,7 +344,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
                   onClick={(e) => handleRemoveRecent(e, dir)}
                   data-testid="desktop-workdir-recent-remove"
                 >
-                  <span className="codicon codicon-close"></span>
+                  <CloseIcon className="desktop-workdir-menu-remove-icon" />
                 </button>
               </div>
             );

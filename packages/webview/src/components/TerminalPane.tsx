@@ -4,6 +4,7 @@ import type { Terminal as XtermTerminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { WebLinksAddon } from "@xterm/addon-web-links";
 import { isLocalhostUrl } from "../utils/isLocalhostUrl";
+import { CloseIcon } from "./HeaderIcons";
 import "../styles/TerminalPane.css";
 
 declare global {
@@ -343,7 +344,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             data-testid="terminal-close"
             onClick={onClose}
           >
-            <i className="codicon codicon-close" />
+            <CloseIcon className="pane-close-icon" />
           </button>
         </div>
         <div

@@ -94,19 +94,23 @@ export const InfoIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+// 关闭图标 — Figma 12953:61026「功能」组件集 类型=关闭（2026-CodeWave 交互视觉稿）：
+// 圆角十字 12×12（臂宽 1.34、圆角 0.67）旋转 45° 成 ×，外接 16.98 ≈ 17。
+// 第三十二轮起作为界面统一关闭图标（替换全部 codicon-close 字体图标）。
 export const CloseIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
   <svg
     width={16}
     height={16}
-    viewBox="0 0 16 16"
+    viewBox="0 0 17 17"
     fill="none"
     className={className}
   >
     <path
-      d="M8 8.70711L11.6464 12.3536L12.3536 11.6464L8.70711 8L12.3536 4.35355L11.6464 3.64645L8 7.29289L4.35355 3.64645L3.64645 4.35355L7.29289 8L3.64645 11.6464L4.35355 12.3536L8 8.70711Z"
+      d="M8.51 2.5 L9.19 3.17 V7.84 H13.84 L14.51 8.51 H13.84 V9.19 H9.19 V13.83 L8.51 14.5 V13.83 H7.84 V9.19 H3.17 L2.5 8.51 H3.17 V7.84 H7.84 V3.17 Z"
       fill="currentColor"
+      transform="rotate(45 8.5 8.5)"
     />
   </svg>
 );

@@ -1287,3 +1287,51 @@ Figma 对照（`13497-15325` 预览区展开帧，vision 复核渲染图）：�
 
 - `src/components/SessionBoard.tsx`（header 拆两行、列头色块 class + 胶囊点、卡片状态行 formatStatus）
 - `src/styles/SessionBoard.css`（全量重写为 Figma 权威值 + 深色桌面惯例覆盖）
+
+## 第三十二轮：面板标题去背景加粗 + 关闭图标统一（1 项评论）
+
+评论：`span.preview-pane-url`「预览」——「这里不要背景色，预览、差异等标题字体要加粗，检查关闭图标，界面中所有的关闭图标要保持统一，可以参考设计稿」Figma 链接 node-id=12953-61026。
+
+### 背景
+
+① 第 28 轮只对 plan/file/diff/terminal 四个 pane 的 `.preview-pane-url` 去背景，**空态 preview-pane**（`data-testid="preview-pane-empty"`）里的「预览」占位标题仍在灰底胶囊（第 18 轮地址栏样式误用）——用户评论 DOM 正是该空态。② 标题字重 400 需加粗。③ 关闭图标不统一：预览/计划/差异/终端/文件 pane、确认弹窗、toast、btw 面板、图片预览 modal 等共 13 处仍用 codicon-close 字体图标，仅 DesktopShell 分屏关闭用了 SVG（ConversationCloseIcon），同一界面混用字体图标与 SVG。
+
+Figma 权威（2026-CodeWave-交互视觉稿，dump 12953:61026「功能」COMPONENT_SET）：「关闭」variant = **圆角十字 12×12（臂宽 1.34、圆角 0.67）旋转 45° 成 ×**，外接 16.98 ≈ 17；normal 图标色 #565A60，hover 按钮底 #EEF0F3。
+
+### 变更点清单
+
+| #   | 对象                        | 修复前                                                       | 修复后                                                                                                      |
+| --- | --------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| 1   | 空态「预览」标题            | 灰底胶囊（light #F0F2F5 / dark 6% 白）                       | 去背景（补入第 28 轮选择器，`.preview-pane[data-testid="preview-pane-empty"]`）                             |
+| 2   | 5 个 pane 标题加粗          | 字重 400（计划/文件/差异/终端/预览）                         | **font-weight 600**（地址栏 preview-address-display 保持 400 不受影响）                                     |
+| 3   | CloseIcon 重画              | 16×16 实心粗 ×（旧 path）                                    | **Figma 12953:61026 权威 ×**：圆角十字 rotate 45，viewBox 0 0 17 17，fill currentColor                      |
+| 4   | pane 关闭按钮（5 处）       | codicon-close 字体（Plan/Diff/File/Terminal + 空态 preview） | `<CloseIcon className="pane-close-icon" />`（空态用 preview-pane-icon）                                     |
+| 5   | PreviewPane tab 关闭        | codicon-close                                                | `<CloseIcon className="preview-tab-close-icon" />`                                                          |
+| 6   | 确认弹窗关闭                | codicon-close                                                | `<CloseIcon className="confirmation-close-btn-icon" />`（删 CSS 死规则 `.confirmation-close-btn .codicon`） |
+| 7   | BtwPanel / ToastStack 关闭  | codicon-close                                                | CloseIcon（btw-panel-close-icon / toast-close-icon）                                                        |
+| 8   | queue-warning 关闭          | codicon-close                                                | CloseIcon（queue-edit-warning-close-icon）                                                                  |
+| 9   | workdir 菜单移除按钮        | codicon-close span                                           | CloseIcon（desktop-workdir-menu-remove-icon）                                                               |
+| 10  | 图片预览 modal 关闭（2 处） | codicon-close 字体（Message/MessageInput innerHTML 注入）    | 内联 SVG（同权威 path，24×24）                                                                              |
+
+### 验证结果（Playwright 探针 + 截图实测 + vision 复核）
+
+| 项                          | 实测（light / dark）                                                         | 期望 |
+| --------------------------- | ---------------------------------------------------------------------------- | ---- |
+| 5 个 pane 标题              | background transparent + font-weight 600（预览/计划/差异/终端/文件，双主题） | ✓    |
+| 关闭按钮 SVG 统一           | 全部 viewBox 0 0 17 17、path 以 M8.51 开头（权威 ×），无 codicon-close 残留  | ✓    |
+| 空态预览关闭按钮            | 24×24 按钮 + 16×16 SVG（light/dark，vision 复核清晰居中）                    | ✓    |
+| 完整态预览/文件面板关闭按钮 | × 粗细一致、垂直居中、双主题可见（vision 复核）                              | ✓    |
+| type-check                  | 通过                                                                         | ✓    |
+
+探针路径：desktop-full mock → panel-toggle 菜单勾选「预览/计划/差异/终端/文件」→ 逐 pane 读 `.preview-pane-url` computed；Escape 关菜单后截空态预览图。
+
+### 实现文件
+
+- `src/components/HeaderIcons.tsx`（CloseIcon 重画为 Figma 12953:61026 权威 ×）
+- `src/components/PlanPane.tsx` / `DiffPane.tsx` / `FilePane.tsx` / `TerminalPane.tsx`（关闭按钮 codicon → CloseIcon）
+- `src/components/ChatApp.tsx`（空态 preview 关闭 + queue-warning 关闭）
+- `src/components/PreviewPane.tsx`（tab 关闭 codicon → CloseIcon）
+- `src/components/ConfirmationDialog.tsx` / `BtwPanel.tsx` / `ToastStack.tsx` / `DesktopWorkdirSelector.tsx`（关闭/移除图标 → CloseIcon）
+- `src/components/Message.tsx` / `MessageInput.tsx`（图片预览 modal innerHTML → 内联权威 SVG）
+- `src/styles/host-desktop.css`（第三十二轮段：空态标题去背景 + 标题加粗 600）
+- `src/styles/ConfirmationDialog.css`（删除 `.confirmation-close-btn .codicon` 死规则）

@@ -903,16 +903,22 @@
   color: #e6e6e6;
 }
 
-/* ═══ 第二十八轮：非预览面板标题去背景（用户评论「计划」标题不应有背景色）═══
+/* ═══ 第二十八轮 + 第三十二轮：面板标题去背景 + 加粗（用户评论「预览」标题
+   不应有背景色、预览/差异等标题字体要加粗）═══
    plan/file/diff/terminal 面板 toolbar 里的 .preview-pane-url 是面板标题
-   （「计划/文件/差异/终端」），不是地址 URL——第 18 轮地址栏灰底胶囊误用于标题，
-   这里去掉背景回归普通文字标题；PreviewPane 地址栏（真 URL）保留灰底胶囊。 */
+   （「计划/文件/差异/终端」），空态 preview-pane（data-testid=preview-pane-empty）
+   里的「预览」同样是无 URL 占位标题——第 18 轮地址栏灰底胶囊误用于标题，
+   这里全部去背景回归普通文字标题并加粗 600（第三十二轮）；
+   PreviewPane 完整态地址栏（preview-address-display，真 URL）保留灰底胶囊
+   且不加粗。 */
 
 [data-host="desktop"] .plan-pane .preview-pane-url,
 [data-host="desktop"] .file-pane .preview-pane-url,
 [data-host="desktop"] .diff-pane .preview-pane-url,
-[data-host="desktop"] .terminal-pane .preview-pane-url {
+[data-host="desktop"] .terminal-pane .preview-pane-url,
+[data-host="desktop"] .preview-pane[data-testid="preview-pane-empty"] .preview-pane-url {
   background: transparent;
+  font-weight: 600;
 }
 
 /* ═══ 第二十九轮：会话行更多按钮 + 菜单图标（用户评论「检查更多操作按钮尺寸，

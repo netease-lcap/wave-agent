@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { streamingTail } from "../utils/streamingText";
+import { CloseIcon } from "./HeaderIcons";
 import "../styles/BtwPanel.css";
 
 interface BtwPanelProps {
@@ -88,7 +89,7 @@ export const BtwPanel: React.FC<BtwPanelProps> = ({
           aria-label="关闭"
           data-testid="btw-panel-close"
         >
-          <i className="codicon codicon-close"></i>
+          <CloseIcon className="btw-panel-close-icon" />
         </button>
       </div>
       {isLoading && (

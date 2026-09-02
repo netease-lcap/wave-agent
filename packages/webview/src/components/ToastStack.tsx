@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import type { UpdateToast } from "../types";
+import { CloseIcon } from "./HeaderIcons";
 import "../styles/ToastStack.css";
 
 interface ToastStackProps {
@@ -43,7 +44,7 @@ const Toast: React.FC<{
         onClick={() => onDismiss(toast.id)}
         aria-label="关闭"
       >
-        <i className="codicon codicon-close"></i>
+        <CloseIcon className="toast-close-icon" />
       </button>
     </div>
   );

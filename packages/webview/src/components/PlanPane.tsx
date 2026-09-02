@@ -1,4 +1,5 @@
 import React, { useRef } from "react";
+import { CloseIcon } from "./HeaderIcons";
 import { renderFileMarkdown } from "./FilePane";
 import "../styles/PlanPane.css";
 
@@ -66,7 +67,7 @@ export const PlanPane: React.FC<PlanPaneProps> = ({
             data-testid="plan-close"
             onClick={onClose}
           >
-            <i className="codicon codicon-close" />
+            <CloseIcon className="pane-close-icon" />
           </button>
         </div>
         <div className="preview-pane-body">
