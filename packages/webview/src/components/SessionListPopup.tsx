@@ -12,9 +12,6 @@ interface SessionListPopupProps {
   loading: boolean;
   /** Show per-session workdir + worktree/branch labels (desktop cross-workdir list). */
   showWorkdir?: boolean;
-  /** Remote SSH host name whose sessions are listed (desktop). Shown next to
-   *  the title so the user can tell which host the popup belongs to. */
-  hostLabel?: string;
 }
 
 export const SessionListPopup: React.FC<SessionListPopupProps> = ({
@@ -24,7 +21,6 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
   onClose,
   loading,
   showWorkdir,
-  hostLabel,
 }) => {
   const [query, setQuery] = useState("");
   // Keyboard selection index into the filtered list; 0 = first item.
@@ -113,17 +109,7 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
         }}
         onKeyDown={handleSearchKeyDown}
       />
-      <div className="session-list-label">
-        历史对话
-        {hostLabel && (
-          <span
-            className="session-list-host-label"
-            data-testid="session-list-host-label"
-          >
-            {hostLabel}
-          </span>
-        )}
-      </div>
+      <div className="session-list-label">历史对话</div>
       <SessionList
         sessions={filteredSessions}
         currentSession={currentSession}

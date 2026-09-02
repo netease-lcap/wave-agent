@@ -3581,38 +3581,10 @@ describe("history popup (desktop-app.md 历史对话弹窗)", () => {
 
     fireEvent.click(screen.getByTestId("history-btn"));
 
-    // Local pane: the popup lists local sessions (host sent along so the host
-    // scans the right machine — desktop-app.md 历史对话弹窗 场景 10).
     expect(vscode.postMessage).toHaveBeenCalledWith({
       command: "listSessions",
-      host: "local",
     });
     expect(screen.getByTestId("session-list-popup")).toBeInTheDocument();
-  });
-
-  it("a remote pane's popup lists that host's sessions and labels it", () => {
-    const { vscode } = renderDesktopWithChat();
-    sendCommand("desktopPanes", {
-      panes: [{ paneId: "pane-1", sessionId: "s-remote", host: "prod" }],
-      focusedPaneId: "pane-1",
-    });
-    sendCommand("setInitialState", { messages: [], paneId: "pane-1" });
-    vscode.postMessage.mockClear();
-
-    fireEvent.click(screen.getByTestId("history-btn"));
-
-    // The request carries the pane's effective remote host, not the local one
-    // (plus the pane id, FR-032).
-    expect(vscode.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        command: "listSessions",
-        host: "prod",
-      }),
-    );
-    // The popup labels the host so the user can tell whose sessions are listed.
-    expect(screen.getByTestId("session-list-host-label")).toHaveTextContent(
-      "prod",
-    );
   });
 
   it("shows workdir, worktree tag and branch label per row", () => {
@@ -3655,40 +3627,6 @@ describe("history popup (desktop-app.md 历史对话弹窗)", () => {
         command: "desktopSelectSession",
         workdir: "/home/user/other-project",
         sessionId: "session-cli",
-      }),
-    );
-  });
-
-  it("restoring a remote popup row routes through the popup's host", () => {
-    const { vscode } = renderDesktopWithChat();
-    const remoteSession = {
-      ...cliSession,
-      id: "session-remote-cli",
-      workdir: "/remote/repo",
-    };
-    sendCommand("desktopPanes", {
-      panes: [{ paneId: "pane-1", sessionId: "s-remote", host: "prod" }],
-      focusedPaneId: "pane-1",
-    });
-    sendCommand("setInitialState", { messages: [], paneId: "pane-1" });
-    act(() => {
-      sendCommand("updateSessions", {
-        sessions: [remoteSession],
-      });
-    });
-    vscode.postMessage.mockClear();
-
-    fireEvent.click(screen.getByTestId("history-btn"));
-    fireEvent.click(screen.getByTestId("session-list-item-session-remote-cli"));
-
-    // The restore carries the popup host — a remote CLI session is not in the
-    // desktop index, so the host needs it to avoid falling back to local.
-    expect(vscode.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        command: "desktopSelectSession",
-        workdir: "/remote/repo",
-        sessionId: "session-remote-cli",
-        host: "prod",
       }),
     );
   });
