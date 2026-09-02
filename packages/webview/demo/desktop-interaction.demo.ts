@@ -141,13 +141,14 @@ test.describe("Desktop interaction refinements", () => {
       ),
     ]);
 
-    // First localhost link → the preview pane opens with one tab.
+    // First localhost link → the preview pane opens with one tab (tab 化：一级
+    // tab 栏在面板顶部，跨所有面板类型）。
     const firstLink = webviewPage.locator('a[href="http://localhost:5173"]');
     await expect(firstLink).toBeVisible();
     await firstLink.click();
     await expect(webviewPage.getByTestId("preview-pane")).toBeVisible();
     await expect(
-      webviewPage.getByTestId("preview-tab-bar").locator(".preview-tab"),
+      webviewPage.locator(".desktop-panel-tabs-strip [data-panel-tab]"),
     ).toHaveCount(1);
 
     // Second localhost link → a second tab, selected.
@@ -156,21 +157,27 @@ test.describe("Desktop interaction refinements", () => {
     );
     await secondLink.click();
     await expect(
-      webviewPage.getByTestId("preview-tab-bar").locator(".preview-tab"),
+      webviewPage.locator(".desktop-panel-tabs-strip [data-panel-tab]"),
     ).toHaveCount(2);
-    await expect(webviewPage.getByTestId("preview-tab-bar")).toContainText(
-      "localhost:5173/login",
-    );
+    await expect(
+      webviewPage.locator(".desktop-panel-tabs-strip"),
+    ).toContainText("localhost:5173/login");
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-preview-tabs.webp",
     );
 
     // Fullscreen (spec 预览面板全屏): the pane fills the content area and the
-    // conversation column is hidden; Esc restores the layout.
-    await webviewPage.getByTestId("preview-fullscreen").click();
+    // conversation column is hidden; Esc restores the layout. Two preview tabs
+    // are mounted, so scope to the ACTIVE stack (inactive ones are
+    // display:none via inline style).
+    await webviewPage.getByTestId("panel-fullscreen").click();
     await expect(webviewPage.locator(".desktop-chat-main")).toHaveCount(0);
-    await expect(webviewPage.getByTestId("preview-pane")).toBeVisible();
+    await expect(
+      webviewPage.locator(
+        '.desktop-panel-stack:not([style]) [data-testid="preview-pane"]',
+      ),
+    ).toBeVisible();
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-preview-fullscreen.webp",

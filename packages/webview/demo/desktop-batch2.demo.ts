@@ -80,8 +80,9 @@ test.describe("Desktop batch 2 feature screenshots", () => {
       "../../docs/public/screenshots/desktop-compress-button.webp",
     );
 
-    // 2. 账户卡片：注入套餐用量 + API 额度（登录态；apiQuota 用团队余额
-    //    模式 limit:null，显示本人累计消耗金额），点击卡片热区展开用量弹窗。
+    // 2. 账户卡片（v3）：注入套餐用量 + API 额度（登录态；apiQuota 用团队余额
+    //    模式 limit:null，显示本人累计消耗金额）。用量概要常驻卡片顶部，无需
+    //    点击展开。
     await injector.simulateExtensionMessage("desktopAccountInfo", {
       isAuthenticated: true,
       user: { id: "user-1", email: "alice@example.com" },
@@ -90,20 +91,14 @@ test.describe("Desktop batch 2 feature screenshots", () => {
       update: undefined,
     });
     await expect(webviewPage.getByTestId("account-card")).toBeVisible();
-    await webviewPage.getByTestId("account-card-hotzone").click();
     await expect(webviewPage.getByText("套餐用量")).toBeVisible();
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-account-card.webp",
     );
-    // 收起用量弹窗（点击卡片外空白）再进设置页。
-    await webviewPage.locator(".desktop-chat-main").click({
-      position: { x: 20, y: 20 },
-    });
-    await expect(webviewPage.getByText("套餐用量")).toBeHidden();
 
-    // 3. 设置页 - 全局设置：账户卡片「更多」→ 设置 → 全页设置。
-    await webviewPage.getByTestId("account-card-more").click();
+    // 3. 设置页 - 全局设置：个人信息行热区 → 更多菜单 → 设置 → 全页设置。
+    await webviewPage.getByTestId("account-card-hotzone").click();
     await webviewPage.getByTestId("more-menu-settings").click();
     await expect(
       webviewPage.getByRole("heading", { name: "全局设置" }),

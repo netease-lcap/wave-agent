@@ -1,5 +1,4 @@
 import React, { useRef } from "react";
-import { CloseIcon } from "./HeaderIcons";
 import { renderFileMarkdown } from "./FilePane";
 import "../styles/PlanPane.css";
 
@@ -11,7 +10,6 @@ export interface PlanPaneProps {
   width: number;
   onWidthChange: (width: number) => void;
   maxWidth: number;
-  onClose: () => void;
 }
 
 /**
@@ -26,7 +24,6 @@ export const PlanPane: React.FC<PlanPaneProps> = ({
   width,
   onWidthChange,
   maxWidth,
-  onClose,
 }) => {
   const asideRef = useRef<HTMLElement>(null);
 
@@ -60,15 +57,7 @@ export const PlanPane: React.FC<PlanPaneProps> = ({
       <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
         <div className="preview-pane-toolbar">
-          <span className="preview-pane-url">计划</span>
-          <button
-            className="preview-pane-button"
-            title="关闭"
-            data-testid="plan-close"
-            onClick={onClose}
-          >
-            <CloseIcon className="pane-close-icon" />
-          </button>
+          <span className="desktop-panel-toolbar-title">计划</span>
         </div>
         <div className="preview-pane-body">
           {content ? (

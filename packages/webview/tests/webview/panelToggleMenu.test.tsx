@@ -9,6 +9,7 @@ function renderMenu(overrides?: {
   disabled?: DesktopPanelKind[];
   onToggle?: (kind: DesktopPanelKind) => void;
   onClose?: () => void;
+  noCheckKinds?: DesktopPanelKind[];
 }) {
   const onToggle = overrides?.onToggle ?? vi.fn();
   const onClose = overrides?.onClose ?? vi.fn();
@@ -18,6 +19,7 @@ function renderMenu(overrides?: {
       disabled={overrides?.disabled}
       onToggle={onToggle}
       onClose={onClose}
+      noCheckKinds={overrides?.noCheckKinds}
     />,
   );
   return { onToggle, onClose };
@@ -82,6 +84,19 @@ describe("PanelToggleMenu", () => {
     expect(onToggle).toHaveBeenNthCalledWith(2, "diff");
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByTestId("panel-toggle-menu")).toBeInTheDocument();
+  });
+
+  it("noCheckKinds never render the active highlight nor checkbox semantics", () => {
+    // preview checked, but excluded via noCheckKinds → no active highlight, no
+    // aria-checked (the tab-bar "＋" menu treats preview as always-add).
+    renderMenu({ checked: ["preview", "diff"], noCheckKinds: ["preview"] });
+    const preview = screen.getByTestId("panel-toggle-item-preview");
+    expect(preview).not.toHaveClass("panel-toggle-menu-item--active");
+    expect(preview).not.toHaveAttribute("aria-checked");
+    // Other kinds keep the checkbox semantics + active highlight.
+    const diff = screen.getByTestId("panel-toggle-item-diff");
+    expect(diff).toHaveClass("panel-toggle-menu-item--active");
+    expect(diff).toHaveAttribute("aria-checked", "true");
   });
 
   it("ignores clicks on disabled items", () => {

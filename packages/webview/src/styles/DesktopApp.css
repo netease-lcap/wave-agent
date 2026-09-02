@@ -875,6 +875,21 @@ body.is-panel-resizing webview {
   flex-shrink: 0;
 }
 
+/* Non-browser panel toolbars (差异/终端/文件/计划) are read-only titles —
+   plain text, no input-box chrome (no background pill, no cursor:text), since
+   nothing here can be edited. Only the preview address bar keeps the input
+   look (.preview-pane-url / .preview-pane-address). */
+.desktop-panel-toolbar-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+  user-select: text;
+}
+
 .preview-pane-hint {
   padding: 4px 10px;
   font-size: 12px;
@@ -1038,22 +1053,42 @@ body.is-panel-resizing webview {
   opacity: 0.4;
 }
 
+/* 显示态地址栏：胶囊输入框外观（圆角底色块 + globe 图标），一眼可辨是
+   可点击编辑的地址输入框；hover 出现边框提示可点击。与编辑态 input 同底色，
+   切换时不跳动。 */
 .preview-pane-url {
-  flex: 1;
-  min-width: 0;
-  height: 26px;
-  box-sizing: border-box;
   display: flex;
   align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 8px;
+  overflow: hidden;
+  font-size: 12px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  cursor: text;
+  user-select: text;
+}
+
+.preview-pane-url:hover {
+  border-color: var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+}
+
+.preview-pane-url .codicon {
+  font-size: 13px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.preview-pane-url-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  line-height: 22px;
-  padding: 0 8px;
-  border-radius: 8px;
-  cursor: text;
-  color: var(--vscode-input-foreground);
 }
 
 .preview-pane-button {
@@ -1299,10 +1334,13 @@ body.is-panel-resizing webview {
   width: 100% !important;
 }
 
-/* Wrapper that keeps an unchecked panel mounted (display:none) so its content
-   — preview guest, terminal session — survives toggling. */
+/* Tabbed panel slot (spec「面板 tab 化」): the single slot hosts the tab strip
+   (DesktopPanelTabs) above the active panel body. Inline width from ChatApp
+   drives the slot; fullscreen (below) widens it via flex. */
 .desktop-panel-slot {
   display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
   min-height: 0;
   height: 100%;
 }
@@ -1317,6 +1355,75 @@ body.is-panel-resizing webview {
   text-align: center;
   font-size: 12px;
   color: var(--vscode-descriptionForeground, #999);
+}
+
+/* Panel empty state (spec「面板空态」): shown when the panel is expanded but no
+   tab is open — a guide to the five panel capabilities. Border-left mirrors the
+   open-pane separator (.preview-pane border-left) so the empty panel is still
+   visually split from the chat column. */
+.desktop-panel-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  overflow-y: auto;
+  border-left: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+}
+
+.desktop-panel-empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.desktop-panel-empty-sub {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #999);
+  margin-bottom: 10px;
+}
+
+.desktop-panel-empty-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  gap: 8px;
+  width: 100%;
+  max-width: 340px;
+}
+
+.desktop-panel-empty-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.desktop-panel-empty-item:hover:not(:disabled) {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+
+.desktop-panel-empty-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.desktop-panel-empty-item .codicon {
+  font-size: 14px;
+}
+
+.desktop-panel-empty-shortcut {
+  margin-left: auto;
+  opacity: 0.7;
+  font-size: 11px;
 }
 
 /* An inline ConfirmationDialog (plan preview / permission / AskUserQuestions)
