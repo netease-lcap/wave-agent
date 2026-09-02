@@ -79,6 +79,16 @@ const WelcomeView: React.FC<WelcomeViewProps> = ({
           flexDirection: "column",
           alignItems: "center",
           gap: "24px",
+          /* Constrain the column and make the horizontal padding real: with
+             content-box sizing a fixed-width child (e.g. the 登录 button group)
+             widens the column beyond the viewport, so the group spilled to the
+             edges and the padding below was eaten. border-box + max-width 400
+             caps the column at the viewport (or 400px on wider panes) and
+             centers it, keeping 16px breathing room on both sides. */
+          width: "100%",
+          maxWidth: "400px",
+          boxSizing: "border-box",
+          minWidth: 0,
           padding: "0 16px",
         }}
       >
@@ -128,8 +138,11 @@ const WelcomeView: React.FC<WelcomeViewProps> = ({
         {showLogin && (
           <div
             style={{
-              width: "400px",
-              maxWidth: "100%",
+              /* Login CTA group: full column width up to 320px so the button
+                 stays centered with clear horizontal margins on both sides
+                 instead of stretching edge-to-edge like the input card. */
+              width: "100%",
+              maxWidth: "320px",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
