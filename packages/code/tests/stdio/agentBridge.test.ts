@@ -62,6 +62,7 @@ const stderrWriteSpy = vi
 import { AgentBridge, RpcError } from "../../src/stdio/agentBridge.js";
 import { INVALID_PARAMS } from "../../src/stdio/protocol.js";
 import { mkdirSync, existsSync, writeFileSync } from "node:fs";
+import { rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type {
   AgentCallbacks,
@@ -1029,6 +1030,33 @@ test("getSessionInfo returns session info", async () => {
   });
 });
 
+test("getSessionInfo reports the creation workdir even after the agent's live working directory drifted", async () => {
+  const { bridge } = createBridge();
+  // initialize is told the session was CREATED in the worktree; the mock agent
+  // then drifts into the main repo (bash `cd` → agent.setWorkdir).
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+  const initResult = await bridge.handleRequest("initialize", {
+    workdir: "/repo/main/.wave/worktrees/feature-x",
+  });
+  const sessionId = (initResult as { sessionId: string }).sessionId;
+
+  // Drift the live working directory (as an in-session `cd` would)
+  (mockAgent as unknown as { workingDirectory: string }).workingDirectory =
+    "/repo/main";
+
+  const r = await bridge.handleRequest("getSessionInfo", {}, sessionId);
+  // The recorded creation workdir is exposed, not the drifted live one — so
+  // destroy --remove-worktree still resolves the session's own worktree.
+  expect(r).toEqual({
+    sessionId: "test-session-id",
+    workingDirectory: "/repo/main/.wave/worktrees/feature-x",
+    latestTotalTokens: 100,
+    permissionMode: "default",
+    availableTools: ["Bash", "Read", "Write"],
+  });
+});
+
 test("setPermissionMode calls agent.setPermissionMode", async () => {
   const { bridge } = createBridge();
   const mockAgent = createMockAgent();
@@ -1956,6 +1984,47 @@ test("initialize with an unknown restoreSessionId creates a new agent", async ()
     permissionMode: "default",
     latestTotalTokens: 100,
   });
+});
+
+test("initialize from-disk re-attach recovers the creation workdir from the transcript header", async () => {
+  // Daemon idle-exited and restarted; the client re-hosts the session by
+  // calling initialize with restoreSessionId and its OWN cwd (/repo/main).
+  // The recorded creation workdir must be recovered from the transcript's
+  // creation-time metadata header, not the client's (possibly drifted) cwd.
+  const transcript = path.join(
+    "/tmp",
+    `wave-agentbridge-header-${process.pid}-${Math.random().toString(36).slice(2)}.jsonl`,
+  );
+  const header =
+    '{"type":"metadata","workdir":"/repo/main/.wave/worktrees/feature-x","createdAt":"2026-09-01T00:00:00.000Z","gitBranch":"feature-x"}\n';
+  await writeFile(transcript, header);
+  try {
+    const { bridge } = createBridge();
+    const mockAgent = createMockAgent({ sessionFilePath: transcript });
+    vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+    const initResult = await bridge.handleRequest("initialize", {
+      workdir: "/repo/main", // re-attaching client's cwd — drifted vs creation dir
+      restoreSessionId: "old-session-id",
+    });
+    const sessionId = (initResult as { sessionId: string }).sessionId;
+
+    // Agent.create got the restore request (fresh host for a from-disk session)
+    expect(vi.mocked(Agent.create)).toHaveBeenCalledTimes(1);
+
+    const r = await bridge.handleRequest("getSessionInfo", {}, sessionId);
+    // workingDirectory = creation workdir from the transcript header, not the
+    // client cwd passed on re-attach.
+    expect(r).toEqual({
+      sessionId: "test-session-id",
+      workingDirectory: "/repo/main/.wave/worktrees/feature-x",
+      latestTotalTokens: 100,
+      permissionMode: "default",
+      availableTools: ["Bash", "Read", "Write"],
+    });
+  } finally {
+    await rm(transcript, { force: true });
+  }
 });
 
 test("restoreSession to a live streaming session emits the current loading state so re-attached clients restore the running indicator", async () => {

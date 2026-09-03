@@ -1311,6 +1311,58 @@ test("destroy: --remove-worktree resolves the worktree via git and removes it be
   expect(exitSpy).toHaveBeenCalledWith(0);
 });
 
+test("destroy: --remove-worktree anchors on the recorded creation workdir, not the session's drifted live workdir", async () => {
+  // The session's bash `cd` moved it out of its worktree into the main repo
+  // root (e.g. to run `git pull`), so agent.workingDirectory has drifted to
+  // /repo/main. Removal must still resolve the worktree the session was
+  // CREATED in — getSessionInfo reports the recorded workdir, so git lookups
+  // run against the worktree path, not the main repo root (which would be
+  // refused as the main working tree).
+  gitTopLevel = "/repo/main/.wave/worktrees/feature-x";
+  gitBranch = "feature-x";
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ workingDirectory: "/repo/main" }),
+  );
+  const client = connectClient(socketPath);
+  await client.send({
+    id: 1,
+    method: "initialize",
+    params: { workdir: "/repo/main/.wave/worktrees/feature-x" },
+  });
+  client.close();
+
+  await expect(
+    daemonDestroyCommand(socketPath, "test-session-id", {
+      removeWorktree: true,
+    }),
+  ).rejects.toThrow("exit(0)");
+  // git lookups ran against the RECORDED worktree path — not the drifted /repo/main.
+  expect(execFile).toHaveBeenCalledWith(
+    "git",
+    ["rev-parse", "--show-toplevel"],
+    { cwd: "/repo/main/.wave/worktrees/feature-x" },
+    expect.any(Function),
+  );
+  expect(execFile).toHaveBeenCalledWith(
+    "git",
+    ["branch", "--show-current"],
+    { cwd: "/repo/main/.wave/worktrees/feature-x" },
+    expect.any(Function),
+  );
+  expect(vi.mocked(removeWorktree)).toHaveBeenCalledWith(
+    expect.objectContaining({
+      path: "/repo/main/.wave/worktrees/feature-x",
+      branch: "feature-x",
+      repoRoot: "/repo/main",
+    }),
+  );
+  expect(stdoutLines()).toEqual([
+    "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: feature-x)",
+    "Destroyed session: test-session-id",
+  ]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
 test("destroy: --remove-worktree refuses to remove the main working tree", async () => {
   // rev-parse resolves to the main repo root itself (a plain session).
   gitTopLevel = "/repo/main";

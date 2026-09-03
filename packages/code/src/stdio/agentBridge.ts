@@ -60,7 +60,7 @@ import {
 } from "./protocol.js";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 import { createWorktree, removeWorktree } from "../utils/worktree.js";
@@ -116,6 +116,16 @@ interface SearchFilesParams {
 interface SessionEntry {
   agent: Agent;
   storedConfig: Partial<InitializeParams>;
+  /**
+   * The workdir the session was CREATED in — an immutable identity, unlike the
+   * live `agent.workingDirectory`, which drifts as the session `cd`s (bash tool
+   * / worktree switches). Hosted-session consumers (destroy --remove-worktree's
+   * worktree resolution, list) read this instead of the live value so a session
+   * that moved out of its worktree into the main repo is still cleaned up at
+   * the right place. Recovered from the transcript's creation-time metadata
+   * header when the session is re-attached from disk after a daemon restart.
+   */
+  createdWorkdir: string;
 }
 
 /**
@@ -524,9 +534,29 @@ export class AgentBridge {
     ctx.agent = agent;
     ctx.registeredSessionId = agent.sessionId;
 
+    // Record where the session was created (see SessionEntry.createdWorkdir).
+    // A fresh session's initialize workdir IS the creation dir. A from-disk
+    // re-attach (daemon idle-exited and restarted, then status/send re-hosts the
+    // session) instead passes the re-attaching client's cwd — the transcript
+    // header (`{"type":"metadata","workdir":...}`, append-only since session
+    // creation) restores the original value when the agent's transcript is
+    // readable; otherwise the client cwd is the best available anchor.
+    let createdWorkdir: string;
+    if (params.restoreSessionId) {
+      createdWorkdir =
+        (await readTranscriptWorkdir(agent.sessionFilePath)) ??
+        params.workdir ??
+        agent.workingDirectory;
+    } else {
+      createdWorkdir = params.workdir ?? agent.workingDirectory;
+    }
+
     this.sessions.set(agent.sessionId, {
       agent,
-      storedConfig: { ...params },
+      // Keep storedConfig.workdir in sync: updateConfig rebuilds the agent from
+      // storedConfig, so the rebuild must stay anchored on the creation dir too.
+      storedConfig: { ...params, workdir: createdWorkdir },
+      createdWorkdir,
     });
 
     return {
@@ -767,7 +797,10 @@ export class AgentBridge {
     const entry = this.requireSession(sessionId);
     return {
       sessionId: entry.agent.sessionId,
-      workingDirectory: entry.agent.workingDirectory,
+      // The recorded creation workdir, not the live agent.workingDirectory:
+      // destroy --remove-worktree resolves the session's worktree from this
+      // value, and it must not drift when the session cd'd out of the worktree.
+      workingDirectory: entry.createdWorkdir,
       latestTotalTokens: entry.agent.latestTotalTokens,
       permissionMode: entry.agent.getPermissionMode(),
       availableTools: entry.agent.getAvailableToolNames(),
@@ -839,6 +872,7 @@ export class AgentBridge {
     this.sessions.set(agent.sessionId, {
       agent,
       storedConfig: { ...entry.storedConfig },
+      createdWorkdir: entry.createdWorkdir,
     });
 
     return { sessionId: agent.sessionId };
@@ -1377,7 +1411,9 @@ export class AgentBridge {
   }
 
   /** Daemon list: expose the in-memory session registry (live sessions only,
-   * not disk-scanning). Registration order is preserved. */
+   * not disk-scanning). Registration order is preserved. The working directory
+   * shown is the session's recorded creation workdir (stable identity), not the
+   * live value that drifts with in-session `cd`. */
   private listDaemonSessions(): {
     sessions: Array<{
       sessionId: string;
@@ -1389,7 +1425,7 @@ export class AgentBridge {
     return {
       sessions: [...this.sessions.entries()].map(([sessionId, entry]) => ({
         sessionId,
-        workingDirectory: entry.agent.workingDirectory,
+        workingDirectory: entry.createdWorkdir,
         isLoading: entry.agent.isLoading,
         messageCount: entry.agent.displayMessages.length,
       })),
@@ -1997,5 +2033,44 @@ async function readTextFileSafe(filePath: string): Promise<string> {
       return "";
     }
     throw error;
+  }
+}
+
+/**
+ * Read the creation-time workdir from a session transcript's metadata header —
+ * the first line `{"type":"metadata","workdir":...,"createdAt":...,"gitBranch":...}`
+ * the SDK writes once at session creation. The header is append-only, so it
+ * records where the session was created even after the live working directory
+ * drifted (in-session `cd`) or after a daemon restart re-anchored the agent at
+ * a client's cwd. Returns undefined when the file is missing, legacy (no
+ * header), or unreadable. Only the header line is read (transcripts can grow
+ * large); a 4KiB read covers any realistic header.
+ */
+async function readTranscriptWorkdir(
+  transcriptPath?: string,
+): Promise<string | undefined> {
+  if (!transcriptPath) return undefined;
+  try {
+    const handle = await open(transcriptPath, "r");
+    try {
+      const buffer = Buffer.alloc(4096);
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+      if (bytesRead === 0) return undefined;
+      const newline = buffer.indexOf(0x0a);
+      const firstLine = buffer
+        .subarray(0, newline === -1 ? bytesRead : newline)
+        .toString("utf8");
+      const header = JSON.parse(firstLine) as {
+        type?: string;
+        workdir?: unknown;
+      };
+      return header.type === "metadata" && typeof header.workdir === "string"
+        ? header.workdir
+        : undefined;
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return undefined;
   }
 }
