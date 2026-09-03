@@ -17,7 +17,15 @@
   overflow: auto;
 }
 
-.plan-pane-placeholder-icon {
-  font-size: 16px;
-  opacity: 0.6;
+/* 计划 pane 空态（评论 2026-09：对齐文件/预览 pane 空态格式——图标在上、
+   文案在下竖排居中（PanelKindIcon plan 24px），提示文案 14px，区别于横排的
+   loading 占位。body(.preview-pane-body) 非 flex 容器且本身 flex:1 撑满
+   inner，这里用 absolute inset:0 铺满（同 .preview-tab-new），保证整面板垂直
+   居中。 */
+.plan-pane .plan-pane-placeholder-empty {
+  position: absolute;
+  inset: 0;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 14px;
 }

@@ -1,5 +1,6 @@
 import React, { useRef } from "react";
 import { renderFileMarkdown } from "./FilePane";
+import { PanelKindIcon } from "./PanelKindIcon";
 import "../styles/PlanPane.css";
 
 const MIN_WIDTH = 320;
@@ -67,8 +68,14 @@ export const PlanPane: React.FC<PlanPaneProps> = ({
               dangerouslySetInnerHTML={{ __html: renderFileMarkdown(content) }}
             />
           ) : (
-            <div className="desktop-panel-placeholder">
-              <i className="codicon codicon-note plan-pane-placeholder-icon" />
+            <div className="desktop-panel-placeholder plan-pane-placeholder-empty">
+              {/* 计划 pane 空态（评论 2026-09）：与文件/预览 pane 空态同格式
+                  ——图标在上、文案在下竖排居中，图标 24px。 */}
+              <PanelKindIcon
+                kind="plan"
+                size={24}
+                className="plan-pane-placeholder-icon"
+              />
               <span>等待计划生成…</span>
             </div>
           )}
