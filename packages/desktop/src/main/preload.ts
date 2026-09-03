@@ -24,6 +24,11 @@ contextBridge.exposeInMainWorld("acquireVsCodeApi", () => ({
 
 contextBridge.exposeInMainWorld("waveHostType", "desktop");
 
+// Host platform ("darwin"/"win32"/"linux") — the webview uses it to enable the
+// macOS-only hidden-titlebar layout (sidebar drag row / traffic-light gutter,
+// spec「macOS 隐藏标题栏」). Undefined in non-Electron hosts.
+contextBridge.exposeInMainWorld("wavePlatform", process.platform);
+
 // file:// URL of the element-picker preload, injected by PreviewPane into the
 // preview <webview> (`preload` attribute). Built to dist/main/pickerPreload.cjs
 // alongside this file, so the relative path holds in dev and inside app.asar.

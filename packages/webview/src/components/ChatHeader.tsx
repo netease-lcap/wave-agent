@@ -31,6 +31,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   hideMoreButton = false,
   panelToggle,
   leading,
+  macTrafficSpacer = false,
   headerActions,
 }) => {
   const [showSessionList, setShowSessionList] = useState(false);
@@ -42,6 +43,15 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
   return (
     <div className="chat-header" data-testid="chat-header">
+      {/* macOS 隐藏标题栏 + 侧边栏收起：最左端让给系统红绿灯，该段为窗口
+          拖拽区（spec「macOS 隐藏标题栏」场景 3）。 */}
+      {macTrafficSpacer && (
+        <div
+          className="chat-header-mac-traffic"
+          aria-hidden="true"
+          data-testid="chat-header-mac-traffic"
+        />
+      )}
       {leading}
       <div className="header-title">{title}</div>
       <div className="header-buttons">

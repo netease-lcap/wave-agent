@@ -58,6 +58,7 @@ import type {
 } from "../types";
 import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/dist/constants/tools.js";
 import { collectWriteEditBlocks, pathsMatch } from "../utils/fileAutoRefresh";
+import { isMacHiddenTitlebar } from "../utils/platform";
 import { chatReducer, initialState } from "../reducers/chatReducer";
 import "../styles/ChatApp.css";
 
@@ -416,6 +417,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         <span className="header-collapsed-divider" />
       </div>
     ) : null;
+  // macOS 隐藏标题栏 + 侧边栏收起：最左侧顶栏的收起态 leading 正处于窗口左上角
+  // 系统红绿灯的落位。该实例若占据窗口最左侧（root 单布局，或 DesktopShell 中
+  // 拿到 sidebarExpandButton 的首行首 pane），就让 ChatHeader 在左端让出一段
+  // 76px 拖拽区（spec「macOS 隐藏标题栏」场景 3）。
+  const macTrafficSpacer =
+    isMacHiddenTitlebar() &&
+    sidebarCollapsed &&
+    (paneId === undefined || sidebarExpandButton != null);
   // The pane's effective host ('local' or an SSH host name): a pane-bound
   // session's host (authoritative `desktopPanes` push) wins; the single-pane
   // layout reads the host-level current host. Remote sessions run the whole
@@ -3088,6 +3097,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             ? collapsedLeading(sidebarExpandButton)
             : collapsedLeading(expandBtn)
         }
+        macTrafficSpacer={macTrafficSpacer}
         onNewSession={handleClearChat}
         newSessionDisabled={state.isStreaming}
         onAbortMessage={handleAbortMessage}

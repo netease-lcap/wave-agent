@@ -12,6 +12,7 @@ import {
 } from "./HeaderIcons";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
+import { isMacHiddenTitlebar } from "../utils/platform";
 import type { DesktopSessionGroup, DesktopSessionEntry } from "../types";
 import "../styles/DesktopApp.css";
 
@@ -470,16 +471,29 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     );
   };
 
+  // macOS 隐藏标题栏（titleBarStyle: "hidden"，仅 darwin）：真机需要一条
+  // 44px 顶部窗口行承载系统红绿灯并充当窗口拖拽区（spec「macOS 隐藏标题栏」），
+  // 见下方渲染分支；Windows/Linux 真机保留系统原生标题栏，不渲染。
+  const macHiddenTitlebar = isMacHiddenTitlebar();
+
   // Fully collapsed: nothing renders, no reserved width, no overlay — the chat
   // takes the whole pane width (spec 「侧边栏收起/展开」scenario 1).
   if (collapsed) return null;
 
   return (
     <div className="desktop-sidebar" data-testid="desktop-sidebar">
-      {/* macOS 窗口控制行（对齐 codechat 侧栏：44px 红绿灯行）。真机 Electron
-          用系统原生标题栏（已有红绿灯），仅在原型预览（waveHostType 未注入）
-          中渲染，避免红绿灯重复。 */}
-      {typeof window !== "undefined" && window.waveHostType !== "desktop" && (
+      {/* macOS 窗口控制行（对齐 codechat 侧栏：44px 红绿灯行）。两种形态：
+          - 真机 macOS：系统标题栏已隐藏，红绿灯由系统绘制在该行左端——行内
+            不画假圆点，整行为 `-webkit-app-region: drag` 拖拽区（空行）。
+          - 原型预览/IDE mock（waveHostType 未注入、浏览器无系统窗口 chrome）：
+            绘制假红绿灯圆点行。
+          真机 Windows/Linux 用系统原生标题栏，两者都不渲染。 */}
+      {macHiddenTitlebar ? (
+        <div
+          className="sidebar-window-row sidebar-window-row--mac-drag"
+          aria-hidden="true"
+        />
+      ) : typeof window !== "undefined" && window.waveHostType !== "desktop" ? (
         <div className="sidebar-window-row" aria-hidden="true">
           <span className="window-controls">
             <span className="window-dot window-dot--close" />
@@ -487,7 +501,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             <span className="window-dot window-dot--maximize" />
           </span>
         </div>
-      )}
+      ) : null}
       <div className="desktop-sidebar-header">
         <CodewaveLogo height={14} />
         {/* The header is space-between, so both buttons must live in one

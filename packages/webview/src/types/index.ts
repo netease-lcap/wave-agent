@@ -131,6 +131,9 @@ declare global {
     acquireVsCodeApi(): VsCodeApi;
     /** Set by the Electron preload (packages/desktop); undefined in IDE hosts. */
     waveHostType?: string;
+    /** Host platform, set by the Electron preload (process.platform: "darwin"/
+     *  "win32"/"linux"); undefined in IDE hosts and browser previews. */
+    wavePlatform?: string;
     /** file:// URL of the element-picker preload, exposed by the Electron preload. */
     wavePickerPreloadPath?: string;
   }
@@ -608,6 +611,10 @@ export interface ChatHeaderProps {
   panelToggle?: PanelExpandProps;
   /** Optional slot at the header's left edge (desktop sidebar expand button). */
   leading?: React.ReactNode;
+  /** macOS hidden-titlebar (desktop + sidebar collapsed): reserve the leftmost
+   *  ~76px for the system traffic lights and make that band a window drag
+   *  region (spec「macOS 隐藏标题栏」场景 3). */
+  macTrafficSpacer?: boolean;
   /** Extra actions at the right edge of the button row (desktop pane close). */
   headerActions?: React.ReactNode;
 }
