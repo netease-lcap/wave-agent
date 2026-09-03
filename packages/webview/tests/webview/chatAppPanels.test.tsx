@@ -856,6 +856,53 @@ describe("session-level panel groups", () => {
     pushPanes("s1");
     expect(screen.queryByTestId("diff-pane")).not.toBeInTheDocument();
   });
+
+  it("a URL typed into the preview address bar survives a session switch (restored on return)", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+    pushTree(["s1", "s2"]);
+    pushPanes("s1");
+    openPanel("preview");
+
+    // Blank preview tab — type a URL into the address bar and commit it.
+    const input = screen.getByTestId("preview-address-input");
+    fireEvent.change(input, { target: { value: "localhost:8899/" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    // Guest never became dom-ready in jsdom: the initial src is retargeted.
+    expect(
+      screen
+        .getByTestId("preview-pane")
+        .querySelector("webview")
+        ?.getAttribute("src"),
+    ).toBe("http://localhost:8899/");
+
+    // The guest loads and reports its real address.
+    const wv = screen
+      .getByTestId("preview-pane")
+      .querySelector("webview") as Element;
+    fireEvent(
+      wv,
+      Object.assign(new Event("did-navigate"), {
+        url: "http://localhost:8899/",
+      }),
+    );
+
+    // Switch to s2 (no cached preview) and back: the typed URL is a part of
+    // s1's remembered panel group and must come back with it.
+    pushPanes("s2");
+    expect(screen.queryByTestId("preview-pane")).not.toBeInTheDocument();
+    pushPanes("s1");
+    expect(screen.getByTestId("preview-pane")).toBeInTheDocument();
+    expect(
+      screen
+        .getByTestId("preview-pane")
+        .querySelector("webview")
+        ?.getAttribute("src"),
+    ).toBe("http://localhost:8899/");
+    expect(screen.getByTestId("panel-tab-preview-1")).toHaveTextContent(
+      "localhost:8899",
+    );
+  });
 });
 
 /**

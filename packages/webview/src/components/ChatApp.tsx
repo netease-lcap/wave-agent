@@ -2490,6 +2490,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
               ),
             );
           }}
+          onNavigate={(url) => {
+            // Address-bar commits and in-guest navigation become the tab's
+            // URL, so the page a session was last showing survives a session
+            // switch / remount (kept in the session's cached panel group).
+            setTabs((prev) => {
+              const cur = prev.find((t) => t.id === id);
+              if (!cur || cur.previewUrl === url) return prev;
+              return prev.map((t) =>
+                t.id === id ? { ...t, previewUrl: url } : t,
+              );
+            });
+          }}
           {...common}
         />
       );

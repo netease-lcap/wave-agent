@@ -53,6 +53,7 @@ function renderPane(options?: {
   onRetry?: () => void;
   onLastTabClosed?: () => void;
   onTitleChange?: (title: string) => void;
+  onNavigate?: (url: string) => void;
 }) {
   const vscode = createMockVscode();
   const url = options?.url ?? "http://localhost:5173/app";
@@ -61,6 +62,7 @@ function renderPane(options?: {
   const onRetry = options?.onRetry;
   const onLastTabClosed = options?.onLastTabClosed ?? vi.fn();
   const onTitleChange = options?.onTitleChange ?? vi.fn();
+  const onNavigate = options?.onNavigate ?? vi.fn();
   // Controlled-width harness: PreviewPane no longer owns its width state.
   // `width` prop on rerender overrides the internal state so tests can drive
   // panel resizes without going through the drag handle.
@@ -84,6 +86,7 @@ function renderPane(options?: {
         onRetry={onRetry}
         onLastTabClosed={onLastTabClosed}
         onTitleChange={onTitleChange}
+        onNavigate={onNavigate}
       />
     );
   };
@@ -110,6 +113,7 @@ function renderPane(options?: {
     onAddComment,
     onLastTabClosed,
     onTitleChange,
+    onNavigate,
   };
 }
 
@@ -499,6 +503,59 @@ describe("PreviewPane", () => {
       // Editing abandoned — display restored.
       expect(screen.getByTestId("preview-address-display")).toHaveTextContent(
         "http://localhost:3000/other",
+      );
+    });
+
+    it("reports a confirmed navigation to the parent (address bar + in-page)", () => {
+      const { wv, onNavigate } = renderPane({ url: "" });
+      fireDomReady(wv);
+
+      // Address-bar commit navigates the guest…
+      const input = screen.getByTestId("preview-address-input");
+      fireEvent.change(input, { target: { value: "localhost:3000/other" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(wv.loadURL).toHaveBeenCalledWith("http://localhost:3000/other");
+
+      // …and only once the guest confirms the load does the parent learn the
+      // address (a failed load must not overwrite the remembered URL).
+      fireDidNavigate(wv, "http://localhost:3000/other");
+      expect(onNavigate).toHaveBeenCalledWith("http://localhost:3000/other");
+
+      // SPA (hash/history) navigation is reported too.
+      fireInPageNavigate(wv, "http://localhost:3000/other#/section");
+      expect(onNavigate).toHaveBeenCalledWith(
+        "http://localhost:3000/other#/section",
+      );
+    });
+
+    it("an echoed navigation (parent persisted the URL back) does not reload the guest", () => {
+      const { wv, onNavigate, rerenderWithUrl } = renderPane({ url: "" });
+      fireDomReady(wv);
+      const input = screen.getByTestId("preview-address-input");
+      fireEvent.change(input, { target: { value: "localhost:3000/other" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(wv.loadURL).toHaveBeenCalledTimes(1);
+
+      fireDidNavigate(wv, "http://localhost:3000/other");
+      expect(onNavigate).toHaveBeenCalledWith("http://localhost:3000/other");
+
+      // The parent writes the reported URL onto the tab → the `url` prop
+      // changes to the address the guest is ALREADY showing. Reloading it
+      // again would flash a wasteful double load.
+      rerenderWithUrl("http://localhost:3000/other");
+      expect(wv.loadURL).toHaveBeenCalledTimes(1);
+    });
+
+    it("in-guest SPA navigation echoed back does not reload the guest", () => {
+      const { wv, rerenderWithUrl } = renderPane();
+      fireDomReady(wv);
+      fireInPageNavigate(wv, "http://localhost:5173/app#/section");
+      // Parent persisted the #/section URL → prop now carries it.
+      rerenderWithUrl("http://localhost:5173/app#/section");
+
+      expect(wv.loadURL).not.toHaveBeenCalled();
+      expect(screen.getByTestId("preview-address-display")).toHaveTextContent(
+        "http://localhost:5173/app#/section",
       );
     });
   });
