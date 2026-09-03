@@ -1038,7 +1038,8 @@ body.is-panel-resizing webview {
   border-color: var(--vscode-focusBorder);
 }
 
-/* Blank-tab placeholder over the webview body (spec scenario 5). */
+/* Blank-tab placeholder over the webview body (spec scenario 5).
+   提示文案 14px 与文件/计划 pane 空态一致（评论 2026-09）。 */
 .preview-tab-new {
   position: absolute;
   inset: 0;
@@ -1047,7 +1048,7 @@ body.is-panel-resizing webview {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--vscode-descriptionForeground, #999);
   background: var(--vscode-editor-background);
 }
