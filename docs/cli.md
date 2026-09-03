@@ -127,10 +127,10 @@ wave plugin uninstall <plugin>               # 卸载插件
 wave plugin update <plugin>                  # 更新插件（卸载后重新安装）
 ```
 
-安装插件时支持指定作用域：
+安装插件时支持指定作用域（不指定时默认 user 作用域，安装即启用）：
 
 ```bash
-wave plugin install my-plugin@official --scope user     # 全局安装
+wave plugin install my-plugin@official --scope user     # 全局安装（默认）
 wave plugin install my-plugin@official --scope project  # 项目级安装
 wave plugin install my-plugin@official --scope local    # 本地安装
 ```

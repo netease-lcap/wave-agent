@@ -124,7 +124,8 @@ describe("Plugin Install Scope Integration Tests", () => {
     );
   });
 
-  it("should install without enabling if no scope is provided", async () => {
+  it("should default to user scope and enable when no scope is provided", async () => {
+    mockPluginCore.enablePlugin.mockResolvedValue("user");
     await installPluginCommand({ plugin: "test-plugin@market" });
 
     expect(mockLog).toHaveBeenCalledWith(
@@ -132,13 +133,18 @@ describe("Plugin Install Scope Integration Tests", () => {
         "Successfully installed plugin: test-plugin v1.0.0 from market",
       ),
     );
-    expect(mockLog).not.toHaveBeenCalledWith(
-      expect.stringContaining("enabled in"),
+    expect(mockLog).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Plugin test-plugin@market enabled in user scope",
+      ),
     );
 
     expect(mockPluginCore.installPlugin).toHaveBeenCalledWith(
       "test-plugin@market",
     );
-    expect(mockPluginCore.enablePlugin).not.toHaveBeenCalled();
+    expect(mockPluginCore.enablePlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+      "user",
+    );
   });
 });

@@ -14,11 +14,11 @@ export async function installPluginCommand(argv: {
     );
     console.log(`Cache path: ${installed.cachePath}`);
 
-    if (argv.scope) {
-      const pluginId = `${installed.name}@${installed.marketplace}`;
-      await pluginCore.enablePlugin(pluginId, argv.scope);
-      console.log(`Plugin ${pluginId} enabled in ${argv.scope} scope`);
-    }
+    // When no scope is given, default to user scope (matches Claude Code).
+    const scope = argv.scope ?? "user";
+    const pluginId = `${installed.name}@${installed.marketplace}`;
+    await pluginCore.enablePlugin(pluginId, scope);
+    console.log(`Plugin ${pluginId} enabled in ${scope} scope`);
 
     process.exit(0);
   } catch (error) {

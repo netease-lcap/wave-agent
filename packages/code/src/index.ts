@@ -188,7 +188,7 @@ export async function main() {
                 })
                 .option("scope", {
                   alias: "s",
-                  describe: "Scope to enable the plugin in",
+                  describe: "Scope to enable the plugin in (default: user)",
                   choices: ["user", "project", "local"],
                   type: "string",
                 });
