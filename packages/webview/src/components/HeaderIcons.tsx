@@ -567,6 +567,55 @@ export const PanelExpandIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+// 账户卡片用量区显隐按钮（收起态）— Figma 功能图标「额度」(13648:3600，24
+// artboard：表盘外圈 + 指示弧 + 指针 + 轴心，fill/stroke #565A60 → currentColor)。
+// 替换原 codicon-dashboard（spec-first 账户卡 v3 定稿：展开态 chevron-up 保留，
+// 收起态仪表盘改用官方额度矢量）；按钮 24×24 规格由 .account-card-collapse-btn
+// 提供，svg 自带 24×24 显示。
+export const QuotaIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={24}
+    height={24}
+    viewBox="0 0 24 24"
+    fill="none"
+    className={className}
+  >
+    <circle
+      cx="11.999"
+      cy="12"
+      r="6.55957"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12.0006 8.30225C9.95835 8.30225 8.30273 9.95786 8.30273 12.0002C8.30273 12.9236 8.64122 13.768 9.2009 14.416M14.8004 14.416C15.3601 13.768 15.6986 12.9236 15.6986 12.0002C15.6986 11.6286 15.6438 11.2697 15.5418 10.9314"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M14.1994 9.00112L12.0229 11.9996"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle
+      cx="11.9915"
+      cy="12.0001"
+      r="0.7"
+      fill="currentColor"
+      stroke="currentColor"
+      strokeWidth="1.01664"
+    />
+  </svg>
+);
+
 // Pane 关闭（关闭分屏）— Figma 功能图标「关闭」(13440:12465，24 artboard，
 // union ×，fill #565A60 → currentColor)。与预览 tab 关闭、弹层关闭同一官方
 // 矢量；按钮 24×24 规格由 .desktop-pane-close 提供。

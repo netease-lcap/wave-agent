@@ -74,7 +74,9 @@
   cursor: default;
 }
 
-/* 用量常驻区 显隐按钮：展开态 chevron-up / 收起态 dashboard（图标随状态切换）。 */
+/* 用量常驻区 显隐按钮：展开态 chevron-up / 收起态「额度」图标（随状态切换）。
+   padding:0 必须显式重置——Chrome UA 对 button 默认 padding 1px 6px，在
+   border-box 下会把 24px 内容区压到 12px，svg 被 flex-shrink 成 12×24 变形。 */
 .account-card-collapse-btn {
   flex-shrink: 0;
   display: inline-flex;
@@ -82,6 +84,7 @@
   justify-content: center;
   width: 24px;
   height: 24px;
+  padding: 0;
   border: none;
   border-radius: 4px;
   background: transparent;
