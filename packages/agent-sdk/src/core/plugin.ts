@@ -173,9 +173,15 @@ export class PluginCore {
 
   /**
    * Updates a specific marketplace or all marketplaces
+   *
+   * Pulls the latest marketplace source and reinstalls any plugins that are
+   * already installed from it, so a manual "update marketplace" also brings
+   * installed plugins up to date (mirrors Claude Code's refresh-and-bump).
    */
   async updateMarketplace(name?: string): Promise<void> {
-    await this.marketplaceService.updateMarketplace(name);
+    await this.marketplaceService.updateMarketplace(name, {
+      updatePlugins: true,
+    });
   }
 
   /**
