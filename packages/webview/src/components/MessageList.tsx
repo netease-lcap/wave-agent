@@ -208,11 +208,32 @@ export const MessageList = forwardRef<
   // "within the bottom threshold". Cleared only when the user scrolls back down
   // to the bottom region.
   const userScrolledUpRef = useRef(false);
-  // Briefly true around our own programmatic scrolls (scrollToEnd /
-  // scrollToIndex) so the scroll handler can ignore those as user intent.
-  // Streaming uses 'auto' (instant, single fire), so a one-frame reset via
-  // requestAnimationFrame is sufficient.
-  const isProgrammaticScrollRef = useRef(false);
+  // Outstanding programmatic scrolls (doScrollToBottom / scrollToIndex /
+  // resizeItem compensation — everything routes through scrollToFn). Each such
+  // scroll is answered by the browser with a 'scroll' event on a LATER task:
+  // measured in real Chromium, ~70% of those events arrive AFTER the next
+  // requestAnimationFrame, so a one-frame boolean flag (rAF reset) is already
+  // cleared when the handler runs and the programmatic pin gets misread as
+  // user intent — a pin-down event read while the user idles in the bottom
+  // band clears userScrolledUp mid-stream (yanking the user back down), a
+  // compensation-up event wrongly suspends following. Instead the scroll
+  // handler CONSUMES one pending count per event and ignores it, whatever the
+  // dispatch timing. The counter self-clears after a short timeout so a scroll
+  // that did not move the viewport (no event fired) cannot swallow a later
+  // genuine gesture.
+  const pendingProgrammaticScrollsRef = useRef(0);
+  const programmaticClearTimerRef = useRef<
+    ReturnType<typeof setTimeout> | undefined
+  >(undefined);
+  const markProgrammaticScroll = useCallback(() => {
+    pendingProgrammaticScrollsRef.current++;
+    if (programmaticClearTimerRef.current === undefined) {
+      programmaticClearTimerRef.current = setTimeout(() => {
+        programmaticClearTimerRef.current = undefined;
+        pendingProgrammaticScrollsRef.current = 0;
+      }, 100);
+    }
+  }, []);
   // Last seen scrollTop, used to detect scroll direction (up vs down).
   const prevScrollTopRef = useRef(0);
   // Last seen scrollHeight, used to tell a content-shrink clamp apart from a
@@ -359,11 +380,14 @@ export const MessageList = forwardRef<
       if (spacerRef.current) {
         spacerRef.current.style.height = `${instance.getTotalSize()}px`;
       }
-      isProgrammaticScrollRef.current = true;
+      // Mark the scroll as programmatic so the scroll handler consumes it as
+      // ours (see pendingProgrammaticScrollsRef) instead of reading it as user
+      // intent. The virtualizer's resizeItem compensations route here too —
+      // a row measuring SHORTER than its estimate shifts scrollTop by the
+      // negative delta, and that spurious scroll would otherwise latch
+      // userScrolledUpRef and freeze the bottom-pin mid-growth.
+      markProgrammaticScroll();
       elementScroll(offset, opts, instance);
-      requestAnimationFrame(() => {
-        isProgrammaticScrollRef.current = false;
-      });
     },
   });
 
@@ -503,23 +527,19 @@ export const MessageList = forwardRef<
   );
 
   // Perform a programmatic scroll-to-bottom, guarding it with the
-  // isProgrammaticScroll flag so the scroll handler treats the resulting
-  // 'scroll' event as ours (not the user's) and leaves userScrolledUp alone.
-  // scrollToFn writes the spacer height before the scroll (see above), so the
-  // browser clamps against the CURRENT total — no stale-height short pin. Any
-  // later estimate→measure growth is followed event-driven by the spacer
-  // ResizeObserver (see the re-pin effect below) — no frame budget, matching
-  // OpenCode's persistent bottom-anchor.
+  // markProgrammaticScroll counter (applied inside scrollToFn, which every
+  // virtualizer scroll routes through) so the scroll handler treats the
+  // resulting 'scroll' event as ours (not the user's) and leaves userScrolledUp
+  // alone. scrollToFn writes the spacer height before the scroll (see above),
+  // so the browser clamps against the CURRENT total — no stale-height short
+  // pin. Any later estimate→measure growth is followed event-driven by the
+  // spacer ResizeObserver (see the re-pin effect below) — no frame budget,
+  // matching OpenCode's persistent bottom-anchor.
   const doScrollToBottom = useCallback(
     (behavior: ScrollBehavior) => {
       const container = containerRef.current;
       if (!container) return;
-      isProgrammaticScrollRef.current = true;
       virtualizer.scrollToEnd({ behavior });
-      // 'auto' is instant (single 'scroll' fire); reset on the next frame.
-      requestAnimationFrame(() => {
-        isProgrammaticScrollRef.current = false;
-      });
     },
     [virtualizer],
   );
@@ -583,15 +603,21 @@ export const MessageList = forwardRef<
 
     // The scroll event fires for user scrolling (wheel, trackpad, keyboard,
     // scrollbar drag) AND our own programmatic scrolls (scrollToEnd etc.). We
-    // distinguish them with isProgrammaticScroll: ignore 'scroll' events we
-    // caused, so they can't reset userScrolledUp and yank the user back to the
-    // bottom. For real user scrolling, we use DIRECTION to decide intent — any
-    // upward scroll (even a few px) suspends following, so a light nudge up is
-    // respected instead of being overridden by the bottom-threshold check.
-    // Only scrolling
-    // back down to the bottom region resumes following.
+    // distinguish them with the pendingProgrammaticScrolls counter: each
+    // programmatic scroll is consumed (ignored) by one 'scroll' event, so
+    // events we caused can't reset userScrolledUp and yank the user back to
+    // the bottom — regardless of when the browser dispatches them (they land
+    // on a later task, usually after the next animation frame). For real user
+    // scrolling, we use DIRECTION to decide intent — any upward scroll (even a
+    // few px) suspends following, so a light nudge up is respected instead of
+    // being overridden by the bottom-threshold check. Only scrolling back down
+    // to the bottom region resumes following.
     const handleScroll = () => {
-      if (!isProgrammaticScrollRef.current) {
+      if (pendingProgrammaticScrollsRef.current > 0) {
+        // Our own scroll's event (see the counter comment above) — skip the
+        // intent evaluation below but still track geometry for baselines.
+        pendingProgrammaticScrollsRef.current--;
+      } else {
         const isNearBottom =
           container.scrollTop + container.clientHeight >=
           container.scrollHeight - 300;
@@ -622,7 +648,21 @@ export const MessageList = forwardRef<
       computeSticky();
     };
 
+    // A wheel scroll-up is recognized synchronously at the INPUT event, not at
+    // the browser's synthesized 'scroll' event — the browser dispatches that on
+    // a later rendering frame, and a streaming chunk's programmatic pin can win
+    // the race and yank the viewport back down before the intent is recorded
+    // (chunk-dense streams — e.g. reasoning — then feel like "I scroll up and
+    // it keeps pulling me back"). Pinch-zoom also delivers wheel events with a
+    // negative deltaY but no scrolling intent, so exclude ctrlKey wheels. Only
+    // the opt-out is set here; re-engaging follow is unchanged (scrolling back
+    // down to the bottom region clears userScrolledUp in handleScroll).
+    const handleWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && e.deltaY < 0) userScrolledUpRef.current = true;
+    };
+
     container.addEventListener("scroll", handleScroll);
+    container.addEventListener("wheel", handleWheel, { passive: true });
 
     // Use ResizeObserver to recompute sticky state on content height changes
     // (images, diffs, etc.). Auto-scroll itself is driven by the messages
@@ -654,6 +694,7 @@ export const MessageList = forwardRef<
     return () => {
       resizeObserver.disconnect();
       container.removeEventListener("scroll", handleScroll);
+      container.removeEventListener("wheel", handleWheel);
     };
   }, [messages, queuedMessages, isStreaming, scrollToBottom, computeSticky]);
 
@@ -688,6 +729,19 @@ export const MessageList = forwardRef<
     observer.observe(spacer);
     return () => observer.disconnect();
   }, [doScrollToBottom]);
+
+  // Clear the programmatic-scroll counter's fallback timer on unmount so a
+  // scroll-happy message list being torn down (pane close / session switch)
+  // cannot leave a dangling timeout behind.
+  useEffect(
+    () => () => {
+      if (programmaticClearTimerRef.current !== undefined) {
+        clearTimeout(programmaticClearTimerRef.current);
+        programmaticClearTimerRef.current = undefined;
+      }
+    },
+    [],
+  );
 
   // The compaction hint mounts below the last message (after the virtualizer's
   // in-flow spacer). scrollToEnd only accounts for row heights, so a pinned
