@@ -355,9 +355,7 @@
 /* Write tool preview */
 .write-tool-header {
   display: flex;
-  /* 工具名（13px 加粗）与路径链接（12px monospace、line-height 16px）行高
-     不同，flex-start 顶部对齐会让链接视觉偏上，居中才在同一水平线上。 */
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
 }
 
@@ -370,6 +368,8 @@
 .write-tool-path {
   min-width: 0;
   flex: 1 1 auto;
+  /* 顶部对齐（flex-start）下 12px 小字墨迹比 13px 工具名略高，微调 1px 使其光学齐平 */
+  margin-top: 1px;
   font-family: Menlo, monospace;
   font-size: 12px;
   color: var(--vscode-textLink-foreground, #48a0c7);
