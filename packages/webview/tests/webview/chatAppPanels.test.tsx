@@ -1809,4 +1809,191 @@ describe("desktop plan panel", () => {
     expect(content.querySelector("h2")).toHaveTextContent("分屏方案");
     expect(content.querySelectorAll("li")).toHaveLength(1);
   });
+
+  it("re-activating a background session reopens the plan panel even when desktopPanes + setInitialState batch in one commit", () => {
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop({ workdir: "/work/a" });
+    const session = (sessionId: string) => ({
+      sessionId,
+      title: sessionId,
+      lastActiveAt: Date.now(),
+      hasWorktree: false,
+    });
+    sendHostMessage(
+      fixtures.desktopSessionTree({
+        groups: [
+          {
+            host: "local",
+            workdir: "/work/a",
+            sessions: ["s1", "s2"].map(session),
+          },
+        ],
+      }),
+    );
+    const bind = (sessionId?: string) => {
+      sendHostMessage(
+        fixtures.desktopPanes({
+          panes: [
+            {
+              paneId: "pane-1",
+              sessionId,
+              row: 0,
+              host: "local",
+              width: 0.5,
+            },
+          ],
+          focusedPaneId: "pane-1",
+        }),
+      );
+      sendCommand("setInitialState", { messages: [], paneId: "pane-1" });
+    };
+    // pane-1 shows s1, then the user switches it to s2 — s1 keeps streaming in
+    // the background and exits plan mode there (host stores the confirmation,
+    // only a toast is shown — no UI plan panel yet).
+    bind("s1");
+    bind("s2");
+    expect(screen.queryByTestId("plan-pane")).not.toBeInTheDocument();
+
+    // Clicking s1: the host rebinds the pane AND pushes the session snapshot
+    // carrying the pending ExitPlanMode confirmation. These land back-to-back,
+    // so the renderer processes both in one React batch (the panel-group swap
+    // effect and the plan replay share a commit).
+    const panesMsg = fixtures.desktopPanes({
+      panes: [
+        {
+          paneId: "pane-1",
+          sessionId: "s1",
+          row: 0,
+          host: "local",
+          width: 0.5,
+        },
+      ],
+      focusedPaneId: "pane-1",
+    }) as unknown as Record<string, unknown>;
+    const initMsg = fixtures.setInitialState({
+      messages: [],
+      pendingConfirmations: [
+        {
+          confirmationId: "conf_plan_bg",
+          toolName: EXIT_PLAN_MODE_TOOL_NAME,
+          confirmationType: "计划待确认",
+          toolInput: {},
+          planContent: "## 后台方案\n- 步骤一",
+        },
+      ],
+    }) as unknown as Record<string, unknown>;
+    initMsg.paneId = "pane-1";
+    act(() => {
+      window.dispatchEvent(new MessageEvent("message", { data: panesMsg }));
+      window.dispatchEvent(new MessageEvent("message", { data: initMsg }));
+    });
+
+    // The plan panel is open with the background session's plan (it must not be
+    // wiped by the session-swap re-seed of the empty s1 group cache).
+    const pane = screen.getByTestId("plan-pane");
+    expect(pane.parentElement).not.toHaveStyle({ display: "none" });
+    expect(screen.getByTestId("plan-pane-content")).toHaveTextContent(
+      "后台方案",
+    );
+    expect(lastPanelState(vscode)).toContain("plan");
+  });
+
+  it("a batched flip from a foreground session with its own plan tab still opens exactly one plan panel for the background session's plan", () => {
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop({ workdir: "/work/a" });
+    const session = (sessionId: string) => ({
+      sessionId,
+      title: sessionId,
+      lastActiveAt: Date.now(),
+      hasWorktree: false,
+    });
+    sendHostMessage(
+      fixtures.desktopSessionTree({
+        groups: [
+          {
+            host: "local",
+            workdir: "/work/a",
+            sessions: ["s1", "s2"].map(session),
+          },
+        ],
+      }),
+    );
+    const bind = (sessionId?: string) => {
+      sendHostMessage(
+        fixtures.desktopPanes({
+          panes: [
+            {
+              paneId: "pane-1",
+              sessionId,
+              row: 0,
+              host: "local",
+              width: 0.5,
+            },
+          ],
+          focusedPaneId: "pane-1",
+        }),
+      );
+      sendCommand("setInitialState", { messages: [], paneId: "pane-1" });
+    };
+    bind("s1");
+    // Foreground s2 exits plan mode: its group gets a plan tab (cached), so at
+    // the moment of the flip below the *committed* tabs hold a plan tab while
+    // the incoming s1 group cache does not.
+    bind("s2");
+    sendCommand("showConfirmation", {
+      confirmationId: "conf_plan_fg",
+      toolName: EXIT_PLAN_MODE_TOOL_NAME,
+      confirmationType: "计划待确认",
+      planContent: "## 前台方案\n- 前台步骤",
+      paneId: "pane-1",
+    });
+    expect(screen.getByTestId("plan-pane-content")).toHaveTextContent(
+      "前台方案",
+    );
+
+    // Clicking s1 (still streaming in the background with a pending ExitPlanMode)
+    // batches the pane rebind and the snapshot replay into one commit.
+    const panesMsg = fixtures.desktopPanes({
+      panes: [
+        {
+          paneId: "pane-1",
+          sessionId: "s1",
+          row: 0,
+          host: "local",
+          width: 0.5,
+        },
+      ],
+      focusedPaneId: "pane-1",
+    }) as unknown as Record<string, unknown>;
+    const initMsg = fixtures.setInitialState({
+      messages: [],
+      pendingConfirmations: [
+        {
+          confirmationId: "conf_plan_bg2",
+          toolName: EXIT_PLAN_MODE_TOOL_NAME,
+          confirmationType: "计划待确认",
+          toolInput: {},
+          planContent: "## 后台方案二\n- 新步骤",
+        },
+      ],
+    }) as unknown as Record<string, unknown>;
+    initMsg.paneId = "pane-1";
+    act(() => {
+      window.dispatchEvent(new MessageEvent("message", { data: panesMsg }));
+      window.dispatchEvent(new MessageEvent("message", { data: initMsg }));
+    });
+
+    // The outgoing s2 plan tab must not leak, and the s1 plan is not lost to the
+    // stale committed list — exactly one fresh plan panel shows the new content.
+    expect(screen.getAllByTestId("plan-pane")).toHaveLength(1);
+    const pane = screen.getByTestId("plan-pane");
+    expect(pane.parentElement).not.toHaveStyle({ display: "none" });
+    expect(screen.getByTestId("plan-pane-content")).toHaveTextContent(
+      "后台方案二",
+    );
+    expect(screen.getByTestId("plan-pane-content")).not.toHaveTextContent(
+      "前台方案",
+    );
+    expect(lastPanelState(vscode)).toContain("plan");
+  });
 });

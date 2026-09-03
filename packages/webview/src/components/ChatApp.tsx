@@ -463,6 +463,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       (groupKey ? panelGroupCache.get(groupKey)?.planContent : undefined) ??
       null,
   );
+  // Desktop plan panel: the ExitPlanMode plan content a setInitialState replay
+  // carried for a re-activated session, staged until the swap-effect ordering
+  // settles (see the routing effect below). Null = nothing staged.
+  const [planReplayContent, setPlanReplayContent] = useState<string | null>(
+    null,
+  );
   // The pane's current remote port forward (see RemoteForwardRef above). State
   // rather than a ref because a pane rebinding to another session must drop its
   // own current forward WITHOUT dropping the previous session's (the host
@@ -710,6 +716,54 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setActiveTabId(active);
     setPlanContent(group?.planContent ?? null);
   }, [paneId, groupKey]);
+
+  // Desktop plan panel: ExitPlanMode plans that arrive via the setInitialState
+  // replay of a re-activated session are routed HERE instead of in the message
+  // handler. The host pushes `desktopPanes` + the session snapshot back-to-back
+  // (activateAgentInPane), so the renderer usually batches them into ONE commit:
+  // routing eagerly would run BEFORE the swap effect above re-seeds tabs/
+  // planContent from the incoming session's cache and the reseed would wipe the
+  // just-opened plan tab. Deferring past the swap effect means the plan opens
+  // on top of the restored group (and the same effect handles the un-batched
+  // case where the snapshot lands in its own commit).
+  useEffect(() => {
+    if (planReplayContent === null) return;
+    setPlanReplayContent(null);
+    setPlanContent(planReplayContent);
+    if (!groupKey) {
+      // Single view (no pane/session group): the committed tabs are current and
+      // the guarded open path used by routePlanToPanel applies.
+      if (!tabsRef.current.some((t) => t.kind === "plan")) {
+        ensureTabRef.current("plan");
+      }
+      return;
+    }
+    const restored = panelGroupCache.get(groupKey)?.checked;
+    const planInCache = restored?.some((t) => t.kind === "plan") ?? false;
+    const planInCommitted = tabsRef.current.some((t) => t.kind === "plan");
+    if (planInCache) {
+      // The restored group already shows a plan tab — only the content updates
+      // (the reseed restored that tab and its active position).
+      return;
+    }
+    if (planInCommitted) {
+      // A same-commit session flip re-seeds tabs from the incoming group's
+      // cache, dropping the committed (outgoing) plan tab — a cache without a
+      // plan tab while the committed tabs have one only happens on a flip (the
+      // cache effect skipped that commit). ensureTabRef would consult the stale
+      // committed list and merely "activate" the tab being dropped — append a
+      // fresh one to the re-seeded list instead.
+      tabSeqRef.current.plan += 1;
+      const planId = `plan-${tabSeqRef.current.plan}`;
+      setTabs((prev) => [...prev, { kind: "plan", id: planId }]);
+      setActiveTabId(planId);
+      setPanelExpanded(true);
+    } else {
+      // No plan tab anywhere: open one through the guarded path (it reads the
+      // committed tabs, which match the re-seeded list when no flip happened).
+      ensureTabRef.current("plan");
+    }
+  }, [planReplayContent, groupKey]);
 
   useEffect(() => {
     paneIdRef.current = paneId;
@@ -1063,13 +1117,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           if (!forThisPane(message)) break;
           // Desktop plan panel: replayed pending confirmations (pane rebind to a
           // session with confirmations in flight) also carry an ExitPlanMode
-          // plan — route it so the panel survives the replay.
+          // plan. It is staged — not routed here — because a same-batch pane
+          // rebind re-seeds tabs from the incoming cache after this handler runs
+          // and would wipe an eagerly opened plan tab (see the routing effect).
           for (const c of message.pendingConfirmations ||
             (message.pendingConfirmation
               ? [message.pendingConfirmation]
               : [])) {
-            if (c.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
-              routePlanToPanel(c.planContent);
+            if (
+              c.toolName === EXIT_PLAN_MODE_TOOL_NAME &&
+              typeof c.planContent === "string" &&
+              c.planContent.trim() !== ""
+            ) {
+              setPlanReplayContent(c.planContent);
             }
           }
           dispatch({
