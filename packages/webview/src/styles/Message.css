@@ -355,7 +355,9 @@
 /* Write tool preview */
 .write-tool-header {
   display: flex;
-  align-items: flex-start;
+  /* 工具名（13px 加粗）与路径链接（12px monospace、line-height 16px）行高
+     不同，flex-start 顶部对齐会让链接视觉偏上，居中才在同一水平线上。 */
+  align-items: center;
   gap: 6px;
 }
 
