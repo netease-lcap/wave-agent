@@ -82,8 +82,12 @@
   gap: 8px;
 }
 
-.file-pane-placeholder-icon {
-  font-size: 22px;
+/* 文件 pane 空态（评论 2026-09：图标在上、文案在下，图标 24px）：
+   图标为 PanelKindIcon file（svg 固定 24px），竖排居中。
+   「正在读取文件…」loading 态共用 .desktop-panel-placeholder，保持横排。 */
+.file-pane-body .file-pane-placeholder-empty {
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* Code view: one row per line; the gutter is sticky so long lines scroll

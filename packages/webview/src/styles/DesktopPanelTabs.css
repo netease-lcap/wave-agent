@@ -47,7 +47,8 @@
   flex-shrink: 0;
 }
 
-.desktop-panel-tab .codicon {
+.desktop-panel-tab .codicon,
+.desktop-panel-tab .desktop-panel-tab-icon {
   font-size: 13px;
   opacity: 0.85;
   flex-shrink: 0;

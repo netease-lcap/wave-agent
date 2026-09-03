@@ -5,6 +5,7 @@ import {
   OpenBrowserIcon,
   RefreshIcon,
 } from "./HeaderIcons";
+import { PanelKindIcon } from "./PanelKindIcon";
 
 /**
  * Desktop-only preview pane: renders localhost dev servers in a sandboxed
@@ -539,7 +540,13 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
               onClick={startEditing}
               data-testid="preview-address-display"
             >
-              <i className="codicon codicon-globe" />
+              {/* 地址栏前置图标即「预览」面板图标（Figma Component 12），
+                  glob 语义 = 网页/地址。 */}
+              <PanelKindIcon
+                kind="preview"
+                size={13}
+                className="preview-pane-url-icon"
+              />
               <span className="preview-pane-url-text">{displayUrl}</span>
             </span>
           )}
@@ -586,7 +593,11 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
           />
           {!displayUrl && (
             <div className="preview-tab-new" data-testid="preview-tab-new">
-              <span className="codicon codicon-globe" />
+              <PanelKindIcon
+                kind="preview"
+                size={28}
+                className="preview-tab-new-icon"
+              />
               <span>在上方地址栏输入网址开始预览</span>
             </div>
           )}

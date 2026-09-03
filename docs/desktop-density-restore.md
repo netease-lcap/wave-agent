@@ -1694,3 +1694,48 @@ codechat 权威：`workspace-header-menu` / el-dropdown-menu 菜单项**连续�
 ### 实现文件
 
 - `src/styles/host-desktop.css`（预览标签段补 hover fill-hover 覆盖）
+
+---
+
+## 面板五图标对齐 Figma Component 12（13561:39702）+ 文件空态竖排 + toolbar 标题加粗（2026-09，bdb023c9 基线）
+
+预览评论 5 条（`.panel-toggle-menu--tabs` / 面板空态 / FilePane placeholder / `.desktop-panel-toolbar-title` / 地址栏 globe）：「按照设计稿更新这 5 个图标」「这里也同步更新，图标在上方文案在下方，图标尺寸 24px」「这个位置的标题都加粗」「这里在文案前面加上图标」「这里也是预览图标」。
+
+### 设计源（Figma 权威）
+
+「CC桌面端组件库」v92f0XaCeMV7467qzIh6en 节点 `13561:39702` Component 12（COMPONENT_SET，5 variants：预览/计划/差异/终端/文件）。用 REST API 拉 node JSON + SVG 导出（`/tmp/icon-*.svg`）取得官方矢量：
+
+- 预览 = 地球（**fill 挖空型** Union，`fill-rule=evenodd`，viewBox 16）
+- 计划 = 剪贴板（clipboard：圆角板身 + 顶部空心夹 + 3 条左对齐横线）
+- 差异 = 纸页 + 内部分割（文件轮廓 + 两条短横线 + 一条竖线，viewBox **0 0 16 17** 高 17）
+- 终端 = 圆角框 + `>_` 提示符
+- 文件 = 右上折角纸页 + 一条折痕线
+- 均 stroke #565A60 / width 1.4 / round cap-join（preview 除外），16px 网格
+
+### 实现
+
+新建 `src/components/PanelKindIcon.tsx`：官方 path 内嵌，`fill/stroke = currentColor`（跟随菜单/标签/空态文本色，light #565A60 / dark #9A9EA5 由 host-desktop.css 既有组控制）；`kind` + `size` prop（diff 按 16:17 等比增高），替代原 codicon 五图标：
+
+| 位置                                                    | 替换                                                                         | 尺寸 |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------- | ---- |
+| DesktopPanelTabs tab strip（PANEL_ICONS）               | codicon-browser/list-unordered/diff/terminal/file-code → PanelKindIcon       | 13px |
+| PanelEmptyState 空态 grid（PANEL_EMPTY_ICONS）          | 同上                                                                         | 14px |
+| PanelToggleMenu 菜单项 label 前新增图标                 | 新增（PANEL_ITEMS 数据不变，渲染处按 kind 映射）                             | 16px |
+| PreviewPane 地址栏 `.preview-pane-url`（codicon-globe） | PanelKindIcon preview（「这里也是预览图标」）                                | 13px |
+| PreviewPane `preview-tab-new` 空态 globe                | 同上                                                                         | 28px |
+| FilePane 空态 placeholder（codicon-file 22px 横排）     | PanelKindIcon file，容器 `.file-pane-placeholder-empty` 竖排（图标上文案下） | 24px |
+
+标题：`.desktop-panel-toolbar-title` 补 `font-weight: 600`（评论「这个位置的标题都加粗」，计划/差异/终端/文件 pane 共用）。
+CSS：各处 `… .codicon` 尺寸/透明度规则同步迁移到新 svg 类（`.desktop-panel-tab-icon` / `.desktop-panel-empty-item-icon` / `.preview-pane-url-icon` / `.preview-tab-new-icon`），颜色一律 currentColor 继承。
+
+### 验证（8899 + 完整 Chromium，desktop-full → pane-1 展开面板 → 打开文件 pane → ＋菜单）
+
+- computed：tab 图标 13px、＋菜单 5 项均 16px svg、placeholder 图标 24×24 + 容器 `flex-direction: column`、toolbar 标题 `font-weight: 600`（两主题）✓
+- 视觉（dark + light vision 复核）：预览=地球、计划=剪贴板、差异=纸页、终端=>\_、文件=折角纸页；空态 24px 图标上文案下居中；标题加粗；图标色跟随文字（light menu #565A60 / dark 浅灰不刺眼）✓；菜单快捷键无溢出（DOM 边界实测）
+- 90 面板相关 vitest（panelToggleMenu / chatAppPanels / filePane）全绿 + webview type-check ✓
+
+### 实现文件
+
+- `src/components/PanelKindIcon.tsx`（新增）
+- `src/components/DesktopPanelTabs.tsx`、`PanelEmptyState.tsx`、`PanelToggleMenu.tsx`、`PreviewPane.tsx`、`FilePane.tsx`
+- `src/styles/DesktopPanelTabs.css`、`DesktopApp.css`、`FilePane.css`

@@ -1,15 +1,7 @@
 import React from "react";
 import type { DesktopPanelKind } from "../types";
 import { PANEL_ITEMS } from "./PanelToggleMenu";
-
-/** Panel-type icons, matching the tab strip labels (DesktopPanelTabs). */
-const PANEL_EMPTY_ICONS: Record<DesktopPanelKind, string> = {
-  preview: "codicon-browser",
-  plan: "codicon-list-unordered",
-  diff: "codicon-diff",
-  terminal: "codicon-terminal",
-  file: "codicon-file-code",
-};
+import { PanelKindIcon } from "./PanelKindIcon";
 
 /** Per-capability description on the empty-state card. */
 const PANEL_EMPTY_DESC: Record<DesktopPanelKind, string> = {
@@ -54,7 +46,11 @@ export const PanelEmptyState: React.FC<PanelEmptyStateProps> = ({
             data-testid={`panel-empty-item-${kind}`}
             title={isDisabled ? "当前会话不可用" : PANEL_EMPTY_DESC[kind]}
           >
-            <i className={`codicon ${PANEL_EMPTY_ICONS[kind]}`} />
+            <PanelKindIcon
+              kind={kind}
+              size={14}
+              className="desktop-panel-empty-item-icon"
+            />
             <span className="desktop-panel-empty-item-label">{label}</span>
             {shortcut ? (
               <span className="desktop-panel-empty-shortcut">{shortcut}</span>
