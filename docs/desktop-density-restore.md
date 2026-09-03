@@ -1841,3 +1841,11 @@ CSS：各处 `… .codicon` 尺寸/透明度规则同步迁移到新 svg 类（`
 
 - 修改：`DiffPane.tsx` 工具栏刷新按钮 codicon-refresh（codicon 字体）→ **RefreshIcon**（HeaderIcons lucide svg，与预览/终端工具栏同源 16px currentColor），刷新中旋转改为自绘 `is-spinning` 动画（codicon-modifier-spin 仅作用于字体图标）；`DesktopApp.css` 增 `.preview-pane-icon.is-spinning` + keyframes。
 - 实现文件：`src/components/DiffPane.tsx`、`src/styles/DesktopApp.css`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+### 追加（同轮）：空白预览 tab 全屏宽度不伸展
+
+预览评论 `div.preview-tab-new`「在上方地址栏输入网址开始预览」：「新建预览后，点击全屏，预览区域宽度没有响应」。
+
+- 根因：空白预览的出口多包了一层 `div.preview-pane-empty-wrap`（`ChatApp.tsx` 空态分支，inline `width: panelWidth` 把空态撑到受控宽度）。全屏 CSS 只覆盖了内层 `.preview-pane` 为 `width:100%!important`，外层 wrap 的 inline width 未被覆盖，空态面板宽度因此仍钉在 panelWidth、不随全屏伸展（有 URL 的预览直接是 `.preview-pane` 自身，无此层，故正常）。
+- 修改：`DesktopApp.css` 全屏选择器补 `.preview-pane-empty-wrap`（与 `.preview-pane` 同为 `width:100% !important`）。
+- 实现文件：`src/styles/DesktopApp.css`、本 docs。（用户人工走查，本轮不跑自动化。）

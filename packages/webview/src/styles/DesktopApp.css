@@ -1336,11 +1336,14 @@ body.is-panel-resizing webview {
 /* Preview fullscreen (spec: 预览面板全屏): the conversation column is hidden
    and the preview pane fills the content area. The pane's inline width is
    overridden with !important — the pane keeps its controlled-width prop for
-   the restored layout, only this scoped rule widens it. */
+   the restored layout, only this scoped rule widens it. An empty preview
+   wraps the pane in .preview-pane-empty-wrap (inline panelWidth), so that
+   wrapper needs the same override to let the blank tab stretch. */
 .desktop-chat-body.preview-fullscreen .desktop-panel-slot {
   flex: 1;
 }
-.desktop-chat-body.preview-fullscreen .preview-pane {
+.desktop-chat-body.preview-fullscreen .preview-pane,
+.desktop-chat-body.preview-fullscreen .preview-pane-empty-wrap {
   width: 100% !important;
 }
 
