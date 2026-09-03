@@ -1722,7 +1722,7 @@ describe("AskUserQuestion Other input", () => {
       expect(document.activeElement).toBe(other);
     });
 
-    it("Space or Enter on the focused option selects it; selection survives focus moves", async () => {
+    it("Space selects the focused option; selection survives focus moves", async () => {
       renderChatApp();
       showAskUser(twoOptionQuestion);
       await waitFor(() => {
@@ -1731,27 +1731,167 @@ describe("AskUserQuestion Other input", () => {
         ).toBeInTheDocument();
       });
       const labels = optionLabels();
+      // Space selects the focused option (单选=替换为该选项).
       act(() => {
         fireEvent.keyDown(labels[0], { key: " " });
       });
       expect(
         document.querySelector('.option-item[data-option-index="0"] input')!,
       ).toBeChecked();
-      // Enter selects like Space (matches CC).
-      act(() => {
-        fireEvent.keyDown(labels[1], { key: "Enter" });
-      });
-      expect(
-        document.querySelector('.option-item[data-option-index="1"] input')!,
-      ).toBeChecked();
       // Moving focus away and back keeps the selection.
+      act(() => {
+        labels[1].focus();
+      });
+      expect(document.activeElement).toBe(labels[1]);
+      expect(
+        document.querySelector('.option-item[data-option-index="0"] input')!,
+      ).toBeChecked();
       act(() => {
         labels[0].focus();
       });
       expect(document.activeElement).toBe(labels[0]);
       expect(
-        document.querySelector('.option-item[data-option-index="1"] input')!,
+        document.querySelector('.option-item[data-option-index="0"] input')!,
       ).toBeChecked();
+    });
+
+    it("Enter on an option while unanswered does nothing (no select, no submit)", async () => {
+      const { vscode } = renderChatApp();
+      showAskUser(twoOptionQuestion);
+      await waitFor(() => {
+        expect(
+          document.querySelector(".confirmation-dialog"),
+        ).toBeInTheDocument();
+      });
+      const labels = optionLabels();
+      vscode.postMessage.mockClear();
+      // 未答完时 Enter 无动作：不选中该选项，也不提交。
+      act(() => {
+        fireEvent.keyDown(labels[0], { key: "Enter" });
+      });
+      expect(
+        document.querySelector('.option-item[data-option-index="0"] input')!,
+      ).not.toBeChecked();
+      expect(
+        document.querySelector(".confirmation-dialog"),
+      ).toBeInTheDocument();
+      expect(vscode.postMessage).not.toHaveBeenCalled();
+    });
+
+    it("Enter on an option submits once the single question is answered (does not change selection)", async () => {
+      const { vscode } = renderChatApp();
+      showAskUser(twoOptionQuestion);
+      await waitFor(() => {
+        expect(
+          document.querySelector(".confirmation-dialog"),
+        ).toBeInTheDocument();
+      });
+      const labels = optionLabels();
+      // 空格选中「方案 A」，焦点移到「方案 B」后按 Enter：不应改选中项，
+      // 而应提交当前答案（Enter 仅用于提交）。
+      act(() => {
+        fireEvent.keyDown(labels[0], { key: " " });
+      });
+      expect(
+        document.querySelector('.option-item[data-option-index="0"] input')!,
+      ).toBeChecked();
+      act(() => {
+        labels[1].focus();
+      });
+      vscode.postMessage.mockClear();
+      act(() => {
+        fireEvent.keyDown(labels[1], { key: "Enter" });
+      });
+      await waitFor(() => {
+        expect(
+          document.querySelector(".confirmation-dialog"),
+        ).not.toBeInTheDocument();
+      });
+      const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
+      const response = sent.find((m) => m.command === "confirmationResponse");
+      expect(response).toBeDefined();
+      expect(response.decision.behavior).toBe("allow");
+      const message = JSON.parse(response.decision.message);
+      expect(message["选哪个方案？"]).toBe("方案 A");
+    });
+
+    it("multi-question: Enter on an option submits all answers only when every question is answered", async () => {
+      const { vscode } = renderChatApp();
+      showAskUser([
+        {
+          question: "Q1",
+          options: [{ label: "A" }, { label: "B" }],
+          multiSelect: false,
+        },
+        {
+          question: "Q2",
+          options: [{ label: "C" }, { label: "D" }],
+          multiSelect: false,
+        },
+      ]);
+      await waitFor(() => {
+        expect(
+          document.querySelector(".confirmation-dialog"),
+        ).toBeInTheDocument();
+      });
+
+      // 答完 Q1 后，在 Q1 选项上按 Enter：Q2 未答 → 无动作。
+      act(() => {
+        fireEvent.click(
+          document.querySelector(
+            '.option-item[data-option-index="0"] input[type="radio"]',
+          )!,
+        );
+      });
+      const q1FirstOption = document.querySelector<HTMLElement>(
+        '.option-item[data-option-index="0"]',
+      )!;
+      vscode.postMessage.mockClear();
+      act(() => {
+        fireEvent.keyDown(q1FirstOption, { key: "Enter" });
+      });
+      expect(
+        document.querySelector(".confirmation-dialog"),
+      ).toBeInTheDocument();
+      expect(vscode.postMessage).not.toHaveBeenCalled();
+
+      // 切到 Q2 答完，再在选项上按 Enter → 一次性提交全部答案。
+      act(() => {
+        fireEvent.click(
+          document.querySelector(
+            ".question-navigation .confirmation-btn-secondary",
+          )!,
+        );
+      });
+      await waitFor(() => {
+        expect(
+          document.querySelector(".question-header-chip"),
+        ).toHaveTextContent("Q2");
+      });
+      act(() => {
+        fireEvent.click(
+          document.querySelector(
+            '.option-item[data-option-index="0"] input[type="radio"]',
+          )!,
+        );
+      });
+      const q2FirstOption = document.querySelector<HTMLElement>(
+        '.option-item[data-option-index="0"]',
+      )!;
+      act(() => {
+        fireEvent.keyDown(q2FirstOption, { key: "Enter" });
+      });
+      await waitFor(() => {
+        expect(
+          document.querySelector(".confirmation-dialog"),
+        ).not.toBeInTheDocument();
+      });
+      const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
+      const response = sent.find((m) => m.command === "confirmationResponse");
+      expect(response).toBeDefined();
+      const message = JSON.parse(response.decision.message);
+      expect(message["Q1"]).toBe("A");
+      expect(message["Q2"]).toBe("C");
     });
 
     it("Tab cycles inside the dialog (modal trap): last element wraps to first", async () => {
