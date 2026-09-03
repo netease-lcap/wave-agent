@@ -6,6 +6,14 @@ import {
   linkifyPlainText,
   stripTrailingUrlPunct,
 } from "../utils/linkifyPlainText";
+import {
+  decodeHtmlEntities,
+  detectFilePathToken,
+  fileLinkHtml,
+  linkifyFilePathText,
+  resolveFilePathMatch,
+  stripFilePathLinks,
+} from "../utils/filePathLinks";
 import { marked } from "marked";
 import { Tooltip } from "./Tooltip";
 
@@ -95,12 +103,29 @@ const extractClickableUrl = (codeText: string): string | null => {
   return /^https?:\/\/\S+$/i.test(url) ? url : null;
 };
 
-// 局部 renderer：marked 9 的 parse 传 renderer 会整体替换全局 use 的配置，
+// 局部 renderer 工厂：marked 9 的 parse 传 renderer 会整体替换全局 use 的配置，
 // 因此从完整 Renderer 派生并带上任务列表渲染，避免影响其它 marked 使用点。
-// codespan 收到的 text 已被 marked 的 tokenizer 转义（escape(text, true)），
-// 直接复用即可，URL 提升时 href 与显示文本同为已转义形式（如查询参数中的
-// `&` → `&amp;`，浏览器解析后还原）。
-const messageMarkdownRenderer = (() => {
+// codespan/text 收到的内容已被 marked 的 lexer 转义（escape(text, true)），
+// URL/文件路径提升前先解码，产物再按原样（已转义/或重新转义）拼回。
+//
+// 文件路径点击识别（specs/ui/file-path-links.md）两条通道都在这里接入：
+//   - codespan（行内代码整串）：≥1 斜杠 + 点扩展名，支持 :N / :N-M 行号后缀；
+//     相对路径需要 workdir 归并（无 workdir 时回退纯代码文本，对齐
+//     「无 opener 上下文 → 纯文本」）。
+//   - text（正文纯文本）：仅无歧义绝对路径（POSIX /…、C:\…、file:///…）。
+// workdir 只影响渲染期是否可解析，点击解析在 handleContentClick 中再做一次。
+// 与 marked 默认 Renderer.link 的 cleanUrl 保持一致（encodeURI + 还原 %25）。
+// 覆盖 renderer.link 只为剥掉链接 label 内生成的路径锚点，输出必须逐字节
+// 对齐默认实现，避免既有链接行为回归。
+const markedCleanHref = (href: string): string | null => {
+  try {
+    return encodeURI(href).replace(/%25/g, "%");
+  } catch {
+    return null;
+  }
+};
+
+const createMessageMarkdownRenderer = (workdir?: string) => {
   const renderer = new marked.Renderer();
   renderer.listitem = renderTaskListitem;
   renderer.codespan = (text: string) => {
@@ -108,10 +133,34 @@ const messageMarkdownRenderer = (() => {
     if (url) {
       return `<code><a href="${url}">${url}</a></code>`;
     }
+    // 行内代码通道：整串是文件路径（含可选 :N / :N-M）→ 代码样式的可点击元素
+    const matched = detectFilePathToken(decodeHtmlEntities(text), {
+      allowRelative: true,
+      requireExtension: true,
+    });
+    if (matched && resolveFilePathMatch(matched, workdir) !== null) {
+      return `<code>${fileLinkHtml(matched.display)}</code>`;
+    }
     return `<code>${text}</code>`;
   };
+  renderer.text = (text: string) =>
+    // 正文纯文本通道：绝对路径 → 链接；其余文本按原转义形式原样保留
+    linkifyFilePathText(decodeHtmlEntities(text));
+  // markdown 链接 label 内的路径不得生成嵌套 <a>（无效 HTML）；剥掉 label
+  // 内已生成的路径锚点，仅保留普通链接。
+  renderer.link = (
+    href: string,
+    title: string | null | undefined,
+    text: string,
+  ) => {
+    const cleanHref = markedCleanHref(href);
+    if (cleanHref === null) return stripFilePathLinks(text);
+    let out = `<a href="${cleanHref}"`;
+    if (title) out += ` title="${title}"`;
+    return `${out}>${stripFilePathLinks(text)}</a>`;
+  };
   return renderer;
-})();
+};
 
 // Interface for parsed markdown content that may contain mermaid diagrams
 interface ParsedMarkdownContent {
@@ -123,7 +172,10 @@ interface ParsedMarkdownContent {
 }
 
 // Parse markdown content and extract mermaid blocks
-const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
+const parseMarkdownWithMermaid = (
+  content: string,
+  workdir?: string,
+): ParsedMarkdownContent => {
   if (!content || content.trim() === "") {
     return { elements: [] };
   }
@@ -155,7 +207,9 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
       });
     } else if (part.trim()) {
       // This is regular markdown content
-      const html = marked.parse(part, { renderer: messageMarkdownRenderer });
+      const html = marked.parse(part, {
+        renderer: createMessageMarkdownRenderer(workdir),
+      });
       const sanitizedHtml = DOMPurify.sanitize(html, {
         ALLOWED_TAGS: [
           "p",
@@ -305,9 +359,28 @@ export const Message: React.FC<MessageProps> = React.memo(
     // Link routing is a desktop-host feature: localhost links open in
     // the preview pane, everything else goes to the system browser. IDE hosts
     // keep their native link handling, so bail BEFORE any preventDefault.
+    // File-path links (specs/ui/file-path-links.md) are routed on ALL hosts:
+    // desktop opens the file panel (via onOpenFile), IDE hosts open the file
+    // natively via the openFile RPC — same channel as Read/Write tool headers.
     const handleContentClick = (e: React.MouseEvent) => {
+      const target = e.target as Element | null;
+      const fileLink = target?.closest?.("a.file-path-link");
+      if (fileLink) {
+        e.preventDefault();
+        const parsed = detectFilePathToken(fileLink.textContent || "", {
+          allowRelative: true,
+          requireExtension: false,
+        });
+        if (parsed) {
+          const resolved = resolveFilePathMatch(parsed, props.workdir);
+          if (resolved) {
+            openFile(resolved, parsed.startLine, parsed.endLine);
+          }
+        }
+        return;
+      }
       if (window.waveHostType !== "desktop") return;
-      const anchor = (e.target as Element | null)?.closest?.("a");
+      const anchor = target?.closest?.("a");
       const href = anchor?.getAttribute("href");
       if (!href) return;
       e.preventDefault();
@@ -319,7 +392,10 @@ export const Message: React.FC<MessageProps> = React.memo(
     };
 
     const renderMarkdownContent = (content: string, index: number) => {
-      const parsed = parseMarkdownWithMermaid(content);
+      const parsed = parseMarkdownWithMermaid(
+        content,
+        props.workdir || undefined,
+      );
       return (
         <div
           key={index}
