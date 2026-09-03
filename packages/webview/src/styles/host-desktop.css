@@ -1946,3 +1946,63 @@
   .preview-tab-close:hover {
   color: #ffffff;
 }
+
+/* ── 0903 新基线第 2 轮：AskUserQuestion 模块字号对齐 codechat Question dialog
+   （用户评论「AskUserQuestion 模块字号比其他模块小」）：主文字 12/13px →
+   14px（--cc-font-size-md）、字重 500（--cc-font-weight-medium）、行高 22；
+   辅助描述按 codechat question-option-desc 保持 xs 12px 但行高对齐 20；
+   自定义输入 other-text-input 12px → 14px/22（question-custom-input）。 ── */
+[data-host="desktop"] .question-header-chip,
+[data-host="desktop"] .question-text {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+[data-host="desktop"] .option-label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+[data-host="desktop"] .option-description {
+  font-size: 12px;
+  line-height: 20px;
+}
+[data-host="desktop"] .recommended-tag {
+  font-size: 12px;
+}
+[data-host="desktop"] .other-text-input {
+  font-size: 14px;
+  line-height: 22px;
+}
+
+/* 会话内 AskUserQuestion 已答摘要（tool 消息 result 区 Q&A 行）同偏小
+   （12px/16）→ 题目 14px/500、答案 14px/400，行高 22，与桌面正文同档。 */
+[data-host="desktop"] .ask-user-result-q {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+[data-host="desktop"] .ask-user-result-a {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+}
+
+/* ── 0903 新基线第 3 轮：AskUserQuestion 已答答案框与运行中命令输入行圆角
+   统一为 12px（用户评论「圆角也要和其他模块保持一致，这里应该是 12px」，
+   锚点 ask-user-result-a「Redis Cluster」/ bash-command-input「npm run build」）。
+   第 34/35 轮已把 write-preview-box、markdown pre、diff-viewer-container、
+   bash-command-unified 统一为 12px（base 均为 6px/4px），此处补齐遗漏面：
+   - .ask-user-result-a（答案框，base 6px）
+   - 运行中/无输出时的独立 .bash-command-input（base 6px；已完成态走
+     .bash-command-unified 12px 外框，故用子选择器只命中独立输入行）
+   - .lsp-output（legacy LSP 输出框，base 4px） */
+[data-host="desktop"] .ask-user-result-a {
+  border-radius: 12px;
+}
+[data-host="desktop"] .tool-container > .bash-command-input {
+  border-radius: 12px;
+}
+[data-host="desktop"] .lsp-output {
+  border-radius: 12px;
+}

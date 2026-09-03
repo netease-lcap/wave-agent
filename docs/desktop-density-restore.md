@@ -1849,3 +1849,62 @@ CSS：各处 `… .codicon` 尺寸/透明度规则同步迁移到新 svg 类（`
 - 根因：空白预览的出口多包了一层 `div.preview-pane-empty-wrap`（`ChatApp.tsx` 空态分支，inline `width: panelWidth` 把空态撑到受控宽度）。全屏 CSS 只覆盖了内层 `.preview-pane` 为 `width:100%!important`，外层 wrap 的 inline width 未被覆盖，空态面板宽度因此仍钉在 panelWidth、不随全屏伸展（有 URL 的预览直接是 `.preview-pane` 自身，无此层，故正常）。
 - 修改：`DesktopApp.css` 全屏选择器补 `.preview-pane-empty-wrap`（与 `.preview-pane` 同为 `width:100% !important`）。
 - 实现文件：`src/styles/DesktopApp.css`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+---
+
+## 0903 新基线第 2 轮（2026-09）：AskUserQuestion 模块字号对齐 codechat Question dialog
+
+预览评论：「AskUserQuestion 模块的字号等是否符合规范，现在看比其他模块要小」（锚点 `div.virtual-spacer` / `#messagesContainer`）。
+
+### 现状 vs codechat 落地
+
+AskUserQuestion 两处呈现均沿用 IDE 时代 12px 字号，低于桌面 14px 基准（--vscode-font-size: 14px / --cc-font-size-md）：
+
+| 元素                                 | 修改前      | codechat Question dialog 权威      | 修改后（desktop） |
+| ------------------------------------ | ----------- | ---------------------------------- | ----------------- |
+| `.question-header-chip`（问题文字）  | 13px/600/18 | question-text 14px/500/22          | **14px/500/22**   |
+| `.question-text`                     | 13px/600/18 | 同上                               | **14px/500/22**   |
+| `.option-label`（选项主文字）        | 12px/500/16 | question-option-title 14px/500/22  | **14px/500/22**   |
+| `.option-description`（选项副文案）  | 12px/400/16 | question-option-desc 12px（xs）/20 | 12px/**20**       |
+| `.recommended-tag`                   | 11px        | —（xs 档）                         | **12px**          |
+| `.other-text-input`（「其他」输入）  | 12px/16     | question-custom-input 14px/22      | **14px/22**       |
+| `.ask-user-result-q`（会话内已答 Q） | 12px/500/16 | —                                  | **14px/500/22**   |
+| `.ask-user-result-a`（会话内已答 A） | 12px/500/16 | —                                  | **14px/400/22**   |
+
+说明：字重按 codechat 取 500（medium）；辅助描述保留 xs=12px（规范本身即小号，仅行高对齐 20）；已答摘要行距桌面正文档 14px，问题 500 / 答案 400 区分层次。
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（追加 0903 第 2 轮段，`[data-host="desktop"]` 限定，IDE 不受影响）
+
+### 验证
+
+- 未走自动化（用户 2026-09-03 约定人工走查）；HMR 已生效，请在 8899「工具状态演示」用例查看 AskUserQuestion 实时卡片（问题 + 选项）与提交后的已答摘要
+
+---
+
+## 0903 新基线第 3 轮（2026-09）：AskUserQuestion 已答答案框 & 运行中命令输入行圆角统一 12px
+
+预览评论 2 条：
+① `span.ask-user-result-a`「Redis Cluster」「圆角也要和其他模块保持一致，这里应该是12px，再检查其他模块是否有类似不一致的问题」
+② `div.bash-command-input`「npm run build」「比如这里」
+
+### 盘点与修改
+
+第 34/35 轮已将工具/消息区卡片统一为 12px（--cc-radius-lg）：`.write-preview-box`、`.markdown-content pre`、`.diff-viewer-container`、`.bash-command-unified`（外框）。扫描发现遗漏面：
+
+| 元素                                    | 场景                                          | 修改前 | 修改后                                                              |
+| --------------------------------------- | --------------------------------------------- | ------ | ------------------------------------------------------------------- |
+| `.ask-user-result-a`                    | AskUserQuestion 已答答案框（Figma 2261:9773） | 6px    | **12px**                                                            |
+| `.tool-container > .bash-command-input` | Bash 运行中/无输出时的独立命令输入行          | 6px    | **12px**（子选择器仅命中独立行，不影响 unified 内 radius:0 输入行） |
+| `.lsp-output`                           | legacy LSP 输出框                             | 4px    | **12px**                                                            |
+
+其余块面核对无遗漏：tool-error 为纯文本非卡片、result-raw 无框、confirmation-command r8 属弹窗内容非消息卡片。
+
+### 实现文件
+
+- `src/styles/host-desktop.css`（0903 第 3 轮段）
+
+### 验证
+
+- 未走自动化（用户 2026-09-03 约定人工走查）；HMR 已生效，请在 8899「工具状态演示」用例核对：AskUserQuestion 已答摘要的答案框圆角、`npm run build` 运行中命令行圆角，与旁边的 bash 完成态（unified 12px）一致
