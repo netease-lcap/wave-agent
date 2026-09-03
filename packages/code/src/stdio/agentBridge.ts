@@ -610,6 +610,19 @@ export class AgentBridge {
         },
         entry.agent.sessionId,
       );
+      // Same story for the context-usage indicator: the SDK's restore-time
+      // onLatestTotalTokensChange fired inside initialize — before this
+      // client's router registered — so replay the current usage or the
+      // webview keeps the previous session's (or no) percentage until the
+      // next turn pushes a fresh value (spec desktop-app 上下文用量指示器
+      // 场景 6: 恢复即显示该会话上次用量). A zero total means no real usage
+      // to report; the host keeps the empty ring until the first push.
+      const tokens = entry.agent.latestTotalTokens;
+      const max = entry.agent.getMaxInputTokens();
+      if (tokens > 0 && max > 0) {
+        const percent = Math.min(100, Math.round((tokens / max) * 100));
+        this.emit("contextUsage", { percent }, entry.agent.sessionId);
+      }
       return null;
     }
     await entry.agent.restoreSession(restoreId);
