@@ -4,6 +4,7 @@ import type { Terminal as XtermTerminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { WebLinksAddon } from "@xterm/addon-web-links";
 import { isLocalhostUrl } from "../utils/isLocalhostUrl";
+import { RefreshIcon } from "./HeaderIcons";
 import "../styles/TerminalPane.css";
 
 declare global {
@@ -333,7 +334,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             data-testid="terminal-restart"
             onClick={restart}
           >
-            <i className="codicon codicon-debug-restart" />
+            <RefreshIcon className="desktop-panel-toolbar-icon" />
           </button>
         </div>
         <div

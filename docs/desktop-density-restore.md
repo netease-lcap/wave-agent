@@ -1739,3 +1739,91 @@ CSS：各处 `… .codicon` 尺寸/透明度规则同步迁移到新 svg 类（`
 - `src/components/PanelKindIcon.tsx`（新增）
 - `src/components/DesktopPanelTabs.tsx`、`PanelEmptyState.tsx`、`PanelToggleMenu.tsx`、`PreviewPane.tsx`、`FilePane.tsx`
 - `src/styles/DesktopPanelTabs.css`、`DesktopApp.css`、`FilePane.css`
+
+---
+
+## 0903 新基线第 1 轮（2026-09）：右侧面板 Tab 条区域对齐设计稿（背景/字号/图标）+ 终端工具栏图标统一
+
+预览评论 3 条，均指向右侧面板头部（spec-first `bdb023c9` DesktopPanelTabs 重构后未纳入桌面色板的新组件）：
+① `div.desktop-panel-tabs`「localhost:8899 计划 终端」——检查背景色、字号、图标大小、图标使用（Figma 13438:8119）
+② `div.preview-pane-toolbar`「终端」——图标要保持一致（Figma 13383:4517）
+③ 同「终端」区域——高度参考设计稿
+
+### 设计源（Figma 权威 + codechat 落地）
+
+- `13438:8119`（「界面打开后」面板帧）：tab 条 Header 44px 高、白底 #FFF + 下边框 #EBEEF5、pad 0 12；tab pill 26px 高 / r8 / pad 8,8,2,2 / gap 4，激活底 #F0F2F5，文字 14px（active #1F2329 500 / inactive #565A60 400），tab 内图标 16×16、关闭 16×16；tab 间 1px×16 竖分隔线 #DCDFE6；add/全屏 =「功能」icon-button 24×24
+- codechat `InspectorPanel.vue`/`global.css` `.preview-tabbar` 同值实现：44px、pad 0 12、`.preview-tab` 26px/r-md(8)/pad 0 8、`+` 前 1px×16 `#DCDFE6` 分隔线（top 5 / left -5）、label 14px/22 / regular #565A60、active #1F2329 medium + 底 `--cc-fill` #F0F2F5、`.figma-icon-button` 24×24 / img 16 / hover `--cc-fill-hover`
+
+### 修改前（spec-first DesktopPanelTabs 现状） vs 修改后
+
+| 项                                      | 修改前                                    | 修改后（Figma/codechat）                                                                    |
+| --------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------- |
+| tab 条容器高                            | 34px、pad 0 6px                           | **44px**、pad 0 12px                                                                        |
+| 浅色容器底                              | #F7F8FB / 边 #E4E7ED                      | **白 #FFF** / 边 **#EBEEF5**（深色保留 #181818 与 pane 一体）                               |
+| tab 药丸                                | 24px 高、r12 胶囊、pad 0 4 0 8、文字 12px | **26px**、**r8**、**pad 0 8px**、**文字 14px/22**                                           |
+| tab 激活态                              | color-mix(10% fg) 灰雾                    | light **#F0F2F5**/#1F2329、dark rgba(255,255,255,**0.12**)/#FFF                             |
+| tab 未激活文字                          | --vscode-foreground（#202020/#ccc）       | light **#565A60**、dark **#9A9EA5**（14px/400）                                             |
+| tab 图标                                | PanelKindIcon 13px                        | **16px**（Figma tab 内 16×16 实例，PanelKindIcon size 13→16）                               |
+| tab 间分隔线                            | 无                                        | **1px×16 #DCDFE6**（dark rgba 白 0.2；`.desktop-panel-tab + .desktop-panel-tab::before`）   |
+| 分隔线（tabs/add 间）                   | strip gap 2px                             | strip gap **8px**                                                                           |
+| add 按钮                                | 22×22 / r4                                | **24×24** / r6（「功能」icon-button）                                                       |
+| 全屏按钮图标                            | codicon-screen-full/normal                | **MaximizeIcon/UnmaximizeIcon**（HeaderIcons 既有 lucide 官方版，Figma icon_line/maximize） |
+| hover 底色（tab 非激活/add/全屏/close） | vscode list-hover 蓝灰                    | 统一 **#EEF0F3**（light）/ 8% 白（dark）；**active:hover 保持 pressed 不漂移**              |
+| 终端工具栏重启图标                      | codicon-debug-restart                     | **RefreshIcon**（与预览工具栏刷新同源 lucide svg，按钮 24×24 内 16px）                      |
+| toolbar 区域高度                        | 各 pane toolbar 已 44px                   | 与 Figma Header/`.inspector-header` 44 一致，确认不改                                       |
+
+### 验证（8899 完整 Chromium，desktop-full → 点击 localhost 链接开 preview → ＋菜单加终端/计划）
+
+- computed 两主题：tabsBox 44px / pad 0 12 / light bg #FFF 边 #EBEEF5、dark #181818；tab 26px/r8/14px、激活 light #F0F2F5 / dark rgba(255,255,255,0.12)、未激活 light #565A60 / dark #9A9EA5；icon 16×16、close 16×16、add/fullscreen 24×24 ✓
+- 真实 hover（Playwright mouse）：非激活 tab / add / 全屏 / close = #EEF0F3（light 验证由同规则）与 rgba(255,255,255,0.08)（dark 实测）；**active tab hover 保持 0.12 不漂** ✓
+- 终端 pane toolbar：44px、dark 透明、重启按钮 24×24 + RefreshIcon svg 16×16、hover 8% 白 ✓
+- vision 复核（浅色整页 vs Figma 13438:8119 渲染图）：白底 tab 条 + 细下边框、r8 圆角矩形 tab、14px 文字、16px 前导图标、tab 间 1px 竖线，与设计稿一致 ✓
+- webview type-check + oxlint（新改动 0 警告；唯一 lint 错误在排除集 prototype/mockShared.ts 工具链既有问题）+ chatAppPanels/panelToggleMenu/terminalPane 73/74 通过（1 例 ExitPlanMode plan 面板 5s 超时待复查是否 flaky）
+
+### 实现文件
+
+- `src/components/DesktopPanelTabs.tsx`（PanelKindIcon 16、全屏 Maximize/Unmaximize）
+- `src/components/TerminalPane.tsx`（重启 RefreshIcon）
+- `src/styles/DesktopPanelTabs.css`（44px/r8/14px/16px/分隔线/gap/按钮 24）
+- `src/styles/host-desktop.css`（0903 第 1 轮段：容器/文字/激活/hover 主题色）
+
+### 追加（同轮）：多 tab 溢出时「＋」添加按钮跟随 tab、满了才固定
+
+预览评论 `button.desktop-panel-tabs-add`（5 个「新预览」tab）：添加按钮需要始终在，现在不见了 → 修复后用户反馈「加号还是希望能跟随前面的标签，但如果标签满了，加号才会出现在固定位置」。
+
+- 目标行为（浏览器标签栏语义）：tabs 放得下 → ＋ 紧跟最后一个 tab（inline）；tabs 溢出 → ＋ 移到 tab 条右端固定（pinned），不随滚动消失。
+- 实现（`DesktopPanelTabs.tsx`）：`useLayoutEffect` 测量 `Σtab.offsetWidth + (n-1)*8 + 32(8gap+24btn)` vs strip `clientWidth` → `pinned` state；＋ 按钮双渲染位——`!pinned` 时作为 strip 末位 flex child 尾随，`pinned` 时渲染在 strip 与 `.desktop-panel-tabs-actions` 之间常驻；两个独立 ref，`ResizeObserver` 监听 strip 与各 tab（label 变宽也能触发）；判定用固定 32px 常量而非当前模式宽度，避免按钮换位时临界自激振荡；菜单锚定/`triggerRef` 按 `pinned` 取对应按钮。`DesktopPanelTabs.css` 仅更新按钮位置注释。
+- 验证（2000×1100 完整 Chromium，desktop-full）：1 tab 时 ＋ x827 在 strip 内紧跟 tab（btnRight 851 < strip 右缘 1089）；加到 4 tab 溢出 → ＋ x1065 ≥ strip 右缘 1061，pinned 到全屏按钮（x1093）旁；逐个关 tab 回到 2 tab 放得下 → ＋ 回到 strip 内 inline（x933）。vision 复核两状态：溢出时 ＋ 在最右完整可见、较少时紧跟最后一个 tab 且右侧留白。type-check 通过。
+- 实现文件：`src/components/DesktopPanelTabs.tsx`、`src/styles/DesktopPanelTabs.css`、本 docs。
+
+### 追加（同轮）：预览地址栏改纯文字胶囊对齐 Figma 13438-7439（删前置图标 + 字号 14）
+
+预览评论 `span.preview-pane-url`「http://localhost:8899/」：「这个地址前面不显示图标，字号等参考设计稿」（Figma 13438-7439）。
+
+- 设计稿权威值（13438-7439「界面打开后」Header 379×44）：地址胶囊 Frame 26 高 / r8 / pad 0 8 / bg #F0F2F5，**内无前置图标**，文字 14px / line-height 22 / 400 / #1F2329；右侧 3 个「功能」icon-button 24×24。
+- 修改（用户确认「删图标按稿」）：
+  - `PreviewPane.tsx`：删地址胶囊内 `PanelKindIcon preview size=13`（上轮「这里也是预览图标」加的 globe 实例）与相关注释。
+  - `DesktopApp.css`：`.preview-pane-url` 高 22→**26**、font 12→**14**、line-height 22、border-radius 11→**8**、补 box-sizing（胶囊现与编辑态 `.preview-pane-address` 26/r8/14 完全同几何，显示↔编辑切换不再跳动）；删 `.preview-pane-url-icon` 规则。
+- 验证（2000×1100 完整 Chromium 两主题）：胶囊 computed light bg #F0F2F5/#1F2329、dark rgba 白 6%/#E6E6E6，两主题均 26 高 / 14px / pad 0 8 / **icon=null**；vision 复核 light/dark 胶囊纯文字、无前置图标、字号与高矮圆角同设计稿；webview type-check 通过。
+- 实现文件：`src/components/PreviewPane.tsx`、`src/styles/DesktopApp.css`、本 docs。
+
+### 追加（同轮）：＋ 添加 / × 关闭按钮换「功能」icon-button 官方矢量
+
+预览评论 `button.desktop-panel-tabs-add`：添加的按钮、删除的按钮，参考设计稿来实现（不要自动化测试、用户人工走查）。
+
+- 设计稿：两按钮同属「功能」icon-button 组件集（13383:4517，24×24 容器内 16 图标，常态 #565A60）。添加 = 圆头实心加号 Union `13383:21135`（13×12 viewBox）；关闭 = 圆头实心 X Union `13440:12468`（9×9 viewBox）。原实现是 codicon 字体（codicon-add / codicon-close），非官方形状。
+- 修改（官方 SVG 直导内嵌，fill → currentColor 随主题）：
+  - `DesktopPanelTabs.tsx`：文件内新增 `AddTabGlyph`/`CloseTabGlyph`（官方 path），替换 tab ×（1 处）与 ＋（inline + pinned 两处共 2 个实例）的 codicon；删除 codicon 字体引用。
+  - `DesktopPanelTabs.css`：删 `.desktop-panel-tab .codicon` 死选择器；svg block 化消基线偏移。
+  - `host-desktop.css`（0903 段补）：＋/× 图标色常态 light #565A60 / dark #9A9EA5、hover 加深 #1F2329 / #FFF（容器 hover 底 #EEF0F3 / 8% 白不变）。
+- 验证：webview type-check 通过；无 codicon 残留。用户将人工走查（本轮不跑 UI 自动化）。
+- 实现文件：`src/components/DesktopPanelTabs.tsx`、`src/styles/DesktopPanelTabs.css`、`src/styles/host-desktop.css`、本 docs。
+
+### 追加（同轮）：＋ 下拉菜单去掉选中态（checklist → 纯操作菜单）
+
+预览评论 `div.panel-toggle-menu-item`「预览⇧⌘P」：这个下拉菜单不应该有选中状态。
+
+- 现象（探针截图定位）：tab 条 ＋ 菜单在「计划/终端」等单实例面板已开时，这些项带 `panel-toggle-menu-item--active` 选中底（light #F0F2F5 / dark 12% 白）+ `aria-checked=true`。＋ 菜单语义是「新建/打开面板」，并非面板勾选菜单（header 面板按钮那个才是勾选清单），preview 因 noCheckKinds 免勾、其余四项却按已开状态打了勾。
+- 修改：`DesktopPanelTabs.tsx` 菜单加 `checklist={false}`（PanelToggleMenu 已有 plain-menu 模式）——所有项一律无勾、无 active 底、role=menuitem 无 aria-checked；删除已无用的 `noCheckKinds` 传参。
+- 验证：重跑探针——计划/终端已开时五项均无 `--active`、`aria-checked=null`；webview type-check 通过；panelToggleMenu/ChatApp panels 相关 34 用例通过。
+- 实现文件：`src/components/DesktopPanelTabs.tsx`、本 docs。

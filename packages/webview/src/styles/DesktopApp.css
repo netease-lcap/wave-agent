@@ -1053,21 +1053,24 @@ body.is-panel-resizing webview {
   opacity: 0.4;
 }
 
-/* 显示态地址栏：胶囊输入框外观（圆角底色块 + globe 图标），一眼可辨是
-   可点击编辑的地址输入框；hover 出现边框提示可点击。与编辑态 input 同底色，
-   切换时不跳动。 */
+/* 显示态地址栏：与编辑态 input 同几何的纯文字胶囊（Figma 13438:7439 地址
+   胶囊 26 高 / r8 / pad 0 8 / 14px·22，无前置图标），一眼可辨是可点击编辑的
+   地址输入框；hover 出现边框提示可点击。与编辑态 .preview-pane-address 同
+   尺寸同底色，切换时不跳动。 */
 .preview-pane-url {
   display: flex;
   align-items: center;
   gap: 4px;
   flex: 1;
   min-width: 0;
-  height: 22px;
+  height: 26px;
+  box-sizing: border-box;
   padding: 0 8px;
   overflow: hidden;
-  font-size: 12px;
+  font-size: 14px;
+  line-height: 22px;
   border: 1px solid transparent;
-  border-radius: 11px;
+  border-radius: 8px;
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   cursor: text;
@@ -1076,11 +1079,6 @@ body.is-panel-resizing webview {
 
 .preview-pane-url:hover {
   border-color: var(--vscode-input-border, rgba(128, 128, 128, 0.4));
-}
-
-.preview-pane-url-icon {
-  opacity: 0.7;
-  flex-shrink: 0;
 }
 
 .preview-pane-url-text {
