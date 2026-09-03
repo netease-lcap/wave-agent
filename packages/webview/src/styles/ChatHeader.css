@@ -122,7 +122,5 @@
   height: 24px;
 }
 
-.header-panel-toggle--expanded {
-  background-color: var(--vscode-toolbar-activeBackground);
-  color: var(--vscode-button-background);
-}
+/* 无选中态：展开/收起状态仅由图标切换表达（Figma 功能按钮 normal/hover
+   无持久 active 底），不再设 expanded 高亮背景。 */
