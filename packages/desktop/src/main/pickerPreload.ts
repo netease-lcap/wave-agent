@@ -18,6 +18,9 @@ import { ipcRenderer } from "electron";
 interface PickerPalette {
   accent?: string;
   accentForeground?: string;
+  /** 元素高亮框/选中描边色。桌面 host 主按钮已中性化（accent=炭黑），
+      高亮框须与焦点态一致用蓝，故单独取一个 token（评论：picker 框变黑）。 */
+  accentOutline?: string;
   foreground?: string;
   background?: string;
   border?: string;
@@ -86,7 +89,7 @@ function ensureHighlightSheet(): void {
   if (highlightSheet) return;
   highlightSheet = new CSSStyleSheet();
   highlightSheet.replaceSync(
-    `.${HIGHLIGHT_CLASS} { outline: 2px solid ${palette.accent ?? "#0e639c"} !important; outline-offset: -2px; cursor: crosshair !important; }`,
+    `.${HIGHLIGHT_CLASS} { outline: 2px solid ${palette.accentOutline ?? palette.accent ?? "#0e639c"} !important; outline-offset: -2px; cursor: crosshair !important; }`,
   );
   document.adoptedStyleSheets = [
     ...document.adoptedStyleSheets,

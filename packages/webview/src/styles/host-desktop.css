@@ -46,6 +46,10 @@
   --vscode-widget-border: #e4e7ed;
   --vscode-input-border: #dcdfe6;
 
+  /* 链接蓝：Figma --cc-text-link #2F5EDB（正文链接 / picker 高亮等 host 取样
+     token；浅色沿用 cc 蓝，区别于插件端 --vscode-textLink #0069cc） */
+  --cc-text-link: #2f5edb;
+
   /* 中密度字号：插件 13px → 桌面 14px */
   --vscode-font-size: 14px;
   --vscode-editor-font-size: 13px;
@@ -74,6 +78,9 @@
      （原 VSCode 默认背景 #2b2b2b、边框 #616161 突兀） */
   --vscode-textBlockQuote-background: rgba(255, 255, 255, 0.06);
   --vscode-textBlockQuote-border: rgba(255, 255, 255, 0.12);
+
+  /* 链接蓝：Figma --cc-text-link 深色档 #4daafc（同浅色注释，供 host 取样） */
+  --cc-text-link: #4daafc;
 
   /* 中密度字号 */
   --vscode-font-size: 14px;
@@ -977,6 +984,24 @@
    5058 → 帧底 5070 = 12）。 */
 [data-host="desktop"] .account-card {
   padding: 8px 0 0;
+}
+
+/* ═══ 第 6 轮：账户卡套餐用量进度条 深色可读性 ═══
+   浅色权威（Figma Sidebar Bar 组件 6423:61933）：fill 炭黑 #1F2329 +
+   track #EBEDF0，深底高对比。深色无设计稿帧——原先 fill 走
+   --vscode-button-background（desktop dark 炭灰 #3D424A），与 track
+   （25% descriptionForeground 混透明，深色≈12% 白）亮度几乎相同，进度
+   段肉眼无法区分。按 wave 深色惯例反向映射：fill 提亮为强调灰 #9A9EA5
+   （同 compress-context-ring / toolbar-icon dark 同族），track 压成
+   12% 白低强调（同 textBlockQuote-border dark）；耗尽态保持错误红。 */
+[data-host="desktop"][data-theme="dark"] .account-usage-bar {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+[data-host="desktop"][data-theme="dark"] .account-usage-bar-fill {
+  background-color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"] .account-usage-bar-fill.is-empty {
+  background-color: var(--vscode-errorForeground, #f85149);
 }
 
 /* Composer 卡片最大宽：Figma Form - 发送消息 768px（Container 800 = 768 + pad 16×2；
