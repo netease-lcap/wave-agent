@@ -2866,7 +2866,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // Batch 2 session board (desktop): rendered in place of chatContainer when
   // sessionBoardOpen. Clicking a card restores that session — workdir resolved
-  // from the board's own group data so the host can route the switch.
+  // from the board's own group data so the host can route the switch. The board
+  // must also close (spec desktop-app.md 场景 3：点击卡片恢复会话并退出看板
+  // 视图)——否则视图被 sessionBoardOpen 替换，停留在看板看不到会话。
   const sessionBoard = isDesktop ? (
     <SessionBoard
       groups={host?.sessionTree ?? []}
@@ -2875,6 +2877,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           g.sessions.some((s) => s.sessionId === sessionId),
         );
         const workdir = group?.workdir ?? host?.workdir;
+        handleCloseSessionBoard();
         if (workdir) host?.onSelectSession(workdir, sessionId);
       }}
       onBack={handleCloseSessionBoard}
