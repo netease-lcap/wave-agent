@@ -29,8 +29,9 @@
   align-items: center;
 }
 
-/* Sidebar collapsed → 收起态 leading（展开按钮 + 新对话 + 分割线）：对齐原型
-   workspace-header-start（flex gap 8）。分割线两侧间距由容器 gap 提供。 */
+/* Sidebar collapsed → 收起态 leading（展开按钮 + 分割线）：对齐原型
+   workspace-header-start（flex gap 8）。分割线两侧间距由容器 gap 提供。
+   2026-09 评论：leading 中的「新建对话」钮已移除。 */
 .header-collapsed-leading {
   display: flex;
   align-items: center;

@@ -27,7 +27,7 @@ import BackgroundTaskManager from "./BackgroundTaskManager";
 import WorkflowManager from "./WorkflowManager";
 import WelcomeView from "./WelcomeView";
 import LoadingLogo from "./LoadingLogo";
-import { NewSessionIcon, SidebarExpandIcon, CloseIcon } from "./HeaderIcons";
+import { SidebarExpandIcon, CloseIcon } from "./HeaderIcons";
 import { DesktopHostSelector } from "./DesktopHostSelector";
 import { DesktopSidebar } from "./DesktopSidebar";
 import { DesktopShell } from "./DesktopShell";
@@ -405,25 +405,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         onClick={() => handleSidebarCollapsedChange(false)}
       />
     ) : null;
-  // 收起态 header leading：展开侧边栏 + 新对话 + 分割线（对齐原型
-  // WorkspaceHeader.vue `workspace-header-start` 收起分支：sidebar-expand /
-  // new-chat-header 按钮 / 1px divider / 标题）。单 pane（root）与分屏第一
-  // pane 共用；`expand` 为 null（侧边栏展开）时不渲染整组。
+  // 收起态 header leading：展开侧边栏 + 分割线（评论 2026-09：header 里的
+  // 「新建对话」图标钮与功能已拿掉——展开后该入口在侧边栏/新会话处提供）。
+  // 单 pane（root）与分屏第一 pane 共用；`expand` 为 null（侧边栏展开）时不
+  // 渲染整组。
   const collapsedLeading = (expand: React.ReactNode) =>
     expand ? (
       <div className="header-collapsed-leading">
         {expand}
-        <Tooltip text="新建对话" position="bottom">
-          <button
-            className="header-button"
-            onClick={handleClearChat}
-            disabled={state.isStreaming}
-            data-testid="collapsed-new-session-btn"
-            aria-label="新建对话"
-          >
-            <NewSessionIcon />
-          </button>
-        </Tooltip>
         <span className="header-collapsed-divider" />
       </div>
     ) : null;
@@ -3000,6 +2989,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         if (workdir) host?.onSelectSession(workdir, sessionId);
       }}
       onBack={handleCloseSessionBoard}
+      collapsed={sidebarCollapsed}
+      onExpandSidebar={() => handleSidebarCollapsedChange(false)}
     />
   ) : null;
 
