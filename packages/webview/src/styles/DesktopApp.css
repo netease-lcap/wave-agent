@@ -885,7 +885,7 @@ body.is-panel-resizing webview {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 14px; /* 面板标题 14px（评论 2026-09：这里标题区域字号应该是 14px，差异等其他界面也是） */
   font-weight: 600; /* 面板名标题加粗（评论 2026-09：这个位置的标题都加粗） */
   color: var(--vscode-foreground);
   user-select: text;
@@ -1105,6 +1105,17 @@ body.is-panel-resizing webview {
 
 .preview-pane-button:hover {
   background: var(--vscode-list-hoverBackground);
+}
+
+/* 刷新中旋转（diff 等 pane 的 RefreshIcon svg；原 codicon-modifier-spin 只
+   作用于字体图标，svg 需自带动画） */
+.preview-pane-icon.is-spinning {
+  animation: pane-icon-spin 0.8s linear infinite;
+}
+@keyframes pane-icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .preview-pane-button.active {
