@@ -145,6 +145,14 @@ interface PanelGroupState {
   checked: PanelTab[];
   /** Shared panel-slot width (tabbed layout: one slot, one width). */
   panelWidth: number;
+  /**
+   * True once the user manually dragged the shared slot width off its default.
+   * A slot never dragged auto-fills the space beyond the conversation's minimum
+   * when the panel opens (「面板自动铺满剩余空间」, adapted to the single-slot
+   * tabbed model); a manual one keeps its width from then on. Stored per group
+   * so the flag survives session switches the same way the width does.
+   */
+  panelWidthManual: boolean;
   /** Currently active tab id; null when no tab is open. */
   activePanel: string | null;
   /** Plan panel markdown (ExitPlanMode content); null = no plan yet. */
@@ -183,6 +191,7 @@ function emptyPanelGroup(): PanelGroupState {
   return {
     checked: [],
     panelWidth: PANEL_DEFAULT_WIDTH,
+    panelWidthManual: false,
     activePanel: null,
     planContent: null,
     forward: null,
@@ -552,6 +561,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       (groupKey ? panelGroupCache.get(groupKey)?.panelWidth : undefined) ??
       PANEL_DEFAULT_WIDTH,
   );
+  // True once the user manually dragged the slot width; a slot never dragged
+  // auto-fills the space beyond the conversation minimum when it opens (see
+  // PanelGroupState.panelWidthManual).
+  const [panelWidthManual, setPanelWidthManual] = useState<boolean>(
+    () =>
+      (groupKey
+        ? panelGroupCache.get(groupKey)?.panelWidthManual
+        : undefined) ?? false,
+  );
   // The active panel tab id; null when no panel is open.
   const [activeTabId, setActiveTabId] = useState<string | null>(
     () =>
@@ -613,6 +631,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     }
   }, []);
   const panelWidthRef = useRef(panelWidth);
+  const panelWidthManualRef = useRef(panelWidthManual);
   // Mirrors so the stable message listener can reach the panel logic (defined
   // below) without re-subscribing.
   const togglePanelRef = useRef<(kind: DesktopPanelKind) => void>(() => {});
@@ -650,6 +669,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     panelWidthRef.current = panelWidth;
   }, [panelWidth]);
 
+  useEffect(() => {
+    panelWidthManualRef.current = panelWidthManual;
+  }, [panelWidthManual]);
+
   // Cache the whole panel group under the current session so it survives this
   // ChatApp being unmounted/remounted (pane moved across window rows) and so a
   // later session switch can restore it. Skipped on the render where the key
@@ -659,6 +682,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     panelGroupCache.set(groupKey, {
       checked: tabs,
       panelWidth,
+      panelWidthManual,
       activePanel: activeTabId,
       planContent,
       forward: currentForward,
@@ -668,6 +692,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     groupKey,
     tabs,
     panelWidth,
+    panelWidthManual,
     activeTabId,
     planContent,
     currentForward,
@@ -708,6 +733,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setCurrentForward(group?.forward ?? null);
     setTabs(group?.checked ?? []);
     setPanelWidth(group?.panelWidth ?? PANEL_DEFAULT_WIDTH);
+    setPanelWidthManual(group?.panelWidthManual ?? false);
     // A session that restores tabs shows them (legacy behavior); one without
     // tabs starts collapsed — the empty state needs an explicit expand.
     setPanelExpanded((group?.checked?.length ?? 0) > 0);
@@ -2180,6 +2206,31 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     return `${kind}-${tabSeqRef.current[kind]}`;
   }, []);
 
+  // Auto-fill (spec「面板自动铺满剩余空间」, adapted to the single-slot tabbed
+  // model): a slot width the user has never manually dragged fills the space
+  // beyond the conversation's minimum width whenever the panel opens — a wide
+  // pane no longer leaves the panel at the fixed default width with dead space
+  // to its right. A manual drag (handlePanelWidthChange) marks the slot and
+  // locks its width from then on (「手动拖宽后锁定」). Reads the live container
+  // width, so a window resize is reflected on the next open/expand.
+  const autoFillPanelWidth = useCallback((): void => {
+    if (panelWidthManualRef.current) return;
+    const containerW = chatContainerRef.current?.getBoundingClientRect().width;
+    if (!containerW) return;
+    setPanelWidth(Math.max(PANEL_MIN_WIDTH, containerW - CHAT_MAIN_MIN_WIDTH));
+  }, []);
+
+  // Expanding the panel — from collapsed, from the empty state, or on first
+  // mount with restored tabs — re-applies the auto-fill so the slot tracks the
+  // space currently available, unless the user dragged the width by hand.
+  // (Opening a NEW tab runs its own auto-fill through ensurePanelSpace below.)
+  const prevPanelExpandedRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    const was = prevPanelExpandedRef.current;
+    prevPanelExpandedRef.current = panelExpanded;
+    if (panelExpanded && was !== true) autoFillPanelWidth();
+  }, [panelExpanded, autoFillPanelWidth]);
+
   // Shared space guard: the conversation column must keep its minimum width
   // next to the panel; a shrunken window clamps the shared slot width before
   // the panel shows. Refuses (with a hint) when even that cannot fit.
@@ -2192,9 +2243,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         showPanelHint("空间不足，无法开启面板");
         return false;
       }
-      if (panelWidthRef.current > containerW - CHAT_MAIN_MIN_WIDTH) {
-        // The shared width is wider than the room available (window shrank
-        // since the last open) — clamp it before showing the panel.
+      // Never-dragged slots auto-fill the space beyond the conversation
+      // minimum (「面板自动铺满剩余空间」); manual ones keep their width and are
+      // only clamped when the window shrank past them.
+      if (!panelWidthManualRef.current) {
+        setPanelWidth(
+          Math.max(PANEL_MIN_WIDTH, containerW - CHAT_MAIN_MIN_WIDTH),
+        );
+      } else if (panelWidthRef.current > containerW - CHAT_MAIN_MIN_WIDTH) {
         setPanelWidth(containerW - CHAT_MAIN_MIN_WIDTH);
       }
     }
@@ -2448,8 +2504,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
 
   // Authoritative clamp at drag time: keep the shared panel slot within
-  // [320, container - conversation minimum].
+  // [320, container - conversation minimum]. A drag also marks the slot as
+  // manually resized — from then on it never auto-fills again (「手动拖宽后
+  // 锁定宽度」, see PanelGroupState.panelWidthManual).
   const handlePanelWidthChange = useCallback((width: number) => {
+    setPanelWidthManual(true);
     let clamped = Math.max(width, PANEL_MIN_WIDTH);
     const containerW = chatContainerRef.current?.getBoundingClientRect().width;
     if (containerW) {

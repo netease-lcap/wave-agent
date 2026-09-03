@@ -176,8 +176,9 @@ describe("ChatApp desktop panel framework", () => {
       fireEvent.click(screen.getByTestId("panel-empty-item-preview"));
 
       const empty = screen.getByTestId("preview-pane-empty");
-      // The tabbed layout opens at the shared default width (no auto-fill).
-      expect(empty.style.width).toBe("420px");
+      // Never-dragged slot: opening auto-fills the space beyond the
+      // conversation minimum (1024 - 360 = 664, spec「面板自动铺满剩余空间」).
+      expect(empty.style.width).toBe("664px");
       // The empty state must carry the same drag affordance as loaded panels.
       expect(empty.querySelector(".preview-pane-drag-handle")).not.toBeNull();
 
@@ -194,10 +195,10 @@ describe("ChatApp desktop panel framework", () => {
     }
   });
 
-  it("a panel opens at the default width, which fits in a narrow window", () => {
+  it("a panel opens auto-filled to the space beyond the conversation minimum", () => {
     window.waveHostType = "desktop";
-    // 800px: 800 - 360 = 440 ≥ the 420px default — the panel opens at the
-    // default width (no auto-fill in the tabbed layout).
+    // 800px: 800 - 360 = 440 ≥ the 320px minimum — the never-dragged slot
+    // auto-fills to 440 (「面板自动铺满剩余空间」, not the 420px default).
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockReturnValue({ width: 800, right: 800 } as DOMRect);
@@ -205,7 +206,7 @@ describe("ChatApp desktop panel framework", () => {
       renderDesktop({ workdir: "/work/a" });
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
       fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
-      expect(screen.getByTestId("diff-pane").style.width).toBe("420px");
+      expect(screen.getByTestId("diff-pane").style.width).toBe("440px");
     } finally {
       rectSpy.mockRestore();
     }
@@ -221,9 +222,11 @@ describe("ChatApp desktop panel framework", () => {
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
       fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
       const pane = screen.getByTestId("diff-pane");
-      expect(pane.style.width).toBe("420px"); // default, not auto-filled
+      // Never-dragged slot auto-fills: 1400 - 360 = 1040.
+      expect(pane.style.width).toBe("1040px");
 
-      // A drag moves the panel off the default width and locks it.
+      // A drag moves the panel off the auto-filled width and locks it (the
+      // slot turns manual — subsequent opens no longer re-auto-fill).
       const handle = pane.querySelector(
         ".preview-pane-drag-handle",
       ) as HTMLElement;
@@ -238,6 +241,47 @@ describe("ChatApp desktop panel framework", () => {
       expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
       fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
       expect(screen.getByTestId("diff-pane").style.width).toBe("400px");
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
+  it("a manually dragged width is kept — opening more tabs never re-auto-fills it", () => {
+    window.waveHostType = "desktop";
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockReturnValue({ width: 1400, right: 1400 } as DOMRect);
+    try {
+      renderDesktop({ workdir: "/work/a" });
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+      fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
+      const pane = screen.getByTestId("diff-pane");
+      // Auto-filled first (1400 - 360 = 1040); a drag then locks the width.
+      expect(pane.style.width).toBe("1040px");
+      const handle = pane.querySelector(
+        ".preview-pane-drag-handle",
+      ) as HTMLElement;
+      fireEvent.mouseDown(handle);
+      fireEvent.mouseMove(window, { clientX: 1000 }); // 1400 - 1000 = 400
+      expect(pane.style.width).toBe("400px");
+      fireEvent.mouseUp(window);
+
+      // A NEW tab (preview) goes through the open path's auto-fill — the manual
+      // slot must keep its dragged 400px instead of widening to 1040 again.
+      fireEvent.click(screen.getByTestId("panel-tabs-add"));
+      fireEvent.click(screen.getByTestId("panel-toggle-item-preview"));
+      expect(screen.getByTestId("panel-tab-preview-1")).toBeInTheDocument();
+      expect(screen.getByTestId("preview-pane-empty").style.width).toBe(
+        "400px",
+      );
+
+      // Collapse and expand (the expand transition auto-fills never-dragged
+      // slots only) — the manual width survives untouched.
+      fireEvent.click(screen.getByTestId("panel-toggle-btn")); // collapse
+      fireEvent.click(screen.getByTestId("panel-toggle-btn")); // expand
+      expect(screen.getByTestId("preview-pane-empty").style.width).toBe(
+        "400px",
+      );
     } finally {
       rectSpy.mockRestore();
     }
