@@ -165,6 +165,11 @@ export interface PreviewPaneProps {
   /** The guest page's title (webview page-title-updated) — the parent shows
    * it on the panel tab like a regular browser tab. */
   onTitleChange?: (title: string) => void;
+  /** The URL the guest actually shows after a navigation (address-bar commit
+   * that succeeded, or in-guest navigation). The parent persists it on the
+   * preview tab so a session switch / remount restores the same page instead
+   * of falling back to the originally-requested URL. */
+  onNavigate?: (url: string) => void;
 }
 
 export const PreviewPane: React.FC<PreviewPaneProps> = ({
@@ -177,6 +182,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   originalUrl,
   onRetry,
   onTitleChange,
+  onNavigate,
 }) => {
   // URL the address bar shows — "" while empty (blank pane awaiting an
   // address); follows in-guest navigation via did-navigate.
@@ -202,6 +208,15 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   // handler runs long after the []-deps wiring effect captured its closures.
   const onTitleChangeRef = useRef(onTitleChange);
   onTitleChangeRef.current = onTitleChange;
+  // Same again for the navigate callback (did-navigate / address-bar commits).
+  const onNavigateRef = useRef(onNavigate);
+  onNavigateRef.current = onNavigate;
+  // The last address a did-navigate event actually confirmed the guest on.
+  // Null until the first navigation: the [url] effect must still drive the
+  // initial load (or a restored one after remount). Once set, an incoming
+  // `url` prop equal to it is our own report echoing back through the parent's
+  // tab state — reloading the identical page would be a wasteful double load.
+  const lastShownUrlRef = useRef<string | null>(null);
   // Prop mirrors for the []-deps wiring effect below: the ipc handler runs
   // long after the effect captured its closures, so it reads current values
   // from refs (same pattern as onAddCommentRef).
@@ -301,7 +316,11 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       const navUrl = (e as { url?: string }).url;
       if (navUrl) {
         currentUrlRef.current = navUrl;
+        lastShownUrlRef.current = navUrl;
         setDisplayUrl(navUrl);
+        // The parent records where this session's preview actually is, so a
+        // session switch / remount restores the same page.
+        onNavigateRef.current?.(navUrl);
       }
       setLoadError(null);
       // Fresh document → guest preload restarts inactive.
@@ -328,7 +347,9 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       const navUrl = (e as { url?: string }).url;
       if (navUrl) {
         currentUrlRef.current = navUrl;
+        lastShownUrlRef.current = navUrl;
         setDisplayUrl(navUrl);
+        onNavigateRef.current?.(navUrl);
       }
       // SPA navigation keeps the SAME preload alive — tell it to stand down.
       deactivatePicker();
@@ -404,12 +425,17 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     return () => window.clearTimeout(t);
   }, [width, runFitPass]);
 
-  // Parent asked for a URL (localhost link click / forward established):
-  // navigate the single window — there is no tab bar to accumulate pages into
-  // (一级 tab 承载窗口管理). The effect only reruns when `url` changes, so
-  // re-feeding the same URL leaves the guest alone.
+  // Parent asked for a URL (localhost link click / forward established /
+  // session switch restoring a remembered address): navigate the single window
+  // — there is no tab bar to accumulate pages into (一级 tab 承载窗口管理).
+  // The effect only reruns when `url` changes, so re-feeding the same URL
+  // leaves the guest alone. When the changed `url` is exactly what this pane
+  // already confirmed via did-navigate (its own report echoed back through the
+  // parent's tab state), it is skipped too — reloading the identical page
+  // would flash a wasteful double load.
   useEffect(() => {
     if (!url) return;
+    if (url === lastShownUrlRef.current) return;
     currentUrlRef.current = url;
     setDisplayUrl(url);
     setLoadError(null);
