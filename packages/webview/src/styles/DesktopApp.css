@@ -830,7 +830,10 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
 .preview-pane-drag-handle {
   position: absolute;
   left: -3px;
-  top: 0;
+  /* 上延覆盖 44px 标签条（.desktop-panel-tabs height 44 + border-bottom 1），
+     使拖拽命中区 / hover 分隔条从面板顶部一路连续到底（评论：拖拽区域未
+     覆盖标签区域）。前提是 pane 只挂在有标签条的 slot 下。 */
+  top: -45px;
   bottom: 0;
   width: 6px;
   cursor: col-resize;

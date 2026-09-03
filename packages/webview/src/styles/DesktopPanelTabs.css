@@ -9,6 +9,10 @@
   height: 44px;
   padding: 0 12px;
   gap: 4px;
+  /* 左分隔线覆盖标签条段：tab 化后标签条在 pane 上方、与 pane 同宽同左缘，
+     这里补上与 .preview-pane border-left 同色的 1px 线，两条线首尾相接成
+     贯穿整列（标签条 + 面板体）的连续分割线（评论：分割线未覆盖到标签区域）。 */
+  border-left: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
   border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
   background: var(--vscode-sideBar-background, var(--vscode-panel-background));
 }

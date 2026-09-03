@@ -1908,3 +1908,16 @@ AskUserQuestion 两处呈现均沿用 IDE 时代 12px 字号，低于桌面 14px
 ### 验证
 
 - 未走自动化（用户 2026-09-03 约定人工走查）；HMR 已生效，请在 8899「工具状态演示」用例核对：AskUserQuestion 已答摘要的答案框圆角、`npm run build` 运行中命令行圆角，与旁边的 bash 完成态（unified 12px）一致
+
+---
+
+## 0903 新基线（续批）：右面板分割线 & 拖拽区延伸覆盖标签条
+
+预览评论 `div.desktop-panel-tabs`「localhost:8899」：「预览打开后，拖拽区域和分割线没有覆盖到这个标签的区域」。
+
+- 根因：面板 tab 化后，44px 标签条（`.desktop-panel-tabs`）位于 pane（`.preview-pane`）上方，而左分割线（pane 的 `border-left`）与拖拽条（`.preview-pane-drag-handle`，`top:0` 从 pane 顶起）都在 pane 内部 → 标签条高度段既无分割线也不可拖拽，视觉上整条线在标签处断开。
+- 修改（纯 CSS）：
+  - `DesktopPanelTabs.css`：`.desktop-panel-tabs` 补 `border-left: 1px solid var(--vscode-panel-border)`（与 `.preview-pane` 同色 #e4e7ed）。标签条与 pane 同宽同左缘、上下紧邻，两段线首尾相接成贯穿整列（标签条 + 面板体）的连续分割线。
+  - `DesktopApp.css`：`.preview-pane-drag-handle` `top: 0 → -45px`（44px 标签条 + 1px 底边），拖拽命中区与 hover 分隔条从面板顶部一路连续到底，可在标签条左缘直接拖宽/收窄面板。
+- 说明：五个 pane（预览/差异/文件/计划/终端）共用 `.preview-pane` 类与同一 handle，一处改动全部生效；标签条存在是 pane 渲染的前提，故 -45px 上延不越界。
+- 实现文件：`src/styles/DesktopPanelTabs.css`、`src/styles/DesktopApp.css`、本 docs。（用户人工走查，本轮不跑自动化。）
