@@ -9,7 +9,12 @@ import { MoreMenu } from "./MoreMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 // 未登录态「更多」按钮沿用 0902 第 5 轮问号圆（ailsa 新基线）；已登录态不再
 // 提供独立更多按钮（交互定稿：热区开纯功能菜单）。
-import { HelpCircleIcon, QuotaIcon } from "./HeaderIcons";
+import {
+  ApiInfoIcon,
+  ChevronUpIcon,
+  HelpCircleIcon,
+  QuotaIcon,
+} from "./HeaderIcons";
 import "../styles/AccountCard.css";
 import "../styles/ConfirmDialog.css";
 
@@ -398,7 +403,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
                   onFocus={openApiPopover}
                   onBlur={scheduleHideApiPopover}
                 >
-                  <i className="codicon codicon-info" aria-hidden="true"></i>
+                  <ApiInfoIcon />
                 </button>
               </span>
             </div>
@@ -460,10 +465,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             {usageCollapsed ? (
               <QuotaIcon />
             ) : (
-              <span
-                className="codicon codicon-chevron-up"
-                aria-hidden="true"
-              ></span>
+              <ChevronUpIcon />
             )}
           </button>
         )}

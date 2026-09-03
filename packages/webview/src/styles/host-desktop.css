@@ -1004,6 +1004,56 @@
   background-color: var(--vscode-errorForeground, #f85149);
 }
 
+/* ═══ 第 7 轮：账户卡用量常驻区对齐设计稿 13651:4911（浅色权威帧）═══
+   该帧含三实例侧栏对比：用量区「套餐用量 xx% + Bar + API 余额」全部
+   12px/w500/#1F2329；账户行右侧显隐按钮 32×32（内 16 canvas 图标）；
+   ⓘ 为 16px 图标、灰 #8B8F95；Bar 高 6px、track #E6E8EB、段填充 #1F2329。
+   用户裁决：进度条浅色按稿配色+高度、深色配色维持第 6 轮；显隐按钮改
+   32×32。改动全部 [data-host=desktop] 限定（IDE 插件端不受影响）。 */
+[data-host="desktop"] .account-card-collapse-btn {
+  width: 32px;
+  height: 32px;
+  /* 功能 icon-button hover 底色圆角：Figma 13383:4723/4726 hover 组件 r=6 */
+  border-radius: 6px;
+}
+/* Bar 高度 6px（胶囊圆角 r3）：浅色 track 用设计稿 #E6E8EB（fill 浅色本已
+   #1F2329 同稿）；深色 track/fill 维持第 6 轮（深色无设计帧，配色已确认）。 */
+[data-host="desktop"] .account-usage-bar {
+  height: 6px;
+  border-radius: 3px;
+}
+/* 「套餐用量」行 → 进度条间距：Figma 13651:5041（Frame 1321327573）文本行
+   底 5510 → Bar 顶 5516 = 6px（base 列 gap 4px 偏挤）。仅此 section，不动
+   API 余额行距。 */
+[data-host="desktop"] .account-usage-section {
+  gap: 6px;
+}
+[data-host="desktop"][data-theme="light"] .account-usage-bar {
+  background-color: #e6e8eb;
+}
+/* 用量百分比 灰色 → 正文炭黑（设计稿 48% #1F2329；耗尽红 is-empty 保留） */
+[data-host="desktop"][data-theme="light"] .account-usage-percent:not(.is-empty) {
+  color: #1f2329;
+}
+/* API 余额金额字重 400 → 500（设计稿 ¥ w500） */
+[data-host="desktop"] .account-usage-row .account-usage-value-text {
+  font-weight: 500;
+}
+/* ⓘ 明细钮：官方 info 图标（16px，灰 #8B8F95）已内嵌 svg 替换 codicon；
+   浅色取稿 #8B8F95（base descriptionForeground 偏深）。hover 仅颜色加深
+   （base hover 已切 foreground），不出背景（设计稿 ⓘ 无 hover 底色）。 */
+[data-host="desktop"][data-theme="light"] .account-api-info-btn {
+  color: #8b8f95;
+}
+[data-host="desktop"][data-theme="dark"] .account-api-info-btn {
+  color: #9a9ea5;
+}
+[data-host="desktop"] .account-api-info-btn:hover,
+[data-host="desktop"] .account-api-info-btn:focus-visible {
+  background-color: transparent;
+  color: var(--vscode-foreground);
+}
+
 /* Composer 卡片最大宽：Figma Form - 发送消息 768px（Container 800 = 768 + pad 16×2；
    base input-wrapper 800 使卡片在宽 pane 下宽出 32px） */
 [data-host="desktop"] .input-wrapper {
