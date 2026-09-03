@@ -552,7 +552,14 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                 }`}
                 tabIndex={0}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
+                  if (e.key === "Enter") {
+                    // Enter 仅用于提交：全部题目已答完时提交，未答完时
+                    // 无动作，不改变选中状态（不把 Enter 当作选中键）。
+                    e.preventDefault();
+                    if (!isConfirmDisabled()) {
+                      handleConfirm();
+                    }
+                  } else if (e.key === " ") {
                     e.preventDefault();
                     handleOptionChange(
                       q.question,
@@ -622,7 +629,14 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   onKeyDown={(e) => {
                     // The Other textarea stopPropagation's its own keys, so
                     // keydown here always originates from the label itself.
-                    if (e.key === "Enter" || e.key === " ") {
+                    if (e.key === "Enter") {
+                      // Enter 仅用于提交（与普通选项一致）：答完提交、未答
+                      // 完无动作，不负责选中「其他」。
+                      e.preventDefault();
+                      if (!isConfirmDisabled()) {
+                        handleConfirm();
+                      }
+                    } else if (e.key === " ") {
                       e.preventDefault();
                       if (q.multiSelect) {
                         setOtherSelected((prev) => ({
