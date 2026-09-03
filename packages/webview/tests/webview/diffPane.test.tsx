@@ -386,15 +386,11 @@ describe("DiffPane", () => {
     expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
     expect(screen.getByText("src/a.ts")).toBeInTheDocument();
     expect(
-      screen
-        .getByTestId("diff-refresh")
-        .querySelector(".codicon-modifier-spin"),
+      screen.getByTestId("diff-refresh").querySelector(".is-spinning"),
     ).not.toBeNull();
     sendDiffResult([makeFile()]);
     expect(
-      screen
-        .getByTestId("diff-refresh")
-        .querySelector(".codicon-modifier-spin"),
+      screen.getByTestId("diff-refresh").querySelector(".is-spinning"),
     ).toBeNull();
   });
 
