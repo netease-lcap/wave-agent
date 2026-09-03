@@ -97,7 +97,7 @@ describe("SettingsPage 全局设置视图「主题」行（仅桌面端传入 th
       screen.getByRole("heading", { name: "全局设置" }),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText("主题")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("系统语言")).toBeInTheDocument();
+    expect(screen.getByLabelText("AI 回复语言")).toBeInTheDocument();
   });
 });
 

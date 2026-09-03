@@ -4,7 +4,7 @@
  * Editable views (2026-09-01 用户拍板：语言/上下文长度/自动记忆恢复可编辑，
  * 经 updateConfiguration 写回，与旧设置弹窗一致；设置页只针对当前项目，
  * 删除项目切换按钮与 4 个管理视图的项目分组卡片):
- * - 全局设置 (global): 系统语言下拉 + 主题选择（仅桌面端，即时生效）
+ * - 全局设置 (global): AI 回复语言下拉 + 主题选择（仅桌面端，即时生效）
  *   + 上下文长度输入 + 保存
  * - 项目设置 (project): SDD 内置插件开关（唯一交互控件，即时启停插件）
  * - 个性化 (personalization): AGENTS.md 只读 + 自动记忆开关/轮次输入 + 保存
@@ -322,13 +322,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <div className="settings-card">
                   <div className="settings-row">
                     <div className="settings-row-copy">
-                      <h3>系统语言</h3>
-                      <p>设置 Wave 界面和系统提示使用的语言</p>
+                      <h3>AI 回复语言</h3>
+                      <p>设置 AI 回复时使用的语言（技术术语与代码保持原文）</p>
                     </div>
                     <div className="settings-control">
                       <select
                         className="settings-select"
-                        aria-label="系统语言"
+                        aria-label="AI 回复语言"
                         value={language}
                         onChange={(e) => setLanguage(e.target.value)}
                       >
