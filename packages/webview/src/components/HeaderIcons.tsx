@@ -616,6 +616,61 @@ export const QuotaIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+// 账户卡片用量区显隐按钮（展开态「收起用量」箭头）— Figma 功能图标
+// (13651:4244，24 artboard chevron，stroke #565A60 → currentColor)。设计稿
+// 13651:4911 三态实例中展开态即此官方 chevron，替换原 codicon-chevron-up 字形。
+export const ChevronUpIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={24}
+    height={24}
+    viewBox="0 0 24 24"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M8.77539 13.6128L11.6474 10.7408C11.8427 10.5455 12.1593 10.5455 12.3545 10.7408L15.2266 13.6128"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+// API 余额明细 ⓘ — Figma 官方 info 图标 (13651:3900，16 artboard：外圈 +
+// 「i」弧线 + 中心点，stroke/point #8B8F95 → currentColor)。账户卡用量区
+// 按设计稿 13651:4911 替换原 codicon-info 字形（命名 ApiInfoIcon 以区分
+// 文件头同名义遗留图标；旧 InfoIcon 无引用，保留不动）。
+export const ApiInfoIcon: React.FC<IconProps> = ({
+  className = "account-info-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M6.73122 7.33201L8.03816 7.33186L8.03816 11.3237L9.68106 10.1664"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M7.97363 14.5C11.5635 14.5 14.4736 11.5899 14.4736 8C14.4736 4.41015 11.5635 1.5 7.97363 1.5C4.38378 1.5 1.47363 4.41015 1.47363 8C1.47363 11.5899 4.38378 14.5 7.97363 14.5Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle cx="7.99988" cy="4.81995" r="0.857788" fill="currentColor" />
+  </svg>
+);
+
 // Pane 关闭（关闭分屏）— Figma 功能图标「关闭」(13440:12465，24 artboard，
 // union ×，fill #565A60 → currentColor)。与预览 tab 关闭、弹层关闭同一官方
 // 矢量；按钮 24×24 规格由 .desktop-pane-close 提供。

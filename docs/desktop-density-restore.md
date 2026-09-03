@@ -2044,6 +2044,12 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - `host-desktop.css`：ⓘ hover/focus 补 `color: var(--vscode-foreground)` 并置背景透明——host 静态色 (0,3,0) 会压过 base `:hover` (0,2,0)，须在 host hover 规则显式变色；删除已失效的 `.account-api-info-btn .codicon` 字号规则。
 - 验证（计算样式）：展开态按钮 svg viewBox 24（官方 chevron）、收起态 viewBox 24 + 2 circle（额度表盘）；ⓘ 按钮 svg viewBox 16；hover light #8B8F95→#202020、dark #9A9EA5→#CCCCCC，两态背景均透明。请人工走查展开/收起图标切换与 ⓘ hover。
 
+### 评论跟进（同轮）：显隐钮圆角对齐 6px + 「套餐用量」到进度条间距加大
+
+用户核对后两条：
+1. 「再检查额度图标背景圆角是不是 6px」——查 Figma 功能 icon-button hover 组件 13383:4723/4726 确认 hover 底色圆角 **r=6**（此前 base 圆角仅 4px）。`host-desktop.css` `.account-card-collapse-btn` 32×32 块补 `border-radius: 6px`（hover 底色形状随按钮圆角）。
+2. 预览评论 `div.account-usage-title`「套餐用量到进度条的间距再大一些」——Figma 13651:5041（Frame 1321327573）文本行底 y=5510 → Bar 顶 y=5516 = **6px**，base `.account-usage-section` 列 gap 仅 4px。host 补 `.account-usage-section { gap: 6px; }`（该 section 只含标题行与进度条，不影响 API 余额行距）。
+
 ---
 
 ## 0903 新基线第 8 轮（2026-09，r2）：会话状态页收起导航后顶栏补展开/新对话钮 + 分割线
