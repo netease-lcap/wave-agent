@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { DesktopPanelKind, PanelTab } from "../types";
 import { PANEL_LABELS } from "./ChatApp";
+import { PanelKindIcon } from "./PanelKindIcon";
 import { PanelToggleMenu } from "./PanelToggleMenu";
 import "../styles/DesktopPanelTabs.css";
 
@@ -21,14 +22,7 @@ export interface DesktopPanelTabsProps {
   onToggleFullscreen: () => void;
 }
 
-/** Panel-type icons, matching the tab strip labels. */
-const PANEL_ICONS: Record<DesktopPanelKind, string> = {
-  preview: "codicon-browser",
-  plan: "codicon-list-unordered",
-  diff: "codicon-diff",
-  terminal: "codicon-terminal",
-  file: "codicon-file-code",
-};
+/** 面板类型图标统一走 PanelKindIcon（Figma Component 12 · 13561:39702）。 */
 
 /** Short per-instance tab label: the guest page title for preview (regular
  *  browser semantics — the tab shows what the page is called, not its URL),
@@ -166,7 +160,11 @@ export const DesktopPanelTabs: React.FC<DesktopPanelTabsProps> = ({
               onClick={() => onActivate(id)}
               title={label}
             >
-              <i className={`codicon ${PANEL_ICONS[kind]}`} />
+              <PanelKindIcon
+                kind={kind}
+                size={13}
+                className="desktop-panel-tab-icon"
+              />
               <span className="desktop-panel-tab-label">{label}</span>
               <button
                 className="preview-tab-close"

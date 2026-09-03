@@ -12,6 +12,7 @@ import type { FileItem, FileViewState, VsCodeApi } from "../types";
 import { toRelativePath } from "../utils/messageUtils";
 import { useClickOutside } from "../utils/useClickOutside";
 import { FileSuggestionDropdown } from "./FileSuggestionDropdown";
+import { PanelKindIcon } from "./PanelKindIcon";
 import "../styles/FilePane.css";
 
 const MIN_WIDTH = 320;
@@ -551,8 +552,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
         )}
         <div className="preview-pane-body file-pane-body" ref={scrollRef}>
           {!fileView && (
-            <div className="desktop-panel-placeholder">
-              <i className="codicon codicon-file file-pane-placeholder-icon" />
+            <div className="desktop-panel-placeholder file-pane-placeholder-empty">
+              {/* Figma 文件面板空态：图标在上 24px、文案在下（评论 2026-09）。 */}
+              <PanelKindIcon
+                kind="file"
+                size={24}
+                className="file-pane-placeholder-icon"
+              />
               <span>点击消息中的文件路径，在此查看文件内容</span>
             </div>
           )}

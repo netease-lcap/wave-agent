@@ -3,6 +3,7 @@ import type { RefObject } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
 import type { DesktopPanelKind, PanelToggleProps } from "../types";
+import { PanelKindIcon } from "./PanelKindIcon";
 import "../styles/PanelToggleMenu.css";
 
 interface PanelToggleMenuProps extends PanelToggleProps {
@@ -132,6 +133,11 @@ export const PanelToggleMenu: React.FC<PanelToggleMenuProps> = ({
             aria-disabled={isDisabled}
             data-testid={`panel-toggle-item-${kind}`}
           >
+            <PanelKindIcon
+              kind={kind}
+              size={16}
+              className="panel-toggle-menu-item-icon"
+            />
             <span className="panel-toggle-menu-label">{label}</span>
             {shortcut ? (
               <span className="panel-toggle-menu-shortcut">{shortcut}</span>

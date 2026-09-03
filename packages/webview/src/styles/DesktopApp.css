@@ -886,6 +886,7 @@ body.is-panel-resizing webview {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
+  font-weight: 600; /* 面板名标题加粗（评论 2026-09：这个位置的标题都加粗） */
   color: var(--vscode-foreground);
   user-select: text;
 }
@@ -1048,8 +1049,7 @@ body.is-panel-resizing webview {
   background: var(--vscode-editor-background);
 }
 
-.preview-tab-new .codicon {
-  font-size: 28px;
+.preview-tab-new-icon {
   opacity: 0.4;
 }
 
@@ -1078,8 +1078,7 @@ body.is-panel-resizing webview {
   border-color: var(--vscode-input-border, rgba(128, 128, 128, 0.4));
 }
 
-.preview-pane-url .codicon {
-  font-size: 13px;
+.preview-pane-url-icon {
   opacity: 0.7;
   flex-shrink: 0;
 }
@@ -1418,8 +1417,8 @@ body.is-panel-resizing webview {
   cursor: default;
 }
 
-.desktop-panel-empty-item .codicon {
-  font-size: 14px;
+.desktop-panel-empty-item .desktop-panel-empty-item-icon {
+  flex-shrink: 0;
 }
 
 .desktop-panel-empty-shortcut {
