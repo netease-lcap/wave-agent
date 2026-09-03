@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import { useClickOutside } from "../utils/useClickOutside";
 import { FileSuggestionDropdownProps, FileItem } from "../types";
 import "../styles/FileSuggestionDropdown.css";
 
@@ -23,24 +24,13 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Handle clicks outside dropdown to close it (skipped when the parent owns
-  // its own dismiss handling, e.g. the file-panel search popover).
-  useEffect(() => {
-    if (disableClickOutside) return;
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        onClose();
-      }
-    };
-
-    if (isVisible) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () =>
-        document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [isVisible, onClose, disableClickOutside]);
+  // its own dismiss handling, e.g. the file-panel search popover). Listener
+  // registered one tick later inside useClickOutside.
+  useClickOutside({
+    refs: [dropdownRef],
+    enabled: isVisible && !disableClickOutside,
+    onClickOutside: onClose,
+  });
 
   // Scroll selected item into view
   useEffect(() => {

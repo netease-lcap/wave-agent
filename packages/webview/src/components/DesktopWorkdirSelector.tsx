@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import { useClickOutside } from "../utils/useClickOutside";
 import { ContextDirectoryIcon, PermCaretIcon, CloseIcon } from "./HeaderIcons";
 import "../styles/DesktopApp.css";
 
@@ -109,17 +110,13 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   });
 
   // Only the remote browser owns click-outside here — closing the main menu
-  // on outside clicks is handled inside useRovingMenu.
-  useEffect(() => {
-    if (!browsing) return;
-    const onMouseDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setBrowsing(false);
-      }
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [browsing]);
+  // on outside clicks is handled inside useRovingMenu. Listener registered
+  // one tick later inside useClickOutside.
+  useClickOutside({
+    refs: [menuRef],
+    enabled: browsing,
+    onClickOutside: () => setBrowsing(false),
+  });
 
   const dirName = workdir
     ? workdir.split(/[\\/]/).filter(Boolean).pop() || workdir

@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
+import { useClickOutside } from "../utils/useClickOutside";
 import {
   PluginDialogProps,
   PluginInfo,
@@ -97,17 +98,14 @@ const PluginDialog: React.FC<
 
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Handle clicking outside to close dialog
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dialogRef.current &&
-        !dialogRef.current.contains(event.target as Node)
-      ) {
-        onClose();
-      }
-    };
+  // Click-outside close (listener registered one tick later inside the hook,
+  // so the click that opened this dialog doesn't immediately close it).
+  useClickOutside({
+    refs: [dialogRef],
+    onClickOutside: onClose,
+  });
 
+  useEffect(() => {
     // Escape closes only the dialog. A capture-phase listener with
     // stopPropagation runs before React's synthetic onKeyDown (attached at the
     // root container), so the keypress never reaches MessageInput's
@@ -119,19 +117,8 @@ const PluginDialog: React.FC<
         onClose();
       }
     };
-
-    // Defer registration to the next tick so the click that opened this dialog
-    // (still bubbling to document) doesn't immediately trigger the outside-close.
-    const timer = setTimeout(() => {
-      document.addEventListener("mousedown", handleClickOutside);
-    }, 0);
     document.addEventListener("keydown", handleEscapeKey, true);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEscapeKey, true);
-    };
+    return () => document.removeEventListener("keydown", handleEscapeKey, true);
   }, [onClose]);
 
   return (

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import { useClickOutside } from "../utils/useClickOutside";
 import "../styles/HistorySearchPopup.css";
 import { HistoryItem, VsCodeApi } from "../types";
 
@@ -24,23 +25,14 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
-  // Handle clicks outside to close popup
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        popupRef.current &&
-        !popupRef.current.contains(event.target as Node)
-      ) {
-        onClose();
-      }
-    };
-
-    if (isVisible) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () =>
-        document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [isVisible, onClose]);
+  // Handle clicks outside to close popup (listener registered one tick later
+  // inside useClickOutside so a mousedown that just opened this popup is not
+  // treated as an outside click).
+  useClickOutside({
+    refs: [popupRef],
+    enabled: isVisible,
+    onClickOutside: onClose,
+  });
 
   // Focus input when popup opens
   useEffect(() => {

@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
+import { useClickOutside } from "../utils/useClickOutside";
 import { BackgroundTaskManagerProps, BackgroundTaskSummary } from "../types";
 import "../styles/ConfigurationDialog.css";
 
@@ -103,15 +104,14 @@ const BackgroundTaskManager: React.FC<
     vscode.postMessage({ command: "stopBackgroundTask", taskId });
   };
 
+  // Click-outside close (listener registered one tick later inside the hook,
+  // so the click that opened this dialog doesn't immediately close it).
+  useClickOutside({
+    refs: [dialogRef],
+    onClickOutside: onClose,
+  });
+
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dialogRef.current &&
-        !dialogRef.current.contains(event.target as Node)
-      ) {
-        onClose();
-      }
-    };
     const handleEscapeKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (selectedTaskId) {
@@ -121,15 +121,8 @@ const BackgroundTaskManager: React.FC<
         }
       }
     };
-    const timer = setTimeout(() => {
-      document.addEventListener("mousedown", handleClickOutside);
-    }, 0);
     document.addEventListener("keydown", handleEscapeKey);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEscapeKey);
-    };
+    return () => document.removeEventListener("keydown", handleEscapeKey);
   }, [onClose, selectedTaskId]);
 
   const statusColor = (status: string): string => {

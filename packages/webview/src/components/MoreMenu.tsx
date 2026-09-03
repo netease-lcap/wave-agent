@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import { useClickOutside } from "../utils/useClickOutside";
 import {
   ExternalLinkIcon,
   FileTextIcon,
@@ -146,29 +147,25 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
 
   // Click-outside + global Escape fallback (the hook only handles Escape from
   // a focused item). Focus returns to the trigger on those in-menu paths.
+  // The trigger is excluded from click-outside so clicking it again toggles
+  // the menu closed (AccountCard hotzone / header 更多). useClickOutside
+  // registers the mousedown listener one tick later so the click that just
+  // opened this menu is not treated as an outside click.
+  useClickOutside({
+    refs: [menuRef, ...(triggerRef ? [triggerRef] : [])],
+    onClickOutside: onClose,
+  });
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (menuRef.current && menuRef.current.contains(target)) return;
-      // The trigger itself is excluded from click-outside so clicking it again
-      // toggles the menu closed (AccountCard hotzone / header 更多).
-      if (triggerRef?.current?.contains(target)) return;
-      onClose();
-    };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onClose();
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => document.removeEventListener("keydown", handleKeyDown);
     // triggerRef is a stable prop ref object (callers pass a useRef result), so
     // the listener set still only installs once per mount.
-  }, [onClose, triggerRef]);
+  }, [onClose]);
 
   return (
     <div

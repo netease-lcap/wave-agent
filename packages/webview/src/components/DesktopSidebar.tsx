@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, RefObject } from "react";
+import React, { useState, useRef, RefObject } from "react";
 import { Tooltip } from "./Tooltip";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AccountCard, type AccountCardAccount } from "./AccountCard";
@@ -11,6 +11,7 @@ import {
   SplitIcon,
 } from "./HeaderIcons";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import { useClickOutside } from "../utils/useClickOutside";
 import type { DesktopSessionGroup, DesktopSessionEntry } from "../types";
 import "../styles/DesktopApp.css";
 
@@ -54,15 +55,13 @@ const SessionItemMenu: React.FC<{
     onActivate: (i) => (i === 0 ? onSplit() : onDelete()),
   });
 
-  useEffect(() => {
-    const handleMouseDown = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => document.removeEventListener("mousedown", handleMouseDown);
-  }, [onClose]);
+  // Click-outside close; listener registered one tick later (inside
+  // useClickOutside) so the mousedown that just opened the menu is not
+  // treated as an outside click.
+  useClickOutside({
+    refs: [menuRef],
+    onClickOutside: onClose,
+  });
 
   const menuWidth = 148;
   // Right-align the menu to the trigger, clamped to the viewport.
