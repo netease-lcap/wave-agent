@@ -36,6 +36,13 @@ describe("preload", () => {
     );
   });
 
+  it("exposes the host platform for the hidden-titlebar layout", () => {
+    expect(contextBridge.exposeInMainWorld).toHaveBeenCalledWith(
+      "wavePlatform",
+      process.platform,
+    );
+  });
+
   it("forwards host messages into the page via window.postMessage", () => {
     const postMessage = vi.fn();
     vi.stubGlobal("window", { postMessage });

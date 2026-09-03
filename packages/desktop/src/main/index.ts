@@ -275,6 +275,14 @@ function createWindow(): void {
     minHeight: 480,
     title: "Codewave IDE",
     backgroundColor: "#1e1e1e",
+    // macOS: hide the system title bar (VS Code/Slack style) — content fills
+    // the window and the native traffic lights float over the webview's top
+    // left. The webview reserves a 44px sidebar drag row / collapsed-header
+    // gutter under those lights (spec「macOS 隐藏标题栏」). Windows/Linux keep
+    // the native frame, so the option stays darwin-only.
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hidden" as const }
+      : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,

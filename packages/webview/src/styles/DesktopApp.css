@@ -32,7 +32,9 @@
 }
 
 /* macOS 窗口控制行（codechat sidebar-window-row）：44px，红绿灯 12px 圆点。
-   仅原型预览渲染（真机用系统原生标题栏），见 DesktopSidebar.tsx。 */
+   两种形态见 DesktopSidebar.tsx：原型预览绘制假圆点；真机 macOS（隐藏标题栏，
+   spec「macOS 隐藏标题栏」）为空行——系统红绿灯叠加在该行左端，整行充当窗口
+   拖拽区（Electron -webkit-app-region，浏览器环境忽略）。 */
 .sidebar-window-row {
   flex: 0 0 44px;
   height: 44px;
@@ -41,6 +43,21 @@
   justify-content: flex-start;
   gap: 8px;
   padding: 0 8px;
+}
+
+.sidebar-window-row--mac-drag {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+/* macOS 隐藏标题栏 + 侧边栏收起：对话顶栏最左端让出系统红绿灯区域（约 76px），
+   该段为 44px 高的窗口拖拽区，红绿灯由系统绘制其上（ChatApp macTrafficSpacer，
+   spec「macOS 隐藏标题栏」场景 3）。收起态控件整体右移，不被红绿灯遮挡。 */
+.chat-header-mac-traffic {
+  -webkit-app-region: drag;
+  user-select: none;
+  align-self: stretch;
+  flex: 0 0 76px;
 }
 
 .window-controls {
