@@ -202,7 +202,10 @@ describe("PluginCore", () => {
     );
 
     await pluginCore.updateMarketplace("m1");
-    expect(mockMarketplaceService.updateMarketplace).toHaveBeenCalledWith("m1");
+    expect(mockMarketplaceService.updateMarketplace).toHaveBeenCalledWith(
+      "m1",
+      { updatePlugins: true },
+    );
 
     await pluginCore.listMarketplaces();
     expect(mockMarketplaceService.listMarketplaces).toHaveBeenCalled();
