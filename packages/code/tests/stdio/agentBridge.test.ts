@@ -2012,6 +2012,40 @@ test("restoreSession to the live session emits a messagesChange snapshot without
   });
 });
 
+test("restoreSession to the live session replays the current contextUsage so the re-attached client shows this session's usage", async () => {
+  const { bridge, notifications } = createBridge();
+  const mockAgent = createMockAgent({ latestTotalTokens: 50000 });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+
+  await bridge.handleRequest("restoreSession", { sessionId }, sessionId);
+
+  expect(mockAgent.restoreSession).not.toHaveBeenCalled();
+  expect(notifications).toContainEqual({
+    method: "contextUsage",
+    params: { percent: 25 }, // 50000 / 200000 (default getMaxInputTokens)
+    sessionId,
+  });
+});
+
+test("restoreSession replay skips contextUsage when the live session has no tokens yet", async () => {
+  const { bridge, notifications } = createBridge();
+  const mockAgent = createMockAgent({ latestTotalTokens: 0 });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+
+  await bridge.handleRequest("restoreSession", { sessionId }, sessionId);
+
+  expect(mockAgent.restoreSession).not.toHaveBeenCalled();
+  expect(notifications.filter((n) => n.method === "contextUsage")).toHaveLength(
+    0,
+  );
+});
+
 test("listSessions with workdir delegates to listSessions SDK", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());

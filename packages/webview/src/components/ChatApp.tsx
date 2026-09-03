@@ -276,6 +276,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // conversation switches (ChatApp is keyed by paneId, not sessionId), so a
   // local useState alone would leak the previous conversation's panel.
   const btwSessionRef = useRef<string | undefined>(undefined);
+  // Session whose context-usage percentage contextUsage currently holds.
+  // Compared against state.currentSession.id in an effect below — same
+  // paneId-keyed-mount reasoning as btwSessionRef, so the usage indicator is
+  // conversation-isolated instead of leaking the previous session's number.
+  const usageSessionRef = useRef<string | undefined>(undefined);
   // Accumulated streaming text from the compaction fork; its last 30 characters
   // render after the "正在压缩对话" hint (streaming tail, same style as the
   // CLI loading indicator). Cleared when compaction ends.
@@ -1973,6 +1978,23 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     btwSessionRef.current = sessionId;
     if (previous !== undefined && previous !== sessionId) handleBtwClose();
   }, [state.currentSession?.id, handleBtwClose]);
+
+  // The context-usage percentage is conversation-scoped (spec desktop-app
+  // 上下文用量指示器 场景 6 + session isolation): switching conversations must
+  // not carry the previous session's usage over. Desktop panes key ChatApp by
+  // paneId (not sessionId), so a sidebar session switch leaves this component
+  // mounted — without this effect the local contextUsage state would survive
+  // the switch (setInitialState only resets reducer state, not local state)
+  // and show the old session's percentage until the new session's first push.
+  // `previous !== undefined` keeps the initial mount a no-op.
+  useEffect(() => {
+    const sessionId = state.currentSession?.id;
+    const previous = usageSessionRef.current;
+    usageSessionRef.current = sessionId;
+    if (previous !== undefined && previous !== sessionId) {
+      setContextUsage(undefined);
+    }
+  }, [state.currentSession?.id]);
 
   const handleRewindConfirm = useCallback(() => {
     const messageId = pendingRewindId;
