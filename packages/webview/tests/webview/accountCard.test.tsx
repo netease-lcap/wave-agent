@@ -291,15 +291,15 @@ describe("AccountCard (desktop sidebar)", () => {
       const toggle = screen.getByTestId("account-usage-collapse");
       expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
       expect(toggle).toHaveAttribute("aria-label", "收起用量");
-      expect(toggle.querySelector(".codicon-chevron-up")).not.toBeNull();
+      expect(toggle.querySelector("svg")).not.toBeNull();
 
       fireEvent.click(toggle);
       expect(
         screen.queryByTestId("account-card-usage"),
       ).not.toBeInTheDocument();
-      // 卡片仅剩个人信息一行；按钮 icon 换仪表盘.
+      // 卡片仅剩个人信息一行；按钮 icon 换官方「额度」矢量.
       expect(toggle).toHaveAttribute("aria-label", "展开用量");
-      expect(toggle.querySelector(".codicon-dashboard")).not.toBeNull();
+      expect(toggle.querySelector("svg")).not.toBeNull();
 
       fireEvent.click(toggle);
       expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
