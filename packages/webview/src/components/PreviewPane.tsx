@@ -231,10 +231,26 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   // Generation guard: a newer pass (reload / resize) invalidates the in-flight
   // one so two passes can't fight over the zoom factor.
   const fitGenRef = useRef(0);
-  // Host-side panel width for the did-finish-load pass (the width effect can't
-  // see prop changes that happened while the guest was still loading).
+
+  // Fallback width for the fit pass when the element reports no size (jsdom /
+  // first paint) — mirror of the controlled `width` prop.
   const widthRef = useRef(width);
   widthRef.current = width;
+
+  /** Actual host-side panel width for the fit pass. The controlled `width` prop
+   * equals the CSS width, EXCEPT when preview fullscreen stretches the pane via
+   * CSS (`width: 100% !important`) or a hidden tab is shown again — the prop is
+   * unchanged while the pane really is far wider. Measuring the element keeps
+   * the fit honest: fullscreen re-fits the page to the full width instead of
+   * keeping a zoom computed for the pre-fullscreen narrow panel. Falls back to
+   * the prop when the element reports no size. Stable ([] deps) so the wiring /
+   * resize effects that read it never re-run on width changes. */
+  const measurePanelWidth = useCallback((): number => {
+    const el = asideRef.current;
+    if (!el) return widthRef.current;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 ? rect.width : widthRef.current;
+  }, []);
 
   /** One auto-fit pass: measure the guest's content width and set the zoom so
    * it fits the panel. The viewport width comes from the HOST's panel width,
@@ -340,8 +356,10 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     };
     const onDidFinishLoad = () => {
       // 200ms: give the initial paint a chance before measuring (SPAs render
-      // after load; the pass re-measures anyway).
-      void runFitPass(widthRef.current, 200);
+      // after load; the pass re-measures anyway). The width is measured, not
+      // read from the prop — a guest finishing load while fullscreen (CSS
+      // stretched) must fit the real width or it comes up shrunk.
+      void runFitPass(measurePanelWidth(), 200);
     };
     const onDidNavigateInPage = (e: Event) => {
       const navUrl = (e as { url?: string }).url;
@@ -412,18 +430,57 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       wv.removeEventListener("ipc-message", onIpcMessage);
       wv.removeEventListener("page-title-updated", onPageTitleUpdated);
     };
-    // deactivatePicker/sendPicker/runFitPass are stable useCallbacks, so this
-    // still only runs once per mount.
-  }, [deactivatePicker, sendPicker, runFitPass]);
+    // deactivatePicker/sendPicker/runFitPass/measurePanelWidth are stable
+    // useCallbacks, so this still only runs once per mount.
+  }, [deactivatePicker, sendPicker, runFitPass, measurePanelWidth]);
 
   // Panel resized → re-fit (debounced; drag resizes fire this continuously).
   // 250ms after the debounce: the guest's layout viewport also updates
-  // asynchronously, so give it a beat before the first measurement.
+  // asynchronously, so give it a beat before the first measurement. Two
+  // triggers converge here: the controlled `width` prop (drag resize) and a
+  // ResizeObserver on the pane element (next effect), which also catches sizes
+  // the prop can't see — fullscreen stretches the pane via CSS (`!important`,
+  // prop unchanged) and tab switches restore a hidden stack (display:none →
+  // visible). Both must re-fit, or the guest keeps a zoom computed for the
+  // pre-change narrow panel and looks shrunk with empty space around it.
   useEffect(() => {
     if (!domReadyRef.current) return;
-    const t = window.setTimeout(() => void runFitPass(width, 250), 150);
+    const t = window.setTimeout(
+      () => void runFitPass(measurePanelWidth(), 250),
+      150,
+    );
     return () => window.clearTimeout(t);
-  }, [width, runFitPass]);
+  }, [width, runFitPass, measurePanelWidth]);
+
+  // Physical size changes the `width` prop can't report: preview fullscreen
+  // widens the pane via CSS only, and switching tabs toggles the containing
+  // stack between display:none and visible. Observe the pane element so either
+  // re-fits the guest to its actual width.
+  useEffect(() => {
+    const el = asideRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let timer: number | undefined;
+    const ro = new ResizeObserver(() => {
+      // The RO fires with 0×0 while the pane sits in a hidden tab stack
+      // (display:none). Skipping those is essential: fitting a hidden guest
+      // would run against the element's reported 0 width and (via the prop
+      // fallback) shrink its zoom for a width it no longer has — the page then
+      // comes back shrunk. The pass that matters fires when the tab becomes
+      // visible again and the element reports its real width.
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || !domReadyRef.current) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(
+        () => void runFitPass(el.getBoundingClientRect().width, 250),
+        150,
+      );
+    });
+    ro.observe(el);
+    return () => {
+      window.clearTimeout(timer);
+      ro.disconnect();
+    };
+  }, [runFitPass]);
 
   // Parent asked for a URL (localhost link click / forward established /
   // session switch restoring a remembered address): navigate the single window

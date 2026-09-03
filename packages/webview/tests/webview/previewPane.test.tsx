@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, fireEvent, screen } from "@testing-library/react";
+import { render, fireEvent, act, screen } from "@testing-library/react";
 import React from "react";
 import {
   PreviewPane,
@@ -153,6 +153,47 @@ const firePickerSubmit = (wv: MockWebview, payload: Record<string, unknown>) =>
       args: [payload],
     }),
   );
+
+// PreviewPane watches its own element with a ResizeObserver so a CSS-driven
+// width change (fullscreen !important / a tab stack turning visible again)
+// re-fits the guest — the controlled `width` prop can't see those. jsdom has
+// no layout and test-utils' shared RO mock swallows callbacks, so capture the
+// instances here and fire size changes manually.
+class CapturingResizeObserver {
+  static instances: CapturingResizeObserver[] = [];
+  static reset() {
+    CapturingResizeObserver.instances = [];
+  }
+  readonly callback: ResizeObserverCallback;
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    CapturingResizeObserver.instances.push(this);
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+function installCapturingResizeObserver(): () => void {
+  const previous = globalThis.ResizeObserver;
+  CapturingResizeObserver.reset();
+  globalThis.ResizeObserver =
+    CapturingResizeObserver as unknown as typeof ResizeObserver;
+  return () => {
+    globalThis.ResizeObserver = previous;
+  };
+}
+const fireResize = () => {
+  const all = CapturingResizeObserver.instances;
+  const ro = all[all.length - 1];
+  if (!ro)
+    throw new Error("no ResizeObserver captured — did PreviewPane mount?");
+  act(() => {
+    ro.callback(
+      [] as unknown as ResizeObserverEntry[],
+      ro as unknown as ResizeObserver,
+    );
+  });
+};
 
 describe("PreviewPane", () => {
   it("loads the URL into the guest and shows it in the toolbar", () => {
@@ -644,6 +685,65 @@ describe("PreviewPane", () => {
         expect(wv.executeJavaScript).toHaveBeenCalledTimes(2),
       );
       expect(wv.setZoomFactor.mock.calls).toEqual([[0.3]]);
+    });
+
+    it("re-fits to the MEASURED pane width when fullscreen stretches it via CSS", async () => {
+      // The pane's real width (what the guest fits against) diverges from the
+      // controlled `width` prop while fullscreen — CSS widens the element but
+      // the prop is unchanged. Regression: the fit must follow the measured
+      // element or the guest keeps the zoom computed for the narrow
+      // pre-fullscreen panel and looks shrunk in a sea of empty space.
+      const restore = installCapturingResizeObserver();
+      try {
+        const { wv } = renderPane();
+        const pane = screen.getByTestId("preview-pane");
+        const rect = vi.spyOn(pane, "getBoundingClientRect");
+        rect.mockReturnValue({ width: 420 } as DOMRect);
+        mockGuestMetrics(wv, 1200);
+        fireDomReady(wv);
+        fireDidFinishLoad(wv);
+        await vi.waitFor(() =>
+          expect(wv.setZoomFactor).toHaveBeenCalledWith(0.35),
+        );
+
+        // Fullscreen: the element is really 1020 wide while the prop stays 420.
+        rect.mockReturnValue({ width: 1020 } as DOMRect);
+        fireResize();
+
+        await vi.waitFor(() =>
+          expect(wv.setZoomFactor).toHaveBeenLastCalledWith(0.85),
+        );
+      } finally {
+        restore();
+      }
+    });
+
+    it("re-fits when a hidden tab stack turns visible (ResizeObserver 0→width)", async () => {
+      // Tab switching hides the inactive stack (display:none → 0×0) and shows
+      // the active one; a pane observed at 0 must skip, and the next observed
+      // real width must re-fit the guest. Fixes preview pages staying shrunk
+      // after switching tabs in fullscreen.
+      const restore = installCapturingResizeObserver();
+      try {
+        const { wv } = renderPane();
+        const pane = screen.getByTestId("preview-pane");
+        const rect = vi.spyOn(pane, "getBoundingClientRect");
+        rect.mockReturnValue({ width: 0 } as DOMRect);
+        mockGuestMetrics(wv, 1200);
+        fireDomReady(wv);
+        // Hidden stack: the RO reports 0×0 → the debounced fit pass skips.
+        fireResize();
+        expect(wv.setZoomFactor).not.toHaveBeenCalled();
+
+        // Tab activated → the pane gets its real width again → re-fit.
+        rect.mockReturnValue({ width: 1020 } as DOMRect);
+        fireResize();
+        await vi.waitFor(() =>
+          expect(wv.setZoomFactor).toHaveBeenCalledWith(0.85),
+        );
+      } finally {
+        restore();
+      }
     });
   });
 });
