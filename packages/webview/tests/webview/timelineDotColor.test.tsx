@@ -14,10 +14,10 @@ describe("timeline dot color by stage", () => {
     vi.clearAllMocks();
   });
 
-  it("text block dot is yellow while streaming and green when done", () => {
+  it("text block dot is orange while streaming and green when done", () => {
     renderChatApp();
 
-    // streaming text → neutral gray dot
+    // streaming text → orange (流式传输 #E6A23C)
     sendCommand("updateMessages", {
       messages: [
         {
@@ -31,11 +31,9 @@ describe("timeline dot color by stage", () => {
     const streamingRow = getLastMessage().querySelector(
       ".timeline-row",
     ) as HTMLElement;
-    expect(streamingRow.style.getPropertyValue("--dot-color")).toContain(
-      "descriptionForeground",
-    );
+    expect(streamingRow.style.getPropertyValue("--dot-color")).toBe("#E6A23C");
 
-    // finished text → green dot
+    // finished text → green (成功 #16A34A)
     sendCommand("updateMessages", {
       messages: [
         {
@@ -49,10 +47,10 @@ describe("timeline dot color by stage", () => {
     const doneRow = getLastMessage().querySelector(
       ".timeline-row",
     ) as HTMLElement;
-    expect(doneRow.style.getPropertyValue("--dot-color")).toContain("Passed");
+    expect(doneRow.style.getPropertyValue("--dot-color")).toBe("#16A34A");
   });
 
-  it("reasoning block dot is gray while streaming and green when done", () => {
+  it("reasoning block dot is orange while streaming and green when done", () => {
     renderChatApp();
 
     sendCommand("updateMessages", {
@@ -70,9 +68,7 @@ describe("timeline dot color by stage", () => {
     const streamingRow = getLastMessage().querySelector(
       ".timeline-row",
     ) as HTMLElement;
-    expect(streamingRow.style.getPropertyValue("--dot-color")).toContain(
-      "descriptionForeground",
-    );
+    expect(streamingRow.style.getPropertyValue("--dot-color")).toBe("#E6A23C");
 
     sendCommand("updateMessages", {
       messages: [
@@ -87,7 +83,40 @@ describe("timeline dot color by stage", () => {
     const doneRow = getLastMessage().querySelector(
       ".timeline-row",
     ) as HTMLElement;
-    expect(doneRow.style.getPropertyValue("--dot-color")).toContain("Passed");
+    expect(doneRow.style.getPropertyValue("--dot-color")).toBe("#16A34A");
+  });
+
+  it("tool block dot follows tool status: streaming orange / running blue / success green / error red", () => {
+    renderChatApp();
+
+    const sendBlock = (block: Record<string, unknown>) => {
+      sendCommand("updateMessages", {
+        messages: [
+          {
+            id: "m5",
+            role: "assistant",
+            timestamp: "2024-01-01T00:00:00.000Z",
+            blocks: [block],
+          },
+        ],
+      });
+    };
+    const dotColor = () =>
+      (
+        getLastMessage().querySelector(".timeline-row") as HTMLElement
+      ).style.getPropertyValue("--dot-color");
+
+    sendBlock({ type: "tool", name: "bash", stage: "streaming" });
+    expect(dotColor()).toBe("#E6A23C");
+
+    sendBlock({ type: "tool", name: "bash", stage: "running" });
+    expect(dotColor()).toBe("#2F5EDB");
+
+    sendBlock({ type: "tool", name: "bash", stage: "end", success: true });
+    expect(dotColor()).toBe("#16A34A");
+
+    sendBlock({ type: "tool", name: "bash", stage: "end", error: "boom" });
+    expect(dotColor()).toBe("#D92D20");
   });
 
   it("history text block without stage defaults to green dot", () => {
@@ -105,7 +134,7 @@ describe("timeline dot color by stage", () => {
       ],
     });
     const row = getLastMessage().querySelector(".timeline-row") as HTMLElement;
-    expect(row.style.getPropertyValue("--dot-color")).toContain("Passed");
+    expect(row.style.getPropertyValue("--dot-color")).toBe("#16A34A");
   });
 
   it("compact block is wrapped in a timeline row with the link-accent dot", () => {
