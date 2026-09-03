@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from "react";
 import type { DesktopSessionGroup, DesktopSessionEntry } from "../types";
+import { SidebarExpandIcon } from "./HeaderIcons";
+import { Tooltip } from "./Tooltip";
 import "../styles/SessionBoard.css";
 
 export interface SessionBoardProps {
@@ -9,6 +11,10 @@ export interface SessionBoardProps {
   onSelectSession: (sessionId: string) => void;
   /** 点击「返回当前会话」→ 退出看板 */
   onBack: () => void;
+  /** 左侧导航已收起：看板顶栏补「展开侧边栏」入口与分割线（评论 2026-09：
+      header 处「新对话」图标钮已统一拿掉，仅留展开侧栏）。 */
+  collapsed?: boolean;
+  onExpandSidebar?: () => void;
 }
 
 /** 跨平台取路径最后一段（浏览器环境无 node path，兼容 \ 与 /）。 */
@@ -74,6 +80,8 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
   groups,
   onSelectSession,
   onBack,
+  collapsed,
+  onExpandSidebar,
 }) => {
   // 项目筛选：空字符串 = 全部项目；否则为选中的 workdir 完整路径。
   const [selectedWorkdir, setSelectedWorkdir] = useState<string>("");
@@ -114,8 +122,29 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
 
   return (
     <div className="session-board" data-testid="session-board">
-      {/* 顶栏（Figma Header）：返回当前会话，独立一行 */}
+      {/* 顶栏（Figma 13561:39312 Header，44px 行）：导航收起时左起为
+          「展开侧边栏」功能钮（24×24），1×16 分割线后是「返回当前会话」
+          （评论 2026-09：顶栏「新对话」钮已拿掉）；导航展开时这些入口在
+          侧边栏上，看板不再重复。 */}
       <div className="session-board-toolbar">
+        {collapsed && (
+          <>
+            {onExpandSidebar && (
+              <Tooltip text="展开侧边栏" position="bottom">
+                <button
+                  type="button"
+                  className="session-board-icon-btn"
+                  onClick={onExpandSidebar}
+                  data-testid="session-board-expand-sidebar"
+                  aria-label="展开侧边栏"
+                >
+                  <SidebarExpandIcon />
+                </button>
+              </Tooltip>
+            )}
+            <span className="session-board-toolbar-divider" />
+          </>
+        )}
         <button
           type="button"
           className="session-board-back"

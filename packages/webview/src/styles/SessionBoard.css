@@ -24,6 +24,8 @@
 .session-board-toolbar {
   display: flex;
   align-items: center;
+  /* 收起态左起图标组、分割线与返回钮之间统一 8px（Figma Header 项间距） */
+  gap: 8px;
   padding: 0 0 8px;
   border-bottom: 1px solid #ebEEF5;
   flex-shrink: 0;
@@ -50,6 +52,43 @@
 
 .session-board-back:hover {
   background: #f0f2f5;
+}
+
+/* 导航收起时顶栏左侧的「功能」icon-button（Figma 24×24，图标 16px 居中；
+   与右侧「返回当前会话」之间以 1×16 分割线隔开，见 .session-board-toolbar-divider） */
+.session-board-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #565a60;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.session-board-icon-btn svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.session-board-icon-btn:hover {
+  background: #f0f2f5;
+  color: #1f2329;
+}
+
+/* 分割线：Figma Header Rectangle 1×16 #DCDFE6，竖向居中于 44px 顶栏行
+   （两侧间距由 .session-board-toolbar 的 gap:8 提供） */
+.session-board-toolbar-divider {
+  width: 1px;
+  height: 16px;
+  background: #dcdfe6;
+  flex-shrink: 0;
 }
 
 /* ---- 标题行：会话状态 + 项目筛选 ---- */
@@ -247,6 +286,19 @@
 [data-host="desktop"][data-theme="dark"] .session-board-back:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
+}
+
+[data-host="desktop"][data-theme="dark"] .session-board-icon-btn {
+  color: #9a9ea5;
+}
+
+[data-host="desktop"][data-theme="dark"] .session-board-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e6e6e6;
+}
+
+[data-host="desktop"][data-theme="dark"] .session-board-toolbar-divider {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 [data-host="desktop"][data-theme="dark"] .session-board-title {

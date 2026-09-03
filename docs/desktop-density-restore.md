@@ -2005,3 +2005,73 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 ### 验证
 
 - 未走自动化（用户约定人工走查）；仅计算样式诊断：dark 下 track `rgba(255,255,255,0.12)`、fill `rgb(154,158,165)`、fill 宽 76%；light 下 fill `#1F2329`（同设计稿）不变。请在 8899 桌面端深色用例核对「套餐用量」进度条填充/轨道对比，及 0% 耗尽红色提示。
+
+---
+
+## 0903 新基线第 7 轮（2026-09，r2）：账户卡用量常驻区对齐设计稿 13651:4911（图标/字号/字体颜色）
+
+预览评论：`div.account-card`「套餐用量76% / API 余额 …」（Figma 链接 13651:4911，Frame 1321327580 画布，含三实例侧栏对比图）。「这个区域参考这个设计稿来实现，主要看图标、字号、字体颜色等信息」。
+
+### 设计稿权威值（浅色帧）
+
+| 元素                      | 设计稿                                            |
+| ------------------------- | ------------------------------------------------- |
+| 套餐用量 / API 余额 label | 12px/500/#1F2329                                  |
+| 用量百分比（48%）         | 12px/500/**#1F2329**（同正文色，非灰）            |
+| API 金额 ¥                | 12px/**500**/#1F2329                              |
+| Bar                       | 高 **6px**、胶囊、track **#E6E8EB**、填充 #1F2329 |
+| ⓘ 明细钮                  | 16px 官方 info 图标、灰点 **#8B8F95**             |
+| 显隐按钮（chevron/额度）  | **32×32** icon-button（内 16 canvas）             |
+
+### 改动（host-desktop.css，全部 [data-host=desktop] 限定，IDE 插件端不受影响）
+
+- `.account-card-collapse-btn` 24→**32×32**（用户确认按本帧，替代第 4/5 轮依据旧帧 13498:17085 的 24 规格；glyph 绝对尺寸不变：QuotaIcon svg 24×24 内表盘 13.1px 同稿、chevron codicon 16px = 稿内 16 canvas）；圆角 4→**6px**（对齐功能 icon-button hover 组件 13383:4723/4726 的 r6 底色，与 32×32 尺寸配套）。
+- `.account-usage-bar`：高 4→**6px**、圆角 2→3px；浅色 track → **#E6E8EB**（fill #1F2329 本已同稿）。**深色配色用户确认维持第 6 轮**（track 12% 白 / fill #9A9EA5），仅高度统一 6px。
+- `.account-usage-percent`：浅色正常态灰 → **#1F2329**（仅 light；耗尽红 `.is-empty` 保留，dark 灰 #9D9D9D 维持）。
+- `.account-usage-value-text`：字重 400 → **500**（light/dark 同）。
+- ⓘ：codicon 字形 12→**16px**；浅色钮色 → **#8B8F95**、深色 #9A9EA5（对齐 16px 官方 info 图标观感）。
+
+### 验证
+
+- 未走自动化（用户约定人工走查）；仅计算样式诊断：light 下 percent `rgb(31,35,41)`、金额 w500、bar 6px/r3/bg `#E6E8EB`、fill `#1F2329`、显隐钮 32×32/p0/r6、ⓘ 16px/#8B8F95；dark 下 percent #9D9D9D、bar 6px/12% 白、fill #9A9EA5、钮 32×32、ⓘ 16px/#9A9EA5（第 6 轮配色不变）。请在 8899 桌面端浅色/深色核对账户卡：显隐钮热区 32、76% 数字炭黑、金额 w500、进度条 6px、ⓘ 16px。
+
+### 评论跟进（同区域）：展开态 chevron / ⓘ 换官方矢量 + ⓘ hover 只变色不显底色
+
+用户核对后评论：「额度展开和 info 的图标没有换，info 图标 hover 状态是颜色发生改变，不显示背景」——展开态按钮仍是 codicon-chevron-up 字形、ⓘ 仍是 codicon-info 字形；且 ⓘ hover 出现底色背景（不应有）。
+
+- `HeaderIcons.tsx`：新增 `ChevronUpIcon`（官方 chevron 13651:4244，24 artboard stroke 矢量）与 `ApiInfoIcon`（官方 info 13651:3900，16 artboard：外圈 + 「i」弧 + 中心点；同名义遗留旧 InfoIcon 无引用，保留不动），均 currentColor。
+- `AccountCard.tsx`：展开态 `codicon codicon-chevron-up` span → `<ChevronUpIcon />`；ⓘ `codicon codicon-info` `<i>` → `<ApiInfoIcon />`（16px svg）。
+- `host-desktop.css`：ⓘ hover/focus 补 `color: var(--vscode-foreground)` 并置背景透明——host 静态色 (0,3,0) 会压过 base `:hover` (0,2,0)，须在 host hover 规则显式变色；删除已失效的 `.account-api-info-btn .codicon` 字号规则。
+- 验证（计算样式）：展开态按钮 svg viewBox 24（官方 chevron）、收起态 viewBox 24 + 2 circle（额度表盘）；ⓘ 按钮 svg viewBox 16；hover light #8B8F95→#202020、dark #9A9EA5→#CCCCCC，两态背景均透明。请人工走查展开/收起图标切换与 ⓘ hover。
+
+---
+
+## 0903 新基线第 8 轮（2026-09，r2）：会话状态页收起导航后顶栏补展开/新对话钮 + 分割线
+
+预览评论 `button.session-board-back`「返回当前会话」：「会话状态页面打开后收起左侧导航，展开左侧导航图标、新对话图标依旧需要展示，和返回当前会话之间有分割线，参考设计稿实现」（Figma 13561:39312）。
+
+### 设计稿（13561:39312 Header）
+
+顶栏行从左到右：**「展开侧边栏」功能钮（24×24）→ 「新对话」功能钮（24×24）→ 1×16 分割线（#DCDFE6）→ 「返回当前会话」按钮**，钮间距统一 8px。语义 = 侧边栏收起后常用入口上移保留在页面顶栏。
+
+### 修改
+
+- `SessionBoard.tsx`：新增可选 props `collapsed / onExpandSidebar / onNewSession`；`collapsed` 时顶栏左起渲染「展开侧边栏」（SidebarExpandIcon，官方 13383:4605）与「新对话」（NewSessionIcon）两个功能钮 + 分割线，再接原「返回当前会话」。
+- `ChatApp.tsx`：构造 sessionBoard 处传入 `collapsed={sidebarCollapsed}`、`onExpandSidebar={() => handleSidebarCollapsedChange(false)}`、`onNewSession={handleDesktopNewSession}`（展开态侧边栏本身有这些入口，顶栏不重复）。
+- `SessionBoard.css`：`.session-board-icon-btn`（24×24 / r6 / #565A60，hover #F0F2F5）、`.session-board-toolbar-divider`（1×16 #DCDFE6）、toolbar `gap:8px`，并补 dark 覆盖（图标 #9A9EA5、hover 8% 白、分割线 12% 白）。
+- 验证：webview type-check 通过（未走 UI 自动化）。（用户人工走查，本轮不跑自动化。）
+- 实现文件：`src/components/SessionBoard.tsx`、`src/components/ChatApp.tsx`、`src/styles/SessionBoard.css`、本 docs。
+
+### 追加（同轮）：收起态 header leading 拿掉「新建对话」图标钮
+
+预览评论 `button.header-button`（收起侧边栏后 chat header 左起第 2 个钮）：「拿掉新对话这个图标和功能」。
+
+- 修改：`ChatApp.tsx` `collapsedLeading` 删除 Tooltip「新建对话」钮（原行为 = 清空当前会话，`handleClearChat`），只保留「展开侧边栏」+ 1×16 分割线（`header-collapsed-divider` 保留，仍隔开按钮与 header 标题）；同步移除 `NewSessionIcon` import、更新注释。
+- 实现文件：`src/components/ChatApp.tsx`、`src/styles/ChatHeader.css`（注释）、本 docs。（用户人工走查，本轮不跑自动化。）
+
+### 追加（同轮）：会话状态页顶栏同样拿掉「新对话」钮
+
+预览评论 `button.session-board-icon-btn`（会话状态页收起导航后顶栏第 2 个钮）：「这里也拿掉」。
+
+- 修改：`SessionBoard.tsx` 顶栏 collapsed 组删除「新对话」功能钮（`NewSessionIcon` + Tooltip），仅保留「展开侧边栏」+ 分割线；移除 `onNewSession` prop 与 `NewSessionIcon` import，`ChatApp.tsx` 构造处同步删去 `onNewSession` 传参。
+- 实现文件：`src/components/SessionBoard.tsx`、`src/components/ChatApp.tsx`、本 docs。（用户人工走查，本轮不跑自动化。）
