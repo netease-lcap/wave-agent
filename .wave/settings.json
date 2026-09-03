@@ -30,7 +30,7 @@
       "Bash(gh run view*)",
       "Bash(gh run list*)"
     ],
-    "additionalDirectories": ["~/github"]
+    "additionalDirectories": ["~/github/claude-code", "~/github/claude-ai"]
   },
   "enabledPlugins": {
     "sdd@builtin": true
