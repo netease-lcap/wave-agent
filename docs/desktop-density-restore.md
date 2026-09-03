@@ -2081,3 +2081,37 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 
 - 修改：`SessionBoard.tsx` 顶栏 collapsed 组删除「新对话」功能钮（`NewSessionIcon` + Tooltip），仅保留「展开侧边栏」+ 分割线；移除 `onNewSession` prop 与 `NewSessionIcon` import，`ChatApp.tsx` 构造处同步删去 `onNewSession` 传参。
 - 实现文件：`src/components/SessionBoard.tsx`、`src/components/ChatApp.tsx`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+---
+
+## 0903 新基线第 9 轮（2026-09，r2）：ⓘ API 余额明细气泡卡对齐设计稿 13651:4864 + 警示色主题变量审计
+
+预览评论附 Figma 13651:4864（Frame 1321327547，账户卡上方悬浮的「API 余额」明细卡）：「参考这个设计稿，调整下 hover 弹出卡片的阴影圆角什么的，一些琥珀、红色这种警示色检查是否是主题变量中的颜色」。
+
+### 设计稿权威值（13651:4864，浅色帧）
+
+| 项 | 设计稿 | 改前 |
+| --- | --- | --- |
+| 圆角 | **r12** | r6 |
+| 描边 | 1px **#EBEEF5** | widget-border |
+| 投影 | **0/0/12 rgba(0,0,0,.12)**（无偏移柔和投影） | 0 4px 12px rgba(0,0,0,.42) |
+| 背景 | #FFFFFF | panel-background（浅色同白） |
+| 内边距 | 9（外 235×78 − 内 217×60 四边同距） | 10×12 |
+| 标题 | 12px/**500**/#1F2329 | 600/foreground |
+| 行标签「已用/剩余」 | 12px/400/**#565A60** | descriptionForeground（浅色 #606060 偏深） |
+| 金额 | 12px/**500**/#1F2329 | foreground w400 |
+
+### 改动（host-desktop.css，desktop 限定）
+
+- 几何：`.api-quota-popover` `padding: 9px`、`border-radius: 12px`（深浅色统一，几何不受主题影响）。
+- 浅色帧：白底 + `border: 1px solid #EBEEF5` + `box-shadow: 0 0 12px rgba(0,0,0,.12)`；标题 w500/#1F2329、行标签 #565A60、金额 `:not(.is-empty)` #1F2329 w500（耗尽红 `.is-empty` 不被覆盖）。
+- 深色无设计帧：维持 base 的 vscode token 方案（panel 底 / widget 描边 / 强投影），只统一几何；文字沿用 foreground/descriptionForeground token。
+
+### 警示色审计结论（琥珀/红）
+
+账户卡用量区与气泡的琥珀、红色**全部走主题变量，无写死警示色**：
+
+- 琥珀：`--vscode-editorWarning-foreground`（light #BF8803 / dark #CCA700）——`.account-usage-value.is-warning` 金额、`.api-popover-warn.is-warning`「余额不足20%…」。
+- 红：`--vscode-errorForeground`（light #AD0707 / dark #F85149）——`.account-usage-percent.is-empty`、进度条 fill `.is-empty`（第 6 轮 host 深色规则亦经该 token）、`.account-usage-exhausted`、`.account-usage-value.is-empty`「已用完」、`.api-popover-amt.is-empty`、`.api-popover-warn.is-empty`。
+- CSS 中出现的 `#f14c4c / #d18616 / #f85149` 仅为 `var(--xxx, 兜底)` 的 fallback（IDE 端无主题时的缺省），桌面 host 恒由 theme-base-light/dark.css 的 token 实际取值。
+- 另注：mock 端曾把 `apiQuota` 写成 `{total,used}`（组件读 `{limit,used}`）导致预览 ¥NaN，与组件色无关；本区域校验用用例已按 `limit` 字段构造。

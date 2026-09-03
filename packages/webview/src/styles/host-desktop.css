@@ -1054,6 +1054,35 @@
   color: var(--vscode-foreground);
 }
 
+/* ═══ ⓘ API 余额明细气泡卡对齐设计稿 13651:4864（Frame 1321327547）═══
+   悬浮卡：白底 #FFFFFF、1px 描边 #EBEEF5、圆角 r12、柔和投影
+   0/0/12 rgba(0,0,0,.12)；内边距 9（外框 235×78 − 内容 217×60，四边同距）。
+   内容 12px：标题与金额 #1F2329 w500、行标签 #565A60 w400。警示文案（琥珀/
+   红）不由设计帧决定，走主题变量（--vscode-editorWarning-foreground /
+   --vscode-errorForeground），见文件尾审计说明。深色无设计帧，保持 base
+   vscode token 方案（面板底 + widget 描边 + 强投影），仅统一几何。 */
+[data-host="desktop"] .api-quota-popover {
+  padding: 9px;
+  border-radius: 12px;
+}
+[data-host="desktop"][data-theme="light"] .api-quota-popover {
+  background: #ffffff;
+  border: 1px solid #EBEEF5;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.12);
+}
+[data-host="desktop"][data-theme="light"] .api-popover-title {
+  color: #1f2329;
+  font-weight: 500;
+}
+[data-host="desktop"][data-theme="light"] .api-popover-row {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="light"]
+  .api-popover-amt:not(.is-empty) {
+  color: #1f2329;
+  font-weight: 500;
+}
+
 /* Composer 卡片最大宽：Figma Form - 发送消息 768px（Container 800 = 768 + pad 16×2；
    base input-wrapper 800 使卡片在宽 pane 下宽出 32px） */
 [data-host="desktop"] .input-wrapper {
