@@ -31,10 +31,17 @@
   padding: 0 12px 12px;
 }
 
-/* macOS 窗口控制行（codechat sidebar-window-row）：44px，红绿灯 12px 圆点。
-   两种形态见 DesktopSidebar.tsx：原型预览绘制假圆点；真机 macOS（隐藏标题栏，
-   spec「macOS 隐藏标题栏」）为空行——系统红绿灯叠加在该行左端，整行充当窗口
-   拖拽区（Electron -webkit-app-region，浏览器环境忽略）。 */
+/* macOS 窗口控制行（codechat sidebar-window-row）：44px 高，是侧边栏自身的
+   首行内容——红绿灯（系统绘制或假圆点）与「收起侧边栏」按钮同排，背景与侧栏
+   同色一体、无条带/下边界（2026-09-03 返工布局对齐参考截图）。两种形态见
+   DesktopSidebar.tsx：
+   - 原型预览：假红绿灯圆点 + 按钮。假圆点几何与真实系统红绿灯一致（红点左缘
+     距窗口左 20px、圆点 12px、点距 8px），按钮紧接点组（行 gap 8px），图标
+     可见左缘落在绿点右缘 +13px 处（图 1 参考实测值）。
+   - 真机 macOS（隐藏标题栏，spec「macOS 隐藏标题栏」）：不画假圆点——系统
+     红绿灯叠加在该行左端，整行 -webkit-app-region: drag（Electron，浏览器
+     环境忽略）；`.--mac-drag` 把内容起点推到 80px（与预览同落位），行内按钮
+     需 no-drag 才能点击（见 .sidebar-window-row button）。 */
 .sidebar-window-row {
   flex: 0 0 44px;
   height: 44px;
@@ -48,6 +55,16 @@
 .sidebar-window-row--mac-drag {
   -webkit-app-region: drag;
   user-select: none;
+  /* 无假圆点的真机形态：内容起点让出系统红绿灯区（侧栏 padding 12px +
+     本行 padding-left 68px = 按钮左缘 80px，与预览形态同一落位）。若 mac 实机
+     红绿灯实际位置有偏差，改这一个数值即可微调。 */
+  padding-left: 68px;
+}
+
+/* 拖拽行内的按钮必须解除 drag 才能点击/悬停（Electron 拖拽区吞掉子元素指针
+   事件；仅真机 macOS 的 --mac-drag 行生效，浏览器/预览无 -webkit-app-region）。 */
+.sidebar-window-row button {
+  -webkit-app-region: no-drag;
 }
 
 /* macOS 隐藏标题栏 + 侧边栏收起：对话顶栏最左端让出系统红绿灯区域（约 76px），
