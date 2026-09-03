@@ -8,8 +8,8 @@
  * `__wavePostMessage`/`__waveReceive` bridge in JetBrains).
  *
  * Protocol (same command names the chat webview already uses):
- * - webview → host: `getConfiguration`, `getAgentsContent`, `closeSettings`,
- *   `prefillPrompt`
+ * - webview → host: `settingsReady`, `getConfiguration`, `getAgentsContent`,
+ *   `closeSettings`, `prefillPrompt`
  * - host → webview: `configurationResponse`, `agentsContentResponse`,
  *   `settingsState` (workdir push on open)
  */
@@ -43,6 +43,12 @@ function SettingsPreview() {
   const [initialNav, setInitialNav] = useState<NavKey | undefined>(undefined);
 
   useEffect(() => {
+    // Report readiness before pulling data: the host re-serves the cached
+    // settingsState (workdir + nav) on settingsReady — a settingsState posted
+    // right after the panel was created is dropped because this page's JS has
+    // not registered its message listener yet (VS Code does not buffer it), which
+    // would leave /mcp、/agents、/skills、/hooks unable to preselect a tab.
+    vscode.postMessage({ command: "settingsReady" });
     // On open: pull the configuration + the user-level AGENTS.md (the
     // personalization view requests the project scope on demand, same as the
     // desktop full-page does via ChatApp).
