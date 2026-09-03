@@ -20,6 +20,9 @@ export class WebviewManager {
   private planPanels: Map<string, vscode.WebviewPanel> = new Map();
   /** Editor-area settings tab (single instance, see getOrCreateSettingsPanel). */
   private settingsPanel: vscode.WebviewPanel | undefined;
+  /** Latest settingsState posted via postSettingsMessage; re-served to a fresh
+   *  settings webview on resendSettingsState. */
+  private lastSettingsMessage: unknown = undefined;
   private context: vscode.ExtensionContext;
   private callbacks: WebviewManagerCallbacks;
 
@@ -187,9 +190,21 @@ export class WebviewManager {
     return panel;
   }
 
-  /** Posts a message to the settings tab webview (no-op while it is closed). */
+  /** Posts a message to the settings tab webview (no-op while it is closed).
+   *  The latest message is cached so a freshly created settings webview — whose
+   *  page JS has not yet registered its listener, so VS Code drops this post —
+   *  can be re-served via [resendSettingsState] once it reports settingsReady. */
   public postSettingsMessage(message: unknown) {
+    this.lastSettingsMessage = message;
     this.settingsPanel?.webview.postMessage(message);
+  }
+
+  /** Re-posts the latest settingsState (see [postSettingsMessage]); no-op while
+   *  the settings tab is closed or nothing was ever posted. */
+  public resendSettingsState() {
+    if (this.lastSettingsMessage !== undefined) {
+      this.settingsPanel?.webview.postMessage(this.lastSettingsMessage);
+    }
   }
 
   /** Closes the settings tab (webview "closeSettings" message). */

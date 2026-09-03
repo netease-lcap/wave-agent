@@ -101,6 +101,16 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         }
       },
       onSettingsMessage: async (message) => {
+        // A freshly created settings webview reports settingsReady once its page
+        // has mounted and can receive messages. VS Code drops a settingsState
+        // posted before that (see webviewManager.postSettingsMessage), so re-serve
+        // the cached state — otherwise the nav is lost and /mcp、/agents、/skills、
+        // /hooks 斜杠命令打开设置页无法选中对应选项卡.
+        const command = (message as { command?: string }).command;
+        if (command === "settingsReady") {
+          this.webviewManager.resendSettingsState();
+          return;
+        }
         // Settings tab messages hit the shared services only; gate on init so
         // configService/utilityClient exist before dispatch.
         await this.initPromise.catch(() => {});
@@ -782,6 +792,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   public async openSettings(nav?: string) {
     const panel = this.webviewManager.getOrCreateSettingsPanel();
     panel.reveal(vscode.ViewColumn.Active);
+    // nav 随 settingsState 下发（webviewManager 缓存之）。当面板刚被创建时页面
+    // 尚未加载完，本次 post 会被丢弃——settings webview 挂载后报 settingsReady，
+    // host 经 resendSettingsState() 重发缓存的 settingsState 确保 nav 不丢。
     this.webviewManager.postSettingsMessage({
       command: "settingsState",
       workdir: this.getSettingsWorkdir(),

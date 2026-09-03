@@ -219,4 +219,65 @@ describe("WebviewManager settings panel", () => {
     manager.getOrCreateSettingsPanel();
     expect(createWebviewPanel).toHaveBeenCalledTimes(2);
   });
+
+  it("re-serves the cached settingsState (workdir + nav) to a fresh panel on resendSettingsState", () => {
+    // 回归：/mcp、/agents 等斜杠命令打开设置页不选中对应选项卡。VS Code 会丢弃
+    // 在新建 webview 页面挂载前 post 的 settingsState（nav 丢失）。postSettingsMessage
+    // 缓存最新 state，页面挂载后报 settingsReady → host 调 resendSettingsState() 重发，
+    // 缓存跨面板关闭/重建存活，确保重建后 nav 仍能送达新面板。
+    const panel = makePanel();
+    let disposeCb: (() => void) | undefined;
+    panel.onDidDispose = (cb) => {
+      disposeCb = cb;
+    };
+    createWebviewPanel.mockReturnValue(panel);
+    const manager = makeManager();
+
+    manager.getOrCreateSettingsPanel();
+    manager.postSettingsMessage({
+      command: "settingsState",
+      workdir: "/tmp/proj",
+      nav: "mcp",
+    });
+
+    // 用户关闭设置 tab（onDidDispose 清理 settingsPanel）→ 再次 /mcp 会新建面板。
+    disposeCb?.();
+    const freshPanel = makePanel();
+    createWebviewPanel.mockReturnValue(freshPanel);
+    manager.getOrCreateSettingsPanel();
+    manager.resendSettingsState();
+
+    expect(freshPanel.webview.postMessage).toHaveBeenCalledWith({
+      command: "settingsState",
+      workdir: "/tmp/proj",
+      nav: "mcp",
+    });
+  });
+
+  it("re-posts the cached state to the existing panel and lets a nav-less open overwrite it", () => {
+    const panel = makePanel();
+    createWebviewPanel.mockReturnValue(panel);
+    const manager = makeManager();
+    manager.getOrCreateSettingsPanel();
+
+    manager.postSettingsMessage({
+      command: "settingsState",
+      workdir: "/tmp/proj",
+      nav: "subagents",
+    });
+    manager.resendSettingsState();
+    expect(panel.webview.postMessage).toHaveBeenLastCalledWith({
+      command: "settingsState",
+      workdir: "/tmp/proj",
+      nav: "subagents",
+    });
+
+    // nav-less open (e.g. /config) overwrites the cached state.
+    manager.postSettingsMessage({ command: "settingsState", workdir: "/tmp" });
+    manager.resendSettingsState();
+    expect(panel.webview.postMessage).toHaveBeenLastCalledWith({
+      command: "settingsState",
+      workdir: "/tmp",
+    });
+  });
 });
