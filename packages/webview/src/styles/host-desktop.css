@@ -1841,3 +1841,108 @@
   background-color: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
+
+/* ═══ 0903 新基线第 1 轮：右侧面板 tab 条区域（desktop-panel-tabs）═══════
+   spec-first DesktopPanelTabs 未纳入桌面设计系统色板（base 用 vscode token：
+   容器 #F7F8FB/#181818、active color-mix(10% fg)、hover list-hover 蓝灰）。
+   对齐 Figma 13438:8119 Header + codechat .preview-tabbar：
+   ① 顶部容器浅色白底 #FFF / 底边 #EBEEF5（内容区灰底之上清晰分层的 Header），
+      深色沿用面板深色（#181818，与 pane 一体，不另加亮底）；
+   ② tab 文字 14px 后 inactive #565A60 / dark #9A9EA5，active #1F2329 / #FFF
+      底 #F0F2F5 / rgba(255,255,255,0.12)（align cc pressed 12%）；
+   ③ hover 统一 fill-hover #EEF0F3 / dark 8% 白（tab / add / 全屏 / close，
+      base vscode list-hover 蓝灰不入规范）；active tab hover 不漂移。 */
+
+[data-host="desktop"][data-theme="light"] .desktop-panel-tabs {
+  background: #ffffff;
+  border-bottom-color: #ebeef5;
+}
+
+[data-host="desktop"][data-theme="light"] .desktop-panel-tab {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="light"] .desktop-panel-tab.active {
+  background: #f0f2f5;
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-panel-tab {
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-panel-tab.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+[data-host="desktop"][data-theme="light"] .desktop-panel-tab:not(.active):hover,
+[data-host="desktop"][data-theme="light"] .desktop-panel-tab:not(.active):focus-visible {
+  background: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-panel-tab:not(.active):hover,
+[data-host="desktop"][data-theme="dark"] .desktop-panel-tab:not(.active):focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* active tab hover 保持 pressed 底（base .desktop-panel-tab:hover 对 active
+   也生效，需显式写 --active:hover 防漂回 hover 色，见第二十五轮教训） */
+[data-host="desktop"][data-theme="light"] .desktop-panel-tab.active:hover {
+  background: #f0f2f5;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-panel-tab.active:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* tab 间分隔线深色版（base 固定 #DCDFE6） */
+[data-host="desktop"][data-theme="dark"]
+  .desktop-panel-tab
+  + .desktop-panel-tab::before {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* add / 全屏 / close 按钮 hover 统一 fill-hover（spec-first base 用 vscode
+   list-hover 蓝灰；第 5/6 轮同类按钮先例 #EEF0F3 / dark 8% 白） */
+[data-host="desktop"][data-theme="light"] .desktop-panel-tabs-add:hover,
+[data-host="desktop"][data-theme="light"]
+  .desktop-panel-tabs-actions
+  .preview-pane-button:hover,
+[data-host="desktop"][data-theme="light"]
+  .desktop-panel-tab
+  .preview-tab-close:hover {
+  background: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-panel-tabs-add:hover,
+[data-host="desktop"][data-theme="dark"]
+  .desktop-panel-tabs-actions
+  .preview-pane-button:hover,
+[data-host="desktop"][data-theme="dark"]
+  .desktop-panel-tab
+  .preview-tab-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ＋/× 图标 =「功能」icon-button 官方矢量（13383:21135 添加 / 13440:12468
+   关闭），currentColor 着色：常态组件图标灰，hover 随容器加深（同 queued
+   action-button 先例，设计稿 hover variant 亦深色 icon） */
+[data-host="desktop"][data-theme="light"] .desktop-panel-tabs-add,
+[data-host="desktop"][data-theme="light"]
+  .desktop-panel-tab
+  .preview-tab-close {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-panel-tabs-add,
+[data-host="desktop"][data-theme="dark"]
+  .desktop-panel-tab
+  .preview-tab-close {
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="light"] .desktop-panel-tabs-add:hover,
+[data-host="desktop"][data-theme="light"]
+  .desktop-panel-tab
+  .preview-tab-close:hover {
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-panel-tabs-add:hover,
+[data-host="desktop"][data-theme="dark"]
+  .desktop-panel-tab
+  .preview-tab-close:hover {
+  color: #ffffff;
+}

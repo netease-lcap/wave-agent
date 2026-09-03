@@ -5,8 +5,9 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  height: 34px;
-  padding: 0 6px;
+  /* 面板头部高度：Figma 13438:8119 Header 44px（codechat .preview-tabbar 同值） */
+  height: 44px;
+  padding: 0 12px;
   gap: 4px;
   border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
   background: var(--vscode-sideBar-background, var(--vscode-panel-background));
@@ -15,7 +16,8 @@
 .desktop-panel-tabs-strip {
   display: flex;
   align-items: center;
-  gap: 2px;
+  /* tab 间距：分隔线落在间隙正中（codechat .preview-tabs gap 8 同值） */
+  gap: 8px;
   flex: 1;
   min-width: 0;
   overflow-x: auto;
@@ -29,39 +31,52 @@
 }
 
 .desktop-panel-tab {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 24px;
+  /* tab 药丸规格：Figma 13561:39645 26px 高 / r8 / pad 8,8,2,2 / 文字 14px */
+  height: 26px;
   max-width: 140px;
   min-width: 56px;
-  padding: 0 4px 0 8px;
+  padding: 0 8px;
   border: none;
-  border-radius: 12px;
-  font-size: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 22px;
   color: var(--vscode-foreground);
   background: transparent;
   cursor: pointer;
   user-select: none;
-  opacity: 0.8;
   flex-shrink: 0;
 }
 
-.desktop-panel-tab .codicon,
+/* tab 间细竖分隔线：Figma 13561:39838 1×16 #DCDFE6（codechat
+   .preview-tab + .preview-tab::before 同款；top 5 / left -5 落在 8px 间隙中央） */
+.desktop-panel-tab + .desktop-panel-tab::before {
+  position: absolute;
+  top: 5px;
+  left: -5px;
+  width: 1px;
+  height: 16px;
+  background: #dcdfe6;
+  content: "";
+}
+
 .desktop-panel-tab .desktop-panel-tab-icon {
-  font-size: 13px;
-  opacity: 0.85;
+  /* 面板类型图标 = Figma Component 12 完整 16px grid（Figma tab 内 16×16 实例） */
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
 }
 
 .desktop-panel-tab:hover {
   background: var(--vscode-list-hoverBackground);
-  opacity: 1;
 }
 
 .desktop-panel-tab.active {
   background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
-  opacity: 1;
 }
 
 .desktop-panel-tab.active .desktop-panel-tab-label {
@@ -100,32 +115,45 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  /* 操作按钮 = Figma「功能」icon-button 24×24（13383:4517） */
+  width: 24px;
+  height: 24px;
   margin: 0;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   background: transparent;
   color: var(--vscode-foreground);
   cursor: pointer;
   flex-shrink: 0;
-  /* Last flex child of the strip, trailing the tabs (browser semantics): when
-     the tabs fit it sits right after them; on overflow the strip scrolls
-     (DesktopPanelTabs scrolls the newest tab into view) — the button never
-     overlays a tab, unlike an earlier position:sticky right:0 version that
-     pinned it over the rightmost visible tab's content. */
+  /* "＋" 双位置：tabs 放得下时它是 strip 的末位 flex child，紧跟最后 tab；
+     tabs 溢出（放不下）时由 DesktopPanelTabs 把它渲染到 strip 外、紧随
+     全屏按钮常驻（两种位置容器 flex gap 4 / strip gap 8 已就位，无需本规则）。 */
 }
 
 .desktop-panel-tabs-add:hover {
   background: var(--vscode-list-hoverBackground);
 }
 
+/* 官方矢量 svg（AddTabGlyph / CloseTabGlyph）在 flex 按钮中 block 化，
+   消除 inline 基线空隙导致的 1-2px 视觉偏移 */
+.desktop-panel-tabs-add svg,
+.desktop-panel-tab .preview-tab-close svg {
+  display: block;
+}
+
 .desktop-panel-tabs-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   flex-shrink: 0;
+}
+
+/* 全屏按钮使用 lucide svg（Figma icon_line/maximize），16px glyph 居中 24 框 */
+.desktop-panel-tabs-action-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 /* "＋" menu anchored right under the + button (left is set dynamically by

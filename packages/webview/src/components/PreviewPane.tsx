@@ -623,13 +623,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
               onClick={startEditing}
               data-testid="preview-address-display"
             >
-              {/* 地址栏前置图标即「预览」面板图标（Figma Component 12），
-                  glob 语义 = 网页/地址。 */}
-              <PanelKindIcon
-                kind="preview"
-                size={13}
-                className="preview-pane-url-icon"
-              />
+              {/* 显示态 = 编辑态胶囊同款纯文字地址（Figma 13438:7439 Header
+                  地址胶囊无前置图标，font 14/26 高），点击进入编辑。 */}
               <span className="preview-pane-url-text">{displayUrl}</span>
             </span>
           )}
