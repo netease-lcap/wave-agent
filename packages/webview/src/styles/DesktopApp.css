@@ -1293,10 +1293,11 @@ body.is-panel-resizing webview {
 
 /* Pane close button lives inside the header's button row (flex, vertically
    centered like every other header button) — threaded in via ChatApp's
-   headerActions slot. Slightly dimmed: closing a split is a secondary action. */
+   headerActions slot. 24×24 功能按钮规格（Figma「关闭」13440:12465 官方
+   24 artboard icon，与其余 header 功能按钮同规格同色）。 */
 .desktop-pane-close {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   background-color: transparent;
   color: var(--vscode-foreground);
@@ -1306,11 +1307,9 @@ body.is-panel-resizing webview {
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.7;
 }
 
 .desktop-pane-close:hover {
-  opacity: 1;
   background-color: var(--vscode-toolbar-hoverBackground);
 }
 
