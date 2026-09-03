@@ -109,10 +109,14 @@ describe("PanelToggleMenu", () => {
     );
   });
 
-  it("closes on click outside but not on click inside", () => {
+  it("closes on click outside but not on click inside", async () => {
     const { onClose } = renderMenu();
     fireEvent.mouseDown(screen.getByTestId("panel-toggle-item-preview"));
     expect(onClose).not.toHaveBeenCalled();
+    // The outside-click listener registers one tick after mount (useClickOutside
+    // defers it so the mousedown that opens a menu isn't treated as outside) —
+    // wait for registration before simulating the outside click.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     fireEvent.mouseDown(document.body);
     expect(onClose).toHaveBeenCalledTimes(1);
   });

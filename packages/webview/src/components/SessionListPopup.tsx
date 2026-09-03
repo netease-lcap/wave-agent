@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { SessionMetadata } from "wave-agent-sdk";
+import { useClickOutside } from "../utils/useClickOutside";
 import { formatSessionLabel } from "../utils/session";
 import { SessionList } from "./SessionList";
 import "../styles/SessionListPopup.css";
@@ -31,26 +32,18 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
   }, []);
 
   // Click outside + Escape to close
+  useClickOutside({
+    refs: [popupRef],
+    onClickOutside: onClose,
+  });
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        popupRef.current &&
-        !popupRef.current.contains(event.target as Node)
-      ) {
-        onClose();
-      }
-    };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onClose();
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
   const filteredSessions = useMemo(() => {

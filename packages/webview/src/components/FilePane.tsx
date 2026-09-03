@@ -10,6 +10,7 @@ import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
 import type { FileItem, FileViewState, VsCodeApi } from "../types";
 import { toRelativePath } from "../utils/messageUtils";
+import { useClickOutside } from "../utils/useClickOutside";
 import { FileSuggestionDropdown } from "./FileSuggestionDropdown";
 import "../styles/FilePane.css";
 
@@ -232,6 +233,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const toolbarRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchPopoverRef = useRef<HTMLDivElement>(null);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const searchInputRowRef = useRef<HTMLDivElement>(null);
 
   // Search popover: the toolbar's search icon toggles a floating panel (input +
@@ -302,20 +304,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [searchOpen]);
 
   // Dismiss when clicking outside the popover (and not on the trigger button).
-  useEffect(() => {
-    if (!searchOpen) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (searchPopoverRef.current?.contains(target)) return;
-      const trigger = document.querySelector(
-        "[data-testid='file-pane-search-trigger']",
-      );
-      if (trigger?.contains(target)) return;
-      closeSearch();
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [searchOpen, closeSearch]);
+  // Listener registered one tick later inside useClickOutside.
+  useClickOutside({
+    refs: [searchPopoverRef, searchTriggerRef],
+    enabled: searchOpen,
+    onClickOutside: closeSearch,
+  });
 
   const handleSearchFocus = useCallback(() => {
     setSearchActive(true);
@@ -499,6 +493,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           {vscode && (
             <button
               type="button"
+              ref={searchTriggerRef}
               className={`preview-pane-button file-pane-search-trigger${searchOpen ? " active" : ""}`}
               data-testid="file-pane-search-trigger"
               title={searchOpen ? "收起文件搜索" : "搜索文件"}

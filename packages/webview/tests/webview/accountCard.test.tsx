@@ -198,7 +198,7 @@ describe("AccountCard (desktop sidebar)", () => {
   });
 
   describe("API 明细气泡（hover ⓘ）", () => {
-    it("opens on hover/focus of ⓘ, shows used/remaining amounts, closes on outside click and Esc", () => {
+    it("opens on hover/focus of ⓘ, shows used/remaining amounts, closes on outside click and Esc", async () => {
       renderDesktop();
       pushAccount({ ...loggedIn, plan: plan80, apiQuota: apiPlenty });
       const info = screen.getByTestId("api-quota-info");
@@ -216,6 +216,9 @@ describe("AccountCard (desktop sidebar)", () => {
 
       fireEvent.mouseEnter(info);
       popover = screen.getByTestId("api-quota-popover");
+      // Outside-click listener registers one tick after the popover mounts
+      // (useClickOutside defers it) — wait before simulating the outside click.
+      await new Promise((resolve) => setTimeout(resolve, 0));
       fireEvent.mouseDown(document.body);
       expect(screen.queryByTestId("api-quota-popover")).not.toBeInTheDocument();
     });
@@ -383,12 +386,15 @@ describe("AccountCard (desktop sidebar)", () => {
       expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
     });
 
-    it("closes the menu on outside click and returns focus to the hotzone after item Escape", () => {
+    it("closes the menu on outside click and returns focus to the hotzone after item Escape", async () => {
       renderDesktop();
       pushAccount({ ...loggedIn, plan: plan80, apiQuota: apiPlenty });
       const hotzone = screen.getByTestId("account-card-hotzone");
 
       fireEvent.click(hotzone);
+      // Outside-click listener registers one tick after the menu mounts
+      // (useClickOutside defers it) — wait before simulating the outside click.
+      await new Promise((resolve) => setTimeout(resolve, 0));
       fireEvent.mouseDown(document.body);
       expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
 

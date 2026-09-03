@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import { useClickOutside } from "../utils/useClickOutside";
 import "../styles/ModelPopup.css";
 
 interface ModelPopupProps {
@@ -35,20 +36,15 @@ export const ModelPopup: React.FC<ModelPopupProps> = ({
     if (isVisible) popupRef.current?.focus();
   }, [isVisible]);
 
-  // Handle clicks outside to close popup
-  useEffect(() => {
-    if (!isVisible) return;
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        popupRef.current &&
-        !popupRef.current.contains(event.target as Node)
-      ) {
-        onClose();
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isVisible, onClose]);
+  // Handle clicks outside to close popup. The listener is registered one tick
+  // later (inside useClickOutside) so the mousedown that just mounted this
+  // popup — e.g. clicking the /model entry in the slash-command popup — does
+  // not immediately count as an outside click and close it.
+  useClickOutside({
+    refs: [popupRef],
+    enabled: isVisible,
+    onClickOutside: onClose,
+  });
 
   // Auto-scroll selected item into view when navigation happens
   useEffect(() => {

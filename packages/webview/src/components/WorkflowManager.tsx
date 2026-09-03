@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useClickOutside } from "../utils/useClickOutside";
 import { WorkflowManagerProps, SerializableWorkflowRun } from "../types";
 import "../styles/ConfigurationDialog.css";
 
@@ -63,15 +64,14 @@ const WorkflowManager: React.FC<
     vscode.postMessage({ command: "stopWorkflowRun", runId });
   };
 
+  // Click-outside close (listener registered one tick later inside the hook,
+  // so the click that opened this dialog doesn't immediately close it).
+  useClickOutside({
+    refs: [dialogRef],
+    onClickOutside: onCancel,
+  });
+
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dialogRef.current &&
-        !dialogRef.current.contains(event.target as Node)
-      ) {
-        onCancel();
-      }
-    };
     const handleEscapeKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (selectedRunId) {
@@ -81,15 +81,8 @@ const WorkflowManager: React.FC<
         }
       }
     };
-    const timer = setTimeout(() => {
-      document.addEventListener("mousedown", handleClickOutside);
-    }, 0);
     document.addEventListener("keydown", handleEscapeKey);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEscapeKey);
-    };
+    return () => document.removeEventListener("keydown", handleEscapeKey);
   }, [onCancel, selectedRunId]);
 
   const renderDetail = () => {

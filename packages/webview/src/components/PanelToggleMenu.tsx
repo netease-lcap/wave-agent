@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import { useClickOutside } from "../utils/useClickOutside";
 import type { DesktopPanelKind, PanelToggleProps } from "../types";
 import "../styles/PanelToggleMenu.css";
 
@@ -93,24 +94,20 @@ export const PanelToggleMenu: React.FC<PanelToggleMenuProps> = ({
   });
 
   // Click-outside + global Escape fallback (the hook only handles Escape from
-  // a focused item).
+  // a focused item). useClickOutside registers the mousedown listener one tick
+  // later so a mousedown that just mounted this menu is not an outside click.
+  useClickOutside({
+    refs: [menuRef],
+    onClickOutside: onClose,
+  });
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onClose();
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
   return (

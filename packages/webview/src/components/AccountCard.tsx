@@ -4,6 +4,7 @@ import type {
   AccountPlanInfo,
   AccountUpdateInfo,
 } from "wave-webview-fixtures";
+import { useClickOutside } from "../utils/useClickOutside";
 import { MoreMenu } from "./MoreMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 // 未登录态「更多」按钮沿用 0902 第 5 轮问号圆（ailsa 新基线）；已登录态不再
@@ -179,24 +180,21 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     [apiHideTimer],
   );
 
-  // API 余额气泡：点击外部或 Esc 立即强制收起（悬停态也生效）。
+  // API 余额气泡：点击外部或 Esc 立即强制收起（悬停态也生效）。Click-outside
+  // 豁免气泡与 ⓘ 触发按钮本身（再点 ⓘ toggle）；listener 经 useClickOutside
+  // 延迟一帧注册，气泡被自身打开点击误关的防御见其注释。
+  useClickOutside({
+    refs: [apiPopoverRef, apiTriggerRef],
+    enabled: showApiPopover,
+    onClickOutside: () => setShowApiPopover(false),
+  });
   useEffect(() => {
     if (!showApiPopover) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (apiPopoverRef.current?.contains(target)) return;
-      if (apiTriggerRef.current?.contains(target)) return;
-      setShowApiPopover(false);
-    };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setShowApiPopover(false);
     };
-    document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [showApiPopover]);
 
   // 未登录：整条登录按钮 + 右侧「更多」按钮（沿用当前基线视觉）。
