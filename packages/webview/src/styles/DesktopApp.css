@@ -1386,13 +1386,13 @@ body.is-panel-resizing webview {
 }
 
 .desktop-panel-empty-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--vscode-foreground);
 }
 
 .desktop-panel-empty-sub {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--vscode-descriptionForeground, #999);
   margin-bottom: 10px;
 }
@@ -1414,7 +1414,7 @@ body.is-panel-resizing webview {
   border-radius: 6px;
   background: transparent;
   color: var(--vscode-foreground);
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
   text-align: left;
 }
@@ -1435,7 +1435,7 @@ body.is-panel-resizing webview {
 .desktop-panel-empty-shortcut {
   margin-left: auto;
   opacity: 0.7;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* An inline ConfirmationDialog (plan preview / permission / AskUserQuestions)
