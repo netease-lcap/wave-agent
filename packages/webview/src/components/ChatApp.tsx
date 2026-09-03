@@ -692,6 +692,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }
     }
     sentFromNewSessionRef.current = false;
+    // Fullscreen belongs to the outgoing session's preview tab — switching
+    // sessions must always exit it (a pane rebinding away would otherwise carry
+    // a stale true over and hide the conversation column + panel slot for good;
+    // PM bug 3465519197988352「预览全屏叉掉后对话框消失」). Switching is the
+    // universal escape hatch even if a close path ever misses its own reset.
+    setPreviewFullscreen(false);
     setPreviewForwardError(group?.forwardError ?? null);
     setCurrentForward(group?.forward ?? null);
     setTabs(group?.checked ?? []);
@@ -1993,6 +1999,25 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     usageSessionRef.current = sessionId;
     if (previous !== undefined && previous !== sessionId) {
       setContextUsage(undefined);
+    }
+  }, [state.currentSession?.id]);
+
+  // Preview fullscreen is conversation-scoped, same pattern as the btw panel
+  // and context-usage effects above: the single root layout (no panes) keeps
+  // ChatApp mounted across sidebar session switches, so the local fullscreen
+  // state would otherwise survive into the next conversation. Fullscreen
+  // belongs to the outgoing session's preview tab — a stale true hides the
+  // conversation column and the panel slot with no UI left to restore it
+  // (关闭全屏预览后对话框消失, PM bug 3465519197988352). Switching
+  // conversations is the universal escape hatch. `previous !== undefined`
+  // keeps the initial mount a no-op.
+  const fullscreenSessionRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const sessionId = state.currentSession?.id;
+    const previous = fullscreenSessionRef.current;
+    fullscreenSessionRef.current = sessionId;
+    if (previous !== undefined && previous !== sessionId) {
+      setPreviewFullscreen(false);
     }
   }, [state.currentSession?.id]);
 
