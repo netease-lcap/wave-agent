@@ -91,9 +91,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             position="bottom"
           >
             <button
-              className={`header-button header-panel-toggle${
-                panelToggle.expanded ? " header-panel-toggle--expanded" : ""
-              }`}
+              className="header-button header-panel-toggle"
               onClick={panelToggle.onToggle}
               data-testid="panel-toggle-btn"
               aria-label={panelToggle.expanded ? "收起面板" : "展开面板"}
