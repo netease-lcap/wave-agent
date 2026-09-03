@@ -613,7 +613,9 @@
 }
 
 /* 消息流时间线节点：Figma design-node 12px / #16A34A / 白描边（覆盖此前
-   codechat 推断的 8px 灰点）；行 padding-left 12px → 20px（节点 12 + gap 8） */
+   codechat 推断的 8px 灰点）；行 padding-left 12px → 20px（节点 12 + gap 8）。
+   颜色跟随 --dot-color（工具运行蓝/流式橙/成功绿/失败红，思考与文本
+   流式橙/结束绿），无状态时回落 Figma 绿 #16A34A。 */
 [data-host="desktop"] .timeline-row {
   padding-left: 20px;
 }
@@ -622,7 +624,7 @@
   height: 12px;
   left: 0;
   top: 15px;
-  background: #16a34a;
+  background: var(--dot-color, #16a34a);
   border: 2px solid #ffffff;
   box-sizing: border-box;
 }
