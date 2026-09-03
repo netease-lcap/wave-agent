@@ -253,6 +253,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     );
   }, [saving, configurationError]);
 
+  // 保存反馈是瞬态提示，只属于发起保存的视图：切换导航项即清除。若切换
+  // 时保存仍在进行中（host 未回包），一并丢弃该次反馈——用户已离开操作
+  // 视图，回包后再提示会残留在新视图上。
+  useEffect(() => {
+    setSaveMessage(null);
+    saveRequestedRef.current = false;
+  }, [activeNav]);
+
   const handleToggleSdd = () => {
     if (!onToggleBuiltinPlugin || pluginToggling) return;
     setPluginToggling(true);
