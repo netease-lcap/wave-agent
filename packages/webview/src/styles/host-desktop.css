@@ -2031,3 +2031,24 @@
 [data-host="desktop"] .lsp-output {
   border-radius: 12px;
 }
+
+/* ── 0903 新基线第 4 轮：面板空态五入口按钮圆角与 hover 底色统一
+   （用户评论「button.desktop-panel-empty-item 预览⇧⌘P——这些元素的圆角
+   颜色等检查是否符合规范」，锚点 .desktop-panel-empty-grid 五个空态入口）。
+   Figma 无空态帧权威（spec-first 自研），经用户走查确认：圆角 base r6 偏小，
+   与第 3 轮「其他模块圆角统一 12px」口径一致改 12px；border panel-border
+   （light #E4E7ED 已由 --vscode-panel-border 映射一致）保持；hover/focus-
+   visible 底色从 base spec-first 的 --vscode-toolbar-hoverBackground 蓝灰
+   统一为 fill-hover #EEF0F3 / dark 8% 白——与 tab/add/全屏/close 等 0903
+   控件一致。 */
+[data-host="desktop"] .desktop-panel-empty-item {
+  border-radius: 12px;
+}
+[data-host="desktop"][data-theme="light"] .desktop-panel-empty-item:hover:not(:disabled),
+[data-host="desktop"][data-theme="light"] .desktop-panel-empty-item:focus-visible {
+  background: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-panel-empty-item:hover:not(:disabled),
+[data-host="desktop"][data-theme="dark"] .desktop-panel-empty-item:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
