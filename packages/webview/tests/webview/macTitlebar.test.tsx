@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render } from "@testing-library/react";
+import { render, fireEvent, screen } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { isMacHiddenTitlebar } from "../../src/utils/platform";
@@ -10,8 +10,9 @@ vi.mock("../../src/styles/DesktopApp.css", () => ({}));
 
 /**
  * macOS 隐藏标题栏（spec「macOS 隐藏标题栏」）：仅在真实 Electron desktop +
- * darwin 时侧边栏顶部渲染 44px 空拖拽行（系统红绿灯落位、不画假圆点）或收起态
- * 顶栏左端让位；Windows/Linux 与原型预览（无 wavePlatform/waveHostType）不受影响。
+ * darwin 时侧边栏顶部渲染 44px 窗口行（系统红绿灯落位 + 不画假圆点）——该行即
+ * 侧边栏首行，红绿灯右侧同排「收起侧边栏」按钮（no-drag）；侧边栏收起时对话顶栏
+ * 左端让位红绿灯拖拽区。Windows/Linux 与原型预览分别验证按钮回退位置/假圆点形态。
  */
 function renderDesktopApp() {
   const vscode = createMockVscode();
@@ -32,6 +33,14 @@ const queryFakeDots = () => document.querySelectorAll(".window-dot");
 const queryTrafficSpacer = () =>
   document.querySelector(".chat-header-mac-traffic");
 const querySidebar = () => document.querySelector(".desktop-sidebar");
+const queryRowCollapse = () =>
+  document.querySelector(
+    '.sidebar-window-row [data-testid="desktop-sidebar-collapse"]',
+  );
+const queryHeaderCollapse = () =>
+  document.querySelector(
+    '.desktop-sidebar-actions [data-testid="desktop-sidebar-collapse"]',
+  );
 
 afterEach(() => {
   delete window.waveHostType;
@@ -63,7 +72,7 @@ describe("isMacHiddenTitlebar", () => {
 });
 
 describe("desktop titlebar row (sidebar expanded)", () => {
-  it("renders an empty drag row (no fake dots) on real macOS", () => {
+  it("renders a drag row hosting the collapse button (no fake dots) on macOS", () => {
     window.waveHostType = "desktop";
     window.wavePlatform = "darwin";
     renderDesktopApp();
@@ -72,7 +81,12 @@ describe("desktop titlebar row (sidebar expanded)", () => {
     expect(queryDragRow()).not.toBeNull();
     // The real OS traffic lights occupy the row's left — never draw fake dots.
     expect(queryFakeDots().length).toBe(0);
-    expect(queryDragRow()!.getAttribute("aria-hidden")).toBe("true");
+    // The collapse button sits in the window row next to the traffic lights
+    // (same row), not in the header's action group below.
+    expect(queryRowCollapse()).not.toBeNull();
+    expect(queryHeaderCollapse()).toBeNull();
+    // The row now hosts an interactive control — must not be aria-hidden.
+    expect(queryDragRow()!.getAttribute("aria-hidden")).toBeNull();
   });
 
   it("renders no window row on real Windows/Linux (native title bar kept)", () => {
@@ -82,9 +96,11 @@ describe("desktop titlebar row (sidebar expanded)", () => {
 
     expect(querySidebar()).not.toBeNull();
     expect(queryAnyWindowRow()).toBeNull();
+    // Without a window row the collapse button stays in the header actions.
+    expect(queryHeaderCollapse()).not.toBeNull();
   });
 
-  it("keeps the fake traffic-dot row in browser previews (no waveHostType)", () => {
+  it("keeps the fake traffic-dot row with a same-row collapse button in browser previews", () => {
     renderDesktopApp();
 
     expect(querySidebar()).not.toBeNull();
@@ -92,6 +108,21 @@ describe("desktop titlebar row (sidebar expanded)", () => {
     expect(row).not.toBeNull();
     expect(row!.classList.contains("sidebar-window-row--mac-drag")).toBe(false);
     expect(queryFakeDots().length).toBe(3);
+    // Mirror of the macOS layout: dots + collapse button share the window row.
+    expect(queryRowCollapse()).not.toBeNull();
+    expect(queryHeaderCollapse()).toBeNull();
+  });
+
+  it("collapsing from the window-row button still collapses the sidebar (macOS)", () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "darwin";
+    renderDesktopApp();
+
+    expect(querySidebar()).not.toBeNull();
+    fireEvent.click(screen.getByTestId("desktop-sidebar-collapse"));
+    expect(querySidebar()).toBeNull();
+    // The collapsed header reserves the traffic-light gutter as before.
+    expect(queryTrafficSpacer()).not.toBeNull();
   });
 });
 

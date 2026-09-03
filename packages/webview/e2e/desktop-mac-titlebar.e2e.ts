@@ -3,14 +3,15 @@ import { MessageInjector } from "./utils/messageInjector.js";
 
 /**
  * macOS 隐藏标题栏（spec「macOS 隐藏标题栏」）：main 进程仅在 darwin 隐藏系统
- * 标题栏，webview 据此在侧边栏顶部渲染 44px 窗口行（系统红绿灯落位 + 整行拖拽
- * 区，不画假圆点），侧边栏收起时在对话顶栏左端让出 ~76px 拖拽区。Linux 真机
+ * 标题栏，webview 据此在侧边栏顶部渲染 44px 窗口行（即侧边栏首行：系统红绿灯
+ * 落位 + 右侧同排「收起侧边栏」按钮，整行窗口拖拽区、按钮 no-drag 可点击，
+ * 不画假圆点），侧边栏收起时在对话顶栏左端让出 ~76px 拖拽区。Linux 真机
  * 无法跑 mac Electron，这里通过 evaluate 注入 `wavePlatform="darwin"`（等价于
  * mac preload 环境）并用真实的 UI 操作触发重渲染，做 DOM 几何验证；
  * -webkit-app-region 的实际拖拽行为仍需 mac 实机确认。
  */
 test.describe("macOS hidden titlebar", () => {
-  test("sidebar top renders an empty 44px drag row clear of controls", async ({
+  test("sidebar top renders a 44px drag row hosting the collapse button", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
@@ -37,8 +38,8 @@ test.describe("macOS hidden titlebar", () => {
     // Real OS traffic lights live on this row — the webview must not draw its
     // own dots on top (no duplication).
     await expect(webviewPage.locator(".window-dot")).toHaveCount(0);
-    // 44px row at the very top of the sidebar; the brand row starts below it,
-    // so no interactive control sits under the traffic lights.
+    // 44px row at the very top of the sidebar — it is the sidebar's own first
+    // content row: the brand row starts right below it.
     const rowBox = await dragRow.boundingBox();
     expect(rowBox).not.toBeNull();
     expect(rowBox!.height).toBeCloseTo(44, 0);
@@ -48,6 +49,20 @@ test.describe("macOS hidden titlebar", () => {
       .boundingBox();
     expect(brandBox).not.toBeNull();
     expect(brandBox!.y).toBeGreaterThanOrEqual(rowBox!.y + rowBox!.height - 1);
+
+    // The collapse button sits in the drag row, after the reserved traffic-light
+    // zone (sidebar 12px + row padding-left 68px → button left ≈ 80px), fully
+    // inside the 44px row so it is clickable (no-drag).
+    const collapse = webviewPage.getByTestId("desktop-sidebar-collapse");
+    await expect(collapse).toBeVisible();
+    const collapseBox = await collapse.boundingBox();
+    expect(collapseBox).not.toBeNull();
+    expect(collapseBox!.x).toBeGreaterThanOrEqual(74);
+    expect(collapseBox!.x).toBeLessThanOrEqual(92);
+    expect(collapseBox!.y).toBeGreaterThanOrEqual(rowBox!.y);
+    expect(collapseBox!.y).toBeLessThanOrEqual(
+      rowBox!.y + rowBox!.height - collapseBox!.height,
+    );
   });
 
   test("collapsed sidebar clears the traffic-light zone at the header's left", async ({
@@ -63,7 +78,8 @@ test.describe("macOS hidden titlebar", () => {
     await injector.waitForChatAppReady();
 
     // Enter the mac environment, then collapse the sidebar through the real
-    // control — the re-render evaluates the mac spacer branch.
+    // control (now hosted in the top window row) — the re-render evaluates the
+    // mac spacer branch.
     await webviewPage.evaluate(() => {
       (window as unknown as { wavePlatform?: string }).wavePlatform = "darwin";
     });

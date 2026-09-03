@@ -472,35 +472,63 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   };
 
   // macOS 隐藏标题栏（titleBarStyle: "hidden"，仅 darwin）：真机需要一条
-  // 44px 顶部窗口行承载系统红绿灯并充当窗口拖拽区（spec「macOS 隐藏标题栏」），
-  // 见下方渲染分支；Windows/Linux 真机保留系统原生标题栏，不渲染。
+  // 44px 顶部窗口行承载系统红绿灯并充当窗口拖拽区（spec「macOS 隐藏标题栏」）；
+  // Windows/Linux 真机保留系统原生标题栏，不渲染。
   const macHiddenTitlebar = isMacHiddenTitlebar();
+  // 是否渲染顶部窗口行：真机 macOS 与原型预览（浏览器无系统窗口 chrome）都渲染。
+  // 该行是侧边栏自身的第一行内容——红绿灯（系统绘制或假圆点）与「收起侧边栏」
+  // 按钮同排（spec 场景 2），视觉同色一体无条带。Windows/Linux 真机不渲染，
+  // 「收起侧边栏」按钮留在下方品牌行右侧（原生标题栏之上零改动）。
+  const renderWindowRow =
+    macHiddenTitlebar ||
+    (typeof window !== "undefined" && window.waveHostType !== "desktop");
 
   // Fully collapsed: nothing renders, no reserved width, no overlay — the chat
   // takes the whole pane width (spec 「侧边栏收起/展开」scenario 1).
   if (collapsed) return null;
 
+  // 「收起侧边栏」按钮：有窗口行（macOS 真机 + 原型预览）时随红绿灯坐进窗口行；
+  // Windows/Linux 真机仍放品牌行右侧图标组。真机窗口行整行为 drag 区，按钮需
+  // 单独 -webkit-app-region: no-drag 才能点击（见 DesktopApp.css）。
+  const collapseButton = (
+    <Tooltip text="收起侧边栏" position="bottom">
+      <button
+        type="button"
+        className="desktop-sidebar-more-btn"
+        onClick={() => onCollapsedChange(true)}
+        data-testid="desktop-sidebar-collapse"
+        aria-label="收起侧边栏"
+      >
+        <CollapseIcon />
+      </button>
+    </Tooltip>
+  );
+
   return (
     <div className="desktop-sidebar" data-testid="desktop-sidebar">
-      {/* macOS 窗口控制行（对齐 codechat 侧栏：44px 红绿灯行）。两种形态：
+      {/* macOS 窗口控制行（对齐参考：红绿灯行即侧边栏首行，红绿灯右侧同排
+          「收起侧边栏」图标）。两种形态：
           - 真机 macOS：系统标题栏已隐藏，红绿灯由系统绘制在该行左端——行内
-            不画假圆点，整行为 `-webkit-app-region: drag` 拖拽区（空行）。
-          - 原型预览/IDE mock（waveHostType 未注入、浏览器无系统窗口 chrome）：
-            绘制假红绿灯圆点行。
+            不画假圆点，整行为 `-webkit-app-region: drag` 拖拽区（按钮例外，
+            no-drag 可点击）。
+          - 原型预览（waveHostType 未注入、浏览器无系统窗口 chrome）：
+            绘制假红绿灯圆点行 + 同排按钮，与真机布局一致。
           真机 Windows/Linux 用系统原生标题栏，两者都不渲染。 */}
-      {macHiddenTitlebar ? (
-        <div
-          className="sidebar-window-row sidebar-window-row--mac-drag"
-          aria-hidden="true"
-        />
-      ) : typeof window !== "undefined" && window.waveHostType !== "desktop" ? (
-        <div className="sidebar-window-row" aria-hidden="true">
-          <span className="window-controls">
-            <span className="window-dot window-dot--close" />
-            <span className="window-dot window-dot--minimize" />
-            <span className="window-dot window-dot--maximize" />
-          </span>
-        </div>
+      {renderWindowRow ? (
+        macHiddenTitlebar ? (
+          <div className="sidebar-window-row sidebar-window-row--mac-drag">
+            {collapseButton}
+          </div>
+        ) : (
+          <div className="sidebar-window-row">
+            <span className="window-controls">
+              <span className="window-dot window-dot--close" />
+              <span className="window-dot window-dot--minimize" />
+              <span className="window-dot window-dot--maximize" />
+            </span>
+            {collapseButton}
+          </div>
+        )
       ) : null}
       <div className="desktop-sidebar-header">
         <CodewaveLogo height={14} />
@@ -520,16 +548,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               </button>
             </Tooltip>
           )}
-          <Tooltip text="收起侧边栏" position="bottom">
-            <button
-              className="desktop-sidebar-more-btn"
-              onClick={() => onCollapsedChange(true)}
-              data-testid="desktop-sidebar-collapse"
-              aria-label="收起侧边栏"
-            >
-              <CollapseIcon />
-            </button>
-          </Tooltip>
+          {/* 有窗口行的形态下按钮已上移至窗口行，避免与红绿灯行重复。 */}
+          {!renderWindowRow && collapseButton}
         </div>
       </div>
       <Tooltip
