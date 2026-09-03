@@ -4,7 +4,8 @@ import {
   NewSessionIcon,
   HistoryIcon,
   MoreIcon,
-  PanelToggleIcon,
+  PanelCollapseIcon,
+  PanelExpandIcon,
 } from "./HeaderIcons";
 import { SessionListPopup } from "./SessionListPopup";
 import { MoreMenu } from "./MoreMenu";
@@ -98,7 +99,11 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               aria-label={panelToggle.expanded ? "收起面板" : "展开面板"}
               aria-expanded={panelToggle.expanded}
             >
-              <PanelToggleIcon />
+              {panelToggle.expanded ? (
+                <PanelCollapseIcon />
+              ) : (
+                <PanelExpandIcon />
+              )}
             </button>
           </Tooltip>
         )}

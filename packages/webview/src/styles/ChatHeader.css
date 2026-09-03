@@ -104,20 +104,21 @@
   background-color: transparent;
 }
 
-/* Desktop panel toggle: Figma preview-toggle (40×24 composite icon: panel
-   layout glyph + chevron-down). Wider than the square 22×22 buttons, matching
-   codechat's workspace-header-panel-toggle (40×24). Clicking expands/collapses
-   the right-hand panel (expanded state mirrors .header-button.active). */
+/* Desktop panel toggle: Figma 功能图标「收起面板/展开面板」(13383:4517 组件集，
+   24×24 artboard，内层 16×16 icon canvas + ~15px glyph)，按钮 24×24 与其余
+   header-button 同一 hover/active 规范。点击展开/收起右侧面板：
+   expanded → 收起面板图标（13383:4717），collapsed → 展开面板图标（13383:4720）。 */
 .header-panel-toggle {
-  width: 40px;
+  width: 24px;
   height: 24px;
   padding: 0;
 }
 
-/* The generic .header-button .header-icon rule (16×16) would squeeze the
-   40×24 composite icon; keep its native aspect ratio. */
+/* The generic .header-button .header-icon rule (16×16) would shrink the
+   24-artboard icon; keep it at native artboard size (glyph keeps 16×16
+   inner-canvas proportions, matching the Figma 24 button + 16 icon box). */
 .header-panel-toggle .header-icon {
-  width: 40px;
+  width: 24px;
   height: 24px;
 }
 
