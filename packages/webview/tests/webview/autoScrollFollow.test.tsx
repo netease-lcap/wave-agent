@@ -202,4 +202,93 @@ describe("auto-scroll follow during streaming", () => {
 
     expect(scrollTo).not.toHaveBeenCalled();
   });
+
+  it("stops following at the wheel input itself during streaming, before the synthesized scroll event lands", async () => {
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
+
+    renderChatApp();
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [userMsg("问题", "u1"), assistantMsg("正在回答", "a1")],
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
+    );
+
+    act(() => {
+      sendCommand("startStreaming");
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Park the viewport at the bottom.
+    setGeometryAndScroll(1600, 2000);
+    scrollTo.mockClear();
+
+    // The user wheels up. Browsers synthesize the 'scroll' event only on a
+    // later rendering frame, so here NO scroll event is dispatched yet — a
+    // streaming chunk can arrive (and programmatically re-pin) inside that
+    // window. The opt-out must be latched at the wheel input itself, or the
+    // chunk yanks the viewport back to the bottom before the intent is ever
+    // recorded (the intermittent "I scroll up and it keeps pulling me back"
+    // during reasoning streams).
+    fireEvent.wheel(screen.getByTestId("messages-container"), {
+      deltaY: -120,
+    });
+    scrollTo.mockClear();
+
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          userMsg("问题", "u1"),
+          assistantMsg("正在回答……更多内容追加", "a1"),
+        ],
+      });
+    });
+
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("does not opt out when the wheel scrolls down while pinning (no upward intent)", async () => {
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
+
+    renderChatApp();
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [userMsg("问题", "u1"), assistantMsg("正在回答", "a1")],
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
+    );
+
+    act(() => {
+      sendCommand("startStreaming");
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    setGeometryAndScroll(1600, 2000);
+    scrollTo.mockClear();
+
+    // A downward wheel must not suspend following — the next chunk still pins.
+    fireEvent.wheel(screen.getByTestId("messages-container"), {
+      deltaY: 120,
+    });
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          userMsg("问题", "u1"),
+          assistantMsg("正在回答……更多内容追加", "a1"),
+        ],
+      });
+    });
+
+    expect(scrollTo).toHaveBeenCalled();
+  });
 });
