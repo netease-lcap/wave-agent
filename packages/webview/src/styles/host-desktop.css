@@ -893,6 +893,15 @@
 [data-host="desktop"] .write-tool-path:hover {
   text-decoration: underline;
 }
+/* 消息内文件路径链接（specs/ui/file-path-links.md）与 write-tool-path 对齐：
+   常态无下划线，hover 出现；颜色沿用上面的 markdown 链接桌面覆盖
+   （浅色 #2f5edb / 深色 #4daafc），非 write-tool-path 的灰。 */
+[data-host="desktop"] .markdown-content a.file-path-link {
+  text-decoration: none;
+}
+[data-host="desktop"] .markdown-content a.file-path-link:hover {
+  text-decoration: underline;
+}
 /* bash 命令输出内链接加入 dark 覆盖（第 26 轮遗漏：原规则仅覆盖
    write-tool-path 与 markdown-content a，bash 输出链接 dark 下仍为浅色
    #2f5edb，与 markdown 链接 #4daafc 不一致） */
