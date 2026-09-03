@@ -1921,3 +1921,87 @@ AskUserQuestion 两处呈现均沿用 IDE 时代 12px 字号，低于桌面 14px
   - `DesktopApp.css`：`.preview-pane-drag-handle` `top: 0 → -45px`（44px 标签条 + 1px 底边），拖拽命中区与 hover 分隔条从面板顶部一路连续到底，可在标签条左缘直接拖宽/收窄面板。
 - 说明：五个 pane（预览/差异/文件/计划/终端）共用 `.preview-pane` 类与同一 handle，一处改动全部生效；标签条存在是 pane 渲染的前提，故 -45px 上延不越界。
 - 实现文件：`src/styles/DesktopPanelTabs.css`、`src/styles/DesktopApp.css`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+---
+
+## 0903 新基线第 4 轮（2026-09，r2 分支首轮）：账户卡片用量显隐按钮收起态图标 → 官方「额度」图标
+
+预览评论：`button.account-card-collapse-btn`「这个图标替换成设计稿中的额度图标」（Figma 链接 node 13383:4517）。
+
+### 设计源
+
+「功能」图标集 COMPONENT_SET `13383:4517` 内 variant「额度」`13648:3600`（normal，24 artboard）：表盘外圈 r6.56 + 左右指示弧 + 指针 + 轴心，stroke #565A60 / w1.4 / round（与面板图标族同 spec）。SVG 直导后 #565A60 → currentColor。
+
+### 修改
+
+- `src/components/HeaderIcons.tsx`：新增 `QuotaIcon`（官方矢量内嵌，24×24，默认 className header-icon）。
+- `src/components/AccountCard.tsx`：用量显隐按钮收起态原 `codicon codicon-dashboard` → `<QuotaIcon />`；展开态 chevron-up 保留。
+
+范围确认（AskUserQuestion 澄清）：账户卡 spec（desktop-account-card-and-panel-tabs.md v3 定稿）双图标语义——展开态 chevron-up（提示可收起）、收起态仪表盘（提示可再展开）；用户选择「仅收起态换官方额度图标」，chevron 交互提示保留。
+
+### 验证
+
+- 未走自动化（用户约定人工走查）；HMR 已生效。请在 8899 桌面端侧栏账户卡点显隐按钮收起用量区，核对收起态图标 = 设计稿表盘额度图标（light/dark 均 currentColor 跟随），展开态仍为 chevron-up。
+
+---
+
+## 0903 新基线第 5 轮（2026-09，r2 分支）：账户卡显隐按钮图标过小/热区失真 → 修复 padding 压缩
+
+第 4 轮评论跟进：`button.account-card-collapse-btn`「你参考下设计稿的实现方式，现在图标很小，热区应该也不太对，仅看图标这里就好」（Figma node 13498:17085）。
+
+### 设计稿对比
+
+Figma 13498:17085 账户行（13498:17131，235×41）：右侧「功能」icon-button 实例（13651:3690 @x211,y13）= 24×24 按钮、内含 16×16 icon canvas、glyph（额度表盘）约 13×13。即按钮热区 24×24，glyph 视觉 ~13px 居中。
+
+### 根因
+
+`.account-card-collapse-btn` 未重置 `padding` → Chrome UA 对 button 默认 `padding: 1px 6px`（`border-box` 下内容区从 24px 被压到 12px）→ 24×24 的 svg 作为 flex item 被 flex-shrink 成 12×24，glyph 也随之压扁变小；视觉图标偏移、与热区不匹配，观感即「图标很小、热区不对」。
+
+### 修改（AccountCard.css）
+
+`.account-card-collapse-btn` 补 `padding: 0`（显式重置 UA 默认），内容区恢复满 24px。收起态官方额度 svg 回到 24×24 渲染（glyph 直径按 viewBox 比例 ≈13px，与设计稿一致）；展开态 chevron-up 同样从被压状态恢复 16px。
+
+### 验证
+
+- 未走自动化（用户约定人工走查）；仅做了计算样式诊断：收起态 svg 24×24（修复前 12×24）、按钮 padding 0px、热区 rect 24×24；展开态 chevron 16px。请在 8899 桌面端账户卡收/展用量区肉眼核对图标大小与居中。
+
+---
+
+## 0903 新基线（r2 续批）：元素选取激活框黑色 → 焦点蓝
+
+预览评论 `button.preview-pane-button`「预览」：「元素选取激活后，操作会出现框框，现在框框变成黑色了，我希望是蓝色的」。
+
+- 根因：picker 高亮框（guest 内 `__wave-picker-highlight` 的 2px outline）颜色取 `palette.accent`，host 端 `accent` 读 `--vscode-button-background`——桌面设计系统已把主按钮中性化（light `#1f2329` 炭黑 / dark `#3d424a` 深灰），于是选取高亮框跟着变黑。
+- 修改：
+  - `host-desktop.css`：桌面 light/dark root 主题块补 `--cc-text-link` token（Figma cc 链接蓝 light `#2f5edb` / dark `#4daafc`，此前散落硬编码在各链接规则），供 host 侧取样。
+  - `PreviewPane.tsx`（host）：`readPalette()` 新增 `accentOutline` = `--cc-text-link`（插件端回退 `--vscode-textLink-foreground`）——用户确认高亮框用**链接蓝**而非 vscode focusBorder 色。
+  - `pickerPreload.ts`（guest）：高亮框 outline 改取 `accentOutline ?? accent ?? "#0e639c"`。
+  - picker 浮层主按钮/链接仍用 `accent`（桌面炭黑主按钮规范不受影响），仅元素高亮框改链接蓝。
+- 验证：desktop type-check 通过；pickerPreload 单测 11 个全过（旧 palette 无 accentOutline 时回退 accent，行为不变）。（用户人工走查，本轮不跑 UI 自动化。）
+- 实现文件：`packages/desktop/src/main/pickerPreload.ts`、`packages/webview/src/components/PreviewPane.tsx`、`packages/webview/src/styles/host-desktop.css`、本 docs。
+
+---
+
+## 0903 新基线第 6 轮（2026-09，r2 分支）：套餐用量进度条 深色模式可读性修复
+
+预览评论：`div.account-card-usage-inline`「套餐用量 76%」「深色模式下进度看不清，需要重新计算下这个进度条在深色模式下如何显示」。
+
+### 深色根因
+
+浅色设计稿权威（Figma Sidebar「任务导航」Variant3 / Bar 组件 6423:61933）：进度条 fill = 炭黑 `#1F2329`、track = `#EBEDF0`，白底上高对比。深色帧组件库未画。
+
+wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮炭灰 `#3D424A`，rgb 均值 ≈67），而 track 原为 `color-mix(descriptionForeground 25%, transparent)`（深色 ≈12% 白 ≈ #353535，rgb 均值 ≈53）——**fill 与 track 亮度几乎相同**，76% 进度段在深底 #181818 上无法区分（此前的「炭灰按钮 = 进度填充」在浅色成立是因为浅色按钮即炭黑，深色下炭灰按钮与 12% 白轨道同属低亮度，语义失效）。
+
+### 修改（host-desktop.css，仅深色）
+
+| 元素                               | 修改前（深色）               | 修改后（深色）                                                                 |
+| ---------------------------------- | ---------------------------- | ------------------------------------------------------------------------------ |
+| `.account-usage-bar` track         | 25% 灰混透明（≈12% 白）      | `rgba(255,255,255,.12)`（明示，wave 深色低强调惯例，同 textBlockQuote-border） |
+| `.account-usage-bar-fill`          | `#3D424A`（与 track 同亮度） | `#9A9EA5`（强调浅灰，同 compress-context-ring fill / toolbar-icon dark 族）    |
+| `.account-usage-bar-fill.is-empty` | `--vscode-errorForeground`   | 不变（耗尽红保留，desktop dark errorForeground #F85149）                       |
+
+对比度复核（sRGB，底 #181818）：fill #9A9EA5 ≈ 6:1、与 track ≈ 4:1 → 进度段一眼可读；track 仅 1.4:1 保持低调槽位。percent 文本用 descriptionForeground（深色 #9D9D9D ≈5:1）无需改。
+
+### 验证
+
+- 未走自动化（用户约定人工走查）；仅计算样式诊断：dark 下 track `rgba(255,255,255,0.12)`、fill `rgb(154,158,165)`、fill 宽 76%；light 下 fill `#1F2329`（同设计稿）不变。请在 8899 桌面端深色用例核对「套餐用量」进度条填充/轨道对比，及 0% 耗尽红色提示。

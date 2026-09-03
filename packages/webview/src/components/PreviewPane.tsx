@@ -118,6 +118,13 @@ const readPalette = (): Record<string, string> => {
   return {
     accent: pick("--vscode-button-background", "#0e639c"),
     accentForeground: pick("--vscode-button-foreground", "#ffffff"),
+    // 元素高亮框用链接蓝：桌面 host 取 --cc-text-link（Figma cc 蓝
+    // #2f5edb/#4daafc），插件端回退 --vscode-textLink-foreground。
+    // 桌面主按钮已被中性化成炭黑，若沿用 accent（button-background）
+    // 选取框会变黑（评论跟进：不用 vscode focusBorder 色、与 link 一致）。
+    accentOutline:
+      pick("--cc-text-link", "") ||
+      pick("--vscode-textLink-foreground", "#0069cc"),
     foreground: pick("--vscode-foreground", "#cccccc"),
     background:
       pick("--vscode-panel-background", "") ||
