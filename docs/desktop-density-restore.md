@@ -1827,3 +1827,17 @@ CSS：各处 `… .codicon` 尺寸/透明度规则同步迁移到新 svg 类（`
 - 修改：`DesktopPanelTabs.tsx` 菜单加 `checklist={false}`（PanelToggleMenu 已有 plain-menu 模式）——所有项一律无勾、无 active 底、role=menuitem 无 aria-checked；删除已无用的 `noCheckKinds` 传参。
 - 验证：重跑探针——计划/终端已开时五项均无 `--active`、`aria-checked=null`；webview type-check 通过；panelToggleMenu/ChatApp panels 相关 34 用例通过。
 - 实现文件：`src/components/DesktopPanelTabs.tsx`、本 docs。
+
+### 追加（同轮）：非浏览器 pane 工具栏标题字号 12 → 14px
+
+预览评论 `span.desktop-panel-toolbar-title`「计划」：「这里标题区域字号应该是14px，差异等其他界面也是」。
+
+- 修改：`DesktopApp.css` `.desktop-panel-toolbar-title`（计划/差异/终端/文件 pane toolbar 共用标题类）font-size 12px → **14px**，font-weight 600 保留。
+- 实现文件：`src/styles/DesktopApp.css`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+### 追加（同轮）：差异 pane 刷新按钮换 RefreshIcon（与预览/终端一致）
+
+预览评论 `i.codicon.codicon-refresh`「差异」：「差异等等，这里的刷新按钮，和预览的也要保持一致」。
+
+- 修改：`DiffPane.tsx` 工具栏刷新按钮 codicon-refresh（codicon 字体）→ **RefreshIcon**（HeaderIcons lucide svg，与预览/终端工具栏同源 16px currentColor），刷新中旋转改为自绘 `is-spinning` 动画（codicon-modifier-spin 仅作用于字体图标）；`DesktopApp.css` 增 `.preview-pane-icon.is-spinning` + keyframes。
+- 实现文件：`src/components/DiffPane.tsx`、`src/styles/DesktopApp.css`、本 docs。（用户人工走查，本轮不跑自动化。）

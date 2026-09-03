@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { VsCodeApi } from "../types";
 import { renderWordLevelDiff } from "../utils/diffHighlight";
+import { RefreshIcon } from "./HeaderIcons";
 import "../styles/DiffViewer.css";
 import "../styles/DiffPane.css";
 
@@ -489,8 +490,8 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
             data-testid="diff-refresh"
             onClick={() => refresh()}
           >
-            <i
-              className={`codicon codicon-refresh${refreshing ? " codicon-modifier-spin" : ""}`}
+            <RefreshIcon
+              className={`preview-pane-icon${refreshing ? " is-spinning" : ""}`}
             />
           </button>
         </div>
