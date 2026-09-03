@@ -903,6 +903,67 @@ describe("session-level panel groups", () => {
       "localhost:8899",
     );
   });
+
+  it("switching sessions exits preview fullscreen so the new conversation is never hidden", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+    pushTree(["s1", "s2"]);
+    pushPanes("s1");
+    openPanel("preview");
+    const previewPane = screen.getByTestId("preview-pane");
+    const body = previewPane.closest(".desktop-chat-body") as HTMLElement;
+
+    // Fullscreen the s1 preview: the conversation column unmounts.
+    fireEvent.click(screen.getByTestId("panel-fullscreen"));
+    expect(body).toHaveClass("preview-fullscreen");
+    expect(body.querySelector(".desktop-chat-main")).toBeNull();
+
+    // Switch to s2 (no panel group of its own). Fullscreen belongs to s1's
+    // preview — it must not survive into s2, or the new conversation would be
+    // hidden behind a stale fullscreen with no UI left to exit it (PM bug
+    // 3465519197988352「预览全屏叉掉后对话框消失」).
+    pushPanes("s2");
+    expect(body).not.toHaveClass("preview-fullscreen");
+    expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
+  });
+
+  it("single (pane-less) layout: switching the current session exits preview fullscreen", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+    // No desktopPanes push → the root ChatApp layout with its own current
+    // session; switching conversations there is a new updateCurrentSession on
+    // the SAME mounted instance (no group rebind to fall back on).
+    const s1 = {
+      id: "s1",
+      sessionType: "main",
+      workdir: "/work/a",
+      firstMessage: "s1",
+      lastActiveAt: Date.now(),
+      latestTotalTokens: 0,
+    };
+    const s2 = { ...s1, id: "s2", firstMessage: "s2" };
+    act(() => {
+      sendCommand("updateCurrentSession", { session: s1 });
+    });
+
+    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+    fireEvent.click(screen.getByTestId("panel-empty-item-preview"));
+    fireEvent.click(screen.getByTestId("panel-fullscreen"));
+    const body = screen
+      .getByTestId("preview-pane")
+      .closest(".desktop-chat-body") as HTMLElement;
+    expect(body).toHaveClass("preview-fullscreen");
+    expect(body.querySelector(".desktop-chat-main")).toBeNull();
+
+    // Switch conversation: fullscreen must not survive into s2 — with no UI
+    // left visible it could never be exited otherwise (PM bug
+    // 3465519197988352「预览全屏叉掉后对话框消失」).
+    act(() => {
+      sendCommand("updateCurrentSession", { session: s2 });
+    });
+    expect(body).not.toHaveClass("preview-fullscreen");
+    expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
+  });
 });
 
 /**

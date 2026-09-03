@@ -936,4 +936,36 @@ describe("PreviewPane integration (DesktopApp)", () => {
     fireEvent.click(screen.getByTestId("panel-fullscreen"));
     expect(body).not.toHaveClass("preview-fullscreen");
   });
+
+  it("closing the only preview tab while fullscreen restores the conversation (PM bug 3465519197988352)", () => {
+    window.waveHostType = "desktop";
+    render(<DesktopApp vscode={createMockVscode()} />);
+    sendCommand("desktopWorkdirState", {
+      workdir: "/work/a",
+      recentWorkdirs: ["/work/a"],
+    });
+    sendCommand("authStatusResponse", { isAuthenticated: true });
+    sendCommand("updateMessages", {
+      messages: [
+        MockDataGenerator.createAssistantMessage(
+          "[这里](http://localhost:5173/proto)",
+        ),
+      ],
+    });
+    fireEvent.click(screen.getByText("这里"));
+    expect(screen.getByTestId("preview-pane")).toBeInTheDocument();
+
+    // Fullscreen: the conversation column unmounts.
+    fireEvent.click(screen.getByTestId("panel-fullscreen"));
+    const body = screen
+      .getByTestId("preview-pane")
+      .closest(".desktop-chat-body") as HTMLElement;
+    expect(body).toHaveClass("preview-fullscreen");
+    expect(body.querySelector(".desktop-chat-main")).toBeNull();
+
+    // Closing the only preview tab exits fullscreen and remounts the column.
+    fireEvent.click(screen.getByTestId("panel-tab-close-preview-1"));
+    expect(body).not.toHaveClass("preview-fullscreen");
+    expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
+  });
 });
