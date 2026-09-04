@@ -51,6 +51,7 @@ import type {
   DesktopTogglePanelMessage,
   DesktopPanelKind,
   DesktopAccountInfoMessage,
+  DesktopFullScreenMessage,
   ToolBlockUpdateCallbackParams,
   ConfigurationData,
   ConfirmationRequest,
@@ -173,6 +174,9 @@ export interface Fixtures {
   desktopAccountInfo: (
     overrides?: Overrides<DesktopAccountInfoMessage>,
   ) => DesktopAccountInfoMessage;
+  desktopFullScreen: (
+    overrides?: Overrides<DesktopFullScreenMessage>,
+  ) => DesktopFullScreenMessage;
 }
 
 const noopSession = (): SessionMetadata => ({
@@ -376,6 +380,12 @@ export const fixtures: Fixtures = {
     plan: null,
     apiQuota: null,
     update: undefined,
+    ...overrides,
+  }),
+
+  desktopFullScreen: (overrides = {}) => ({
+    command: "desktopFullScreen",
+    fullScreen: false,
     ...overrides,
   }),
 };

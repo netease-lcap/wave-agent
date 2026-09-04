@@ -577,6 +577,17 @@ export interface DesktopAccountInfoMessage extends HostToWebviewMessageBase {
 
 // ---- Host-only commands (consumed outside the ChatApp switch). ----
 
+/**
+ * macOS 窗口全屏状态推送 (spec desktop-app.md「macOS 隐藏标题栏」场景 7).
+ * Window-global: fullscreen hides the system traffic lights, so the webview
+ * collapses its traffic-light clearance (window-row gutter / collapsed-header
+ * spacer) until leaving fullscreen.
+ */
+export interface DesktopFullScreenMessage extends HostToWebviewMessageBase {
+  command: "desktopFullScreen";
+  fullScreen: boolean;
+}
+
 export interface DesktopPanesMessage extends HostToWebviewMessageBase {
   command: "desktopPanes";
   panes: DesktopPaneInfo[];
@@ -730,6 +741,7 @@ export type HostToWebviewMessage =
   | LoginResponseMessage
   | LogoutResponseMessage
   | DesktopAccountInfoMessage
+  | DesktopFullScreenMessage
   | DesktopPanesMessage
   | DesktopSessionTreeMessage
   | DesktopWorkdirStateMessage

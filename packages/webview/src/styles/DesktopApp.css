@@ -36,19 +36,19 @@
    同色一体、无条带/下边界（2026-09-03 返工布局对齐参考截图）。两种形态见
    DesktopSidebar.tsx：
    - 原型预览：假红绿灯圆点 + 按钮。假圆点几何与真实系统红绿灯一致（红点左缘
-     距窗口左 20px、圆点 12px、点距 8px），按钮紧接点组（行 gap 8px），图标
-     可见左缘落在绿点右缘 +13px 处（图 1 参考实测值）。
+     距窗口左 20px、圆点 12px、点距 8px），按钮紧接点组（行 gap 12px），图标
+     可见左缘落在绿点右缘 +16px 处。
    - 真机 macOS（隐藏标题栏，spec「macOS 隐藏标题栏」）：不画假圆点——系统
      红绿灯叠加在该行左端，整行 -webkit-app-region: drag（Electron，浏览器
-     环境忽略）；`.--mac-drag` 把内容起点推到 80px（与预览同落位），行内按钮
-     需 no-drag 才能点击（见 .sidebar-window-row button）。 */
+     环境忽略）；`.--mac-drag` 把内容起点推到 72px（按钮盒左缘 84px，与预览
+     同落位），行内按钮需 no-drag 才能点击（见 .sidebar-window-row button）。 */
 .sidebar-window-row {
   flex: 0 0 44px;
   height: 44px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px;
+  gap: 12px;
   padding: 0 8px;
 }
 
@@ -56,9 +56,15 @@
   -webkit-app-region: drag;
   user-select: none;
   /* 无假圆点的真机形态：内容起点让出系统红绿灯区（侧栏 padding 12px +
-     本行 padding-left 68px = 按钮左缘 80px，与预览形态同一落位）。若 mac 实机
+     本行 padding-left 72px = 按钮盒左缘 84px，与预览形态同一落位）。若 mac 实机
      红绿灯实际位置有偏差，改这一个数值即可微调。 */
-  padding-left: 68px;
+  padding-left: 72px;
+}
+
+/* macOS 全屏（红绿灯隐藏，desktopFullScreen push）：让位收起，按钮回行起点
+   （侧栏 12px + 本行 padding 8px = 按钮左缘 20px）；退出全屏恢复让位。 */
+.sidebar-window-row--mac-drag.is-fullscreen {
+  padding-left: 0;
 }
 
 /* 拖拽行内的按钮必须解除 drag 才能点击/悬停（Electron 拖拽区吞掉子元素指针

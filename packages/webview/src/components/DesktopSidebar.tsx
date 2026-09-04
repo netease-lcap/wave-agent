@@ -143,6 +143,8 @@ export interface DesktopSidebarProps {
    *  button restores it. */
   collapsed?: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
+  /** macOS 窗口全屏（desktopFullScreen push）：全屏下红绿灯隐藏，窗口行收起让位。 */
+  fullScreen?: boolean;
   /** Batch 2 会话状态看板: brand-row 活动 button opens the board view. When
    *  active the icon renders brand-red (spec 场景 1 highlight state). */
   sessionBoardActive?: boolean;
@@ -190,6 +192,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onDeleteSession,
   collapsed = false,
   onCollapsedChange,
+  fullScreen = false,
   sessionBoardActive = false,
   onOpenSessionBoard,
 }) => {
@@ -516,7 +519,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           真机 Windows/Linux 用系统原生标题栏，两者都不渲染。 */}
       {renderWindowRow ? (
         macHiddenTitlebar ? (
-          <div className="sidebar-window-row sidebar-window-row--mac-drag">
+          <div
+            className={`sidebar-window-row sidebar-window-row--mac-drag${
+              fullScreen ? " is-fullscreen" : ""
+            }`}
+          >
             {collapseButton}
           </div>
         ) : (

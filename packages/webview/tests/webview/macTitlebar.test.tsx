@@ -126,6 +126,39 @@ describe("desktop titlebar row (sidebar expanded)", () => {
   });
 });
 
+describe("fullscreen collapses the traffic-light clearance (desktopFullScreen)", () => {
+  it("slides the window-row collapse button to the row start while fullscreen", () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "darwin";
+    renderDesktopApp();
+
+    const row = queryDragRow()!;
+    expect(row.classList.contains("is-fullscreen")).toBe(false);
+
+    // Enter fullscreen → the system traffic lights hide, the 68px gutter is
+    // dropped (button returns to the row start).
+    sendHostMessage(fixtures.desktopFullScreen({ fullScreen: true }));
+    expect(row.classList.contains("is-fullscreen")).toBe(true);
+
+    // Leave fullscreen → gutter restored.
+    sendHostMessage(fixtures.desktopFullScreen({ fullScreen: false }));
+    expect(row.classList.contains("is-fullscreen")).toBe(false);
+  });
+
+  it("drops the collapsed-header gutter while fullscreen and restores it after", () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "darwin";
+    localStorage.setItem("wave.desktopSidebarCollapsed", "1");
+    renderDesktopApp();
+
+    expect(queryTrafficSpacer()).not.toBeNull();
+    sendHostMessage(fixtures.desktopFullScreen({ fullScreen: true }));
+    expect(queryTrafficSpacer()).toBeNull();
+    sendHostMessage(fixtures.desktopFullScreen({ fullScreen: false }));
+    expect(queryTrafficSpacer()).not.toBeNull();
+  });
+});
+
 describe("collapsed sidebar traffic-light clearance (real macOS)", () => {
   it("reserves a drag gutter at the chat header's left edge on macOS", () => {
     window.waveHostType = "desktop";

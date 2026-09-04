@@ -251,6 +251,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [accountInfo, setAccountInfo] = useState<AccountCardAccount | null>(
     null,
   );
+  // macOS 窗口全屏状态（desktopFullScreen push；spec「macOS 隐藏标题栏」场景 7）。
+  // 全屏下系统红绿灯隐藏 → 红绿灯让位（窗口行按钮 / 收起态顶栏让位段）随之收起。
+  const [fullScreen, setFullScreen] = useState(false);
   // Message id awaiting rewind confirmation; non-null shows the ConfirmDialog.
   const [pendingRewindId, setPendingRewindId] = useState<string | null>(null);
   // /rewind popup: checkpoint list requested from the host on open.
@@ -424,6 +427,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const macTrafficSpacer =
     isMacHiddenTitlebar() &&
     sidebarCollapsed &&
+    !fullScreen &&
     (paneId === undefined || sidebarExpandButton != null);
   // The pane's effective host ('local' or an SSH host name): a pane-bound
   // session's host (authoritative `desktopPanes` push) wins; the single-pane
@@ -1230,6 +1234,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             apiQuota: message.apiQuota ?? null,
             update: message.update ?? null,
           });
+          break;
+        case "desktopFullScreen":
+          // macOS fullscreen state — window-global; every ChatApp instance
+          // (root sidebar + split panes) consumes it for its own spacer/row.
+          setFullScreen(message.fullScreen === true);
           break;
         case "desktopTogglePanel":
           if (!forThisPane(message)) break;
@@ -3270,6 +3279,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           onDeleteSession={host.onDeleteSession}
           collapsed={sidebarCollapsed}
           onCollapsedChange={handleSidebarCollapsedChange}
+          fullScreen={fullScreen}
           sessionBoardActive={sessionBoardOpen}
           onOpenSessionBoard={handleOpenSessionBoard}
         />

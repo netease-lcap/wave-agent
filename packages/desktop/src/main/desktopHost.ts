@@ -610,6 +610,14 @@ export class DesktopHost {
   }
 
   /**
+   * 推送 macOS 窗口全屏状态 (desktopFullScreen, spec「macOS 隐藏标题栏」场景 7)。
+   * Window-global，无 paneId；webview 据此在全屏（红绿灯隐藏）时收起红绿灯让位。
+   */
+  notifyFullScreen(fullScreen: boolean): void {
+    this.postMessage({ command: "desktopFullScreen", fullScreen });
+  }
+
+  /**
    * 推侧边栏账户卡片快照 (desktopAccountInfo)。Window-global — 不加 paneId，
    * 由 webview 根实例消费。数据 = 聚焦分屏所属主机的缓存。
    */
