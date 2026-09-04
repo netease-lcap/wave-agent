@@ -279,6 +279,11 @@ class StdioAgent(
         return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false
     }
 
+    /** 流式期间把前台任务转后台（无返回内容；mirrors vscode stdioAgent.backgroundCurrentTask）。 */
+    suspend fun backgroundCurrentTask() {
+        client.request("backgroundCurrentTask", sessionId = sessionId)
+    }
+
     suspend fun getWorkflowRuns(): JsonElement? =
         client.request("getWorkflowRuns", sessionId = sessionId)?.jsonObject?.get("runs")
 
