@@ -4609,6 +4609,102 @@ describe("theme", () => {
 // multi-session parallel (FR-031)
 // ---------------------------------------------------------------------------
 
+describe("context usage across conversation switches", () => {
+  const entry = (sessionId: string, createdAt: number) => ({
+    sessionId,
+    title: `Session ${sessionId}`,
+    host: "local",
+    workdir: "/work/a",
+    cwd: "/work/a",
+    createdAt,
+    lastActiveAt: createdAt,
+  });
+
+  /** desktopReady + webviewReady with a ready-to-select index of /work/a. */
+  async function hostWithTree(
+    ...sessions: Array<{ sessionId: string; createdAt: number }>
+  ) {
+    const ctx = createHost();
+    ctx.store.addRecentWorkdir({ host: "local", path: "/work/a" });
+    h.existingPaths.add("/work/a");
+    for (const s of sessions)
+      ctx.store.upsertSession(entry(s.sessionId, s.createdAt));
+    await ctx.host.handleWebviewMessage({ command: "desktopReady" });
+    await ctx.host.handleWebviewMessage({ command: "webviewReady" });
+    return ctx;
+  }
+
+  it("keeps the usage of a restored session whose replay landed mid-restore (no pane bound yet)", async () => {
+    const ctx = await hostWithTree({ sessionId: "sess-x", createdAt: 3000 });
+    // Hold the restore mid-initialize: the spawned agent exists but is not yet
+    // bound to any pane — exactly when the CLI's usage replay lands
+    // (runPaneRestore restores the session, then activates it in the pane).
+    let release: () => void;
+    h.initializeGate = new Promise<void>((resolve) => (release = resolve));
+
+    await ctx.host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-x",
+    });
+    await vi.waitFor(() => {
+      expect(h.agentInstances.length).toBeGreaterThan(0);
+    });
+    const restoring = lastAgent();
+    restoring.callbacks.onContextUsage(37); // replay while the pane is still empty
+
+    expect(ctx.sent("contextUsage")).toHaveLength(0); // nothing to show yet
+
+    // The pane-less replay must not be dropped: once the restore finishes and
+    // binds the pane, the ring shows 37% without waiting for a new turn.
+    release!();
+    await vi.waitFor(() => {
+      expect(ctx.sent("contextUsage").at(-1)).toEqual(
+        expect.objectContaining({ percent: 37, paneId: "pane-1" }),
+      );
+    });
+  });
+
+  it("re-activating a pool-resident session replays its last known usage", async () => {
+    const ctx = await hostWithTree(
+      { sessionId: "s3", createdAt: 3000 },
+      { sessionId: "s1", createdAt: 1000 },
+    );
+
+    // Activate s3 (spawn + restore), then report live usage from its pane.
+    await ctx.host.activateAdjacentSession(1);
+    await vi.waitFor(() => {
+      const last = ctx.sent("setInitialState").at(-1);
+      expect(last?.isRestoring).toBe(false);
+      expect(last?.session).toMatchObject({ id: "s3" });
+    });
+    const agent3 = lastAgent();
+    agent3.callbacks.onContextUsage(45);
+    expect(ctx.sent("contextUsage").at(-1)).toEqual(
+      expect.objectContaining({ percent: 45 }),
+    );
+
+    // Switch to s1 (a second agent), leaving s3 live in the pool.
+    await ctx.host.activateAdjacentSession(1);
+    await vi.waitFor(() => {
+      const last = ctx.sent("setInitialState").at(-1);
+      expect(last?.isRestoring).toBe(false);
+      expect(last?.session).toMatchObject({ id: "s1" });
+    });
+
+    // Switching back to s3 activates the live agent in place — no CLI round
+    // trip fires a usage push, so the host must replay the cached percent.
+    const before = ctx.sent("contextUsage").length;
+    await ctx.host.activateAdjacentSession(1);
+    await vi.waitFor(() => {
+      expect(ctx.sent("contextUsage").length).toBeGreaterThan(before);
+    });
+    expect(ctx.sent("contextUsage").at(-1)).toEqual(
+      expect.objectContaining({ percent: 45 }),
+    );
+  });
+});
+
 describe("multi-session parallel (FR-031)", () => {
   /** Give the active agent content + register its session in the index. */
   const seedActiveSession = (sessionId: string) => {
