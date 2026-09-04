@@ -40,6 +40,11 @@ export class SkillManager extends EventEmitter {
   private pluginSkillMetadata = new Map<string, SkillMetadata>();
   private pluginSkillContent = new Map<string, Skill>();
   private initialized = false;
+  /** Serializes full rescans (initialize / file-watcher events / deleteSkill
+   *  convergence). Overlapping scans over the shared caches must not interleave:
+   *  chaining them keeps the last completed scan in sync with the newest disk
+   *  state instead of letting an older snapshot win a race. */
+  private refreshChain: Promise<void> = Promise.resolve();
   private fileWatcher: FileWatcherService | null = null;
   private watchEnabled: boolean;
 
@@ -85,30 +90,56 @@ export class SkillManager extends EventEmitter {
   /**
    * Refresh skills by re-discovering them
    */
-  private async refreshSkills(): Promise<void> {
-    // Clear only discovered skills (builtin/personal/project), preserve plugin skills
-    this.skillMetadata.clear();
-    this.skillContent.clear();
+  private refreshSkills(): Promise<void> {
+    // Serialize rescans: initialize / file-watcher events / deleteSkill all
+    // trigger full re-scans; running them concurrently makes a stale snapshot
+    // or a partial cache (see performRefresh's atomic swap) observable to
+    // metadata readers such as the settings-page skill list.
+    const run = this.refreshChain.then(() => this.performRefresh());
+    this.refreshChain = run.catch(() => {});
+    return run;
+  }
 
-    const discovery = await this.discoverSkills();
+  private async performRefresh(): Promise<void> {
+    // Route this scan's incremental skill-content writes into a scratch map
+    // (processSkillDirs writes to this.skillContent) and rebuild both caches
+    // fully before swapping them in — readers must never observe a
+    // half-refreshed (e.g. momentarily empty) skill list mid-scan.
+    const scratchContent = new Map<string, Skill>();
+    const previousContent = this.skillContent;
+    this.skillContent = scratchContent;
 
-    // Store discovered skill metadata
+    let discovery: SkillDiscoveryResult;
+    try {
+      discovery = await this.discoverSkills();
+    } catch (error) {
+      this.skillContent = previousContent;
+      throw error;
+    }
+
+    const nextMetadata = new Map<string, SkillMetadata>();
+    const nextContent = new Map<string, Skill>();
+
+    // Store discovered skills (builtin/personal/project)
     discovery.builtinSkills.forEach((skill, name) => {
-      this.skillMetadata.set(name, skill);
+      nextMetadata.set(name, skill);
     });
     discovery.personalSkills.forEach((skill, name) => {
-      this.skillMetadata.set(name, skill);
+      nextMetadata.set(name, skill);
     });
     discovery.projectSkills.forEach((skill, name) => {
-      this.skillMetadata.set(name, skill);
+      nextMetadata.set(name, skill);
+    });
+    scratchContent.forEach((skill, name) => {
+      nextContent.set(name, skill);
     });
 
     // Restore plugin skills
     this.pluginSkillMetadata.forEach((metadata, name) => {
-      this.skillMetadata.set(name, metadata);
+      nextMetadata.set(name, metadata);
     });
     this.pluginSkillContent.forEach((skill, name) => {
-      this.skillContent.set(name, skill);
+      nextContent.set(name, skill);
     });
 
     // Log any discovery errors
@@ -118,6 +149,10 @@ export class SkillManager extends EventEmitter {
         logger?.warn(`Skill error in ${error.skillPath}: ${error.message}`);
       });
     }
+
+    // Atomic swap: from this point on readers see the complete new snapshot
+    this.skillMetadata = nextMetadata;
+    this.skillContent = nextContent;
 
     this.emit("refreshed", Array.from(this.skillMetadata.values()));
   }
@@ -610,9 +645,43 @@ export class SkillManager extends EventEmitter {
   }
 
   /**
+   * Directory roots that may hold deletable copies of a skill in the given
+   * discovery scope. Personal skills are scanned from three user-level dirs
+   * (~/.wave|~/.claude|~/.agents/skills) and project skills from the current
+   * project's three project dirs (.wave|.claude|.agents/skills). The discovery
+   * map merges same-named copies from these roots into a single name-keyed
+   * entry, so deleteSkill must sweep the whole set to remove a skill fully.
+   */
+  private scopeSkillRoots(type: string): string[] {
+    if (type === "personal") {
+      return [
+        this.personalSkillsPath,
+        this.personalClaudeSkillsPath,
+        this.personalAgentsSkillsPath,
+      ];
+    }
+    if (type === "project") {
+      return [
+        join(this.workdir, ".wave", "skills"),
+        join(this.workdir, ".claude", "skills"),
+        join(this.workdir, ".agents", "skills"),
+      ];
+    }
+    return [];
+  }
+
+  /**
    * Delete a user/personal or project skill by removing its directory
    * (containing SKILL.md). Builtin and plugin skills are read-only and
    * cannot be deleted.
+   *
+   * A same-named skill may physically live in several same-scope directories
+   * (~/.wave/skills + ~/.claude/skills + ~/.agents/skills for user skills,
+   * .wave/.claude/.agents/skills under the project for project skills) while
+   * only the highest-priority copy is listed; every copy is removed so one
+   * delete removes the skill completely instead of re-surfacing the next
+   * copy on the next scan. Caches are then re-converged with disk before
+   * returning so the caller's follow-up metadata read reflects the result.
    * @param name - The skill name as shown in skill metadata
    * @returns true if the skill was deleted
    */
@@ -635,11 +704,28 @@ export class SkillManager extends EventEmitter {
       return false;
     }
 
-    await rm(metadata.skillPath, { recursive: true, force: true });
+    const dirsToRemove = new Set<string>([metadata.skillPath]);
+    for (const root of this.scopeSkillRoots(metadata.type)) {
+      dirsToRemove.add(join(root, name));
+    }
 
-    // Remove from all caches
-    this.skillMetadata.delete(name);
-    this.skillContent.delete(name);
+    for (const dir of dirsToRemove) {
+      await rm(dir, { recursive: true, force: true });
+    }
+
+    // Converge caches with disk: the serialized full refresh both drops the
+    // deleted entries and reflects any copy that survived deletion. If the
+    // refresh itself fails, fall back to dropping the entry from memory so
+    // the deleted skill does not keep being served.
+    try {
+      await this.refreshSkills();
+    } catch (error) {
+      logger?.warn(
+        `Failed to refresh skills after deleting '${name}': ${error}`,
+      );
+      this.skillMetadata.delete(name);
+      this.skillContent.delete(name);
+    }
 
     logger?.debug(`Deleted skill '${name}' at ${metadata.skillPath}`);
     return true;
