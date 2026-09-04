@@ -280,8 +280,18 @@ function createWindow(): void {
     // left. The webview reserves a 44px sidebar drag row / collapsed-header
     // gutter under those lights (spec「macOS 隐藏标题栏」). Windows/Linux keep
     // the native frame, so the option stays darwin-only.
+    //
+    // trafficLightPosition: Electron anchors y to the NSButton frame's top
+    // edge, and that frame carries transparent padding, so the 12px dot's
+    // visual center lands at y + ~7 (not y + 6) — y=15 centers the lights on
+    // the 44px row's centerline (22px), level with the flex-centered collapse
+    // button, with no CSS-side compensation. Don't "fix" the 15 back to 16
+    // without re-checking against a real Mac.
     ...(process.platform === "darwin"
-      ? { titleBarStyle: "hidden" as const }
+      ? {
+          titleBarStyle: "hidden" as const,
+          trafficLightPosition: { x: 20, y: 15 },
+        }
       : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -294,6 +304,13 @@ function createWindow(): void {
   });
 
   host?.setMainWindow(mainWindow);
+  // macOS 全屏时系统红绿灯随系统隐藏：通知 webview 收起红绿灯让位（侧边栏窗口
+  // 行按钮左移/收起态顶栏让位段收起），退出全屏还原 (spec「macOS 隐藏标题栏」
+  // 场景 7)。Windows/Linux 无此行为，事件不会触发。局部捕获让闭包逃过
+  // TS18047（模块级 let 在延迟回调里无法收窄）。
+  const win = mainWindow;
+  win.on("enter-full-screen", () => host?.notifyFullScreen(win.isFullScreen()));
+  win.on("leave-full-screen", () => host?.notifyFullScreen(win.isFullScreen()));
   attachDesktopShortcutKeys(mainWindow.webContents, menuActions);
   // Right-click an image (file panel preview, message image) → 复制图片.
   attachImageContextMenu(mainWindow.webContents);

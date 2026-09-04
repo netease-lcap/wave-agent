@@ -8214,3 +8214,19 @@ describe("file panel", () => {
     ).toBe(true);
   });
 });
+
+describe("notifyFullScreen (desktopFullScreen)", () => {
+  it("pushes the window fullscreen state to the webview (window-global, no paneId)", async () => {
+    const { host, sent } = await readyHost();
+
+    host.notifyFullScreen(true);
+    expect(sent("desktopFullScreen").at(-1)).toMatchObject({
+      fullScreen: true,
+    });
+
+    host.notifyFullScreen(false);
+    expect(sent("desktopFullScreen").at(-1)).toMatchObject({
+      fullScreen: false,
+    });
+  });
+});
