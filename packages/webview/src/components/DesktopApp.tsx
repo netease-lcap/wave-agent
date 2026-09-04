@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ChatApp, prunePanelGroupCache } from "./ChatApp";
+import { DesktopChromeProvider } from "./DesktopChromeContext";
 import {
   VsCodeApi,
   DesktopWorkdirState,
@@ -169,30 +170,35 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
   const { workdir, recentWorkdirs, host, hosts } = workdirState;
 
   return (
-    <ChatApp
-      vscode={vscode}
-      host={{
-        type: "desktop",
-        host,
-        hosts,
-        workdir,
-        recentWorkdirs,
-        onSelectWorkdir: handleSelectWorkdir,
-        onSelectRecentWorkdir: handleSelectRecentWorkdir,
-        onRemoveRecentWorkdir: handleRemoveRecentWorkdir,
-        onSelectHost: handleSelectHost,
-        onAddHost: handleAddHost,
-        onSelectRemotePath: handleSelectRemotePath,
-        onListRemoteDir: handleListRemoteDir,
-        sessionTree,
-        onSelectSession: handleSelectSession,
-        onDeleteSession: handleDeleteSession,
-        onOpenPane: handleOpenPane,
-        panes,
-        rowHeights,
-        focusedPaneId,
-      }}
-    />
+    // 窗口级 chrome 状态（sidebarCollapsed/fullScreen）单一权威：root、pane
+    // 任何 ChatApp 实例与 DesktopShell/DesktopSidebar 同源读取（不再逐层
+    // props 透传 / 各实例留本地副本）。见 DesktopChromeContext.tsx。
+    <DesktopChromeProvider>
+      <ChatApp
+        vscode={vscode}
+        host={{
+          type: "desktop",
+          host,
+          hosts,
+          workdir,
+          recentWorkdirs,
+          onSelectWorkdir: handleSelectWorkdir,
+          onSelectRecentWorkdir: handleSelectRecentWorkdir,
+          onRemoveRecentWorkdir: handleRemoveRecentWorkdir,
+          onSelectHost: handleSelectHost,
+          onAddHost: handleAddHost,
+          onSelectRemotePath: handleSelectRemotePath,
+          onListRemoteDir: handleListRemoteDir,
+          sessionTree,
+          onSelectSession: handleSelectSession,
+          onDeleteSession: handleDeleteSession,
+          onOpenPane: handleOpenPane,
+          panes,
+          rowHeights,
+          focusedPaneId,
+        }}
+      />
+    </DesktopChromeProvider>
   );
 };
 

@@ -28,6 +28,7 @@ import WorkflowManager from "./WorkflowManager";
 import WelcomeView from "./WelcomeView";
 import LoadingLogo from "./LoadingLogo";
 import { SidebarExpandIcon, CloseIcon } from "./HeaderIcons";
+import { useDesktopChrome } from "./DesktopChromeContext";
 import { DesktopHostSelector } from "./DesktopHostSelector";
 import { DesktopSidebar } from "./DesktopSidebar";
 import { DesktopShell } from "./DesktopShell";
@@ -214,8 +215,9 @@ export function prunePanelGroupCache(keepKeys: Set<string>): void {
 
 /**
  * Desktop sidebar collapsed → the leftmost chat header shows this expand button
- * (spec 「侧边栏收起/展开」scenario 4). In split view the root instance builds it
- * once and DesktopShell threads it into the first pane of the top row.
+ * (spec 「侧边栏收起/展开」scenario 4). Built by every instance that occupies the
+ * window's left edge — the root single layout or the first top-row pane — from
+ * the window-level sidebarCollapsed (DesktopChromeContext).
  * Icon = Figma sidebar-expand（外框 + 朝右箭头 →，与侧栏内收起按钮的
  * sidebar-collapse 外框+左条区分方向）。
  */
@@ -238,7 +240,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   vscode,
   host,
   paneId,
-  sidebarExpandButton,
+  firstPane,
   headerActions,
   onOpenSettingsFromPane,
   prefillRequest,
@@ -254,9 +256,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [accountInfo, setAccountInfo] = useState<AccountCardAccount | null>(
     null,
   );
-  // macOS 窗口全屏状态（desktopFullScreen push；spec「macOS 隐藏标题栏」场景 7）。
-  // 全屏下系统红绿灯隐藏 → 红绿灯让位（窗口行按钮 / 收起态顶栏让位段）随之收起。
-  const [fullScreen, setFullScreen] = useState(false);
+  // 窗口级 chrome 状态（侧边栏收起 + macOS 全屏）单一权威在 DesktopChromeContext
+  //（DesktopApp 根提供）：root 单布局 / DesktopShell pane 各实例同源读取，不再
+  // 各自持有副本或 props 下行（见 DesktopChromeContext.tsx 头注释）。
+  const { sidebarCollapsed, setSidebarCollapsed, fullScreen } =
+    useDesktopChrome();
   // Message id awaiting rewind confirmation; non-null shows the ConfirmDialog.
   const [pendingRewindId, setPendingRewindId] = useState<string | null>(null);
   // /rewind popup: checkpoint list requested from the host on open.
@@ -345,31 +349,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         : (host?.recentWorkdirs?.[0] ?? host?.workdir)
       : effectiveWorkdir;
   const isDesktop = host?.type === "desktop";
-  // Desktop sidebar collapsed (spec 「侧边栏收起/展开」): fully hidden, chat takes
-  // the whole width; the leftmost chat header's expand button restores it.
-  // Persisted so a restart keeps the choice (scenario 7). Only the root
-  // instance (paneId undefined) owns this — panes receive the expand button
-  // as a ready-made ReactNode via sidebarExpandButton.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem("wave.desktopSidebarCollapsed") === "1";
-    } catch {
-      // localStorage unavailable (sandboxed webview): default to expanded.
-      return false;
-    }
-  });
-  const handleSidebarCollapsedChange = useCallback((collapsed: boolean) => {
-    setSidebarCollapsed(collapsed);
-    try {
-      localStorage.setItem(
-        "wave.desktopSidebarCollapsed",
-        collapsed ? "1" : "0",
-      );
-    } catch {
-      // localStorage unavailable (sandboxed webview): the collapse still works
-      // for this session, it just won't persist.
-    }
-  }, []);
   // Batch 2 (designer prototype): desktop settings full-page and session board
   // view switches. Only the root instance (paneId undefined) owns these — a
   // split-view pane never renders them. settingsOpen covers the desktop
@@ -412,11 +391,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [projectAgentsContent, setProjectAgentsContent] = useState<
     string | null
   >(null);
+  // 该实例是否占据窗口最左侧（其顶栏需承载「侧边栏收起 → 展开按钮 + 红绿灯让
+  // 位段」）：root 单布局（paneId undefined），或 DesktopShell 首行首 pane
+  //（firstPane 由 shell 显式标记）。身份与收起状态都同源于 context —— 运行期
+  // 收起/展开（含全屏让位）即时反映，不再有 pane 快照过期的问题。
+  const isLeftmostChatHeader = paneId === undefined || firstPane === true;
   const expandBtn =
-    paneId === undefined && sidebarCollapsed ? (
-      <SidebarExpandButton
-        onClick={() => handleSidebarCollapsedChange(false)}
-      />
+    sidebarCollapsed && isLeftmostChatHeader ? (
+      <SidebarExpandButton onClick={() => setSidebarCollapsed(false)} />
     ) : null;
   // 收起态 header leading：展开侧边栏 + 分割线（评论 2026-09：header 里的
   // 「新建对话」图标钮与功能已拿掉——展开后该入口在侧边栏/新会话处提供）。
@@ -430,17 +412,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       </div>
     ) : null;
   // macOS 隐藏标题栏 + 侧边栏收起：最左侧顶栏的收起态 leading 正处于窗口左上角
-  // 系统红绿灯的落位。该实例若占据窗口最左侧（root 单布局，或 DesktopShell 中
-  // 拿到 sidebarExpandButton 的首行首 pane），就让 ChatHeader 在左端让出一段
-  // 76px 拖拽区（spec「macOS 隐藏标题栏」场景 3）。
-  // 收起信号须与展开按钮同源：root 单布局读自身 sidebarCollapsed（点击即时更
-  // 新）；pane 实例的 state 只是挂载时快照、运行期收起会过期，而 shell 仅在
-  // 全局收起时向首行首 pane 下发 sidebarExpandButton——两者同源，让位段才会
-  // 与展开按钮一起出现，否则展开按钮直接压在红绿灯上。
-  const sidebarHidden =
-    paneId === undefined ? sidebarCollapsed : sidebarExpandButton != null;
+  // 系统红绿灯的落位，让出一段 76px 拖拽区（spec「macOS 隐藏标题栏」场景 3）。
+  // 让位与展开按钮同源（上面同一条件），展开按钮不会压在红绿灯上。
   const macTrafficSpacer =
-    isMacHiddenTitlebar() && sidebarHidden && !fullScreen;
+    isMacHiddenTitlebar() &&
+    sidebarCollapsed &&
+    isLeftmostChatHeader &&
+    !fullScreen;
   // The pane's effective host ('local' or an SSH host name): a pane-bound
   // session's host (authoritative `desktopPanes` push) wins; the single-pane
   // layout reads the host-level current host. Remote sessions run the whole
@@ -1266,11 +1244,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             apiQuota: message.apiQuota ?? null,
             update: message.update ?? null,
           });
-          break;
-        case "desktopFullScreen":
-          // macOS fullscreen state — window-global; every ChatApp instance
-          // (root sidebar + split panes) consumes it for its own spacer/row.
-          setFullScreen(message.fullScreen === true);
           break;
         case "desktopTogglePanel":
           if (!forThisPane(message)) break;
@@ -3085,7 +3058,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }}
       onBack={handleCloseSessionBoard}
       collapsed={sidebarCollapsed}
-      onExpandSidebar={() => handleSidebarCollapsedChange(false)}
+      onExpandSidebar={() => setSidebarCollapsed(false)}
     />
   ) : null;
 
@@ -3178,11 +3151,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         </div>
       )}
       <ChatHeader
-        leading={
-          paneId !== undefined
-            ? collapsedLeading(sidebarExpandButton)
-            : collapsedLeading(expandBtn)
-        }
+        leading={collapsedLeading(expandBtn)}
         macTrafficSpacer={macTrafficSpacer}
         onNewSession={handleClearChat}
         newSessionDisabled={state.isStreaming}
@@ -3305,10 +3274,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             onDownloadUpdate={handleDownloadUpdate}
             onRestartApp={handleRestartApp}
             account={accountInfo}
-            sidebarExpandButton={expandBtn}
-            collapsed={sidebarCollapsed}
-            onCollapsedChange={handleSidebarCollapsedChange}
-            fullScreen={fullScreen}
             settingsOpen={settingsOpen}
             onCloseSettings={handleCloseSettings}
             sessionBoardOpen={sessionBoardOpen}
@@ -3357,9 +3322,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           onSelectSession={host.onSelectSession}
           onOpenPane={host.onOpenPane}
           onDeleteSession={host.onDeleteSession}
-          collapsed={sidebarCollapsed}
-          onCollapsedChange={handleSidebarCollapsedChange}
-          fullScreen={fullScreen}
           sessionBoardActive={sessionBoardOpen}
           onOpenSessionBoard={handleOpenSessionBoard}
         />

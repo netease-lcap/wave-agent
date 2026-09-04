@@ -47,19 +47,6 @@ interface DesktopShellProps {
   /** 账户卡片更新按钮 S0–S6（spec desktop-account-card-and-panel-tabs.md）. */
   onDownloadUpdate?: () => void;
   onRestartApp?: () => void;
-  /**
-   * Sidebar collapsed → the first pane of the top row shows an expand button.
-   * A ready-made ReactNode built by the delegating ChatApp (it owns the
-   * collapse state); undefined when the sidebar is expanded.
-   */
-  sidebarExpandButton?: React.ReactNode;
-  /** Sidebar fully hidden — threaded through to the shell's own DesktopSidebar. */
-  collapsed?: boolean;
-  onCollapsedChange: (collapsed: boolean) => void;
-  /** macOS 窗口全屏（desktopFullScreen push，root 经 shell 下行）：全屏下红绿
-   *  灯隐藏，shell 的侧边栏窗口行「收起侧边栏」按钮左移至行起点（spec
-   *  「macOS 隐藏标题栏」场景 7）。 */
-  fullScreen?: boolean;
   /** Batch 2 settings full-page: rendered over the pane rows when open. */
   settingsOpen?: boolean;
   onCloseSettings?: () => void;
@@ -111,10 +98,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   account,
   onDownloadUpdate,
   onRestartApp,
-  sidebarExpandButton,
-  collapsed = false,
-  onCollapsedChange,
-  fullScreen = false,
   settingsOpen = false,
   settingsPage,
   sessionBoardOpen = false,
@@ -700,9 +683,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         onSelectSession={host.onSelectSession}
         onOpenPane={handleOpenPane}
         onDeleteSession={host.onDeleteSession}
-        collapsed={collapsed}
-        onCollapsedChange={onCollapsedChange}
-        fullScreen={fullScreen}
         sessionBoardActive={sessionBoardActive}
         onOpenSessionBoard={onOpenSessionBoard}
       />
@@ -797,11 +777,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                               vscode={vscode}
                               host={host}
                               paneId={pane.paneId}
-                              sidebarExpandButton={
-                                rowIdx === 0 && index === 0
-                                  ? sidebarExpandButton
-                                  : undefined
-                              }
+                              firstPane={rowIdx === 0 && index === 0}
                               onOpenSettingsFromPane={onOpenSettings}
                               prefillRequest={
                                 prefillRequest?.targetPaneId === pane.paneId
