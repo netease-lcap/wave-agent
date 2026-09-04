@@ -4786,6 +4786,7 @@ describe("multi-session parallel (FR-031)", () => {
           sessionId: string;
           running: boolean;
           waitingConfirmation?: boolean;
+          newCompleted?: boolean;
         }>;
       }>) ?? []
     ).flatMap((g) => g.sessions);
@@ -4871,6 +4872,102 @@ describe("multi-session parallel (FR-031)", () => {
     const after = treeSessions(sent("desktopSessionTree").at(-1));
     expect(after.find((s) => s.sessionId === "sess-1")?.running).toBe(false);
     expect(after.find((s) => s.sessionId === "sess-2")?.running).toBe(true);
+  });
+
+  it("flags a pane-less background session new-completed when its turn ends, then clears it once opened", async () => {
+    const { host, sent } = await readyHost();
+    const agent1 = seedActiveSession("sess-1");
+    // pane-1 now shows sess-2; sess-1 keeps running with no pane.
+    await host.handleWebviewMessage({ command: "newSession" });
+    seedActiveSession("sess-2");
+
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onLoadingChange(false);
+
+    const flagged = treeSessions(sent("desktopSessionTree").at(-1));
+    expect(flagged.find((s) => s.sessionId === "sess-1")?.newCompleted).toBe(
+      true,
+    );
+    // The session in the focused pane is being watched — no unread dot.
+    expect(flagged.find((s) => s.sessionId === "sess-2")?.newCompleted).toBe(
+      false,
+    );
+
+    // Opening the session into the focused pane clears the flag for real — the
+    // tree must stop advertising an unread completion the user just saw.
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-1",
+    });
+    const cleared = treeSessions(sent("desktopSessionTree").at(-1));
+    expect(cleared.find((s) => s.sessionId === "sess-1")?.newCompleted).toBe(
+      false,
+    );
+  });
+
+  it("does not flag a turn finished in a session visible in a non-focused pane", async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession("sess-1");
+    await host.handleWebviewMessage({ command: "newSession" });
+    const agent2 = seedActiveSession("sess-2"); // bound to pane-1, focused
+
+    // Show sess-1 in a second pane: pane-2 takes focus, sess-2 stays visible
+    // in pane-1 but is no longer focused. Its completion is still on screen,
+    // so no unread dot is needed.
+    await host.handleWebviewMessage({
+      command: "desktopOpenPane",
+      workdir: "/work/a",
+      sessionId: "sess-1",
+    });
+    expect(
+      sent("desktopPanes")
+        .at(-1)
+        ?.panes?.some((p) => p.sessionId === "sess-1" && p.paneId === "pane-2"),
+    ).toBe(true);
+
+    agent2.callbacks.onLoadingChange(true);
+    agent2.callbacks.onLoadingChange(false);
+
+    const after = treeSessions(sent("desktopSessionTree").at(-1));
+    expect(after.find((s) => s.sessionId === "sess-2")?.newCompleted).toBe(
+      false,
+    );
+    expect(after.find((s) => s.sessionId === "sess-1")?.newCompleted).toBe(
+      false,
+    );
+  });
+
+  it("does not re-light the new-completed dot for a session the user opened then left", async () => {
+    const { host, sent } = await readyHost();
+    const agent1 = seedActiveSession("sess-1");
+    await host.handleWebviewMessage({ command: "newSession" });
+    seedActiveSession("sess-2");
+
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onLoadingChange(false);
+    const flagged = treeSessions(sent("desktopSessionTree").at(-1));
+    expect(flagged.find((s) => s.sessionId === "sess-1")?.newCompleted).toBe(
+      true,
+    );
+
+    // View sess-1, then leave it for sess-2: sess-1 returns to the background
+    // but must not re-light — its flag was cleared when opened, not merely
+    // hidden by the webview for as long as the session stays in view.
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-1",
+    });
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-2",
+    });
+    const after = treeSessions(sent("desktopSessionTree").at(-1));
+    expect(after.find((s) => s.sessionId === "sess-1")?.newCompleted).toBe(
+      false,
+    );
   });
 
   it("flags a background session waiting-confirmation in the tree until resolved", async () => {

@@ -248,6 +248,8 @@ export class DesktopHost {
       lastActiveAt: number;
       hasWorktree: boolean;
       running: boolean;
+      waitingConfirmation: boolean;
+      newCompleted: boolean;
     }>;
   }> = [];
   private pendingConfirmations = new Map<string, PendingConfirmation>();
@@ -267,6 +269,18 @@ export class DesktopHost {
    *  toasts every historical session the user clicks. Consumed (deleted) by
    *  each loading:false; a fresh loading:true re-adds for the next turn. */
   private streamedAgents = new WeakSet<StdioAgent>();
+  /**
+   * Agents whose last real turn finished while no pane displayed the session —
+   * drives the sidebar「已完成未读」green dot (DesktopSessionEntry.newCompleted,
+   * Figma 13656:5470). Set in onLoadingChange(false) on exactly the same
+   * boundary as the background-completion toast: a real finished turn (loading:
+   * true observed), not an abort or a restore-replayed idle snapshot. Cleared
+   * once the session is opened/focused in a pane (bindAgentToPane — the single
+   * path that brings a session into view) or starts a new turn, so a session
+   * the user already viewed never re-lights just because they switched away.
+   * Weak keys: entries die with the agent.
+   */
+  private newCompletedAgents = new WeakSet<StdioAgent>();
   /**
    * Optimistic session restores in flight (spec「历史会话即时进入与恢复加载动画」):
    * keyed by paneId, holding the target session + a monotonic token. While an
@@ -1194,6 +1208,9 @@ export class DesktopHost {
           // have aborted the previous turn, then sent a fresh prompt).
           this.userAbortedAgents.delete(agentRef);
           this.streamedAgents.add(agentRef);
+          // Activity supersedes an unread-completion dot: the session is no
+          // longer "completed & unviewed", it is producing again.
+          this.newCompletedAgents.delete(agentRef);
         } else {
           this.touchSessionInIndex(agentRef);
           // Announce a background turn that finished on its own — only for
@@ -1206,6 +1223,9 @@ export class DesktopHost {
           const aborted = this.userAbortedAgents.delete(agentRef);
           const finishedTurn = this.streamedAgents.delete(agentRef);
           if (!paneId && !aborted && finishedTurn && agentRef.sessionId) {
+            // Same boundary as the toast below — the completion is real and the
+            // session is on no pane, so flag it as unread for the sidebar dot.
+            this.newCompletedAgents.add(agentRef);
             this.showToast({
               message: `会话「${this.sessionTitleFor(agentRef)}」已完成`,
               actionLabel: "查看",
@@ -1350,7 +1370,14 @@ export class DesktopHost {
     this.clearThrottleState(paneId);
     pane.agent = agent;
     this.focusedPaneId = paneId;
-    if (agent) this.touchAgentAsRecent(agent);
+    if (agent) {
+      // The session is now displayed in a pane — its unread-completion dot is
+      // cleared for real (not merely hidden by the webview's current/visible
+      // filter), so switching away later does not re-light it without a fresh
+      // completion.
+      this.newCompletedAgents.delete(agent);
+      this.touchAgentAsRecent(agent);
+    }
     // The pane may now run on a different host — the sidebar account card
     // follows the focused pane's host (spec 场景 8).
     this.syncAccountCard();
@@ -2583,6 +2610,7 @@ export class DesktopHost {
           waitingConfirmation: agent
             ? agentsWithPendingConfirmation.has(agent)
             : false,
+          newCompleted: agent ? this.newCompletedAgents.has(agent) : false,
         };
       }),
     }));
