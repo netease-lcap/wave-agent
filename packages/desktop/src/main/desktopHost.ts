@@ -209,6 +209,15 @@ export class DesktopHost {
    * turn (spec「上下文用量指示器」场景 6). Weak keys: entries die with the agent.
    */
   private contextUsageByAgent = new WeakMap<StdioAgent, number>();
+  /**
+   * Tail of the agent-recreation promise chain (see updateAgentConfig). Config
+   * and plugin applies destroy + recreate every live session on the CLI, and
+   * the bridge removes a session while it is being recreated — an overlapping
+   * run on the same session would hit "Session not found" and leave the entry
+   * permanently missing (the same race the VSCE host guards in
+   * updateAllSessionsConfig). Chaining makes recreates strictly serial.
+   */
+  private configRecreateTail: Promise<unknown> = Promise.resolve();
   /** Pending host selected in each pane's new-session workdir picker. */
   private hostState = new Map<string, string>();
   // Split panes, ordered left→right. Each pane binds at most one agent (none
@@ -4382,7 +4391,13 @@ export class DesktopHost {
     for (const pane of this.panes) {
       const agent = pane.agent;
       if (agent && agent.queuedMessages.length > 0) {
-        await agent.abortMessage();
+        try {
+          await agent.abortMessage();
+        } catch (error) {
+          // The pane's session may be gone (recreate failed above) — one dead
+          // session must not fail the rest of the queue drain.
+          console.error("[DesktopHost] 中止排队消息失败:", error);
+        }
       }
     }
   }
@@ -4545,8 +4560,30 @@ export class DesktopHost {
     this.postMessage({ command: "desktopThemeSource", source });
   }
 
-  /** Server-side destroy + recreate with restored session, applied to every live agent (FR-031). */
-  private async updateAgentConfig(config: DesktopConfigData): Promise<void> {
+  /**
+   * Server-side destroy + recreate with restored session, applied to every live
+   * agent (FR-031). Runs are serialized on `configRecreateTail`: the CLI bridge
+   * deletes a session entry while its updateConfig recreates it, so two
+   * overlapping applies (plugin toggle + config save / rapid re-toggle) on the
+   * same session would make the second fail with "Session not found" and leave
+   * the session permanently gone. A session that is already absent on the CLI
+   * (stale pool entry) is skipped and logged instead of aborting the whole
+   * apply — the write that triggered the apply has already succeeded.
+   */
+  private updateAgentConfig(config: DesktopConfigData): Promise<void> {
+    // Defer starting the run inside the chain: an async body executes
+    // synchronously up to its first await, so invoking recreateAgentsForConfig
+    // eagerly here would let overlapping calls interleave despite the chain.
+    const chained = this.configRecreateTail.then(() =>
+      this.recreateAgentsForConfig(config),
+    );
+    this.configRecreateTail = chained.catch(() => {});
+    return chained;
+  }
+
+  private async recreateAgentsForConfig(
+    config: DesktopConfigData,
+  ): Promise<void> {
     const params = {
       apiKey: config.apiKey || undefined,
       baseURL: config.baseURL || undefined,
@@ -4560,7 +4597,29 @@ export class DesktopHost {
     };
     for (const [oldSid, agent] of [...this.agents]) {
       const wasStreaming = agent.isStreaming;
-      await agent.updateConfig(params);
+      try {
+        await agent.updateConfig(params);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (
+          message.startsWith("Session not found") ||
+          message.includes("not found on disk")
+        ) {
+          // The CLI no longer hosts this session (a stale pool entry, or a
+          // session destroyed by an earlier failed recreate). Keep applying to
+          // the remaining healthy sessions — the pane restores a dead session
+          // from disk when it is re-selected. Do NOT surface this as a failed
+          // settings write: the plugin/config change itself already succeeded.
+          console.error(
+            `[DesktopHost] 会话 ${oldSid} 不在 CLI 上，跳过重建:`,
+            error,
+          );
+          continue;
+        }
+        // Genuine config errors (bad baseURL/model …) still abort the apply so
+        // the caller can report them.
+        throw error;
+      }
       if (agent.sessionId && agent.sessionId !== oldSid) {
         this.rekeyAgent(agent, agent.sessionId);
       }
