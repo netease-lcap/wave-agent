@@ -14,6 +14,7 @@ import type {
   DesktopHostProps,
   DesktopPane,
   OpenPaneOptions,
+  PrefillDraftRequest,
   VsCodeApi,
 } from "../types";
 import type { NavKey } from "./SettingsPage";
@@ -66,6 +67,14 @@ interface DesktopShellProps {
   /** 活动 button highlight while the board view is open (spec 场景 1). */
   sessionBoardActive?: boolean;
   onOpenSessionBoard?: () => void;
+  /**
+   * root 设置页「新建/编辑」预填提示词请求（FR-032：root 不挂 MessageInput）。
+   * 仅 targetPaneId 匹配的 pane-scoped ChatApp 收到（settings 关闭、pane 行
+   * 重挂载后随行下发），写输入框后回调 onPrefillApplied 清 root pending。
+   */
+  prefillRequest?: PrefillDraftRequest | null;
+  /** pane ChatApp 已把预填提示词写入输入框（携带 nonce）。 */
+  onPrefillApplied?: (nonce: number) => void;
 }
 
 /**
@@ -107,6 +116,8 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   sessionBoard,
   sessionBoardActive = false,
   onOpenSessionBoard,
+  prefillRequest = null,
+  onPrefillApplied,
 }) => {
   const panes: DesktopPane[] = useMemo(() => host.panes ?? [], [host.panes]);
   const focusedPaneId = host.focusedPaneId ?? panes[0]?.paneId ?? null;
@@ -786,6 +797,12 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                                   : undefined
                               }
                               onOpenSettingsFromPane={onOpenSettings}
+                              prefillRequest={
+                                prefillRequest?.targetPaneId === pane.paneId
+                                  ? prefillRequest
+                                  : null
+                              }
+                              onPrefillApplied={onPrefillApplied}
                               headerActions={
                                 panes.length > 1 ? (
                                   <button

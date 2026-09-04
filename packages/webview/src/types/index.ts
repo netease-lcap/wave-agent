@@ -225,6 +225,38 @@ export interface ChatAppProps {
    * renders the full-page settings (spec agent-config.md scenario 5).
    */
   onOpenSettingsFromPane?: (nav?: NavKey) => void;
+  /**
+   * Desktop pane layout: a settings-page「新建/编辑」prefill draft handed down
+   * from the root instance (which renders the full-page settings but, in pane
+   * mode, no MessageInput of its own). DesktopShell threads the request only to
+   * the pane-scoped ChatApp whose paneId === targetPaneId (captured from the
+   * host's focused pane at click time). The receiving ChatApp loadDrafts the
+   * prompt once its input is mounted and reports back via onPrefillApplied.
+   * Undefined/null = no pending request. Root single-layout instances never
+   * receive this prop — they write their own input via the plain effect.
+   */
+  prefillRequest?: PrefillDraftRequest | null;
+  /** 收到 pane ChatApp 已写入输入框的回执（携带 nonce，root 据此清 pending）。 */
+  onPrefillApplied?: (nonce: number) => void;
+}
+
+/**
+ * 设置页「新建/编辑」→ 关闭设置页并把提示词预填进 AI 对话框（desktop）。
+ * 无 pane 单布局下 root ChatApp 自带 MessageInput，直接写本地 ref；桌面 pane
+ * 布局（FR-032）下设置页挂在 root 实例而输入框在 pane-scoped ChatApp —— root
+ * 在点击瞬间捕获 targetPaneId，请求经 DesktopShell 下行给匹配 pane。
+ */
+export interface PrefillDraftRequest {
+  /** 预填提示词全文（设置页各「新建/编辑」模板生成，调用方不动）。 */
+  prompt: string;
+  /** 请求序号，每次点击递增：pane ChatApp 的 effect 以 nonce 变化识别新请求。 */
+  nonce: number;
+  /**
+   * Desktop pane 布局下点击瞬间的目标 pane id（host.focusedPaneId 兜底
+   * panes[0]，与 host 侧「无 paneId RPC 落到 focused pane」同一锚点）。
+   * undefined = 无 pane 单布局，由 root 自己的 effect 写入本地输入框。
+   */
+  targetPaneId?: string;
 }
 
 /**
