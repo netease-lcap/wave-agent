@@ -35,7 +35,8 @@ const userSkill: SkillMetadata = {
   name: "my-skill",
   description: "个人自定义技能，用于日常代码审查",
   type: "personal",
-  skillPath: "~/.wave/skills/my-skill.md",
+  // SDK 的 skillPath 指向技能目录（内含 SKILL.md），非 SKILL.md 文件本身
+  skillPath: "~/.wave/skills/my-skill",
   model: "glm-5.2",
   allowedTools: ["Read", "Write"],
   userInvocable: true,
@@ -45,7 +46,7 @@ const projectSkill: SkillMetadata = {
   name: "deploy",
   description: "项目专用部署技能",
   type: "project",
-  skillPath: "/work/a/.wave/skills/deploy/SKILL.md",
+  skillPath: "/work/a/.wave/skills/deploy",
   userInvocable: true,
 };
 
@@ -191,7 +192,7 @@ describe("SettingsPage 技能选项卡视图（4 Tab + 项目 Tab 平铺）", ()
     const sourceField = screen.getByText("来源：").parentElement;
     expect(sourceField).toHaveTextContent("用户");
     expect(screen.getByText("路径：")).toBeInTheDocument();
-    expect(screen.getByText("~/.wave/skills/my-skill.md")).toBeInTheDocument();
+    expect(screen.getByText("~/.wave/skills/my-skill")).toBeInTheDocument();
     expect(screen.getByText("模型：")).toBeInTheDocument();
     expect(screen.getByText("glm-5.2")).toBeInTheDocument();
     expect(screen.getByText("允许的工具：")).toBeInTheDocument();
@@ -272,9 +273,11 @@ describe("SettingsPage 技能选项卡视图（4 Tab + 项目 Tab 平铺）", ()
       fireEvent.click(screen.getByRole("button", { name: /编辑/ }));
     });
 
+    // 编辑传 SKILL.md 文件本身（skillPath 是技能目录，host 面板/编辑器
+    // 打不开目录 —— bug 3466438649392128 回归护栏）
     expect(onPrefillPrompt).toHaveBeenCalledWith(
       expect.stringContaining("帮我改技能my-skill"),
-      "~/.wave/skills/my-skill.md",
+      "~/.wave/skills/my-skill/SKILL.md",
     );
     expect(vscode.postMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({ command: "openFile" }),
@@ -292,11 +295,9 @@ describe("SettingsPage 技能选项卡视图（4 Tab + 项目 Tab 平铺）", ()
       fireEvent.click(screen.getByRole("button", { name: /删除/ }));
     });
 
-    // 确认框出现（含技能名与路径）
+    // 确认框出现（含技能名与路径 —— 目录形态，删除按目录递归）
     expect(await screen.findByText("删除技能「my-skill」")).toBeInTheDocument();
-    expect(
-      screen.getByText(/~\/\.wave\/skills\/my-skill\.md/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/~\/\.wave\/skills\/my-skill/)).toBeInTheDocument();
 
     // 取消不删除
     await act(async () => {

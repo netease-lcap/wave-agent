@@ -46,6 +46,17 @@ function getSkillScope(skill: SkillMetadata): string {
   return skill.type;
 }
 
+/** 「编辑」要打开的文件：SDK 的 skillPath 语义是技能目录（内含 SKILL.md），
+ *  解析成 SKILL.md 文件路径才能被桌面文件面板 / IDE 编辑器打开；个别已直接
+ *  指向 SKILL.md/.md 文件的形态原样返回，避免重复拼接。 */
+function skillFileFor(
+  skill: Pick<SkillMetadata, "skillPath">,
+): string | undefined {
+  const p = skill.skillPath;
+  if (!p) return undefined;
+  return /\.md$/i.test(p) ? p : `${p.replace(/[\\/]+$/, "")}/SKILL.md`;
+}
+
 const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
   vscode,
   workdir,
@@ -103,11 +114,13 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
   };
 
   const handleEdit = (skill: SkillMetadata) => {
-    // 关闭设置页预填编辑提示词；同带 skillPath —— desktop 在会话视图右侧文件
-    // 面板打开该 SKILL.md、IDE 用自身编辑器打开，便于对照修改。
+    // 关闭设置页预填编辑提示词；同带 SKILL.md 文件路径 —— desktop 在会话视图
+    // 右侧文件面板打开、IDE 用自身编辑器打开，便于对照修改。SDK 下发的
+    // skillPath 是技能目录（内含 SKILL.md，删除也按目录递归），host 的文件
+    // 面板/编辑器只能打开文件，直接传目录会报「无法显示目录」而打不开技能。
     onPrefillPrompt?.(
       `/settings 帮我改技能${skill.name}：把<要改的地方>改成<新内容/新行为>`,
-      skill.skillPath,
+      skillFileFor(skill),
     );
   };
 
