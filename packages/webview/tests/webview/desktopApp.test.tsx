@@ -1078,7 +1078,7 @@ describe("DesktopApp", () => {
       }
     });
 
-    it("shows a running dot on the streaming current session and marks it current", () => {
+    it("marks the streaming session current and shows no self dot; background running sessions show the loading ring", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", {
         workdir: "/work/a",
@@ -1090,7 +1090,10 @@ describe("DesktopApp", () => {
           {
             host: "local",
             workdir: "/work/a",
-            sessions: [session("s1", "hello a"), session("s2", "hello again")],
+            sessions: [
+              session("s1", "hello a"),
+              { ...session("s2", "hello again"), running: true },
+            ],
           },
         ],
       });
@@ -1108,20 +1111,21 @@ describe("DesktopApp", () => {
       sendCommand("startStreaming", {});
 
       const current = screen.getByTestId("desktop-session-item-s1");
-      const runningIcon = current.querySelector(
-        ".desktop-session-status-icon.codicon-loading",
-      );
-      expect(runningIcon).not.toBeNull();
-      expect(runningIcon).toHaveAttribute("title", "正在运行");
       expect(current.className).toContain("desktop-session-item--current");
+      // The active chat never carries its own status slot (Figma 13656:5470) —
+      // even while streaming it stays ring-free; only background sessions hint.
+      expect(current.querySelector(".desktop-session-status-slot")).toBeNull();
+
+      const background = screen.getByTestId("desktop-session-item-s2");
+      expect(background.className).toContain("desktop-session-item--status");
       expect(
-        screen
-          .getByTestId("desktop-session-item-s2")
-          .querySelector(".desktop-session-status-icon"),
-      ).toBeNull();
+        background.querySelector(
+          ".desktop-session-status-slot--running svg[aria-label='正在运行']",
+        ),
+      ).not.toBeNull();
     });
 
-    it("shows a waiting dot on sessions with a pending confirmation, taking precedence over running", () => {
+    it("shows a waiting dot on background sessions with a pending confirmation, taking precedence over running", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", {
         workdir: "/work/a",
@@ -1158,19 +1162,17 @@ describe("DesktopApp", () => {
       sendCommand("startStreaming", {});
 
       const waiting = screen.getByTestId("desktop-session-item-s1");
-      // Both flags set: waiting wins — shows a bell, no running loader.
-      const waitingIcon = waiting.querySelector(
-        ".desktop-session-status-icon.codicon-bell",
-      );
-      expect(waitingIcon).not.toBeNull();
-      expect(waitingIcon).toHaveAttribute("title", "等待确认");
-      expect(waiting.querySelector(".codicon-loading")).toBeNull();
+      // Both flags set: waiting wins — an amber dot, no running loader.
+      expect(
+        waiting.querySelector(
+          ".desktop-session-status-slot--waiting svg[aria-label='等待确认']",
+        ),
+      ).not.toBeNull();
+      expect(waiting.querySelector(".desktop-session-loading-ring")).toBeNull();
 
       const running = screen.getByTestId("desktop-session-item-s2");
-      expect(running.querySelector(".codicon-bell")).toBeNull();
-      expect(
-        running.querySelector(".desktop-session-status-icon.codicon-loading"),
-      ).not.toBeNull();
+      // The focused session streaming in the active chat gets no status slot.
+      expect(running.querySelector(".desktop-session-status-slot")).toBeNull();
     });
 
     it("shows 无会话 for an expanded empty group", () => {
