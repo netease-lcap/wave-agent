@@ -2,10 +2,10 @@ import { test, expect } from "../e2e/utils/desktopTestHarness.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
-// Desktop local workdir selector (spec desktop-app.md 首次启动/选择工作目录):
-// new-session state (no messages) shows the workdir dropdown with the recents
-// list and the 浏览… entry. The shared webview bundle must be rebuilt first
-// (node esbuild.config.mjs) or these shots capture the old UI.
+// Desktop local workdir selector (spec desktop-sessions.md 会话管理/SSH 远程主机
+// 工作目录选择): new-session state (no messages) shows the workdir dropdown with
+// the recents list and the 浏览… entry. The shared webview bundle must be rebuilt
+// first (node esbuild.config.mjs) or these shots capture the old UI.
 const DIR_A = "/Users/dev/projects/wave-agent";
 const DIR_B = "/Users/dev/projects/web-dashboard";
 const DIR_C = "/Users/dev/projects/docs-site";

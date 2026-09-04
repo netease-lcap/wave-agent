@@ -435,7 +435,7 @@ describe("Session Management", () => {
   });
 });
 
-describe("input drafts per session (desktop-app.md 会话管理 scenario 11/12)", () => {
+describe("input drafts per session (desktop-sessions.md 会话管理 scenario 11/12)", () => {
   const sessionA = {
     id: "session-A",
     sessionType: "main" as const,

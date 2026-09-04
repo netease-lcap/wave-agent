@@ -1,5 +1,5 @@
 /**
- * SSH host support for remote development (spec: docs/specs/ui/desktop-app.md
+ * SSH host support for remote development (spec: docs/specs/desktop/desktop-sessions.md
  * 「SSH 远程主机」). Host discovery mirrors VS Code Remote-SSH: hosts are the
  * top-level `Host` block names in ~/.ssh/config (wildcard patterns skipped);
  * connection parameters are resolved by ssh itself at spawn time. 「添加主机…」

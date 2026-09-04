@@ -10,7 +10,7 @@ order: 245
 
 **最近更新**：2026-08-28（新增 bash 命令输出中的 URL 链接化）
 
-> 本规格覆盖 VS Code / JetBrains / Desktop 共享 webview（`packages/webview`）中链接的解析与点击行为，包括消息 markdown 渲染与 bash 命令输出。链接点击后的宿主路由（desktop 的 localhost 预览面板分流）见 [桌面应用](desktop-app.md)，此处不重复。
+> 本规格覆盖 VS Code / JetBrains / Desktop 共享 webview（`packages/webview`）中链接的解析与点击行为，包括消息 markdown 渲染与 bash 命令输出。链接点击后的宿主路由（desktop 的 localhost 预览面板分流）见 [桌面端原型预览](../desktop/desktop-preview.md)，此处不重复。
 
 ## 用户场景与测试 _（必填）_
 

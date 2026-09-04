@@ -1,6 +1,6 @@
 /**
- * Remote wave CLI resolution (spec: docs/specs/ui/desktop-app.md 「SSH 远程主
- * 机」 scenarios 7/8). One-shot ssh probes run node presence/version and
+ * Remote wave CLI resolution (spec: docs/specs/desktop/desktop-sessions.md 「SSH
+ * 远程主机」 scenarios 7/8). One-shot ssh probes run node presence/version and
  * `command -v wave`; a missing CLI triggers a best-effort auto-install via the
  * npmmirror registry, then the flow continues. Every failure surfaces an
  * actionable message — nothing retries indefinitely.
@@ -215,7 +215,7 @@ async function getRemoteCliVersion(
 
 /**
  * Upgrade the remote wave CLI to a specific version via npm global install
- * (spec: desktop-app.md 「自动更新 CLI」 scenario 3). The version is validated
+ * (spec: desktop-shell.md 「CLI 版本保障」 scenario 3). The version is validated
  * against a strict semver pattern before it is interpolated into the remote
  * shell command — the same no-shell-injection guarantee the local
  * upgradeWaveBinary holds. Returns the freshly resolved binary path.
@@ -247,8 +247,8 @@ export interface RemoteCliUpToDateResult {
 }
 
 /**
- * Ensure the remote wave CLI version is >= targetVersion (spec: desktop-app.md
- * 「自动更新 CLI」 scenarios 3/4). Mirrors local ensureCliUpToDate: resolve →
+ * Ensure the remote wave CLI version is >= targetVersion (spec: desktop-shell.md
+ * 「CLI 版本保障」 scenarios 3/4). Mirrors local ensureCliUpToDate: resolve →
  * `wave -v` → compare → upgrade when the version is null (corrupt) or older.
  * The caller decides what to do about the still-running old daemon.
  */
@@ -381,8 +381,8 @@ export interface RemoteFileReadResult {
 }
 
 /**
- * Read a remote file for the file panel (spec: docs/specs/ui/desktop-app.md 「文
- * 件面板」 scenarios 1-3/14/15/19). A single ssh invocation reports the mime via
+ * Read a remote file for the file panel (spec: docs/specs/desktop/desktop-file-panel.md
+ * 「文件面板」 scenarios 1-3/14/15/19). A single ssh invocation reports the mime via
  * `file` (flag fallback chain `--mime-type` → `-I` → `-i`, since support varies
  * across file builds; when `file` is missing, common image extensions are
  * mapped instead), inlines images as base64, NUL-detects binaries on the first

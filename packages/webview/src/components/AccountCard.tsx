@@ -20,7 +20,7 @@ import "../styles/ConfirmDialog.css";
 
 /**
  * 桌面侧边栏账户卡片（spec desktop-account-card-and-panel-tabs.md，取代
- * desktop-app.md「账户卡片」的用量浮层 + 更多按钮旧交互）。宿主推送窗口级
+ * desktop-account-and-settings.md「账户卡片」的用量浮层 + 更多按钮旧交互）。宿主推送窗口级
  * `desktopAccountInfo` 快照；卡片未登录态为整条登录按钮 + 更多按钮，登录态为
  * 三段式：
  *
@@ -462,11 +462,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => setUsageCollapsed((v) => !v)}
           >
-            {usageCollapsed ? (
-              <QuotaIcon />
-            ) : (
-              <ChevronUpIcon />
-            )}
+            {usageCollapsed ? <QuotaIcon /> : <ChevronUpIcon />}
           </button>
         )}
       </div>

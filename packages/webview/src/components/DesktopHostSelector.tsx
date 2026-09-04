@@ -16,7 +16,7 @@ export interface DesktopHostSelectorProps {
 
 /**
  * Host dropdown at the top-left of the message input (desktop host, new-session
- * state only), sitting left of the workdir selector (spec docs/specs/ui/desktop-app.md
+ * state only), sitting left of the workdir selector (spec docs/specs/desktop/desktop-sessions.md
  * 「SSH 远程主机」). Lists 本地 + SSH hosts parsed from ~/.ssh/config, plus
  * 添加主机… which expands into an inline connection-string input. The host
  * switch itself is handled by the main process (desktopSelectHost); adding a

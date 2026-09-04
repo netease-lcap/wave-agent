@@ -2,7 +2,7 @@ import { test, expect } from "./utils/desktopTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
 
 // Real-browser verification of the sidebar session-tree keyboard model
-// (spec docs/specs/ui/desktop-app.md 「会话管理」scenarios 13-19): every
+// (spec docs/specs/desktop/desktop-sessions.md 「会话管理」scenarios 13-19): every
 // session row is natively Tab-focusable (claude.ai model), ↑/↓/Home/End
 // move between rows as an accelerator, delete buttons sit outside the Tab
 // order (←/→ only), and no delete shortcut exists. jsdom covers the focus

@@ -1,6 +1,6 @@
 /**
  * DaemonServer — JSON-RPC server over a unix socket for remote background
- * sessions (spec: docs/specs/ui/desktop-app.md 「SSH 远程后台会话」).
+ * sessions (spec: docs/specs/desktop/desktop-sessions.md 「SSH 远程后台会话」).
  *
  * The desktop app launches `wave --daemon <socket>` on the remote host via
  * nohup/setsid, then tunnels the socket back with `ssh -L`. All connections

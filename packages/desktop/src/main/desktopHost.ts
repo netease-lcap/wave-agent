@@ -333,7 +333,7 @@ export class DesktopHost {
   }
 
   /**
-   * Key for a pane's input draft. Drafts are per-session (desktop-app.md
+   * Key for a pane's input draft. Drafts are per-session (desktop-sessions.md
    * 「会话管理」scenario 11/12): typed-but-unsent text must not leak across
    * sessions shown in the same pane, and follows the session between panes.
    * A pane targeting an in-flight restore resolves to the pending session
@@ -1365,7 +1365,7 @@ export class DesktopHost {
       // handleNewSession). Session activation must never write recents: the
       // list reflects only directories the user deliberately opened, so a
       // session whose cwd drifted into a worktree path (e.g. bash cd) can't
-      // pollute it. See desktop-app.md「会话管理」scenario 9.
+      // pollute it. See desktop-sessions.md「会话管理」scenario 9.
       this.workdir = dir;
     }
     this.sendWorkdirState();
@@ -3826,7 +3826,7 @@ export class DesktopHost {
     }
     this.hostState.set(pid, host);
     // The picker's default workdir is the new host's first recent directory
-    // (desktop-app.md scenario 23). A released or never-bound pane still holds
+    // (desktop-sessions.md「SSH 远程主机」scenario 23). A released or never-bound pane still holds
     // the previous host's directory in both the host-side current workdir and
     // the webview's state.workdir — clear both so the picker falls back to the
     // new host's recents[0] instead of showing a stale path from another host.
@@ -3885,7 +3885,7 @@ export class DesktopHost {
     this.hostState.set(pid, name);
     // Same as handleSelectHost: with no bound agent the pane is still the
     // new-session picker, so clear the previous host's workdir from both the
-    // host-side state and the webview (desktop-app.md scenario 23).
+    // host-side state and the webview (desktop-sessions.md「SSH 远程主机」scenario 23).
     if (!this.agentForPane(pid)) {
       this.workdir = undefined;
       this.postMessage({
@@ -3930,8 +3930,8 @@ export class DesktopHost {
       exists = await remotePathExists(host, path);
     } catch (error) {
       // Host unreachable — not a "directory missing" verdict, so don't claim
-      // the path doesn't exist (desktop-app.md「远端主机不可达时不得删除会话/
-      // 最近目录」).
+      // the path doesn't exist (desktop-sessions.md「远端主机不可达时不得删除会
+      // 话/最近目录」).
       if (!(error instanceof RemoteHostUnreachableError)) throw error;
       this.showToast({ message: `无法连接主机 ${host}，目录未校验` });
       return;
@@ -3999,8 +3999,8 @@ export class DesktopHost {
       exists = await this.pathExistsOn(h, dir);
     } catch (error) {
       // Host unreachable — keep the recent entry; a transient outage must not
-      // drop the user's recently-used directories (desktop-app.md「远端主机不
-      // 可达时不得删除会话/最近目录」).
+      // drop the user's recently-used directories (desktop-sessions.md「远端主
+      // 机不可达时不得删除会话/最近目录」).
       if (!(error instanceof RemoteHostUnreachableError)) throw error;
       this.showToast({ message: `无法连接主机 ${h}，最近目录已保留` });
       return;
@@ -4074,14 +4074,15 @@ export class DesktopHost {
       // The directory probe is a remote `ssh test -d` (fresh process, no
       // connection reuse) — it must run behind the overlay, not in front of
       // the pane switch, or the user waits for the SSH hop before the
-      // "selected" feedback (desktop-app.md「历史会话即时进入」scenario 2).
+      // "selected" feedback (desktop-sessions.md「历史会话即时进入」scenario 2).
       let exists: boolean;
       try {
         exists = await this.pathExistsOn(host, targetDir);
       } catch (error) {
         // Host unreachable — the probe says nothing about whether the
         // worktree/session still exists, so the index entry must NOT be
-        // removed (desktop-app.md「远端主机不可达时不得删除会话/最近目录」).
+        // removed (desktop-sessions.md「远端主机不可达时不得删除会话/最近目
+        // 录」).
         // Drop the overlay, fall back to the previous agent, keep the entry
         // for a retry once the host is back.
         if (!(error instanceof RemoteHostUnreachableError)) throw error;
@@ -4239,7 +4240,7 @@ export class DesktopHost {
     const active = this.agentForPane(pid);
     // New session cwd = the most recently user-selected repo root (recents),
     // decoupled from the previous session's state (worktree session, bash cd,
-    // etc.). See desktop-app.md「会话管理」scenario 8. No fallback to
+    // etc.). See desktop-sessions.md「会话管理」scenario 8. No fallback to
     // this.workdir — it follows the focused pane and could be a worktree path.
     // The host is the pane's pending picker host (spec scenario 1/9).
     const host = this.hostState.get(pid) ?? LOCAL_HOST;

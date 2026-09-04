@@ -936,7 +936,7 @@ body.is-panel-resizing webview {
   flex-shrink: 0;
 }
 
-/* ---- Preview tabs (spec desktop-app.md 预览多标签页) ----
+/* ---- Preview tabs (spec desktop-preview.md 预览多标签页) ----
    Prototype pill tabs: 26px capsules on a transparent strip; the active tab
    gets a neutral fill; 1px separators sit between inactive neighbors. */
 

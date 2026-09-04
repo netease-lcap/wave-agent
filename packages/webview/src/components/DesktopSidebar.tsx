@@ -149,7 +149,7 @@ const dirName = (workdir: string): string =>
 
 // A group is identified by (host, workdir) — the same directory may exist on
 // the local machine and on an SSH host, and those are distinct groups (spec
-// docs/specs/ui/desktop-app.md 「SSH 远程主机」scenario 9).
+// docs/specs/desktop/desktop-sessions.md 「SSH 远程主机」scenario 9).
 const groupKey = (group: DesktopSessionGroup): string =>
   `${group.host}:${group.workdir}`;
 

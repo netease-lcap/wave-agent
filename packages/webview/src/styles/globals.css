@@ -42,7 +42,7 @@ body {
   display: inline-block;
 }
 
-/* ---- Scrollbars (desktop visual refresh, docs/specs/ui/desktop-app.md) ----
+/* ---- Scrollbars (desktop visual refresh) ----
    Pill thumb inside a wide transparent track, per the prototype's scrollbar
    spec: 16px track, 8px visual pill (4px transparent borders + padding-box
    clip), track always invisible. The three interaction shades map onto the

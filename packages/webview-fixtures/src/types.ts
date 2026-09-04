@@ -564,7 +564,7 @@ export interface AccountUpdateInfo {
 }
 
 /**
- * 桌面侧边栏账户卡片快照 (spec desktop-app.md「账户卡片」). Window-global like
+ * 桌面侧边栏账户卡片快照 (spec desktop-account-card-and-panel-tabs.md). Window-global like
  * showToast — the sidebar renders on the root webview instance only, so the
  * host never pane-tags it. Auth/usage follow the focused pane's host.
  */
@@ -581,7 +581,7 @@ export interface DesktopAccountInfoMessage extends HostToWebviewMessageBase {
 // ---- Host-only commands (consumed outside the ChatApp switch). ----
 
 /**
- * macOS 窗口全屏状态推送 (spec desktop-app.md「macOS 隐藏标题栏」场景 7).
+ * macOS 窗口全屏状态推送 (spec desktop-shell.md「macOS 隐藏标题栏」场景 7).
  * Window-global: fullscreen hides the system traffic lights, so the webview
  * collapses its traffic-light clearance (window-row gutter / collapsed-header
  * spacer) until leaving fullscreen.
