@@ -2175,3 +2175,13 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - 模式按钮底色触发 `:hover, :focus` → `:hover, :focus-visible`，并显式 `:focus { background: transparent }` 覆盖 base——鼠标切换选择后不再残留 hover 底色，键盘 Tab 聚焦仍显示焦点底色（dark 同拆）。
 
 实现文件：`src/styles/host-desktop.css`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+---
+
+## 0904 第 5 轮（feat/0904-new-base-r1）：输入框删除内容后占位文案恢复
+
+预览评论 `div#messageInput.message-input.content-editable-input`（输入框）：「输入内容再删除后，占位文案消失了，不合理，希望不要消失」。
+
+- 根因：占位符由 `.content-editable-input:empty::before { content: attr(data-placeholder) }` 驱动；contenteditable 输入删空后浏览器常残留 `<br>`/空 `<div>`，`:empty` 不再匹配 → 占位文案消失。
+- 修改：`src/components/MessageInput.tsx` `handleInput` 检测到 `innerText` 已删空且子节点仅剩 `<br>`/空 `div` 时 `replaceChildren()` 清空，让占位符恢复显示（img/附件等实质内容不受影响）。
+- 实现文件：`src/components/MessageInput.tsx`、本 docs。（用户人工走查，本轮不跑自动化。）
