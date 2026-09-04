@@ -11,7 +11,6 @@
     "wave": "tsx --tsconfig packages/code/tsconfig.dev.json packages/code/src/index.ts",
     "watch": "pnpm -r --parallel watch",
     "build": "pnpm -r build",
-    "daemon:kill": "pkill -f '[w]ave.*--daemon' && echo '[daemon:kill] killed running wave daemon' || true",
     "type-check": "pnpm -r type-check",
     "test": "pnpm -r test",
     "test:coverage": "pnpm -r test:coverage",

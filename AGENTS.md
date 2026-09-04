@@ -79,7 +79,7 @@ Always use `pnpm` as the package manager.
 ## 🐛 Debugging
 
 - **Prefer temporary console.log/console.trace**: When diagnosing bugs, especially race conditions or complex flows, add temporary `console.log` or `console.trace` statements to trace execution rather than overthinking through static analysis. Run the code/tests, observe the actual output, then remove the logs once the issue is identified.
-- **Kill stray daemons**: `pnpm run daemon:kill` (pkill on `wave.*--daemon` processes).
+- **Stop/restart the daemon**: `pnpm wave daemon stop` (graceful shutdown of `~/.wave/daemon.sock`, idempotent when not running) / `pnpm wave daemon restart` (stop + relaunch from the current CLI).
 
 ## 🧩 VS Code Extension (`packages/vscode`)
 

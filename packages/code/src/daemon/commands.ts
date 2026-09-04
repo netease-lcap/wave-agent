@@ -2,10 +2,13 @@
  * `wave daemon` client subcommands — talk to the wave daemon's unix socket
  * (JSON-RPC over newline-delimited JSON) to create/destroy sessions, list
  * hosted sessions, inspect progress, inject messages, respond to pending
- * permission requests and abort in-flight message generation. When the daemon
- * is not running, any subcommand starts one on demand (detached --daemon
- * spawn, the local equivalent of the remote nohup launcher) and retries the
- * connection — the daemon needs no permanent host, it is used on demand.
+ * permission requests, abort in-flight message generation, and stop/restart
+ * the daemon itself. When the daemon is not running (stopped / killed /
+ * machine reboot), every subcommand except `stop` starts one on demand
+ * (detached --daemon spawn, the local equivalent of the remote nohup
+ * launcher) and retries the connection — once started the daemon stays
+ * resident (it does not exit on idle), so a subcommand usually finds it up.
+ * `stop` never auto-starts: with no daemon running it is an idempotent no-op.
  *
  * All subcommands are non-interactive: results go to stdout, diagnostics to
  * stderr, and every handler calls process.exit() itself (yargs would fall
@@ -831,5 +834,97 @@ export async function daemonDestroyCommand(
   } finally {
     await client?.dispose();
   }
+  process.exit(0);
+}
+
+// ── stop / restart ─────────────────────────────────────────────
+
+/** How long stop/restart wait for a running daemon to exit (mutable so tests can shorten it). */
+export const daemonStopTimeout = { ms: 10_000 };
+const DAEMON_STOP_POLL_INTERVAL_MS = 200;
+
+/** Connect to the daemon socket without starting one; undefined when it is not running. */
+async function tryConnectDaemon(
+  socketPath: string,
+): Promise<SocketClient | undefined> {
+  try {
+    return await connectDaemon(socketPath);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Poll until the daemon socket stops accepting connections (the daemon exited). */
+async function waitForDaemonExit(socketPath: string): Promise<void> {
+  const deadline = Date.now() + daemonStopTimeout.ms;
+  while (Date.now() < deadline) {
+    const client = await tryConnectDaemon(socketPath);
+    if (!client) return;
+    client.dispose();
+    await sleep(DAEMON_STOP_POLL_INTERVAL_MS);
+  }
+  throw new Error(
+    `daemon did not exit within ${daemonStopTimeout.ms}ms (socket still accepting connections)`,
+  );
+}
+
+/**
+ * Gracefully stop a running daemon: send the `shutdown` RPC (the daemon
+ * destroys every session — each agent saves its transcript — then removes its
+ * socket file and exits) and wait for the socket to disappear. Never starts a
+ * daemon. Returns whether one was running (false = idempotent no-op).
+ * Throws when a running daemon fails to exit in time.
+ */
+async function stopDaemon(socketPath: string): Promise<boolean> {
+  const client = await tryConnectDaemon(socketPath);
+  if (!client) return false;
+  try {
+    // The daemon may drop the socket before responding to the RPC — the wait
+    // below is the source of truth, so any request error is fine.
+    await client.request("shutdown").catch(() => {});
+  } finally {
+    client.dispose();
+  }
+  await waitForDaemonExit(socketPath);
+  return true;
+}
+
+/**
+ * Gracefully stop the daemon (spec: daemon-command.md stop/restart). Sends the
+ * `shutdown` RPC so sessions are destroyed and transcripts flushed before the
+ * process exits — not a pkill. Idempotent: with no daemon running it prints
+ * "Daemon is not running" and exits 0 without starting one.
+ */
+export async function daemonStopCommand(socketPath: string): Promise<void> {
+  let stopped = false;
+  try {
+    stopped = await stopDaemon(socketPath);
+  } catch (err) {
+    fail(`wave daemon stop failed: ${(err as Error).message}`);
+  }
+  console.log(stopped ? "Daemon stopped" : "Daemon is not running");
+  process.exit(0);
+}
+
+/**
+ * Restart the daemon (spec: daemon-command.md stop/restart — the main scenario
+ * is restarting after a CLI upgrade so the fresh daemon runs the new code).
+ * A running daemon is gracefully stopped first (shutdown RPC + wait), then a
+ * fresh daemon is started on demand from the current CLI; when none is
+ * running this just starts one. Exits 1 with a clear error if the daemon
+ * cannot be stopped or the fresh one does not come up.
+ */
+export async function daemonRestartCommand(socketPath: string): Promise<void> {
+  let wasRunning = false;
+  try {
+    wasRunning = await stopDaemon(socketPath);
+  } catch (err) {
+    fail(`wave daemon restart failed: ${(err as Error).message}`);
+  }
+  // connectDaemonOrExit starts a daemon when the socket is absent and retries
+  // until it comes up (exit 1 with the spec'd error on timeout).
+  const client = await connectDaemonOrExit(socketPath);
+  client.dispose();
+  console.log(wasRunning ? "Daemon restarted" : "Daemon started");
   process.exit(0);
 }
