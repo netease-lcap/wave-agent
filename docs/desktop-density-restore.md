@@ -2047,6 +2047,7 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 ### 评论跟进（同轮）：显隐钮圆角对齐 6px + 「套餐用量」到进度条间距加大
 
 用户核对后两条：
+
 1. 「再检查额度图标背景圆角是不是 6px」——查 Figma 功能 icon-button hover 组件 13383:4723/4726 确认 hover 底色圆角 **r=6**（此前 base 圆角仅 4px）。`host-desktop.css` `.account-card-collapse-btn` 32×32 块补 `border-radius: 6px`（hover 底色形状随按钮圆角）。
 2. 预览评论 `div.account-usage-title`「套餐用量到进度条的间距再大一些」——Figma 13651:5041（Frame 1321327573）文本行底 y=5510 → Bar 顶 y=5516 = **6px**，base `.account-usage-section` 列 gap 仅 4px。host 补 `.account-usage-section { gap: 6px; }`（该 section 只含标题行与进度条，不影响 API 余额行距）。
 
@@ -2090,16 +2091,16 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 
 ### 设计稿权威值（13651:4864，浅色帧）
 
-| 项 | 设计稿 | 改前 |
-| --- | --- | --- |
-| 圆角 | **r12** | r6 |
-| 描边 | 1px **#EBEEF5** | widget-border |
-| 投影 | **0/0/12 rgba(0,0,0,.12)**（无偏移柔和投影） | 0 4px 12px rgba(0,0,0,.42) |
-| 背景 | #FFFFFF | panel-background（浅色同白） |
-| 内边距 | 9（外 235×78 − 内 217×60 四边同距） | 10×12 |
-| 标题 | 12px/**500**/#1F2329 | 600/foreground |
-| 行标签「已用/剩余」 | 12px/400/**#565A60** | descriptionForeground（浅色 #606060 偏深） |
-| 金额 | 12px/**500**/#1F2329 | foreground w400 |
+| 项                  | 设计稿                                       | 改前                                       |
+| ------------------- | -------------------------------------------- | ------------------------------------------ |
+| 圆角                | **r12**                                      | r6                                         |
+| 描边                | 1px **#EBEEF5**                              | widget-border                              |
+| 投影                | **0/0/12 rgba(0,0,0,.12)**（无偏移柔和投影） | 0 4px 12px rgba(0,0,0,.42)                 |
+| 背景                | #FFFFFF                                      | panel-background（浅色同白）               |
+| 内边距              | 9（外 235×78 − 内 217×60 四边同距）          | 10×12                                      |
+| 标题                | 12px/**500**/#1F2329                         | 600/foreground                             |
+| 行标签「已用/剩余」 | 12px/400/**#565A60**                         | descriptionForeground（浅色 #606060 偏深） |
+| 金额                | 12px/**500**/#1F2329                         | foreground w400                            |
 
 ### 改动（host-desktop.css，desktop 限定）
 
@@ -2135,4 +2136,14 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - 修改：`src/styles/DiffViewer.css` `.diff-viewer-content:focus` → `:focus-visible`（与全项目惯例一致：鼠标点击不显示框、键盘 Tab 聚焦仍保留焦点指示；桌面/IDE 两端同一基础样式）。
 - 实现文件：`src/styles/DiffViewer.css`、本 docs。（用户人工走查，本轮不跑自动化。）
 
+---
 
+## 0904 第 3 轮（feat/0904-new-base-r1）：会话看板卡高 72 + 顶栏通栏 44 + 列容器圆角 r12 + 空态 14px
+
+预览 CF-02（P2 · A · 已确认偏差）「会话卡片缺失 1px 描边 / 高 70 vs 72」+ 设计稿帧 `13498:16821` 对照评论（返回区通栏、卡片与列容器圆角、空态字号）。
+
+- **CF-02 卡高对齐（Figma Container 13561:39327：外高 72 = 边框 2 + 内距 24 + 内容 46）**：`.session-card` gap 2→0、`.session-card-title` 补 `line-height: 26px`、`.session-card-status` 补 `line-height: 20px`（Figma 行高 26/20）；描边本就在位（1px #ebeef5，暗色 12% 白），hover 不再加深边框色（仅阴影，避免与常驻描边叠硬边）。实测两主题外高均 **72px**（1440 与 994 宽）。
+- **顶栏通栏贴顶（Figma Header 行 44px 全宽，贴帧顶）**：`.session-board` padding 由 `16px` 改 `0 16px 16px`；`.session-board-toolbar` `margin: 0 -16px; padding: 0 8px; height: 44px`（box-sizing 含底描边 1px #ebeef5，首元素距左 8px）；`.session-board-header` / `.session-board-columns` 各 `margin-top: 16px`。几何对照 13498:16821 全中：toolbar 通栏 y0 h44、列头 y108 h48、列体 y156 h728、底留 16。
+- **列容器圆角（Figma 列头/列体圆角绑定与卡片同款变量 `13363:28` = r12）**：`.session-board-column-header` `6px 6px 0 0` → `12px 12px 0 0` 且固定 `height: 48px`（Figma 列头 48，count 文本行框 24 撑起）；`.session-board-column-body` `0 0 6px 6px` → `0 0 12px 12px`；相接处直角。
+- **空态字号（评论 2026-09：`div.session-board-empty` 暂无会话）**：12px → **14px**。
+- 实现文件：`src/styles/SessionBoard.css`、本 docs。（用户人工走查，本轮不跑自动化。）
