@@ -2147,3 +2147,31 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - **列容器圆角（Figma 列头/列体圆角绑定与卡片同款变量 `13363:28` = r12）**：`.session-board-column-header` `6px 6px 0 0` → `12px 12px 0 0` 且固定 `height: 48px`（Figma 列头 48，count 文本行框 24 撑起）；`.session-board-column-body` `0 0 6px 6px` → `0 0 12px 12px`；相接处直角。
 - **空态字号（评论 2026-09：`div.session-board-empty` 暂无会话）**：12px → **14px**。
 - 实现文件：`src/styles/SessionBoard.css`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+---
+
+## 0904 第 4 轮（feat/0904-new-base-r1）：全局字重 token 化 + 权限按钮走查修正
+
+用户提出对话流工具名等维持 600（semibold）、界面其它加粗 500（medium）、正文 400（regular），绑定 Figma `--cc-font-weight-*` 语义变量统一管理；组内归类由用户逐项在 8899 人工点名裁定。仅改 `host-desktop.css`（base 文件写死值不动，IDE 端不受影响），`font-weight: var(--cc-font-weight-<档>, 原值)` fallback 双保险。
+
+### 分组落地（用户裁定）
+
+- 新增 token：`:root[data-host="desktop"]` 定义 `--cc-font-weight-regular: 400 / -medium: 500 / -semibold: 600`（与主题无关）。
+- **① 对话流工具名 → semibold 600（等值）**：`.tool-block`（全部工具 header 行）、`.write-tool-label`、`.reasoning-title`。
+- **② 界面/面板标题类 → medium 500**（用户逐项点名，追加于「②-medium」组）：`.header-title`（顶栏，就地改）、账户卡 `.account-usage-title / -percent / -label / -value-text`、`.account-card-name`、`.session-card-title`、`.desktop-panel-tab.active .desktop-panel-tab-label`、`.desktop-session-group-name`、`.permission-mode-item`（权限下拉全部选项文案）、`.user-content`（用户消息正文）、`plan/file/diff/terminal/empty` 的 `.preview-pane-url` 面板标题（就地改）。部分本即 500（等值 token 化），部分由 600/400 提到 500。
+- **③ 角标/状态 chip → medium 500**：`.account-card-avatar`（头像首字母）、`.api-popover-title`、mermaid `.zoom-info`、`.desktop-remote-browser-mark`（700→500）。
+- **④ markdown/内容语义粗体 → semibold 600**：`.markdown-content strong/b/h5/h6/th`、`.suggestion-item.kb-option .suggestion-name`。
+- **⑤ 原 bold 700 → 统一 semibold 600**：`.diff-prefix/.diff-chunk-prefix`、`.button-badge`、`.image-type`、`.suggestion-highlight`、`.todo-status-icon`、`.btw-panel-prefix`、mermaid `.close-btn`、`.file-pane .hljs-strong`。
+- **正文 normal 重置并入 regular（值不变）**：`.plugin-version/-scope/-status-tag`、`.recommended-tag`、`.compact-params`、`.bash-command(-output)`、`.lsp-output`、`.tool-result-inline`、`.codicon`。
+
+### 会话名两态（点名修正）
+
+- 选中（`.desktop-session-item--current`）会话标题 medium 500；
+- 未选中 `.desktop-session-title` → regular 400 不强调（用户：没选中不要加粗）。
+
+### 权限模式按钮（走查评论）
+
+- 「跳过权限确认」`.permission-mode-select.mode-bypassPermissions`：红色警示保留、字重改 regular 400（原 base bold 700；用户：选择完成后文案不要加粗，与其它模式一致）。
+- 模式按钮底色触发 `:hover, :focus` → `:hover, :focus-visible`，并显式 `:focus { background: transparent }` 覆盖 base——鼠标切换选择后不再残留 hover 底色，键盘 Tab 聚焦仍显示焦点底色（dark 同拆）。
+
+实现文件：`src/styles/host-desktop.css`、本 docs。（用户人工走查，本轮不跑自动化。）
