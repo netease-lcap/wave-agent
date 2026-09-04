@@ -42,6 +42,7 @@ test.describe("Desktop worktree controls screenshots", () => {
 
     // Host replies with the workdir's git branches → controls appear.
     await injector.simulateExtensionMessage("desktopGitBranches", {
+      workdir: DIR_A,
       result: { branches: BRANCHES, current: "main" },
     });
     await expect(

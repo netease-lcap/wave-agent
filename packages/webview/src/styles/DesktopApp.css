@@ -537,12 +537,6 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   white-space: nowrap;
 }
 
-.desktop-branch-loading {
-  font-style: italic;
-  color: var(--vscode-descriptionForeground);
-  opacity: 0.8;
-}
-
 .desktop-workdir-caret {
   opacity: 0.6;
   font-size: 12px;

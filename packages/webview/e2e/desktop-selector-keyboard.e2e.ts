@@ -175,6 +175,7 @@ test.describe("Desktop dropdown roving keyboard", () => {
     // item so the auto-focus must land there, not on the first option.
     await injector.waitForMessage("desktopListGitBranches");
     await injector.simulateExtensionMessage("desktopGitBranches", {
+      workdir: DIR_A,
       result: {
         branches: ["main", "feature/login", "develop"],
         current: "develop",

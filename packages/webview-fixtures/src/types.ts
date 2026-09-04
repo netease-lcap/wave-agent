@@ -214,6 +214,9 @@ export interface UpdateWorkdirMessage extends HostToWebviewMessageBase {
 
 export interface DesktopGitBranchesMessage extends HostToWebviewMessageBase {
   command: "desktopGitBranches";
+  /** The workdir this branch list was queried for — replies are keyed by it
+   * so the webview never shows a previous directory's result after a switch. */
+  workdir?: string;
   result?: GitBranchesResult;
 }
 

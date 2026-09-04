@@ -232,6 +232,7 @@ test.describe("Desktop App Screenshots", () => {
 
     await injector.waitForMessage("desktopListGitBranches");
     await injector.simulateExtensionMessage("desktopGitBranches", {
+      workdir: DIR_A,
       result: {
         branches: ["main", "feature/login", "develop"],
         current: "main",
