@@ -51,6 +51,7 @@ import type {
   DesktopPanelKind,
   FileViewState,
   PanelTab,
+  PrefillDraftRequest,
   ThemeSource,
   ToolBlock,
   ToolBlockUpdateCallbackParams,
@@ -240,6 +241,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   sidebarExpandButton,
   headerActions,
   onOpenSettingsFromPane,
+  prefillRequest,
+  onPrefillApplied,
 }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const [queueEditWarning, setQueueEditWarning] = useState<string | null>(null);
@@ -377,10 +380,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // initialNav 传入；IDE 由 openSettings message 的 nav 走 host 下发。
   const [settingsNav, setSettingsNav] = useState<NavKey>("global");
   // 设置页「新建/编辑」预填的 AI 对话框提示词（desktop 关设置页后写入输入框；
-  // 见 handlePrefillPrompt）。
-  const [pendingPrefillPrompt, setPendingPrefillPrompt] = useState<
-    string | null
-  >(null);
+  // 见 handlePrefillPrompt）。无 pane 单布局 targetPaneId 为空、由本实例 effect
+  // 直接写本地输入框；pane 布局（FR-032）targetPaneId = 点击瞬间的 focused pane，
+  // 请求经 DesktopShell 下行给该 pane 的 ChatApp 写回（prefillRequest prop）。
+  // 内部状态名 pendingPrefill 与 prefillRequest prop（pane ChatApp 收到的下行
+  // 请求）区分——root 自己发请求、pane-scoped 实例收请求。
+  const [pendingPrefill, setPendingPrefill] =
+    useState<PrefillDraftRequest | null>(null);
+  // 每次「新建/编辑」点击递增，作 pane ChatApp effect 识别「新请求」的 nonce。
+  const prefillNonceRef = useRef(0);
   const [sessionBoardOpen, setSessionBoardOpen] = useState(false);
   // 桌面端主题偏好（host 为真源）：初值取 setInitialState.theme.source，此后随
   // host 广播（desktopThemeSource / 重推快照）同步，设置页「全局设置」主题行据此
@@ -1643,20 +1651,44 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // 设置页「新建/编辑」→ 关闭设置页并预填 AI 对话框提示词（desktop）。设置页
   // 打开期间 chatContainer 卸载（settingsOpen 替换视图），MessageInput 重挂载
-  // 后才能写入——用 pendingPrefillPrompt + effect 在渲染后写入并聚焦。
-  const handlePrefillPrompt = useCallback((prompt: string) => {
-    setSettingsOpen(false);
-    setSessionBoardOpen(false);
-    setPendingPrefillPrompt(prompt);
-  }, []);
+  // 后才能写入——用 prefillRequest + effect 在渲染后写入并聚焦。
+  //
+  // FR-032 桌面 pane 布局：设置页全页挂在 root 实例（paneId undefined），而各
+  // pane 的输入框在 DesktopShell 内的 pane-scoped ChatApp（ref 各自独立），root
+  // 的 messageInputRef 恒 null——直接写会静默丢 prompt。此时捕获点击瞬间的
+  // focused pane 作 targetPaneId，把请求留给 DesktopShell 下行到匹配 pane。
+  const handlePrefillPrompt = useCallback(
+    (prompt: string) => {
+      setSettingsOpen(false);
+      setSessionBoardOpen(false);
+      const panes = host?.panes;
+      if ((panes?.length ?? 0) > 0) {
+        setPendingPrefill({
+          prompt,
+          nonce: ++prefillNonceRef.current,
+          targetPaneId: host?.focusedPaneId ?? panes?.[0]?.paneId,
+        });
+      } else {
+        setPendingPrefill({ prompt, nonce: ++prefillNonceRef.current });
+      }
+    },
+    [host?.focusedPaneId, host?.panes],
+  );
 
-  // chatContainer 重挂载完成后把待填提示词写入输入框
+  // root 单布局（无 pane）：chatContainer 重挂载完成后把待填提示词写入本地输入框。
+  // pane 布局的请求带 targetPaneId，改由 pane ChatApp 写回并回调清除，这里跳过。
   useEffect(() => {
-    if (!settingsOpen && pendingPrefillPrompt !== null) {
-      messageInputRef.current?.loadDraft(pendingPrefillPrompt);
-      setPendingPrefillPrompt(null);
-    }
-  }, [settingsOpen, pendingPrefillPrompt]);
+    if (settingsOpen || pendingPrefill === null) return;
+    if (pendingPrefill.targetPaneId !== undefined) return;
+    messageInputRef.current?.loadDraft(pendingPrefill.prompt);
+    setPendingPrefill(null);
+  }, [settingsOpen, pendingPrefill]);
+
+  // DesktopShell 下行 prefillRequest 到 pane 后清除 root pending。pane ChatApp
+  // 应用时回调（带 nonce）——nonce 不匹配则忽略（防旧回执清掉更新的请求）。
+  const handlePrefillApplied = useCallback((nonce: number) => {
+    setPendingPrefill((prev) => (prev?.nonce === nonce ? null : prev));
+  }, []);
 
   // Batch 2 session board (desktop): 活动 button toggles the board view; the
   // board's 返回当前会话 closes it (spec 场景 6). Settings and board are
@@ -1951,6 +1983,33 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // arrived, otherwise logged-in users see the login CTA flash before
   // setInitialState updates isAuthenticated to true.
   const showWelcomeReady = showWelcome && state.initialized;
+  // MessageInput 是否已挂载（输入区在欢迎页就绪或已有消息时渲染）。pane-scoped
+  // ChatApp 在设置页关闭后重挂载，初始收不到 snapshot（LoadingLogo 无输入框），
+  // 需等宿主 webviewReady 回放 setInitialState 后才真正挂载输入框。
+  const inputAreaMounted = showWelcomeReady || !showWelcome;
+
+  // pane-scoped ChatApp（paneId 非空，DesktopShell 内）：收到指向本 pane 的
+  // prefillRequest（settings 关闭、pane 行重挂载后随行下发）→ 输入框就绪后
+  // loadDraft 并回调 root 清除。effect 以 nonce 变化识别新请求；仅匹配 pane
+  // 收到请求（DesktopShell 过滤 targetPaneId），故此 effect 无跨 pane 竞态。
+  // 若请求到达时输入框尚未挂载（宿主 snapshot 未回放），pending 保持不下发、
+  // 待 inputAreaMounted 翻转后本 effect 重跑补写。
+  const prefillRequestNonce = prefillRequest?.nonce;
+  useEffect(() => {
+    if (paneId === undefined) return;
+    if (!prefillRequest || prefillRequestNonce === undefined) return;
+    if (!inputAreaMounted) return;
+    const input = messageInputRef.current;
+    if (!input) return;
+    input.loadDraft(prefillRequest.prompt);
+    onPrefillApplied?.(prefillRequest.nonce);
+  }, [
+    prefillRequest,
+    prefillRequestNonce,
+    paneId,
+    onPrefillApplied,
+    inputAreaMounted,
+  ]);
 
   // Initialize webview and load sessions on component mount
   useEffect(() => {
@@ -3239,6 +3298,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             sessionBoard={sessionBoard}
             sessionBoardActive={sessionBoardOpen}
             onOpenSessionBoard={handleOpenSessionBoard}
+            prefillRequest={pendingPrefill}
+            onPrefillApplied={handlePrefillApplied}
           />
           {dialogs}
         </>
