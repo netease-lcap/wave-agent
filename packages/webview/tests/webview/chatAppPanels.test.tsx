@@ -163,9 +163,9 @@ describe("ChatApp desktop panel framework", () => {
     );
   });
 
-  it("the empty preview pane (no URL) resizes via its left-edge handle", () => {
+  it("the empty preview pane (no URL) resizes via the slot's left-edge handle", () => {
     window.waveHostType = "desktop";
-    // jsdom reports 0 rects; pin a container width so panelMaxWidth stays
+    // jsdom reports 0 rects; pin a container width so the auto-fill stays
     // positive and the drag can actually widen the panel.
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
@@ -179,17 +179,49 @@ describe("ChatApp desktop panel framework", () => {
       // Never-dragged slot: opening auto-fills the space beyond the
       // conversation minimum (1024 - 360 = 664, spec「面板自动铺满剩余空间」).
       expect(empty.style.width).toBe("664px");
-      // The empty state must carry the same drag affordance as loaded panels.
-      expect(empty.querySelector(".preview-pane-drag-handle")).not.toBeNull();
+
+      // The drag handle lives on the shared slot (not inside each pane), so the
+      // divider works with a tab open or in the empty state alike.
+      const handle = screen.getByTestId("panel-slot-drag-handle");
 
       // Single-row layout: width = rect.right - clientX.
-      const handle = empty.querySelector(
-        ".preview-pane-drag-handle",
-      ) as HTMLElement;
       fireEvent.mouseDown(handle);
       fireEvent.mouseMove(window, { clientX: 624 }); // 1024 - 624 = 400
       expect(empty.style.width).toBe("400px");
       fireEvent.mouseUp(window);
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
+  it("the empty state (expanded, no tabs) resizes via the slot's divider handle (spec 场景 9)", () => {
+    window.waveHostType = "desktop";
+    // jsdom reports 0 rects; pin a container width so the auto-fill and the
+    // drag can actually move the panel width.
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockReturnValue({ width: 1400, right: 1400 } as DOMRect);
+    try {
+      renderDesktop({ workdir: "/work/a" });
+      // Expand with NO tab open → the empty state fills the slot.
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+      expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+      const slot = screen.getByTestId("desktop-panel-slot");
+      // The never-dragged slot auto-fills (1400 - 360 = 1040); the divider
+      // handle must exist here just like it does with a pane open.
+      expect(slot).toHaveStyle({ width: "1040px" });
+      const handle = screen.getByTestId("panel-slot-drag-handle");
+
+      // Drag the empty-state divider: width follows (1400 - 1000 = 400).
+      fireEvent.mouseDown(handle);
+      fireEvent.mouseMove(window, { clientX: 1000 });
+      expect(slot).toHaveStyle({ width: "400px" });
+      fireEvent.mouseUp(window);
+
+      // The drag turned the slot manual: opening a pane keeps 400px and the
+      // empty state is gone.
+      fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
+      expect(screen.getByTestId("diff-pane").style.width).toBe("400px");
     } finally {
       rectSpy.mockRestore();
     }
@@ -227,9 +259,7 @@ describe("ChatApp desktop panel framework", () => {
 
       // A drag moves the panel off the auto-filled width and locks it (the
       // slot turns manual — subsequent opens no longer re-auto-fill).
-      const handle = pane.querySelector(
-        ".preview-pane-drag-handle",
-      ) as HTMLElement;
+      const handle = screen.getByTestId("panel-slot-drag-handle");
       fireEvent.mouseDown(handle);
       fireEvent.mouseMove(window, { clientX: 1000 }); // 1400 - 1000 = 400
       expect(pane.style.width).toBe("400px");
@@ -258,9 +288,7 @@ describe("ChatApp desktop panel framework", () => {
       const pane = screen.getByTestId("diff-pane");
       // Auto-filled first (1400 - 360 = 1040); a drag then locks the width.
       expect(pane.style.width).toBe("1040px");
-      const handle = pane.querySelector(
-        ".preview-pane-drag-handle",
-      ) as HTMLElement;
+      const handle = screen.getByTestId("panel-slot-drag-handle");
       fireEvent.mouseDown(handle);
       fireEvent.mouseMove(window, { clientX: 1000 }); // 1400 - 1000 = 400
       expect(pane.style.width).toBe("400px");
@@ -654,9 +682,7 @@ describe("ChatApp desktop panel framework", () => {
       fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
 
       // Drag the shared width off the default.
-      const handle = screen
-        .getByTestId("diff-pane")
-        .querySelector(".preview-pane-drag-handle") as HTMLElement;
+      const handle = screen.getByTestId("panel-slot-drag-handle");
       fireEvent.mouseDown(handle);
       fireEvent.mouseMove(window, { clientX: 1000 }); // 1400-1000 = 400
       fireEvent.mouseUp(window);

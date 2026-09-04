@@ -15,8 +15,6 @@ import { FileSuggestionDropdown } from "./FileSuggestionDropdown";
 import { PanelKindIcon } from "./PanelKindIcon";
 import "../styles/FilePane.css";
 
-const MIN_WIDTH = 320;
-
 /** Debounce for the panel search requests, matching the message input's. */
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -200,8 +198,6 @@ export interface FilePaneProps {
   /** Panel content; null renders the "open a file" placeholder. */
   fileView: FileViewState | null;
   width: number;
-  onWidthChange: (width: number) => void;
-  maxWidth: number;
   /** Local sessions only: open the file in the OS default app. */
   onOpenExternal?: (path: string) => void;
   /** Owning pane's effective cwd, for the relative-path title display. */
@@ -222,14 +218,11 @@ export interface FilePaneProps {
 export const FilePane: React.FC<FilePaneProps> = ({
   fileView,
   width,
-  onWidthChange,
-  maxWidth,
   onOpenExternal,
   workdir,
   vscode,
   onOpenFileInPanel,
 }) => {
-  const asideRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -397,28 +390,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
     };
   }, [vscode]);
 
-  const onDragStart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const handle = e.currentTarget as HTMLElement;
-    // Keep the handle lit + cursor locked for the whole drag — :hover and the
-    // 6px-only col-resize cursor both flicker as the pointer outruns the handle.
-    handle.style.background = "var(--vscode-focusBorder, #007fd4)";
-    document.body.classList.add("is-panel-resizing");
-    const rect = asideRef.current?.getBoundingClientRect();
-    const onMove = (ev: MouseEvent) => {
-      const next = (rect?.right ?? 0) - ev.clientX;
-      onWidthChange(Math.min(Math.max(next, MIN_WIDTH), maxWidth));
-    };
-    const onUp = () => {
-      handle.style.background = "";
-      document.body.classList.remove("is-panel-resizing");
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
-
   // Per-line fragments: syntax-highlighted (balanced spans) or plain text.
   const contentLines = useMemo(() => {
     const content = fileView?.content;
@@ -461,12 +432,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   return (
     <aside
-      ref={asideRef}
       className="preview-pane file-pane"
       style={{ width }}
       data-testid="file-pane"
     >
-      <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
         <div className="preview-pane-toolbar" ref={toolbarRef}>
           {fileView ? (

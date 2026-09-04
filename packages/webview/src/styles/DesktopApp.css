@@ -861,13 +861,15 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   overflow: visible;
 }
 
-.preview-pane-drag-handle {
+/* Shared left-edge drag handle, rendered once on the panel slot (not inside
+   each pane) so the divider between the conversation column and the panel is
+   draggable in every slot state — with open tabs or in the empty state (spec
+   「面板空态」场景 9). Spans the full slot height, tab strip included (评论：拖拽
+   区域未覆盖标签区域 → top:0 from the slot top keeps the strip draggable). */
+.panel-slot-drag-handle {
   position: absolute;
   left: -3px;
-  /* 上延覆盖 44px 标签条（.desktop-panel-tabs height 44 + border-bottom 1），
-     使拖拽命中区 / hover 分隔条从面板顶部一路连续到底（评论：拖拽区域未
-     覆盖标签区域）。前提是 pane 只挂在有标签条的 slot 下。 */
-  top: -45px;
+  top: 0;
   bottom: 0;
   width: 6px;
   cursor: col-resize;
@@ -875,7 +877,7 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
 }
 
 /* Visible affordance on hover, matching the pane separator style. */
-.preview-pane-drag-handle:hover {
+.panel-slot-drag-handle:hover {
   background: var(--vscode-focusBorder, #007fd4);
 }
 

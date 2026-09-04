@@ -18,8 +18,6 @@ declare global {
   }
 }
 
-const MIN_WIDTH = 320;
-
 /** Singleton loader for the desktop-only xterm chunk. */
 let terminalLibPromise: Promise<NonNullable<Window["WaveTerminal"]>> | null =
   null;
@@ -80,8 +78,6 @@ export interface TerminalPaneProps {
    * host resolves the actual cwd from paneId. */
   workdir?: string;
   width: number;
-  onWidthChange: (width: number) => void;
-  maxWidth: number;
   /** Split-view pane identity: tags PTY create requests for cwd resolution. */
   paneId?: string;
   /** Hidden panels stay mounted; the PTY survives hiding. */
@@ -97,8 +93,6 @@ export interface TerminalPaneProps {
 export const TerminalPane: React.FC<TerminalPaneProps> = ({
   vscode,
   width,
-  onWidthChange,
-  maxWidth,
   paneId,
   visible,
   sessionId,
@@ -106,7 +100,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   onOpenPreview,
 }) => {
   const [status, setStatus] = useState<PaneStatus>({ kind: "loading" });
-  const asideRef = useRef<HTMLElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<XtermTerminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -295,36 +288,12 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     }
   }, [visible, sessionId, workdir, killPty, createPty]);
 
-  const onDragStart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const handle = e.currentTarget as HTMLElement;
-    // Keep the handle lit + cursor locked for the whole drag — :hover and the
-    // 6px-only col-resize cursor both flicker as the pointer outruns the handle.
-    handle.style.background = "var(--vscode-focusBorder, #007fd4)";
-    document.body.classList.add("is-panel-resizing");
-    const rect = asideRef.current?.getBoundingClientRect();
-    const onMove = (ev: MouseEvent) => {
-      const next = (rect?.right ?? 0) - ev.clientX;
-      onWidthChange(Math.min(Math.max(next, MIN_WIDTH), maxWidth));
-    };
-    const onUp = () => {
-      handle.style.background = "";
-      document.body.classList.remove("is-panel-resizing");
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
-
   return (
     <aside
-      ref={asideRef}
       className="preview-pane terminal-pane"
       style={{ width }}
       data-testid="terminal-pane"
     >
-      <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
         <div className="preview-pane-toolbar">
           <span className="desktop-panel-toolbar-title">终端</span>

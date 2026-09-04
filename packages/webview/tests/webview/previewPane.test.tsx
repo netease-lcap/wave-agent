@@ -64,32 +64,27 @@ function renderPane(options?: {
   const onTitleChange = options?.onTitleChange ?? vi.fn();
   const onNavigate = options?.onNavigate ?? vi.fn();
   // Controlled-width harness: PreviewPane no longer owns its width state.
-  // `width` prop on rerender overrides the internal state so tests can drive
-  // panel resizes without going through the drag handle.
+  // `width` prop on rerender overrides the default so tests can drive panel
+  // resizes / the re-fit effect without going through the drag handle.
   const Harness = ({
     url: u,
     width: wProp,
   }: {
     url: string;
     width?: number;
-  }) => {
-    const [width, setWidth] = React.useState(420);
-    return (
-      <PreviewPane
-        url={u}
-        vscode={vscode}
-        width={wProp ?? width}
-        onWidthChange={setWidth}
-        maxWidth={716}
-        onAddComment={onAddComment}
-        originalUrl={originalUrl}
-        onRetry={onRetry}
-        onLastTabClosed={onLastTabClosed}
-        onTitleChange={onTitleChange}
-        onNavigate={onNavigate}
-      />
-    );
-  };
+  }) => (
+    <PreviewPane
+      url={u}
+      vscode={vscode}
+      width={wProp ?? 420}
+      onAddComment={onAddComment}
+      originalUrl={originalUrl}
+      onRetry={onRetry}
+      onLastTabClosed={onLastTabClosed}
+      onTitleChange={onTitleChange}
+      onNavigate={onNavigate}
+    />
+  );
   const result = render(<Harness url={url} />);
   const wv = result.container.querySelector(
     "webview",
@@ -376,27 +371,6 @@ describe("PreviewPane", () => {
     fireDomReady(wv);
     rerenderWithUrl("http://localhost:3000/other");
     expect(wv.loadURL).toHaveBeenCalledWith("http://localhost:3000/other");
-  });
-
-  it("drag handle resizes within min/max bounds", () => {
-    const { container } = renderPane();
-    const pane = screen.getByTestId("preview-pane");
-    const handle = container.querySelector(
-      ".preview-pane-drag-handle",
-    ) as HTMLElement;
-    // jsdom rects are all-zero; pin the aside's right edge at 1024.
-    vi.spyOn(pane, "getBoundingClientRect").mockReturnValue({
-      right: 1024,
-    } as DOMRect);
-
-    fireEvent.mouseDown(handle);
-    fireEvent.mouseMove(window, { clientX: 624 }); // 1024 - 624 = 400
-    expect(pane).toHaveStyle({ width: "400px" });
-    fireEvent.mouseMove(window, { clientX: 950 }); // 74 → clamped to 320
-    expect(pane).toHaveStyle({ width: "320px" });
-    fireEvent.mouseMove(window, { clientX: 10 }); // 1014 → clamped to maxWidth 716
-    expect(pane).toHaveStyle({ width: "716px" });
-    fireEvent.mouseUp(window);
   });
 
   it("picker submit appends a formatted comment via onAddComment and keeps the picker active", () => {
