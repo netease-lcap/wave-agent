@@ -3,8 +3,9 @@ import { render, fireEvent, screen } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { isMacHiddenTitlebar } from "../../src/utils/platform";
-import { createMockVscode, sendHostMessage } from "./test-utils";
+import { createMockVscode, sendHostMessage, sendCommand } from "./test-utils";
 import { fixtures } from "wave-webview-fixtures";
+import { MockDataGenerator } from "../fixtures/mockData";
 
 vi.mock("../../src/styles/DesktopApp.css", () => ({}));
 
@@ -187,5 +188,103 @@ describe("collapsed sidebar traffic-light clearance (real macOS)", () => {
     expect(
       document.querySelector('[data-testid="desktop-sidebar-expand"]'),
     ).not.toBeNull();
+  });
+});
+
+describe("split-view: collapsed gutter follows the shell's expand-button signal", () => {
+  it("reserves the traffic-light gutter on the first pane after a runtime collapse", () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "darwin";
+    // localStorage starts expanded (the default) — the collapse happens at
+    // runtime, after the pane-scoped ChatApp already mounted.
+    renderDesktopApp();
+    sendCommand("desktopSessionTree", {
+      groups: [
+        {
+          workdir: "/work/a",
+          sessions: [
+            {
+              sessionId: "s1",
+              title: "chat one",
+              lastActiveAt: Date.now(),
+              hasWorktree: false,
+            },
+          ],
+        },
+      ],
+    });
+    sendCommand("desktopPanes", {
+      panes: [{ paneId: "p1", sessionId: "s1", width: 1 }],
+      focusedPaneId: "p1",
+    });
+    sendCommand("setInitialState", {
+      messages: [MockDataGenerator.createUserMessage("hi")],
+      paneId: "p1",
+    });
+
+    // Sidebar expanded → no gutter yet.
+    expect(querySidebar()).not.toBeNull();
+    expect(queryTrafficSpacer()).toBeNull();
+
+    fireEvent.click(screen.getByTestId("desktop-sidebar-collapse"));
+
+    // The first pane is flush with the window's left edge now: its header must
+    // reserve the traffic-light gutter next to the expand button it received.
+    expect(querySidebar()).toBeNull();
+    expect(queryTrafficSpacer()).not.toBeNull();
+    expect(
+      document.querySelector('[data-testid="desktop-sidebar-expand"]'),
+    ).not.toBeNull();
+  });
+
+  it("drops the gutter for a non-first pane (no expand button received)", () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "darwin";
+    localStorage.setItem("wave.desktopSidebarCollapsed", "1");
+    renderDesktopApp();
+    sendCommand("desktopSessionTree", {
+      groups: [
+        {
+          workdir: "/work/a",
+          sessions: [
+            {
+              sessionId: "s1",
+              title: "chat one",
+              lastActiveAt: Date.now(),
+              hasWorktree: false,
+            },
+            {
+              sessionId: "s2",
+              title: "chat two",
+              lastActiveAt: Date.now(),
+              hasWorktree: false,
+            },
+          ],
+        },
+      ],
+    });
+    // Two panes: the second is not flush with the window's left edge, so the
+    // shell hands the expand button to the first pane only.
+    sendCommand("desktopPanes", {
+      panes: [
+        { paneId: "p1", sessionId: "s1", width: 0.5 },
+        { paneId: "p2", sessionId: "s2", width: 0.5 },
+      ],
+      focusedPaneId: "p1",
+    });
+    sendCommand("setInitialState", {
+      messages: [],
+      paneId: "p1",
+    });
+    sendCommand("setInitialState", {
+      messages: [MockDataGenerator.createUserMessage("hi")],
+      paneId: "p2",
+    });
+
+    expect(querySidebar()).toBeNull();
+    // Only one gutter for the first pane; the second pane's header stays clear.
+    expect(document.querySelectorAll(".chat-header-mac-traffic")).toHaveLength(
+      1,
+    );
   });
 });
