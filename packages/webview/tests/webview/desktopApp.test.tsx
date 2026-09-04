@@ -46,8 +46,9 @@ describe("DesktopApp", () => {
     expect(screen.getByTestId("desktop-workdir")).toHaveTextContent(
       "选择工作目录…",
     );
-    // New-chat stays disabled until a workdir is picked
-    expect(screen.getByTestId("desktop-new-session")).toBeDisabled();
+    // New-chat stays available even before a workdir is picked — the host
+    // resolves the directory itself (recents or blank state), spec scenario 20.
+    expect(screen.getByTestId("desktop-new-session")).toBeEnabled();
   });
 
   it("should toggle the workdir dropdown and post desktopSelectWorkdir when clicking 浏览…", () => {
@@ -779,6 +780,19 @@ describe("DesktopApp", () => {
     expect(vscode.postMessage).toHaveBeenCalledWith({ command: "newSession" });
   });
 
+  it("should post newSession from the sidebar new-chat button on a fresh launch with no workdir or recents", () => {
+    const { vscode } = renderDesktopApp();
+    sendCommand("desktopWorkdirState", { recentWorkdirs: [] });
+    sendCommand("setInitialState", { messages: [] });
+    vscode.postMessage.mockClear();
+
+    fireEvent.click(screen.getByTestId("desktop-new-session"));
+
+    // Spec scenario 20: the button is usable before any session/workdir is
+    // activated — resolving the directory (recents or blank) is the host's job.
+    expect(vscode.postMessage).toHaveBeenCalledWith({ command: "newSession" });
+  });
+
   it("shows the side-by-side hint tooltip when hovering the new-chat button", async () => {
     renderDesktopApp();
     sendCommand("desktopWorkdirState", {
@@ -804,14 +818,16 @@ describe("DesktopApp", () => {
     });
   });
 
-  it("should update the workdir name and enable new-chat when a new workdir state arrives", () => {
+  it("should keep new-chat available when no workdir is picked, and update the workdir name once a workdir state arrives", () => {
     renderDesktopApp();
     sendCommand("desktopWorkdirState", { recentWorkdirs: [] });
     sendCommand("setInitialState", { messages: [] });
     expect(screen.getByTestId("desktop-workdir")).toHaveTextContent(
       "选择工作目录…",
     );
-    expect(screen.getByTestId("desktop-new-session")).toBeDisabled();
+    // Spec scenario 20: the sidebar 新对话 button must not be gated on an
+    // activated workdir/session — the host resolves the directory itself.
+    expect(screen.getByTestId("desktop-new-session")).toBeEnabled();
 
     sendCommand("desktopWorkdirState", {
       workdir: "/home/user/other",
@@ -820,6 +836,8 @@ describe("DesktopApp", () => {
     sendCommand("setInitialState", { messages: [] });
 
     expect(screen.getByTestId("desktop-workdir")).toHaveTextContent("other");
+    // Availability must not flip between the initial and session states
+    // (spec scenario 21) — workdir arriving changes the label, not the button.
     expect(screen.getByTestId("desktop-new-session")).toBeEnabled();
     expect(screen.getByTestId("chat-container")).toBeInTheDocument();
   });
