@@ -2185,3 +2185,15 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - 根因：占位符由 `.content-editable-input:empty::before { content: attr(data-placeholder) }` 驱动；contenteditable 输入删空后浏览器常残留 `<br>`/空 `<div>`，`:empty` 不再匹配 → 占位文案消失。
 - 修改：`src/components/MessageInput.tsx` `handleInput` 检测到 `innerText` 已删空且子节点仅剩 `<br>`/空 `div` 时 `replaceChildren()` 清空，让占位符恢复显示（img/附件等实质内容不受影响）。
 - 实现文件：`src/components/MessageInput.tsx`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+---
+
+## 0904 第 6 轮（feat/0904-new-base-r1）：会话卡两行布局省略 + 状态右下角 + 项目筛选自绘省略/统一 Tooltip/定宽 160px
+
+预览评论（会话状态页项目筛选与卡片区）：「参考设计稿布局对话卡片、省略规则遵循设计稿」「状态希望始终在卡片右下角」「筛选文案 14px、超出需省略、hover 展示全部」「悬停样式与其他地方不一致（应统一 Tooltip）」「筛选表单定宽 160px」。
+
+- **卡片布局对齐 Figma Container 组件 13656:5280**：两行结构——行 1 标题独占（14/600/#1F2329，行高 26，可省略）；行 2 `meta-row` = 项目名 + 状态（均 12/400/#6C7076，行高 20，itemSpacing 8）。原实现把项目名放在标题行右侧，与组件不符 → `SessionBoard.tsx` 拆行。省略约束：`.session-card-title` `flex:1; min-width:0`；`.session-card-project` `flex:1 1 auto; min-width:0`（**评论 2026-09 追加：状态固定右下角**）；`.session-card-status` `flex-shrink:0`。
+- **项目筛选（Figma Select Input：32 高 / r6 / 1px #DCDFE6）**：原生 select 无法做省略与自绘悬停 → 外层 `.session-board-filter`（**定宽 160px**）渲染三层：省略文字层 `.session-board-filter-text`（14px ellipsis）+ chevron-down 箭头 + 透明 `.session-board-filter-select` 覆盖（保留原生下拉）；文案 = 选中项目录名。
+- **长项目 hover 用统一 Tooltip 组件**（与活动图标等一致，不用浏览器 title）：仅溢出时启用（`scrollWidth > clientWidth` 实测），气泡放宽 `max-width: 480px`（全局 250 会截断 55 字符长名）。测量注意：Tooltip `disabled` 翻转令 filter 换父重挂，ResizeObserver 监听旧节点回调会把状态误置回 false → 改为每次提交后重测（deps 含 `filterOverflow`）。
+- 实现文件：`src/components/SessionBoard.tsx`、`src/styles/SessionBoard.css`、本 docs。（用户人工走查，本轮不跑自动化。）
+

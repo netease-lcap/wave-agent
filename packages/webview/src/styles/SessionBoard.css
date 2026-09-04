@@ -115,21 +115,62 @@
   color: #1f2329;
 }
 
-/* Figma Select Input：r6 / 白底 / 1px #DCDFE6 / padding 4 8 / label 14px */
+/* Figma Select Input：r6 / 白底 / 1px #DCDFE6 / 高 32 / 定宽 160 /
+   label 14px #1F2329。文字层负责省略 + hover tooltip（title），透明原生
+   select 覆盖保留原生下拉。 */
 .session-board-filter {
-  padding: 4px 8px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 160px; /* 评论 2026-09：筛选表单定宽 160 */
+  height: 32px;
+  padding: 0 8px;
+  box-sizing: border-box;
   border: 1px solid #dcdfe6;
   border-radius: 6px;
   background: #ffffff;
   color: #1f2329;
   font-size: 14px;
   font-weight: 400;
-  max-width: 180px;
   cursor: pointer;
 }
 
 .session-board-filter:hover {
   border-color: #c0c4cc;
+}
+
+.session-board-filter-text {
+  min-width: 0; /* 超出 max-width 时省略，hover 经 title 展示全文 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-board-filter-arrow {
+  flex-shrink: 0;
+  color: #6c7076;
+}
+
+.session-board-filter-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  opacity: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* 长项目名 Tooltip：放宽全局 250px 上限以展示完整项目名 */
+.session-board-filter-tooltip .tooltip-box {
+  max-width: 480px;
 }
 
 /* ---- 列区（Figma 13561:39319：itemSpacing 12） ---- */
@@ -244,15 +285,15 @@
   outline-offset: -1px;
 }
 
+/* 标题行：独占一行（Figma Container 13656:5280 row1，高 26，超长省略） */
 .session-card-title-row {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
   min-width: 0;
 }
 
 .session-card-title {
+  flex: 1;
+  min-width: 0; /* flex 项省略必需：允许收缩到内容宽度以下 */
   font-size: 14px;
   font-weight: 600;
   color: #1f2329;
@@ -262,17 +303,28 @@
   white-space: nowrap;
 }
 
+/* 副行：项目名 + 状态（Figma Container 13656:5280 row2，高 20、itemSpacing 8；
+   评论 2026-09：状态始终固定右下角） */
+.session-card-meta-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
 .session-card-project {
+  flex: 1 1 auto; /* 占满可用空间，把状态推到右端 */
+  min-width: 0; /* 项目名过长时可省略，不挤掉右侧状态 */
   font-size: 12px;
   font-weight: 400;
   color: #6c7076;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
 .session-card-status {
+  flex-shrink: 0; /* 状态常驻，不被项目名挤掉 */
   font-size: 12px;
   font-weight: 400;
   color: #6c7076;
@@ -320,6 +372,10 @@
   border-color: rgba(255, 255, 255, 0.12);
   background: #27292b;
   color: #e6e6e6;
+}
+
+[data-host="desktop"][data-theme="dark"] .session-board-filter-arrow {
+  color: #9a9ea5;
 }
 
 [data-host="desktop"][data-theme="dark"] .session-board-filter:hover {
