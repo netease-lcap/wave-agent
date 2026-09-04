@@ -13,6 +13,7 @@ import {
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
 import { isMacHiddenTitlebar } from "../utils/platform";
+import { useDesktopChrome } from "./DesktopChromeContext";
 import type { DesktopSessionGroup, DesktopSessionEntry } from "../types";
 import "../styles/DesktopApp.css";
 
@@ -139,12 +140,6 @@ export interface DesktopSidebarProps {
   onOpenPane: (workdir: string, sessionId: string) => void;
   /** Delete a session from the index (also cleans up worktree if applicable). */
   onDeleteSession: (sessionId: string) => void;
-  /** Sidebar fully hidden (chat takes the whole width); the header's expand
-   *  button restores it. */
-  collapsed?: boolean;
-  onCollapsedChange: (collapsed: boolean) => void;
-  /** macOS 窗口全屏（desktopFullScreen push）：全屏下红绿灯隐藏，窗口行收起让位。 */
-  fullScreen?: boolean;
   /** Batch 2 会话状态看板: brand-row 活动 button opens the board view. When
    *  active the icon renders brand-red (spec 场景 1 highlight state). */
   sessionBoardActive?: boolean;
@@ -190,12 +185,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onSelectSession,
   onOpenPane,
   onDeleteSession,
-  collapsed = false,
-  onCollapsedChange,
-  fullScreen = false,
   sessionBoardActive = false,
   onOpenSessionBoard,
 }) => {
+  // 窗口级 chrome 状态（收起/全屏）单一权威在 DesktopChromeContext —— 任何渲染
+  // 路径（root 单布局 / DesktopShell）的侧边栏都同源读取，不再 props 下行。
+  const { sidebarCollapsed, setSidebarCollapsed, fullScreen } =
+    useDesktopChrome();
   // Explicit expand/collapse overrides; groups without an entry are expanded
   // by default — the tree starts fully expanded on every app launch (expansion
   // state is not persisted).
@@ -488,7 +484,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 
   // Fully collapsed: nothing renders, no reserved width, no overlay — the chat
   // takes the whole pane width (spec 「侧边栏收起/展开」scenario 1).
-  if (collapsed) return null;
+  if (sidebarCollapsed) return null;
 
   // 「收起侧边栏」按钮：有窗口行（macOS 真机 + 原型预览）时随红绿灯坐进窗口行；
   // Windows/Linux 真机仍放品牌行右侧图标组。真机窗口行整行为 drag 区，按钮需
@@ -498,7 +494,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       <button
         type="button"
         className="desktop-sidebar-more-btn"
-        onClick={() => onCollapsedChange(true)}
+        onClick={() => setSidebarCollapsed(true)}
         data-testid="desktop-sidebar-collapse"
         aria-label="收起侧边栏"
       >

@@ -206,11 +206,13 @@ export interface ChatAppProps {
    */
   paneId?: string;
   /**
-   * Desktop sidebar collapsed → the leftmost chat header (first pane of the
-   * top row in split view) shows an expand button. Built by the root ChatApp
-   * instance that owns the collapse state and threaded through DesktopShell.
+   * Desktop split-view: the first pane of the top row (window's left edge).
+   * When the window-level sidebar is collapsed it shows the expand button and
+   * (macOS hidden titlebar) reserves the traffic-light clearance — both read
+   * from DesktopChromeContext. Only that pane carries them, so DesktopShell
+   * marks it explicitly instead of threading ready-made ReactNodes.
    */
-  sidebarExpandButton?: React.ReactNode;
+  firstPane?: boolean;
   /**
    * Desktop split-view: extra actions rendered at the right edge of the chat
    * header's button row (pane close button). Kept out of the shared header's
