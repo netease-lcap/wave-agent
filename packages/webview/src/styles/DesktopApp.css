@@ -187,20 +187,22 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   text-align: left;
   font-family: inherit;
   cursor: pointer;
-  font-size: 13px;
-  color: var(--vscode-descriptionForeground);
+  /* Figma 13656:5470「Heading 2 项目1」：14/500 #6C7076 */
+  font-size: 14px;
+  color: #6c7076;
   font-weight: 500;
+  line-height: 22px;
   user-select: none;
 }
 
 .desktop-session-group-header:hover,
 .desktop-session-group-header:focus-visible {
-  background: var(--vscode-list-hoverBackground);
+  background: #eef0f3;
 }
 
-.desktop-session-group-header .codicon {
-  font-size: 12px;
-  flex-shrink: 0;
+/* 组头 chevron（Figma 13561:39969 up/right 官方矢量，展开=「^」收起=「>」） */
+.desktop-session-group-chevron {
+  color: #565a60;
 }
 
 .desktop-session-group-name {
@@ -233,60 +235,43 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px; /* Figma 13656:5470 行距 4 */
 }
 
+/* Figma 13656:5470 会话行规格：高 32 / r6 / 文字 14 lh22 左距 16；状态点与
+   「⋯」更多按钮共用行右端 24px 槽（right 8），hover 时状态点淡出、更多按钮
+   淡入。行 hover #EEF0F3、选中/可见 #EBEDF0。 */
 .desktop-session-item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-  /* border-box：min-height 32px 含 padding，避免 content-box 下
-     padding 5+5px 把行撑到 42px（Figma task-row 高 32px） */
   box-sizing: border-box;
   min-height: 32px;
-  padding: 5px 8px 5px 16px;
+  padding: 0;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
-  color: var(--vscode-foreground);
+  font-size: 14px;
+  line-height: 22px;
+  color: #1f2329;
 }
 
 .desktop-session-item:hover {
-  background: var(--vscode-list-hoverBackground);
+  background: #eef0f3;
 }
 
 .desktop-session-item--current {
-  /* Neutral pressed-gray selection (codechat fill-pressed #e7e9ed), NOT the
-     blue list-activeSelectionBackground — the sidebar stays quiet, text color
-     unchanged. --visible keeps the VS Code inactive-selection gray so the
-     two states stay distinguishable (current is a touch darker). */
-  background: color-mix(
-    in srgb,
-    var(--vscode-foreground) 12%,
-    transparent
-  );
+  background: #ebedf0;
 }
 
-/* Weak counterpart of --current: the session is shown in a non-focused pane. */
+/* Weak counterpart of --current: the session is shown in a non-focused pane.
+   Figma「对话-选中可多选都显示背景」— 多 pane 中显示即同样浅底（标题不加粗）。 */
 .desktop-session-item--visible {
-  background: var(--vscode-list-inactiveSelectionBackground);
+  background: #ebedf0;
 }
 
-.desktop-session-dot {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.desktop-session-status-icon {
-  font-size: 14px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+.desktop-session-item--current .desktop-session-title {
+  /* 选中会话标题 medium（Figma 14/500） */
+  font-weight: 500;
 }
 
 .desktop-session-title {
@@ -297,17 +282,21 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
 }
 
 .desktop-session-more-btn {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   background: none;
-  color: var(--vscode-foreground);
+  color: #565a60;
   /* Hidden via opacity + pointer-events (not display:none) so the button stays
      focusable in the Tab order; focusing it reveals it (see below). */
   opacity: 0;
@@ -315,10 +304,15 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
+  z-index: 1;
 }
 
+/* 「⋯」只在鼠标悬停行或键盘焦点（:focus-visible，如 roving 方向键）落到行
+   上时显示；鼠标点击选中/聚焦不触发 focus-visible → 移开鼠标即消失。 */
 .desktop-session-item:hover .desktop-session-more-btn,
-.desktop-session-item:focus-within .desktop-session-more-btn,
+.desktop-session-item:has(.desktop-session-item-main:focus-visible)
+  .desktop-session-more-btn,
 .desktop-session-more-btn:focus-visible {
   opacity: 1;
   pointer-events: auto;
@@ -326,7 +320,92 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
 
 .desktop-session-more-btn:hover,
 .desktop-session-more-btn:focus-visible {
-  background: var(--vscode-toolbar-hoverBackground);
+  /* Figma 13656:5328：更多按钮自身 hover = 黑 8% 圆角底 */
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.desktop-session-more-btn:hover .desktop-session-more-icon,
+.desktop-session-more-btn:focus-visible .desktop-session-more-icon {
+  color: inherit;
+}
+
+/* 行右端状态槽（waiting 琥珀点 / running loading 环 / completed 绿点）。
+   仅后台会话渲染；激活/可见会话不渲染此槽（打开后状态点消失）。 */
+.desktop-session-status-slot {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 0;
+}
+
+/* hover/focus 时整槽被「⋯」覆盖 */
+.desktop-session-item:hover .desktop-session-status-slot,
+.desktop-session-item:focus-within .desktop-session-status-slot {
+  opacity: 0;
+}
+
+.desktop-session-loading-ring {
+  animation: desktop-session-spin 1s linear infinite;
+}
+
+@keyframes desktop-session-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Dark theme（Figma 无深色帧，与全桌面端同体系：hover/选中 = 半透明白，文字 #E6E6E6、
+   次级图标 #9A9EA5） */
+html[data-theme="dark"] .desktop-session-group-header {
+  color: #9a9ea5;
+}
+
+html[data-theme="dark"] .desktop-session-group-header:hover,
+html[data-theme="dark"] .desktop-session-group-header:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] .desktop-session-group-chevron {
+  color: #9a9ea5;
+}
+
+html[data-theme="dark"] .desktop-session-item {
+  color: #e6e6e6;
+}
+
+html[data-theme="dark"] .desktop-session-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] .desktop-session-item--current,
+html[data-theme="dark"] .desktop-session-item--visible {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+html[data-theme="dark"] .desktop-session-more-btn {
+  color: #9a9ea5;
+}
+
+html[data-theme="dark"] .desktop-session-more-btn:hover,
+html[data-theme="dark"] .desktop-session-more-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+html[data-theme="dark"] .desktop-session-status-slot {
+  /* loading 环深色换对比：环身暗、转弧亮 */
+  --session-loading-track: rgba(255, 255, 255, 0.16);
+  --session-loading-head: #d4d7de;
 }
 
 /* Session row menu (并排打开 / 删除会话): fixed-position dropdown anchored
@@ -400,20 +479,38 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   gap: 6px;
   flex: 1 1 0%;
   min-width: 0;
+  /* 标题左距 16（行圆角底内）。右端默认不预留：无状态点行非 hover 让标题
+     用满空间、到行尾才省略（Figma「hover 时才省略」）；hover/focus 或有状态
+     点（见下两条）时让出 24 槽 + 8 边距 = 32px。 */
+  padding: 0 8px 0 16px;
+  width: 100%;
   /* Native <button> reset — the row main is a real button so Enter/Space
      restores the session from the keyboard (spec 「会话管理」scenario 17). */
   border: none;
   background: none;
-  padding: 0;
   font-family: inherit;
   font-size: inherit;
+  line-height: inherit;
   color: inherit;
   text-align: left;
 }
 
+/* 行有状态点（running/waiting/绿点）时恒让位，文字不钻进点下 */
+.desktop-session-item--status .desktop-session-item-main {
+  padding-right: 32px;
+}
+
+/* hover / 键盘焦点出「⋯」时标题让位省略（鼠标点击选中不触发） */
+.desktop-session-item:hover .desktop-session-item-main,
+.desktop-session-item:has(.desktop-session-item-main:focus-visible)
+  .desktop-session-item-main {
+  padding-right: 32px;
+}
+
 .desktop-session-empty {
-  padding: 4px 6px 4px 20px;
-  font-size: 12px;
+  /* 与行标题左距 16 对齐 */
+  padding: 4px 8px 4px 16px;
+  font-size: 13px;
   opacity: 0.6;
 }
 

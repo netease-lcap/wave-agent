@@ -341,6 +341,11 @@ export interface DesktopSessionEntry {
   running?: boolean;
   /** True while a confirmation request (tool/plan/question) awaits the user — drives the waiting dot. */
   waitingConfirmation?: boolean;
+  /** True when the session finished with new output the user has not viewed yet —
+   *  drives the green dot (Figma 13656:5470「已完成打开后绿点消失」). The desktop
+   *  host sets it when a turn ends while no pane shows this session, and clears it
+   *  once the session is opened/focused in a pane.  */
+  newCompleted?: boolean;
 }
 
 /**

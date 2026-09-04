@@ -2197,3 +2197,25 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - **长项目 hover 用统一 Tooltip 组件**（与活动图标等一致，不用浏览器 title）：仅溢出时启用（`scrollWidth > clientWidth` 实测），气泡放宽 `max-width: 480px`（全局 250 会截断 55 字符长名）。测量注意：Tooltip `disabled` 翻转令 filter 换父重挂，ResizeObserver 监听旧节点回调会把状态误置回 false → 改为每次提交后重测（deps 含 `filterOverflow`）。
 - 实现文件：`src/components/SessionBoard.tsx`、`src/styles/SessionBoard.css`、本 docs。（用户人工走查，本轮不跑自动化。）
 
+---
+
+## 0904 第 7 轮（feat/0904-new-base-r1）：侧栏会话行状态点右移 + 官方状态图标 + 分组 chevron（Figma 13656:5470「Sidebar - 任务导航」+ 13561:39969 icon 集）
+
+设计稿链接两帧：`13656:5470`（Sidebar - 任务导航：会话行 12 个状态变体规格）+ `13561:39969`（用到的 icon 组件集）。用户确认三项口径后实施：范围 = 会话行 + 项目分组行；状态指示**整体迁到行右端 24 槽、hover 时被「⋯」覆盖**；绿点 = **新增功能「新完成未读标记」**（用户只负责样式，合码需开发实现契约，见下「开发合码注意」）。
+
+- **状态位从标题左侧移到行右端 24 槽**：`.desktop-session-item` 内删左图标位（原 waiting 紫铃铛 codicon-bell / running 蓝 codicon-loading / idle 灰点），`.desktop-session-item-main` 只留标题（padding `0 32px 0 16px` 给右槽留位）。右槽三态（非 hover 显示，样式 `DesktopApp.css`）：
+  - 等待确认 = 琥珀点 `#E6A23C`（8px，替换原紫铃铛，出现逻辑不变）
+  - 运行中 = loading 转圈环（`13576:40802` 官方矢量：环身 `#D4D7DE` + 转弧头 `#565A60`，css 旋转动画；dark 下环身白 16%/弧 `#D4D7DE`）
+  - 已完成未读 = 绿点 `#16A34A`（8px，新增 `session.newCompleted` 驱动）
+  - **激活（current）或可见于其它 pane（--visible）的会话不渲染状态点**——对应「已完成打开后绿点消失」：打开即不再提示；hover/focus 时右槽淡出、「⋯」淡入（`.desktop-session-more-btn` 24×24、hover 自身黑 8% 圆角底 `13656:5328`）。
+- **行/组头视觉对齐**：行高 32 保持、行距 2→4px、文字 13→14px/lh22 色 `#1F2329`；hover 底 `#EEF0F3`、选中与可见底 `#EBEDF0`（原 vscode token 泛蓝灰改固定 Figma 色）+ 选中标题 500；分组头 14/500 `#6C7076`（原 13px description 色），组头 codicon chevron 换成官方 `GroupChevron`（展开 `^` `13498:16662` / 收起 `>` `13561:39968`，16px `#565A60`）。
+- **新契约字段**：`DesktopSessionEntry.newCompleted?: boolean`（webview 与 webview-fixtures 双 types），mock desktop-full 给「重构 user 模块错误处理」置 true 供 8899 走查绿点。
+- 实现文件：`src/components/DesktopSidebar.tsx`、`src/styles/DesktopApp.css`、`src/types/index.ts`、`packages/webview-fixtures/src/types.ts`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+### 开发合码注意（用户委托提醒）
+
+1. **绿点 = 新功能**：桌面 host 需在 `refreshSessionTree()`（desktopHost.ts:2497）为每会话下发 `newCompleted`：
+   - 置 true：agent 一轮 turn 结束（`isStreaming` false 且无 `pendingConfirmations`）时，该会话**不在任何 pane 显示**（后台跑完）→ 记「有未读新完成」；
+   - 清 false：会话被打开/聚焦到任一 pane（或该会话开始新一轮 / 被删除）时清除；随后 `refreshSessionTree()` 推送。
+   - 优先级仅供 UI 参考：waiting > running > newCompleted（同会话同时多态时只显高优先）。UI 层另加 `!isCurrent && !isVisible` 过滤，host 若已按「打开即清」实现，该过滤仅作双保险。
+2. **DOM/class 变更影响既有测试断言，需同步**：`.desktop-session-status-icon.codicon-loading` / `.codicon-bell` / `.desktop-session-dot` 已从会话行移除（改行右端 `.desktop-session-status-slot--running/waiting/completed` 槽内 svg）；断言涉及处：`webview/tests/webview/desktopApp.test.tsx:1112-1172`、`webview/e2e/desktop-app.e2e.ts:176`。等待确认语义（无挂起即消失）未变。
