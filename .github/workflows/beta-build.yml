@@ -156,11 +156,13 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: wave-desktop-beta-${{ runner.os }}
-          # Only files existing on this OS match — macOS produces .dmg + .zip,
-          # Windows produces .exe; missing globs are simply skipped.
+          # Only files existing on this OS match — macOS produces .dmg, Windows
+          # produces .exe; missing globs are simply skipped. The macOS .zip is
+          # electron-updater's auto-update package (consumed via the serverUrl
+          # feed), useless for beta artifacts that colleagues install by hand,
+          # so it is not uploaded.
           path: |
             packages/desktop/release/*.dmg
-            packages/desktop/release/*.zip
             packages/desktop/release/*.exe
           retention-days: 30
 
