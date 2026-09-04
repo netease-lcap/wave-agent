@@ -3293,6 +3293,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             sidebarExpandButton={expandBtn}
             collapsed={sidebarCollapsed}
             onCollapsedChange={handleSidebarCollapsedChange}
+            fullScreen={fullScreen}
             settingsOpen={settingsOpen}
             onCloseSettings={handleCloseSettings}
             sessionBoardOpen={sessionBoardOpen}
