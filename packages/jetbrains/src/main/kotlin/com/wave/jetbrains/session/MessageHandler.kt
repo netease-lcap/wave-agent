@@ -623,6 +623,16 @@ class MessageHandler(
                     put("success", success)
                 })
             }
+            // 流式期间 Ctrl+B：把前台任务转后台。回包语义同 VSCE chat 路由
+            // (messageHandler.ts case "backgroundCurrentTask") 与 desktopHost.ts
+            // —— 无 ack；任务状态随后经 updateBackgroundTasks/updateTasks 推送。
+            "backgroundCurrentTask" -> {
+                try {
+                    session.agent?.backgroundCurrentTask()
+                } catch (e: StdioClientException) {
+                    LOG.warn("backgroundCurrentTask failed: ${e.message}")
+                }
+            }
             "getWorkflowRuns" -> {
                 val runs = try {
                     session.agent?.getWorkflowRuns()
