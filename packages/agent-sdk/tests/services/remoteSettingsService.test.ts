@@ -788,18 +788,18 @@ describe("remoteSettingsService", () => {
       expect(result.permissions!.deny).toEqual(["x", "y"]);
     });
 
-    it("merges permissions.permissionMode: remote wins", () => {
-      const local = { permissions: { permissionMode: "default" as const } };
-      const remote = { permissions: { permissionMode: "plan" as const } };
+    it("merges permissions.defaultMode: remote wins", () => {
+      const local = { permissions: { defaultMode: "default" as const } };
+      const remote = { permissions: { defaultMode: "plan" as const } };
       const result = mergeRemoteSettings(local, remote);
-      expect(result.permissions!.permissionMode).toBe("plan");
+      expect(result.permissions!.defaultMode).toBe("plan");
     });
 
-    it("merges permissions.permissionMode: falls back to local when remote undefined", () => {
-      const local = { permissions: { permissionMode: "default" as const } };
+    it("merges permissions.defaultMode: falls back to local when remote undefined", () => {
+      const local = { permissions: { defaultMode: "default" as const } };
       const remote = { permissions: {} };
       const result = mergeRemoteSettings(local, remote);
-      expect(result.permissions!.permissionMode).toBe("default");
+      expect(result.permissions!.defaultMode).toBe("default");
     });
 
     it("merges permissions.additionalDirectories: concatenate + dedupe", () => {
@@ -832,7 +832,7 @@ describe("remoteSettingsService", () => {
       const remote = { permissions: { allow: ["b"] } };
       const result = mergeRemoteSettings(local, remote);
       expect(result.permissions).not.toHaveProperty("deny");
-      expect(result.permissions).not.toHaveProperty("permissionMode");
+      expect(result.permissions).not.toHaveProperty("defaultMode");
       expect(result.permissions).not.toHaveProperty("additionalDirectories");
     });
 

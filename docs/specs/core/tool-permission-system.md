@@ -122,14 +122,15 @@ order: 130
 
 ### 用户故事：配置权限模式（优先级：P1）
 
-一个经常需要为开发工作流绕过权限的开发者希望避免每次都输入 `--dangerously-skip-permissions`。他们希望设置持久化配置，使绕过权限成为其项目的默认行为。
+一个经常需要为开发工作流绕过权限的开发者希望避免每次都输入 `--dangerously-skip-permissions`。他们希望设置持久化配置，使绕过权限成为其项目的默认行为。settings 的配置键为 `permissions.defaultMode`（与 Claude Code 的 settings schema 键名对齐；运行时权限上下文与 CLI `--permission-mode` 仍沿用 permission mode 命名）。
 
 **验收场景**：
 
-1. **假设**项目没有 `permissionMode` 设置，**当**用户运行 agent 命令时，**则**应用默认权限模式行为（受限工具需要确认）。
-2. **假设** `settings.json` 包含 `"permissions": {"permissionMode": "bypassPermissions"}`，**当**用户运行 agent 命令时，**则**权限被绕过而不提示。
-3. **假设** `settings.json` 包含 `"permissions": {"permissionMode": "default"}`，**当**用户运行 agent 命令时，**则**用户对受限工具被提示确认。
-4. **假设** `settings.json` 包含无效的 `permissionMode` 值，**当** agent 启动时，**则**系统回退到默认权限行为并记录警告。
+1. **假设**项目没有 `defaultMode` 设置，**当**用户运行 agent 命令时，**则**应用默认权限模式行为（受限工具需要确认）。
+2. **假设** `settings.json` 包含 `"permissions": {"defaultMode": "bypassPermissions"}`，**当**用户运行 agent 命令时，**则**权限被绕过而不提示。
+3. **假设** `settings.json` 包含 `"permissions": {"defaultMode": "default"}`，**当**用户运行 agent 命令时，**则**用户对受限工具被提示确认。
+4. **假设** `settings.json` 包含无效的 `defaultMode` 值，**当** agent 启动时，**则**系统回退到默认权限行为并记录警告。
+5. **假设**存量配置（改名前的 `settings.json`）仍使用旧键 `permissions.permissionMode`，**当** agent 启动时，**则**该键不再被识别（忽略），有效权限模式回落到默认 `default`（受限工具需确认）；存量文件须一次性迁移为 `permissions.defaultMode`（彻底改名，不做兼容读取）。
 
 ### 用户故事：从提示自动接受文件编辑（优先级：P1）
 
@@ -225,7 +226,7 @@ order: 130
 
 **验收场景**：
 
-1. **假设**配置文件中有 `permissionMode: "dontAsk"`，**当** agent 启动时，**则**有效权限模式为 `dontAsk`。
+1. **假设**配置文件中有 `defaultMode: "dontAsk"`，**当** agent 启动时，**则**有效权限模式为 `dontAsk`。
 
 ### ~~用户故事：Bash Heredoc 写入重定向到专用工具（优先级：P1）~~
 
@@ -233,7 +234,7 @@ _已移除。基于 Heredoc 的 bash 命令不再被自动拒绝。用户应依�
 
 ## 关键实体
 
-- **权限模式**：确定所需用户干预级别的配置。
+- **权限模式**：确定所需用户干预级别的配置。settings 中由 `permissions.defaultMode` 配置（对齐 Claude Code settings schema 键名），运行时权限上下文（`PermissionContext.permissionMode`）与 CLI `--permission-mode` 沿用 permission mode 命名。
 - **权限规则**：定义允许或拒绝操作的字符串（如 `Bash(git *)`、`Read(**/*.env)`）。
 - **简单命令**：从管道中提取的带参数的单个可执行命令。
 - **智能通配符**：用 `*` 替换动态参数的启发式生成模式。

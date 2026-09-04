@@ -256,7 +256,7 @@ export class LiveConfigManager {
       // Update permission manager if available
       if (this.permissionManager) {
         this.permissionManager.updateConfiguredPermissionMode(
-          this.currentConfiguration.permissions?.permissionMode,
+          this.currentConfiguration.permissions?.defaultMode,
         );
         this.permissionManager.updateAllowedRules(
           this.currentConfiguration.permissions?.allow || [],

@@ -29,7 +29,12 @@ export interface WaveConfiguration {
   permissions?: {
     allow?: string[];
     deny?: string[];
-    permissionMode?: PermissionMode; // Default permission mode for restricted tools
+    /**
+     * Default permission mode for restricted tools. Settings key aligns with
+     * Claude Code's `permissions.defaultMode`; the runtime permission context
+     * and CLI `--permission-mode` keep the "permission mode" naming.
+     */
+    defaultMode?: PermissionMode;
     /**
      * List of directories that are considered part of the Safe Zone.
      * File operations within these directories can be auto-accepted.

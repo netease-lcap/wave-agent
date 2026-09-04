@@ -180,9 +180,9 @@ export class InitializationService {
               configResult.configuration.permissions.deny,
             );
           }
-          if (configResult.configuration.permissions.permissionMode) {
+          if (configResult.configuration.permissions.defaultMode) {
             permissionManager.updateConfiguredPermissionMode(
-              configResult.configuration.permissions.permissionMode,
+              configResult.configuration.permissions.defaultMode,
             );
           }
           if (configResult.configuration.permissions.additionalDirectories) {

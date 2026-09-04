@@ -172,8 +172,8 @@ export function validateConfigurationObject(
         }
       }
 
-      // Validate permissionMode if present
-      if (config.permissions.permissionMode !== undefined) {
+      // Validate defaultMode if present
+      if (config.permissions.defaultMode !== undefined) {
         const validModes: PermissionMode[] = [
           "default",
           "bypassPermissions",
@@ -181,10 +181,10 @@ export function validateConfigurationObject(
           "plan",
           "dontAsk",
         ];
-        if (!validModes.includes(config.permissions.permissionMode)) {
+        if (!validModes.includes(config.permissions.defaultMode)) {
           result.isValid = false;
           result.errors.push(
-            `Invalid permissionMode: "${config.permissions.permissionMode}". Must be one of: ${validModes.join(", ")}`,
+            `Invalid defaultMode: "${config.permissions.defaultMode}". Must be one of: ${validModes.join(", ")}`,
           );
         }
       }
@@ -1564,10 +1564,9 @@ export function loadMergedWaveConfig(
         ];
       }
 
-      // Merge permissionMode (last one wins)
-      if (config.permissions.permissionMode !== undefined) {
-        mergedConfig.permissions.permissionMode =
-          config.permissions.permissionMode;
+      // Merge defaultMode (last one wins)
+      if (config.permissions.defaultMode !== undefined) {
+        mergedConfig.permissions.defaultMode = config.permissions.defaultMode;
       }
 
       // Merge additionalDirectories
