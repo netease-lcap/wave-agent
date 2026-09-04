@@ -702,7 +702,7 @@ You can extend the Safe Zone by adding \`additionalDirectories\` to your \`permi
 
 ## Permission Modes
 
-The \`permissionMode\` setting determines how Wave handles requests to use restricted tools (e.g., \`Bash\`, \`Edit\`, \`Write\`, \`AskUserQuestion\`).
+The \`defaultMode\` setting (under \`permissions\`, aligning with Claude Code's settings key) determines how Wave handles requests to use restricted tools (e.g., \`Bash\`, \`Edit\`, \`Write\`, \`AskUserQuestion\`).
 
 | Mode | Description |
 | :--- | :--- |
@@ -717,7 +717,7 @@ The \`permissionMode\` setting determines how Wave handles requests to use restr
 \`\`\`json
 {
   "permissions": {
-    "permissionMode": "default",
+    "defaultMode": "default",
     "additionalDirectories": ["/home/user/my-exports"],
     "allow": ["ls -R", "git status"],
     "deny": ["rm -rf"]
@@ -735,7 +735,7 @@ You can pre-approve or explicitly forbid specific operations using \`allow\` and
 When a tool is called, Wave checks:
 1. If the operation matches a \`deny\` rule, it is rejected.
 2. If the operation matches an \`allow\` rule, it is permitted.
-3. If no rules match, the behavior depends on the \`permissionMode\`.
+3. If no rules match, the behavior depends on the \`defaultMode\`.
 
 ### Rule Syntax
 
@@ -998,7 +998,7 @@ For detailed permission configuration and available permission modes, see [PERMI
   "permissions": {
     "allow": ["Bash", "Read"],
     "deny": ["Write"],
-    "permissionMode": "default",
+    "defaultMode": "default",
     "additionalDirectories": ["/tmp/wave-exports"]
   }
 }

@@ -374,7 +374,7 @@ describe("LiveConfigManager - Configuration Management", () => {
           allow: ["Bash(ls)"],
           deny: ["Bash(rm *)"],
           additionalDirectories: ["/tmp"],
-          permissionMode: "default",
+          defaultMode: "default",
         },
       };
 

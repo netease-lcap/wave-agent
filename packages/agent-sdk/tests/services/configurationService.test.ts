@@ -149,6 +149,25 @@ describe("ConfigurationService", () => {
       expect(result.configuration?.permissions?.deny).toContain("rule2");
     });
 
+    it("should ignore the legacy permissions.permissionMode key (renamed to defaultMode)", async () => {
+      const legacyConfig = {
+        permissions: { permissionMode: "bypassPermissions" },
+      };
+
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(legacyConfig));
+
+      const result = await configService.loadMergedConfiguration(tempDir);
+
+      expect(result.success).toBe(true);
+      expect(result.configuration?.permissions?.defaultMode).toBeUndefined();
+      if (result.configuration?.permissions) {
+        expect(result.configuration.permissions).not.toHaveProperty(
+          "permissionMode",
+        );
+      }
+    });
+
     it("should handle no configuration files found", async () => {
       mockExistsSync.mockReturnValue(false);
 
@@ -166,7 +185,7 @@ describe("ConfigurationService", () => {
     it("should return error on invalid configuration", async () => {
       const invalidConfig = {
         permissions: {
-          permissionMode: "invalid-mode",
+          defaultMode: "invalid-mode",
         },
       };
 
@@ -194,7 +213,7 @@ describe("ConfigurationService", () => {
         enabledPlugins: { "plugin1@market": true, "plugin2@market": true },
         hooks: { PreToolUse: [{ matcher: "user", hooks: [] }] },
         env: { VAR1: "user", VAR2: "user" },
-        permissions: { allow: ["rule-user"], permissionMode: "default" },
+        permissions: { allow: ["rule-user"], defaultMode: "default" },
         models: {
           model1: { options: { temperature: 0.1 }, maxInputTokens: 500 },
           model2: { options: { temperature: 0.2 } },
@@ -205,7 +224,7 @@ describe("ConfigurationService", () => {
         enabledPlugins: { "plugin2@market": false, "plugin3@market": true },
         hooks: { PreToolUse: [{ matcher: "project", hooks: [] }] },
         env: { VAR2: "project", VAR3: "project" },
-        permissions: { allow: ["rule-project"], permissionMode: "acceptEdits" },
+        permissions: { allow: ["rule-project"], defaultMode: "acceptEdits" },
         models: {
           model1: { options: { temperature: 0.5 }, maxInputTokens: 1000 },
           model2: { options: { temperature: 0.8 } },
@@ -218,7 +237,7 @@ describe("ConfigurationService", () => {
         env: { VAR3: "local", VAR4: "local" },
         permissions: {
           allow: ["rule-local"],
-          permissionMode: "bypassPermissions",
+          defaultMode: "bypassPermissions",
         },
         models: {
           model2: { options: { reasoning_effort: "high" } },
@@ -269,8 +288,8 @@ describe("ConfigurationService", () => {
         VAR4: "local",
       });
 
-      // Verify permissionMode (highest priority wins)
-      expect(result?.permissions?.permissionMode).toBe("bypassPermissions"); // from localSettings
+      // Verify defaultMode (highest priority wins)
+      expect(result?.permissions?.defaultMode).toBe("bypassPermissions"); // from localSettings
 
       // Verify permissions.allow (combined)
       expect(result?.permissions?.allow).toEqual(
@@ -303,7 +322,7 @@ describe("ConfigurationService", () => {
         env: { VAR: "val" },
         permissions: {
           allow: ["rule"],
-          permissionMode: "bypassPermissions" as const,
+          defaultMode: "bypassPermissions" as const,
         },
       };
 
@@ -312,10 +331,10 @@ describe("ConfigurationService", () => {
       expect(result.errors).toHaveLength(0);
     });
 
-    it('should validate "plan" as a valid permissionMode', () => {
+    it('should validate "plan" as a valid defaultMode', () => {
       const config = {
         permissions: {
-          permissionMode: "plan" as const,
+          defaultMode: "plan" as const,
         },
       };
 
@@ -338,16 +357,16 @@ describe("ConfigurationService", () => {
       expect(result.warnings).toContain("Unknown hook event: InvalidEvent");
     });
 
-    it("should catch invalid permissionMode", () => {
+    it("should catch invalid defaultMode", () => {
       const config = {
         permissions: {
-          permissionMode: "invalid" as unknown as "bypassPermissions",
+          defaultMode: "invalid" as unknown as "bypassPermissions",
         },
       };
 
       const result = configService.validateConfiguration(config);
       expect(result.isValid).toBe(false);
-      expect(result.errors[0]).toContain("Invalid permissionMode");
+      expect(result.errors[0]).toContain("Invalid defaultMode");
     });
 
     it("should catch invalid permissions", () => {
@@ -576,7 +595,7 @@ describe("ConfigurationService", () => {
             model: "should-be-stripped",
             fastModel: "should-be-stripped",
             maxInputTokens: 999,
-            permissionMode: "default",
+            defaultMode: "default",
             options: { temperature: 0.3 },
           },
         },

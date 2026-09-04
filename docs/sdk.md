@@ -1299,7 +1299,7 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 
 ### 工具权限 {#settings-permissions}
 
-管理工具权限并定义"安全区域"（Safe Zone），支持 `allow`、`deny` 列表以及 `permissionMode` 配置。权限修改立即生效。
+管理工具权限并定义"安全区域"（Safe Zone），支持 `allow`、`deny` 列表以及 `defaultMode` 配置（配置键对齐 Claude Code 的 `permissions.defaultMode`）。权限修改立即生效。
 
 ### 模型配置 {#settings-models}
 
