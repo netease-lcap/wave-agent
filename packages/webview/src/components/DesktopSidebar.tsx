@@ -38,6 +38,78 @@ const ActivityIcon: React.FC = () => (
   </svg>
 );
 
+/** 侧栏会话行状态图标（Figma 13561:39969 icon 集 + 13656:5470 会话行规格）。
+ *  状态从标题左侧移到行右端 24 槽：运行中=转圈 loading 环、已完成未读=绿点、
+ *  等待确认=琥珀点；hover 时整槽被「⋯」更多按钮覆盖。 */
+
+/** 8px 状态点：green #16A34A = 已完成未读（打开后消失）、amber #E6A23C = 等待确认。 */
+const StatusDot: React.FC<{ color: string; label: string }> = ({
+  color,
+  label,
+}) => (
+  <svg
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    role="img"
+    aria-label={label}
+    style={{ display: "block" }}
+  >
+    <circle cx="12" cy="12" r="4" fill={color} />
+  </svg>
+);
+
+/** 运行中转圈 loading 环（13576:40802）：浅色环身 + 深色弧头，整图 css 旋转。
+ *  环/头双色走 --loading-ring-* 变量，dark 主题下换对比色。 */
+const LoadingRingIcon: React.FC = () => (
+  <svg
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    role="img"
+    aria-label="正在运行"
+    className="desktop-session-loading-ring"
+    style={{ display: "block" }}
+  >
+    <path
+      d="M17.0996 12C17.0996 9.18335 14.8167 6.90039 12 6.90039C9.18335 6.90039 6.90039 9.18335 6.90039 12C6.90039 14.8167 9.18335 17.0996 12 17.0996C14.8167 17.0996 17.0996 14.8167 17.0996 12ZM18.9004 12C18.9004 15.8108 15.8108 18.9004 12 18.9004C8.18924 18.9004 5.09961 15.8108 5.09961 12C5.09961 8.18924 8.18924 5.09961 12 5.09961C15.8108 5.09961 18.9004 8.18924 18.9004 12Z"
+      fill="var(--session-loading-track, #D4D7DE)"
+    />
+    <path
+      d="M17.0996 12C17.0996 11.3303 16.9682 10.6666 16.7119 10.0479C16.4556 9.42923 16.0799 8.86704 15.6064 8.39355C15.133 7.92006 14.5708 7.54438 13.9521 7.28809C13.3334 7.03179 12.6697 6.90039 12 6.90039C11.5029 6.90039 11.0996 6.49706 11.0996 6C11.0996 5.50294 11.5029 5.09961 12 5.09961C12.9061 5.09961 13.8035 5.27824 14.6406 5.625C15.4778 5.97176 16.2382 6.48037 16.8789 7.12109C17.5196 7.76182 18.0282 8.52223 18.375 9.35938C18.7218 10.1965 18.9004 11.0939 18.9004 12C18.9004 12.4971 18.4971 12.9004 18 12.9004C17.5029 12.9004 17.0996 12.4971 17.0996 12Z"
+      fill="var(--session-loading-head, #565A60)"
+    />
+  </svg>
+);
+
+/** 项目分组展开/收起 chevron（13498:16662 up / 13561:39968 right），
+ *  展开组显示「^」、收起组显示「>」，替代 codicon 字形。 */
+const GroupChevron: React.FC<{ expanded: boolean }> = ({ expanded }) => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="none"
+    aria-hidden="true"
+    className="desktop-session-group-chevron"
+    style={{ display: "block", flexShrink: 0 }}
+  >
+    {expanded ? (
+      <path
+        d="M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z"
+        fill="currentColor"
+      />
+    ) : (
+      <path
+        d="M8.77597 7.99977L5.9473 5.17108C5.68699 4.91078 5.68699 4.48875 5.94729 4.22844C6.20759 3.96813 6.62963 3.96812 6.88994 4.22843L9.95418 7.29266C10.3447 7.68318 10.3447 8.31635 9.95418 8.70687L6.88994 11.7711C6.62963 12.0314 6.20759 12.0314 5.94729 11.7711C5.68699 11.5108 5.687 11.0888 5.94729 10.8285L8.77597 7.99977Z"
+        fill="currentColor"
+      />
+    )}
+  </svg>
+);
+
 /** Row menu anchored under a session row's "更多" button (fixed positioning
  *  escapes the sidebar's overflow:hidden). 并排打开 + 删除会话. */
 const SessionItemMenu: React.FC<{
@@ -341,10 +413,23 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     // A session displayed in a non-focused pane gets the weak highlight.
     const isVisible =
       !isCurrent && (visibleSessionIds?.includes(session.sessionId) ?? false);
+    // 状态点只在「后台」会话上提示（Figma 13656:5470 会话行规格）：会话已打开
+    // （激活）或正显示在其它 pane 时不重复提醒——对应「已完成打开后绿点消失」。
+    // 优先级：等待确认(琥珀点) > 运行中(loading 环) > 已完成未读(绿点)。
+    const status =
+      !isCurrent && !isVisible
+        ? waiting
+          ? "waiting"
+          : running
+            ? "running"
+            : session.newCompleted === true
+              ? "completed"
+              : null
+        : null;
     return (
       <li
         key={session.sessionId}
-        className={`desktop-session-item${isCurrent ? " desktop-session-item--current" : ""}${isVisible ? " desktop-session-item--visible" : ""}`}
+        className={`desktop-session-item${isCurrent ? " desktop-session-item--current" : ""}${isVisible ? " desktop-session-item--visible" : ""}${status ? " desktop-session-item--status" : ""}`}
         draggable
         onDragStart={(e) => {
           // Drag into the chat area opens the session in a new pane (drop on a
@@ -395,24 +480,29 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             }}
             data-testid={`desktop-session-main-${session.sessionId}`}
           >
-            {running || waiting ? (
-              <i
-                className={`codicon codicon-${waiting ? "bell" : "loading codicon-modifier-spin"} desktop-session-status-icon`}
-                style={{
-                  color: waiting
-                    ? "var(--vscode-charts-purple, #b180d7)"
-                    : "var(--vscode-charts-blue, #59a4f9)",
-                }}
-                title={waiting ? "等待确认" : "正在运行"}
-              />
-            ) : (
-              <span className="desktop-session-dot" aria-hidden="true" />
-            )}
+            {/*
+              Title only — per-session state (running/waiting/new-completed) moved
+              to the row's right-end 24px slot (Figma 13656:5470), rendered as a
+              sibling after this button.
+            */}
             <span className="desktop-session-title">
               {session.title || "新对话"}
             </span>
           </button>
         </Tooltip>
+        {status && (
+          <span
+            className={`desktop-session-status-slot desktop-session-status-slot--${status}`}
+          >
+            {status === "waiting" ? (
+              <StatusDot color="#E6A23C" label="等待确认" />
+            ) : status === "running" ? (
+              <LoadingRingIcon />
+            ) : (
+              <StatusDot color="#16A34A" label="有新完成" />
+            )}
+          </span>
+        )}
         <button
           type="button"
           ref={getMoreRef(session.sessionId)}
@@ -608,9 +698,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 <span className="desktop-session-group-name">
                   {dirName(group.workdir)}
                 </span>
-                <span
-                  className={`codicon codicon-chevron-${expanded ? "down" : "right"}`}
-                ></span>
+                <GroupChevron expanded={expanded} />
                 {group.host !== "local" && (
                   <span
                     className="desktop-session-group-host"

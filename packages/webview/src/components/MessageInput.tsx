@@ -1537,6 +1537,20 @@ export const MessageInput = forwardRef<
       const target = event.currentTarget;
       const newValue = target.innerText;
 
+      // 输入删空后 contenteditable 常残留 <br>/空 div，`:empty` 不再匹配，
+      // 占位文案随之消失（用户反馈：输入内容再删除后占位文案不应消失）。
+      // 仅剩空标记时清空子节点让占位符恢复；img/附件等实质内容不受影响。
+      if (
+        newValue.trim() === "" &&
+        Array.from(target.children).every(
+          (el) =>
+            el.tagName === "BR" ||
+            (el.tagName === "DIV" && (el.textContent ?? "").trim() === ""),
+        )
+      ) {
+        target.replaceChildren();
+      }
+
       setMessage(newValue);
 
       // If we're editing a queued message and the read-only chip has been deleted

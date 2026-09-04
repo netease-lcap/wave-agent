@@ -2047,6 +2047,7 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 ### 评论跟进（同轮）：显隐钮圆角对齐 6px + 「套餐用量」到进度条间距加大
 
 用户核对后两条：
+
 1. 「再检查额度图标背景圆角是不是 6px」——查 Figma 功能 icon-button hover 组件 13383:4723/4726 确认 hover 底色圆角 **r=6**（此前 base 圆角仅 4px）。`host-desktop.css` `.account-card-collapse-btn` 32×32 块补 `border-radius: 6px`（hover 底色形状随按钮圆角）。
 2. 预览评论 `div.account-usage-title`「套餐用量到进度条的间距再大一些」——Figma 13651:5041（Frame 1321327573）文本行底 y=5510 → Bar 顶 y=5516 = **6px**，base `.account-usage-section` 列 gap 仅 4px。host 补 `.account-usage-section { gap: 6px; }`（该 section 只含标题行与进度条，不影响 API 余额行距）。
 
@@ -2090,16 +2091,16 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 
 ### 设计稿权威值（13651:4864，浅色帧）
 
-| 项 | 设计稿 | 改前 |
-| --- | --- | --- |
-| 圆角 | **r12** | r6 |
-| 描边 | 1px **#EBEEF5** | widget-border |
-| 投影 | **0/0/12 rgba(0,0,0,.12)**（无偏移柔和投影） | 0 4px 12px rgba(0,0,0,.42) |
-| 背景 | #FFFFFF | panel-background（浅色同白） |
-| 内边距 | 9（外 235×78 − 内 217×60 四边同距） | 10×12 |
-| 标题 | 12px/**500**/#1F2329 | 600/foreground |
-| 行标签「已用/剩余」 | 12px/400/**#565A60** | descriptionForeground（浅色 #606060 偏深） |
-| 金额 | 12px/**500**/#1F2329 | foreground w400 |
+| 项                  | 设计稿                                       | 改前                                       |
+| ------------------- | -------------------------------------------- | ------------------------------------------ |
+| 圆角                | **r12**                                      | r6                                         |
+| 描边                | 1px **#EBEEF5**                              | widget-border                              |
+| 投影                | **0/0/12 rgba(0,0,0,.12)**（无偏移柔和投影） | 0 4px 12px rgba(0,0,0,.42)                 |
+| 背景                | #FFFFFF                                      | panel-background（浅色同白）               |
+| 内边距              | 9（外 235×78 − 内 217×60 四边同距）          | 10×12                                      |
+| 标题                | 12px/**500**/#1F2329                         | 600/foreground                             |
+| 行标签「已用/剩余」 | 12px/400/**#565A60**                         | descriptionForeground（浅色 #606060 偏深） |
+| 金额                | 12px/**500**/#1F2329                         | foreground w400                            |
 
 ### 改动（host-desktop.css，desktop 限定）
 
@@ -2115,3 +2116,106 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - 红：`--vscode-errorForeground`（light #AD0707 / dark #F85149）——`.account-usage-percent.is-empty`、进度条 fill `.is-empty`（第 6 轮 host 深色规则亦经该 token）、`.account-usage-exhausted`、`.account-usage-value.is-empty`「已用完」、`.api-popover-amt.is-empty`、`.api-popover-warn.is-empty`。
 - CSS 中出现的 `#f14c4c / #d18616 / #f85149` 仅为 `var(--xxx, 兜底)` 的 fallback（IDE 端无主题时的缺省），桌面 host 恒由 theme-base-light/dark.css 的 token 实际取值。
 - 另注：mock 端曾把 `apiQuota` 写成 `{total,used}`（组件读 `{limit,used}`）导致预览 ¥NaN，与组件色无关；本区域校验用用例已按 `limit` 字段构造。
+
+---
+
+## 0904 新基线第 1 轮（feat/0904-new-base-r1）：权限模式下拉菜单固定 164px
+
+预览评论 `ul.permission-mode-menu`（「修改前询问/自动接受/修改跳过权限/确认计划模式」下拉）：「这个下拉菜单宽度调整为164px」。
+
+- 修改：`src/styles/host-desktop.css` `[data-host="desktop"] .permission-mode-menu` 由 `min-width: 168px` 改为 `width: 164px; min-width: 164px; box-sizing: border-box`（padding 8px + border 1px 计入外框，整体恰 164px）；dark 覆盖块只改颜色、宽度共用。
+- 实现文件：`src/styles/host-desktop.css`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+---
+
+## 0904 第 2 轮（feat/0904-new-base-r1）：diff 展示窗口去除鼠标点击聚焦框
+
+预览评论 `div.diff-viewer-container`（tool diff 内容区）：「这个窗口不应该有选中状态，和其他的展示窗口保持一致」。
+
+- 根因：`.diff-viewer-content` 带 `tabIndex={0}` 且样式用 `:focus`（鼠标点击即触发），点击 diff 区域后整容器出现 1px `--vscode-focusBorder` 描边，形似选中；bash/write/pre 等展示窗口无 tabIndex/无聚焦描边。
+- 修改：`src/styles/DiffViewer.css` `.diff-viewer-content:focus` → `:focus-visible`（与全项目惯例一致：鼠标点击不显示框、键盘 Tab 聚焦仍保留焦点指示；桌面/IDE 两端同一基础样式）。
+- 实现文件：`src/styles/DiffViewer.css`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+---
+
+## 0904 第 3 轮（feat/0904-new-base-r1）：会话看板卡高 72 + 顶栏通栏 44 + 列容器圆角 r12 + 空态 14px
+
+预览 CF-02（P2 · A · 已确认偏差）「会话卡片缺失 1px 描边 / 高 70 vs 72」+ 设计稿帧 `13498:16821` 对照评论（返回区通栏、卡片与列容器圆角、空态字号）。
+
+- **CF-02 卡高对齐（Figma Container 13561:39327：外高 72 = 边框 2 + 内距 24 + 内容 46）**：`.session-card` gap 2→0、`.session-card-title` 补 `line-height: 26px`、`.session-card-status` 补 `line-height: 20px`（Figma 行高 26/20）；描边本就在位（1px #ebeef5，暗色 12% 白），hover 不再加深边框色（仅阴影，避免与常驻描边叠硬边）。实测两主题外高均 **72px**（1440 与 994 宽）。
+- **顶栏通栏贴顶（Figma Header 行 44px 全宽，贴帧顶）**：`.session-board` padding 由 `16px` 改 `0 16px 16px`；`.session-board-toolbar` `margin: 0 -16px; padding: 0 8px; height: 44px`（box-sizing 含底描边 1px #ebeef5，首元素距左 8px）；`.session-board-header` / `.session-board-columns` 各 `margin-top: 16px`。几何对照 13498:16821 全中：toolbar 通栏 y0 h44、列头 y108 h48、列体 y156 h728、底留 16。
+- **列容器圆角（Figma 列头/列体圆角绑定与卡片同款变量 `13363:28` = r12）**：`.session-board-column-header` `6px 6px 0 0` → `12px 12px 0 0` 且固定 `height: 48px`（Figma 列头 48，count 文本行框 24 撑起）；`.session-board-column-body` `0 0 6px 6px` → `0 0 12px 12px`；相接处直角。
+- **空态字号（评论 2026-09：`div.session-board-empty` 暂无会话）**：12px → **14px**。
+- 实现文件：`src/styles/SessionBoard.css`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+---
+
+## 0904 第 4 轮（feat/0904-new-base-r1）：全局字重 token 化 + 权限按钮走查修正
+
+用户提出对话流工具名等维持 600（semibold）、界面其它加粗 500（medium）、正文 400（regular），绑定 Figma `--cc-font-weight-*` 语义变量统一管理；组内归类由用户逐项在 8899 人工点名裁定。仅改 `host-desktop.css`（base 文件写死值不动，IDE 端不受影响），`font-weight: var(--cc-font-weight-<档>, 原值)` fallback 双保险。
+
+### 分组落地（用户裁定）
+
+- 新增 token：`:root[data-host="desktop"]` 定义 `--cc-font-weight-regular: 400 / -medium: 500 / -semibold: 600`（与主题无关）。
+- **① 对话流工具名 → semibold 600（等值）**：`.tool-block`（全部工具 header 行）、`.write-tool-label`、`.reasoning-title`。
+- **② 界面/面板标题类 → medium 500**（用户逐项点名，追加于「②-medium」组）：`.header-title`（顶栏，就地改）、账户卡 `.account-usage-title / -percent / -label / -value-text`、`.account-card-name`、`.session-card-title`、`.desktop-panel-tab.active .desktop-panel-tab-label`、`.desktop-session-group-name`、`.permission-mode-item`（权限下拉全部选项文案）、`.user-content`（用户消息正文）、`plan/file/diff/terminal/empty` 的 `.preview-pane-url` 面板标题（就地改）。部分本即 500（等值 token 化），部分由 600/400 提到 500。
+- **③ 角标/状态 chip → medium 500**：`.account-card-avatar`（头像首字母）、`.api-popover-title`、mermaid `.zoom-info`、`.desktop-remote-browser-mark`（700→500）。
+- **④ markdown/内容语义粗体 → semibold 600**：`.markdown-content strong/b/h5/h6/th`、`.suggestion-item.kb-option .suggestion-name`。
+- **⑤ 原 bold 700 → 统一 semibold 600**：`.diff-prefix/.diff-chunk-prefix`、`.button-badge`、`.image-type`、`.suggestion-highlight`、`.todo-status-icon`、`.btw-panel-prefix`、mermaid `.close-btn`、`.file-pane .hljs-strong`。
+- **正文 normal 重置并入 regular（值不变）**：`.plugin-version/-scope/-status-tag`、`.recommended-tag`、`.compact-params`、`.bash-command(-output)`、`.lsp-output`、`.tool-result-inline`、`.codicon`。
+
+### 会话名两态（点名修正）
+
+- 选中（`.desktop-session-item--current`）会话标题 medium 500；
+- 未选中 `.desktop-session-title` → regular 400 不强调（用户：没选中不要加粗）。
+
+### 权限模式按钮（走查评论）
+
+- 「跳过权限确认」`.permission-mode-select.mode-bypassPermissions`：红色警示保留、字重改 regular 400（原 base bold 700；用户：选择完成后文案不要加粗，与其它模式一致）。
+- 模式按钮底色触发 `:hover, :focus` → `:hover, :focus-visible`，并显式 `:focus { background: transparent }` 覆盖 base——鼠标切换选择后不再残留 hover 底色，键盘 Tab 聚焦仍显示焦点底色（dark 同拆）。
+
+实现文件：`src/styles/host-desktop.css`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+---
+
+## 0904 第 5 轮（feat/0904-new-base-r1）：输入框删除内容后占位文案恢复
+
+预览评论 `div#messageInput.message-input.content-editable-input`（输入框）：「输入内容再删除后，占位文案消失了，不合理，希望不要消失」。
+
+- 根因：占位符由 `.content-editable-input:empty::before { content: attr(data-placeholder) }` 驱动；contenteditable 输入删空后浏览器常残留 `<br>`/空 `<div>`，`:empty` 不再匹配 → 占位文案消失。
+- 修改：`src/components/MessageInput.tsx` `handleInput` 检测到 `innerText` 已删空且子节点仅剩 `<br>`/空 `div` 时 `replaceChildren()` 清空，让占位符恢复显示（img/附件等实质内容不受影响）。
+- 实现文件：`src/components/MessageInput.tsx`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+---
+
+## 0904 第 6 轮（feat/0904-new-base-r1）：会话卡两行布局省略 + 状态右下角 + 项目筛选自绘省略/统一 Tooltip/定宽 160px
+
+预览评论（会话状态页项目筛选与卡片区）：「参考设计稿布局对话卡片、省略规则遵循设计稿」「状态希望始终在卡片右下角」「筛选文案 14px、超出需省略、hover 展示全部」「悬停样式与其他地方不一致（应统一 Tooltip）」「筛选表单定宽 160px」。
+
+- **卡片布局对齐 Figma Container 组件 13656:5280**：两行结构——行 1 标题独占（14/600/#1F2329，行高 26，可省略）；行 2 `meta-row` = 项目名 + 状态（均 12/400/#6C7076，行高 20，itemSpacing 8）。原实现把项目名放在标题行右侧，与组件不符 → `SessionBoard.tsx` 拆行。省略约束：`.session-card-title` `flex:1; min-width:0`；`.session-card-project` `flex:1 1 auto; min-width:0`（**评论 2026-09 追加：状态固定右下角**）；`.session-card-status` `flex-shrink:0`。
+- **项目筛选（Figma Select Input：32 高 / r6 / 1px #DCDFE6）**：原生 select 无法做省略与自绘悬停 → 外层 `.session-board-filter`（**定宽 160px**）渲染三层：省略文字层 `.session-board-filter-text`（14px ellipsis）+ chevron-down 箭头 + 透明 `.session-board-filter-select` 覆盖（保留原生下拉）；文案 = 选中项目录名。
+- **长项目 hover 用统一 Tooltip 组件**（与活动图标等一致，不用浏览器 title）：仅溢出时启用（`scrollWidth > clientWidth` 实测），气泡放宽 `max-width: 480px`（全局 250 会截断 55 字符长名）。测量注意：Tooltip `disabled` 翻转令 filter 换父重挂，ResizeObserver 监听旧节点回调会把状态误置回 false → 改为每次提交后重测（deps 含 `filterOverflow`）。
+- 实现文件：`src/components/SessionBoard.tsx`、`src/styles/SessionBoard.css`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+---
+
+## 0904 第 7 轮（feat/0904-new-base-r1）：侧栏会话行状态点右移 + 官方状态图标 + 分组 chevron（Figma 13656:5470「Sidebar - 任务导航」+ 13561:39969 icon 集）
+
+设计稿链接两帧：`13656:5470`（Sidebar - 任务导航：会话行 12 个状态变体规格）+ `13561:39969`（用到的 icon 组件集）。用户确认三项口径后实施：范围 = 会话行 + 项目分组行；状态指示**整体迁到行右端 24 槽、hover 时被「⋯」覆盖**；绿点 = **新增功能「新完成未读标记」**（用户只负责样式，合码需开发实现契约，见下「开发合码注意」）。
+
+- **状态位从标题左侧移到行右端 24 槽**：`.desktop-session-item` 内删左图标位（原 waiting 紫铃铛 codicon-bell / running 蓝 codicon-loading / idle 灰点），`.desktop-session-item-main` 只留标题（padding `0 32px 0 16px` 给右槽留位）。右槽三态（非 hover 显示，样式 `DesktopApp.css`）：
+  - 等待确认 = 琥珀点 `#E6A23C`（8px，替换原紫铃铛，出现逻辑不变）
+  - 运行中 = loading 转圈环（`13576:40802` 官方矢量：环身 `#D4D7DE` + 转弧头 `#565A60`，css 旋转动画；dark 下环身白 16%/弧 `#D4D7DE`）
+  - 已完成未读 = 绿点 `#16A34A`（8px，新增 `session.newCompleted` 驱动）
+  - **激活（current）或可见于其它 pane（--visible）的会话不渲染状态点**——对应「已完成打开后绿点消失」：打开即不再提示；hover/focus 时右槽淡出、「⋯」淡入（`.desktop-session-more-btn` 24×24、hover 自身黑 8% 圆角底 `13656:5328`）。
+- **行/组头视觉对齐**：行高 32 保持、行距 2→4px、文字 13→14px/lh22 色 `#1F2329`；hover 底 `#EEF0F3`、选中与可见底 `#EBEDF0`（原 vscode token 泛蓝灰改固定 Figma 色）+ 选中标题 500；分组头 14/500 `#6C7076`（原 13px description 色），组头 codicon chevron 换成官方 `GroupChevron`（展开 `^` `13498:16662` / 收起 `>` `13561:39968`，16px `#565A60`）。
+- **新契约字段**：`DesktopSessionEntry.newCompleted?: boolean`（webview 与 webview-fixtures 双 types），mock desktop-full 给「重构 user 模块错误处理」置 true 供 8899 走查绿点。
+- 实现文件：`src/components/DesktopSidebar.tsx`、`src/styles/DesktopApp.css`、`src/types/index.ts`、`packages/webview-fixtures/src/types.ts`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+### 开发合码注意（用户委托提醒）
+
+1. **绿点 = 新功能**：桌面 host 需在 `refreshSessionTree()`（desktopHost.ts:2497）为每会话下发 `newCompleted`：
+   - 置 true：agent 一轮 turn 结束（`isStreaming` false 且无 `pendingConfirmations`）时，该会话**不在任何 pane 显示**（后台跑完）→ 记「有未读新完成」；
+   - 清 false：会话被打开/聚焦到任一 pane（或该会话开始新一轮 / 被删除）时清除；随后 `refreshSessionTree()` 推送。
+   - 优先级仅供 UI 参考：waiting > running > newCompleted（同会话同时多态时只显高优先）。UI 层另加 `!isCurrent && !isVisible` 过滤，host 若已按「打开即清」实现，该过滤仅作双保险。
+2. **DOM/class 变更影响既有测试断言，需同步**：`.desktop-session-status-icon.codicon-loading` / `.codicon-bell` / `.desktop-session-dot` 已从会话行移除（改行右端 `.desktop-session-status-slot--running/waiting/completed` 槽内 svg）；断言涉及处：`webview/tests/webview/desktopApp.test.tsx:1112-1172`、`webview/e2e/desktop-app.e2e.ts:176`。等待确认语义（无挂起即消失）未变。

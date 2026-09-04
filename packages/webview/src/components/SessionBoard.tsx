@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DesktopSessionGroup, DesktopSessionEntry } from "../types";
 import { SidebarExpandIcon } from "./HeaderIcons";
 import { Tooltip } from "./Tooltip";
@@ -120,6 +120,24 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
     [visibleSessions],
   );
 
+  // 筛选框文案：选中项的目录名（与下拉选项 label 一致），未选 = 全部项目。
+  const filterLabel =
+    filterOptions.find((option) => option.workdir === selectedWorkdir)?.name ??
+    "全部项目";
+
+  // 文案是否溢出（溢出时才需要 Tooltip；hover 展示完整项目名，与活动图标
+  // 等统一 Tooltip 样式一致，不用浏览器原生 title）。注意：Tooltip 的
+  // disabled 翻转会让 filter 在「直接子节点/包裹节点」间换父重挂，测量须在
+  // 每次提交后对新节点重跑（deps 含 filterOverflow），不可用 ResizeObserver
+  // 观察旧节点——旧节点移除时回调会把状态误置回 false。
+  const filterTextRef = useRef<HTMLSpanElement>(null);
+  const [filterOverflow, setFilterOverflow] = useState(false);
+  useLayoutEffect(() => {
+    const el = filterTextRef.current;
+    if (!el) return;
+    setFilterOverflow(el.scrollWidth > el.clientWidth + 0.5);
+  }, [filterLabel, filterOverflow]);
+
   return (
     <div className="session-board" data-testid="session-board">
       {/* 顶栏（Figma 13561:39312 Header，44px 行）：导航收起时左起为
@@ -155,22 +173,46 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
           返回当前会话
         </button>
       </div>
-      {/* 标题行：会话状态 + 项目筛选 */}
+      {/* 标题行：会话状态 + 项目筛选（Figma Select Input：14px 文案，
+          超长省略、hover 用统一 Tooltip 展示完整项目名——原生 select 无省略
+          与自绘提示，故用文字层 + 透明 select 覆盖交互） */}
       <div className="session-board-header">
         <span className="session-board-title">会话状态</span>
-        <select
-          className="session-board-filter"
-          aria-label="筛选项目"
-          value={selectedWorkdir}
-          onChange={(event) => setSelectedWorkdir(event.target.value)}
+        <Tooltip
+          text={filterLabel}
+          position="bottom"
+          className="session-board-filter-tooltip"
+          disabled={!filterOverflow}
         >
-          <option value="">全部项目</option>
-          {filterOptions.map((option, index) => (
-            <option key={`${option.workdir}-${index}`} value={option.workdir}>
-              {option.name}
-            </option>
-          ))}
-        </select>
+          <div
+            className="session-board-filter"
+            data-testid="session-board-filter"
+          >
+            <span ref={filterTextRef} className="session-board-filter-text">
+              {filterLabel}
+            </span>
+            <span
+              className="codicon codicon-chevron-down session-board-filter-arrow"
+              aria-hidden="true"
+            />
+            <select
+              className="session-board-filter-select"
+              aria-label="筛选项目"
+              value={selectedWorkdir}
+              onChange={(event) => setSelectedWorkdir(event.target.value)}
+            >
+              <option value="">全部项目</option>
+              {filterOptions.map((option, index) => (
+                <option
+                  key={`${option.workdir}-${index}`}
+                  value={option.workdir}
+                >
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </Tooltip>
       </div>
       <div className="session-board-columns">
         {columns.map((column) => (
@@ -198,16 +240,20 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
                     onClick={() => onSelectSession(session.sessionId)}
                     title={session.title || "新对话"}
                   >
+                    {/* Figma 会话卡 Container 13656:5280：标题独占一行可省略；
+                        副行 = 项目名（可省略）+ 状态（间距 8） */}
                     <span className="session-card-title-row">
                       <span className="session-card-title">
                         {session.title || "新对话"}
                       </span>
+                    </span>
+                    <span className="session-card-meta-row">
                       <span className="session-card-project">
                         {dirName(workdir)}
                       </span>
-                    </span>
-                    <span className="session-card-status">
-                      {formatStatus(session, column.kind)}
+                      <span className="session-card-status">
+                        {formatStatus(session, column.kind)}
+                      </span>
                     </span>
                   </button>
                 ))

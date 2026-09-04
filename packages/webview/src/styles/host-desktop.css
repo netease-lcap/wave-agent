@@ -210,9 +210,15 @@
   font-weight: 400;
 }
 [data-host="desktop"] .permission-mode-select:hover,
-[data-host="desktop"] .permission-mode-select:focus {
+[data-host="desktop"] .permission-mode-select:focus-visible {
   background: #eef0f3;
   color: #1f2329;
+  border-color: transparent;
+}
+/* 切换选择后按钮仍持 focus，不再常驻 hover 底色（用户 0904 走查：切换后
+   不要保留 hover 态）；键盘 focus 提示走 :focus-visible 同底色。 */
+[data-host="desktop"] .permission-mode-select:focus {
+  background: transparent;
   border-color: transparent;
 }
 [data-host="desktop"] .permission-mode-select.mode-bypassPermissions:hover {
@@ -226,9 +232,12 @@
   color: #f4655c;
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-select:hover,
-[data-host="desktop"][data-theme="dark"] .permission-mode-select:focus {
+[data-host="desktop"][data-theme="dark"] .permission-mode-select:focus-visible {
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
+}
+[data-host="desktop"][data-theme="dark"] .permission-mode-select:focus {
+  background: transparent;
 }
 [data-host="desktop"][data-theme="dark"]
   .permission-mode-select.mode-bypassPermissions:hover,
@@ -254,7 +263,10 @@
   border-radius: 12px;
   box-shadow: 0 0 12px rgb(0 0 0 / 12%);
   padding: 8px;
-  min-width: 168px;
+  /* 菜单宽 164px：width + box-sizing:border-box 使外框含 pad/border 恰为 164 */
+  width: 164px;
+  min-width: 164px;
+  box-sizing: border-box;
   font-size: 14px;
 }
 [data-host="desktop"] .permission-mode-item {
@@ -512,11 +524,6 @@
   font-size: 14px;
 }
 
-/* 分组折叠 chevron：12px → 16px（codechat 16px） */
-[data-host="desktop"] .desktop-session-group-header .codicon {
-  font-size: 16px;
-}
-
 /* 分组头文字色：descriptionForeground（浅色 #606060）偏暗 →
    codechat --cc-text-secondary #6c7076 */
 [data-host="desktop"][data-theme="light"] .desktop-session-group-header {
@@ -536,13 +543,12 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* 选中态：浅色 codechat --cc-fill-pressed #e7e9ed（skill 契约：导航/列表选中
-   用中性 pressed fill，非品牌红软底 --cc-fill-selected；codechat 桌面壳
-   .task-row.is-active 同值）。深色中性 12% 白。
+/* 选中态：浅色 Figma 13656:5470「对话-选中」底 #EBEDF0（此前 codechat
+   --cc-fill-pressed #e7e9ed 已由新帧取代）。深色中性 12% 白。
    --visible（同一会话在非聚焦 pane 的弱化态）：同族中性灰，比选中更浅 ——
    替换 VS Code 蓝灰 inactiveSelectionBackground（light #E4E6F1 / dark #37373d）。 */
 [data-host="desktop"][data-theme="light"] .desktop-session-item--current {
-  background: #e7e9ed;
+  background: #ebedf0;
 }
 [data-host="desktop"][data-theme="dark"] .desktop-session-item--current {
   background: rgba(255, 255, 255, 0.12);
@@ -553,10 +559,9 @@
 [data-host="desktop"][data-theme="dark"] .desktop-session-item--visible {
   background: rgba(255, 255, 255, 0.06);
 }
-/* 选中项 hover 保持 pressed（codechat 桌面壳 .task-row-wrap:hover .task-row.is-active
-   同样用 --cc-fill-pressed），不回落 hover 色。 */
+/* 选中项 hover 保持选中底（不回落 hover 色） */
 [data-host="desktop"][data-theme="light"] .desktop-session-item--current:hover {
-  background: #e7e9ed;
+  background: #ebedf0;
 }
 [data-host="desktop"][data-theme="dark"] .desktop-session-item--current:hover {
   background: rgba(255, 255, 255, 0.12);
@@ -564,7 +569,13 @@
 /* 选中项标题字重：codechat 桌面壳 .task-row.is-active .task-title 500
    （--cc-font-weight-medium），skill 契约菜单/导航选中同值。 */
 [data-host="desktop"] .desktop-session-item--current .desktop-session-title {
-  font-weight: 500;
+  font-weight: var(--cc-font-weight-medium, 500);
+}
+/* 非当前会话标题不强调（用户 0904 走查：未选中不要加粗 → regular） */
+[data-host="desktop"]
+  .desktop-session-item:not(.desktop-session-item--current)
+  .desktop-session-title {
+  font-weight: var(--cc-font-weight-regular, 400);
 }
 
 /* 分组间距：task-group gap 4px */
@@ -688,7 +699,8 @@
 }
 [data-host="desktop"] .header-title {
   font-size: 14px;
-  font-weight: 600;
+  /* 0904 字重分组②：顶栏标题由用户点名降 500（medium token） */
+  font-weight: var(--cc-font-weight-medium, 500);
   line-height: 22px;
 }
 [data-host="desktop"][data-theme="light"] .header-title {
@@ -1180,7 +1192,8 @@
 [data-host="desktop"] .terminal-pane .preview-pane-url,
 [data-host="desktop"] .preview-pane[data-testid="preview-pane-empty"] .preview-pane-url {
   background: transparent;
-  font-weight: 600;
+  /* 0904 字重分组②：面板标题（计划/文件/差异/终端/预览）用户点名降 500 */
+  font-weight: var(--cc-font-weight-medium, 500);
 }
 
 /* ═══ 第二十九轮：会话行更多按钮 + 菜单图标（用户评论「检查更多操作按钮尺寸，
@@ -2130,4 +2143,101 @@
 [data-host="desktop"][data-theme="dark"] .desktop-panel-empty-item:hover:not(:disabled),
 [data-host="desktop"][data-theme="dark"] .desktop-panel-empty-item:focus-visible {
   background: rgba(255, 255, 255, 0.08);
+}
+
+/* ═══ 0904 第 3 轮（feat/0904-new-base-r1）：字重 token 化 ═════════
+   对齐 Figma/codechat 语义字重：--cc-font-weight-semibold 600 / medium
+   500 / regular 400。仅 host-desktop 覆盖 base 字重（base 文件不动，
+   IDE 端不受影响）；var 带 base 原值 fallback 双保险。
+   分组（用户 2026-09-04 裁定）：① 对话流工具名 600（等值 token 化）
+   ② 界面/面板标题类：用户在预览逐项点名降 500，点名的落到下方
+   「②-medium」覆盖组（含顶栏/会话名/账户卡用量/会话卡/面板页签/权限
+   下拉选项等）；未点名的标题（如「计划/文件/差异/终端」preview-pane-url
+   面板标题）保持 600，待后续走查点名再追加
+   ③ 角标/状态 chip 类 → 500  ④ markdown/内容语义粗体 600
+   ⑤ 原 bold 700 → 统一 600  正文 normal 重置并入 regular（值不变）。 */
+:root[data-host="desktop"] {
+  --cc-font-weight-regular: 400;
+  --cc-font-weight-medium: 500;
+  --cc-font-weight-semibold: 600;
+}
+
+/* ① 对话流工具名（tool-block header / Write 标题 / 思考标题）：600 */
+[data-host="desktop"] .tool-block,
+[data-host="desktop"] .write-tool-label,
+[data-host="desktop"] .reasoning-title {
+  font-weight: var(--cc-font-weight-semibold, 600);
+}
+
+/* ③ 角标/状态 chip 类 → medium 500：头像首字母、API 气泡标题、mermaid
+   zoom chip、远程浏览器搜索命中 mark（700→500） */
+[data-host="desktop"] .account-card-avatar,
+[data-host="desktop"] .api-popover-title,
+[data-host="desktop"] .zoom-info,
+[data-host="desktop"] .desktop-remote-browser-mark {
+  font-weight: var(--cc-font-weight-medium, 500);
+}
+
+/* ④ markdown / 内容语义粗体（strong / h5-6 / 表头 / kb 建议名）：600 */
+[data-host="desktop"] .markdown-content strong,
+[data-host="desktop"] .markdown-content b,
+[data-host="desktop"] .markdown-content h5,
+[data-host="desktop"] .markdown-content h6,
+[data-host="desktop"] .markdown-content th,
+[data-host="desktop"] .suggestion-item.kb-option .suggestion-name {
+  font-weight: var(--cc-font-weight-semibold, 600);
+}
+
+/* ⑤ 原 bold 700 → 600：diff 行列符、badge/type 角标、命中高亮、
+   bypassPermissions 红项、todo/btw 前缀、mermaid 关闭钮、代码 strong */
+[data-host="desktop"] .diff-prefix,
+[data-host="desktop"] .diff-chunk-prefix,
+[data-host="desktop"] .button-badge,
+[data-host="desktop"] .image-type,
+[data-host="desktop"] .suggestion-highlight,
+[data-host="desktop"] .todo-status-icon,
+[data-host="desktop"] .btw-panel-prefix,
+[data-host="desktop"] .close-btn,
+[data-host="desktop"] .file-pane .hljs-strong {
+  font-weight: var(--cc-font-weight-semibold, 600);
+}
+
+/* 权限模式按钮「跳过权限确认」：仅红色警示、不加粗（用户 0904 走查：
+   选择完成后文案不要加粗 → regular；其余模式按钮 base 本无字重）。 */
+[data-host="desktop"] .permission-mode-select.mode-bypassPermissions {
+  font-weight: var(--cc-font-weight-regular, 400);
+}
+
+/* ② 界面标题类（用户 2026-09-04 逐项点名 → medium 500）：顶栏会话标题
+   （就地改于上方 header-title 块）、账户卡套餐用量行/百分比/API 余额标签
+   与金额、账户名、会话状态页卡标题、面板页签（active）、会话分组名、
+   权限下拉全部选项、用户消息正文。侧栏会话名例外：仅选中（current）500、
+   未选中不强调 regular（见上方 desktop-session-title 两态规则）。部分 base/
+   继承本即 500（等值 token 化），部分由 600/400 提到 500（视觉相应变化）。 */
+[data-host="desktop"] .account-usage-title,
+[data-host="desktop"] .account-usage-percent,
+[data-host="desktop"] .account-usage-row .account-usage-label,
+[data-host="desktop"] .account-usage-row .account-usage-value-text,
+[data-host="desktop"] .account-card-name,
+[data-host="desktop"] .session-card-title,
+[data-host="desktop"] .desktop-panel-tab.active .desktop-panel-tab-label,
+[data-host="desktop"] .desktop-session-group-name,
+[data-host="desktop"] .permission-mode-item,
+[data-host="desktop"] .user-content {
+  font-weight: var(--cc-font-weight-medium, 500);
+}
+
+/* 正文 regular（normal 重置并入，值不变）：显式 reset 为 400 的字面语义
+   统一走 token；codicon 图标字重同归 regular。 */
+[data-host="desktop"] .plugin-version,
+[data-host="desktop"] .plugin-scope,
+[data-host="desktop"] .plugin-status-tag,
+[data-host="desktop"] .recommended-tag,
+[data-host="desktop"] .compact-params,
+[data-host="desktop"] .bash-command,
+[data-host="desktop"] .bash-command-output,
+[data-host="desktop"] .lsp-output,
+[data-host="desktop"] .tool-result-inline,
+[data-host="desktop"] .codicon {
+  font-weight: var(--cc-font-weight-regular, 400);
 }

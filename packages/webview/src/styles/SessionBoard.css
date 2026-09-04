@@ -11,23 +11,28 @@
   flex: 1;
   height: 100%;
   min-height: 0;
-  padding: 16px;
-  gap: 16px;
+  /* 顶栏「返回当前会话」通栏贴顶（Figma Header 全宽），标题行/列区
+     在顶栏之下缩进 16px（Figma 内容区 padding 16） */
+  padding: 0 16px 16px;
+  gap: 0;
   background: var(--vscode-editor-background, #ffffff);
   color: var(--vscode-foreground, #1f2329);
   overflow: hidden;
   box-sizing: border-box;
 }
 
-/* ---- 顶栏：返回当前会话（Figma Header 行，底边 #EBEEF5） ---- */
+/* ---- 顶栏：返回当前会话（Figma Header 行 44px 通栏，白底/底边 1px #EBEEF5） ---- */
 
 .session-board-toolbar {
   display: flex;
   align-items: center;
   /* 收起态左起图标组、分割线与返回钮之间统一 8px（Figma Header 项间距） */
   gap: 8px;
-  padding: 0 0 8px;
-  border-bottom: 1px solid #ebEEF5;
+  height: 44px;
+  margin: 0 -16px; /* 抵消 .session-board 左右 padding，铺满整行 */
+  padding: 0 8px; /* 首元素距左缘 8px（Figma Header 内边距 8） */
+  box-sizing: border-box; /* 44px 含底边描边（Figma Header 行） */
+  border-bottom: 1px solid #ebeef5;
   flex-shrink: 0;
 }
 
@@ -35,7 +40,8 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 8px;
+  height: 32px;
+  padding: 0 8px;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -98,6 +104,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  margin-top: 16px; /* Figma：标题行距顶栏底边 16 */
   flex-shrink: 0;
 }
 
@@ -108,21 +115,62 @@
   color: #1f2329;
 }
 
-/* Figma Select Input：r6 / 白底 / 1px #DCDFE6 / padding 4 8 / label 14px */
+/* Figma Select Input：r6 / 白底 / 1px #DCDFE6 / 高 32 / 定宽 160 /
+   label 14px #1F2329。文字层负责省略 + hover tooltip（title），透明原生
+   select 覆盖保留原生下拉。 */
 .session-board-filter {
-  padding: 4px 8px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 160px; /* 评论 2026-09：筛选表单定宽 160 */
+  height: 32px;
+  padding: 0 8px;
+  box-sizing: border-box;
   border: 1px solid #dcdfe6;
   border-radius: 6px;
   background: #ffffff;
   color: #1f2329;
   font-size: 14px;
   font-weight: 400;
-  max-width: 180px;
   cursor: pointer;
 }
 
 .session-board-filter:hover {
   border-color: #c0c4cc;
+}
+
+.session-board-filter-text {
+  min-width: 0; /* 超出 max-width 时省略，hover 经 title 展示全文 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-board-filter-arrow {
+  flex-shrink: 0;
+  color: #6c7076;
+}
+
+.session-board-filter-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  opacity: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* 长项目名 Tooltip：放宽全局 250px 上限以展示完整项目名 */
+.session-board-filter-tooltip .tooltip-box {
+  max-width: 480px;
 }
 
 /* ---- 列区（Figma 13561:39319：itemSpacing 12） ---- */
@@ -132,6 +180,7 @@
   flex: 1;
   min-height: 0;
   gap: 12px;
+  margin-top: 16px; /* Figma：列区距标题行底边 16 */
 }
 
 .session-board-column {
@@ -156,14 +205,16 @@
   --sb-dot-bg: #16a34a;
 }
 
-/* Figma 列头 13561:7557：整行色块 / padding 12 / gap 8 */
+/* Figma 列头 13561:7557：整行色块高 48 / 横 padding 12 / gap 8；顶角与
+   卡片同款圆角变量（r12，评论 2026-09：列容器圆角应为 12） */
 .session-board-column-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px;
+  height: 48px;
+  padding: 0 12px;
   background: var(--sb-col-bg);
-  border-radius: 6px 6px 0 0;
+  border-radius: 12px 12px 0 0;
   flex-shrink: 0;
 }
 
@@ -196,27 +247,27 @@
   gap: 8px;
   padding: 12px;
   background: #f5f7fa;
-  border-radius: 0 0 6px 6px;
+  border-radius: 0 0 12px 12px; /* 底角与卡片同款圆角 r12（评论 2026-09） */
   overflow-y: auto;
   flex: 1;
   min-height: 0;
 }
 
 .session-board-empty {
-  font-size: 12px;
+  font-size: 14px; /* 评论 2026-09：空态「暂无会话」字号 14px */
   color: #6c7076;
   text-align: center;
   margin: auto;
 }
 
-/* ---- 会话卡片（Figma Container：白底 r12 / padding 12 / 1px #EBEEF5） ---- */
+/* ---- 会话卡片（Figma Container 13561:39327：白底 r12 / padding 12 / 1px #EBEEF5 / 外高 72） ---- */
 
 .session-card {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   padding: 12px;
-  border: 1px solid #ebEEF5;
+  border: 1px solid #ebeef5;
   border-radius: 12px;
   background: #ffffff;
   color: #1f2329;
@@ -227,7 +278,6 @@
 
 .session-card:hover {
   box-shadow: 0 2px 8px rgb(31 35 41 / 8%);
-  border-color: #dcdfe6;
 }
 
 .session-card:focus-visible {
@@ -235,37 +285,50 @@
   outline-offset: -1px;
 }
 
+/* 标题行：独占一行（Figma Container 13656:5280 row1，高 26，超长省略） */
 .session-card-title-row {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
   min-width: 0;
 }
 
 .session-card-title {
+  flex: 1;
+  min-width: 0; /* flex 项省略必需：允许收缩到内容宽度以下 */
   font-size: 14px;
   font-weight: 600;
   color: #1f2329;
+  line-height: 26px; /* Figma 标题行高（外高 72 的关键：26 + 20 内容行） */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 副行：项目名 + 状态（Figma Container 13656:5280 row2，高 20、itemSpacing 8；
+   评论 2026-09：状态始终固定右下角） */
+.session-card-meta-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
 }
 
 .session-card-project {
+  flex: 1 1 auto; /* 占满可用空间，把状态推到右端 */
+  min-width: 0; /* 项目名过长时可省略，不挤掉右侧状态 */
   font-size: 12px;
   font-weight: 400;
   color: #6c7076;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
 .session-card-status {
+  flex-shrink: 0; /* 状态常驻，不被项目名挤掉 */
   font-size: 12px;
   font-weight: 400;
   color: #6c7076;
+  line-height: 20px; /* Figma 副行行高（卡片内容 46 = 26 + 20） */
 }
 
 /* ---- 深色主题（桌面端面板惯例：12% 白边框 / 白 6-10% 填充） ---- */
@@ -311,6 +374,10 @@
   color: #e6e6e6;
 }
 
+[data-host="desktop"][data-theme="dark"] .session-board-filter-arrow {
+  color: #9a9ea5;
+}
+
 [data-host="desktop"][data-theme="dark"] .session-board-filter:hover {
   border-color: rgba(255, 255, 255, 0.24);
 }
@@ -351,7 +418,6 @@
 [data-host="desktop"][data-theme="dark"] .session-card:hover {
   background: rgba(255, 255, 255, 0.08);
   box-shadow: none;
-  border-color: rgba(255, 255, 255, 0.24);
 }
 
 [data-host="desktop"][data-theme="dark"] .session-card-title {
