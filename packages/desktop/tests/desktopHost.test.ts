@@ -2953,6 +2953,71 @@ describe("misc commands", () => {
     expect(sent("appendMessage")).toHaveLength(0);
   });
 
+  it("setBuiltinPluginEnabled does not toast when a session is already gone on the CLI (recreate skip after a successful write)", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    agent.updateConfig.mockRejectedValueOnce(
+      new Error("Session not found: sess-1"),
+    );
+    const orig = h.handleClientRequest;
+    h.handleClientRequest = (m: string, params?: unknown) =>
+      m === "setBuiltinPluginEnabled"
+        ? { enabledPlugins: { "sdd@builtin": true } }
+        : orig(m, params);
+    try {
+      await host.handleWebviewMessage({
+        command: "setBuiltinPluginEnabled",
+        pluginId: "sdd@builtin",
+        enabled: true,
+        scope: "project",
+      });
+      // The plugin write + projectSettings push (which flips the switch ON)
+      // precede the recreate — a session that is absent on the CLI must be
+      // skipped, not fail the successful settings write with an error toast.
+      expect(sent("projectSettings")).toHaveLength(1);
+      expect(
+        shownToasts().some((t) => t.message.includes("修改项目设置失败")),
+      ).toBe(false);
+      // The dead session is logged (global console.error spy from beforeEach),
+      // not surfaced as a settings failure.
+      expect(consoleSpies[0]).toHaveBeenCalled();
+    } finally {
+      h.handleClientRequest = orig;
+    }
+  });
+
+  it("serializes agent recreation across overlapping plugin applies", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    agent.updateConfig.mockImplementation(() => gate);
+    const first = host.handleWebviewMessage({
+      command: "setBuiltinPluginEnabled",
+      pluginId: "sdd@builtin",
+      enabled: true,
+      scope: "project",
+    });
+    await vi.waitFor(() => expect(agent.updateConfig).toHaveBeenCalledTimes(1));
+    const second = host.handleWebviewMessage({
+      command: "setBuiltinPluginEnabled",
+      pluginId: "sdd@builtin",
+      enabled: false,
+      scope: "project",
+    });
+    // The second write completes (its projectSettings push) before its recreate
+    // runs — the recreate must stay queued behind the first's in-flight one
+    // instead of racing it on the same session (which would delete the CLI
+    // entry mid-recreate and throw "Session not found").
+    await vi.waitFor(() => expect(sent("projectSettings")).toHaveLength(2));
+    expect(agent.updateConfig).toHaveBeenCalledTimes(1);
+    release?.();
+    await Promise.all([first, second]);
+    expect(agent.updateConfig).toHaveBeenCalledTimes(2);
+  });
+
   it("listMarketplaces failure surfaces as a toast, not a chat message", async () => {
     const { host, sent } = await readyHost();
     const restore = failRpc("listMarketplaces", "marketplace down");
