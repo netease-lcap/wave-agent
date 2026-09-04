@@ -2125,3 +2125,14 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - 修改：`src/styles/host-desktop.css` `[data-host="desktop"] .permission-mode-menu` 由 `min-width: 168px` 改为 `width: 164px; min-width: 164px; box-sizing: border-box`（padding 8px + border 1px 计入外框，整体恰 164px）；dark 覆盖块只改颜色、宽度共用。
 - 实现文件：`src/styles/host-desktop.css`、本 docs。（用户人工走查，本轮不跑自动化。）
 
+---
+
+## 0904 第 2 轮（feat/0904-new-base-r1）：diff 展示窗口去除鼠标点击聚焦框
+
+预览评论 `div.diff-viewer-container`（tool diff 内容区）：「这个窗口不应该有选中状态，和其他的展示窗口保持一致」。
+
+- 根因：`.diff-viewer-content` 带 `tabIndex={0}` 且样式用 `:focus`（鼠标点击即触发），点击 diff 区域后整容器出现 1px `--vscode-focusBorder` 描边，形似选中；bash/write/pre 等展示窗口无 tabIndex/无聚焦描边。
+- 修改：`src/styles/DiffViewer.css` `.diff-viewer-content:focus` → `:focus-visible`（与全项目惯例一致：鼠标点击不显示框、键盘 Tab 聚焦仍保留焦点指示；桌面/IDE 两端同一基础样式）。
+- 实现文件：`src/styles/DiffViewer.css`、本 docs。（用户人工走查，本轮不跑自动化。）
+
+
