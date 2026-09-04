@@ -11,8 +11,6 @@ export interface DesktopWorktreeControlsProps {
   worktreeChecked: boolean;
   /** Worktree creation is in flight — show "创建中" and disable the controls. */
   creating?: boolean;
-  /** Branch list is still being fetched — show "分支获取中…" and disable the trigger. */
-  loading?: boolean;
   onBranchChange: (branch: string) => void;
   onWorktreeChange: (checked: boolean) => void;
 }
@@ -31,7 +29,6 @@ export const DesktopWorktreeControls: React.FC<
   branch,
   worktreeChecked,
   creating = false,
-  loading = false,
   onBranchChange,
   onWorktreeChange,
 }) => {
@@ -62,42 +59,28 @@ export const DesktopWorktreeControls: React.FC<
         <div
           className="desktop-workdir-trigger"
           ref={triggerRef}
-          onClick={
-            loading
-              ? undefined
-              : () => {
-                  if (open) closeReturningFocus();
-                  else openMenu(selectedBranchIndex);
-                }
-          }
-          onKeyDown={
-            loading
-              ? undefined
-              : (e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    openMenu(selectedBranchIndex);
-                  } else if (e.key === "Escape" && open) {
-                    e.preventDefault();
-                    closeReturningFocus();
-                  }
-                }
-          }
-          title={loading ? "分支获取中…" : `基准分支：${branch}`}
+          onClick={() => {
+            if (open) closeReturningFocus();
+            else openMenu(selectedBranchIndex);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openMenu(selectedBranchIndex);
+            } else if (e.key === "Escape" && open) {
+              e.preventDefault();
+              closeReturningFocus();
+            }
+          }}
+          title={`基准分支：${branch}`}
           data-testid="desktop-branch-selector"
           aria-expanded={open}
           aria-haspopup="listbox"
           role="button"
-          tabIndex={loading ? -1 : 0}
+          tabIndex={0}
         >
           <span className="codicon codicon-git-branch"></span>
-          {loading ? (
-            <span className="desktop-workdir-name desktop-branch-loading">
-              分支获取中…
-            </span>
-          ) : (
-            <span className="desktop-workdir-name">{branch}</span>
-          )}
+          <span className="desktop-workdir-name">{branch}</span>
           <PermCaretIcon className="desktop-workdir-caret" />
         </div>
         {open && (

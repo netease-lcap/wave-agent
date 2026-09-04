@@ -311,15 +311,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // Per-pane git branches for this pane's OWN workdir (FR-022). The host-level
   // workdir follows the focused pane — sharing it would bleed one pane's
   // directory/branch into a sibling new-session pane, so each new-session pane
-  // queries branches against its own session workdir.
+  // queries branches against its own session workdir. The result is keyed by
+  // the workdir it was queried for: a reply that lands after the user has
+  // switched to another directory never matches the current pickerWorkdir, so
+  // a previous repo's branch state can't flash over the new directory while
+  // the fresh branch list is still in flight.
   const [paneGitBranches, setPaneGitBranches] = useState<{
+    workdir: string;
     branches: string[];
     current: string;
   } | null>(null);
-  // True while a desktopListGitBranches request is in flight — the branch
-  // selector shows a "分支获取中…" placeholder instead of disappearing
-  // (remote hosts can take seconds to connect before the list arrives).
-  const [branchesLoading, setBranchesLoading] = useState(false);
   // The pane's effective cwd: its own session workdir wins; a new-session pane
   // (state.workdir empty during spawn) falls back to the most recently selected
   // repo root from recents — never to the host-level workdir, which follows the
@@ -450,7 +451,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     : undefined;
   const effectiveHost = paneHost ?? host?.host ?? "local";
   const effectiveHostRef = useRef(effectiveHost);
-  const gitBranches = isDesktop ? paneGitBranches : null;
+  // Branch info only "exists" when it was fetched FOR the currently displayed
+  // workdir. During a workdir switch — and before the first reply for the new
+  // directory lands — this is null, so the branch/worktree controls stay
+  // hidden until the fresh reply confirms the new directory is a git repo. The
+  // check happens at render time (not by clearing state in an effect), so not
+  // even a single intermediate frame can show the previous repo's branch state
+  // (e.g. "main") next to a directory that isn't a git repo.
+  const gitBranches =
+    isDesktop && paneGitBranches?.workdir === pickerWorkdir
+      ? paneGitBranches
+      : null;
   const effectiveWorkdirRef = useRef(effectiveWorkdir);
   // Desktop only: the panel group follows the session bound to this pane. The
   // cache key is the session id from the host-authoritative `desktopPanes`
@@ -904,10 +915,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           break;
         case "desktopGitBranches":
           // Per-pane branch list reply (FR-052). Routed by paneId so a sibling
-          // pane's reply never overwrites this pane's selector.
+          // pane's reply never overwrites this pane's selector. The result is
+          // keyed by the workdir it was queried for (null = not a git repo), so
+          // a stale reply for a directory the user has since switched away from
+          // is quarantined instead of shown over the current directory.
           if (!forThisPane(message)) break;
-          setPaneGitBranches(message.result ?? null);
-          setBranchesLoading(false);
+          setPaneGitBranches(
+            message.result
+              ? {
+                  workdir: message.workdir,
+                  branches: message.result.branches ?? [],
+                  current: message.result.current ?? "",
+                }
+              : null,
+          );
           break;
         case "desktopWorktreeCreated":
           // Worktree creation finished (success or failure) — clear the
@@ -1482,8 +1503,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // Desktop: query this pane's own workdir for its git branches (FR-052). Each
   // pane asks independently so a new-session pane keeps its workdir/branch even
   // when focus moves to a sibling pane (which would otherwise rewire the host's
-  // global workdir). Clear stale branches first so the selector hides until the
-  // fresh reply lands.
+  // global workdir). No clearing happens here: the gitBranches workdir key
+  // already hides a stale result the moment pickerWorkdir changes (render-time
+  // check), so an in-flight query for the previous directory can never render
+  // under the current one.
   //
   // Depend ONLY on pickerWorkdir (a primitive string) — never on the host
   // object reference, and never on host.workdir. Rationale: when a new pane
@@ -1492,21 +1515,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // repo root. That changes host.workdir even though THIS pane's
   // effectiveWorkdir is unchanged (spawn-before = recents[0] fallback; spawn-after
   // = state.workdir = agent.cwd = the same recents[0]). Re-querying on a
-  // host.workdir change would null out the branches and flash the selector
-  // twice. A genuine user workdir switch changes recents[0] (and thus
-  // pickerWorkdir), which is the only re-query signal we want. Likewise a
-  // worktree creation must not re-query: the spawned session's cwd is the
-  // worktree path, which is not a user-chosen directory (not in recents), so
-  // pickerWorkdir stays on the user's repo — and the query signal never fires
-  // before the first message hides the pickers.
+  // host.workdir change would flash the selector twice. A genuine user workdir
+  // switch changes recents[0] (and thus pickerWorkdir), which is the only
+  // re-query signal we want. Likewise a worktree creation must not re-query:
+  // the spawned session's cwd is the worktree path, which is not a user-chosen
+  // directory (not in recents), so pickerWorkdir stays on the user's repo — and
+  // the query signal never fires before the first message hides the pickers.
   useEffect(() => {
-    if (!isDesktop) return;
-    setPaneGitBranches(null);
-    if (!pickerWorkdir) {
-      setBranchesLoading(false);
-      return;
-    }
-    setBranchesLoading(true);
+    if (!isDesktop || !pickerWorkdir) return;
     postToHost({
       command: "desktopListGitBranches",
       workdir: pickerWorkdir,
@@ -2945,13 +2961,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                       onSelectRecentWorkdir={host.onSelectRecentWorkdir}
                       onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
                     />
-                    {pickerWorkdir && (gitBranches || branchesLoading) && (
+                    {gitBranches && (
                       <DesktopWorktreeControls
-                        branches={gitBranches?.branches ?? []}
-                        branch={worktreeBranch || gitBranches?.current || ""}
+                        branches={gitBranches.branches}
+                        branch={worktreeBranch || gitBranches.current || ""}
                         worktreeChecked={worktreeChecked}
                         creating={worktreeCreating}
-                        loading={!gitBranches && branchesLoading}
                         onBranchChange={setWorktreeBranch}
                         onWorktreeChange={setWorktreeChecked}
                       />

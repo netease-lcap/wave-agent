@@ -1435,7 +1435,7 @@ describe("DesktopApp", () => {
   describe("worktree controls (FR-022/FR-023)", () => {
     const branches = { branches: ["main", "dev"], current: "main" };
 
-    it("requests branches when a workdir arrives and shows branch selector + checkbox", () => {
+    it("requests branches when a workdir arrives, then shows branch selector + checkbox once the repo is confirmed", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", {
         workdir: "/work/a",
@@ -1447,10 +1447,12 @@ describe("DesktopApp", () => {
         command: "desktopListGitBranches",
         workdir: "/work/a",
       });
-      // Loading placeholder shown while the branch list is being fetched
-      expect(screen.getByTestId("desktop-branch-selector")).toHaveTextContent(
-        "分支获取中…",
-      );
+      // Git-ness is not known until the branch query answers — the controls
+      // must not appear (not even as a loading placeholder) before the reply
+      // confirms the directory is a git repo.
+      expect(
+        screen.queryByTestId("desktop-worktree-controls"),
+      ).not.toBeInTheDocument();
 
       sendCommand("desktopGitBranches", {
         workdir: "/work/a",
@@ -1460,7 +1462,6 @@ describe("DesktopApp", () => {
       expect(screen.getByTestId("desktop-branch-selector")).toHaveTextContent(
         "main",
       );
-      expect(screen.queryByText("分支获取中…")).not.toBeInTheDocument();
       const checkbox = screen
         .getByTestId("desktop-worktree-checkbox")
         .querySelector("input");
@@ -1474,6 +1475,11 @@ describe("DesktopApp", () => {
         recentWorkdirs: ["/work/a"],
       });
       sendCommand("setInitialState", { messages: [] });
+      // Still undetermined while the query is in flight — nothing to show.
+      expect(
+        screen.queryByTestId("desktop-worktree-controls"),
+      ).not.toBeInTheDocument();
+
       sendCommand("desktopGitBranches", { workdir: "/work/a", result: null });
 
       expect(
@@ -1481,7 +1487,7 @@ describe("DesktopApp", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("shows a loading placeholder on workdir change until fresh branches arrive", () => {
+    it("hides the controls on workdir switch until the new directory is confirmed to be a git repo", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", {
         workdir: "/work/a",
@@ -1496,25 +1502,63 @@ describe("DesktopApp", () => {
         screen.getByTestId("desktop-worktree-controls"),
       ).toBeInTheDocument();
 
+      // Switch to another directory: the stale branch list must not be shown
+      // under it — the new directory's git-ness is unknown until the fresh
+      // reply lands, so the controls stay hidden in between.
       sendCommand("desktopWorkdirState", {
         workdir: "/work/b",
         recentWorkdirs: ["/work/b", "/work/a"],
       });
       sendCommand("setInitialState", { messages: [] });
 
-      // Stale branch list cleared — loading placeholder shown instead
-      expect(screen.getByTestId("desktop-branch-selector")).toHaveTextContent(
-        "分支获取中…",
-      );
+      expect(
+        screen.queryByTestId("desktop-worktree-controls"),
+      ).not.toBeInTheDocument();
 
       sendCommand("desktopGitBranches", {
         workdir: "/work/b",
         result: { branches: ["feature", "main"], current: "main" },
       });
 
+      expect(
+        screen.getByTestId("desktop-worktree-controls"),
+      ).toBeInTheDocument();
       expect(screen.getByTestId("desktop-branch-selector")).toHaveTextContent(
         "main",
       );
+    });
+
+    it("does not flash the git controls when switching to a non-git directory", () => {
+      renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: "/work/a",
+        recentWorkdirs: ["/work/a"],
+      });
+      sendCommand("setInitialState", { messages: [] });
+      // The previous query is still in flight when the user switches away —
+      // its reply for /work/a must not resurrect the controls under /work/b.
+      sendCommand("desktopWorkdirState", {
+        workdir: "/work/b",
+        recentWorkdirs: ["/work/b", "/work/a"],
+      });
+      sendCommand("setInitialState", { messages: [] });
+
+      // Late reply for the previous (git) directory arrives first: quarantined
+      // by the workdir key — still hidden.
+      sendCommand("desktopGitBranches", {
+        workdir: "/work/a",
+        result: branches,
+      });
+      expect(
+        screen.queryByTestId("desktop-worktree-controls"),
+      ).not.toBeInTheDocument();
+
+      // The new directory's own reply confirms it is NOT a git repo — the
+      // controls never appeared at any point during the switch.
+      sendCommand("desktopGitBranches", { workdir: "/work/b", result: null });
+      expect(
+        screen.queryByTestId("desktop-worktree-controls"),
+      ).not.toBeInTheDocument();
     });
 
     it("selects a branch from the dropdown", () => {
