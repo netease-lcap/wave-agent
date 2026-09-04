@@ -4,8 +4,8 @@ import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
-// Desktop smart-input screenshots (spec desktop-app.md 1.3 智能输入): slash
-// command menu, @-mentions inline tags, bang (quick terminal) command block
+// Desktop smart-input screenshots (共享 webview 输入能力，捕获于桌面布局中):
+// slash command menu, @-mentions inline tags, bang (quick terminal) command block
 // and the /btw side panel — all captured inside the desktop layout (sidebar +
 // session tree). The shared webview bundle must be rebuilt first
 // (node esbuild.config.mjs).

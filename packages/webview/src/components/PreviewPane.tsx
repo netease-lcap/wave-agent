@@ -92,7 +92,7 @@ export function rewriteCommentUrl(
 const MIN_WIDTH = 320;
 
 /**
- * Overflow auto-fit (spec desktop-app.md「localhost 原型预览」scenario 7, aligned
+ * Overflow auto-fit (spec desktop-preview.md「localhost 原型预览」scenario 7, aligned
  * with Claude Desktop's browser pane): when the guest page is wider than the
  * panel and offers no horizontal scroll of its own, scale the whole page down
  * so the overflowing part stays visible and clickable instead of being clipped.

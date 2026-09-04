@@ -1,6 +1,6 @@
 /**
- * SSH port forwarding for the remote preview panel (spec: docs/specs/ui/desktop-app.md
- * scenarios 15-18). Clicking a localhost link in a remote session's message
+ * SSH port forwarding for the remote preview panel (spec: docs/specs/desktop/desktop-sessions.md
+ * 「SSH 远程主机」scenarios 15-18). Clicking a localhost link in a remote session's message
  * forwards the remote service to the local loopback via `ssh -N -L` and the
  * preview pane loads the rewritten local address.
  *

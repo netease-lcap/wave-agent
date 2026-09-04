@@ -5,7 +5,8 @@ import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
 /**
- * Batch 2 desktop features (spec desktop-app.md 批次 2): screenshots for the
+ * Batch 2 desktop features (spec desktop-account-and-settings.md 设置页面/上下文
+ * 用量/账户卡片 + desktop-sessions.md 会话状态看板): screenshots for the
  * settings full-page (全局设置 / 个性化), session status board, context
  * usage indicator, and account card (plan usage + API quota). The shared
  * webview bundle must be rebuilt first (node esbuild.config.mjs) or these

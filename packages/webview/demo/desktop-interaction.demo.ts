@@ -5,9 +5,10 @@ import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
 /**
- * Desktop interaction refinements (spec desktop-app.md 交互优化): screenshots
- * for the collapsible sidebar, file drag-and-drop upload overlay, and the
- * multi-tab preview pane. The shared webview bundle must be rebuilt first
+ * Desktop interaction refinements (spec desktop-layout.md 侧边栏收起/展开 +
+ * desktop-file-panel.md 文件拖拽上传 + desktop-preview.md 预览多标签页):
+ * screenshots for the collapsible sidebar, file drag-and-drop upload overlay,
+ * and the multi-tab preview pane. The shared webview bundle must be rebuilt first
  * (node esbuild.config.mjs) or these shots capture the old UI.
  */
 const DIR_A = "/Users/dev/projects/wave-agent";

@@ -5,7 +5,7 @@ import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
 /**
  * Built-in SDD plugin toggle in the settings page 项目设置 view (spec
- * builtin-sdd-plugin.md 按需启用内置插件 + desktop-app.md 设置页场景 11).
+ * builtin-sdd-plugin.md 按需启用内置插件 + desktop-account-and-settings.md 设置页场景 11).
  * The shared webview bundle must be rebuilt first (node esbuild.config.mjs)
  * or these shots capture the old UI.
  */

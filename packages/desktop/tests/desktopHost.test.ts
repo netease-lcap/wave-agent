@@ -1656,7 +1656,7 @@ describe("permission confirmations", () => {
 });
 
 // ---------------------------------------------------------------------------
-// background session toasts (desktop-app.md「后台会话活动通知」)
+// background session toasts (desktop-sessions.md「后台会话活动通知」)
 // ---------------------------------------------------------------------------
 
 describe("background session toasts", () => {
@@ -3590,8 +3590,8 @@ describe("session tree", () => {
     );
     send.mockClear();
     // A dead host is a transport failure, not a vanished directory — the
-    // probe must NOT clean up the session (desktop-app.md「远端主机不可达时
-    // 不得删除会话/最近目录」).
+    // probe must NOT clean up the session (desktop-sessions.md「远端主机不可
+    // 达时不得删除会话/最近目录」).
     vi.mocked(remotePathExists).mockRejectedValueOnce(
       new RemoteHostUnreachableError(
         "ssh.example",
@@ -6382,10 +6382,10 @@ describe("input focus on conversation switch", () => {
 });
 
 // ---------------------------------------------------------------------------
-// per-session input drafts (desktop-app.md 会话管理 scenario 11/12)
+// per-session input drafts (desktop-sessions.md 会话管理 scenario 11/12)
 // ---------------------------------------------------------------------------
 
-describe("input drafts per session (desktop-app.md scenario 11/12)", () => {
+describe("input drafts per session (desktop-sessions.md scenario 11/12)", () => {
   const seedActiveSession = (sessionId: string) => {
     const agent = lastAgent();
     agent.messages = [{ id: `m-${sessionId}` }];
@@ -6765,7 +6765,7 @@ describe("native menu actions", () => {
 });
 
 // ---------------------------------------------------------------------------
-// SSH remote hosts (spec: desktop-app.md 「SSH 远程主机」)
+// SSH remote hosts (spec: desktop-sessions.md 「SSH 远程主机」)
 // ---------------------------------------------------------------------------
 
 const sshConfigPath = () => path.join(os.homedir(), ".ssh", "config");

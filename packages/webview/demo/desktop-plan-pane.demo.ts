@@ -2,9 +2,9 @@ import { test, expect } from "../e2e/utils/desktopTestHarness.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
-// Desktop plan pane (spec desktop-app.md 计划面板): the host pushes the plan
-// file contents to the shared Plan pane (same routing as an ExitPlanMode plan)
-// — rendered markdown in a conversation-level side panel. The shared webview
+// Desktop plan pane (spec core/plan-mode.md 桌面 Plan 面板): the host pushes the
+// plan file contents to the shared Plan pane (same routing as an ExitPlanMode
+// plan) — rendered markdown in a conversation-level side panel. The shared webview
 // bundle must be rebuilt first (node esbuild.config.mjs).
 const DIR_A = "/Users/dev/projects/wave-agent";
 

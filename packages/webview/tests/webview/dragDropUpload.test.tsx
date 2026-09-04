@@ -7,7 +7,7 @@ import { createMockVscode, sendCommand } from "./test-utils";
 import type { VsCodeApi } from "../../src/types";
 
 /**
- * Desktop drag-and-drop file upload (spec desktop-app.md 文件拖拽上传): a
+ * Desktop drag-and-drop file upload (spec desktop-file-panel.md 文件拖拽上传): a
  * counter-backed overlay on the chat container, a drop that posts the files
  * with the paneId tagged, and an uploadSuccess reply that only inserts into
  * the originating pane's input.

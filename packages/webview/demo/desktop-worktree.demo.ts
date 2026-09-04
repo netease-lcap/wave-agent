@@ -2,8 +2,8 @@ import { test, expect } from "../e2e/utils/desktopTestHarness.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
-// Desktop worktree controls (spec desktop-app.md 工作目录为 git 仓库): in a
-// new-session state on a git workdir, the workdir selector is flanked by a
+// Desktop worktree controls (spec desktop-sessions.md 基于分支的 worktree 隔离会
+// 话): in a new-session state on a git workdir, the workdir selector is flanked by a
 // branch selector and a worktree checkbox — a session in a temp worktree built
 // on the chosen branch. The shared webview bundle must be rebuilt first
 // (node esbuild.config.mjs).

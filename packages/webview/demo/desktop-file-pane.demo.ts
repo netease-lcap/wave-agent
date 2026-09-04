@@ -4,7 +4,7 @@ import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
-// Desktop file pane (spec desktop-app.md 文件面板): clicking a read tool's
+// Desktop file pane (spec desktop-file-panel.md 文件面板): clicking a read tool's
 // file path opens the read-only file panel with line numbers + content. The
 // shared webview bundle must be rebuilt first (node esbuild.config.mjs).
 const DIR_A = "/Users/dev/projects/wave-agent";

@@ -8,7 +8,7 @@ order: 247
 
 **创建日期**：2026-09-02
 
-> 本规格覆盖 VS Code / JetBrains / Desktop 共享 webview（`packages/webview`）中助手文本 markdown 渲染链路（`Message.tsx` 的 marked 渲染）对文件路径的识别与点击行为，对齐 Claude AI（Epitaxy/Code 会话）的效果。点击行为对齐 wave-agent 既有的 openFile 通道（工具标题路径点击同一条链路），不新增宿主 RPC。各端打开能力见 [桌面应用](desktop-app.md)（文件面板）与 [IDE 插件](ide-plugin.md)，此处不重复。
+> 本规格覆盖 VS Code / JetBrains / Desktop 共享 webview（`packages/webview`）中助手文本 markdown 渲染链路（`Message.tsx` 的 marked 渲染）对文件路径的识别与点击行为，对齐 Claude AI（Epitaxy/Code 会话）的效果。点击行为对齐 wave-agent 既有的 openFile 通道（工具标题路径点击同一条链路），不新增宿主 RPC。各端打开能力见 [桌面端文件面板](../desktop/desktop-file-panel.md) 与 [IDE 插件](ide-plugin.md)，此处不重复。
 
 ## 背景：两条识别通道
 
