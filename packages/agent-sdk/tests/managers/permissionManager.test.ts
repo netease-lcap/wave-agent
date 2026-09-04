@@ -2095,6 +2095,103 @@ describe("PermissionManager", () => {
     });
   });
 
+  describe("Structure-aware compound & substituted commands (spec P1 wiring)", () => {
+    const workdir = "/home/user/project";
+
+    beforeEach(() => {
+      // Simulate real paths: relative args live inside the Safe Zone workdir,
+      // absolute paths (/etc/...) resolve to themselves (outside the zone).
+      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        const s = String(p);
+        return path.isAbsolute(s)
+          ? path.normalize(s)
+          : path.resolve(workdir, s);
+      });
+    });
+
+    function bashContext(command: string): ToolPermissionContext {
+      return {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command, workdir },
+      };
+    }
+
+    async function verdict(command: string): Promise<string> {
+      const result = await permissionManager.checkPermission(
+        bashContext(command),
+      );
+      return result.behavior;
+    }
+
+    it.each([
+      // spec scenario 1
+      'for f in a.txt b.txt; do head -5 "$f"; done',
+      // spec scenario 2
+      'for f in "$@"; do sed -n "1,10p" "$f"; done',
+      'while read -r line; do echo "$line"; done < input.txt',
+      "if grep -q pattern docs/specs/; then echo found; fi",
+      'case "$x" in foo) grep foo docs/;; esac',
+      // spec scenario 3
+      'for f in $(ls docs/); do echo "== $f =="; head -3 "docs/$f"; done',
+      // spec scenario 4
+      'count=$(grep -c error log.txt | tr -d " "); echo "count=$count"',
+    ])("should auto-allow compound read-only command: %s", async (command) => {
+      expect(await verdict(command)).toBe("allow");
+    });
+
+    it.each([
+      // spec scenario 5
+      'for f in a.txt b.txt; do rm "$f"; done',
+      "if true; then git push; fi",
+      // spec scenario 6
+      "head -5 $(rm -f a.txt)",
+      "echo $(git commit -m x)",
+      // spec scenario 8
+      'for f in $(cat /etc/passwd); do echo "$f"; done',
+      // spec scenario 10
+      "for i in -rf /; do rm $i; done",
+      // spec scenario 12
+      'cd /etc && for f in $(ls); do echo "$f"; done',
+    ])(
+      "should ask on destructive/out-of-zone/unsafe compound command: %s",
+      async (command) => {
+        expect(await verdict(command)).toBe("deny");
+      },
+    );
+
+    it("should allow expanded leaves matched by an explicit rule (spec scenario 11)", async () => {
+      permissionManager.updateAllowedRules(["Bash(node scripts*)"]);
+
+      const result = await permissionManager.checkPermission(
+        bashContext(
+          'for f in $(ls scripts); do node "scripts/$f" --dry-run; done',
+        ),
+      );
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should still deny the loop if an inner command only matches no rule", async () => {
+      permissionManager.updateAllowedRules(["Bash(node scripts*)"]);
+
+      const result = await permissionManager.checkPermission(
+        bashContext(
+          'for f in $(ls scripts); do node "scripts/$f" --dry-run && git push; done',
+        ),
+      );
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should deny fail-closed unsupported constructs even when read-only-looking (spec scenario 7/9)", async () => {
+      // process substitution / heredoc / arithmetic expansion cannot be
+      // statically expanded → never auto-allowed; an explicit rule may still
+      // cover the exact whole command.
+      expect(await verdict("diff <(ls a) <(ls b)")).toBe("deny");
+      expect(await verdict("head -5 <<< hello")).toBe("deny");
+      expect(await verdict("echo $((1 + 2))")).toBe("deny");
+    });
+  });
+
   describe("Safe Commands", () => {
     const workdir = "/home/user/project";
 
