@@ -27,17 +27,15 @@ export interface SettingsMcpViewProps {
   vscode?: { postMessage: (msg: unknown) => void };
   /** 当前工作目录（用于项目分组展示项目名） */
   workdir?: string;
-  /** 关闭设置页并预填 AI 对话框提示词 */
-  onPrefillPrompt?: (prompt: string) => void;
-  /** 用系统编辑器打开文件（desktop 走 desktopOpenFileExternal；IDE 回退 openFile） */
-  onOpenExternalFile?: (path: string) => void;
+  /** 关闭设置页并预填 AI 对话框提示词；编辑操作附带 openFile（配置文件路径）——
+   *  desktop 在会话视图右侧文件面板打开该文件；IDE 由 host 用自身编辑器打开。 */
+  onPrefillPrompt?: (prompt: string, openFile?: string) => void;
 }
 
 const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
   vscode,
   workdir,
   onPrefillPrompt,
-  onOpenExternalFile,
 }) => {
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,26 +119,20 @@ const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
     onPrefillPrompt?.(prompt);
   };
 
-  /** 打开该服务器所在配置文件（用户级 ~/.wave/mcp.json / 项目级 <workdir>/.mcp.json） */
-  const openConfigFile = (server: McpServerStatus) => {
+  const handleEdit = (server: McpServerStatus) => {
+    // 关闭设置页预填编辑提示词；同带配置文件路径（用户级 ~/.wave/mcp.json /
+    // 项目级 <workdir>/.mcp.json）——desktop 在会话视图右侧文件面板打开该文件、
+    // IDE 用自身编辑器打开，便于对照修改。
     const path =
       server.scope === "user"
         ? mcpConfigPaths?.userPath
         : mcpConfigPaths?.projectPath;
     const resolved =
       path ?? (server.scope === "user" ? "~/.wave/mcp.json" : ".mcp.json");
-    if (onOpenExternalFile) {
-      onOpenExternalFile(resolved);
-      return;
-    }
-    vscode?.postMessage({ command: "openFile", path: resolved });
-  };
-
-  const handleEdit = (server: McpServerStatus) => {
     onPrefillPrompt?.(
       `帮我编辑 MCP 服务器${server.name}：把<要改的内容>改成<新内容>`,
+      resolved,
     );
-    openConfigFile(server);
   };
 
   const handleConfirmDelete = () => {

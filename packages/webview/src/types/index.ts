@@ -243,16 +243,23 @@ export interface ChatAppProps {
 }
 
 /**
- * 设置页「新建/编辑」→ 关闭设置页并把提示词预填进 AI 对话框（desktop）。
- * 无 pane 单布局下 root ChatApp 自带 MessageInput，直接写本地 ref；桌面 pane
- * 布局（FR-032）下设置页挂在 root 实例而输入框在 pane-scoped ChatApp —— root
- * 在点击瞬间捕获 targetPaneId，请求经 DesktopShell 下行给匹配 pane。
+ * 设置页「新建/编辑」→ 关闭设置页并把提示词预填进 AI 对话框（desktop）；编辑
+ * 操作额外携带 openFile，随请求一起落到目标 ChatApp 后在会话视图右侧文件面板
+ * 打开对应配置文件（对齐消息中 read/edit/write 工具路径点击同款面板）。
+ * 无 pane 单布局下 root ChatApp 自带 MessageInput 与文件面板，直接写本地 ref；
+ * 桌面 pane 布局（FR-032）下设置页挂在 root 实例而输入框/面板在 pane-scoped
+ * ChatApp —— root 在点击瞬间捕获 targetPaneId，请求经 DesktopShell 下行给匹配 pane。
  */
 export interface PrefillDraftRequest {
   /** 预填提示词全文（设置页各「新建/编辑」模板生成，调用方不动）。 */
   prompt: string;
   /** 请求序号，每次点击递增：pane ChatApp 的 effect 以 nonce 变化识别新请求。 */
   nonce: number;
+  /**
+   * 编辑操作要打开的配置文件路径（desktop 右侧文件面板 / IDE 自身编辑器）。
+   * undefined = 纯预填（「新建」等无文件场景）。
+   */
+  openFile?: string;
   /**
    * Desktop pane 布局下点击瞬间的目标 pane id（host.focusedPaneId 兜底
    * panes[0]，与 host 侧「无 paneId RPC 落到 focused pane」同一锚点）。

@@ -9,7 +9,8 @@
  *
  * Protocol (same command names the chat webview already uses):
  * - webview → host: `settingsReady`, `getConfiguration`, `getAgentsContent`,
- *   `closeSettings`, `prefillPrompt`
+ *   `closeSettings`, `prefillPrompt`（编辑操作随附 `openFile`，host 在自身
+ *   编辑器打开对应配置文件）
  * - host → webview: `configurationResponse`, `agentsContentResponse`,
  *   `settingsState` (workdir push on open)
  */
@@ -118,9 +119,15 @@ function SettingsPreview() {
       configurationError={configurationError}
       initialNav={initialNav}
       vscode={vscode}
-      onPrefillPrompt={(prompt) =>
-        vscode.postMessage({ command: "prefillPrompt", prompt })
-      }
+      onPrefillPrompt={(prompt, openFile) => {
+        vscode.postMessage({ command: "prefillPrompt", prompt });
+        // 编辑操作：配置文件交给 IDE 自身打开（聊天输入框 prefill 之外，host 在
+        // 编辑器打开该文件供对照修改——VS Code / JetBrains 的 settings webview
+        // 均处理 openFile）。
+        if (openFile) {
+          vscode.postMessage({ command: "openFile", path: openFile });
+        }
+      }}
     />
   );
 }

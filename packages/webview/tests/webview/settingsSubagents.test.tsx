@@ -75,7 +75,7 @@ async function openAgentsCommand() {
 
 function renderSettingsPage(
   vscode?: { postMessage: (msg: unknown) => void },
-  props?: { onPrefillPrompt?: (prompt: string) => void },
+  props?: { onPrefillPrompt?: (prompt: string, openFile?: string) => void },
 ) {
   const mockVscode =
     vscode ||
@@ -253,7 +253,7 @@ describe("SettingsPage 子代理选项卡视图（4 Tab + 项目 Tab 平铺）",
     );
   });
 
-  it("「编辑」→ 预填编辑提示词并发送 openFile（IDE 回退）", async () => {
+  it("「编辑」→ 预填编辑提示词并附 markdown 路径（桌面文件面板/IDE 打开用）", async () => {
     const onPrefillPrompt = vi.fn();
     const { vscode } = renderSettingsPage(undefined, { onPrefillPrompt });
     sendHostMessage(fixtures.subagentConfigurationsResponse([userAgent]));
@@ -265,51 +265,15 @@ describe("SettingsPage 子代理选项卡视图（4 Tab + 项目 Tab 平铺）",
       fireEvent.click(screen.getByRole("button", { name: /编辑/ }));
     });
 
+    // 编辑 = 预填提示词 + 携带子代理 markdown 路径；视图不再自行发 openFile
+    //（由 host 据端侧决定打开去向：desktop 右侧文件面板 / IDE 自身编辑器）
     expect(onPrefillPrompt).toHaveBeenCalledWith(
       expect.stringContaining("帮我编辑子代理code-review"),
-    );
-    expect(vscode.postMessage).toHaveBeenCalledWith({
-      command: "openFile",
-      path: "~/.wave/agents/code-review.md",
-    });
-  });
-
-  it("「编辑」优先走 onOpenExternalFile（desktop 系统编辑器）", async () => {
-    const onOpenExternalFile = vi.fn();
-    const onPrefillPrompt = vi.fn();
-    const mockVscode = createMockVscode() as unknown as {
-      postMessage: (msg: unknown) => void;
-    };
-    const { unmount } = render(
-      <SettingsPage
-        configurationData={null}
-        onClose={() => {}}
-        userAgentsContent={null}
-        projectAgentsContent={null}
-        onLoadAgentsContent={() => {}}
-        initialNav="subagents"
-        vscode={mockVscode}
-        workdir="/work/a"
-        onPrefillPrompt={onPrefillPrompt}
-        onOpenExternalFile={onOpenExternalFile}
-      />,
-    );
-    sendHostMessage(fixtures.subagentConfigurationsResponse([userAgent]));
-
-    await act(async () => {
-      fireEvent.click(await screen.findByText("用户子代理"));
-    });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /编辑/ }));
-    });
-
-    expect(onOpenExternalFile).toHaveBeenCalledWith(
       "~/.wave/agents/code-review.md",
     );
-    expect(mockVscode.postMessage).not.toHaveBeenCalledWith(
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({ command: "openFile" }),
     );
-    unmount();
   });
 
   it("「删除」→ 二次确认 → deleteSubagent RPC", async () => {

@@ -73,12 +73,10 @@ export interface SettingsPageProps {
   /** 切换内置插件开关（写回项目 .wave/settings.json） */
   onToggleBuiltinPlugin?: (pluginId: string, enabled: boolean) => void;
   /** 关闭设置页并预填 AI 对话框提示词（新建/编辑 技能/子代理/钩子/MCP）。
-   *  desktop 由 ChatApp 实现（关设置页 + 主输入框预填）；IDE 由
-   *  settings-preview-entry 转发 prefillPrompt RPC 给 host。 */
-  onPrefillPrompt?: (prompt: string) => void;
-  /** 用系统编辑器打开文件（desktop 走 desktopOpenFileExternal；IDE 缺省时
-   *  视图内回退 openFile RPC）。 */
-  onOpenExternalFile?: (path: string) => void;
+   *  编辑操作附带 openFile（配置文件路径）：desktop 由 ChatApp 实现（关设置页 +
+   *  会话视图右侧文件面板打开该文件）；IDE 由 settings-preview-entry 转发
+   *  prefillPrompt + openFile RPC 给 host（host 用 IDE 自身编辑器打开）。 */
+  onPrefillPrompt?: (prompt: string, openFile?: string) => void;
 }
 
 export type NavKey =
@@ -150,7 +148,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onLoadProjectSettings,
   onToggleBuiltinPlugin,
   onPrefillPrompt,
-  onOpenExternalFile,
 }) => {
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav ?? "global");
 
@@ -553,7 +550,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               vscode={vscode}
               workdir={workdir}
               onPrefillPrompt={onPrefillPrompt}
-              onOpenExternalFile={onOpenExternalFile}
             />
           )}
 
@@ -562,7 +558,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               vscode={vscode}
               workdir={workdir}
               onPrefillPrompt={onPrefillPrompt}
-              onOpenExternalFile={onOpenExternalFile}
             />
           )}
 
@@ -571,7 +566,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               vscode={vscode}
               workdir={workdir}
               onPrefillPrompt={onPrefillPrompt}
-              onOpenExternalFile={onOpenExternalFile}
             />
           )}
 
@@ -580,7 +574,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               vscode={vscode}
               workdir={workdir}
               onPrefillPrompt={onPrefillPrompt}
-              onOpenExternalFile={onOpenExternalFile}
             />
           )}
         </main>

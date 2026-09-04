@@ -58,10 +58,9 @@ export interface SettingsHooksViewProps {
   vscode?: { postMessage: (msg: unknown) => void };
   /** 当前工作目录（用于项目分组展示项目名） */
   workdir?: string;
-  /** 关闭设置页并预填 AI 对话框提示词 */
-  onPrefillPrompt?: (prompt: string) => void;
-  /** 用系统编辑器打开文件（desktop 走 desktopOpenFileExternal；IDE 回退 openFile） */
-  onOpenExternalFile?: (path: string) => void;
+  /** 关闭设置页并预填 AI 对话框提示词；编辑操作附带 openFile（配置文件路径）——
+   *  desktop 在会话视图右侧文件面板打开该文件；IDE 由 host 用自身编辑器打开。 */
+  onPrefillPrompt?: (prompt: string, openFile?: string) => void;
 }
 
 /** hookName = `Event:Matcher`（无 matcher 时仅 Event），与 SDK parseHookName 互逆 */
@@ -80,7 +79,6 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
   vscode,
   workdir,
   onPrefillPrompt,
-  onOpenExternalFile,
 }) => {
   const [hooks, setHooks] = useState<HooksByEvent>({});
   const [configPath, setConfigPath] = useState<string | null>(null);
@@ -145,15 +143,12 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
   };
 
   const handleEdit = (item: { event: string; matcher?: string }) => {
+    // 关闭设置页预填编辑提示词；同带 settings.json 路径——desktop 在会话视图
+    // 右侧文件面板打开该文件、IDE 用自身编辑器打开，便于对照修改。
     onPrefillPrompt?.(
       `帮我编辑钩子${formatHookName(item.event, item.matcher)}：把<事件/匹配/命令/超时>改成<新内容>`,
+      settingsPathFor(activeTab, configPath),
     );
-    const path = settingsPathFor(activeTab, configPath);
-    if (onOpenExternalFile) {
-      onOpenExternalFile(path);
-      return;
-    }
-    vscode?.postMessage({ command: "openFile", path });
   };
 
   const handleConfirmDelete = () => {

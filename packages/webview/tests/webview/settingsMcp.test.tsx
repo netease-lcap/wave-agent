@@ -37,7 +37,7 @@ const pluginServer: McpServerStatus = {
 
 function renderSettingsPage(
   vscode?: { postMessage: (msg: unknown) => void },
-  props?: { onPrefillPrompt?: (prompt: string) => void },
+  props?: { onPrefillPrompt?: (prompt: string, openFile?: string) => void },
 ) {
   const mockVscode =
     vscode ||
@@ -175,26 +175,39 @@ describe("SettingsPage MCP 服务选项卡视图（用户/项目/插件 Tab）",
     );
   });
 
-  it("「编辑」→ 预填编辑提示词 + 打开对应配置文件", async () => {
+  it("「编辑」→ 预填编辑提示词 + 附配置文件路径（桌面文件面板/IDE 打开用）", async () => {
     const onPrefillPrompt = vi.fn();
     const { vscode } = renderSettingsPage(undefined, { onPrefillPrompt });
-    sendHostMessage(fixtures.mcpServersResponse([userServer]));
+    sendHostMessage(fixtures.mcpServersResponse([userServer, projectServer]));
     sendHostMessage(
       fixtures.mcpConfigPathsResponse("~/.wave/mcp.json", "/work/a/.mcp.json"),
     );
 
+    // 用户级服务器 → 用户配置文件路径；视图不再自行发 openFile（由 host 据端侧
+    // 决定打开去向：desktop 右侧文件面板 / IDE 自身编辑器）
     await act(async () => {
       fireEvent.click(await screen.findByRole("button", { name: /编辑/ }));
     });
-
     expect(onPrefillPrompt).toHaveBeenCalledWith(
       expect.stringContaining("帮我编辑 MCP 服务器github"),
+      "~/.wave/mcp.json",
     );
-    // 用户级 → 用户配置文件
-    expect(vscode.postMessage).toHaveBeenCalledWith({
-      command: "openFile",
-      path: "~/.wave/mcp.json",
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "openFile" }),
+    );
+
+    // 项目级服务器 → 项目配置文件路径
+    onPrefillPrompt.mockClear();
+    await act(async () => {
+      fireEvent.click(screen.getByText("项目级 MCP"));
     });
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: /编辑/ }));
+    });
+    expect(onPrefillPrompt).toHaveBeenCalledWith(
+      expect.stringContaining("帮我编辑 MCP 服务器project-db"),
+      "/work/a/.mcp.json",
+    );
   });
 
   it("「删除」→ 二次确认 → removeMcpServer RPC（含 scope）", async () => {

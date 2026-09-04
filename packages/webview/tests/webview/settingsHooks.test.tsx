@@ -14,7 +14,7 @@ import SettingsPage from "../../src/components/SettingsPage";
 
 function renderSettingsPage(
   vscode?: { postMessage: (msg: unknown) => void },
-  props?: { onPrefillPrompt?: (prompt: string) => void },
+  props?: { onPrefillPrompt?: (prompt: string, openFile?: string) => void },
 ) {
   const mockVscode =
     vscode ||
@@ -166,7 +166,7 @@ describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab）", () 
     );
   });
 
-  it("「编辑」→ 预填编辑提示词并打开配置文件（IDE 回退 openFile）", async () => {
+  it("「编辑」→ 预填编辑提示词并附 settings.json 路径（桌面文件面板/IDE 打开用）", async () => {
     const onPrefillPrompt = vi.fn();
     const { vscode } = renderSettingsPage(undefined, { onPrefillPrompt });
     sendHostMessage(fixtures.hooksResponse(userHooks, { configPath: null }));
@@ -181,12 +181,12 @@ describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab）", () 
 
     expect(onPrefillPrompt).toHaveBeenCalledWith(
       expect.stringContaining("帮我编辑钩子PreToolUse:Write"),
+      // 用户级无 configPath → 回退 ~/.wave/settings.json
+      "~/.wave/settings.json",
     );
-    // 用户级无 configPath → 回退 ~/.wave/settings.json
-    expect(vscode.postMessage).toHaveBeenCalledWith({
-      command: "openFile",
-      path: "~/.wave/settings.json",
-    });
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "openFile" }),
+    );
   });
 
   it("「删除」→ 二次确认 → deleteHook RPC", async () => {
