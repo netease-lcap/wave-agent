@@ -199,6 +199,16 @@ export class DesktopHost {
   private agents = new Map<string, StdioAgent>();
   /** Side table: agent → host (local or an ssh config host name). */
   private agentHosts = new Map<StdioAgent, string>();
+  /**
+   * Last context-usage percent each agent reported, cached regardless of pane
+   * binding. The restore/attach-time replay typically arrives while the agent
+   * is still mid-restore (no pane yet, see runPaneRestore) or never fires for a
+   * pool-resident agent re-activated in place, so activateAgentInPane replays
+   * this once the pane binds — the usage ring shows the session's real usage
+   * right after a conversation switch instead of staying empty until the next
+   * turn (spec「上下文用量指示器」场景 6). Weak keys: entries die with the agent.
+   */
+  private contextUsageByAgent = new WeakMap<StdioAgent, number>();
   /** Pending host selected in each pane's new-session workdir picker. */
   private hostState = new Map<string, string>();
   // Split panes, ordered left→right. Each pane binds at most one agent (none
@@ -1201,6 +1211,13 @@ export class DesktopHost {
         this.refreshSessionTree();
       },
       onContextUsage: (percent: number) => {
+        // Cache before the pane check: the replay that follows a session
+        // restore typically lands while the agent is still mid-restore — not
+        // yet bound to any pane (runPaneRestore restores, then activates) — so
+        // forwarding alone would drop it. activateAgentInPane replays the cache
+        // once the pane binds (spec「上下文用量指示器」场景 6: the ring shows the
+        // session's usage right after the switch, no need to wait for a turn).
+        this.contextUsageByAgent.set(agentRef, percent);
         const paneId = paneIdOf();
         if (paneId)
           this.postMessage({ command: "contextUsage", paneId, percent });
@@ -1372,6 +1389,19 @@ export class DesktopHost {
     this.refreshSessionTree();
     this.pushPanes();
     await this.pushPaneSessionState(paneId);
+    // Replay the session's last known usage now that this pane shows the agent.
+    // Without it the webview — which clears the ring on every conversation
+    // switch to stay isolated (ChatApp usage-session effect) — stays empty
+    // until the next turn reports fresh tokens. The cache covers both switch
+    // paths: a pool-resident agent re-activated in place (no CLI round trip
+    // fires a usage push at all) and a mid-restore replay that arrived before
+    // the pane bound (spec「上下文用量指示器」场景 6). Must follow
+    // pushPaneSessionState so the setInitialState lands first and the push is
+    // attributed to the incoming session.
+    const usage = this.contextUsageByAgent.get(agent);
+    if (usage !== undefined) {
+      this.postMessage({ command: "contextUsage", paneId, percent: usage });
+    }
     this.postMessage({ command: "scrollToBottom", paneId });
     this.postMessage({ command: "focusInput", paneId });
   }
