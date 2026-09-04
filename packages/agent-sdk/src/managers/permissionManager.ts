@@ -33,6 +33,10 @@ import {
   PATH_COMMANDS,
   extractPathArgs,
 } from "../utils/bashParser.js";
+import {
+  parseBashStructure,
+  type BashLeaf,
+} from "../utils/bashStructure/index.js";
 import { isPathInside } from "../utils/pathSafety.js";
 import { toWindowsPath } from "../utils/path.js";
 import {
@@ -1041,53 +1045,108 @@ export class PermissionManager {
 
     if (context.toolName === BASH_TOOL_NAME && context.toolInput?.command) {
       const command = String(context.toolInput.command);
-      const parts = splitBashCommand(command);
-      if (parts.length === 0) return false;
-
       const workdir = context.toolInput?.workdir as string | undefined;
 
-      return parts.every((part) => {
-        // Check for auto-allowed read-only commands (FR-019.2 through FR-019.7)
-        if (this.isAutoAllowedPart(part, workdir)) {
-          return true;
-        }
+      // Structure-aware expansion: compound commands and command substitutions
+      // are reduced to their leaf simple commands; each leaf is classified
+      // exactly like a top-level part of a chained command would be (spec:
+      // "复合命令与命令替换的结构感知判定").
+      const structure = parseBashStructure(command);
+      if (structure.status === "ok") {
+        if (structure.leaves.length === 0) return false;
+        return structure.leaves.every((leaf) =>
+          this.isBashLeafAllowed(leaf, workdir, context, explicitRules),
+        );
+      }
 
-        // We create a temporary context with just this part of the command
-        const partContext = {
-          ...context,
-          toolInput: { ...context.toolInput, command: part },
-        };
-
-        if (explicitRules.some((rule) => this.matchesRule(partContext, rule))) {
-          return true;
-        }
-
-        // Default rules must not auto-allow dangerous variants (write
-        // redirections, substitutions, sed -i, dangerous find, out-of-safe-zone
-        // paths) through broad rules like Bash(echo*) or Bash(cat*)
-        const isDangerousVariant =
-          hasWriteRedirections(part) ||
-          isDangerousFind(part) ||
-          hasCommandSubstitution(part) ||
-          hasProcessSubstitution(part) ||
-          hasSedInPlace(part) ||
-          this.isOutOfSafeZonePart(part, workdir);
-        if (
-          !isDangerousVariant &&
-          DEFAULT_ALLOWED_RULES.some((rule) =>
-            this.matchesRule(partContext, rule),
-          )
-        ) {
-          return true;
-        }
-
-        return !this.isRestrictedTool(context.toolName);
-      });
+      // Fail-closed (heredoc / process substitution / arithmetic / brace /
+      // parse failure / eval / trap / …): the command cannot be statically
+      // reduced to leaves, so it is never auto-allowed and never matches the
+      // built-in default rules. Only an explicit user rule covering the whole
+      // command may allow it.
+      const wholeContext = {
+        ...context,
+        toolInput: { ...context.toolInput, command },
+      };
+      return explicitRules.some((rule) => this.matchesRule(wholeContext, rule));
     }
 
     // For other tools, check if any rule matches
     const allRules = [...explicitRules, ...DEFAULT_ALLOWED_RULES];
     return allRules.some((rule) => this.matchesRule(context, rule));
+  }
+
+  /**
+   * Classify one expanded leaf command. Every leaf of a compound command or
+   * command substitution is judged with the exact rules used for a plain
+   * command, with two structure-aware additions:
+   *
+   *  - a leaf the parser flagged `unsafe` (a bare reference to a variable whose
+   *    value is not statically known, or a command substitution inside the
+   *    leaf's own argument words) is never auto-allowed and never matches the
+   *    built-in default rules — only an explicit allow rule may cover it;
+   *  - `read` (e.g. the condition of `while read …`) only reads stdin, so it
+   *    is treated as safe when it carries no redirection of its own.
+   */
+  private isBashLeafAllowed(
+    leaf: BashLeaf,
+    workdir: string | undefined,
+    context: ToolPermissionContext,
+    explicitRules: string[],
+  ): boolean {
+    // Check for auto-allowed read-only commands (FR-019.2 through FR-019.7)
+    if (!leaf.unsafe) {
+      if (leaf.command === "read" && !/[<>]/.test(leaf.text)) return true;
+      if (this.isAutoAllowedPart(leaf.text, workdir)) return true;
+    }
+
+    if (
+      explicitRules.some((rule) =>
+        this.matchesRule(this.ruleContext(context, leaf.text), rule),
+      ) ||
+      explicitRules.some((rule) =>
+        this.matchesRule(
+          this.ruleContext(context, unquotedLeafCommand(leaf)),
+          rule,
+        ),
+      )
+    ) {
+      return true;
+    }
+
+    // Default rules must not auto-allow dangerous variants (write
+    // redirections, substitutions, sed -i, dangerous find, out-of-safe-zone
+    // paths, bare-unknown-variable / in-word substitution leaves) through
+    // broad rules like Bash(echo*) or Bash(cat*)
+    const isDangerousVariant =
+      leaf.unsafe ||
+      hasWriteRedirections(leaf.text) ||
+      isDangerousFind(leaf.text) ||
+      hasCommandSubstitution(leaf.text) ||
+      hasProcessSubstitution(leaf.text) ||
+      hasSedInPlace(leaf.text) ||
+      this.isOutOfSafeZonePart(leaf.text, workdir);
+    if (
+      !isDangerousVariant &&
+      DEFAULT_ALLOWED_RULES.some((rule) =>
+        this.matchesRule(this.ruleContext(context, leaf.text), rule),
+      )
+    ) {
+      return true;
+    }
+
+    return !this.isRestrictedTool(context.toolName);
+  }
+
+  /** A context whose Bash command is a single part/leaf text. */
+  private ruleContext(
+    context: ToolPermissionContext,
+    command: string,
+  ): ToolPermissionContext {
+    return {
+      ...context,
+      toolInput: { ...context.toolInput, command },
+    };
   }
 
   /**
@@ -1099,7 +1158,14 @@ export class PermissionManager {
    * @returns Array of permission rules in "Bash(cmd)" format
    */
   public expandBashRule(command: string, workdir: string): string[] {
-    const parts = splitBashCommand(command);
+    // Expand compound commands structurally when possible so control-structure
+    // keywords (do/done/then/…) never leak into persisted rules. Constructs the
+    // parser cannot reduce fall back to the legacy textual part splitter.
+    const structure = parseBashStructure(command);
+    const parts =
+      structure.status === "ok" && structure.leaves.length > 0
+        ? structure.leaves.map((leaf) => leaf.text)
+        : splitBashCommand(command);
     const rules: string[] = [];
 
     for (const part of parts) {
@@ -1186,4 +1252,29 @@ export class PermissionManager {
       }
     }
   }
+}
+
+/**
+ * Build a rule-matching form of a leaf command with quoting removed from words
+ * that are a single quoted segment (`node "scripts/x"` → `node scripts/x`).
+ * Shell quoting that does not change the executed words must not prevent a
+ * rule such as `Bash(node scripts*)` from matching a leaf like
+ * `node "scripts/$f" --dry-run`. Redirect operators/targets (the text tail
+ * beyond argv) are preserved verbatim so write-redirection guards still apply.
+ */
+function unquotedLeafCommand(leaf: BashLeaf): string {
+  const rawCommand = leaf.argv.join(" ");
+  const tail = leaf.text.slice(rawCommand.length);
+  return leaf.argv.map(unquoteWord).join(" ") + tail;
+}
+
+/** Strip one layer of enclosing single/double quotes from a whole word. */
+function unquoteWord(raw: string): string {
+  if (raw.length < 2) return raw;
+  const first = raw[0];
+  const last = raw[raw.length - 1];
+  if ((first === '"' || first === "'") && first === last) {
+    return raw.slice(1, -1);
+  }
+  return raw;
 }
