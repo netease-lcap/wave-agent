@@ -287,4 +287,42 @@ describe("split-view: collapsed gutter follows the shell's expand-button signal"
       1,
     );
   });
+
+  it("slides the window-row collapse button to the row start on fullscreen", () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "darwin";
+    // Any session activation runs through the pane model, so the shell owns the
+    // sidebar window row — fullscreen must reach it through the shell too.
+    renderDesktopApp();
+    sendCommand("desktopSessionTree", {
+      groups: [
+        {
+          workdir: "/work/a",
+          sessions: [
+            {
+              sessionId: "s1",
+              title: "chat one",
+              lastActiveAt: Date.now(),
+              hasWorktree: false,
+            },
+          ],
+        },
+      ],
+    });
+    sendCommand("desktopPanes", {
+      panes: [{ paneId: "p1", sessionId: "s1", width: 1 }],
+      focusedPaneId: "p1",
+    });
+    sendCommand("setInitialState", {
+      messages: [MockDataGenerator.createUserMessage("hi")],
+      paneId: "p1",
+    });
+
+    const row = queryDragRow();
+    expect(row).not.toBeNull();
+    expect(row!.classList.contains("is-fullscreen")).toBe(false);
+
+    sendHostMessage(fixtures.desktopFullScreen({ fullScreen: true }));
+    expect(row!.classList.contains("is-fullscreen")).toBe(true);
+  });
 });
