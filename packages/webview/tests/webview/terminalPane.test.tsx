@@ -64,8 +64,6 @@ function renderPane(options?: {
     <TerminalPane
       vscode={vscode}
       width={420}
-      onWidthChange={vi.fn()}
-      maxWidth={716}
       paneId={options?.paneId}
       visible={options?.visible ?? true}
       sessionId={options?.sessionId}
@@ -82,8 +80,6 @@ function renderPane(options?: {
       <TerminalPane
         vscode={vscode}
         width={420}
-        onWidthChange={vi.fn()}
-        maxWidth={716}
         paneId={options?.paneId}
         visible={props.visible ?? true}
         sessionId={props.sessionId}
@@ -320,15 +316,7 @@ describe("TerminalPane", () => {
     // renderPane always wires onOpenPreview, so exercise the fallback by
     // rendering without the prop — mirrors Message.tsx's no-handler path.
     const vscode = createMockVscode();
-    render(
-      <TerminalPane
-        vscode={vscode}
-        width={420}
-        onWidthChange={vi.fn()}
-        maxWidth={716}
-        visible={true}
-      />,
-    );
+    render(<TerminalPane vscode={vscode} width={420} visible={true} />);
     await act(async () => {});
     act(() =>
       linkHandlerOf(mockTerminals[0])!(
@@ -345,15 +333,7 @@ describe("TerminalPane", () => {
   it("shows an actionable error when the terminal chunk fails to load, and retry rebuilds", async () => {
     delete window.WaveTerminal;
     const vscode = createMockVscode();
-    render(
-      <TerminalPane
-        vscode={vscode}
-        width={420}
-        onWidthChange={vi.fn()}
-        maxWidth={716}
-        visible={true}
-      />,
-    );
+    render(<TerminalPane vscode={vscode} width={420} visible={true} />);
     // The injected script tag never loads in jsdom — fire its error.
     await act(async () => {});
     const script = document.head.querySelector('script[src="./terminal.js"]');

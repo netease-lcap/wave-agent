@@ -89,8 +89,6 @@ export function rewriteCommentUrl(
   }
 }
 
-const MIN_WIDTH = 320;
-
 /**
  * Overflow auto-fit (spec desktop-preview.md「localhost 原型预览」scenario 7, aligned
  * with Claude Desktop's browser pane): when the guest page is wider than the
@@ -155,9 +153,6 @@ export interface PreviewPaneProps {
   vscode: VsCodeApi;
   /** Controlled width (px); the parent enforces the conversation-area minimum. */
   width: number;
-  onWidthChange: (width: number) => void;
-  /** Upper bound so the conversation area keeps its minimum width. */
-  maxWidth: number;
   /** Receives a formatted picker comment; appended to this pane's chat input. */
   onAddComment?: (text: string) => void;
   /** Remote sessions: the original (pre-forward) URL the pane is showing; picker
@@ -184,8 +179,6 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   url,
   vscode,
   width,
-  onWidthChange,
-  maxWidth,
   onAddComment,
   originalUrl,
   onRetry,
@@ -575,30 +568,10 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     vscode.postMessage({ command: "openExternal", url: currentUrlRef.current });
   };
 
+  // The pane's own element: the fit pass and the ResizeObserver below measure
+  // its real width (the controlled `width` prop misses CSS-only changes such as
+  // preview fullscreen / a hidden tab stack coming back).
   const asideRef = useRef<HTMLElement | null>(null);
-  // Dragging the left edge resizes this panel: the panels to the right keep
-  // their widths, so the aside's right edge is fixed for the drag.
-  const onDragStart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const handle = e.currentTarget as HTMLElement;
-    // Keep the handle lit + cursor locked for the whole drag — :hover and the
-    // 6px-only col-resize cursor both flicker as the pointer outruns the handle.
-    handle.style.background = "var(--vscode-focusBorder, #007fd4)";
-    document.body.classList.add("is-panel-resizing");
-    const rect = asideRef.current?.getBoundingClientRect();
-    const onMove = (ev: MouseEvent) => {
-      const next = (rect?.right ?? 0) - ev.clientX;
-      onWidthChange(Math.min(Math.max(next, MIN_WIDTH), maxWidth));
-    };
-    const onUp = () => {
-      handle.style.background = "";
-      document.body.classList.remove("is-panel-resizing");
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
 
   return (
     <aside
@@ -607,7 +580,6 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       style={{ width }}
       data-testid="preview-pane"
     >
-      <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
         <div className="preview-pane-toolbar">
           {addressEditing || !displayUrl ? (

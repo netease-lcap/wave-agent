@@ -100,22 +100,17 @@ function renderPane(
   options: {
     fileView?: FileViewState | null;
     width?: number;
-    maxWidth?: number;
     workdir?: string;
     onOpenExternal?: (path: string) => void;
-    onWidthChange?: (width: number) => void;
     vscode?: VsCodeApi;
     onOpenFileInPanel?: (path: string) => void;
   } = {},
 ) {
-  const onWidthChange = options.onWidthChange ?? vi.fn();
   const fileView =
     options.fileView === undefined ? makeFileView() : options.fileView;
   const props = {
     fileView,
     width: options.width ?? 420,
-    onWidthChange,
-    maxWidth: options.maxWidth ?? 716,
     onOpenExternal: options.onOpenExternal,
     workdir: options.workdir,
     vscode: options.vscode,
@@ -124,7 +119,7 @@ function renderPane(
   const result = render(<FilePane {...props} />);
   const rerenderWith = (next: FileViewState | null) =>
     result.rerender(<FilePane {...props} fileView={next} />);
-  return { ...result, rerenderWith, onWidthChange };
+  return { ...result, rerenderWith };
 }
 
 describe("FilePane", () => {
@@ -345,32 +340,6 @@ describe("FilePane", () => {
   it("has no in-pane close button (关闭统一由一级 tab 控制)", () => {
     renderPane();
     expect(screen.queryByTestId("file-close")).not.toBeInTheDocument();
-  });
-
-  it("drag handle resizes within min/max bounds", () => {
-    const { onWidthChange } = renderPane({ maxWidth: 716 });
-    const pane = screen.getByTestId("file-pane");
-    const handle = pane.querySelector(
-      ".preview-pane-drag-handle",
-    ) as HTMLElement;
-    vi.spyOn(pane, "getBoundingClientRect").mockReturnValue({
-      left: 0,
-      right: 1024,
-    } as DOMRect);
-
-    fireEvent.mouseDown(handle);
-    expect(handle.style.background).not.toBe("");
-    expect(document.body.classList.contains("is-panel-resizing")).toBe(true);
-    fireEvent.mouseMove(window, { clientX: 624 }); // 1024 - 624 = 400
-    expect(onWidthChange).toHaveBeenLastCalledWith(400);
-    expect(handle.style.background).not.toBe(""); // still lit mid-drag
-    fireEvent.mouseMove(window, { clientX: 950 }); // 74 → clamped to 320
-    expect(onWidthChange).toHaveBeenLastCalledWith(320);
-    fireEvent.mouseMove(window, { clientX: 10 }); // 1014 → clamped to 716
-    expect(onWidthChange).toHaveBeenLastCalledWith(716);
-    fireEvent.mouseUp(window);
-    expect(handle.style.background).toBe("");
-    expect(document.body.classList.contains("is-panel-resizing")).toBe(false);
   });
 
   describe("FilePane search (toolbar trigger + popover)", () => {

@@ -594,6 +594,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // Generalized to the tabbed panel slot (any active panel can go fullscreen).
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  // The shared panel slot; its left-edge drag handle (rendered once on the slot,
+  // see .panel-slot-drag-handle) anchors on this element's fixed right edge.
+  const panelSlotRef = useRef<HTMLDivElement>(null);
   // Desktop drag-and-drop file upload: a counter tracks nested dragenter /
   // dragleave so quick in/out passes don't flicker the overlay. Only real
   // file drags ("Files" in dataTransfer) raise the overlay — session/pane
@@ -2601,6 +2604,34 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setPanelWidth(clamped);
   }, []);
 
+  // Dragging the shared slot's left edge resizes the panel. One handle lives on
+  // the slot itself (not inside each pane) so the divider stays draggable in
+  // every slot state — open tabs and the empty state alike (spec「面板空态」场景
+  // 9). The slot's right edge is fixed for the drag, so width = right − pointer.
+  const handleSlotResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const handle = e.currentTarget as HTMLElement;
+      // Keep the handle lit + cursor locked for the whole drag — :hover and the
+      // 6px-only col-resize cursor both flicker as the pointer outruns the handle.
+      handle.style.background = "var(--vscode-focusBorder, #007fd4)";
+      document.body.classList.add("is-panel-resizing");
+      const rect = panelSlotRef.current?.getBoundingClientRect();
+      const onMove = (ev: MouseEvent) => {
+        handlePanelWidthChange((rect?.right ?? 0) - ev.clientX);
+      };
+      const onUp = () => {
+        handle.style.background = "";
+        document.body.classList.remove("is-panel-resizing");
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [handlePanelWidthChange],
+  );
+
   // Desktop only: clicking a localhost link opens a NEW preview tab ("新链接新
   // tab") instead of navigating the existing one — several addresses can be
   // previewed side by side. Message.tsx gates on waveHostType, so this never
@@ -2700,23 +2731,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isDesktop, previewFullscreen]);
 
-  // Width ceiling for the shared panel slot: container minus the
-  // conversation-area minimum. Render-time estimate — the drag handler
-  // re-clamps authoritatively on every mousemove.
-  const panelMaxWidth = (): number => {
-    const containerW =
-      chatContainerRef.current?.getBoundingClientRect().width ??
-      window.innerWidth;
-    return containerW - CHAT_MAIN_MIN_WIDTH;
-  };
-
   const renderPanelSlot = (tab: PanelTab) => {
     const { id, kind } = tab;
     const isActive = activeTabId === id;
     const common = {
       width: panelWidth,
-      onWidthChange: (w: number) => handlePanelWidthChange(w),
-      maxWidth: panelMaxWidth(),
     };
 
     if (kind === "preview") {
@@ -3217,6 +3236,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           )}
           {panelExpanded || tabs.length > 0 ? (
             <div
+              ref={panelSlotRef}
               className="desktop-panel-slot"
               data-testid="desktop-panel-slot"
               style={{
@@ -3229,6 +3249,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                 display: panelExpanded ? undefined : "none",
               }}
             >
+              <div
+                className="panel-slot-drag-handle"
+                data-testid="panel-slot-drag-handle"
+                onMouseDown={handleSlotResizeStart}
+              />
               {tabs.length > 0 ? (
                 <>
                   <DesktopPanelTabs

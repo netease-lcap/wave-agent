@@ -59,13 +59,9 @@ export function formatDiffComment(msg: DiffComment): string {
   return lines.join("\n");
 }
 
-const MIN_WIDTH = 320;
-
 export interface DiffPaneProps {
   vscode: VsCodeApi;
   width: number;
-  onWidthChange: (width: number) => void;
-  maxWidth: number;
   /** Split-view pane this diff panel belongs to; filters host responses. */
   paneId?: string;
   /** Hidden panels stay mounted; a re-show triggers a fresh load. */
@@ -83,8 +79,6 @@ export interface DiffPaneProps {
 export const DiffPane: React.FC<DiffPaneProps> = ({
   vscode,
   width,
-  onWidthChange,
-  maxWidth,
   paneId,
   visible,
   isStreaming,
@@ -100,7 +94,6 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   const [expandedPath, setExpandedPath] = useState<string | null>(null);
   // True while a refresh request is in flight; drives the toolbar spinner.
   const [refreshing, setRefreshing] = useState(false);
-  const asideRef = useRef<HTMLElement | null>(null);
 
   // Inline diff-line comment box (GitHub/GitLab style): hovering a line shows a
   // "+" button; clicking opens a comment box under that line whose contents
@@ -200,28 +193,6 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   const toggleFile = (path: string) => {
     // Mutual exclusion: expanding one file collapses every other.
     setExpandedPath((prev) => (prev === path ? null : path));
-  };
-
-  const onDragStart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const handle = e.currentTarget as HTMLElement;
-    // Keep the handle lit + cursor locked for the whole drag — :hover and the
-    // 6px-only col-resize cursor both flicker as the pointer outruns the handle.
-    handle.style.background = "var(--vscode-focusBorder, #007fd4)";
-    document.body.classList.add("is-panel-resizing");
-    const rect = asideRef.current?.getBoundingClientRect();
-    const onMove = (ev: MouseEvent) => {
-      const next = (rect?.right ?? 0) - ev.clientX;
-      onWidthChange(Math.min(Math.max(next, MIN_WIDTH), maxWidth));
-    };
-    const onUp = () => {
-      handle.style.background = "";
-      document.body.classList.remove("is-panel-resizing");
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
   };
 
   const renderHunks = (file: WorkspaceDiffFile) => {
@@ -475,12 +446,10 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
 
   return (
     <aside
-      ref={asideRef}
       className="preview-pane diff-pane"
       style={{ width }}
       data-testid="diff-pane"
     >
-      <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
         <div className="preview-pane-toolbar">
           <span className="desktop-panel-toolbar-title">差异</span>

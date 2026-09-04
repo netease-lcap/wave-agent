@@ -33,8 +33,6 @@ function renderPane(options?: {
     <DiffPane
       vscode={vscode}
       width={420}
-      onWidthChange={vi.fn()}
-      maxWidth={716}
       paneId={options?.paneId}
       visible={options?.visible ?? true}
       isStreaming={options?.isStreaming ?? false}
@@ -53,8 +51,6 @@ function renderPane(options?: {
       <DiffPane
         vscode={vscode}
         width={420}
-        onWidthChange={vi.fn()}
-        maxWidth={716}
         paneId={options?.paneId}
         visible={props.visible ?? true}
         isStreaming={props.isStreaming ?? false}
@@ -419,44 +415,6 @@ describe("DiffPane", () => {
     expect(lastDiffRequest(vscode)).toHaveLength(1);
     rerenderWith({ sessionId: "s2", workdir: "/w/b" });
     expect(lastDiffRequest(vscode)).toHaveLength(2);
-  });
-
-  it("drag handle resizes within min/max bounds", () => {
-    const onWidthChange = vi.fn();
-    const vscode = createMockVscode();
-    render(
-      <DiffPane
-        vscode={vscode}
-        width={420}
-        onWidthChange={onWidthChange}
-        maxWidth={716}
-        visible={true}
-        isStreaming={false}
-      />,
-    );
-    const pane = screen.getByTestId("diff-pane");
-    const handle = pane.querySelector(
-      ".preview-pane-drag-handle",
-    ) as HTMLElement;
-    vi.spyOn(pane, "getBoundingClientRect").mockReturnValue({
-      right: 1024,
-    } as DOMRect);
-
-    fireEvent.mouseDown(handle);
-    // The handle stays lit for the whole drag instead of relying on :hover,
-    // which flickers when the pointer outruns the 6px handle.
-    expect(handle.style.background).not.toBe("");
-    expect(document.body.classList.contains("is-panel-resizing")).toBe(true);
-    fireEvent.mouseMove(window, { clientX: 624 }); // 1024 - 624 = 400
-    expect(onWidthChange).toHaveBeenLastCalledWith(400);
-    expect(handle.style.background).not.toBe(""); // still lit mid-drag
-    fireEvent.mouseMove(window, { clientX: 950 }); // 74 → clamped to 320
-    expect(onWidthChange).toHaveBeenLastCalledWith(320);
-    fireEvent.mouseMove(window, { clientX: 10 }); // 1014 → clamped to 716
-    expect(onWidthChange).toHaveBeenLastCalledWith(716);
-    fireEvent.mouseUp(window);
-    expect(handle.style.background).toBe(""); // cleared on release
-    expect(document.body.classList.contains("is-panel-resizing")).toBe(false);
   });
 
   describe("line comments", () => {
