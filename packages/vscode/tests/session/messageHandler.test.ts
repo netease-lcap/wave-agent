@@ -801,6 +801,115 @@ describe("MessageHandler settings tab", () => {
     expect(posted.error).toContain("boom");
   });
 
+  // Regression (VS Code 插件端 SDD 开关永久置灰): 设置页在独立 settings tab
+  // (settings-preview-entry) 里渲染，消息走 handleSettingsMessage —— 该路由若
+  // 不实现 getProjectSettings，webview 的 projectSettings 恒为 undefined，
+  // SettingsPage 的开关被 `disabled={... || !projectSettings}` 禁用且永不加载。
+  test("getProjectSettings posts projectSettings to the settings panel", async () => {
+    const configService = {
+      loadConfiguration: vi.fn(),
+      saveConfiguration: vi.fn(),
+    };
+    const pluginService = {
+      getProjectSettings: vi
+        .fn()
+        .mockResolvedValue({ enabledPlugins: { "sdd@builtin": true } }),
+    };
+    const context: MessageHandlerContext = {
+      getChatSession: vi.fn().mockReturnValue(createMockSession()),
+      postMessage: vi.fn(),
+      initializeAgent: vi.fn(),
+      listSessions: vi.fn(),
+      updateAllSessionsConfig: vi.fn(),
+      getVersion: vi.fn().mockReturnValue("1.2.3"),
+      openPlanPreview: vi.fn(),
+      openSettings: vi.fn(),
+      postSettingsMessage: vi.fn(),
+      closeSettings: vi.fn(),
+    };
+    const handler = new MessageHandler(
+      configService as unknown as ConfigurationService,
+      {} as unknown as FileService,
+      {} as unknown as SessionService,
+      pluginService as unknown as PluginService,
+      {} as unknown as StdioClient,
+      context,
+    );
+
+    await handler.handleSettingsMessage({ command: "getProjectSettings" });
+
+    expect(pluginService.getProjectSettings).toHaveBeenCalled();
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as {
+      command: string;
+      enabledPlugins: Record<string, boolean>;
+    };
+    expect(posted.command).toBe("projectSettings");
+    expect(posted.enabledPlugins).toEqual({ "sdd@builtin": true });
+    // Response goes to the settings panel, never the chat webviews
+    expect(context.postMessage).not.toHaveBeenCalled();
+  });
+
+  test("setBuiltinPluginEnabled from the settings panel reloads config, recreates agents and replies to the settings panel", async () => {
+    const configService = {
+      loadConfiguration: vi
+        .fn()
+        .mockResolvedValue({ serverUrl: "", language: "Chinese" }),
+      saveConfiguration: vi.fn(),
+    };
+    const pluginService = {
+      setBuiltinPluginEnabled: vi
+        .fn()
+        .mockResolvedValue({ enabledPlugins: { "sdd@builtin": true } }),
+    };
+    const context: MessageHandlerContext = {
+      getChatSession: vi.fn().mockReturnValue(createMockSession()),
+      postMessage: vi.fn(),
+      initializeAgent: vi.fn(),
+      listSessions: vi.fn(),
+      updateAllSessionsConfig: vi.fn(),
+      getVersion: vi.fn().mockReturnValue("1.2.3"),
+      openPlanPreview: vi.fn(),
+      openSettings: vi.fn(),
+      postSettingsMessage: vi.fn(),
+      closeSettings: vi.fn(),
+    };
+    const handler = new MessageHandler(
+      configService as unknown as ConfigurationService,
+      {} as unknown as FileService,
+      {} as unknown as SessionService,
+      pluginService as unknown as PluginService,
+      {} as unknown as StdioClient,
+      context,
+    );
+
+    await handler.handleSettingsMessage({
+      command: "setBuiltinPluginEnabled",
+      pluginId: "sdd@builtin",
+      enabled: true,
+      scope: "project",
+    });
+
+    expect(pluginService.setBuiltinPluginEnabled).toHaveBeenCalledWith(
+      "sdd@builtin",
+      true,
+      "project",
+    );
+    expect(configService.loadConfiguration).toHaveBeenCalled();
+    expect(context.updateAllSessionsConfig).toHaveBeenCalledWith({
+      serverUrl: "",
+      language: "Chinese",
+    });
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as {
+      command: string;
+      enabledPlugins: Record<string, boolean>;
+    };
+    expect(posted.command).toBe("projectSettings");
+    expect(posted.enabledPlugins).toEqual({ "sdd@builtin": true });
+    expect(context.postMessage).not.toHaveBeenCalled();
+  });
+
   test("closeSettings closes the settings panel", async () => {
     const session = createReadySession();
     const { handler, context } = createReadyHandler(session);

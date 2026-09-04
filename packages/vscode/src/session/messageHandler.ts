@@ -498,6 +498,21 @@ export class MessageHandler {
           msg.workdir as string | undefined,
         );
         break;
+      case "getProjectSettings":
+        // 项目设置视图（内置插件 SDD 开关）：读取项目 .wave/settings.json 合并
+        // 后的 enabledPlugins。chat 路由 handleMessage 也有同名命令，但设置页在
+        // 独立 settings tab（settings-preview-entry）里渲染，必须走本路由并把
+        // 回包发给设置面板本身（postSettingsMessage）——漏掉时 webview 的
+        // projectSettings 恒为 undefined，SDD 开关被 !projectSettings 永久禁用。
+        await this.handleSettingsGetProjectSettings();
+        break;
+      case "setBuiltinPluginEnabled":
+        await this.handleSettingsSetBuiltinPluginEnabled(
+          msg.pluginId as string,
+          msg.enabled as boolean,
+          msg.scope as string,
+        );
+        break;
       case "getHooksConfig":
         await this.handleSettingsGetHooksConfig(
           msg.scope as "user" | "project" | undefined,
@@ -720,6 +735,49 @@ export class MessageHandler {
    *   sidebar 会话的 CLI agent 读取（getSubagentConfigurations 等同源）。 */
   private getSettingsSession(): ChatSession {
     return this.context.getChatSession("sidebar");
+  }
+
+  /** 项目设置视图（内置插件 SDD 开关）：读取项目 .wave/settings.json 合并后的
+   *  enabledPlugins，回包发给设置面板（pluginService 以工作区根目录为 workdir）。 */
+  private async handleSettingsGetProjectSettings(): Promise<void> {
+    try {
+      const result = await this.pluginService.getProjectSettings();
+      this.context.postSettingsMessage({
+        command: "projectSettings",
+        enabledPlugins: result.enabledPlugins,
+      });
+    } catch (error) {
+      console.error("获取项目设置失败:", error);
+      vscode.window.showErrorMessage("获取项目设置失败: " + error);
+    }
+  }
+
+  /** 切换项目级内置插件（sdd@builtin 等）：写回 .wave/settings.json 后回发
+   *  projectSettings 刷新开关，并重载配置重建 agent 使插件立即生效
+   *  （与 chat 路由 handleSetBuiltinPluginEnabled 同语义）。 */
+  private async handleSettingsSetBuiltinPluginEnabled(
+    pluginId: string,
+    enabled: boolean,
+    scope: string,
+  ): Promise<void> {
+    try {
+      const result = await this.pluginService.setBuiltinPluginEnabled(
+        pluginId,
+        enabled,
+        scope as Scope,
+      );
+      this.context.postSettingsMessage({
+        command: "projectSettings",
+        enabledPlugins: result.enabledPlugins,
+      });
+
+      // Reload config and recreate agents to apply plugin changes
+      const config = await this.configService.loadConfiguration();
+      this.context.updateAllSessionsConfig(config);
+    } catch (error) {
+      console.error("修改项目设置失败:", error);
+      vscode.window.showErrorMessage("修改项目设置失败: " + error);
+    }
   }
 
   private async handleSettingsGetSubagentConfigurations(): Promise<void> {
