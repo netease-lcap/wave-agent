@@ -3307,7 +3307,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             postToHost({ command: "desktopNewSessionInPane" })
           }
           isStreaming={state.isStreaming}
-          disabled={!host.workdir}
           onOpenSettings={handleOpenSettings}
           onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
           onOpenHelpDocs={handleOpenHelpDocs}

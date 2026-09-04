@@ -111,8 +111,6 @@ export interface DesktopSidebarProps {
   /** Cmd/Ctrl+Click on the 新对话 button: start the new session in an additional pane. */
   onNewSessionInPane: () => void;
   isStreaming: boolean;
-  /** No workdir picked yet — starting a new session is not possible. */
-  disabled: boolean;
   /** Desktop host: the more menu (settings/enterprise console/login) lives here. */
   onOpenSettings: () => void;
   onOpenEnterpriseConsole: () => void;
@@ -169,7 +167,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onNewSession,
   onNewSessionInPane,
   isStreaming,
-  disabled,
   onOpenSettings,
   onOpenEnterpriseConsole,
   onOpenHelpDocs,
@@ -579,7 +576,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             }
           }}
           // 新对话在会话运行（streaming）期间也可用 — 多会话并行，旧会话在后台继续生成（FR-031）。
-          disabled={disabled}
+          // 初始态（尚无已激活 workdir/会话）同样可用：目录由宿主按「最近打开」或空白态自行决定（spec 场景 20）。
           data-testid="desktop-new-session"
         >
           <NewSessionIcon className="" />
