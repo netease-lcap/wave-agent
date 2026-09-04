@@ -2115,3 +2115,13 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - 红：`--vscode-errorForeground`（light #AD0707 / dark #F85149）——`.account-usage-percent.is-empty`、进度条 fill `.is-empty`（第 6 轮 host 深色规则亦经该 token）、`.account-usage-exhausted`、`.account-usage-value.is-empty`「已用完」、`.api-popover-amt.is-empty`、`.api-popover-warn.is-empty`。
 - CSS 中出现的 `#f14c4c / #d18616 / #f85149` 仅为 `var(--xxx, 兜底)` 的 fallback（IDE 端无主题时的缺省），桌面 host 恒由 theme-base-light/dark.css 的 token 实际取值。
 - 另注：mock 端曾把 `apiQuota` 写成 `{total,used}`（组件读 `{limit,used}`）导致预览 ¥NaN，与组件色无关；本区域校验用用例已按 `limit` 字段构造。
+
+---
+
+## 0904 新基线第 1 轮（feat/0904-new-base-r1）：权限模式下拉菜单固定 164px
+
+预览评论 `ul.permission-mode-menu`（「修改前询问/自动接受/修改跳过权限/确认计划模式」下拉）：「这个下拉菜单宽度调整为164px」。
+
+- 修改：`src/styles/host-desktop.css` `[data-host="desktop"] .permission-mode-menu` 由 `min-width: 168px` 改为 `width: 164px; min-width: 164px; box-sizing: border-box`（padding 8px + border 1px 计入外框，整体恰 164px）；dark 覆盖块只改颜色、宽度共用。
+- 实现文件：`src/styles/host-desktop.css`、本 docs。（用户人工走查，本轮不跑自动化。）
+

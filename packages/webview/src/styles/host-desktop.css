@@ -254,7 +254,10 @@
   border-radius: 12px;
   box-shadow: 0 0 12px rgb(0 0 0 / 12%);
   padding: 8px;
-  min-width: 168px;
+  /* 菜单宽 164px：width + box-sizing:border-box 使外框含 pad/border 恰为 164 */
+  width: 164px;
+  min-width: 164px;
+  box-sizing: border-box;
   font-size: 14px;
 }
 [data-host="desktop"] .permission-mode-item {
