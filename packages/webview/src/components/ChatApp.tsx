@@ -432,11 +432,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 系统红绿灯的落位。该实例若占据窗口最左侧（root 单布局，或 DesktopShell 中
   // 拿到 sidebarExpandButton 的首行首 pane），就让 ChatHeader 在左端让出一段
   // 76px 拖拽区（spec「macOS 隐藏标题栏」场景 3）。
+  // 收起信号须与展开按钮同源：root 单布局读自身 sidebarCollapsed（点击即时更
+  // 新）；pane 实例的 state 只是挂载时快照、运行期收起会过期，而 shell 仅在
+  // 全局收起时向首行首 pane 下发 sidebarExpandButton——两者同源，让位段才会
+  // 与展开按钮一起出现，否则展开按钮直接压在红绿灯上。
+  const sidebarHidden =
+    paneId === undefined ? sidebarCollapsed : sidebarExpandButton != null;
   const macTrafficSpacer =
-    isMacHiddenTitlebar() &&
-    sidebarCollapsed &&
-    !fullScreen &&
-    (paneId === undefined || sidebarExpandButton != null);
+    isMacHiddenTitlebar() && sidebarHidden && !fullScreen;
   // The pane's effective host ('local' or an SSH host name): a pane-bound
   // session's host (authoritative `desktopPanes` push) wins; the single-pane
   // layout reads the host-level current host. Remote sessions run the whole
