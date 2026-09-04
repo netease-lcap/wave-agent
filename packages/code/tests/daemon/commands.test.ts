@@ -119,6 +119,8 @@ import {
   daemonSendCommand,
   daemonRespondCommand,
   daemonAbortCommand,
+  daemonStopCommand,
+  daemonRestartCommand,
   daemonStartTimeout,
 } from "../../src/daemon/commands.js";
 import { createWorktree, removeWorktree } from "../../src/utils/worktree.js";
@@ -1434,4 +1436,76 @@ test("destroy: --remove-worktree on a non-git working directory fails with a cle
   );
   expect(vi.mocked(removeWorktree)).not.toHaveBeenCalled();
   expect(exitSpy).toHaveBeenCalledWith(1);
+});
+
+// ── stop / restart ──────────────────────────────────────────────
+
+test("stop: gracefully stops a running daemon and exits 0 without auto-starting", async () => {
+  // beforeEach started a real daemon at socketPath (no sessions).
+  await expect(daemonStopCommand(socketPath)).rejects.toThrow("exit(0)");
+  expect(stdoutLines()).toEqual(["Daemon stopped"]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+  // stop must not (re)start a daemon — the socket is simply gone.
+  expect(spawn).not.toHaveBeenCalled();
+  await expect(
+    new Promise<void>((resolve, reject) => {
+      const socket = net.connect(socketPath);
+      socket.once("connect", resolve);
+      socket.once("error", reject);
+    }),
+  ).rejects.toBeDefined();
+});
+
+test("stop: daemon not running is an idempotent success (never starts one)", async () => {
+  const missing = path.join(
+    os.tmpdir(),
+    `wave-daemon-stop-missing-${process.pid}-${Date.now()}.sock`,
+  );
+  await expect(daemonStopCommand(missing)).rejects.toThrow("exit(0)");
+  expect(stdoutLines()).toEqual(["Daemon is not running"]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+  expect(spawn).not.toHaveBeenCalled();
+});
+
+test("restart: gracefully stops the running daemon and starts a fresh one", async () => {
+  autoStartSocket = socketPath;
+  daemonStartTimeout.ms = 2_000;
+  await expect(daemonRestartCommand(socketPath)).rejects.toThrow("exit(0)");
+  expect(stdoutLines()).toEqual(["Daemon restarted"]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+  // A fresh detached daemon was spawned at the same socket.
+  expect(spawn).toHaveBeenCalledWith(
+    process.execPath,
+    [process.argv[1], "--daemon", socketPath],
+    expect.objectContaining({ detached: true }),
+  );
+  // The fresh daemon is up with an empty registry (old in-memory sessions are
+  // gone with the stopped process).
+  await vi.waitFor(() => expect(autoStartServer).toBeDefined());
+  const client = connectClient(socketPath);
+  const msgs = await client.send({
+    id: 9,
+    method: "listDaemonSessions",
+    params: {},
+  });
+  const result = msgs[0] as { result: { sessions: unknown[] } };
+  expect(result.result.sessions).toEqual([]);
+  client.close();
+});
+
+test("restart: starts a fresh daemon when none is running", async () => {
+  const missing = path.join(
+    os.tmpdir(),
+    `wave-daemon-restart-missing-${process.pid}-${Date.now()}.sock`,
+  );
+  autoStartSocket = missing;
+  daemonStartTimeout.ms = 2_000;
+  await expect(daemonRestartCommand(missing)).rejects.toThrow("exit(0)");
+  expect(spawn).toHaveBeenCalledWith(
+    process.execPath,
+    [process.argv[1], "--daemon", missing],
+    expect.objectContaining({ detached: true }),
+  );
+  expect(stdoutLines()).toEqual(["Daemon started"]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
 });

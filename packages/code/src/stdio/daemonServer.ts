@@ -5,15 +5,13 @@
  * The desktop app launches `wave --daemon <socket>` on the remote host via
  * nohup/setsid, then tunnels the socket back with `ssh -L`. All connections
  * share one AgentBridge, so sessions and pending tool permissions survive
- * client detach/attach — the daemon keeps running (and generating) while no
- * desktop is connected. The daemon never exits on a client disconnect; it
- * only exits when killed (app quit / 删除会话 / remote reboot).
- *
- * Idle auto-exit (spec: 「远程 daemon 空闲自动退出」): once every session has
- * settled and no client is connected, the daemon mirrors `wave -p`'s exit
- * semantics — after a grace period it destroys the sessions (saving their
- * transcripts), closes the socket, and exits, so the remote process doesn't
- * linger forever after background work completes.
+ * client detach/attach. A launched daemon is resident: it keeps running (and
+ * generating) while no desktop is connected and never auto-exits once the
+ * work settles. It goes away when told to shut down gracefully (`wave daemon
+ * stop` / `restart`, destroying sessions so transcripts flush), when killed
+ * externally (desktop CLI 升级重启 pkill, remote reboot / machine reboot), and
+ * the next client that finds the socket absent starts a fresh daemon on
+ * demand.
  */
 
 import net from "net";
@@ -24,26 +22,17 @@ import { JsonRpcConnection } from "./jsonRpcConnection.js";
 export interface DaemonServerOptions {
   socketPath: string;
   bridgeOptions?: AgentBridgeOptions;
-  /** Idle grace period before the daemon auto-exits (default 60s). */
-  graceMs?: number;
 }
 
 export class DaemonServer {
-  static readonly DEFAULT_IDLE_GRACE_MS = 60_000;
-
   private socketPath: string;
   private server: net.Server | undefined;
   private bridge: AgentBridge;
   private connections = new Set<JsonRpcConnection>();
   private sockets = new Set<net.Socket>();
-  private graceMs: number;
-  private idleTimer: NodeJS.Timeout | undefined;
-  private shuttingDown = false;
-  private stopped = false;
 
   constructor(options: DaemonServerOptions) {
     this.socketPath = options.socketPath;
-    this.graceMs = options.graceMs ?? DaemonServer.DEFAULT_IDLE_GRACE_MS;
     this.bridge = new AgentBridge({
       ...options.bridgeOptions,
       // Notifications go to every attached client; a fully detached daemon
@@ -53,20 +42,15 @@ export class DaemonServer {
         for (const conn of this.connections) {
           conn.sendNotification(method, params, sessionId);
         }
-        // Any session activity can change the idle state — re-evaluate.
-        this.evaluateIdle();
       },
+      // The `shutdown` RPC (wave daemon stop/restart) destroys every session in
+      // the bridge, then hands off here to tear the process down.
+      onShutdownRequest: () => this.shutdown(),
     });
     this.server = net.createServer((socket) => {
-      if (this.shuttingDown) {
-        socket.destroy();
-        return;
-      }
       const conn = new JsonRpcConnection(socket, socket, this.bridge);
       this.connections.add(conn);
       this.sockets.add(socket);
-      // A (re)attached client cancels a pending idle exit.
-      this.evaluateIdle();
       socket.on("error", () => {
         // The client (ssh tunnel) can reset the socket mid-detach; the daemon
         // must keep running — 'close' below cleans up the connection.
@@ -74,8 +58,6 @@ export class DaemonServer {
       socket.on("close", () => {
         this.connections.delete(conn);
         this.sockets.delete(socket);
-        // A client detach may leave the daemon idle — re-evaluate.
-        this.evaluateIdle();
       });
       conn.start();
     });
@@ -137,15 +119,10 @@ export class DaemonServer {
     server.listen(this.socketPath, () => {
       server.removeListener("error", reject);
       resolve();
-      // A freshly started daemon may already be idle (no sessions) — start the
-      // idle watch so a zero-session daemon also auto-exits.
-      this.evaluateIdle();
     });
   }
 
   stop(): Promise<void> {
-    this.stopped = true;
-    this.clearIdleTimer();
     return new Promise((resolve) => {
       const server = this.server;
       if (!server) return resolve();
@@ -154,61 +131,28 @@ export class DaemonServer {
     });
   }
 
-  // ── Idle auto-exit ────────────────────────────────────────────
-
-  private clearIdleTimer(): void {
-    if (this.idleTimer) {
-      clearTimeout(this.idleTimer);
-      this.idleTimer = undefined;
-    }
-  }
-
   /**
-   * Re-evaluate the idle condition after any state transition: sessions busy
-   * (loading / pending messages / background work) or any client attached →
-   * cancel the timer. Fully idle + detached → arm the grace timer once; when
-   * it fires, shut the daemon down. Evaluation is event-driven (every
-   * busy→idle transition emits a notification, every attach/detach fires a
-   * connection event), so nothing is polled. The failure mode is
-   * conservative: a missed transition just leaves the daemon running.
+   * Graceful process exit for the `shutdown` RPC (`wave daemon stop`/restart).
+   * The bridge has already destroyed every session (each agent saved its
+   * transcript and drained auto-memory); here we drop all client sockets, close
+   * the listener, remove the socket file, then exit. The exit is guarded so a
+   * test process that mocks process.exit (throwing or no-op) still observes the
+   * teardown.
    */
-  private evaluateIdle(): void {
-    // A stopped/shutting-down daemon never (re)arms the idle timer — late
-    // socket 'close' events (which fire after server.close resolves) must not
-    // resurrect a timer after stop().
-    if (this.shuttingDown || this.stopped) return;
-    if (this.connections.size > 0 || !this.bridge.isIdle()) {
-      this.clearIdleTimer();
-      return;
-    }
-    if (this.idleTimer) return;
-    this.idleTimer = setTimeout(() => {
-      this.idleTimer = undefined;
-      void this.shutdown();
-    }, this.graceMs);
-  }
-
-  /**
-   * Destroy the sessions (each agent saves its transcript and drains
-   * auto-memory), close the listener, unlink the socket file, then exit.
-   * `shuttingDown` guards against re-entry: new connections are refused and
-   * further idle evaluations become no-ops.
-   */
-  private async shutdown(): Promise<void> {
-    if (this.shuttingDown) return;
-    this.shuttingDown = true;
-    this.clearIdleTimer();
-    // Destroy client sockets first so server.close() can complete (an open
-    // socket keeps the close callback pending).
+  private shutdown(): void {
     for (const socket of this.sockets) socket.destroy();
     this.sockets.clear();
-    await this.bridge.destroyAll();
-    await this.stop();
+    this.server?.close();
+    this.server = undefined;
     try {
       fs.unlinkSync(this.socketPath);
     } catch {
-      // Already gone — a stale file would be probed/unlinked on next start.
+      // Already gone — a stale file is probed/unlinked on next start.
     }
-    process.exit(0);
+    try {
+      process.exit(0);
+    } catch {
+      // process.exit is mocked in tests — the teardown above is the effect.
+    }
   }
 }

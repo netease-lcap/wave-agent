@@ -21,7 +21,7 @@ const stderrWriteSpy = vi
   .spyOn(process.stderr, "write")
   .mockImplementation(() => true);
 
-// Idle auto-exit calls process.exit(0); keep the test process alive.
+// Keep the test process alive if a daemon shutdown path ever calls process.exit(0).
 const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
   return undefined as never;
 });
@@ -289,81 +289,73 @@ test("start() rejects when a live daemon already holds the socket", async () => 
   );
 });
 
-// ── Idle auto-exit (spec: 远程 daemon 空闲自动退出) ─────────────────
+// ── Resident daemon (spec: daemon 常驻，空闲不退出) ─────────────
 
-test("daemon with no sessions and no clients auto-exits after the grace period", async () => {
-  const localPath = socketPath + "-idle";
-  const s = new DaemonServer({ socketPath: localPath, graceMs: 50 });
+test("daemon with no sessions and no clients stays alive (no idle auto-exit)", async () => {
+  const localPath = socketPath + "-resident-empty";
+  const s = new DaemonServer({ socketPath: localPath });
   await s.start();
-  await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(0));
-  await s.stop();
-});
-
-test("daemon stays alive while a client is connected, even when idle", async () => {
-  const localPath = socketPath + "-connected";
-  const s = new DaemonServer({ socketPath: localPath, graceMs: 50 });
-  await s.start();
-  const client = connectClient(localPath);
-  await client.send({ id: 1, method: "initialize", params: {} });
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  expect(exitSpy).not.toHaveBeenCalled();
-  client.close();
-  await s.stop();
-});
-
-test("daemon does not exit while a session is busy with no clients connected", async () => {
-  const localPath = socketPath + "-busy";
-  const agent = createMockAgent({ isLoading: true });
-  vi.mocked(Agent.create).mockResolvedValue(agent);
-  const s = new DaemonServer({ socketPath: localPath, graceMs: 50 });
-  await s.start();
-  const client = connectClient(localPath);
-  await client.send({ id: 1, method: "initialize", params: {} });
-  client.close();
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  expect(exitSpy).not.toHaveBeenCalled();
-  await s.stop();
-});
-
-test("daemon exits once a busy session settles; shutdown destroys agents", async () => {
-  const localPath = socketPath + "-settle";
-  const agent = createMockAgent({ isLoading: true });
-  vi.mocked(Agent.create).mockResolvedValue(agent);
-  const s = new DaemonServer({ socketPath: localPath, graceMs: 50 });
-  await s.start();
-  const client = connectClient(localPath);
-  await client.send({ id: 1, method: "initialize", params: {} });
-  client.close();
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  expect(exitSpy).not.toHaveBeenCalled();
-
-  // Session settles: the SDK flips its loading state, then fires the
-  // notification that the bridge forwards (re-evaluating the idle check).
-  (agent as unknown as { isLoading: boolean }).isLoading = false;
-  const options = vi.mocked(Agent.create).mock.calls[0][0];
-  options.callbacks!.onLoadingChange!(false);
-
-  await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(0));
-  expect(agent.destroy).toHaveBeenCalled();
-  await s.stop();
-});
-
-test("reconnecting within the grace period cancels the idle exit", async () => {
-  const localPath = socketPath + "-reconnect";
-  const s = new DaemonServer({ socketPath: localPath, graceMs: 100 });
-  await s.start();
-  const a = connectClient(localPath);
-  const msgs = await a.send({ id: 1, method: "initialize", params: {} });
-  const initResp = msgs[0] as { result: { sessionId: string } };
-  const sessionId = initResp.result.sessionId;
-  a.close();
-  // The daemon is now idle with no clients — but re-attach before the grace
-  // window elapses cancels the countdown.
-  await new Promise((resolve) => setTimeout(resolve, 30));
-  const b = connectClient(localPath);
-  await b.send({ id: 2, method: "getSessionInfo", params: {}, sessionId });
+  // A zero-session daemon used to auto-exit after the 60s grace period; it
+  // must now stay up until explicitly stopped or killed.
   await new Promise((resolve) => setTimeout(resolve, 150));
   expect(exitSpy).not.toHaveBeenCalled();
+  // The socket still accepts clients — the same process keeps serving.
+  const client = connectClient(localPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+  await s.stop();
+});
+
+test("daemon stays resident after clients detach and the session settles", async () => {
+  const localPath = socketPath + "-resident-idle";
+  const s = new DaemonServer({ socketPath: localPath });
+  await s.start();
+  const a = connectClient(localPath);
+  const initMsgs = await a.send({ id: 1, method: "initialize", params: {} });
+  const initResp = initMsgs[0] as { result: { sessionId: string } };
+  const sessionId = initResp.result.sessionId;
+  a.close();
+  // Fully idle (session settled) with no clients used to arm the 60s idle
+  // exit; the daemon must keep running and keep the session in memory.
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  expect(exitSpy).not.toHaveBeenCalled();
+  const b = connectClient(localPath);
+  const msgs = await b.send({
+    id: 2,
+    method: "getSessionInfo",
+    params: {},
+    sessionId,
+  });
+  const result = msgs[0] as { id: number; result: { sessionId: string } };
+  expect(result.result.sessionId).toBe(sessionId);
   b.close();
   await s.stop();
+});
+
+// ── Graceful shutdown RPC (spec: wave daemon stop/restart) ─────
+
+test("shutdown RPC destroys sessions, removes the socket and exits", async () => {
+  const localPath = socketPath + "-shutdown";
+  const agent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+  const s = new DaemonServer({ socketPath: localPath });
+  await s.start();
+  const client = connectClient(localPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+
+  // Ask the daemon to shut down gracefully. It drops the connection without
+  // answering (it is exiting), so fire the request raw and wait for the exit.
+  client.socket.write(JSON.stringify({ id: 2, method: "shutdown" }) + "\n");
+  await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(0));
+  // Every hosted session was destroyed first (transcript flush on destroy).
+  expect(agent.destroy).toHaveBeenCalled();
+  // The listener is closed and the socket file removed — nothing accepts now.
+  expect(fs.existsSync(localPath)).toBe(false);
+  await expect(
+    new Promise<void>((resolve, reject) => {
+      const socket = net.connect(localPath);
+      socket.once("connect", resolve);
+      socket.once("error", reject);
+    }),
+  ).rejects.toBeDefined();
 });

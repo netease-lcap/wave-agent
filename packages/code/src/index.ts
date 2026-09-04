@@ -251,7 +251,7 @@ export async function main() {
       })
       .command(
         "daemon",
-        "Manage the wave daemon (client subcommands — to START a daemon use `wave --daemon <socket>` instead)",
+        "Manage the wave daemon (client subcommands — daemons start on demand, or directly via `wave --daemon <socket>`)",
         (yargs) => {
           return yargs
             .help()
@@ -458,6 +458,26 @@ export async function main() {
                     removeWorktree: argv.removeWorktree as boolean | undefined,
                   },
                 );
+              },
+            )
+            .command(
+              "stop",
+              "Gracefully stop the daemon (idempotent — no-op when it is not running)",
+              {},
+              async () => {
+                const { daemonStopCommand, DEFAULT_DAEMON_SOCKET } =
+                  await import("./daemon/commands.js");
+                await daemonStopCommand(DEFAULT_DAEMON_SOCKET);
+              },
+            )
+            .command(
+              "restart",
+              "Restart the daemon (graceful stop + relaunch; starts one when not running)",
+              {},
+              async () => {
+                const { daemonRestartCommand, DEFAULT_DAEMON_SOCKET } =
+                  await import("./daemon/commands.js");
+                await daemonRestartCommand(DEFAULT_DAEMON_SOCKET);
               },
             )
             .demandCommand(1, "Please specify a daemon subcommand");

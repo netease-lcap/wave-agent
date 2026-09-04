@@ -75,6 +75,11 @@ export type NotificationEmitter = (
 
 export interface AgentBridgeOptions {
   emit: NotificationEmitter;
+  /** Daemon transport only (`wave daemon stop`/`restart`): invoked by the
+   * `shutdown` RPC after every session has been destroyed — the server tears
+   * down its socket and exits. stdio mode leaves it unset, so `shutdown` is
+   * "Method not found" there. */
+  onShutdownRequest?: () => void;
 }
 
 interface InitializeParams {
@@ -155,11 +160,13 @@ export class AgentBridge {
   >();
   private permissionCounter = 0;
   private emit: NotificationEmitter;
+  private onShutdownRequest: (() => void) | undefined;
   private pluginCore: PluginCore | undefined;
   private pluginCoreWorkdir: string | undefined;
 
   constructor(options: AgentBridgeOptions) {
     this.emit = options.emit;
+    this.onShutdownRequest = options.onShutdownRequest;
     // Mirror the user-level settings env WAVE_SERVER_URL into process.env
     // before any agent initializes. getAuthStatus (webviewReady →
     // pushInitialState) can run before the first agent, and AuthService falls
@@ -195,6 +202,20 @@ export class AgentBridge {
         return this.listPendingPermissions();
       case "listDaemonSessions":
         return this.listDaemonSessions();
+      case "shutdown":
+        // Daemon-level graceful exit (`wave daemon stop` / `restart`): destroy
+        // every session first (each agent saves its transcript and drains
+        // auto-memory), then hand the process exit to the transport owner.
+        // Only the daemon registers the hook — stdio has no such concept.
+        if (!this.onShutdownRequest) {
+          throw new RpcError(
+            PROTOCOL_METHOD_NOT_FOUND,
+            "Method not found: shutdown",
+          );
+        }
+        await this.destroyAll();
+        this.onShutdownRequest();
+        return null;
       case "updateConfig":
         return this.updateConfig(p as unknown as UpdateConfigParams, sessionId);
       case "getConfiguredModels":
@@ -536,9 +557,9 @@ export class AgentBridge {
 
     // Record where the session was created (see SessionEntry.createdWorkdir).
     // A fresh session's initialize workdir IS the creation dir. A from-disk
-    // re-attach (daemon idle-exited and restarted, then status/send re-hosts the
-    // session) instead passes the re-attaching client's cwd — the transcript
-    // header (`{"type":"metadata","workdir":...}`, append-only since session
+    // re-attach (the daemon was restarted — killed / CLI 升级重启 / reboot —
+    // then status/send re-hosts the session) instead passes the re-attaching
+    // client's cwd — the transcript header (`{"type":"metadata","workdir":...}`, append-only since session
     // creation) restores the original value when the agent's transcript is
     // readable; otherwise the client cwd is the best available anchor.
     let createdWorkdir: string;
@@ -576,27 +597,6 @@ export class AgentBridge {
       }
     }
     return null;
-  }
-
-  /**
-   * True when every hosted session has settled: not generating, nothing queued,
-   * and no background work (background bash / subagents / workflows) — the same
-   * condition `wave -p` waits on before exiting (print-cli.ts). Pending
-   * permission approvals keep the owning agent's isLoading true, so they are
-   * covered without an explicit check.
-   */
-  public isIdle(): boolean {
-    for (const entry of this.sessions.values()) {
-      const agent = entry.agent;
-      if (
-        agent.isLoading ||
-        agent.hasPendingMessages ||
-        agent.hasRunningBackgroundWork
-      ) {
-        return false;
-      }
-    }
-    return true;
   }
 
   /**
