@@ -688,6 +688,18 @@ describe("MessageHandler settings tab", () => {
     expect(context.openSettings).toHaveBeenCalled();
   });
 
+  test("openSettings forwards the nav payload so /mcp etc. preselect their settings tab", async () => {
+    const session = createReadySession();
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage(
+      { command: "openSettings", nav: "mcp" },
+      "sidebar",
+    );
+
+    expect(context.openSettings).toHaveBeenCalledWith("mcp");
+  });
+
   test("getConfiguration posts configurationResponse to the settings panel, not the chat webviews", async () => {
     const session = createReadySession();
     const { handler, context } = createReadyHandler(session);

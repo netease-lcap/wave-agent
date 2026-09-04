@@ -22,7 +22,10 @@ import { SessionService } from "./services/sessionService";
 import { SelectionService } from "./services/selectionService";
 import { PluginService } from "./services/pluginService";
 import { WebviewManager } from "./session/webviewManager";
-import { MessageHandler } from "./session/messageHandler";
+import {
+  MessageHandler,
+  type MessageHandlerContext,
+} from "./session/messageHandler";
 import { StdioClient } from "./stdio/stdioClient";
 import { NotificationRouter } from "./stdio/notificationRouter";
 import { ensureCliUpToDate, setExtensionPath } from "./stdio/binaryResolver";
@@ -218,52 +221,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         this.sessionService,
         this.pluginService,
         this.sharedClient,
-        {
-          getChatSession: (viewType, windowId) =>
-            this.getChatSession(viewType, windowId),
-          postMessage: (message, viewType, windowId) =>
-            this.webviewManager.postMessage(message, viewType, windowId),
-          initializeAgent: (viewType, windowId, restoreSessionId) =>
-            this.initializeAgent(viewType, windowId, restoreSessionId),
-          listSessions: (viewType, windowId) =>
-            this.listSessions(viewType, windowId),
-          updateAllSessionsConfig: async (config) => {
-            const cfg = config as ConfigurationData;
-            // Serial: updateConfig destroys + recreates the agent in the bridge;
-            // concurrent calls on the same sessionId would delete each other's
-            // entry and leave it permanently missing ("Session not found" on
-            // every later request). Await + catch so failures are logged here
-            // instead of becoming unhandled rejections.
-            const sessions = [
-              this.sidebarSession,
-              ...this.tabSessions.values(),
-              ...this.windowSessions.values(),
-            ];
-            let failed = false;
-            for (const session of sessions) {
-              try {
-                await session.updateConfig(cfg);
-              } catch (error) {
-                failed = true;
-                console.error(
-                  `[Wave] ${session.viewType} 更新配置失败:`,
-                  error,
-                );
-              }
-            }
-            if (failed) {
-              vscode.window.showErrorMessage(
-                "部分会话配置更新失败，请重载窗口后重试。",
-              );
-            }
-          },
-          getVersion: () => this.context.extension.packageJSON?.version || "",
-          openPlanPreview: (key, content) => this.openPlanPreview(key, content),
-          openSettings: () => this.openSettings(),
-          postSettingsMessage: (message) =>
-            this.webviewManager.postSettingsMessage(message),
-          closeSettings: () => this.webviewManager.disposeSettingsPanel(),
-        },
+        this.createMessageHandlerContext(),
       );
     } catch (err) {
       console.error("[Wave] Failed to initialize shared client:", err);
@@ -277,6 +235,58 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           : "无法启动 wave CLI。请检查网络连接后重试。",
       );
     }
+  }
+
+  /**
+   * Builds the MessageHandler context (see init). Extracted as an instance
+   * method so the chat webview → openSettings(nav) forwarding can be covered by
+   * a unit test without instantiating a full ChatProvider (whose constructor
+   * spawns the CLI).
+   */
+  private createMessageHandlerContext(): MessageHandlerContext {
+    return {
+      getChatSession: (viewType, windowId) =>
+        this.getChatSession(viewType, windowId),
+      postMessage: (message, viewType, windowId) =>
+        this.webviewManager.postMessage(message, viewType, windowId),
+      initializeAgent: (viewType, windowId, restoreSessionId) =>
+        this.initializeAgent(viewType, windowId, restoreSessionId),
+      listSessions: (viewType, windowId) =>
+        this.listSessions(viewType, windowId),
+      updateAllSessionsConfig: async (config) => {
+        const cfg = config as ConfigurationData;
+        // Serial: updateConfig destroys + recreates the agent in the bridge;
+        // concurrent calls on the same sessionId would delete each other's
+        // entry and leave it permanently missing ("Session not found" on
+        // every later request). Await + catch so failures are logged here
+        // instead of becoming unhandled rejections.
+        const sessions = [
+          this.sidebarSession,
+          ...this.tabSessions.values(),
+          ...this.windowSessions.values(),
+        ];
+        let failed = false;
+        for (const session of sessions) {
+          try {
+            await session.updateConfig(cfg);
+          } catch (error) {
+            failed = true;
+            console.error(`[Wave] ${session.viewType} 更新配置失败:`, error);
+          }
+        }
+        if (failed) {
+          vscode.window.showErrorMessage(
+            "部分会话配置更新失败，请重载窗口后重试。",
+          );
+        }
+      },
+      getVersion: () => this.context.extension.packageJSON?.version || "",
+      openPlanPreview: (key, content) => this.openPlanPreview(key, content),
+      openSettings: (nav) => this.openSettings(nav),
+      postSettingsMessage: (message) =>
+        this.webviewManager.postSettingsMessage(message),
+      closeSettings: () => this.webviewManager.disposeSettingsPanel(),
+    };
   }
 
   public async addToWave() {
