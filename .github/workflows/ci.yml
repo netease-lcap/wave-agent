@@ -213,6 +213,43 @@ jobs:
           pnpm -r --parallel lint
           pnpm -F wave-desktop -F wave-vscode test:unit:coverage
 
+  webview-command-audit:
+    runs-on: ubuntu-latest
+    # PR gate: 静态审计 webview→host 消息契约（scripts/audit-webview-commands.mjs）。
+    # 新 webview 发送命令若在 4 个路由实例（vscode chat/settings、desktop、
+    # jetbrains）任一漏注册即红（#2086/#2087/JB backgroundCurrentTask 类 bug）；
+    # host 侧新增 webview 永不发送的 case 若未登记脚本 legacy 豁免清单也红。
+    # 纯 Node 无依赖、无 pnpm 安装，秒级完成——独立 job 而非并入 check-extras，
+    # 避免被 code filter 的 '!scripts/**' 排除（脚本自身改动也要触发）。
+    if: github.event_name != 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Detect code changes
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            contract:
+              - 'packages/webview/src/**'
+              - 'packages/vscode/src/session/messageHandler.ts'
+              - 'packages/desktop/src/main/desktopHost.ts'
+              - 'packages/jetbrains/src/main/kotlin/com/wave/jetbrains/session/MessageHandler.kt'
+              - 'scripts/audit-webview-commands.mjs'
+              - '.github/workflows/ci.yml'
+
+      - name: Setup Node.js
+        if: steps.filter.outputs.contract == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Audit webview→host command contract
+        if: steps.filter.outputs.contract == 'true'
+        run: node scripts/audit-webview-commands.mjs
+
   check-coverage:
     runs-on: ubuntu-latest
     # Coverage gate for the three sharded packages: merges the per-shard blob
