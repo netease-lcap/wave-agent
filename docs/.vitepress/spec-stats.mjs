@@ -10,6 +10,7 @@ export const ROOT_DIR = path.join(__dirname, "..", "..");
 export const SPEC_GROUPS = [
   { dir: "core", text: "Agent 核心" },
   { dir: "ui", text: "交互与 UI" },
+  { dir: "desktop", text: "桌面应用" },
   { dir: "multi-agent", text: "多 Agent 与并发" },
   { dir: "ecosystem", text: "扩展与生态" },
   { dir: "automation", text: "自动化" },
@@ -89,7 +90,9 @@ export function collectSpecs() {
       if (usCount === 0)
         warnings.push(`${rel}: 未找到用户故事（期望 \`### 用户故事：\`）`);
       if (acCount === 0)
-        warnings.push(`${rel}: 未找到验收场景（期望 \`N. **假设** … **当** … **则** …\`）`);
+        warnings.push(
+          `${rel}: 未找到验收场景（期望 \`N. **假设** … **当** … **则** …\`）`,
+        );
       specs.push({
         path: rel,
         name: fm.name || specTitle(content, f.replace(/\.md$/, "")),
@@ -118,7 +121,10 @@ const TEST_PACKAGES = [
     dir: "packages/agent-sdk",
     include: /\.(test|spec)\.(js|mjs|cjs|ts|mts|cts|jsx|tsx)$/,
   },
-  { dir: "packages/code", include: /\.(test|spec)\.(js|mjs|cjs|ts|mts|cts|jsx|tsx)$/ },
+  {
+    dir: "packages/code",
+    include: /\.(test|spec)\.(js|mjs|cjs|ts|mts|cts|jsx|tsx)$/,
+  },
   { dir: "packages/webview", include: /\.test\.(ts|tsx)$/ },
   { dir: "packages/desktop", include: /\.test\.ts$/ },
   { dir: "packages/vscode", include: /\.test\.(ts|tsx)$/ },
