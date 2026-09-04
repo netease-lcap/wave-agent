@@ -267,6 +267,54 @@ describe("SlashCommandManager", () => {
       });
     });
 
+    it("should tag skill commands with their UI source (personal→user)", () => {
+      const skills = [
+        {
+          name: "personal-skill",
+          description: "",
+          type: "personal",
+          skillPath: "/p",
+        },
+        {
+          name: "project-skill",
+          description: "",
+          type: "project",
+          skillPath: "/w",
+        },
+        {
+          name: "builtin-skill",
+          description: "",
+          type: "builtin",
+          skillPath: "/b",
+        },
+        {
+          name: "plugin:skill",
+          description: "",
+          type: "personal",
+          skillPath: "/pp",
+          pluginName: "plugin",
+        },
+      ];
+
+      slashCommandManager.registerSkillCommands(
+        skills as unknown as SkillMetadata[],
+      );
+
+      expect(
+        slashCommandManager.getCommand("personal-skill")?.skillSource,
+      ).toBe("user");
+      expect(slashCommandManager.getCommand("project-skill")?.skillSource).toBe(
+        "project",
+      );
+      expect(slashCommandManager.getCommand("builtin-skill")?.skillSource).toBe(
+        "builtin",
+      );
+      // Plugin skills are sourced from the plugin regardless of their type.
+      expect(slashCommandManager.getCommand("plugin:skill")?.skillSource).toBe(
+        "plugin",
+      );
+    });
+
     it("should register namespaced skill commands", async () => {
       vi.mocked(mockSkillManager.prepareSkill).mockResolvedValue({
         content: "Prepared content",

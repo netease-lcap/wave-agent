@@ -1,6 +1,10 @@
 import type { MessageManager } from "./messageManager.js";
 import type { AIManager } from "./aiManager.js";
-import type { SlashCommand, CustomSlashCommand } from "../types/index.js";
+import type {
+  SlashCommand,
+  CustomSlashCommand,
+  SkillSource,
+} from "../types/index.js";
 import { loadCustomSlashCommands } from "../utils/customCommands.js";
 
 import {
@@ -125,6 +129,12 @@ export class SlashCommandManager {
     }
     this.skillCommandIds.clear();
 
+    const skillSourceFor = (skill: SkillMetadata): SkillSource => {
+      if (skill.pluginName) return "plugin";
+      if (skill.type === "personal") return "user";
+      return skill.type; // "project" | "builtin"
+    };
+
     for (const skill of skills) {
       if (skill.userInvocable === false) {
         continue;
@@ -136,6 +146,8 @@ export class SlashCommandManager {
         id: commandId,
         name: skill.name,
         description: `Skill: ${skill.description}`,
+        // UI source tag: plugin skills carry pluginName; personal → 用户
+        skillSource: skillSourceFor(skill),
         handler: async (args?: string, signal?: AbortSignal) => {
           try {
             // 1. Prepare skill content immediately

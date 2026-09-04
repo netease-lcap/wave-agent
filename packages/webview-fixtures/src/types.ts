@@ -667,7 +667,14 @@ export interface FileSuggestionsErrorMessage extends HostToWebviewMessageBase {
 
 export interface SlashCommandsResponseMessage extends HostToWebviewMessageBase {
   command: "slashCommandsResponse";
-  commands: Array<{ id: string; name: string; description?: string }>;
+  commands: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    /** Source tag of a skill-backed command (内置/用户/项目/插件). Skill rows
+     *  only — plain/custom/plugin commands omit it. */
+    skillSource?: "builtin" | "user" | "project" | "plugin";
+  }>;
 }
 
 export interface SlashCommandsErrorMessage extends HostToWebviewMessageBase {

@@ -42,7 +42,7 @@
 }
 
 .slash-command-item {
-  padding: 4px 12px;
+  padding: 3px 12px;
   border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.1s ease;
@@ -65,10 +65,37 @@
   opacity: 0.85;
 }
 
+.slash-command-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  /* 行盒保底 16px：不同宿主字体行高下，标签（10px 字 + 上下 1px 内边距）
+     垂直居中后底部仍与下方描述行保持间距，不贴/压住描述文字 */
+  min-height: 16px;
+}
+
 .slash-command-name {
   font-size: 12px;
   font-weight: 500;
   color: var(--vscode-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 技能来源标签（内置/用户/项目/插件）：随当前文字色取同色系低对比底，
+   深浅主题与选中态下均自适应（color-mix 需 Chromium 111+） */
+.slash-command-tag {
+  flex: none;
+  font-size: 10px;
+  line-height: 1.3;
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: currentColor;
+  background-color: color-mix(in srgb, currentColor 12%, transparent);
+  white-space: nowrap;
 }
 
 .slash-command-description {
@@ -76,4 +103,7 @@
   font-weight: 400;
   color: var(--vscode-descriptionForeground);
   line-height: 1.3;
+  /* 名称行（含来源标签）与描述之间的显式留白：上距由 li 内边距匀出，
+     避免标签底边紧贴/叠到描述首行 */
+  margin-top: 2px;
 }

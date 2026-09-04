@@ -5590,6 +5590,10 @@ export class DesktopHost {
         id: command.id,
         name: command.name,
         description: command.description,
+        // Keep the skill source tag (技能命令 → popup 来源标签), if any.
+        ...("skillSource" in command && command.skillSource
+          ? { skillSource: command.skillSource }
+          : {}),
       }));
       this.postMessage({
         command: "slashCommandsResponse",
