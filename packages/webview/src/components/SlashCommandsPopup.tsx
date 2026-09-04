@@ -6,7 +6,20 @@ export interface SlashCommand {
   id: string;
   name: string;
   description: string;
+  /** Source of a skill-backed command（内置/用户/项目/插件）；仅技能命令携带 */
+  skillSource?: "builtin" | "user" | "project" | "plugin";
 }
+
+/** skillSource → 标签文案（与设置页技能来源 Tab 语义一致） */
+export const SKILL_SOURCE_LABELS: Record<
+  NonNullable<SlashCommand["skillSource"]>,
+  string
+> = {
+  builtin: "内置",
+  user: "用户",
+  project: "项目",
+  plugin: "插件",
+};
 
 interface SlashCommandsPopupProps {
   commands: SlashCommand[];
@@ -157,7 +170,19 @@ export const SlashCommandsPopup: React.FC<SlashCommandsPopupProps> = ({
                       }}
                       data-testid={`slash-command-${command.id}`}
                     >
-                      <div className="slash-command-name">/{command.name}</div>
+                      <div className="slash-command-name-row">
+                        <div className="slash-command-name">
+                          /{command.name}
+                        </div>
+                        {command.skillSource && (
+                          <span
+                            className={`slash-command-tag slash-command-tag-${command.skillSource}`}
+                            data-testid={`slash-command-source-${command.id}`}
+                          >
+                            {SKILL_SOURCE_LABELS[command.skillSource]}
+                          </span>
+                        )}
+                      </div>
                       {command.description && (
                         <div className="slash-command-description">
                           {command.description}

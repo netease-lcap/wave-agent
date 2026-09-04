@@ -71,6 +71,9 @@ export interface SlashCommand {
   id: string;
   name: string;
   description: string;
+  /** Source of a skill-backed command（内置/用户/项目/插件）。仅技能命令由 host
+   *  下发该字段，弹窗据此渲染来源标签；系统/插件/自定义命令无此字段。 */
+  skillSource?: "builtin" | "user" | "project" | "plugin";
 }
 
 // File mention types for @ file suggestion feature

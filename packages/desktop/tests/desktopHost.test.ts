@@ -312,7 +312,12 @@ vi.mock("../src/main/stdio/stdioAgent", () => ({
     connectMcpServer = vi.fn(async () => true);
     disconnectMcpServer = vi.fn(async () => true);
     getSlashCommands = vi.fn(async () => [
-      { id: "review", name: "review", description: "Code review" },
+      {
+        id: "review",
+        name: "review",
+        description: "Code review",
+        skillSource: "builtin",
+      },
     ]);
     getSkillMetadata = vi.fn(async () => [
       {
@@ -2744,6 +2749,26 @@ describe("misc commands", () => {
     const resp = sent("slashCommandsResponse")[0];
     const names = (resp.commands as Array<{ name: string }>).map((c) => c.name);
     expect(names).toContain("plan");
+  });
+
+  it("requestSlashCommands keeps skillSource on skill commands only", async () => {
+    const { host, sent } = await readyHost();
+    await host.handleWebviewMessage({
+      command: "requestSlashCommands",
+      filterText: "",
+    });
+
+    const resp = sent("slashCommandsResponse")[0];
+    const commands = resp.commands as Array<{
+      name: string;
+      skillSource?: "builtin" | "user" | "project" | "plugin";
+    }>;
+    // Skill command keeps its source for the popup tag…
+    const review = commands.find((c) => c.name === "review");
+    expect(review?.skillSource).toBe("builtin");
+    // …while local/system commands never carry a source tag.
+    const config = commands.find((c) => c.name === "config");
+    expect(config?.skillSource).toBeUndefined();
   });
 
   it("/plan outside plan mode switches to plan mode without sending a message", async () => {

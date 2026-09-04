@@ -8,7 +8,12 @@ import {
 // Component imports its CSS directly; stub it so jsdom doesn't need to parse styles.
 vi.mock("../../src/styles/SlashCommandsPopup.css", () => ({}));
 
-type Command = { id: string; name: string; description: string };
+type Command = {
+  id: string;
+  name: string;
+  description: string;
+  skillSource?: "builtin" | "user" | "project" | "plugin";
+};
 
 function renderPopup(commands: Command[], selectedIndex = 0) {
   const onSelect = vi.fn();
@@ -203,6 +208,69 @@ describe("SlashCommandsPopup grouping", () => {
         selector: ".slash-command-description",
       }),
     ).toBeInTheDocument();
+  });
+
+  describe("skill source tags", () => {
+    it("renders a source tag per skill command", () => {
+      const commands: Command[] = [
+        { id: "a", name: "a", description: "", skillSource: "builtin" },
+        { id: "b", name: "b", description: "", skillSource: "user" },
+        { id: "c", name: "c", description: "", skillSource: "project" },
+        { id: "d", name: "d", description: "", skillSource: "plugin" },
+      ];
+
+      renderPopup(commands);
+
+      const tagOf = (id: string) =>
+        within(screen.getByTestId(`slash-command-${id}`)).getByTestId(
+          `slash-command-source-${id}`,
+        );
+      expect(tagOf("a")).toHaveTextContent("内置");
+      expect(tagOf("b")).toHaveTextContent("用户");
+      expect(tagOf("c")).toHaveTextContent("项目");
+      expect(tagOf("d")).toHaveTextContent("插件");
+    });
+
+    it("renders no tag for commands without skillSource (system/local)", () => {
+      const commands: Command[] = [
+        { id: "config", name: "config", description: "配置" },
+        { id: "custom", name: "custom", description: "自定义" },
+      ];
+
+      renderPopup(commands);
+
+      expect(
+        within(screen.getByTestId("slash-command-config")).queryByTestId(
+          "slash-command-source-config",
+        ),
+      ).not.toBeInTheDocument();
+      expect(
+        within(screen.getByTestId("slash-command-custom")).queryByTestId(
+          "slash-command-source-custom",
+        ),
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders mixed skills with their own tags side by side", () => {
+      const commands: Command[] = [
+        {
+          id: "settings",
+          name: "settings",
+          description: "",
+          skillSource: "builtin",
+        },
+        { id: "loop", name: "loop", description: "", skillSource: "user" },
+      ];
+
+      renderPopup(commands);
+
+      expect(
+        screen.getByTestId("slash-command-source-settings"),
+      ).toHaveTextContent("内置");
+      expect(screen.getByTestId("slash-command-source-loop")).toHaveTextContent(
+        "用户",
+      );
+    });
   });
 });
 

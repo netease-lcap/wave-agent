@@ -499,6 +499,41 @@ describe("MessageHandler MCP handlers", () => {
     expect(btw?.description).toContain("旁路");
   });
 
+  test("slashCommandsRequest keeps skillSource on skill commands only", async () => {
+    const session = createMockSession();
+    (session.getSlashCommands as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "code-review",
+        name: "code-review",
+        description: "Code review skill",
+        skillSource: "project",
+      },
+    ]);
+
+    const { handler, context } = createHandler(session);
+    await handler.handleMessage(
+      { command: "requestSlashCommands", filterText: "" },
+      "tab",
+    );
+
+    const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as {
+      command: string;
+      commands: Array<{
+        id: string;
+        name: string;
+        description: string;
+        skillSource?: "builtin" | "user" | "project" | "plugin";
+      }>;
+    };
+    expect(posted.command).toBe("slashCommandsResponse");
+    const skill = posted.commands.find((c) => c.id === "code-review");
+    expect(skill?.skillSource).toBe("project");
+    // Local/system commands never carry a source tag.
+    const config = posted.commands.find((c) => c.id === "config");
+    expect(config?.skillSource).toBeUndefined();
+  });
+
   // Toggling a project-level builtin plugin (e.g. sdd@builtin) must recreate
   // agents — same as handleEnablePlugin — so the change takes effect, not just
   // refresh the projectSettings panel.
