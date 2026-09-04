@@ -339,9 +339,8 @@ export function setupAgentContainer(
       // Same gate for the builtin /artifact skill: refresh emits "refreshed"
       // so slash-command registration follows enableArtifact. Awaited (via the
       // awaited onReload) so skills are re-populated before Agent.create()
-      // returns — reloadFeatureGatedSkills() clears the skill map before
-      // rediscovering asynchronously, which would otherwise expose an empty
-      // skill list to callers right after create().
+      // returns — otherwise callers right after create() could observe a
+      // mid-refresh skill list.
       await skillManager.reloadFeatureGatedSkills().catch((error) => {
         logger.error("Failed to reload feature-gated skills:", error);
       });

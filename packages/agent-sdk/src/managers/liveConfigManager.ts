@@ -271,8 +271,8 @@ export class LiveConfigManager {
 
       // Trigger reload callback. Awaited so fire-and-forget work spawned by the
       // callback (e.g. skill rediscovery) completes before the reload resolves —
-      // otherwise Agent.create() can return with a cleared skill map (see race
-      // where refreshSkills() clears skillMetadata before async discoverSkills).
+      // otherwise Agent.create() can return while a skill rescan is still
+      // running (refreshSkills swaps caches atomically only after the scan).
       await this.options.onReload?.(this.currentConfiguration);
 
       return this.currentConfiguration;

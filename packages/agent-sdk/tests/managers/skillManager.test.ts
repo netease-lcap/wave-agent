@@ -445,54 +445,147 @@ describe("SkillManager", () => {
       vi.mocked(rm).mockResolvedValue(undefined);
     });
 
-    it("should delete a personal skill directory", async () => {
-      // Initialize with one personal skill
-      vi.mocked(readdir).mockImplementation(async (path) => {
-        if (path.toString().replace(/\\/g, "/").includes("skills")) {
-          return [
-            { name: "skill1", isDirectory: () => true },
-          ] as unknown as Awaited<ReturnType<typeof readdir>>;
-        }
-        return [] as unknown as Awaited<ReturnType<typeof readdir>>;
+    /**
+     * Mock the filesystem as a set of skill directories: root path -> child
+     * skill dir names. `rm` removes the child from the matching root, so a
+     * follow-up refresh re-scans the post-delete state exactly like the real
+     * filesystem would.
+     */
+    function mockDisk(dirs: Record<string, string[]>) {
+      const disk = new Map(
+        Object.entries(dirs).map(([root, children]) => [root, [...children]]),
+      );
+      vi.mocked(readdir).mockImplementation(async (p) => {
+        const children = disk.get(String(p).replace(/\\/g, "/"));
+        if (!children) return [];
+        return children.map((name) => ({
+          name,
+          isDirectory: () => true,
+        })) as unknown as Awaited<ReturnType<typeof readdir>>;
       });
       vi.mocked(stat).mockResolvedValue(
         {} as unknown as Awaited<ReturnType<typeof stat>>,
       );
-      vi.mocked(parseSkillFile).mockReturnValue({
-        isValid: true,
-        skillMetadata: { name: "skill1", skillPath: "/skills/skill1" },
-        content: "content",
-        frontmatter: { name: "skill1" },
-        validationErrors: [],
-      } as unknown as ReturnType<typeof parseSkillFile>);
+      vi.mocked(rm).mockImplementation(async (target) => {
+        const t = String(target).replace(/\\/g, "/");
+        for (const [root, children] of disk) {
+          if (t.startsWith(root + "/")) {
+            const child = t.slice(root.length + 1).split("/")[0];
+            const index = child ? children.indexOf(child) : -1;
+            if (index !== -1) children.splice(index, 1);
+          }
+        }
+      });
+      vi.mocked(parseSkillFile).mockImplementation((filePath) => {
+        const dir = path.dirname(String(filePath)).replace(/\\/g, "/");
+        const name = path.basename(dir);
+        return {
+          isValid: true,
+          skillMetadata: {
+            name,
+            description: `${name} description`,
+            skillPath: dir,
+          },
+          content: `---\nname: ${name}\n---\ncontent`,
+          frontmatter: { name },
+          validationErrors: [],
+        } as unknown as ReturnType<typeof parseSkillFile>;
+      });
+      return disk;
+    }
 
-      await skillManager.initialize();
+    it("should delete every same-named user-level copy in a single delete", async () => {
+      const wave = "/home/u/.wave/skills";
+      const claude = "/home/u/.claude/skills";
+      const agents = "/home/u/.agents/skills";
+      // 'dup' physically exists in all three user dirs, but discovery merges
+      // same-named copies into one name-keyed entry (the .wave copy wins).
+      mockDisk({
+        [wave]: ["dup", "keep"],
+        [claude]: ["dup"],
+        [agents]: ["dup"],
+      });
+      const manager = new SkillManager(container, {
+        personalSkillsPath: wave,
+        personalClaudeSkillsPath: claude,
+        personalAgentsSkillsPath: agents,
+        workdir: "/test/workdir",
+      });
+      await manager.initialize();
 
-      const deleted = await skillManager.deleteSkill("skill1");
+      const personal = manager
+        .getAvailableSkills()
+        .filter((s) => s.type === "personal");
+      expect(personal.map((s) => s.name)).toEqual(
+        expect.arrayContaining(["dup", "keep"]),
+      );
+      // one UI row, even though three physical copies exist
+      expect(personal.filter((s) => s.name === "dup")).toHaveLength(1);
+
+      const deleted = await manager.deleteSkill("dup");
 
       expect(deleted).toBe(true);
-      expect(rm).toHaveBeenCalledWith("/skills/skill1", {
-        recursive: true,
-        force: true,
+      for (const root of [wave, claude, agents]) {
+        expect(rm).toHaveBeenCalledWith(path.join(root, "dup"), {
+          recursive: true,
+          force: true,
+        });
+      }
+      // caches converge with disk before deleteSkill resolves: the duplicate
+      // must NOT resurface from a lower-priority directory (bug ②)
+      const after = manager
+        .getAvailableSkills()
+        .filter((s) => s.type === "personal");
+      expect(after.find((s) => s.name === "dup")).toBeUndefined();
+      expect(after.map((s) => s.name)).toContain("keep");
+      await manager.destroy();
+    });
+
+    it("should delete all same-named project copies without touching user dirs", async () => {
+      const waveProj = "/test/workdir/.wave/skills";
+      const claudeProj = "/test/workdir/.claude/skills";
+      const agentsProj = "/test/workdir/.agents/skills";
+      mockDisk({
+        [waveProj]: ["proj-skill"],
+        [claudeProj]: ["proj-skill"],
+        [agentsProj]: ["proj-skill"],
       });
+      const manager = new SkillManager(container, {
+        workdir: "/test/workdir",
+      });
+      await manager.initialize();
+
+      const deleted = await manager.deleteSkill("proj-skill");
+
+      expect(deleted).toBe(true);
+      for (const root of [waveProj, claudeProj, agentsProj]) {
+        expect(rm).toHaveBeenCalledWith(path.join(root, "proj-skill"), {
+          recursive: true,
+          force: true,
+        });
+      }
       expect(
-        skillManager.getAvailableSkills().find((s) => s.name === "skill1"),
+        manager.getAvailableSkills().find((s) => s.name === "proj-skill"),
       ).toBeUndefined();
+      await manager.destroy();
     });
 
     it("should return false for unknown skill", async () => {
       vi.mocked(readdir).mockResolvedValue([]);
-      await skillManager.initialize();
+      const manager = new SkillManager(container, { workdir: "/test/workdir" });
+      await manager.initialize();
 
-      const deleted = await skillManager.deleteSkill("nonexistent");
+      const deleted = await manager.deleteSkill("nonexistent");
 
       expect(deleted).toBe(false);
       expect(rm).not.toHaveBeenCalled();
+      await manager.destroy();
     });
 
     it("should refuse to delete builtin skills", async () => {
       vi.mocked(readdir).mockResolvedValue([]);
-      await skillManager.initialize();
+      const manager = new SkillManager(container, { workdir: "/test/workdir" });
+      await manager.initialize();
 
       // Register a builtin skill directly through the plugin-style map path
       const builtinSkill: Skill = {
@@ -505,12 +598,13 @@ describe("SkillManager", () => {
         isValid: true,
         errors: [],
       };
-      skillManager.registerPluginSkills("builtin", [builtinSkill]);
+      manager.registerPluginSkills("builtin", [builtinSkill]);
 
-      const deleted = await skillManager.deleteSkill("builtin:builtin-skill");
+      const deleted = await manager.deleteSkill("builtin:builtin-skill");
 
       expect(deleted).toBe(false);
       expect(rm).not.toHaveBeenCalled();
+      await manager.destroy();
     });
   });
 
