@@ -9,10 +9,11 @@
  *
  * Protocol (same command names the chat webview already uses):
  * - webview → host: `settingsReady`, `getConfiguration`, `getAgentsContent`,
- *   `setAgentsContent`, `closeSettings`, `prefillPrompt`（编辑操作随附
- *   `openFile`，host 在自身编辑器打开对应配置文件）
+ *   `setAgentsContent`, `getProjectSettings`, `setBuiltinPluginEnabled`,
+ *   `closeSettings`, `prefillPrompt`（编辑操作随附 `openFile`，host 在自身
+ *   编辑器打开对应配置文件）
  * - host → webview: `configurationResponse`, `agentsContentResponse`,
- *   `agentsContentSaved`, `settingsState` (workdir push on open)
+ *   `agentsContentSaved`, `projectSettings`, `settingsState` (workdir push on open)
  */
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -50,6 +51,11 @@ function SettingsPreview() {
   } | null>(null);
   // /agents、/skills 斜杠命令经 openSettings(nav) → settingsState 下发，选中对应选项卡
   const [initialNav, setInitialNav] = useState<NavKey | undefined>(undefined);
+  // 项目级 enabledPlugins（「项目设置」视图 SDD 开关）；进入该视图时才向 host
+  // 请求（onLoadProjectSettings），host 回发 projectSettings 消息后回填。
+  const [projectSettings, setProjectSettings] = useState<
+    { enabledPlugins: Record<string, boolean> } | undefined
+  >(undefined);
 
   useEffect(() => {
     // Report readiness before pulling data: the host re-serves the cached
@@ -103,6 +109,13 @@ function SettingsPreview() {
             error: typeof msg.error === "string" ? msg.error : undefined,
           });
           break;
+        case "projectSettings":
+          if (msg.enabledPlugins && typeof msg.enabledPlugins === "object") {
+            setProjectSettings({
+              enabledPlugins: msg.enabledPlugins as Record<string, boolean>,
+            });
+          }
+          break;
       }
     };
     window.addEventListener("message", handleMessage);
@@ -147,6 +160,18 @@ function SettingsPreview() {
       configurationError={configurationError}
       initialNav={initialNav}
       vscode={vscode}
+      projectSettings={projectSettings}
+      onLoadProjectSettings={() =>
+        vscode.postMessage({ command: "getProjectSettings" })
+      }
+      onToggleBuiltinPlugin={(pluginId, enabled) =>
+        vscode.postMessage({
+          command: "setBuiltinPluginEnabled",
+          pluginId,
+          enabled,
+          scope: "project",
+        })
+      }
       onPrefillPrompt={(prompt, openFile) => {
         vscode.postMessage({ command: "prefillPrompt", prompt });
         // 编辑操作：配置文件交给 IDE 自身打开（聊天输入框 prefill 之外，host 在
