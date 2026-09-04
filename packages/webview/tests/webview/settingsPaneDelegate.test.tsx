@@ -11,7 +11,7 @@ import {
   createMockVscode,
 } from "./test-utils";
 import React from "react";
-import { ChatApp } from "../../src/components/ChatApp";
+import { ChatApp, prunePanelGroupCache } from "../../src/components/ChatApp";
 import type { VsCodeApi } from "../../src/types";
 
 // Desktop host props，与 model-status-login-commands.test.tsx 的 desktop 用例保持一致。
@@ -179,7 +179,17 @@ describe("desktop pane 布局斜杠命令打开设置页", () => {
 describe("desktop pane 布局：设置页「新增/编辑」提示词预填进 focused 对话输入框", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // 面板分组缓存是模块级 —— 本 describe 的「编辑」用例会开文件面板，隔离各用例。
+    prunePanelGroupCache(new Set());
   });
+
+  const projectMcpServer = {
+    name: "project-db",
+    config: { url: "http://localhost:3400/mcp" },
+    scope: "project",
+    status: "connected",
+    toolCount: 3,
+  };
 
   it("pane-1（focused）开 MCP 设置点项目级「新增 MCP 服务」→ /settings 提示词写入 pane-1 输入框", async () => {
     render(
@@ -242,5 +252,134 @@ describe("desktop pane 布局：设置页「新增/编辑」提示词预填进 f
         /^\/settings 帮我配个用户级/,
       );
     });
+  });
+
+  // 设置页「编辑 MCP」= 预填编辑提示词 + 打开配置文件；桌面端打开去向为右侧
+  // 文件面板（只读，read/edit/write 工具路径点击同款），不再跳系统编辑器。
+  // openFile 与提示词走同一 prefill 委托下行——pane 布局落到 focused pane 自己
+  // 的面板，无 pane 单布局落 root 自己的面板。
+  it("pane-1（focused）编辑项目级 MCP → 提示词写入 pane-1 + pane-1 文件面板打开 .mcp.json", async () => {
+    // 1200px：文件面板与对话最小宽共存（addTab 空间守卫用真实 rect）。
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockReturnValue({ width: 1200, right: 1200 } as DOMRect);
+    try {
+      const vscode = createMockVscode();
+      render(
+        <ChatApp
+          vscode={vscode as unknown as VsCodeApi}
+          host={desktopHost([{ paneId: "pane-1" }, { paneId: "pane-2" }])}
+        />,
+      );
+      sendHostMessage(fixtures.authStatusResponse());
+
+      await typeInPane("pane-1", "/mcp");
+      sendHostMessage(fixtures.mcpServersResponse([projectMcpServer]));
+      sendHostMessage(
+        fixtures.mcpConfigPathsResponse(
+          "~/.wave/mcp.json",
+          "/work/a/.mcp.json",
+        ),
+      );
+      await act(async () => {
+        fireEvent.click(await screen.findByRole("tab", { name: /项目级 MCP/ }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /编辑/ }));
+      });
+
+      // 同新增用例：设置页关闭后 pane 行重挂载，回放 snapshot 输入框才就绪
+      sendHostMessage(fixtures.authStatusResponse());
+
+      // 提示词预填进 focused pane-1（编辑模板）；pane-2 不受影响
+      await waitFor(() => {
+        expect(paneInput("pane-1").textContent ?? "").toContain(
+          "帮我编辑 MCP 服务器project-db",
+        );
+      });
+      expect(paneInput("pane-2").textContent ?? "").not.toContain("帮我编辑");
+      // 项目级配置文件在 pane-1 自己的右侧文件面板打开（file tab + openFile RPC）
+      await waitFor(() => {
+        expect(
+          within(screen.getByTestId("desktop-pane-pane-1")).getByTestId(
+            "file-pane",
+          ),
+        ).toBeInTheDocument();
+      });
+      expect(vscode.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: "openFile",
+          path: "/work/a/.mcp.json",
+          host: "local",
+        }),
+      );
+      // pane-2 未开任何文件面板
+      expect(
+        within(screen.getByTestId("desktop-pane-pane-2")).queryByTestId(
+          "file-pane",
+        ),
+      ).not.toBeInTheDocument();
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
+  it("无 pane 单布局：编辑用户级 MCP → 提示词写入本实例输入框 + 本实例文件面板打开 mcp.json", async () => {
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockReturnValue({ width: 1200, right: 1200 } as DOMRect);
+    try {
+      const vscode = createMockVscode();
+      render(
+        <ChatApp
+          vscode={vscode as unknown as VsCodeApi}
+          host={desktopHost([])}
+        />,
+      );
+      sendHostMessage(fixtures.authStatusResponse());
+
+      await typeAndSend("/mcp");
+      sendHostMessage(
+        fixtures.mcpServersResponse([
+          {
+            name: "github",
+            config: {
+              command: "npx",
+              args: ["@modelcontextprotocol/server-github"],
+            },
+            scope: "user",
+            status: "disconnected",
+          },
+        ]),
+      );
+      sendHostMessage(
+        fixtures.mcpConfigPathsResponse(
+          "~/.wave/mcp.json",
+          "/work/a/.mcp.json",
+        ),
+      );
+      await act(async () => {
+        fireEvent.click(await screen.findByRole("button", { name: /编辑/ }));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("message-input").textContent ?? "").toContain(
+          "帮我编辑 MCP 服务器github",
+        );
+      });
+      // root 单布局：配置文件在本实例右侧文件面板打开
+      await waitFor(() => {
+        expect(screen.getByTestId("file-pane")).toBeInTheDocument();
+      });
+      expect(vscode.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: "openFile",
+          path: "~/.wave/mcp.json",
+          host: "local",
+        }),
+      );
+    } finally {
+      rectSpy.mockRestore();
+    }
   });
 });

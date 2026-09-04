@@ -389,6 +389,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     useState<PrefillDraftRequest | null>(null);
   // 每次「新建/编辑」点击递增，作 pane ChatApp effect 识别「新请求」的 nonce。
   const prefillNonceRef = useRef(0);
+  // prefill 请求附带的 openFile 打开动作（编辑配置：会话视图右侧文件面板）。
+  // 两个 prefill 应用 effect 位于 handleOpenFile 定义之前（组件体后部 const 有
+  // TDZ），经 ref 调用最新实现绕开声明顺序（同下方 togglePanelRef 模式）。
+  const openFileRef = useRef<(path: string) => void>(() => {});
   const [sessionBoardOpen, setSessionBoardOpen] = useState(false);
   // 桌面端主题偏好（host 为真源）：初值取 setInitialState.theme.source，此后随
   // host 广播（desktopThemeSource / 重推快照）同步，设置页「全局设置」主题行据此
@@ -1653,34 +1657,45 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 打开期间 chatContainer 卸载（settingsOpen 替换视图），MessageInput 重挂载
   // 后才能写入——用 prefillRequest + effect 在渲染后写入并聚焦。
   //
+  // openFile（编辑操作附带的配置文件路径）随同一请求下行：目标 ChatApp 在写入
+  // 提示词的同时把该文件打开到右侧文件面板（对齐消息路径点击同款面板），使
+  // 「编辑 = 回到会话视图预填 + 对照配置文件」一次完成。
+  //
   // FR-032 桌面 pane 布局：设置页全页挂在 root 实例（paneId undefined），而各
   // pane 的输入框在 DesktopShell 内的 pane-scoped ChatApp（ref 各自独立），root
   // 的 messageInputRef 恒 null——直接写会静默丢 prompt。此时捕获点击瞬间的
   // focused pane 作 targetPaneId，把请求留给 DesktopShell 下行到匹配 pane。
   const handlePrefillPrompt = useCallback(
-    (prompt: string) => {
+    (prompt: string, openFile?: string) => {
       setSettingsOpen(false);
       setSessionBoardOpen(false);
       const panes = host?.panes;
       if ((panes?.length ?? 0) > 0) {
         setPendingPrefill({
           prompt,
+          openFile,
           nonce: ++prefillNonceRef.current,
           targetPaneId: host?.focusedPaneId ?? panes?.[0]?.paneId,
         });
       } else {
-        setPendingPrefill({ prompt, nonce: ++prefillNonceRef.current });
+        setPendingPrefill({
+          prompt,
+          openFile,
+          nonce: ++prefillNonceRef.current,
+        });
       }
     },
     [host?.focusedPaneId, host?.panes],
   );
 
-  // root 单布局（无 pane）：chatContainer 重挂载完成后把待填提示词写入本地输入框。
-  // pane 布局的请求带 targetPaneId，改由 pane ChatApp 写回并回调清除，这里跳过。
+  // root 单布局（无 pane）：chatContainer 重挂载完成后把待填提示词写入本地输入框
+  // （编辑请求另把 openFile 经 openFileRef 打开到本实例的右侧文件面板）。pane
+  // 布局的请求带 targetPaneId，改由 pane ChatApp 写回并回调清除，这里跳过。
   useEffect(() => {
     if (settingsOpen || pendingPrefill === null) return;
     if (pendingPrefill.targetPaneId !== undefined) return;
     messageInputRef.current?.loadDraft(pendingPrefill.prompt);
+    if (pendingPrefill.openFile) openFileRef.current(pendingPrefill.openFile);
     setPendingPrefill(null);
   }, [settingsOpen, pendingPrefill]);
 
@@ -1990,10 +2005,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // pane-scoped ChatApp（paneId 非空，DesktopShell 内）：收到指向本 pane 的
   // prefillRequest（settings 关闭、pane 行重挂载后随行下发）→ 输入框就绪后
-  // loadDraft 并回调 root 清除。effect 以 nonce 变化识别新请求；仅匹配 pane
-  // 收到请求（DesktopShell 过滤 targetPaneId），故此 effect 无跨 pane 竞态。
-  // 若请求到达时输入框尚未挂载（宿主 snapshot 未回放），pending 保持不下发、
-  // 待 inputAreaMounted 翻转后本 effect 重跑补写。
+  // loadDraft 并回调 root 清除；编辑请求附带的 openFile 同时在右侧文件面板
+  // 打开（与单布局 root effect 同一路径，仅落点为本 pane 自己的面板）。
+  // effect 以 nonce 变化识别新请求；仅匹配 pane 收到请求（DesktopShell 过滤
+  // targetPaneId），故此 effect 无跨 pane 竞态。若请求到达时输入框尚未挂载
+  // （宿主 snapshot 未回放），pending 保持不下发、待 inputAreaMounted 翻转后
+  // 本 effect 重跑补写。
   const prefillRequestNonce = prefillRequest?.nonce;
   useEffect(() => {
     if (paneId === undefined) return;
@@ -2002,6 +2019,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     const input = messageInputRef.current;
     if (!input) return;
     input.loadDraft(prefillRequest.prompt);
+    if (prefillRequest.openFile) {
+      openFileRef.current(prefillRequest.openFile);
+    }
     onPrefillApplied?.(prefillRequest.nonce);
   }, [
     prefillRequest,
@@ -2518,6 +2538,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     },
     [isDesktop, addTab, effectiveHost, postToHost, vscode],
   );
+
+  // prefill 应用 effect（位于本 useCallback 定义之前）经 ref 调用最新
+  // handleOpenFile —— 打开编辑请求附带的配置文件到右侧文件面板。
+  useEffect(() => {
+    openFileRef.current = handleOpenFile;
+  }, [handleOpenFile]);
 
   // Desktop file panel auto-refresh (spec: 文件面板自动刷新): when the agent
   // finishes a Write/Edit on the file currently shown, re-read it (soft refresh
@@ -3045,7 +3071,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         })
       }
       onPrefillPrompt={handlePrefillPrompt}
-      onOpenExternalFile={handleOpenFileExternal}
     />
   ) : null;
 

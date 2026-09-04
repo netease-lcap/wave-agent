@@ -69,7 +69,7 @@ async function openSkillsCommand() {
 
 function renderSettingsPage(
   vscode?: { postMessage: (msg: unknown) => void },
-  props?: { onPrefillPrompt?: (prompt: string) => void },
+  props?: { onPrefillPrompt?: (prompt: string, openFile?: string) => void },
 ) {
   const mockVscode =
     vscode ||
@@ -260,7 +260,7 @@ describe("SettingsPage 技能选项卡视图（4 Tab + 项目 Tab 平铺）", ()
     );
   });
 
-  it("「编辑」→ 预填编辑提示词并发送 openFile（IDE 回退）", async () => {
+  it("「编辑」→ 预填编辑提示词并附 SKILL.md 路径（桌面文件面板/IDE 打开用）", async () => {
     const onPrefillPrompt = vi.fn();
     const { vscode } = renderSettingsPage(undefined, { onPrefillPrompt });
     sendHostMessage(fixtures.skillMetadataResponse([userSkill]));
@@ -274,11 +274,11 @@ describe("SettingsPage 技能选项卡视图（4 Tab + 项目 Tab 平铺）", ()
 
     expect(onPrefillPrompt).toHaveBeenCalledWith(
       expect.stringContaining("帮我改技能my-skill"),
+      "~/.wave/skills/my-skill.md",
     );
-    expect(vscode.postMessage).toHaveBeenCalledWith({
-      command: "openFile",
-      path: "~/.wave/skills/my-skill.md",
-    });
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "openFile" }),
+    );
   });
 
   it("「删除」→ 二次确认 → deleteSkill RPC", async () => {

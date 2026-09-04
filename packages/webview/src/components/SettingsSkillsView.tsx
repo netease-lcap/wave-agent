@@ -34,10 +34,9 @@ export interface SettingsSkillsViewProps {
   vscode?: { postMessage: (msg: unknown) => void };
   /** 当前工作目录（用于项目分组展示项目名） */
   workdir?: string;
-  /** 关闭设置页并预填 AI 对话框提示词 */
-  onPrefillPrompt?: (prompt: string) => void;
-  /** 用系统编辑器打开文件（desktop 走 desktopOpenFileExternal；IDE 回退 openFile） */
-  onOpenExternalFile?: (path: string) => void;
+  /** 关闭设置页并预填 AI 对话框提示词；编辑操作附带 openFile（配置文件路径）——
+   *  desktop 在会话视图右侧文件面板打开该文件；IDE 由 host 用自身编辑器打开。 */
+  onPrefillPrompt?: (prompt: string, openFile?: string) => void;
 }
 
 /** 技能来源 tab：插件技能（pluginName 设置）归 plugin，personal 归 user，其余按 type */
@@ -51,7 +50,6 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
   vscode,
   workdir,
   onPrefillPrompt,
-  onOpenExternalFile,
 }) => {
   const [skills, setSkills] = useState<SkillMetadata[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,19 +103,12 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
   };
 
   const handleEdit = (skill: SkillMetadata) => {
+    // 关闭设置页预填编辑提示词；同带 skillPath —— desktop 在会话视图右侧文件
+    // 面板打开该 SKILL.md、IDE 用自身编辑器打开，便于对照修改。
     onPrefillPrompt?.(
       `/settings 帮我改技能${skill.name}：把<要改的地方>改成<新内容/新行为>`,
+      skill.skillPath,
     );
-    openSkillFile(skill);
-  };
-
-  const openSkillFile = (skill: SkillMetadata) => {
-    if (!skill.skillPath) return;
-    if (onOpenExternalFile) {
-      onOpenExternalFile(skill.skillPath);
-      return;
-    }
-    vscode?.postMessage({ command: "openFile", path: skill.skillPath });
   };
 
   const handleConfirmDelete = () => {
