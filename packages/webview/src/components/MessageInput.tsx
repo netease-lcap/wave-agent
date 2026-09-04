@@ -1163,9 +1163,33 @@ export const MessageInput = forwardRef<
         "plan",
       ];
       if (localCommands.includes(command.name)) {
-        textareaRef.current.innerHTML = "";
-        setMessage("");
-        vscode.postMessage({ command: "updateInputContent", content: "" });
+        // 本地指令不能把 '/' 前的草稿整条清掉（历史 bug：无条件 innerHTML=""
+        // 静默丢弃草稿）。与下方技能指令分支一致：仅删除 [startPos, endPos)
+        // 的指令 token，保留其余文本，并把剩余文本上报宿主会话记忆。
+        textareaRef.current.focus();
+
+        const start = findTextOffset(
+          textareaRef.current,
+          slashCommand.startPos,
+        );
+        const end = findTextOffset(textareaRef.current, slashCommand.endPos);
+        if (start && end) {
+          const range = document.createRange();
+          range.setStart(start.node, start.offset);
+          range.setEnd(end.node, end.offset);
+          range.deleteContents();
+
+          const remaining = textareaRef.current.innerText;
+          setMessage(remaining);
+          // 立即持久化剩余草稿：随后打开的对话框/设置页可能卸载本输入框，
+          // 会取消 handleInput 里 150ms 防抖的保存。
+          vscode.postMessage({
+            command: "updateInputContent",
+            sessionId,
+            content: remaining,
+          });
+        }
+
         closeSlashCommandPopup();
         onSendMessage(`/${command.name}`);
         return;
@@ -1206,7 +1230,7 @@ export const MessageInput = forwardRef<
 
       closeSlashCommandPopup();
     },
-    [closeSlashCommandPopup, onSendMessage, vscode, slashCommand],
+    [closeSlashCommandPopup, onSendMessage, vscode, slashCommand, sessionId],
   );
 
   const handleSend = useCallback(() => {
