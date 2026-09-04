@@ -3,11 +3,13 @@
  *
  * Editable views (2026-09-01 用户拍板：语言/上下文长度/自动记忆恢复可编辑，
  * 经 updateConfiguration 写回，与旧设置弹窗一致；设置页只针对当前项目，
- * 删除项目切换按钮与 4 个管理视图的项目分组卡片):
+ * 删除项目切换按钮与 4 个管理视图的项目分组卡片；2026-09-04 拍板：
+ * 「个性化」AGENTS.md 一并恢复可编辑 + 独立保存，写回对应文件):
  * - 全局设置 (global): AI 回复语言下拉 + 主题选择（仅桌面端，即时生效）
  *   + 上下文长度输入 + 保存
  * - 项目设置 (project): SDD 内置插件开关（唯一交互控件，即时启停插件）
- * - 个性化 (personalization): AGENTS.md 只读 + 自动记忆开关/轮次输入 + 保存
+ * - 个性化 (personalization): AGENTS.md 可编辑（用户级/项目级文本区 + 独立保存，
+ *   经 setAgentsContent RPC 写回对应文件）+ 自动记忆开关/轮次输入 + 保存
  * - 钩子 (hooks): 用户级/项目级双 tab，按来源平铺展示已配置命令
  * - MCP 服务 (mcp): 用户级/项目级双 tab，服务器列表 + 连接状态 + 连接/断开
  * - 子代理 (subagents) / 技能 (skills): agent 定义与技能列表，内容自
@@ -60,6 +62,18 @@ export interface SettingsPageProps {
   projectAgentsContent: string | null;
   /** 加载 AGENTS.md（scope: "user"|"project"），ChatApp 收到 agentsContentResponse 后回填 */
   onLoadAgentsContent: (scope: "user" | "project") => void;
+  /** 保存 AGENTS.md（scope: "user"|"project"）：经 setAgentsContent RPC 写回
+   *  用户级 ~/.wave/AGENTS.md 或项目级 <workdir>/AGENTS.md，host 回发
+   *  agentsContentSaved 报告结果。未传入 = 宿主不支持写入（降级只读）。 */
+  onSaveAgentsContent?: (scope: "user" | "project", content: string) => void;
+  /** AGENTS.md 保存进行中（host 回包前为 true，用于禁用文本区与保存按钮） */
+  agentsSaving?: boolean;
+  /** AGENTS.md 保存结果（host 回发 agentsContentSaved），保存按钮反馈用 */
+  agentsSaveResult?: {
+    scope: "user" | "project";
+    ok: boolean;
+    error?: string;
+  } | null;
   /** 当前工作目录路径（用于个性化项目列表展示项目名），可空 */
   workdir?: string;
   /** 初始选中的导航项（/agents → subagents、/skills → skills 斜杠命令唤起时由外层传入） */
@@ -141,6 +155,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   userAgentsContent,
   projectAgentsContent,
   onLoadAgentsContent,
+  onSaveAgentsContent,
+  agentsSaving = false,
+  agentsSaveResult = null,
   workdir,
   initialNav,
   vscode,
@@ -240,6 +257,34 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     onSave({ ...configurationData, autoMemoryEnabled, autoMemoryFrequency });
   };
 
+  // AGENTS.md 保存反馈（与配置保存同构：agentsSaving 从 true → false + host 回包
+  // agentsSaveResult 即保存完成；文本区按钮在 agentsSaving 期间禁用）。
+  const [agentsSaveMessage, setAgentsSaveMessage] = useState<string | null>(
+    null,
+  );
+  const agentsSaveRequestedRef = useRef(false);
+
+  const handleSaveAgents = () => {
+    if (!onSaveAgentsContent) return;
+    setAgentsSaveMessage(null);
+    agentsSaveRequestedRef.current = true;
+    onSaveAgentsContent(
+      activeScope,
+      activeScope === "user" ? userContent : projectContent,
+    );
+  };
+
+  useEffect(() => {
+    if (agentsSaving || !agentsSaveRequestedRef.current) return;
+    if (!agentsSaveResult) return;
+    agentsSaveRequestedRef.current = false;
+    setAgentsSaveMessage(
+      agentsSaveResult.ok
+        ? "保存成功"
+        : `保存失败：${agentsSaveResult.error ?? "未知错误"}`,
+    );
+  }, [agentsSaving, agentsSaveResult]);
+
   // saving 从 true → false（host 回发 configurationResponse/configurationError）
   // 即保存完成，生成反馈；回包前不显示。
   useEffect(() => {
@@ -256,6 +301,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   useEffect(() => {
     setSaveMessage(null);
     saveRequestedRef.current = false;
+    setAgentsSaveMessage(null);
+    agentsSaveRequestedRef.current = false;
   }, [activeNav]);
 
   const handleToggleSdd = () => {
@@ -481,8 +528,31 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       value={
                         activeScope === "user" ? userContent : projectContent
                       }
-                      readOnly
+                      disabled={agentsSaving}
+                      onChange={(e) => {
+                        if (activeScope === "user") {
+                          setUserContent(e.target.value);
+                        } else {
+                          setProjectContent(e.target.value);
+                        }
+                      }}
                     />
+                    {agentsSaveMessage && (
+                      <p className="settings-save-message agents-save-message">
+                        {agentsSaveMessage}
+                      </p>
+                    )}
+                    <div className="settings-actions">
+                      <button
+                        type="button"
+                        className="settings-save-btn"
+                        disabled={!onSaveAgentsContent || agentsSaving}
+                        onClick={handleSaveAgents}
+                      >
+                        保存{activeScope === "project" ? "项目级" : "用户级"}
+                        配置
+                      </button>
+                    </div>
                   </div>
                 </div>
               </section>

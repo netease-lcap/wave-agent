@@ -9,10 +9,10 @@
  *
  * Protocol (same command names the chat webview already uses):
  * - webview → host: `settingsReady`, `getConfiguration`, `getAgentsContent`,
- *   `closeSettings`, `prefillPrompt`（编辑操作随附 `openFile`，host 在自身
- *   编辑器打开对应配置文件）
+ *   `setAgentsContent`, `closeSettings`, `prefillPrompt`（编辑操作随附
+ *   `openFile`，host 在自身编辑器打开对应配置文件）
  * - host → webview: `configurationResponse`, `agentsContentResponse`,
- *   `settingsState` (workdir push on open)
+ *   `agentsContentSaved`, `settingsState` (workdir push on open)
  */
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -40,6 +40,14 @@ function SettingsPreview() {
   const [projectAgentsContent, setProjectAgentsContent] = useState<
     string | null
   >(null);
+  // AGENTS.md 保存状态（「个性化」视图独立保存）：agentsSaving 在点击保存到
+  // host 回发 agentsContentSaved 之间为 true（禁用按钮），结果带 ok/error 供反馈。
+  const [agentsSaving, setAgentsSaving] = useState(false);
+  const [agentsSaveResult, setAgentsSaveResult] = useState<{
+    scope: "user" | "project";
+    ok: boolean;
+    error?: string;
+  } | null>(null);
   // /agents、/skills 斜杠命令经 openSettings(nav) → settingsState 下发，选中对应选项卡
   const [initialNav, setInitialNav] = useState<NavKey | undefined>(undefined);
 
@@ -87,6 +95,14 @@ function SettingsPreview() {
             );
           }
           break;
+        case "agentsContentSaved":
+          setAgentsSaving(false);
+          setAgentsSaveResult({
+            scope: msg.scope === "project" ? "project" : "user",
+            ok: msg.ok === true,
+            error: typeof msg.error === "string" ? msg.error : undefined,
+          });
+          break;
       }
     };
     window.addEventListener("message", handleMessage);
@@ -114,6 +130,18 @@ function SettingsPreview() {
           workdir: scope === "project" ? workdir : undefined,
         })
       }
+      onSaveAgentsContent={(scope, content) => {
+        setAgentsSaving(true);
+        setAgentsSaveResult(null);
+        vscode.postMessage({
+          command: "setAgentsContent",
+          scope,
+          content,
+          workdir: scope === "project" ? workdir : undefined,
+        });
+      }}
+      agentsSaving={agentsSaving}
+      agentsSaveResult={agentsSaveResult}
       workdir={workdir}
       saving={saving}
       configurationError={configurationError}

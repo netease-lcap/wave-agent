@@ -385,6 +385,11 @@
   padding: 12px 0;
 }
 
+/* AGENTS.md 保存反馈：文本区下方整行左对齐展示（保存按钮在其右对齐行） */
+.agents-editor .agents-save-message {
+  align-self: stretch;
+}
+
 .project-list {
   display: flex;
   align-self: stretch;
@@ -676,7 +681,10 @@
 }
 
 .settings-tag-off {
-  background: var(--vscode-inputValidation-errorBackground, rgba(244, 135, 113, 0.2));
+  background: var(
+    --vscode-inputValidation-errorBackground,
+    rgba(244, 135, 113, 0.2)
+  );
   color: var(--vscode-errorForeground, #f48771);
 }
 

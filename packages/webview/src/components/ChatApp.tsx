@@ -395,6 +395,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [projectAgentsContent, setProjectAgentsContent] = useState<
     string | null
   >(null);
+  // AGENTS.md 保存状态（设置「个性化」视图）：点击保存置 pending，host 回发
+  // agentsContentSaved 后落定并携带 ok/error 供文本区反馈。
+  const [agentsSaving, setAgentsSaving] = useState(false);
+  const [agentsSaveResult, setAgentsSaveResult] = useState<{
+    scope: "user" | "project";
+    ok: boolean;
+    error?: string;
+  } | null>(null);
   // 该实例是否占据窗口最左侧（其顶栏需承载「侧边栏收起 → 展开按钮 + 红绿灯让
   // 位段」）：root 单布局（paneId undefined），或 DesktopShell 首行首 pane
   //（firstPane 由 shell 显式标记）。身份与收起状态都同源于 context —— 运行期
@@ -1434,6 +1442,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             );
           }
           break;
+        case "agentsContentSaved":
+          // AGENTS.md save outcome push (setAgentsContent RPC reply), untagged
+          // like agentsContentResponse — consumed only by the settings page.
+          setAgentsSaving(false);
+          setAgentsSaveResult({
+            scope: message.scope === "project" ? "project" : "user",
+            ok: message.ok === true,
+            error:
+              typeof message.error === "string" ? message.error : undefined,
+          });
+          break;
         case "loginResponse":
           if (message.success) {
             dispatch({ type: "SET_AUTHENTICATED", payload: true });
@@ -1972,6 +1991,23 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       });
     },
     [vscode],
+  );
+
+  // 设置「个性化」AGENTS.md 编辑器保存：经 setAgentsContent RPC 写回文件（用户级
+  // ~/.wave/AGENTS.md / 项目级 <workdir>/AGENTS.md），agentsContentSaved 推送报告
+  // 结果并复位 agentsSaving。项目作用域携带当前 workdir 供 host 解析目标文件。
+  const handleSaveAgentsContent = useCallback(
+    (scope: "user" | "project", content: string) => {
+      setAgentsSaving(true);
+      setAgentsSaveResult(null);
+      vscode.postMessage({
+        command: "setAgentsContent",
+        scope,
+        content,
+        workdir: scope === "project" ? effectiveWorkdir : undefined,
+      });
+    },
+    [vscode, effectiveWorkdir],
   );
 
   // A message counts as chat content only when the UI renders it — hidden meta
@@ -3044,6 +3080,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           workdir: scope === "project" ? effectiveWorkdir : undefined,
         })
       }
+      onSaveAgentsContent={handleSaveAgentsContent}
+      agentsSaving={agentsSaving}
+      agentsSaveResult={agentsSaveResult}
       workdir={effectiveWorkdir}
       saving={state.configurationLoading}
       configurationError={state.configurationError}
