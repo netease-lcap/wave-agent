@@ -1101,31 +1101,6 @@
   max-width: 768px;
 }
 
-/* 预览标签（Figma 13561:39645）：r8 圆角（非胶囊 r13）、文字 14px、
-   pad 左右 8、激活底色 #F0F2F5（--cc-fill）；深色保持中性 10% 前景 */
-[data-host="desktop"] .preview-tab {
-  border-radius: 8px;
-  font-size: 14px;
-  padding: 0 4px 0 8px;
-}
-[data-host="desktop"][data-theme="light"] .preview-tab.active {
-  background: #f0f2f5;
-  color: #1f2329;
-}
-
-/* hover 底色对齐设计系统 fill-hover（base vscode list-hoverBackground 蓝灰
-   调 #2a2d2e / rgba(0,0,0,.08) 未入规范；桌面同类 hover 统一 #EEF0F3 /
-   dark 8% 白 —— queued-item/菜单项先例）。active 标签 hover 保持激活底
-   （激活色更浅，hover 不覆盖为深一档的 fill-hover）。 */
-[data-host="desktop"][data-theme="light"] .preview-tab:not(.active):hover,
-[data-host="desktop"][data-theme="light"] .preview-tab:not(.active):focus-visible {
-  background: #eef0f3;
-}
-[data-host="desktop"][data-theme="dark"] .preview-tab:not(.active):hover,
-[data-host="desktop"][data-theme="dark"] .preview-tab:not(.active):focus-visible {
-  background: rgba(255, 255, 255, 0.08);
-}
-
 /* ═══ 第十八轮：预览面板工具栏（对齐原型 InspectorPanel.vue）═══════
    参考 codechat-ui InspectorPanel.vue + global.css：地址栏 44px 高 / 白底
    #FFF（--cc-bg-panel）/ 底分隔线 #EBEEF5（--cc-border-lighter）；地址输入框
@@ -1133,16 +1108,8 @@
    （figma-icon-button）/ r4 / 图标 #565A60 / hover #EEF0F3（--cc-fill-hover）；
    深色映射沿用 wave 约定：12% 白边 / 6% 白底 / 8% 白 hover。 */
 
-/* ═══ 第二十七轮：预览头部背景（用户评论 ①toolbar 深色不应有背景 ②tab-bar
-   浅色不应有背景）═══════
-   ① 深色 toolbar 去 #27292B 背景 → 透明，头部与 pane 底色 #181818 连为一体；
-   ② 浅色 tab-bar 透明时露出 pane 灰 #F7F8FB，被感知为背景色 → 补白底 #FFF，
-      与浅色 toolbar 白底连续成统一头部（对齐 codechat preview-tabbar 白底）。 */
-
-[data-host="desktop"][data-theme="light"] .preview-tab-bar {
-  background: #ffffff;
-  border-bottom-color: #ebeef5;
-}
+/* ═══ 第二十七轮：预览头部背景（用户评论 toolbar 深色不应有背景）═══════
+   深色 toolbar 去 #27292B 背景 → 透明，头部与 pane 底色 #181818 连为一体。 */
 
 [data-host="desktop"][data-theme="light"] .preview-pane-toolbar {
   background: #ffffff;

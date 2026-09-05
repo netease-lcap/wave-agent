@@ -64,14 +64,6 @@ import { isMacHiddenTitlebar } from "../utils/platform";
 import { chatReducer, initialState } from "../reducers/chatReducer";
 import "../styles/ChatApp.css";
 
-/** Desktop conversation-level panels: fixed left→right order regardless of check order. */
-export const PANEL_ORDER: DesktopPanelKind[] = [
-  "preview",
-  "plan",
-  "diff",
-  "terminal",
-  "file",
-];
 /** Chinese names shown in the panel tabs / space hints. */
 export const PANEL_LABELS: Record<DesktopPanelKind, string> = {
   preview: "预览",
@@ -2792,7 +2784,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           onRetry={currentForward ? handleRemotePreviewRetry : undefined}
           vscode={vscode}
           onAddComment={handleAddComment}
-          onLastTabClosed={() => handleCloseTab(id)}
           onTitleChange={(title) => {
             setTabs((prev) =>
               prev.map((t) =>
