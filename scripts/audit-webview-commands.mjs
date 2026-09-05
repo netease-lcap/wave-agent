@@ -138,6 +138,10 @@ const SPECIFIC_REQUIREMENTS = {
   // IDE chat 外壳点「设置」→ postMessage openSettings 让 host 开编辑器区
   // settings tab；desktop 全页设置是内部 state 切换，不发消息。
   openSettings: { vscode_chat: true, jetbrains: true },
+  // clearChat：/clear 拦截与 ChatHeader「新建对话」按钮仅 IDE 端可达——桌面端
+  // /clear 已于 2026-09-05 整端移除（ChatApp 拦截加 !isDesktop 门控、ChatHeader
+  // 新建对话按钮桌面端 hideSessionButtons 隐藏），不再要求 desktop 注册。
+  clearChat: { vscode_chat: true, jetbrains: true },
 };
 
 /**
