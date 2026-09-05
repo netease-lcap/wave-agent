@@ -760,7 +760,7 @@ export class DesktopHost {
    * Pull the authoritative message list (getMessages RPC) into the agent's
    * cache and push it to the pane's webview as updateMessages. Replaces the
    * removed full-snapshot messagesChange push for structural transitions
-   * (compact / clearChat / rewind) where incremental events can't rebuild the
+   * (compact / rewind) where incremental events can't rebuild the
    * list. Binding is re-checked after the RPC — the agent may have been
    * rebound while the request was in flight.
    */
@@ -952,7 +952,7 @@ export class DesktopHost {
       // NOTE: no full-list push here. The server no longer emits messagesChange;
       // the cache is kept fresh via incremental appends below (user/assistant
       // adds) and pull-based refreshes on structural transitions
-      // (webviewReady / restore / compact / clearChat / rewind) via
+      // (webviewReady / restore / compact / rewind) via
       // getMessages(). Full-list pushes to the webview happen only through
       // pullAndPushMessages (updateMessages) and pushPaneSessionState
       // (setInitialState).
@@ -1177,8 +1177,9 @@ export class DesktopHost {
           });
           this.pushPanes();
         }
-        // /clear 换来的新空会话不进索引（否则侧边栏出现空标题条目）；与品牌
-        // 新会话一致，待首条用户消息时由 ensureSessionRegistered 登记。
+        // sessionId 换新后仍是空会话（无消息）时不进索引（否则侧边栏出现空
+        // 标题条目）；与品牌新会话一致，待首条用户消息时由 ensureSessionRegistered
+        // 登记。
         if (agentRef.messages.length > 0) {
           this.registerSessionInIndex(agentRef, sessionId);
           this.refreshSessionTree();
@@ -3032,21 +3033,6 @@ export class DesktopHost {
         const agent = this.agentForPane(pid);
         if (agent) this.userAbortedAgents.add(agent);
         await agent?.abortMessage();
-        break;
-      }
-
-      case "clearChat": {
-        // 与 IDE 插件对齐：/clear 原地清空当前会话（agent.clearMessages 会
-        // 中止进行中的生成并换新 sessionId），不 spawn 新 agent。clearMessages
-        // 触发的 sessionIdChange 在 RPC 中途到达——先把缓存清空，让该处理器
-        // 的空会话守卫（messages.length > 0）仍然成立；随后按需拉取权威的
-        // （已清空的）列表并推给 webview。
-        const agent = this.agentForPane(pid);
-        if (agent) {
-          agent.messages = [];
-          await agent.clearMessages();
-          await this.pullAndPushMessages(agent, pid);
-        }
         break;
       }
 
@@ -5559,7 +5545,6 @@ export class DesktopHost {
         { id: "plugin", name: "plugin", description: "打开插件管理" },
         { id: "mcp", name: "mcp", description: "打开 MCP 服务器管理" },
         { id: "status", name: "status", description: "查看当前状态" },
-        { id: "clear", name: "clear", description: "清除对话历史并重置会话" },
         { id: "compact", name: "compact", description: "手动压缩对话历史" },
         { id: "tasks", name: "tasks", description: "查看后台任务" },
         { id: "workflows", name: "workflows", description: "查看工作流运行" },

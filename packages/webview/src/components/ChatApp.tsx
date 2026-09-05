@@ -1530,7 +1530,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   }, [pickerWorkdir, isDesktop, postToHost, paneId]);
 
   const handleClearChat = useCallback(() => {
-    // /clear 斜杠命令：三端统一为"原地清空当前会话"，streaming 期间忽略。
+    // /clear 斜杠命令 + ChatHeader「新建对话」按钮：原地清空当前会话，streaming
+    // 期间忽略。仅 IDE 端可达（桌面端 /clear 已整端移除 2026-09-05，「新建对话」
+    // 按钮也被 hideSessionButtons={isDesktop} 隐藏 —— 见 handleSendMessage）。
     if (stateRef.current.isStreaming) return;
 
     postToHost({
@@ -1741,7 +1743,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       if (!trimmedText && (!images || images.length === 0)) return;
 
       // Intercept local slash commands — open dialogs instead of sending to agent
-      if (trimmedText === "/clear") {
+      // Desktop: /clear 已整端移除（2026-09-05 拍板），不再拦截 —— 手动敲 /clear
+      // 作为普通消息发送（SDK 从未注册 clear，发给模型无害）；IDE 端保留拦截。
+      if (!isDesktop && trimmedText === "/clear") {
         handleClearChat();
         return;
       }
@@ -1880,6 +1884,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       });
     },
     [
+      isDesktop,
       handleClearChat,
       handleOpenSettings,
       host,
