@@ -46,7 +46,8 @@
   min-width: 0;
 }
 
-/* 退出登录：危险色 + 上分隔线（spec「账户卡片」场景 4）. */
+/* 退出登录：危险色 + 上分隔线（spec desktop-account-and-settings.md「账户卡片 ·
+ * 个人信息行与纯功能菜单」场景 3）. */
 .more-menu-separator {
   height: 1px;
   margin: 4px 0;

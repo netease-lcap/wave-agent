@@ -177,7 +177,8 @@ describe("ChatApp desktop panel framework", () => {
 
       const empty = screen.getByTestId("preview-pane-empty");
       // Never-dragged slot: opening auto-fills the space beyond the
-      // conversation minimum (1024 - 360 = 664, spec「面板自动铺满剩余空间」).
+      // conversation minimum (1024 - 360 = 664, spec desktop-panels.md「右侧面板 ·
+      // 展开/折叠、空间守卫与欢迎页共存」场景 7-9).
       expect(empty.style.width).toBe("664px");
 
       // The drag handle lives on the shared slot (not inside each pane), so the
@@ -230,7 +231,8 @@ describe("ChatApp desktop panel framework", () => {
   it("a panel opens auto-filled to the space beyond the conversation minimum", () => {
     window.waveHostType = "desktop";
     // 800px: 800 - 360 = 440 ≥ the 320px minimum — the never-dragged slot
-    // auto-fills to 440 (「面板自动铺满剩余空间」, not the 420px default).
+    // auto-fills to 440 (spec desktop-panels.md「右侧面板 · 展开/折叠、空间守卫
+    // 与欢迎页共存」场景 7-9, not the 420px default).
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockReturnValue({ width: 800, right: 800 } as DOMRect);

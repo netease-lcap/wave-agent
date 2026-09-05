@@ -1,4 +1,4 @@
-/* 桌面侧边栏账户卡片 (spec desktop-account-card-and-panel-tabs.md). */
+/* 桌面侧边栏账户卡片 (spec desktop-account-and-settings.md「账户卡片」). */
 .account-card {
   flex-shrink: 0;
   display: flex;

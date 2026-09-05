@@ -44,7 +44,8 @@ interface DesktopShellProps {
   onLogout: () => void;
   /** 侧边栏底部账户卡片 (desktopAccountInfo push). */
   account?: AccountCardAccount | null;
-  /** 账户卡片更新按钮 S0–S6（spec desktop-account-card-and-panel-tabs.md）. */
+  /** 账户卡片更新按钮 S0–S6（spec desktop-account-and-settings.md「账户卡片 ·
+   * 更新按钮状态机 S0–S6」）. */
   onDownloadUpdate?: () => void;
   onRestartApp?: () => void;
   /** Batch 2 settings full-page: rendered over the pane rows when open. */
