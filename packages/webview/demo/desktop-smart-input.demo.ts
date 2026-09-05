@@ -85,7 +85,7 @@ test.describe("Desktop smart-input screenshots", () => {
         { id: "fix", name: "fix", description: "修复代码问题" },
         { id: "review", name: "review", description: "审查代码变更" },
         { id: "model", name: "model", description: "切换 AI 模型" },
-        { id: "clear", name: "clear", description: "清除对话历史并重置会话" },
+        // 桌面端 /clear 已移除（2026-09-05），popup 不再含 clear 条目。
       ],
     });
     await webviewPage.waitForSelector(".slash-command-item", {

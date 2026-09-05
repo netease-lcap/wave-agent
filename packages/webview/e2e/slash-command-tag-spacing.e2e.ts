@@ -55,7 +55,6 @@ async function openPopupWithSkills(
   await injector.simulateExtensionMessage("slashCommandsResponse", {
     commands: [
       { id: "model", name: "model", description: "切换 AI 模型" },
-      { id: "clear", name: "clear", description: "清除对话历史并重置会话" },
       {
         id: "artifact",
         name: "artifact",
@@ -96,12 +95,8 @@ test.describe("Slash popup skill tag spacing", () => {
     webviewPage,
   }) => {
     const rows = await openPopupWithSkills(webviewPage);
-    expect(rows.map((r) => r.name)).toEqual([
-      "/model",
-      "/clear",
-      "/artifact",
-      "/loop",
-    ]);
+    // 桌面端 /clear 已移除（2026-09-05），popup 不再含 /clear 条目。
+    expect(rows.map((r) => r.name)).toEqual(["/model", "/artifact", "/loop"]);
 
     const tagged = rows.filter((r) => r.tagBottom !== null);
     expect(tagged.map((r) => r.name)).toEqual(["/artifact", "/loop"]);

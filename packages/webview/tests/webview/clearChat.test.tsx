@@ -1,13 +1,18 @@
 import { describe, it, expect } from "vitest";
 import {
+  render,
   renderChatApp,
   screen,
   fireEvent,
   act,
   sendCommand,
+  sendHostMessage,
   fireInput,
+  createMockVscode,
+  fixtures,
 } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
+import { ChatApp } from "../../src/components/ChatApp";
 
 describe("Clear Chat Functionality", () => {
   it("should clear all messages except welcome message", () => {
@@ -296,3 +301,66 @@ describe("Clear Chat Functionality", () => {
     expect(messagesContainer).not.toHaveTextContent("Old response");
   });
 });
+
+// Desktop /clear 整端移除（2026-09-05 拍板）：桌面端不再拦截 /clear —— 手动敲
+// /clear 作为普通消息发给宿主（SDK 从未注册 clear → 发给模型，无害）。
+// IDE 端仍拦截（见上方 "should still send clearChat via the /clear slash command"）。
+describe("Desktop: /clear removed", () => {
+  it("sends /clear as a plain message instead of intercepting clearChat", async () => {
+    const { vscode } = renderDesktopChatApp();
+
+    vscode.postMessage.mockClear();
+
+    const input = screen.getByTestId("message-input");
+    act(() => {
+      input.textContent = "/clear";
+    });
+    await fireInput(input, { data: "/clear", inputType: "insertText" });
+    act(() => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "sendMessage", text: "/clear" }),
+    );
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "clearChat" }),
+    );
+  });
+});
+
+// Render a desktop-mode ChatApp (mirrors desktopThemeSource.test.tsx): the
+// message input renders after authStatusResponse + setInitialState arrive.
+function renderDesktopChatApp() {
+  const vscode = createMockVscode();
+  const result = render(
+    <ChatApp
+      vscode={vscode as never}
+      host={
+        {
+          type: "desktop",
+          host: "local",
+          hosts: ["local"],
+          recentWorkdirs: [],
+          workdir: "/work/a",
+          sessionTree: [],
+          panes: [{ paneId: "pane-1" }],
+          focusedPaneId: "pane-1",
+          onSelectWorkdir: () => {},
+          onSelectRecentWorkdir: () => {},
+          onRemoveRecentWorkdir: () => {},
+          onSelectHost: () => {},
+          onAddHost: () => {},
+          onSelectRemotePath: () => {},
+          onListRemoteDir: () => {},
+          onSelectSession: () => {},
+          onDeleteSession: () => {},
+          onOpenPane: () => {},
+        } as never
+      }
+    />,
+  );
+  sendHostMessage(fixtures.authStatusResponse());
+  sendHostMessage(fixtures.setInitialState());
+  return { ...result, vscode };
+}

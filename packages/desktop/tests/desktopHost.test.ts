@@ -2622,57 +2622,22 @@ describe("misc commands", () => {
     expect(lastAgent().sendMessage).not.toHaveBeenCalled();
   });
 
-  it("clearChat clears the active session in place instead of spawning a new agent", async () => {
-    const { host, sent } = await readyHost();
+  it("clearChat is a no-op after desktop /clear removal (2026-09-05)", async () => {
+    const { host, send } = await readyHost();
     const agent = lastAgent();
     agent.messages = [{ id: "m1" }];
     const before = h.agentInstances.length;
+    const sendsBefore = send.mock.calls.length;
 
     await host.handleWebviewMessage({ command: "clearChat" });
 
-    expect(agent.clearMessages).toHaveBeenCalled();
+    // Desktop /clear was removed end-to-end: the webview no longer intercepts
+    // /clear nor sends clearChat, so the host must not clear messages, spawn a
+    // new agent, or push anything in response.
+    expect(agent.clearMessages).not.toHaveBeenCalled();
+    expect(agent.messages).toEqual([{ id: "m1" }]);
     expect(h.agentInstances).toHaveLength(before);
-    // The pane gets the cleared list pushed and follows the new session id.
-    expect(sent("updateMessages").at(-1)?.messages).toEqual([]);
-    expect(sent("updateCurrentSession").at(-1)).toMatchObject({
-      session: { id: agent.sessionId },
-    });
-  });
-
-  it("clearChat does not register the cleared empty session in the sidebar index", async () => {
-    const { host, store } = await readyHost();
-    const agent = lastAgent();
-    agent.messages = [{ id: "m1" }];
-
-    await host.handleWebviewMessage({ command: "clearChat" });
-
-    expect(agent.sessionId).toBeDefined();
-    expect(
-      store.getSessionIndex().find((e) => e.sessionId === agent.sessionId),
-    ).toBeUndefined();
-  });
-
-  it("registers the cleared session in the index on the first user message after clear", async () => {
-    const { host, store } = await readyHost();
-    const agent = lastAgent();
-    agent.messages = [{ id: "m1" }];
-    await host.handleWebviewMessage({ command: "clearChat" });
-    const newId = agent.sessionId;
-    expect(
-      store.getSessionIndex().find((e) => e.sessionId === newId),
-    ).toBeUndefined();
-
-    const userMessage = {
-      id: "u1",
-      role: "user",
-      blocks: [{ type: "text", content: "清空后的第一条消息" }],
-    };
-    agent.messages = [userMessage];
-    agent.callbacks.onUserMessageAdded(userMessage);
-
-    expect(
-      store.getSessionIndex().find((e) => e.sessionId === newId),
-    ).toBeDefined();
+    expect(send.mock.calls.length).toBe(sendsBefore);
   });
 
   it("restoreSession forwards to the agent and refreshes the session tree", async () => {
@@ -2724,19 +2689,20 @@ describe("misc commands", () => {
     const names = (resp.commands as Array<{ name: string }>).map((c) => c.name);
     expect(names).toContain("review");
     expect(names).toContain("config");
-    expect(names).toContain("clear");
+    // Desktop /clear removed (2026-09-05): the popup must not list clear.
+    expect(names).not.toContain("clear");
   });
 
   it("requestSlashCommands filters by text", async () => {
     const { host, sent } = await readyHost();
     await host.handleWebviewMessage({
       command: "requestSlashCommands",
-      filterText: "cle",
+      filterText: "mode",
     });
 
     const resp = sent("slashCommandsResponse")[0];
     const names = (resp.commands as Array<{ name: string }>).map((c) => c.name);
-    expect(names).toEqual(["clear"]);
+    expect(names).toEqual(["model"]);
   });
 
   it("requestSlashCommands includes plan in the merged list", async () => {
