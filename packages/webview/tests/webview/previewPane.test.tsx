@@ -51,7 +51,6 @@ function renderPane(options?: {
   onAddComment?: (text: string) => void;
   originalUrl?: string;
   onRetry?: () => void;
-  onLastTabClosed?: () => void;
   onTitleChange?: (title: string) => void;
   onNavigate?: (url: string) => void;
 }) {
@@ -60,7 +59,6 @@ function renderPane(options?: {
   const onAddComment = options?.onAddComment ?? vi.fn();
   const originalUrl = options?.originalUrl;
   const onRetry = options?.onRetry;
-  const onLastTabClosed = options?.onLastTabClosed ?? vi.fn();
   const onTitleChange = options?.onTitleChange ?? vi.fn();
   const onNavigate = options?.onNavigate ?? vi.fn();
   // Controlled-width harness: PreviewPane no longer owns its width state.
@@ -80,7 +78,6 @@ function renderPane(options?: {
       onAddComment={onAddComment}
       originalUrl={originalUrl}
       onRetry={onRetry}
-      onLastTabClosed={onLastTabClosed}
       onTitleChange={onTitleChange}
       onNavigate={onNavigate}
     />
@@ -106,7 +103,6 @@ function renderPane(options?: {
     wv,
     url,
     onAddComment,
-    onLastTabClosed,
     onTitleChange,
     onNavigate,
   };

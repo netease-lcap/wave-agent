@@ -161,10 +161,6 @@ export interface PreviewPaneProps {
   /** Remote sessions: re-establish the port forward on error retry (scenario
    * 16). Undefined for local URLs, where the retry reloads the guest instead. */
   onRetry?: () => void;
-  /** Kept for parent API compatibility — single-window preview has no tab
-   * bar and no close button of its own (关闭统一由一级 tab 控制), so this
-   * never fires. */
-  onLastTabClosed?: () => void;
   /** The guest page's title (webview page-title-updated) — the parent shows
    * it on the panel tab like a regular browser tab. */
   onTitleChange?: (title: string) => void;
