@@ -5,7 +5,7 @@
  * Releases.
  *
  * The host drives the S0–S6 update button state machine (spec
- * desktop-account-card-and-panel-tabs.md「更新按钮状态机」): a check only
+ * desktop-account-and-settings.md「账户卡片 · 更新按钮状态机」): a check only
  * *announces* an update (`update-available` → status idle, the card shows the
  * 更新 button); the download starts only after the user confirms in the S2
  * dialog (`startDownload`, which the host precedes by pushing status

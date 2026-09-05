@@ -143,9 +143,10 @@ interface PanelGroupState {
   /**
    * True once the user manually dragged the shared slot width off its default.
    * A slot never dragged auto-fills the space beyond the conversation's minimum
-   * when the panel opens (「面板自动铺满剩余空间」, adapted to the single-slot
-   * tabbed model); a manual one keeps its width from then on. Stored per group
-   * so the flag survives session switches the same way the width does.
+   * when the panel opens (spec desktop-panels.md「右侧面板 · 展开/折叠、空间
+   * 守卫与欢迎页共存」场景 7-9: never-dragged slots auto-fill); a manual one
+   * keeps its width from then on. Stored per group so the flag survives session
+   * switches the same way the width does.
    */
   panelWidthManual: boolean;
   /** Currently active tab id; null when no tab is open. */
@@ -519,7 +520,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
-  // Desktop panel expand/collapse (spec「面板展开/折叠」): the header button
+  // Desktop panel expand/collapse (spec desktop-panels.md「右侧面板 · 展开/折叠、
+  // 空间守卫与欢迎页共存」): the header button
   // toggles whether the panel slot is visible. Collapsing only HIDES the slot —
   // the open tabs, their active tab and the dragged width all survive, and the
   // next expand restores them (「折叠/收起不影响面板内已打开的 tab 数量和状态，
@@ -2305,27 +2307,23 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     };
   }, [isDesktop]);
 
-  // Check a panel on: it shares its row with the message area. When the
-  // checked panels would squeeze the conversation below its minimum width,
-  // auto-replace already-open panels — oldest-checked first (the array is in
-  // check order) — until the new panel fits, and hint which ones were closed
-  // (「面板空间不足自动替换」). Replaced panels only get unchecked: they stay
-  // mounted so their content survives and re-checking restores it. Only when
-  // even closing every old panel cannot fit the new one (window narrower than
-  // the minimum conversation + panel widths) is the open refused — and then
-  // nothing is closed, so a failed replace never takes old panels down.
+  // Tabbed layout: opening a panel no longer auto-replaces existing panels
+  // (the old multi-select side-by-side model is gone — see spec
+  // desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」): the shared
+  // slot space guard below refuses with a hint when the conversation column
+  // cannot keep its minimum width, and never closes existing tabs.
   // Generates a fresh tab id (kind-prefixed, monotonically increasing per kind).
   const genTabId = useCallback((kind: DesktopPanelKind): string => {
     tabSeqRef.current[kind] += 1;
     return `${kind}-${tabSeqRef.current[kind]}`;
   }, []);
 
-  // Auto-fill (spec「面板自动铺满剩余空间」, adapted to the single-slot tabbed
-  // model): a slot width the user has never manually dragged fills the space
-  // beyond the conversation's minimum width whenever the panel opens — a wide
-  // pane no longer leaves the panel at the fixed default width with dead space
-  // to its right. A manual drag (handlePanelWidthChange) marks the slot and
-  // locks its width from then on (「手动拖宽后锁定」). Reads the live container
+  // Auto-fill (spec desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与欢迎页
+  // 共存」场景 7-9): a slot width the user has never manually dragged fills the
+  // space beyond the conversation's minimum width whenever the panel opens — a
+  // wide pane no longer leaves the panel at the fixed default width with dead
+  // space to its right. A manual drag (handlePanelWidthChange) marks the slot
+  // and locks its width from then on (「手动拖宽后锁定」). Reads the live container
   // width, so a window resize is reflected on the next open/expand.
   const autoFillPanelWidth = useCallback((): void => {
     if (panelWidthManualRef.current) return;
@@ -2358,8 +2356,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         return false;
       }
       // Never-dragged slots auto-fill the space beyond the conversation
-      // minimum (「面板自动铺满剩余空间」); manual ones keep their width and are
-      // only clamped when the window shrank past them.
+      // minimum (spec desktop-panels.md「右侧面板 · 展开/折叠」场景 7-9); manual
+      // ones keep their width and are only clamped when the window shrank past them.
       if (!panelWidthManualRef.current) {
         setPanelWidth(
           Math.max(PANEL_MIN_WIDTH, containerW - CHAT_MAIN_MIN_WIDTH),
@@ -2444,8 +2442,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     }
   }, []);
 
-  // Header 面板按钮: expand/collapse the right-hand panel (spec「面板展开/折
-  // 叠」). Collapsing hides the slot but keeps every tab instance mounted
+  // Header 面板按钮: expand/collapse the right-hand panel (spec
+  // desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」). Collapsing
+  // hides the slot but keeps every tab instance mounted
   // (display:none in the slot JSX) — tabs, the active tab and the dragged width
   // all survive, and the next expand restores them. Fullscreen can't stay on
   // while collapsed (the slot hides the whole chat column), so collapsing
@@ -2639,8 +2638,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // Dragging the shared slot's left edge resizes the panel. One handle lives on
   // the slot itself (not inside each pane) so the divider stays draggable in
-  // every slot state — open tabs and the empty state alike (spec「面板空态」场景
-  // 9). The slot's right edge is fixed for the drag, so width = right − pointer.
+  // every slot state — open tabs and the empty state alike (spec
+  // desktop-panels.md「右侧面板 · 空态面板与「＋」新增入口」场景 9). The slot's right edge is fixed for the drag, so width = right − pointer.
   const handleSlotResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();

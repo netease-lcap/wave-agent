@@ -1937,7 +1937,7 @@ AskUserQuestion 两处呈现均沿用 IDE 时代 12px 字号，低于桌面 14px
 - `src/components/HeaderIcons.tsx`：新增 `QuotaIcon`（官方矢量内嵌，24×24，默认 className header-icon）。
 - `src/components/AccountCard.tsx`：用量显隐按钮收起态原 `codicon codicon-dashboard` → `<QuotaIcon />`；展开态 chevron-up 保留。
 
-范围确认（AskUserQuestion 澄清）：账户卡 spec（desktop-account-card-and-panel-tabs.md v3 定稿）双图标语义——展开态 chevron-up（提示可收起）、收起态仪表盘（提示可再展开）；用户选择「仅收起态换官方额度图标」，chevron 交互提示保留。
+范围确认（AskUserQuestion 澄清）：账户卡 spec（v3 定稿，后并入 desktop-account-and-settings.md「账户卡片」）双图标语义——展开态 chevron-up（提示可收起）、收起态仪表盘（提示可再展开）；用户选择「仅收起态换官方额度图标」，chevron 交互提示保留。
 
 ### 验证
 

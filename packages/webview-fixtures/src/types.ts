@@ -555,8 +555,8 @@ export interface AccountApiQuotaInfo {
 }
 
 /**
- * 桌面端应用更新状态（spec desktop-account-card-and-panel-tabs.md「更新按钮
- * 状态机 S0–S6」）。宿主把 electron-updater 事件映射为 status 并随
+ * 桌面端应用更新状态（spec desktop-account-and-settings.md「账户卡片 ·
+ * 更新按钮状态机 S0–S6」）。宿主把 electron-updater 事件映射为 status 并随
  * `desktopAccountInfo` 快照下发；webview 侧据此渲染卡片更新按钮与确认对话框。
  */
 export interface AccountUpdateInfo {
@@ -569,7 +569,7 @@ export interface AccountUpdateInfo {
 }
 
 /**
- * 桌面侧边栏账户卡片快照 (spec desktop-account-card-and-panel-tabs.md). Window-global like
+ * 桌面侧边栏账户卡片快照 (spec desktop-account-and-settings.md「账户卡片」). Window-global like
  * showToast — the sidebar renders on the root webview instance only, so the
  * host never pane-tags it. Auth/usage follow the focused pane's host.
  */

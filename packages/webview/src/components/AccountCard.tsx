@@ -19,8 +19,8 @@ import "../styles/AccountCard.css";
 import "../styles/ConfirmDialog.css";
 
 /**
- * 桌面侧边栏账户卡片（spec desktop-account-card-and-panel-tabs.md，取代
- * desktop-account-and-settings.md「账户卡片」的用量浮层 + 更多按钮旧交互）。宿主推送窗口级
+ * 桌面侧边栏账户卡片（spec desktop-account-and-settings.md「账户卡片」v3 三段式，
+ * 取代旧版用量浮层 + 更多按钮交互）。宿主推送窗口级
  * `desktopAccountInfo` 快照；卡片未登录态为整条登录按钮 + 更多按钮，登录态为
  * 三段式：
  *

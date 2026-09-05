@@ -304,7 +304,7 @@ export class DesktopHost {
   /** electron-updater path, created lazily once a serverUrl is configured. */
   private autoUpdaterService: AutoUpdaterService | null = null;
   /**
-   * 更新按钮状态机 (spec desktop-account-card-and-panel-tabs.md「更新按钮状态机
+   * 更新按钮状态机 (spec desktop-account-and-settings.md「账户卡片 · 更新按钮状态机
    * S0–S6」) 的宿主侧状态：electron-updater 事件 → `update.status` 随
    * desktopAccountInfo 推送。null = 无更新可知 (S0)；status 流转
    * idle(已发现未下载) → downloading(用户 S2 确认后) → ready(下载完成)。
@@ -4651,7 +4651,7 @@ export class DesktopHost {
   /** Lazily create the electron-updater service bound to the S0–S6 state
    *  machine: electron-updater events map to `update.status` pushes (no
    *  toasts — the account-card button owns the whole download/restart flow,
-   *  spec desktop-account-card-and-panel-tabs.md「更新按钮状态机」). */
+   *  spec desktop-account-and-settings.md「账户卡片 · 更新按钮状态机」). */
   private ensureAutoUpdaterService(): AutoUpdaterService {
     if (this.autoUpdaterService) return this.autoUpdaterService;
     this.autoUpdaterService = new AutoUpdaterService({
