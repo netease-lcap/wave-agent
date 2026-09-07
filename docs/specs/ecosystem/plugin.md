@@ -12,12 +12,22 @@ order: 70
 
 ## 远程插件获取
 
-所有远程插件/市场获取都通过 `GitService` 使用 **`git clone --depth 1`**。没有直接的 HTTP 文件下载。获取流程：
+除内置官方市场（`wave-plugins-official`，走镜像 zip 快照，见下方「官方插件市场镜像 zip 快照获取与更新」用户故事）外，所有远程插件/市场获取都通过 `GitService` 使用 **`git clone --depth 1`**。没有直接的 HTTP 文件下载。Git 获取流程：
 
 1. **市场注册** → 将市场仓库 `git clone`（HTTP/HTTPS/SSH）到 `~/.wave/plugins/marketplaces/<repo>/`
 2. **插件安装** → 如果 `marketplace.json` 中插件条目的 `source` 是 Git URL（`http://`、`https://`、`git@`、`ssh://`），则单独克隆插件仓库到临时目录，然后移动到缓存。如果 `source` 是相对路径，则从市场检出目录解析。
 3. **插件加载** → `PluginLoader` 从缓存的本地副本读取 `.wave-plugin/plugin.json` 和组件子目录。
 4. **插件激活** → `PluginManager.loadSinglePlugin()` 向各自的管理器注册命令、技能、钩子等。
+
+内置官方市场 zip 快照镜像获取流程（内容寻址 zip + latest 指针 + 本地哨兵）：
+
+1. GET `{base}/latest`（~10s 超时）→ 得到内容寻址 sha
+2. 读市场目录哨兵 `.wave-market-sha`；与 sha 相等 → no-op（幂等，不做任何下载）
+3. GET `{base}/{sha}.zip`（~60s 超时）→ 解压到 `{市场目录}.staging`（拒绝路径穿越/绝对路径、文件与总量大小上限；按 zip external attrs 恢复可执行位）
+4. 原子换入：删除旧市场目录 + 重命名 staging → 市场目录；写回 `.wave-market-sha` 哨兵
+5. 任一步失败 → 本次镜像获取失败（不动现有市场内容）；若 git 兜底开关开启则回退既有 git pull/clone 路径（Git 不可用则跳过更新）
+
+镜像仅作为内置官方市场的获取通道替换，settings/缓存中的 `source` 字段保持 `github` 不变（按市场名称特判），存量数据零迁移。
 
 ## 用户场景与测试
 
@@ -82,6 +92,23 @@ order: 70
 3. **假设**带有有效 `marketplace.json` 的目录，**当**我运行 `wave plugin marketplace add [path]` 时，**则**市场成功注册。
 4. **假设**现有市场，**当**在 UI 中选中时，**则**用户可以选择"更新"（刷新插件列表）或"移除"市场。
 
+### 用户故事：官方插件市场镜像 zip 快照获取与更新（优先级：P1）
+
+作为用户，我希望内置官方插件市场（`wave-plugins-official`）通过网络可达的内容寻址 zip 快照镜像获取与增量更新（无需 git、无需访问 GitHub），以便在国内网络受限环境下也能获得官方插件市场内容。
+
+**为什么是这个优先级**：官方市场托管在 GitHub（国内访问受限），镜像 zip 快照是国内用户获取官方市场内容的可靠通道（对齐 Claude Code 的 GCS zip 镜像模型）；它只替换市场获取这一步（git clone/pull → 内容寻址 zip），下游插件安装/加载代码零改动。镜像未配置或失败时保留 git 兜底，不破坏现有用户。
+
+**验收场景**：
+
+1. **假设** 镜像 base URL 已配置（环境变量 `WAVE_OFFICIAL_MARKET_MIRROR_BASE_URL` 优先，否则代码内置常量），且市场目录内哨兵 `.wave-market-sha` 内容等于 `latest` 指针返回的 sha，**当** 官方市场更新时，**则** 客户端判定已是最新（no-op）：不下载 zip、不改动市场目录。
+2. **假设** 镜像 `latest` 指针返回新 sha，**当** 官方市场更新时，**则** 客户端下载 `{base}/{sha}.zip` 全量快照、解压到 staging 目录、原子换入市场目录并写回哨兵，市场 manifest 与 `plugins/` 目录结构原样保留、可被既有插件安装流程直接使用。
+3. **假设** 市场目录由早期 git clone 得到（目录内无哨兵），**当** 官方市场更新时，**则** 客户端下载镜像 zip 整体替换该目录，不依赖目录内 git 历史。
+4. **假设** 下载的 zip 损坏或解压被拒绝（路径穿越/绝对路径条目、单文件或总量超限），**当** 官方市场更新时，**则** 本次更新失败且不改动现有市场内容；git 兜底开启时回退既有 git pull/clone 路径，Git 不可用或兜底关闭则跳过本次更新。
+5. **假设** `latest` 返回空 body 或镜像网络请求失败，**当** 官方市场更新时，**则** 与 zip 失败同路径处理：本次镜像获取失败并回退 git（若兜底开启）。
+6. **假设** 镜像 URL 未配置（环境变量未设置且内置常量仍为占位空值），**当** 官方市场更新时，**则** 行为保持现状——直接走 git 路径，不发起任何 HTTP 请求。
+7. **假设** 官方市场为内置市场（`source` 字段保持 `github` 不变），**当** 消费端需要决定获取通道时，**则** 仅按市场名称 `wave-plugins-official` 特判优先尝试镜像；其他 github/git 市场不受影响。
+8. **假设** 镜像快照 zip 内含需要可执行位的脚本（hooks 等），**当** 解压落盘时，**则** 依据 zip external attrs 恢复可执行位（对齐 git clone 原生保留 +x），hooks 脚本可直接执行。
+
 ### 用户故事：IDE 插件管理对话框（优先级：P2）
 
 作为 IDE 插件用户，我希望通过 `/plugin` 打开插件管理对话框，浏览、安装、更新、卸载插件并管理插件市场，以便在不切换到 CLI 的情况下完成插件管理。
@@ -110,5 +137,5 @@ order: 70
 - **A-005**："项目作用域"安装涉及修改通常提交到版本控制的文件（如 `.wave/settings.json`）。
 - **A-006**：系统应安装 `git` 以使用 GitHub 或基于 Git 的市场。
 - **A-007**：本地市场存储在与 `wave` 安装相同的文件系统上。
-- **A-008**：所有远程获取使用 `git clone`——没有直接的 HTTP 下载插件文件机制。
+- **A-008**：除内置官方市场 `wave-plugins-official` 的镜像 zip 快照通道（见「官方插件市场镜像 zip 快照获取与更新」用户故事）外，所有远程获取使用 `git clone`——没有直接的 HTTP 下载插件文件机制。官方市场镜像失败或未配置时同样回退 git clone。
 - **A-009**：GitHub 简写（`owner/repo`）自动解析为 `https://github.com/owner/repo.git`。
