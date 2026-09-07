@@ -101,7 +101,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        # macOS is pinned to macos-15 (not macos-latest): the macos-latest
+        # image rolling forward (os=25.6.0) broke electron-builder's keychain
+        # signing — `security set-key-partition-list` fails with
+        # "SecKeychainUnlock: passphrase not correct" while the same secrets
+        # succeeded on the previous image. When the runner image catches up,
+        # bump the label back to macos-latest and verify with a Beta Build.
+        os: [macos-15, windows-latest]
 
     steps:
       - uses: actions/checkout@v6
