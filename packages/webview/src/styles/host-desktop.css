@@ -15,36 +15,60 @@
  * index.html，插件端同样加载但 data-host 永不为 desktop，故不受影响）。
  */
 
-/* ── 浅色：桌面端中密度（对齐 codechat-ui 浅色基准）────────────── */
+/* ════════════════════════════════════════════════════════════════════
+   桌面语义 token 层（第一批：核心面/文字/按钮变量化）
+   取值权威源：codechat-desktop-skill feat/approved-dark-theme-contract
+   tokens/desktop-dark-mapping.json（18 个 user-approved 核心 + derived）；
+   light = wave 现状值快照（个别 ≠ codechat 官方 token 值，勿反写 skill）。
+   结构：每个模式一段 —— 先定义 --cc-* 语义变量，再把组件消费的
+   --vscode-* 桥接到语义变量。值档标注 user-approved / derived。
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── 浅色：桌面语义值（现值快照；浅色桥接只替换既有覆盖，不新增）── */
 :root[data-host="desktop"][data-theme="light"] {
-  /* 主按钮：品牌蓝 → 炭黑（--cc-action-primary: #1f2329 / hover #34383f） */
-  --vscode-button-background: #1f2329;
-  --vscode-button-hoverBackground: #34383f;
+  /* 表面 */
+  --cc-bg-conversation: #ffffff;   /* 对话画布（= panel-background） */
+  --cc-bg-navigation: #f7f8fb;     /* 左导航/侧栏 */
+  --cc-bg-inspector: #ffffff;      /* 右 pane 内容面（editor-background base #fff） */
+  --cc-bg-overlay: #ffffff;        /* 浮层：菜单/弹窗/确认卡 */
+  --cc-bg-panel: #ffffff;          /* 输入区卡片（task/queued = codechat composer-task-list 面） */
+  --cc-bg-code: #f7f8fa;           /* 代码块/引用代码 */
+  /* 文字 */
+  --cc-text-primary: #1f2329;      /* 顶级文字/激活（Figma cc 主文字） */
+  --cc-text-regular: #565a60;      /* 常规文字/图标 */
+  --cc-text-secondary: #6c7076;    /* 次要说明 */
+  --cc-text-placeholder: #8b8f95;  /* 占位 */
+  --cc-text-disabled: #bec1c6;     /* 禁用 */
+  /* 中性填充 */
+  --cc-fill: #f0f2f5;              /* 用户气泡 */
+  --cc-fill-hover: #eef0f3;        /* hover 面 */
+  --cc-fill-pressed: #e7e9ed;      /* 按下/选中 */
+  /* 主按钮 */
+  --cc-action-primary: #1f2329;              /* 炭黑（wave 现值） */
+  --cc-action-primary-hover: #34383f;
+  --cc-action-primary-text: #ffffff;
+  /* 边框 */
+  --cc-border: #dcdfe6;            /* 强边界（composer/输入框） */
+  --cc-border-light: #e4e7ed;      /* quiet lines（面板分隔） */
+  --cc-border-lighter: #ebeef5;    /* 浮层面板边 */
+
+  /* 桥接：组件消费的 host token → 语义值（值与上版字面一致，浅色零回归） */
+  --vscode-button-background: var(--cc-action-primary);
+  --vscode-button-hoverBackground: var(--cc-action-primary-hover);
   --vscode-button-secondaryBackground: #f0f0f1;
-  --vscode-button-secondaryForeground: #1f2329;
-  --vscode-button-secondaryHoverBackground: #e7e9ed;
-
-  /* 用户消息气泡：浅蓝 → 中性浅灰（--cc-fill: #f0f2f5） */
-  --vscode-chat-requestBubbleBackground: #f0f2f5;
-  --vscode-chat-requestBubbleHoverBackground: #e7e9ed;
-
-  /* 面板背景：会话区纯白（--cc-bg-conversation: #ffffff） */
-  --vscode-panel-background: #ffffff;
-  /* 侧栏导航：浅灰（--cc-bg-navigation: #f7f8fb） */
-  --vscode-sideBar-background: #f7f8fb;
-  /* 代码块背景（--cc-bg-code: #f7f8fa） */
-  --vscode-textCodeBlock-background: #f7f8fa;
-  /* 引用块：背景 --cc-fill #f0f2f5（原 VSCode 默认 #eaeaea 非设计系统色）、
-     左边条/代码块边框 --cc-border #dcdfe6 */
-  --vscode-textBlockQuote-background: #f0f2f5;
-  --vscode-textBlockQuote-border: #dcdfe6;
-  /* 终端/命令输出区：白底（--cc-bg-panel: #ffffff） */
-  --vscode-terminal-background: #ffffff;
-
-  /* 边框：quiet lines（--cc-border-light: #e4e7ed / --cc-border: #dcdfe6） */
-  --vscode-panel-border: #e4e7ed;
-  --vscode-widget-border: #e4e7ed;
-  --vscode-input-border: #dcdfe6;
+  --vscode-button-secondaryForeground: var(--cc-action-primary);
+  --vscode-button-secondaryHoverBackground: var(--cc-fill-pressed);
+  --vscode-chat-requestBubbleBackground: var(--cc-fill);
+  --vscode-chat-requestBubbleHoverBackground: var(--cc-fill-pressed);
+  --vscode-panel-background: var(--cc-bg-conversation);
+  --vscode-sideBar-background: var(--cc-bg-navigation);
+  --vscode-textCodeBlock-background: var(--cc-bg-code);
+  --vscode-textBlockQuote-background: var(--cc-fill);
+  --vscode-textBlockQuote-border: var(--cc-border);
+  --vscode-terminal-background: #ffffff;   /* 对话内命令输出面（现值，保持） */
+  --vscode-panel-border: var(--cc-border-light);
+  --vscode-widget-border: var(--cc-border-light);
+  --vscode-input-border: var(--cc-border);
 
   /* 链接蓝：Figma --cc-text-link #2F5EDB（正文链接 / picker 高亮等 host 取样
      token；浅色沿用 cc 蓝，区别于插件端 --vscode-textLink #0069cc） */
@@ -55,29 +79,69 @@
   --vscode-editor-font-size: 13px;
 }
 
-/* ── 深色：桌面端中性化（去掉品牌蓝，主操作保持中性炭灰）────────── */
+/* ── 深色：桌面语义值（approved 核心 + derived，值档逐行标注）────── */
 :root[data-host="desktop"][data-theme="dark"] {
-  /* 主按钮：蓝 #0078d4 → 中性炭灰 */
-  --vscode-button-background: #3d424a;
-  --vscode-button-hoverBackground: #4a5057;
-  --vscode-button-secondaryBackground: #313131;
-  --vscode-button-secondaryForeground: #e6e6e6;
-  --vscode-button-secondaryHoverBackground: #3a3a3a;
+  /* 表面 —— user-approved 层级 */
+  --cc-bg-conversation: #111314;   /* 对话画布 canvas */
+  --cc-bg-navigation: #181a1b;     /* 导航/侧栏 nav */
+  --cc-bg-inspector: #181a1b;      /* 右 pane 内容面（= navigation 同级） */
+  --cc-bg-overlay: #232526;        /* 浮层：菜单/弹窗/确认卡 floating */
+  --cc-bg-panel: #181a1b;          /* 输入区卡片（task/queued = codechat composer-task-list 面） */
+  --cc-bg-code: #1b1d1e;           /* 代码面 */
+  /* 文字 —— user-approved 中性梯度 */
+  --cc-text-primary: #e5e7e8;
+  --cc-text-regular: #c4c7c9;
+  --cc-text-secondary: #a0a5a8;
+  --cc-text-placeholder: #858b8f;
+  --cc-text-disabled: #62686b;
+  /* 中性填充 —— hover/pressed user-approved，fill derived */
+  --cc-fill: #25292b;              /* derived：气泡面（codex 效果 = 浮层面一档） */
+  --cc-fill-hover: #303436;
+  --cc-fill-pressed: #393e41;
+  /* 主按钮 —— user-approved：浅灰底 + 深字（dark 反转浅色炭黑钮） */
+  --cc-action-primary: #e0e3e5;
+  --cc-action-primary-hover: #f0f2f3;
+  --cc-action-primary-active: #c7cccf;   /* derived */
+  --cc-action-primary-text: #191c1e;
+  --cc-action-secondary: #232526;        /* derived：overlay 面 */
+  --cc-action-secondary-hover: #303436;  /* derived */
+  --cc-action-secondary-text: #e5e7e8;   /* derived = text-primary */
+  /* 边框 */
+  --cc-border: #414649;            /* user-approved 强控制边界 */
+  --cc-border-light: #34393c;      /* derived hairline */
+  --cc-border-lighter: #2d3133;    /* user-approved 分隔/细边 */
+  --cc-border-focus: #a0a5a8;      /* user-approved 焦点环 */
+  --cc-border-translucent: rgb(255 255 255 / 12%);  /* derived 浮层边 */
 
-  /* 用户消息气泡：蓝调 rgba(38,79,120,.3) → 中性白 8% */
-  --vscode-chat-requestBubbleBackground: rgba(255, 255, 255, 0.08);
-  --vscode-chat-requestBubbleHoverBackground: rgba(255, 255, 255, 0.14);
-
-  /* 命令输出区：终端底 → 面板底（与输入条分区） */
-  --vscode-terminal-background: #1d1e20;
-
-  /* 代码块/行内 code/命令输入条背景：VSCode 默认 #2b2b2b → 面板色 #27292b
-     （wave 深色映射惯例；pre 深色与消息区同色的违和根源在此 token 缺失） */
-  --vscode-textCodeBlock-background: #27292b;
-  /* 引用块：背景 fill 6% 白、左边条/代码块边框 12% 白
-     （原 VSCode 默认背景 #2b2b2b、边框 #616161 突兀） */
-  --vscode-textBlockQuote-background: rgba(255, 255, 255, 0.06);
-  --vscode-textBlockQuote-border: rgba(255, 255, 255, 0.12);
+  /* 桥接：组件消费的 host token → 语义值（desktop deep 全面覆盖） */
+  --vscode-button-background: var(--cc-action-primary);
+  --vscode-button-hoverBackground: var(--cc-action-primary-hover);
+  --vscode-button-foreground: var(--cc-action-primary-text);   /* 新增：浅灰底深字 */
+  --vscode-button-secondaryBackground: var(--cc-action-secondary);
+  --vscode-button-secondaryForeground: var(--cc-action-secondary-text);
+  --vscode-button-secondaryHoverBackground: var(--cc-action-secondary-hover);
+  --vscode-chat-requestBubbleBackground: var(--cc-fill);
+  --vscode-chat-requestBubbleHoverBackground: var(--cc-fill-pressed);
+  --vscode-panel-background: var(--cc-bg-conversation);
+  --vscode-sideBar-background: var(--cc-bg-navigation);
+  --vscode-editor-background: var(--cc-bg-inspector);          /* 新增：右 pane 面 */
+  --vscode-textCodeBlock-background: var(--cc-bg-code);
+  --vscode-textBlockQuote-background: rgba(255, 255, 255, 0.06);  /* 第三轮收 */
+  --vscode-textBlockQuote-border: rgba(255, 255, 255, 0.12);      /* 第三轮收 */
+  --vscode-terminal-background: var(--cc-bg-code);             /* 对话内命令输出 */
+  --vscode-panel-border: var(--cc-border-light);
+  --vscode-widget-border: var(--cc-border-light);
+  --vscode-input-border: var(--cc-border);
+  --vscode-foreground: var(--cc-text-primary);                 /* 新增：正文主字 */
+  --vscode-editor-foreground: var(--cc-text-primary);
+  --vscode-input-foreground: var(--cc-text-primary);
+  --vscode-input-placeholderForeground: var(--cc-text-placeholder);
+  --vscode-descriptionForeground: var(--cc-text-secondary);
+  --vscode-disabledForeground: var(--cc-text-disabled);
+  --vscode-list-activeSelectionBackground: var(--cc-fill-pressed);  /* 去蓝 */
+  --vscode-list-activeSelectionForeground: var(--cc-text-primary);
+  --vscode-list-hoverBackground: var(--cc-fill-hover);              /* 去蓝 */
+  --vscode-focusBorder: var(--cc-border-focus);                     /* 去蓝 */
 
   /* 链接蓝：Figma --cc-text-link 深色档 #4daafc（同浅色注释，供 host 取样） */
   --cc-text-link: #4daafc;
@@ -88,6 +152,19 @@
 }
 
 /* ── 组件级覆盖：桌面端 vs 插件端的行为差异 ─────────────────────── */
+
+/* 字形色误用修补：三处组件把 --vscode-button-background 当文字/图标色用。
+   dark 主按钮反转成浅灰底 #E0E3E5 后，这些「深色文字」会变浅灰不可读 →
+   桌面端统一改走中性正文色（foreground = --cc-text-primary） */
+[data-host="desktop"] .header-button.active {
+  color: var(--vscode-foreground);
+}
+[data-host="desktop"] .todo-in_progress .todo-status-icon {
+  color: var(--vscode-foreground);
+}
+[data-host="desktop"] .plugin-tab.active {
+  color: var(--vscode-foreground);
+}
 
 /* 发送按钮禁用态：桌面端空输入 = 浅灰禁用（codechat composer 规范），
    不透明度不衰减，用底色区分而非透明度。 */
@@ -123,6 +200,14 @@
 /* 输入卡聚焦：codechat 聚焦用 popover 级柔影，而非高对比描边 */
 [data-host="desktop"] .input-content:focus-within {
   box-shadow: 0 0 12px rgb(31 35 41 / 12%);
+}
+/* 深色画布（#111314）上 12% 黑柔影不可见 → 提亮为浮层同款 40% 黑柔影；
+   边框同时落 focus 中性灰（MessageInput base 用 foreground color-mix 在暗面
+   过淡）。selector 含 :focus-within，specificity 高于常驻 .input-content dark
+   块，无需考虑书写先后。 */
+[data-host="desktop"][data-theme="dark"] .input-content:focus-within {
+  box-shadow: 0 0 12px rgb(0 0 0 / 40%);
+  border-color: var(--cc-border-focus, #a0a5a8);
 }
 
 /* 工具行图标按钮：22px → 32px（codechat composer-icon-button 32×32），
@@ -309,7 +394,7 @@
   flex-shrink: 0;
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-menu {
-  background: #27292b;
+  background: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
   color: #9a9ea5;
   box-shadow: 0 0 12px rgb(0 0 0 / 40%);
@@ -336,36 +421,37 @@
   color: #f4655c;
 }
 
-/* 发送按钮：Figma 32×32 r8 —— 未激活 #F0F2F5 底 + #ADB0BB 图标（disabled），
-   激活 #1F2329 底 + 白图标（:not(:disabled) 即 canSend） */
+/* 发送按钮：Figma 32×32 r8 —— 未激活底 + 禁用文字（disabled），
+   激活主按钮（:not(:disabled) 即 canSend）。颜色接语义 token。 */
 [data-host="desktop"] .ai-send-btn {
   border-radius: 8px;
-  background: #f0f2f5;
-  color: #bec1c6;
+  background: var(--cc-fill, #f0f2f5);
+  color: var(--cc-text-disabled, #bec1c6);
 }
 [data-host="desktop"] .ai-send-btn:disabled {
-  background: #f0f2f5;
-  color: #bec1c6;
+  background: var(--cc-fill, #f0f2f5);
+  color: var(--cc-text-disabled, #bec1c6);
   opacity: 1;
 }
 [data-host="desktop"] .ai-send-btn:not(:disabled) {
-  background: #1f2329;
-  color: #ffffff;
+  background: var(--cc-action-primary, #1f2329);
+  color: var(--cc-action-primary-text, #ffffff);
 }
 [data-host="desktop"] .ai-send-btn:not(:disabled):hover {
-  background: #34383f;
+  background: var(--cc-action-primary-hover, #34383f);
 }
 [data-host="desktop"][data-theme="dark"] .ai-send-btn,
 [data-host="desktop"][data-theme="dark"] .ai-send-btn:disabled {
   background: rgb(255 255 255 / 8%);
   color: rgb(255 255 255 / 45%);
 }
+/* 激活态（canSend）= 主按钮语义：浅灰底 #E0E3E5 + 深字 #191C1E（dark 反转） */
 [data-host="desktop"][data-theme="dark"] .ai-send-btn:not(:disabled) {
-  background: rgb(255 255 255 / 92%);
-  color: #1f2329;
+  background: var(--cc-action-primary, #e0e3e5);
+  color: var(--cc-action-primary-text, #191c1e);
 }
 [data-host="desktop"][data-theme="dark"] .ai-send-btn:not(:disabled):hover {
-  background: #ffffff;
+  background: var(--cc-action-primary-hover, #f0f2f3);
 }
 
 /* 新会话上下文栏：Figma 13439-9245 —— 卡片外独立横条（非卡片脚条）。
@@ -385,10 +471,11 @@
   align-items: flex-end;
 }
 
-/* 深色模式：--vscode-fill-light 未定义会回退浅灰 #f5f7fa 突兀；
-   用比卡片(#313131)略深的灰形成「卡片在上、灰条在下」层次 */
+/* 深色模式：--vscode-fill-light 未定义会回退浅灰 #f5f7fa 突兀。
+   浅色条 #f5f7fa 是比画布白暗一档的「略灰」面；卡片同画布（#111314）后
+   对称取 nav 面 #181A1B —— 与画布仅差一档，横条略浮不抢层次 */
 [data-host="desktop"][data-theme="dark"] .input-workdir-row {
-  background: #292929;
+  background: var(--cc-bg-navigation, #181a1b);
 }
 
 /* 灰条内控件按钮化：Figma「本地 / 选择工作目录」按钮 32 高、r8（base
@@ -505,7 +592,7 @@
   color: #1f2329;
 }
 [data-host="desktop"][data-theme="dark"] .plus-menu {
-  background: #27292b;
+  background: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
   color: #9a9ea5;
 }
@@ -646,10 +733,10 @@
   border: 2px solid #ffffff;
   box-sizing: border-box;
 }
-/* 深色：2px 白描边在深色会话底（#191A1B）上呈突兀白圈 → 同色描边，
+/* 深色：2px 白描边在深色会话底上呈突兀白圈 → 同色描边，
    节点呈纯绿点（浅色白描边与白底融合保留） */
 [data-host="desktop"][data-theme="dark"] .timeline-row::before {
-  border-color: #191a1b;
+  border-color: var(--cc-bg-conversation, #111314);
 }
 
 /* Composer 输入文字：Figma 14px / 行高 22px（base 12px/16px 偏小） */
@@ -676,15 +763,28 @@
   padding: 0 12px;
 }
 
-/* placeholder：Figma #8B8F95（base 用 input-placeholderForeground 偏暗） */
-[data-host="desktop"] .content-editable-input:empty:before {
+/* placeholder：Figma #8B8F95（base 用 input-placeholderForeground 偏暗）；
+   深色取 placeholder token #858B8F（approved 文字梯度） */
+[data-host="desktop"][data-theme="light"] .content-editable-input:empty:before {
   color: #8b8f95;
+}
+[data-host="desktop"][data-theme="dark"] .content-editable-input:empty:before {
+  color: var(--cc-text-placeholder, #858b8f);
 }
 
 /* Composer 卡片常态：Figma 白底卡片 stroke #DCDFE6。无 resting 阴影 ——
    第十五轮起仅聚焦（textarea :focus-within）时出柔影（见 .input-content:focus-within）。 */
 [data-host="desktop"][data-theme="light"] .input-content {
   border-color: #dcdfe6;
+}
+
+/* Composer 卡片深色：同画布色 #111314 + 强边框 #414649（用户 0904 拍板；
+   approved 契约 conversation canvas + border。input-background 是全局 token
+   （Diff/File/Settings/composer 共用）不可整体改 → 局部覆盖，与对话画布融为一体，
+   靠 1px 强边框勾卡） */
+[data-host="desktop"][data-theme="dark"] .input-content {
+  background-color: var(--cc-bg-conversation, #111314);
+  border-color: var(--cc-border, #414649);
 }
 
 /* ── 消息流：Figma「02 · 对话 / 预览区展开」权威值 ──────────────── */
@@ -1409,7 +1509,7 @@
 [data-host="desktop"][data-theme="dark"] .history-search-popup,
 [data-host="desktop"][data-theme="dark"] .account-usage-popup,
 [data-host="desktop"][data-theme="dark"] .desktop-remote-browser {
-  background-color: #27292b;
+  background-color: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
   color: #9a9ea5;
   box-shadow: 0 0 12px rgb(0 0 0 / 40%);
@@ -1476,7 +1576,7 @@
 [data-host="desktop"][data-theme="dark"] .model-popup-header,
 [data-host="desktop"][data-theme="dark"] .btw-panel-header,
 [data-host="desktop"][data-theme="dark"] .history-search-header {
-  background-color: #27292b;
+  background-color: var(--cc-bg-overlay);
   border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
@@ -1495,7 +1595,7 @@
   max-width: 768px;
 }
 [data-host="desktop"][data-theme="dark"] .confirmation-dialog-inner {
-  background-color: #27292b;
+  background-color: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow: 0 18px 48px rgb(0 0 0 / 40%);
   padding: 16px;
@@ -1519,7 +1619,7 @@
 }
 [data-host="desktop"][data-theme="dark"] .confirmation-command,
 [data-host="desktop"][data-theme="dark"] .confirmation-mcp-params {
-  background-color: #27292b;
+  background-color: var(--cc-bg-code);
   border-color: rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   padding: 12px;
@@ -1776,6 +1876,30 @@
 [data-host="desktop"] .queued-message-list-container {
   max-width: 768px;
   border-radius: 16px;
+}
+
+/* 卡面语义化（用户 0904 拍板「这里面板的颜色重新计算」→ bg-panel 面板面）：
+   base 用 --vscode-menu-background（dark #1f1f1f 插件浮层灰，未入语义层），
+   与下方 composer 卡的画布色层级不匹配。对齐 codechat composer-task-list
+   = --cc-bg-panel（light #fff / dark #181a1b = navigation 同级，比画布亮一档）
+   + 强边框 --cc-border（light #dcdfe6 / dark #414649）。 */
+[data-host="desktop"] .task-list-inline,
+[data-host="desktop"] .queued-message-list-container {
+  background-color: var(--cc-bg-panel, #ffffff);
+  border-color: var(--cc-border, #dcdfe6);
+}
+[data-host="desktop"][data-theme="dark"] .task-list-inline,
+[data-host="desktop"][data-theme="dark"] .queued-message-list-container {
+  border-color: var(--cc-border, #414649);
+}
+
+/* 队列卡展开渐隐 scrim 终点色随卡面走（base 渐变到 menu-background 旧灰） */
+[data-host="desktop"] .queued-items-scrim {
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0),
+    var(--cc-bg-panel, #ffffff)
+  );
 }
 
 /* 连体组合态（task 卡下缘 / queued 卡上缘）圆角归零——base 同结构规则

@@ -2219,3 +2219,24 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
    - 清 false：会话被打开/聚焦到任一 pane（或该会话开始新一轮 / 被删除）时清除；随后 `refreshSessionTree()` 推送。
    - 优先级仅供 UI 参考：waiting > running > newCompleted（同会话同时多态时只显高优先）。UI 层另加 `!isCurrent && !isVisible` 过滤，host 若已按「打开即清」实现，该过滤仅作双保险。
 2. **DOM/class 变更影响既有测试断言，需同步**：`.desktop-session-status-icon.codicon-loading` / `.codicon-bell` / `.desktop-session-dot` 已从会话行移除（改行右端 `.desktop-session-status-slot--running/waiting/completed` 槽内 svg）；断言涉及处：`webview/tests/webview/desktopApp.test.tsx:1112-1172`、`webview/e2e/desktop-app.e2e.ts:176`。等待确认语义（无挂起即消失）未变。
+
+---
+
+## 0907 第 1 轮（feat/0907-new-base-r1）：桌面语义 token 层 + 深色变量规范化第一批
+
+取值权威：codechat-desktop-skill 分支 `feat/approved-dark-theme-contract` 的 `tokens/desktop-dark-mapping.json`（18 个 user-approved 核心 + derived 扩展，用户 2026-09-06 批准方向）；light = wave 现状值快照（个别 ≠ codechat 官方 token 值，勿反写 skill）。
+
+### A. host-desktop.css 顶部语义 token 层（第一批核心面/文字/按钮变量化）
+
+- **light 块**（`:root[data-host="desktop"][data-theme="light"]`，现值快照）：定义 `--cc-bg-conversation #ffffff`、`--cc-bg-navigation #f7f8fb`、`--cc-bg-inspector/overlay #ffffff`、`--cc-bg-code #f7f8fa`、文字梯度、`--cc-action-primary #1f2329(+hover #34383f/text #fff)`、`--cc-border #dcdfe6` 等；桥接 `--vscode-button*`/`chat-requestBubble*`/`panel-background`/`sideBar-background`/`textCodeBlock`/`terminal-background`/`input-border`（浅色零回归）。
+- **dark 块**（`:root[data-host="desktop"][data-theme="dark"]`，approved 值）：conversation `#111314`、navigation/inspector `#181a1b`、overlay `#232526`、code `#1b1d1e`、文字五档 `#e5e7e8/#c4c7c9/#a0a5a8/#858b8f/#62686b`、fill `#25292b`、hover/pressed `#303436/#393e41`、**主按钮浅灰底深字 `#e0e3e5 + #191c1e`**（dark 反转浅色炭黑钮）、border `#414649`、border-focus `#a0a5a8`；新增桥接 `editor-background→inspector`、`button-foreground→action-primary-text`、`foreground/input-foreground→text-primary`、`list-activeSelection*→fill-pressed`、`focusBorder→border-focus`（全部去蓝）。取值与 mapping 逐字一致（26 个 dark `--cc-*` 中 25 个 ✓）。
+- 全部变量与覆盖规则均带 `[data-host="desktop"]` 门控，仅桌面端生效；VS Code 插件 / JetBrains 端 data-host 恒为 `ide`（index.tsx:14-15），不受影响。
+
+### B. 组件级接线（host-desktop.css，未改组件 css）
+
+- **字形色误用修补**：`.header-button.active` / `.todo-in_progress .todo-status-icon` / `.plugin-tab.active` 把 `--vscode-button-background` 当字形色 → 改 `color: var(--vscode-foreground)`（dark 主按钮反转为浅灰后原「深色文字」不可读）。
+- **composer 深色**：`.input-content` = 同画布 `--cc-bg-conversation #111314` + 强边框 `--cc-border #414649`（用户 0904 拍板），focus-within 边框 `#a0a5a8` + 12px 黑影。
+- **浮层/焦点中性化**：6 处浮层背景旧 `#27292b` → `var(--cc-bg-overlay)`；confirmation-command/mcp-params 用 `var(--cc-bg-code)`；dark 链接统一走既有 `#4daafc`（裁决：CC 深色链接权威，skill mapping 现派生 `#8bbcf0` 属误派生，待走查后回写 skill）。
+- **task/queued 面板卡 bg-panel 面**（用户走查评论「这里面板的颜色重新计算」）：`.task-list-inline` / `.queued-message-list-container` base 底色 `--vscode-menu-background`（dark #1f1f1f 未入语义层）→ 覆盖为 `--cc-bg-panel`（light #fff / dark **#181a1b**，对齐 codechat `composer-task-list` 面）+ 强边框 `var(--cc-border)`（dark #414649）；`.queued-items-scrim` 渐隐终点色随卡面。
+
+实现文件：`src/styles/host-desktop.css`、本 docs。（用户人工走查，本批不跑自动化。）
