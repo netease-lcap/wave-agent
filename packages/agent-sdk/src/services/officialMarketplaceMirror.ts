@@ -39,12 +39,19 @@ export const OFFICIAL_MARKET_SENTINEL_FILE = ".wave-market-sha";
 const STAGING_SUFFIX = ".staging";
 
 /**
- * Default mirror base URL. TODO(official-market-mirror): 发布侧（codechat file
- * center）的 URL 落地后回填，例如
- * `https://<file-center>/codechat/<wave-plugins-official>`。未回填（空串）时镜像
- * 通道关闭、官方市场保持既有 git 路径。
+ * Default mirror base URL (prod contract) — files hang directly off this base:
+ * `{base}/latest` (pure-text sha) and `{base}/{sha}.zip` (whole-tree snapshot).
+ * Trailing slash is normalized away when composing URLs.
+ *
+ * - PROD: `https://codechat.codewave.163.com/wave-plugins-official/`
+ * - TEST（验证用）: `https://codechat.codewave-test.163yun.com/wave-plugins-official/`
+ *
+ * Override with env var `WAVE_OFFICIAL_MARKET_MIRROR_BASE_URL` (highest
+ * precedence). 注意：prod 该 URL 的 ingress/内容尚未上线，镜像请求会 404 → 按既有
+ * 设计回退 git 兜底（ALLOW_OFFICIAL_MARKET_GIT_FALLBACK），行为安全。
  */
-const DEFAULT_OFFICIAL_MARKET_MIRROR_BASE_URL = "";
+const DEFAULT_OFFICIAL_MARKET_MIRROR_BASE_URL =
+  "https://codechat.codewave.163.com/wave-plugins-official/";
 
 /** Env var override for the mirror base URL (highest precedence). */
 export const OFFICIAL_MARKET_MIRROR_BASE_URL_ENV =
