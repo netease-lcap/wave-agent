@@ -21,10 +21,13 @@ const session = (
   firstMessage,
 });
 
-// A session tree entry. The sidebar shows a green running dot while a session is
-// generating and an orange waiting dot while a tool-permission / plan / question
-// confirmation awaits the user. Both come straight from the tree data (the 5-per-
-// directory cap was removed — a group may hold any number of sessions).
+// A session tree entry. Status slots hint only for background sessions
+// (FR-031 + Figma 13656:5470 — the row never repeats the state of the session
+// already shown in the active chat or in another pane): a background
+// generating session gets a loading ring, a tool-permission / plan / question
+// confirmation gets an amber waiting dot. Both flags come straight from the
+// tree data (the 5-per-directory cap was removed — a group may hold any number
+// of sessions).
 const treeSession = (
   sessionId: string,
   title: string,
@@ -61,6 +64,7 @@ const treeGroups = [
         "sess-a3",
         "解释一下 listSessions 的实现",
         "2026-07-25T15:02:00Z",
+        true,
       ),
       treeSession("sess-a4", "重构会话索引的持久化层", "2026-07-25T11:30:00Z"),
       treeSession(
@@ -145,9 +149,12 @@ test.describe("Desktop App Screenshots", () => {
     await expect(webviewPage.getByTestId("welcome-wordmark")).toBeVisible();
 
     // ── 2. Session tree: workdir selected, all groups expanded ────
-    // The active session shows a green running dot; a session awaiting a
-    // confirmation shows an orange waiting dot. Every directory lists all
-    // of its sessions (no 5-per-directory cap), newest-first.
+    // Status slots render for background sessions only (FR-031 / Figma
+    // 13656:5470): the session restored into the active chat (sess-a1) never
+    // carries its own marker — its state is already visible in the
+    // conversation; sess-a2 awaits a confirmation → amber waiting dot; sess-a3
+    // keeps generating in the background → loading ring. Every directory lists
+    // all of its sessions (no 5-per-directory cap), newest-first.
     await injector.simulateExtensionMessage("desktopWorkdirState", {
       workdir: DIR_A,
       recentWorkdirs: [DIR_A, DIR_B, DIR_C],
@@ -165,15 +172,29 @@ test.describe("Desktop App Screenshots", () => {
     await expect(
       webviewPage.getByTestId("desktop-session-item-sess-a1"),
     ).toBeVisible();
+    // sess-a1 became the active chat session → the row is marked current and
+    // carries no self status slot (opening a session clears its row marker).
+    await expect(
+      webviewPage.getByTestId("desktop-session-item-sess-a1"),
+    ).toHaveClass(/desktop-session-item--current/);
     await expect(
       webviewPage
         .getByTestId("desktop-session-item-sess-a1")
-        .locator(".codicon-loading"),
+        .locator(".desktop-session-status-slot"),
+    ).toHaveCount(0);
+    await expect(
+      webviewPage
+        .getByTestId("desktop-session-item-sess-a3")
+        .locator(
+          ".desktop-session-status-slot--running svg[aria-label='正在运行']",
+        ),
     ).toBeVisible();
     await expect(
       webviewPage
         .getByTestId("desktop-session-item-sess-a2")
-        .locator(".codicon-bell"),
+        .locator(
+          ".desktop-session-status-slot--waiting svg[aria-label='等待确认']",
+        ),
     ).toBeVisible();
     // Other groups are expanded by default too
     await expect(
