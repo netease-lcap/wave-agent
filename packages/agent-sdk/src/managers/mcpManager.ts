@@ -135,6 +135,8 @@ export class McpManager {
 
   private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
   private reconnectAttempts: Map<string, number> = new Map();
+  /** Explicit disconnectServer teardowns currently in flight */
+  private disconnecting: Set<string> = new Set();
 
   constructor(
     private container: Container,
@@ -498,6 +500,11 @@ export class McpManager {
     // Already connected
     if (this.connections.has(name)) return true;
 
+    // An explicit disconnectServer teardown is in flight for this server —
+    // don't race it (e.g. an auto-reconnect timer that just fired) by spawning
+    // a fresh process the user asked to stop.
+    if (this.disconnecting.has(name)) return false;
+
     this.updateServerStatus(name, { status: "connecting" });
 
     try {
@@ -711,14 +718,21 @@ export class McpManager {
 
       transport.onclose = () => {
         logger?.debug(`MCP Server ${name} transport closed`);
+        // Only the current generation of this server's transport may mutate
+        // state: a stale process 'close' arriving after an auto-reconnect must
+        // not tear down (or schedule a reconnect for) the live connection.
+        const current = this.connections.get(name);
+        if (!current || current.transport !== transport) return;
         this.connections.delete(name);
         this.updateServerStatus(name, {
           status: "disconnected",
           tools: [],
           toolCount: 0,
         });
-        // Auto-reconnect with exponential backoff (not triggered by explicit disconnect)
-        if (!this.reconnectTimers.has(name)) {
+        // Auto-reconnect with exponential backoff. Skipped while an explicit
+        // disconnectServer teardown is in flight — that close is expected, and
+        // reconnecting would silently undo a user-initiated disconnect.
+        if (!this.disconnecting.has(name) && !this.reconnectTimers.has(name)) {
           this.scheduleReconnect(name);
         }
       };
@@ -847,28 +861,66 @@ export class McpManager {
     // Cancel any pending reconnect attempts
     this.cancelReconnect(name);
 
+    const server = this.servers.get(name);
     const connection = this.connections.get(name);
-    if (!connection) return false;
 
+    // Nothing live to tear down. Still reconcile a stale "connected"-style
+    // status (e.g. after an unobserved crash left no connection entry) so the
+    // UI converges instead of staying wedged on a disconnect action.
+    if (!connection) {
+      if (server && server.status !== "disconnected") {
+        this.updateServerStatus(name, {
+          status: "disconnected",
+          tools: [],
+          toolCount: 0,
+          error: undefined,
+        });
+      }
+      return false;
+    }
+
+    // Idempotent: a teardown is already running for this server.
+    if (this.disconnecting.has(name)) return false;
+
+    // Mark before closing so transport.onclose knows this is an expected,
+    // user-initiated teardown and must not schedule an auto-reconnect.
+    this.disconnecting.add(name);
     try {
       // Close client connection and transport
       await connection.client.close();
       await connection.transport.close();
 
-      // Remove connection
-      this.connections.delete(name);
+      // Remove connection (transport.onclose may already have done so)
+      if (this.connections.get(name) === connection) {
+        this.connections.delete(name);
+      }
 
       // updateServerStatus will trigger the callback
       this.updateServerStatus(name, {
         status: "disconnected",
         tools: [],
         toolCount: 0,
+        error: undefined,
       });
 
       return true;
     } catch (error) {
       logger?.error(`Error disconnecting from MCP server ${name}:`, error);
+      // Never leave the server reporting connected after a failed teardown:
+      // drop the connection and push a terminal state so the caller/UI gets a
+      // definitive outcome instead of an endless "disconnecting" spinner.
+      if (this.connections.get(name) === connection) {
+        this.connections.delete(name);
+      }
+      this.updateServerStatus(name, {
+        status: "disconnected",
+        tools: [],
+        toolCount: 0,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return false;
+    } finally {
+      this.disconnecting.delete(name);
     }
   }
 

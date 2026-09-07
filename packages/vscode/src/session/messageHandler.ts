@@ -919,6 +919,15 @@ export class MessageHandler {
     try {
       const session = this.getSettingsSession();
       await session.disconnectMcpServer(serverName);
+      // Refresh the list regardless of the return value: the SDK's
+      // onMcpServersChange push may not fire on every path (early return /
+      // teardown error), and without it the webview「断开中…」spinner never
+      // settles. Mirrors handleSettingsRemoveMcpServer below.
+      const servers = await session.getMcpServers();
+      this.context.postSettingsMessage({
+        command: "mcpServersResponse",
+        servers,
+      });
     } catch (error) {
       console.error("Failed to disconnect MCP server:", error);
       vscode.window.showErrorMessage("断开 MCP 服务器失败: " + error);
@@ -2314,10 +2323,19 @@ export class MessageHandler {
     const session = this.context.getChatSession(viewType || "tab", windowId);
     try {
       const success = await session.disconnectMcpServer(serverName);
-      // SDK's onMcpServersChange callback will push the updated state to frontend
+      // Refresh the list regardless of the return value: the SDK's
+      // onMcpServersChange push may not fire on every path (early return /
+      // teardown error), and without it the webview「断开中…」spinner never
+      // settles. Mirrors the removeMcpServer handler below.
+      const servers = await session.getMcpServers();
+      this.context.postMessage(
+        { command: "mcpServersResponse", servers },
+        viewType,
+        windowId,
+      );
       if (success) {
         vscode.window.showInformationMessage(
-          `MCP 服务器 "${serverName}" 断开请求已发送`,
+          `MCP 服务器 "${serverName}" 已断开`,
         );
       }
     } catch (error) {
