@@ -582,7 +582,9 @@ describe("McpManager", () => {
       await mcpManager.loadConfig();
       const config = mcpManager.getConfig();
 
-      expect(config?.mcpServers["shared-server"].command).toBe("project-shared");
+      expect(config?.mcpServers["shared-server"].command).toBe(
+        "project-shared",
+      );
       expect(config?.mcpServers["project-server"]).toBeDefined();
       expect(config?.mcpServers["user-server"]).toBeDefined();
     });
@@ -1144,6 +1146,24 @@ describe("McpManager", () => {
       const result = await mcpManager.disconnectServer("non-existent");
 
       expect(result).toBe(false);
+    });
+
+    it("should reconcile a stale connected status when no connection entry exists", async () => {
+      // Simulate state drift: status shows "connected" but the live connection
+      // is gone (e.g. an unobserved crash already removed it). Disconnect must
+      // still push the server back to a terminal state so the UI's
+      // "disconnecting" spinner always settles.
+      (
+        mcpManager as unknown as {
+          connections: Map<string, unknown>;
+        }
+      ).connections.delete("test-server");
+
+      const result = await mcpManager.disconnectServer("test-server");
+
+      expect(result).toBe(false);
+      expect(mcpManager.getServer("test-server")?.status).toBe("disconnected");
+      expect(mcpManager.getServer("test-server")?.toolCount).toBe(0);
     });
   });
 

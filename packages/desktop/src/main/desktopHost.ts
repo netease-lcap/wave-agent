@@ -3418,6 +3418,16 @@ export class DesktopHost {
           await this.agentForPane(pid)?.disconnectMcpServer(
             msg.serverName as string,
           );
+          // 断开后刷新服务器列表（与 removeMcpServer 同款）：SDK
+          // onMcpServersChange 推送可能因提前返回/异常而不发生，刷新保证
+          // webview 的「断开中…」进行态必有确定结果，不会无限卡住。
+          const paneAgent = this.agentForPane(pid);
+          const servers = paneAgent ? await paneAgent.getMcpServers() : [];
+          this.postMessage({
+            command: "mcpServersResponse",
+            paneId: pid,
+            servers,
+          });
         } catch (error) {
           this.showToast({ message: `断开 MCP 服务器失败: ${error}` });
         }

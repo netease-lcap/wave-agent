@@ -665,11 +665,15 @@ class MessageHandler(
                     IdeService.showError(project, "连接 MCP 服务器失败: ${e.message}")
                 }
             }
-            // VSCE :161/:750 → disconnect; SDK onMcpServersChange pushes update
+            // VSCE :161/:750 → disconnect; refresh afterwards — the SDK's
+            // onMcpServersChange push may not fire on every path (early return /
+            // teardown error), leaving the webview「断开中…」spinner stuck.
             "disconnectMcpServer" -> {
                 val name = msg["serverName"]?.jsonPrimitive?.content ?: return
                 try {
                     session.agent?.disconnectMcpServer(name)
+                    val servers = session.agent?.getMcpServers()?.jsonObject?.get("servers") ?: JsonArray(emptyList())
+                    postMessage("mcpServersResponse", buildJsonObject { put("servers", servers) })
                 } catch (e: StdioClientException) {
                     LOG.warn("disconnectMcpServer failed: ${e.message}")
                     IdeService.showError(project, "断开 MCP 服务器失败: ${e.message}")
