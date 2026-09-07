@@ -24,6 +24,14 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
   },
 }));
 
+// User-level agent dirs are resolved via os.homedir() (the same portable
+// resolution every other user-path resolver in the SDK uses). Pin it so the
+// tests below are deterministic regardless of the machine running them.
+vi.mock("os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("os")>();
+  return { ...actual, homedir: () => "/home/testuser" };
+});
+
 describe("SubagentParser with Built-ins", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -219,10 +227,6 @@ test`;
     it("should handle priority override correctly", async () => {
       const mockFs = await import("fs");
 
-      // Mock HOME environment variable
-      const originalHome = process.env.HOME;
-      process.env.HOME = "/home/testuser";
-
       vi.mocked(mockFs.readdirSync).mockImplementation((dirPath) => {
         if (dirPath === "/builtin/subagents") {
           return ["explore.md"] as unknown as ReturnType<
@@ -263,9 +267,6 @@ Custom system prompt for user override`;
 
       const configs = await loadSubagentConfigurations("/test/workdir");
 
-      // Restore HOME
-      process.env.HOME = originalHome;
-
       // Should find the user config, not the built-in (higher priority)
       const exploreConfig = configs.find((c) => c.name === "explore");
       expect(exploreConfig?.scope).toBe("user"); // User config overrides built-in
@@ -277,8 +278,6 @@ Custom system prompt for user override`;
 
     it("should load subagents from .claude/agents directories", async () => {
       const mockFs = await import("fs");
-      const originalHome = process.env.HOME;
-      process.env.HOME = "/home/testuser";
 
       vi.mocked(mockFs.readdirSync).mockImplementation((dirPath) => {
         if (dirPath === path.join("/home/testuser", ".claude", "agents")) {
@@ -327,8 +326,6 @@ Project Claude agent system prompt`;
 
       const configs = await loadSubagentConfigurations("/test/workdir");
 
-      process.env.HOME = originalHome;
-
       const userClaudeAgent = configs.find((c) => c.name === "claude-agent");
       expect(userClaudeAgent).toBeDefined();
       expect(userClaudeAgent?.scope).toBe("user");
@@ -346,8 +343,6 @@ Project Claude agent system prompt`;
 
     it("should let .wave/agents override .claude/agents for same-named agent", async () => {
       const mockFs = await import("fs");
-      const originalHome = process.env.HOME;
-      process.env.HOME = "/home/testuser";
 
       vi.mocked(mockFs.readdirSync).mockImplementation((dirPath) => {
         if (
@@ -391,12 +386,62 @@ Wave version prompt`;
 
       const configs = await loadSubagentConfigurations("/test/workdir");
 
-      process.env.HOME = originalHome;
-
       const agent = configs.find((c) => c.name === "shared-agent");
       expect(agent).toBeDefined();
       expect(agent?.description).toBe("Wave version");
       expect(agent?.systemPrompt).toBe("Wave version prompt");
+    });
+
+    it("should find user-level subagents when HOME is unset (Windows desktop)", async () => {
+      // Windows GUI-launched processes (Electron desktop app) have no HOME env
+      // var. Regression: user-level agents must resolve via os.homedir() (which
+      // falls back to USERPROFILE on Windows), NOT process.env.HOME — otherwise
+      // `~/.wave/agents` is treated as a literal relative path and a newly
+      // created subagent (written to the real home by the Write tool) is
+      // invisible to the Agent tool.
+      const originalHome = process.env.HOME;
+      delete process.env.HOME;
+      try {
+        const mockFs = await import("fs");
+
+        vi.mocked(mockFs.readdirSync).mockImplementation((dirPath) => {
+          if (dirPath === path.join("/home/testuser", ".wave", "agents")) {
+            return ["arch-explorer.md"] as unknown as ReturnType<
+              typeof import("fs").readdirSync
+            >;
+          }
+          return [] as unknown as ReturnType<typeof import("fs").readdirSync>;
+        });
+
+        vi.mocked(mockFs.statSync).mockReturnValue({
+          isFile: () => true,
+        } as import("fs").Stats);
+
+        vi.mocked(mockFs.readFileSync).mockImplementation((filePath) => {
+          if (
+            filePath ===
+            path.join("/home/testuser", ".wave", "agents", "arch-explorer.md")
+          ) {
+            return `---
+name: arch-explorer
+description: Architecture exploration agent
+---
+Analyze the project architecture.`;
+          }
+          return "";
+        });
+
+        const configs = await loadSubagentConfigurations("/test/workdir");
+        const config = configs.find((c) => c.name === "arch-explorer");
+        expect(config).toBeDefined();
+        expect(config?.scope).toBe("user");
+      } finally {
+        if (originalHome === undefined) {
+          delete process.env.HOME;
+        } else {
+          process.env.HOME = originalHome;
+        }
+      }
     });
   });
 });
