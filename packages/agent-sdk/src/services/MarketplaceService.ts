@@ -11,6 +11,11 @@ import {
   MarketplaceSource,
 } from "../types/marketplace.js";
 import { GitService } from "./GitService.js";
+import {
+  ALLOW_OFFICIAL_MARKET_GIT_FALLBACK,
+  fetchOfficialMarketplaceFromMirror,
+  resolveOfficialMarketplaceMirrorBaseUrl,
+} from "./officialMarketplaceMirror.js";
 import { ConfigurationService } from "./configurationService.js";
 import type { MarketplaceConfig, Scope } from "../types/configuration.js";
 import { logger, logError, logWarn } from "../utils/globalLogger.js";
@@ -706,31 +711,58 @@ export class MarketplaceService {
       const errors: string[] = [];
       for (const marketplace of toUpdate) {
         try {
+          // Builtin official marketplace: prefer the zip-snapshot mirror
+          // (content-addressed zip over a plain HTTP base, no git/GitHub
+          // needed). Only the builtin is special-cased by name — its
+          // `source` stays "github" in settings/cache, so there is zero
+          // data migration. On mirror failure fall back to the git path
+          // unless the kill switch forbids it.
+          const isOfficialBuiltin =
+            marketplace.name === MarketplaceService.BUILTIN_MARKETPLACE.name;
+          let mirrorUpdated = false;
+          if (isOfficialBuiltin && resolveOfficialMarketplaceMirrorBaseUrl()) {
+            const targetPath = this.getMarketplacePath(marketplace.source);
+            const mirrorSha = await fetchOfficialMarketplaceFromMirror(
+              targetPath,
+              this.marketplacesDir,
+            );
+            if (mirrorSha !== null) {
+              mirrorUpdated = true;
+            } else if (!ALLOW_OFFICIAL_MARKET_GIT_FALLBACK) {
+              logWarn(
+                `Skipping update for official marketplace "${marketplace.name}": mirror fetch failed and git fallback is disabled.`,
+              );
+              continue;
+            }
+          }
+
           if (
             marketplace.source.source === "github" ||
             marketplace.source.source === "git"
           ) {
-            if (!isGitAvailable) {
-              logWarn(
-                `Skipping update for Git/GitHub marketplace "${marketplace.name}" because Git is not installed.`,
-              );
-              continue;
-            }
-            const targetPath = this.getMarketplacePath(marketplace.source);
-            if (existsSync(targetPath)) {
-              await this.gitService.pull(targetPath);
-            } else {
-              let url: string;
-              if (marketplace.source.source === "github") {
-                url = marketplace.source.repo;
-              } else {
-                url = marketplace.source.url;
+            if (!mirrorUpdated) {
+              if (!isGitAvailable) {
+                logWarn(
+                  `Skipping update for Git/GitHub marketplace "${marketplace.name}" because Git is not installed.`,
+                );
+                continue;
               }
-              await this.gitService.clone(
-                url,
-                targetPath,
-                marketplace.source.ref,
-              );
+              const targetPath = this.getMarketplacePath(marketplace.source);
+              if (existsSync(targetPath)) {
+                await this.gitService.pull(targetPath);
+              } else {
+                let url: string;
+                if (marketplace.source.source === "github") {
+                  url = marketplace.source.repo;
+                } else {
+                  url = marketplace.source.url;
+                }
+                await this.gitService.clone(
+                  url,
+                  targetPath,
+                  marketplace.source.ref,
+                );
+              }
             }
           }
           const manifest = await this.loadMarketplaceManifest(
