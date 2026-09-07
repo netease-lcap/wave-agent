@@ -1389,8 +1389,15 @@ body.is-panel-resizing webview {
 
 /* Tabbed panel slot (spec「面板 tab 化」): the single slot hosts the tab strip
    (DesktopPanelTabs) above the active panel body. Inline width from ChatApp
-   drives the slot; fullscreen (below) widens it via flex. */
+   drives the slot; fullscreen (below) widens it via flex.
+
+   position:relative anchors the absolutely-positioned .panel-slot-drag-handle
+   (left:-3px, its first child) to THIS slot's left edge — the divider between
+   the conversation column and the panel. Without it the containing block
+   degrades to .desktop-chat-body and the divider renders at the far left of
+   the whole row (regression from PR #2083's handle hoist). */
 .desktop-panel-slot {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 0 0 auto;
