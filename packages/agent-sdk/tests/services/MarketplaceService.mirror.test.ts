@@ -122,6 +122,8 @@ let server: http.Server;
 let serverPort = 0;
 /** latest pointer body; empty string means "return empty". */
 let latestBody = "";
+/** HTTP status for /latest (200 default; 404 simulates prod not yet online). */
+let latestStatus = 200;
 const zipBySha = new Map<string, Buffer>();
 /** Request URLs hit on the server since the last clear. */
 let requestLog: string[] = [];
@@ -131,7 +133,7 @@ beforeAll(async () => {
     const url = req.url ?? "/";
     requestLog.push(url);
     if (url === "/latest") {
-      res.writeHead(200, { "content-type": "text/plain" });
+      res.writeHead(latestStatus, { "content-type": "text/plain" });
       res.end(latestBody);
       return;
     }
@@ -165,6 +167,7 @@ function mirrorBaseUrl(): string {
 
 function clearMirrorState(): void {
   latestBody = "";
+  latestStatus = 200;
   zipBySha.clear();
   requestLog = [];
 }
@@ -234,8 +237,10 @@ describe("officialMarketplaceMirror (zip snapshot)", () => {
   });
 
   describe("resolveOfficialMarketplaceMirrorBaseUrl", () => {
-    it("returns null when neither env nor constant is configured", () => {
-      expect(resolveOfficialMarketplaceMirrorBaseUrl()).toBeNull();
+    it("returns the prod default base URL when env is not configured", () => {
+      expect(resolveOfficialMarketplaceMirrorBaseUrl()).toBe(
+        "https://codechat.codewave.163.com/wave-plugins-official",
+      );
     });
 
     it("prefers the env var over the default constant", () => {
@@ -453,7 +458,8 @@ describe("officialMarketplaceMirror (zip snapshot)", () => {
   });
 
   describe("MarketplaceService.updateMarketplace mirror routing", () => {
-    it("keeps using the git path when the mirror URL is not configured", async () => {
+    it("falls back to git when the mirror 404s (prod content not yet online)", async () => {
+      process.env[OFFICIAL_MARKET_MIRROR_BASE_URL_ENV] = mirrorBaseUrl();
       await fs.mkdir(path.join(installLocation, ".wave-plugin"), {
         recursive: true,
       });
@@ -462,13 +468,14 @@ describe("officialMarketplaceMirror (zip snapshot)", () => {
         MARKETPLACE_MANIFEST,
       );
 
-      // No env var → resolveOfficialMarketplaceMirrorBaseUrl() is null.
+      // Prod ingress/content is not yet live → /latest returns 404.
+      latestStatus = 404;
       await service.updateMarketplace("wave-plugins-official");
 
+      // Mirror tried, failed → git fallback (kill switch defaults to allowed).
+      expect(requestLog).toEqual(["/latest"]);
       expect(mockGitService.pull).toHaveBeenCalledWith(installLocation);
       expect(mockGitService.clone).not.toHaveBeenCalled();
-      // No HTTP mirror request of any kind.
-      expect(requestLog).toHaveLength(0);
     });
 
     it("falls back to git pull when the mirror zip is corrupt", async () => {
@@ -531,9 +538,12 @@ describe("officialMarketplaceMirror (zip snapshot)", () => {
       expect(sentinel).toBe("sha-aaaa");
     });
 
-    it("skips the official marketplace when git is unavailable and no mirror is configured", async () => {
+    it("skips the official marketplace when the mirror fails and git is unavailable", async () => {
+      process.env[OFFICIAL_MARKET_MIRROR_BASE_URL_ENV] = mirrorBaseUrl();
       mockGitService.isGitAvailable.mockResolvedValue(false);
       await service.updateMarketplace("wave-plugins-official");
+      // Mirror probed (local server /latest 404s), then git skip applies.
+      expect(requestLog).toEqual(["/latest"]);
       expect(mockGitService.pull).not.toHaveBeenCalled();
       expect(mockGitService.clone).not.toHaveBeenCalled();
     });

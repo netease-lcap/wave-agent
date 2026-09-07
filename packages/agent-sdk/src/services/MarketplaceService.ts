@@ -14,7 +14,6 @@ import { GitService } from "./GitService.js";
 import {
   ALLOW_OFFICIAL_MARKET_GIT_FALLBACK,
   fetchOfficialMarketplaceFromMirror,
-  resolveOfficialMarketplaceMirrorBaseUrl,
 } from "./officialMarketplaceMirror.js";
 import { ConfigurationService } from "./configurationService.js";
 import type { MarketplaceConfig, Scope } from "../types/configuration.js";
@@ -715,12 +714,12 @@ export class MarketplaceService {
           // (content-addressed zip over a plain HTTP base, no git/GitHub
           // needed). Only the builtin is special-cased by name — its
           // `source` stays "github" in settings/cache, so there is zero
-          // data migration. On mirror failure fall back to the git path
-          // unless the kill switch forbids it.
+          // data migration. On mirror failure (e.g. prod URL not yet live)
+          // fall back to the git path unless the kill switch forbids it.
           const isOfficialBuiltin =
             marketplace.name === MarketplaceService.BUILTIN_MARKETPLACE.name;
           let mirrorUpdated = false;
-          if (isOfficialBuiltin && resolveOfficialMarketplaceMirrorBaseUrl()) {
+          if (isOfficialBuiltin) {
             const targetPath = this.getMarketplacePath(marketplace.source);
             const mirrorSha = await fetchOfficialMarketplaceFromMirror(
               targetPath,
