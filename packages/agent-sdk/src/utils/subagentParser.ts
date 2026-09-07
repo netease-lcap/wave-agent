@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync, statSync } from "fs";
+import { homedir } from "os";
 import { join, extname, basename } from "path";
 import { logger } from "./globalLogger.js";
 import { getBuiltinSubagentsDir } from "./configPaths.js";
@@ -236,8 +237,14 @@ export async function loadSubagentConfigurations(
 ): Promise<SubagentConfiguration[]> {
   const projectWaveDir = join(workdir, ".wave", "agents");
   const projectClaudeDir = join(workdir, ".claude", "agents");
-  const userWaveDir = join(process.env.HOME || "~", ".wave", "agents");
-  const userClaudeDir = join(process.env.HOME || "~", ".claude", "agents");
+  // Resolve user-level dirs via os.homedir() (NOT process.env.HOME): every
+  // other user-path resolver in the SDK (settings, skills, MCP, rules, ~/
+  // expansion in the Write tool) uses os.homedir(), which on Windows falls
+  // back to USERPROFILE. Windows GUI-launched processes (Electron desktop)
+  // typically have no HOME set, so process.env.HOME made user-level subagents
+  // silently invisible there (`~/.wave/agents` resolved as a relative path).
+  const userWaveDir = join(homedir(), ".wave", "agents");
+  const userClaudeDir = join(homedir(), ".claude", "agents");
   const builtinDir = getBuiltinSubagentsDir();
 
   // Load configurations from all sources
