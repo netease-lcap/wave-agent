@@ -1413,6 +1413,39 @@
 [data-host="desktop"] .desktop-workdir-menu-item:has(.desktop-workdir-menu-parent) {
   min-height: 32px;
 }
+
+/* 下拉内「添加主机…」展开的 inline 输入行（走查评论 div.desktop-host-add：
+   激活后输入行大小应与上方选项行一致，且表单颜色/文字符合全局规范）。
+   选项行已统一 28px/14px/r6，此处把输入行拉平到同高同字，聚焦走桌面
+   中性焦点环（--cc-border-focus #a0a5a8，base 的红 #c1292e 是插件遗留）；
+   背景仍吃 --vscode-input-background，避免改全局输入 token。 */
+[data-host="desktop"] .desktop-host-add {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 8px;
+}
+[data-host="desktop"] .desktop-host-add-input {
+  box-sizing: border-box;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 24px;
+  border-radius: 6px;
+  color: #1f2329;
+}
+[data-host="desktop"] .desktop-host-add-input::placeholder {
+  color: #8b8f95;
+}
+[data-host="desktop"] .desktop-host-add-input:focus {
+  border-color: var(--cc-border-focus, #a0a5a8);
+}
+[data-host="desktop"][data-theme="dark"] .desktop-host-add-input {
+  color: #e5e7e8;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-host-add-input::placeholder {
+  color: #858b8f;
+}
 [data-host="desktop"] .more-menu-item:hover,
 [data-host="desktop"] .more-menu-item:focus-visible,
 [data-host="desktop"] .panel-toggle-menu-item:hover,
