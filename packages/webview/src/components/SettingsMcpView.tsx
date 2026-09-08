@@ -9,9 +9,10 @@
  * （含 scope 字段）。
  */
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import { McpServerStatus } from "../types";
 import { useHostMessage } from "../utils/useHostMessage";
+import { useSettingsList } from "../utils/useSettingsList";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsAddIcon } from "./HeaderIcons";
 import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
@@ -39,8 +40,24 @@ const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
   workdir,
   onPrefillPrompt,
 }) => {
-  const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    items: mcpServers,
+    setItems: setMcpServers,
+    loading,
+    pendingDelete,
+    setPendingDelete,
+    cancelDelete,
+    confirmDelete,
+  } = useSettingsList<McpServerStatus[], McpServerStatus>({
+    initialItems: [],
+    fetchRequest: () => {
+      vscode?.postMessage({ command: "getMcpServers" });
+      vscode?.postMessage({ command: "getMcpConfigPaths" });
+    },
+    responseCommands: ["mcpServersResponse", "mcpServersUpdate"],
+    pickItems: (message) => message.servers || [],
+    onResponse: () => setMcpConnecting({}),
+  });
   const [activeTab, setActiveTab] = useState<string>(TABS[0].key);
   const [mcpConnecting, setMcpConnecting] = useState<Record<string, boolean>>(
     {},
@@ -50,40 +67,15 @@ const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
     userPath: string | null;
     projectPath: string | null;
   } | null>(null);
-  // 待删除服务器（null = 无确认框）
-  const [pendingDelete, setPendingDelete] = useState<McpServerStatus | null>(
-    null,
-  );
-
-  const fetchServers = useCallback(() => {
-    vscode?.postMessage({ command: "getMcpServers" });
-    vscode?.postMessage({ command: "getMcpConfigPaths" });
-  }, [vscode]);
-
-  // Fetch MCP servers on mount
-  useEffect(() => {
-    setLoading(true);
-    fetchServers();
-  }, [fetchServers]);
 
   useHostMessage((message) => {
-    switch (message.command) {
-      case "mcpServersResponse":
-      case "mcpServersUpdate":
-        setMcpServers(message.servers || []);
-        setMcpConnecting({});
-        setLoading(false);
-        break;
-      case "mcpConfigPathsResponse":
-        setMcpConfigPaths({
-          userPath:
-            typeof message.userPath === "string" ? message.userPath : null,
-          projectPath:
-            typeof message.projectPath === "string"
-              ? message.projectPath
-              : null,
-        });
-        break;
+    if (message.command === "mcpConfigPathsResponse") {
+      setMcpConfigPaths({
+        userPath:
+          typeof message.userPath === "string" ? message.userPath : null,
+        projectPath:
+          typeof message.projectPath === "string" ? message.projectPath : null,
+      });
     }
   });
 
@@ -133,16 +125,16 @@ const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
   };
 
   const handleConfirmDelete = () => {
-    if (!pendingDelete) return;
-    const scope = (pendingDelete.scope ?? "project") as "user" | "project";
-    vscode?.postMessage({
-      command: "removeMcpServer",
-      scope,
-      serverName: pendingDelete.name,
+    confirmDelete((server) => {
+      const scope = (server.scope ?? "project") as "user" | "project";
+      vscode?.postMessage({
+        command: "removeMcpServer",
+        scope,
+        serverName: server.name,
+      });
+      // 乐观移除；host 回发 mcpServersResponse 后最终一致
+      setMcpServers((prev) => prev.filter((s) => s.name !== server.name));
     });
-    setPendingDelete(null);
-    // 乐观移除；host 回发 mcpServersResponse 后最终一致
-    setMcpServers((prev) => prev.filter((s) => s.name !== pendingDelete.name));
   };
 
   const configLabel = (server: McpServerStatus): string => {
@@ -294,7 +286,7 @@ const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
           confirmText="确认删除"
           cancelText="取消"
           onConfirm={handleConfirmDelete}
-          onCancel={() => setPendingDelete(null)}
+          onCancel={cancelDelete}
         />
       )}
     </div>

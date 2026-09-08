@@ -5,6 +5,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { WebLinksAddon } from "@xterm/addon-web-links";
 import { isLocalhostUrl } from "../utils/isLocalhostUrl";
 import { useHostMessage } from "../utils/useHostMessage";
+import { readRootCssVar } from "../utils/cssVars";
 import { RefreshIcon } from "./HeaderIcons";
 import { PanePlaceholder, PaneShell } from "./PaneShell";
 import "../styles/TerminalPane.css";
@@ -51,18 +52,15 @@ export function prefetchTerminalLib(): void {
 
 /** Terminal colors follow the app theme via --vscode-* variables. */
 const readTerminalTheme = () => {
-  const styles = getComputedStyle(document.documentElement);
-  const pick = (name: string, fallback: string) =>
-    styles.getPropertyValue(name).trim() || fallback;
   const background =
-    pick("--vscode-panel-background", "") ||
-    pick("--vscode-editor-background", "#1e1e1e");
-  const foreground = pick("--vscode-foreground", "#cccccc");
+    readRootCssVar("--vscode-panel-background") ||
+    readRootCssVar("--vscode-editor-background", "#1e1e1e");
+  const foreground = readRootCssVar("--vscode-foreground", "#cccccc");
   return {
     background,
     foreground,
-    cursor: pick("--vscode-editorCursor-foreground", foreground),
-    selectionBackground: pick(
+    cursor: readRootCssVar("--vscode-editorCursor-foreground", foreground),
+    selectionBackground: readRootCssVar(
       "--vscode-editor-selectionBackground",
       "rgba(255, 255, 255, 0.25)",
     ),
@@ -196,10 +194,10 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       .then((lib) => {
         if (disposed || !containerRef.current) return;
         const term = new lib.Terminal({
-          fontFamily:
-            getComputedStyle(document.documentElement)
-              .getPropertyValue("--vscode-editor-font-family")
-              .trim() || 'Menlo, Monaco, "Courier New", monospace',
+          fontFamily: readRootCssVar(
+            "--vscode-editor-font-family",
+            'Menlo, Monaco, "Courier New", monospace',
+          ),
           fontSize: 12,
           cursorBlink: true,
           theme: readTerminalTheme(),

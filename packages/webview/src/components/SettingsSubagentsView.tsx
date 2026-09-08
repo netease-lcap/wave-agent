@@ -8,9 +8,9 @@
  * （二次确认 + 直接删文件）。数据通过 getSubagentConfigurations RPC 由 host 下发。
  */
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import { SubagentConfiguration } from "../types";
-import { useHostMessage } from "../utils/useHostMessage";
+import { useSettingsList } from "../utils/useSettingsList";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsAddIcon } from "./HeaderIcons";
 import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
@@ -46,32 +46,23 @@ const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
   workdir,
   onPrefillPrompt,
 }) => {
-  const [configurations, setConfigurations] = useState<SubagentConfiguration[]>(
-    [],
-  );
-  const [loading, setLoading] = useState(true);
+  const {
+    items: configurations,
+    loading,
+    refresh,
+    pendingDelete,
+    setPendingDelete,
+    cancelDelete,
+    confirmDelete,
+  } = useSettingsList<SubagentConfiguration[], SubagentConfiguration>({
+    initialItems: [],
+    fetchRequest: () =>
+      vscode?.postMessage({ command: "getSubagentConfigurations" }),
+    responseCommands: ["subagentConfigurationsResponse"],
+    pickItems: (message) => message.configurations || [],
+  });
   const [activeTab, setActiveTab] = useState<string>(TABS[0].key);
   const [selectedName, setSelectedName] = useState<string | null>(null);
-  // 待删除子代理（null = 无确认框）
-  const [pendingDelete, setPendingDelete] =
-    useState<SubagentConfiguration | null>(null);
-
-  const fetchConfigurations = useCallback(() => {
-    vscode?.postMessage({ command: "getSubagentConfigurations" });
-  }, [vscode]);
-
-  // Fetch agent definitions on mount (fresh each time the tab opens)
-  useEffect(() => {
-    setLoading(true);
-    fetchConfigurations();
-  }, [fetchConfigurations]);
-
-  useHostMessage((message) => {
-    if (message.command === "subagentConfigurationsResponse") {
-      setConfigurations(message.configurations || []);
-      setLoading(false);
-    }
-  });
 
   const selectedAgent =
     configurations.find((c) => c.name === selectedName) || null;
@@ -104,13 +95,13 @@ const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
   };
 
   const handleConfirmDelete = () => {
-    if (!pendingDelete) return;
-    vscode?.postMessage({
-      command: "deleteSubagent",
-      name: pendingDelete.name,
+    confirmDelete((agent) => {
+      vscode?.postMessage({
+        command: "deleteSubagent",
+        name: agent.name,
+      });
+      refresh();
     });
-    setPendingDelete(null);
-    fetchConfigurations();
   };
 
   const isEditable = (agent: SubagentConfiguration) =>
@@ -306,7 +297,7 @@ const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
           confirmText="确认删除"
           cancelText="取消"
           onConfirm={handleConfirmDelete}
-          onCancel={() => setPendingDelete(null)}
+          onCancel={cancelDelete}
         />
       )}
     </div>
