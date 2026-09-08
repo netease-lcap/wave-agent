@@ -5,8 +5,10 @@
  * 经 updateConfiguration 写回，与旧设置弹窗一致；设置页只针对当前项目，
  * 删除项目切换按钮与 4 个管理视图的项目分组卡片；2026-09-04 拍板：
  * 「个性化」AGENTS.md 一并恢复可编辑 + 独立保存，写回对应文件):
- * - 全局设置 (global): AI 回复语言下拉 + 主题选择（仅桌面端，即时生效）
- *   + 上下文长度输入 + 保存
+ * - 全局设置 (global): 「基础设置」= AI 回复语言下拉 + 上下文长度输入 + 保存
+ *   （走 stdio updateConfiguration）；「桌面端设置」区块 = 主题 + 接收 Beta 版
+ *   更新（仅桌面端渲染，host 直连 configStore 通道即时生效，无保存按钮；
+ *   2026-09-08 拍板从「基础设置」拆出）
  * - 项目设置 (project): SDD 内置插件开关（唯一交互控件，即时启停插件）
  * - 个性化 (personalization): AGENTS.md 可编辑（用户级/项目级文本区 + 独立保存，
  *   经 setAgentsContent RPC 写回对应文件）+ 自动记忆开关/轮次输入 + 保存
@@ -47,14 +49,15 @@ export interface SettingsPageProps {
   /** 保存配置（全局设置 / 个性化视图的保存按钮触发，含 language/contextLength/
    *  autoMemoryEnabled/autoMemoryFrequency） */
   onSave?: (data: ConfigurationData) => void;
-  /** 主题偏好（仅桌面端传入；未传入 = IDE 宿主，不显示主题行）。
-   *  选择即时生效（onThemeChange 触发 host setThemeSource），不依赖保存按钮。 */
+  /** 主题偏好（仅桌面端传入；未传入 = IDE 宿主，不渲染「桌面端设置」区块与
+   *  主题行）。选择即时生效（onThemeChange 触发 host setThemeSource），
+   *  不依赖保存按钮。 */
   themeSource?: ThemeSource;
   /** 用户选择新主题偏好（"system" | "light" | "dark"），host 持久化并应用。 */
   onThemeChange?: (source: ThemeSource) => void;
-  /** 桌面端更新通道（仅桌面端传入；未传入 = IDE 宿主，不显示开关行）。
-   *  切换即时生效（onUpdateChannelChange 触发 host setUpdateChannel），
-   *  不依赖保存按钮。 */
+  /** 桌面端更新通道（仅桌面端传入；未传入 = IDE 宿主，不渲染「桌面端设置」
+   *  区块与开关行）。切换即时生效（onUpdateChannelChange 触发 host
+   *  setUpdateChannel），不依赖保存按钮。 */
   updateChannel?: UpdateChannel;
   /** 用户切换更新通道（"stable" | "beta"），host 持久化并立即按新 feed 重查。 */
   onUpdateChannelChange?: (channel: UpdateChannel) => void;
@@ -428,62 +431,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       </select>
                     </div>
                   </div>
-                  {themeSource !== undefined && (
-                    <div className="settings-row">
-                      <div className="settings-row-copy">
-                        <h3>主题</h3>
-                        <p>选择应用的显示外观，跟随系统或固定浅色/深色</p>
-                      </div>
-                      <div className="settings-control">
-                        <select
-                          className="settings-select"
-                          aria-label="主题"
-                          value={theme}
-                          onChange={(e) => {
-                            const next = e.target.value as ThemeSource;
-                            setTheme(next);
-                            onThemeChange?.(next);
-                          }}
-                        >
-                          <option value="system">跟随系统</option>
-                          <option value="light">浅色</option>
-                          <option value="dark">深色</option>
-                        </select>
-                      </div>
-                    </div>
-                  )}
-                  {updateChannel !== undefined && (
-                    <div className="settings-row">
-                      <div className="settings-row-copy">
-                        <h3>接收 Beta 版更新</h3>
-                        <p>
-                          {configurationData?.serverUrl
-                            ? "开启后自动更新将接收测试版通道（Beta）分发的版本"
-                            : "登录后可接收测试版更新"}
-                        </p>
-                      </div>
-                      <label className="settings-switch">
-                        <input
-                          type="checkbox"
-                          aria-label="接收 Beta 版更新"
-                          checked={channel === "beta"}
-                          disabled={!configurationData?.serverUrl}
-                          onChange={(e) => {
-                            // 置灰（未登录、无 serverUrl）时不可切换——disabled
-                            // 已阻止真实点击，此处防御 label 激活路径或自动化
-                            // 事件直接派发造成的状态漂移（spec 场景 2）。
-                            if (!configurationData?.serverUrl) return;
-                            const next: UpdateChannel = e.target.checked
-                              ? "beta"
-                              : "stable";
-                            setChannel(next);
-                            onUpdateChannelChange?.(next);
-                          }}
-                        />
-                        <span className="settings-switch-slider"></span>
-                      </label>
-                    </div>
-                  )}
                   <div className="settings-row">
                     <div className="settings-row-copy">
                       <h3>上下文长度</h3>
@@ -518,6 +465,76 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                   </button>
                 </div>
               </section>
+              {/* 「桌面端设置」区块（仅桌面端渲染，见 spec desktop-account-and-settings
+                  场景 3）：主题与「接收 Beta 版更新」为桌面端独有的本地偏好——经
+                  host 直连通道（setThemeSource / setUpdateChannel）持久化于桌面
+                  configStore，不走 stdio updateConfiguration/共享 settings.json，
+                  选择即时生效、无「保存」按钮。2026-09-08 拍板从「基础设置」拆出。 */}
+              {(themeSource !== undefined || updateChannel !== undefined) && (
+                <section className="settings-section">
+                  <div className="settings-section-heading">
+                    <h2>桌面端设置</h2>
+                  </div>
+                  <div className="settings-card">
+                    {themeSource !== undefined && (
+                      <div className="settings-row">
+                        <div className="settings-row-copy">
+                          <h3>主题</h3>
+                          <p>选择应用的显示外观，跟随系统或固定浅色/深色</p>
+                        </div>
+                        <div className="settings-control">
+                          <select
+                            className="settings-select"
+                            aria-label="主题"
+                            value={theme}
+                            onChange={(e) => {
+                              const next = e.target.value as ThemeSource;
+                              setTheme(next);
+                              onThemeChange?.(next);
+                            }}
+                          >
+                            <option value="system">跟随系统</option>
+                            <option value="light">浅色</option>
+                            <option value="dark">深色</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                    {updateChannel !== undefined && (
+                      <div className="settings-row">
+                        <div className="settings-row-copy">
+                          <h3>接收 Beta 版更新</h3>
+                          <p>
+                            {configurationData?.serverUrl
+                              ? "开启后自动更新将接收测试版通道（Beta）分发的版本"
+                              : "登录后可接收测试版更新"}
+                          </p>
+                        </div>
+                        <label className="settings-switch">
+                          <input
+                            type="checkbox"
+                            aria-label="接收 Beta 版更新"
+                            checked={channel === "beta"}
+                            disabled={!configurationData?.serverUrl}
+                            onChange={(e) => {
+                              // 置灰（未登录、无 serverUrl）时不可切换——disabled
+                              // 已阻止真实点击，此处防御 label 激活路径或自动化
+                              // 事件直接派发造成的状态漂移（spec 场景 2）。
+                              if (!configurationData?.serverUrl) return;
+                              const next: UpdateChannel = e.target.checked
+                                ? "beta"
+                                : "stable";
+                              setChannel(next);
+                              onUpdateChannelChange?.(next);
+                            }}
+                          />
+                          <span className="settings-switch-slider"></span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
             </div>
           )}
 
