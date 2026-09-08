@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "fs";
+import * as path from "path";
 import {
   parseSkillFile,
   validateSkillMetadata,
@@ -40,6 +41,22 @@ This is a test skill content.`;
       );
       expect(result.skillMetadata.type).toBe("personal");
       expect(result.validationErrors).toHaveLength(0);
+    });
+
+    it("exposes skillPath as the skill directory, not the SKILL.md file (contract lock)", () => {
+      // SkillMetadata.skillPath is a directory-level contract: consumers
+      // inject it for ${WAVE_SKILL_DIR} and rm(recursive) it on delete. If
+      // this ever returns the file path, those consumers silently break.
+      mockReadFileSync.mockReturnValue(
+        "---\nname: dir-skill\ndescription: d\n---\nbody",
+      );
+
+      const filePath = path.join("/root", "skills", "dir-skill", "SKILL.md");
+      const result = parseSkillFile(filePath);
+
+      expect(result.isValid).toBe(true);
+      expect(result.skillMetadata.skillPath).toBe(path.dirname(filePath));
+      expect(result.skillMetadata.skillPath.endsWith("SKILL.md")).toBe(false);
     });
 
     it("should parse allowed-tools in frontmatter (string)", () => {

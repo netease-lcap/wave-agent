@@ -531,6 +531,12 @@ describe("SkillManager", () => {
           force: true,
         });
       }
+      // Directory-level delete contract: rm targets the skill folder so
+      // helper files inside it disappear with it — never just SKILL.md.
+      const removedTargets = vi
+        .mocked(rm)
+        .mock.calls.map((call) => String(call[0]));
+      expect(removedTargets.some((t) => t.endsWith("SKILL.md"))).toBe(false);
       // caches converge with disk before deleteSkill resolves: the duplicate
       // must NOT resurface from a lower-priority directory (bug ②)
       const after = manager
@@ -758,6 +764,10 @@ describe("SkillManager", () => {
       });
 
       expect(result.content).toContain("Skill is at /path/to/skill");
+      // Directory contract: skillPath is the skill's folder (see
+      // SkillMetadata.skillPath), so the substitution must never leak a
+      // SKILL.md file path into the prompt.
+      expect(result.content).not.toContain("SKILL.md");
     });
 
     it("should substitute ${WAVE_PLUGIN_ROOT} with the skill's plugin root path", async () => {
