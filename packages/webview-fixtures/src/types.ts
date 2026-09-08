@@ -11,6 +11,27 @@
  * `paneId` is optional: the desktop host tags every pane-scoped push with the
  * target pane's id; IDE hosts never send it (untagged messages are consumed by
  * the single webview instance / self-consumed per ChatApp).
+ *
+ * ## 归属契约（reply-to messages，P3 键控契约）
+ *
+ * host→webview 消息按归属语义分三类：
+ *
+ * 1. **快照/广播**（desktopSessionTree、contextUsage、updateStreamingContent、
+ *    mcpServersResponse…）：全量状态推送，晚到 = 更新的事实，消费侧无需过期
+ *    判断；pane 级推送由 base 的 `paneId` 路由。
+ * 2. **请求-响应（reply-to）**：webview 先请求、host 后回复。**必须携带归属
+ *    键**（见下方 `ReplyAttribution` 注册表），消费侧按两条标准模式处理：
+ *    - 过期即弃：一次性查询比对 `requestId`（MessageInput fileSuggestions）
+ *      或比对请求时登记的归属值（btw 面板比对 `question`）；
+ *    - 渲染期键控过滤：state 存归属值、渲染期派生比对当前作用域（#2073
+ *      desktopGitBranches 按 workdir），晚到的旧回复永不匹配当前作用域——
+ *      不在 effect 里清空 state，避免中间帧闪现。
+ * 3. **命令事件**（showToast、focusInput、prefillPrompt、triggerShortcut…）：
+ *    host 主动命令，无请求-响应配对，不需要归属键。
+ *
+ * 新增请求-响应消息时：接口把归属键声明为**必填**并把 `command → 键名` 登记
+ * 进 `ReplyAttribution`——漏带归属键会在 fixtures 的编译期断言处直接报类型
+ * 错误，而不是运行时才暴露「晚到回复覆盖新状态」。
  */
 
 // SDK types come from the light entry (same types the UI consumers import;
@@ -224,8 +245,10 @@ export interface UpdateWorkdirMessage extends HostToWebviewMessageBase {
 export interface DesktopGitBranchesMessage extends HostToWebviewMessageBase {
   command: "desktopGitBranches";
   /** The workdir this branch list was queried for — replies are keyed by it
-   * so the webview never shows a previous directory's result after a switch. */
-  workdir?: string;
+   *  so the webview never shows a previous directory's result after a switch
+   *  (render-time keying, #2073). Required: the desktop host echoes the
+   *  requested workdir on every reply. */
+  workdir: string;
   result?: GitBranchesResult;
 }
 
@@ -347,6 +370,8 @@ export interface ProjectSettingsMessage extends HostToWebviewMessageBase {
 /** Settings page hooks read-only view: scope-scoped settings.json hooks. */
 export interface HooksConfigResponseMessage extends HostToWebviewMessageBase {
   command: "hooksConfigResponse";
+  /** 归属键：回复所属的配置作用域（host 端以 `scope ?? "user"` 恒回带），
+   *  消费侧据此丢弃切 Tab 前发出的慢回复。 */
   scope: "user" | "project";
   hooks?: Record<string, unknown>;
 }
@@ -354,6 +379,7 @@ export interface HooksConfigResponseMessage extends HostToWebviewMessageBase {
 /** Settings page MCP read-only view: scope-scoped mcp.json servers config. */
 export interface McpConfigResponseMessage extends HostToWebviewMessageBase {
   command: "mcpConfigResponse";
+  /** 归属键：同 hooksConfigResponse.scope。 */
   scope: "user" | "project";
   mcpServers: Record<string, unknown>;
 }
@@ -665,8 +691,12 @@ export interface HistoryResponseMessage extends HostToWebviewMessageBase {
 
 // ---- MessageInput-owned replies (consumed outside the ChatApp switch). ----
 
-export interface FileSuggestionsMessage extends HostToWebviewMessageBase {
-  command: "fileSuggestions";
+/** Reply to a requestFileSuggestions query (@ 提及文件建议). MessageInput
+ *  keeps the latest request's id and drops replies whose requestId does not
+ *  match — 过期即弃（一次性查询归属键的标准范例）。 */
+export interface FileSuggestionsResponseMessage
+  extends HostToWebviewMessageBase {
+  command: "fileSuggestionsResponse";
   requestId: string;
   suggestions: unknown[];
 }
@@ -711,6 +741,56 @@ export interface DesktopRemoteDirListMessage extends HostToWebviewMessageBase {
   resolvedPath?: string;
   dirs?: string[];
   error?: unknown;
+}
+
+// ---- Contract gaps (commands hosts really send / the webview really
+// consumes, previously missing from the union). Registered so the fixtures
+// package stays the single authoritative contract (先例坑：新 host→webview
+// 消息必须先进 webview-fixtures). ----
+
+/** Reply to getConfiguredModels — the model picker's candidate list. */
+export interface ConfiguredModelsMessage extends HostToWebviewMessageBase {
+  command: "configuredModels";
+  models: string[];
+  currentModel?: string;
+}
+
+/** Full MCP server status push (connect/disconnect refresh). Snapshot
+ *  semantics, not reply-to: McpDialog / SettingsMcpView render-time filter by
+ *  each server's own `scope` field, so no attribution key beyond paneId. */
+export interface McpServersUpdateMessage extends HostToWebviewMessageBase {
+  command: "mcpServersUpdate";
+  servers: unknown[];
+}
+
+/** Settings tab open push (VS Code): workdir + optional nav key so
+ *  /mcp、/agents 等斜杠命令打开设置页可预选 tab. Early posts are dropped
+ *  by VS Code before the webview's listener registers — the host re-serves
+ *  the cached state on the webview's `settingsReady` handshake (#2044). */
+export interface SettingsStateMessage extends HostToWebviewMessageBase {
+  command: "settingsState";
+  workdir?: string;
+  nav?: string;
+}
+
+/** IDE selection toolbar → insert a code-selection context tag into the
+ *  chat input (VS Code sends on the ➕ action). */
+export interface AddSelectionToInputMessage extends HostToWebviewMessageBase {
+  command: "addSelectionToInput";
+  selection: SelectionInfo;
+}
+
+/** IDE settings page「新建/编辑」→ close settings tab and prefill the chat
+ *  input draft (ChatApp loadDraft). */
+export interface PrefillPromptMessage extends HostToWebviewMessageBase {
+  command: "prefillPrompt";
+  prompt: string;
+}
+
+/** Reply to a requestHistory / searchHistory query that failed. */
+export interface HistoryErrorMessage extends HostToWebviewMessageBase {
+  command: "historyError";
+  error: unknown;
 }
 
 export type HostToWebviewMessage =
@@ -779,10 +859,79 @@ export type HostToWebviewMessage =
   | HooksResponseMessage
   | McpConfigPathsResponseMessage
   | HistoryResponseMessage
-  | FileSuggestionsMessage
+  | HistoryErrorMessage
+  | ConfiguredModelsMessage
+  | McpServersUpdateMessage
+  | SettingsStateMessage
+  | AddSelectionToInputMessage
+  | PrefillPromptMessage
+  | FileSuggestionsResponseMessage
   | FileSuggestionsErrorMessage
   | SlashCommandsResponseMessage
   | SlashCommandsErrorMessage
   | UploadSuccessMessage
   | UploadErrorMessage
   | DesktopRemoteDirListMessage;
+
+/**
+ * Reply-to 消息归属键注册表（契约锁，见文件头部「归属契约」）。
+ *
+ * key = command，value = 该响应必须携带的归属字段名。注册表中的每一条都会被
+ * 下方的编译期断言校验：union 对应成员若把归属键声明为可选（或漏掉），类型
+ * 检查在 `_replyAttributionLocked` 处直接报错。
+ *
+ * 快照/广播与命令事件类消息不进本表（它们没有请求-响应配对，晚到 = 新事实）。
+ */
+type ReplyAttribution = {
+  // 作用域查询：作用域字段作归属键（渲染期键控过滤或过期即弃均可）。
+  desktopGitBranches: "workdir";
+  hooksConfigResponse: "scope";
+  mcpConfigResponse: "scope";
+  agentsContentResponse: "scope";
+  agentsContentSaved: "scope";
+  // 问题文本作键：btw 面板比对 in-flight question，晚到的旧回复即弃。
+  btwStream: "question";
+  btwResponse: "question";
+  btwError: "question";
+  // 一次性查询：请求生成 id，回复原样带回（MessageInput requestIdRef 范例）。
+  desktopForwardPortResult: "requestId";
+  desktopRemoteDirList: "requestId";
+  fileSuggestionsResponse: "requestId";
+};
+
+// ---- 编译期断言：注册表中的每条响应命令，union 成员必须必填其归属键。 ----
+// 探测语义：归属键的索引访问类型不得含 undefined（optional 或显式
+// `| undefined` 都算未满足）。
+type UnionMemberByCommand<C extends string> = Extract<
+  HostToWebviewMessage,
+  { command: C }
+>;
+type ReplyAttributionSatisfied = {
+  [C in keyof ReplyAttribution & string]: UnionMemberByCommand<C> extends {
+    [K in ReplyAttribution[C]]: infer V;
+  }
+    ? undefined extends V
+      ? never
+      : true
+    : never;
+};
+// 某条注册的响应漏带/弱化归属键（optional 或显式 `| undefined`）时，
+// Satisfied 对应键退化为 never，下方 satisfies 报
+// 「Type 'true' is not assignable to type 'never'」——从 fixtures 契约层
+// 拦下回归。逐键 satisfies 而非整体索引：never 会被 `true | never` union
+// 吸收，整体检查恒绿（probe 验证过的坑）。
+export const replyAttributionLocked = {
+  desktopGitBranches: true,
+  hooksConfigResponse: true,
+  mcpConfigResponse: true,
+  agentsContentResponse: true,
+  agentsContentSaved: true,
+  btwStream: true,
+  btwResponse: true,
+  btwError: true,
+  desktopForwardPortResult: true,
+  desktopRemoteDirList: true,
+  fileSuggestionsResponse: true,
+} satisfies {
+  [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];
+};
