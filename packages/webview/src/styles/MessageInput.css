@@ -181,7 +181,9 @@
   width: 10px;
   height: 10px;
   border-radius: 2px;
-  background: #fff;
+  /* 与发送按钮图标同源（currentColor → 按钮 --vscode-button-foreground），
+     勿硬编码 #fff，否则自定义/深色主题下与发送按钮不同色。 */
+  background: currentColor;
 }
 
 /* Toolbar row inside the bordered box: 40px tall, 12px horizontal padding (设计稿) */
