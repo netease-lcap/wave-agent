@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useClickOutside } from "../utils/useClickOutside";
+import { useHostMessage } from "../utils/useHostMessage";
 import {
   PluginDialogProps,
   PluginInfo,
@@ -40,21 +41,16 @@ const PluginDialog: React.FC<
     setSelectedPlugin(null);
   }, [activePluginTab, vscode]);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-      switch (message.command) {
-        case "listPluginsResponse":
-          setPlugins(message.plugins || []);
-          break;
-        case "listMarketplacesResponse":
-          setMarketplaces(message.marketplaces || []);
-          break;
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  useHostMessage((message) => {
+    switch (message.command) {
+      case "listPluginsResponse":
+        setPlugins(message.plugins || []);
+        break;
+      case "listMarketplacesResponse":
+        setMarketplaces(message.marketplaces || []);
+        break;
+    }
+  });
 
   const handleInstallPlugin = (pluginId: string, scope: PluginScope) => {
     vscode?.postMessage({ command: "installPlugin", pluginId, scope });

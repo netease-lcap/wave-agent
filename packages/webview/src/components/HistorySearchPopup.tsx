@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useClickOutside } from "../utils/useClickOutside";
+import { useHostMessage } from "../utils/useHostMessage";
 import "../styles/HistorySearchPopup.css";
 import { HistoryItem, VsCodeApi } from "../types";
 
@@ -49,22 +50,16 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
   }, [isVisible, vscode]);
 
   // Handle messages from extension
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const data = event.data;
-      if (data.command === "historyResponse") {
-        setItems(data.history || []);
-        setSelectedIndex(0);
-        setIsLoading(false);
-      } else if (data.command === "historyError") {
-        console.error("History error:", data.error);
-        setIsLoading(false);
-      }
-    };
-
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  useHostMessage((data) => {
+    if (data.command === "historyResponse") {
+      setItems(data.history || []);
+      setSelectedIndex(0);
+      setIsLoading(false);
+    } else if (data.command === "historyError") {
+      console.error("History error:", data.error);
+      setIsLoading(false);
+    }
+  });
 
   // Auto-scroll selected item into view when navigation happens
   useEffect(() => {

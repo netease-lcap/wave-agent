@@ -11,6 +11,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { McpServerStatus } from "../types";
+import { useHostMessage } from "../utils/useHostMessage";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsAddIcon } from "./HeaderIcons";
 import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
@@ -65,31 +66,26 @@ const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
     fetchServers();
   }, [fetchServers]);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-      switch (message.command) {
-        case "mcpServersResponse":
-        case "mcpServersUpdate":
-          setMcpServers(message.servers || []);
-          setMcpConnecting({});
-          setLoading(false);
-          break;
-        case "mcpConfigPathsResponse":
-          setMcpConfigPaths({
-            userPath:
-              typeof message.userPath === "string" ? message.userPath : null,
-            projectPath:
-              typeof message.projectPath === "string"
-                ? message.projectPath
-                : null,
-          });
-          break;
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  useHostMessage((message) => {
+    switch (message.command) {
+      case "mcpServersResponse":
+      case "mcpServersUpdate":
+        setMcpServers(message.servers || []);
+        setMcpConnecting({});
+        setLoading(false);
+        break;
+      case "mcpConfigPathsResponse":
+        setMcpConfigPaths({
+          userPath:
+            typeof message.userPath === "string" ? message.userPath : null,
+          projectPath:
+            typeof message.projectPath === "string"
+              ? message.projectPath
+              : null,
+        });
+        break;
+    }
+  });
 
   const handleConnect = (serverName: string) => {
     setMcpConnecting((prev) => ({ ...prev, [serverName]: true }));

@@ -4,6 +4,7 @@ import type { Terminal as XtermTerminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { WebLinksAddon } from "@xterm/addon-web-links";
 import { isLocalhostUrl } from "../utils/isLocalhostUrl";
+import { useHostMessage } from "../utils/useHostMessage";
 import { RefreshIcon } from "./HeaderIcons";
 import "../styles/TerminalPane.css";
 
@@ -157,6 +158,31 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     createPty();
   }, [killPty, createPty]);
 
+  // Host→PTY output stream + exit/theme pushes. Registered ahead of the mount
+  // effect below so early output is never missed while the xterm chunk loads;
+  // routing is by termId (derived pane identity), not message.paneId.
+  useHostMessage((message) => {
+    if (
+      message?.command === "desktopTerminalData" &&
+      message.termId === termIdRef.current
+    ) {
+      termRef.current?.write(message.data);
+    } else if (
+      message?.command === "desktopTerminalExit" &&
+      message.termId === termIdRef.current
+    ) {
+      liveRef.current = false;
+      setStatus({
+        kind: "exited",
+        detail:
+          message.error ?? `进程已退出（退出码 ${message.exitCode ?? "未知"}）`,
+      });
+    } else if (message?.command === "desktopThemeChange") {
+      // Follow the app theme live.
+      if (termRef.current) termRef.current.options.theme = readTerminalTheme();
+    }
+  });
+
   // Mount: load the xterm chunk, build the terminal, wire IO. Unmount does
   // NOT kill the PTY — the host owns its lifecycle (pane close, session
   // switch, app quit) — so a pane moved across rows remounts this component
@@ -164,30 +190,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   useEffect(() => {
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
-
-    const onMessage = (event: MessageEvent) => {
-      const msg = event.data;
-      if (
-        msg?.command === "desktopTerminalData" &&
-        msg.termId === termIdRef.current
-      ) {
-        termRef.current?.write(msg.data);
-      } else if (
-        msg?.command === "desktopTerminalExit" &&
-        msg.termId === termIdRef.current
-      ) {
-        liveRef.current = false;
-        setStatus({
-          kind: "exited",
-          detail: msg.error ?? `进程已退出（退出码 ${msg.exitCode ?? "未知"}）`,
-        });
-      } else if (msg?.command === "desktopThemeChange") {
-        // Follow the app theme live.
-        if (termRef.current)
-          termRef.current.options.theme = readTerminalTheme();
-      }
-    };
-    window.addEventListener("message", onMessage);
 
     loadTerminalLib()
       .then((lib) => {
@@ -261,7 +263,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     return () => {
       disposed = true;
       resizeObserver?.disconnect();
-      window.removeEventListener("message", onMessage);
       termRef.current?.dispose();
       termRef.current = null;
       fitRef.current = null;

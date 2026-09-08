@@ -10,6 +10,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { SubagentConfiguration } from "../types";
+import { useHostMessage } from "../utils/useHostMessage";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsAddIcon } from "./HeaderIcons";
 import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
@@ -65,17 +66,12 @@ const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
     fetchConfigurations();
   }, [fetchConfigurations]);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-      if (message.command === "subagentConfigurationsResponse") {
-        setConfigurations(message.configurations || []);
-        setLoading(false);
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  useHostMessage((message) => {
+    if (message.command === "subagentConfigurationsResponse") {
+      setConfigurations(message.configurations || []);
+      setLoading(false);
+    }
+  });
 
   const selectedAgent =
     configurations.find((c) => c.name === selectedName) || null;

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { VsCodeApi } from "../types";
+import { useHostMessage } from "../utils/useHostMessage";
 import { renderWordLevelDiff } from "../utils/diffHighlight";
 import { RefreshIcon } from "./HeaderIcons";
 import "../styles/DiffViewer.css";
@@ -156,12 +157,12 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     [vscode, paneId],
   );
 
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      const msg = event.data;
-      if (msg?.command !== "desktopWorkspaceDiff") return;
-      if (paneId !== undefined && msg.paneId !== paneId) return;
-      const result = msg.result;
+  // Pane routing lives in the hook (paneId option): a pane instance only
+  // consumes replies tagged with its own id.
+  useHostMessage(
+    (message) => {
+      if (message?.command !== "desktopWorkspaceDiff") return;
+      const result = message.result;
       setRefreshing(false);
       setState(
         result?.kind === "ok"
@@ -171,10 +172,9 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
       // Default the first file to expanded on the first diff; keep the
       // currently expanded file across refreshes once the user has chosen one.
       setExpandedPath((prev) => prev ?? result?.files?.[0]?.path ?? null);
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [paneId]);
+    },
+    { paneId },
+  );
 
   // Refresh triggers: first mount (prev.visible starts false), re-show,
   // session/workdir change while visible, generation end while visible.

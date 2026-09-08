@@ -2,10 +2,10 @@ import React, {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
 } from "react";
+import { useHostMessage } from "../utils/useHostMessage";
 
 /**
  * 窗口级（chrome）UI 状态单一权威 —— 解决「root 单布局 与 DesktopShell pane
@@ -53,15 +53,11 @@ export const DesktopChromeProvider: React.FC<{ children: React.ReactNode }> = ({
     useState<boolean>(readCollapsed);
   const [fullScreen, setFullScreen] = useState(false);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.command === "desktopFullScreen") {
-        setFullScreen(event.data.fullScreen === true);
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  useHostMessage((message) => {
+    if (message?.command === "desktopFullScreen") {
+      setFullScreen(message.fullScreen === true);
+    }
+  });
 
   const setSidebarCollapsed = useCallback((collapsed: boolean) => {
     setSidebarCollapsedState(collapsed);

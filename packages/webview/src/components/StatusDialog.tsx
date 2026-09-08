@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useClickOutside } from "../utils/useClickOutside";
+import { useHostMessage } from "../utils/useHostMessage";
 import { StatusDialogProps } from "../types";
 import "../styles/ConfigurationDialog.css";
 
@@ -25,20 +26,15 @@ const StatusDialog: React.FC<
     vscode?.postMessage({ command: "getStatus" });
   }, [vscode]);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-      switch (message.command) {
-        case "statusResponse":
-          setVersion(message.version || "");
-          setSessionId(message.sessionId || "");
-          setWorkdir(message.workdir || "");
-          break;
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  useHostMessage((message) => {
+    switch (message.command) {
+      case "statusResponse":
+        setVersion(message.version || "");
+        setSessionId(message.sessionId || "");
+        setWorkdir(message.workdir || "");
+        break;
+    }
+  });
 
   // Click-outside close (listener registered one tick later inside the hook,
   // so the click that opened this dialog doesn't immediately close it).
