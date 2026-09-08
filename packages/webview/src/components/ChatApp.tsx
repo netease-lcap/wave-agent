@@ -3425,34 +3425,40 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     }
     return (
       <div className="desktop-layout">
-        <DesktopSidebar
-          onNewSession={handleDesktopNewSession}
-          onNewSessionInPane={() =>
-            postToHost({ command: "desktopNewSessionInPane" })
-          }
-          isStreaming={state.isStreaming}
-          onOpenSettings={handleOpenSettings}
-          onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
-          onOpenHelpDocs={handleOpenHelpDocs}
-          onLogin={handleLogin}
-          onLogout={handleLogout}
-          onDownloadUpdate={handleDownloadUpdate}
-          onRestartApp={handleRestartApp}
-          account={accountInfo}
-          hostLabel={effectiveHost}
-          sessionTree={host.sessionTree}
-          currentSessionId={state.currentSession?.id}
-          onSelectSession={host.onSelectSession}
-          onOpenPane={host.onOpenPane}
-          onDeleteSession={host.onDeleteSession}
-          sessionBoardActive={sessionBoardOpen}
-          onOpenSessionBoard={handleOpenSessionBoard}
-        />
-        {settingsOpen
-          ? settingsPage
-          : sessionBoardOpen
-            ? sessionBoard
-            : chatContainer}
+        {settingsOpen ? (
+          // Batch 2 设置页全屏覆盖（spec desktop-account-and-settings 场景 1/12）：
+          // 打开设置时会话侧边栏一并被覆盖，整个 view 仅剩设置页自身；macOS 隐藏
+          // 标题栏下红绿灯由设置页导航顶部让位承接（见 SettingsPage 内窗口行）。
+          // 返回后恢复既有布局（侧边栏 + 会话/看板），pane 会话由宿主持有不受影响。
+          settingsPage
+        ) : (
+          <>
+            <DesktopSidebar
+              onNewSession={handleDesktopNewSession}
+              onNewSessionInPane={() =>
+                postToHost({ command: "desktopNewSessionInPane" })
+              }
+              isStreaming={state.isStreaming}
+              onOpenSettings={handleOpenSettings}
+              onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
+              onOpenHelpDocs={handleOpenHelpDocs}
+              onLogin={handleLogin}
+              onLogout={handleLogout}
+              onDownloadUpdate={handleDownloadUpdate}
+              onRestartApp={handleRestartApp}
+              account={accountInfo}
+              hostLabel={effectiveHost}
+              sessionTree={host.sessionTree}
+              currentSessionId={state.currentSession?.id}
+              onSelectSession={host.onSelectSession}
+              onOpenPane={host.onOpenPane}
+              onDeleteSession={host.onDeleteSession}
+              sessionBoardActive={sessionBoardOpen}
+              onOpenSessionBoard={handleOpenSessionBoard}
+            />
+            {sessionBoardOpen ? sessionBoard : chatContainer}
+          </>
+        )}
         {dialogs}
       </div>
     );

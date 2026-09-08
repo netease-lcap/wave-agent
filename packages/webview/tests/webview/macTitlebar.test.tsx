@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, fireEvent, screen } from "@testing-library/react";
+import { render, fireEvent, screen, act } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
+import { ChatApp } from "../../src/components/ChatApp";
+import { DesktopChromeProvider } from "../../src/components/DesktopChromeContext";
 import { isMacHiddenTitlebar } from "../../src/utils/platform";
 import { createMockVscode, sendHostMessage, sendCommand } from "./test-utils";
 import { fixtures } from "wave-webview-fixtures";
@@ -324,5 +326,146 @@ describe("split-view: collapsed gutter follows the shell's expand-button signal"
 
     sendHostMessage(fixtures.desktopFullScreen({ fullScreen: true }));
     expect(row!.classList.contains("is-fullscreen")).toBe(true);
+  });
+});
+
+// 设置页占满整个 view（spec desktop-account-and-settings「设置页面」场景 1/12 +
+// desktop-shell「macOS 隐藏标题栏」设置页场景 8）：打开设置时会话侧边栏（分屏下
+// 含全部 pane）一并被覆盖，红绿灯改由设置页左导航顶部的窗口行承接（窗口行不放
+// 任何控件，整行即让位拖拽区、无假圆点；「返回」按钮位于窗口行下方单独一行），
+// 全屏时该行整行收起（高度归零）；返回后布局原样恢复。
+function renderDesktopChat(panes: Array<{ paneId: string }>) {
+  const vscode = createMockVscode();
+  const view = render(
+    <DesktopChromeProvider>
+      <ChatApp vscode={vscode} host={desktopHost(panes)} />
+    </DesktopChromeProvider>,
+  );
+  sendHostMessage(fixtures.authStatusResponse());
+  return { vscode, unmount: view.unmount };
+}
+
+function desktopHost(panes: Array<{ paneId: string }>) {
+  return {
+    type: "desktop",
+    host: "local",
+    hosts: ["local"],
+    recentWorkdirs: [],
+    workdir: "/work/a",
+    sessionTree: [],
+    panes,
+    focusedPaneId: panes[0]?.paneId,
+    onSelectWorkdir: () => {},
+    onSelectRecentWorkdir: () => {},
+    onRemoveRecentWorkdir: () => {},
+    onSelectHost: () => {},
+    onAddHost: () => {},
+    onSelectRemotePath: () => {},
+    onListRemoteDir: () => {},
+    onSelectSession: () => {},
+    onDeleteSession: () => {},
+    onOpenPane: () => {},
+  } as unknown as React.ComponentProps<typeof ChatApp>["host"];
+}
+
+async function openSettingsByCommand() {
+  const input = screen.getByTestId("message-input");
+  input.focus();
+  await act(async () => {
+    input.textContent = "/config";
+    const range = document.createRange();
+    range.selectNodeContents(input);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    fireEvent.input(input, { data: "/config", inputType: "insertText" });
+  });
+  fireEvent.keyDown(input, { key: "Enter" });
+  await screen.findByText("管理 CodeWave IDE 的界面、模型和基础行为。");
+}
+
+const querySettingsWindowRow = () =>
+  document.querySelector(".settings-window-row");
+const querySettingsBack = () => document.querySelector(".settings-back");
+const querySettingsBackInRow = () =>
+  document.querySelector(".settings-window-row .settings-back");
+
+describe("settings full-page: traffic lights hand to the settings nav (real macOS)", () => {
+  it("covers the session sidebar; window row is an empty drag gutter, 返回 sits below it", async () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "darwin";
+    renderDesktopChat([]);
+
+    // Single-pane desktop layout: sidebar visible before opening settings.
+    expect(querySidebar()).not.toBeNull();
+    await openSettingsByCommand();
+
+    // Full-page settings — the conversation sidebar is covered (spec 场景 1).
+    expect(querySidebar()).toBeNull();
+    expect(document.querySelector(".settings-page")).not.toBeNull();
+    // The settings nav's own window row takes over the traffic lights: it is an
+    // empty drag gutter (no fake dots, no controls inside). 返回 is rendered on
+    // its own row BELOW the gutter, not sharing the traffic-light row.
+    const row = querySettingsWindowRow();
+    expect(row).not.toBeNull();
+    expect(row!.children.length).toBe(0);
+    expect(querySettingsBackInRow()).toBeNull();
+    expect(querySettingsBack()).not.toBeNull();
+    expect(queryFakeDots().length).toBe(0);
+
+    // 返回 closes settings and restores the sidebar.
+    fireEvent.click(screen.getByRole("button", { name: "返回" }));
+    expect(querySettingsWindowRow()).toBeNull();
+    expect(querySidebar()).not.toBeNull();
+  });
+
+  it("covers the split-view panes too and hands back on close (spec 场景 12)", async () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "darwin";
+    renderDesktopChat([{ paneId: "pane-1" }]);
+
+    expect(querySidebar()).not.toBeNull();
+    await openSettingsByCommand();
+
+    // DesktopShell bails out to the bare settings page — no sidebar, no panes.
+    expect(querySidebar()).toBeNull();
+    expect(document.querySelector(".desktop-pane-rows")).toBeNull();
+    expect(document.querySelector(".settings-page")).not.toBeNull();
+    expect(querySettingsWindowRow()).not.toBeNull();
+    expect(querySettingsBack()).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "返回" }));
+    expect(querySidebar()).not.toBeNull();
+    expect(document.querySelector(".desktop-pane-rows")).not.toBeNull();
+  });
+
+  it("collapses the settings window-row gutter on fullscreen and restores it", async () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "darwin";
+    renderDesktopChat([]);
+    await openSettingsByCommand();
+
+    const row = querySettingsWindowRow()!;
+    expect(row.classList.contains("is-fullscreen")).toBe(false);
+    sendHostMessage(fixtures.desktopFullScreen({ fullScreen: true }));
+    expect(row.classList.contains("is-fullscreen")).toBe(true);
+    sendHostMessage(fixtures.desktopFullScreen({ fullScreen: false }));
+    expect(row.classList.contains("is-fullscreen")).toBe(false);
+  });
+
+  it("renders no settings window row on real Windows/Linux (native title bar kept)", async () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "win32";
+    renderDesktopChat([]);
+
+    expect(querySidebar()).not.toBeNull();
+    await openSettingsByCommand();
+
+    // Settings still covers the whole view, but no traffic-light row exists —
+    // the native title bar handles window dragging there. 返回 keeps its
+    // original first-row spot with no gutter above it.
+    expect(querySidebar()).toBeNull();
+    expect(querySettingsWindowRow()).toBeNull();
+    expect(querySettingsBack()).not.toBeNull();
   });
 });
