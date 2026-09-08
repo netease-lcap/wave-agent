@@ -2240,3 +2240,14 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - **task/queued 面板卡 bg-panel 面**（用户走查评论「这里面板的颜色重新计算」）：`.task-list-inline` / `.queued-message-list-container` base 底色 `--vscode-menu-background`（dark #1f1f1f 未入语义层）→ 覆盖为 `--cc-bg-panel`（light #fff / dark **#181a1b**，对齐 codechat `composer-task-list` 面）+ 强边框 `var(--cc-border)`（dark #414649）；`.queued-items-scrim` 渐隐终点色随卡面。
 
 实现文件：`src/styles/host-desktop.css`、本 docs。（用户人工走查，本批不跑自动化。）
+
+## 0908 第 2 轮（feat/0908-new-base-r1）：设置页「新增」按钮图标换官方添加 SVG + 随文字反白
+
+预览走查评论（8899，钩子 tab `button.settings-save-btn`「新增钩子」）「添加按钮没有反白」，附 Figma 链接 `13757:2273`（Component 12 组件集 13383:4080「类型=添加」）。范围：设置页 4 个同形态「新增/新建」主按钮统一修复。
+
+- **问题**：这些主按钮内「+」用的是 `codicon codicon-add` 字体，字形色固定灰（light `#606060`、dark `#ccc`），不随按钮文字反白 → 浅色炭黑主按钮上图标灰暗、深色浅灰主按钮上图标近乎隐没（vision 复核两主题均为文字清晰而图标失配）。
+- **修复**：
+  - `HeaderIcons.tsx` 新增 `SettingsAddIcon`（Figma 13757:2273 官方 SVG：fill `currentColor`，随按钮前景反白——浅色钮内白、深色钮内 `#191c1e`；原画布 16×16，导出 scale=2 为 32 网格 path，viewBox 保持 32 配 16×16 渲染）；
+  - 四个设置视图把 `<i className="codicon codicon-add">` 换 `<SettingsAddIcon />`：`SettingsHooksView.tsx`（新增钩子）、`SettingsSkillsView.tsx`（新建技能/新增指令）、`SettingsSubagentsView.tsx`（新增子代理/新增指令）、`SettingsMcpView.tsx`（新增…MCP 服务）。
+- **开发合码注意**：设置页外还有两处 codicon-add（`DiffPane.tsx:233`「添加到输入框」、`DesktopHostSelector.tsx:185`「添加主机…」）不在本轮范围，若需对齐 Component 12 图标可后续单独处理。既有测试按按钮可读名（`getByRole("button", { name: /新增钩子/ })` 等）查询，不受图标替换影响。
+- 实现文件：`src/components/HeaderIcons.tsx`、`src/components/SettingsHooksView.tsx`、`src/components/SettingsSkillsView.tsx`、`src/components/SettingsSubagentsView.tsx`、`src/components/SettingsMcpView.tsx`、本 docs。（用户人工走查后确认推送，type-check 通过。）
