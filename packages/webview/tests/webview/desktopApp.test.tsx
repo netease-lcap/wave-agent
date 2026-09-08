@@ -1096,7 +1096,7 @@ describe("DesktopApp", () => {
       }
     });
 
-    it("marks the streaming session current and shows no self dot; background running sessions show the loading ring", () => {
+    it("marks the streaming session current and shows the loading ring on it; background running sessions show one too", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", {
         workdir: "/work/a",
@@ -1130,9 +1130,14 @@ describe("DesktopApp", () => {
 
       const current = screen.getByTestId("desktop-session-item-s1");
       expect(current.className).toContain("desktop-session-item--current");
-      // The active chat never carries its own status slot (Figma 13656:5470) —
-      // even while streaming it stays ring-free; only background sessions hint.
-      expect(current.querySelector(".desktop-session-status-slot")).toBeNull();
+      // 用户拍板（2026-09-09）：选中的对话正在生成时也显示 loading——running 不再
+      // 被「仅后台会话」过滤，当前激活会话与后台运行会话都渲染同一个 loading 环。
+      expect(current.className).toContain("desktop-session-item--status");
+      expect(
+        current.querySelector(
+          ".desktop-session-status-slot--running svg[aria-label='正在运行']",
+        ),
+      ).not.toBeNull();
 
       const background = screen.getByTestId("desktop-session-item-s2");
       expect(background.className).toContain("desktop-session-item--status");
@@ -1143,7 +1148,7 @@ describe("DesktopApp", () => {
       ).not.toBeNull();
     });
 
-    it("shows a waiting dot on background sessions with a pending confirmation, taking precedence over running", () => {
+    it("shows a waiting dot on background sessions with a pending confirmation, taking precedence over running; the streaming current session keeps its loader", () => {
       renderDesktopApp();
       sendCommand("desktopWorkdirState", {
         workdir: "/work/a",
@@ -1188,9 +1193,20 @@ describe("DesktopApp", () => {
       ).not.toBeNull();
       expect(waiting.querySelector(".desktop-session-loading-ring")).toBeNull();
 
-      const running = screen.getByTestId("desktop-session-item-s2");
-      // The focused session streaming in the active chat gets no status slot.
-      expect(running.querySelector(".desktop-session-status-slot")).toBeNull();
+      const current = screen.getByTestId("desktop-session-item-s2");
+      // The focused session streaming in the active chat carries the loader too
+      // (2026-09-09 decision: a generating selected conversation shows loading);
+      // waiting/completed dots stay background-only, so a current session only
+      // ever shows the running ring.
+      expect(current.className).toContain("desktop-session-item--status");
+      expect(
+        current.querySelector(
+          ".desktop-session-status-slot--running svg[aria-label='正在运行']",
+        ),
+      ).not.toBeNull();
+      expect(
+        current.querySelector(".desktop-session-status-slot--waiting"),
+      ).toBeNull();
     });
 
     it("shows 无会话 for an expanded empty group", () => {
@@ -1926,6 +1942,44 @@ describe("DesktopApp", () => {
       expect(s1.className).not.toContain("desktop-session-item--visible");
       expect(s2.className).toContain("desktop-session-item--visible");
       expect(s2.className).not.toContain("desktop-session-item--current");
+    });
+
+    it("shows the running ring on a session generating in a non-focused pane (visible, not current)", () => {
+      renderWithPanes(
+        [
+          { paneId: "pane-0", sessionId: "s1" },
+          { paneId: "pane-1", sessionId: "s2" },
+        ],
+        "pane-0",
+      );
+      // s2 is displayed in pane-1 (weak-highlighted, not the focused/current
+      // session); mark it generating and expect its row to carry the loader.
+      sendCommand("desktopSessionTree", {
+        groups: [
+          {
+            host: "local",
+            workdir: "/work/a",
+            sessions: [
+              session("s1", "chat one"),
+              { ...session("s2", "chat two"), running: true },
+            ],
+          },
+        ],
+      });
+
+      const visible = screen.getByTestId("desktop-session-item-s2");
+      expect(visible.className).toContain("desktop-session-item--visible");
+      // 2026-09-09 决策：running 不再被「仅后台会话」过滤——正显示在其它 pane 的
+      // 会话生成时行上也渲染 loading 环。
+      expect(
+        visible.querySelector(
+          ".desktop-session-status-slot--running svg[aria-label='正在运行']",
+        ),
+      ).not.toBeNull();
+
+      // The focused pane's session (current) is idle → no status slot.
+      const current = screen.getByTestId("desktop-session-item-s1");
+      expect(current.querySelector(".desktop-session-status-slot")).toBeNull();
     });
 
     it("moves the strong sidebar highlight when the focused pane changes", () => {
