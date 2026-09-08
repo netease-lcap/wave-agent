@@ -298,6 +298,18 @@ export class DesktopHost {
   private paneThrottles = new Map<string, PaneThrottle>();
 
   private updateCheckTriggered = false;
+  /**
+   * Once-per-launch fresh-launch auto new-session (spec desktop-sessions.md
+   * 「会话管理」scenario 2): the very first time the UI reports ready this app
+   * run, when the launch is still pristine (no workdir chosen, no pane binds an
+   * agent) the host behaves exactly as if the user clicked 新对话 once. With
+   * recents that spawns a conversation in the most recent directory instead of
+   * the look-alike blank welcome; without recents it stays on the blank
+   * choose-a-directory state. Set unconditionally on the first webviewReady so
+   * later ones (webview reload, a new pane mounting, settings round-trips
+   * remounting ChatApp) never spawn a second automatic agent.
+   */
+  private autoNewSessionOnLaunchDone = false;
   private lastIsAuthenticated = false;
   /** electron-updater path, created lazily once a serverUrl is configured. */
   private autoUpdaterService: AutoUpdaterService | null = null;
@@ -3786,6 +3798,20 @@ export class DesktopHost {
   private async handleWebviewReady(): Promise<void> {
     try {
       const host = this.currentHost;
+      // Fresh-launch auto new-session — once per app run, at the first ready.
+      // The launch is pristine when no workdir was chosen and no pane binds an
+      // agent yet: treat it as one automatic 新对话 click so opening the app
+      // lands on a usable new conversation at the most recent directory (when
+      // recents exist) instead of a look-alike blank welcome. backOffOnRestore
+      // reuses the delete-session guard: a historical session the user clicks
+      // while this spawn is still initializing owns the pane, and the
+      // just-spawned agent is discarded instead of clobbering their view.
+      if (!this.autoNewSessionOnLaunchDone) {
+        this.autoNewSessionOnLaunchDone = true;
+        if (!this.workdir && this.panes.every((p) => !p.agent)) {
+          await this.handleNewSession(this.focusedPaneId, true);
+        }
+      }
       if (!this.workdir) {
         // No workdir selected yet — ensure the stdio client (so login/auth
         // still work) but skip agent creation until the user picks a workdir
