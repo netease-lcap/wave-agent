@@ -2262,3 +2262,13 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
   - `host-desktop.css`：会话分组间距 margin-top 4→12；新增 desktop 覆盖 `.settings-nav-item` 30/r8、`.settings-nav-items` gap 2、`.settings-back` 30/r8（base 32/r6/gap4 供非 desktop 场景不回归）；`.account-card-hotzone` desktop padding 上下 4→3（行高 32→30）；`.account-card-collapse-btn` 32×32/r6 → 30×30/r8。
   - `AccountCard.css`：`.account-card-hotzone` base padding 上下 4→3 + r6→8（desktop 专用组件，IDE 无此栏）。
 - 既有 hover/选中底色规则不变，仅几何。实现文件：`src/styles/DesktopApp.css`、`src/styles/host-desktop.css`、`src/styles/AccountCard.css`、本 docs。（用户 8899 走查后确认推送；headless 实测：会话项 30/r8/gap2、设置项 30/r8/gap2/组距 12、新对话/返回/账户热区/收起按钮均 30/r8。）
+
+## 0908 第 4 轮（feat/0908-new-base-r1）：单行下拉菜单选项高度统一 28px
+
+预览走查评论（8899，`li.permission-mode-item.mode-default.selected`「修改前询问」· `ul > li:nth-of-type(1)`）「所有单行的下拉菜单选项高度28px」。
+
+- **范围确认（AskUserQuestion）**：permission-mode（权限模式）、plus（+添加）、more（⋯账户）、panel-toggle（面板切换）、desktop-session-menu（会话行⋯）、desktop-workdir-menu-item（本地主机选择等单行项）= 单行选项统一 28px；**workdir「最近打开」两行带父路径注释项先不改**。
+- **修复**（均 `host-desktop.css`，`[data-host="desktop"]` 限定，原统一 min-height 32px）：
+  - `.permission-mode-item`、`.plus-menu-item`、`.more-menu-item`、`.panel-toggle-menu-item`、`.desktop-session-menu-item`、`.desktop-workdir-menu-item` min-height 32→28px。
+  - workdir 两行项单独排除：`.desktop-workdir-menu-item:has(.desktop-workdir-menu-parent)` 保留 min-height 32px（两行注释行不压缩）。
+- 实现文件：`src/styles/host-desktop.css`、本 docs。（用户人工走查，type-check 前已确认；等待用户确认后推送。）

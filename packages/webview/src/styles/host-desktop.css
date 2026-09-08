@@ -338,9 +338,10 @@
 }
 
 /* 权限下拉菜单：Figma/codechat composer-permission-popper —— 面板底白、
-   border #EBEEF5、r12、popover 阴影、pad 8；item 32 高带图标 gap 10、
+   border #EBEEF5、r12、popover 阴影、pad 8；item 28 高带图标 gap 10、
    14px #565A60、hover #EEF0F3、active #1F2329、danger hover #FFF0EF。
-   （覆盖 base 的 vscode token 深色菜单，仅 desktop host 生效） */
+   （覆盖 base 的 vscode token 深色菜单，仅 desktop host 生效）
+   0908 第 4 轮：单行下拉菜单选项高度统一 28px（原 32）。 */
 [data-host="desktop"] .permission-mode-menu {
   background: #ffffff;
   color: #565a60;
@@ -358,7 +359,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 32px;
+  min-height: 28px;
   padding: 0 8px;
   border-radius: 6px;
   color: #565a60;
@@ -568,7 +569,8 @@
 }
 
 /* "+ 添加"菜单：对齐 codechat composer-add-menu —— 面板底白、border
-   #EBEEF5、r12、popover 阴影、pad 8、item 32 高 14px/500 */
+   #EBEEF5、r12、popover 阴影、pad 8、item 28 高 14px/500（0908 第 4 轮：
+   单行下拉菜单选项高度统一 28px，原 32） */
 [data-host="desktop"] .plus-menu {
   background: #ffffff;
   color: #565a60;
@@ -578,7 +580,7 @@
   width: 160px;
 }
 [data-host="desktop"] .plus-menu-item {
-  min-height: 32px;
+  min-height: 28px;
   height: auto;
   padding: 0 8px;
   border-radius: 6px;
@@ -1389,12 +1391,14 @@
   padding: 8px;
 }
 
-/* 简单菜单项：32px 高 / 14px / 500 / r6 / 默认 #565A60 */
+/* 简单菜单项：28px 高 / 14px / 500 / r6 / 默认 #565A60（0908 第 4 轮：
+   单行下拉菜单选项高度统一 28px，原 32；workdir 最近打开的两行带注释项
+   内容自然高 >28 不受 min-height 影响，保持原样） */
 [data-host="desktop"] .more-menu-item,
 [data-host="desktop"] .panel-toggle-menu-item,
 [data-host="desktop"] .desktop-session-menu-item,
 [data-host="desktop"] .desktop-workdir-menu-item {
-  min-height: 32px;
+  min-height: 28px;
   height: auto;
   padding: 0 8px;
   border-radius: 6px;
@@ -1403,6 +1407,11 @@
   color: #565a60;
   gap: 8px;
   box-sizing: border-box;
+}
+/* workdir 最近打开项（两行带父路径注释）不受 28px 单行统一影响（用户
+   0908 第 4 轮确认：两行带注释先不改） */
+[data-host="desktop"] .desktop-workdir-menu-item:has(.desktop-workdir-menu-parent) {
+  min-height: 32px;
 }
 [data-host="desktop"] .more-menu-item:hover,
 [data-host="desktop"] .more-menu-item:focus-visible,
