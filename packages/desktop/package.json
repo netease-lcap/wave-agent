@@ -39,7 +39,7 @@
   },
   "build": {
     "appId": "com.netease.wave-desktop",
-    "productName": "Wave",
+    "productName": "CodeWave IDE",
     "directories": {
       "output": "release"
     },

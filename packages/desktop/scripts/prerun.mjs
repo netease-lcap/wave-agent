@@ -71,7 +71,7 @@ for (const raw of listProcesses()) {
   if (!m) continue;
   const pid = Number(m[1]);
   if (pid === me) continue;
-  if (norm.includes("/Applications/Wave.app")) continue; // installed app, never kill
+  if (norm.includes("/Applications/CodeWave IDE.app")) continue; // installed app, never kill
   victims.push({ pid, snippet: norm.slice(norm.indexOf(NEEDLE)).slice(0, 80) });
 }
 
