@@ -63,6 +63,8 @@ import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/dist/constants/tools.js
 import { collectWriteEditBlocks, pathsMatch } from "../utils/fileAutoRefresh";
 import { isMacHiddenTitlebar } from "../utils/platform";
 import { chatReducer, initialState } from "../reducers/chatReducer";
+import { sessionUi, PANEL_DEFAULT_WIDTH } from "../utils/sessionUiStore";
+import type { SessionUiState, RemoteForwardRef } from "../utils/sessionUiStore";
 import "../styles/ChatApp.css";
 
 /** Chinese names shown in the panel tabs / space hints. */
@@ -73,7 +75,6 @@ export const PANEL_LABELS: Record<DesktopPanelKind, string> = {
   terminal: "终端",
   file: "文件",
 };
-const PANEL_DEFAULT_WIDTH = 420;
 const PANEL_MIN_WIDTH = 320;
 /** The conversation (message) area never shrinks below this when opening/dragging panels. */
 const CHAT_MAIN_MIN_WIDTH = 360;
@@ -128,94 +129,11 @@ function isFileDragEvent(e: React.DragEvent): boolean {
   return e.dataTransfer.types.includes("Files");
 }
 
-/**
- * Panel group snapshot, remembered per session. Keys are session ids, plus one
- * `new:<paneId>` bucket per pane for the new-session state (no session bound
- * yet); the bucket migrates to the session id once the first message binds
- * one. The cache also carries a pane's group across the unmount/remount a
- * move between window rows forces (React cannot reparent) — the remount reads
- * the same session's entry. DesktopApp prunes entries whose owner is gone.
- */
-interface PanelGroupState {
-  /** Open panel tabs in tab order (multi-instance kinds may repeat). */
-  checked: PanelTab[];
-  /** Shared panel-slot width (tabbed layout: one slot, one width). */
-  panelWidth: number;
-  /**
-   * True once the user manually dragged the shared slot width off its default.
-   * A slot never dragged auto-fills the space beyond the conversation's minimum
-   * when the panel opens (spec desktop-panels.md「右侧面板 · 展开/折叠、空间
-   * 守卫与欢迎页共存」场景 7-9: never-dragged slots auto-fill); a manual one
-   * keeps its width from then on. Stored per group so the flag survives session
-   * switches the same way the width does.
-   */
-  panelWidthManual: boolean;
-  /** Currently active tab id; null when no tab is open. */
-  activePanel: string | null;
-  /**
-   * Whether the panel slot is expanded for this session (spec
-   * desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」场景 10:
-   * 折叠/展开逐会话记忆，与 tab 集合/宽度同级). Collapsing hides the slot but
-   * keeps the open tabs mounted, so a session collapsed with tabs open must
-   * come back collapsed after a switch — restoring it must not re-derive
-   * expanded from the presence of tabs.
-   */
-  panelExpanded: boolean;
-  /** Plan panel markdown (ExitPlanMode content); null = no plan yet. */
-  planContent: string | null;
-  /**
-   * This session's remote port forward (scenario 18). The tunnel is owned by
-   * the session, not the pane: it survives panel close, host switches, pane
-   * rebinding and unmount/remount — only session deletion, ssh process death
-   * or app exit release it. This reference is display bookkeeping only.
-   */
-  forward: RemoteForwardRef | null;
-  /** Last forward failure for this session, shown in the preview stub. */
-  forwardError: string | null;
-}
-
-/**
- * The in-flight/established remote port forward requested by this session. Set
- * when a remote localhost link is clicked (before the host replies). A pane
- * rebinding to another session must keep the previous session's forward held
- * (the host tunnels stay alive independently), so references live in the
- * per-session panel-group cache rather than a single pane ref.
- */
-interface RemoteForwardRef {
-  host: string;
-  remotePort: number;
-  /** The original remote URL the user clicked (kept for comment rewriting). */
-  originalUrl: string;
-  /** Matches the desktopForwardPortResult reply; stale replies are dropped. */
-  requestId: string;
-}
-
-const panelGroupCache = new Map<string, PanelGroupState>();
-
-/** Fresh panel-group state, used when a session gets its first forward. */
-function emptyPanelGroup(): PanelGroupState {
-  return {
-    checked: [],
-    panelWidth: PANEL_DEFAULT_WIDTH,
-    panelWidthManual: false,
-    activePanel: null,
-    panelExpanded: false,
-    planContent: null,
-    forward: null,
-    forwardError: null,
-  };
-}
-
-/**
- * Drop cached panel groups whose owner is gone. The keep-set covers live pane
- * buckets and the sessions in the sidebar tree / pane bindings, so a deleted
- * session forgets its panel group while a merely hidden one keeps it.
- */
-export function prunePanelGroupCache(keepKeys: Set<string>): void {
-  for (const key of [...panelGroupCache.keys()]) {
-    if (!keepKeys.has(key)) panelGroupCache.delete(key);
-  }
-}
+// Panel-group snapshot storage (per session) moved to utils/sessionUiStore —
+// the unified session-UI-state store (存取/迁移/失效一套代码). ChatApp keeps
+// the React 编排 (useState mirror + swap/sync effects below); tests import
+// prunePanelGroupCache from here for backward compatibility.
+export { prunePanelGroupCache } from "../utils/sessionUiStore";
 
 /**
  * Desktop sidebar collapsed → the leftmost chat header shows this expand button
@@ -484,8 +402,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // session's cached group so a pane rebinding away and back keeps the error.
   const [previewForwardError, setPreviewForwardError] = useState<string | null>(
     () =>
-      (groupKey ? panelGroupCache.get(groupKey)?.forwardError : undefined) ??
-      null,
+      (groupKey ? sessionUi.get(groupKey)?.forwardError : undefined) ?? null,
   );
   // Bumped when a re-acquire returns the SAME forwarded URL — the [url] effect
   // in PreviewPane would otherwise early-return and skip the forced reload a
@@ -496,9 +413,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // remounts restore it from the group cache. The plan tab is unique, so the
   // content stays a single per-conversation value rather than per-tab.
   const [planContent, setPlanContent] = useState<string | null>(
-    () =>
-      (groupKey ? panelGroupCache.get(groupKey)?.planContent : undefined) ??
-      null,
+    () => (groupKey ? sessionUi.get(groupKey)?.planContent : undefined) ?? null,
   );
   // Desktop plan panel: the ExitPlanMode plan content a setInitialState replay
   // carried for a re-activated session, staged until the swap-effect ordering
@@ -510,11 +425,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // rather than a ref because a pane rebinding to another session must drop its
   // own current forward WITHOUT dropping the previous session's (the host
   // tunnels stay alive independently, scenario 18): the per-session references
-  // live in panelGroupCache, this state only mirrors the bound session's one
+  // live in the sessionUi store, this state only mirrors the bound session's one
   // for rendering the preview stub.
   const [currentForward, setCurrentForward] = useState<RemoteForwardRef | null>(
-    () =>
-      (groupKey ? panelGroupCache.get(groupKey)?.forward : undefined) ?? null,
+    () => (groupKey ? sessionUi.get(groupKey)?.forward : undefined) ?? null,
   );
   // Mirrors of the forward state, refreshed on every render. Message is a
   // React.memo component whose DOM click handler captures props.onOpenPreview
@@ -537,7 +451,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // handlers read the current tabs at click time without pinning the first
   // render's values (same pattern as the forward refs above).
   const [tabs, setTabs] = useState<PanelTab[]>(
-    () => (groupKey ? panelGroupCache.get(groupKey)?.checked : undefined) ?? [],
+    () => (groupKey ? sessionUi.get(groupKey)?.checked : undefined) ?? [],
   );
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
@@ -551,7 +465,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 保持折叠，不因还有 tab 而自动展开); a group with no cached entry yet starts
   // collapsed so the empty-state page only appears after an explicit expand.
   const [panelExpanded, setPanelExpanded] = useState<boolean>(() => {
-    const cached = groupKey ? panelGroupCache.get(groupKey) : undefined;
+    const cached = groupKey ? sessionUi.get(groupKey) : undefined;
     return cached
       ? (cached.panelExpanded ?? (cached.checked?.length ?? 0) > 0)
       : false;
@@ -588,7 +502,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // Tabbed panels: one shared slot width for every panel type.
   const [panelWidth, setPanelWidth] = useState<number>(
     () =>
-      (groupKey ? panelGroupCache.get(groupKey)?.panelWidth : undefined) ??
+      (groupKey ? sessionUi.get(groupKey)?.panelWidth : undefined) ??
       PANEL_DEFAULT_WIDTH,
   );
   // True once the user manually dragged the slot width; a slot never dragged
@@ -596,15 +510,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // PanelGroupState.panelWidthManual).
   const [panelWidthManual, setPanelWidthManual] = useState<boolean>(
     () =>
-      (groupKey
-        ? panelGroupCache.get(groupKey)?.panelWidthManual
-        : undefined) ?? false,
+      (groupKey ? sessionUi.get(groupKey)?.panelWidthManual : undefined) ??
+      false,
   );
   // The active panel tab id; null when no panel is open.
   const [activeTabId, setActiveTabId] = useState<string | null>(
-    () =>
-      (groupKey ? panelGroupCache.get(groupKey)?.activePanel : undefined) ??
-      null,
+    () => (groupKey ? sessionUi.get(groupKey)?.activePanel : undefined) ?? null,
   );
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
@@ -717,7 +628,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // flips — the swap effect below re-seeds the state from the new key first.
   useEffect(() => {
     if (!groupKey || groupKey !== groupKeyRef.current) return;
-    panelGroupCache.set(groupKey, {
+    const snapshot: SessionUiState = {
       checked: tabs,
       panelWidth,
       panelWidthManual,
@@ -726,7 +637,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       planContent,
       forward: currentForward,
       forwardError: previewForwardError,
-    });
+    };
+    sessionUi.set(groupKey, snapshot);
   }, [
     groupKey,
     tabs,
@@ -749,18 +661,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     if (!paneId || !groupKey || groupKey === groupKeyRef.current) return;
     const prevKey = groupKeyRef.current;
     groupKeyRef.current = groupKey;
-    let group = panelGroupCache.get(groupKey);
+    // First try the incoming session's own entry; when this switch is the
+    // first message binding a session to a `new:<paneId>` bucket, that bucket
+    // migrates to the session id (move) so the pre-send setup survives.
+    let group = sessionUi.get(groupKey);
     if (
       !group &&
       prevKey?.startsWith("new:") &&
       !groupKey.startsWith("new:") &&
       sentFromNewSessionRef.current
     ) {
-      group = panelGroupCache.get(prevKey);
-      if (group) {
-        panelGroupCache.set(groupKey, group);
-        panelGroupCache.delete(prevKey);
-      }
+      group = sessionUi.move(prevKey, groupKey);
     }
     sentFromNewSessionRef.current = false;
     // Fullscreen belongs to the outgoing session's preview tab — switching
@@ -812,7 +723,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }
       return;
     }
-    const restored = panelGroupCache.get(groupKey)?.checked;
+    const restored = sessionUi.get(groupKey)?.checked;
     const planInCache = restored?.some((t) => t.kind === "plan") ?? false;
     const planInCommitted = tabsRef.current.some((t) => t.kind === "plan");
     if (planInCache) {
@@ -978,29 +889,31 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // forwardTabIdRef) so a sibling preview tab's URL is never clobbered.
         if (!forThisPane(message)) break;
         {
-          let targetKey: string | undefined;
-          panelGroupCache.forEach((g, key) => {
-            if (g.forward?.requestId === message.requestId) targetKey = key;
-          });
+          const targetKey = sessionUi.keyByForwardRequestId(message.requestId);
           if (targetKey === undefined) break;
-          const target = panelGroupCache.get(targetKey);
-          if (!target) break;
           const tabId = message.requestId
             ? forwardTabIdRef.current.get(message.requestId)
             : undefined;
           const patchCachedTabUrl = (url: string) => {
             // Keep the cached group's tabs in sync for remounts/session
-            // switches even when this pane is not the current one.
-            target.checked = target.checked.map((t) =>
-              t.id === tabId ? { ...t, previewUrl: url } : t,
-            );
+            // switches even when this pane is not the current one — via the
+            // store's patch (direct cache mutation is banned).
+            const cached = sessionUi.get(targetKey);
+            if (!cached) return;
+            sessionUi.patch(targetKey, {
+              checked: cached.checked.map((t) =>
+                t.id === tabId ? { ...t, previewUrl: url } : t,
+              ),
+            });
           };
           if (message.error) {
-            target.forwardError = String(message.error);
+            sessionUi.patch(targetKey, {
+              forwardError: String(message.error),
+            });
             if (targetKey === groupKeyRef.current)
               setPreviewForwardError(String(message.error));
           } else {
-            target.forwardError = null;
+            sessionUi.patch(targetKey, { forwardError: null });
             if (targetKey === groupKeyRef.current) {
               setPreviewForwardError(null);
               if (tabId) {
@@ -2312,12 +2225,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // arrive on the very next event-loop turn — can match this forward even if
       // the effect hasn't flushed yet. A pane rebinding to another session then
       // keeps THIS session's forward cached for when it comes back.
-      let group = panelGroupCache.get(groupKey);
-      if (!group) {
-        group = emptyPanelGroup();
-        panelGroupCache.set(groupKey, group);
-      }
-      group.forward = fwd;
+      sessionUi.patch(groupKey, { forward: fwd });
       // The session id scopes the tunnel's lifetime on the host — it stays alive
       // across UI actions and is only released when the session is deleted
       // (scenario 18).

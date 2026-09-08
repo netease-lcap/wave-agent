@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ChatApp, prunePanelGroupCache } from "./ChatApp";
+import { ChatApp } from "./ChatApp";
+import { sessionUi } from "../utils/sessionUiStore";
 import { DesktopChromeProvider } from "./DesktopChromeContext";
 import { useHostMessage } from "../utils/useHostMessage";
 import {
@@ -50,7 +51,7 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     for (const g of sessionTreeRef.current) {
       for (const s of g.sessions) keep.add(s.sessionId);
     }
-    prunePanelGroupCache(keep);
+    sessionUi.prune(keep);
   };
 
   useHostMessage((message) => {
