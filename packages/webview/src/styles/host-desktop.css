@@ -1408,10 +1408,29 @@
   gap: 8px;
   box-sizing: border-box;
 }
-/* workdir 最近打开项（两行带父路径注释）不受 28px 单行统一影响（用户
-   0908 第 4 轮确认：两行带注释先不改） */
+/* workdir 最近打开项（两行带父路径注释）：不走 28px 单行统一。原 min-height
+   32 把两行文字块压得上下仅 1px 贴边（观感上重下轻）；改为内容高驱动 +
+   上下对称 3px 留白（name 行高 17 = 14px 字、parent 行高 13 = 11px 字 →
+   文字块 30 + 6 = 36px 高，字形上下留白对称） */
 [data-host="desktop"] .desktop-workdir-menu-item:has(.desktop-workdir-menu-parent) {
-  min-height: 32px;
+  min-height: 0;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+[data-host="desktop"] .desktop-workdir-menu-name {
+  line-height: 17px;
+}
+[data-host="desktop"] .desktop-workdir-menu-parent {
+  line-height: 13px;
+}
+/* 菜单内分组标签（最近打开 / SSH 主机）：左缘与选项图标同列（原 12px
+   偏右 4px），加粗并提字号对齐「/」系统指令分组的 12px/500（走查评论） */
+[data-host="desktop"] .desktop-workdir-menu-label {
+  padding: 4px 8px 2px;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 1;
+  color: #6c7076;
 }
 
 /* 下拉内「添加主机…」展开的 inline 输入行（走查评论 div.desktop-host-add：
@@ -1565,6 +1584,9 @@
 [data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item,
 [data-host="desktop"][data-theme="dark"] .desktop-session-menu-item,
 [data-host="desktop"][data-theme="dark"] .desktop-workdir-menu-item {
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-workdir-menu-label {
   color: #9a9ea5;
 }
 [data-host="desktop"][data-theme="dark"] .more-menu-item:hover,

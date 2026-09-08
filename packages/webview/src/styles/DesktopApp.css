@@ -231,10 +231,10 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   align-items: center;
   gap: 4px;
   width: 100%;
-  height: 32px;
+  height: 30px; /* 0908 第 3 轮补：分组头与会话行/设置选项统一 30px（原 32） */
   padding: 0 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px; /* 随统一几何 6 → 8 */
   /* Native <button> reset — the header is a real button so Enter/Space can
      toggle the group from the keyboard (spec 「会话管理」scenario 18). */
   background: none;
