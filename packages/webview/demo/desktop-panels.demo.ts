@@ -162,10 +162,15 @@ test.describe("Desktop conversation-level panels", () => {
     await webviewPage.getByTestId("panel-empty-item-terminal").click();
 
     // TerminalPane lazily loads the terminal chunk, builds the xterm instance,
-    // then asks the host to create a PTY (term-main for the single pane).
+    // then asks the host to create a PTY. The pane instance tags its termId
+    // with its paneId (term-<paneId>), so read it back from the create request.
     await injector.waitForMessage("desktopTerminalCreate");
+    const creates = (await injector.getMessagesSentToExtension()).filter(
+      (m) => m.command === "desktopTerminalCreate",
+    );
+    const termId = String(creates[creates.length - 1]?.termId ?? "term-main");
     await injector.simulateExtensionMessage("desktopTerminalData", {
-      termId: "term-main",
+      termId,
       data: "user@host:~/wave-agent$ ls -la\r\n",
     });
 

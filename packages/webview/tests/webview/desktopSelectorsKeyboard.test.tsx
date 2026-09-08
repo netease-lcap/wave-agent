@@ -57,6 +57,13 @@ describe("desktop selector keyboard accessibility", () => {
       hosts: ["prod"],
       recentWorkdirs: [],
     });
+    // FR-032：pane record 的 host 是 effectiveHost 的权威来源——真实宿主切
+    // 远端后 hostState + pushPanes 同步更新（spec desktop-layout.md「启动即
+    // 单个分屏」）。镜像同一时序，让主机选择器把「本地」当作可切换项。
+    sendCommand("desktopPanes", {
+      panes: [{ paneId: "pane-1", host: "prod", row: 0 }],
+      focusedPaneId: "pane-1",
+    });
     sendCommand("setInitialState", { messages: [] });
     vscode.postMessage.mockClear();
 
@@ -81,6 +88,13 @@ describe("desktop selector keyboard accessibility", () => {
       host: "prod",
       hosts: ["prod"],
       recentWorkdirs: [],
+    });
+    // FR-032：pane record 的 host 是 effectiveHost 的权威来源——真实宿主切
+    // 远端后 hostState + pushPanes 同步更新（spec desktop-layout.md「启动即
+    // 单个分屏」）。镜像同一时序，让主机选择器把「本地」当作可切换项。
+    sendCommand("desktopPanes", {
+      panes: [{ paneId: "pane-1", host: "prod", row: 0 }],
+      focusedPaneId: "pane-1",
     });
     sendCommand("setInitialState", { messages: [] });
 
@@ -142,6 +156,13 @@ describe("desktop selector keyboard accessibility", () => {
       hosts: ["prod"],
       recentWorkdirs: [],
     });
+    // FR-032：pane record 的 host 是 effectiveHost 的权威来源——真实宿主切
+    // 远端后 hostState + pushPanes 同步更新（spec desktop-layout.md「启动即
+    // 单个分屏」）。镜像同一时序，让主机选择器把「本地」当作可切换项。
+    sendCommand("desktopPanes", {
+      panes: [{ paneId: "pane-1", host: "prod", row: 0 }],
+      focusedPaneId: "pane-1",
+    });
     sendCommand("setInitialState", { messages: [] });
     vscode.postMessage.mockClear();
 
@@ -162,6 +183,13 @@ describe("desktop selector keyboard accessibility", () => {
       host: "prod",
       hosts: ["prod"],
       recentWorkdirs: [],
+    });
+    // FR-032：pane record 的 host 是 effectiveHost 的权威来源——真实宿主切
+    // 远端后 hostState + pushPanes 同步更新（spec desktop-layout.md「启动即
+    // 单个分屏」）。镜像同一时序，让主机选择器把「本地」当作可切换项。
+    sendCommand("desktopPanes", {
+      panes: [{ paneId: "pane-1", host: "prod", row: 0 }],
+      focusedPaneId: "pane-1",
     });
     sendCommand("setInitialState", { messages: [] });
 

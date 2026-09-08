@@ -157,18 +157,24 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
     await webviewPage.getByTestId("panel-empty-item-terminal").click();
 
     // TerminalPane lazily loads the xterm chunk, then asks the host to create
-    // the remote PTY; the demo replies with remote-shell output.
+    // the remote PTY; the demo replies with remote-shell output. The pane
+    // instance tags its PTY termId with its paneId (term-<paneId>), so read it
+    // back from the create request instead of hardcoding the pre-split name.
     await injector.waitForMessage("desktopTerminalCreate");
+    const creates = (await injector.getMessagesSentToExtension()).filter(
+      (m) => m.command === "desktopTerminalCreate",
+    );
+    const termId = String(creates[creates.length - 1]?.termId ?? "term-main");
     await injector.simulateExtensionMessage("desktopTerminalData", {
-      termId: "term-main",
+      termId,
       data: "root@dev-server:/workspace/demo-repo# ls -la\r\n",
     });
     await injector.simulateExtensionMessage("desktopTerminalData", {
-      termId: "term-main",
+      termId,
       data: "total 20\r\ndrwxr-xr-x 4 root root 4096 Aug  1 13:20 .\r\ndrwxr-xr-x 5 root root 4096 Aug  1 13:20 ..\r\n-rw-r--r-- 1 root root  328 Aug  1 13:20 app.js\r\n-rw-r--r-- 1 root root  102 Aug  1 13:20 deploy.sh\r\n",
     });
     await injector.simulateExtensionMessage("desktopTerminalData", {
-      termId: "term-main",
+      termId,
       data: "root@dev-server:/workspace/demo-repo# ",
     });
 

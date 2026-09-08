@@ -36,11 +36,71 @@ class MockResizeObserver {
 global.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
 
 /**
+ * Desktop host parity (spec desktop-layout.md「启动即单个分屏」): the real main
+ * process answers the webview's `desktopReady` by pushing a single-pane layout
+ * (`desktopPanes`), so the welcome/empty state lives inside the split layout
+ * from the start and pane-scoped pushes carry the focused paneId. The mock
+ * mirrors that — tests driving DesktopApp don't need to inject `desktopPanes`
+ * themselves — and once a pane layout is active (auto-pushed here or injected
+ * by a split-view test), untagged messages are routed to the focused pane the
+ * way the real host tags them.
+ */
+let desktopLayoutActive = false;
+let desktopFocusedPaneId = "pane-1";
+// DesktopApp-owner messages — never pane-tagged by the host.
+const DESKTOP_GLOBAL_COMMANDS = new Set([
+  "desktopWorkdirState",
+  "desktopSessionTree",
+  "desktopPanes",
+]);
+
+function routeHostMessage(message: Record<string, unknown>) {
+  if (message.command === "desktopPanes") {
+    const panes = (message.panes ?? []) as Array<{ paneId?: string }>;
+    desktopLayoutActive = panes.length > 0;
+    const focused =
+      (message.focusedPaneId as string | undefined) ?? panes[0]?.paneId;
+    if (focused) desktopFocusedPaneId = focused;
+  }
+  let payload = message;
+  if (
+    desktopLayoutActive &&
+    typeof payload.command === "string" &&
+    payload.paneId == null &&
+    !DESKTOP_GLOBAL_COMMANDS.has(payload.command)
+  ) {
+    payload = { ...payload, paneId: desktopFocusedPaneId };
+  }
+  act(() => {
+    window.dispatchEvent(new MessageEvent("message", { data: payload }));
+  });
+}
+
+/**
  * Create a mock VS Code API object
  */
 export function createMockVscode() {
+  // Untyped vi.fn() keeps `.mock.calls` loosely typed so tests that filter
+  // `postMessage.mock.calls` by `.command` compile without narrowing; the
+  // desktopReady seam lives on the implementation instead.
+  const postMessage = vi.fn();
+  postMessage.mockImplementation((message: unknown) => {
+    if (
+      typeof message === "object" &&
+      message !== null &&
+      (message as { command?: string }).command === "desktopReady"
+    ) {
+      // Mirror the host's desktopReady reply: push the single unbound pane
+      // first so the shell (never the pre-pane layout) mounts with the workdir.
+      routeHostMessage({
+        command: "desktopPanes",
+        panes: [{ paneId: "pane-1", host: "local", row: 0 }],
+        focusedPaneId: "pane-1",
+      });
+    }
+  });
   return {
-    postMessage: vi.fn(),
+    postMessage,
     getState: vi.fn().mockReturnValue(null),
     setState: vi.fn(),
   };
@@ -65,9 +125,7 @@ export function renderChatApp(vscode?: VsCodeApi) {
  * Simulate an extension → webview message
  */
 export function sendExtensionMessage(data: Record<string, unknown>) {
-  act(() => {
-    window.dispatchEvent(new MessageEvent("message", { data }));
-  });
+  routeHostMessage(data);
 }
 
 /**

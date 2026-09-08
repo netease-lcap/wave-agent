@@ -23,6 +23,14 @@ function renderDesktop(workdirHost = "local") {
     recentWorkdirs: [],
     host: workdirHost,
   });
+  // FR-032：当前 host 语义在 pane record（effectiveHost = pane host ?? host
+  // 级 host）。真实宿主切远端时 hostState 与 pushPanes 同时更新——这里镜像
+  // 同一时序：pane record 带上 workdirHost，侧边栏 host 标注/主机选择器才能
+  // 反映远端（spec desktop-layout.md「启动即单个分屏」）。
+  sendCommand("desktopPanes", {
+    panes: [{ paneId: "pane-1", host: workdirHost, row: 0 }],
+    focusedPaneId: "pane-1",
+  });
   return { ...result, vscode };
 }
 
