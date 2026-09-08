@@ -1,6 +1,6 @@
 ---
 name: "桌面端原型预览"
-description: "Wave Desktop 独有原型预览闭环：localhost 原型预览、元素评论与全屏"
+description: "CodeWave IDE 桌面端独有原型预览闭环：localhost 原型预览、元素评论与全屏"
 order: 50
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: "桌面端面板与工作区"
-description: "Wave Desktop 右侧面板与工作区：一级 Tab 栏/空态与＋/展开折叠与空间守卫、差异面板、行评论与内嵌终端"
+description: "CodeWave IDE 桌面端右侧面板与工作区：一级 Tab 栏/空态与＋/展开折叠与空间守卫、差异面板、行评论与内嵌终端"
 order: 40
 ---
 

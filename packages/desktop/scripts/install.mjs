@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Cross-platform "install/update the installed Wave desktop app".
+ * Cross-platform "install/update the installed CodeWave IDE desktop app".
  *
- * - macOS: package the app dir and rsync it over /Applications/Wave.app
+ * - macOS: package the app dir and rsync it over /Applications/CodeWave IDE.app
  *   (safe to do while the app is running).
  * - Windows: package win-unpacked and copy it over the detected install
- *   directory (%LOCALAPPDATA%\Programs\Wave — the NSIS default — falling
- *   back to the registry InstallLocation, or WAVE_INSTALL_DIR). Windows
- *   locks a running exe, so quit Wave first if the copy fails.
+ *   directory (%LOCALAPPDATA%\Programs\CodeWave IDE — the NSIS default —
+ *   falling back to the registry InstallLocation, or WAVE_INSTALL_DIR). Windows
+ *   locks a running exe, so quit CodeWave IDE first if the copy fails.
  *
  * A full `pnpm build` runs first (required: the user consumes wave-code
  * via npm link).
@@ -44,9 +44,10 @@ function decodeRegOutput(buf) {
 }
 
 function queryRegistryInstallLocation() {
-  // electron-builder NSIS writes the uninstaller key by productName ("Wave").
+  // electron-builder NSIS writes the uninstaller key by productName
+  // ("CodeWave IDE").
   for (const hive of ["HKCU", "HKLM"]) {
-    const key = `${hive}\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Wave`;
+    const key = `${hive}\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CodeWave IDE`;
     const r = spawnSync("reg", ["query", key, "/v", "InstallLocation"], {
       encoding: "buffer",
     });
@@ -65,13 +66,13 @@ function findInstallDir() {
   const def = path.join(
     process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
     "Programs",
-    "Wave",
+    "CodeWave IDE",
   );
   if (fs.existsSync(def)) return def;
   const fromRegistry = queryRegistryInstallLocation();
   if (fromRegistry) return fromRegistry;
   console.error(
-    "Could not locate an existing Wave installation. Install once with the NSIS installer (`pnpm run dist`), or set WAVE_INSTALL_DIR to the install folder.",
+    "Could not locate an existing CodeWave IDE installation. Install once with the NSIS installer (`pnpm run dist`), or set WAVE_INSTALL_DIR to the install folder.",
   );
   process.exit(1);
 }
@@ -98,8 +99,8 @@ if (isMac) {
 
 // 3. Copy over the installed app
 if (isMac) {
-  const src = path.join(desktopDir, "release", "mac-arm64", "Wave.app");
-  const dest = "/Applications/Wave.app";
+  const src = path.join(desktopDir, "release", "mac-arm64", "CodeWave IDE.app");
+  const dest = "/Applications/CodeWave IDE.app";
   console.log(`[desktop:install] Syncing ${src} → ${dest}`);
   const r = spawnSync("rsync", ["-a", "--delete", `${src}/`, `${dest}/`], {
     stdio: "inherit",
@@ -117,13 +118,13 @@ if (isWin) {
     process.exit(1);
   }
   // Remove stale files first (mirror of rsync --delete). Windows locks a
-  // running exe, so a locked Wave.exe fails here — tell the user to quit.
+  // running exe, so a locked CodeWave IDE.exe fails here — tell the user to quit.
   try {
     fs.rmSync(dest, { recursive: true, force: true });
   } catch (err) {
     console.error(
       `Failed to clear ${dest}: ${err.message}\n` +
-        "Wave is probably still running — quit it and re-run `pnpm run desktop:install`.",
+        "CodeWave IDE is probably still running — quit it and re-run `pnpm run desktop:install`.",
     );
     process.exit(1);
   }
