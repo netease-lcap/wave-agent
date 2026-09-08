@@ -1272,6 +1272,26 @@ export const SettingsBackIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+/** 设置页「新增/新建」按钮图标（Figma 13757:2273「类型=添加」，Component 12
+ *  功能图标；componentSet 13383:4080）。fill currentColor 随按钮前景反白——
+ *  浅色主按钮（炭黑底白字）内呈现白色，替代旧 codicon-add 字体（固定灰、不随
+ *  文字反白）。原画布 16×16，导出 scale=2 得 32 网格 path，viewBox 保持 32。 */
+export const SettingsAddIcon: React.FC<IconProps> = ({ className }) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 32 32"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
+    <path
+      d="M16.016 4.00244C16.7581 4.00246 17.3593 4.60426 17.3598 5.34619V14.6875H26.6697C27.4116 14.688 28.0134 15.2892 28.0134 16.0313C28.0134 16.7734 27.4116 17.3746 26.6697 17.375H17.3598V26.6532C17.3594 27.3952 16.7581 27.9969 16.016 27.9969C15.274 27.9969 14.6727 27.3952 14.6723 26.6532V17.375H5.33105C4.58908 17.3746 3.9873 16.7734 3.9873 16.0313C3.98732 15.2892 4.58909 14.688 5.33105 14.6875H14.6723V5.34619C14.6728 4.60425 15.274 4.00244 16.016 4.00244Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
 // ═══ 账户更多菜单项图标（0902 新基线第 3 轮：对齐 codechat TaskSidebar 账户
 // 更多菜单 el-dropdown-menu__item 前置 lucide 图标，17px 视觉对应这里 16×16
 // 渲染）════

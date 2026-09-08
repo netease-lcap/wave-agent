@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { SkillMetadata } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { SettingsAddIcon } from "./HeaderIcons";
 import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
 import "../styles/ConfigurationDialog.css";
 import "../styles/SettingsPage.css";
@@ -166,7 +167,7 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
                 className="settings-save-btn"
                 onClick={() => handleCreate(activeTab as "user" | "project")}
               >
-                <i className="codicon codicon-add" aria-hidden="true" />
+                <SettingsAddIcon />
                 {activeTab === "project" ? "新增指令" : "新建技能"}
               </button>
             ) : undefined

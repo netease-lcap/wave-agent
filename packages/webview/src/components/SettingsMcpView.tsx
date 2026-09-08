@@ -12,6 +12,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { McpServerStatus } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { SettingsAddIcon } from "./HeaderIcons";
 import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
 import "../styles/ConfigurationDialog.css";
 import "../styles/SettingsPage.css";
@@ -258,7 +259,7 @@ const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
                 className="settings-save-btn"
                 onClick={() => handleCreate(activeTab as "user" | "project")}
               >
-                <i className="codicon codicon-add" aria-hidden="true" />
+                <SettingsAddIcon />
                 {activeTab === "project"
                   ? "新增 MCP 服务"
                   : "新增用户级 MCP 服务"}

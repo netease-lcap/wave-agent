@@ -11,6 +11,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { SettingsAddIcon } from "./HeaderIcons";
 import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
 import "../styles/ConfigurationDialog.css";
 import "../styles/SettingsPage.css";
@@ -258,7 +259,7 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
                 className="settings-save-btn"
                 onClick={() => handleCreate(activeTab as "user" | "project")}
               >
-                <i className="codicon codicon-add" aria-hidden="true" />
+                <SettingsAddIcon />
                 新增钩子
               </button>
             ) : undefined
