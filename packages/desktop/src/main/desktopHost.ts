@@ -2963,8 +2963,12 @@ export class DesktopHost {
     switch (msg.command as string) {
       // -- desktop lifecycle & workdir management (FR-001/002/003) -----
       case "desktopReady":
-        // workdir is per-launch only (never persisted) — a fresh launch
-        // always starts at the placeholder until the user picks a directory.
+        // The welcome / empty state lives inside the split layout now (spec
+        // desktop-layout.md「启动即单个分屏」) — push the single unbound pane
+        // first so the webview never renders the pre-pane layout, then report
+        // the workdir (per-launch only, never persisted — a fresh launch always
+        // starts at the placeholder until the user picks a directory).
+        this.pushPanes();
         this.sendWorkdirState();
         break;
 
