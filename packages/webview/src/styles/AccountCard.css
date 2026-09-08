@@ -115,9 +115,10 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  /* Figma hotzone 32px：24px 头像 + 上下各 4px */
-  padding: 4px 8px 4px 4px;
-  border-radius: 6px;
+  /* Figma hotzone：24px 头像；0908 第 3 轮统一行高 30（上下 padding 3px
+     与右侧行规格一致） */
+  padding: 3px 8px 3px 4px;
+  border-radius: 8px;
   cursor: pointer;
 }
 

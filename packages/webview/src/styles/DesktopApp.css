@@ -186,7 +186,8 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
      width is required. */
   margin: 4px 0;
   width: 100%;
-  height: 32px;
+  /* 0908 第 3 轮：新对话与对话/设置选项统一高 30 / r8 */
+  height: 30px;
   padding: 0 8px;
   border: none;
   border-radius: 8px;
@@ -288,20 +289,20 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px; /* Figma 13656:5470 行距 4 */
+  gap: 2px; /* 0908 第 3 轮：对话/设置选项统一，同分类下间距 2 */
 }
 
-/* Figma 13656:5470 会话行规格：高 32 / r6 / 文字 14 lh22 左距 16；状态点与
-   「⋯」更多按钮共用行右端 24px 槽（right 8），hover 时状态点淡出、更多按钮
-   淡入。行 hover #EEF0F3、选中/可见 #EBEDF0。 */
+/* Figma 13656:5470 会话行规格：高 30（0908 第 3 轮统一 30）/ r8 / 文字
+   14 lh22 左距 16；状态点与「⋯」更多按钮共用行右端 24px 槽（right 8），
+   hover 时状态点淡出、更多按钮淡入。行 hover #EEF0F3、选中/可见 #EBEDF0。 */
 .desktop-session-item {
   position: relative;
   display: flex;
   align-items: center;
   box-sizing: border-box;
-  min-height: 32px;
+  min-height: 30px;
   padding: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 14px;
   line-height: 22px;
