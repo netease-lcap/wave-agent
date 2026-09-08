@@ -1207,7 +1207,13 @@ body.is-panel-resizing webview {
   color: var(--vscode-foreground);
 }
 
-.preview-pane-error .preview-pane-button {
+/* 面板错误/退出态的文本恢复按钮（preview error「重新加载」、terminal exited
+   「重启终端」、remote forward error「重试」）：非 24×24 图标钮，走实底主按
+   钮（desktop 下 vscode-button token 桥接 --cc-action-primary 炭黑底白字 /
+   dark 浅灰底深字） */
+.preview-pane-error .preview-pane-button,
+.terminal-pane-exited .preview-pane-button,
+.preview-pane-forward-error .preview-pane-button {
   width: auto;
   padding: 4px 12px;
   white-space: nowrap;
@@ -1215,7 +1221,9 @@ body.is-panel-resizing webview {
   color: var(--vscode-button-foreground, #ffffff);
 }
 
-.preview-pane-error .preview-pane-button:hover {
+.preview-pane-error .preview-pane-button:hover,
+.terminal-pane-exited .preview-pane-button:hover,
+.preview-pane-forward-error .preview-pane-button:hover {
   background: var(
     --vscode-button-hoverBackground,
     var(--vscode-button-background)
