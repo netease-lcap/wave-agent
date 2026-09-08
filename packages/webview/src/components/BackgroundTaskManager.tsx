@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useClickOutside } from "../utils/useClickOutside";
+import { useHostMessage } from "../utils/useHostMessage";
 import { BackgroundTaskManagerProps, BackgroundTaskSummary } from "../types";
 import "../styles/ConfigurationDialog.css";
 
@@ -80,24 +81,19 @@ const BackgroundTaskManager: React.FC<
     }
   }, [selectedTask, selectedTaskId, output, vscode]);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-      switch (message.command) {
-        case "backgroundTaskOutput":
-          if (message.taskId === selectedTaskId) {
-            setOutput(message.output || null);
-            setLoadingOutput(false);
-          }
-          break;
-        case "backgroundTaskStopped":
-          setStoppingId(null);
-          break;
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [selectedTaskId]);
+  useHostMessage((message) => {
+    switch (message.command) {
+      case "backgroundTaskOutput":
+        if (message.taskId === selectedTaskId) {
+          setOutput(message.output || null);
+          setLoadingOutput(false);
+        }
+        break;
+      case "backgroundTaskStopped":
+        setStoppingId(null);
+        break;
+    }
+  });
 
   const handleStop = (taskId: string) => {
     setStoppingId(taskId);

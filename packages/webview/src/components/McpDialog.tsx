@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useClickOutside } from "../utils/useClickOutside";
+import { useHostMessage } from "../utils/useHostMessage";
 import { McpDialogProps, McpServerStatus } from "../types";
 import "../styles/ConfigurationDialog.css";
 
@@ -23,23 +24,15 @@ const McpDialog: React.FC<
     vscode?.postMessage({ command: "getMcpServers" });
   }, [vscode]);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-      switch (message.command) {
-        case "mcpServersResponse":
-          setMcpServers(message.servers || []);
-          setMcpConnecting({});
-          break;
-        case "mcpServersUpdate":
-          setMcpServers(message.servers || []);
-          setMcpConnecting({});
-          break;
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  useHostMessage((message) => {
+    switch (message.command) {
+      case "mcpServersResponse":
+      case "mcpServersUpdate":
+        setMcpServers(message.servers || []);
+        setMcpConnecting({});
+        break;
+    }
+  });
 
   const handleConnectMcpServer = (serverName: string) => {
     setMcpConnecting((prev) => ({ ...prev, [serverName]: true }));

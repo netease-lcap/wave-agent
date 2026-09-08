@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useClickOutside } from "../utils/useClickOutside";
+import { useHostMessage } from "../utils/useHostMessage";
 import { WorkflowManagerProps, SerializableWorkflowRun } from "../types";
 import "../styles/ConfigurationDialog.css";
 
@@ -48,16 +49,11 @@ const WorkflowManager: React.FC<
 
   const selectedRun = runs.find((r) => r.runId === selectedRunId) || null;
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-      if (message.command === "workflowRunStopped") {
-        setStoppingId(null);
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  useHostMessage((message) => {
+    if (message.command === "workflowRunStopped") {
+      setStoppingId(null);
+    }
+  });
 
   const handleStop = (runId: string) => {
     setStoppingId(runId);

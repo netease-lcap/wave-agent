@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ChatApp, prunePanelGroupCache } from "./ChatApp";
 import { DesktopChromeProvider } from "./DesktopChromeContext";
+import { useHostMessage } from "../utils/useHostMessage";
 import {
   VsCodeApi,
   DesktopWorkdirState,
@@ -37,46 +38,45 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
   const panesRef = useRef<DesktopPane[]>([]);
   const sessionTreeRef = useRef<DesktopSessionGroup[]>([]);
 
+  // Panel groups are remembered per session: keep entries for live pane
+  // buckets, pane-bound sessions, and sessions still in the sidebar tree —
+  // a deleted session forgets its panel group here.
+  const prunePanels = () => {
+    const keep = new Set<string>();
+    for (const p of panesRef.current) {
+      keep.add(`new:${p.paneId}`);
+      if (p.sessionId) keep.add(p.sessionId);
+    }
+    for (const g of sessionTreeRef.current) {
+      for (const s of g.sessions) keep.add(s.sessionId);
+    }
+    prunePanelGroupCache(keep);
+  };
+
+  useHostMessage((message) => {
+    if (message.command === "desktopWorkdirState") {
+      setWorkdirState({
+        workdir: message.workdir,
+        recentWorkdirs: message.recentWorkdirs ?? [],
+        host: message.host ?? "local",
+        hosts: message.hosts ?? [],
+      });
+    } else if (message.command === "desktopSessionTree") {
+      sessionTreeRef.current = message.groups ?? [];
+      setSessionTree(sessionTreeRef.current);
+      prunePanels();
+    } else if (message.command === "desktopPanes") {
+      const nextPanes: DesktopPane[] = message.panes ?? [];
+      panesRef.current = nextPanes;
+      setPanes(nextPanes);
+      prunePanels();
+      setRowHeights(message.rowHeights);
+      setFocusedPaneId(message.focusedPaneId ?? null);
+    }
+  });
+
   useEffect(() => {
-    // Panel groups are remembered per session: keep entries for live pane
-    // buckets, pane-bound sessions, and sessions still in the sidebar tree —
-    // a deleted session forgets its panel group here.
-    const prunePanels = () => {
-      const keep = new Set<string>();
-      for (const p of panesRef.current) {
-        keep.add(`new:${p.paneId}`);
-        if (p.sessionId) keep.add(p.sessionId);
-      }
-      for (const g of sessionTreeRef.current) {
-        for (const s of g.sessions) keep.add(s.sessionId);
-      }
-      prunePanelGroupCache(keep);
-    };
-    const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-      if (message.command === "desktopWorkdirState") {
-        setWorkdirState({
-          workdir: message.workdir,
-          recentWorkdirs: message.recentWorkdirs ?? [],
-          host: message.host ?? "local",
-          hosts: message.hosts ?? [],
-        });
-      } else if (message.command === "desktopSessionTree") {
-        sessionTreeRef.current = message.groups ?? [];
-        setSessionTree(sessionTreeRef.current);
-        prunePanels();
-      } else if (message.command === "desktopPanes") {
-        const nextPanes: DesktopPane[] = message.panes ?? [];
-        panesRef.current = nextPanes;
-        setPanes(nextPanes);
-        prunePanels();
-        setRowHeights(message.rowHeights);
-        setFocusedPaneId(message.focusedPaneId ?? null);
-      }
-    };
-    window.addEventListener("message", handleMessage);
     vscode.postMessage({ command: "desktopReady" });
-    return () => window.removeEventListener("message", handleMessage);
   }, [vscode]);
 
   const handleSelectWorkdir = useCallback(() => {

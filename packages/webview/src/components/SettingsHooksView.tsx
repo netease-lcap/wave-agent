@@ -10,6 +10,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useHostMessage } from "../utils/useHostMessage";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsAddIcon } from "./HeaderIcons";
 import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
@@ -105,22 +106,17 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
     fetchHooks(activeTab);
   }, [activeTab, fetchHooks]);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-      if (message.command === "hooksResponse") {
-        setHooks((message.hooks as HooksByEvent) || {});
-        if (typeof message.configPath === "string") {
-          setConfigPath(message.configPath);
-        } else {
-          setConfigPath(null);
-        }
-        setLoading(false);
+  useHostMessage((message) => {
+    if (message.command === "hooksResponse") {
+      setHooks((message.hooks as HooksByEvent) || {});
+      if (typeof message.configPath === "string") {
+        setConfigPath(message.configPath);
+      } else {
+        setConfigPath(null);
       }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
+      setLoading(false);
+    }
+  });
 
   // 平铺所有条目：{event, matcher, entry}
   const entries = Object.entries(hooks).flatMap(([event, configs]) =>

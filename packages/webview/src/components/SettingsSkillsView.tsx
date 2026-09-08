@@ -10,6 +10,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { SkillMetadata } from "../types";
+import { useHostMessage } from "../utils/useHostMessage";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsAddIcon } from "./HeaderIcons";
 import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
@@ -82,17 +83,12 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
     fetchSkills();
   }, [fetchSkills]);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-      if (message.command === "skillMetadataResponse") {
-        setSkills(message.skills || []);
-        setLoading(false);
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  useHostMessage((message) => {
+    if (message.command === "skillMetadataResponse") {
+      setSkills(message.skills || []);
+      setLoading(false);
+    }
+  });
 
   const selectedSkill = skills.find((s) => s.name === selectedName) || null;
 

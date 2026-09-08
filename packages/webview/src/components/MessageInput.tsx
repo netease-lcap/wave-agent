@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { convertToMarkdown } from "../utils/messageUtils";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import { useHostMessage } from "../utils/useHostMessage";
 import { ContextTag } from "./ContextTag";
 import { Tooltip } from "./Tooltip";
 import ReactDOM from "react-dom/client";
@@ -846,48 +847,43 @@ export const MessageInput = forwardRef<
   );
 
   // Listen for file suggestions response from extension
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const data = event.data;
-
-      if (data.command === "fileSuggestionsResponse") {
-        // Only process if this is the latest request
-        if (data.requestId === requestIdRef.current) {
-          setSuggestions(data.suggestions || []);
-          setSelectedIndex(0);
-          setIsLoadingSuggestions(false);
-        }
-      } else if (data.command === "fileSuggestionsError") {
-        if (data.requestId === requestIdRef.current) {
-          setSuggestions([]);
-          setIsLoadingSuggestions(false);
-          console.error("File suggestions error:", data.error);
-        }
-      } else if (data.command === "slashCommandsResponse") {
-        setSlashCommands(data.commands || []);
-        setSelectedSlashIndex(0);
-      } else if (data.command === "slashCommandsError") {
-        setSlashCommands([]);
-        console.error("指令错误:", data.error);
-      } else if (data.command === "uploadSuccess") {
-        // Insert uploaded file paths into the input after the @ symbol.
-        // In split view the host echoes the originating paneId; a reply for
-        // another pane must not insert into this input.
-        if (paneId !== undefined && data.paneId !== paneId) return;
-        if (data.uploadedFiles && data.uploadedFiles.length > 0) {
-          insertUploadedFilePaths(data.uploadedFiles);
-        }
-      } else if (data.command === "uploadError") {
-        console.error("文件上传失败:", data.error);
-        // Could show an error notification here if needed
-      } else if (data.command === "addSelectionToInput") {
-        insertSelectionTag(data.selection);
+  useHostMessage((data) => {
+    if (data.command === "fileSuggestionsResponse") {
+      // Only process if this is the latest request
+      if (data.requestId === requestIdRef.current) {
+        setSuggestions(data.suggestions || []);
+        setSelectedIndex(0);
+        setIsLoadingSuggestions(false);
       }
-    };
-
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [insertUploadedFilePaths, insertSelectionTag, closeDropdown, paneId]);
+    } else if (data.command === "fileSuggestionsError") {
+      if (data.requestId === requestIdRef.current) {
+        setSuggestions([]);
+        setIsLoadingSuggestions(false);
+        console.error("File suggestions error:", data.error);
+      }
+    } else if (data.command === "slashCommandsResponse") {
+      setSlashCommands(data.commands || []);
+      setSelectedSlashIndex(0);
+    } else if (data.command === "slashCommandsError") {
+      setSlashCommands([]);
+      console.error("指令错误:", data.error);
+    } else if (data.command === "uploadSuccess") {
+      // Insert uploaded file paths into the input after the @ symbol.
+      // In split view the host echoes the originating paneId; a reply for
+      // another pane must not insert into this input. Inline (not the hook's
+      // paneId option): the other commands here are untagged and pane
+      // instances must still receive them.
+      if (paneId !== undefined && data.paneId !== paneId) return;
+      if (data.uploadedFiles && data.uploadedFiles.length > 0) {
+        insertUploadedFilePaths(data.uploadedFiles);
+      }
+    } else if (data.command === "uploadError") {
+      console.error("文件上传失败:", data.error);
+      // Could show an error notification here if needed
+    } else if (data.command === "addSelectionToInput") {
+      insertSelectionTag(data.selection);
+    }
+  });
 
   // Handle image preview
   const handleImagePreview = useCallback((url: string, name: string) => {

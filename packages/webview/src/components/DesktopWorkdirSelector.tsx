@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
+import { useHostMessage } from "../utils/useHostMessage";
 import { ContextDirectoryIcon, PermCaretIcon, CloseIcon } from "./HeaderIcons";
 import "../styles/DesktopApp.css";
 
@@ -140,11 +141,10 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   );
 
   // Consume requestId-matched replies. Stale replies (panel closed, a newer
-  // request superseded this one) are dropped.
-  useEffect(() => {
-    if (!browsing) return;
-    const onMessage = (e: MessageEvent) => {
-      const message = e.data;
+  // request superseded this one) are dropped. Routing is by requestId (request
+  // correlation), not message.paneId; listener only active while browsing.
+  useHostMessage(
+    (message) => {
       if (message.command !== "desktopRemoteDirList") return;
       if (String(message.requestId) !== String(requestIdRef.current)) return;
       setLoading(false);
@@ -155,10 +155,9 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
       setCurrentPath(message.resolvedPath);
       setDirs(message.dirs ?? []);
       lastPathRef.current = message.resolvedPath;
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [browsing]);
+    },
+    { enabled: browsing },
+  );
 
   const handleBrowse = useCallback(() => {
     onSelectWorkdir();

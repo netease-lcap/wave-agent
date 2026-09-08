@@ -29,6 +29,7 @@ import WelcomeView from "./WelcomeView";
 import LoadingLogo from "./LoadingLogo";
 import { SidebarExpandIcon, CloseIcon } from "./HeaderIcons";
 import { useDesktopChrome } from "./DesktopChromeContext";
+import { useHostMessage } from "../utils/useHostMessage";
 import { DesktopHostSelector } from "./DesktopHostSelector";
 import { DesktopShell } from "./DesktopShell";
 import type { AccountCardAccount } from "./AccountCard";
@@ -868,677 +869,659 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setWorktreeChecked(true);
   }, [gitBranches]);
 
-  // Handle messages from VS Code extension
-  useEffect(() => {
-    // The pane this instance consumes a message when it is tagged with its own
-    // id; messages tagged for a sibling pane are ignored here.
-    //
-    // The root instance (myPane === undefined) consumes window-global UNTAGGED
-    // messages (workdir/sessions/panes/account/toast…) — the sidebar's data.
-    // Pane-tagged pushes go to the pane that owns the session; the root only
-    // consumes them while the pane rows are hidden (settings page / session
-    // board replace the rows and unmount the pane ChatApps), because the host
-    // still tags those replies (project settings, hooks/mcp config) to the
-    // focused pane. While the rows are visible the target pane is mounted and
-    // owns its tagged pushes — the root must not ALSO consume them or the same
-    // dialog/toast would render twice, once over the shell and once inside the
-    // pane (spec「启动即单个分屏」).
-    const myPane = paneIdRef.current;
-    const forThisPane = (message: { paneId?: string }): boolean => {
-      if (myPane !== undefined) return message.paneId === myPane;
-      if (message.paneId === undefined) return true;
-      // While the rows are visible, tagged pushes belong to the mounted pane
-      // instance; once the rows are hidden the target pane is unmounted and
-      // only the root can take the reply (see the rationale above).
-      return !rowsVisibleRef.current;
+  // Handle messages from VS Code extension. The listener is registered once
+  // via useHostMessage (stable listener, latest handler per render); every
+  // mutable capture below is a ref or a stable setState, so per-render
+  // recreation is behavior-identical to the previous once-registered closure.
+  //
+  // The pane this instance consumes a message when it is tagged with its own
+  // id; messages tagged for a sibling pane are ignored here.
+  //
+  // The root instance (myPane === undefined) consumes window-global UNTAGGED
+  // messages (workdir/sessions/panes/account/toast…) — the sidebar's data.
+  // Pane-tagged pushes go to the pane that owns the session; the root only
+  // consumes them while the pane rows are hidden (settings page / session
+  // board replace the rows and unmount the pane ChatApps), because the host
+  // still tags those replies (project settings, hooks/mcp config) to the
+  // focused pane. While the rows are visible the target pane is mounted and
+  // owns its tagged pushes — the root must not ALSO consume them or the same
+  // dialog/toast would render twice, once over the shell and once inside the
+  // pane (spec「启动即单个分屏」).
+  const myPane = paneIdRef.current;
+  const forThisPane = (message: { paneId?: string }): boolean => {
+    if (myPane !== undefined) return message.paneId === myPane;
+    if (message.paneId === undefined) return true;
+    // While the rows are visible, tagged pushes belong to the mounted pane
+    // instance; once the rows are hidden the target pane is unmounted and
+    // only the root can take the reply (see the rationale above).
+    return !rowsVisibleRef.current;
+  };
+  const handleMessage = (message: MessageEvent["data"]) => {
+    // Desktop plan panel: route an ExitPlanMode plan to the plan pane (opens
+    // it on the first plan, then keeps the latest plan until the user closes
+    // the pane). Shared by showConfirmation and the setInitialState replay.
+    const routePlanToPanel = (planContent: unknown) => {
+      if (typeof planContent !== "string" || planContent.trim() === "") return;
+      setPlanContent(planContent);
+      // The plan tab is unique — only open it when none is open yet, so an
+      // updated plan never yanks the active tab away mid-conversation.
+      if (!tabsRef.current.some((t) => t.kind === "plan")) {
+        ensureTabRef.current("plan");
+      }
     };
 
-    const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-
-      // Desktop plan panel: route an ExitPlanMode plan to the plan pane (opens
-      // it on the first plan, then keeps the latest plan until the user closes
-      // the pane). Shared by showConfirmation and the setInitialState replay.
-      const routePlanToPanel = (planContent: unknown) => {
-        if (typeof planContent !== "string" || planContent.trim() === "")
-          return;
-        setPlanContent(planContent);
-        // The plan tab is unique — only open it when none is open yet, so an
-        // updated plan never yanks the active tab away mid-conversation.
-        if (!tabsRef.current.some((t) => t.kind === "plan")) {
-          ensureTabRef.current("plan");
+    switch (message.command) {
+      case "updateMessages":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "SET_MESSAGES", payload: message.messages });
+        break;
+      case "updateTasks":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "SET_TASKS", payload: message.tasks });
+        if (message.isTaskListCollapsed !== undefined) {
+          dispatch({
+            type: "SET_TASK_LIST_COLLAPSED",
+            payload: message.isTaskListCollapsed,
+          });
         }
-      };
-
-      switch (message.command) {
-        case "updateMessages":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "SET_MESSAGES", payload: message.messages });
-          break;
-        case "updateTasks":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "SET_TASKS", payload: message.tasks });
-          if (message.isTaskListCollapsed !== undefined) {
-            dispatch({
-              type: "SET_TASK_LIST_COLLAPSED",
-              payload: message.isTaskListCollapsed,
-            });
-          }
-          break;
-        case "updateBackgroundTasks":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "SET_BACKGROUND_TASKS", payload: message.tasks });
-          break;
-        case "updateWorkflowRuns":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "SET_WORKFLOW_RUNS", payload: message.runs });
-          break;
-        case "updateSelection":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "UPDATE_SELECTION", payload: message.selection });
-          break;
-        case "updatePermissionMode":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "SET_PERMISSION_MODE", payload: message.mode });
-          break;
-        case "updateWorkdir":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "SET_WORKDIR", payload: message.workdir });
-          break;
-        case "desktopGitBranches":
-          // Per-pane branch list reply (FR-052). Routed by paneId so a sibling
-          // pane's reply never overwrites this pane's selector. The result is
-          // keyed by the workdir it was queried for (null = not a git repo), so
-          // a stale reply for a directory the user has since switched away from
-          // is quarantined instead of shown over the current directory.
-          if (!forThisPane(message)) break;
-          setPaneGitBranches(
-            message.result
-              ? {
-                  workdir: message.workdir,
-                  branches: message.result.branches ?? [],
-                  current: message.result.current ?? "",
-                }
-              : null,
-          );
-          break;
-        case "desktopWorktreeCreated":
-          // Worktree creation finished (success or failure) — clear the
-          // "worktree 创建中" indicator.
-          if (!forThisPane(message)) break;
-          setWorktreeCreating(false);
-          break;
-        case "desktopForwardPortResult":
-          // Remote preview port-forward reply (scenario 15/16). The forward is
-          // session-scoped, so the reply is matched against the session whose
-          // cached forward carries this requestId — a reply that lands after
-          // the pane rebinds to another session still updates the owning
-          // session's cached forward instead of being dropped. The forwarded
-          // URL is applied to the preview TAB that requested the tunnel (map in
-          // forwardTabIdRef) so a sibling preview tab's URL is never clobbered.
-          if (!forThisPane(message)) break;
-          {
-            let targetKey: string | undefined;
-            panelGroupCache.forEach((g, key) => {
-              if (g.forward?.requestId === message.requestId) targetKey = key;
-            });
-            if (targetKey === undefined) break;
-            const target = panelGroupCache.get(targetKey);
-            if (!target) break;
-            const tabId = message.requestId
-              ? forwardTabIdRef.current.get(message.requestId)
-              : undefined;
-            const patchCachedTabUrl = (url: string) => {
-              // Keep the cached group's tabs in sync for remounts/session
-              // switches even when this pane is not the current one.
-              target.checked = target.checked.map((t) =>
-                t.id === tabId ? { ...t, previewUrl: url } : t,
-              );
-            };
-            if (message.error) {
-              target.forwardError = String(message.error);
-              if (targetKey === groupKeyRef.current)
-                setPreviewForwardError(String(message.error));
-            } else {
-              target.forwardError = null;
-              if (targetKey === groupKeyRef.current) {
-                setPreviewForwardError(null);
-                if (tabId) {
-                  const prevUrl = tabsRef.current.find(
-                    (t) => t.id === tabId,
-                  )?.previewUrl;
-                  setTabs((prev) =>
-                    prev.map((t) =>
-                      t.id === tabId
-                        ? { ...t, previewUrl: message.url as string }
-                        : t,
-                    ),
-                  );
-                  patchCachedTabUrl(message.url as string);
-                  // Same URL as before (re-acquire after a guest load failure):
-                  // remount so the webview actually reloads instead of the [url]
-                  // effect early-returning on an unchanged prop.
-                  if (message.url === prevUrl) setPreviewEpoch((e) => e + 1);
-                }
-              } else if (tabId) {
-                // A reply for a session this pane is NOT bound to only touches
-                // that session's cached tabs — never this pane's live tabs.
-                patchCachedTabUrl(message.url as string);
+        break;
+      case "updateBackgroundTasks":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "SET_BACKGROUND_TASKS", payload: message.tasks });
+        break;
+      case "updateWorkflowRuns":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "SET_WORKFLOW_RUNS", payload: message.runs });
+        break;
+      case "updateSelection":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "UPDATE_SELECTION", payload: message.selection });
+        break;
+      case "updatePermissionMode":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "SET_PERMISSION_MODE", payload: message.mode });
+        break;
+      case "updateWorkdir":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "SET_WORKDIR", payload: message.workdir });
+        break;
+      case "desktopGitBranches":
+        // Per-pane branch list reply (FR-052). Routed by paneId so a sibling
+        // pane's reply never overwrites this pane's selector. The result is
+        // keyed by the workdir it was queried for (null = not a git repo), so
+        // a stale reply for a directory the user has since switched away from
+        // is quarantined instead of shown over the current directory.
+        if (!forThisPane(message)) break;
+        setPaneGitBranches(
+          message.result
+            ? {
+                workdir: message.workdir,
+                branches: message.result.branches ?? [],
+                current: message.result.current ?? "",
               }
-            }
-          }
-          break;
-        case "desktopFileContent":
-          // File panel content reply (file panel spec scenario 1/2). Routed by
-          // paneId so a sibling pane's reply never overwrites this pane's view;
-          // within the pane it lands on the file tab showing the same path. When
-          // no tab shows that path yet (a blank tab opened from "＋" before the
-          // host resolved a path), the reply binds the ACTIVE file tab to it.
-          if (!forThisPane(message)) break;
-          {
-            const fv = message.fileView as FileViewState;
-            setTabs((prev) =>
-              prev.some((t) => t.kind === "file" && t.filePath === fv.path)
-                ? prev.map((t) =>
-                    t.kind === "file" && t.filePath === fv.path
-                      ? { ...t, fileView: fv }
-                      : t,
-                  )
-                : prev.map((t) =>
-                    t.id === activeTabIdRef.current && t.kind === "file"
-                      ? { ...t, filePath: fv.path, fileView: fv }
+            : null,
+        );
+        break;
+      case "desktopWorktreeCreated":
+        // Worktree creation finished (success or failure) — clear the
+        // "worktree 创建中" indicator.
+        if (!forThisPane(message)) break;
+        setWorktreeCreating(false);
+        break;
+      case "desktopForwardPortResult":
+        // Remote preview port-forward reply (scenario 15/16). The forward is
+        // session-scoped, so the reply is matched against the session whose
+        // cached forward carries this requestId — a reply that lands after
+        // the pane rebinds to another session still updates the owning
+        // session's cached forward instead of being dropped. The forwarded
+        // URL is applied to the preview TAB that requested the tunnel (map in
+        // forwardTabIdRef) so a sibling preview tab's URL is never clobbered.
+        if (!forThisPane(message)) break;
+        {
+          let targetKey: string | undefined;
+          panelGroupCache.forEach((g, key) => {
+            if (g.forward?.requestId === message.requestId) targetKey = key;
+          });
+          if (targetKey === undefined) break;
+          const target = panelGroupCache.get(targetKey);
+          if (!target) break;
+          const tabId = message.requestId
+            ? forwardTabIdRef.current.get(message.requestId)
+            : undefined;
+          const patchCachedTabUrl = (url: string) => {
+            // Keep the cached group's tabs in sync for remounts/session
+            // switches even when this pane is not the current one.
+            target.checked = target.checked.map((t) =>
+              t.id === tabId ? { ...t, previewUrl: url } : t,
+            );
+          };
+          if (message.error) {
+            target.forwardError = String(message.error);
+            if (targetKey === groupKeyRef.current)
+              setPreviewForwardError(String(message.error));
+          } else {
+            target.forwardError = null;
+            if (targetKey === groupKeyRef.current) {
+              setPreviewForwardError(null);
+              if (tabId) {
+                const prevUrl = tabsRef.current.find(
+                  (t) => t.id === tabId,
+                )?.previewUrl;
+                setTabs((prev) =>
+                  prev.map((t) =>
+                    t.id === tabId
+                      ? { ...t, previewUrl: message.url as string }
                       : t,
                   ),
-            );
-          }
-          break;
-        case "updateQueue":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "SET_QUEUED_MESSAGES", payload: message.queue });
-          break;
-        case "updateQueuedMessageMissing":
-          if (!forThisPane(message)) break;
-          // The edited queue message no longer exists. Keep input content, exit editing.
-          dispatch({ type: "SET_EDITING_QUEUED_ID", payload: null });
-          setQueueEditWarning("编辑的队列消息已不存在！");
-          break;
-        case "updateCommandRunning":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "SET_COMMAND_RUNNING", payload: message.running });
-          break;
-        case "rewindCheckpoints":
-          if (!forThisPane(message)) break;
-          setRewindCheckpoints(message.checkpoints || []);
-          setRewindCheckpointsLoading(false);
-          break;
-        case "configuredModels":
-          if (!forThisPane(message)) break;
-          setConfiguredModels(message.models || []);
-          setCurrentModel(message.currentModel);
-          setModelLoading(false);
-          break;
-        case "btwStream":
-          if (!forThisPane(message)) break;
-          // Streaming chunks from the askBtw RPC (spec scenario 6): thinking
-          // chunks show live while they stream, but once the first content
-          // chunk arrives the accumulated thinking text is discarded and only
-          // content is kept (user decision: thinking is not shown after the
-          // thinking phase ends).
-          if (
-            !btwActiveRef.current ||
-            message.question !== btwActiveRef.current
-          )
-            break;
-          setBtwPanel((panel) => {
-            if (!panel) return panel;
-            const content =
-              typeof message.content === "string" ? message.content : "";
-            if (message.type === "content") {
-              const base = panel.contentStarted ? panel.answer : "";
-              return { ...panel, contentStarted: true, answer: base + content };
-            }
-            if (panel.contentStarted) return panel;
-            return { ...panel, answer: panel.answer + content };
-          });
-          break;
-        case "btwResponse":
-          if (!forThisPane(message)) break;
-          // Drop late replies: the panel must be open, the panel's question must
-          // still match the in-flight one, and the reply must echo the same question.
-          if (
-            btwActiveRef.current &&
-            message.question === btwActiveRef.current
-          ) {
-            setBtwPanel((panel) =>
-              panel
-                ? { ...panel, answer: message.answer ?? "", loading: false }
-                : panel,
-            );
-          }
-          break;
-        case "btwError":
-          if (!forThisPane(message)) break;
-          if (
-            btwActiveRef.current &&
-            message.question === btwActiveRef.current
-          ) {
-            setBtwPanel((panel) =>
-              panel
-                ? {
-                    ...panel,
-                    answer: `(API error: ${message.error ?? "unknown"})`,
-                    loading: false,
-                  }
-                : panel,
-            );
-          }
-          break;
-        // Test-only handlers
-        case "startStreaming":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "START_STREAMING" });
-          break;
-        case "endStreaming":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "END_STREAMING" });
-          break;
-        case "ensureUIReset":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "END_STREAMING" });
-          break;
-        case "updateSessions":
-          dispatch({ type: "SET_SESSIONS", payload: message.sessions });
-          break;
-        case "updateCurrentSession":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "SET_CURRENT_SESSION", payload: message.session });
-          break;
-        case "showConfirmation":
-          if (!forThisPane(message)) break;
-          // Plan panel (desktop): the ExitPlanMode plan full text lives in the
-          // plan pane, not the (compact) confirmation dialog — mirror the VSCE
-          // claudePlanPreview panel and the JB editor column. The dialog gets
-          // the plan stripped so it stays small.
-          if (message.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
-            routePlanToPanel(message.planContent);
-          }
-          dispatch({
-            type: "SHOW_CONFIRMATION",
-            payload: {
-              confirmationId: message.confirmationId,
-              toolName: message.toolName,
-              confirmationType: message.confirmationType,
-              toolInput: message.toolInput,
-              planContent:
-                message.toolName === EXIT_PLAN_MODE_TOOL_NAME
-                  ? undefined
-                  : message.planContent,
-              suggestedPrefix: message.suggestedPrefix,
-              hidePersistentOption: message.hidePersistentOption,
-              permissionMode: message.permissionMode,
-              warning: message.warning,
-            },
-          });
-          // Scroll to bottom when confirmation is shown
-          setTimeout(() => {
-            if (
-              messageListRef.current &&
-              typeof messageListRef.current.scrollToBottom === "function"
-            ) {
-              messageListRef.current.scrollToBottom("smooth");
-            }
-          }, 0);
-          break;
-        case "planContent":
-          // Desktop /plan display: host pushes the current plan file contents
-          // to the shared Plan pane (same routing as an ExitPlanMode plan).
-          if (!forThisPane(message)) break;
-          routePlanToPanel(message.content);
-          break;
-        case "configurationResponse":
-          dispatch({
-            type: "SET_CONFIGURATION_DATA",
-            payload: message.configurationData,
-          });
-          break;
-        case "projectSettings":
-          // Project settings (.wave/settings.json merged enabledPlugins) are
-          // per-workdir, so on Desktop each pane may hold a different value —
-          // must be pane-guarded (unlike the shared global configurationResponse).
-          // The reply is stamped with the workdir active when it lands so the
-          // 项目设置 view can tell whether the cached value still belongs to the
-          // current project (a stale reply for a switched-away directory must
-          // never masquerade as the current project's state).
-          if (!forThisPane(message)) break;
-          dispatch({
-            type: "SET_PROJECT_SETTINGS",
-            payload: {
-              enabledPlugins: message.enabledPlugins,
-              workdir: effectiveWorkdirRef.current,
-            },
-          });
-          break;
-        case "setInitialState":
-          if (!forThisPane(message)) break;
-          // Desktop plan panel: replayed pending confirmations (pane rebind to a
-          // session with confirmations in flight) also carry an ExitPlanMode
-          // plan. It is staged — not routed here — because a same-batch pane
-          // rebind re-seeds tabs from the incoming cache after this handler runs
-          // and would wipe an eagerly opened plan tab (see the routing effect).
-          for (const c of message.pendingConfirmations ||
-            (message.pendingConfirmation
-              ? [message.pendingConfirmation]
-              : [])) {
-            if (
-              c.toolName === EXIT_PLAN_MODE_TOOL_NAME &&
-              typeof c.planContent === "string" &&
-              c.planContent.trim() !== ""
-            ) {
-              setPlanReplayContent(c.planContent);
+                );
+                patchCachedTabUrl(message.url as string);
+                // Same URL as before (re-acquire after a guest load failure):
+                // remount so the webview actually reloads instead of the [url]
+                // effect early-returning on an unchanged prop.
+                if (message.url === prevUrl) setPreviewEpoch((e) => e + 1);
+              }
+            } else if (tabId) {
+              // A reply for a session this pane is NOT bound to only touches
+              // that session's cached tabs — never this pane's live tabs.
+              patchCachedTabUrl(message.url as string);
             }
           }
-          dispatch({
-            type: "SET_INITIAL_STATE",
-            payload: {
-              messages: message.messages,
-              tasks: message.tasks,
-              isStreaming: message.isStreaming,
-              isCommandRunning: message.isCommandRunning,
-              isTaskListCollapsed: message.isTaskListCollapsed,
-              isRestoring: message.isRestoring,
-              sessions: message.sessions,
-              currentSession: message.session,
-              configurationData: message.configurationData,
-              pendingConfirmations:
-                message.pendingConfirmations ||
-                (message.pendingConfirmation
-                  ? [message.pendingConfirmation]
-                  : []),
-              selection: message.selection,
-              inputContent: message.inputContent,
-              permissionMode: message.permissionMode,
-              attachedImages: message.attachedImages,
-              queuedMessages: message.queuedMessages,
-              isAuthenticated: message.isAuthenticated,
-              workdir: message.workdir,
-              theme: message.theme,
-              updateChannel: message.updateChannel,
-              // Hosts (VSCE messageHandler / Desktop desktopHost) include the
-              // running background tasks + workflow runs in the snapshot so a
-              // webview re-init / pane switch does not wipe them. Without this
-              // the reducer falls back to [] and /tasks shows "暂无后台任务"
-              // until the next incremental updateBackgroundTasks (e.g. stop).
-              backgroundTasks: message.backgroundTasks,
-              workflowRuns: message.workflowRuns,
-            },
-          });
-          break;
-        case "desktopThemeChange":
-          document.documentElement.setAttribute(
-            "data-theme",
-            message.effective,
+        }
+        break;
+      case "desktopFileContent":
+        // File panel content reply (file panel spec scenario 1/2). Routed by
+        // paneId so a sibling pane's reply never overwrites this pane's view;
+        // within the pane it lands on the file tab showing the same path. When
+        // no tab shows that path yet (a blank tab opened from "＋" before the
+        // host resolved a path), the reply binds the ACTIVE file tab to it.
+        if (!forThisPane(message)) break;
+        {
+          const fv = message.fileView as FileViewState;
+          setTabs((prev) =>
+            prev.some((t) => t.kind === "file" && t.filePath === fv.path)
+              ? prev.map((t) =>
+                  t.kind === "file" && t.filePath === fv.path
+                    ? { ...t, fileView: fv }
+                    : t,
+                )
+              : prev.map((t) =>
+                  t.id === activeTabIdRef.current && t.kind === "file"
+                    ? { ...t, filePath: fv.path, fileView: fv }
+                    : t,
+                ),
           );
+        }
+        break;
+      case "updateQueue":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "SET_QUEUED_MESSAGES", payload: message.queue });
+        break;
+      case "updateQueuedMessageMissing":
+        if (!forThisPane(message)) break;
+        // The edited queue message no longer exists. Keep input content, exit editing.
+        dispatch({ type: "SET_EDITING_QUEUED_ID", payload: null });
+        setQueueEditWarning("编辑的队列消息已不存在！");
+        break;
+      case "updateCommandRunning":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "SET_COMMAND_RUNNING", payload: message.running });
+        break;
+      case "rewindCheckpoints":
+        if (!forThisPane(message)) break;
+        setRewindCheckpoints(message.checkpoints || []);
+        setRewindCheckpointsLoading(false);
+        break;
+      case "configuredModels":
+        if (!forThisPane(message)) break;
+        setConfiguredModels(message.models || []);
+        setCurrentModel(message.currentModel);
+        setModelLoading(false);
+        break;
+      case "btwStream":
+        if (!forThisPane(message)) break;
+        // Streaming chunks from the askBtw RPC (spec scenario 6): thinking
+        // chunks show live while they stream, but once the first content
+        // chunk arrives the accumulated thinking text is discarded and only
+        // content is kept (user decision: thinking is not shown after the
+        // thinking phase ends).
+        if (!btwActiveRef.current || message.question !== btwActiveRef.current)
           break;
-        case "desktopThemeSource":
-          // Theme preference broadcast — keeps the settings selection in sync
-          // on every instance after 跟随系统/浅色/深色 is picked (the theme
-          // itself was already applied by the desktopThemeChange above).
-          setThemeSource(message.source);
-          break;
-        case "desktopUpdateChannel":
-          // Update-channel broadcast — keeps the 设置页「接收 Beta 版更新」开关
-          // 选中态 in sync on every instance after the toggle is flipped.
-          if (message.channel === "beta" || message.channel === "stable") {
-            setUpdateChannel(message.channel);
+        setBtwPanel((panel) => {
+          if (!panel) return panel;
+          const content =
+            typeof message.content === "string" ? message.content : "";
+          if (message.type === "content") {
+            const base = panel.contentStarted ? panel.answer : "";
+            return { ...panel, contentStarted: true, answer: base + content };
           }
-          break;
-        case "showToast":
-          // Toasts are window-global (no paneId) — only the root instance (the
-          // one that renders the shell/sidebar, never a split-view pane) tracks
-          // them, so a multi-pane desktop never stacks duplicates.
-          if (myPane !== undefined) break;
-          setToasts((prev) => [
-            ...prev.filter((t) => t.id !== message.toast.id),
-            message.toast,
-          ]);
-          break;
-        case "desktopAccountInfo":
-          // Sidebar account card — window-global like showToast (the sidebar
-          // renders on the root instance only), so pane instances ignore it.
-          if (myPane !== undefined) break;
-          setAccountInfo({
-            isAuthenticated: message.isAuthenticated === true,
-            user: message.user ?? null,
-            plan: message.plan ?? null,
-            apiQuota: message.apiQuota ?? null,
-            update: message.update ?? null,
-          });
-          break;
-        case "desktopTogglePanel":
-          if (!forThisPane(message)) break;
-          togglePanelRef.current(message.kind as DesktopPanelKind);
-          break;
-        case "showDialog":
-          if (!forThisPane(message)) break;
-          dispatch({
-            type: "SHOW_DIALOG",
-            payload: { type: message.dialogType },
-          });
-          break;
-        case "configurationUpdated":
-          dispatch({ type: "HIDE_DIALOG" });
-          break;
-        case "statusResponse":
-          if (!forThisPane(message)) break;
-          if (message.configurationData) {
-            dispatch({
-              type: "SET_CONFIGURATION_DATA",
-              payload: message.configurationData,
-            });
-          }
-          break;
-        case "configurationError":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "SET_CONFIGURATION_ERROR", payload: message.error });
-          break;
-        case "prefillPrompt":
-          if (!forThisPane(message)) break;
-          // IDE 设置页（settings-preview-entry）「新建/编辑」经 host 转发：
-          // 关闭设置 tab 后向聊天 webview 下发预填提示词（spec：AI 对话框
-          // 在当前会话继续，预填文本可编辑）。
-          if (typeof message.prompt === "string") {
-            messageInputRef.current?.loadDraft(message.prompt);
-          }
-          break;
-        case "focusInput":
-          if (!forThisPane(message)) break;
-          // When a confirm/rewind dialog is open in this pane, focus its
-          // primary action instead of the message input. The input is hidden
-          // (display:none) during a tool-permission confirmation, so focusing it
-          // silently no-ops; a rewind modal also covers it. Landing focus on
-          // the dialog lets the user act on it immediately (Enter to confirm,
-          // Esc to cancel) right after the pane switch. Falls back to the
-          // message input when no dialog is open.
-          {
-            const root = chatContainerRef.current ?? document;
-            const rewindBtn = root.querySelector<HTMLElement>(
-              ".confirm-dialog-btn-confirm:not([disabled])",
-            );
-            if (rewindBtn) {
-              rewindBtn.focus();
-              break;
-            }
-            const applyBtn = root.querySelector<HTMLElement>(
-              ".confirmation-btn-apply:not([disabled])",
-            );
-            if (applyBtn) {
-              applyBtn.focus();
-              break;
-            }
-            if (
-              messageInputRef.current &&
-              typeof messageInputRef.current.focus === "function"
-            ) {
-              messageInputRef.current.focus();
-            }
-          }
-          break;
-        case "triggerShortcut":
-          if (!forThisPane(message)) break;
-          // Forwarded IDE keymap shortcut (JetBrains): the component-scoped AnAction
-          // intercepts the IDE action and forwards the intended operation here, since
-          // registerCustomShortcutSet consumes the AWT event before CEF can see it.
-          if (
-            messageInputRef.current &&
-            typeof messageInputRef.current.triggerShortcut === "function"
-          ) {
-            messageInputRef.current.triggerShortcut(message.name);
-          }
-          break;
-        case "scrollToBottom":
-          if (!forThisPane(message)) break;
-          // Scroll the message list to bottom
+          if (panel.contentStarted) return panel;
+          return { ...panel, answer: panel.answer + content };
+        });
+        break;
+      case "btwResponse":
+        if (!forThisPane(message)) break;
+        // Drop late replies: the panel must be open, the panel's question must
+        // still match the in-flight one, and the reply must echo the same question.
+        if (btwActiveRef.current && message.question === btwActiveRef.current) {
+          setBtwPanel((panel) =>
+            panel
+              ? { ...panel, answer: message.answer ?? "", loading: false }
+              : panel,
+          );
+        }
+        break;
+      case "btwError":
+        if (!forThisPane(message)) break;
+        if (btwActiveRef.current && message.question === btwActiveRef.current) {
+          setBtwPanel((panel) =>
+            panel
+              ? {
+                  ...panel,
+                  answer: `(API error: ${message.error ?? "unknown"})`,
+                  loading: false,
+                }
+              : panel,
+          );
+        }
+        break;
+      // Test-only handlers
+      case "startStreaming":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "START_STREAMING" });
+        break;
+      case "endStreaming":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "END_STREAMING" });
+        break;
+      case "ensureUIReset":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "END_STREAMING" });
+        break;
+      case "updateSessions":
+        dispatch({ type: "SET_SESSIONS", payload: message.sessions });
+        break;
+      case "updateCurrentSession":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "SET_CURRENT_SESSION", payload: message.session });
+        break;
+      case "showConfirmation":
+        if (!forThisPane(message)) break;
+        // Plan panel (desktop): the ExitPlanMode plan full text lives in the
+        // plan pane, not the (compact) confirmation dialog — mirror the VSCE
+        // claudePlanPreview panel and the JB editor column. The dialog gets
+        // the plan stripped so it stays small.
+        if (message.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
+          routePlanToPanel(message.planContent);
+        }
+        dispatch({
+          type: "SHOW_CONFIRMATION",
+          payload: {
+            confirmationId: message.confirmationId,
+            toolName: message.toolName,
+            confirmationType: message.confirmationType,
+            toolInput: message.toolInput,
+            planContent:
+              message.toolName === EXIT_PLAN_MODE_TOOL_NAME
+                ? undefined
+                : message.planContent,
+            suggestedPrefix: message.suggestedPrefix,
+            hidePersistentOption: message.hidePersistentOption,
+            permissionMode: message.permissionMode,
+            warning: message.warning,
+          },
+        });
+        // Scroll to bottom when confirmation is shown
+        setTimeout(() => {
           if (
             messageListRef.current &&
             typeof messageListRef.current.scrollToBottom === "function"
           ) {
             messageListRef.current.scrollToBottom("smooth");
           }
-          break;
-        // Incremental update commands for streaming optimization
-        case "appendMessage":
-          if (!forThisPane(message)) break;
-          dispatch({ type: "APPEND_MESSAGE", payload: message.message });
-          break;
-        case "compactionStateChange":
-          if (!forThisPane(message)) break;
+        }, 0);
+        break;
+      case "planContent":
+        // Desktop /plan display: host pushes the current plan file contents
+        // to the shared Plan pane (same routing as an ExitPlanMode plan).
+        if (!forThisPane(message)) break;
+        routePlanToPanel(message.content);
+        break;
+      case "configurationResponse":
+        dispatch({
+          type: "SET_CONFIGURATION_DATA",
+          payload: message.configurationData,
+        });
+        break;
+      case "projectSettings":
+        // Project settings (.wave/settings.json merged enabledPlugins) are
+        // per-workdir, so on Desktop each pane may hold a different value —
+        // must be pane-guarded (unlike the shared global configurationResponse).
+        // The reply is stamped with the workdir active when it lands so the
+        // 项目设置 view can tell whether the cached value still belongs to the
+        // current project (a stale reply for a switched-away directory must
+        // never masquerade as the current project's state).
+        if (!forThisPane(message)) break;
+        dispatch({
+          type: "SET_PROJECT_SETTINGS",
+          payload: {
+            enabledPlugins: message.enabledPlugins,
+            workdir: effectiveWorkdirRef.current,
+          },
+        });
+        break;
+      case "setInitialState":
+        if (!forThisPane(message)) break;
+        // Desktop plan panel: replayed pending confirmations (pane rebind to a
+        // session with confirmations in flight) also carry an ExitPlanMode
+        // plan. It is staged — not routed here — because a same-batch pane
+        // rebind re-seeds tabs from the incoming cache after this handler runs
+        // and would wipe an eagerly opened plan tab (see the routing effect).
+        for (const c of message.pendingConfirmations ||
+          (message.pendingConfirmation ? [message.pendingConfirmation] : [])) {
+          if (
+            c.toolName === EXIT_PLAN_MODE_TOOL_NAME &&
+            typeof c.planContent === "string" &&
+            c.planContent.trim() !== ""
+          ) {
+            setPlanReplayContent(c.planContent);
+          }
+        }
+        dispatch({
+          type: "SET_INITIAL_STATE",
+          payload: {
+            messages: message.messages,
+            tasks: message.tasks,
+            isStreaming: message.isStreaming,
+            isCommandRunning: message.isCommandRunning,
+            isTaskListCollapsed: message.isTaskListCollapsed,
+            isRestoring: message.isRestoring,
+            sessions: message.sessions,
+            currentSession: message.session,
+            configurationData: message.configurationData,
+            pendingConfirmations:
+              message.pendingConfirmations ||
+              (message.pendingConfirmation
+                ? [message.pendingConfirmation]
+                : []),
+            selection: message.selection,
+            inputContent: message.inputContent,
+            permissionMode: message.permissionMode,
+            attachedImages: message.attachedImages,
+            queuedMessages: message.queuedMessages,
+            isAuthenticated: message.isAuthenticated,
+            workdir: message.workdir,
+            theme: message.theme,
+            updateChannel: message.updateChannel,
+            // Hosts (VSCE messageHandler / Desktop desktopHost) include the
+            // running background tasks + workflow runs in the snapshot so a
+            // webview re-init / pane switch does not wipe them. Without this
+            // the reducer falls back to [] and /tasks shows "暂无后台任务"
+            // until the next incremental updateBackgroundTasks (e.g. stop).
+            backgroundTasks: message.backgroundTasks,
+            workflowRuns: message.workflowRuns,
+          },
+        });
+        break;
+      case "desktopThemeChange":
+        document.documentElement.setAttribute("data-theme", message.effective);
+        break;
+      case "desktopThemeSource":
+        // Theme preference broadcast — keeps the settings selection in sync
+        // on every instance after 跟随系统/浅色/深色 is picked (the theme
+        // itself was already applied by the desktopThemeChange above).
+        setThemeSource(message.source);
+        break;
+      case "desktopUpdateChannel":
+        // Update-channel broadcast — keeps the 设置页「接收 Beta 版更新」开关
+        // 选中态 in sync on every instance after the toggle is flipped.
+        if (message.channel === "beta" || message.channel === "stable") {
+          setUpdateChannel(message.channel);
+        }
+        break;
+      case "showToast":
+        // Toasts are window-global (no paneId) — only the root instance (the
+        // one that renders the shell/sidebar, never a split-view pane) tracks
+        // them, so a multi-pane desktop never stacks duplicates.
+        if (myPane !== undefined) break;
+        setToasts((prev) => [
+          ...prev.filter((t) => t.id !== message.toast.id),
+          message.toast,
+        ]);
+        break;
+      case "desktopAccountInfo":
+        // Sidebar account card — window-global like showToast (the sidebar
+        // renders on the root instance only), so pane instances ignore it.
+        if (myPane !== undefined) break;
+        setAccountInfo({
+          isAuthenticated: message.isAuthenticated === true,
+          user: message.user ?? null,
+          plan: message.plan ?? null,
+          apiQuota: message.apiQuota ?? null,
+          update: message.update ?? null,
+        });
+        break;
+      case "desktopTogglePanel":
+        if (!forThisPane(message)) break;
+        togglePanelRef.current(message.kind as DesktopPanelKind);
+        break;
+      case "showDialog":
+        if (!forThisPane(message)) break;
+        dispatch({
+          type: "SHOW_DIALOG",
+          payload: { type: message.dialogType },
+        });
+        break;
+      case "configurationUpdated":
+        dispatch({ type: "HIDE_DIALOG" });
+        break;
+      case "statusResponse":
+        if (!forThisPane(message)) break;
+        if (message.configurationData) {
           dispatch({
-            type: "SET_COMPACTING",
-            payload: message.isCompacting === true,
+            type: "SET_CONFIGURATION_DATA",
+            payload: message.configurationData,
           });
-          if (!message.isCompacting) setCompactionStream("");
-          break;
-        case "compactionContentUpdate":
-          if (!forThisPane(message)) break;
-          // The CLI delivers the accumulated compaction text; the hint renders
-          // only its last 30 characters (streaming tail).
-          setCompactionStream(message.content);
-          break;
-        case "updateStreamingContent":
-          if (!forThisPane(message)) break;
-          dispatch({
-            type: "UPDATE_STREAMING_CONTENT",
-            payload: {
-              messageId: message.messageId,
-              chunk: message.chunk,
-              stage: message.stage,
-            },
-          });
-          break;
-        case "updateStreamingReasoning":
-          if (!forThisPane(message)) break;
-          dispatch({
-            type: "UPDATE_STREAMING_REASONING",
-            payload: {
-              messageId: message.messageId as string,
-              chunk: message.chunk as string,
-              stage: message.stage as "end" | "streaming",
-            },
-          });
-          break;
-        case "updateToolBlock":
-          if (!forThisPane(message)) break;
-          dispatch({
-            type: "UPDATE_TOOL_BLOCK",
-            payload: message.params as ToolBlockUpdateCallbackParams,
-          });
-          break;
-        case "updateErrorBlock":
-          if (!forThisPane(message)) break;
-          dispatch({
-            type: "APPEND_ERROR_BLOCK",
-            payload: { error: message.error },
-          });
-          break;
-        case "authStatusResponse":
-          dispatch({
-            type: "SET_AUTHENTICATED",
-            payload: message.isAuthenticated || false,
-          });
-          // The account card mirrors the host's per-host auth state; the user
-          // came along with the response (desktop host forwards it).
-          setAccountInfo((prev) => ({
-            ...(prev ?? { isAuthenticated: false }),
-            isAuthenticated: message.isAuthenticated === true,
-            user: message.user ?? prev?.user ?? null,
-          }));
-          break;
-        case "contextUsage":
-          // Context-window usage push (batch 2 上下文用量指示器). Session-scoped
-          // on desktop (each pane's session reports its own usage), so the reply
-          // is pane-routed like the other per-session pushes.
-          if (!forThisPane(message)) break;
-          setContextUsage(
-            typeof message.percent === "number"
-              ? Math.min(100, Math.max(0, message.percent))
-              : undefined,
+        }
+        break;
+      case "configurationError":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "SET_CONFIGURATION_ERROR", payload: message.error });
+        break;
+      case "prefillPrompt":
+        if (!forThisPane(message)) break;
+        // IDE 设置页（settings-preview-entry）「新建/编辑」经 host 转发：
+        // 关闭设置 tab 后向聊天 webview 下发预填提示词（spec：AI 对话框
+        // 在当前会话继续，预填文本可编辑）。
+        if (typeof message.prompt === "string") {
+          messageInputRef.current?.loadDraft(message.prompt);
+        }
+        break;
+      case "focusInput":
+        if (!forThisPane(message)) break;
+        // When a confirm/rewind dialog is open in this pane, focus its
+        // primary action instead of the message input. The input is hidden
+        // (display:none) during a tool-permission confirmation, so focusing it
+        // silently no-ops; a rewind modal also covers it. Landing focus on
+        // the dialog lets the user act on it immediately (Enter to confirm,
+        // Esc to cancel) right after the pane switch. Falls back to the
+        // message input when no dialog is open.
+        {
+          const root = chatContainerRef.current ?? document;
+          const rewindBtn = root.querySelector<HTMLElement>(
+            ".confirm-dialog-btn-confirm:not([disabled])",
           );
-          break;
-        case "agentsContentResponse":
-          // AGENTS.md editor contents (settings 个性化 view). Requested by the
-          // settings page (root instance only), so replies are untagged — the
-          // pane guard below would drop them in a split-view pane, which is
-          // correct: panes never render the settings page.
-          if (message.scope === "project") {
-            setProjectAgentsContent(
-              typeof message.content === "string" ? message.content : "",
-            );
-          } else {
-            setUserAgentsContent(
-              typeof message.content === "string" ? message.content : "",
-            );
+          if (rewindBtn) {
+            rewindBtn.focus();
+            break;
           }
-          break;
-        case "agentsContentSaved":
-          // AGENTS.md save outcome push (setAgentsContent RPC reply), untagged
-          // like agentsContentResponse — consumed only by the settings page.
-          setAgentsSaving(false);
-          setAgentsSaveResult({
-            scope: message.scope === "project" ? "project" : "user",
-            ok: message.ok === true,
-            error:
-              typeof message.error === "string" ? message.error : undefined,
+          const applyBtn = root.querySelector<HTMLElement>(
+            ".confirmation-btn-apply:not([disabled])",
+          );
+          if (applyBtn) {
+            applyBtn.focus();
+            break;
+          }
+          if (
+            messageInputRef.current &&
+            typeof messageInputRef.current.focus === "function"
+          ) {
+            messageInputRef.current.focus();
+          }
+        }
+        break;
+      case "triggerShortcut":
+        if (!forThisPane(message)) break;
+        // Forwarded IDE keymap shortcut (JetBrains): the component-scoped AnAction
+        // intercepts the IDE action and forwards the intended operation here, since
+        // registerCustomShortcutSet consumes the AWT event before CEF can see it.
+        if (
+          messageInputRef.current &&
+          typeof messageInputRef.current.triggerShortcut === "function"
+        ) {
+          messageInputRef.current.triggerShortcut(message.name);
+        }
+        break;
+      case "scrollToBottom":
+        if (!forThisPane(message)) break;
+        // Scroll the message list to bottom
+        if (
+          messageListRef.current &&
+          typeof messageListRef.current.scrollToBottom === "function"
+        ) {
+          messageListRef.current.scrollToBottom("smooth");
+        }
+        break;
+      // Incremental update commands for streaming optimization
+      case "appendMessage":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "APPEND_MESSAGE", payload: message.message });
+        break;
+      case "compactionStateChange":
+        if (!forThisPane(message)) break;
+        dispatch({
+          type: "SET_COMPACTING",
+          payload: message.isCompacting === true,
+        });
+        if (!message.isCompacting) setCompactionStream("");
+        break;
+      case "compactionContentUpdate":
+        if (!forThisPane(message)) break;
+        // The CLI delivers the accumulated compaction text; the hint renders
+        // only its last 30 characters (streaming tail).
+        setCompactionStream(message.content);
+        break;
+      case "updateStreamingContent":
+        if (!forThisPane(message)) break;
+        dispatch({
+          type: "UPDATE_STREAMING_CONTENT",
+          payload: {
+            messageId: message.messageId,
+            chunk: message.chunk,
+            stage: message.stage,
+          },
+        });
+        break;
+      case "updateStreamingReasoning":
+        if (!forThisPane(message)) break;
+        dispatch({
+          type: "UPDATE_STREAMING_REASONING",
+          payload: {
+            messageId: message.messageId as string,
+            chunk: message.chunk as string,
+            stage: message.stage as "end" | "streaming",
+          },
+        });
+        break;
+      case "updateToolBlock":
+        if (!forThisPane(message)) break;
+        dispatch({
+          type: "UPDATE_TOOL_BLOCK",
+          payload: message.params as ToolBlockUpdateCallbackParams,
+        });
+        break;
+      case "updateErrorBlock":
+        if (!forThisPane(message)) break;
+        dispatch({
+          type: "APPEND_ERROR_BLOCK",
+          payload: { error: message.error },
+        });
+        break;
+      case "authStatusResponse":
+        dispatch({
+          type: "SET_AUTHENTICATED",
+          payload: message.isAuthenticated || false,
+        });
+        // The account card mirrors the host's per-host auth state; the user
+        // came along with the response (desktop host forwards it).
+        setAccountInfo((prev) => ({
+          ...(prev ?? { isAuthenticated: false }),
+          isAuthenticated: message.isAuthenticated === true,
+          user: message.user ?? prev?.user ?? null,
+        }));
+        break;
+      case "contextUsage":
+        // Context-window usage push (batch 2 上下文用量指示器). Session-scoped
+        // on desktop (each pane's session reports its own usage), so the reply
+        // is pane-routed like the other per-session pushes.
+        if (!forThisPane(message)) break;
+        setContextUsage(
+          typeof message.percent === "number"
+            ? Math.min(100, Math.max(0, message.percent))
+            : undefined,
+        );
+        break;
+      case "agentsContentResponse":
+        // AGENTS.md editor contents (settings 个性化 view). Requested by the
+        // settings page (root instance only), so replies are untagged — the
+        // pane guard below would drop them in a split-view pane, which is
+        // correct: panes never render the settings page.
+        if (message.scope === "project") {
+          setProjectAgentsContent(
+            typeof message.content === "string" ? message.content : "",
+          );
+        } else {
+          setUserAgentsContent(
+            typeof message.content === "string" ? message.content : "",
+          );
+        }
+        break;
+      case "agentsContentSaved":
+        // AGENTS.md save outcome push (setAgentsContent RPC reply), untagged
+        // like agentsContentResponse — consumed only by the settings page.
+        setAgentsSaving(false);
+        setAgentsSaveResult({
+          scope: message.scope === "project" ? "project" : "user",
+          ok: message.ok === true,
+          error: typeof message.error === "string" ? message.error : undefined,
+        });
+        break;
+      case "loginResponse":
+        if (message.success) {
+          dispatch({ type: "SET_AUTHENTICATED", payload: true });
+          setAccountInfo((prev) => ({
+            isAuthenticated: true,
+            user: message.user ?? prev?.user ?? null,
+            plan: prev?.plan ?? null,
+            apiQuota: prev?.apiQuota ?? null,
+          }));
+        }
+        break;
+      case "logoutResponse":
+        if (message.success) {
+          dispatch({ type: "SET_AUTHENTICATED", payload: false });
+          // 登出即清空用量 —— host 随后会推 desktopAccountInfo 全量快照。
+          setAccountInfo({
+            isAuthenticated: false,
+            user: null,
+            plan: null,
+            apiQuota: null,
           });
-          break;
-        case "loginResponse":
-          if (message.success) {
-            dispatch({ type: "SET_AUTHENTICATED", payload: true });
-            setAccountInfo((prev) => ({
-              isAuthenticated: true,
-              user: message.user ?? prev?.user ?? null,
-              plan: prev?.plan ?? null,
-              apiQuota: prev?.apiQuota ?? null,
-            }));
-          }
-          break;
-        case "logoutResponse":
-          if (message.success) {
-            dispatch({ type: "SET_AUTHENTICATED", payload: false });
-            // 登出即清空用量 —— host 随后会推 desktopAccountInfo 全量快照。
-            setAccountInfo({
-              isAuthenticated: false,
-              user: null,
-              plan: null,
-              apiQuota: null,
-            });
-          }
-          break;
-      }
-    };
+        }
+        break;
+    }
+  };
 
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  useHostMessage(handleMessage);
 
   // Desktop multi-pane (FR-032): session-scoped commands carry this pane's id
   // so the host routes them to the agent bound to this pane. Untagged when

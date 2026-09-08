@@ -11,6 +11,7 @@ import hljs from "highlight.js/lib/common";
 import type { FileItem, FileViewState, VsCodeApi } from "../types";
 import { toRelativePath } from "../utils/messageUtils";
 import { useClickOutside } from "../utils/useClickOutside";
+import { useHostMessage } from "../utils/useHostMessage";
 import { FileSuggestionDropdown } from "./FileSuggestionDropdown";
 import { PanelKindIcon } from "./PanelKindIcon";
 import "../styles/FilePane.css";
@@ -367,28 +368,30 @@ export const FilePane: React.FC<FilePaneProps> = ({
   );
 
   // Listen for the host's file suggestions reply (same channel as @ mention).
-  useEffect(() => {
+  // Routing is by requestId (request correlation), not message.paneId.
+  useHostMessage((data) => {
     if (!vscode) return;
-    const handleMessage = (event: MessageEvent) => {
-      const data = event.data;
-      if (data.command === "fileSuggestionsResponse") {
-        if (data.requestId !== searchRequestIdRef.current) return;
-        setSearchSuggestions(data.suggestions || []);
-        setSearchSelectedIndex(0);
-        setSearchLoading(false);
-      } else if (data.command === "fileSuggestionsError") {
-        if (data.requestId !== searchRequestIdRef.current) return;
-        setSearchSuggestions([]);
-        setSearchLoading(false);
-        console.error("文件搜索失败:", data.error);
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => {
-      window.removeEventListener("message", handleMessage);
+    if (data.command === "fileSuggestionsResponse") {
+      if (data.requestId !== searchRequestIdRef.current) return;
+      setSearchSuggestions(data.suggestions || []);
+      setSearchSelectedIndex(0);
+      setSearchLoading(false);
+    } else if (data.command === "fileSuggestionsError") {
+      if (data.requestId !== searchRequestIdRef.current) return;
+      setSearchSuggestions([]);
+      setSearchLoading(false);
+      console.error("文件搜索失败:", data.error);
+    }
+  });
+
+  // Clear a pending search debounce on unmount (was the listener effect's
+  // cleanup before the message listener moved into useHostMessage).
+  useEffect(
+    () => () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    };
-  }, [vscode]);
+    },
+    [],
+  );
 
   // Per-line fragments: syntax-highlighted (balanced spans) or plain text.
   const contentLines = useMemo(() => {

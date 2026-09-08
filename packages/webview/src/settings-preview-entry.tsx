@@ -20,6 +20,7 @@ import ReactDOM from "react-dom/client";
 import SettingsPage from "./components/SettingsPage";
 import type { NavKey } from "./components/SettingsPage";
 import type { ConfigurationData } from "./types";
+import { useHostMessage } from "./utils/useHostMessage";
 import "./styles/globals.css";
 import "@vscode/codicons/dist/codicon.css";
 
@@ -78,62 +79,59 @@ function SettingsPreview() {
     // desktop full-page does via ChatApp).
     vscode.postMessage({ command: "getConfiguration" });
     vscode.postMessage({ command: "getAgentsContent", scope: "user" });
-
-    const handleMessage = (event: MessageEvent) => {
-      const msg = event.data as Record<string, unknown> | undefined;
-      if (!msg || typeof msg !== "object") return;
-      switch (msg.command) {
-        case "settingsState":
-          if (typeof msg.workdir === "string") {
-            setWorkdir(msg.workdir);
-            workdirRef.current = msg.workdir;
-          }
-          if (typeof msg.nav === "string") {
-            setInitialNav(msg.nav as NavKey);
-          }
-          break;
-        case "configurationResponse":
-          setConfigurationData(msg.configurationData as ConfigurationData);
-          setSaving(false);
-          break;
-        case "configurationError":
-          setConfigurationError(
-            typeof msg.error === "string" ? msg.error : "未知错误",
-          );
-          setSaving(false);
-          break;
-        case "agentsContentResponse":
-          if (msg.scope === "project") {
-            setProjectAgentsContent(
-              typeof msg.content === "string" ? msg.content : "",
-            );
-          } else {
-            setUserAgentsContent(
-              typeof msg.content === "string" ? msg.content : "",
-            );
-          }
-          break;
-        case "agentsContentSaved":
-          setAgentsSaving(false);
-          setAgentsSaveResult({
-            scope: msg.scope === "project" ? "project" : "user",
-            ok: msg.ok === true,
-            error: typeof msg.error === "string" ? msg.error : undefined,
-          });
-          break;
-        case "projectSettings":
-          if (msg.enabledPlugins && typeof msg.enabledPlugins === "object") {
-            setProjectSettings({
-              enabledPlugins: msg.enabledPlugins as Record<string, boolean>,
-            });
-            setProjectSettingsWorkdir(workdirRef.current);
-          }
-          break;
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
   }, []);
+
+  useHostMessage((msg) => {
+    if (!msg || typeof msg !== "object") return;
+    switch (msg.command) {
+      case "settingsState":
+        if (typeof msg.workdir === "string") {
+          setWorkdir(msg.workdir);
+          workdirRef.current = msg.workdir;
+        }
+        if (typeof msg.nav === "string") {
+          setInitialNav(msg.nav as NavKey);
+        }
+        break;
+      case "configurationResponse":
+        setConfigurationData(msg.configurationData as ConfigurationData);
+        setSaving(false);
+        break;
+      case "configurationError":
+        setConfigurationError(
+          typeof msg.error === "string" ? msg.error : "未知错误",
+        );
+        setSaving(false);
+        break;
+      case "agentsContentResponse":
+        if (msg.scope === "project") {
+          setProjectAgentsContent(
+            typeof msg.content === "string" ? msg.content : "",
+          );
+        } else {
+          setUserAgentsContent(
+            typeof msg.content === "string" ? msg.content : "",
+          );
+        }
+        break;
+      case "agentsContentSaved":
+        setAgentsSaving(false);
+        setAgentsSaveResult({
+          scope: msg.scope === "project" ? "project" : "user",
+          ok: msg.ok === true,
+          error: typeof msg.error === "string" ? msg.error : undefined,
+        });
+        break;
+      case "projectSettings":
+        if (msg.enabledPlugins && typeof msg.enabledPlugins === "object") {
+          setProjectSettings({
+            enabledPlugins: msg.enabledPlugins as Record<string, boolean>,
+          });
+          setProjectSettingsWorkdir(workdirRef.current);
+        }
+        break;
+    }
+  });
 
   return (
     <SettingsPage
