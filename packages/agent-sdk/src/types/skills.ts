@@ -7,6 +7,17 @@ export interface SkillMetadata {
   name: string;
   description: string;
   type: "personal" | "project" | "builtin";
+  /**
+   * Path to the skill **directory** (the folder containing SKILL.md), never
+   * to SKILL.md itself. Directory-level contract — all consumers rely on it:
+   * - `SkillManager.prepareSkillContent` injects this value for
+   *   `${WAVE_SKILL_DIR}` / `${CLAUDE_SKILL_DIR}` substitutions and reports it
+   *   as the "Base directory for this skill";
+   * - `SkillManager.deleteSkill` removes this path with `rm(recursive)`.
+   * Callers that need the file itself must `join(skillPath, "SKILL.md")`
+   * (misreading this as the file path broke the desktop "Edit" action,
+   * bug 3466438649392128).
+   */
   skillPath: string;
   allowedTools?: string[];
   context?: "fork";

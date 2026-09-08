@@ -6,6 +6,21 @@ import type { VsCodeApi } from "../../src/types";
 import { ChatApp } from "../../src/components/ChatApp";
 import { fixtures, type HostToWebviewMessage } from "wave-webview-fixtures";
 
+/**
+ * Assertion style guide (see PR for #2063/#2067 precedent):
+ *
+ * Anchor assertions on **stable semantics**, not icon-implementation details:
+ * - Prefer `data-testid` handles (`getByTestId("diff-refresh")`,
+ *   `getByTestId("account-usage-collapse")`) over CSS class lookups.
+ * - For icon state, assert the semantic class (`"is-spinning"`) or the
+ *   element kind (`svg` exists), never a font-icon class
+ *   (`codicon-chevron-up` / `codicon-modifier-spin`) — icons migrate between
+ *   codicon font and inline SVG (0903 baseline) and class assertions break
+ *   or, worse, silently pass while asserting nothing.
+ * - Tests must still fail without the fix: an assertion that survives any
+ *   implementation is not a test.
+ */
+
 // Mock heavy dependencies
 vi.mock("mermaid", () => ({
   default: {
