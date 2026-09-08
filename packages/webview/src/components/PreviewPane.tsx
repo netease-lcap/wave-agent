@@ -7,6 +7,7 @@ import {
 } from "./HeaderIcons";
 import { PanelKindIcon } from "./PanelKindIcon";
 import { PaneShell } from "./PaneShell";
+import { readRootCssVar } from "../utils/cssVars";
 
 /**
  * Desktop-only preview pane: renders localhost dev servers in a sandboxed
@@ -111,26 +112,26 @@ const clampFitZoom = (z: number): number =>
 
 /** Colors the guest picker can't read cross-origin — sampled from the host theme. */
 const readPalette = (): Record<string, string> => {
-  const styles = getComputedStyle(document.documentElement);
-  const pick = (name: string, fallback: string) =>
-    styles.getPropertyValue(name).trim() || fallback;
   return {
-    accent: pick("--vscode-button-background", "#0e639c"),
-    accentForeground: pick("--vscode-button-foreground", "#ffffff"),
+    accent: readRootCssVar("--vscode-button-background", "#0e639c"),
+    accentForeground: readRootCssVar("--vscode-button-foreground", "#ffffff"),
     // 元素高亮框用链接蓝：桌面 host 取 --cc-text-link（Figma cc 蓝
     // #2f5edb/#4daafc），插件端回退 --vscode-textLink-foreground。
     // 桌面主按钮已被中性化成炭黑，若沿用 accent（button-background）
     // 选取框会变黑（评论跟进：不用 vscode focusBorder 色、与 link 一致）。
     accentOutline:
-      pick("--cc-text-link", "") ||
-      pick("--vscode-textLink-foreground", "#0069cc"),
-    foreground: pick("--vscode-foreground", "#cccccc"),
+      readRootCssVar("--cc-text-link") ||
+      readRootCssVar("--vscode-textLink-foreground", "#0069cc"),
+    foreground: readRootCssVar("--vscode-foreground", "#cccccc"),
     background:
-      pick("--vscode-panel-background", "") ||
-      pick("--vscode-editor-background", "#1e1e1e"),
-    border: pick("--vscode-panel-border", "rgba(128, 128, 128, 0.35)"),
-    inputBackground: pick("--vscode-input-background", "#3c3c3c"),
-    inputForeground: pick("--vscode-input-foreground", "#cccccc"),
+      readRootCssVar("--vscode-panel-background") ||
+      readRootCssVar("--vscode-editor-background", "#1e1e1e"),
+    border: readRootCssVar(
+      "--vscode-panel-border",
+      "rgba(128, 128, 128, 0.35)",
+    ),
+    inputBackground: readRootCssVar("--vscode-input-background", "#3c3c3c"),
+    inputForeground: readRootCssVar("--vscode-input-foreground", "#cccccc"),
   };
 };
 

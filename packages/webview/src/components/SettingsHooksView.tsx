@@ -9,8 +9,8 @@
  * 2026-09-02：移除钩子启停开关与 enabled 字段（对齐 CC，钩子始终执行）。
  */
 
-import React, { useState, useEffect, useCallback } from "react";
-import { useHostMessage } from "../utils/useHostMessage";
+import React, { useState } from "react";
+import { useSettingsList } from "../utils/useSettingsList";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsAddIcon } from "./HeaderIcons";
 import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
@@ -82,40 +82,28 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
   workdir,
   onPrefillPrompt,
 }) => {
-  const [hooks, setHooks] = useState<HooksByEvent>({});
   const [configPath, setConfigPath] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>(TABS[0].key);
-  // 待删除钩子（event+matcher 标识，null = 无确认框）
-  const [pendingDelete, setPendingDelete] = useState<{
-    event: string;
-    matcher?: string;
-  } | null>(null);
-
-  const fetchHooks = useCallback(
-    (scope: string) => {
-      setLoading(true);
-      vscode?.postMessage({ command: "getHooksByScope", scope });
+  const {
+    items: hooks,
+    setItems: setHooks,
+    loading,
+    pendingDelete,
+    setPendingDelete,
+    cancelDelete,
+    confirmDelete,
+  } = useSettingsList<HooksByEvent, { event: string; matcher?: string }>({
+    initialItems: {},
+    fetchRequest: () =>
+      vscode?.postMessage({ command: "getHooksByScope", scope: activeTab }),
+    fetchKey: activeTab,
+    responseCommands: ["hooksResponse"],
+    pickItems: (message) => (message.hooks as HooksByEvent) || {},
+    onResponse: (message) => {
+      setConfigPath(
+        typeof message.configPath === "string" ? message.configPath : null,
+      );
     },
-    [vscode],
-  );
-
-  // Fetch on mount and when the tab changes
-  useEffect(() => {
-    setPendingDelete(null);
-    fetchHooks(activeTab);
-  }, [activeTab, fetchHooks]);
-
-  useHostMessage((message) => {
-    if (message.command === "hooksResponse") {
-      setHooks((message.hooks as HooksByEvent) || {});
-      if (typeof message.configPath === "string") {
-        setConfigPath(message.configPath);
-      } else {
-        setConfigPath(null);
-      }
-      setLoading(false);
-    }
   });
 
   // 平铺所有条目：{event, matcher, entry}
@@ -149,25 +137,26 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
   };
 
   const handleConfirmDelete = () => {
-    if (!pendingDelete) return;
-    const name = formatHookName(pendingDelete.event, pendingDelete.matcher);
-    vscode?.postMessage({
-      command: "deleteHook",
-      scope: activeTab,
-      hookName: name,
-    });
-    setPendingDelete(null);
-    setHooks((prev) => {
-      const next: HooksByEvent = { ...prev };
-      const remaining = (next[pendingDelete.event] ?? []).filter(
-        (entry) => (entry.matcher || "") !== (pendingDelete.matcher || ""),
-      );
-      if (remaining.length > 0) {
-        next[pendingDelete.event] = remaining;
-      } else {
-        delete next[pendingDelete.event];
-      }
-      return next;
+    confirmDelete((target) => {
+      const name = formatHookName(target.event, target.matcher);
+      vscode?.postMessage({
+        command: "deleteHook",
+        scope: activeTab,
+        hookName: name,
+      });
+      // 乐观移除；host 回发 hooksResponse 后最终一致
+      setHooks((prev) => {
+        const next: HooksByEvent = { ...prev };
+        const remaining = (next[target.event] ?? []).filter(
+          (entry) => (entry.matcher || "") !== (target.matcher || ""),
+        );
+        if (remaining.length > 0) {
+          next[target.event] = remaining;
+        } else {
+          delete next[target.event];
+        }
+        return next;
+      });
     });
   };
 
@@ -281,7 +270,7 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
           confirmText="确认删除"
           cancelText="取消"
           onConfirm={handleConfirmDelete}
-          onCancel={() => setPendingDelete(null)}
+          onCancel={cancelDelete}
         />
       )}
     </div>

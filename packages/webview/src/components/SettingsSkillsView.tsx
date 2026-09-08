@@ -8,9 +8,9 @@
  * 确认 + 直接删文件）。数据通过 getSkillMetadata RPC 由 host 下发。
  */
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import { SkillMetadata } from "../types";
-import { useHostMessage } from "../utils/useHostMessage";
+import { useSettingsList } from "../utils/useSettingsList";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsAddIcon } from "./HeaderIcons";
 import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
@@ -64,31 +64,22 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
   workdir,
   onPrefillPrompt,
 }) => {
-  const [skills, setSkills] = useState<SkillMetadata[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    items: skills,
+    loading,
+    refresh,
+    pendingDelete,
+    setPendingDelete,
+    cancelDelete,
+    confirmDelete,
+  } = useSettingsList<SkillMetadata[], SkillMetadata>({
+    initialItems: [],
+    fetchRequest: () => vscode?.postMessage({ command: "getSkillMetadata" }),
+    responseCommands: ["skillMetadataResponse"],
+    pickItems: (message) => message.skills || [],
+  });
   const [activeTab, setActiveTab] = useState<string>(TABS[0].key);
   const [selectedName, setSelectedName] = useState<string | null>(null);
-  // 待删除技能（null = 无确认框）
-  const [pendingDelete, setPendingDelete] = useState<SkillMetadata | null>(
-    null,
-  );
-
-  const fetchSkills = useCallback(() => {
-    vscode?.postMessage({ command: "getSkillMetadata" });
-  }, [vscode]);
-
-  // Fetch skill metadata on mount (fresh each time the tab opens)
-  useEffect(() => {
-    setLoading(true);
-    fetchSkills();
-  }, [fetchSkills]);
-
-  useHostMessage((message) => {
-    if (message.command === "skillMetadataResponse") {
-      setSkills(message.skills || []);
-      setLoading(false);
-    }
-  });
 
   const selectedSkill = skills.find((s) => s.name === selectedName) || null;
 
@@ -122,11 +113,11 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
   };
 
   const handleConfirmDelete = () => {
-    if (!pendingDelete) return;
-    vscode?.postMessage({ command: "deleteSkill", name: pendingDelete.name });
-    setPendingDelete(null);
-    // 列表刷新依赖 host 回发 skillMetadataResponse（删除后重新拉取）
-    fetchSkills();
+    confirmDelete((skill) => {
+      vscode?.postMessage({ command: "deleteSkill", name: skill.name });
+      // 列表刷新依赖 host 回发 skillMetadataResponse（删除后重新拉取）
+      refresh();
+    });
   };
 
   const invocationLabel = (skill: SkillMetadata): string => {
@@ -332,7 +323,7 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
           confirmText="确认删除"
           cancelText="取消"
           onConfirm={handleConfirmDelete}
-          onCancel={() => setPendingDelete(null)}
+          onCancel={cancelDelete}
         />
       )}
     </div>
