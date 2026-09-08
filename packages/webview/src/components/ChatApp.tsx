@@ -151,6 +151,15 @@ interface PanelGroupState {
   panelWidthManual: boolean;
   /** Currently active tab id; null when no tab is open. */
   activePanel: string | null;
+  /**
+   * Whether the panel slot is expanded for this session (spec
+   * desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」场景 10:
+   * 折叠/展开逐会话记忆，与 tab 集合/宽度同级). Collapsing hides the slot but
+   * keeps the open tabs mounted, so a session collapsed with tabs open must
+   * come back collapsed after a switch — restoring it must not re-derive
+   * expanded from the presence of tabs.
+   */
+  panelExpanded: boolean;
   /** Plan panel markdown (ExitPlanMode content); null = no plan yet. */
   planContent: string | null;
   /**
@@ -189,6 +198,7 @@ function emptyPanelGroup(): PanelGroupState {
     panelWidth: PANEL_DEFAULT_WIDTH,
     panelWidthManual: false,
     activePanel: null,
+    panelExpanded: false,
     planContent: null,
     forward: null,
     forwardError: null,
@@ -525,15 +535,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // toggles whether the panel slot is visible. Collapsing only HIDES the slot —
   // the open tabs, their active tab and the dragged width all survive, and the
   // next expand restores them (「折叠/收起不影响面板内已打开的 tab 数量和状态，
-  // 再次展开保留上次宽度并自动打开上一次查看的 tab」). A session that restores
-  // tabs starts expanded (legacy "tabs visible" behavior); one with no tabs
-  // starts collapsed so the empty-state page only appears after an explicit
-  // expand.
-  const [panelExpanded, setPanelExpanded] = useState<boolean>(() =>
-    groupKey
-      ? (panelGroupCache.get(groupKey)?.checked?.length ?? 0) > 0
-      : false,
-  );
+  // 再次展开保留上次宽度并自动打开上一次查看的 tab」). The expanded/collapsed
+  // state is remembered PER SESSION like the tabs and width (场景 10: 切走再切回
+  // 保持折叠，不因还有 tab 而自动展开); a group with no cached entry yet starts
+  // collapsed so the empty-state page only appears after an explicit expand.
+  const [panelExpanded, setPanelExpanded] = useState<boolean>(() => {
+    const cached = groupKey ? panelGroupCache.get(groupKey) : undefined;
+    return cached
+      ? (cached.panelExpanded ?? (cached.checked?.length ?? 0) > 0)
+      : false;
+  });
   // Per-kind sequential tab-id source (preview-1, preview-2, …). Restored ids
   // are absorbed into the counters (see the groupKey effect below) so a tab
   // minted after a session switch can never collide with a restored one.
@@ -695,6 +706,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       panelWidth,
       panelWidthManual,
       activePanel: activeTabId,
+      panelExpanded,
       planContent,
       forward: currentForward,
       forwardError: previewForwardError,
@@ -705,6 +717,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     panelWidth,
     panelWidthManual,
     activeTabId,
+    panelExpanded,
     planContent,
     currentForward,
     previewForwardError,
@@ -745,9 +758,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setTabs(group?.checked ?? []);
     setPanelWidth(group?.panelWidth ?? PANEL_DEFAULT_WIDTH);
     setPanelWidthManual(group?.panelWidthManual ?? false);
-    // A session that restores tabs shows them (legacy behavior); one without
-    // tabs starts collapsed — the empty state needs an explicit expand.
-    setPanelExpanded((group?.checked?.length ?? 0) > 0);
+    // Expanded/collapsed is remembered per session like the tabs and width
+    // (spec 场景 10) — a session the user collapsed keeps its slot hidden on
+    // return even though its tabs are still open; a session without a cached
+    // entry starts collapsed, the empty state needs an explicit expand.
+    setPanelExpanded(group?.panelExpanded ?? (group?.checked?.length ?? 0) > 0);
     // The restored active tab must be one of the restored open tabs; a stale
     // cache entry (active pointing at a closed tab) falls back to the first.
     const restoredActive = group?.activePanel ?? null;
