@@ -1486,7 +1486,7 @@ export class MessageHandler {
     } catch (error) {
       console.error(`发送消息给 ${viewType} 智能体时出错:`, error);
       vscode.window.showErrorMessage(
-        `发送消息失败: ${error}。详情见 Wave 输出面板或 ~/.wave/logs/cli.log`,
+        `发送消息失败: ${error}。详情见 CodeWave IDE 输出面板或 ~/.wave/logs/cli.log`,
       );
     }
   }

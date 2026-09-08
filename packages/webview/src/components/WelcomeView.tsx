@@ -129,7 +129,7 @@ const WelcomeView: React.FC<WelcomeViewProps> = ({
               lineHeight: "18px",
             }}
           >
-            Hi~ 欢迎使用 Wave 代码智聊
+            Hi~ 欢迎使用 CodeWave IDE 代码智聊
           </div>
         )}
         {/* Login entry (IDE hosts, unauthenticated + no direct-connect) — hint

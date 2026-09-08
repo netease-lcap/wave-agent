@@ -160,7 +160,7 @@ _产品下载页面_
 
 #### 2）AI 思考过程
 
-对于支持推理的模型（如 DeepSeek R1, OpenAI o1），Wave 可以展示 AI 的思考过程，让用户了解 AI 是如何得出结论的。思考过程在生成时默认展开、实时呈现，思考结束后会自动收起以保持界面整洁；用户可随时点击"思考"标题展开或收起，查看完整的推理内容。
+对于支持推理的模型（如 DeepSeek R1, OpenAI o1），CodeWave IDE 可以展示 AI 的思考过程，让用户了解 AI 是如何得出结论的。思考过程在生成时默认展开、实时呈现，思考结束后会自动收起以保持界面整洁；用户可随时点击"思考"标题展开或收起，查看完整的推理内容。
 
 ![AI 思考过程](/screenshots/desktop-reasoning-block.webp)
 
@@ -348,7 +348,7 @@ AI 可以使用多种工具来探索项目代码库，这些工具的执行过�
 
 #### 5）LSP 代码智能
 
-Wave 集成了 Language Server Protocol (LSP)，使 AI 能够像 IDE 一样理解代码。工具标题会显示具体的操作和位置（如 `goToDefinition src/main.ts:10:5`）：
+CodeWave IDE 集成了 Language Server Protocol (LSP)，使 AI 能够像 IDE 一样理解代码。工具标题会显示具体的操作和位置（如 `goToDefinition src/main.ts:10:5`）：
 
 - **Go to Definition**：查找符号定义
 - **Find References**：查找所有引用
@@ -482,7 +482,7 @@ AI 会根据任务目标自动规划并管理任务列表，实时展示任务�
 
 #### 2）后台任务通知
 
-当后台任务（如 Shell 命令或子代理）完成执行时，Wave 会在聊天消息中显示任务通知块，告知用户任务的状态和结果摘要。
+当后台任务（如 Shell 命令或子代理）完成执行时，CodeWave IDE 会在聊天消息中显示任务通知块，告知用户任务的状态和结果摘要。
 
 主要特性：
 
@@ -494,7 +494,7 @@ AI 会根据任务目标自动规划并管理任务列表，实时展示任务�
 
 #### 3）后台任务系统
 
-Wave 支持前台和后台两种任务执行模式：
+CodeWave IDE 支持前台和后台两种任务执行模式：
 
 - **Foreground Task**：前台执行的任务（如正在进行的 Bash 命令），用户可将其退化为后台
 - **Background Task**：后台执行的任务，包括：

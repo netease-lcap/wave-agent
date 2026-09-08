@@ -51,7 +51,7 @@ async function openSettings() {
     fireEvent.input(input, { data: "/config", inputType: "insertText" });
   });
   fireEvent.keyDown(input, { key: "Enter" });
-  await screen.findByText("管理 Wave 的界面、模型和基础行为。");
+  await screen.findByText("管理 CodeWave IDE 的界面、模型和基础行为。");
 }
 
 describe("桌面端主题偏好同步（ChatApp host 消息链路）", () => {

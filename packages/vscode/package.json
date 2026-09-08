@@ -1,8 +1,8 @@
 {
   "name": "wave-vscode",
   "private": true,
-  "displayName": "Wave Code Chat",
-  "description": "Wave 代码智聊",
+  "displayName": "CodeWave IDE",
+  "description": "CodeWave IDE: 代码智聊",
   "version": "1.1.5",
   "publisher": "wave-codechat",
   "icon": "LOGO.png",
@@ -39,7 +39,7 @@
       "activitybar": [
         {
           "id": "waveChatView",
-          "title": "Wave",
+          "title": "CodeWave IDE",
           "icon": "logo.svg"
         }
       ]
@@ -48,32 +48,32 @@
       {
         "command": "wave-code.openChatSidebar",
         "title": "在侧边栏打开代码智聊",
-        "category": "Wave"
+        "category": "CodeWave IDE"
       },
       {
         "command": "wave-code.openChatTab",
         "title": "在新标签页打开代码智聊",
-        "category": "Wave"
+        "category": "CodeWave IDE"
       },
       {
         "command": "wave-code.openChatWindow",
         "title": "在新窗口打开代码智聊",
-        "category": "Wave"
+        "category": "CodeWave IDE"
       },
       {
         "command": "wave-code.focusView",
         "title": "聚焦到聊天输入框",
-        "category": "Wave"
+        "category": "CodeWave IDE"
       },
       {
         "command": "wave-code.addToWave",
-        "title": "添加到 Wave",
-        "category": "Wave"
+        "title": "添加到 CodeWave IDE",
+        "category": "CodeWave IDE"
       },
       {
         "command": "wave-code.openSettings",
         "title": "打开设置",
-        "category": "Wave"
+        "category": "CodeWave IDE"
       }
     ],
     "menus": {

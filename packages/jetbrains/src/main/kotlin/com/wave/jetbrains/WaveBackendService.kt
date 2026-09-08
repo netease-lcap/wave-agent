@@ -67,7 +67,7 @@ class WaveBackendService(private val project: Project) : Disposable {
                         installNotification?.expire()
                         val notification = NotificationGroupManager.getInstance()
                             .getNotificationGroup("Wave")
-                            .createNotification("Wave", message, NotificationType.INFORMATION)
+                            .createNotification("CodeWave IDE", message, NotificationType.INFORMATION)
                         notification.notify(project)
                         installNotification = notification
                     }

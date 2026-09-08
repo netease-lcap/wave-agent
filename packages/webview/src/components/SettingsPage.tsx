@@ -354,7 +354,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             <div className="settings-view">
               <header className="settings-page-header">
                 <h1>全局设置</h1>
-                <p>管理 Wave 的界面、模型和基础行为。</p>
+                <p>管理 CodeWave IDE 的界面、模型和基础行为。</p>
               </header>
               {saveMessage && (
                 <p className="settings-save-message">{saveMessage}</p>

@@ -358,7 +358,7 @@ export class WebviewManager {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src ${webview.cspSource} data: blob:; img-src ${webview.cspSource} data: blob: https: http:; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource}; font-src ${webview.cspSource} data:;">
-    <title>Wave AI Chat</title>
+    <title>CodeWave IDE: 代码智聊</title>
     <link rel="stylesheet" href="${cssUri}">
 </head>
 <body>

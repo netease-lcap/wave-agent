@@ -129,7 +129,7 @@ object IdeService {
         try {
             NotificationGroupManager.getInstance()
                 .getNotificationGroup("Wave")
-                .createNotification("Wave", message, NotificationType.ERROR)
+                .createNotification("CodeWave IDE", message, NotificationType.ERROR)
                 .notify(project)
         } catch (e: Exception) {
             // Fallback if the notification group is unavailable.

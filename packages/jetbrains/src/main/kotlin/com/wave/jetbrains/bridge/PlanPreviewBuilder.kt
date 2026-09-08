@@ -51,7 +51,7 @@ object PlanPreviewBuilder {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wave 计划预览</title>
+    <title>CodeWave IDE 计划预览</title>
     <style id="${WebviewContentBuilder.THEME_BASE_STYLE_ID}">
         $themeBase
     </style>

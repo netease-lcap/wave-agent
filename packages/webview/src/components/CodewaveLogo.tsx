@@ -18,7 +18,7 @@ export const CodewaveLogo: React.FC<{ height?: number }> = ({
     xmlns="http://www.w3.org/2000/svg"
     style={{ display: "block" }}
     role="img"
-    aria-label="Wave 代码智聊"
+    aria-label="CodeWave IDE: 代码智聊"
   >
     <g fill="currentColor" opacity="0.55">
       <path d="M198.935 5.51074H211.581V7.80325H201.622V12.9306H210.989V15.2231H201.622V20.8188H212V23.1113H198.935V5.51074Z" />
