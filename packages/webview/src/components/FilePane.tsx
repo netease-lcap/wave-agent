@@ -14,6 +14,7 @@ import { useClickOutside } from "../utils/useClickOutside";
 import { useHostMessage } from "../utils/useHostMessage";
 import { FileSuggestionDropdown } from "./FileSuggestionDropdown";
 import { PanelKindIcon } from "./PanelKindIcon";
+import { PanePlaceholder, PaneShell } from "./PaneShell";
 import "../styles/FilePane.css";
 
 /** Debounce for the panel search requests, matching the message input's. */
@@ -434,13 +435,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const markdown = fileView?.content ? isMarkdownPath(fileView.path) : false;
 
   return (
-    <aside
-      className="preview-pane file-pane"
-      style={{ width }}
-      data-testid="file-pane"
-    >
-      <div className="preview-pane-inner">
-        <div className="preview-pane-toolbar" ref={toolbarRef}>
+    <PaneShell
+      kind="file-pane"
+      dataTestId="file-pane"
+      width={width}
+      toolbarRef={toolbarRef}
+      toolbar={
+        <>
           {fileView ? (
             <>
               <span className="file-pane-host">
@@ -477,8 +478,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
               <i className="codicon codicon-search" />
             </button>
           )}
-        </div>
-        {vscode && searchOpen && (
+        </>
+      }
+      betweenToolbarAndBody={
+        vscode &&
+        searchOpen && (
           <div
             className="file-pane-search-popover"
             ref={searchPopoverRef}
@@ -521,90 +525,84 @@ export const FilePane: React.FC<FilePaneProps> = ({
               direction="down"
             />
           </div>
-        )}
-        <div className="preview-pane-body file-pane-body" ref={scrollRef}>
-          {!fileView && (
-            <div className="desktop-panel-placeholder file-pane-placeholder-empty">
-              {/* Figma 文件面板空态：图标在上 24px、文案在下（评论 2026-09）。 */}
-              <PanelKindIcon
-                kind="file"
-                size={24}
-                className="file-pane-placeholder-icon"
-              />
-              <span>点击消息中的文件路径，在此查看文件内容</span>
-            </div>
-          )}
-          {fileView?.error && (
-            <div className="file-pane-status">
-              <i className="codicon codicon-error file-pane-status-icon" />
-              <span>{fileView.error}</span>
-            </div>
-          )}
-          {fileView &&
-            !fileView.error &&
-            !fileView.content &&
-            !fileView.imageBase64 && (
-              <div className="desktop-panel-placeholder">
-                <i className="codicon codicon-loading codicon-modifier-spin" />
-                <span>正在读取文件…</span>
-              </div>
-            )}
-          {fileView?.imageBase64 && !fileView.error && (
-            <img
-              className="file-pane-image"
-              src={fileView.imageBase64}
-              alt={relativePath || fileView.path}
-            />
-          )}
-          {fileView?.content && !fileView.error && markdown && (
-            <div
-              className="message-content markdown-content file-pane-markdown"
-              dangerouslySetInnerHTML={{
-                __html: renderFileMarkdown(fileView.content),
-              }}
-            />
-          )}
-          {fileView?.content &&
-            !fileView.error &&
-            !markdown &&
-            contentLines && (
-              <div className="file-pane-code">
-                {fileView.truncated && fileView.totalLines !== undefined && (
-                  <div className="file-pane-truncated-hint">
-                    文件共 {fileView.totalLines} 行，仅显示前{" "}
-                    {contentLines.length} 行
-                  </div>
-                )}
-                {contentLines.map((line, i) => {
-                  const lineNo = i + 1;
-                  const active =
-                    fileView.startLine !== undefined &&
-                    lineNo >= fileView.startLine &&
-                    (fileView.endLine === undefined ||
-                      lineNo <= fileView.endLine);
-                  return (
-                    <div
-                      key={i}
-                      className={`file-pane-line${active ? " file-pane-line--active" : ""}`}
-                    >
-                      <span className="file-pane-line-no">{lineNo}</span>
-                      <span
-                        className="file-pane-line-code"
-                        dangerouslySetInnerHTML={{ __html: line || "&nbsp;" }}
-                      />
-                    </div>
-                  );
-                })}
-                {fileView.truncated && fileView.totalLines === undefined && (
-                  <div className="file-pane-truncated-hint">
-                    文件较大，内容已截断
-                  </div>
-                )}
-              </div>
-            )}
+        )
+      }
+      bodyClassName="preview-pane-body file-pane-body"
+      bodyRef={scrollRef}
+    >
+      {!fileView && (
+        <PanePlaceholder className="file-pane-placeholder-empty">
+          {/* Figma 文件面板空态：图标在上 24px、文案在下（评论 2026-09）。 */}
+          <PanelKindIcon
+            kind="file"
+            size={24}
+            className="file-pane-placeholder-icon"
+          />
+          <span>点击消息中的文件路径，在此查看文件内容</span>
+        </PanePlaceholder>
+      )}
+      {fileView?.error && (
+        <div className="file-pane-status">
+          <i className="codicon codicon-error file-pane-status-icon" />
+          <span>{fileView.error}</span>
         </div>
-      </div>
-    </aside>
+      )}
+      {fileView &&
+        !fileView.error &&
+        !fileView.content &&
+        !fileView.imageBase64 && (
+          <PanePlaceholder>
+            <i className="codicon codicon-loading codicon-modifier-spin" />
+            <span>正在读取文件…</span>
+          </PanePlaceholder>
+        )}
+      {fileView?.imageBase64 && !fileView.error && (
+        <img
+          className="file-pane-image"
+          src={fileView.imageBase64}
+          alt={relativePath || fileView.path}
+        />
+      )}
+      {fileView?.content && !fileView.error && markdown && (
+        <div
+          className="message-content markdown-content file-pane-markdown"
+          dangerouslySetInnerHTML={{
+            __html: renderFileMarkdown(fileView.content),
+          }}
+        />
+      )}
+      {fileView?.content && !fileView.error && !markdown && contentLines && (
+        <div className="file-pane-code">
+          {fileView.truncated && fileView.totalLines !== undefined && (
+            <div className="file-pane-truncated-hint">
+              文件共 {fileView.totalLines} 行，仅显示前 {contentLines.length} 行
+            </div>
+          )}
+          {contentLines.map((line, i) => {
+            const lineNo = i + 1;
+            const active =
+              fileView.startLine !== undefined &&
+              lineNo >= fileView.startLine &&
+              (fileView.endLine === undefined || lineNo <= fileView.endLine);
+            return (
+              <div
+                key={i}
+                className={`file-pane-line${active ? " file-pane-line--active" : ""}`}
+              >
+                <span className="file-pane-line-no">{lineNo}</span>
+                <span
+                  className="file-pane-line-code"
+                  dangerouslySetInnerHTML={{ __html: line || "&nbsp;" }}
+                />
+              </div>
+            );
+          })}
+          {fileView.truncated && fileView.totalLines === undefined && (
+            <div className="file-pane-truncated-hint">文件较大，内容已截断</div>
+          )}
+        </div>
+      )}
+    </PaneShell>
   );
 };
 
