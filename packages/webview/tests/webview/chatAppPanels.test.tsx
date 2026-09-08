@@ -865,6 +865,59 @@ describe("session-level panel groups", () => {
     expect(lastPanelState(vscode)).toEqual(["terminal"]);
   });
 
+  it("a collapsed panel stays collapsed when switching away and back (per-session memory)", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+    pushTree(["s1", "s2"]);
+    pushPanes("s1");
+    openPanel("diff");
+    expect(screen.getByTestId("panel-toggle-btn")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+
+    // Collapse s1 with its diff tab still open — the slot hides but the tab
+    // stays mounted.
+    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+    expect(screen.getByTestId("panel-toggle-btn")).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByTestId("desktop-panel-slot")).toHaveStyle({
+      display: "none",
+    });
+    expect(screen.getByTestId("panel-tab-diff-1")).toBeInTheDocument();
+
+    // s2 has no remembered group: nothing leaks in, and it opens its own panel.
+    pushPanes("s2");
+    expect(screen.queryByTestId("desktop-panel-slot")).not.toBeInTheDocument();
+    openPanel("diff");
+    expect(screen.getByTestId("panel-toggle-btn")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+
+    // Back to s1: its collapsed state is remembered (spec 场景 10) — the diff
+    // tab is still mounted behind the hidden slot, NOT force-expanded merely
+    // because the session has open tabs.
+    pushPanes("s1");
+    expect(screen.getByTestId("panel-toggle-btn")).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByTestId("desktop-panel-slot")).toHaveStyle({
+      display: "none",
+    });
+    expect(screen.getByTestId("panel-tab-diff-1")).toBeInTheDocument();
+
+    // Expanding restores the kept tab as usual.
+    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+    expect(screen.getByTestId("desktop-panel-slot")).not.toHaveStyle({
+      display: "none",
+    });
+    expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
+  });
+
   it("the new-session bucket migrates to the session id bound by the first message", async () => {
     window.waveHostType = "desktop";
     renderDesktop({ workdir: "/work/a" });
