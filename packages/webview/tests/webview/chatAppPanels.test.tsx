@@ -91,9 +91,9 @@ describe("ChatApp desktop panel framework", () => {
     fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
 
     expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
-    expect(vscode.postMessage).toHaveBeenCalledWith({
-      command: "desktopGetWorkspaceDiff",
-    });
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "desktopGetWorkspaceDiff" }),
+    );
     // The header button is now an expand/collapse switch — no dropdown menu;
     // the empty state opened the tab directly.
     expect(screen.queryByTestId("panel-toggle-menu")).not.toBeInTheDocument();
@@ -394,9 +394,9 @@ describe("ChatApp desktop panel framework", () => {
 
     fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
     expect(screen.queryByTestId("diff-pane")).not.toBeInTheDocument();
-    expect(vscode.postMessage).not.toHaveBeenCalledWith({
-      command: "desktopGetWorkspaceDiff",
-    });
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "desktopGetWorkspaceDiff" }),
+    );
 
     // Host-originated toggles hit the same guard.
     sendHostMessage(fixtures.desktopTogglePanel("terminal"));
@@ -416,10 +416,12 @@ describe("ChatApp desktop panel framework", () => {
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
       fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
       expect(screen.queryByTestId("diff-pane")).not.toBeInTheDocument();
-      expect(vscode.postMessage).toHaveBeenCalledWith({
-        command: "desktopShowHint",
-        text: "空间不足，无法开启面板",
-      });
+      expect(vscode.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: "desktopShowHint",
+          text: "空间不足，无法开启面板",
+        }),
+      );
     } finally {
       rectSpy.mockRestore();
     }
@@ -437,10 +439,12 @@ describe("ChatApp desktop panel framework", () => {
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
       fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
       expect(screen.queryByTestId("diff-pane")).not.toBeInTheDocument();
-      expect(vscode.postMessage).toHaveBeenCalledWith({
-        command: "desktopShowHint",
-        text: "空间不足，无法开启面板",
-      });
+      expect(vscode.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: "desktopShowHint",
+          text: "空间不足，无法开启面板",
+        }),
+      );
     } finally {
       rectSpy.mockRestore();
     }
@@ -472,10 +476,12 @@ describe("ChatApp desktop panel framework", () => {
         { display: "none" },
       );
       // No eviction hint — both coexist.
-      expect(vscode.postMessage).not.toHaveBeenCalledWith({
-        command: "desktopShowHint",
-        text: expect.stringContaining("已自动关闭"),
-      });
+      expect(vscode.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: "desktopShowHint",
+          text: expect.stringContaining("已自动关闭"),
+        }),
+      );
       expect(lastPanelState(vscode)).toEqual(["file", "terminal"]);
     } finally {
       rectSpy.mockRestore();
@@ -506,10 +512,12 @@ describe("ChatApp desktop panel framework", () => {
         display: "none",
       });
       // No eviction hints at any point.
-      expect(vscode.postMessage).not.toHaveBeenCalledWith({
-        command: "desktopShowHint",
-        text: expect.stringContaining("已自动关闭"),
-      });
+      expect(vscode.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: "desktopShowHint",
+          text: expect.stringContaining("已自动关闭"),
+        }),
+      );
 
       // Closing the ACTIVE diff tab falls back to its left neighbor
       // (preview — the previous tab in open order).
@@ -547,10 +555,12 @@ describe("ChatApp desktop panel framework", () => {
       fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
       expect(screen.queryByTestId("terminal-pane")).not.toBeInTheDocument();
       expect(screen.getByTestId("file-pane")).toBeInTheDocument();
-      expect(vscode.postMessage).toHaveBeenCalledWith({
-        command: "desktopShowHint",
-        text: "空间不足，无法开启面板",
-      });
+      expect(vscode.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: "desktopShowHint",
+          text: "空间不足，无法开启面板",
+        }),
+      );
       expect(lastPanelState(vscode)).toEqual(["file"]);
     } finally {
       rectSpy.mockRestore();
@@ -595,9 +605,9 @@ describe("ChatApp desktop panel framework", () => {
         display: "none",
       });
       expect(screen.getByTestId("panel-tab-terminal-1")).toBeInTheDocument();
-      expect(vscode.postMessage).not.toHaveBeenCalledWith({
-        command: "desktopShowHint",
-      });
+      expect(vscode.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ command: "desktopShowHint" }),
+      );
       expect(lastPanelState(vscode)).toEqual(["file", "terminal"]);
     } finally {
       rectSpy.mockRestore();

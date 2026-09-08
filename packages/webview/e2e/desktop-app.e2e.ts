@@ -171,6 +171,16 @@ test.describe("Desktop App Screenshots", () => {
         "2026-07-27T10:12:00Z",
       ),
     });
+    // Bind the startup pane to sess-a1 the way a real host does when the user
+    // opens a session: the sidebar's current-row state derives from
+    // panes.find(focusedPaneId)?.sessionId (DesktopShell), so without this the
+    // auto-created unbound pane leaves sess-a1 unmarked.
+    await injector.simulateExtensionMessage("desktopPanes", {
+      panes: [
+        { paneId: "pane-1", sessionId: "sess-a1", host: "local", row: 0 },
+      ],
+      focusedPaneId: "pane-1",
+    });
 
     await expect(
       webviewPage.getByTestId("desktop-session-item-sess-a1"),

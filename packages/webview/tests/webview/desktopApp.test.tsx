@@ -158,10 +158,27 @@ describe("DesktopApp", () => {
       fireEvent.click(screen.getByTestId("desktop-workdir"));
       fireEvent.click(screen.getByTestId("desktop-workdir-browse"));
     };
+    /**
+     * Remote picker state (spec scenario 21): selecting a host re-sends workdir
+     * state AND pushes a pane-bound host — desktopPanes' pane record is the
+     * authoritative host for the pane's picker (desktopHost.handleSelectHost
+     * does both). The seam's boot push already placed pane-1 as 本地; mirroring
+     * the switch here keeps `effectiveHost` on the pane record.
+     */
+    const useRemoteHost = () => {
+      sendCommand("desktopWorkdirState", {
+        host: "prod",
+        recentWorkdirs: [],
+      });
+      sendCommand("desktopPanes", {
+        panes: [{ paneId: "pane-1", host: "prod", row: 0 }],
+        focusedPaneId: "pane-1",
+      });
+    };
 
     it("opens the browser on a remote host and lists the home directory", () => {
       const { vscode } = renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
@@ -218,7 +235,7 @@ describe("DesktopApp", () => {
 
     it("navigates into a subdirectory and shows the parent … entry", () => {
       const { vscode } = renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
@@ -262,7 +279,7 @@ describe("DesktopApp", () => {
 
     it("jumps to a breadcrumb level on click", () => {
       const { vscode } = renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
@@ -299,7 +316,7 @@ describe("DesktopApp", () => {
 
     it("shows a retryable error and disables selection when listing fails", () => {
       const { vscode } = renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
@@ -343,7 +360,7 @@ describe("DesktopApp", () => {
 
     it("选择此目录 posts desktopSelectRemotePath with the browsed path", () => {
       const { vscode } = renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
@@ -371,7 +388,7 @@ describe("DesktopApp", () => {
 
     it("submits a typed path with Enter, bypassing the listing", () => {
       const { vscode } = renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
@@ -392,7 +409,7 @@ describe("DesktopApp", () => {
 
     it("filters subdirectories by keyword and hides non-matching entries", () => {
       renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
 
       openRemoteBrowser();
@@ -416,7 +433,7 @@ describe("DesktopApp", () => {
 
     it("highlights every keyword occurrence in matching entries", () => {
       renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
 
       openRemoteBrowser();
@@ -446,7 +463,7 @@ describe("DesktopApp", () => {
 
     it("shows a no-match hint when the keyword filters everything out", () => {
       renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
 
       openRemoteBrowser();
@@ -471,7 +488,7 @@ describe("DesktopApp", () => {
 
     it("does not submit a bare keyword with Enter — only absolute paths", () => {
       const { vscode } = renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
 
       openRemoteBrowser();
@@ -489,7 +506,7 @@ describe("DesktopApp", () => {
 
     it("clears the filter keyword when navigating into a subdirectory", () => {
       renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
 
       openRemoteBrowser();
@@ -526,7 +543,7 @@ describe("DesktopApp", () => {
 
     it("remembers the last visited directory across opens", () => {
       const { vscode } = renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
@@ -567,7 +584,7 @@ describe("DesktopApp", () => {
 
     it("moves the selection with ArrowDown/ArrowUp and enters the highlighted dir with Enter", () => {
       const { vscode } = renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
@@ -624,7 +641,7 @@ describe("DesktopApp", () => {
 
     it("auto-selects the first filtered match and enters it with Enter", () => {
       const { vscode } = renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
@@ -659,7 +676,7 @@ describe("DesktopApp", () => {
 
     it("re-selects the first match as the keyword changes, and clears when no match", () => {
       const { vscode } = renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
@@ -696,7 +713,7 @@ describe("DesktopApp", () => {
 
     it("clears the selection after navigating and on filter changes", () => {
       const { vscode } = renderDesktopApp();
-      sendCommand("desktopWorkdirState", { host: "prod", recentWorkdirs: [] });
+      useRemoteHost();
       sendCommand("setInitialState", { messages: [] });
       vscode.postMessage.mockClear();
 
@@ -1126,6 +1143,12 @@ describe("DesktopApp", () => {
           firstMessage: "hello a",
         },
       });
+      // The sidebar's current marker reads the focused pane's bound session
+      // (DesktopShell) — the host pushes pane-1 → s1 when s1 is active.
+      sendCommand("desktopPanes", {
+        panes: [{ paneId: "pane-1", sessionId: "s1", host: "local", row: 0 }],
+        focusedPaneId: "pane-1",
+      });
       sendCommand("startStreaming", {});
 
       const current = screen.getByTestId("desktop-session-item-s1");
@@ -1279,6 +1302,12 @@ describe("DesktopApp", () => {
             sessions: [session("s1", "hello a")],
           },
         ],
+      });
+      // s1 already shows in the sole pane — 并排打开 on a visible session skips
+      // the min-width gate (DesktopShell.handleOpenPane) and posts directly.
+      sendCommand("desktopPanes", {
+        panes: [{ paneId: "pane-1", sessionId: "s1", host: "local", row: 0 }],
+        focusedPaneId: "pane-1",
       });
       vscode.postMessage.mockClear();
 
@@ -1656,6 +1685,7 @@ describe("DesktopApp", () => {
         ),
       ).toEqual({
         command: "desktopCreateWorktree",
+        paneId: "pane-1",
         workdir: "/work/a",
         baseBranch: "dev",
         text: "hello worktree",

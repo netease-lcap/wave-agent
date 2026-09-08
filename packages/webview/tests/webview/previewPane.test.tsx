@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, act, screen } from "@testing-library/react";
 import React from "react";
 import {
@@ -8,6 +8,7 @@ import {
 } from "../../src/components/PreviewPane";
 import type { WebviewTagElement } from "../../src/components/PreviewPane";
 import { DesktopApp } from "../../src/components/DesktopApp";
+import { prunePanelGroupCache } from "../../src/components/ChatApp";
 import { convertToMarkdown } from "../../src/utils/messageUtils";
 import { createMockVscode, sendCommand } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
@@ -780,6 +781,14 @@ describe("rewriteCommentUrl", () => {
 });
 
 describe("PreviewPane integration (DesktopApp)", () => {
+  beforeEach(() => {
+    // 面板分组缓存是模块级：split 布局下每条用例都挂载 pane-1 ChatApp 并按
+    // bucket 恢复面板 tab（新会话桶 key=new:pane-1 跨用例不变）——上一条用例
+    // 遗留的预览 tab 会与新用例自己打开的 tab 叠加（getByTestId 命中多个）。
+    // 与 chatAppPanels 同款隔离。
+    prunePanelGroupCache(new Set());
+  });
+
   afterEach(() => {
     delete window.waveHostType;
   });

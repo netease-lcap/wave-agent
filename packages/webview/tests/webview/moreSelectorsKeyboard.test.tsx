@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, screen } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
+import { prunePanelGroupCache } from "../../src/components/ChatApp";
 import { ContextTag } from "../../src/components/ContextTag";
 import { FileToolHeader } from "../../src/components/FileToolHeader";
 import {
@@ -94,6 +95,10 @@ describe("remaining keyboard accessibility", () => {
 
   describe("PanelToggleMenu", () => {
     const renderDesktop = () => {
+      // 面板分组缓存是模块级：split 布局下每次 render 都挂载 pane-1 ChatApp
+      // 并按分组 bucket 恢复面板 tab——跨用例残留会让「空态入口」消失（上一条
+      // 用例留下的预览 tab 仍在新用例的面板槽里）。与 chatAppPanels 同款隔离。
+      prunePanelGroupCache(new Set());
       const vscode = createMockVscode();
       const view = render(<DesktopApp vscode={vscode} />);
       sendHostMessage(
@@ -123,9 +128,9 @@ describe("remaining keyboard accessibility", () => {
       diffItem.focus();
       fireEvent.keyDown(diffItem, { key: " " });
 
-      expect(vscode.postMessage).toHaveBeenCalledWith({
-        command: "desktopGetWorkspaceDiff",
-      });
+      expect(vscode.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ command: "desktopGetWorkspaceDiff" }),
+      );
       // The tab-bar menu closes after activating (closeOnActivate).
       expect(screen.queryByTestId("panel-toggle-menu")).not.toBeInTheDocument();
     });

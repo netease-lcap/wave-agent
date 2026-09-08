@@ -229,16 +229,16 @@ describe("desktop pane 布局：设置页「新增/编辑」提示词预填进 f
     expect(paneInput("pane-2").textContent ?? "").not.toContain("/settings");
   });
 
-  it("无 pane 单布局回归：新增用户级 MCP 服务 → 提示词写入本实例输入框", async () => {
+  it("单 pane 布局（启动即单个分屏）回归：新增用户级 MCP 服务 → 提示词写入 pane-1 输入框", async () => {
     render(
       <ChatApp
         vscode={createMockVscode() as unknown as VsCodeApi}
-        host={desktopHost([])}
+        host={desktopHost()}
       />,
     );
     sendHostMessage(fixtures.authStatusResponse());
 
-    await typeAndSend("/mcp");
+    await typeInPane("pane-1", "/mcp");
     const addUserServerBtn = await screen.findByRole("button", {
       name: /新增用户级 MCP 服务/,
     });
@@ -246,9 +246,14 @@ describe("desktop pane 布局：设置页「新增/编辑」提示词预填进 f
       fireEvent.click(addUserServerBtn);
     });
 
-    // 关设置页后本实例（root，无 pane）chatContainer 重挂载 → 本地输入框写入
+    // 关设置页后 pane-1 chatContainer 重挂载（ChatApp 状态复位，输入框未就绪）。
+    // 宿主收到 webviewReady 后回放 snapshot——此处模拟：authStatusResponse 置
+    // initialized，输入框挂载后下行请求才真正 loadDraft。
+    sendHostMessage(fixtures.authStatusResponse());
+
+    // 关设置页后 pane-1 chatContainer 重挂载 → 提示词写入 pane-1 输入框
     await waitFor(() => {
-      expect(screen.getByTestId("message-input").textContent ?? "").toMatch(
+      expect(paneInput("pane-1").textContent ?? "").toMatch(
         /^\/settings 帮我配个用户级/,
       );
     });
@@ -324,7 +329,7 @@ describe("desktop pane 布局：设置页「新增/编辑」提示词预填进 f
     }
   });
 
-  it("无 pane 单布局：编辑用户级 MCP → 提示词写入本实例输入框 + 本实例文件面板打开 mcp.json", async () => {
+  it("单 pane 布局：编辑用户级 MCP → 提示词写入 pane-1 输入框 + pane-1 文件面板打开 mcp.json", async () => {
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockReturnValue({ width: 1200, right: 1200 } as DOMRect);
@@ -333,12 +338,12 @@ describe("desktop pane 布局：设置页「新增/编辑」提示词预填进 f
       render(
         <ChatApp
           vscode={vscode as unknown as VsCodeApi}
-          host={desktopHost([])}
+          host={desktopHost()}
         />,
       );
       sendHostMessage(fixtures.authStatusResponse());
 
-      await typeAndSend("/mcp");
+      await typeInPane("pane-1", "/mcp");
       sendHostMessage(
         fixtures.mcpServersResponse([
           {
@@ -362,14 +367,23 @@ describe("desktop pane 布局：设置页「新增/编辑」提示词预填进 f
         fireEvent.click(await screen.findByRole("button", { name: /编辑/ }));
       });
 
+      // 同新增用例：设置页关闭后 pane-1 chatContainer 重挂载（ChatApp 状态复位，
+      // 输入框未就绪），回放 snapshot（authStatusResponse 置 initialized）输入框才
+      // 真正就绪、下行 prefill 才 loadDraft。
+      sendHostMessage(fixtures.authStatusResponse());
+
       await waitFor(() => {
-        expect(screen.getByTestId("message-input").textContent ?? "").toContain(
+        expect(paneInput("pane-1").textContent ?? "").toContain(
           "帮我编辑 MCP 服务器github",
         );
       });
-      // root 单布局：配置文件在本实例右侧文件面板打开
+      // 单分屏：配置文件在 pane-1 自己的文件面板打开
       await waitFor(() => {
-        expect(screen.getByTestId("file-pane")).toBeInTheDocument();
+        expect(
+          within(screen.getByTestId("desktop-pane-pane-1")).getByTestId(
+            "file-pane",
+          ),
+        ).toBeInTheDocument();
       });
       expect(vscode.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({

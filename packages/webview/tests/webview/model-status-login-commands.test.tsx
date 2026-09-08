@@ -151,8 +151,10 @@ describe("Model, Status, and Login Commands", () => {
         recentWorkdirs: [],
         workdir: "/work/a",
         sessionTree: [],
-        panes: [],
-        focusedPaneId: undefined,
+        // 启动即单个分屏（spec desktop-layout.md）：桌面空态由 pane-1 承载，
+        // 预分屏 root 单布局已删除。
+        panes: [{ paneId: "pane-1" }],
+        focusedPaneId: "pane-1",
         onSelectWorkdir: () => {},
         onSelectRecentWorkdir: () => {},
         onRemoveRecentWorkdir: () => {},

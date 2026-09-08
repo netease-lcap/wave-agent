@@ -184,10 +184,47 @@ const mockDesktopApiJs = `
 
     let messageHandlers = [];
 
+    // Desktop host parity (spec desktop-layout.md「启动即单个分屏」): the real
+    // main process answers desktopReady with a single-pane layout, so the
+    // welcome/empty state lives inside the split layout and pane-scoped pushes
+    // carry the focused paneId. Mirror both here so desktop tests don't inject
+    // desktopPanes themselves — any message arriving once a pane layout is
+    // active is routed to the focused pane like the real host does.
+    let panesActive = false;
+    let focusedPaneId = 'pane-1';
+    const globalCommands = ['desktopWorkdirState', 'desktopSessionTree', 'desktopPanes'];
+
+    const deliver = (message) => {
+        if (message.command === 'desktopPanes') {
+            const panes = message.panes || [];
+            panesActive = panes.length > 0;
+            const focused = message.focusedPaneId || (panes[0] && panes[0].paneId);
+            if (focused) focusedPaneId = focused;
+        } else if (message.command === 'desktopWorkdirState') {
+            // Mirror the real main process: a workdir/host push is accompanied
+            // by a desktopPanes update that keeps the focused pane's host in
+            // sync (desktopHost.ts sendWorkdirState + pushPanes). The pane
+            // ChatApp derives its effective host from desktopPanes, so without
+            // this a remote desktopWorkdirState leaves the pane showing 本地.
+            if (panesActive && message.host) {
+                const host = message.host;
+                deliver({ command: 'desktopPanes', panes: [{ paneId: focusedPaneId, host, row: 0 }], focusedPaneId });
+            }
+        }
+        let payload = message;
+        if (panesActive && message.command && message.paneId == null && globalCommands.indexOf(message.command) === -1) {
+            payload = Object.assign({}, message, { paneId: focusedPaneId });
+        }
+        window.dispatchEvent(new MessageEvent('message', { data: payload }));
+    };
+
     window.acquireVsCodeApi = () => ({
         postMessage: (message) => {
             if (!window.testMessages) window.testMessages = [];
             window.testMessages.push(message);
+            if (message && message.command === 'desktopReady') {
+                deliver({ command: 'desktopPanes', panes: [{ paneId: 'pane-1', host: 'local', row: 0 }], focusedPaneId: 'pane-1' });
+            }
             window.dispatchEvent(new CustomEvent('vscode-message', { detail: message }));
         },
         setState: (state) => {},
@@ -195,9 +232,7 @@ const mockDesktopApiJs = `
     });
 
     window.simulateExtensionMessage = (message) => {
-        window.dispatchEvent(new MessageEvent('message', {
-            data: message
-        }));
+        deliver(message);
     };
 
     window.getTestMessages = () => window.testMessages || [];
