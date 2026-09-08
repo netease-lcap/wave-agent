@@ -696,17 +696,26 @@ describe("workdir lifecycle", () => {
 // ---------------------------------------------------------------------------
 
 describe("file suggestions", () => {
-  it("falls back to the most recent workdir before any agent activates (fresh launch)", async () => {
-    // Fresh launch: recents list a directory (the webview picker shows it as
-    // the default workdir) but no agent has been spawned yet, so host-side
-    // this.workdir is unset. @file suggestions must still search that default
-    // directory instead of returning an empty list.
+  it("falls back to the most recent workdir while the auto new-session agent is still starting (fresh launch)", async () => {
+    // Fresh launch: recents list a directory, so the host starts the automatic
+    // 新对话 spawn at that dir (spec desktop-sessions.md「会话管理」scenario 2).
+    // While that spawn is still initializing no agent is bound yet and host-side
+    // this.workdir is unset — an @file request typed in that window must still
+    // search the default directory instead of returning an empty list.
     const { host, store } = createHost();
     store.addRecentWorkdir({ host: "local", path: "/work/a" });
     h.existingPaths.add("/work/a");
+    let releaseGate!: () => void;
+    h.initializeGate = new Promise<void>((resolve) => (releaseGate = resolve));
     await host.handleWebviewMessage({ command: "desktopReady" });
-    await host.handleWebviewMessage({ command: "webviewReady" });
-
+    // Fire (don't await): the auto spawn holds on initializeGate mid-init. Wait
+    // until the spawn has created its agent — the stdio client is ready by then
+    // (spawnAgent ensures it before creating the agent) while the pane is still
+    // unbound, which is exactly the transient window the fallback covers.
+    void host.handleWebviewMessage({ command: "webviewReady" });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(1);
+    });
     await host.handleWebviewMessage({
       command: "requestFileSuggestions",
       filterText: "app",
@@ -719,6 +728,12 @@ describe("file suggestions", () => {
       query: "app",
       maxResults: 20,
     });
+    // Release the gate — the pane settles on the auto new-session agent at /work/a.
+    releaseGate();
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(1);
+    });
+    expect(lastAgent().workingDirectory).toBe("/work/a");
   });
 
   it("stays anchored to the session root after bash cd drifts the working directory", async () => {
@@ -1021,6 +1036,125 @@ describe("webviewReady / setInitialState", () => {
         JSON.stringify(m).includes("正在升级 wave-code"),
       ),
     ).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fresh-launch auto new-session (spec desktop-sessions.md「会话管理」scenario 2:
+// 2026-09-08 拍板「刚打开桌面端就跟点击新对话的效果一样」)
+// ---------------------------------------------------------------------------
+
+describe("fresh launch auto new-session", () => {
+  it("spawns and binds a conversation at the most recent directory on first ready", async () => {
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: "local", path: "/work/a" });
+    h.existingPaths.add("/work/a");
+
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+
+    // Equivalent to one automatic 新对话 click: a fresh agent is spawned and
+    // bound to the pane at recents[0], workdir is pushed, input gets focus.
+    expect(h.agentInstances).toHaveLength(1);
+    expect(lastAgent().workingDirectory).toBe("/work/a");
+    expect(sent("desktopPanes").at(-1)?.panes[0].sessionId).toBe(
+      lastAgent().sessionId,
+    );
+    expect(sent("desktopWorkdirState").at(-1)?.workdir).toBe("/work/a");
+    expect(sent("setInitialState").at(-1)).toMatchObject({
+      session: { id: lastAgent().sessionId },
+      messages: [],
+      isStreaming: false,
+    });
+    expect(sent("focusInput").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("keeps the blank choose-a-directory welcome when there are no recents", async () => {
+    const { host, sent } = createHost();
+
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+
+    // No recents → nothing to auto-bind: no agent, no workdir, the pane stays
+    // the blank new-session state (scenario 10 semantics).
+    expect(h.agentInstances).toHaveLength(0);
+    expect(sent("desktopWorkdirState").at(-1)).toMatchObject({
+      workdir: undefined,
+      recentWorkdirs: [],
+    });
+    expect(sent("desktopPanes").at(-1)?.panes[0].sessionId).toBeUndefined();
+  });
+
+  it("fires once per launch: repeat desktopReady/webviewReady never spawn a second agent", async () => {
+    const { host, store } = createHost();
+    store.addRecentWorkdir({ host: "local", path: "/work/a" });
+    h.existingPaths.add("/work/a");
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    expect(h.agentInstances).toHaveLength(1);
+    const auto = lastAgent();
+
+    // A webview reload re-fires desktopReady + webviewReady; new panes and
+    // settings round-trips remount ChatApp → more webviewReady. None of them
+    // may spawn a second automatic agent on the same pane.
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+
+    expect(h.agentInstances).toHaveLength(1);
+    expect(lastAgent()).toBe(auto);
+  });
+
+  it("defers to a historical session the user selects while the auto spawn is initializing", async () => {
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: "local", path: "/work/a" });
+    h.existingPaths.add("/work/a");
+    store.upsertSession({
+      sessionId: "sess-1",
+      title: "old",
+      workdir: "/work/a",
+      cwd: "/work/a",
+      createdAt: 1000,
+      lastActiveAt: 1000,
+    });
+    let releaseInit!: () => void;
+    h.initializeGate = new Promise<void>((r) => (releaseInit = r));
+
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    const readyPromise = host.handleWebviewMessage({ command: "webviewReady" });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(1); // the auto spawn is mid-init
+    });
+    const autoAgent = lastAgent();
+    expect(autoAgent.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ workdir: "/work/a" }),
+    );
+
+    // Mid-spawn the user clicks a historical session — its (un-gated) restore
+    // lands first and owns the pane.
+    h.initializeGate = null;
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-1",
+    });
+    await vi.waitFor(() => {
+      expect(sent("setInitialState").at(-1)).toMatchObject({
+        isRestoring: false,
+        session: { id: "sess-1" },
+      });
+    });
+
+    // The auto spawn completes into an already-rebound pane — it must destroy
+    // itself instead of lingering orphaned in the agent pool.
+    releaseInit();
+    await readyPromise;
+
+    expect(autoAgent.destroy).toHaveBeenCalledTimes(1);
+    expect(h.agentInstances.at(-1)).not.toBe(autoAgent);
+    expect(sent("setInitialState").at(-1)).toMatchObject({
+      session: { id: "sess-1" },
+    });
   });
 });
 
@@ -3224,8 +3358,12 @@ describe("session tree", () => {
         ],
       },
     ]);
-    // No agent was created — the tree comes from the desktop index.
-    expect(h.agentInstances).toHaveLength(0);
+    // Fresh-launch auto new-session (spec「会话管理」scenario 2) spawns ONE agent
+    // at the most recent directory — /work/only-recent — even though that dir
+    // has no index entries; the sidebar tree itself still derives groups from
+    // the desktop session index, so /work/only-recent must not appear as a group.
+    expect(h.agentInstances).toHaveLength(1);
+    expect(lastAgent().workingDirectory).toBe("/work/only-recent");
   });
 
   it("shows every session in a group, not a capped subset", async () => {
@@ -3938,13 +4076,17 @@ describe("session switch shortcut (FR-038)", () => {
     ctx.store.upsertSession(entry("s2", "/gone", 3000)); // /gone leads the tree
     await ctx.host.handleWebviewMessage({ command: "desktopReady" });
     await ctx.host.handleWebviewMessage({ command: "webviewReady" });
+    // The fresh-launch auto new-session agent is bound to the pane at /work/a;
+    // cycling must drop the stale /gone entry WITHOUT spawning any restore agent.
+    const autoAgents = h.agentInstances.length;
+    expect(autoAgents).toBe(1);
 
     await ctx.host.activateAdjacentSession(1);
 
     expect(ctx.store.getSessionIndex().some((e) => e.sessionId === "s2")).toBe(
       false,
     );
-    expect(h.agentInstances).toHaveLength(0);
+    expect(h.agentInstances).toHaveLength(autoAgents);
     expect(
       shownToasts().some((t) =>
         t.message.includes("已从最近列表与会话列表移除"),
