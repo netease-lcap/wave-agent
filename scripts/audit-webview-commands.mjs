@@ -116,6 +116,7 @@ const DESKTOP_GATED_NON_PREFIX = new Set([
   "checkForUpdates", // StatusDialog 仅 desktop 渲染（扩展更新走官方市场）
   "newSession", // ChatApp.handleDesktopNewSession（IDE 头部的「新对话」= clearChat）
   "setThemeSource", // 设置页主题行仅 desktop 有 UI
+  "setUpdateChannel", // 设置页更新通道行仅 desktop 有 UI（#2107；IDE 无 updateChannel 字段恒 stable 不渲染）
   "toastAction", // UpdateToast 仅 desktop 推送
 ]);
 
