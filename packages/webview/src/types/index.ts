@@ -734,6 +734,10 @@ export interface ChatState {
   // Project-scoped settings (read from .wave/settings.json merged config via
   // stdio RPC). Holds the merged enabledPlugins map for the 项目设置 view.
   projectSettings?: { enabledPlugins: Record<string, boolean> };
+  // The workdir projectSettings above was fetched for. The 项目设置 view keys
+  // the cached toggle state to this directory so switching sessions/projects
+  // forces a fresh read instead of showing another project's state.
+  projectSettingsWorkdir?: string;
   // Permission mode state
   permissionMode?: PermissionMode;
   // Attached images state
@@ -890,7 +894,11 @@ export type ChatAction =
   | { type: "SET_CONFIGURATION_DATA"; payload: ConfigurationData }
   | {
       type: "SET_PROJECT_SETTINGS";
-      payload: { enabledPlugins: Record<string, boolean> };
+      payload: {
+        enabledPlugins: Record<string, boolean>;
+        /** Workdir the reply was read for (stamped by the caller) */
+        workdir?: string;
+      };
     }
   | { type: "UPDATE_SELECTION"; payload: SelectionInfo | undefined }
   | { type: "SET_PERMISSION_MODE"; payload: PermissionMode }

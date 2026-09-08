@@ -93,6 +93,10 @@ export interface SettingsPageProps {
   vscode?: { postMessage: (msg: unknown) => void };
   /** 项目级设置（.wave/settings.json 合并后的 enabledPlugins），「项目设置」视图使用 */
   projectSettings?: { enabledPlugins: Record<string, boolean> };
+  /** projectSettings 对应的工作目录（host 回发时由外层按当前活动项目标注）。
+   *  缓存仅在与当前工作目录一致时才可信，避免把别的项目的开关状态误显示
+   *  在当前项目下（对齐 ChatApp gitBranches 按 workdir 键控的渲染模式）。 */
+  projectSettingsWorkdir?: string;
   /** 加载项目设置（触发 host 读取项目 .wave/settings.json） */
   onLoadProjectSettings?: () => void;
   /** 切换内置插件开关（写回项目 .wave/settings.json） */
@@ -175,6 +179,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   initialNav,
   vscode,
   projectSettings,
+  projectSettingsWorkdir,
   onLoadProjectSettings,
   onToggleBuiltinPlugin,
   onPrefillPrompt,
@@ -257,15 +262,36 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     onLoadAgentsContent,
   ]);
 
-  // 进入「项目设置」视图时加载项目级 enabledPlugins（切换成功后 host 会回发
-  // projectSettings 消息自动刷新）
+  // 进入「项目设置」视图时按当前活动项目的工作目录重新加载项目级
+  // enabledPlugins。每次进入该视图（导航 transition）以及停留其中时工作目录
+  // 变化，都重新读取——会话/工作目录切换后重入、外部改动 .wave/settings.json
+  // （手动编辑或其他端切换）后重入，均以 host 返回的真实配置刷新开关，不复用
+  // 上次缓存的 projectSettings（修复「文件已启用 sdd@builtin:true 而开关仍显示
+  // 关闭」的状态矛盾）。触发键不包含 projectSettings 本身：切换成功后 host 回发
+  // projectSettings 消息刷新状态，若把回包也当作触发源会 fetch→reply→fetch
+  // 死循环。
+  const projectViewKeyRef = useRef<string>("");
+  const projectViewKey =
+    activeNav === "project" ? `project:${workdir ?? ""}` : activeNav;
   useEffect(() => {
-    if (activeNav === "project" && !projectSettings && onLoadProjectSettings) {
+    if (projectViewKeyRef.current === projectViewKey) return;
+    projectViewKeyRef.current = projectViewKey;
+    if (activeNav === "project" && onLoadProjectSettings) {
       onLoadProjectSettings();
     }
-  }, [activeNav, projectSettings, onLoadProjectSettings]);
+  }, [projectViewKey, activeNav, workdir, onLoadProjectSettings]);
 
-  const sddEnabled = projectSettings?.enabledPlugins?.["sdd@builtin"] === true;
+  // 缓存的项目设置仅当其标注的工作目录与当前工作目录一致时才可信：不一致说明
+  // 缓存属于另一项目（或早于会话切换），在 host 回发当前项目数据前按未加载
+  // 处理（开关禁用）——避免「项目目录提示已切到新项目、开关还短暂显示上个
+  // 项目状态」的错位帧。
+  const projectSettingsForWorkdir =
+    workdir === undefined || projectSettingsWorkdir === workdir
+      ? projectSettings
+      : undefined;
+
+  const sddEnabled =
+    projectSettingsForWorkdir?.enabledPlugins?.["sdd@builtin"] === true;
 
   // 保存反馈（「保存中…」由外层 saving 驱动；host 回包后按结果生成成功/失败消息）
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -559,7 +585,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         type="checkbox"
                         aria-label="启用 SDD 插件"
                         checked={sddEnabled}
-                        disabled={pluginToggling || !projectSettings}
+                        disabled={pluginToggling || !projectSettingsForWorkdir}
                         onChange={handleToggleSdd}
                       />
                       <span className="settings-switch-slider"></span>

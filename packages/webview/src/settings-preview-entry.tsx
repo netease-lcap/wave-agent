@@ -15,7 +15,7 @@
  * - host → webview: `configurationResponse`, `agentsContentResponse`,
  *   `agentsContentSaved`, `projectSettings`, `settingsState` (workdir push on open)
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import SettingsPage from "./components/SettingsPage";
 import type { NavKey } from "./components/SettingsPage";
@@ -35,6 +35,10 @@ function SettingsPreview() {
     string | null | undefined
   >(undefined);
   const [workdir, setWorkdir] = useState<string | undefined>(undefined);
+  // Ref mirror for the once-registered message listener below (its closure only
+  // sees the initial value otherwise): the projectSettings reply is stamped with
+  // the workdir current when it lands.
+  const workdirRef = useRef<string | undefined>(undefined);
   const [userAgentsContent, setUserAgentsContent] = useState<string | null>(
     null,
   );
@@ -52,9 +56,14 @@ function SettingsPreview() {
   // /agents、/skills 斜杠命令经 openSettings(nav) → settingsState 下发，选中对应选项卡
   const [initialNav, setInitialNav] = useState<NavKey | undefined>(undefined);
   // 项目级 enabledPlugins（「项目设置」视图 SDD 开关）；进入该视图时才向 host
-  // 请求（onLoadProjectSettings），host 回发 projectSettings 消息后回填。
+  // 请求（onLoadProjectSettings），host 回发 projectSettings 消息后回填。回填
+  // 时按当前工作目录标注（projectSettingsWorkdir），SettingsPage 仅在标注与
+  // 当前 workdir 一致时才展示该缓存——会话/工作目录切换后重入会重新拉取。
   const [projectSettings, setProjectSettings] = useState<
     { enabledPlugins: Record<string, boolean> } | undefined
+  >(undefined);
+  const [projectSettingsWorkdir, setProjectSettingsWorkdir] = useState<
+    string | undefined
   >(undefined);
 
   useEffect(() => {
@@ -75,7 +84,10 @@ function SettingsPreview() {
       if (!msg || typeof msg !== "object") return;
       switch (msg.command) {
         case "settingsState":
-          if (typeof msg.workdir === "string") setWorkdir(msg.workdir);
+          if (typeof msg.workdir === "string") {
+            setWorkdir(msg.workdir);
+            workdirRef.current = msg.workdir;
+          }
           if (typeof msg.nav === "string") {
             setInitialNav(msg.nav as NavKey);
           }
@@ -114,6 +126,7 @@ function SettingsPreview() {
             setProjectSettings({
               enabledPlugins: msg.enabledPlugins as Record<string, boolean>,
             });
+            setProjectSettingsWorkdir(workdirRef.current);
           }
           break;
       }
@@ -161,6 +174,7 @@ function SettingsPreview() {
       initialNav={initialNav}
       vscode={vscode}
       projectSettings={projectSettings}
+      projectSettingsWorkdir={projectSettingsWorkdir}
       onLoadProjectSettings={() =>
         vscode.postMessage({ command: "getProjectSettings" })
       }

@@ -1205,10 +1205,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           // Project settings (.wave/settings.json merged enabledPlugins) are
           // per-workdir, so on Desktop each pane may hold a different value —
           // must be pane-guarded (unlike the shared global configurationResponse).
+          // The reply is stamped with the workdir active when it lands so the
+          // 项目设置 view can tell whether the cached value still belongs to the
+          // current project (a stale reply for a switched-away directory must
+          // never masquerade as the current project's state).
           if (!forThisPane(message)) break;
           dispatch({
             type: "SET_PROJECT_SETTINGS",
-            payload: { enabledPlugins: message.enabledPlugins },
+            payload: {
+              enabledPlugins: message.enabledPlugins,
+              workdir: effectiveWorkdirRef.current,
+            },
           });
           break;
         case "setInitialState":
@@ -3154,6 +3161,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       initialNav={settingsNav}
       vscode={vscode}
       projectSettings={state.projectSettings}
+      projectSettingsWorkdir={state.projectSettingsWorkdir}
       onLoadProjectSettings={() =>
         postToHost({ command: "getProjectSettings" })
       }
