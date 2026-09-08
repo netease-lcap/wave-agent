@@ -30,7 +30,6 @@ import LoadingLogo from "./LoadingLogo";
 import { SidebarExpandIcon, CloseIcon } from "./HeaderIcons";
 import { useDesktopChrome } from "./DesktopChromeContext";
 import { DesktopHostSelector } from "./DesktopHostSelector";
-import { DesktopSidebar } from "./DesktopSidebar";
 import { DesktopShell } from "./DesktopShell";
 import type { AccountCardAccount } from "./AccountCard";
 import SettingsPage from "./SettingsPage";
@@ -677,9 +676,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     scrollToBottom: (behavior?: ScrollBehavior) => void;
   }>(null);
   const stateRef = useRef(state);
-  // The pane this instance renders; undefined = single view (IDE hosts and the
-  // desktop single-pane layout). Ref mirror for use inside stable callbacks.
+  // The pane this instance renders; undefined = the root instance (sidebar +
+  // shell). Ref mirror for use inside stable callbacks.
   const paneIdRef = useRef<string | undefined>(paneId);
+  // Latest mirrors for the once-registered message listener: whether this root
+  // instance currently renders the pane rows (vs. the settings page / session
+  // board, which replace the rows and unmount the pane ChatApps).
+  const rowsVisibleRef = useRef(!settingsOpen && !sessionBoardOpen);
+  rowsVisibleRef.current = !settingsOpen && !sessionBoardOpen;
 
   // Keep stateRef in sync with state
   useEffect(() => {
@@ -866,13 +870,28 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // Handle messages from VS Code extension
   useEffect(() => {
-    // Session-scoped host pushes are pane-tagged on desktop (FR-032). This pane
-    // consumes a message when it is untagged (single view / IDE hosts / global
-    // commands) or tagged with this pane's id. Messages tagged with a different
-    // paneId belong to a sibling pane and are ignored here.
+    // The pane this instance consumes a message when it is tagged with its own
+    // id; messages tagged for a sibling pane are ignored here.
+    //
+    // The root instance (myPane === undefined) consumes window-global UNTAGGED
+    // messages (workdir/sessions/panes/account/toast…) — the sidebar's data.
+    // Pane-tagged pushes go to the pane that owns the session; the root only
+    // consumes them while the pane rows are hidden (settings page / session
+    // board replace the rows and unmount the pane ChatApps), because the host
+    // still tags those replies (project settings, hooks/mcp config) to the
+    // focused pane. While the rows are visible the target pane is mounted and
+    // owns its tagged pushes — the root must not ALSO consume them or the same
+    // dialog/toast would render twice, once over the shell and once inside the
+    // pane (spec「启动即单个分屏」).
     const myPane = paneIdRef.current;
-    const forThisPane = (message: { paneId?: string }): boolean =>
-      myPane === undefined || message.paneId === myPane;
+    const forThisPane = (message: { paneId?: string }): boolean => {
+      if (myPane !== undefined) return message.paneId === myPane;
+      if (message.paneId === undefined) return true;
+      // While the rows are visible, tagged pushes belong to the mounted pane
+      // instance; once the rows are hidden the target pane is unmounted and
+      // only the root can take the reply (see the rationale above).
+      return !rowsVisibleRef.current;
+    };
 
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
@@ -1616,14 +1635,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       return next.length === prev.length ? prev : next;
     });
   }, [focusedSessionKey]);
-
-  // Desktop 的"新对话"入口（侧边栏按钮）：由宿主 spawn 新 agent 承载全新会话，
-  // 当前会话在后台继续，因此流式期间保持可用。
-  const handleDesktopNewSession = useCallback(() => {
-    postToHost({
-      command: "newSession",
-    });
-  }, [postToHost]);
 
   const handleLogin = useCallback(() => {
     vscode.postMessage({ command: "login" });
@@ -3380,10 +3391,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
 
   if (host?.type === "desktop") {
-    // FR-032 split-view: when the host has pushed a pane layout, DesktopShell
-    // owns the row of paneId-scoped ChatApp instances. This instance then only
-    // contributes its pane-scoped chatContainer (rendered below); without a
-    // paneId it would double-render, so bail out to the shell instead.
+    // FR-032 split-view: the host pushes a pane layout at desktopReady (spec
+    // desktop-layout.md「启动即单个分屏」), so a paneId-scoped instance only
+    // contributes its chatContainer while the root instance delegates to
+    // DesktopShell. The pre-pane root layout is gone.
     if ((host.panes?.length ?? 0) > 0 && paneId === undefined) {
       return (
         <>
@@ -3414,7 +3425,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       );
     }
     // Inside DesktopShell each pane renders only its own chatContainer; the
-    // sidebar / preview pane live in the shell / single-pane layout.
+    // sidebar / preview pane live in the shell.
     if (paneId !== undefined) {
       return (
         <>
@@ -3423,45 +3434,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         </>
       );
     }
-    return (
-      <div className="desktop-layout">
-        {settingsOpen ? (
-          // Batch 2 设置页全屏覆盖（spec desktop-account-and-settings 场景 1/12）：
-          // 打开设置时会话侧边栏一并被覆盖，整个 view 仅剩设置页自身；macOS 隐藏
-          // 标题栏下红绿灯由设置页导航顶部让位承接（见 SettingsPage 内窗口行）。
-          // 返回后恢复既有布局（侧边栏 + 会话/看板），pane 会话由宿主持有不受影响。
-          settingsPage
-        ) : (
-          <>
-            <DesktopSidebar
-              onNewSession={handleDesktopNewSession}
-              onNewSessionInPane={() =>
-                postToHost({ command: "desktopNewSessionInPane" })
-              }
-              isStreaming={state.isStreaming}
-              onOpenSettings={handleOpenSettings}
-              onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
-              onOpenHelpDocs={handleOpenHelpDocs}
-              onLogin={handleLogin}
-              onLogout={handleLogout}
-              onDownloadUpdate={handleDownloadUpdate}
-              onRestartApp={handleRestartApp}
-              account={accountInfo}
-              hostLabel={effectiveHost}
-              sessionTree={host.sessionTree}
-              currentSessionId={state.currentSession?.id}
-              onSelectSession={host.onSelectSession}
-              onOpenPane={host.onOpenPane}
-              onDeleteSession={host.onDeleteSession}
-              sessionBoardActive={sessionBoardOpen}
-              onOpenSessionBoard={handleOpenSessionBoard}
-            />
-            {sessionBoardOpen ? sessionBoard : chatContainer}
-          </>
-        )}
-        {dialogs}
-      </div>
-    );
+    // Handshake window before the host's first `desktopPanes` lands: show a
+    // bare loading placeholder — never the old non-split layout (spec
+    // desktop-layout.md「启动即单个分屏」场景 3).
+    return <div className="desktop-loading" data-testid="desktop-loading" />;
   }
 
   return (
