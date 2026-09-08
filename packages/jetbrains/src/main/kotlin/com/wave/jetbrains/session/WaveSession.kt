@@ -348,7 +348,8 @@ class WaveSession(
 
     /**
      * Pull the session list from the agent and push `updateSessions` to the webview.
-     * Mirrors VSCE chatProvider.ts:368 listSessions() (filter main sessions, take 10).
+     * Mirrors VSCE SessionService.getSessionsList() (filter main sessions, no cap —
+     * the SDK already sorts by lastActiveAt descending and excludes subagent files).
      */
     fun refreshSessions() {
         val workdir = agent?.workingDirectory ?: project.basePath ?: return
@@ -356,7 +357,7 @@ class WaveSession(
             val list: List<JsonElement> = try {
                 val res = agent?.listSessions(workdir)?.jsonObject
                 val all = res?.get("sessions")?.jsonArray ?: JsonArray(emptyList())
-                all.filter { it.jsonObject["sessionType"]?.jsonPrimitive?.content == "main" }.take(10)
+                all.filter { it.jsonObject["sessionType"]?.jsonPrimitive?.content == "main" }
             } catch (e: StdioClientException) {
                 LOG.warn("refreshSessions failed: ${e.message}")
                 JsonArray(emptyList()).toList()
