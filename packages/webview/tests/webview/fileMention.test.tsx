@@ -165,6 +165,80 @@ describe("File Mention Feature (@)", () => {
     expect(suggestionItems[0]).toHaveTextContent(/src/);
   });
 
+  it("drops a late reply whose requestId no longer matches the latest request (过期即弃)", async () => {
+    const { vscode } = renderChatApp();
+
+    // First query ("@"): its reply will arrive AFTER a newer query supersedes it.
+    await typeInInput("@");
+    const staleReqId = await waitForFileSuggestionRequest(vscode);
+
+    // User keeps typing — a newer request is issued and becomes the active one.
+    await typeInInput("@s");
+    // The debounced re-query takes a moment; wait until a request with a NEW
+    // requestId actually left the webview (the helper's .pop() would otherwise
+    // keep returning the first call).
+    let freshReqId = staleReqId;
+    await waitFor(() => {
+      const calls = (vscode.postMessage.mock.calls as unknown[][]).map(
+        (c) => c[0] as { command: string; requestId?: string },
+      );
+      const last = calls
+        .filter((c) => c.command === "requestFileSuggestions")
+        .pop();
+      expect(last?.requestId).toBeTruthy();
+      expect(last?.requestId).not.toBe(staleReqId);
+      freshReqId = last!.requestId!;
+    });
+
+    // The stale reply lands first — its suggestions must be quarantined
+    // (never rendered; the dropdown may already show an empty/loading state
+    // for the in-flight fresh query, so assert on the stale CONTENT).
+    act(() => {
+      sendCommand("fileSuggestionsResponse", {
+        suggestions: [
+          {
+            path: "/workspace/stale.ts",
+            relativePath: "stale.ts",
+            name: "stale.ts",
+            extension: "ts",
+            icon: "codicon-file",
+          },
+        ],
+        filterText: "",
+        requestId: staleReqId,
+      });
+    });
+    expect(screen.queryByText("stale.ts")).toBeNull();
+    expect(
+      document.querySelectorAll(".suggestion-item:not(.suggestion-empty)"),
+    ).toHaveLength(0);
+
+    // The fresh reply renders normally.
+    act(() => {
+      sendCommand("fileSuggestionsResponse", {
+        suggestions: [
+          {
+            path: "/workspace/src/components/MessageInput.tsx",
+            relativePath: "src/components/MessageInput.tsx",
+            name: "MessageInput.tsx",
+            extension: "tsx",
+            icon: "codicon-react",
+          },
+        ],
+        filterText: "s",
+        requestId: freshReqId,
+      });
+    });
+    await waitFor(() => {
+      expect(
+        document.querySelector(".file-suggestion-dropdown"),
+      ).toBeInTheDocument();
+    });
+    expect(document.querySelector(".suggestion-item")).toHaveTextContent(
+      "MessageInput.tsx",
+    );
+  });
+
   it("should insert the file tag on mouse click even when selection is on the popup item", async () => {
     const { vscode } = renderChatApp();
 
