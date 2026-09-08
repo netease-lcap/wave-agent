@@ -44,6 +44,8 @@ export interface InitializeParams {
   model?: string;
   fastModel?: string;
   language?: string;
+  autoMemoryEnabled?: boolean;
+  autoMemoryFrequency?: number;
   permissionMode?: PermissionMode;
   tools?: string[];
   allowedTools?: string[];
@@ -67,6 +69,8 @@ export interface UpdateConfigParams {
   model?: string;
   fastModel?: string;
   language?: string;
+  autoMemoryEnabled?: boolean;
+  autoMemoryFrequency?: number;
 }
 
 // ── Callbacks (mirror AgentCallbacks) ────────────────────────────

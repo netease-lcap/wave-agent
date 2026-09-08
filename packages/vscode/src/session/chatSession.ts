@@ -223,6 +223,8 @@ export class ChatSession {
         model: config.model,
         fastModel: config.fastModel,
         language: config.language,
+        autoMemoryEnabled: config.autoMemoryEnabled,
+        autoMemoryFrequency: config.autoMemoryFrequency,
       };
 
       try {
@@ -372,6 +374,8 @@ export class ChatSession {
         model: config.model,
         fastModel: config.fastModel,
         language: config.language,
+        autoMemoryEnabled: config.autoMemoryEnabled,
+        autoMemoryFrequency: config.autoMemoryFrequency,
       });
       console.log(
         `[updateConfig] ${this.viewType} 配置更新完成，sessionId: ${this.sessionId}`,

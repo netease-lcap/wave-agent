@@ -745,16 +745,22 @@ export class ConfigurationService {
 
   /**
    * Resolves auto-memory enabled state with fallbacks
-   * Resolution priority: settings.json > WAVE_DISABLE_AUTO_MEMORY > default (true)
+   * Resolution priority: session options (host settings-page value) > settings.json > WAVE_DISABLE_AUTO_MEMORY > default (true)
    * @returns Resolved auto-memory enabled state
    */
   resolveAutoMemoryEnabled(): boolean {
-    // 1. settings.json (merged)
+    // 1. Per-session options override (hosts pass the settings-page toggle over
+    //    stdio initialize/updateConfig; Agent.create → setOptions stores it)
+    if (this.options.autoMemoryEnabled !== undefined) {
+      return this.options.autoMemoryEnabled;
+    }
+
+    // 2. settings.json (merged)
     if (this.currentConfiguration?.autoMemoryEnabled !== undefined) {
       return this.currentConfiguration.autoMemoryEnabled;
     }
 
-    // 2. WAVE_DISABLE_AUTO_MEMORY environment variable (settings snapshot > OS env)
+    // 3. WAVE_DISABLE_AUTO_MEMORY environment variable (settings snapshot > OS env)
     const disableAutoMemory =
       this.envSnapshot.WAVE_DISABLE_AUTO_MEMORY ??
       process.env.WAVE_DISABLE_AUTO_MEMORY;
@@ -762,7 +768,7 @@ export class ConfigurationService {
       return false;
     }
 
-    // 3. Default (true)
+    // 4. Default (true)
     return true;
   }
 
@@ -781,16 +787,27 @@ export class ConfigurationService {
 
   /**
    * Resolves auto-memory extraction frequency with fallbacks
-   * Resolution priority: settings.json > WAVE_AUTO_MEMORY_FREQUENCY > default (1)
+   * Resolution priority: session options (host settings-page value) > settings.json > WAVE_AUTO_MEMORY_FREQUENCY > default (1)
    * @returns Resolved auto-memory extraction frequency (turns)
    */
   resolveAutoMemoryFrequency(): number {
-    // 1. settings.json (merged)
+    // 1. Per-session options override (hosts pass the settings-page value over
+    //    stdio initialize/updateConfig; Agent.create → setOptions stores it).
+    //    Only positive values are honored so a malformed 0/negative never
+    //    degenerates into per-turn extraction.
+    if (
+      this.options.autoMemoryFrequency !== undefined &&
+      this.options.autoMemoryFrequency > 0
+    ) {
+      return this.options.autoMemoryFrequency;
+    }
+
+    // 2. settings.json (merged)
     if (this.currentConfiguration?.autoMemoryFrequency !== undefined) {
       return this.currentConfiguration.autoMemoryFrequency;
     }
 
-    // 2. WAVE_AUTO_MEMORY_FREQUENCY environment variable (settings snapshot > OS env)
+    // 3. WAVE_AUTO_MEMORY_FREQUENCY environment variable (settings snapshot > OS env)
     const envFrequency =
       this.envSnapshot.WAVE_AUTO_MEMORY_FREQUENCY ??
       process.env.WAVE_AUTO_MEMORY_FREQUENCY;
@@ -801,7 +818,7 @@ export class ConfigurationService {
       }
     }
 
-    // 3. Default (1)
+    // 4. Default (1)
     return 1;
   }
 

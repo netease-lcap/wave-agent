@@ -1346,6 +1346,8 @@ export class DesktopHost {
       model: config.model,
       fastModel: config.fastModel,
       language: config.language,
+      autoMemoryEnabled: config.autoMemoryEnabled,
+      autoMemoryFrequency: config.autoMemoryFrequency,
       worktreeName: opts.worktreeName,
       isNewWorktree: opts.isNewWorktree,
     });
