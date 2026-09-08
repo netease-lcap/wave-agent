@@ -52,6 +52,10 @@ export interface ThemeState {
   source?: ThemeSource;
 }
 
+/** Desktop update channel（设置页「全局设置」「接收 Beta 版更新」开关，仅
+ *  desktop 有 UI）。stable = codechat 正式下载 feed，beta = desktop-beta feed。 */
+export type UpdateChannel = "stable" | "beta";
+
 /** Desktop conversation-level side panels. VSCE/JetBrains never render these. */
 export type DesktopPanelKind =
   | "preview"
@@ -379,6 +383,8 @@ export interface SetInitialStateMessage extends HostToWebviewMessageBase {
   isAuthenticated: boolean;
   workdir?: string;
   theme?: ThemeState;
+  /** Desktop update channel snapshot（重推快照时同步设置页开关选中态）。 */
+  updateChannel?: UpdateChannel;
 }
 
 export interface DesktopThemeChangeMessage extends HostToWebviewMessageBase {
@@ -390,6 +396,12 @@ export interface DesktopThemeChangeMessage extends HostToWebviewMessageBase {
 export interface DesktopThemeSourceMessage extends HostToWebviewMessageBase {
   command: "desktopThemeSource";
   source: ThemeSource;
+}
+
+/** Desktop update channel change broadcast (设置页开关变更后同步各实例)。 */
+export interface DesktopUpdateChannelMessage extends HostToWebviewMessageBase {
+  command: "desktopUpdateChannel";
+  channel: UpdateChannel;
 }
 
 /** Action a toast's button triggers when clicked (host-side semantics).
@@ -734,6 +746,7 @@ export type HostToWebviewMessage =
   | SetInitialStateMessage
   | DesktopThemeChangeMessage
   | DesktopThemeSourceMessage
+  | DesktopUpdateChannelMessage
   | ShowToastMessage
   | DesktopTogglePanelMessage
   | ShowDialogMessage

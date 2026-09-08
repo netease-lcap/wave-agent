@@ -22,7 +22,7 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
-import { ConfigurationData, ThemeSource } from "../types";
+import { ConfigurationData, ThemeSource, UpdateChannel } from "../types";
 import SettingsSubagentsView from "./SettingsSubagentsView";
 import SettingsSkillsView from "./SettingsSkillsView";
 import SettingsHooksView from "./SettingsHooksView";
@@ -50,6 +50,12 @@ export interface SettingsPageProps {
   themeSource?: ThemeSource;
   /** 用户选择新主题偏好（"system" | "light" | "dark"），host 持久化并应用。 */
   onThemeChange?: (source: ThemeSource) => void;
+  /** 桌面端更新通道（仅桌面端传入；未传入 = IDE 宿主，不显示开关行）。
+   *  切换即时生效（onUpdateChannelChange 触发 host setUpdateChannel），
+   *  不依赖保存按钮。 */
+  updateChannel?: UpdateChannel;
+  /** 用户切换更新通道（"stable" | "beta"），host 持久化并立即按新 feed 重查。 */
+  onUpdateChannelChange?: (channel: UpdateChannel) => void;
   /** 关闭设置页（desktop 返回会话视图 / 标签页关闭） */
   onClose: () => void;
   /** 保存进行中标记（host 回包前为 true，用于禁用保存按钮与显示反馈） */
@@ -149,6 +155,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onSave,
   themeSource,
   onThemeChange,
+  updateChannel,
+  onUpdateChannelChange,
   onClose,
   saving = false,
   configurationError = null,
@@ -183,6 +191,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   // 主题偏好（仅桌面端有值）：选择即生效（onThemeChange 已即时上送 host），
   // 此处本地 state 保持选中态直到 host 广播 desktopThemeSource 回写。
   const [theme, setTheme] = useState<ThemeSource>(themeSource ?? "system");
+  // 更新通道（仅桌面端有值）：切换即生效（onUpdateChannelChange 已即时上送
+  // host），此处本地 state 保持选中态直到 host 广播 desktopUpdateChannel 回写。
+  const [channel, setChannel] = useState<UpdateChannel>(
+    updateChannel ?? "stable",
+  );
 
   // 项目设置（SDD 开关）：切换中标记，防止重复请求
   const [pluginToggling, setPluginToggling] = useState(false);
@@ -205,6 +218,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   useEffect(() => {
     if (themeSource) setTheme(themeSource);
   }, [themeSource]);
+
+  // host 广播（desktopUpdateChannel / 重推 setInitialState）同步开关选中态
+  useEffect(() => {
+    if (updateChannel) setChannel(updateChannel);
+  }, [updateChannel]);
 
   // AGENTS.md 内容回填后同步 textarea 草稿
   useEffect(() => {
@@ -403,6 +421,38 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                           <option value="dark">深色</option>
                         </select>
                       </div>
+                    </div>
+                  )}
+                  {updateChannel !== undefined && (
+                    <div className="settings-row">
+                      <div className="settings-row-copy">
+                        <h3>接收 Beta 版更新</h3>
+                        <p>
+                          {configurationData?.serverUrl
+                            ? "开启后自动更新将接收测试版通道（Beta）分发的版本"
+                            : "登录后可接收测试版更新"}
+                        </p>
+                      </div>
+                      <label className="settings-switch">
+                        <input
+                          type="checkbox"
+                          aria-label="接收 Beta 版更新"
+                          checked={channel === "beta"}
+                          disabled={!configurationData?.serverUrl}
+                          onChange={(e) => {
+                            // 置灰（未登录、无 serverUrl）时不可切换——disabled
+                            // 已阻止真实点击，此处防御 label 激活路径或自动化
+                            // 事件直接派发造成的状态漂移（spec 场景 2）。
+                            if (!configurationData?.serverUrl) return;
+                            const next: UpdateChannel = e.target.checked
+                              ? "beta"
+                              : "stable";
+                            setChannel(next);
+                            onUpdateChannelChange?.(next);
+                          }}
+                        />
+                        <span className="settings-switch-slider"></span>
+                      </label>
                     </div>
                   )}
                   <div className="settings-row">

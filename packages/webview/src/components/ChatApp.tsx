@@ -56,6 +56,7 @@ import type {
   ThemeSource,
   ToolBlock,
   ToolBlockUpdateCallbackParams,
+  UpdateChannel,
   UpdateToast,
 } from "../types";
 import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/dist/constants/tools.js";
@@ -386,6 +387,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   useEffect(() => {
     if (state.theme?.source) setThemeSource(state.theme.source);
   }, [state.theme?.source]);
+  // 桌面端更新通道（host 为真源）：初值取 setInitialState.updateChannel，此后随
+  // host 广播（desktopUpdateChannel / 重推快照）同步，设置页「全局设置」的
+  // 「接收 Beta 版更新」开关据此显示当前选中态。VSCE/JetBrains 无此字段，
+  // 恒为默认 "stable" 且不渲染开关行。
+  const [updateChannel, setUpdateChannel] = useState<UpdateChannel>(
+    () => state.updateChannel ?? "stable",
+  );
+  useEffect(() => {
+    if (state.updateChannel) setUpdateChannel(state.updateChannel);
+  }, [state.updateChannel]);
   // Context-usage percentage pushed by the host (batch 2 compress button).
   // Undefined = no usage info received yet (spec 场景 4: label without %).
   const [contextUsage, setContextUsage] = useState<number | undefined>();
@@ -1225,6 +1236,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
               isAuthenticated: message.isAuthenticated,
               workdir: message.workdir,
               theme: message.theme,
+              updateChannel: message.updateChannel,
               // Hosts (VSCE messageHandler / Desktop desktopHost) include the
               // running background tasks + workflow runs in the snapshot so a
               // webview re-init / pane switch does not wipe them. Without this
@@ -1246,6 +1258,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           // on every instance after 跟随系统/浅色/深色 is picked (the theme
           // itself was already applied by the desktopThemeChange above).
           setThemeSource(message.source);
+          break;
+        case "desktopUpdateChannel":
+          // Update-channel broadcast — keeps the 设置页「接收 Beta 版更新」开关
+          // 选中态 in sync on every instance after the toggle is flipped.
+          if (message.channel === "beta" || message.channel === "stable") {
+            setUpdateChannel(message.channel);
+          }
           break;
         case "showToast":
           // Toasts are window-global (no paneId) — only the root instance (the
@@ -3098,6 +3117,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // 乐观更新本实例选中态；host 持久化后回广播 desktopThemeSource（幂等）。
         setThemeSource(source);
         postToHost({ command: "setThemeSource", source });
+      }}
+      updateChannel={updateChannel}
+      onUpdateChannelChange={(channel) => {
+        // 乐观更新本实例选中态；host 持久化后回广播 desktopUpdateChannel（幂等）。
+        setUpdateChannel(channel);
+        postToHost({ command: "setUpdateChannel", channel });
       }}
       onClose={handleCloseSettings}
       userAgentsContent={userAgentsContent}
