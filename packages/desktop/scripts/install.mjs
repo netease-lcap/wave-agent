@@ -13,6 +13,7 @@
  * via npm link).
  */
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -43,11 +44,49 @@ function decodeRegOutput(buf) {
   }
 }
 
+/**
+ * electron-builder NSIS registers the uninstaller under a deterministic v5
+ * UUID derived from the appId (app-builder-lib NsisTarget.js:
+ * UUID.v5(appId, ELECTRON_BUILDER_NS_UUID)), NOT under the productName.
+ * The namespace constant below mirrors ELECTRON_BUILDER_NS_UUID
+ * ("50e065bc-3134-11e6-9bab-38c9862bdaf3").
+ */
+const ELECTRON_BUILDER_NS_UUID = "50e065bc-3134-11e6-9bab-38c9862bdaf3";
+
+/** RFC 4122 v5 (SHA-1 name-based) UUID — matches builder-util-runtime's
+ *  UUID.v5 byte-for-byte (sha1(ns bytes + name), version 0x50, variant 0x80),
+ *  implemented inline so this script stays dependency-free. */
+function uuidV5(name, namespaceHex) {
+  const ns = Buffer.from(namespaceHex.replace(/-/g, ""), "hex");
+  const digest = createHash("sha1")
+    .update(ns)
+    .update(name, "utf8")
+    .digest();
+  digest[6] = (digest[6] & 0x0f) | 0x50; // version 5
+  digest[8] = (digest[8] & 0x3f) | 0x80; // variant RFC 4122
+  const hex = digest.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+/** Uninstaller registry key name for the installed app: the v5 UUID of the
+ *  appId (see comment above), e.g. com.netease.wave-desktop →
+ *  0e2ba008-ca35-5e44-b426-c86439ae8711. */
+function uninstallerRegistryKeyName() {
+  const appId = JSON.parse(
+    fs.readFileSync(path.join(desktopDir, "package.json"), "utf8"),
+  ).build?.appId;
+  if (!appId) {
+    throw new Error(
+      "build.appId missing in packages/desktop/package.json — cannot compute the NSIS uninstaller registry key",
+    );
+  }
+  return uuidV5(appId, ELECTRON_BUILDER_NS_UUID);
+}
+
 function queryRegistryInstallLocation() {
-  // electron-builder NSIS writes the uninstaller key by productName
-  // ("CodeWave IDE").
+  const uninstallKey = uninstallerRegistryKeyName();
   for (const hive of ["HKCU", "HKLM"]) {
-    const key = `${hive}\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CodeWave IDE`;
+    const key = `${hive}\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${uninstallKey}`;
     const r = spawnSync("reg", ["query", key, "/v", "InstallLocation"], {
       encoding: "buffer",
     });
