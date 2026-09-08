@@ -1,10 +1,10 @@
 <idea-plugin>
     <id>com.wave.jetbrains</id>
-    <name>Wave Code Chat</name>
+    <name>CodeWave IDE</name>
     <vendor>wave-codechat</vendor>
 
     <description><![CDATA[
-        Wave Code Chat — an enterprise-grade AI coding assistant for JetBrains IDEs.
+        CodeWave IDE — an enterprise-grade AI coding assistant for JetBrains IDEs.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -46,25 +46,25 @@
         <action
             id="com.wave.jetbrains.openWave"
             class="com.wave.jetbrains.actions.OpenWaveToolWindowAction"
-            text="Open Wave"
-            description="Open the Wave tool window">
+            text="Open CodeWave IDE"
+            description="Open the CodeWave IDE tool window">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
         <action
             id="com.wave.jetbrains.openWaveSettings"
             class="com.wave.jetbrains.actions.OpenWaveSettingsAction"
-            text="Wave: 打开设置"
-            description="Open the Wave settings tab in the editor area">
+            text="CodeWave IDE: 打开设置"
+            description="Open the CodeWave IDE settings tab in the editor area">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
         <action
             id="com.wave.jetbrains.addSelectionToWave"
             class="com.wave.jetbrains.actions.AddSelectionToWaveAction"
-            text="Add Selection to Wave"
-            description="Insert the current editor selection into the Wave chat input">
-            <override-text place="EditorPopupMenu" text="Add to Wave"/>
+            text="Add Selection to CodeWave IDE"
+            description="Insert the current editor selection into the CodeWave IDE chat input">
+            <override-text place="EditorPopupMenu" text="Add to CodeWave IDE"/>
         </action>
-        <group id="WaveEditorPopupMenu" text="Wave" popup="true">
+        <group id="WaveEditorPopupMenu" text="CodeWave IDE" popup="true">
             <reference ref="com.wave.jetbrains.addSelectionToWave"/>
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </group>

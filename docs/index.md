@@ -37,15 +37,15 @@ CodeWave IDE提供多种产品形态，满足从个人开发者到企业团队�
 
 ### VS Code 扩展
 
-在 VS Code 扩展市场搜索 **Wave Code Chat**（扩展 ID：`wave-codechat.wave-vscode`）安装。打开聊天面板点击欢迎页的「登录」按钮完成 SSO 登录。
+在 VS Code 扩展市场搜索 **CodeWave IDE**（扩展 ID：`wave-codechat.wave-vscode`）安装。打开聊天面板点击欢迎页的「登录」按钮完成 SSO 登录。
 
 ### JetBrains 插件
 
-在 JetBrains 插件市场（IDE「设置 → 插件」）搜索 **Wave Code Chat** 安装。打开聊天面板点击欢迎页的「登录」按钮完成 SSO 登录。
+在 JetBrains 插件市场（IDE「设置 → 插件」）搜索 **CodeWave IDE** 安装。打开聊天面板点击欢迎页的「登录」按钮完成 SSO 登录。
 
 ### 桌面端
 
-在管控台「产品下载」页面下载 Wave 桌面版安装包（macOS / Windows）并安装。桌面端是独立应用，无需安装 IDE，安装后直接使用。
+在管控台「产品下载」页面下载 CodeWave IDE 桌面版安装包（macOS / Windows）并安装。桌面端是独立应用，无需安装 IDE，安装后直接使用。
 
 ### CLI 终端
 

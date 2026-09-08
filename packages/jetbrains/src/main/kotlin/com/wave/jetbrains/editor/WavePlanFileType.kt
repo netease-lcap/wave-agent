@@ -11,8 +11,8 @@ import javax.swing.Icon
  * as binary so the platform never tries to open it with a text editor.
  */
 object WavePlanFileType : FileType {
-    override fun getName(): String = "Wave Plan"
-    override fun getDescription(): String = "Wave 计划预览"
+    override fun getName(): String = "CodeWave IDE Plan"
+    override fun getDescription(): String = "CodeWave IDE 计划预览"
     override fun getDefaultExtension(): String = "waveplan"
     override fun getIcon(): Icon = AllIcons.General.Web
     override fun isBinary(): Boolean = true

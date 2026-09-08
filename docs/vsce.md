@@ -1,14 +1,14 @@
 # VS Code 扩展 / JetBrains 插件使用文档
 
-Wave 代码智聊是一款集成在 VS Code 与 JetBrains IDE（WebStorm、IntelliJ IDEA 等）中的 AI 辅助编程插件，两者共享同一聊天界面。本文档介绍插件的安装登录与差异化能力，其余 AI 能力与桌面端保持一致，详见 [桌面端产品文档](/desktop)。
+CodeWave IDE 是一款集成在 VS Code 与 JetBrains IDE（WebStorm、IntelliJ IDEA 等）中的 AI 辅助编程插件，两者共享同一聊天界面。本文档介绍插件的安装登录与差异化能力，其余 AI 能力与桌面端保持一致，详见 [桌面端产品文档](/desktop)。
 
 ## 快速入门
 
 ### VS Code 扩展
 
-在 VS Code 扩展市场搜索 **Wave Code Chat**（扩展 ID：`wave-codechat.wave-vscode`）安装。安装后可通过三种方式打开聊天面板：
+在 VS Code 扩展市场搜索 **CodeWave IDE**（扩展 ID：`wave-codechat.wave-vscode`）安装。安装后可通过三种方式打开聊天面板：
 
-- **侧边栏**：点击活动栏的 Wave 图标在侧边栏打开，或命令面板（`Cmd/Ctrl+Shift+P`）执行「在侧边栏打开代码智聊」。
+- **侧边栏**：点击活动栏的 CodeWave IDE 图标在侧边栏打开，或命令面板（`Cmd/Ctrl+Shift+P`）执行「在侧边栏打开代码智聊」。
 - **新标签页**：执行「在新标签页打开代码智聊」，在编辑器区域以标签页形式打开，可与文件并排查看。
 - **新窗口**：执行「在新窗口打开代码智聊」，在独立窗口打开，适合多显示器并行使用。
 
@@ -18,7 +18,7 @@ Wave 代码智聊是一款集成在 VS Code 与 JetBrains IDE（WebStorm、Intel
 
 ### JetBrains 插件
 
-在 JetBrains 插件市场（IDE「设置 → 插件」）搜索 **Wave Code Chat** 安装。打开聊天面板点击欢迎页的「登录」按钮完成 SSO 登录。
+在 JetBrains 插件市场（IDE「设置 → 插件」）搜索 **CodeWave IDE** 安装。打开聊天面板点击欢迎页的「登录」按钮完成 SSO 登录。
 
 ## 画廊
 

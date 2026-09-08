@@ -20,7 +20,7 @@ import com.intellij.testFramework.LightVirtualFile
  * the type here is intrinsic to the file, not derived from name/registry.
  */
 class WavePlanVirtualFile(val planId: String) :
-    LightVirtualFile("Wave - 计划", WavePlanFileType, "") {
+    LightVirtualFile("CodeWave IDE - 计划", WavePlanFileType, "") {
 
     init {
         isWritable = false

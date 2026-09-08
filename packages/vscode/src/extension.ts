@@ -83,8 +83,8 @@ export function activate(context: vscode.ExtensionContext) {
       try {
         await chatProvider!.addToWave();
       } catch (error) {
-        console.error("添加到 Wave 时出错:", error);
-        vscode.window.showErrorMessage("添加到 Wave 失败: " + error);
+        console.error("添加到 CodeWave IDE 时出错:", error);
+        vscode.window.showErrorMessage("添加到 CodeWave IDE 失败: " + error);
       }
     },
   );
@@ -95,7 +95,7 @@ export function activate(context: vscode.ExtensionContext) {
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: `正在打开 Wave AI 聊天(${mode === "sidebar" ? "侧边栏" : mode === "tab" ? "标签页" : "新窗口"})...`,
+          title: `正在打开 CodeWave IDE: 代码智聊(${mode === "sidebar" ? "侧边栏" : mode === "tab" ? "标签页" : "新窗口"})...`,
           cancellable: false,
         },
         async () => {

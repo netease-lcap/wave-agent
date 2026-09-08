@@ -13,8 +13,8 @@ class WaveToolWindowFactory : ToolWindowFactory {
         // plugin.xml `title` attribute exists on the extension point). Override at
         // runtime so the id stays "Wave" (used as a programmatic key) while the
         // header / stripe show the localized product name, matching VSCE.
-        toolWindow.title = "Wave 代码智聊"
-        toolWindow.stripeTitle = "Wave 代码智聊"
+        toolWindow.title = "CodeWave IDE: 代码智聊"
+        toolWindow.stripeTitle = "CodeWave IDE: 代码智聊"
         // COMBO shows no tab strip for a single content (like Project/Git tool windows), so the
         // chat panel renders directly without a closable "新对话" tab; TABBED is the default and
         // would keep the strip visible even with one content.

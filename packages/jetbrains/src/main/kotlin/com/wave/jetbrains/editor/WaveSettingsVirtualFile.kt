@@ -22,7 +22,7 @@ import com.intellij.testFramework.LightVirtualFile
  * the type here is intrinsic to the file, not derived from name/registry.
  */
 class WaveSettingsVirtualFile :
-    LightVirtualFile("Wave - 设置", WaveSettingsFileType, "") {
+    LightVirtualFile("CodeWave IDE - 设置", WaveSettingsFileType, "") {
 
     init {
         isWritable = false

@@ -66,7 +66,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     this.context = context;
     this.configService = new ConfigurationService(context);
     this.selectionService = new SelectionService(context);
-    this.outputChannel = vscode.window.createOutputChannel("Wave");
+    this.outputChannel = vscode.window.createOutputChannel("CodeWave IDE");
 
     this.webviewManager = new WebviewManager(context, {
       onMessage: async (message, viewType, windowId) => {
@@ -181,7 +181,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       const binaryPath = await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: "Wave",
+          title: "CodeWave IDE",
           cancellable: false,
         },
         (progress) => {
@@ -620,7 +620,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       const windowId = `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       this.webviewManager.createWindowPanel(
         ChatProvider.viewType + "_window",
-        `Wave - 代码智聊`,
+        `CodeWave IDE: 代码智聊`,
         windowId,
       );
       await this.initializeAgent("window", windowId);
@@ -637,7 +637,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       : undefined;
     this.webviewManager.createTabPanel(
       ChatProvider.viewType,
-      "Wave - 代码智聊",
+      "CodeWave IDE: 代码智聊",
       tabId,
       columnToShowIn || vscode.ViewColumn.One,
     );

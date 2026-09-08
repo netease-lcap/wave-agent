@@ -11,8 +11,8 @@ import javax.swing.Icon
  * as binary so the platform never tries to open it with a text editor.
  */
 object WaveSettingsFileType : FileType {
-    override fun getName(): String = "Wave Settings"
-    override fun getDescription(): String = "Wave 设置"
+    override fun getName(): String = "CodeWave IDE Settings"
+    override fun getDescription(): String = "CodeWave IDE 设置"
     override fun getDefaultExtension(): String = "wavesettings"
     override fun getIcon(): Icon = AllIcons.General.Settings
     override fun isBinary(): Boolean = true

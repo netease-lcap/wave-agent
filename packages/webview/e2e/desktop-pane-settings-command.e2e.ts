@@ -88,7 +88,7 @@ test.describe("Desktop pane 布局斜杠命令打开设置页", () => {
     // 全页设置页由根实例渲染（取代 pane 视图），全局设置选项卡激活
     await expect(webviewPage.locator(".settings-page")).toBeVisible();
     await expect(
-      webviewPage.getByText("管理 Wave 的界面、模型和基础行为。"),
+      webviewPage.getByText("管理 CodeWave IDE 的界面、模型和基础行为。"),
     ).toBeVisible();
     const nav = webviewPage.locator(".settings-navigation .settings-nav-item", {
       hasText: "全局设置",

@@ -187,7 +187,7 @@ describe("Model, Status, and Login Commands", () => {
 
       // 设置页「全局设置」选项卡激活（导航项 is-active 且内容区可编辑展示语言）
       expect(
-        await screen.findByText("管理 Wave 的界面、模型和基础行为。"),
+        await screen.findByText("管理 CodeWave IDE 的界面、模型和基础行为。"),
       ).toBeInTheDocument();
       const navItem = screen.getByRole("button", { name: /全局设置/ });
       expect(navItem).toHaveClass("is-active");

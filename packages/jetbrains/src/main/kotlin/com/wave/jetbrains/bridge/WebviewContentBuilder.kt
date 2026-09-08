@@ -102,7 +102,7 @@ object WebviewContentBuilder {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wave AI Chat</title>
+    <title>CodeWave IDE: 代码智聊</title>
     <style>
         html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
         #root { height: 100%; width: 100%; }
