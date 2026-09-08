@@ -2258,7 +2258,7 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 
 - **统一规格**：侧栏会话行与设置导航项 = 选项高 30px、同分类内项距 2px、分类间距 12px、圆角 8px。
 - **实现文件与值**：
-  - `DesktopApp.css`：`.desktop-session-items` gap 4→2；`.desktop-session-item` min-height 32→30、r6→8；`.desktop-sidebar-new-chat` height 32→30（r8 已是）。
+  - `DesktopApp.css`：`.desktop-session-items` gap 4→2；`.desktop-session-item` min-height 32→30、r6→8；`.desktop-sidebar-new-chat` height 32→30（r8 已是）；`.desktop-session-group-header` height 32→30、r6→8（8899 后续评论「这里应该也是30px」补：分组头并入统一规格）。
   - `host-desktop.css`：会话分组间距 margin-top 4→12；新增 desktop 覆盖 `.settings-nav-item` 30/r8、`.settings-nav-items` gap 2、`.settings-back` 30/r8（base 32/r6/gap4 供非 desktop 场景不回归）；`.account-card-hotzone` desktop padding 上下 4→3（行高 32→30）；`.account-card-collapse-btn` 32×32/r6 → 30×30/r8。
   - `AccountCard.css`：`.account-card-hotzone` base padding 上下 4→3 + r6→8（desktop 专用组件，IDE 无此栏）。
 - 既有 hover/选中底色规则不变，仅几何。实现文件：`src/styles/DesktopApp.css`、`src/styles/host-desktop.css`、`src/styles/AccountCard.css`、本 docs。（用户 8899 走查后确认推送；headless 实测：会话项 30/r8/gap2、设置项 30/r8/gap2/组距 12、新对话/返回/账户热区/收起按钮均 30/r8。）
@@ -2272,3 +2272,11 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
   - `.permission-mode-item`、`.plus-menu-item`、`.more-menu-item`、`.panel-toggle-menu-item`、`.desktop-session-menu-item`、`.desktop-workdir-menu-item` min-height 32→28px。
   - workdir 两行项单独排除：`.desktop-workdir-menu-item:has(.desktop-workdir-menu-parent)` 保留 min-height 32px（两行注释行不压缩）。
 - 实现文件：`src/styles/host-desktop.css`、本 docs。（用户人工走查，type-check 前已确认；等待用户确认后推送。）
+
+## 0908 第 4 轮补充（feat/0908-new-base-r1）：workdir 菜单分组标签对齐加粗 + 最近打开两行项高度重算
+
+预览走查评论（8899）：① `div.desktop-workdir-menu-label`「最近打开」「和下方选项的图标没有对齐，也没有加粗，参考系统指令的下拉菜单」；② `div.desktop-workdir-menu-item` 首条「CC02/…」「选项高度再计算下，现在上边距大于下边距，感觉没有对齐」。
+
+- **① 分组标签**（`.desktop-workdir-menu-label`，最近打开 / SSH 主机共用，host-desktop.css 新增 desktop 覆盖）：padding-left 12→**8px**（label 文字左缘与选项图标同列，headless 实测 579.06 vs icon 579.1 对齐）；font-size 11→**12px**、font-weight 500、去 opacity 0.6，参照 `/` 系统指令弹层分组标题（12px/500）；浅色 `#6C7076` / 深色 `#9A9EA5`。原因：0908 第 4 轮把菜单 item 桌面化时 label 漏了桌面覆盖，仍用 base 12px 左距 + 淡化小字。
+- **② 最近打开两行项**（`.desktop-workdir-menu-item:has(.desktop-workdir-menu-parent)`）：原 min-height 32 + 上下 0 padding 把两行文字块（30px）压得上下仅 1px 贴边；改为 **min-height 0（内容高驱动）+ 上下对称 3px padding** + 显式行高 name `17px`（14px 字）/ parent `13px`（11px 字）→ 条目高 36px，文字块上下留白对称，图标/两行文字块/移除钮垂直共心（实测 item 36、path 顶距 3/底距 3、icon 与文字块中心同为 417）。
+- 实现文件：`src/styles/host-desktop.css`、本 docs。（headless 几何实测，等用户 8899 走查确认后推送。）
