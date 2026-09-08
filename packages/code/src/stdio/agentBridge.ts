@@ -100,6 +100,9 @@ interface InitializeParams {
   mcpServers?: Record<string, McpServerConfig>;
   worktreeName?: string;
   isNewWorktree?: boolean;
+  /** Settings-page auto-memory toggle/frequency (session-level override). */
+  autoMemoryEnabled?: boolean;
+  autoMemoryFrequency?: number;
 }
 
 interface UpdateConfigParams {
@@ -110,6 +113,9 @@ interface UpdateConfigParams {
   model?: string;
   fastModel?: string;
   language?: string;
+  /** Settings-page auto-memory toggle/frequency (session-level override). */
+  autoMemoryEnabled?: boolean;
+  autoMemoryFrequency?: number;
 }
 
 interface SearchFilesParams {
@@ -539,6 +545,8 @@ export class AgentBridge {
       model: params.model,
       fastModel: params.fastModel,
       language: params.language,
+      autoMemoryEnabled: params.autoMemoryEnabled,
+      autoMemoryFrequency: params.autoMemoryFrequency,
       permissionMode: params.permissionMode,
       tools: params.tools,
       allowedTools: params.allowedTools,
@@ -831,6 +839,8 @@ export class AgentBridge {
       model: entry.storedConfig.model,
       fastModel: entry.storedConfig.fastModel,
       language: entry.storedConfig.language,
+      autoMemoryEnabled: entry.storedConfig.autoMemoryEnabled,
+      autoMemoryFrequency: entry.storedConfig.autoMemoryFrequency,
       permissionMode: entry.storedConfig.permissionMode,
       tools: entry.storedConfig.tools,
       allowedTools: entry.storedConfig.allowedTools,

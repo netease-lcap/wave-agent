@@ -42,6 +42,14 @@ export interface AgentOptions {
   maxTokens?: number;
   /** Preferred language for agent communication */
   language?: string;
+  /**
+   * Per-session override for auto-memory extraction (settings-page toggle
+   * value, carried by hosts over stdio). Takes precedence over settings.json
+   * merged config and WAVE_DISABLE_AUTO_MEMORY env; undefined defers to them.
+   */
+  autoMemoryEnabled?: boolean;
+  /** Per-session override for auto-memory extraction frequency (turns). */
+  autoMemoryFrequency?: number;
 
   // Existing options (preserved)
   callbacks?: AgentCallbacks;

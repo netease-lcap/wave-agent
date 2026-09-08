@@ -922,6 +922,8 @@ class MessageHandler(
         if (config.model.isNotEmpty()) put("model", config.model)
         if (config.fastModel.isNotEmpty()) put("fastModel", config.fastModel)
         put("language", config.language)
+        config.autoMemoryEnabled?.let { put("autoMemoryEnabled", it) }
+        config.autoMemoryFrequency?.let { put("autoMemoryFrequency", it) }
     }
 
     private suspend fun handleWebviewReady() {

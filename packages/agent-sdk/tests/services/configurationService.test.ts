@@ -1005,6 +1005,72 @@ describe("ConfigurationService", () => {
     });
   });
 
+  describe("resolveAutoMemoryEnabled", () => {
+    afterEach(() => {
+      delete process.env.WAVE_DISABLE_AUTO_MEMORY;
+      delete process.env.WAVE_AUTO_MEMORY_FREQUENCY;
+    });
+
+    it("should default to true", () => {
+      expect(configService.resolveAutoMemoryEnabled()).toBe(true);
+    });
+
+    it("should honor WAVE_DISABLE_AUTO_MEMORY env when no override/config", () => {
+      process.env.WAVE_DISABLE_AUTO_MEMORY = "true";
+      expect(configService.resolveAutoMemoryEnabled()).toBe(false);
+    });
+
+    it("should honor settings.json autoMemoryEnabled when no session override", async () => {
+      const config = { autoMemoryEnabled: false };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      await configService.loadMergedConfiguration(tempDir);
+      expect(configService.resolveAutoMemoryEnabled()).toBe(false);
+    });
+
+    it("should let session options override settings.json", async () => {
+      const config = { autoMemoryEnabled: true };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      await configService.loadMergedConfiguration(tempDir);
+      configService.setOptions({ autoMemoryEnabled: false });
+      expect(configService.resolveAutoMemoryEnabled()).toBe(false);
+    });
+
+    it("should let session options override WAVE_DISABLE_AUTO_MEMORY env", () => {
+      process.env.WAVE_DISABLE_AUTO_MEMORY = "true";
+      configService.setOptions({ autoMemoryEnabled: true });
+      expect(configService.resolveAutoMemoryEnabled()).toBe(true);
+    });
+  });
+
+  describe("resolveAutoMemoryFrequency", () => {
+    afterEach(() => {
+      delete process.env.WAVE_AUTO_MEMORY_FREQUENCY;
+    });
+
+    it("should default to 1", () => {
+      expect(configService.resolveAutoMemoryFrequency()).toBe(1);
+    });
+
+    it("should honor WAVE_AUTO_MEMORY_FREQUENCY env when no override/config", () => {
+      process.env.WAVE_AUTO_MEMORY_FREQUENCY = "3";
+      expect(configService.resolveAutoMemoryFrequency()).toBe(3);
+    });
+
+    it("should honor session options override", () => {
+      configService.setOptions({ autoMemoryFrequency: 5 });
+      expect(configService.resolveAutoMemoryFrequency()).toBe(5);
+    });
+
+    it("should ignore a non-positive session options frequency", () => {
+      configService.setOptions({ autoMemoryFrequency: 0 });
+      expect(configService.resolveAutoMemoryFrequency()).toBe(1);
+    });
+  });
+
   describe("resolveWorktreeBaseRef", () => {
     it("should return 'fresh' by default", () => {
       expect(configService.resolveWorktreeBaseRef()).toBe("fresh");
