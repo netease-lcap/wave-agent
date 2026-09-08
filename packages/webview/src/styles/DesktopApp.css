@@ -8,19 +8,6 @@
   overflow: hidden;
 }
 
-/* Root (single-window, no split-view panes) layout: the chat container is a
-   direct flex child of .desktop-layout — no .desktop-pane wrapper — so the
-   pane-scoped min-width:0 below never applies. Without it the container's
-   implicit flex min-width:auto lets .desktop-chat-body's min-content (chat
-   main's unshrinkable composer + the fixed-width panel slot) widen the
-   container itself; the panel divider clamp's `containerW - 360` ceiling then
-   grows with every drag, so dragging the panel divider left past the
-   conversation minimum keeps widening the panel instead of clamping it, and
-   its right edge runs off the window. */
-.desktop-layout > .chat-container {
-  min-width: 0;
-}
-
 .desktop-loading {
   flex: 1;
   height: 100vh;
