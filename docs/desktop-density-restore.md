@@ -2280,3 +2280,22 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - **① 分组标签**（`.desktop-workdir-menu-label`，最近打开 / SSH 主机共用，host-desktop.css 新增 desktop 覆盖）：padding-left 12→**8px**（label 文字左缘与选项图标同列，headless 实测 579.06 vs icon 579.1 对齐）；font-size 11→**12px**、font-weight 500、去 opacity 0.6，参照 `/` 系统指令弹层分组标题（12px/500）；浅色 `#6C7076` / 深色 `#9A9EA5`。原因：0908 第 4 轮把菜单 item 桌面化时 label 漏了桌面覆盖，仍用 base 12px 左距 + 淡化小字。
 - **② 最近打开两行项**（`.desktop-workdir-menu-item:has(.desktop-workdir-menu-parent)`）：原 min-height 32 + 上下 0 padding 把两行文字块（30px）压得上下仅 1px 贴边；改为 **min-height 0（内容高驱动）+ 上下对称 3px padding** + 显式行高 name `17px`（14px 字）/ parent `13px`（11px 字）→ 条目高 36px，文字块上下留白对称，图标/两行文字块/移除钮垂直共心（实测 item 36、path 顶距 3/底距 3、icon 与文字块中心同为 417）。
 - 实现文件：`src/styles/host-desktop.css`、本 docs。（headless 几何实测，等用户 8899 走查确认后推送。）
+
+## 0908 终端「重启终端」恢复按钮样式规范修复（feat/0908-new-base-r1）
+
+预览走查评论（8899，`button.preview-pane-button`「重启终端」· terminal exited 空态）「检查按钮样式是否符合规范」。
+
+- **问题**：该按钮复用通用 `.preview-pane-button`（24×24 图标钮规范），带文字时文字溢出 24px 小方框；且 host 的 icon-button 通用色规则（light `#565A60` / dark `#9A9EA5`、hover `#EEF0F3` / 8% 白）会压过 base 恢复按钮的 `--vscode-button-foreground` / hover → dark 下浅灰底配灰字不可读。
+- **修复**（DesktopApp.css + host-desktop.css）：
+  - `DesktopApp.css`：`.preview-pane-error` 与 `.terminal-pane-exited` 下的 `.preview-pane-button` 合并为文本恢复按钮（width auto、padding `4px 12px`、nowrap、`--vscode-button-background` 实底 + foreground + hoverBackground）。
+  - `host-desktop.css`：在上述通用 icon-button 色规则后补高特异覆盖（`.preview-pane-error / .terminal-pane-exited` 两容器限定）——light 文字 `--vscode-button-foreground`、dark 同，hover 保持 `--vscode-button-hoverBackground` 实底加深，不被通用 hover 漂回浅灰。
+- 验证（headless 注入同构 DOM 实测）：light bg `#1F2329` / 字白、dark bg `#E0E3E5` / 字 `#191C1E`（桌面语义主按钮，随 --vscode-button\* 桥接）；宽度 78px 自适应内容。
+- 实现文件：`src/styles/DesktopApp.css`、`src/styles/host-desktop.css`、本 docs。（等用户 8899 走查确认后推送。）
+
+## 0908 面板文本恢复按钮 audit（feat/0908-new-base-r1）：ChatApp remote forward「重试」并入
+
+预览走查评论「检查相似页面是否还有类似按钮需要调整，包括深色模式」的 audit 结论与补修。
+
+- **audit**：枚举全部使用 `.preview-pane-button` 的 6 组件（DesktopPanelTabs / PreviewPane / DiffPane / FilePane / TerminalPane / ChatApp），仅 3 处为文本恢复按钮（其余均为 24×24 图标钮，无此问题）：PreviewPane `.preview-pane-error`「重新加载」、TerminalPane `.terminal-pane-exited`「重启终端」、ChatApp `.preview-pane-forward-error`「远程预览加载失败 · 重试」（ChatApp.tsx:2860）。前两处已修复，第三处此前遗漏。
+- **修复**：`.preview-pane-forward-error .preview-pane-button` 加入 DesktopApp.css base 文本恢复按钮合并选择器组 + host-desktop.css light/dark 高特异覆盖组（结构与 `.preview-pane-error` 同为全幅 overlay + 描述 + 重试主按钮）。
+- 实现文件：`src/styles/DesktopApp.css`、`src/styles/host-desktop.css`、本 docs。（等用户 8899 走查确认后推送。）

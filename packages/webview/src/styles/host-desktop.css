@@ -1312,6 +1312,60 @@
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
 }
+/* 文本恢复按钮（preview error「重新加载」/ terminal exited「重启终端」/
+   remote forward error「重试」）：上述 icon-button 通用色会覆盖 base 的
+   --vscode-button-foreground/hover，这里按桌面语义主按钮重定（文字随按钮
+   前景反白，hover 保持实底加深） */
+[data-host="desktop"][data-theme="light"]
+  .preview-pane-error
+  .preview-pane-button,
+[data-host="desktop"][data-theme="light"]
+  .terminal-pane-exited
+  .preview-pane-button,
+[data-host="desktop"][data-theme="light"]
+  .preview-pane-forward-error
+  .preview-pane-button {
+  color: var(--vscode-button-foreground, #ffffff);
+}
+[data-host="desktop"][data-theme="light"]
+  .preview-pane-error
+  .preview-pane-button:hover,
+[data-host="desktop"][data-theme="light"]
+  .terminal-pane-exited
+  .preview-pane-button:hover,
+[data-host="desktop"][data-theme="light"]
+  .preview-pane-forward-error
+  .preview-pane-button:hover {
+  background: var(
+    --vscode-button-hoverBackground,
+    var(--vscode-button-background)
+  );
+}
+[data-host="desktop"][data-theme="dark"]
+  .preview-pane-error
+  .preview-pane-button,
+[data-host="desktop"][data-theme="dark"]
+  .terminal-pane-exited
+  .preview-pane-button,
+[data-host="desktop"][data-theme="dark"]
+  .preview-pane-forward-error
+  .preview-pane-button {
+  color: var(--vscode-button-foreground, #ffffff);
+}
+[data-host="desktop"][data-theme="dark"]
+  .preview-pane-error
+  .preview-pane-button:hover,
+[data-host="desktop"][data-theme="dark"]
+  .terminal-pane-exited
+  .preview-pane-button:hover,
+[data-host="desktop"][data-theme="dark"]
+  .preview-pane-forward-error
+  .preview-pane-button:hover {
+  background: var(
+    --vscode-button-hoverBackground,
+    var(--vscode-button-background)
+  );
+}
 [data-host="desktop"][data-theme="light"] .preview-pane-button.active {
   background: #e7e9ed;
   color: #1f2329;
