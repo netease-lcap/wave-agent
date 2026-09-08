@@ -26,6 +26,11 @@ export interface DesktopConfigData {
 /** App appearance preference — 设置页「全局设置」三态选择（仅桌面端 UI）。 */
 export type ThemeSource = "system" | "light" | "dark";
 
+/** 桌面端更新通道 — 设置页「全局设置」「接收 Beta 版更新」开关（仅桌面端 UI）。
+ *  stable = codechat 正式 feed（`/api/downloads/desktop/{mac|win}/`）；
+ *  beta = 测试 feed（`/api/downloads/desktop-beta/{mac|win}/`，依赖 codechat #33）。 */
+export type UpdateChannel = "stable" | "beta";
+
 /**
  * A recent workdir, tagged with the host it lives on. `host` is the ssh config
  * host name, or LOCAL_HOST ('local') for this machine. (host, path) is the
@@ -62,6 +67,8 @@ interface StoreData {
   configuration: DesktopConfigData;
   /** App appearance preference: follow the OS, or force light/dark. Defaults to "system". */
   theme: ThemeSource;
+  /** Desktop update feed channel (设置页「接收 Beta 版更新」). Defaults to "stable". */
+  updateChannel: UpdateChannel;
   /** Disk form: WorkdirRef, or legacy plain strings migrated to {host:'local', path} on load. */
   recentWorkdirs: Array<string | WorkdirRef>;
   sessions: SessionIndexEntry[];
@@ -86,6 +93,9 @@ export class ConfigStore {
       return {
         configuration: parsed.configuration ?? {},
         theme: isThemeSource(parsed.theme) ? parsed.theme : "system",
+        updateChannel: isUpdateChannel(parsed.updateChannel)
+          ? parsed.updateChannel
+          : "stable",
         // Legacy plain-string entries (pre-remote) become local-host refs.
         // Deduped on load so older data where one directory was persisted with
         // two slash styles (e.g. `C:\a` and `C:/a`) collapses into one entry.
@@ -118,6 +128,7 @@ export class ConfigStore {
       return {
         configuration: {},
         theme: "system",
+        updateChannel: "stable",
         recentWorkdirs: [],
         sessions: [],
       };
@@ -170,6 +181,17 @@ export class ConfigStore {
   /** Persist the appearance preference (desktop host applies it to nativeTheme). */
   setThemeSource(source: ThemeSource): void {
     this.data.theme = source;
+    this.save();
+  }
+
+  /** Desktop update feed channel (defaults to "stable"). */
+  getUpdateChannel(): UpdateChannel {
+    return this.data.updateChannel;
+  }
+
+  /** Persist the update feed channel (desktop host re-checks against the new feed). */
+  setUpdateChannel(channel: UpdateChannel): void {
+    this.data.updateChannel = channel;
     this.save();
   }
 
@@ -325,4 +347,9 @@ function normalizeLocalPath(p: string): string {
 /** Type guard for theme preference values loaded from disk. */
 function isThemeSource(value: unknown): value is ThemeSource {
   return value === "system" || value === "light" || value === "dark";
+}
+
+/** Type guard for update channel values loaded from disk. */
+function isUpdateChannel(value: unknown): value is UpdateChannel {
+  return value === "stable" || value === "beta";
 }

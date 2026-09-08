@@ -343,10 +343,6 @@ vi.mock("../src/main/stdio/binaryResolver", () => ({
   ensureCliUpToDate: vi.fn(async () => "/mock/wave"),
 }));
 
-vi.mock("../src/main/updateChecker", () => ({
-  checkForUpdate: vi.fn(async () => null),
-}));
-
 // electron-updater — the auto-update service for logged-in (serverUrl) installs.
 // The on() mock records listeners so tests can fire update-available /
 // update-downloaded / error to assert the host's update.status wiring.
@@ -441,7 +437,6 @@ import { DesktopHost } from "../src/main/desktopHost";
 import { ConfigStore } from "../src/main/configStore";
 import { HOST_CHANNEL } from "../src/main/channels";
 import { shell, dialog, nativeTheme, powerMonitor } from "electron";
-import { checkForUpdate } from "../src/main/updateChecker";
 import { autoUpdater } from "electron-updater";
 import {
   ensureRemoteDaemon,
@@ -2035,40 +2030,25 @@ describe("configuration and status", () => {
 // update checks (FR-010)
 // ---------------------------------------------------------------------------
 
-describe("checkForUpdates", () => {
-  it("manual check announces a newer version as a toast with a download-page action", async () => {
-    vi.mocked(checkForUpdate).mockResolvedValueOnce({
-      latestVersion: "0.20.0",
-      currentVersion: "0.19.7",
-      downloadUrl: "https://github.com/release",
-    });
-    const { host } = await readyHost();
-
-    await host.handleWebviewMessage({ command: "checkForUpdates" });
-
-    const toasts = shownToasts().filter((n) => n.message.includes("0.20.0"));
-    expect(toasts).toHaveLength(1);
-    expect(toasts[0].message).toContain("0.19.7");
-    expect(toasts[0].actionLabel).toBe("打开下载页");
-    expect(toasts[0].action).toEqual({
-      type: "openDownloadPage",
-      url: "https://github.com/release",
-    });
-  });
-
-  it('manual check says "already latest" via a toast when no update exists', async () => {
+describe("checkForUpdates without a serverUrl (logged out)", () => {
+  it("performs no update check and prompts login on a manual check", async () => {
     const { host } = await readyHost();
     await host.handleWebviewMessage({ command: "checkForUpdates" });
 
-    const toasts = shownToasts().filter((n) => n.message.includes("已是最新"));
+    expect(autoUpdater.setFeedURL).not.toHaveBeenCalled();
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled();
+    const toasts = shownToasts().filter((n) =>
+      n.message.includes("登录后可检查更新"),
+    );
     expect(toasts).toHaveLength(1);
   });
 
-  it("runs an automatic check once after the first webviewReady", async () => {
+  it("stays silent on the automatic startup check when logged out", async () => {
+    // 未登录（无 serverUrl）→ 不执行任何更新检查（2026-09-09 拍板），自动检查
+    // 静默：既无 toast 也不触碰 electron-updater。
     await readyHost();
-    await vi.waitFor(() => {
-      expect(checkForUpdate).toHaveBeenCalledTimes(1);
-    });
+    expect(shownToasts()).toHaveLength(0);
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled();
   });
 });
 
@@ -2108,7 +2088,6 @@ describe("checkForUpdates with a configured serverUrl", () => {
     });
     expect(autoUpdater.checkForUpdates).toHaveBeenCalled();
     // The electron-updater path is authoritative when logged in — no GitHub fallback.
-    expect(checkForUpdate).not.toHaveBeenCalled();
   });
 
   it("announces an update via desktopAccountInfo, not a toast (S0 → S1 更新按钮)", async () => {
@@ -2271,16 +2250,11 @@ describe("checkForUpdates with a configured serverUrl", () => {
     );
   });
 
-  it("opens the download page when the toast action is openDownloadPage", async () => {
-    const { host } = await readyHost();
-    await host.handleWebviewMessage({
-      command: "toastAction",
-      toastId: "x",
-      action: { type: "openDownloadPage", url: "https://github.com/release" },
+  it("runs an automatic check once after the first webviewReady (logged in)", async () => {
+    await readyHostWithServerUrl();
+    await vi.waitFor(() => {
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
     });
-    expect(shell.openExternal).toHaveBeenCalledWith(
-      "https://github.com/release",
-    );
   });
 
   it("surfaces a manual check failure via a toast when nothing was announced", async () => {
@@ -2299,7 +2273,7 @@ describe("checkForUpdates with a configured serverUrl", () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue(null);
   });
 
-  it('says "already latest" via a toast without a GitHub round trip when the feed has no update', async () => {
+  it('says "already latest" via a toast when the feed has no update', async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.19.7", files: [], path: "wave-0.19.7.dmg" },
       isUpdateAvailable: false,
@@ -2308,11 +2282,97 @@ describe("checkForUpdates with a configured serverUrl", () => {
 
     await host.handleWebviewMessage({ command: "checkForUpdates" });
 
-    expect(checkForUpdate).not.toHaveBeenCalled();
     // The one-shot automatic check stays silent on no-update; only the manual
     // check announces it.
     const toasts = shownToasts().filter((n) => n.message.includes("已是最新"));
     expect(toasts).toHaveLength(1);
+  });
+
+  it("setInitialState carries the update channel (default stable)", async () => {
+    const { sent } = await readyHostWithServerUrl();
+    expect(sent("setInitialState")[0]).toMatchObject({
+      updateChannel: "stable",
+    });
+  });
+
+  it("setUpdateChannel persists, broadcasts and re-checks against the beta feed", async () => {
+    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
+      isUpdateAvailable: true,
+    } as never);
+    const ctx = await readyHostWithServerUrl();
+    const platformDir = process.platform === "win32" ? "win" : "mac";
+    expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1); // 启动自动检查（stable）
+    expect(autoUpdater.setFeedURL).toHaveBeenLastCalledWith({
+      provider: "generic",
+      url: `${SERVER}/api/downloads/desktop/${platformDir}/`,
+    });
+
+    await ctx.host.handleWebviewMessage({
+      command: "setUpdateChannel",
+      channel: "beta",
+    });
+
+    expect(ctx.store.getUpdateChannel()).toBe("beta");
+    const broadcasts = ctx.sent("desktopUpdateChannel");
+    expect(broadcasts[broadcasts.length - 1]).toMatchObject({
+      channel: "beta",
+    });
+    // 切换即时重查（spec 场景 3）→ 命中 desktop-beta feed
+    expect(autoUpdater.setFeedURL).toHaveBeenLastCalledWith({
+      provider: "generic",
+      url: `${SERVER}/api/downloads/desktop-beta/${platformDir}/`,
+    });
+    expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
+  });
+
+  it("manual stable check reports 正式版发布后将自动更新 when the feed lags the installed version", async () => {
+    // app.getVersion() = 0.19.7；stable feed 只到 0.19.0（曾接收测试版、正式未
+    // 追平）→ 不降级、不改查 beta feed，提示等待正式发布（spec 场景 5）。
+    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: "0.19.0", files: [], path: "wave-0.19.0.dmg" },
+      isUpdateAvailable: false,
+    } as never);
+    const { host } = await readyHostWithServerUrl();
+
+    await host.handleWebviewMessage({ command: "checkForUpdates" });
+
+    const toasts = shownToasts().filter((n) =>
+      n.message.includes("正式版发布后将自动更新"),
+    );
+    expect(toasts).toHaveLength(1);
+    expect(shownToasts().some((n) => n.message.includes("已是最新"))).toBe(
+      false,
+    );
+  });
+
+  it("beta manual check on no-update says 当前已是最新版本", async () => {
+    // beta feed 与已装版本相同（同为 0.19.7）→ 无更新；beta 通道不触发「正式
+    // 版发布后将自动更新」等待提示。
+    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: "0.19.7", files: [], path: "wave-0.19.7.dmg" },
+      isUpdateAvailable: false,
+    } as never);
+    const ctx = await readyHostWithServerUrl();
+
+    await ctx.host.handleWebviewMessage({
+      command: "setUpdateChannel",
+      channel: "beta",
+    });
+
+    const toasts = shownToasts().filter((n) => n.message.includes("已是最新"));
+    expect(toasts).toHaveLength(1);
+  });
+
+  it("setUpdateChannel falls back to stable for malformed input", async () => {
+    const { host, store } = createHost();
+    await host.handleWebviewMessage({ command: "desktopReady" });
+
+    await host.handleWebviewMessage({
+      command: "setUpdateChannel",
+      channel: "neon",
+    });
+    expect(store.getUpdateChannel()).toBe("stable");
   });
 });
 

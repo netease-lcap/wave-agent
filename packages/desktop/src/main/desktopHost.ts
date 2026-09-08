@@ -52,6 +52,7 @@ import {
   type DesktopConfigData,
   type SessionIndexEntry,
   type ThemeSource,
+  type UpdateChannel,
 } from "./configStore";
 import { LOCAL_HOST, parseSshConfigHosts, addSshHost } from "./sshHosts";
 import {
@@ -74,11 +75,8 @@ import type { ChildProcess } from "child_process";
 import { getWorkspaceDiff } from "./gitDiff";
 import { TerminalManager } from "./terminal";
 import { PortForwardManager, type AuthCallbackForward } from "./portForward";
-import {
-  checkForUpdate,
-  type UpdateInfo as ManualUpdateInfo,
-} from "./updateChecker";
 import { AutoUpdaterService } from "./updateAutoUpdater";
+import { parseVersion, compareVersions } from "./version";
 import { HOST_CHANNEL } from "./channels";
 import type { PanelKind } from "./menu";
 
@@ -2556,6 +2554,7 @@ export class DesktopHost {
         effective: this.getCurrentEffectiveTheme(),
         source: this.configStore.getThemeSource(),
       },
+      updateChannel: this.configStore.getUpdateChannel(),
     });
   }
 
@@ -3336,6 +3335,11 @@ export class DesktopHost {
 
       case "desktopUpdateRestart":
         this.handleDesktopUpdateRestart();
+        break;
+
+      case "setUpdateChannel":
+        // 设置页「全局设置」「接收 Beta 版更新」开关（仅桌面端 UI）。
+        await this.handleSetUpdateChannel(msg.channel as string);
         break;
 
       // -- auth ----------------------------------------------------------------
@@ -4745,21 +4749,39 @@ export class DesktopHost {
 
   private async handleCheckForUpdates(manual: boolean): Promise<void> {
     const serverUrl = this.configStore.getConfiguration().serverUrl;
+    const channel = this.configStore.getUpdateChannel();
 
-    // Logged in → the codechat feed drives updates via electron-updater. The
-    // check only announces an update (S1 更新按钮); the download starts after
-    // the user confirms in the S2 dialog (desktopUpdateDownload). Unauthenticated
-    // installs fall back to the GitHub Releases flow (toast + download URL).
+    // Logged in → the codechat feed (stable or beta per the updateChannel) drives
+    // updates via electron-updater. The check only announces an update (S1 更新
+    // button); the download starts after the user confirms in the S2 dialog
+    // (desktopUpdateDownload).
     if (serverUrl) {
-      const outcome =
-        await this.ensureAutoUpdaterService().checkForUpdates(serverUrl);
-      if (outcome === "update") {
+      const result = await this.ensureAutoUpdaterService().checkForUpdates(
+        serverUrl,
+        channel,
+      );
+      if (result.outcome === "update") {
         // 发现更新 → update-available 事件已把 updateState 置 idle 并推送
         // （卡片出现「更新」按钮），无需额外处理。
         return;
       }
-      if (outcome === "no-update") {
-        if (manual) this.showToast({ message: "当前已是最新版本" });
+      if (result.outcome === "no-update") {
+        if (!manual) return;
+        // 已装版本高于 stable feed 最新（切回正式后，正式尚未追平曾接收的
+        // 测试版号）→ 提示等待正式发布，不降级、不改查 beta feed（spec
+        // desktop-shell「接收 Beta 版更新」场景 5）；其余情况提示已是最新。
+        const installed = parseVersion(app.getVersion());
+        const feed = parseVersion(result.feedVersion ?? "");
+        if (
+          channel === "stable" &&
+          installed &&
+          feed &&
+          compareVersions(feed, installed) < 0
+        ) {
+          this.showToast({ message: "正式版发布后将自动更新" });
+        } else {
+          this.showToast({ message: "当前已是最新版本" });
+        }
         return;
       }
       // outcome === 'error'：检查阶段失败（尚未发现任何更新）——手动检查给
@@ -4768,38 +4790,30 @@ export class DesktopHost {
       return;
     }
 
-    // checkForUpdate throws when the check itself failed — don't present that
-    // as "already up to date".
-    let info: ManualUpdateInfo | null = null;
-    try {
-      info = await checkForUpdate(app.getVersion(), serverUrl);
-    } catch (error) {
-      console.warn("[DesktopHost] Update check failed:", error);
-      if (manual) {
-        this.showToast({ message: "检查更新失败，请稍后重试" });
-      }
-      return;
-    }
-    if (info) {
-      this.showToast({
-        message: `发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}）`,
-        actionLabel: "打开下载页",
-        action: { type: "openDownloadPage", url: info.downloadUrl },
-      });
-    } else if (manual) {
-      this.showToast({ message: "当前已是最新版本" });
-    }
+    // 未登录（无 serverUrl）：不执行任何更新检查（2026-09-09 拍板，spec
+    // desktop-shell「桌面端自动更新」场景 2）——启动自动检查静默，手动检查
+    // 引导登录。
+    if (manual) this.showToast({ message: "登录后可检查更新" });
   }
 
-  /** A toast's button was clicked: open the manual download page, or focus a
-   *  background session. The webview sends the opaque action payload back
-   *  verbatim, so the host stays the single source of the action semantics.
+  /** 设置页「接收 Beta 版更新」开关（webview setUpdateChannel）→ 持久化 +
+   *  广播回写 + 按新 feed 即时重查一次（spec desktop-shell「接收 Beta 版更新」
+   *  场景 3：切换即时重查；关闭后正式未追平时给等待提示，见 handleCheckForUpdates）。 */
+  private async handleSetUpdateChannel(raw: string): Promise<void> {
+    const channel: UpdateChannel = raw === "beta" ? "beta" : "stable";
+    this.configStore.setUpdateChannel(channel);
+    this.postMessage({ command: "desktopUpdateChannel", channel });
+    await this.handleCheckForUpdates(true);
+  }
+
+  /** A toast's button was clicked: focus a background session. The webview
+   *  sends the opaque action payload back verbatim, so the host stays the
+   *  single source of the action semantics.
    *  (更新下载/重启不再走 toast action —— S0–S6 按钮状态机经
-   *  desktopUpdateDownload / desktopUpdateRestart 命令直连宿主。) */
+   *  desktopUpdateDownload / desktopUpdateRestart 命令直连宿主；未登录 GitHub
+   *  下载页 toast 已随 updateChecker 链路删除（2026-09-09 拍板）。) */
   private handleToastAction(action: ToastAction): void {
-    if (action.type === "openDownloadPage" && /^(https?):/.test(action.url)) {
-      void shell.openExternal(action.url);
-    } else if (action.type === "focusSession") {
+    if (action.type === "focusSession") {
       void this.focusSessionFromToast(action.host, action.sessionId);
     }
   }

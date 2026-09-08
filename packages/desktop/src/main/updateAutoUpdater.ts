@@ -16,6 +16,8 @@
 
 import { app } from "electron";
 import { autoUpdater, type UpdateInfo } from "electron-updater";
+import type { UpdateChannel } from "./configStore";
+import { parseVersion, compareVersions } from "./version";
 
 export interface AutoUpdaterCallbacks {
   /** A check found a newer version. The download does NOT auto-start — the
@@ -29,9 +31,24 @@ export interface AutoUpdaterCallbacks {
 
 export type UpdateCheckOutcome = "update" | "no-update" | "error";
 
-export function feedUrlFor(serverUrl: string): string {
+/** Outcome plus the feed's latest version as reported by electron-updater.
+ *  `feedVersion` is set whenever the provider answered (update or no-update) —
+ *  the host compares it against the installed version to tell "正式未追平已装
+ *  测试版" from "已是最新" (spec desktop-shell「接收 Beta 版更新」场景 5). */
+export interface UpdateCheckResult {
+  outcome: UpdateCheckOutcome;
+  feedVersion?: string;
+}
+
+/** codechat 更新 feed 目录：stable = `/api/downloads/desktop/{platform}/`，
+ *  beta = `/api/downloads/desktop-beta/{platform}/`（依赖 codechat #33）。 */
+export function feedUrlFor(
+  serverUrl: string,
+  channel: UpdateChannel = "stable",
+): string {
   const platform = process.platform === "win32" ? "win" : "mac";
-  return `${serverUrl.replace(/\/+$/, "")}/api/downloads/desktop/${platform}/`;
+  const bucket = channel === "beta" ? "desktop-beta" : "desktop";
+  return `${serverUrl.replace(/\/+$/, "")}/api/downloads/${bucket}/${platform}/`;
 }
 
 export class AutoUpdaterService {
@@ -51,20 +68,42 @@ export class AutoUpdaterService {
     autoUpdater.on("error", (error) => this.callbacks.onError(error));
   }
 
-  /** Point the generic provider at the codechat feed and check for updates.
+  /** Point the generic provider at the codechat feed (stable or beta per the
+   *  current updateChannel) and check for updates.
    *  autoDownload=false: finding an update only announces it (S1 更新 button) —
    *  the host calls startDownload() once the user confirms in the S2 dialog. */
-  async checkForUpdates(serverUrl: string): Promise<UpdateCheckOutcome> {
+  async checkForUpdates(
+    serverUrl: string,
+    channel: UpdateChannel = "stable",
+  ): Promise<UpdateCheckResult> {
     this.attachListeners();
     autoUpdater.autoDownload = false;
-    autoUpdater.setFeedURL({ provider: "generic", url: feedUrlFor(serverUrl) });
+    autoUpdater.setFeedURL({
+      provider: "generic",
+      url: feedUrlFor(serverUrl, channel),
+    });
     try {
       const result = await autoUpdater.checkForUpdates();
       const version = result?.updateInfo.version;
-      return version && version !== app.getVersion() ? "update" : "no-update";
+      // 语义比较：仅当 feed 版本高于已装版本才算 update。feed 版本低于/等于
+      // 已装版本一律 no-update —— 曾接收测试版、正式 feed 尚未追平时返回
+      // no-update + feedVersion，宿主据此提示「正式版发布后将自动更新」，绝不
+      // 误报更新让用户降级（spec desktop-shell「接收 Beta 版更新」场景 5）。
+      const installed = parseVersion(app.getVersion());
+      const feed = version ? parseVersion(version) : null;
+      if (version && installed && feed) {
+        return compareVersions(feed, installed) > 0
+          ? { outcome: "update", feedVersion: version }
+          : { outcome: "no-update", feedVersion: version };
+      }
+      // 版本不可解析（极少见）——退化为字符串不等判定，保持旧行为。
+      if (!version) return { outcome: "no-update" };
+      return version !== app.getVersion()
+        ? { outcome: "update", feedVersion: version }
+        : { outcome: "no-update", feedVersion: version };
     } catch (error) {
       console.warn("[AutoUpdater] update check failed:", error);
-      return "error";
+      return { outcome: "error" };
     }
   }
 

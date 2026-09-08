@@ -463,4 +463,33 @@ describe("ConfigStore", () => {
     const store = new ConfigStore(STORE_PATH);
     expect(store.getThemeSource()).toBe("system");
   });
+
+  // ── Update channel ─────────────────────────────────────────────
+
+  it("defaults the update channel to stable", () => {
+    const store = new ConfigStore(STORE_PATH);
+    expect(store.getUpdateChannel()).toBe("stable");
+  });
+
+  it("persists the update channel across instances", () => {
+    const store = new ConfigStore(STORE_PATH);
+    store.setUpdateChannel("beta");
+    expect(store.getUpdateChannel()).toBe("beta");
+    expect(new ConfigStore(STORE_PATH).getUpdateChannel()).toBe("beta");
+  });
+
+  it("falls back to stable for a corrupt update channel value on disk", () => {
+    h.files.set(
+      STORE_PATH,
+      JSON.stringify({
+        configuration: {},
+        theme: "system",
+        updateChannel: "canary",
+        recentWorkdirs: [],
+        sessions: [],
+      }),
+    );
+    const store = new ConfigStore(STORE_PATH);
+    expect(store.getUpdateChannel()).toBe("stable");
+  });
 });
