@@ -341,6 +341,11 @@ vi.mock("../src/main/stdio/stdioAgent", () => ({
 vi.mock("../src/main/stdio/binaryResolver", () => ({
   resolveWaveBinary: vi.fn(async () => "/mock/wave"),
   ensureCliUpToDate: vi.fn(async () => "/mock/wave"),
+  loadBundledCliSource: vi.fn(() => ({
+    dir: "/app/root/resources/wave-cli",
+    version: "1.1.5",
+    rgRange: "^1.18.0",
+  })),
 }));
 
 // electron-updater — the auto-update service for logged-in (serverUrl) installs.

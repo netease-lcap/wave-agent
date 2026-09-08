@@ -46,7 +46,10 @@ import { StdioClient } from "./stdio/stdioClient";
 import type { JsonRpcClient } from "./stdio/jsonRpcClient";
 import { StdioAgent, type StdioAgentCallbacks } from "./stdio/stdioAgent";
 import { NotificationRouter } from "./stdio/notificationRouter";
-import { ensureCliUpToDate } from "./stdio/binaryResolver";
+import {
+  ensureCliUpToDate,
+  loadBundledCliSource,
+} from "./stdio/binaryResolver";
 import {
   ConfigStore,
   type DesktopConfigData,
@@ -811,12 +814,12 @@ export class DesktopHost {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
-      // The CLI version is pinned to the app version and downloaded to
-      // ~/.wave/cli by the host runtime on first use (no system Node/npm).
-      const targetVersion = app.getVersion();
+      // The bundled CLI (resources/wave-cli) is copied into ~/.wave/cli by the
+      // host runtime on first use (no system Node/npm). Its wave-code version
+      // is decoupled from the GUI version, so no version target is needed.
       let binaryPath: string;
       try {
-        binaryPath = await ensureCliUpToDate(targetVersion, (msg) =>
+        binaryPath = await ensureCliUpToDate(undefined, (msg) =>
           this.showToast({ message: msg }),
         );
       } catch (error) {
@@ -875,9 +878,13 @@ export class DesktopHost {
     this.remoteHosts.set(host, entry);
 
     entry.initPromise = (async () => {
+      // Remote hosts run THIS app's bundled CLI, pushed over ssh when stale
+      // (spec: desktop-shell.md 「CLI 版本保障」). The upgrade target is the
+      // bundled CLI's own wave-code version — decoupled from the GUI version,
+      // which may bump without a matching npm wave-code release.
       const daemonSocket = await ensureRemoteDaemon(
         host,
-        app.getVersion(),
+        loadBundledCliSource(),
         (msg) => this.showToast({ message: msg }),
       );
       const { client, tunnel } = await connectRemoteDaemon(host, daemonSocket);

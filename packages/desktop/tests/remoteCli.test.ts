@@ -1,11 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { EventEmitter } from "events";
+import { PassThrough, Readable } from "stream";
 
 const h = vi.hoisted(() => ({
   execFile: vi.fn(),
+  spawn: vi.fn(),
+  tarCreate: vi.fn(),
+  fsExists: vi.fn(() => true),
 }));
 
 vi.mock("child_process", () => ({
   execFile: h.execFile,
+  spawn: h.spawn,
+}));
+
+vi.mock("tar", () => ({ c: h.tarCreate }));
+
+// pushRemoteCliBundle checks the bundled CLI files exist locally before
+// tarring — the unit tests push from a fake source.dir, so existence always
+// answers true (the tar module is mocked anyway).
+vi.mock("fs", () => ({
+  existsSync: h.fsExists,
+  rmSync: vi.fn(),
+  unlinkSync: vi.fn(),
+  readFileSync: vi.fn(() => ""),
 }));
 
 import {
@@ -18,11 +36,22 @@ import {
   REMOTE_FILE_MAX_BYTES,
   REMOTE_NODE_MIN_MAJOR,
   ensureRemoteCliUpToDate,
-  upgradeRemoteWave,
   ensureRemoteDaemon,
+  ensureRemoteRipgrep,
   killRemoteDaemon,
+  remoteCliShimPath,
 } from "../src/main/remoteCli";
 import { resetRemoteShellCache, shellQuote } from "../src/main/sshHosts";
+
+/** Bundled CLI source as desktopHost would load it (loadBundledCliSource). */
+const SOURCE = {
+  dir: "/app/root/resources/wave-cli",
+  version: "1.0.0",
+  rgRange: "^1.18.0",
+};
+/** No-grep CLI (e.g. a future bundle without @vscode/ripgrep). */
+const SOURCE_NO_RG = { dir: SOURCE.dir, version: SOURCE.version };
+const HOME = "/home/user";
 
 type StubResult = { stdout?: string; error?: Error };
 
@@ -53,6 +82,27 @@ function stubExec(results: StubResult[]) {
   );
 }
 
+/**
+ * Fake `ssh` child for the bundle push (spawn). Its stdin is a PassThrough the
+ * tarred archive is piped into; when the archive ends, ssh "exits" with
+ * `exitCode` so sshStreamCommand settles deterministically.
+ */
+function makePushChild(exitCode = 0) {
+  const child = new EventEmitter() as EventEmitter & {
+    stdin: PassThrough;
+    stderr: EventEmitter;
+    kill: ReturnType<typeof vi.fn>;
+  };
+  child.stdin = new PassThrough();
+  child.stderr = new EventEmitter();
+  child.kill = vi.fn();
+  child.stdin.on("data", () => {});
+  child.stdin.on("end", () =>
+    process.nextTick(() => child.emit("exit", exitCode, null)),
+  );
+  return child;
+}
+
 const CONNECT_FAIL = new Error("ssh: connect to host failed");
 CONNECT_FAIL.name = "Error";
 
@@ -68,99 +118,167 @@ const OSC1337_PREFIX =
 
 beforeEach(() => {
   h.execFile.mockReset();
+  h.spawn.mockReset();
+  h.tarCreate.mockReset();
   resetRemoteShellCache();
+  h.spawn.mockImplementation(() => makePushChild(0));
+  h.tarCreate.mockImplementation(() => Readable.from(["tar-bytes"]));
 });
 
-describe("resolveRemoteWaveBinary", () => {
-  it("returns the wave binary path when node and wave are present", async () => {
+/** The last remote command passed to the (mocked) `ssh` spawn for the push. */
+function pushCommand(): string {
+  const calls = h.spawn.mock.calls;
+  expect(calls.length).toBeGreaterThan(0);
+  return (calls[calls.length - 1][1] as string[]).at(-1) as string;
+}
+
+describe("resolveRemoteWaveBinary (fixed pushed-shim path)", () => {
+  it("returns the fixed shim path + node version when the CLI is installed", async () => {
     stubExec([
       LOGIN_SHELL,
-      { stdout: "v22.3.0" },
-      { stdout: "/usr/local/bin/wave" },
+      { stdout: "v22.3.0" }, // node -v
+      { stdout: "1.0.0\n" }, // <shim> -v
     ]);
-    const info = await resolveRemoteWaveBinary("prod");
+    const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
     expect(info).toEqual({
-      binaryPath: "/usr/local/bin/wave",
+      binaryPath: remoteCliShimPath(HOME),
       nodeVersion: "v22.3.0",
     });
+    expect(h.spawn).not.toHaveBeenCalled();
+    // The version probe runs the pushed shim at the fixed dir, never PATH.
+    const remoteCmd = (h.execFile.mock.calls[2][1] as string[]).at(
+      -1,
+    ) as string;
+    expect(remoteCmd).toContain(".wave/cli/desktop/bin/wave-code.js");
+    expect(remoteCmd).toContain("-v");
   });
 
-  it("strips OSC shell-integration markers from node -v and command -v output", async () => {
-    // `zsh -lic` on matrix prints OSC 1337 markers to stdout before each
-    // command's real output; the strict `^v?\d+` version parse used to hit the
-    // marker line and misreport a healthy v22.23.2 as "版本过低".
+  it("strips OSC shell-integration markers from probe output", async () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: `${OSC1337_PREFIX}v22.23.2\n` },
-      { stdout: `${OSC1337_PREFIX}/usr/local/bin/wave\n` },
+      { stdout: `${OSC1337_PREFIX}1.0.0\n` },
     ]);
-    const info = await resolveRemoteWaveBinary("prod");
-    expect(info).toEqual({
-      binaryPath: "/usr/local/bin/wave",
-      nodeVersion: "v22.23.2",
-    });
+    const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
+    expect(info.nodeVersion).toBe("v22.23.2");
+    expect(info.binaryPath).toBe(remoteCliShimPath(HOME));
   });
 
   it("throws an actionable error when node is missing", async () => {
     stubExec([LOGIN_SHELL, { error: CONNECT_FAIL }]);
-    await expect(resolveRemoteWaveBinary("prod")).rejects.toThrow(
+    await expect(resolveRemoteWaveBinary("prod", SOURCE, HOME)).rejects.toThrow(
       "未检测到 Node.js",
     );
   });
 
   it("throws when node is too old", async () => {
     stubExec([LOGIN_SHELL, { stdout: "v18.0.0" }]);
-    await expect(resolveRemoteWaveBinary("prod")).rejects.toThrow(
+    await expect(resolveRemoteWaveBinary("prod", SOURCE, HOME)).rejects.toThrow(
       `需要 ≥ ${REMOTE_NODE_MIN_MAJOR}`,
     );
   });
 
-  it("auto-installs wave-code when the binary is missing, then re-probes", async () => {
+  it("pushes the bundled CLI (rg self-fetch + tar over ssh) when missing", async () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: "v22.0.0" }, // node -v
-      { error: new Error("command not found") }, // command -v wave
-      { stdout: "" }, // npm install -g (progress goes to stderr)
-      { stdout: "/usr/local/bin/wave" }, // re-probe
+      { error: new Error("no such file") }, // <shim> -v → missing/corrupt
+      { stdout: "" }, // rg ready probe — already in place
     ]);
-    const info = await resolveRemoteWaveBinary("prod");
-    expect(info).toEqual({
-      binaryPath: "/usr/local/bin/wave",
-      nodeVersion: "v22.0.0",
+    const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
+    expect(info.binaryPath).toBe(remoteCliShimPath(HOME));
+    expect(h.spawn).toHaveBeenCalledTimes(1);
+    expect(h.tarCreate).toHaveBeenCalledWith(
+      { cwd: SOURCE.dir, gzip: false, portable: true },
+      ["bin", "dist", "package.json"],
+    );
+  });
+
+  it("throws without installing when installIfMissing is false", async () => {
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: "v22.0.0" },
+      { error: new Error("no such file") },
+    ]);
+    await expect(
+      resolveRemoteWaveBinary("prod", SOURCE, HOME, false),
+    ).rejects.toThrow("远端未安装 wave CLI");
+    expect(h.spawn).not.toHaveBeenCalled();
+  });
+});
+
+describe("ensureRemoteCliUpToDate", () => {
+  it("keeps the pushed CLI when the remote version meets the bundle", async () => {
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: "v22.0.0" },
+      { stdout: "1.0.0\n" }, // <shim> -v == bundle → up to date
+    ]);
+    const result = await ensureRemoteCliUpToDate("prod", SOURCE, HOME);
+    expect(result).toEqual({
+      binaryPath: remoteCliShimPath(HOME),
+      upgraded: false,
     });
+    expect(h.spawn).not.toHaveBeenCalled();
   });
 
-  it("throws with the install hint when auto-install fails", async () => {
+  it("GUI upgrade with an unchanged CLI version pushes nothing (scenario 7)", async () => {
+    stubExec([LOGIN_SHELL, { stdout: "v22.0.0" }, { stdout: "1.0.0\n" }]);
+    const result = await ensureRemoteCliUpToDate("prod", SOURCE, HOME);
+    expect(result.upgraded).toBe(false);
+    expect(h.spawn).not.toHaveBeenCalled();
+  });
+
+  it("pushes via an atomic .new swap when the remote version is older", async () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: "v22.0.0" },
-      { error: new Error("command not found") },
-      { error: new Error("npm ERR! network") },
+      { stdout: "0.9.0\n" }, // stale → sync
+      { stdout: "" }, // rg ready probe
     ]);
-    await expect(resolveRemoteWaveBinary("prod")).rejects.toThrow(
-      "自动安装失败",
+    const result = await ensureRemoteCliUpToDate("prod", SOURCE, HOME);
+    expect(result).toEqual({
+      binaryPath: remoteCliShimPath(HOME),
+      upgraded: true,
+    });
+    const cmd = pushCommand();
+    expect(cmd).toContain(
+      `tar -xf - -C ${shellQuote("/home/user/.wave/cli/desktop.new")}`,
+    );
+    // Windows-built bundles carry no exec bit — the receive script restores it
+    // on the shim so the remote daemon/probe can run it via shebang.
+    expect(cmd).toContain(
+      `chmod +x ${shellQuote("/home/user/.wave/cli/desktop.new/bin/wave-code.js")}`,
+    );
+    expect(cmd).toContain(
+      `mv ${shellQuote("/home/user/.wave/cli/desktop")} ${shellQuote("/home/user/.wave/cli/desktop.old")}`,
+    );
+    expect(cmd).toContain(
+      `rm -rf ${shellQuote("/home/user/.wave/cli/desktop.old")}`,
     );
   });
 
-  it("throws when installIfMissing is false and wave is absent", async () => {
+  it("treats a failing `wave -v` as needing a push (corrupt binary)", async () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: "v22.0.0" },
-      { error: new Error("command not found") },
+      { error: new Error("segfault") },
+      { stdout: "" }, // rg ready probe
     ]);
-    await expect(resolveRemoteWaveBinary("prod", false)).rejects.toThrow(
-      "未安装 wave-code CLI",
-    );
+    const result = await ensureRemoteCliUpToDate("prod", SOURCE, HOME);
+    expect(result.upgraded).toBe(true);
+    expect(h.spawn).toHaveBeenCalledTimes(1);
   });
 
-  it("uses the npmmirror registry in the install command", async () => {
+  it("has the remote fetch rg itself before the CLI swap when it is missing", async () => {
     const commands: string[] = [];
     const queue: StubResult[] = [
       LOGIN_SHELL,
       { stdout: "v22.0.0" },
-      { error: new Error("not found") },
-      { stdout: "" },
-      { stdout: "/usr/local/bin/wave" },
+      { stdout: "0.9.0\n" },
+      { error: new Error("Cannot find module '@vscode/ripgrep'") }, // rg probe
+      { stdout: "" }, // npm install @vscode/ripgrep (progress to stderr)
+      { stdout: "" }, // rg re-probe → ok
     ];
     h.execFile.mockImplementation(
       (
@@ -175,50 +293,62 @@ describe("resolveRemoteWaveBinary", () => {
         else cb(null, { stdout: next.stdout ?? "" });
       },
     );
-    await resolveRemoteWaveBinary("prod");
-    const install = commands.find((c) =>
-      c.includes("npm install -g wave-code"),
-    );
+    const result = await ensureRemoteCliUpToDate("prod", SOURCE, HOME);
+    expect(result.upgraded).toBe(true);
+    const install = commands.find((c) => c.includes("npm install --prefix"));
+    expect(install).toContain("--prefix");
+    expect(install).toContain("@vscode/ripgrep@");
     expect(install).toContain("--registry=https://registry.npmmirror.com");
+    expect(h.spawn).toHaveBeenCalledTimes(1); // the push still happens
   });
 
-  it("pins the exact version when first-installing with a target version", async () => {
-    const commands: string[] = [];
+  it("aborts without pushing when the remote rg fetch fails (old CLI intact)", async () => {
     const queue: StubResult[] = [
       LOGIN_SHELL,
       { stdout: "v22.0.0" },
-      { error: new Error("not found") },
-      { stdout: "" },
-      { stdout: "/usr/local/bin/wave" },
+      { stdout: "0.9.0\n" },
+      { error: new Error("Cannot find module '@vscode/ripgrep'") }, // rg probe
+      { error: new Error("npm ERR! network") }, // npm install fails
     ];
     h.execFile.mockImplementation(
       (
         _cmd: string,
-        args: string[],
+        _args: string[],
         _opts: unknown,
         cb: (err: Error | null, result: { stdout: string }) => void,
       ) => {
-        commands.push(args[args.length - 1] as string);
         const next = queue.shift() ?? { stdout: "" };
         if (next.error) cb(next.error, { stdout: "" });
         else cb(null, { stdout: next.stdout ?? "" });
       },
     );
-    const info = await resolveRemoteWaveBinary("prod", true, "1.0.0");
-    expect(info.binaryPath).toBe("/usr/local/bin/wave");
-    const install = commands.find((c) =>
-      c.includes("npm install -g wave-code"),
+    await expect(ensureRemoteCliUpToDate("prod", SOURCE, HOME)).rejects.toThrow(
+      "ripgrep（grep 搜索依赖）安装失败",
     );
-    expect(install).toContain("wave-code@1.0.0");
-    expect(install).toContain("--registry=https://registry.npmmirror.com");
+    // The swap never happened → the current CLI/daemon is untouched.
+    expect(h.spawn).not.toHaveBeenCalled();
+  });
+});
+
+describe("ensureRemoteRipgrep", () => {
+  it("skips npm entirely when rg is already resolvable", async () => {
+    stubExec([LOGIN_SHELL, { stdout: "" }]); // rg probe
+    await expect(
+      ensureRemoteRipgrep("prod", SOURCE, HOME),
+    ).resolves.toBeUndefined();
+    const commands = h.execFile.mock.calls.map(
+      (c) => (c[1] as string[]).at(-1) as string,
+    );
+    expect(commands.some((c) => c.includes("npm install"))).toBe(false);
   });
 
-  it("rejects a non-semver target version before any install command runs", async () => {
+  it("runs the remote self-fetch install when rg is missing, then re-probes", async () => {
     const commands: string[] = [];
     const queue: StubResult[] = [
       LOGIN_SHELL,
-      { stdout: "v22.0.0" },
-      { error: new Error("not found") },
+      { error: new Error("module not found") }, // probe → missing
+      { stdout: "" }, // npm install
+      { stdout: "" }, // re-probe → ok
     ];
     h.execFile.mockImplementation(
       (
@@ -234,109 +364,42 @@ describe("resolveRemoteWaveBinary", () => {
       },
     );
     await expect(
-      resolveRemoteWaveBinary("prod", true, "1.0.0; rm -rf /"),
-    ).rejects.toThrow("Invalid version");
-    // The malicious version must never reach the remote shell as an npm command.
-    expect(commands.some((c) => c.includes("npm install -g"))).toBe(false);
+      ensureRemoteRipgrep("prod", SOURCE, HOME),
+    ).resolves.toBeUndefined();
+    const install = commands.find((c) => c.includes("npm install --prefix"));
+    expect(install).toContain("@vscode/ripgrep@");
+    expect(install).toContain("--registry=https://registry.npmmirror.com");
   });
 
-  it("runs every probe under the host login shell so nvm-managed node is visible", async () => {
+  it("surfaces a manual command when the install fails (offline server)", async () => {
     stubExec([
       LOGIN_SHELL,
-      { stdout: "v22.0.0" },
-      { stdout: "/usr/local/bin/wave" },
+      { error: new Error("module not found") }, // probe → missing
+      { error: new Error("npm ERR! network") }, // npm install fails
     ]);
-    await resolveRemoteWaveBinary("prod");
-
-    const remoteCommands = h.execFile.mock.calls.map(
-      (c) => (c[1] as string[]).at(-1) as string,
+    const error = await ensureRemoteRipgrep("prod", SOURCE, HOME).catch(
+      (e: Error) => e,
     );
-    // The login shell is probed once, then each probe is wrapped as `-lic`.
-    expect(remoteCommands[0]).toBe("echo $SHELL");
-    expect(remoteCommands[1]).toBe(`/bin/bash -lic 'node -v'`);
-    expect(remoteCommands[2]).toBe(`/bin/bash -lic 'command -v wave'`);
+    expect(error.message).toContain("ripgrep（grep 搜索依赖）安装失败");
+    expect(error.message).toContain("npm install --prefix");
   });
 
-  it("falls back to /bin/sh when the login shell cannot be probed", async () => {
-    stubExec([
-      { error: CONNECT_FAIL },
-      { stdout: "v22.0.0" },
-      { stdout: "/usr/local/bin/wave" },
-    ]);
-    const info = await resolveRemoteWaveBinary("prod");
-    expect(info.nodeVersion).toBe("v22.0.0");
-    const nodeProbe = h.execFile.mock.calls[1][1] as string[];
-    expect(nodeProbe.at(-1)).toBe(`/bin/sh -lic 'node -v'`);
-  });
-});
-
-describe("ensureRemoteCliUpToDate", () => {
-  it("keeps the binary when the remote version meets the target", async () => {
+  it("reports when the install ran but rg still cannot be loaded", async () => {
     stubExec([
       LOGIN_SHELL,
-      { stdout: "v22.0.0" },
-      { stdout: "/usr/local/bin/wave" },
-      { stdout: "1.0.0\n" },
+      { error: new Error("module not found") }, // probe → missing
+      { stdout: "" }, // npm install (claimed success)
+      { error: new Error("module not found") }, // re-probe → still missing
     ]);
-    const result = await ensureRemoteCliUpToDate("prod", "1.0.0");
-    expect(result).toEqual({
-      binaryPath: "/usr/local/bin/wave",
-      upgraded: false,
-    });
-  });
-
-  it("parses a polluted wave -v line (OSC prefix) so the up-to-date binary is kept", async () => {
-    stubExec([
-      LOGIN_SHELL,
-      { stdout: "v22.0.0" },
-      { stdout: "/usr/local/bin/wave" },
-      { stdout: `${OSC1337_PREFIX}1.0.0\n` },
-    ]);
-    const result = await ensureRemoteCliUpToDate("prod", "1.0.0");
-    expect(result).toEqual({
-      binaryPath: "/usr/local/bin/wave",
-      upgraded: false,
-    });
-  });
-
-  it("upgrades via npm when the remote version is older than the target", async () => {
-    stubExec([
-      LOGIN_SHELL,
-      { stdout: "v22.0.0" },
-      { stdout: "/usr/local/bin/wave" },
-      { stdout: "0.9.0\n" }, // wave -v
-      { stdout: "" }, // npm install -g wave-code@1.0.0
-      { stdout: "v22.0.0" }, // re-resolve after upgrade
-      { stdout: "/usr/local/bin/wave" },
-    ]);
-    const result = await ensureRemoteCliUpToDate("prod", "1.0.0");
-    expect(result.upgraded).toBe(true);
-    expect(result.binaryPath).toBe("/usr/local/bin/wave");
-    const install = h.execFile.mock.calls
-      .map((c) => (c[1] as string[]).at(-1) as string)
-      .find((cmd) => cmd.includes("npm install -g wave-code"));
-    expect(install).toContain("wave-code@1.0.0");
-  });
-
-  it("treats a failing `wave -v` as needing upgrade (corrupt binary)", async () => {
-    stubExec([
-      LOGIN_SHELL,
-      { stdout: "v22.0.0" },
-      { stdout: "/usr/local/bin/wave" },
-      { error: new Error("segfault") }, // wave -v fails → null
-      { stdout: "" }, // npm install
-      { stdout: "v22.0.0" },
-      { stdout: "/usr/local/bin/wave" },
-    ]);
-    const result = await ensureRemoteCliUpToDate("prod", "1.0.0");
-    expect(result.upgraded).toBe(true);
-  });
-
-  it("rejects an invalid target version before running any remote command", async () => {
-    h.execFile.mockClear();
-    await expect(upgradeRemoteWave("prod", "1.0")).rejects.toThrow(
-      "Invalid version: 1.0",
+    await expect(ensureRemoteRipgrep("prod", SOURCE, HOME)).rejects.toThrow(
+      "仍不可用",
     );
+  });
+
+  it("does nothing when the bundled CLI declares no rg dependency", async () => {
+    await expect(
+      ensureRemoteRipgrep("prod", SOURCE_NO_RG, HOME),
+    ).resolves.toBeUndefined();
     expect(h.execFile).not.toHaveBeenCalled();
   });
 });
@@ -353,105 +416,116 @@ describe("killRemoteDaemon", () => {
 });
 
 describe("ensureRemoteDaemon", () => {
-  it("reuses a live daemon when the CLI version is up to date", async () => {
+  it("reuses a live daemon when the CLI version matches (no push, no restart)", async () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: "/home/user" }, // echo $HOME
       { stdout: "v22.0.0" }, // node -v
-      { stdout: "/usr/local/bin/wave" }, // command -v
-      { stdout: "1.0.0\n" }, // wave -v
+      { stdout: "1.0.0\n" }, // <shim> -v == bundle
       { stdout: "" }, // daemon socket probe — alive
     ]);
-    await expect(ensureRemoteDaemon("prod", "1.0.0")).resolves.toBe(
+    await expect(ensureRemoteDaemon("prod", SOURCE)).resolves.toBe(
       "/home/user/.wave/daemon.sock",
     );
-    const start = h.execFile.mock.calls.find((c) =>
-      ((c[1] as string[]).at(-1) as string).includes("nohup"),
-    );
-    expect(start).toBeUndefined();
-  });
-
-  it("strips OSC markers from $HOME so the daemon socket path stays clean", async () => {
-    stubExec([
-      LOGIN_SHELL,
-      { stdout: `${OSC1337_PREFIX}/home/user\n` }, // echo $HOME
-      { stdout: "v22.0.0" }, // node -v
-      { stdout: "/usr/local/bin/wave" }, // command -v
-      { stdout: "1.0.0\n" }, // wave -v
-      { stdout: "" }, // daemon socket probe — alive
-    ]);
-    await expect(ensureRemoteDaemon("prod", "1.0.0")).resolves.toBe(
-      "/home/user/.wave/daemon.sock",
-    );
-  });
-
-  it("launches the daemon when none is running", async () => {
-    stubExec([
-      LOGIN_SHELL,
-      { stdout: "/home/user" },
-      { stdout: "v22.0.0" },
-      { stdout: "/usr/local/bin/wave" },
-      { stdout: "1.0.0\n" },
-      { error: new Error("connect ECONNREFUSED") }, // probe — dead
-      { stdout: "" }, // nohup start
-      { stdout: "" }, // probe poll — alive
-    ]);
-    await expect(ensureRemoteDaemon("prod", "1.0.0")).resolves.toBe(
-      "/home/user/.wave/daemon.sock",
-    );
-  });
-
-  it("upgrades an older CLI and restarts the old daemon so the upgrade takes effect", async () => {
-    stubExec([
-      LOGIN_SHELL,
-      { stdout: "/home/user" },
-      { stdout: "v22.0.0" },
-      { stdout: "/usr/local/bin/wave" },
-      { stdout: "0.9.0\n" }, // wave -v < 1.0.0 → upgrade
-      { stdout: "" }, // npm install -g wave-code@1.0.0
-      { stdout: "v22.0.0" }, // re-resolve
-      { stdout: "/usr/local/bin/wave" },
-      { stdout: "" }, // pkill old daemon
-      { error: new Error("ECONNREFUSED") }, // exit poll — gone
-      { error: new Error("ECONNREFUSED") }, // ensureRemoteDaemon alive check — gone
-      { stdout: "" }, // nohup start new daemon
-      { stdout: "" }, // start poll — alive
-    ]);
-    await expect(ensureRemoteDaemon("prod", "1.0.0")).resolves.toBe(
-      "/home/user/.wave/daemon.sock",
-    );
+    expect(h.spawn).not.toHaveBeenCalled();
     const commands = h.execFile.mock.calls.map(
       (c) => (c[1] as string[]).at(-1) as string,
     );
-    expect(
-      commands.some((cmd) => cmd.includes("npm install -g wave-code@1.0.0")),
-    ).toBe(true);
-    expect(commands.some((cmd) => cmd.includes("pkill -f"))).toBe(true);
-    expect(commands.some((cmd) => cmd.includes("nohup"))).toBe(true);
+    expect(commands.some((c) => c.includes("pkill"))).toBe(false);
+    expect(commands.some((c) => c.includes("nohup"))).toBe(false);
   });
 
-  it("falls back to the existing daemon and notifies when the upgrade fails", async () => {
+  it("pushes a stale CLI and restarts the daemon so the upgrade takes effect", async () => {
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: "/home/user" },
+      { stdout: "v22.0.0" },
+      { stdout: "0.9.0\n" }, // <shim> -v < bundle → push
+      { stdout: "" }, // rg ready probe
+      { stdout: "" }, // pkill old daemon
+      { error: new Error("ECONNREFUSED") }, // exit poll — gone
+      { error: new Error("ECONNREFUSED") }, // alive check — gone
+      { stdout: "" }, // nohup start new daemon
+      { stdout: "" }, // start poll — alive
+    ]);
+    await expect(ensureRemoteDaemon("prod", SOURCE)).resolves.toBe(
+      "/home/user/.wave/daemon.sock",
+    );
+    expect(h.spawn).toHaveBeenCalledTimes(1); // the CLI push
+    const commands = h.execFile.mock.calls.map(
+      (c) => (c[1] as string[]).at(-1) as string,
+    );
+    expect(commands.some((c) => c.includes("pkill"))).toBe(true);
+    expect(commands.some((c) => c.includes("nohup"))).toBe(true);
+  });
+
+  it("pushes onto a fresh host (no CLI) and launches the daemon", async () => {
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: "/home/user" },
+      { stdout: "v22.0.0" },
+      { error: new Error("no such file") }, // <shim> -v → missing
+      { stdout: "" }, // rg ready probe
+      { stdout: "" }, // pkill (nothing to kill)
+      { error: new Error("ECONNREFUSED") }, // exit poll — gone
+      { error: new Error("ECONNREFUSED") }, // alive check — gone
+      { stdout: "" }, // nohup start
+      { stdout: "" }, // start poll — alive
+    ]);
+    await expect(ensureRemoteDaemon("prod", SOURCE)).resolves.toBe(
+      "/home/user/.wave/daemon.sock",
+    );
+    expect(h.spawn).toHaveBeenCalledTimes(1);
+    const cmd = pushCommand();
+    expect(cmd).toContain("/home/user/.wave/cli/desktop.new");
+  });
+
+  it("falls back to the running old daemon and notifies when the push fails", async () => {
+    h.spawn.mockImplementation(() => makePushChild(1)); // ssh push fails
     const notice = vi.fn();
     stubExec([
       LOGIN_SHELL,
       { stdout: "/home/user" },
       { stdout: "v22.0.0" },
-      { stdout: "/usr/local/bin/wave" },
-      { stdout: "0.9.0\n" },
-      { error: new Error("npm ERR! network") }, // upgrade fails
+      { stdout: "0.9.0\n" }, // stale → push attempt fails
+      { stdout: "" }, // rg ready probe (passes; the push itself fails)
       { stdout: "" }, // old daemon still alive → reuse
     ]);
-    await expect(ensureRemoteDaemon("prod", "1.0.0", notice)).resolves.toBe(
+    await expect(ensureRemoteDaemon("prod", SOURCE, notice)).resolves.toBe(
       "/home/user/.wave/daemon.sock",
     );
-    expect(notice).toHaveBeenCalledWith(expect.stringContaining("升级失败"));
+    expect(h.spawn).toHaveBeenCalledTimes(1);
+    expect(notice).toHaveBeenCalledWith(expect.stringContaining("同步失败"));
     expect(notice).toHaveBeenCalledWith(
-      expect.stringContaining("npm install -g wave-code@1.0.0"),
+      expect.stringContaining("重新连接主机自动重试"),
     );
     const pkill = h.execFile.mock.calls.find((c) =>
       ((c[1] as string[]).at(-1) as string).includes("pkill"),
     );
-    expect(pkill).toBeUndefined();
+    expect(pkill).toBeUndefined(); // failed push must not kill the old daemon
+  });
+
+  it("surfaces an actionable error when there is no CLI and no rg on a dead host", async () => {
+    h.spawn.mockImplementation(() => makePushChild(0));
+    const notice = vi.fn();
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: "/home/user" },
+      { stdout: "v22.0.0" },
+      { error: new Error("no such file") }, // <shim> -v → missing
+      { error: new Error("Cannot find module '@vscode/ripgrep'") }, // rg probe
+      { error: new Error("npm ERR! network") }, // remote self-fetch fails
+      { error: new Error("ECONNREFUSED") }, // alive check → dead
+      { stdout: "v22.0.0" }, // fallback resolve: node -v
+      { error: new Error("no such file") }, // fallback resolve: still no CLI
+    ]);
+    await expect(ensureRemoteDaemon("prod", SOURCE, notice)).rejects.toThrow(
+      "远端未安装 wave CLI",
+    );
+    expect(notice).toHaveBeenCalledWith(
+      expect.stringContaining("npm install --prefix"),
+    );
+    expect(h.spawn).not.toHaveBeenCalled(); // never pushed — rg blocked first
   });
 });
 

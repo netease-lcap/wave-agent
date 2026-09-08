@@ -1,13 +1,24 @@
 /**
  * Remote wave CLI resolution (spec: docs/specs/desktop/desktop-sessions.md 「SSH
- * 远程主机」 scenarios 7/8). One-shot ssh probes run node presence/version and
- * `command -v wave`; a missing CLI triggers a best-effort auto-install via the
- * npmmirror registry, then the flow continues. Every failure surfaces an
- * actionable message — nothing retries indefinitely.
+ * 远程主机」 scenarios 7/8, desktop-shell.md 「CLI 版本保障」). The CLI that runs on
+ * a remote host is THIS app's bundled CLI (resources/wave-cli), pushed over the
+ * existing ssh channel — it no longer depends on the remote npm registry or the
+ * npm `wave-code` package (whose latest may lag behind the GUI's built-in CLI,
+ * the 404 root cause this replaces). One-shot ssh probes run node presence and
+ * the pushed shim's `-v`; when the remote copy is missing/corrupt/older than
+ * the bundled CLI's own package.json version, the bundle (bin/wave-code.js +
+ * dist/bundle/wave.mjs + package.json) is tarred locally and streamed over ssh
+ * stdin into a sibling `.new` dir, then atomically swapped into the fixed
+ * remote dir `~/.wave/cli/desktop` (mirrors the local runtime copy, so the shim
+ * resolves ../package.json and wave.mjs finds the shared @vscode/ripgrep under
+ * `~/.wave/cli/node_modules`). ripgrep is fetched by the REMOTE side (npm
+ * install --prefix) — the platform binary must match the remote host. Every
+ * failure surfaces an actionable message — nothing retries indefinitely.
  *
- * All probes run through the user's login shell (`withRemoteLoginShell`):
+ * All probes/npm run through the user's login shell (`withRemoteLoginShell`):
  * nvm-style version managers expose node/npm only in interactive rc files,
- * which a plain `ssh host 'cmd'` never loads.
+ * which a plain `ssh host 'cmd'` never loads. Pure file-transfer commands (tar
+ * push) need no login shell and skip it.
  */
 
 import { execFile, spawn, type ChildProcess } from "child_process";
@@ -16,6 +27,8 @@ import * as fs from "fs";
 import * as net from "net";
 import * as os from "os";
 import * as path from "path";
+import type { Readable } from "stream";
+import { c as createTarStream } from "tar";
 import {
   buildSshSpawnArgs,
   buildSshTunnelArgs,
@@ -24,6 +37,7 @@ import {
 } from "./sshHosts";
 import { SocketClient } from "./stdio/socketClient";
 import { parseVersion, compareVersions } from "./version";
+import type { BundledCliSource } from "./stdio/binaryResolver";
 
 const execFileAsync = promisify(execFile);
 
@@ -32,26 +46,28 @@ export const REMOTE_INSTALL_REGISTRY = "https://registry.npmmirror.com";
 const PROBE_TIMEOUT_MS = 15_000;
 const INSTALL_TIMEOUT_MS = 5 * 60_000;
 
-/**
- * Strict semver — versions are interpolated into the remote shell command
- * (login shell via ssh), so a non-semver version must never reach it.
- */
-const SEMVER_RE = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+/** Files of the bundled CLI pushed to remote hosts (mirror of the local copy). */
+const CLI_BUNDLE_FILES = ["bin", "dist", "package.json"] as const;
 
 /**
- * Build the remote `npm install -g wave-code[@<version>]` command. Pins the
- * exact version when one is known (same semantics as the local resolvers),
- * otherwise installs the bare package (resolves to @latest). Throws
- * "Invalid version" on non-semver input — the same no-shell-injection
- * guarantee upgradeRemoteWave holds.
+ * Remote runtime layout mirrors the local one (~/.wave/cli/<end>): the CLI
+ * files live under `~/.wave/cli/desktop` and the ripgrep packages under the
+ * shared `~/.wave/cli/node_modules/@vscode` (sibling of the per-end dir, so a
+ * CLI swap never wipes an already-fetched rg — same reasoning as the local
+ * resolver). The shim reads ../package.json for `-v` and wave.mjs finds
+ * @vscode/ripgrep by walking up to `~/.wave/cli/node_modules`.
  */
-function remoteInstallCommand(targetVersion?: string): string {
-  if (targetVersion != null && !SEMVER_RE.test(targetVersion)) {
-    throw new Error(`Invalid version: ${targetVersion}`);
-  }
-  const spec =
-    targetVersion == null ? "wave-code" : `wave-code@${targetVersion}`;
-  return `npm install -g ${spec} --registry=${REMOTE_INSTALL_REGISTRY}`;
+export function remoteCliRootDir(homeDir: string): string {
+  return path.posix.join(homeDir, ".wave", "cli");
+}
+
+export function remoteCliDir(homeDir: string): string {
+  return path.posix.join(remoteCliRootDir(homeDir), "desktop");
+}
+
+/** Remote entry point: the version-probe shim (executable via its shebang). */
+export function remoteCliShimPath(homeDir: string): string {
+  return path.posix.join(remoteCliDir(homeDir), "bin", "wave-code.js");
 }
 
 export interface RemoteCliInfo {
@@ -112,79 +128,229 @@ async function remoteCommand(host: string, command: string): Promise<string[]> {
   return buildSshSpawnArgs(host, await withRemoteLoginShell(host, command));
 }
 
-/**
- * Resolve the remote `wave` binary for `host`. Steps:
- * 1. `node -v` — must be present and ≥ REMOTE_NODE_MIN_MAJOR.
- * 2. `command -v wave` — return the path when found.
- * 3. (installIfMissing) `npm install -g wave-code[@<version>] --registry=…`, then re-probe.
- * Throws with an actionable, user-facing error on any failure.
- */
-export async function resolveRemoteWaveBinary(
-  host: string,
-  installIfMissing = true,
-  targetVersion?: string,
-): Promise<RemoteCliInfo> {
-  let nodeVersion = "";
+/** Probe the remote `node -v`; throws an actionable error when it fails. */
+async function probeRemoteNode(host: string): Promise<string> {
+  let stdout: string;
   try {
-    const { stdout } = await execFileAsync(
+    ({ stdout } = await execFileAsync(
       "ssh",
       await remoteCommand(host, "node -v"),
-      {
-        timeout: PROBE_TIMEOUT_MS,
-      },
-    );
-    nodeVersion = stripAnsiEscapes(stdout).trim();
+      { timeout: PROBE_TIMEOUT_MS },
+    ));
   } catch {
     throw new Error(
       `主机 ${host} 上未检测到 Node.js。请先在远端安装 Node.js ≥ ${REMOTE_NODE_MIN_MAJOR}（https://nodejs.org）后重试`,
     );
   }
+  const nodeVersion = stripAnsiEscapes(stdout).trim();
   const major = Number(/^v?(\d+)/.exec(nodeVersion)?.[1]);
   if (!major || major < REMOTE_NODE_MIN_MAJOR) {
     throw new Error(
       `远端 Node.js 版本过低（${nodeVersion}，需要 ≥ ${REMOTE_NODE_MIN_MAJOR}）。请在远端升级 Node.js 后重试`,
     );
   }
+  return nodeVersion;
+}
 
-  const probeWave = async (): Promise<string> => {
-    try {
-      const { stdout } = await execFileAsync(
-        "ssh",
-        await remoteCommand(host, "command -v wave"),
-        {
-          timeout: PROBE_TIMEOUT_MS,
-        },
-      );
-      return stripAnsiEscapes(stdout).trim();
-    } catch {
-      return "";
-    }
-  };
-
-  const found = await probeWave();
-  if (found) return { binaryPath: found, nodeVersion };
-
-  const installCommand = remoteInstallCommand(targetVersion);
-  if (installIfMissing) {
-    try {
-      await execFileAsync("ssh", await remoteCommand(host, installCommand), {
-        timeout: INSTALL_TIMEOUT_MS,
-        // npm writes progress to stderr — swallow it so failures surface only
-        // the summarized error below.
-        maxBuffer: 1024 * 1024,
-      });
-    } catch (error) {
-      throw new Error(
-        `远端 wave-code 自动安装失败：${describeError(error)}。请手动执行 ssh ${host} "${installCommand}"`,
-      );
-    }
-    const afterInstall = await probeWave();
-    if (afterInstall) return { binaryPath: afterInstall, nodeVersion };
+/**
+ * True when `@vscode/ripgrep` resolves from `~/.wave/cli` on the remote host.
+ * The wrapper throws at module load unless the platform optional dependency is
+ * installed, so a bare dynamic import is the presence probe (executed from the
+ * cli root so Node resolves the bare specifier there, like wave.mjs does by
+ * walking up from `~/.wave/cli/desktop/dist/bundle`).
+ */
+async function remoteRipgrepReady(
+  host: string,
+  cliRoot: string,
+): Promise<boolean> {
+  const probe =
+    `cd ${shellQuote(cliRoot)} && node -e ` +
+    shellQuote(
+      `import('@vscode/ripgrep').then((m) => { if (!m || !m.rgPath) process.exit(1); }).catch(() => process.exit(1));`,
+    );
+  try {
+    await execFileAsync("ssh", await remoteCommand(host, probe), {
+      timeout: PROBE_TIMEOUT_MS,
+    });
+    return true;
+  } catch {
+    return false;
   }
+}
 
-  throw new Error(
-    `远端未安装 wave-code CLI。请手动执行 ssh ${host} "${installCommand}" 后重试`,
-  );
+/**
+ * Ensure the remote host can load @vscode/ripgrep — a top-level import of
+ * wave.mjs, so the CLI cannot start without it (spec: desktop-shell.md 「CLI 版本
+ * 保障」 scenario 8). rg is fetched by the REMOTE side (`npm install --prefix
+ * ~/.wave/cli` under the remote login shell): npm picks the wrapper version and
+ * the platform binary via the wrapper's optionalDependencies, landing both
+ * under `~/.wave/cli/node_modules/@vscode`. Runs BEFORE a CLI swap so a failed
+ * fetch leaves the current CLI/daemon intact. Skipped entirely when the bundled
+ * CLI declares no @vscode/ripgrep dependency. Throws an actionable error (with
+ * a manual command) when the registry is unreachable or npm is absent — a later
+ * reconnect retries automatically.
+ */
+export async function ensureRemoteRipgrep(
+  host: string,
+  source: BundledCliSource,
+  homeDir: string,
+): Promise<void> {
+  if (!source.rgRange) return; // the CLI bundles no grep dependency
+  const cliRoot = remoteCliRootDir(homeDir);
+  if (await remoteRipgrepReady(host, cliRoot)) return; // already in place
+
+  const installCommand =
+    `npm install --prefix ${shellQuote(cliRoot)} --no-save --no-package-lock ` +
+    `--registry=${REMOTE_INSTALL_REGISTRY} @vscode/ripgrep@${shellQuote(source.rgRange)}`;
+  try {
+    await execFileAsync("ssh", await remoteCommand(host, installCommand), {
+      timeout: INSTALL_TIMEOUT_MS,
+      // npm writes progress to stderr — swallow it so failures surface only
+      // the summarized error below.
+      maxBuffer: 1024 * 1024,
+    });
+  } catch (error) {
+    throw new Error(
+      `远端 ripgrep（grep 搜索依赖）安装失败：${describeError(error)}。请手动执行 ssh ${host} "${installCommand}"（server 无出网时需先恢复网络/npm）`,
+    );
+  }
+  if (!(await remoteRipgrepReady(host, cliRoot))) {
+    throw new Error(
+      `远端 ripgrep 安装后仍不可用。请手动执行 ssh ${host} "${installCommand}"`,
+    );
+  }
+}
+
+/**
+ * Stream a local stream into a remote command's stdin over the existing ssh
+ * channel and await the remote exit code. Used to ship the tarred CLI bundle.
+ * The push runs without a login shell (pure file transfer — no node/npm PATH
+ * needed); stderr is captured for the error summary.
+ */
+function sshStreamCommand(
+  host: string,
+  args: string[],
+  input: Readable,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let child: ChildProcess;
+    try {
+      child = spawn("ssh", args, { stdio: ["pipe", "ignore", "pipe"] });
+    } catch (error) {
+      reject(new Error(`无法启动 ssh：${describeError(error)}`));
+      return;
+    }
+    let stderr = "";
+    let settled = false;
+    const fail = (message: string) => {
+      if (settled) return;
+      settled = true;
+      input.destroy();
+      try {
+        child.kill();
+      } catch {
+        // already gone
+      }
+      reject(new Error(message));
+    };
+    child.stderr?.on("data", (data: Buffer) => {
+      stderr = (stderr + data.toString()).slice(-2048);
+    });
+    child.once("error", (error) => {
+      fail(`ssh 传输失败：${describeError(error)}`);
+    });
+    child.once("exit", (code, signal) => {
+      if (settled) return;
+      if (code === 0) {
+        settled = true;
+        resolve();
+        return;
+      }
+      fail(
+        `ssh 推送失败（code: ${code}, signal: ${signal ?? ""}${stderr.trim() ? `: ${stderr.trim()}` : ""}）`,
+      );
+    });
+    // EPIPE when ssh dies before consuming all input — the exit handler above
+    // already settles the promise.
+    child.stdin?.on("error", () => {});
+    input.on("error", (error) =>
+      fail(`推送内容打包失败：${describeError(error)}`),
+    );
+    input.pipe(child.stdin!);
+  });
+}
+
+/**
+ * Push the bundled CLI over the existing ssh channel and atomically replace
+ * the remote `~/.wave/cli/desktop`: extract the tar stream into a sibling
+ * `.new` dir, rename the live dir aside (`.old`), rename `.new` into place,
+ * then delete `.old`. A failed push never touches the live dir, so a running
+ * old daemon is unaffected (spec scenarios 5/6). @throws on any failure.
+ */
+async function pushRemoteCliBundle(
+  host: string,
+  source: BundledCliSource,
+  homeDir: string,
+): Promise<void> {
+  for (const rel of CLI_BUNDLE_FILES) {
+    if (!fs.existsSync(path.join(source.dir, rel))) {
+      throw new Error(
+        `内置 CLI 文件缺失（${path.join(source.dir, rel)}）。请重新安装应用。`,
+      );
+    }
+  }
+  const cliRoot = remoteCliRootDir(homeDir);
+  const cliDir = remoteCliDir(homeDir);
+  const stagingDir = `${cliDir}.new`;
+  const backupDir = `${cliDir}.old`;
+  // `mv dir dir.old 2>/dev/null || true` tolerates the first install (nothing
+  // to move aside); the last `rm -rf` cleanup failure must not mask a
+  // successful swap, hence the trailing separators. The explicit chmod covers
+  // bundles built on Windows, whose archives carry no executable bit — the
+  // daemon and version probe execute the shim directly via its shebang.
+  const receive =
+    `rm -rf ${shellQuote(stagingDir)}; ` +
+    `mkdir -p ${shellQuote(cliRoot)} ${shellQuote(stagingDir)}; ` +
+    `tar -xf - -C ${shellQuote(stagingDir)} && chmod +x ${shellQuote(path.posix.join(stagingDir, "bin", "wave-code.js"))} || exit 3; ` +
+    `mv ${shellQuote(cliDir)} ${shellQuote(backupDir)} 2>/dev/null || true; ` +
+    `mv ${shellQuote(stagingDir)} ${shellQuote(cliDir)} || exit 4; ` +
+    `rm -rf ${shellQuote(backupDir)}`;
+  // tar's own Pack stream type is a different base than node:stream's
+  // Readable — structurally it is one (pipe/on/destroy), so narrow it here.
+  const archive = createTarStream(
+    { cwd: source.dir, gzip: false, portable: true },
+    [...CLI_BUNDLE_FILES],
+  ) as unknown as Readable;
+  await sshStreamCommand(host, buildSshSpawnArgs(host, receive), archive);
+}
+
+/**
+ * Resolve a runnable wave CLI on the remote host. The binary path is now the
+ * fixed runtime shim `~/.wave/cli/desktop/bin/wave-code.js` (never a PATH
+ * global install). Ensures Node ≥ 22, then returns the existing CLI when
+ * present. With `installIfMissing` (the default), a missing CLI triggers the
+ * full install (rg self-fetch + bundle push); with it false the missing case
+ * throws an actionable error — the daemon fallback passes false so a failed
+ * sync never double-installs within one connection.
+ */
+export async function resolveRemoteWaveBinary(
+  host: string,
+  source: BundledCliSource,
+  homeDir: string,
+  installIfMissing = true,
+): Promise<RemoteCliInfo> {
+  const nodeVersion = await probeRemoteNode(host);
+  const binaryPath = remoteCliShimPath(homeDir);
+  const current = await getRemoteCliVersion(host, binaryPath);
+  if (current) return { binaryPath, nodeVersion };
+  if (!installIfMissing) {
+    throw new Error(
+      `远端未安装 wave CLI（${binaryPath}）。重新连接主机会自动重试推送`,
+    );
+  }
+  await ensureRemoteRipgrep(host, source, homeDir);
+  await pushRemoteCliBundle(host, source, homeDir);
+  return { binaryPath, nodeVersion };
 }
 
 /**
@@ -213,67 +379,41 @@ async function getRemoteCliVersion(
   }
 }
 
-/**
- * Upgrade the remote wave CLI to a specific version via npm global install
- * (spec: desktop-shell.md 「CLI 版本保障」 scenario 3). The version is validated
- * against a strict semver pattern before it is interpolated into the remote
- * shell command — the same no-shell-injection guarantee the local
- * upgradeWaveBinary holds. Returns the freshly resolved binary path.
- */
-export async function upgradeRemoteWave(
-  host: string,
-  targetVersion: string,
-): Promise<string> {
-  const installCommand = remoteInstallCommand(targetVersion);
-  try {
-    await execFileAsync("ssh", await remoteCommand(host, installCommand), {
-      timeout: INSTALL_TIMEOUT_MS,
-      // npm writes progress to stderr — swallow it so failures surface only
-      // the summarized error below.
-      maxBuffer: 1024 * 1024,
-    });
-  } catch (error) {
-    throw new Error(
-      `远端 wave-code 升级失败：${describeError(error)}。请手动执行 ssh ${host} "${installCommand}"`,
-    );
-  }
-  return (await resolveRemoteWaveBinary(host)).binaryPath;
-}
-
 export interface RemoteCliUpToDateResult {
   binaryPath: string;
-  /** True when the CLI was upgraded by this call. */
+  /** True when the CLI was (re)installed by this call. */
   upgraded: boolean;
 }
 
 /**
- * Ensure the remote wave CLI version is >= targetVersion (spec: desktop-shell.md
- * 「CLI 版本保障」 scenarios 3/4). Mirrors local ensureCliUpToDate: resolve →
- * `wave -v` → compare → upgrade when the version is null (corrupt) or older.
- * The caller decides what to do about the still-running old daemon.
+ * Ensure the remote CLI at ~/.wave/cli/desktop is usable and not older than
+ * the bundled CLI's own version (spec: desktop-shell.md 「CLI 版本保障」 scenarios
+ * 3/6/7). The shim's `wave -v` reads ../package.json; a null result (missing /
+ * corrupt) or a version older than `source.version` triggers a sync — rg
+ * first (a failed fetch must leave the current install intact), then the
+ * atomic bundle push. GUI upgrades that ship an unchanged CLI version compare
+ * equal and push nothing (scenario 7). The caller decides what to do about the
+ * still-running old daemon.
  */
 export async function ensureRemoteCliUpToDate(
   host: string,
-  targetVersion: string,
+  source: BundledCliSource,
+  homeDir: string,
 ): Promise<RemoteCliUpToDateResult> {
-  const { binaryPath } = await resolveRemoteWaveBinary(
-    host,
-    true,
-    targetVersion,
-  );
+  const binaryPath = remoteCliShimPath(homeDir);
+  await probeRemoteNode(host);
   const current = await getRemoteCliVersion(host, binaryPath);
   if (current !== null) {
     const cur = parseVersion(current);
-    const target = parseVersion(targetVersion);
+    const target = parseVersion(source.version);
     if (cur && target && compareVersions(cur, target) >= 0) {
       return { binaryPath, upgraded: false };
     }
   }
-  // current is null (unreadable) or older than target → upgrade.
-  return {
-    binaryPath: await upgradeRemoteWave(host, targetVersion),
-    upgraded: true,
-  };
+  // current is null (corrupt/missing) or older than target → sync.
+  await ensureRemoteRipgrep(host, source, homeDir);
+  await pushRemoteCliBundle(host, source, homeDir);
+  return { binaryPath, upgraded: true };
 }
 
 /**
@@ -599,19 +739,23 @@ export async function waitForRemoteDaemonExit(
 }
 
 /**
- * Ensure a wave daemon runs on `host` with a compatible CLI version:
- * 1. ensureRemoteCliUpToDate — upgrade the remote wave CLI to targetVersion
- *    when it is older. Upgrade failures surface via onNotice and fall back to
- *    the existing binary (mirroring the local CLI's fallback semantics).
- * 2. After a successful upgrade, the still-running old daemon executes
- *    pre-upgrade code — it MUST be restarted or the upgrade never takes effect.
- *    Kill it and wait for its socket to release before relaunching.
- * 3. Reuse a live daemon; otherwise launch one detached and wait for its
- *    socket. Returns the remote daemon socket path to forward.
+ * Ensure a wave daemon runs on `host` backed by THIS app's bundled CLI (spec:
+ * desktop-shell.md 「CLI 版本保障」):
+ * 1. ensureRemoteCliUpToDate — push the bundled CLI over ssh when the remote
+ *    copy (~/.wave/cli/desktop) is missing, corrupt, or older than the bundled
+ *    CLI's own package.json version (decoupled from the GUI version). Sync
+ *    failures surface via onNotice and fall back to the existing install; the
+ *    next reconnect retries.
+ * 2. After a successful sync, the still-running old daemon executes pre-sync
+ *    code — it MUST be restarted or the sync never takes effect. Kill it and
+ *    wait for its socket to release before relaunching.
+ * 3. Reuse a live daemon; otherwise make sure ripgrep is fetchable (remote
+ *    self-fetch; needed to boot any wave CLI), launch one detached and wait
+ *    for its socket. Returns the remote daemon socket path to forward.
  */
 export async function ensureRemoteDaemon(
   host: string,
-  targetVersion: string,
+  source: BundledCliSource,
   onNotice?: (message: string) => void,
 ): Promise<string> {
   const homeDir = await getRemoteHomeDir(host);
@@ -622,16 +766,16 @@ export async function ensureRemoteDaemon(
   try {
     ({ binaryPath, upgraded } = await ensureRemoteCliUpToDate(
       host,
-      targetVersion,
+      source,
+      homeDir,
     ));
   } catch (error) {
     console.warn(
-      `[remoteCli] ${host} wave CLI 升级失败，继续使用现有版本:`,
+      `[remoteCli] ${host} wave CLI 同步失败，继续使用现有安装:`,
       error,
     );
     onNotice?.(
-      `远程 wave-code CLI 升级失败：${error instanceof Error ? error.message : String(error)}。` +
-        `可通过 ssh ${host} "npm install -g wave-code@${targetVersion}" 手动升级`,
+      `远程 wave CLI 同步失败：${error instanceof Error ? error.message : String(error)}。可稍后重新连接主机自动重试`,
     );
   }
 
@@ -641,8 +785,11 @@ export async function ensureRemoteDaemon(
   }
 
   if (await remoteDaemonAlive(host, socketPath)) return socketPath;
-  binaryPath ??= (await resolveRemoteWaveBinary(host, true, targetVersion))
+  binaryPath ??= (await resolveRemoteWaveBinary(host, source, homeDir, false))
     .binaryPath;
+  // A current-version CLI that was never restarted still needs rg to boot
+  // (the up-to-date path above skips the rg ensure).
+  if (!upgraded) await ensureRemoteRipgrep(host, source, homeDir);
   await startRemoteDaemon(host, binaryPath, socketPath);
   await waitForRemoteDaemon(host, socketPath);
   return socketPath;
