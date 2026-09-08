@@ -412,6 +412,10 @@ export interface ThemeState {
   source?: ThemeSource;
 }
 
+/** Desktop update channel (设置页「全局设置」「接收 Beta 版更新」开关，仅
+ *  desktop 有 UI)。stable = codechat 正式下载 feed，beta = desktop-beta feed。 */
+export type UpdateChannel = "stable" | "beta";
+
 /** Action a toast's button triggers when clicked (host-side semantics).
  *  (更新下载/重启已由账户卡片 S0–S6 按钮状态机接管，toast 不再承载
  *  quit-and-install 动作。) */
@@ -740,6 +744,8 @@ export interface ChatState {
   selection?: SelectionInfo;
   // Desktop theme state (only set inside the desktop host)
   theme?: ThemeState;
+  // Desktop update channel (only set inside the desktop host)
+  updateChannel?: UpdateChannel;
 }
 
 export interface ConfirmationRequest {
@@ -916,6 +922,7 @@ export type ChatAction =
         backgroundTasks?: BackgroundTaskSummary[];
         workflowRuns?: SerializableWorkflowRun[];
         theme?: ThemeState;
+        updateChannel?: UpdateChannel;
       };
     }
   // Incremental update actions for streaming optimization
