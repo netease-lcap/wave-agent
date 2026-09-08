@@ -414,9 +414,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     // A session displayed in a non-focused pane gets the weak highlight.
     const isVisible =
       !isCurrent && (visibleSessionIds?.includes(session.sessionId) ?? false);
-    // 状态点只在「后台」会话上提示（Figma 13656:5470 会话行规格）：会话已打开
-    // （激活）或正显示在其它 pane 时不重复提醒——对应「已完成打开后绿点消失」。
-    // 优先级：等待确认(琥珀点) > 运行中(loading 环) > 已完成未读(绿点)。
+    // 状态点优先级：等待确认(琥珀点) > 运行中(loading 环) > 已完成未读(绿点)，
+    // Figma 13656:5470 会话行规格（行右端 24px 槽）。
+    // 等待确认/已完成未读只在「后台」会话提示：会话已打开（激活）或正显示在其它
+    // pane 时不重复提醒——对应「已完成打开后绿点消失」。运行中例外：任何正在生成
+    // 的会话都渲染 loading 环，含当前激活会话与正显示在其它 pane 的会话（用户拍板
+    // 「选中的对话也应显示 loading」）。
     const status =
       !isCurrent && !isVisible
         ? waiting
@@ -426,7 +429,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             : session.newCompleted === true
               ? "completed"
               : null
-        : null;
+        : running
+          ? "running"
+          : null;
     return (
       <li
         key={session.sessionId}

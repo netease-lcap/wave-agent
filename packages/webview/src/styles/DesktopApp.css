@@ -383,7 +383,8 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
 }
 
 /* 行右端状态槽（waiting 琥珀点 / running loading 环 / completed 绿点）。
-   仅后台会话渲染；激活/可见会话不渲染此槽（打开后状态点消失）。 */
+   waiting/completed 仅后台会话渲染；running 例外——任何正在生成的会话都渲染
+   含当前激活/分屏可见会话（2026-09-09 决策「选中的对话也应显示 loading」）。 */
 .desktop-session-status-slot {
   position: absolute;
   top: 50%;

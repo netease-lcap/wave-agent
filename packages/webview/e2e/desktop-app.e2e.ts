@@ -21,10 +21,12 @@ const session = (
   firstMessage,
 });
 
-// A session tree entry. Status slots hint only for background sessions
-// (FR-031 + Figma 13656:5470 — the row never repeats the state of the session
-// already shown in the active chat or in another pane): a background
-// generating session gets a loading ring, a tool-permission / plan / question
+// A session tree entry. Status slots (FR-031 + Figma 13656:5470): the waiting
+// dot and new-completed dot hint only for background sessions — the row never
+// repeats a state already shown in the active chat or in another pane; the
+// running loader is the exception and renders on any generating session,
+// including the current one (2026-09-09 decision). A background generating
+// session gets a loading ring, a tool-permission / plan / question
 // confirmation gets an amber waiting dot. Both flags come straight from the
 // tree data (the 5-per-directory cap was removed — a group may hold any number
 // of sessions).
@@ -149,12 +151,13 @@ test.describe("Desktop App Screenshots", () => {
     await expect(webviewPage.getByTestId("welcome-wordmark")).toBeVisible();
 
     // ── 2. Session tree: workdir selected, all groups expanded ────
-    // Status slots render for background sessions only (FR-031 / Figma
-    // 13656:5470): the session restored into the active chat (sess-a1) never
-    // carries its own marker — its state is already visible in the
-    // conversation; sess-a2 awaits a confirmation → amber waiting dot; sess-a3
-    // keeps generating in the background → loading ring. Every directory lists
-    // all of its sessions (no 5-per-directory cap), newest-first.
+    // Status slots (FR-031 / Figma 13656:5470): the session restored into the
+    // active chat (sess-a1) is marked current and keeps generating — per the
+    // 2026-09-09 decision the running ring is NOT gated behind background-only,
+    // so its row carries the loader too; sess-a2 awaits a confirmation → amber
+    // waiting dot; sess-a3 keeps generating in the background → loading ring.
+    // Every directory lists all of its sessions (no 5-per-directory cap),
+    // newest-first.
     await injector.simulateExtensionMessage("desktopWorkdirState", {
       workdir: DIR_A,
       recentWorkdirs: [DIR_A, DIR_B, DIR_C],
@@ -173,15 +176,17 @@ test.describe("Desktop App Screenshots", () => {
       webviewPage.getByTestId("desktop-session-item-sess-a1"),
     ).toBeVisible();
     // sess-a1 became the active chat session → the row is marked current and
-    // carries no self status slot (opening a session clears its row marker).
+    // (running: true in the tree) shows the loading ring on its own row.
     await expect(
       webviewPage.getByTestId("desktop-session-item-sess-a1"),
     ).toHaveClass(/desktop-session-item--current/);
     await expect(
       webviewPage
         .getByTestId("desktop-session-item-sess-a1")
-        .locator(".desktop-session-status-slot"),
-    ).toHaveCount(0);
+        .locator(
+          ".desktop-session-status-slot--running svg[aria-label='正在运行']",
+        ),
+    ).toBeVisible();
     await expect(
       webviewPage
         .getByTestId("desktop-session-item-sess-a3")
