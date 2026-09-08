@@ -235,35 +235,43 @@ describe("waitForRemoteDaemon", () => {
 });
 
 describe("ensureRemoteDaemon", () => {
+  // Bundled CLI source as desktopHost would load it (loadBundledCliSource).
+  const SOURCE = {
+    dir: "/app/root/resources/wave-cli",
+    version: "1.0.0",
+    rgRange: "^1.18.0",
+  };
+  const SHIM = "/home/alice/.wave/cli/desktop/bin/wave-code.js";
+
   it("returns the socket path without launching when the daemon already runs", async () => {
     stubExec([
       LOGIN_SHELL, // login shell probe
       { stdout: "/home/alice" }, // echo $HOME
       { stdout: "v22.0.0" }, // node -v
-      { stdout: "/usr/local/bin/wave" }, // command -v wave
-      { stdout: "1.0.0\n" }, // wave -v ≥ target → no upgrade
+      { stdout: "1.0.0\n" }, // <shim> -v == bundle → no push
       { stdout: "" }, // probe ok
     ]);
-    const socketPath = await ensureRemoteDaemon("prod", "1.0.0");
+    const socketPath = await ensureRemoteDaemon("prod", SOURCE);
     expect(socketPath).toBe("/home/alice/.wave/daemon.sock");
     const commands = h.execFile.mock.calls.map(
       (c) => (c[1] as string[]).at(-1) as string,
     );
     expect(commands.some((c) => c.includes("nohup"))).toBe(false);
+    expect(h.spawn).not.toHaveBeenCalled();
   });
 
-  it("resolves the binary, launches nohup and waits when the daemon is missing", async () => {
+  it("launches nohup with the pushed shim when the daemon is missing", async () => {
     stubExec([
       LOGIN_SHELL, // login shell probe
       { stdout: "/home/alice" }, // echo $HOME
       { stdout: "v22.0.0" }, // node -v
-      { stdout: "/usr/local/bin/wave" }, // command -v wave
-      { stdout: "1.0.0\n" }, // wave -v ≥ target → no upgrade
+      { stdout: "1.0.0\n" }, // <shim> -v == bundle → no push
       { error: SOCKET_MISSING }, // probe → not alive
+      { stdout: "" }, // rg ready probe (needed to boot the CLI)
       { stdout: "" }, // nohup launch
       { stdout: "" }, // probe → alive
     ]);
-    const socketPath = await ensureRemoteDaemon("prod", "1.0.0");
+    const socketPath = await ensureRemoteDaemon("prod", SOURCE);
     expect(socketPath).toBe("/home/alice/.wave/daemon.sock");
     const commands = h.execFile.mock.calls.map(
       (c) => (c[1] as string[]).at(-1) as string,
@@ -271,7 +279,7 @@ describe("ensureRemoteDaemon", () => {
     const launch = commands.find((c) => c.includes("nohup"));
     expect(launch).toBe(
       `/bin/bash -lic ${shellQuote(
-        `nohup ${shellQuote("/usr/local/bin/wave")} --daemon ${shellQuote("/home/alice/.wave/daemon.sock")} </dev/null >/dev/null 2>&1 &`,
+        `nohup ${shellQuote(SHIM)} --daemon ${shellQuote("/home/alice/.wave/daemon.sock")} </dev/null >/dev/null 2>&1 &`,
       )}`,
     );
   });
@@ -424,7 +432,11 @@ describe("connectRemoteDaemon transport selection", () => {
       const localSocket = localDaemonSocketPath("prod");
       expect(h.spawn).toHaveBeenCalledWith(
         "ssh",
-        buildSshTunnelArgs("prod", localSocket, "/home/alice/.wave/daemon.sock"),
+        buildSshTunnelArgs(
+          "prod",
+          localSocket,
+          "/home/alice/.wave/daemon.sock",
+        ),
         expect.any(Object),
       );
     } finally {

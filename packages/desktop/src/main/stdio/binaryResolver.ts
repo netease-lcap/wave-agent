@@ -44,6 +44,49 @@ export function bundledCliDir(): string {
     : path.join(app.getAppPath(), "resources", "wave-cli");
 }
 
+/**
+ * The CLI bytes this app ships (resources/wave-cli). Remote hosts receive this
+ * same bundle over ssh; the version is the bundled CLI's own wave-code version
+ * (decoupled from the GUI version — the npm `wave-code` package may lag behind,
+ * see desktop-shell.md 「CLI 版本保障」), so it is read from the bundle itself,
+ * never from `app.getVersion()`.
+ */
+export interface BundledCliSource {
+  /** Absolute local dir holding the bundled CLI (bin/dist/package.json). */
+  dir: string;
+  /** wave-code version in `dir/package.json` — the remote upgrade target. */
+  version: string;
+  /** The CLI's declared `@vscode/ripgrep` range; absent when grep is unused. */
+  rgRange?: string;
+}
+
+/** Read the bundled CLI metadata. @throws actionable error on a corrupt app. */
+export function loadBundledCliSource(): BundledCliSource {
+  const dir = bundledCliDir();
+  let raw: string;
+  try {
+    raw = fs.readFileSync(path.join(dir, "package.json"), "utf-8");
+  } catch {
+    throw new Error(
+      `内置 CLI 缺失（${path.join(dir, "package.json")}）。请重新安装应用。`,
+    );
+  }
+  const pkg = JSON.parse(raw) as {
+    version?: string;
+    dependencies?: Record<string, string>;
+  };
+  if (!pkg.version) {
+    throw new Error(
+      `内置 CLI 元数据缺少版本号（${path.join(dir, "package.json")}）。请重新安装应用。`,
+    );
+  }
+  return {
+    dir,
+    version: pkg.version,
+    rgRange: pkg.dependencies?.["@vscode/ripgrep"],
+  };
+}
+
 /** Shared root dir for all CLI runtime data under the user home. */
 function cliRootDir(): string {
   return path.join(os.homedir(), ".wave", "cli");
