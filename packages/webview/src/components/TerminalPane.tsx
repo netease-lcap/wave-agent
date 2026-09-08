@@ -6,6 +6,7 @@ import type { WebLinksAddon } from "@xterm/addon-web-links";
 import { isLocalhostUrl } from "../utils/isLocalhostUrl";
 import { useHostMessage } from "../utils/useHostMessage";
 import { RefreshIcon } from "./HeaderIcons";
+import { PanePlaceholder, PaneShell } from "./PaneShell";
 import "../styles/TerminalPane.css";
 
 declare global {
@@ -290,13 +291,12 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   }, [visible, sessionId, workdir, killPty, createPty]);
 
   return (
-    <aside
-      className="preview-pane terminal-pane"
-      style={{ width }}
-      data-testid="terminal-pane"
-    >
-      <div className="preview-pane-inner">
-        <div className="preview-pane-toolbar">
+    <PaneShell
+      kind="terminal-pane"
+      dataTestId="terminal-pane"
+      width={width}
+      toolbar={
+        <>
           <span className="desktop-panel-toolbar-title">终端</span>
           <button
             className="preview-pane-button"
@@ -306,30 +306,28 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           >
             <RefreshIcon className="desktop-panel-toolbar-icon" />
           </button>
-        </div>
-        <div
-          className="terminal-pane-body"
-          ref={containerRef}
-          data-testid="terminal-body"
-        >
-          {status.kind === "loading" && (
-            <div className="desktop-panel-placeholder">终端加载中…</div>
-          )}
-          {status.kind === "exited" && (
-            <div className="desktop-panel-placeholder terminal-pane-exited">
-              <span>{status.detail}</span>
-              <button
-                className="preview-pane-button"
-                data-testid="terminal-retry"
-                onClick={restart}
-              >
-                重启终端
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </aside>
+        </>
+      }
+      bodyClassName="terminal-pane-body"
+      bodyRef={containerRef}
+      bodyTestId="terminal-body"
+    >
+      {status.kind === "loading" && (
+        <PanePlaceholder>终端加载中…</PanePlaceholder>
+      )}
+      {status.kind === "exited" && (
+        <PanePlaceholder className="terminal-pane-exited">
+          <span>{status.detail}</span>
+          <button
+            className="preview-pane-button"
+            data-testid="terminal-retry"
+            onClick={restart}
+          >
+            重启终端
+          </button>
+        </PanePlaceholder>
+      )}
+    </PaneShell>
   );
 };
 

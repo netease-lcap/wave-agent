@@ -3,6 +3,7 @@ import type { VsCodeApi } from "../types";
 import { useHostMessage } from "../utils/useHostMessage";
 import { renderWordLevelDiff } from "../utils/diffHighlight";
 import { RefreshIcon } from "./HeaderIcons";
+import { PanePlaceholder, PaneShell } from "./PaneShell";
 import "../styles/DiffViewer.css";
 import "../styles/DiffPane.css";
 
@@ -445,13 +446,12 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   };
 
   return (
-    <aside
-      className="preview-pane diff-pane"
-      style={{ width }}
-      data-testid="diff-pane"
-    >
-      <div className="preview-pane-inner">
-        <div className="preview-pane-toolbar">
+    <PaneShell
+      kind="diff-pane"
+      dataTestId="diff-pane"
+      width={width}
+      toolbar={
+        <>
           <span className="desktop-panel-toolbar-title">差异</span>
           <button
             className="preview-pane-button"
@@ -463,21 +463,19 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
               className={`preview-pane-icon${refreshing ? " is-spinning" : ""}`}
             />
           </button>
-        </div>
-        <div className="diff-pane-body">
-          {state.kind === "loading" && (
-            <div className="desktop-panel-placeholder">加载中…</div>
-          )}
-          {state.kind === "not-a-repo" && (
-            <div className="desktop-panel-placeholder">非 git 仓库</div>
-          )}
-          {state.kind === "ok" && state.files.length === 0 && (
-            <div className="desktop-panel-placeholder">无改动</div>
-          )}
-          {state.kind === "ok" && state.files.map(renderFile)}
-        </div>
-      </div>
-    </aside>
+        </>
+      }
+      bodyClassName="diff-pane-body"
+    >
+      {state.kind === "loading" && <PanePlaceholder>加载中…</PanePlaceholder>}
+      {state.kind === "not-a-repo" && (
+        <PanePlaceholder>非 git 仓库</PanePlaceholder>
+      )}
+      {state.kind === "ok" && state.files.length === 0 && (
+        <PanePlaceholder>无改动</PanePlaceholder>
+      )}
+      {state.kind === "ok" && state.files.map(renderFile)}
+    </PaneShell>
   );
 };
 

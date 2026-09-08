@@ -6,6 +6,7 @@ import {
   RefreshIcon,
 } from "./HeaderIcons";
 import { PanelKindIcon } from "./PanelKindIcon";
+import { PaneShell } from "./PaneShell";
 
 /**
  * Desktop-only preview pane: renders localhost dev servers in a sandboxed
@@ -570,14 +571,12 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   const asideRef = useRef<HTMLElement | null>(null);
 
   return (
-    <aside
-      ref={asideRef}
-      className="preview-pane"
-      style={{ width }}
-      data-testid="preview-pane"
-    >
-      <div className="preview-pane-inner">
-        <div className="preview-pane-toolbar">
+    <PaneShell
+      dataTestId="preview-pane"
+      width={width}
+      asideRef={asideRef}
+      toolbar={
+        <>
           {addressEditing || !displayUrl ? (
             <input
               ref={addressInputRef}
@@ -628,50 +627,52 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
           >
             <OpenBrowserIcon className="preview-pane-icon" />
           </button>
-        </div>
-        {pickerUnsupported && (
+        </>
+      }
+      betweenToolbarAndBody={
+        pickerUnsupported && (
           <div
             className="preview-pane-hint"
             data-testid="preview-picker-unsupported"
           >
             该页面暂不支持元素拾取
           </div>
-        )}
-        <div className="preview-pane-body">
-          <webview
-            ref={webviewRef}
-            className="preview-pane-webview"
-            preload={window.wavePickerPreloadPath}
-            webpreferences="sandbox=yes, contextIsolation=yes"
+        )
+      }
+      bodyClassName="preview-pane-body"
+    >
+      <webview
+        ref={webviewRef}
+        className="preview-pane-webview"
+        preload={window.wavePickerPreloadPath}
+        webpreferences="sandbox=yes, contextIsolation=yes"
+      />
+      {!displayUrl && (
+        <div className="preview-tab-new" data-testid="preview-tab-new">
+          <PanelKindIcon
+            kind="preview"
+            size={28}
+            className="preview-tab-new-icon"
           />
-          {!displayUrl && (
-            <div className="preview-tab-new" data-testid="preview-tab-new">
-              <PanelKindIcon
-                kind="preview"
-                size={28}
-                className="preview-tab-new-icon"
-              />
-              <span>在上方地址栏输入网址开始预览</span>
-            </div>
-          )}
-          {loadError && (
-            <div className="preview-pane-error" data-testid="preview-error">
-              <span>页面加载失败：{loadError}</span>
-              <button
-                className="preview-pane-button"
-                data-testid="preview-retry"
-                onClick={() => {
-                  setLoadError(null);
-                  (onRetry ?? handleRefresh)();
-                }}
-              >
-                重试
-              </button>
-            </div>
-          )}
+          <span>在上方地址栏输入网址开始预览</span>
         </div>
-      </div>
-    </aside>
+      )}
+      {loadError && (
+        <div className="preview-pane-error" data-testid="preview-error">
+          <span>页面加载失败：{loadError}</span>
+          <button
+            className="preview-pane-button"
+            data-testid="preview-retry"
+            onClick={() => {
+              setLoadError(null);
+              (onRetry ?? handleRefresh)();
+            }}
+          >
+            重试
+          </button>
+        </div>
+      )}
+    </PaneShell>
   );
 };
 
