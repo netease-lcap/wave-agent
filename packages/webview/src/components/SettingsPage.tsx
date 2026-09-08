@@ -38,6 +38,8 @@ import {
   SettingsSubagentsIcon,
 } from "./HeaderIcons";
 import "../styles/SettingsPage.css";
+import { useDesktopChrome } from "./DesktopChromeContext";
+import { isMacHiddenTitlebar } from "../utils/platform";
 
 export interface SettingsPageProps {
   /** 当前配置（getConfiguration 已回），null 表示尚未加载 */
@@ -175,6 +177,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onPrefillPrompt,
 }) => {
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav ?? "global");
+
+  // macOS 全屏状态（仅 desktop 宿主有 Provider 供值；IDE 宿主无 Provider 读默认
+  // false）——设置页占满整个 view 时由自身窗口行承接红绿灯让位，系统全屏
+  // （红绿灯隐藏）时让位行收起。
+  const { fullScreen } = useDesktopChrome();
 
   // IDE 标签页场景：设置页常驻挂载，/agents、/skills 再次唤起时 host 通过
   // settingsState 下发新的 nav，此处同步选中项（desktop 每次打开会重挂载，
@@ -334,14 +341,36 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     setPluginToggling(false);
   }, [projectSettings]);
 
+  // 返回按钮：mac 真机位于窗口让位行下方单独一行；其余宿主保持左导航首行原布局。
+  const backButton = (
+    <button type="button" className="settings-back" onClick={onClose}>
+      <SettingsBackIcon />
+      <span>返回</span>
+    </button>
+  );
+
   return (
     <div className="settings-page">
       <div className="settings-layout">
         <aside className="settings-sidebar">
-          <button type="button" className="settings-back" onClick={onClose}>
-            <SettingsBackIcon />
-            <span>返回</span>
-          </button>
+          {/* macOS 隐藏标题栏（spec「macOS 隐藏标题栏」设置页场景 8）：设置页占满
+              整个 view 时会话侧边栏被覆盖，系统红绿灯改由设置页自身左导航顶部承接。
+              真机形态下导航顶部先渲染一条与侧边栏窗口行同规格（44px）的窗口行——
+              行内不放任何控件，整行即红绿灯让位区兼窗口拖拽区（-webkit-app-region:
+              drag），背景与导航同色一体无条带；「返回」按钮位于窗口行下方单独一行
+              （不与红绿灯同排，左缘与导航项对齐）。进入系统全屏（红绿灯隐藏）时
+              让位行整行收起（高度归零、内容上移贴顶），退出全屏恢复。仅
+              desktop+darwin 真机渲染（IDE 宿主 / Windows / Linux 无窗口 chrome，
+              不渲染窗口行，返回按钮保持左导航首行原布局）。 */}
+          {isMacHiddenTitlebar() && (
+            <div
+              className={`settings-window-row${
+                fullScreen ? " is-fullscreen" : ""
+              }`}
+              data-testid="settings-window-row"
+            />
+          )}
+          {backButton}
           <nav className="settings-navigation" aria-label="设置">
             {NAV_GROUPS.map((group) => (
               <div className="settings-nav-group" key={group.label}>

@@ -62,6 +62,25 @@
   cursor: pointer;
 }
 
+/* macOS 隐藏标题栏 + 设置页占满整个 view（spec「macOS 隐藏标题栏」设置页
+   场景 8）：系统红绿灯改由设置页左导航顶部承接。窗口行（44px，与侧边栏窗口行
+   同规格）位于导航最顶部、整行不放任何控件——即红绿灯让位区兼窗口拖拽区
+   （-webkit-app-region: drag，浏览器环境忽略），背景随导航同色一体无条带；
+   「返回」按钮在该行下方单独一行（不与红绿灯同排）。进入系统全屏（红绿灯
+   隐藏）时让位行整行收起（高度归零、内容上移贴顶）；退出全屏恢复。
+   仅 desktop+darwin 真机渲染。 */
+.settings-window-row {
+  flex: 0 0 44px;
+  height: 44px;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.settings-window-row.is-fullscreen {
+  flex-basis: 0;
+  height: 0;
+}
+
 .settings-back:hover {
   color: var(--vscode-foreground);
   background: var(--vscode-list-hoverBackground);
