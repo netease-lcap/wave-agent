@@ -77,6 +77,26 @@ describe("feedUrlFor", () => {
       "https://codechat.example.com/api/downloads/desktop/mac/",
     );
   });
+
+  it("routes beta updates to the desktop-beta bucket", () => {
+    Object.defineProperty(process, "platform", {
+      value: "darwin",
+      configurable: true,
+    });
+    expect(feedUrlFor("https://codechat.example.com", "beta")).toBe(
+      "https://codechat.example.com/api/downloads/desktop-beta/mac/",
+    );
+  });
+
+  it("keeps stable as the default channel", () => {
+    Object.defineProperty(process, "platform", {
+      value: "win32",
+      configurable: true,
+    });
+    expect(feedUrlFor("https://codechat.example.com")).toBe(
+      "https://codechat.example.com/api/downloads/desktop/win/",
+    );
+  });
 });
 
 describe("AutoUpdaterService.checkForUpdates", () => {
@@ -95,7 +115,7 @@ describe("AutoUpdaterService.checkForUpdates", () => {
       "https://codechat.example.com",
     );
 
-    expect(outcome).toBe("update");
+    expect(outcome).toEqual({ outcome: "update", feedVersion: "0.20.0" });
     expect(h.setFeedURL).toHaveBeenCalledWith({
       provider: "generic",
       url: `https://codechat.example.com/api/downloads/desktop/${
@@ -103,6 +123,31 @@ describe("AutoUpdaterService.checkForUpdates", () => {
       }/`,
     });
     expect(h.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it("points the generic provider at the desktop-beta feed when channel is beta", async () => {
+    vi.mocked(h.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: "0.21.0", files: [], path: "wave-0.21.0.dmg" },
+      isUpdateAvailable: true,
+    } as never);
+    const service = new AutoUpdaterService({
+      onUpdateAvailable: vi.fn(),
+      onUpdateDownloaded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    const outcome = await service.checkForUpdates(
+      "https://codechat.example.com/",
+      "beta",
+    );
+
+    expect(outcome).toEqual({ outcome: "update", feedVersion: "0.21.0" });
+    expect(h.setFeedURL).toHaveBeenCalledWith({
+      provider: "generic",
+      url: `https://codechat.example.com/api/downloads/desktop-beta/${
+        process.platform === "win32" ? "win" : "mac"
+      }/`,
+    });
   });
   it('returns "no-update" when the feed version equals the running version', async () => {
     // electron mock app.getVersion() is 0.19.7
@@ -116,9 +161,9 @@ describe("AutoUpdaterService.checkForUpdates", () => {
       onError: vi.fn(),
     });
 
-    expect(await service.checkForUpdates("https://codechat.example.com")).toBe(
-      "no-update",
-    );
+    expect(
+      await service.checkForUpdates("https://codechat.example.com"),
+    ).toEqual({ outcome: "no-update", feedVersion: "0.19.7" });
   });
 
   it('returns "error" when the check rejects', async () => {
@@ -129,9 +174,9 @@ describe("AutoUpdaterService.checkForUpdates", () => {
       onError: vi.fn(),
     });
 
-    expect(await service.checkForUpdates("https://codechat.example.com")).toBe(
-      "error",
-    );
+    expect(
+      await service.checkForUpdates("https://codechat.example.com"),
+    ).toEqual({ outcome: "error" });
   });
 
   it("keeps autoDownload off — a check only announces the update (S1), it does not download", async () => {
