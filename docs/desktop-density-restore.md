@@ -2251,3 +2251,14 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
   - 四个设置视图把 `<i className="codicon codicon-add">` 换 `<SettingsAddIcon />`：`SettingsHooksView.tsx`（新增钩子）、`SettingsSkillsView.tsx`（新建技能/新增指令）、`SettingsSubagentsView.tsx`（新增子代理/新增指令）、`SettingsMcpView.tsx`（新增…MCP 服务）。
 - **开发合码注意**：设置页外还有两处 codicon-add（`DiffPane.tsx:233`「添加到输入框」、`DesktopHostSelector.tsx:185`「添加主机…」）不在本轮范围，若需对齐 Component 12 图标可后续单独处理。既有测试按按钮可读名（`getByRole("button", { name: /新增钩子/ })` 等）查询，不受图标替换影响。
 - 实现文件：`src/components/HeaderIcons.tsx`、`src/components/SettingsHooksView.tsx`、`src/components/SettingsSkillsView.tsx`、`src/components/SettingsSubagentsView.tsx`、`src/components/SettingsMcpView.tsx`、本 docs。（用户人工走查后确认推送，type-check 通过。）
+
+## 0908 第 3 轮（feat/0908-new-base-r1）：桌面侧栏对话/设置选项几何统一（30px / 项距 2 / 分类 12 / 圆角 8）
+
+预览走查评论（8899，`li.desktop-session-item--current` 会话行 + 两条跟进）「对话、设置的选项，统一调整，高度30px，统一分类下间距2px，分类之间间距12px，圆角8px」；随后跟进「这个返回和新对话也是30px 8px」「账户卡热区这里也是」「account-card-collapse-btn 也改成30x30 8px」。
+
+- **统一规格**：侧栏会话行与设置导航项 = 选项高 30px、同分类内项距 2px、分类间距 12px、圆角 8px。
+- **实现文件与值**：
+  - `DesktopApp.css`：`.desktop-session-items` gap 4→2；`.desktop-session-item` min-height 32→30、r6→8；`.desktop-sidebar-new-chat` height 32→30（r8 已是）。
+  - `host-desktop.css`：会话分组间距 margin-top 4→12；新增 desktop 覆盖 `.settings-nav-item` 30/r8、`.settings-nav-items` gap 2、`.settings-back` 30/r8（base 32/r6/gap4 供非 desktop 场景不回归）；`.account-card-hotzone` desktop padding 上下 4→3（行高 32→30）；`.account-card-collapse-btn` 32×32/r6 → 30×30/r8。
+  - `AccountCard.css`：`.account-card-hotzone` base padding 上下 4→3 + r6→8（desktop 专用组件，IDE 无此栏）。
+- 既有 hover/选中底色规则不变，仅几何。实现文件：`src/styles/DesktopApp.css`、`src/styles/host-desktop.css`、`src/styles/AccountCard.css`、本 docs。（用户 8899 走查后确认推送；headless 实测：会话项 30/r8/gap2、设置项 30/r8/gap2/组距 12、新对话/返回/账户热区/收起按钮均 30/r8。）

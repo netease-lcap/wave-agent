@@ -665,9 +665,9 @@
   font-weight: var(--cc-font-weight-regular, 400);
 }
 
-/* 分组间距：task-group gap 4px */
+/* 分组间距：task-group gap 12px（0908 第 3 轮：对话/设置统一分类间距 12） */
 [data-host="desktop"] .desktop-session-group + .desktop-session-group {
-  margin-top: 4px;
+  margin-top: 12px;
 }
 
 /* ── 第三轮 Figma 权威值（Figma 组件库「CC桌面端组件库」实测）───────── */
@@ -1065,9 +1065,10 @@
 }
 
 /* 账户热区左右内边距：Figma 17132 pad 左右 8px（base 左 4 使头像偏左；
-   codechat sidebar-account-details pad 0 8px 同款） */
+   codechat sidebar-account-details pad 0 8px 同款）。0908 第 3 轮：上下 3px
+   使热区行高与选项统一 30px（base 同步） */
 [data-host="desktop"] .account-card-hotzone {
-  padding: 4px 8px;
+  padding: 3px 8px;
 }
 
 /* Composer 外间距：Figma 13497-15726 Container pad 16 四边（base 左右 10 上下 10
@@ -1121,12 +1122,13 @@
    12px/w500/#1F2329；账户行右侧显隐按钮 32×32（内 16 canvas 图标）；
    ⓘ 为 16px 图标、灰 #8B8F95；Bar 高 6px、track #E6E8EB、段填充 #1F2329。
    用户裁决：进度条浅色按稿配色+高度、深色配色维持第 6 轮；显隐按钮改
-   32×32。改动全部 [data-host=desktop] 限定（IDE 插件端不受影响）。 */
+   32×32。改动全部 [data-host=desktop] 限定（IDE 插件端不受影响）。
+   0908 第 3 轮：显隐按钮随账户热区统一 30×30 / r8（原 32/r6）。 */
 [data-host="desktop"] .account-card-collapse-btn {
-  width: 32px;
-  height: 32px;
-  /* 功能 icon-button hover 底色圆角：Figma 13383:4723/4726 hover 组件 r=6 */
-  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  /* 功能 icon-button hover 底色圆角：与账户热区/侧栏选项统一 r8 */
+  border-radius: 8px;
 }
 /* Bar 高度 6px（胶囊圆角 r3）：浅色 track 用设计稿 #E6E8EB（fill 浅色本已
    #1F2329 同稿）；深色 track/fill 维持第 6 轮（深色无设计帧，配色已确认）。 */
@@ -1819,6 +1821,26 @@
 [data-host="desktop"][data-theme="dark"] .settings-nav-item.is-active {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.12);
+}
+
+/* ═══ 0908 第 3 轮：对话、设置选项几何统一 ═══
+   侧栏会话行与设置导航项统一规格：选项高 30px、同分类项距 2px、分类间距
+   12px、圆角 8px（设置导航组间距 base .settings-navigation gap 已 12）。
+   会话行几何已随 base DesktopApp.css 同值调整；此处补设置导航 desktop 覆盖
+   （base 32/r6/gap4 供非 desktop 场景不回归）。 */
+[data-host="desktop"] .settings-nav-item {
+  height: 30px;
+  min-height: 30px;
+  border-radius: 8px;
+}
+[data-host="desktop"] .settings-nav-items {
+  gap: 2px;
+}
+/* 设置栏「返回」行同规格（0908 第 3 轮评论跟进：返回/新对话/账户热区也统一
+   30/r8） */
+[data-host="desktop"] .settings-back {
+  min-height: 30px;
+  border-radius: 8px;
 }
 
 /* 桌面端其余控件图标统一 #565A60（同一图标规范；base 各按钮继承
