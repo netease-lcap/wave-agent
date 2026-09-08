@@ -394,7 +394,10 @@ describe("settings full-page: traffic lights hand to the settings nav (real macO
   it("covers the session sidebar; window row is an empty drag gutter, 返回 sits below it", async () => {
     window.waveHostType = "desktop";
     window.wavePlatform = "darwin";
-    renderDesktopChat([]);
+    // The host always pushes a pane layout at desktopReady (desktop-layout.md
+    // 「启动即单个分屏」), so the shell — sidebar included — only renders with
+    // panes > 0; an empty panes array is the handshake placeholder instead.
+    renderDesktopChat([{ paneId: "pane-1" }]);
 
     // Single-pane desktop layout: sidebar visible before opening settings.
     expect(querySidebar()).not.toBeNull();
@@ -442,7 +445,7 @@ describe("settings full-page: traffic lights hand to the settings nav (real macO
   it("collapses the settings window-row gutter on fullscreen and restores it", async () => {
     window.waveHostType = "desktop";
     window.wavePlatform = "darwin";
-    renderDesktopChat([]);
+    renderDesktopChat([{ paneId: "pane-1" }]);
     await openSettingsByCommand();
 
     const row = querySettingsWindowRow()!;
@@ -456,7 +459,7 @@ describe("settings full-page: traffic lights hand to the settings nav (real macO
   it("renders no settings window row on real Windows/Linux (native title bar kept)", async () => {
     window.waveHostType = "desktop";
     window.wavePlatform = "win32";
-    renderDesktopChat([]);
+    renderDesktopChat([{ paneId: "pane-1" }]);
 
     expect(querySidebar()).not.toBeNull();
     await openSettingsByCommand();

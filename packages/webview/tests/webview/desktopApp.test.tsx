@@ -1126,7 +1126,11 @@ describe("DesktopApp", () => {
             host: "local",
             workdir: "/work/a",
             sessions: [
-              session("s1", "hello a"),
+              // s1 runs in the focused pane below; the tree entry carries
+              // running:true the way the real host refreshes it on every
+              // loading flip (refreshSessionTree, desktopHost.ts) — the shell
+              // never forwards the pane's own startStreaming to the sidebar.
+              { ...session("s1", "hello a"), running: true },
               { ...session("s2", "hello again"), running: true },
             ],
           },
@@ -1149,7 +1153,10 @@ describe("DesktopApp", () => {
         panes: [{ paneId: "pane-1", sessionId: "s1", host: "local", row: 0 }],
         focusedPaneId: "pane-1",
       });
-      sendCommand("startStreaming", {});
+      // No startStreaming here: the shell never forwards a pane's streaming
+      // flag to the sidebar, so the row ring is driven by the tree's
+      // running:true above (the real host refreshes the tree on every loading
+      // flip — see refreshSessionTree in desktopHost.ts).
 
       const current = screen.getByTestId("desktop-session-item-s1");
       expect(current.className).toContain("desktop-session-item--current");
@@ -1189,7 +1196,11 @@ describe("DesktopApp", () => {
                 waitingConfirmation: true,
                 running: true,
               },
-              session("s2", "plain running"),
+              // s2 streams in the focused pane below; like the real host's
+              // refreshSessionTree on each loading flip, the tree entry itself
+              // carries running:true — the sidebar never learns it from the
+              // pane's startStreaming.
+              { ...session("s2", "plain running"), running: true },
             ],
           },
         ],
@@ -1205,7 +1216,13 @@ describe("DesktopApp", () => {
           firstMessage: "plain running",
         },
       });
-      sendCommand("startStreaming", {});
+      // Bind the focused pane to s2 so the sidebar reads it as current; the
+      // current ring then comes from the tree's running:true above (the shell
+      // never forwards startStreaming to the sidebar).
+      sendCommand("desktopPanes", {
+        panes: [{ paneId: "pane-1", sessionId: "s2", host: "local", row: 0 }],
+        focusedPaneId: "pane-1",
+      });
 
       const waiting = screen.getByTestId("desktop-session-item-s1");
       // Both flags set: waiting wins — an amber dot, no running loader.
