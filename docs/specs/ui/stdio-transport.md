@@ -12,7 +12,7 @@ order: 220
 
 编辑器插件（VS Code 扩展、JetBrains 插件等）不在插件宿主进程中运行 Agent 逻辑，而是通过 JSON-RPC 2.0 over stdio 与 `wave --stdio` 子进程通信。本规格覆盖该传输层的完整生命周期：CLI 的解析/运行、JSON-RPC 通信协议、共享进程的多会话路由、以及错误诊断。
 
-**CLI 交付方式**：VSCE 将 wave CLI 内置进扩展包（三件套：`bin/wave-code.js` 版本探测 shim + `package.json` + `dist/bundle/wave.mjs`，合计约 2.9MB），运行时由扩展宿主自身的 Node 运行时（`process.execPath`）直接执行，不依赖客户系统安装 Node.js/npm；JB 插件同样内置三件套进插件包，但运行在 JVM 中、没有宿主 Node，运行时借用客户系统安装的 Node.js（≥ 22）执行内置 CLI。两个客户端均不再依赖 npm 全局安装的 `wave-code` 包，CLI 版本跟随各自插件版本发布。CLI 的 grep 工具依赖 `@vscode/ripgrep`（JS 包装 + 平台 rg 二进制，约 5.2MB）**不打包**，首次使用时按需从 npmmirror 下载到 `~/.wave/cli/node_modules/` 并缓存（两个客户端共享同一 runtime 目录，rg 缓存互用）；该包是 wave.mjs 的顶层 import，下载失败时 CLI 无法启动，必须向用户报错并提示检查网络后重试。两个客户端均通过同一套 stdio 协议与架构与 `wave --stdio` 通信。
+**CLI 交付方式**：VSCE 将 wave CLI 内置进扩展包（三件套：`bin/wave-code.js` 版本探测 shim + `package.json` + `dist/bundle/wave.mjs`，合计约 2.9MB），运行时由扩展宿主自身的 Node 运行时（`process.execPath`）直接执行，不依赖客户系统安装 Node.js/npm；JB 插件同样内置三件套进插件包，但运行在 JVM 中、没有宿主 Node，运行时借用客户系统安装的 Node.js（≥ 22）执行内置 CLI。两个客户端均不再依赖 npm 全局安装的 `wave-code` 包，内置 CLI 随各自插件发版更新（运行时按 `dist/bundle/wave.mjs` 的内容字节判定是否刷新用户目录副本，见「内置 CLI 同步」，版本号相同但代码已变也会刷新）。CLI 的 grep 工具依赖 `@vscode/ripgrep`（JS 包装 + 平台 rg 二进制，约 5.2MB）**不打包**，首次使用时按需从 npmmirror 下载到 `~/.wave/cli/node_modules/` 并缓存（两个客户端共享同一 runtime 目录，rg 缓存互用）；该包是 wave.mjs 的顶层 import，下载失败时 CLI 无法启动，必须向用户报错并提示检查网络后重试。两个客户端均通过同一套 stdio 协议与架构与 `wave --stdio` 通信。
 
 ### 架构
 
@@ -83,21 +83,21 @@ order: 220
 
 ---
 
-### 用户故事：CLI 版本管理与升级（优先级：P1）
+### 用户故事：内置 CLI 同步（内容字节判定）（优先级：P1）
 
-作为编辑器插件用户，我希望 CLI 版本与插件版本始终匹配，以便获得一致的功能体验。
+作为编辑器插件用户，我希望插件运行时始终运行随插件发布的内置 CLI 的同一份代码，以便获得一致的功能体验——同步判据是 `dist/bundle/wave.mjs` 的内容字节而非版本号，避免「插件已更新但用户目录副本仍是旧代码」的静默不一致（本地 dev 重装、GUI 单独发版都可能带着新字节而版本号未 bump）。
 
-**为什么是这个优先级**：CLI 和插件版本不匹配会导致协议不兼容、功能缺失或运行时崩溃。VSCE 与 JB 均通过"内置 + 随插件发布"从机制上保证版本一致，无运行期独立升级流程。
+**为什么是这个优先级**：运行副本与内置 CLI 不一致会导致协议不兼容、功能缺失或运行时崩溃。VSCE 与 JB 均通过"内置 + 随插件发布"从机制上保证一致，无运行期独立升级流程；但内置 CLI 的 wave-code 版本号与插件版本号相互独立（不保证同号），且同版本也可能携带不同字节，故每次初始化时比较内置与运行副本 `dist/bundle/wave.mjs` 的内容字节，相同则复用、不同则重新复制。
 
-**独立测试**：VSCE：安装扩展后确认内置 CLI 版本与扩展版本一致；JB：安装插件后确认内置 CLI 版本与插件版本一致，升级插件后内置 CLI 随新版本重新复制。
+**独立测试**：VSCE：安装扩展后确认 `~/.wave/cli/vscode/` 副本与内置 CLI 字节一致；升级扩展（内置字节已变）后确认副本重新复制且字节一致；同版本重装（内置字节未变）确认不重复复制。JB：同上验证 `~/.wave/cli/jetbrains/` 与内置字节一致。
 
 **验收场景**：
 
-1. **假设** VSCE 扩展已安装，**当**插件初始化时，**则**直接使用内置 CLI，其版本与扩展版本一致（构建时由发布流程保证），无独立运行期升级流程。
-2. **假设** VSCE 扩展升级到新版本（内置 CLI 版本变化），**当**插件初始化时，**则**重新复制内置 CLI 到 `~/.wave/cli/`，但保留 `node_modules/`（已缓存的 rg），不重复下载。
-3. **假设** JB 插件已安装，**当**插件初始化时，**则**直接使用内置 CLI，其版本与插件版本一致（构建时由发布流程保证），无 npm 安装/升级流程。
-4. **假设** JB 插件升级到新版本（内置 CLI 版本变化），**当**插件初始化时，**则**重新复制内置 CLI 到 `~/.wave/cli/`，但保留 `node_modules/`（已缓存的 rg），不重复下载。
-5. **假设** JB 插件与其它客户端（VSCE/桌面端）共用 `~/.wave/cli/` runtime 目录，**当**各客户端内置 CLI 版本一致时，**则**互不覆盖，rg 缓存共享；版本不一致时后初始化的客户端按自身版本覆盖（保留 `node_modules/`）。
+1. **假设** VSCE 扩展已安装且内置 CLI（`dist/wave-cli/bin/wave-code.js` + `package.json` + `dist/bundle/wave.mjs`）随扩展发布，**当**插件初始化时，**则**直接使用内置 CLI（其 `package.json` 的 wave-code 版本与扩展版本相互独立，可不同号），无独立运行期升级流程。
+2. **假设** VSCE 扩展升级到新版本（内置 `dist/bundle/wave.mjs` 字节变化），**当**插件初始化时，**则**重新复制内置 CLI 到 `~/.wave/cli/vscode/`，但保留 `node_modules/`（已缓存的 rg），不重复下载；**当**内置字节与运行副本一致（同版本重装或扩展侧改动未触及 CLI），**则**不重新复制、直接复用。
+3. **假设** JB 插件已安装且内置 CLI（`resources/wave-cli/bin/wave-code.js` + `package.json` + `dist/bundle/wave.mjs`）随插件发布，**当**插件初始化时，**则**直接使用内置 CLI（其 `package.json` 的 wave-code 版本与插件版本相互独立，可不同号），无 npm 安装/升级流程。
+4. **假设** JB 插件升级到新版本（内置 `dist/bundle/wave.mjs` 字节变化），**当**插件初始化时，**则**重新复制内置 CLI 到 `~/.wave/cli/jetbrains/`，但保留 `node_modules/`（已缓存的 rg），不重复下载；**当**内置字节与运行副本一致，**则**不重新复制、直接复用。
+5. **假设** JB 插件与其它客户端（VSCE/桌面端）共用 `~/.wave/cli/` 下的 rg 缓存，**当**各客户端各自初始化时，**则**每个客户端在自己的 per-end 子目录（`vscode/`/`jetbrains/`/`desktop/`）内按内容字节判据独立刷新副本，互不覆盖；共享的 `node_modules/` rg 缓存保留、互不删除。
 
 ---
 

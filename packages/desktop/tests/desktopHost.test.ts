@@ -341,7 +341,8 @@ vi.mock("../src/main/stdio/binaryResolver", () => ({
   ensureCliUpToDate: vi.fn(async () => "/mock/wave"),
   loadBundledCliSource: vi.fn(() => ({
     dir: "/app/root/resources/wave-cli",
-    version: "1.1.5",
+    bundleSha256:
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     rgRange: "^1.18.0",
   })),
 }));

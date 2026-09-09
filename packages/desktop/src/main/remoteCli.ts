@@ -1,19 +1,21 @@
 /**
  * Remote wave CLI resolution (spec: docs/specs/desktop/desktop-sessions.md 「SSH
- * 远程主机」 scenarios 7/8, desktop-shell.md 「CLI 版本保障」). The CLI that runs on
- * a remote host is THIS app's bundled CLI (resources/wave-cli), pushed over the
- * existing ssh channel — it no longer depends on the remote npm registry or the
- * npm `wave-code` package (whose latest may lag behind the GUI's built-in CLI,
- * the 404 root cause this replaces). One-shot ssh probes run node presence and
- * the pushed shim's `-v`; when the remote copy is missing/corrupt/older than
- * the bundled CLI's own package.json version, the bundle (bin/wave-code.js +
- * dist/bundle/wave.mjs + package.json) is tarred locally and streamed over ssh
- * stdin into a sibling `.new` dir, then atomically swapped into the fixed
- * remote dir `~/.wave/cli/desktop` (mirrors the local runtime copy, so the shim
- * resolves ../package.json and wave.mjs finds the shared @vscode/ripgrep under
- * `~/.wave/cli/node_modules`). ripgrep is fetched by the REMOTE side (npm
- * install --prefix) — the platform binary must match the remote host. Every
- * failure surfaces an actionable message — nothing retries indefinitely.
+ * 远程主机」 scenarios 7/8, desktop-shell.md 「内置 CLI 一致保障」). The CLI that runs
+ * on a remote host is THIS app's bundled CLI (resources/wave-cli), pushed over
+ * the existing ssh channel — it no longer depends on the remote npm registry or
+ * the npm `wave-code` package (whose latest may lag behind the GUI's built-in
+ * CLI, the 404 root cause this replaces). One-shot ssh probes run node presence
+ * and a content check (sha256 of the remote `dist/bundle/wave.mjs`); when the
+ * remote copy is missing/corrupt or its bytes differ from the bundled bundle,
+ * the CLI files (bin/wave-code.js + dist/bundle/wave.mjs + package.json) are
+ * tarred locally and streamed over ssh stdin into a sibling `.new` dir, then
+ * atomically swapped into the fixed remote dir `~/.wave/cli/desktop` (mirrors
+ * the local runtime copy, so the shim resolves ../package.json and wave.mjs
+ * finds the shared @vscode/ripgrep under `~/.wave/cli/node_modules`). The sync
+ * judge is content bytes, not a version string — GUI-only releases can ship new
+ * bytes without bumping the bundled version. ripgrep is fetched by the REMOTE
+ * side (npm install --prefix) — the platform binary must match the remote host.
+ * Every failure surfaces an actionable message — nothing retries indefinitely.
  *
  * All probes/npm run through the user's login shell (`withRemoteLoginShell`):
  * nvm-style version managers expose node/npm only in interactive rc files,
@@ -36,7 +38,6 @@ import {
   withRemoteLoginShell,
 } from "./sshHosts";
 import { SocketClient } from "./stdio/socketClient";
-import { parseVersion, compareVersions } from "./version";
 import type { BundledCliSource } from "./stdio/binaryResolver";
 
 const execFileAsync = promisify(execFile);
@@ -65,7 +66,7 @@ export function remoteCliDir(homeDir: string): string {
   return path.posix.join(remoteCliRootDir(homeDir), "desktop");
 }
 
-/** Remote entry point: the version-probe shim (executable via its shebang). */
+/** Remote entry point: the shim that boots the CLI (executable via shebang). */
 export function remoteCliShimPath(homeDir: string): string {
   return path.posix.join(remoteCliDir(homeDir), "bin", "wave-code.js");
 }
@@ -180,7 +181,7 @@ async function remoteRipgrepReady(
 
 /**
  * Ensure the remote host can load @vscode/ripgrep — a top-level import of
- * wave.mjs, so the CLI cannot start without it (spec: desktop-shell.md 「CLI 版本
+ * wave.mjs, so the CLI cannot start without it (spec: desktop-shell.md 「内置 CLI 一致
  * 保障」 scenario 8). rg is fetched by the REMOTE side (`npm install --prefix
  * ~/.wave/cli` under the remote login shell): npm picks the wrapper version and
  * the platform binary via the wrapper's optionalDependencies, landing both
@@ -307,7 +308,7 @@ async function pushRemoteCliBundle(
   // to move aside); the last `rm -rf` cleanup failure must not mask a
   // successful swap, hence the trailing separators. The explicit chmod covers
   // bundles built on Windows, whose archives carry no executable bit — the
-  // daemon and version probe execute the shim directly via its shebang.
+  // daemon and CLI boot execute the shim directly via its shebang.
   const receive =
     `rm -rf ${shellQuote(stagingDir)}; ` +
     `mkdir -p ${shellQuote(cliRoot)} ${shellQuote(stagingDir)}; ` +
@@ -341,7 +342,7 @@ export async function resolveRemoteWaveBinary(
 ): Promise<RemoteCliInfo> {
   const nodeVersion = await probeRemoteNode(host);
   const binaryPath = remoteCliShimPath(homeDir);
-  const current = await getRemoteCliVersion(host, binaryPath);
+  const current = await getRemoteBundleSha256(host, homeDir);
   if (current) return { binaryPath, nodeVersion };
   if (!installIfMissing) {
     throw new Error(
@@ -354,26 +355,41 @@ export async function resolveRemoteWaveBinary(
 }
 
 /**
- * Remote `wave -v` — null when the probe fails (missing/corrupt binary or ssh
- * error). Mirrors local getCliVersion: callers treat null as "needs upgrade"
- * rather than crashing.
+ * Remote `dist/bundle/wave.mjs` sha256 — null when the probe fails (missing/
+ * corrupt CLI files or an ssh error). Mirrors the local content check: callers
+ * treat null as "needs sync" rather than crashing. The remote file can only be
+ * hashed remotely, so the probe reuses the remote node (guaranteed ≥ 22 by
+ * [probeRemoteNode]) instead of the shim's `-v` — an unchanged version number
+ * is not trusted as "same CLI" (GUI-only releases can ship new bytes without
+ * bumping the bundled version, spec: desktop-shell.md 「内置 CLI 一致保障」 scenarios
+ * 3/7). Verifies all three bundle files exist (a `-v`-able shim + package.json
+ * + wave.mjs) before hashing, so a partial copy is treated as needing sync.
  */
-async function getRemoteCliVersion(
+async function getRemoteBundleSha256(
   host: string,
-  binaryPath: string,
+  homeDir: string,
 ): Promise<string | null> {
+  const cliDir = remoteCliDir(homeDir);
+  const probe =
+    `node -e ` +
+    shellQuote(
+      "const fs=require('fs'),crypto=require('crypto');" +
+        "const dir=process.argv[1];" +
+        "for (const rel of ['bin/wave-code.js','package.json','dist/bundle/wave.mjs']) {" +
+        "  if (!fs.existsSync(dir+'/'+rel)) process.exit(1);" +
+        "}" +
+        "const h=crypto.createHash('sha256').update(fs.readFileSync(dir+'/dist/bundle/wave.mjs')).digest('hex');" +
+        "process.stdout.write(h);",
+    ) +
+    ` ${shellQuote(cliDir)}`;
   try {
     const { stdout } = await execFileAsync(
       "ssh",
-      await remoteCommand(host, `${shellQuote(binaryPath)} -v`),
-      {
-        timeout: PROBE_TIMEOUT_MS,
-      },
+      await remoteCommand(host, probe),
+      { timeout: PROBE_TIMEOUT_MS },
     );
-    const line = stripAnsiEscapes(stdout).trim().split("\n")[0]?.trim();
-    if (!line) return null;
-    // `wave -v` prints the bare version; tolerate a leading "v" just in case.
-    return line.replace(/^v/, "");
+    const hex = stripAnsiEscapes(stdout).trim();
+    return /^[0-9a-f]{64}$/.test(hex) ? hex : null;
   } catch {
     return null;
   }
@@ -386,14 +402,14 @@ export interface RemoteCliUpToDateResult {
 }
 
 /**
- * Ensure the remote CLI at ~/.wave/cli/desktop is usable and not older than
- * the bundled CLI's own version (spec: desktop-shell.md 「CLI 版本保障」 scenarios
- * 3/6/7). The shim's `wave -v` reads ../package.json; a null result (missing /
- * corrupt) or a version older than `source.version` triggers a sync — rg
- * first (a failed fetch must leave the current install intact), then the
- * atomic bundle push. GUI upgrades that ship an unchanged CLI version compare
- * equal and push nothing (scenario 7). The caller decides what to do about the
- * still-running old daemon.
+ * Ensure the remote CLI at ~/.wave/cli/desktop matches the bundled CLI's bytes
+ * (spec: desktop-shell.md 「内置 CLI 一致保障」 scenarios 3/6/7). The probe hashes
+ * the remote `dist/bundle/wave.mjs`; a null result (missing/corrupt) or a hash
+ * differing from `source.bundleSha256` triggers a sync — rg first (a failed
+ * fetch must leave the current install intact), then the atomic bundle push.
+ * GUI upgrades that ship an unchanged bundle compare equal and push nothing
+ * (scenario 7); GUI-only releases with changed bytes but an unchanged version
+ * still push. The caller decides what to do about the still-running old daemon.
  */
 export async function ensureRemoteCliUpToDate(
   host: string,
@@ -402,15 +418,11 @@ export async function ensureRemoteCliUpToDate(
 ): Promise<RemoteCliUpToDateResult> {
   const binaryPath = remoteCliShimPath(homeDir);
   await probeRemoteNode(host);
-  const current = await getRemoteCliVersion(host, binaryPath);
-  if (current !== null) {
-    const cur = parseVersion(current);
-    const target = parseVersion(source.version);
-    if (cur && target && compareVersions(cur, target) >= 0) {
-      return { binaryPath, upgraded: false };
-    }
+  const current = await getRemoteBundleSha256(host, homeDir);
+  if (current !== null && current === source.bundleSha256) {
+    return { binaryPath, upgraded: false };
   }
-  // current is null (corrupt/missing) or older than target → sync.
+  // current is null (corrupt/missing) or differs from the bundled bytes → sync.
   await ensureRemoteRipgrep(host, source, homeDir);
   await pushRemoteCliBundle(host, source, homeDir);
   return { binaryPath, upgraded: true };
@@ -740,10 +752,10 @@ export async function waitForRemoteDaemonExit(
 
 /**
  * Ensure a wave daemon runs on `host` backed by THIS app's bundled CLI (spec:
- * desktop-shell.md 「CLI 版本保障」):
+ * desktop-shell.md 「内置 CLI 一致保障」):
  * 1. ensureRemoteCliUpToDate — push the bundled CLI over ssh when the remote
- *    copy (~/.wave/cli/desktop) is missing, corrupt, or older than the bundled
- *    CLI's own package.json version (decoupled from the GUI version). Sync
+ *    copy (~/.wave/cli/desktop) is missing, corrupt, or its bytes differ from
+ *    the bundled `dist/bundle/wave.mjs` (decoupled from the GUI version). Sync
  *    failures surface via onNotice and fall back to the existing install; the
  *    next reconnect retries.
  * 2. After a successful sync, the still-running old daemon executes pre-sync
@@ -787,7 +799,7 @@ export async function ensureRemoteDaemon(
   if (await remoteDaemonAlive(host, socketPath)) return socketPath;
   binaryPath ??= (await resolveRemoteWaveBinary(host, source, homeDir, false))
     .binaryPath;
-  // A current-version CLI that was never restarted still needs rg to boot
+  // A current-bytes CLI that was never restarted still needs rg to boot
   // (the up-to-date path above skips the rg ensure).
   if (!upgraded) await ensureRemoteRipgrep(host, source, homeDir);
   await startRemoteDaemon(host, binaryPath, socketPath);
