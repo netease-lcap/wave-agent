@@ -2329,3 +2329,11 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - **动效**：`toast-drop-in` 自顶向下 `translateY(-12px → 0)` + 淡入 0.18s；多条时 `column-reverse` 新通知从顶部滑入。
 - **关闭钮**：`.toast-close` `color: inherit` + `opacity: 1`，与语义图标同色同浓度（light/dark 各补一条同 specificity 规则，盖过 0908 轮全局图标统一色 `#565a60`/`#9a9ea5`）；hover 仅加深背景（`color-mix(currentColor 14%)`），颜色不变。
 - 实现文件：`desktopHost.ts`、`webview-fixtures/src/types.ts`、`webview/src/types/index.ts`、`ToastStack.tsx`、`ChatApp.tsx`、`host-desktop.css`、本 docs。（fixtures 重 build 通过；用户 8899 人工走查三种语义样式后确认推送。）
+
+## 0909 第 5 轮（feat/0909-new-base-r1）：任务列表卡上下内边距对称 8px
+
+预览走查评论（8899，`div.task-list-inline`「任务列表 (4)已完成 3进行中 1待执行 0」）「检查任务列表的上下内边距是否一致，现在感觉下面高了点，可以收拢一下」。
+
+- **现状**：`.task-list-inline` base `padding: 8px 12px 12px`——上 8 / 下 12，底部多 4px（桌面覆盖层未覆盖 padding，沿用 base 值）。
+- **修复**（TaskList.css，共享 base 文件）：`padding: 8px 12px 8px` 上下对称。落点说明：host-desktop.css 彼时含并行 toast 会话在途改动，desktop 覆盖放同文件会把他人内容带入本 commit → 改共享 base（TaskList 三端同结构，对称内边距对 IDE 端同样成立）；commit 暂不带 docs（docs 尾含 toast 会话未推的第 4 轮段，避免夹带），toast 推完（`28838ff6`）后再补本段。
+- 实现文件：`src/styles/TaskList.css`、本 docs（后补段）。（commit `2187d55f` 已推；type-check 通过，用户 8899 人工走查后确认推送。）
