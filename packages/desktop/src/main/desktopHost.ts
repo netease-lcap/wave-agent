@@ -3444,17 +3444,14 @@ export class DesktopHost {
 
       // -- AGENTS.md (memory files) -------------------------------------------
       case "getAgentsContent":
-        await this.handleGetAgentsContent(
-          msg.scope as "user" | "project",
-          msg.workdir as string | undefined,
-        );
+        await this.handleGetAgentsContent(pid, msg.scope as "user" | "project");
         break;
 
       case "setAgentsContent":
         await this.handleSetAgentsContent(
+          pid,
           msg.scope as "user" | "project",
           msg.content as string,
-          msg.workdir as string | undefined,
         );
         break;
 
@@ -5020,16 +5017,35 @@ export class DesktopHost {
     }
   }
 
-  /** AGENTS.md settings UI: fetch user (~/.wave/AGENTS.md) or project (<workdir>/AGENTS.md) memory file content. */
+  /**
+   * AGENTS.md settings UI: fetch user (~/.wave/AGENTS.md) or project
+   * (<workdir>/AGENTS.md) memory file content.
+   *
+   * The project scope is resolved against the target pane's bound session
+   * (agentForPane(paneId)?.workingDirectory ?? this.workdir), mirroring the
+   * other project-scoped settings RPCs (getProjectSettings/getHooksConfig/
+   * getMcpConfig) — the webview cannot supply a trustworthy workdir because
+   * the desktop settings full-page lives on the root instance, which owns no
+   * session of its own and must follow the focused pane. Trusting a
+   * webview-sent path made the editor read/write whichever directory happened
+   * to sit at the head of the window's recents instead of the current
+   * project's file.
+   */
   private async handleGetAgentsContent(
+    paneId: string,
     scope: "user" | "project",
-    workdir?: string,
   ): Promise<void> {
     try {
-      const result = (await this.utilityClientFor(this.currentHost).request(
-        "getAgentsContent",
-        { scope, workdir },
-      )) as { content: string; path?: string };
+      const workdir =
+        scope === "project"
+          ? (this.agentForPane(paneId)?.workingDirectory ?? this.workdir)
+          : undefined;
+      const result = (await this.utilityClientFor(
+        this.hostForPane(paneId),
+      ).request("getAgentsContent", { scope, workdir })) as {
+        content: string;
+        path?: string;
+      };
       this.postMessage({
         command: "agentsContentResponse",
         scope,
@@ -5045,14 +5061,22 @@ export class DesktopHost {
     }
   }
 
-  /** AGENTS.md settings UI: persist content via the stdio setAgentsContent RPC. */
+  /**
+   * AGENTS.md settings UI: persist content via the stdio setAgentsContent RPC.
+   * The project workdir is resolved from the target pane's bound session, same
+   * as handleGetAgentsContent (see above).
+   */
   private async handleSetAgentsContent(
+    paneId: string,
     scope: "user" | "project",
     content: string,
-    workdir?: string,
   ): Promise<void> {
     try {
-      await this.utilityClientFor(this.currentHost).request(
+      const workdir =
+        scope === "project"
+          ? (this.agentForPane(paneId)?.workingDirectory ?? this.workdir)
+          : undefined;
+      await this.utilityClientFor(this.hostForPane(paneId)).request(
         "setAgentsContent",
         {
           scope,

@@ -3226,6 +3226,82 @@ describe("misc commands", () => {
     });
   });
 
+  it("getAgentsContent project scope reads the focused pane session's workdir, not the webview-sent path", async () => {
+    const { host, sent } = await readyHost();
+    // readyHost binds pane-1 to a session whose agent workingDirectory is /work/a.
+    const orig = h.handleClientRequest;
+    const seen: Array<{ method: string; params: unknown }> = [];
+    h.handleClientRequest = (method, params) => {
+      if (method === "getAgentsContent") {
+        seen.push({ method, params });
+        return { content: "# from the bound session" };
+      }
+      return orig(method, params);
+    };
+    try {
+      await host.handleWebviewMessage({
+        command: "getAgentsContent",
+        scope: "project",
+        // The settings full-page runs on the root webview instance, which has
+        // no session of its own — it used to forward the head of the window's
+        // recents here, so reads hit the wrong (non-current) project.
+        workdir: "/work/recents-head",
+      });
+    } finally {
+      h.handleClientRequest = orig;
+    }
+
+    expect(seen).toEqual([
+      {
+        method: "getAgentsContent",
+        params: { scope: "project", workdir: "/work/a" },
+      },
+    ]);
+    expect(sent("agentsContentResponse")[0]).toMatchObject({
+      scope: "project",
+      content: "# from the bound session",
+    });
+  });
+
+  it("setAgentsContent project scope writes to the focused pane session's workdir, not the webview-sent path", async () => {
+    const { host, sent } = await readyHost();
+    const orig = h.handleClientRequest;
+    const seen: Array<{ method: string; params: unknown }> = [];
+    h.handleClientRequest = (method, params) => {
+      if (method === "setAgentsContent") {
+        seen.push({ method, params });
+        return { ok: true };
+      }
+      return orig(method, params);
+    };
+    try {
+      await host.handleWebviewMessage({
+        command: "setAgentsContent",
+        scope: "project",
+        content: "# new project rules",
+        workdir: "/work/recents-head",
+      });
+    } finally {
+      h.handleClientRequest = orig;
+    }
+
+    expect(seen).toEqual([
+      {
+        method: "setAgentsContent",
+        params: {
+          scope: "project",
+          content: "# new project rules",
+          workdir: "/work/a",
+        },
+      },
+    ]);
+    expect(shownToasts().some((t) => t.message === "保存成功")).toBe(true);
+    expect(sent("agentsContentSaved")[0]).toMatchObject({
+      scope: "project",
+      ok: true,
+    });
+  });
+
   it("listPlugins failure surfaces as a toast, not a chat message", async () => {
     const { host, sent } = await readyHost();
     const restore = failRpc("listPlugins", "plugin service down");
