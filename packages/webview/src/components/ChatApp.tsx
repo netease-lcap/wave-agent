@@ -218,10 +218,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // conversation switches (ChatApp is keyed by paneId, not sessionId), so a
   // local useState alone would leak the previous conversation's panel.
   const btwSessionRef = useRef<string | undefined>(undefined);
-  // Session whose context-usage percentage contextUsage currently holds.
-  // Compared against state.currentSession.id in an effect below — same
-  // paneId-keyed-mount reasoning as btwSessionRef, so the usage indicator is
-  // conversation-isolated instead of leaking the previous session's number.
+  // Session whose context-usage percentage contextUsage currently holds. Kept
+  // in sync synchronously by the setInitialState / updateCurrentSession message
+  // handlers (not by a passive effect — see the race note at those handlers).
   const usageSessionRef = useRef<string | undefined>(undefined);
   // Accumulated streaming text from the compaction fork; its last 30 characters
   // render after the "正在压缩对话" hint (streaming tail, same style as the
@@ -1051,6 +1050,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         break;
       case "updateCurrentSession":
         if (!forThisPane(message)) break;
+        // Same synchronous conversation-scoped usage clear as setInitialState:
+        // the desktop host pushes updateCurrentSession when an agent's session
+        // id changes (onSessionIdChange rekey) while this pane stays mounted.
+        {
+          const nextSessionId = message.session?.id;
+          if (
+            usageSessionRef.current !== undefined &&
+            usageSessionRef.current !== nextSessionId
+          ) {
+            setContextUsage(undefined);
+          }
+          usageSessionRef.current = nextSessionId;
+        }
         dispatch({ type: "SET_CURRENT_SESSION", payload: message.session });
         break;
       case "showConfirmation":
@@ -1125,6 +1137,27 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         break;
       case "setInitialState":
         if (!forThisPane(message)) break;
+        // The context-usage percentage is conversation-scoped (spec「上下文用量
+        // 指示器」场景 6 + session isolation), and desktop panes key ChatApp by
+        // paneId, so a session switch must drop the previous session's number
+        // here — synchronously in the message handler, NOT in a passive
+        // useEffect. The desktop host posts setInitialState and its cached
+        // usage replay (activateAgentInPane) as consecutive IPC messages; a
+        // passive effect flushing after that replay would wipe the number just
+        // posted and leave an empty ring until the next turn (race — the ring
+        // intermittently stays blank when flipping between two remote-host
+        // conversations). Semantics kept: clear only on a real session change,
+        // keep on same-session refreshes, initial mount is a no-op.
+        {
+          const nextSessionId = message.session?.id;
+          if (
+            usageSessionRef.current !== undefined &&
+            usageSessionRef.current !== nextSessionId
+          ) {
+            setContextUsage(undefined);
+          }
+          usageSessionRef.current = nextSessionId;
+        }
         // Desktop plan panel: replayed pending confirmations (pane rebind to a
         // session with confirmations in flight) also carry an ExitPlanMode
         // plan. It is staged — not routed here — because a same-batch pane
@@ -2131,25 +2164,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     if (previous !== undefined && previous !== sessionId) handleBtwClose();
   }, [state.currentSession?.id, handleBtwClose]);
 
-  // The context-usage percentage is conversation-scoped (spec desktop-app
-  // 上下文用量指示器 场景 6 + session isolation): switching conversations must
-  // not carry the previous session's usage over. Desktop panes key ChatApp by
-  // paneId (not sessionId), so a sidebar session switch leaves this component
-  // mounted — without this effect the local contextUsage state would survive
-  // the switch (setInitialState only resets reducer state, not local state)
-  // and show the old session's percentage until the new session's first push.
-  // `previous !== undefined` keeps the initial mount a no-op.
-  useEffect(() => {
-    const sessionId = state.currentSession?.id;
-    const previous = usageSessionRef.current;
-    usageSessionRef.current = sessionId;
-    if (previous !== undefined && previous !== sessionId) {
-      setContextUsage(undefined);
-    }
-  }, [state.currentSession?.id]);
-
   // Preview fullscreen is conversation-scoped, same pattern as the btw panel
-  // and context-usage effects above: the single root layout (no panes) keeps
+  // effect above: the single root layout (no panes) keeps
   // ChatApp mounted across sidebar session switches, so the local fullscreen
   // state would otherwise survive into the next conversation. Fullscreen
   // belongs to the outgoing session's preview tab — a stale true hides the

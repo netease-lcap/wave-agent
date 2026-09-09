@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { act } from "@testing-library/react";
 import { renderChatApp, screen, sendHostMessage, fixtures } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 
@@ -60,5 +61,48 @@ describe("context usage indicator conversation isolation", () => {
     // must not clear the usage — only a real conversation switch does.
     sendHostMessage(fixtures.setInitialState(conversationState("session-a")));
     expect(screen.getByText("45%")).toBeInTheDocument();
+  });
+
+  it("shows the usage pushed right after a session switch (host back-to-back replay race)", async () => {
+    renderChatApp();
+    sendHostMessage(fixtures.setInitialState(conversationState("session-a")));
+    sendHostMessage(fixtures.contextUsage(45));
+    expect(screen.getByText("45%")).toBeInTheDocument();
+
+    // Real-desktop back-to-back replay: activateAgentInPane posts
+    // setInitialState and the cached usage replay as two consecutive IPC
+    // messages with no await between them (desktopHost activateAgentInPane).
+    // In Electron they land as separate message events, so the
+    // conversation-switch clear must run synchronously inside the message
+    // handler — a passive useEffect flushing after the usage push would wipe
+    // the number just posted and the ring stays empty until the next turn.
+    // The test dispatches without act() so React batches both updates ahead of
+    // its passive-effect flush, reproducing that ordering (test-utils'
+    // sendHostMessage wraps every message in act(), which flushes effects
+    // synchronously and hides the race). Leaving the act environment for these
+    // two raw dispatches keeps React from warning about the unwrapped updates
+    // while preserving the non-act scheduling they are meant to simulate.
+    const prevActEnv = (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
+      .IS_REACT_ACT_ENVIRONMENT;
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = false;
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: fixtures.setInitialState(conversationState("session-b")),
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: fixtures.contextUsage(12),
+      }),
+    );
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = prevActEnv;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.getByText("12%")).toBeInTheDocument();
   });
 });
