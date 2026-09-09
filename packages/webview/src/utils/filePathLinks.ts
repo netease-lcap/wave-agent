@@ -49,34 +49,43 @@ export interface FilePathMatch {
   endLine?: number;
 }
 
-// 路径段允许字符：排除空白与常见分隔/标点，规避把散文误当路径。
-// '.' 允许（点文件、多段扩展名如 .d.ts），'~' 允许（仅 ~/ 前缀被单独拦截）。
-const SEG = "[A-Za-z0-9._~+@%-]";
+// 路径段允许字符：ASCII 字母数字与安全符号 ∪ Unicode 字母/数字/组合标记
+// （中文、日文假名、韩文、带变音记号字母等），仍排除空白、ASCII/中文标点
+// 与括号（unicode 属性转义只含 L/N/M，标点与空白天然不在其中），规避把散文
+// 误当路径。'.' 允许（点文件、多段扩展名如 .d.ts），'~' 允许（仅 ~/ 前缀被
+// 单独拦截）。含 \p{…} 的字符类必须配合 u flag（下方各 new RegExp 均已加）。
+const SEG = "[A-Za-z0-9._~+@%\\-\\p{L}\\p{N}\\p{M}]";
 
 // POSIX 绝对：以 / 开头，至少两级目录（/etc/hosts 可点击，/foo 不可）。
-const POSIX_ABS_RE = new RegExp(`^\\/${SEG}+(?:\\/${SEG}+)+$`);
+const POSIX_ABS_RE = new RegExp(`^\\/${SEG}+(?:\\/${SEG}+)+$`, "u");
 
 // Windows 盘符绝对：C:\… 或 C:/…，至少一级（含盘符即无歧义）。
-const WIN_ABS_RE = new RegExp(`^[A-Za-z]:[\\\\/]${SEG}+(?:[\\\\/]${SEG}+)*$`);
+const WIN_ABS_RE = new RegExp(
+  `^[A-Za-z]:[\\\\/]${SEG}+(?:[\\\\/]${SEG}+)*$`,
+  "u",
+);
 
 // file:/// URL：盘符形式（file:///C:/x）或 POSIX 形式（file:///etc/x）。
 // 只消耗 file:// 前缀；路径本身（/C:/x、/etc/x）保留前导 /，随各分支匹配。
 const FILE_URL_RE = new RegExp(
   `^file:\\/\\/(?:\\/[A-Za-z]:[\\\\/]${SEG}+(?:[\\\\/]${SEG}+)*|(?:\\/${SEG}+)+)$`,
-  "i",
+  "iu",
 );
 
 // 相对路径（仅行内代码通道）：可选 ./ ../ 前缀 + ≥1 级目录 + 末段带扩展名
-// （点后至少一个字母数字，扩展名内不再含点，防把句尾句号吞进路径）。
+// （点后至少一个 ASCII 字母数字，扩展名内不再含点，防把句尾句号吞进路径）。
 const REL_RE = new RegExp(
   `^(?:\\.{1,2}\\/)?(?:${SEG}+\\/)+${SEG}*\\.[A-Za-z0-9][A-Za-z0-9_-]*$`,
+  "u",
 );
 
 // 行号后缀：:N 或 :N-M，仅允许紧贴路径末尾。
 const LINE_SUFFIX_RE = /^(.*):(\d+)(?:-(\d+))?$/;
 
-// 末段是否带扩展名（点前至少一个路径字符、点后至少一个字母数字）。
-const HAS_EXT_RE = /[A-Za-z0-9_~+@%-]\.[A-Za-z0-9][A-Za-z0-9_-]*$/;
+// 末段是否带扩展名（点前至少一个路径字符——含中文等非 ASCII 字母数字，点后
+// 至少一个 ASCII 字母数字；点前显式排除 '.' 自身，防 .. 型序列被当扩展名）。
+const HAS_EXT_RE =
+  /[\p{L}\p{N}\p{M}A-Za-z0-9_~+@%-]\.[A-Za-z0-9][A-Za-z0-9_-]*$/u;
 
 // 分类 path（已经去掉行号后缀、~ 前缀已拦截）→ kind；非法返回 null。
 const classifyPath = (body: string): FilePathMatch["kind"] | null => {
@@ -139,7 +148,14 @@ export function detectFilePathToken(
   const kind = classifyPath(body);
   if (!kind) return null;
   if (kind === "rel" && !opts.allowRelative) return null;
-  if (kind !== "rel" && opts.requireExtension && !HAS_EXT_RE.test(body)) {
+  // 扩展名检查：行内代码通道（requireExtension）恒要求点扩展名；正文纯文本
+  // 通道（requireExtension=false）对纯 ASCII 绝对路径不要求（/etc/hosts 可点），
+  // 但路径一旦含非 ASCII 字符（中文等）则必须带 ASCII 点扩展名收尾——否则
+  // 散文里「/张三/李四」「参考 /etc/hosts文件」这类中文尾巴会被整体吞进链接，
+  // 造成死链。真实含中文文件名的路径（报表.xlsx、CodeChat桌.html、笔记.md）
+  // 均有扩展名，不受影响。
+  const needsExt = opts.requireExtension || /[\u0080-\u{10ffff}]/u.test(body);
+  if (kind !== "rel" && needsExt && !HAS_EXT_RE.test(body)) {
     return null;
   }
 
@@ -177,7 +193,11 @@ export function resolveFilePathMatch(
 export const fileLinkHtml = (displayText: string): string =>
   `<a href="#" class="file-path-link">${escapeHtml(displayText)}</a>`;
 
-// 路径本体允许的字符（SEG ∪ / 与 \ 分隔符；不含 :，正文不吞行号）。
+// 正文右剥兜底（整串匹配失败后从右往左剥离非路径字符）用的字符判定。
+// 刻意保持 ASCII-only 而不同步放宽后的 SEG：含中文的合法路径在整串匹配
+// （SEG 已含 \p{L} 等）阶段即被识别，不会落到此处；落到此处的是路径后
+// 紧贴无空白的散文尾巴（如「/etc/hosts文件」→ 只链 /etc/hosts）。若把
+// 中文也当路径字符，散文尾巴就剥不掉了。'/' 与 '\' 为分隔符，':'(行号)不吞。
 const isPathChar = (c: string): boolean =>
   c === "/" || c === "\\" || /[A-Za-z0-9._~+@%-]/.test(c);
 

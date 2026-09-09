@@ -44,6 +44,22 @@ describe("detectFilePathToken — 行内代码通道（整串、相对/绝对、
     expect(code("C:/proj/src/a.ts:5")?.startLine).toBe(5);
   });
 
+  it("识别含中文/非 ASCII 字符的文件路径（Windows/相对/POSIX）", () => {
+    expect(code("C:\\Users\\张三\\下载\\报表.xlsx")?.kind).toBe("win");
+    expect(
+      code("C:\\Users\\wb.tandefu01\\Downloads\\CodeChat桌.html")?.kind,
+    ).toBe("win");
+    expect(code("/home/张三/项目/笔记.md")?.kind).toBe("posix");
+    expect(code("src/我的组件.tsx")?.kind).toBe("rel");
+    expect(code("C:/用户/目录/文件 名.txt")).toBeNull(); // 含空白仍不识别
+  });
+
+  it("行内代码中文路径拒绝无扩展名/纯中文内容", () => {
+    expect(code("请把报表放在这里")).toBeNull(); // 中文句子无斜杠
+    expect(code("C:\\Users\\张三\\下载")).toBeNull(); // 无扩展名
+    expect(code("/张三/李四/")).toBeNull(); // 尾斜杠非段字符
+  });
+
   it("拒绝非路径代码内容", () => {
     expect(code("var x = 1")).toBeNull(); // 空白/无斜杠
     expect(code("www.example.com")).toBeNull(); // 无斜杠
@@ -90,6 +106,21 @@ describe("detectFilePathToken — 正文纯文本通道（仅绝对）", () => {
     expect(text("~/dev/proj/tsconfig.json")).toBeNull();
     expect(text("~/x.ts")).toBeNull();
   });
+
+  it("正文通道识别含中文文件名的绝对路径（需带 ASCII 扩展名收尾）", () => {
+    expect(text("C:\\Users\\张三\\下载\\报表.xlsx")?.kind).toBe("win");
+    expect(text("/home/张三/项目/笔记.md")?.kind).toBe("posix");
+    expect(
+      text("C:\\Users\\wb.tandefu01\\Downloads\\CodeChat桌.html")?.kind,
+    ).toBe("win");
+  });
+
+  it("正文通道拒绝无扩展名的中文绝对路径与纯中文斜杠文本（防散文误判）", () => {
+    expect(text("C:\\Users\\张三\\下载")).toBeNull(); // 中文路径但无扩展名
+    expect(text("/home/张三/项目")).toBeNull(); // 目录级中文无扩展名
+    expect(text("/请把报表放在/这里")).toBeNull(); // 中文散文斜杠形态
+    expect(text("/etc/hosts文件")).toBeNull(); // 中文尾巴不被吞成路径（仅 ASCII 前缀可链）
+  });
 });
 
 describe("resolveFilePathMatch — 打开路径解析", () => {
@@ -135,6 +166,31 @@ describe("linkifyFilePathText — 正文纯文本链接化", () => {
     expect(html).toContain(
       '<a href="#" class="file-path-link">/tmp/a.ts</a>。',
     );
+  });
+
+  it("正文含中文文件名的绝对路径渲染为链接，中文文件名完整保留", () => {
+    const html = linkifyFilePathText(
+      "完整路径是 C:\\Users\\wb.tandefu01\\Downloads\\CodeChat桌.html，在下载目录里。",
+    );
+    expect(html).toContain(
+      '<a href="#" class="file-path-link">C:\\Users\\wb.tandefu01\\Downloads\\CodeChat桌.html</a>，在下载目录里。',
+    );
+  });
+
+  it("正文含 POSIX 中文路径同样链接，无扩展名的中文绝对路径保持普通文本", () => {
+    const linked = linkifyFilePathText("参考 /home/张三/项目/笔记.md 的实现");
+    expect(linked).toContain(
+      '<a href="#" class="file-path-link">/home/张三/项目/笔记.md</a>',
+    );
+    const plain = linkifyFilePathText("放在 /home/张三/项目 目录下");
+    expect(plain).not.toContain("file-path-link");
+    expect(plain).toContain("/home/张三/项目");
+  });
+
+  it("中文散文句子不产生任何链接", () => {
+    const html = linkifyFilePathText("请把报表放在这里，谢谢。");
+    expect(html).not.toContain("file-path-link");
+    expect(html).toContain("请把报表放在这里，谢谢。");
   });
 
   it("正文通道不吞 :N 行号后缀（整串保持普通文本）", () => {
