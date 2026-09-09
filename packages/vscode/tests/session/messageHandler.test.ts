@@ -39,6 +39,7 @@ function createMockSession(): ChatSession {
     getSlashCommands: vi.fn().mockResolvedValue([]),
     getMessages: vi.fn().mockResolvedValue([]),
     askBtw: vi.fn(),
+    backgroundTasks: [],
   } as unknown as ChatSession;
 }
 
@@ -383,6 +384,47 @@ describe("MessageHandler MCP handlers", () => {
       .calls[0][0] as { command: string; messages: unknown };
     expect(posted.command).toBe("updateMessages");
     expect(posted.messages).toEqual([]);
+  });
+
+  // spec session-management.md「IDE 插件聊天头部」场景 6/7: host 侧双防线 ——
+  // webview 已禁用/忽略，此守卫覆盖「通知在途」竞态窗口与其它调用方。
+  test("clearChat is ignored while a background task is running", async () => {
+    const session = createMockSession();
+    session.backgroundTasks = [
+      {
+        id: "bg-1",
+        type: "shell",
+        status: "running",
+        startTime: 1000,
+        command: "sleep 300",
+      },
+    ];
+
+    const { handler } = createHandler(session);
+    await handler.handleMessage({ command: "clearChat" }, "tab");
+
+    expect(session.clearChat).not.toHaveBeenCalled();
+  });
+
+  test("restoreSession is ignored while a background task is running", async () => {
+    const session = createMockSession();
+    session.backgroundTasks = [
+      {
+        id: "bg-2",
+        type: "subagent",
+        status: "running",
+        startTime: 1000,
+        description: "background subagent",
+      },
+    ];
+
+    const { handler } = createHandler(session);
+    await handler.handleMessage(
+      { command: "restoreSession", sessionId: "sess-1" },
+      "tab",
+    );
+
+    expect(session.restoreSession).not.toHaveBeenCalled();
   });
 
   test("compact command calls session.compact with customInstructions", async () => {
