@@ -442,10 +442,15 @@ export type ToastAction =
   | { type: "openDownloadPage"; url: string }
   | { type: "focusSession"; host: string; sessionId: string };
 
-/** A non-modal in-app toast (VS Code-style, bottom-right). Desktop host only. */
+/** Toast 语义类型（与 packages/webview/src/types/index.ts 同步）：
+ *  color-* / color-*-soft 语义，缺省 = "info"。 */
+export type ToastKind = "success" | "info" | "error";
+
+/** A non-modal in-app toast (top-center toast bar, desktop host only). */
 export interface UpdateToast {
   id: string;
   message: string;
+  type?: ToastKind;
   actionLabel?: string;
   action?: ToastAction;
   /** The toast's action is being performed — render a loading state instead of

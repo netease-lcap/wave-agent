@@ -4793,7 +4793,7 @@ export class DesktopHost {
       await this.updateAgentConfig(config);
       // 设置页保存成功经全局 toast 提示（spec「设置页反馈语义」，webview 不再
       // 渲染页面内提示）；configurationResponse 仍回发以刷新设置页展示值。
-      this.showToast({ message: "保存成功" });
+      this.showToast({ message: "保存成功", type: "success" });
       this.postMessage({ command: "configurationUpdated" });
       this.postMessage({
         command: "configurationResponse",
@@ -4804,7 +4804,7 @@ export class DesktopHost {
     } catch (error) {
       console.error("[DesktopHost] Failed to save configuration:", error);
       const message = error instanceof Error ? error.message : String(error);
-      this.showToast({ message: `保存失败：${message}` });
+      this.showToast({ message: `保存失败：${message}`, type: "error" });
       // configurationError 仅用于复位 webview 的保存中状态（按钮重新可用）。
       this.postMessage({
         command: "configurationError",
@@ -5185,7 +5185,7 @@ export class DesktopHost {
       );
       // AGENTS.md 保存结果经全局 toast 提示（spec「设置页反馈语义」）；
       // agentsContentSaved 仍回发以复位 webview 的保存中状态。
-      this.showToast({ message: "保存成功" });
+      this.showToast({ message: "保存成功", type: "success" });
       this.postMessage({
         command: "agentsContentSaved",
         scope,
@@ -5194,7 +5194,7 @@ export class DesktopHost {
     } catch (error) {
       console.error("[DesktopHost] 保存 AGENTS.md 失败:", error);
       const message = error instanceof Error ? error.message : String(error);
-      this.showToast({ message: `保存失败：${message}` });
+      this.showToast({ message: `保存失败：${message}`, type: "error" });
       this.postMessage({
         command: "agentsContentSaved",
         scope,

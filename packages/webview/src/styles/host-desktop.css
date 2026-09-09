@@ -74,6 +74,15 @@
      token；浅色沿用 cc 蓝，区别于插件端 --vscode-textLink #0069cc） */
   --cc-text-link: #2f5edb;
 
+  /* 状态语义三色 + soft 底：skill tokens.css 契约「color-* fg + color-*-soft
+     bg + icon/text 并存」；toast/状态反馈消费（0909 第 4 轮引入） */
+  --cc-color-success: #16a34a;   /* = cc state-succeeded / session-succeeded */
+  --cc-color-success-soft: #f0fdf4;
+  --cc-color-danger: #dc2626;
+  --cc-color-danger-soft: #fef2f2;
+  --cc-color-info: #2563eb;
+  --cc-color-info-soft: #eff6ff;
+
   /* 中密度字号：插件 13px → 桌面 14px */
   --vscode-font-size: 14px;
   --vscode-editor-font-size: 13px;
@@ -145,6 +154,15 @@
 
   /* 链接蓝：Figma --cc-text-link 深色档 #4daafc（同浅色注释，供 host 取样） */
   --cc-text-link: #4daafc;
+
+  /* 状态语义三色 + soft 底（深色档：feat/approved-dark-theme-contract
+     build_desktop_dark.py 生成值，user-approved） */
+  --cc-color-success: #83d6a0;
+  --cc-color-success-soft: #192b21;
+  --cc-color-danger: #f19b95;
+  --cc-color-danger-soft: #332021;
+  --cc-color-info: #8bbcf0;
+  --cc-color-info-soft: #1b2939;
 
   /* 中密度字号 */
   --vscode-font-size: 14px;
@@ -2436,4 +2454,100 @@
 [data-host="desktop"] .tool-result-inline,
 [data-host="desktop"] .codicon {
   font-weight: var(--cc-font-weight-regular, 400);
+}
+
+/* ═══ 0909 第 4 轮：toast 顶部居中 codex 形制 + 语义三色 ═══
+   用户走查：设置页保存成功 toast 参考 codex 样式（顶部居中、描边圆勾图标 +
+   文字 + 关闭、soft 彩底 + 同色文字），颜色绑语义层变量不写死。
+   语义三色走 skill 契约「color-* fg + color-*-soft bg + icon/text 并存」：
+     success → --cc-color-success(+soft)、error → --cc-color-danger(+soft)、
+     info → --cc-color-info(+soft)；缺省 type 视为 info。
+   深色值取 feat/approved-dark-theme-contract（build_desktop_dark.py 值）。
+   base .toast-stack 保持 VS Code 右下通知样供非桌面宿主（永不 push
+   showToast，inert）；本段为 [data-host="desktop"] 全量桌面化覆盖。
+   定位：水平居中整栈交给 .toast-stack 自身 translateX(-50%)（left 可由
+   ToastStack 以 anchorSelector 计算的内联值覆盖 → 锚到右侧界面/内容列中心，
+   见 0909 第 4 轮续轮）；单条动效只做垂直下落（子元素不得再含 X 位移，否则
+   每条自身被横移半宽造成栈内错位）。 */
+[data-host="desktop"] .toast-stack {
+  position: fixed;
+  top: 12px;
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  /* 多条时最新置顶：主轴反向堆叠（首条在底、新 push 的在顶滑入），与
+     「新通知从顶部出现」的方向一致 */
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 24px);
+}
+
+@keyframes toast-drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+[data-host="desktop"] .toast {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(460px, calc(100vw - 24px));
+  padding: 9px 8px 9px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  font-size: 14px;
+  line-height: 1.45;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 6%);
+  animation: toast-drop-in 0.18s ease-out;
+}
+
+[data-host="desktop"] .toast--success {
+  color: var(--cc-color-success);
+  background: var(--cc-color-success-soft);
+}
+[data-host="desktop"] .toast--error {
+  color: var(--cc-color-danger);
+  background: var(--cc-color-danger-soft);
+}
+[data-host="desktop"] .toast--info {
+  color: var(--cc-color-info);
+  background: var(--cc-color-info-soft);
+}
+
+[data-host="desktop"] .toast-kind-icon {
+  flex-shrink: 0;
+}
+
+/* 关闭钮与语义图标同色同浓度（用户 0909 走查：深浅模式下 × 应与勾/圆图标
+   颜色一致，勿淡显；hover 仅加深背景、色不变）。盖过上方 0908 全局图标
+   #565a60 规则 —— 本段居文件尾同 specificity 后写生效） */
+[data-host="desktop"] .toast-close {
+  color: inherit;
+  opacity: 1;
+}
+[data-host="desktop"][data-theme="dark"] .toast-close {
+  color: inherit;
+  opacity: 1;
+}
+[data-host="desktop"] .toast-close:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+[data-host="desktop"][data-theme="dark"] .toast-close:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+[data-host="desktop"] .toast-message {
+  flex: 0 1 auto;
+  min-width: 0;
+  word-break: break-word;
 }
