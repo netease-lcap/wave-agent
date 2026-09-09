@@ -1109,16 +1109,21 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // Project settings (.wave/settings.json merged enabledPlugins) are
         // per-workdir, so on Desktop each pane may hold a different value —
         // must be pane-guarded (unlike the shared global configurationResponse).
-        // The reply is stamped with the workdir active when it lands so the
-        // 项目设置 view can tell whether the cached value still belongs to the
-        // current project (a stale reply for a switched-away directory must
-        // never masquerade as the current project's state).
+        // The reply carries its own workdir (host 归属键)：归属目录已不是当前
+        // 目录（切目录/切会话后才落地）的慢回复直接丢弃（过期即弃），不再按
+        // 到达时目录盖章（a3043966 土办法会把上个项目的数据标成当前项目）。
         if (!forThisPane(message)) break;
+        if (message.workdir !== effectiveWorkdirRef.current) break;
+        // workdir 键控快照存 SessionUiStore；reducer 只镜像本次接受的值供
+        // 项目设置视图渲染（镜像自身的归属守卫见 SettingsPage）。
+        sessionUi.setProjectSettings(message.workdir, {
+          enabledPlugins: message.enabledPlugins,
+        });
         dispatch({
           type: "SET_PROJECT_SETTINGS",
           payload: {
             enabledPlugins: message.enabledPlugins,
-            workdir: effectiveWorkdirRef.current,
+            workdir: message.workdir,
           },
         });
         break;

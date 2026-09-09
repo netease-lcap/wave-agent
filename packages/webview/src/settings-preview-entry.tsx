@@ -124,10 +124,13 @@ function SettingsPreview() {
         break;
       case "projectSettings":
         if (msg.enabledPlugins && typeof msg.enabledPlugins === "object") {
+          // host 回带 workdir（归属键）：归属目录与当前目录不一致（settingsState
+          // 切换后才落地）的慢回复直接丢弃（过期即弃），不再按到达时目录盖章。
+          if (msg.workdir !== workdirRef.current) break;
           setProjectSettings({
             enabledPlugins: msg.enabledPlugins as Record<string, boolean>,
           });
-          setProjectSettingsWorkdir(workdirRef.current);
+          setProjectSettingsWorkdir(msg.workdir);
         }
         break;
     }

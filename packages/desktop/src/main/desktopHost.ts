@@ -5131,6 +5131,8 @@ export class DesktopHost {
         command: "projectSettings",
         paneId,
         enabledPlugins: result.enabledPlugins,
+        // 归属键：请求所用 workdir 恒回带（webview 据此过期即弃 + 键控缓存）
+        workdir,
       });
     } catch (error) {
       this.showToast({ message: `获取项目设置失败: ${error}` });
@@ -5208,6 +5210,8 @@ export class DesktopHost {
         command: "projectSettings",
         paneId,
         enabledPlugins: result.enabledPlugins,
+        // 归属键：请求所用 workdir 恒回带（同 handleGetProjectSettings）
+        workdir,
       });
       // Recreate agents so the plugin change applies immediately (mirrors handlePluginMutation)
       await this.updateAgentConfig(this.configStore.getConfiguration());

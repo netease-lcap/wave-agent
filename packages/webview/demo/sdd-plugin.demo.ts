@@ -65,9 +65,11 @@ test.describe("Built-in SDD Plugin Demo", () => {
       webviewPage.getByRole("heading", { name: "项目设置" }),
     ).toBeVisible();
 
-    // Host 回发项目设置（sdd@builtin 已启用）→ 开关为勾选态。
+    // Host 回发项目设置（sdd@builtin 已启用）→ 开关为勾选态。workdir 归属键
+    // 必须匹配当前目录，否则回复被过期即弃丢弃（ChatApp projectSettings 消费）。
     await injector.simulateExtensionMessage("projectSettings", {
       enabledPlugins: { "sdd@builtin": true },
+      workdir: DIR_A,
     });
     const sddToggle = webviewPage.getByLabel("启用 SDD 插件");
     await expect(sddToggle).toBeChecked();

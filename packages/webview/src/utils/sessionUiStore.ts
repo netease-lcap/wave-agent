@@ -42,6 +42,11 @@ export interface RemoteForwardRef {
   requestId: string;
 }
 
+/** 项目设置快照（.wave/settings.json 合并后的 enabledPlugins）。 */
+export interface ProjectSettingsSnapshot {
+  enabledPlugins: Record<string, boolean>;
+}
+
 /** 单个会话的 UI 状态快照。新字段按「折叠状态（80db706b）/ 预览 URL（#2049）
  *  的先例」直接加在这里——声明即纳入快照/恢复/失效的全套机制。 */
 export interface SessionUiState {
@@ -98,6 +103,22 @@ export type SessionUiPatch = Partial<SessionUiState>;
 
 class SessionUiStore {
   private cache = new Map<SessionUiKey, SessionUiState>();
+
+  // projectSettings 快照区：**workdir 维度**（与上方会话键区分开的另一张
+  // Map）。项目设置本身按项目作用域（.wave/settings.json 随目录走），同一
+  // 目录的多个会话共享同一份，会话不是它的归属单位——a3043966 的 chatReducer
+  // 单槽 stamp（到达时盖章）迁入于此，key 由 store 统一管理。条目极小且以
+  // webview 实例一生访问过的目录数为上界，随实例销毁整体释放。
+  private projectSettingsByWorkdir = new Map<string, ProjectSettingsSnapshot>();
+
+  getProjectSettings(workdir: string): ProjectSettingsSnapshot | undefined {
+    return this.projectSettingsByWorkdir.get(workdir);
+  }
+
+  /** 回复落地且归属匹配当前目录时写入（ChatApp projectSettings 消费处）。 */
+  setProjectSettings(workdir: string, snapshot: ProjectSettingsSnapshot): void {
+    this.projectSettingsByWorkdir.set(workdir, snapshot);
+  }
 
   get(key: SessionUiKey): SessionUiState | undefined {
     return this.cache.get(key);

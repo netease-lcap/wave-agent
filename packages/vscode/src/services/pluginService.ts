@@ -5,7 +5,10 @@ import type { StdioClient } from "../stdio/stdioClient";
 export class PluginService {
   constructor(private utilityClient: StdioClient) {}
 
-  private getWorkdir(): string | undefined {
+  /** Workspace root the plugin/project-settings RPCs run against. Reply
+   *  attribution: hosts echo it on projectSettings so the webview can drop
+   *  stale replies (webview-fixtures ReplyAttribution). */
+  public getWorkdir(): string | undefined {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   }
 

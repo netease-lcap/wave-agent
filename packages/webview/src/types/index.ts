@@ -734,9 +734,11 @@ export interface ChatState {
   // Project-scoped settings (read from .wave/settings.json merged config via
   // stdio RPC). Holds the merged enabledPlugins map for the 项目设置 view.
   projectSettings?: { enabledPlugins: Record<string, boolean> };
-  // The workdir projectSettings above was fetched for. The 项目设置 view keys
-  // the cached toggle state to this directory so switching sessions/projects
-  // forces a fresh read instead of showing another project's state.
+  // Mirror of the last accepted projectSettings reply: the value plus the
+  // workdir it belongs to (host 归属键原样带回；键控快照在 SessionUiStore)。
+  // The 项目设置 view keys the cached toggle state to this directory so
+  // switching sessions/projects forces a fresh read instead of showing
+  // another project's state.
   projectSettingsWorkdir?: string;
   // Permission mode state
   permissionMode?: PermissionMode;
