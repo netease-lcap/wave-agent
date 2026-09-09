@@ -677,6 +677,9 @@ export interface SkillMetadataResponseMessage extends HostToWebviewMessageBase {
 
 export interface HooksResponseMessage extends HostToWebviewMessageBase {
   command: "hooksResponse";
+  /** 归属键：回复所属的配置作用域（host 端以请求 scope 恒回带），消费侧
+   *  （useSettingsList attributionKey）据此丢弃切 Tab 前发出的慢回复。 */
+  scope: "user" | "project" | "plugin";
   hooks: Record<string, unknown[]>;
   /** 该 scope 钩子所在 settings.json 路径（删除确认框展示用），可空 */
   configPath?: string | null;
@@ -691,6 +694,10 @@ export interface McpConfigPathsResponseMessage
 
 export interface HistoryResponseMessage extends HostToWebviewMessageBase {
   command: "historyResponse";
+  /** 归属键：请求生成的 id（requestHistory/searchHistory 原样带回）。历史
+   *  弹窗按 debounce 连续发查询，晚到的旧查询回复会被 requestId 比对丢弃
+   *  （过期即弃，fileSuggestionsResponse 同款范例）。 */
+  requestId: string;
   history: SessionMetadata[];
 }
 
@@ -895,6 +902,11 @@ type ReplyAttribution = {
   mcpConfigResponse: "scope";
   agentsContentResponse: "scope";
   agentsContentSaved: "scope";
+  // 四视图钩子列表：scope 作归属键（useSettingsList 与 fetchKey 比对，
+  // 切 Tab 前的慢回复即弃）。
+  hooksResponse: "scope";
+  // 一次性查询：历史弹窗 debounce 连续查询，requestId 比对弃旧回复。
+  historyResponse: "requestId";
   // 问题文本作键：btw 面板比对 in-flight question，晚到的旧回复即弃。
   btwStream: "question";
   btwResponse: "question";
@@ -933,6 +945,8 @@ export const replyAttributionLocked = {
   mcpConfigResponse: true,
   agentsContentResponse: true,
   agentsContentSaved: true,
+  hooksResponse: true,
+  historyResponse: true,
   btwStream: true,
   btwResponse: true,
   btwError: true,

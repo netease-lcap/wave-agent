@@ -129,7 +129,29 @@ describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab）", () 
       command: "getHooksByScope",
       scope: "project",
     });
-    sendHostMessage(fixtures.hooksResponse({}));
+    // 归属键：回复 scope 必须与当前 Tab 一致（过期即弃）
+    sendHostMessage(fixtures.hooksResponse({}, { scope: "project" }));
+    expect(await screen.findByText("项目级钩子暂无内容")).toBeInTheDocument();
+  });
+
+  it("切 Tab 前发出的旧 scope 慢回复被过期即弃，不覆盖当前 Tab 列表", async () => {
+    renderSettingsPage();
+    sendHostMessage(fixtures.hooksResponse(userHooks));
+    await screen.findByText("PreToolUse:Write");
+
+    // 切到项目级 Tab（触发重拉、loading）后，一个 user scope 的慢回复到达：
+    // 归属不符 → 丢弃，列表不被覆盖（修复前会闪现用户级数据 + 解除 loading）
+    await act(async () => {
+      fireEvent.click(await screen.findByText("项目级钩子"));
+    });
+    await act(async () => {
+      sendHostMessage(fixtures.hooksResponse(userHooks, { scope: "user" }));
+    });
+    expect(screen.queryByText("PreToolUse:Write")).not.toBeInTheDocument();
+    expect(screen.getByText("加载中...")).toBeInTheDocument();
+
+    // 项目级回复到达 → 正常渲染
+    sendHostMessage(fixtures.hooksResponse({}, { scope: "project" }));
     expect(await screen.findByText("项目级钩子暂无内容")).toBeInTheDocument();
   });
 
@@ -140,8 +162,8 @@ describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab）", () 
     await act(async () => {
       fireEvent.click(await screen.findByText("插件钩子"));
     });
-    // tab 切换触发重新请求，回发插件钩子数据
-    sendHostMessage(fixtures.hooksResponse(pluginHooks));
+    // tab 切换触发重新请求，回发插件钩子数据（归属键 scope=plugin）
+    sendHostMessage(fixtures.hooksResponse(pluginHooks, { scope: "plugin" }));
     expect(await screen.findByText("SessionStart")).toBeInTheDocument();
     expect(screen.getByText("echo plugin-start")).toBeInTheDocument();
     expect(
@@ -247,7 +269,7 @@ describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab）", () 
     await act(async () => {
       fireEvent.click(await screen.findByText("项目级钩子"));
     });
-    // tab 切换触发重新请求，回发项目钩子数据
+    // tab 切换触发重新请求，回发项目钩子数据（归属键 scope=project）
     sendHostMessage(
       fixtures.hooksResponse(
         {
@@ -258,7 +280,7 @@ describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab）", () 
             },
           ],
         },
-        { configPath: "/work/a/.wave/settings.json" },
+        { configPath: "/work/a/.wave/settings.json", scope: "project" },
       ),
     );
     expect(await screen.findByText("PostToolUse:Bash")).toBeInTheDocument();

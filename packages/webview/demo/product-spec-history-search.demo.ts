@@ -52,8 +52,16 @@ test.describe("Product Spec: History Search", () => {
       },
     ];
 
+    // 归属键：回带 webview 刚发出的 requestId（无归属的 historyResponse 会被丢弃）
+    await injector.waitForMessage("requestHistory", 5000);
+    const sent = await injector.getMessagesSentToExtension();
+    const historyRequest = sent
+      .filter((m) => m.command === "requestHistory")
+      .pop() as { requestId?: string };
+
     await injector.simulateExtensionMessage("historyResponse", {
       history: mockHistory,
+      requestId: historyRequest?.requestId,
     });
 
     // 4. Wait for popup to be visible and loading to finish

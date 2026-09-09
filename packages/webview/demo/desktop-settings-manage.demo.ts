@@ -195,6 +195,8 @@ test.describe("Desktop settings manage views screenshots", () => {
     await webviewPage.getByRole("button", { name: "钩子" }).click();
     await expect(webviewPage.getByText("用户级钩子")).toBeVisible();
     await injector.simulateExtensionMessage("hooksResponse", {
+      // 归属键：当前 Tab 为「用户级钩子」，回带 scope 才能通过过期即弃
+      scope: "user",
       hooks: {
         PreToolUse: [
           {

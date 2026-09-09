@@ -314,10 +314,19 @@ export class MessageHandler {
         await this.handleAskBtw(msg.question as string, viewType, windowId);
         break;
       case "requestHistory":
-        await this.handleRequestHistory(viewType, windowId);
+        await this.handleRequestHistory(
+          msg.requestId as string,
+          viewType,
+          windowId,
+        );
         break;
       case "searchHistory":
-        await this.handleSearchHistory(msg.query as string, viewType, windowId);
+        await this.handleSearchHistory(
+          msg.query as string,
+          msg.requestId as string,
+          viewType,
+          windowId,
+        );
         break;
       case "getAuthStatus":
         await this.handleGetAuthStatus(viewType, windowId);
@@ -853,6 +862,8 @@ export class MessageHandler {
       const hooks = await session.getHooksByScope(scope);
       this.context.postSettingsMessage({
         command: "hooksResponse",
+        // 归属键：请求 scope 恒回带（webview 切 Tab 过期即弃）
+        scope,
         hooks,
       });
     } catch (error) {
@@ -870,6 +881,8 @@ export class MessageHandler {
       const hooks = await session.getHooksByScope(scope);
       this.context.postSettingsMessage({
         command: "hooksResponse",
+        // 归属键：请求 scope 恒回带（同 handleSettingsGetHooksByScope）
+        scope,
         hooks,
       });
     } catch (error) {
@@ -961,6 +974,7 @@ export class MessageHandler {
   }
 
   private async handleRequestHistory(
+    requestId: string,
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
   ) {
@@ -971,6 +985,8 @@ export class MessageHandler {
       this.context.postMessage(
         {
           command: "historyResponse",
+          // 归属键：请求 requestId 原样带回（webview 过期即弃）
+          requestId,
           history: result.history,
         },
         viewType,
@@ -991,6 +1007,7 @@ export class MessageHandler {
 
   private async handleSearchHistory(
     query: string,
+    requestId: string,
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
   ) {
@@ -1001,6 +1018,8 @@ export class MessageHandler {
       this.context.postMessage(
         {
           command: "historyResponse",
+          // 归属键：请求 requestId 原样带回（webview 过期即弃）
+          requestId,
           history: result.history,
         },
         viewType,
@@ -2245,6 +2264,8 @@ export class MessageHandler {
     this.context.postMessage(
       {
         command: "hooksResponse",
+        // 归属键：请求 scope 恒回带（webview 切 Tab 过期即弃）
+        scope,
         hooks,
       },
       viewType,
@@ -2265,6 +2286,8 @@ export class MessageHandler {
       this.context.postMessage(
         {
           command: "hooksResponse",
+          // 归属键：请求 scope 恒回带（同 handleGetHooksByScope）
+          scope,
           hooks,
         },
         viewType,

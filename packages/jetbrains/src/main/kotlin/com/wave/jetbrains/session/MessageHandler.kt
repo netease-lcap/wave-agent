@@ -193,8 +193,10 @@ class MessageHandler(
             }
 
             // ── Prompt history ─────────────────────────────────────────
-            // VSCE :137/:171 → historyResponse { history }
+            // VSCE :137/:171 → historyResponse { requestId, history }
+            // requestId 归属键：请求原样带回（webview 过期即弃）
             "requestHistory" -> {
+                val requestId = msg["requestId"]?.jsonPrimitive?.content ?: ""
                 val history = try {
                     session.agent?.getPromptHistory()?.jsonObject?.get("history") ?: JsonArray(emptyList())
                 } catch (e: StdioClientException) {
@@ -202,11 +204,15 @@ class MessageHandler(
                     postMessage("historyError", buildJsonObject { put("error", "获取历史记录失败: ${e.message}") })
                     return
                 }
-                postMessage("historyResponse", buildJsonObject { put("history", history) })
+                postMessage("historyResponse", buildJsonObject {
+                    put("requestId", requestId)
+                    put("history", history)
+                })
             }
-            // VSCE :140/:185 → historyResponse { history }
+            // VSCE :140/:185 → historyResponse { requestId, history }
             "searchHistory" -> {
                 val query = msg["query"]?.jsonPrimitive?.content ?: ""
+                val requestId = msg["requestId"]?.jsonPrimitive?.content ?: ""
                 val history = try {
                     session.agent?.searchPromptHistory(query)?.jsonObject?.get("history") ?: JsonArray(emptyList())
                 } catch (e: StdioClientException) {
@@ -214,7 +220,10 @@ class MessageHandler(
                     postMessage("historyError", buildJsonObject { put("error", "搜索历史记录失败: ${e.message}") })
                     return
                 }
-                postMessage("historyResponse", buildJsonObject { put("history", history) })
+                postMessage("historyResponse", buildJsonObject {
+                    put("requestId", requestId)
+                    put("history", history)
+                })
             }
 
             // ── File suggestions ───────────────────────────────────────
@@ -736,7 +745,11 @@ class MessageHandler(
                     LOG.warn("getHooksByScope failed: ${e.message}")
                     JsonObject(emptyMap())
                 }
-                postMessage("hooksResponse", buildJsonObject { put("hooks", hooks) })
+                // scope 归属键：请求 scope 恒回带（webview 切 Tab 过期即弃）
+                postMessage("hooksResponse", buildJsonObject {
+                    put("scope", scope)
+                    put("hooks", hooks)
+                })
             }
             "deleteHook" -> {
                 val scope = msg["scope"]?.jsonPrimitive?.content ?: return
@@ -744,7 +757,10 @@ class MessageHandler(
                 try {
                     session.agent?.deleteHook(scope, hookName)
                     val hooks = session.agent?.getHooksByScope(scope) ?: JsonObject(emptyMap())
-                    postMessage("hooksResponse", buildJsonObject { put("hooks", hooks) })
+                    postMessage("hooksResponse", buildJsonObject {
+                        put("scope", scope)
+                        put("hooks", hooks)
+                    })
                 } catch (e: StdioClientException) {
                     LOG.warn("deleteHook failed: ${e.message}")
                     IdeService.showError(project, "删除钩子失败: ${e.message}")

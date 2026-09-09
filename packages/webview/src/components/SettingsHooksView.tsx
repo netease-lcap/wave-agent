@@ -99,6 +99,9 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
     fetchKey: activeTab,
     responseCommands: ["hooksResponse"],
     pickItems: (message) => (message.hooks as HooksByEvent) || {},
+    // 归属键（webview-fixtures ReplyAttribution: hooksResponse→scope）：
+    // 切 Tab 前发出的慢回复与当前 Tab 不符即弃。
+    attributionKey: (message) => message.scope as string,
     onResponse: (message) => {
       setConfigPath(
         typeof message.configPath === "string" ? message.configPath : null,

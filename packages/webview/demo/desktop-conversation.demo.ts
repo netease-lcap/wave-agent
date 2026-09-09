@@ -204,7 +204,13 @@ test.describe("Desktop 2.1 对话 screenshots", () => {
       el.dispatchEvent(ev);
     });
     await injector.waitForMessage("requestHistory", 5000);
+    // 归属键：回带刚发出的 requestId（无归属的 historyResponse 会被过期即弃）
+    const sent = await injector.getMessagesSentToExtension();
+    const historyRequest = sent
+      .filter((m) => m.command === "requestHistory")
+      .pop() as { requestId?: string };
     await injector.simulateExtensionMessage("historyResponse", {
+      requestId: historyRequest?.requestId,
       history: [
         {
           prompt:

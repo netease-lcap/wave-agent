@@ -108,6 +108,8 @@ test.describe("设置页钩子选项卡 Demo", () => {
     await webviewPage.evaluate((hooks) => {
       window.simulateExtensionMessage({
         command: "hooksResponse",
+        // 归属键：当前 Tab 为「用户级钩子」，回带 scope 才能通过过期即弃
+        scope: "user",
         hooks,
         configPath: "~/.wave/settings.json",
       });
