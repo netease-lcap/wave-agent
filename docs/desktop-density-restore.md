@@ -2307,3 +2307,11 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - **根因**：菜单无条件在「最近打开」列表与「浏览…」之间渲染 separator；recents 为空（从未选过目录 / 最近列表已清空）时菜单只剩 `[分隔线, 浏览…]`，分隔线悬在顶部、无分组意义。
 - **修复**（DesktopWorkdirSelector.tsx）：separator 与「最近打开」label 同条件渲染——`recents.length > 0` 才输出；有最近记录时照常分隔两组。
 - 实现文件：`src/components/DesktopWorkdirSelector.tsx`、本 docs。（type-check 通过，用户 8899 人工走查后确认推送。）
+
+## 0909 第 3 轮（feat/0909-new-base-r1）：账户卡「登 录」品牌红按钮文字反白
+
+预览走查评论（8899，`button.account-card-login`「登 录」）「登录文案需要反白」。
+
+- **根因**：按钮为品牌红实心底、白字（原型 sidebar-login-button 同款）；base 文字走 `color: var(--vscode-button-foreground, white)`——桌面语义层 dark 档把该 token 桥接成主按钮「浅灰底深字」的 `#191C1E`（host-desktop.css `--vscode-button-foreground: var(--cc-action-primary-text)`，0907 语义层），登录按钮品牌红底上渲染成深字、失反白。
+- **修复**（AccountCard.css，桌面专用组件文件）：登录钮文字恒白 `color: #ffffff`，不再引用随主按钮语义变化的 `--vscode-button-foreground`（注释说明原因）；hover 仅加深背景、字色不变。落点避开 host-desktop.css（其上另有并行会话 toast 在途改动）。
+- 实现文件：`src/styles/AccountCard.css`、本 docs。（type-check 通过，用户 8899 人工走查后确认推送。）
