@@ -1974,6 +1974,15 @@ export class DesktopHost {
       } catch (error) {
         console.warn("[DesktopHost] getMessages failed:", error);
       }
+      // The getMessages await above is past the last token check, and
+      // handleDeleteSession cancels a restore of a deleted session by removing
+      // its pendingRestores entry — so re-check here, otherwise the restore
+      // would re-register a conversation the user deleted mid-flight (spec
+      // 「恢复加载期间删除会话」: 会话索引以删除为准).
+      if (this.pendingRestores.get(paneId)?.token !== token) {
+        await this.discardAgent(agent);
+        return true;
+      }
       this.rekeyAgent(agent, opts.sessionId);
       // activateAgentInPane clears the pending entry — the pane is now live.
       await this.activateAgentInPane(paneId, agent);
@@ -2757,6 +2766,27 @@ export class DesktopHost {
       this.agents.delete(this.agentKey(host, sessionId));
       this.agentHosts.delete(target);
       this.agentWorktreeInfo.delete(target);
+    }
+
+    // A deleted session must never come back. Two stale references can still
+    // point at it and would re-register it on the next action:
+    //  1. The frozen Ctrl+Tab cycle order (sessionCycleSnapshot) — its only
+    //     invalidation is the current-session comparison in
+    //     activateAdjacentSession, which does NOT fire when the deleted
+    //     session is not the focused pane's current one. Drop the whole
+    //     snapshot so the next press re-derives from the refreshed tree.
+    //  2. An in-flight restore still heading for the deleted id (spec
+    //     「恢复加载期间删除会话」) — runPaneRestore re-registers on landing.
+    //     Cancelling the pending entry makes its token checks discard the
+    //     half-spawned agent instead.
+    this.sessionCycleSnapshot = null;
+    this.sessionCycleIndex = -1;
+    for (const pane of this.panes) {
+      if (this.pendingRestores.get(pane.paneId)?.sessionId === sessionId) {
+        this.pendingRestores.delete(pane.paneId);
+        // Drop the sweep overlay and fall back to the pane's previous agent.
+        void this.pushPaneSessionState(pane.paneId);
+      }
     }
 
     // Every pane showing the deleted session closes; a sole pane resets to a
