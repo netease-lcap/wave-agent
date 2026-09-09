@@ -327,14 +327,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [projectAgentsContent, setProjectAgentsContent] = useState<
     string | null
   >(null);
-  // AGENTS.md 保存状态（设置「个性化」视图）：点击保存置 pending，host 回发
-  // agentsContentSaved 后落定并携带 ok/error 供文本区反馈。
+  // AGENTS.md 保存进行中（设置「个性化」视图）：点击保存置 pending，host 回发
+  // agentsContentSaved 后落定以复位按钮/文本区禁用；保存结果 toast 由宿主发出。
   const [agentsSaving, setAgentsSaving] = useState(false);
-  const [agentsSaveResult, setAgentsSaveResult] = useState<{
-    scope: "user" | "project";
-    ok: boolean;
-    error?: string;
-  } | null>(null);
+  // 该实例是否占据窗口最左侧（其顶栏需承载「侧边栏收起 → 展开按钮 + 红绿灯让
   // 该实例是否占据窗口最左侧（其顶栏需承载「侧边栏收起 → 展开按钮 + 红绿灯让
   // 位段」）：root 单布局（paneId undefined），或 DesktopShell 首行首 pane
   //（firstPane 由 shell 显式标记）。身份与收起状态都同源于 context —— 运行期
@@ -1405,13 +1401,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         break;
       case "agentsContentSaved":
         // AGENTS.md save outcome push (setAgentsContent RPC reply), untagged
-        // like agentsContentResponse — consumed only by the settings page.
+        // like agentsContentResponse — resets the save-in-progress flag (结果
+        // toast 由宿主在发出本消息时一并推送).
         setAgentsSaving(false);
-        setAgentsSaveResult({
-          scope: message.scope === "project" ? "project" : "user",
-          ok: message.ok === true,
-          error: typeof message.error === "string" ? message.error : undefined,
-        });
         break;
       case "loginResponse":
         if (message.success) {
@@ -1932,11 +1924,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   }, []);
 
   // 设置页保存配置（全局设置/个性化视图）：经 updateConfiguration RPC 写回，
-  // 等待 host 回发 configurationResponse（成功）或 configurationError（失败）。
-  // 注意：不能在此 dispatch SET_CONFIGURATION_ERROR undefined —— 该 reducer
-  // case 会把 configurationLoading 复位为 false，与上一条 LOADING true 在
-  // React 批处理下合并后 saving 从未变 true，SettingsPage 的保存反馈 effect
-  // 将永不触发（真机实测复现）。
+  // 保存期间 configurationLoading=true 禁用保存按钮；host 回发
+  // configurationResponse / configurationError 后落定复位（saving=false）。
+  // 保存结果 toast 由宿主全局提示，设置页不渲染页面内反馈（见 spec
+  // desktop-account-and-settings「设置页反馈语义」）。
   const handleConfigurationSave = useCallback(
     (configData: ConfigurationData) => {
       dispatch({ type: "SET_CONFIGURATION_LOADING", payload: true });
@@ -1949,12 +1940,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
 
   // 设置「个性化」AGENTS.md 编辑器保存：经 setAgentsContent RPC 写回文件（用户级
-  // ~/.wave/AGENTS.md / 项目级 <workdir>/AGENTS.md），agentsContentSaved 推送报告
-  // 结果并复位 agentsSaving。项目作用域携带当前 workdir 供 host 解析目标文件。
+  // ~/.wave/AGENTS.md / 项目级 <workdir>/AGENTS.md），host 回发 agentsContentSaved
+  // 复位 agentsSaving（成功/失败 toast 由宿主在回发时一并发出）。项目作用域携带
+  // 当前 workdir 供 host 解析目标文件。
   const handleSaveAgentsContent = useCallback(
     (scope: "user" | "project", content: string) => {
       setAgentsSaving(true);
-      setAgentsSaveResult(null);
       vscode.postMessage({
         command: "setAgentsContent",
         scope,
@@ -3050,10 +3041,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }
       onSaveAgentsContent={handleSaveAgentsContent}
       agentsSaving={agentsSaving}
-      agentsSaveResult={agentsSaveResult}
       workdir={effectiveWorkdir}
       saving={state.configurationLoading}
-      configurationError={state.configurationError}
       initialNav={settingsNav}
       vscode={vscode}
       projectSettings={state.projectSettings}

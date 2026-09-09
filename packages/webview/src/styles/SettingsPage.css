@@ -201,13 +201,6 @@
   line-height: 22px;
 }
 
-.settings-save-message {
-  margin: 0;
-  color: var(--vscode-descriptionForeground);
-  font-size: 12px;
-  line-height: 20px;
-}
-
 .settings-section {
   display: flex;
   flex-direction: column;
@@ -402,11 +395,6 @@
   align-items: flex-end;
   gap: 8px;
   padding: 12px 0;
-}
-
-/* AGENTS.md 保存反馈：文本区下方整行左对齐展示（保存按钮在其右对齐行） */
-.agents-editor .agents-save-message {
-  align-self: stretch;
 }
 
 .project-list {

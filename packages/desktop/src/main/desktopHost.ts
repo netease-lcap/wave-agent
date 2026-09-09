@@ -3505,15 +3505,25 @@ export class DesktopHost {
         break;
       }
 
-      case "removeMcpServer":
+      case "removeMcpServer": {
+        const removeAgent = this.agentForPane(pid);
+        if (!removeAgent) {
+          this.showToast({
+            message: "移除 MCP 服务器失败: 智能体未初始化",
+          });
+          break;
+        }
         try {
-          await this.agentForPane(pid)?.removeMcpServer(
+          await removeAgent.removeMcpServer(
             msg.scope as "user" | "project",
             msg.serverName as string,
           );
+          // 删除成功经全局 toast 提示（spec「设置页反馈语义」）
+          this.showToast({
+            message: `已移除 MCP 服务器「${msg.serverName}」`,
+          });
           // 删除后刷新服务器列表
-          const paneAgent = this.agentForPane(pid);
-          const servers = paneAgent ? await paneAgent.getMcpServers() : [];
+          const servers = await removeAgent.getMcpServers();
           this.postMessage({
             command: "mcpServersResponse",
             paneId: pid,
@@ -3523,13 +3533,22 @@ export class DesktopHost {
           this.showToast({ message: `移除 MCP 服务器失败: ${error}` });
         }
         break;
+      }
 
-      case "deleteSkill":
+      case "deleteSkill": {
+        const deleteAgent = this.agentForPane(pid);
+        if (!deleteAgent) {
+          this.showToast({ message: "删除技能失败: 智能体未初始化" });
+          break;
+        }
         try {
-          await this.agentForPane(pid)?.deleteSkill(msg.name as string);
+          await deleteAgent.deleteSkill(msg.name as string);
+          // 删除成功经全局 toast 提示（spec「设置页反馈语义」）
+          this.showToast({
+            message: `已删除技能「${msg.name}」`,
+          });
           // 删除后刷新技能列表
-          const paneAgent2 = this.agentForPane(pid);
-          const skills = paneAgent2 ? await paneAgent2.getSkillMetadata() : [];
+          const skills = await deleteAgent.getSkillMetadata();
           this.postMessage({
             command: "skillMetadataResponse",
             paneId: pid,
@@ -3539,14 +3558,21 @@ export class DesktopHost {
           this.showToast({ message: `删除技能失败: ${error}` });
         }
         break;
+      }
 
-      case "deleteSubagent":
+      case "deleteSubagent": {
+        const deleteAgent2 = this.agentForPane(pid);
+        if (!deleteAgent2) {
+          this.showToast({ message: "删除子代理失败: 智能体未初始化" });
+          break;
+        }
         try {
-          await this.agentForPane(pid)?.deleteSubagent(msg.name as string);
-          const paneAgent3 = this.agentForPane(pid);
-          const configurations = paneAgent3
-            ? await paneAgent3.getSubagentConfigurations()
-            : [];
+          await deleteAgent2.deleteSubagent(msg.name as string);
+          // 删除成功经全局 toast 提示（spec「设置页反馈语义」）
+          this.showToast({
+            message: `已删除子代理「${msg.name}」`,
+          });
+          const configurations = await deleteAgent2.getSubagentConfigurations();
           this.postMessage({
             command: "subagentConfigurationsResponse",
             paneId: pid,
@@ -3556,6 +3582,7 @@ export class DesktopHost {
           this.showToast({ message: `删除子代理失败: ${error}` });
         }
         break;
+      }
 
       case "getHooksByScope": {
         const paneAgent4 = this.agentForPane(pid);
@@ -3574,16 +3601,24 @@ export class DesktopHost {
         break;
       }
 
-      case "deleteHook":
+      case "deleteHook": {
+        const deleteHookAgent = this.agentForPane(pid);
+        if (!deleteHookAgent) {
+          this.showToast({ message: "删除钩子失败: 智能体未初始化" });
+          break;
+        }
         try {
-          await this.agentForPane(pid)?.deleteHook(
+          await deleteHookAgent.deleteHook(
             msg.scope as "user" | "project",
             msg.hookName as string,
           );
-          const paneAgent6 = this.agentForPane(pid);
-          const hooks3 = paneAgent6
-            ? await paneAgent6.getHooksByScope(msg.scope as "user" | "project")
-            : {};
+          // 删除成功经全局 toast 提示（spec「设置页反馈语义」）
+          this.showToast({
+            message: `已删除钩子「${msg.hookName}」`,
+          });
+          const hooks3 = await deleteHookAgent.getHooksByScope(
+            msg.scope as "user" | "project",
+          );
           this.postMessage({
             command: "hooksResponse",
             paneId: pid,
@@ -3595,6 +3630,7 @@ export class DesktopHost {
           this.showToast({ message: `删除钩子失败: ${error}` });
         }
         break;
+      }
 
       // -- plugins / marketplace ---------------------------------------------------
       case "listPlugins":
@@ -4629,6 +4665,9 @@ export class DesktopHost {
       this.configStore.setConfiguration(configData);
       const config = this.configStore.getConfiguration();
       await this.updateAgentConfig(config);
+      // 设置页保存成功经全局 toast 提示（spec「设置页反馈语义」，webview 不再
+      // 渲染页面内提示）；configurationResponse 仍回发以刷新设置页展示值。
+      this.showToast({ message: "保存成功" });
       this.postMessage({ command: "configurationUpdated" });
       this.postMessage({
         command: "configurationResponse",
@@ -4638,6 +4677,9 @@ export class DesktopHost {
       this.postMessage({ command: "scrollToBottom" });
     } catch (error) {
       console.error("[DesktopHost] Failed to save configuration:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      this.showToast({ message: `保存失败：${message}` });
+      // configurationError 仅用于复位 webview 的保存中状态（按钮重新可用）。
       this.postMessage({
         command: "configurationError",
         error: `Failed to save configuration: ${error}`,
@@ -4988,6 +5030,9 @@ export class DesktopHost {
           workdir,
         },
       );
+      // AGENTS.md 保存结果经全局 toast 提示（spec「设置页反馈语义」）；
+      // agentsContentSaved 仍回发以复位 webview 的保存中状态。
+      this.showToast({ message: "保存成功" });
       this.postMessage({
         command: "agentsContentSaved",
         scope,
@@ -4995,6 +5040,8 @@ export class DesktopHost {
       });
     } catch (error) {
       console.error("[DesktopHost] 保存 AGENTS.md 失败:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      this.showToast({ message: `保存失败：${message}` });
       this.postMessage({
         command: "agentsContentSaved",
         scope,

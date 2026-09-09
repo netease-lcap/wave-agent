@@ -32,9 +32,6 @@ function SettingsPreview() {
   const [configurationData, setConfigurationData] =
     useState<ConfigurationData | null>(null);
   const [saving, setSaving] = useState(false);
-  const [configurationError, setConfigurationError] = useState<
-    string | null | undefined
-  >(undefined);
   const [workdir, setWorkdir] = useState<string | undefined>(undefined);
   // Ref mirror for the once-registered message listener below (its closure only
   // sees the initial value otherwise): the projectSettings reply is stamped with
@@ -46,14 +43,10 @@ function SettingsPreview() {
   const [projectAgentsContent, setProjectAgentsContent] = useState<
     string | null
   >(null);
-  // AGENTS.md 保存状态（「个性化」视图独立保存）：agentsSaving 在点击保存到
-  // host 回发 agentsContentSaved 之间为 true（禁用按钮），结果带 ok/error 供反馈。
+  // AGENTS.md 保存进行中（「个性化」视图独立保存）：agentsSaving 在点击保存到
+  // host 回发 agentsContentSaved 之间为 true（禁用文本区与保存按钮）；保存结果
+  // toast 由宿主发出，本页不渲染页面内提示。
   const [agentsSaving, setAgentsSaving] = useState(false);
-  const [agentsSaveResult, setAgentsSaveResult] = useState<{
-    scope: "user" | "project";
-    ok: boolean;
-    error?: string;
-  } | null>(null);
   // /agents、/skills 斜杠命令经 openSettings(nav) → settingsState 下发，选中对应选项卡
   const [initialNav, setInitialNav] = useState<NavKey | undefined>(undefined);
   // 项目级 enabledPlugins（「项目设置」视图 SDD 开关）；进入该视图时才向 host
@@ -98,9 +91,7 @@ function SettingsPreview() {
         setSaving(false);
         break;
       case "configurationError":
-        setConfigurationError(
-          typeof msg.error === "string" ? msg.error : "未知错误",
-        );
+        // 保存失败也复位 saving（按钮重新可用）；错误提示由宿主全局 toast 给出。
         setSaving(false);
         break;
       case "agentsContentResponse":
@@ -115,12 +106,9 @@ function SettingsPreview() {
         }
         break;
       case "agentsContentSaved":
+        // 保存结果复位 agentsSaving（按钮/文本区重新可用）；结果 toast 由宿主
+        // 在发出本消息时一并推送。
         setAgentsSaving(false);
-        setAgentsSaveResult({
-          scope: msg.scope === "project" ? "project" : "user",
-          ok: msg.ok === true,
-          error: typeof msg.error === "string" ? msg.error : undefined,
-        });
         break;
       case "projectSettings":
         if (msg.enabledPlugins && typeof msg.enabledPlugins === "object") {
@@ -141,7 +129,6 @@ function SettingsPreview() {
       configurationData={configurationData}
       onSave={(data) => {
         setSaving(true);
-        setConfigurationError(undefined);
         vscode.postMessage({
           command: "updateConfiguration",
           configurationData: data,
@@ -159,7 +146,6 @@ function SettingsPreview() {
       }
       onSaveAgentsContent={(scope, content) => {
         setAgentsSaving(true);
-        setAgentsSaveResult(null);
         vscode.postMessage({
           command: "setAgentsContent",
           scope,
@@ -168,10 +154,8 @@ function SettingsPreview() {
         });
       }}
       agentsSaving={agentsSaving}
-      agentsSaveResult={agentsSaveResult}
       workdir={workdir}
       saving={saving}
-      configurationError={configurationError}
       initialNav={initialNav}
       vscode={vscode}
       projectSettings={projectSettings}

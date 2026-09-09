@@ -123,23 +123,33 @@ class MessageHandler(
             "getConfiguration" -> postConfigurationResponse()
             "updateConfiguration" -> {
                 val data = msg["configurationData"]?.jsonObject ?: return
-                val config = WavePluginService.getInstance().loadConfiguration().apply {
-                    apiKey = data["apiKey"]?.jsonPrimitive?.content ?: ""
-                    headers = data["headers"]?.jsonPrimitive?.content ?: ""
-                    baseURL = data["baseURL"]?.jsonPrimitive?.content ?: ""
-                    model = data["model"]?.jsonPrimitive?.content ?: ""
-                    fastModel = data["fastModel"]?.jsonPrimitive?.content ?: ""
-                    language = data["language"]?.jsonPrimitive?.content ?: "Chinese"
-                    serverUrl = data["serverUrl"]?.jsonPrimitive?.content ?: this.serverUrl
-                    contextLength = data["contextLength"]?.jsonPrimitive?.content?.toIntOrNull() ?: this.contextLength
-                    autoMemoryEnabled = data["autoMemoryEnabled"]?.jsonPrimitive?.content?.toBoolean() ?: this.autoMemoryEnabled
-                    autoMemoryFrequency = data["autoMemoryFrequency"]?.jsonPrimitive?.content?.toIntOrNull() ?: this.autoMemoryFrequency
+                try {
+                    val config = WavePluginService.getInstance().loadConfiguration().apply {
+                        apiKey = data["apiKey"]?.jsonPrimitive?.content ?: ""
+                        headers = data["headers"]?.jsonPrimitive?.content ?: ""
+                        baseURL = data["baseURL"]?.jsonPrimitive?.content ?: ""
+                        model = data["model"]?.jsonPrimitive?.content ?: ""
+                        fastModel = data["fastModel"]?.jsonPrimitive?.content ?: ""
+                        language = data["language"]?.jsonPrimitive?.content ?: "Chinese"
+                        serverUrl = data["serverUrl"]?.jsonPrimitive?.content ?: this.serverUrl
+                        contextLength = data["contextLength"]?.jsonPrimitive?.content?.toIntOrNull() ?: this.contextLength
+                        autoMemoryEnabled = data["autoMemoryEnabled"]?.jsonPrimitive?.content?.toBoolean() ?: this.autoMemoryEnabled
+                        autoMemoryFrequency = data["autoMemoryFrequency"]?.jsonPrimitive?.content?.toIntOrNull() ?: this.autoMemoryFrequency
+                    }
+                    WavePluginService.getInstance().saveConfiguration(config)
+                    reloadAgentConfig()
+                    // 设置页保存结果经宿主通知提示（spec「设置页反馈语义」）
+                    IdeService.showInfo(project, "保存成功")
+                    postMessage("configurationUpdated", JsonObject(emptyMap()))
+                    postMessage("focusInput", JsonObject(emptyMap()))
+                    postMessage("scrollToBottom", JsonObject(emptyMap()))
+                } catch (e: Exception) {
+                    LOG.warn("updateConfiguration failed: ${e.message}", e)
+                    IdeService.showError(project, "保存失败：${e.message}")
+                    postMessage("configurationError", buildJsonObject {
+                        put("error", "Failed to save configuration: ${e.message}")
+                    })
                 }
-                WavePluginService.getInstance().saveConfiguration(config)
-                reloadAgentConfig()
-                postMessage("configurationUpdated", JsonObject(emptyMap()))
-                postMessage("focusInput", JsonObject(emptyMap()))
-                postMessage("scrollToBottom", JsonObject(emptyMap()))
             }
             // Settings tab (editor-area webview): open/focus it (spec 场景 10). Sent by the chat
             // webview's handleOpenSettings IDE branch (ChatApp.tsx) and by the settings tab's own
@@ -541,6 +551,7 @@ class MessageHandler(
                 if (agent == null) {
                     // No live agent (e.g. settings tab opened standalone without a chat session):
                     // report an honest failure instead of a false-positive ok=true no-op save.
+                    IdeService.showError(project, "保存失败：智能体未初始化")
                     postMessage("agentsContentSaved", buildJsonObject {
                         put("scope", scope)
                         put("ok", false)
@@ -550,12 +561,15 @@ class MessageHandler(
                 }
                 try {
                     agent.setAgentsContent(scope, content, workdir)
+                    // 保存结果经宿主通知提示（spec「设置页反馈语义」）
+                    IdeService.showInfo(project, "保存成功")
                     postMessage("agentsContentSaved", buildJsonObject {
                         put("scope", scope)
                         put("ok", true)
                     })
                 } catch (e: StdioClientException) {
                     LOG.warn("setAgentsContent failed: ${e.message}")
+                    IdeService.showError(project, "保存失败：${e.message}")
                     postMessage("agentsContentSaved", buildJsonObject {
                         put("scope", scope)
                         put("ok", false)
@@ -712,8 +726,19 @@ class MessageHandler(
             "removeMcpServer" -> {
                 val scope = msg["scope"]?.jsonPrimitive?.content ?: return
                 val name = msg["serverName"]?.jsonPrimitive?.content ?: return
+                val agent = session.agent
+                if (agent == null) {
+                    // 写操作需 live agent（spec「设置页反馈语义」）：无 agent 不得空转
+                    IdeService.showError(project, "移除 MCP 服务器失败: 智能体未初始化")
+                    return
+                }
                 try {
-                    session.agent?.removeMcpServer(scope, name)
+                    val ok = agent.removeMcpServer(scope, name)
+                    if (ok) {
+                        IdeService.showInfo(project, "已移除 MCP 服务器「$name」")
+                    } else {
+                        IdeService.showError(project, "移除 MCP 服务器失败: 未找到服务器「$name」或智能体未初始化")
+                    }
                 } catch (e: StdioClientException) {
                     LOG.warn("removeMcpServer failed: ${e.message}")
                     IdeService.showError(project, "移除 MCP 服务器失败: ${e.message}")
@@ -721,8 +746,18 @@ class MessageHandler(
             }
             "deleteSkill" -> {
                 val name = msg["name"]?.jsonPrimitive?.content ?: return
+                val agent = session.agent
+                if (agent == null) {
+                    IdeService.showError(project, "删除技能失败: 智能体未初始化")
+                    return
+                }
                 try {
-                    session.agent?.deleteSkill(name)
+                    val ok = agent.deleteSkill(name)
+                    if (ok) {
+                        IdeService.showInfo(project, "已删除技能「$name」")
+                    } else {
+                        IdeService.showError(project, "删除技能失败: 未找到技能「$name」或智能体未初始化")
+                    }
                 } catch (e: StdioClientException) {
                     LOG.warn("deleteSkill failed: ${e.message}")
                     IdeService.showError(project, "删除技能失败: ${e.message}")
@@ -730,8 +765,18 @@ class MessageHandler(
             }
             "deleteSubagent" -> {
                 val name = msg["name"]?.jsonPrimitive?.content ?: return
+                val agent = session.agent
+                if (agent == null) {
+                    IdeService.showError(project, "删除子代理失败: 智能体未初始化")
+                    return
+                }
                 try {
-                    session.agent?.deleteSubagent(name)
+                    val ok = agent.deleteSubagent(name)
+                    if (ok) {
+                        IdeService.showInfo(project, "已删除子代理「$name」")
+                    } else {
+                        IdeService.showError(project, "删除子代理失败: 未找到子代理「$name」或智能体未初始化")
+                    }
                 } catch (e: StdioClientException) {
                     LOG.warn("deleteSubagent failed: ${e.message}")
                     IdeService.showError(project, "删除子代理失败: ${e.message}")
@@ -754,9 +799,16 @@ class MessageHandler(
             "deleteHook" -> {
                 val scope = msg["scope"]?.jsonPrimitive?.content ?: return
                 val hookName = msg["hookName"]?.jsonPrimitive?.content ?: return
+                val agent = session.agent
+                if (agent == null) {
+                    // deleteHook 无成功布尔（StdioAgent 仅抛错表示失败），无 agent 须显式防御
+                    IdeService.showError(project, "删除钩子失败: 智能体未初始化")
+                    return
+                }
                 try {
-                    session.agent?.deleteHook(scope, hookName)
-                    val hooks = session.agent?.getHooksByScope(scope) ?: JsonObject(emptyMap())
+                    agent.deleteHook(scope, hookName)
+                    IdeService.showInfo(project, "已删除钩子「$hookName」")
+                    val hooks = agent.getHooksByScope(scope) ?: JsonObject(emptyMap())
                     postMessage("hooksResponse", buildJsonObject {
                         put("scope", scope)
                         put("hooks", hooks)

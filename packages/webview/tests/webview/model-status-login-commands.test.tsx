@@ -222,15 +222,20 @@ describe("Model, Status, and Login Commands", () => {
         }),
       );
 
-      // host 回发 configurationResponse 后显示「保存成功」（回归：保存反馈
-      // effect 依赖 saving 从 true→false 边沿；若保存时 dispatch ERROR 会在
-      // 批处理下把 loading 复位回 false，导致反馈永不显示——真机实测复现）
+      // host 回发 configurationResponse 后刷新配置展示；保存结果提示由宿主
+      // 全局 toast 承担，设置页不渲染页面内「保存成功」文字（2026-09-09 拍板，
+      // 见 desktop-account-and-settings「设置页反馈语义」）
       await act(async () => {
         sendCommand("configurationResponse", {
           configurationData: { language: "en-US", contextLength: 256 },
         });
       });
-      expect(await screen.findByText("保存成功")).toBeInTheDocument();
+      await waitFor(() => {
+        expect(
+          document.querySelector<HTMLSelectElement>(".settings-select")?.value,
+        ).toBe("en-US");
+      });
+      expect(screen.queryByText("保存成功")).not.toBeInTheDocument();
     });
   });
 });

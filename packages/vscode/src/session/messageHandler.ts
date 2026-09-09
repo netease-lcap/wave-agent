@@ -623,6 +623,9 @@ export class MessageHandler {
       const config = await this.configService.loadConfiguration();
       // Recreate agents so the new config takes effect (same as the chat path).
       this.context.updateAllSessionsConfig(config);
+      // 设置页保存结果经宿主原生通知提示（spec「设置页反馈语义」，webview 不再
+      // 渲染页面内提示）；configurationResponse 仍回发以刷新设置页展示值。
+      vscode.window.showInformationMessage("保存成功");
       this.context.postSettingsMessage({ command: "configurationUpdated" });
       this.context.postSettingsMessage({
         command: "configurationResponse",
@@ -630,6 +633,8 @@ export class MessageHandler {
       });
     } catch (error) {
       console.error("Failed to save settings configuration:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`保存失败：${message}`);
       this.context.postSettingsMessage({
         command: "configurationError",
         error: "Failed to save configuration: " + error,
@@ -724,6 +729,9 @@ export class MessageHandler {
         content,
         workdir,
       });
+      // AGENTS.md 保存结果经宿主原生通知提示（spec「设置页反馈语义」）；
+      // agentsContentSaved 仍回发以复位 webview 的保存中状态。
+      vscode.window.showInformationMessage("保存成功");
       this.context.postSettingsMessage({
         command: "agentsContentSaved",
         scope,
@@ -731,6 +739,8 @@ export class MessageHandler {
       });
     } catch (error) {
       console.error("保存 AGENTS.md 失败:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`保存失败：${message}`);
       this.context.postSettingsMessage({
         command: "agentsContentSaved",
         scope,
@@ -822,8 +832,14 @@ export class MessageHandler {
     try {
       const session = this.getSettingsSession();
       const success = await session.deleteSkill(name);
+      // 写操作需 live agent（spec「设置页反馈语义」）：agent 缺失（deleteSkill
+      // 静默返回 false）或对象不存在都不得无提示空转。
       if (success) {
-        vscode.window.showInformationMessage(`技能 "${name}" 已删除`);
+        vscode.window.showInformationMessage(`已删除技能「${name}」`);
+      } else {
+        vscode.window.showErrorMessage(
+          `删除技能失败: 未找到技能「${name}」或智能体未初始化`,
+        );
       }
       const skills = await session.getSkillMetadata();
       this.context.postSettingsMessage({
@@ -841,7 +857,11 @@ export class MessageHandler {
       const session = this.getSettingsSession();
       const success = await session.deleteSubagent(name);
       if (success) {
-        vscode.window.showInformationMessage(`子代理 "${name}" 已删除`);
+        vscode.window.showInformationMessage(`已删除子代理「${name}」`);
+      } else {
+        vscode.window.showErrorMessage(
+          `删除子代理失败: 未找到子代理「${name}」或智能体未初始化`,
+        );
       }
       const configurations = await session.getSubagentConfigurations();
       this.context.postSettingsMessage({
@@ -875,9 +895,16 @@ export class MessageHandler {
     scope: "user" | "project",
     hookName: string,
   ): Promise<void> {
+    const session = this.getSettingsSession();
+    // deleteHook 无返回值：agent 缺失时 ChatSession 静默早退，须显式防御
+    // （spec「设置页反馈语义」——写操作无 live agent 不得空转）。
+    if (!session.agent) {
+      vscode.window.showErrorMessage("删除钩子失败: 智能体未初始化");
+      return;
+    }
     try {
-      const session = this.getSettingsSession();
       await session.deleteHook(scope, hookName);
+      vscode.window.showInformationMessage(`已删除钩子「${hookName}」`);
       const hooks = await session.getHooksByScope(scope);
       this.context.postSettingsMessage({
         command: "hooksResponse",
@@ -959,7 +986,11 @@ export class MessageHandler {
       const success = await session.removeMcpServer(scope, serverName);
       if (success) {
         vscode.window.showInformationMessage(
-          `MCP 服务器 "${serverName}" 已从配置中移除`,
+          `已移除 MCP 服务器「${serverName}」`,
+        );
+      } else {
+        vscode.window.showErrorMessage(
+          `移除 MCP 服务器失败: 未找到服务器「${serverName}」或智能体未初始化`,
         );
       }
       const servers = await session.getMcpServers();
@@ -1736,6 +1767,9 @@ export class MessageHandler {
 
       this.context.updateAllSessionsConfig(config);
 
+      // 设置页保存结果经宿主原生通知提示（spec「设置页反馈语义」；chat 路由与
+      // settings 路由同语义，避免双 switch 漂移）
+      vscode.window.showInformationMessage("保存成功");
       this.context.postMessage(
         { command: "configurationUpdated" },
         viewType,
@@ -1749,6 +1783,8 @@ export class MessageHandler {
       );
     } catch (error) {
       console.error(`Failed to update ${viewType} configuration:`, error);
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`保存失败：${message}`);
       this.context.postMessage(
         {
           command: "configurationError",
@@ -2003,6 +2039,8 @@ export class MessageHandler {
         content,
         workdir,
       });
+      // AGENTS.md 保存结果经宿主原生通知提示（spec「设置页反馈语义」）
+      vscode.window.showInformationMessage("保存成功");
       this.context.postMessage(
         {
           command: "agentsContentSaved",
@@ -2014,6 +2052,8 @@ export class MessageHandler {
       );
     } catch (error) {
       console.error("保存 AGENTS.md 失败:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`保存失败：${message}`);
       this.context.postMessage(
         {
           command: "agentsContentSaved",
@@ -2211,7 +2251,12 @@ export class MessageHandler {
       const success = await session.removeMcpServer(scope, serverName);
       if (success) {
         vscode.window.showInformationMessage(
-          `MCP 服务器 "${serverName}" 已从配置中移除`,
+          `已移除 MCP 服务器「${serverName}」`,
+        );
+      } else {
+        // agent 缺失时 ChatSession 静默返回 false（spec「设置页反馈语义」）
+        vscode.window.showErrorMessage(
+          `移除 MCP 服务器失败: 未找到服务器「${serverName}」或智能体未初始化`,
         );
       }
     } catch (error) {
@@ -2229,7 +2274,11 @@ export class MessageHandler {
     try {
       const success = await session.deleteSkill(name);
       if (success) {
-        vscode.window.showInformationMessage(`技能 "${name}" 已删除`);
+        vscode.window.showInformationMessage(`已删除技能「${name}」`);
+      } else {
+        vscode.window.showErrorMessage(
+          `删除技能失败: 未找到技能「${name}」或智能体未初始化`,
+        );
       }
     } catch (error) {
       console.error("删除技能失败:", error);
@@ -2246,7 +2295,11 @@ export class MessageHandler {
     try {
       const success = await session.deleteSubagent(name);
       if (success) {
-        vscode.window.showInformationMessage(`子代理 "${name}" 已删除`);
+        vscode.window.showInformationMessage(`已删除子代理「${name}」`);
+      } else {
+        vscode.window.showErrorMessage(
+          `删除子代理失败: 未找到子代理「${name}」或智能体未初始化`,
+        );
       }
     } catch (error) {
       console.error("删除子代理失败:", error);
@@ -2280,8 +2333,15 @@ export class MessageHandler {
     windowId?: string,
   ) {
     const session = this.context.getChatSession(viewType || "tab", windowId);
+    // ChatSession.deleteHook 在无 agent 时静默返回（spec「设置页反馈语义」要求
+    // 写操作需要 live agent，缺少 agent 必须显式失败提示）
+    if (!session.agent) {
+      vscode.window.showErrorMessage("删除钩子失败: 智能体未初始化");
+      return;
+    }
     try {
       await session.deleteHook(scope, hookName);
+      vscode.window.showInformationMessage(`已删除钩子「${hookName}」`);
       const hooks = await session.getHooksByScope(scope);
       this.context.postMessage(
         {
