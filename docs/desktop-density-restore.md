@@ -2299,3 +2299,11 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - **audit**：枚举全部使用 `.preview-pane-button` 的 6 组件（DesktopPanelTabs / PreviewPane / DiffPane / FilePane / TerminalPane / ChatApp），仅 3 处为文本恢复按钮（其余均为 24×24 图标钮，无此问题）：PreviewPane `.preview-pane-error`「重新加载」、TerminalPane `.terminal-pane-exited`「重启终端」、ChatApp `.preview-pane-forward-error`「远程预览加载失败 · 重试」（ChatApp.tsx:2860）。前两处已修复，第三处此前遗漏。
 - **修复**：`.preview-pane-forward-error .preview-pane-button` 加入 DesktopApp.css base 文本恢复按钮合并选择器组 + host-desktop.css light/dark 高特异覆盖组（结构与 `.preview-pane-error` 同为全幅 overlay + 描述 + 重试主按钮）。
 - 实现文件：`src/styles/DesktopApp.css`、`src/styles/host-desktop.css`、本 docs。（等用户 8899 走查确认后推送。）
+
+## 0909 第 2 轮（feat/0909-new-base-r1）：workdir 菜单无「最近打开」记录时不渲染分隔线
+
+预览走查评论（8899，`div.desktop-workdir-menu-separator`·`div > div:nth-of-type(1)`）「在还未选择工作目录的时候，不显示这条分割线」。
+
+- **根因**：菜单无条件在「最近打开」列表与「浏览…」之间渲染 separator；recents 为空（从未选过目录 / 最近列表已清空）时菜单只剩 `[分隔线, 浏览…]`，分隔线悬在顶部、无分组意义。
+- **修复**（DesktopWorkdirSelector.tsx）：separator 与「最近打开」label 同条件渲染——`recents.length > 0` 才输出；有最近记录时照常分隔两组。
+- 实现文件：`src/components/DesktopWorkdirSelector.tsx`、本 docs。（type-check 通过，用户 8899 人工走查后确认推送。）

@@ -345,7 +345,9 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
               </div>
             );
           })}
-          <div className="desktop-workdir-menu-separator" />
+          {recents.length > 0 && (
+            <div className="desktop-workdir-menu-separator" />
+          )}
           <div
             className="desktop-workdir-menu-item"
             role="option"
