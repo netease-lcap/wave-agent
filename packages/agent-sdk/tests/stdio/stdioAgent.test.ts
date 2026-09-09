@@ -1,15 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { StdioClient } from "../../src/stdio/stdioClient";
-import { StdioAgent, NotificationRouter } from "wave-agent-sdk/stdio";
+import {
+  StdioAgent,
+  NotificationRouter,
+  type RpcClient,
+} from "@/stdio/index.js";
 import type {
   Message,
   Task,
   QueuedMessage,
   PermissionMode,
   ToolPermissionContext,
-} from "wave-agent-sdk";
+} from "@/types/index.js";
 
-// ── Mock StdioClient ───────────────────────────────────────────
+// ── Mock RpcClient ─────────────────────────────────────────────
 
 interface MockClient {
   request: ReturnType<typeof vi.fn>;
@@ -51,10 +54,10 @@ function createAgent(
   callbacks: Record<string, (...args: unknown[]) => void> = {},
 ) {
   const client = createMockClient();
-  const router = new NotificationRouter(client as unknown as StdioClient);
+  const router = new NotificationRouter(client as unknown as RpcClient);
   router.attach();
   const agent = new StdioAgent(
-    client as unknown as StdioClient,
+    client as unknown as RpcClient,
     router,
     callbacks,
   );
