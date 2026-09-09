@@ -145,11 +145,10 @@ process.on("unhandledRejection", (reason) => {
   hostLog.error("[Wave Desktop] unhandledRejection:", reason);
 });
 
-// userData 固定为旧目录名 "Wave"：OS 产品名已改为 CodeWave IDE（electron-builder
-// productName），若放任由 app 名派生的默认 userData 漂移，存量安装的配置/会话索引
-// 会被孤立（configStore 与会话树都在 userData 下），且 single-instance 锁随 userData
-// 移动会让新旧版本同时运行（锁作用域 = userData，见 RequestSingleInstanceLock）。
-// 必须在 requestSingleInstanceLock() 与 new ConfigStore() 之前设置。
+// userData 走 Electron 默认派生（appData + app 顶层 productName "CodeWave IDE"，
+// 即 %APPDATA%\CodeWave IDE）。品牌改名是 clean break（客户手动卸载旧版重装，
+// 见 f1feed70 决策）——不沿用 wave-desktop/Wave 旧目录，配置/会话索引全新开始；
+// 卸载器默认不删 %APPDATA% 数据，旧数据若需清理由客户手动删。
 // Dev instances get their own userData so they can run alongside an installed
 // app (the single-instance lock is scoped to the userData directory) and never
 // touch the real config/session index.
@@ -158,8 +157,6 @@ if (!app.isPackaged) {
     "userData",
     path.join(app.getPath("appData"), "wave-desktop-dev"),
   );
-} else {
-  app.setPath("userData", path.join(app.getPath("appData"), "Wave"));
 }
 
 let mainWindow: BrowserWindow | null = null;

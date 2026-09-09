@@ -1,5 +1,6 @@
 {
   "name": "wave-desktop",
+  "productName": "CodeWave IDE",
   "private": true,
   "description": "Wave code desktop app (Electron)",
   "version": "1.1.7",
