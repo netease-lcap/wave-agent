@@ -63,10 +63,9 @@ export interface SettingsPageProps {
   onUpdateChannelChange?: (channel: UpdateChannel) => void;
   /** 关闭设置页（desktop 返回会话视图 / 标签页关闭） */
   onClose: () => void;
-  /** 保存进行中标记（host 回包前为 true，用于禁用保存按钮与显示反馈） */
+  /** 保存进行中标记（host 回包前为 true，用于禁用保存按钮；保存结果反馈由
+   *  宿主全局 toast 提示，本组件不渲染页面内自建提示——2026-09-09 拍板） */
   saving?: boolean;
-  /** 配置保存失败的错误信息（host 回发 configurationError），保存成功应为空 */
-  configurationError?: string | null;
   /** 用户级 AGENTS.md 内容（null=尚未加载） */
   userAgentsContent: string | null;
   /** 项目级 AGENTS.md 内容（按当前项目） */
@@ -77,14 +76,9 @@ export interface SettingsPageProps {
    *  用户级 ~/.wave/AGENTS.md 或项目级 <workdir>/AGENTS.md，host 回发
    *  agentsContentSaved 报告结果。未传入 = 宿主不支持写入（降级只读）。 */
   onSaveAgentsContent?: (scope: "user" | "project", content: string) => void;
-  /** AGENTS.md 保存进行中（host 回包前为 true，用于禁用文本区与保存按钮） */
+  /** AGENTS.md 保存进行中（host 回包前为 true，用于禁用文本区与保存按钮；
+   *  保存结果反馈由宿主全局 toast 提示，本组件不渲染页面内自建提示） */
   agentsSaving?: boolean;
-  /** AGENTS.md 保存结果（host 回发 agentsContentSaved），保存按钮反馈用 */
-  agentsSaveResult?: {
-    scope: "user" | "project";
-    ok: boolean;
-    error?: string;
-  } | null;
   /** 当前工作目录路径（用于个性化项目列表展示项目名），可空 */
   workdir?: string;
   /** 初始选中的导航项（/agents → subagents、/skills → skills 斜杠命令唤起时由外层传入） */
@@ -168,13 +162,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onUpdateChannelChange,
   onClose,
   saving = false,
-  configurationError = null,
   userAgentsContent,
   projectAgentsContent,
   onLoadAgentsContent,
   onSaveAgentsContent,
   agentsSaving = false,
-  agentsSaveResult = null,
   workdir,
   initialNav,
   vscode,
@@ -293,71 +285,26 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const sddEnabled =
     projectSettingsForWorkdir?.enabledPlugins?.["sdd@builtin"] === true;
 
-  // 保存反馈（「保存中…」由外层 saving 驱动；host 回包后按结果生成成功/失败消息）
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const saveRequestedRef = useRef(false);
-
+  // 保存类操作反馈统一由宿主全局 toast 提示（2026-09-09 拍板，见
+  // desktop-account-and-settings「设置页反馈语义」），本组件不生成/渲染任何
+  // 页面内提示文字；「保存中…」由外层 saving / agentsSaving 驱动按钮禁用。
   const handleSaveGlobal = () => {
     if (!configurationData || !onSave) return;
-    setSaveMessage(null);
-    saveRequestedRef.current = true;
     onSave({ ...configurationData, language, contextLength });
   };
 
   const handleSaveMemory = () => {
     if (!configurationData || !onSave) return;
-    setSaveMessage(null);
-    saveRequestedRef.current = true;
     onSave({ ...configurationData, autoMemoryEnabled, autoMemoryFrequency });
   };
 
-  // AGENTS.md 保存反馈（与配置保存同构：agentsSaving 从 true → false + host 回包
-  // agentsSaveResult 即保存完成；文本区按钮在 agentsSaving 期间禁用）。
-  const [agentsSaveMessage, setAgentsSaveMessage] = useState<string | null>(
-    null,
-  );
-  const agentsSaveRequestedRef = useRef(false);
-
   const handleSaveAgents = () => {
     if (!onSaveAgentsContent) return;
-    setAgentsSaveMessage(null);
-    agentsSaveRequestedRef.current = true;
     onSaveAgentsContent(
       activeScope,
       activeScope === "user" ? userContent : projectContent,
     );
   };
-
-  useEffect(() => {
-    if (agentsSaving || !agentsSaveRequestedRef.current) return;
-    if (!agentsSaveResult) return;
-    agentsSaveRequestedRef.current = false;
-    setAgentsSaveMessage(
-      agentsSaveResult.ok
-        ? "保存成功"
-        : `保存失败：${agentsSaveResult.error ?? "未知错误"}`,
-    );
-  }, [agentsSaving, agentsSaveResult]);
-
-  // saving 从 true → false（host 回发 configurationResponse/configurationError）
-  // 即保存完成，生成反馈；回包前不显示。
-  useEffect(() => {
-    if (saving || !saveRequestedRef.current) return;
-    saveRequestedRef.current = false;
-    setSaveMessage(
-      configurationError ? `保存失败：${configurationError}` : "保存成功",
-    );
-  }, [saving, configurationError]);
-
-  // 保存反馈是瞬态提示，只属于发起保存的视图：切换导航项即清除。若切换
-  // 时保存仍在进行中（host 未回包），一并丢弃该次反馈——用户已离开操作
-  // 视图，回包后再提示会残留在新视图上。
-  useEffect(() => {
-    setSaveMessage(null);
-    saveRequestedRef.current = false;
-    setAgentsSaveMessage(null);
-    agentsSaveRequestedRef.current = false;
-  }, [activeNav]);
 
   const handleToggleSdd = () => {
     if (!onToggleBuiltinPlugin || pluginToggling) return;
@@ -432,9 +379,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <h1>全局设置</h1>
                 <p>管理 CodeWave IDE 的界面、模型和基础行为。</p>
               </header>
-              {saveMessage && (
-                <p className="settings-save-message">{saveMessage}</p>
-              )}
               <section className="settings-section">
                 <div className="settings-section-heading">
                   <h2>基础设置</h2>
@@ -602,9 +546,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <h1>个性化</h1>
                 <p>配置用户级和项目级 AGENTS.md，以及自动记忆规则。</p>
               </header>
-              {saveMessage && (
-                <p className="settings-save-message">{saveMessage}</p>
-              )}
               <section className="settings-section">
                 <div className="settings-section-heading">
                   <h2>AGENTS.md</h2>
@@ -659,11 +600,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         }
                       }}
                     />
-                    {agentsSaveMessage && (
-                      <p className="settings-save-message agents-save-message">
-                        {agentsSaveMessage}
-                      </p>
-                    )}
                     <div className="settings-actions">
                       <button
                         type="button"

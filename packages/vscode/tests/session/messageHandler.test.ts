@@ -768,6 +768,10 @@ describe("MessageHandler settings tab", () => {
       language: "en-US",
     });
     expect(context.updateAllSessionsConfig).toHaveBeenCalled();
+    // 保存结果经宿主原生通知提示（spec「设置页反馈语义」）
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "保存成功",
+    );
     const commands = (
       context.postSettingsMessage as ReturnType<typeof vi.fn>
     ).mock.calls.map((call) => (call[0] as { command: string }).command);
@@ -815,6 +819,10 @@ describe("MessageHandler settings tab", () => {
       content: "# new rules",
       workdir: undefined,
     });
+    // 保存结果经宿主原生通知提示（spec「设置页反馈语义」）
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "保存成功",
+    );
     const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
       .mock.calls[0][0] as { command: string; ok: boolean };
     expect(posted.command).toBe("agentsContentSaved");
@@ -833,6 +841,9 @@ describe("MessageHandler settings tab", () => {
       workdir: "/tmp",
     });
 
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "保存失败：boom",
+    );
     const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
       .mock.calls[0][0] as { command: string; ok: boolean; error: string };
     expect(posted.command).toBe("agentsContentSaved");
@@ -964,5 +975,260 @@ describe("MessageHandler settings tab", () => {
     await handler.handleSettingsMessage({ command: "closeSettings" });
 
     expect(context.closeSettings).toHaveBeenCalled();
+  });
+
+  // 设置页删除操作的成功/失败结果经宿主原生通知提示（spec「设置页反馈语义」）
+  test("deleteSkill shows an info toast on success and refreshes the skill list", async () => {
+    const session = {
+      deleteSkill: vi.fn().mockResolvedValue(true),
+      getSkillMetadata: vi.fn().mockResolvedValue([]),
+    } as unknown as ChatSession;
+    const { handler, context } = createHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "deleteSkill",
+      name: "my-skill",
+    });
+
+    expect(session.deleteSkill).toHaveBeenCalledWith("my-skill");
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "已删除技能「my-skill」",
+    );
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as { command: string };
+    expect(posted.command).toBe("skillMetadataResponse");
+  });
+
+  test("deleteSkill shows an error toast when the agent is missing or the skill is not found", async () => {
+    const session = {
+      deleteSkill: vi.fn().mockResolvedValue(false),
+      getSkillMetadata: vi.fn().mockResolvedValue([]),
+    } as unknown as ChatSession;
+    const { handler } = createHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "deleteSkill",
+      name: "ghost",
+    });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "删除技能失败: 未找到技能「ghost」或智能体未初始化",
+    );
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+
+  test("deleteSubagent shows an info toast on success", async () => {
+    const session = {
+      deleteSubagent: vi.fn().mockResolvedValue(true),
+      getSubagentConfigurations: vi.fn().mockResolvedValue([]),
+    } as unknown as ChatSession;
+    const { handler } = createHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "deleteSubagent",
+      name: "expert",
+    });
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "已删除子代理「expert」",
+    );
+  });
+
+  test("deleteHook shows an info toast on success and refreshes the hooks list", async () => {
+    const session = {
+      agent: {},
+      deleteHook: vi.fn().mockResolvedValue(undefined),
+      getHooksByScope: vi.fn().mockResolvedValue({}),
+    } as unknown as ChatSession;
+    const { handler, context } = createHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "deleteHook",
+      scope: "user",
+      hookName: "PostToolUse",
+    });
+
+    expect(session.deleteHook).toHaveBeenCalledWith("user", "PostToolUse");
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "已删除钩子「PostToolUse」",
+    );
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as { command: string; scope: string };
+    expect(posted.command).toBe("hooksResponse");
+    expect(posted.scope).toBe("user");
+  });
+
+  test("deleteHook shows an error toast without a live agent", async () => {
+    const session = {
+      deleteHook: vi.fn(),
+      getHooksByScope: vi.fn(),
+    } as unknown as ChatSession; // no `agent` — write operations need one
+    const { handler } = createHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "deleteHook",
+      scope: "user",
+      hookName: "PostToolUse",
+    });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "删除钩子失败: 智能体未初始化",
+    );
+    expect(session.deleteHook).not.toHaveBeenCalled();
+  });
+
+  test("removeMcpServer shows an info toast on success and refreshes the MCP list", async () => {
+    const session = {
+      removeMcpServer: vi.fn().mockResolvedValue(true),
+      getMcpServers: vi.fn().mockResolvedValue([]),
+    } as unknown as ChatSession;
+    const { handler, context } = createHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "removeMcpServer",
+      scope: "user",
+      serverName: "redis",
+    });
+
+    expect(session.removeMcpServer).toHaveBeenCalledWith("user", "redis");
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "已移除 MCP 服务器「redis」",
+    );
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as { command: string };
+    expect(posted.command).toBe("mcpServersResponse");
+  });
+
+  test("removeMcpServer shows an error toast when the agent is missing or the server is not found", async () => {
+    const session = {
+      removeMcpServer: vi.fn().mockResolvedValue(false),
+      getMcpServers: vi.fn().mockResolvedValue([]),
+    } as unknown as ChatSession;
+    const { handler } = createHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "removeMcpServer",
+      scope: "project",
+      serverName: "ghost",
+    });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "移除 MCP 服务器失败: 未找到服务器「ghost」或智能体未初始化",
+    );
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+});
+
+// Chat 路由的删除/保存反馈与 settings 路由同语义（#2086 式双 switch 漂移防线）
+describe("MessageHandler chat-route deletion toasts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("deleteSkill shows an info toast on success", async () => {
+    const session = {
+      deleteSkill: vi.fn().mockResolvedValue(true),
+    } as unknown as ChatSession;
+    const { handler } = createHandler(session);
+
+    await handler.handleMessage(
+      { command: "deleteSkill", name: "my-skill" },
+      "tab",
+    );
+
+    expect(session.deleteSkill).toHaveBeenCalledWith("my-skill");
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "已删除技能「my-skill」",
+    );
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+  });
+
+  test("deleteSkill shows an error toast when the skill is not found", async () => {
+    const session = {
+      deleteSkill: vi.fn().mockResolvedValue(false),
+    } as unknown as ChatSession;
+    const { handler } = createHandler(session);
+
+    await handler.handleMessage(
+      { command: "deleteSkill", name: "ghost" },
+      "tab",
+    );
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "删除技能失败: 未找到技能「ghost」或智能体未初始化",
+    );
+  });
+
+  test("deleteSubagent shows an info toast on success", async () => {
+    const session = {
+      deleteSubagent: vi.fn().mockResolvedValue(true),
+    } as unknown as ChatSession;
+    const { handler } = createHandler(session);
+
+    await handler.handleMessage(
+      { command: "deleteSubagent", name: "expert" },
+      "sidebar",
+    );
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "已删除子代理「expert」",
+    );
+  });
+
+  test("removeMcpServer shows an info toast on success", async () => {
+    const session = {
+      removeMcpServer: vi.fn().mockResolvedValue(true),
+    } as unknown as ChatSession;
+    const { handler } = createHandler(session);
+
+    await handler.handleMessage(
+      { command: "removeMcpServer", scope: "user", serverName: "redis" },
+      "tab",
+    );
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "已移除 MCP 服务器「redis」",
+    );
+  });
+
+  test("deleteHook shows an info toast on success and posts the refreshed hooks list", async () => {
+    const session = {
+      agent: {},
+      deleteHook: vi.fn().mockResolvedValue(undefined),
+      getHooksByScope: vi.fn().mockResolvedValue({}),
+    } as unknown as ChatSession;
+    const { handler, context } = createHandler(session);
+
+    await handler.handleMessage(
+      { command: "deleteHook", scope: "user", hookName: "PostToolUse" },
+      "tab",
+    );
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "已删除钩子「PostToolUse」",
+    );
+    const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { command: string; scope: string };
+    expect(posted.command).toBe("hooksResponse");
+    expect(posted.scope).toBe("user");
+  });
+
+  test("deleteHook shows an error toast without a live agent", async () => {
+    const session = {
+      deleteHook: vi.fn(),
+    } as unknown as ChatSession; // no `agent` — write operations need one
+    const { handler } = createHandler(session);
+
+    await handler.handleMessage(
+      { command: "deleteHook", scope: "user", hookName: "PostToolUse" },
+      "tab",
+    );
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "删除钩子失败: 智能体未初始化",
+    );
+    expect(session.deleteHook).not.toHaveBeenCalled();
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
   });
 });

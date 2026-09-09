@@ -138,6 +138,23 @@ object IdeService {
     }
 
     /**
+     * showInfo — mirrors VSCE showInformationMessage (messageHandler.ts settings save /
+     * delete feedback): a balloon notification with [NotificationType.INFORMATION].
+     * 设置页保存/删除成功反馈统一经宿主通知（spec「设置页反馈语义」）。
+     */
+    fun showInfo(project: Project, message: String) {
+        try {
+            NotificationGroupManager.getInstance()
+                .getNotificationGroup("Wave")
+                .createNotification("CodeWave IDE", message, NotificationType.INFORMATION)
+                .notify(project)
+        } catch (e: Exception) {
+            // Fallback if the notification group is unavailable.
+            LOG.warn("showInfo notification failed: ${e.message}")
+        }
+    }
+
+    /**
      * uploadFilesToArtifacts — mirrors VSCE fileService.uploadFilesToArtifacts.
      * Writes each file to <tmpdir>/wave-artifacts/<name> (appending _<n> on conflict) and
      * returns the list of written absolute paths plus per-file errors. The webview expects

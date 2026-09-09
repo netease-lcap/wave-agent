@@ -3076,6 +3076,155 @@ describe("misc commands", () => {
     expect(sent("appendMessage")).toHaveLength(0);
   });
 
+  // -- 设置页反馈语义（2026-09-09 设计师走查拍板：设置页不得自建提示，保存类
+  //    成功/失败与删除类成功均经宿主全局 toast 提示；删除写操作无 live agent 时
+  //    不得静默成功——见 desktop-account-and-settings「设置页反馈语义」） --
+
+  it("deleteSkill success surfaces a global toast with the skill name", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    agent.deleteSkill = vi.fn(async () => undefined);
+
+    await host.handleWebviewMessage({ command: "deleteSkill", name: "demo" });
+
+    expect(agent.deleteSkill).toHaveBeenCalledWith("demo");
+    expect(shownToasts().some((t) => t.message === "已删除技能「demo」")).toBe(
+      true,
+    );
+    expect(sent("skillMetadataResponse")).toHaveLength(1);
+  });
+
+  it("deleteSkill without a live agent surfaces a failure toast, not a silent no-op", async () => {
+    const { host, sent } = await readyHost();
+
+    // 该 pane 未绑定任何 agent（正常 UI 不会发出，宿主须防御直接命令调用）
+    await host.handleWebviewMessage({
+      command: "deleteSkill",
+      name: "demo",
+      paneId: "no-such-pane",
+    });
+
+    expect(shownToasts().some((t) => t.message.includes("删除技能失败"))).toBe(
+      true,
+    );
+    expect(sent("skillMetadataResponse")).toHaveLength(0);
+  });
+
+  it("deleteSubagent success surfaces a global toast with the subagent name", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    agent.deleteSubagent = vi.fn(async () => undefined);
+    agent.getSubagentConfigurations = vi.fn(async () => []);
+
+    await host.handleWebviewMessage({ command: "deleteSubagent", name: "sde" });
+
+    expect(agent.deleteSubagent).toHaveBeenCalledWith("sde");
+    expect(shownToasts().some((t) => t.message === "已删除子代理「sde」")).toBe(
+      true,
+    );
+    expect(sent("subagentConfigurationsResponse")).toHaveLength(1);
+  });
+
+  it("deleteHook success surfaces a global toast with the hook name", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    agent.deleteHook = vi.fn(async () => undefined);
+    agent.getHooksByScope = vi.fn(async () => ({}));
+
+    await host.handleWebviewMessage({
+      command: "deleteHook",
+      scope: "user",
+      hookName: "PreToolUse",
+    });
+
+    expect(agent.deleteHook).toHaveBeenCalledWith("user", "PreToolUse");
+    expect(
+      shownToasts().some((t) => t.message === "已删除钩子「PreToolUse」"),
+    ).toBe(true);
+    expect(sent("hooksResponse")).toHaveLength(1);
+  });
+
+  it("removeMcpServer success surfaces a global toast with the server name", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    agent.removeMcpServer = vi.fn(async () => undefined);
+
+    await host.handleWebviewMessage({
+      command: "removeMcpServer",
+      scope: "user",
+      serverName: "files",
+    });
+
+    expect(agent.removeMcpServer).toHaveBeenCalledWith("user", "files");
+    expect(
+      shownToasts().some((t) => t.message === "已移除 MCP 服务器「files」"),
+    ).toBe(true);
+    expect(sent("mcpServersResponse")).toHaveLength(1);
+  });
+
+  it("updateConfiguration success surfaces a 保存成功 toast", async () => {
+    const { host } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "updateConfiguration",
+      configurationData: { model: "m2" },
+    });
+
+    expect(shownToasts().some((t) => t.message === "保存成功")).toBe(true);
+  });
+
+  it("updateConfiguration failure surfaces a 保存失败 toast with the reason", async () => {
+    const { host } = await readyHost();
+    lastAgent().updateConfig.mockRejectedValueOnce(new Error("bad model"));
+
+    await host.handleWebviewMessage({
+      command: "updateConfiguration",
+      configurationData: { model: "m2" },
+    });
+
+    expect(shownToasts().some((t) => t.message.startsWith("保存失败："))).toBe(
+      true,
+    );
+  });
+
+  it("setAgentsContent success surfaces a 保存成功 toast and replies agentsContentSaved ok", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "setAgentsContent",
+      scope: "user",
+      content: "# User Memory",
+    });
+
+    expect(shownToasts().some((t) => t.message === "保存成功")).toBe(true);
+    expect(sent("agentsContentSaved")[0]).toMatchObject({
+      scope: "user",
+      ok: true,
+    });
+  });
+
+  it("setAgentsContent failure surfaces a 保存失败 toast and replies agentsContentSaved ok:false", async () => {
+    const { host, sent } = await readyHost();
+    const restore = failRpc("setAgentsContent", "disk full");
+    try {
+      await host.handleWebviewMessage({
+        command: "setAgentsContent",
+        scope: "user",
+        content: "# User Memory",
+      });
+    } finally {
+      restore();
+    }
+
+    expect(shownToasts().some((t) => t.message.startsWith("保存失败："))).toBe(
+      true,
+    );
+    expect(sent("agentsContentSaved")[0]).toMatchObject({
+      scope: "user",
+      ok: false,
+    });
+  });
+
   it("listPlugins failure surfaces as a toast, not a chat message", async () => {
     const { host, sent } = await readyHost();
     const restore = failRpc("listPlugins", "plugin service down");

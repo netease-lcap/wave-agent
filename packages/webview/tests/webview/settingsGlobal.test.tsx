@@ -164,7 +164,7 @@ describe("SettingsPage 全局设置视图区块拆分（2026-09-08 拍板：主�
   });
 });
 
-describe("SettingsPage 保存反馈（瞬态提示，切换导航项清除）", () => {
+describe("SettingsPage 保存进行中按钮禁用（2026-09-09 拍板：保存结果反馈改走宿主全局 toast，设置页不渲染页面内提示）", () => {
   function renderWithSaving(saving: boolean) {
     return render(
       <SettingsPage
@@ -179,9 +179,10 @@ describe("SettingsPage 保存反馈（瞬态提示，切换导航项清除）", 
     );
   }
 
-  it("host 回包（saving true→false）后显示「保存成功」，切换到个性化视图即清除", () => {
+  it("保存期间（saving=true）「保存」按钮禁用，宿主回包后复位可用", () => {
     const { rerender } = renderWithSaving(false);
 
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
     // 点击保存 → 模拟 host 保存中（saving=true）→ 回包（saving=false）
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     rerender(
@@ -195,6 +196,7 @@ describe("SettingsPage 保存反馈（瞬态提示，切换导航项清除）", 
         saving={true}
       />,
     );
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     rerender(
       <SettingsPage
         configurationData={{ language: "zh-CN" }}
@@ -206,14 +208,13 @@ describe("SettingsPage 保存反馈（瞬态提示，切换导航项清除）", 
         saving={false}
       />,
     );
-    expect(screen.getByText("保存成功")).toBeInTheDocument();
-
-    // 切换到「个性化」视图：瞬态反馈不得跨导航残留
-    fireEvent.click(screen.getByRole("button", { name: "个性化" }));
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+    // 成功/失败提示由宿主全局 toast 呈现，设置页不渲染页面内文字
     expect(screen.queryByText("保存成功")).not.toBeInTheDocument();
+    expect(screen.queryByText(/保存失败/)).not.toBeInTheDocument();
   });
 
-  it("保存中（saving=true）切换导航项后回包不再显示反馈", () => {
+  it("保存中切换导航项后回包，页面内亦无残留提示（反馈不落页面、与导航无关）", () => {
     const { rerender } = renderWithSaving(false);
 
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
@@ -229,7 +230,7 @@ describe("SettingsPage 保存反馈（瞬态提示，切换导航项清除）", 
       />,
     );
 
-    // 保存进行中切到「个性化」→ 该次保存的反馈被丢弃
+    // 保存进行中切到「个性化」，再回包（saving=false）：无任何残留提示
     fireEvent.click(screen.getByRole("button", { name: "个性化" }));
     rerender(
       <SettingsPage
@@ -243,5 +244,6 @@ describe("SettingsPage 保存反馈（瞬态提示，切换导航项清除）", 
       />,
     );
     expect(screen.queryByText("保存成功")).not.toBeInTheDocument();
+    expect(screen.queryByText(/保存失败/)).not.toBeInTheDocument();
   });
 });

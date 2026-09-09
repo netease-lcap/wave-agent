@@ -8,21 +8,16 @@ import SettingsPage from "../../src/components/SettingsPage";
  * 2026-09-04 产品拍板由只读展示恢复可编辑（PM bug 3466367350195712）：
  * - 文本区去除硬编码 readOnly，onChange 更新当前作用域草稿；
  * - 各作用域独立「保存用户级/项目级配置」按钮 → onSaveAgentsContent(scope, content)；
- * - host 回发 agentsContentSaved（agentsSaving false + agentsSaveResult）后显示
- *   瞬态「保存成功 / 保存失败」反馈，切换导航项清除（对齐配置保存反馈交互）。
+ * - host 回发 agentsContentSaved（agentsSaving false）复位按钮禁用；
+ *   2026-09-09 设计师拍板：保存结果反馈改走宿主全局 toast，设置页不再渲染
+ *   页面内「保存成功 / 保存失败」提示（见 desktop-account-and-settings
+ *   「设置页反馈语义」）。
  */
-
-interface AgentsSaveResult {
-  scope: "user" | "project";
-  ok: boolean;
-  error?: string;
-}
 
 function renderPersonalization(options?: {
   userAgentsContent?: string | null;
   projectAgentsContent?: string | null;
   agentsSaving?: boolean;
-  agentsSaveResult?: AgentsSaveResult | null;
 }) {
   const onSaveAgentsContent = vi.fn();
   const utils = render(
@@ -35,7 +30,6 @@ function renderPersonalization(options?: {
       onLoadAgentsContent={() => {}}
       onSaveAgentsContent={onSaveAgentsContent}
       agentsSaving={options?.agentsSaving ?? false}
-      agentsSaveResult={options?.agentsSaveResult ?? null}
     />,
   );
   return { onSaveAgentsContent, utils };
@@ -105,14 +99,13 @@ describe("SettingsPage「个性化」AGENTS.md 编辑器可编辑 + 独立保存
     expect(onSaveAgentsContent).toHaveBeenCalledTimes(1);
   });
 
-  it("host 回包成功后显示「保存成功」，切换导航项即清除", () => {
-    const { utils } = renderPersonalization({
-      agentsSaving: false,
-      agentsSaveResult: null,
-    });
+  it("保存期间按钮禁用，host 回发后复位；不渲染页面内「保存成功」文字", () => {
+    const { utils } = renderPersonalization({ agentsSaving: false });
 
     fireEvent.click(screen.getByRole("button", { name: "保存用户级配置" }));
-    // 保存中（agentsSaving=true）：按钮禁用、无反馈
+    expect(screen.queryByText("保存成功")).not.toBeInTheDocument();
+
+    // 保存中（agentsSaving=true）：按钮禁用、无页面内反馈（toast 由宿主负责）
     utils.rerender(
       <SettingsPage
         configurationData={{ language: "zh-CN" }}
@@ -123,7 +116,6 @@ describe("SettingsPage「个性化」AGENTS.md 编辑器可编辑 + 独立保存
         onLoadAgentsContent={() => {}}
         onSaveAgentsContent={() => {}}
         agentsSaving={true}
-        agentsSaveResult={null}
       />,
     );
     expect(
@@ -131,7 +123,7 @@ describe("SettingsPage「个性化」AGENTS.md 编辑器可编辑 + 独立保存
     ).toBeDisabled();
     expect(screen.queryByText("保存成功")).not.toBeInTheDocument();
 
-    // 回包成功（agentsSaving=false + ok）
+    // host 回发完成（agentsSaving=false）：按钮复位；成功提示不再落页面内
     utils.rerender(
       <SettingsPage
         configurationData={{ language: "zh-CN" }}
@@ -142,19 +134,22 @@ describe("SettingsPage「个性化」AGENTS.md 编辑器可编辑 + 独立保存
         onLoadAgentsContent={() => {}}
         onSaveAgentsContent={() => {}}
         agentsSaving={false}
-        agentsSaveResult={{ scope: "user", ok: true }}
       />,
     );
-    expect(screen.getByText("保存成功")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "保存用户级配置" }),
+    ).toBeEnabled();
+    expect(screen.queryByText("保存成功")).not.toBeInTheDocument();
 
-    // 切换到「全局设置」：瞬态反馈不跨导航残留
+    // 切换导航项无残留（本就无页面内反馈状态）
     fireEvent.click(screen.getByRole("button", { name: "全局设置" }));
     expect(screen.queryByText("保存成功")).not.toBeInTheDocument();
   });
 
-  it("保存失败显示「保存失败：<原因>」", () => {
-    const { utils } = renderPersonalization();
+  it("保存失败原因不落页面内文字（统一由宿主全局 toast 提示）", () => {
+    const { utils } = renderPersonalization({ agentsSaving: false });
 
+    // 模拟一次完整保存周期：触发保存 → 保存中 → 完成；任何时刻都无失败提示
     fireEvent.click(screen.getByRole("button", { name: "保存用户级配置" }));
     utils.rerender(
       <SettingsPage
@@ -165,15 +160,25 @@ describe("SettingsPage「个性化」AGENTS.md 编辑器可编辑 + 独立保存
         projectAgentsContent="# Project Rules"
         onLoadAgentsContent={() => {}}
         onSaveAgentsContent={() => {}}
-        agentsSaving={false}
-        agentsSaveResult={{
-          scope: "user",
-          ok: false,
-          error: "磁盘写入失败",
-        }}
+        agentsSaving={true}
       />,
     );
-    expect(screen.getByText("保存失败：磁盘写入失败")).toBeInTheDocument();
+    utils.rerender(
+      <SettingsPage
+        configurationData={{ language: "zh-CN" }}
+        onClose={() => {}}
+        initialNav="personalization"
+        userAgentsContent="# User Memory"
+        projectAgentsContent="# Project Rules"
+        onLoadAgentsContent={() => {}}
+        onSaveAgentsContent={() => {}}
+        agentsSaving={false}
+      />,
+    );
+    expect(screen.queryByText(/保存失败/)).not.toBeInTheDocument();
+    // 页面内无任何保存反馈容器（容器样式类亦已随提示移除）
+    expect(document.querySelector(".settings-save-message")).toBeNull();
+    expect(document.querySelector(".agents-save-message")).toBeNull();
   });
 
   it("宿主未提供 onSaveAgentsContent 时保存按钮禁用（降级只读源）", () => {
