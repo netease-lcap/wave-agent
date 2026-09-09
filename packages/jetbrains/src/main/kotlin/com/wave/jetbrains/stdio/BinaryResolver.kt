@@ -370,6 +370,13 @@ object BinaryResolver {
                         } else {
                             out.parentFile?.mkdirs()
                             FileOutputStream(out).use { tar.transferTo(it) }
+                            // npm tarballs ship the rg binary with the exec bit set
+                            // (0755); FileOutputStream creates plain 0644 files, so
+                            // without mirroring the entry's x bits the binary lands
+                            // non-executable and spawning it fails with EACCES (the
+                            // Grep tool silently breaks). Apply the exec bits for all
+                            // three classes — the shape npm install leaves behind.
+                            if ((entry.mode and 0x49) != 0) out.setExecutable(true, false) // 0x49 = 0o111 exec bits
                         }
                     }
                     entry = tar.nextEntry

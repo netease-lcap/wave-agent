@@ -183,6 +183,26 @@ class BinaryResolverTest {
         assertTrue(out.readBytes().contentEquals(payload))
     }
 
+    @Test
+    fun `extractTarball keeps the exec bit of executable entries`() {
+        // Regression: the @vscode/ripgrep-<platform> tarball ships bin/rg 0755.
+        // The extractor wrote it as a plain 0644 file, so spawning rg failed
+        // with EACCES and the Grep tool was broken (Linux hosts where the JB
+        // plugin cached rg shared the poisoned ~/.wave/cli/node_modules with
+        // the desktop/vscode CLIs).
+        val tarGz = buildTarGz(
+            entries = mapOf("package/bin/rg" to "binary-bytes".toByteArray()),
+            modes = mapOf("package/bin/rg" to 0x1ed), // 0755
+        )
+        val dest = File(tempDir.toFile(), "extract-${shimCounter++}")
+        BinaryResolver.extractTarball(tarGz, dest)
+
+        val rg = File(dest, "bin/rg")
+        assertTrue(rg.isFile)
+        assertTrue(rg.canExecute(), "rg must stay executable after extraction")
+        assertEquals("binary-bytes", rg.readText())
+    }
+
     // ---- decodeCommandOutput / readProcessOutput -----------------------
     //
     // Customer repro: on Chinese Windows, cmd.exe builtins (`where`) and
@@ -401,12 +421,16 @@ class BinaryResolverTest {
     }
 
     /** Builds a `.tar.gz` byte array from `package/...` entries (npm tarball shape). */
-    private fun buildTarGz(entries: Map<String, ByteArray>): ByteArray {
+    private fun buildTarGz(
+        entries: Map<String, ByteArray>,
+        modes: Map<String, Int> = emptyMap(),
+    ): ByteArray {
         java.io.ByteArrayOutputStream().use { bos ->
             org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream(bos).use { gz ->
                 org.apache.commons.compress.archivers.tar.TarArchiveOutputStream(gz).use { tar ->
                     entries.forEach { (name, data) ->
                         val entry = org.apache.commons.compress.archivers.tar.TarArchiveEntry(name)
+                        modes[name]?.let { entry.setMode(it) }
                         entry.size = data.size.toLong()
                         tar.putArchiveEntry(entry)
                         tar.write(data)
