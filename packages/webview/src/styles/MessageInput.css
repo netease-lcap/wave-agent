@@ -221,7 +221,8 @@
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
   padding: 4px 6px;
-  outline: none;
+  /* 键盘聚焦提示走浏览器原生焦点环（与其余按钮/复选框一致），不在此关掉
+     outline；hover/focus 底色由下方 / desktop host 层各自定义 */
   font-family: inherit;
   transition:
     background-color 0.2s ease,
@@ -336,8 +337,7 @@
 }
 
 .permission-mode-item:hover,
-.permission-mode-item.selected,
-.permission-mode-item:focus-visible {
+.permission-mode-item.selected {
   background: var(--vscode-list-hoverBackground);
   color: var(--vscode-list-activeSelectionForeground);
 }
@@ -409,8 +409,7 @@
   color: var(--vscode-menu-foreground);
 }
 
-.plus-menu-item:hover,
-.plus-menu-item:focus-visible {
+.plus-menu-item:hover {
   background: var(--vscode-list-hoverBackground);
   color: var(--vscode-list-activeSelectionForeground);
 }
@@ -443,11 +442,8 @@
   opacity: 0.7;
 }
 
-.selection-tag:hover,
-.selection-tag:focus-visible {
+.selection-tag:hover {
   opacity: 0.9;
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
 }
 
 /* Image Preview Modal */

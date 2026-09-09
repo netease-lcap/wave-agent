@@ -28,8 +28,7 @@
   cursor: pointer;
 }
 
-.more-menu-item:hover,
-.more-menu-item:focus-visible {
+.more-menu-item:hover {
   background-color: var(--vscode-list-hoverBackground);
 }
 
@@ -61,8 +60,7 @@
   color: var(--vscode-errorForeground, #f14c4c);
 }
 
-.more-menu-item--danger:hover,
-.more-menu-item--danger:focus-visible {
+.more-menu-item--danger:hover {
   background-color: var(--vscode-list-hoverBackground);
   color: var(--vscode-errorForeground, #f14c4c);
 }

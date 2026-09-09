@@ -31,10 +31,9 @@
   cursor: pointer;
 }
 
-.account-card-login:hover,
-.account-card-login:focus-visible {
+/* 键盘聚焦提示交给浏览器原生焦点环（不补 focus-visible 底色，下同） */
+.account-card-login:hover {
   background: color-mix(in srgb, var(--vscode-brand-primary, #c1292e) 88%, black);
-  outline: none;
 }
 
 /* 已登录：头像+姓名热区 与 热区右侧「更新/用量显隐」按钮同行。 */
@@ -60,13 +59,11 @@
   cursor: pointer;
 }
 
-.account-card-update-btn:hover,
-.account-card-update-btn:focus-visible {
+.account-card-update-btn:hover {
   background: var(
     --vscode-button-secondaryHoverBackground,
     rgba(255, 255, 255, 0.1)
   );
-  outline: none;
 }
 
 .account-card-update-btn:disabled {
@@ -92,10 +89,8 @@
   cursor: pointer;
 }
 
-.account-card-collapse-btn:hover,
-.account-card-collapse-btn:focus-visible {
+.account-card-collapse-btn:hover {
   background-color: var(--vscode-list-hoverBackground);
-  outline: none;
 }
 
 /* 用量常驻概要区（个人信息行上方、横线之下与主行分隔）：套餐用量 + API 余额。 */
@@ -122,10 +117,8 @@
   cursor: pointer;
 }
 
-.account-card-hotzone:hover,
-.account-card-hotzone:focus-visible {
+.account-card-hotzone:hover {
   background-color: var(--vscode-list-hoverBackground);
-  outline: none;
 }
 
 .account-card-avatar {
@@ -175,10 +168,8 @@
   cursor: pointer;
 }
 
-.account-card-more-btn:hover,
-.account-card-more-btn:focus-visible {
+.account-card-more-btn:hover {
   background-color: var(--vscode-list-hoverBackground);
-  outline: none;
 }
 
 /* 套餐用量块。 */
@@ -290,11 +281,9 @@
   flex-shrink: 0;
 }
 
-.account-api-info-btn:hover,
-.account-api-info-btn:focus-visible {
+.account-api-info-btn:hover {
   color: var(--vscode-foreground);
   background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
-  outline: none;
 }
 
 .account-api-info-btn .codicon {

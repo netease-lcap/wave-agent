@@ -280,11 +280,6 @@
   box-shadow: 0 2px 8px rgb(31 35 41 / 8%);
 }
 
-.session-card:focus-visible {
-  outline: 1px solid #2f5edb;
-  outline-offset: -1px;
-}
-
 /* 标题行：独占一行（Figma Container 13656:5280 row1，高 26，超长省略） */
 .session-card-title-row {
   display: flex;
