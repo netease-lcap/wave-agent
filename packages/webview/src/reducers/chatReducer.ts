@@ -33,9 +33,10 @@ export const initialState: ChatState = {
   configurationLoading: false,
   configurationError: undefined,
   projectSettings: undefined,
-  // The workdir the cached projectSettings was fetched for (project settings are
-  // per-workdir; the 项目设置 view must not show one project's toggle under
-  // another's directory — see SET_PROJECT_SETTINGS / SettingsPage).
+  // Mirror of the last accepted projectSettings reply: the value plus the
+  // workdir it belongs to (host 归属键原样带回). Keyed snapshots live in
+  // SessionUiStore (workdir 维度); this pair only feeds the 项目设置 view's
+  // render-time guard (SettingsPage: mismatch = treat as unloaded).
   projectSettingsWorkdir: undefined,
   // Permission mode state
   permissionMode: "default",
@@ -188,9 +189,9 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         projectSettings: {
           enabledPlugins: action.payload.enabledPlugins,
         },
-        // Stamp the workdir the reply corresponds to: the webview derives it from
-        // the pane/session active when the reply lands. The 项目设置 view only
-        // trusts the cached value while it matches the current workdir.
+        // Mirror write: only reached for replies whose attribution workdir
+        // matched the pane's current workdir (ChatApp 过期即弃已过滤)，workdir
+        // 原样落镜像供 SettingsPage 渲染期守卫比对。
         projectSettingsWorkdir: action.payload.workdir,
       };
     case "SET_INITIAL_STATE":

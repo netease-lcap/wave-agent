@@ -362,9 +362,14 @@ export interface ConfigurationResponseMessage extends HostToWebviewMessageBase {
   configurationData: ConfigurationData;
 }
 
+/** Reply to getProjectSettings / setBuiltinPluginEnabled（项目设置视图 SDD 开关）. */
 export interface ProjectSettingsMessage extends HostToWebviewMessageBase {
   command: "projectSettings";
   enabledPlugins: Record<string, boolean>;
+  /** 归属键：本回复对应的项目工作目录（host 端以请求所用 workdir 恒回带）。
+   *  消费侧据此丢弃切目录/切会话后才落地的慢回复（过期即弃），并以此作为
+   *  缓存键（SessionUiStore projectSettings 快照按 workdir 维度存放）。 */
+  workdir: string;
 }
 
 /** Settings page hooks read-only view: scope-scoped settings.json hooks. */
@@ -885,6 +890,7 @@ export type HostToWebviewMessage =
 type ReplyAttribution = {
   // 作用域查询：作用域字段作归属键（渲染期键控过滤或过期即弃均可）。
   desktopGitBranches: "workdir";
+  projectSettings: "workdir";
   hooksConfigResponse: "scope";
   mcpConfigResponse: "scope";
   agentsContentResponse: "scope";
@@ -922,6 +928,7 @@ type ReplyAttributionSatisfied = {
 // 吸收，整体检查恒绿（probe 验证过的坑）。
 export const replyAttributionLocked = {
   desktopGitBranches: true,
+  projectSettings: true,
   hooksConfigResponse: true,
   mcpConfigResponse: true,
   agentsContentResponse: true,

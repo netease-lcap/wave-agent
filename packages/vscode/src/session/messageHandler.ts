@@ -738,13 +738,15 @@ export class MessageHandler {
   }
 
   /** 项目设置视图（内置插件 SDD 开关）：读取项目 .wave/settings.json 合并后的
-   *  enabledPlugins，回包发给设置面板（pluginService 以工作区根目录为 workdir）。 */
+   *  enabledPlugins，回包发给设置面板（pluginService 以工作区根目录为 workdir，
+   *  归属键随包回带；无工作区窗口回 ""——webview 按不匹配丢弃=未加载）。 */
   private async handleSettingsGetProjectSettings(): Promise<void> {
     try {
       const result = await this.pluginService.getProjectSettings();
       this.context.postSettingsMessage({
         command: "projectSettings",
         enabledPlugins: result.enabledPlugins,
+        workdir: this.pluginService.getWorkdir() ?? "",
       });
     } catch (error) {
       console.error("获取项目设置失败:", error);
@@ -769,6 +771,7 @@ export class MessageHandler {
       this.context.postSettingsMessage({
         command: "projectSettings",
         enabledPlugins: result.enabledPlugins,
+        workdir: this.pluginService.getWorkdir() ?? "",
       });
 
       // Reload config and recreate agents to apply plugin changes
@@ -1282,7 +1285,12 @@ export class MessageHandler {
     try {
       const result = await this.pluginService.getProjectSettings();
       this.context.postMessage(
-        { command: "projectSettings", enabledPlugins: result.enabledPlugins },
+        {
+          command: "projectSettings",
+          enabledPlugins: result.enabledPlugins,
+          // 归属键：请求所用 workdir（pluginService = 工作区根目录）恒回带
+          workdir: this.pluginService.getWorkdir() ?? "",
+        },
         viewType,
         windowId,
       );
@@ -1305,7 +1313,12 @@ export class MessageHandler {
         scope as Scope,
       );
       this.context.postMessage(
-        { command: "projectSettings", enabledPlugins: result.enabledPlugins },
+        {
+          command: "projectSettings",
+          enabledPlugins: result.enabledPlugins,
+          // 归属键：同 chat 路由 handleGetProjectSettings
+          workdir: this.pluginService.getWorkdir() ?? "",
+        },
         viewType,
         windowId,
       );

@@ -116,4 +116,36 @@ describe("sessionUiStore", () => {
     expect(sessionUi.get("new:pane-live")).toBeDefined();
     expect(sessionUi.get("s-deleted")).toBeUndefined();
   });
+
+  // ── projectSettings 快照区（workdir 维度，a3043966 stamp 迁入） ──
+
+  it("projectSettings round-trips per workdir key; other directories miss", () => {
+    expect(sessionUi.getProjectSettings("/proj/A")).toBeUndefined();
+
+    sessionUi.setProjectSettings("/proj/A", {
+      enabledPlugins: { "sdd@builtin": true },
+    });
+    expect(sessionUi.getProjectSettings("/proj/A")).toEqual({
+      enabledPlugins: { "sdd@builtin": true },
+    });
+    // key = workdir：另一目录读不到 A 的快照（数据按项目作用域隔离）
+    expect(sessionUi.getProjectSettings("/proj/B")).toBeUndefined();
+
+    sessionUi.setProjectSettings("/proj/A", { enabledPlugins: {} });
+    expect(sessionUi.getProjectSettings("/proj/A")).toEqual({
+      enabledPlugins: {},
+    });
+  });
+
+  it("projectSettings section is independent of the session-keyed cache (prune 不波及)", () => {
+    sessionUi.setProjectSettings("/proj/A", { enabledPlugins: {} });
+    sessionUi.set("s1", emptySessionUiState());
+
+    sessionUi.prune(new Set());
+
+    // workdir 维度条目不受会话键失效清理影响（寿命 = webview 实例）
+    expect(sessionUi.getProjectSettings("/proj/A")).toEqual({
+      enabledPlugins: {},
+    });
+  });
 });

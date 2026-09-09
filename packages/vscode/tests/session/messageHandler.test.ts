@@ -548,6 +548,7 @@ describe("MessageHandler MCP handlers", () => {
       setBuiltinPluginEnabled: vi
         .fn()
         .mockResolvedValue({ enabledPlugins: { "sdd@builtin": true } }),
+      getWorkdir: vi.fn().mockReturnValue("/ws/root"),
     };
     const context: MessageHandlerContext = {
       getChatSession: vi.fn().mockReturnValue(createMockSession()),
@@ -595,9 +596,12 @@ describe("MessageHandler MCP handlers", () => {
       .calls[0][0] as {
       command: string;
       enabledPlugins: Record<string, boolean>;
+      workdir?: string;
     };
     expect(posted.command).toBe("projectSettings");
     expect(posted.enabledPlugins).toEqual({ "sdd@builtin": true });
+    // 归属键：请求所用 workdir 恒回带（webview 过期即弃依据）
+    expect(posted.workdir).toBe("/ws/root");
   });
 });
 
@@ -849,6 +853,7 @@ describe("MessageHandler settings tab", () => {
       getProjectSettings: vi
         .fn()
         .mockResolvedValue({ enabledPlugins: { "sdd@builtin": true } }),
+      getWorkdir: vi.fn().mockReturnValue("/ws/root"),
     };
     const context: MessageHandlerContext = {
       getChatSession: vi.fn().mockReturnValue(createMockSession()),
@@ -878,9 +883,12 @@ describe("MessageHandler settings tab", () => {
       .mock.calls[0][0] as {
       command: string;
       enabledPlugins: Record<string, boolean>;
+      workdir?: string;
     };
     expect(posted.command).toBe("projectSettings");
     expect(posted.enabledPlugins).toEqual({ "sdd@builtin": true });
+    // 归属键：请求所用 workdir 恒回带（webview 过期即弃依据）
+    expect(posted.workdir).toBe("/ws/root");
     // Response goes to the settings panel, never the chat webviews
     expect(context.postMessage).not.toHaveBeenCalled();
   });
@@ -896,6 +904,7 @@ describe("MessageHandler settings tab", () => {
       setBuiltinPluginEnabled: vi
         .fn()
         .mockResolvedValue({ enabledPlugins: { "sdd@builtin": true } }),
+      getWorkdir: vi.fn().mockReturnValue("/ws/root"),
     };
     const context: MessageHandlerContext = {
       getChatSession: vi.fn().mockReturnValue(createMockSession()),
@@ -939,9 +948,12 @@ describe("MessageHandler settings tab", () => {
       .mock.calls[0][0] as {
       command: string;
       enabledPlugins: Record<string, boolean>;
+      workdir?: string;
     };
     expect(posted.command).toBe("projectSettings");
     expect(posted.enabledPlugins).toEqual({ "sdd@builtin": true });
+    // 归属键：请求所用 workdir 恒回带（webview 过期即弃依据）
+    expect(posted.workdir).toBe("/ws/root");
     expect(context.postMessage).not.toHaveBeenCalled();
   });
 
