@@ -292,6 +292,10 @@ export class WorkflowManager {
           task.status = "completed";
           task.endTime = Date.now();
         }
+        // Push the terminal snapshot: without it the last snapshot holds the
+        // "running" registration and UI consumers (background-task gate) never
+        // see the workflow finish.
+        this.backgroundTaskManager.notifyTasksChange();
 
         // Enqueue completion notification
         const journalPath = journal.filePath;
@@ -336,6 +340,8 @@ export class WorkflowManager {
           task.stderr = run.error || "";
           task.endTime = Date.now();
         }
+        // Push the terminal snapshot (see the completion branch above).
+        this.backgroundTaskManager.notifyTasksChange();
 
         this.messageQueue.enqueueNotification(
           taskNotificationToXml({

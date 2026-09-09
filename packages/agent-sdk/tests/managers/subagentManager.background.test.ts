@@ -63,6 +63,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       generateId: vi.fn().mockImplementation(() => `task_${++taskIdCounter}`),
       addTask: vi.fn(),
       getTask: vi.fn(),
+      notifyTasksChange: vi.fn(),
     } as unknown as BackgroundTaskManager;
 
     const taskManager = {
@@ -439,6 +440,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     const noNotifyBgTaskManager = {
       generateId: vi.fn().mockReturnValue("task_456"),
       addTask: vi.fn(),
+      notifyTasksChange: vi.fn(),
       getTask: vi.fn().mockReturnValue({
         id: "task_456",
         status: "running",
@@ -503,6 +505,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     const noNotifyBgTaskManager = {
       generateId: vi.fn().mockReturnValue("task_789"),
       addTask: vi.fn(),
+      notifyTasksChange: vi.fn(),
       getTask: vi.fn().mockReturnValue({
         id: "task_789",
         status: "running",
