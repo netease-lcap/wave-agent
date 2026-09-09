@@ -580,17 +580,26 @@ export class SubagentManager {
             );
             const task = backgroundTaskManager?.getTask(taskId);
             if (task) {
-              task.status = "completed";
-              task.stdout = result;
+              // internalExecute already recorded the terminal state; only fill
+              // in a "completed" status when the task was not concurrently
+              // killed (mirrors the catch branch below).
+              if (task.status !== "killed") {
+                task.status = "completed";
+                task.stdout = result;
+              }
               task.endTime = Date.now();
               task.runtime = task.endTime - startTime;
             }
           } catch (error) {
             const task = backgroundTaskManager?.getTask(taskId);
             if (task) {
-              task.status = "failed";
-              task.stderr =
-                error instanceof Error ? error.message : String(error);
+              // Preserve a "killed" terminal state (internalExecute already
+              // notified it) instead of flipping the in-map task to failed.
+              if (task.status !== "killed") {
+                task.status = "failed";
+                task.stderr =
+                  error instanceof Error ? error.message : String(error);
+              }
               task.endTime = Date.now();
               task.runtime = task.endTime - startTime;
             }
@@ -747,8 +756,13 @@ export class SubagentManager {
         const task = backgroundTaskManager.getTask(instance.backgroundTaskId);
         if (task) {
           const wasAlreadyKilled = task.status === "killed";
-          task.status = "completed";
-          task.stdout = response || "Agent completed with no text response";
+          // Preserve a "killed" terminal state (stopTask already notified it)
+          // instead of overwriting it with "completed" — mirrors shell exit
+          // semantics in BackgroundTaskManager.onExit.
+          if (!wasAlreadyKilled) {
+            task.status = "completed";
+            task.stdout = response || "Agent completed with no text response";
+          }
           task.endTime = Date.now();
           if (task.startTime) {
             task.runtime = task.endTime - task.startTime;
@@ -765,6 +779,11 @@ export class SubagentManager {
               );
             }
           }
+          // Push a terminal snapshot: SubagentManager mutates the task object in
+          // place, so without an explicit notify the UI/hosts keep the last
+          // snapshot — the task created with status "running" — and the IDE
+          // background-task gate (new chat / history restore) stays locked.
+          backgroundTaskManager.notifyTasksChange();
         }
       }
 
@@ -784,12 +803,20 @@ export class SubagentManager {
         const task = backgroundTaskManager.getTask(instance.backgroundTaskId);
         if (task) {
           const wasAlreadyKilled = task.status === "killed";
-          task.status = "failed";
-          task.stderr = error instanceof Error ? error.message : String(error);
+          // Preserve a user/agent-initiated "killed" terminal state instead of
+          // overwriting it with "failed" (mirrors shell exit semantics) — the
+          // abort that stopped the task surfaces here as a thrown error.
+          if (!wasAlreadyKilled) {
+            task.status = "failed";
+            task.stderr =
+              error instanceof Error ? error.message : String(error);
+          }
           task.endTime = Date.now();
           if (task.startTime) {
             task.runtime = task.endTime - task.startTime;
           }
+          // Push a terminal snapshot (see the completion branch above).
+          backgroundTaskManager.notifyTasksChange();
           // Skip notification if task was already stopped (e.g. by main agent shutdown)
           if (!wasAlreadyKilled) {
             const messageQueue = this.container.has("MessageQueue")

@@ -114,6 +114,7 @@ describe("SubagentManager background notification deduplication", () => {
         tasks.set(task.id, task);
       }),
       stopTask: stopTaskFn as unknown as (id: string) => boolean,
+      notifyTasksChange: vi.fn(),
     };
     container.register(
       "BackgroundTaskManager",
@@ -226,6 +227,7 @@ describe("SubagentManager registerPluginAgents", () => {
 
     const mockBackgroundTaskManager: Partial<BackgroundTaskManager> = {
       generateId: vi.fn().mockReturnValue("task_1"),
+      notifyTasksChange: vi.fn(),
     };
     container.register(
       "BackgroundTaskManager",
@@ -391,6 +393,7 @@ describe("SubagentManager.cleanup()", () => {
     const mockBackgroundTaskManager: Partial<BackgroundTaskManager> = {
       generateId: vi.fn().mockReturnValue("task_1"),
       cleanup: mockBackgroundTaskManagerCleanup as unknown as () => void,
+      notifyTasksChange: vi.fn(),
     };
     container.register(
       "BackgroundTaskManager",
@@ -460,6 +463,7 @@ describe("SubagentManager.deleteSubagent()", () => {
     container = new Container();
     container.register("BackgroundTaskManager", {
       generateId: vi.fn().mockReturnValue("task_1"),
+      notifyTasksChange: vi.fn(),
     });
     container.register("ToolManager", {
       initializeBuiltInTools: vi.fn(),

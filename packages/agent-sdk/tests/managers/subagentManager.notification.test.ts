@@ -62,6 +62,7 @@ describe("SubagentManager - Notification Deduplication", () => {
       generateId: vi.fn().mockReturnValue("task_123"),
       addTask: vi.fn(),
       getTask: vi.fn(),
+      notifyTasksChange: vi.fn(),
     } as unknown as BackgroundTaskManager;
 
     messageQueue = new MessageQueue();
