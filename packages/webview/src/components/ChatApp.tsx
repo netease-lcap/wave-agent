@@ -283,6 +283,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     (host?.type === "desktop"
       ? (host?.recentWorkdirs?.[0] ?? host?.workdir)
       : undefined);
+  // Desktop settings full-page 的「当前项目」：设置页挂在 root 实例（paneId
+  // undefined，无自己会话），其当前项目 = 聚焦 pane 的会话目录，host 以
+  // desktopWorkdirState.workdir（= desktopHost this.workdir，每次聚焦/激活更新）
+  // 权威推送。不能复用 effectiveWorkdir：它把窗口 recents 头优先于 host.workdir
+  // （该回退专为新会话 pane 防兄弟 pane 路径渗入而写）——recents 头 ≠ 当前聚焦
+  // 会话的项目时（恢复历史会话不写 recents），以 recents 头作「当前项目」会把
+  // host 按聚焦 pane 解析并回发的项目设置（workdir 归属键=聚焦 pane）当过期回复
+  // 丢弃，开关恒显另一项目的旧快照（与 PR #2152 AGENTS.md 同族：webview 端
+  // 「当前项目」身份取错）。pane 实例（有自己会话/新建会话）维持 effectiveWorkdir。
+  const settingsWorkdir =
+    paneId === undefined && host?.type === "desktop"
+      ? (host?.workdir ?? host?.recentWorkdirs?.[0])
+      : effectiveWorkdir;
   // The new-session pickers (workdir selector + worktree controls) show a
   // directory the USER chose, decoupled from the pane's session cwd: the
   // session cwd only wins when it is itself a user-chosen directory (it sits
@@ -407,6 +420,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       ? paneGitBranches
       : null;
   const effectiveWorkdirRef = useRef(effectiveWorkdir);
+  // Settings full-page 归属守卫用的「当前项目」镜像（root 实例与 host.workdir
+  // 一致，见 settingsWorkdir 注释；pane 实例 == effectiveWorkdirRef）。
+  const settingsWorkdirRef = useRef(settingsWorkdir);
   // Desktop only: the panel group follows the session bound to this pane. The
   // cache key is the session id from the host-authoritative `desktopPanes`
   // push, or the pane's new-session bucket while no session is bound.
@@ -627,6 +643,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   useEffect(() => {
     effectiveWorkdirRef.current = effectiveWorkdir;
   }, [effectiveWorkdir]);
+
+  useEffect(() => {
+    settingsWorkdirRef.current = settingsWorkdir;
+  }, [settingsWorkdir]);
 
   useEffect(() => {
     effectiveHostRef.current = effectiveHost;
@@ -1148,7 +1168,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // 目录（切目录/切会话后才落地）的慢回复直接丢弃（过期即弃），不再按
         // 到达时目录盖章（a3043966 土办法会把上个项目的数据标成当前项目）。
         if (!forThisPane(message)) break;
-        if (message.workdir !== effectiveWorkdirRef.current) break;
+        // 归属比对用本实例的「当前项目」：pane 实例 = 其会话目录（effectiveWorkdir）；
+        // root 全页设置实例 = host.workdir（聚焦 pane 目录，host 权威）——以窗口
+        // recents 头作比对会让聚焦会话已切项目后的回包被误判过期而丢弃（见
+        // settingsWorkdir 注释），设置页将一直显示上一项目快照。
+        if (message.workdir !== settingsWorkdirRef.current) break;
         // workdir 键控快照存 SessionUiStore；reducer 只镜像本次接受的值供
         // 项目设置视图渲染（镜像自身的归属守卫见 SettingsPage）。
         sessionUi.setProjectSettings(message.workdir, {
@@ -3097,12 +3121,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         vscode.postMessage({
           command: "getAgentsContent",
           scope,
-          workdir: scope === "project" ? effectiveWorkdir : undefined,
+          // desktop host 按聚焦 pane 自行解析项目目录（见 desktopHost
+          // handleGetAgentsContent），此处 workdir 仅作 IDE 宿主备用一致性字段——
+          // 用与归属守卫同一「当前项目」身份，避免往线上传 recents 头的旧路径。
+          workdir: scope === "project" ? settingsWorkdir : undefined,
         })
       }
       onSaveAgentsContent={handleSaveAgentsContent}
       agentsSaving={agentsSaving}
-      workdir={effectiveWorkdir}
+      workdir={settingsWorkdir}
       saving={state.configurationLoading}
       initialNav={settingsNav}
       vscode={vscode}
