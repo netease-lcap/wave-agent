@@ -331,6 +331,37 @@ invalid json line
       );
     });
 
+    it("should tolerate a truncated trailing line left by an interrupted append", async () => {
+      // append() always ends a batch with "\n", so a final line without a
+      // trailing newline is the residue of a write interrupted mid-append
+      // (e.g. the CLI was killed while persisting). Drop the partial line and
+      // keep every fully-written message instead of failing the whole file.
+      const interruptedContent = `{"role":"user","blocks":[],"timestamp":"2024-01-01T00:00:00.000Z"}
+{"role":"assistant","blocks":[],"timestamp":"2024-01-01T00:01:00.000Z"}
+{"role":"assistant","blocks":[{"type":"text","content":"Partial response"`;
+
+      mockReadFile.mockResolvedValue(interruptedContent);
+
+      const result = await handler.read("/test/interrupted.jsonl");
+
+      expect(result).toHaveLength(2);
+      expect(result[1].role).toBe("assistant");
+    });
+
+    it("should still fail on a corrupt final line when the file ends with a newline", async () => {
+      // A trailing newline marks a complete write: a corrupt last line is then
+      // genuine corruption and must not be silently dropped.
+      const corruptContent = `{"role":"user","blocks":[],"timestamp":"2024-01-01T00:00:00.000Z"}
+this is not json
+`;
+
+      mockReadFile.mockResolvedValue(corruptContent);
+
+      await expect(handler.read("/test/corrupt.jsonl")).rejects.toThrow(
+        "Invalid JSON at line 2",
+      );
+    });
+
     it("should handle empty lines in file gracefully", async () => {
       const contentWithEmptyLines = `{"role":"user","blocks":[{"type":"text","content":"Message 1"}],"timestamp":"2024-01-01T00:00:00.000Z"}
 
