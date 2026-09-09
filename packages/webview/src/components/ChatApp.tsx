@@ -46,6 +46,7 @@ import { PlanPane } from "./PlanPane";
 import { DesktopPanelTabs } from "./DesktopPanelTabs";
 import { PanelEmptyState } from "./PanelEmptyState";
 import type {
+  BackgroundTaskSummary,
   ChatAppProps,
   ConfirmationDecision,
   ConfigurationData,
@@ -94,6 +95,16 @@ const autoPanelWidth = (containerW: number): number => {
   );
   return Math.max(PANEL_MIN_WIDTH, containerW - conversation);
 };
+
+/**
+ * Any background task (shell / subagent / workflow) still running in the
+ * current session. While one is active, IDE in-place session switches
+ * (clearChat「新建对话」/ `/clear`, restoreSession「加载历史」) are blocked —
+ * spec session-management.md「IDE 插件聊天头部」场景 6/7. Desktop's parallel
+ * session model doesn't apply.
+ */
+const hasRunningBackgroundTask = (tasks: BackgroundTaskSummary[]): boolean =>
+  tasks.some((t) => t.status === "running");
 
 /**
  * Hostname spellings that name the same remote service through an ssh tunnel:
@@ -1527,9 +1538,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   const handleClearChat = useCallback(() => {
     // /clear 斜杠命令 + ChatHeader「新建对话」按钮：原地清空当前会话，streaming
-    // 期间忽略。仅 IDE 端可达（桌面端 /clear 已整端移除 2026-09-05，「新建对话」
-    // 按钮也被 hideSessionButtons={isDesktop} 隐藏 —— 见 handleSendMessage）。
-    if (stateRef.current.isStreaming) return;
+    // 或存在正在运行的后台任务（后台终端工具/子代理/workflow）期间忽略——后
+    // 者防原地清空把正在跑的任务中断/与 UI 脱离。仅 IDE 端可达（桌面端 /clear
+    // 已整端移除 2026-09-05，「新建对话」按钮也被 hideSessionButtons={isDesktop}
+    // 隐藏 —— 见 handleSendMessage）。
+    if (
+      stateRef.current.isStreaming ||
+      hasRunningBackgroundTask(stateRef.current.backgroundTasks)
+    )
+      return;
 
     postToHost({
       command: "clearChat",
@@ -2064,7 +2081,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   const handleSessionSelect = useCallback(
     (sessionId: string) => {
-      if (state.isStreaming) return;
+      // streaming 或存在正在运行的后台任务时忽略（与 handleClearChat 同一守卫，
+      // 防原地恢复替换当前会话把后台任务中断/与 UI 脱离）。
+      if (state.isStreaming || hasRunningBackgroundTask(state.backgroundTasks))
+        return;
 
       // 清空当前任务列表：避免恢复期间残留旧会话的任务，
       // 并让新会话任务从空状态进入（若全部已完成则直接保持隐藏）
@@ -2075,7 +2095,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         sessionId,
       });
     },
-    [state.isStreaming, postToHost],
+    [state.isStreaming, state.backgroundTasks, postToHost],
   );
 
   const handleInputCleared = useCallback(() => {
@@ -3207,7 +3227,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         leading={collapsedLeading(expandBtn)}
         macTrafficSpacer={macTrafficSpacer}
         onNewSession={handleClearChat}
-        newSessionDisabled={state.isStreaming}
+        newSessionDisabled={
+          state.isStreaming || hasRunningBackgroundTask(state.backgroundTasks)
+        }
         onAbortMessage={handleAbortMessage}
         messages={state.messages}
         sessions={state.sessions}
