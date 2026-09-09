@@ -4233,6 +4233,90 @@ describe("session switch shortcut (FR-038)", () => {
     });
   });
 
+  it("deleting a session drops it from the cycle — Ctrl+Tab must not resurrect it", async () => {
+    const { host, store, sent } = await hostWithTree();
+    await host.activateAdjacentSession(1); // s3, snapshot frozen at [s3, s2, s1]
+    await vi.waitFor(() => {
+      expect(sent("setInitialState").at(-1)?.isRestoring).toBe(false);
+      expect(sent("setInitialState").at(-1)?.session).toMatchObject({
+        id: "s3",
+      });
+    });
+
+    // Delete s2 — a historical session that is NOT the focused pane's current
+    // one. The frozen snapshot (whose invalidation only fires on a current
+    // session change) must not keep it selectable.
+    await host.handleWebviewMessage({
+      command: "desktopDeleteSession",
+      sessionId: "s2",
+    });
+    await vi.waitFor(() => {
+      expect(store.getSessionIndex().some((e) => e.sessionId === "s2")).toBe(
+        false,
+      );
+    });
+
+    // Continue cycling: the fresh order [s3, s1] steps from s3 to s1. The
+    // stale snapshot would instead step onto the deleted s2 and re-restore it.
+    await host.activateAdjacentSession(1);
+    await vi.waitFor(() => {
+      expect(sent("setInitialState").at(-1)?.isRestoring).toBe(false);
+      expect(sent("setInitialState").at(-1)?.session).toMatchObject({
+        id: "s1",
+      });
+    });
+
+    // The deleted session was never restored or re-registered.
+    expect(
+      h.agentInstances.some((a) =>
+        (a.restoreSession as ReturnType<typeof vi.fn>).mock.calls.some(
+          ([id]) => id === "s2",
+        ),
+      ),
+    ).toBe(false);
+    expect(store.getSessionIndex().some((e) => e.sessionId === "s2")).toBe(
+      false,
+    );
+  });
+
+  it("deleting a session mid-restore cancels the restore (spec 恢复加载期间删除会话)", async () => {
+    const { host, store, sent } = await hostWithTree();
+    // Park the restore's agent at initialize so the delete can land mid-flight.
+    let releaseInit: () => void = () => {};
+    h.initializeGate = new Promise<void>((resolve) => {
+      releaseInit = resolve;
+    });
+    const before = h.agentInstances.length;
+
+    await host.activateAdjacentSession(1); // starts restoring s3, parked
+    await vi.waitFor(() => {
+      expect(h.agentInstances.length).toBe(before + 1);
+    });
+
+    // Delete s3 while its restore is still in flight.
+    await host.handleWebviewMessage({
+      command: "desktopDeleteSession",
+      sessionId: "s3",
+    });
+    await vi.waitFor(() => {
+      expect(store.getSessionIndex().some((e) => e.sessionId === "s3")).toBe(
+        false,
+      );
+    });
+
+    releaseInit();
+    // The restore completes past initialize but must discard the agent and
+    // never land the deleted session (it stays on the pane's previous agent).
+    await vi.waitFor(() => {
+      const restoredAgent = h.agentInstances.at(-1);
+      expect(restoredAgent?.destroy).toHaveBeenCalled();
+      expect(store.getSessionIndex().some((e) => e.sessionId === "s3")).toBe(
+        false,
+      );
+    });
+    expect(sent("setInitialState").at(-1)?.session?.id).not.toBe("s3");
+  });
+
   it("is a no-op on an empty tree", async () => {
     const { host } = createHost();
     await host.activateAdjacentSession(1);
