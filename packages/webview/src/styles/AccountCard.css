@@ -25,7 +25,9 @@
   border: none;
   border-radius: 6px;
   background: var(--vscode-brand-primary, #c1292e);
-  color: var(--vscode-button-foreground, white);
+  /* 品牌红实心钮恒白字（不走 --vscode-button-foreground：桌面语义层 dark 档把该
+     token 桥接成主按钮深字 #191C1E —— 浅灰底深字设计，红底上会失反白） */
+  color: #ffffff;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
