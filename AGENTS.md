@@ -88,7 +88,7 @@ When adding UI features, use the shared mechanisms below instead of hand-rolling
 - **Settings list views** (mount→fetch→response→delete-confirm state machine): use `useSettingsList`.
 - **Test assertions**: anchor on testids/semantics (e.g. `is-spinning`, svg presence), never on icon font class names — standard documented at the top of `packages/webview/tests/test-utils.tsx`.
 
-Known legacy hotspots (duplication not yet deduplicated — check **both** copies when editing): the vscode chat/settings dual command switches in `messageHandler.ts` (settings commands are registered twice; fixing only one causes #2086-style drift), and the near-identical `stdioAgent.ts` copies in vscode/desktop.
+Known legacy hotspots (duplication not yet deduplicated — check **both** copies when editing): the vscode chat/settings dual command switches in `messageHandler.ts` (settings commands are registered twice; fixing only one causes #2086-style drift). The vscode/desktop stdioAgent + NotificationRouter copies are now merged into `wave-agent-sdk/stdio` (hosts keep their transports).
 
 ## 🐛 Debugging
 

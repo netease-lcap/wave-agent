@@ -27,7 +27,7 @@ import {
   type MessageHandlerContext,
 } from "./session/messageHandler";
 import { StdioClient } from "./stdio/stdioClient";
-import { NotificationRouter } from "./stdio/notificationRouter";
+import { NotificationRouter } from "wave-agent-sdk/stdio";
 import { ensureCliUpToDate, setExtensionPath } from "./stdio/binaryResolver";
 import { hostLog } from "./hostLog";
 

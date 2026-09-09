@@ -191,7 +191,7 @@ vi.mock("../src/main/stdio/stdioClient", () => ({
   },
 }));
 
-vi.mock("../src/main/stdio/notificationRouter", () => ({
+vi.mock("wave-agent-sdk/stdio", () => ({
   NotificationRouter: class {
     attach = vi.fn();
     registerSession = vi.fn();
@@ -202,9 +202,7 @@ vi.mock("../src/main/stdio/notificationRouter", () => ({
       },
     );
   },
-}));
 
-vi.mock("../src/main/stdio/stdioAgent", () => ({
   StdioAgent: class {
     sessionId: string | undefined;
     workingDirectory: string | undefined;

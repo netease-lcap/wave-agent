@@ -26,6 +26,10 @@
       "types": "./dist/constants/tools.d.ts",
       "default": "./dist/constants/tools.js"
     },
+    "./stdio": {
+      "types": "./dist/stdio/index.d.ts",
+      "default": "./dist/stdio/index.js"
+    },
     "./package.json": "./package.json",
     "./*": "./*"
   },

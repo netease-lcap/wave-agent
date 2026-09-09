@@ -1,16 +1,22 @@
 /**
- * StdioAgent — typed wrapper around StdioClient that mirrors the Agent API.
+ * StdioAgent — host-side typed wrapper around a JSON-RPC client that mirrors
+ * the Agent API (shared by the VS Code extension and the desktop app).
  *
- * In the single-shared-process architecture, all sessions share one
- * StdioClient. The NotificationRouter dispatches incoming notifications to
- * the appropriate StdioAgent via `handleNotification()`. The agent no longer
+ * In the single-shared-process architecture, all sessions share one transport
+ * client. The NotificationRouter dispatches incoming notifications to the
+ * appropriate StdioAgent via `handleNotification()`. The agent no longer
  * subscribes directly to the client.
  *
  * All session-scoped requests carry `this.sessionId` on the JSON-RPC envelope
  * so the server can route them to the right Agent.
  *
  * `destroy()` only unregisters from the router and sends the destroy request;
- * it does NOT dispose the shared StdioClient.
+ * it does NOT dispose the shared client.
+ *
+ * The client dependency is the structural `RpcClient` surface (request/notify/
+ * onNotification) so both hosts keep their own transports: vscode's
+ * `StdioClient` (spawn + hostLog) and desktop's `JsonRpcClient` subclasses
+ * (StdioClient / SocketClient).
  */
 
 import type {
@@ -28,9 +34,9 @@ import type {
   McpServerConfig,
   SubagentConfiguration,
   SkillMetadata,
-} from "wave-agent-sdk/types";
-import { StdioClient } from "./stdioClient";
-import { NotificationRouter } from "./notificationRouter";
+} from "../types/index.js";
+import type { RpcClient } from "./rpcClient.js";
+import type { NotificationRouter } from "./notificationRouter.js";
 
 // ── Params / Results ─────────────────────────────────────────────
 
@@ -52,6 +58,8 @@ export interface InitializeParams {
   disallowedTools?: string[];
   pluginDirs?: string[];
   mcpServers?: Record<string, McpServerConfig>;
+  worktreeName?: string;
+  isNewWorktree?: boolean;
 }
 
 export interface InitializeResult {
@@ -69,6 +77,7 @@ export interface UpdateConfigParams {
   model?: string;
   fastModel?: string;
   language?: string;
+  contextLength?: number;
   autoMemoryEnabled?: boolean;
   autoMemoryFrequency?: number;
 }
@@ -140,13 +149,16 @@ export class StdioAgent {
   public queuedMessages: QueuedMessage[] = [];
   public tasks: Task[] = [];
   public backgroundTasks: BackgroundTaskSummary[] = [];
+  public isStreaming = false;
+  public isCommandRunning = false;
+  public isCompacting = false;
 
-  private client: StdioClient;
+  private client: RpcClient;
   private router: NotificationRouter;
   private callbacks: StdioAgentCallbacks;
 
   constructor(
-    client: StdioClient,
+    client: RpcClient,
     router: NotificationRouter,
     callbacks: StdioAgentCallbacks,
   ) {
@@ -202,10 +214,10 @@ export class StdioAgent {
       this.router.unregister(oldSessionId);
       this.sessionId = result.sessionId;
       this.router.register(this.sessionId, this);
-      // Sync ChatSession/UI state: bridge may have downgraded to a fresh
-      // session (session file missing on recreate). Without this the ChatSession
-      // keeps the destroyed sessionId and every later request fails with
-      // "Session not found".
+      // Sync the host session state: the bridge may have downgraded to a
+      // fresh session (session file missing on recreate). Without this the
+      // host keeps the destroyed sessionId and every later request fails
+      // with "Session not found".
       this.callbacks.onSessionIdChange?.(this.sessionId);
     }
     return result;
@@ -341,6 +353,11 @@ export class StdioAgent {
     await this.client.request("setPermissionMode", { mode }, this.sessionId);
   }
 
+  /** Returns cached permission mode (updated via notification). */
+  getPermissionMode(): PermissionMode | undefined {
+    return this.permissionMode;
+  }
+
   /**
    * Reads the session's current plan file (path + contents). Used by the
    * /plan command to display the plan when already in plan mode; the CLI side
@@ -355,11 +372,6 @@ export class StdioAgent {
       undefined,
       this.sessionId,
     )) as { path: string | null; content: string | null };
-  }
-
-  /** Returns cached permission mode (updated via notification). */
-  getPermissionMode(): PermissionMode | undefined {
-    return this.permissionMode;
   }
 
   sendPermissionResponse(
@@ -462,18 +474,6 @@ export class StdioAgent {
     return result.success;
   }
 
-  async removeMcpServer(
-    scope: "user" | "project",
-    serverName: string,
-  ): Promise<boolean> {
-    const result = (await this.client.request(
-      "removeMcpServer",
-      { scope, serverName },
-      this.sessionId,
-    )) as { success: boolean };
-    return result.success;
-  }
-
   async getMcpConfigPaths(): Promise<{
     userPath: string | null;
     projectPath: string | null;
@@ -484,6 +484,18 @@ export class StdioAgent {
       this.sessionId,
     )) as { userPath: string | null; projectPath: string | null };
     return result;
+  }
+
+  async removeMcpServer(
+    scope: "user" | "project",
+    serverName: string,
+  ): Promise<boolean> {
+    const result = (await this.client.request(
+      "removeMcpServer",
+      { scope, serverName },
+      this.sessionId,
+    )) as { success: boolean };
+    return result.success;
   }
 
   async deleteSkill(name: string): Promise<boolean> {
@@ -601,6 +613,7 @@ export class StdioAgent {
       }
       case "compactionStateChange": {
         const p = params as { isCompacting: boolean };
+        this.isCompacting = p.isCompacting;
         this.callbacks.onCompactionStateChange?.(p.isCompacting);
         break;
       }
@@ -617,6 +630,7 @@ export class StdioAgent {
         if (p.latestTotalTokens !== undefined) {
           this.latestTotalTokens = p.latestTotalTokens;
         }
+        this.isStreaming = p.loading;
         this.callbacks.onLoadingChange?.(p.loading);
         break;
       }
@@ -627,6 +641,7 @@ export class StdioAgent {
       }
       case "commandRunningChange": {
         const p = params as { running: boolean };
+        this.isCommandRunning = p.running;
         this.callbacks.onCommandRunningChange?.(p.running);
         break;
       }

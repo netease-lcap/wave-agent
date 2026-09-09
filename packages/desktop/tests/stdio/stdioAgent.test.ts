@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { StdioAgent } from "../../src/main/stdio/stdioAgent";
+import { StdioAgent } from "wave-agent-sdk/stdio";
 import type { JsonRpcClient } from "../../src/main/stdio/jsonRpcClient";
-import type { NotificationRouter } from "../../src/main/stdio/notificationRouter";
+import type { NotificationRouter } from "wave-agent-sdk/stdio";
 
 describe("StdioAgent.getSkillMetadata", () => {
   it("requests skill metadata with the sessionId and returns the skills array", async () => {
