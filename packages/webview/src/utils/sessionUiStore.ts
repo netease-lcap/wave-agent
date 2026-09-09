@@ -8,7 +8,11 @@ export const PANEL_DEFAULT_WIDTH = 420;
  *
  * 「某块 UI 状态属于哪个会话、何时恢复、何时失效」此前由各病点自造土办法
  * （panelGroupCache 模块级 Map、#2081 desktopHost WeakMap、a3043966 到达时
- * 盖章……）。本模块把 webview 侧的会话级快照收敛为一套存取代码：
+ * 盖章……）。本模块把 webview 侧的会话级快照收敛为一套存取代码。
+ *
+ * 注：#2081 context-usage 缓存不收编——usage 是 host 对 CLI 事件流的跨进程重
+ * 放（cache-before-pane-check + 绑 pane 时 replay），webview 只有 live 显示
+ * 态（切会话清空即可），无「跨会话存活需恢复」的 webview 层快照。
  *
  * ## key 维度
  *
