@@ -219,20 +219,14 @@
   border-radius: 6px;
   color: #565a60;
 }
-/* 工具行图标按钮键盘提示：focus-visible 复用 hover 底色（与行/下拉族
-   一致），并去掉浏览器默认焦点环 */
-[data-host="desktop"] .toolbar-icon-button:hover,
-[data-host="desktop"] .toolbar-icon-button:focus-visible {
+[data-host="desktop"] .toolbar-icon-button:hover {
   background: #f0f2f5;
-  outline: none;
 }
 [data-host="desktop"][data-theme="dark"] .toolbar-icon-button {
   color: #9a9ea5;
 }
-[data-host="desktop"][data-theme="dark"] .toolbar-icon-button:hover,
-[data-host="desktop"][data-theme="dark"] .toolbar-icon-button:focus-visible {
+[data-host="desktop"][data-theme="dark"] .toolbar-icon-button:hover {
   background: rgba(255, 255, 255, 0.08);
-  outline: none;
 }
 
 /* 压缩上下文按钮：32px 高，整体 59×32（codechat 图形按钮）：
@@ -308,10 +302,7 @@
 }
 /* 切换选择后按钮仍持 focus，不再常驻 hover 底色（用户 0904 走查：切换后
    不要保留 hover 态）；键盘 focus 提示走 :focus-visible 同底色。 */
-/* :focus 复位须排除 :focus-visible：键盘 Tab 聚焦同时命中两者、且本规则
-   声明在后（特异性相同），否则透明背景会盖掉上方的键盘高亮（回归）——
-   复位只针对鼠标点选带来的 focus。 */
-[data-host="desktop"] .permission-mode-select:focus:not(:focus-visible) {
+[data-host="desktop"] .permission-mode-select:focus {
   background: transparent;
   border-color: transparent;
 }
@@ -330,8 +321,7 @@
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
-[data-host="desktop"][data-theme="dark"]
-  .permission-mode-select:focus:not(:focus-visible) {
+[data-host="desktop"][data-theme="dark"] .permission-mode-select:focus {
   background: transparent;
 }
 [data-host="desktop"][data-theme="dark"]
@@ -448,17 +438,8 @@
   background: var(--cc-action-primary, #1f2329);
   color: var(--cc-action-primary-text, #ffffff);
 }
-[data-host="desktop"] .ai-send-btn:not(:disabled):hover,
-[data-host="desktop"] .ai-send-btn:not(:disabled):focus-visible {
+[data-host="desktop"] .ai-send-btn:not(:disabled):hover {
   background: var(--cc-action-primary-hover, #34383f);
-  outline: none;
-}
-/* 停止钮同族键盘提示：host 无独立覆盖，hover 走 base 的 button-hoverBackground
-   token（桌面映射同发送钮深档），此处只补 focus-visible + 去默认环 */
-[data-host="desktop"] .abort-button:hover,
-[data-host="desktop"] .abort-button:focus-visible {
-  background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
-  outline: none;
 }
 [data-host="desktop"][data-theme="dark"] .ai-send-btn,
 [data-host="desktop"][data-theme="dark"] .ai-send-btn:disabled {
@@ -470,10 +451,8 @@
   background: var(--cc-action-primary, #e0e3e5);
   color: var(--cc-action-primary-text, #191c1e);
 }
-[data-host="desktop"][data-theme="dark"] .ai-send-btn:not(:disabled):hover,
-[data-host="desktop"][data-theme="dark"] .ai-send-btn:not(:disabled):focus-visible {
+[data-host="desktop"][data-theme="dark"] .ai-send-btn:not(:disabled):hover {
   background: var(--cc-action-primary-hover, #f0f2f3);
-  outline: none;
 }
 
 /* 新会话上下文栏：Figma 13439-9245 —— 卡片外独立横条（非卡片脚条）。
@@ -551,20 +530,16 @@
   color: #565a60;
   box-sizing: border-box;
 }
-[data-host="desktop"] .desktop-worktree-checkbox:hover,
-[data-host="desktop"] .desktop-worktree-checkbox:focus-visible {
+[data-host="desktop"] .desktop-worktree-checkbox:hover {
   background: #eef0f3;
   color: #1f2329;
-  outline: none;
 }
 [data-host="desktop"][data-theme="dark"] .desktop-worktree-checkbox {
   color: #9a9ea5;
 }
-[data-host="desktop"][data-theme="dark"] .desktop-worktree-checkbox:hover,
-[data-host="desktop"][data-theme="dark"] .desktop-worktree-checkbox:focus-visible {
+[data-host="desktop"][data-theme="dark"] .desktop-worktree-checkbox:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
-  outline: none;
 }
 [data-host="desktop"] .desktop-host-trigger:hover,
 [data-host="desktop"] .desktop-host-trigger:focus-visible,
