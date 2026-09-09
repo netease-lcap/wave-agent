@@ -190,4 +190,63 @@ test.describe("Desktop panel divider drag (real geometry)", () => {
     near(await slotWidth(page), S0 - 45, 8);
     await expect(page.getByTestId("desktop-panel-slot")).toBeVisible();
   });
+
+  test("empty-state entries collapse to one column on a narrow slot (CSS container query)", async ({
+    webviewPage,
+  }) => {
+    const page = webviewPage as any;
+    const injector = new MessageInjector(page);
+    await setupSinglePane(page, injector);
+
+    // Empty state: close the diff tab opened by setup.
+    await page.getByTestId("panel-tab-close-diff-1").click();
+    await expect(page.getByTestId("panel-empty-state")).toBeVisible();
+
+    const itemBoxes = async (): Promise<
+      Array<{ kind: string; x: number; y: number }>
+    > =>
+      page
+        .locator('[data-testid^="panel-empty-item-"]')
+        .evaluateAll((els: Element[]) =>
+          els.map((el) => {
+            const r = el.getBoundingClientRect();
+            return {
+              kind: (el.getAttribute("data-testid") ?? "").replace(
+                "panel-empty-item-",
+                "",
+              ),
+              x: r.x,
+              y: r.y,
+            };
+          }),
+        );
+
+    // Drag to the 320px minimum: entries stack in a single column, DOM order
+    // unchanged (preview, plan, diff, terminal, file).
+    await dragHandle(page, 2000);
+    await expect.poll(() => slotWidth(page)).toBeLessThanOrEqual(324);
+    near(await slotWidth(page), 320, 4);
+    const narrow = await itemBoxes();
+    expect(narrow.map((b) => b.kind)).toEqual([
+      "preview",
+      "plan",
+      "diff",
+      "terminal",
+      "file",
+    ]);
+    for (let i = 1; i < narrow.length; i++) {
+      near(narrow[i].x, narrow[0].x, 2);
+      expect(narrow[i].y).toBeGreaterThan(narrow[i - 1].y);
+    }
+
+    // Widen back to the auto-fill maximum: two-column grid returns
+    // (preview/plan share the top row, diff starts the left column below).
+    await dragHandle(page, -2000);
+    const wide = await itemBoxes();
+    const [preview, plan, diff] = wide;
+    near(preview.y, plan.y, 2);
+    expect(plan.x).toBeGreaterThan(preview.x + 50);
+    near(diff.x, preview.x, 2);
+    expect(diff.y).toBeGreaterThan(preview.y + 20);
+  });
 });
