@@ -176,10 +176,10 @@ describe("ChatApp desktop panel framework", () => {
       fireEvent.click(screen.getByTestId("panel-empty-item-preview"));
 
       const empty = screen.getByTestId("preview-pane-empty");
-      // Never-dragged slot: opening auto-fills the space beyond the
-      // conversation minimum (1024 - 360 = 664, spec desktop-panels.md「右侧面板 ·
-      // 展开/折叠、空间守卫与欢迎页共存」场景 7-9).
-      expect(empty.style.width).toBe("664px");
+      // Never-dragged slot: the conversation keeps 40% of the row
+      // (round(1024×0.4)=410 ≥ the 360 floor) → panel 614 (spec
+      // desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」场景 7-9).
+      expect(empty.style.width).toBe("614px");
 
       // The drag handle lives on the shared slot (not inside each pane), so the
       // divider works with a tab open or in the empty state alike.
@@ -208,9 +208,10 @@ describe("ChatApp desktop panel framework", () => {
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
       expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
       const slot = screen.getByTestId("desktop-panel-slot");
-      // The never-dragged slot auto-fills (1400 - 360 = 1040); the divider
-      // handle must exist here just like it does with a pane open.
-      expect(slot).toHaveStyle({ width: "1040px" });
+      // The never-dragged slot splits 40/60: conversation round(1400×0.4)=560
+      // → panel 840; the divider handle must exist here just like it does with
+      // a pane open.
+      expect(slot).toHaveStyle({ width: "840px" });
       const handle = screen.getByTestId("panel-slot-drag-handle");
 
       // Drag the empty-state divider: width follows (1400 - 1000 = 400).
@@ -228,11 +229,12 @@ describe("ChatApp desktop panel framework", () => {
     }
   });
 
-  it("a panel opens auto-filled to the space beyond the conversation minimum", () => {
+  it("a panel opens auto-split 40/60 with the conversation floored at its minimum", () => {
     window.waveHostType = "desktop";
-    // 800px: 800 - 360 = 440 ≥ the 320px minimum — the never-dragged slot
-    // auto-fills to 440 (spec desktop-panels.md「右侧面板 · 展开/折叠、空间守卫
-    // 与欢迎页共存」场景 7-9, not the 420px default).
+    // 800px: the 40% conversation share (320) sits below the 360px floor, so
+    // the conversation stays at 360 and the never-dragged slot gets the
+    // remainder = 440 (spec desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与
+    // 欢迎页共存」场景 7-9, not the 420px default).
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockReturnValue({ width: 800, right: 800 } as DOMRect);
@@ -256,8 +258,8 @@ describe("ChatApp desktop panel framework", () => {
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
       fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
       const pane = screen.getByTestId("diff-pane");
-      // Never-dragged slot auto-fills: 1400 - 360 = 1040.
-      expect(pane.style.width).toBe("1040px");
+      // Never-dragged slot auto-splits 40/60: 1400×0.6 = 840.
+      expect(pane.style.width).toBe("840px");
 
       // A drag moves the panel off the auto-filled width and locks it (the
       // slot turns manual — subsequent opens no longer re-auto-fill).
@@ -288,16 +290,17 @@ describe("ChatApp desktop panel framework", () => {
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
       fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
       const pane = screen.getByTestId("diff-pane");
-      // Auto-filled first (1400 - 360 = 1040); a drag then locks the width.
-      expect(pane.style.width).toBe("1040px");
+      // Auto-split first (1400×0.6 = 840); a drag then locks the width.
+      expect(pane.style.width).toBe("840px");
       const handle = screen.getByTestId("panel-slot-drag-handle");
       fireEvent.mouseDown(handle);
       fireEvent.mouseMove(window, { clientX: 1000 }); // 1400 - 1000 = 400
       expect(pane.style.width).toBe("400px");
       fireEvent.mouseUp(window);
 
-      // A NEW tab (preview) goes through the open path's auto-fill — the manual
-      // slot must keep its dragged 400px instead of widening to 1040 again.
+      // A NEW tab (preview) goes through the open path's auto-split — the
+      // manual slot must keep its dragged 400px instead of widening to 840
+      // again.
       fireEvent.click(screen.getByTestId("panel-tabs-add"));
       fireEvent.click(screen.getByTestId("panel-toggle-item-preview"));
       expect(screen.getByTestId("panel-tab-preview-1")).toBeInTheDocument();
@@ -545,7 +548,8 @@ describe("ChatApp desktop panel framework", () => {
       fireEvent.click(screen.getByTestId("panel-toggle-btn"));
       fireEvent.click(screen.getByTestId("panel-empty-item-file"));
       expect(screen.getByTestId("file-pane")).toBeInTheDocument();
-      // 700 - 360 = 340 ≥ the 320px minimum → opens, clamped to 340.
+      // 700px: the 40% conversation share (280) sits below the 360 floor →
+      // conversation 360, panel 340 (≥ the 320px minimum) → opens.
       expect(screen.getByTestId("file-pane").style.width).toBe("340px");
 
       // 650px: 650 - 360 = 290 < the 320px minimum → the new panel is

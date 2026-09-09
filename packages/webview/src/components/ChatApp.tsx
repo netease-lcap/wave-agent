@@ -78,6 +78,22 @@ export const PANEL_LABELS: Record<DesktopPanelKind, string> = {
 const PANEL_MIN_WIDTH = 320;
 /** The conversation (message) area never shrinks below this when opening/dragging panels. */
 const CHAT_MAIN_MIN_WIDTH = 360;
+// A slot the user never dragged splits the row 40% conversation / 60% panel
+// (spec desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」场景 7-9,
+// 2026-09-09 拍板替代 2026-09-03 的「对话列恒 360、面板铺满剩余」语义): the
+// conversation takes round(40% × row), floored at CHAT_MAIN_MIN_WIDTH, and the
+// slot gets the remainder. On rows ≥ 900px the 40% share clears the 360 floor
+// and the conversation widens past it; narrower rows keep the 360 floor.
+const AUTO_CHAT_ROW_RATIO = 0.4;
+
+/** Panel width for a never-dragged slot in a `containerW`-wide row. */
+const autoPanelWidth = (containerW: number): number => {
+  const conversation = Math.max(
+    CHAT_MAIN_MIN_WIDTH,
+    Math.round(containerW * AUTO_CHAT_ROW_RATIO),
+  );
+  return Math.max(PANEL_MIN_WIDTH, containerW - conversation);
+};
 
 /**
  * Hostname spellings that name the same remote service through an ssh tunnel:
@@ -501,7 +517,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       PANEL_DEFAULT_WIDTH,
   );
   // True once the user manually dragged the slot width; a slot never dragged
-  // auto-fills the space beyond the conversation minimum when it opens (see
+  // auto-splits the row 40/60 again when it opens (see
   // PanelGroupState.panelWidthManual).
   const [panelWidthManual, setPanelWidthManual] = useState<boolean>(
     () =>
@@ -2273,24 +2289,25 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     return `${kind}-${tabSeqRef.current[kind]}`;
   }, []);
 
-  // Auto-fill (spec desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与欢迎页
-  // 共存」场景 7-9): a slot width the user has never manually dragged fills the
-  // space beyond the conversation's minimum width whenever the panel opens — a
-  // wide pane no longer leaves the panel at the fixed default width with dead
-  // space to its right. A manual drag (handlePanelWidthChange) marks the slot
-  // and locks its width from then on (「手动拖宽后锁定」). Reads the live container
-  // width, so a window resize is reflected on the next open/expand.
+  // Auto 40/60 split (spec desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与
+  // 欢迎页共存」场景 7-9): a slot width the user has never manually dragged
+  // re-splits the row whenever the panel opens — the conversation keeps ~40%
+  // (floor CHAT_MAIN_MIN_WIDTH), the slot takes the remainder. A manual drag
+  // (handlePanelWidthChange) marks the slot and locks its width from then on
+  // (「手动拖宽后锁定」). Reads the live container width, so a window resize is
+  // reflected on the next open/expand.
   const autoFillPanelWidth = useCallback((): void => {
     if (panelWidthManualRef.current) return;
     const containerW = chatContainerRef.current?.getBoundingClientRect().width;
     if (!containerW) return;
-    setPanelWidth(Math.max(PANEL_MIN_WIDTH, containerW - CHAT_MAIN_MIN_WIDTH));
+    setPanelWidth(autoPanelWidth(containerW));
   }, []);
 
   // Expanding the panel — from collapsed, from the empty state, or on first
-  // mount with restored tabs — re-applies the auto-fill so the slot tracks the
-  // space currently available, unless the user dragged the width by hand.
-  // (Opening a NEW tab runs its own auto-fill through ensurePanelSpace below.)
+  // mount with restored tabs — re-applies the auto 40/60 split so the slot
+  // tracks the space currently available, unless the user dragged the width by
+  // hand. (Opening a NEW tab runs its own auto-split through
+  // ensurePanelSpace below.)
   const prevPanelExpandedRef = useRef<boolean | null>(null);
   useEffect(() => {
     const was = prevPanelExpandedRef.current;
@@ -2310,13 +2327,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         showPanelHint("空间不足，无法开启面板");
         return false;
       }
-      // Never-dragged slots auto-fill the space beyond the conversation
-      // minimum (spec desktop-panels.md「右侧面板 · 展开/折叠」场景 7-9); manual
-      // ones keep their width and are only clamped when the window shrank past them.
+      // Never-dragged slots re-apply the 40/60 auto split (spec
+      // desktop-panels.md「右侧面板 · 展开/折叠」场景 7-9); manual ones keep their
+      // width and are only clamped when the window shrank past them.
       if (!panelWidthManualRef.current) {
-        setPanelWidth(
-          Math.max(PANEL_MIN_WIDTH, containerW - CHAT_MAIN_MIN_WIDTH),
-        );
+        setPanelWidth(autoPanelWidth(containerW));
       } else if (panelWidthRef.current > containerW - CHAT_MAIN_MIN_WIDTH) {
         setPanelWidth(containerW - CHAT_MAIN_MIN_WIDTH);
       }
@@ -2579,7 +2594,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // Authoritative clamp at drag time: keep the shared panel slot within
   // [320, container - conversation minimum]. A drag also marks the slot as
-  // manually resized — from then on it never auto-fills again (「手动拖宽后
+  // manually resized — from then on it never auto-splits again (「手动拖宽后
   // 锁定宽度」, see PanelGroupState.panelWidthManual).
   const handlePanelWidthChange = useCallback((width: number) => {
     setPanelWidthManual(true);
