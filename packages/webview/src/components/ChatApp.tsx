@@ -3178,6 +3178,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         toasts={toasts}
         onDismiss={handleToastDismiss}
         onAction={handleToastAction}
+        // 水平锚点：设置页打开 = 内容列中心（避开 240px 左导航）；普通桌面 =
+        // 工作区中心（避开会话侧栏）。使 toast 始终落在用户操作的「右侧界面」。
+        anchorSelector={
+          isDesktop
+            ? settingsOpen
+              ? ".settings-page .settings-content"
+              : ".desktop-pane-rows"
+            : null
+        }
       />
     </>
   );

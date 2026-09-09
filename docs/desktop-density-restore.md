@@ -2315,3 +2315,17 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - **根因**：按钮为品牌红实心底、白字（原型 sidebar-login-button 同款）；base 文字走 `color: var(--vscode-button-foreground, white)`——桌面语义层 dark 档把该 token 桥接成主按钮「浅灰底深字」的 `#191C1E`（host-desktop.css `--vscode-button-foreground: var(--cc-action-primary-text)`，0907 语义层），登录按钮品牌红底上渲染成深字、失反白。
 - **修复**（AccountCard.css，桌面专用组件文件）：登录钮文字恒白 `color: #ffffff`，不再引用随主按钮语义变化的 `--vscode-button-foreground`（注释说明原因）；hover 仅加深背景、字色不变。落点避开 host-desktop.css（其上另有并行会话 toast 在途改动）。
 - 实现文件：`src/styles/AccountCard.css`、本 docs。（type-check 通过，用户 8899 人工走查后确认推送。）
+
+## 0909 第 4 轮（feat/0909-new-base-r1）：设置页保存 toast 参考 codex 形制（顶部居中、语义三色、右界面锚定、落下动效）
+
+用户走查（8899 设置页保存）：① toast 参考 codex 样式——顶部居中、soft 彩底 + 同色文字、描边圆勾图标 + 关闭钮，颜色绑语义变量不写死；② 动效「应在右侧界面居中展示，从上到下出现」；③ 深浅模式关闭钮与语义图标同色（勿淡显）。
+
+- **类型与消息**：
+  - `UpdateToast` 增加 `type?: ToastKind`（`"success" | "info" | "error"`，缺省视为 info）；`packages/webview/src/types/index.ts` 与 `webview-fixtures/src/types.ts` 平行副本同步（desktopHost 消费 fixtures dist，改后重 build）。
+  - `desktopHost.ts`：设置保存/失败与 AGENTS.md 保存/失败 4 处 `showToast` 按语义标注 `type`（保存成功 `success`、失败 `error`）——base 无 type 的 toast 仍按 info 渲染，不回归。
+- **语义色 token**（host-desktop.css `:root[data-host="desktop"]` light/dark）：skill tokens.css 契约「color-_ fg + color-_-soft bg + icon/text 并存」。light：success `#16a34a`/`#f0fdf4`、danger `#dc2626`/`#fef2f2`、info `#2563eb`/`#eff6ff`；dark（feat/approved-dark-theme-contract `build_desktop_dark.py` 值）：success `#83d6a0`/`#192b21`、danger `#f19b95`/`#332021`、info `#8bbcf0`/`#1b2939`。
+- **渲染**（ToastStack.tsx）：`ToastGlyph` 内嵌 16px 描边圆图标（success 勾 / error 叉 / info i），替换原文字 emoji 图标；`toast.loading` 仍渲染 spinner；toast 根加 `toast--<type>` class 驱动语义色。
+- **定位**：`.toast-stack` 桌面化为 `position: fixed; top: 12px` 顶部居中栈；ChatApp 传 `anchorSelector`——设置页打开锚 `.settings-page .settings-content`（避开 240px 左导航），普通桌面锚 `.desktop-pane-rows`（工作区中心、避开会话侧栏）。ToastStack 用 ResizeObserver + window.resize 测锚列中心，以内联 `left` 覆盖整栈水平位 → 始终落在用户操作的「右侧界面」中心。
+- **动效**：`toast-drop-in` 自顶向下 `translateY(-12px → 0)` + 淡入 0.18s；多条时 `column-reverse` 新通知从顶部滑入。
+- **关闭钮**：`.toast-close` `color: inherit` + `opacity: 1`，与语义图标同色同浓度（light/dark 各补一条同 specificity 规则，盖过 0908 轮全局图标统一色 `#565a60`/`#9a9ea5`）；hover 仅加深背景（`color-mix(currentColor 14%)`），颜色不变。
+- 实现文件：`desktopHost.ts`、`webview-fixtures/src/types.ts`、`webview/src/types/index.ts`、`ToastStack.tsx`、`ChatApp.tsx`、`host-desktop.css`、本 docs。（fixtures 重 build 通过；用户 8899 人工走查三种语义样式后确认推送。）

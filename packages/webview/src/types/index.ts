@@ -423,14 +423,20 @@ export type ToastAction =
   | { type: "openDownloadPage"; url: string }
   | { type: "focusSession"; host: string; sessionId: string };
 
-/** A non-modal in-app toast (VS Code-style, bottom-right). Desktop host only. */
+/** Toast 语义类型：宿主按反馈语义标注（spec「设置页反馈语义」+ codechat 契约
+ *  color-* / color-*-soft：成功/错误/信息配 soft 底 + 同色 icon/text，不只靠色）。
+ *  缺省（旧宿主/未标注）= "info"。 */
+export type ToastKind = "success" | "info" | "error";
+
+/** A non-modal in-app toast (top-center toast bar, desktop host only). */
 export interface UpdateToast {
   id: string;
   message: string;
+  type?: ToastKind;
   actionLabel?: string;
   action?: ToastAction;
   /** The toast's action is being performed — render a loading state instead of
-   *  the action button (e.g. opening a download page while the browser launches). */
+   *   the action button (e.g. opening a download page while the browser launches). */
   loading?: boolean;
 }
 
