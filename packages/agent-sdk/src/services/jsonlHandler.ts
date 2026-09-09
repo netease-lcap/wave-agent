@@ -139,6 +139,10 @@ export class JsonlHandler {
   async read(filePath: string): Promise<Message[]> {
     try {
       const content = await readFile(filePath, "utf8");
+      // append() always terminates a written batch with "\n" (see append),
+      // so a file that does not end with a newline means the process was
+      // interrupted mid-write, leaving a partial trailing line behind.
+      const endsWithNewline = content.length === 0 || content.endsWith("\n");
       const lines = content
         .split(/\r?\n/)
         .map((line: string) => line.trim())
@@ -162,6 +166,14 @@ export class JsonlHandler {
           if (message.type === "metadata") continue;
           if (message.timestamp) allMessages.push(message);
         } catch (error) {
+          // A parse failure on the final line of a file that lacks a trailing
+          // newline is the residue of an interrupted append (complete batches
+          // always end with "\n"): drop the partial line and keep every
+          // message that was fully written. Corruption on any earlier line is
+          // genuine corruption and still fails.
+          if (!endsWithNewline && i === lines.length - 1) {
+            continue;
+          }
           // Throw error for invalid JSON lines with line number
           throw new Error(`Invalid JSON at line ${i + 1}: ${error}`);
         }

@@ -3761,6 +3761,64 @@ describe("session tree", () => {
     expect(sysMsgs).toHaveLength(1);
   });
 
+  it("a restore failing with not-found-on-disk removes the entry and toasts (no raw error in chat)", async () => {
+    const { host, store, sent } = await readyHost();
+    const agent1 = lastAgent(); // sess-1 bound to the sole pane
+    const before = h.agentInstances.length;
+    store.upsertSession(makeIndexEntry("gone-2", "/work/a"));
+
+    let resolveInit!: () => void;
+    h.initializeGate = new Promise<void>((r) => {
+      resolveInit = r;
+    });
+    const selectPromise = host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "gone-2",
+    });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+    });
+    const restoreAgent = lastAgent();
+    restoreAgent.restoreSession.mockRejectedValueOnce(
+      new Error("Session gone-2 not found on disk"),
+    );
+
+    resolveInit();
+    await selectPromise;
+
+    await vi.waitFor(() => {
+      // Index entry dropped — the sidebar must not keep a permanently broken
+      // session that re-fails on every click (spec「会话记录在磁盘上不存在或中段
+      // 损坏」).
+      expect(
+        store.getSessionIndex().some((e) => e.sessionId === "gone-2"),
+      ).toBe(false);
+      // A toast explains, and the raw engine error never reaches the chat.
+      expect(
+        shownToasts().some((t) =>
+          t.message.includes("会话记录在磁盘上不存在或已损坏"),
+        ),
+      ).toBe(true);
+      expect(
+        sent("appendMessage").filter((m) =>
+          JSON.stringify(m).includes("not found on disk"),
+        ),
+      ).toHaveLength(0);
+      expect(
+        sent("appendMessage").filter((m) =>
+          JSON.stringify(m).includes("恢复会话失败"),
+        ),
+      ).toHaveLength(0);
+      // The pane falls back to the previous agent, not a stuck overlay.
+      const last = sent("setInitialState").at(-1);
+      expect(last?.isRestoring).toBe(false);
+      expect(last?.session).toMatchObject({ id: "sess-1" });
+    });
+    expect(restoreAgent.destroy).toHaveBeenCalled();
+    expect(agent1.destroy).not.toHaveBeenCalled();
+  });
+
   it("a slow remote directory probe does not delay the pane switch (spec: 动画先于连接建立)", async () => {
     const { host, store, send, sent } = await readyHost();
     store.upsertSession(

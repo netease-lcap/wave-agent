@@ -2011,12 +2011,41 @@ export class DesktopHost {
         void this.discardAgent(agent);
       }
       await this.pushPaneSessionState(paneId);
-      this.pushSystemMessage(
-        `恢复会话失败: ${error instanceof Error ? error.message : String(error)}`,
-        paneId,
-      );
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      if (this.isUnrecoverableSessionError(errorMessage)) {
+        // The transcript is gone from disk (missing file, or a corrupt
+        // transcript the CLI treats as nonexistent) — nothing can restore it.
+        // Do NOT leave a permanently broken entry that re-fails on every
+        // click, and do NOT dump the raw engine error into the chat stream
+        // (spec「会话记录在磁盘上不存在或中段损坏」): drop the index entry +
+        // its input draft, refresh the sidebar, and surface a toast. The
+        // pane already fell back to its previous/new-session state above.
+        // Recent workdirs are untouched — the directory itself is fine.
+        this.configStore.removeSession(opts.sessionId);
+        this.inputDrafts.delete(`session:${opts.sessionId}`);
+        this.refreshSessionTree();
+        this.showToast({
+          message: "会话记录在磁盘上不存在或已损坏，无法恢复，已从列表移除",
+        });
+      } else {
+        this.pushSystemMessage(`恢复会话失败: ${errorMessage}`, paneId);
+      }
       return true;
     }
+  }
+
+  /**
+   * True when the error message means the session cannot be recovered from
+   * disk (missing file / corrupt transcript — the CLI reports both as "not
+   * found on disk"). Mirrors agentBridge's isSessionRecoveryError. Anything
+   * else (network, config validation, …) keeps the index entry for a retry.
+   */
+  private isUnrecoverableSessionError(errorMessage: string): boolean {
+    return (
+      errorMessage.includes("not found on disk") ||
+      errorMessage.startsWith("Session not found")
+    );
   }
 
   /**
