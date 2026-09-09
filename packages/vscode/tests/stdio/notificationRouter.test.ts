@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { StdioClient } from "../../src/stdio/stdioClient";
-import { NotificationRouter } from "../../src/stdio/notificationRouter";
+import { NotificationRouter } from "wave-agent-sdk/stdio";
 
 // ── Mock StdioClient ───────────────────────────────────────────
 

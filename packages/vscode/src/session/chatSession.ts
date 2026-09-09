@@ -13,8 +13,11 @@ import type {
 } from "wave-agent-sdk/types";
 import { ConfigurationData } from "../services/configurationService";
 import { StdioClient } from "../stdio/stdioClient";
-import { StdioAgent, type StdioAgentCallbacks } from "../stdio/stdioAgent";
-import { NotificationRouter } from "../stdio/notificationRouter";
+import {
+  StdioAgent,
+  type StdioAgentCallbacks,
+  type NotificationRouter,
+} from "wave-agent-sdk/stdio";
 
 export interface ChatSessionCallbacks {
   onTasksChange: (tasks: Task[]) => void;

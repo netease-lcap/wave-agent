@@ -44,8 +44,11 @@ import {
 } from "wave-agent-sdk/constants";
 import { StdioClient } from "./stdio/stdioClient";
 import type { JsonRpcClient } from "./stdio/jsonRpcClient";
-import { StdioAgent, type StdioAgentCallbacks } from "./stdio/stdioAgent";
-import { NotificationRouter } from "./stdio/notificationRouter";
+import {
+  StdioAgent,
+  NotificationRouter,
+  type StdioAgentCallbacks,
+} from "wave-agent-sdk/stdio";
 import {
   ensureCliUpToDate,
   loadBundledCliSource,

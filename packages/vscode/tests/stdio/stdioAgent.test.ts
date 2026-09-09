@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { StdioClient } from "../../src/stdio/stdioClient";
-import { StdioAgent } from "../../src/stdio/stdioAgent";
-import { NotificationRouter } from "../../src/stdio/notificationRouter";
+import { StdioAgent, NotificationRouter } from "wave-agent-sdk/stdio";
 import type {
   Message,
   Task,

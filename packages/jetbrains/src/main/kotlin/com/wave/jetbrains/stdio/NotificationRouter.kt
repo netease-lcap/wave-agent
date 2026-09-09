@@ -11,7 +11,8 @@ typealias GlobalHandler = (JsonElement?) -> Unit
 /**
  * Demultiplexes server→client notifications by sessionId.
  *
- * Mirrors packages/vscode/src/stdio/notificationRouter.ts. All sessions share one
+ * Mirrors agent-sdk/src/stdio/notificationRouter.ts (wave-agent-sdk/stdio). All
+ * sessions share one
  * StdioClient; the server tags each session-scoped notification with `sessionId`
  * on the JSON-RPC envelope. The router inspects that field and dispatches to the
  * matching StdioAgent; notifications without sessionId (e.g. `authUrl`) go to a

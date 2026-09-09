@@ -14,13 +14,13 @@
  * 4. On `destroy`: `unregister(sessionId)` removes the agent
  */
 
-import type { StdioClient } from "./stdioClient";
+import type { RpcClient } from "./rpcClient.js";
 
 type GlobalHandler = (params: unknown) => void;
 
 // StdioAgent is imported lazily via a type-only import to avoid a circular
 // dependency at runtime (StdioAgent imports NotificationRouter for its type).
-import type { StdioAgent } from "./stdioAgent";
+import type { StdioAgent } from "./stdioAgent.js";
 
 const ALL_NOTIFICATION_METHODS = [
   "userMessageAdded",
@@ -53,10 +53,10 @@ export class NotificationRouter {
   private globalHandlers = new Map<string, GlobalHandler>();
   private attached = false;
 
-  constructor(private client: StdioClient) {}
+  constructor(private client: RpcClient) {}
 
   /**
-   * Subscribe to all notification methods on the shared StdioClient.
+   * Subscribe to all notification methods on the shared client.
    * Must be called once after construction. Idempotent.
    */
   attach(): void {
