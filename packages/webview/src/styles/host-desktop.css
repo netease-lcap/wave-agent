@@ -294,14 +294,14 @@
   color: #d92d20;
   font-weight: 400;
 }
-[data-host="desktop"] .permission-mode-select:hover,
-[data-host="desktop"] .permission-mode-select:focus-visible {
+[data-host="desktop"] .permission-mode-select:hover {
   background: #eef0f3;
   color: #1f2329;
   border-color: transparent;
 }
-/* 切换选择后按钮仍持 focus，不再常驻 hover 底色（用户 0904 走查：切换后
-   不要保留 hover 态）；键盘 focus 提示走 :focus-visible 同底色。 */
+/* 点击后按钮仍持 focus，不再常驻 hover 底色（用户 0904 走查：切换后不要
+   保留 hover 态）；键盘聚焦提示交给浏览器原生焦点环——共享 base 的
+   outline:none 已移除（见 MessageInput.css），不再自绘 :focus-visible 底色 */
 [data-host="desktop"] .permission-mode-select:focus {
   background: transparent;
   border-color: transparent;
@@ -316,8 +316,7 @@
   .permission-mode-select.mode-bypassPermissions {
   color: #f4655c;
 }
-[data-host="desktop"][data-theme="dark"] .permission-mode-select:hover,
-[data-host="desktop"][data-theme="dark"] .permission-mode-select:focus-visible {
+[data-host="desktop"][data-theme="dark"] .permission-mode-select:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
@@ -542,9 +541,7 @@
   color: #ffffff;
 }
 [data-host="desktop"] .desktop-host-trigger:hover,
-[data-host="desktop"] .desktop-host-trigger:focus-visible,
-[data-host="desktop"] .desktop-workdir-trigger:hover,
-[data-host="desktop"] .desktop-workdir-trigger:focus-visible {
+[data-host="desktop"] .desktop-workdir-trigger:hover {
   background: #eef0f3;
   color: #1f2329;
 }
@@ -553,9 +550,7 @@
   color: #9a9ea5;
 }
 [data-host="desktop"][data-theme="dark"] .desktop-host-trigger:hover,
-[data-host="desktop"][data-theme="dark"] .desktop-host-trigger:focus-visible,
-[data-host="desktop"][data-theme="dark"] .desktop-workdir-trigger:hover,
-[data-host="desktop"][data-theme="dark"] .desktop-workdir-trigger:focus-visible {
+[data-host="desktop"][data-theme="dark"] .desktop-workdir-trigger:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
 }
@@ -588,8 +583,7 @@
   font-weight: 500;
   box-sizing: border-box;
 }
-[data-host="desktop"] .plus-menu-item:hover,
-[data-host="desktop"] .plus-menu-item:focus-visible {
+[data-host="desktop"] .plus-menu-item:hover {
   background: #eef0f3;
   color: #1f2329;
 }
@@ -598,8 +592,7 @@
   border-color: rgba(255, 255, 255, 0.12);
   color: #9a9ea5;
 }
-[data-host="desktop"][data-theme="dark"] .plus-menu-item:hover,
-[data-host="desktop"][data-theme="dark"] .plus-menu-item:focus-visible {
+[data-host="desktop"][data-theme="dark"] .plus-menu-item:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
 }
@@ -622,12 +615,10 @@
 /* hover：codechat --cc-fill-hover #eef0f3（浅色）；深色用中性 8% 白
    （替换 VS Code list-hoverBackground 的蓝灰调） */
 [data-host="desktop"][data-theme="light"] .desktop-session-group-header:hover,
-[data-host="desktop"][data-theme="light"] .desktop-session-group-header:focus-visible,
 [data-host="desktop"][data-theme="light"] .desktop-session-item:hover {
   background: #eef0f3;
 }
 [data-host="desktop"][data-theme="dark"] .desktop-session-group-header:hover,
-[data-host="desktop"][data-theme="dark"] .desktop-session-group-header:focus-visible,
 [data-host="desktop"][data-theme="dark"] .desktop-session-item:hover {
   background: rgba(255, 255, 255, 0.08);
 }
@@ -695,12 +686,10 @@
 
 /* 账户热区：常态透明底（用户反馈常驻实底 #EBEDF0 形似「始终选中」——
    第十二轮取消第三轮 Figma 实底化）；hover/focus 保留浅灰反馈 */
-[data-host="desktop"][data-theme="light"] .account-card-hotzone:hover,
-[data-host="desktop"][data-theme="light"] .account-card-hotzone:focus-visible {
+[data-host="desktop"][data-theme="light"] .account-card-hotzone:hover {
   background: #e2e4e8;
 }
-[data-host="desktop"][data-theme="dark"] .account-card-hotzone:hover,
-[data-host="desktop"][data-theme="dark"] .account-card-hotzone:focus-visible {
+[data-host="desktop"][data-theme="dark"] .account-card-hotzone:hover {
   background: rgba(255, 255, 255, 0.14);
 }
 
@@ -710,12 +699,10 @@
 [data-host="desktop"] .account-card-more-btn {
   border-radius: 6px;
 }
-[data-host="desktop"][data-theme="light"] .account-card-more-btn:hover,
-[data-host="desktop"][data-theme="light"] .account-card-more-btn:focus-visible {
+[data-host="desktop"][data-theme="light"] .account-card-more-btn:hover {
   background: #e2e4e8;
 }
-[data-host="desktop"][data-theme="dark"] .account-card-more-btn:hover,
-[data-host="desktop"][data-theme="dark"] .account-card-more-btn:focus-visible {
+[data-host="desktop"][data-theme="dark"] .account-card-more-btn:hover {
   background: rgba(255, 255, 255, 0.14);
 }
 
@@ -1164,8 +1151,7 @@
 [data-host="desktop"][data-theme="dark"] .account-api-info-btn {
   color: #9a9ea5;
 }
-[data-host="desktop"] .account-api-info-btn:hover,
-[data-host="desktop"] .account-api-info-btn:focus-visible {
+[data-host="desktop"] .account-api-info-btn:hover {
   background-color: transparent;
   color: var(--vscode-foreground);
 }
@@ -1284,12 +1270,10 @@
   width: 16px;
   height: 16px;
 }
-[data-host="desktop"][data-theme="light"] .desktop-session-more-btn:hover,
-[data-host="desktop"][data-theme="light"] .desktop-session-more-btn:focus-visible {
+[data-host="desktop"][data-theme="light"] .desktop-session-more-btn:hover {
   background: #e7e9ed;
 }
-[data-host="desktop"][data-theme="dark"] .desktop-session-more-btn:hover,
-[data-host="desktop"][data-theme="dark"] .desktop-session-more-btn:focus-visible {
+[data-host="desktop"][data-theme="dark"] .desktop-session-more-btn:hover {
   background: rgba(255, 255, 255, 0.12);
 }
 [data-host="desktop"] .desktop-session-menu-item svg {
@@ -1520,13 +1504,9 @@
   color: #858b8f;
 }
 [data-host="desktop"] .more-menu-item:hover,
-[data-host="desktop"] .more-menu-item:focus-visible,
 [data-host="desktop"] .panel-toggle-menu-item:hover,
-[data-host="desktop"] .panel-toggle-menu-item:focus-visible,
 [data-host="desktop"] .desktop-session-menu-item:hover,
-[data-host="desktop"] .desktop-session-menu-item:focus-visible,
-[data-host="desktop"] .desktop-workdir-menu-item:hover,
-[data-host="desktop"] .desktop-workdir-menu-item:focus-visible {
+[data-host="desktop"] .desktop-workdir-menu-item:hover {
   background: #eef0f3;
   color: #1f2329;
 }
@@ -1544,9 +1524,7 @@
   color: #d92d20;
 }
 [data-host="desktop"] .more-menu-item--danger:hover,
-[data-host="desktop"] .more-menu-item--danger:focus-visible,
-[data-host="desktop"] .desktop-session-menu-item--danger:hover,
-[data-host="desktop"] .desktop-session-menu-item--danger:focus-visible {
+[data-host="desktop"] .desktop-session-menu-item--danger:hover {
   background: #fff0ef;
   color: #d92d20;
 }
@@ -1560,7 +1538,6 @@
 /* 复杂弹层菜单项交互：hover #EEF0F3 / 选中 #E7E9ED（替换 vscode
    list-activeSelection 蓝灰）；面板内分隔线统一 #EBEEF5 */
 [data-host="desktop"] .session-list-item:hover,
-[data-host="desktop"] .session-list-item:focus-visible,
 [data-host="desktop"] .slash-command-item:hover,
 [data-host="desktop"] .suggestion-item:hover,
 [data-host="desktop"] .rewind-popup-item:hover,
@@ -1581,8 +1558,7 @@
 /* 第二十五轮：面板切换菜单选中态对齐 codechat workspace-header-menu-item.active
    （背景 #E7E9ED + 文字 #1F2329，无对号；active:hover 保持 pressed 不漂回 hover） */
 [data-host="desktop"] .panel-toggle-menu-item--active,
-[data-host="desktop"] .panel-toggle-menu-item--active:hover,
-[data-host="desktop"] .panel-toggle-menu-item--active:focus-visible {
+[data-host="desktop"] .panel-toggle-menu-item--active:hover {
   background-color: #e7e9ed;
   color: #1f2329;
 }
@@ -1644,15 +1620,10 @@
   color: #9a9ea5;
 }
 [data-host="desktop"][data-theme="dark"] .more-menu-item:hover,
-[data-host="desktop"][data-theme="dark"] .more-menu-item:focus-visible,
 [data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item:hover,
-[data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item:focus-visible,
 [data-host="desktop"][data-theme="dark"] .desktop-session-menu-item:hover,
-[data-host="desktop"][data-theme="dark"] .desktop-session-menu-item:focus-visible,
 [data-host="desktop"][data-theme="dark"] .desktop-workdir-menu-item:hover,
-[data-host="desktop"][data-theme="dark"] .desktop-workdir-menu-item:focus-visible,
 [data-host="desktop"][data-theme="dark"] .session-list-item:hover,
-[data-host="desktop"][data-theme="dark"] .session-list-item:focus-visible,
 [data-host="desktop"][data-theme="dark"] .slash-command-item:hover,
 [data-host="desktop"][data-theme="dark"] .suggestion-item:hover,
 [data-host="desktop"][data-theme="dark"] .rewind-popup-item:hover,
@@ -1673,8 +1644,7 @@
 }
 /* 第二十五轮：面板切换菜单选中态深色（12% 白底 + 白字） */
 [data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item--active,
-[data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item--active:hover,
-[data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item--active:focus-visible {
+[data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item--active:hover {
   background-color: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
@@ -1683,9 +1653,7 @@
   color: #f4655c;
 }
 [data-host="desktop"][data-theme="dark"] .more-menu-item--danger:hover,
-[data-host="desktop"][data-theme="dark"] .more-menu-item--danger:focus-visible,
-[data-host="desktop"][data-theme="dark"] .desktop-session-menu-item--danger:hover,
-[data-host="desktop"][data-theme="dark"] .desktop-session-menu-item--danger:focus-visible {
+[data-host="desktop"][data-theme="dark"] .desktop-session-menu-item--danger:hover {
   background: rgb(217 45 32 / 20%);
   color: #f4655c;
 }
@@ -2221,12 +2189,11 @@
   color: #ffffff;
 }
 
-[data-host="desktop"][data-theme="light"] .desktop-panel-tab:not(.active):hover,
-[data-host="desktop"][data-theme="light"] .desktop-panel-tab:not(.active):focus-visible {
+/* 键盘聚焦提示交给浏览器原生焦点环（键盘 focus 不补 hover 底色） */
+[data-host="desktop"][data-theme="light"] .desktop-panel-tab:not(.active):hover {
   background: #eef0f3;
 }
-[data-host="desktop"][data-theme="dark"] .desktop-panel-tab:not(.active):hover,
-[data-host="desktop"][data-theme="dark"] .desktop-panel-tab:not(.active):focus-visible {
+[data-host="desktop"][data-theme="dark"] .desktop-panel-tab:not(.active):hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -2367,12 +2334,10 @@
 [data-host="desktop"] .desktop-panel-empty-item {
   border-radius: 12px;
 }
-[data-host="desktop"][data-theme="light"] .desktop-panel-empty-item:hover:not(:disabled),
-[data-host="desktop"][data-theme="light"] .desktop-panel-empty-item:focus-visible {
+[data-host="desktop"][data-theme="light"] .desktop-panel-empty-item:hover:not(:disabled) {
   background: #eef0f3;
 }
-[data-host="desktop"][data-theme="dark"] .desktop-panel-empty-item:hover:not(:disabled),
-[data-host="desktop"][data-theme="dark"] .desktop-panel-empty-item:focus-visible {
+[data-host="desktop"][data-theme="dark"] .desktop-panel-empty-item:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.08);
 }
 

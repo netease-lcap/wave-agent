@@ -379,12 +379,6 @@
   line-height: 16px;
 }
 
-.write-tool-path:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
-  border-radius: 2px;
-}
-
 .write-tool-stats {
   margin-top: 2px;
   font-size: 11px;
@@ -862,11 +856,6 @@
   color: var(--vscode-textLink-activeForeground);
   text-decoration: underline;
   border-bottom-color: transparent;
-}
-
-.markdown-content a.file-path-link:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
 }
 
 /* Markdown Blockquotes */

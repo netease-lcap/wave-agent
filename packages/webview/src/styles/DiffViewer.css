@@ -26,11 +26,6 @@
   line-height: 1.2;
 }
 
-.diff-viewer-content:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-}
-
 /* Diff changes container */
 .diff-changes {
   display: flex;

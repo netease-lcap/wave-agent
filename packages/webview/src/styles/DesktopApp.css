@@ -236,8 +236,8 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   user-select: none;
 }
 
-.desktop-session-group-header:hover,
-.desktop-session-group-header:focus-visible {
+/* 键盘聚焦提示交给浏览器原生焦点环（鼠标键盘同底移除，下同） */
+.desktop-session-group-header:hover {
   background: #eef0f3;
 }
 
@@ -359,14 +359,12 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   pointer-events: auto;
 }
 
-.desktop-session-more-btn:hover,
-.desktop-session-more-btn:focus-visible {
+.desktop-session-more-btn:hover {
   /* Figma 13656:5328：更多按钮自身 hover = 黑 8% 圆角底 */
   background: rgba(0, 0, 0, 0.08);
 }
 
-.desktop-session-more-btn:hover .desktop-session-more-icon,
-.desktop-session-more-btn:focus-visible .desktop-session-more-icon {
+.desktop-session-more-btn:hover .desktop-session-more-icon {
   color: inherit;
 }
 
@@ -413,8 +411,7 @@ html[data-theme="dark"] .desktop-session-group-header {
   color: #9a9ea5;
 }
 
-html[data-theme="dark"] .desktop-session-group-header:hover,
-html[data-theme="dark"] .desktop-session-group-header:focus-visible {
+html[data-theme="dark"] .desktop-session-group-header:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -439,8 +436,7 @@ html[data-theme="dark"] .desktop-session-more-btn {
   color: #9a9ea5;
 }
 
-html[data-theme="dark"] .desktop-session-more-btn:hover,
-html[data-theme="dark"] .desktop-session-more-btn:focus-visible {
+html[data-theme="dark"] .desktop-session-more-btn:hover {
   background: rgba(255, 255, 255, 0.12);
 }
 
@@ -476,10 +472,8 @@ html[data-theme="dark"] .desktop-session-status-slot {
   white-space: nowrap;
 }
 
-.desktop-session-menu-item:hover,
-.desktop-session-menu-item:focus-visible {
+.desktop-session-menu-item:hover {
   background: var(--vscode-list-hoverBackground);
-  outline: none;
 }
 
 .desktop-session-menu-item .codicon {
@@ -625,8 +619,7 @@ html[data-theme="dark"] .desktop-session-status-slot {
   color: var(--vscode-foreground);
 }
 
-.desktop-workdir-trigger:hover,
-.desktop-workdir-trigger:focus-visible {
+.desktop-workdir-trigger:hover {
   background: var(--vscode-list-hoverBackground);
 }
 
@@ -674,8 +667,7 @@ html[data-theme="dark"] .desktop-session-status-slot {
   color: var(--vscode-dropdown-foreground);
 }
 
-.desktop-workdir-menu-item:hover,
-.desktop-workdir-menu-item:focus-visible {
+.desktop-workdir-menu-item:hover {
   background: var(--vscode-list-hoverBackground);
 }
 
@@ -714,8 +706,7 @@ html[data-theme="dark"] .desktop-session-status-slot {
   flex-shrink: 0;
 }
 
-.desktop-workdir-menu-remove:hover,
-.desktop-workdir-menu-remove:focus-visible {
+.desktop-workdir-menu-remove:hover {
   opacity: 1;
 }
 
@@ -748,8 +739,7 @@ html[data-theme="dark"] .desktop-session-status-slot {
   color: var(--vscode-foreground);
 }
 
-.desktop-host-trigger:hover,
-.desktop-host-trigger:focus-visible {
+.desktop-host-trigger:hover {
   background: var(--vscode-list-hoverBackground);
 }
 
@@ -829,8 +819,7 @@ html[data-theme="dark"] .desktop-session-status-slot {
   color: var(--vscode-dropdown-foreground);
 }
 
-.desktop-remote-browser-crumb:hover,
-.desktop-remote-browser-crumb:focus-visible {
+.desktop-remote-browser-crumb:hover {
   background: var(--vscode-list-hoverBackground);
 }
 
@@ -901,8 +890,7 @@ html[data-theme="dark"] .desktop-session-status-slot {
   background: var(--vscode-button-background);
 }
 
-.desktop-remote-browser-retry:hover,
-.desktop-remote-browser-retry:focus-visible {
+.desktop-remote-browser-retry:hover {
   background: var(--vscode-button-hoverBackground);
 }
 
@@ -940,8 +928,7 @@ html[data-theme="dark"] .desktop-session-status-slot {
   background: var(--vscode-button-background);
 }
 
-.desktop-remote-browser-select:hover:not(:disabled),
-.desktop-remote-browser-select:focus-visible:not(:disabled) {
+.desktop-remote-browser-select:hover:not(:disabled) {
   background: var(--vscode-button-hoverBackground);
 }
 
