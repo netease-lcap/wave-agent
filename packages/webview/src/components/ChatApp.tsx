@@ -1618,14 +1618,24 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           return;
         }
         // Batch 2: desktop opens the settings full-page (spec 场景 1). Load the
-        // configuration + AGENTS.md editor contents on entry; the page reads the
-        // latest from its own props when it renders. /agents、/skills、/hooks
-        // 斜杠命令携带 nav（subagents/skills/hooks）选中对应选项卡
-        // （spec agents-command.md / hooks-command.md）。
+        // configuration on entry; the settings page requests the AGENTS.md
+        // editor contents itself (its own mount effect pulls each scope while
+        // the value is null — user immediately, project when the 项目级 tab is
+        // first activated). /agents、/skills、/hooks 斜杠命令携带 nav
+        // (subagents/skills/hooks) 选中对应选项卡（spec agents-command.md /
+        // hooks-command.md）。
+        //
+        // 重置 AGENTS.md 编辑器缓存：缓存不按 workdir 键控、只随首次加载填充
+        // 且从不失效——关闭设置 → 切换项目/会话 → 再打开会继续显示上一份加载
+        // 的（旧值/别项目）文件。每次打开置 null 后由设置页按需重新读取当前
+        // 项目的文件（host 按聚焦 pane 解析 workdir，见 desktopHost
+        // handleGetAgentsContent）。
+        setUserAgentsContent(null);
+        setProjectAgentsContent(null);
+        setAgentsSaving(false);
         setSettingsOpen(true);
         if (nav) setSettingsNav(nav);
         vscode.postMessage({ command: "getConfiguration" });
-        vscode.postMessage({ command: "getAgentsContent", scope: "user" });
         return;
       }
       // IDE hosts (VSCE/JetBrains): the host opens the settings tab webview in
