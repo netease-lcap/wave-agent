@@ -76,6 +76,20 @@ Always use `pnpm` as the package manager.
 - **Preview**: `pnpm run docs:dev`
 - **Build**: `pnpm run docs:build` — this first runs Playwright demo tests to regenerate screenshots into `docs/public/screenshots/` (gitignored). A bare `vitepress build docs` fails on missing screenshot imports.
 
+## 🧭 Webview Extension Conventions (`packages/webview`)
+
+When adding UI features, use the shared mechanisms below instead of hand-rolling — each was extracted after the duplicated version caused recurring bugs:
+
+- **Host→webview messages**: consume via the `useHostMessage` hook (`src/utils/useHostMessage.ts`), never a raw `window.addEventListener("message")`. Pane-scoped consumers pass `{ paneId }`; special filters (requestId/termId correlation) stay inline in the handler.
+- **New webview→host commands**: register in **all four** route instances (vscode chat + settings switches in `messageHandler.ts`, desktop `desktopHost.ts`, JB `MessageHandler.kt`). The `webview-command-audit` CI job fails on missing registration — follow the workflow documented at the top of `scripts/audit-webview-commands.mjs`. A desktop-only command **without** the `desktop*` prefix must also be added to `DESKTOP_GATED_NON_PREFIX` in that script.
+- **New host→webview response (reply-to) messages**: declare the attribution field in the `ReplyAttribution` registry (webview-fixtures) — compile-time enforced via `satisfies`. Consumers must either discard stale replies or filter by attribution at render time. Snapshot/broadcast messages need no attribution (classification JSDoc lives in the webview-fixtures types).
+- **Cross-session UI state** (state that must survive conversation switches): store it in `SessionUiStore` (`src/utils/sessionUiStore.ts`; key = `sessionId` | `new:<paneId>`, prune on session close), not in ad-hoc module caches. Known legacy paths pending migration: context-usage cache, projectSettings snapshot.
+- **Pane skeletons**: compose `PaneShell`/`PanePlaceholder` instead of re-writing the aside/toolbar/empty-state markup.
+- **Settings list views** (mount→fetch→response→delete-confirm state machine): use `useSettingsList`.
+- **Test assertions**: anchor on testids/semantics (e.g. `is-spinning`, svg presence), never on icon font class names — standard documented at the top of `packages/webview/tests/test-utils.tsx`.
+
+Known legacy hotspots (duplication not yet deduplicated — check **both** copies when editing): the vscode chat/settings dual command switches in `messageHandler.ts` (settings commands are registered twice; fixing only one causes #2086-style drift), and the near-identical `stdioAgent.ts` copies in vscode/desktop.
+
 ## 🐛 Debugging
 
 - **Prefer temporary console.log/console.trace**: When diagnosing bugs, especially race conditions or complex flows, add temporary `console.log` or `console.trace` statements to trace execution rather than overthinking through static analysis. Run the code/tests, observe the actual output, then remove the logs once the issue is identified.
