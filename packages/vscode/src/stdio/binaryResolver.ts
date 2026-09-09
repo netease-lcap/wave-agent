@@ -4,8 +4,11 @@
  * 1. WAVE_CLI_PATH env override (development)
  * 2. The CLI bundled inside the extension (dist/wave-cli, shipped in the
  *    vsix) is copied into `~/.wave/cli/vscode` — the extension dir is
- *    read-only, so the runtime copy lives under the user home. The CLI
- *    version tracks the extension version (shipped with the vsix). Each
+ *    read-only, so the runtime copy lives under the user home. Whether to
+ *    copy is decided by content: the runtime `dist/bundle/wave.mjs` is
+ *    re-copied only when its sha256 differs from the bundled one — a version
+ *    string cannot be trusted as "same CLI" (local dev reinstalls and
+ *    GUI-only releases can ship new bytes without bumping the version). Each
  *    frontend (vscode/desktop/jetbrains) keeps its own subdir so different
  *    versions never overwrite each other.
  * 3. The grep tool's runtime dependency `@vscode/ripgrep` (JS wrapper +
@@ -19,6 +22,7 @@
  * system Node.js/npm is required. Result is cached for the extension lifetime.
  */
 
+import { createHash } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -218,10 +222,12 @@ export async function ensureRipgrep(
 
 /**
  * Copy the bundled CLI into the runtime dir when missing or when the bundled
- * version differs (extension upgrade). The cached rg download lives in the
- * shared `~/.wave/cli/node_modules/@vscode` dir — outside this per-end dir —
- * so an already-downloaded rg is never re-downloaded after an upgrade.
- * Returns the runtime entry path.
+ * bundle bytes differ from the runtime copy. Content comparison instead of a
+ * version-string check: dev reinstalls refresh the extension without bumping
+ * its version, so an unchanged version number cannot be trusted as "same
+ * CLI". The cached rg download lives in the shared `~/.wave/cli/node_modules/
+ * @vscode` dir — outside this per-end dir — so an already-downloaded rg is
+ * never re-downloaded after an upgrade. Returns the runtime entry path.
  * @throws Error when the bundled CLI itself is missing (corrupt install).
  */
 function prepareCli(): string {
@@ -231,10 +237,17 @@ function prepareCli(): string {
     throw new Error(`内置 CLI 缺失（${bundledEntry}）。请重新安装扩展。`);
   }
 
+  const runtimeBundle = path.join(
+    cliInstallDir(),
+    "dist",
+    "bundle",
+    "wave.mjs",
+  );
   const needCopy =
     !fileExists(entry) ||
-    bundledVersion() !== runtimeVersion() ||
-    !fileExists(path.join(cliInstallDir(), "dist", "bundle", "wave.mjs"));
+    !fileExists(runtimeBundle) ||
+    fileHash(path.join(bundledCliDir(), "dist", "bundle", "wave.mjs")) !==
+      fileHash(runtimeBundle);
 
   if (needCopy) {
     fs.mkdirSync(cliInstallDir(), { recursive: true });
@@ -251,23 +264,10 @@ function prepareCli(): string {
   return entry;
 }
 
-function bundledVersion(): string {
+/** sha256 of a file's bytes, or "" when it can't be read (missing/corrupt). */
+function fileHash(p: string): string {
   try {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(bundledCliDir(), "package.json"), "utf-8"),
-    ) as { version?: string };
-    return pkg.version ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function runtimeVersion(): string {
-  try {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(cliInstallDir(), "package.json"), "utf-8"),
-    ) as { version?: string };
-    return pkg.version ?? "";
+    return createHash("sha256").update(fs.readFileSync(p)).digest("hex");
   } catch {
     return "";
   }
@@ -282,7 +282,6 @@ function runtimeVersion(): string {
  * bundled CLI, so without it wave.mjs cannot even start.
  */
 export async function resolveWaveBinary(
-  _targetVersion?: string,
   onInstall?: InstallProgressCallback,
 ): Promise<string> {
   if (cachedPath) return cachedPath;
@@ -304,14 +303,13 @@ export async function resolveWaveBinary(
 
 /**
  * Ensure the `wave` CLI is ready: bundled CLI copied into `~/.wave/cli/vscode`
- * and ripgrep downloaded (best-effort). The CLI version tracks the extension
- * version, so there is no separate upgrade step.
+ * (content comparison — a changed `wave.mjs` re-copies even when the version
+ * string is unchanged) and ripgrep downloaded (best-effort).
  */
 export async function ensureCliUpToDate(
-  targetVersion?: string,
   onInstall?: InstallProgressCallback,
 ): Promise<string> {
-  return resolveWaveBinary(targetVersion, onInstall);
+  return resolveWaveBinary(onInstall);
 }
 
 /** Reset cached path — for testing only. */

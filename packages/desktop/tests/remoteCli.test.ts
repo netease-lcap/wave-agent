@@ -44,13 +44,18 @@ import {
 import { resetRemoteShellCache, shellQuote } from "../src/main/sshHosts";
 
 /** Bundled CLI source as desktopHost would load it (loadBundledCliSource). */
+const BUNDLE_HASH = "a".repeat(64); // sha256 of the bundled dist/bundle/wave.mjs
+const STALE_HASH = "b".repeat(64); // a remote copy whose bytes differ
 const SOURCE = {
   dir: "/app/root/resources/wave-cli",
-  version: "1.0.0",
+  bundleSha256: BUNDLE_HASH,
   rgRange: "^1.18.0",
 };
 /** No-grep CLI (e.g. a future bundle without @vscode/ripgrep). */
-const SOURCE_NO_RG = { dir: SOURCE.dir, version: SOURCE.version };
+const SOURCE_NO_RG = {
+  dir: SOURCE.dir,
+  bundleSha256: SOURCE.bundleSha256,
+};
 const HOME = "/home/user";
 
 type StubResult = { stdout?: string; error?: Error };
@@ -137,7 +142,7 @@ describe("resolveRemoteWaveBinary (fixed pushed-shim path)", () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: "v22.3.0" }, // node -v
-      { stdout: "1.0.0\n" }, // <shim> -v
+      { stdout: `${BUNDLE_HASH}\n` }, // remote bundle sha256 == bundled
     ]);
     const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
     expect(info).toEqual({
@@ -145,19 +150,20 @@ describe("resolveRemoteWaveBinary (fixed pushed-shim path)", () => {
       nodeVersion: "v22.3.0",
     });
     expect(h.spawn).not.toHaveBeenCalled();
-    // The version probe runs the pushed shim at the fixed dir, never PATH.
+    // The content probe hashes the pushed bundle at the fixed dir, never PATH.
     const remoteCmd = (h.execFile.mock.calls[2][1] as string[]).at(
       -1,
     ) as string;
-    expect(remoteCmd).toContain(".wave/cli/desktop/bin/wave-code.js");
-    expect(remoteCmd).toContain("-v");
+    expect(remoteCmd).toContain("node -e");
+    expect(remoteCmd).toContain(".wave/cli/desktop");
+    expect(remoteCmd).toContain("dist/bundle/wave.mjs");
   });
 
   it("strips OSC shell-integration markers from probe output", async () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: `${OSC1337_PREFIX}v22.23.2\n` },
-      { stdout: `${OSC1337_PREFIX}1.0.0\n` },
+      { stdout: `${OSC1337_PREFIX}${BUNDLE_HASH}\n` },
     ]);
     const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
     expect(info.nodeVersion).toBe("v22.23.2");
@@ -182,7 +188,7 @@ describe("resolveRemoteWaveBinary (fixed pushed-shim path)", () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: "v22.0.0" }, // node -v
-      { error: new Error("no such file") }, // <shim> -v → missing/corrupt
+      { error: new Error("no such file") }, // hash probe → missing/corrupt
       { stdout: "" }, // rg ready probe — already in place
     ]);
     const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
@@ -208,11 +214,11 @@ describe("resolveRemoteWaveBinary (fixed pushed-shim path)", () => {
 });
 
 describe("ensureRemoteCliUpToDate", () => {
-  it("keeps the pushed CLI when the remote version meets the bundle", async () => {
+  it("keeps the pushed CLI when the remote bundle bytes match the bundled bytes (scenario 7: unchanged bytes push nothing)", async () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: "v22.0.0" },
-      { stdout: "1.0.0\n" }, // <shim> -v == bundle → up to date
+      { stdout: `${BUNDLE_HASH}\n` }, // remote sha256 == bundled → up to date
     ]);
     const result = await ensureRemoteCliUpToDate("prod", SOURCE, HOME);
     expect(result).toEqual({
@@ -222,18 +228,11 @@ describe("ensureRemoteCliUpToDate", () => {
     expect(h.spawn).not.toHaveBeenCalled();
   });
 
-  it("GUI upgrade with an unchanged CLI version pushes nothing (scenario 7)", async () => {
-    stubExec([LOGIN_SHELL, { stdout: "v22.0.0" }, { stdout: "1.0.0\n" }]);
-    const result = await ensureRemoteCliUpToDate("prod", SOURCE, HOME);
-    expect(result.upgraded).toBe(false);
-    expect(h.spawn).not.toHaveBeenCalled();
-  });
-
-  it("pushes via an atomic .new swap when the remote version is older", async () => {
+  it("pushes via an atomic .new swap when the remote bytes differ (scenario 7: changed bytes push)", async () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: "v22.0.0" },
-      { stdout: "0.9.0\n" }, // stale → sync
+      { stdout: `${STALE_HASH}\n` }, // bytes differ → sync
       { stdout: "" }, // rg ready probe
     ]);
     const result = await ensureRemoteCliUpToDate("prod", SOURCE, HOME);
@@ -258,7 +257,7 @@ describe("ensureRemoteCliUpToDate", () => {
     );
   });
 
-  it("treats a failing `wave -v` as needing a push (corrupt binary)", async () => {
+  it("treats a failing content probe as needing a push (corrupt copy)", async () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: "v22.0.0" },
@@ -275,7 +274,7 @@ describe("ensureRemoteCliUpToDate", () => {
     const queue: StubResult[] = [
       LOGIN_SHELL,
       { stdout: "v22.0.0" },
-      { stdout: "0.9.0\n" },
+      { stdout: `${STALE_HASH}\n` },
       { error: new Error("Cannot find module '@vscode/ripgrep'") }, // rg probe
       { stdout: "" }, // npm install @vscode/ripgrep (progress to stderr)
       { stdout: "" }, // rg re-probe → ok
@@ -306,7 +305,7 @@ describe("ensureRemoteCliUpToDate", () => {
     const queue: StubResult[] = [
       LOGIN_SHELL,
       { stdout: "v22.0.0" },
-      { stdout: "0.9.0\n" },
+      { stdout: `${STALE_HASH}\n` },
       { error: new Error("Cannot find module '@vscode/ripgrep'") }, // rg probe
       { error: new Error("npm ERR! network") }, // npm install fails
     ];
@@ -416,12 +415,12 @@ describe("killRemoteDaemon", () => {
 });
 
 describe("ensureRemoteDaemon", () => {
-  it("reuses a live daemon when the CLI version matches (no push, no restart)", async () => {
+  it("reuses a live daemon when the CLI bytes match (no push, no restart)", async () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: "/home/user" }, // echo $HOME
       { stdout: "v22.0.0" }, // node -v
-      { stdout: "1.0.0\n" }, // <shim> -v == bundle
+      { stdout: `${BUNDLE_HASH}\n` }, // hash probe == bundle
       { stdout: "" }, // daemon socket probe — alive
     ]);
     await expect(ensureRemoteDaemon("prod", SOURCE)).resolves.toBe(
@@ -440,7 +439,7 @@ describe("ensureRemoteDaemon", () => {
       LOGIN_SHELL,
       { stdout: "/home/user" },
       { stdout: "v22.0.0" },
-      { stdout: "0.9.0\n" }, // <shim> -v < bundle → push
+      { stdout: `${STALE_HASH}\n` }, // hash probe != bundle → push
       { stdout: "" }, // rg ready probe
       { stdout: "" }, // pkill old daemon
       { error: new Error("ECONNREFUSED") }, // exit poll — gone
@@ -464,7 +463,7 @@ describe("ensureRemoteDaemon", () => {
       LOGIN_SHELL,
       { stdout: "/home/user" },
       { stdout: "v22.0.0" },
-      { error: new Error("no such file") }, // <shim> -v → missing
+      { error: new Error("no such file") }, // hash probe → missing
       { stdout: "" }, // rg ready probe
       { stdout: "" }, // pkill (nothing to kill)
       { error: new Error("ECONNREFUSED") }, // exit poll — gone
@@ -487,7 +486,7 @@ describe("ensureRemoteDaemon", () => {
       LOGIN_SHELL,
       { stdout: "/home/user" },
       { stdout: "v22.0.0" },
-      { stdout: "0.9.0\n" }, // stale → push attempt fails
+      { stdout: `${STALE_HASH}\n` }, // stale → push attempt fails
       { stdout: "" }, // rg ready probe (passes; the push itself fails)
       { stdout: "" }, // old daemon still alive → reuse
     ]);
@@ -512,7 +511,7 @@ describe("ensureRemoteDaemon", () => {
       LOGIN_SHELL,
       { stdout: "/home/user" },
       { stdout: "v22.0.0" },
-      { error: new Error("no such file") }, // <shim> -v → missing
+      { error: new Error("no such file") }, // hash probe → missing
       { error: new Error("Cannot find module '@vscode/ripgrep'") }, // rg probe
       { error: new Error("npm ERR! network") }, // remote self-fetch fails
       { error: new Error("ECONNREFUSED") }, // alive check → dead

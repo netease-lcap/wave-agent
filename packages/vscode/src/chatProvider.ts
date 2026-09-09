@@ -165,17 +165,16 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Spawn the shared stdio client. The CLI version is pinned to the extension
-   * version and downloaded to ~/.wave/cli by the host runtime on first use
-   * (no system Node/npm required). Services/MessageHandler are constructed
-   * AFTER the client spawn so they capture the live client — this is what
-   * avoids the "StdioClient is disposed" dangling-reference failure that the
-   * old post-init reinit path had.
+   * Spawn the shared stdio client. The CLI bundled inside the extension is
+   * copied to ~/.wave/cli/vscode by the extension host runtime on first use
+   * (no system Node/npm required); re-copying is decided by content bytes,
+   * not version. Services/MessageHandler are constructed AFTER the client
+   * spawn so they capture the live client — this is what avoids the
+   * "StdioClient is disposed" dangling-reference failure that the old
+   * post-init reinit path had.
    */
   private async init(): Promise<void> {
     try {
-      const clientVersion: string | undefined =
-        this.context.extension.packageJSON?.version;
       // Locate the CLI bundled inside the extension (dist/wave-cli).
       setExtensionPath(this.context.extensionPath);
       const binaryPath = await vscode.window.withProgress(
@@ -186,11 +185,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         },
         (progress) => {
           const onInstall = (message: string) => progress.report({ message });
-          return clientVersion
-            ? ensureCliUpToDate(clientVersion, onInstall)
-            : Promise.reject(
-                new Error("无法确定扩展版本，无法获取 wave CLI。"),
-              );
+          return ensureCliUpToDate(onInstall);
         },
       );
 

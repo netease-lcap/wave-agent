@@ -66,23 +66,23 @@ order: 10
 
 ---
 
-### 用户故事：CLI 版本保障（本地内置，远程经 ssh 推送内置 CLI）（优先级：P2）
+### 用户故事：内置 CLI 一致保障（本地与远程均按内容字节判定是否同步）（优先级：P2）
 
-作为用户，我希望本地会话始终使用随应用发布的内置 CLI，且连接远程主机时自动检测并**经 ssh 推送本机内置的同一份 CLI** 到远端以保持版本兼容，以便我始终使用受支持的后端——不依赖远端 npm 上 `wave-code` 包的发布进度（GUI 可单独发版而不 bump CLI 的 npm 包，npm 最新版可能落后于 GUI 内置 CLI，旧机制下会因 `npm install wave-code@<GUI版本>` 404 而失效）。
+作为用户，我希望本地会话始终使用随应用发布的内置 CLI，且连接远程主机时自动检测并**经 ssh 推送本机内置的同一份 CLI** 到远端，使远端运行的代码与本机内置的 `dist/bundle/wave.mjs` 字节一致，以便我始终使用受支持的后端——同步判据是**内容（sha256 字节）而非版本号**：不依赖远端 npm 上 `wave-code` 包的发布进度（GUI 可单独发版而不 bump CLI 的 npm 包号，npm 最新版可能落后于 GUI 内置 CLI，旧机制下会因 `npm install wave-code@<GUI版本>` 404 而失效），且只比较版本号会漏掉「版本号未变但代码已更新」的副本（本地 dev 重装、GUI 单独发版都可能带着新字节而版本号未 bump）。
 
-**为什么是这个优先级**：本地 CLI 随应用安装包发布，升级应用即升级 CLI，无需运行期升级；远程主机上的 CLI 由远端 daemon 长期托管且无内置运行时，仍需在连接时保障其与 GUI 内置 CLI 版本兼容——内置 CLI 是单文件纯 JS bundle（`dist/bundle/wave.mjs`，esbuild 打成，跨平台），可经本机已建立的 ssh 通道直接推送，远端只需系统 Node.js >= 22 即可运行（无需 npm 装包、远端无出网也能完成 CLI 推送）；若 CLI 升级后 daemon 仍运行旧代码，修复与新增功能将永远不生效（例如远程会话运行状态修复），必须随升级重启 daemon。
+**为什么是这个优先级**：本地 CLI 随应用安装包发布，升级应用即升级 CLI，无需运行期升级；远程主机上的 CLI 由远端 daemon 长期托管且无内置运行时，仍需在连接时保障其与 GUI 内置 CLI 保持同一份代码——内置 CLI 是单文件纯 JS bundle（`dist/bundle/wave.mjs`，esbuild 打成，跨平台），可经本机已建立的 ssh 通道直接推送，远端只需系统 Node.js >= 22 即可运行（无需 npm 装包、远端无出网也能完成 CLI 推送）；若远端副本与内置不一致（哪怕版本号相同）而 daemon 仍运行旧代码，修复与新增功能将永远不生效（例如远程会话运行状态修复），必须同步并重启 daemon。
 
-**独立测试**：在一台未安装 Node.js 的机器上安装应用，验证本地会话直接用内置 CLI 工作；连接安装了旧版本 CLI（或全新）的远程主机，验证应用经 ssh 推送内置 CLI、远端 daemon 以推送的 CLI 重启；GUI 升级但内置 CLI 版本不变时再连接，验证不推送、daemon 不重启。
+**独立测试**：在一台未安装 Node.js 的机器上安装应用，验证本地会话直接用内置 CLI 工作；连接全新远程主机或装有与内置不一致 CLI（含「版本号相同但字节不同」的副本）的主机，验证应用经 ssh 推送内置 CLI、远端 daemon 以推送的 CLI 重启；GUI 升级但内置 CLI 字节未变时再连接，验证不推送、daemon 不重启；GUI 单独发版（wave-code 版本号未 bump）但内置字节已变时连接，验证仍推送并重启 daemon。
 
 **验收场景**：
 
 1. **假设**应用已安装，**当**应用启动，**则**本地会话直接使用随应用发布的内置 CLI（`resources/wave-cli/`，其 `package.json` 中的 wave-code 版本与 GUI 版本相互独立，可不同号），不执行任何 npm 安装/升级。
-2. **假设**应用升级到新版本，**当**新版本应用启动，**则**本地会话使用新版内置 CLI（重新复制到 `~/.wave/cli/`，仅替换 CLI 文件），旧 CLI 无残留运行，已缓存的 rg（`node_modules/`）保留、不重复下载。
-3. **假设**用户连接远程主机，且远端固定目录 `~/.wave/cli/desktop/` 中的 CLI 版本不低于内置 CLI 版本，**当**连接建立，**则**直接复用该 CLI 与（可能）正在运行的 daemon，不推送、不重启；**当**远端 CLI 缺失、损坏（`wave -v` 探测失败）或版本低于内置 CLI，**则**应用必须把本机内置 CLI（`bin/wave-code.js` + `dist/bundle/wave.mjs` + `package.json`）经 ssh 写入远端临时目录后原子替换到 `~/.wave/cli/desktop/`，再连接/创建该主机的 daemon。
+2. **假设**应用升级到新版本，**当**新版本应用启动，**则**本地会话使用新版内置 CLI——运行时 `~/.wave/cli/desktop/` 中 `dist/bundle/wave.mjs` 与内置 `resources/wave-cli/` 的同名文件字节（sha256）不一致时重新复制（仅替换 CLI 文件：`dist/`、入口、`package.json`），字节一致（同版本重装、或 GUI 单独发版未改 CLI）则不复制；旧 CLI 无残留运行，已缓存的 rg（`node_modules/`）保留、不重复下载。
+3. **假设**用户连接远程主机，且远端固定目录 `~/.wave/cli/desktop/` 中 `dist/bundle/wave.mjs` 与本机内置同名文件的字节（sha256）一致，**当**连接建立，**则**直接复用该 CLI 与（可能）正在运行的 daemon，不推送、不重启；**当**远端 CLI 缺失、损坏（内容探针无法读取或算出一致的哈希）或字节与内置不一致（即使 `package.json` 的版本号相同），**则**应用必须把本机内置 CLI（`bin/wave-code.js` + `dist/bundle/wave.mjs` + `package.json`）经 ssh 写入远端临时目录后原子替换到 `~/.wave/cli/desktop/`，再连接/创建该主机的 daemon。
 4. **假设**远端 CLI 升级（推送）成功且该主机旧 daemon 仍在运行（旧 daemon 运行的是升级前的代码），**当**升级完成，**则**应用必须重启该主机的 daemon（终止旧 daemon 并启动新 daemon）；重启后历史会话仍可从远端转录恢复，断线前正在进行的任务终止（与 daemon 退出的既有语义一致，不得出现幽灵「运行中」状态）。
 5. **假设**远端 CLI 推送失败（ssh 中断、磁盘错误等），**当**应用检测到失败，**则**必须向用户显示可操作的错误信息与重试提示（下次连接自动重试，不得无限重试）；替换采用「临时目录写入 + 原子 `mv`」且失败不动旧目录，故运行中的旧 daemon 不受影响、可继续使用。
-6. **假设**远端主机完全未安装 wave CLI（首次连接），**当**应用连接该主机，**则**必须推送与 GUI 内置 CLI 字节一致的 bundle（版本取内置 `package.json` 的 wave-code 版本，而非远端 registry 的最新版）到 `~/.wave/cli/desktop/`；**当**远端无 Node.js（或主版本低于 22），**则**必须显示安装/升级远端 Node.js 的引导信息，不得进入不可用状态。
-7. **假设**应用升级到新版本但内置 CLI 的 wave-code 版本未变（GUI 单独发版，不 bump CLI），**当**用户连接远程主机，**则**不得推送、不得重启 daemon（远端 CLI 与内置同为旧版本即视为已满足），无增量传输。
+6. **假设**远端主机完全未安装 wave CLI（首次连接），**当**应用连接该主机，**则**必须推送与 GUI 内置 CLI 字节一致的 bundle（推送源与内容=内置 `resources/wave-cli/`，而非远端 npm registry 的 `wave-code` 包）到 `~/.wave/cli/desktop/`；**当**远端无 Node.js（或主版本低于 22），**则**必须显示安装/升级远端 Node.js 的引导信息，不得进入不可用状态。
+7. **假设**应用升级到新版本但内置 CLI 的 wave-code 版本未变（GUI 单独发版，不 bump CLI），**当**用户连接远程主机，**则**以字节为准：内置 `wave.mjs` 与远端副本字节一致时不推送、不重启 daemon（无增量传输）；字节已变（构建了新的 CLI 代码但未 bump 版本号）时必须推送并重启 daemon——版本号相同不再视为「已满足」。
 8. **假设**远端 CLI 已就位但其 grep 依赖 rg（`@vscode/ripgrep` JS 包装 + 平台二进制）缺失（如首次推送后），**当**应用准备以该 CLI 启动 daemon，**则**必须引导远端自行获取 rg（在远端登录 shell 执行 `npm install --prefix ~/.wave/cli` 安装 `@vscode/ripgrep`，npm 按远端平台自动解析 wrapper + 平台二进制到 `~/.wave/cli/node_modules/@vscode/`）；rg 是 wave.mjs 的启动期顶层依赖，缺失时 CLI 无法启动；**当**远端无 npm 或无法访问 registry（server 无出网），**则**CLI 文件推送本身不受影响（经 ssh，不经 registry），但必须给出含手动命令的错误提示，远端恢复网络/npm 后重连自动补装（已有 rg 时跳过，不重复下载）。
 
 ---
@@ -216,12 +216,12 @@ order: 10
 ### 边界情况
 
 - **内置 CLI 缺失或损坏**：本地会话的内置 CLI 文件随安装包发布，若缺失或不可执行（安装损坏），应用必须显示重新安装应用的引导信息，不得尝试从网络安装。
-- **内置 CLI 复制到用户目录**：安装目录只读，内置 CLI 在首次启动或版本变更时复制到 `~/.wave/cli/`（入口 `bin/wave-code.js`）；升级只替换 CLI 文件（`dist/`、入口、`package.json`），保留 `node_modules/`。
+- **内置 CLI 复制到用户目录**：安装目录只读，内置 CLI 在首次启动或内置与运行时副本的 `dist/bundle/wave.mjs` 字节（sha256）不一致时复制到 `~/.wave/cli/<end>/`（入口 `bin/wave-code.js`）；复制只替换 CLI 文件（`dist/`、入口、`package.json`），保留 `node_modules/`。
 - **rg 按需下载与缓存**：grep 依赖 rg（`@vscode/ripgrep` JS 包装 + 平台二进制）首次使用时从 npmmirror 下载到 `~/.wave/cli/node_modules/@vscode/`（版本取 CLI 声明的 range 内最高版本），rg 二进制存在即缓存命中、不重复下载。
 - **rg 下载失败即本地会话失败**：rg 是 wave.mjs 的顶层依赖（`@vscode/ripgrep` JS 包装加载时就解析平台二进制），JS 包装或平台包任一缺失都会导致 CLI 无法启动。rg 下载失败必须作为初始化错误 toast 提示（检查网络后重启应用重试），不能静默降级；下次启动自动重试下载。
 - **本地不依赖系统 Node.js**：本地会话由 Electron 内置 Node 运行内置 CLI，客户系统未安装 Node.js/npm 或版本低于 22 均不影响本地会话；SSH 远程主机会话仍依赖远端 Node.js >= 22（远端以系统 Node 运行推送的 CLI）。
 - **远端 CLI 布局镜像本地**：远端 CLI 固定位于 `~/.wave/cli/desktop/`（`bin/wave-code.js` + `dist/bundle/wave.mjs` + `package.json`），与本地 per-end 目录同名；远端 rg 位于共享 `~/.wave/cli/node_modules/@vscode/`（升级替换 `desktop/` 目录时保留，不重复下载）。
-- **远端升级目标取内置 CLI 版本而非 GUI 版本**：GUI 与内置 CLI 版本相互独立（publish.yml 明示 GUI 可单独发版不发布 CLI npm 包），远程版本比对/推送目标是 `resources/wave-cli/package.json` 的 wave-code 版本，绝不是 `app.getVersion()`——否则会对 npm 上不存在的版本号发起安装而 404。
+- **远端同步判据取内置 CLI 内容而非版本号**：GUI 与内置 CLI 版本相互独立（publish.yml 明示 GUI 可单独发版不发布 CLI npm 包），同步判据是内置 `resources/wave-cli/dist/bundle/wave.mjs` 与远端副本的字节（sha256）比较，绝不是 `app.getVersion()`，也不以 `package.json` 的 wave-code 版本号为准（版本号未 bump 但字节已变也必须同步）——旧机制曾对 npm 上不存在的 GUI 版本号发起安装而 404。
 - **远端 rg 由远端自取且为启动期依赖**：rg（`@vscode/ripgrep` wrapper + `@vscode/ripgrep-<platform>-<arch>`）是 wave.mjs 顶层依赖，缺失时 CLI 无法启动；推送 CLI 后若共享目录无对应平台 rg，引导远端登录 shell 执行 `npm install --prefix ~/.wave/cli` 安装 `@vscode/ripgrep`（npm 自动按远端平台解析），已有即跳过。server 无出网时 CLI 推送不受影响（走 ssh），rg 自取失败给出含手动命令的错误提示，网络/npm 恢复后重连自动补装。
 - **退出应用时会话仍在运行**：退出应用必须终止 CLI 子进程，避免孤儿进程。
 - **auth/token 过期**：401 等鉴权失败的表现与当前 webview/stdio 行为保持一致（由 CLI 侧现有错误处理透出），本特性不做额外处理。

@@ -81,17 +81,17 @@ const PKG_JSON = (version: string) =>
     dependencies: { "@vscode/ripgrep": "^1.18.0" },
   });
 
-function seedBundledCli(version = "1.0.0") {
+function seedBundledCli(version = "1.0.0", bundle = "bundle") {
   memFs.set(bundledEntry(), "shim");
   memFs.set(path.join(bundledDir(), "package.json"), PKG_JSON(version));
-  memFs.set(path.join(bundledDir(), "dist", "bundle", "wave.mjs"), "bundle");
+  memFs.set(path.join(bundledDir(), "dist", "bundle", "wave.mjs"), bundle);
 }
 
-function seedRuntimeCli(version = "1.0.0") {
+function seedRuntimeCli(version = "1.0.0", bundle = "bundle") {
   memFs.set(entry(), "shim");
   memFs.set(path.join(cliInstallDir(), "bin", "wave-code.js"), "shim");
   memFs.set(path.join(cliInstallDir(), "package.json"), PKG_JSON(version));
-  memFs.set(path.join(cliInstallDir(), "dist", "bundle", "wave.mjs"), "bundle");
+  memFs.set(path.join(cliInstallDir(), "dist", "bundle", "wave.mjs"), bundle);
 }
 
 function seedRg() {
@@ -173,9 +173,7 @@ describe("binaryResolver (bundled CLI + downloaded rg)", () => {
     memFs.set("/dev/wave-code.js", "dev shim");
 
     try {
-      await expect(resolveWaveBinary("1.0.0")).resolves.toBe(
-        "/dev/wave-code.js",
-      );
+      await expect(resolveWaveBinary()).resolves.toBe("/dev/wave-code.js");
       expect(mockFetch).not.toHaveBeenCalled();
     } finally {
       delete process.env.WAVE_CLI_PATH;
@@ -183,19 +181,19 @@ describe("binaryResolver (bundled CLI + downloaded rg)", () => {
   });
 
   it("throws a reinstall-guide error when the bundled CLI is missing", async () => {
-    await expect(resolveWaveBinary("1.0.0")).rejects.toThrow("内置 CLI 缺失");
+    await expect(resolveWaveBinary()).rejects.toThrow("内置 CLI 缺失");
   });
 
   it("throws when no extension path is set", async () => {
     setExtensionPath("");
-    await expect(resolveWaveBinary("1.0.0")).rejects.toThrow("缺少扩展路径");
+    await expect(resolveWaveBinary()).rejects.toThrow("缺少扩展路径");
   });
 
   it("copies the bundled CLI into ~/.wave/cli/vscode on first use and downloads rg", async () => {
     seedBundledCli("1.0.0");
     mockRipgrepRegistry();
 
-    const result = await resolveWaveBinary("1.0.0");
+    const result = await resolveWaveBinary();
 
     expect(result).toBe(entry());
     expect(memFs.has(entry())).toBe(true);
@@ -211,23 +209,38 @@ describe("binaryResolver (bundled CLI + downloaded rg)", () => {
     seedRuntimeCli("1.0.0");
     seedRg();
 
-    const result = await resolveWaveBinary("1.0.0");
+    const result = await resolveWaveBinary();
 
     expect(result).toBe(entry());
     expect(mockFs.cpSync).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("re-copies the CLI but keeps the cached rg when the version changes", async () => {
-    seedBundledCli("1.1.0");
-    seedRuntimeCli("1.0.0");
+  it("re-copies the CLI but keeps the cached rg when the bundle bytes change", async () => {
+    seedBundledCli("1.1.0", "bundle-v2");
+    seedRuntimeCli("1.0.0", "bundle-v1");
     seedRg();
 
-    const result = await resolveWaveBinary("1.1.0");
+    const result = await resolveWaveBinary();
 
     expect(result).toBe(entry());
     expect(mockFs.cpSync).toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
+    expect(memFs.has(rgBin())).toBe(true);
+  });
+
+  it("re-copies when a same-version install ships different bundle bytes", async () => {
+    // The copy decision is content-based: dev reinstalls and GUI-only
+    // releases can ship new bytes without bumping the version, so an
+    // unchanged version number must not suppress the re-copy.
+    seedBundledCli("1.0.0", "bundle-v2");
+    seedRuntimeCli("1.0.0", "bundle-v1");
+    seedRg();
+
+    const result = await resolveWaveBinary();
+
+    expect(result).toBe(entry());
+    expect(mockFs.cpSync).toHaveBeenCalled();
     expect(memFs.has(rgBin())).toBe(true);
   });
 
@@ -238,7 +251,7 @@ describe("binaryResolver (bundled CLI + downloaded rg)", () => {
       JSON.stringify({ name: "wave-code", version: "1.0.0" }),
     );
 
-    const result = await resolveWaveBinary("1.0.0");
+    const result = await resolveWaveBinary();
 
     expect(result).toBe(entry());
     expect(mockFetch).not.toHaveBeenCalled();
@@ -250,7 +263,7 @@ describe("binaryResolver (bundled CLI + downloaded rg)", () => {
       res({ ok: false, status: 500, statusText: "Server Error" }),
     );
 
-    await expect(resolveWaveBinary("1.0.0")).rejects.toThrow("ripgrep");
+    await expect(resolveWaveBinary()).rejects.toThrow("ripgrep");
   });
 
   it("ensureRipgrep returns false when the download fails", async () => {
@@ -266,7 +279,7 @@ describe("binaryResolver (bundled CLI + downloaded rg)", () => {
     seedBundledCli("1.0.0");
     mockRipgrepRegistry();
 
-    await expect(ensureCliUpToDate("1.0.0")).resolves.toBe(entry());
+    await expect(ensureCliUpToDate()).resolves.toBe(entry());
   });
 
   it("decodeCommandOutput falls back to GBK on U+FFFD", () => {

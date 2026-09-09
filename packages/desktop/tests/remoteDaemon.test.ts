@@ -236,9 +236,10 @@ describe("waitForRemoteDaemon", () => {
 
 describe("ensureRemoteDaemon", () => {
   // Bundled CLI source as desktopHost would load it (loadBundledCliSource).
+  const BUNDLE_HASH = "a".repeat(64); // sha256 of the bundled wave.mjs
   const SOURCE = {
     dir: "/app/root/resources/wave-cli",
-    version: "1.0.0",
+    bundleSha256: BUNDLE_HASH,
     rgRange: "^1.18.0",
   };
   const SHIM = "/home/alice/.wave/cli/desktop/bin/wave-code.js";
@@ -248,7 +249,7 @@ describe("ensureRemoteDaemon", () => {
       LOGIN_SHELL, // login shell probe
       { stdout: "/home/alice" }, // echo $HOME
       { stdout: "v22.0.0" }, // node -v
-      { stdout: "1.0.0\n" }, // <shim> -v == bundle → no push
+      { stdout: `${BUNDLE_HASH}\n` }, // hash probe == bundle → no push
       { stdout: "" }, // probe ok
     ]);
     const socketPath = await ensureRemoteDaemon("prod", SOURCE);
@@ -265,7 +266,7 @@ describe("ensureRemoteDaemon", () => {
       LOGIN_SHELL, // login shell probe
       { stdout: "/home/alice" }, // echo $HOME
       { stdout: "v22.0.0" }, // node -v
-      { stdout: "1.0.0\n" }, // <shim> -v == bundle → no push
+      { stdout: `${BUNDLE_HASH}\n` }, // hash probe == bundle → no push
       { error: SOCKET_MISSING }, // probe → not alive
       { stdout: "" }, // rg ready probe (needed to boot the CLI)
       { stdout: "" }, // nohup launch

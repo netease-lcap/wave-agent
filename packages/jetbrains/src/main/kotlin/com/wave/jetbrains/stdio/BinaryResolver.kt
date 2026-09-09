@@ -15,7 +15,9 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.Charset
+import java.security.MessageDigest
 import java.time.Duration
+import java.util.HexFormat
 
 /** Minimum Node.js major version required by `wave --stdio`. */
 private const val MIN_NODE_MAJOR = 22
@@ -25,7 +27,11 @@ private const val MIN_NODE_MAJOR = 22
  * (`bin/wave-code.js` + `package.json` + `dist/bundle/wave.mjs`) is bundled
  * inside the plugin jar, copied to the user-writable `~/.wave/cli/jetbrains`
  * at runtime and executed with the customer's system Node.js (>= 22) — no
- * npm-global `wave-code` package, no version check/upgrade. Each frontend
+ * npm-global `wave-code` package, no version check/upgrade. Whether to copy
+ * is decided by content: the runtime `dist/bundle/wave.mjs` is re-copied
+ * only when its sha256 differs from the bundled one — a version string cannot
+ * be trusted as "same CLI" (plugin reinstalls and GUI-only releases can ship
+ * new bytes without bumping the version). Each frontend
  * (vscode/desktop/jetbrains) keeps its own subdir so different versions
  * never overwrite each other. The grep dependency `@vscode/ripgrep` is NOT
  * bundled; it is downloaded from npmmirror on first use into the shared
@@ -92,7 +98,7 @@ object BinaryResolver {
         checkNodeVersion()
 
         // 1. Copy the bundled CLI into ~/.wave/cli/jetbrains (plugin install
-        //    dir is read-only; version change re-copies but keeps the shared
+        //    dir is read-only; a changed bundle re-copies but keeps the shared
         //    rg download in ~/.wave/cli/node_modules so it is never
         //    re-downloaded).
         val entry = prepareCli()
@@ -187,18 +193,22 @@ object BinaryResolver {
 
     /**
      * Copy the bundled CLI into the runtime dir when missing or when the bundled
-     * version differs (plugin upgrade). The cached rg download lives in the
-     * shared `~/.wave/cli/node_modules/@vscode` dir — outside this per-end dir —
-     * so an already-downloaded rg is never re-downloaded after an upgrade.
+     * bundle bytes differ from the runtime copy. Content comparison instead of a
+     * version-string check: plugin reinstalls refresh the plugin without bumping
+     * its version, so an unchanged version number cannot be trusted as "same
+     * CLI". The cached rg download lives in the shared
+     * `~/.wave/cli/node_modules/@vscode` dir — outside this per-end dir — so an
+     * already-downloaded rg is never re-downloaded after an upgrade.
      * Returns the runtime entry path.
      * @throws StdioClientException when the bundled CLI itself is missing (corrupt install).
      */
     private fun prepareCli(): String {
         val entry = cliEntryPath()
+        val runtimeBundle = File(cliInstallDir(), "dist/bundle/wave.mjs")
         val needCopy =
             !File(entry).exists() ||
-                bundledVersion() != runtimeVersion() ||
-                !File(cliInstallDir(), "dist/bundle/wave.mjs").exists()
+                !runtimeBundle.exists() ||
+                resourceHash("wave-cli/dist/bundle/wave.mjs") != fileHash(runtimeBundle)
 
         if (needCopy) {
             onInstall?.invoke("正在准备内置 wave CLI…")
@@ -215,43 +225,35 @@ object BinaryResolver {
         return entry
     }
 
+    /** sha256 hex of a classpath resource's bytes, or "" when unavailable. */
+    private fun resourceHash(resource: String): String {
+        return try {
+            val stream = javaClass.classLoader.getResourceAsStream(resource) ?: return ""
+            sha256Hex(stream.use { it.readBytes() })
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    /** sha256 hex of a file's bytes, or "" when missing/unreadable. */
+    private fun fileHash(file: File): String {
+        if (!file.isFile) return ""
+        return try {
+            sha256Hex(file.inputStream().use { it.readBytes() })
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    private fun sha256Hex(bytes: ByteArray): String =
+        HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
+
     /** Extract a classpath resource (bundled CLI) to [target]. */
     private fun copyResource(resource: String, target: File) {
         val stream = javaClass.classLoader.getResourceAsStream(resource)
             ?: throw StdioClientException("内置 CLI 缺失（$resource）。请重新安装插件。")
         target.parentFile?.mkdirs()
         stream.use { input -> FileOutputStream(target).use { output -> input.copyTo(output) } }
-    }
-
-    /** Version of the CLI bundled inside the plugin jar. */
-    private fun bundledVersion(): String {
-        return try {
-            val stream = javaClass.classLoader.getResourceAsStream("wave-cli/package.json")
-                ?: return ""
-            val text = stream.bufferedReader().use { it.readText() }
-            versionOf(text)
-        } catch (_: Exception) {
-            ""
-        }
-    }
-
-    /** Version of the runtime CLI in ~/.wave/cli/jetbrains. */
-    private fun runtimeVersion(): String {
-        return try {
-            val file = File(cliInstallDir(), "package.json")
-            if (!file.isFile) return ""
-            versionOf(file.readText())
-        } catch (_: Exception) {
-            ""
-        }
-    }
-
-    private fun versionOf(packageJson: String): String {
-        return try {
-            Json.parseToJsonElement(packageJson).jsonObject["version"]?.jsonPrimitive?.content ?: ""
-        } catch (_: Exception) {
-            ""
-        }
     }
 
     // ------------------------------------------------------------------

@@ -46,16 +46,16 @@ export function bundledCliDir(): string {
 
 /**
  * The CLI bytes this app ships (resources/wave-cli). Remote hosts receive this
- * same bundle over ssh; the version is the bundled CLI's own wave-code version
- * (decoupled from the GUI version — the npm `wave-code` package may lag behind,
- * see desktop-shell.md 「CLI 版本保障」), so it is read from the bundle itself,
- * never from `app.getVersion()`.
+ * same bundle over ssh; the sync target is the bundled bundle's sha256 (never a
+ * version string — GUI-only releases can ship new bytes without bumping the
+ * version, see desktop-shell.md 「内置 CLI 一致保障」), so it is read from the
+ * bundle itself, never from `app.getVersion()`.
  */
 export interface BundledCliSource {
   /** Absolute local dir holding the bundled CLI (bin/dist/package.json). */
   dir: string;
-  /** wave-code version in `dir/package.json` — the remote upgrade target. */
-  version: string;
+  /** sha256 of `dir/dist/bundle/wave.mjs` — the remote sync target. */
+  bundleSha256: string;
   /** The CLI's declared `@vscode/ripgrep` range; absent when grep is unused. */
   rgRange?: string;
 }
@@ -72,17 +72,17 @@ export function loadBundledCliSource(): BundledCliSource {
     );
   }
   const pkg = JSON.parse(raw) as {
-    version?: string;
     dependencies?: Record<string, string>;
   };
-  if (!pkg.version) {
+  const bundleSha256 = fileHash(path.join(dir, "dist", "bundle", "wave.mjs"));
+  if (!bundleSha256) {
     throw new Error(
-      `内置 CLI 元数据缺少版本号（${path.join(dir, "package.json")}）。请重新安装应用。`,
+      `内置 CLI 缺失（${path.join(dir, "dist", "bundle", "wave.mjs")}）。请重新安装应用。`,
     );
   }
   return {
     dir,
-    version: pkg.version,
+    bundleSha256,
     rgRange: pkg.dependencies?.["@vscode/ripgrep"],
   };
 }
