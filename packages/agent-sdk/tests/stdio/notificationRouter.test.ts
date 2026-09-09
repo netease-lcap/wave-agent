@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { StdioClient } from "../../src/stdio/stdioClient";
-import { NotificationRouter } from "wave-agent-sdk/stdio";
+import { NotificationRouter, type RpcClient } from "@/stdio/index.js";
 
-// ── Mock StdioClient ───────────────────────────────────────────
+// ── Mock RpcClient ─────────────────────────────────────────────
 
 interface MockClient {
   request: ReturnType<typeof vi.fn>;
@@ -56,7 +55,7 @@ describe("NotificationRouter", () => {
   // ── attach ─────────────────────────────────────────────────
 
   it("attach subscribes to all notification methods on the client", () => {
-    const router = new NotificationRouter(client as unknown as StdioClient);
+    const router = new NotificationRouter(client as unknown as RpcClient);
     router.attach();
 
     const methods = client.onNotification.mock.calls.map((c) => c[0] as string);
@@ -83,7 +82,7 @@ describe("NotificationRouter", () => {
   });
 
   it("attach is idempotent — does not register handlers twice", () => {
-    const router = new NotificationRouter(client as unknown as StdioClient);
+    const router = new NotificationRouter(client as unknown as RpcClient);
     router.attach();
     router.attach();
 
@@ -97,7 +96,7 @@ describe("NotificationRouter", () => {
   // ── Session-scoped dispatch ────────────────────────────────
 
   it("dispatches notification to registered agent by sessionId", () => {
-    const router = new NotificationRouter(client as unknown as StdioClient);
+    const router = new NotificationRouter(client as unknown as RpcClient);
     router.attach();
 
     const agent = createFakeAgent();
@@ -117,7 +116,7 @@ describe("NotificationRouter", () => {
   });
 
   it("dispatches compactionStateChange to registered agent by sessionId", () => {
-    const router = new NotificationRouter(client as unknown as StdioClient);
+    const router = new NotificationRouter(client as unknown as RpcClient);
     router.attach();
 
     const agent = createFakeAgent();
@@ -135,7 +134,7 @@ describe("NotificationRouter", () => {
   });
 
   it("dispatches compactionContentUpdate to registered agent by sessionId", () => {
-    const router = new NotificationRouter(client as unknown as StdioClient);
+    const router = new NotificationRouter(client as unknown as RpcClient);
     router.attach();
 
     const agent = createFakeAgent();
@@ -153,7 +152,7 @@ describe("NotificationRouter", () => {
   });
 
   it("drops notification for unregistered sessionId without throwing", () => {
-    const router = new NotificationRouter(client as unknown as StdioClient);
+    const router = new NotificationRouter(client as unknown as RpcClient);
     router.attach();
 
     const agent = createFakeAgent();
@@ -172,7 +171,7 @@ describe("NotificationRouter", () => {
   });
 
   it("dispatches to the correct agent when multiple are registered", () => {
-    const router = new NotificationRouter(client as unknown as StdioClient);
+    const router = new NotificationRouter(client as unknown as RpcClient);
     router.attach();
 
     const agent1 = createFakeAgent();
@@ -197,7 +196,7 @@ describe("NotificationRouter", () => {
   // ── Global dispatch ────────────────────────────────────────
 
   it("dispatches notification without sessionId to global handler", () => {
-    const router = new NotificationRouter(client as unknown as StdioClient);
+    const router = new NotificationRouter(client as unknown as RpcClient);
     router.attach();
 
     const globalHandler = vi.fn();
@@ -214,7 +213,7 @@ describe("NotificationRouter", () => {
   });
 
   it("notification with sessionId for a global method goes to the agent (sessionId wins)", () => {
-    const router = new NotificationRouter(client as unknown as StdioClient);
+    const router = new NotificationRouter(client as unknown as RpcClient);
     router.attach();
 
     const globalHandler = vi.fn();
@@ -235,7 +234,7 @@ describe("NotificationRouter", () => {
   });
 
   it("global notification for unregistered global method is dropped silently", () => {
-    const router = new NotificationRouter(client as unknown as StdioClient);
+    const router = new NotificationRouter(client as unknown as RpcClient);
     router.attach();
 
     expect(() => {
@@ -246,7 +245,7 @@ describe("NotificationRouter", () => {
   // ── unregister ─────────────────────────────────────────────
 
   it("unregister stops dispatching notifications to that agent", () => {
-    const router = new NotificationRouter(client as unknown as StdioClient);
+    const router = new NotificationRouter(client as unknown as RpcClient);
     router.attach();
 
     const agent = createFakeAgent();
@@ -266,7 +265,7 @@ describe("NotificationRouter", () => {
   });
 
   it("unregister of unknown sessionId does not throw", () => {
-    const router = new NotificationRouter(client as unknown as StdioClient);
+    const router = new NotificationRouter(client as unknown as RpcClient);
     router.attach();
 
     expect(() => router.unregister("never-registered")).not.toThrow();
@@ -275,7 +274,7 @@ describe("NotificationRouter", () => {
   // ── sessionIdChange rekeying ───────────────────────────────
 
   it("sessionIdChange rekeys the agent from old to new sessionId", () => {
-    const router = new NotificationRouter(client as unknown as StdioClient);
+    const router = new NotificationRouter(client as unknown as RpcClient);
     router.attach();
 
     const agent = createFakeAgent();
@@ -308,7 +307,7 @@ describe("NotificationRouter", () => {
   });
 
   it("sessionIdChange with same sessionId does not rekey", () => {
-    const router = new NotificationRouter(client as unknown as StdioClient);
+    const router = new NotificationRouter(client as unknown as RpcClient);
     router.attach();
 
     const agent = createFakeAgent();
