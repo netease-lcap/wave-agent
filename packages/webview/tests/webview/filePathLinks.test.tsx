@@ -160,6 +160,36 @@ describe("inline-code channel file paths (specs/ui/file-path-links.md)", () => {
     const code = container.querySelector(".markdown-content code");
     expect(code?.textContent).toBe("~/dev/proj/x.ts");
   });
+
+  it("linkifies inline-code paths with Chinese/non-ASCII filenames and opens them verbatim", () => {
+    const { onOpenFile, fileLinks } = renderMessage(
+      "见 `C:\\Users\\张三\\下载\\报表.xlsx` 与 `src/我的组件.tsx:8`",
+      { workdir: "/home/u/repo" },
+    );
+    const links = fileLinks();
+    expect(links).toHaveLength(2);
+    expect(links[0]).toHaveTextContent("C:\\Users\\张三\\下载\\报表.xlsx");
+    expect(links[1]).toHaveTextContent("src/我的组件.tsx:8");
+    fireEvent.click(links[0]!);
+    expect(onOpenFile).toHaveBeenCalledWith(
+      "C:\\Users\\张三\\下载\\报表.xlsx",
+      undefined,
+      undefined,
+    );
+    fireEvent.click(links[1]!);
+    expect(onOpenFile).toHaveBeenCalledWith(
+      "/home/u/repo/src/我的组件.tsx",
+      8,
+      8,
+    );
+  });
+
+  it("keeps a pure-Chinese inline-code sentence as plain code (no false link)", () => {
+    const { container, fileLinks } = renderMessage("结果：`请把报表放在这里`");
+    expect(fileLinks()).toHaveLength(0);
+    const code = container.querySelector(".markdown-content code");
+    expect(code?.textContent).toBe("请把报表放在这里");
+  });
 });
 
 describe("plain-text channel absolute paths (specs/ui/file-path-links.md)", () => {
@@ -198,6 +228,33 @@ describe("plain-text channel absolute paths (specs/ui/file-path-links.md)", () =
       "相对 src/main.ts 与 ~/dev/proj/tsconfig.json 与裸 index.ts 保持文本",
     );
     expect(fileLinks()).toHaveLength(0);
+  });
+
+  it("linkifies Chinese-filename absolute paths in prose and opens them verbatim", () => {
+    const { onOpenFile, fileLinks } = renderMessage(
+      "文件在 C:\\Users\\wb.tandefu01\\Downloads\\CodeChat桌.html，位于下载目录。",
+    );
+    const links = fileLinks();
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveTextContent(
+      "C:\\Users\\wb.tandefu01\\Downloads\\CodeChat桌.html",
+    );
+    fireEvent.click(links[0]!);
+    expect(onOpenFile).toHaveBeenCalledWith(
+      "C:\\Users\\wb.tandefu01\\Downloads\\CodeChat桌.html",
+      undefined,
+      undefined,
+    );
+  });
+
+  it("does NOT linkify prose Chinese text or extension-less Chinese absolute paths", () => {
+    const { container, fileLinks } = renderMessage(
+      "请把报表放在这里 /home/张三/项目 目录下。",
+    );
+    expect(fileLinks()).toHaveLength(0);
+    expect(container.querySelector(".markdown-content")?.textContent).toContain(
+      "/home/张三/项目",
+    );
   });
 
   it("linkifies Windows and file:/// absolute paths in prose", () => {
