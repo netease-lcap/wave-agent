@@ -653,18 +653,36 @@ export class AgentBridge {
       // client's router registered — so replay the current usage or the
       // webview keeps the previous session's (or no) percentage until the
       // next turn pushes a fresh value (spec desktop-app 上下文用量指示器
-      // 场景 6: 恢复即显示该会话上次用量). A zero total means no real usage
-      // to report; the host keeps the empty ring until the first push.
-      const tokens = entry.agent.latestTotalTokens;
-      const max = entry.agent.getMaxInputTokens();
-      if (tokens > 0 && max > 0) {
-        const percent = Math.min(100, Math.round((tokens / max) * 100));
-        this.emit("contextUsage", { percent }, entry.agent.sessionId);
-      }
+      // 场景 6: 恢复即显示该会话上次用量).
+      this.emitContextUsage(entry.agent);
       return null;
     }
     await entry.agent.restoreSession(restoreId);
+    // A real restore must also re-emit the usage unconditionally: the SDK
+    // only fires onLatestTotalTokensChange on a VALUE CHANGE, so restoring a
+    // conversation whose persisted total equals the agent's current one
+    // suppresses the change-push and the webview — which cleared the previous
+    // session's number on the switch — keeps a blank ring until the next turn
+    // (the change-push, when it does fire inside restoreSession, already
+    // delivered the same value; re-emitting is idempotent).
+    this.emitContextUsage(entry.agent);
     return null;
+  }
+
+  /**
+   * Push the session's current context-usage percentage to the client. Shared
+   * by every restore path so a conversation the client just switched to always
+   * shows its usage right away instead of waiting for the next token change
+   * (spec desktop-app 上下文用量指示器 场景 6). A zero total means no real
+   * usage to report; the host keeps the empty ring until the first push.
+   */
+  private emitContextUsage(agent: Agent): void {
+    const tokens = agent.latestTotalTokens;
+    const max = agent.getMaxInputTokens();
+    if (tokens > 0 && max > 0) {
+      const percent = Math.min(100, Math.round((tokens / max) * 100));
+      this.emit("contextUsage", { percent }, agent.sessionId);
+    }
   }
 
   private async listSessions(

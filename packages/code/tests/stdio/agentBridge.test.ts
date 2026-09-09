@@ -2099,6 +2099,35 @@ test("restoreSession to the live session replays the current contextUsage so the
   });
 });
 
+test("restoreSession to a DIFFERENT session re-emits contextUsage even when the token count is unchanged (no SDK change-push)", async () => {
+  const { bridge, notifications } = createBridge();
+  const mockAgent = createMockAgent({ latestTotalTokens: 50000 });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+
+  // Real restore (target != current). The SDK fires setlatestTotalTokens only
+  // on a VALUE CHANGE, so restoring a conversation whose persisted total
+  // equals the agent's current one (e.g. both 0, or the same count) suppresses
+  // the change-push — the webview cleared the old number on the session
+  // switch and keeps a blank ring until the next turn. The bridge must
+  // re-emit unconditionally instead of depending on the SDK callback (the
+  // re-attach branch below already does; this pins the real-restore branch).
+  await bridge.handleRequest(
+    "restoreSession",
+    { sessionId: "other-session" },
+    sessionId,
+  );
+
+  expect(mockAgent.restoreSession).toHaveBeenCalledWith("other-session");
+  expect(notifications).toContainEqual({
+    method: "contextUsage",
+    params: { percent: 25 }, // 50000 / 200000 (default getMaxInputTokens)
+    sessionId,
+  });
+});
+
 test("restoreSession replay skips contextUsage when the live session has no tokens yet", async () => {
   const { bridge, notifications } = createBridge();
   const mockAgent = createMockAgent({ latestTotalTokens: 0 });
