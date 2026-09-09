@@ -8,13 +8,26 @@ import {
   sendCommand,
 } from "./test-utils";
 
+/** 提取 webview 最近一次发出的 requestId（requestHistory/searchHistory）。 */
+function sentRequestId(
+  vscode: { postMessage: ReturnType<typeof vi.fn> },
+  command: string,
+): string {
+  const calls = vscode.postMessage.mock.calls as Array<
+    [{ command?: string; requestId?: string }]
+  >;
+  return (
+    calls.filter((c) => c[0]?.command === command).pop()?.[0]?.requestId ?? ""
+  );
+}
+
 describe("History Search Feature", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("should open history search popup on Ctrl+R and select a prompt", async () => {
-    renderChatApp();
+    const { vscode } = renderChatApp();
 
     const messageInput = screen.getByTestId("message-input");
     messageInput.focus();
@@ -29,14 +42,17 @@ describe("History Search Feature", () => {
       expect(screen.getByTestId("history-search-popup")).toBeInTheDocument();
     });
 
-    // 3. Simulate history response from extension
+    // 3. Simulate history response from extension（归属键 = 请求 requestId）
     const mockHistory = [
       { prompt: "First prompt", timestamp: Date.now() - 10000 },
       { prompt: "Second prompt", timestamp: Date.now() - 5000 },
       { prompt: "Third prompt", timestamp: Date.now() },
     ];
 
-    sendCommand("historyResponse", { history: mockHistory });
+    sendCommand("historyResponse", {
+      history: mockHistory,
+      requestId: sentRequestId(vscode, "requestHistory"),
+    });
 
     // 4. Verify history items are displayed
     await waitFor(() => {
@@ -109,13 +125,16 @@ describe("History Search Feature", () => {
       expect.objectContaining({ command: "searchHistory", query: "test" }),
     );
 
-    // 4. Simulate filtered response
+    // 4. Simulate filtered response（归属键 = 请求 requestId）
     const filteredHistory = [
       { prompt: "test prompt 1", timestamp: Date.now() - 1000 },
       { prompt: "another test", timestamp: Date.now() },
     ];
 
-    sendCommand("historyResponse", { history: filteredHistory });
+    sendCommand("historyResponse", {
+      history: filteredHistory,
+      requestId: sentRequestId(vscode, "searchHistory"),
+    });
 
     // 5. Verify filtered items
     await waitFor(() => {
@@ -124,6 +143,42 @@ describe("History Search Feature", () => {
         .querySelectorAll(".history-search-item");
       expect(items).toHaveLength(2);
       expect(items[0]).toHaveTextContent(/test prompt 1/);
+    });
+  });
+
+  it("drops a stale historyResponse whose requestId belongs to an older query (过期即弃)", async () => {
+    const { vscode } = renderChatApp();
+
+    const messageInput = screen.getByTestId("message-input");
+    messageInput.focus();
+
+    await act(async () => {
+      fireEvent.keyDown(messageInput, { key: "r", ctrlKey: true });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("history-search-popup")).toBeInTheDocument();
+    });
+
+    // 晚到的旧查询回复（requestId 不匹配）→ 丢弃：列表为空、loading 保持
+    sendCommand("historyResponse", {
+      history: [{ prompt: "stale", timestamp: Date.now() }],
+      requestId: "stale-request-id",
+    });
+    expect(screen.getByTestId("history-search-popup").textContent).toContain(
+      "正在加载...",
+    );
+
+    // 当前请求的回复 → 正常渲染
+    sendCommand("historyResponse", {
+      history: [{ prompt: "fresh", timestamp: Date.now() }],
+      requestId: sentRequestId(vscode, "requestHistory"),
+    });
+    await waitFor(() => {
+      const items = screen
+        .getByTestId("history-search-popup")
+        .querySelectorAll(".history-search-item");
+      expect(items).toHaveLength(1);
+      expect(items[0]).toHaveTextContent(/fresh/);
     });
   });
 

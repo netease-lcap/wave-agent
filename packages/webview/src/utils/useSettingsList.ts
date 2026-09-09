@@ -15,6 +15,13 @@ export interface UseSettingsListOptions<TList> {
   responseCommands: string[];
   /** 从响应消息提取列表状态（含 || [] / || {} 兜底）。 */
   pickItems: (message: HostMessage) => TList;
+  /**
+   * 响应归属键提取（过期即弃，webview-fixtures ReplyAttribution 契约）：
+   * 提取值 ≠ fetchKey 的回复直接丢弃（切 Tab 前发出的慢回复不得覆盖当前
+   * Tab 的列表）。钩子视图传 `(message) => message.scope`；fetchKey 缺省
+   * （挂载拉取一次的视图）不传本项即无归属过滤。
+   */
+  attributionKey?: (message: HostMessage) => string;
   /** 命中响应后的附加视图状态更新（钩子 configPath / MCP connecting 清零）。 */
   onResponse?: (message: HostMessage) => void;
 }
@@ -49,6 +56,11 @@ export function useSettingsList<TList, TItem>(
   useHostMessage((message) => {
     const current = latest.current;
     if (!current.responseCommands.includes(message.command)) return;
+    // 过期即弃：归属键与当前 fetchKey 不一致的回复（切 Tab 前发出的慢回复）
+    // 直接丢弃——不写列表、不解 loading（当前 Tab 的拉取仍在途）。
+    if (current.attributionKey && current.fetchKey !== undefined) {
+      if (current.attributionKey(message) !== current.fetchKey) return;
+    }
     setItems(current.pickItems(message));
     current.onResponse?.(message);
     setLoading(false);

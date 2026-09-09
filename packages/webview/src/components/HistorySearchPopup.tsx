@@ -25,6 +25,11 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
+  // 一次性查询归属键（webview-fixtures ReplyAttribution: historyResponse →
+  // requestId）：每次请求换 id，晚到的旧查询回复按比对丢弃（fileSuggestions
+  // 的 requestIdRef 同款范例）。debounce 连续输入 + CLI 慢查询下，旧回复
+  // 覆盖新结果会让搜索"越搜越旧"。
+  const requestIdRef = useRef<string>("");
 
   // Handle clicks outside to close popup (listener registered one tick later
   // inside useClickOutside so a mousedown that just opened this popup is not
@@ -41,7 +46,11 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
       inputRef.current.focus();
       // Request initial history
       setIsLoading(true);
-      vscode.postMessage({ command: "requestHistory" });
+      requestIdRef.current = Date.now().toString();
+      vscode.postMessage({
+        command: "requestHistory",
+        requestId: requestIdRef.current,
+      });
     } else {
       setQuery("");
       setItems([]);
@@ -52,6 +61,8 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
   // Handle messages from extension
   useHostMessage((data) => {
     if (data.command === "historyResponse") {
+      // 过期即弃：非当前请求的晚到回复直接丢弃
+      if (data.requestId !== requestIdRef.current) return;
       setItems(data.history || []);
       setSelectedIndex(0);
       setIsLoading(false);
@@ -77,12 +88,21 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
     if (isVisible && query.trim()) {
       const timer = setTimeout(() => {
         setIsLoading(true);
-        vscode.postMessage({ command: "searchHistory", query });
+        requestIdRef.current = Date.now().toString();
+        vscode.postMessage({
+          command: "searchHistory",
+          query,
+          requestId: requestIdRef.current,
+        });
       }, 300);
       return () => clearTimeout(timer);
     } else if (isVisible && !query.trim()) {
       setIsLoading(true);
-      vscode.postMessage({ command: "requestHistory" });
+      requestIdRef.current = Date.now().toString();
+      vscode.postMessage({
+        command: "requestHistory",
+        requestId: requestIdRef.current,
+      });
     }
   }, [query, isVisible, vscode]);
 

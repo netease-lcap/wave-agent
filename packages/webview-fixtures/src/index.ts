@@ -334,6 +334,8 @@ export const fixtures: Fixtures = {
 
   hooksResponse: (hooks, overrides = {}) => ({
     command: "hooksResponse",
+    // 归属键默认 user（host 以请求 scope 恒回带；切 Tab 场景显式 override）
+    scope: "user",
     hooks,
     ...overrides,
   }),

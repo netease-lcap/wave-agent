@@ -3535,6 +3535,8 @@ export class DesktopHost {
         this.postMessage({
           command: "hooksResponse",
           paneId: pid,
+          // 归属键：请求 scope 恒回带（webview 切 Tab 过期即弃）
+          scope: msg.scope as "user" | "project" | "plugin",
           hooks,
         });
         break;
@@ -3553,6 +3555,8 @@ export class DesktopHost {
           this.postMessage({
             command: "hooksResponse",
             paneId: pid,
+            // 归属键：请求 scope 恒回带（同 getHooksByScope）
+            scope: msg.scope as "user" | "project" | "plugin",
             hooks: hooks3,
           });
         } catch (error) {
@@ -3703,11 +3707,14 @@ export class DesktopHost {
 
       // -- prompt history --------------------------------------------------------------
       case "requestHistory":
-        await this.handleRequestHistory();
+        await this.handleRequestHistory(msg.requestId as string);
         break;
 
       case "searchHistory":
-        await this.handleSearchHistory(msg.query as string);
+        await this.handleSearchHistory(
+          msg.query as string,
+          msg.requestId as string,
+        );
         break;
 
       // -- file suggestions / uploads ---------------------------------------------------
@@ -5246,12 +5253,17 @@ export class DesktopHost {
     }
   }
 
-  private async handleRequestHistory(): Promise<void> {
+  private async handleRequestHistory(requestId: string): Promise<void> {
     try {
       const result = (await this.utilityClientFor(this.currentHost).request(
         "getPromptHistory",
       )) as { history: unknown[] };
-      this.postMessage({ command: "historyResponse", history: result.history });
+      this.postMessage({
+        command: "historyResponse",
+        // 归属键：请求 requestId 原样带回（webview 过期即弃）
+        requestId,
+        history: result.history,
+      });
     } catch (error) {
       console.error("[DesktopHost] 获取历史记录失败:", error);
       this.postMessage({
@@ -5261,13 +5273,21 @@ export class DesktopHost {
     }
   }
 
-  private async handleSearchHistory(query: string): Promise<void> {
+  private async handleSearchHistory(
+    query: string,
+    requestId: string,
+  ): Promise<void> {
     try {
       const result = (await this.utilityClientFor(this.currentHost).request(
         "searchPromptHistory",
         { query },
       )) as { history: unknown[] };
-      this.postMessage({ command: "historyResponse", history: result.history });
+      this.postMessage({
+        command: "historyResponse",
+        // 归属键：请求 requestId 原样带回（webview 过期即弃）
+        requestId,
+        history: result.history,
+      });
     } catch (error) {
       console.error("[DesktopHost] 搜索历史记录失败:", error);
       this.postMessage({

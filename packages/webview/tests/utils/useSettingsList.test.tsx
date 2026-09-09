@@ -64,6 +64,45 @@ describe("useSettingsList", () => {
     expect(result.current.loading).toBe(false);
   });
 
+  it("attributionKey mismatch drops the stale reply (过期即弃，hooksResponse→scope)", () => {
+    const fetchRequest = vi.fn();
+    const { result } = renderHook(
+      ({ fetchKey }: { fetchKey: string }) =>
+        useSettingsList<string[], string>({
+          initialItems: [],
+          fetchRequest,
+          fetchKey,
+          responseCommands: ["listResponse"],
+          pickItems: (message) => message.items || [],
+          attributionKey: (message) => message.scope as string,
+        }),
+      { initialProps: { fetchKey: "project" } },
+    );
+    // 切 Tab 前发出的 user 慢回复：归属不符 → 丢弃，loading 保持（当前拉取在途）
+    dispatch({ command: "listResponse", scope: "user", items: ["stale"] });
+    expect(result.current.items).toEqual([]);
+    expect(result.current.loading).toBe(true);
+    // 归属相符的回复正常生效
+    dispatch({ command: "listResponse", scope: "project", items: ["fresh"] });
+    expect(result.current.items).toEqual(["fresh"]);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it("attributionKey without fetchKey does not filter (挂载拉取一次的视图)", () => {
+    const { result } = renderHook(() =>
+      useSettingsList<string[], string>({
+        initialItems: [],
+        fetchRequest: () => {},
+        responseCommands: ["listResponse"],
+        pickItems: (message) => message.items || [],
+        attributionKey: (message) => message.scope as string,
+      }),
+    );
+    dispatch({ command: "listResponse", scope: "user", items: ["a"] });
+    expect(result.current.items).toEqual(["a"]);
+    expect(result.current.loading).toBe(false);
+  });
+
   it("calls onResponse with the matched message for view-specific state", () => {
     let extra: string | null = null;
     const { result } = renderHook(() =>
