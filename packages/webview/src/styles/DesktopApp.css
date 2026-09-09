@@ -1441,6 +1441,11 @@ body.is-panel-resizing webview {
   padding: 24px;
   overflow-y: auto;
   border-left: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  /* Narrow-slot empty state: entry buttons collapse to a single column
+     (spec「面板空态」场景 10). Container query on the empty panel's own
+     content width — the slot width is drag-controlled, so the panel flexes
+     with it and needs no JS to observe the resize. */
+  container-type: inline-size;
 }
 
 .desktop-panel-empty-title {
@@ -1457,10 +1462,22 @@ body.is-panel-resizing webview {
 
 .desktop-panel-empty-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  /* Two columns need >= 2*150px + 8px gap = 308px of content width; below
+     that (see the container query under .desktop-panel-empty) the entries
+     collapse to one column. The 150px floor keeps this grid's minimum in
+     sync with that breakpoint. */
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
   gap: 8px;
   width: 100%;
   max-width: 340px;
+}
+
+/* Narrow slot (dragged toward the 320px minimum): the five entries lay out
+   in a single full-width column, keeping their DOM order and shortcuts. */
+@container (max-width: 307px) {
+  .desktop-panel-empty-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .desktop-panel-empty-item {
