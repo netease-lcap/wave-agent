@@ -3,7 +3,7 @@
   "private": true,
   "displayName": "CodeWave IDE",
   "description": "CodeWave IDE: 代码智聊",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "publisher": "wave-codechat",
   "icon": "LOGO.png",
   "repository": {
