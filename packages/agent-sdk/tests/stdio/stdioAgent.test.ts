@@ -774,6 +774,29 @@ describe("StdioAgent", () => {
     expect(result).toEqual(messages);
   });
 
+  // The host pulls the message list on webviewReady; a webview that was
+  // re-created in the meantime missed the change-driven contextUsage
+  // notification, so the percentage rides along with the pull.
+  it("getMessages caches the context-usage percentage for the host to replay", async () => {
+    const { agent, client } = createAgent();
+    client.request.mockResolvedValue({ messages: [], contextUsagePercent: 25 });
+
+    await agent.getMessages();
+
+    expect(agent.contextUsagePercent).toBe(25);
+  });
+
+  it("getMessages clears a stale context-usage percentage when the response omits it", async () => {
+    const { agent, client } = createAgent();
+    client.request.mockResolvedValue({ messages: [], contextUsagePercent: 25 });
+    await agent.getMessages();
+
+    client.request.mockResolvedValue({ messages: [] });
+    await agent.getMessages();
+
+    expect(agent.contextUsagePercent).toBeUndefined();
+  });
+
   it("userMessageAdded forwards message to callback", () => {
     const onUserMessageAdded = vi.fn();
     const { agent } = createAgent({ onUserMessageAdded });

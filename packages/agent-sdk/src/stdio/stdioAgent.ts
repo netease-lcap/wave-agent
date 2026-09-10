@@ -144,6 +144,12 @@ export class StdioAgent {
    */
   public sessionCwd: string | undefined;
   public latestTotalTokens = 0;
+  /**
+   * Context-usage percentage reported with the most recent getMessages pull.
+   * A host whose webview was re-created long after the last token change gets
+   * no contextUsage notification, so it replays this on webviewReady instead.
+   */
+  public contextUsagePercent: number | undefined;
   public permissionMode: PermissionMode | undefined;
   public messages: Message[] = [];
   public queuedMessages: QueuedMessage[] = [];
@@ -179,6 +185,9 @@ export class StdioAgent {
     this.sessionCwd = result.workingDirectory;
     this.permissionMode = result.permissionMode;
     this.latestTotalTokens = result.latestTotalTokens;
+    // A fresh session has no usage yet; don't let a previous session's
+    // percentage survive into this agent.
+    this.contextUsagePercent = undefined;
     // Register with the router so subsequent notifications are routed here
     this.router.register(this.sessionId, this);
     return result;
@@ -317,8 +326,9 @@ export class StdioAgent {
       "getMessages",
       undefined,
       this.sessionId,
-    )) as { messages: Message[] };
+    )) as { messages: Message[]; contextUsagePercent?: number };
     this.messages = result.messages;
+    this.contextUsagePercent = result.contextUsagePercent;
     return result.messages;
   }
 
