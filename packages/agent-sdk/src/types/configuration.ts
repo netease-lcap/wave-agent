@@ -76,6 +76,23 @@ export interface WaveConfiguration {
 }
 
 /**
+ * 设置页读写的用户偏好子集（落点 = 用户级 `~/.wave/settings.json`；读写实现见
+ * `utils/userSettings.ts`）。三端（VSCE / JetBrains / desktop）设置页与 CLI 的
+ * `getUserSettings` / `updateUserSettings` RPC 共用这一形状；`contextLength` 单位
+ * 为 K（落盘换算为 `env.WAVE_MAX_INPUT_TOKENS`）。
+ */
+export interface UserPreferenceSettings {
+  /** AI 回复语言（settings.json 顶层 `language`，如 zh-CN / en-US）。 */
+  language?: string;
+  /** 上下文长度，单位 K（如 200 = 200K）。 */
+  contextLength?: number;
+  /** 是否开启自动记忆提取。 */
+  autoMemoryEnabled?: boolean;
+  /** 自动记忆提取的轮次频率（1–100）。 */
+  autoMemoryFrequency?: number;
+}
+
+/**
  * Legacy alias for backward compatibility - will be deprecated
  */
 export interface HookConfiguration extends WaveConfiguration {

@@ -1069,6 +1069,91 @@ describe("ConfigurationService", () => {
       configService.setOptions({ autoMemoryFrequency: 0 });
       expect(configService.resolveAutoMemoryFrequency()).toBe(1);
     });
+
+    it("should honor settings.json autoMemoryFrequency (merge keeps the key, beats env)", async () => {
+      process.env.WAVE_AUTO_MEMORY_FREQUENCY = "3";
+      const config = { autoMemoryFrequency: 7 };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      await configService.loadMergedConfiguration(tempDir);
+
+      expect(configService.resolveAutoMemoryFrequency()).toBe(7);
+    });
+
+    it("should resolve by the priority chain options > settings.json > env > default", async () => {
+      process.env.WAVE_AUTO_MEMORY_FREQUENCY = "3";
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({ autoMemoryFrequency: 7 }),
+      );
+      await configService.loadMergedConfiguration(tempDir);
+
+      expect(configService.resolveAutoMemoryFrequency()).toBe(7);
+      configService.setOptions({ autoMemoryFrequency: 11 });
+      expect(configService.resolveAutoMemoryFrequency()).toBe(11);
+    });
+  });
+
+  describe("turn snapshot (设置实时重载场景 5)", () => {
+    const liveConfig = {
+      language: "English",
+      autoMemoryEnabled: false,
+      autoMemoryFrequency: 9,
+      env: { WAVE_MAX_INPUT_TOKENS: "128000" },
+    };
+
+    beforeEach(async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(liveConfig));
+      await configService.loadMergedConfiguration(tempDir);
+    });
+
+    afterEach(() => {
+      configService.setTurnSnapshotSource(() => null);
+    });
+
+    it("no snapshot outside a turn: resolve chain reads the live configuration", () => {
+      configService.setTurnSnapshotSource(() => null);
+
+      expect(configService.resolveLanguage()).toBe("English");
+      expect(configService.resolveAutoMemoryEnabled()).toBe(false);
+      expect(configService.getEnvSnapshot().WAVE_MAX_INPUT_TOKENS).toBe(
+        "128000",
+      );
+    });
+
+    it("inside a turn: resolve chain reads the snapshot, not a mid-turn reload", () => {
+      configService.setTurnSnapshotSource(() => ({
+        configuration: {
+          language: "Chinese",
+          autoMemoryEnabled: true,
+          autoMemoryFrequency: 5,
+          env: { WAVE_MAX_INPUT_TOKENS: "64000" },
+        },
+        env: { WAVE_MAX_INPUT_TOKENS: "64000" },
+      }));
+
+      expect(configService.resolveLanguage()).toBe("Chinese");
+      expect(configService.resolveAutoMemoryEnabled()).toBe(true);
+      expect(configService.resolveAutoMemoryFrequency()).toBe(5);
+      expect(configService.resolveMaxInputTokens()).toBe(64000);
+      expect(configService.getEnvSnapshot().WAVE_MAX_INPUT_TOKENS).toBe(
+        "64000",
+      );
+    });
+
+    it("the auto-memory safe zone reads the live value, not the turn snapshot", () => {
+      // 安全区是「执行态」（与 permission rules 同类）：开关关闭时必须立即生效，
+      // 否则关闭自动记忆后本轮仍能写入目录外文件。
+      configService.setTurnSnapshotSource(() => ({
+        configuration: { autoMemoryEnabled: true },
+        env: {},
+      }));
+
+      expect(configService.resolveAutoMemoryEnabled()).toBe(true); // 轮内快照
+      expect(configService.resolveAutoMemoryEnabledNow()).toBe(false); // 实时
+    });
   });
 
   describe("resolveWorktreeBaseRef", () => {

@@ -49,9 +49,6 @@ export interface InitializeParams {
   defaultHeaders?: Record<string, string>;
   model?: string;
   fastModel?: string;
-  language?: string;
-  autoMemoryEnabled?: boolean;
-  autoMemoryFrequency?: number;
   permissionMode?: PermissionMode;
   tools?: string[];
   allowedTools?: string[];
@@ -69,6 +66,12 @@ export interface InitializeResult {
   latestTotalTokens: number;
 }
 
+/**
+ * Session-level overrides only. 用户偏好（语言 / 上下文长度 / 自动记忆开关与频率）
+ * **不得**经本层下发——它们写用户级 `~/.wave/settings.json` 并由实时重载生效；
+ * 覆盖层优先级高于 settings.json，会把实时值永久遮蔽（docs/specs/core/agent-config.md
+ * 「分层职责」）。
+ */
 export interface UpdateConfigParams {
   apiKey?: string;
   baseURL?: string;
@@ -76,10 +79,6 @@ export interface UpdateConfigParams {
   defaultHeaders?: Record<string, string>;
   model?: string;
   fastModel?: string;
-  language?: string;
-  contextLength?: number;
-  autoMemoryEnabled?: boolean;
-  autoMemoryFrequency?: number;
 }
 
 // ── Callbacks (mirror AgentCallbacks) ────────────────────────────

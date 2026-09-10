@@ -367,6 +367,19 @@ export class PermissionManager {
   }
 
   /**
+   * Remove a system-level additional directory (idempotent). Used when a
+   * settings.json change revokes a privilege that was granted at construction
+   * time — e.g. turning auto-memory off removes its directory from the safe
+   * zone (core/agent-config.md scenario 6).
+   */
+  public removeSystemAdditionalDirectory(directory: string): void {
+    const resolvedPath = resolveAdditionalDirectory(directory, this.workdir);
+    this.systemAdditionalDirectories = this.systemAdditionalDirectories.filter(
+      (dir) => dir !== resolvedPath,
+    );
+  }
+
+  /**
    * Set the current plan file path
    */
   public setPlanFilePath(path: string | undefined): void {

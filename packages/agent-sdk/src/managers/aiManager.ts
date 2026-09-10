@@ -36,6 +36,7 @@ import type { PermissionManager } from "./permissionManager.js";
 import type { SubagentManager } from "./subagentManager.js";
 import type { CronManager } from "./cronManager.js";
 import type { SkillManager } from "./skillManager.js";
+import type { LiveConfigManager } from "./liveConfigManager.js";
 import {
   buildSystemPrompt,
   formatCompactSummary,
@@ -1456,6 +1457,10 @@ ${question}`;
     return this.container.get<SkillManager>("SkillManager");
   }
 
+  private get liveConfigManager(): LiveConfigManager | undefined {
+    return this.container.get<LiveConfigManager>("LiveConfigManager");
+  }
+
   public async sendAIMessage(
     options: {
       recursionDepth?: number;
@@ -1467,6 +1472,17 @@ ${question}`;
   ): Promise<void> {
     const { recursionDepth = 0, model, allowedRules, maxTokens } = options;
     let turnOffset = recursionDepth;
+
+    // Pin the settings.json-derived configuration for the whole turn: live
+    // reload can land mid-turn and the turn must not see values shift under it
+    // (core/agent-config.md scenario 5). Nested turns (subagent turns inside
+    // their parent's) share the outer snapshot instead of re-capturing it; the
+    // release at the end of the turn mirrors this capture and lives on the
+    // single exit path of this function.
+    const ownsTurnSnapshot = recursionDepth === 0;
+    if (ownsTurnSnapshot) {
+      this.liveConfigManager?.onTurnStart();
+    }
 
     // Reserve this turn synchronously before any async work. Bumping the
     // generation invalidates any in-flight turn's end-of-turn cleanup, and
@@ -2168,6 +2184,9 @@ ${question}`;
         // loading state.
         if (myGeneration === this.turnGeneration) {
           this.setIsLoading(false);
+        }
+        if (ownsTurnSnapshot) {
+          this.liveConfigManager?.onTurnEnd();
         }
         break outer;
       }
