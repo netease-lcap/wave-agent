@@ -270,6 +270,14 @@
   line-height: 20px;
 }
 
+/* 行内补充说明，比正文描述更弱化（见 spec agent-config「上下文长度的落点」）。 */
+.settings-row-copy .settings-row-hint {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  line-height: 20px;
+  opacity: 0.75;
+}
+
 .settings-control,
 .settings-number-control {
   width: 260px;

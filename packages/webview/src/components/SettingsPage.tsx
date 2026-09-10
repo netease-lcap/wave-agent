@@ -405,6 +405,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                     <div className="settings-row-copy">
                       <h3>上下文长度</h3>
                       <p>设置新对话默认可以使用的最大上下文长度</p>
+                      {/* 可见说明：该值落在全局 env.WAVE_MAX_INPUT_TOKENS，当前
+                          模型自带上下文上限时会以模型配置为准（spec agent-config
+                          边界说明「上下文长度的落点」）——避免被误解为设置失效。 */}
+                      <p className="settings-row-hint">
+                        全局默认；当前模型自带上下文上限时以模型配置为准
+                      </p>
                     </div>
                     <div className="settings-number-control">
                       <input
