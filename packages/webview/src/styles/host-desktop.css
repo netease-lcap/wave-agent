@@ -960,6 +960,71 @@
   background-color: rgba(255, 255, 255, 0.08);
 }
 
+/* ── TXT-01：阅读正文使用 UI 字体角色（F-01）─────────────────────
+   base `.message-content` 绑定 --vscode-editor-font-family，令 Markdown
+   段落/列表/引用/表格/标题与错误块整体渲染为 Menlo 等宽栈，违反
+   conversation-typography.md TXT-01（阅读正文不得借用编辑器字体变量）。
+   这里把正文根角色改回 UI 字体：`--vscode-font-family` 即 body 的 UI 栈，
+   与 reasoning / 工具行 / ask-user 等既有 UI 角色一致。
+   代码字段（Markdown code/pre、bash 命令与输出、写入预览与路径、
+   lsp-output、diff、mermaid）各自规则内已显式绑定等宽栈，不在此重复
+   声明——避免在文件末尾堆叠覆盖。
+   仅作用于 desktop 宿主；IDE 宿主仍走 base，行为不变。 */
+[data-host="desktop"] .message-content {
+  font-family: var(--vscode-font-family);
+}
+
+/* ── G2 / G3 / G4：字号与行高绑定命名角色（F-02 / F-03 / F-04 / F-05）──
+   契约 conversation-typography.md：TXT-02 禁止按嵌套深度连乘 0.9em、
+   TXT-05 正文行高一致、角色表「表格单元格 = 正文 14/22」「行内代码/代码块
+   = 13px（既有约定）」「表头不低于正文」。几条规则作用于同一批选择器，
+   必须同批实现与验收（td 基准一变，表内 code 的 em 基准随之改变）。
+
+   ① 正文行盒统一 22px：base `.message-content{line-height:1.4}` 与
+      `.markdown-content p{line-height:1.5}` 造成 p 21px、li/引用 19.6px；
+      用户气泡的 22px 覆盖写在 .user-text-block 上，被内层 .message-content
+      的 1.4 顶掉（实测仍 19.6px），故这里直接命中内层元素。
+      错误块同属正文角色，随根角色一并收口。
+   ② 表格：去掉 table 的 0.9em（它与行内 code 的 0.9em 相乘即 11.34px 的
+      组合缩放来源），单元格与表头按正文角色取 14/22；表头字重 600 保持，
+      「不低于正文」为本轮执行档，最终值仍待 C-03 候选拍板。
+   ③ 代码角色：行内 code 与代码块去 0.9em → 13px 绝对值。行高仍随
+      C-02 候选统一，本轮不抢先改（pre 保持 base 的 1.4）。 */
+[data-host="desktop"] .message-content,
+[data-host="desktop"] .markdown-content,
+[data-host="desktop"] .markdown-content p,
+[data-host="desktop"] .markdown-content li,
+[data-host="desktop"] .markdown-content blockquote,
+[data-host="desktop"] .user-text-block .message-content.user-content {
+  line-height: 22px;
+}
+
+[data-host="desktop"] .markdown-content table,
+[data-host="desktop"] .markdown-content th,
+[data-host="desktop"] .markdown-content td {
+  font-size: 14px;
+  line-height: 22px;
+}
+
+[data-host="desktop"] .markdown-content :not(pre) > code,
+[data-host="desktop"] .markdown-content pre {
+  font-size: 13px;
+}
+
+/* ── F-06：宽表在自身区域内横向滚动（TXT-06）────────────────────
+   宽表最小内容宽大于消息列时会撑破格子，而 .messages-container 是
+   overflow-x:hidden，溢出部分被静默裁掉（实测 882px 宽表落在 760px 列内）。
+   表格渲染时已包一层 .md-table-scroll（Message.tsx renderer.table），
+   这里让它承担横向滚动，画布本身不产生横向滚动。 */
+[data-host="desktop"] .md-table-scroll {
+  max-width: 100%;
+  margin: 12px 0;
+  overflow-x: auto;
+}
+[data-host="desktop"] .md-table-scroll > table {
+  margin: 0;
+}
+
 /* ① 用户消息气泡内滚动条贴右缘：base .user-text-block 的 padding 12px 让
    内部 .user-content（max-height 200px + overflow-y auto）的滚动条缩进气泡
    右缘 12px，与消息容器等滚动条「贴右缘」规范不一致 → padding 移到内容区，

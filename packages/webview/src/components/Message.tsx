@@ -129,6 +129,15 @@ const markedCleanHref = (href: string): string | null => {
 const createMessageMarkdownRenderer = (workdir?: string) => {
   const renderer = new marked.Renderer();
   renderer.listitem = renderTaskListitem;
+  // 表格包一层滚动容器（specs 走查 F-06 / conversation-typography.md TXT-06）：
+  // 宽表需在自身区域内横向滚动，而不是被 .messages-container 的 overflow-x:hidden
+  // 静默裁切。包装 div 本身无内联样式，视觉由宿主样式控制（桌面端给
+  // .md-table-scroll 设 overflow-x:auto），故 IDE 宿主结构变化但外观不变。
+  // marked 9 的 renderer.table 签名是 (headerHtml, bodyHtml)，默认实现不使用
+  // this，转调默认实现可保证 thead/tbody/对齐渲染逐字节一致。
+  const defaultTable = marked.Renderer.prototype.table;
+  renderer.table = (header: string, body: string) =>
+    `<div class="md-table-scroll">${defaultTable.call(renderer, header, body)}</div>`;
   renderer.codespan = (text: string) => {
     const url = extractClickableUrl(text);
     if (url) {
@@ -213,6 +222,11 @@ const parseMarkdownWithMermaid = (
       });
       const sanitizedHtml = DOMPurify.sanitize(html, {
         ALLOWED_TAGS: [
+          // div 仅为表格滚动容器（renderer.table 的 .md-table-scroll）放行：
+          // 不在白名单时 DOMPurify 会剥掉包装层、只留子节点，导致宽表退回
+          // 被 .messages-container 静默裁切。div 本身无脚本语义，属性仍受
+          // ALLOWED_ATTR / 默认 URL 校验约束。
+          "div",
           "p",
           "br",
           "strong",
