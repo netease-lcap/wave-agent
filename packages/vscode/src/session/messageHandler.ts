@@ -621,8 +621,9 @@ export class MessageHandler {
         configData as Partial<ConfigurationData>,
       );
       const config = await this.configService.loadConfiguration();
-      // Recreate agents so the new config takes effect (same as the chat path).
-      this.context.updateAllSessionsConfig(config);
+      // 用户偏好写入用户级 settings.json，由 SDK 实时重载在**下一轮对话**生效；
+      // 保存不重建会话（spec agent-config「设置实时重载」/「配置变更的构造期
+      // 副作用与重建」场景 1–2）：回执与界面刷新不等待任何重建。
       // 设置页保存结果经宿主原生通知提示（spec「设置页反馈语义」，webview 不再
       // 渲染页面内提示）；configurationResponse 仍回发以刷新设置页展示值。
       vscode.window.showInformationMessage("保存成功");
@@ -1772,9 +1773,9 @@ export class MessageHandler {
       await this.configService.saveConfiguration(
         configData as Partial<ConfigurationData>,
       );
-      const config = await this.configService.loadConfiguration();
 
-      this.context.updateAllSessionsConfig(config);
+      // 同 settings 路由：用户偏好经用户级 settings.json 实时重载生效，保存不
+      // 重建会话（spec agent-config「配置变更的构造期副作用与重建」场景 1–2）。
 
       // 设置页保存结果经宿主原生通知提示（spec「设置页反馈语义」；chat 路由与
       // settings 路由同语义，避免双 switch 漂移）

@@ -834,7 +834,7 @@ describe("MessageHandler settings tab", () => {
     expect(context.postMessage).not.toHaveBeenCalled();
   });
 
-  test("updateConfiguration saves, recreates agents and replies to the settings panel", async () => {
+  test("updateConfiguration saves user preferences and replies without recreating agents", async () => {
     const session = createReadySession();
     const { handler, context, configService } = createReadyHandler(session);
 
@@ -846,7 +846,9 @@ describe("MessageHandler settings tab", () => {
     expect(configService.saveConfiguration).toHaveBeenCalledWith({
       language: "en-US",
     });
-    expect(context.updateAllSessionsConfig).toHaveBeenCalled();
+    // 用户偏好落用户级 ~/.wave/settings.json，由 SDK 实时重载在下一轮对话生效：
+    // 保存不重建会话（spec agent-config「配置变更的构造期副作用与重建」场景 1）。
+    expect(context.updateAllSessionsConfig).not.toHaveBeenCalled();
     // 保存结果经宿主原生通知提示（spec「设置页反馈语义」）
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       "保存成功",

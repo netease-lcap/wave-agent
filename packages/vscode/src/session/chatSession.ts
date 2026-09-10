@@ -222,9 +222,9 @@ export class ChatSession {
         restoreSessionId,
         model: config.model,
         fastModel: config.fastModel,
-        language: config.language,
-        autoMemoryEnabled: config.autoMemoryEnabled,
-        autoMemoryFrequency: config.autoMemoryFrequency,
+        // 用户偏好（language / autoMemory*）不经此覆盖层下发——它们落在用户级
+        // ~/.wave/settings.json 并由 SDK 实时重载生效（spec agent-config
+        // 「设置实时重载」；覆盖层会永久遮蔽 settings.json 的实时值）。
       };
 
       try {
@@ -366,13 +366,11 @@ export class ChatSession {
         this.callbacks.onStreamingChange(false);
       }
 
-      // Server-side destroy + recreate with restored session
+      // Server-side destroy + recreate with restored session（仅会话级键：用户偏好
+      // 不走覆盖层，见 initialize 处注释）
       await this.agent.updateConfig({
         model: config.model,
         fastModel: config.fastModel,
-        language: config.language,
-        autoMemoryEnabled: config.autoMemoryEnabled,
-        autoMemoryFrequency: config.autoMemoryFrequency,
       });
       console.log(
         `[updateConfig] ${this.viewType} 配置更新完成，sessionId: ${this.sessionId}`,
