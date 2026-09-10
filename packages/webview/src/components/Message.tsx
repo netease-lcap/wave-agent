@@ -126,6 +126,44 @@ const markedCleanHref = (href: string): string | null => {
   }
 };
 
+// 表格列宽按内容分配（V-01）：单元格文本判定 —— 短 token 保持单行、超长不可断
+// token 放开断行，其余自然折行。阈值只与「文字本身能否自然断行」有关，与业务
+// 语义、列序、表结构无关，故可复用到任意表格。
+// 长 token 的判据取「长度 ≥20 的连续串」或「含 / 或 @ 且 ≥12 的连续串」（后者
+// 覆盖短一点的 URL / 邮箱 / 路径）；CJK 文本本身可在字间断行，无论哪条规则其
+// 视觉折行结果一致，只是会参与列宽弹性分配。
+const TABLE_CELL_SHORT_TOKEN_MAX = 12;
+const TABLE_CELL_LONG_TOKEN_MIN = 20;
+const TABLE_CELL_ADDRESS_MIN = 12;
+const TABLE_CELL_ADDRESS_RE = /[/@]/;
+const HTML_ENTITY_MAP: Record<string, string> = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&nbsp;": " ",
+};
+const tableCellClass = (cellHtml: string): string | null => {
+  const text = cellHtml
+    .replace(/<[^>]*>/g, "")
+    .replace(/&(?:amp|lt|gt|quot|#39|nbsp);/g, (m) => HTML_ENTITY_MAP[m] ?? m)
+    .trim();
+  if (!text) return null;
+  const tokens = text.split(/\s+/);
+  const hasLongToken = tokens.some(
+    (token) =>
+      token.length >= TABLE_CELL_LONG_TOKEN_MIN ||
+      (token.length >= TABLE_CELL_ADDRESS_MIN &&
+        TABLE_CELL_ADDRESS_RE.test(token)),
+  );
+  if (hasLongToken) return "md-cell-long-token";
+  if (tokens.length === 1 && text.length <= TABLE_CELL_SHORT_TOKEN_MAX) {
+    return "md-cell-token";
+  }
+  return null;
+};
+
 const createMessageMarkdownRenderer = (workdir?: string) => {
   const renderer = new marked.Renderer();
   renderer.listitem = renderTaskListitem;
@@ -135,9 +173,27 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
   // .md-table-scroll 设 overflow-x:auto），故 IDE 宿主结构变化但外观不变。
   // marked 9 的 renderer.table 签名是 (headerHtml, bodyHtml)，默认实现不使用
   // this，转调默认实现可保证 thead/tbody/对齐渲染逐字节一致。
+  // tabindex（V-01 验收 4 / WCAG 2.1.1）：横向滚动是宽表的兜底路径，键盘用户
+  // 需能聚焦该区域后用方向键滚看被裁掉的列；与 F-10 给 code pre 的处理同源。
   const defaultTable = marked.Renderer.prototype.table;
   renderer.table = (header: string, body: string) =>
-    `<div class="md-table-scroll">${defaultTable.call(renderer, header, body)}</div>`;
+    `<div class="md-table-scroll" tabindex="0">${defaultTable.call(renderer, header, body)}</div>`;
+  // 单元格列宽判定（V-01，用户 2026-09-10「按内容分配列宽，优先自然换行，横向
+  // 滚动只作兜底」）：只依据单元格纯文本判定，不看列序/表结构/具体内容，故对任意
+  // 表格可复用，不会变成按某张表硬编码。
+  //  · 短 token（无空白且 ≤12 字符：分类 / 状态 / 序号 / 数值 / 日期 / 短词）
+  //    → md-cell-token：保持单行，避免「代码 / 路径 / 项目」被挤成逐字竖排；
+  //  · 含超长不可断 token（≥20 字符的连续串，覆盖 URL / 邮箱 / 路径 / 长英文串）
+  //    → md-cell-long-token：放开任意点断行，避免长地址挤压其他列；
+  //  · 其余（自然语言说明）不分类，按词自然折行，行宽由表格布局分配。
+  const defaultTablecell = marked.Renderer.prototype.tablecell;
+  renderer.tablecell = (content, flags) => {
+    const html = defaultTablecell.call(renderer, content, flags);
+    const cls = tableCellClass(content);
+    // 与 code renderer 同一手法：只往开标签注入 class，其余逐字节沿用默认实现
+    // （含 markdown 对齐产生的 align 属性）。
+    return cls ? html.replace(/^<(th|td)/, `<$1 class="${cls}"`) : html;
+  };
   // 任务列表复选框可访问名称（F-09 / WCAG 4.1.2；axe label critical，两模式各
   // 6 节点）：GFM 清单由 marked 默认 checkbox renderer 输出
   // `<input checked disabled type="checkbox">`，无 label / aria-label，读屏只

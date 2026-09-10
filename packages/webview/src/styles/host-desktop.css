@@ -1085,6 +1085,76 @@
   margin: 0;
 }
 
+/* ═══ F-07 + V-01：表格表头配色 / 圆角 / 去斑马纹 + 列宽按内容分配
+   （用户 2026-09-10 指示）═══
+   F-07 表头配色取 bash 命令区同一面（--cc-fill：light #F0F2F5 / dark #25292B
+   = --vscode-chat-requestBubbleBackground），与工具块统一；表格加 12px 圆角
+   （桌面大圆角规范）；保留描边；去掉 base `tr:nth-child(even)` 的斑马纹
+   （其 opacity:0.8 曾使浅色行对比降到 3.52:1，用户亦认为非必须）。
+   圆角实现：base 为 border-collapse:collapse，折叠边框不参与圆角绘制（实测
+   0 度转角仍是直角描边、只有底色被裁成圆角），故改 separate + border-spacing:0，
+   单元格只留右/下描边、末列末行去掉与表格外框重复的一侧，四角由表头/末行
+   单元格圆角承担。实测表高与列宽与 collapse 完全一致（末行 -1px 吸收共享边框）。
+   V-01 列宽按内容分配、横向滚动只作兜底：不对表格用 width:max-content，也不
+   做等宽列。两个内容判定类见 Message.tsx tableCellClass（短 token 单行 /
+   超长不可断 token 放开断行），其余单元格按词自然折行。 */
+[data-host="desktop"] .markdown-content table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 12px;
+}
+[data-host="desktop"] .markdown-content th,
+[data-host="desktop"] .markdown-content td {
+  border: none;
+  border-right: 1px solid var(--cc-border-light);
+  border-bottom: 1px solid var(--cc-border-light);
+  /* 按词换行：短 token 的 min-content 保持在「词」级别，列宽不会被压到逐字
+     竖排；长地址/长英文串由 .md-cell-long-token 单独放开。 */
+  overflow-wrap: normal;
+  word-break: normal;
+}
+[data-host="desktop"] .markdown-content th:last-child,
+[data-host="desktop"] .markdown-content td:last-child {
+  border-right: none;
+}
+[data-host="desktop"] .markdown-content tbody tr:last-child td {
+  border-bottom: none;
+}
+[data-host="desktop"] .markdown-content th {
+  background-color: var(--cc-fill);
+}
+[data-host="desktop"] .markdown-content tr:nth-child(even) {
+  background-color: transparent;
+  opacity: 1;
+}
+[data-host="desktop"] .markdown-content thead th:first-child {
+  border-top-left-radius: 12px;
+}
+[data-host="desktop"] .markdown-content thead th:last-child {
+  border-top-right-radius: 12px;
+}
+[data-host="desktop"] .markdown-content tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 12px;
+}
+[data-host="desktop"] .markdown-content tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 12px;
+}
+/* 短 token（分类 / 状态 / 序号 / 数值 / 日期 / 短词）：单行不折，保留可读宽度 */
+[data-host="desktop"] .markdown-content th.md-cell-token,
+[data-host="desktop"] .markdown-content td.md-cell-token {
+  white-space: nowrap;
+}
+/* 超长不可断 token（URL / 邮箱 / 路径 / 长英文串）：只在放不下时断行。
+   用 break-word 而非 anywhere：anywhere 会把 min-content 一并降到 1 字符，
+   浏览器便一直从「长内容列」抽宽度，实测 480px 下 4 列表的路径列被压到
+   31px 内容宽、说明格折成 28 行、表高 1582px（break-word 下同表 441px、
+   列宽 184px）。break-word 保持「词」级 min-content，长内容列优先拿到剩余
+   空间，真放不下才断行；整表仍放不下时由 .md-table-scroll 兜底横向滚动。 */
+[data-host="desktop"] .markdown-content th.md-cell-long-token,
+[data-host="desktop"] .markdown-content td.md-cell-long-token {
+  overflow-wrap: break-word;
+}
+
 /* ① 用户消息气泡内滚动条贴右缘：base .user-text-block 的 padding 12px 让
    内部 .user-content（max-height 200px + overflow-y auto）的滚动条缩进气泡
    右缘 12px，与消息容器等滚动条「贴右缘」规范不一致 → padding 移到内容区，
@@ -2781,6 +2851,7 @@
 [data-host="desktop"] .markdown-content pre:focus-visible,
 [data-host="desktop"] .bash-command-output:focus-visible,
 [data-host="desktop"] .write-preview-scroll:focus-visible,
+[data-host="desktop"] .md-table-scroll:focus-visible,
 [data-host="desktop"] .reasoning-header:focus-visible {
   outline: 2px solid var(--cc-border-focus, #a0a5a8);
   outline-offset: 1px;

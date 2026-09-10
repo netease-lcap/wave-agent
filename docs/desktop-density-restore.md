@@ -2786,3 +2786,107 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 ### 配套：diff 省略行三态走查用例（本地 mock，不入库）
 
 `.diff-line-ellipsis` 只在 diff 上下文被折叠时出现，此前 mock 里 **0 处渲染**，属「按类生效但无法目视验收」。已在本地 `prototype/mockShared.ts` 新增 `richDiffEllipsisMessages()`（3 条 Edit：`src/styles/tokens-{shadow,radius,font}.css`，上下文 **5 / 5 / 7** 行，已用 `diffLines` 实测命中 `DiffViewer.tsx:170-197` 的 `contextLimit = 3` 三条分支）并接进 `richConversationMessages()`，8899 用例「桌面端：对话流全样式」内可见（消息带 `A·` / `B·` / `C·` 前缀）。`prototype/` 与 `mockShared.ts` 均 gitignore，**不进本文件所属的提交**。
+
+## 表格展示（F-07）+ 列宽按内容分配（V-01）（用户 2026-09-10 指示，候选待走查）
+
+依据来源：**用户 2026-09-10 本窗口指示** —— F-07「表头配色可以参考 Bash 的颜色，保持统一；给表格加一下圆角；保留表格描边；斑马纹可以拿掉」；V-01「采用第三种策略：按内容分配列宽，优先自然换行，横向滚动只作兜底」+ 五条验收重点。**本轮只调整表格展示层，不改写 AI 已生成的内容**；走查验收后再整理为 CC 的表格列宽规则。
+
+### 改动 1：`packages/webview/src/components/Message.tsx`（marked 渲染器，判定与内容无关）
+
+- `renderer.table`：包 `.md-table-scroll` 时补 `tabindex="0"` —— 表格被 `.messages-container` 的 `overflow-x:hidden` 裁切时才出现局部横向滚动，滚动区必须键盘可达（与 F-10 同规）。
+- `renderer.tablecell`：按**单元格文本内容**注入类名，**不改内容本身**（`DOMPurify` 的 `ALLOWED_ATTR` 本就含 `class`）：
+  - `md-cell-token` —— 单 token 且 ≤ 12 字符：分类 / 状态 / 序号 / 数值 / 日期 / 短词；
+  - `md-cell-long-token` —— 任一 token ≥ 20 字符，或 ≥ 12 字符且含 `/`、`@`：URL / 邮箱 / 路径 / 长英文串。
+- 判定只看「长度 + 分隔符」这类通用文本特征，**不依赖 mock 内容、不绑定某一张表**，其余表格同样生效（阈值常量 `TABLE_CELL_SHORT_TOKEN_MAX = 12` / `TABLE_CELL_LONG_TOKEN_MIN = 20` / `TABLE_CELL_ADDRESS_MIN = 12`）。
+
+### 改动 2：`packages/webview/src/styles/host-desktop.css`
+
+```css
+[data-host="desktop"] .markdown-content table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 12px;
+}
+[data-host="desktop"] .markdown-content th,
+[data-host="desktop"] .markdown-content td {
+  border: none;
+  border-right: 1px solid var(--cc-border-light);
+  border-bottom: 1px solid var(--cc-border-light);
+  overflow-wrap: normal;
+  word-break: normal;
+}
+[data-host="desktop"] .markdown-content th:last-child,
+[data-host="desktop"] .markdown-content td:last-child {
+  border-right: none;
+}
+[data-host="desktop"] .markdown-content tbody tr:last-child td {
+  border-bottom: none;
+}
+[data-host="desktop"] .markdown-content th {
+  background-color: var(--cc-fill);
+}
+[data-host="desktop"] .markdown-content tr:nth-child(even) {
+  background-color: transparent;
+  opacity: 1;
+}
+[data-host="desktop"] .markdown-content thead th:first-child {
+  border-top-left-radius: 12px;
+}
+[data-host="desktop"] .markdown-content thead th:last-child {
+  border-top-right-radius: 12px;
+}
+[data-host="desktop"] .markdown-content tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 12px;
+}
+[data-host="desktop"] .markdown-content tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 12px;
+}
+[data-host="desktop"] .markdown-content th.md-cell-token,
+[data-host="desktop"] .markdown-content td.md-cell-token {
+  white-space: nowrap;
+}
+[data-host="desktop"] .markdown-content th.md-cell-long-token,
+[data-host="desktop"] .markdown-content td.md-cell-long-token {
+  overflow-wrap: break-word;
+}
+```
+
+- **表头配色统一到 bash 面**：`--cc-fill`（light `#F0F2F5` / dark `#25292B`）正是 `.bash-command-unified .bash-command-input` 的底色（`--vscode-chat-requestBubbleBackground`，见本文件「bash 命令区」一节），实测 `rgb(240,242,245)` / `rgb(37,41,43)`；base 的 `lineHighlightBackground` 是 25% 透明灰，dark 下完全透明（表头无底色）。
+- **斑马纹去掉**：base `Message.css` 的 `tr:nth-child(even){background-color:lineHighlightBackground;opacity:0.8}` 桌面端置为 `transparent / opacity:1` —— 该透明叠加还曾把浅色行正文对比压到 3.52:1（axe 附录），去掉后行底色=画布色。
+- **圆角实现**：base 是 `border-collapse: collapse`，折叠边框不参与圆角绘制（实测 0 度转角仍是直角描边、只有底色被裁圆），故改 `separate + border-spacing:0`，单元格只留右/下描边、末列末行去掉与表格外框重复的一侧，四角由表头/末行单元格承担。实测列宽与 `collapse` 完全一致，表高仅末行 −1px（吸收共享边框）。
+- **列宽按内容分配（V-01 策略三）**：不用 `width:max-content`、不做等宽列、不给固定百分比。机制是让浏览器自动表格布局按内容分配：短 token 用 `nowrap` 把 min-content 抬到「词」宽 → 短列保底拿到自然宽（不再被压成逐字竖排）；长不可断 token 用 `break-word` 只在放不下时断行；其余文本按词自然折行；整表仍放不下则由 `.md-table-scroll` 局部横滚兜底。**`break-word` 而非 `anywhere`**：`anywhere` 会把 min-content 一起降到 1 字符，浏览器便一直从长内容列抽宽度（实测 480px 下 4 列长内容表路径列被压到 31px 内容宽、说明格折成 28 行、表高 1582px；`break-word` 同表 184px 列宽、表高 441px）。
+
+### 现状 vs 候选实测（同内容、同窗口；light/dark 同值；「现状」= 注入 `!important` 等效回退 base 样式）
+
+| 窗口 / 消息列宽   | 表                              | 现状 列宽                      | 现状 高  | 现状 竖排·断字 | 候选 列宽                       | 候选 高 | 候选 竖排·断字 | 横滚               |
+| ----------------- | ------------------------------- | ------------------------------ | -------- | -------------- | ------------------------------- | ------- | -------------- | ------------------ |
+| 1440 / 800        | 8 列（组件…备注）               | `[122,216,52,52,60,55,95,106]` | 550      | 14 · 12        | `[122,177,53,53,68,55,106,124]` | 528     | **0 · 0**      | 无                 |
+| 1440 / 800        | 4 列（视口宽度…占比）           | `[162,190,190,218]`            | 196      | 0 · 0          | `[162,190,190,216]`             | 196     | **0 · 0**      | 无                 |
+| 1440 / 800        | 4 列长内容（项目/值/说明/备注） | `[42,306,364,46]`              | 440      | 7 · 7          | `[54,284,339,81]`               | 352     | **0 · 0**      | 无                 |
+| 994 / 733（分屏） | 8 列                            | `[122,174,52,52,55,55,88,94]`  | 550      | 15 · 13        | `[122,110,53,53,68,55,106,124]` | 704     | **0 · 0**      | 无                 |
+| 994 / 733（分屏） | 4 列长内容                      | `[41,276,331,44]`              | 484      | 7 · 7          | `[54,252,304,81]`               | 396     | **0 · 0**      | 无                 |
+| 480 / 360（窄窗） | 4 列                            | `[76,80,74,89]`                | 240      | 5 · 5          | `[81,95,95,108]`                | 196     | **0 · 0**      | +61（表 381>320）  |
+| 480 / 360（窄窗） | 8 列                            | `[122,39,51,50,39,55,65,56]`   | **4752** | 27 · 27        | `[122,81,53,53,68,55,106,124]`  | 946     | **0 · 0**      | +344（表 664>320） |
+| 480 / 360（窄窗） | 4 列长内容                      | `[39,209,257,39]`              | 529      | 7 · 7          | `[54,209,257,81]`               | 441     | **0 · 0**      | +283（表 603>320） |
+
+「竖排」= 短 token 单元格（分类/状态/序号/数值/日期）折成 2 行以上（逐字竖排）；「断字」= 非长 token 单元格宽度小于自身自然宽、被迫中途断字。
+
+**用户要的三个数（候选，light/dark 同值）**
+
+1. **最窄内容列宽**：**53px**（内容宽 29px，= 12px 边距 ×2 + 2 个 14px 汉字）——1440 / 994 / 480 三档都是 53px，即短列稳定停在自身自然宽度，不再随窗口变窄（现状最小 39~52px，内容宽 14~28px，已到「一字一列」）。
+2. **典型长单元格行数**：1440 —— 8 列表路径列 `209px 自然 → 2 行`，4 列长内容表 `392/380/771/796/765px 自然 → 3/2/4/3/3 行`；994 —— 路径列 `→ 4 行`、说明列 `→ 5 行`；480 —— 路径列 `→ 5 行`、说明列 `→ 6 行`。**折行数不设上限、也不作为优化目标**：候选在 994/480 下折行数反而比现状多（现状那些「少折行」是靠把列压到 14px、把 211px 的路径排成 32 行换来的）。
+3. **是否需要横向滚动**：1440 / 994 两档**不需要**（8 列与 4 列都完整落在消息列内，画布横向溢出 0）；**480px 窄窗需要**，由 `.md-table-scroll` 局部承担（8 列 +344px、4 列 +61px、4 列长内容 +283px），页面本身不被撑宽（画布 `scrollWidth == clientWidth`）。滚动区 `tabindex=0`、`overflow-x:auto`。
+
+### 五条验收重点对照
+
+1. **短词不被挤成逐字竖排** —— 竖排格数 **21 → 0**（1440）、**22 → 0**（994）、**39 → 0**（480）；最窄列由 39~52px 抬到 53px（= 自然宽）。
+2. **普通说明自然换行、每行可完整左→右阅读** —— 非长 token 的中途断字 **19 → 0**（1440）、**20 → 0**（994）、**39 → 0**（480）；长内容列拿到的正是「剩余空间」（1440 八列表 177px 为全表最宽列、4 列表 284/339px 为最宽两列）。
+3. **不以减少折行单元格数量为优化目标** —— 候选在 994（550→704）与 480（八列 4752→946、4 列 529→441）有增有减，规则里没有任何「压缩折行数」的取向，只有「短列保底可读 + 长列吸收剩余」。
+4. **放不下的宽表保留局部横向滚动 + 键盘可用，页面不被撑宽** —— 8 列/4 列在 1440、994 不需滚动；480px 下按上表滚 +61~+344px，容器 `tabindex=0` 键盘可滚，**全部 8 组实测画布横向溢出 = 0**。
+5. **同内容同窗口前后截图 + 三个数** —— 见本文件「截图」段与上表；截图 24 张：`/Users/ailsa/Documents/07-AI/走查/截图/表格{四列,四列长内容,八列}_{现状,候选}_{light,dark}.png` + `表格四列长内容_分屏994_{现状,候选}_{light,dark}.png` + `表格八列_窄窗480_{现状,候选}_{light,dark}.png` + `表格四列_窄窗480_{现状,候选}_{light,dark}.png`。
+
+### 备注
+
+- **仍待决策**：994px 分屏下 8 列表的「文件路径」列拿到 110px 剩余宽、折 4 行（全表第 3 窄），因为 7 个短列按 `nowrap` 占满各自自然宽后只剩这么多。彻底解法要引入 `min-width`（长内容列保底宽度，代价是真溢出时更早出现横滚），与「优先自然换行、横滚只作兜底」相冲突，故本轮不引入 —— 留给你走查后决定。
+- **未动**：base `Message.css` 表格样式与 `font-size:0.9em` 等一律不改（IDE 宿主观感不变）；AI 生成的表格内容（文案、行列）零改写，本轮只有展示层。
+- **测试**：`pnpm -F wave-webview type-check` exit 0。
