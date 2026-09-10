@@ -14,12 +14,22 @@ async function main() {
 
   const args = process.argv.slice(2);
   const packageCurrent = args.includes("--current");
+  // The marketplace refuses to publish a package as pre-release unless it was
+  // *packaged* as pre-release (vsce stamps Microsoft.VisualStudio.Code.PreRelease
+  // into the manifest), so the CI artifact can never be re-published to the
+  // pre-release channel — that path has to be packaged locally.
+  const preRelease = args.includes("--pre-release");
 
   // Run build first
   console.log("Running npm run esbuild:prod...");
   execSync("npm run esbuild:prod", { stdio: "inherit" });
 
-  const vsceArgs = packageCurrent ? "" : "--no-dependencies";
+  const vsceArgs = [
+    packageCurrent ? "" : "--no-dependencies",
+    preRelease ? "--pre-release" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   // Ensure releases directory exists
   const releasesDir = path.join(rootDir, "releases");
