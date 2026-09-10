@@ -92,6 +92,28 @@ export interface UserPreferenceSettings {
   autoMemoryFrequency?: number;
 }
 
+/** 用户偏好键（设置页四个控件）。 */
+export type UserPreferenceKey = keyof UserPreferenceSettings;
+
+/**
+ * 生效值的来源层。只归因**进程级可达**的层（Remote 组织下发 / 用户级文件 /
+ * 机器环境变量 / SDK 默认）：`project` / `local` 需要 workdir，而
+ * `getUserSettings` 是刻意的无会话全局 RPC；`override` / `options` 是会话级
+ * 语义，不在这条链路上（见 spec core/agent-config.md 边界说明「用户偏好的层与来源」）。
+ */
+export type UserPreferenceSource = "remote" | "user" | "env" | "default";
+
+/**
+ * `getUserSettings` / `updateUserSettings` 的回包：**生效**用户偏好——键缺失
+ * 表示该偏好没有任何提供者（设置页据此显示「未设置」态）——外加每个键的来源层
+ * （`preferenceSources`，设置页对来源为 `remote` 的键显示生效值 + 置灰 +
+ * 「由组织配置管理」）。
+ */
+export interface UserPreferenceSettingsView extends UserPreferenceSettings {
+  /** 四个键恒有来源（缺省即 `default`）。 */
+  preferenceSources?: Partial<Record<UserPreferenceKey, UserPreferenceSource>>;
+}
+
 /**
  * Legacy alias for backward compatibility - will be deprecated
  */

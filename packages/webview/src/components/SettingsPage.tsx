@@ -24,7 +24,12 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
-import { ConfigurationData, ThemeSource, UpdateChannel } from "../types";
+import {
+  ConfigurationData,
+  ThemeSource,
+  UpdateChannel,
+  UserPreferenceKey,
+} from "../types";
 import SettingsSubagentsView from "./SettingsSubagentsView";
 import SettingsSkillsView from "./SettingsSkillsView";
 import SettingsHooksView from "./SettingsHooksView";
@@ -329,6 +334,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const sddEnabled =
     projectSettingsForWorkdir?.enabledPlugins?.["sdd@builtin"] === true;
 
+  // 被组织配置（Remote 组织下发）覆盖的用户偏好键：显示**生效值** + 置灰 + 一句
+  // 「由组织配置管理」（spec agent-config 边界说明「用户偏好的层与来源」）。
+  // 用户级 `~/.wave/settings.json` 是用户偏好的落点，但生效值可能来自更高层
+  // （企业下发的 Remote 配置、机器环境变量）——只读用户文件会让设置页显示的值与
+  // 实际生效值分叉。来源为 `env`（机器环境变量）与 `user` 的键仍可编辑。
+  const orgManaged = (key: UserPreferenceKey) =>
+    configurationData?.preferenceSources?.[key] === "remote";
+
   // 保存类操作反馈统一由宿主全局 toast 提示（2026-09-09 拍板，见
   // desktop-account-and-settings「设置页反馈语义」），本组件不生成/渲染任何
   // 页面内提示文字；「保存中…」由外层 saving / agentsSaving 驱动按钮禁用。
@@ -458,12 +471,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                     <div className="settings-row-copy">
                       <h3>AI 回复语言</h3>
                       <p>设置 AI 回复时使用的语言（技术术语与代码保持原文）</p>
+                      {orgManaged("language") && (
+                        <p className="settings-row-hint">由组织配置管理</p>
+                      )}
                     </div>
                     <div className="settings-control">
                       <select
                         className="settings-select"
                         aria-label="AI 回复语言"
                         value={language}
+                        disabled={orgManaged("language")}
                         onChange={(e) => setLanguage(e.target.value)}
                       >
                         {/* 未设置态：文件里没有 language 键时用显式项表达（下拉
@@ -489,12 +506,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <p className="settings-row-hint">
                         全局默认；当前模型自带上下文上限时以模型配置为准
                       </p>
+                      {orgManaged("contextLength") && (
+                        <p className="settings-row-hint">由组织配置管理</p>
+                      )}
                     </div>
                     <div className="settings-number-control">
                       {/* 未设置态：文件里没有 env.WAVE_MAX_INPUT_TOKENS 时留空 +
                           placeholder 显示系统默认（跟随模型配置；SDK 兜底
                           200000 = 200K），保存时不写该键——系统环境里已设的
-                          WAVE_MAX_INPUT_TOKENS 因而不被「随手保存」钉住。 */}
+                          WAVE_MAX_INPUT_TOKENS 因而不被「随手保存」钉住。
+                          被组织配置覆盖时显示的是**生效值**并置灰（不可编辑）。 */}
                       <input
                         className="settings-number-input"
                         type="number"
@@ -504,6 +525,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         step={16}
                         placeholder={CONTEXT_LENGTH_PLACEHOLDER}
                         value={contextLength}
+                        disabled={orgManaged("contextLength")}
                         onChange={(e) => setContextLength(e.target.value)}
                       />
                       <span>K</span>
@@ -710,12 +732,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                     <div className="settings-row-copy">
                       <h3>开启自动记忆</h3>
                       <p>自动从对话中提取稳定偏好并写入记忆，默认开启</p>
+                      {orgManaged("autoMemoryEnabled") && (
+                        <p className="settings-row-hint">由组织配置管理</p>
+                      )}
                     </div>
                     <label className="settings-switch">
                       <input
                         type="checkbox"
                         aria-label="开启自动记忆"
                         checked={autoMemoryEnabled}
+                        disabled={orgManaged("autoMemoryEnabled")}
                         onChange={(e) => setAutoMemoryEnabled(e.target.checked)}
                       />
                       <span className="settings-switch-slider"></span>
@@ -725,12 +751,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                     <div className="settings-row-copy">
                       <h3>触发记忆提取会话轮次</h3>
                       <p>达到指定对话轮次后执行记忆提取，默认 1 轮</p>
+                      {orgManaged("autoMemoryFrequency") && (
+                        <p className="settings-row-hint">由组织配置管理</p>
+                      )}
                     </div>
                     <div className="memory-turns">
                       {/* 未设置态：文件里没有 autoMemoryFrequency 时留空 +
                           placeholder 显示系统默认（1 轮），保存时不写该键。
                           开关一行刻意不做占位态（真实默认即「开」，三态更难用，
-                          spec agent-config 场景 7）。 */}
+                          spec agent-config 场景 7）。
+                          被组织配置覆盖时显示的是**生效值**并置灰（不可编辑）。 */}
                       <input
                         className="settings-number-input memory-turns-input"
                         type="number"
@@ -739,6 +769,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         max={100}
                         placeholder={AUTO_MEMORY_FREQUENCY_PLACEHOLDER}
                         value={autoMemoryFrequency}
+                        disabled={orgManaged("autoMemoryFrequency")}
                         onChange={(e) => setAutoMemoryFrequency(e.target.value)}
                       />
                       <span>轮</span>

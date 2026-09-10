@@ -34,6 +34,7 @@ import type {
   ToolBlock,
   ErrorBlock,
   UserPreferenceSettings,
+  UserPreferenceSettingsView,
 } from "wave-agent-sdk/types";
 import {
   EDIT_TOOL_NAME,
@@ -352,7 +353,7 @@ export class DesktopHost {
    * `~/.wave/settings.json`，经 `getUserSettings` RPC 读取。缓存只为 `getStatus`
    * 这类同步回包路径服务（设置页展示值走 `getConfiguration` 的实时读取）。
    */
-  private userPreferencesByHost = new Map<string, UserPreferenceSettings>();
+  private userPreferencesByHost = new Map<string, UserPreferenceSettingsView>();
   /** 60s 账户用量轮询 (spec 场景 8). Static so tests can shrink or disable it. */
   private static accountPollIntervalMs = 60_000;
   private accountPollTimer: NodeJS.Timeout | null = null;
@@ -4894,11 +4895,11 @@ export class DesktopHost {
   /** 读会话所在进程的用户级偏好（写入缓存；RPC 失败保留上次成功值）。 */
   private async readUserPreferences(
     host: string,
-  ): Promise<UserPreferenceSettings> {
+  ): Promise<UserPreferenceSettingsView> {
     try {
       const settings = (await this.utilityClientFor(host).request(
         "getUserSettings",
-      )) as UserPreferenceSettings;
+      )) as UserPreferenceSettingsView;
       this.userPreferencesByHost.set(host, settings);
       return settings;
     } catch (error) {
@@ -4915,11 +4916,14 @@ export class DesktopHost {
    * 用「不提供该键」表达「未设置 / 没改」，宿主不得给它补默认值（补默认值会
    * 把「省略」翻译成一次写入，例如把系统环境里的 WAVE_MAX_INPUT_TOKENS 钉成
    * 200000）。CLI 侧 `updateUserPreferenceSettings` 同样按已提供的键读-改-写。
+   *
+   * 回包是**生效视图**（值 + 来源层）：保存后设置页仍要看到被组织配置覆盖的键
+   * 的生效值，不能回退成用户文件里的值。
    */
   private async updateUserPreferences(
     host: string,
     configData: DesktopConfigData,
-  ): Promise<UserPreferenceSettings> {
+  ): Promise<UserPreferenceSettingsView> {
     const patch: UserPreferenceSettings = {};
     if (configData.language !== undefined) patch.language = configData.language;
     if (typeof configData.contextLength === "number") {
@@ -4934,7 +4938,7 @@ export class DesktopHost {
     const settings = (await this.utilityClientFor(host).request(
       "updateUserSettings",
       patch,
-    )) as UserPreferenceSettings;
+    )) as UserPreferenceSettingsView;
     this.userPreferencesByHost.set(host, settings);
     return settings;
   }

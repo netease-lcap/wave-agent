@@ -28,6 +28,8 @@ import type {
   SerializableWorkflowRun,
   SubagentConfiguration,
   SkillMetadata,
+  UserPreferenceKey,
+  UserPreferenceSource,
 } from "wave-agent-sdk/dist/types/index.js";
 import type {
   SessionMetadata,
@@ -64,6 +66,8 @@ export type {
   SubagentConfiguration,
   SkillMetadata,
   ToolBlockUpdateCallbackParams,
+  UserPreferenceKey,
+  UserPreferenceSource,
 };
 
 // Slash command types
@@ -834,6 +838,13 @@ export interface ConfigurationData {
   autoMemoryEnabled?: boolean;
   /** Auto-memory extraction turn frequency, 1–100 */
   autoMemoryFrequency?: number;
+  /**
+   * 每个用户偏好键的来源层：用户级 `~/.wave/settings.json` 是用户偏好的**落点**，
+   * 但生效值可能来自更高层（`remote` = 企业下发的组织配置，`env` = 机器环境变量）。
+   * 设置为 `remote` 的键，设置页显示生效值 + 置灰 + 「由组织配置管理」；`env` 与
+   * `user` 仍可编辑；`default` = 谁都没提供（显示「未设置」态）。
+   */
+  preferenceSources?: Partial<Record<UserPreferenceKey, UserPreferenceSource>>;
 }
 
 // Plugin related types

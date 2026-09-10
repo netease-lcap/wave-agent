@@ -11,7 +11,7 @@ import {
   getMessageContent,
   validateWorktreeRemovalPath,
   loadUserConfigEnv,
-  readUserPreferenceSettings,
+  readUserPreferenceView,
   updateUserPreferenceSettings,
 } from "wave-agent-sdk";
 import { execFileSync } from "node:child_process";
@@ -1742,12 +1742,21 @@ test("logout clears auth", async () => {
 
 // ── User preference handlers（设置页保存路径，会话无关） ──────────
 
-test("getUserSettings reads the user-level preference file", async () => {
-  vi.mocked(readUserPreferenceSettings).mockReturnValue({
-    language: "English",
-    contextLength: 200,
-    autoMemoryEnabled: false,
-    autoMemoryFrequency: 5,
+test("getUserSettings 回包 = 生效值 + 每键来源层", async () => {
+  vi.mocked(readUserPreferenceView).mockReturnValue({
+    values: {
+      language: "English",
+      contextLength: 200,
+      autoMemoryEnabled: false,
+      autoMemoryFrequency: 5,
+    },
+    sources: {
+      // 组织下发的 language 盖过用户文件：设置页据此置灰该行
+      language: "remote",
+      contextLength: "user",
+      autoMemoryEnabled: "default",
+      autoMemoryFrequency: "user",
+    },
   });
   const { bridge } = createBridge();
 
@@ -1758,6 +1767,12 @@ test("getUserSettings reads the user-level preference file", async () => {
     contextLength: 200,
     autoMemoryEnabled: false,
     autoMemoryFrequency: 5,
+    preferenceSources: {
+      language: "remote",
+      contextLength: "user",
+      autoMemoryEnabled: "default",
+      autoMemoryFrequency: "user",
+    },
   });
 });
 
@@ -1765,6 +1780,15 @@ test("updateUserSettings writes the patch and returns the read-back values", asy
   vi.mocked(updateUserPreferenceSettings).mockResolvedValue({
     language: "English",
     contextLength: 128,
+  });
+  vi.mocked(readUserPreferenceView).mockReturnValue({
+    values: { language: "English", contextLength: 128 },
+    sources: {
+      language: "user",
+      contextLength: "user",
+      autoMemoryEnabled: "default",
+      autoMemoryFrequency: "default",
+    },
   });
   const { bridge } = createBridge();
 
@@ -1774,12 +1798,32 @@ test("updateUserSettings writes the patch and returns the read-back values", asy
   expect(vi.mocked(updateUserPreferenceSettings).mock.calls[0][0]).toEqual(
     patch,
   );
-  expect(result).toEqual({ language: "English", contextLength: 128 });
+  // 回包与 getUserSettings 同形（生效值 + 来源层）：保存后设置页仍要看到被组织
+  // 配置覆盖的键的生效值，不能回退成刚写进用户文件的值。
+  expect(result).toEqual({
+    language: "English",
+    contextLength: 128,
+    preferenceSources: {
+      language: "user",
+      contextLength: "user",
+      autoMemoryEnabled: "default",
+      autoMemoryFrequency: "default",
+    },
+  });
 });
 
 test("updateUserSettings 写完后显式重载本进程内全部会话（不依赖文件监视）", async () => {
   vi.mocked(updateUserPreferenceSettings).mockResolvedValue({
     language: "English",
+  });
+  vi.mocked(readUserPreferenceView).mockReturnValue({
+    values: { language: "English" },
+    sources: {
+      language: "user",
+      contextLength: "default",
+      autoMemoryEnabled: "default",
+      autoMemoryFrequency: "default",
+    },
   });
   const { bridge } = createBridge();
   const firstAgent = createMockAgent({ sessionId: "session-1" });
@@ -1800,6 +1844,15 @@ test("updateUserSettings 写完后显式重载本进程内全部会话（不依�
 
 test("空载荷（无差异保存）既不落盘也不重载", async () => {
   vi.mocked(updateUserPreferenceSettings).mockResolvedValue({});
+  vi.mocked(readUserPreferenceView).mockReturnValue({
+    values: {},
+    sources: {
+      language: "default",
+      contextLength: "default",
+      autoMemoryEnabled: "default",
+      autoMemoryFrequency: "default",
+    },
+  });
   const { bridge } = createBridge();
   const agent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(agent);

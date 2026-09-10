@@ -1,6 +1,10 @@
 import * as fs from "fs";
 import * as path from "path";
 import { app } from "electron";
+import type {
+  UserPreferenceKey,
+  UserPreferenceSource,
+} from "wave-agent-sdk/types";
 import { LOCAL_HOST } from "./sshHosts";
 
 /**
@@ -25,6 +29,14 @@ export interface DesktopConfigData {
   autoMemoryEnabled?: boolean;
   /** 用户偏好：自动记忆提取轮次频率（1–100）。 */
   autoMemoryFrequency?: number;
+  /**
+   * 用户偏好每个键的**来源层**（`remote` / `user` / `env` / `default`）：回包
+   * 里带上它，设置页才能把被组织配置（Remote）覆盖的键显示为「生效值 + 置灰」
+   * 而不是回退成用户文件里的值（spec core/agent-config.md 边界说明
+   * 「用户偏好的层与来源」）。与用户偏好同源（`getUserSettings` 回包），
+   * **不写入**本存储。
+   */
+  preferenceSources?: Partial<Record<UserPreferenceKey, UserPreferenceSource>>;
 }
 
 /** App appearance preference — 设置页「全局设置」三态选择（仅桌面端 UI）。 */

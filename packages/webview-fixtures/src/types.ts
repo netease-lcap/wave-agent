@@ -45,6 +45,8 @@ import type {
   SessionMetadata,
   SessionData,
   ToolBlockUpdateCallbackParams,
+  UserPreferenceKey,
+  UserPreferenceSource,
 } from "wave-agent-sdk/types";
 
 export type {
@@ -148,6 +150,12 @@ export interface ConfigurationData {
   autoMemoryEnabled?: boolean;
   /** Auto-memory extraction turn frequency, 1–100 */
   autoMemoryFrequency?: number;
+  /**
+   * 每个用户偏好键的来源层（`remote` = 企业下发的组织配置 / `user` = 用户级
+   * `~/.wave/settings.json` / `env` = 机器环境变量 / `default` = 谁都没提供）。
+   * 设置为 `remote` 的键，设置页显示生效值 + 置灰 + 「由组织配置管理」。
+   */
+  preferenceSources?: Partial<Record<UserPreferenceKey, UserPreferenceSource>>;
   [key: string]: unknown;
 }
 
