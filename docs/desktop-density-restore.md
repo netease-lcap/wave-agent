@@ -2411,7 +2411,7 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 ### 本轮未覆盖 / 待你拍板
 
 1. **F-07（表头配色与斑马纹 opacity）与 C-03（表头最终字重/字号）未做** —— 同属 G3，本轮只按执行档取「不低于正文」14/22·600，等视觉候选拍板。
-2. **C-02（代码行高整数化）已收口** —— 行内 code / pre / pre code（F-04 指示）+ 用户同日追加「C-02 一起做」授权的 bash 命令与输出、写入预览、diff、lsp 输出全部取 20px（见文末「代码角色行高 20px」节）；**残留仅 diff / lsp 的 12px 字号**（属字号偏离，待用户确认）。
+2. **C-02（代码行高整数化）已收口** —— 行内 code / pre / pre code（F-04 指示）+ 用户同日追加「C-02 一起做」授权的 bash 命令与输出、写入预览、diff、lsp 输出全部取 20px（见文末「代码角色行高 20px」节）；diff 与 lsp 输出的**字号**也已按用户追加指示对齐到 13px（C-02 续）。
 3. ~~表格单元格折行数 12 → 40（字号从 12.6 → 14 的直接后果），建议在 8899 走查时确认是否接受~~ → **口径已澄清：12 → 40 指「折行单元格数」**（内容折成 >1 行的 `td/th` 个数，分母为 5 张表的 128 个单元格），三态为 S1 12 → S2 40 → 当前 S3 33；用户已明确「表格保持 14px、不通过缩小字号解决折行」，**该项记为「字号修复已完成，表格阅读效果待验收」（V-01）**，详见文末「表格阅读效果待验收」节。
 4. 未覆盖场景：流式输出中未闭合的表格/代码围栏；表格内嵌 mermaid 或超长无空格 token 的极端列；编辑器 200% 缩放与 1.4.12 文字间距；IDE 宿主真机（仅 data-host 代理）；窄窗口 + 分屏组合下的实际内容宽度；截图对比中的「修复前」为等效回退态而非真实历史构建。
 
@@ -2704,11 +2704,13 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 | bash 命令（`.bash-command-input` / `.bash-command`） | `host-desktop.css` C-02 规则  | 13px / **15.6px**（base 1.2） | 13px / **20px** |
 | bash 输出（`.bash-command-output`，含区内链接）      | 同上                          | 13px / **15.6px**             | 13px / **20px** |
 | 写入预览（`.write-preview-content`）                 | 其桌面覆盖规则内改（原 18px） | 13px / **18px**               | 13px / **20px** |
-| diff（`.diff-viewer-content` → `.diff-line` 继承）   | C-02 规则                     | 12px / **14.4px**             | 12px / **20px** |
-| lsp 输出（`.lsp-output`）                            | C-02 规则                     | 12px / **14.4px**             | 12px / **20px** |
+| diff（`.diff-viewer-content` → `.diff-line` 继承）   | C-02 + C-02 续（字号）        | 12px / **14.4px**             | **13px / 20px** |
+| lsp 输出（`.lsp-output`）                            | C-02 + C-02 续（字号）        | 12px / **14.4px**             | **13px / 20px** |
 
 - **F-15（bash 行高非整数）随之收口**：15.6px 小数消除，取 C-02 的目标值 20px（不再需要 18px 保底档）。
 - **几何位移**（1440px，两模式同值）：bash 块 151 → 166px（命令行 27.6→32、输出区 121.2→132）、写入预览 40 → 42px、lsp 输出 24 → 30px、diff 单行 18.4 → 24px；**diff 容器几何不变（302px）**，内容高 2880px 由 `.diff-viewer-content` 的 `overflow-y:auto` 承接（滚到底末行可见，`maxScrollTop 2580`）。
 - **无隐藏裁切**：`.bash-command-input` / `.bash-command-output` / `.write-preview-scroll` / `.lsp-output` 均 `overflow:auto`，实测 `scrollHeight == clientHeight` 或可滚到底；画布 `scrollWidth == clientWidth`（无横向溢出）。
-- **未做（字号偏离，不在本次「只改行高」授权范围）**：diff 与 `lsp-output` 的**字号仍是 12px**（角色表代码角色为 13px）。这两处的 12 → 13px 属**字号**偏离，需用户确认后再改（改动会再放大这两块的几何）。
-- 截图 16 张：`走查/截图/C02-代码角色行高20px_{修复前,修复后}_{light,dark}_{bash命令与输出,写入预览,diff查看器,lsp输出}.png`（「修复前」= 同页等效回退态）。
+- **C-02 续：diff 与 lsp 输出字号 12 → 13px**（用户 2026-09-10 追加指示「diff 与 lsp 输出的字号对齐」）。角色表代码角色为 13/20，这两处此前只对齐了行高。实现：`host-desktop.css` 的 C-02 续规则（`[data-host="desktop"] .diff-viewer-content, .lsp-output { font-size: 13px }`）。
+  - **几何零变化（只变字形大小）**：diff 容器 300px、`.diff-line` 24px、`.diff-content` 24px、`.diff-prefix` 20×24、内容高 2880px、**无新增折行**（120 行折行 0 → 0）、无横向溢出（`scrollWidth == clientWidth`）；lsp 输出框高度不变、无横向溢出；画布 `scrollWidth == clientWidth`。
+  - 截图逐像素差异（旁证字号确实变大）：diff 查看器 15.5%（light/dark 同值）、lsp 输出 3.8% / 4.0%。
+- 截图 24 张：`走查/截图/C02-代码角色行高20px_{修复前,修复后}_{light,dark}_{bash命令与输出,写入预览,diff查看器,lsp输出}.png` + `C02b-diff与lsp字号13px_{修复前,修复后}_{light,dark}_{diff查看器,lsp输出}.png`（「修复前」= 同页等效回退态）。

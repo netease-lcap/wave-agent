@@ -1051,14 +1051,24 @@
      `.bash-command` 与输出区内的链接靠继承，不单独声明；
    - 写入预览：原桌面覆盖 18px → 20px；
    - diff 与 lsp 输出：base `line-height:1.2`（14.4px）→ 20px。
-   只改行高，字号保持现值（bash / 写入预览已是 13px；diff 与 lsp-output
-   为 12px，属字号偏离、不在本次授权范围，见 docs「代码角色行高 20px」
-   节的未做清单）。F-15「bash 行高非整数」随之收口。 */
+   本批只改行高（字号见下方 C-02 续规则）。F-15「bash 行高非整数」
+   随之收口。 */
 [data-host="desktop"] .bash-command-input,
 [data-host="desktop"] .bash-command-output,
 [data-host="desktop"] .diff-viewer-content,
 [data-host="desktop"] .lsp-output {
   line-height: 20px;
+}
+
+/* C-02 续：diff 与 lsp 输出字号 12px → 13px（用户 2026-09-10 追加
+   「diff 与 lsp 输出的字号对齐」）。角色表代码角色为 13/20，这两处此
+   前只对齐了行高、字号仍是 base 的 12px。diff 的行文本用
+   `white-space:pre-wrap; word-break:break-word`（`.diff-content`），
+   字号变大只会让长行多折一行，不会裁切；容器 `max-height:300px` +
+   `overflow-y:auto` 承接增高。lsp 输出同理（`max-height:100px`）。 */
+[data-host="desktop"] .diff-viewer-content,
+[data-host="desktop"] .lsp-output {
+  font-size: 13px;
 }
 
 /* ── F-06：宽表在自身区域内横向滚动（TXT-06）────────────────────
