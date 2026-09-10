@@ -85,6 +85,22 @@ order: 90
 
 ---
 
+### 用户故事：删除 worktree 只删除自己的临时分支（优先级：P1）
+
+作为开发者，我希望删除 worktree 时保留我在该 worktree 内 checkout 的其它分支，以便我不会因为结束一个会话而丢掉一条尚未合并的功能分支。
+
+**为什么是这个优先级**：删除 worktree 时会执行 `git branch -D`，未合并的提交只剩不可达的 dangling 对象，普通用户找不回来（`git branch -d` 的合并检查不参与）；而在 worktree 里另开一条功能分支是常见工作流，结束会话与删掉那条分支并无必然关系。Claude Code 只删除 worktree 自己的临时分支。
+
+**独立测试**：在 worktree 会话内 `git checkout -b feat-x` 并提交，然后删除该 worktree（CLI 退出对话框 / ExitWorktree 工具 / stdio RPC 删除会话各验一次），验证 `feat-x` 仍存在、其提交仍可通过分支名访问，临时分支 `worktree-<name>` 被删除。
+
+**验收场景**：
+
+1. **假设**我在 worktree 会话内 checkout 了另一条分支并留有提交，**当**从任意入口删除该 worktree，**则**该分支必须保留，其提交仍可通过分支名访问。
+2. **假设** worktree 当时 checkout 的分支与其临时分支 `worktree-<name>` 不同，**当**删除该 worktree，**则**只删除 `worktree-<name>`，不得删除 checkout 的那条分支。
+3. **假设** worktree 目录删除失败（长路径、文件被占用等）而目录残留，**当**删除流程结束，**则**临时分支与 checkout 分支都保留（既有「目录没删掉就不删分支」语义不变）。
+
+---
+
 ### 用户故事：Worktree 删除进度提示（优先级：P2）
 
 作为在 Windows 上使用 Wave 的开发者，我希望删除 worktree 时能看到"正在删除"和"完成"的进度提示，以便我了解 CLI 正在执行删除而不是卡死。
@@ -264,6 +280,7 @@ order: 90
 - **如果用户不在 git 仓库中怎么办？** 未配置 `WorktreeCreate` hook 时 `-w` 标志应失败并显示错误消息；配置了 hook 时由 hook 创建（hook-based），`-w` 正常工作。
 - **当 WorktreeRemove hook 失败或超时时会发生什么？** 非阻塞：错误仅被记录，wave 不执行 `git worktree remove` 也不重试，worktree 目录是否残留由 hook 脚本负责。
 - **当 stdio RPC 传入的 git-based worktree 路径为符号链接或逃逸 repo root 时会发生什么？** 删除被拒绝并返回 RPC 错误，hook 不触发；hook-based worktree 跳过该 containment 校验（hook 拥有路径）。
+- **当 worktree 内 checkout 了别的分支时删除会发生什么？** 只删除该 worktree 自己的临时分支 `worktree-<name>`，checkout 的那条分支与它的提交保留（对齐 Claude Code）；hook-based worktree 的删除由 hook 脚本自行决定。
 - **当用户在会话内手动 `git worktree remove` 删除当前 worktree 目录时会发生什么？** 会话工作目录在下一次工具调用时自动回退到主仓库（原始 cwd），spawn 工具恢复可用，工具结果包含一次性回退提示；WorktreeRemove hook 不补触发（与 Claude Code 一致；该场景针对 git-based worktree，hook-based worktree 由 hook 负责删除、不存在 wave 侧的 git 移除）。
 
 ## 假设
@@ -271,7 +288,7 @@ order: 90
 - 系统已安装 `git` 并可在环境的 PATH 中访问。
 - 使用 `-w` 时当前工作目录是 git 仓库。
 - 自动生成的名称遵循 `generateRandomName` 工具的 `adjective-adjective-noun` 模式。
-- 对 git-based worktree，"Remove worktree"意味着同时执行 `git worktree remove --force` 和 `git branch -D`，以确保即使存在更改或分支未合并也能清理；对 hook-based worktree 则由 `WorktreeRemove` hook 接管删除。
+- 对 git-based worktree，"Remove worktree"意味着执行 `git worktree remove --force` 并删除该 worktree 自己的临时分支（`git branch -D worktree-<name>`），以确保即使存在更改或分支未合并也能清理；worktree 内 checkout 的其它分支不在删除范围内；对 hook-based worktree 则由 `WorktreeRemove` hook 接管删除。
 - WorktreeCreate/WorktreeRemove 是 replace 型钩子：配置 `WorktreeCreate` 后由 hook 创建 worktree（第一个成功 hook 的 stdout 返回 worktree path），配置 `WorktreeRemove` 后由 hook 接管 hook-based worktree 的删除；未配置时 wave 保持现有 git 行为，`WorktreeRemove` 对 git-based worktree 不触发。
 - WorktreeRemove hook 的 JSON 输入仅包含官方字段（`session_id`、`transcript_path`、`cwd`、`hook_event_name`、`worktree_path`），worktree 名称由 hook 通过 `basename "$worktree_path"` 派生。
 - WorktreeCreate hook 的 JSON 输入包含官方公共字段（`session_id`、`transcript_path`、`cwd`、`hook_event_name`）与 `name`（worktree 名）。

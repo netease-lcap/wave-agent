@@ -102,6 +102,44 @@ describe("ConfirmDialog", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it("disables the confirm button while the outcome is unknown", () => {
+    const onConfirm = vi.fn();
+    render(
+      <ConfirmDialog
+        title="t"
+        confirmDisabled
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    const confirm = screen.getByTestId("confirm-dialog-confirm");
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(onConfirm).not.toHaveBeenCalled();
+    // Cancel stays available — a disabled dialog must not be a dead end.
+    expect(screen.getByTestId("confirm-dialog-cancel")).toBeEnabled();
+  });
+
+  it("ignores Enter while the confirm button is disabled", () => {
+    const onConfirm = vi.fn();
+    render(
+      <ConfirmDialog
+        title="t"
+        confirmDisabled
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      />,
+    );
+    // A disabled button cannot hold focus, so nothing is focused and the
+    // window-level Enter handler is what fires.
+    expect(document.activeElement).not.toBeInstanceOf(HTMLButtonElement);
+
+    fireEvent.keyDown(window, { key: "Enter" });
+
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
   it("does NOT dismiss when the scrim (overlay) is clicked", () => {
     const onConfirm = vi.fn();
     const onCancel = vi.fn();

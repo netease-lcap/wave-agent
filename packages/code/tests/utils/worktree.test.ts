@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   createWorktree,
+  getWorktreeChanges,
   listWorktrees,
   removeWorktree,
   validateWorktreeSlug,
@@ -403,6 +404,70 @@ describe("worktree utils", () => {
     });
   });
 
+  describe("getWorktreeChanges", () => {
+    it("counts uncommitted files and commits ahead of the base branch", async () => {
+      git.handler = (_cmd, args) => {
+        if (args[0] === "status") {
+          return {
+            stdout: " M src/a.ts\n?? src/b.ts\n M src/c.ts\n",
+            stderr: "",
+          };
+        }
+        if (args[0] === "rev-list") {
+          expect(args).toContain("origin/main..HEAD");
+          return { stdout: "3\n", stderr: "" };
+        }
+        return { stdout: "", stderr: "" };
+      };
+
+      const changes = await getWorktreeChanges(
+        "/repo/root/.wave/worktrees/my-feat",
+        "origin/main",
+      );
+
+      expect(changes).toEqual({ files: 3, commits: 3 });
+    });
+
+    it("falls back to the repo default branch when no base is given", async () => {
+      vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
+      git.handler = (_cmd, args) => {
+        if (args[0] === "rev-list") {
+          expect(args).toContain("origin/main..HEAD");
+        }
+        return { stdout: "", stderr: "" };
+      };
+
+      const changes = await getWorktreeChanges("/repo/root/.wave/worktrees/x");
+
+      expect(changes).toEqual({ files: 0, commits: 0 });
+    });
+
+    it("reports zero commits when the base branch is unknown", async () => {
+      git.handler = (_cmd, args) => {
+        if (args[0] === "status") {
+          return { stdout: " M src/a.ts\n", stderr: "" };
+        }
+        throw gitError("unknown revision", "fatal: bad revision");
+      };
+
+      const changes = await getWorktreeChanges("/repo/root/.wave/worktrees/x");
+
+      // The file count is what the user loses; an unresolvable base must not
+      // hide it.
+      expect(changes).toEqual({ files: 1, commits: 0 });
+    });
+
+    it("returns null when the worktree is gone or not a git repository", async () => {
+      git.handler = () => {
+        throw gitError("not a git repository", "");
+      };
+
+      expect(
+        await getWorktreeChanges("/repo/root/.wave/worktrees/gone"),
+      ).toBeNull();
+    });
+  });
+
   describe("removeWorktree", () => {
     const session = {
       name: "my-feat",
@@ -432,8 +497,7 @@ describe("worktree utils", () => {
       );
     });
 
-    it("should remove worktree, original branch, and current branch if different", async () => {
-      vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
+    it("should keep another branch checked out inside the worktree", async () => {
       git.handler = (_cmd, args) => {
         if (args[0] === "rev-parse") {
           return { stdout: "another-branch\n", stderr: "" };
@@ -448,26 +512,8 @@ describe("worktree utils", () => {
       expect(gitCallsWith(["branch", "-D", "worktree-my-feat"])).toHaveLength(
         1,
       );
-      expect(gitCallsWith(["branch", "-D", "another-branch"])).toHaveLength(1);
-    });
-
-    it("should NOT remove current branch if it is a protected branch", async () => {
-      vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
-      git.handler = (_cmd, args) => {
-        if (args[0] === "rev-parse") {
-          return { stdout: "main\n", stderr: "" };
-        }
-        return { stdout: "", stderr: "" };
-      };
-      vi.mocked(fs.existsSync).mockReturnValue(false);
-
-      await removeWorktree(session);
-
-      expect(gitCallsWith(["worktree", "remove", "--force"])).toHaveLength(1);
-      expect(gitCallsWith(["branch", "-D", "worktree-my-feat"])).toHaveLength(
-        1,
-      );
-      expect(gitCallsWith(["branch", "-D", "main"])).toHaveLength(0);
+      // Commits on that branch may be reachable from nowhere else.
+      expect(gitCallsWith(["branch", "-D", "another-branch"])).toHaveLength(0);
     });
 
     it("should fall back to fs.rmSync when git removal fails, then delete the branch", async () => {
@@ -564,7 +610,7 @@ describe("worktree utils", () => {
       );
       expect(gitCallsWith(["branch", "-D", "another-branch"])).toHaveLength(0);
       expect(warnSpy.mock.calls.map((c) => c[0]).join(" ")).toContain(
-        "worktree-my-feat and another-branch",
+        "keeping worktree-my-feat",
       );
       loggerSpy.mockRestore();
       warnSpy.mockRestore();

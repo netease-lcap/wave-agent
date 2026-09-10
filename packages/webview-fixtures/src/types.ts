@@ -755,6 +755,18 @@ export interface DesktopRemoteDirListMessage extends HostToWebviewMessageBase {
   error?: unknown;
 }
 
+/** What deleting a worktree session would throw away (uncommitted files and
+ *  commits the base branch does not have). `null` = the worktree could not be
+ *  inspected (host unreachable, not a repo, already gone) — the caller falls
+ *  back to a generic warning instead of claiming the worktree is clean. */
+export interface DesktopWorktreeChangesMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopWorktreeChanges";
+  requestId: string;
+  sessionId: string;
+  changes: { files: number; commits: number } | null;
+}
+
 // ---- Contract gaps (commands hosts really send / the webview really
 // consumes, previously missing from the union). Registered so the fixtures
 // package stays the single authoritative contract (先例坑：新 host→webview
@@ -883,7 +895,8 @@ export type HostToWebviewMessage =
   | SlashCommandsErrorMessage
   | UploadSuccessMessage
   | UploadErrorMessage
-  | DesktopRemoteDirListMessage;
+  | DesktopRemoteDirListMessage
+  | DesktopWorktreeChangesMessage;
 
 /**
  * Reply-to 消息归属键注册表（契约锁，见文件头部「归属契约」）。
@@ -914,6 +927,8 @@ type ReplyAttribution = {
   // 一次性查询：请求生成 id，回复原样带回（MessageInput requestIdRef 范例）。
   desktopForwardPortResult: "requestId";
   desktopRemoteDirList: "requestId";
+  // 删除确认：请求生成 id，回复原样带回（同一会话可反复开关对话框）。
+  desktopWorktreeChanges: "requestId";
   fileSuggestionsResponse: "requestId";
 };
 
@@ -952,6 +967,7 @@ export const replyAttributionLocked = {
   btwError: true,
   desktopForwardPortResult: true,
   desktopRemoteDirList: true,
+  desktopWorktreeChanges: true,
   fileSuggestionsResponse: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];

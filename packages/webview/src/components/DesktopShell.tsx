@@ -696,6 +696,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         onSelectSession={host.onSelectSession}
         onOpenPane={handleOpenPane}
         onDeleteSession={host.onDeleteSession}
+        onRequestWorktreeChanges={host.onRequestWorktreeChanges}
         sessionBoardActive={sessionBoardActive}
         onOpenSessionBoard={onOpenSessionBoard}
       />

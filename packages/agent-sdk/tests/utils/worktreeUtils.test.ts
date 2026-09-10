@@ -428,6 +428,34 @@ describe("worktreeUtils", () => {
       expect(fs.rmSync).not.toHaveBeenCalled();
     });
 
+    it("keeps another branch checked out inside the worktree", () => {
+      vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
+        if (args?.[0] === "rev-parse") return "another-branch";
+        return "";
+      });
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      worktreeUtils.removeWorktree({
+        name: "feat",
+        path: "/test/repo/.wave/worktrees/feat",
+        branch: "worktree-feat",
+        repoRoot: "/test/repo",
+        isNew: true,
+      });
+
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["branch", "-D", "worktree-feat"]),
+        expect.anything(),
+      );
+      // Commits on that branch may be reachable from nowhere else.
+      expect(execFileSync).not.toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["branch", "-D", "another-branch"]),
+        expect.anything(),
+      );
+    });
+
     it("falls back to fs.rmSync and still deletes the branch when git removal fails", () => {
       vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
         if (args?.includes("remove") && args?.includes("worktree")) {

@@ -667,18 +667,6 @@ function rmWorktreeDirWithFs(worktreePath: string): unknown | null {
 export function removeWorktree(info: WorktreeInfo): void {
   const repoRoot = info.repoRoot;
 
-  // Get current branch in worktree before removing
-  let currentBranch: string | undefined;
-  try {
-    currentBranch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-      cwd: info.path,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  } catch {
-    // Ignore errors
-  }
-
   // Remove worktree
   try {
     execFileSync("git", ["worktree", "remove", "--force", info.path], {
@@ -739,12 +727,8 @@ export function removeWorktree(info: WorktreeInfo): void {
   // surviving directory means its checkout (and any uncommitted work in it) is
   // still on disk, and the branch is the only ref still leading back to it.
   if (fs.existsSync(info.path)) {
-    const keptBranches =
-      currentBranch && currentBranch !== info.branch
-        ? `${info.branch} and ${currentBranch}`
-        : info.branch;
     logger.warn(
-      `Worktree directory survived removal — keeping ${keptBranches} so the leftover checkout stays reachable:`,
+      `Worktree directory survived removal — keeping ${info.branch} so the leftover checkout stays reachable:`,
       {
         worktreePath: info.path,
         residue: probeResidue(info.path),
@@ -753,7 +737,9 @@ export function removeWorktree(info: WorktreeInfo): void {
     return;
   }
 
-  // Delete worktree branch
+  // Delete the worktree's own branch. Branches the user checked out inside the
+  // worktree are never touched — they may hold commits that are not reachable
+  // from anywhere else (aligned with Claude Code).
   try {
     execFileSync("git", ["branch", "-D", info.branch], {
       cwd: repoRoot,
@@ -761,31 +747,6 @@ export function removeWorktree(info: WorktreeInfo): void {
     });
   } catch {
     // Ignore errors
-  }
-
-  // Delete current branch if different and not protected
-  if (
-    currentBranch &&
-    currentBranch !== info.branch &&
-    currentBranch !== "HEAD"
-  ) {
-    const defaultRemoteBranch = getDefaultRemoteBranch(repoRoot);
-    const defaultBranchName = defaultRemoteBranch.split("/").pop();
-
-    if (
-      currentBranch !== defaultBranchName &&
-      currentBranch !== "main" &&
-      currentBranch !== "master"
-    ) {
-      try {
-        execFileSync("git", ["branch", "-D", currentBranch], {
-          cwd: repoRoot,
-          stdio: ["ignore", "pipe", "pipe"],
-        });
-      } catch {
-        // Ignore errors
-      }
-    }
   }
 }
 
