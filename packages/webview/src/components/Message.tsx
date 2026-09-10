@@ -156,6 +156,13 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
   renderer.text = (text: string) =>
     // 正文纯文本通道：绝对路径 → 链接；其余文本按原转义形式原样保留
     linkifyFilePathText(decodeHtmlEntities(text));
+  // 链接角色（用户 2026-09-10 规则）：按「显示文本」区分两种链接——
+  //   ① 描述性链接（查看预览、参考文档…）与所在正文同为 UI 角色，不加类；
+  //   ② 直接展示地址的链接（http(s)://…、ftp://…、file:///…、协议相对 //…）
+  //      为代码角色（等宽 13px，样式在 host-desktop.css 的 a.address-link）。
+  // `<code>` 内的链接（行内代码地址、文件路径）由代码样式承接等宽，不在此列。
+  const isAddressLabel = (label: string) =>
+    /^\s*(?:[a-z][a-z0-9+.-]*:\/\/|\/\/)/i.test(label.replace(/<[^>]*>/g, ""));
   // markdown 链接 label 内的路径不得生成嵌套 <a>（无效 HTML）；剥掉 label
   // 内已生成的路径锚点，仅保留普通链接。
   renderer.link = (
@@ -165,9 +172,11 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
   ) => {
     const cleanHref = markedCleanHref(href);
     if (cleanHref === null) return stripFilePathLinks(text);
-    let out = `<a href="${cleanHref}"`;
+    const label = stripFilePathLinks(text);
+    const cls = isAddressLabel(label) ? ` class="address-link"` : "";
+    let out = `<a href="${cleanHref}"${cls}`;
     if (title) out += ` title="${title}"`;
-    return `${out}>${stripFilePathLinks(text)}</a>`;
+    return `${out}>${label}</a>`;
   };
   return renderer;
 };

@@ -1095,6 +1095,24 @@
 [data-host="desktop"] .markdown-content a.file-path-link:hover {
   text-decoration: underline;
 }
+/* 链接角色（用户 2026-09-10 规则）：正文内联链接按「显示文本本身」分两种角色——
+   ① 描述性链接（查看预览、参考文档…）：与所在正文同为 UI 角色 → 此处不声明，
+      继承 F-01 的正文根角色即可；
+   ② 直接展示地址的链接（http(s)://…、ftp://…、file:///…、协议相对 //…）：转
+      代码角色，字号沿用当前代码约定 13px（与行内 code / pre 同档），并允许长地址
+      在任意位置折行（地址无空格，只有 anywhere/break-word 能折），使之不撑破
+      消息区域。文本标记由 Message.tsx 的 renderer.link 判定（label 本身是地址
+      时加 class="address-link"）。
+   ③ 文件路径链接：继续等宽 —— `<code>` 内的路径已由代码角色承接，这里只兜住
+      正文纯文本通道生成的裸路径链接（linkifyFilePathText 的 a.file-path-link），
+      避免同一「路径」概念在正文与代码里字形不一致。 */
+[data-host="desktop"] .markdown-content a.address-link,
+[data-host="desktop"] .markdown-content a.file-path-link {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 /* bash 命令输出内链接加入 dark 覆盖（第 26 轮遗漏：原规则仅覆盖
    write-tool-path 与 markdown-content a，bash 输出链接 dark 下仍为浅色
    #2f5edb，与 markdown 链接 #4daafc 不一致） */
