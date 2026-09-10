@@ -225,6 +225,19 @@ const mockDesktopApiJs = `
             if (message && message.command === 'desktopReady') {
                 deliver({ command: 'desktopPanes', panes: [{ paneId: 'pane-1', host: 'local', row: 0 }], focusedPaneId: 'pane-1' });
             }
+            // 真宿主（desktopHost.ts handleGetWorktreeChanges）会回答 worktree
+            // 改动检查，且原样回带 requestId/sessionId；mock 也必须回，否则
+            // 删除 worktree 会话的确认框永远停在「正在检查该 worktree 的改动…」
+            // （DesktopSidebar 按 requestId 丢弃不匹配的应答）。改动数取代表性
+            // 数值，让截图呈现「丢失改动」的最终态。
+            if (message && message.command === 'desktopGetWorktreeChanges') {
+                deliver({
+                    command: 'desktopWorktreeChanges',
+                    sessionId: message.sessionId,
+                    requestId: message.requestId,
+                    changes: { files: 2, commits: 1 },
+                });
+            }
             window.dispatchEvent(new CustomEvent('vscode-message', { detail: message }));
         },
         setState: (state) => {},
