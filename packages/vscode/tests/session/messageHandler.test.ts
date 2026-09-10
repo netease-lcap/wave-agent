@@ -1500,7 +1500,10 @@ describe("MessageHandler chat-route configuration toasts", () => {
     expect(configService.saveConfiguration).toHaveBeenCalledWith({
       language: "en-US",
     });
-    expect(context.updateAllSessionsConfig).toHaveBeenCalled();
+    // PR-2：用户偏好写用户级 settings.json 由 SDK 实时重载生效，保存**不重建会话**
+    // （spec core/agent-config.md「配置变更的构造期副作用与重建」场景 1–2）——
+    // 重建只留给插件挂载/卸载（同文件上方 setBuiltinPluginEnabled 用例）。
+    expect(context.updateAllSessionsConfig).not.toHaveBeenCalled();
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       "保存成功",
     );
