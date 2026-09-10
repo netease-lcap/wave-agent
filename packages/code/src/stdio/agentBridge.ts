@@ -677,12 +677,26 @@ export class AgentBridge {
    * usage to report; the host keeps the empty ring until the first push.
    */
   private emitContextUsage(agent: Agent): void {
+    const percent = this.contextUsagePercentOf(agent);
+    if (percent !== undefined) {
+      this.emit("contextUsage", { percent }, agent.sessionId);
+    }
+  }
+
+  /**
+   * Current context-usage percentage of a session, or undefined when there is
+   * nothing to report yet (no tokens) or the model exposes no limit. Shared by
+   * the change-driven push and the getMessages response, so a host whose
+   * webview was re-created long after the last token change can still restore
+   * the ring without a per-host cache.
+   */
+  private contextUsagePercentOf(agent: Agent): number | undefined {
     const tokens = agent.latestTotalTokens;
     const max = agent.getMaxInputTokens();
     if (tokens > 0 && max > 0) {
-      const percent = Math.min(100, Math.round((tokens / max) * 100));
-      this.emit("contextUsage", { percent }, agent.sessionId);
+      return Math.min(100, Math.round((tokens / max) * 100));
     }
+    return undefined;
   }
 
   private async listSessions(
@@ -1110,9 +1124,15 @@ export class AgentBridge {
     return null;
   }
 
-  private getMessages(sessionId?: string): { messages: Message[] } {
+  private getMessages(sessionId?: string): {
+    messages: Message[];
+    contextUsagePercent?: number;
+  } {
     const entry = this.requireSession(sessionId);
-    return { messages: entry.agent.displayMessages };
+    return {
+      messages: entry.agent.displayMessages,
+      contextUsagePercent: this.contextUsagePercentOf(entry.agent),
+    };
   }
 
   private async getFullMessageThread(sessionId?: string): Promise<{

@@ -64,6 +64,13 @@ class StdioAgent(
         private set
     @Volatile var latestTotalTokens: Int = 0
         private set
+    /**
+     * Context-usage percentage reported with the most recent [getMessages] pull.
+     * A webview re-created long after the last token change receives no
+     * contextUsage notification, so it replays this on webviewReady instead.
+     */
+    @Volatile var contextUsagePercent: Double? = null
+        private set
     @Volatile var permissionMode: String? = null
         private set
 
@@ -156,6 +163,9 @@ class StdioAgent(
         sessionCwd = res["workingDirectory"]?.jsonPrimitive?.content
         permissionMode = res["permissionMode"]?.jsonPrimitive?.content
         res["latestTotalTokens"]?.jsonPrimitive?.intOrNull?.let { latestTotalTokens = it }
+        // A fresh session has no usage yet; don't let a previous session's
+        // percentage survive into this agent.
+        contextUsagePercent = null
         sessionId?.let { router.register(it, this) }
         return InitializeResult(
             sessionId = sessionId,
@@ -185,8 +195,14 @@ class StdioAgent(
     suspend fun abortMessage() { client.request("abortMessage", sessionId = sessionId) }
     suspend fun clearMessages() { client.request("clearMessages", sessionId = sessionId) }
 
-    suspend fun getMessages(): JsonElement =
-        client.request("getMessages", sessionId = sessionId) ?: JsonObject(emptyMap())
+    suspend fun getMessages(): JsonElement {
+        val res = client.request("getMessages", sessionId = sessionId) ?: JsonObject(emptyMap())
+        // Hosts replay this on webviewReady (see MessageHandler.handleWebviewReady);
+        // null when the session has no usage yet, so the ring stays empty.
+        contextUsagePercent =
+            res.jsonObject["contextUsagePercent"]?.jsonPrimitive?.doubleOrNull
+        return res
+    }
 
     suspend fun compact(customInstructions: String? = null) {
         client.request("compact", buildJsonObject {

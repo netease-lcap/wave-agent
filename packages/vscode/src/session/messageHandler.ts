@@ -1873,6 +1873,22 @@ export class MessageHandler {
       viewType,
       windowId,
     );
+
+    // Replay the session's context-usage percentage. A webview that was
+    // re-created (window reload) runs webviewReady long after the last token
+    // change, so no contextUsage notification is in flight — and the webview
+    // clears the ring on every session switch — leaving it empty until a new
+    // turn. The agent refreshed the value on the getMessages pull above; post
+    // it after setInitialState so it is attributed to the incoming session
+    // (same ordering as the desktop replay).
+    const contextUsagePercent = session.agent?.contextUsagePercent;
+    if (contextUsagePercent !== undefined) {
+      this.context.postMessage(
+        { command: "contextUsage", percent: contextUsagePercent },
+        viewType,
+        windowId,
+      );
+    }
   }
 
   private async handleSlashCommandsRequest(

@@ -301,6 +301,43 @@ describe("MessageHandler MCP handlers", () => {
     expect(posted.paneId).toBeUndefined();
   });
 
+  // A re-created webview (window reload; the webview view itself has no
+  // retainContextWhenHidden) re-runs webviewReady long after the session's
+  // last token change, so no contextUsage notification is on its way. The
+  // host replays the percentage the agent cached on the getMessages pull the
+  // ready handler just made, otherwise the ring stays empty until a new turn.
+  test("webviewReady replays the session's context-usage percentage", async () => {
+    const session = createReadySession();
+    (session.agent as { contextUsagePercent?: number }).contextUsagePercent =
+      25;
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage({ command: "webviewReady" }, "tab");
+
+    const posts = (context.postMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const commands = posts.map(
+      (call) => (call[0] as { command: string }).command,
+    );
+    const usageIndex = commands.indexOf("contextUsage");
+    expect(usageIndex).toBeGreaterThan(-1);
+    // Must follow setInitialState: the webview drops a stale ring on every
+    // session switch, so the replay has to be attributed to the incoming one.
+    expect(usageIndex).toBeGreaterThan(commands.indexOf("setInitialState"));
+    expect(posts[usageIndex][0]).toMatchObject({
+      command: "contextUsage",
+      percent: 25,
+    });
+  });
+
+  test("webviewReady does not replay a context-usage percentage the session has not reported", async () => {
+    const session = createReadySession();
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage({ command: "webviewReady" }, "tab");
+
+    expect(sentPosts(context)("contextUsage")).toHaveLength(0);
+  });
+
   // Regression: /status showed empty version in VSCE because handleGetStatus
   // looked up the extension by a wrong, hardcoded id ('wave-code.wave-vsce-chat')
   // instead of the real id ('wave-code.wave-vsce'), so getExtension() returned

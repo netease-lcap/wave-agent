@@ -852,7 +852,38 @@ test("getMessages returns agent messages", async () => {
   const sessionId = (result as { sessionId: string }).sessionId;
   const r = await bridge.handleRequest("getMessages", {}, sessionId);
 
-  expect(r).toEqual({ messages: testMessages });
+  expect(r).toMatchObject({ messages: testMessages });
+});
+
+// A host webview that gets re-created (window reload with no
+// retainContextWhenHidden for the view, panel reopened) asks for the message
+// list on webviewReady but receives no contextUsage notification at all — the
+// push only fires on a token change. Carrying the percentage in the pull
+// response lets every host restore the ring without a per-host cache.
+test("getMessages carries the session's context-usage percentage", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent({ latestTotalTokens: 50000 });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest("getMessages", {}, sessionId);
+
+  expect(r).toMatchObject({ contextUsagePercent: 25 }); // 50000 / 200000
+});
+
+test("getMessages omits contextUsagePercent when the session has no tokens yet", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent({ latestTotalTokens: 0 });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = (await bridge.handleRequest("getMessages", {}, sessionId)) as {
+    contextUsagePercent?: number;
+  };
+
+  expect(r.contextUsagePercent).toBeUndefined();
 });
 
 test("getFullMessageThread returns messages and sessionIds", async () => {
@@ -2603,7 +2634,7 @@ test("destroying one session leaves the other intact", async () => {
 
   // Session B should still work
   const result = await bridge.handleRequest("getMessages", {}, sessionB);
-  expect(result).toEqual({ messages: [] });
+  expect(result).toMatchObject({ messages: [] });
   expect(agentB.destroy).not.toHaveBeenCalled();
 });
 

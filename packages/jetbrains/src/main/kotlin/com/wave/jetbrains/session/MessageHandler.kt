@@ -1101,6 +1101,15 @@ class MessageHandler(
             }
             put("pendingConfirmations", JsonArray(confirmations))
         })
+        // Replay the session's context-usage percentage (mirrors VSCE
+        // handleWebviewReady): a webview re-created long after the last token
+        // change receives no contextUsage notification — and it clears the ring
+        // on every session switch — leaving it empty until the next turn. The
+        // value comes from the refreshMessages pull above; must follow
+        // setInitialState so it is attributed to the incoming session.
+        session.agent?.contextUsagePercent?.let { percent ->
+            postMessage("contextUsage", buildJsonObject { put("percent", percent) })
+        }
     }
 
     private suspend fun handleSlashCommands(filterText: String) {
