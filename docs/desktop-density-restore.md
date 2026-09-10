@@ -2352,7 +2352,10 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - **顺手清掉死 action 变体**：删除「打开下载页」这一已死的 ToastAction 变体（两处类型副本 + `handleToastAction` 的 if 分支 + 相关测试用例）——该链路已随 updateChecker 删除，动作只剩 `focusSession` 一种。
 - **spec 同步**：`desktop-account-and-settings.md`（撤销「webview 右下角」措辞 + 新增「toast 形态与路由」一条，按 `position` 表述、不写 hex）；`desktop-shell.md`（撤销「模仿 VS Code」措辞，指向上条路由规则）；`desktop-sessions.md`（故事更名「后台会话活动通知」→「后台会话确认提醒」、删已完成 toast 相关内容与 4 个旧场景、铃铛 4 处改「琥珀色状态点」、绿点边界写明为「已完成」唯一通道、toast 关系边界改为只讲确认 toast 并记录其保留右下角形态）。
 - 实现文件：`desktopHost.ts`、`webview-fixtures/src/types.ts`、`webview/src/types/index.ts`、`ToastStack.tsx`、`ChatApp.tsx`、`TaskList.css`、`ToastStack.css`、`host-desktop.css`、`desktopHost.test.ts`、`toastStack.test.tsx`、`chatAppToast.test.tsx`、`desktopApp.test.tsx`、三份 spec、本 docs。
+
 ## 对话流排版契约第 1 项（conversation-typography TXT-01）：阅读正文改用 UI 字体（F-01）
+
+> **规则已归档**：本节及以下至「表格对齐（F-17）」各节定下的规则，已整理为规格 `docs/specs/desktop/desktop-conversation-typography.md`（权威来源）；台账继续保留走查过程、前后实测与截图。
 
 依据来源：codechat-desktop-skill 的 `references/conversation-typography.md`（提交 b7058b0）渲染不变量 **TXT-01**「阅读正文使用 UI 字体角色，不继承 editor-font-family；代码字段显式绑定等宽角色」；`references/conversation-audit.md` 第 33 行定位线索（浏览器中 Markdown 正文 computed 栈为 Menlo/Monaco/Courier New，需追踪 `.message-content` 祖先）。走查清单见工作目录外 `conversation-style-audit.html`（F-01，分组 G1）。
 
