@@ -44,6 +44,7 @@ vi.mock("@/services/jsonlHandler.js", () => ({
       parseSessionFilename: vi.fn(),
       generateSessionFilename: vi.fn(),
       getLastMessage: vi.fn(),
+      getLatestTotalTokens: vi.fn().mockResolvedValue(0),
       createSession: vi.fn(),
       readMetadata: vi.fn().mockResolvedValue(null),
     };
@@ -86,6 +87,7 @@ describe("Session Core Functionality", () => {
       (sessionId: string, sessionType?: "main" | "subagent") => string
     >;
     getLastMessage: Mock<(filePath: string) => Promise<Message | null>>;
+    getLatestTotalTokens: Mock<(filePath: string) => Promise<number>>;
     createSession: Mock<
       (
         filePath: string,
@@ -187,6 +189,7 @@ describe("Session Core Functionality", () => {
           },
         ), // Default implementation for testing
       getLastMessage: vi.fn().mockResolvedValue(null), // Default: no last message
+      getLatestTotalTokens: vi.fn().mockResolvedValue(0),
       createSession: vi.fn().mockResolvedValue(undefined), // Default: successful session creation
       readMetadata: vi.fn().mockResolvedValue(null),
     };

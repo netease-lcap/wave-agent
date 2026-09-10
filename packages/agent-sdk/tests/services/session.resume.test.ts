@@ -53,6 +53,7 @@ describe("Session resume: cross-directory listing & restore", () => {
   let mockJsonlHandler: {
     read: ReturnType<typeof vi.fn>;
     getLastMessage: ReturnType<typeof vi.fn>;
+    getLatestTotalTokens: ReturnType<typeof vi.fn>;
     generateSessionFilename: ReturnType<typeof vi.fn>;
     readMetadata: ReturnType<typeof vi.fn>;
   };
@@ -88,6 +89,7 @@ describe("Session resume: cross-directory listing & restore", () => {
     mockJsonlHandler = {
       read: vi.fn(),
       getLastMessage: vi.fn().mockResolvedValue(null),
+      getLatestTotalTokens: vi.fn().mockResolvedValue(0),
       generateSessionFilename: vi
         .fn()
         .mockImplementation(
@@ -156,6 +158,30 @@ describe("Session resume: cross-directory listing & restore", () => {
 
       expect(sessions).toHaveLength(1);
       expect(sessions[0]!.id).toBe(sessionId);
+    });
+
+    it("listSessionsFromJsonl reports the newest usage-bearing total", async () => {
+      const fs = await import("fs");
+      const sessionId = randomUUID();
+
+      vi.mocked(fs.promises.readdir).mockResolvedValueOnce([
+        `${sessionId}.jsonl`,
+      ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+      // The file's last line is a usage-less hook message appended on a
+      // previous resume, so the total must come from the newest message that
+      // actually carries usage rather than from the last line.
+      mockJsonlHandler.getLastMessage.mockResolvedValue({
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "hook" }],
+        timestamp: new Date().toISOString(),
+        isMeta: true,
+      } as Message);
+      mockJsonlHandler.getLatestTotalTokens.mockResolvedValue(59088);
+
+      const sessions = await listSessionsFromJsonl("/mock/workdir");
+
+      expect(sessions[0]!.latestTotalTokens).toBe(59088);
     });
   });
 

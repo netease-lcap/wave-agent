@@ -64,3 +64,56 @@ describe("fileUtils - getLastLine", () => {
     expect(result).toBe("");
   });
 });
+
+describe("fileUtils - readTailLines", () => {
+  /** A file handle whose reads are served from `content` at any position. */
+  const handleFor = (content: string) => {
+    const bytes = Buffer.from(content, "utf8");
+    return {
+      read: vi.fn(
+        async (buffer: Buffer, offset: number, length: number, pos: number) => {
+          const slice = bytes.subarray(pos, pos + length);
+          slice.copy(buffer, offset);
+          return { bytesRead: slice.length };
+        },
+      ),
+      close: vi.fn(async () => {}),
+    };
+  };
+
+  const mockFile = (content: string) => {
+    vi.mocked(fs.stat).mockResolvedValue({
+      size: Buffer.byteLength(content),
+    } as unknown as Awaited<ReturnType<typeof fs.stat>>);
+    vi.mocked(fs.open).mockResolvedValue(
+      handleFor(content) as unknown as Awaited<ReturnType<typeof fs.open>>,
+    );
+  };
+
+  it("returns the trailing lines when the window covers the whole file", async () => {
+    const { readTailLines } = await import("../../src/utils/fileUtils.js");
+    mockFile('{"a":1}\n{"b":2}\n');
+
+    const lines = await readTailLines("s.jsonl");
+
+    expect(lines).toEqual(['{"a":1}', '{"b":2}']);
+  });
+
+  it("drops the partial first line when the window starts mid-line", async () => {
+    const { readTailLines } = await import("../../src/utils/fileUtils.js");
+    // 20 bytes; a 12-byte window starts inside "BBBB", so only the complete
+    // trailing lines may be returned (the caller parses them as JSON).
+    mockFile("AAAA\nBBBB\nCCCC\nDDDD\n");
+
+    const lines = await readTailLines("s.jsonl", 12);
+
+    expect(lines).toEqual(["CCCC", "DDDD"]);
+  });
+
+  it("returns an empty array when the file is missing", async () => {
+    const { readTailLines } = await import("../../src/utils/fileUtils.js");
+    vi.mocked(fs.stat).mockRejectedValue(new Error("ENOENT"));
+
+    expect(await readTailLines("nope.jsonl")).toEqual([]);
+  });
+});

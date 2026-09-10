@@ -40,6 +40,7 @@ vi.mock("@/services/jsonlHandler.js", () => ({
       isValidSessionFilename: vi.fn(),
       generateSessionFilename: vi.fn(),
       getLastMessage: vi.fn(),
+      getLatestTotalTokens: vi.fn().mockResolvedValue(0),
       createSession: vi.fn(),
       readMetadata: vi.fn().mockResolvedValue(null),
     };
@@ -79,6 +80,7 @@ describe("Session Integration Tests", () => {
       (sessionId: string, sessionType?: "main" | "subagent") => string
     >;
     getLastMessage: Mock<(filePath: string) => Promise<Message | null>>;
+    getLatestTotalTokens: Mock<(filePath: string) => Promise<number>>;
     createSession: Mock<(filePath: string) => Promise<void>>;
     readMetadata: Mock<
       (filePath: string) => Promise<{
@@ -147,6 +149,7 @@ describe("Session Integration Tests", () => {
           },
         ),
       getLastMessage: vi.fn().mockResolvedValue(null),
+      getLatestTotalTokens: vi.fn().mockResolvedValue(0),
       createSession: vi.fn().mockResolvedValue(undefined),
       readMetadata: vi.fn().mockResolvedValue(null),
     };

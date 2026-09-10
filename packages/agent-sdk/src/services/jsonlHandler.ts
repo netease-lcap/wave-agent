@@ -5,9 +5,14 @@
 
 import { appendFile, readFile, writeFile, stat, mkdir } from "fs/promises";
 import { dirname } from "path";
-import { getLastLine, readFirstNLines } from "../utils/fileUtils.js";
+import {
+  getLastLine,
+  readFirstNLines,
+  readTailLines,
+} from "../utils/fileUtils.js";
 
 import type { Message } from "../types/index.js";
+import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
 import type { SessionFilename } from "../types/session.js";
 
 /**
@@ -225,6 +230,35 @@ export class JsonlHandler {
         `Failed to get last message from "${filePath}": ${error}`,
       );
     }
+  }
+
+  /**
+   * Latest context-usage total for a session file.
+   *
+   * Sessions accumulate usage-less messages at the end — SessionStart hook
+   * meta messages are appended (and persisted) on every resume — so the last
+   * line alone cannot answer "how much context did this conversation use".
+   * Scan backwards over the file's tail window and take the newest message
+   * that carries usage.
+   *
+   * @param filePath - Path to the session JSONL file
+   * @returns total_tokens of the newest usage-bearing message, or 0 when the
+   *          tail holds none (empty/unreadable file, no completed request yet)
+   */
+  async getLatestTotalTokens(filePath: string): Promise<number> {
+    const messages: Message[] = [];
+    for (const line of await readTailLines(filePath)) {
+      try {
+        const parsed = JSON.parse(line) as Message & { type?: string };
+        // Metadata header line: not a message, skip
+        if (parsed.type === "metadata") continue;
+        messages.push(parsed as Message);
+      } catch {
+        // Partial line at the tail window's boundary — drop it.
+        continue;
+      }
+    }
+    return extractLatestTotalTokens(messages);
   }
 
   /**
