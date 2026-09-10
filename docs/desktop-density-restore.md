@@ -2714,3 +2714,40 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
   - **几何零变化（只变字形大小）**：diff 容器 300px、`.diff-line` 24px、`.diff-content` 24px、`.diff-prefix` 20×24、内容高 2880px、**无新增折行**（120 行折行 0 → 0）、无横向溢出（`scrollWidth == clientWidth`）；lsp 输出框高度不变、无横向溢出；画布 `scrollWidth == clientWidth`。
   - 截图逐像素差异（旁证字号确实变大）：diff 查看器 15.5%（light/dark 同值）、lsp 输出 3.8% / 4.0%。
 - 截图 24 张：`走查/截图/C02-代码角色行高20px_{修复前,修复后}_{light,dark}_{bash命令与输出,写入预览,diff查看器,lsp输出}.png` + `C02b-diff与lsp字号13px_{修复前,修复后}_{light,dark}_{diff查看器,lsp输出}.png`（「修复前」= 同页等效回退态）。
+
+## 辅助信息角色收口（用户 2026-09-10 指示）：`.tool-result-block` 一族 11px/15.4 → 12/20（F-13 续）
+
+依据来源：**用户 2026-09-10 本窗口指示**「.tool-result-block、.compact-params 统一为辅助 12/20」；契约 `references/conversation-typography.md` 角色表「时间、数量、依赖等辅助信息 = 12 / 20」。
+
+**核对结果**：`.compact-params` 已是 **12/20**（批 1 的 F-13 做过，本轮零改动）；`.tool-result-block` 一族仍是 base 的 **11px / 1.4 = 15.4px**（非整数），低于角色表所有档位（正文 14/22、辅助 12/20、代码 13/20）。
+
+**改动位置**：`packages/webview/src/styles/host-desktop.css`（`.compact-params` 规则之后）：
+
+```css
+[data-host="desktop"] .tool-result-block,
+[data-host="desktop"] .result-answer,
+[data-host="desktop"] .result-raw,
+[data-host="desktop"] .tool-result-inline {
+  font-size: 12px;
+  line-height: 20px;
+}
+```
+
+`<code>.result-answer</code>` / `<code>.result-raw</code>` 自带 `font-size:11px` 声明，**必须一并列出**，否则只改容器时子元素仍留在 11px；`.tool-result-inline` 未在本轮 mock 中渲染，同族同值一并收口。base `Message.css` 未改（仍是 11px，IDE 宿主行为不变）。
+
+### 前后实测（1440px，light；dark 同值）
+
+| 元素                            | 修复前        | 修复后          | 块高                                                      |
+| ------------------------------- | ------------- | --------------- | --------------------------------------------------------- |
+| `.tool-result-block`（9 处）    | 11px / 15.4px | **12px / 20px** | 46.2 → 60、61.6 → 80、15.4 → 20（AskUser 卡 152 不变）    |
+| `.result-raw`（7 处）           | 11px / 15.4px | **12px / 20px** | 46.2 → 60（`max-height:100px` + `overflow:auto`，不裁切） |
+| `.result-raw-line`（17 处）     | 11px / 15.4px | **12px / 20px** | 15.4 → 20                                                 |
+| `.result-answer`（1 处）        | 11px / 15.4px | **12px / 20px** | 15.4 → 20                                                 |
+| `.ask-user-result-item`（2 处） | 11px（继承）  | 12px（继承）    | 72 不变（子元素 q/a 本是 14/22）                          |
+| `.compact-params`（14 处）      | 12px / 20px   | 12px / 20px     | 不变（批 1 已做）；前后截图逐字节一致                     |
+| `.ask-user-result-q/a`（2 处）  | 14px / 22px   | 14 / 22（不变） | 正文角色，未动                                            |
+
+- **残留小字号核对**：对话流内 **11px 文字节点 45 → 8**，余下 8 处**全部在 Mermaid SVG 内**（`<text>` / `<tspan>`，角色表明确「不涵盖 Mermaid SVG 内文字」）；**10px 节点**只剩 `.tool-status-dot`（内容是「●」圆点字符，非文字）与 Mermaid 标签。即对话流已无「非角色的 11px 正文文字」。
+- **无裁切 / 无溢出**：`.result-raw` 的 `max-height:100px; overflow-y:auto` 承接行高变大后的增高（可滚到底）；画布 `scrollWidth == clientWidth`。
+- **测试**：`pnpm -F wave-webview type-check` exit 0。
+- **截图 8 张**：`/Users/ailsa/Documents/07-AI/走查/截图/辅助角色-工具结果12px20px_{修复前,修复后}_{light,dark}_{工具结果块,工具参数compact-params}.png`（工具结果块窗口 90 → 108px；compact-params 前后逐字节一致）。

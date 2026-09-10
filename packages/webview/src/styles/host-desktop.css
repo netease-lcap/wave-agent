@@ -1121,6 +1121,23 @@
   line-height: 20px;
 }
 
+/* ── 辅助信息角色收口（用户 2026-09-10 指示「.tool-result-block、
+   .compact-params 统一为辅助 12/20」）──
+   .compact-params 已由 F-13 取 12/20（上方规则）；.tool-result-block
+   这一族仍是 base 的 11px / 1.4（= 15.4px 非整数），低于角色表所有档位
+   （正文 14/22、辅助 12/20、代码 13/20），故统一到辅助角色 12/20。
+   `.result-answer` 与 `.result-raw` 自带 `font-size:11px` 声明，必须一并
+   列出，否则容器改了、子元素仍留在 11px。`.result-raw` 有
+   `max-height:100px; overflow-y:auto`，行高变大只影响可见行数，内容不裁切。
+   `.tool-result-inline` 未在本轮 mock 中渲染，但同族同值，一并收口。 */
+[data-host="desktop"] .tool-result-block,
+[data-host="desktop"] .result-answer,
+[data-host="desktop"] .result-raw,
+[data-host="desktop"] .tool-result-inline {
+  font-size: 12px;
+  line-height: 20px;
+}
+
 [data-host="desktop"] .write-preview-content {
   font-size: 13px;
   /* C-02：行高随代码角色统一 20px（原 18px，见上方 C-02 规则） */
