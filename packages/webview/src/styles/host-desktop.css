@@ -1012,8 +1012,9 @@
    ② 表格：去掉 table 的 0.9em（它与行内 code 的 0.9em 相乘即 11.34px 的
       组合缩放来源），单元格与表头按正文角色取 14/22；表头字重 600 保持，
       「不低于正文」为本轮执行档，最终值仍待 C-03 候选拍板。
-   ③ 代码角色：行内 code 与代码块去 0.9em → 13px 绝对值。行高仍随
-      C-02 候选统一，本轮不抢先改（pre 保持 base 的 1.4）。 */
+   ③ 代码角色：行内 code 与代码块去 0.9em → 13px 绝对值；行高按用户
+      2026-09-10 指示取整数刻度 20px（见下方规则注释）。F-15 / C-02 的
+      bash 命令与输出、写入预览、日志仍沿用各自现值，待同组一次收口。 */
 [data-host="desktop"] .message-content,
 [data-host="desktop"] .markdown-content,
 [data-host="desktop"] .markdown-content p,
@@ -1030,9 +1031,16 @@
   line-height: 22px;
 }
 
+/* 代码角色（F-04）：行内 code / pre / pre code 统一 13px 字号。
+   行高取 20px 整数刻度（用户 2026-09-10 指示）——base pre 的 1.4 在
+   13px 下为 18.2px，字号越小行越挤；20px 与辅助信息角色同刻度。
+   行内 code 是 inline 元素，行盒高由父级 22px 主导，20px 只影响其
+   自身 inline box，不会撑高正文行盒（实测 p / li 行盒数不变）。 */
 [data-host="desktop"] .markdown-content :not(pre) > code,
-[data-host="desktop"] .markdown-content pre {
+[data-host="desktop"] .markdown-content pre,
+[data-host="desktop"] .markdown-content pre code {
   font-size: 13px;
+  line-height: 20px;
 }
 
 /* ── F-06：宽表在自身区域内横向滚动（TXT-06）────────────────────
