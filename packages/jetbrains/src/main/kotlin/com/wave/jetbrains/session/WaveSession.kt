@@ -112,9 +112,9 @@ class WaveSession(
                 if (restoreSessionId != null) put("restoreSessionId", restoreSessionId)
                 if (config.model.isNotEmpty()) put("model", config.model)
                 if (config.fastModel.isNotEmpty()) put("fastModel", config.fastModel)
-                put("language", config.language)
-                config.autoMemoryEnabled?.let { put("autoMemoryEnabled", it) }
-                config.autoMemoryFrequency?.let { put("autoMemoryFrequency", it) }
+                // 用户偏好（语言 / 上下文长度 / 自动记忆）不经此覆盖层下发——落点
+                // 唯一为用户级 ~/.wave/settings.json，经 SDK 实时重载生效
+                // （spec core/agent-config.md「设置实时重载」）。
             }
             try {
                 a.initialize(params)

@@ -140,19 +140,22 @@ class MessageHandler(
             "updateConfiguration" -> {
                 val data = msg["configurationData"]?.jsonObject ?: return
                 try {
+                    // 扩展本地键（model / fastModel / serverUrl）仍落 wave.xml；
+                    // 用户偏好（语言 / 上下文长度 / 自动记忆开关与频率）写用户级
+                    // `~/.wave/settings.json`（经 CLI 进程），由 SDK 实时重载在**下一轮
+                    // 对话**生效——保存不重建会话（spec agent-config「设置实时重载」/
+                    // 「配置变更的构造期副作用与重建」场景 1–2）。
                     val config = WavePluginService.getInstance().loadConfiguration().apply {
                         model = data["model"]?.jsonPrimitive?.content ?: ""
                         fastModel = data["fastModel"]?.jsonPrimitive?.content ?: ""
-                        language = data["language"]?.jsonPrimitive?.content ?: "Chinese"
                         serverUrl = data["serverUrl"]?.jsonPrimitive?.content ?: this.serverUrl
-                        contextLength = data["contextLength"]?.jsonPrimitive?.content?.toIntOrNull() ?: this.contextLength
-                        autoMemoryEnabled = data["autoMemoryEnabled"]?.jsonPrimitive?.content?.toBoolean() ?: this.autoMemoryEnabled
-                        autoMemoryFrequency = data["autoMemoryFrequency"]?.jsonPrimitive?.content?.toIntOrNull() ?: this.autoMemoryFrequency
                     }
                     WavePluginService.getInstance().saveConfiguration(config)
-                    reloadAgentConfig()
+                    writeUserSettings(data)
                     // 设置页保存结果经宿主通知提示（spec「设置页反馈语义」）
                     IdeService.showInfo(project, "保存成功")
+                    // 回发新配置刷新设置页展示值（用户偏好经 CLI 回读）
+                    postConfigurationResponse()
                     postMessage("configurationUpdated", JsonObject(emptyMap()))
                     postMessage("focusInput", JsonObject(emptyMap()))
                     postMessage("scrollToBottom", JsonObject(emptyMap()))
@@ -594,19 +597,11 @@ class MessageHandler(
             // ── Status ─────────────────────────────────────────────────
             // VSCE :152/:713 → statusResponse { version, sessionId, workdir, configurationData }
             "getStatus" -> {
-                val config = WavePluginService.getInstance().loadConfiguration()
                 postMessage("statusResponse", buildJsonObject {
                     put("version", pluginVersion())
                     put("sessionId", session.sessionId ?: "")
                     put("workdir", currentWorkdir())
-                    put("configurationData", buildJsonObject {
-                        put("model", config.model)
-                        put("fastModel", config.fastModel)
-                        put("language", config.language)
-                        config.contextLength?.let { put("contextLength", it) }
-                        config.autoMemoryEnabled?.let { put("autoMemoryEnabled", it) }
-                        config.autoMemoryFrequency?.let { put("autoMemoryFrequency", it) }
-                    })
+                    put("configurationData", configurationDataJson())
                 })
             }
 
@@ -991,27 +986,65 @@ class MessageHandler(
         }
     }
 
-    private fun postConfigurationResponse() {
-        val config = WavePluginService.getInstance().loadConfiguration()
+    private suspend fun postConfigurationResponse() {
         postMessage("configurationResponse", buildJsonObject {
-            put("configurationData", buildJsonObject {
-                put("model", config.model)
-                put("fastModel", config.fastModel)
-                put("language", config.language)
-                put("serverUrl", config.serverUrl)
-                config.contextLength?.let { put("contextLength", it) }
-                config.autoMemoryEnabled?.let { put("autoMemoryEnabled", it) }
-                config.autoMemoryFrequency?.let { put("autoMemoryFrequency", it) }
-            })
+            put("configurationData", configurationDataJson())
         })
+    }
+
+    /**
+     * 设置页配置回包载荷：扩展本地键（model / fastModel / serverUrl，落 wave.xml）
+     * 合并用户偏好（读用户级 `~/.wave/settings.json`，经共享 CLI 进程）。
+     * 用户偏好的**初始值读取以该文件为唯一真源**，不得回读宿主私有存储
+     * （spec agent-config「IDE 插件配置入口」场景 6）。读取失败降级为只回本地键。
+     */
+    private suspend fun configurationDataJson(): JsonObject {
+        val local = WavePluginService.getInstance().loadConfiguration()
+        val prefs = try {
+            readUserSettings()
+        } catch (e: Exception) {
+            LOG.warn("getUserSettings failed: ${e.message}")
+            JsonObject(emptyMap())
+        }
+        return buildJsonObject {
+            put("model", local.model)
+            put("fastModel", local.fastModel)
+            put("serverUrl", local.serverUrl)
+            prefs["language"]?.let { put("language", it) }
+            prefs["contextLength"]?.let { put("contextLength", it) }
+            prefs["autoMemoryEnabled"]?.let { put("autoMemoryEnabled", it) }
+            prefs["autoMemoryFrequency"]?.let { put("autoMemoryFrequency", it) }
+        }
+    }
+
+    /**
+     * 读用户级偏好（settings.json）——`getUserSettings` 是全局（无 session）请求，
+     * 经共享 CLI 进程，无需 live agent（设置标签页在无聊天会话时也能拿到真值）。
+     */
+    private suspend fun readUserSettings(): JsonObject {
+        val (client, _) = WaveBackendService.getInstance(project).ensureClient()
+        return client.request("getUserSettings")?.jsonObject ?: JsonObject(emptyMap())
+    }
+
+    /**
+     * 写用户级偏好（settings.json）——只取四个用户偏好键，扩展本地键与模型键
+     * 不落该文件（spec agent-config 边界说明「用户偏好的落点」）。
+     */
+    private suspend fun writeUserSettings(data: JsonObject) {
+        val patch = buildJsonObject {
+            data["language"]?.let { put("language", it) }
+            data["contextLength"]?.let { put("contextLength", it) }
+            data["autoMemoryEnabled"]?.let { put("autoMemoryEnabled", it) }
+            data["autoMemoryFrequency"]?.let { put("autoMemoryFrequency", it) }
+        }
+        val (client, _) = WaveBackendService.getInstance(project).ensureClient()
+        client.request("updateUserSettings", patch)
     }
 
     private fun buildConfigParams(config: com.wave.jetbrains.config.ConfigurationData): JsonObject = buildJsonObject {
         if (config.model.isNotEmpty()) put("model", config.model)
         if (config.fastModel.isNotEmpty()) put("fastModel", config.fastModel)
-        put("language", config.language)
-        config.autoMemoryEnabled?.let { put("autoMemoryEnabled", it) }
-        config.autoMemoryFrequency?.let { put("autoMemoryFrequency", it) }
+        // 用户偏好不经此覆盖层下发（会永久遮蔽 settings.json 的实时值）
     }
 
     private suspend fun handleWebviewReady() {
@@ -1042,7 +1075,6 @@ class MessageHandler(
         } catch (e: StdioClientException) {
             LOG.warn("getAuthStatus on webviewReady failed: ${e.message}")
         }
-        val config = WavePluginService.getInstance().loadConfiguration()
         postMessage("setInitialState", buildJsonObject {
             put("messages", session.messages ?: JsonArray(emptyList()))
             put("tasks", session.tasks ?: JsonArray(emptyList()))
@@ -1069,15 +1101,7 @@ class MessageHandler(
             }
             put("isAuthenticated", isAuthenticated)
             put("workdir", currentWorkdir())
-            put("configurationData", buildJsonObject {
-                put("model", config.model)
-                put("fastModel", config.fastModel)
-                put("language", config.language)
-                put("serverUrl", config.serverUrl)
-                config.contextLength?.let { put("contextLength", it) }
-                config.autoMemoryEnabled?.let { put("autoMemoryEnabled", it) }
-                config.autoMemoryFrequency?.let { put("autoMemoryFrequency", it) }
-            })
+            put("configurationData", configurationDataJson())
             put("permissionMode", session.permissionMode ?: "default")
             put("queuedMessages", session.messageQueue ?: JsonArray(emptyList()))
             // pending confirmations
