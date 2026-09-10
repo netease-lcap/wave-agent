@@ -8,13 +8,15 @@ import type { StdioClient } from "../../src/stdio/stdioClient";
 import type { NotificationRouter } from "wave-agent-sdk/stdio";
 
 /**
- * Regression（Bug #2115：设置页关掉「自动记忆」后仍记忆）：
+ * Regression（Bug #2115：设置页关掉「自动记忆」后仍记忆）——**PR-2 反转了原先的
+ * 修法**：用户偏好（`language` / `autoMemoryEnabled` / `autoMemoryFrequency`）不再
+ * 经 `initialize` / `updateConfig` 的 AgentOptions 覆盖层下发，而是由
+ * `ConfigurationService` 写用户级 `~/.wave/settings.json`（`updateUserSettings`），
+ * 由 SDK 实时重载在下一轮生效（spec core/agent-config.md「设置实时重载」）。
  *
- * `autoMemoryEnabled` / `autoMemoryFrequency` 全是可选参数，任何一环漏传都不报错，
- * 只在 SDK 侧静默回落到 settings.json / 默认值——保存看起来成功却不起作用。VSCE
- * 侧漏掉的正是这两个 hop：会话初始化（`initialize` params）与设置保存
- * （`ChatSession.updateConfig` → stdio `updateConfig` params）。这里断言「发给 CLI
- * 的参数里真的带了这个字段」，而不是断言某条内部分支。
+ * 覆盖层会**永久遮蔽** settings.json：一旦经 `updateConfig` 下发过，用户此后直接改
+ * settings.json 也不再生效。所以这里断言这两个 hop **真的不带**用户偏好键——把原来
+ * 「必须带上」的回归网反转成「必须不带」。
  */
 
 function callbacks(): ChatSessionCallbacks {
@@ -76,8 +78,15 @@ const config: ConfigurationData = {
   autoMemoryFrequency: 5,
 };
 
-describe("ChatSession · auto-memory settings reach the CLI", () => {
-  it("initialize carries the auto-memory toggle in the CLI params", async () => {
+/** 用户偏好三键：只允许出现在 settings.json 里，不得出现在 CLI 参数里。 */
+const USER_PREF_KEYS = [
+  "language",
+  "autoMemoryEnabled",
+  "autoMemoryFrequency",
+] as const;
+
+describe("ChatSession · 用户偏好不经 CLI 参数覆盖层下发", () => {
+  it("initialize params 不带用户偏好键", async () => {
     const client = fakeClient();
     const session = new ChatSession("sidebar", undefined, callbacks());
 
@@ -88,13 +97,13 @@ describe("ChatSession · auto-memory settings reach the CLI", () => {
       fakeRouter() as unknown as NotificationRouter,
     );
 
-    expect(paramsFor(client.request, "initialize")).toMatchObject({
-      autoMemoryEnabled: false,
-      autoMemoryFrequency: 5,
-    });
+    const params = paramsFor(client.request, "initialize");
+    // 非空断言：initialize 确实发了、且仍带会话级键（避免「因为没发所以没有」）
+    expect(params).toMatchObject({ model: "m" });
+    for (const key of USER_PREF_KEYS) expect(params).not.toHaveProperty(key);
   });
 
-  it("updateConfig carries the auto-memory toggle in the CLI params", async () => {
+  it("updateConfig params 不带用户偏好键", async () => {
     const client = fakeClient();
     const session = new ChatSession("sidebar", undefined, callbacks());
 
@@ -106,10 +115,8 @@ describe("ChatSession · auto-memory settings reach the CLI", () => {
     );
     await session.updateConfig(config);
 
-    // false 必须原样下发（写成 `config.autoMemoryEnabled || true` 之类会静默变 true）
-    expect(paramsFor(client.request, "updateConfig")).toMatchObject({
-      autoMemoryEnabled: false,
-      autoMemoryFrequency: 5,
-    });
+    const params = paramsFor(client.request, "updateConfig");
+    expect(params).toMatchObject({ model: "m" });
+    for (const key of USER_PREF_KEYS) expect(params).not.toHaveProperty(key);
   });
 });
