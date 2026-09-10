@@ -347,6 +347,10 @@ export class DesktopHost {
   /** 60s 账户用量轮询 (spec 场景 8). Static so tests can shrink or disable it. */
   private static accountPollIntervalMs = 60_000;
   private accountPollTimer: NodeJS.Timeout | null = null;
+  /** 1h 更新检查轮询 (spec desktop-shell「桌面端自动更新」场景 11): 应用长期
+   *  运行也能发现新版本。Static so tests can shrink or disable it. */
+  private static updatePollIntervalMs = 60 * 60 * 1000;
+  private updatePollTimer: NodeJS.Timeout | null = null;
 
   /** Latest panel toggle state reported by each pane's webview (drives the 面板 menu). */
   private panePanelState = new Map<string, PanelKind[]>();
@@ -592,6 +596,10 @@ export class DesktopHost {
       clearInterval(this.accountPollTimer);
       this.accountPollTimer = null;
     }
+    if (this.updatePollTimer) {
+      clearInterval(this.updatePollTimer);
+      this.updatePollTimer = null;
+    }
   }
 
   /** Resolved appearance: the OS colors under nativeTheme.themeSource, honoring
@@ -750,6 +758,22 @@ export class DesktopHost {
     this.accountPollTimer = setInterval(() => {
       void this.refreshUsageForHost(this.currentHost);
     }, DesktopHost.accountPollIntervalMs);
+  }
+
+  /**
+   * 每 1h 轮询更新（spec desktop-shell「桌面端自动更新」场景 11）：应用持续
+   * 运行（不退出/不重启）也能发现新版本。复用自动检查路径
+   * handleCheckForUpdates(false) —— 只查不下载不安装（autoDownload=false，
+   * 发现更新只置 idle → S1「更新」按钮），失败与启动自动检查一样静默。与
+   * 启动那次「只跑一次」检查（updateCheckTriggered）相互独立。
+   */
+  private startUpdatePolling(): void {
+    if (this.updatePollTimer) return;
+    this.updatePollTimer = setInterval(() => {
+      this.handleCheckForUpdates(false).catch((err) => {
+        console.warn("[DesktopHost] Update check failed:", err);
+      });
+    }, DesktopHost.updatePollIntervalMs);
   }
 
   /** Insert a host-generated system message into a pane's chat stream (focused pane by default). */
@@ -3969,6 +3993,11 @@ export class DesktopHost {
 
       // Account usage poll: keep the sidebar card's 套餐用量/API 额度 fresh.
       this.startAccountPolling();
+
+      // Periodic update check: keep discovering new versions while the app
+      // stays running (spec desktop-shell 场景 11). Idempotent — a repeat
+      // webviewReady must not stack timers.
+      this.startUpdatePolling();
 
       // Auto update check: once per app launch after the first agent is ready.
       if (!this.updateCheckTriggered) {
