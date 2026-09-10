@@ -1,9 +1,20 @@
 name: Deploy VitePress to GitHub Pages
 
-# Manual-only deploy: docs push no longer auto-triggers a GitHub Pages build
-# (docs:build installs Playwright and regenerates all screenshots every run,
-# which is wasteful). Trigger manually via "Run workflow" in the Actions tab.
+# docs:build runs `pnpm run docs:screenshots && vitepress build docs`, so it only
+# executes here and in the release publish.yml. Running it solely on release let two
+# v1.2.0 failures (the demo mock host not answering the worktree-diff check, and raw
+# angle-bracket placeholders breaking VitePress) stay invisible to PR CI until the
+# release. Auto-trigger on push to main surfaces such failures early; workflow_dispatch
+# is kept for manual re-runs.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "packages/webview/demo/**"
+      - "packages/webview/e2e/**"
+      - "packages/vscode/LOGO.png"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
