@@ -43,12 +43,17 @@ export interface AgentOptions {
   /** Preferred language for agent communication */
   language?: string;
   /**
-   * Per-session override for auto-memory extraction (settings-page toggle
-   * value, carried by hosts over stdio). Takes precedence over settings.json
-   * merged config and WAVE_DISABLE_AUTO_MEMORY env; undefined defers to them.
+   * Per-session override for auto-memory extraction (程序化会话级覆盖).
+   * Takes precedence over settings.json merged config and
+   * WAVE_DISABLE_AUTO_MEMORY env; undefined defers to them. 三端设置页的开关
+   * **不**经这一层下发——它落用户级 `~/.wave/settings.json`，由实时重载在下一轮
+   * 生效（spec core/agent-config.md「设置实时重载」）。
    */
   autoMemoryEnabled?: boolean;
-  /** Per-session override for auto-memory extraction frequency (turns). */
+  /**
+   * Per-session override for auto-memory extraction frequency (turns). 同
+   * `autoMemoryEnabled`：设置页的值不在这一层。
+   */
   autoMemoryFrequency?: number;
 
   // Existing options (preserved)

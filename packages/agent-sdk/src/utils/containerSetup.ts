@@ -348,6 +348,14 @@ export function setupAgentContainer(
   });
   container.register("LiveConfigManager", liveConfigManager);
 
+  // The turn-scoped configuration snapshot is held by LiveConfigManager (it owns
+  // the turn boundaries and the live reload) and read by ConfigurationService's
+  // resolve chain, so a mid-turn settings.json change applies from the next turn
+  // instead of shifting values under the running one.
+  configurationService.setTurnSnapshotSource(() =>
+    liveConfigManager.getTurnSnapshot(),
+  );
+
   // Wire up remote settings hot-update: when polling detects changed settings,
   // reload configuration so admin changes propagate to the running agent.
   // The callback strongly captures the per-agent LiveConfigManager, so it MUST

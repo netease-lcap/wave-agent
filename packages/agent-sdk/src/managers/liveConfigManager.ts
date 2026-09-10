@@ -8,6 +8,7 @@
  */
 
 import { existsSync } from "fs";
+import { dirname } from "path";
 import type { Scope } from "../types/configuration.js";
 import {
   FileWatcherService,
@@ -15,8 +16,11 @@ import {
 } from "../services/fileWatcher.js";
 import type { HookManager } from "./hookManager.js";
 import type { PermissionManager } from "./permissionManager.js";
+import type { MemoryService } from "../services/memory.js";
+import { USER_MEMORY_FILE } from "../utils/constants.js";
 import { isValidHookEvent } from "../types/hooks.js";
 import { ConfigurationService } from "../services/configurationService.js";
+import type { TurnConfigurationSnapshot } from "../services/configurationService.js";
 import { Container } from "../utils/container.js";
 
 import type {
@@ -38,6 +42,14 @@ export class LiveConfigManager {
   // Configuration state
   private currentConfiguration: WaveConfiguration | null = null;
   private lastValidConfiguration: WaveConfiguration | null = null;
+
+  // Turn-scoped snapshot of the settings.json-derived configuration the running
+  // turn reads from. Captured at turn start, dropped at turn end, so a live
+  // reload landing mid-turn takes effect at the next turn instead of shifting
+  // values under the running one (core/agent-config.md scenario 5). Nested turns
+  // (a subagent turn inside its parent's) share the outer snapshot.
+  private turnSnapshot: TurnConfigurationSnapshot | null = null;
+  private turnDepth: number = 0;
 
   // File watching state
   private fileWatcher: FileWatcherService;
@@ -67,6 +79,39 @@ export class LiveConfigManager {
     return this.container.get<ConfigurationService>("ConfigurationService")!;
   }
 
+  private get memoryService(): MemoryService | undefined {
+    return this.container.get<MemoryService>("MemoryService");
+  }
+
+  /**
+   * Keep the auto-memory system safe zone in sync with the live auto-memory
+   * toggle (core/agent-config.md scenario 6). Turning auto-memory off must
+   * revoke the privilege its directory got at construction time, and turning it
+   * back on must restore it — both without rebuilding the session. Idempotent:
+   * the underlying add/remove are dedup'ed by path.
+   */
+  private syncAutoMemorySafeZone(): void {
+    const permissionManager = this.permissionManager;
+    const memoryService = this.memoryService;
+    if (!permissionManager || !memoryService) {
+      return;
+    }
+
+    const directories = [
+      memoryService.getAutoMemoryDirectory(this.workdir),
+      USER_MEMORY_FILE,
+    ];
+    const enabled = this.configurationService.resolveAutoMemoryEnabledNow();
+
+    for (const directory of directories) {
+      if (enabled) {
+        permissionManager.addSystemAdditionalDirectory(directory);
+      } else {
+        permissionManager.removeSystemAdditionalDirectory(directory);
+      }
+    }
+  }
+
   /**
    * Initialize configuration watching
    * Maps to FR-004: System MUST watch settings.json files
@@ -83,23 +128,25 @@ export class LiveConfigManager {
       // Load initial configuration
       await this.reloadConfiguration();
 
-      // Start watching user configs that exist
+      // Watch every configuration path, including ones that don't exist yet:
+      // chokidar delivers `add` once a missing path appears, but only if its
+      // parent chain exists when watching starts. Skipping absent paths (the
+      // pre-2026-09-10 behavior) silently dropped the very first save of a
+      // user-level settings.json created after session start
+      // (core/agent-config.md scenario 7).
       for (const userPath of userPaths) {
-        if (existsSync(userPath)) {
-          await this.fileWatcher.watchFile(userPath, (event) =>
-            this.handleFileChange(event, "user"),
-          );
-        }
+        await this.fileWatcher.watchFile(
+          this.resolveWatchTarget(userPath),
+          (event) => this.handleFileChange(event, "user"),
+        );
       }
 
-      // Start watching local configs that exist
       if (projectPaths) {
         for (const projectPath of projectPaths) {
-          if (existsSync(projectPath)) {
-            await this.fileWatcher.watchFile(projectPath, (event) =>
-              this.handleFileChange(event, "project"),
-            );
-          }
+          await this.fileWatcher.watchFile(
+            this.resolveWatchTarget(projectPath),
+            (event) => this.handleFileChange(event, "project"),
+          );
         }
       }
 
@@ -163,6 +210,44 @@ export class LiveConfigManager {
       logger?.error(`Error during shutdown: ${(error as Error).message}`);
       throw error;
     }
+  }
+
+  /**
+   * Turn boundary: pin the settings.json-derived configuration for the duration
+   * of a turn (called by AIManager). A live reload may land mid-turn and the
+   * turn must not see it (core/agent-config.md scenario 5) — the change is
+   * picked up by the snapshot taken when the next turn starts. Permission rules,
+   * hooks and env stay live: those are enforcement state and follow the file
+   * immediately.
+   */
+  onTurnStart(): void {
+    if (this.turnDepth === 0) {
+      const configuration = this.getCurrentConfiguration();
+      this.turnSnapshot = {
+        configuration: configuration ? structuredClone(configuration) : null,
+        // `env` on the merged configuration is exactly what was published as the
+        // session env snapshot when it was loaded (both come from the same
+        // merge), so the snapshot carries both without querying the service.
+        env: { ...(configuration?.env ?? {}) },
+      };
+    }
+    this.turnDepth++;
+  }
+
+  /** Turn boundary: drop the snapshot so the next turn reads live values. */
+  onTurnEnd(): void {
+    if (this.turnDepth === 0) {
+      return;
+    }
+    this.turnDepth--;
+    if (this.turnDepth === 0) {
+      this.turnSnapshot = null;
+    }
+  }
+
+  /** Configuration snapshot of the running turn, or null outside a turn. */
+  getTurnSnapshot(): TurnConfigurationSnapshot | null {
+    return this.turnDepth > 0 ? this.turnSnapshot : null;
   }
 
   /**
@@ -267,6 +352,7 @@ export class LiveConfigManager {
         this.permissionManager.updateAdditionalDirectories(
           this.currentConfiguration.permissions?.additionalDirectories || [],
         );
+        this.syncAutoMemorySafeZone();
       }
 
       // Trigger reload callback. Awaited so fire-and-forget work spawned by the
@@ -429,6 +515,27 @@ export class LiveConfigManager {
     }
 
     return { added, modified, removed };
+  }
+
+  /**
+   * Chokidar only starts watching a non-existent path when its parent directory
+   * exists at watch time (a path whose parents are all missing is never
+   * picked up, not even after they appear). Walk up to the deepest node whose
+   * parent exists and watch that instead — events for its descendants still
+   * reach this path's callback (FileWatcherService matches by path prefix).
+   */
+  private resolveWatchTarget(configPath: string): string {
+    let candidate = configPath;
+    while (!existsSync(dirname(candidate))) {
+      const parent = dirname(candidate);
+      if (parent === candidate) {
+        // Reached the filesystem root without an existing parent: nothing to
+        // watch (unreachable for absolute paths).
+        return configPath;
+      }
+      candidate = parent;
+    }
+    return candidate;
   }
 
   /**

@@ -263,6 +263,16 @@ export function validateConfigurationObject(
 }
 
 /**
+ * The settings.json-derived configuration a turn reads from, captured when the
+ * turn started (see {@link ConfigurationService.setTurnSnapshotSource}). Held
+ * while a turn runs so a live reload can't shift values under it.
+ */
+export interface TurnConfigurationSnapshot {
+  configuration: WaveConfiguration | null;
+  env: Record<string, string>;
+}
+
+/**
  * Default ConfigurationService implementation
  *
  * Provides centralized configuration loading, validation, and management.
@@ -274,8 +284,24 @@ export class ConfigurationService {
   private _configuredEnvKeys = new Set<string>();
   // Per-session environment snapshot: settings.json `env` is stored here (NOT
   // written to process.env) so multiple sessions in one `wave --stdio` process
-  // don't cross-pollute. Resolve methods read `this.envSnapshot ?? process.env`.
+  // don't cross-pollute. Resolve methods read `this.liveEnvSnapshot ?? process.env`.
   private envSnapshot: Record<string, string> = {};
+
+  // Turn-scoped snapshot of the settings.json-derived configuration, owned by
+  // LiveConfigManager (it knows the turn boundaries and the live reload) and
+  // read here through a source registered at wiring time. Live reload updates
+  // `currentConfiguration` as soon as the file changes, but a turn must not see
+  // the value shift under it: while a turn is running the snapshot is what the
+  // resolve methods read, so changes land at the next turn boundary
+  // (docs/specs/core/agent-config.md scenario 5).
+  private turnSnapshotSource?: () => TurnConfigurationSnapshot | null;
+
+  /**
+   * Register the turn-snapshot source (see {@link TurnConfigurationSnapshot}).
+   */
+  setTurnSnapshotSource(source: () => TurnConfigurationSnapshot | null): void {
+    this.turnSnapshotSource = source;
+  }
 
   /**
    * Set agent options for configuration resolution
@@ -284,13 +310,25 @@ export class ConfigurationService {
     this.options = options;
   }
 
+  /** Configuration the current turn reads from (live configuration outside a turn). */
+  private get liveConfiguration(): WaveConfiguration | null {
+    const snapshot = this.turnSnapshotSource?.();
+    return snapshot ? snapshot.configuration : this.currentConfiguration;
+  }
+
+  /** Environment snapshot the current turn reads from. */
+  private get liveEnvSnapshot(): Record<string, string> {
+    const snapshot = this.turnSnapshotSource?.();
+    return snapshot ? snapshot.env : this.envSnapshot;
+  }
+
   /**
    * Returns a copy of the per-session environment snapshot (settings.json `env`).
    * Priority over OS env; does NOT include OS env. For subprocess spawning use
    * {@link getMergedEnv} instead.
    */
   getEnvSnapshot(): Record<string, string> {
-    return { ...this.envSnapshot };
+    return { ...this.liveEnvSnapshot };
   }
 
   /**
@@ -300,7 +338,7 @@ export class ConfigurationService {
    */
   getMergedEnv(): Record<string, string> {
     return Object.fromEntries(
-      Object.entries({ ...process.env, ...this.envSnapshot }).filter(
+      Object.entries({ ...process.env, ...this.liveEnvSnapshot }).filter(
         ([, v]) => v !== undefined,
       ),
     ) as Record<string, string>;
@@ -536,7 +574,7 @@ export class ConfigurationService {
       resolvedApiKey = this.options.apiKey;
     } else {
       resolvedApiKey =
-        this.envSnapshot.WAVE_API_KEY ?? process.env.WAVE_API_KEY;
+        this.liveEnvSnapshot.WAVE_API_KEY ?? process.env.WAVE_API_KEY;
     }
 
     // Resolve base URL: override > options > env (settings.json) > process.env
@@ -548,17 +586,17 @@ export class ConfigurationService {
       resolvedBaseURL = this.options.baseURL;
     } else {
       resolvedBaseURL =
-        this.envSnapshot.WAVE_BASE_URL ?? process.env.WAVE_BASE_URL;
+        this.liveEnvSnapshot.WAVE_BASE_URL ?? process.env.WAVE_BASE_URL;
     }
 
     // Fallback to process.env if still not resolved (for dynamic updates in tests)
     if (resolvedApiKey === undefined) {
       resolvedApiKey =
-        this.envSnapshot.WAVE_API_KEY ?? process.env.WAVE_API_KEY;
+        this.liveEnvSnapshot.WAVE_API_KEY ?? process.env.WAVE_API_KEY;
     }
     if (!resolvedBaseURL) {
       resolvedBaseURL =
-        this.envSnapshot.WAVE_BASE_URL ?? process.env.WAVE_BASE_URL;
+        this.liveEnvSnapshot.WAVE_BASE_URL ?? process.env.WAVE_BASE_URL;
     }
 
     // Treat empty string as not provided
@@ -568,7 +606,7 @@ export class ConfigurationService {
 
     // Resolve custom headers from environment: env (settings.json) > process.env
     const envCustomHeaders =
-      this.envSnapshot.WAVE_CUSTOM_HEADERS ??
+      this.liveEnvSnapshot.WAVE_CUSTOM_HEADERS ??
       process.env.WAVE_CUSTOM_HEADERS ??
       "";
     const parsedEnvHeaders = parseCustomHeaders(envCustomHeaders);
@@ -611,20 +649,20 @@ export class ConfigurationService {
     const resolvedAgentModel =
       model ||
       this.options.model ||
-      this.currentConfiguration?.model ||
-      (this.envSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
+      this.liveConfiguration?.model ||
+      (this.liveEnvSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
 
     // Resolve fast model: override > options > process.env (includes settings.json env)
     const resolvedFastModel =
       fastModel ||
       this.options.fastModel ||
-      (this.envSnapshot.WAVE_FAST_MODEL ?? process.env.WAVE_FAST_MODEL);
+      (this.liveEnvSnapshot.WAVE_FAST_MODEL ?? process.env.WAVE_FAST_MODEL);
 
     // Resolve vision model: override > options > process.env (includes settings.json env)
     const resolvedVisionModel =
       visionModel ||
       this.options.visionModel ||
-      (this.envSnapshot.WAVE_VISION_MODEL ?? process.env.WAVE_VISION_MODEL);
+      (this.liveEnvSnapshot.WAVE_VISION_MODEL ?? process.env.WAVE_VISION_MODEL);
 
     const baseConfig: ModelConfig = {
       model: resolvedAgentModel,
@@ -636,8 +674,7 @@ export class ConfigurationService {
     // Resolve fast model generation params from models[fastModel].options.
     // Set on baseConfig before the modelSpecificConfig spread so it isn't overwritten.
     const fastModelSource =
-      resolvedFastModel &&
-      this.currentConfiguration?.models?.[resolvedFastModel];
+      resolvedFastModel && this.liveConfiguration?.models?.[resolvedFastModel];
     if (fastModelSource && fastModelSource.options) {
       baseConfig.fastModelOptions = fastModelSource.options;
     }
@@ -654,7 +691,7 @@ export class ConfigurationService {
     // Merge model-specific settings from configuration
     const modelSpecificConfig =
       resolvedAgentModel &&
-      this.currentConfiguration?.models?.[resolvedAgentModel];
+      this.liveConfiguration?.models?.[resolvedAgentModel];
 
     if (modelSpecificConfig) {
       const resolved: ModelConfig = {
@@ -695,17 +732,17 @@ export class ConfigurationService {
     const resolvedModel =
       model ||
       this.options.model ||
-      this.currentConfiguration?.model ||
-      (this.envSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
+      this.liveConfiguration?.model ||
+      (this.liveEnvSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
     const modelConfig =
-      resolvedModel && this.currentConfiguration?.models?.[resolvedModel];
+      resolvedModel && this.liveConfiguration?.models?.[resolvedModel];
     if (modelConfig && modelConfig.maxInputTokens !== undefined) {
       return modelConfig.maxInputTokens;
     }
 
     // Try env (settings.json snapshot) first, then process.env
     const envMaxInputTokens =
-      this.envSnapshot.WAVE_MAX_INPUT_TOKENS ??
+      this.liveEnvSnapshot.WAVE_MAX_INPUT_TOKENS ??
       process.env.WAVE_MAX_INPUT_TOKENS;
     if (envMaxInputTokens) {
       const parsed = parseInt(envMaxInputTokens, 10);
@@ -736,8 +773,8 @@ export class ConfigurationService {
     }
 
     // 2. settings.json (merged)
-    if (this.currentConfiguration?.language) {
-      return this.currentConfiguration.language;
+    if (this.liveConfiguration?.language) {
+      return this.liveConfiguration.language;
     }
 
     return undefined;
@@ -745,25 +782,47 @@ export class ConfigurationService {
 
   /**
    * Resolves auto-memory enabled state with fallbacks
-   * Resolution priority: session options (host settings-page value) > settings.json > WAVE_DISABLE_AUTO_MEMORY > default (true)
+   * Resolution priority: session options (session-level override) > settings.json > WAVE_DISABLE_AUTO_MEMORY > default (true)
    * @returns Resolved auto-memory enabled state
    */
   resolveAutoMemoryEnabled(): boolean {
-    // 1. Per-session options override (hosts pass the settings-page toggle over
-    //    stdio initialize/updateConfig; Agent.create → setOptions stores it)
+    return this.resolveAutoMemoryEnabledFrom(
+      this.liveConfiguration,
+      this.liveEnvSnapshot,
+    );
+  }
+
+  /**
+   * Same resolution chain but read from the live merged configuration, ignoring
+   * the turn snapshot. The permission safe zone is a live mechanism (like
+   * permission rules, applied by LiveConfigManager on reload), so its sync must
+   * not be pinned to the turn-start value.
+   */
+  resolveAutoMemoryEnabledNow(): boolean {
+    return this.resolveAutoMemoryEnabledFrom(
+      this.currentConfiguration,
+      this.envSnapshot,
+    );
+  }
+
+  private resolveAutoMemoryEnabledFrom(
+    config: WaveConfiguration | null,
+    env: Record<string, string>,
+  ): boolean {
+    // 1. Per-session options override (session-level override semantics; user
+    //    preferences are no longer passed this way — see core/agent-config.md)
     if (this.options.autoMemoryEnabled !== undefined) {
       return this.options.autoMemoryEnabled;
     }
 
     // 2. settings.json (merged)
-    if (this.currentConfiguration?.autoMemoryEnabled !== undefined) {
-      return this.currentConfiguration.autoMemoryEnabled;
+    if (config?.autoMemoryEnabled !== undefined) {
+      return config.autoMemoryEnabled;
     }
 
     // 3. WAVE_DISABLE_AUTO_MEMORY environment variable (settings snapshot > OS env)
     const disableAutoMemory =
-      this.envSnapshot.WAVE_DISABLE_AUTO_MEMORY ??
-      process.env.WAVE_DISABLE_AUTO_MEMORY;
+      env.WAVE_DISABLE_AUTO_MEMORY ?? process.env.WAVE_DISABLE_AUTO_MEMORY;
     if (disableAutoMemory === "1" || disableAutoMemory === "true") {
       return false;
     }
@@ -778,7 +837,7 @@ export class ConfigurationService {
    * @returns Resolved worktree base ref
    */
   resolveWorktreeBaseRef(): "fresh" | "head" {
-    const baseRef = this.currentConfiguration?.worktree?.baseRef;
+    const baseRef = this.liveConfiguration?.worktree?.baseRef;
     if (baseRef === "head") {
       return "head";
     }
@@ -787,12 +846,13 @@ export class ConfigurationService {
 
   /**
    * Resolves auto-memory extraction frequency with fallbacks
-   * Resolution priority: session options (host settings-page value) > settings.json > WAVE_AUTO_MEMORY_FREQUENCY > default (1)
+   * Resolution priority: session options (程序化会话级覆盖) > settings.json > WAVE_AUTO_MEMORY_FREQUENCY > default (1)
    * @returns Resolved auto-memory extraction frequency (turns)
    */
   resolveAutoMemoryFrequency(): number {
-    // 1. Per-session options override (hosts pass the settings-page value over
-    //    stdio initialize/updateConfig; Agent.create → setOptions stores it).
+    // 1. Per-session options override (Agent.create → setOptions 的程序化会话级
+    //    覆盖；三端设置页的值不走这里——它们落用户级 settings.json，由实时重载
+    //    在下一轮生效，见 spec core/agent-config.md「设置实时重载」)。
     //    Only positive values are honored so a malformed 0/negative never
     //    degenerates into per-turn extraction.
     if (
@@ -803,13 +863,13 @@ export class ConfigurationService {
     }
 
     // 2. settings.json (merged)
-    if (this.currentConfiguration?.autoMemoryFrequency !== undefined) {
-      return this.currentConfiguration.autoMemoryFrequency;
+    if (this.liveConfiguration?.autoMemoryFrequency !== undefined) {
+      return this.liveConfiguration.autoMemoryFrequency;
     }
 
     // 3. WAVE_AUTO_MEMORY_FREQUENCY environment variable (settings snapshot > OS env)
     const envFrequency =
-      this.envSnapshot.WAVE_AUTO_MEMORY_FREQUENCY ??
+      this.liveEnvSnapshot.WAVE_AUTO_MEMORY_FREQUENCY ??
       process.env.WAVE_AUTO_MEMORY_FREQUENCY;
     if (envFrequency) {
       const parsed = parseInt(envFrequency, 10);
@@ -841,7 +901,7 @@ export class ConfigurationService {
 
     // Try env (settings.json snapshot) first, then process.env
     const envMaxOutputTokens =
-      this.envSnapshot.WAVE_MAX_OUTPUT_TOKENS ??
+      this.liveEnvSnapshot.WAVE_MAX_OUTPUT_TOKENS ??
       process.env.WAVE_MAX_OUTPUT_TOKENS;
     if (envMaxOutputTokens) {
       const parsed = parseInt(envMaxOutputTokens, 10);
@@ -892,19 +952,19 @@ export class ConfigurationService {
     // Add current model from options or environment (settings snapshot > OS env)
     const currentModel =
       this.options.model ||
-      (this.envSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
+      (this.liveEnvSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
     if (currentModel) {
       models.add(currentModel);
     }
 
     // Persisted model from settings (includes remote-merged)
-    if (this.currentConfiguration?.model) {
-      models.add(this.currentConfiguration.model);
+    if (this.liveConfiguration?.model) {
+      models.add(this.liveConfiguration.model);
     }
 
     // Add models from merged configuration
-    if (this.currentConfiguration?.models) {
-      Object.keys(this.currentConfiguration.models).forEach((model) => {
+    if (this.liveConfiguration?.models) {
+      Object.keys(this.liveConfiguration.models).forEach((model) => {
         models.add(model);
       });
     }
@@ -918,7 +978,7 @@ export class ConfigurationService {
   resolveTelemetryConfig():
     | Partial<import("../types/telemetry.js").TelemetryConfig>
     | undefined {
-    return this.currentConfiguration?.monitoring?.telemetry;
+    return this.liveConfiguration?.monitoring?.telemetry;
   }
 
   /**
@@ -1690,6 +1750,7 @@ export function loadMergedWaveConfig(
     language: mergedConfig.language,
     model: mergedConfig.model,
     autoMemoryEnabled: mergedConfig.autoMemoryEnabled,
+    autoMemoryFrequency: mergedConfig.autoMemoryFrequency,
     cleanupPeriodDays: mergedConfig.cleanupPeriodDays,
     marketplaces:
       mergedConfig.marketplaces &&

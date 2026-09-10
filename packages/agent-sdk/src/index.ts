@@ -41,6 +41,15 @@ export {
   getUserConfigPaths,
   getProjectConfigPaths,
 } from "./utils/configPaths.js";
+export {
+  readUserPreferenceSettings,
+  updateUserPreferenceSettings,
+  userSettingsFilePath,
+  contextLengthToMaxInputTokens,
+  maxInputTokensToContextLength,
+  MAX_INPUT_TOKENS_ENV_KEY,
+} from "./utils/userSettings.js";
+export type { UserPreferenceSettings } from "./utils/userSettings.js";
 export * from "./types/index.js";
 
 // Export subagent types (used by CLI /agents overlay)
