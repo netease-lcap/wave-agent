@@ -439,5 +439,40 @@ describe("session service - additional coverage", () => {
       // the throw means the session truly does not exist anywhere.
       expect(fs.readdir).toHaveBeenCalled();
     });
+
+    it("reports the restore through the logger, never through stdout", async () => {
+      vi.mocked(fs.access).mockResolvedValue(undefined);
+      mockJsonlRead.mockResolvedValue([
+        {
+          id: "msg-1",
+          role: "user",
+          timestamp: "2026-07-27T10:00:00.000Z",
+          blocks: [],
+        },
+      ]);
+      // stdout is the `wave --stdio` JSON-RPC channel: one stray line there
+      // makes the host skip that line and log a parse failure for the whole
+      // payload (the restore diagnostic used to be a plain console.log).
+      const stdout = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(() => true);
+      const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const restored = await handleSessionRestoration(
+        validSessionId,
+        false,
+        workdir,
+      );
+
+      expect(restored?.id).toBe(validSessionId);
+      expect(consoleLog).not.toHaveBeenCalled();
+      expect(stdout).not.toHaveBeenCalled();
+      expect(logger.info).toHaveBeenCalledWith(
+        `Restoring session: ${validSessionId}`,
+      );
+
+      consoleLog.mockRestore();
+      stdout.mockRestore();
+    });
   });
 });
