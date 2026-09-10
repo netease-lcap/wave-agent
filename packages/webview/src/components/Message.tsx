@@ -44,6 +44,7 @@ import { CompactBlockView } from "./CompactBlockView";
 import { WriteToolPreview } from "./WriteToolPreview";
 import { FileToolHeader } from "./FileToolHeader";
 import { getStageColor, getToolStatusColor } from "../utils/statusColors";
+import { isDesktopHost } from "../utils/platform";
 import "../styles/Message.css";
 
 // Configure marked for VS Code webview context
@@ -334,10 +335,13 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
   // this，转调默认实现可保证 thead/tbody/对齐渲染逐字节一致。
   // tabindex（V-01 验收 4 / WCAG 2.1.1）：横向滚动是宽表的兜底路径，键盘用户
   // 需能聚焦该区域后用方向键滚看被裁掉的列；与 F-10 给 code pre 的处理同源。
+  // 仅桌面端注入（见下方 renderer.code 的说明：IDE 宿主没有对应焦点环样式）。
   // 默认渲染结果再过一遍列级对齐（见 applyTableColumnAlign）。
   const defaultTable = marked.Renderer.prototype.table;
   renderer.table = (header: string, body: string) =>
-    `<div class="md-table-scroll" tabindex="0">${applyTableColumnAlign(
+    `<div class="md-table-scroll"${
+      isDesktopHost() ? ' tabindex="0"' : ""
+    }>${applyTableColumnAlign(
       defaultTable.call(renderer, header, body),
     )}</div>`;
   // 单元格列宽判定（V-01，用户 2026-09-10「按内容分配列宽，优先自然换行，横向
@@ -374,15 +378,19 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
   // 裁掉的宽内容。默认 code renderer 输出 `<pre><code …>`，此处只在 pre 开标签
   // 补 tabindex="0"，其余（语言类名、转义状态、<code> 子节点）逐字节沿用默认
   // 实现，不引入高亮或结构变化；焦点样式见 host-desktop.css 桌面层。
+  // **tabindex 只在桌面端注入**：聚焦环样式（`pre:focus-visible` 等）只写在
+  // `[data-host="desktop"]` 层，IDE 宿主注入后拿不到可见焦点，只会凭白多出
+  // Tab 停靠点（WCAG 2.4.3 噪声）。aria-label / aria-expanded / button 化这类
+  // 真正的无障碍改进不受此 gate 影响，两端都保留。
   const defaultCode = marked.Renderer.prototype.code;
   renderer.code = (
     code: string,
     infostring: string | undefined,
     escaped: boolean,
-  ) =>
-    defaultCode
-      .call(renderer, code, infostring, escaped)
-      .replace(/^<pre/, `<pre tabindex="0"`);
+  ) => {
+    const html = defaultCode.call(renderer, code, infostring, escaped);
+    return isDesktopHost() ? html.replace(/^<pre/, `<pre tabindex="0"`) : html;
+  };
   renderer.codespan = (text: string) => {
     const url = extractClickableUrl(text);
     if (url) {
@@ -754,10 +762,11 @@ export const Message: React.FC<MessageProps> = React.memo(
                   点击路由复用 handleContentClick：desktop 上 localhost → 预览
                   面板、其余 → 系统浏览器；IDE 保持原生链接处理。 */}
               {/* tabIndex（F-10 / WCAG 2.1.1）：max-height 120 + overflow-y:auto
-                  是可滚动区域，键盘用户需能聚焦后用方向键翻看完整输出。 */}
+                  是可滚动区域，键盘用户需能聚焦后用方向键翻看完整输出。
+                  仅桌面端注入——焦点环样式只存在于 `[data-host="desktop"]` 层。 */}
               <div
                 className="bash-command-output"
-                tabIndex={0}
+                tabIndex={isDesktopHost() ? 0 : undefined}
                 dangerouslySetInnerHTML={{
                   __html: linkifyPlainText(result),
                 }}
