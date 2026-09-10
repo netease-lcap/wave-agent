@@ -56,13 +56,22 @@ export const ReasoningBlockView: React.FC<ReasoningBlockViewProps> = ({
 
   return (
     <div className="reasoning-block">
-      <div className="reasoning-header" onClick={() => setCollapsed((c) => !c)}>
+      {/* F-11（WCAG 2.1.1 / 4.1.2）：折叠标题原为 <div onClick>，无 role /
+          tabIndex / aria-expanded，键盘不可达。改为 button 后自带角色与
+          Enter/Space 激活、暴露 aria-expanded；外观由 Message.css 的
+          button.reasoning-header 复位 UA 样式保持原样，默认折叠策略不变。 */}
+      <button
+        type="button"
+        className="reasoning-header"
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed((c) => !c)}
+      >
         <span className="reasoning-dot" />
         <span className="reasoning-title">{title}</span>
         <QueueChevronIcon
           className={`reasoning-chevron${collapsed ? "" : " expanded"}`}
         />
-      </div>
+      </button>
       {!collapsed && (
         <div className="reasoning-content">
           {renderContent(block.content || "")}

@@ -82,6 +82,16 @@
   --cc-color-danger-soft: #fef2f2;
   --cc-color-info: #2563eb;
   --cc-color-info-soft: #eff6ff;
+  /* 状态色（F-08）：权威 = codechat theme/desktop-colors.css --cc-state-*
+     浅色档（:78-83）。此前只在 wave 侧硬编码（statusColors.ts 的 hex +
+     任务状态 !important），运行时取不到 --cc-state-*，深色也没有对应档。
+     时间线节点、任务 dot、任务行 icon 统一消费这组 token。 */
+  --cc-state-idle: #98a2b3;
+  --cc-state-running: #2f5edb;
+  --cc-state-waiting: #e6a23c;
+  --cc-state-streaming: #e6a23c;
+  --cc-state-succeeded: #16a34a;
+  --cc-state-failed: #d92d20;
 
   /* 中密度字号：插件 13px → 桌面 14px */
   --vscode-font-size: 14px;
@@ -163,6 +173,15 @@
   --cc-color-danger-soft: #332021;
   --cc-color-info: #8bbcf0;
   --cc-color-info-soft: #1b2939;
+  /* 状态色深色档（F-08）：权威 = codechat theme/desktop-colors.css --cc-state-*
+     深色档（:173-178）。此前桌面端「深色沿用浅色值」（无 dark token），
+     任务状态与时间线节点在深色画布上偏暗；接入后随主题自动切换。 */
+  --cc-state-idle: #a0a5a8;
+  --cc-state-running: #8bbcf0;
+  --cc-state-waiting: #e8bf78;
+  --cc-state-streaming: #e8bf78;
+  --cc-state-succeeded: #83d6a0;
+  --cc-state-failed: #f19b95;
 
   /* 中密度字号 */
   --vscode-font-size: 14px;
@@ -726,8 +745,9 @@
 
 /* 消息流时间线节点：Figma design-node 12px / #16A34A / 白描边（覆盖此前
    codechat 推断的 8px 灰点）；行 padding-left 12px → 20px（节点 12 + gap 8）。
-   颜色跟随 --dot-color（工具运行蓝/流式橙/成功绿/失败红，思考与文本
-   流式橙/结束绿），无状态时回落 Figma 绿 #16A34A。 */
+   颜色跟随 --dot-color（工具运行蓝/流式橙/成功绿/失败红，F-08 起由
+   statusColors.ts 注入 --cc-state-* 语义 token），无状态时回落
+   --cc-state-succeeded（浅色档即 Figma 绿 #16A34A）。 */
 [data-host="desktop"] .timeline-row {
   padding-left: 20px;
 }
@@ -736,7 +756,7 @@
   height: 12px;
   left: 0;
   top: 15px;
-  background: var(--dot-color, #16a34a);
+  background: var(--dot-color, var(--cc-state-succeeded, #16a34a));
   border: 2px solid #ffffff;
   box-sizing: border-box;
 }
@@ -930,6 +950,10 @@
 }
 [data-host="desktop"] .write-tool-stats {
   font-size: 12px;
+  /* F-13（角色表「时间/数量/依赖等辅助信息 = 12/20」+ design-system.md 紧凑
+     行高 20px）：base 未声明行高（normal ≈ 1.2 → 14.4px），辅助信息与父行
+     13px 工具名的基线会跳；统一到紧凑刻度 20px。 */
+  line-height: 20px;
 }
 [data-host="desktop"][data-theme="light"] .write-tool-stats {
   color: #6c7076;
@@ -958,6 +982,212 @@
 }
 [data-host="desktop"][data-theme="dark"] .markdown-content :not(pre) > code {
   background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ── TXT-01：阅读正文使用 UI 字体角色（F-01）─────────────────────
+   base `.message-content` 绑定 --vscode-editor-font-family，令 Markdown
+   段落/列表/引用/表格/标题与错误块整体渲染为 Menlo 等宽栈，违反
+   conversation-typography.md TXT-01（阅读正文不得借用编辑器字体变量）。
+   这里把正文根角色改回 UI 字体：`--vscode-font-family` 即 body 的 UI 栈，
+   与 reasoning / 工具行 / ask-user 等既有 UI 角色一致。
+   代码字段（Markdown code/pre、bash 命令与输出、写入预览与路径、
+   lsp-output、diff、mermaid）各自规则内已显式绑定等宽栈，不在此重复
+   声明——避免在文件末尾堆叠覆盖。
+   仅作用于 desktop 宿主；IDE 宿主仍走 base，行为不变。 */
+[data-host="desktop"] .message-content {
+  font-family: var(--vscode-font-family);
+}
+
+/* ── G2 / G3 / G4：字号与行高绑定命名角色（F-02 / F-03 / F-04 / F-05）──
+   契约 conversation-typography.md：TXT-02 禁止按嵌套深度连乘 0.9em、
+   TXT-05 正文行高一致、角色表「表格单元格 = 正文 14/22」「行内代码/代码块
+   = 13px（既有约定）」「表头不低于正文」。几条规则作用于同一批选择器，
+   必须同批实现与验收（td 基准一变，表内 code 的 em 基准随之改变）。
+
+   ① 正文行盒统一 22px：base `.message-content{line-height:1.4}` 与
+      `.markdown-content p{line-height:1.5}` 造成 p 21px、li/引用 19.6px；
+      用户气泡的 22px 覆盖写在 .user-text-block 上，被内层 .message-content
+      的 1.4 顶掉（实测仍 19.6px），故这里直接命中内层元素。
+      错误块同属正文角色，随根角色一并收口。
+   ② 表格：去掉 table 的 0.9em（它与行内 code 的 0.9em 相乘即 11.34px 的
+      组合缩放来源），单元格与表头按正文角色取 14/22；表头字重 600 保持，
+      「不低于正文」为本轮执行档，最终值仍待 C-03 候选拍板。
+   ③ 代码角色：行内 code 与代码块去 0.9em → 13px 绝对值；行高按用户
+      2026-09-10 指示取整数刻度 20px（见下方 F-04 与 C-02 两条规则，
+      含 bash 命令与输出、写入预览、diff、lsp 输出）。 */
+[data-host="desktop"] .message-content,
+[data-host="desktop"] .markdown-content,
+[data-host="desktop"] .markdown-content p,
+[data-host="desktop"] .markdown-content li,
+[data-host="desktop"] .markdown-content blockquote,
+[data-host="desktop"] .user-text-block .message-content.user-content {
+  line-height: 22px;
+}
+
+[data-host="desktop"] .markdown-content table,
+[data-host="desktop"] .markdown-content th,
+[data-host="desktop"] .markdown-content td {
+  font-size: 14px;
+  line-height: 22px;
+}
+
+/* 代码角色（F-04）：行内 code / pre / pre code 统一 13px 字号。
+   行高取 20px 整数刻度（用户 2026-09-10 指示）——base pre 的 1.4 在
+   13px 下为 18.2px，字号越小行越挤；20px 与辅助信息角色同刻度。
+   行内 code 是 inline 元素，行盒高由父级 22px 主导，20px 只影响其
+   自身 inline box，不会撑高正文行盒（实测 p / li 行盒数不变）。 */
+[data-host="desktop"] .markdown-content :not(pre) > code,
+[data-host="desktop"] .markdown-content pre,
+[data-host="desktop"] .markdown-content pre code {
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* ── C-02：代码角色行高统一 20px（用户 2026-09-10 授权「C-02 一起做」）──
+   角色表「行内代码、命令、代码块、diff、文件预览、原始日志 = 13 / 20」。
+   F-04 已把行内 code / pre / pre code 取 20px（上方规则），这里收口其余
+   代码载体，避免同一角色出现 15.6 / 18 / 14.4 三种行高：
+   - bash 命令与输出：base `line-height:1.2`（13px → 15.6px）→ 20px；
+     `.bash-command` 与输出区内的链接靠继承，不单独声明；
+   - 写入预览：原桌面覆盖 18px → 20px；
+   - diff 与 lsp 输出：base `line-height:1.2`（14.4px）→ 20px。
+   本批只改行高（字号见下方 C-02 续规则）。F-15「bash 行高非整数」
+   随之收口。 */
+[data-host="desktop"] .bash-command-input,
+[data-host="desktop"] .bash-command-output,
+[data-host="desktop"] .diff-viewer-content,
+[data-host="desktop"] .lsp-output {
+  line-height: 20px;
+}
+
+/* C-02 续：diff 与 lsp 输出字号 12px → 13px（用户 2026-09-10 追加
+   「diff 与 lsp 输出的字号对齐」）。角色表代码角色为 13/20，这两处此
+   前只对齐了行高、字号仍是 base 的 12px。diff 的行文本用
+   `white-space:pre-wrap; word-break:break-word`（`.diff-content`），
+   字号变大只会让长行多折一行，不会裁切；容器 `max-height:300px` +
+   `overflow-y:auto` 承接增高。lsp 输出同理（`max-height:100px`）。 */
+[data-host="desktop"] .diff-viewer-content,
+[data-host="desktop"] .lsp-output {
+  font-size: 13px;
+}
+
+/* ── F-06：宽表在自身区域内横向滚动（TXT-06）────────────────────
+   宽表最小内容宽大于消息列时会撑破格子，而 .messages-container 是
+   overflow-x:hidden，溢出部分被静默裁掉（实测 882px 宽表落在 760px 列内）。
+   表格渲染时已包一层 .md-table-scroll（Message.tsx renderer.table），
+   这里让它承担横向滚动，画布本身不产生横向滚动。 */
+[data-host="desktop"] .md-table-scroll {
+  max-width: 100%;
+  margin: 12px 0;
+  overflow-x: auto;
+}
+[data-host="desktop"] .md-table-scroll > table {
+  margin: 0;
+}
+
+/* ═══ F-07 + V-01：表格表头配色 / 圆角 / 去斑马纹 + 列宽按内容分配
+   （用户 2026-09-10 指示）═══
+   F-07 表头配色取 bash 命令区同一面（--cc-fill：light #F0F2F5 / dark #25292B
+   = --vscode-chat-requestBubbleBackground），与工具块统一；表格加 12px 圆角
+   （桌面大圆角规范）；保留描边；去掉 base `tr:nth-child(even)` 的斑马纹
+   （其 opacity:0.8 曾使浅色行对比降到 3.52:1，用户亦认为非必须）。
+   圆角实现：base 为 border-collapse:collapse，折叠边框不参与圆角绘制（实测
+   0 度转角仍是直角描边、只有底色被裁成圆角），故改 separate + border-spacing:0，
+   单元格只留右/下描边、末列末行去掉与表格外框重复的一侧，四角由表头/末行
+   单元格圆角承担。实测表高与列宽与 collapse 完全一致（末行 -1px 吸收共享边框）。
+   V-01 列宽按内容分配、横向滚动只作兜底：不对表格用 width:max-content，也不
+   做等宽列。两个内容判定类见 Message.tsx tableCellClass（短 token 单行 /
+   超长不可断 token 放开断行），其余单元格按词自然折行。 */
+[data-host="desktop"] .markdown-content table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 12px;
+}
+[data-host="desktop"] .markdown-content th,
+[data-host="desktop"] .markdown-content td {
+  border: none;
+  border-right: 1px solid var(--cc-border-light);
+  border-bottom: 1px solid var(--cc-border-light);
+  /* 按词换行：短 token 的 min-content 保持在「词」级别，列宽不会被压到逐字
+     竖排；长地址/长英文串由 .md-cell-long-token 单独放开。 */
+  overflow-wrap: normal;
+  word-break: normal;
+}
+[data-host="desktop"] .markdown-content th:last-child,
+[data-host="desktop"] .markdown-content td:last-child {
+  border-right: none;
+}
+[data-host="desktop"] .markdown-content tbody tr:last-child td {
+  border-bottom: none;
+}
+[data-host="desktop"] .markdown-content th {
+  background-color: var(--cc-fill);
+}
+[data-host="desktop"] .markdown-content tr:nth-child(even) {
+  background-color: transparent;
+  opacity: 1;
+}
+[data-host="desktop"] .markdown-content thead th:first-child {
+  border-top-left-radius: 12px;
+}
+[data-host="desktop"] .markdown-content thead th:last-child {
+  border-top-right-radius: 12px;
+}
+[data-host="desktop"] .markdown-content tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 12px;
+}
+[data-host="desktop"] .markdown-content tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 12px;
+}
+/* 短 token（分类 / 状态 / 序号 / 数值 / 日期 / 短词）：单行不折，保留可读宽度 */
+[data-host="desktop"] .markdown-content th.md-cell-token,
+[data-host="desktop"] .markdown-content td.md-cell-token {
+  white-space: nowrap;
+}
+/* 超长不可断 token（URL / 邮箱 / 路径 / 长英文串）：只在放不下时断行。
+   用 break-word 而非 anywhere：anywhere 会把 min-content 一并降到 1 字符，
+   浏览器便一直从「长内容列」抽宽度，实测 480px 下 4 列表的路径列被压到
+   31px 内容宽、说明格折成 28 行、表高 1582px（break-word 下同表 441px、
+   列宽 184px）。break-word 保持「词」级 min-content，长内容列优先拿到剩余
+   空间，真放不下才断行；整表仍放不下时由 .md-table-scroll 兜底横向滚动。 */
+[data-host="desktop"] .markdown-content th.md-cell-long-token,
+[data-host="desktop"] .markdown-content td.md-cell-long-token {
+  overflow-wrap: break-word;
+}
+
+/* ═══ F-17：表格对齐（用户 2026-09-10 规则）═══
+   ① 未声明对齐时表头与正文一致左对齐。base Message.css 没有给 th 设 text-align，
+   浏览器 UA 的 `th { text-align: center }` 生效 → 「表头居中、正文左对齐」，同一列
+   两种对齐；本层只改渲染默认值，不改内容。
+   ② Markdown 显式声明的左/中/右原样保留（marked 输出 align 属性），不全局覆盖。
+   ③ 数值比较列（数量 / 金额 / 百分比 / 耗时…）右对齐，由 Message.tsx 的列级判定
+   注入 .md-cell-right —— 判据为「列头表明是可比较的量」且「整列单元格都是数值」，
+   编号 / 版本 / 电话 / 日期不因含数字右对齐，也不根据单个单元格猜整列类型。
+   ④ 纯图标列与独立操作列居中（.md-cell-center），文字状态列保持左对齐。
+   ⑤ 多行单元格顶部对齐：base 实测 vertical-align: middle，长说明与短词同行时文字
+   被垂直居中，与「顶部对齐」不符。
+   选择器统一带 table 一级，specificity 0,3,2（对 base 的 0,2,1）稳定压过 base 的
+   `th[align=…]`，不依赖打包顺序；字号 / 列宽 / 换行 / 滚动策略均不在此改动。 */
+[data-host="desktop"] .markdown-content table th,
+[data-host="desktop"] .markdown-content table td {
+  text-align: left;
+  vertical-align: top;
+}
+[data-host="desktop"] .markdown-content table th[align="left"],
+[data-host="desktop"] .markdown-content table td[align="left"] {
+  text-align: left;
+}
+[data-host="desktop"] .markdown-content table th[align="center"],
+[data-host="desktop"] .markdown-content table td[align="center"],
+[data-host="desktop"] .markdown-content table th.md-cell-center,
+[data-host="desktop"] .markdown-content table td.md-cell-center {
+  text-align: center;
+}
+[data-host="desktop"] .markdown-content table th[align="right"],
+[data-host="desktop"] .markdown-content table td[align="right"],
+[data-host="desktop"] .markdown-content table th.md-cell-right,
+[data-host="desktop"] .markdown-content table td.md-cell-right {
+  text-align: right;
 }
 
 /* ① 用户消息气泡内滚动条贴右缘：base .user-text-block 的 padding 12px 让
@@ -991,11 +1221,46 @@
 
 [data-host="desktop"] .compact-params {
   font-size: 12px;
+  /* F-13：base 11px/18px → 桌面 12px/20px（辅助信息紧凑刻度，见角色表
+     「时间/数量/依赖等辅助信息 = 12/20」；行高 18 与 20 的差为 1 个刻度）。 */
+  line-height: 20px;
+}
+
+/* ── 辅助信息角色收口（用户 2026-09-10 指示「.tool-result-block、
+   .compact-params 统一为辅助 12/20」）──
+   .compact-params 已由 F-13 取 12/20（上方规则）；.tool-result-block
+   这一族仍是 base 的 11px / 1.4（= 15.4px 非整数），低于角色表所有档位
+   （正文 14/22、辅助 12/20、代码 13/20），故统一到辅助角色 12/20。
+   `.result-answer` 与 `.result-raw` 自带 `font-size:11px` 声明，必须一并
+   列出，否则容器改了、子元素仍留在 11px。`.result-raw` 有
+   `max-height:100px; overflow-y:auto`，行高变大只影响可见行数，内容不裁切。
+   `.tool-result-inline` 未在本轮 mock 中渲染，但同族同值，一并收口。 */
+[data-host="desktop"] .tool-result-block,
+[data-host="desktop"] .result-answer,
+[data-host="desktop"] .result-raw,
+[data-host="desktop"] .tool-result-inline {
+  font-size: 12px;
+  line-height: 20px;
+}
+
+/* 辅助信息角色续（用户 2026-09-10 指示「.diff-line-ellipsis 可以提到 12px」）：
+   diff 上下文折叠的「...」占位行，base 字面值 11px、行高靠
+   `.diff-viewer-content` 继承为 20px —— 字号落在角色表所有档位之外，收口到
+   辅助信息 12/20（与 .compact-params / .tool-result-block 同档）。
+   同类同时命中 DiffPane 的状态行（「二进制文件，不显示差异」/「无内容差异」/
+   「重命名自 …」/「差异过大，已截断…」），字号随之一致；对话流内 diff 的
+   前置/后置/中间三态省略行均已 mock 可走查。
+   `.diff-empty` 不在此列：该分支在应用内不可达（DiffViewer.tsx:272 与 49-51
+   行的 showDiff 条件互斥，264 行提前 return null），见走查清单说明。 */
+[data-host="desktop"] .diff-line-ellipsis {
+  font-size: 12px;
+  line-height: 20px;
 }
 
 [data-host="desktop"] .write-preview-content {
   font-size: 13px;
-  line-height: 18px;
+  /* C-02：行高随代码角色统一 20px（原 18px，见上方 C-02 规则） */
+  line-height: 20px;
 }
 
 /* ═══ 第二十六轮：消息内链接统一（颜色 + hover 下划线）═══
@@ -1027,8 +1292,50 @@
 [data-host="desktop"] .markdown-content a.file-path-link {
   text-decoration: none;
 }
-[data-host="desktop"] .markdown-content a.file-path-link:hover {
+/* hover / focus 显示下划线：见下方 D-01 段（与正文链接同一规则）。 */
+/* 链接角色（用户 2026-09-10 规则）：正文内联链接按「显示文本本身」分两种角色——
+   ① 描述性链接（查看预览、参考文档…）：与所在正文同为 UI 角色 → 此处不声明，
+      继承 F-01 的正文根角色即可；
+   ② 直接展示地址的链接（http(s)://…、ftp://…、file:///…、协议相对 //…）：转
+      代码角色，字号沿用当前代码约定 13px（与行内 code / pre 同档），并允许长地址
+      在任意位置折行（地址无空格，只有 anywhere/break-word 能折），使之不撑破
+      消息区域。文本标记由 Message.tsx 的 renderer.link 判定（label 本身是地址
+      时加 class="address-link"）。
+   ③ 文件路径链接：继续等宽 —— `<code>` 内的路径已由代码角色承接，这里只兜住
+      正文纯文本通道生成的裸路径链接（linkifyFilePathText 的 a.file-path-link），
+      避免同一「路径」概念在正文与代码里字形不一致。 */
+[data-host="desktop"] .markdown-content a.address-link,
+[data-host="desktop"] .markdown-content a.file-path-link {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+/* ── D-01（用户 2026-09-10 决策修订）：正文内联链接常态无下划线，hover / focus 时显示 ──
+   决策沿革：先定「常态下划线 + hover 加深」（WCAG 1.4.1：链接此前只有颜色一个
+   线索，axe link-in-text-block 实测 light 2.9:1 / dark 1.99:1），随即修订为
+   「常态无下划线，hover / focus 时显示下划线」→ 静态态回到只有颜色线索，
+   axe 该规则仍会报（见 docs/desktop-density-restore.md「D-01 决策修订」节，
+   属用户明示接受的偏离）。hover / focus 反馈保留「下划线 + 颜色加深」。
+   作用域＝正文 markdown 链接，直显地址 / 邮箱 / 电话同样适用（等宽字体不能
+   替代可点击线索）。例外按既有决定：文件路径链接与 `<code>` 内链接常态无
+   下划线、hover / focus 出现；工具输出不在正文链接作用域内。 */
+[data-host="desktop"] .markdown-content a {
+  text-decoration: none;
+}
+[data-host="desktop"] .markdown-content a:hover,
+[data-host="desktop"] .markdown-content a:focus-visible,
+[data-host="desktop"] .markdown-content a.file-path-link:hover,
+[data-host="desktop"] .markdown-content a.file-path-link:focus-visible {
   text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+[data-host="desktop"] .markdown-content a:hover {
+  color: #1f47b8; /* derived：--cc-text-link 加深（契约无 hover token） */
+}
+[data-host="desktop"][data-theme="dark"] .markdown-content a:hover {
+  color: #7fc0ff; /* derived：深色下提亮以体现「加深」反馈 */
 }
 /* bash 命令输出内链接加入 dark 覆盖（第 26 轮遗漏：原规则仅覆盖
    write-tool-path 与 markdown-content a，bash 输出链接 dark 下仍为浅色
@@ -2118,17 +2425,18 @@
    修复：TaskList.tsx 为 dot 与行容器补 is-succeeded/is-running/is-pending
    状态类（对齐 codechat task-stat-dot / task-list-item-icon 命名），此处按类
    覆盖。dot 为组件内联 style，需 !important；svg fill 为 presentation
-   attribute，普通 fill 规则即可覆盖（无需 important）。深色沿用浅色值：
-   codechat 无 dark token，状态色与 wave 时间线/会话看板一致深浅同值。 */
+   attribute，普通 fill 规则即可覆盖（无需 important）。
+   F-08（2026-09-10）：三色改为消费 --cc-state-* 语义 token —— 浅色档值不变，
+   深色档由 token 层给出 dark 值（原「深色沿用浅色值」的说法随 token 接入取消）。 */
 
 [data-host="desktop"] .task-list-stat-dot.is-succeeded {
-  background-color: #16a34a !important;
+  background-color: var(--cc-state-succeeded, #16a34a) !important;
 }
 [data-host="desktop"] .task-list-stat-dot.is-running {
-  background-color: #2f5edb !important;
+  background-color: var(--cc-state-running, #2f5edb) !important;
 }
 [data-host="desktop"] .task-list-stat-dot.is-pending {
-  background-color: #98a2b3 !important;
+  background-color: var(--cc-state-idle, #98a2b3) !important;
 }
 
 /* 行内状态图标与 dot 同色（codechat task-list-item-icon 三状态同 token）：
@@ -2137,16 +2445,16 @@
   .task-row:has(.task-title.completed)
   .task-status-svg
   path {
-  fill: #16a34a;
+  fill: var(--cc-state-succeeded, #16a34a);
 }
 [data-host="desktop"]
   .task-row:has(.task-title.in_progress)
   .task-status-svg
   path {
-  fill: #2f5edb;
+  fill: var(--cc-state-running, #2f5edb);
 }
 [data-host="desktop"] .task-row:has(.task-title.pending) .task-status-svg path {
-  fill: #98a2b3;
+  fill: var(--cc-state-idle, #98a2b3);
 }
 
 /* 依赖行「依赖 #x」：桌面链接蓝（base var(--vscode-textLink-foreground)
@@ -2565,3 +2873,30 @@
   word-break: break-word;
 }
 
+/* ═══ 批 1 · 无障碍与行高（F-09/F-10/F-11/F-12/F-13，用户 2026-09-10 授权）═══
+   权威：WCAG 2.1.1 / 4.1.2 + conversation-typography.md 角色表 + axe-core 实测
+   （详见 docs/desktop-density-restore.md「批 1」段）。全部作用域限
+   [data-host="desktop"]，base Message.css 仅 F-11 的 button 复位（结构变更必需）。 */
+
+/* F-10（axe scrollable-region-focusable serious）：可滚动区域需能键盘聚焦并有
+   可见焦点。三个滚动区的 overflow 语义不变，只补聚焦环 + 键盘滚动提示。
+   焦点环＝2px var(--cc-border-focus)（user-approved 焦点环 #a0a5a8，深浅同值；
+   宽度对齐 skill theme/desktop-colors.css --cc-focus-ring 的 2px）。offset 取 1px
+   使环画在盒外，不遮挡 pre / 输出的首行文字。 */
+[data-host="desktop"] .markdown-content pre:focus-visible,
+[data-host="desktop"] .bash-command-output:focus-visible,
+[data-host="desktop"] .write-preview-scroll:focus-visible,
+[data-host="desktop"] .md-table-scroll:focus-visible,
+[data-host="desktop"] .reasoning-header:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #a0a5a8);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* F-12（角色表无斜体角色，中文斜体尤其影响可读性）：错误容器走正文角色，
+   仅去掉 font-style: italic，字体/行高/颜色随 F-01/G2 的角色收敛，不在此另写
+   font-family / font-size 覆盖。作用域限桌面（base 的 IDE 观感不变）。 */
+[data-host="desktop"] .message.assistant .error,
+[data-host="desktop"] .tool-error {
+  font-style: normal;
+}

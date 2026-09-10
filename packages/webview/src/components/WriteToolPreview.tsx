@@ -3,6 +3,7 @@ import { ExternalLinkIcon } from "./HeaderIcons";
 import { FileToolHeader } from "./FileToolHeader";
 import type { ToolBlock } from "../types";
 import { toRelativePath } from "../utils/messageUtils";
+import { isDesktopHost } from "../utils/platform";
 
 interface WriteToolPreviewProps {
   toolBlock: ToolBlock;
@@ -60,7 +61,13 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
         <div className="write-tool-stats">{toolBlock.shortResult}</div>
       )}
       <div className="write-preview-box">
-        <div className="write-preview-scroll">
+        {/* tabIndex（F-10 / WCAG 2.1.1）：max-height 120 + overflow-y:auto 是
+            可滚动区域，键盘用户需能聚焦后用方向键翻看完整写入内容。
+            仅桌面端注入——焦点环样式只存在于 `[data-host="desktop"]` 层。 */}
+        <div
+          className="write-preview-scroll"
+          tabIndex={isDesktopHost() ? 0 : undefined}
+        >
           <pre className="write-preview-content">{content}</pre>
         </div>
         <div className="write-preview-scrim" />

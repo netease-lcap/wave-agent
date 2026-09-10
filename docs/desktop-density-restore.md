@@ -2352,3 +2352,649 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - **顺手清掉死 action 变体**：删除「打开下载页」这一已死的 ToastAction 变体（两处类型副本 + `handleToastAction` 的 if 分支 + 相关测试用例）——该链路已随 updateChecker 删除，动作只剩 `focusSession` 一种。
 - **spec 同步**：`desktop-account-and-settings.md`（撤销「webview 右下角」措辞 + 新增「toast 形态与路由」一条，按 `position` 表述、不写 hex）；`desktop-shell.md`（撤销「模仿 VS Code」措辞，指向上条路由规则）；`desktop-sessions.md`（故事更名「后台会话活动通知」→「后台会话确认提醒」、删已完成 toast 相关内容与 4 个旧场景、铃铛 4 处改「琥珀色状态点」、绿点边界写明为「已完成」唯一通道、toast 关系边界改为只讲确认 toast 并记录其保留右下角形态）。
 - 实现文件：`desktopHost.ts`、`webview-fixtures/src/types.ts`、`webview/src/types/index.ts`、`ToastStack.tsx`、`ChatApp.tsx`、`TaskList.css`、`ToastStack.css`、`host-desktop.css`、`desktopHost.test.ts`、`toastStack.test.tsx`、`chatAppToast.test.tsx`、`desktopApp.test.tsx`、三份 spec、本 docs。
+
+## 对话流排版契约第 1 项（conversation-typography TXT-01）：阅读正文改用 UI 字体（F-01）
+
+> **规则已归档**：本节及以下至「表格对齐（F-17）」各节定下的规则，已整理为规格 `docs/specs/desktop/desktop-conversation-typography.md`（权威来源）；台账继续保留走查过程、前后实测与截图。
+
+依据来源：codechat-desktop-skill 的 `references/conversation-typography.md`（提交 b7058b0）渲染不变量 **TXT-01**「阅读正文使用 UI 字体角色，不继承 editor-font-family；代码字段显式绑定等宽角色」；`references/conversation-audit.md` 第 33 行定位线索（浏览器中 Markdown 正文 computed 栈为 Menlo/Monaco/Courier New，需追踪 `.message-content` 祖先）。走查清单见工作目录外 `conversation-style-audit.html`（F-01，分组 G1）。
+
+- **问题（修复前 headless 实测）**：base `Message.css:233 .message-content{font-family:var(--vscode-editor-font-family)}` 使对话流阅读正文全部渲染为 `Menlo, Monaco, "Courier New", monospace` —— `.markdown-content` 下 p / li / blockquote / h1–h6 / table th / td、以及错误块 `.message.assistant .error`（其自身只声明 color/italic/padding/max-height/pre-wrap，字体是继承来的）。同页 reasoning / 用户气泡 / 工具行 / ask-user 答案框本就是 UI 栈 `-apple-system, "system-ui", sans-serif`，即同一产品内两种字体角色并存。
+- **修复**（host-desktop.css，markdown 圆角段之后新增，仅 1 处声明）：
+  ```css
+  [data-host="desktop"] .message-content {
+    font-family: var(--vscode-font-family);
+  }
+  ```
+  `--vscode-font-family` 即 body 的 UI 栈，与 reasoning/工具行等既有 UI 角色一致；**不覆盖 base**（IDE 宿主行为不变）。代码字段（Markdown code/pre、bash 命令与输出、写入预览与路径、lsp-output、diff、mermaid）各自规则内已显式绑定等宽栈，故此处不重复声明，避免在文件末尾堆叠覆盖（符合契约「对冲突规则做收敛」的实现边界）。
+- **验证方法（等宽判别，避免中文回退导致的肉眼误判）**：在同一元素内临时注入 `iiiii` 与 `WWWWW` 两个隐藏 span 量宽——等宽字体宽度相等（比值 1.0），比例字体比值 ≈0.25。`:has()` 判据不参与。
+  - 修复前（base 等价态）：md-p / md-h1 / md-li / md-blockquote / md-td / error-block 全部 `monoRatio=1.0`（Menlo）。
+  - 修复后：上述六类全部 `monoRatio=0.25`（UI 栈）；`code`、`pre`、`pre code`、`td code`、`.bash-command`、`.bash-command-output`、`.write-preview-content`、`.lsp-output`、diff 词级 span 全部仍 `1.0`（等宽保持）。
+  - 规模：对话流内文本节点 UI 栈 123→365、Menlo 栈 1134→892（差额 242 即本次转正文字体者）。
+  - 几何无回归：p 760×42 / 2 行、blockquote 6 行、error 17 行、h1 760×32.8 / 1 行，前后一致；字宽差异 <1%（td 395.7→389，无换行数变化）。
+  - 浅深同值（TXT-08）：light/dark 两组测量结果一致。
+  - IDE 宿主回归：以 `data-host="vscode"` 代理验证，全部元素回到 base 行为（正文 Menlo、13px 档），桌面覆盖未泄漏。
+- **测试**：`pnpm -F wave-webview run type-check` 通过（exit 0）；仓库内无 `font-family` 样式断言（test/e2e 零引用），故结论以浏览器 computed 值为准（CSS 改动，无逻辑测试覆盖点）。
+- **口径说明**：错误块 `.message.assistant .error` 随本次一并转为 UI 字体——其等宽并非显式代码角色绑定而是继承副作用，且同类 `.tool-error` 本来就是 UI 字体，统一后两个错误面口径一致；真正的原始堆栈仍由 `pre`/`code`/日志区以代码角色承载。`font-style: italic` 属另一条（F-12），本次未改。
+- **未覆盖项**：200% 缩放与 WCAG 1.4.12 文字间距覆盖；994×949 窄窗口与分屏实际内容宽度；流式未闭合代码围栏/表格；IDE 宿主真机（仅 data-host 代理解析）。
+- 实现文件：`src/styles/host-desktop.css`、本 docs。（headless A/B 实测 + 同页前后截图，等用户 8899 走查确认后推送。）
+
+## 对话流排版契约第 2 批（TXT-02 / TXT-05 / TXT-06 + 角色表）：字号与行高绑定命名角色、宽表本地滚动（F-02 / F-03 / F-04 / F-05 / F-06）
+
+依据来源：codechat-desktop-skill（b7058b0）`references/conversation-typography.md` 的渲染不变量 TXT-02（禁止按嵌套深度连乘 0.9em）、TXT-05（正文行高一致）、TXT-06（长词/路径/链接折行、宽表本地滚动、画布不产生横向滚动）与角色表（表格单元格 = 正文 14/22、行内代码与代码块 = 13px、表头不低于正文）；`references/conversation-audit.md` 对应条目。走查清单见工作目录外 `conversation-style-audit.html`（F-02/F-03/F-04 属 G3·G4，F-05 属 G2，F-06 属 G8）。
+
+**应用提交：`1e2ef0aa`**（`packages/webview/src/styles/host-desktop.css` + `packages/webview/src/components/Message.tsx`；base `Message.css` 与 IDE 宿主路径零改动）。
+
+### 逐项修复与前后实测（1440px，light；dark 同值）
+
+| 项   | 规则/角色 | 修复前                                                                                                                                                         | 修复后                                                                                                                            | 说明                                                                                                                                                             |
+| ---- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F-02 | TXT-02    | td 12.6px / 17.64px；td 内 code **11.34px / 15.876px**（table 0.9em × code 0.9em 连乘）                                                                        | td **14px / 22px**；td 内 code **13px / 22px**                                                                                    | 去掉表格 0.9em 与行内 code 的 em 链，按角色绑绝对值；11.34px 节点 21 → 0                                                                                         |
+| F-03 | 角色表    | th 12.6px / 17.64px（w600）                                                                                                                                    | th **14px / 22px**（w600）                                                                                                        | 「不低于正文」为执行档；最终字重/字号待候选 C-03 视觉拍板（本轮未改）                                                                                            |
+| F-04 | 角色表    | 行内 code 12.6px / 18.9px；pre 12.6px / 17.64px；pre code 同                                                                                                   | 行内 code **13px**；pre **13px**；pre code **13px**（本轮仅字号；行高于同日按用户指示追加为 20px，见文末「代码角色行高 20px」节） | 原为「行高随 C-02 候选未动」；**2026-09-10 用户指示三类载体取 20px 并已实施**，C-02 剩余范围 = bash / 写入预览 / lsp-output                                      |
+| F-05 | TXT-05    | p 14/**21**；li 14/**19.6**；blockquote 14/**19.6**；用户气泡 14/**19.6**（22px 写在 `.user-text-block` 上被内层 1.4 顶掉）；错误块 14/19.6                    | 全部 **14 / 22px**                                                                                                                | 统一整数行盒 22px，命中内层 `.user-text-block .message-content.user-content`；p 外边距 8px、li 4px 不变；错误块随其所属正文角色                                  |
+| F-06 | TXT-06    | 最宽表 882px 落在 760px 列内，父级 `overflow-x: visible`，容器 `scrollWidth 912 / clientWidth 800`（**被 `.messages-container{overflow-x:hidden}` 静默裁切**） | 包 `.md-table-scroll`（`overflow-x:auto`），容器 `800 / 800`；表 973px，`maxScrollLeft 213`，滚到最右时末列完整可见               | 包装层在 `Message.tsx` 的 `renderer.table` 生成；**需 DOMPurify `ALLOWED_TAGS` 放行 `div`**，否则 sanitize 会剥掉包裹层只留子节点（首轮实测 wrapper 缺失即此因） |
+
+对照项（不应变化，实测未变）：`.bash-command` 13px/15.6px、`.compact-params` 12px/18px、h2 21px/27.3px、行内 code/pre 之外的工具行；最小字号仍是 10px（`span.tool-status-dot`，与本次无关）。
+
+### 换行 / 裁切 / 布局位移
+
+- **正文换行零变化**：行盒数（Range.getClientRects 去重行顶）逐元素 p 2→2、li 1→1、quote 3→3、用户气泡 7→7、错误块 7→7、pre 1→1；全页合计 p 98→98、li 97→97、quote 30→30。正文 font-size 未变（14px），行盒增长全部来自行高 19.6/21 → 22px（即契约要求的统一，属预期位移：p 760×42→760×44、li 704×20→704×22、用户气泡 780×153→780×170、错误块 780×128→780×142）。
+- **表格**：font-size 12.6→14px 是角色表要求，必然使单元格文本变宽 —— 128 个单元格中折行数 12 → 40（最多仍 4 行），表格高度随之上浮（8 列样例 300 → 616px）。**无裁切**：所有单元格 `scrollWidth == clientWidth`（over 0），`white-space: normal` + `overflow-wrap: break-word` 使长路径在格内折行；超出列宽的表格转为本地横向滚动。
+- **画布无横向滚动**（TXT-06 验收）：1440 / 994 / 900 / 400px 四档均 `documentElement.scrollWidth == clientWidth`（1440=1440、994=994、900=900、400=400），`.messages-container` 的 `scrollWidth == clientWidth`（修复前 994/900/400 档为 912 vs 733/639/360）。
+- **400px 视口验收**：包裹层 `clientWidth 320 / scrollWidth 973`，可滚到底（`maxScrollLeft` > 0），滚到最右时末列可见 → 「表格可横向滚动看到全部列」达成。
+
+### IDE 宿主回归与验证方法
+
+- 修复方式仍为桌面宿主限定：新增规则全部带 `[data-host="desktop"]` 前缀，base `Message.css` 未改。`Message.tsx` 的包裹层是结构变化，IDE 宿主无对应样式 → 以 `data-host="vscode"` 代理 A/B（同一张表：保留包裹层 vs 临时拆掉包裹层）实测 `table` 几何完全一致（748×68 / top 1860），包裹层 computed `overflow-x: visible`、`margin: 0`、`max-width: none`，画布无横向溢出。
+- 测量口径：「修复前」为**同页等效回退态**（注入样式中和本批 desktop 覆盖，回到 base `Message.css` 取值），与 `/tmp/g234-before.json` 的真实基线一致，避免切换分支/改工作树的干扰；headless Chromium 1440×24000 绕过虚拟列表全渲染；浅深只通过工具条按钮切换（`button[title="切换深色/浅色主题"]`）。
+- **测试**：`pnpm -F wave-webview run type-check` exit 0（全仓 pre-commit `pnpm -r type-check` 亦通过，含 vscode/desktop 包）；仓库内无对应样式断言，结论以浏览器 computed 值为准。
+- 截图：`/Users/ailsa/Documents/07-AI/走查/截图/`（26 张，命名 `G2/G3/G4/F-05/F-06-…_修复前|修复后_light|dark.png`，含 400px 宽表滚动两态）。
+
+### 本轮未覆盖 / 待你拍板
+
+1. **F-07（表头配色与斑马纹 opacity）与 C-03（表头最终字重/字号）未做** —— 同属 G3，本轮只按执行档取「不低于正文」14/22·600，等视觉候选拍板。
+2. **C-02（代码行高整数化）已收口** —— 行内 code / pre / pre code（F-04 指示）+ 用户同日追加「C-02 一起做」授权的 bash 命令与输出、写入预览、diff、lsp 输出全部取 20px（见文末「代码角色行高 20px」节）；diff 与 lsp 输出的**字号**也已按用户追加指示对齐到 13px（C-02 续）。
+3. ~~表格单元格折行数 12 → 40（字号从 12.6 → 14 的直接后果），建议在 8899 走查时确认是否接受~~ → **口径已澄清：12 → 40 指「折行单元格数」**（内容折成 >1 行的 `td/th` 个数，分母为 5 张表的 128 个单元格），三态为 S1 12 → S2 40 → 当前 S3 33；用户已明确「表格保持 14px、不通过缩小字号解决折行」，**该项记为「字号修复已完成，表格阅读效果待验收」（V-01）**，详见文末「表格阅读效果待验收」节。
+4. 未覆盖场景：流式输出中未闭合的表格/代码围栏；表格内嵌 mermaid 或超长无空格 token 的极端列；编辑器 200% 缩放与 1.4.12 文字间距；IDE 宿主真机（仅 data-host 代理）；窄窗口 + 分屏组合下的实际内容宽度；截图对比中的「修复前」为等效回退态而非真实历史构建。
+
+## 对话流链接角色（用户规则 2026-09-10）：描述性链接 = 正文 UI / 直显地址 = 代码 13px（F-16）
+
+规则来源：**用户 2026-09-10 本窗口口述**（skill 契约 conversation-typography.md 目前无链接角色条款，已作为回写候选 W-04 记录在走查清单）：
+
+1. 描述性链接（如「查看预览」「参考文档」）使用 UI 正文字体，与所在正文保持一致；
+2. 直接展示地址的链接（如 `http://localhost:8899/`、完整 HTTPS 地址）使用等宽字体，字号沿用当前代码角色 13px；保留长地址换行，不撑破消息区域；
+3. 文件路径或代码中的链接继续使用等宽字体。
+
+**应用提交：`d8a09697`**（`src/components/Message.tsx` + `src/styles/host-desktop.css`；base `Message.css` 零改动）。
+
+### 实现
+
+- `Message.tsx` 的 `renderer.link`：解析出的 label 去掉内联标签后匹配 `^\s*(?:[a-z][a-z0-9+.-]*:\/\/|\/\/)`（即显示文本本身就是地址）→ 输出 `class="address-link"`；描述性链接不加类，继续继承正文 UI 角色。
+- `host-desktop.css`：`.markdown-content a.address-link` 与正文裸路径链接 `.markdown-content a.file-path-link` 绑 `font-family: var(--vscode-editor-font-family); font-size: 13px; overflow-wrap: anywhere; word-break: break-word`。折行只能靠 `anywhere/break-word`（地址无空格），这条同时兜住 `linkifyFilePathText` 在正文生成的裸路径链接，使「路径」在正文与代码里字形一致。
+- 链接颜色/下划线不动（**本条为提交 `d8a09697` 时的状态**；D-01 已同日实施并修订，最终为「常态无下划线，hover / focus 时显示」，见提交 `634a85d8` / `33c800c8` 与下文「正文内联链接下划线时机」节）。
+
+### 前后实测（1440px；light/dark 同值）
+
+| 形态                                                                                                                     | 修复前     | 修复后                       |
+| ------------------------------------------------------------------------------------------------------------------------ | ---------- | ---------------------------- |
+| 描述性链接 · 5 个（样式规范 / MDN / 跳转到指标表 / 发送邮件 / 协议相对链接）                                             | UI 栈 14px | UI 栈 14px（未加类、无覆盖） |
+| 直显地址 · 6 个（`example.com/docs`、`very/long`、`report/2026`、`coverage…&anchor`、`localhost:8899`、`192.168.1.100`） | UI 栈 14px | **Menlo 13px**               |
+| `<code>` 内路径 / 地址链接 · 17 个                                                                                       | Menlo 13px | Menlo 13px                   |
+| bash 输出内地址 · 1 个                                                                                                   | Menlo 13px | Menlo 13px                   |
+
+- **长地址折行**：最长样例（多层 query + `&anchor`）折 4 行，所在段落 `scrollWidth == clientWidth`（overflow 0）；表格单元格内地址由 1 行变 2 行（Menlo 步进更宽 → 折行，而非挤在同一格）；`.messages-container` `800 == 800`、`documentElement` `1440 == 1440`，四档视口均无横向溢出。
+- **副作用（如实记录）**：Menlo 13px 的字符步进略大于 UI 14px，含直显地址的段落自身行数可能 +1（最长地址段 4 → 5 行），地址链接盒宽 +9%~25%。这是「地址用等宽」的必然结果。
+- **IDE 宿主**：新规则带 `[data-host="desktop"]`；`class="address-link"` 仅作标记，IDE 无对应样式 → 保持原 UI 字体。
+- **测试**：`pnpm -F wave-webview run type-check` exit 0；提交前全仓 `pnpm -r type-check` 通过；仓库内无链接样式断言，结论以浏览器 computed 值为准。
+- 截图 24 张：`/Users/ailsa/Documents/07-AI/走查/截图/F-16-链接角色_修复前|修复后_{light,dark}_{描述性链接与直显地址,锚点链接与裸地址,超长地址折行,路径链接对照,列表内长地址折行,表格内地址折行}.png`（「修复前」= 同页等效回退态）。
+
+### 未覆盖 / 待拍板
+
+- ~~`mailto:` / `tel:` 等无 `//` 的地址若被直接展示，当前判据不算「直显地址」（仍 UI 字体）——是否纳入规则待你确认。~~ **同日闭环**：用户追加规则后已纳入直显地址（见下节「邮箱与电话纳入直显地址」）。
+- markdown 链接 label 内嵌套地址（`[https://x](https://y)`）、label 含内联 HTML（`**http://x**`）、自动链接在流式未闭合状态下的判定均未验证。
+- ~~D-01（正文内联链接常态下划线）未实施~~ **同日已实施**（提交 `634a85d8`），并当日修订为「常态无下划线，hover / focus 时显示」（提交 `33c800c8`，见下节「正文内联链接下划线时机」）。
+
+## 邮箱与电话纳入直显地址（用户规则 2026-09-10 追加）：判据是可见文字含义，不是有无 `//`（F-16 续）
+
+用户 2026-09-10 追加条款：
+
+1. 直接显示**邮箱、电话号码**或 `mailto:…`、`tel:…` 串 → 使用 13px 等宽字体；
+2. 显示「发送邮件」「联系我们」「拨打电话」等**描述性文字** → 使用 UI 字体；
+3. **保留原有跳转行为**（`href` 不变）；
+4. 判据是**可见文字的含义**，而不是有没有 `//`。
+
+**应用提交：`3b33d294`**（`src/components/Message.tsx`，仅链接判定；`host-desktop.css` 复用 `d8a09697` 的 `a.address-link` 规则）。
+
+### 实现
+
+`Message.tsx` 新增三条判据，`renderer.link` 对 `stripFilePathLinks(text)` 后的可见文本做 `isAddressLabel` 判定：
+
+```ts
+const EMAIL_LABEL = /^[\w.!#$%&'*+/=?^`{|}~-]+@[\w-]+(?:\.[\w-]+)+$/;
+// 电话：纯数字 + 分隔符（+ - ( ) 空格 .），至少 7 位数字（含国家码写法）
+const PHONE_LABEL = /^\+?[\d(][\d\s().-]{5,}\d$/;
+// 日期样 label（2026-09-10 / 2026.9.10）不算电话
+const DATE_LABEL = /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/;
+const isAddressLabel = (label: string) => {
+  const t = label.replace(/<[^>]*>/g, "").trim();
+  if (/^(?:[a-z][a-z0-9+.-]*:\/\/|\/\/)/i.test(t)) return true; // scheme 地址
+  if (/^(?:mailto|tel):/i.test(t)) return true; // 显式 mailto:/tel: 串
+  if (EMAIL_LABEL.test(t)) return true; // 直接显示邮箱
+  // 直接显示电话：≥7 位数字且不是日期
+  return (
+    PHONE_LABEL.test(t) &&
+    !DATE_LABEL.test(t) &&
+    (t.match(/\d/g) || []).length >= 7
+  );
+};
+```
+
+说明：`mailto:`/`tel:` 的可见 label 本身即地址（无空格、绝对可断点可控），故与 URL 同档；判定发生在 `renderer.link`，不触碰 `href`，跳转行为不变。日期排除是为了避免 `2026-09-10` 这类正文日期被误判成电话。
+
+### 前后实测（1440px；light/dark 同值）
+
+| 形态                                                                                              | 修复前     | 修复后                     |
+| ------------------------------------------------------------------------------------------------- | ---------- | -------------------------- |
+| 直显邮箱 · 3 个（纯文本 `support@corp.netease.com`、`[support@…](mailto:…)`、`mailto:support@…`） | UI 栈 14px | **Menlo 13px**             |
+| 直显电话 · 1 个（`[+86 138 0000 0000](tel:+8613800000000)`）                                      | UI 栈 14px | **Menlo 13px**             |
+| 描述性链接 · 9 个（含「发送邮件」「联系我们」「拨打电话」「转接客服」）                           | UI 栈 14px | UI 栈 14px（未加类）       |
+| `<code>` 内路径 / 地址链接 · 17 个                                                                | Menlo 13px | Menlo 13px                 |
+| 日期样 label（`2026-09-10`）                                                                      | UI 栈 14px | UI 栈 14px（未误判为电话） |
+
+- **跳转行为**：`href` 逐字节不变（`mailto:` / `tel:` 原样输出），仅 class 标记与字形变化。
+- **测试**：`pnpm -F wave-webview run type-check` exit 0。
+- 截图 8 张：`/Users/ailsa/Documents/07-AI/走查/截图/F-16-邮箱电话角色_修复前|修复后_{light,dark}_{直显,描述性}.png`（「修复前」= 同页等效回退态：中和 `.address-link` 的等宽/字号声明）。
+
+### 未覆盖
+
+- label 与 href 不同源的链接（如 `[https://x](https://y)`）；label 内含内联 HTML（`**http://x**`）；超长电话（>15 位）与带分机号写法；IDE 宿主真机。
+
+## 正文内联链接下划线时机（用户 2026-09-10 授权 + 当日修订）：D-01
+
+> **决策沿革（以本段为准）**：用户先授权「正文内联链接常态显示下划线，hover 加深」（提交 `634a85d8`），当日随即修订为 **「常态无下划线，hover / focus 时显示」**（提交 `33c800c8`）。下面记录修订后的最终状态，末尾保留初版记录备查。
+
+依据：**用户 2026-09-10 决策与修订**——「正文内联链接常态显示下划线，hover 加深。直接展示的 URL、邮箱、电话号码出现在正文中时同样适用；等宽字体不能替代链接的可点击线索。独立工具入口与文件路径链接保留此前已确定的处理方式。」→ 修订为「**常态无下划线，hover / focus 时显示**」。相关背景：**WCAG 1.4.1**（axe `link-in-text-block` serious：链接与正文对比 light 2.9:1、dark 1.99:1，均 < 3:1）。契约中「链接无下划线」表述已声明为 Vue 参考、不再约束 React 侧，故实现不构成契约冲突；该表述的回写建议见 W-05。
+
+**应用提交：`33c800c8`**（当前状态；初版为 `634a85d8`）——`src/styles/host-desktop.css`，base `Message.css` 零改动，IDE 宿主不受影响。
+
+### 实现（修订后）
+
+```css
+[data-host="desktop"] .markdown-content a {
+  text-decoration: none;
+}
+[data-host="desktop"] .markdown-content a:hover,
+[data-host="desktop"] .markdown-content a:focus-visible,
+[data-host="desktop"] .markdown-content a.file-path-link:hover,
+[data-host="desktop"] .markdown-content a.file-path-link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+[data-host="desktop"] .markdown-content a:hover {
+  color: #1f47b8; /* derived：--cc-text-link 加深（契约无 hover token） */
+}
+[data-host="desktop"][data-theme="dark"] .markdown-content a:hover {
+  color: #7fc0ff; /* derived：深色下提亮以体现「加深」反馈 */
+}
+```
+
+`a:focus-visible` 是本次修订新增的一支：键盘 `Tab` 到达链接时同样给出下划线，避免「hover / focus 时显示」只覆盖鼠标。
+
+### 前后实测（探针断言，light / dark 同值）
+
+| 形态                                         | 初版（常态下划线）         | 修订后（当前）                                                         |
+| -------------------------------------------- | -------------------------- | ---------------------------------------------------------------------- |
+| 正文内联链接 · 常态                          | 下划线（offset 2px / 1px） | **无下划线**，颜色 `#2f5edb` / dark `#4daafc`                          |
+| 正文内联链接 · hover                         | 下划线 + 加深              | **下划线 + 加深**：light `#2f5edb → #1f47b8`、dark `#4daafc → #7fc0ff` |
+| 正文内联链接 · 键盘 focus                    | 未处理                     | **下划线**（`:focus-visible` 命中）                                    |
+| 文件路径 / `code` 内 / 工具输出 / write 路径 | 常态无、hover 有           | 常态无、hover / focus 有（保留既有处理）                               |
+| axe `link-in-text-block`                     | 1 节点 / 模式              | **7 节点 / 模式（serious）**                                           |
+
+- **无障碍影响（如实记录，属已接受的偏离）**：修订后静态态回到「只有颜色一个线索」，而链接与正文对比 light 2.9:1 / dark 1.99:1 低于 WCAG 1.4.1 在依赖颜色区分时要求的 3:1 → axe <code>link-in-text-block</code> 报 **7 节点 serious**（常态下划线方案时为 1 节点）。按用户修订决定，该项**不计为验收失败**；若后续要恢复合规：① 回到「常态下划线」，或 ② 提高链接色对比至 ≥3:1。
+- **hover token 说明**：契约无「链接 hover」token → hover 色按 `--cc-text-link` 加深/提亮推导，CSS 内已注明 `derived`；**待确认取值或指定官方 token**。
+- **测试**：`pnpm -F wave-webview run type-check` exit 0。
+- 截图 8 张：`/Users/ailsa/Documents/07-AI/走查/截图/D-01v2-链接下划线时机_修复前_常态_{light,dark}.png`（等效回退到初版「常态下划线」）+ `D-01v2-链接下划线时机_修复后_{常态,hover,focus}_{light,dark}.png`（focus 图为真实键盘 `Tab` 到达链接后拍摄）。初版截图 `D-01-正文链接下划线_*` 保留备查。
+
+### 初版记录（提交 `634a85d8`，已被上述修订取代，仅备查）
+
+CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decoration:underline`（offset 2px / 1px），`a:hover` 加深为 `#1f47b8` / `#7fc0ff`，`a.file-path-link` 与 `code a` 显式 `none`、`a.file-path-link:hover` 出现下划线；axe 由 5 → 1 节点。
+
+## 表格阅读效果待验收（V-01）：字号修复已完成，「12→40」口径澄清
+
+### 「12→40」是什么统计
+
+用户 2026-09-10 要求先说明口径：**既不是整张表的总行数，也不是单元格的行数总和**，而是「**折行单元格数**」——内容折成 >1 行的 `td`/`th` 个数。分母 = mock 中 5 张表的 128 个单元格。
+
+| 状态                                     | 折行单元格数 | 8 列表 | 4 列表 |
+| ---------------------------------------- | ------------ | ------ | ------ |
+| S1 修复前（12.6px 字号、无链接折行规则） | **12**       | 0      | 12     |
+| S2 字号已修 14px、链接折行规则未加       | **40**       | 28     | 12     |
+| S3 当前 HEAD（含 `a.address-link` 折行） | **33**       | 21     | 12     |
+
+单元格最多折 4 行，≥3 行的单元格由 3 → 5 个。S2 的 +28 主要来自 8 列表：字号从 12.6 → 14px 后列宽不变而文本变宽，更多单元格越过列宽阈值。
+
+### 列宽策略取舍（待拍板）
+
+| 策略                                       | 8 列表           | 4 列表                              | 折行单元格       | 横向滚动       |
+| ------------------------------------------ | ---------------- | ----------------------------------- | ---------------- | -------------- |
+| ① 现状 `width:100%`                        | 760px / 高 562px | 760px / 高 446px（最窄列 **42px**） | 21 + 12 = **33** | 无（列被压缩） |
+| ② 候选 `width:max-content; min-width:100%` | 867px / 高 360px | 1838px / 高 199px                   | 0 + 2 = **2**    | 表格区域内滚动 |
+
+最窄列 42px 的取值内容形如「代码/路径/项目」等短词，属「逐字挤成窄列」的观感问题。
+
+### 用户四条验收口径与当前满足情况
+
+1. 普通说明文字允许自然换行 → ✅ 正文段落行盒总数与修复前一致（未因表格改动而变）；
+2. 邮箱、路径、URL 允许必要换行，避免逐字挤成窄列 → ⚠️ 折行已按需（`anywhere`），但 4 列表最窄列仍 42px，取决于策略选择；
+3. 宽表优先合理分配列宽，必要时表格区域内横向滚动 → ⚠️ 现为压缩列宽而非分配列宽，策略 ② 可满足；
+4. 不截断或隐藏内容来减少行数 → ✅ 无 `text-overflow:ellipsis` / `overflow:hidden` / `display:none`；画布无横向溢出（`documentElement.scrollWidth == clientWidth == 1440`，`.md-table-scroll` 单元格 800 == 800）。
+
+**结论：字号修复已完成（表格保持 14px，未通过缩小字号解决折行），表格阅读效果待验收** —— 待用户选定列宽策略后按四条口径回归并补截图。
+
+截图 8 张：`/Users/ailsa/Documents/07-AI/走查/截图/F-03-表格阅读效果_修复前|修复后_{light,dark}_{宽表4列,8列表}.png`（同一窗口、1440px、同一滚动位置）。
+
+## skill 回写建议汇总（W-01 ~ W-12，仅建议，未改 skill）
+
+按用户要求本轮**只整理、不直接修改** `codechat-desktop-skill`。目标文件与来源：
+
+| #    | 目标文件                                                             | 建议内容                                                                                                                                                                                                                                                 | 依据来源                                                                                                                               |
+| ---- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| W-01 | `references/conversation-surfaces.md:51`                             | 对话内块圆角 8px → **12px**（bash / 写入预览 / 代码块 / diff / 答案框）                                                                                                                                                                                  | Figma 节点 `13438:8029` + 用户 0903 第 3 轮评论（已确认）                                                                              |
+| W-02 | `references/conversation-surfaces.md`                                | 时间线状态点 8×8+1px → **12×12 + 2px**（浅色白描边 / 深色会话画布色描边），行缩进 20px                                                                                                                                                                   | Figma 节点 `13583-2226`（file `v92f0XaCeMV7467qzIh6en`，已确认）                                                                       |
+| W-03 | `references/conversation-surfaces.md:25-27`                          | 连接线 **#E4E7ED / left 5.5px / 端点 21px**，说明源自 12px 节点圆心几何                                                                                                                                                                                  | Figma 提取「竖线 1x541 #E4E7ED」+ 几何推导                                                                                             |
+| W-04 | `references/conversation-typography.md`（建议新增 **TXT-09**）       | **链接角色条款**：描述性链接 = 正文角色；直显地址（`http(s)://`、协议相对 `//`、**可见文字本身就是邮箱/电话或 mailto:/tel: 串**）= 代码角色 13px、允许任意位置折行；判据是可见文字含义而非有无 `//`；路径与代码内链接沿用代码角色                        | 用户 2026-09-10 规则；实现 `d8a09697` / `3b33d294`                                                                                     |
+| W-05 | `references/conversation-surfaces.md` + `conversation-typography.md` | 「链接无下划线，hover 出现」→ **「正文内联链接常态无下划线，hover / focus 时显示下划线（offset 2px / 1px）并加深颜色；直显 URL/邮箱/电话同样适用；文件路径与代码内链接跟随同一时机」**，并注明无障碍条件（链接与正文对比需 ≥3:1 才免于 WCAG 1.4.1 违规） | 用户 2026-09-10 授权与当日修订 + axe `link-in-text-block`（light 2.9:1 / dark 1.99:1 < 3:1，属已知偏离）；实现 `634a85d8` / `33c800c8` |
+
+### 本轮补充的回写候选（W-06 ~ W-12，用户 2026-09-10「之前修复的内容也可回写」）
+
+| #    | 目标                                                   | 建议内容                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 依据                                                                                                                            |
+| ---- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| W-06 | `conversation-surfaces.md`（结构）                     | **React 桌面端已验收规格的落点**——该文件顶部声明「Vue 参考、非 React 已验收规格」，而圆角 12px / 状态点 12×12+2px / 连接线 / 行高 22px / 表格 14-22 全是 React 实测值，需三选一定落点（原文件并列小节 / 新建 `conversation-surfaces-desktop.md` / 每条加实测行内注）                                                                                                                                                                                                           | 本轮走查过程本身（本文档全篇为 React 实测）；**须先决策，W-01/02/03/05 的写入位置取决于它**                                     |
+| W-07 | `design-system.md` / `interaction-states.md`           | 补链接 hover 色：常态 `--cc-text-link`，hover 浅色 `#1F47B8` / 深色提亮 `#7FC0FF`（深色「加深」= 提亮）                                                                                                                                                                                                                                                                                                                                                                        | 实现提交 `33c800c8`（当前按 `--cc-text-link` 推导、标 `derived`）                                                               |
+| W-08 | `conversation-typography.md`（TXT-06 注）              | TXT-06 补可执行验收：DOM 确认存在真实滚动容器 + 画布无溢出；陷阱 = renderer 包裹的滚动 `div` 不在 sanitizer 白名单会被剥掉（假通过）                                                                                                                                                                                                                                                                                                                                           | F-06 排查（提交 `1e2ef0aa`：`wraps: 0` → `ALLOWED_TAGS` 缺 `div`）                                                              |
+| W-09 | `conversation-typography.md`（TXT-09 附）              | TXT-09 附边界示例表：描述性 = 正文；直显地址/邮箱/电话/`mailto:`/`tel:` = 代码 13px；**日期样 label 不算电话**；未覆盖边界需回报                                                                                                                                                                                                                                                                                                                                               | 用户 2026-09-10 规则 + 提交 `3b33d294`                                                                                          |
+| W-10 | `conversation-surfaces.md`                             | 任务列表卡：内边距上下对称 8px、`gap 6px`、圆角 8px；贴合队列卡时去圆角 / 去重边框、保留单条分隔线                                                                                                                                                                                                                                                                                                                                                                             | 用户 0909 走查「下面高了点可以收拢」+ 提交 `2187d55f`（⚠️ 在 `feat/0909-new-base-r1`，**PR 未合并**）                           |
+| W-11 | `design-system.md`（菜单节）                           | 菜单分隔线条件渲染：其后无分组内容时不渲染（workdir 菜单无最近记录时隐藏）                                                                                                                                                                                                                                                                                                                                                                                                     | 用户 0909 走查「还未选择工作目录不显示分割线」+ 提交 `61df5d5f`（⚠️ 同上，**PR 未合并**）                                       |
+| W-12 | `audit-rubric.md`（无障碍节）+ `interaction-states.md` | 无障碍**实现陷阱**（不只写目标）：① renderer 产出的 `aria-label`/`tabindex` 必须同提交进 sanitizer 白名单（否则被静默剥掉）；② 可滚动区域本体要 `tabindex="0"`；③ 可聚焦元素焦点环 `outline: 2px solid var(--cc-border-focus)` + `outline-offset: 1px`，`:focus-visible` 触发；④ 折叠标题用 `<button type="button" aria-expanded>` 并复位 UA 样式；⑤ 复选框保留本体 + `aria-label`，禁用 `aria-hidden`；⑥ **验收必须走键盘 Tab 路径**（程序化 `focus()` / 鼠标路径不出焦点环） | 用户 2026-09-10 授权批 1（F-08…F-13）；axe 实测 `label` 6→0、`scrollable-region-focusable` 5→0；提交 `9a8bf500`（与 W-08 同源） |
+
+**建议回写顺序**：① 先决策 W-06 落点 → ② W-01/W-02/W-03/W-05 写内容 → ③ W-04/W-07/W-08/W-09/W-12 写 typography、design-system 与无障碍节 → ④ W-10/W-11 待 0909 PR 合并后再写。
+
+**交接单**：`/Users/ailsa/Documents/07-AI/CC02/skill-backfill-for-codex.md`（含一段可直接发给 codex 的提示词 + 12 条逐条「现状原文 / 建议改为 / 依据 / 验收」+ 依赖边界 + 自查清单；Artifact `https://codechat.codewave.163.com/code/artifact/6lfkrp9xgh`）。清单 HTML 的「skill 回写建议汇总」节提供两个一键复制按钮（复制全部 W-01~W-12 / 复制交接单全文）。
+
+**回写前置依赖**：W-04 与 W-05 相互依赖（W-04 让直显地址转等宽、W-05 规定其下划线时机），两条须同批回写；W-12 与 W-08 同源（同属「契约结论必须落到 DOM 实证」的实现陷阱），建议同批写；另基础仓库 `specs/ui/file-path-links.md` 的「路径链接 dotted 下划线」与 base `Message.css` 现有 `underline dotted` 需一并核对（本轮未改 base，IDE 宿主不受影响）。
+
+**本轮（2026-09-10）已落盘但未推送的提交**：`1e2ef0aa`（F-02~F-06 字号/行高/表宽）、`0df55f8b`、`89bfc8f3`（文档）、`d8a09697`（链接角色/地址）、`3b33d294`（邮箱/电话）、`634a85d8`（下划线初版）、`33c800c8`（下划线时机修订）。推送目标仍为「新分支 + PR」，待用户确认后执行。
+
+## 批 1 · 无障碍与行高（用户 2026-09-10 授权：先做批 1，F-08/F-09/F-10/F-11/F-12/F-13 六条）
+
+用户从走查清单 `64zt1y22an` 里选定「先做批 1（无障碍 + 行高）」：F-09 / F-10 / F-11 / F-13，另含 F-08（状态色语义 token）与 F-12（错误块去斜体）。六条**全部有契约或既有约定依据**，无设计取值待决。
+
+### 依据与落点
+
+| 项   | 依据                                                                                   | 落点                                                                                                                                                   |
+| ---- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| F-09 | WCAG 4.1.2；axe `label` **critical**（两模式各 6 节点）                                | `Message.tsx` 新增 `renderer.checkbox`（+ sanitizer 放行 `aria-label`）                                                                                |
+| F-10 | WCAG 2.1.1；axe `scrollable-region-focusable` **serious**（两模式各 5 节点）           | `Message.tsx` `renderer.code` 补 `tabindex="0"`；`bash-command-output` / `write-preview-scroll` 补 `tabIndex`；焦点环在 `host-desktop.css`             |
+| F-11 | WCAG 2.1.1 / 4.1.2；interaction-states.md「可见焦点、可访问名」                        | `ReasoningBlockView.tsx` / `CompactBlockView.tsx` 折叠标题 `<div onClick>` → `<button type="button" aria-expanded>`；`Message.css` 复位 button UA 样式 |
+| F-12 | 角色表**无斜体角色**（中文斜体尤伤可读性）                                             | `host-desktop.css` 只去 `font-style: italic`，字体/行高随 F-01/G2 收敛，不另写覆盖                                                                     |
+| F-13 | 角色表「时间/数量/依赖等辅助信息 = 12/20」+ design-system.md 紧凑行高 20px             | `host-desktop.css` 桌面覆盖 `.compact-params` / `.write-tool-stats` 行高 → 20px                                                                        |
+| F-08 | codechat `theme/desktop-colors.css:78-83`（light）/`:173-178`（dark）状态 token 权威档 | desktop token 层补 `--cc-state-*` 浅/深两档；`statusColors.ts` 改 `var(--cc-state-*, fallback)`；任务 dot/icon 去掉 hex `!important`                   |
+
+### 实现要点与踩坑
+
+- **sanitizer 白名单是隐性闸门**：`aria-label`（F-09）与 `tabindex`（F-10）都不在 `ALLOWED_ATTR` 里，DOMPurify 会静默剥掉 → 修复到不了 DOM（与 F-06 的 `div`/`ALLOWED_TAGS` 是同一类坑）。本次已把两属性加入白名单，并在注释里写明来源仅限本文件 renderer。
+- **`renderer.checkbox` 逐字节对齐 marked 9 默认输出**（`<input ` + `checked="" ` + `disabled="" type="checkbox">`），只追加 `aria-label="已完成/未完成"`；保留 `checked`（完成状态的唯一载体），不用 `aria-hidden` / `role="img"` 隐藏控件。
+- **`renderer.code` 只在 `<pre` 开标签插入 `tabindex="0"`**，其余（语言类名、转义状态、`<code>` 子节点）转调默认实现，不引入高亮或结构变化。全部 12 个 markdown `pre` 均可聚焦（其中 4 个当前实际横向溢出）。
+- **`--cc-state-*` 只定义在深色块里是既有缺口**：浅色块此前没有焦点环/状态色变量，一旦写法写成无 fallback 的 `var(--cc-border-focus)` 就会在浅色下失效（本轮实测踩到：`outline: 2px solid var(--cc-border-focus, #a0a5a8)` 带 fallback 才两模式都成立）。`statusColors.ts` 全部带 fallback（IDE 宿主不定义这些 token → 回落现值 hex，观感零回归）。
+- **F-11 button 复位的边界**：折叠标题元素类型变更必然影响 IDE 宿主，故复位规则写在 base `Message.css`（`button.reasoning-header{width:100%;padding:0;border:none;background:none;font:inherit;color:inherit;text-align:left}`），外观与原先 div 一致；焦点可见样式只在桌面层给（`2px var(--cc-border-focus)`）。
+
+### 前后实测
+
+| 形态                                   | 修复前                                                               | 修复后                                                                                                                                                   | 证据                     |
+| -------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| F-09 axe `label`                       | light 6 / dark 6 节点（critical）                                    | **0**                                                                                                                                                    | axe 复跑                 |
+| F-09 DOM                               | `<input checked disabled type=checkbox>`                             | 6 个 checkbox 全部带 `aria-label`（已完成 ×3 / 未完成 ×3）                                                                                               | 探针                     |
+| F-10 axe `scrollable-region-focusable` | light 5 / dark 5 节点（serious）                                     | **0**                                                                                                                                                    | axe 复跑                 |
+| F-10 键盘                              | `pre` / bash 输出 / 写入预览不可聚焦                                 | Tab#15 命中 `pre`、Tab#50 命中 bash 输出、写入预览由前一个可聚焦元素 Tab 命中，焦点环 `2px #A0A5A8`                                                      | 键盘探针                 |
+| F-11 键盘                              | `<div onClick>` 无 role/tabIndex/aria-expanded                       | `<button type=button aria-expanded>`，Tab#4 可达，Space/Enter 均切换 `aria-expanded`，焦点环可见                                                         | 键盘探针                 |
+| F-12 `font-style`                      | `.tool-error` / `.message.assistant .error` = italic                 | 两者 = **normal**（字号 14px / 助手错误行高 22px 不变）                                                                                                  | 探针                     |
+| F-13 辅助行高                          | `.compact-params` 12/18，`.write-tool-stats` 12/normal               | 两者 **12/20**；工具行块高 18px 不变（无布局回归）                                                                                                       | 探针                     |
+| F-08 状态色                            | `--cc-state-*` 未定义（空），JS/CSS 双侧 hex，注释「深色沿用浅色值」 | token 两档：light `#16a34a/#2f5edb/#e6a23c/#d92d20/#98a2b3`、dark `#83d6a0/#8bbcf0/#e8bf78/#f19b95/#a0a5a8`；任务 dot、行 icon、时间线节点最终色 = token | 探针（两模式逐元素 rgb） |
+
+- **焦点环触发条件（实测结论，写进说明以免误判）**：`:focus-visible` 只在**键盘路径**出现——纯鼠标点击后用脚本 `.focus()` 聚焦不画环（Chrome 语义正确）。故 F-10/F-11 截图全部走「Tab 键盘路径」采集。
+- **F-13 视觉量级**：行高 18 → 20 只在行盒内部生效，工具行块高仍为 18px，故截图差异体现在文件统计行（82 → 85px）与行距，不是布局位移。
+- **F-08 截图口径**：「修复前」= 同页等效回退（inline 覆盖 `--cc-state-*` 为浅色值，即原「深色沿用浅色值」状态），不切分支。
+- **测试**：`pnpm -F wave-webview run type-check` exit 0；`oxlint` 5 个改动文件 0 warning / 0 error。
+- **截图 34 张**：`/Users/ailsa/Documents/07-AI/走查/截图/批1-*.png`（F-08 任务状态/时间线 × light·dark × 前/后、F-09、F-10 代码块/命令输出/写入预览、F-11、F-12、F-13；截图前统一冻结动画以避免断言噪声）。
+
+### 未做（批 1 之外的保留项）
+
+- F-10 的 `.md-table-scroll` 未补 `tabindex`：当前两模式下均无横向溢出（axe 0 违规），待宽表滚动场景复现再定；
+- `.tool-error` 容器自身 `line-height: normal`（其内容只有一个 `pre` 原始堆栈，走代码角色）未改，属 F-05/G2 未覆盖的角落，若要求统一再单独处理。
+
+## 代码角色行高 20px（用户 2026-09-10 指示）：行内 code / pre / pre code（F-04 续）
+
+依据来源：**用户 2026-09-10 本窗口指示**「F-04 行内 code / pre / pre code 行高优化为 20px」。契约 `references/conversation-typography.md` 角色表代码角色为「13/20」，其中 13px 属既有约定，20px 原本是候选 C-02 的取值；本次按指示先把 F-04 的**三类载体**落地为 20px。
+
+**改动位置**：`packages/webview/src/styles/host-desktop.css`（`[data-host="desktop"] .markdown-content :not(pre) > code, .markdown-content pre, .markdown-content pre code` 规则，原仅 `font-size`）。选择器新增 `pre code`（原先靠 `inherit` 继承 pre 的行高）；`line-height: 20px` 为新增。base `Message.css` 未改（其 `.markdown-content pre{line-height:1.4}` 由桌面覆盖压过）。
+
+### 前后实测（1440px，light；dark 同值）
+
+| 载体                                     | 修复前                                 | 修复后          | 说明                                           |
+| ---------------------------------------- | -------------------------------------- | --------------- | ---------------------------------------------- |
+| 行内 code（`:not(pre) > code`，全页 49） | 13px / `normal`                        | **13px / 20px** | 字号不变，行高显式化                           |
+| `pre`（全页 16 处）                      | 13px / 18.2px（base 1.4 × 13，非整数） | **13px / 20px** | 消掉 18.2px 小数，与辅助信息角色同刻度         |
+| `pre code`                               | 13px / 18.2px（继承 pre）              | **13px / 20px** | 显式绑定，不再依赖继承                         |
+| blockquote / li 内的行内 code            | 13px / `normal`                        | **13px / 20px** | 同一规则覆盖（点选 6 处实测）                  |
+| 对照：正文 p / li 行盒                   | 22px / 行盒 2、1；p 块高 44px          | **完全不变**    | 行内 code 是 inline 元素，行盒由父级 22px 主导 |
+
+- **零回归（像素级）**：行内 code 段落窗口 796×103 在**浅深两主题下「修复前」「修复后」截图逐字节完全一致**（`cmp` 通过）；`pre` 块高 44 → 46px（2 行各 +1.8px），位移只落在代码块自身。
+- **截图前断言主题**：两主题各自数值一致；IDE 宿主不受影响（规则带 `[data-host="desktop"]`）。
+
+### 测试与截图
+
+- `pnpm -F wave-webview run type-check` exit 0；仓库内无对应样式断言，结论以浏览器 computed 值为准。
+- 截图 8 张：`/Users/ailsa/Documents/07-AI/走查/截图/F04-代码行高20px_{修复前,修复后}_{light,dark}_{代码块pre,行内code段落}.png`（「修复前」= 同页等效回退态，注入 `pre{line-height:1.4 !important}` 等中和规则）。
+
+### C-02 收口（用户 2026-09-10 同日追加授权「C-02 一起做」）
+
+角色表代码角色为「行内代码、命令、代码块、diff、文件预览、原始日志 = 13 / 20」。F-04 只做了行内 code / pre / pre code，本批把其余代码载体一并收到 20px（**只改行高，不动字号**）：
+
+| 载体                                                 | 规则位置                      | 修复前                        | 修复后          |
+| ---------------------------------------------------- | ----------------------------- | ----------------------------- | --------------- |
+| bash 命令（`.bash-command-input` / `.bash-command`） | `host-desktop.css` C-02 规则  | 13px / **15.6px**（base 1.2） | 13px / **20px** |
+| bash 输出（`.bash-command-output`，含区内链接）      | 同上                          | 13px / **15.6px**             | 13px / **20px** |
+| 写入预览（`.write-preview-content`）                 | 其桌面覆盖规则内改（原 18px） | 13px / **18px**               | 13px / **20px** |
+| diff（`.diff-viewer-content` → `.diff-line` 继承）   | C-02 + C-02 续（字号）        | 12px / **14.4px**             | **13px / 20px** |
+| lsp 输出（`.lsp-output`）                            | C-02 + C-02 续（字号）        | 12px / **14.4px**             | **13px / 20px** |
+
+- **F-15（bash 行高非整数）随之收口**：15.6px 小数消除，取 C-02 的目标值 20px（不再需要 18px 保底档）。
+- **几何位移**（1440px，两模式同值）：bash 块 151 → 166px（命令行 27.6→32、输出区 121.2→132）、写入预览 40 → 42px、lsp 输出 24 → 30px、diff 单行 18.4 → 24px；**diff 容器几何不变（302px）**，内容高 2880px 由 `.diff-viewer-content` 的 `overflow-y:auto` 承接（滚到底末行可见，`maxScrollTop 2580`）。
+- **无隐藏裁切**：`.bash-command-input` / `.bash-command-output` / `.write-preview-scroll` / `.lsp-output` 均 `overflow:auto`，实测 `scrollHeight == clientHeight` 或可滚到底；画布 `scrollWidth == clientWidth`（无横向溢出）。
+- **C-02 续：diff 与 lsp 输出字号 12 → 13px**（用户 2026-09-10 追加指示「diff 与 lsp 输出的字号对齐」）。角色表代码角色为 13/20，这两处此前只对齐了行高。实现：`host-desktop.css` 的 C-02 续规则（`[data-host="desktop"] .diff-viewer-content, .lsp-output { font-size: 13px }`）。
+  - **几何零变化（只变字形大小）**：diff 容器 300px、`.diff-line` 24px、`.diff-content` 24px、`.diff-prefix` 20×24、内容高 2880px、**无新增折行**（120 行折行 0 → 0）、无横向溢出（`scrollWidth == clientWidth`）；lsp 输出框高度不变、无横向溢出；画布 `scrollWidth == clientWidth`。
+  - 截图逐像素差异（旁证字号确实变大）：diff 查看器 15.5%（light/dark 同值）、lsp 输出 3.8% / 4.0%。
+- 截图 24 张：`走查/截图/C02-代码角色行高20px_{修复前,修复后}_{light,dark}_{bash命令与输出,写入预览,diff查看器,lsp输出}.png` + `C02b-diff与lsp字号13px_{修复前,修复后}_{light,dark}_{diff查看器,lsp输出}.png`（「修复前」= 同页等效回退态）。
+
+## 辅助信息角色收口（用户 2026-09-10 指示）：`.tool-result-block` 一族 11px/15.4 → 12/20（F-13 续）
+
+依据来源：**用户 2026-09-10 本窗口指示**「.tool-result-block、.compact-params 统一为辅助 12/20」；契约 `references/conversation-typography.md` 角色表「时间、数量、依赖等辅助信息 = 12 / 20」。
+
+**核对结果**：`.compact-params` 已是 **12/20**（批 1 的 F-13 做过，本轮零改动）；`.tool-result-block` 一族仍是 base 的 **11px / 1.4 = 15.4px**（非整数），低于角色表所有档位（正文 14/22、辅助 12/20、代码 13/20）。
+
+**改动位置**：`packages/webview/src/styles/host-desktop.css`（`.compact-params` 规则之后）：
+
+```css
+[data-host="desktop"] .tool-result-block,
+[data-host="desktop"] .result-answer,
+[data-host="desktop"] .result-raw,
+[data-host="desktop"] .tool-result-inline {
+  font-size: 12px;
+  line-height: 20px;
+}
+```
+
+`<code>.result-answer</code>` / `<code>.result-raw</code>` 自带 `font-size:11px` 声明，**必须一并列出**，否则只改容器时子元素仍留在 11px；`.tool-result-inline` 未在本轮 mock 中渲染，同族同值一并收口。base `Message.css` 未改（仍是 11px，IDE 宿主行为不变）。
+
+### 前后实测（1440px，light；dark 同值）
+
+| 元素                            | 修复前        | 修复后          | 块高                                                      |
+| ------------------------------- | ------------- | --------------- | --------------------------------------------------------- |
+| `.tool-result-block`（9 处）    | 11px / 15.4px | **12px / 20px** | 46.2 → 60、61.6 → 80、15.4 → 20（AskUser 卡 152 不变）    |
+| `.result-raw`（7 处）           | 11px / 15.4px | **12px / 20px** | 46.2 → 60（`max-height:100px` + `overflow:auto`，不裁切） |
+| `.result-raw-line`（17 处）     | 11px / 15.4px | **12px / 20px** | 15.4 → 20                                                 |
+| `.result-answer`（1 处）        | 11px / 15.4px | **12px / 20px** | 15.4 → 20                                                 |
+| `.ask-user-result-item`（2 处） | 11px（继承）  | 12px（继承）    | 72 不变（子元素 q/a 本是 14/22）                          |
+| `.compact-params`（14 处）      | 12px / 20px   | 12px / 20px     | 不变（批 1 已做）；前后截图逐字节一致                     |
+| `.ask-user-result-q/a`（2 处）  | 14px / 22px   | 14 / 22（不变） | 正文角色，未动                                            |
+
+- **残留小字号核对**：对话流内 **11px 文字节点 45 → 8**，余下 8 处**全部在 Mermaid SVG 内**（`<text>` / `<tspan>`，角色表明确「不涵盖 Mermaid SVG 内文字」）；**10px 节点**只剩 `.tool-status-dot`（内容是「●」圆点字符，非文字）与 Mermaid 标签。即对话流已无「非角色的 11px 正文文字」。
+- **无裁切 / 无溢出**：`.result-raw` 的 `max-height:100px; overflow-y:auto` 承接行高变大后的增高（可滚到底）；画布 `scrollWidth == clientWidth`。
+- **测试**：`pnpm -F wave-webview type-check` exit 0。
+- **截图 8 张**：`/Users/ailsa/Documents/07-AI/走查/截图/辅助角色-工具结果12px20px_{修复前,修复后}_{light,dark}_{工具结果块,工具参数compact-params}.png`（工具结果块窗口 90 → 108px；compact-params 前后逐字节一致）。
+
+## diff 省略行归辅助角色（用户 2026-09-10 指示）：`.diff-line-ellipsis` 11px → 12px（F-13 续 2）
+
+依据来源：**用户 2026-09-10 本窗口指示**「.diff-line-ellipsis 可以提到 12px」（先由走查确认该元素此前在 mock 里一处都不渲染、补用例使其可见后再定值）；契约 `references/conversation-typography.md` 角色表「辅助信息 = 12 / 20」。
+
+**改动位置**：`packages/webview/src/styles/host-desktop.css`（辅助信息角色收口规则之后，全仓新增，此前 `host-desktop.css` 内无该类覆盖）：
+
+```css
+[data-host="desktop"] .diff-line-ellipsis {
+  font-size: 12px;
+  line-height: 20px;
+}
+```
+
+- base 值来自 `DiffViewer.css:133`：`font-size: 11px` + `padding: 2px 28px` + `font-style: italic` + `color: descriptionForeground`；**行高不是自己声明的**，是继承 `.diff-viewer-content` 的 20px（C-02 落地后）。11px 落在角色表所有档位之外，故收口到辅助信息 12/20。
+- **同类覆盖面**：对话流内 diff 查看器的三态省略行（前置 / 后置 / 中间）+ 右侧预览面板「差异」页（`DiffPane`）的状态行（「二进制文件，不显示差异」/「无内容差异」/「重命名自 …」/「差异过大，已截断…」）——都是同一个类，字号随之一致。
+- **`.diff-empty` 不在其列**：该分支在应用内**不可达**（`DiffViewer.tsx:272` 的渲染条件是 `changes.length === 0`，而同组件 49-51 行 `showDiff` 要求 `changes.length > 0`，不满足时 264 行提前 `return null`；全仓仅此一处引用）。属既有死代码，本轮不顺手动它。
+- base `DiffViewer.css` 未改 → IDE 宿主仍为 11px。
+
+### 前后实测（1440px；light / dark 同值）
+
+| 用例（mock 内三条 Edit） | 位置         | 修复前      | 修复后          | 元素盒 | 容器 / 卡高    |
+| ------------------------ | ------------ | ----------- | --------------- | ------ | -------------- |
+| A · 前置省略             | 首行         | 11px / 20px | **12px / 20px** | 758×24 | 144 / 175 不变 |
+| B · 后置省略             | 末行         | 11px / 20px | **12px / 20px** | 758×24 | 144 / 175 不变 |
+| C · 中间省略             | 两组变更之间 | 11px / 20px | **12px / 20px** | 758×24 | 264 / 295 不变 |
+
+- **几何零位移**：行高两侧同为 20px，只有字形变大 —— 元素盒 758×24 不变、`.diff-viewer-content` 的 `clientHeight == scrollHeight`（144 / 144、264 / 264，无需滚动）、卡片高度 175 / 175 / 295 逐值不变、画布横向溢出 0。
+- **逐像素差异**：截图尺寸完全一致（761×175、761×295），差异像素 **44~45 个（0.020%~0.034%）**，bbox 恰好落在省略号字形区域（x 31→49，纵向 ±2px）——即除「...」本身变大外，其余像素零变化。
+- **测试**：`pnpm -F wave-webview type-check` exit 0。
+- **截图 12 张**：`/Users/ailsa/Documents/07-AI/走查/截图/diff省略行12px_{修复前,修复后}_{light,dark}_{01前置,02后置,03中间}.png`（「修复前」= 同页等效回退，注入 `!important` 强制 11px）。
+
+### 配套：diff 省略行三态走查用例（本地 mock，不入库）
+
+`.diff-line-ellipsis` 只在 diff 上下文被折叠时出现，此前 mock 里 **0 处渲染**，属「按类生效但无法目视验收」。已在本地 `prototype/mockShared.ts` 新增 `richDiffEllipsisMessages()`（3 条 Edit：`src/styles/tokens-{shadow,radius,font}.css`，上下文 **5 / 5 / 7** 行，已用 `diffLines` 实测命中 `DiffViewer.tsx:170-197` 的 `contextLimit = 3` 三条分支）并接进 `richConversationMessages()`，8899 用例「桌面端：对话流全样式」内可见（消息带 `A·` / `B·` / `C·` 前缀）。`prototype/` 与 `mockShared.ts` 均 gitignore，**不进本文件所属的提交**。
+
+## 表格展示（F-07）+ 列宽按内容分配（V-01）（用户 2026-09-10 指示，候选待走查）
+
+依据来源：**用户 2026-09-10 本窗口指示** —— F-07「表头配色可以参考 Bash 的颜色，保持统一；给表格加一下圆角；保留表格描边；斑马纹可以拿掉」；V-01「采用第三种策略：按内容分配列宽，优先自然换行，横向滚动只作兜底」+ 五条验收重点。**本轮只调整表格展示层，不改写 AI 已生成的内容**；走查验收后再整理为 CC 的表格列宽规则。
+
+### 改动 1：`packages/webview/src/components/Message.tsx`（marked 渲染器，判定与内容无关）
+
+- `renderer.table`：包 `.md-table-scroll` 时补 `tabindex="0"` —— 表格被 `.messages-container` 的 `overflow-x:hidden` 裁切时才出现局部横向滚动，滚动区必须键盘可达（与 F-10 同规）。
+- `renderer.tablecell`：按**单元格文本内容**注入类名，**不改内容本身**（`DOMPurify` 的 `ALLOWED_ATTR` 本就含 `class`）：
+  - `md-cell-token` —— 单 token 且 ≤ 12 字符：分类 / 状态 / 序号 / 数值 / 日期 / 短词；
+  - `md-cell-long-token` —— 任一 token ≥ 20 字符，或 ≥ 12 字符且含 `/`、`@`：URL / 邮箱 / 路径 / 长英文串。
+- 判定只看「长度 + 分隔符」这类通用文本特征，**不依赖 mock 内容、不绑定某一张表**，其余表格同样生效（阈值常量 `TABLE_CELL_SHORT_TOKEN_MAX = 12` / `TABLE_CELL_LONG_TOKEN_MIN = 20` / `TABLE_CELL_ADDRESS_MIN = 12`）。
+
+### 改动 2：`packages/webview/src/styles/host-desktop.css`
+
+```css
+[data-host="desktop"] .markdown-content table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 12px;
+}
+[data-host="desktop"] .markdown-content th,
+[data-host="desktop"] .markdown-content td {
+  border: none;
+  border-right: 1px solid var(--cc-border-light);
+  border-bottom: 1px solid var(--cc-border-light);
+  overflow-wrap: normal;
+  word-break: normal;
+}
+[data-host="desktop"] .markdown-content th:last-child,
+[data-host="desktop"] .markdown-content td:last-child {
+  border-right: none;
+}
+[data-host="desktop"] .markdown-content tbody tr:last-child td {
+  border-bottom: none;
+}
+[data-host="desktop"] .markdown-content th {
+  background-color: var(--cc-fill);
+}
+[data-host="desktop"] .markdown-content tr:nth-child(even) {
+  background-color: transparent;
+  opacity: 1;
+}
+[data-host="desktop"] .markdown-content thead th:first-child {
+  border-top-left-radius: 12px;
+}
+[data-host="desktop"] .markdown-content thead th:last-child {
+  border-top-right-radius: 12px;
+}
+[data-host="desktop"] .markdown-content tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 12px;
+}
+[data-host="desktop"] .markdown-content tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 12px;
+}
+[data-host="desktop"] .markdown-content th.md-cell-token,
+[data-host="desktop"] .markdown-content td.md-cell-token {
+  white-space: nowrap;
+}
+[data-host="desktop"] .markdown-content th.md-cell-long-token,
+[data-host="desktop"] .markdown-content td.md-cell-long-token {
+  overflow-wrap: break-word;
+}
+```
+
+- **表头配色统一到 bash 面**：`--cc-fill`（light `#F0F2F5` / dark `#25292B`）正是 `.bash-command-unified .bash-command-input` 的底色（`--vscode-chat-requestBubbleBackground`，见本文件「bash 命令区」一节），实测 `rgb(240,242,245)` / `rgb(37,41,43)`；base 的 `lineHighlightBackground` 是 25% 透明灰，dark 下完全透明（表头无底色）。
+- **斑马纹去掉**：base `Message.css` 的 `tr:nth-child(even){background-color:lineHighlightBackground;opacity:0.8}` 桌面端置为 `transparent / opacity:1` —— 该透明叠加还曾把浅色行正文对比压到 3.52:1（axe 附录），去掉后行底色=画布色。
+- **圆角实现**：base 是 `border-collapse: collapse`，折叠边框不参与圆角绘制（实测 0 度转角仍是直角描边、只有底色被裁圆），故改 `separate + border-spacing:0`，单元格只留右/下描边、末列末行去掉与表格外框重复的一侧，四角由表头/末行单元格承担。实测列宽与 `collapse` 完全一致，表高仅末行 −1px（吸收共享边框）。
+- **列宽按内容分配（V-01 策略三）**：不用 `width:max-content`、不做等宽列、不给固定百分比。机制是让浏览器自动表格布局按内容分配：短 token 用 `nowrap` 把 min-content 抬到「词」宽 → 短列保底拿到自然宽（不再被压成逐字竖排）；长不可断 token 用 `break-word` 只在放不下时断行；其余文本按词自然折行；整表仍放不下则由 `.md-table-scroll` 局部横滚兜底。**`break-word` 而非 `anywhere`**：`anywhere` 会把 min-content 一起降到 1 字符，浏览器便一直从长内容列抽宽度（实测 480px 下 4 列长内容表路径列被压到 31px 内容宽、说明格折成 28 行、表高 1582px；`break-word` 同表 184px 列宽、表高 441px）。
+
+### 现状 vs 候选实测（同内容、同窗口；light/dark 同值；「现状」= 注入 `!important` 等效回退 base 样式）
+
+| 窗口 / 消息列宽   | 表                              | 现状 列宽                      | 现状 高  | 现状 竖排·断字 | 候选 列宽                       | 候选 高 | 候选 竖排·断字 | 横滚               |
+| ----------------- | ------------------------------- | ------------------------------ | -------- | -------------- | ------------------------------- | ------- | -------------- | ------------------ |
+| 1440 / 800        | 8 列（组件…备注）               | `[122,216,52,52,60,55,95,106]` | 550      | 14 · 12        | `[122,177,53,53,68,55,106,124]` | 528     | **0 · 0**      | 无                 |
+| 1440 / 800        | 4 列（视口宽度…占比）           | `[162,190,190,218]`            | 196      | 0 · 0          | `[162,190,190,216]`             | 196     | **0 · 0**      | 无                 |
+| 1440 / 800        | 4 列长内容（项目/值/说明/备注） | `[42,306,364,46]`              | 440      | 7 · 7          | `[54,284,339,81]`               | 352     | **0 · 0**      | 无                 |
+| 994 / 733（分屏） | 8 列                            | `[122,174,52,52,55,55,88,94]`  | 550      | 15 · 13        | `[122,110,53,53,68,55,106,124]` | 704     | **0 · 0**      | 无                 |
+| 994 / 733（分屏） | 4 列长内容                      | `[41,276,331,44]`              | 484      | 7 · 7          | `[54,252,304,81]`               | 396     | **0 · 0**      | 无                 |
+| 480 / 360（窄窗） | 4 列                            | `[76,80,74,89]`                | 240      | 5 · 5          | `[81,95,95,108]`                | 196     | **0 · 0**      | +61（表 381>320）  |
+| 480 / 360（窄窗） | 8 列                            | `[122,39,51,50,39,55,65,56]`   | **4752** | 27 · 27        | `[122,81,53,53,68,55,106,124]`  | 946     | **0 · 0**      | +344（表 664>320） |
+| 480 / 360（窄窗） | 4 列长内容                      | `[39,209,257,39]`              | 529      | 7 · 7          | `[54,209,257,81]`               | 441     | **0 · 0**      | +283（表 603>320） |
+
+「竖排」= 短 token 单元格（分类/状态/序号/数值/日期）折成 2 行以上（逐字竖排）；「断字」= 非长 token 单元格宽度小于自身自然宽、被迫中途断字。
+
+**用户要的三个数（候选，light/dark 同值）**
+
+1. **最窄内容列宽**：**53px**（内容宽 29px，= 12px 边距 ×2 + 2 个 14px 汉字）——1440 / 994 / 480 三档都是 53px，即短列稳定停在自身自然宽度，不再随窗口变窄（现状最小 39~52px，内容宽 14~28px，已到「一字一列」）。
+2. **典型长单元格行数**：1440 —— 8 列表路径列 `209px 自然 → 2 行`，4 列长内容表 `392/380/771/796/765px 自然 → 3/2/4/3/3 行`；994 —— 路径列 `→ 4 行`、说明列 `→ 5 行`；480 —— 路径列 `→ 5 行`、说明列 `→ 6 行`。**折行数不设上限、也不作为优化目标**：候选在 994/480 下折行数反而比现状多（现状那些「少折行」是靠把列压到 14px、把 211px 的路径排成 32 行换来的）。
+3. **是否需要横向滚动**：1440 / 994 两档**不需要**（8 列与 4 列都完整落在消息列内，画布横向溢出 0）；**480px 窄窗需要**，由 `.md-table-scroll` 局部承担（8 列 +344px、4 列 +61px、4 列长内容 +283px），页面本身不被撑宽（画布 `scrollWidth == clientWidth`）。滚动区 `tabindex=0`、`overflow-x:auto`。
+
+### 五条验收重点对照
+
+1. **短词不被挤成逐字竖排** —— 竖排格数 **21 → 0**（1440）、**22 → 0**（994）、**39 → 0**（480）；最窄列由 39~52px 抬到 53px（= 自然宽）。
+2. **普通说明自然换行、每行可完整左→右阅读** —— 非长 token 的中途断字 **19 → 0**（1440）、**20 → 0**（994）、**39 → 0**（480）；长内容列拿到的正是「剩余空间」（1440 八列表 177px 为全表最宽列、4 列表 284/339px 为最宽两列）。
+3. **不以减少折行单元格数量为优化目标** —— 候选在 994（550→704）与 480（八列 4752→946、4 列 529→441）有增有减，规则里没有任何「压缩折行数」的取向，只有「短列保底可读 + 长列吸收剩余」。
+4. **放不下的宽表保留局部横向滚动 + 键盘可用，页面不被撑宽** —— 8 列/4 列在 1440、994 不需滚动；480px 下按上表滚 +61~+344px，容器 `tabindex=0` 键盘可滚，**全部 8 组实测画布横向溢出 = 0**。
+5. **同内容同窗口前后截图 + 三个数** —— 见本文件「截图」段与上表；截图 24 张：`/Users/ailsa/Documents/07-AI/走查/截图/表格{四列,四列长内容,八列}_{现状,候选}_{light,dark}.png` + `表格四列长内容_分屏994_{现状,候选}_{light,dark}.png` + `表格八列_窄窗480_{现状,候选}_{light,dark}.png` + `表格四列_窄窗480_{现状,候选}_{light,dark}.png`。
+
+### 备注
+
+- **仍待决策**：994px 分屏下 8 列表的「文件路径」列拿到 110px 剩余宽、折 4 行（全表第 3 窄），因为 7 个短列按 `nowrap` 占满各自自然宽后只剩这么多。彻底解法要引入 `min-width`（长内容列保底宽度，代价是真溢出时更早出现横滚），与「优先自然换行、横滚只作兜底」相冲突，故本轮不引入 —— 留给你走查后决定。
+- **未动**：base `Message.css` 表格样式与 `font-size:0.9em` 等一律不改（IDE 宿主观感不变）；AI 生成的表格内容（文案、行列）零改写，本轮只有展示层。
+- **测试**：`pnpm -F wave-webview type-check` exit 0。
+
+---
+
+## 表格对齐（F-17）（用户 2026-09-10 指示，候选待走查）
+
+用户规则原文（要点）：未声明对齐时表头与单元格**默认左对齐，取消浏览器/公共样式造成的表头默认居中**；同一列表头与正文对齐一致；**数值比较列（数量/金额/百分比/耗时）右对齐**，编号/版本/电话/日期**不因含数字就自动右对齐**；文字状态默认左对齐，**只有纯图标或独立操作列才考虑居中**；多行正文单元格**顶部对齐**；保留 Markdown 显式声明的左/中/右，不用全局 CSS 强行覆盖；**没有明确列类型时默认左对齐，不根据某一个单元格猜整列类型**。来源：GOV.UK 表格规范支持「比较性数字及其表头右对齐」，其余为 CC 产品适配规则。
+
+### 先回答「全部居中从哪来」
+
+实测（`probe-align-current.mjs`，1440px，5 张 mock 表逐列读计算样式）：
+
+| 表格                                             | 是否声明 Markdown 对齐 | `th` 计算值           | `td` 计算值           |
+| ------------------------------------------------ | ---------------------- | --------------------- | --------------------- |
+| 简单表 / 宽表 8 列 / 富单元格表                  | 否（`\| ---- \|`）     | **center**            | start（= 左）         |
+| 列对齐演示表（`\| :----- \| :--: \| -----: \|`） | 是                     | left / center / right | left / center / right |
+
+- **结论：表头居中来自浏览器 UA 的 `th { text-align: center }`，不是 Markdown 声明**——base `Message.css` 只写了 `th[align="…"]` 三档，没有给未声明对齐的表设默认值，于是「表头居中 + 正文左对齐」同列两种对齐。
+- **Markdown 显式声明本身是好的**（marked 输出 `align` 属性、base 三档规则正确消费），因此本次**只改渲染默认值**，不动内容层，也不改动 AI 已生成的内容。
+- 附带实测：`td` 计算 `vertical-align: middle`，长说明撑高整行时，同行的短词被垂直居中，与「多行正文顶部对齐」不符。
+
+### 改动 1：列级对齐判定（`packages/webview/src/components/Message.tsx`）
+
+新增 `tableColumnAlignClass(headerText, bodyTexts)` + `applyTableColumnAlign(tableHtml)`，在 `renderer.table` 里对默认渲染结果做一次按列注入（不改内容、不改结构，只在开标签上补 class；单元格已有 `align` 属性时**跳过**）：
+
+1. **数值比较列** → `md-cell-right`：列头命中可比量关键词（数量/个数/次数/条数/人数/行数/字数/耗时/时长/响应时间/内存/体积/大小/字节/金额/价格/成本/费用/占比/比例/百分比/覆盖率/通过率/增长率…）**且整列非空单元格都能解析为数值**（容忍千分位、小数、正负号、比较符、货币前缀、`%`、`ms`/`px`/`次`/`元`/`天` 等单位后缀，`—`/`N/A`/`待定` 视为缺失）。任一条件不满足即保持左对齐。
+2. **标识列** → 强制左对齐：列头命中 编号/序号/号/ID/版本/ver/电话/手机/传真/日期/时间/date/邮箱/端口/卡号/邮编 时直接返回（即使整列都是数字）。
+3. **纯图标列** → `md-cell-center`：整列非空单元格都是图标（`\p{Extended_Pictographic}` 等，≤4 码点），如 ✅/⚠️/❌。
+4. **独立操作列** → `md-cell-center`：列头就是「操作/动作/action(s)」且整列都是无空白的短词（≤6 字符），如 查看/编辑/重试。
+5. 其余一律 `null`（默认左对齐）。**判定只看整列，不看单个单元格**；不按列序、不按表结构、不按具体 mock 内容，故可复用到任意表格。
+
+### 改动 2：桌面端对齐样式（`packages/webview/src/styles/host-desktop.css`）
+
+```css
+/* F-17：默认左对齐 + 顶部对齐；显式 align 与列级 class 各自覆盖 */
+[data-host="desktop"] .markdown-content table th,
+[data-host="desktop"] .markdown-content table td {
+  text-align: left;
+  vertical-align: top;
+}
+[data-host="desktop"] .markdown-content table th[align="left"],
+…td[align="left"] {
+  text-align: left;
+}
+[data-host="desktop"] .markdown-content table th[align="center"],
+…td[align="center"],
+[data-host="desktop"] .markdown-content table th.md-cell-center,
+…td.md-cell-center {
+  text-align: center;
+}
+[data-host="desktop"] .markdown-content table th[align="right"],
+…td[align="right"],
+[data-host="desktop"] .markdown-content table th.md-cell-right,
+…td.md-cell-right {
+  text-align: right;
+}
+```
+
+- 选择器统一带 `table` 一级 → specificity `0,3,2`（base 的 `th[align="…"]` 是 `0,2,1`），**稳定压过 base 且不依赖打包顺序**；同时不使用 `!important`。
+- 只作用于 `[data-host="desktop"]`，base 与 IDE 宿主观感不变；字号、列宽、换行、滚动策略（F-07/V-01）不在此改动。
+- 列宽分类（`md-cell-token` / `md-cell-long-token`）与本轮对齐 class 可同时存在于一个单元格：前者管 `white-space`、后者管 `text-align`，互不冲突。
+
+### 改动 3：验证用例（`packages/webview/prototype/mockShared.ts`，工具链文件，不在推送集）
+
+在 rich-tables 消息末尾追加两张表：**对齐规则表**（组件 / 数量 / 平均响应`<br>`耗时 (ms) / 覆盖率 / 编号 / 版本 / 电话 / 日期 / 状态，含多行表头）与**混合表**（混合内容 / 显式居中 / 显式右对齐 / 单格数字 / 检查项 / 结果 / 操作 / 说明），覆盖用户点名的四类验证内容：混合文本、数值、长路径（沿用上一轮富单元格表）、多行表头 + 多行正文。
+
+### 实测：现状 vs 候选
+
+「列对齐不一致数」= 表头与同列正文计算出的水平对齐不同的列数（`left` vs `start` 视为一致）。
+
+| 视口 / 主题       | 7 张表的列对齐不一致数（现状 → 候选） | 单元格 `vertical-align` | 最窄内容列   | 各表 `scrollWidth/clientWidth` | 画布横向溢出 |
+| ----------------- | ------------------------------------- | ----------------------- | ------------ | ------------------------------ | ------------ |
+| 1440 light / dark | 2,4,0,8,4,**9**,**6** → **全部 0**    | middle → **top**        | 53px（不变） | 逐表与现状完全一致             | 0            |
+| 994 分屏 light    | 同上 → **全部 0**                     | middle → **top**        | 53px（不变） | 一致（761/693、693/693…）      | 0            |
+| 480 窄窗 light    | 同上 → **全部 0**                     | middle → **top**        | 53px（不变） | 一致（761/320、596/320）       | 0            |
+
+其中「列对齐不一致数 = 0」的那张是列对齐演示表（三列全部显式声明），现状本来就是对的——说明问题只出在**未声明对齐**的表。
+
+逐列结果（候选，1440）：
+
+- 对齐规则表：组件=左、**数量=右**、**平均响应耗时 (ms)=右**、**覆盖率=右**、编号=左、版本=左、电话=左、日期=左、状态=左。
+- 混合表：混合内容（列头像数值但整列含「待确认」「—」）=左、**显式居中=居中（保留 `align="center"`）**、**显式右对齐=右（保留 `align="right"`）**、单格数字（只有一格是数字）=左、检查项=左、**结果（✅/⚠️/❌）=居中**、**操作（查看/编辑/重试）=居中**、说明（多行）=左。
+- 多行单元格：说明列撑高到 105px（1440）/127px（994）/369px（480）时，同行的「显式居中/文本/查看」等短内容由垂直居中改为**贴顶**。
+
+### 验收重点对照
+
+1. **表头默认不再居中** —— 未声明对齐的表由 UA center 改为左对齐；7 张表列对齐不一致数 9/8/6/4/2 → **0**。
+2. **同列表头与正文一致** —— 上述不一致数归零即该项达标；表头与正文使用同一条列级 class（同一列同一个值）。
+3. **数值比较列右对齐、标识列不误判** —— 数量/耗时/占比/覆盖率=右；编号/版本/电话/日期=左；**混合列与「单格数字」列保持左对齐**（不因单个单元格是数字就猜整列）。
+4. **文字状态左对齐、图标/操作列居中** —— 状态列左；结果（图标）与操作列居中。
+5. **多行正文顶部对齐，且保留既有字号/列宽/换行/滚动** —— `vertical-align` middle → top；**最窄内容列仍 53px、各表 `scrollWidth`/表高与上一轮逐值相同**（如 480 下 8 列混合表 596/320、表高 685，与候选前一致），画布横向溢出 0。
+6. **Markdown 显式对齐保留** —— `align="left/center/right"` 三档实测分别为 left/center/right，内容零改写。
+
+### 截图（16 张，`/Users/ailsa/Documents/07-AI/走查/截图/`）
+
+- `对齐_规则表_1440_{现状,候选}_{light,dark}.png`
+- `对齐_规则表_994_{现状,候选}_light.png`、`对齐_规则表_480_{现状,候选}_light.png`
+- `对齐_混合表_1440_{现状,候选}_{light,dark}.png`、`对齐_混合表_994_{现状,候选}_light.png`、`对齐_混合表_480_{现状,候选}_light.png`
+- 「现状」= 注入等价回退样式（未声明对齐时 `th` 恢复 UA center、`td` 恢复 start，`vertical-align` 恢复 middle，显式 `align` 仍走 base 三档规则），保证同内容同窗口可比。
+
+### 备注
+
+- **未改内容层**：AI 生成的表格文案、行列、Markdown 对齐声明一律未动；本轮只有渲染默认值与桌面端样式。
+- **base 未动**：`Message.css` 的表格规则保持原样，IDE 宿主不受影响。
+- **可检索规则**：右对齐关键词表 / 标识列关键词表 / 图标与操作列判据都写在 `Message.tsx` 顶部常量里，改词表即可扩缩范围，不需要动渲染流程。
+- **测试**：`npx tsc --noEmit`（webview）exit 0；三档×两主题实测全部画布溢出 0。

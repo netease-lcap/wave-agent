@@ -44,6 +44,7 @@ import { CompactBlockView } from "./CompactBlockView";
 import { WriteToolPreview } from "./WriteToolPreview";
 import { FileToolHeader } from "./FileToolHeader";
 import { getStageColor, getToolStatusColor } from "../utils/statusColors";
+import { isDesktopHost } from "../utils/platform";
 import "../styles/Message.css";
 
 // Configure marked for VS Code webview context
@@ -126,9 +127,270 @@ const markedCleanHref = (href: string): string | null => {
   }
 };
 
+// 表格列宽按内容分配（V-01）：单元格文本判定 —— 短 token 保持单行、超长不可断
+// token 放开断行，其余自然折行。阈值只与「文字本身能否自然断行」有关，与业务
+// 语义、列序、表结构无关，故可复用到任意表格。
+// 长 token 的判据取「长度 ≥20 的连续串」或「含 / 或 @ 且 ≥12 的连续串」（后者
+// 覆盖短一点的 URL / 邮箱 / 路径）；CJK 文本本身可在字间断行，无论哪条规则其
+// 视觉折行结果一致，只是会参与列宽弹性分配。
+const TABLE_CELL_SHORT_TOKEN_MAX = 12;
+const TABLE_CELL_LONG_TOKEN_MIN = 20;
+const TABLE_CELL_ADDRESS_MIN = 12;
+const TABLE_CELL_ADDRESS_RE = /[/@]/;
+const HTML_ENTITY_MAP: Record<string, string> = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&nbsp;": " ",
+};
+const tableCellClass = (cellHtml: string): string | null => {
+  const text = cellHtml
+    .replace(/<[^>]*>/g, "")
+    .replace(/&(?:amp|lt|gt|quot|#39|nbsp);/g, (m) => HTML_ENTITY_MAP[m] ?? m)
+    .trim();
+  if (!text) return null;
+  const tokens = text.split(/\s+/);
+  const hasLongToken = tokens.some(
+    (token) =>
+      token.length >= TABLE_CELL_LONG_TOKEN_MIN ||
+      (token.length >= TABLE_CELL_ADDRESS_MIN &&
+        TABLE_CELL_ADDRESS_RE.test(token)),
+  );
+  if (hasLongToken) return "md-cell-long-token";
+  if (tokens.length === 1 && text.length <= TABLE_CELL_SHORT_TOKEN_MAX) {
+    return "md-cell-token";
+  }
+  return null;
+};
+
+// 表格对齐（用户 2026-09-10 规则）。base Message.css 没有给 th 设 text-align，
+// 浏览器 UA 的 `th { text-align: center }` 生效，于是「表头居中、正文左对齐」，
+// 同一列两种对齐。桌面端统一为：未声明对齐时表头与正文一致左对齐；Markdown 显式
+// 声明的左/中/右原样保留（marked 输出 align 属性，本层不覆盖）。
+// 列级分类只解决「该不该右对齐」：数值比较列右对齐，判据必须是「列头表明这是一个
+// 可比较的量」且「整列单元格都是数值」——不看单个单元格、不按列序猜、没有明确列类型
+// 时保持左对齐（避免编号 / 版本 / 电话 / 日期因为含数字被误判）。
+const TABLE_ALIGN_RIGHT_KEYWORDS = [
+  "数量",
+  "个数",
+  "次数",
+  "条数",
+  "笔数",
+  "件数",
+  "人数",
+  "行数",
+  "字数",
+  "用例数",
+  "问题数",
+  "报错数",
+  "请求数",
+  "命中数",
+  "耗时",
+  "时长",
+  "用时",
+  "响应时间",
+  "平均时间",
+  "内存",
+  "体积",
+  "大小",
+  "字节",
+  "金额",
+  "价格",
+  "单价",
+  "总价",
+  "成本",
+  "费用",
+  "预算",
+  "收入",
+  "占比",
+  "比例",
+  "百分比",
+  "百分率",
+  "覆盖率",
+  "通过率",
+  "失败率",
+  "成功率",
+  "增长率",
+  "降幅",
+  "增幅",
+];
+// 标识类列头：单元格全是数字也只作字符对待（编号 / 版本 / 电话 / 日期 / 时间戳…）
+const TABLE_ALIGN_ID_KEYWORDS = [
+  "编号",
+  "序号",
+  "号",
+  "ID",
+  "id",
+  "版本",
+  "ver",
+  "电话",
+  "手机",
+  "传真",
+  "日期",
+  "时间",
+  "date",
+  "time",
+  "邮箱",
+  "mail",
+  "端口",
+  "卡号",
+  "邮编",
+  "身份证",
+];
+const TABLE_ALIGN_ACTION_HEADER_RE = /^(操作|动作|actions?)$/i;
+const TABLE_ALIGN_ACTION_CELL_MAX = 6;
+// 可比较数值：允许千分位、小数、正负号、比较符、货币前缀与常见单位后缀
+const TABLE_ALIGN_NUMERIC_RE =
+  /^[+-]?\s*[~≈≤≥<>]?\s*[¥$€£]?\s*\d+(?:[,\s]\d{3})*(?:\.\d+)?\s*(?:%|‰|px|ms|s|min|h|d|kb|mb|gb|tb|b|k|w|次|个|条|件|人|行|字|元|万元|天|小时|分钟|秒|毫秒|倍)?$/i;
+const TABLE_ALIGN_MISSING_RE = /^(|-|–|—|n\/a|na|待定|暂无|未知|\?)$/i;
+const TABLE_ALIGN_ICON_RE =
+  /^[\p{Extended_Pictographic}\p{Emoji_Component}\p{Emoji_Modifier}\uFE0F\u200D]+$/u;
+const TABLE_ROW_HTML_RE = /<tr>[\s\S]*?<\/tr>/g;
+const TABLE_CELL_HTML_RE = /<(th|td)([^>]*)>([\s\S]*?)<\/\1>/g;
+
+const stripCellHtml = (cellHtml: string): string =>
+  cellHtml
+    .replace(/<[^>]*>/g, "")
+    .replace(/&(?:amp|lt|gt|quot|#39|nbsp);/g, (m) => HTML_ENTITY_MAP[m] ?? m)
+    .trim();
+
+const isIconCell = (text: string): boolean =>
+  [...text].length <= 4 && TABLE_ALIGN_ICON_RE.test(text);
+
+// 列级判定：返回需要应用的桌面端对齐类，null = 保持默认左对齐
+const tableColumnAlignClass = (
+  headerText: string,
+  bodyTexts: string[],
+): string | null => {
+  const header = headerText.replace(/\s+/g, "");
+  const values = bodyTexts.filter((v) => !TABLE_ALIGN_MISSING_RE.test(v));
+  if (!values.length) return null;
+  if (
+    TABLE_ALIGN_RIGHT_KEYWORDS.some((k) => header.includes(k)) &&
+    values.every((v) => TABLE_ALIGN_NUMERIC_RE.test(v))
+  ) {
+    return "md-cell-right";
+  }
+  if (TABLE_ALIGN_ID_KEYWORDS.some((k) => header.includes(k))) return null;
+  // 纯图标列（✅ / ⚠️ / ❌ …）居中；文字状态列不居中
+  if (values.every(isIconCell)) return "md-cell-center";
+  // 独立操作列（列头就是「操作」且整列都是短动作词）居中
+  if (
+    TABLE_ALIGN_ACTION_HEADER_RE.test(header) &&
+    values.every(
+      (v) => !/\s/.test(v) && v.length <= TABLE_ALIGN_ACTION_CELL_MAX,
+    )
+  ) {
+    return "md-cell-center";
+  }
+  return null;
+};
+
+// 把列级对齐类按列序注入每个单元格标签；单元格已有 align 属性（Markdown 显式声明）
+// 时跳过，交由 CSS 的 `[align=…]` 规则处理，实现层不覆盖内容层。
+const applyTableColumnAlign = (tableHtml: string): string => {
+  const rows = tableHtml.match(TABLE_ROW_HTML_RE);
+  if (!rows || rows.length < 2) return tableHtml;
+  const parsed = rows.map((rowHtml) =>
+    [...rowHtml.matchAll(TABLE_CELL_HTML_RE)].map((m) => ({
+      attrs: m[2],
+      text: stripCellHtml(m[3]),
+    })),
+  );
+  const header = parsed[0];
+  if (!header.length) return tableHtml;
+  const bodyRows = parsed.slice(1);
+  const colClasses = header.map((cell, i) =>
+    tableColumnAlignClass(
+      cell.text,
+      bodyRows.map((row) => row[i]?.text ?? ""),
+    ),
+  );
+  if (!colClasses.some(Boolean)) return tableHtml;
+  return tableHtml.replace(TABLE_ROW_HTML_RE, (rowHtml) => {
+    let colIndex = 0;
+    return rowHtml.replace(
+      /<(th|td)([^>]*)>/g,
+      (tagHtml: string, tag: string, attrs: string) => {
+        const cls = colClasses[colIndex++] ?? null;
+        if (!cls || attrs.includes("align=")) return tagHtml;
+        return attrs.includes('class="')
+          ? `<${tag}${attrs.replace(/class="([^"]*)"/, `class="$1 ${cls}"`)}>`
+          : `<${tag} class="${cls}"${attrs}>`;
+      },
+    );
+  });
+};
+
 const createMessageMarkdownRenderer = (workdir?: string) => {
   const renderer = new marked.Renderer();
   renderer.listitem = renderTaskListitem;
+  // 表格包一层滚动容器（specs 走查 F-06 / conversation-typography.md TXT-06）：
+  // 宽表需在自身区域内横向滚动，而不是被 .messages-container 的 overflow-x:hidden
+  // 静默裁切。包装 div 本身无内联样式，视觉由宿主样式控制（桌面端给
+  // .md-table-scroll 设 overflow-x:auto），故 IDE 宿主结构变化但外观不变。
+  // marked 9 的 renderer.table 签名是 (headerHtml, bodyHtml)，默认实现不使用
+  // this，转调默认实现可保证 thead/tbody/对齐渲染逐字节一致。
+  // tabindex（V-01 验收 4 / WCAG 2.1.1）：横向滚动是宽表的兜底路径，键盘用户
+  // 需能聚焦该区域后用方向键滚看被裁掉的列；与 F-10 给 code pre 的处理同源。
+  // 仅桌面端注入（见下方 renderer.code 的说明：IDE 宿主没有对应焦点环样式）。
+  // 默认渲染结果再过一遍列级对齐（见 applyTableColumnAlign）。
+  const defaultTable = marked.Renderer.prototype.table;
+  renderer.table = (header: string, body: string) =>
+    `<div class="md-table-scroll"${
+      isDesktopHost() ? ' tabindex="0"' : ""
+    }>${applyTableColumnAlign(
+      defaultTable.call(renderer, header, body),
+    )}</div>`;
+  // 单元格列宽判定（V-01，用户 2026-09-10「按内容分配列宽，优先自然换行，横向
+  // 滚动只作兜底」）：只依据单元格纯文本判定，不看列序/表结构/具体内容，故对任意
+  // 表格可复用，不会变成按某张表硬编码。
+  //  · 短 token（无空白且 ≤12 字符：分类 / 状态 / 序号 / 数值 / 日期 / 短词）
+  //    → md-cell-token：保持单行，避免「代码 / 路径 / 项目」被挤成逐字竖排；
+  //  · 含超长不可断 token（≥20 字符的连续串，覆盖 URL / 邮箱 / 路径 / 长英文串）
+  //    → md-cell-long-token：放开任意点断行，避免长地址挤压其他列；
+  //  · 其余（自然语言说明）不分类，按词自然折行，行宽由表格布局分配。
+  const defaultTablecell = marked.Renderer.prototype.tablecell;
+  renderer.tablecell = (content, flags) => {
+    const html = defaultTablecell.call(renderer, content, flags);
+    const cls = tableCellClass(content);
+    // 与 code renderer 同一手法：只往开标签注入 class，其余逐字节沿用默认实现
+    // （含 markdown 对齐产生的 align 属性）。
+    return cls ? html.replace(/^<(th|td)/, `<$1 class="${cls}"`) : html;
+  };
+  // 任务列表复选框可访问名称（F-09 / WCAG 4.1.2；axe label critical，两模式各
+  // 6 节点）：GFM 清单由 marked 默认 checkbox renderer 输出
+  // `<input checked disabled type="checkbox">`，无 label / aria-label，读屏只
+  // 报「复选框」而丢掉完成状态。此处保留控件本体（checked 是完成状态的唯一
+  // 载体，不接受 aria-hidden / role="img" 之类「隐藏控件」写法），只补名称；
+  // li 结构与条目文本不变，读屏顺序仍是「条目文本 → 已完成/未完成」。
+  // 输出逐字节对齐 marked 9 默认实现（`<input ` + checked 前缀 +
+  // `disabled="" type="checkbox">`），仅追加 aria-label。
+  renderer.checkbox = (checked: boolean) =>
+    `<input ${
+      checked ? 'checked="" ' : ""
+    }disabled="" type="checkbox" aria-label="${checked ? "已完成" : "未完成"}">`;
+  // 可滚动代码块可键盘聚焦（F-10 / WCAG 2.1.1；axe
+  // scrollable-region-focusable serious，两模式各 5 节点）：.markdown-content
+  // pre 是 overflow-x:auto 的局部滚动区，键盘用户无法聚焦 → 看不到也滚不动被
+  // 裁掉的宽内容。默认 code renderer 输出 `<pre><code …>`，此处只在 pre 开标签
+  // 补 tabindex="0"，其余（语言类名、转义状态、<code> 子节点）逐字节沿用默认
+  // 实现，不引入高亮或结构变化；焦点样式见 host-desktop.css 桌面层。
+  // **tabindex 只在桌面端注入**：聚焦环样式（`pre:focus-visible` 等）只写在
+  // `[data-host="desktop"]` 层，IDE 宿主注入后拿不到可见焦点，只会凭白多出
+  // Tab 停靠点（WCAG 2.4.3 噪声）。aria-label / aria-expanded / button 化这类
+  // 真正的无障碍改进不受此 gate 影响，两端都保留。
+  const defaultCode = marked.Renderer.prototype.code;
+  renderer.code = (
+    code: string,
+    infostring: string | undefined,
+    escaped: boolean,
+  ) => {
+    const html = defaultCode.call(renderer, code, infostring, escaped);
+    return isDesktopHost() ? html.replace(/^<pre/, `<pre tabindex="0"`) : html;
+  };
   renderer.codespan = (text: string) => {
     const url = extractClickableUrl(text);
     if (url) {
@@ -147,6 +409,31 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
   renderer.text = (text: string) =>
     // 正文纯文本通道：绝对路径 → 链接；其余文本按原转义形式原样保留
     linkifyFilePathText(decodeHtmlEntities(text));
+  // 链接角色（用户 2026-09-10 规则）：按「显示文本本身的含义」区分两种链接——
+  //   ① 描述性链接（查看预览、参考文档、发送邮件、联系我们…）与所在正文同为
+  //      UI 角色，不加类；
+  //   ② 直接展示地址的链接为代码角色（等宽 13px，样式在 host-desktop.css 的
+  //      a.address-link）：scheme 地址（http(s)://…、ftp://…、file:///…、
+  //      协议相对 //…）、显式 mailto:/tel: 串，以及可见文字本身就是邮箱或
+  //      电话号码的链接（判据是可见文字，不看 href）。
+  // `<code>` 内的链接（行内代码地址、文件路径）由代码样式承接等宽，不在此列。
+  const EMAIL_LABEL = /^[\w.!#$%&'*+/=?^`{|}~-]+@[\w-]+(?:\.[\w-]+)+$/;
+  // 电话：纯数字 + 分隔符（+ - ( ) 空格 .），至少 7 位数字（含国家码写法）
+  const PHONE_LABEL = /^\+?[\d(][\d\s().-]{5,}\d$/;
+  // 日期样 label（2026-09-10 / 2026.9.10）不算电话
+  const DATE_LABEL = /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/;
+  const isAddressLabel = (label: string) => {
+    const t = label.replace(/<[^>]*>/g, "").trim();
+    if (/^(?:[a-z][a-z0-9+.-]*:\/\/|\/\/)/i.test(t)) return true; // scheme 地址
+    if (/^(?:mailto|tel):/i.test(t)) return true; // 显式 mailto:/tel: 串
+    if (EMAIL_LABEL.test(t)) return true; // 直接显示邮箱
+    // 直接显示电话：≥7 位数字且不是日期
+    return (
+      PHONE_LABEL.test(t) &&
+      !DATE_LABEL.test(t) &&
+      (t.match(/\d/g) || []).length >= 7
+    );
+  };
   // markdown 链接 label 内的路径不得生成嵌套 <a>（无效 HTML）；剥掉 label
   // 内已生成的路径锚点，仅保留普通链接。
   renderer.link = (
@@ -156,9 +443,11 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
   ) => {
     const cleanHref = markedCleanHref(href);
     if (cleanHref === null) return stripFilePathLinks(text);
-    let out = `<a href="${cleanHref}"`;
+    const label = stripFilePathLinks(text);
+    const cls = isAddressLabel(label) ? ` class="address-link"` : "";
+    let out = `<a href="${cleanHref}"${cls}`;
     if (title) out += ` title="${title}"`;
-    return `${out}>${stripFilePathLinks(text)}</a>`;
+    return `${out}>${label}</a>`;
   };
   return renderer;
 };
@@ -213,6 +502,11 @@ const parseMarkdownWithMermaid = (
       });
       const sanitizedHtml = DOMPurify.sanitize(html, {
         ALLOWED_TAGS: [
+          // div 仅为表格滚动容器（renderer.table 的 .md-table-scroll）放行：
+          // 不在白名单时 DOMPurify 会剥掉包装层、只留子节点，导致宽表退回
+          // 被 .messages-container 静默裁切。div 本身无脚本语义，属性仍受
+          // ALLOWED_ATTR / 默认 URL 校验约束。
+          "div",
           "p",
           "br",
           "strong",
@@ -253,6 +547,13 @@ const parseMarkdownWithMermaid = (
           "class",
           "src",
           "alt",
+          // F-09 / F-10：可访问名称与可聚焦滚动区。二者都只由本文件的
+          // renderer 生成（aria-label 仅在任务列表 checkbox 上、tabindex 仅在
+          // code pre 上），不在白名单时 DOMPurify 会静默剥掉 → 修复到不了
+          // DOM（同 F-06 的 div / ALLOWED_TAGS 陷阱）。属性本身无脚本语义，
+          // 仍受默认 URL 校验约束。
+          "aria-label",
+          "tabindex",
         ],
         ALLOW_DATA_ATTR: false,
         FORBID_ATTR: [],
@@ -460,8 +761,12 @@ export const Message: React.FC<MessageProps> = React.memo(
               {/* 输出中的裸 http(s) URL 链接化（见 specs/ui/markdown-links.md），
                   点击路由复用 handleContentClick：desktop 上 localhost → 预览
                   面板、其余 → 系统浏览器；IDE 保持原生链接处理。 */}
+              {/* tabIndex（F-10 / WCAG 2.1.1）：max-height 120 + overflow-y:auto
+                  是可滚动区域，键盘用户需能聚焦后用方向键翻看完整输出。
+                  仅桌面端注入——焦点环样式只存在于 `[data-host="desktop"]` 层。 */}
               <div
                 className="bash-command-output"
+                tabIndex={isDesktopHost() ? 0 : undefined}
                 dangerouslySetInnerHTML={{
                   __html: linkifyPlainText(result),
                 }}
