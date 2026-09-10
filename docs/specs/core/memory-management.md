@@ -83,9 +83,11 @@ order: 100
 
 作为用户，我希望关闭「自动记忆」后代理不再自动从对话中提取记忆、关闭前保存的记忆也按我的轮次设置触发，以便按需开关该后台行为。
 
-**为什么是这个优先级**：2026-09 客户反馈插件端设置页关闭「开启自动记忆」后仍持续写入记忆——设置页开关此前只保存到各宿主自有配置（VS Code `globalState`/JetBrains 持久化/桌面 configStore），从未传到 agent 运行侧（stdio `initialize`/`updateConfig` 未携带字段、SDK `resolveAutoMemoryEnabled` 只读 settings.json 与环境变量），实际等于开关无效。本故事把「宿主设置 → 运行中会话」的生效语义钉死，避免三端各自实现漂移。
+**为什么是这个优先级**：2026-09 客户反馈插件端设置页关闭「开启自动记忆」后仍持续写入记忆——设置页开关此前只保存到各宿主自有配置（VS Code `globalState`/JetBrains 持久化/桌面 configStore），从未传到 agent 运行侧（SDK `resolveAutoMemoryEnabled` 只读 settings.json 与环境变量），实际等于开关无效。本故事把「宿主设置 → 运行中会话」的生效语义钉死，避免三端各自实现漂移。2026-09-10 用户拍板改造保存路径：这类用户偏好（自动记忆开关/频率）统一写入**用户级 `~/.wave/settings.json`** 并经 SDK 实时重载生效，**不再**经 stdio `initialize`/`updateConfig` 当 `AgentOptions` 覆盖项下发（覆盖层会永久遮蔽 settings.json 的实时值，见 [agent-config.md](./agent-config.md)「设置实时重载」与「环境变量作用域与优先级」）。
 
 **独立测试**：在宿主（desktop/VSCE/JetBrains）设置页「个性化 → 自动记忆规则」关闭开关并保存，随后在同一会话继续对话并新建会话，验证不再产生记忆提取（自动记忆目录/`MEMORY.md` 无新增、无提取 fork 调用）；重新开启并设置频率后验证按轮次恢复提取。
+
+**验证分层（2026-09-10 追加拍板）**：场景 1–4 的「保存即生效、下一轮起停/恢复」→ 单测（SDK gate + 频率合并与计数）+ **真 host**（`packages/desktop/tests/integration`，真 `wave --stdio` + 真 `~/.wave/settings.json`：写文件后下一轮读到新值——真 host 上以 `language` 为可观测代表，`autoMemoryEnabled`/`autoMemoryFrequency` 与 `language` 走同一条写文件 + 实时重载路径）；场景 5「关闭后不把自动记忆目录加入无批准安全区」与场景 1 的「关闭后目录写入被权限层拒绝」→ 单测覆盖白名单的幂等增删（`LiveConfigManager.syncAutoMemorySafeZone`）；**真 host 未覆盖**：驱动权限层判定需要模型发出工具调用，而真 host 的本地假模型只回文本（可观测的替代口径是同一 `~/.wave/settings.json` 已由真 host 断言写入、下一轮生效）；场景 6 的优先级链（用户级 settings.json > 环境变量 > 默认）→ 单测。**webview 保存路径**（#2115 回归网：这两个字段全 optional，链路缺字段编译期不报错，只能靠测试盯住）→ 单测 `packages/webview/tests/webview/settingsMemory.test.tsx`（`SettingsPage.onSave` 载荷 + ChatApp 把 `autoMemoryEnabled`/`autoMemoryFrequency` 放进 `updateConfiguration.configurationData`）+ **e2e** `packages/webview/e2e/desktop-settings-auto-memory-save.e2e.ts`（真 bundle：点保存后从真 `postMessage` 报文里读这两个键，并按宿主回包回填开关/轮次）；host → CLI 的 stdio 透传由对应透传测试负责（不在本组内重复）。逐条对照见 [agent-config.md](./agent-config.md) 边界说明「验证分层（单测 / e2e / 真 host）」。真 host 层挂在 main-only CI job（`real-host-e2e`）。
 
 **验收场景**：
 
@@ -94,7 +96,7 @@ order: 100
 3. **假设**用户关闭自动记忆若干轮后再次开启并保存，**当**后续轮次结束，**则**恢复提取且触发计数从开启时刻重新累计（关闭期间的轮次不计入）
 4. **假设**用户把触发轮次设为 N（1–100），**当**自动记忆开启时，**则**每满 N 个对话轮次触发一次提取；变更频率保存后按新值重新累计（与场景 3 同语义）
 5. **假设**自动记忆关闭，**当**新建会话初始化时，**则**不再为该会话创建自动记忆目录、不把自动记忆目录加入无批准安全区（对齐运行时 gate 的同一判定来源）
-6. **假设**存在多个设置来源，**当**解析自动记忆开关与频率时，**则**按 宿主会话级设置（设置页保存值，经 stdio 会话参数传递）> settings.json 合并配置 > `WAVE_DISABLE_AUTO_MEMORY`/`WAVE_AUTO_MEMORY_FREQUENCY` 环境变量 > 默认（true/1）的优先级生效；宿主会话级设置只作用于发起宿主与会话，不写回 settings.json，各宿主设置互不影响
+6. **假设**存在多个设置来源，**当**解析自动记忆开关与频率时，**则**按 用户级 `~/.wave/settings.json`（设置页保存的落点，经 SDK 实时重载在各会话**下一轮开始时**生效）> 环境变量 `WAVE_DISABLE_AUTO_MEMORY`/`WAVE_AUTO_MEMORY_FREQUENCY` > 默认（true/1）的优先级生效；设置页保存值**写入**该文件、是三端共享的同一份用户偏好（各宿主读写同一来源、互不覆盖），**不得**经 stdio 会话参数（`AgentOptions` 覆盖层）下发——该层只保留会话级/单次覆盖语义（见 [agent-config.md](./agent-config.md)「环境变量作用域与优先级」）
 
 ---
 
