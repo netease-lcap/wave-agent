@@ -2622,3 +2622,50 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 **回写前置依赖**：W-04 与 W-05 相互依赖（W-04 让直显地址转等宽、W-05 规定其下划线时机），两条须同批回写；另基础仓库 `specs/ui/file-path-links.md` 的「路径链接 dotted 下划线」与 base `Message.css` 现有 `underline dotted` 需一并核对（本轮未改 base，IDE 宿主不受影响）。
 
 **本轮（2026-09-10）已落盘但未推送的提交**：`1e2ef0aa`（F-02~F-06 字号/行高/表宽）、`0df55f8b`、`89bfc8f3`（文档）、`d8a09697`（链接角色/地址）、`3b33d294`（邮箱/电话）、`634a85d8`（下划线初版）、`33c800c8`（下划线时机修订）。推送目标仍为「新分支 + PR」，待用户确认后执行。
+
+## 批 1 · 无障碍与行高（用户 2026-09-10 授权：先做批 1，F-08/F-09/F-10/F-11/F-12/F-13 六条）
+
+用户从走查清单 `64zt1y22an` 里选定「先做批 1（无障碍 + 行高）」：F-09 / F-10 / F-11 / F-13，另含 F-08（状态色语义 token）与 F-12（错误块去斜体）。六条**全部有契约或既有约定依据**，无设计取值待决。
+
+### 依据与落点
+
+| 项   | 依据                                                                                   | 落点                                                                                                                                                   |
+| ---- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| F-09 | WCAG 4.1.2；axe `label` **critical**（两模式各 6 节点）                                | `Message.tsx` 新增 `renderer.checkbox`（+ sanitizer 放行 `aria-label`）                                                                                |
+| F-10 | WCAG 2.1.1；axe `scrollable-region-focusable` **serious**（两模式各 5 节点）           | `Message.tsx` `renderer.code` 补 `tabindex="0"`；`bash-command-output` / `write-preview-scroll` 补 `tabIndex`；焦点环在 `host-desktop.css`             |
+| F-11 | WCAG 2.1.1 / 4.1.2；interaction-states.md「可见焦点、可访问名」                        | `ReasoningBlockView.tsx` / `CompactBlockView.tsx` 折叠标题 `<div onClick>` → `<button type="button" aria-expanded>`；`Message.css` 复位 button UA 样式 |
+| F-12 | 角色表**无斜体角色**（中文斜体尤伤可读性）                                             | `host-desktop.css` 只去 `font-style: italic`，字体/行高随 F-01/G2 收敛，不另写覆盖                                                                     |
+| F-13 | 角色表「时间/数量/依赖等辅助信息 = 12/20」+ design-system.md 紧凑行高 20px             | `host-desktop.css` 桌面覆盖 `.compact-params` / `.write-tool-stats` 行高 → 20px                                                                        |
+| F-08 | codechat `theme/desktop-colors.css:78-83`（light）/`:173-178`（dark）状态 token 权威档 | desktop token 层补 `--cc-state-*` 浅/深两档；`statusColors.ts` 改 `var(--cc-state-*, fallback)`；任务 dot/icon 去掉 hex `!important`                   |
+
+### 实现要点与踩坑
+
+- **sanitizer 白名单是隐性闸门**：`aria-label`（F-09）与 `tabindex`（F-10）都不在 `ALLOWED_ATTR` 里，DOMPurify 会静默剥掉 → 修复到不了 DOM（与 F-06 的 `div`/`ALLOWED_TAGS` 是同一类坑）。本次已把两属性加入白名单，并在注释里写明来源仅限本文件 renderer。
+- **`renderer.checkbox` 逐字节对齐 marked 9 默认输出**（`<input ` + `checked="" ` + `disabled="" type="checkbox">`），只追加 `aria-label="已完成/未完成"`；保留 `checked`（完成状态的唯一载体），不用 `aria-hidden` / `role="img"` 隐藏控件。
+- **`renderer.code` 只在 `<pre` 开标签插入 `tabindex="0"`**，其余（语言类名、转义状态、`<code>` 子节点）转调默认实现，不引入高亮或结构变化。全部 12 个 markdown `pre` 均可聚焦（其中 4 个当前实际横向溢出）。
+- **`--cc-state-*` 只定义在深色块里是既有缺口**：浅色块此前没有焦点环/状态色变量，一旦写法写成无 fallback 的 `var(--cc-border-focus)` 就会在浅色下失效（本轮实测踩到：`outline: 2px solid var(--cc-border-focus, #a0a5a8)` 带 fallback 才两模式都成立）。`statusColors.ts` 全部带 fallback（IDE 宿主不定义这些 token → 回落现值 hex，观感零回归）。
+- **F-11 button 复位的边界**：折叠标题元素类型变更必然影响 IDE 宿主，故复位规则写在 base `Message.css`（`button.reasoning-header{width:100%;padding:0;border:none;background:none;font:inherit;color:inherit;text-align:left}`），外观与原先 div 一致；焦点可见样式只在桌面层给（`2px var(--cc-border-focus)`）。
+
+### 前后实测
+
+| 形态                                   | 修复前                                                               | 修复后                                                                                                                                                   | 证据                     |
+| -------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| F-09 axe `label`                       | light 6 / dark 6 节点（critical）                                    | **0**                                                                                                                                                    | axe 复跑                 |
+| F-09 DOM                               | `<input checked disabled type=checkbox>`                             | 6 个 checkbox 全部带 `aria-label`（已完成 ×3 / 未完成 ×3）                                                                                               | 探针                     |
+| F-10 axe `scrollable-region-focusable` | light 5 / dark 5 节点（serious）                                     | **0**                                                                                                                                                    | axe 复跑                 |
+| F-10 键盘                              | `pre` / bash 输出 / 写入预览不可聚焦                                 | Tab#15 命中 `pre`、Tab#50 命中 bash 输出、写入预览由前一个可聚焦元素 Tab 命中，焦点环 `2px #A0A5A8`                                                      | 键盘探针                 |
+| F-11 键盘                              | `<div onClick>` 无 role/tabIndex/aria-expanded                       | `<button type=button aria-expanded>`，Tab#4 可达，Space/Enter 均切换 `aria-expanded`，焦点环可见                                                         | 键盘探针                 |
+| F-12 `font-style`                      | `.tool-error` / `.message.assistant .error` = italic                 | 两者 = **normal**（字号 14px / 助手错误行高 22px 不变）                                                                                                  | 探针                     |
+| F-13 辅助行高                          | `.compact-params` 12/18，`.write-tool-stats` 12/normal               | 两者 **12/20**；工具行块高 18px 不变（无布局回归）                                                                                                       | 探针                     |
+| F-08 状态色                            | `--cc-state-*` 未定义（空），JS/CSS 双侧 hex，注释「深色沿用浅色值」 | token 两档：light `#16a34a/#2f5edb/#e6a23c/#d92d20/#98a2b3`、dark `#83d6a0/#8bbcf0/#e8bf78/#f19b95/#a0a5a8`；任务 dot、行 icon、时间线节点最终色 = token | 探针（两模式逐元素 rgb） |
+
+- **焦点环触发条件（实测结论，写进说明以免误判）**：`:focus-visible` 只在**键盘路径**出现——纯鼠标点击后用脚本 `.focus()` 聚焦不画环（Chrome 语义正确）。故 F-10/F-11 截图全部走「Tab 键盘路径」采集。
+- **F-13 视觉量级**：行高 18 → 20 只在行盒内部生效，工具行块高仍为 18px，故截图差异体现在文件统计行（82 → 85px）与行距，不是布局位移。
+- **F-08 截图口径**：「修复前」= 同页等效回退（inline 覆盖 `--cc-state-*` 为浅色值，即原「深色沿用浅色值」状态），不切分支。
+- **测试**：`pnpm -F wave-webview run type-check` exit 0；`oxlint` 5 个改动文件 0 warning / 0 error。
+- **截图 34 张**：`/Users/ailsa/Documents/07-AI/走查/截图/批1-*.png`（F-08 任务状态/时间线 × light·dark × 前/后、F-09、F-10 代码块/命令输出/写入预览、F-11、F-12、F-13；截图前统一冻结动画以避免断言噪声）。
+
+### 未做（批 1 之外的保留项）
+
+- F-10 的 `.md-table-scroll` 未补 `tabindex`：当前两模式下均无横向溢出（axe 0 违规），待宽表滚动场景复现再定；
+- `.tool-error` 容器自身 `line-height: normal`（其内容只有一个 `pre` 原始堆栈，走代码角色）未改，属 F-05/G2 未覆盖的角落，若要求统一再单独处理。

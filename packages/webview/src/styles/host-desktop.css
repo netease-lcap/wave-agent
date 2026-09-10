@@ -82,6 +82,16 @@
   --cc-color-danger-soft: #fef2f2;
   --cc-color-info: #2563eb;
   --cc-color-info-soft: #eff6ff;
+  /* 状态色（F-08）：权威 = codechat theme/desktop-colors.css --cc-state-*
+     浅色档（:78-83）。此前只在 wave 侧硬编码（statusColors.ts 的 hex +
+     任务状态 !important），运行时取不到 --cc-state-*，深色也没有对应档。
+     时间线节点、任务 dot、任务行 icon 统一消费这组 token。 */
+  --cc-state-idle: #98a2b3;
+  --cc-state-running: #2f5edb;
+  --cc-state-waiting: #e6a23c;
+  --cc-state-streaming: #e6a23c;
+  --cc-state-succeeded: #16a34a;
+  --cc-state-failed: #d92d20;
 
   /* 中密度字号：插件 13px → 桌面 14px */
   --vscode-font-size: 14px;
@@ -163,6 +173,15 @@
   --cc-color-danger-soft: #332021;
   --cc-color-info: #8bbcf0;
   --cc-color-info-soft: #1b2939;
+  /* 状态色深色档（F-08）：权威 = codechat theme/desktop-colors.css --cc-state-*
+     深色档（:173-178）。此前桌面端「深色沿用浅色值」（无 dark token），
+     任务状态与时间线节点在深色画布上偏暗；接入后随主题自动切换。 */
+  --cc-state-idle: #a0a5a8;
+  --cc-state-running: #8bbcf0;
+  --cc-state-waiting: #e8bf78;
+  --cc-state-streaming: #e8bf78;
+  --cc-state-succeeded: #83d6a0;
+  --cc-state-failed: #f19b95;
 
   /* 中密度字号 */
   --vscode-font-size: 14px;
@@ -726,8 +745,9 @@
 
 /* 消息流时间线节点：Figma design-node 12px / #16A34A / 白描边（覆盖此前
    codechat 推断的 8px 灰点）；行 padding-left 12px → 20px（节点 12 + gap 8）。
-   颜色跟随 --dot-color（工具运行蓝/流式橙/成功绿/失败红，思考与文本
-   流式橙/结束绿），无状态时回落 Figma 绿 #16A34A。 */
+   颜色跟随 --dot-color（工具运行蓝/流式橙/成功绿/失败红，F-08 起由
+   statusColors.ts 注入 --cc-state-* 语义 token），无状态时回落
+   --cc-state-succeeded（浅色档即 Figma 绿 #16A34A）。 */
 [data-host="desktop"] .timeline-row {
   padding-left: 20px;
 }
@@ -736,7 +756,7 @@
   height: 12px;
   left: 0;
   top: 15px;
-  background: var(--dot-color, #16a34a);
+  background: var(--dot-color, var(--cc-state-succeeded, #16a34a));
   border: 2px solid #ffffff;
   box-sizing: border-box;
 }
@@ -930,6 +950,10 @@
 }
 [data-host="desktop"] .write-tool-stats {
   font-size: 12px;
+  /* F-13（角色表「时间/数量/依赖等辅助信息 = 12/20」+ design-system.md 紧凑
+     行高 20px）：base 未声明行高（normal ≈ 1.2 → 14.4px），辅助信息与父行
+     13px 工具名的基线会跳；统一到紧凑刻度 20px。 */
+  line-height: 20px;
 }
 [data-host="desktop"][data-theme="light"] .write-tool-stats {
   color: #6c7076;
@@ -1056,6 +1080,9 @@
 
 [data-host="desktop"] .compact-params {
   font-size: 12px;
+  /* F-13：base 11px/18px → 桌面 12px/20px（辅助信息紧凑刻度，见角色表
+     「时间/数量/依赖等辅助信息 = 12/20」；行高 18 与 20 的差为 1 个刻度）。 */
+  line-height: 20px;
 }
 
 [data-host="desktop"] .write-preview-content {
@@ -2225,17 +2252,18 @@
    修复：TaskList.tsx 为 dot 与行容器补 is-succeeded/is-running/is-pending
    状态类（对齐 codechat task-stat-dot / task-list-item-icon 命名），此处按类
    覆盖。dot 为组件内联 style，需 !important；svg fill 为 presentation
-   attribute，普通 fill 规则即可覆盖（无需 important）。深色沿用浅色值：
-   codechat 无 dark token，状态色与 wave 时间线/会话看板一致深浅同值。 */
+   attribute，普通 fill 规则即可覆盖（无需 important）。
+   F-08（2026-09-10）：三色改为消费 --cc-state-* 语义 token —— 浅色档值不变，
+   深色档由 token 层给出 dark 值（原「深色沿用浅色值」的说法随 token 接入取消）。 */
 
 [data-host="desktop"] .task-list-stat-dot.is-succeeded {
-  background-color: #16a34a !important;
+  background-color: var(--cc-state-succeeded, #16a34a) !important;
 }
 [data-host="desktop"] .task-list-stat-dot.is-running {
-  background-color: #2f5edb !important;
+  background-color: var(--cc-state-running, #2f5edb) !important;
 }
 [data-host="desktop"] .task-list-stat-dot.is-pending {
-  background-color: #98a2b3 !important;
+  background-color: var(--cc-state-idle, #98a2b3) !important;
 }
 
 /* 行内状态图标与 dot 同色（codechat task-list-item-icon 三状态同 token）：
@@ -2244,16 +2272,16 @@
   .task-row:has(.task-title.completed)
   .task-status-svg
   path {
-  fill: #16a34a;
+  fill: var(--cc-state-succeeded, #16a34a);
 }
 [data-host="desktop"]
   .task-row:has(.task-title.in_progress)
   .task-status-svg
   path {
-  fill: #2f5edb;
+  fill: var(--cc-state-running, #2f5edb);
 }
 [data-host="desktop"] .task-row:has(.task-title.pending) .task-status-svg path {
-  fill: #98a2b3;
+  fill: var(--cc-state-idle, #98a2b3);
 }
 
 /* 依赖行「依赖 #x」：桌面链接蓝（base var(--vscode-textLink-foreground)
@@ -2672,3 +2700,29 @@
   word-break: break-word;
 }
 
+/* ═══ 批 1 · 无障碍与行高（F-09/F-10/F-11/F-12/F-13，用户 2026-09-10 授权）═══
+   权威：WCAG 2.1.1 / 4.1.2 + conversation-typography.md 角色表 + axe-core 实测
+   （详见 docs/desktop-density-restore.md「批 1」段）。全部作用域限
+   [data-host="desktop"]，base Message.css 仅 F-11 的 button 复位（结构变更必需）。 */
+
+/* F-10（axe scrollable-region-focusable serious）：可滚动区域需能键盘聚焦并有
+   可见焦点。三个滚动区的 overflow 语义不变，只补聚焦环 + 键盘滚动提示。
+   焦点环＝2px var(--cc-border-focus)（user-approved 焦点环 #a0a5a8，深浅同值；
+   宽度对齐 skill theme/desktop-colors.css --cc-focus-ring 的 2px）。offset 取 1px
+   使环画在盒外，不遮挡 pre / 输出的首行文字。 */
+[data-host="desktop"] .markdown-content pre:focus-visible,
+[data-host="desktop"] .bash-command-output:focus-visible,
+[data-host="desktop"] .write-preview-scroll:focus-visible,
+[data-host="desktop"] .reasoning-header:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #a0a5a8);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* F-12（角色表无斜体角色，中文斜体尤其影响可读性）：错误容器走正文角色，
+   仅去掉 font-style: italic，字体/行高/颜色随 F-01/G2 的角色收敛，不在此另写
+   font-family / font-size 覆盖。作用域限桌面（base 的 IDE 观感不变）。 */
+[data-host="desktop"] .message.assistant .error,
+[data-host="desktop"] .tool-error {
+  font-style: normal;
+}

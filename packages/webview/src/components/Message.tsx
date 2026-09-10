@@ -138,6 +138,33 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
   const defaultTable = marked.Renderer.prototype.table;
   renderer.table = (header: string, body: string) =>
     `<div class="md-table-scroll">${defaultTable.call(renderer, header, body)}</div>`;
+  // 任务列表复选框可访问名称（F-09 / WCAG 4.1.2；axe label critical，两模式各
+  // 6 节点）：GFM 清单由 marked 默认 checkbox renderer 输出
+  // `<input checked disabled type="checkbox">`，无 label / aria-label，读屏只
+  // 报「复选框」而丢掉完成状态。此处保留控件本体（checked 是完成状态的唯一
+  // 载体，不接受 aria-hidden / role="img" 之类「隐藏控件」写法），只补名称；
+  // li 结构与条目文本不变，读屏顺序仍是「条目文本 → 已完成/未完成」。
+  // 输出逐字节对齐 marked 9 默认实现（`<input ` + checked 前缀 +
+  // `disabled="" type="checkbox">`），仅追加 aria-label。
+  renderer.checkbox = (checked: boolean) =>
+    `<input ${
+      checked ? 'checked="" ' : ""
+    }disabled="" type="checkbox" aria-label="${checked ? "已完成" : "未完成"}">`;
+  // 可滚动代码块可键盘聚焦（F-10 / WCAG 2.1.1；axe
+  // scrollable-region-focusable serious，两模式各 5 节点）：.markdown-content
+  // pre 是 overflow-x:auto 的局部滚动区，键盘用户无法聚焦 → 看不到也滚不动被
+  // 裁掉的宽内容。默认 code renderer 输出 `<pre><code …>`，此处只在 pre 开标签
+  // 补 tabindex="0"，其余（语言类名、转义状态、<code> 子节点）逐字节沿用默认
+  // 实现，不引入高亮或结构变化；焦点样式见 host-desktop.css 桌面层。
+  const defaultCode = marked.Renderer.prototype.code;
+  renderer.code = (
+    code: string,
+    infostring: string | undefined,
+    escaped: boolean,
+  ) =>
+    defaultCode
+      .call(renderer, code, infostring, escaped)
+      .replace(/^<pre/, `<pre tabindex="0"`);
   renderer.codespan = (text: string) => {
     const url = extractClickableUrl(text);
     if (url) {
@@ -294,6 +321,13 @@ const parseMarkdownWithMermaid = (
           "class",
           "src",
           "alt",
+          // F-09 / F-10：可访问名称与可聚焦滚动区。二者都只由本文件的
+          // renderer 生成（aria-label 仅在任务列表 checkbox 上、tabindex 仅在
+          // code pre 上），不在白名单时 DOMPurify 会静默剥掉 → 修复到不了
+          // DOM（同 F-06 的 div / ALLOWED_TAGS 陷阱）。属性本身无脚本语义，
+          // 仍受默认 URL 校验约束。
+          "aria-label",
+          "tabindex",
         ],
         ALLOW_DATA_ATTR: false,
         FORBID_ATTR: [],
@@ -501,8 +535,11 @@ export const Message: React.FC<MessageProps> = React.memo(
               {/* 输出中的裸 http(s) URL 链接化（见 specs/ui/markdown-links.md），
                   点击路由复用 handleContentClick：desktop 上 localhost → 预览
                   面板、其余 → 系统浏览器；IDE 保持原生链接处理。 */}
+              {/* tabIndex（F-10 / WCAG 2.1.1）：max-height 120 + overflow-y:auto
+                  是可滚动区域，键盘用户需能聚焦后用方向键翻看完整输出。 */}
               <div
                 className="bash-command-output"
+                tabIndex={0}
                 dangerouslySetInnerHTML={{
                   __html: linkifyPlainText(result),
                 }}

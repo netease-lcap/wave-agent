@@ -60,7 +60,9 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
         <div className="write-tool-stats">{toolBlock.shortResult}</div>
       )}
       <div className="write-preview-box">
-        <div className="write-preview-scroll">
+        {/* tabIndex（F-10 / WCAG 2.1.1）：max-height 120 + overflow-y:auto 是
+            可滚动区域，键盘用户需能聚焦后用方向键翻看完整写入内容。 */}
+        <div className="write-preview-scroll" tabIndex={0}>
           <pre className="write-preview-content">{content}</pre>
         </div>
         <div className="write-preview-scrim" />

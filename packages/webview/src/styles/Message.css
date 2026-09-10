@@ -319,6 +319,21 @@
   user-select: none;
 }
 
+/* F-11（WCAG 2.1.1 / 4.1.2）：折叠标题由 <div onClick> 改为
+   <button type="button" aria-expanded>，此处复位 button 的 UA 样式
+   （背景/边框/内边距/字体/宽度/对齐），使外观与原先的 div 一致；两个宿主
+   （IDE 与桌面端）共用本规则，观感都不变。焦点可见样式在 host-desktop.css
+   桌面层用语义焦点环提供，故此处不复位 outline。 */
+button.reasoning-header {
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
 .reasoning-dot {
   width: 6px;
   height: 6px;
