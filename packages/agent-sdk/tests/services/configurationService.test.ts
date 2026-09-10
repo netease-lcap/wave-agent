@@ -1632,8 +1632,10 @@ describe("ConfigurationService", () => {
       expect(configService.getHookConfigPath(tempDir, "project")).toBe(
         path.join(tempDir, ".wave", "settings.json"),
       );
-      expect(configService.getHookConfigPath(tempDir, "user")).not.toContain(
-        "~",
+      // 只拒绝「未展开的前导 ~」：不能断言整条路径不含 `~`，因为 Windows
+      // 8.3 短路径（C:\Users\RUNNER~1\...）里的 `~` 是合法路径字符。
+      expect(configService.getHookConfigPath(tempDir, "user")).not.toMatch(
+        /^~/,
       );
     });
 
