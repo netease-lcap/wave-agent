@@ -50,36 +50,47 @@ const BackgroundTaskManager: React.FC<
   const [loadingOutput, setLoadingOutput] = useState(false);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  // The (taskId, status) we last requested output for. The refetch below is
+  // keyed on this rather than on `output === null`: the host always answers
+  // with an output object (stdout may be an empty string), so a task first
+  // inspected while running kept its empty reply forever after finishing.
+  const lastOutputRequestRef = useRef<{
+    taskId: string;
+    status: string;
+  } | null>(null);
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) || null;
 
-  // Fetch output when a task is selected
+  // Fetch output for the selected task, and refetch whenever its status
+  // changes (running → completed/failed/killed) so the terminal output is not
+  // missed by a detail view opened while the task was still running.
   useEffect(() => {
     if (!selectedTaskId) {
       setOutput(null);
+      lastOutputRequestRef.current = null;
       return;
     }
+    if (!selectedTask) {
+      return;
+    }
+    const last = lastOutputRequestRef.current;
+    if (
+      last &&
+      last.taskId === selectedTaskId &&
+      last.status === selectedTask.status
+    ) {
+      return;
+    }
+    lastOutputRequestRef.current = {
+      taskId: selectedTaskId,
+      status: selectedTask.status,
+    };
     setLoadingOutput(true);
     vscode.postMessage({
       command: "getBackgroundTaskOutput",
       taskId: selectedTaskId,
     });
-  }, [selectedTaskId, vscode]);
-
-  // Refresh output when the selected task's status changes to a terminal state
-  useEffect(() => {
-    if (
-      selectedTaskId &&
-      selectedTask &&
-      selectedTask.status !== "running" &&
-      output === null
-    ) {
-      vscode.postMessage({
-        command: "getBackgroundTaskOutput",
-        taskId: selectedTaskId,
-      });
-    }
-  }, [selectedTask, selectedTaskId, output, vscode]);
+  }, [selectedTask, selectedTaskId, vscode]);
 
   useHostMessage((message) => {
     switch (message.command) {
