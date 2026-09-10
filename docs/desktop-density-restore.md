@@ -2507,49 +2507,56 @@ const isAddressLabel = (label: string) => {
 
 - label 与 href 不同源的链接（如 `[https://x](https://y)`）；label 内含内联 HTML（`**http://x**`）；超长电话（>15 位）与带分机号写法；IDE 宿主真机。
 
-## 正文内联链接常态下划线（用户授权 2026-09-10）：D-01
+## 正文内联链接下划线时机（用户 2026-09-10 授权 + 当日修订）：D-01
 
-依据：**用户 2026-09-10 授权**（「正文内联链接常态显示下划线，hover 加深。直接展示的 URL、邮箱、电话号码出现在正文中时同样适用；等宽字体不能替代链接的可点击线索。独立工具入口与文件路径链接保留此前已确定的处理方式。」）+ **WCAG 1.4.1**（axe `link-in-text-block` serious：链接与正文对比 light 2.9:1、dark 1.99:1，均 < 3:1，且 `text-decoration:none`）。契约中「链接无下划线」表述已声明为 Vue 参考、不再约束 React 侧，故实现无障碍修复不存在契约冲突；该表述本身的回写建议见 W-05。
+> **决策沿革（以本段为准）**：用户先授权「正文内联链接常态显示下划线，hover 加深」（提交 `634a85d8`），当日随即修订为 **「常态无下划线，hover / focus 时显示」**（提交 `33c800c8`）。下面记录修订后的最终状态，末尾保留初版记录备查。
 
-**应用提交：`634a85d8`**（`src/styles/host-desktop.css`，+27 行；base `Message.css` 零改动）。
+依据：**用户 2026-09-10 决策与修订**——「正文内联链接常态显示下划线，hover 加深。直接展示的 URL、邮箱、电话号码出现在正文中时同样适用；等宽字体不能替代链接的可点击线索。独立工具入口与文件路径链接保留此前已确定的处理方式。」→ 修订为「**常态无下划线，hover / focus 时显示**」。相关背景：**WCAG 1.4.1**（axe `link-in-text-block` serious：链接与正文对比 light 2.9:1、dark 1.99:1，均 < 3:1）。契约中「链接无下划线」表述已声明为 Vue 参考、不再约束 React 侧，故实现不构成契约冲突；该表述的回写建议见 W-05。
 
-### 实现
+**应用提交：`33c800c8`**（当前状态；初版为 `634a85d8`）——`src/styles/host-desktop.css`，base `Message.css` 零改动，IDE 宿主不受影响。
+
+### 实现（修订后）
 
 ```css
 [data-host="desktop"] .markdown-content a {
+  text-decoration: none;
+}
+[data-host="desktop"] .markdown-content a:hover,
+[data-host="desktop"] .markdown-content a:focus-visible,
+[data-host="desktop"] .markdown-content a.file-path-link:hover,
+[data-host="desktop"] .markdown-content a.file-path-link:focus-visible {
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
 }
 [data-host="desktop"] .markdown-content a:hover {
   color: #1f47b8; /* derived：--cc-text-link 加深（契约无 hover token） */
-  text-decoration: underline;
 }
 [data-host="desktop"][data-theme="dark"] .markdown-content a:hover {
   color: #7fc0ff; /* derived：深色下提亮以体现「加深」反馈 */
 }
-[data-host="desktop"] .markdown-content a.file-path-link,
-[data-host="desktop"] .markdown-content code a {
-  text-decoration: none;
-}
-[data-host="desktop"] .markdown-content a.file-path-link:hover {
-  text-decoration: underline;
-}
 ```
 
-### 前后实测
+`a:focus-visible` 是本次修订新增的一支：键盘 `Tab` 到达链接时同样给出下划线，避免「hover / focus 时显示」只覆盖鼠标。
 
-| 形态                                        | 修复前                           | 修复后                                                                     |
-| ------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------- |
-| 正文内联链接（描述性 + 直显地址/邮箱/电话） | `text-decoration:none`，仅靠颜色 | **常态下划线**（offset 2px / 1px）                                         |
-| hover 反馈                                  | 下划线出现、颜色不变             | 下划线 + **颜色加深**：light `#2f5edb → #1f47b8`、dark `#4daafc → #7fc0ff` |
-| 文件路径链接 `a.file-path-link` / `code a`  | 无下划线（dotted 仅在 base）     | 显式 `text-decoration:none`（hover 出现）                                  |
-| axe `link-in-text-block`                    | **5 节点 / 模式**                | **1 节点 / 模式**（残留 = `.bash-command-output` 工具输出内链接）          |
+### 前后实测（探针断言，light / dark 同值）
 
-- **hover token 说明**：契约无「链接 hover」token → hover 色按 `--cc-text-link` 加深/提亮推导，CSS 内已注明 `derived`；**待你确认取值或指定官方 token**。
-- **待拍板**：残留 1 个 axe 违规节点位于 bash 命令输出区。当前遵循「独立工具入口保留此前处理方式」未加下划线；若要 0 违规，只需把该选择器并入同一条下划线规则（1 行，作用域仍限 `[data-host="desktop"]`）。
+| 形态                                         | 初版（常态下划线）         | 修订后（当前）                                                         |
+| -------------------------------------------- | -------------------------- | ---------------------------------------------------------------------- |
+| 正文内联链接 · 常态                          | 下划线（offset 2px / 1px） | **无下划线**，颜色 `#2f5edb` / dark `#4daafc`                          |
+| 正文内联链接 · hover                         | 下划线 + 加深              | **下划线 + 加深**：light `#2f5edb → #1f47b8`、dark `#4daafc → #7fc0ff` |
+| 正文内联链接 · 键盘 focus                    | 未处理                     | **下划线**（`:focus-visible` 命中）                                    |
+| 文件路径 / `code` 内 / 工具输出 / write 路径 | 常态无、hover 有           | 常态无、hover / focus 有（保留既有处理）                               |
+| axe `link-in-text-block`                     | 1 节点 / 模式              | **7 节点 / 模式（serious）**                                           |
+
+- **无障碍影响（如实记录，属已接受的偏离）**：修订后静态态回到「只有颜色一个线索」，而链接与正文对比 light 2.9:1 / dark 1.99:1 低于 WCAG 1.4.1 在依赖颜色区分时要求的 3:1 → axe <code>link-in-text-block</code> 报 **7 节点 serious**（常态下划线方案时为 1 节点）。按用户修订决定，该项**不计为验收失败**；若后续要恢复合规：① 回到「常态下划线」，或 ② 提高链接色对比至 ≥3:1。
+- **hover token 说明**：契约无「链接 hover」token → hover 色按 `--cc-text-link` 加深/提亮推导，CSS 内已注明 `derived`；**待确认取值或指定官方 token**。
 - **测试**：`pnpm -F wave-webview run type-check` exit 0。
-- 截图 8 张：`/Users/ailsa/Documents/07-AI/走查/截图/D-01-正文链接下划线_修复前|修复后_{light,dark}_{常态,hover加深}.png`（「修复前」= 同页等效回退态 `text-decoration:none`）。
+- 截图 8 张：`/Users/ailsa/Documents/07-AI/走查/截图/D-01v2-链接下划线时机_修复前_常态_{light,dark}.png`（等效回退到初版「常态下划线」）+ `D-01v2-链接下划线时机_修复后_{常态,hover,focus}_{light,dark}.png`（focus 图为真实键盘 `Tab` 到达链接后拍摄）。初版截图 `D-01-正文链接下划线_*` 保留备查。
+
+### 初版记录（提交 `634a85d8`，已被上述修订取代，仅备查）
+
+CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decoration:underline`（offset 2px / 1px），`a:hover` 加深为 `#1f47b8` / `#7fc0ff`，`a.file-path-link` 与 `code a` 显式 `none`、`a.file-path-link:hover` 出现下划线；axe 由 5 → 1 节点。
 
 ## 表格阅读效果待验收（V-01）：字号修复已完成，「12→40」口径澄清
 
