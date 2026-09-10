@@ -56,6 +56,7 @@ const h = vi.hoisted(() => ({
         return h.worktreeResult;
       }
       case "removeWorktree":
+        if (h.removeWorktreeError) throw h.removeWorktreeError;
         if (h.removeWorktreeGate)
           return h.removeWorktreeGate.then(() => ({ removed: true }));
         return { removed: true };
@@ -85,6 +86,10 @@ const h = vi.hoisted(() => ({
   // When set, the removeWorktree RPC awaits this promise (simulates a slow
   // multi-second git worktree remove in the shared stdio process).
   removeWorktreeGate: null as Promise<void> | null,
+  // When set, the removeWorktree RPC rejects (host unreachable, stale CLI
+  // without the method, path validation refused) — the host must log why
+  // instead of swallowing the worktree cleanup failure.
+  removeWorktreeError: null as Error | null,
   // When set, agent.initialize awaits this promise (simulates the multi-second
   // stdio startup so a real webview re-fires webviewReady while the new pane's
   // agent is still mid-spawn and not yet bound to the pane).
@@ -573,6 +578,7 @@ beforeEach(() => {
   h.worktreeError = null;
   h.branchesResult = null;
   h.removeWorktreeGate = null;
+  h.removeWorktreeError = null;
   h.initializeGate = null;
   h.agentCounter = 0;
   h.closedHandlers.length = 0;
@@ -4986,6 +4992,40 @@ describe("worktree flow", () => {
         repoRoot: worktree.repoRoot,
       },
     });
+  });
+
+  it("logs a failed removeWorktree request instead of swallowing it", async () => {
+    const { host, store } = await readyHost();
+    h.removeWorktreeError = new Error("Host unreachable");
+    store.upsertSession({
+      sessionId: "sess-wt-fail",
+      title: "wt",
+      workdir: worktree.repoRoot,
+      cwd: worktree.path,
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+      worktree: {
+        path: worktree.path,
+        branch: worktree.branch,
+        baseBranch: "main",
+        repoRoot: worktree.repoRoot,
+      },
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopDeleteSession",
+      sessionId: "sess-wt-fail",
+    });
+
+    // consoleSpies[1] is the console.warn spy installed in beforeEach — the
+    // request failing here used to be an empty catch, leaving no trace at all
+    // of why a worktree directory survived the session delete.
+    await vi.waitFor(() => expect(consoleSpies[1]).toHaveBeenCalled());
+    const logged = consoleSpies[1].mock.calls
+      .map((c) => c.join(" "))
+      .join("\n");
+    expect(logged).toContain(worktree.path);
+    expect(logged).toContain("Host unreachable");
   });
 
   it("desktopDeleteSession refreshes the tree without waiting for worktree removal", async () => {

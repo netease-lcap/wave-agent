@@ -59,6 +59,7 @@ vi.mock("node:child_process", async () => {
 vi.mock("node:fs", () => ({
   existsSync: vi.fn(),
   mkdirSync: vi.fn(),
+  readdirSync: vi.fn(),
   rmSync: vi.fn(),
   promises: {
     readFile: vi.fn(),
@@ -516,6 +517,71 @@ describe("worktree utils", () => {
       expect(gitCallsWith(["branch", "-D", "worktree-my-feat"])).toHaveLength(
         1,
       );
+      loggerSpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+
+    it("should log the failing stage, error details and the residue left behind", async () => {
+      const loggerSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      git.handler = (_cmd, args) => {
+        if (args[0] === "worktree" && args[1] === "remove") {
+          throw gitError(
+            "Filename too long",
+            "error: failed to delete 'my-feat': Filename too long",
+          );
+        }
+        return { stdout: "", stderr: "" };
+      };
+      vi.mocked(fs.rmSync).mockImplementation(() => {
+        throw Object.assign(new Error("EPERM: operation not permitted"), {
+          code: "EPERM",
+          syscall: "rmdir",
+          path: "C:\\repo\\root\\.wave\\worktrees\\my-feat\\node_modules",
+        });
+      });
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readdirSync).mockReturnValue([
+        "node_modules",
+        "packages",
+      ] as unknown as Awaited<ReturnType<typeof fs.readdirSync>>);
+
+      await removeWorktree(session);
+
+      const message = loggerSpy.mock.calls[0].join(" ");
+      expect(message).toContain("Failed to remove worktree or branch");
+      expect(message).toContain(`path=${session.path}`);
+      // Which stage failed, with the OS error code and the offending path
+      expect(message).toContain("stage=fs");
+      expect(message).toContain("code=EPERM");
+      expect(message).toContain(
+        "at=C:\\repo\\root\\.wave\\worktrees\\my-feat\\node_modules",
+      );
+      // What git said before the fallback took over
+      expect(message).toContain("Filename too long");
+      // What is still on disk after both attempts
+      expect(message).toContain("residue=2[node_modules,packages]");
+      loggerSpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+
+    it("should report the residue as none when the directory is already gone", async () => {
+      const loggerSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      git.handler = (_cmd, args) => {
+        if (args[0] === "worktree" && args[1] === "remove") {
+          throw gitError("Filename too long", "");
+        }
+        return { stdout: "", stderr: "" };
+      };
+      vi.mocked(fs.rmSync).mockImplementation(() => {
+        throw new Error("rm failed");
+      });
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      await removeWorktree(session);
+
+      expect(loggerSpy.mock.calls[0].join(" ")).toContain("residue=none");
       loggerSpy.mockRestore();
       warnSpy.mockRestore();
     });

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   hasWorktreeCreateHook,
   hasWorktreeRemoveHook,
@@ -6,6 +6,7 @@ import {
   executeWorktreeRemoveHook,
 } from "@/services/worktreeHooks.js";
 import { executeCommand } from "@/services/hook.js";
+import { clearGlobalLogger, setGlobalLogger } from "@/utils/globalLogger.js";
 import type { HookExecutionResult } from "@/types/hooks.js";
 
 vi.mock("@/services/hook.js", async (importOriginal) => {
@@ -55,6 +56,10 @@ const baseContext = {
 describe("worktreeHooks", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+  });
+
+  afterEach(() => {
+    clearGlobalLogger();
   });
 
   describe("hasWorktreeCreateHook / hasWorktreeRemoveHook", () => {
@@ -325,6 +330,40 @@ describe("worktreeHooks", () => {
       );
 
       expect(hookRan).toBe(true);
+    });
+
+    it("logs the worktree path, exit code and timeout state when the hook fails", async () => {
+      const errorSpy = vi.fn();
+      setGlobalLogger({
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: errorSpy,
+      } as unknown as Parameters<typeof setGlobalLogger>[0]);
+      vi.mocked(executeCommand).mockResolvedValue(
+        result({
+          success: false,
+          exitCode: 137,
+          stderr: "Filename too long",
+          timedOut: true,
+          duration: 1234,
+        }),
+      );
+
+      await executeWorktreeRemoveHook(
+        "/repo/.wave/worktrees/feature",
+        removeConfig(["cleanup-a"]),
+        baseContext,
+      );
+
+      // Without the path the line is un-actionable when aggregating failures
+      // from several worktrees; without exit/timeout it is unclear whether the
+      // hook failed on its own or was killed by the hook timeout.
+      const message = String(errorSpy.mock.calls[0][0]);
+      expect(message).toContain("/repo/.wave/worktrees/feature");
+      expect(message).toContain("exit=137");
+      expect(message).toContain("timedOut=true");
+      expect(message).toContain("Filename too long");
     });
   });
 });

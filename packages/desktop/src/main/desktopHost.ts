@@ -3007,8 +3007,15 @@ export class DesktopHost {
   ): Promise<void> {
     try {
       await this.utilityClientFor(host).request("removeWorktree", params);
-    } catch {
-      // best-effort — stdio removeWorktree never throws
+    } catch (error) {
+      // Best-effort: the session is already gone, so a failure here only costs
+      // a leftover directory. Log it anyway — swallowing the request error is
+      // why an orphaned worktree had no trace at all when the RPC itself
+      // failed (host unreachable, stale CLI without the method, refused path).
+      console.warn(
+        `[DesktopHost] worktree 清理请求失败 host=${host} path=${params.path} branch=${params.branch}:`,
+        error,
+      );
     }
   }
 
