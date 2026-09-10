@@ -8,12 +8,13 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import * as path from "path";
 import {
   assertNoUnexpectedRejections,
   clearFakeModelEndpoint,
   createRealHost,
+  REALHOST_HOME,
   resetRealHostState,
   startFakeModelServer,
   takeUnexpectedRejections,
@@ -96,6 +97,68 @@ async function projectSettings(paneId: string) {
 
 function projectSettingsFile(dir: string): string {
   return path.join(dir, ".wave", "settings.json");
+}
+
+/** Single pane on dirA holding one conversation (an agent must exist to delete). */
+async function onePane(): Promise<void> {
+  await ctx.host.handleWebviewMessage({ command: "desktopReady" });
+  await ctx.host.handleWebviewMessage({
+    command: "desktopSelectRecentWorkdir",
+    path: dirA,
+    host: "local",
+  });
+  await ctx.waitFor("setInitialState");
+  await ctx.turn("首条");
+}
+
+/**
+ * Create a user-level skill copy (`~/.wave/skills/<name>/SKILL.md` by default).
+ *
+ * `root` 可选 `.claude` / `.agents`：同名技能可以同时物理存在于多个用户级
+ * 技能目录（发现阶段会合并成一条），#2092 的后半段就是「只删了一份，下一次
+ * 重扫又冒出来」。
+ */
+function writeUserSkill(name: string, root = ".wave"): string {
+  const dir = path.join(REALHOST_HOME, root, "skills", name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    path.join(dir, "SKILL.md"),
+    `---\nname: ${name}\ndescription: ${name} 说明\n---\n\n${name} 正文\n`,
+    "utf-8",
+  );
+  return dir;
+}
+
+/** Skill names of one discovery type from a `skillMetadataResponse`. */
+function skillNames(message: { skills?: unknown }, type?: string): string[] {
+  return ((message.skills ?? []) as Array<{ name: string; type?: string }>)
+    .filter((s) => type === undefined || s.type === type)
+    .map((s) => s.name);
+}
+
+/**
+ * 连续读取技能列表，返回每轮采样到的个人技能名（已排序）。
+ *
+ * 设置页删除技能后会立刻再拉一次列表（`useSettingsList.refresh`），这次读取与
+ * SDK 的删除后收敛刷新 / 文件 watcher 重扫是并发的——#2092 正是这次读取落在
+ * 「重扫先清空共享缓存」的空窗口里，于是列表整段空白。逐轮采样能覆盖删除后那
+ * 一段时间内的多次读取，而不是只赌单次读取的时序。
+ */
+async function samplePersonalSkills(rounds: number): Promise<string[][]> {
+  const samples: string[][] = [];
+  for (let i = 0; i < rounds; i += 1) {
+    const start = ctx.messages.length;
+    await ctx.host.handleWebviewMessage({
+      command: "getSkillMetadata",
+      paneId: "pane-1",
+    });
+    const reply = ctx.messages
+      .slice(start)
+      .find((m) => m.command === "skillMetadataResponse");
+    if (reply) samples.push(skillNames(reply, "personal").sort());
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  return samples;
 }
 
 describe("real host · project settings follow the pane's project", () => {
@@ -260,5 +323,70 @@ describe("real host · project settings follow the pane's project", () => {
       predicate: (m) => m.scope === "project",
     });
     expect(reread.content).toBe("B 项目规则\n");
+  });
+
+  /**
+   * Regression（Bug #2092「删除技能后列表显示为空，切 tab 才恢复」）：
+   *
+   * 旧实现两条缺陷都在本用例的观测点上：①重扫先清空共享缓存再异步 discover
+   * （`refreshSkills` 非原子），删除后的回读会落在空窗口里 —— 列表整段空白；
+   * ②同名技能分布在多个用户级技能目录时只删一份，下一次重扫又冒出来（表现为
+   * 「切 tab 才恢复」的另一面：删不掉）。修复（b7c0899a）让重扫原子交换缓存、
+   * 删除后 await 收敛，并按作用域把同名副本一次删净。
+   *
+   * 本用例在**真 host + 真 CLI**上跑：同名技能同时放在 `~/.wave` 与 `~/.claude`
+   * 两个用户级技能目录，断言删除后 ①回发列表非空且不含该技能 ②删除后一段时间
+   * 内的连续读取都不含该技能、末轮恰好只剩另一个 ③两份目录都已从磁盘删除。
+   */
+  it("does not blank or resurrect the skill list after a delete (#2092)", async () => {
+    const skillAWave = writeUserSkill("skill-a");
+    const skillAClaude = writeUserSkill("skill-a", ".claude");
+    writeUserSkill("skill-b");
+    await onePane();
+
+    ctx.clear();
+    await ctx.host.handleWebviewMessage({
+      command: "getSkillMetadata",
+      paneId: "pane-1",
+    });
+    const before = await ctx.waitFor("skillMetadataResponse", {
+      predicate: (m) => m.paneId === "pane-1",
+    });
+    expect(skillNames(before, "personal").sort()).toEqual([
+      "skill-a",
+      "skill-b",
+    ]);
+
+    ctx.clear();
+    await ctx.host.handleWebviewMessage({
+      command: "deleteSkill",
+      paneId: "pane-1",
+      name: "skill-a",
+    });
+    const after = await ctx.waitFor("skillMetadataResponse", {
+      predicate: (m) => m.paneId === "pane-1",
+    });
+
+    // 删除后回发的列表必须已经反映删除结果，而不是瞬时空列表：
+    // 非空 + 不含已删技能 + 仍含剩余技能。
+    expect(after.skills as unknown[]).not.toHaveLength(0);
+    expect(skillNames(after, "personal")).toEqual(["skill-b"]);
+
+    // 删除后一段时间内连续读取（覆盖删除后重扫 / 文件 watcher 那一轮）：
+    // 任何一轮都不得为空，也不得让被删技能复活，末轮必须已收敛为只剩 skill-b。
+    const samples = await samplePersonalSkills(30);
+    expect(samples.filter((s) => s.length === 0)).toEqual([]);
+    expect(samples.filter((s) => s.includes("skill-a"))).toEqual([]);
+    expect(samples.at(-1)).toEqual(["skill-b"]);
+
+    // 磁盘上同名技能的所有副本都被删除（不是只从内存列表里消失，也不是只删一份）
+    expect(existsSync(skillAWave)).toBe(false);
+    expect(existsSync(skillAClaude)).toBe(false);
+    // 删除成功经全局 toast 提示（spec「设置页反馈语义」）
+    expect(
+      ctx
+        .of("showToast")
+        .some((m) => JSON.stringify(m.toast).includes("已删除技能「skill-a」")),
+    ).toBe(true);
   });
 });
