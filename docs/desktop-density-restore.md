@@ -2592,7 +2592,7 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 
 截图 8 张：`/Users/ailsa/Documents/07-AI/走查/截图/F-03-表格阅读效果_修复前|修复后_{light,dark}_{宽表4列,8列表}.png`（同一窗口、1440px、同一滚动位置）。
 
-## skill 回写建议汇总（W-01 ~ W-05，仅建议，未改 skill）
+## skill 回写建议汇总（W-01 ~ W-11，仅建议，未改 skill）
 
 按用户要求本轮**只整理、不直接修改** `codechat-desktop-skill`。目标文件与来源：
 
@@ -2603,6 +2603,21 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 | W-03 | `references/conversation-surfaces.md:25-27`                          | 连接线 **#E4E7ED / left 5.5px / 端点 21px**，说明源自 12px 节点圆心几何                                                                                                                                                                                  | Figma 提取「竖线 1x541 #E4E7ED」+ 几何推导                                                                                             |
 | W-04 | `references/conversation-typography.md`（建议新增 **TXT-09**）       | **链接角色条款**：描述性链接 = 正文角色；直显地址（`http(s)://`、协议相对 `//`、**可见文字本身就是邮箱/电话或 mailto:/tel: 串**）= 代码角色 13px、允许任意位置折行；判据是可见文字含义而非有无 `//`；路径与代码内链接沿用代码角色                        | 用户 2026-09-10 规则；实现 `d8a09697` / `3b33d294`                                                                                     |
 | W-05 | `references/conversation-surfaces.md` + `conversation-typography.md` | 「链接无下划线，hover 出现」→ **「正文内联链接常态无下划线，hover / focus 时显示下划线（offset 2px / 1px）并加深颜色；直显 URL/邮箱/电话同样适用；文件路径与代码内链接跟随同一时机」**，并注明无障碍条件（链接与正文对比需 ≥3:1 才免于 WCAG 1.4.1 违规） | 用户 2026-09-10 授权与当日修订 + axe `link-in-text-block`（light 2.9:1 / dark 1.99:1 < 3:1，属已知偏离）；实现 `634a85d8` / `33c800c8` |
+
+### 本轮补充的回写候选（W-06 ~ W-11，用户 2026-09-10「之前修复的内容也可回写」）
+
+| #    | 目标                                         | 建议内容                                                                                                                                                                                                                                                             | 依据                                                                                                  |
+| ---- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| W-06 | `conversation-surfaces.md`（结构）           | **React 桌面端已验收规格的落点**——该文件顶部声明「Vue 参考、非 React 已验收规格」，而圆角 12px / 状态点 12×12+2px / 连接线 / 行高 22px / 表格 14-22 全是 React 实测值，需三选一定落点（原文件并列小节 / 新建 `conversation-surfaces-desktop.md` / 每条加实测行内注） | 本轮走查过程本身（本文档全篇为 React 实测）；**须先决策，W-01/02/03/05 的写入位置取决于它**           |
+| W-07 | `design-system.md` / `interaction-states.md` | 补链接 hover 色：常态 `--cc-text-link`，hover 浅色 `#1F47B8` / 深色提亮 `#7FC0FF`（深色「加深」= 提亮）                                                                                                                                                              | 实现提交 `33c800c8`（当前按 `--cc-text-link` 推导、标 `derived`）                                     |
+| W-08 | `conversation-typography.md`（TXT-06 注）    | TXT-06 补可执行验收：DOM 确认存在真实滚动容器 + 画布无溢出；陷阱 = renderer 包裹的滚动 `div` 不在 sanitizer 白名单会被剥掉（假通过）                                                                                                                                 | F-06 排查（提交 `1e2ef0aa`：`wraps: 0` → `ALLOWED_TAGS` 缺 `div`）                                    |
+| W-09 | `conversation-typography.md`（TXT-09 附）    | TXT-09 附边界示例表：描述性 = 正文；直显地址/邮箱/电话/`mailto:`/`tel:` = 代码 13px；**日期样 label 不算电话**；未覆盖边界需回报                                                                                                                                     | 用户 2026-09-10 规则 + 提交 `3b33d294`                                                                |
+| W-10 | `conversation-surfaces.md`                   | 任务列表卡：内边距上下对称 8px、`gap 6px`、圆角 8px；贴合队列卡时去圆角 / 去重边框、保留单条分隔线                                                                                                                                                                   | 用户 0909 走查「下面高了点可以收拢」+ 提交 `2187d55f`（⚠️ 在 `feat/0909-new-base-r1`，**PR 未合并**） |
+| W-11 | `design-system.md`（菜单节）                 | 菜单分隔线条件渲染：其后无分组内容时不渲染（workdir 菜单无最近记录时隐藏）                                                                                                                                                                                           | 用户 0909 走查「还未选择工作目录不显示分割线」+ 提交 `61df5d5f`（⚠️ 同上，**PR 未合并**）             |
+
+**建议回写顺序**：① 先决策 W-06 落点 → ② W-01/W-02/W-03/W-05 写内容 → ③ W-04/W-07/W-08/W-09 写 typography 与 design-system → ④ W-10/W-11 待 0909 PR 合并后再写。
+
+**交接单**：`/Users/ailsa/Documents/07-AI/CC02/skill-backfill-for-codex.md`（含一段可直接发给 codex 的提示词 + 11 条逐条「现状原文 / 建议改为 / 依据 / 验收」+ 依赖边界 + 自查清单；Artifact `https://codechat.codewave.163.com/code/artifact/6lfkrp9xgh`）。清单 HTML 的「skill 回写建议汇总」节提供两个一键复制按钮（复制全部 W-01~W-11 / 复制交接单全文）。
 
 **回写前置依赖**：W-04 与 W-05 相互依赖（W-04 让直显地址转等宽、W-05 规定其下划线时机），两条须同批回写；另基础仓库 `specs/ui/file-path-links.md` 的「路径链接 dotted 下划线」与 base `Message.css` 现有 `underline dotted` 需一并核对（本轮未改 base，IDE 宿主不受影响）。
 
