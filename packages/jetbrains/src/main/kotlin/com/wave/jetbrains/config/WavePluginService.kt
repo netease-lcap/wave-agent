@@ -6,17 +6,16 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 
+/**
+ * 插件本地状态（落 `wave.xml`）。只保留扩展本地键；用户偏好
+ * （AI 回复语言 / 上下文长度 / 自动记忆开关与频率）落点唯一为用户级
+ * `~/.wave/settings.json`（见 spec core/agent-config.md「IDE 插件配置入口」
+ * 场景 6）——**不得**回读本存储当作第二真源。
+ */
 data class ConfigurationData(
     var model: String = "",
     var fastModel: String = "",
-    var language: String = "Chinese",
     var serverUrl: String = "",
-    /** Per-model input context window in K tokens (e.g. 200 = 200K), 16–1000 */
-    var contextLength: Int? = null,
-    /** Whether auto-memory extraction is enabled */
-    var autoMemoryEnabled: Boolean? = null,
-    /** Auto-memory extraction turn frequency, 1–100 */
-    var autoMemoryFrequency: Int? = null,
 )
 
 @State(name = "WavePlugin", storages = [Storage("wave.xml")])
