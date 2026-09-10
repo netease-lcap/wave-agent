@@ -2501,7 +2501,7 @@ const isAddressLabel = (label: string) => {
 
 - **跳转行为**：`href` 逐字节不变（`mailto:` / `tel:` 原样输出），仅 class 标记与字形变化。
 - **测试**：`pnpm -F wave-webview run type-check` exit 0。
-- 截图 8 张：`/Users/ailsa/Documents/07-AI/走查/截图/F-16-邮箱电话角色_修复前|修复后_{light,dark}_*.png`（「修复前」= 同页等效回退态：中和 `.address-link` 的等宽/字号声明）。
+- 截图 8 张：`/Users/ailsa/Documents/07-AI/走查/截图/F-16-邮箱电话角色_修复前|修复后_{light,dark}_{直显,描述性}.png`（「修复前」= 同页等效回退态：中和 `.address-link` 的等宽/字号声明）。
 
 ### 未覆盖
 
@@ -2549,7 +2549,7 @@ const isAddressLabel = (label: string) => {
 - **hover token 说明**：契约无「链接 hover」token → hover 色按 `--cc-text-link` 加深/提亮推导，CSS 内已注明 `derived`；**待你确认取值或指定官方 token**。
 - **待拍板**：残留 1 个 axe 违规节点位于 bash 命令输出区。当前遵循「独立工具入口保留此前处理方式」未加下划线；若要 0 违规，只需把该选择器并入同一条下划线规则（1 行，作用域仍限 `[data-host="desktop"]`）。
 - **测试**：`pnpm -F wave-webview run type-check` exit 0。
-- 截图 8 张：`/Users/ailsa/Documents/07-AI/走查/截图/D-01-正文链接下划线_修复前|修复后_{light,dark}_{描述性链接,直显地址,路径链接对照,表格内地址}.png`（「修复前」= 同页等效回退态 `text-decoration:none`）。
+- 截图 8 张：`/Users/ailsa/Documents/07-AI/走查/截图/D-01-正文链接下划线_修复前|修复后_{light,dark}_{常态,hover加深}.png`（「修复前」= 同页等效回退态 `text-decoration:none`）。
 
 ## 表格阅读效果待验收（V-01）：字号修复已完成，「12→40」口径澄清
 
