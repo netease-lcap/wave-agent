@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Container } from "../../src/utils/container.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
+import { ConfigurationService } from "../../src/services/configurationService.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 import * as aiService from "../../src/services/aiService.js";
+import { DEFAULT_LANGUAGE } from "../../src/utils/constants.js";
 import { logger } from "../../src/utils/globalLogger.js";
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
@@ -330,12 +332,72 @@ describe("AIManager", () => {
       expect(langSpText).toContain("Always respond in Chinese");
     });
 
+    // prompt 层守卫：`options.language` 为空则不注入。注意解析链
+    // （`ConfigurationService.resolveLanguage`）现在总有兜底默认（zh-CN），
+    // 所以「undefined」不再是从 SDK 自身解析链可达的状态——本用例锁的是
+    // `buildSystemPrompt` 这一层的行为。
     it("should NOT inject language prompt when language is undefined", async () => {
       await aiManager.sendAIMessage();
 
       const noLangCallArgs = vi.mocked(aiService.callAgent).mock.calls[0][0];
       const noLangSpText = flattenSystemPrompt(noLangCallArgs.systemPrompt);
       expect(noLangSpText).not.toContain("# Language");
+    });
+
+    it("should inject the resolution default (zh-CN) into the prompt on a fresh install", async () => {
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
+      // 语言这一格走**真**解析链（其余字段照旧 mock）：未被任何一层设置时
+      // `resolveLanguage()` 必须给出兜底默认，这样本用例才真的锁住「全新安装
+      // 也注入语言指令」——mock 成 DEFAULT_LANGUAGE 的同义反复不构成回归网。
+      const realConfigService = new ConfigurationService();
+
+      const container = new Container();
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
+        resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
+        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
+        resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
+        resolveLanguage: () => realConfigService.resolveLanguage(),
+      });
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+        getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
+      } as unknown as Record<string, unknown>);
+      container.register("MessageQueue", {
+        hasNotifications: vi.fn().mockReturnValue(false),
+        drainNotifications: vi.fn().mockReturnValue([]),
+      });
+
+      const freshInstallManager = new AIManager(container, {
+        workdir: "/test/workdir",
+        stream: false,
+      });
+
+      await freshInstallManager.sendAIMessage();
+
+      const callArgs = vi.mocked(aiService.callAgent).mock.calls[0][0];
+      const spText = flattenSystemPrompt(callArgs.systemPrompt);
+      expect(spText).toContain("# Language");
+      expect(spText).toContain(`Always respond in ${DEFAULT_LANGUAGE}`);
     });
 
     it("should NOT inject dontAsk permission mode into system prompt", async () => {

@@ -23,7 +23,10 @@ import {
   loadUserConfigEnv,
 } from "../../src/services/configurationService.js";
 import { atomicWriteFile } from "../../src/utils/atomicWrite.js";
-import { DEFAULT_WAVE_MAX_INPUT_TOKENS } from "../../src/utils/constants.js";
+import {
+  DEFAULT_WAVE_MAX_INPUT_TOKENS,
+  DEFAULT_LANGUAGE,
+} from "../../src/utils/constants.js";
 import type { WaveConfiguration } from "../../src/types/configuration.js";
 
 const mockExistsSync = vi.mocked(existsSync);
@@ -978,8 +981,11 @@ describe("ConfigurationService", () => {
   });
 
   describe("resolveLanguage", () => {
-    it("should return undefined by default", () => {
-      expect(configService.resolveLanguage()).toBeUndefined();
+    it("should fall back to the default language when nothing is set (fresh install)", () => {
+      // 未设置时也必须给出明确生效值：与设置页下拉默认项同串，保证「显示 ≡ 生效」
+      // （spec agent-config 边界说明「语言默认值」）。
+      expect(configService.resolveLanguage()).toBe(DEFAULT_LANGUAGE);
+      expect(DEFAULT_LANGUAGE).toBe("zh-CN");
     });
 
     it("should resolve from constructor", () => {
@@ -1002,6 +1008,15 @@ describe("ConfigurationService", () => {
 
       await configService.loadMergedConfiguration(tempDir);
       expect(configService.resolveLanguage("Spanish")).toBe("Spanish");
+    });
+
+    it("should prioritize settings.json over the default", async () => {
+      const config = { language: "English" };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      await configService.loadMergedConfiguration(tempDir);
+      expect(configService.resolveLanguage()).toBe("English");
     });
   });
 
