@@ -14,10 +14,8 @@ describe("Plan Mode Initialization", () => {
         isStreaming: false,
         sessions: [],
         configurationData: {
-          baseURL: "https://api.example.com",
           model: "gpt-4",
           fastModel: "gpt-3.5",
-          apiKey: "test-key",
         },
         permissionMode: "plan",
       });

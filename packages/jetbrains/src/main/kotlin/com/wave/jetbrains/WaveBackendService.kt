@@ -50,7 +50,7 @@ class WaveBackendService(private val project: Project) : Disposable {
     /**
      * Push updated config to every active session, mirroring VSCE ChatProvider.updateAllSessionsConfig
      * (chatProvider.ts:104-108). Called after login/logout/config-save/plugin-mutation so all chat
-     * tabs pick up the new apiKey/model/headers. sessionId rekey is handled per-agent.
+     * tabs pick up the new model/language/auto-memory config. sessionId rekey is handled per-agent.
      */
     suspend fun updateAllSessionsConfig(params: JsonObject) {
         val active = synchronized(sessions) { sessions.toList() }

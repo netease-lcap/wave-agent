@@ -25,8 +25,6 @@ test.describe("session switch into long chat scrolls to bottom", () => {
       sessions: [],
       isAuthenticated: true,
       configurationData: {
-        apiKey: "sk-ant-api03-test",
-        baseURL: "https://api.anthropic.com/v1",
         model: "claude-sonnet-4-20250514",
       },
       permissionMode: "default",

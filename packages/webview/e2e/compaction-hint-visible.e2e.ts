@@ -52,8 +52,6 @@ async function initWithMessages(injector: MessageInjector) {
     isStreaming: false,
     sessions: [],
     configurationData: {
-      apiKey: "sk-ant-api03-test",
-      baseURL: "https://api.anthropic.com/v1",
       model: "claude-sonnet-4-20250514",
     },
     permissionMode: "default",

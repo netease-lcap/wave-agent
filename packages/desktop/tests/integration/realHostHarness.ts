@@ -317,7 +317,7 @@ export function createRealHost(): RealHost {
 // ---------------------------------------------------------------------------
 
 export interface FakeModelServer {
-  /** Point configuration.baseURL here. */
+  /** Point the CLI's gateway at this URL (see `useFakeModelEndpoint`). */
   baseURL: string;
   /** Raw request bodies the CLI sent (order = call order). */
   requests: Array<Record<string, unknown>>;
@@ -380,3 +380,30 @@ export async function startFakeModelServer(): Promise<FakeModelServer> {
 }
 
 export { LOCAL_HOST };
+
+// ---------------------------------------------------------------------------
+// Gateway endpoint for the spawned CLI
+// ---------------------------------------------------------------------------
+
+/**
+ * Point the real CLI at the fake model server.
+ *
+ * The host no longer forwards `apiKey`/`baseURL`/`headers` to the agent (the
+ * host-side credential pipeline was removed — spec sso-auth「IDE 宿主不再有直连
+ * 免登录旁路」), so tests configure the gateway the way the CLI supports it:
+ * `WAVE_API_KEY` / `WAVE_BASE_URL`, which `StdioClient` passes to the
+ * `wave --stdio` child (`{ ...process.env, ...env }`). The CLI's resolution
+ * chain reads them as the lowest-priority fallback.
+ *
+ * Call from `beforeEach`; pair with `clearFakeModelEndpoint` in `afterEach`.
+ */
+export function useFakeModelEndpoint(baseURL: string): void {
+  process.env.WAVE_API_KEY = "test-key";
+  process.env.WAVE_BASE_URL = baseURL;
+}
+
+/** Drop the env vars set by `useFakeModelEndpoint` (no cross-suite leakage). */
+export function clearFakeModelEndpoint(): void {
+  delete process.env.WAVE_API_KEY;
+  delete process.env.WAVE_BASE_URL;
+}

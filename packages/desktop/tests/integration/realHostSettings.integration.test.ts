@@ -12,10 +12,12 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import * as path from "path";
 import {
   assertNoUnexpectedRejections,
+  clearFakeModelEndpoint,
   createRealHost,
   resetRealHostState,
   startFakeModelServer,
   takeUnexpectedRejections,
+  useFakeModelEndpoint,
   type FakeModelServer,
   type RealHost,
 } from "./realHostHarness";
@@ -31,10 +33,10 @@ beforeEach(async () => {
   dirB = dirs.dirB;
   model = await startFakeModelServer();
   model.reply("OK");
+  // Point the real CLI at the local model server — no real LLM, no network.
+  useFakeModelEndpoint(model.baseURL);
   ctx = createRealHost();
   ctx.store.setConfiguration({
-    apiKey: "test-key",
-    baseURL: model.baseURL,
     model: "test-model",
     fastModel: "test-model",
   });
@@ -43,6 +45,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await ctx.close();
   await model.close();
+  clearFakeModelEndpoint();
   assertNoUnexpectedRejections();
 });
 
