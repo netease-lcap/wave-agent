@@ -1233,6 +1233,82 @@ describe("MessageHandler settings tab", () => {
     );
     expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
   });
+
+  // 保存「失败」半边此前无覆盖：saveConfiguration 抛错时必须给用户可见反馈，
+  // 且要把 configurationError 回发给设置页（而非静默停在内联提示状态）。
+  test("updateConfiguration save failure shows an error toast and replies configurationError", async () => {
+    const session = createReadySession();
+    const { handler, context, configService } = createReadyHandler(session);
+    configService.saveConfiguration.mockRejectedValue(new Error("boom"));
+
+    await handler.handleSettingsMessage({
+      command: "updateConfiguration",
+      configurationData: { language: "en-US" },
+    });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "保存失败：boom",
+    );
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+    const commands = (
+      context.postSettingsMessage as ReturnType<typeof vi.fn>
+    ).mock.calls.map((call) => (call[0] as { command: string }).command);
+    expect(commands).toEqual(["configurationError"]);
+  });
+
+  // 删除「抛错」分支（catch）此前无覆盖：只有返回值 false 的路径被断言过。
+  test("deleteSkill failure thrown by the session surfaces an error toast", async () => {
+    const session = {
+      deleteSkill: vi.fn().mockRejectedValue(new Error("boom")),
+    } as unknown as ChatSession;
+    const { handler, context } = createHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "deleteSkill",
+      name: "my-skill",
+    });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "删除技能失败: Error: boom",
+    );
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+    expect(context.postSettingsMessage).not.toHaveBeenCalled();
+  });
+
+  test("deleteSubagent failure thrown by the session surfaces an error toast", async () => {
+    const session = {
+      deleteSubagent: vi.fn().mockRejectedValue(new Error("boom")),
+    } as unknown as ChatSession;
+    const { handler } = createHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "deleteSubagent",
+      name: "expert",
+    });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "删除子代理失败: Error: boom",
+    );
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+
+  test("removeMcpServer failure thrown by the session surfaces an error toast", async () => {
+    const session = {
+      removeMcpServer: vi.fn().mockRejectedValue(new Error("boom")),
+    } as unknown as ChatSession;
+    const { handler } = createHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "removeMcpServer",
+      scope: "user",
+      serverName: "redis",
+    });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "移除 MCP 服务器失败: Error: boom",
+    );
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
 });
 
 // Chat 路由的删除/保存反馈与 settings 路由同语义（#2086 式双 switch 漂移防线）
@@ -1348,5 +1424,117 @@ describe("MessageHandler chat-route deletion toasts", () => {
     );
     expect(session.deleteHook).not.toHaveBeenCalled();
     expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+
+  test("deleteSubagent shows an error toast when the subagent is not found", async () => {
+    const session = {
+      deleteSubagent: vi.fn().mockResolvedValue(false),
+    } as unknown as ChatSession;
+    const { handler } = createHandler(session);
+
+    await handler.handleMessage(
+      { command: "deleteSubagent", name: "ghost" },
+      "tab",
+    );
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "删除子代理失败: 未找到子代理「ghost」或智能体未初始化",
+    );
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+
+  test("removeMcpServer shows an error toast when the server is not found", async () => {
+    const session = {
+      removeMcpServer: vi.fn().mockResolvedValue(false),
+    } as unknown as ChatSession;
+    const { handler } = createHandler(session);
+
+    await handler.handleMessage(
+      { command: "removeMcpServer", scope: "project", serverName: "ghost" },
+      "tab",
+    );
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "移除 MCP 服务器失败: 未找到服务器「ghost」或智能体未初始化",
+    );
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+
+  test("deleteSkill failure thrown by the session surfaces an error toast", async () => {
+    const session = {
+      deleteSkill: vi.fn().mockRejectedValue(new Error("boom")),
+    } as unknown as ChatSession;
+    const { handler } = createHandler(session);
+
+    await handler.handleMessage(
+      { command: "deleteSkill", name: "my-skill" },
+      "tab",
+    );
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "删除技能失败: Error: boom",
+    );
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("MessageHandler chat-route configuration toasts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("updateConfiguration shows a success toast and nudges the chat webview", async () => {
+    const session = createReadySession();
+    const { handler, context, configService } = createReadyHandler(session);
+
+    await handler.handleMessage(
+      {
+        command: "updateConfiguration",
+        configurationData: { language: "en-US" },
+      },
+      "tab",
+    );
+
+    expect(configService.saveConfiguration).toHaveBeenCalledWith({
+      language: "en-US",
+    });
+    expect(context.updateAllSessionsConfig).toHaveBeenCalled();
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "保存成功",
+    );
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    const commands = (
+      context.postMessage as ReturnType<typeof vi.fn>
+    ).mock.calls.map((call) => (call[0] as { command: string }).command);
+    expect(commands).toEqual([
+      "configurationUpdated",
+      "focusInput",
+      "scrollToBottom",
+      // chat 路由保存后顺带重读配置（handleGetConfiguration），与 settings 路由
+      // 回发 configurationResponse 的语义对齐
+      "configurationResponse",
+    ]);
+  });
+
+  test("updateConfiguration save failure shows an error toast and posts configurationError", async () => {
+    const session = createReadySession();
+    const { handler, context, configService } = createReadyHandler(session);
+    configService.saveConfiguration.mockRejectedValue(new Error("boom"));
+
+    await handler.handleMessage(
+      {
+        command: "updateConfiguration",
+        configurationData: { language: "en-US" },
+      },
+      "sidebar",
+    );
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "保存失败：boom",
+    );
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+    const errors = sentPosts(context)("configurationError");
+    expect(errors).toHaveLength(1);
+    expect(errors[0].error).toContain("boom");
   });
 });
