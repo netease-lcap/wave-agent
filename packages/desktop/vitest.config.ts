@@ -12,7 +12,10 @@ export default defineConfig({
     reporter: "dot",
     environment: "node",
     include: ["tests/**/*.test.ts"],
-    exclude: ["node_modules"],
+    // Real-host integration tests spawn the real `wave --stdio` CLI and a local
+    // model server — they run in their own config/job (vitest.integration.config.ts,
+    // `pnpm -F wave-desktop run test:realhost`), never in the unit gate.
+    exclude: ["node_modules", "tests/integration/**"],
     env: {
       // Keep the file logger out of the user's real ~/.wave/logs during tests.
       DISABLE_LOGGER_IO: "true",

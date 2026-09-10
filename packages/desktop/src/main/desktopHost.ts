@@ -2538,7 +2538,7 @@ export class DesktopHost {
     // round trip (SSH hop) must not delay the session switch. The cache shows
     // immediately; refreshWorkflowRuns supersedes it when the response lands.
     if (agent) {
-      void this.refreshWorkflowRuns(paneId).catch(() => {});
+      void this.refreshWorkflowRuns(paneId);
     }
     // The pane binding may have changed while a workflow-runs refresh was in
     // flight (a restore completed / a new session selected). Re-read everything
@@ -3015,7 +3015,19 @@ export class DesktopHost {
   private async refreshWorkflowRuns(paneId: string): Promise<void> {
     const agent = this.agentForPane(paneId);
     if (!agent) return;
-    const runs = await agent.getWorkflowRuns();
+    let runs: Awaited<ReturnType<typeof agent.getWorkflowRuns>>;
+    try {
+      runs = await agent.getWorkflowRuns();
+    } catch (error) {
+      // Best-effort refresh: both callers fire this without awaiting (a
+      // background-task notification and a session switch), so a rejection
+      // here used to surface as an unhandled promise rejection — fatal under
+      // Node's default policy, and reachable on every config write, which
+      // recreates the agents and kills the in-flight RPC's session
+      // ("Session not found"). The cached runs stay as the last known state.
+      console.warn("[DesktopHost] 获取工作流运行失败:", error);
+      return;
+    }
     // The pane may have switched to another session while the RPC was in
     // flight — never write a stale session's runs into the new one.
     if (this.agentForPane(paneId) !== agent) return;
