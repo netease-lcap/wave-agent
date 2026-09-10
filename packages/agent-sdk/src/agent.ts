@@ -119,6 +119,23 @@ export class Agent {
   }
 
   /**
+   * Re-read the merged configuration (user/project/local settings.json + remote
+   * managed settings) and apply it to this session **without rebuilding it**:
+   * hooks / permissions / env follow immediately, the settings.json-derived
+   * values the running turn reads are re-pinned at the next turn start.
+   *
+   * THE save path calls this explicitly after writing the user-level
+   * settings.json: that file is commonly *created* by that very write, so the
+   * file watcher — armed at session start on a path that did not exist yet —
+   * must not be the only trigger (docs/specs/core/agent-config.md
+   * 「设置实时重载」). Idempotent with the watcher (a concurrent reload is
+   * de-duplicated).
+   */
+  public async reloadConfiguration(): Promise<void> {
+    await this.liveConfigManager.reload();
+  }
+
+  /**
    * Set the active model for the agent session
    * @param model - The ID of the model to use
    */

@@ -237,7 +237,7 @@ export class AgentBridge {
       case "getUserSettings":
         return readUserPreferenceSettings();
       case "updateUserSettings":
-        return updateUserPreferenceSettings(p as UserPreferenceSettings);
+        return this.updateUserSettings(p as UserPreferenceSettings);
 
       // ── Messages ──
       case "sendMessage":
@@ -962,6 +962,35 @@ export class AgentBridge {
     // model chosen here.
     entry.storedConfig = { ...entry.storedConfig, model };
     return null;
+  }
+
+  // ── User preferences ──────────────────────────────────────────
+
+  /**
+   * 设置页保存路径：写用户级 `~/.wave/settings.json` 后，**显式重载本进程内
+   * 全部会话**的实时配置。
+   *
+   * 不能只依赖文件监视：会话启动时该文件（乃至 `~/.wave` 目录）通常还不存在，
+   * 监视要靠在父目录链存在的前提下补发事件；而这个文件正是被本次保存**创建**
+   * 出来的最常见场景（全新安装的第一次保存，spec core/agent-config.md
+   * 「设置实时重载」场景 7）。写完即重载使「保存 ⇒ 下一轮生效」与监视是否就绪
+   * 无关；监视若也命中，重载是幂等的（并发重载按 `reloadInProgress` 去重）。
+   *
+   * 空载荷（无差异保存、只回读）不落盘，也不重载。
+   */
+  private async updateUserSettings(
+    patch: UserPreferenceSettings,
+  ): Promise<UserPreferenceSettings> {
+    const settings = await updateUserPreferenceSettings(patch);
+    if (Object.values(patch).every((value) => value === undefined)) {
+      return settings;
+    }
+    await Promise.all(
+      [...this.sessions.values()].map((entry) =>
+        entry.agent.reloadConfiguration(),
+      ),
+    );
+    return settings;
   }
 
   // ── Messages ──────────────────────────────────────────────────

@@ -130,6 +130,33 @@ async function openProject(dir: string): Promise<void> {
   await ctx.waitFor("setInitialState");
 }
 
+/**
+ * Trigger one settings-page round trip (read or save) and return that reply's
+ * `configurationData`.
+ *
+ * 注意：这里不能用 `ctx.clear()` 后再 `ctx.turn()`——`turn` 要等
+ * `setInitialState`，而它正是被 clear 清掉的那条（harness 的既有约束）。
+ */
+async function readBack(
+  action: () => Promise<void>,
+): Promise<Record<string, unknown>> {
+  const mark = ctx.messages.length;
+  await action();
+  await vi.waitFor(
+    () =>
+      expect(
+        ctx.messages
+          .slice(mark)
+          .some((m) => m.command === "configurationResponse"),
+      ).toBe(true),
+    { timeout: 20_000 },
+  );
+  return ctx.messages
+    .slice(mark)
+    .find((m) => m.command === "configurationResponse")!
+    .configurationData as Record<string, unknown>;
+}
+
 describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
   it("initialize / updateUserSettings / sendMessage 报文里没有 apiKey / baseURL / defaultHeaders", async () => {
     await openProject(dirA);
@@ -273,26 +300,6 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
 
     // 设置页初始值以该文件唯一真源：没有键 ⇒ 回包里也没有这些字段（webview 据此
     // 显示「未设置」态：占位符 /「未设置（默认：中文）」项，spec 场景 7）。
-    // 注意：这里不能用 `ctx.clear()` 后再 `ctx.turn()`——`turn` 要等
-    // `setInitialState`，而它正是被 clear 清掉的那条（harness 的既有约束）。
-    const readBack = async (action: () => Promise<void>) => {
-      const mark = ctx.messages.length;
-      await action();
-      await vi.waitFor(
-        () =>
-          expect(
-            ctx.messages
-              .slice(mark)
-              .some((m) => m.command === "configurationResponse"),
-          ).toBe(true),
-        { timeout: 20_000 },
-      );
-      return ctx.messages
-        .slice(mark)
-        .find((m) => m.command === "configurationResponse")!
-        .configurationData as Record<string, unknown>;
-    };
-
     const shownData = await readBack(() =>
       ctx.host.handleWebviewMessage({ command: "getConfiguration" }),
     );
@@ -339,6 +346,40 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
       { timeout: 20_000 },
     );
     expect(model.sawRequest("Always respond in zh-CN")).toBe(true);
+  });
+
+  it("全新安装形态（文件里没有 language）：保存回执即已重载，紧接的下一轮就用新语言", async () => {
+    await openProject(dirA);
+    await ctx.turn("第一轮");
+    const sessionBefore = ctx.paneSessionId("pane-1");
+
+    const settingsFile = path.join(REALHOST_HOME, ".wave", "settings.json");
+    const before = JSON.parse(fs.readFileSync(settingsFile, "utf-8")) as {
+      language?: string;
+    };
+    // 前提：文件里没有 language 键（全新安装形态）。
+    expect(before.language).toBeUndefined();
+    expect(model.sawRequest("Always respond in zh-CN")).toBe(true);
+
+    // 设置页选中「英文」后保存（真实 updateUserSettings RPC）。
+    await readBack(() =>
+      ctx.host.handleWebviewMessage({
+        command: "updateConfiguration",
+        configurationData: { language: "en-US" },
+      }),
+    );
+
+    // 写后显式重载是**同步**的（bridge 在回包前 await）：回执到手即已生效，
+    // 紧接的下一轮就带新语言指令——不存在「等 watcher 落定」的竞态窗口
+    // （spec core/agent-config.md「设置实时重载」：保存 ⇒ 下一轮生效）。
+    model.reply("第二轮 OK");
+    await ctx.turn("第二轮");
+    expect(model.sawRequest("Always respond in en-US")).toBe(true);
+    // 且不重建会话（同一 sessionId 继续服务）。
+    expect(ctx.paneSessionId("pane-1")).toBe(sessionBefore);
+    expect(requests(readWire()).map((r) => r.method)).not.toContain(
+      "updateConfig",
+    );
   });
 
   it("宿主不再转发凭据后，CLI 仍能经 WAVE_API_KEY / WAVE_BASE_URL 打通模型", async () => {
