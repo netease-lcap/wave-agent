@@ -565,6 +565,54 @@ describe("worktree utils", () => {
       warnSpy.mockRestore();
     });
 
+    it("should fall back to fs.rmSync when git reports success but the directory survived", async () => {
+      const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      git.handler = (_cmd, args) => {
+        if (args[0] === "rev-parse") {
+          return { stdout: "worktree-my-feat\n", stderr: "" };
+        }
+        // git exits 0 even when it could not delete the directory: on Windows
+        // it cannot remove the directory symlinks/junctions pnpm's node_modules
+        // is made of.
+        return { stdout: "", stderr: "" };
+      };
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readdirSync).mockReturnValue([
+        "node_modules",
+      ] as unknown as Awaited<ReturnType<typeof fs.readdirSync>>);
+
+      await removeWorktree(session);
+
+      const rmCalls = vi.mocked(fs.rmSync).mock.calls;
+      expect(rmCalls).toHaveLength(1);
+      expect(rmCalls[0][1]).toMatchObject({ recursive: true, force: true });
+      if (process.platform === "win32") {
+        expect(String(rmCalls[0][0])).toMatch(/^\\\\\?\\/);
+      }
+      expect(warnSpy.mock.calls[0][0]).toContain(
+        "git worktree remove reported success but the directory survived",
+      );
+      // Branch handling is unchanged
+      expect(gitCallsWith(["branch", "-D", "worktree-my-feat"])).toHaveLength(
+        1,
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("should not touch the filesystem when git succeeds and the directory is gone", async () => {
+      git.handler = (_cmd, args) => {
+        if (args[0] === "rev-parse") {
+          return { stdout: "worktree-my-feat\n", stderr: "" };
+        }
+        return { stdout: "", stderr: "" };
+      };
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      await removeWorktree(session);
+
+      expect(vi.mocked(fs.rmSync)).not.toHaveBeenCalled();
+    });
+
     it("should report the residue as none when the directory is already gone", async () => {
       const loggerSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
       const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
