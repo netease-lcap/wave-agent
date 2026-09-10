@@ -2076,6 +2076,22 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // ChatApp 在设置页关闭后重挂载，初始收不到 snapshot（LoadingLogo 无输入框），
   // 需等宿主 webviewReady 回放 setInitialState 后才真正挂载输入框。
   const inputAreaMounted = showWelcomeReady || !showWelcome;
+  // 发送入口的禁用原因。两条原因互斥、同一时刻只有一条生效，**登录优先**：
+  // 未登录必然发不出消息（实测：无凭据时既无模型请求、也不报错，只是静默挂住），
+  // 而「桌面还没选目录」只是本地还没定位到项目——两者同时成立时先说更根本的那条。
+  // 文案由本处派生、经 MessageInput 的 `placeholder` 口子传入（组件不硬编码原因），
+  // 未禁用时传 undefined ⇒ 组件回落到默认的 /快捷指令 提示。
+  // 复用 MessageInput 既有的 disabled 语义（contentEditable=false ＋ 发送/附件/
+  // 快捷指令/权限模式按钮置灰）；禁用原因只写在输入框占位文案里——不新增提示行、
+  // 不在输入区放登录按钮、不写「请去某处登录」的指路文案（登录入口用户自己能看见：
+  // IDE 欢迎页 / 桌面左侧账户卡）。
+  const unauthenticated = !state.isAuthenticated;
+  const inputDisabledReason = unauthenticated
+    ? "请先登录后再发送消息"
+    : host?.type === "desktop" && !effectiveWorkdir
+      ? "请先选择项目目录"
+      : undefined;
+  const inputDisabled = inputDisabledReason !== undefined;
 
   // pane-scoped ChatApp（paneId 非空，DesktopShell 内）：收到指向本 pane 的
   // prefillRequest（settings 关闭、pane 行重挂载后随行下发）→ 输入框就绪后
@@ -3001,7 +3017,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
               paneId={paneId}
               contextUsage={contextUsage}
               showContextUsage={hasVisibleMessages}
-              disabled={host?.type === "desktop" && !effectiveWorkdir}
+              disabled={inputDisabled}
+              placeholder={inputDisabledReason}
               workdirSelector={
                 host?.type === "desktop" && !hasVisibleMessages ? (
                   <>
