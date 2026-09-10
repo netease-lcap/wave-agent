@@ -1013,8 +1013,8 @@
       组合缩放来源），单元格与表头按正文角色取 14/22；表头字重 600 保持，
       「不低于正文」为本轮执行档，最终值仍待 C-03 候选拍板。
    ③ 代码角色：行内 code 与代码块去 0.9em → 13px 绝对值；行高按用户
-      2026-09-10 指示取整数刻度 20px（见下方规则注释）。F-15 / C-02 的
-      bash 命令与输出、写入预览、日志仍沿用各自现值，待同组一次收口。 */
+      2026-09-10 指示取整数刻度 20px（见下方 F-04 与 C-02 两条规则，
+      含 bash 命令与输出、写入预览、diff、lsp 输出）。 */
 [data-host="desktop"] .message-content,
 [data-host="desktop"] .markdown-content,
 [data-host="desktop"] .markdown-content p,
@@ -1040,6 +1040,24 @@
 [data-host="desktop"] .markdown-content pre,
 [data-host="desktop"] .markdown-content pre code {
   font-size: 13px;
+  line-height: 20px;
+}
+
+/* ── C-02：代码角色行高统一 20px（用户 2026-09-10 授权「C-02 一起做」）──
+   角色表「行内代码、命令、代码块、diff、文件预览、原始日志 = 13 / 20」。
+   F-04 已把行内 code / pre / pre code 取 20px（上方规则），这里收口其余
+   代码载体，避免同一角色出现 15.6 / 18 / 14.4 三种行高：
+   - bash 命令与输出：base `line-height:1.2`（13px → 15.6px）→ 20px；
+     `.bash-command` 与输出区内的链接靠继承，不单独声明；
+   - 写入预览：原桌面覆盖 18px → 20px；
+   - diff 与 lsp 输出：base `line-height:1.2`（14.4px）→ 20px。
+   只改行高，字号保持现值（bash / 写入预览已是 13px；diff 与 lsp-output
+   为 12px，属字号偏离、不在本次授权范围，见 docs「代码角色行高 20px」
+   节的未做清单）。F-15「bash 行高非整数」随之收口。 */
+[data-host="desktop"] .bash-command-input,
+[data-host="desktop"] .bash-command-output,
+[data-host="desktop"] .diff-viewer-content,
+[data-host="desktop"] .lsp-output {
   line-height: 20px;
 }
 
@@ -1095,7 +1113,8 @@
 
 [data-host="desktop"] .write-preview-content {
   font-size: 13px;
-  line-height: 18px;
+  /* C-02：行高随代码角色统一 20px（原 18px，见上方 C-02 规则） */
+  line-height: 20px;
 }
 
 /* ═══ 第二十六轮：消息内链接统一（颜色 + hover 下划线）═══
