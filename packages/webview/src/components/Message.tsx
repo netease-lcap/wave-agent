@@ -156,13 +156,31 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
   renderer.text = (text: string) =>
     // 正文纯文本通道：绝对路径 → 链接；其余文本按原转义形式原样保留
     linkifyFilePathText(decodeHtmlEntities(text));
-  // 链接角色（用户 2026-09-10 规则）：按「显示文本」区分两种链接——
-  //   ① 描述性链接（查看预览、参考文档…）与所在正文同为 UI 角色，不加类；
-  //   ② 直接展示地址的链接（http(s)://…、ftp://…、file:///…、协议相对 //…）
-  //      为代码角色（等宽 13px，样式在 host-desktop.css 的 a.address-link）。
+  // 链接角色（用户 2026-09-10 规则）：按「显示文本本身的含义」区分两种链接——
+  //   ① 描述性链接（查看预览、参考文档、发送邮件、联系我们…）与所在正文同为
+  //      UI 角色，不加类；
+  //   ② 直接展示地址的链接为代码角色（等宽 13px，样式在 host-desktop.css 的
+  //      a.address-link）：scheme 地址（http(s)://…、ftp://…、file:///…、
+  //      协议相对 //…）、显式 mailto:/tel: 串，以及可见文字本身就是邮箱或
+  //      电话号码的链接（判据是可见文字，不看 href）。
   // `<code>` 内的链接（行内代码地址、文件路径）由代码样式承接等宽，不在此列。
-  const isAddressLabel = (label: string) =>
-    /^\s*(?:[a-z][a-z0-9+.-]*:\/\/|\/\/)/i.test(label.replace(/<[^>]*>/g, ""));
+  const EMAIL_LABEL = /^[\w.!#$%&'*+/=?^`{|}~-]+@[\w-]+(?:\.[\w-]+)+$/;
+  // 电话：纯数字 + 分隔符（+ - ( ) 空格 .），至少 7 位数字（含国家码写法）
+  const PHONE_LABEL = /^\+?[\d(][\d\s().-]{5,}\d$/;
+  // 日期样 label（2026-09-10 / 2026.9.10）不算电话
+  const DATE_LABEL = /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/;
+  const isAddressLabel = (label: string) => {
+    const t = label.replace(/<[^>]*>/g, "").trim();
+    if (/^(?:[a-z][a-z0-9+.-]*:\/\/|\/\/)/i.test(t)) return true; // scheme 地址
+    if (/^(?:mailto|tel):/i.test(t)) return true; // 显式 mailto:/tel: 串
+    if (EMAIL_LABEL.test(t)) return true; // 直接显示邮箱
+    // 直接显示电话：≥7 位数字且不是日期
+    return (
+      PHONE_LABEL.test(t) &&
+      !DATE_LABEL.test(t) &&
+      (t.match(/\d/g) || []).length >= 7
+    );
+  };
   // markdown 链接 label 内的路径不得生成嵌套 <a>（无效 HTML）；剥掉 label
   // 内已生成的路径锚点，仅保留普通链接。
   renderer.link = (
