@@ -2,7 +2,9 @@
 // WorktreeRemove hook: reads { worktree_path } from stdin and removes the
 // worktree. Best-effort, mirroring the git removal wave uses for non-hook
 // worktrees: `git worktree remove --force` + branch delete + prune, with an
-// fs.rmSync fallback for Windows MAX_PATH-limited removals.
+// fs.rmSync fallback. The fallback is not only for MAX_PATH: git reports
+// success after failing to delete directory symlinks/junctions (what pnpm's
+// node_modules consists of on Windows), so removal is verified on disk.
 import { spawnSync } from "node:child_process";
 import {
   readFileSync,
@@ -114,7 +116,20 @@ const gitResult = existsSync(worktreePath)
       stdio: "inherit",
     })
   : null;
-let removed = gitResult === null || gitResult.status === 0;
+const gitOk = gitResult === null || gitResult.status === 0;
+// git exits 0 even when it did not delete the directory: on Windows it cannot
+// remove the directory symlinks/junctions that pnpm's node_modules is made of,
+// so it deletes the files, leaves the skeleton behind and still reports
+// success. Verify on disk instead of trusting the exit status.
+const gitLeftResidue = gitOk && gitResult !== null && existsSync(worktreePath);
+if (gitLeftResidue) {
+  console.error(
+    `worktree-remove: git reported success but the directory survived ` +
+      `(junction residue?): path=${worktreePath} ` +
+      `residue=${describeResidue(worktreePath)} — falling back to fs.rmSync`,
+  );
+}
+let removed = gitOk && !gitLeftResidue;
 // git's own message goes to stderr via stdio:inherit; without its exit status
 // the log cannot tell a MAX_PATH refusal from a locked directory.
 const gitSummary =
@@ -122,7 +137,8 @@ const gitSummary =
     ? "skipped(missing)"
     : `exit=${gitResult.status ?? "null"}` +
       (gitResult.signal ? ` signal=${gitResult.signal}` : "") +
-      (gitResult.error ? ` error=${gitResult.error.message}` : "");
+      (gitResult.error ? ` error=${gitResult.error.message}` : "") +
+      ` leftResidue=${gitLeftResidue}`;
 
 // 2. fs.rmSync fallback for MAX_PATH-limited removals (git leaves an orphan dir)
 let fsSummary = "skipped";
@@ -142,6 +158,9 @@ if (!removed && existsSync(worktreePath)) {
 // 3. Prune stale metadata and delete the worktree branch
 spawnSync("git", ["worktree", "prune"], { cwd: repoRoot });
 spawnSync("git", ["branch", "-D", "--", branch], { cwd: repoRoot });
+
+// Final word: what is on disk, not what any tool reported.
+removed = !existsSync(worktreePath);
 
 if (!removed) {
   console.error(

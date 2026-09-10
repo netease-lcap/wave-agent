@@ -368,6 +368,23 @@ function describeFsFailure(error: unknown): string {
 }
 
 /**
+ * Delete the worktree directory with `fs.rmSync`, returning the error when it
+ * fails (null on success). Node removes directory symlinks/junctions properly,
+ * which is exactly where git gives up on Windows.
+ */
+function rmWorktreeDirWithFs(worktreePath: string): unknown | null {
+  try {
+    fs.rmSync(toExtendedLengthPath(worktreePath), {
+      recursive: true,
+      force: true,
+    });
+    return null;
+  } catch (error) {
+    return error;
+  }
+}
+
+/**
  * Describe what is still on disk after a failed removal. Without this a
  * failure log cannot distinguish "directory already gone" from "the whole
  * checkout is still sitting there".
@@ -444,17 +461,33 @@ export async function removeWorktree(session: WorktreeSession): Promise<void> {
         cwd: repoRoot,
       },
     );
+    // git exits 0 even when it did not delete the directory: on Windows it
+    // cannot remove directory symlinks/junctions, which is exactly what pnpm's
+    // node_modules is made of — so it deletes the files, leaves the skeleton
+    // behind and still reports success. Trust the filesystem, not the exit code.
+    if (fs.existsSync(session.path)) {
+      logger.warn(
+        `git worktree remove reported success but the directory survived: ` +
+          `path=${session.path} residue=${probeResidue(session.path)} — ` +
+          `deleting with fs.rmSync instead`,
+      );
+      const rmError = rmWorktreeDirWithFs(session.path);
+      if (rmError) {
+        logger.error(
+          `Failed to remove worktree or branch: path=${session.path} ` +
+            `stage=fs(after git success) ${describeFsFailure(rmError)} ` +
+            `residue=${probeResidue(session.path)}`,
+          rmError,
+        );
+      }
+    }
   } catch (error: unknown) {
     logger.warn(
       `git worktree remove failed, falling back to fs.rmSync: ${describeGitFailure(error)}`,
       error,
     );
-    try {
-      fs.rmSync(toExtendedLengthPath(session.path), {
-        recursive: true,
-        force: true,
-      });
-    } catch (rmError: unknown) {
+    const rmError = rmWorktreeDirWithFs(session.path);
+    if (rmError) {
       // Removal failures are best-effort, so this line is often the only trace
       // of an orphaned worktree directory: record which stage failed, why, and
       // whether anything was left behind.
