@@ -6,17 +6,24 @@ import { LOCAL_HOST } from "./sshHosts";
 /**
  * App-level configuration persisted by the desktop host (the VSCE extension
  * keeps these in context.globalState; we use a JSON file in userData).
+ *
+ * 桌面本地配置的定义与设置页配置回包载荷的注释见 `DesktopConfigData`。
  */
 export interface DesktopConfigData {
+  /** 桌面本地配置（落本存储）：模型选择。 */
   model?: string;
   fastModel?: string;
-  language?: string;
   serverUrl?: string;
-  /** Per-model input context window in K tokens (e.g. 200 = 200K), 16–1000 */
+  /**
+   * 用户偏好：AI 回复语言。落点唯一为用户级 `~/.wave/settings.json`（读写经
+   * `getUserSettings` / `updateUserSettings` RPC），**不写入**本存储。
+   */
+  language?: string;
+  /** 用户偏好：上下文长度（K 值，16–1000），落 `env.WAVE_MAX_INPUT_TOKENS`。 */
   contextLength?: number;
-  /** Whether auto-memory extraction is enabled */
+  /** 用户偏好：是否开启自动记忆提取。 */
   autoMemoryEnabled?: boolean;
-  /** Auto-memory extraction turn frequency, 1–100 */
+  /** 用户偏好：自动记忆提取轮次频率（1–100）。 */
   autoMemoryFrequency?: number;
 }
 
@@ -144,14 +151,11 @@ export class ConfigStore {
   }
 
   getConfiguration(): DesktopConfigData {
-    // language defaults to 'Chinese' to match the VSCE extension
-    // (configurationService `|| 'Chinese'`) and the JetBrains plugin
-    // (WavePluginService default). Without this, a fresh desktop install
-    // sends an undefined language, so the system prompt never injects the
-    // `# Language` directive and the model replies in its own default.
-    const config = { ...this.data.configuration };
-    if (!config.language) config.language = "Chinese";
-    return config;
+    // 只承载桌面本地配置（模型/快速模型/服务地址）。用户偏好（language /
+    // contextLength / autoMemory*）不在本存储：它们落用户级
+    // `~/.wave/settings.json` 并随配置回包合并展示（spec 边界「用户偏好不落
+    // 桌面本地配置」），因此这里也不再注入 language 默认值。
+    return { ...this.data.configuration };
   }
 
   /**

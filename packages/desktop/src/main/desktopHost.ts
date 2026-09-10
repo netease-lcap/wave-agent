@@ -33,6 +33,7 @@ import type {
   Scope,
   ToolBlock,
   ErrorBlock,
+  UserPreferenceSettings,
 } from "wave-agent-sdk/types";
 import {
   EDIT_TOOL_NAME,
@@ -346,6 +347,12 @@ export class DesktopHost {
       apiQuota?: AccountApiQuotaInfo | null;
     }
   >();
+  /**
+   * 用户偏好（语言 / 上下文长度 / 自动记忆）per host：真源是会话所在进程的用户级
+   * `~/.wave/settings.json`，经 `getUserSettings` RPC 读取。缓存只为 `getStatus`
+   * 这类同步回包路径服务（设置页展示值走 `getConfiguration` 的实时读取）。
+   */
+  private userPreferencesByHost = new Map<string, UserPreferenceSettings>();
   /** 60s 账户用量轮询 (spec 场景 8). Static so tests can shrink or disable it. */
   private static accountPollIntervalMs = 60_000;
   private accountPollTimer: NodeJS.Timeout | null = null;
@@ -752,6 +759,9 @@ export class DesktopHost {
   private syncAccountCard(): void {
     this.pushAccountInfo();
     void this.refreshUsageForHost(this.currentHost);
+    // 用户偏好按 host 分属不同会话进程（远端有自己的 ~/.wave/settings.json），
+    // 切换聚焦后重读，避免用上一个 host 的缓存值回包。
+    void this.readUserPreferences(this.currentHost);
   }
 
   /** 每 60s 轮询当前聚焦主机的用量（仅登录态才拉取，spec 场景 8）。 */
@@ -1368,9 +1378,6 @@ export class DesktopHost {
       ...(opts.sessionId ? { restoreSessionId: opts.sessionId } : {}),
       model: config.model,
       fastModel: config.fastModel,
-      language: config.language,
-      autoMemoryEnabled: config.autoMemoryEnabled,
-      autoMemoryFrequency: config.autoMemoryFrequency,
       worktreeName: opts.worktreeName,
       isNewWorktree: opts.isNewWorktree,
     });
@@ -2508,7 +2515,11 @@ export class DesktopHost {
   // ------------------------------------------------------------------
 
   private async pushInitialState(): Promise<void> {
-    const configurationData = this.configStore.getConfiguration();
+    // Prime the user-preference cache before the first config push: settings-page
+    // values for language / contextLength / auto-memory come from the session
+    // process's ~/.wave/settings.json, not from the local config store.
+    await this.readUserPreferences(this.currentHost);
+    const configurationData = this.cachedConfigurationData();
     let isAuthenticated = false;
     let authUser: { id: string; email?: string } | undefined;
     try {
@@ -2549,7 +2560,7 @@ export class DesktopHost {
    * workdir and pane switches where only the view changes.
    */
   private async pushPaneSessionState(paneId: string): Promise<void> {
-    const configurationData = this.configStore.getConfiguration();
+    const configurationData = this.cachedConfigurationData();
     const agent = this.agentForPane(paneId);
     // Workflow runs refresh in the background — a live remote session's RPC
     // round trip (SSH hop) must not delay the session switch. The cache shows
@@ -3458,9 +3469,14 @@ export class DesktopHost {
 
       // -- configuration (FR-006) ------------------------------------------
       case "getConfiguration":
+        // 展示值 = 桌面本地配置（模型/服务地址/桌面端设置）+ 用户偏好（语言/
+        // 上下文长度/自动记忆，真源 = 会话所在进程的用户级 settings.json）。
         this.postMessage({
           command: "configurationResponse",
-          configurationData: this.configStore.getConfiguration(),
+          configurationData: {
+            ...this.cachedConfigurationData(),
+            ...(await this.readUserPreferences(this.currentHost)),
+          },
         });
         break;
 
@@ -3468,6 +3484,12 @@ export class DesktopHost {
         await this.handleUpdateConfiguration(
           msg.configurationData as DesktopConfigData,
         );
+        break;
+
+      // 重建确认框（插件装卸等构造期副作用的生效时机）的回执：立即重启 →
+      // 只重建空闲会话；稍后重启（含 Esc）→ 不重建、不做惰性重建、一次性 toast。
+      case "desktopRebuildDecision":
+        await this.handleRebuildDecision(msg.restart as boolean);
         break;
 
       case "setThemeSource":
@@ -3490,7 +3512,7 @@ export class DesktopHost {
             paneAgent?.workingDirectory ??
             this.workdir ??
             "",
-          configurationData: this.configStore.getConfiguration(),
+          configurationData: this.cachedConfigurationData(),
         });
         break;
       }
@@ -4809,20 +4831,40 @@ export class DesktopHost {
     }
   }
 
+  /**
+   * 设置页「全局设置」/「个性化」保存（spec「用户偏好的保存路径与重建时机」）：
+   * 用户偏好（语言 / 上下文长度 / 自动记忆开关与频率）写入**会话所在进程**的用户级
+   * `~/.wave/settings.json`，由 SDK 实时重载在各会话下一轮开始时生效——不经
+   * stdio `updateConfig` 当 `AgentOptions` 覆盖层下发（覆盖层优先级高于
+   * settings.json，会永久遮蔽实时值），因此**不重建任何会话**：回执与界面刷新
+   * 在落盘后立即给出，流式输出、排队消息、待确认权限都不受影响。无差异保存同样
+   * 只落盘回执。桌面本地配置（模型/快速模型/服务地址）仍存 configStore；
+   * 用户偏好**不写入** `wave-desktop.json`。
+   */
   private async handleUpdateConfiguration(
     configData: DesktopConfigData,
   ): Promise<void> {
     try {
-      this.configStore.setConfiguration(configData);
-      const config = this.configStore.getConfiguration();
-      await this.updateAgentConfig(config);
+      const userPrefs = await this.updateUserPreferences(
+        this.currentHost,
+        configData,
+      );
+      // 用户偏好键不进桌面本地配置（落点唯一 = settings.json）。
+      this.configStore.setConfiguration({
+        model: configData.model,
+        fastModel: configData.fastModel,
+        serverUrl: configData.serverUrl,
+      });
       // 设置页保存成功经全局 toast 提示（spec「设置页反馈语义」，webview 不再
       // 渲染页面内提示）；configurationResponse 仍回发以刷新设置页展示值。
       this.showToast({ message: "保存成功", type: "success" });
       this.postMessage({ command: "configurationUpdated" });
       this.postMessage({
         command: "configurationResponse",
-        configurationData: config,
+        configurationData: {
+          ...this.cachedConfigurationData(),
+          ...userPrefs,
+        },
       });
       this.postMessage({ command: "focusInput" });
       this.postMessage({ command: "scrollToBottom" });
@@ -4836,6 +4878,49 @@ export class DesktopHost {
         error: `Failed to save configuration: ${error}`,
       });
     }
+  }
+
+  /** 桌面本地配置 + 最近一次读到的用户偏好（同步，供 getStatus 回包）。 */
+  private cachedConfigurationData(): DesktopConfigData {
+    return {
+      ...this.configStore.getConfiguration(),
+      ...(this.userPreferencesByHost.get(this.currentHost) ?? {}),
+    };
+  }
+
+  /** 读会话所在进程的用户级偏好（写入缓存；RPC 失败保留上次成功值）。 */
+  private async readUserPreferences(
+    host: string,
+  ): Promise<UserPreferenceSettings> {
+    try {
+      const settings = (await this.utilityClientFor(host).request(
+        "getUserSettings",
+      )) as UserPreferenceSettings;
+      this.userPreferencesByHost.set(host, settings);
+      return settings;
+    } catch (error) {
+      console.warn(`[DesktopHost] 读取用户偏好失败(${host}):`, error);
+      return this.userPreferencesByHost.get(host) ?? {};
+    }
+  }
+
+  /** 把设置页载荷里的用户偏好写进会话所在进程的用户级 settings.json。 */
+  private async updateUserPreferences(
+    host: string,
+    configData: DesktopConfigData,
+  ): Promise<UserPreferenceSettings> {
+    const patch: UserPreferenceSettings = {
+      language: configData.language,
+      contextLength: configData.contextLength,
+      autoMemoryEnabled: configData.autoMemoryEnabled,
+      autoMemoryFrequency: configData.autoMemoryFrequency,
+    };
+    const settings = (await this.utilityClientFor(host).request(
+      "updateUserSettings",
+      patch,
+    )) as UserPreferenceSettings;
+    this.userPreferencesByHost.set(host, settings);
+    return settings;
   }
 
   /**
@@ -4869,12 +4954,15 @@ export class DesktopHost {
    * (stale pool entry) is skipped and logged instead of aborting the whole
    * apply — the write that triggered the apply has already succeeded.
    */
-  private updateAgentConfig(config: DesktopConfigData): Promise<void> {
+  private updateAgentConfig(
+    config: DesktopConfigData,
+    options: { idleOnly?: boolean } = {},
+  ): Promise<void> {
     // Defer starting the run inside the chain: an async body executes
     // synchronously up to its first await, so invoking recreateAgentsForConfig
     // eagerly here would let overlapping calls interleave despite the chain.
     const chained = this.configRecreateTail.then(() =>
-      this.recreateAgentsForConfig(config),
+      this.recreateAgentsForConfig(config, options),
     );
     this.configRecreateTail = chained.catch(() => {});
     return chained;
@@ -4882,16 +4970,18 @@ export class DesktopHost {
 
   private async recreateAgentsForConfig(
     config: DesktopConfigData,
+    options: { idleOnly?: boolean } = {},
   ): Promise<void> {
+    // 会话级覆盖项只有模型/快速模型：用户偏好（语言 / 上下文长度 / 自动记忆）
+    // 走用户级 settings.json + 实时重载，不经本层下发（spec「分层职责」）。
     const params = {
       model: config.model,
       fastModel: config.fastModel,
-      language: config.language,
-      contextLength: config.contextLength,
-      autoMemoryEnabled: config.autoMemoryEnabled,
-      autoMemoryFrequency: config.autoMemoryFrequency,
     };
     for (const [oldSid, agent] of [...this.agents]) {
+      // 「立即重启」只重建空闲会话：正在生成回复 / 有待确认权限 / 有运行中后台
+      // 任务的会话不打断、保持旧配置（spec 场景 5）。
+      if (options.idleOnly && this.isAgentBusy(agent)) continue;
       const wasStreaming = agent.isStreaming;
       try {
         await agent.updateConfig(params);
@@ -4927,7 +5017,57 @@ export class DesktopHost {
         }
       }
     }
-    await this.clearQueue();
+    // 只重建空闲会话时不得清空队列——未被重建的忙碌会话会因此丢掉排队消息
+    // （spec 边界「重建与流式/权限并存」）。
+    if (!options.idleOnly) await this.clearQueue();
+  }
+
+  /** 会话是否正在执行任务：生成回复 / 待确认权限 / 运行中后台任务（不打断清单）。 */
+  private isAgentBusy(agent: StdioAgent): boolean {
+    if (agent.isStreaming) return true;
+    if (agent.backgroundTasks.some((task) => task.status === "running")) {
+      return true;
+    }
+    for (const confirmation of this.pendingConfirmations.values()) {
+      if (confirmation.agent === agent) return true;
+    }
+    return false;
+  }
+
+  /**
+   * 插件装卸等**构造期副作用**落盘后：不做静默重建，先弹重建确认框让用户选择
+   * 时机（N = 受影响的 live 会话数、M = 其中正在执行任务暂不重启的数）；
+   * 无受影响的 live 会话时不弹框（spec「配置变更的构造期副作用与重建」场景 4）。
+   * 真正的重建由 `desktopRebuildDecision` 回执触发，本次不做任何登记，因此
+   * 「稍后重启」不会有惰性重建（场景 6）。
+   */
+  private promptRebuildForPluginChange(): void {
+    const agents = [...this.agents.values()];
+    const busy = agents.filter((agent) => this.isAgentBusy(agent)).length;
+    if (agents.length === 0) return;
+    this.postMessage({
+      command: "desktopRebuildPrompt",
+      total: agents.length,
+      busy,
+    });
+  }
+
+  /**
+   * 重建确认框回执：`restart` = true（「立即重启」）只重建空闲会话；false
+   * （「稍后重启」或 `Esc`）本次不重建、不做惰性重建，仅一次性 toast 告知变更
+   * 只对新建对话生效（spec 场景 5/6）。
+   */
+  private async handleRebuildDecision(restart: boolean): Promise<void> {
+    if (!restart) {
+      this.showToast({
+        message: "已保存；运行中的对话仍使用旧设置，新开对话自动生效",
+        type: "success",
+      });
+      return;
+    }
+    await this.updateAgentConfig(this.configStore.getConfiguration(), {
+      idleOnly: true,
+    });
   }
 
   /** Lazily create the electron-updater service bound to the S0–S6 state
@@ -5246,7 +5386,7 @@ export class DesktopHost {
       void this.refreshUsageForHost(this.currentHost);
       this.postMessage({
         command: "configurationResponse",
-        configurationData: this.configStore.getConfiguration(),
+        configurationData: this.cachedConfigurationData(),
       });
     } catch (error) {
       console.error("[DesktopHost] 获取认证状态失败:", error);
@@ -5369,8 +5509,10 @@ export class DesktopHost {
         workdir: this.workdir,
       });
       await this.handleListPlugins();
-      // Recreate agent to apply plugin changes
-      await this.updateAgentConfig(this.configStore.getConfiguration());
+      // 插件装卸是构造期副作用（插件在构造期注册技能/命令/MCP），必须重建才能
+      // 生效——但不得静默重建：先弹重建确认框由用户选时机（spec「配置变更的
+      // 构造期副作用与重建」）。
+      this.promptRebuildForPluginChange();
     } catch (error) {
       this.showToast({ message: `插件操作失败: ${error}` });
     }
@@ -5471,8 +5613,9 @@ export class DesktopHost {
         // 归属键：请求所用 workdir 恒回带（同 handleGetProjectSettings）
         workdir,
       });
-      // Recreate agents so the plugin change applies immediately (mirrors handlePluginMutation)
-      await this.updateAgentConfig(this.configStore.getConfiguration());
+      // 内置插件开关（项目设置 SDD）同属构造期副作用：重建前先确认（mirrors
+      // handlePluginMutation / spec builtin-sdd-plugin 场景 2）。
+      this.promptRebuildForPluginChange();
     } catch (error) {
       this.showToast({ message: `修改项目设置失败: ${error}` });
     }

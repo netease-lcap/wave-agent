@@ -35,22 +35,24 @@ beforeEach(() => {
 });
 
 describe("ConfigStore", () => {
-  it("starts with defaults when the file does not exist", () => {
+  it("starts with no local configuration when the file does not exist", () => {
     const store = new ConfigStore(STORE_PATH);
-    expect(store.getConfiguration()).toEqual({ language: "Chinese" });
+    // 用户偏好（语言/上下文长度/自动记忆）不落本存储——它们的唯一落点是用户级
+    // ~/.wave/settings.json（spec agent-config「用户偏好的落点」）。
+    expect(store.getConfiguration()).toEqual({});
     expect(store.getRecentWorkdirs()).toEqual([]);
   });
 
   it("starts fresh when the file is corrupt", () => {
     h.files.set(STORE_PATH, "not-json{{{");
     const store = new ConfigStore(STORE_PATH);
-    expect(store.getConfiguration()).toEqual({ language: "Chinese" });
+    expect(store.getConfiguration()).toEqual({});
     expect(store.getRecentWorkdirs()).toEqual([]);
   });
 
-  it("defaults language to Chinese when unset, matching VSCE/JetBrains", () => {
+  it("never invents a language default (settings.json is the only source)", () => {
     const store = new ConfigStore(STORE_PATH);
-    expect(store.getConfiguration().language).toBe("Chinese");
+    expect(store.getConfiguration().language).toBeUndefined();
   });
 
   it("persists configuration across instances", () => {
@@ -58,21 +60,17 @@ describe("ConfigStore", () => {
     store.setConfiguration({ model: "m1" });
 
     const reloaded = new ConfigStore(STORE_PATH);
-    expect(reloaded.getConfiguration()).toEqual({
-      model: "m1",
-      language: "Chinese",
-    });
+    expect(reloaded.getConfiguration()).toEqual({ model: "m1" });
   });
 
   it("merge-updates configuration: absent fields keep their stored value", () => {
     const store = new ConfigStore(STORE_PATH);
-    store.setConfiguration({ model: "m1", contextLength: 200 });
+    store.setConfiguration({ model: "m1", serverUrl: "https://a.example.com" });
     store.setConfiguration({ model: "m2" });
 
     expect(store.getConfiguration()).toEqual({
       model: "m2",
-      contextLength: 200,
-      language: "Chinese",
+      serverUrl: "https://a.example.com",
     });
   });
 
