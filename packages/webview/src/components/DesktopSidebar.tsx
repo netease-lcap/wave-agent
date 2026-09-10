@@ -1,4 +1,4 @@
-import React, { useState, useRef, RefObject } from "react";
+import React, { useState, useRef, useEffect, RefObject } from "react";
 import { Tooltip } from "./Tooltip";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AccountCard, type AccountCardAccount } from "./AccountCard";
@@ -24,6 +24,18 @@ import "../styles/DesktopApp.css";
 
 /** dataTransfer MIME carrying { workdir, sessionId } while a sidebar session drags. */
 export const SESSION_DRAG_MIME = "application/x-wave-session";
+
+/**
+ * How long the delete dialog waits for the host's worktree-changes reply before
+ * giving up and falling back to the generic warning. The check runs `git status`
+ * inside the worktree; on a remote/SSH session it travels through the host, so a
+ * normal slow response can take a few seconds. The budget must stay comfortably
+ * above that: falling back late is merely a less precise warning, whereas
+ * timing out a valid-but-slow reply would mislabel the check as failed. 8s
+ * covers the round trip with headroom while still rescuing the dialog from a
+ * wedged host in bounded time.
+ */
+export const WORKTREE_CHANGES_TIMEOUT_MS = 8000;
 
 /** 会话状态看板入口图标（对齐原型 figma/activity.svg）。常态跟随文本色，
  *  看板打开时（is-active）品牌红填充——原型 active 图标 #c1292e。 */
@@ -292,6 +304,19 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   // requestId of the in-flight worktree-changes query — a late reply from a
   // previously closed dialog must never describe the current one.
   const worktreeChangesRequestRef = useRef(0);
+  // Guards the worktree-changes check against a host that never answers: without
+  // it the dialog would stay "checking" and unconfirmable forever, leaving the
+  // session undeletable from the UI. On expiry we fall back to the generic
+  // warning (unknown is not clean) and invalidate the request.
+  const worktreeChangesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const clearWorktreeChangesTimeout = () => {
+    if (worktreeChangesTimeoutRef.current) {
+      clearTimeout(worktreeChangesTimeoutRef.current);
+      worktreeChangesTimeoutRef.current = null;
+    }
+  };
+  // Never let an expiry fire against an unmounted component.
+  useEffect(() => clearWorktreeChangesTimeout, []);
   // Session whose row menu (并排打开/删除) is open, with the trigger's rect so
   // the fixed-position menu anchors under the button.
   const [openMenuFor, setOpenMenuFor] = useState<{
@@ -310,6 +335,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     if (message.command !== "desktopWorktreeChanges") return;
     if (String(message.requestId) !== String(worktreeChangesRequestRef.current))
       return;
+    // A timely reply beats the timeout — stop the fallback from firing.
+    clearWorktreeChangesTimeout();
     setPendingDelete((prev) =>
       prev && prev.sessionId === message.sessionId
         ? {
@@ -588,8 +615,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               // host (the worktree may live on a remote machine). Until the
               // reply lands the dialog says "checking" and cannot confirm.
               const label = session.title || "新对话";
+              const sessionId = session.sessionId;
+              // Drop any timer left over from a previously closed dialog.
+              clearWorktreeChangesTimeout();
               setPendingDelete({
-                sessionId: session.sessionId,
+                sessionId,
                 title: `确定删除会话「${label}」？`,
                 description: session.hasWorktree
                   ? WORKTREE_DELETE_CHECKING
@@ -598,7 +628,27 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               });
               if (session.hasWorktree) {
                 const requestId = String(++worktreeChangesRequestRef.current);
-                onRequestWorktreeChanges(session.sessionId, requestId);
+                onRequestWorktreeChanges(sessionId, requestId);
+                // No reply within the budget (host wedged, or a future
+                // early-return path forgot to answer): fall back to the generic
+                // warning and let the user confirm.
+                worktreeChangesTimeoutRef.current = setTimeout(() => {
+                  worktreeChangesTimeoutRef.current = null;
+                  // Invalidate the in-flight request so a late reply is dropped
+                  // by the requestId guard above — otherwise it would flip the
+                  // dialog back to "checking" and re-disable a confirm the user
+                  // may already be clicking.
+                  worktreeChangesRequestRef.current += 1;
+                  setPendingDelete((prev) =>
+                    prev && prev.sessionId === sessionId
+                      ? {
+                          ...prev,
+                          checking: false,
+                          description: worktreeDeleteWarning(null),
+                        }
+                      : prev,
+                  );
+                }, WORKTREE_CHANGES_TIMEOUT_MS);
               }
             }}
             onClose={() => setOpenMenuFor(null)}
@@ -792,11 +842,15 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           description={pendingDelete.description}
           confirmDisabled={pendingDelete.checking === true}
           onConfirm={() => {
+            clearWorktreeChangesTimeout();
             onDeleteSession(pendingDelete.sessionId);
             sessionAnchorsRef.current.delete(pendingDelete.sessionId);
             setPendingDelete(null);
           }}
-          onCancel={() => setPendingDelete(null)}
+          onCancel={() => {
+            clearWorktreeChangesTimeout();
+            setPendingDelete(null);
+          }}
         />
       )}
     </div>
