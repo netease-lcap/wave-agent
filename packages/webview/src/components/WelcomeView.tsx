@@ -24,9 +24,6 @@ export interface WelcomeViewProps {
   isDesktop?: boolean;
   /** Host-reported SSO auth state (setInitialState). */
   isAuthenticated: boolean;
-  /** A direct-connect config (apiKey + baseURL) works without SSO login, so it
-   *  suppresses the login UI (login stays optional). */
-  hasDirectConnectConfig: boolean;
   /** Fires the host login flow (identical to the 更多 menu's 登录 item). */
   onLogin: () => void;
 }
@@ -51,13 +48,13 @@ const WaveLogo: React.FC<{ size?: number }> = ({ size = 20 }) => (
 const WelcomeView: React.FC<WelcomeViewProps> = ({
   isDesktop = false,
   isAuthenticated,
-  hasDirectConnectConfig,
   onLogin,
 }) => {
-  // Login UI is IDE-only (desktop logs in via the sidebar account card) and
-  // only relevant when the user can neither use a direct-connect config nor is
-  // already authenticated.
-  const showLogin = !isDesktop && !isAuthenticated && !hasDirectConnectConfig;
+  // Login UI is IDE-only (desktop logs in via the sidebar account card) and only
+  // relevant when the user is not authenticated. IDE hosts have no direct-connect
+  // config anymore, so an unauthenticated IDE user must be nudged to log in
+  // (spec sso-auth「IDE 插件更多菜单与欢迎页」场景 5).
+  const showLogin = !isDesktop && !isAuthenticated;
 
   return (
     <div

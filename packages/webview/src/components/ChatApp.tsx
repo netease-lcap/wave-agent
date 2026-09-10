@@ -2064,9 +2064,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     (m) => !(m.role === "user" && m.isMeta),
   );
 
-  // Welcome page shows only when there are no visible messages yet. Login is optional:
-  // a direct-connect config (baseURL/apiKey) works without authentication, so an
-  // unauthenticated user who sends a message must still see the chat, not the welcome page.
+  // Welcome page shows only when there are no visible messages yet. An
+  // unauthenticated user who sends a message must still see the chat, not the
+  // welcome page.
   const showWelcome = !hasVisibleMessages;
   // Withhold the welcome page until the initial state (incl. auth status) has
   // arrived, otherwise logged-in users see the login CTA flash before
@@ -2916,15 +2916,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         <WelcomeView
           isDesktop={isDesktop}
           isAuthenticated={state.isAuthenticated}
-          // Login is optional: a direct-connect config (baseURL + apiKey) works
-          // without SSO auth, so an unauthenticated user with one must not be
-          // nudged to log in (spec sso-auth「更多菜单与欢迎页」场景 5).
-          hasDirectConnectConfig={
-            !!(
-              state.configurationData?.apiKey &&
-              state.configurationData?.baseURL
-            )
-          }
           onLogin={handleLogin}
         />
       ) : showWelcome ? (

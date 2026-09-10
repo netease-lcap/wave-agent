@@ -141,9 +141,6 @@ class MessageHandler(
                 val data = msg["configurationData"]?.jsonObject ?: return
                 try {
                     val config = WavePluginService.getInstance().loadConfiguration().apply {
-                        apiKey = data["apiKey"]?.jsonPrimitive?.content ?: ""
-                        headers = data["headers"]?.jsonPrimitive?.content ?: ""
-                        baseURL = data["baseURL"]?.jsonPrimitive?.content ?: ""
                         model = data["model"]?.jsonPrimitive?.content ?: ""
                         fastModel = data["fastModel"]?.jsonPrimitive?.content ?: ""
                         language = data["language"]?.jsonPrimitive?.content ?: "Chinese"
@@ -603,9 +600,6 @@ class MessageHandler(
                     put("sessionId", session.sessionId ?: "")
                     put("workdir", currentWorkdir())
                     put("configurationData", buildJsonObject {
-                        put("apiKey", config.apiKey)
-                        put("headers", config.headers)
-                        put("baseURL", config.baseURL)
                         put("model", config.model)
                         put("fastModel", config.fastModel)
                         put("language", config.language)
@@ -1001,9 +995,6 @@ class MessageHandler(
         val config = WavePluginService.getInstance().loadConfiguration()
         postMessage("configurationResponse", buildJsonObject {
             put("configurationData", buildJsonObject {
-                put("apiKey", config.apiKey)
-                put("headers", config.headers)
-                put("baseURL", config.baseURL)
                 put("model", config.model)
                 put("fastModel", config.fastModel)
                 put("language", config.language)
@@ -1016,10 +1007,6 @@ class MessageHandler(
     }
 
     private fun buildConfigParams(config: com.wave.jetbrains.config.ConfigurationData): JsonObject = buildJsonObject {
-        if (config.apiKey.isNotEmpty()) put("apiKey", config.apiKey)
-        if (config.baseURL.isNotEmpty()) put("baseURL", config.baseURL)
-        val headers = WaveSession.parseHeaders(config.headers)
-        if (headers != null) put("defaultHeaders", headers)
         if (config.model.isNotEmpty()) put("model", config.model)
         if (config.fastModel.isNotEmpty()) put("fastModel", config.fastModel)
         put("language", config.language)
@@ -1083,9 +1070,6 @@ class MessageHandler(
             put("isAuthenticated", isAuthenticated)
             put("workdir", currentWorkdir())
             put("configurationData", buildJsonObject {
-                put("apiKey", config.apiKey)
-                put("headers", config.headers)
-                put("baseURL", config.baseURL)
                 put("model", config.model)
                 put("fastModel", config.fastModel)
                 put("language", config.language)

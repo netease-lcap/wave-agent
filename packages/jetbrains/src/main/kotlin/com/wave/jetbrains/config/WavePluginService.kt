@@ -7,9 +7,6 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 
 data class ConfigurationData(
-    var apiKey: String = "",
-    var headers: String = "",
-    var baseURL: String = "",
     var model: String = "",
     var fastModel: String = "",
     var language: String = "Chinese",

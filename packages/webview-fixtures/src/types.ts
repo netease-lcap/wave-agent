@@ -136,11 +136,8 @@ export interface AttachedImage {
   size?: number;
 }
 
-/** Maps to VS Code global state (apiKey/headers/baseURL/model/fastModel/…). */
+/** Maps to VS Code global state (model/fastModel/language/…). */
 export interface ConfigurationData {
-  apiKey?: string;
-  headers?: string;
-  baseURL?: string;
   model?: string;
   fastModel?: string;
   language?: string;

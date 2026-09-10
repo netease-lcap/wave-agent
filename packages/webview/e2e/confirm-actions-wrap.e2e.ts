@@ -23,8 +23,6 @@ test.describe("Confirmation actions wrap", () => {
       isStreaming: false,
       sessions: [],
       configurationData: {
-        apiKey: "sk-ant-api03-CXB9pH2k...mH8wQz",
-        baseURL: "https://api.anthropic.com/v1",
         model: "claude-sonnet-4-20250514",
         fastModel: "claude-haiku-4-20250514",
       },

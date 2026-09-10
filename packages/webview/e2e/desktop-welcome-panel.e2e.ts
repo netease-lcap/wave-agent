@@ -9,7 +9,6 @@ const initialState = {
   sessions: [],
   isAuthenticated: true,
   configurationData: {
-    baseURL: "https://api.anthropic.com/v1",
     model: "claude-sonnet-4-20250514",
     fastModel: "claude-haiku-4-20250514",
   },

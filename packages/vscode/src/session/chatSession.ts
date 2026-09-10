@@ -220,9 +220,6 @@ export class ChatSession {
       const initParams = {
         workdir,
         restoreSessionId,
-        apiKey: config.apiKey || undefined,
-        defaultHeaders: this.parseHeaders(config.headers),
-        baseURL: config.baseURL || undefined,
         model: config.model,
         fastModel: config.fastModel,
         language: config.language,
@@ -371,9 +368,6 @@ export class ChatSession {
 
       // Server-side destroy + recreate with restored session
       await this.agent.updateConfig({
-        apiKey: config.apiKey || undefined,
-        baseURL: config.baseURL || undefined,
-        defaultHeaders: this.parseHeaders(config.headers),
         model: config.model,
         fastModel: config.fastModel,
         language: config.language,
@@ -389,37 +383,6 @@ export class ChatSession {
       );
     }
     await this.clearQueue();
-  }
-
-  private parseHeaders(
-    headersStr?: string,
-  ): Record<string, string> | undefined {
-    if (!headersStr || !headersStr.trim()) {
-      return undefined;
-    }
-    try {
-      const headers: Record<string, string> = {};
-      const lines = headersStr.split("\n");
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith("#")) {
-          continue;
-        }
-        const colonIndex = trimmed.indexOf(":");
-        if (colonIndex === -1) {
-          continue;
-        }
-        const key = trimmed.slice(0, colonIndex).trim();
-        const value = trimmed.slice(colonIndex + 1).trim();
-        if (key) {
-          headers[key] = value;
-        }
-      }
-      return Object.keys(headers).length > 0 ? headers : undefined;
-    } catch (e) {
-      console.error("Failed to parse headers:", e);
-      return undefined;
-    }
   }
 
   public async getSlashCommands() {

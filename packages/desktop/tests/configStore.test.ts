@@ -55,11 +55,10 @@ describe("ConfigStore", () => {
 
   it("persists configuration across instances", () => {
     const store = new ConfigStore(STORE_PATH);
-    store.setConfiguration({ apiKey: "k1", model: "m1" });
+    store.setConfiguration({ model: "m1" });
 
     const reloaded = new ConfigStore(STORE_PATH);
     expect(reloaded.getConfiguration()).toEqual({
-      apiKey: "k1",
       model: "m1",
       language: "Chinese",
     });
@@ -67,22 +66,21 @@ describe("ConfigStore", () => {
 
   it("merge-updates configuration: absent fields keep their stored value", () => {
     const store = new ConfigStore(STORE_PATH);
-    store.setConfiguration({ apiKey: "k1", model: "m1", baseURL: "https://a" });
+    store.setConfiguration({ model: "m1", contextLength: 200 });
     store.setConfiguration({ model: "m2" });
 
     expect(store.getConfiguration()).toEqual({
-      apiKey: "k1",
       model: "m2",
-      baseURL: "https://a",
+      contextLength: 200,
       language: "Chinese",
     });
   });
 
   it("does not mutate the stored configuration through the returned copy", () => {
     const store = new ConfigStore(STORE_PATH);
-    store.setConfiguration({ apiKey: "k1" });
-    store.getConfiguration().apiKey = "tampered";
-    expect(store.getConfiguration().apiKey).toBe("k1");
+    store.setConfiguration({ model: "m1" });
+    store.getConfiguration().model = "tampered";
+    expect(store.getConfiguration().model).toBe("m1");
   });
 
   it("pushes new workdir to the front of the recent list and deduplicates", () => {

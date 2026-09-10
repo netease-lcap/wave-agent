@@ -8,9 +8,6 @@ import { LOCAL_HOST } from "./sshHosts";
  * keeps these in context.globalState; we use a JSON file in userData).
  */
 export interface DesktopConfigData {
-  apiKey?: string;
-  headers?: string;
-  baseURL?: string;
   model?: string;
   fastModel?: string;
   language?: string;

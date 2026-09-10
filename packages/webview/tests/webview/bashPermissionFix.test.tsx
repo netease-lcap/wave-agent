@@ -23,8 +23,6 @@ describe("Bash Permission Fix", () => {
         isStreaming: false,
         sessions: [],
         configurationData: {
-          apiKey: "test-key",
-          baseURL: "https://api.example.com",
           model: "gpt-4",
         },
         permissionMode: "default",

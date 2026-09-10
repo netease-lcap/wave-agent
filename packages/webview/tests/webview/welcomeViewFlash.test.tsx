@@ -15,10 +15,9 @@ import WelcomeView from "../../src/components/WelcomeView";
  * `setInitialState`: the welcome state depends on the initial snapshot.
  *
  * The login entry for IDE hosts lives on the welcome page itself (spec
- * sso-auth「更多菜单与欢迎页」场景 5/7) — a 登录后即可开始使用~ hint + 登 录
- * button shown while unauthenticated without a direct-connect config. Desktop
- * logs in via the sidebar account card instead, so its welcome page never
- * shows the button.
+ * sso-auth「IDE 插件更多菜单与欢迎页」场景 5/7) — a 登录后即可开始使用~ hint +
+ * 登 录 button shown while unauthenticated. Desktop logs in via the sidebar
+ * account card instead, so its welcome page never shows the button.
  */
 describe("WelcomeView render timing", () => {
   it("does not show the welcome page before initial state arrives", () => {
@@ -151,9 +150,11 @@ describe("WelcomeView render timing", () => {
     );
   });
 
-  it("hides the welcome login button when a direct-connect config is present", () => {
-    // baseURL + apiKey work without SSO auth, so login must stay optional
-    // (spec sso-auth「更多菜单与欢迎页」场景 5).
+  it("shows the login button even when legacy direct-connect fields linger in configurationData", () => {
+    // IDE hosts have no direct-connect config anymore (apiKey/headers/baseURL were
+    // removed host-side), so an unauthenticated user must always be nudged to log
+    // in — leftover credential values must not suppress the CTA
+    // (spec sso-auth「IDE 插件更多菜单与欢迎页」场景 5).
     render(<ChatApp vscode={createMockVscode()} />);
 
     act(() => {
@@ -170,8 +171,8 @@ describe("WelcomeView render timing", () => {
       });
     });
 
-    expect(screen.getByTestId("welcome-wordmark")).toBeVisible();
-    expect(screen.queryByTestId("welcome-login-btn")).not.toBeInTheDocument();
+    expect(screen.getByTestId("welcome-login-btn")).toBeVisible();
+    expect(screen.queryByTestId("welcome-wordmark")).toBeVisible();
   });
 
   it("switches away from the welcome page once a visible message arrives", () => {
@@ -214,15 +215,9 @@ describe("WelcomeView render timing", () => {
 describe("WelcomeView login entry", () => {
   it("never shows a login button on the desktop welcome page", () => {
     // Desktop's login entry is the sidebar account card (desktop-app spec),
-    // so even an unauthenticated desktop user without a direct-connect config
-    // gets no login button here.
+    // so even an unauthenticated desktop user gets no login button here.
     render(
-      <WelcomeView
-        isDesktop
-        isAuthenticated={false}
-        hasDirectConnectConfig={false}
-        onLogin={() => {}}
-      />,
+      <WelcomeView isDesktop isAuthenticated={false} onLogin={() => {}} />,
     );
 
     expect(screen.getByTestId("welcome-wordmark")).toBeVisible();

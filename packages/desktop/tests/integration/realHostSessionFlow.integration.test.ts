@@ -16,12 +16,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readFileSync } from "fs";
 import {
   assertNoUnexpectedRejections,
+  clearFakeModelEndpoint,
   createRealHost,
   projectDir,
   resetRealHostState,
   startFakeModelServer,
   transcriptFiles,
   truncateTranscriptTail,
+  useFakeModelEndpoint,
   type FakeModelServer,
   type RealHost,
 } from "./realHostHarness";
@@ -39,11 +41,10 @@ beforeEach(async () => {
   dirB = dirs.dirB;
   model = await startFakeModelServer();
   model.reply("回复：A-OK");
-  ctx = createRealHost();
   // Point the real CLI at the local model server — no real LLM, no network.
+  useFakeModelEndpoint(model.baseURL);
+  ctx = createRealHost();
   ctx.store.setConfiguration({
-    apiKey: "test-key",
-    baseURL: model.baseURL,
     model: "test-model",
     fastModel: "test-model",
   });
@@ -52,6 +53,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await ctx.close();
   await model.close();
+  clearFakeModelEndpoint();
   assertNoUnexpectedRejections();
 });
 

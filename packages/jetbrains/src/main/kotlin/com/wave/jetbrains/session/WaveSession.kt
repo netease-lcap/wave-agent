@@ -110,10 +110,6 @@ class WaveSession(
             val params = buildJsonObject {
                 put("workdir", project.basePath ?: System.getProperty("user.dir"))
                 if (restoreSessionId != null) put("restoreSessionId", restoreSessionId)
-                if (config.apiKey.isNotEmpty()) put("apiKey", config.apiKey)
-                val headers = parseHeaders(config.headers)
-                if (headers != null) put("defaultHeaders", headers)
-                if (config.baseURL.isNotEmpty()) put("baseURL", config.baseURL)
                 if (config.model.isNotEmpty()) put("model", config.model)
                 if (config.fastModel.isNotEmpty()) put("fastModel", config.fastModel)
                 put("language", config.language)
@@ -455,26 +451,5 @@ class WaveSession(
         runCatching { runBlocking { agent?.destroy() } }
         agent = null
         scope.cancel()
-    }
-
-    companion object {
-        fun parseHeaders(text: String): JsonObject? {
-            if (text.isBlank()) return null
-            return try {
-                val map = mutableMapOf<String, JsonElement>()
-                text.lineSequence().forEach { line ->
-                    val trimmed = line.trim()
-                    if (trimmed.isEmpty() || trimmed.startsWith("#")) return@forEach
-                    val idx = trimmed.indexOf(':')
-                    if (idx <= 0) return@forEach
-                    val key = trimmed.substring(0, idx).trim()
-                    val value = trimmed.substring(idx + 1).trim()
-                    map[key] = JsonPrimitive(value)
-                }
-                if (map.isEmpty()) null else JsonObject(map)
-            } catch (e: Exception) {
-                null
-            }
-        }
     }
 }

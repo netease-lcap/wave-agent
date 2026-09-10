@@ -1366,9 +1366,6 @@ export class DesktopHost {
       // session): the daemon reuses the live agent instead of forking a second
       // one writing to the same transcript. Fresh sessions omit the field.
       ...(opts.sessionId ? { restoreSessionId: opts.sessionId } : {}),
-      apiKey: config.apiKey || undefined,
-      defaultHeaders: parseHeaders(config.headers),
-      baseURL: config.baseURL || undefined,
       model: config.model,
       fastModel: config.fastModel,
       language: config.language,
@@ -4887,9 +4884,6 @@ export class DesktopHost {
     config: DesktopConfigData,
   ): Promise<void> {
     const params = {
-      apiKey: config.apiKey || undefined,
-      baseURL: config.baseURL || undefined,
-      defaultHeaders: parseHeaders(config.headers),
       model: config.model,
       fastModel: config.fastModel,
       language: config.language,
@@ -6133,33 +6127,4 @@ function sessionTitleFromMessages(messages: Message[]): string {
     if (text) return text.length > 30 ? text.substring(0, 30) + "..." : text;
   }
   return "";
-}
-
-function parseHeaders(headersStr?: string): Record<string, string> | undefined {
-  if (!headersStr || !headersStr.trim()) {
-    return undefined;
-  }
-  try {
-    const headers: Record<string, string> = {};
-    const lines = headersStr.split("\n");
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) {
-        continue;
-      }
-      const colonIndex = trimmed.indexOf(":");
-      if (colonIndex === -1) {
-        continue;
-      }
-      const key = trimmed.slice(0, colonIndex).trim();
-      const value = trimmed.slice(colonIndex + 1).trim();
-      if (key) {
-        headers[key] = value;
-      }
-    }
-    return Object.keys(headers).length > 0 ? headers : undefined;
-  } catch (e) {
-    console.error("[DesktopHost] Failed to parse headers:", e);
-    return undefined;
-  }
 }

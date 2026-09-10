@@ -2133,34 +2133,37 @@ describe("background session toasts", () => {
 // ---------------------------------------------------------------------------
 
 describe("configuration and status", () => {
-  it("getConfiguration replies with the stored configuration", async () => {
+  it("getConfiguration replies with the stored configuration (no credential fields)", async () => {
     const { host, store, sent } = createHost();
-    store.setConfiguration({ apiKey: "k", model: "m" });
+    store.setConfiguration({ model: "m" });
 
     await host.handleWebviewMessage({ command: "getConfiguration" });
 
-    expect(sent("configurationResponse")[0]).toMatchObject({
-      configurationData: { apiKey: "k", model: "m" },
-    });
+    const payload = sent("configurationResponse")[0].configurationData;
+    expect(payload).toMatchObject({ model: "m" });
+    // Host-side credential pipeline removed (spec sso-auth「IDE 宿主不再有直连
+    // 免登录旁路」): the reply must never carry apiKey/headers/baseURL again.
+    expect(payload).not.toHaveProperty("apiKey");
+    expect(payload).not.toHaveProperty("headers");
+    expect(payload).not.toHaveProperty("baseURL");
   });
 
-  it("updateConfiguration persists, reconfigures the agent and notifies the webview", async () => {
+  it("updateConfiguration persists the config and replies without credential fields", async () => {
     const { host, store, sent } = await readyHost();
 
     await host.handleWebviewMessage({
       command: "updateConfiguration",
-      configurationData: { apiKey: "new-key", model: "new-model" },
+      configurationData: { model: "new-model" },
     });
 
-    expect(store.getConfiguration()).toMatchObject({
-      apiKey: "new-key",
-      model: "new-model",
-    });
-    expect(lastAgent().updateConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ apiKey: "new-key", model: "new-model" }),
-    );
+    expect(store.getConfiguration()).toMatchObject({ model: "new-model" });
+    expect(store.getConfiguration()).not.toHaveProperty("apiKey");
     expect(sent("configurationUpdated")).toHaveLength(1);
-    expect(sent("configurationResponse")).toHaveLength(1);
+    const payload = sent("configurationResponse")[0].configurationData;
+    expect(payload).toMatchObject({ model: "new-model" });
+    expect(payload).not.toHaveProperty("apiKey");
+    expect(payload).not.toHaveProperty("headers");
+    expect(payload).not.toHaveProperty("baseURL");
   });
 
   it("getStatus replies with app version, session id and workdir", async () => {
