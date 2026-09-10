@@ -1092,9 +1092,7 @@
 [data-host="desktop"] .markdown-content a.file-path-link {
   text-decoration: none;
 }
-[data-host="desktop"] .markdown-content a.file-path-link:hover {
-  text-decoration: underline;
-}
+/* hover / focus 显示下划线：见下方 D-01 段（与正文链接同一规则）。 */
 /* 链接角色（用户 2026-09-10 规则）：正文内联链接按「显示文本本身」分两种角色——
    ① 描述性链接（查看预览、参考文档…）：与所在正文同为 UI 角色 → 此处不声明，
       继承 F-01 的正文根角色即可；
@@ -1113,32 +1111,31 @@
   overflow-wrap: anywhere;
   word-break: break-word;
 }
-/* ── D-01（用户 2026-09-10 授权实施）：正文内联链接常态下划线，hover 加深 ──
-   WCAG 1.4.1：链接此前只有颜色一个线索（axe link-in-text-block 实测 light
-   2.9:1 / dark 1.99:1，两模式各 5 节点 serious）→ 常态即给非颜色线索（下划线），
-   hover 再加深颜色。作用域＝正文 markdown 链接，直显地址 / 邮箱 / 电话同样适用
-   （等宽字体不能替代可点击线索）。
-   例外按既有决定：① 文件路径链接常态无下划线、hover 出现（前一轮确定）；
-   ② `<code>` 内的链接（行内代码路径与地址）不加下划线——代码底色已是非颜色
-   线索；③ 工具输出（bash / 日志等）不在正文链接作用域内，不受影响。 */
+/* ── D-01（用户 2026-09-10 决策修订）：正文内联链接常态无下划线，hover / focus 时显示 ──
+   决策沿革：先定「常态下划线 + hover 加深」（WCAG 1.4.1：链接此前只有颜色一个
+   线索，axe link-in-text-block 实测 light 2.9:1 / dark 1.99:1），随即修订为
+   「常态无下划线，hover / focus 时显示下划线」→ 静态态回到只有颜色线索，
+   axe 该规则仍会报（见 docs/desktop-density-restore.md「D-01 决策修订」节，
+   属用户明示接受的偏离）。hover / focus 反馈保留「下划线 + 颜色加深」。
+   作用域＝正文 markdown 链接，直显地址 / 邮箱 / 电话同样适用（等宽字体不能
+   替代可点击线索）。例外按既有决定：文件路径链接与 `<code>` 内链接常态无
+   下划线、hover / focus 出现；工具输出不在正文链接作用域内。 */
 [data-host="desktop"] .markdown-content a {
+  text-decoration: none;
+}
+[data-host="desktop"] .markdown-content a:hover,
+[data-host="desktop"] .markdown-content a:focus-visible,
+[data-host="desktop"] .markdown-content a.file-path-link:hover,
+[data-host="desktop"] .markdown-content a.file-path-link:focus-visible {
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
 }
 [data-host="desktop"] .markdown-content a:hover {
   color: #1f47b8; /* derived：--cc-text-link 加深（契约无 hover token） */
-  text-decoration: underline;
 }
 [data-host="desktop"][data-theme="dark"] .markdown-content a:hover {
   color: #7fc0ff; /* derived：深色下提亮以体现「加深」反馈 */
-}
-[data-host="desktop"] .markdown-content a.file-path-link,
-[data-host="desktop"] .markdown-content code a {
-  text-decoration: none;
-}
-[data-host="desktop"] .markdown-content a.file-path-link:hover {
-  text-decoration: underline;
 }
 /* bash 命令输出内链接加入 dark 覆盖（第 26 轮遗漏：原规则仅覆盖
    write-tool-path 与 markdown-content a，bash 输出链接 dark 下仍为浅色
