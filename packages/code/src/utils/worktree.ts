@@ -409,7 +409,8 @@ function probeResidue(worktreePath: string): string {
  * is MAX_PATH-limited — deep paths (e.g. node_modules) can fail with "Filename
  * too long", leaving an orphan directory. When git fails we fall back to
  * fs.rmSync with an extended-length path (bypasses MAX_PATH) and prune stale
- * metadata. Failures are logged but never block branch deletion.
+ * metadata. Failures are logged; when the directory survives, its branch is
+ * deliberately kept so the leftover checkout stays reachable through git.
  */
 export async function removeWorktree(session: WorktreeSession): Promise<void> {
   // Hook-based worktrees are removed by the WorktreeRemove hook; wave never
@@ -507,6 +508,22 @@ export async function removeWorktree(session: WorktreeSession): Promise<void> {
     } catch {
       // Ignore errors pruning stale metadata
     }
+  }
+
+  // The directory, not any exit code, decides whether the removal happened. A
+  // surviving directory means its checkout (and any uncommitted work in it) is
+  // still on disk, and the branch is the only ref still leading back to it.
+  if (fs.existsSync(session.path)) {
+    const keptBranches =
+      currentBranch && currentBranch !== session.branch
+        ? `${session.branch} and ${currentBranch}`
+        : session.branch;
+    logger.warn(
+      `Worktree directory survived removal — keeping ${keptBranches} so the ` +
+        `leftover checkout stays reachable: path=${session.path} ` +
+        `residue=${probeResidue(session.path)}`,
+    );
+    return;
   }
 
   // Delete original branch
