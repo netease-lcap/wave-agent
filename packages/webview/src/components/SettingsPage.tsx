@@ -136,6 +136,8 @@ type AgentsScope = "user" | "project";
 export const UNSET_OPTION_LABEL = "未设置（默认：中文）";
 export const CONTEXT_LENGTH_PLACEHOLDER = "跟随模型配置（默认 200K）";
 export const AUTO_MEMORY_FREQUENCY_PLACEHOLDER = "默认 1 轮";
+/** 生效值来自机器环境变量时的行内说明（可编辑，保存后写入用户级 settings.json）。 */
+export const ENV_SOURCE_HINT = "当前值来自系统环境变量；保存后以本页设置为准";
 
 /** 未设置态（空草稿）一律不写；与初始值相同也不写。 */
 function changedString(current: string, initial?: string): string | undefined {
@@ -342,6 +344,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const orgManaged = (key: UserPreferenceKey) =>
     configurationData?.preferenceSources?.[key] === "remote";
 
+  // 生效值来自机器环境变量的键：同样显示**生效值**（而不是「未设置」占位符），
+  // 但**保持可编辑**——用户级 settings.json 的优先级高于 OS 环境变量，用户在此
+  // 保存即写入该文件并覆盖环境变量的值。仅标注来源，不置灰。
+  // （`language` 解析链上没有 env 键，故其来源只可能是 remote / user / default。）
+  const envManaged = (key: UserPreferenceKey) =>
+    configurationData?.preferenceSources?.[key] === "env";
+
   // 保存类操作反馈统一由宿主全局 toast 提示（2026-09-09 拍板，见
   // desktop-account-and-settings「设置页反馈语义」），本组件不生成/渲染任何
   // 页面内提示文字；「保存中…」由外层 saving / agentsSaving 驱动按钮禁用。
@@ -508,6 +517,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       </p>
                       {orgManaged("contextLength") && (
                         <p className="settings-row-hint">由组织配置管理</p>
+                      )}
+                      {envManaged("contextLength") && (
+                        <p className="settings-row-hint">{ENV_SOURCE_HINT}</p>
                       )}
                     </div>
                     <div className="settings-number-control">
@@ -735,6 +747,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       {orgManaged("autoMemoryEnabled") && (
                         <p className="settings-row-hint">由组织配置管理</p>
                       )}
+                      {envManaged("autoMemoryEnabled") && (
+                        <p className="settings-row-hint">{ENV_SOURCE_HINT}</p>
+                      )}
                     </div>
                     <label className="settings-switch">
                       <input
@@ -753,6 +768,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <p>达到指定对话轮次后执行记忆提取，默认 1 轮</p>
                       {orgManaged("autoMemoryFrequency") && (
                         <p className="settings-row-hint">由组织配置管理</p>
+                      )}
+                      {envManaged("autoMemoryFrequency") && (
+                        <p className="settings-row-hint">{ENV_SOURCE_HINT}</p>
                       )}
                     </div>
                     <div className="memory-turns">

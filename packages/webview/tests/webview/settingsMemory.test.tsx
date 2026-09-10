@@ -11,7 +11,9 @@ import {
   createMockVscode,
   fixtures,
 } from "./test-utils";
-import SettingsPage from "../../src/components/SettingsPage";
+import SettingsPage, {
+  ENV_SOURCE_HINT,
+} from "../../src/components/SettingsPage";
 import { ChatApp } from "../../src/components/ChatApp";
 import type { ConfigurationData, VsCodeApi } from "../../src/types";
 
@@ -230,9 +232,12 @@ describe("ChatApp 保存路径：自动记忆偏好真的离开 webview（#2115 
 });
 
 /**
- * 「被组织配置覆盖的自动记忆键如实显示」（spec agent-config 场景 8）：Remote 组织下发
- * 可以盖过用户级 settings.json 的 `autoMemoryEnabled` / `autoMemoryFrequency`，此时
- * 开关/轮次输入显示**生效值** + 置灰 + 提示，用户无法在本地覆盖回来。
+ * 「被组织配置覆盖 / 由环境变量给值的自动记忆键如实显示」（spec agent-config 场景 9）：
+ * Remote 组织下发可以盖过用户级 settings.json 的 `autoMemoryEnabled` /
+ * `autoMemoryFrequency`（`env.WAVE_DISABLE_AUTO_MEMORY` 与
+ * `env.WAVE_AUTO_MEMORY_FREQUENCY` 同样算 Remote 层），此时开关/轮次输入显示**生效
+ * 值** + 置灰 + 提示，用户无法在本地覆盖回来。机器环境变量（`env`）给值时显示生效值
+ * 并标注来源，但**不置灰**——用户级 settings.json 优先级高于 OS 环境变量。
  */
 describe("SettingsPage 自动记忆规则：被组织配置覆盖时置灰", () => {
   beforeEach(() => {
@@ -287,14 +292,14 @@ describe("SettingsPage 自动记忆规则：被组织配置覆盖时置灰", () 
     expect(onSave).toHaveBeenCalledWith({ autoMemoryFrequency: 9 });
   });
 
-  it("来源不是 Remote（env/default/user）时不置灰、无提示", () => {
+  it("来源为 user / default 的键不置灰、无来源提示", () => {
     renderMemoryView({
       configurationData: {
         autoMemoryEnabled: false,
         autoMemoryFrequency: 7,
         preferenceSources: {
-          autoMemoryEnabled: "env",
-          autoMemoryFrequency: "user",
+          autoMemoryEnabled: "user",
+          autoMemoryFrequency: "default",
         },
       },
     });
@@ -302,5 +307,42 @@ describe("SettingsPage 自动记忆规则：被组织配置覆盖时置灰", () 
     expect(memorySwitch()).toBeEnabled();
     expect(memoryFrequencyInput()).toBeEnabled();
     expect(screen.queryByText("由组织配置管理")).not.toBeInTheDocument();
+    expect(screen.queryByText(ENV_SOURCE_HINT)).not.toBeInTheDocument();
+  });
+
+  it("开关由机器环境变量关闭（env.WAVE_DISABLE_AUTO_MEMORY）：显示生效值「关」+ 标注来源 + 仍可编辑", () => {
+    const { onSave } = renderMemoryView({
+      configurationData: {
+        autoMemoryEnabled: false,
+        preferenceSources: { autoMemoryEnabled: "env" },
+      },
+    });
+
+    // 生效值来自 OS 环境变量，不得回落成「开」（那是 SDK 默认，不是生效值）。
+    expect(memorySwitch()).not.toBeChecked();
+    expect(memorySwitch()).toBeEnabled();
+    const row = memoryRowFor("开启自动记忆");
+    expect(within(row).getByText(ENV_SOURCE_HINT)).toBeInTheDocument();
+    expect(within(row).queryByText("由组织配置管理")).not.toBeInTheDocument();
+
+    // 用户在此打开并保存 = 写入用户级 settings.json，优先级高于 OS 环境变量。
+    fireEvent.click(memorySwitch());
+    fireEvent.click(memorySaveButton());
+    expect(onSave).toHaveBeenCalledWith({ autoMemoryEnabled: true });
+  });
+
+  it("轮次由机器环境变量给值：显示生效值 + 标注来源 + 仍可编辑（不显示占位符）", () => {
+    renderMemoryView({
+      configurationData: {
+        autoMemoryFrequency: 5,
+        preferenceSources: { autoMemoryFrequency: "env" },
+      },
+    });
+
+    expect(memoryFrequencyInput().value).toBe("5");
+    expect(memoryFrequencyInput()).toBeEnabled();
+    expect(
+      within(memoryRowFor("触发记忆提取会话轮次")).getByText(ENV_SOURCE_HINT),
+    ).toBeInTheDocument();
   });
 });

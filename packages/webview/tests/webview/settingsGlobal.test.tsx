@@ -2,6 +2,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "./test-utils";
 import SettingsPage, {
+  ENV_SOURCE_HINT,
   UNSET_OPTION_LABEL,
 } from "../../src/components/SettingsPage";
 import type { ConfigurationData } from "../../src/types";
@@ -384,11 +385,12 @@ describe("SettingsPage 保存进行中按钮禁用（2026-09-09 拍板：保存�
 });
 
 /**
- * 「被更高层覆盖的键如实显示」（spec agent-config 场景 8）：用户级
+ * 「被更高层覆盖的键如实显示」（spec agent-config 场景 9）：用户级
  * `~/.wave/settings.json` 只是用户偏好的**落点**，生效值可能来自更高层——企业下发的
- * Remote 组织配置（`preferenceSources[key] === "remote"`）。此时设置页必须显示**生效
- * 值** + 置灰 + 一句「由组织配置管理」，而不是回退成用户文件里的值（只读用户文件会让
- * 显示值与生效值分叉）。来源为 `env`（机器环境变量）/ `user` / `default` 的键仍可编辑。
+ * Remote 组织配置（`preferenceSources[key] === "remote"`，置灰不可改）或机器环境变量
+ * （`"env"`，可编辑但要标注来源）。此时设置页必须显示**生效值**，而不是回退成用户文件
+ * 里的值或「未设置」占位符（只读用户文件会让显示值与生效值分叉）。来源为 `user` /
+ * `default` 的键与改造前完全一致。
  */
 describe("SettingsPage 被组织配置覆盖的键：显示生效值 + 置灰 + 「由组织配置管理」", () => {
   beforeEach(() => {
@@ -435,18 +437,51 @@ describe("SettingsPage 被组织配置覆盖的键：显示生效值 + 置灰 + 
     ).toBeInTheDocument();
   });
 
-  it("来源为 env / user / default 的键照旧可编辑（只有 Remote 才置灰）", () => {
+  it("来源为 user / default 的键照旧可编辑，且不显示任何来源提示", () => {
     renderGlobalView({
       configurationData: {
         language: "en-US",
-        contextLength: 256,
-        preferenceSources: { language: "env", contextLength: "user" },
+        preferenceSources: { language: "user", contextLength: "default" },
       },
     });
 
     expect(languageSelect()).toBeEnabled();
     expect(contextLengthInput()).toBeEnabled();
     expect(screen.queryByText("由组织配置管理")).not.toBeInTheDocument();
+    expect(screen.queryByText(ENV_SOURCE_HINT)).not.toBeInTheDocument();
+  });
+
+  it("contextLength 由机器环境变量给值：显示生效值（不是「未设置」占位符）+ 标注来源 + 仍可编辑", () => {
+    renderGlobalView({
+      configurationData: {
+        contextLength: 64,
+        preferenceSources: { contextLength: "env" },
+      },
+    });
+
+    const input = contextLengthInput();
+    // 生效值来自 OS 环境变量：不得回落成占位符（否则页面显示 200K 与实际生效的
+    // 64K 分叉）。
+    expect(input.value).toBe("64");
+    expect(input).toBeEnabled();
+    const row = rowFor("上下文长度");
+    expect(within(row).getByText(ENV_SOURCE_HINT)).toBeInTheDocument();
+    // env 层不是组织策略：不显示置灰提示。
+    expect(within(row).queryByText("由组织配置管理")).not.toBeInTheDocument();
+  });
+
+  it("env 给值的键能改动并写进保存载荷（用户文件优先级高于 OS 环境变量）", () => {
+    const { onSave } = renderGlobalView({
+      configurationData: {
+        contextLength: 64,
+        preferenceSources: { contextLength: "env" },
+      },
+    });
+
+    fireEvent.change(contextLengthInput(), { target: { value: "128" } });
+    fireEvent.click(saveButton());
+
+    expect(onSave).toHaveBeenCalledWith({ contextLength: 128 });
   });
 
   it("回包不带 preferenceSources 时全部可编辑（老宿主/三端旧版本向后兼容）", () => {
@@ -457,6 +492,7 @@ describe("SettingsPage 被组织配置覆盖的键：显示生效值 + 置灰 + 
     expect(languageSelect()).toBeEnabled();
     expect(contextLengthInput()).toBeEnabled();
     expect(screen.queryByText("由组织配置管理")).not.toBeInTheDocument();
+    expect(screen.queryByText(ENV_SOURCE_HINT)).not.toBeInTheDocument();
   });
 
   it("被覆盖的键改不动 → 保存载荷里不出现它（不会假装写进去）", () => {

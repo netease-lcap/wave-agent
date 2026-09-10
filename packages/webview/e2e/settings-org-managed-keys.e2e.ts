@@ -14,7 +14,8 @@ import {
  * 用户级 `~/.wave/settings.json` 只是用户偏好的**落点**，企业下发的 Remote 组织
  * 配置（以及机器环境变量）可以盖过它。宿主回包除生效值外带 `preferenceSources`：
  * 来源为 `remote` 的键置灰 + 行内提示「由组织配置管理」（组织策略不可被本地覆盖），
- * `env` / `user` / `default` 的键照旧可编辑；老宿主缺该字段时全部可编辑。
+ * 来源为 `env` 的键显示生效值 + 标注来源但仍可编辑（用户级文件优先级高于 OS 环境
+ * 变量，保存即覆盖），`user` / `default` 的键与改造前一致；老宿主缺该字段时全部可编辑。
  *
  * 分层：层序归因（哪个键来自哪一层）由 SDK `readUserPreferenceView` 单测与真 host
  * 层验证；本文件只锁 webview 这一跳的**渲染与可编辑性**（真 DOM、真 postMessage）。
@@ -83,21 +84,31 @@ test.describe("被组织配置覆盖的键：显示生效值 + 置灰 + 「由�
     );
   });
 
-  test("来源为 env / user 的键不置灰：显示生效值但仍可编辑、无提示", async ({
+  test("来源为 env / user 的键不置灰：显示生效值、仍可编辑；env 另标注来源", async ({
     webviewPage,
   }) => {
     await openSettings(webviewPage, {
       configurationData: {
+        contextLength: 64,
         language: "en-US",
-        contextLength: 256,
-        preferenceSources: { language: "env", contextLength: "user" },
+        preferenceSources: { contextLength: "env", language: "user" },
       },
     });
 
+    // env 给值的键：显示**生效值**（不是「未设置」占位符）+ 标注来源 + 保持可编辑。
+    const contextLength = webviewPage.getByLabel("上下文长度");
+    await expect(contextLength).toHaveValue("64");
+    await expect(contextLength).toBeEnabled();
+    await expect(rowOf(webviewPage, "上下文长度")).toContainText(
+      "当前值来自系统环境变量；保存后以本页设置为准",
+    );
+
+    // user 给值的键：与改造前一致，无任何来源提示。
+    const languageRow = rowOf(webviewPage, "AI 回复语言");
     await expect(webviewPage.getByLabel("AI 回复语言")).toHaveValue("en-US");
     await expect(webviewPage.getByLabel("AI 回复语言")).toBeEnabled();
-    await expect(webviewPage.getByLabel("上下文长度")).toBeEnabled();
-    await expect(webviewPage.getByText("由组织配置管理")).toHaveCount(0);
+    await expect(languageRow).not.toContainText("由组织配置管理");
+    await expect(languageRow).not.toContainText("系统环境变量");
   });
 
   test("老宿主回包缺 preferenceSources：全部可编辑（向后兼容）", async ({
@@ -110,6 +121,7 @@ test.describe("被组织配置覆盖的键：显示生效值 + 置灰 + 「由�
     await expect(webviewPage.getByLabel("AI 回复语言")).toBeEnabled();
     await expect(webviewPage.getByLabel("上下文长度")).toBeEnabled();
     await expect(webviewPage.getByText("由组织配置管理")).toHaveCount(0);
+    await expect(webviewPage.getByText("系统环境变量")).toHaveCount(0);
   });
 
   test("被覆盖的键改不动 → 保存载荷里不出现它", async ({ webviewPage }) => {
