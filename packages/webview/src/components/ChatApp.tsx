@@ -212,6 +212,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     useDesktopChrome();
   // Message id awaiting rewind confirmation; non-null shows the ConfirmDialog.
   const [pendingRewindId, setPendingRewindId] = useState<string | null>(null);
+  // 重建确认框（桌面端专属，spec「配置变更的构造期副作用与重建」场景 4）：
+  // host 推 desktopRebuildPrompt 后展示，用户选择立即/稍后重启并回执。
+  const [rebuildPrompt, setRebuildPrompt] = useState<{
+    total: number;
+    busy: number;
+  } | null>(null);
   // /rewind popup: checkpoint list requested from the host on open.
   const [rewindPopupOpen, setRewindPopupOpen] = useState(false);
   const [rewindCheckpoints, setRewindCheckpoints] = useState<
@@ -1312,6 +1318,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       case "configurationUpdated":
         dispatch({ type: "HIDE_DIALOG" });
         break;
+      // 重建确认框（桌面端专属）：插件变更已落盘、存在受影响的 live 会话时
+      // host 推送，由用户选生效时机（两按钮，Esc 等同「稍后重启」，无「取消」）。
+      case "desktopRebuildPrompt":
+        if (!forThisPane(message)) break;
+        setRebuildPrompt({ total: message.total, busy: message.busy });
+        break;
       case "statusResponse":
         if (!forThisPane(message)) break;
         if (message.configurationData) {
@@ -2022,6 +2034,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const handleDialogClose = useCallback(() => {
     dispatch({ type: "HIDE_DIALOG" });
   }, []);
+
+  // 重建确认框回执（桌面端）：只决定运行中的对话何时用上新配置——「稍后重启」
+  // 不做惰性重建，仅新建对话生效（spec「配置变更的构造期副作用与重建」场景 6）。
+  const handleRebuildDecision = useCallback(
+    (restart: boolean) => {
+      setRebuildPrompt(null);
+      postToHost({ command: "desktopRebuildDecision", restart });
+    },
+    [postToHost],
+  );
 
   // 设置页保存配置（全局设置/个性化视图）：经 updateConfiguration RPC 写回，
   // 保存期间 configurationLoading=true 禁用保存按钮；host 回发
@@ -3217,6 +3239,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           description="这将删除之后的所有消息并撤销相关的文件更改。"
           onConfirm={handleRewindConfirm}
           onCancel={() => setPendingRewindId(null)}
+        />
+      )}
+      {/* 重建确认框（桌面端专属、应用级）：插件变更已落盘，弹窗只决定运行中的
+          对话何时用上新配置——两个按钮、无「取消」（Esc 等同「稍后重启」，
+          避免误触成重启）。 */}
+      {rebuildPrompt && (
+        <ConfirmDialog
+          title="插件变更需要重启对话才能生效。"
+          description={`将重启 ${rebuildPrompt.total} 个对话，其中 ${rebuildPrompt.busy} 个正在执行任务暂不重启。`}
+          confirmText="立即重启"
+          cancelText="稍后重启"
+          onConfirm={() => handleRebuildDecision(true)}
+          onCancel={() => handleRebuildDecision(false)}
         />
       )}
       <ToastStack
