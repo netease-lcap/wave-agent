@@ -22,6 +22,7 @@ vi.mock("@/utils/fileUtils.js", () => ({
   getLastLine: vi.fn(),
   readFirstLine: vi.fn(),
   readFirstNLines: vi.fn(),
+  readTailLines: vi.fn(),
 }));
 
 describe("JsonlHandler.append()", () => {
@@ -1586,6 +1587,71 @@ describe("JsonlHandler filename utilities", () => {
         expect(mainCount).toBe(2);
         expect(subagentCount).toBe(2);
       });
+    });
+  });
+
+  describe("getLatestTotalTokens", () => {
+    const tailMessage = (
+      role: "user" | "assistant",
+      extra: Record<string, unknown> = {},
+    ) =>
+      JSON.stringify({
+        id: generateMessageId(),
+        role,
+        blocks: [{ type: "text", content: "hi" }],
+        timestamp: "2026-09-01T00:00:00.000Z",
+        ...extra,
+      });
+
+    it("returns the newest usage-bearing total, skipping trailing meta messages", async () => {
+      const { readTailLines } = await import("@/utils/fileUtils.js");
+      // Transcript tail after a resume: real usage, then SessionStart hook
+      // meta messages that carry none. Reading only the last line reports 0.
+      vi.mocked(readTailLines).mockResolvedValue([
+        tailMessage("assistant", {
+          usage: {
+            prompt_tokens: 58473,
+            completion_tokens: 615,
+            total_tokens: 59088,
+          },
+        }),
+        tailMessage("user", { isMeta: true }),
+      ]);
+
+      const total = await handler.getLatestTotalTokens("/test/session.jsonl");
+
+      expect(total).toBe(59088);
+    });
+
+    it("returns 0 when no message in the tail carries usage", async () => {
+      const { readTailLines } = await import("@/utils/fileUtils.js");
+      vi.mocked(readTailLines).mockResolvedValue([
+        tailMessage("user"),
+        tailMessage("user", { isMeta: true }),
+      ]);
+
+      const total = await handler.getLatestTotalTokens("/test/session.jsonl");
+
+      expect(total).toBe(0);
+    });
+
+    it("skips the metadata header and tolerates a partial first line", async () => {
+      const { readTailLines } = await import("@/utils/fileUtils.js");
+      vi.mocked(readTailLines).mockResolvedValue([
+        '{"truncated":', // window began mid-line: not parseable
+        JSON.stringify({ type: "metadata", workdir: "/home/u/repo" }),
+        tailMessage("assistant", {
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 2,
+            total_tokens: 12,
+          },
+        }),
+      ]);
+
+      const total = await handler.getLatestTotalTokens("/test/session.jsonl");
+
+      expect(total).toBe(12);
     });
   });
 });

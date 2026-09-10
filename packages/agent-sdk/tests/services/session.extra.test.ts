@@ -47,7 +47,7 @@ vi.mock("../../src/utils/fileUtils.js", () => ({
 }));
 
 // JsonlHandler reads via fs/promises, which the fs mock above doesn't cover.
-// Override only getLastMessage/read on real instances so
+// Override only getLastMessage/getLatestTotalTokens/read on real instances so
 // cleanupMetaOnlySessions' decision logic can be tested in isolation.
 vi.mock("../../src/services/jsonlHandler.js", async (importOriginal) => {
   const actual = (await importOriginal()) as {
@@ -62,6 +62,7 @@ vi.mock("../../src/services/jsonlHandler.js", async (importOriginal) => {
     JsonlHandler: vi.fn().mockImplementation(function () {
       const instance = new actual.JsonlHandler();
       instance.getLastMessage = mockGetLastMessage;
+      instance.getLatestTotalTokens = async () => 0;
       instance.read = mockJsonlRead;
       return instance;
     }),

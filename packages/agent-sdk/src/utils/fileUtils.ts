@@ -155,6 +155,46 @@ export async function getLastLine(
 }
 
 /**
+ * Read up to `maxBytes` from the end of a file and return the lines it holds,
+ * oldest first. The window may start in the middle of a line, in which case
+ * that partial first line is dropped so every returned line is complete —
+ * callers parse them as JSON.
+ *
+ * @param {string} filePath - The path to the file.
+ * @param {number} maxBytes - Size of the tail window (default 64KB).
+ * @return {Promise<string[]>} - Trailing non-empty lines, or [] if unreadable.
+ */
+export async function readTailLines(
+  filePath: string,
+  maxBytes = 64 * 1024,
+): Promise<string[]> {
+  let fileHandle;
+  try {
+    const stats = await fs.stat(filePath);
+    const fileSize = stats.size;
+    if (fileSize === 0) return [];
+
+    const readSize = Math.min(maxBytes, fileSize);
+    const start = fileSize - readSize;
+
+    fileHandle = await fs.open(filePath, "r");
+    const buffer = Buffer.alloc(readSize);
+    const { bytesRead } = await fileHandle.read(buffer, 0, readSize, start);
+
+    const lines = buffer.subarray(0, bytesRead).toString("utf8").split("\n");
+    if (start > 0) lines.shift(); // partial line (window began mid-line)
+    return lines.map((line) => line.trim()).filter((line) => line !== "");
+  } catch {
+    // Unreadable file (missing, permissions, race with deletion): no tail.
+    return [];
+  } finally {
+    if (fileHandle) {
+      await fileHandle.close();
+    }
+  }
+}
+
+/**
  * Simple Levenshtein distance implementation
  */
 function levenshtein(a: string, b: string): number {

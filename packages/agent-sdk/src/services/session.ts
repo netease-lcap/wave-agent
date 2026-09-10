@@ -481,9 +481,9 @@ export async function listSessionsFromJsonl(
             ? new Date(header.createdAt)
             : new Date(),
           lastActiveAt,
-          latestTotalTokens: lastMessage?.usage
-            ? extractLatestTotalTokens([lastMessage])
-            : 0,
+          // Scans the file tail: a resumed session's last line is a usage-less
+          // hook message, so the line alone would report 0 tokens here.
+          latestTotalTokens: await jsonlHandler.getLatestTotalTokens(filePath),
           branch: header?.gitBranch,
         };
 
@@ -688,9 +688,10 @@ export async function listAllSessions(options?: {
                 ? new Date(header.createdAt)
                 : new Date(),
               lastActiveAt,
-              latestTotalTokens: lastMessage?.usage
-                ? extractLatestTotalTokens([lastMessage])
-                : 0,
+              // Scans the file tail: a resumed session's last line is a
+              // usage-less hook message, so the line alone would report 0.
+              latestTotalTokens:
+                await jsonlHandler.getLatestTotalTokens(filePath),
               firstMessage,
               branch: header?.gitBranch,
             });
