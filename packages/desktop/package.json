@@ -22,6 +22,7 @@
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run",
     "test:unit:coverage": "vitest run --coverage",
+    "test:realhost": "vitest run --config vitest.integration.config.ts",
     "lint": "oxlint",
     "format": "prettier --write ."
   },
