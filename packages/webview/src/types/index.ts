@@ -423,22 +423,38 @@ export interface ThemeState {
  *  desktop 有 UI)。stable = codechat 正式下载 feed，beta = desktop-beta feed。 */
 export type UpdateChannel = "stable" | "beta";
 
-/** Action a toast's button triggers when clicked (host-side semantics).
- *  (更新下载/重启已由账户卡片 S0–S6 按钮状态机接管，toast 不再承载
- *  quit-and-install 动作。) */
-export type ToastAction =
-  | { type: "openDownloadPage"; url: string }
-  | { type: "focusSession"; host: string; sessionId: string };
+/** Action a toast's button triggers when clicked (host-side semantics). Only
+ *  一种语义：「聚焦后台会话」（后台会话确认 toast 的「查看」按钮）。更新下载/重启
+ *  早已由账户卡片 S0–S6 按钮状态机接管，未登录 GitHub 下载页的 toast 也随
+ *  updateChecker 一并删除（2026-09-09/2026-09-10 拍板），故动作变体只剩这一种。 */
+export type ToastAction = {
+  type: "focusSession";
+  host: string;
+  sessionId: string;
+};
 
-/** Toast 语义类型：宿主按反馈语义标注（spec「设置页反馈语义」+ codechat 契约
- *  color-* / color-*-soft：成功/错误/信息配 soft 底 + 同色 icon/text，不只靠色）。
- *  缺省（旧宿主/未标注）= "info"。 */
+/** Toast 语义类型（与 packages/webview-fixtures/src/types.ts 同步）：**只有设置页
+ *  结果型提示标注**（spec desktop-account-and-settings「设置页反馈语义」，
+ *  2026-09-10 设计师拍板）——成功/失败/信息配 soft 底 + 同色 icon/text（不只靠色）。
+ *  **缺省（其余应用级提示）= 中性**：默认底色、不渲染语义图标（缺省不得回退为
+ *  某个彩色语义）。 */
 export type ToastKind = "success" | "info" | "error";
 
-/** A non-modal in-app toast (top-center toast bar, desktop host only). */
+/** Toast 显示位置（与 packages/webview-fixtures/src/types.ts 同步）——由宿主**显式**
+ *  声明这条提示显示在哪个位置；不以「是否带 action」隐式推断（将来可能有带按钮
+ *  的应用级 toast）：
+ *  - `"top"`（缺省）：应用级全局提示 → 桌面端顶部居中 toast 条（锚定内容列、
+ *    语义图标、落下动效）；
+ *  - `"bottomRight"`：后台会话确认提示（「会话「…」需要确认」，带「查看」按钮）→
+ *    **保持改动前的右下角 VS Code 风格通知形态，不并入顶部新形态**。 */
+export type ToastPosition = "top" | "bottomRight";
+
+/** A non-modal in-app toast (desktop host only). position "top"（缺省）渲染为顶部
+ *  居中 toast 条；"bottomRight" 渲染为右下角通知栈；两栈可同屏共存。 */
 export interface UpdateToast {
   id: string;
   message: string;
+  position?: ToastPosition;
   type?: ToastKind;
   actionLabel?: string;
   action?: ToastAction;

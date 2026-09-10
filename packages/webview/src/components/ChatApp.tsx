@@ -1589,7 +1589,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         toastId: toast.id,
         action: toast.action,
       });
-      // 动作语义在宿主（打开下载页/聚焦会话等）——回传后即关闭 toast。
+      // 动作语义在宿主（聚焦后台会话）——回传后即关闭 toast。
       setToasts((prev) => prev.filter((t) => t.id !== toast.id));
     },
     [postToHost],

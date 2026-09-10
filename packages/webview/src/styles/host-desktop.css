@@ -2463,20 +2463,24 @@
   font-weight: var(--cc-font-weight-regular, 400);
 }
 
-/* ═══ 0909 第 4 轮：toast 顶部居中 codex 形制 + 语义三色 ═══
+/* ═══ 0909 第 4/5 轮：应用级 toast 顶部居中 codex 形制 + 语义三色 ═══
    用户走查：设置页保存成功 toast 参考 codex 样式（顶部居中、描边圆勾图标 +
    文字 + 关闭、soft 彩底 + 同色文字），颜色绑语义层变量不写死。
-   语义三色走 skill 契约「color-* fg + color-*-soft bg + icon/text 并存」：
-     success → --cc-color-success(+soft)、error → --cc-color-danger(+soft)、
-     info → --cc-color-info(+soft)；缺省 type 视为 info。
+   **两栈分流（2026-09-10 拍板）**：ToastStack 按宿主声明的 `position` 渲染两个
+   栈——本段只覆盖 `.toast-stack--top`（应用级全局提示，顶部居中新形态）；
+   后台会话确认 toast 走 `.toast-stack--bottomRight`，**完全落回 base
+   ToastStack.css 的右下角 VS Code 通知形态**（深底浅字、toast-slide-in），
+   此处不得触碰该栈的选择器。
+   语义色**只有设置页结果型提示**标注：success → --cc-color-success(+soft)、
+   error → --cc-color-danger(+soft)、info → --cc-color-info(+soft)；**缺省
+   （无 type）= 中性**——不套语义类、不渲染图标，用默认浮层底色 + 常规前景
+   （缺省不得回退为某个彩色语义）。
    深色值取 feat/approved-dark-theme-contract（build_desktop_dark.py 值）。
-   base .toast-stack 保持 VS Code 右下通知样供非桌面宿主（永不 push
-   showToast，inert）；本段为 [data-host="desktop"] 全量桌面化覆盖。
-   定位：水平居中整栈交给 .toast-stack 自身 translateX(-50%)（left 可由
-   ToastStack 以 anchorSelector 计算的内联值覆盖 → 锚到右侧界面/内容列中心，
-   见 0909 第 4 轮续轮）；单条动效只做垂直下落（子元素不得再含 X 位移，否则
-   每条自身被横移半宽造成栈内错位）。 */
-[data-host="desktop"] .toast-stack {
+   定位：水平居中整栈交给 .toast-stack--top 自身 translateX(-50%)（left 可由
+   ToastStack 以 anchorSelector 计算的内联值覆盖 → 锚到右侧界面/内容列中心）；
+   单条动效只做垂直下落（子元素不得再含 X 位移，否则每条自身被横移半宽造成
+   栈内错位）。 */
+[data-host="desktop"] .toast-stack--top {
   position: fixed;
   top: 12px;
   right: auto;
@@ -2504,7 +2508,7 @@
   }
 }
 
-[data-host="desktop"] .toast {
+[data-host="desktop"] .toast-stack--top .toast {
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -2512,49 +2516,52 @@
   max-width: min(460px, calc(100vw - 24px));
   padding: 9px 8px 9px 12px;
   border-radius: 10px;
-  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  /* 中性默认面（无 type 时）：默认浮层底 + 常规前景，不给任何彩色语义 */
+  color: var(--vscode-foreground);
+  background: var(--vscode-menu-background);
+  border: 1px solid var(--vscode-widget-border);
   font-size: 14px;
   line-height: 1.45;
   box-shadow: 0 2px 8px rgb(0 0 0 / 6%);
   animation: toast-drop-in 0.18s ease-out;
 }
 
-[data-host="desktop"] .toast--success {
+/* 语义色只覆盖设置了 type 的结果型提示（描边随 currentColor） */
+[data-host="desktop"] .toast-stack--top .toast--success {
   color: var(--cc-color-success);
   background: var(--cc-color-success-soft);
+  border-color: color-mix(in srgb, currentColor 20%, transparent);
 }
-[data-host="desktop"] .toast--error {
+[data-host="desktop"] .toast-stack--top .toast--error {
   color: var(--cc-color-danger);
   background: var(--cc-color-danger-soft);
+  border-color: color-mix(in srgb, currentColor 20%, transparent);
 }
-[data-host="desktop"] .toast--info {
+[data-host="desktop"] .toast-stack--top .toast--info {
   color: var(--cc-color-info);
   background: var(--cc-color-info-soft);
+  border-color: color-mix(in srgb, currentColor 20%, transparent);
 }
 
-[data-host="desktop"] .toast-kind-icon {
+[data-host="desktop"] .toast-stack--top .toast-kind-icon {
   flex-shrink: 0;
 }
 
 /* 关闭钮与语义图标同色同浓度（用户 0909 走查：深浅模式下 × 应与勾/圆图标
-   颜色一致，勿淡显；hover 仅加深背景、色不变）。盖过上方 0908 全局图标
-   #565a60 规则 —— 本段居文件尾同 specificity 后写生效） */
-[data-host="desktop"] .toast-close {
+   颜色一致，勿淡显；hover 仅加深背景、色不变）。只作用于顶部栈——盖过上方
+   0908 全局图标 #565a60 规则（右下角确认栈保持既有灰值不变） */
+[data-host="desktop"] .toast-stack--top .toast-close,
+[data-host="desktop"][data-theme="dark"] .toast-stack--top .toast-close {
   color: inherit;
   opacity: 1;
 }
-[data-host="desktop"][data-theme="dark"] .toast-close {
-  color: inherit;
-  opacity: 1;
-}
-[data-host="desktop"] .toast-close:hover {
+[data-host="desktop"] .toast-stack--top .toast-close:hover,
+[data-host="desktop"][data-theme="dark"] .toast-stack--top .toast-close:hover {
   background: color-mix(in srgb, currentColor 14%, transparent);
 }
-[data-host="desktop"][data-theme="dark"] .toast-close:hover {
-  background: color-mix(in srgb, currentColor 14%, transparent);
-}
-[data-host="desktop"] .toast-message {
+[data-host="desktop"] .toast-stack--top .toast-message {
   flex: 0 1 auto;
   min-width: 0;
   word-break: break-word;
 }
+

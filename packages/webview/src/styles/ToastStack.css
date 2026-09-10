@@ -1,5 +1,9 @@
-/* VS Code-style non-modal toast stack, bottom-right. Desktop host only (update
- * announcements); VSCE/JetBrains never push showToast so this stays inert. */
+/* VS Code-style non-modal toast stack, bottom-right. This is the **base** form,
+ * kept unchanged: 2026-09-10 拍板后它承载后台会话确认 toast（position
+ * "bottomRight"，深底浅字 + toast-slide-in，无语义图标）。应用级全局 toast
+ * （position "top"，缺省）的顶部居中新形态在 host-desktop.css 的
+ * `[data-host="desktop"] .toast-stack--top` 段。VSCE/JetBrains never push
+ * showToast so this stays inert there. */
 
 .toast-stack {
   position: fixed;
