@@ -164,6 +164,165 @@ const tableCellClass = (cellHtml: string): string | null => {
   return null;
 };
 
+// 表格对齐（用户 2026-09-10 规则）。base Message.css 没有给 th 设 text-align，
+// 浏览器 UA 的 `th { text-align: center }` 生效，于是「表头居中、正文左对齐」，
+// 同一列两种对齐。桌面端统一为：未声明对齐时表头与正文一致左对齐；Markdown 显式
+// 声明的左/中/右原样保留（marked 输出 align 属性，本层不覆盖）。
+// 列级分类只解决「该不该右对齐」：数值比较列右对齐，判据必须是「列头表明这是一个
+// 可比较的量」且「整列单元格都是数值」——不看单个单元格、不按列序猜、没有明确列类型
+// 时保持左对齐（避免编号 / 版本 / 电话 / 日期因为含数字被误判）。
+const TABLE_ALIGN_RIGHT_KEYWORDS = [
+  "数量",
+  "个数",
+  "次数",
+  "条数",
+  "笔数",
+  "件数",
+  "人数",
+  "行数",
+  "字数",
+  "用例数",
+  "问题数",
+  "报错数",
+  "请求数",
+  "命中数",
+  "耗时",
+  "时长",
+  "用时",
+  "响应时间",
+  "平均时间",
+  "内存",
+  "体积",
+  "大小",
+  "字节",
+  "金额",
+  "价格",
+  "单价",
+  "总价",
+  "成本",
+  "费用",
+  "预算",
+  "收入",
+  "占比",
+  "比例",
+  "百分比",
+  "百分率",
+  "覆盖率",
+  "通过率",
+  "失败率",
+  "成功率",
+  "增长率",
+  "降幅",
+  "增幅",
+];
+// 标识类列头：单元格全是数字也只作字符对待（编号 / 版本 / 电话 / 日期 / 时间戳…）
+const TABLE_ALIGN_ID_KEYWORDS = [
+  "编号",
+  "序号",
+  "号",
+  "ID",
+  "id",
+  "版本",
+  "ver",
+  "电话",
+  "手机",
+  "传真",
+  "日期",
+  "时间",
+  "date",
+  "time",
+  "邮箱",
+  "mail",
+  "端口",
+  "卡号",
+  "邮编",
+  "身份证",
+];
+const TABLE_ALIGN_ACTION_HEADER_RE = /^(操作|动作|actions?)$/i;
+const TABLE_ALIGN_ACTION_CELL_MAX = 6;
+// 可比较数值：允许千分位、小数、正负号、比较符、货币前缀与常见单位后缀
+const TABLE_ALIGN_NUMERIC_RE =
+  /^[+-]?\s*[~≈≤≥<>]?\s*[¥$€£]?\s*\d+(?:[,\s]\d{3})*(?:\.\d+)?\s*(?:%|‰|px|ms|s|min|h|d|kb|mb|gb|tb|b|k|w|次|个|条|件|人|行|字|元|万元|天|小时|分钟|秒|毫秒|倍)?$/i;
+const TABLE_ALIGN_MISSING_RE = /^(|-|–|—|n\/a|na|待定|暂无|未知|\?)$/i;
+const TABLE_ALIGN_ICON_RE =
+  /^[\p{Extended_Pictographic}\p{Emoji_Component}\p{Emoji_Modifier}\uFE0F\u200D]+$/u;
+const TABLE_ROW_HTML_RE = /<tr>[\s\S]*?<\/tr>/g;
+const TABLE_CELL_HTML_RE = /<(th|td)([^>]*)>([\s\S]*?)<\/\1>/g;
+
+const stripCellHtml = (cellHtml: string): string =>
+  cellHtml
+    .replace(/<[^>]*>/g, "")
+    .replace(/&(?:amp|lt|gt|quot|#39|nbsp);/g, (m) => HTML_ENTITY_MAP[m] ?? m)
+    .trim();
+
+const isIconCell = (text: string): boolean =>
+  [...text].length <= 4 && TABLE_ALIGN_ICON_RE.test(text);
+
+// 列级判定：返回需要应用的桌面端对齐类，null = 保持默认左对齐
+const tableColumnAlignClass = (
+  headerText: string,
+  bodyTexts: string[],
+): string | null => {
+  const header = headerText.replace(/\s+/g, "");
+  const values = bodyTexts.filter((v) => !TABLE_ALIGN_MISSING_RE.test(v));
+  if (!values.length) return null;
+  if (
+    TABLE_ALIGN_RIGHT_KEYWORDS.some((k) => header.includes(k)) &&
+    values.every((v) => TABLE_ALIGN_NUMERIC_RE.test(v))
+  ) {
+    return "md-cell-right";
+  }
+  if (TABLE_ALIGN_ID_KEYWORDS.some((k) => header.includes(k))) return null;
+  // 纯图标列（✅ / ⚠️ / ❌ …）居中；文字状态列不居中
+  if (values.every(isIconCell)) return "md-cell-center";
+  // 独立操作列（列头就是「操作」且整列都是短动作词）居中
+  if (
+    TABLE_ALIGN_ACTION_HEADER_RE.test(header) &&
+    values.every(
+      (v) => !/\s/.test(v) && v.length <= TABLE_ALIGN_ACTION_CELL_MAX,
+    )
+  ) {
+    return "md-cell-center";
+  }
+  return null;
+};
+
+// 把列级对齐类按列序注入每个单元格标签；单元格已有 align 属性（Markdown 显式声明）
+// 时跳过，交由 CSS 的 `[align=…]` 规则处理，实现层不覆盖内容层。
+const applyTableColumnAlign = (tableHtml: string): string => {
+  const rows = tableHtml.match(TABLE_ROW_HTML_RE);
+  if (!rows || rows.length < 2) return tableHtml;
+  const parsed = rows.map((rowHtml) =>
+    [...rowHtml.matchAll(TABLE_CELL_HTML_RE)].map((m) => ({
+      attrs: m[2],
+      text: stripCellHtml(m[3]),
+    })),
+  );
+  const header = parsed[0];
+  if (!header.length) return tableHtml;
+  const bodyRows = parsed.slice(1);
+  const colClasses = header.map((cell, i) =>
+    tableColumnAlignClass(
+      cell.text,
+      bodyRows.map((row) => row[i]?.text ?? ""),
+    ),
+  );
+  if (!colClasses.some(Boolean)) return tableHtml;
+  return tableHtml.replace(TABLE_ROW_HTML_RE, (rowHtml) => {
+    let colIndex = 0;
+    return rowHtml.replace(
+      /<(th|td)([^>]*)>/g,
+      (tagHtml: string, tag: string, attrs: string) => {
+        const cls = colClasses[colIndex++] ?? null;
+        if (!cls || attrs.includes("align=")) return tagHtml;
+        return attrs.includes('class="')
+          ? `<${tag}${attrs.replace(/class="([^"]*)"/, `class="$1 ${cls}"`)}>`
+          : `<${tag} class="${cls}"${attrs}>`;
+      },
+    );
+  });
+};
+
 const createMessageMarkdownRenderer = (workdir?: string) => {
   const renderer = new marked.Renderer();
   renderer.listitem = renderTaskListitem;
@@ -175,9 +334,12 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
   // this，转调默认实现可保证 thead/tbody/对齐渲染逐字节一致。
   // tabindex（V-01 验收 4 / WCAG 2.1.1）：横向滚动是宽表的兜底路径，键盘用户
   // 需能聚焦该区域后用方向键滚看被裁掉的列；与 F-10 给 code pre 的处理同源。
+  // 默认渲染结果再过一遍列级对齐（见 applyTableColumnAlign）。
   const defaultTable = marked.Renderer.prototype.table;
   renderer.table = (header: string, body: string) =>
-    `<div class="md-table-scroll" tabindex="0">${defaultTable.call(renderer, header, body)}</div>`;
+    `<div class="md-table-scroll" tabindex="0">${applyTableColumnAlign(
+      defaultTable.call(renderer, header, body),
+    )}</div>`;
   // 单元格列宽判定（V-01，用户 2026-09-10「按内容分配列宽，优先自然换行，横向
   // 滚动只作兜底」）：只依据单元格纯文本判定，不看列序/表结构/具体内容，故对任意
   // 表格可复用，不会变成按某张表硬编码。

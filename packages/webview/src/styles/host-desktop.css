@@ -1155,6 +1155,41 @@
   overflow-wrap: break-word;
 }
 
+/* ═══ F-17：表格对齐（用户 2026-09-10 规则）═══
+   ① 未声明对齐时表头与正文一致左对齐。base Message.css 没有给 th 设 text-align，
+   浏览器 UA 的 `th { text-align: center }` 生效 → 「表头居中、正文左对齐」，同一列
+   两种对齐；本层只改渲染默认值，不改内容。
+   ② Markdown 显式声明的左/中/右原样保留（marked 输出 align 属性），不全局覆盖。
+   ③ 数值比较列（数量 / 金额 / 百分比 / 耗时…）右对齐，由 Message.tsx 的列级判定
+   注入 .md-cell-right —— 判据为「列头表明是可比较的量」且「整列单元格都是数值」，
+   编号 / 版本 / 电话 / 日期不因含数字右对齐，也不根据单个单元格猜整列类型。
+   ④ 纯图标列与独立操作列居中（.md-cell-center），文字状态列保持左对齐。
+   ⑤ 多行单元格顶部对齐：base 实测 vertical-align: middle，长说明与短词同行时文字
+   被垂直居中，与「顶部对齐」不符。
+   选择器统一带 table 一级，specificity 0,3,2（对 base 的 0,2,1）稳定压过 base 的
+   `th[align=…]`，不依赖打包顺序；字号 / 列宽 / 换行 / 滚动策略均不在此改动。 */
+[data-host="desktop"] .markdown-content table th,
+[data-host="desktop"] .markdown-content table td {
+  text-align: left;
+  vertical-align: top;
+}
+[data-host="desktop"] .markdown-content table th[align="left"],
+[data-host="desktop"] .markdown-content table td[align="left"] {
+  text-align: left;
+}
+[data-host="desktop"] .markdown-content table th[align="center"],
+[data-host="desktop"] .markdown-content table td[align="center"],
+[data-host="desktop"] .markdown-content table th.md-cell-center,
+[data-host="desktop"] .markdown-content table td.md-cell-center {
+  text-align: center;
+}
+[data-host="desktop"] .markdown-content table th[align="right"],
+[data-host="desktop"] .markdown-content table td[align="right"],
+[data-host="desktop"] .markdown-content table th.md-cell-right,
+[data-host="desktop"] .markdown-content table td.md-cell-right {
+  text-align: right;
+}
+
 /* ① 用户消息气泡内滚动条贴右缘：base .user-text-block 的 padding 12px 让
    内部 .user-content（max-height 200px + overflow-y auto）的滚动条缩进气泡
    右缘 12px，与消息容器等滚动条「贴右缘」规范不一致 → padding 移到内容区，
