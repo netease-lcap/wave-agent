@@ -491,6 +491,19 @@ export interface ConfigurationUpdatedMessage extends HostToWebviewMessageBase {
   command: "configurationUpdated";
 }
 
+/**
+ * 重建确认框（桌面端专属，spec「配置变更的构造期副作用与重建」场景 4）：
+ * 插件装卸等构造期副作用已落盘、且存在受影响的 live 会话时推送，让用户选择
+ * 生效时机——`total` = 将重启的会话数（N），`busy` = 其中正在执行任务、
+ * 即便「立即重启」也暂不重启的数（M）。webview 弹两按钮确认框（立即重启 /
+ * 稍后重启，`Esc` 等同稍后重启，无「取消」）并回 `desktopRebuildDecision`。
+ */
+export interface DesktopRebuildPromptMessage extends HostToWebviewMessageBase {
+  command: "desktopRebuildPrompt";
+  total: number;
+  busy: number;
+}
+
 export interface StatusResponseMessage extends HostToWebviewMessageBase {
   command: "statusResponse";
   configurationData?: ConfigurationData;
@@ -874,6 +887,7 @@ export type HostToWebviewMessage =
   | DesktopTogglePanelMessage
   | ShowDialogMessage
   | ConfigurationUpdatedMessage
+  | DesktopRebuildPromptMessage
   | StatusResponseMessage
   | ConfigurationErrorMessage
   | FocusInputMessage
