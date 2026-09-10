@@ -123,7 +123,7 @@ order: 10
 
 **为什么是这个优先级**：应用更新是修复与功能到达用户的唯一通道；现状仅「提示 + 给下载 URL」，用户不主动访问下载页就拿不到修复。macOS 签名 + 公证已就绪（ed2d9bf7 + 6f00c44a），自动更新链路可以端到端闭环。企业版用户登录后 serverUrl 已知，更新源（codechat 的 file-center 更新元数据）运行时注入，构建期不写死。**交互承载已裁决（2026-09-03）**：删除 toast 自动下载/重启提醒链路，由账户卡片「更新按钮状态机 S0–S6」（见 [desktop-account-and-settings.md](./desktop-account-and-settings.md)「账户卡片 · 更新按钮状态机 S0–S6」故事）全权接管——检测发现新版本只把状态推为 idle（卡片出现「更新」按钮），下载须经用户在 S2 确认框确认，下载完成自动弹 S4 重启确认。本故事仅约束**更新源 / 分发 / 降级边界**，按钮文案、对话框步骤与状态流转语义不在此重复。
 
-**独立测试**：登录后触发检查，验证「发现更新（S1）→ S2 确认下载（S3 下载中禁用）→ 就绪自动弹重启确认（S4）→ 立即重启（S6 复位 + quitAndInstall）」全流程（按钮语义按 [desktop-account-and-settings.md](./desktop-account-and-settings.md)「账户卡片 · 更新按钮状态机 S0–S6」故事断言）；无 serverUrl 时验证不触发任何更新检查（启动自动检查静默、手动检查提示登录）；下载失败时验证按钮恢复「更新」可重试（不弹手动下载页 toast）；更新端点故障时验证手动检查给「检查更新失败」提示、启动自动检查静默。
+**独立测试**：登录后触发检查，验证「发现更新（S1）→ S2 确认下载（S3 下载中禁用）→ 就绪自动弹重启确认（S4）→ 立即重启（S6 复位 + quitAndInstall）」全流程（按钮语义按 [desktop-account-and-settings.md](./desktop-account-and-settings.md)「账户卡片 · 更新按钮状态机 S0–S6」故事断言）；无 serverUrl 时验证不触发任何更新检查（启动自动检查静默、手动检查提示登录）；下载失败时验证按钮恢复「更新」可重试（不弹手动下载页 toast）；更新端点故障时验证手动检查给「检查更新失败」提示、自动检查（启动与轮询）静默；应用持续运行跨过一个轮询间隔时验证按间隔再次自动触发检查（自动、静默），且不自动下载。
 
 **验收场景**：
 
@@ -131,12 +131,13 @@ order: 10
 2. **假设**用户未登录（无 serverUrl），**当**应用触发更新检查，**则** updateChannel 不生效，且不得执行任何更新检查：不得启动 electron-updater、不得查询 GitHub Releases（2026-09-09 拍板：未登录不查更新——曾有的 GitHub 回退手动提示链路与 checkForUpdate/updateChecker 代码一并删除），启动自动检查保持静默、手动检查提示「登录后可检查更新」；本地会话与其它功能不受影响。应用内 toast 基建（非模态，模仿 VS Code）保留，仅用于信息提示（登录引导、下载完成等），不再承载任何更新发现/下载/重启提醒。
 3. **假设**已登录企业版且检查发现新版本，**当**收到 update-available 事件，**则**不得自动开始后台下载，必须把更新状态置为 idle 并随 `desktopAccountInfo` 推送——账户卡片个人信息行右侧出现「更新」按钮（S1）；是否下载由用户在 S2 确认框决定（2026-09-03 裁决：账户卡片不提供更新 toast，toast 自动下载链路已删除）。
 4. **假设**用户在 S2 确认下载，**当** webview 下发 `desktopUpdateDownload` 命令，**则**宿主必须先把更新状态置为 downloading 并推送（卡片按钮转「正在下载更新…」并禁用，防重复下载，S3），再调用 electron-updater 开始后台下载；**当**下载完成收到 update-downloaded 事件，**则**必须把状态置为 ready 并推送（S4）——webview 据此自动弹出「重启应用」确认框（仅一次），选「稍后」后按钮转常驻「重启」（S5）。
-5. **假设**更新服务故障（端点不可达 / 元数据解析失败 / 下载失败 / downloadUpdate 抛错），**当**下载失败且状态为 downloading，**则**必须把状态回退为 idle 并推送——卡片按钮恢复「更新」，用户可重新走 S2 重试（见 [desktop-account-and-settings.md](./desktop-account-and-settings.md)「账户卡片 · 更新按钮状态机 S0–S6」场景 8），不得静默失败也不得弹手动下载页 toast；**当**失败发生在已就绪（ready）之后的安装阶段，**则**不得把状态降级（重启时机由用户决定，避免把已就绪更新重置回可下载造成重复下载），仅记录日志；**当**失败发生在尚未发现更新的检查阶段，**则**启动自动检查静默、手动检查给出「检查更新失败，请稍后重试」提示。
+5. **假设**更新服务故障（端点不可达 / 元数据解析失败 / 下载失败 / downloadUpdate 抛错），**当**下载失败且状态为 downloading，**则**必须把状态回退为 idle 并推送——卡片按钮恢复「更新」，用户可重新走 S2 重试（见 [desktop-account-and-settings.md](./desktop-account-and-settings.md)「账户卡片 · 更新按钮状态机 S0–S6」场景 8），不得静默失败也不得弹手动下载页 toast；**当**失败发生在已就绪（ready）之后的安装阶段，**则**不得把状态降级（重启时机由用户决定，避免把已就绪更新重置回可下载造成重复下载），仅记录日志；**当**失败发生在尚未发现更新的检查阶段，**则**自动检查（启动与轮询）静默、手动检查给出「检查更新失败，请稍后重试」提示。
 6. **假设**用户触发手动检查（`checkForUpdates` 命令），**当**检查执行，**则**必须复用本故事场景 1-5 链路：已登录走 electron-updater（按当前 updateChannel 对应 feed 查询；无更新时 toast 提示按 updateChannel 区分，stable 见「接收 Beta 版更新」场景 5、beta 提示「当前已是最新版本」）；未登录按场景 2 不执行检查，toast 提示「登录后可检查更新」。
 7. **假设**已登录企业版且 electron-updater 返回更新信息，**当**更新下载执行，**则**必须使用更新元数据中的真实文件入口下载安装包，不得指向 manifest.json / feed 目录自身。
 8. **假设** macOS 上应用运行于不可写位置（如非 /Applications），**当** S6 重启安装无法原地完成，**则**安装失败经 electron-updater error 事件上报，宿主按场景 5 处理（ready 态错误不降级、记录日志），用户仍可稍后再次执行重启安装或经手动渠道获取安装包，不得自动弹窗打断当前工作。
 9. **假设**构建安装包（mac/win），**当**electron-builder 打包完成，**则**产物 `resources/app-update.yml` 必须存在（afterPack 写入 `updaterCacheDirName`）——electron-updater 下载前会读取该文件（`configOnDisk`），缺失时下载阶段抛 ENOENT 并降级为下载页提示（修复：构建未声明 publish 配置时 electron-builder 不生成该文件）。
 10. **假设**用户在 S4 确认框选「立即重启」或点击 S5「重启」按钮，**当** webview 下发 `desktopUpdateRestart` 命令，**则**宿主必须立即复位更新状态并推送（按钮消失，S6）后调用 quitAndInstall 退出并安装新版本（Windows 静默安装 + `--force-run` 装完自动重启，不再弹二次确认对话框）。重启安装前应用即将退出，无需任何 toast/加载态反馈——按钮消失即反馈（toast 加载链路已随 2026-09-03 裁决删除）。
+11. **假设**应用已登录企业版且持续运行（不退出、不重启），**当**运行期跨过固定的检查间隔（首版 1 小时），**则**宿主必须再次自动触发更新检查（非手动，与启动自动检查同一路径：按当前 updateChannel 查对应 feed，见场景 1；未登录按场景 2 不执行检查，静默）；该轮询只负责「查」，仍必须遵守场景 3 的约束不得自动开始后台下载、不得自动安装——发现新版本只把更新状态置 idle 并随 `desktopAccountInfo` 推送（账户卡片出现「更新」按钮，S1），下载与重启由用户走 S2–S6；轮询检查失败按场景 5 静默处理（等同启动自动检查），不影响后续轮询；应用退出（dispose）后必须停止轮询，不得留下悬挂定时器。轮询发现新版本后的表现与手动检查完全一致。
 
 ---
 
@@ -231,6 +232,7 @@ order: 10
 - **desktop-beta feed 依赖 codechat 通道**：beta feed（`/api/downloads/desktop-beta/{mac|win}/`）由 vusion/codechat #33 提供；codechat 侧通道上线前，开启「接收 Beta 版更新」后的检查按自动更新故事场景 5 错误处理（启动静默、手动提示检查失败），不得静默回退 stable feed 或崩溃。
 - **updateChannel 不进共享配置**：「接收 Beta 版更新」开关持久化于桌面 configStore 顶层（userData/wave-desktop.json，theme 先例），不写入 settings.json、不同步到远程 CLI 或账号级配置；默认 stable。
 - **未登录不触发更新检查**：无 serverUrl 时，启动自动检查与手动 `checkForUpdates` 均不得执行更新检查（不查 GitHub Releases、不启动 electron-updater），手动检查 toast 提示「登录后可检查更新」；曾用于未登录回退的 checkForUpdate/updateChecker 链路已删除（2026-09-09 拍板）。
+- **运行期轮询只查不下载**：轮询与启动自动检查一样是「非手动」检查，发现新版本只置 idle（S1），绝不自动下载/安装（`autoDownload=false` 保持）；间隔为固定常量（首版 1 小时），与启动那次的「只跑一次」检查相互独立（轮询不得让它变成两次启动语义）；定时器生命周期随宿主 dispose 结束。
 
 ## 非目标（明确排除）
 

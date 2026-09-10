@@ -205,7 +205,7 @@ planExhausted = used >= planTotal
 
 - `desktopUpdateDownload`（webview → host）：用户确认 S2 后通知宿主开始下载。
 - `desktopUpdateRestart`（webview → host）：用户在 S4/S5 选择立即重启后通知宿主安装并重启。
-- **宿主接线**：webview 侧 S0–S6 状态机调用上述两个命令；宿主（desktopHost.ts）把 electron-updater 事件映射为 `update.status` 随 `desktopAccountInfo` 推送并响应两命令；toast 更新链路不提供（`autoDownload=false`，下载仅在 S2 确认后启动）。降级边界见 [desktop-shell.md](./desktop-shell.md)「桌面端自动更新」故事场景 5。
+- **宿主接线**：webview 侧 S0–S6 状态机调用上述两个命令；宿主（desktopHost.ts）把 electron-updater 事件映射为 `update.status` 随 `desktopAccountInfo` 推送并响应两命令；toast 更新链路不提供（`autoDownload=false`，下载仅在 S2 确认后启动）。触发检查的时机（启动自动 / 手动 / 运行期固定间隔轮询，见 [desktop-shell.md](./desktop-shell.md)「桌面端自动更新」场景 11）不改变状态机语义——任一时机发现新版本都只置 idle（S1）。降级边界见 [desktop-shell.md](./desktop-shell.md)「桌面端自动更新」故事场景 5。
 
 ## 非目标（明确排除）
 

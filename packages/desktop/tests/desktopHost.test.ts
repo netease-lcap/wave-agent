@@ -2520,6 +2520,124 @@ describe("checkForUpdates with a configured serverUrl", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// periodic update polling (spec desktop-shell「桌面端自动更新」场景 11)
+// ---------------------------------------------------------------------------
+
+describe("periodic update polling", () => {
+  const SERVER = "https://codechat.example.com";
+  const POLL_MS = 60 * 60 * 1000;
+  const pollIntervalField = DesktopHost as unknown as {
+    updatePollIntervalMs: number;
+  };
+
+  /** Shrink the poll interval for a test; returns a restore fn for the finally. */
+  function setPollInterval(ms: number): () => void {
+    const original = pollIntervalField.updatePollIntervalMs;
+    pollIntervalField.updatePollIntervalMs = ms;
+    return () => {
+      pollIntervalField.updatePollIntervalMs = original;
+    };
+  }
+
+  // Like readyHost() but the serverUrl is in place BEFORE webviewReady so both
+  // the one-shot startup check and the poll timer take the updater path.
+  async function readyHostWithServerUrl() {
+    const ctx = createHost();
+    ctx.store.addRecentWorkdir({ host: "local", path: "/work/a" });
+    h.existingPaths.add("/work/a");
+    ctx.store.setConfiguration({ serverUrl: SERVER });
+    await ctx.host.handleWebviewMessage({ command: "desktopReady" });
+    await ctx.host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      path: "/work/a",
+    });
+    await ctx.host.handleWebviewMessage({ command: "webviewReady" });
+    return ctx;
+  }
+
+  it("defaults the interval to 1 hour (spec 场景 11 首版取值)", () => {
+    expect(pollIntervalField.updatePollIntervalMs).toBe(POLL_MS);
+  });
+
+  it("re-checks on each interval and stops after dispose", async () => {
+    const restore = setPollInterval(POLL_MS);
+    vi.useFakeTimers();
+    try {
+      const ctx = await readyHostWithServerUrl();
+      // 启动那次「只跑一次」检查已经跑过（与轮询相互独立）。
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(POLL_MS);
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
+
+      vi.advanceTimersByTime(POLL_MS);
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(3);
+
+      // dispose 后轮询停止：不得留下悬挂定时器再触发检查。
+      await ctx.host.dispose();
+      vi.advanceTimersByTime(POLL_MS * 5);
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+      restore();
+    }
+  });
+
+  it("does not fire before the interval elapses and never doubles the startup check", async () => {
+    const restore = setPollInterval(POLL_MS);
+    vi.useFakeTimers();
+    try {
+      await readyHostWithServerUrl();
+      // 启动检查只跑一次（updateCheckTriggered 语义不变），轮询间隔未到不触发。
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(POLL_MS - 1);
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+      restore();
+    }
+  });
+
+  it("a repeat webviewReady does not stack a second poll timer", async () => {
+    const restore = setPollInterval(POLL_MS);
+    vi.useFakeTimers();
+    try {
+      const ctx = await readyHostWithServerUrl();
+      await ctx.host.handleWebviewMessage({ command: "webviewReady" });
+      // 启动检查仍只一次；重复 ready 不得叠加出第二个轮询定时器。
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(POLL_MS);
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+      restore();
+    }
+  });
+
+  it("polling stays silent on a failed check (like the startup check)", async () => {
+    const restore = setPollInterval(POLL_MS);
+    vi.useFakeTimers();
+    try {
+      await readyHostWithServerUrl();
+      vi.mocked(autoUpdater.checkForUpdates).mockRejectedValue(
+        new Error("ECONNREFUSED"),
+      );
+
+      // 异步推进并 flush：轮询触发的检查链路完整跑完。
+      await vi.advanceTimersByTimeAsync(POLL_MS);
+
+      // 非手动检查失败不 toast（场景 5：自动检查静默）。
+      expect(
+        shownToasts().filter((n) => n.message.includes("检查更新失败")),
+      ).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+      restore();
+    }
+  });
+});
+
 describe("account card (desktopAccountInfo)", () => {
   /** getAuthStatus/getAccountInfo/login return rich payloads (email + usage). */
   function stubAccountRpc(
