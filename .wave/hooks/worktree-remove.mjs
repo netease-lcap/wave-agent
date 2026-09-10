@@ -4,8 +4,29 @@
 // worktrees: `git worktree remove --force` + branch delete + prune, with an
 // fs.rmSync fallback for Windows MAX_PATH-limited removals.
 import { spawnSync } from "node:child_process";
-import { readFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
+import {
+  readFileSync,
+  readdirSync,
+  existsSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
+
+/**
+ * Describe what is still on disk after a failed removal: without it a failure
+ * line cannot tell "already gone" apart from "the whole checkout survived".
+ */
+function describeResidue(target) {
+  try {
+    if (!existsSync(target)) return "none";
+    const entries = readdirSync(target);
+    const head = entries.slice(0, 5).join(",");
+    return `${entries.length}[${head}${entries.length > 5 ? ",…" : ""}]`;
+  } catch (error) {
+    return `unknown(${error.code ?? "error"})`;
+  }
+}
 
 // --- Read payload { worktree_path } from stdin -----------------------------
 let payload;
@@ -87,19 +108,31 @@ const name = path.basename(worktreePath);
 const branch = `worktree-${name}`;
 
 // 1. git worktree remove --force (deletes working dir + metadata)
-let removed = existsSync(worktreePath)
+const gitResult = existsSync(worktreePath)
   ? spawnSync("git", ["worktree", "remove", "--force", worktreePath], {
       cwd: repoRoot,
       stdio: "inherit",
-    }).status === 0
-  : true;
+    })
+  : null;
+let removed = gitResult === null || gitResult.status === 0;
+// git's own message goes to stderr via stdio:inherit; without its exit status
+// the log cannot tell a MAX_PATH refusal from a locked directory.
+const gitSummary =
+  gitResult === null
+    ? "skipped(missing)"
+    : `exit=${gitResult.status ?? "null"}` +
+      (gitResult.signal ? ` signal=${gitResult.signal}` : "") +
+      (gitResult.error ? ` error=${gitResult.error.message}` : "");
 
 // 2. fs.rmSync fallback for MAX_PATH-limited removals (git leaves an orphan dir)
+let fsSummary = "skipped";
 if (!removed && existsSync(worktreePath)) {
   try {
     rmSync(worktreePath, { recursive: true, force: true });
     removed = true;
+    fsSummary = "ok";
   } catch (error) {
+    fsSummary = `code=${error.code ?? "?"} syscall=${error.syscall ?? "?"} at=${error.path ?? "?"}`;
     console.error(
       `worktree-remove: fs.rmSync failed for ${worktreePath}: ${error.message}`,
     );
@@ -112,7 +145,8 @@ spawnSync("git", ["branch", "-D", "--", branch], { cwd: repoRoot });
 
 if (!removed) {
   console.error(
-    `worktree-remove: failed to remove worktree at: ${worktreePath}`,
+    `worktree-remove: FAILED name=${name} path=${worktreePath} branch=${branch} ` +
+      `git(${gitSummary}) fs(${fsSummary}) residue=${describeResidue(worktreePath)}`,
   );
   process.exit(1);
 }

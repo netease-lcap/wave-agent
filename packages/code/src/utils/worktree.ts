@@ -323,6 +323,66 @@ function toExtendedLengthPath(worktreePath: string): string {
   return `\\\\?\\${absolute}`;
 }
 
+/** First line of a captured stderr/message, trimmed and length-capped. */
+function firstLine(text: string | undefined, max = 200): string {
+  if (!text) return "";
+  const line = text.trim().split("\n")[0].trim();
+  return line.length > max ? `${line.slice(0, max)}…` : line;
+}
+
+/**
+ * Summarise why `git worktree remove` failed. execFile rejections carry the
+ * exit code and the child's stderr; without them a removal failure is
+ * indistinguishable from a MAX_PATH refusal, a locking process, or a git error.
+ */
+function describeGitFailure(error: unknown): string {
+  const e = error as {
+    code?: number | string;
+    signal?: string;
+    stderr?: string;
+    message?: string;
+  };
+  const parts: string[] = [];
+  if (e.code !== undefined) parts.push(`code=${e.code}`);
+  if (e.signal) parts.push(`signal=${e.signal}`);
+  const stderr = firstLine(e.stderr);
+  if (stderr) parts.push(`stderr=${stderr}`);
+  if (parts.length === 0) parts.push(`message=${firstLine(e.message)}`);
+  return parts.join(" ");
+}
+
+/** Summarise why the `fs.rmSync` fallback failed (code + offending path). */
+function describeFsFailure(error: unknown): string {
+  const e = error as {
+    code?: string;
+    syscall?: string;
+    path?: string;
+    message?: string;
+  };
+  const parts: string[] = [];
+  if (e.code) parts.push(`code=${e.code}`);
+  if (e.syscall) parts.push(`syscall=${e.syscall}`);
+  if (e.path) parts.push(`at=${e.path}`);
+  if (parts.length === 0) parts.push(`message=${firstLine(e.message)}`);
+  return parts.join(" ");
+}
+
+/**
+ * Describe what is still on disk after a failed removal. Without this a
+ * failure log cannot distinguish "directory already gone" from "the whole
+ * checkout is still sitting there".
+ */
+function probeResidue(worktreePath: string): string {
+  try {
+    if (!fs.existsSync(worktreePath)) return "none";
+    const entries = fs.readdirSync(worktreePath) as string[];
+    const head = entries.slice(0, 5).join(",");
+    return `${entries.length}[${head}${entries.length > 5 ? ",…" : ""}]`;
+  } catch (error) {
+    return `unknown(${(error as { code?: string }).code ?? "error"})`;
+  }
+}
+
 /**
  * Remove a git worktree and its associated branch
  * @param session Worktree session details
@@ -386,7 +446,7 @@ export async function removeWorktree(session: WorktreeSession): Promise<void> {
     );
   } catch (error: unknown) {
     logger.warn(
-      "git worktree remove failed, falling back to fs.rmSync:",
+      `git worktree remove failed, falling back to fs.rmSync: ${describeGitFailure(error)}`,
       error,
     );
     try {
@@ -395,7 +455,15 @@ export async function removeWorktree(session: WorktreeSession): Promise<void> {
         force: true,
       });
     } catch (rmError: unknown) {
-      logger.error("Failed to remove worktree or branch:", rmError);
+      // Removal failures are best-effort, so this line is often the only trace
+      // of an orphaned worktree directory: record which stage failed, why, and
+      // whether anything was left behind.
+      logger.error(
+        `Failed to remove worktree or branch: path=${session.path} stage=fs ` +
+          `${describeFsFailure(rmError)} residue=${probeResidue(session.path)} ` +
+          `git(${describeGitFailure(error)})`,
+        rmError,
+      );
     }
     // git removes worktree metadata before the working directory; prune any
     // leftovers in case git failed before deleting them.

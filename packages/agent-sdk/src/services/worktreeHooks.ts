@@ -116,8 +116,13 @@ export async function executeWorktreeRemoveHook(
 
   for (const result of results) {
     if (!result.success) {
+      // The path identifies which worktree survived; exit/timeout/duration tell
+      // apart "the hook failed on its own" from "the hook was killed by the
+      // hook timeout" when failures are aggregated later.
       logger?.error(
-        `WorktreeRemove hook failed [${result.command}]: ${result.stderr || "no output"}`,
+        `WorktreeRemove hook failed [${result.command}] worktree=${worktreePath} ` +
+          `exit=${result.exitCode ?? "n/a"} timedOut=${result.timedOut} ` +
+          `durationMs=${result.duration}: ${result.stderr || "no output"}`,
       );
     }
   }
