@@ -2414,3 +2414,40 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 2. **C-02（代码行高整数化）未做** —— pre 行高仍为 13×1.4=18.2px，非整数但未抢先改。
 3. 表格单元格折行数 12 → 40（字号从 12.6 → 14 的直接后果），建议在 8899 走查时确认是否接受；若认为表格信息密度下降，需要回到角色表层面讨论（属设计口径而非实现缺陷）。
 4. 未覆盖场景：流式输出中未闭合的表格/代码围栏；表格内嵌 mermaid 或超长无空格 token 的极端列；编辑器 200% 缩放与 1.4.12 文字间距；IDE 宿主真机（仅 data-host 代理）；窄窗口 + 分屏组合下的实际内容宽度；截图对比中的「修复前」为等效回退态而非真实历史构建。
+
+## 对话流链接角色（用户规则 2026-09-10）：描述性链接 = 正文 UI / 直显地址 = 代码 13px（F-16）
+
+规则来源：**用户 2026-09-10 本窗口口述**（skill 契约 conversation-typography.md 目前无链接角色条款，已作为回写候选 W-04 记录在走查清单）：
+
+1. 描述性链接（如「查看预览」「参考文档」）使用 UI 正文字体，与所在正文保持一致；
+2. 直接展示地址的链接（如 `http://localhost:8899/`、完整 HTTPS 地址）使用等宽字体，字号沿用当前代码角色 13px；保留长地址换行，不撑破消息区域；
+3. 文件路径或代码中的链接继续使用等宽字体。
+
+**应用提交：`d8a09697`**（`src/components/Message.tsx` + `src/styles/host-desktop.css`；base `Message.css` 零改动）。
+
+### 实现
+
+- `Message.tsx` 的 `renderer.link`：解析出的 label 去掉内联标签后匹配 `^\s*(?:[a-z][a-z0-9+.-]*:\/\/|\/\/)`（即显示文本本身就是地址）→ 输出 `class="address-link"`；描述性链接不加类，继续继承正文 UI 角色。
+- `host-desktop.css`：`.markdown-content a.address-link` 与正文裸路径链接 `.markdown-content a.file-path-link` 绑 `font-family: var(--vscode-editor-font-family); font-size: 13px; overflow-wrap: anywhere; word-break: break-word`。折行只能靠 `anywhere/break-word`（地址无空格），这条同时兜住 `linkifyFilePathText` 在正文生成的裸路径链接，使「路径」在正文与代码里字形一致。
+- 链接颜色/下划线不动（D-01 的常态下划线方案仍待授权，属另一件事）。
+
+### 前后实测（1440px；light/dark 同值）
+
+| 形态                                                                                                                     | 修复前     | 修复后                       |
+| ------------------------------------------------------------------------------------------------------------------------ | ---------- | ---------------------------- |
+| 描述性链接 · 5 个（样式规范 / MDN / 跳转到指标表 / 发送邮件 / 协议相对链接）                                             | UI 栈 14px | UI 栈 14px（未加类、无覆盖） |
+| 直显地址 · 6 个（`example.com/docs`、`very/long`、`report/2026`、`coverage…&anchor`、`localhost:8899`、`192.168.1.100`） | UI 栈 14px | **Menlo 13px**               |
+| `<code>` 内路径 / 地址链接 · 17 个                                                                                       | Menlo 13px | Menlo 13px                   |
+| bash 输出内地址 · 1 个                                                                                                   | Menlo 13px | Menlo 13px                   |
+
+- **长地址折行**：最长样例（多层 query + `&anchor`）折 4 行，所在段落 `scrollWidth == clientWidth`（overflow 0）；表格单元格内地址由 1 行变 2 行（Menlo 步进更宽 → 折行，而非挤在同一格）；`.messages-container` `800 == 800`、`documentElement` `1440 == 1440`，四档视口均无横向溢出。
+- **副作用（如实记录）**：Menlo 13px 的字符步进略大于 UI 14px，含直显地址的段落自身行数可能 +1（最长地址段 4 → 5 行），地址链接盒宽 +9%~25%。这是「地址用等宽」的必然结果。
+- **IDE 宿主**：新规则带 `[data-host="desktop"]`；`class="address-link"` 仅作标记，IDE 无对应样式 → 保持原 UI 字体。
+- **测试**：`pnpm -F wave-webview run type-check` exit 0；提交前全仓 `pnpm -r type-check` 通过；仓库内无链接样式断言，结论以浏览器 computed 值为准。
+- 截图 24 张：`/Users/ailsa/Documents/07-AI/走查/截图/F-16-链接角色_修复前|修复后_{light,dark}_{描述性链接与直显地址,锚点链接与裸地址,超长地址折行,路径链接对照,列表内长地址折行,表格内地址折行}.png`（「修复前」= 同页等效回退态）。
+
+### 未覆盖 / 待拍板
+
+- `mailto:` / `tel:` 等无 `//` 的地址若被直接展示，当前判据不算「直显地址」（仍 UI 字体）——是否纳入规则待你确认。
+- markdown 链接 label 内嵌套地址（`[https://x](https://y)`）、label 含内联 HTML（`**http://x**`）、自动链接在流式未闭合状态下的判定均未验证。
+- D-01（正文内联链接常态下划线）未实施；若与本条同批落地，应复跑 axe `link-in-text-block`。
