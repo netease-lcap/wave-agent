@@ -2171,11 +2171,13 @@ describe("configuration and status", () => {
    *
    * `autoMemoryEnabled` / `autoMemoryFrequency` 都是可选参数，任何一环漏传都不会
    * 编译报错，只在 SDK 侧静默回落到 settings.json / 默认值——开关看起来保存成功
-   * 却不起作用。桌面链路的最后一环是 `recreateAgentsForConfig` 组装的 stdio
-   * `updateConfig` 参数：关闭状态（false）与轮次必须真的出现在发给 CLI 的参数里
-   * （不能被 `||` / 缺字段吞掉）。
+   * 却不起作用。**PR-2 后这一环不再是 `updateConfig` 覆盖层**（那会永久遮蔽
+   * settings.json），而是 `updateUserSettings` 落会话进程的用户级 settings.json：
+   * 关闭状态（false）与轮次必须真的出现在发给 CLI 的参数里（不能被 `||` / 缺字段
+   * 吞掉），且不得转而走 `updateConfig`。完整语义见下面
+   * 「user preference save path and rebuild timing」describe。
    */
-  it("updateConfiguration forwards the auto-memory toggle to the CLI params", async () => {
+  it("updateConfiguration forwards the auto-memory toggle to the CLI, not as an updateConfig overlay", async () => {
     const { host } = await readyHost();
 
     await host.handleWebviewMessage({
@@ -2183,12 +2185,13 @@ describe("configuration and status", () => {
       configurationData: { autoMemoryEnabled: false, autoMemoryFrequency: 5 },
     });
 
-    expect(lastAgent().updateConfig).toHaveBeenCalledWith(
-      expect.objectContaining({
-        autoMemoryEnabled: false,
-        autoMemoryFrequency: 5,
-      }),
-    );
+    // 关闭状态必须原样落到会话进程的 settings.json（fake 的 `||` 会静默变 true）。
+    expect(
+      h.clientRequests
+        .filter((r) => r.method === "updateUserSettings")
+        .map((r) => r.params),
+    ).toEqual([{ autoMemoryEnabled: false, autoMemoryFrequency: 5 }]);
+    expect(lastAgent().updateConfig).not.toHaveBeenCalled();
   });
 
   it("getStatus replies with app version, session id and workdir", async () => {
