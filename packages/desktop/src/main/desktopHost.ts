@@ -3625,17 +3625,20 @@ export class DesktopHost {
 
       case "getHooksByScope": {
         const paneAgent4 = this.agentForPane(pid);
-        const hooks = paneAgent4
+        const result = paneAgent4
           ? await paneAgent4.getHooksByScope(
               msg.scope as "user" | "project" | "plugin",
             )
-          : {};
+          : { hooks: {}, configPath: null };
         this.postMessage({
           command: "hooksResponse",
           paneId: pid,
           // 归属键：请求 scope 恒回带（webview 切 Tab 过期即弃）
           scope: msg.scope as "user" | "project" | "plugin",
-          hooks,
+          hooks: result.hooks,
+          // 钩子所在 settings.json 的绝对路径（文件面板「编辑」打开文件用；
+          // 由 CLI 侧解析，远端会话亦为远端绝对路径）
+          configPath: result.configPath,
         });
         break;
       }
@@ -3655,7 +3658,7 @@ export class DesktopHost {
           this.showToast({
             message: `已删除钩子「${msg.hookName}」`,
           });
-          const hooks3 = await deleteHookAgent.getHooksByScope(
+          const refreshed = await deleteHookAgent.getHooksByScope(
             msg.scope as "user" | "project",
           );
           this.postMessage({
@@ -3663,7 +3666,8 @@ export class DesktopHost {
             paneId: pid,
             // 归属键：请求 scope 恒回带（同 getHooksByScope）
             scope: msg.scope as "user" | "project" | "plugin",
-            hooks: hooks3,
+            hooks: refreshed.hooks,
+            configPath: refreshed.configPath,
           });
         } catch (error) {
           this.showToast({ message: `删除钩子失败: ${error}` });

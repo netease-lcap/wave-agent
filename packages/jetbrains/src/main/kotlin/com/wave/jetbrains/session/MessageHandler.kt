@@ -800,16 +800,21 @@ class MessageHandler(
             }
             "getHooksByScope" -> {
                 val scope = msg["scope"]?.jsonPrimitive?.content ?: return
-                val hooks = try {
-                    session.agent?.getHooksByScope(scope) ?: JsonObject(emptyMap())
+                val result = try {
+                    session.agent?.getHooksByScope(scope)?.jsonObject
                 } catch (e: StdioClientException) {
                     LOG.warn("getHooksByScope failed: ${e.message}")
-                    JsonObject(emptyMap())
+                    null
                 }
+                val hooks = result?.get("hooks") ?: JsonObject(emptyMap())
+                // 钩子所在 settings.json 的绝对路径（由 CLI 侧解析；设置页「编辑」
+                // 用自身编辑器打开该文件——IDE 无法展开 `~`）
+                val configPath = result?.get("configPath")?.jsonPrimitive?.contentOrNull
                 // scope 归属键：请求 scope 恒回带（webview 切 Tab 过期即弃）
                 postMessage("hooksResponse", buildJsonObject {
                     put("scope", scope)
                     put("hooks", hooks)
+                    put("configPath", configPath?.let { JsonPrimitive(it) } ?: JsonNull)
                 })
             }
             "deleteHook" -> {
@@ -824,10 +829,13 @@ class MessageHandler(
                 try {
                     agent.deleteHook(scope, hookName)
                     IdeService.showInfo(project, "已删除钩子「$hookName」")
-                    val hooks = agent.getHooksByScope(scope) ?: JsonObject(emptyMap())
+                    val result = agent.getHooksByScope(scope)?.jsonObject
+                    val hooks = result?.get("hooks") ?: JsonObject(emptyMap())
+                    val configPath = result?.get("configPath")?.jsonPrimitive?.contentOrNull
                     postMessage("hooksResponse", buildJsonObject {
                         put("scope", scope)
                         put("hooks", hooks)
+                        put("configPath", configPath?.let { JsonPrimitive(it) } ?: JsonNull)
                     })
                 } catch (e: StdioClientException) {
                     LOG.warn("deleteHook failed: ${e.message}")

@@ -1623,6 +1623,20 @@ describe("ConfigurationService", () => {
       expect(hooks).toEqual({});
     });
 
+    it("getHookConfigPath returns the absolute settings.json path for both scopes", () => {
+      // 宿主 GUI 按 OS 绝对路径打开文件（无法展开 `~`）→ 必须是绝对路径，
+      // 且与 getHooksByScope 实际读取的文件一致。
+      expect(configService.getHookConfigPath(tempDir, "user")).toBe(
+        userSettingsPath(),
+      );
+      expect(configService.getHookConfigPath(tempDir, "project")).toBe(
+        path.join(tempDir, ".wave", "settings.json"),
+      );
+      expect(configService.getHookConfigPath(tempDir, "user")).not.toContain(
+        "~",
+      );
+    });
+
     it("deleteHook removes the matching hook entry", async () => {
       await fs.mkdir(path.dirname(userSettingsPath()), { recursive: true });
       await fs.writeFile(

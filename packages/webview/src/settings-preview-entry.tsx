@@ -10,8 +10,8 @@
  * Protocol (same command names the chat webview already uses):
  * - webview → host: `settingsReady`, `getConfiguration`, `getAgentsContent`,
  *   `setAgentsContent`, `getProjectSettings`, `setBuiltinPluginEnabled`,
- *   `closeSettings`, `prefillPrompt`（编辑操作随附 `openFile`，host 在自身
- *   编辑器打开对应配置文件）
+ *   `closeSettings`、编辑操作的 `openFile` + `prefillPrompt`（`openFile` 必须先发：
+ *   host 处理 `prefillPrompt` 即关闭本设置 webview，之后到达的 `openFile` 会被丢弃）
  * - host → webview: `configurationResponse`, `agentsContentResponse`,
  *   `agentsContentSaved`, `projectSettings`, `settingsState` (workdir push on open)
  */
@@ -172,13 +172,14 @@ function SettingsPreview() {
         })
       }
       onPrefillPrompt={(prompt, openFile) => {
-        vscode.postMessage({ command: "prefillPrompt", prompt });
-        // 编辑操作：配置文件交给 IDE 自身打开（聊天输入框 prefill 之外，host 在
-        // 编辑器打开该文件供对照修改——VS Code / JetBrains 的 settings webview
-        // 均处理 openFile）。
+        // 顺序关键：openFile 必须先于 prefillPrompt 发出。host 处理 prefillPrompt
+        // 时会关闭/销毁本设置 webview（VSCE disposeSettingsPanel、JB closeSettings），
+        // 销毁后到达的 openFile 会被丢弃——表现为四个 tab 点「编辑」都不打开文件
+        // （VSCE 甚至先在 ExtHost 面板表移除句柄、后续消息直接丢弃）。
         if (openFile) {
           vscode.postMessage({ command: "openFile", path: openFile });
         }
+        vscode.postMessage({ command: "prefillPrompt", prompt });
       }}
     />
   );

@@ -109,18 +109,17 @@ const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
   };
 
   const handleEdit = (server: McpServerStatus) => {
-    // 关闭设置页预填编辑提示词；同带配置文件路径（用户级 ~/.wave/mcp.json /
-    // 项目级 <workdir>/.mcp.json）——desktop 在会话视图右侧文件面板打开该文件、
-    // IDE 用自身编辑器打开，便于对照修改。
+    // 关闭设置页预填编辑提示词；同带配置文件路径——desktop 在会话视图右侧文件
+    // 面板打开该文件、IDE 用自身编辑器打开，便于对照修改。路径一律取 host 下发的
+    // mcpConfigPathsResponse（绝对路径）：宿主按 OS 绝对路径打开文件、无法展开
+    // `~`，故不在此自造 `~`/相对回退路径；缺失时仅预填提示词、不打开文件。
     const path =
       server.scope === "user"
         ? mcpConfigPaths?.userPath
         : mcpConfigPaths?.projectPath;
-    const resolved =
-      path ?? (server.scope === "user" ? "~/.wave/mcp.json" : ".mcp.json");
     onPrefillPrompt?.(
       `帮我编辑 MCP 服务器${server.name}：把<要改的内容>改成<新内容>`,
-      resolved,
+      path ?? undefined,
     );
   };
 

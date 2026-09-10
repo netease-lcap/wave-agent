@@ -1395,6 +1395,16 @@ export class Agent {
   }
 
   /**
+   * Absolute path of the settings.json holding hooks at `scope` — user
+   * `~/.wave/settings.json` or project `<workdir>/.wave/settings.json`. Hosts
+   * pass it to the GUI so editors / file panels can open the file (they cannot
+   * expand `~`).
+   */
+  public getHookConfigPath(scope: "user" | "project"): string {
+    return this.configurationService.getHookConfigPath(this.workdir, scope);
+  }
+
+  /**
    * Delete a hook at a specific scope, identified by hookName of the form
    * `Event:Matcher`.
    */

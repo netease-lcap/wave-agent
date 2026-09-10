@@ -1076,6 +1076,16 @@ export class ConfigurationService {
   }
 
   /**
+   * Absolute path of the settings.json that holds hooks for `scope`
+   * (user → ~/.wave/settings.json, project → <workdir>/.wave/settings.json).
+   * Hosts surface it to the GUI so editors / file panels can open the file —
+   * they cannot expand a `~` prefix, so the path must already be absolute.
+   */
+  getHookConfigPath(workdir: string, scope: "user" | "project"): string {
+    return this.resolveHookConfigPath(workdir, scope).configPath;
+  }
+
+  /**
    * Get hook configurations at a specific scope (user or project settings.json)
    */
   async getHooksByScope(

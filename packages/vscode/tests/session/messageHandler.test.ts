@@ -1118,7 +1118,10 @@ describe("MessageHandler settings tab", () => {
     const session = {
       agent: {},
       deleteHook: vi.fn().mockResolvedValue(undefined),
-      getHooksByScope: vi.fn().mockResolvedValue({}),
+      getHooksByScope: vi.fn().mockResolvedValue({
+        hooks: {},
+        configPath: "/home/u/.wave/settings.json",
+      }),
     } as unknown as ChatSession;
     const { handler, context } = createHandler(session);
 
@@ -1133,9 +1136,42 @@ describe("MessageHandler settings tab", () => {
       "已删除钩子「PostToolUse」",
     );
     const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
-      .mock.calls[0][0] as { command: string; scope: string };
+      .mock.calls[0][0] as {
+      command: string;
+      scope: string;
+      configPath: string | null;
+    };
     expect(posted.command).toBe("hooksResponse");
     expect(posted.scope).toBe("user");
+    // 设置页「编辑」用它发 openFile → 必须是 host 解析的绝对路径（IDE 无法展开 `~`）
+    expect(posted.configPath).toBe("/home/u/.wave/settings.json");
+  });
+
+  test("getHooksByScope replies with the session-resolved absolute configPath", async () => {
+    const session = {
+      agent: {},
+      getHooksByScope: vi.fn().mockResolvedValue({
+        hooks: { PreToolUse: [] },
+        configPath: "/home/u/.wave/settings.json",
+      }),
+    } as unknown as ChatSession;
+    const { handler, context } = createHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "getHooksByScope",
+      scope: "user",
+    });
+
+    expect(session.getHooksByScope).toHaveBeenCalledWith("user");
+    expect(
+      (context.postSettingsMessage as ReturnType<typeof vi.fn>).mock
+        .calls[0][0],
+    ).toMatchObject({
+      command: "hooksResponse",
+      scope: "user",
+      hooks: { PreToolUse: [] },
+      configPath: "/home/u/.wave/settings.json",
+    });
   });
 
   test("deleteHook shows an error toast without a live agent", async () => {
@@ -1275,7 +1311,10 @@ describe("MessageHandler chat-route deletion toasts", () => {
     const session = {
       agent: {},
       deleteHook: vi.fn().mockResolvedValue(undefined),
-      getHooksByScope: vi.fn().mockResolvedValue({}),
+      getHooksByScope: vi.fn().mockResolvedValue({
+        hooks: {},
+        configPath: null,
+      }),
     } as unknown as ChatSession;
     const { handler, context } = createHandler(session);
 

@@ -70,11 +70,9 @@ function formatHookName(event: string, matcher?: string): string {
   return matcher ? `${event}:${matcher}` : event;
 }
 
-/** 打开钩子所在 settings.json（编辑时让用户对照配置） */
-function settingsPathFor(scope: string, configPath?: string | null): string {
-  if (configPath) return configPath;
-  // 回退：用户级 ~/.wave/settings.json；项目级 <workdir>/.wave/settings.json
-  return scope === "user" ? "~/.wave/settings.json" : ".wave/settings.json";
+/** 删除确认框里展示的钩子配置文件路径；host 未回带时退化为文案描述。 */
+function configPathLabel(configPath: string | null): string {
+  return configPath ?? "对应的配置文件";
 }
 
 const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
@@ -132,10 +130,13 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
 
   const handleEdit = (item: { event: string; matcher?: string }) => {
     // 关闭设置页预填编辑提示词；同带 settings.json 路径——desktop 在会话视图
-    // 右侧文件面板打开该文件、IDE 用自身编辑器打开，便于对照修改。
+    // 右侧文件面板打开该文件、IDE 用自身编辑器打开，便于对照修改。路径由 host
+    // 随 hooksResponse.configPath 下发（绝对路径，见 SDK getHookConfigPath）：
+    // 宿主按 OS 绝对路径打开文件、无法展开 `~`，故此处不再自造 `~`/相对回退路径；
+    // 缺失时仅预填提示词、不打开文件。
     onPrefillPrompt?.(
       `帮我编辑钩子${formatHookName(item.event, item.matcher)}：把<事件/匹配/命令/超时>改成<新内容>`,
-      settingsPathFor(activeTab, configPath),
+      configPath ?? undefined,
     );
   };
 
@@ -269,7 +270,7 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
       {pendingDelete && (
         <ConfirmDialog
           title={`删除钩子「${formatHookName(pendingDelete.event, pendingDelete.matcher)}」`}
-          description={`将从 ${settingsPathFor(activeTab, configPath)} 中移除该钩子配置，此操作不可撤销。`}
+          description={`将从 ${configPathLabel(configPath)} 中移除该钩子配置，此操作不可撤销。`}
           confirmText="确认删除"
           cancelText="取消"
           onConfirm={handleConfirmDelete}

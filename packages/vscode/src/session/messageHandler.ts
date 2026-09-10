@@ -879,12 +879,14 @@ export class MessageHandler {
   ): Promise<void> {
     try {
       const session = this.getSettingsSession();
-      const hooks = await session.getHooksByScope(scope);
+      const { hooks, configPath } = await session.getHooksByScope(scope);
       this.context.postSettingsMessage({
         command: "hooksResponse",
         // 归属键：请求 scope 恒回带（webview 切 Tab 过期即弃）
         scope,
         hooks,
+        // 钩子所在 settings.json 的绝对路径（GUI「编辑」打开文件用）
+        configPath,
       });
     } catch (error) {
       console.error("Failed to get hooks by scope:", error);
@@ -905,12 +907,13 @@ export class MessageHandler {
     try {
       await session.deleteHook(scope, hookName);
       vscode.window.showInformationMessage(`已删除钩子「${hookName}」`);
-      const hooks = await session.getHooksByScope(scope);
+      const { hooks, configPath } = await session.getHooksByScope(scope);
       this.context.postSettingsMessage({
         command: "hooksResponse",
         // 归属键：请求 scope 恒回带（同 handleSettingsGetHooksByScope）
         scope,
         hooks,
+        configPath,
       });
     } catch (error) {
       console.error("Failed to delete hook:", error);
@@ -2335,13 +2338,15 @@ export class MessageHandler {
     windowId?: string,
   ) {
     const session = this.context.getChatSession(viewType || "tab", windowId);
-    const hooks = await session.getHooksByScope(scope);
+    const { hooks, configPath } = await session.getHooksByScope(scope);
     this.context.postMessage(
       {
         command: "hooksResponse",
         // 归属键：请求 scope 恒回带（webview 切 Tab 过期即弃）
         scope,
         hooks,
+        // 钩子所在 settings.json 的绝对路径（GUI「编辑」打开文件用）
+        configPath,
       },
       viewType,
       windowId,
@@ -2364,13 +2369,14 @@ export class MessageHandler {
     try {
       await session.deleteHook(scope, hookName);
       vscode.window.showInformationMessage(`已删除钩子「${hookName}」`);
-      const hooks = await session.getHooksByScope(scope);
+      const { hooks, configPath } = await session.getHooksByScope(scope);
       this.context.postMessage(
         {
           command: "hooksResponse",
           // 归属键：请求 scope 恒回带（同 handleGetHooksByScope）
           scope,
           hooks,
+          configPath,
         },
         viewType,
         windowId,

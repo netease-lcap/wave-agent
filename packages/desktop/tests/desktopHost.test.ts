@@ -3043,6 +3043,49 @@ describe("misc commands", () => {
     });
   });
 
+  it("getHooksByScope replies with the CLI-resolved absolute configPath", async () => {
+    // 桌面「用户级钩子 → 编辑」把该路径交给右侧文件面板打开；面板按 OS 绝对
+    // 路径 stat，无法展开 `~`（webview 自造 `~/.wave/settings.json` 会报
+    // 「文件不存在：~/.wave/settings.json」）。故路径必须由 CLI 侧解析后回带。
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    agent.getHooksByScope = vi.fn(async () => ({
+      hooks: { PreToolUse: [{ matcher: "Bash", hooks: [] }] },
+      configPath: "/home/u/.wave/settings.json",
+    }));
+
+    await host.handleWebviewMessage({
+      command: "getHooksByScope",
+      scope: "user",
+    });
+
+    expect(sent("hooksResponse")[0]).toMatchObject({
+      scope: "user",
+      configPath: "/home/u/.wave/settings.json",
+    });
+  });
+
+  it("deleteHook replies with the refreshed hooks and configPath", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    agent.deleteHook = vi.fn(async () => undefined);
+    agent.getHooksByScope = vi.fn(async () => ({
+      hooks: {},
+      configPath: "/home/u/.wave/settings.json",
+    }));
+
+    await host.handleWebviewMessage({
+      command: "deleteHook",
+      scope: "user",
+      hookName: "PreToolUse",
+    });
+
+    expect(sent("hooksResponse")[0]).toMatchObject({
+      hooks: {},
+      configPath: "/home/u/.wave/settings.json",
+    });
+  });
+
   it("connectMcpServer failure surfaces as a toast, not a chat message", async () => {
     const { host, sent } = await readyHost();
     lastAgent().connectMcpServer.mockRejectedValueOnce(
@@ -3130,7 +3173,10 @@ describe("misc commands", () => {
     const { host, sent } = await readyHost();
     const agent = lastAgent();
     agent.deleteHook = vi.fn(async () => undefined);
-    agent.getHooksByScope = vi.fn(async () => ({}));
+    agent.getHooksByScope = vi.fn(async () => ({
+      hooks: {},
+      configPath: null,
+    }));
 
     await host.handleWebviewMessage({
       command: "deleteHook",

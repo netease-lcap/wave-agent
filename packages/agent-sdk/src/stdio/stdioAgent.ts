@@ -526,14 +526,18 @@ export class StdioAgent {
     return result.success;
   }
 
-  async getHooksByScope(
-    scope: "user" | "project" | "plugin",
-  ): Promise<Partial<Record<string, unknown[]>>> {
+  async getHooksByScope(scope: "user" | "project" | "plugin"): Promise<{
+    hooks: Partial<Record<string, unknown[]>>;
+    configPath: string | null;
+  }> {
     const result = (await this.client.request(
       "getHooksByScope",
       { scope },
       this.sessionId,
-    )) as Partial<Record<string, unknown[]>>;
+    )) as {
+      hooks: Partial<Record<string, unknown[]>>;
+      configPath: string | null;
+    };
     return result;
   }
 
