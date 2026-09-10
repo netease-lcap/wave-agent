@@ -110,6 +110,7 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     disconnectMcpServer: vi.fn().mockResolvedValue(true),
     getSlashCommands: vi.fn().mockReturnValue([]),
     getAvailableToolNames: vi.fn().mockReturnValue(["Bash", "Read", "Write"]),
+    reloadConfiguration: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
   // displayMessages (full UI stream) tracks messages unless explicitly
@@ -1774,6 +1775,40 @@ test("updateUserSettings writes the patch and returns the read-back values", asy
     patch,
   );
   expect(result).toEqual({ language: "English", contextLength: 128 });
+});
+
+test("updateUserSettings 写完后显式重载本进程内全部会话（不依赖文件监视）", async () => {
+  vi.mocked(updateUserPreferenceSettings).mockResolvedValue({
+    language: "English",
+  });
+  const { bridge } = createBridge();
+  const firstAgent = createMockAgent({ sessionId: "session-1" });
+  const secondAgent = createMockAgent({ sessionId: "session-2" });
+  vi.mocked(Agent.create)
+    .mockResolvedValueOnce(firstAgent)
+    .mockResolvedValueOnce(secondAgent);
+  await bridge.handleRequest("initialize", {});
+  await bridge.handleRequest("initialize", {});
+
+  await bridge.handleRequest("updateUserSettings", { language: "English" });
+
+  // 两个会话都必须重载：设置页的保存是全局的，而文件可能是这次保存才创建的
+  // （会话启动时监视的路径还不存在）。
+  expect(firstAgent.reloadConfiguration).toHaveBeenCalledTimes(1);
+  expect(secondAgent.reloadConfiguration).toHaveBeenCalledTimes(1);
+});
+
+test("空载荷（无差异保存）既不落盘也不重载", async () => {
+  vi.mocked(updateUserPreferenceSettings).mockResolvedValue({});
+  const { bridge } = createBridge();
+  const agent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+  await bridge.handleRequest("initialize", {});
+
+  await bridge.handleRequest("updateUserSettings", {});
+
+  expect(vi.mocked(updateUserPreferenceSettings)).toHaveBeenCalledWith({});
+  expect(agent.reloadConfiguration).not.toHaveBeenCalled();
 });
 
 // ── Plugin handlers ──────────────────────────────────────────────
