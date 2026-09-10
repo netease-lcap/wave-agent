@@ -625,6 +625,35 @@ function toExtendedLengthPath(worktreePath: string): string {
 }
 
 /**
+ * Describe what is still on disk after a failed removal. Without this a log
+ * line cannot distinguish "directory already gone" from "the whole checkout is
+ * still sitting there".
+ */
+function probeResidue(worktreePath: string): string {
+  try {
+    if (!fs.existsSync(worktreePath)) return "none";
+    const entries = fs.readdirSync(worktreePath) as string[];
+    const head = entries.slice(0, 5).join(",");
+    return `${entries.length}[${head}${entries.length > 5 ? ",…" : ""}]`;
+  } catch (error) {
+    return `unknown(${(error as { code?: string }).code ?? "error"})`;
+  }
+}
+
+/** Delete the worktree directory with fs.rmSync; returns the error, if any. */
+function rmWorktreeDirWithFs(worktreePath: string): unknown | null {
+  try {
+    fs.rmSync(toExtendedLengthPath(worktreePath), {
+      recursive: true,
+      force: true,
+    });
+    return null;
+  } catch (error) {
+    return error;
+  }
+}
+
+/**
  * Remove a git worktree and its branch.
  *
  * Removal is best-effort: `git worktree remove --force` deletes the worktree
@@ -632,7 +661,8 @@ function toExtendedLengthPath(worktreePath: string): string {
  * is MAX_PATH-limited — deep paths (e.g. node_modules) can fail with "Filename
  * too long", leaving an orphan directory. When git fails we fall back to
  * fs.rmSync with an extended-length path (bypasses MAX_PATH) and prune stale
- * metadata. Failures are logged but never block branch deletion.
+ * metadata. Failures are logged; when the directory survives, its branch is
+ * deliberately kept so the leftover checkout stays reachable through git.
  */
 export function removeWorktree(info: WorktreeInfo): void {
   const repoRoot = info.repoRoot;
@@ -655,6 +685,28 @@ export function removeWorktree(info: WorktreeInfo): void {
       cwd: repoRoot,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    // git exits 0 even when it did not delete the directory: on Windows it
+    // cannot remove the directory symlinks/junctions that pnpm's node_modules
+    // is made of, so it deletes the files, leaves the skeleton behind and still
+    // reports success. Verify on disk instead of trusting the exit status.
+    if (fs.existsSync(info.path)) {
+      logger.warn(
+        "git worktree remove reported success but the directory survived, falling back to fs.rmSync:",
+        {
+          worktreePath: info.path,
+          residue: probeResidue(info.path),
+        },
+      );
+      const rmError = rmWorktreeDirWithFs(info.path);
+      if (rmError !== null) {
+        logger.error("Failed to remove worktree or branch:", {
+          worktreePath: info.path,
+          stage: "fs(after git success)",
+          error: rmError instanceof Error ? rmError.message : String(rmError),
+          residue: probeResidue(info.path),
+        });
+      }
+    }
   } catch (error: unknown) {
     logger.warn("git worktree remove failed, falling back to fs.rmSync:", {
       error: error instanceof Error ? error.message : String(error),
@@ -681,6 +733,24 @@ export function removeWorktree(info: WorktreeInfo): void {
     } catch {
       // Ignore errors
     }
+  }
+
+  // The directory, not any exit code, decides whether the removal happened. A
+  // surviving directory means its checkout (and any uncommitted work in it) is
+  // still on disk, and the branch is the only ref still leading back to it.
+  if (fs.existsSync(info.path)) {
+    const keptBranches =
+      currentBranch && currentBranch !== info.branch
+        ? `${info.branch} and ${currentBranch}`
+        : info.branch;
+    logger.warn(
+      `Worktree directory survived removal — keeping ${keptBranches} so the leftover checkout stays reachable:`,
+      {
+        worktreePath: info.path,
+        residue: probeResidue(info.path),
+      },
+    );
+    return;
   }
 
   // Delete worktree branch

@@ -49,6 +49,7 @@ vi.mock("node:fs", () => ({
   lstatSync: vi.fn(),
   realpathSync: vi.fn(),
   readFileSync: vi.fn(),
+  readdirSync: vi.fn(),
   appendFileSync: vi.fn(),
   rmSync: vi.fn(),
   promises: {
@@ -403,6 +404,9 @@ describe("worktreeUtils", () => {
     });
 
     it("removes worktree and branch", () => {
+      // git removed the directory successfully
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
       worktreeUtils.removeWorktree({
         name: "feat",
         path: "/test/repo/.wave/worktrees/feat",
@@ -431,6 +435,8 @@ describe("worktreeUtils", () => {
         }
         return "";
       });
+      // The fallback worked: the directory is gone once fs.rmSync returns
+      vi.mocked(fs.existsSync).mockReturnValue(false);
 
       expect(() =>
         worktreeUtils.removeWorktree({
@@ -467,7 +473,7 @@ describe("worktreeUtils", () => {
       );
     });
 
-    it("logs and still deletes the branch when git and fs.rmSync both fail", () => {
+    it("keeps the branch when the directory survived both removal attempts", () => {
       vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
         if (args?.includes("remove") && args?.includes("worktree")) {
           throw new Error("git failed");
@@ -477,6 +483,12 @@ describe("worktreeUtils", () => {
       vi.mocked(fs.rmSync).mockImplementation(() => {
         throw new Error("rm failed");
       });
+      // The directory is still there: its checkout (and any uncommitted work in
+      // it) would be stranded outside git if the branch were deleted too.
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readdirSync).mockReturnValue([
+        "node_modules",
+      ] as unknown as Awaited<ReturnType<typeof fs.readdirSync>>);
 
       expect(() =>
         worktreeUtils.removeWorktree({
@@ -488,7 +500,35 @@ describe("worktreeUtils", () => {
         }),
       ).not.toThrow();
 
-      // Branch deletion still runs even when both removal attempts fail
+      expect(execFileSync).not.toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["branch", "-D"]),
+        expect.anything(),
+      );
+    });
+
+    it("falls back to fs.rmSync when git reports success but the directory survived", () => {
+      // git exits 0 even when it could not delete the directory: on Windows it
+      // cannot remove the directory symlinks/junctions pnpm's node_modules is
+      // made of (which is also why the branch must be kept if it survives).
+      vi.mocked(fs.existsSync).mockReturnValueOnce(true).mockReturnValue(false);
+      vi.mocked(fs.readdirSync).mockReturnValue([
+        "node_modules",
+      ] as unknown as Awaited<ReturnType<typeof fs.readdirSync>>);
+
+      worktreeUtils.removeWorktree({
+        name: "feat",
+        path: "/test/repo/.wave/worktrees/feat",
+        branch: "worktree-feat",
+        repoRoot: "/test/repo",
+        isNew: true,
+      });
+
+      expect(fs.rmSync).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ recursive: true, force: true }),
+      );
+      // The fallback deleted the directory, so the branch still goes away
       expect(execFileSync).toHaveBeenCalledWith(
         "git",
         expect.arrayContaining(["branch", "-D", "worktree-feat"]),

@@ -155,17 +155,24 @@ if (!removed && existsSync(worktreePath)) {
   }
 }
 
-// 3. Prune stale metadata and delete the worktree branch
+// 3. Prune stale metadata — harmless either way, it only drops entries whose
+// directory is already gone.
 spawnSync("git", ["worktree", "prune"], { cwd: repoRoot });
-spawnSync("git", ["branch", "-D", "--", branch], { cwd: repoRoot });
 
 // Final word: what is on disk, not what any tool reported.
 removed = !existsSync(worktreePath);
 
 if (!removed) {
+  // The branch is deliberately kept: the leftover checkout (and any uncommitted
+  // work in it) would otherwise be stranded outside git, with no ref left
+  // pointing at it.
   console.error(
     `worktree-remove: FAILED name=${name} path=${worktreePath} branch=${branch} ` +
-      `git(${gitSummary}) fs(${fsSummary}) residue=${describeResidue(worktreePath)}`,
+      `git(${gitSummary}) fs(${fsSummary}) residue=${describeResidue(worktreePath)} ` +
+      `branchKept=true`,
   );
   process.exit(1);
 }
+
+// 4. Delete the worktree branch — only now that the directory is really gone
+spawnSync("git", ["branch", "-D", "--", branch], { cwd: repoRoot });
