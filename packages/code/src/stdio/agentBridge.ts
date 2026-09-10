@@ -49,6 +49,9 @@ import {
   loadWaveConfigFromFile,
   getUserConfigPaths,
   getProjectConfigPaths,
+  readUserPreferenceSettings,
+  updateUserPreferenceSettings,
+  type UserPreferenceSettings,
   type SubagentConfiguration,
   type SkillMetadata,
 } from "wave-agent-sdk";
@@ -95,7 +98,6 @@ interface InitializeParams {
   defaultHeaders?: Record<string, string>;
   model?: string;
   fastModel?: string;
-  language?: string;
   permissionMode?: PermissionMode;
   tools?: string[];
   allowedTools?: string[];
@@ -104,11 +106,11 @@ interface InitializeParams {
   mcpServers?: Record<string, McpServerConfig>;
   worktreeName?: string;
   isNewWorktree?: boolean;
-  /** Settings-page auto-memory toggle/frequency (session-level override). */
-  autoMemoryEnabled?: boolean;
-  autoMemoryFrequency?: number;
 }
 
+// 会话级覆盖项：用户偏好（语言 / 上下文长度 / 自动记忆开关与频率）不在此层——
+// 它们落用户级 ~/.wave/settings.json 经实时重载生效（getUserSettings /
+// updateUserSettings），走覆盖层会永久遮蔽 settings.json 的实时值。
 interface UpdateConfigParams {
   apiKey?: string;
   baseURL?: string;
@@ -116,10 +118,6 @@ interface UpdateConfigParams {
   defaultHeaders?: Record<string, string>;
   model?: string;
   fastModel?: string;
-  language?: string;
-  /** Settings-page auto-memory toggle/frequency (session-level override). */
-  autoMemoryEnabled?: boolean;
-  autoMemoryFrequency?: number;
 }
 
 interface SearchFilesParams {
@@ -232,6 +230,14 @@ export class AgentBridge {
         return this.getConfiguredModels(sessionId);
       case "setModel":
         return this.setModel(p.model as string, sessionId);
+
+      // ── User preferences (global — user-level ~/.wave/settings.json) ──
+      // 设置页保存路径：用户偏好写文件后由 SDK 实时重载在各会话下一轮生效，
+      // 不经 updateConfig 当 AgentOptions 覆盖层下发（见 protocol.ts 注释）。
+      case "getUserSettings":
+        return readUserPreferenceSettings();
+      case "updateUserSettings":
+        return updateUserPreferenceSettings(p as UserPreferenceSettings);
 
       // ── Messages ──
       case "sendMessage":
@@ -552,9 +558,6 @@ export class AgentBridge {
       defaultHeaders: params.defaultHeaders,
       model: params.model,
       fastModel: params.fastModel,
-      language: params.language,
-      autoMemoryEnabled: params.autoMemoryEnabled,
-      autoMemoryFrequency: params.autoMemoryFrequency,
       permissionMode: params.permissionMode,
       tools: params.tools,
       allowedTools: params.allowedTools,
@@ -893,9 +896,6 @@ export class AgentBridge {
       defaultHeaders: entry.storedConfig.defaultHeaders,
       model: entry.storedConfig.model,
       fastModel: entry.storedConfig.fastModel,
-      language: entry.storedConfig.language,
-      autoMemoryEnabled: entry.storedConfig.autoMemoryEnabled,
-      autoMemoryFrequency: entry.storedConfig.autoMemoryFrequency,
       permissionMode: entry.storedConfig.permissionMode,
       tools: entry.storedConfig.tools,
       allowedTools: entry.storedConfig.allowedTools,
