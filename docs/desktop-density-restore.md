@@ -2337,3 +2337,18 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - **现状**：`.task-list-inline` base `padding: 8px 12px 12px`——上 8 / 下 12，底部多 4px（桌面覆盖层未覆盖 padding，沿用 base 值）。
 - **修复**（TaskList.css，共享 base 文件）：`padding: 8px 12px 8px` 上下对称。落点说明：host-desktop.css 彼时含并行 toast 会话在途改动，desktop 覆盖放同文件会把他人内容带入本 commit → 改共享 base（TaskList 三端同结构，对称内边距对 IDE 端同样成立）；commit 暂不带 docs（docs 尾含 toast 会话未推的第 4 轮段，避免夹带），toast 推完（`28838ff6`）后再补本段。
 - 实现文件：`src/styles/TaskList.css`、本 docs（后补段）。（commit `2187d55f` 已推；type-check 通过，用户 8899 人工走查后确认推送。）
+
+## 0909 第 6 轮（feat/0909-new-base-r1）：设计师返工——toast 按 `position` 分两栈 + 语义色收窄 + TaskList 回落共享 base
+
+按设计师 ailsa 对 PR #2147 的 ①②③ 答复返工（第 4、5 轮改动被部分修正）。
+
+- **① toast 分两栈**（此前第 4 轮把整个桌面 `.toast-stack` 全量顶部居中，误伤后台会话确认 toast）：
+  - 类型 `ToastPosition = "top" | "bottomRight"`，`UpdateToast.position?` 由宿主**显式声明**（不以「是否带按钮」推断）；`webview/src/types/index.ts` 与 `webview-fixtures/src/types.ts` 平行副本同步。
+  - `ToastStack.tsx` 拆两个互不干扰的栈：`toast-stack--top`（`position` 缺省 `"top"`，应用级全局提示，顶部居中新形态 + 锚定内容列 + 落下动效 + 语义图标）与 `toast-stack--bottomRight`（`position: "bottomRight"`，后台会话确认 toast，沿用既有右下角通知形态：深底浅字、自底向上滑入、无语义图标）；两栈可同屏共存。
+  - `host-desktop.ts`（desktopHost）只在后台会话确认 toast 上标 `position: "bottomRight"`，其余 `showToast` 调用一律缺省。
+  - **移除「已完成」toast**（2026-09-10 拍板）：后台会话正常完成只置 `newCompletedAgents`（侧边栏「已完成未读」绿点），不再发 toast——绿点是「已完成」的唯一提醒通道；保留 `confirmationToastAgents`、「待确认」toast（`position: "bottomRight"`）、`focusSessionFromToast`、`replayPendingConfirmations`、`handleToastAction` 的 focusSession 分支、`focusSession` ToastAction。
+- **② 语义三色收窄**：`ToastKind` 保持 `"success" | "info" | "error"` 三值（info 恢复）；`type` 只标**设置页结果型**提示（保存成功/失败、删除/移除技能·子代理·钩子·MCP 成功/失败、MCP 连接/断开失败），共 14 处；**未标 `type` 的应用级提示一律中性**（默认浮层底色 + `--vscode-widget-border` 描边 + `--vscode-foreground` 文字、不渲染语义图标），不再缺省回退为 info 蓝。
+- **③ TaskList padding 回落共享 base**：`.task-list-inline` base 回到 `padding: 8px 12px 12px`（撤销第 5 轮的 base 改动，IDE 两端保持原值）；桌面收拢改放桌面覆盖层 `[data-host="desktop"] .task-list-inline { padding: 8px 12px 8px; }`。
+- **顺手清掉死 action 变体**：删除「打开下载页」这一已死的 ToastAction 变体（两处类型副本 + `handleToastAction` 的 if 分支 + 相关测试用例）——该链路已随 updateChecker 删除，动作只剩 `focusSession` 一种。
+- **spec 同步**：`desktop-account-and-settings.md`（撤销「webview 右下角」措辞 + 新增「toast 形态与路由」一条，按 `position` 表述、不写 hex）；`desktop-shell.md`（撤销「模仿 VS Code」措辞，指向上条路由规则）；`desktop-sessions.md`（故事更名「后台会话活动通知」→「后台会话确认提醒」、删已完成 toast 相关内容与 4 个旧场景、铃铛 4 处改「琥珀色状态点」、绿点边界写明为「已完成」唯一通道、toast 关系边界改为只讲确认 toast 并记录其保留右下角形态）。
+- 实现文件：`desktopHost.ts`、`webview-fixtures/src/types.ts`、`webview/src/types/index.ts`、`ToastStack.tsx`、`ChatApp.tsx`、`TaskList.css`、`ToastStack.css`、`host-desktop.css`、`desktopHost.test.ts`、`toastStack.test.tsx`、`chatAppToast.test.tsx`、`desktopApp.test.tsx`、三份 spec、本 docs。
