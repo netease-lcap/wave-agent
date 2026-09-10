@@ -2751,3 +2751,38 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 - **无裁切 / 无溢出**：`.result-raw` 的 `max-height:100px; overflow-y:auto` 承接行高变大后的增高（可滚到底）；画布 `scrollWidth == clientWidth`。
 - **测试**：`pnpm -F wave-webview type-check` exit 0。
 - **截图 8 张**：`/Users/ailsa/Documents/07-AI/走查/截图/辅助角色-工具结果12px20px_{修复前,修复后}_{light,dark}_{工具结果块,工具参数compact-params}.png`（工具结果块窗口 90 → 108px；compact-params 前后逐字节一致）。
+
+## diff 省略行归辅助角色（用户 2026-09-10 指示）：`.diff-line-ellipsis` 11px → 12px（F-13 续 2）
+
+依据来源：**用户 2026-09-10 本窗口指示**「.diff-line-ellipsis 可以提到 12px」（先由走查确认该元素此前在 mock 里一处都不渲染、补用例使其可见后再定值）；契约 `references/conversation-typography.md` 角色表「辅助信息 = 12 / 20」。
+
+**改动位置**：`packages/webview/src/styles/host-desktop.css`（辅助信息角色收口规则之后，全仓新增，此前 `host-desktop.css` 内无该类覆盖）：
+
+```css
+[data-host="desktop"] .diff-line-ellipsis {
+  font-size: 12px;
+  line-height: 20px;
+}
+```
+
+- base 值来自 `DiffViewer.css:133`：`font-size: 11px` + `padding: 2px 28px` + `font-style: italic` + `color: descriptionForeground`；**行高不是自己声明的**，是继承 `.diff-viewer-content` 的 20px（C-02 落地后）。11px 落在角色表所有档位之外，故收口到辅助信息 12/20。
+- **同类覆盖面**：对话流内 diff 查看器的三态省略行（前置 / 后置 / 中间）+ 右侧预览面板「差异」页（`DiffPane`）的状态行（「二进制文件，不显示差异」/「无内容差异」/「重命名自 …」/「差异过大，已截断…」）——都是同一个类，字号随之一致。
+- **`.diff-empty` 不在其列**：该分支在应用内**不可达**（`DiffViewer.tsx:272` 的渲染条件是 `changes.length === 0`，而同组件 49-51 行 `showDiff` 要求 `changes.length > 0`，不满足时 264 行提前 `return null`；全仓仅此一处引用）。属既有死代码，本轮不顺手动它。
+- base `DiffViewer.css` 未改 → IDE 宿主仍为 11px。
+
+### 前后实测（1440px；light / dark 同值）
+
+| 用例（mock 内三条 Edit） | 位置         | 修复前      | 修复后          | 元素盒 | 容器 / 卡高    |
+| ------------------------ | ------------ | ----------- | --------------- | ------ | -------------- |
+| A · 前置省略             | 首行         | 11px / 20px | **12px / 20px** | 758×24 | 144 / 175 不变 |
+| B · 后置省略             | 末行         | 11px / 20px | **12px / 20px** | 758×24 | 144 / 175 不变 |
+| C · 中间省略             | 两组变更之间 | 11px / 20px | **12px / 20px** | 758×24 | 264 / 295 不变 |
+
+- **几何零位移**：行高两侧同为 20px，只有字形变大 —— 元素盒 758×24 不变、`.diff-viewer-content` 的 `clientHeight == scrollHeight`（144 / 144、264 / 264，无需滚动）、卡片高度 175 / 175 / 295 逐值不变、画布横向溢出 0。
+- **逐像素差异**：截图尺寸完全一致（761×175、761×295），差异像素 **44~45 个（0.020%~0.034%）**，bbox 恰好落在省略号字形区域（x 31→49，纵向 ±2px）——即除「...」本身变大外，其余像素零变化。
+- **测试**：`pnpm -F wave-webview type-check` exit 0。
+- **截图 12 张**：`/Users/ailsa/Documents/07-AI/走查/截图/diff省略行12px_{修复前,修复后}_{light,dark}_{01前置,02后置,03中间}.png`（「修复前」= 同页等效回退，注入 `!important` 强制 11px）。
+
+### 配套：diff 省略行三态走查用例（本地 mock，不入库）
+
+`.diff-line-ellipsis` 只在 diff 上下文被折叠时出现，此前 mock 里 **0 处渲染**，属「按类生效但无法目视验收」。已在本地 `prototype/mockShared.ts` 新增 `richDiffEllipsisMessages()`（3 条 Edit：`src/styles/tokens-{shadow,radius,font}.css`，上下文 **5 / 5 / 7** 行，已用 `diffLines` 实测命中 `DiffViewer.tsx:170-197` 的 `contextLimit = 3` 三条分支）并接进 `richConversationMessages()`，8899 用例「桌面端：对话流全样式」内可见（消息带 `A·` / `B·` / `C·` 前缀）。`prototype/` 与 `mockShared.ts` 均 gitignore，**不进本文件所属的提交**。

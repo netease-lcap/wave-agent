@@ -1138,6 +1138,20 @@
   line-height: 20px;
 }
 
+/* 辅助信息角色续（用户 2026-09-10 指示「.diff-line-ellipsis 可以提到 12px」）：
+   diff 上下文折叠的「...」占位行，base 字面值 11px、行高靠
+   `.diff-viewer-content` 继承为 20px —— 字号落在角色表所有档位之外，收口到
+   辅助信息 12/20（与 .compact-params / .tool-result-block 同档）。
+   同类同时命中 DiffPane 的状态行（「二进制文件，不显示差异」/「无内容差异」/
+   「重命名自 …」/「差异过大，已截断…」），字号随之一致；对话流内 diff 的
+   前置/后置/中间三态省略行均已 mock 可走查。
+   `.diff-empty` 不在此列：该分支在应用内不可达（DiffViewer.tsx:272 与 49-51
+   行的 showDiff 条件互斥，264 行提前 return null），见走查清单说明。 */
+[data-host="desktop"] .diff-line-ellipsis {
+  font-size: 12px;
+  line-height: 20px;
+}
+
 [data-host="desktop"] .write-preview-content {
   font-size: 13px;
   /* C-02：行高随代码角色统一 20px（原 18px，见上方 C-02 规则） */
