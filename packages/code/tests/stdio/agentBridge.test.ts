@@ -11,6 +11,8 @@ import {
   getMessageContent,
   validateWorktreeRemovalPath,
   loadUserConfigEnv,
+  readUserPreferenceSettings,
+  updateUserPreferenceSettings,
 } from "wave-agent-sdk";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -1735,6 +1737,43 @@ test("logout clears auth", async () => {
   await bridge.handleRequest("logout", {});
 
   expect(clearAuth).toHaveBeenCalled();
+});
+
+// ── User preference handlers（设置页保存路径，会话无关） ──────────
+
+test("getUserSettings reads the user-level preference file", async () => {
+  vi.mocked(readUserPreferenceSettings).mockReturnValue({
+    language: "English",
+    contextLength: 200,
+    autoMemoryEnabled: false,
+    autoMemoryFrequency: 5,
+  });
+  const { bridge } = createBridge();
+
+  const result = await bridge.handleRequest("getUserSettings", {});
+
+  expect(result).toEqual({
+    language: "English",
+    contextLength: 200,
+    autoMemoryEnabled: false,
+    autoMemoryFrequency: 5,
+  });
+});
+
+test("updateUserSettings writes the patch and returns the read-back values", async () => {
+  vi.mocked(updateUserPreferenceSettings).mockResolvedValue({
+    language: "English",
+    contextLength: 128,
+  });
+  const { bridge } = createBridge();
+
+  const patch = { language: "English", contextLength: 128 };
+  const result = await bridge.handleRequest("updateUserSettings", patch);
+
+  expect(vi.mocked(updateUserPreferenceSettings).mock.calls[0][0]).toEqual(
+    patch,
+  );
+  expect(result).toEqual({ language: "English", contextLength: 128 });
 });
 
 // ── Plugin handlers ──────────────────────────────────────────────

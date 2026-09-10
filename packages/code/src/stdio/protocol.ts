@@ -86,6 +86,10 @@ export type RequestMethod =
   | "updateConfig"
   | "getConfiguredModels"
   | "setModel"
+  // User preferences (global — read/write user-level ~/.wave/settings.json,
+  // 设置页保存路径，见 docs/specs/core/agent-config.md「设置实时重载」)
+  | "getUserSettings"
+  | "updateUserSettings"
   // Permissions (daemon attach: re-surface pending approvals after reconnect)
   | "listPendingPermissions"
   // Daemon (global — list in-memory session registry, no session required)
