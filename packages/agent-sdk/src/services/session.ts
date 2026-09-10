@@ -327,9 +327,11 @@ export async function loadSessionFromJsonl(
         lastActiveAt: lastMessage
           ? lastMessage.timestamp
           : new Date().toISOString(),
-        latestTotalTokens: lastMessage?.usage
-          ? extractLatestTotalTokens([lastMessage])
-          : 0,
+        // Scan backwards for the last usage-bearing message instead of only
+        // testing the tail: a resumed conversation gets usage-less meta
+        // messages appended (SessionStart hooks), which would otherwise report
+        // 0 and blank the context-usage indicator for that conversation.
+        latestTotalTokens: extractLatestTotalTokens(messages),
       },
     };
 

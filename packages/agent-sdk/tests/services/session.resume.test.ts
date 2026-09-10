@@ -483,4 +483,56 @@ describe("Session resume: cross-directory listing & restore", () => {
       expect(mockJsonlHandler.read).not.toHaveBeenCalled();
     });
   });
+
+  describe("latest token metadata after usage-less trailing messages", () => {
+    /** A usage-less meta user message, as SessionStart hooks append on resume. */
+    const makeMetaMessage = (): Message =>
+      ({
+        id: generateMessageId(),
+        role: "user",
+        blocks: [
+          { type: "text", content: "<system-reminder>hook</system-reminder>" },
+        ],
+        timestamp: new Date().toISOString(),
+        sessionId: randomUUID(),
+        isMeta: true,
+      }) as Message;
+
+    it("loadSessionFromJsonl keeps the last usage-bearing total when meta messages trail it", async () => {
+      const sessionId = randomUUID();
+      const assistantWithUsage = {
+        ...makeMessage(new Date().toISOString()),
+        usage: {
+          prompt_tokens: 58473,
+          completion_tokens: 615,
+          total_tokens: 59088,
+        },
+      } as Message;
+
+      // Transcript shape after a resume: the real usage is followed by the
+      // SessionStart hook's meta messages, which carry no usage. Reading only
+      // the last message used to report 0 and blank the context-usage ring.
+      mockJsonlHandler.read.mockResolvedValue([
+        assistantWithUsage,
+        makeMetaMessage(),
+        makeMetaMessage(),
+      ]);
+
+      const session = await loadSessionFromJsonl(sessionId, "/mock/workdir");
+
+      expect(session?.metadata.latestTotalTokens).toBe(59088);
+    });
+
+    it("loadSessionFromJsonl reports 0 when no message carries usage", async () => {
+      const sessionId = randomUUID();
+      mockJsonlHandler.read.mockResolvedValue([
+        makeMetaMessage(),
+        makeMetaMessage(),
+      ]);
+
+      const session = await loadSessionFromJsonl(sessionId, "/mock/workdir");
+
+      expect(session?.metadata.latestTotalTokens).toBe(0);
+    });
+  });
 });
