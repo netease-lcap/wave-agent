@@ -40,7 +40,11 @@ export interface AgentOptions {
   visionModel?: string;
   maxInputTokens?: number;
   maxTokens?: number;
-  /** Preferred language for agent communication */
+  /**
+   * Preferred language for agent communication, injected verbatim into the
+   * system prompt (`# Language\nAlways respond in <value>`). When unset, the
+   * resolve chain falls back to `DEFAULT_LANGUAGE` (`zh-CN`).
+   */
   language?: string;
   /**
    * Per-session override for auto-memory extraction (程序化会话级覆盖).

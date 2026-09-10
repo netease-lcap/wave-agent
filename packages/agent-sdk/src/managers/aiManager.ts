@@ -325,7 +325,7 @@ export class AIManager {
     );
   }
 
-  public getLanguage(): string | undefined {
+  public getLanguage(): string {
     return this.configurationService.resolveLanguage();
   }
 

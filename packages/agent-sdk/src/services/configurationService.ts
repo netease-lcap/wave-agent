@@ -41,6 +41,7 @@ import {
   DEFAULT_WAVE_MAX_INPUT_TOKENS,
   DEFAULT_WAVE_MAX_OUTPUT_TOKENS,
   DEFAULT_SERVER_URL,
+  DEFAULT_LANGUAGE,
 } from "../utils/constants.js";
 import { ClientOptions } from "openai";
 import { parseCustomHeaders } from "../utils/stringUtils.js";
@@ -757,11 +758,16 @@ export class ConfigurationService {
 
   /**
    * Resolves preferred language with fallbacks
-   * Resolution priority: override > options > settings.json > undefined
+   * Resolution priority: override > options > settings.json > default (`zh-CN`)
+   *
+   * 末尾的默认值保证「未设置」时也有明确生效值，且与设置页下拉的默认项一致
+   * （spec agent-config 边界说明「语言默认值」）。调用方不得再假定
+   * 「undefined = 不注入语言指令」。
+   *
    * @param constructorLanguage - Language override (optional)
-   * @returns Resolved language or undefined
+   * @returns Resolved language (never empty)
    */
-  resolveLanguage(constructorLanguage?: string): string | undefined {
+  resolveLanguage(constructorLanguage?: string): string {
     // 1. Override (highest priority)
     if (constructorLanguage !== undefined) {
       return constructorLanguage;
@@ -772,12 +778,13 @@ export class ConfigurationService {
       return this.options.language;
     }
 
-    // 2. settings.json (merged)
+    // 3. settings.json (merged)
     if (this.liveConfiguration?.language) {
       return this.liveConfiguration.language;
     }
 
-    return undefined;
+    // 4. Default
+    return DEFAULT_LANGUAGE;
   }
 
   /**

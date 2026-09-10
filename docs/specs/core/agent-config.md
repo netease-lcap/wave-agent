@@ -90,12 +90,13 @@ order: 60
 
 **为什么是这个优先级**：使非英语使用者能够更有效地与代理交互。
 
-**独立测试**：在 `Agent.create()` 或 `settings.json` 中设置 `language: "Chinese"` 并验证系统提示包含语言指令。
+**独立测试**：在 `Agent.create()` 或 `settings.json` 中设置 `language: "zh-CN"` 并验证系统提示包含语言指令；不设置任何语言时（全新安装）验证仍按默认 `zh-CN` 注入语言指令。
 
 **验收场景**：
 
-1. **假设**语言设置为 "Chinese"，**当**我向代理提问时，**则**代理用中文回答
+1. **假设**语言设置为 `zh-CN`，**当**我向代理提问时，**则**代理用中文回答
 2. **假设**语言设置为 "Spanish"，**当**代理解释函数 `calculateTotal()` 时，**则**解释用西班牙语但 `calculateTotal()` 保持不变
+3. **假设**`settings.json` 与 `AgentOptions` 都**未**设置 `language`（全新安装），**当**下一轮对话开始，**则**按默认值 `zh-CN` 生效（解析链 `覆盖项 > settings.json > 默认`），系统提示按该值注入语言指令——不得留空导致「模型按自身默认语言回答」
 
 ---
 
@@ -254,6 +255,8 @@ SDK 用户需要按子代理类型配置不同的 HTTP 请求头，以便 `custo
 
 - **分层职责：`AgentOptions` 覆盖层 vs settings.json 实时配置（2026-09-10 用户拍板）**：`AgentOptions`（构造参数，以及 stdio `initialize` / `updateConfig` 传入的会话参数）的语义是**会话级 / 单次覆盖**——用于 CLI `--model`、`--permission-mode` 这类一次性指定，以及程序化调用方的显式注入。**用户偏好类配置（语言、模型、上下文长度、自动记忆、权限、hooks、env）不得经该层下发**：各解析链优先级为 `覆盖项 > settings.json > env > 默认`，把用户偏好塞进覆盖层会**永久遮蔽** settings.json 的实时值（层倒置），使「保存即生效 / 实时重载」全部失效（这正是 2026-09-10 前保存必须重建会话的根因）。
 - **用户偏好的落点 = 用户级 `~/.wave/settings.json`**：三端设置页保存用户偏好时写入该文件（SDK 已在监视的实时配置源），由「设置实时重载」故事生效；只有真正需要构造期副作用的变更（插件装卸）才走重建（见「配置变更的构造期副作用与重建」故事）。会话级覆盖仍可经 `AgentOptions` 下发，但不得用于承载用户偏好。
+- **语言默认值（2026-09-10 追加）**：语言解析链是 `AgentOptions / stdio initialize 覆盖项 > settings.json > 默认`，末尾默认值为 `zh-CN`（SDK `DEFAULT_LANGUAGE`）。取值**必须与设置页「AI 回复语言」下拉未设置态显式项「未设置（默认：中文）」的默认值同串**（webview 的 `zh-CN` 项；不再是改造前各端各自的兜底串 `Chinese`），否则 settings.json 未设置该键时会出现「设置页显示中文、实际按别的语言回复」的分叉（见「配置首选语言」故事场景 3）。该值**原样**拼进系统提示 `# Language\nAlways respond in <值>`，因此用户写任意串（如 `Spanish`）都按原样生效，SDK 不做词汇映射。**三端宿主不得再各自注入语言默认值**（改造前 desktop `configStore.getConfiguration()`、VSCE `loadConfiguration()`、JB `ConfigurationData.language` 三处各自的默认值已随覆盖层链路一并删除）——默认值只在 SDK 解析链末尾有一处，保证 CLI 与三端 GUI 同语义。
+- **升级用户的一次性迁移：不做（2026-09-10 追加拍板）**：改造前用户偏好（`language` / `contextLength` / `autoMemoryEnabled` / `autoMemoryFrequency`）存放在**宿主私有存储**（VSCE `globalState` / JB `wave.xml` / 桌面 `wave-desktop.json`）。本规格生效后这些键不再被读作真源，且**不做一次性迁移**（不把旧值搬进 settings.json）：旧 `language` 值大多是改造前各端**注入的默认串**（`Chinese`），既无法与用户显式选择区分，词汇也与设置页的 `zh-CN` / `en-US` 不同——迁进 settings.json 会把旧默认固化成「用户显式设置」，并制造「设置页显示中文、settings.json 写 `Chinese`」的新分叉（正是本规格要消除的那类分叉）。**代价（升级影响，须随发布说明告知）**：升级用户此前显式选过的语言 / 上下文长度 / 自动记忆开关与频率会**静默回落默认值**（语言 → `zh-CN`，其余 → SDK 既有默认），需在设置页重选一次；此后以 settings.json 为唯一真源，不再有第二处存储。
 - **重建确认框为桌面端专属（2026-09-10 追加拍板）**：「配置变更的构造期副作用与重建」故事的场景 4–6（重建前弹确认框、两按钮、`Esc` 等同「稍后重启」）**只在桌面端存在**——只有桌面端的保存回执会等待会话重建完成，用户才会感知到「保存很久才恢复」，故需要弹框让用户选择时机；VS Code 扩展 / JetBrains 插件的保存回执本就不等待重建（fire-and-forget），无此症状、不弹此确认框。IDE 端的插件装卸等构造期副作用生效沿用宿主既有的后台重建路径（其重建时机不阻塞设置页保存与回执）；本例外不改变三端「用户偏好一律走 settings.json 实时重载」的同语义要求（见「IDE 插件配置入口」故事场景 6）。
 - **上下文长度的落点 = 全局 `env.WAVE_MAX_INPUT_TOKENS`（2026-09-10 用户拍板）**：设置页的「上下文长度」读写**同一个全局键** `env.WAVE_MAX_INPUT_TOKENS`（K×1000；用户原话「那本来就是全局的上下文设置」），**不新增 per-model 落点、不改动 SDK 既有解析优先级**。因此存在一个刻意保留的语义：该键是**全局默认**，当**当前模型**自带上下文上限（服务端下发的 `models[<id>].maxInputTokens`，即 `resolveMaxInputTokens` 链中 `constructorLimit > options.maxInputTokens > models[resolvedModel].maxInputTokens > envSnapshot.WAVE_MAX_INPUT_TOKENS > 默认` 的靠前项）时，**以模型配置为准**、全局值被遮蔽——这是既有 SDK 行为，本规格不修改它。为防「改了不生效」的新投诉，设置页「上下文长度」行须给出一句可见说明（文案从轻，如「全局默认；当前模型自带上下文上限时以模型配置为准」；不新增区块、不新增状态源、不引入 per-model 展示）。
 - **settings.json `env` 与 OS 环境变量的关系**：settings.json `env` 存入会话级快照，优先级高于 OS 环境变量，但**不写入 `process.env`**（`WAVE_SERVER_URL` 例外，见下条）。优先级从高到低：显式构造参数 / stdio `initialize` 参数 > settings.json `env`（快照）> OS 环境变量 > 默认值。

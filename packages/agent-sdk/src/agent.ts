@@ -114,7 +114,7 @@ export class Agent {
     return this.configurationService.resolveMaxInputTokens();
   }
 
-  public getLanguage(): string | undefined {
+  public getLanguage(): string {
     return this.configurationService.resolveLanguage();
   }
 
