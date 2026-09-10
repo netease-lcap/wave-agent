@@ -1,7 +1,9 @@
 import { test, expect } from "../e2e/utils/webviewTestHarness.js";
 import { elementScreenshotWebp } from "../e2e/utils/screenshot.js";
-import fs from "node:fs";
-import path from "node:path";
+import {
+  openSettings,
+  simulateHostMessage,
+} from "../e2e/utils/settingsHarness.js";
 
 /**
  * 设置页「子代理」「技能」选项卡 demo（/agents、/skills 斜杠命令落地页）：
@@ -10,45 +12,6 @@ import path from "node:path";
  * skillMetadataResponse 展示 4 个来源 Tab（插件 / 内置 / 用户 / 项目）的
  * agent 定义与技能列表，以及项目技能在当前项目下的平铺列表形态。
  */
-
-// SettingsPage 的颜色全部走 --vscode-* 变量，独立 settings.html 没有宿主注入，
-// 必须手动带上深色主题变量集，否则截图为白底浅色（实测 2026-08-29）。
-const themeStyles = fs.readFileSync(
-  path.join(process.cwd(), "theme", "theme-base-dark.css"),
-  "utf8",
-);
-
-const mockVscodeApiJs = `
-    window.process = { env: { NODE_ENV: 'production' } };
-    window.acquireVsCodeApi = () => ({
-        postMessage: (message) => {
-            if (!window.testMessages) window.testMessages = [];
-            window.testMessages.push(message);
-        },
-        setState: () => {},
-        getState: () => ({})
-    });
-    window.simulateExtensionMessage = (message) => {
-        window.dispatchEvent(new MessageEvent('message', { data: message }));
-    };
-`;
-
-const settingsHtml = `
-<!DOCTYPE html>
-<html lang="zh-CN" data-theme="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wave Settings</title>
-    <style>${themeStyles}</style>
-    <link rel="stylesheet" href="vscode-webview://mock-extension-id/settings.css">
-</head>
-<body>
-    <div id="root"></div>
-    <script>${mockVscodeApiJs}</script>
-    <script src="vscode-webview://mock-extension-id/settings.js"></script>
-</body>
-</html>`;
 
 const WORKDIR = "/work/wave-agent";
 
@@ -118,40 +81,17 @@ test.describe("设置页子代理选项卡 Demo", () => {
   test("should show 4 source tabs, grouped list and detail", async ({
     webviewPage,
   }) => {
-    // Settings full-page is wider than the default 400px demo viewport
-    await webviewPage.setViewportSize({ width: 1000, height: 760 });
-
-    // Reload the harness page with the settings entry bundle
-    await webviewPage.setContent(settingsHtml);
-
-    // Wait for the settings page to render
-    await expect(webviewPage.locator(".settings-page")).toBeVisible();
-
-    // Host opens the settings tab with the subagents nav (mirrors /agents →
-    // openSettings(nav:"subagents") → settingsState)
-    await webviewPage.evaluate(() => {
-      window.simulateExtensionMessage({
-        command: "settingsState",
-        workdir: "/work/wave-agent",
-        nav: "subagents",
-      });
-    });
-
-    // The settings entry pulls config on open; reply so the page stays healthy
-    await webviewPage.evaluate(() => {
-      window.simulateExtensionMessage({
-        command: "configurationResponse",
-        configurationData: { language: "zh-CN", contextLength: 200 },
-      });
+    // Settings full-page is wider than the default 400px demo viewport；host 打开设置
+    // tab 时下发 settingsState(nav:"subagents")（mirrors /agents → openSettings(nav)）
+    await openSettings(webviewPage, {
+      settingsState: { workdir: "/work/wave-agent", nav: "subagents" },
     });
 
     // Simulate the host replying with subagent configurations
-    await webviewPage.evaluate((configurations) => {
-      window.simulateExtensionMessage({
-        command: "subagentConfigurationsResponse",
-        configurations,
-      });
-    }, agentConfigurations);
+    await simulateHostMessage(webviewPage, {
+      command: "subagentConfigurationsResponse",
+      configurations: agentConfigurations,
+    });
 
     // 4 source tabs exist and the default tab is 插件子代理
     await expect(webviewPage.getByText("插件子代理")).toBeVisible();
@@ -229,30 +169,14 @@ test.describe("设置页技能选项卡 Demo", () => {
   test("should show 4 source tabs with flat project skill list", async ({
     webviewPage,
   }) => {
-    await webviewPage.setViewportSize({ width: 1000, height: 760 });
-    await webviewPage.setContent(settingsHtml);
-    await expect(webviewPage.locator(".settings-page")).toBeVisible();
-
     // /skills → openSettings(nav:"skills") → settingsState
-    await webviewPage.evaluate((workdir) => {
-      window.simulateExtensionMessage({
-        command: "settingsState",
-        workdir,
-        nav: "skills",
-      });
-    }, WORKDIR);
-    await webviewPage.evaluate(() => {
-      window.simulateExtensionMessage({
-        command: "configurationResponse",
-        configurationData: { language: "zh-CN", contextLength: 200 },
-      });
+    await openSettings(webviewPage, {
+      settingsState: { workdir: WORKDIR, nav: "skills" },
     });
-    await webviewPage.evaluate((skillList) => {
-      window.simulateExtensionMessage({
-        command: "skillMetadataResponse",
-        skills: skillList,
-      });
-    }, skills);
+    await simulateHostMessage(webviewPage, {
+      command: "skillMetadataResponse",
+      skills,
+    });
 
     // 4 source tabs exist
     await expect(webviewPage.getByText("插件技能")).toBeVisible();
