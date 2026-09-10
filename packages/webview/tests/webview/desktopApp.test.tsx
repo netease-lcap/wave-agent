@@ -863,12 +863,15 @@ describe("DesktopApp", () => {
   it("should disable the input area when no workdir is selected, and enable it once a workdir arrives", () => {
     renderDesktopApp();
     sendCommand("desktopWorkdirState", { recentWorkdirs: [] });
-    sendCommand("setInitialState", { messages: [] });
+    // Signed in: the *only* reason left for the disabled input here is the
+    // missing workdir (the unauthenticated gate is covered separately in
+    // unauthenticatedInputDisabled.test.tsx).
+    sendCommand("setInitialState", { messages: [], isAuthenticated: true });
 
-    expect(screen.getByTestId("message-input")).toHaveAttribute(
-      "contenteditable",
-      "false",
-    );
+    const input = screen.getByTestId("message-input");
+    expect(input).toHaveAttribute("contenteditable", "false");
+    // 禁用但不说原因是老问题：占位文案必须说明当前为何发不出去。
+    expect(input.getAttribute("data-placeholder")).toBe("请先选择项目目录");
     expect(screen.getByTestId("send-btn")).toBeDisabled();
     expect(screen.getByLabelText("添加")).toBeDisabled();
     expect(screen.getByLabelText("快捷指令")).toBeDisabled();
@@ -878,15 +881,43 @@ describe("DesktopApp", () => {
       workdir: "/home/user/project",
       recentWorkdirs: [],
     });
-    sendCommand("setInitialState", { messages: [] });
+    sendCommand("setInitialState", { messages: [], isAuthenticated: true });
 
-    expect(screen.getByTestId("message-input")).toHaveAttribute(
-      "contenteditable",
-      "true",
+    expect(input).toHaveAttribute("contenteditable", "true");
+    expect(input.getAttribute("data-placeholder")).toBe(
+      "/快捷指令，@添加上下文，粘贴图片，Enter发送...",
     );
     expect(screen.getByLabelText("添加")).toBeEnabled();
     expect(screen.getByLabelText("快捷指令")).toBeEnabled();
     expect(screen.getByLabelText("权限模式")).toBeEnabled();
+  });
+
+  it("shows the login reason, not the workdir reason, when both reasons apply", () => {
+    renderDesktopApp();
+    // Unauthenticated AND no workdir at the same time — 登录优先：未登录必然发不出
+    // 消息，目录没选只是还没定位到项目。
+    sendCommand("desktopWorkdirState", { recentWorkdirs: [] });
+    sendCommand("setInitialState", { messages: [], isAuthenticated: false });
+
+    const input = screen.getByTestId("message-input");
+    expect(input).toHaveAttribute("contenteditable", "false");
+    expect(input.getAttribute("data-placeholder")).toBe("请先登录后再发送消息");
+
+    // 登录后不再是登录原因，剩下的原因是没选目录 —— 两条文案互不串。
+    sendCommand("setInitialState", { messages: [], isAuthenticated: true });
+    expect(input).toHaveAttribute("contenteditable", "false");
+    expect(input.getAttribute("data-placeholder")).toBe("请先选择项目目录");
+
+    // 再选定目录：解除禁用，占位回到默认提示。
+    sendCommand("desktopWorkdirState", {
+      workdir: "/home/user/project",
+      recentWorkdirs: ["/home/user/project"],
+    });
+    sendCommand("setInitialState", { messages: [], isAuthenticated: true });
+    expect(input).toHaveAttribute("contenteditable", "true");
+    expect(input.getAttribute("data-placeholder")).toBe(
+      "/快捷指令，@添加上下文，粘贴图片，Enter发送...",
+    );
   });
 
   describe("session tree (FR-020)", () => {
@@ -1892,7 +1923,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
-      sendCommand("setInitialState", { messages: [] });
+      sendCommand("setInitialState", { messages: [], isAuthenticated: true });
       sendCommand("desktopGitBranches", {
         workdir: "/work/a",
         result: branches,
@@ -1979,7 +2010,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
-      sendCommand("setInitialState", { messages: [] });
+      sendCommand("setInitialState", { messages: [], isAuthenticated: true });
       sendCommand("desktopGitBranches", {
         workdir: "/work/a",
         result: branches,
@@ -2051,7 +2082,7 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
       });
-      sendCommand("setInitialState", { messages: [] });
+      sendCommand("setInitialState", { messages: [], isAuthenticated: true });
       sendCommand("desktopSessionTree", {
         groups: [
           {
@@ -2065,7 +2096,11 @@ describe("DesktopApp", () => {
       // each with its pane-tagged empty snapshot so input areas render —
       // pane-scoped instances only accept messages tagged with their paneId.
       for (const p of panes) {
-        sendCommand("setInitialState", { messages: [], paneId: p.paneId });
+        sendCommand("setInitialState", {
+          messages: [],
+          paneId: p.paneId,
+          isAuthenticated: true,
+        });
       }
       return result;
     }

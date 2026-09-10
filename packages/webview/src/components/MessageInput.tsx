@@ -162,6 +162,7 @@ export const MessageInput = forwardRef<
     modelPopup,
     btwPopup,
     disabled,
+    placeholder,
     paneId,
     contextUsage,
     showContextUsage,
@@ -1768,7 +1769,9 @@ export const MessageInput = forwardRef<
             onCompositionStart={handleCompositionStart}
             onCompositionEnd={handleCompositionEnd}
             data-testid="message-input"
-            data-placeholder="/快捷指令，@添加上下文，粘贴图片，Enter发送..."
+            data-placeholder={
+              placeholder ?? "/快捷指令，@添加上下文，粘贴图片，Enter发送..."
+            }
           />
 
           {/* Buttons row */}

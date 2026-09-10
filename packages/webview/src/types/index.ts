@@ -554,8 +554,13 @@ export interface MessageInputProps {
   modelPopup?: React.ReactNode;
   /** Optional /btw side-question panel rendered above the input box, anchored to .input-wrapper. */
   btwPopup?: React.ReactNode;
-  /** Disable the whole input area (e.g. desktop host without a workdir). */
+  /** Disable the whole input area (e.g. desktop host without a workdir, or an
+   *  unauthenticated user — see sso-auth.md「未认证时发送入口禁用」). */
   disabled?: boolean;
+  /** Placeholder of the empty input (`data-placeholder`). Callers pass the
+   *  *reason* while `disabled` is set (e.g. 「请先登录后再发送消息」); defaults
+   *  to the slash-command hint. */
+  placeholder?: string;
   /** Desktop split-view pane this input belongs to; tagged on upload requests
    *  so the host can route uploadSuccess back to the originating pane. */
   paneId?: string;
