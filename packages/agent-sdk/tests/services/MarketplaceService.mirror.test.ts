@@ -418,6 +418,8 @@ describe("officialMarketplaceMirror (zip snapshot)", () => {
         }),
         { "plugins/demo-plugin/hooks/run.sh": 0o755 },
       );
+      // Parsing layer — cross-platform: the zip's Unix external attrs must
+      // round-trip through the central-directory parser on any host OS.
       const modes = parseZipModes(zip);
       expect(modes["plugins/demo-plugin/hooks/run.sh"] & 0o111).toBeTruthy();
 
@@ -430,17 +432,29 @@ describe("officialMarketplaceMirror (zip snapshot)", () => {
       );
       expect(result).toBe("sha-exec");
 
+      // Both files must land on disk (exists on every platform); only the mode
+      // assertions below are POSIX-only.
       const scriptPath = path.join(
         installLocation,
         "plugins/demo-plugin/hooks/run.sh",
       );
       const stat = await fs.stat(scriptPath);
-      expect(stat.mode & 0o111).toBeTruthy();
-      // Plain file without exec bits stays non-executable.
       const jsonStat = await fs.stat(
         path.join(installLocation, ".wave-plugin", "marketplace.json"),
       );
-      expect(jsonStat.mode & 0o111).toBeFalsy();
+      // Filesystem layer — POSIX-only. Exec bits are a POSIX file-system
+      // concept: NTFS has no mode bits, so `stat().mode & 0o111` is always 0
+      // there and the chmod in officialMarketplaceMirror is a silent no-op.
+      // Windows also does not need the restored bit, because hooks are never
+      // executed by path — the hook runner always goes through a shell (Git
+      // Bash `bash.exe -c`, falling back to `cmd.exe /c`) and rewrites a `*.sh`
+      // command to `bash <script>` (src/services/hook.ts). So assert the
+      // on-disk bits only where the OS actually represents them.
+      if (process.platform !== "win32") {
+        expect(stat.mode & 0o111).toBeTruthy();
+        // Plain file without exec bits stays non-executable.
+        expect(jsonStat.mode & 0o111).toBeFalsy();
+      }
     });
 
     it("refuses an install location outside the marketplaces cache dir", async () => {
