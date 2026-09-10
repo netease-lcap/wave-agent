@@ -2412,7 +2412,7 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 
 1. **F-07（表头配色与斑马纹 opacity）与 C-03（表头最终字重/字号）未做** —— 同属 G3，本轮只按执行档取「不低于正文」14/22·600，等视觉候选拍板。
 2. **C-02（代码行高整数化）未做** —— pre 行高仍为 13×1.4=18.2px，非整数但未抢先改。
-3. 表格单元格折行数 12 → 40（字号从 12.6 → 14 的直接后果），建议在 8899 走查时确认是否接受；若认为表格信息密度下降，需要回到角色表层面讨论（属设计口径而非实现缺陷）。
+3. ~~表格单元格折行数 12 → 40（字号从 12.6 → 14 的直接后果），建议在 8899 走查时确认是否接受~~ → **口径已澄清：12 → 40 指「折行单元格数」**（内容折成 >1 行的 `td/th` 个数，分母为 5 张表的 128 个单元格），三态为 S1 12 → S2 40 → 当前 S3 33；用户已明确「表格保持 14px、不通过缩小字号解决折行」，**该项记为「字号修复已完成，表格阅读效果待验收」（V-01）**，详见文末「表格阅读效果待验收」节。
 4. 未覆盖场景：流式输出中未闭合的表格/代码围栏；表格内嵌 mermaid 或超长无空格 token 的极端列；编辑器 200% 缩放与 1.4.12 文字间距；IDE 宿主真机（仅 data-host 代理）；窄窗口 + 分屏组合下的实际内容宽度；截图对比中的「修复前」为等效回退态而非真实历史构建。
 
 ## 对话流链接角色（用户规则 2026-09-10）：描述性链接 = 正文 UI / 直显地址 = 代码 13px（F-16）
@@ -2429,7 +2429,7 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 
 - `Message.tsx` 的 `renderer.link`：解析出的 label 去掉内联标签后匹配 `^\s*(?:[a-z][a-z0-9+.-]*:\/\/|\/\/)`（即显示文本本身就是地址）→ 输出 `class="address-link"`；描述性链接不加类，继续继承正文 UI 角色。
 - `host-desktop.css`：`.markdown-content a.address-link` 与正文裸路径链接 `.markdown-content a.file-path-link` 绑 `font-family: var(--vscode-editor-font-family); font-size: 13px; overflow-wrap: anywhere; word-break: break-word`。折行只能靠 `anywhere/break-word`（地址无空格），这条同时兜住 `linkifyFilePathText` 在正文生成的裸路径链接，使「路径」在正文与代码里字形一致。
-- 链接颜色/下划线不动（D-01 的常态下划线方案仍待授权，属另一件事）。
+- 链接颜色/下划线不动（**本条为提交 `d8a09697` 时的状态**；D-01 的常态下划线已于同日获授权并实施，见提交 `634a85d8` 与下文「正文内联链接常态下划线」节）。
 
 ### 前后实测（1440px；light/dark 同值）
 
@@ -2448,6 +2448,155 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 
 ### 未覆盖 / 待拍板
 
-- `mailto:` / `tel:` 等无 `//` 的地址若被直接展示，当前判据不算「直显地址」（仍 UI 字体）——是否纳入规则待你确认。
+- ~~`mailto:` / `tel:` 等无 `//` 的地址若被直接展示，当前判据不算「直显地址」（仍 UI 字体）——是否纳入规则待你确认。~~ **同日闭环**：用户追加规则后已纳入直显地址（见下节「邮箱与电话纳入直显地址」）。
 - markdown 链接 label 内嵌套地址（`[https://x](https://y)`）、label 含内联 HTML（`**http://x**`）、自动链接在流式未闭合状态下的判定均未验证。
-- D-01（正文内联链接常态下划线）未实施；若与本条同批落地，应复跑 axe `link-in-text-block`。
+- ~~D-01（正文内联链接常态下划线）未实施~~ **同日已实施**（提交 `634a85d8`，见下节「正文内联链接常态下划线」）。
+
+## 邮箱与电话纳入直显地址（用户规则 2026-09-10 追加）：判据是可见文字含义，不是有无 `//`（F-16 续）
+
+用户 2026-09-10 追加条款：
+
+1. 直接显示**邮箱、电话号码**或 `mailto:…`、`tel:…` 串 → 使用 13px 等宽字体；
+2. 显示「发送邮件」「联系我们」「拨打电话」等**描述性文字** → 使用 UI 字体；
+3. **保留原有跳转行为**（`href` 不变）；
+4. 判据是**可见文字的含义**，而不是有没有 `//`。
+
+**应用提交：`3b33d294`**（`src/components/Message.tsx`，仅链接判定；`host-desktop.css` 复用 `d8a09697` 的 `a.address-link` 规则）。
+
+### 实现
+
+`Message.tsx` 新增三条判据，`renderer.link` 对 `stripFilePathLinks(text)` 后的可见文本做 `isAddressLabel` 判定：
+
+```ts
+const EMAIL_LABEL = /^[\w.!#$%&'*+/=?^`{|}~-]+@[\w-]+(?:\.[\w-]+)+$/;
+// 电话：纯数字 + 分隔符（+ - ( ) 空格 .），至少 7 位数字（含国家码写法）
+const PHONE_LABEL = /^\+?[\d(][\d\s().-]{5,}\d$/;
+// 日期样 label（2026-09-10 / 2026.9.10）不算电话
+const DATE_LABEL = /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/;
+const isAddressLabel = (label: string) => {
+  const t = label.replace(/<[^>]*>/g, "").trim();
+  if (/^(?:[a-z][a-z0-9+.-]*:\/\/|\/\/)/i.test(t)) return true; // scheme 地址
+  if (/^(?:mailto|tel):/i.test(t)) return true; // 显式 mailto:/tel: 串
+  if (EMAIL_LABEL.test(t)) return true; // 直接显示邮箱
+  // 直接显示电话：≥7 位数字且不是日期
+  return (
+    PHONE_LABEL.test(t) &&
+    !DATE_LABEL.test(t) &&
+    (t.match(/\d/g) || []).length >= 7
+  );
+};
+```
+
+说明：`mailto:`/`tel:` 的可见 label 本身即地址（无空格、绝对可断点可控），故与 URL 同档；判定发生在 `renderer.link`，不触碰 `href`，跳转行为不变。日期排除是为了避免 `2026-09-10` 这类正文日期被误判成电话。
+
+### 前后实测（1440px；light/dark 同值）
+
+| 形态                                                                                              | 修复前     | 修复后                     |
+| ------------------------------------------------------------------------------------------------- | ---------- | -------------------------- |
+| 直显邮箱 · 3 个（纯文本 `support@corp.netease.com`、`[support@…](mailto:…)`、`mailto:support@…`） | UI 栈 14px | **Menlo 13px**             |
+| 直显电话 · 1 个（`[+86 138 0000 0000](tel:+8613800000000)`）                                      | UI 栈 14px | **Menlo 13px**             |
+| 描述性链接 · 9 个（含「发送邮件」「联系我们」「拨打电话」「转接客服」）                           | UI 栈 14px | UI 栈 14px（未加类）       |
+| `<code>` 内路径 / 地址链接 · 17 个                                                                | Menlo 13px | Menlo 13px                 |
+| 日期样 label（`2026-09-10`）                                                                      | UI 栈 14px | UI 栈 14px（未误判为电话） |
+
+- **跳转行为**：`href` 逐字节不变（`mailto:` / `tel:` 原样输出），仅 class 标记与字形变化。
+- **测试**：`pnpm -F wave-webview run type-check` exit 0。
+- 截图 8 张：`/Users/ailsa/Documents/07-AI/走查/截图/F-16-邮箱电话角色_修复前|修复后_{light,dark}_*.png`（「修复前」= 同页等效回退态：中和 `.address-link` 的等宽/字号声明）。
+
+### 未覆盖
+
+- label 与 href 不同源的链接（如 `[https://x](https://y)`）；label 内含内联 HTML（`**http://x**`）；超长电话（>15 位）与带分机号写法；IDE 宿主真机。
+
+## 正文内联链接常态下划线（用户授权 2026-09-10）：D-01
+
+依据：**用户 2026-09-10 授权**（「正文内联链接常态显示下划线，hover 加深。直接展示的 URL、邮箱、电话号码出现在正文中时同样适用；等宽字体不能替代链接的可点击线索。独立工具入口与文件路径链接保留此前已确定的处理方式。」）+ **WCAG 1.4.1**（axe `link-in-text-block` serious：链接与正文对比 light 2.9:1、dark 1.99:1，均 < 3:1，且 `text-decoration:none`）。契约中「链接无下划线」表述已声明为 Vue 参考、不再约束 React 侧，故实现无障碍修复不存在契约冲突；该表述本身的回写建议见 W-05。
+
+**应用提交：`634a85d8`**（`src/styles/host-desktop.css`，+27 行；base `Message.css` 零改动）。
+
+### 实现
+
+```css
+[data-host="desktop"] .markdown-content a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+[data-host="desktop"] .markdown-content a:hover {
+  color: #1f47b8; /* derived：--cc-text-link 加深（契约无 hover token） */
+  text-decoration: underline;
+}
+[data-host="desktop"][data-theme="dark"] .markdown-content a:hover {
+  color: #7fc0ff; /* derived：深色下提亮以体现「加深」反馈 */
+}
+[data-host="desktop"] .markdown-content a.file-path-link,
+[data-host="desktop"] .markdown-content code a {
+  text-decoration: none;
+}
+[data-host="desktop"] .markdown-content a.file-path-link:hover {
+  text-decoration: underline;
+}
+```
+
+### 前后实测
+
+| 形态                                        | 修复前                           | 修复后                                                                     |
+| ------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------- |
+| 正文内联链接（描述性 + 直显地址/邮箱/电话） | `text-decoration:none`，仅靠颜色 | **常态下划线**（offset 2px / 1px）                                         |
+| hover 反馈                                  | 下划线出现、颜色不变             | 下划线 + **颜色加深**：light `#2f5edb → #1f47b8`、dark `#4daafc → #7fc0ff` |
+| 文件路径链接 `a.file-path-link` / `code a`  | 无下划线（dotted 仅在 base）     | 显式 `text-decoration:none`（hover 出现）                                  |
+| axe `link-in-text-block`                    | **5 节点 / 模式**                | **1 节点 / 模式**（残留 = `.bash-command-output` 工具输出内链接）          |
+
+- **hover token 说明**：契约无「链接 hover」token → hover 色按 `--cc-text-link` 加深/提亮推导，CSS 内已注明 `derived`；**待你确认取值或指定官方 token**。
+- **待拍板**：残留 1 个 axe 违规节点位于 bash 命令输出区。当前遵循「独立工具入口保留此前处理方式」未加下划线；若要 0 违规，只需把该选择器并入同一条下划线规则（1 行，作用域仍限 `[data-host="desktop"]`）。
+- **测试**：`pnpm -F wave-webview run type-check` exit 0。
+- 截图 8 张：`/Users/ailsa/Documents/07-AI/走查/截图/D-01-正文链接下划线_修复前|修复后_{light,dark}_{描述性链接,直显地址,路径链接对照,表格内地址}.png`（「修复前」= 同页等效回退态 `text-decoration:none`）。
+
+## 表格阅读效果待验收（V-01）：字号修复已完成，「12→40」口径澄清
+
+### 「12→40」是什么统计
+
+用户 2026-09-10 要求先说明口径：**既不是整张表的总行数，也不是单元格的行数总和**，而是「**折行单元格数**」——内容折成 >1 行的 `td`/`th` 个数。分母 = mock 中 5 张表的 128 个单元格。
+
+| 状态                                     | 折行单元格数 | 8 列表 | 4 列表 |
+| ---------------------------------------- | ------------ | ------ | ------ |
+| S1 修复前（12.6px 字号、无链接折行规则） | **12**       | 0      | 12     |
+| S2 字号已修 14px、链接折行规则未加       | **40**       | 28     | 12     |
+| S3 当前 HEAD（含 `a.address-link` 折行） | **33**       | 21     | 12     |
+
+单元格最多折 4 行，≥3 行的单元格由 3 → 5 个。S2 的 +28 主要来自 8 列表：字号从 12.6 → 14px 后列宽不变而文本变宽，更多单元格越过列宽阈值。
+
+### 列宽策略取舍（待拍板）
+
+| 策略                                       | 8 列表           | 4 列表                              | 折行单元格       | 横向滚动       |
+| ------------------------------------------ | ---------------- | ----------------------------------- | ---------------- | -------------- |
+| ① 现状 `width:100%`                        | 760px / 高 562px | 760px / 高 446px（最窄列 **42px**） | 21 + 12 = **33** | 无（列被压缩） |
+| ② 候选 `width:max-content; min-width:100%` | 867px / 高 360px | 1838px / 高 199px                   | 0 + 2 = **2**    | 表格区域内滚动 |
+
+最窄列 42px 的取值内容形如「代码/路径/项目」等短词，属「逐字挤成窄列」的观感问题。
+
+### 用户四条验收口径与当前满足情况
+
+1. 普通说明文字允许自然换行 → ✅ 正文段落行盒总数与修复前一致（未因表格改动而变）；
+2. 邮箱、路径、URL 允许必要换行，避免逐字挤成窄列 → ⚠️ 折行已按需（`anywhere`），但 4 列表最窄列仍 42px，取决于策略选择；
+3. 宽表优先合理分配列宽，必要时表格区域内横向滚动 → ⚠️ 现为压缩列宽而非分配列宽，策略 ② 可满足；
+4. 不截断或隐藏内容来减少行数 → ✅ 无 `text-overflow:ellipsis` / `overflow:hidden` / `display:none`；画布无横向溢出（`documentElement.scrollWidth == clientWidth == 1440`，`.md-table-scroll` 单元格 800 == 800）。
+
+**结论：字号修复已完成（表格保持 14px，未通过缩小字号解决折行），表格阅读效果待验收** —— 待用户选定列宽策略后按四条口径回归并补截图。
+
+截图 8 张：`/Users/ailsa/Documents/07-AI/走查/截图/F-03-表格阅读效果_修复前|修复后_{light,dark}_{宽表4列,8列表}.png`（同一窗口、1440px、同一滚动位置）。
+
+## skill 回写建议汇总（W-01 ~ W-05，仅建议，未改 skill）
+
+按用户要求本轮**只整理、不直接修改** `codechat-desktop-skill`。目标文件与来源：
+
+| #    | 目标文件                                                             | 建议内容                                                                                                                                                                                                                          | 依据来源                                                                                                        |
+| ---- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| W-01 | `references/conversation-surfaces.md:51`                             | 对话内块圆角 8px → **12px**（bash / 写入预览 / 代码块 / diff / 答案框）                                                                                                                                                           | Figma 节点 `13438:8029` + 用户 0903 第 3 轮评论（已确认）                                                       |
+| W-02 | `references/conversation-surfaces.md`                                | 时间线状态点 8×8+1px → **12×12 + 2px**（浅色白描边 / 深色会话画布色描边），行缩进 20px                                                                                                                                            | Figma 节点 `13583-2226`（file `v92f0XaCeMV7467qzIh6en`，已确认）                                                |
+| W-03 | `references/conversation-surfaces.md:25-27`                          | 连接线 **#E4E7ED / left 5.5px / 端点 21px**，说明源自 12px 节点圆心几何                                                                                                                                                           | Figma 提取「竖线 1x541 #E4E7ED」+ 几何推导                                                                      |
+| W-04 | `references/conversation-typography.md`（建议新增 **TXT-09**）       | **链接角色条款**：描述性链接 = 正文角色；直显地址（`http(s)://`、协议相对 `//`、**可见文字本身就是邮箱/电话或 mailto:/tel: 串**）= 代码角色 13px、允许任意位置折行；判据是可见文字含义而非有无 `//`；路径与代码内链接沿用代码角色 | 用户 2026-09-10 规则；实现 `d8a09697` / `3b33d294`                                                              |
+| W-05 | `references/conversation-surfaces.md` + `conversation-typography.md` | 「链接无下划线，hover 出现」→ **「正文内联链接常态下划线（offset 2px / 1px），hover 加深颜色；直显 URL/邮箱/电话同样适用；文件路径与代码内链接保持无下划线」**                                                                    | WCAG 1.4.1 + axe `link-in-text-block`（light 2.9:1 / dark 1.99:1 < 3:1）+ 用户 2026-09-10 授权；实现 `634a85d8` |
+
+**回写前置依赖**：W-04 与 W-05 相互依赖（W-04 让直显地址转等宽、W-05 要求直显地址同样有下划线），两条须同批回写；另基础仓库 `specs/ui/file-path-links.md` 的「路径链接 dotted 下划线」与 base `Message.css` 现有 `underline dotted` 需一并核对（本轮未改 base，IDE 宿主不受影响）。
+
+**本轮（2026-09-10）已落盘但未推送的提交**：`1e2ef0aa`（F-02~F-06 字号/行高/表宽）、`0df55f8b`、`89bfc8f3`（文档）、`d8a09697`（链接角色/地址）、`3b33d294`（邮箱/电话）、`634a85d8`（下划线）。推送目标仍为「新分支 + PR」，待用户确认后执行。
