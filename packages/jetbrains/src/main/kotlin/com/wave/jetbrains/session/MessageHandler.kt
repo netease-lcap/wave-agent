@@ -999,8 +999,11 @@ class MessageHandler(
     /**
      * 设置页配置回包载荷：扩展本地键（model / fastModel / serverUrl，落 wave.xml）
      * 合并用户偏好（读用户级 `~/.wave/settings.json`，经共享 CLI 进程）。
-     * 用户偏好的**初始值读取以该文件为唯一真源**，不得回读宿主私有存储
-     * （spec agent-config「IDE 插件配置入口」场景 6）。读取失败降级为只回本地键。
+     * 用户偏好的**初始值读取以该文件为落点**，不得回读宿主私有存储
+     * （spec agent-config「IDE 插件配置入口」场景 6）；回包里的值是该偏好的
+     * **生效值**（可能来自 Remote 组织下发 / 机器环境变量），`preferenceSources`
+     * 标明每个键的来源层，设置页据此把被组织配置覆盖的键显示为「生效值 + 置灰」。
+     * 读取失败降级为只回本地键。
      */
     private suspend fun configurationDataJson(): JsonObject {
         val local = WavePluginService.getInstance().loadConfiguration()
@@ -1018,6 +1021,7 @@ class MessageHandler(
             prefs["contextLength"]?.let { put("contextLength", it) }
             prefs["autoMemoryEnabled"]?.let { put("autoMemoryEnabled", it) }
             prefs["autoMemoryFrequency"]?.let { put("autoMemoryFrequency", it) }
+            prefs["preferenceSources"]?.let { put("preferenceSources", it) }
         }
     }
 

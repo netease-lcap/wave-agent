@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 import type { StdioClient } from "../stdio/stdioClient";
-import type { UserPreferenceSettings } from "wave-agent-sdk/types";
+import type {
+  UserPreferenceKey,
+  UserPreferenceSettings,
+  UserPreferenceSettingsView,
+  UserPreferenceSource,
+} from "wave-agent-sdk/types";
 
 export interface ConfigurationData {
   model?: string;
@@ -13,6 +18,12 @@ export interface ConfigurationData {
   autoMemoryEnabled?: boolean;
   /** Auto-memory extraction turn frequency, 1–100 */
   autoMemoryFrequency?: number;
+  /**
+   * 每个用户偏好键的来源层（`remote` / `user` / `env` / `default`）：回包带上
+   * 它，设置页才能把被组织配置（Remote）覆盖的键显示为「生效值 + 置灰」而不是
+   * 回退成用户文件里的值（spec core/agent-config.md 边界说明「用户偏好的层与来源」）。
+   */
+  preferenceSources?: Partial<Record<UserPreferenceKey, UserPreferenceSource>>;
 }
 
 /**
@@ -41,7 +52,11 @@ export class ConfigurationService {
 
   private loadLocalConfiguration(): Omit<
     ConfigurationData,
-    "language" | "contextLength" | "autoMemoryEnabled" | "autoMemoryFrequency"
+    | "language"
+    | "contextLength"
+    | "autoMemoryEnabled"
+    | "autoMemoryFrequency"
+    | "preferenceSources"
   > {
     return {
       model: this.context.globalState.get<string>("model") || "",
@@ -85,12 +100,16 @@ export class ConfigurationService {
     }
   }
 
-  /** 用户偏好经 CLI 进程读取（settings.json 是唯一真源）；失败降级为空。 */
-  private async readUserPreferences(): Promise<UserPreferenceSettings> {
+  /**
+   * 用户偏好经 CLI 进程读取（settings.json 是落点，但**生效值**可能来自更高层：
+   * Remote 组织下发 / 机器环境变量——回包带 `preferenceSources` 标明来源，
+   * 设置页据此置灰被覆盖的键）；失败降级为空。
+   */
+  private async readUserPreferences(): Promise<UserPreferenceSettingsView> {
     if (!this.client) return {};
     try {
       const result = await this.client.request("getUserSettings");
-      return (result as UserPreferenceSettings | undefined) ?? {};
+      return (result as UserPreferenceSettingsView | undefined) ?? {};
     } catch (error) {
       console.error("Failed to load user preferences:", error);
       return {};

@@ -49,9 +49,10 @@ import {
   loadWaveConfigFromFile,
   getUserConfigPaths,
   getProjectConfigPaths,
-  readUserPreferenceSettings,
+  readUserPreferenceView,
   updateUserPreferenceSettings,
   type UserPreferenceSettings,
+  type UserPreferenceSettingsView,
   type SubagentConfiguration,
   type SkillMetadata,
 } from "wave-agent-sdk";
@@ -234,8 +235,9 @@ export class AgentBridge {
       // ── User preferences (global — user-level ~/.wave/settings.json) ──
       // 设置页保存路径：用户偏好写文件后由 SDK 实时重载在各会话下一轮生效，
       // 不经 updateConfig 当 AgentOptions 覆盖层下发（见 protocol.ts 注释）。
+      // 读回的是**生效值**（可能来自 Remote 组织下发/环境变量）+ 每键来源层。
       case "getUserSettings":
-        return readUserPreferenceSettings();
+        return this.userSettingsView();
       case "updateUserSettings":
         return this.updateUserSettings(p as UserPreferenceSettings);
 
@@ -977,20 +979,32 @@ export class AgentBridge {
    * 无关；监视若也命中，重载是幂等的（并发重载按 `reloadInProgress` 去重）。
    *
    * 空载荷（无差异保存、只回读）不落盘，也不重载。
+   *
+   * 回包是**生效视图**（同 `getUserSettings`）：设置页在保存后仍须看到「被组织
+   * 配置覆盖」的键的生效值与来源，而不是回退成用户文件里的值。
    */
   private async updateUserSettings(
     patch: UserPreferenceSettings,
-  ): Promise<UserPreferenceSettings> {
-    const settings = await updateUserPreferenceSettings(patch);
-    if (Object.values(patch).every((value) => value === undefined)) {
-      return settings;
+  ): Promise<UserPreferenceSettingsView> {
+    await updateUserPreferenceSettings(patch);
+    if (!Object.values(patch).every((value) => value === undefined)) {
+      await Promise.all(
+        [...this.sessions.values()].map((entry) =>
+          entry.agent.reloadConfiguration(),
+        ),
+      );
     }
-    await Promise.all(
-      [...this.sessions.values()].map((entry) =>
-        entry.agent.reloadConfiguration(),
-      ),
-    );
-    return settings;
+    return this.userSettingsView();
+  }
+
+  /**
+   * 用户偏好的**生效视图**：生效值 + 每键来源层（用户级文件 / Remote 组织下发 /
+   * 机器环境变量 / 默认）。设置页据此把「由组织配置管理」的键显示为生效值 +
+   * 置灰（spec core/agent-config.md 边界说明「用户偏好的层与来源」）。
+   */
+  private userSettingsView(): UserPreferenceSettingsView {
+    const { values, sources } = readUserPreferenceView();
+    return { ...values, preferenceSources: sources };
   }
 
   // ── Messages ──────────────────────────────────────────────────

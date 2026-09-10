@@ -228,3 +228,79 @@ describe("ChatApp 保存路径：自动记忆偏好真的离开 webview（#2115 
     });
   });
 });
+
+/**
+ * 「被组织配置覆盖的自动记忆键如实显示」（spec agent-config 场景 8）：Remote 组织下发
+ * 可以盖过用户级 settings.json 的 `autoMemoryEnabled` / `autoMemoryFrequency`，此时
+ * 开关/轮次输入显示**生效值** + 置灰 + 提示，用户无法在本地覆盖回来。
+ */
+describe("SettingsPage 自动记忆规则：被组织配置覆盖时置灰", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function memoryRowFor(headingName: string): HTMLElement {
+    const heading = screen.getByRole("heading", { name: headingName });
+    return heading.closest(".settings-row") as HTMLElement;
+  }
+
+  it("开关与轮次都来自 Remote：显示生效值 + 双双禁用 + 提示", () => {
+    renderMemoryView({
+      configurationData: {
+        autoMemoryEnabled: false,
+        autoMemoryFrequency: 7,
+        preferenceSources: {
+          autoMemoryEnabled: "remote",
+          autoMemoryFrequency: "remote",
+        },
+      },
+    });
+
+    expect(memorySwitch()).not.toBeChecked();
+    expect(memorySwitch()).toBeDisabled();
+    expect(memoryFrequencyInput().value).toBe("7");
+    expect(memoryFrequencyInput()).toBeDisabled();
+    expect(
+      within(memoryRowFor("开启自动记忆")).getByText("由组织配置管理"),
+    ).toBeInTheDocument();
+    expect(
+      within(memoryRowFor("触发记忆提取会话轮次")).getByText("由组织配置管理"),
+    ).toBeInTheDocument();
+  });
+
+  it("只有开关来自 Remote 时：开关禁用，轮次仍可编辑且能保存", () => {
+    const { onSave } = renderMemoryView({
+      configurationData: {
+        autoMemoryEnabled: true,
+        autoMemoryFrequency: 3,
+        preferenceSources: { autoMemoryEnabled: "remote" },
+      },
+    });
+
+    expect(memorySwitch()).toBeDisabled();
+    expect(memoryFrequencyInput()).toBeEnabled();
+
+    fireEvent.change(memoryFrequencyInput(), { target: { value: "9" } });
+    fireEvent.click(memorySaveButton());
+
+    // 被覆盖的开关不出现在载荷里（控件禁用，用户改不动），只有轮次上送
+    expect(onSave).toHaveBeenCalledWith({ autoMemoryFrequency: 9 });
+  });
+
+  it("来源不是 Remote（env/default/user）时不置灰、无提示", () => {
+    renderMemoryView({
+      configurationData: {
+        autoMemoryEnabled: false,
+        autoMemoryFrequency: 7,
+        preferenceSources: {
+          autoMemoryEnabled: "env",
+          autoMemoryFrequency: "user",
+        },
+      },
+    });
+
+    expect(memorySwitch()).toBeEnabled();
+    expect(memoryFrequencyInput()).toBeEnabled();
+    expect(screen.queryByText("由组织配置管理")).not.toBeInTheDocument();
+  });
+});

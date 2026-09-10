@@ -31,6 +31,7 @@ import {
   contextLengthToMaxInputTokens,
   maxInputTokensToContextLength,
   readUserPreferenceSettings,
+  readUserPreferenceView,
   updateUserPreferenceSettings,
   userSettingsFilePath,
 } from "../../src/utils/userSettings.js";
@@ -120,6 +121,265 @@ describe("userSettings", () => {
     it("env 被手写成非对象时不炸（按无值处理）", () => {
       seedFile({ env: "oops", language: "Chinese" });
       expect(readUserPreferenceSettings(FILE)).toEqual({ language: "Chinese" });
+    });
+  });
+
+  /**
+   * `readUserPreferenceView` = 设置页 `getUserSettings` 回包的形状来源：用户级文件
+   * 只是**落点**，生效值可能来自更高层（Remote 组织下发 > 用户文件 > 机器环境变量）。
+   * 见 spec core/agent-config.md 场景 8 与边界说明「用户偏好的层与来源」。
+   */
+  describe("生效值与来源层", () => {
+    it("Remote 顶层键盖过用户文件（mergeRemoteSettings：标量远程赢）", () => {
+      seedFile({ language: "Chinese" });
+      expect(readUserPreferenceView({ language: "English" }, FILE, {})).toEqual(
+        {
+          values: { language: "English" },
+          sources: {
+            language: "remote",
+            contextLength: "default",
+            autoMemoryEnabled: "default",
+            autoMemoryFrequency: "default",
+          },
+        },
+      );
+    });
+
+    it("没有任何层提供时：四个键都缺失 + source 全为 default（设置页显示「未设置」）", () => {
+      mockExists.mockReturnValue(false);
+      expect(readUserPreferenceView(null, FILE, {})).toEqual({
+        // 值语义与「只读用户文件」完全一致：没有提供者就不编造值（开关的默认
+        // 「开」由设置页按 SDK 默认展示，不靠回包补一个 true）。
+        values: {},
+        sources: {
+          language: "default",
+          contextLength: "default",
+          autoMemoryEnabled: "default",
+          autoMemoryFrequency: "default",
+        },
+      });
+    });
+
+    it("用户文件键的归因是 user", () => {
+      seedFile({
+        language: "Chinese",
+        autoMemoryEnabled: false,
+        autoMemoryFrequency: 3,
+        env: { WAVE_MAX_INPUT_TOKENS: "128000" },
+      });
+      expect(readUserPreferenceView(null, FILE, {})).toEqual({
+        values: {
+          language: "Chinese",
+          contextLength: 128,
+          autoMemoryEnabled: false,
+          autoMemoryFrequency: 3,
+        },
+        sources: {
+          language: "user",
+          contextLength: "user",
+          autoMemoryEnabled: "user",
+          autoMemoryFrequency: "user",
+        },
+      });
+    });
+
+    it("上下文长度的归因层 = env.WAVE_MAX_INPUT_TOKENS 所在的层（remote > user > 机器 env）", () => {
+      seedFile({ env: { WAVE_MAX_INPUT_TOKENS: "128000" } });
+      const remoteEnv = { env: { WAVE_MAX_INPUT_TOKENS: "256000" } };
+      expect(readUserPreferenceView(remoteEnv, FILE, {})).toEqual({
+        values: { contextLength: 256 },
+        sources: {
+          language: "default",
+          contextLength: "remote",
+          autoMemoryEnabled: "default",
+          autoMemoryFrequency: "default",
+        },
+      });
+      expect(
+        readUserPreferenceView(null, FILE, { WAVE_MAX_INPUT_TOKENS: "64000" }),
+      ).toEqual({
+        values: { contextLength: 128 },
+        sources: {
+          language: "default",
+          contextLength: "user",
+          autoMemoryEnabled: "default",
+          autoMemoryFrequency: "default",
+        },
+      });
+      mockExists.mockReturnValue(false);
+      expect(
+        readUserPreferenceView(null, FILE, { WAVE_MAX_INPUT_TOKENS: "64000" }),
+      ).toEqual({
+        values: { contextLength: 64 },
+        sources: {
+          language: "default",
+          contextLength: "env",
+          autoMemoryEnabled: "default",
+          autoMemoryFrequency: "default",
+        },
+      });
+    });
+
+    it("自动记忆开关的两条 Remote 路径都归因 remote（顶层标量 + env.WAVE_DISABLE_AUTO_MEMORY）", () => {
+      seedFile({ autoMemoryEnabled: true });
+      expect(
+        readUserPreferenceView({ autoMemoryEnabled: false }, FILE, {}),
+      ).toEqual({
+        values: { autoMemoryEnabled: false },
+        sources: {
+          language: "default",
+          contextLength: "default",
+          autoMemoryEnabled: "remote",
+          autoMemoryFrequency: "default",
+        },
+      });
+
+      // 用户文件没有该顶层键时，Remote 的 env 路径才轮到
+      seedFile({});
+      expect(
+        readUserPreferenceView(
+          { env: { WAVE_DISABLE_AUTO_MEMORY: "1" } },
+          FILE,
+          {},
+        ),
+      ).toEqual({
+        values: { autoMemoryEnabled: false },
+        sources: {
+          language: "default",
+          contextLength: "default",
+          autoMemoryEnabled: "remote",
+          autoMemoryFrequency: "default",
+        },
+      });
+    });
+
+    it("顶层标量整层优先于 env（用户文件顶层键 > Remote 的 env 键）", () => {
+      seedFile({ autoMemoryEnabled: true, autoMemoryFrequency: 3 });
+      expect(
+        readUserPreferenceView(
+          {
+            env: {
+              WAVE_DISABLE_AUTO_MEMORY: "1",
+              WAVE_AUTO_MEMORY_FREQUENCY: "9",
+            },
+          },
+          FILE,
+          {},
+        ),
+      ).toEqual({
+        values: { autoMemoryEnabled: true, autoMemoryFrequency: 3 },
+        sources: {
+          language: "default",
+          contextLength: "default",
+          autoMemoryEnabled: "user",
+          autoMemoryFrequency: "user",
+        },
+      });
+    });
+
+    it("开关的机器 env 层与用户文件 env 层各自归因（user > env）", () => {
+      seedFile({ env: { WAVE_DISABLE_AUTO_MEMORY: "true" } });
+      expect(
+        readUserPreferenceView(null, FILE, {
+          WAVE_DISABLE_AUTO_MEMORY: "true",
+        }),
+      ).toEqual({
+        values: { autoMemoryEnabled: false },
+        sources: {
+          language: "default",
+          contextLength: "default",
+          autoMemoryEnabled: "user",
+          autoMemoryFrequency: "default",
+        },
+      });
+      mockExists.mockReturnValue(false);
+      expect(
+        readUserPreferenceView(null, FILE, {
+          WAVE_DISABLE_AUTO_MEMORY: "true",
+        }),
+      ).toEqual({
+        values: { autoMemoryEnabled: false },
+        sources: {
+          language: "default",
+          contextLength: "default",
+          autoMemoryEnabled: "env",
+          autoMemoryFrequency: "default",
+        },
+      });
+      expect(
+        readUserPreferenceView(null, FILE, { WAVE_DISABLE_AUTO_MEMORY: "no" }),
+      ).toEqual({
+        values: {},
+        sources: {
+          language: "default",
+          contextLength: "default",
+          autoMemoryEnabled: "default",
+          autoMemoryFrequency: "default",
+        },
+      });
+    });
+
+    it("轮次频率的四层归因与开关同构（含 remote env 路径）", () => {
+      seedFile({ autoMemoryFrequency: 5 });
+      expect(
+        readUserPreferenceView({ autoMemoryFrequency: 9 }, FILE, {}),
+      ).toEqual({
+        values: { autoMemoryFrequency: 9 },
+        sources: {
+          language: "default",
+          contextLength: "default",
+          autoMemoryEnabled: "default",
+          autoMemoryFrequency: "remote",
+        },
+      });
+      // 用户文件没有该顶层键时才轮到 Remote 的 env 路径（非正数的机器 env 被忽略）
+      seedFile({});
+      expect(
+        readUserPreferenceView(
+          { env: { WAVE_AUTO_MEMORY_FREQUENCY: "12" } },
+          FILE,
+          { WAVE_AUTO_MEMORY_FREQUENCY: "0" },
+        ),
+      ).toEqual({
+        values: { autoMemoryFrequency: 12 },
+        sources: {
+          language: "default",
+          contextLength: "default",
+          autoMemoryEnabled: "default",
+          autoMemoryFrequency: "remote",
+        },
+      });
+      expect(
+        readUserPreferenceView(null, FILE, { WAVE_AUTO_MEMORY_FREQUENCY: "4" }),
+      ).toEqual({
+        values: { autoMemoryFrequency: 4 },
+        sources: {
+          language: "default",
+          contextLength: "default",
+          autoMemoryEnabled: "default",
+          autoMemoryFrequency: "env",
+        },
+      });
+    });
+
+    it("文件损坏时只丢用户层，更高/更低层照常生效", () => {
+      seedFile("{ broken");
+      expect(
+        readUserPreferenceView({ language: "English" }, FILE, {
+          WAVE_MAX_INPUT_TOKENS: "64000",
+        }),
+      ).toEqual({
+        values: {
+          language: "English",
+          contextLength: 64,
+        },
+        sources: {
+          language: "remote",
+          contextLength: "env",
+          autoMemoryEnabled: "default",
+          autoMemoryFrequency: "default",
+        },
+      });
     });
   });
 

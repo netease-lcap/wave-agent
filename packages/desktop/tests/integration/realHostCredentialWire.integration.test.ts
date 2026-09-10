@@ -280,72 +280,94 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
   });
 
   it("文件里没有这些键时：空载荷保存不新建键（不被钉住），生效值仍是 SDK 默认 zh-CN", async () => {
-    await openProject(dirA);
-    await ctx.turn("第一轮");
-    const sessionBefore = ctx.paneSessionId("pane-1");
+    // 回包是**生效视图**（本 PR 起回带 preferenceSources）：机器环境里若预设了
+    // WAVE_MAX_INPUT_TOKENS，「未设置态」的前提就不成立（生效值来自 env 而非
+    // 文件）。本用例要验的是「文件里没有键」这一形态，所以先把该层钉成未提供，
+    // 否则结果随开发者机器的环境变量漂移（CI 干净、本机可能已设）。
+    const savedMaxInputTokens = process.env.WAVE_MAX_INPUT_TOKENS;
+    delete process.env.WAVE_MAX_INPUT_TOKENS;
+    try {
+      await openProject(dirA);
+      await ctx.turn("第一轮");
+      const sessionBefore = ctx.paneSessionId("pane-1");
 
-    const settingsFile = path.join(REALHOST_HOME, ".wave", "settings.json");
-    // 真 CLI 启动时会自建该文件（插件市场引导），但**不含**本 PR 涉及的四个用户
-    // 偏好键——这正是「全新安装」在真机上的形态，先钉住这个前提。
-    const before = JSON.parse(fs.readFileSync(settingsFile, "utf-8")) as {
-      language?: string;
-      autoMemoryEnabled?: boolean;
-      autoMemoryFrequency?: number;
-      env?: Record<string, string>;
-    };
-    expect(before.language).toBeUndefined();
-    expect(before.autoMemoryEnabled).toBeUndefined();
-    expect(before.autoMemoryFrequency).toBeUndefined();
-    expect(before.env?.WAVE_MAX_INPUT_TOKENS).toBeUndefined();
+      const settingsFile = path.join(REALHOST_HOME, ".wave", "settings.json");
+      // 真 CLI 启动时会自建该文件（插件市场引导），但**不含**本 PR 涉及的四个用户
+      // 偏好键——这正是「全新安装」在真机上的形态，先钉住这个前提。
+      const before = JSON.parse(fs.readFileSync(settingsFile, "utf-8")) as {
+        language?: string;
+        autoMemoryEnabled?: boolean;
+        autoMemoryFrequency?: number;
+        env?: Record<string, string>;
+      };
+      expect(before.language).toBeUndefined();
+      expect(before.autoMemoryEnabled).toBeUndefined();
+      expect(before.autoMemoryFrequency).toBeUndefined();
+      expect(before.env?.WAVE_MAX_INPUT_TOKENS).toBeUndefined();
 
-    // 设置页初始值以该文件唯一真源：没有键 ⇒ 回包里也没有这些字段（webview 据此
-    // 显示「未设置」态：占位符 /「未设置（默认：中文）」项，spec 场景 7）。
-    const shownData = await readBack(() =>
-      ctx.host.handleWebviewMessage({ command: "getConfiguration" }),
-    );
-    expect(shownData).not.toHaveProperty("language");
-    expect(shownData).not.toHaveProperty("contextLength");
-    expect(shownData).not.toHaveProperty("autoMemoryEnabled");
-    expect(shownData).not.toHaveProperty("autoMemoryFrequency");
+      // 设置页初始值以该文件为**落点**（本 PR 起生效值可能来自更高层，回包附
+      // `preferenceSources` 标出来源层）：没有任何层提供 ⇒ 回包里没有这些字段
+      // （webview 据此显示「未设置」态：占位符 /「未设置（默认：中文）」项，
+      // spec 场景 7），来源层全是 default。
+      const shownData = await readBack(() =>
+        ctx.host.handleWebviewMessage({ command: "getConfiguration" }),
+      );
+      expect(shownData).not.toHaveProperty("language");
+      expect(shownData).not.toHaveProperty("contextLength");
+      expect(shownData).not.toHaveProperty("autoMemoryEnabled");
+      expect(shownData).not.toHaveProperty("autoMemoryFrequency");
+      expect(shownData.preferenceSources).toEqual({
+        language: "default",
+        contextLength: "default",
+        autoMemoryEnabled: "default",
+        autoMemoryFrequency: "default",
+      });
 
-    // 「一个字都没改就点保存」在真机上就是空载荷（webview 的 diff 载荷语义）：
-    // 任何键都不得被写进文件——系统环境里已设的 WAVE_MAX_INPUT_TOKENS 因而不会
-    // 被这次保存钉成 200000（spec agent-config 边界说明「省略键 = 不改该键」）。
-    await readBack(() =>
-      ctx.host.handleWebviewMessage({
-        command: "updateConfiguration",
-        configurationData: {},
-      }),
-    );
+      // 「一个字都没改就点保存」在真机上就是空载荷（webview 的 diff 载荷语义）：
+      // 任何键都不得被写进文件——系统环境里已设的 WAVE_MAX_INPUT_TOKENS 因而不会
+      // 被这次保存钉成 200000（spec agent-config 边界说明「省略键 = 不改该键」）。
+      await readBack(() =>
+        ctx.host.handleWebviewMessage({
+          command: "updateConfiguration",
+          configurationData: {},
+        }),
+      );
 
-    const after = JSON.parse(fs.readFileSync(settingsFile, "utf-8")) as {
-      language?: string;
-      autoMemoryEnabled?: boolean;
-      autoMemoryFrequency?: number;
-      env?: Record<string, string>;
-    };
-    expect(after.language).toBeUndefined();
-    expect(after.autoMemoryEnabled).toBeUndefined();
-    expect(after.autoMemoryFrequency).toBeUndefined();
-    expect(after.env?.WAVE_MAX_INPUT_TOKENS).toBeUndefined();
-    // 保存不重建会话（同一 sessionId 继续服务）。
-    expect(ctx.paneSessionId("pane-1")).toBe(sessionBefore);
-    expect(requests(readWire()).map((r) => r.method)).not.toContain(
-      "updateConfig",
-    );
+      const after = JSON.parse(fs.readFileSync(settingsFile, "utf-8")) as {
+        language?: string;
+        autoMemoryEnabled?: boolean;
+        autoMemoryFrequency?: number;
+        env?: Record<string, string>;
+      };
+      expect(after.language).toBeUndefined();
+      expect(after.autoMemoryEnabled).toBeUndefined();
+      expect(after.autoMemoryFrequency).toBeUndefined();
+      expect(after.env?.WAVE_MAX_INPUT_TOKENS).toBeUndefined();
+      // 保存不重建会话（同一 sessionId 继续服务）。
+      expect(ctx.paneSessionId("pane-1")).toBe(sessionBefore);
+      expect(requests(readWire()).map((r) => r.method)).not.toContain(
+        "updateConfig",
+      );
 
-    // 语言键从未写进文件 ⇒ 生效值 = SDK 解析链末尾的默认（A 方案：全新安装按
-    // zh-CN 回复，不会退化成「不注入 # Language 指令、模型按自身默认回答」）。
-    model.reply("第二轮 OK");
-    await ctx.turn("第二轮");
-    await vi.waitFor(
-      async () => {
-        if (model.sawRequest("Always respond in zh-CN")) return;
-        await ctx.turn("重试等待实时重载");
-      },
-      { timeout: 20_000 },
-    );
-    expect(model.sawRequest("Always respond in zh-CN")).toBe(true);
+      // 语言键从未写进文件 ⇒ 生效值 = SDK 解析链末尾的默认（A 方案：全新安装按
+      // zh-CN 回复，不会退化成「不注入 # Language 指令、模型按自身默认回答」）。
+      model.reply("第二轮 OK");
+      await ctx.turn("第二轮");
+      await vi.waitFor(
+        async () => {
+          if (model.sawRequest("Always respond in zh-CN")) return;
+          await ctx.turn("重试等待实时重载");
+        },
+        { timeout: 20_000 },
+      );
+      expect(model.sawRequest("Always respond in zh-CN")).toBe(true);
+    } finally {
+      if (savedMaxInputTokens === undefined) {
+        delete process.env.WAVE_MAX_INPUT_TOKENS;
+      } else {
+        process.env.WAVE_MAX_INPUT_TOKENS = savedMaxInputTokens;
+      }
+    }
   });
 
   it("全新安装形态（文件里没有 language）：保存回执即已重载，紧接的下一轮就用新语言", async () => {
@@ -380,6 +402,36 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
     expect(requests(readWire()).map((r) => r.method)).not.toContain(
       "updateConfig",
     );
+  });
+
+  it("机器环境变量提供的上下文长度按生效值回给设置页，并标明来源层 env", async () => {
+    // 企业机器上预设的 WAVE_MAX_INPUT_TOKENS：用户级 settings.json 里没有这个键，
+    // 生效值来自机器环境变量。设置页必须显示**生效值**（64K）并标明来源层，否则
+    // 「显示值与生效值分叉」（spec 场景 8 与边界说明「用户偏好的层与来源」）。
+    // 会话进程从宿主 process.env 继承（StdioClient 合并 process.env），所以在这里
+    // 设值即可——必须在第一个 CLI 子进程 spawn 之前。
+    process.env.WAVE_MAX_INPUT_TOKENS = "64000";
+    try {
+      await openProject(dirA);
+
+      const shownData = await readBack(() =>
+        ctx.host.handleWebviewMessage({ command: "getConfiguration" }),
+      );
+
+      expect(shownData.contextLength).toBe(64);
+      // 来源不是 Remote ⇒ 设置页不置灰、不显示「由组织配置管理」（只对 remote 那样）。
+      expect(shownData.preferenceSources).toMatchObject({
+        contextLength: "env",
+      });
+      // 用户级文件里始终没有这个键（来源是 env，不是 user）。
+      const settingsFile = path.join(REALHOST_HOME, ".wave", "settings.json");
+      const file = JSON.parse(fs.readFileSync(settingsFile, "utf-8")) as {
+        env?: Record<string, string>;
+      };
+      expect(file.env?.WAVE_MAX_INPUT_TOKENS).toBeUndefined();
+    } finally {
+      delete process.env.WAVE_MAX_INPUT_TOKENS;
+    }
   });
 
   it("宿主不再转发凭据后，CLI 仍能经 WAVE_API_KEY / WAVE_BASE_URL 打通模型", async () => {

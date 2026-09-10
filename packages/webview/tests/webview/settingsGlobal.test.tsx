@@ -382,3 +382,95 @@ describe("SettingsPage 保存进行中按钮禁用（2026-09-09 拍板：保存�
     expect(screen.queryByText(/保存失败/)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * 「被更高层覆盖的键如实显示」（spec agent-config 场景 8）：用户级
+ * `~/.wave/settings.json` 只是用户偏好的**落点**，生效值可能来自更高层——企业下发的
+ * Remote 组织配置（`preferenceSources[key] === "remote"`）。此时设置页必须显示**生效
+ * 值** + 置灰 + 一句「由组织配置管理」，而不是回退成用户文件里的值（只读用户文件会让
+ * 显示值与生效值分叉）。来源为 `env`（机器环境变量）/ `user` / `default` 的键仍可编辑。
+ */
+describe("SettingsPage 被组织配置覆盖的键：显示生效值 + 置灰 + 「由组织配置管理」", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** 定位某个控件所在的行（设置页行容器）。 */
+  function rowFor(headingName: string): HTMLElement {
+    const heading = screen.getByRole("heading", { name: headingName });
+    const row = heading.closest(".settings-row");
+    if (!row) throw new Error(`找不到行：${headingName}`);
+    return row as HTMLElement;
+  }
+
+  it("language 来自 Remote：下拉显示生效值并禁用，行内出现「由组织配置管理」", () => {
+    renderGlobalView({
+      configurationData: {
+        language: "en-US",
+        preferenceSources: { language: "remote" },
+      },
+    });
+
+    const select = languageSelect();
+    expect(select.value).toBe("en-US");
+    expect(select).toBeDisabled();
+    expect(
+      within(rowFor("AI 回复语言")).getByText("由组织配置管理"),
+    ).toBeInTheDocument();
+  });
+
+  it("contextLength 来自 Remote：输入框显示生效值并禁用 + 提示", () => {
+    renderGlobalView({
+      configurationData: {
+        contextLength: 256,
+        preferenceSources: { contextLength: "remote" },
+      },
+    });
+
+    const input = contextLengthInput();
+    expect(input.value).toBe("256");
+    expect(input).toBeDisabled();
+    expect(
+      within(rowFor("上下文长度")).getByText("由组织配置管理"),
+    ).toBeInTheDocument();
+  });
+
+  it("来源为 env / user / default 的键照旧可编辑（只有 Remote 才置灰）", () => {
+    renderGlobalView({
+      configurationData: {
+        language: "en-US",
+        contextLength: 256,
+        preferenceSources: { language: "env", contextLength: "user" },
+      },
+    });
+
+    expect(languageSelect()).toBeEnabled();
+    expect(contextLengthInput()).toBeEnabled();
+    expect(screen.queryByText("由组织配置管理")).not.toBeInTheDocument();
+  });
+
+  it("回包不带 preferenceSources 时全部可编辑（老宿主/三端旧版本向后兼容）", () => {
+    renderGlobalView({
+      configurationData: { language: "en-US", contextLength: 256 },
+    });
+
+    expect(languageSelect()).toBeEnabled();
+    expect(contextLengthInput()).toBeEnabled();
+    expect(screen.queryByText("由组织配置管理")).not.toBeInTheDocument();
+  });
+
+  it("被覆盖的键改不动 → 保存载荷里不出现它（不会假装写进去）", () => {
+    const { onSave } = renderGlobalView({
+      configurationData: {
+        language: "en-US",
+        preferenceSources: { language: "remote" },
+      },
+    });
+
+    // 置灰的控件收不到用户操作；只改上下文长度
+    fireEvent.change(contextLengthInput(), { target: { value: "128" } });
+    fireEvent.click(saveButton());
+
+    expect(onSave).toHaveBeenCalledWith({ contextLength: 128 });
+  });
+});
