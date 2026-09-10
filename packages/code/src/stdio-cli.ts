@@ -31,7 +31,29 @@ function crashHandler(kind: string, error: unknown): void {
   process.exit(1);
 }
 
+/**
+ * stdout carries the JSON-RPC channel in --stdio mode (one JSON object per
+ * line); stderr is reserved for logger output (see stdioServer.ts). A single
+ * stray `console.log` anywhere in the SDK/host dependency graph therefore
+ * corrupts that channel: the host skips the unparseable line, losing whatever
+ * JSON-RPC payload shared it (this is how `SessionService`'s
+ * `console.log("Restoring session: …")` showed up as
+ * `[wave-jsonrpc] Failed to parse: …` on every restore).
+ *
+ * Fixing individual call sites is a losing race against a graph this big, so
+ * stdio mode forces the contract instead: only `console.error`/`console.warn`
+ * (already stderr) may print, everything else is redirected to stderr.
+ */
+export function guardStdoutForJsonRpc(): void {
+  for (const level of ["log", "info", "debug"] as const) {
+    console[level] = (...args: unknown[]) => {
+      console.error(...args);
+    };
+  }
+}
+
 export async function startStdioCli(): Promise<void> {
+  guardStdoutForJsonRpc();
   // Registered here (stdio mode only): the interactive CLI keeps Node's
   // default behavior so the terminal shows the crash stack directly.
   process.on("uncaughtException", (error) =>

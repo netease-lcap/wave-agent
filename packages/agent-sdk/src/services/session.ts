@@ -1039,7 +1039,10 @@ export async function handleSessionRestoration(
     }
 
     if (sessionToRestore) {
-      console.log(`Restoring session: ${sessionToRestore.id}`);
+      // Diagnostics only — never stdout: `wave --stdio`'s stdout carries the
+      // JSON-RPC channel, and a stray line there makes the host log a parse
+      // failure for every restore (the logger writes to the log file).
+      logger.info(`Restoring session: ${sessionToRestore.id}`);
 
       // // Initialize from session data
       // this.initializeFromSession();
