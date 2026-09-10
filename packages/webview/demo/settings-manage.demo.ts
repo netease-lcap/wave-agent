@@ -1,8 +1,9 @@
-import type { Page } from "@playwright/test";
 import { test, expect } from "../e2e/utils/webviewTestHarness.js";
 import { elementScreenshotWebp } from "../e2e/utils/screenshot.js";
-import fs from "node:fs";
-import path from "node:path";
+import {
+  openSettings,
+  simulateHostMessage,
+} from "../e2e/utils/settingsHarness.js";
 
 /**
  * 设置页「钩子」「MCP 服务」选项卡 demo（/hooks、/mcp 斜杠命令落地页）：
@@ -10,63 +11,6 @@ import path from "node:path";
  * settingsState(nav) 选中选项卡，再回 hooksResponse / mcpServersResponse +
  * mcpConfigPathsResponse 展示来源 Tab 列表、钩子事件摘要与 MCP 连接状态。
  */
-
-// SettingsPage 的颜色全部走 --vscode-* 变量，独立 settings.html 没有宿主注入，
-// 必须手动带上深色主题变量集，否则截图为白底浅色（实测 2026-08-29）。
-const themeStyles = fs.readFileSync(
-  path.join(process.cwd(), "theme", "theme-base-dark.css"),
-  "utf8",
-);
-
-const mockVscodeApiJs = `
-    window.process = { env: { NODE_ENV: 'production' } };
-    window.acquireVsCodeApi = () => ({
-        postMessage: (message) => {
-            if (!window.testMessages) window.testMessages = [];
-            window.testMessages.push(message);
-        },
-        setState: () => {},
-        getState: () => ({})
-    });
-    window.simulateExtensionMessage = (message) => {
-        window.dispatchEvent(new MessageEvent('message', { data: message }));
-    };
-`;
-
-const settingsHtml = `
-<!DOCTYPE html>
-<html lang="zh-CN" data-theme="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wave Settings</title>
-    <style>${themeStyles}</style>
-    <link rel="stylesheet" href="vscode-webview://mock-extension-id/settings.css">
-</head>
-<body>
-    <div id="root"></div>
-    <script>${mockVscodeApiJs}</script>
-    <script src="vscode-webview://mock-extension-id/settings.js"></script>
-</body>
-</html>`;
-
-/** 打开设置页 + 初始化配置（settings entry 挂载时会请求 getConfiguration） */
-async function openSettings(webviewPage: Page, nav: string) {
-  await webviewPage.setViewportSize({ width: 1000, height: 760 });
-  await webviewPage.setContent(settingsHtml);
-  await expect(webviewPage.locator(".settings-page")).toBeVisible();
-  await webviewPage.evaluate((targetNav) => {
-    window.simulateExtensionMessage({
-      command: "settingsState",
-      workdir: "/work/wave-agent",
-      nav: targetNav,
-    });
-    window.simulateExtensionMessage({
-      command: "configurationResponse",
-      configurationData: { language: "zh-CN", contextLength: 200 },
-    });
-  }, nav);
-}
 
 const userHooks = {
   PreToolUse: [
@@ -101,19 +45,19 @@ test.describe("设置页钩子选项卡 Demo", () => {
   test("should show hook entries with event summary and actions", async ({
     webviewPage,
   }) => {
-    await openSettings(webviewPage, "hooks");
+    await openSettings(webviewPage, {
+      settingsState: { workdir: "/work/wave-agent", nav: "hooks" },
+    });
 
     // 等视图挂载（发出 getHooksByScope 请求）后再回数据，避免响应先于 listener
     await expect(webviewPage.getByText("新增钩子")).toBeVisible();
-    await webviewPage.evaluate((hooks) => {
-      window.simulateExtensionMessage({
-        command: "hooksResponse",
-        // 归属键：当前 Tab 为「用户级钩子」，回带 scope 才能通过过期即弃
-        scope: "user",
-        hooks,
-        configPath: "~/.wave/settings.json",
-      });
-    }, userHooks);
+    await simulateHostMessage(webviewPage, {
+      command: "hooksResponse",
+      // 归属键：当前 Tab 为「用户级钩子」，回带 scope 才能通过过期即弃
+      scope: "user",
+      hooks: userHooks,
+      configPath: "~/.wave/settings.json",
+    });
 
     // 3 source tabs + 钩子条目、事件摘要与命令
     await expect(webviewPage.getByText("用户级钩子")).toBeVisible();
@@ -174,21 +118,21 @@ test.describe("设置页 MCP 服务选项卡 Demo", () => {
   test("should show MCP servers by scope with connection status", async ({
     webviewPage,
   }) => {
-    await openSettings(webviewPage, "mcp");
+    await openSettings(webviewPage, {
+      settingsState: { workdir: "/work/wave-agent", nav: "mcp" },
+    });
 
     // 等视图挂载（发出 getMcpServers / getMcpConfigPaths 请求）后再回数据
     await expect(webviewPage.getByText("新增用户级 MCP 服务")).toBeVisible();
-    await webviewPage.evaluate((servers) => {
-      window.simulateExtensionMessage({
-        command: "mcpServersResponse",
-        servers,
-      });
-      window.simulateExtensionMessage({
-        command: "mcpConfigPathsResponse",
-        userPath: "~/.wave/mcp.json",
-        projectPath: null,
-      });
-    }, mcpServers);
+    await simulateHostMessage(webviewPage, {
+      command: "mcpServersResponse",
+      servers: mcpServers,
+    });
+    await simulateHostMessage(webviewPage, {
+      command: "mcpConfigPathsResponse",
+      userPath: "~/.wave/mcp.json",
+      projectPath: null,
+    });
 
     // 3 source tabs + 服务器连接状态
     await expect(
