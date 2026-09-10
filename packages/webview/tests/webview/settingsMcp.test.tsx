@@ -210,6 +210,23 @@ describe("SettingsPage MCP 服务选项卡视图（用户/项目/插件 Tab）",
     );
   });
 
+  it("「编辑」host 未回带 mcpConfigPaths 时不传路径（不自造 `~`/相对路径）", async () => {
+    // 宿主打开文件按 OS 绝对路径处理、无法展开 `~`：webview 自造 ~ 路径会让桌面
+    // 右侧文件面板报「文件不存在：~/.wave/mcp.json」。
+    const onPrefillPrompt = vi.fn();
+    renderSettingsPage(undefined, { onPrefillPrompt });
+    sendHostMessage(fixtures.mcpServersResponse([userServer]));
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: /编辑/ }));
+    });
+
+    expect(onPrefillPrompt).toHaveBeenCalledWith(
+      expect.stringContaining("帮我编辑 MCP 服务器github"),
+      undefined,
+    );
+  });
+
   it("「删除」→ 二次确认 → removeMcpServer RPC（含 scope）", async () => {
     const { vscode } = renderSettingsPage();
     sendHostMessage(fixtures.mcpServersResponse([userServer]));

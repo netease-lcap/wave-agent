@@ -188,9 +188,38 @@ describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab）", () 
     );
   });
 
-  it("「编辑」→ 预填编辑提示词并附 settings.json 路径（桌面文件面板/IDE 打开用）", async () => {
+  it("「编辑」→ 预填编辑提示词并附 host 下发的绝对 configPath（IDE 编辑器/桌面文件面板打开用）", async () => {
     const onPrefillPrompt = vi.fn();
     const { vscode } = renderSettingsPage(undefined, { onPrefillPrompt });
+    sendHostMessage(
+      fixtures.hooksResponse(userHooks, {
+        configPath: "/home/u/.wave/settings.json",
+      }),
+    );
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText("PreToolUse:Write"));
+    });
+    const editBtn = screen.getAllByRole("button", { name: /编辑/ })[0];
+    await act(async () => {
+      fireEvent.click(editBtn);
+    });
+
+    expect(onPrefillPrompt).toHaveBeenCalledWith(
+      expect.stringContaining("帮我编辑钩子PreToolUse:Write"),
+      "/home/u/.wave/settings.json",
+    );
+    // 视图不自行发 openFile——由设置入口（settings-preview-entry）转发 host
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "openFile" }),
+    );
+  });
+
+  it("「编辑」host 未回带 configPath 时不传路径（不再自造 `~/.wave/settings.json`）", async () => {
+    // 宿主打开文件按 OS 绝对路径处理、无法展开 `~`：webview 自造 ~ 路径会让
+    // 桌面右侧文件面板打开字面量 `~/.wave/settings.json` 并报「文件不存在」。
+    const onPrefillPrompt = vi.fn();
+    renderSettingsPage(undefined, { onPrefillPrompt });
     sendHostMessage(fixtures.hooksResponse(userHooks, { configPath: null }));
 
     await act(async () => {
@@ -203,12 +232,40 @@ describe("SettingsPage 钩子选项卡视图（用户/项目/插件 Tab）", () 
 
     expect(onPrefillPrompt).toHaveBeenCalledWith(
       expect.stringContaining("帮我编辑钩子PreToolUse:Write"),
-      // 用户级无 configPath → 回退 ~/.wave/settings.json
-      "~/.wave/settings.json",
+      undefined,
     );
-    expect(vscode.postMessage).not.toHaveBeenCalledWith(
-      expect.objectContaining({ command: "openFile" }),
+  });
+
+  it("删除确认框展示 host 回带的 configPath，缺失时退化为文案描述", async () => {
+    renderSettingsPage();
+    sendHostMessage(
+      fixtures.hooksResponse(userHooks, {
+        configPath: "/home/u/.wave/settings.json",
+      }),
     );
+
+    await act(async () => {
+      fireEvent.click(
+        (await screen.findAllByRole("button", { name: /删除/ }))[0],
+      );
+    });
+    expect(
+      await screen.findByText(/将从 \/home\/u\/\.wave\/settings\.json 中移除/),
+    ).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
+    });
+
+    // configPath 缺失（host 未回带）→ 不展示自造路径
+    sendHostMessage(fixtures.hooksResponse(userHooks, { configPath: null }));
+    await act(async () => {
+      fireEvent.click(
+        (await screen.findAllByRole("button", { name: /删除/ }))[0],
+      );
+    });
+    expect(
+      await screen.findByText(/将从 对应的配置文件 中移除/),
+    ).toBeInTheDocument();
   });
 
   it("「删除」→ 二次确认 → deleteHook RPC", async () => {

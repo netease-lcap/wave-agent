@@ -1305,12 +1305,20 @@ export class AgentBridge {
     return { success };
   }
 
-  private getHooksByScope(
+  private async getHooksByScope(
     scope: "user" | "project" | "plugin",
     sessionId?: string,
-  ): Promise<Partial<Record<string, unknown[]>>> {
+  ): Promise<{
+    hooks: Partial<Record<string, unknown[]>>;
+    configPath: string | null;
+  }> {
     const entry = this.requireSession(sessionId);
-    return entry.agent.getHooksByScope(scope);
+    const hooks = await entry.agent.getHooksByScope(scope);
+    // 回带该 scope 钩子所在 settings.json 的绝对路径（宿主 GUI 打开文件用；
+    // plugin 钩子来自代码而非配置文件 → null）。
+    const configPath =
+      scope === "plugin" ? null : entry.agent.getHookConfigPath(scope);
+    return { hooks, configPath };
   }
 
   private async deleteHook(

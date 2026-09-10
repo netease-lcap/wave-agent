@@ -726,11 +726,12 @@ export class ChatSession {
     return this.agent.deleteSubagent(name);
   }
 
-  public async getHooksByScope(
-    scope: "user" | "project" | "plugin",
-  ): Promise<Partial<Record<string, unknown[]>>> {
+  public async getHooksByScope(scope: "user" | "project" | "plugin"): Promise<{
+    hooks: Partial<Record<string, unknown[]>>;
+    configPath: string | null;
+  }> {
     if (!this.agent) {
-      return {};
+      return { hooks: {}, configPath: null };
     }
     return this.agent.getHooksByScope(scope);
   }

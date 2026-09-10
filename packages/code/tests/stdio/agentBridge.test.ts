@@ -1158,6 +1158,52 @@ test("getSkillMetadata returns skill metadata", async () => {
   expect(r).toEqual({ skills });
 });
 
+test("getHooksByScope returns hooks plus the resolved absolute configPath", async () => {
+  // 宿主 GUI（桌面右侧文件面板 / IDE 编辑器）按 OS 绝对路径打开配置文件——
+  // `~` 无法展开，路径必须由 CLI 侧解析后随 hooks 一并回带。
+  const { bridge } = createBridge();
+  const hooks = { PreToolUse: [{ matcher: "Bash", hooks: [] }] };
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({
+      getHooksByScope: vi.fn().mockResolvedValue(hooks),
+      getHookConfigPath: vi.fn().mockReturnValue("/home/u/.wave/settings.json"),
+    }),
+  );
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "getHooksByScope",
+    { scope: "user" },
+    sessionId,
+  );
+
+  expect(r).toEqual({ hooks, configPath: "/home/u/.wave/settings.json" });
+});
+
+test("getHooksByScope reports no configPath for plugin hooks", async () => {
+  // 插件钩子来自代码内注册、不对应任何 settings.json。
+  const { bridge } = createBridge();
+  const getHookConfigPath = vi.fn();
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({
+      getHooksByScope: vi.fn().mockResolvedValue({}),
+      getHookConfigPath,
+    }),
+  );
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "getHooksByScope",
+    { scope: "plugin" },
+    sessionId,
+  );
+
+  expect(r).toEqual({ hooks: {}, configPath: null });
+  expect(getHookConfigPath).not.toHaveBeenCalled();
+});
+
 test("getConfiguredModels returns configured models and current model", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(
