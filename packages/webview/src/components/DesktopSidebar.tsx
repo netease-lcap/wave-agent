@@ -12,6 +12,11 @@ import {
 } from "./HeaderIcons";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
+import { useHostMessage } from "../utils/useHostMessage";
+import {
+  worktreeDeleteWarning,
+  WORKTREE_DELETE_CHECKING,
+} from "../utils/worktreeDeleteWarning";
 import { isMacHiddenTitlebar } from "../utils/platform";
 import { useDesktopChrome } from "./DesktopChromeContext";
 import type { DesktopSessionGroup, DesktopSessionEntry } from "../types";
@@ -211,6 +216,13 @@ export interface DesktopSidebarProps {
   onOpenPane: (workdir: string, sessionId: string) => void;
   /** Delete a session from the index (also cleans up worktree if applicable). */
   onDeleteSession: (sessionId: string) => void;
+  /**
+   * Ask what deleting this worktree session would throw away (uncommitted files
+   * and unmerged commits). The host answers with a requestId-matched
+   * `desktopWorktreeChanges` message; the delete confirmation stays
+   * unconfirmable until it arrives.
+   */
+  onRequestWorktreeChanges: (sessionId: string, requestId: string) => void;
   /** Batch 2 会话状态看板: brand-row 活动 button opens the board view. When
    *  active the icon renders brand-red (spec 场景 1 highlight state). */
   sessionBoardActive?: boolean;
@@ -255,6 +267,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onSelectSession,
   onOpenPane,
   onDeleteSession,
+  onRequestWorktreeChanges,
   sessionBoardActive = false,
   onOpenSessionBoard,
 }) => {
@@ -267,11 +280,18 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   // state is not persisted).
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   // Session awaiting delete confirmation; non-null shows the ConfirmDialog.
+  // `checking` = worktree session whose loss summary the host is still counting:
+  // deleting it would remove the worktree directory and its branch, so the
+  // dialog must not confirm before the loss is known.
   const [pendingDelete, setPendingDelete] = useState<{
     sessionId: string;
     title: string;
     description?: string;
+    checking?: boolean;
   } | null>(null);
+  // requestId of the in-flight worktree-changes query — a late reply from a
+  // previously closed dialog must never describe the current one.
+  const worktreeChangesRequestRef = useRef(0);
   // Session whose row menu (并排打开/删除) is open, with the trigger's rect so
   // the fixed-position menu anchors under the button.
   const [openMenuFor, setOpenMenuFor] = useState<{
@@ -282,6 +302,24 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   // Modifier key label for the side-by-side hints, same platform branch as the
   // click handlers below (Cmd on macOS / Ctrl elsewhere).
   const modKeyLabel = isMacPlatform() ? "Cmd" : "Ctrl";
+
+  // Loss summary for the open delete dialog. Routing is by requestId (request
+  // correlation, DesktopWorkdirSelector precedent): a reply for a superseded or
+  // cancelled dialog is dropped instead of describing the wrong session.
+  useHostMessage((message) => {
+    if (message.command !== "desktopWorktreeChanges") return;
+    if (String(message.requestId) !== String(worktreeChangesRequestRef.current))
+      return;
+    setPendingDelete((prev) =>
+      prev && prev.sessionId === message.sessionId
+        ? {
+            ...prev,
+            checking: false,
+            description: worktreeDeleteWarning(message.changes),
+          }
+        : prev,
+    );
+  });
 
   // Tooltip anchors live on the hover-highlight containers themselves (li for
   // session rows, the button for 新对话), so both hints start at the row's
@@ -545,16 +583,23 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             }}
             onDelete={() => {
               setOpenMenuFor(null);
-              // Worktree sessions warn about the worktree dir + temp branch
-              // and the loss of uncommitted changes.
+              // Worktree sessions warn about the worktree dir + temp branch and
+              // name what deleting them destroys — the counts come from the
+              // host (the worktree may live on a remote machine). Until the
+              // reply lands the dialog says "checking" and cannot confirm.
               const label = session.title || "新对话";
               setPendingDelete({
                 sessionId: session.sessionId,
                 title: `确定删除会话「${label}」？`,
                 description: session.hasWorktree
-                  ? "该会话的 worktree 目录与临时分支将一并删除，未提交的改动将丢失。"
+                  ? WORKTREE_DELETE_CHECKING
                   : undefined,
+                checking: session.hasWorktree,
               });
+              if (session.hasWorktree) {
+                const requestId = String(++worktreeChangesRequestRef.current);
+                onRequestWorktreeChanges(session.sessionId, requestId);
+              }
             }}
             onClose={() => setOpenMenuFor(null)}
           />
@@ -745,6 +790,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         <ConfirmDialog
           title={pendingDelete.title}
           description={pendingDelete.description}
+          confirmDisabled={pendingDelete.checking === true}
           onConfirm={() => {
             onDeleteSession(pendingDelete.sessionId);
             sessionAnchorsRef.current.delete(pendingDelete.sessionId);

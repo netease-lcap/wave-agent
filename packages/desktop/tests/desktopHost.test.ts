@@ -60,6 +60,9 @@ const h = vi.hoisted(() => ({
         if (h.removeWorktreeGate)
           return h.removeWorktreeGate.then(() => ({ removed: true }));
         return { removed: true };
+      case "getWorktreeChanges":
+        if (h.worktreeChangesError) throw h.worktreeChangesError;
+        return h.worktreeChangesResult;
       case "listPendingPermissions":
         return { requests: h.pendingPermissionRequests };
       default:
@@ -90,6 +93,10 @@ const h = vi.hoisted(() => ({
   // without the method, path validation refused) — the host must log why
   // instead of swallowing the worktree cleanup failure.
   removeWorktreeError: null as Error | null,
+  // getWorktreeChanges RPC (delete-confirmation loss summary). null = the CLI
+  // could not inspect the worktree.
+  worktreeChangesResult: null as null | { files: number; commits: number },
+  worktreeChangesError: null as Error | null,
   // When set, agent.initialize awaits this promise (simulates the multi-second
   // stdio startup so a real webview re-fires webviewReady while the new pane's
   // agent is still mid-spawn and not yet bound to the pane).
@@ -579,6 +586,8 @@ beforeEach(() => {
   h.branchesResult = null;
   h.removeWorktreeGate = null;
   h.removeWorktreeError = null;
+  h.worktreeChangesResult = null;
+  h.worktreeChangesError = null;
   h.initializeGate = null;
   h.agentCounter = 0;
   h.closedHandlers.length = 0;
@@ -5121,6 +5130,99 @@ describe("worktree flow", () => {
         ),
       ).toHaveLength(0);
     });
+  });
+
+  it("desktopGetWorktreeChanges answers with the worktree's loss summary", async () => {
+    const { host, store, sent } = await readyHost();
+    h.worktreeChangesResult = { files: 2, commits: 1 };
+    store.upsertSession({
+      sessionId: "sess-wt",
+      title: "wt",
+      workdir: worktree.repoRoot,
+      cwd: worktree.path,
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+      worktree: {
+        path: worktree.path,
+        branch: worktree.branch,
+        baseBranch: "main",
+        repoRoot: worktree.repoRoot,
+      },
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopGetWorktreeChanges",
+      sessionId: "sess-wt",
+      requestId: "req-1",
+    });
+
+    expect(h.clientRequests).toContainEqual({
+      method: "getWorktreeChanges",
+      params: { path: worktree.path, baseBranch: "main" },
+    });
+    expect(sent("desktopWorktreeChanges")).toEqual([
+      expect.objectContaining({
+        sessionId: "sess-wt",
+        requestId: "req-1",
+        changes: { files: 2, commits: 1 },
+      }),
+    ]);
+  });
+
+  it("desktopGetWorktreeChanges reports null when the check fails", async () => {
+    const { host, store, sent } = await readyHost();
+    h.worktreeChangesError = new Error("Host unreachable");
+    store.upsertSession({
+      sessionId: "sess-wt",
+      title: "wt",
+      workdir: worktree.repoRoot,
+      cwd: worktree.path,
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+      worktree: {
+        path: worktree.path,
+        branch: worktree.branch,
+        baseBranch: "main",
+        repoRoot: worktree.repoRoot,
+      },
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopGetWorktreeChanges",
+      sessionId: "sess-wt",
+      requestId: "req-2",
+    });
+
+    // Unknown, not clean: the webview falls back to a generic warning and the
+    // deletion itself is never blocked by an unreachable host.
+    expect(sent("desktopWorktreeChanges")).toEqual([
+      expect.objectContaining({ requestId: "req-2", changes: null }),
+    ]);
+  });
+
+  it("desktopGetWorktreeChanges answers null for a non-worktree session", async () => {
+    const { host, store, sent } = await readyHost();
+    store.upsertSession({
+      sessionId: "sess-plain",
+      title: "plain",
+      workdir: "/work/a",
+      cwd: "/work/a",
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopGetWorktreeChanges",
+      sessionId: "sess-plain",
+      requestId: "req-3",
+    });
+
+    expect(
+      h.clientRequests.some((r) => r.method === "getWorktreeChanges"),
+    ).toBe(false);
+    expect(sent("desktopWorktreeChanges")).toEqual([
+      expect.objectContaining({ requestId: "req-3", changes: null }),
+    ]);
   });
 
   it("desktopDeleteSession on a worktree session requests removeWorktree", async () => {

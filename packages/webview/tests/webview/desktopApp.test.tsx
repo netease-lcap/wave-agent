@@ -1481,8 +1481,10 @@ describe("DesktopApp", () => {
       );
     });
 
-    it("warns about worktree + temp branch cleanup when deleting a worktree session", () => {
-      renderDesktopApp();
+    /** Session tree with a single worktree session "wt" and an open delete dialog. */
+    const openWorktreeDelete = (
+      vscode: ReturnType<typeof createMockVscode>,
+    ) => {
       sendCommand("desktopWorkdirState", {
         workdir: "/work/a",
         recentWorkdirs: ["/work/a"],
@@ -1504,13 +1506,145 @@ describe("DesktopApp", () => {
           },
         ],
       });
+      vscode.postMessage.mockClear();
 
       fireEvent.click(screen.getByTestId("desktop-session-more-wt"));
       fireEvent.click(screen.getByTestId("desktop-session-menu-delete"));
+    };
+
+    /** The worktree-changes query posted by the dialog, if any. */
+    const worktreeChangesRequest = (
+      vscode: ReturnType<typeof createMockVscode>,
+    ) =>
+      vscode.postMessage.mock.calls
+        .map((call) => call[0])
+        .find((msg) => msg?.command === "desktopGetWorktreeChanges");
+
+    it("lists the files and commits a worktree deletion would lose", () => {
+      const { vscode } = renderDesktopApp();
+      openWorktreeDelete(vscode);
+
+      const request = worktreeChangesRequest(vscode);
+      expect(request).toMatchObject({ sessionId: "wt" });
+
+      sendCommand("desktopWorktreeChanges", {
+        sessionId: "wt",
+        requestId: request.requestId,
+        changes: { files: 3, commits: 2 },
+      });
+
+      const dialog = screen.getByTestId("confirm-dialog-overlay");
+      expect(dialog).toHaveTextContent("3 个未提交文件");
+      expect(dialog).toHaveTextContent("2 个未合并提交");
+      expect(dialog).toHaveTextContent("删除后不可恢复");
+      expect(screen.getByTestId("confirm-dialog-confirm")).toBeEnabled();
+    });
+
+    it("blocks confirmation until the loss is known, then deletes on confirm", () => {
+      const { vscode } = renderDesktopApp();
+      openWorktreeDelete(vscode);
+
+      const request = worktreeChangesRequest(vscode);
+      expect(screen.getByTestId("confirm-dialog-overlay")).toHaveTextContent(
+        "正在检查",
+      );
+      expect(screen.getByTestId("confirm-dialog-confirm")).toBeDisabled();
+
+      sendCommand("desktopWorktreeChanges", {
+        sessionId: "wt",
+        requestId: request.requestId,
+        changes: { files: 1, commits: 0 },
+      });
+
+      fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+      expect(vscode.postMessage).toHaveBeenCalledWith({
+        command: "desktopDeleteSession",
+        sessionId: "wt",
+      });
+    });
+
+    it("keeps the plain confirmation for a clean worktree", () => {
+      const { vscode } = renderDesktopApp();
+      openWorktreeDelete(vscode);
+
+      sendCommand("desktopWorktreeChanges", {
+        sessionId: "wt",
+        requestId: worktreeChangesRequest(vscode).requestId,
+        changes: { files: 0, commits: 0 },
+      });
+
+      expect(
+        screen.getByTestId("confirm-dialog-overlay"),
+      ).not.toHaveTextContent("改动");
+      expect(screen.getByTestId("confirm-dialog-confirm")).toBeEnabled();
+    });
+
+    it("falls back to the generic warning when the check fails", () => {
+      const { vscode } = renderDesktopApp();
+      openWorktreeDelete(vscode);
+
+      // Host unreachable / not a repo: worst case must still warn.
+      sendCommand("desktopWorktreeChanges", {
+        sessionId: "wt",
+        requestId: worktreeChangesRequest(vscode).requestId,
+        changes: null,
+      });
 
       expect(screen.getByTestId("confirm-dialog-overlay")).toHaveTextContent(
-        "worktree 目录与临时分支将一并删除",
+        "未提交的改动将丢失",
       );
+      expect(screen.getByTestId("confirm-dialog-confirm")).toBeEnabled();
+    });
+
+    it("ignores the reply of a dialog that was cancelled", () => {
+      const { vscode } = renderDesktopApp();
+      openWorktreeDelete(vscode);
+      const staleRequestId = worktreeChangesRequest(vscode).requestId;
+
+      fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
+      fireEvent.click(screen.getByTestId("desktop-session-more-wt"));
+      fireEvent.click(screen.getByTestId("desktop-session-menu-delete"));
+
+      sendCommand("desktopWorktreeChanges", {
+        sessionId: "wt",
+        requestId: staleRequestId,
+        changes: { files: 5, commits: 5 },
+      });
+
+      // The reopened dialog is still counting — a stale reply must not stand in
+      // for the current check.
+      expect(screen.getByTestId("confirm-dialog-overlay")).toHaveTextContent(
+        "正在检查",
+      );
+      expect(screen.getByTestId("confirm-dialog-confirm")).toBeDisabled();
+    });
+
+    it("does not query changes for a non-worktree session", () => {
+      const { vscode } = renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: "/work/a",
+        recentWorkdirs: ["/work/a"],
+      });
+      sendCommand("setInitialState", { messages: [] });
+      sendCommand("desktopSessionTree", {
+        groups: [
+          {
+            host: "local",
+            workdir: "/work/a",
+            sessions: [session("s1", "hello a")],
+          },
+        ],
+      });
+      vscode.postMessage.mockClear();
+
+      fireEvent.click(screen.getByTestId("desktop-session-more-s1"));
+      fireEvent.click(screen.getByTestId("desktop-session-menu-delete"));
+
+      expect(worktreeChangesRequest(vscode)).toBeUndefined();
+      expect(
+        screen.getByTestId("confirm-dialog-overlay"),
+      ).not.toHaveTextContent("worktree");
+      expect(screen.getByTestId("confirm-dialog-confirm")).toBeEnabled();
     });
   });
 

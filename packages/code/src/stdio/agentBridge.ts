@@ -63,7 +63,11 @@ import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
-import { createWorktree, removeWorktree } from "../utils/worktree.js";
+import {
+  createWorktree,
+  getWorktreeChanges,
+  removeWorktree,
+} from "../utils/worktree.js";
 import { logger } from "../utils/logger.js";
 import { isUserCheckpointMessage } from "../utils/rewindCheckpoints.js";
 
@@ -475,6 +479,10 @@ export class AgentBridge {
             name?: string;
           },
         );
+      case "getWorktreeChanges":
+        return this.getWorktreeChanges(
+          p as unknown as { path?: string; baseBranch?: string },
+        );
       case "removeWorktree":
         return this.removeWorktreeSession(
           p as unknown as {
@@ -790,6 +798,21 @@ export class AgentBridge {
     } catch (e) {
       throw new RpcError(PROTOCOL_INTERNAL_ERROR, (e as Error).message);
     }
+  }
+
+  /**
+   * What a worktree deletion would throw away (uncommitted files and commits
+   * not on the base branch), so the caller can warn before deleting. Returns
+   * null when the worktree cannot be inspected.
+   */
+  private async getWorktreeChanges(params: {
+    path?: string;
+    baseBranch?: string;
+  }): Promise<{ files: number; commits: number } | null> {
+    if (!params.path) {
+      throw new RpcError(PROTOCOL_INTERNAL_ERROR, "path is required");
+    }
+    return getWorktreeChanges(params.path, params.baseBranch);
   }
 
   private async removeWorktreeSession(params: {

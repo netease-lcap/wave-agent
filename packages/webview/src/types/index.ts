@@ -343,6 +343,13 @@ export interface DesktopHostProps {
   /** Delete a session from the index; also removes worktree+branch if applicable. */
   onDeleteSession: (sessionId: string) => void;
   /**
+   * Ask what deleting this worktree session would destroy (uncommitted files,
+   * unmerged commits). The host answers with a requestId-matched
+   * `desktopWorktreeChanges` message; the confirmation dialog stays
+   * unconfirmable until it arrives.
+   */
+  onRequestWorktreeChanges: (sessionId: string, requestId: string) => void;
+  /**
    * Open a session in a new pane (Cmd/Ctrl+Click on a sidebar session, or drag
    * one into the chat area). When the session is already shown, the host
    * focuses that pane instead. `opts` picks the target row / insertion gap /

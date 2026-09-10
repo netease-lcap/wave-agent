@@ -149,6 +149,17 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     [vscode],
   );
 
+  const handleRequestWorktreeChanges = useCallback(
+    (sessionId: string, requestId: string) => {
+      vscode.postMessage({
+        command: "desktopGetWorktreeChanges",
+        sessionId,
+        requestId,
+      });
+    },
+    [vscode],
+  );
+
   const handleOpenPane = useCallback(
     (workdir: string, sessionId: string, opts?: OpenPaneOptions) => {
       vscode.postMessage({
@@ -193,6 +204,7 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
           sessionTree,
           onSelectSession: handleSelectSession,
           onDeleteSession: handleDeleteSession,
+          onRequestWorktreeChanges: handleRequestWorktreeChanges,
           onOpenPane: handleOpenPane,
           panes,
           rowHeights,

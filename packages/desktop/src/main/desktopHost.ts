@@ -3019,6 +3019,46 @@ export class DesktopHost {
     }
   }
 
+  /**
+   * What deleting this session's worktree would destroy — the counts shown in
+   * the sidebar's delete confirmation. Inspected on the entry's own host: a
+   * remote worktree must be counted remotely (spec 「删除 worktree 会话前提示
+   * 将丢失的改动」scenario 6). An unreachable host or failed RPC answers
+   * `changes: null` — the webview then warns generically instead of deleting
+   * silently, and the delete itself is never blocked by this probe.
+   */
+  private async handleGetWorktreeChanges(
+    sessionId: string,
+    requestId: string,
+  ): Promise<void> {
+    const entry = this.configStore
+      ?.getSessionIndex()
+      .find((e) => e.sessionId === sessionId);
+    const host = entry?.host ?? LOCAL_HOST;
+    const worktree = entry?.worktree;
+    let changes: { files: number; commits: number } | null = null;
+    if (worktree) {
+      try {
+        await this.ensureClientFor(host);
+        changes = (await this.utilityClientFor(host).request(
+          "getWorktreeChanges",
+          { path: worktree.path, baseBranch: worktree.baseBranch },
+        )) as { files: number; commits: number } | null;
+      } catch (error) {
+        console.warn(
+          `[DesktopHost] worktree 改动检查失败 host=${host} path=${worktree.path}:`,
+          error,
+        );
+      }
+    }
+    this.postMessage({
+      command: "desktopWorktreeChanges",
+      sessionId,
+      requestId,
+      changes,
+    });
+  }
+
   /** Best-effort worktree removal via stdio (FR-053), routed to the entry's host. */
   private async removeWorktree(
     host: string,
@@ -3253,6 +3293,13 @@ export class DesktopHost {
       // -- sessions -------------------------------------------------------
       case "desktopDeleteSession":
         await this.handleDeleteSession(msg.sessionId as string);
+        break;
+
+      case "desktopGetWorktreeChanges":
+        await this.handleGetWorktreeChanges(
+          msg.sessionId as string,
+          msg.requestId as string,
+        );
         break;
 
       case "desktopCreateWorktree":

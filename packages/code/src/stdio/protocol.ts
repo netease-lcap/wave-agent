@@ -117,6 +117,7 @@ export type RequestMethod =
   // Git / worktree (global — no session required)
   | "listGitBranches"
   | "createWorktree"
+  | "getWorktreeChanges"
   | "removeWorktree";
 
 // ── Client → Server notification methods ────────────────────────

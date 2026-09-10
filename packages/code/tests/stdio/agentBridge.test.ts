@@ -14,7 +14,11 @@ import {
 } from "wave-agent-sdk";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { createWorktree, removeWorktree } from "../../src/utils/worktree.js";
+import {
+  createWorktree,
+  getWorktreeChanges,
+  removeWorktree,
+} from "../../src/utils/worktree.js";
 
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
@@ -29,6 +33,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 
 vi.mock("../../src/utils/worktree.js", () => ({
   createWorktree: vi.fn(),
+  getWorktreeChanges: vi.fn(),
   removeWorktree: vi.fn(),
 }));
 
@@ -2951,6 +2956,43 @@ test("createWorktree wraps createWorktree errors in RpcError", async () => {
   await expect(
     bridge.handleRequest("createWorktree", { workdir: "/repo" }),
   ).rejects.toThrow("git worktree add failed");
+});
+
+// ── getWorktreeChanges ─────────────────────────────────────────
+
+test("getWorktreeChanges passes the path and base branch through", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(getWorktreeChanges).mockResolvedValue({ files: 2, commits: 1 });
+
+  const result = await bridge.handleRequest("getWorktreeChanges", {
+    path: "/repo/.wave/worktrees/feat",
+    baseBranch: "origin/main",
+  });
+
+  expect(result).toEqual({ files: 2, commits: 1 });
+  expect(getWorktreeChanges).toHaveBeenCalledWith(
+    "/repo/.wave/worktrees/feat",
+    "origin/main",
+  );
+});
+
+test("getWorktreeChanges propagates an uninspectable worktree as null", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(getWorktreeChanges).mockResolvedValue(null);
+
+  // The caller falls back to a generic warning rather than blocking deletion.
+  expect(
+    await bridge.handleRequest("getWorktreeChanges", { path: "/gone" }),
+  ).toBeNull();
+});
+
+test("getWorktreeChanges rejects a missing path", async () => {
+  const { bridge } = createBridge();
+
+  await expect(bridge.handleRequest("getWorktreeChanges", {})).rejects.toThrow(
+    "path is required",
+  );
+  expect(getWorktreeChanges).not.toHaveBeenCalled();
 });
 
 // ── removeWorktree ─────────────────────────────────────────────

@@ -400,6 +400,55 @@ function probeResidue(worktreePath: string): string {
   }
 }
 
+export interface WorktreeChanges {
+  /** Uncommitted (tracked-modified or untracked) files in the worktree. */
+  files: number;
+  /** Commits on the checked-out branch that the base branch does not have. */
+  commits: number;
+}
+
+/**
+ * Count what deleting a worktree would throw away, so the caller can warn
+ * before it happens. Both counts are best-effort: an unknown base branch (never
+ * fetched, branch rewritten) only zeroes the commit count, and a worktree that
+ * is gone or not a git repository reports `null` instead of a misleading 0.
+ *
+ * @param worktreePath Worktree directory to inspect
+ * @param baseBranch Branch the worktree was created from (defaults to the
+ *   repository's default remote branch)
+ */
+export async function getWorktreeChanges(
+  worktreePath: string,
+  baseBranch?: string,
+): Promise<WorktreeChanges | null> {
+  let files: number;
+  try {
+    const { stdout } = await execFileAsync("git", ["status", "--porcelain"], {
+      cwd: worktreePath,
+      encoding: "utf8",
+    });
+    files = stdout.split("\n").filter((line) => line.trim().length > 0).length;
+  } catch {
+    return null;
+  }
+
+  let commits = 0;
+  try {
+    const base = baseBranch ?? getDefaultRemoteBranch(worktreePath);
+    const { stdout } = await execFileAsync(
+      "git",
+      ["rev-list", "--count", `${base}..HEAD`],
+      { cwd: worktreePath, encoding: "utf8" },
+    );
+    commits = Number.parseInt(stdout.trim(), 10) || 0;
+  } catch {
+    // Unknown base (e.g. the branch was never fetched): the commit count is
+    // unknowable, but the uncommitted files below are still real.
+  }
+
+  return { files, commits };
+}
+
 /**
  * Remove a git worktree and its associated branch
  * @param session Worktree session details
@@ -436,22 +485,6 @@ export async function removeWorktree(session: WorktreeSession): Promise<void> {
   }
 
   const repoRoot = session.repoRoot;
-
-  // Get current branch in worktree before removing it
-  let currentBranch: string | undefined;
-  try {
-    const { stdout } = await execFileAsync(
-      "git",
-      ["rev-parse", "--abbrev-ref", "HEAD"],
-      {
-        cwd: session.path,
-        encoding: "utf8",
-      },
-    );
-    currentBranch = stdout.trim();
-  } catch {
-    // Ignore errors getting current branch
-  }
 
   // Remove worktree
   try {
@@ -514,48 +547,22 @@ export async function removeWorktree(session: WorktreeSession): Promise<void> {
   // surviving directory means its checkout (and any uncommitted work in it) is
   // still on disk, and the branch is the only ref still leading back to it.
   if (fs.existsSync(session.path)) {
-    const keptBranches =
-      currentBranch && currentBranch !== session.branch
-        ? `${session.branch} and ${currentBranch}`
-        : session.branch;
     logger.warn(
-      `Worktree directory survived removal — keeping ${keptBranches} so the ` +
+      `Worktree directory survived removal — keeping ${session.branch} so the ` +
         `leftover checkout stays reachable: path=${session.path} ` +
         `residue=${probeResidue(session.path)}`,
     );
     return;
   }
 
-  // Delete original branch
+  // Delete the worktree's own branch. Branches the user checked out inside the
+  // worktree are never touched — they may hold commits that are not reachable
+  // from anywhere else (aligned with Claude Code).
   try {
     await execFileAsync("git", ["branch", "-D", session.branch], {
       cwd: repoRoot,
     });
   } catch {
     // Ignore errors deleting original branch
-  }
-
-  // Delete current branch if it's different and not a protected branch
-  if (
-    currentBranch &&
-    currentBranch !== session.branch &&
-    currentBranch !== "HEAD"
-  ) {
-    const defaultRemoteBranch = getDefaultRemoteBranch(repoRoot);
-    const defaultBranchName = defaultRemoteBranch.split("/").pop();
-
-    if (
-      currentBranch !== defaultBranchName &&
-      currentBranch !== "main" &&
-      currentBranch !== "master"
-    ) {
-      try {
-        await execFileAsync("git", ["branch", "-D", currentBranch], {
-          cwd: repoRoot,
-        });
-      } catch {
-        // Ignore errors deleting current branch
-      }
-    }
   }
 }

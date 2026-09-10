@@ -6,6 +6,10 @@ export interface ConfirmDialogProps {
   description?: string;
   confirmText?: string;
   cancelText?: string;
+  /** Block confirmation while the action's consequences are still unknown
+   *  (e.g. counting what deleting a worktree would destroy). Cancel stays
+   *  available so the dialog is never a dead end. */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -19,6 +23,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   description,
   confirmText = "确定",
   cancelText = "取消",
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }) => {
@@ -30,15 +35,18 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         return;
       }
       if (e.key === "Enter") {
-        // A focused button fires its own click on Enter — let it win.
+        // A focused button fires its own click on Enter — let it win. A
+        // disabled confirm button cannot hold focus, so Enter reaches this
+        // branch and must be ignored explicitly.
         if (document.activeElement instanceof HTMLButtonElement) return;
+        if (confirmDisabled) return;
         e.preventDefault();
         onConfirm();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onConfirm, onCancel]);
+  }, [onConfirm, onCancel, confirmDisabled]);
 
   return (
     <div
@@ -76,8 +84,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             type="button"
             className="confirm-dialog-btn confirm-dialog-btn-confirm"
             data-testid="confirm-dialog-confirm"
+            disabled={confirmDisabled}
             onClick={onConfirm}
-            autoFocus
+            autoFocus={!confirmDisabled}
           >
             {confirmText}
           </button>
