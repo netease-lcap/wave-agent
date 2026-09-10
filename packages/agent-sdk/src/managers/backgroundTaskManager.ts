@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { BackgroundTask, BackgroundShell } from "../types/processes.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
+import { readTailTextSync } from "../utils/fileUtils.js";
 import { WindowsStreamDecoder } from "../utils/encoding.js";
 import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
@@ -481,6 +482,20 @@ export class BackgroundTaskManager {
 
     let stdout = task.stdout;
     let stderr = task.stderr;
+
+    // A running agent task keeps its tool-call log in `outputPath` while
+    // `stdout` stays empty until the terminal snapshot fills it (see
+    // SubagentManager) — so /tasks shows an empty output block for the whole
+    // run. Fall back to the log file tail to surface live progress.
+    //
+    // Only when the in-memory buffer is empty, and only while running: shell
+    // tasks accumulate stdout chunk by chunk (that buffer is authoritative and
+    // identical to the file), so reading the file on top of it would duplicate
+    // the text; once a task reaches a terminal state the snapshot already
+    // carries the final output.
+    if (!stdout && task.status === "running" && task.outputPath) {
+      stdout = stripAnsiColors(readTailTextSync(task.outputPath));
+    }
 
     // Apply regex filter if provided
     if (filter) {

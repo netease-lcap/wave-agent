@@ -21,6 +21,13 @@ interface BackgroundTaskOutput {
   exitCode?: number;
 }
 
+/**
+ * Poll cadence for the selected task's output while it is still running and
+ * the detail view is open. The SDK answers with the task's log-file tail for
+ * running agent tasks, so this is what makes live progress visible.
+ */
+const BACKGROUND_TASK_OUTPUT_POLL_MS = 1500;
+
 const formatDuration = (ms: number): string => {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${Math.round(ms / 1000)}s`;
@@ -91,6 +98,24 @@ const BackgroundTaskManager: React.FC<
       taskId: selectedTaskId,
     });
   }, [selectedTask, selectedTaskId, vscode]);
+
+  // While the selected task is running, keep re-reading its output on a fixed
+  // cadence: the fetch effect above only fires on transitions (selection /
+  // status change), so live progress would otherwise freeze on the first
+  // snapshot. Stops on terminal status, task switch and unmount.
+  const selectedTaskRunning = selectedTask?.status === "running";
+  useEffect(() => {
+    if (!selectedTaskId || !selectedTaskRunning) {
+      return;
+    }
+    const timer = setInterval(() => {
+      vscode.postMessage({
+        command: "getBackgroundTaskOutput",
+        taskId: selectedTaskId,
+      });
+    }, BACKGROUND_TASK_OUTPUT_POLL_MS);
+    return () => clearInterval(timer);
+  }, [selectedTaskId, selectedTaskRunning, vscode]);
 
   useHostMessage((message) => {
     switch (message.command) {
