@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   render,
   fireEvent,
@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
+import { WORKTREE_CHANGES_TIMEOUT_MS } from "../../src/components/DesktopSidebar";
 import { createMockVscode, sendCommand, fireInput } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 
@@ -1645,6 +1646,89 @@ describe("DesktopApp", () => {
         screen.getByTestId("confirm-dialog-overlay"),
       ).not.toHaveTextContent("worktree");
       expect(screen.getByTestId("confirm-dialog-confirm")).toBeEnabled();
+    });
+
+    // The check has no built-in timeout on the host side: a wedged host (or a
+    // future early-return path that forgets to reply) would leave the dialog
+    // "checking" and unconfirmable forever — the session becomes undeletable
+    // from the UI. The dialog must rescue itself.
+    describe("worktree changes check timeout", () => {
+      beforeEach(() => {
+        vi.useFakeTimers();
+      });
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it("falls back to the generic warning when the host never answers", () => {
+        const { vscode } = renderDesktopApp();
+        openWorktreeDelete(vscode);
+
+        expect(worktreeChangesRequest(vscode)).toBeDefined();
+        expect(screen.getByTestId("confirm-dialog-overlay")).toHaveTextContent(
+          "正在检查",
+        );
+        expect(screen.getByTestId("confirm-dialog-confirm")).toBeDisabled();
+
+        act(() => {
+          vi.advanceTimersByTime(WORKTREE_CHANGES_TIMEOUT_MS);
+        });
+
+        const dialog = screen.getByTestId("confirm-dialog-overlay");
+        // Unknown is not clean: the generic warning, not "no changes".
+        expect(dialog).toHaveTextContent("未提交的改动将丢失");
+        expect(dialog).not.toHaveTextContent("正在检查");
+        expect(screen.getByTestId("confirm-dialog-confirm")).toBeEnabled();
+      });
+
+      it("keeps the counts when the host answers in time", () => {
+        const { vscode } = renderDesktopApp();
+        openWorktreeDelete(vscode);
+
+        // Answer just before the deadline…
+        act(() => {
+          vi.advanceTimersByTime(WORKTREE_CHANGES_TIMEOUT_MS - 1);
+        });
+        sendCommand("desktopWorktreeChanges", {
+          sessionId: "wt",
+          requestId: worktreeChangesRequest(vscode).requestId,
+          changes: { files: 3, commits: 2 },
+        });
+        // …then cross the original deadline: the cleared timer must not fire.
+        act(() => {
+          vi.advanceTimersByTime(WORKTREE_CHANGES_TIMEOUT_MS * 2);
+        });
+
+        const dialog = screen.getByTestId("confirm-dialog-overlay");
+        expect(dialog).toHaveTextContent("3 个未提交文件");
+        expect(dialog).toHaveTextContent("2 个未合并提交");
+        expect(screen.getByTestId("confirm-dialog-confirm")).toBeEnabled();
+      });
+
+      it("drops a late reply instead of re-blocking the dialog", () => {
+        const { vscode } = renderDesktopApp();
+        openWorktreeDelete(vscode);
+        const staleRequestId = worktreeChangesRequest(vscode).requestId;
+
+        act(() => {
+          vi.advanceTimersByTime(WORKTREE_CHANGES_TIMEOUT_MS);
+        });
+        expect(screen.getByTestId("confirm-dialog-confirm")).toBeEnabled();
+
+        // The reply the host eventually sends must be discarded — it would
+        // otherwise flip the dialog back to "checking" and re-disable confirm.
+        sendCommand("desktopWorktreeChanges", {
+          sessionId: "wt",
+          requestId: staleRequestId,
+          changes: { files: 5, commits: 5 },
+        });
+
+        const dialog = screen.getByTestId("confirm-dialog-overlay");
+        expect(dialog).not.toHaveTextContent("正在检查");
+        expect(dialog).toHaveTextContent("未提交的改动将丢失");
+        expect(dialog).not.toHaveTextContent("5 个未提交文件");
+        expect(screen.getByTestId("confirm-dialog-confirm")).toBeEnabled();
+      });
     });
   });
 
