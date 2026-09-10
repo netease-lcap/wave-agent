@@ -4,8 +4,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  /* 上下内边距对称 8px（原 8 12 12 底多 4px，走查「下面高了点可以收拢」→ 收齐） */
-  padding: 8px 12px 8px;
+  padding: 8px 12px 12px;
   background-color: var(--vscode-menu-background);
   border: 1px solid var(--vscode-widget-border);
   border-radius: 8px;

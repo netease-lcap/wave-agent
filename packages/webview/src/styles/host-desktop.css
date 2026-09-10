@@ -2093,6 +2093,13 @@
   margin-bottom: 0;
 }
 
+/* 上下内边距对称 8px（0909 走查「下面高了点可以收拢」→ 收齐）：**仅桌面端**。
+   2026-09-10 拍板：这是桌面收拢，不改共享 base `.task-list-inline`——IDE 两端
+   （VSCE/JetBrains）保持 base 的 `8px 12px 12px` 原值。 */
+[data-host="desktop"] .task-list-inline {
+  padding: 8px 12px 8px;
+}
+
 /* 任务列表滚动上限 102 → 110：字号 14 后行高 20px，保持「最多同屏 4 个
    任务」（4 × 20 + 3 × 10 = 110），避免第 4 个任务被裁半。 */
 [data-host="desktop"] .task-list-items {
