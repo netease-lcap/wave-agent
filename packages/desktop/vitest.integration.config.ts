@@ -13,9 +13,17 @@ import os from "os";
  *
  * Everything runs against a throwaway HOME so the CLI never touches the
  * developer's ~/.wave state.
+ *
+ * The scratch root is namespaced by the runner's pid: `resetRealHostState()`
+ * wipes the whole tree in every `beforeEach`, so two runs sharing one machine
+ * (e.g. separate git worktrees) must not share a root or they delete each
+ * other's HOME mid-test.
  */
 
-const REALHOST_ROOT = path.join(os.tmpdir(), "wave-desktop-realhost");
+const REALHOST_ROOT = path.join(
+  os.tmpdir(),
+  `wave-desktop-realhost-${process.pid}`,
+);
 const REALHOST_HOME = path.join(REALHOST_ROOT, "home");
 
 export default defineConfig({
@@ -41,6 +49,9 @@ export default defineConfig({
     // `unhandledRejection` listener so the leak is attributed to a test
     // (`assertNoUnexpectedRejections`) instead of only failing the file.
     env: {
+      // Hands the pid-namespaced root to the harness, which derives
+      // STORE_PATH/DIR_A/DIR_B from it (the worker has a different pid).
+      WAVE_REALHOST_ROOT: REALHOST_ROOT,
       HOME: REALHOST_HOME,
       USERPROFILE: REALHOST_HOME,
       WAVE_LOGS_DIR: path.join(REALHOST_HOME, ".wave", "logs"),
