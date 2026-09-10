@@ -20,8 +20,15 @@ import { ConfigStore } from "../../src/main/configStore";
 import { DesktopHost } from "../../src/main/desktopHost";
 import { LOCAL_HOST } from "../../src/main/sshHosts";
 
-/** Must match `vitest.integration.config.ts`. */
-export const REALHOST_ROOT = path.join(os.tmpdir(), "wave-desktop-realhost");
+/**
+ * Scratch root shared with `vitest.integration.config.ts`. The config derives
+ * it from `os.tmpdir()` + the runner pid (so concurrent runs in separate
+ * worktrees cannot wipe each other's HOME) and passes it down as
+ * `WAVE_REALHOST_ROOT`; the worker's own pid differs, hence the env handoff.
+ */
+export const REALHOST_ROOT =
+  process.env.WAVE_REALHOST_ROOT ??
+  path.join(os.tmpdir(), "wave-desktop-realhost");
 export const REALHOST_HOME = path.join(REALHOST_ROOT, "home");
 export const STORE_PATH = path.join(
   REALHOST_ROOT,
