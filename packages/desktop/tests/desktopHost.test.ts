@@ -2166,6 +2166,31 @@ describe("configuration and status", () => {
     expect(payload).not.toHaveProperty("baseURL");
   });
 
+  /**
+   * Regression（Bug #2115：设置页关掉「自动记忆」后仍记忆）：
+   *
+   * `autoMemoryEnabled` / `autoMemoryFrequency` 都是可选参数，任何一环漏传都不会
+   * 编译报错，只在 SDK 侧静默回落到 settings.json / 默认值——开关看起来保存成功
+   * 却不起作用。桌面链路的最后一环是 `recreateAgentsForConfig` 组装的 stdio
+   * `updateConfig` 参数：关闭状态（false）与轮次必须真的出现在发给 CLI 的参数里
+   * （不能被 `||` / 缺字段吞掉）。
+   */
+  it("updateConfiguration forwards the auto-memory toggle to the CLI params", async () => {
+    const { host } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "updateConfiguration",
+      configurationData: { autoMemoryEnabled: false, autoMemoryFrequency: 5 },
+    });
+
+    expect(lastAgent().updateConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        autoMemoryEnabled: false,
+        autoMemoryFrequency: 5,
+      }),
+    );
+  });
+
   it("getStatus replies with app version, session id and workdir", async () => {
     const { host, sent } = await readyHost();
     await host.handleWebviewMessage({ command: "getStatus" });
@@ -3318,6 +3343,25 @@ describe("misc commands", () => {
     expect(sent("skillMetadataResponse")).toHaveLength(0);
   });
 
+  it("deleteSkill failure surfaces a failure toast and skips the list refresh", async () => {
+    const { host, sent } = await readyHost();
+    lastAgent().deleteSkill = vi.fn(async () => {
+      throw new Error("permission denied");
+    });
+
+    await host.handleWebviewMessage({ command: "deleteSkill", name: "demo" });
+
+    expect(
+      shownToasts().some(
+        (t) =>
+          t.message.includes("删除技能失败") &&
+          t.message.includes("permission denied"),
+      ),
+    ).toBe(true);
+    // 删除没成功就不能回发「已刷新」的列表（否则 webview 会以为删掉了）
+    expect(sent("skillMetadataResponse")).toHaveLength(0);
+  });
+
   it("deleteSubagent success surfaces a global toast with the subagent name", async () => {
     const { host, sent } = await readyHost();
     const agent = lastAgent();
@@ -3331,6 +3375,39 @@ describe("misc commands", () => {
       true,
     );
     expect(sent("subagentConfigurationsResponse")).toHaveLength(1);
+  });
+
+  it("deleteSubagent without a live agent surfaces a failure toast, not a silent no-op", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "deleteSubagent",
+      name: "sde",
+      paneId: "no-such-pane",
+    });
+
+    expect(
+      shownToasts().some((t) => t.message.includes("删除子代理失败")),
+    ).toBe(true);
+    expect(sent("subagentConfigurationsResponse")).toHaveLength(0);
+  });
+
+  it("deleteSubagent failure surfaces a failure toast and skips the list refresh", async () => {
+    const { host, sent } = await readyHost();
+    lastAgent().deleteSubagent = vi.fn(async () => {
+      throw new Error("no such file");
+    });
+
+    await host.handleWebviewMessage({ command: "deleteSubagent", name: "sde" });
+
+    expect(
+      shownToasts().some(
+        (t) =>
+          t.message.includes("删除子代理失败") &&
+          t.message.includes("no such file"),
+      ),
+    ).toBe(true);
+    expect(sent("subagentConfigurationsResponse")).toHaveLength(0);
   });
 
   it("deleteHook success surfaces a global toast with the hook name", async () => {
@@ -3355,6 +3432,44 @@ describe("misc commands", () => {
     expect(sent("hooksResponse")).toHaveLength(1);
   });
 
+  it("deleteHook without a live agent surfaces a failure toast, not a silent no-op", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "deleteHook",
+      scope: "user",
+      hookName: "PreToolUse",
+      paneId: "no-such-pane",
+    });
+
+    expect(shownToasts().some((t) => t.message.includes("删除钩子失败"))).toBe(
+      true,
+    );
+    expect(sent("hooksResponse")).toHaveLength(0);
+  });
+
+  it("deleteHook failure surfaces a failure toast and skips the list refresh", async () => {
+    const { host, sent } = await readyHost();
+    lastAgent().deleteHook = vi.fn(async () => {
+      throw new Error("invalid hook name");
+    });
+
+    await host.handleWebviewMessage({
+      command: "deleteHook",
+      scope: "user",
+      hookName: "PreToolUse",
+    });
+
+    expect(
+      shownToasts().some(
+        (t) =>
+          t.message.includes("删除钩子失败") &&
+          t.message.includes("invalid hook name"),
+      ),
+    ).toBe(true);
+    expect(sent("hooksResponse")).toHaveLength(0);
+  });
+
   it("removeMcpServer success surfaces a global toast with the server name", async () => {
     const { host, sent } = await readyHost();
     const agent = lastAgent();
@@ -3371,6 +3486,44 @@ describe("misc commands", () => {
       shownToasts().some((t) => t.message === "已移除 MCP 服务器「files」"),
     ).toBe(true);
     expect(sent("mcpServersResponse")).toHaveLength(1);
+  });
+
+  it("removeMcpServer without a live agent surfaces a failure toast, not a silent no-op", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "removeMcpServer",
+      scope: "user",
+      serverName: "files",
+      paneId: "no-such-pane",
+    });
+
+    expect(
+      shownToasts().some((t) => t.message.includes("移除 MCP 服务器失败")),
+    ).toBe(true);
+    expect(sent("mcpServersResponse")).toHaveLength(0);
+  });
+
+  it("removeMcpServer failure surfaces a failure toast and skips the list refresh", async () => {
+    const { host, sent } = await readyHost();
+    lastAgent().removeMcpServer = vi.fn(async () => {
+      throw new Error("mcp.json is read-only");
+    });
+
+    await host.handleWebviewMessage({
+      command: "removeMcpServer",
+      scope: "user",
+      serverName: "files",
+    });
+
+    expect(
+      shownToasts().some(
+        (t) =>
+          t.message.includes("移除 MCP 服务器失败") &&
+          t.message.includes("mcp.json is read-only"),
+      ),
+    ).toBe(true);
+    expect(sent("mcpServersResponse")).toHaveLength(0);
   });
 
   it("updateConfiguration success surfaces a 保存成功 toast", async () => {
