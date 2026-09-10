@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import { createReadStream } from "node:fs";
 import path from "node:path";
 import { glob } from "glob";
@@ -190,6 +191,50 @@ export async function readTailLines(
   } finally {
     if (fileHandle) {
       await fileHandle.close();
+    }
+  }
+}
+
+/**
+ * Synchronously read up to `maxBytes` from the end of a file and return the
+ * raw tail text (blank lines preserved). When the window starts mid-line the
+ * partial first line is dropped, so the result holds complete lines only.
+ *
+ * Synchronous on purpose: the caller (`BackgroundTaskManager.getOutput`) sits
+ * on the synchronous `getBackgroundTaskOutput` path that hosts and the CLI
+ * already consume. The window is capped, so the blocking read stays small.
+ *
+ * @param {string} filePath - The path to the file.
+ * @param {number} maxBytes - Size of the tail window (default 64KB).
+ * @return {string} - Tail text, or "" when the file is empty or unreadable.
+ */
+export function readTailTextSync(
+  filePath: string,
+  maxBytes = 64 * 1024,
+): string {
+  let fd: number | undefined;
+  try {
+    const fileSize = fsSync.statSync(filePath).size;
+    if (fileSize === 0) return "";
+
+    const readSize = Math.min(maxBytes, fileSize);
+    const start = fileSize - readSize;
+    const buffer = Buffer.alloc(readSize);
+    fd = fsSync.openSync(filePath, "r");
+    const bytesRead = fsSync.readSync(fd, buffer, 0, readSize, start);
+
+    const text = buffer.subarray(0, bytesRead).toString("utf8");
+    if (start === 0) return text;
+    // The window began mid-line, so its first line is partial (and may start
+    // with a byte-truncated multibyte character): drop it.
+    const firstNewline = text.indexOf("\n");
+    return firstNewline === -1 ? "" : text.slice(firstNewline + 1);
+  } catch {
+    // Missing file, permissions, race with deletion: no tail to show.
+    return "";
+  } finally {
+    if (fd !== undefined) {
+      fsSync.closeSync(fd);
     }
   }
 }
