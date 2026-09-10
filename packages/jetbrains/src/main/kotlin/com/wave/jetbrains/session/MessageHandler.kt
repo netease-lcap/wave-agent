@@ -145,10 +145,14 @@ class MessageHandler(
                     // `~/.wave/settings.json`（经 CLI 进程），由 SDK 实时重载在**下一轮
                     // 对话**生效——保存不重建会话（spec agent-config「设置实时重载」/
                     // 「配置变更的构造期副作用与重建」场景 1–2）。
+                    //
+                    // 载荷是部分更新（spec 边界说明「省略键 = 不改该键」）：设置页
+                    // 只带用户真正改动过的键，未提供的本地键必须保持 wave.xml 现值
+                    // （不得回填空串把已有的 model / fastModel 抹掉）。
                     val config = WavePluginService.getInstance().loadConfiguration().apply {
-                        model = data["model"]?.jsonPrimitive?.content ?: ""
-                        fastModel = data["fastModel"]?.jsonPrimitive?.content ?: ""
-                        serverUrl = data["serverUrl"]?.jsonPrimitive?.content ?: this.serverUrl
+                        data["model"]?.jsonPrimitive?.content?.let { model = it }
+                        data["fastModel"]?.jsonPrimitive?.content?.let { fastModel = it }
+                        data["serverUrl"]?.jsonPrimitive?.content?.let { serverUrl = it }
                     }
                     WavePluginService.getInstance().saveConfiguration(config)
                     writeUserSettings(data)

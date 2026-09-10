@@ -4840,6 +4840,9 @@ export class DesktopHost {
    * 在落盘后立即给出，流式输出、排队消息、待确认权限都不受影响。无差异保存同样
    * 只落盘回执。桌面本地配置（模型/快速模型/服务地址）仍存 configStore；
    * 用户偏好**不写入** `wave-desktop.json`。
+   *
+   * 载荷是**部分更新**：设置页只带用户真正改动过的字段（未设置 / 没改的键不
+   * 出现），未提供的键一律保持文件中现值（见 `updateUserPreferences`）。
    */
   private async handleUpdateConfiguration(
     configData: DesktopConfigData,
@@ -4904,17 +4907,30 @@ export class DesktopHost {
     }
   }
 
-  /** 把设置页载荷里的用户偏好写进会话所在进程的用户级 settings.json。 */
+  /**
+   * 把设置页载荷里的用户偏好写进会话所在进程的用户级 settings.json。
+   *
+   * 载荷是**部分更新**语义（spec agent-config 边界说明「省略键 = 不改该键」）：
+   * 只把设置页真正提供的键放进 RPC patch，未提供的键保持文件中现值——设置页
+   * 用「不提供该键」表达「未设置 / 没改」，宿主不得给它补默认值（补默认值会
+   * 把「省略」翻译成一次写入，例如把系统环境里的 WAVE_MAX_INPUT_TOKENS 钉成
+   * 200000）。CLI 侧 `updateUserPreferenceSettings` 同样按已提供的键读-改-写。
+   */
   private async updateUserPreferences(
     host: string,
     configData: DesktopConfigData,
   ): Promise<UserPreferenceSettings> {
-    const patch: UserPreferenceSettings = {
-      language: configData.language,
-      contextLength: configData.contextLength,
-      autoMemoryEnabled: configData.autoMemoryEnabled,
-      autoMemoryFrequency: configData.autoMemoryFrequency,
-    };
+    const patch: UserPreferenceSettings = {};
+    if (configData.language !== undefined) patch.language = configData.language;
+    if (typeof configData.contextLength === "number") {
+      patch.contextLength = configData.contextLength;
+    }
+    if (configData.autoMemoryEnabled !== undefined) {
+      patch.autoMemoryEnabled = configData.autoMemoryEnabled;
+    }
+    if (typeof configData.autoMemoryFrequency === "number") {
+      patch.autoMemoryFrequency = configData.autoMemoryFrequency;
+    }
     const settings = (await this.utilityClientFor(host).request(
       "updateUserSettings",
       patch,

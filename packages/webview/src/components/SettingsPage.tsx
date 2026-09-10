@@ -46,8 +46,10 @@ import { isMacHiddenTitlebar } from "../utils/platform";
 export interface SettingsPageProps {
   /** 当前配置（getConfiguration 已回），null 表示尚未加载 */
   configurationData: ConfigurationData | null;
-  /** 保存配置（全局设置 / 个性化视图的保存按钮触发，含 language/contextLength/
-   *  autoMemoryEnabled/autoMemoryFrequency） */
+  /** 保存配置（全局设置 / 个性化视图的保存按钮触发）。**只带用户真正改动过的
+   *  字段**（diff 载荷）：未改动的键、仍处于「未设置」态的键都不出现——宿主与
+   *  CLI RPC 把「省略键」当作「不改该键」（spec agent-config 边界说明「省略键 =
+   *  不改该键」）。 */
   onSave?: (data: ConfigurationData) => void;
   /** 主题偏好（仅桌面端传入；未传入 = IDE 宿主，不渲染「桌面端设置」区块与
    *  主题行）。选择即时生效（onThemeChange 触发 host setThemeSource），
@@ -112,6 +114,37 @@ export type NavKey =
   | "mcp";
 
 type AgentsScope = "user" | "project";
+
+/**
+ * 用户偏好「未设置」态的表达（spec agent-config「IDE 插件配置入口」场景 7–8）：
+ *
+ * settings.json 里没有某个键时，控件显示**系统默认**而不是假装一个真实值——
+ * 语言下拉用一个显式项（下拉没有 placeholder 语义）、两个数字输入留空 + 灰字
+ * 占位符；开关不做占位态（它的真实默认就是「开」，三态开关更难用）。草稿用
+ * `""` 表示未设置，与「设置成某个值」区分开。
+ *
+ * 保存时只把**用户真正改动过的字段**放进载荷（省略键 = 不改该键）：未改动的、
+ * 仍处于未设置态的一律不写，因此系统环境里已有的 `WAVE_MAX_INPUT_TOKENS` 不会
+ * 被「随手保存一次」钉成 200000（见同名边界说明）。把已写过的值清空等同
+ * 「不改该键」——不提供「清除 / 恢复默认」按钮（载荷没有删键语义）。
+ */
+export const UNSET_OPTION_LABEL = "未设置（默认：中文）";
+export const CONTEXT_LENGTH_PLACEHOLDER = "跟随模型配置（默认 200K）";
+export const AUTO_MEMORY_FREQUENCY_PLACEHOLDER = "默认 1 轮";
+
+/** 未设置态（空草稿）一律不写；与初始值相同也不写。 */
+function changedString(current: string, initial?: string): string | undefined {
+  if (current.trim() === "") return undefined;
+  return current === (initial ?? "") ? undefined : current;
+}
+
+/** 未设置态（空草稿）一律不写；与初始值相同也不写（非数字视为未改动）。 */
+function changedNumber(current: string, initial?: number): number | undefined {
+  if (current.trim() === "") return undefined;
+  const value = Number(current);
+  if (!Number.isFinite(value)) return undefined;
+  return value === initial ? undefined : value;
+}
 
 interface NavItem {
   key: NavKey;
@@ -190,11 +223,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     if (initialNav) setActiveNav(initialNav);
   }, [initialNav]);
 
-  // 展示值（configurationData 回填后同步）
-  const [language, setLanguage] = useState("zh-CN");
-  const [contextLength, setContextLength] = useState(200);
+  // 用户偏好草稿（configurationData 回填后同步）。`""` = 未设置（settings.json
+  // 里没有该键）——此时控件显示系统默认（占位符 /「未设置（默认：中文）」项），
+  // 保存时不写该键（见文件顶部 UNSET 说明与 spec agent-config 场景 7–8）。
+  const [language, setLanguage] = useState("");
+  const [contextLength, setContextLength] = useState("");
+  const [autoMemoryFrequency, setAutoMemoryFrequency] = useState("");
+  // 自动记忆开关不做占位态：它的真实默认就是「开」，三态开关更难用（spec 场景 7）。
   const [autoMemoryEnabled, setAutoMemoryEnabled] = useState(true);
-  const [autoMemoryFrequency, setAutoMemoryFrequency] = useState(1);
   // 主题偏好（仅桌面端有值）：选择即生效（onThemeChange 已即时上送 host），
   // 此处本地 state 保持选中态直到 host 广播 desktopThemeSource 回写。
   const [theme, setTheme] = useState<ThemeSource>(themeSource ?? "system");
@@ -212,13 +248,21 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const [userContent, setUserContent] = useState("");
   const [projectContent, setProjectContent] = useState("");
 
-  // 配置数据变化时同步表单草稿
+  // 配置数据变化时同步表单草稿（文件里没有的键 → 未设置态，不编造默认值）
   useEffect(() => {
     if (!configurationData) return;
-    setLanguage(configurationData.language || "zh-CN");
-    setContextLength(configurationData.contextLength ?? 200);
+    setLanguage(configurationData.language ?? "");
+    setContextLength(
+      configurationData.contextLength === undefined
+        ? ""
+        : String(configurationData.contextLength),
+    );
     setAutoMemoryEnabled(configurationData.autoMemoryEnabled ?? true);
-    setAutoMemoryFrequency(configurationData.autoMemoryFrequency ?? 1);
+    setAutoMemoryFrequency(
+      configurationData.autoMemoryFrequency === undefined
+        ? ""
+        : String(configurationData.autoMemoryFrequency),
+    );
   }, [configurationData]);
 
   // host 广播（desktopThemeSource / 重推 setInitialState）同步主题选中态
@@ -288,14 +332,40 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   // 保存类操作反馈统一由宿主全局 toast 提示（2026-09-09 拍板，见
   // desktop-account-and-settings「设置页反馈语义」），本组件不生成/渲染任何
   // 页面内提示文字；「保存中…」由外层 saving / agentsSaving 驱动按钮禁用。
+  //
+  // 载荷只带**用户真正改动过**的字段（diff 语义）：没改的、仍处于未设置态的键
+  // 都不出现，宿主/CLI 把「省略键」当作「不改该键」（spec 场景 8 与边界说明
+  // 「省略键 = 不改该键」）——所以「一个字都没改就点保存」不会把任何键写进
+  // settings.json（否则会把系统环境里的 WAVE_MAX_INPUT_TOKENS 钉成 200000）。
   const handleSaveGlobal = () => {
     if (!configurationData || !onSave) return;
-    onSave({ ...configurationData, language, contextLength });
+    const patch: ConfigurationData = {};
+    const languagePatch = changedString(language, configurationData.language);
+    if (languagePatch !== undefined) patch.language = languagePatch;
+    const contextPatch = changedNumber(
+      contextLength,
+      configurationData.contextLength,
+    );
+    if (contextPatch !== undefined) patch.contextLength = contextPatch;
+    onSave(patch);
   };
 
   const handleSaveMemory = () => {
     if (!configurationData || !onSave) return;
-    onSave({ ...configurationData, autoMemoryEnabled, autoMemoryFrequency });
+    const patch: ConfigurationData = {};
+    // 开关无占位态：比较基准是它**显示的初始值**（未设置时显示默认「开」），
+    // 因此「未设置 + 没碰它」不写该键，只有真被拨动过才写。
+    if (autoMemoryEnabled !== (configurationData.autoMemoryEnabled ?? true)) {
+      patch.autoMemoryEnabled = autoMemoryEnabled;
+    }
+    const frequencyPatch = changedNumber(
+      autoMemoryFrequency,
+      configurationData.autoMemoryFrequency,
+    );
+    if (frequencyPatch !== undefined) {
+      patch.autoMemoryFrequency = frequencyPatch;
+    }
+    onSave(patch);
   };
 
   const handleSaveAgents = () => {
@@ -396,6 +466,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         value={language}
                         onChange={(e) => setLanguage(e.target.value)}
                       >
+                        {/* 未设置态：文件里没有 language 键时用显式项表达（下拉
+                            没有 placeholder 语义），选中它 = 保持未设置、保存时
+                            不写该键；其默认值与 SDK 解析链末尾的 DEFAULT_LANGUAGE
+                            （zh-CN）同串，保证「未设置时显示 ≡ 生效」。一旦文件里
+                            写过该键就不再显示此项（不提供「恢复默认」入口）。 */}
+                        {language === "" && (
+                          <option value="">{UNSET_OPTION_LABEL}</option>
+                        )}
                         <option value="zh-CN">中文</option>
                         <option value="en-US">English</option>
                       </select>
@@ -413,6 +491,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       </p>
                     </div>
                     <div className="settings-number-control">
+                      {/* 未设置态：文件里没有 env.WAVE_MAX_INPUT_TOKENS 时留空 +
+                          placeholder 显示系统默认（跟随模型配置；SDK 兜底
+                          200000 = 200K），保存时不写该键——系统环境里已设的
+                          WAVE_MAX_INPUT_TOKENS 因而不被「随手保存」钉住。 */}
                       <input
                         className="settings-number-input"
                         type="number"
@@ -420,11 +502,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         min={16}
                         max={1000}
                         step={16}
+                        placeholder={CONTEXT_LENGTH_PLACEHOLDER}
                         value={contextLength}
-                        onChange={(e) => {
-                          const value = Number(e.target.value);
-                          if (!Number.isNaN(value)) setContextLength(value);
-                        }}
+                        onChange={(e) => setContextLength(e.target.value)}
                       />
                       <span>K</span>
                     </div>
@@ -647,19 +727,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <p>达到指定对话轮次后执行记忆提取，默认 1 轮</p>
                     </div>
                     <div className="memory-turns">
+                      {/* 未设置态：文件里没有 autoMemoryFrequency 时留空 +
+                          placeholder 显示系统默认（1 轮），保存时不写该键。
+                          开关一行刻意不做占位态（真实默认即「开」，三态更难用，
+                          spec agent-config 场景 7）。 */}
                       <input
                         className="settings-number-input memory-turns-input"
                         type="number"
                         aria-label="触发记忆提取会话轮次"
                         min={1}
                         max={100}
+                        placeholder={AUTO_MEMORY_FREQUENCY_PLACEHOLDER}
                         value={autoMemoryFrequency}
-                        onChange={(e) => {
-                          const value = Number(e.target.value);
-                          if (!Number.isNaN(value)) {
-                            setAutoMemoryFrequency(value);
-                          }
-                        }}
+                        onChange={(e) => setAutoMemoryFrequency(e.target.value)}
                       />
                       <span>轮</span>
                     </div>

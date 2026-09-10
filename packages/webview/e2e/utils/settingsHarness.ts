@@ -72,6 +72,12 @@ export interface OpenSettingsOptions {
    * `getConfiguration`，不回包表单一直停在未加载态（保存按钮禁用）。
    */
   configuration?: boolean;
+  /**
+   * 回给设置页的配置数据（默认 `{ language: "zh-CN", contextLength: 200 }` =
+   * 两个键都已设置）。传 `{}` 模拟「全新安装：settings.json 里没有这些键」，
+   * 用于验证未设置态的占位符表达与「省略键 = 不改该键」的保存载荷。
+   */
+  configurationData?: Record<string, unknown>;
   /** 模拟 host 下发 `settingsState`（直选某视图 / 设定 workdir）。 */
   settingsState?: { workdir?: string; nav?: string };
 }
@@ -88,6 +94,7 @@ export async function openSettings(
     width = 1000,
     height = 760,
     configuration = true,
+    configurationData = { language: "zh-CN", contextLength: 200 },
     settingsState,
   } = options;
   await page.setViewportSize({ width, height });
@@ -102,7 +109,7 @@ export async function openSettings(
   if (configuration) {
     await simulateHostMessage(page, {
       command: "configurationResponse",
-      configurationData: { language: "zh-CN", contextLength: 200 },
+      configurationData,
     });
   }
 }

@@ -2327,12 +2327,64 @@ describe("user preference save path and rebuild timing", () => {
     expect(sent("configurationError")).toHaveLength(0);
   });
 
+  it("只带改动过的键的载荷：未提供的键不进 RPC patch（未设置态不落盘）", async () => {
+    const { host, sent } = await readyHost();
+    const agent = agentAt(0);
+    const restore = stubUserSettingsRpc({ update: { language: "en-US" } });
+    try {
+      // 设置页的 diff 载荷：用户只改了语言（其余键仍处于未设置态）。
+      await host.handleWebviewMessage({
+        command: "updateConfiguration",
+        configurationData: { language: "en-US" },
+      });
+    } finally {
+      restore();
+    }
+
+    // 宿主不得给缺失键补默认值，否则「省略」会被翻译成一次写入——正是
+    // 「进设置页随手保存一次，把系统环境里的 WAVE_MAX_INPUT_TOKENS 钉成
+    // 200000」的成因（spec agent-config 边界说明「省略键 = 不改该键」）。
+    // 断言键集而非仅取值：带 `undefined` 的键在 JSON 序列化时会被丢掉，只比取值
+    // 的话「host 里又写回 `configData.contextLength ?? 200`」这类回归看不出来。
+    const patch = rpcParams("updateUserSettings")[0] as object;
+    expect(Object.keys(patch)).toEqual(["language"]);
+    expect(patch).toEqual({ language: "en-US" });
+    expect(agent.updateConfig).not.toHaveBeenCalled();
+    expect(
+      sent("configurationResponse").at(-1)!.configurationData,
+    ).toMatchObject({ language: "en-US" });
+  });
+
+  it("空载荷（一个字都没改）→ RPC patch 为空键集，只回读不落盘", async () => {
+    const { host, sent } = await readyHost();
+    const restore = stubUserSettingsRpc({ update: {}, get: {} });
+    try {
+      await host.handleWebviewMessage({
+        command: "updateConfiguration",
+        configurationData: {},
+      });
+    } finally {
+      restore();
+    }
+
+    // patch 里一个键都没有（CLI 侧「patch 为空只回读、不落盘」），回执照发。
+    expect(rpcParams("updateUserSettings")).toEqual([{}]);
+    expect(Object.keys(rpcParams("updateUserSettings")[0] as object)).toEqual(
+      [],
+    );
+    expect(shownToasts().filter((t) => t.message === "保存成功")).toHaveLength(
+      1,
+    );
+    expect(sent("configurationResponse")).toHaveLength(1);
+    expect(sent("configurationError")).toHaveLength(0);
+  });
+
   it("a no-diff save is still just a receipt: no rebuild, no queue drain", async () => {
     const { host } = await readyHost();
     const agent = agentAt(0);
     agent.queuedMessages = [{ id: "q1", text: "排队消息" }];
     const data = {
-      language: "Chinese",
+      language: "zh-CN",
       contextLength: 128,
       autoMemoryEnabled: true,
       autoMemoryFrequency: 10,
