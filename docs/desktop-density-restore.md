@@ -2352,3 +2352,65 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 - **顺手清掉死 action 变体**：删除「打开下载页」这一已死的 ToastAction 变体（两处类型副本 + `handleToastAction` 的 if 分支 + 相关测试用例）——该链路已随 updateChecker 删除，动作只剩 `focusSession` 一种。
 - **spec 同步**：`desktop-account-and-settings.md`（撤销「webview 右下角」措辞 + 新增「toast 形态与路由」一条，按 `position` 表述、不写 hex）；`desktop-shell.md`（撤销「模仿 VS Code」措辞，指向上条路由规则）；`desktop-sessions.md`（故事更名「后台会话活动通知」→「后台会话确认提醒」、删已完成 toast 相关内容与 4 个旧场景、铃铛 4 处改「琥珀色状态点」、绿点边界写明为「已完成」唯一通道、toast 关系边界改为只讲确认 toast 并记录其保留右下角形态）。
 - 实现文件：`desktopHost.ts`、`webview-fixtures/src/types.ts`、`webview/src/types/index.ts`、`ToastStack.tsx`、`ChatApp.tsx`、`TaskList.css`、`ToastStack.css`、`host-desktop.css`、`desktopHost.test.ts`、`toastStack.test.tsx`、`chatAppToast.test.tsx`、`desktopApp.test.tsx`、三份 spec、本 docs。
+## 对话流排版契约第 1 项（conversation-typography TXT-01）：阅读正文改用 UI 字体（F-01）
+
+依据来源：codechat-desktop-skill 的 `references/conversation-typography.md`（提交 b7058b0）渲染不变量 **TXT-01**「阅读正文使用 UI 字体角色，不继承 editor-font-family；代码字段显式绑定等宽角色」；`references/conversation-audit.md` 第 33 行定位线索（浏览器中 Markdown 正文 computed 栈为 Menlo/Monaco/Courier New，需追踪 `.message-content` 祖先）。走查清单见工作目录外 `conversation-style-audit.html`（F-01，分组 G1）。
+
+- **问题（修复前 headless 实测）**：base `Message.css:233 .message-content{font-family:var(--vscode-editor-font-family)}` 使对话流阅读正文全部渲染为 `Menlo, Monaco, "Courier New", monospace` —— `.markdown-content` 下 p / li / blockquote / h1–h6 / table th / td、以及错误块 `.message.assistant .error`（其自身只声明 color/italic/padding/max-height/pre-wrap，字体是继承来的）。同页 reasoning / 用户气泡 / 工具行 / ask-user 答案框本就是 UI 栈 `-apple-system, "system-ui", sans-serif`，即同一产品内两种字体角色并存。
+- **修复**（host-desktop.css，markdown 圆角段之后新增，仅 1 处声明）：
+  ```css
+  [data-host="desktop"] .message-content {
+    font-family: var(--vscode-font-family);
+  }
+  ```
+  `--vscode-font-family` 即 body 的 UI 栈，与 reasoning/工具行等既有 UI 角色一致；**不覆盖 base**（IDE 宿主行为不变）。代码字段（Markdown code/pre、bash 命令与输出、写入预览与路径、lsp-output、diff、mermaid）各自规则内已显式绑定等宽栈，故此处不重复声明，避免在文件末尾堆叠覆盖（符合契约「对冲突规则做收敛」的实现边界）。
+- **验证方法（等宽判别，避免中文回退导致的肉眼误判）**：在同一元素内临时注入 `iiiii` 与 `WWWWW` 两个隐藏 span 量宽——等宽字体宽度相等（比值 1.0），比例字体比值 ≈0.25。`:has()` 判据不参与。
+  - 修复前（base 等价态）：md-p / md-h1 / md-li / md-blockquote / md-td / error-block 全部 `monoRatio=1.0`（Menlo）。
+  - 修复后：上述六类全部 `monoRatio=0.25`（UI 栈）；`code`、`pre`、`pre code`、`td code`、`.bash-command`、`.bash-command-output`、`.write-preview-content`、`.lsp-output`、diff 词级 span 全部仍 `1.0`（等宽保持）。
+  - 规模：对话流内文本节点 UI 栈 123→365、Menlo 栈 1134→892（差额 242 即本次转正文字体者）。
+  - 几何无回归：p 760×42 / 2 行、blockquote 6 行、error 17 行、h1 760×32.8 / 1 行，前后一致；字宽差异 <1%（td 395.7→389，无换行数变化）。
+  - 浅深同值（TXT-08）：light/dark 两组测量结果一致。
+  - IDE 宿主回归：以 `data-host="vscode"` 代理验证，全部元素回到 base 行为（正文 Menlo、13px 档），桌面覆盖未泄漏。
+- **测试**：`pnpm -F wave-webview run type-check` 通过（exit 0）；仓库内无 `font-family` 样式断言（test/e2e 零引用），故结论以浏览器 computed 值为准（CSS 改动，无逻辑测试覆盖点）。
+- **口径说明**：错误块 `.message.assistant .error` 随本次一并转为 UI 字体——其等宽并非显式代码角色绑定而是继承副作用，且同类 `.tool-error` 本来就是 UI 字体，统一后两个错误面口径一致；真正的原始堆栈仍由 `pre`/`code`/日志区以代码角色承载。`font-style: italic` 属另一条（F-12），本次未改。
+- **未覆盖项**：200% 缩放与 WCAG 1.4.12 文字间距覆盖；994×949 窄窗口与分屏实际内容宽度；流式未闭合代码围栏/表格；IDE 宿主真机（仅 data-host 代理解析）。
+- 实现文件：`src/styles/host-desktop.css`、本 docs。（headless A/B 实测 + 同页前后截图，等用户 8899 走查确认后推送。）
+
+## 对话流排版契约第 2 批（TXT-02 / TXT-05 / TXT-06 + 角色表）：字号与行高绑定命名角色、宽表本地滚动（F-02 / F-03 / F-04 / F-05 / F-06）
+
+依据来源：codechat-desktop-skill（b7058b0）`references/conversation-typography.md` 的渲染不变量 TXT-02（禁止按嵌套深度连乘 0.9em）、TXT-05（正文行高一致）、TXT-06（长词/路径/链接折行、宽表本地滚动、画布不产生横向滚动）与角色表（表格单元格 = 正文 14/22、行内代码与代码块 = 13px、表头不低于正文）；`references/conversation-audit.md` 对应条目。走查清单见工作目录外 `conversation-style-audit.html`（F-02/F-03/F-04 属 G3·G4，F-05 属 G2，F-06 属 G8）。
+
+**应用提交：`1e2ef0aa`**（`packages/webview/src/styles/host-desktop.css` + `packages/webview/src/components/Message.tsx`；base `Message.css` 与 IDE 宿主路径零改动）。
+
+### 逐项修复与前后实测（1440px，light；dark 同值）
+
+| 项   | 规则/角色 | 修复前                                                                                                                                                         | 修复后                                                                                                              | 说明                                                                                                                                                             |
+| ---- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F-02 | TXT-02    | td 12.6px / 17.64px；td 内 code **11.34px / 15.876px**（table 0.9em × code 0.9em 连乘）                                                                        | td **14px / 22px**；td 内 code **13px / 22px**                                                                      | 去掉表格 0.9em 与行内 code 的 em 链，按角色绑绝对值；11.34px 节点 21 → 0                                                                                         |
+| F-03 | 角色表    | th 12.6px / 17.64px（w600）                                                                                                                                    | th **14px / 22px**（w600）                                                                                          | 「不低于正文」为执行档；最终字重/字号待候选 C-03 视觉拍板（本轮未改）                                                                                            |
+| F-04 | 角色表    | 行内 code 12.6px / 18.9px；pre 12.6px / 17.64px；pre code 同                                                                                                   | 行内 code **13px / 22px**；pre **13px / 18.2px**；pre code **13px / 18.2px**                                        | pre 行高按 F-04「随 C-02 候选」未动，仍是 base 1.4 → 13×1.4=18.2px（非整数，待 C-02 收口）                                                                       |
+| F-05 | TXT-05    | p 14/**21**；li 14/**19.6**；blockquote 14/**19.6**；用户气泡 14/**19.6**（22px 写在 `.user-text-block` 上被内层 1.4 顶掉）；错误块 14/19.6                    | 全部 **14 / 22px**                                                                                                  | 统一整数行盒 22px，命中内层 `.user-text-block .message-content.user-content`；p 外边距 8px、li 4px 不变；错误块随其所属正文角色                                  |
+| F-06 | TXT-06    | 最宽表 882px 落在 760px 列内，父级 `overflow-x: visible`，容器 `scrollWidth 912 / clientWidth 800`（**被 `.messages-container{overflow-x:hidden}` 静默裁切**） | 包 `.md-table-scroll`（`overflow-x:auto`），容器 `800 / 800`；表 973px，`maxScrollLeft 213`，滚到最右时末列完整可见 | 包装层在 `Message.tsx` 的 `renderer.table` 生成；**需 DOMPurify `ALLOWED_TAGS` 放行 `div`**，否则 sanitize 会剥掉包裹层只留子节点（首轮实测 wrapper 缺失即此因） |
+
+对照项（不应变化，实测未变）：`.bash-command` 13px/15.6px、`.compact-params` 12px/18px、h2 21px/27.3px、行内 code/pre 之外的工具行；最小字号仍是 10px（`span.tool-status-dot`，与本次无关）。
+
+### 换行 / 裁切 / 布局位移
+
+- **正文换行零变化**：行盒数（Range.getClientRects 去重行顶）逐元素 p 2→2、li 1→1、quote 3→3、用户气泡 7→7、错误块 7→7、pre 1→1；全页合计 p 98→98、li 97→97、quote 30→30。正文 font-size 未变（14px），行盒增长全部来自行高 19.6/21 → 22px（即契约要求的统一，属预期位移：p 760×42→760×44、li 704×20→704×22、用户气泡 780×153→780×170、错误块 780×128→780×142）。
+- **表格**：font-size 12.6→14px 是角色表要求，必然使单元格文本变宽 —— 128 个单元格中折行数 12 → 40（最多仍 4 行），表格高度随之上浮（8 列样例 300 → 616px）。**无裁切**：所有单元格 `scrollWidth == clientWidth`（over 0），`white-space: normal` + `overflow-wrap: break-word` 使长路径在格内折行；超出列宽的表格转为本地横向滚动。
+- **画布无横向滚动**（TXT-06 验收）：1440 / 994 / 900 / 400px 四档均 `documentElement.scrollWidth == clientWidth`（1440=1440、994=994、900=900、400=400），`.messages-container` 的 `scrollWidth == clientWidth`（修复前 994/900/400 档为 912 vs 733/639/360）。
+- **400px 视口验收**：包裹层 `clientWidth 320 / scrollWidth 973`，可滚到底（`maxScrollLeft` > 0），滚到最右时末列可见 → 「表格可横向滚动看到全部列」达成。
+
+### IDE 宿主回归与验证方法
+
+- 修复方式仍为桌面宿主限定：新增规则全部带 `[data-host="desktop"]` 前缀，base `Message.css` 未改。`Message.tsx` 的包裹层是结构变化，IDE 宿主无对应样式 → 以 `data-host="vscode"` 代理 A/B（同一张表：保留包裹层 vs 临时拆掉包裹层）实测 `table` 几何完全一致（748×68 / top 1860），包裹层 computed `overflow-x: visible`、`margin: 0`、`max-width: none`，画布无横向溢出。
+- 测量口径：「修复前」为**同页等效回退态**（注入样式中和本批 desktop 覆盖，回到 base `Message.css` 取值），与 `/tmp/g234-before.json` 的真实基线一致，避免切换分支/改工作树的干扰；headless Chromium 1440×24000 绕过虚拟列表全渲染；浅深只通过工具条按钮切换（`button[title="切换深色/浅色主题"]`）。
+- **测试**：`pnpm -F wave-webview run type-check` exit 0（全仓 pre-commit `pnpm -r type-check` 亦通过，含 vscode/desktop 包）；仓库内无对应样式断言，结论以浏览器 computed 值为准。
+- 截图：`/Users/ailsa/Documents/07-AI/走查/截图/`（26 张，命名 `G2/G3/G4/F-05/F-06-…_修复前|修复后_light|dark.png`，含 400px 宽表滚动两态）。
+
+### 本轮未覆盖 / 待你拍板
+
+1. **F-07（表头配色与斑马纹 opacity）与 C-03（表头最终字重/字号）未做** —— 同属 G3，本轮只按执行档取「不低于正文」14/22·600，等视觉候选拍板。
+2. **C-02（代码行高整数化）未做** —— pre 行高仍为 13×1.4=18.2px，非整数但未抢先改。
+3. 表格单元格折行数 12 → 40（字号从 12.6 → 14 的直接后果），建议在 8899 走查时确认是否接受；若认为表格信息密度下降，需要回到角色表层面讨论（属设计口径而非实现缺陷）。
+4. 未覆盖场景：流式输出中未闭合的表格/代码围栏；表格内嵌 mermaid 或超长无空格 token 的极端列；编辑器 200% 缩放与 1.4.12 文字间距；IDE 宿主真机（仅 data-host 代理）；窄窗口 + 分屏组合下的实际内容宽度；截图对比中的「修复前」为等效回退态而非真实历史构建。
