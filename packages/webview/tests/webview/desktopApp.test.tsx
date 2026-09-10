@@ -3548,17 +3548,24 @@ describe("DesktopApp", () => {
       sendCommand("showToast", {
         toast: {
           id: "toast-s2",
-          message: "会话「后台任务」已完成",
+          message: "会话「后台任务」需要确认：命令执行待确认",
+          position: "bottomRight",
           actionLabel: "查看",
           action: { type: "focusSession", host: "local", sessionId: "s2" },
         },
       });
     }
 
-    it("removes the toast once its session's pane becomes focused (spec scenario 12)", () => {
+    it("removes the toast once its session's pane becomes focused (spec scenario 8)", () => {
       renderWithPanes();
       toastForS2();
-      expect(screen.getByText("会话「后台任务」已完成")).toBeInTheDocument();
+      expect(
+        screen.getByText("会话「后台任务」需要确认：命令执行待确认"),
+      ).toBeInTheDocument();
+      // 会话确认提示落右下角栈（保持改动前的 VS Code 通知形态）
+      expect(
+        screen.getByTestId("toast-stack--bottomRight"),
+      ).toBeInTheDocument();
 
       // Ctrl+Tab / clicking the pane — the focused pane now shows s2.
       sendCommand("desktopPanes", {
@@ -3571,14 +3578,16 @@ describe("DesktopApp", () => {
       });
 
       expect(
-        screen.queryByText("会话「后台任务」已完成"),
+        screen.queryByText("会话「后台任务」需要确认：命令执行待确认"),
       ).not.toBeInTheDocument();
     });
 
     it("keeps the toast while another session gains focus", () => {
       renderWithPanes();
       toastForS2();
-      expect(screen.getByText("会话「后台任务」已完成")).toBeInTheDocument();
+      expect(
+        screen.getByText("会话「后台任务」需要确认：命令执行待确认"),
+      ).toBeInTheDocument();
 
       // Focus moves to an unrelated pane (s3) — the s2 toast stays.
       sendCommand("desktopPanes", {
@@ -3590,7 +3599,9 @@ describe("DesktopApp", () => {
         focusedPaneId: "pane-2",
       });
 
-      expect(screen.getByText("会话「后台任务」已完成")).toBeInTheDocument();
+      expect(
+        screen.getByText("会话「后台任务」需要确认：命令执行待确认"),
+      ).toBeInTheDocument();
     });
   });
 

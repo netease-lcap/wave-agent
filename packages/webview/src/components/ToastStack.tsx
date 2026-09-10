@@ -4,13 +4,13 @@ import { CloseIcon } from "./HeaderIcons";
 import "../styles/ToastStack.css";
 
 /**
- * 语义图标：16px 描边圆 + 内部笔画，stroke 1.4 与 wave 官方工具图标同规格。
- * 成功=对勾 / 错误=× / 信息=i（对齐 codex toast 的描边圆勾样式）。图标仅
- * toast 使用，按 skill icon policy「单次用途 keep local」内嵌本组件。
+ * 语义图标（**仅顶部位置的 app 级 toast 渲染**）：16px 描边圆 + 内部笔画，
+ * stroke 1.4 与 wave 官方工具图标同规格。成功=对勾 / 失败=× / 信息=i（对齐
+ * codex toast 的描边圆勾样式）。**无类型（中性）不渲染图标**——没有成功/失败
+ * 语义时圆勾/叉都不合适，只出文字。图标仅 toast 使用，按 skill icon policy
+ * 「单次用途 keep local」内嵌本组件。
  */
-const ToastGlyph: React.FC<{ kind: Exclude<ToastKind, "info"> | "info" }> = ({
-  kind,
-}) => (
+const ToastGlyph: React.FC<{ kind: ToastKind }> = ({ kind }) => (
   <svg
     width={16}
     height={16}
@@ -52,8 +52,9 @@ interface ToastStackProps {
   toasts: UpdateToast[];
   onDismiss: (id: string) => void;
   onAction: (toast: UpdateToast) => void;
-  /** 定位锚点：toast 条水平居中于该选择器容器的中心（如设置页内容列 /
-   *  桌面工作区），缺省回退视口水平中心。传 null 时始终回退视口中心。 */
+  /** 定位锚点（**只作用于顶部 toast 栈**）：toast 条水平居中于该选择器容器的
+   *  中心（如设置页内容列 / 桌面工作区），缺省回退视口水平中心。传 null 时
+   *  始终回退视口中心。右下角栈固定定位，不使用锚点。 */
   anchorSelector?: string | null;
 }
 
@@ -64,12 +65,19 @@ interface ToastStackProps {
  */
 const AUTO_DISMISS_MS = 1000;
 
-/** Semantic toast (codex-style): kind icon + message text + optional action + close. */
+/**
+ * One toast row. `position` selects the visual family (from the toast's explicit
+ * `position` field, never inferred from the presence of an action):
+ * - `"top"` — 应用级全局提示：桌面端顶部居中形态，语义图标 + 可选中性 / 彩色底；
+ * - `"bottomRight"` — 后台会话确认提示：VS Code 风格右下角通知（保持改动前
+ *   形态），仅 loading 时出 spinner、不渲染语义图标。
+ */
 const Toast: React.FC<{
   toast: UpdateToast;
+  position: "top" | "bottomRight";
   onDismiss: (id: string) => void;
   onAction: (toast: UpdateToast) => void;
-}> = ({ toast, onDismiss, onAction }) => {
+}> = ({ toast, position, onDismiss, onAction }) => {
   // Informational toasts (no action) disappear on their own; actionable ones
   // stay until the user acts or closes them.
   useEffect(() => {
@@ -78,17 +86,20 @@ const Toast: React.FC<{
     return () => clearTimeout(timer);
   }, [toast.id, toast.action, onDismiss]);
 
+  const isTop = position === "top";
+  // 语义色只标在顶部（app 级）toast 上；无 type = 中性（不套语义类）。
+  const kindClass = isTop && toast.type ? ` toast--${toast.type}` : "";
   return (
     <div
-      className={`toast toast--${toast.type ?? "info"}`}
+      className={`toast toast--${position}${kindClass}`}
       role="status"
       data-testid="toast"
     >
       {toast.loading ? (
         <span className="toast-spinner" aria-hidden="true" />
-      ) : (
-        <ToastGlyph kind={toast.type ?? "info"} />
-      )}
+      ) : isTop && toast.type ? (
+        <ToastGlyph kind={toast.type} />
+      ) : null}
       <span className="toast-message">{toast.message}</span>
       {toast.actionLabel && toast.action && !toast.loading && (
         <button className="toast-action" onClick={() => onAction(toast)}>
@@ -106,20 +117,15 @@ const Toast: React.FC<{
   );
 };
 
-/** Top-center toast bar. 位置水平锚定由 anchorSelector 容器决定（右侧界面/内容列
- *  中心），保持 fixed 顶部展示，不随布局滚动。 */
-export const ToastStack: React.FC<ToastStackProps> = ({
-  toasts,
-  onDismiss,
-  onAction,
-  anchorSelector,
-}) => {
-  // 锚点容器中心 x：设置页打开时 = 内容列中心（避开 240px 左导航），普通桌面
-  // 模式 = 工作区中心（避开会话侧栏）。容器尺寸/出现变化时随 ResizeObserver
-  // 更新；缺省（无锚点）交给 CSS left:50% 回退视口中心。
+/** 锚点容器中心 x（顶部 toast 栈专用）：容器尺寸/出现变化时随 ResizeObserver
+ *  更新；缺省（无锚点/无顶部 toast）交给 CSS left:50% 回退视口中心。 */
+function useAnchorCenterX(
+  anchorSelector: string | null | undefined,
+  active: boolean,
+): number | null {
   const [centerX, setCenterX] = useState<number | null>(null);
   useLayoutEffect(() => {
-    if (toasts.length === 0 || !anchorSelector) {
+    if (!active || !anchorSelector) {
       setCenterX(null);
       return;
     }
@@ -140,23 +146,63 @@ export const ToastStack: React.FC<ToastStackProps> = ({
       ro.disconnect();
       window.removeEventListener("resize", update);
     };
-  }, [toasts.length, anchorSelector]);
+  }, [active, anchorSelector]);
+  return centerX;
+}
 
-  if (toasts.length === 0) return null;
+/**
+ * In-app toast host. Two separate stacks rendered side by side, grouped by the
+ * toast's explicit `position` (2026-09-10 拍板):
+ * - `"top"`（缺省）→ `.toast-stack--top`：顶部居中新形态（应用级全局提示）；
+ * - `"bottomRight"` → `.toast-stack--bottomRight`：既有右下角通知形态（后台会话
+ *   确认提示），两栈可同屏共存、各自定位与动效互不干扰。
+ */
+export const ToastStack: React.FC<ToastStackProps> = ({
+  toasts,
+  onDismiss,
+  onAction,
+  anchorSelector,
+}) => {
+  const bottomRightToasts = toasts.filter((t) => t.position === "bottomRight");
+  const topToasts = toasts.filter((t) => t.position !== "bottomRight");
+  const topCenterX = useAnchorCenterX(anchorSelector, topToasts.length > 0);
+
+  if (bottomRightToasts.length === 0 && topToasts.length === 0) return null;
   return (
-    <div
-      className="toast-stack"
-      data-testid="toast-stack"
-      style={centerX !== null ? { left: centerX } : undefined}
-    >
-      {toasts.map((toast) => (
-        <Toast
-          key={toast.id}
-          toast={toast}
-          onDismiss={onDismiss}
-          onAction={onAction}
-        />
-      ))}
-    </div>
+    <>
+      {bottomRightToasts.length > 0 && (
+        <div
+          className="toast-stack toast-stack--bottomRight"
+          data-testid="toast-stack--bottomRight"
+        >
+          {bottomRightToasts.map((toast) => (
+            <Toast
+              key={toast.id}
+              toast={toast}
+              position="bottomRight"
+              onDismiss={onDismiss}
+              onAction={onAction}
+            />
+          ))}
+        </div>
+      )}
+      {topToasts.length > 0 && (
+        <div
+          className="toast-stack toast-stack--top"
+          data-testid="toast-stack--top"
+          style={topCenterX !== null ? { left: topCenterX } : undefined}
+        >
+          {topToasts.map((toast) => (
+            <Toast
+              key={toast.id}
+              toast={toast}
+              position="top"
+              onDismiss={onDismiss}
+              onAction={onAction}
+            />
+          ))}
+        </div>
+      )}
+    </>
   );
 };

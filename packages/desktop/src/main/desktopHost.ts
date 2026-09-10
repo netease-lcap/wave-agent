@@ -258,27 +258,29 @@ export class DesktopHost {
   }> = [];
   private pendingConfirmations = new Map<string, PendingConfirmation>();
   /** Agents whose waiting-for-confirmation toast has been shown this wait cycle
-   *  (spec「后台会话活动通知」scenario 4): cleared once the agent has no pending
+   *  (spec「后台会话确认提醒」scenario 4): cleared once the agent has no pending
    *  confirmations left, so a later request starts a fresh cycle. */
   private confirmationToastAgents = new WeakSet<StdioAgent>();
   /** Agents whose current turn the user aborted (stop button / denied a
    *  confirmation). Consumed by onLoadingChange(false): an aborted turn never
-   *  announces 「已完成」 (spec scenario 7). */
+   *  lights the sidebar「已完成未读」green dot. */
   private userAbortedAgents = new WeakSet<StdioAgent>();
   /** Agents that streamed at least once (loading:true observed). Only their
    *  loading:false can be a real turn finishing — restore re-attach replays
    *  the settled loading state as a snapshot (agentBridge.restoreSession
    *  re-attach branch), and for an idle session that snapshot is loading:false
    *  without a preceding loading:true. Treating the snapshot as a completion
-   *  toasts every historical session the user clicks. Consumed (deleted) by
-   *  each loading:false; a fresh loading:true re-adds for the next turn. */
+   *  lights the sidebar green dot for every historical session the user clicks.
+   *  Consumed (deleted) by each loading:false; a fresh loading:true re-adds for
+   *  the next turn. */
   private streamedAgents = new WeakSet<StdioAgent>();
   /**
    * Agents whose last real turn finished while no pane displayed the session —
    * drives the sidebar「已完成未读」green dot (DesktopSessionEntry.newCompleted,
-   * Figma 13656:5470). Set in onLoadingChange(false) on exactly the same
-   * boundary as the background-completion toast: a real finished turn (loading:
-   * true observed), not an abort or a restore-replayed idle snapshot. Cleared
+   * Figma 13656:5470) — 2026-09-10 拍板后这是「已完成」的唯一提醒通道（不再弹
+   * toast）。Set in onLoadingChange(false) on exactly the background-completion
+   * boundary: a real finished turn (loading: true observed), not an abort or a
+   * restore-replayed idle snapshot. Cleared
    * once the session is opened/focused in a pane (bindAgentToPane — the single
    * path that brings a session into view) or starts a new turn, so a session
    * the user already viewed never re-lights just because they switched away.
@@ -1234,28 +1236,18 @@ export class DesktopHost {
           this.newCompletedAgents.delete(agentRef);
         } else {
           this.touchSessionInIndex(agentRef);
-          // Announce a background turn that finished on its own — only for
-          // sessions not shown in any pane (one displayed in a pane, focused
-          // or not, is directly visible) and never an aborted one
-          // (spec「后台会话活动通知」scenario 5/7/8). A loading:false without a
-          // preceding loading:true is not a turn finishing: restore re-attach
-          // replays the settled loading state as a snapshot, so clicking a
-          // historical session must not toast its idle state as 「已完成」.
+          // A real background turn finished on its own — flag it unread for the
+          // sidebar「已完成未读」green dot. Only for sessions shown in no pane (a
+          // session displayed in a pane, focused or not, is directly visible)
+          // and never an aborted one (spec「后台会话确认提醒」). 2026-09-10 拍板：
+          // 已完成不再弹 toast，侧边栏绿点是唯一提醒通道。A loading:false
+          // without a preceding loading:true is not a turn finishing: restore
+          // re-attach replays the settled loading state as a snapshot, so
+          // clicking a historical session must not light the dot.
           const aborted = this.userAbortedAgents.delete(agentRef);
           const finishedTurn = this.streamedAgents.delete(agentRef);
           if (!paneId && !aborted && finishedTurn && agentRef.sessionId) {
-            // Same boundary as the toast below — the completion is real and the
-            // session is on no pane, so flag it as unread for the sidebar dot.
             this.newCompletedAgents.add(agentRef);
-            this.showToast({
-              message: `会话「${this.sessionTitleFor(agentRef)}」已完成`,
-              actionLabel: "查看",
-              action: {
-                type: "focusSession",
-                host: this.hostForAgent(agentRef),
-                sessionId: agentRef.sessionId,
-              },
-            });
           }
         }
         this.refreshSessionTree();
@@ -2356,14 +2348,17 @@ export class DesktopHost {
 
     const paneId = this.paneIdForAgent(agent);
     // Toast the request only when the session isn't shown in any pane — the
-    // sidebar bell alone is easy to miss (spec「后台会话活动通知」scenario 1/9).
-    // A session displayed in a pane, focused or not, already pops its dialog
-    // where the user can see it, so no toast (scenario 2). One toast per wait
-    // cycle: a burst of follow-up requests while the first is still pending
-    // must not re-announce (scenario 4).
+    // sidebar amber waiting dot alone is easy to miss (spec「后台会话确认提醒」
+    // scenario 1/5). A session displayed in a pane, focused or not, already
+    // pops its dialog where the user can see it, so no toast (scenario 2). One
+    // toast per wait cycle: a burst of follow-up requests while the first is
+    // still pending must not re-announce (scenario 4).
+    // position: "bottomRight" — 后台会话确认 toast 保持既有右下角通知形态，
+    // 不并入应用级全局 toast 的顶部居中新形态（2026-09-10 拍板）。
     if (!paneId && !this.confirmationToastAgents.has(agent)) {
       this.confirmationToastAgents.add(agent);
       this.showToast({
+        position: "bottomRight",
         message: `会话「${this.sessionTitleFor(agent)}」需要确认：${confirmationType}`,
         actionLabel: "查看",
         action: {
@@ -2449,7 +2444,7 @@ export class DesktopHost {
     }
     this.pendingConfirmations.delete(confirmationId);
     // The wait cycle ends once the agent has no pending confirmations left —
-    // a later request may announce again (spec「后台会话活动通知」scenario 4).
+    // a later request may announce again (spec「后台会话确认提醒」scenario 4).
     if (
       ![...this.pendingConfirmations.values()].some(
         (p) => p.agent === pending.agent,
@@ -2463,8 +2458,9 @@ export class DesktopHost {
         decision ?? ({ behavior: "allow" } as PermissionDecision),
       );
     } else {
-      // A denied confirmation ends the turn on the user's terms — never
-      // announce it as a completed task (spec「后台会话活动通知」scenario 6).
+      // A denied confirmation ends the turn on the user's terms — it must never
+      // light the sidebar「已完成未读」green dot (the completion boundary below
+      // excludes aborted turns).
       this.userAbortedAgents.add(pending.agent);
       pending.resolve({
         behavior: "deny",
@@ -3085,7 +3081,7 @@ export class DesktopHost {
 
       case "abortMessage": {
         // The stop button — the turn ends on the user's terms, so its finish
-        // must never announce 「已完成」 (spec「后台会话活动通知」scenario 6).
+        // must never light the sidebar 已完成未读 green dot.
         const agent = this.agentForPane(pid);
         if (agent) this.userAbortedAgents.add(agent);
         await agent?.abortMessage();
@@ -3470,7 +3466,10 @@ export class DesktopHost {
             msg.serverName as string,
           );
         } catch (error) {
-          this.showToast({ message: `连接 MCP 服务器失败: ${error}` });
+          this.showToast({
+            type: "error",
+            message: `连接 MCP 服务器失败: ${error}`,
+          });
         }
         break;
 
@@ -3490,7 +3489,10 @@ export class DesktopHost {
             servers,
           });
         } catch (error) {
-          this.showToast({ message: `断开 MCP 服务器失败: ${error}` });
+          this.showToast({
+            type: "error",
+            message: `断开 MCP 服务器失败: ${error}`,
+          });
         }
         break;
 
@@ -3509,6 +3511,7 @@ export class DesktopHost {
         const removeAgent = this.agentForPane(pid);
         if (!removeAgent) {
           this.showToast({
+            type: "error",
             message: "移除 MCP 服务器失败: 智能体未初始化",
           });
           break;
@@ -3520,6 +3523,7 @@ export class DesktopHost {
           );
           // 删除成功经全局 toast 提示（spec「设置页反馈语义」）
           this.showToast({
+            type: "success",
             message: `已移除 MCP 服务器「${msg.serverName}」`,
           });
           // 删除后刷新服务器列表
@@ -3530,7 +3534,10 @@ export class DesktopHost {
             servers,
           });
         } catch (error) {
-          this.showToast({ message: `移除 MCP 服务器失败: ${error}` });
+          this.showToast({
+            type: "error",
+            message: `移除 MCP 服务器失败: ${error}`,
+          });
         }
         break;
       }
@@ -3538,13 +3545,17 @@ export class DesktopHost {
       case "deleteSkill": {
         const deleteAgent = this.agentForPane(pid);
         if (!deleteAgent) {
-          this.showToast({ message: "删除技能失败: 智能体未初始化" });
+          this.showToast({
+            type: "error",
+            message: "删除技能失败: 智能体未初始化",
+          });
           break;
         }
         try {
           await deleteAgent.deleteSkill(msg.name as string);
           // 删除成功经全局 toast 提示（spec「设置页反馈语义」）
           this.showToast({
+            type: "success",
             message: `已删除技能「${msg.name}」`,
           });
           // 删除后刷新技能列表
@@ -3555,7 +3566,10 @@ export class DesktopHost {
             skills,
           });
         } catch (error) {
-          this.showToast({ message: `删除技能失败: ${error}` });
+          this.showToast({
+            type: "error",
+            message: `删除技能失败: ${error}`,
+          });
         }
         break;
       }
@@ -3563,13 +3577,17 @@ export class DesktopHost {
       case "deleteSubagent": {
         const deleteAgent2 = this.agentForPane(pid);
         if (!deleteAgent2) {
-          this.showToast({ message: "删除子代理失败: 智能体未初始化" });
+          this.showToast({
+            type: "error",
+            message: "删除子代理失败: 智能体未初始化",
+          });
           break;
         }
         try {
           await deleteAgent2.deleteSubagent(msg.name as string);
           // 删除成功经全局 toast 提示（spec「设置页反馈语义」）
           this.showToast({
+            type: "success",
             message: `已删除子代理「${msg.name}」`,
           });
           const configurations = await deleteAgent2.getSubagentConfigurations();
@@ -3579,7 +3597,10 @@ export class DesktopHost {
             configurations,
           });
         } catch (error) {
-          this.showToast({ message: `删除子代理失败: ${error}` });
+          this.showToast({
+            type: "error",
+            message: `删除子代理失败: ${error}`,
+          });
         }
         break;
       }
@@ -3604,7 +3625,10 @@ export class DesktopHost {
       case "deleteHook": {
         const deleteHookAgent = this.agentForPane(pid);
         if (!deleteHookAgent) {
-          this.showToast({ message: "删除钩子失败: 智能体未初始化" });
+          this.showToast({
+            type: "error",
+            message: "删除钩子失败: 智能体未初始化",
+          });
           break;
         }
         try {
@@ -3614,6 +3638,7 @@ export class DesktopHost {
           );
           // 删除成功经全局 toast 提示（spec「设置页反馈语义」）
           this.showToast({
+            type: "success",
             message: `已删除钩子「${msg.hookName}」`,
           });
           const hooks3 = await deleteHookAgent.getHooksByScope(
@@ -3627,7 +3652,10 @@ export class DesktopHost {
             hooks: hooks3,
           });
         } catch (error) {
-          this.showToast({ message: `删除钩子失败: ${error}` });
+          this.showToast({
+            type: "error",
+            message: `删除钩子失败: ${error}`,
+          });
         }
         break;
       }
@@ -4928,21 +4956,18 @@ export class DesktopHost {
 
   /** A toast's button was clicked: focus a background session. The webview
    *  sends the opaque action payload back verbatim, so the host stays the
-   *  single source of the action semantics.
-   *  (更新下载/重启不再走 toast action —— S0–S6 按钮状态机经
-   *  desktopUpdateDownload / desktopUpdateRestart 命令直连宿主；未登录 GitHub
-   *  下载页 toast 已随 updateChecker 链路删除（2026-09-09 拍板）。) */
+   *  single source of the action semantics. `ToastAction` 现在只有「聚焦后台
+   *  会话」一种（更新下载/重启走账户卡片 S0–S6 状态机；未登录 GitHub 下载页
+   *  toast 已随 updateChecker 删除）。 */
   private handleToastAction(action: ToastAction): void {
-    if (action.type === "focusSession") {
-      void this.focusSessionFromToast(action.host, action.sessionId);
-    }
+    void this.focusSessionFromToast(action.host, action.sessionId);
   }
 
   /**
    * 「查看」 on a background-session toast: bring the session to the front —
    * focus the pane already showing it, else activate/open it in the focused
    * pane, then re-surface any pending confirmation dialog that never popped
-   * (spec「后台会话活动通知」scenario 3).
+   * (spec「后台会话确认提醒」scenario 3).
    */
   private async focusSessionFromToast(
     host: string,

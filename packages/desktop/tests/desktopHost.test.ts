@@ -465,8 +465,9 @@ let lastSend: ReturnType<typeof vi.fn> | undefined;
 /** The message/action of every update toast the host pushed to the webview. */
 function shownToasts(): Array<{
   message: string;
+  position?: string;
   actionLabel?: string;
-  action?: { type: string; url?: string };
+  action?: { type: string };
 }> {
   const send = lastSend;
   if (!send) return [];
@@ -482,8 +483,9 @@ function shownToasts(): Array<{
           msg as {
             toast: {
               message: string;
+              position?: string;
               actionLabel?: string;
-              action?: { type: string; url?: string };
+              action?: { type: string };
             };
           }
         ).toast,
@@ -1794,7 +1796,8 @@ describe("permission confirmations", () => {
 });
 
 // ---------------------------------------------------------------------------
-// background session toasts (desktop-sessions.md「后台会话活动通知」)
+// background session confirmation toasts
+// (desktop-sessions.md「后台会话确认提醒」) + the 已完成 green dot
 // ---------------------------------------------------------------------------
 
 describe("background session toasts", () => {
@@ -1834,7 +1837,7 @@ describe("background session toasts", () => {
 
   /**
    * Detach the pane-1 agent from every pane: open pane-2, then close pane-1.
-   * The seeded agent keeps running with no pane (spec「后台会话活动通知」:
+   * The seeded agent keeps running with no pane (spec「后台会话确认提醒」:
    * toasts only fire for sessions shown in no pane at all).
    */
   async function sendToBackground(host: ReturnType<typeof createHost>["host"]) {
@@ -1847,8 +1850,27 @@ describe("background session toasts", () => {
 
   const confirmationToasts = (sent: ReturnType<typeof createHost>["sent"]) =>
     sent("showToast").filter((m) => m.toast.message.includes("需要确认"));
-  const completionToasts = (sent: ReturnType<typeof createHost>["sent"]) =>
-    sent("showToast").filter((m) => m.toast.message.includes("已完成"));
+
+  /** Sidebar「已完成未读」green dot state for a session (spec desktop-sessions.md
+   *  「后台会话「已完成未读」绿点」) — the sole 已完成 reminder now that the
+   *  completion toast was removed (2026-09-10 拍板). */
+  const newCompletedFor = (
+    sent: ReturnType<typeof createHost>["sent"],
+    sessionId: string,
+  ): boolean => {
+    const tree = sent("desktopSessionTree").at(-1) as
+      | {
+          groups?: Array<{
+            sessions: Array<{ sessionId: string; newCompleted?: boolean }>;
+          }>;
+        }
+      | undefined;
+    return (
+      (tree?.groups ?? [])
+        .flatMap((g) => g.sessions)
+        .find((s) => s.sessionId === sessionId)?.newCompleted ?? false
+    );
+  };
 
   it("toasts a confirmation request from a pane-less background session with a 查看 action", async () => {
     const { host, store, sent } = await readyHost();
@@ -1866,6 +1888,8 @@ describe("background session toasts", () => {
       "会话「任务A」需要确认：命令执行待确认",
     );
     expect(toasts[0].toast.actionLabel).toBe("查看");
+    // 2026-09-10 拍板：会话确认 toast 显式声明右下角位置（不并入 app 级顶部形态）
+    expect(toasts[0].toast.position).toBe("bottomRight");
     expect(toasts[0].toast.action).toEqual({
       type: "focusSession",
       host: "local",
@@ -1960,7 +1984,7 @@ describe("background session toasts", () => {
     expect(confirmationToasts(sent)).toHaveLength(2);
   });
 
-  it("toasts a pane-less background session that finished on its own", async () => {
+  it("flags the pane-less session for the sidebar green dot without toasting 已完成", async () => {
     const { host, store, sent } = await readyHost();
     const agent1 = seedSession(store, "sess-1", "任务A");
     await sendToBackground(host);
@@ -1968,30 +1992,13 @@ describe("background session toasts", () => {
     agent1.callbacks.onLoadingChange(true);
     agent1.callbacks.onLoadingChange(false);
 
-    const toasts = completionToasts(sent);
-    expect(toasts).toHaveLength(1);
-    expect(toasts[0].toast.message).toBe("会话「任务A」已完成");
-    expect(toasts[0].toast.action).toEqual({
-      type: "focusSession",
-      host: "local",
-      sessionId: "sess-1",
-    });
-  });
-
-  it("does not toast a turn finished in a session shown in a non-focused pane", async () => {
-    const { host, store, sent } = await readyHost();
-    const agent1 = seedSession(store, "sess-1", "任务A");
-    // The session stays visible in pane-1 while pane-2 holds focus — the
-    // completion state is directly on screen, so no toast (spec scenario 8).
-    await openSecondPane(host);
-
-    agent1.callbacks.onLoadingChange(true);
-    agent1.callbacks.onLoadingChange(false);
-
+    // 2026-09-10 拍板：「已完成」不再弹 toast —— 侧边栏「已完成未读」绿点是
+    // 唯一提醒通道。
     expect(sent("showToast")).toHaveLength(0);
+    expect(newCompletedFor(sent, "sess-1")).toBe(true);
   });
 
-  it("does not announce 已完成 from a loading snapshot replayed mid-restore", async () => {
+  it("does not flag the green dot from a loading snapshot replayed mid-restore", async () => {
     const { host, sent } = await readyHost();
     // Hold the restore agent mid-initialize: it exists but is not yet bound to
     // any pane (activateAgentInPane runs after restore + getMessages). This is
@@ -2014,9 +2021,10 @@ describe("background session toasts", () => {
     restoring.sessionId = "sess-x";
     restoring.callbacks.onLoadingChange(false); // replayed snapshot, not a finish
 
-    expect(completionToasts(sent)).toHaveLength(0);
+    expect(sent("showToast")).toHaveLength(0);
+    expect(newCompletedFor(sent, "sess-x")).toBe(false);
 
-    // Once the restore finishes and binds the pane, still no completion toast.
+    // Once the restore finishes and binds the pane, still no toast/dot.
     release!();
     await vi.waitFor(() => {
       expect(
@@ -2025,20 +2033,11 @@ describe("background session toasts", () => {
           ?.panes?.some((p) => p.sessionId === "sess-x"),
       ).toBe(true);
     });
-    expect(completionToasts(sent)).toHaveLength(0);
-  });
-
-  it("does not toast a turn that finished in the session the user is watching", async () => {
-    const { store, sent } = await readyHost();
-    const agent1 = seedSession(store, "sess-1", "任务A");
-
-    agent1.callbacks.onLoadingChange(true);
-    agent1.callbacks.onLoadingChange(false);
-
     expect(sent("showToast")).toHaveLength(0);
+    expect(newCompletedFor(sent, "sess-x")).toBe(false);
   });
 
-  it("never announces 已完成 for a turn the user aborted, and a new turn resets that", async () => {
+  it("never flags the green dot for a turn the user aborted, and a new turn resets that", async () => {
     const { host, store, sent } = await readyHost();
     const agent1 = seedSession(store, "sess-1", "任务A");
     await sendToBackground(host);
@@ -2048,12 +2047,41 @@ describe("background session toasts", () => {
       paneId: "pane-1",
     });
     agent1.callbacks.onLoadingChange(false);
-    expect(completionToasts(sent)).toHaveLength(0);
+    expect(sent("showToast")).toHaveLength(0);
+    expect(newCompletedFor(sent, "sess-1")).toBe(false);
 
-    // A new turn clears the abort marker — its finish announces normally.
+    // A new turn clears the abort marker — its finish flags the dot normally.
     agent1.callbacks.onLoadingChange(true);
     agent1.callbacks.onLoadingChange(false);
-    expect(completionToasts(sent)).toHaveLength(1);
+    expect(sent("showToast")).toHaveLength(0);
+    expect(newCompletedFor(sent, "sess-1")).toBe(true);
+  });
+
+  it("delivers a pane-less session's pending confirmation via setInitialState when re-bound from the sidebar", async () => {
+    const { host, store, sent } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: {},
+    });
+    // A pane-less session keeps the request pending — no dialog yet, just the
+    // sidebar 等待确认 dot.
+    expect(sent("showConfirmation")).toHaveLength(0);
+
+    // Sidebar click re-binds the session to the focused pane: the pending
+    // confirmation rides on setInitialState (the navigation guarantee that
+    // replaces the removed toast 查看 entry point).
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-1",
+    });
+
+    const state = sent("setInitialState").at(-1) as {
+      pendingConfirmations?: Array<{ confirmationId: string }>;
+    };
+    expect(state.pendingConfirmations).toHaveLength(1);
   });
 
   it("查看 on the toast re-opens the pane-less session and re-pops its dialog", async () => {
