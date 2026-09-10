@@ -1,6 +1,7 @@
 /**
- * Real-host integration suite (PR-1) — the credential pipeline is gone from the
- * wire.
+ * Real-host integration suite — the credential pipeline is gone from the wire,
+ * and user-preference saves reach the session process instead of being
+ * forwarded to the agents.
  *
  * `WAVE_CLI_PATH` points at `fixtures/stdioTee.cjs`, a transparent proxy that
  * forwards stdin/stdout/stderr to the *real* `wave --stdio` CLI untouched and
@@ -13,6 +14,10 @@
  *  - `initialize` / `updateConfig` / `sendMessage` params carrying
  *    apiKey / baseURL / defaultHeaders (the removed host-side user-config
  *    pipeline — spec sso-auth 边界情况「IDE 宿主不再有直连免登录旁路」).
+ *  - 设置页保存的用户偏好（语言 / 上下文长度 / 自动记忆）经
+ *    `updateUserSettings` 落会话进程的 `~/.wave/settings.json`，**不**下发
+ *    `updateConfig` 覆盖层、不重建会话；下一轮对话直接生效
+ *    (spec core/agent-config.md「设置实时重载」「用户偏好的保存路径与重建时机」).
  *  - the CLI still reaches the gateway through the *supported* channel
  *    (`WAVE_API_KEY` / `WAVE_BASE_URL` env) once the host stops forwarding
  *    credentials, i.e. removing the pipeline did not break local runs.
@@ -20,10 +25,19 @@
  *    silently complete a turn without credentials.
  */
 
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 import {
+  REALHOST_HOME,
   REALHOST_ROOT,
   assertNoUnexpectedRejections,
   clearFakeModelEndpoint,
@@ -117,18 +131,13 @@ async function openProject(dir: string): Promise<void> {
 }
 
 describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
-  it("initialize / updateConfig / sendMessage 报文里没有 apiKey / baseURL / defaultHeaders", async () => {
+  it("initialize / updateUserSettings / sendMessage 报文里没有 apiKey / baseURL / defaultHeaders", async () => {
     await openProject(dirA);
     await ctx.turn("你好");
 
-    // Save from the settings page: in PR-1 the host still forwards the config
-    // to the live agents (the hot-reload rewrite is PR-2) — only the credential
-    // fields must be gone.
-    //
-    // PR-2 note: once user preferences go straight to `~/.wave/settings.json`
-    // (no `updateConfig` at all), this `updateConfig` anchor and the "params
-    // still carry en-US" assertion below must move to the PR-2 save-path test
-    // (`initialize` / `sendMessage` stay as the non-vacuity anchors here).
+    // Save from the settings page: user preferences go straight to the session
+    // process (`updateUserSettings` → ~/.wave/settings.json) — no `updateConfig`
+    // overlay, no rebuild (spec「用户偏好的保存路径与重建时机」)。
     ctx.clear();
     await ctx.host.handleWebviewMessage({
       command: "updateConfiguration",
@@ -144,8 +153,10 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
     // Non-vacuous: the tee really captured the host→CLI direction of all three
     // request families this PR touches.
     expect(methods).toContain("initialize");
-    expect(methods).toContain("updateConfig");
+    expect(methods).toContain("updateUserSettings");
     expect(methods).toContain("sendMessage");
+    // 保存用户偏好不重建会话 ⇒ 全程没有 updateConfig。
+    expect(methods).not.toContain("updateConfig");
 
     // …and none of them carries a credential field.
     const offenders = reqs
@@ -153,10 +164,10 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
       .filter((json) => CREDENTIAL_KEYS.some((k) => json.includes(k)));
     expect(offenders).toEqual([]);
 
-    // The one config request that DID go out still carries the non-credential
-    // keys, so the assertion above is not "we sent nothing".
-    const updateConfig = reqs.find((r) => r.method === "updateConfig");
-    expect(JSON.stringify(updateConfig?.params)).toContain("en-US");
+    // The one user-settings request that DID go out still carries the
+    // non-credential value, so the assertion above is not "we sent nothing".
+    const save = reqs.find((r) => r.method === "updateUserSettings");
+    expect(JSON.stringify(save?.params)).toContain("en-US");
 
     // The CLI's own answers never mention the credential keys either (this is
     // what would come back to the webview as configurationData).
@@ -166,6 +177,79 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
     expect(
       responses.filter((json) => CREDENTIAL_KEYS.some((k) => json.includes(k))),
     ).toEqual([]);
+  });
+
+  it("保存用户偏好只写 ~/.wave/settings.json：不重建会话，下一轮直接生效", async () => {
+    await openProject(dirA);
+    await ctx.turn("第一轮");
+    const sessionBefore = ctx.paneSessionId("pane-1");
+    expect(sessionBefore).toBeTruthy();
+
+    const mark = ctx.messages.length;
+    await ctx.host.handleWebviewMessage({
+      command: "updateConfiguration",
+      configurationData: {
+        model: "test-model",
+        language: "en-US",
+        contextLength: 200,
+        autoMemoryEnabled: false,
+        autoMemoryFrequency: 5,
+      },
+    });
+    // 回执立即给出：设置页展示值来自会话进程读回的 settings.json。
+    const response = await ctx.waitFor("configurationResponse", {
+      predicate: (m) =>
+        (m.configurationData as { language?: string })?.language === "en-US",
+    });
+    expect(response.configurationData).toMatchObject({
+      language: "en-US",
+      contextLength: 200,
+      autoMemoryEnabled: false,
+      autoMemoryFrequency: 5,
+    });
+    expect(
+      ctx.messages
+        .slice(mark)
+        .some(
+          (m) =>
+            m.command === "showToast" &&
+            JSON.stringify(m.toast).includes("保存成功"),
+        ),
+    ).toBe(true);
+
+    // 落点是**会话进程**的 HOME（远端即远端机器上的该文件），上下文长度落在
+    // env.WAVE_MAX_INPUT_TOKENS（K×1000）。CLI 启动时已自建该文件（插件市场
+    // 引导），故此处的写入是「改动既有文件」，watcher 门禁场景见 SDK 单测。
+    const settingsFile = path.join(REALHOST_HOME, ".wave", "settings.json");
+    const settings = JSON.parse(fs.readFileSync(settingsFile, "utf-8")) as {
+      language?: string;
+      autoMemoryEnabled?: boolean;
+      autoMemoryFrequency?: number;
+      env?: Record<string, string>;
+    };
+    expect(settings.language).toBe("en-US");
+    expect(settings.autoMemoryEnabled).toBe(false);
+    expect(settings.autoMemoryFrequency).toBe(5);
+    expect(settings.env?.WAVE_MAX_INPUT_TOKENS).toBe("200000");
+
+    // 不重建会话：同一 sessionId 继续服务（保存只落盘，不 destroy + create）。
+    expect(ctx.paneSessionId("pane-1")).toBe(sessionBefore);
+    expect(requests(readWire()).map((r) => r.method)).not.toContain(
+      "updateConfig",
+    );
+
+    // 下一轮（未重启会话）语言指令已进系统提示——实时重载按轮生效。
+    model.reply("第二轮 OK");
+    await ctx.turn("第二轮");
+    await vi.waitFor(
+      async () => {
+        if (model.sawRequest("Always respond in en-US")) return;
+        // watcher 落定前的一轮不含指令：再走一轮（真 CLI + 假模型，成本极低）。
+        await ctx.turn("重试等待实时重载");
+      },
+      { timeout: 20_000 },
+    );
+    expect(model.sawRequest("Always respond in en-US")).toBe(true);
   });
 
   it("宿主不再转发凭据后，CLI 仍能经 WAVE_API_KEY / WAVE_BASE_URL 打通模型", async () => {

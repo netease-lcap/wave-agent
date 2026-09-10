@@ -2236,6 +2236,247 @@ describe("configuration and status", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 用户偏好保存路径与重建时机
+// (agent-config.md「设置实时重载」/「用户偏好的保存路径与重建时机」、
+//  desktop-account-and-settings.md「设置页反馈语义」)
+// ---------------------------------------------------------------------------
+
+describe("user preference save path and rebuild timing", () => {
+  /** 覆盖两个会话无关的用户设置 RPC（默认 handleClientRequest 对未知名返回 {}）。 */
+  function stubUserSettingsRpc(handlers: {
+    get?: Record<string, unknown>;
+    update?: Record<string, unknown>;
+  }) {
+    const orig = h.handleClientRequest;
+    h.handleClientRequest = (m: string, params?: unknown) => {
+      if (m === "getUserSettings") return handlers.get ?? {};
+      if (m === "updateUserSettings") return handlers.update ?? params ?? {};
+      return orig(m, params);
+    };
+    return () => {
+      h.handleClientRequest = orig;
+    };
+  }
+
+  const rpcParams = (method: string) =>
+    h.clientRequests.filter((r) => r.method === method).map((r) => r.params);
+
+  /** 池内第 i 个 agent 的可变视图（isStreaming / queuedMessages 是模拟实例字段）。 */
+  type MutableAgent = {
+    isStreaming: boolean;
+    queuedMessages: Array<{ id: string; text: string }>;
+    updateConfig: ReturnType<typeof vi.fn>;
+    abortMessage: ReturnType<typeof vi.fn>;
+  };
+  const agentAt = (index: number) =>
+    h.agentInstances[index] as unknown as MutableAgent;
+
+  /** 打开第二个 pane（新 agent 聚焦），返回新 pane 的 agent。 */
+  async function openSecondPane(host: ReturnType<typeof createHost>["host"]) {
+    const before = h.agentInstances.length;
+    await host.handleWebviewMessage({
+      command: "desktopOpenPane",
+      workdir: "/work/a",
+      sessionId: "sess-2",
+    });
+    await vi.waitFor(() => expect(h.agentInstances).toHaveLength(before + 1));
+    return agentAt(before);
+  }
+
+  it("saving user preferences writes settings.json in the session process and never rebuilds", async () => {
+    const { host, store, sent } = await readyHost();
+    const agent = agentAt(0);
+    // 会话正在流式输出且有待发送消息：保存用户偏好不得打断它。
+    agent.isStreaming = true;
+    agent.queuedMessages = [{ id: "q1", text: "排队消息" }];
+    const readBack = {
+      language: "English",
+      contextLength: 200,
+      autoMemoryEnabled: false,
+      autoMemoryFrequency: 5,
+    };
+    const restore = stubUserSettingsRpc({ update: readBack, get: readBack });
+    try {
+      await host.handleWebviewMessage({
+        command: "updateConfiguration",
+        configurationData: { model: "m2", ...readBack },
+      });
+    } finally {
+      restore();
+    }
+
+    // 用户偏好整体经 updateUserSettings 写入会话所在进程（远端即远端机器上的
+    // ~/.wave/settings.json），进程内转换 K↔env.WAVE_MAX_INPUT_TOKENS。
+    expect(rpcParams("updateUserSettings")).toEqual([readBack]);
+    // 不重建任何会话：不下发覆盖层、不中止排队消息、不动流式状态。
+    expect(agent.updateConfig).not.toHaveBeenCalled();
+    expect(agent.abortMessage).not.toHaveBeenCalled();
+    expect(agent.isStreaming).toBe(true);
+    // 用户偏好不落桌面本地配置（落点唯一 = settings.json）。
+    expect(store.getConfiguration()).toEqual({ model: "m2" });
+    // 回执立即给出：toast + configurationResponse 带会话进程读回的值。
+    expect(shownToasts().filter((t) => t.message === "保存成功")).toHaveLength(
+      1,
+    );
+    expect(
+      sent("configurationResponse").at(-1)!.configurationData,
+    ).toMatchObject(readBack);
+    expect(sent("configurationError")).toHaveLength(0);
+  });
+
+  it("a no-diff save is still just a receipt: no rebuild, no queue drain", async () => {
+    const { host } = await readyHost();
+    const agent = agentAt(0);
+    agent.queuedMessages = [{ id: "q1", text: "排队消息" }];
+    const data = {
+      language: "Chinese",
+      contextLength: 128,
+      autoMemoryEnabled: true,
+      autoMemoryFrequency: 10,
+    };
+    const restore = stubUserSettingsRpc({ update: data, get: data });
+    try {
+      await host.handleWebviewMessage({
+        command: "updateConfiguration",
+        configurationData: data,
+      });
+      await host.handleWebviewMessage({
+        command: "updateConfiguration",
+        configurationData: data,
+      });
+    } finally {
+      restore();
+    }
+
+    expect(rpcParams("updateUserSettings")).toHaveLength(2);
+    expect(agent.updateConfig).not.toHaveBeenCalled();
+    expect(agent.abortMessage).not.toHaveBeenCalled();
+    expect(shownToasts().filter((t) => t.message === "保存成功")).toHaveLength(
+      2,
+    );
+  });
+
+  it("settings page values come from the session process, not host-private storage", async () => {
+    const { host, store, sent } = await readyHost();
+    const prefs = {
+      language: "English",
+      contextLength: 200,
+      autoMemoryEnabled: false,
+      autoMemoryFrequency: 5,
+    };
+    store.setConfiguration({ model: "m1" });
+    const restore = stubUserSettingsRpc({ get: prefs });
+    try {
+      await host.handleWebviewMessage({ command: "getConfiguration" });
+    } finally {
+      restore();
+    }
+
+    expect(h.clientRequests.some((r) => r.method === "getUserSettings")).toBe(
+      true,
+    );
+    expect(sent("configurationResponse").at(-1)!.configurationData).toEqual({
+      model: "m1",
+      ...prefs,
+    });
+    // 宿主本地存储里没有第二份用户偏好副本。
+    expect(store.getConfiguration()).toEqual({ model: "m1" });
+  });
+
+  it("prompts with total/busy counts before any rebuild (receipts stay immediate)", async () => {
+    const { host, sent } = await readyHost();
+    const pane1 = agentAt(0);
+    pane1.isStreaming = true;
+    const pane2 = await openSecondPane(host);
+
+    await host.handleWebviewMessage({
+      command: "setBuiltinPluginEnabled",
+      pluginId: "sdd@builtin",
+      enabled: true,
+      scope: "user",
+    });
+
+    expect(sent("desktopRebuildPrompt")).toEqual([
+      { command: "desktopRebuildPrompt", total: 2, busy: 1 },
+    ]);
+    // 弹框本身不重建；两个会话都原样（含正在流式输出的那个）。
+    expect(pane1.updateConfig).not.toHaveBeenCalled();
+    expect(pane2.updateConfig).not.toHaveBeenCalled();
+    expect(pane1.isStreaming).toBe(true);
+  });
+
+  it("「立即重启」rebuilds only idle sessions and leaves queues alone", async () => {
+    const { host } = await readyHost();
+    const idle = agentAt(0);
+    const busy = await openSecondPane(host);
+    busy.isStreaming = true;
+    busy.queuedMessages = [{ id: "q1", text: "排队消息" }];
+
+    await host.handleWebviewMessage({
+      command: "desktopRebuildDecision",
+      restart: true,
+    });
+
+    // 空闲会话被重建；正在执行任务的会话不打断、保持旧配置（spec 场景 5）。
+    expect(idle.updateConfig).toHaveBeenCalledTimes(1);
+    expect(idle.updateConfig).toHaveBeenCalledWith({
+      model: undefined,
+      fastModel: undefined,
+    });
+    expect(busy.updateConfig).not.toHaveBeenCalled();
+    expect(busy.isStreaming).toBe(true);
+    // 只重建空闲会话时不得清空队列（否则忙碌会话的排队消息会丢）。
+    expect(busy.abortMessage).not.toHaveBeenCalled();
+  });
+
+  it("「稍后重启」does not rebuild and registers no lazy rebuild", async () => {
+    const { host, sent } = await readyHost();
+    const agent = agentAt(0);
+
+    await host.handleWebviewMessage({
+      command: "desktopRebuildDecision",
+      restart: false,
+    });
+
+    expect(
+      shownToasts().filter((t) => t.message.includes("新开对话自动生效")),
+    ).toHaveLength(1);
+    // 不做惰性重建：切走（关掉 pane-1）再把该会话重新打开也不重建（下次插件
+    // 变更才会再询问）。
+    await openSecondPane(host);
+    await host.handleWebviewMessage({
+      command: "desktopClosePane",
+      paneId: "pane-1",
+    });
+    await host.handleWebviewMessage({
+      command: "desktopOpenPane",
+      workdir: "/work/a",
+      sessionId: "sess-1",
+    });
+    await vi.waitFor(() =>
+      expect(sent("desktopPanes").at(-1)!.focusedPaneId).toBe("pane-3"),
+    );
+    await host.handleWebviewMessage({ command: "desktopNewSessionInPane" });
+    expect(agent.updateConfig).not.toHaveBeenCalled();
+    expect(sent("desktopRebuildPrompt")).toHaveLength(0);
+  });
+
+  it("plugin change with no live session must not prompt", async () => {
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({ command: "desktopReady" });
+
+    await host.handleWebviewMessage({
+      command: "setBuiltinPluginEnabled",
+      pluginId: "sdd@builtin",
+      enabled: true,
+      scope: "user",
+    });
+
+    expect(sent("desktopRebuildPrompt")).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // update checks (FR-010)
 // ---------------------------------------------------------------------------
 
@@ -3539,12 +3780,16 @@ describe("misc commands", () => {
 
   it("updateConfiguration failure surfaces a 保存失败 toast with the reason", async () => {
     const { host } = await readyHost();
-    lastAgent().updateConfig.mockRejectedValueOnce(new Error("bad model"));
-
-    await host.handleWebviewMessage({
-      command: "updateConfiguration",
-      configurationData: { model: "m2" },
-    });
+    // 保存路径不再经 updateConfig 重建会话，失败来自用户偏好落盘（settings.json）。
+    const restore = failRpc("updateUserSettings", "disk full");
+    try {
+      await host.handleWebviewMessage({
+        command: "updateConfiguration",
+        configurationData: { model: "m2", language: "English" },
+      });
+    } finally {
+      restore();
+    }
 
     expect(shownToasts().some((t) => t.message.startsWith("保存失败："))).toBe(
       true,
@@ -3730,12 +3975,9 @@ describe("misc commands", () => {
     expect(sent("appendMessage")).toHaveLength(0);
   });
 
-  it("setBuiltinPluginEnabled does not toast when a session is already gone on the CLI (recreate skip after a successful write)", async () => {
+  it("setBuiltinPluginEnabled prompts for the rebuild instead of rebuilding inline", async () => {
     const { host, sent } = await readyHost();
     const agent = lastAgent();
-    agent.updateConfig.mockRejectedValueOnce(
-      new Error("Session not found: sess-1"),
-    );
     const orig = h.handleClientRequest;
     h.handleClientRequest = (m: string, params?: unknown) =>
       m === "setBuiltinPluginEnabled"
@@ -3748,23 +3990,58 @@ describe("misc commands", () => {
         enabled: true,
         scope: "project",
       });
-      // The plugin write + projectSettings push (which flips the switch ON)
-      // precede the recreate — a session that is absent on the CLI must be
-      // skipped, not fail the successful settings write with an error toast.
+      // 插件落盘 + projectSettings 推送（开关翻转）先完成，重建时机交给确认框
+      // （spec「配置变更的构造期副作用与重建」场景 4）：本次不重建任何会话。
       expect(sent("projectSettings")).toHaveLength(1);
-      expect(
-        shownToasts().some((t) => t.message.includes("修改项目设置失败")),
-      ).toBe(false);
-      // The dead session is logged (global console.error spy from beforeEach),
-      // not surfaced as a settings failure.
-      expect(consoleSpies[0]).toHaveBeenCalled();
+      expect(sent("desktopRebuildPrompt")).toEqual([
+        { command: "desktopRebuildPrompt", total: 1, busy: 0 },
+      ]);
+      expect(agent.updateConfig).not.toHaveBeenCalled();
     } finally {
       h.handleClientRequest = orig;
     }
   });
 
-  it("serializes agent recreation across overlapping plugin applies", async () => {
+  it("setBuiltinPluginEnabled does not toast when a session is already gone on the CLI (recreate skip after 立即重启)", async () => {
     const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    const orig = h.handleClientRequest;
+    h.handleClientRequest = (m: string, params?: unknown) =>
+      m === "setBuiltinPluginEnabled"
+        ? { enabledPlugins: { "sdd@builtin": true } }
+        : orig(m, params);
+    try {
+      await host.handleWebviewMessage({
+        command: "setBuiltinPluginEnabled",
+        pluginId: "sdd@builtin",
+        enabled: true,
+        scope: "project",
+      });
+    } finally {
+      h.handleClientRequest = orig;
+    }
+    expect(sent("projectSettings")).toHaveLength(1);
+
+    // 「立即重启」→ 重建；CLI 上已不存在的会话必须被跳过，而不是把一次成功的
+    // 设置写入报成失败（spec「配置变更的构造期副作用与重建」场景 5 边界）。
+    agent.updateConfig.mockRejectedValueOnce(
+      new Error("Session not found: sess-1"),
+    );
+    await host.handleWebviewMessage({
+      command: "desktopRebuildDecision",
+      restart: true,
+    });
+
+    expect(
+      shownToasts().some((t) => t.message.includes("修改项目设置失败")),
+    ).toBe(false);
+    // The dead session is logged (global console.error spy from beforeEach),
+    // not surfaced as a settings failure.
+    expect(consoleSpies[0]).toHaveBeenCalled();
+  });
+
+  it("serializes agent recreation across overlapping 立即重启 decisions", async () => {
+    const { host } = await readyHost();
     const agent = lastAgent();
     let release: (() => void) | undefined;
     const gate = new Promise<void>((r) => {
@@ -3772,23 +4049,17 @@ describe("misc commands", () => {
     });
     agent.updateConfig.mockImplementation(() => gate);
     const first = host.handleWebviewMessage({
-      command: "setBuiltinPluginEnabled",
-      pluginId: "sdd@builtin",
-      enabled: true,
-      scope: "project",
+      command: "desktopRebuildDecision",
+      restart: true,
     });
     await vi.waitFor(() => expect(agent.updateConfig).toHaveBeenCalledTimes(1));
     const second = host.handleWebviewMessage({
-      command: "setBuiltinPluginEnabled",
-      pluginId: "sdd@builtin",
-      enabled: false,
-      scope: "project",
+      command: "desktopRebuildDecision",
+      restart: true,
     });
-    // The second write completes (its projectSettings push) before its recreate
-    // runs — the recreate must stay queued behind the first's in-flight one
-    // instead of racing it on the same session (which would delete the CLI
-    // entry mid-recreate and throw "Session not found").
-    await vi.waitFor(() => expect(sent("projectSettings")).toHaveLength(2));
+    // 第二次回执的重建必须排队等第一次完成，不能在同一会话上并发重建
+    // （并发会在重建中途删掉 CLI 会话条目并抛 "Session not found"）。
+    await new Promise((r) => setImmediate(r));
     expect(agent.updateConfig).toHaveBeenCalledTimes(1);
     release?.();
     await Promise.all([first, second]);
