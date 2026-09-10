@@ -93,14 +93,18 @@ describe("SettingsPage 个性化「自动记忆规则」：按配置回填与保
     expect(memoryFrequencyInput().value).toBe("7");
   });
 
-  it("未配置时回落默认值（开关开、1 轮），不得显示成「已关闭」", () => {
+  it("未配置时：开关仍显示「开」（不做占位态），轮次留空 + 灰字占位符显示默认 1 轮", () => {
     renderMemoryView({ configurationData: { language: "zh-CN" } });
 
+    // 布尔开关刻意不做占位态（真实默认就是「开」，三态开关更难用，spec
+    // agent-config 场景 7），所以这里照旧是「开」。
     expect(memorySwitch()).toBeChecked();
-    expect(memoryFrequencyInput().value).toBe("1");
+    // 数字输入用「未设置」表达（留空 + 占位符），而不是显示一个编造出来的 1。
+    expect(memoryFrequencyInput().value).toBe("");
+    expect(memoryFrequencyInput().placeholder).toBe("默认 1 轮");
   });
 
-  it("关掉开关 + 改轮次后保存：载荷同时带出两个字段，且不丢其余配置", () => {
+  it("关掉开关 + 改轮次后保存：载荷只带这两个字段（不把其余配置整体上送）", () => {
     const { onSave } = renderMemoryView({
       configurationData: {
         language: "en-US",
@@ -114,16 +118,29 @@ describe("SettingsPage 个性化「自动记忆规则」：按配置回填与保
     fireEvent.change(memoryFrequencyInput(), { target: { value: "5" } });
     fireEvent.click(memorySaveButton());
 
-    expect(onSave).toHaveBeenCalledWith(
-      expect.objectContaining({
-        autoMemoryEnabled: false,
-        autoMemoryFrequency: 5,
-      }),
-    );
-    // 同一份 configurationData 整体上送，其余字段不得被这次保存抹掉
-    expect(onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ language: "en-US", contextLength: 256 }),
-    );
+    // diff 载荷（spec 场景 8）：只有真正改动过的字段上送，未改的 language /
+    // contextLength 不出现在报文里（省略键 = 不改该键）。
+    expect(onSave).toHaveBeenCalledWith({
+      autoMemoryEnabled: false,
+      autoMemoryFrequency: 5,
+    });
+  });
+
+  it("未设置 + 一个字都没改 → 载荷为空（不把未设置的键钉进 settings.json）", () => {
+    const { onSave } = renderMemoryView({ configurationData: {} });
+
+    fireEvent.click(memorySaveButton());
+
+    expect(onSave).toHaveBeenCalledWith({});
+  });
+
+  it("只改轮次（开关保持默认「开」）→ 载荷只有 autoMemoryFrequency", () => {
+    const { onSave } = renderMemoryView({ configurationData: {} });
+
+    fireEvent.change(memoryFrequencyInput(), { target: { value: "3" } });
+    fireEvent.click(memorySaveButton());
+
+    expect(onSave).toHaveBeenCalledWith({ autoMemoryFrequency: 3 });
   });
 });
 

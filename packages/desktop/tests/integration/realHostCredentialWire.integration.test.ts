@@ -252,6 +252,95 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
     expect(model.sawRequest("Always respond in en-US")).toBe(true);
   });
 
+  it("文件里没有这些键时：空载荷保存不新建键（不被钉住），生效值仍是 SDK 默认 zh-CN", async () => {
+    await openProject(dirA);
+    await ctx.turn("第一轮");
+    const sessionBefore = ctx.paneSessionId("pane-1");
+
+    const settingsFile = path.join(REALHOST_HOME, ".wave", "settings.json");
+    // 真 CLI 启动时会自建该文件（插件市场引导），但**不含**本 PR 涉及的四个用户
+    // 偏好键——这正是「全新安装」在真机上的形态，先钉住这个前提。
+    const before = JSON.parse(fs.readFileSync(settingsFile, "utf-8")) as {
+      language?: string;
+      autoMemoryEnabled?: boolean;
+      autoMemoryFrequency?: number;
+      env?: Record<string, string>;
+    };
+    expect(before.language).toBeUndefined();
+    expect(before.autoMemoryEnabled).toBeUndefined();
+    expect(before.autoMemoryFrequency).toBeUndefined();
+    expect(before.env?.WAVE_MAX_INPUT_TOKENS).toBeUndefined();
+
+    // 设置页初始值以该文件唯一真源：没有键 ⇒ 回包里也没有这些字段（webview 据此
+    // 显示「未设置」态：占位符 /「未设置（默认：中文）」项，spec 场景 7）。
+    // 注意：这里不能用 `ctx.clear()` 后再 `ctx.turn()`——`turn` 要等
+    // `setInitialState`，而它正是被 clear 清掉的那条（harness 的既有约束）。
+    const readBack = async (action: () => Promise<void>) => {
+      const mark = ctx.messages.length;
+      await action();
+      await vi.waitFor(
+        () =>
+          expect(
+            ctx.messages
+              .slice(mark)
+              .some((m) => m.command === "configurationResponse"),
+          ).toBe(true),
+        { timeout: 20_000 },
+      );
+      return ctx.messages
+        .slice(mark)
+        .find((m) => m.command === "configurationResponse")!
+        .configurationData as Record<string, unknown>;
+    };
+
+    const shownData = await readBack(() =>
+      ctx.host.handleWebviewMessage({ command: "getConfiguration" }),
+    );
+    expect(shownData).not.toHaveProperty("language");
+    expect(shownData).not.toHaveProperty("contextLength");
+    expect(shownData).not.toHaveProperty("autoMemoryEnabled");
+    expect(shownData).not.toHaveProperty("autoMemoryFrequency");
+
+    // 「一个字都没改就点保存」在真机上就是空载荷（webview 的 diff 载荷语义）：
+    // 任何键都不得被写进文件——系统环境里已设的 WAVE_MAX_INPUT_TOKENS 因而不会
+    // 被这次保存钉成 200000（spec agent-config 边界说明「省略键 = 不改该键」）。
+    await readBack(() =>
+      ctx.host.handleWebviewMessage({
+        command: "updateConfiguration",
+        configurationData: {},
+      }),
+    );
+
+    const after = JSON.parse(fs.readFileSync(settingsFile, "utf-8")) as {
+      language?: string;
+      autoMemoryEnabled?: boolean;
+      autoMemoryFrequency?: number;
+      env?: Record<string, string>;
+    };
+    expect(after.language).toBeUndefined();
+    expect(after.autoMemoryEnabled).toBeUndefined();
+    expect(after.autoMemoryFrequency).toBeUndefined();
+    expect(after.env?.WAVE_MAX_INPUT_TOKENS).toBeUndefined();
+    // 保存不重建会话（同一 sessionId 继续服务）。
+    expect(ctx.paneSessionId("pane-1")).toBe(sessionBefore);
+    expect(requests(readWire()).map((r) => r.method)).not.toContain(
+      "updateConfig",
+    );
+
+    // 语言键从未写进文件 ⇒ 生效值 = SDK 解析链末尾的默认（A 方案：全新安装按
+    // zh-CN 回复，不会退化成「不注入 # Language 指令、模型按自身默认回答」）。
+    model.reply("第二轮 OK");
+    await ctx.turn("第二轮");
+    await vi.waitFor(
+      async () => {
+        if (model.sawRequest("Always respond in zh-CN")) return;
+        await ctx.turn("重试等待实时重载");
+      },
+      { timeout: 20_000 },
+    );
+    expect(model.sawRequest("Always respond in zh-CN")).toBe(true);
+  });
+
   it("宿主不再转发凭据后，CLI 仍能经 WAVE_API_KEY / WAVE_BASE_URL 打通模型", async () => {
     await openProject(dirA);
     await ctx.turn("走 env 通道");

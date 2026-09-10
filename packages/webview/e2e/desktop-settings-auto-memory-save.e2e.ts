@@ -120,8 +120,10 @@ test.describe("桌面设置页「个性化 → 自动记忆规则」保存路径
 
     await expect
       .poll(() => postedMessage(webviewPage, "updateConfiguration"))
-      .toMatchObject({
+      .toEqual({
         command: "updateConfiguration",
+        // diff 载荷（spec agent-config 场景 8）：只有真正改动过的两个字段上送，
+        // 未改的 language 不出现在报文里（省略键 = 不改该键）。
         configurationData: {
           autoMemoryEnabled: false,
           autoMemoryFrequency: 5,
