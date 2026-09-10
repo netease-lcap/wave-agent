@@ -205,6 +205,10 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         }
       });
 
+      // 用户偏好（语言/上下文长度/自动记忆）落点为用户级 ~/.wave/settings.json，
+      // 经该共享客户端（= 会话所在进程）读写，宿主 globalState 不再是第二真源。
+      this.configService.attachClient(this.sharedClient);
+
       // Build the services + messageHandler against the (possibly
       // upgraded) client so they never hold a stale reference.
       this.fileService = new FileService(this.sharedClient);
