@@ -206,3 +206,104 @@ test.describe("设置页服务端配置区块 Demo", () => {
     );
   });
 });
+
+/**
+ * 「全局设置」「个性化」选项卡的 IDE 侧画面（vsce.md 画廊「配置管理」）：两者由
+ * 共享 webview 渲染，桌面端只是多一个「桌面端设置」区块（IDE 侧不渲染）。
+ * 全局设置只截「基础设置」区块——整页视角已由上面的「服务端配置」用例覆盖。
+ */
+
+const userPreferences = {
+  language: "zh-CN",
+  contextLength: 200,
+  autoMemoryEnabled: true,
+  autoMemoryFrequency: 1,
+};
+
+test.describe("设置页全局设置选项卡 Demo", () => {
+  test("should show base settings with effective values", async ({
+    webviewPage,
+  }) => {
+    await openSettings(webviewPage, {
+      settingsState: { workdir: "/work/wave-agent", nav: "global" },
+      configurationData: {
+        ...userPreferences,
+        preferenceSources: {
+          language: "user",
+          contextLength: "user",
+          autoMemoryEnabled: "user",
+          autoMemoryFrequency: "user",
+        },
+      },
+    });
+    // 服务端未下发：区块显示空态说明（加载态文案不该进截图），本用例只截
+    // 「基础设置」区块，但页面整体仍保持自洽。
+    const request = await waitForSentCommand(webviewPage, "getManagedSettings");
+    await simulateHostMessage(webviewPage, {
+      command: "managedSettingsResponse",
+      requestId: request.requestId,
+      managedSettings: null,
+    });
+
+    await expect(
+      webviewPage.getByRole("heading", { name: "全局设置" }),
+    ).toBeVisible();
+    await expect(webviewPage.getByLabel("AI 回复语言")).toHaveValue("zh-CN");
+    await expect(webviewPage.getByLabel("上下文长度")).toHaveValue("200");
+
+    await elementScreenshotWebp(
+      webviewPage
+        .locator(".settings-section")
+        .filter({ hasText: "基础设置" }),
+      "../../docs/public/screenshots/spec-settings-global.webp",
+    );
+  });
+});
+
+test.describe("设置页个性化选项卡 Demo", () => {
+  test("should show AGENTS.md editor and auto-memory rules", async ({
+    webviewPage,
+  }) => {
+    await openSettings(webviewPage, {
+      // 该视图比默认视口高（AGENTS.md 编辑器 + 自动记忆卡片），加高避免截断
+      height: 900,
+      settingsState: { workdir: "/work/wave-agent", nav: "personalization" },
+      configurationData: {
+        ...userPreferences,
+        preferenceSources: {
+          language: "user",
+          contextLength: "user",
+          autoMemoryEnabled: "user",
+          autoMemoryFrequency: "user",
+        },
+      },
+    });
+    await simulateHostMessage(webviewPage, {
+      command: "agentsContentResponse",
+      scope: "user",
+      content: "# 用户级规则\n\n- 回答使用中文\n- 修改文件前先读一遍\n",
+    });
+
+    await expect(
+      webviewPage.getByRole("heading", { name: "个性化" }),
+    ).toBeVisible();
+    await expect(
+      webviewPage.getByRole("tab", { name: "用户级" }),
+    ).toBeVisible();
+    await expect(webviewPage.getByLabel("用户级 AGENTS.md 内容")).toHaveValue(
+      /回答使用中文/,
+    );
+    await expect(webviewPage.getByLabel("开启自动记忆")).toBeChecked();
+    await expect(webviewPage.getByLabel("触发记忆提取会话轮次")).toHaveValue(
+      "1",
+    );
+    await expect(
+      webviewPage.locator(".settings-row", { hasText: "开启自动记忆" }),
+    ).toBeInViewport();
+
+    await elementScreenshotWebp(
+      webviewPage.locator(".settings-page"),
+      "../../docs/public/screenshots/spec-settings-personalization.webp",
+    );
+  });
+});
