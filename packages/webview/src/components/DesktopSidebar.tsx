@@ -302,9 +302,17 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     description?: string;
     checking?: boolean;
   } | null>(null);
-  // requestId of the in-flight worktree-changes query — a late reply from a
-  // previously closed dialog must never describe the current one.
-  const worktreeChangesRequestRef = useRef(0);
+  // Identity of the in-flight worktree-changes query: its requestId, plus the
+  // session it describes (a late reply from a previously closed dialog must
+  // never describe the current one). The sessionId lives here rather than being
+  // read off `pendingDelete` so that attribution holds for a reply arriving in
+  // the same task as the request — the handler runs while React still has the
+  // previous render's state (null on the first open), so a state read there
+  // drops the reply and strands the dialog at "正在检查" until the fallback.
+  const worktreeChangesRequestRef = useRef<{
+    requestId: number;
+    sessionId: string;
+  } | null>(null);
   // Guards the worktree-changes check against a host that never answers: without
   // it the dialog would stay "checking" and unconfirmable forever, leaving the
   // session undeletable from the UI. On expiry we fall back to the generic
@@ -334,12 +342,16 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   // cancelled dialog is dropped instead of describing the wrong session.
   useHostMessage((message) => {
     if (message.command !== "desktopWorktreeChanges") return;
-    if (String(message.requestId) !== String(worktreeChangesRequestRef.current))
+    const request = worktreeChangesRequestRef.current;
+    // A reply describes exactly the dialog that asked for it. On a mismatch,
+    // leave everything alone — including the fallback timer, which is the only
+    // way out if the real reply never lands.
+    if (
+      !request ||
+      String(message.requestId) !== String(request.requestId) ||
+      message.sessionId !== request.sessionId
+    )
       return;
-    // A reply describes exactly the dialog that asked for it. On a sessionId
-    // mismatch, leave everything alone — including the fallback timer, which is
-    // the only way out if the real reply never lands.
-    if (message.sessionId !== pendingDelete?.sessionId) return;
     // A timely reply beats the timeout — stop the fallback from firing.
     clearWorktreeChangesTimeout();
     setPendingDelete((prev) =>
@@ -632,8 +644,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 checking: session.hasWorktree,
               });
               if (session.hasWorktree) {
-                const requestId = String(++worktreeChangesRequestRef.current);
-                onRequestWorktreeChanges(sessionId, requestId);
+                const requestId =
+                  (worktreeChangesRequestRef.current?.requestId ?? 0) + 1;
+                worktreeChangesRequestRef.current = { requestId, sessionId };
+                onRequestWorktreeChanges(sessionId, String(requestId));
                 // No reply within the budget (host wedged, or a future
                 // early-return path forgot to answer): fall back to the generic
                 // warning and let the user confirm.
@@ -643,7 +657,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                   // by the requestId guard above — otherwise it would flip the
                   // dialog back to "checking" and re-disable a confirm the user
                   // may already be clicking.
-                  worktreeChangesRequestRef.current += 1;
+                  worktreeChangesRequestRef.current = {
+                    requestId: requestId + 1,
+                    sessionId,
+                  };
                   setPendingDelete((prev) =>
                     prev && prev.sessionId === sessionId
                       ? {

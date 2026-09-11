@@ -1572,6 +1572,34 @@ describe("DesktopApp", () => {
       expect(screen.getByTestId("confirm-dialog-confirm")).toBeEnabled();
     });
 
+    it("applies a reply that lands in the same task as the query", () => {
+      // Some hosts answer inside the postMessage call itself (the e2e/demo
+      // harnesses do; a real one could answer from cache). The reply must still
+      // be attributed to the dialog that asked — resolving that dialog's
+      // identity once React has re-rendered is too late for a same-task reply,
+      // and the dialog would sit at "正在检查" until the fallback timer.
+      const { vscode } = renderDesktopApp();
+      const reply = vscode.postMessage.getMockImplementation();
+      vscode.postMessage.mockImplementation((message) => {
+        reply?.(message);
+        if (message?.command === "desktopGetWorktreeChanges") {
+          sendCommand("desktopWorktreeChanges", {
+            sessionId: message.sessionId,
+            requestId: message.requestId,
+            changes: { files: 2, commits: 1 },
+          });
+        }
+      });
+
+      openWorktreeDelete(vscode);
+
+      const dialog = screen.getByTestId("confirm-dialog-overlay");
+      expect(dialog).not.toHaveTextContent("正在检查");
+      expect(dialog).toHaveTextContent("2 个未提交文件");
+      expect(dialog).toHaveTextContent("1 个未合并提交");
+      expect(screen.getByTestId("confirm-dialog-confirm")).toBeEnabled();
+    });
+
     it("blocks confirmation until the loss is known, then deletes on confirm", () => {
       const { vscode } = renderDesktopApp();
       openWorktreeDelete(vscode);
