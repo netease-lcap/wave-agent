@@ -39,7 +39,7 @@ vi.mock("@/utils/globalLogger.js", () => ({
   },
 }));
 
-describe("AI Service - Branch Coverage", () => {
+describe("AI Service additional coverage", () => {
   const TEST_GATEWAY_CONFIG = {
     apiKey: "test-api-key",
     baseURL: "http://localhost:test",

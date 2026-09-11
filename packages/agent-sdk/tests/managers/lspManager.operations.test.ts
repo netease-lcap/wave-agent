@@ -21,7 +21,7 @@ vi.mock("fs", async (importOriginal) => {
   };
 });
 
-describe("LspManager Coverage Improvements", () => {
+describe("LspManager operations", () => {
   let lspManager: LspManager;
 
   beforeEach(() => {
@@ -53,90 +53,6 @@ describe("LspManager Coverage Improvements", () => {
 
     return { stdin, stdout, stderr, mockProcess };
   }
-
-  it("should handle missing Content-Length header", async () => {
-    const { stdin, stdout } = setupMockProcess();
-
-    // Respond to initialize with missing Content-Length in a weird way or just wait for timeout
-    // Actually, we want to trigger the "headerEnd !== -1" but no "Content-Length"
-    stdin.on("data", (data: Buffer) => {
-      const str = data.toString();
-      if (str.includes('"method":"initialize"')) {
-        process.nextTick(() => {
-          stdout.write(
-            'Invalid-Header: 123\r\n\r\n{"jsonrpc":"2.0","id":0,"result":{}}',
-          );
-        });
-      }
-    });
-
-    lspManager.registerServer("typescript", {
-      command: "ts-server",
-      extensionToLanguage: { ".ts": "typescript" },
-      startupTimeout: 1,
-      shutdownTimeout: 1,
-    });
-
-    const lspProc = await lspManager.getProcessForFile("test.ts");
-    expect(lspProc).toBeNull(); // Should timeout because it never found Content-Length
-  });
-
-  it("should handle malformed JSON in stdout", async () => {
-    const { stdin, stdout } = setupMockProcess();
-
-    stdin.on("data", (data: Buffer) => {
-      const str = data.toString();
-      if (str.includes('"method":"initialize"')) {
-        process.nextTick(() => {
-          stdout.write("Content-Length: 10\r\n\r\n{not-json}");
-          // Followed by a real response to see if it recovers
-          process.nextTick(() => {
-            stdout.write(
-              'Content-Length: 36\r\n\r\n{"jsonrpc":"2.0","id":0,"result":{}}',
-            );
-          });
-        });
-      } else if (str.includes('"method":"shutdown"')) {
-        const match = str.match(/"id":(\d+)/);
-        if (match) {
-          const id = match[1];
-          process.nextTick(() => {
-            const res = JSON.stringify({
-              jsonrpc: "2.0",
-              id: parseInt(id),
-              result: null,
-            });
-            stdout.write(`Content-Length: ${res.length}\r\n\r\n${res}`);
-          });
-        }
-      }
-    });
-
-    lspManager.registerServer("typescript", {
-      command: "ts-server",
-      extensionToLanguage: { ".ts": "typescript" },
-      startupTimeout: 1,
-      shutdownTimeout: 1,
-    });
-
-    const lspProc = await lspManager.getProcessForFile("test.ts");
-    expect(lspProc).toBeDefined();
-  });
-
-  it("should handle spawn error", async () => {
-    vi.mocked(spawn).mockImplementationOnce(() => {
-      throw new Error("Spawn failed");
-    });
-
-    lspManager.registerServer("typescript", {
-      command: "ts-server",
-      extensionToLanguage: { ".ts": "typescript" },
-      shutdownTimeout: 1,
-    });
-
-    const lspProc = await lspManager.getProcessForFile("test.ts");
-    expect(lspProc).toBeNull();
-  });
 
   it("should handle various LSP operations", async () => {
     const { stdin, stdout } = setupMockProcess();

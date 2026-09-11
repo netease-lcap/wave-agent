@@ -23,7 +23,7 @@ vi.mock("../../src/utils/subagentParser.js", () => ({
   findSubagentByName: vi.fn().mockResolvedValue(null),
 }));
 
-describe("SubagentManager - Recent Changes Coverage", () => {
+describe("SubagentManager instance lifecycle and tool tracking", () => {
   let subagentManager: SubagentManager;
   let parentToolManager: ToolManager;
   let callbacks: SubagentManagerCallbacks;

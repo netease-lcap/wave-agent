@@ -54,7 +54,7 @@ vi.mock("@/managers/toolManager", () => ({
   }),
 }));
 
-describe("Agent - Branch Coverage", () => {
+describe("Agent additional coverage", () => {
   let agent: Agent;
 
   beforeEach(async () => {

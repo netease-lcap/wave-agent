@@ -5,7 +5,7 @@ import { Container } from "../../src/utils/container.js";
 
 import type { ToolPlugin, ToolContext } from "../../src/tools/types.js";
 
-describe("ToolManager - Additional Coverage", () => {
+describe("ToolManager additional coverage", () => {
   let toolManager: ToolManager;
   let mockMcpManager: McpManager;
   let container: Container;
