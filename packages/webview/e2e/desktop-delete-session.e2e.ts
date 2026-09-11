@@ -202,6 +202,15 @@ test.describe("桌面删除会话", () => {
     await openDeleteConfirm(webviewPage, "sess-a2");
     const confirm = webviewPage.getByTestId("confirm-dialog-confirm");
     await expect(confirm).toBeDisabled();
+    // 禁用必须看得见：检查期间主按钮不得再画成可点击的实心蓝，否则用户只
+    // 能看到一个「点了没反应」的按钮（用户反馈）。jsdom 不计算 CSS，只能
+    // 在真实浏览器里断言。
+    const disabledStyle = await confirm.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { opacity: Number(s.opacity), cursor: s.cursor };
+    });
+    expect(disabledStyle.opacity).toBeLessThan(1);
+    expect(disabledStyle.cursor).toBe("not-allowed");
     // 检查期间主按钮不可用、接不住焦点——此时焦点仍在打开菜单的触发钮上，
     // 所以检查完成后绝不能把焦点留在那儿（Enter 会重开那一行的菜单）。
     await expect(
@@ -216,6 +225,10 @@ test.describe("桌面删除会话", () => {
 
     await expect(confirm).toBeEnabled();
     await expect(confirm).toBeFocused();
+    // 检查返回后必须恢复成正常可点的外观（禁用样式不得常驻）。
+    await expect
+      .poll(() => confirm.evaluate((el) => getComputedStyle(el).opacity))
+      .toBe("1");
 
     // 焦点在弹窗内 ⇒ Enter 是「确认删除」，不是重开行菜单
     await webviewPage.keyboard.press("Enter");

@@ -336,10 +336,14 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     if (message.command !== "desktopWorktreeChanges") return;
     if (String(message.requestId) !== String(worktreeChangesRequestRef.current))
       return;
+    // A reply describes exactly the dialog that asked for it. On a sessionId
+    // mismatch, leave everything alone — including the fallback timer, which is
+    // the only way out if the real reply never lands.
+    if (message.sessionId !== pendingDelete?.sessionId) return;
     // A timely reply beats the timeout — stop the fallback from firing.
     clearWorktreeChangesTimeout();
     setPendingDelete((prev) =>
-      prev && prev.sessionId === message.sessionId
+      prev
         ? {
             ...prev,
             checking: false,

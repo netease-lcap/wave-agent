@@ -1760,6 +1760,35 @@ describe("DesktopApp", () => {
         expect(dialog).not.toHaveTextContent("5 个未提交文件");
         expect(screen.getByTestId("confirm-dialog-confirm")).toBeEnabled();
       });
+
+      it("keeps its own timer when the reply names another session", () => {
+        const { vscode } = renderDesktopApp();
+        openWorktreeDelete(vscode);
+
+        // Matches the requestId but names a different session — it describes
+        // nothing this dialog asked for. Consuming it would also clear the
+        // fallback timer, stranding the dialog "checking" with a disabled
+        // confirm and no way out.
+        sendCommand("desktopWorktreeChanges", {
+          sessionId: "other",
+          requestId: worktreeChangesRequest(vscode).requestId,
+          changes: { files: 9, commits: 9 },
+        });
+
+        expect(screen.getByTestId("confirm-dialog-overlay")).toHaveTextContent(
+          "正在检查",
+        );
+
+        act(() => {
+          vi.advanceTimersByTime(WORKTREE_CHANGES_TIMEOUT_MS);
+        });
+
+        const dialog = screen.getByTestId("confirm-dialog-overlay");
+        expect(dialog).not.toHaveTextContent("正在检查");
+        expect(dialog).toHaveTextContent("未提交的改动将丢失");
+        expect(dialog).not.toHaveTextContent("9 个未提交文件");
+        expect(screen.getByTestId("confirm-dialog-confirm")).toBeEnabled();
+      });
     });
   });
 
