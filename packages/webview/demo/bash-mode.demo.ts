@@ -9,6 +9,19 @@ test.describe("Bash Mode Demo", () => {
   }) => {
     const injector = new MessageInjector(webviewPage);
 
+    // Provide initial state for a logged-in user (auth gates the input area)
+    await injector.simulateExtensionMessage("setInitialState", {
+      messages: [],
+      isStreaming: false,
+      sessions: [],
+      isAuthenticated: true,
+      configurationData: {
+        model: "claude-sonnet-4-20250514",
+        fastModel: "claude-haiku-4-20250514",
+      },
+      permissionMode: "default",
+    });
+
     // 1. Show a successful command with output
     await injector.updateMessages([
       MockDataGenerator.createBangMessage(

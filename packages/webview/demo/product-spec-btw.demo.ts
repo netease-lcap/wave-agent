@@ -12,6 +12,19 @@ test.describe("Product Spec: /btw side question", () => {
   }) => {
     const injector = new MessageInjector(webviewPage);
 
+    // Provide initial state for a logged-in user (auth gates the input area)
+    await injector.simulateExtensionMessage("setInitialState", {
+      messages: [],
+      isStreaming: false,
+      sessions: [],
+      isAuthenticated: true,
+      configurationData: {
+        model: "claude-sonnet-4-20250514",
+        fastModel: "claude-haiku-4-20250514",
+      },
+      permissionMode: "default",
+    });
+
     // Setup a conversation so the panel shows above a real chat
     const messages = [
       MockDataGenerator.createUserMessage("帮我看下 PaymentService 的并发问题"),
@@ -64,6 +77,7 @@ test.describe("Product Spec: /btw side question", () => {
       messages: [],
       isStreaming: false,
       sessions: [],
+      isAuthenticated: true,
       configurationData: {
         model: "claude-sonnet-4-20250514",
         fastModel: "claude-haiku-4-20250514",
