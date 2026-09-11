@@ -7,6 +7,19 @@ test.describe("Product Spec: /model 命令", () => {
   test("should capture model popup screenshot", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
 
+    // Provide initial state for a logged-in user (auth gates the input area)
+    await injector.simulateExtensionMessage("setInitialState", {
+      messages: [],
+      isStreaming: false,
+      sessions: [],
+      isAuthenticated: true,
+      configurationData: {
+        model: "claude-sonnet-4-20250514",
+        fastModel: "claude-haiku-4-20250514",
+      },
+      permissionMode: "default",
+    });
+
     // Setup a conversation
     const messages = [
       MockDataGenerator.createUserMessage(
@@ -62,6 +75,19 @@ test.describe("Product Spec: /model 命令", () => {
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
+
+    // Provide initial state for a logged-in user (auth gates the input area)
+    await injector.simulateExtensionMessage("setInitialState", {
+      messages: [],
+      isStreaming: false,
+      sessions: [],
+      isAuthenticated: true,
+      configurationData: {
+        model: "claude-sonnet-4-20250514",
+        fastModel: "claude-haiku-4-20250514",
+      },
+      permissionMode: "default",
+    });
 
     // Setup a minimal conversation
     const messages = [MockDataGenerator.createUserMessage("你好")];
