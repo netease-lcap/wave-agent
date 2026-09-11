@@ -192,7 +192,19 @@ const mockDesktopApiJs = `
     // active is routed to the focused pane like the real host does.
     let panesActive = false;
     let focusedPaneId = 'pane-1';
-    const globalCommands = ['desktopWorkdirState', 'desktopSessionTree', 'desktopPanes'];
+    // 窗口级（应用级）命令：真宿主一律不带 paneId 下发（desktopHost.pushAppLevelState
+    // 推 configurationResponse + 主题/更新通道），root 实例在分屏 rows 可见时不消费
+    // 带 paneId 的消息（forThisPane），所以设置页的初值必须在任何时机注入都能到达
+    // root——这里与真宿主对齐，不做 paneId 盖章。
+    const globalCommands = [
+        'desktopWorkdirState',
+        'desktopSessionTree',
+        'desktopPanes',
+        'configurationResponse',
+        'desktopThemeSource',
+        'desktopThemeChange',
+        'desktopUpdateChannel'
+    ];
 
     const deliver = (message) => {
         if (message.command === 'desktopPanes') {

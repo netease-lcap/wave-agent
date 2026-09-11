@@ -206,7 +206,15 @@ CodeWave IDE 是一款集成在 VS Code 与 JetBrains IDE（WebStorm、IntelliJ 
 
 <div class="screenshot-gallery">
 
+<figure><img src="/screenshots/spec-settings-global.webp" alt="全局设置（基础设置）" /><figcaption>全局设置（基础设置）</figcaption></figure>
+
+<figure><img src="/screenshots/spec-settings-personalization.webp" alt="个性化（AGENTS.md 与自动记忆）" /><figcaption>个性化（AGENTS.md 与自动记忆）</figcaption></figure>
+
 <figure><img src="/screenshots/spec-managed-settings.webp" alt="服务端配置（设置页只读展示服务端下发的托管配置原文）" /><figcaption>服务端配置</figcaption></figure>
+
+<figure><img src="/screenshots/spec-hooks-list.webp" alt="钩子管理" /><figcaption>钩子管理</figcaption></figure>
+
+<figure><img src="/screenshots/spec-mcp-settings.webp" alt="MCP 服务管理" /><figcaption>MCP 服务管理</figcaption></figure>
 
 <figure><img src="/screenshots/spec-status-dialog.webp" alt="状态信息" /><figcaption>状态信息</figcaption></figure>
 
