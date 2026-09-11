@@ -37,10 +37,6 @@ beforeEach(async () => {
   // Point the real CLI at the local model server — no real LLM, no network.
   useFakeModelEndpoint(model.baseURL);
   ctx = createRealHost();
-  ctx.store.setConfiguration({
-    model: "test-model",
-    fastModel: "test-model",
-  });
 });
 
 afterEach(async () => {
