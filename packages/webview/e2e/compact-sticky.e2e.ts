@@ -67,9 +67,6 @@ async function initWithCompactedMessages(
     messages: [],
     isStreaming: false,
     sessions: [],
-    configurationData: {
-      model: "claude-sonnet-4-20250514",
-    },
     permissionMode: "default",
   });
   await injector.updateMessages(messages);

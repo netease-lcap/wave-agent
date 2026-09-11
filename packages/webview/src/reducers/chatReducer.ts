@@ -246,14 +246,6 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           action.payload.workdir !== undefined
             ? action.payload.workdir
             : state.workdir,
-        theme:
-          action.payload.theme !== undefined
-            ? action.payload.theme
-            : state.theme,
-        updateChannel:
-          action.payload.updateChannel !== undefined
-            ? action.payload.updateChannel
-            : state.updateChannel,
       };
     case "UPDATE_SELECTION":
       return {

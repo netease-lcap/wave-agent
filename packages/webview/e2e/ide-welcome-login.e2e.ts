@@ -44,7 +44,6 @@ test.describe("IDE 宿主欢迎页登录入口（真 bundle）", () => {
       isStreaming: false,
       sessions: [],
       isAuthenticated: false,
-      configurationData: { model: "claude-sonnet-4-20250514" },
       permissionMode: "default",
     });
 
@@ -68,11 +67,6 @@ test.describe("IDE 宿主欢迎页登录入口（真 bundle）", () => {
       isAuthenticated: false,
       // 修复前：这三项（来自插件 globalState 的历史残留）会隐藏登录引导，
       // 用户不登录也能聊天；修复后宿主不再读取/回带它们，登录入口必须在。
-      configurationData: {
-        model: "claude-sonnet-4-20250514",
-        apiKey: "sk-ant-legacy",
-        baseURL: "https://api.anthropic.com/v1",
-      },
       permissionMode: "default",
     });
 
@@ -86,7 +80,6 @@ test.describe("IDE 宿主欢迎页登录入口（真 bundle）", () => {
       isStreaming: false,
       sessions: [],
       isAuthenticated: true,
-      configurationData: { model: "claude-sonnet-4-20250514" },
       permissionMode: "default",
     });
 
@@ -103,7 +96,6 @@ test.describe("IDE 宿主欢迎页登录入口（真 bundle）", () => {
       isStreaming: false,
       sessions: [],
       isAuthenticated: false,
-      configurationData: { model: "claude-sonnet-4-20250514" },
       permissionMode: "default",
     });
 
@@ -135,7 +127,6 @@ test.describe("IDE 宿主欢迎页登录入口（真 bundle）", () => {
       isStreaming: false,
       sessions: [],
       isAuthenticated: false,
-      configurationData: { model: "claude-sonnet-4-20250514" },
       permissionMode: "default",
     });
 

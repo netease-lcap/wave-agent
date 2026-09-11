@@ -48,14 +48,15 @@ class WaveBackendService(private val project: Project) : Disposable {
     fun unregisterSession(s: WaveSession) { sessions.remove(s) }
 
     /**
-     * Push updated config to every active session, mirroring VSCE ChatProvider.updateAllSessionsConfig
-     * (chatProvider.ts:104-108). Called after login/logout and plugin mutations (构造期副作用) so all
-     * chat tabs pick up the change. sessionId rekey is handled per-agent. 用户偏好保存**不再**走
-     * 这条路——它落用户级 settings.json 并由 SDK 实时重载（spec core/agent-config.md）。
+     * Rebuild every active session so login/logout and plugin mutations (构造期副作用)
+     * take effect in all chat tabs. Mirrors VSCE ChatProvider.updateAllSessionsConfig
+     * (chatProvider.ts:104-108) — it too sends **no** session-level overrides: 模型经
+     * `/model` RPC、用户偏好落用户级 settings.json 并由 SDK 实时重载（spec core/agent-config.md）。
+     * sessionId rekey is handled per-agent.
      */
-    suspend fun updateAllSessionsConfig(params: JsonObject) {
+    suspend fun updateAllSessionsConfig() {
         val active = synchronized(sessions) { sessions.toList() }
-        active.forEach { s -> runCatching { s.updateConfig(params) } }
+        active.forEach { s -> runCatching { s.updateConfig(JsonObject(emptyMap())) } }
     }
 
     suspend fun ensureClient(): Pair<StdioClient, NotificationRouter> {

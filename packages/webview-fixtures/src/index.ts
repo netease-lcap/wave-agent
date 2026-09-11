@@ -210,7 +210,6 @@ export const fixtures: Fixtures = {
     queuedMessages: [],
     isAuthenticated: true,
     workdir: "/tmp/test",
-    theme: { effective: "dark", source: "system" },
     inputContent: "",
     ...overrides,
   }),
@@ -426,8 +425,6 @@ export const fixtureQueuedMessage = (
 export const fixtureConfig = (
   overrides: Partial<ConfigurationData> = {},
 ): ConfigurationData => ({
-  model: "glm-5.2",
-  fastModel: "deepseek-v4-flash",
   language: "zh",
   ...overrides,
 });

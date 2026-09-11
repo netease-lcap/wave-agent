@@ -17,8 +17,6 @@
     <depends optional="true" config-file="jcef.xml">com.intellij.modules.jcef</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <applicationService
-            serviceImplementation="com.wave.jetbrains.config.WavePluginService"/>
         <projectService
             serviceImplementation="com.wave.jetbrains.WavePanelHolder"/>
         <projectService

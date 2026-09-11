@@ -24,9 +24,6 @@ test.describe("session switch into long chat scrolls to bottom", () => {
       isStreaming: false,
       sessions: [],
       isAuthenticated: true,
-      configurationData: {
-        model: "claude-sonnet-4-20250514",
-      },
       permissionMode: "default",
     });
 

@@ -13,10 +13,6 @@ describe("Plan Mode Initialization", () => {
         inputContent: "",
         isStreaming: false,
         sessions: [],
-        configurationData: {
-          model: "gpt-4",
-          fastModel: "gpt-3.5",
-        },
         permissionMode: "plan",
       });
     });

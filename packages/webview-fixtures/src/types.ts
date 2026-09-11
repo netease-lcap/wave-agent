@@ -68,13 +68,6 @@ export type EffectiveTheme = "light" | "dark";
 /** Desktop theme preference (三态，设置页「全局设置」可选，仅 desktop 有 UI）。 */
 export type ThemeSource = "system" | "light" | "dark";
 
-/** Desktop host theme snapshot: resolved effective theme + the user preference
- *  (source; absent on hosts without the in-app preference). */
-export interface ThemeState {
-  effective: EffectiveTheme;
-  source?: ThemeSource;
-}
-
 /** Desktop update channel（设置页「全局设置」「接收 Beta 版更新」开关，仅
  *  desktop 有 UI）。stable = codechat 正式下载 feed，beta = desktop-beta feed。 */
 export type UpdateChannel = "stable" | "beta";
@@ -138,12 +131,16 @@ export interface AttachedImage {
   size?: number;
 }
 
-/** Maps to VS Code global state (model/fastModel/language/…). */
+/**
+ * 设置页配置载荷：**只有用户偏好键**（落 `~/.wave/settings.json`）。
+ *
+ * 模型选择与服务地址（`model` / `fastModel` / `serverUrl`）不属于这里——它们是
+ * 宿主/SDK 侧的状态，webview 侧没有设置入口：模型经 `/model` 命令走
+ * `getConfiguredModels` / `setModel`，服务地址经 `authStatusResponse.serverUrl`
+ * 下发（`serverUrl` 由 CLI 的 `getAuthStatus` 解析，宿主只缓存）。
+ */
 export interface ConfigurationData {
-  model?: string;
-  fastModel?: string;
   language?: string;
-  serverUrl?: string;
   /** Per-model input context window in K tokens (e.g. 200 = 200K), 16–1000 */
   contextLength?: number;
   /** Whether auto-memory extraction is enabled */
@@ -408,7 +405,13 @@ export interface SetInitialStateMessage extends HostToWebviewMessageBase {
   sessions: SessionMetadata[];
   session?: SessionMetadata;
   currentSession?: SessionMetadata;
+  /** 仅 IDE 宿主（VSCE/JetBrains）随快照携带；desktop 走窗口级
+   *  configurationResponse（分屏下 root 实例不消费带 paneId 的快照，而渲染设置页
+   *  的正是 root）。 */
   configurationData?: ConfigurationData;
+  /** 会话作用域快照：desktop 把「本 pane 的会话状态」打上 paneId 下发。窗口级
+   *  数据（主题偏好 / 更新通道）**不得**放进这里，一律走未打标签的窗口级广播
+   *  desktopThemeChange / desktopThemeSource / desktopUpdateChannel。 */
   pendingConfirmations: ConfirmationRequest[];
   pendingConfirmation?: ConfirmationRequest;
   selection?: SelectionInfo;
@@ -418,9 +421,6 @@ export interface SetInitialStateMessage extends HostToWebviewMessageBase {
   queuedMessages: QueuedMessage[];
   isAuthenticated: boolean;
   workdir?: string;
-  theme?: ThemeState;
-  /** Desktop update channel snapshot（重推快照时同步设置页开关选中态）。 */
-  updateChannel?: UpdateChannel;
 }
 
 export interface DesktopThemeChangeMessage extends HostToWebviewMessageBase {
@@ -582,6 +582,13 @@ export interface AuthStatusResponseMessage extends HostToWebviewMessageBase {
   isAuthenticated: boolean;
   /** Authenticated account (desktop host forwards it for the account card). */
   user?: { id: string; email?: string } | null;
+  /**
+   * 服务地址（CLI 侧 `getAuthStatus` 解析后回传，宿主只缓存/转发）。webview 的
+   * 唯一来源：企业控制台 / 帮助文档按钮（serverUrl + `/docs/`）与桌面端
+   * 「接收 Beta 版更新」开关的可用性都由它驱动。未登录或查询失败时宿主可省略
+   * （保持上一次的值，不视为"无服务地址"）。
+   */
+  serverUrl?: string;
 }
 
 /** Reply to a getAgentsContent request (settings UI AGENTS.md editor). */

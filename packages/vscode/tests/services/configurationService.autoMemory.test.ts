@@ -1,5 +1,4 @@
 import { describe, expect, test, vi } from "vitest";
-import type * as vscode from "vscode";
 import { ConfigurationService } from "../../src/services/configurationService";
 import type { StdioClient } from "../../src/stdio/stdioClient";
 
@@ -9,22 +8,9 @@ import type { StdioClient } from "../../src/stdio/stdioClient";
  * 漏写不会报错，只会静默丢失（保存看起来「成功」但下一环拿不到值）。
  *
  * 这里盯的是 VSCE 侧的这一个 hop：保存必须把两个键**原样**发给 CLI 进程的
- * `updateUserSettings`（含 `false`，不得被 `||` 吞成 true），且 globalState
- * **不得**再当第二真源（否则界面会显示宿主里的旧值、与 settings.json 打架）。
+ * `updateUserSettings`（含 `false`，不得被 `||` 吞成 true），回读也只有 CLI 一个真源
+ * （宿主私有存储已不再参与）。
  */
-
-/** In-memory stand-in for vscode's globalState (a Map with the Memento API). */
-function context(): vscode.ExtensionContext {
-  const state = new Map<string, unknown>();
-  return {
-    globalState: {
-      get: (key: string) => state.get(key),
-      update: async (key: string, value: unknown) => {
-        state.set(key, value);
-      },
-    },
-  } as unknown as vscode.ExtensionContext;
-}
 
 /** 记录每个 CLI 请求的参数；`getUserSettings` 返回给定的用户偏好。 */
 function fakeClient(prefs: Record<string, unknown> = {}) {
@@ -35,7 +21,7 @@ function fakeClient(prefs: Record<string, unknown> = {}) {
 }
 
 function withClient(client: ReturnType<typeof fakeClient>) {
-  const service = new ConfigurationService(context());
+  const service = new ConfigurationService();
   service.attachClient(client as unknown as StdioClient);
   return service;
 }
@@ -56,15 +42,12 @@ describe("ConfigurationService · auto-memory 落用户级 settings.json", () =>
     });
   });
 
-  test("globalState 不是第二真源：本地存了旧值，load 仍以 CLI 回读为准", async () => {
-    const ctx = context();
-    await ctx.globalState.update("autoMemoryEnabled", true);
-    const service = new ConfigurationService(ctx);
-    service.attachClient(
+  test("load 的唯一真源是 CLI 回读，false 不被吞成 true", async () => {
+    const service = withClient(
       fakeClient({
         autoMemoryEnabled: false,
         autoMemoryFrequency: 5,
-      }) as unknown as StdioClient,
+      }),
     );
 
     const loaded = await service.loadConfiguration();
@@ -72,18 +55,18 @@ describe("ConfigurationService · auto-memory 落用户级 settings.json", () =>
     expect(loaded.autoMemoryFrequency).toBe(5);
   });
 
-  test("无用户偏好键（仅同步扩展私有键）不触碰 settings.json", async () => {
+  test("无用户偏好键的保存不触碰 settings.json", async () => {
     const client = fakeClient();
     const service = withClient(client);
 
-    await service.saveConfiguration({ serverUrl: "https://example.com" });
+    await service.saveConfiguration({});
 
     expect(
       client.request.mock.calls.filter(([m]) => m === "updateUserSettings"),
     ).toEqual([]);
   });
 
-  test("CLI 读失败降级为只回本地键（设置页不因此打不开）", async () => {
+  test("CLI 读失败降级为空偏好（设置页不因此打不开）", async () => {
     const client = {
       request: vi.fn(async (method: string) => {
         if (method === "getUserSettings") throw new Error("boom");
@@ -95,7 +78,6 @@ describe("ConfigurationService · auto-memory 落用户级 settings.json", () =>
     );
 
     const loaded = await service.loadConfiguration();
-    expect(loaded.model).toBe("");
-    expect(loaded.autoMemoryEnabled).toBeUndefined();
+    expect(loaded).toEqual({});
   });
 });

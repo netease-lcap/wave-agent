@@ -13,32 +13,17 @@ test.describe("Status Dialog Demo", () => {
       });
     });
 
-    // 2. Simulate extension sending configuration data
-    await webviewPage.evaluate(() => {
-      window.simulateExtensionMessage({
-        command: "configurationResponse",
-        configurationData: {
-          model: "claude-sonnet-4-20250514",
-          fastModel: "claude-haiku-4-20250514",
-        },
-      });
-    });
-
-    // 3. Simulate extension sending status response
+    // 2. Simulate extension sending status response
     await webviewPage.evaluate(() => {
       window.simulateExtensionMessage({
         command: "statusResponse",
         version: "1.2.0",
         sessionId: "sess_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
         workdir: "/home/dev/projects/nebula-platform",
-        configurationData: {
-          model: "claude-sonnet-4-20250514",
-          fastModel: "claude-haiku-4-20250514",
-        },
       });
     });
 
-    // 4. Simulate auth status (authenticated)
+    // 3. Simulate auth status (authenticated)
     await webviewPage.evaluate(() => {
       window.simulateExtensionMessage({
         command: "authStatusResponse",
@@ -84,7 +69,6 @@ test.describe("Status Dialog Demo", () => {
         version: "1.2.0",
         sessionId: "",
         workdir: "",
-        configurationData: {},
       });
     });
 

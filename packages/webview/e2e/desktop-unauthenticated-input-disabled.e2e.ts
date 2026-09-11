@@ -33,7 +33,6 @@ async function bootDesktop(
     isStreaming: false,
     sessions: [],
     isAuthenticated,
-    configurationData: { model: "claude-sonnet-4-20250514" },
     permissionMode: "default",
     ...(workdir ? { workdir } : {}),
   });
@@ -97,7 +96,6 @@ test.describe("桌面端未认证时的发送入口", () => {
       isStreaming: false,
       sessions: [],
       isAuthenticated: true,
-      configurationData: { model: "claude-sonnet-4-20250514" },
       permissionMode: "default",
       workdir: WORKDIR,
     });

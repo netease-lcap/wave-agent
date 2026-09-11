@@ -1116,8 +1116,9 @@ describe("chatReducer", () => {
   });
 
   describe("theme state", () => {
-    it("SET_INITIAL_STATE stores the theme payload and preserves it when absent", () => {
-      const theme = { effective: "dark" as const };
+    it("SET_INITIAL_STATE never stores a theme (窗口级数据只走广播)", () => {
+      // 主题偏好是窗口级数据，只由 desktopThemeSource/desktopThemeChange 广播驱动；
+      // reducer 不再有 theme 字段（曾经的双通道导致重启后设置页回落）。
       const newState = chatReducer(initialState, {
         type: "SET_INITIAL_STATE",
         payload: {
@@ -1126,22 +1127,9 @@ describe("chatReducer", () => {
           configurationData: {},
           pendingConfirmations: [],
           isStreaming: false,
-          theme,
         },
       });
-      expect(newState.theme).toEqual(theme);
-
-      const withoutTheme = chatReducer(initialState, {
-        type: "SET_INITIAL_STATE",
-        payload: {
-          messages: [],
-          sessions: [],
-          configurationData: {},
-          pendingConfirmations: [],
-          isStreaming: false,
-        },
-      });
-      expect(withoutTheme.theme).toBeUndefined();
+      expect(newState).not.toHaveProperty("theme");
     });
   });
 });

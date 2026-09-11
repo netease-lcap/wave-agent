@@ -61,7 +61,7 @@ describe("桌面端「接收 Beta 版更新」开关（ChatApp host 消息链路
     vi.clearAllMocks();
   });
 
-  it("setInitialState 快照携带 updateChannel=beta 且已登录时，开关打开可切换", async () => {
+  it("host 广播 desktopUpdateChannel=beta 且已登录时，开关打开可切换", async () => {
     const mockVscode = createMockVscode();
     render(
       <ChatApp
@@ -69,13 +69,13 @@ describe("桌面端「接收 Beta 版更新」开关（ChatApp host 消息链路
         host={desktopHost()}
       />,
     );
-    sendHostMessage(fixtures.authStatusResponse());
-    sendHostMessage(
-      fixtures.setInitialState({
-        updateChannel: "beta",
-        configurationData: { serverUrl: SERVER },
-      }),
-    );
+    // 窗口级数据：服务地址随认证响应下发、更新通道走 desktopUpdateChannel 广播
+    //（启动时 host 各推一次），都不在 setInitialState 快照里。
+    sendHostMessage(fixtures.authStatusResponse({ serverUrl: SERVER }));
+    sendHostMessage(fixtures.setInitialState());
+    act(() => {
+      sendHostMessage({ command: "desktopUpdateChannel", channel: "beta" });
+    });
 
     await openSettings();
 
@@ -86,7 +86,7 @@ describe("桌面端「接收 Beta 版更新」开关（ChatApp host 消息链路
     expect(toggle.disabled).toBe(false);
   });
 
-  it("未登录（无 serverUrl）时开关置灰并说明「登录后可接收测试版更新」", async () => {
+  it("宿主未下发 serverUrl（未登录）时开关置灰并说明「登录后可接收测试版更新」", async () => {
     const mockVscode = createMockVscode();
     render(
       <ChatApp
@@ -95,7 +95,7 @@ describe("桌面端「接收 Beta 版更新」开关（ChatApp host 消息链路
       />,
     );
     sendHostMessage(fixtures.authStatusResponse());
-    sendHostMessage(fixtures.setInitialState({ updateChannel: "stable" }));
+    sendHostMessage(fixtures.setInitialState());
 
     await openSettings();
 
@@ -120,13 +120,8 @@ describe("桌面端「接收 Beta 版更新」开关（ChatApp host 消息链路
         host={desktopHost()}
       />,
     );
-    sendHostMessage(fixtures.authStatusResponse());
-    sendHostMessage(
-      fixtures.setInitialState({
-        updateChannel: "stable",
-        configurationData: { serverUrl: SERVER },
-      }),
-    );
+    sendHostMessage(fixtures.authStatusResponse({ serverUrl: SERVER }));
+    sendHostMessage(fixtures.setInitialState());
 
     await openSettings();
 
@@ -151,7 +146,7 @@ describe("桌面端「接收 Beta 版更新」开关（ChatApp host 消息链路
       />,
     );
     sendHostMessage(fixtures.authStatusResponse());
-    sendHostMessage(fixtures.setInitialState({ updateChannel: "stable" }));
+    sendHostMessage(fixtures.setInitialState());
 
     await openSettings();
     const toggle = screen.getByLabelText(

@@ -153,8 +153,6 @@ describe("Rewind Feature", () => {
         isStreaming: false,
         sessions: [],
         configurationData: {
-          model: "",
-          fastModel: "",
           language: "zh-CN",
           permissionMode: "ask",
         },

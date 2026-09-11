@@ -35,10 +35,6 @@ async function setupSinglePane(page: any, injector: MessageInjector) {
     isStreaming: false,
     sessions: [],
     isAuthenticated: true,
-    configurationData: {
-      model: "claude-sonnet-4-20250514",
-      fastModel: "claude-haiku-4-20250514",
-    },
     permissionMode: "default",
   });
   // The harness answers desktopReady by pushing the single unbound pane, so

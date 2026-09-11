@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
+import { fixtures } from "wave-webview-fixtures";
 import {
   renderChatApp,
   screen,
   fireEvent,
   act,
   sendCommand,
+  sendHostMessage,
 } from "./test-utils";
 
 /**
@@ -70,9 +72,11 @@ describe("More Menu", () => {
     const { vscode } = renderChatApp();
 
     act(() => {
-      sendCommand("configurationResponse", {
-        configurationData: { serverUrl: "https://console.example.com" },
-      });
+      sendHostMessage(
+        fixtures.authStatusResponse({
+          serverUrl: "https://console.example.com",
+        }),
+      );
     });
 
     vscode.postMessage.mockClear();
@@ -110,9 +114,11 @@ describe("More Menu", () => {
     const { vscode } = renderChatApp();
 
     act(() => {
-      sendCommand("configurationResponse", {
-        configurationData: { serverUrl: "https://codechat.example.com/" },
-      });
+      sendHostMessage(
+        fixtures.authStatusResponse({
+          serverUrl: "https://codechat.example.com/",
+        }),
+      );
     });
 
     vscode.postMessage.mockClear();

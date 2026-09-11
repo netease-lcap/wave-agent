@@ -11,7 +11,6 @@ import type {
   McpServerStatus,
   ToolBlockUpdateCallbackParams,
 } from "wave-agent-sdk/types";
-import { ConfigurationData } from "../services/configurationService";
 import { StdioClient } from "../stdio/stdioClient";
 import {
   StdioAgent,
@@ -103,7 +102,6 @@ export class ChatSession {
   ) {}
 
   public async initialize(
-    config: ConfigurationData,
     restoreSessionId: string | undefined,
     sharedClient: StdioClient,
     router: NotificationRouter,
@@ -220,10 +218,9 @@ export class ChatSession {
       const initParams = {
         workdir,
         restoreSessionId,
-        model: config.model,
-        fastModel: config.fastModel,
-        // 用户偏好（language / autoMemory*）不经此覆盖层下发——它们落在用户级
-        // ~/.wave/settings.json 并由 SDK 实时重载生效（spec agent-config
+        // 模型不进覆盖层：由 `/model` 命令经 `getConfiguredModels` / `setModel`
+        // RPC 管理。用户偏好（language / autoMemory*）也不经此下发——它们落在
+        // 用户级 ~/.wave/settings.json 并由 SDK 实时重载生效（spec agent-config
         // 「设置实时重载」；覆盖层会永久遮蔽 settings.json 的实时值）。
       };
 
@@ -353,7 +350,12 @@ export class ChatSession {
     await this.clearQueue();
   }
 
-  public async updateConfig(config: ConfigurationData) {
+  /**
+   * 重建 agent（保留会话）——插件启停 / 登录登出后让新配置生效的必需步骤。
+   * 模型不从覆盖层下发（由 `/model` 命令经 setModel RPC 管理），用户偏好走
+   * settings.json 实时重载，故载荷为空。
+   */
+  public async updateConfig() {
     if (this.agent) {
       const currentSessionId = this.sessionId;
       console.log(
@@ -366,12 +368,8 @@ export class ChatSession {
         this.callbacks.onStreamingChange(false);
       }
 
-      // Server-side destroy + recreate with restored session（仅会话级键：用户偏好
-      // 不走覆盖层，见 initialize 处注释）
-      await this.agent.updateConfig({
-        model: config.model,
-        fastModel: config.fastModel,
-      });
+      // Server-side destroy + recreate with restored session
+      await this.agent.updateConfig({});
       console.log(
         `[updateConfig] ${this.viewType} 配置更新完成，sessionId: ${this.sessionId}`,
       );
