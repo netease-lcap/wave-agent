@@ -231,12 +231,22 @@ const mockDesktopApiJs = `
             // （DesktopSidebar 按 requestId 丢弃不匹配的应答）。改动数取代表性
             // 数值，让截图呈现「丢失改动」的最终态。
             if (message && message.command === 'desktopGetWorktreeChanges') {
-                deliver({
+                const reply = () => deliver({
                     command: 'desktopWorktreeChanges',
                     sessionId: message.sessionId,
                     requestId: message.requestId,
                     changes: { files: 2, commits: 1 },
                 });
+                // 真宿主是异步回答的（git status 本地/远端都要耗时间），删除
+                // worktree 会话的确认框因此会先以「正在检查」的禁用态挂载。默认
+                // 同步回答（既有用例与截图只要终态）；需要分别观察「检查中」与
+                // 「结果」两个状态的用例，先置 window.__deferWorktreeChanges = true
+                // 扣住应答，再用 window.__flushWorktreeChanges() 放行。
+                if (window.__deferWorktreeChanges) {
+                    window.__flushWorktreeChanges = reply;
+                } else {
+                    reply();
+                }
             }
             window.dispatchEvent(new CustomEvent('vscode-message', { detail: message }));
         },

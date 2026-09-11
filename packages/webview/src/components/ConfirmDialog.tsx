@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import "../styles/ConfirmDialog.css";
 
 export interface ConfirmDialogProps {
@@ -27,6 +27,26 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const confirmBtnRef = useRef<HTMLButtonElement>(null);
+  // Whether the primary action was un-actionable on the previous render.
+  const wasConfirmDisabledRef = useRef(confirmDisabled);
+
+  // Focus the primary action. `autoFocus` only applies at mount, so a dialog
+  // that opens with the confirm button disabled (the worktree loss check is
+  // still in flight — see DesktopSidebar) would never take focus: the sidebar
+  // row that opened it keeps focus, and Enter there re-opens that row's menu
+  // instead of confirming. Once the button becomes actionable we pull focus in
+  // — unless the user already moved it inside the dialog (e.g. Tabbed to
+  // Cancel), which must not be yanked away.
+  useEffect(() => {
+    const becameActionable = wasConfirmDisabledRef.current && !confirmDisabled;
+    wasConfirmDisabledRef.current = confirmDisabled;
+    if (!becameActionable) return;
+    if (dialogRef.current?.contains(document.activeElement)) return;
+    confirmBtnRef.current?.focus();
+  }, [confirmDisabled]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -54,6 +74,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       data-testid="confirm-dialog-overlay"
     >
       <div
+        ref={dialogRef}
         className="confirm-dialog"
         role="alertdialog"
         aria-modal="true"
@@ -82,6 +103,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </button>
           <button
             type="button"
+            ref={confirmBtnRef}
             className="confirm-dialog-btn confirm-dialog-btn-confirm"
             data-testid="confirm-dialog-confirm"
             disabled={confirmDisabled}
