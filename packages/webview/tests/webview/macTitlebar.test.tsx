@@ -329,6 +329,88 @@ describe("split-view: collapsed gutter follows the shell's expand-button signal"
   });
 });
 
+// 会话状态看板（「活动」视图）替换 pane rows 后占满窗口左缘：侧边栏收起时其顶栏
+// 最左端同样要让出系统红绿灯区（否则「展开侧边栏」按钮被红绿灯压住，见 f7c736f6
+// 同源修复在对话顶栏的先例）。让位与对话顶栏共用 chat-header-mac-traffic 的 76px
+// 机制（DesktopApp.css 共享规则），此处锁住「收起态看板顶栏存在让位段且位于展开
+// 按钮之前」，以及全屏/Windows 两处负例。
+const queryBoardSpacer = () =>
+  document.querySelector(".session-board-mac-traffic");
+
+/** 侧边栏展开态打开看板，再收起侧边栏——真实用户进入「看板 + 收起」两态的顺序
+    （收起后侧栏整条不渲染，活动按钮随之消失，无法再打开看板）。 */
+function openBoardThenCollapseSidebar() {
+  fireEvent.click(screen.getByTestId("desktop-sidebar-activity"));
+  expect(screen.getByTestId("session-board")).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId("desktop-sidebar-collapse"));
+  expect(querySidebar()).toBeNull();
+}
+
+describe("session board: collapsed traffic-light clearance (real macOS)", () => {
+  it("reserves the gutter ahead of the board's expand button once collapsed", () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "darwin";
+    renderDesktopApp();
+
+    // Expanded → the board is not at the window edge; no gutter, no expand button.
+    fireEvent.click(screen.getByTestId("desktop-sidebar-activity"));
+    expect(queryBoardSpacer()).toBeNull();
+    expect(
+      screen.queryByTestId("session-board-expand-sidebar"),
+    ).not.toBeInTheDocument();
+
+    // Collapse → the board's toolbar occupies the left edge: it must clear the
+    // traffic lights before the expand button it now hosts.
+    fireEvent.click(screen.getByTestId("desktop-sidebar-collapse"));
+    expect(querySidebar()).toBeNull();
+
+    const spacer = queryBoardSpacer();
+    const expand = screen.getByTestId("session-board-expand-sidebar");
+    expect(spacer).not.toBeNull();
+    // The gutter shares the chat header's 76px mechanism (single definition).
+    expect(
+      document
+        .querySelector(".session-board-toolbar")!
+        .contains(spacer as Node),
+    ).toBe(true);
+    // …and sits before the expand button in document order (safe area → button).
+    expect(
+      (spacer as Node).compareDocumentPosition(expand) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("drops the board gutter while fullscreen and restores it after", () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "darwin";
+    renderDesktopApp();
+    openBoardThenCollapseSidebar();
+
+    expect(queryBoardSpacer()).not.toBeNull();
+    sendHostMessage(fixtures.desktopFullScreen({ fullScreen: true }));
+    expect(queryBoardSpacer()).toBeNull();
+    // The expand button stays put (row start) — no gutter to clear.
+    expect(
+      screen.getByTestId("session-board-expand-sidebar"),
+    ).toBeInTheDocument();
+    sendHostMessage(fixtures.desktopFullScreen({ fullScreen: false }));
+    expect(queryBoardSpacer()).not.toBeNull();
+  });
+
+  it("renders no board gutter on Windows/Linux (native title bar kept)", () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "win32";
+    renderDesktopApp();
+    openBoardThenCollapseSidebar();
+
+    expect(queryBoardSpacer()).toBeNull();
+    // The collapsed toolbar still hosts the expand button — just no clearance.
+    expect(
+      screen.getByTestId("session-board-expand-sidebar"),
+    ).toBeInTheDocument();
+  });
+});
+
 // 设置页占满整个 view（spec desktop-account-and-settings「设置页面」场景 1/12 +
 // desktop-shell「macOS 隐藏标题栏」设置页场景 8）：打开设置时会话侧边栏（分屏下
 // 含全部 pane）一并被覆盖，红绿灯改由设置页左导航顶部的窗口行承接（窗口行不放

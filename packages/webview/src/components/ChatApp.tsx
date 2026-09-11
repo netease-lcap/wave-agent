@@ -3188,6 +3188,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       onBack={handleCloseSessionBoard}
       collapsed={sidebarCollapsed}
       onExpandSidebar={() => setSidebarCollapsed(false)}
+      // 看板替换 pane rows 后占满窗口左缘（侧边栏收起时侧栏整条不渲染），
+      // 顶栏的红绿灯让位与对话顶栏同源（同一 macTrafficSpacer 条件）。
+      macTrafficSpacer={macTrafficSpacer}
     />
   ) : null;
 

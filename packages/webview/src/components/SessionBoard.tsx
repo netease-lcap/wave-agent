@@ -15,6 +15,13 @@ export interface SessionBoardProps {
       header 处「新对话」图标钮已统一拿掉，仅留展开侧栏）。 */
   collapsed?: boolean;
   onExpandSidebar?: () => void;
+  /**
+   * macOS 隐藏标题栏 + 侧边栏收起 + 非全屏：看板占满窗口左端，顶栏最左端需
+   * 让出系统红绿灯区域（spec「macOS 隐藏标题栏」场景 3）。与对话顶栏
+   * （ChatApp 的 macTrafficSpacer）同源同机制——不加则「展开侧边栏」按钮被
+   * 红绿灯压住。全屏（红绿灯隐藏）与 Windows/Linux（原生标题栏）为 false。
+   */
+  macTrafficSpacer?: boolean;
 }
 
 /** 跨平台取路径最后一段（浏览器环境无 node path，兼容 \ 与 /）。 */
@@ -82,6 +89,7 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
   onBack,
   collapsed,
   onExpandSidebar,
+  macTrafficSpacer = false,
 }) => {
   // 项目筛选：空字符串 = 全部项目；否则为选中的 workdir 完整路径。
   const [selectedWorkdir, setSelectedWorkdir] = useState<string>("");
@@ -145,6 +153,16 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
           （评论 2026-09：顶栏「新对话」钮已拿掉）；导航展开时这些入口在
           侧边栏上，看板不再重复。 */}
       <div className="session-board-toolbar">
+        {/* macOS 隐藏标题栏 + 侧边栏收起：看板顶栏贴窗口左缘，最左端让出系统
+            红绿灯区（与对话顶栏的 chat-header-mac-traffic 同一 76px 让位机制，
+            见 DesktopApp.css 共享规则），展开按钮不被红绿灯遮挡。 */}
+        {macTrafficSpacer && (
+          <div
+            className="session-board-mac-traffic"
+            aria-hidden="true"
+            data-testid="session-board-mac-traffic"
+          />
+        )}
         {collapsed && (
           <>
             {onExpandSidebar && (

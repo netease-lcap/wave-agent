@@ -73,10 +73,13 @@
   -webkit-app-region: no-drag;
 }
 
-/* macOS 隐藏标题栏 + 侧边栏收起：对话顶栏最左端让出系统红绿灯区域（约 76px），
-   该段为 44px 高的窗口拖拽区，红绿灯由系统绘制其上（ChatApp macTrafficSpacer，
-   spec「macOS 隐藏标题栏」场景 3）。收起态控件整体右移，不被红绿灯遮挡。 */
-.chat-header-mac-traffic {
+/* macOS 隐藏标题栏 + 侧边栏收起：占据窗口左端的视图顶栏让出系统红绿灯区域
+   （约 76px），该段为 44px 高的窗口拖拽区，红绿灯由系统绘制其上（对话顶栏
+   ChatApp macTrafficSpacer、会话状态看板 SessionBoard macTrafficSpacer，
+   spec「macOS 隐藏标题栏」场景 3）。收起态控件整体右移，不被红绿灯遮挡。
+   两者共用这一处让位定义（同一 76px 拖拽段），勿各写一套偏移数值。 */
+.chat-header-mac-traffic,
+.session-board-mac-traffic {
   -webkit-app-region: drag;
   user-select: none;
   align-self: stretch;
