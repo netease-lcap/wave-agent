@@ -1772,11 +1772,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setPendingPrefill((prev) => (prev?.nonce === nonce ? null : prev));
   }, []);
 
-  // Batch 2 session board (desktop): 活动 button toggles the board view; the
-  // board's 返回当前会话 closes it (spec 场景 6). Settings and board are
-  // mutually exclusive — opening one closes the other.
-  const handleOpenSessionBoard = useCallback(() => {
-    setSessionBoardOpen(true);
+  // Batch 2 session board (desktop): 活动 button is a toggle — it opens the
+  // board when closed and closes it when already open (spec 场景 7); the
+  // board's 返回当前会话 also closes it (spec 场景 6). Settings and board are
+  // mutually exclusive — opening the board closes settings.
+  const handleToggleSessionBoard = useCallback(() => {
+    setSessionBoardOpen((prev) => !prev);
     setSettingsOpen(false);
   }, []);
 
@@ -3127,7 +3128,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // Batch 2 settings full-page (desktop): rendered in place of chatContainer
   // when settingsOpen. The board and settings are mutually exclusive (opening
-  // one closes the other, see handleOpenSessionBoard).
+  // one closes the other, see handleToggleSessionBoard).
   const settingsPage = isDesktop ? (
     <SettingsPage
       configurationData={state.configurationData ?? null}
@@ -3451,7 +3452,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             settingsPage={settingsPage}
             sessionBoard={sessionBoard}
             sessionBoardActive={sessionBoardOpen}
-            onOpenSessionBoard={handleOpenSessionBoard}
+            onToggleSessionBoard={handleToggleSessionBoard}
             prefillRequest={pendingPrefill}
             onPrefillApplied={handlePrefillApplied}
           />

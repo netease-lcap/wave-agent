@@ -86,4 +86,31 @@ describe("会话状态看板（活动）", () => {
     expect(screen.queryByTestId("session-board")).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-container")).toBeInTheDocument();
   });
+
+  it("再次点击「活动」按钮关闭看板（spec 场景 7），按钮高亮态取消", () => {
+    renderReady([
+      {
+        host: "local",
+        workdir: "/work/a",
+        sessions: [session("s1", "chat one")],
+      },
+    ]);
+
+    // 首次点击打开看板并高亮
+    fireEvent.click(screen.getByTestId("desktop-sidebar-activity"));
+    expect(screen.getByTestId("session-board")).toBeInTheDocument();
+    expect(screen.getByTestId("desktop-sidebar-activity")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // 再次点击同一按钮：看板关闭、回到会话视图、高亮取消
+    fireEvent.click(screen.getByTestId("desktop-sidebar-activity"));
+    expect(screen.queryByTestId("session-board")).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-container")).toBeInTheDocument();
+    expect(screen.getByTestId("desktop-sidebar-activity")).not.toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
 });

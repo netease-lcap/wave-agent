@@ -235,10 +235,11 @@ export interface DesktopSidebarProps {
    * unconfirmable until it arrives.
    */
   onRequestWorktreeChanges: (sessionId: string, requestId: string) => void;
-  /** Batch 2 会话状态看板: brand-row 活动 button opens the board view. When
-   *  active the icon renders brand-red (spec 场景 1 highlight state). */
+  /** Batch 2 会话状态看板: brand-row 活动 button toggles the board view
+   *  (spec 场景 1/7). When active the icon renders brand-red (spec 场景 1
+   *  highlight state). */
   sessionBoardActive?: boolean;
-  onOpenSessionBoard?: () => void;
+  onToggleSessionBoard?: () => void;
 }
 
 const dirName = (workdir: string): string =>
@@ -281,7 +282,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onDeleteSession,
   onRequestWorktreeChanges,
   sessionBoardActive = false,
-  onOpenSessionBoard,
+  onToggleSessionBoard,
 }) => {
   // 窗口级 chrome 状态（收起/全屏）单一权威在 DesktopChromeContext —— 任何渲染
   // 路径（root 单布局 / DesktopShell）的侧边栏都同源读取，不再 props 下行。
@@ -726,11 +727,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         {/* The header is space-between, so both buttons must live in one
             grouped flex row — otherwise "更多" gets pushed to the middle. */}
         <div className="desktop-sidebar-actions">
-          {onOpenSessionBoard && (
+          {onToggleSessionBoard && (
             <Tooltip text="活动" position="bottom">
               <button
                 className={`desktop-sidebar-more-btn${sessionBoardActive ? " is-active" : ""}`}
-                onClick={onOpenSessionBoard}
+                onClick={onToggleSessionBoard}
                 data-testid="desktop-sidebar-activity"
                 aria-label="活动"
                 aria-pressed={sessionBoardActive}

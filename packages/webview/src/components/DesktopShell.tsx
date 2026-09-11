@@ -58,7 +58,9 @@ interface DesktopShellProps {
   sessionBoard?: React.ReactNode;
   /** 活动 button highlight while the board view is open (spec 场景 1). */
   sessionBoardActive?: boolean;
-  onOpenSessionBoard?: () => void;
+  /** 活动 button toggle (spec 场景 1/7): opens the board when closed, closes
+   *  it when open. */
+  onToggleSessionBoard?: () => void;
   /**
    * root 设置页「新建/编辑」预填提示词请求（FR-032：root 不挂 MessageInput）。
    * 仅 targetPaneId 匹配的 pane-scoped ChatApp 收到（settings 关闭、pane 行
@@ -104,7 +106,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   sessionBoardOpen = false,
   sessionBoard,
   sessionBoardActive = false,
-  onOpenSessionBoard,
+  onToggleSessionBoard,
   prefillRequest = null,
   onPrefillApplied,
 }) => {
@@ -698,7 +700,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         onDeleteSession={host.onDeleteSession}
         onRequestWorktreeChanges={host.onRequestWorktreeChanges}
         sessionBoardActive={sessionBoardActive}
-        onOpenSessionBoard={onOpenSessionBoard}
+        onToggleSessionBoard={onToggleSessionBoard}
       />
       <div
         className="desktop-pane-rows"
