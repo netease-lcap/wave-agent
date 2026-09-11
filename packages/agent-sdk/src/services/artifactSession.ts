@@ -7,6 +7,8 @@
  * - slug → latest known version: powers the stale-version guard
  *   (local knowledge older than the live version blocks a redeploy
  *   unless `force` is set) and lets WebFetch record versions it observed.
+ * - slug → read approval: reading someone else's artifact is confirmed once
+ *   per session; later reads of the same page are not re-confirmed.
  *
  * State is keyed by sessionId so parallel sessions never observe each other.
  */
@@ -19,6 +21,7 @@ export interface ArtifactRecord {
 
 const sessionArtifacts = new Map<string, Map<string, ArtifactRecord>>();
 const sessionSlugVersions = new Map<string, Map<string, string>>();
+const sessionReadApprovals = new Map<string, Set<string>>();
 
 function fileMapFor(sessionId: string): Map<string, ArtifactRecord> {
   let map = sessionArtifacts.get(sessionId);
@@ -73,8 +76,30 @@ export function recordVersion(
   slugMapFor(sessionId).set(slug, version);
 }
 
+/** Remember that the user approved reading someone else's artifact this session. */
+export function markArtifactReadApproved(
+  sessionId: string,
+  slug: string,
+): void {
+  let set = sessionReadApprovals.get(sessionId);
+  if (!set) {
+    set = new Set();
+    sessionReadApprovals.set(sessionId, set);
+  }
+  set.add(slug);
+}
+
+/** Whether the user already approved reading this artifact in this session. */
+export function isArtifactReadApproved(
+  sessionId: string,
+  slug: string,
+): boolean {
+  return sessionReadApprovals.get(sessionId)?.has(slug) ?? false;
+}
+
 /** Clear all session-scoped artifact state (used when a session ends). */
 export function clearArtifactSession(sessionId: string): void {
   sessionArtifacts.delete(sessionId);
   sessionSlugVersions.delete(sessionId);
+  sessionReadApprovals.delete(sessionId);
 }

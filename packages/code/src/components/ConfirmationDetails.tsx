@@ -35,6 +35,9 @@ const getActionDescription = (
     case ASK_USER_QUESTION_TOOL_NAME:
       return "Answer questions to clarify intent";
     case ARTIFACT_TOOL_NAME:
+      if (toolInput.action === "read") {
+        return `Read artifact: ${toolInput.url || "unknown artifact"}`;
+      }
       return `Publish file: ${toolInput.file_path || "unknown file"}`;
     default:
       return "Execute operation";
