@@ -80,6 +80,14 @@
   white-space: nowrap;
 }
 
+/* A disabled action must read as disabled. The worktree delete dialog mounts
+   with confirm disabled while the host counts the changes at risk (see
+   DesktopSidebar); without this the blue primary button looks clickable. */
+.confirm-dialog-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .confirm-dialog-btn-cancel {
   background-color: var(--vscode-button-secondaryBackground, transparent);
   color: var(--vscode-button-secondaryForeground, #b1b1b1);
@@ -99,6 +107,6 @@
   border: none;
 }
 
-.confirm-dialog-btn-confirm:hover {
+.confirm-dialog-btn-confirm:hover:not(:disabled) {
   background-color: var(--vscode-button-hoverBackground, #2690c7);
 }
