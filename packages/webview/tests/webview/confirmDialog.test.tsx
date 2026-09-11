@@ -140,6 +140,36 @@ describe("ConfirmDialog", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it("focuses the confirm button once it becomes actionable", () => {
+    const props = { title: "t", onConfirm: vi.fn(), onCancel: vi.fn() };
+    const { rerender } = render(<ConfirmDialog {...props} confirmDisabled />);
+
+    // While the outcome is unknown nothing in the dialog holds focus (a
+    // disabled button cannot), so the trigger element keeps it.
+    expect(document.activeElement).not.toBe(
+      screen.getByTestId("confirm-dialog-confirm"),
+    );
+
+    rerender(<ConfirmDialog {...props} />);
+
+    expect(screen.getByTestId("confirm-dialog-confirm")).toBeEnabled();
+    expect(document.activeElement).toBe(
+      screen.getByTestId("confirm-dialog-confirm"),
+    );
+  });
+
+  it("does not steal focus when the user already moved it into the dialog", () => {
+    const props = { title: "t", onConfirm: vi.fn(), onCancel: vi.fn() };
+    const { rerender } = render(<ConfirmDialog {...props} confirmDisabled />);
+
+    const cancel = screen.getByTestId("confirm-dialog-cancel");
+    cancel.focus();
+
+    rerender(<ConfirmDialog {...props} />);
+
+    expect(document.activeElement).toBe(cancel);
+  });
+
   it("does NOT dismiss when the scrim (overlay) is clicked", () => {
     const onConfirm = vi.fn();
     const onCancel = vi.fn();
