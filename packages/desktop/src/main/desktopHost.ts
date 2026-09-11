@@ -3881,6 +3881,10 @@ export class DesktopHost {
         await this.handleGetProjectSettings(pid);
         break;
 
+      case "getManagedSettings":
+        await this.handleGetManagedSettings(msg.requestId as string);
+        break;
+
       case "getHooksConfig":
         await this.handleGetHooksConfig(pid, msg.scope as string | undefined);
         break;
@@ -4951,6 +4955,38 @@ export class DesktopHost {
       console.warn(`[DesktopHost] 读取用户偏好失败(${host}):`, error);
       return this.userPreferencesByHost.get(host) ?? {};
     }
+  }
+
+  /**
+   * 设置页「服务端配置」区块（spec server-managed-config「在设置页查看服务端下发的
+   * 配置」）：回服务端下发的托管配置**原文**，让用户看到服务端到底管控了什么。
+   *
+   * 读会话所在进程最近一次成功下发的缓存（`getManagedSettings` RPC 内部只读进程内
+   * 缓存、不发网络请求），因此切到远端主机后读到的是那台机器的进程；无下发内容
+   * （未登录 / 服务端未配置 / 已撤销 / 缓存损坏）或 RPC 失败一律回 null，设置页按
+   * 空态展示，不编造空对象冒充「有下发」。全文不脱敏（env 密钥按原文展示，内容本来
+   * 就在用户本机 0600 文件里）。
+   *
+   * 窗口级消息（不打 paneId）：设置页由 root 实例渲染，打标签反而送不到。
+   */
+  private async handleGetManagedSettings(requestId: string): Promise<void> {
+    let managedSettings: Record<string, unknown> | null = null;
+    try {
+      const result = (await this.utilityClientFor(this.currentHost).request(
+        "getManagedSettings",
+      )) as { managedSettings: Record<string, unknown> | null };
+      managedSettings = result.managedSettings ?? null;
+    } catch (error) {
+      console.warn(
+        `[DesktopHost] 读取服务端下发配置失败(${this.currentHost}):`,
+        error,
+      );
+    }
+    this.postMessage({
+      command: "managedSettingsResponse",
+      requestId,
+      managedSettings,
+    });
   }
 
   /**

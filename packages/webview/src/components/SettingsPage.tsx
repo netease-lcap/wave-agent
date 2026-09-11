@@ -47,6 +47,7 @@ import {
 import "../styles/SettingsPage.css";
 import { useDesktopChrome } from "./DesktopChromeContext";
 import { isMacHiddenTitlebar } from "../utils/platform";
+import { useHostMessage } from "../utils/useHostMessage";
 
 export interface SettingsPageProps {
   /** 当前配置（getConfiguration 已回），null 表示尚未加载 */
@@ -142,6 +143,14 @@ export const CONTEXT_LENGTH_PLACEHOLDER = "跟随模型配置（默认 200K）";
 export const AUTO_MEMORY_FREQUENCY_PLACEHOLDER = "默认 1 轮";
 /** 生效值来自机器环境变量时的行内说明（可编辑，保存后写入用户级 settings.json）。 */
 export const ENV_SOURCE_HINT = "当前值来自系统环境变量；保存后以本页设置为准";
+
+/** 「服务端配置」区块的空态文案（未下发时展示，spec server-managed-config 场景 2）。 */
+export const MANAGED_SETTINGS_EMPTY_TEXT = "当前没有服务端下发的配置";
+/** 尚未拿到回包时的文案——与空态分开，避免把「还没读到」说成「没有下发」。 */
+export const MANAGED_SETTINGS_LOADING_TEXT = "正在读取服务端配置…";
+
+/** 托管配置请求的归属键序号（模块级自增：同一 webview 里多个实例也不会撞号）。 */
+let managedSettingsSeq = 0;
 
 /** 未设置态（空草稿）一律不写；与初始值相同也不写。 */
 function changedString(current: string, initial?: string): string | undefined {
@@ -328,6 +337,39 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
       onLoadProjectSettings();
     }
   }, [projectViewKey, activeNav, workdir, onLoadProjectSettings]);
+
+  // 服务端下发的托管配置原文（「服务端配置」区块，spec server-managed-config
+  // 「在设置页查看服务端下发的配置」）。只读展示，不参与任何生效配置。
+  // `undefined` = 尚未拿到回包（渲染读取中文案）与 `null` = 无下发内容（渲染空态
+  // 文案）分开表达——把「还没读到」说成「没有下发」会误导用户以为组织没管控。
+  const [managedSettings, setManagedSettings] = useState<
+    Record<string, unknown> | null | undefined
+  >(undefined);
+  // 本次请求的归属键：回包只认最新一次请求，晚到的旧主机/旧进入批次回包即弃
+  // （对齐 fileSuggestions 的 requestId 关联模式）。
+  const managedSettingsRequestIdRef = useRef<string>("");
+  useHostMessage((message) => {
+    if (message?.command !== "managedSettingsResponse") return;
+    if (message.requestId !== managedSettingsRequestIdRef.current) return;
+    setManagedSettings(message.managedSettings);
+  });
+
+  // 进入「全局设置」视图时拉取下发内容原文。触发键不含 managedSettings 本身
+  // （否则 fetch→reply→fetch 死循环）；每次重入视图都重新拉取，因此展示的是
+  // **当前**下发内容而不是应用启动时读一次的快照（spec 场景 4）。host 读的是进程内
+  // 最近一次成功下发的缓存，不发网络请求（边界说明「展示的是缓存的下发内容」）。
+  const managedViewKeyRef = useRef<string>("");
+  const managedViewKey = activeNav === "global" ? "global" : "";
+  useEffect(() => {
+    if (managedViewKeyRef.current === managedViewKey) return;
+    managedViewKeyRef.current = managedViewKey;
+    if (activeNav !== "global" || !vscode) return;
+    const requestId = `managed-settings-${++managedSettingsSeq}`;
+    managedSettingsRequestIdRef.current = requestId;
+    // 上一次的内容不再可信（可能已被服务端更新或撤销），重新拉取前先回到读取中。
+    setManagedSettings(undefined);
+    vscode.postMessage({ command: "getManagedSettings", requestId });
+  }, [managedViewKey, activeNav, vscode]);
 
   // 缓存的项目设置仅当其标注的工作目录与当前工作目录一致时才可信：不一致说明
   // 缓存属于另一项目（或早于会话切换），在 host 回发当前项目数据前按未加载
@@ -630,6 +672,38 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                   </div>
                 </section>
               )}
+              {/* 「服务端配置」区块（三端一致，spec server-managed-config「在设置页
+                  查看服务端下发的配置」）：只读展示服务端最近一次成功下发的托管配置
+                  **原文**（不筛选字段、不脱敏），让用户确认服务端到底管控了什么；
+                  没有任何编辑控件、不改变任何生效配置。 */}
+              <section className="settings-section">
+                <div className="settings-section-heading">
+                  <h2>服务端配置</h2>
+                  <p>由服务端下发并在本机生效的托管配置原文，只读</p>
+                </div>
+                <div className="settings-card">
+                  {managedSettings &&
+                  Object.keys(managedSettings).length > 0 ? (
+                    <pre
+                      className="settings-managed-json"
+                      data-testid="settings-managed-json"
+                    >
+                      {JSON.stringify(managedSettings, null, 2)}
+                    </pre>
+                  ) : (
+                    // 未下发 / 尚未读到：给一句说明，**不**渲染 `{}` 空块或空白框
+                    // （那会被误读成加载失败或「配置为空」）。
+                    <p
+                      className="settings-managed-empty"
+                      data-testid="settings-managed-empty"
+                    >
+                      {managedSettings === undefined
+                        ? MANAGED_SETTINGS_LOADING_TEXT
+                        : MANAGED_SETTINGS_EMPTY_TEXT}
+                    </p>
+                  )}
+                </div>
+              </section>
             </div>
           )}
 

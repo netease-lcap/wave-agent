@@ -720,3 +720,29 @@
 .settings-switch-small {
   flex: 0 0 auto;
 }
+
+/* 「服务端配置」区块的下发原文（spec server-managed-config「在设置页查看服务端
+   下发的配置」）：等宽、可选中复制；不换行（JSON 折行会毁掉层级可读性），超宽
+   由本块自身横向滚动，超高纵向滚动而不是把整页撑长。 */
+.settings-managed-json {
+  overflow: auto;
+  max-height: 360px;
+  margin: 0;
+  /* 左右留白交给 .settings-card 的 padding（0 12px） */
+  padding: 12px 0;
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre;
+  user-select: text;
+}
+
+/* 空态 / 读取中说明：不渲染 `{}` 空块，也不留空白框。 */
+.settings-managed-empty {
+  margin: 0;
+  padding: 12px 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  line-height: 20px;
+}

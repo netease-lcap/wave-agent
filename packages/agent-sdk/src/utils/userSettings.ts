@@ -258,6 +258,23 @@ export function readUserPreferenceView(
 }
 
 /**
+ * 读取**服务端下发的托管配置原文**（企业组织集中管控的完整清单）。
+ *
+ * 设置页「服务端配置」区块据此只读展示「服务端到底管控了什么」——展示的是
+ * 本进程内最近一次成功下发并缓存的配置（与 `remoteSettingsService` 的定时
+ * 刷新同源，见 spec enterprise/server-managed-config.md「在设置页查看服务端
+ * 下发的配置」），**不是**实时网络请求，因此打开视图不产生网络等待。
+ *
+ * 返回 `null` = 没有可展示的下发内容（未登录 / 服务端未为该组织配置托管设置 /
+ * 此前下发已被撤销 / 本机缓存损坏无法解析），调用方按空态处理，不得编造空对象。
+ */
+export function readManagedSettings(
+  remote: WaveConfiguration | null = getRemoteSettingsSync(),
+): WaveConfiguration | null {
+  return remote ?? null;
+}
+
+/**
  * 把 `patch` 里的键合并进用户级 settings.json，返回写入后的完整用户偏好。
  * 未提供的键保持文件中现值；`patch` 为空时只回读、不落盘（无差异保存）。
  */

@@ -49,6 +49,7 @@ import {
   loadWaveConfigFromFile,
   getUserConfigPaths,
   getProjectConfigPaths,
+  readManagedSettings,
   readUserPreferenceView,
   updateUserPreferenceSettings,
   type UserPreferenceSettings,
@@ -240,6 +241,14 @@ export class AgentBridge {
         return this.userSettingsView();
       case "updateUserSettings":
         return this.updateUserSettings(p as UserPreferenceSettings);
+
+      // 服务端下发的托管配置原文（只读，无 session）：设置页「服务端配置」区块
+      // 据此展示「服务端到底管控了什么」。读进程内最近一次成功下发的缓存，
+      // 不发网络请求；无下发内容时回 null（设置页按空态处理）。
+      case "getManagedSettings": {
+        const managedSettings = readManagedSettings();
+        return { managedSettings };
+      }
 
       // ── Messages ──
       case "sendMessage":

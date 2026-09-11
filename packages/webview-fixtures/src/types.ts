@@ -739,6 +739,24 @@ export interface McpConfigPathsResponseMessage
   projectPath: string | null;
 }
 
+/**
+ * 设置页「服务端配置」区块的数据源：服务端下发的托管配置**原文**。
+ *
+ * 形状刻意是宽松的 `Record<string, unknown>`：客户端不定义、也不裁剪服务端
+ * 下发的字段（客户要看的就是服务端究竟管控了什么，全量清单），因此这里只保证
+ * 「是一个 JSON 对象」，具体键由服务端决定。
+ */
+export interface ManagedSettingsResponseMessage
+  extends HostToWebviewMessageBase {
+  command: "managedSettingsResponse";
+  /** 归属键：请求生成的 id，回复原样带回（设置页进入「全局设置」视图时请求，
+   *  配合桌面多主机切换 / 快速重入，晚到的旧回复即弃）。 */
+  requestId: string;
+  /** 下发配置原文；`null` = 无下发内容（未登录 / 服务端未配置 / 已撤销 /
+   *  本机缓存损坏），设置页按空态展示、不得编造空对象。 */
+  managedSettings: Record<string, unknown> | null;
+}
+
 export interface HistoryResponseMessage extends HostToWebviewMessageBase {
   command: "historyResponse";
   /** 归属键：请求生成的 id（requestHistory/searchHistory 原样带回）。历史
@@ -930,6 +948,7 @@ export type HostToWebviewMessage =
   | SkillMetadataResponseMessage
   | HooksResponseMessage
   | McpConfigPathsResponseMessage
+  | ManagedSettingsResponseMessage
   | HistoryResponseMessage
   | HistoryErrorMessage
   | ConfiguredModelsMessage
@@ -978,6 +997,9 @@ type ReplyAttribution = {
   // 删除确认：请求生成 id，回复原样带回（同一会话可反复开关对话框）。
   desktopWorktreeChanges: "requestId";
   fileSuggestionsResponse: "requestId";
+  // 设置页「服务端配置」：请求生成 id，回复原样带回（快速切换视图 / 桌面切
+  // 远端主机时，晚到的旧下发内容即弃）。
+  managedSettingsResponse: "requestId";
 };
 
 // ---- 编译期断言：注册表中的每条响应命令，union 成员必须必填其归属键。 ----
@@ -1017,6 +1039,7 @@ export const replyAttributionLocked = {
   desktopRemoteDirList: true,
   desktopWorktreeChanges: true,
   fileSuggestionsResponse: true,
+  managedSettingsResponse: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];
 };
