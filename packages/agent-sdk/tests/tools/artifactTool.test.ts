@@ -379,6 +379,63 @@ describe("artifactTool", () => {
       expect(body.content).toBe(HTML_CONTENT);
     });
 
+    it("should use the file basename as the label when none is given (markdown)", async () => {
+      (readFileSync as Mock).mockReturnValue(MD_CONTENT);
+      const fetchMock = stubFetchRoutes([
+        {
+          match: (url) => url.endsWith("/api/frame/deploy/direct"),
+          respond: () =>
+            jsonResponse(201, {
+              url: "https://server.test/code/artifact/guide",
+              slug: "guide",
+              path: "docs/guide.md",
+              title: "guide",
+              version: "v1",
+            }),
+        },
+      ]);
+
+      const result = await artifactTool.execute(
+        { file_path: "docs/guide.md" },
+        makeContext(),
+      );
+
+      expect(result.success).toBe(true);
+      const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+      // Server title order is <title> > label > "Untitled artifact"; supplying the
+      // basename keeps the published page from ending up untitled.
+      expect(body.label).toBe("guide");
+      expect(body.content).toContain("<title>guide</title>");
+    });
+
+    it("should use the file basename as the label when none is given (html)", async () => {
+      (readFileSync as Mock).mockReturnValue(HTML_CONTENT);
+      const fetchMock = stubFetchRoutes([
+        {
+          match: (url) => url.endsWith("/api/frame/deploy/direct"),
+          respond: () =>
+            jsonResponse(201, {
+              url: "https://server.test/code/artifact/html1",
+              slug: "html1",
+              path: "pages/landing.html",
+              title: "landing",
+              version: "v1",
+            }),
+        },
+      ]);
+
+      const result = await artifactTool.execute(
+        { file_path: "pages/landing.html" },
+        makeContext(),
+      );
+
+      expect(result.success).toBe(true);
+      const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+      expect(body.label).toBe("landing");
+      // The page's own <title> still wins server-side, so content stays untouched.
+      expect(body.content).toBe(HTML_CONTENT);
+    });
+
     it("should ask for permission on the first publish and deny correctly", async () => {
       (readFileSync as Mock).mockReturnValue(MD_CONTENT);
       const { manager, permissionContext } = makePermissionManager("deny");

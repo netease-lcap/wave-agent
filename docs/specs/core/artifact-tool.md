@@ -16,6 +16,7 @@ order: 35
 > 对齐 CC 的 Artifact 工具形态（2026-09-11 增补）：工具入口统一为带 `action` 参数的单一工具——`action: "publish"`（省略时的默认值，即现有发布行为）与 `action: "read"`（新增读取动作）。**`read` 的返回形态对齐 CC**：读取当前用户**拥有**的 artifact 返回原文 HTML（含内联 CSS/JS）；读取**他人分享**的 artifact 返回隔离摘要（可选 `prompt` 指明关注点），不把他人页面全文放进上下文。
 > 本期只补 `read`：CC 的 `list`/`watch`/`status`/`upload_asset`/`list_assets`/`read_asset`/`delete_asset`/`list_types` 等动作依赖平台提供枚举、订阅、资源库、模板等能力，codechat 平台暂无对应接口，本期不做；将来平台补齐后再逐个对齐。
 > 读取实现单一化（2026-09-11）：artifact 正文的取用（元数据探测 + Bearer 鉴权 + 正文拉取 + 大内容落盘）收敛为**唯一实现**，`Artifact` 工具的 `read` 动作与 WebFetch 的 artifact URL 拦截共用，不再各写一套。
+> 发布标题解析对齐 CC（2026-09-11）：页面的 `<title>` 优先，其次显式 `label`，最后回退**文件名 basename**（服务端 `<title>` > `label` > `Untitled artifact`）；未显式给 `label` 时客户端补 basename，避免发布出的页面标题落到 `Untitled artifact`。
 
 ## 用户场景与测试 _（必填）_
 
@@ -37,6 +38,7 @@ order: 35
 6. **假设** 发布内容超过 16MB（服务端返回 413），**当** 工具执行时，**则** 返回 `success: false` 与大小超限的错误。
 7. **假设** 客户端未登录（无有效 token），**当** 工具执行时，**则** 返回鉴权错误并提示先登录。
 8. **假设** model 调用 `Artifact` 工具时省略 `action`（或显式传 `action: "publish"`），**当** 工具执行时，**则** 按发布处理，上述校验/确认/冲突防护全部生效（缺省动作即发布，与既有行为一致）。
+9. **假设** model 调用 `Artifact` 工具发布且未提供 `label`，**当** 工具执行时，**则** 以**文件名（不含扩展名）**作为 `label` 兜底——服务端标题解析顺序为「页面 `<title>` > `label` > `Untitled artifact`」（对齐 CC：`<title>` 优先、显式标题参数次之、文件名 basename 最后兜底），因此不带 `<title>` 的 `.html` 与渲染出的 `.md` 页面会以文件名作为标题，不会落到 `Untitled artifact`；页面自身的 `<title>` 始终优先，不受该兜底影响。
 
 ### 用户故事：内置技能 /artifact 人工触发（优先级：P1）
 

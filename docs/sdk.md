@@ -451,12 +451,14 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 | `file_path` | string  | 发布时必需，待发布的 `.html` 或 `.md` 文件路径（不接受内联 content）        |
 | `favicon`   | string  | 页面图标 emoji（如 `📄`）                                                   |
 | `url`       | string  | artifact URL：发布时为待重新部署的 URL，读取时为待读取的 URL（`read` 必需） |
+| `label`     | string  | 标题兜底（≤60 字符）：页面自身 `<title>` 优先，无 `<title>` 时用文件名兜底  |
 | `force`     | boolean | 冲突时跳过检查直接覆盖发布                                                  |
 | `prompt`    | string  | 读取**他人分享**的页面时的关注点（如「布局是怎样的」）；读自己的页面时忽略  |
 
 要点：
 
 - `.md` 文件先渲染为完整 HTML 再上传；发布与读取接口复用 Server URL 同源，无需额外配置
+- 页面标题解析顺序对齐 Claude Code：页面自身的 `<title>` 优先，其次显式 `label`，最后回退文件名——所以不写 `<title>` 的页面不会变成「Untitled artifact」
 - 发布动作默认经用户确认（首次发布 / 已分享页面重新部署时），同会话内的重复发布自动允许
 - 并发与防冲突：服务端 409 或本地记录版本落后时拒绝发布（提示先 WebFetch 最新内容），除非带 `force: true`
 - 发布结果返回 `{ url, path, title, version }`，`url` 形如 `{host}/code/artifact/{slug}`；页面默认仅发布者可见
