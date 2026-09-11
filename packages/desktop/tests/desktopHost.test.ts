@@ -2233,21 +2233,40 @@ describe("configuration and status", () => {
   });
 
   it("openExternal allows https URLs (FR-008)", async () => {
-    const { host } = await readyHost();
+    const { host, sent } = await readyHost();
     await host.handleWebviewMessage({
       command: "openExternal",
       url: "https://example.com",
     });
     expect(shell.openExternal).toHaveBeenCalledWith("https://example.com");
+    // The browser coming forward is its own feedback — no toast on success.
+    expect(sent("showToast")).toHaveLength(0);
+  });
+
+  it("openExternal reports a failure the user can see", async () => {
+    const { host, sent } = await readyHost();
+    vi.mocked(shell.openExternal).mockRejectedValueOnce(
+      new Error("no browser"),
+    );
+    await host.handleWebviewMessage({
+      command: "openExternal",
+      url: "https://example.com",
+    });
+    expect(sent("showToast").at(-1)?.toast.message).toBe(
+      "打开外部链接失败：no browser",
+    );
   });
 
   it("openExternal refuses unexpected schemes", async () => {
-    const { host } = await readyHost();
+    const { host, sent } = await readyHost();
     await host.handleWebviewMessage({
       command: "openExternal",
       url: "file:///etc/passwd",
     });
     expect(shell.openExternal).not.toHaveBeenCalled();
+    expect(sent("showToast").at(-1)?.toast.message).toBe(
+      "打开外部链接失败：链接无效",
+    );
   });
 });
 
