@@ -67,6 +67,15 @@ function escapeHtml(s: string): string {
   );
 }
 
+/**
+ * Last-resort label: the file basename without extension (CC uses the file name
+ * as the title when the page has no <title> and no title parameter is given).
+ */
+function basenameLabel(filePath: string): string | undefined {
+  const base = path.basename(filePath, path.extname(filePath)).trim();
+  return base ? base.slice(0, LABEL_MAX_LENGTH) : undefined;
+}
+
 /** Render Markdown to a complete HTML document (client-side md→HTML). */
 function renderMarkdown(md: string, title?: string): string {
   const body = marked.parse(md, { async: false }) as string;
@@ -210,12 +219,12 @@ async function publishArtifact(
   }
 
   const labelRaw = typeof args.label === "string" ? args.label.trim() : "";
-  const label = labelRaw || undefined;
-  if (label !== undefined && label.length > LABEL_MAX_LENGTH) {
+  const explicitLabel = labelRaw || undefined;
+  if (explicitLabel !== undefined && explicitLabel.length > LABEL_MAX_LENGTH) {
     return {
       success: false,
       content: "",
-      error: `${ARTIFACT_TOOL_NAME}: label must be at most ${LABEL_MAX_LENGTH} characters (got ${label.length})`,
+      error: `${ARTIFACT_TOOL_NAME}: label must be at most ${LABEL_MAX_LENGTH} characters (got ${explicitLabel.length})`,
     };
   }
 
@@ -254,6 +263,11 @@ async function publishArtifact(
       error: `${ARTIFACT_TOOL_NAME}: file not found or unreadable: ${filePath}`,
     };
   }
+
+  // CC title order: the page's own <title> wins (server-side), then an explicit
+  // label, then the file basename as the last resort. Falling back here keeps a
+  // published .md / <title>-less .html from being titled "Untitled artifact".
+  const label = explicitLabel ?? basenameLabel(filePath);
 
   const content =
     ext === ".md" ? renderMarkdown(fileContent, label) : fileContent;
@@ -489,7 +503,7 @@ export const artifactTool: ToolPlugin = {
           },
           label: {
             type: "string",
-            description: `Optional short label for the artifact (max ${LABEL_MAX_LENGTH} characters). Only used when publishing.`,
+            description: `Optional title fallback (max ${LABEL_MAX_LENGTH} characters), used only when publishing. The page's own <title> always wins; when there is none the file name is used — so you rarely need this.`,
           },
           url: {
             type: "string",
