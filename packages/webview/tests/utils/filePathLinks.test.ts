@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   detectFilePathToken,
+  linkifyCodeBlockPaths,
   linkifyFilePathText,
   resolveFilePathMatch,
   stripFilePathLinks,
@@ -218,6 +219,51 @@ describe("linkifyFilePathText — 正文纯文本链接化", () => {
   it("多链接同段文本都能生成", () => {
     const html = linkifyFilePathText("/a/x.ts /b/y.ts");
     expect(html.match(/class="file-path-link"/g)).toHaveLength(2);
+  });
+});
+
+describe("linkifyCodeBlockPaths — 围栏代码块链接化", () => {
+  const rel = "docs/public/screenshots/x.webp";
+  const win = "C:\\Users\\u\\proj\\a.webp";
+
+  const workdir = "/home/u/repo";
+
+  it("逐 token 识别路径，换行与缩进原样保留", () => {
+    const html = linkifyCodeBlockPaths(`  ${win}\n\t${rel}\n`, workdir);
+    expect(html).toContain(`  <a href="#" class="file-path-link">${win}</a>`);
+    expect(html).toContain(`\t<a href="#" class="file-path-link">${rel}</a>`);
+    expect(html).toContain("\n");
+  });
+
+  it("剥离首尾引号与标点，引号留在链接外", () => {
+    const html = linkifyCodeBlockPaths(`const p = "src/utils/a.ts";`, workdir);
+    expect(html).toContain(
+      'const p = &quot;<a href="#" class="file-path-link">src/utils/a.ts</a>&quot;;',
+    );
+  });
+
+  it("解析 :N / :N-M 行号后缀（整串作为显示文本）", () => {
+    const html = linkifyCodeBlockPaths("src/utils/format.ts:12-24", workdir);
+    expect(html).toContain(
+      '<a href="#" class="file-path-link">src/utils/format.ts:12-24</a>',
+    );
+  });
+
+  it("相对路径无 workdir 时保持纯文本；绝对路径不受影响", () => {
+    const plain = linkifyCodeBlockPaths(rel);
+    expect(plain).not.toContain("file-path-link");
+    expect(plain).toBe(rel);
+    const abs = linkifyCodeBlockPaths(win);
+    expect(abs).toContain(`>${win}</a>`);
+  });
+
+  it("非路径内容（命令/变量/URL/无扩展名）不生成链接且完整转义", () => {
+    const html = linkifyCodeBlockPaths(
+      "npm run build\nvar x = 1;\nhttps://example.com/a/b\n<div>&</div>",
+    );
+    expect(html).not.toContain("file-path-link");
+    expect(html).toContain("npm run build");
+    expect(html).toContain("&lt;div&gt;&amp;&lt;/div&gt;");
   });
 });
 

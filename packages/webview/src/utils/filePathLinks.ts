@@ -11,6 +11,8 @@
 // 本模块只做纯识别与字符串链接化，不接触 DOM/React：行内代码通道与正文
 // 通道的拼装在 Message.tsx 的 marked renderer 中完成，点击解析复用这里。
 
+import type { TokenizerExtension } from "marked";
+
 // marked（escape encode=true）只对 & < > " ' 做实体转义，这里做精确逆操作。
 const ENTITY_MAP: Record<string, string> = {
   "&amp;": "&",
@@ -208,6 +210,41 @@ const PROSE_OPTS = {
   lineSuffix: false,
 } as const;
 
+// 盘符路径的形态（盘符 + 分隔符 + 至少一段路径字符）。'\\' 在 SEG 里被排除，
+// 分隔符单独列，故 Windows 路径天然由多个「段」拼接。
+const WIN_PATH_CANDIDATE_RE = new RegExp(
+  `^[A-Za-z]:[\\\\/](?:${SEG}+[\\\\/])*${SEG}+`,
+  "u",
+);
+// 同上，但用于在行内文本里查找路径起点（start 钩子不锚定串首）。
+const WIN_PATH_START_RE = new RegExp(`[A-Za-z]:[\\\\/]${SEG}`, "u");
+
+/**
+ * marked 行内扩展：让盘符路径在 markdown 转义规则之前被整串吃掉。
+ *
+ * 背景（见 specs/ui/file-path-links.md 边界情况「markdown 反斜杠转义」）：Windows
+ * 路径里的 '\' 天然是 markdown 转义前缀，`…\.wave`、`…\_spec`、`…\#a` 会被当成
+ * 转义序列——文本在转义点被切成多个 token（可点击范围截止在标点处），反斜杠还会
+ * 从显示文本里消失。扩展比 marked 内建规则（含 escape）先执行，这里把整串盘符
+ * 路径作为一个普通 text token 交给 renderer.text 链接化：反斜杠原样保留、链接覆盖
+ * 整串。非盘符开头的文本仍走 markdown 原语义（`\*`、`\_`、`\|` 等仍是转义）。
+ *
+ * 只做「形态保护」，不判定真伪：是否符合各通道的识别规则仍由 renderer 决定。
+ */
+export const windowsPathInlineExtension: TokenizerExtension = {
+  name: "windowsFilePath",
+  level: "inline",
+  start(src) {
+    const m = WIN_PATH_START_RE.exec(src);
+    return m ? m.index : undefined;
+  },
+  tokenizer(src) {
+    const m = WIN_PATH_CANDIDATE_RE.exec(src);
+    if (!m) return undefined;
+    return { type: "text", raw: m[0], text: m[0] };
+  },
+};
+
 /**
  * 正文纯文本通道：把原始（未转义）文本中的绝对路径转成 <a class="file-path-link">。
  * 返回完整 HTML（所有非链接文本均经 HTML 转义），可安全用于 dangerouslySetInnerHTML。
@@ -261,6 +298,56 @@ export function linkifyFilePathText(rawText: string): string {
     lastIndex = start + rawRun.length;
   }
   html += escapeHtml(rawText.slice(lastIndex));
+  return html;
+}
+
+// 围栏代码块通道：识别规则与行内代码通道一致（≥1 斜杠 + 点扩展名、允许相对
+// 路径、支持 :N / :N-M），但按空白逐 token 处理，并额外剥离引号（代码里路径常
+// 写作 "src/a.ts"）。代码原文的换行与缩进不参与分词，原样保留。
+const CODE_BLOCK_OPTS = {
+  allowRelative: true,
+  requireExtension: true,
+} as const;
+const CODE_BLOCK_LEFT_STRIP = `${LEFT_PUNCT}"'`;
+const CODE_BLOCK_RIGHT_STRIP = `${RIGHT_PUNCT}"'`;
+
+/** 代码块里的单个 token → HTML（首尾引号/标点留在链接外，保持代码原文）。 */
+const codeBlockTokenHtml = (token: string, workdir?: string): string => {
+  let start = 0;
+  let end = token.length;
+  while (start < end && CODE_BLOCK_LEFT_STRIP.includes(token[start]!)) start++;
+  while (end > start && CODE_BLOCK_RIGHT_STRIP.includes(token[end - 1]!)) end--;
+  const core = token.slice(start, end);
+  if (core) {
+    const matched = detectFilePathToken(core, CODE_BLOCK_OPTS);
+    if (matched && resolveFilePathMatch(matched, workdir) !== null) {
+      return (
+        escapeHtml(token.slice(0, start)) +
+        fileLinkHtml(matched.display) +
+        escapeHtml(token.slice(end))
+      );
+    }
+  }
+  return escapeHtml(token);
+};
+
+/**
+ * 围栏代码块通道：把代码块正文里的文件路径转成 <a class="file-path-link">，
+ * 其余代码文本（含换行、缩进、引号）原样保留并转义。返回的 HTML 可安全用于
+ * dangerouslySetInnerHTML（调用方把它放进 <pre><code>）。
+ * 相对路径需要 workdir 归并；无 workdir 时该 token 保持纯代码文本。
+ */
+export function linkifyCodeBlockPaths(code: string, workdir?: string): string {
+  if (!code) return "";
+  let html = "";
+  let lastIndex = 0;
+  for (const run of code.matchAll(/\S+/g)) {
+    const start = run.index!;
+    html += escapeHtml(code.slice(lastIndex, start));
+    html += codeBlockTokenHtml(run[0], workdir);
+    lastIndex = start + run[0].length;
+  }
+  html += escapeHtml(code.slice(lastIndex));
   return html;
 }
 

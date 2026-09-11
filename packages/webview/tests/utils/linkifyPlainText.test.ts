@@ -98,6 +98,62 @@ describe("linkifyPlainText", () => {
   });
 });
 
+// bash 输出（终端风格纯文本）里的文件路径链接化，规则与围栏代码块通道一致
+// （见 specs/ui/file-path-links.md）——不改动上面的 URL 行为。
+describe("linkifyPlainText — 路径链接化（bash 输出）", () => {
+  const workdir = "/home/u/repo";
+  const win = "C:\\Users\\u\\proj\\dist\\a.js";
+
+  it("链接化绝对路径，其余文本与换行原样保留", () => {
+    const html = linkifyPlainText(`built ${win}\ndone /home/u/repo/x.ts\n`);
+    expect(html).toBe(
+      `built <a href="#" class="file-path-link">${win}</a>\n` +
+        `done <a href="#" class="file-path-link">/home/u/repo/x.ts</a>\n`,
+    );
+  });
+
+  it("相对路径按 workdir 归并可识别，无 workdir 时保持纯文本", () => {
+    expect(linkifyPlainText("error in src/utils/a.ts", workdir)).toContain(
+      '<a href="#" class="file-path-link">src/utils/a.ts</a>',
+    );
+    expect(linkifyPlainText("error in src/utils/a.ts")).toBe(
+      "error in src/utils/a.ts",
+    );
+  });
+
+  it("引号与标点留在链接外", () => {
+    expect(linkifyPlainText('error at "src/a.ts";', workdir)).toBe(
+      'error at &quot;<a href="#" class="file-path-link">src/a.ts</a>&quot;;',
+    );
+  });
+
+  it("行号后缀解析（整串作为显示文本）", () => {
+    const html = linkifyPlainText("at src/utils/format.ts:12-24", workdir);
+    expect(html).toContain(
+      '<a href="#" class="file-path-link">src/utils/format.ts:12-24</a>',
+    );
+  });
+
+  it("URL 与路径共存时互不吞并", () => {
+    const html = linkifyPlainText(
+      "see https://example.com/docs or src/a.ts",
+      workdir,
+    );
+    expect(html).toBe(
+      'see <a href="https://example.com/docs">https://example.com/docs</a> ' +
+        'or <a href="#" class="file-path-link">src/a.ts</a>',
+    );
+  });
+
+  it("非路径输出不生成链接（日志行/URL 路径段/无扩展名绝对路径）", () => {
+    const html = linkifyPlainText(
+      "npm run build\nGET /api/v1/users 200\n/usr/local/bin",
+      workdir,
+    );
+    expect(html).not.toContain("file-path-link");
+  });
+});
+
 describe("stripTrailingUrlPunct", () => {
   it("strips ASCII and CJK punctuation only from the end", () => {
     expect(stripTrailingUrlPunct("https://a.com/b?x=1.")).toBe(

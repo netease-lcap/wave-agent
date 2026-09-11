@@ -9,10 +9,13 @@ import {
 import {
   decodeHtmlEntities,
   detectFilePathToken,
+  escapeHtml,
   fileLinkHtml,
+  linkifyCodeBlockPaths,
   linkifyFilePathText,
   resolveFilePathMatch,
   stripFilePathLinks,
+  windowsPathInlineExtension,
 } from "../utils/filePathLinks";
 import { marked } from "marked";
 import { Tooltip } from "./Tooltip";
@@ -89,6 +92,10 @@ marked.use({
     },
   },
 });
+
+// Windows 盘符路径的转义保护（缘起见 utils/filePathLinks.ts 的注释）：扩展必须注册
+// 在全局 marked 上——本文件的 parse 只传局部 renderer，扩展走 defaults.extensions。
+marked.use({ extensions: [windowsPathInlineExtension] });
 
 // 行内代码（反引号）中的裸 http(s) URL 提升为可点击链接：仅当剥离首尾
 // 常见标点后整个内容是一个无空白的 URL 时才提升；多 URL、markdown 链接
@@ -388,7 +395,21 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
     infostring: string | undefined,
     escaped: boolean,
   ) => {
-    const html = defaultCode.call(renderer, code, infostring, escaped);
+    // 围栏代码块通道（specs/ui/file-path-links.md）：代码块内的路径同样可点击，
+    // 按行内代码通道规则逐 token 识别（引号/标点留在链接外）。包装与 marked 9
+    // 默认实现逐字节一致（语言类名 + 去尾换行后补一个换行），只替换 <code> 正文；
+    // escaped=true 表示正文已是 HTML 原文（当前 marked 不会置位），保持默认实现。
+    const html = escaped
+      ? defaultCode.call(renderer, code, infostring, true)
+      : (() => {
+          const lang = (infostring || "").match(/^\S*/)?.[0];
+          const body = linkifyCodeBlockPaths(
+            code.replace(/\n$/, "") + "\n",
+            workdir,
+          );
+          const cls = lang ? ` class="language-${escapeHtml(lang)}"` : "";
+          return `<pre><code${cls}>${body}</code></pre>\n`;
+        })();
     return isDesktopHost() ? html.replace(/^<pre/, `<pre tabindex="0"`) : html;
   };
   renderer.codespan = (text: string) => {
@@ -758,9 +779,10 @@ export const Message: React.FC<MessageProps> = React.memo(
               <div className="bash-command-input">
                 <span className="bash-command">{command}</span>
               </div>
-              {/* 输出中的裸 http(s) URL 链接化（见 specs/ui/markdown-links.md），
+              {/* 输出中的裸 http(s) URL 与文件路径链接化（见
+                  specs/ui/markdown-links.md 与 specs/ui/file-path-links.md），
                   点击路由复用 handleContentClick：desktop 上 localhost → 预览
-                  面板、其余 → 系统浏览器；IDE 保持原生链接处理。 */}
+                  面板、其余 → 系统浏览器；IDE 保持原生链接处理；路径走 openFile。 */}
               {/* tabIndex（F-10 / WCAG 2.1.1）：max-height 120 + overflow-y:auto
                   是可滚动区域，键盘用户需能聚焦后用方向键翻看完整输出。
                   仅桌面端注入——焦点环样式只存在于 `[data-host="desktop"]` 层。 */}
@@ -768,7 +790,7 @@ export const Message: React.FC<MessageProps> = React.memo(
                 className="bash-command-output"
                 tabIndex={isDesktopHost() ? 0 : undefined}
                 dangerouslySetInnerHTML={{
-                  __html: linkifyPlainText(result),
+                  __html: linkifyPlainText(result, props.workdir || undefined),
                 }}
               />
             </div>
