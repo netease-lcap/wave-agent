@@ -14,7 +14,15 @@ export interface MarketplacePluginEntry {
 export interface MarketplacePluginStatus extends MarketplacePluginEntry {
   marketplace: string;
   installed: boolean;
+  /** 已安装版本（未安装时 undefined） */
   version?: string;
+  /**
+   * 市场内该插件当前可安装的最新版本，取自市场检出目录内插件的
+   * `.wave-plugin/plugin.json`（兼容 `.claude-plugin/plugin.json`）。
+   * 插件来源是独立 Git 仓库等无法就地读取清单的情况为 undefined
+   * （spec plugin A-010：此时不展示最新版本）。
+   */
+  latestVersion?: string;
   cachePath?: string;
   projectPath?: string;
   scope?: Scope;

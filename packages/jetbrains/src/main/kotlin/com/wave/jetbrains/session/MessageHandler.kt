@@ -1,6 +1,9 @@
 package com.wave.jetbrains.session
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.fileChooser.FileChooser
+import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.project.Project
 import com.wave.jetbrains.WaveBackendService
 import com.wave.jetbrains.WavePanelHolder
@@ -19,11 +22,13 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.util.Base64
+import javax.swing.SwingUtilities
 
 /**
  * Dispatches webview commands → stdio RPC / local actions.
@@ -427,6 +432,20 @@ class MessageHandler(
             "updatePlugin" -> handlePluginMutation(msg) { id, _ ->
                 session.agent?.updatePlugin(id, currentWorkdir())
             }
+            // 更换安装作用域（设置页插件市场）：清各作用域启用记录 + 在目标作用域启用
+            "setPluginScope" -> handlePluginMutation(msg) { id, scope ->
+                if (scope == null) null else session.agent?.setPluginScope(id, scope, currentWorkdir())
+            }
+            // 新建市场「本地路径」：IDE 原生目录选择器，选定即把 path 回给 webview
+            // （webview 再发 addMarketplace，走统一的新增/报错路径）。
+            "selectPluginMarketFolder" -> {
+                val requestId = msg["requestId"]?.jsonPrimitive?.content ?: return
+                val path = choosePluginMarketFolder()
+                postMessage("pluginMarketFolderSelected", buildJsonObject {
+                    put("requestId", requestId)
+                    if (path != null) put("path", path)
+                })
+            }
 
             // ── Marketplaces ───────────────────────────────────────────
             // VSCE :116/:333 → listMarketplacesResponse { marketplaces }
@@ -439,12 +458,14 @@ class MessageHandler(
                 }
                 postMessage("listMarketplacesResponse", buildJsonObject { put("marketplaces", marketplaces) })
             }
-            // VSCE :119/:339 → add, show info, reload list
+            // VSCE :119/:339 → add, show info, reload list（插件按市场组织，市场增减
+            // 会改变插件集合 → 插件列表一并刷新）
             "addMarketplace" -> {
                 val input = msg["input"]?.jsonPrimitive?.content ?: return
                 try {
                     session.agent?.addMarketplace(input, currentWorkdir())
                     postListMarketplaces()
+                    postListPlugins()
                 } catch (e: StdioClientException) {
                     LOG.warn("addMarketplace failed: ${e.message}")
                     IdeService.showError(project, "添加市场失败: ${e.message}")
@@ -456,17 +477,26 @@ class MessageHandler(
                 try {
                     session.agent?.removeMarketplace(name, currentWorkdir())
                     postListMarketplaces()
+                    postListPlugins()
                 } catch (e: StdioClientException) {
                     LOG.warn("removeMarketplace failed: ${e.message}")
                     IdeService.showError(project, "移除市场失败: ${e.message}")
                 }
             }
-            // VSCE :125/:358 → update, show info, reload list
+            // 更新市场：拉取最新市场源并升级该市场内已安装且有新版本的插件（升级在
+            // SDK 侧完成），返回实际升级数量 → 0 个时提示「已是最新」
+            // （spec 插件市场场景 13）。
             "updateMarketplace" -> {
                 val name = msg["name"]?.jsonPrimitive?.content
                 try {
-                    session.agent?.updateMarketplace(currentWorkdir(), name)
+                    val result = session.agent?.updateMarketplace(currentWorkdir(), name)
+                    val updated = result?.jsonObject?.get("updated")?.jsonPrimitive?.intOrNull ?: 0
                     postListMarketplaces()
+                    postListPlugins()
+                    IdeService.showInfo(
+                        project,
+                        if (updated > 0) "已更新 $updated 个插件" else "当前市场已是最新",
+                    )
                 } catch (e: StdioClientException) {
                     LOG.warn("updateMarketplace failed: ${e.message}")
                     IdeService.showError(project, "更新市场失败: ${e.message}")
@@ -928,6 +958,29 @@ class MessageHandler(
         }
     }
 
+    /**
+     * 插件市场「新建市场 → 本地路径」的原生目录选择器。FileChooser 只能在 EDT 上调，
+     * 这里把选择动作 marshal 到 EDT 并等用户选完（本协程在后台线程，阻塞安全）；
+     * 用户取消返回 null。
+     */
+    private fun choosePluginMarketFolder(): String? {
+        var chosen: String? = null
+        val action = Runnable {
+            chosen = FileChooser.chooseFile(
+                FileChooserDescriptorFactory.createSingleFolderDescriptor()
+                    .withTitle("选择插件市场目录"),
+                project,
+                null,
+            )?.path
+        }
+        if (SwingUtilities.isEventDispatchThread()) {
+            action.run()
+        } else {
+            ApplicationManager.getApplication().invokeAndWait(action)
+        }
+        return chosen
+    }
+
     private suspend fun postListPlugins() {
         val plugins = try {
             session.agent?.listPlugins(currentWorkdir())?.jsonObject?.get("plugins") ?: JsonArray(emptyList())
@@ -1162,7 +1215,7 @@ class MessageHandler(
         // opening a popup" bug.
         val local = listOf(
             triple("config", "config", "打开配置设置"),
-            triple("plugin", "plugin", "打开插件管理"),
+            triple("plugin", "plugin", "打开插件市场"),
             triple("mcp", "mcp", "打开 MCP 服务器管理"),
             triple("status", "status", "查看当前状态"),
             triple("tasks", "tasks", "查看后台任务"),

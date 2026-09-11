@@ -199,9 +199,6 @@
 [data-host="desktop"] .todo-in_progress .todo-status-icon {
   color: var(--vscode-foreground);
 }
-[data-host="desktop"] .plugin-tab.active {
-  color: var(--vscode-foreground);
-}
 
 /* 发送按钮禁用态：桌面端空输入 = 浅灰禁用（codechat composer 规范），
    不透明度不衰减，用底色区分而非透明度。 */
@@ -2758,9 +2755,6 @@
 
 /* 正文 regular（normal 重置并入，值不变）：显式 reset 为 400 的字面语义
    统一走 token；codicon 图标字重同归 regular。 */
-[data-host="desktop"] .plugin-version,
-[data-host="desktop"] .plugin-scope,
-[data-host="desktop"] .plugin-status-tag,
 [data-host="desktop"] .recommended-tag,
 [data-host="desktop"] .compact-params,
 [data-host="desktop"] .bash-command,

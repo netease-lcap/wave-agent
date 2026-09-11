@@ -5,6 +5,7 @@ import {
   screenshotWebp,
   elementScreenshotWebp,
 } from "../e2e/utils/screenshot.js";
+import { openPluginMarket } from "./desktopPluginMarket.js";
 
 // Desktop 4.1 SDD / 5.2 插件 screenshots — captured inside the desktop layout.
 const DIR_A = "/Users/dev/projects/wave-agent";
@@ -110,19 +111,16 @@ order: 1
     );
   });
 
-  test("5.2 1) 安装插件（探索新插件）", async ({ webviewPage }) => {
+  test("5.2 1) 安装插件（设置页插件市场）", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 960, height: 720 });
     await setup(webviewPage, injector);
 
-    await injector.simulateExtensionMessage("showDialog", {
-      dialogType: "plugin",
-    });
-    await expect(
-      webviewPage.getByText("插件管理", { exact: true }),
-    ).toBeVisible();
-
-    await injector.simulateExtensionMessage("listPluginsResponse", {
+    await openPluginMarket(webviewPage, injector, {
+      marketplaces: [
+        { name: "wave-plugins-official" },
+        { name: "wave-community" },
+      ],
       plugins: [
         {
           id: "git-workflow@wave-plugins-official",
@@ -131,7 +129,7 @@ order: 1
             "集成 Git 工作流，支持智能提交信息生成、PR 审查和冲突解决",
           marketplace: "wave-plugins-official",
           installed: false,
-          version: "2.3.1",
+          latestVersion: "2.3.1",
         },
         {
           id: "kubernetes-helper@wave-plugins-official",
@@ -139,7 +137,7 @@ order: 1
           description: "简化 K8s 集群管理，提供 Pod 诊断、日志查询和资源监控",
           marketplace: "wave-plugins-official",
           installed: false,
-          version: "1.8.0",
+          latestVersion: "1.8.0",
         },
         {
           id: "database-explorer@wave-community",
@@ -148,36 +146,37 @@ order: 1
             "连接多种数据库（PostgreSQL、MySQL、MongoDB），支持智能查询和 schema 可视化",
           marketplace: "wave-community",
           installed: false,
-          version: "0.9.5",
+          latestVersion: "0.9.5",
         },
       ],
     });
-    await webviewPage.waitForSelector(".plugin-item");
-    await expect(webviewPage.getByText("Git Workflow")).toBeVisible();
 
-    // Click a plugin to show the install detail (scope selection).
-    await webviewPage.getByText("Git Workflow").click();
-    await expect(webviewPage.getByText("选择安装作用域")).toBeVisible();
-    await expect(webviewPage.getByText("为你安装 (user)")).toBeVisible();
     await screenshotWebp(
       webviewPage,
-      "../../docs/public/screenshots/desktop-plugin-explore.webp",
+      "../../docs/public/screenshots/desktop-plugin-market.webp",
+    );
+
+    // 行内「安装」→ 作用域选择弹窗
+    await webviewPage
+      .locator(".settings-plugin-row", { hasText: "Git Workflow" })
+      .getByTitle("安装插件")
+      .click();
+    await expect(
+      webviewPage.getByRole("dialog", { name: "选择安装作用域" }),
+    ).toBeVisible();
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-plugin-scope.webp",
     );
   });
 
-  test("5.2 2) 启用 / 禁用插件", async ({ webviewPage }) => {
+  test("5.2 2) 查看已安装插件与安装作用域", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 960, height: 720 });
     await setup(webviewPage, injector);
 
-    await injector.simulateExtensionMessage("showDialog", {
-      dialogType: "plugin",
-    });
-    await expect(
-      webviewPage.getByText("插件管理", { exact: true }),
-    ).toBeVisible();
-
-    await injector.simulateExtensionMessage("listPluginsResponse", {
+    await openPluginMarket(webviewPage, injector, {
+      marketplaces: [{ name: "wave-plugins-official" }],
       plugins: [
         {
           id: "code-reviewer@wave-plugins-official",
@@ -188,17 +187,8 @@ order: 1
           installed: true,
           enabled: true,
           version: "3.1.2",
+          latestVersion: "3.2.0",
           scope: "user",
-        },
-        {
-          id: "api-docs-generator@wave-community",
-          name: "API Docs Generator",
-          description: "从代码自动生成 OpenAPI 文档，支持实时预览和交互式测试",
-          marketplace: "wave-community",
-          installed: true,
-          enabled: false,
-          version: "1.4.0",
-          scope: "project",
         },
         {
           id: "document-skills@wave-plugins-official",
@@ -209,13 +199,24 @@ order: 1
           installed: true,
           enabled: true,
           version: "2.1.0",
-          scope: "user",
+          latestVersion: "2.1.0",
+          scope: "project",
+        },
+        {
+          id: "api-docs-generator@wave-plugins-official",
+          name: "API Docs Generator",
+          description: "从代码自动生成 OpenAPI 文档，支持实时预览和交互式测试",
+          marketplace: "wave-plugins-official",
+          installed: false,
+          latestVersion: "1.4.0",
         },
       ],
     });
-    // Switch to the installed tab and screenshot the enable/disable state.
-    await webviewPage.getByText("已安装插件", { exact: true }).click();
-    await webviewPage.waitForSelector('.plugin-item:has-text("Code Reviewer")');
+
+    // 筛选出已安装插件的状态与作用域（「✓ 已安装」按钮即更换作用域入口）
+    await webviewPage.getByRole("button", { name: /^已安装/ }).click();
+    await expect(webviewPage.getByText("Code Reviewer")).toBeVisible();
+    await expect(webviewPage.getByText("API Docs Generator")).toHaveCount(0);
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-plugin-installed.webp",

@@ -1,4 +1,6 @@
 import { Container } from "../utils/container.js";
+import path from "node:path";
+import fs from "node:fs/promises";
 import { PluginManager } from "../managers/pluginManager.js";
 import { PluginScopeManager } from "../managers/pluginScopeManager.js";
 import { MarketplaceService } from "../services/MarketplaceService.js";
@@ -93,6 +95,17 @@ export class PluginCore {
   }
 
   /**
+   * Moves an installed plugin to another installation scope: clears its
+   * enabledPlugins record from every scope, then enables it in the target one
+   * (spec plugin「设置页插件市场」场景 11：更换作用域后旧作用域不再保留该插件)。
+   */
+  async setPluginScope(pluginId: string, scope: Scope): Promise<Scope> {
+    await this.pluginScopeManager.removePluginFromAllScopes(pluginId);
+    await this.pluginScopeManager.enablePlugin(scope, pluginId);
+    return scope;
+  }
+
+  /**
    * Updates an installed plugin to the latest version from its marketplace
    */
   async updatePlugin(pluginId: string): Promise<InstalledPlugin> {
@@ -124,10 +137,14 @@ export class PluginCore {
 
     for (const m of marketplaces) {
       try {
-        const manifest = await this.marketplaceService.loadMarketplaceManifest(
-          this.marketplaceService.getMarketplacePath(m.source),
+        const marketplacePath = this.marketplaceService.getMarketplacePath(
+          m.source,
         );
-        manifest.plugins.forEach((p) => {
+        const manifest =
+          await this.marketplaceService.loadMarketplaceManifest(
+            marketplacePath,
+          );
+        for (const p of manifest.plugins) {
           const pluginId = `${p.name}@${m.name}`;
           const installed = installedPlugins.plugins.find(
             (ip) => ip.name === p.name && ip.marketplace === m.name,
@@ -137,12 +154,16 @@ export class PluginCore {
             marketplace: m.name,
             installed: !!installed,
             version: installed?.version,
+            latestVersion: await this.readLatestVersion(
+              marketplacePath,
+              p.source,
+            ),
             cachePath: installed?.cachePath,
             projectPath: installed?.projectPath,
             scope:
               this.pluginScopeManager.findPluginScope(pluginId) || undefined,
           });
-        });
+        }
       } catch {
         // Skip marketplaces that fail to load
       }
@@ -152,6 +173,39 @@ export class PluginCore {
       plugins: allMarketplacePlugins,
       mergedEnabled,
     };
+  }
+
+  /**
+   * Reads the version declared by a marketplace plugin's own manifest inside the
+   * marketplace checkout — the version a fresh install would get. Git-URL plugin
+   * sources are not fetched here (they have no local copy until install), so they
+   * yield undefined (spec plugin A-010).
+   */
+  private async readLatestVersion(
+    marketplacePath: string,
+    source: string,
+  ): Promise<string | undefined> {
+    const isGitSource =
+      source.startsWith("http://") ||
+      source.startsWith("https://") ||
+      source.startsWith("git@") ||
+      source.startsWith("ssh://");
+    if (isGitSource || !source) return undefined;
+
+    const pluginPath = path.resolve(marketplacePath, source);
+    for (const dir of [".wave-plugin", ".claude-plugin"]) {
+      try {
+        const raw = await fs.readFile(
+          path.join(pluginPath, dir, "plugin.json"),
+          "utf-8",
+        );
+        const version = (JSON.parse(raw) as { version?: string }).version;
+        if (version) return version;
+      } catch {
+        // Try the next manifest location
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -177,9 +231,11 @@ export class PluginCore {
    * Pulls the latest marketplace source and reinstalls any plugins that are
    * already installed from it, so a manual "update marketplace" also brings
    * installed plugins up to date (mirrors Claude Code's refresh-and-bump).
+   *
+   * @returns 实际发生版本变化的插件数量（0 = 全部已是最新），供 GUI 宿主区分提示。
    */
-  async updateMarketplace(name?: string): Promise<void> {
-    await this.marketplaceService.updateMarketplace(name, {
+  async updateMarketplace(name?: string): Promise<number> {
+    return await this.marketplaceService.updateMarketplace(name, {
       updatePlugins: true,
     });
   }

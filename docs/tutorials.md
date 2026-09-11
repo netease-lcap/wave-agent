@@ -244,11 +244,11 @@ _确认后重新汇入实现流程：任务列表展示「更新功能规格」�
 
 ### 1. 安装 chrome-devtools 插件
 
-chrome-devtools 已内置在官方插件市场，无需手动配置 MCP：打开插件市场，搜索 chrome-devtools，点击进入详情后选择安装作用域，一键安装。安装后 MCP 服务器自动注册并连接。
+chrome-devtools 已内置在官方插件市场，无需手动配置 MCP：打开「设置 → 插件市场」，搜索 chrome-devtools，点击行内「安装」并选择安装作用域，一键安装。安装后 MCP 服务器自动注册并连接。
 
 ![插件市场安装 chrome-devtools](/screenshots/desktop-plugin-chrome-devtools.webp)
 
-也可以在对话中输入 `/plugin` 打开插件市场，搜索 chrome-devtools 完成安装。如需自定义启动参数，仍可在设置 → MCP 中手动添加，更多配置方式见 [桌面版文档 - MCP](/desktop#_5-1-mcp)。
+也可以在对话中输入 `/plugin` 直接打开插件市场，搜索 chrome-devtools 完成安装。如需自定义启动参数，仍可在设置 → MCP 中手动添加，更多配置方式见 [桌面版文档 - MCP](/desktop#_5-1-mcp)。
 
 ### 2. 对话驱动自动化测试
 

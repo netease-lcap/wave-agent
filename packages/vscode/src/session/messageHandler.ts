@@ -205,33 +205,6 @@ export class MessageHandler {
           windowId,
         );
         break;
-      case "listPlugins":
-        await this.handleListPlugins(viewType, windowId);
-        break;
-      case "installPlugin":
-        await this.handleInstallPlugin(
-          msg.pluginId as string,
-          msg.scope as string,
-          viewType,
-          windowId,
-        );
-        break;
-      case "enablePlugin":
-        await this.handleEnablePlugin(
-          msg.pluginId as string,
-          msg.scope as string,
-          viewType,
-          windowId,
-        );
-        break;
-      case "disablePlugin":
-        await this.handleDisablePlugin(
-          msg.pluginId as string,
-          msg.scope as string,
-          viewType,
-          windowId,
-        );
-        break;
       case "getProjectSettings":
         await this.handleGetProjectSettings(viewType, windowId);
         break;
@@ -240,44 +213,6 @@ export class MessageHandler {
           msg.pluginId as string,
           msg.enabled as boolean,
           msg.scope as string,
-          viewType,
-          windowId,
-        );
-        break;
-      case "uninstallPlugin":
-        await this.handleUninstallPlugin(
-          msg.pluginId as string,
-          viewType,
-          windowId,
-        );
-        break;
-      case "updatePlugin":
-        await this.handleUpdatePlugin(
-          msg.pluginId as string,
-          viewType,
-          windowId,
-        );
-        break;
-      case "listMarketplaces":
-        await this.handleListMarketplaces(viewType, windowId);
-        break;
-      case "addMarketplace":
-        await this.handleAddMarketplace(
-          msg.input as string,
-          viewType,
-          windowId,
-        );
-        break;
-      case "removeMarketplace":
-        await this.handleRemoveMarketplace(
-          msg.name as string,
-          viewType,
-          windowId,
-        );
-        break;
-      case "updateMarketplace":
-        await this.handleUpdateMarketplace(
-          msg.name as string,
           viewType,
           windowId,
         );
@@ -521,6 +456,69 @@ export class MessageHandler {
           msg.pluginId as string,
           msg.enabled as boolean,
           msg.scope as string,
+        );
+        break;
+      // 插件市场（设置页「AI 与扩展 → 插件市场」视图）：命令与回包都走设置
+      // 面板路由——插件市场只在设置页渲染（PluginDialog 已删除，/plugin 变为
+      // 唤起设置页该选项卡），聊天路由不再注册这批命令。
+      case "listPlugins":
+        await this.handleSettingsListPlugins();
+        break;
+      case "listMarketplaces":
+        await this.handleSettingsListMarketplaces();
+        break;
+      case "installPlugin":
+        await this.applyPluginChange(
+          () =>
+            this.pluginService.installPlugin(
+              msg.pluginId as string,
+              msg.scope as Scope,
+            ),
+          "安装插件失败",
+        );
+        break;
+      case "uninstallPlugin":
+        await this.applyPluginChange(
+          () => this.pluginService.uninstallPlugin(msg.pluginId as string),
+          "卸载插件失败",
+        );
+        break;
+      case "updatePlugin":
+        await this.applyPluginChange(
+          () => this.pluginService.updatePlugin(msg.pluginId as string),
+          "更新插件失败",
+        );
+        break;
+      case "setPluginScope":
+        await this.applyPluginChange(
+          () =>
+            this.pluginService.setPluginScope(
+              msg.pluginId as string,
+              msg.scope as Scope,
+            ),
+          "更换安装作用域失败",
+        );
+        break;
+      case "addMarketplace":
+        await this.applyMarketplaceChange(
+          () => this.pluginService.addMarketplace(msg.input as string),
+          "添加市场失败",
+        );
+        break;
+      case "removeMarketplace":
+        await this.applyMarketplaceChange(
+          () => this.pluginService.removeMarketplace(msg.name as string),
+          "移除市场失败",
+        );
+        break;
+      case "updateMarketplace":
+        await this.handleSettingsUpdateMarketplace(
+          msg.name as string | undefined,
+        );
+        break;
+      case "selectPluginMarketFolder":
+        await this.handleSettingsSelectPluginMarketFolder(
+          msg.requestId as string,
         );
         break;
       case "getHooksConfig":
@@ -806,6 +804,121 @@ export class MessageHandler {
     } catch (error) {
       console.error("修改项目设置失败:", error);
       vscode.window.showErrorMessage("修改项目设置失败: " + error);
+    }
+  }
+
+  /** 插件市场：插件列表（回包发给设置面板，插件市场视图据此渲染）。 */
+  private async handleSettingsListPlugins(): Promise<void> {
+    try {
+      const plugins = await this.pluginService.listPlugins();
+      this.context.postSettingsMessage({
+        command: "listPluginsResponse",
+        plugins,
+      });
+    } catch (error) {
+      console.error("获取插件列表失败:", error);
+      vscode.window.showErrorMessage("获取插件列表失败: " + error);
+    }
+  }
+
+  /** 插件市场：已注册市场列表（同上）。 */
+  private async handleSettingsListMarketplaces(): Promise<void> {
+    try {
+      const marketplaces = await this.pluginService.listMarketplaces();
+      this.context.postSettingsMessage({
+        command: "listMarketplacesResponse",
+        marketplaces,
+      });
+    } catch (error) {
+      console.error("获取市场列表失败:", error);
+      vscode.window.showErrorMessage("获取市场列表失败: " + error);
+    }
+  }
+
+  /**
+   * 执行一次插件变更（安装/卸载/更新/更换作用域）并收尾：刷新插件列表 +
+   * 重建全部会话 agent。插件在 Agent 构造期注册技能/命令/子代理/MCP，属构造期
+   * 副作用（spec agent-config「配置变更的构造期副作用与重建」），不重建则运行中
+   * 的会话看不到变更。失败经宿主提示告知原因（spec 插件市场场景 17）。
+   */
+  private async applyPluginChange(
+    change: () => Promise<unknown>,
+    failureMessage: string,
+  ): Promise<void> {
+    try {
+      await change();
+      await this.handleSettingsListPlugins();
+      this.context.updateAllSessionsConfig();
+    } catch (error) {
+      console.error(`${failureMessage}:`, error);
+      vscode.window.showErrorMessage(`${failureMessage}: ${error}`);
+    }
+  }
+
+  /**
+   * 执行一次市场变更（新增/移除）并收尾：市场列表与插件列表都要刷新——插件按
+   * 所属市场组织，市场增减会改变插件集合（spec 插件市场场景 15）。
+   */
+  private async applyMarketplaceChange(
+    change: () => Promise<unknown>,
+    failureMessage: string,
+  ): Promise<void> {
+    try {
+      await change();
+      await this.handleSettingsListMarketplaces();
+      await this.handleSettingsListPlugins();
+    } catch (error) {
+      console.error(`${failureMessage}:`, error);
+      vscode.window.showErrorMessage(`${failureMessage}: ${error}`);
+    }
+  }
+
+  /**
+   * 更新市场：拉取最新市场源并升级该市场内已安装且有新版本的插件（升级发生在
+   * SDK 侧），按实际升级数量给出宿主提示——0 个时提示「已是最新」
+   * （spec 插件市场场景 13）。
+   */
+  private async handleSettingsUpdateMarketplace(name?: string): Promise<void> {
+    try {
+      const { updated } = await this.pluginService.updateMarketplace(name);
+      await this.handleSettingsListMarketplaces();
+      await this.handleSettingsListPlugins();
+      vscode.window.showInformationMessage(
+        updated > 0 ? `已更新 ${updated} 个插件` : "当前市场已是最新",
+      );
+    } catch (error) {
+      console.error("更新市场失败:", error);
+      vscode.window.showErrorMessage("更新市场失败: " + error);
+    }
+  }
+
+  /**
+   * 新建市场「本地路径」的系统目录选择器（VS Code 原生 showOpenDialog）。
+   * 选定即回 path，用户取消/失败时只回 requestId（webview 据此清掉等待态）。
+   */
+  private async handleSettingsSelectPluginMarketFolder(
+    requestId: string,
+  ): Promise<void> {
+    try {
+      const selected = await vscode.window.showOpenDialog({
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+        title: "选择插件市场目录",
+      });
+      this.context.postSettingsMessage({
+        command: "pluginMarketFolderSelected",
+        requestId,
+        ...(selected && selected.length > 0
+          ? { path: selected[0].fsPath }
+          : {}),
+      });
+    } catch (error) {
+      console.error("选择插件市场目录失败:", error);
+      this.context.postSettingsMessage({
+        command: "pluginMarketFolderSelected",
+        requestId,
+      });
     }
   }
 
@@ -1294,74 +1407,6 @@ export class MessageHandler {
     }
   }
 
-  private async handleListPlugins(
-    viewType?: "sidebar" | "tab" | "window",
-    windowId?: string,
-  ) {
-    try {
-      const plugins = await this.pluginService.listPlugins();
-      this.context.postMessage(
-        { command: "listPluginsResponse", plugins },
-        viewType,
-        windowId,
-      );
-    } catch (error) {
-      vscode.window.showErrorMessage("获取插件列表失败: " + error);
-    }
-  }
-
-  private async handleInstallPlugin(
-    pluginId: string,
-    scope: string,
-    viewType?: "sidebar" | "tab" | "window",
-    windowId?: string,
-  ) {
-    try {
-      await this.pluginService.installPlugin(pluginId, scope as Scope);
-      vscode.window.showInformationMessage(`插件 ${pluginId} 安装成功`);
-      await this.handleListPlugins(viewType, windowId);
-
-      // Recreate agents so plugin changes take effect
-      this.context.updateAllSessionsConfig();
-    } catch (error) {
-      vscode.window.showErrorMessage("安装插件失败: " + error);
-    }
-  }
-
-  private async handleEnablePlugin(
-    pluginId: string,
-    scope: string,
-    viewType?: "sidebar" | "tab" | "window",
-    windowId?: string,
-  ) {
-    try {
-      await this.pluginService.enablePlugin(pluginId, scope as Scope);
-      await this.handleListPlugins(viewType, windowId);
-
-      // Recreate agents so plugin changes take effect
-      this.context.updateAllSessionsConfig();
-    } catch (error) {
-      vscode.window.showErrorMessage("启用插件失败: " + error);
-    }
-  }
-
-  private async handleDisablePlugin(
-    pluginId: string,
-    scope: string,
-    viewType?: "sidebar" | "tab" | "window",
-    windowId?: string,
-  ) {
-    try {
-      await this.pluginService.disablePlugin(pluginId, scope as Scope);
-      await this.handleListPlugins(viewType, windowId);
-
-      // Recreate agents so plugin changes take effect
-      this.context.updateAllSessionsConfig();
-    } catch (error) {
-      vscode.window.showErrorMessage("禁用插件失败: " + error);
-    }
-  }
-
   private async handleGetProjectSettings(
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
@@ -1411,97 +1456,6 @@ export class MessageHandler {
       this.context.updateAllSessionsConfig();
     } catch (error) {
       vscode.window.showErrorMessage("修改项目设置失败: " + error);
-    }
-  }
-
-  private async handleUninstallPlugin(
-    pluginId: string,
-    viewType?: "sidebar" | "tab" | "window",
-    windowId?: string,
-  ) {
-    try {
-      await this.pluginService.uninstallPlugin(pluginId);
-      vscode.window.showInformationMessage("插件卸载成功");
-      await this.handleListPlugins(viewType, windowId);
-
-      // Recreate agents so plugin changes take effect
-      this.context.updateAllSessionsConfig();
-    } catch (error) {
-      vscode.window.showErrorMessage("卸载插件失败: " + error);
-    }
-  }
-
-  private async handleUpdatePlugin(
-    pluginId: string,
-    viewType?: "sidebar" | "tab" | "window",
-    windowId?: string,
-  ) {
-    try {
-      await this.pluginService.updatePlugin(pluginId);
-      vscode.window.showInformationMessage(`插件 ${pluginId} 更新成功`);
-      await this.handleListPlugins(viewType, windowId);
-
-      // Recreate agents so plugin changes take effect
-      this.context.updateAllSessionsConfig();
-    } catch (error) {
-      vscode.window.showErrorMessage("更新插件失败: " + error);
-    }
-  }
-
-  private async handleListMarketplaces(
-    viewType?: "sidebar" | "tab" | "window",
-    windowId?: string,
-  ) {
-    try {
-      const marketplaces = await this.pluginService.listMarketplaces();
-      this.context.postMessage(
-        { command: "listMarketplacesResponse", marketplaces },
-        viewType,
-        windowId,
-      );
-    } catch (error) {
-      vscode.window.showErrorMessage("获取市场列表失败: " + error);
-    }
-  }
-
-  private async handleAddMarketplace(
-    input: string,
-    viewType?: "sidebar" | "tab" | "window",
-    windowId?: string,
-  ) {
-    try {
-      await this.pluginService.addMarketplace(input);
-      vscode.window.showInformationMessage("市场添加成功");
-      await this.handleListMarketplaces(viewType, windowId);
-    } catch (error) {
-      vscode.window.showErrorMessage("添加市场失败: " + error);
-    }
-  }
-
-  private async handleRemoveMarketplace(
-    name: string,
-    viewType?: "sidebar" | "tab" | "window",
-    windowId?: string,
-  ) {
-    try {
-      await this.pluginService.removeMarketplace(name);
-      await this.handleListMarketplaces(viewType, windowId);
-    } catch (error) {
-      vscode.window.showErrorMessage("移除市场失败: " + error);
-    }
-  }
-
-  private async handleUpdateMarketplace(
-    name?: string,
-    viewType?: "sidebar" | "tab" | "window",
-    windowId?: string,
-  ) {
-    try {
-      await this.pluginService.updateMarketplace(name);
-      vscode.window.showInformationMessage("市场更新成功");
-      await this.handleListMarketplaces(viewType, windowId);
-    } catch (error) {
-      vscode.window.showErrorMessage("更新市场失败: " + error);
     }
   }
 
@@ -1943,7 +1897,7 @@ export class MessageHandler {
       // Local UI slash commands (not in SDK, intercepted in webview)
       const localCommands = [
         { id: "config", name: "config", description: "打开配置设置" },
-        { id: "plugin", name: "plugin", description: "打开插件管理" },
+        { id: "plugin", name: "plugin", description: "打开插件市场" },
         { id: "mcp", name: "mcp", description: "打开 MCP 服务器管理" },
         { id: "status", name: "status", description: "查看当前状态" },
         { id: "clear", name: "clear", description: "清除对话历史并重置会话" },

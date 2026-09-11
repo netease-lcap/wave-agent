@@ -441,6 +441,13 @@ export class AgentBridge {
           p.workdir as string | undefined,
           sessionId,
         );
+      case "setPluginScope":
+        return this.setPluginScope(
+          p.pluginId as string,
+          p.scope as Scope,
+          p.workdir as string | undefined,
+          sessionId,
+        );
       case "listMarketplaces":
         return this.listMarketplaces(
           p.workdir as string | undefined,
@@ -1730,6 +1737,7 @@ export class AgentBridge {
           marketplace: p.marketplace,
           installed: p.installed,
           version: p.version,
+          latestVersion: p.latestVersion,
           enabled: mergedEnabled[pluginId] !== false,
           scope: p.scope,
         };
@@ -1891,6 +1899,22 @@ export class AgentBridge {
     return this.getPluginCore(workdir, sessionId).updatePlugin(pluginId);
   }
 
+  /**
+   * 更换已安装插件的安装作用域（设置页插件市场）：清掉各作用域的启用记录后
+   * 在目标作用域启用，因此旧作用域不再保留该插件。
+   */
+  private async setPluginScope(
+    pluginId: string,
+    scope: Scope,
+    workdir?: string,
+    sessionId?: string,
+  ) {
+    return this.getPluginCore(workdir, sessionId).setPluginScope(
+      pluginId,
+      scope,
+    );
+  }
+
   private async listMarketplaces(workdir?: string, sessionId?: string) {
     return this.getPluginCore(workdir, sessionId).listMarketplaces();
   }
@@ -1919,8 +1943,13 @@ export class AgentBridge {
     workdir?: string,
     sessionId?: string,
   ) {
-    await this.getPluginCore(workdir, sessionId).updateMarketplace(name);
-    return null;
+    const updated = await this.getPluginCore(
+      workdir,
+      sessionId,
+    ).updateMarketplace(name);
+    // 实际升级的插件数回给宿主：0 = 该市场已是最新（宿主据此提示，
+    // spec 插件市场场景 13）。
+    return { updated };
   }
 
   // ── Callbacks → Notifications ─────────────────────────────────

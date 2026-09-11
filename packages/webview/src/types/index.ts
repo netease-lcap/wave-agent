@@ -758,7 +758,7 @@ export interface ChatState {
   // Agent working directory, used to render tool file paths as relative.
   workdir?: string;
   // Dialog state
-  activeDialog: "plugin" | "mcp" | "status" | "tasks" | "workflows" | null;
+  activeDialog: "mcp" | "status" | "tasks" | "workflows" | null;
   configurationData?: ConfigurationData;
   configurationLoading: boolean;
   configurationError?: string;
@@ -837,15 +837,19 @@ export interface PluginInfo {
   name: string;
   description?: string;
   version?: string;
+  /** 市场检出目录内该插件的清单版本（spec ecosystem/plugin A-010）：来源为独立
+   *  Git 仓库等无法就地读取清单时不展示。 */
+  latestVersion?: string;
   enabled?: boolean;
   installed?: boolean;
   marketplace?: string;
   scope?: PluginScope;
 }
 
+/** 已注册插件市场（宿主 listMarketplaces 下发的 KnownMarketplace 子集：设置页
+ *  只需名称——市场名由市场自身清单决定，设置页不展示/编辑来源地址）。 */
 export interface MarketplaceInfo {
   name: string;
-  url: string;
 }
 
 export type PluginScope = "user" | "project" | "local";
@@ -858,13 +862,6 @@ export interface SelectionInfo {
   lineCount: number;
   selectedText: string;
   isEmpty: boolean;
-}
-
-/**
- * Props for the plugin management dialog component
- */
-export interface PluginDialogProps {
-  onClose: () => void;
 }
 
 /**
@@ -909,7 +906,7 @@ export type ChatAction =
   | {
       type: "SHOW_DIALOG";
       payload: {
-        type: "plugin" | "mcp" | "status" | "tasks" | "workflows";
+        type: "mcp" | "status" | "tasks" | "workflows";
       };
     }
   | { type: "HIDE_DIALOG" }

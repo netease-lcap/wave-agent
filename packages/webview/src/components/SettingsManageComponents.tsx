@@ -10,7 +10,8 @@ import React from "react";
 
 export interface SettingsTabDef {
   key: string;
-  label: string;
+  /** Tab 文案；插件市场的市场 Tab 在名称后附计数角标，故允许节点。 */
+  label: React.ReactNode;
 }
 
 export interface SettingsTabsProps {

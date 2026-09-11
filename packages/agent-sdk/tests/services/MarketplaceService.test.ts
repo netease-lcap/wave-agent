@@ -263,7 +263,7 @@ describe("MarketplaceService - Builtin Marketplace", () => {
     ).rejects.toThrow("Failed to load manifest from cloned repository");
   });
 
-  it("should update existing marketplace with same name", async () => {
+  it("should reject re-adding the same source (来源重复)", async () => {
     vi.spyOn(
       service,
       "loadMarketplaceManifest" as keyof MarketplaceService,
@@ -275,15 +275,76 @@ describe("MarketplaceService - Builtin Marketplace", () => {
 
     // Add first time
     await service.addMarketplace("https://github.com/user/repo");
-    // Add again - should update
-    const added = await service.addMarketplace("https://github.com/user/repo");
-    expect(added.name).toBe("custom-mkt");
+    // 来源重复不允许添加（spec ecosystem/plugin 场景 16）
+    await expect(
+      service.addMarketplace("https://github.com/user/repo"),
+    ).rejects.toThrow("该市场来源已添加：custom-mkt");
+
+    // 判重发生在克隆前：第二次不再 Clone
+    expect(
+      vi.mocked(
+        service["gitService"] as unknown as { clone: () => Promise<void> },
+      ).clone,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("should reject the same local directory twice (来源重复)", async () => {
+    vi.spyOn(
+      service,
+      "loadMarketplaceManifest" as keyof MarketplaceService,
+    ).mockResolvedValue({
+      name: "disk-mkt",
+      owner: { name: "test" },
+      plugins: [],
+    });
+
+    await service.addMarketplace("/work/team-plugins");
+    await expect(service.addMarketplace("/work/team-plugins")).rejects.toThrow(
+      "该市场来源已添加：disk-mkt",
+    );
+  });
+
+  it("should reject a different source declaring an existing name (同名市场)", async () => {
+    vi.spyOn(
+      service,
+      "loadMarketplaceManifest" as keyof MarketplaceService,
+    ).mockResolvedValue({
+      name: "custom-mkt",
+      owner: { name: "test" },
+      plugins: [],
+    });
+
+    await service.addMarketplace("https://github.com/user/repo");
+    // 另一个来源但清单声明同名 → 不允许添加
+    await expect(
+      service.addMarketplace("https://github.com/other/repo"),
+    ).rejects.toThrow("同名市场已存在：custom-mkt");
+  });
+
+  it("should still allow a different source with a different name", async () => {
+    const manifest = vi.spyOn(
+      service,
+      "loadMarketplaceManifest" as keyof MarketplaceService,
+    );
+    manifest.mockResolvedValue({
+      name: "custom-mkt",
+      owner: { name: "test" },
+      plugins: [],
+    });
+    await service.addMarketplace("https://github.com/user/repo");
+
+    manifest.mockResolvedValue({
+      name: "other-mkt",
+      owner: { name: "test" },
+      plugins: [],
+    });
+    const added = await service.addMarketplace("https://github.com/other/repo");
+    expect(added.name).toBe("other-mkt");
 
     const registry = await service.getKnownMarketplaces();
-    const customMkt = registry.marketplaces.find(
-      (m) => m.name === "custom-mkt",
-    );
-    expect(customMkt).toBeDefined();
+    const names = registry.marketplaces.map((m) => m.name);
+    expect(names).toContain("custom-mkt");
+    expect(names).toContain("other-mkt");
   });
 });
 

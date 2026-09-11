@@ -76,8 +76,6 @@ const HOST_FILES = {
 const LEGACY_HOST_CASES = {
   vscode_chat: new Set([
     "deleteQueuedMessage", // 历史遗留：webview 已改用 deleteQueuedMessageById
-    "enablePlugin", // 历史遗留：插件启停已并入 install/uninstall + setBuiltinPluginEnabled
-    "disablePlugin", // 同上
     "getAuthStatus", // 宿主主动发起：webviewReady 后 host 自查登录态
     "getWorkflowRuns", // 宿主主动发起 / 轮询
     "listSessions", // 宿主主动发起：聊天面板初始化时 host 拉会话列表
