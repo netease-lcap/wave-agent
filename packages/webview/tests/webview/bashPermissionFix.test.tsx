@@ -22,9 +22,6 @@ describe("Bash Permission Fix", () => {
         messages: [],
         isStreaming: false,
         sessions: [],
-        configurationData: {
-          model: "gpt-4",
-        },
         permissionMode: "default",
       });
     });

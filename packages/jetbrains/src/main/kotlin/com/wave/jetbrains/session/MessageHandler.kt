@@ -5,7 +5,6 @@ import com.intellij.openapi.project.Project
 import com.wave.jetbrains.WaveBackendService
 import com.wave.jetbrains.WavePanelHolder
 import com.wave.jetbrains.bridge.PlanPreviewBuilder
-import com.wave.jetbrains.config.WavePluginService
 import com.wave.jetbrains.ide.IdeService
 import com.wave.jetbrains.stdio.StdioClientException
 import kotlinx.coroutines.CoroutineScope
@@ -140,21 +139,11 @@ class MessageHandler(
             "updateConfiguration" -> {
                 val data = msg["configurationData"]?.jsonObject ?: return
                 try {
-                    // 扩展本地键（model / fastModel / serverUrl）仍落 wave.xml；
                     // 用户偏好（语言 / 上下文长度 / 自动记忆开关与频率）写用户级
                     // `~/.wave/settings.json`（经 CLI 进程），由 SDK 实时重载在**下一轮
                     // 对话**生效——保存不重建会话（spec agent-config「设置实时重载」/
-                    // 「配置变更的构造期副作用与重建」场景 1–2）。
-                    //
-                    // 载荷是部分更新（spec 边界说明「省略键 = 不改该键」）：设置页
-                    // 只带用户真正改动过的键，未提供的本地键必须保持 wave.xml 现值
-                    // （不得回填空串把已有的 model / fastModel 抹掉）。
-                    val config = WavePluginService.getInstance().loadConfiguration().apply {
-                        data["model"]?.jsonPrimitive?.content?.let { model = it }
-                        data["fastModel"]?.jsonPrimitive?.content?.let { fastModel = it }
-                        data["serverUrl"]?.jsonPrimitive?.content?.let { serverUrl = it }
-                    }
-                    WavePluginService.getInstance().saveConfiguration(config)
+                    // 「配置变更的构造期副作用与重建」场景 1–2）。模型经 `/model` 命令
+                    // 走宿主 RPC、服务地址随 authStatusResponse 下发，都不落宿主存储。
                     writeUserSettings(data)
                     // 设置页保存结果经宿主通知提示（spec「设置页反馈语义」）
                     IdeService.showInfo(project, "保存成功")
@@ -490,13 +479,6 @@ class MessageHandler(
                 val (authenticated, user, serverUrl) = try {
                     val res = session.agent?.getAuthStatus()?.jsonObject
                     val url = (res?.get("serverUrl") as? JsonPrimitive)?.contentOrNull ?: ""
-                    if (url.isNotEmpty()) {
-                        val merged = WavePluginService.getInstance().loadConfiguration().apply {
-                            serverUrl = url
-                        }
-                        WavePluginService.getInstance().saveConfiguration(merged)
-                        postConfigurationResponse()
-                    }
                     Triple(
                         res?.get("isAuthenticated")?.jsonPrimitive?.content?.toBoolean() ?: false,
                         res?.get("user"),
@@ -948,12 +930,12 @@ class MessageHandler(
     }
 
     /**
-     * Mirrors VSCE updateAllSessionsConfig(config): reload persisted config and push it to the
-     * live agent so plugin/auth changes take effect.
+     * Mirrors VSCE updateAllSessionsConfig(): rebuild every live agent so plugin/auth
+     * changes take effect. No session-level overrides are sent — 模型经 `/model` RPC、
+     * 用户偏好经用户级 settings.json 实时重载（spec「分层职责」）。
      */
     private suspend fun reloadAgentConfig() {
-        val config = WavePluginService.getInstance().loadConfiguration()
-        WaveBackendService.getInstance(project).updateAllSessionsConfig(buildConfigParams(config))
+        WaveBackendService.getInstance(project).updateAllSessionsConfig()
     }
 
     private fun currentWorkdir(): String =
@@ -997,16 +979,18 @@ class MessageHandler(
     }
 
     /**
-     * 设置页配置回包载荷：扩展本地键（model / fastModel / serverUrl，落 wave.xml）
-     * 合并用户偏好（读用户级 `~/.wave/settings.json`，经共享 CLI 进程）。
+     * 设置页配置回包载荷：**只有用户偏好**（读用户级 `~/.wave/settings.json`，经
+     * 共享 CLI 进程）。
      * 用户偏好的**初始值读取以该文件为落点**，不得回读宿主私有存储
      * （spec agent-config「IDE 插件配置入口」场景 6）；回包里的值是该偏好的
      * **生效值**（可能来自 Remote 组织下发 / 机器环境变量），`preferenceSources`
      * 标明每个键的来源层，设置页据此把被组织配置覆盖的键显示为「生效值 + 置灰」。
-     * 读取失败降级为只回本地键。
+     * 读取失败降级为空。
+     *
+     * 模型选择与服务地址不在回包里：模型经 `/model` 命令走宿主 RPC，服务地址随
+     * `authStatusResponse.serverUrl` 下发（由 CLI 的 getAuthStatus 解析）。
      */
     private suspend fun configurationDataJson(): JsonObject {
-        val local = WavePluginService.getInstance().loadConfiguration()
         val prefs = try {
             readUserSettings()
         } catch (e: Exception) {
@@ -1014,9 +998,6 @@ class MessageHandler(
             JsonObject(emptyMap())
         }
         return buildJsonObject {
-            put("model", local.model)
-            put("fastModel", local.fastModel)
-            put("serverUrl", local.serverUrl)
             prefs["language"]?.let { put("language", it) }
             prefs["contextLength"]?.let { put("contextLength", it) }
             prefs["autoMemoryEnabled"]?.let { put("autoMemoryEnabled", it) }
@@ -1049,12 +1030,6 @@ class MessageHandler(
         client.request("updateUserSettings", patch)
     }
 
-    private fun buildConfigParams(config: com.wave.jetbrains.config.ConfigurationData): JsonObject = buildJsonObject {
-        if (config.model.isNotEmpty()) put("model", config.model)
-        if (config.fastModel.isNotEmpty()) put("fastModel", config.fastModel)
-        // 用户偏好不经此覆盖层下发（会永久遮蔽 settings.json 的实时值）
-    }
-
     private suspend fun handleWebviewReady() {
         if (session.agent == null) {
             WaveBackendService.getInstance(project).initializeSession(session, null)
@@ -1071,15 +1046,18 @@ class MessageHandler(
         // Mirrors VSCE messageHandler.ts:622-633: without isAuthenticated the webview's
         // WelcomeView wrongly shows the login CTA to already-logged-in users (it never
         // re-requests auth status on its own), and MoreMenu hides "退出登录".
+        // serverUrl 随 authStatusResponse 下发（配置回包不再携带它）：webview 的
+        // 「企业控制台 / 帮助文档」按钮读它。
         var isAuthenticated = false
         try {
             val auth = session.agent?.getAuthStatus()?.jsonObject
             val url = (auth?.get("serverUrl") as? JsonPrimitive)?.contentOrNull ?: ""
             isAuthenticated = (auth?.get("isAuthenticated") as? JsonPrimitive)?.contentOrNull?.toBoolean() ?: false
-            if (url.isNotEmpty()) {
-                val merged = WavePluginService.getInstance().loadConfiguration().apply { serverUrl = url }
-                WavePluginService.getInstance().saveConfiguration(merged)
-            }
+            postMessage("authStatusResponse", buildJsonObject {
+                put("isAuthenticated", isAuthenticated)
+                put("user", auth?.get("user") ?: JsonNull)
+                put("serverUrl", url)
+            })
         } catch (e: StdioClientException) {
             LOG.warn("getAuthStatus on webviewReady failed: ${e.message}")
         }

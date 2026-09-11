@@ -67,19 +67,22 @@ test.describe("Product Specification Screenshots - Chat Header", () => {
       },
     ];
 
-    // 初始化：已登录、含会话与消息，含 serverUrl 供“企业控制台”使用
+    // 初始化：已登录、含会话与消息
     await injector.simulateExtensionMessage("setInitialState", {
       messages,
       isStreaming: false,
       isAuthenticated: true,
       sessions,
       session: sessions[0],
-      configurationData: {
-        model: "claude-sonnet-4-20250514",
-        fastModel: "claude-haiku-4-20250514",
-        serverUrl: "https://console.wave.example.com",
-      },
       permissionMode: "default",
+    });
+    // serverUrl 随认证响应下发（供「企业控制台」使用），不在配置回包里
+    await webviewPage.evaluate(() => {
+      window.simulateExtensionMessage({
+        command: "authStatusResponse",
+        isAuthenticated: true,
+        serverUrl: "https://console.wave.example.com",
+      });
     });
 
     // 1. 重新设计后的 Chat Header（标题 + 新建/历史/更多 三个图标）

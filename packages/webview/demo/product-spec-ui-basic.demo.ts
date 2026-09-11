@@ -21,10 +21,6 @@ test.describe("Product Specification Screenshots - UI Basic", () => {
       isStreaming: false,
       sessions: [],
       isAuthenticated: true,
-      configurationData: {
-        model: "claude-sonnet-4-20250514",
-        fastModel: "claude-haiku-4-20250514",
-      },
       permissionMode: "default",
     });
 
@@ -41,10 +37,6 @@ test.describe("Product Specification Screenshots - UI Basic", () => {
       isStreaming: false,
       sessions: [],
       isAuthenticated: false,
-      configurationData: {
-        model: "claude-sonnet-4-20250514",
-        fastModel: "claude-haiku-4-20250514",
-      },
       permissionMode: "default",
     });
     // Unauthenticated + no direct-connect: the welcome page shows the login
@@ -86,10 +78,6 @@ test.describe("Product Specification Screenshots - UI Basic", () => {
       isStreaming: false,
       sessions: [],
       isAuthenticated: true,
-      configurationData: {
-        model: "claude-sonnet-4-20250514",
-        fastModel: "claude-haiku-4-20250514",
-      },
       permissionMode: "default",
     });
 

@@ -33,7 +33,8 @@ export interface MessageHandlerContext {
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
   ) => Promise<void>;
-  updateAllSessionsConfig: (config: unknown) => void;
+  /** 重建所有会话的 agent（插件启停 / 登录登出后让新配置生效）。 */
+  updateAllSessionsConfig: () => void;
   getVersion: () => string;
   /** Opens (or refreshes) the plan-preview panel for a session (claudePlanPreview
    *  equivalent) with the given plan markdown content. */
@@ -794,9 +795,8 @@ export class MessageHandler {
         workdir: this.pluginService.getWorkdir() ?? "",
       });
 
-      // Reload config and recreate agents to apply plugin changes
-      const config = await this.configService.loadConfiguration();
-      this.context.updateAllSessionsConfig(config);
+      // Recreate agents so plugin changes take effect
+      this.context.updateAllSessionsConfig();
     } catch (error) {
       console.error("修改项目设置失败:", error);
       vscode.window.showErrorMessage("修改项目设置失败: " + error);
@@ -1288,9 +1288,8 @@ export class MessageHandler {
       vscode.window.showInformationMessage(`插件 ${pluginId} 安装成功`);
       await this.handleListPlugins(viewType, windowId);
 
-      // Reload config and recreate agents to apply plugin changes
-      const config = await this.configService.loadConfiguration();
-      this.context.updateAllSessionsConfig(config);
+      // Recreate agents so plugin changes take effect
+      this.context.updateAllSessionsConfig();
     } catch (error) {
       vscode.window.showErrorMessage("安装插件失败: " + error);
     }
@@ -1306,9 +1305,8 @@ export class MessageHandler {
       await this.pluginService.enablePlugin(pluginId, scope as Scope);
       await this.handleListPlugins(viewType, windowId);
 
-      // Reload config and recreate agents to apply plugin changes
-      const config = await this.configService.loadConfiguration();
-      this.context.updateAllSessionsConfig(config);
+      // Recreate agents so plugin changes take effect
+      this.context.updateAllSessionsConfig();
     } catch (error) {
       vscode.window.showErrorMessage("启用插件失败: " + error);
     }
@@ -1324,9 +1322,8 @@ export class MessageHandler {
       await this.pluginService.disablePlugin(pluginId, scope as Scope);
       await this.handleListPlugins(viewType, windowId);
 
-      // Reload config and recreate agents to apply plugin changes
-      const config = await this.configService.loadConfiguration();
-      this.context.updateAllSessionsConfig(config);
+      // Recreate agents so plugin changes take effect
+      this.context.updateAllSessionsConfig();
     } catch (error) {
       vscode.window.showErrorMessage("禁用插件失败: " + error);
     }
@@ -1377,9 +1374,8 @@ export class MessageHandler {
         windowId,
       );
 
-      // Reload config and recreate agents to apply plugin changes
-      const config = await this.configService.loadConfiguration();
-      this.context.updateAllSessionsConfig(config);
+      // Recreate agents so plugin changes take effect
+      this.context.updateAllSessionsConfig();
     } catch (error) {
       vscode.window.showErrorMessage("修改项目设置失败: " + error);
     }
@@ -1395,9 +1391,8 @@ export class MessageHandler {
       vscode.window.showInformationMessage("插件卸载成功");
       await this.handleListPlugins(viewType, windowId);
 
-      // Reload config and recreate agents to apply plugin changes
-      const config = await this.configService.loadConfiguration();
-      this.context.updateAllSessionsConfig(config);
+      // Recreate agents so plugin changes take effect
+      this.context.updateAllSessionsConfig();
     } catch (error) {
       vscode.window.showErrorMessage("卸载插件失败: " + error);
     }
@@ -1413,9 +1408,8 @@ export class MessageHandler {
       vscode.window.showInformationMessage(`插件 ${pluginId} 更新成功`);
       await this.handleListPlugins(viewType, windowId);
 
-      // Reload config and recreate agents to apply plugin changes
-      const config = await this.configService.loadConfiguration();
-      this.context.updateAllSessionsConfig(config);
+      // Recreate agents so plugin changes take effect
+      this.context.updateAllSessionsConfig();
     } catch (error) {
       vscode.window.showErrorMessage("更新插件失败: " + error);
     }
@@ -1823,15 +1817,24 @@ export class MessageHandler {
     try {
       const authResult = (await this.utilityClient.request(
         "getAuthStatus",
-      )) as { isAuthenticated: boolean; serverUrl: string };
+      )) as {
+        isAuthenticated: boolean;
+        user?: { id: string; email?: string };
+        serverUrl: string;
+      };
       isAuthenticated = authResult.isAuthenticated;
-      await this.configService.saveConfiguration({
-        serverUrl: authResult.serverUrl,
-      });
-      // Reflect the freshly fetched serverUrl in the state sent to the webview;
-      // configurationData was loaded before saveConfiguration, so it would otherwise
-      // carry a stale/empty serverUrl (breaking the "enterprise console" action).
-      configurationData.serverUrl = authResult.serverUrl;
+      // 服务地址随认证响应下发（配置回包不再携带它）：webview 的「企业控制台 /
+      // 帮助文档」按钮读 authStatusResponse.serverUrl。
+      this.context.postMessage(
+        {
+          command: "authStatusResponse",
+          isAuthenticated: authResult.isAuthenticated,
+          user: authResult.user,
+          serverUrl: authResult.serverUrl,
+        },
+        viewType,
+        windowId,
+      );
     } catch (error) {
       console.error("Failed to get auth status on webview ready:", error);
     }
@@ -2103,9 +2106,6 @@ export class MessageHandler {
         user: { id: string; email?: string } | undefined;
         serverUrl: string;
       };
-      await this.configService.saveConfiguration({
-        serverUrl: result.serverUrl,
-      });
       this.context.postMessage(
         {
           command: "authStatusResponse",
@@ -2159,8 +2159,7 @@ export class MessageHandler {
       );
 
       // After successful login, reinitialize all sessions to pick up SSO config
-      const updatedConfig = await this.configService.loadConfiguration();
-      this.context.updateAllSessionsConfig(updatedConfig);
+      this.context.updateAllSessionsConfig();
     } catch (error) {
       console.error("登录失败:", error);
       const errorMessage =
@@ -2194,8 +2193,7 @@ export class MessageHandler {
       );
 
       // After logout, reinitialize all sessions to revert to direct LLM mode
-      const config = await this.configService.loadConfiguration();
-      this.context.updateAllSessionsConfig(config);
+      this.context.updateAllSessionsConfig();
     } catch (error) {
       console.error("登出失败:", error);
       this.context.postMessage(

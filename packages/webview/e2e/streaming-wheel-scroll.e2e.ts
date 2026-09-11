@@ -68,10 +68,6 @@ test("dense streaming + wheel up never yanks back to bottom", async ({
     messages: [],
     isStreaming: false,
     sessions: [],
-    configurationData: {
-      model: "claude-sonnet-4-20250514",
-      fastModel: "claude-haiku-4-20250514",
-    },
     permissionMode: "default",
   });
   const history = buildHistory(140);

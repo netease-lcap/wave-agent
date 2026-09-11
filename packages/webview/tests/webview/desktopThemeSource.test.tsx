@@ -59,27 +59,6 @@ describe("桌面端主题偏好同步（ChatApp host 消息链路）", () => {
     vi.clearAllMocks();
   });
 
-  it("setInitialState 快照携带 theme.source 时，设置页主题行显示该偏好", async () => {
-    const mockVscode = createMockVscode();
-    render(
-      <ChatApp
-        vscode={mockVscode as unknown as VsCodeApi}
-        host={desktopHost()}
-      />,
-    );
-    sendHostMessage(fixtures.authStatusResponse());
-    sendHostMessage(
-      fixtures.setInitialState({
-        theme: { effective: "dark", source: "dark" },
-      }),
-    );
-
-    await openSettings();
-
-    const select = screen.getByLabelText("主题") as HTMLSelectElement;
-    expect(select.value).toBe("dark");
-  });
-
   it("host 广播 desktopThemeSource 后设置页主题行即时同步（命令拼写契约锁定）", async () => {
     const mockVscode = createMockVscode();
     render(
@@ -88,7 +67,8 @@ describe("桌面端主题偏好同步（ChatApp host 消息链路）", () => {
         host={desktopHost()}
       />,
     );
-    // authStatusResponse 挂载聊天容器后快照就绪；默认 theme.source 为 "system"
+    // authStatusResponse 挂载聊天容器后快照就绪；窗口级偏好只走未打标签广播，
+    // 快照本身不携带 theme（回归锁：曾经「快照 + 广播」双通道正是重启后回落的根因）
     sendHostMessage(fixtures.authStatusResponse());
     sendHostMessage(fixtures.setInitialState());
     await openSettings();

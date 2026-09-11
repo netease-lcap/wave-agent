@@ -416,13 +416,6 @@ export type EffectiveTheme = "light" | "dark";
 /** Desktop theme preference (设置页「全局设置」三态选择，仅 desktop 有 UI)。 */
 export type ThemeSource = "system" | "light" | "dark";
 
-/** Theme snapshot pushed by the desktop host: resolved effective theme plus the
- *  user's preference (source, absent on hosts without the in-app preference). */
-export interface ThemeState {
-  effective: EffectiveTheme;
-  source?: ThemeSource;
-}
-
 /** Desktop update channel (设置页「全局设置」「接收 Beta 版更新」开关，仅
  *  desktop 有 UI)。stable = codechat 正式下载 feed，beta = desktop-beta feed。 */
 export type UpdateChannel = "stable" | "beta";
@@ -786,10 +779,6 @@ export interface ChatState {
   inputContent?: string;
   // Selection state
   selection?: SelectionInfo;
-  // Desktop theme state (only set inside the desktop host)
-  theme?: ThemeState;
-  // Desktop update channel (only set inside the desktop host)
-  updateChannel?: UpdateChannel;
 }
 
 export interface ConfirmationRequest {
@@ -820,18 +809,13 @@ export interface ConfirmationDialogProps {
 // Configuration management types
 
 /**
- * Configuration data for AI agent settings
- * Maps to VS Code global state
+ * 用户偏好配置（设置页载荷）。**只含落 `~/.wave/settings.json` 的偏好键**：
+ * 模型经 `/model` 命令走宿主 RPC，服务地址经 `authStatusResponse.serverUrl`
+ * 下发，都不在这个信封里。
  */
 export interface ConfigurationData {
-  /** Primary model */
-  model?: string;
-  /** Fast model for quick responses */
-  fastModel?: string;
   /** Preferred language for agent communication */
   language?: string;
-  /** CodeChat server URL (reported by SDK, used for update checks) */
-  serverUrl?: string;
   /** Per-model input context window in K tokens (e.g. 200 = 200K), 16–1000 */
   contextLength?: number;
   /** Whether auto-memory extraction is enabled */
@@ -970,8 +954,6 @@ export type ChatAction =
         workdir?: string;
         backgroundTasks?: BackgroundTaskSummary[];
         workflowRuns?: SerializableWorkflowRun[];
-        theme?: ThemeState;
-        updateChannel?: UpdateChannel;
       };
     }
   // Incremental update actions for streaming optimization

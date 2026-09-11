@@ -3,7 +3,6 @@ package com.wave.jetbrains.session
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.wave.jetbrains.WaveBackendService
-import com.wave.jetbrains.config.WavePluginService
 import com.wave.jetbrains.stdio.AgentCallbacks
 import com.wave.jetbrains.stdio.NotificationRouter
 import com.wave.jetbrains.stdio.StdioAgent
@@ -106,14 +105,12 @@ class WaveSession(
             val a = StdioAgent(client, router, this)
             agent = a
             backend.registerSession(this)
-            val config = WavePluginService.getInstance().loadConfiguration()
             val params = buildJsonObject {
                 put("workdir", project.basePath ?: System.getProperty("user.dir"))
                 if (restoreSessionId != null) put("restoreSessionId", restoreSessionId)
-                if (config.model.isNotEmpty()) put("model", config.model)
-                if (config.fastModel.isNotEmpty()) put("fastModel", config.fastModel)
-                // 用户偏好（语言 / 上下文长度 / 自动记忆）不经此覆盖层下发——落点
-                // 唯一为用户级 ~/.wave/settings.json，经 SDK 实时重载生效
+                // 不下发任何会话级覆盖项：模型经 `/model` 命令走宿主 RPC；用户偏好
+                // （语言 / 上下文长度 / 自动记忆）落点唯一为用户级
+                // ~/.wave/settings.json，经 SDK 实时重载生效
                 // （spec core/agent-config.md「设置实时重载」）。
             }
             try {

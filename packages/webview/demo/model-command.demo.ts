@@ -13,10 +13,6 @@ test.describe("Product Spec: /model 命令", () => {
       isStreaming: false,
       sessions: [],
       isAuthenticated: true,
-      configurationData: {
-        model: "claude-sonnet-4-20250514",
-        fastModel: "claude-haiku-4-20250514",
-      },
       permissionMode: "default",
     });
 
@@ -82,10 +78,6 @@ test.describe("Product Spec: /model 命令", () => {
       isStreaming: false,
       sessions: [],
       isAuthenticated: true,
-      configurationData: {
-        model: "claude-sonnet-4-20250514",
-        fastModel: "claude-haiku-4-20250514",
-      },
       permissionMode: "default",
     });
 

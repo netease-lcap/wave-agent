@@ -89,10 +89,6 @@ async function initWithMessages(
     messages: [],
     isStreaming: false,
     sessions: [],
-    configurationData: {
-      model: "claude-sonnet-4-20250514",
-      fastModel: "claude-haiku-4-20250514",
-    },
     permissionMode: "default",
   });
   await injector.updateMessages(messages);

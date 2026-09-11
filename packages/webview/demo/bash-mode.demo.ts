@@ -15,10 +15,6 @@ test.describe("Bash Mode Demo", () => {
       isStreaming: false,
       sessions: [],
       isAuthenticated: true,
-      configurationData: {
-        model: "claude-sonnet-4-20250514",
-        fastModel: "claude-haiku-4-20250514",
-      },
       permissionMode: "default",
     });
 

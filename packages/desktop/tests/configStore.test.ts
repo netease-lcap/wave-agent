@@ -57,28 +57,33 @@ describe("ConfigStore", () => {
 
   it("persists configuration across instances", () => {
     const store = new ConfigStore(STORE_PATH);
-    store.setConfiguration({ model: "m1" });
+    store.setConfiguration({ serverUrl: "https://m1.example.com" });
 
     const reloaded = new ConfigStore(STORE_PATH);
-    expect(reloaded.getConfiguration()).toEqual({ model: "m1" });
+    expect(reloaded.getConfiguration()).toEqual({
+      serverUrl: "https://m1.example.com",
+    });
   });
 
   it("merge-updates configuration: absent fields keep their stored value", () => {
     const store = new ConfigStore(STORE_PATH);
-    store.setConfiguration({ model: "m1", serverUrl: "https://a.example.com" });
-    store.setConfiguration({ model: "m2" });
+    store.setConfiguration({
+      serverUrl: "https://a.example.com",
+      language: "zh-CN",
+    });
+    store.setConfiguration({ language: "en-US" });
 
     expect(store.getConfiguration()).toEqual({
-      model: "m2",
       serverUrl: "https://a.example.com",
+      language: "en-US",
     });
   });
 
   it("does not mutate the stored configuration through the returned copy", () => {
     const store = new ConfigStore(STORE_PATH);
-    store.setConfiguration({ model: "m1" });
-    store.getConfiguration().model = "tampered";
-    expect(store.getConfiguration().model).toBe("m1");
+    store.setConfiguration({ serverUrl: "https://m1.example.com" });
+    store.getConfiguration().serverUrl = "tampered";
+    expect(store.getConfiguration().serverUrl).toBe("https://m1.example.com");
   });
 
   it("pushes new workdir to the front of the recent list and deduplicates", () => {

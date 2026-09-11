@@ -3739,36 +3739,33 @@ describe("DesktopApp", () => {
   });
 
   describe("theme switching", () => {
-    function sendInitialState(theme: { effective: "light" | "dark" }) {
+    function mountShell() {
+      renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: "/home/user/project",
+        recentWorkdirs: [],
+      });
+      sendCommand("setInitialState", { messages: [] });
+    }
+
+    it("applies the startup theme broadcast to <html data-theme> (FR-018)", () => {
+      mountShell();
+      // 窗口级数据：主题生效值由未打标签的 desktopThemeChange 下发（启动时 host 推
+      // 一次 + 外观变化时再推），不随 setInitialState 快照走。
       sendCommand("setInitialState", {
         messages: [],
         sessions: [],
         configurationData: {},
         pendingConfirmations: [],
-        theme,
       });
-    }
-
-    it("applies the initial effective theme to <html data-theme> (FR-018)", () => {
-      renderDesktopApp();
-      sendCommand("desktopWorkdirState", {
-        workdir: "/home/user/project",
-        recentWorkdirs: [],
-      });
-      sendCommand("setInitialState", { messages: [] });
-      sendInitialState({ effective: "dark" });
+      sendCommand("desktopThemeChange", { effective: "dark" });
 
       expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
     });
 
     it("swaps <html data-theme> live on desktopThemeChange without reloading (FR-018)", () => {
-      renderDesktopApp();
-      sendCommand("desktopWorkdirState", {
-        workdir: "/home/user/project",
-        recentWorkdirs: [],
-      });
-      sendCommand("setInitialState", { messages: [] });
-      sendInitialState({ effective: "dark" });
+      mountShell();
+      sendCommand("desktopThemeChange", { effective: "dark" });
       expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
 
       sendCommand("desktopThemeChange", { effective: "light" });

@@ -110,9 +110,7 @@ function sentPosts(context: { postMessage: unknown }) {
 
 function createReadyHandler(session: ChatSession) {
   const configService = {
-    loadConfiguration: vi
-      .fn()
-      .mockResolvedValue({ serverUrl: "", language: "Chinese" }),
+    loadConfiguration: vi.fn().mockResolvedValue({ language: "Chinese" }),
     saveConfiguration: vi.fn(),
   };
   const sessionService = {
@@ -258,11 +256,9 @@ describe("MessageHandler MCP handlers", () => {
     expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
   });
 
-  // Regression: setInitialState.configurationData.serverUrl must reflect the
-  // serverUrl freshly fetched from getAuthStatus, not the stale/empty value
-  // loaded before saveConfiguration. A stale empty serverUrl would silently
-  // break the "enterprise console" action in the webview.
-  test("webviewReady sends fresh serverUrl from getAuthStatus in setInitialState", async () => {
+  // Regression: serverUrl 必须随 authStatusResponse 下发（配置回包不再承载它）——
+  // 空值会让 webview 的「企业控制台 / 帮助文档」按钮静默失效。
+  test("webviewReady pushes the fresh serverUrl from getAuthStatus", async () => {
     const session = createReadySession();
     const { handler, context, configService, utilityClient } =
       createReadyHandler(session);
@@ -270,9 +266,14 @@ describe("MessageHandler MCP handlers", () => {
     await handler.handleMessage({ command: "webviewReady" }, "tab");
 
     expect(utilityClient.request).toHaveBeenCalledWith("getAuthStatus");
-    expect(configService.saveConfiguration).toHaveBeenCalledWith({
-      serverUrl: "https://console.example.com",
-    });
+    // 服务地址不再落宿主本地配置（只转发给 webview）。
+    expect(configService.saveConfiguration).not.toHaveBeenCalled();
+
+    const authPosts = sentPosts(context)("authStatusResponse");
+    expect(authPosts.length).toBeGreaterThanOrEqual(1);
+    const auth = authPosts[authPosts.length - 1];
+    expect(auth.serverUrl).toBe("https://console.example.com");
+    expect(auth.isAuthenticated).toBe(true);
 
     const states = sentPosts(context)("setInitialState");
     expect(states.length).toBeGreaterThanOrEqual(1);
@@ -280,9 +281,10 @@ describe("MessageHandler MCP handlers", () => {
 
     expect(posted).toBeDefined();
     expect(posted.configurationData).toBeDefined();
-    expect(posted.configurationData!.serverUrl).toBe(
-      "https://console.example.com",
-    );
+    // 配置回包只剩用户偏好：模型 / 服务地址都不再走它。
+    expect(posted.configurationData).not.toHaveProperty("serverUrl");
+    expect(posted.configurationData).not.toHaveProperty("model");
+    expect(posted.configurationData).not.toHaveProperty("fastModel");
     expect(posted.isAuthenticated).toBe(true);
 
     // Contract gates mirroring the shared fixture defaults: if the host
@@ -618,9 +620,7 @@ describe("MessageHandler MCP handlers", () => {
   // refresh the projectSettings panel.
   test("setBuiltinPluginEnabled reloads config and recreates agents on success", async () => {
     const configService = {
-      loadConfiguration: vi
-        .fn()
-        .mockResolvedValue({ serverUrl: "", language: "Chinese" }),
+      loadConfiguration: vi.fn(),
       saveConfiguration: vi.fn(),
     };
     const pluginService = {
@@ -665,11 +665,9 @@ describe("MessageHandler MCP handlers", () => {
       true,
       "project",
     );
-    expect(configService.loadConfiguration).toHaveBeenCalled();
-    expect(context.updateAllSessionsConfig).toHaveBeenCalledWith({
-      serverUrl: "",
-      language: "Chinese",
-    });
+    // 重建 agent 不再需要配置（模型/服务地址都不走设置页配置）。
+    expect(configService.loadConfiguration).not.toHaveBeenCalled();
+    expect(context.updateAllSessionsConfig).toHaveBeenCalledWith();
 
     const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as {
@@ -827,10 +825,7 @@ describe("MessageHandler settings tab", () => {
     const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
       .mock.calls[0][0] as { command: string; configurationData: unknown };
     expect(posted.command).toBe("configurationResponse");
-    expect(posted.configurationData).toEqual({
-      serverUrl: "",
-      language: "Chinese",
-    });
+    expect(posted.configurationData).toEqual({ language: "Chinese" });
     expect(context.postMessage).not.toHaveBeenCalled();
   });
 
@@ -987,9 +982,7 @@ describe("MessageHandler settings tab", () => {
 
   test("setBuiltinPluginEnabled from the settings panel reloads config, recreates agents and replies to the settings panel", async () => {
     const configService = {
-      loadConfiguration: vi
-        .fn()
-        .mockResolvedValue({ serverUrl: "", language: "Chinese" }),
+      loadConfiguration: vi.fn(),
       saveConfiguration: vi.fn(),
     };
     const pluginService = {
@@ -1031,11 +1024,9 @@ describe("MessageHandler settings tab", () => {
       true,
       "project",
     );
-    expect(configService.loadConfiguration).toHaveBeenCalled();
-    expect(context.updateAllSessionsConfig).toHaveBeenCalledWith({
-      serverUrl: "",
-      language: "Chinese",
-    });
+    // 重建 agent 不再需要配置（模型/服务地址都不走设置页配置）。
+    expect(configService.loadConfiguration).not.toHaveBeenCalled();
+    expect(context.updateAllSessionsConfig).toHaveBeenCalledWith();
     const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
       .mock.calls[0][0] as {
       command: string;

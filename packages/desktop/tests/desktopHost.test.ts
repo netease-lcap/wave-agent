@@ -30,7 +30,7 @@ const h = vi.hoisted(() => ({
       case "getAuthStatus":
         return {
           isAuthenticated: h.authStatusResults.shift() ?? false,
-          serverUrl: "",
+          serverUrl: h.authServerUrl,
         };
       case "getPromptHistory":
       case "searchPromptHistory":
@@ -72,6 +72,8 @@ const h = vi.hoisted(() => ({
   // Sequential getAuthStatus results, consumed FIFO by the stdio mock. Empty
   // means "logged out" — pushInitialState queries once at webview-ready.
   authStatusResults: [] as boolean[],
+  // 服务地址由 CLI 侧 getAuthStatus 解析（宿主只缓存/转发），故 mock 从这里出。
+  authServerUrl: "",
   // Per-workdir listSessions results, keyed by directory (FR-020 session tree).
   dirSessions: new Map<string, unknown[]>(),
   // FR-052..054: stdio git method stubs. `worktreeError` makes createWorktree
@@ -581,6 +583,7 @@ beforeEach(() => {
   h.agentInstances.length = 0;
   h.clientRequests.length = 0;
   h.authStatusResults.length = 0;
+  h.authServerUrl = "";
   h.authUrlHandler = null;
   h.dirSessions.clear();
   h.worktreeResult = null;
@@ -949,7 +952,10 @@ describe("webviewReady / setInitialState", () => {
       isAuthenticated: false,
       workdir: "/work/a",
     });
-    expect(last.configurationData).toBeDefined();
+    // 全局配置是窗口级数据：随 pushAppLevelState 未打标签下发，不在 pane 快照里
+    expect(
+      sent("configurationResponse").at(-1)!.configurationData,
+    ).toBeDefined();
 
     // Contract gates: setInitialState must always carry inputContent ('' when
     // no draft) and the pane id. These mirror the shared fixture defaults — if
@@ -2133,34 +2139,41 @@ describe("background session toasts", () => {
 // ---------------------------------------------------------------------------
 
 describe("configuration and status", () => {
-  it("getConfiguration replies with the stored configuration (no credential fields)", async () => {
+  it("getConfiguration replies with user preferences only (no host-storage keys)", async () => {
     const { host, store, sent } = createHost();
-    store.setConfiguration({ model: "m" });
+    store.setConfiguration({ serverUrl: "https://console.example.com" });
 
     await host.handleWebviewMessage({ command: "getConfiguration" });
 
-    const payload = sent("configurationResponse")[0].configurationData;
-    expect(payload).toMatchObject({ model: "m" });
-    // Host-side credential pipeline removed (spec sso-auth「IDE 宿主不再有直连
-    // 免登录旁路」): the reply must never carry apiKey/headers/baseURL again.
+    const payload = sent("configurationResponse").at(-1)!.configurationData;
+    // 本地存储的键不进配置回包：服务地址随 authStatusResponse 下发；凭证管道已
+    // 移除（spec sso-auth「IDE 宿主不再有直连免登录旁路」）。
+    expect(payload).not.toHaveProperty("serverUrl");
+    expect(payload).not.toHaveProperty("model");
+    expect(payload).not.toHaveProperty("fastModel");
     expect(payload).not.toHaveProperty("apiKey");
     expect(payload).not.toHaveProperty("headers");
     expect(payload).not.toHaveProperty("baseURL");
   });
 
-  it("updateConfiguration persists the config and replies without credential fields", async () => {
+  it("updateConfiguration writes only user preferences, never host-storage keys", async () => {
     const { host, store, sent } = await readyHost();
+    store.setConfiguration({ serverUrl: "https://console.example.com" });
 
     await host.handleWebviewMessage({
       command: "updateConfiguration",
-      configurationData: { model: "new-model" },
+      configurationData: { language: "English" },
     });
 
-    expect(store.getConfiguration()).toMatchObject({ model: "new-model" });
-    expect(store.getConfiguration()).not.toHaveProperty("apiKey");
+    // 用户偏好落 settings.json，宿主的本地存储（服务地址）原样不动。
+    expect(store.getConfiguration()).toEqual({
+      serverUrl: "https://console.example.com",
+    });
     expect(sent("configurationUpdated")).toHaveLength(1);
-    const payload = sent("configurationResponse")[0].configurationData;
-    expect(payload).toMatchObject({ model: "new-model" });
+    const payload = sent("configurationResponse").at(-1)!.configurationData;
+    expect(payload).not.toHaveProperty("serverUrl");
+    expect(payload).not.toHaveProperty("model");
+    expect(payload).not.toHaveProperty("fastModel");
     expect(payload).not.toHaveProperty("apiKey");
     expect(payload).not.toHaveProperty("headers");
     expect(payload).not.toHaveProperty("baseURL");
@@ -2302,7 +2315,7 @@ describe("user preference save path and rebuild timing", () => {
     try {
       await host.handleWebviewMessage({
         command: "updateConfiguration",
-        configurationData: { model: "m2", ...readBack },
+        configurationData: { ...readBack },
       });
     } finally {
       restore();
@@ -2315,8 +2328,9 @@ describe("user preference save path and rebuild timing", () => {
     expect(agent.updateConfig).not.toHaveBeenCalled();
     expect(agent.abortMessage).not.toHaveBeenCalled();
     expect(agent.isStreaming).toBe(true);
-    // 用户偏好不落桌面本地配置（落点唯一 = settings.json）。
-    expect(store.getConfiguration()).toEqual({ model: "m2" });
+    // 用户偏好不落桌面本地配置（落点唯一 = settings.json）；设置页也不再送
+    // 本地存储键（服务地址），故本地存储保持为空。
+    expect(store.getConfiguration()).toEqual({});
     // 回执立即给出：toast + configurationResponse 带会话进程读回的值。
     expect(shownToasts().filter((t) => t.message === "保存成功")).toHaveLength(
       1,
@@ -2375,7 +2389,10 @@ describe("user preference save path and rebuild timing", () => {
     expect(shownToasts().filter((t) => t.message === "保存成功")).toHaveLength(
       1,
     );
-    expect(sent("configurationResponse")).toHaveLength(1);
+    // 回执照发（末尾一条；首次是启动时的窗口级推送）
+    expect(
+      sent("configurationResponse").at(-1)!.configurationData,
+    ).toBeDefined();
     expect(sent("configurationError")).toHaveLength(0);
   });
 
@@ -2419,7 +2436,8 @@ describe("user preference save path and rebuild timing", () => {
       autoMemoryEnabled: false,
       autoMemoryFrequency: 5,
     };
-    store.setConfiguration({ model: "m1" });
+    // 本地存储里放一份「不该出现在设置页」的服务地址（真实来源是 auth 域）。
+    store.setConfiguration({ serverUrl: "https://console.example.com" });
     const restore = stubUserSettingsRpc({ get: prefs });
     try {
       await host.handleWebviewMessage({ command: "getConfiguration" });
@@ -2430,12 +2448,14 @@ describe("user preference save path and rebuild timing", () => {
     expect(h.clientRequests.some((r) => r.method === "getUserSettings")).toBe(
       true,
     );
-    expect(sent("configurationResponse").at(-1)!.configurationData).toEqual({
-      model: "m1",
-      ...prefs,
-    });
+    // 回包 = 会话进程读到的用户偏好，**不含**宿主本地存储键。
+    expect(sent("configurationResponse").at(-1)!.configurationData).toEqual(
+      prefs,
+    );
     // 宿主本地存储里没有第二份用户偏好副本。
-    expect(store.getConfiguration()).toEqual({ model: "m1" });
+    expect(store.getConfiguration()).toEqual({
+      serverUrl: "https://console.example.com",
+    });
   });
 
   it("prompts with total/busy counts before any rebuild (receipts stay immediate)", async () => {
@@ -2474,10 +2494,7 @@ describe("user preference save path and rebuild timing", () => {
 
     // 空闲会话被重建；正在执行任务的会话不打断、保持旧配置（spec 场景 5）。
     expect(idle.updateConfig).toHaveBeenCalledTimes(1);
-    expect(idle.updateConfig).toHaveBeenCalledWith({
-      model: undefined,
-      fastModel: undefined,
-    });
+    expect(idle.updateConfig).toHaveBeenCalledWith({});
     expect(busy.updateConfig).not.toHaveBeenCalled();
     expect(busy.isStreaming).toBe(true);
     // 只重建空闲会话时不得清空队列（否则忙碌会话的排队消息会丢）。
@@ -2793,11 +2810,54 @@ describe("checkForUpdates with a configured serverUrl", () => {
     expect(toasts).toHaveLength(1);
   });
 
-  it("setInitialState carries the update channel (default stable)", async () => {
+  it("pane-scoped setInitialState omits the window-level fields", async () => {
+    // 回归锁：分屏下渲染设置页的是 root 实例，而 root 不消费带 paneId 的快照
+    // （forThisPane）——theme/updateChannel/configurationData 一旦进了 pane 快照
+    // 就永远送不到设置页（「接收 Beta 版更新」重启后回落的根因）。它们只走
+    // pushAppLevelState 的未打标签消息。
     const { sent } = await readyHostWithServerUrl();
-    expect(sent("setInitialState")[0]).toMatchObject({
-      updateChannel: "stable",
+    const snapshot = sent("setInitialState")[0];
+    expect(snapshot).not.toHaveProperty("updateChannel");
+    expect(snapshot).not.toHaveProperty("theme");
+    expect(snapshot).not.toHaveProperty("configurationData");
+  });
+
+  it("broadcasts the persisted preferences at startup (重启后保持)", async () => {
+    // 窗口级数据走未打标签的消息：启动时与「用户切换」同一条通道下发一次，设置页
+    // 才能显示已落盘的真实值（spec desktop-shell「接收 Beta 版更新」场景 3：
+    // 持久化并重启后保持）。
+    const ctx = createHost();
+    ctx.store.addRecentWorkdir({ host: "local", path: "/work/a" });
+    h.existingPaths.add("/work/a");
+    ctx.store.setConfiguration({ serverUrl: SERVER });
+    h.authServerUrl = SERVER;
+    ctx.store.setUpdateChannel("beta");
+    ctx.store.setThemeSource("dark");
+    await ctx.host.handleWebviewMessage({ command: "desktopReady" });
+    await ctx.host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      path: "/work/a",
     });
+    await ctx.host.handleWebviewMessage({ command: "webviewReady" });
+
+    const channels = ctx.sent("desktopUpdateChannel");
+    expect(channels[channels.length - 1]).toMatchObject({ channel: "beta" });
+    const themes = ctx.sent("desktopThemeSource");
+    expect(themes[themes.length - 1]).toMatchObject({ source: "dark" });
+    // 未打标签（窗口级）——root 实例才收得到
+    expect(themes[themes.length - 1]).not.toHaveProperty("paneId");
+    expect(channels[channels.length - 1]).not.toHaveProperty("paneId");
+    // 服务地址随**认证响应**窗口级下发（不是配置回包）：账户卡片的「控制台 /
+    // 帮助文档」在设置页打开前就可用。
+    const auths = ctx.sent("authStatusResponse");
+    expect(auths[auths.length - 1]).toMatchObject({ serverUrl: SERVER });
+    expect(auths[auths.length - 1]).not.toHaveProperty("paneId");
+    // 全局配置同样窗口级下发，但只承载用户偏好（模型 / 服务地址都不在里面）。
+    const config = ctx.sent("configurationResponse");
+    expect(config[config.length - 1]).not.toHaveProperty("paneId");
+    expect(config[config.length - 1].configurationData).not.toHaveProperty(
+      "serverUrl",
+    );
   });
 
   it("setUpdateChannel persists, broadcasts and re-checks against the beta feed", async () => {
@@ -3012,7 +3072,7 @@ describe("account card (desktopAccountInfo)", () => {
         return {
           isAuthenticated: authenticated,
           user,
-          serverUrl: "",
+          serverUrl: h.authServerUrl,
         };
       if (m === "getAccountInfo") return account;
       if (m === "login") return { user };
@@ -3827,7 +3887,7 @@ describe("misc commands", () => {
 
     await host.handleWebviewMessage({
       command: "updateConfiguration",
-      configurationData: { model: "m2" },
+      configurationData: { language: "English" },
     });
 
     expect(shownToasts().some((t) => t.message === "保存成功")).toBe(true);
@@ -3840,7 +3900,7 @@ describe("misc commands", () => {
     try {
       await host.handleWebviewMessage({
         command: "updateConfiguration",
-        configurationData: { model: "m2", language: "English" },
+        configurationData: { language: "English" },
       });
     } finally {
       restore();
@@ -5955,11 +6015,15 @@ describe("worktree flow", () => {
 // ---------------------------------------------------------------------------
 
 describe("theme", () => {
-  it("setInitialState carries the resolved effective theme (default follows the OS)", async () => {
+  it("pushes the resolved effective theme at startup as a window-level message", async () => {
+    // 主题（生效值 + 选中态）是窗口级数据：随 pushAppLevelState 未打标签下发，
+    // 渲染设置页的 root 实例才收得到（FR-018 首帧应用 + FR-019）。
     const { sent } = await readyHost();
-    expect(sent("setInitialState")[0]).toMatchObject({
-      theme: { effective: "light", source: "system" },
-    });
+    const changes = sent("desktopThemeChange");
+    expect(changes[changes.length - 1]).toMatchObject({ effective: "light" });
+    expect(changes[changes.length - 1]).not.toHaveProperty("paneId");
+    const sources = sent("desktopThemeSource");
+    expect(sources[sources.length - 1]).toMatchObject({ source: "system" });
   });
 
   it("getInitialEffectiveTheme follows the OS appearance (FR-019)", async () => {
@@ -5993,14 +6057,15 @@ describe("theme", () => {
 
   it("applies a persisted theme preference at construction (首帧即按所选主题)", async () => {
     // 预置磁盘偏好（固定深色），再启动 host —— 构造时须应用到 nativeTheme，
-    // 使首帧与初始快照都呈现深色，即使系统外观为浅色。
+    // 使首帧与启动时的窗口级广播都呈现深色，即使系统外观为浅色。
     new ConfigStore(STORE_PATH).setThemeSource("dark");
     const { host, sent } = await readyHost();
 
     expect(host.getInitialEffectiveTheme()).toBe("dark");
-    expect(sent("setInitialState")[0]).toMatchObject({
-      theme: { effective: "dark", source: "dark" },
-    });
+    const changes = sent("desktopThemeChange");
+    expect(changes[changes.length - 1]).toMatchObject({ effective: "dark" });
+    const sources = sent("desktopThemeSource");
+    expect(sources[sources.length - 1]).toMatchObject({ source: "dark" });
   });
 
   it("setThemeSource persists, applies to nativeTheme and broadcasts both messages", async () => {

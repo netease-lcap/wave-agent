@@ -42,10 +42,7 @@ async function bootDesktop(
     isStreaming: false,
     sessions: [],
     isAuthenticated: true,
-    configurationData: {
-      model: "claude-sonnet-4-20250514",
-      ...configurationData,
-    },
+    configurationData,
     permissionMode: "default",
     workdir: WORKDIR,
   });

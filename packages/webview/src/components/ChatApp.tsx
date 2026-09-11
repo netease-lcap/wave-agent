@@ -205,6 +205,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [accountInfo, setAccountInfo] = useState<AccountCardAccount | null>(
     null,
   );
+  // 服务地址（企业控制台 / 帮助文档 / Beta 开关可用性）——由宿主的
+  // `authStatusResponse.serverUrl` 驱动（CLI 侧 getAuthStatus 解析，配置回包
+  // 不再携带它）。空串 = 宿主尚未下发。
+  const [serverUrl, setServerUrl] = useState("");
   // 窗口级 chrome 状态（侧边栏收起 + macOS 全屏）单一权威在 DesktopChromeContext
   //（DesktopApp 根提供）：root 单布局 / DesktopShell pane 各实例同源读取，不再
   // 各自持有副本或 props 下行（见 DesktopChromeContext.tsx 头注释）。
@@ -341,25 +345,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // TDZ），经 ref 调用最新实现绕开声明顺序（同下方 togglePanelRef 模式）。
   const openFileRef = useRef<(path: string) => void>(() => {});
   const [sessionBoardOpen, setSessionBoardOpen] = useState(false);
-  // 桌面端主题偏好（host 为真源）：初值取 setInitialState.theme.source，此后随
-  // host 广播（desktopThemeSource / 重推快照）同步，设置页「全局设置」主题行据此
-  // 显示当前选中项。VSCE/JetBrains 无此偏好，恒为默认 "system" 且不渲染主题行。
-  const [themeSource, setThemeSource] = useState<ThemeSource>(
-    () => state.theme?.source ?? "system",
-  );
-  useEffect(() => {
-    if (state.theme?.source) setThemeSource(state.theme.source);
-  }, [state.theme?.source]);
-  // 桌面端更新通道（host 为真源）：初值取 setInitialState.updateChannel，此后随
-  // host 广播（desktopUpdateChannel / 重推快照）同步，设置页「全局设置」的
-  // 「接收 Beta 版更新」开关据此显示当前选中态。VSCE/JetBrains 无此字段，
-  // 恒为默认 "stable" 且不渲染开关行。
-  const [updateChannel, setUpdateChannel] = useState<UpdateChannel>(
-    () => state.updateChannel ?? "stable",
-  );
-  useEffect(() => {
-    if (state.updateChannel) setUpdateChannel(state.updateChannel);
-  }, [state.updateChannel]);
+  // 桌面端主题偏好（host 为真源）：**只**由未打标签的窗口级广播
+  // desktopThemeSource 驱动（启动时 host 会随其它窗口级状态推一次）。曾经的
+  // setInitialState.theme 副本已删除——那是 pane 作用域消息，而渲染设置页的是
+  // root 实例（分屏 rows 可见时不消费带 paneId 的消息），重启后选中项因此回落。
+  // VSCE/JetBrains 无此偏好，恒为默认 "system" 且不渲染主题行。
+  const [themeSource, setThemeSource] = useState<ThemeSource>("system");
+  // 桌面端更新通道（host 为真源）：同上，只由窗口级广播 desktopUpdateChannel
+  // 驱动（见「接收 Beta 版更新」开关重启后回落的修复）。VSCE/JetBrains 无此
+  // 字段，恒为默认 "stable" 且不渲染开关行。
+  const [updateChannel, setUpdateChannel] = useState<UpdateChannel>("stable");
   // Context-usage percentage pushed by the host (batch 2 compress button).
   // Undefined = no usage info received yet (spec 场景 4: label without %).
   const [contextUsage, setContextUsage] = useState<number | undefined>();
@@ -802,18 +797,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     paneIdRef.current = paneId;
   }, [paneId]);
 
-  // Desktop only: keep <html data-theme> in sync with the resolved theme so the
-  // inlined --vscode-* variable set swaps without a reload (FR-018). VSCE/JB
-  // inject their own variables and never set state.theme, so this is inert there.
-  useEffect(() => {
-    if (state.theme) {
-      document.documentElement.setAttribute(
-        "data-theme",
-        state.theme.effective,
-      );
-    }
-  }, [state.theme]);
-
   // Auto-dismiss the queue-edit warning banner
   useEffect(() => {
     if (!queueEditWarning) return;
@@ -1241,6 +1224,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             isRestoring: message.isRestoring,
             sessions: message.sessions,
             currentSession: message.session,
+            // 仅 IDE 宿主随快照带全局配置；desktop 改走窗口级
+            // configurationResponse（渲染设置页的 root 实例不消费带 paneId
+            // 的快照）。窗口级数据（主题/更新通道）一律不进快照。
             configurationData: message.configurationData,
             pendingConfirmations:
               message.pendingConfirmations ||
@@ -1254,8 +1240,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             queuedMessages: message.queuedMessages,
             isAuthenticated: message.isAuthenticated,
             workdir: message.workdir,
-            theme: message.theme,
-            updateChannel: message.updateChannel,
             // Hosts (VSCE messageHandler / Desktop desktopHost) include the
             // running background tasks + workflow runs in the snapshot so a
             // webview re-init / pane switch does not wipe them. Without this
@@ -1468,6 +1452,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           isAuthenticated: message.isAuthenticated === true,
           user: message.user ?? prev?.user ?? null,
         }));
+        // 服务地址来自 CLI 的 getAuthStatus（宿主只缓存/转发）：企业控制台 /
+        // 帮助文档按钮与桌面端「接收 Beta 版更新」开关都读它。未登录/查询失败
+        // 时宿主省略该字段 —— 保留上一次的值（不是"没有服务地址"）。
+        if (message.serverUrl) setServerUrl(message.serverUrl);
         break;
       case "contextUsage":
         // Context-window usage push (batch 2 上下文用量指示器). Session-scoped
@@ -1683,22 +1671,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
 
   const handleOpenEnterpriseConsole = useCallback(() => {
-    const url = stateRef.current.configurationData?.serverUrl;
-    if (url) {
-      vscode.postMessage({ command: "openExternal", url });
+    if (serverUrl) {
+      vscode.postMessage({ command: "openExternal", url: serverUrl });
     }
-  }, [vscode]);
+  }, [vscode, serverUrl]);
 
   // 账户卡片的「帮助文档」：serverUrl + /docs 走系统浏览器（spec 场景 4）.
   const handleOpenHelpDocs = useCallback(() => {
-    const url = stateRef.current.configurationData?.serverUrl;
-    if (url) {
+    if (serverUrl) {
       vscode.postMessage({
         command: "openExternal",
-        url: `${url.replace(/\/+$/, "")}/docs/`,
+        url: `${serverUrl.replace(/\/+$/, "")}/docs/`,
       });
     }
-  }, [vscode]);
+  }, [vscode, serverUrl]);
 
   const handleLogout = useCallback(() => {
     vscode.postMessage({ command: "logout" });
@@ -3132,6 +3118,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const settingsPage = isDesktop ? (
     <SettingsPage
       configurationData={state.configurationData ?? null}
+      serverUrl={serverUrl}
       onSave={handleConfigurationSave}
       themeSource={themeSource}
       onThemeChange={(source) => {

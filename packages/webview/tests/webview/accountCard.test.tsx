@@ -455,9 +455,11 @@ describe("AccountCard (desktop sidebar)", () => {
       const { vscode } = renderDesktop();
       pushAccount({ ...loggedIn, plan: plan80, apiQuota: apiPlenty });
       act(() => {
-        sendCommand("configurationResponse", {
-          configurationData: { serverUrl: "https://codechat.example.com/" },
-        });
+        sendHostMessage(
+          fixtures.authStatusResponse({
+            serverUrl: "https://codechat.example.com/",
+          }),
+        );
       });
       vscode.postMessage.mockClear();
 

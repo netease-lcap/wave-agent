@@ -18,10 +18,6 @@ test.describe("Product Spec: /btw side question", () => {
       isStreaming: false,
       sessions: [],
       isAuthenticated: true,
-      configurationData: {
-        model: "claude-sonnet-4-20250514",
-        fastModel: "claude-haiku-4-20250514",
-      },
       permissionMode: "default",
     });
 
@@ -78,10 +74,6 @@ test.describe("Product Spec: /btw side question", () => {
       isStreaming: false,
       sessions: [],
       isAuthenticated: true,
-      configurationData: {
-        model: "claude-sonnet-4-20250514",
-        fastModel: "claude-haiku-4-20250514",
-      },
       permissionMode: "default",
     });
     // Type bare /btw and send it — shows usage, sends no RPC

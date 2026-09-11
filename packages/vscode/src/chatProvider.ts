@@ -13,10 +13,7 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
 } from "wave-agent-sdk/constants";
 import { ChatSession } from "./session/chatSession";
-import {
-  ConfigurationService,
-  ConfigurationData,
-} from "./services/configurationService";
+import { ConfigurationService } from "./services/configurationService";
 import { FileService } from "./services/fileService";
 import { SessionService } from "./services/sessionService";
 import { SelectionService } from "./services/selectionService";
@@ -64,7 +61,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
-    this.configService = new ConfigurationService(context);
+    this.configService = new ConfigurationService();
     this.selectionService = new SelectionService(context);
     this.outputChannel = vscode.window.createOutputChannel("CodeWave IDE");
 
@@ -252,8 +249,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         this.initializeAgent(viewType, windowId, restoreSessionId),
       listSessions: (viewType, windowId) =>
         this.listSessions(viewType, windowId),
-      updateAllSessionsConfig: async (config) => {
-        const cfg = config as ConfigurationData;
+      updateAllSessionsConfig: async () => {
         // Serial: updateConfig destroys + recreates the agent in the bridge;
         // concurrent calls on the same sessionId would delete each other's
         // entry and leave it permanently missing ("Session not found" on
@@ -267,7 +263,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         let failed = false;
         for (const session of sessions) {
           try {
-            await session.updateConfig(cfg);
+            await session.updateConfig();
           } catch (error) {
             failed = true;
             console.error(`[Wave] ${session.viewType} 更新配置失败:`, error);
@@ -500,9 +496,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     await this.initPromise;
 
     try {
-      const config = await this.configService.loadConfiguration();
       await session.initialize(
-        config,
         restoreSessionId,
         this.sharedClient!,
         this.notificationRouter!,

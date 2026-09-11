@@ -3,7 +3,6 @@ import {
   ChatSession,
   type ChatSessionCallbacks,
 } from "../../src/session/chatSession";
-import type { ConfigurationData } from "../../src/services/configurationService";
 import type { StdioClient } from "../../src/stdio/stdioClient";
 import type { NotificationRouter } from "wave-agent-sdk/stdio";
 
@@ -72,51 +71,47 @@ function paramsFor(
   return call?.[1] as Record<string, unknown>;
 }
 
-const config: ConfigurationData = {
-  model: "m",
-  autoMemoryEnabled: false,
-  autoMemoryFrequency: 5,
-};
-
-/** 用户偏好三键：只允许出现在 settings.json 里，不得出现在 CLI 参数里。 */
-const USER_PREF_KEYS = [
+/**
+ * 不允许出现在 CLI 参数（AgentOptions 覆盖层）里的键：模型由 `/model` 命令经
+ * `getConfiguredModels` / `setModel` RPC 管理；用户偏好落 `~/.wave/settings.json`
+ * 由 SDK 实时重载生效（覆盖层会永久遮蔽实时值）。
+ */
+const OVERRIDE_KEYS = [
+  "model",
+  "fastModel",
   "language",
   "autoMemoryEnabled",
   "autoMemoryFrequency",
 ] as const;
 
-describe("ChatSession · 用户偏好不经 CLI 参数覆盖层下发", () => {
-  it("initialize params 不带用户偏好键", async () => {
+describe("ChatSession · 配置不经 CLI 参数覆盖层下发", () => {
+  it("initialize params 不带任何覆盖层键", async () => {
     const client = fakeClient();
     const session = new ChatSession("sidebar", undefined, callbacks());
 
     await session.initialize(
-      config,
       undefined,
       client as unknown as StdioClient,
       fakeRouter() as unknown as NotificationRouter,
     );
 
+    // paramsFor 断言 initialize 确实发过（避免「因为没发所以没有」）
     const params = paramsFor(client.request, "initialize");
-    // 非空断言：initialize 确实发了、且仍带会话级键（避免「因为没发所以没有」）
-    expect(params).toMatchObject({ model: "m" });
-    for (const key of USER_PREF_KEYS) expect(params).not.toHaveProperty(key);
+    for (const key of OVERRIDE_KEYS) expect(params).not.toHaveProperty(key);
   });
 
-  it("updateConfig params 不带用户偏好键", async () => {
+  it("updateConfig 只重建 agent，不带覆盖层键", async () => {
     const client = fakeClient();
     const session = new ChatSession("sidebar", undefined, callbacks());
 
     await session.initialize(
-      config,
       undefined,
       client as unknown as StdioClient,
       fakeRouter() as unknown as NotificationRouter,
     );
-    await session.updateConfig(config);
+    await session.updateConfig();
 
     const params = paramsFor(client.request, "updateConfig");
-    expect(params).toMatchObject({ model: "m" });
-    for (const key of USER_PREF_KEYS) expect(params).not.toHaveProperty(key);
+    expect(params).toEqual({});
   });
 });

@@ -51,6 +51,10 @@ import { isMacHiddenTitlebar } from "../utils/platform";
 export interface SettingsPageProps {
   /** 当前配置（getConfiguration 已回），null 表示尚未加载 */
   configurationData: ConfigurationData | null;
+  /** 服务地址（宿主 `authStatusResponse.serverUrl` 下发，CLI 侧 getAuthStatus
+   *  解析后回传）。桌面端「接收 Beta 版更新」开关的可用性靠它判断：无地址 =
+   *  未接入企业服务，置灰并提示「登录后可接收测试版更新」。 */
+  serverUrl?: string;
   /** 保存配置（全局设置 / 个性化视图的保存按钮触发）。**只带用户真正改动过的
    *  字段**（diff 载荷）：未改动的键、仍处于「未设置」态的键都不出现——宿主与
    *  CLI RPC 把「省略键」当作「不改该键」（spec agent-config 边界说明「省略键 =
@@ -195,6 +199,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 const SettingsPage: React.FC<SettingsPageProps> = ({
   configurationData,
+  serverUrl,
   onSave,
   themeSource,
   onThemeChange,
@@ -272,12 +277,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     );
   }, [configurationData]);
 
-  // host 广播（desktopThemeSource / 重推 setInitialState）同步主题选中态
+  // 窗口级广播 desktopThemeSource 同步主题选中态（启动时 host 推一次 + 用户切换时）
   useEffect(() => {
     if (themeSource) setTheme(themeSource);
   }, [themeSource]);
 
-  // host 广播（desktopUpdateChannel / 重推 setInitialState）同步开关选中态
+  // 窗口级广播 desktopUpdateChannel 同步开关选中态（同上）
   useEffect(() => {
     if (updateChannel) setChannel(updateChannel);
   }, [updateChannel]);
@@ -595,7 +600,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         <div className="settings-row-copy">
                           <h3>接收 Beta 版更新</h3>
                           <p>
-                            {configurationData?.serverUrl
+                            {serverUrl
                               ? "开启后自动更新将接收测试版通道（Beta）分发的版本"
                               : "登录后可接收测试版更新"}
                           </p>
@@ -605,12 +610,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             type="checkbox"
                             aria-label="接收 Beta 版更新"
                             checked={channel === "beta"}
-                            disabled={!configurationData?.serverUrl}
+                            disabled={!serverUrl}
                             onChange={(e) => {
                               // 置灰（未登录、无 serverUrl）时不可切换——disabled
                               // 已阻止真实点击，此处防御 label 激活路径或自动化
                               // 事件直接派发造成的状态漂移（spec 场景 2）。
-                              if (!configurationData?.serverUrl) return;
+                              if (!serverUrl) return;
                               const next: UpdateChannel = e.target.checked
                                 ? "beta"
                                 : "stable";

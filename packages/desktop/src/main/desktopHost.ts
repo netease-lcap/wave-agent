@@ -1369,7 +1369,6 @@ export class DesktopHost {
   }): Promise<StdioAgent> {
     const host = opts.host ?? LOCAL_HOST;
     await this.ensureClientFor(host);
-    const config = this.configStore.getConfiguration();
     const agent = this.createAgent({ ...opts, host });
     await agent.initialize({
       workdir: opts.workdir,
@@ -1377,8 +1376,6 @@ export class DesktopHost {
       // session): the daemon reuses the live agent instead of forking a second
       // one writing to the same transcript. Fresh sessions omit the field.
       ...(opts.sessionId ? { restoreSessionId: opts.sessionId } : {}),
-      model: config.model,
-      fastModel: config.fastModel,
       worktreeName: opts.worktreeName,
       isNewWorktree: opts.isNewWorktree,
     });
@@ -2535,8 +2532,16 @@ export class DesktopHost {
       authUser = authResult.user;
       if (authResult.serverUrl) {
         this.configStore.setConfiguration({ serverUrl: authResult.serverUrl });
-        configurationData.serverUrl = authResult.serverUrl;
       }
+      // 服务地址随认证响应下发（窗口级，与 refreshAuthStatus 同一条链路）：
+      // webview 的企业控制台 / 帮助文档按钮与「接收 Beta 版更新」开关都读它，
+      // 配置回包不再携带 serverUrl。
+      this.postMessage({
+        command: "authStatusResponse",
+        isAuthenticated: authResult.isAuthenticated,
+        user: authResult.user,
+        serverUrl: authResult.serverUrl,
+      });
     } catch (error) {
       console.error(
         "[DesktopHost] Failed to get auth status on webview ready:",
@@ -2553,15 +2558,51 @@ export class DesktopHost {
     this.pushAccountInfo();
     void this.refreshUsageForHost(this.currentHost);
     await this.pushPaneSessionState(this.focusedPaneId);
+    this.pushAppLevelState(configurationData);
+  }
+
+  /**
+   * 窗口级（应用级）状态的启动下发——**不打 paneId**，与用户操作时的广播同一条
+   * 通道：桌面端的 root 实例渲染窗口壳/侧边栏/设置页，而 root 在分屏 rows 可见时
+   * 不消费带 paneId 的 setInitialState（forThisPane），所以这些值放进 pane 快照
+   * 就永远送不到真正使用它们的实例（症状=重启后「接收 Beta 版更新」开关回落到
+   * 默认关闭、主题选中项回落到跟随系统，spec desktop-shell「接收 Beta 版更新」
+   * 场景 3 /「主题设置」场景 1）。因此 theme/updateChannel/全局配置一律走窗口级：
+   * desktopThemeChange / desktopThemeSource / desktopUpdateChannel /
+   * configurationResponse。
+   */
+  private pushAppLevelState(
+    configurationData: DesktopConfigData = this.cachedConfigurationData(),
+  ): void {
+    this.postMessage({
+      command: "desktopThemeChange",
+      effective: this.getCurrentEffectiveTheme(),
+    });
+    this.postMessage({
+      command: "desktopThemeSource",
+      source: this.configStore.getThemeSource(),
+    });
+    this.postMessage({
+      command: "desktopUpdateChannel",
+      channel: this.configStore.getUpdateChannel(),
+    });
+    this.postMessage({
+      command: "configurationResponse",
+      configurationData,
+    });
   }
 
   /**
    * Push one pane's cached state to the webview (tagged with paneId). Unlike
    * pushInitialState this does NOT re-query auth/config — used on session,
    * workdir and pane switches where only the view changes.
+   *
+   * Only pane-scoped data belongs here. Window-level state (theme / update
+   * channel / global configuration) is pushed untagged via pushAppLevelState,
+   * because the instances that render the shell, sidebar and settings page are
+   * not the ones that consume this pane-tagged snapshot.
    */
   private async pushPaneSessionState(paneId: string): Promise<void> {
-    const configurationData = this.cachedConfigurationData();
     const agent = this.agentForPane(paneId);
     // Workflow runs refresh in the background — a live remote session's RPC
     // round trip (SSH hop) must not delay the session switch. The cache shows
@@ -2635,17 +2676,11 @@ export class DesktopHost {
                 undefined,
             }
           : undefined,
-      configurationData,
       pendingConfirmations,
       permissionMode: current?.getPermissionMode(),
       queuedMessages: current?.queuedMessages ?? [],
       isAuthenticated: this.lastIsAuthenticated,
       workdir: current?.workingDirectory,
-      theme: {
-        effective: this.getCurrentEffectiveTheme(),
-        source: this.configStore.getThemeSource(),
-      },
-      updateChannel: this.configStore.getUpdateChannel(),
     });
   }
 
@@ -4839,8 +4874,8 @@ export class DesktopHost {
    * stdio `updateConfig` 当 `AgentOptions` 覆盖层下发（覆盖层优先级高于
    * settings.json，会永久遮蔽实时值），因此**不重建任何会话**：回执与界面刷新
    * 在落盘后立即给出，流式输出、排队消息、待确认权限都不受影响。无差异保存同样
-   * 只落盘回执。桌面本地配置（模型/快速模型/服务地址）仍存 configStore；
-   * 用户偏好**不写入** `wave-desktop.json`。
+   * 只落盘回执。用户偏好**不写入** `wave-desktop.json`；反过来设置页也不会送来
+   * 本地存储的键（模型选择经 `/model` RPC、服务地址经 getAuthStatus 写入）。
    *
    * 载荷是**部分更新**：设置页只带用户真正改动过的字段（未设置 / 没改的键不
    * 出现），未提供的键一律保持文件中现值（见 `updateUserPreferences`）。
@@ -4853,12 +4888,6 @@ export class DesktopHost {
         this.currentHost,
         configData,
       );
-      // 用户偏好键不进桌面本地配置（落点唯一 = settings.json）。
-      this.configStore.setConfiguration({
-        model: configData.model,
-        fastModel: configData.fastModel,
-        serverUrl: configData.serverUrl,
-      });
       // 设置页保存成功经全局 toast 提示（spec「设置页反馈语义」，webview 不再
       // 渲染页面内提示）；configurationResponse 仍回发以刷新设置页展示值。
       this.showToast({ message: "保存成功", type: "success" });
@@ -4886,10 +4915,10 @@ export class DesktopHost {
 
   /** 桌面本地配置 + 最近一次读到的用户偏好（同步，供 getStatus 回包）。 */
   private cachedConfigurationData(): DesktopConfigData {
-    return {
-      ...this.configStore.getConfiguration(),
-      ...(this.userPreferencesByHost.get(this.currentHost) ?? {}),
-    };
+    // 配置回包只承载**用户偏好**（落 ~/.wave/settings.json）。本地存储里的
+    // model / fastModel / serverUrl 不进回包：模型经 `/model` RPC 管理，服务
+    // 地址由 authStatusResponse 下发（webview 侧没有这两个的设置入口）。
+    return { ...(this.userPreferencesByHost.get(this.currentHost) ?? {}) };
   }
 
   /** 读会话所在进程的用户级偏好（写入缓存；RPC 失败保留上次成功值）。 */
@@ -4975,36 +5004,31 @@ export class DesktopHost {
    * apply — the write that triggered the apply has already succeeded.
    */
   private updateAgentConfig(
-    config: DesktopConfigData,
     options: { idleOnly?: boolean } = {},
   ): Promise<void> {
     // Defer starting the run inside the chain: an async body executes
     // synchronously up to its first await, so invoking recreateAgentsForConfig
     // eagerly here would let overlapping calls interleave despite the chain.
     const chained = this.configRecreateTail.then(() =>
-      this.recreateAgentsForConfig(config, options),
+      this.recreateAgentsForConfig(options),
     );
     this.configRecreateTail = chained.catch(() => {});
     return chained;
   }
 
   private async recreateAgentsForConfig(
-    config: DesktopConfigData,
     options: { idleOnly?: boolean } = {},
   ): Promise<void> {
-    // 会话级覆盖项只有模型/快速模型：用户偏好（语言 / 上下文长度 / 自动记忆）
-    // 走用户级 settings.json + 实时重载，不经本层下发（spec「分层职责」）。
-    const params = {
-      model: config.model,
-      fastModel: config.fastModel,
-    };
+    // 桌面不再下发任何会话级配置：应用级设置（模型经 `/model` 命令 / 用户偏好经
+    // 用户级 settings.json + 实时重载）各有独立通路（spec「分层职责」）。这里只做
+    // 重建，让 agent 重新走一遍初始化（如登录后换 SSO 配置、插件开关生效）。
     for (const [oldSid, agent] of [...this.agents]) {
       // 「立即重启」只重建空闲会话：正在生成回复 / 有待确认权限 / 有运行中后台
       // 任务的会话不打断、保持旧配置（spec 场景 5）。
       if (options.idleOnly && this.isAgentBusy(agent)) continue;
       const wasStreaming = agent.isStreaming;
       try {
-        await agent.updateConfig(params);
+        await agent.updateConfig({});
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (
@@ -5085,9 +5109,7 @@ export class DesktopHost {
       });
       return;
     }
-    await this.updateAgentConfig(this.configStore.getConfiguration(), {
-      idleOnly: true,
-    });
+    await this.updateAgentConfig({ idleOnly: true });
   }
 
   /** Lazily create the electron-updater service bound to the S0–S6 state
@@ -5461,7 +5483,7 @@ export class DesktopHost {
       });
       this.syncAccountCard();
       // Reinitialize agent to pick up SSO config
-      await this.updateAgentConfig(this.configStore.getConfiguration());
+      await this.updateAgentConfig();
     } catch (error) {
       console.error("[DesktopHost] 登录失败:", error);
       this.postMessage({
@@ -5493,7 +5515,7 @@ export class DesktopHost {
         apiQuota: null,
       });
       this.pushAccountInfo();
-      await this.updateAgentConfig(this.configStore.getConfiguration());
+      await this.updateAgentConfig();
     } catch (error) {
       console.error("[DesktopHost] 登出失败:", error);
       this.postMessage({

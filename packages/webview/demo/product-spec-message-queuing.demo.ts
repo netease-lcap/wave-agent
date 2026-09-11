@@ -50,10 +50,6 @@ test.describe("Product Specification Screenshots - Message Queuing", () => {
       isStreaming: true,
       sessions: [],
       isAuthenticated: true,
-      configurationData: {
-        model: "claude-sonnet-4-20250514",
-        fastModel: "claude-haiku-4-20250514",
-      },
       permissionMode: "default",
     });
 

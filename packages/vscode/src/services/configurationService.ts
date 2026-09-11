@@ -1,4 +1,3 @@
-import * as vscode from "vscode";
 import type { StdioClient } from "../stdio/stdioClient";
 import type {
   UserPreferenceKey,
@@ -8,10 +7,7 @@ import type {
 } from "wave-agent-sdk/types";
 
 export interface ConfigurationData {
-  model?: string;
-  fastModel?: string;
   language?: string;
-  serverUrl?: string;
   /** Per-model input context window in K tokens (e.g. 200 = 200K), 16–1000 */
   contextLength?: number;
   /** Whether auto-memory extraction is enabled */
@@ -27,20 +23,21 @@ export interface ConfigurationData {
 }
 
 /**
- * 扩展本地配置（`model` / `fastModel` / `serverUrl`，落 globalState）与
- * 用户偏好（AI 回复语言 / 上下文长度 / 自动记忆开关与频率）的读写入口。
+ * 设置页配置载荷：**只有用户偏好**（AI 回复语言 / 上下文长度 / 自动记忆开关与
+ * 频率），落点唯一为用户级 `~/.wave/settings.json`。
  *
- * 用户偏好落点唯一为用户级 `~/.wave/settings.json`：经共享 CLI 进程（即**会话
- * 所在进程**，VS Code Remote/SSH 下是远端机器上的该文件）的
- * `getUserSettings` / `updateUserSettings` 读写，SDK 侧热重载在**下一轮对话**
- * 生效——保存不再重建会话（spec core/agent-config.md「设置实时重载」与
- * 「IDE 插件配置入口」场景 6）。宿主私有存储（globalState）
+ * 模型选择与服务地址不属于这里：模型经 `/model` 命令走
+ * `getConfiguredModels` / `setModel`，服务地址随 `authStatusResponse.serverUrl`
+ * 下发（由 CLI 的 `getAuthStatus` 解析）。
+ *
+ * 用户偏好经共享 CLI 进程（即**会话所在进程**，VS Code Remote/SSH 下是远端机器
+ * 上的该文件）的 `getUserSettings` / `updateUserSettings` 读写，SDK 侧热重载在
+ * **下一轮对话**生效——保存不再重建会话（spec core/agent-config.md「设置实时重载」
+ * 与「IDE 插件配置入口」场景 6）。宿主私有存储（globalState）
  * **不得**作为用户偏好的第二真源。
  */
 export class ConfigurationService {
   private client?: StdioClient;
-
-  constructor(private context: vscode.ExtensionContext) {}
 
   /**
    * 绑定共享 CLI 客户端（init 里客户端 spawn 之后调用）。用户偏好读写都走它，
@@ -50,47 +47,15 @@ export class ConfigurationService {
     this.client = client;
   }
 
-  private loadLocalConfiguration(): Omit<
-    ConfigurationData,
-    | "language"
-    | "contextLength"
-    | "autoMemoryEnabled"
-    | "autoMemoryFrequency"
-    | "preferenceSources"
-  > {
-    return {
-      model: this.context.globalState.get<string>("model") || "",
-      fastModel: this.context.globalState.get<string>("fastModel") || "",
-      serverUrl: this.context.globalState.get<string>("serverUrl") || "",
-    };
-  }
-
   public async loadConfiguration(): Promise<ConfigurationData> {
-    return {
-      ...this.loadLocalConfiguration(),
-      ...(await this.readUserPreferences()),
-    };
+    return { ...(await this.readUserPreferences()) };
   }
 
   public async saveConfiguration(
     configData: Partial<ConfigurationData>,
   ): Promise<void> {
     try {
-      if (configData.model !== undefined)
-        await this.context.globalState.update("model", configData.model);
-      if (configData.fastModel !== undefined)
-        await this.context.globalState.update(
-          "fastModel",
-          configData.fastModel,
-        );
-      if (configData.serverUrl !== undefined)
-        await this.context.globalState.update(
-          "serverUrl",
-          configData.serverUrl,
-        );
-
       const patch = pickUserPreferences(configData);
-      // 无用户偏好键（如仅同步 serverUrl）不触碰 settings.json。
       if (Object.keys(patch).length > 0) {
         await this.userPreferenceClient().request("updateUserSettings", patch);
       }

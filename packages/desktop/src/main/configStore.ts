@@ -8,15 +8,14 @@ import type {
 import { LOCAL_HOST } from "./sshHosts";
 
 /**
- * App-level configuration persisted by the desktop host (the VSCE extension
- * keeps these in context.globalState; we use a JSON file in userData).
+ * 桌面本地存储的键。**只剩服务地址**：模型选择与用户偏好都不落这里——
+ * 模型经 `/model` 命令走宿主 RPC（`getConfiguredModels` / `setModel`），用户偏好
+ * （语言 / 上下文长度 / 自动记忆）的唯一落点是用户级 `~/.wave/settings.json`。
+ * `serverUrl` 由 CLI 的 `getAuthStatus` 解析（宿主只缓存，用于拼更新 feed URL）。
  *
- * 桌面本地配置的定义与设置页配置回包载荷的注释见 `DesktopConfigData`。
+ * 设置页配置回包载荷只承载用户偏好键（见 `ConfigurationData`）。
  */
 export interface DesktopConfigData {
-  /** 桌面本地配置（落本存储）：模型选择。 */
-  model?: string;
-  fastModel?: string;
   serverUrl?: string;
   /**
    * 用户偏好：AI 回复语言。落点唯一为用户级 `~/.wave/settings.json`（读写经
