@@ -714,6 +714,25 @@ class MessageHandler(
                     put("projectPath", paths?.get("projectPath") ?: JsonNull)
                 })
             }
+            // 设置页「服务端配置」区块：服务端下发的托管配置**原文**（spec
+            // server-managed-config「在设置页查看服务端下发的配置」）。getManagedSettings
+            // 是全局（无 session）请求，读 CLI 进程内最近一次成功下发的缓存、不发网络
+            // 请求，因此无聊天会话时也能拿到真值；无下发内容 / 读失败一律回 null，
+            // 设置页按空态展示。
+            "getManagedSettings" -> {
+                val requestId = msg["requestId"]?.jsonPrimitive?.content ?: return
+                val managed = try {
+                    readManagedSettings()
+                } catch (e: StdioClientException) {
+                    LOG.warn("getManagedSettings failed: ${e.message}")
+                    JsonNull
+                }
+                // 归属键 requestId 原样带回：多次进入该视图时晚到的旧回复被 webview 丢弃。
+                postMessage("managedSettingsResponse", buildJsonObject {
+                    put("requestId", requestId)
+                    put("managedSettings", managed)
+                })
+            }
             "removeMcpServer" -> {
                 val scope = msg["scope"]?.jsonPrimitive?.content ?: return
                 val name = msg["serverName"]?.jsonPrimitive?.content ?: return
@@ -1013,6 +1032,17 @@ class MessageHandler(
     private suspend fun readUserSettings(): JsonObject {
         val (client, _) = WaveBackendService.getInstance(project).ensureClient()
         return client.request("getUserSettings")?.jsonObject ?: JsonObject(emptyMap())
+    }
+
+    /**
+     * 读服务端下发的托管配置原文（`getManagedSettings`，同 `getUserSettings`
+     * 一样是全局无 session 请求，经共享 CLI 进程）。返回 `null` = 无下发内容
+     * （未登录 / 服务端未配置 / 已撤销 / 缓存损坏），设置页按空态展示。
+     */
+    private suspend fun readManagedSettings(): JsonElement {
+        val (client, _) = WaveBackendService.getInstance(project).ensureClient()
+        val result = client.request("getManagedSettings")?.jsonObject ?: return JsonNull
+        return result["managedSettings"] ?: JsonNull
     }
 
     /**

@@ -2549,6 +2549,126 @@ describe("user preference save path and rebuild timing", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 设置页「服务端配置」区块（spec: server-managed-config.md
+// 「在设置页查看服务端下发的配置」）
+// ---------------------------------------------------------------------------
+
+describe("settings server-managed config block", () => {
+  /** 覆盖会话无关的 getManagedSettings RPC（默认 mock 对未知名返回 {}）。 */
+  function stubManagedSettingsRpc(
+    managedSettings: Record<string, unknown> | null,
+  ) {
+    const orig = h.handleClientRequest;
+    h.handleClientRequest = (m: string, params?: unknown) => {
+      if (m === "getManagedSettings") return { managedSettings };
+      return orig(m, params);
+    };
+    return () => {
+      h.handleClientRequest = orig;
+    };
+  }
+
+  it("replies with the delivered config verbatim and echoes the requestId", async () => {
+    const { host, sent } = await readyHost();
+    // 原文不脱敏：env 里的密钥按服务端下发的样子展示（内容本来就在用户本机
+    // 0600 文件里，spec 边界说明「不做脱敏」）。
+    const delivered = {
+      permissions: { deny: ["Bash"] },
+      env: { WAVE_MODEL: "org-model", WAVE_API_KEY: "org-secret" },
+      autoMemoryEnabled: false,
+    };
+    const restore = stubManagedSettingsRpc(delivered);
+    try {
+      await host.handleWebviewMessage({
+        command: "getManagedSettings",
+        requestId: "req-1",
+      });
+    } finally {
+      restore();
+    }
+
+    expect(sent("managedSettingsResponse")).toEqual([
+      {
+        command: "managedSettingsResponse",
+        requestId: "req-1",
+        managedSettings: delivered,
+      },
+    ]);
+  });
+
+  it("replies null when nothing was delivered (empty state, no fabricated {})", async () => {
+    const { host, sent } = await readyHost();
+    const restore = stubManagedSettingsRpc(null);
+    try {
+      await host.handleWebviewMessage({
+        command: "getManagedSettings",
+        requestId: "req-2",
+      });
+    } finally {
+      restore();
+    }
+
+    expect(sent("managedSettingsResponse")).toEqual([
+      {
+        command: "managedSettingsResponse",
+        requestId: "req-2",
+        managedSettings: null,
+      },
+    ]);
+  });
+
+  it("still replies null when the RPC fails, so the block never hangs loading", async () => {
+    const { host, sent } = await readyHost();
+    const restore = failRpc("getManagedSettings", "boom");
+    try {
+      await host.handleWebviewMessage({
+        command: "getManagedSettings",
+        requestId: "req-3",
+      });
+    } finally {
+      restore();
+    }
+
+    expect(sent("managedSettingsResponse")).toEqual([
+      {
+        command: "managedSettingsResponse",
+        requestId: "req-3",
+        managedSettings: null,
+      },
+    ]);
+  });
+
+  it("reads the session process's config, not the local one, on a remote host", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, sent } = createHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+    await vi.waitFor(() =>
+      expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalled(),
+    );
+    const remoteClient = (await vi.mocked(connectRemoteDaemon).mock.results[0]
+      .value) as Awaited<ReturnType<typeof connectRemoteDaemon>>;
+
+    await host.handleWebviewMessage({
+      command: "getManagedSettings",
+      requestId: "req-remote",
+    });
+
+    // 远端机器上的进程才持有那台机器生效的下发配置（各主机登录身份可能不同）；
+    // 读本机进程会给出错误的管控视图（spec 场景 6）。
+    expect(remoteClient.client.request).toHaveBeenCalledWith(
+      "getManagedSettings",
+    );
+    expect(sent("managedSettingsResponse").at(-1)).toMatchObject({
+      requestId: "req-remote",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // update checks (FR-010)
 // ---------------------------------------------------------------------------
 

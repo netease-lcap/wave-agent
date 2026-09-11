@@ -11,6 +11,7 @@ import {
   getMessageContent,
   validateWorktreeRemovalPath,
   loadUserConfigEnv,
+  readManagedSettings,
   readUserPreferenceView,
   updateUserPreferenceSettings,
 } from "wave-agent-sdk";
@@ -1774,6 +1775,39 @@ test("getUserSettings 回包 = 生效值 + 每键来源层", async () => {
       autoMemoryFrequency: "user",
     },
   });
+});
+
+// ── Managed settings（设置页「服务端配置」区块，只读、会话无关） ──────
+
+test("getManagedSettings 回下发配置原文（不做字段筛选、不脱敏）", async () => {
+  vi.mocked(readManagedSettings).mockReturnValue({
+    permissions: { deny: ["Bash"] },
+    env: { WAVE_MODEL: "org-model", WAVE_API_KEY: "org-secret" },
+    autoMemoryEnabled: false,
+  });
+  const { bridge } = createBridge();
+
+  const result = await bridge.handleRequest("getManagedSettings", {});
+
+  // 原文照搬：客户要看到的是服务端管控的**全量**清单（含敏感 env），
+  // 不做「挑重要项」的字段筛选、也不脱敏（spec server-managed-config
+  // 「在设置页查看服务端下发的配置」场景 1 与边界情况）。
+  expect(result).toEqual({
+    managedSettings: {
+      permissions: { deny: ["Bash"] },
+      env: { WAVE_MODEL: "org-model", WAVE_API_KEY: "org-secret" },
+      autoMemoryEnabled: false,
+    },
+  });
+});
+
+test("getManagedSettings 无下发内容时回 null（设置页按空态展示，不编造空对象）", async () => {
+  vi.mocked(readManagedSettings).mockReturnValue(null);
+  const { bridge } = createBridge();
+
+  const result = await bridge.handleRequest("getManagedSettings", {});
+
+  expect(result).toEqual({ managedSettings: null });
 });
 
 test("updateUserSettings writes the patch and returns the read-back values", async () => {

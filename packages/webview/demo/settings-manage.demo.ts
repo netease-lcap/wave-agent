@@ -3,6 +3,7 @@ import { elementScreenshotWebp } from "../e2e/utils/screenshot.js";
 import {
   openSettings,
   simulateHostMessage,
+  waitForSentCommand,
 } from "../e2e/utils/settingsHarness.js";
 
 /**
@@ -157,6 +158,51 @@ test.describe("设置页 MCP 服务选项卡 Demo", () => {
     await elementScreenshotWebp(
       view,
       "../../docs/public/screenshots/spec-mcp-settings.webp",
+    );
+  });
+});
+
+// 服务端下发的托管配置（三端同款「服务端配置」区块）：取一份有代表性的下发
+// 内容——env（含密钥）、权限策略、记忆开关与上下文长度，让截图能体现「组织到底
+// 管控了哪些项」。展示值为原文 JSON，不做字段筛选与脱敏。
+const managedSettings = {
+  env: {
+    WAVE_MODEL: "deepseek-v4",
+    WAVE_BASE_URL: "https://gateway.example.com/v1",
+    WAVE_API_KEY: "sk-org-example-key",
+  },
+  permissions: {
+    defaultMode: "default",
+    deny: ["Bash(rm -rf*)", "Read(.env)"],
+  },
+  autoMemoryEnabled: false,
+  contextLength: 200,
+};
+
+test.describe("设置页服务端配置区块 Demo", () => {
+  test("should show server-managed config as read-only JSON", async ({
+    webviewPage,
+  }) => {
+    await openSettings(webviewPage, {
+      settingsState: { workdir: "/work/wave-agent", nav: "global" },
+    });
+
+    // 等视图挂载（发出 getManagedSettings 请求）后再回数据，避免响应先于 listener
+    const request = await waitForSentCommand(webviewPage, "getManagedSettings");
+    await simulateHostMessage(webviewPage, {
+      command: "managedSettingsResponse",
+      requestId: request.requestId,
+      managedSettings,
+    });
+
+    await expect(
+      webviewPage.getByTestId("settings-managed-json"),
+    ).toBeVisible();
+
+    const view = webviewPage.locator(".settings-page");
+    await elementScreenshotWebp(
+      view,
+      "../../docs/public/screenshots/spec-managed-settings.webp",
     );
   });
 });

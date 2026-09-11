@@ -567,6 +567,12 @@ export class MessageHandler {
       case "getMcpConfigPaths":
         await this.handleSettingsGetMcpConfigPaths();
         break;
+      case "getManagedSettings":
+        // 设置页「服务端配置」区块：服务端下发的托管配置原文。与 chat 路由的
+        // 同名命令无关——设置页在独立 settings tab 里渲染，回包必须发给设置
+        // 面板本身（postSettingsMessage）。
+        await this.handleSettingsGetManagedSettings(msg.requestId as string);
+        break;
       case "connectMcpServer":
         await this.handleSettingsConnectMcpServer(msg.serverName as string);
         break;
@@ -946,6 +952,33 @@ export class MessageHandler {
     } catch (error) {
       console.error("Failed to get MCP config paths:", error);
     }
+  }
+
+  /**
+   * 设置页「服务端配置」区块：回服务端下发的托管配置**原文**（spec
+   * server-managed-config「在设置页查看服务端下发的配置」）。读会话所在进程最近
+   * 一次成功下发的缓存（`getManagedSettings` RPC 只读进程内缓存、不发网络请求）；
+   * 无下发内容（未登录 / 服务端未配置 / 已撤销 / 缓存损坏）或 RPC 失败回 null，
+   * 设置页按空态展示，不编造空对象冒充「有下发」。全文不脱敏。
+   */
+  private async handleSettingsGetManagedSettings(
+    requestId: string,
+  ): Promise<void> {
+    let managedSettings: Record<string, unknown> | null = null;
+    try {
+      const result = (await this.utilityClient.request(
+        "getManagedSettings",
+      )) as { managedSettings: Record<string, unknown> | null };
+      managedSettings = result.managedSettings ?? null;
+    } catch (error) {
+      console.error("Failed to get managed settings:", error);
+    }
+    // 归属键 requestId 原样带回：多次进入该视图时晚到的旧回复被 webview 丢弃。
+    this.context.postSettingsMessage({
+      command: "managedSettingsResponse",
+      requestId,
+      managedSettings,
+    });
   }
 
   private async handleSettingsConnectMcpServer(

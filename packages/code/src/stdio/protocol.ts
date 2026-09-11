@@ -90,6 +90,9 @@ export type RequestMethod =
   // 设置页保存路径，见 docs/specs/core/agent-config.md「设置实时重载」)
   | "getUserSettings"
   | "updateUserSettings"
+  // Managed settings (global — 服务端下发的托管配置原文，无 session；设置页
+  // 「服务端配置」区块只读展示用，见 docs/specs/enterprise/server-managed-config.md)
+  | "getManagedSettings"
   // Permissions (daemon attach: re-surface pending approvals after reconnect)
   | "listPendingPermissions"
   // Daemon (global — list in-memory session registry, no session required)

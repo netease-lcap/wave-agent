@@ -248,6 +248,29 @@ const mockDesktopApiJs = `
                     reply();
                 }
             }
+            // 真宿主（desktopHost.ts handleGetManagedSettings）回答设置页
+            // 「服务端配置」区块的原文拉取；mock 也回，否则该区块永远停在
+            // 「正在读取服务端配置…」（webview 按 requestId 丢弃不匹配的应答）。
+            // 取代表性下发内容：含 env 密钥（区块不脱敏）与几条管控项。
+            if (message && message.command === 'getManagedSettings') {
+                deliver({
+                    command: 'managedSettingsResponse',
+                    requestId: message.requestId,
+                    managedSettings: {
+                        env: {
+                            WAVE_MODEL: 'deepseek-v4',
+                            WAVE_BASE_URL: 'https://gateway.example.com/v1',
+                            WAVE_API_KEY: 'sk-org-example-key',
+                        },
+                        permissions: {
+                            defaultMode: 'default',
+                            deny: ['Bash(rm -rf*)', 'Read(.env)'],
+                        },
+                        autoMemoryEnabled: false,
+                        contextLength: 200,
+                    },
+                });
+            }
             window.dispatchEvent(new CustomEvent('vscode-message', { detail: message }));
         },
         setState: (state) => {},

@@ -980,6 +980,67 @@ describe("MessageHandler settings tab", () => {
     expect(context.postMessage).not.toHaveBeenCalled();
   });
 
+  // 设置页「服务端配置」区块（spec server-managed-config「在设置页查看服务端下发的
+  // 配置」）：展示服务端到底管控了什么，读的是 CLI 进程内最近一次成功下发的缓存。
+  test("getManagedSettings replies with the delivered config to the settings panel", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    const delivered = {
+      permissions: { deny: ["Bash"] },
+      env: { WAVE_API_KEY: "org-secret" },
+    };
+    utilityClient.request.mockResolvedValue({ managedSettings: delivered });
+
+    await handler.handleSettingsMessage({
+      command: "getManagedSettings",
+      requestId: "req-1",
+    });
+
+    expect(utilityClient.request).toHaveBeenCalledWith("getManagedSettings");
+    // 原文不脱敏：env 里的密钥按服务端下发的样子展示。
+    expect(context.postSettingsMessage).toHaveBeenCalledWith({
+      command: "managedSettingsResponse",
+      requestId: "req-1",
+      managedSettings: delivered,
+    });
+    // 回包发给设置面板本身，不发聊天 webview。
+    expect(context.postMessage).not.toHaveBeenCalled();
+  });
+
+  test("getManagedSettings replies null when nothing was delivered (empty state)", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    utilityClient.request.mockResolvedValue({ managedSettings: null });
+
+    await handler.handleSettingsMessage({
+      command: "getManagedSettings",
+      requestId: "req-2",
+    });
+
+    expect(context.postSettingsMessage).toHaveBeenCalledWith({
+      command: "managedSettingsResponse",
+      requestId: "req-2",
+      managedSettings: null,
+    });
+  });
+
+  test("getManagedSettings still replies null when the RPC fails, so the block never hangs loading", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    utilityClient.request.mockRejectedValue(new Error("boom"));
+
+    await handler.handleSettingsMessage({
+      command: "getManagedSettings",
+      requestId: "req-3",
+    });
+
+    expect(context.postSettingsMessage).toHaveBeenCalledWith({
+      command: "managedSettingsResponse",
+      requestId: "req-3",
+      managedSettings: null,
+    });
+  });
+
   test("setBuiltinPluginEnabled from the settings panel reloads config, recreates agents and replies to the settings panel", async () => {
     const configService = {
       loadConfiguration: vi.fn(),

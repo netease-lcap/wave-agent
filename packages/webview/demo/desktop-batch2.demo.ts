@@ -2,7 +2,10 @@ import { test, expect } from "../e2e/utils/desktopTestHarness.js";
 import { seedSidebarSessions } from "./sidebarSeed.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
-import { screenshotWebp } from "../e2e/utils/screenshot.js";
+import {
+  screenshotWebp,
+  elementScreenshotWebp,
+} from "../e2e/utils/screenshot.js";
 
 /**
  * Batch 2 desktop features (spec desktop-account-and-settings.md 设置页面/上下文
@@ -102,6 +105,20 @@ test.describe("Desktop batch 2 feature screenshots", () => {
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-settings-global.webp",
+    );
+
+    // 3b. 服务端配置区块（只读展示服务端下发的托管配置原文）：三个区块已超出
+    //     窗口高度，整页截图切在 JSON 中间，故另出一张区块特写（docs/desktop.md
+    //     6.2 引用）。harness 的 mock host 会回一份代表性下发内容。
+    const serverConfigSection = webviewPage
+      .locator(".settings-section")
+      .filter({ hasText: "服务端配置" });
+    await expect(
+      serverConfigSection.getByTestId("settings-managed-json"),
+    ).toBeVisible();
+    await elementScreenshotWebp(
+      serverConfigSection,
+      "../../docs/public/screenshots/desktop-settings-managed.webp",
     );
 
     // 4. 设置页 - 个性化：AGENTS.md 编辑器 + 自动记忆规则。
