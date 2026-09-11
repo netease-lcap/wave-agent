@@ -7,9 +7,11 @@
  * 1. 发布本地 .md 文件为 artifact（Artifact 工具，POST /api/frame/deploy/direct）
  * 2. 从会话消息历史中提取发布 URL
  * 3. 直接校验 artifact 内容可读（GET /api/frame/{slug}/content?v={version}）
- * 4. WebFetch 拦截读取 artifact URL（via=model_read 专用通道）
+ * 4. WebFetch 拦截读取 artifact URL（via=model_read 专用通道，返回摘要）
  * 5. Artifact 工具 read 动作读取原始 HTML（自有 artifact 返回原文，不走摘要）
- * 6. 同一会话重新发布（版本升级，自动允许不弹确认）
+ * 6. 真实 HTML 原型（内联 CSS/JS，>2KB）——**自然语言触发**发布，再读回源码验证
+ *    内联 CSS/JS 完整；内容超过 ~2KB 会走落盘路径（返回文件路径 + 预览）
+ * 7. 同一会话重新发布（版本升级，自动允许不弹确认）
  *
  * 前置条件：
  * - 已登录（~/.wave/auth.json 存在有效 SSO token）
@@ -70,6 +72,120 @@ function extractSlug(url: string): string | null {
   }
 }
 
+/**
+ * 一个真实形态的 HTML 原型：内联 CSS + 内联 JS，且刻意超过 2KB
+ * （验证「读回自有 artifact」在内容较大时走落盘路径：返回文件路径 + 预览）。
+ * 这正是 WebFetch 拿不到 html/css/js 的场景。
+ */
+const PROTOTYPE_HTML = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wave 原型：计数器卡片</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --fg: #e6edf3;
+    --muted: #8b949e;
+    --accent: #1f6feb;
+    --ok: #238636;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background: radial-gradient(1200px 600px at 50% -10%, #1f6feb22, transparent), var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .card {
+    width: min(520px, 92vw);
+    padding: 28px;
+    border-radius: var(--radius);
+    background: linear-gradient(160deg, #1f6feb1f, #8957e51f), var(--panel);
+    border: 1px solid #30363d;
+    box-shadow: 0 20px 60px #00000066;
+  }
+  .card h1 { margin: 0 0 8px; font-size: 22px; letter-spacing: 0.2px; }
+  .card p { margin: 0 0 20px; color: var(--muted); line-height: 1.6; }
+  .counter { display: flex; align-items: center; gap: 14px; }
+  .counter .value {
+    font-variant-numeric: tabular-nums;
+    font-size: 40px;
+    font-weight: 600;
+    min-width: 72px;
+    text-align: center;
+    padding: 6px 0;
+    border-radius: 10px;
+    background: #0d111788;
+  }
+  button {
+    appearance: none;
+    border: 0;
+    border-radius: 10px;
+    padding: 12px 20px;
+    font: inherit;
+    font-weight: 600;
+    color: #fff;
+    background: var(--ok);
+    cursor: pointer;
+    transition: transform 0.12s ease, filter 0.12s ease;
+  }
+  button:hover { filter: brightness(1.12); }
+  button:active { transform: translateY(1px); }
+  button.secondary { background: #30363d; }
+  .hint { margin-top: 18px; font-size: 13px; color: var(--muted); }
+  @media (prefers-reduced-motion: reduce) { button { transition: none; } }
+</style>
+</head>
+<body>
+  <main class="card">
+    <h1>Wave 原型：计数器卡片</h1>
+    <p>这个页面由 Artifact 工具发布，<strong>内联 CSS 与内联 JS 都应原样保留</strong>。</p>
+    <div class="counter">
+      <button type="button" id="dec" class="secondary">-1</button>
+      <span class="value" id="value">0</span>
+      <button type="button" id="inc">+1</button>
+    </div>
+    <p class="hint" id="hint">点按钮试试：脚本在没有外部依赖的情况下运行。</p>
+  </main>
+  <script>
+    (function () {
+      var value = 0;
+      var valueEl = document.getElementById("value");
+      var hintEl = document.getElementById("hint");
+      function render() {
+        valueEl.textContent = String(value);
+        hintEl.textContent =
+          value === 0
+            ? "点按钮试试：脚本在没有外部依赖的情况下运行。"
+            : "已点击 " + Math.abs(value) + " 次（内联 JS 生效）。";
+      }
+      document.getElementById("inc").addEventListener("click", function () {
+        value += 1;
+        render();
+      });
+      document.getElementById("dec").addEventListener("click", function () {
+        value -= 1;
+        render();
+      });
+      render();
+    })();
+  </script>
+</body>
+</html>`;
+
+/** 从 <persisted-output> 提示里取出落盘文件的完整路径。 */
+function extractPersistedPath(text: string): string | null {
+  const match = text.match(/Full output saved to:\s*(\S+\.txt)/);
+  return match ? match[1] : null;
+}
+
 async function setupTest() {
   // 创建临时目录作为工作目录
   tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "artifact-demo-"));
@@ -97,6 +213,14 @@ const published = await artifactTool.execute(...);
 `;
   await fs.writeFile(path.join(tempDir, "guide.md"), md, "utf-8");
   console.log(`📝 Created guide.md (${md.length} chars)`);
+
+  // 另写一个真实形态的 HTML 原型（内联 CSS/JS，>2KB）
+  await fs.writeFile(
+    path.join(tempDir, "prototype.html"),
+    PROTOTYPE_HTML,
+    "utf-8",
+  );
+  console.log(`📝 Created prototype.html (${PROTOTYPE_HTML.length} chars)`);
 
   if (!authService.getSSOToken()) {
     throw new Error(
@@ -218,8 +342,80 @@ async function runTest() {
   }
   console.log("   Raw HTML returned by Artifact(action=read) OK");
 
-  // ---- 5. 同一会话重新发布 ----
-  console.log("\n💬 Step 5: Republishing with updated content...");
+  // ---- 5. 真实 HTML 原型：自然语言触发发布 + 读回源码 ----
+  // 以下两步刻意**不写 MUST / ONLY**，用真实用户口吻提问，观察模型能否靠工具
+  // 描述自行选对工具；选错就抛错——这本身就是「顺不顺」的结论。
+  console.log(
+    "\n💬 Step 5: Publishing an HTML prototype with natural language (no forcing)...",
+  );
+  const beforePublish = agent.messages.length;
+  await agent.sendMessage(
+    "把 prototype.html 发布成可分享的网页吧，图标用 🎨，然后把链接发我。",
+  );
+  const prototypeBlock = findArtifactResult(
+    agent.messages.slice(beforePublish),
+  );
+  const prototypeUrl = prototypeBlock
+    ? extractArtifactUrl(prototypeBlock)
+    : null;
+  if (!prototypeUrl) {
+    throw new Error(
+      "自然语言触发失败：模型没有自行调用 Artifact 工具发布 prototype.html。" +
+        `\nTool result: ${JSON.stringify(prototypeBlock?.result || prototypeBlock?.error)}`,
+    );
+  }
+  console.log(`🔗 Prototype URL: ${prototypeUrl}`);
+  if (prototypeUrl === publishUrl) {
+    throw new Error("Prototype publish reused the previous artifact URL");
+  }
+
+  console.log("\n💬 Step 6: Reading the prototype source back...");
+  const beforeRead = agent.messages.length;
+  await agent.sendMessage(
+    `读回 ${prototypeUrl} 的源码，确认内联的 CSS 与 JS 是否完整保留了。`,
+  );
+  const sourceBlock = findArtifactResult(agent.messages.slice(beforeRead));
+  const sourceText = `${sourceBlock?.shortResult || ""}\n${sourceBlock?.result || ""}`;
+  if (!sourceBlock) {
+    throw new Error(
+      "自然语言触发失败：模型没有用 Artifact(action=read) 读回源码（可能改用了 WebFetch）。",
+    );
+  }
+
+  // 内容 >2KB：走落盘路径，模型看到的是「文件路径 + 预览」，全文在文件里
+  if (!sourceText.includes("<persisted-output>")) {
+    throw new Error(
+      "Expected the >2KB prototype read to go through the persisted-output path.\n" +
+        `Tool result: ${sourceText.slice(0, 500)}`,
+    );
+  }
+  if (!sourceText.includes("<style>")) {
+    throw new Error(
+      "Preview should still contain the start of the document (<style>).\n" +
+        `Tool result: ${sourceText.slice(0, 500)}`,
+    );
+  }
+  const persistedPath = extractPersistedPath(sourceText);
+  if (!persistedPath) {
+    throw new Error(
+      `Cannot find the persisted file path in the tool result.\nTool result: ${sourceText.slice(0, 500)}`,
+    );
+  }
+  const persistedSource = await fs.readFile(persistedPath, "utf-8");
+  if (
+    !persistedSource.includes("background: var(--ok);") ||
+    !persistedSource.includes('addEventListener("click"')
+  ) {
+    throw new Error(
+      "Read-back lost the inline CSS or JS — this is exactly what WebFetch cannot return.",
+    );
+  }
+  console.log(
+    `   Inline CSS + JS intact in ${persistedPath} (${persistedSource.length} chars)`,
+  );
+
+  // ---- 7. 同一会话重新发布 ----
+  console.log("\n💬 Step 7: Republishing with updated content...");
   const updated = `# Wave Artifact Demo v2
 
 Updated in the same session — the version should bump and the old URL stays valid.
