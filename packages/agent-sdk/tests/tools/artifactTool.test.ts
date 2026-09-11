@@ -20,6 +20,17 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
   },
 }));
 
+vi.mock("../../src/utils/toolResultStorage.js", () => ({
+  persistToolResult: vi
+    .fn()
+    .mockReturnValue("/tmp/wave-tool-results/artifact_1.txt"),
+  buildPersistedOutputMessage: vi.fn(
+    (len: number, filePath: string, preview: string) =>
+      `<persisted-output>${len} chars -> ${filePath} preview: ${preview}</persisted-output>`,
+  ),
+  generatePreview: vi.fn((s: string) => s.substring(0, 100)),
+}));
+
 vi.mock("fs", async () => {
   const actual = await vi.importActual("fs");
   return {
@@ -41,6 +52,8 @@ import {
 
 const SESSION_ID = "test-session";
 const SERVER_URL = "https://server.test";
+const ARTIFACT_URL = "https://server.test/code/artifact/abc";
+const CONTENT_URL = "/api/frame/abc/content";
 const MD_CONTENT = "# Hello World\n\nSome **bold** text.";
 const HTML_CONTENT =
   "<!DOCTYPE html><html><body><h1>Plain HTML</h1></body></html>";
@@ -51,6 +64,15 @@ function jsonResponse(status: number, body: unknown): Partial<Response> {
     status,
     statusText: status === 201 ? "Created" : status === 409 ? "Conflict" : "OK",
     json: vi.fn().mockResolvedValue(body),
+  };
+}
+
+function textResponse(status: number, body: string): Partial<Response> {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: status === 200 ? "OK" : "Nope",
+    text: vi.fn().mockResolvedValue(body),
   };
 }
 
@@ -116,12 +138,19 @@ describe("artifactTool", () => {
   });
 
   describe("config", () => {
-    it("should declare name, non-concurrent execution and required file_path", () => {
+    it("should declare name, non-concurrent execution and no statically required parameter", () => {
       expect(artifactTool.name).toBe(ARTIFACT_TOOL_NAME);
       expect(artifactTool.isConcurrencySafe).toBe(false);
       const fn = artifactTool.config.function;
       expect(fn.name).toBe(ARTIFACT_TOOL_NAME);
-      expect(fn.parameters?.required).toEqual(["file_path"]);
+      // publish needs file_path, read needs url — both validated at runtime.
+      expect(fn.parameters?.required).toEqual([]);
+      const properties = fn.parameters?.properties as Record<
+        string,
+        { enum?: string[] }
+      >;
+      expect(properties.action.enum).toEqual(["publish", "read"]);
+      expect(properties.prompt).toBeDefined();
     });
 
     it("should format compact params as file → url", () => {
@@ -134,6 +163,15 @@ describe("artifactTool", () => {
           makeContext(),
         ),
       ).toBe("Artifact(docs/guide.md → https://server.test/code/artifact/abc)");
+    });
+
+    it("should format compact params for reads", () => {
+      expect(
+        artifactTool.formatCompactParams!(
+          { action: "read", url: "https://server.test/code/artifact/abc" },
+          makeContext(),
+        ),
+      ).toBe("Artifact(read https://server.test/code/artifact/abc)");
     });
   });
 
@@ -669,6 +707,300 @@ describe("artifactTool", () => {
       expect(permissionContext.warning).toContain("shared-live");
       expect(permissionContext.hidePersistentOption).toBe(true);
       expect(manager.checkPermission).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("read action", () => {
+    const OWNER_HTML =
+      "<!DOCTYPE html><html><head><style>.a{color:red}</style></head><body><h1>Hello</h1><script>run()</script></body></html>";
+
+    function makeAiContext(overrides: Partial<ToolContext> = {}): ToolContext {
+      return makeContext({
+        aiManager: {
+          getModelConfig: vi.fn().mockReturnValue({
+            model: "gpt-4",
+            fastModel: "gpt-3.5-turbo",
+          }),
+          getGatewayConfig: vi.fn().mockReturnValue({ apiKey: "k" }),
+        } as unknown as ToolContext["aiManager"],
+        aiService: {
+          processWebContent: vi.fn().mockResolvedValue({
+            content: "A summary of the shared page.",
+          }),
+        } as unknown as ToolContext["aiService"],
+        ...overrides,
+      });
+    }
+
+    /** Route the metadata probe + content fetch used by every read. */
+    function stubArtifactRead(meta: unknown, html: string): Mock {
+      return stubFetchRoutes([
+        {
+          match: (url) => url.includes("/api/frame/abc?via=model_read"),
+          respond: () => jsonResponse(200, meta),
+        },
+        {
+          match: (url) => url === `${SERVER_URL}${CONTENT_URL}`,
+          respond: () => textResponse(200, html),
+        },
+      ]);
+    }
+
+    const OWNER_META = {
+      slug: "abc",
+      version: "v2",
+      perm: { mode: "owner", role: "owner" },
+      contentUrl: CONTENT_URL,
+    };
+
+    it("should require a url for reads", async () => {
+      const result = await artifactTool.execute(
+        { action: "read" },
+        makeContext(),
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('missing required parameter "url"');
+    });
+
+    it("should reject a url that is not an artifact page", async () => {
+      const result = await artifactTool.execute(
+        { action: "read", url: "https://server.test/docs/page" },
+        makeContext(),
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("url must point to an artifact page");
+    });
+
+    it("should reject an unknown action", async () => {
+      const result = await artifactTool.execute(
+        { action: "list" },
+        makeContext(),
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('action must be "publish" or "read"');
+    });
+
+    it("should reject unauthenticated reads", async () => {
+      (authService.getSSOToken as Mock).mockReturnValue(undefined);
+      const result = await artifactTool.execute(
+        { action: "read", url: ARTIFACT_URL },
+        makeContext(),
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("not authenticated. Run /login");
+    });
+
+    it("should return the raw HTML with the version for owned artifacts", async () => {
+      stubArtifactRead(OWNER_META, OWNER_HTML);
+      const context = makeAiContext();
+
+      const result = await artifactTool.execute(
+        { action: "read", url: ARTIFACT_URL },
+        context,
+      );
+
+      expect(result.success).toBe(true);
+      // The raw source is handed back — no markdown conversion, no AI summary.
+      expect(result.content).toContain("<!DOCTYPE html>");
+      expect(result.content).toContain("<style>.a{color:red}</style>");
+      expect(result.content).toContain("<script>run()</script>");
+      expect(result.content).toContain("Version: v2");
+      expect(context.aiService!.processWebContent).not.toHaveBeenCalled();
+      expect(result.shortResult).toContain("Read artifact abc");
+      // The observed version feeds the stale-version guard.
+      expect(getRecordedVersion(SESSION_ID, "abc")).toBe("v2");
+    });
+
+    it("should persist large HTML instead of inlining it", async () => {
+      const largeHtml = `<html><body><p>${"x".repeat(5000)}</p></body></html>`;
+      stubArtifactRead({ ...OWNER_META }, largeHtml);
+
+      const result = await artifactTool.execute(
+        { action: "read", url: ARTIFACT_URL },
+        makeAiContext(),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("<persisted-output>");
+      expect(result.content).toContain("/tmp/wave-tool-results/artifact_1.txt");
+      expect(result.content).toContain("Version: v2");
+    });
+
+    it("should record the read version so a republish is not flagged stale", async () => {
+      recordVersion(SESSION_ID, "abc", "v1");
+      stubArtifactRead(OWNER_META, OWNER_HTML);
+
+      await artifactTool.execute(
+        { action: "read", url: ARTIFACT_URL },
+        makeAiContext(),
+      );
+
+      expect(getRecordedVersion(SESSION_ID, "abc")).toBe("v2");
+    });
+
+    it("should summarize artifacts shared by someone else after confirmation", async () => {
+      stubArtifactRead(
+        {
+          slug: "abc",
+          version: "v4",
+          perm: { mode: "users", role: "reader" },
+          contentUrl: CONTENT_URL,
+        },
+        "<html><body><h1>Shared Title</h1></body></html>",
+      );
+      const { manager, permissionContext } = makePermissionManager("allow");
+      const context = makeAiContext({
+        permissionManager:
+          manager as unknown as ToolContext["permissionManager"],
+      });
+
+      const result = await artifactTool.execute(
+        { action: "read", url: ARTIFACT_URL, prompt: "What is the layout?" },
+        context,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toBe("A summary of the shared page.");
+      expect(manager.createContext).toHaveBeenCalledWith(
+        ARTIFACT_TOOL_NAME,
+        "default",
+        undefined,
+        expect.objectContaining({ action: "read", url: ARTIFACT_URL }),
+        undefined,
+      );
+      expect(permissionContext.hidePersistentOption).toBe(true);
+      // The fast model gets the text, never the raw third-party HTML.
+      expect(context.aiService!.processWebContent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining("Shared Title"),
+          prompt: "What is the layout?",
+        }),
+      );
+    });
+
+    it("should not re-confirm the same shared artifact within the session", async () => {
+      stubArtifactRead(
+        {
+          slug: "abc",
+          version: "v4",
+          perm: { mode: "users" },
+          contentUrl: CONTENT_URL,
+        },
+        "<html><body><p>Shared</p></body></html>",
+      );
+      const { manager } = makePermissionManager("allow");
+      const context = makeAiContext({
+        permissionManager:
+          manager as unknown as ToolContext["permissionManager"],
+      });
+
+      await artifactTool.execute(
+        { action: "read", url: ARTIFACT_URL },
+        context,
+      );
+      await artifactTool.execute(
+        { action: "read", url: ARTIFACT_URL },
+        context,
+      );
+
+      expect(manager.createContext).toHaveBeenCalledTimes(1);
+      expect(manager.checkPermission).toHaveBeenCalledTimes(1);
+    });
+
+    it("should report a denied read confirmation", async () => {
+      stubArtifactRead(
+        {
+          slug: "abc",
+          version: "v4",
+          perm: { mode: "users" },
+          contentUrl: CONTENT_URL,
+        },
+        "<html><body><p>Shared</p></body></html>",
+      );
+      const { manager } = makePermissionManager("deny");
+
+      const result = await artifactTool.execute(
+        { action: "read", url: ARTIFACT_URL },
+        makeAiContext({
+          permissionManager:
+            manager as unknown as ToolContext["permissionManager"],
+        }),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain(
+        "operation denied by user, reason: No way",
+      );
+    });
+
+    it("should not confirm reading your own artifact", async () => {
+      stubArtifactRead(OWNER_META, OWNER_HTML);
+      const { manager } = makePermissionManager("allow");
+
+      const result = await artifactTool.execute(
+        { action: "read", url: ARTIFACT_URL },
+        makeAiContext({
+          permissionManager:
+            manager as unknown as ToolContext["permissionManager"],
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(manager.createContext).not.toHaveBeenCalled();
+    });
+
+    it("should report a deleted artifact", async () => {
+      stubFetchRoutes([
+        { match: () => true, respond: () => jsonResponse(404, {}) },
+      ]);
+
+      const result = await artifactTool.execute(
+        { action: "read", url: ARTIFACT_URL },
+        makeAiContext(),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain(`Artifact not found: ${ARTIFACT_URL}`);
+    });
+
+    it("should distinguish a forbidden artifact from a missing one", async () => {
+      stubFetchRoutes([
+        { match: () => true, respond: () => jsonResponse(403, {}) },
+      ]);
+
+      const result = await artifactTool.execute(
+        { action: "read", url: ARTIFACT_URL },
+        makeAiContext(),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("do not have permission");
+    });
+
+    it("should publish when the action is explicitly publish", async () => {
+      (readFileSync as Mock).mockReturnValue(MD_CONTENT);
+      const fetchMock = stubFetchRoutes([
+        {
+          match: (url) => url.endsWith("/api/frame/deploy/direct"),
+          respond: () =>
+            jsonResponse(201, {
+              url: ARTIFACT_URL,
+              slug: "abc",
+              version: "v1",
+            }),
+        },
+      ]);
+
+      const result = await artifactTool.execute(
+        { action: "publish", file_path: "doc.md" },
+        makeContext(),
+      );
+
+      expect(result.success).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        `${SERVER_URL}/api/frame/deploy/direct`,
+      );
     });
   });
 });

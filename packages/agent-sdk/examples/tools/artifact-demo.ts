@@ -8,7 +8,8 @@
  * 2. 从会话消息历史中提取发布 URL
  * 3. 直接校验 artifact 内容可读（GET /api/frame/{slug}/content?v={version}）
  * 4. WebFetch 拦截读取 artifact URL（via=model_read 专用通道）
- * 5. 同一会话重新发布（版本升级，自动允许不弹确认）
+ * 5. Artifact 工具 read 动作读取原始 HTML（自有 artifact 返回原文，不走摘要）
+ * 6. 同一会话重新发布（版本升级，自动允许不弹确认）
  *
  * 前置条件：
  * - 已登录（~/.wave/auth.json 存在有效 SSO token）
@@ -197,8 +198,28 @@ async function runTest() {
       "Do NOT use Bash or curl — WebFetch is the only acceptable way to read the page.",
   );
 
-  // ---- 4. 同一会话重新发布 ----
-  console.log("\n💬 Step 4: Republishing with updated content...");
+  // ---- 4. Artifact 工具 read 动作（原文）----
+  console.log(
+    "\n💬 Step 4: Reading the page source back with Artifact(action=read)...",
+  );
+  await agent.sendMessage(
+    `You MUST call the Artifact tool with action="read" and url="${publishUrl}" to read the page source back. ` +
+      'The Artifact tool with action="read" is the ONLY acceptable way to read it — do NOT use WebFetch, Bash, ' +
+      "curl, or any other tool. After it returns, confirm whether you received the raw HTML source.",
+  );
+
+  const readBlock = findArtifactResult(agent.messages);
+  const readText = `${readBlock?.shortResult || ""}\n${readBlock?.result || ""}`;
+  if (!readText.includes("<!DOCTYPE html>") || !readText.includes("<h1>")) {
+    throw new Error(
+      "Artifact read did not return the raw HTML source.\n" +
+        `Tool result: ${readText.slice(0, 500)}`,
+    );
+  }
+  console.log("   Raw HTML returned by Artifact(action=read) OK");
+
+  // ---- 5. 同一会话重新发布 ----
+  console.log("\n💬 Step 5: Republishing with updated content...");
   const updated = `# Wave Artifact Demo v2
 
 Updated in the same session — the version should bump and the old URL stays valid.

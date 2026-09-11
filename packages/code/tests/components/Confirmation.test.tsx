@@ -197,6 +197,36 @@ describe("Confirmation", () => {
       expect(frame).toContain('"arg1": "val1"');
       expect(frame).toContain('"arg2": 42');
     });
+
+    it("should describe publishing vs reading an artifact", async () => {
+      const { lastFrame } = render(
+        <>
+          <ConfirmationDetails
+            toolName="Artifact"
+            toolInput={{ file_path: "docs/guide.md" }}
+          />
+          <ConfirmationDetails
+            toolName="Artifact"
+            toolInput={{
+              action: "read",
+              url: "https://server.test/code/artifact/abc",
+            }}
+          />
+        </>,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Publish file: docs/guide.md",
+        );
+      });
+
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("Publish file: docs/guide.md");
+      expect(frame).toContain(
+        "Read artifact: https://server.test/code/artifact/abc",
+      );
+    });
   });
 
   describe("User Interaction Tests", () => {

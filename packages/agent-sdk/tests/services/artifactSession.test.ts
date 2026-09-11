@@ -5,6 +5,8 @@ import {
   getRecordedVersion,
   recordVersion,
   clearArtifactSession,
+  markArtifactReadApproved,
+  isArtifactReadApproved,
 } from "../../src/services/artifactSession.js";
 
 describe("artifactSession", () => {
@@ -60,15 +62,26 @@ describe("artifactSession", () => {
     expect(getRecordedVersion("session-a", "abc")).toBe("v5");
   });
 
+  it("should track read approvals of other people's artifacts per session", () => {
+    expect(isArtifactReadApproved("session-a", "abc")).toBe(false);
+
+    markArtifactReadApproved("session-a", "abc");
+
+    expect(isArtifactReadApproved("session-a", "abc")).toBe(true);
+    expect(isArtifactReadApproved("session-b", "abc")).toBe(false);
+  });
+
   it("should clear all state for a session", () => {
     recordArtifact("session-a", "doc.md", {
       url: "https://server.test/code/artifact/abc",
       slug: "abc",
       version: "v1",
     });
+    markArtifactReadApproved("session-a", "abc");
     clearArtifactSession("session-a");
 
     expect(getArtifactByFilePath("session-a", "doc.md")).toBeUndefined();
     expect(getRecordedVersion("session-a", "abc")).toBeUndefined();
+    expect(isArtifactReadApproved("session-a", "abc")).toBe(false);
   });
 });

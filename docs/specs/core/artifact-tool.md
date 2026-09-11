@@ -1,6 +1,6 @@
 ---
 name: "Artifact 工具"
-description: "发布本地 HTML/Markdown 为默认私有的可分享网页，WebFetch 读取 artifact URL"
+description: "发布本地 HTML/Markdown 为默认私有的可分享网页，读取 artifact 原文/摘要"
 order: 35
 ---
 
@@ -13,6 +13,9 @@ order: 35
 > 已拍板的简化决定：零新增配置（API 端点复用 Server URL origin：`options.serverUrl > WAVE_SERVER_URL > 默认值`，不新增 baseUrl 配置项）；客户端只实现 inline 直传一条路径（无 signed URL / DIRECT_UPLOAD）；无 AUTO_OPEN / FRAME_TIMING / OWNERSHIP_FRAME 遥测；**启用开关 `enableArtifact`（未设置时跟随代码默认值常量，当前默认禁用**——后端未上线先不发功能，内测/灰度通过 `enableArtifact: true` 显式打开；后端上线后翻转默认值常量为启用）。`disableArtifact` opt-out 开关等 GA 后再对齐 CC，本期不实现。
 > 触发方式定案（双通道并存，2026-08-13）：**模型经自然语言自动调用 `Artifact` 工具**（description 覆盖"发布/分享/做成网页/给链接"语义，中文提示词同样触发）+ **内置技能 `/artifact` 人工斜杠触发**（builtin SKILL.md，`disable-model-invocation: true` 仅人工、模型不可经 Skill 工具调用该技能）。用户在输入框输入 `/` 即可在技能列表看到该命令并一键触发，无需知道怎么写提示词。**技能本身不含任何发布逻辑**——其内容仅指示模型调用 `Artifact` 工具（参数经 `$ARGUMENTS`/`$1` 透传），发布/校验/权限确认/会话映射全部由工具完成，技能不绕过也不复制这些逻辑。
 > 范围：wave-agent 客户端侧工具 + WebFetch 拦截。分享管理（`POST /api/frame/{slug}/share`、pinned_version）由服务端/网页外壳承担，客户端仅发布私有页面并探测分享状态。
+> 对齐 CC 的 Artifact 工具形态（2026-09-11 增补）：工具入口统一为带 `action` 参数的单一工具——`action: "publish"`（省略时的默认值，即现有发布行为）与 `action: "read"`（新增读取动作）。**`read` 的返回形态对齐 CC**：读取当前用户**拥有**的 artifact 返回原文 HTML（含内联 CSS/JS）；读取**他人分享**的 artifact 返回隔离摘要（可选 `prompt` 指明关注点），不把他人页面全文放进上下文。
+> 本期只补 `read`：CC 的 `list`/`watch`/`status`/`upload_asset`/`list_assets`/`read_asset`/`delete_asset`/`list_types` 等动作依赖平台提供枚举、订阅、资源库、模板等能力，codechat 平台暂无对应接口，本期不做；将来平台补齐后再逐个对齐。
+> 读取实现单一化（2026-09-11）：artifact 正文的取用（元数据探测 + Bearer 鉴权 + 正文拉取 + 大内容落盘）收敛为**唯一实现**，`Artifact` 工具的 `read` 动作与 WebFetch 的 artifact URL 拦截共用，不再各写一套。
 
 ## 用户场景与测试 _（必填）_
 
@@ -33,6 +36,7 @@ order: 35
 5. **假设** `favicon` 包含非 emoji 字符（如文字、URL、HTML markup），**当** 工具执行时，**则** 返回 `success: false` 与错误提示。
 6. **假设** 发布内容超过 16MB（服务端返回 413），**当** 工具执行时，**则** 返回 `success: false` 与大小超限的错误。
 7. **假设** 客户端未登录（无有效 token），**当** 工具执行时，**则** 返回鉴权错误并提示先登录。
+8. **假设** model 调用 `Artifact` 工具时省略 `action`（或显式传 `action: "publish"`），**当** 工具执行时，**则** 按发布处理，上述校验/确认/冲突防护全部生效（缺省动作即发布，与既有行为一致）。
 
 ### 用户故事：内置技能 /artifact 人工触发（优先级：P1）
 
@@ -60,11 +64,34 @@ order: 35
 
 **验收场景**：
 
-1. **假设** WebFetch 的 `url` 形如 `{host}/code/artifact/{slug}`（匹配 artifact URL 格式），**当** 工具执行时，**则** 走专用读取通道：先 `GET /api/frame/{slug}?via=model_read` 取元数据，再拉取正文，返回页面内容。
-2. **假设** artifact 读取成功，**当** WebFetch 返回结果时，**则** 输出 schema 附带可选 `artifactRead: { slug, ver }` 元数据（`ver` 为当前版本号）。
+1. **假设** WebFetch 的 `url` 形如 `{host}/code/artifact/{slug}`（匹配 artifact URL 格式），**当** 工具执行时，**则** 走专用读取通道：先 `GET /api/frame/{slug}?via=model_read` 取元数据，再拉取正文，返回页面内容；该取用逻辑与 `Artifact` 工具 `read` 动作共用**同一份实现**（元数据探测、Bearer 鉴权、正文拉取、大内容落盘不重复实现）。
+2. **假设** artifact 读取成功，**当** WebFetch 返回结果时，**则** 输出 schema 附带可选 `artifactRead: { slug, ver }` 元数据（`ver` 为当前版本号），且会话内记录的版本号同步更新。
 3. **假设** artifact HTML 内容较大（超过 ~2KB），**当** WebFetch 执行时，**则** 完整内容落盘到临时文件，返回文件路径 + head 截断预览，避免工具结果过大。
 4. **假设** artifact 不存在或已删除（服务端 404），**当** WebFetch 执行时，**则** 返回 `success: false` 与对应的错误消息。
 5. **假设** 读取接口返回的 `contentUrl` 需要鉴权，**当** WebFetch 拉取正文时，**则** 携带当前登录 token（Bearer）请求。
+6. **假设** WebFetch 读取的是**他人分享**的 artifact，**当** 返回结果时，**则** 仍是围绕 `prompt` 的小模型答案（小模型看到内容、主模型只看到答案），他人页面全文不进入主对话上下文。
+
+### 用户故事：读取已发布 artifact 的原文（优先级：P1）
+
+作为用户，我希望让 AI 直接读取某个已发布 artifact 的原文 HTML（而不是被转成 markdown 的二手文本，也不是被小模型概括过的摘要），以便在真实的 HTML/CSS/JS 上继续修改页面、排查样式或渲染问题。
+
+**为什么是这个优先级**：读取与发布构成完整闭环；当前唯一的读取通道是 WebFetch，它会把 HTML 转成 markdown 后交给小模型，标签结构、class 与元素的对应关系全部丢失，无法支撑"改页面/查样式"这类需求。
+
+**独立测试**：mock `GET /api/frame/{slug}?via=model_read` 返回自有 artifact 元数据与 `content` 端点返回的 HTML，调用 `Artifact` 工具（`action: "read"` + `url`）并断言返回原文 HTML；另一个用例 mock 他人分享的 artifact 并断言走摘要路径。
+
+**验收场景**：
+
+1. **假设** model 调用 `Artifact` 工具且 `action: "read"`、`url` 形如 `{host}/code/artifact/{slug}` 且当前用户是该 artifact 的拥有者，**当** 读取成功时，**则** 返回该版本的**原始 HTML**（含内联 CSS/JS），并给出 artifact 的版本信息。
+2. **假设** 读取到的原文超过落盘阈值（约 2KB），**当** 工具返回时，**则** 完整原文写入本地文件，工具结果给出文件路径与开头预览（提示用 Read 查看全文），避免工具结果膨胀。
+3. **假设** `url` 指向的是**他人分享给当前用户**的 artifact，**当** 读取时，**则** 内容以隔离摘要形式返回（调用方给了 `prompt` 时摘要围绕该关注点组织），他人页面的全文不进入对话上下文。
+4. **假设** `url` 不是 artifact URL（slug 无法解析），**当** 工具执行时，**则** 返回 `success: false` 与"不是可读取的 artifact URL"错误。
+5. **假设** artifact 不存在或已删除（服务端 404），**当** 工具执行时，**则** 返回 `success: false` 与"artifact 不存在"错误。
+6. **假设** 当前用户无权读取该 artifact（服务端 403），**当** 工具执行时，**则** 返回 `success: false` 与"无权限"错误（与"不存在"区分开）。
+7. **假设** 客户端未登录（无有效 token），**当** 工具执行时，**则** 返回鉴权错误并提示先登录。
+8. **假设** 工具结果包含 artifact 版本号，**当** 读取成功后同会话再发布同一 artifact 时，**则** 会话内记录的版本号已更新为读取到的最新版本，stale_version_guard 不误报冲突。
+9. **假设** 首次读取**他人分享**的 artifact，**当** 调用工具时，**则** 触发权限确认（该页面内容将进入对话上下文）；用户同意后，同一 artifact 在本会话内的后续读取不再重复确认。
+10. **假设** 读取当前用户**自己拥有**的 artifact，**当** 调用工具时，**则** 免确认（只读动作，内容本来就在用户的控制范围内）。
+11. **假设** `enableArtifact` 未开启，**当** model 调用 `Artifact` 工具时，**则** 工具不注册、不可调用（与发布同一 gate），WebFetch 的 artifact URL 拦截同样失效。
 
 ### 用户故事：重新部署与并发冲突防护（优先级：P2）
 
@@ -128,6 +155,10 @@ order: 35
 - **鉴权**：发布（deploy/direct）与读取（model_read、contentUrl）请求均携带当前登录 token（Bearer）；未登录返回明确错误。
 - **大小上限**：发布内容上限 16MB（413 透传为友好错误）。
 - **文件大小策略**：读取时 >~2KB 的 HTML 落盘到临时文件（返回路径 + head 预览），避免工具结果膨胀。
+- **归属判定**：以服务端元数据判定当前用户对该 artifact 的角色（拥有者 / 读者）。拥有者返回原文 HTML；读者（他人分享）与**无法确认归属**的情况一律走摘要，不返回全文。
+- **摘要实现**：读者视角的摘要复用 WebFetch 已有的小模型处理路径（同一份 prompt→答案机制），不新增模型调用通道。
+- **读取实现单一化**：artifact 的元数据探测、Bearer 鉴权、正文拉取、大内容落盘只有一份实现，`Artifact` 工具的 `read` 动作与 WebFetch 的 artifact URL 拦截共同调用；不得出现两套并行逻辑。
+- **工具描述**：`Artifact` 工具的 description 需同时覆盖发布与读取两类意图（"发布/分享/做成网页/给链接" 与 "读取/查看/看下这个链接里的内容"），并说明缺省动作是发布。
 - **只读性**：WebFetch 侧读取行为保持只读，不修改 artifact 内容。
 - **会话映射**：会话内维护 file_path → artifact URL 映射，用于同会话重发免 `url` 参数与 stale_version_guard。
 - **测试**：SDK 层 mock 服务端（201/409/404/413）覆盖发布、重部署、冲突、读取、禁用开关场景。
@@ -140,4 +171,7 @@ order: 35
 - **并发发布同一 slug（跨会话）怎么办？** 服务端 409 + `live` 版本号；客户端透传错误并提示先 WebFetch 最新内容，或带 `force: true` 覆盖。
 - **大文件读取的临时文件何时清理？** 沿用现有工具临时文件生命周期管理，不引入独立清理机制。
 - **与 disallowedTools 的关系？** `enableArtifact` 是独立功能开关（未设置跟随默认值常量）；disallowedTools 对 Artifact 工具的显式禁用仍生效（两者取并集）。
+- **读到的内容比会话内记录的版本新怎么办？** 以读取到的版本号覆盖会话内记录（读取即"已看到最新版本"），随后同会话重发布不再因 stale_version_guard 被拦。
+- **读他人 artifact 与 plan 模式？** 读他人 artifact 需用户确认（内容进入上下文、且是第三方内容）；plan 模式下没有可交互的确认面时不自动放行，保持规划状态并提示用户。
+- **enableArtifact 关闭时读动作？** 与发布同 gate：工具整体不注册；WebFetch 的 artifact URL 拦截同步失效（退化为普通 URL 处理）。
 - **Artifact 工具是受限工具吗？** 是——发布是外发网络动作，需加入 RESTRICTED_TOOLS 以触发默认模式的确认流程。
