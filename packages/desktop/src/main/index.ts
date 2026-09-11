@@ -322,7 +322,9 @@ function createWindow(): void {
   // External links always open in the system browser (FR-008).
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) {
-      void shell.openExternal(url);
+      void shell
+        .openExternal(url)
+        .catch((error) => host?.reportExternalOpenFailure(error));
     }
     return { action: "deny" };
   });
@@ -333,7 +335,9 @@ function createWindow(): void {
     if (url.startsWith("file:")) return;
     event.preventDefault();
     if (/^https?:/.test(url)) {
-      void shell.openExternal(url);
+      void shell
+        .openExternal(url)
+        .catch((error) => host?.reportExternalOpenFailure(error));
     }
   });
 
@@ -365,7 +369,9 @@ function createWindow(): void {
     // (The <webview> `new-window` DOM event was removed in Electron 39.)
     guest.setWindowOpenHandler(({ url }) => {
       if (/^https?:/.test(url)) {
-        void shell.openExternal(url);
+        void shell
+          .openExternal(url)
+          .catch((error) => host?.reportExternalOpenFailure(error));
       }
       return { action: "deny" };
     });
@@ -375,7 +381,9 @@ function createWindow(): void {
       if (isLocalhostUrl(url)) return;
       event.preventDefault();
       if (/^https?:/.test(url)) {
-        void shell.openExternal(url);
+        void shell
+          .openExternal(url)
+          .catch((error) => host?.reportExternalOpenFailure(error));
       }
     });
   });

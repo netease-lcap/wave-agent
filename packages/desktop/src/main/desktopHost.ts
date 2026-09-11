@@ -677,6 +677,17 @@ export class DesktopHost {
   }
 
   /**
+   * 打开外部链接失败（没有可用的浏览器、默认浏览器注册损坏等）时告知用户。
+   * 系统层面打不开时不提示的话，点击看起来就是「毫无反应」——失败与「已在后台
+   * 打开但没抢到焦点」无法区分。所有打开外部链接的入口都走这里。
+   */
+  reportExternalOpenFailure(error: unknown): void {
+    this.showToast({
+      message: `打开外部链接失败：${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
+
+  /**
    * 推送 macOS 窗口全屏状态 (desktopFullScreen, spec「macOS 隐藏标题栏」场景 7)。
    * Window-global，无 paneId；webview 据此在全屏（红绿灯隐藏）时收起红绿灯让位。
    */
@@ -873,7 +884,11 @@ export class DesktopHost {
       this.router = new NotificationRouter(this.client);
       this.router.registerGlobal("authUrl", (params) => {
         const p = params as { url?: string };
-        if (p?.url) void shell.openExternal(p.url);
+        if (p?.url) {
+          void shell
+            .openExternal(p.url)
+            .catch((error) => this.reportExternalOpenFailure(error));
+        }
       });
       this.router.attach();
     })();
@@ -3995,13 +4010,14 @@ export class DesktopHost {
           try {
             await shell.openExternal(url);
           } catch (error) {
-            this.pushSystemMessage(`打开外部链接失败: ${error}`);
+            this.reportExternalOpenFailure(error);
           }
         } else {
           console.warn(
             "[DesktopHost] Refused to open external URL with unexpected scheme:",
             url,
           );
+          this.reportExternalOpenFailure("链接无效");
         }
         break;
       }
@@ -5433,7 +5449,9 @@ export class DesktopHost {
         url,
       );
       this.pendingAuthTunnels.set(host, forward);
-      void shell.openExternal(forward.authUrl);
+      void shell
+        .openExternal(forward.authUrl)
+        .catch((error) => this.reportExternalOpenFailure(error));
     } catch (error) {
       console.error(`[DesktopHost] ${host} 的 SSO 回调端口转发失败:`, error);
       this.pushSystemMessage(
