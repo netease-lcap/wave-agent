@@ -40,6 +40,7 @@ import {
   REALHOST_HOME,
   REALHOST_ROOT,
   assertNoUnexpectedRejections,
+  clearFakeModelCredentials,
   clearFakeModelEndpoint,
   createRealHost,
   resetRealHostState,
@@ -110,7 +111,6 @@ beforeEach(async () => {
   // payload (`StdioClient` merges `process.env` into the child env).
   useFakeModelEndpoint(model.baseURL);
   ctx = createRealHost();
-  ctx.store.setConfiguration({ model: "test-model", fastModel: "test-model" });
 });
 
 afterEach(async () => {
@@ -168,7 +168,7 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
     ctx.clear();
     await ctx.host.handleWebviewMessage({
       command: "updateConfiguration",
-      configurationData: { model: "test-model", language: "en-US" },
+      configurationData: { language: "en-US" },
     });
     await ctx.waitFor("configurationResponse", {
       predicate: (m) =>
@@ -216,7 +216,6 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
     await ctx.host.handleWebviewMessage({
       command: "updateConfiguration",
       configurationData: {
-        model: "test-model",
         language: "en-US",
         contextLength: 200,
         autoMemoryEnabled: false,
@@ -447,8 +446,11 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
 
   it("未登录时宿主如实回带未登录（webview 据此禁用发送入口），且不发模型请求", async () => {
     // No SSO token (throwaway HOME has no auth.json), no WAVE_API_KEY /
-    // WAVE_BASE_URL, no 企业下发.
-    clearFakeModelEndpoint();
+    // WAVE_BASE_URL, no 企业下发. The model stays configured — the CLI resolves
+    // it from WAVE_MODEL, which is what a real user's `/model` choice would be;
+    // dropping it too would replace the missing-credential path under test with
+    // a "no model configured" configuration error.
+    clearFakeModelCredentials();
 
     await openProject(dirA);
 

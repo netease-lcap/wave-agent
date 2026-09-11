@@ -12,9 +12,9 @@
 
 import * as fs from "fs";
 import * as http from "http";
-import * as os from "os";
 import * as path from "path";
 import type { BrowserWindow } from "electron";
+import { longFormTempDir } from "../helpers/tempDir";
 import { HOST_CHANNEL } from "../../src/main/channels";
 import { ConfigStore } from "../../src/main/configStore";
 import { DesktopHost } from "../../src/main/desktopHost";
@@ -22,13 +22,16 @@ import { LOCAL_HOST } from "../../src/main/sshHosts";
 
 /**
  * Scratch root shared with `vitest.integration.config.ts`. The config derives
- * it from `os.tmpdir()` + the runner pid (so concurrent runs in separate
- * worktrees cannot wipe each other's HOME) and passes it down as
+ * it from the long-form temp dir + the runner pid (so concurrent runs in
+ * separate worktrees cannot wipe each other's HOME) and passes it down as
  * `WAVE_REALHOST_ROOT`; the worker's own pid differs, hence the env handoff.
+ * The long form matters: an 8.3 short root (`C:\Users\LIUYIQ~1\...`) makes the
+ * CLI child abort inside libuv's fs-event backend as soon as a watched
+ * directory sees an event (see tests/helpers/tempDir.ts).
  */
 export const REALHOST_ROOT =
   process.env.WAVE_REALHOST_ROOT ??
-  path.join(os.tmpdir(), "wave-desktop-realhost");
+  path.join(longFormTempDir(), "wave-desktop-realhost");
 export const REALHOST_HOME = path.join(REALHOST_ROOT, "home");
 export const STORE_PATH = path.join(
   REALHOST_ROOT,
@@ -61,10 +64,14 @@ export function resetRealHostState(): { dirA: string; dirB: string } {
 
 /**
  * `<HOME>/.wave/projects/<encoded workdir>` — mirrors the CLI's
- * `pathEncoder.encodeSync` (strip the leading separator, `/`→`-`, spaces→`_`).
+ * `pathEncoder.encodeSync`: strip the drive letter (`C:`), strip the leading
+ * separator, `/`→`-`, spaces→`_`. Dropping the drive letter matters on Windows:
+ * without it the lookup never matches what the CLI wrote and every
+ * transcript-based assertion silently sees an empty directory.
  */
 export function projectDir(workdir: string): string {
   const encoded = workdir
+    .replace(/^[a-zA-Z]:/, "")
     .replace(/^[/\\]/, "")
     .replace(/[/\\]/g, "-")
     .replace(/\s+/g, "_");
@@ -397,20 +404,37 @@ export { LOCAL_HOST };
  *
  * The host no longer forwards `apiKey`/`baseURL`/`headers` to the agent (the
  * host-side credential pipeline was removed — spec sso-auth「IDE 宿主不再有直连
- * 免登录旁路」), so tests configure the gateway the way the CLI supports it:
- * `WAVE_API_KEY` / `WAVE_BASE_URL`, which `StdioClient` passes to the
- * `wave --stdio` child (`{ ...process.env, ...env }`). The CLI's resolution
- * chain reads them as the lowest-priority fallback.
+ * 免登录旁路」), and it no longer sends a session-level `model` override either
+ * (模型经 `/model` RPC 管理). So tests configure the gateway the way the CLI
+ * supports it: `WAVE_API_KEY` / `WAVE_BASE_URL` / `WAVE_MODEL`, which
+ * `StdioClient` passes to the `wave --stdio` child
+ * (`{ ...process.env, ...env }`). The CLI's resolution chain reads them as the
+ * lowest-priority fallback.
  *
  * Call from `beforeEach`; pair with `clearFakeModelEndpoint` in `afterEach`.
  */
 export function useFakeModelEndpoint(baseURL: string): void {
   process.env.WAVE_API_KEY = "test-key";
   process.env.WAVE_BASE_URL = baseURL;
+  process.env.WAVE_MODEL = "test-model";
+  process.env.WAVE_FAST_MODEL = "test-model";
 }
 
 /** Drop the env vars set by `useFakeModelEndpoint` (no cross-suite leakage). */
 export function clearFakeModelEndpoint(): void {
+  delete process.env.WAVE_API_KEY;
+  delete process.env.WAVE_BASE_URL;
+  delete process.env.WAVE_MODEL;
+  delete process.env.WAVE_FAST_MODEL;
+}
+
+/**
+ * Drop the gateway credentials but keep the model selection. Use it to test the
+ * unauthenticated path: with `clearFakeModelEndpoint` the CLI has no model
+ * either and fails fast with "Agent configuration requires model", which
+ * exercises a configuration error rather than the missing-credential behavior.
+ */
+export function clearFakeModelCredentials(): void {
   delete process.env.WAVE_API_KEY;
   delete process.env.WAVE_BASE_URL;
 }

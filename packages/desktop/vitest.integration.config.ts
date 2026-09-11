@@ -1,6 +1,6 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
-import os from "os";
+import { longFormTempDir } from "./tests/helpers/tempDir";
 
 /**
  * Real-host integration config (Part B).
@@ -21,7 +21,7 @@ import os from "os";
  */
 
 const REALHOST_ROOT = path.join(
-  os.tmpdir(),
+  longFormTempDir(),
   `wave-desktop-realhost-${process.pid}`,
 );
 const REALHOST_HOME = path.join(REALHOST_ROOT, "home");
