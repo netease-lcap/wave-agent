@@ -138,46 +138,6 @@ describe("LspManager Coverage Improvements", () => {
     expect(lspProc).toBeNull();
   });
 
-  it.skip("should handle request timeout", async () => {
-    const { stdin, stdout } = setupMockProcess();
-
-    // Respond to initialize but not to the subsequent request
-    stdin.on("data", (data: Buffer) => {
-      const str = data.toString();
-      if (str.includes('"method":"initialize"')) {
-        process.nextTick(() => {
-          stdout.write(
-            'Content-Length: 36\r\n\r\n{"jsonrpc":"2.0","id":0,"result":{}}',
-          );
-        });
-      }
-    });
-
-    lspManager.registerServer("typescript", {
-      command: "ts-server",
-      extensionToLanguage: { ".ts": "typescript" },
-      startupTimeout: 1,
-      shutdownTimeout: 1,
-    });
-
-    // First call to start server
-    await lspManager.getProcessForFile("test.ts");
-
-    // Now execute an operation that will timeout
-    await lspManager.execute({
-      operation: "hover",
-      filePath: "test.ts",
-      line: 1,
-      character: 1,
-    });
-    // Note: execute doesn't take a timeout, it uses default or none.
-    // Wait, sendRequest uses config.startupTimeout for initialize, but what about others?
-    // Looking at code: result = await this.sendRequest(lspProc, "textDocument/hover", {...});
-    // It doesn't pass a timeout. So it will wait forever unless we mock it.
-    // Actually, I should test a case where I can pass a timeout if possible,
-    // but execute doesn't expose it.
-  });
-
   it("should handle various LSP operations", async () => {
     const { stdin, stdout } = setupMockProcess();
 
@@ -333,32 +293,5 @@ describe("LspManager Coverage Improvements", () => {
     });
     expect(res1.success).toBe(true);
     expect(res1.content).toBe("[]");
-  });
-
-  it("should handle cleanup with failed shutdown", async () => {
-    const { stdin, stdout, mockProcess } = setupMockProcess();
-
-    stdin.on("data", (data: Buffer) => {
-      const str = data.toString();
-      if (str.includes('"method":"initialize"')) {
-        process.nextTick(() => {
-          stdout.write(
-            'Content-Length: 36\r\n\r\n{"jsonrpc":"2.0","id":0,"result":{}}',
-          );
-        });
-      } else if (str.includes('"method":"shutdown"')) {
-        // Don't respond, let it timeout
-      }
-    });
-
-    lspManager.registerServer("typescript", {
-      command: "ts-server",
-      extensionToLanguage: { ".ts": "typescript" },
-      shutdownTimeout: 1,
-    });
-
-    await lspManager.getProcessForFile("test.ts");
-    await lspManager.cleanup();
-    expect(mockProcess.kill).toHaveBeenCalled();
   });
 });

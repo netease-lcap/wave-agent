@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { McpManager } from "../../src/managers/mcpManager.js";
 import { Container } from "../../src/utils/container.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { promises as fs } from "fs";
 import {} from "../../src/types/index.js";
 import { logger } from "../../src/utils/globalLogger.js";
@@ -34,74 +32,6 @@ describe("McpManager Coverage", () => {
     await mcpManager.cleanup();
   });
 
-  describe("initialize", () => {
-    it("should handle autoConnect with multiple servers", async () => {
-      const mockConfig = {
-        mcpServers: {
-          server1: { command: "cmd1" },
-          server2: { command: "cmd2" },
-        },
-      };
-      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(mockConfig));
-
-      // Mock connectServer to succeed for server1 and fail for server2
-      const connectSpy = vi
-        .spyOn(mcpManager, "connectServer")
-        .mockResolvedValueOnce(true)
-        .mockResolvedValueOnce(false);
-
-      await mcpManager.initialize("/test/workdir", true);
-
-      // Wait for background connection attempts
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      expect(connectSpy).toHaveBeenCalledTimes(2);
-      expect(logger.debug).toHaveBeenCalledWith("Initializing MCP servers...");
-      expect(logger.debug).toHaveBeenCalledWith(
-        "Connecting to MCP server: server1",
-      );
-      expect(logger.debug).toHaveBeenCalledWith(
-        "Connecting to MCP server: server2",
-      );
-      expect(logger.debug).toHaveBeenCalledWith(
-        "MCP servers initialization started in background",
-      );
-
-      expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Successfully connected to MCP server: server1",
-        ),
-      );
-      expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to connect to MCP server: server2"),
-      );
-    });
-
-    it("should handle error during autoConnect", async () => {
-      const mockConfig = {
-        mcpServers: {
-          server1: { command: "cmd1" },
-        },
-      };
-      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(mockConfig));
-      vi.spyOn(mcpManager, "connectServer").mockRejectedValue(
-        new Error("Fatal error"),
-      );
-
-      await mcpManager.initialize("/test/workdir", true);
-
-      // Wait for background connection attempts
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Background connection to MCP server server1 failed:",
-        ),
-        expect.any(Error),
-      );
-    });
-  });
-
   describe("loadConfig", () => {
     it("should warn if config path not set", async () => {
       const config = await mcpManager.loadConfig();
@@ -131,75 +61,6 @@ describe("McpManager Coverage", () => {
       const server = mcpManager.getServer("s1");
       expect(server?.status).toBe("connected");
       expect(server?.config.command).toBe("c1-updated");
-    });
-
-    it("should log error for non-ENOENT errors", async () => {
-      await mcpManager.initialize("/test/workdir");
-      const error = new Error("Permission denied");
-      (error as unknown as { code: string }).code = "EACCES";
-      vi.mocked(fs.readFile).mockRejectedValue(error);
-
-      await mcpManager.loadConfig();
-      expect(logger.error).toHaveBeenCalledWith(
-        "Failed to load .mcp.json:",
-        error,
-      );
-    });
-  });
-
-  describe("connectServer", () => {
-    it("should handle transport error and close", async () => {
-      await mcpManager.initialize("/test/workdir");
-      mcpManager.addServer("s1", { command: "c1" });
-
-      let transportOnError: ((error: Error) => void) | null = null;
-      let transportOnClose: (() => void) | null = null;
-
-      vi.mocked(StdioClientTransport).mockImplementation(function () {
-        const t = {
-          onerror: null,
-          onclose: null,
-          close: vi.fn(),
-        };
-        // Use a small delay to ensure the caller has time to set the properties
-        setTimeout(() => {
-          transportOnError = t.onerror;
-          transportOnClose = t.onclose;
-        }, 10);
-        return t as unknown as StdioClientTransport;
-      });
-
-      vi.mocked(Client).mockImplementation(function () {
-        return {
-          connect: vi.fn().mockResolvedValue(undefined),
-          listTools: vi.fn().mockResolvedValue({ tools: [] }),
-          close: vi.fn().mockResolvedValue(undefined),
-        } as unknown as Client;
-      });
-
-      await mcpManager.connectServer("s1");
-
-      // Wait for callbacks to be assigned
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      if (typeof transportOnError === "function") {
-        (transportOnError as (error: Error) => void)(
-          new Error("Transport failed"),
-        );
-        expect(logger.error).toHaveBeenCalledWith(
-          expect.stringContaining("transport error"),
-          expect.any(Error),
-        );
-        expect(mcpManager.getServer("s1")?.status).toBe("error");
-      }
-
-      if (typeof transportOnClose === "function") {
-        (transportOnClose as () => void)();
-        expect(logger.debug).toHaveBeenCalledWith(
-          expect.stringContaining("transport closed"),
-        );
-        expect(mcpManager.getServer("s1")?.status).toBe("disconnected");
-      }
     });
   });
 

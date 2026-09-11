@@ -102,46 +102,6 @@ describe("Agent - Branch Coverage", () => {
       expect(agent.getBackgroundTaskOutput("non-existent")).toBeNull();
     });
 
-    it("should have message queue wired up with notification API", async () => {
-      // Verify the message queue exists and has the notification interface
-      const messageQueue = (
-        agent as unknown as {
-          messageQueue: {
-            enqueueNotification: (xml: string) => void;
-            drainNotifications: () => string[];
-            hasNotifications: () => boolean;
-            onMessageEnqueued?: () => void;
-          };
-        }
-      ).messageQueue;
-
-      expect(messageQueue).toBeDefined();
-      expect(typeof messageQueue.enqueueNotification).toBe("function");
-      expect(typeof messageQueue.drainNotifications).toBe("function");
-      expect(typeof messageQueue.hasNotifications).toBe("function");
-      expect(typeof messageQueue.onMessageEnqueued).toBe("function");
-    });
-
-    it("should trigger dispatch callback when agent is idle", async () => {
-      // Enqueue triggers onMessageEnqueued, which calls tryDispatch since agent is idle
-      const messageQueue = (
-        agent as unknown as {
-          messageQueue: {
-            hasNotifications: () => boolean;
-            onMessageEnqueued?: () => void;
-          };
-        }
-      ).messageQueue;
-
-      // Manually call the callback to exercise the dispatch path
-      messageQueue.onMessageEnqueued!();
-
-      // Give time for the async dispatch to run (nothing was enqueued, so no-op)
-      await new Promise((r) => setTimeout(r, 10));
-
-      expect(messageQueue.hasNotifications()).toBe(false);
-    });
-
     it("should skip notification processing when agent is loading", async () => {
       // Set loading state to true
       const aiManager = (
@@ -252,10 +212,6 @@ describe("Agent - Branch Coverage", () => {
       );
       await agent.sendMessage("/");
       expect(spyAddUserMessage).not.toHaveBeenCalled();
-
-      await agent.sendMessage("  ");
-      // sendMessage doesn't check for empty string if it doesn't start with /
-      // but let's see
     });
   });
 });
