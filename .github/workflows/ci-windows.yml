@@ -7,6 +7,13 @@ name: CI (Windows)
 # resolution). workflow_dispatch remains for manual runs from the Actions tab.
 # NOT a required check: configure in repo Settings → Branches → main
 # protection rule to keep only the Linux `check` job as required.
+#
+# This is the only job that runs the desktop package on Windows: its unit suite
+# (Linux runs the same suite in `check-extras`) plus the real-host suite (Linux
+# runs that one in `real-host-e2e`). The real-host suite drives a real
+# DesktopHost spawning a real `wave --stdio` child process — exactly the
+# spawning/fs/.cmd surface that differs on Windows, so the two platforms are
+# complementary rather than duplicates.
 
 on:
   push:
@@ -15,6 +22,8 @@ on:
       - "packages/agent-sdk/**"
       - "packages/code/**"
       - "packages/vscode/**"
+      - "packages/desktop/**"
+      - "packages/webview-fixtures/**"
       - "pnpm-lock.yaml"
       - "package.json"
       - ".github/workflows/ci-windows.yml"
@@ -106,8 +115,24 @@ jobs:
       # so they produce identical results on Linux and are already covered by
       # the blocking Linux `check` job. Skipping them saves ~48s (~30% of the
       # remaining test time).
+      #
+      # wave-desktop IS included — it is the most platform-sensitive package in
+      # the repo: its main process spawns the CLI child process and resolves
+      # .cmd/.exe shims, which is exactly the surface that differs on Windows.
+      # (check-extras runs this same suite on Linux; here it gets the Windows
+      # half of the matrix.)
       - name: Tests
         run: |
           pnpm --filter wave-agent-sdk exec vitest run &&
           pnpm --filter wave-code exec vitest run &&
-          pnpm --filter wave-vscode exec vitest run
+          pnpm --filter wave-vscode exec vitest run &&
+          pnpm --filter wave-desktop exec vitest run
+
+      # Real DesktopHost + real `wave --stdio` child process + a throwaway local
+      # model server (no LLM, no display: the Electron shell is stubbed by the
+      # suite). Needs the full build above, since the suite drives the workspace
+      # CLI from packages/code/dist. Linux runs the same suite in ci.yml
+      # (real-host-e2e) — the two are complementary, not duplicates: this job is
+      # where process spawning, path handling and fs semantics differ.
+      - name: Real-host integration tests
+        run: pnpm -F wave-desktop run test:realhost
