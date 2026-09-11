@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 
 import {
@@ -83,6 +84,35 @@ describe("FileWatcherService with real chokidar", () => {
     await waitForEvents(events, 2);
     expect(events[1].type).toBe("delete");
     expect(events[1].path).toBe(file);
+  });
+
+  /**
+   * Regression for Windows 8.3 short paths. `%TEMP%` is configured with a
+   * short name on some machines (`C:\Users\LIUYIQ~1\...`), and watching such a
+   * path aborts the whole process inside libuv's fs-event backend on the first
+   * event (Node >= 25 / libuv 1.52). Deliberately uses `os.tmpdir()` verbatim —
+   * the opposite of `longFormTempDir()`, which the tests above use to keep
+   * their own environment healthy, so that this test keeps exercising the
+   * watcher's own short-path handling.
+   *
+   * Watches a *directory* (as `skillManager` does): libuv only computes the
+   * relative event name — and therefore only asserts — when the handle is a
+   * directory handle.
+   */
+  it("survives a watch root under the raw os.tmpdir()", async () => {
+    const rawDir = fs.mkdtempSync(path.join(os.tmpdir(), "wave-watch-short-"));
+    const skillsDir = path.join(rawDir, "skills");
+    fs.mkdirSync(skillsDir);
+
+    const events: FileWatchEvent[] = [];
+    await service.watchFile(skillsDir, (event) => events.push(event));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    fs.writeFileSync(path.join(skillsDir, "SKILL.md"), "v1");
+    await waitForEvents(events, 1);
+
+    expect(events[0].type).toBe("create");
+    fs.rmSync(rawDir, { recursive: true, force: true });
   });
 
   it("exposes watcher status once active", async () => {

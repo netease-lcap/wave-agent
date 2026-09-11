@@ -6,8 +6,62 @@
  */
 
 import * as chokidar from "chokidar";
+import * as fs from "fs";
+import * as path from "path";
 import { EventEmitter } from "events";
 import type { Logger } from "../types/index.js";
+
+/**
+ * Expand a watch path to its canonical long form (Windows only).
+ *
+ * libuv's fs-event backend resolves each event path with `GetLongPathNameW()`
+ * and then asserts the result is prefixed by the watched directory string
+ * (`uv__relative_path()`, src\win\fs-event.c). libuv <= 1.51 expanded the
+ * watched directory itself; 1.52 dropped that step (it ships with Node 24.16+,
+ * 26.x, and Electron 43 — which bundles Node 24.18), so `handle->dirw`
+ * keeps whatever the caller passed, and watching an 8.3 short path
+ * (`C:\Users\LIUYIQ~1\...` — what %TEMP% yields when it is configured with a
+ * short name) aborts the whole process on the first event. The abort is not a
+ * catchable error, so the root must be canonicalized before it reaches
+ * chokidar. `fs.realpathSync()` alone is not enough: only the `.native()`
+ * variant expands short names.
+ *
+ * Paths that don't exist yet (`~/.wave/settings.json` on a fresh install) are
+ * handled by expanding the nearest existing ancestor and appending the
+ * remaining segments back; if nothing can be resolved the input is returned
+ * unchanged.
+ */
+function toLongFormPath(target: string): string {
+  if (process.platform !== "win32") return target;
+  // Only drive-qualified (`C:\...`) and UNC (`\\server\share`) paths are real
+  // Windows paths. POSIX-style input (what tests and other platforms use) is
+  // passed through untouched rather than re-rooted onto the current drive.
+  if (!/^[a-zA-Z]:[\\/]/.test(target) && !target.startsWith("\\\\")) {
+    return target;
+  }
+
+  let candidate = target;
+  const missing: string[] = [];
+  for (;;) {
+    try {
+      const resolved = fs.realpathSync.native(candidate);
+      return missing.length > 0 ? path.join(resolved, ...missing) : resolved;
+    } catch {
+      const parent = path.dirname(candidate);
+      if (parent === candidate) return target;
+      missing.unshift(path.basename(candidate));
+      candidate = parent;
+    }
+  }
+}
+
+/** Whether `filePath` (slash-normalized) is the watched root or inside it. */
+function isWithin(filePath: string, root: string): boolean {
+  const normalizedRoot = root.replace(/\\/g, "/");
+  return (
+    filePath === normalizedRoot || filePath.startsWith(normalizedRoot + "/")
+  );
+}
 
 export interface FileWatchEvent {
   type: "change" | "create" | "delete" | "rename";
@@ -37,6 +91,8 @@ export interface FileWatcherStatus {
 
 interface FileWatcherEntry {
   path: string;
+  /** The path handed to chokidar (long form on Windows); see toLongFormPath. */
+  watchPath: string;
   watcher: chokidar.FSWatcher | null;
   isActive: boolean;
   lastEvent: number;
@@ -86,6 +142,7 @@ export class FileWatcherService extends EventEmitter {
       // Create new watcher entry
       const entry: FileWatcherEntry = {
         path,
+        watchPath: toLongFormPath(path),
         watcher: null,
         isActive: false,
         lastEvent: Date.now(),
@@ -115,7 +172,7 @@ export class FileWatcherService extends EventEmitter {
 
     try {
       if (entry.watcher) {
-        entry.watcher.unwatch(path);
+        entry.watcher.unwatch(entry.watchPath);
       }
 
       this.watchers.delete(path);
@@ -211,7 +268,7 @@ export class FileWatcherService extends EventEmitter {
       }
 
       // Add path to global watcher
-      this.globalWatcher.add(entry.path);
+      this.globalWatcher.add(entry.watchPath);
       entry.watcher = this.globalWatcher;
       entry.isActive = true;
       entry.errorCount = 0;
@@ -293,13 +350,15 @@ export class FileWatcherService extends EventEmitter {
       size: stats?.size,
     };
 
-    // Notify all watchers that match the path or are parents of the path
+    // Notify all watchers that match the path or are parents of the path.
+    // Events arrive under whichever form chokidar was given (the long form on
+    // Windows), while entries are keyed by the caller's original path, so both
+    // have to be considered.
     for (const [watchedPath, entry] of this.watchers.entries()) {
       const normalizedFilePath = filePath.replace(/\\/g, "/");
-      const normalizedWatchedPath = watchedPath.replace(/\\/g, "/");
       if (
-        normalizedFilePath === normalizedWatchedPath ||
-        normalizedFilePath.startsWith(normalizedWatchedPath + "/")
+        isWithin(normalizedFilePath, watchedPath) ||
+        isWithin(normalizedFilePath, entry.watchPath)
       ) {
         entry.lastEvent = event.timestamp;
 
