@@ -7,12 +7,25 @@ import {
   executeCommands,
   isCommandSafe,
 } from "../../src/services/hook.js";
-import type {
-  WaveConfiguration,
-  HookExecutionContext,
-  HookExecutionResult,
-  HookValidationResult,
+import { logger } from "../../src/utils/globalLogger.js";
+import {
+  HookConfigurationError,
+  type HookEvent,
+  type HookEventConfig,
+  type WaveConfiguration,
+  type HookExecutionContext,
+  type HookExecutionResult,
+  type HookValidationResult,
 } from "../../src/types/hooks.js";
+
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 // Mock the hook services
 vi.mock("../../src/services/hook.js");
@@ -26,6 +39,8 @@ describe("HookManager", () => {
   let mockMatcher: HookMatcher;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+
     // Create mocks
     mockMatcher = {
       matches: vi.fn().mockReturnValue(true),
@@ -115,6 +130,29 @@ describe("HookManager", () => {
 
       manager.clearConfiguration();
       expect(manager.getConfiguration()).toBeUndefined();
+    });
+
+    it("should load hooks via loadConfiguration", () => {
+      manager.loadConfiguration({
+        UserPromptSubmit: [
+          { hooks: [{ type: "command" as const, command: "echo user" }] },
+        ],
+      });
+
+      const config = manager.getConfiguration();
+      expect(config?.UserPromptSubmit?.[0].hooks[0].command).toBe("echo user");
+    });
+
+    it("should throw HookConfigurationError on invalid merged config", () => {
+      const invalidHooks = { UserPromptSubmit: "not-an-array" };
+
+      expect(() =>
+        manager.loadConfiguration(
+          invalidHooks as unknown as Partial<
+            Record<HookEvent, HookEventConfig[]>
+          >,
+        ),
+      ).toThrow(HookConfigurationError);
     });
   });
 
@@ -218,6 +256,61 @@ describe("HookManager", () => {
       const results = await manager.executeHooks("Stop", context);
       expect(results).toHaveLength(0);
     });
+
+    it("should return error result for invalid execution context", async () => {
+      const results = await manager.executeHooks("PreToolUse", {
+        event: "PreToolUse",
+      } as unknown as HookExecutionContext);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].success).toBe(false);
+      expect(results[0].stderr).toContain("Invalid execution context");
+    });
+
+    it("should skip configuration if matcher does not match", async () => {
+      (
+        mockMatcher.matches as unknown as ReturnType<typeof vi.fn>
+      ).mockReturnValue(false);
+      manager.loadConfiguration({
+        PreToolUse: [
+          {
+            matcher: "other-tool",
+            hooks: [{ type: "command" as const, command: "echo hook" }],
+          },
+        ],
+      });
+
+      const results = await manager.executeHooks("PreToolUse", {
+        event: "PreToolUse",
+        projectDir: "/test",
+        timestamp: new Date(),
+        toolName: "my-tool",
+      });
+
+      expect(results).toHaveLength(0);
+      // Pin the wiring, not just the outcome: the matcher must receive the
+      // config's pattern and the context's toolName (not the event, etc.).
+      expect(mockMatcher.matches).toHaveBeenCalledWith("other-tool", "my-tool");
+    });
+
+    it("should handle unexpected error during command execution", async () => {
+      manager.loadConfiguration({
+        UserPromptSubmit: [
+          { hooks: [{ type: "command" as const, command: "echo fail" }] },
+        ],
+      });
+      mockExecuteCommand.mockRejectedValue(new Error("Execution failed"));
+
+      const results = await manager.executeHooks("UserPromptSubmit", {
+        event: "UserPromptSubmit",
+        projectDir: "/test",
+        timestamp: new Date(),
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0].success).toBe(false);
+      expect(results[0].stderr).toBe("Execution failed");
+    });
   });
 
   describe("Validation", () => {
@@ -256,6 +349,57 @@ describe("HookManager", () => {
       expect(result.valid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
     });
+
+    it("should return error if config is not an object", () => {
+      const result = manager.validateConfiguration(
+        null as unknown as WaveConfiguration,
+      );
+      expect(result.valid).toBe(false);
+    });
+
+    it("should validate env property", () => {
+      const config = {
+        env: { VALID: "value", INVALID: 123 },
+      } as unknown as WaveConfiguration;
+
+      const result = manager.validateConfiguration(config);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain(
+        "Environment variable INVALID must have a string value",
+      );
+    });
+
+    it("should validate hook event names", () => {
+      const config = {
+        hooks: { InvalidEvent: [] },
+      } as unknown as WaveConfiguration;
+
+      const result = manager.validateConfiguration(config);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain("Invalid hook event: InvalidEvent");
+    });
+
+    it("should error if non-tool event has a matcher", () => {
+      const config = {
+        hooks: {
+          UserPromptSubmit: [
+            {
+              matcher: "some-matcher",
+              hooks: [{ type: "command" as const, command: "echo hook" }],
+            },
+          ],
+        },
+      } as unknown as WaveConfiguration;
+
+      const result = manager.validateConfiguration(config);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors[0]).toContain(
+        "Event UserPromptSubmit should not have a matcher",
+      );
+    });
   });
 
   describe("Error Handling", () => {
@@ -269,6 +413,42 @@ describe("HookManager", () => {
       // This should not throw
       manager.loadConfigurationFromWaveConfig(null);
       expect(manager.getConfiguration()).toBeUndefined();
+    });
+
+    it("should handle non-HookConfigurationError gracefully", () => {
+      // Force a non-HookConfigurationError out of the validation step; the
+      // catch block must not rethrow and must not touch existing hooks.
+      const originalValidate = (
+        manager as unknown as {
+          validatePartialConfiguration: (
+            hooks: unknown,
+          ) => ReturnType<HookManager["validateConfiguration"]>;
+        }
+      ).validatePartialConfiguration;
+      (
+        manager as unknown as {
+          validatePartialConfiguration: ReturnType<typeof vi.fn>;
+        }
+      ).validatePartialConfiguration = vi.fn().mockImplementation(() => {
+        throw new Error("Unexpected error");
+      });
+
+      manager.loadConfigurationFromWaveConfig({
+        hooks: {
+          UserPromptSubmit: [
+            { hooks: [{ type: "command" as const, command: "test" }] },
+          ],
+        },
+      } as unknown as WaveConfiguration);
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to load configuration"),
+      );
+      expect(manager.getConfiguration()).toBeUndefined();
+
+      (
+        manager as unknown as { validatePartialConfiguration: unknown }
+      ).validatePartialConfiguration = originalValidate;
     });
   });
 
