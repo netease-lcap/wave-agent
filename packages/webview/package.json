@@ -26,7 +26,7 @@
     "test:unit": "vitest run",
     "test:unit:coverage": "vitest run --coverage",
     "pretest:demo": "pnpm run type-check && tsc -p e2e --noEmit && tsc -p demo --noEmit && pnpm run compile",
-    "test:demo": "playwright test --project=demo --project=e2e",
+    "test:demo": "playwright test --project=demo",
     "test:e2e": "playwright test --project=e2e"
   },
   "devDependencies": {

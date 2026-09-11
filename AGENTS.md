@@ -53,7 +53,7 @@ Always use `pnpm` as the package manager.
 
 ### CI Parity & Release
 
-- **Verify before pushing**: `pnpm run ci` (parallel type-check + lint + unit tests across packages — matches the CI PR gate).
+- **Verify before pushing**: `pnpm run ci` (parallel type-check + lint + unit tests across packages). It matches the CI PR gate's `check`/`check-extras` jobs, but not the gate's webview command audit or its sharded demo suites — see `.github/workflows/ci.yml`.
 - **Release**: `pnpm run release:patch` / `release:minor` / `release:major` (runs `scripts/release.js`, then the `publish.yml` GitHub workflow publishes to npm).
 
 ### JetBrains Plugin
@@ -113,4 +113,4 @@ Known legacy hotspots (duplication not yet deduplicated — check **both** copie
 
 - **Unit tests**: Vitest in `tests/` — `pnpm -F wave-vscode test`
 - **E2E tests**: real-browser Playwright tests in `packages/webview/e2e/` (`.e2e.ts`, requires Chromium) — `pnpm -F wave-webview run test:e2e`
-- **Demo/screenshot tests**: screenshot-only Playwright tests in `packages/webview/demo/` (`.demo.ts`); `pnpm -F wave-webview run test:demo` runs both projects and regenerates the gitignored screenshots under `docs/public/screenshots/`
+- **Demo/screenshot tests**: screenshot-only Playwright tests in `packages/webview/demo/` (`.demo.ts`); `pnpm -F wave-webview run test:demo` runs the `demo` project and regenerates the gitignored screenshots under `docs/public/screenshots/` (the `e2e` project has its own `test:e2e`)

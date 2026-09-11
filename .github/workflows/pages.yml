@@ -5,7 +5,10 @@ name: Deploy VitePress to GitHub Pages
 # v1.2.0 failures (the demo mock host not answering the worktree-diff check, and raw
 # angle-bracket placeholders breaking VitePress) stay invisible to PR CI until the
 # release. Auto-trigger on push to main surfaces such failures early; workflow_dispatch
-# is kept for manual re-runs.
+# is kept for manual re-runs. The demo assertions themselves are now a PR gate
+# (ci.yml webview-demo), so this job is about producing the screenshots the docs
+# import; the e2e project it used to run alongside them is covered post-merge by
+# the webview-e2e job (e2e/utils/** still feeds the demos, hence the path trigger).
 on:
   push:
     branches: [main]
