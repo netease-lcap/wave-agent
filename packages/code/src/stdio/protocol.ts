@@ -112,6 +112,7 @@ export type RequestMethod =
   | "enablePlugin"
   | "disablePlugin"
   | "updatePlugin"
+  | "setPluginScope"
   | "listMarketplaces"
   | "addMarketplace"
   | "removeMarketplace"

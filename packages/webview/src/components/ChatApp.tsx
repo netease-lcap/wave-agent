@@ -20,7 +20,6 @@ import type { RewindCheckpoint } from "./RewindPopup";
 import { ModelPopup } from "./ModelPopup";
 import { ToastStack } from "./ToastStack";
 import { BtwPanel } from "./BtwPanel";
-import PluginDialog from "./PluginDialog";
 import McpDialog from "./McpDialog";
 import StatusDialog from "./StatusDialog";
 import BackgroundTaskManager from "./BackgroundTaskManager";
@@ -1804,7 +1803,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         return;
       }
       if (trimmedText === "/plugin") {
-        dispatch({ type: "SHOW_DIALOG", payload: { type: "plugin" } });
+        // 不再弹窗：唤起设置页并选中「插件市场」选项卡（对齐 /mcp、/skills
+        // 既有语义，弹窗内容已迁移到设置页，见 SettingsPluginView）。
+        handleOpenSettings("plugins");
         return;
       }
       if (trimmedText === "/mcp") {
@@ -3194,9 +3195,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // stay visible in every layout, including the desktop split-view shell.
   const dialogs = (
     <>
-      {state.activeDialog === "plugin" && (
-        <PluginDialog vscode={vscode} onClose={handleDialogClose} />
-      )}
       {state.activeDialog === "mcp" && (
         <McpDialog vscode={vscode} onClose={handleDialogClose} />
       )}

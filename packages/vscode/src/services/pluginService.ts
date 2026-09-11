@@ -76,6 +76,18 @@ export class PluginService {
     });
   }
 
+  /**
+   * 更换安装作用域：清除该插件在各作用域的启用记录，再在目标作用域启用
+   * （设置页插件市场「更换安装作用域」）。
+   */
+  public async setPluginScope(pluginId: string, scope: Scope) {
+    return await this.utilityClient.request("setPluginScope", {
+      pluginId,
+      scope,
+      workdir: this.getWorkdir(),
+    });
+  }
+
   public async listMarketplaces() {
     return await this.utilityClient.request("listMarketplaces", {
       workdir: this.getWorkdir(),
@@ -96,10 +108,14 @@ export class PluginService {
     });
   }
 
+  /**
+   * 更新市场（拉取最新市场源），同时把该市场内已安装插件升级到最新。
+   * 返回实际升级的插件数（0 = 已是最新），宿主据此提示。
+   */
   public async updateMarketplace(name?: string) {
-    await this.utilityClient.request("updateMarketplace", {
+    return (await this.utilityClient.request("updateMarketplace", {
       name,
       workdir: this.getWorkdir(),
-    });
+    })) as { updated: number };
   }
 }

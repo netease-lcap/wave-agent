@@ -17,6 +17,9 @@
  * - 子代理 (subagents) / 技能 (skills): agent 定义与技能列表，内容自
  *   /agents、/skills 弹窗迁移而来（2026-08-29 用户拍板：斜杠命令唤起设置页
  *   对应选项卡，不再弹窗）
+ * - 插件市场 (plugins): 按市场浏览/筛选插件 + 安装/更新/卸载/换作用域 +
+ *   新建/更新/移除市场，内容自 /plugin 弹窗迁移而来（同为斜杠命令唤起
+ *   设置页对应选项卡的既有语义）
  *
  * Layout/dimensions follow the designer's high-fidelity prototype
  * (codechat-ui settings feature) mapped onto wave's native React + VS Code
@@ -34,12 +37,14 @@ import SettingsSubagentsView from "./SettingsSubagentsView";
 import SettingsSkillsView from "./SettingsSkillsView";
 import SettingsHooksView from "./SettingsHooksView";
 import SettingsMcpView from "./SettingsMcpView";
+import SettingsPluginView from "./SettingsPluginView";
 import {
   SettingsBackIcon,
   SettingsGlobalIcon,
   SettingsHooksIcon,
   SettingsMcpIcon,
   SettingsPersonalizationIcon,
+  SettingsPluginsIcon,
   SettingsProjectIcon,
   SettingsSkillsIcon,
   SettingsSubagentsIcon,
@@ -118,6 +123,7 @@ export type NavKey =
   | "global"
   | "personalization"
   | "project"
+  | "plugins"
   | "skills"
   | "subagents"
   | "hooks"
@@ -177,7 +183,8 @@ interface NavGroup {
   items: NavItem[];
 }
 
-/** 导航：7 项分 3 组（对齐原型 settings-navigation.ts；直连设置随私有化部署移除 2026-09）。
+/** 导航：8 项分 3 组（对齐原型 settings-navigation.ts；直连设置随私有化部署移除
+    2026-09；插件市场 2026-09 由「新对话」下方入口迁入设置页）。
     图标 = Figma 导出 SVG（codechat-ui settings-*.svg 同源），非 codicon 字体。 */
 const NAV_GROUPS: NavGroup[] = [
   {
@@ -198,6 +205,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "AI 与扩展",
     items: [
+      { key: "plugins", label: "插件市场", icon: SettingsPluginsIcon },
       { key: "skills", label: "技能", icon: SettingsSkillsIcon },
       { key: "subagents", label: "子代理", icon: SettingsSubagentsIcon },
       { key: "hooks", label: "钩子", icon: SettingsHooksIcon },
@@ -886,6 +894,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               </section>
             </div>
           )}
+
+          {activeNav === "plugins" && <SettingsPluginView vscode={vscode} />}
 
           {activeNav === "subagents" && (
             <SettingsSubagentsView

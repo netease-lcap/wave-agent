@@ -1252,6 +1252,27 @@ export const SettingsMcpIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+/** 设置-插件市场（lucide puzzle，24 viewBox stroke 2）：拼图块 = 插件。
+ *  设计师原型没有这一项（插件市场是新增导航），取自同一图标源 lucide
+ *  （codechat-ui 依赖 @lucide/vue），与其余设置图标同为 stroke 1.4×16 渲染。 */
+export const SettingsPluginsIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.4}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z" />
+  </svg>
+);
+
 /** 设置-返回（settings-back.svg）：左箭头 */
 export const SettingsBackIcon: React.FC<IconProps> = ({
   className = "header-icon",

@@ -820,6 +820,15 @@ export interface DesktopRemoteDirListMessage extends HostToWebviewMessageBase {
   error?: unknown;
 }
 
+/** Reply to selectPluginMarketFolder：设置页插件市场「新建市场 → 本地路径」的
+ *  系统目录选择器结果。用户取消时 path 缺省（webview 视为未选择、不添加市场）。 */
+export interface PluginMarketFolderSelectedMessage
+  extends HostToWebviewMessageBase {
+  command: "pluginMarketFolderSelected";
+  requestId: string;
+  path?: string;
+}
+
 /** What deleting a worktree session would throw away (uncommitted files and
  *  commits the base branch does not have). `null` = the worktree could not be
  *  inspected (host unreachable, not a repo, already gone) — the caller falls
@@ -963,7 +972,8 @@ export type HostToWebviewMessage =
   | UploadSuccessMessage
   | UploadErrorMessage
   | DesktopRemoteDirListMessage
-  | DesktopWorktreeChangesMessage;
+  | DesktopWorktreeChangesMessage
+  | PluginMarketFolderSelectedMessage;
 
 /**
  * Reply-to 消息归属键注册表（契约锁，见文件头部「归属契约」）。
@@ -996,6 +1006,8 @@ type ReplyAttribution = {
   desktopRemoteDirList: "requestId";
   // 删除确认：请求生成 id，回复原样带回（同一会话可反复开关对话框）。
   desktopWorktreeChanges: "requestId";
+  // 目录选择器：请求生成 id，回复原样带回（同会话可反复打开弹窗）。
+  pluginMarketFolderSelected: "requestId";
   fileSuggestionsResponse: "requestId";
   // 设置页「服务端配置」：请求生成 id，回复原样带回（快速切换视图 / 桌面切
   // 远端主机时，晚到的旧下发内容即弃）。
@@ -1038,6 +1050,7 @@ export const replyAttributionLocked = {
   desktopForwardPortResult: true,
   desktopRemoteDirList: true,
   desktopWorktreeChanges: true,
+  pluginMarketFolderSelected: true,
   fileSuggestionsResponse: true,
   managedSettingsResponse: true,
 } satisfies {

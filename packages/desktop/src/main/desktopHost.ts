@@ -3914,6 +3914,21 @@ export class DesktopHost {
         });
         break;
 
+      // 更换安装作用域（设置页插件市场）：清各作用域启用记录并在目标作用域
+      // 启用，同属构造期副作用 → 复用 handlePluginMutation 的重建确认。
+      case "setPluginScope":
+        await this.handlePluginMutation("setPluginScope", {
+          pluginId: msg.pluginId,
+          scope: msg.scope as Scope,
+        });
+        break;
+
+      // 设置页插件市场「新建市场 → 本地路径」的系统目录选择器（无副作用，
+      // 只把用户选中的路径回给 webview，由 webview 再发 addMarketplace）。
+      case "selectPluginMarketFolder":
+        await this.handleSelectPluginMarketFolder(msg.requestId as string);
+        break;
+
       case "listMarketplaces":
         await this.handleListMarketplaces();
         break;
@@ -3931,9 +3946,7 @@ export class DesktopHost {
         break;
 
       case "updateMarketplace":
-        await this.handleMarketplaceMutation("updateMarketplace", {
-          name: msg.name,
-        });
+        await this.handleUpdateMarketplace(msg.name as string | undefined);
         break;
 
       // -- background tasks / workflows ----------------------------------------------
@@ -5717,6 +5730,29 @@ export class DesktopHost {
     }
   }
 
+  /**
+   * 设置页插件市场「新建市场 → 本地路径」：打开系统目录选择器，把选中路径
+   * 回给 webview（webview 再发 addMarketplace 走统一的新增/报错路径）。用户
+   * 取消时只回 requestId，path 缺省。系统对话框只能选本地目录（与
+   * handleSelectWorkdir 同语义，但不激活工作目录、不切主机）。
+   */
+  private async handleSelectPluginMarketFolder(
+    requestId: string,
+  ): Promise<void> {
+    if (!this.mainWindow || !requestId) return;
+    const result = await dialog.showOpenDialog(this.mainWindow, {
+      title: "选择插件市场目录",
+      properties: ["openDirectory"],
+    });
+    this.postMessage({
+      command: "pluginMarketFolderSelected",
+      requestId,
+      ...(result.canceled || result.filePaths.length === 0
+        ? {}
+        : { path: result.filePaths[0] }),
+    });
+  }
+
   private async handleListMarketplaces(): Promise<void> {
     try {
       const marketplaces = await this.utilityClientFor(
@@ -5728,6 +5764,11 @@ export class DesktopHost {
     }
   }
 
+  /**
+   * 新增 / 移除市场。插件按所属市场组织，市场增减会改变插件集合 → 市场列表与插件
+   * 列表都刷新（spec 插件市场场景 15）。更新市场走 [handleUpdateMarketplace]
+   * （需要拿到升级数量）。
+   */
   private async handleMarketplaceMutation(
     method: string,
     params: Record<string, unknown>,
@@ -5738,8 +5779,31 @@ export class DesktopHost {
         workdir: this.workdir,
       });
       await this.handleListMarketplaces();
+      await this.handleListPlugins();
     } catch (error) {
       this.showToast({ message: `市场操作失败: ${error}` });
+    }
+  }
+
+  /**
+   * 更新市场：拉取最新市场源并升级该市场内已安装且有新版本的插件（升级发生在 SDK
+   * 侧），按实际升级数量提示——0 个时提示「已是最新」（spec 插件市场场景 13）。
+   * 插件版本可能变化 → 两个列表都刷新。
+   */
+  private async handleUpdateMarketplace(name?: string): Promise<void> {
+    try {
+      const result = (await this.utilityClientFor(this.currentHost).request(
+        "updateMarketplace",
+        { name, workdir: this.workdir },
+      )) as { updated?: number };
+      await this.handleListMarketplaces();
+      await this.handleListPlugins();
+      const updated = result?.updated ?? 0;
+      this.showToast({
+        message: updated > 0 ? `已更新 ${updated} 个插件` : "当前市场已是最新",
+      });
+    } catch (error) {
+      this.showToast({ message: `更新市场失败: ${error}` });
     }
   }
 
@@ -6119,7 +6183,7 @@ export class DesktopHost {
 
       const localCommands = [
         { id: "config", name: "config", description: "打开配置设置" },
-        { id: "plugin", name: "plugin", description: "打开插件管理" },
+        { id: "plugin", name: "plugin", description: "打开插件市场" },
         { id: "mcp", name: "mcp", description: "打开 MCP 服务器管理" },
         { id: "status", name: "status", description: "查看当前状态" },
         { id: "compact", name: "compact", description: "手动压缩对话历史" },

@@ -474,6 +474,67 @@ export class MarketplaceService {
   }
 
   /**
+   * 已注册的市场（作用域配置 + 缓存注册表合并去重），用于添加前的判重
+   */
+  private async listRegisteredMarketplaces(): Promise<
+    { name: string; source: MarketplaceSource }[]
+  > {
+    const scoped = this.configurationService.getMergedMarketplaces(
+      this.workdir,
+    );
+    const registered = Object.entries(scoped).map(([name, config]) => ({
+      name,
+      source: config.source,
+    }));
+    const cache = await this.getCacheRegistry();
+    for (const entry of cache?.marketplaces ?? []) {
+      if (!registered.some((m) => m.name === entry.name)) {
+        registered.push({ name: entry.name, source: entry.source });
+      }
+    }
+    return registered;
+  }
+
+  /**
+   * 添加市场前判重（spec ecosystem/plugin「设置页插件市场」场景 16）：来源重复或
+   * 清单声明的名称与已有市场同名时不允许添加。只传 source 时仅判来源（用于克隆
+   * 之前，避免为一个已存在的来源白克隆一次）。
+   */
+  private async assertMarketplaceAddable(
+    source: MarketplaceSource,
+    name?: string,
+  ): Promise<void> {
+    const registered = await this.listRegisteredMarketplaces();
+    const sameSource = registered.find((m) =>
+      MarketplaceService.isSameMarketplaceSource(m.source, source),
+    );
+    if (sameSource) {
+      throw new Error(`该市场来源已添加：${sameSource.name}`);
+    }
+    if (name && registered.some((m) => m.name === name)) {
+      throw new Error(`同名市场已存在：${name}`);
+    }
+  }
+
+  /** 两个市场来源是否指向同一处（同类型比 url/repo/path，忽略 ref） */
+  private static isSameMarketplaceSource(
+    a: MarketplaceSource,
+    b: MarketplaceSource,
+  ): boolean {
+    if (a.source !== b.source) return false;
+    if (a.source === "directory" && b.source === "directory") {
+      return a.path === b.path;
+    }
+    if (a.source === "github" && b.source === "github") {
+      return a.repo === b.repo;
+    }
+    if (a.source === "git" && b.source === "git") {
+      return a.url === b.url;
+    }
+    return false;
+  }
+
+  /**
    * Adds a new marketplace (local directory, GitHub repo, or Git URL)
    */
   async addMarketplace(
@@ -506,6 +567,8 @@ export class MarketplaceService {
           ? { source: "git", url: urlOrRepo, ref }
           : { source: "github", repo: urlOrRepo, ref };
 
+        await this.assertMarketplaceAddable(tempSource);
+
         const targetPath = this.getMarketplacePath(tempSource);
 
         if (!existsSync(targetPath)) {
@@ -537,6 +600,10 @@ export class MarketplaceService {
         };
       } else {
         const absolutePath = path.resolve(input);
+        await this.assertMarketplaceAddable({
+          source: "directory",
+          path: absolutePath,
+        });
         let manifest: MarketplaceManifest;
         try {
           manifest = await this.loadMarketplaceManifest(absolutePath);
@@ -553,6 +620,9 @@ export class MarketplaceService {
           lastUpdated: new Date().toISOString(),
         };
       }
+
+      // 名称来自市场自身清单，加载后才知道 → 同名判重放在这里（来源判重已在分支内）
+      await this.assertMarketplaceAddable(marketplace.source, marketplace.name);
 
       const config: MarketplaceConfig = {
         source: marketplace.source,
@@ -691,11 +761,15 @@ export class MarketplaceService {
 
   /**
    * Updates a specific marketplace or all marketplaces
+   *
+   * Returns the number of installed plugins whose version actually changed
+   * during this run (0 = everything was already up to date) — the GUI hosts
+   * use it to tell "已更新 N 个插件" apart from "已是最新" (spec 插件市场 场景 13).
    */
   async updateMarketplace(
     name?: string,
     options?: { updatePlugins?: boolean },
-  ): Promise<void> {
+  ): Promise<number> {
     return this.withLock(async () => {
       const marketplaces = await this.listMarketplaces();
       const toUpdate = name
@@ -708,6 +782,7 @@ export class MarketplaceService {
 
       const isGitAvailable = await this.gitService.isGitAvailable();
       const errors: string[] = [];
+      let upgradedPlugins = 0;
       for (const marketplace of toUpdate) {
         try {
           // Builtin official marketplace: prefer the zip-snapshot mirror
@@ -780,6 +855,11 @@ export class MarketplaceService {
             const pluginsToUpdate = installedRegistry.plugins.filter(
               (p) => p.marketplace === marketplace.name,
             );
+            // 升级前版本快照：安装完成后比对，只有版本真的变了的才算「已更新」
+            // （重新安装同版本 = 无更新，宿主据此提示「已是最新」）。
+            const versionBefore = new Map(
+              pluginsToUpdate.map((p) => [p.name, p.version]),
+            );
             for (const plugin of pluginsToUpdate) {
               const pluginEntry = manifest.plugins.find(
                 (p) => p.name === plugin.name,
@@ -813,6 +893,14 @@ export class MarketplaceService {
                 );
               }
             }
+            const afterRegistry = await this.getInstalledPlugins();
+            for (const plugin of afterRegistry.plugins) {
+              if (plugin.marketplace !== marketplace.name) continue;
+              const before = versionBefore.get(plugin.name);
+              if (before !== undefined && before !== plugin.version) {
+                upgradedPlugins++;
+              }
+            }
           }
         } catch (error) {
           const msg = `Failed to update marketplace "${marketplace.name}": ${error instanceof Error ? error.message : String(error)}`;
@@ -826,6 +914,7 @@ export class MarketplaceService {
           `Some marketplaces failed to update:\n${errors.join("\n")}`,
         );
       }
+      return upgradedPlugins;
     });
   }
 

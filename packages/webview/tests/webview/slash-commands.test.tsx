@@ -332,11 +332,12 @@ describe("Slash Commands", () => {
       fireEvent.mouseDown(cmdItem);
     });
 
-    // The plugin dialog opens (it fetches plugins on mount).
+    // 不再弹窗：/plugin 唤起设置页并选中「插件市场」选项卡（对齐 /mcp、/skills）。
     await waitFor(() => {
-      expect(vscode.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ command: "listPlugins" }),
+      const call = vscode.postMessage.mock.calls.find(
+        (c) => c[0]?.command === "openSettings",
       );
+      expect(call?.[0]?.nav).toBe("plugins");
     });
 
     // Popup closed and input cleared.

@@ -435,6 +435,14 @@ class StdioAgent(
             put("workdir", workdir)
         }) ?: JsonObject(emptyMap())
 
+    /** 更换安装作用域（设置页插件市场）：清各作用域启用记录后在目标作用域启用。 */
+    suspend fun setPluginScope(pluginId: String, scope: String, workdir: String): JsonElement =
+        client.request("setPluginScope", buildJsonObject {
+            put("pluginId", pluginId)
+            put("scope", scope)
+            put("workdir", workdir)
+        }) ?: JsonObject(emptyMap())
+
     suspend fun listMarketplaces(workdir: String): JsonElement =
         client.request("listMarketplaces", buildJsonObject { put("workdir", workdir) }) ?: JsonObject(emptyMap())
 

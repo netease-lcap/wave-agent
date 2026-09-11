@@ -196,7 +196,7 @@ test.describe("Product Specification Screenshots - UI Basic", () => {
         // UI 内置指令
         { id: "config", name: "config", description: "打开配置设置" },
         { id: "model", name: "model", description: "切换 AI 模型" },
-        { id: "plugin", name: "plugin", description: "打开插件管理" },
+        { id: "plugin", name: "plugin", description: "打开插件市场" },
         { id: "mcp", name: "mcp", description: "打开 MCP 服务器管理" },
         { id: "status", name: "status", description: "查看当前状态" },
         { id: "clear", name: "clear", description: "清除对话历史并重置会话" },

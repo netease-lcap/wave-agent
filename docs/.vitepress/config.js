@@ -261,8 +261,8 @@ export default {
             { text: "6.3 个性化", link: "/desktop#_6-3-个性化" },
             { text: "6.4 项目设置", link: "/desktop#_6-4-项目设置" },
             {
-              text: "6.5 技能、子代理、钩子与 MCP 服务",
-              link: "/desktop#_6-5-技能、子代理、钩子与-mcp-服务",
+              text: "6.5 插件市场、技能、子代理、钩子与 MCP 服务",
+              link: "/desktop#_6-5-插件市场-技能-子代理-钩子与-mcp-服务",
             },
             { text: "6.6 更新", link: "/desktop#_6-6-更新" },
           ],
