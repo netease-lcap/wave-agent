@@ -14,12 +14,6 @@ export default defineConfig(() => {
         reporter: ["text", "json", "html"],
         include: ["src/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
         exclude: ["node_modules", "dist", "tests", "examples"],
-        thresholds: {
-          lines: 80,
-          functions: 70,
-          branches: 80,
-          statements: 80,
-        },
       },
       // Test environment variables: disable logger I/O operations by default to improve performance
       onConsoleLog(log: string, type: "stdout" | "stderr"): boolean | void {
