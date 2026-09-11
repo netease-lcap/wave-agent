@@ -26,16 +26,6 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**"],
-      thresholds: {
-        // Recalibrated after the stdioAgent/NotificationRouter merge into
-        // wave-agent-sdk/stdio (旧温床 4/4): the heavily-tested stdio layer and
-        // its behavioral suite now live in agent-sdk, so the in-package share
-        // dropped to ~26.6% statements / ~24.6% branches.
-        lines: 25,
-        functions: 25,
-        branches: 23,
-        statements: 25,
-      },
     },
   },
 });

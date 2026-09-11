@@ -53,7 +53,7 @@ Always use `pnpm` as the package manager.
 
 ### CI Parity & Release
 
-- **Verify before pushing**: `pnpm run ci` (parallel type-check + lint + unit tests with coverage across packages — matches the CI PR gate).
+- **Verify before pushing**: `pnpm run ci` (parallel type-check + lint + unit tests across packages — matches the CI PR gate).
 - **Release**: `pnpm run release:patch` / `release:minor` / `release:major` (runs `scripts/release.js`, then the `publish.yml` GitHub workflow publishes to npm).
 
 ### JetBrains Plugin
