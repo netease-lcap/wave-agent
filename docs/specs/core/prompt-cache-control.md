@@ -111,3 +111,4 @@ order: 90
 - **边界情况 6**：最后一条有内容的消息必须接收 cache_control 标记，无论对话长度。如果最后一条消息没有内容（如只有 tool_calls 没有文本的助手消息），系统向后查找最近有内容的消息。标记完全无状态——没有模块级状态跨请求追踪标记位置
 - **边界情况 7**：当动态块为空（无 workdir、无权限模式、无 auto memory 等动态内容）时，`buildSystemPrompt` 只返回静态块，不添加空的动态块
 - **边界情况 8**：`transformMessagesForExplicitCache` 的幂等性检查（检测系统消息是否已有 cache_control）必须正确处理 `SystemPromptBlock[]` 映射产生的内容部分数组，避免重复标记
+- **边界情况 9**：当 MCP 工具经工具延迟加载暴露时（见 [`core/tool-deferred-loading.md`](./tool-deferred-loading.md)），目录文本（挂在转发工具说明中的 MCP 工具清单）只随**工具池**变化而变化——连接/断开 MCP 服务器、修改配置、变更 `alwaysLoad`；它与单轮的「发现/激活」无关，同一工具池下必须逐字节稳定，不因会话轮次或调用历史改变，因此不产生额外的前缀缓存失效
