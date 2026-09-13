@@ -23,6 +23,7 @@ import type {
 } from "../types/index.js";
 import type { ToolManager } from "./toolManager.js";
 import type { ToolContext, ToolResult, ReadFileState } from "../tools/types.js";
+import { formatForwardedToolAddress } from "../tools/deferredTools.js";
 import type { MessageManager } from "./messageManager.js";
 import type { BackgroundTaskManager } from "./backgroundTaskManager.js";
 import {
@@ -2382,13 +2383,18 @@ ${question}`;
     }
 
     const compactParams = this.generateCompactParams(toolName, toolArgs);
+    // A forwarded call is displayed as the leaf it hits (`<namespace>.<tool>`),
+    // so the conversation never hides which tool actually ran. Display only:
+    // rule matching and execution keep using the real tool name.
+    const displayName =
+      formatForwardedToolAddress(toolName, toolArgs) ?? toolName;
 
     // Emit start stage for non-streaming tool calls
     if (!this.stream) {
       this.messageManager.updateToolBlock({
         id: toolId,
         stage: "start",
-        name: toolName,
+        name: displayName,
         compactParams,
         parameters: argsString,
       });
@@ -2398,7 +2404,7 @@ ${question}`;
     this.messageManager.updateToolBlock({
       id: toolId,
       stage: "running",
-      name: toolName,
+      name: displayName,
       compactParams,
       parameters: argsString,
       parametersChunk: "",
@@ -2435,7 +2441,7 @@ ${question}`;
             shortResult,
             stage: "running",
             compactParams,
-            name: toolName,
+            name: displayName,
           });
         },
         onResultUpdate: (result: string) => {
@@ -2444,7 +2450,7 @@ ${question}`;
             result,
             stage: "running",
             compactParams,
-            name: toolName,
+            name: displayName,
           });
         },
         onCwdChange: async (newCwd: string) => {
@@ -2507,7 +2513,7 @@ ${question}`;
         success: toolResult.success,
         error: toolResult.error,
         stage: "end",
-        name: toolName,
+        name: displayName,
         compactParams,
         shortResult: toolResult.shortResult,
         backgroundTaskId: toolResult.backgroundTaskId,
@@ -2536,7 +2542,7 @@ ${question}`;
         success: false,
         error: errorMessage,
         stage: "end",
-        name: toolName,
+        name: displayName,
         compactParams,
         timestamp: Date.now(),
       });

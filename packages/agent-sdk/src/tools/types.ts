@@ -68,7 +68,7 @@ export interface ToolPlugin {
   /**
    * Opt this tool into deferred loading (see
    * `docs/specs/core/tool-deferred-loading.md`, and the whitelist doctrine in
-   * `docs/features/tool-deferred-loading.md`).
+   * `docs/sdk.md`, 「工具延迟加载」).
    *
    * Two hard rules decide whether a *built-in* tool may carry this flag — both
    * must hold, and neither is something a heuristic can infer from the code:
@@ -82,7 +82,7 @@ export interface ToolPlugin {
    *    remember it *can* ask for — task management, mode/interaction switches,
    *    the hot coding path (`Read`/`Edit`/`Write`/`Bash`/`Grep`/`Glob`), and
    *    mechanism-coupled tools such as `Skill` — must stay individually declared.
-   *    The full never-defer list is enumerated in the feature doc.
+   *    The full never-defer list is enumerated in the SDK doc.
    */
   defer?: boolean;
 }

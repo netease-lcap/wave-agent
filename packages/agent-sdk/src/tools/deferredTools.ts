@@ -94,3 +94,27 @@ export function buildToolSearchConfig(): ChatCompletionFunctionTool {
     },
   };
 }
+
+/**
+ * The address a forwarded call actually hits, as `<namespace>.<tool>`, or
+ * `undefined` when this is not a forwarding call.
+ *
+ * This is the display identity: the conversation has to show which leaf ran, not
+ * the forwarding tool (see 「目录内容契约」 in
+ * `docs/specs/core/tool-deferred-loading.md` — 「用户必须能看到该次调用实际命中哪个
+ * 叶子工具及其结果」). It is derived from the arguments and never participates in
+ * permission matching or execution.
+ */
+export function formatForwardedToolAddress(
+  toolName: string,
+  args: unknown,
+): string | undefined {
+  if (toolName !== TOOL_INVOKE_TOOL_NAME) return undefined;
+  if (args === null || typeof args !== "object") return undefined;
+  const record = args as Record<string, unknown>;
+  const namespace =
+    typeof record.namespace === "string" ? record.namespace.trim() : "";
+  const tool = typeof record.tool === "string" ? record.tool.trim() : "";
+  if (!namespace || !tool) return undefined;
+  return `${namespace}.${tool}`;
+}

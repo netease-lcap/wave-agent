@@ -291,6 +291,8 @@ callbacks: {
 
 Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管理、网页抓取和定时任务等能力。
 
+其中 `WebFetch`、`EnterWorktree`、`ExitWorktree`、`Workflow` 参与[工具延迟加载](#deferred-tools)（默认挂在紧凑目录里，按需经 `ToolInvoke` 调用）；其余内置工具始终逐条声明，判定规则见该节。
+
 #### 文件操作
 
 | 工具    | 说明                                        |
@@ -345,6 +347,47 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 | `Skill`         | 调用 Skill 技能              |
 | `Agent`         | 创建子代理                   |
 | `Workflow`      | 运行工作流脚本               |
+
+### 工具延迟加载 {#deferred-tools}
+
+会话里的工具一多，每轮请求的固定开销就来自「逐条声明」本身：每个工具都要带上完整 JSON Schema 与说明，而绝大多数工具在一次会话里从未被调用。**工具延迟加载**把可延迟的工具从请求的 `tools[]` 里摘掉，改为折叠进一个转发工具的说明（紧凑目录）；模型按目录点名调用，Host 再把它派发给真正的叶子工具。
+
+**默认开启，但有门槛**：当前工具池中可延迟的工具数达到 **5** 时生效（MCP 工具 + 标注了 `defer` 的内置工具合计）。未达门槛时 `tools[]` 与关闭延迟加载时**逐字节相同**——只有少量工具、或只有一两台 MCP 服务器的会话完全不受影响。`enableDeferredTools` 可显式双向覆盖门槛（见 [其他设置](#settings-other)）。
+
+**参与范围**（逐个工具决定，不按类别一刀切）：
+
+| 来源     | 默认行为                   | 退出方式                                                                      |
+| -------- | -------------------------- | ----------------------------------------------------------------------------- |
+| MCP 工具 | 参与延迟加载               | 按服务器在 MCP 配置里列 `alwaysLoadTools: ["tool_a"]`，列出的工具始终逐条声明 |
+| 内置工具 | **一律不参与**（白名单制） | 只有源码里显式标注 `defer: true` 的内置工具才参与                             |
+
+内置工具的判定采用两条硬规则：① **白名单制**——默认不 defer，只有显式标注才参与，绝不按「schema 大 / 看起来低频」自动推断；② 判据是 **能力型 + 低频 + 大 schema**，且**使用频率由模型自发驱动**的工具一律不 defer。首批只有 4 个：`WebFetch`（约 1.5k 字符静态描述常在，由任务里出现的 URL 触发）、`EnterWorktree`、`ExitWorktree`（用户要求隔离/退出工作区时才用）、`Workflow`（用户显式开启多代理编排时才用）。
+
+**永不 defer 的清单**（硬约束，不是建议）：
+
+- 任务管理类：`TaskCreate`、`TaskGet`、`TaskUpdate`、`TaskList`、`TaskStop`
+- 交互与模式类：`AskUserQuestion`、`EnterPlanMode`、`ExitPlanMode`
+- 高频核心编码工具：`Read`、`Edit`、`Write`、`Bash`、`Grep`、`Glob`
+- 与技能 / 钩子 / 记忆等机制耦合、需模型自发使用的工具：`Skill`、`Agent`、`Artifact`、`CronCreate`、`CronDelete`、`CronList`
+
+**目录与预算**：目录折叠每个工具的名字与参数签名（嵌套两层，更深的参数结构显式标注为省略），常驻部分默认不超过 **6,000 tokens**（按 `estimateTokens` 计价，不是字符数），每个已连接的命名空间至少保留一行代表行。目录首行的完整性标注是固定文案：
+
+- `COMPLETE — all <Y> tools shown`：全部工具都在常驻目录里；
+- `PARTIAL — <X> of <Y> tools shown`，并附一行指向 `ToolSearch` 的指引：常驻目录只放了 X 个，其余靠搜索够到——模型不得把「不在目录里」当成「不存在」。
+
+预算数值只进 Host 日志，不出现在给模型的文案里。同一个工具池连续渲染两次，目录文本逐字节相同（前缀缓存的前提）。
+
+**调用与权限**：转发调用形如 `ToolInvoke({ namespace, tool, args })`。`namespace` 是 MCP 服务器名；内置工具用保留名 `builtin`（`builtin.Write`）。命中后由 Host 按 **叶子** 执行，**权限语义完全不变**：审批提示、规则匹配、拒绝判定与「不再询问」持久化下来都以叶子为单位（内置叶子 = 工具名本身，如 `Bash`；MCP 叶子 = `mcp__<server>__<tool>`）。`ToolInvoke`、`ToolSearch`、`namespace`、`tool`、`args` 这些字样永不参与规则匹配——`Bash(npm test)` 这类规则只按叶子的名字和叶子自己的参数判定，写 `ToolInvoke` 的规则不生效。目录只反映**当前 agent** 的工具池：子代理与 `--tools` 限制过的会话都拿不到自己无权使用的工具。
+
+**`ToolSearch`**：只读搜索工具，覆盖完整目录（含被预算截断掉的部分），用来找没进常驻目录的冷门工具；它只读、不需要审批，找到后仍要用 `ToolInvoke` 按 `namespace` + `tool` 调用。
+
+**冲突退化**：若某台 MCP 服务器的名字恰好是 `builtin`，连接照常建立，但该服务器的工具**全部**退出延迟加载、保持逐条声明（仍可按 `mcp__builtin__tool` 全名调用），并写一条日志提示——不静默改名，也不让连接失败。
+
+**展示**：转发调用在宿主侧（CLI、桌面端、IDE 插件）显示为实际命中的叶子地址 `<namespace>.<tool>`（如 `github.create_issue`、`builtin.WebFetch`），而不是 `ToolInvoke`——只看对话就知道真正跑了哪个工具。
+
+**已知偏差（本轮不修）**：`--tools` 白名单不过滤 MCP 工具（延迟加载之前也是这样），只是被显式列出的工具总是逐条声明。
+
+**自定义工具**：在 `ToolPlugin` 上标 `defer: true` 即参与延迟加载，与内置工具同一套机制（见 [自定义工具](#custom-tools)）。对参数保真度敏感的工具不要标——延迟加载只转发参数，不替叶子做校验。
 
 ### 工具详情 {#tool-details}
 
@@ -1400,6 +1443,8 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 - `autoMemoryFrequency`：自动记忆提取频率（默认：`1`）。
 - `enableArtifact`：启用 Artifact 工具（默认：`false`）。未设置时跟随代码默认值（当前默认禁用）；设为 `true` 后注册 [Artifact 工具](#tool-artifact) 与 `/artifact` 内置技能，将本地 HTML/Markdown 发布为可分享网页。
 - `worktree.baseRef`：新建 worktree 的基准引用。`"fresh"`（默认）基于 `origin/<默认分支>` 创建新分支；`"head"` 基于当前本地 HEAD 创建，跳过 origin 解析与网络 fetch。适用于基于尚未推送的本地分支工作的场景。
+- `enableDeferredTools`：启用或禁用[工具延迟加载](#deferred-tools)。未设置时按门槛判定（可延迟工具数 ≥ 5 才生效）；显式 `true` / `false` 双向覆盖门槛。只读本地 `settings.json`（远端托管配置不下发此项）。
+- `deferredToolsTokenBudget`：延迟加载紧凑目录的 token 预算（默认：`6000`），用 `estimateTokens` 计价。超出后目录按命名空间轮转截断并标注 `PARTIAL`。
 - `cleanupPeriodDays`：会话 jsonl 保留期（天），启动时后台清理过期会话文件（默认：`30`，对齐 Claude Code）。设为 `0` 跳过清理。作用域 user → project → local 依次覆盖（last-wins）。详见 [会话文件存储](#session-storage)。
 
 ## 15. 官方插件市场 {#plugin-marketplaces}

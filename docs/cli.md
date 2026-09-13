@@ -395,6 +395,14 @@ wave --add-dir /data/exports
 wave -p --show-stats "分析这个项目的依赖关系"
 ```
 
+### 7.15 工具延迟加载 {#deferred-tools}
+
+MCP 工具较多（或工具池里可延迟的工具达到 5 个）时，这些工具不再逐条声明，而是折叠进一个 `ToolInvoke` 转发工具的说明里，模型按紧凑目录点名调用，减少每轮请求的固定 Token 开销。默认开启，可用 `enableDeferredTools` 显式开关；常驻目录预算见 `deferredToolsTokenBudget`（默认 6000 tokens）。
+
+CLI 会把转发调用显示为实际命中的叶子地址 `<namespace>.<tool>`（如 `github.create_issue`、`builtin.WebFetch`），而不是 `ToolInvoke`；权限确认仍以叶子工具为单位。
+
+机制、参与范围与永不延迟加载的清单详见 [SDK — 工具延迟加载](/sdk#deferred-tools)。
+
 ---
 
 ## 8. 环境变量 {#environment-variables}

@@ -337,6 +337,7 @@ export default {
               link: "/cli#additional-working-directories",
             },
             { text: "7.14 Token 用量统计", link: "/cli#token-stats" },
+            { text: "7.15 工具延迟加载", link: "/cli#deferred-tools" },
           ],
         },
         {
@@ -396,6 +397,7 @@ export default {
           collapsed: false,
           items: [
             { text: "内置工具", link: "/sdk#builtin-tools" },
+            { text: "工具延迟加载", link: "/sdk#deferred-tools" },
             { text: "工具详情", link: "/sdk#tool-details" },
             { text: "自定义工具", link: "/sdk#custom-tools" },
             { text: "权限管理", link: "/sdk#permissions" },
