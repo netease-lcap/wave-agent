@@ -1,0 +1,170 @@
+{
+  "tag": "r1-en",
+  "lang": "en",
+  "groups": {
+    "flat": {
+      "total": 120,
+      "ok": 120,
+      "rate": 1,
+      "eventuallyOk": 120,
+      "eventuallyRate": 1,
+      "retried": 0,
+      "taxonomy": {
+        "MISSING_REQUIRED": 0,
+        "TYPE_MISMATCH": 0,
+        "ENUM_INVALID": 0,
+        "NESTED_STRUCTURE": 0,
+        "UNKNOWN_FIELD": 0,
+        "OTHER": 0,
+        "OK": 120
+      },
+      "infraErrors": 0,
+      "timeouts": 0
+    },
+    "catalog": {
+      "total": 120,
+      "ok": 120,
+      "rate": 1,
+      "eventuallyOk": 120,
+      "eventuallyRate": 1,
+      "retried": 0,
+      "taxonomy": {
+        "MISSING_REQUIRED": 0,
+        "TYPE_MISMATCH": 0,
+        "ENUM_INVALID": 0,
+        "NESTED_STRUCTURE": 0,
+        "UNKNOWN_FIELD": 0,
+        "OTHER": 0,
+        "OK": 120
+      },
+      "infraErrors": 0,
+      "timeouts": 0
+    }
+  },
+  "byTool": {
+    "simple_report": {
+      "flat": {
+        "total": 40,
+        "ok": 40,
+        "rate": 1,
+        "eventuallyOk": 40,
+        "eventuallyRate": 1,
+        "retried": 0,
+        "taxonomy": {
+          "MISSING_REQUIRED": 0,
+          "TYPE_MISMATCH": 0,
+          "ENUM_INVALID": 0,
+          "NESTED_STRUCTURE": 0,
+          "UNKNOWN_FIELD": 0,
+          "OTHER": 0,
+          "OK": 40
+        },
+        "infraErrors": 0,
+        "timeouts": 0
+      },
+      "catalog": {
+        "total": 40,
+        "ok": 40,
+        "rate": 1,
+        "eventuallyOk": 40,
+        "eventuallyRate": 1,
+        "retried": 0,
+        "taxonomy": {
+          "MISSING_REQUIRED": 0,
+          "TYPE_MISMATCH": 0,
+          "ENUM_INVALID": 0,
+          "NESTED_STRUCTURE": 0,
+          "UNKNOWN_FIELD": 0,
+          "OTHER": 0,
+          "OK": 40
+        },
+        "infraErrors": 0,
+        "timeouts": 0
+      },
+      "delta": 0
+    },
+    "compose_config": {
+      "flat": {
+        "total": 40,
+        "ok": 40,
+        "rate": 1,
+        "eventuallyOk": 40,
+        "eventuallyRate": 1,
+        "retried": 0,
+        "taxonomy": {
+          "MISSING_REQUIRED": 0,
+          "TYPE_MISMATCH": 0,
+          "ENUM_INVALID": 0,
+          "NESTED_STRUCTURE": 0,
+          "UNKNOWN_FIELD": 0,
+          "OTHER": 0,
+          "OK": 40
+        },
+        "infraErrors": 0,
+        "timeouts": 0
+      },
+      "catalog": {
+        "total": 40,
+        "ok": 40,
+        "rate": 1,
+        "eventuallyOk": 40,
+        "eventuallyRate": 1,
+        "retried": 0,
+        "taxonomy": {
+          "MISSING_REQUIRED": 0,
+          "TYPE_MISMATCH": 0,
+          "ENUM_INVALID": 0,
+          "NESTED_STRUCTURE": 0,
+          "UNKNOWN_FIELD": 0,
+          "OTHER": 0,
+          "OK": 40
+        },
+        "infraErrors": 0,
+        "timeouts": 0
+      },
+      "delta": 0
+    },
+    "build_pipeline": {
+      "flat": {
+        "total": 40,
+        "ok": 40,
+        "rate": 1,
+        "eventuallyOk": 40,
+        "eventuallyRate": 1,
+        "retried": 0,
+        "taxonomy": {
+          "MISSING_REQUIRED": 0,
+          "TYPE_MISMATCH": 0,
+          "ENUM_INVALID": 0,
+          "NESTED_STRUCTURE": 0,
+          "UNKNOWN_FIELD": 0,
+          "OTHER": 0,
+          "OK": 40
+        },
+        "infraErrors": 0,
+        "timeouts": 0
+      },
+      "catalog": {
+        "total": 40,
+        "ok": 40,
+        "rate": 1,
+        "eventuallyOk": 40,
+        "eventuallyRate": 1,
+        "retried": 0,
+        "taxonomy": {
+          "MISSING_REQUIRED": 0,
+          "TYPE_MISMATCH": 0,
+          "ENUM_INVALID": 0,
+          "NESTED_STRUCTURE": 0,
+          "UNKNOWN_FIELD": 0,
+          "OTHER": 0,
+          "OK": 40
+        },
+        "infraErrors": 0,
+        "timeouts": 0
+      },
+      "delta": 0
+    }
+  },
+  "samples": {}
+}

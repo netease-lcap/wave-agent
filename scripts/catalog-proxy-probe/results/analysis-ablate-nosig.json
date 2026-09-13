@@ -1,0 +1,233 @@
+{
+  "tag": "ablate-nosig",
+  "lang": "en",
+  "groups": {
+    "catalog": {
+      "total": 30,
+      "ok": 10,
+      "rate": 0.3333333333333333,
+      "eventuallyOk": 30,
+      "eventuallyRate": 1,
+      "retried": 20,
+      "taxonomy": {
+        "MISSING_REQUIRED": 20,
+        "TYPE_MISMATCH": 0,
+        "ENUM_INVALID": 0,
+        "NESTED_STRUCTURE": 0,
+        "UNKNOWN_FIELD": 0,
+        "OTHER": 0,
+        "OK": 10
+      },
+      "infraErrors": 0,
+      "timeouts": 0
+    }
+  },
+  "byTool": {
+    "simple_report": {
+      "catalog": {
+        "total": 10,
+        "ok": 10,
+        "rate": 1,
+        "eventuallyOk": 10,
+        "eventuallyRate": 1,
+        "retried": 0,
+        "taxonomy": {
+          "MISSING_REQUIRED": 0,
+          "TYPE_MISMATCH": 0,
+          "ENUM_INVALID": 0,
+          "NESTED_STRUCTURE": 0,
+          "UNKNOWN_FIELD": 0,
+          "OTHER": 0,
+          "OK": 10
+        },
+        "infraErrors": 0,
+        "timeouts": 0
+      }
+    },
+    "compose_config": {
+      "catalog": {
+        "total": 10,
+        "ok": 0,
+        "rate": 0,
+        "eventuallyOk": 10,
+        "eventuallyRate": 1,
+        "retried": 10,
+        "taxonomy": {
+          "MISSING_REQUIRED": 10,
+          "TYPE_MISMATCH": 0,
+          "ENUM_INVALID": 0,
+          "NESTED_STRUCTURE": 0,
+          "UNKNOWN_FIELD": 0,
+          "OTHER": 0
+        },
+        "infraErrors": 0,
+        "timeouts": 0
+      }
+    },
+    "build_pipeline": {
+      "catalog": {
+        "total": 10,
+        "ok": 0,
+        "rate": 0,
+        "eventuallyOk": 10,
+        "eventuallyRate": 1,
+        "retried": 10,
+        "taxonomy": {
+          "MISSING_REQUIRED": 10,
+          "TYPE_MISMATCH": 0,
+          "ENUM_INVALID": 0,
+          "NESTED_STRUCTURE": 0,
+          "UNKNOWN_FIELD": 0,
+          "OTHER": 0
+        },
+        "infraErrors": 0,
+        "timeouts": 0
+      }
+    }
+  },
+  "samples": {
+    "catalog": [
+      {
+        "tag": "ablate-nosig|catalog|en|compose_config|r1t4",
+        "code": "MISSING_REQUIRED",
+        "error": null,
+        "args": {
+          "service": "web-gateway",
+          "platform": "macos-arm64"
+        },
+        "serverMessage": "required field is missing"
+      },
+      {
+        "tag": "ablate-nosig|catalog|en|compose_config|r1t6",
+        "code": "MISSING_REQUIRED",
+        "error": null,
+        "args": {
+          "service": "web-gateway",
+          "platform": "macos"
+        },
+        "serverMessage": "required field is missing"
+      },
+      {
+        "tag": "ablate-nosig|catalog|en|compose_config|r1t5",
+        "code": "MISSING_REQUIRED",
+        "error": null,
+        "args": {
+          "service": "web-gateway",
+          "platform": "macos-arm64"
+        },
+        "serverMessage": "required field is missing"
+      },
+      {
+        "tag": "ablate-nosig|catalog|en|compose_config|r1t3",
+        "code": "MISSING_REQUIRED",
+        "error": null,
+        "args": {
+          "service": "web-gateway",
+          "platform": "macos-arm64"
+        },
+        "serverMessage": "required field is missing"
+      },
+      {
+        "tag": "ablate-nosig|catalog|en|compose_config|r1t2",
+        "code": "MISSING_REQUIRED",
+        "error": null,
+        "args": {
+          "service": "web-gateway",
+          "platform": "macos-arm64"
+        },
+        "serverMessage": "required field is missing"
+      },
+      {
+        "tag": "ablate-nosig|catalog|en|compose_config|r1t1",
+        "code": "MISSING_REQUIRED",
+        "error": null,
+        "args": {},
+        "serverMessage": "required field is missing"
+      },
+      {
+        "tag": "ablate-nosig|catalog|en|compose_config|r1t7",
+        "code": "MISSING_REQUIRED",
+        "error": null,
+        "args": {
+          "service": "web-gateway",
+          "platform": "macos-arm64"
+        },
+        "serverMessage": "required field is missing"
+      },
+      {
+        "tag": "ablate-nosig|catalog|en|compose_config|r1t9",
+        "code": "MISSING_REQUIRED",
+        "error": null,
+        "args": {
+          "service": "web-gateway",
+          "platform": "macos-arm64"
+        },
+        "serverMessage": "required field is missing"
+      },
+      {
+        "tag": "ablate-nosig|catalog|en|compose_config|r1t10",
+        "code": "MISSING_REQUIRED",
+        "error": null,
+        "args": {
+          "service": "web-gateway",
+          "platform": "macos-arm64"
+        },
+        "serverMessage": "required field is missing"
+      },
+      {
+        "tag": "ablate-nosig|catalog|en|compose_config|r1t8",
+        "code": "MISSING_REQUIRED",
+        "error": null,
+        "args": {
+          "service": "web-gateway",
+          "platform": "macos-arm64"
+        },
+        "serverMessage": "required field is missing"
+      },
+      {
+        "tag": "ablate-nosig|catalog|en|build_pipeline|r1t2",
+        "code": "MISSING_REQUIRED",
+        "error": null,
+        "args": {
+          "artifactName": "release-check.tar.gz",
+          "stages": [
+            {
+              "kind": "build",
+              "environment": "dev"
+            },
+            {
+              "kind": "test",
+              "environment": "staging"
+            }
+          ],
+          "notify": {
+            "channels": ["im"]
+          }
+        },
+        "serverMessage": "required field is missing"
+      },
+      {
+        "tag": "ablate-nosig|catalog|en|build_pipeline|r1t1",
+        "code": "MISSING_REQUIRED",
+        "error": null,
+        "args": {
+          "artifactName": "release-check.tar.gz",
+          "stages": [
+            {
+              "kind": "build",
+              "environment": "dev"
+            },
+            {
+              "kind": "test",
+              "environment": "staging"
+            }
+          ],
+          "notify": {
+            "channels": ["im"]
+          }
+        },
+        "serverMessage": "required field is missing"
+      }
+    ]
+  }
+}

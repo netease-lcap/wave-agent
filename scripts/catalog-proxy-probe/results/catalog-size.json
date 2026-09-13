@@ -1,0 +1,238 @@
+{
+  "model": "deepseek-flash",
+  "builtInToolCount": 25,
+  "staticFlatTokens": 11511,
+  "resolvedFlatTokens": 28235,
+  "pool_en": {
+    "tools": 30,
+    "flatTokens": 14300,
+    "flatTokensPlain": 7150,
+    "catalogTokens": 3266,
+    "compression": 4.378444580526638,
+    "mcpOnly": {
+      "count": 5,
+      "flatTokens": 2790,
+      "catalogTokens": 888,
+      "avgFlatPerTool": 558,
+      "avgCatalogPerTool": 177.6
+    }
+  },
+  "pool_zh": {
+    "tools": 30,
+    "flatTokens": 13749,
+    "flatTokensPlain": 7182,
+    "catalogTokens": 3298,
+    "compression": 4.168890236506974,
+    "mcpOnly": {
+      "count": 5,
+      "flatTokens": 2239,
+      "catalogTokens": 920,
+      "avgFlatPerTool": 447.8,
+      "avgCatalogPerTool": 184
+    }
+  },
+  "truncation": {
+    "en": {
+      "builtInCatalogTokens": 2383,
+      "shapes": {
+        "dense": {
+          "2000": {
+            "firstCut": 1,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 1956,
+              "shown": 36
+            }
+          },
+          "3000": {
+            "firstCut": 9,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 2926,
+              "shown": 45
+            }
+          },
+          "4000": {
+            "firstCut": 23,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 3957,
+              "shown": 50
+            }
+          },
+          "6000": {
+            "firstCut": 50,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 5862,
+              "shown": 74
+            }
+          },
+          "8000": {
+            "firstCut": null,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 6639,
+              "shown": 85
+            }
+          }
+        },
+        "sharded": {
+          "2000": {
+            "firstCut": 1,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 1982,
+              "shown": 31
+            }
+          },
+          "3000": {
+            "firstCut": 9,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 2967,
+              "shown": 44
+            }
+          },
+          "4000": {
+            "firstCut": 23,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 3952,
+              "shown": 60
+            }
+          },
+          "6000": {
+            "firstCut": 50,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 5852,
+              "shown": 82
+            }
+          },
+          "8000": {
+            "firstCut": null,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 6658,
+              "shown": 85
+            }
+          }
+        }
+      }
+    },
+    "zh": {
+      "builtInCatalogTokens": 2383,
+      "shapes": {
+        "dense": {
+          "2000": {
+            "firstCut": 1,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 1965,
+              "shown": 35
+            }
+          },
+          "3000": {
+            "firstCut": 9,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 2898,
+              "shown": 45
+            }
+          },
+          "4000": {
+            "firstCut": 23,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 3925,
+              "shown": 50
+            }
+          },
+          "6000": {
+            "firstCut": 51,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 5870,
+              "shown": 75
+            }
+          },
+          "8000": {
+            "firstCut": null,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 6564,
+              "shown": 85
+            }
+          }
+        },
+        "sharded": {
+          "2000": {
+            "firstCut": 1,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 1975,
+              "shown": 32
+            }
+          },
+          "3000": {
+            "firstCut": 9,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 2964,
+              "shown": 46
+            }
+          },
+          "4000": {
+            "firstCut": 23,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 3944,
+              "shown": 60
+            }
+          },
+          "6000": {
+            "firstCut": 51,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 5868,
+              "shown": 83
+            }
+          },
+          "8000": {
+            "firstCut": null,
+            "at60": {
+              "mcpTools": 60,
+              "tokens": 6583,
+              "shown": 85
+            }
+          }
+        }
+      }
+    }
+  },
+  "descriptionClipping": {
+    "en": {
+      "60": 2653,
+      "120": 2713,
+      "200": 2793,
+      "none": 3124
+    },
+    "zh": {
+      "60": 2657,
+      "120": 2716,
+      "200": 2796,
+      "none": 3158
+    }
+  },
+  "descLength_en": {
+    "simple_report": 82,
+    "compose_config": 86,
+    "build_pipeline": 2128
+  },
+  "descLength_zh": {
+    "simple_report": 27,
+    "compose_config": 23,
+    "build_pipeline": 731
+  }
+}

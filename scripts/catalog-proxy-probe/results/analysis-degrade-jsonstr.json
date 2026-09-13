@@ -1,0 +1,91 @@
+{
+  "tag": "degrade-jsonstr",
+  "lang": "en",
+  "groups": {
+    "catalog": {
+      "total": 30,
+      "ok": 30,
+      "rate": 1,
+      "eventuallyOk": 30,
+      "eventuallyRate": 1,
+      "retried": 0,
+      "taxonomy": {
+        "MISSING_REQUIRED": 0,
+        "TYPE_MISMATCH": 0,
+        "ENUM_INVALID": 0,
+        "NESTED_STRUCTURE": 0,
+        "UNKNOWN_FIELD": 0,
+        "OTHER": 0,
+        "OK": 30
+      },
+      "infraErrors": 0,
+      "timeouts": 0
+    }
+  },
+  "byTool": {
+    "simple_report": {
+      "catalog": {
+        "total": 10,
+        "ok": 10,
+        "rate": 1,
+        "eventuallyOk": 10,
+        "eventuallyRate": 1,
+        "retried": 0,
+        "taxonomy": {
+          "MISSING_REQUIRED": 0,
+          "TYPE_MISMATCH": 0,
+          "ENUM_INVALID": 0,
+          "NESTED_STRUCTURE": 0,
+          "UNKNOWN_FIELD": 0,
+          "OTHER": 0,
+          "OK": 10
+        },
+        "infraErrors": 0,
+        "timeouts": 0
+      }
+    },
+    "compose_config": {
+      "catalog": {
+        "total": 10,
+        "ok": 10,
+        "rate": 1,
+        "eventuallyOk": 10,
+        "eventuallyRate": 1,
+        "retried": 0,
+        "taxonomy": {
+          "MISSING_REQUIRED": 0,
+          "TYPE_MISMATCH": 0,
+          "ENUM_INVALID": 0,
+          "NESTED_STRUCTURE": 0,
+          "UNKNOWN_FIELD": 0,
+          "OTHER": 0,
+          "OK": 10
+        },
+        "infraErrors": 0,
+        "timeouts": 0
+      }
+    },
+    "build_pipeline": {
+      "catalog": {
+        "total": 10,
+        "ok": 10,
+        "rate": 1,
+        "eventuallyOk": 10,
+        "eventuallyRate": 1,
+        "retried": 0,
+        "taxonomy": {
+          "MISSING_REQUIRED": 0,
+          "TYPE_MISMATCH": 0,
+          "ENUM_INVALID": 0,
+          "NESTED_STRUCTURE": 0,
+          "UNKNOWN_FIELD": 0,
+          "OTHER": 0,
+          "OK": 10
+        },
+        "infraErrors": 0,
+        "timeouts": 0
+      }
+    }
+  },
+  "samples": {}
+}
