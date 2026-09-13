@@ -770,3 +770,161 @@ describe("ToolManager deferred loading — ToolSearch", () => {
     expect(declaredNames(closed)).not.toContain(TOOL_SEARCH_TOOL_NAME);
   });
 });
+
+describe("ToolManager deferred loading — budget and truncation", () => {
+  /** A pool whose entries cannot all fit in the budget below. */
+  const WIDE_POOL: McpToolFixture[] = Array.from({ length: 40 }, (_, i) => ({
+    server: i < 20 ? "github" : "slack",
+    tool: `tool_${String(i).padStart(2, "0")}`,
+    parameters: {
+      type: "object",
+      properties: {
+        payload: {
+          type: "string",
+          description: `Element ${i}; `.repeat(20),
+        },
+      },
+    },
+  }));
+
+  it("truncates to the configured budget and says so without naming the budget", () => {
+    settings.mockReturnValue({ enabled: true, tokenBudget: 400 });
+    const mcp = createMcpManager({ tools: WIDE_POOL });
+    const toolManager = new ToolManager({ container: createContainer(mcp) });
+    const plan = toolManager.getDeferredToolsPlan(workdir)!;
+
+    expect(plan.totalTools).toBe(40);
+    expect(plan.shownTools).toBeLessThan(40);
+    expect(plan.tokens).toBeLessThanOrEqual(400);
+    const description = toolInvokeDescription(toolManager);
+    expect(description).toContain(
+      `PARTIAL — ${plan.shownTools} of 40 tools shown`,
+    );
+    expect(description).toContain(TOOL_SEARCH_TOOL_NAME);
+    // The budget number is operational: it stays in host logs.
+    expect(description).not.toContain("400");
+  });
+
+  it("keeps one representative line per connected namespace when truncating", () => {
+    settings.mockReturnValue({ enabled: true, tokenBudget: 200 });
+    const mcp = createMcpManager({ tools: WIDE_POOL });
+    const toolManager = new ToolManager({ container: createContainer(mcp) });
+    const plan = toolManager.getDeferredToolsPlan(workdir)!;
+
+    expect(plan.shownTools).toBeGreaterThan(0);
+    const description = toolInvokeDescription(toolManager);
+    expect(description).toContain("github: 20 tools");
+    expect(description).toContain("slack: 20 tools");
+  });
+
+  it("says COMPLETE, and lets search reach what truncation left out", async () => {
+    settings.mockReturnValue({ enabled: true, tokenBudget: 400 });
+    const mcp = createMcpManager({ tools: WIDE_POOL });
+    const toolManager = new ToolManager({ container: createContainer(mcp) });
+    const plan = toolManager.getDeferredToolsPlan(workdir)!;
+
+    const hidden = plan.catalog.filter(
+      (entry) => !toolInvokeDescription(toolManager).includes(entry.tool),
+    );
+    expect(hidden.length).toBeGreaterThan(0);
+    const found = await toolManager.execute(
+      TOOL_SEARCH_TOOL_NAME,
+      { query: hidden[0].tool },
+      context(),
+    );
+    expect(found.success).toBe(true);
+    expect(found.content).toContain(hidden[0].tool);
+
+    settings.mockReturnValue({
+      enabled: true,
+      tokenBudget: CATALOG_DEFAULT_BUDGET_TOKENS,
+    });
+    const roomy = new ToolManager({ container: createContainer(mcp) });
+    expect(toolInvokeDescription(roomy)).toContain("COMPLETE — all 40 tools");
+  });
+});
+
+describe("ToolManager deferred loading — built-in annotation whitelist", () => {
+  /**
+   * The shipped whitelist. Built-in tools are never deferred by default, so
+   * this list is the whole surface of the mechanism for built-ins and every
+   * addition has to be argued from the doctrine in
+   * `docs/specs/core/tool-deferred-loading.md`.
+   */
+  const DEFERRED_BUILT_INS = [
+    "EnterWorktree",
+    "ExitWorktree",
+    "WebFetch",
+    "Workflow",
+  ];
+
+  /**
+   * Tools that must never be deferred: task management (the model has to
+   * remember it can track work), interaction / mode switches, the hot coding
+   * path used every turn, mechanism-coupled tools, and the capability tools
+   * whose call is driven by the model rather than by a request.
+   */
+  const NEVER_DEFER = [
+    "TaskCreate",
+    "TaskGet",
+    "TaskUpdate",
+    "TaskList",
+    "TaskStop",
+    "AskUserQuestion",
+    "EnterPlanMode",
+    "ExitPlanMode",
+    "Read",
+    "Edit",
+    "Write",
+    "Bash",
+    "Grep",
+    "Glob",
+    "Skill",
+    "Agent",
+    "Artifact",
+    "CronCreate",
+    "CronDelete",
+    "CronList",
+    "LSP",
+  ];
+
+  function shippedTools(): ToolPlugin[] {
+    const toolManager = new ToolManager({
+      container: createContainer(createMcpManager({ tools: [] })),
+    });
+    toolManager.initializeBuiltInTools();
+    return toolManager.getTools();
+  }
+
+  it("defers exactly the whitelisted built-ins", () => {
+    const deferred = shippedTools()
+      .filter((tool) => tool.defer === true)
+      .map((tool) => tool.name)
+      .sort();
+    expect(deferred).toEqual([...DEFERRED_BUILT_INS].sort());
+  });
+
+  it("leaves every never-defer tool individually declared", () => {
+    const shipped = shippedTools();
+    const annotated = shipped
+      .filter((tool) => NEVER_DEFER.includes(tool.name))
+      .filter((tool) => tool.defer === true)
+      .map((tool) => tool.name);
+    expect(annotated).toEqual([]);
+  });
+
+  it("does not let the whitelist re-declare a deferred tool flat", () => {
+    // Mutual exclusion from the spec: an annotated tool must never show up both
+    // as its own declaration and as a catalog entry.
+    const toolManager = new ToolManager({
+      container: createContainer(createMcpManager({ tools: FIVE_TOOLS })),
+    });
+    toolManager.initializeBuiltInTools();
+    const names = declaredNames(toolManager);
+    expect(names).toContain(TOOL_INVOKE_TOOL_NAME);
+    for (const name of DEFERRED_BUILT_INS) {
+      expect(names).not.toContain(name);
+      expect(toolInvokeDescription(toolManager)).toContain(`builtin.${name}`);
+    }
+  });
+});

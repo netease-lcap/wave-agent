@@ -105,6 +105,11 @@ function isPermittedRedirect(
 
 export const webFetchTool: ToolPlugin = {
   name: WEB_FETCH_TOOL_NAME,
+  // Deferred-loading whitelist: capability-type, low frequency, and its ~1.5k
+  // characters of static description are pure resident cost. It is reached for
+  // when a URL shows up in the task (user-supplied or referenced), not on a
+  // per-turn cadence, so the catalog entry is enough to find it.
+  defer: true,
   config: {
     type: "function",
     function: {

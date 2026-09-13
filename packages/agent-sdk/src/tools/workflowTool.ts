@@ -12,6 +12,12 @@ import { logger } from "../utils/globalLogger.js";
  */
 export const workflowTool: ToolPlugin = {
   name: WORKFLOW_TOOL_NAME,
+  // Deferred-loading whitelist: capability-type, low frequency, and its long
+  // authoring instructions (script grammar, allowed APIs) dominate the ~1.1k
+  // characters it costs resident. Its contract is "only when the user has
+  // explicitly opted into multi-agent orchestration", so the user's phrasing is
+  // what leads the model to it.
+  defer: true,
   config: {
     type: "function" as const,
     function: {

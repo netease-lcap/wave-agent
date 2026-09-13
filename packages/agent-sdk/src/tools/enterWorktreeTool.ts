@@ -49,6 +49,10 @@ export const ENTER_WORKTREE_TOOL_PROMPT = `Use this tool ONLY when the user expl
 
 export const enterWorktreeTool: ToolPlugin = {
   name: ENTER_WORKTREE_TOOL_NAME,
+  // Deferred-loading whitelist: capability-type, low frequency, and a ~1.4k
+  // character static description. Only called when the user explicitly asks to
+  // work in a worktree, so the request itself is what points at it.
+  defer: true,
   config: {
     type: "function",
     function: {

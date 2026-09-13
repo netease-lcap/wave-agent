@@ -67,11 +67,22 @@ export interface ToolPlugin {
   isConcurrencySafe?: boolean;
   /**
    * Opt this tool into deferred loading (see
-   * `docs/specs/core/tool-deferred-loading.md`). Built-in tools are
-   * whitelist-only: `undefined` means "declare this tool individually", and
-   * nothing is inferred from schema size or apparent call frequency. Only set
-   * this on cold tools whose usage does not depend on the model spontaneously
-   * reaching for them.
+   * `docs/specs/core/tool-deferred-loading.md`, and the whitelist doctrine in
+   * `docs/features/tool-deferred-loading.md`).
+   *
+   * Two hard rules decide whether a *built-in* tool may carry this flag — both
+   * must hold, and neither is something a heuristic can infer from the code:
+   *
+   * 1. Whitelist only. Built-ins are never deferred by default; only an explicit
+   *    `defer: true` here puts a tool into the catalog. Nothing is derived from
+   *    schema size, module, or apparent rarity — a missed opt-in costs a few
+   *    resident kilobytes, a wrong opt-in silently removes a capability.
+   * 2. Capability-type + low frequency + large schema, and its usage must not be
+   *    driven by the model reaching for it on its own. Tools the model has to
+   *    remember it *can* ask for — task management, mode/interaction switches,
+   *    the hot coding path (`Read`/`Edit`/`Write`/`Bash`/`Grep`/`Glob`), and
+   *    mechanism-coupled tools such as `Skill` — must stay individually declared.
+   *    The full never-defer list is enumerated in the feature doc.
    */
   defer?: boolean;
 }

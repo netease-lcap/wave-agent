@@ -44,6 +44,10 @@ If called outside an EnterWorktree session, the tool is a **no-op**: it reports 
 
 export const exitWorktreeTool: ToolPlugin = {
   name: EXIT_WORKTREE_TOOL_NAME,
+  // Deferred-loading whitelist: capability-type, low frequency, ~1.7k character
+  // static description. Its only trigger is an existing worktree session the
+  // user asked for, so it does not need resident bytes every turn.
+  defer: true,
   config: {
     type: "function",
     function: {
