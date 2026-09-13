@@ -67,6 +67,19 @@ export interface WaveConfiguration {
   /** Whether the Artifact tool is enabled. Unset follows the code default constant (ARTIFACT_DEFAULT_ENABLED). */
   enableArtifact?: boolean;
   /**
+   * Whether tool deferred loading is enabled (see
+   * `docs/specs/core/tool-deferred-loading.md`). Unset = follow the deferrable
+   * tool count threshold (enabled from 5 deferrable tools on); explicit `true`
+   * / `false` overrides the threshold.
+   */
+  enableDeferredTools?: boolean;
+  /**
+   * Resident catalog budget for deferred loading, in tokens (measured with
+   * `estimateTokens`, not characters). Defaults to `CATALOG_DEFAULT_BUDGET_TOKENS`.
+   * Only bounds the resident part of the catalog; search still reaches the rest.
+   */
+  deferredToolsTokenBudget?: number;
+  /**
    * Session transcript retention in days (aligned with Claude Code's
    * cleanupPeriodDays). Session jsonl files in ~/.wave/projects older than
    * this many days are cleaned up in the background at startup.

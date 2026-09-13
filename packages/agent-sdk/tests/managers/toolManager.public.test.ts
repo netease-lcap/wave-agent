@@ -122,6 +122,7 @@ describe("ToolManager bypassPermissions mode", () => {
   it("should include both EnterPlanMode and ExitPlanMode in bypassPermissions mode", async () => {
     const mockMcpManager = {
       getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      getMcpToolPlugins: vi.fn().mockReturnValue([]),
     } as unknown as McpManager;
 
     const mockPermissionManager = {
@@ -161,6 +162,7 @@ describe("ToolManager bypassPermissions mode", () => {
   it("should include AskUserQuestion in default mode", async () => {
     const mockMcpManager = {
       getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      getMcpToolPlugins: vi.fn().mockReturnValue([]),
     } as unknown as McpManager;
 
     const mockPermissionManager = {
@@ -197,6 +199,7 @@ describe("ToolManager bypassPermissions mode", () => {
   it("should include both EnterPlanMode and ExitPlanMode in plan mode", async () => {
     const mockMcpManager = {
       getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      getMcpToolPlugins: vi.fn().mockReturnValue([]),
     } as unknown as McpManager;
 
     const mockPermissionManager = {

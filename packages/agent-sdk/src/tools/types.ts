@@ -65,6 +65,15 @@ export interface ToolPlugin {
    * perform read-modify-write on shared resources (e.g. Edit, Write).
    */
   isConcurrencySafe?: boolean;
+  /**
+   * Opt this tool into deferred loading (see
+   * `docs/specs/core/tool-deferred-loading.md`). Built-in tools are
+   * whitelist-only: `undefined` means "declare this tool individually", and
+   * nothing is inferred from schema size or apparent call frequency. Only set
+   * this on cold tools whose usage does not depend on the model spontaneously
+   * reaching for them.
+   */
+  defer?: boolean;
 }
 
 export interface ToolResult {

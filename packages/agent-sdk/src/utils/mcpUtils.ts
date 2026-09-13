@@ -124,6 +124,27 @@ export function createMcpToolPlugin(
 }
 
 /**
+ * Split an `mcp__<server>__<tool>` leaf name into its addressing parts.
+ *
+ * The split happens at the first two separators so tool names that themselves
+ * contain `__` survive (`mcp__github__create__issue` → server `github`, tool
+ * `create__issue`), which is the same reconstruction `McpManager.executeMcpTool`
+ * performs when it dispatches the call.
+ */
+export function parseMcpToolName(
+  name: string,
+): { server: string; tool: string } | undefined {
+  if (!name.startsWith("mcp__")) return undefined;
+  const rest = name.slice("mcp__".length);
+  const separator = rest.indexOf("__");
+  if (separator <= 0) return undefined;
+  const server = rest.slice(0, separator);
+  const tool = rest.slice(separator + 2);
+  if (!tool) return undefined;
+  return { server, tool };
+}
+
+/**
  * Find which server a tool belongs to
  */
 export function findToolServer(

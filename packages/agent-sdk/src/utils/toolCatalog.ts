@@ -308,6 +308,29 @@ export function renderNamespaceLine(namespace: string, count: number): string {
 }
 
 /**
+ * Diagnostic text for a `ToolInvoke` naming something outside the complete
+ * catalog: say what was asked for, then list what is actually addressable so
+ * the model can correct itself instead of guessing again (「目录外能力必须拒绝」
+ * requires the failure to name the available capabilities).
+ */
+export function renderUnknownTargetMessage(
+  tools: CatalogTool[],
+  namespace: string,
+  tool: string,
+): string {
+  const groups = sortedGroups(tools);
+  const namespaces = groups
+    .map((group) => renderNamespaceLine(group.namespace, group.tools.length))
+    .join(", ");
+  const known = groups.find((group) => group.namespace === namespace);
+  if (!known) {
+    return `Unknown namespace "${namespace}". Available namespaces: ${namespaces || "(none)"}.`;
+  }
+  const toolNames = known.tools.map((entry) => entry.tool).join(", ");
+  return `Unknown tool "${tool}" in namespace "${namespace}". Tools in "${namespace}": ${toolNames}.`;
+}
+
+/**
  * Render the resident catalog under a token budget.
  *
  * Allocation: every namespace keeps its representative line even when its

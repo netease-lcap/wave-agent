@@ -12,6 +12,13 @@ export interface McpServerConfig {
   headers?: Record<string, string>;
   /** Internal: plugin directory path when the server is registered by a plugin */
   pluginRoot?: string;
+  /**
+   * Tool names (as declared by the server, without the `mcp__` prefix) that must
+   * always be declared individually instead of participating in deferred
+   * loading — the escape hatch for tools whose parameters need the full schema.
+   * The other tools of the same server are unaffected.
+   */
+  alwaysLoadTools?: string[];
 }
 
 export interface McpConfig {

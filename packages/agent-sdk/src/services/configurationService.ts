@@ -1550,6 +1550,14 @@ export function loadWaveConfigFromFile(
       worktree: config.worktree || undefined,
       enableArtifact:
         config.enableArtifact !== undefined ? config.enableArtifact : undefined,
+      enableDeferredTools:
+        config.enableDeferredTools !== undefined
+          ? config.enableDeferredTools
+          : undefined,
+      deferredToolsTokenBudget:
+        config.deferredToolsTokenBudget !== undefined
+          ? config.deferredToolsTokenBudget
+          : undefined,
     };
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -1723,6 +1731,14 @@ export function loadMergedWaveConfig(
       mergedConfig.enableArtifact = config.enableArtifact;
     }
 
+    // Merge deferred loading settings (last one wins)
+    if (config.enableDeferredTools !== undefined) {
+      mergedConfig.enableDeferredTools = config.enableDeferredTools;
+    }
+    if (config.deferredToolsTokenBudget !== undefined) {
+      mergedConfig.deferredToolsTokenBudget = config.deferredToolsTokenBudget;
+    }
+
     // Merge models
     if (config.models) {
       if (!mergedConfig.models) mergedConfig.models = {};
@@ -1770,6 +1786,8 @@ export function loadMergedWaveConfig(
         : undefined,
     worktree: mergedConfig.worktree,
     enableArtifact: mergedConfig.enableArtifact,
+    enableDeferredTools: mergedConfig.enableDeferredTools,
+    deferredToolsTokenBudget: mergedConfig.deferredToolsTokenBudget,
   };
 }
 

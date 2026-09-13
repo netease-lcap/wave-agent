@@ -28,6 +28,25 @@ import {
 import { enterWorktreeTool } from "../tools/enterWorktreeTool.js";
 import { exitWorktreeTool } from "../tools/exitWorktreeTool.js";
 import { workflowTool } from "../tools/workflowTool.js";
+import {
+  TOOL_INVOKE_TOOL_NAME,
+  TOOL_SEARCH_TOOL_NAME,
+  buildToolInvokeConfig,
+  buildToolSearchConfig,
+} from "../tools/deferredTools.js";
+import { parseMcpToolName } from "../utils/mcpUtils.js";
+import {
+  RESERVED_BUILTIN_NAMESPACE,
+  renderCatalog,
+  renderUnknownTargetMessage,
+  searchCatalog,
+  type CatalogTool,
+} from "../utils/toolCatalog.js";
+import {
+  DEFERRED_TOOLS_MIN_DEFERRABLE_TOOLS,
+  isDeferredToolsEnabled,
+  readDeferredToolsSettings,
+} from "../services/deferredToolsAvailability.js";
 import { McpManager } from "./mcpManager.js";
 import { PermissionManager } from "./permissionManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
@@ -59,6 +78,36 @@ export interface ToolManagerOptions {
 }
 
 /**
+ * The per-agent result of opening the deferred-loading gate: which tools leave
+ * the declared list, what replaces them, and the catalog the model can address.
+ *
+ * Built from the *current* agent's pool on every request — never cached across
+ * agents or reused from the root container, because the catalog doubles as the
+ * addressable set that `ToolInvoke` will accept (a shared catalog would turn
+ * forwarding into a privilege-escalation path).
+ */
+export interface DeferredToolsPlan {
+  /** Everything addressable through `ToolInvoke`: resident + search-only. */
+  catalog: CatalogTool[];
+  /** Leaf names that must leave the declared tool list. */
+  deferredLeafNames: Set<string>;
+  /** The declarations that replace them (`ToolInvoke` + `ToolSearch`). */
+  mechanismTools: ChatCompletionFunctionTool[];
+  /** Resident entries / complete entries, for host-side logging. */
+  shownTools: number;
+  totalTools: number;
+  /** Rendered catalog size and the budget it was held to. */
+  tokens: number;
+  budgetTokens: number;
+}
+
+function asSchemaRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/**
  * Tool Manager
  *
  * Manages tool registration and execution with optional permission system integration.
@@ -69,6 +118,8 @@ class ToolManager {
   private tools?: string[];
   private customTools?: ToolPlugin[];
   private container: Container;
+  /** MCP servers already warned about the reserved-namespace collision. */
+  private collisionWarnedServers = new Set<string>();
 
   constructor(options: ToolManagerOptions) {
     this.container = options.container;
@@ -295,6 +346,23 @@ class ToolManager {
       hasPermissionManager: !!permissionManager,
     });
 
+    // Deferred-loading mechanism tools are not registered plugins: they exist
+    // only while the gate is open, and are dispatched straight to the leaf they
+    // name.
+    if (name === TOOL_INVOKE_TOOL_NAME || name === TOOL_SEARCH_TOOL_NAME) {
+      const result =
+        name === TOOL_INVOKE_TOOL_NAME
+          ? await this.invokeDeferredTool(args, enhancedContext)
+          : this.searchDeferredTools(args, enhancedContext.workdir);
+      endToolSpan({
+        success: result.success,
+        durationMs: Date.now() - toolStartTime,
+        output: result.content,
+        error: result.error,
+      });
+      return result;
+    }
+
     // Check if it's an MCP tool first
     if (this.mcpManager.isMcpTool(name)) {
       try {
@@ -365,6 +433,105 @@ class ToolManager {
     };
   }
 
+  /**
+   * Forward a `ToolInvoke` call to the leaf it names.
+   *
+   * The target must be in *this* agent's catalog (resident or search-only):
+   * anything else is refused, which is what keeps forwarding from becoming a
+   * privilege-escalation path (`ToolInvoke({builtin, Write})` from a subagent
+   * that has no `Write` fails here, and it is not asserted by a permission rule
+   * but by the pool itself).
+   *
+   * The leaf is then executed through the normal path with its own name and its
+   * own args, so its permission check, rule matching (`Bash(npm test)` sees the
+   * leaf's `command`), error shape and side effects are exactly the ones it has
+   * when declared individually — the outer `namespace` / `tool` / `args` fields
+   * never reach the permission layer.
+   */
+  private async invokeDeferredTool(
+    args: Record<string, unknown>,
+    context: ToolContext,
+  ): Promise<ToolResult> {
+    const permissionManager =
+      this.container.get<PermissionManager>("PermissionManager");
+    if (permissionManager?.isToolDenied(TOOL_INVOKE_TOOL_NAME)) {
+      return {
+        success: false,
+        content: "",
+        error: `Tool '${TOOL_INVOKE_TOOL_NAME}' is denied by permission rules.`,
+      };
+    }
+
+    const namespace =
+      typeof args.namespace === "string" ? args.namespace.trim() : "";
+    const tool = typeof args.tool === "string" ? args.tool.trim() : "";
+    const leafArgs = asSchemaRecord(args.args) ?? {};
+
+    const plan = this.getDeferredToolsPlan(context.workdir);
+    if (!plan) {
+      return {
+        success: false,
+        content: "",
+        error:
+          "No deferred tools are declared in this session, so there is nothing to forward. " +
+          "Call the tool directly if it appears in the tool list.",
+      };
+    }
+    if (!namespace || !tool) {
+      return {
+        success: false,
+        content: "",
+        error: `${TOOL_INVOKE_TOOL_NAME} requires "namespace" and "tool". ${renderUnknownTargetMessage(plan.catalog, namespace, tool)}`,
+      };
+    }
+
+    const target = plan.catalog.find(
+      (entry) => entry.namespace === namespace && entry.tool === tool,
+    );
+    if (!target) {
+      return {
+        success: false,
+        content: "",
+        error: renderUnknownTargetMessage(plan.catalog, namespace, tool),
+      };
+    }
+
+    return this.execute(target.leafName, leafArgs, context);
+  }
+
+  /**
+   * Search the complete catalog (resident + truncated entries). Read-only and
+   * approval-free: it only reads the pool this agent already has.
+   */
+  private searchDeferredTools(
+    args: Record<string, unknown>,
+    workdir?: string,
+  ): ToolResult {
+    const plan = this.getDeferredToolsPlan(workdir);
+    if (!plan) {
+      return {
+        success: false,
+        content: "",
+        error:
+          "Tool search is unavailable: no deferred tools are declared in this session.",
+      };
+    }
+    const query = typeof args.query === "string" ? args.query : "";
+    if (!query.trim()) {
+      return {
+        success: false,
+        content: "",
+        error: `${TOOL_SEARCH_TOOL_NAME} requires a non-empty "query".`,
+      };
+    }
+    const result = searchCatalog(plan.catalog, {
+      query,
+      limit: typeof args.limit === "number" ? args.limit : undefined,
+      offset: typeof args.offset === "number" ? args.offset : undefined,
+    });
+    return { success: true, content: result.text };
+  }
+
   list(): ToolPlugin[] {
     const permissionManager =
       this.container.get<PermissionManager>("PermissionManager");
@@ -415,7 +582,157 @@ class ToolManager {
         }
         return true;
       });
-    return [...builtInToolsConfig, ...mcpToolsConfig];
+    return this.applyDeferredTools(
+      [...builtInToolsConfig, ...mcpToolsConfig],
+      options?.workdir,
+    );
+  }
+
+  /**
+   * Build the deferred-loading plan for the current agent's pool, or `null`
+   * when the gate is closed.
+   *
+   * Deferrable tools = MCP tools (deferred by default, with a per-server
+   * `alwaysLoadTools` escape hatch) + built-in tools explicitly annotated
+   * `defer: true`. Built-ins are whitelist-only on purpose: schema size and
+   * apparent call frequency are not evidence that a tool is safe to hide, and
+   * tools the model only reaches for spontaneously (task management, mode
+   * switching, skills, …) lose far more than the declaration bytes they save.
+   */
+  public getDeferredToolsPlan(workdir?: string): DeferredToolsPlan | null {
+    const permissionManager =
+      this.container.get<PermissionManager>("PermissionManager");
+    // Denying a mechanism tool means forwarding is not available at all: fall
+    // back to declaring everything individually instead of declaring a tool
+    // that can never run.
+    if (permissionManager?.isToolDenied(TOOL_INVOKE_TOOL_NAME)) return null;
+    if (permissionManager?.isToolDenied(TOOL_SEARCH_TOOL_NAME)) return null;
+
+    const catalog: CatalogTool[] = [];
+
+    // Built-in tools: only explicit `defer: true` participates. A `--tools`
+    // session lists its tools explicitly, and explicitly listed tools must
+    // always be declared individually, so no built-in is deferrable there.
+    if (!this.tools) {
+      for (const plugin of this.toolsRegistry.values()) {
+        if (plugin.defer !== true) continue;
+        if (permissionManager?.isToolDenied(plugin.name)) continue;
+        catalog.push({
+          namespace: RESERVED_BUILTIN_NAMESPACE,
+          tool: plugin.name,
+          leafName: plugin.name,
+          description: plugin.config.function.description ?? "",
+          parameters: asSchemaRecord(plugin.config.function.parameters),
+        });
+      }
+    }
+
+    for (const plugin of this.mcpManager.getMcpToolPlugins()) {
+      if (permissionManager?.isToolDenied(plugin.name)) continue;
+      // Explicitly listed (`--tools`) MCP tools are always flat. Note that
+      // `--tools` still does not *filter* MCP tools — that orthogonal gap is
+      // documented in the spec and out of scope here.
+      if (
+        this.tools?.some(
+          (name) => name.toLowerCase() === plugin.name.toLowerCase(),
+        )
+      ) {
+        continue;
+      }
+      const parsed = parseMcpToolName(plugin.name);
+      if (!parsed) continue;
+      if (parsed.server === RESERVED_BUILTIN_NAMESPACE) {
+        this.warnReservedNamespaceCollision(parsed.server);
+        continue;
+      }
+      if (
+        this.mcpManager
+          .getServer(parsed.server)
+          ?.config.alwaysLoadTools?.includes(parsed.tool)
+      ) {
+        continue;
+      }
+      catalog.push({
+        namespace: parsed.server,
+        tool: parsed.tool,
+        leafName: plugin.name,
+        description: plugin.config.function.description ?? "",
+        parameters: asSchemaRecord(plugin.config.function.parameters),
+      });
+    }
+
+    if (catalog.length === 0) return null;
+
+    const settings = readDeferredToolsSettings(workdir);
+    if (!isDeferredToolsEnabled(catalog.length, settings)) {
+      logger?.debug("Deferred tool loading gate is closed", {
+        deferrableTools: catalog.length,
+        minDeferrableTools: DEFERRED_TOOLS_MIN_DEFERRABLE_TOOLS,
+        explicit: settings.enabled,
+      });
+      return null;
+    }
+
+    const rendered = renderCatalog(catalog, {
+      budgetTokens: settings.tokenBudget,
+    });
+    // The budget number is operational only: it stays in host logs and never
+    // reaches model-visible text.
+    const stats = {
+      shownTools: rendered.shownTools,
+      totalTools: rendered.totalTools,
+      tokens: rendered.tokens,
+      budgetTokens: settings.tokenBudget,
+    };
+    if (rendered.complete) {
+      logger?.debug("Deferred tools catalog rendered", stats);
+    } else {
+      logger?.info("Deferred tools catalog truncated to fit its budget", stats);
+    }
+
+    return {
+      catalog,
+      deferredLeafNames: new Set(catalog.map((entry) => entry.leafName)),
+      mechanismTools: [
+        buildToolInvokeConfig(rendered.text),
+        buildToolSearchConfig(),
+      ],
+      shownTools: rendered.shownTools,
+      totalTools: rendered.totalTools,
+      tokens: rendered.tokens,
+      budgetTokens: settings.tokenBudget,
+    };
+  }
+
+  /**
+   * Split a declared tool list into the tools that stay declared plus the
+   * mechanism tools that carry the rest.
+   *
+   * Returns `toolsConfig` **unchanged** when the gate is closed, so the
+   * disabled path emits byte-identical tool declarations to the pre-deferral
+   * behaviour (the regression red line in `tool-deferred-loading.md`).
+   */
+  public applyDeferredTools(
+    toolsConfig: ChatCompletionFunctionTool[],
+    workdir?: string,
+  ): ChatCompletionFunctionTool[] {
+    const plan = this.getDeferredToolsPlan(workdir);
+    if (!plan) return toolsConfig;
+    const declared = toolsConfig.filter(
+      (tool) => !plan.deferredLeafNames.has(tool.function.name),
+    );
+    return [...declared, ...plan.mechanismTools];
+  }
+
+  private warnReservedNamespaceCollision(serverName: string): void {
+    if (this.collisionWarnedServers.has(serverName)) return;
+    this.collisionWarnedServers.add(serverName);
+    logger?.warn(
+      `MCP server "${serverName}" uses the reserved deferred-loading namespace; ` +
+        `its tools stay individually declared (not in the ToolInvoke catalog) and remain callable by full name. ` +
+        `Rename the server in your MCP configuration to have its tools participate in deferred loading.`,
+      { server: serverName, reservedNamespace: RESERVED_BUILTIN_NAMESPACE },
+    );
   }
 
   /**
