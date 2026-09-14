@@ -820,10 +820,9 @@ describe("PreviewPane integration (DesktopApp)", () => {
 
     // 关闭统一走一级 tab 的关闭按钮。
     fireEvent.click(screen.getByTestId("panel-tab-close-preview-1"));
-    // Closing the panel's only tab unmounts the pane; the still-expanded
-    // panel falls back to its empty-state guide.
-    expect(screen.getByTestId("desktop-panel-slot")).toBeInTheDocument();
-    expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+    // Closing the panel's only tab unmounts the pane AND collapses the slot
+    // with it (spec desktop-panels.md 场景 10: 不留下空态).
+    expect(screen.queryByTestId("desktop-panel-slot")).not.toBeInTheDocument();
     expect(screen.queryByTestId("preview-pane")).not.toBeInTheDocument();
   });
 

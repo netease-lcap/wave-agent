@@ -269,10 +269,13 @@ describe("ChatApp desktop panel framework", () => {
       expect(pane.style.width).toBe("400px");
       fireEvent.mouseUp(window);
 
-      // Close (last tab → the expanded panel falls back to its empty state),
-      // then open 差异 again: the shared width is kept — no reset to default.
+      // Close the only tab — the slot collapses with it (spec 场景 10). Expand
+      // again and open 差异: the shared width is kept — no reset to default.
       fireEvent.click(screen.getByTestId("panel-tab-close-diff-1"));
-      expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("desktop-panel-slot"),
+      ).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
       fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
       expect(screen.getByTestId("diff-pane").style.width).toBe("400px");
     } finally {
@@ -320,35 +323,43 @@ describe("ChatApp desktop panel framework", () => {
     }
   });
 
-  it("closing the last tab falls back to the empty state; reopening remounts the panel", () => {
+  it("closing the last tab collapses the panel (no empty state left behind)", () => {
     window.waveHostType = "desktop";
     renderDesktop({ workdir: "/work/a" });
     fireEvent.click(screen.getByTestId("panel-toggle-btn"));
     fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
     expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
 
-    // Closing the only open tab leaves the (still expanded) panel on its
-    // empty-state guide — the tab instance is destroyed with the close.
+    // Closing the only open tab takes the slot down with it (spec 场景 10):
+    // no expanded-but-empty slot left over, and the tab instance is destroyed.
     fireEvent.click(screen.getByTestId("panel-tab-close-diff-1"));
-    expect(screen.getByTestId("desktop-panel-slot")).toBeInTheDocument();
-    expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+    expect(screen.queryByTestId("desktop-panel-slot")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("panel-empty-state")).not.toBeInTheDocument();
     expect(screen.queryByTestId("diff-pane")).not.toBeInTheDocument();
 
-    // Opening again from the empty state mounts a fresh panel.
+    // The empty state stays reachable by explicitly expanding the panel, and
+    // opening from it mounts a fresh tab.
+    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+    expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
     expect(screen.getByTestId("desktop-panel-slot")).toBeInTheDocument();
     expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
   });
 
-  it("the tab close button removes the only tab and the empty state takes over", () => {
+  it("closing one of several tabs keeps the panel expanded", () => {
     window.waveHostType = "desktop";
     renderDesktop({ workdir: "/work/a" });
     fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-    fireEvent.click(screen.getByTestId("panel-empty-item-diff"));
+    fireEvent.click(screen.getByTestId("panel-empty-item-preview"));
+    fireEvent.click(screen.getByTestId("panel-tabs-add"));
+    fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
 
+    // Two tabs: closing one leaves the slot expanded on the survivor.
     fireEvent.click(screen.getByTestId("panel-tab-close-diff-1"));
-    expect(screen.getByTestId("desktop-panel-slot")).toBeInTheDocument();
-    expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+    expect(screen.getByTestId("desktop-panel-slot")).not.toHaveStyle({
+      display: "none",
+    });
+    expect(screen.getByTestId("panel-tab-preview-1")).toBeInTheDocument();
     expect(screen.queryByTestId("diff-pane")).not.toBeInTheDocument();
   });
 
@@ -379,10 +390,11 @@ describe("ChatApp desktop panel framework", () => {
     expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
     expect(lastPanelState(vscode)).toEqual(["diff"]);
 
-    // Toggling off closes the only tab — the expanded panel shows the empty
-    // state instead of the tab strip.
+    // Toggling off closes the only tab — the slot goes with it (spec 场景 10)
+    // instead of falling back to the empty-state guide.
     sendHostMessage(fixtures.desktopTogglePanel("diff"));
-    expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+    expect(screen.queryByTestId("desktop-panel-slot")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("panel-empty-state")).not.toBeInTheDocument();
     expect(lastPanelState(vscode)).toEqual([]);
   });
 
@@ -1476,9 +1488,11 @@ describe("remote preview port forwarding", () => {
     });
     expect(screen.getByTestId("preview-pane")).toBeInTheDocument();
 
-    // Close the panel, then re-open it from the empty state.
+    // Close the panel's last tab — the slot collapses with it (spec 场景 10) —
+    // then re-open it from the empty state.
     fireEvent.click(screen.getByTestId("panel-tab-close-preview-1"));
-    expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+    expect(screen.queryByTestId("desktop-panel-slot")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
     fireEvent.click(screen.getByTestId("panel-empty-item-preview"));
 
     // Browser-tab semantics: closing destroyed the tab, so re-opening starts
@@ -1901,10 +1915,10 @@ describe("desktop plan panel", () => {
       "重构方案",
     );
 
-    // User closes the panel — the last tab closes and the (still expanded)
-    // panel falls back to its empty state.
+    // User closes the panel — the last tab closes and the slot collapses with
+    // it (spec 场景 10), leaving no empty-state leftover.
     fireEvent.click(screen.getByTestId("panel-tab-close-plan-1"));
-    expect(screen.getByTestId("panel-empty-state")).toBeInTheDocument();
+    expect(screen.queryByTestId("desktop-panel-slot")).not.toBeInTheDocument();
     expect(screen.queryByTestId("plan-pane")).not.toBeInTheDocument();
   });
 
