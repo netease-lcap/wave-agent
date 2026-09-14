@@ -38,6 +38,18 @@ export const btwOverlayActiveRef: { current: boolean } = { current: false };
 export const ESC_DOUBLE_PRESS_TIMEOUT_MS = 1000;
 
 /**
+ * Shift+Tab 循环的权限模式顺序（对齐 Claude Code：plan 之后才进入
+ * bypassPermissions）。单独导出，避免 handler 与 reducer 两条路径各写一份
+ * 而漂移。
+ */
+export const permissionModeCycle: PermissionMode[] = [
+  "default",
+  "acceptEdits",
+  "plan",
+  "bypassPermissions",
+];
+
+/**
  * Paste-image shortcut: Ctrl+V everywhere, plus Alt+V on Windows — Windows
  * terminals reserve Ctrl+V for their own system paste, so the key never
  * reaches the app (same platform split as Claude Code). Ink reports Alt+V
@@ -1123,16 +1135,12 @@ export function inputReducer(
 
       // 3. Special Shortcuts
       if (key.tab && key.shift) {
-        const modes: PermissionMode[] = [
-          "default",
-          "acceptEdits",
-          "bypassPermissions",
-          "plan",
-        ];
-        const currentIndex = modes.indexOf(state.permissionMode);
+        const currentIndex = permissionModeCycle.indexOf(state.permissionMode);
         const nextIndex =
-          currentIndex === -1 ? 0 : (currentIndex + 1) % modes.length;
-        const nextMode = modes[nextIndex];
+          currentIndex === -1
+            ? 0
+            : (currentIndex + 1) % permissionModeCycle.length;
+        const nextMode = permissionModeCycle[nextIndex];
         return {
           ...state,
           permissionMode: nextMode,

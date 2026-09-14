@@ -106,8 +106,8 @@ function textOffsetOf(container: Node, node: Node, offset: number): number {
 const PERMISSION_MODES: { value: PermissionMode; label: string }[] = [
   { value: "default", label: "修改前询问" },
   { value: "acceptEdits", label: "自动接受修改" },
-  { value: "bypassPermissions", label: "跳过权限确认" },
   { value: "plan", label: "计划模式" },
+  { value: "bypassPermissions", label: "跳过权限确认" },
 ];
 const permissionModeLabel = (m?: PermissionMode): string =>
   PERMISSION_MODES.find((x) => x.value === m)?.label ?? "修改前询问";
