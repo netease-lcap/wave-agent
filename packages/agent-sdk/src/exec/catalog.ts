@@ -146,7 +146,38 @@ export interface RenderedCatalog {
 }
 
 /**
+ * The server a flat MCP tool name routes to. Mirrors the split `executeMcpTool`
+ * does on the way back (`parts[1]`), so a group key always agrees with where a
+ * call would actually go — including its behaviour for server names that
+ * themselves contain `__`.
+ */
+function execNamespace(name: string): string {
+  return name.split("__")[1] ?? name;
+}
+
+/** Pool order within a group; groups in order of first appearance. */
+function groupByNamespace(entries: ExecPoolEntry[]): ExecPoolEntry[][] {
+  const groups = new Map<string, ExecPoolEntry[]>();
+  for (const entry of entries) {
+    const namespace = execNamespace(entry.name);
+    const group = groups.get(namespace);
+    if (group) {
+      group.push(entry);
+    } else {
+      groups.set(namespace, [entry]);
+    }
+  }
+  return [...groups.values()];
+}
+
+/**
  * Render the catalog within an estimated-token budget.
+ *
+ * Selection round-robins across servers: one entry per server per round, so
+ * every server gets a seat before any server gets its second. A plain first-N
+ * cut would drop whole servers that happen to be connected later, and the model
+ * reads a missing server as "those tools do not exist" — the failure mode this
+ * whole feature has to avoid.
  *
  * The truncation notice deliberately carries no budget number: the budget is a
  * tuning knob, and rendering it would make an unchanged tool pool produce
@@ -156,18 +187,32 @@ export function renderCatalog(
   entries: ExecPoolEntry[],
   budgetTokens: number,
 ): RenderedCatalog {
-  const lines: string[] = [];
+  const groups = groupByNamespace(entries);
+  const picked: string[][] = groups.map(() => []);
   let used = 0;
   let shown = 0;
 
-  for (const entry of entries) {
-    const line = renderCatalogEntry(entry);
-    const cost = estimateCatalogTokens(line) + 1;
-    if (shown > 0 && used + cost > budgetTokens) break;
-    lines.push(line);
-    used += cost;
-    shown += 1;
+  let active = groups.map((_, index) => index);
+  while (active.length > 0) {
+    const stillActive: number[] = [];
+    for (const index of active) {
+      const group = groups[index];
+      const entry = group[picked[index].length];
+      if (entry === undefined) continue;
+      const line = renderCatalogEntry(entry);
+      const cost = estimateCatalogTokens(line) + 1;
+      // The very first entry is always shown even if it alone is over budget:
+      // an empty catalog would be worse than an over-budget one.
+      if (shown > 0 && used + cost > budgetTokens) continue;
+      picked[index].push(line);
+      used += cost;
+      shown += 1;
+      if (picked[index].length < group.length) stillActive.push(index);
+    }
+    active = stillActive;
   }
+
+  const lines = picked.flat();
 
   const truncated = shown < entries.length;
   if (truncated) {
