@@ -6,7 +6,6 @@
     "defaultMode": "bypassPermissions",
     "allow": [
       "Bash(pnpm*)",
-      "Bash(*.specify/scripts/bash/*)",
       "Bash(mkdir*)",
       "Bash(npx tsx*)",
       "Bash(sleep*)",
@@ -21,16 +20,12 @@
       "Bash(gh pr diff*)",
       "Bash(gh issue view*)",
       "Bash(gh issue list*)",
-      "Bash(node packages/code/dist/index.js *)",
-      "Bash(wave *)",
-      "Bash(acpx *)",
       "Bash(rm *packages/*/tests/*)",
       "Bash(node scripts*)",
       "Bash(git fetch*)",
       "Bash(gh run view*)",
       "Bash(gh run list*)"
-    ],
-    "additionalDirectories": ["~/github/claude-code", "~/github/claude-ai"]
+    ]
   },
   "enabledPlugins": {
     "sdd@builtin": true
