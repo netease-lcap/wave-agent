@@ -11,6 +11,7 @@ import {
   maybeInjectTaskReminder,
   TASK_REMINDER_CONFIG,
 } from "../utils/taskReminder.js";
+import { getChangedFilesReminder } from "../utils/fileChangeReminder.js";
 import { existsSync } from "node:fs";
 import * as path from "node:path";
 import type {
@@ -21,7 +22,7 @@ import type {
   Message,
 } from "../types/index.js";
 import type { ToolManager } from "./toolManager.js";
-import type { ToolContext, ToolResult } from "../tools/types.js";
+import type { ToolContext, ToolResult, ReadFileState } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
 import type { BackgroundTaskManager } from "./backgroundTaskManager.js";
 import {
@@ -175,16 +176,7 @@ export class AIManager {
   private consecutiveCompactionFailures: number = 0;
   private readonly maxTurns?: number;
   /** Tracks file mtime/hash at read time for staleness detection on Edit/Write */
-  private readFileState = new Map<
-    string,
-    {
-      mtime: number;
-      hash: string;
-      source: "read" | "edit" | "write";
-      offset?: number;
-      limit?: number;
-    }
-  >();
+  private readFileState: ReadFileState = new Map();
   /** Override tool_choice for this AI manager (e.g. for structured output) */
   public toolChoiceOverride?:
     | "auto"
@@ -912,18 +904,15 @@ export class AIManager {
     const { toolsConfig, filteredToolPlugins } = this.resolveFilteredTools();
     const systemPrompt = await this.buildMainSystemPrompt(filteredToolPlugins);
 
-    // Fresh read-state map so Read/Edit state built up inside the fork never
-    // leaks into the main session's dedup and staleness tracking.
-    const forkReadFileState = new Map<
-      string,
-      {
-        mtime: number;
-        hash: string;
-        source: "read" | "edit" | "write";
-        offset?: number;
-        limit?: number;
-      }
-    >();
+    // Clone the parent session's read state so the fork inherits the read/dedup
+    // baseline (aligned with Claude Code's cloneFileStateCache): the fork can
+    // Edit a file the parent already read without re-reading it first. The
+    // clone is an independent Map with copied entries, so reads/writes inside
+    // the fork never leak back into the main session's dedup and staleness
+    // tracking.
+    const forkReadFileState: ReadFileState = new Map(
+      Array.from(this.readFileState, ([path, entry]) => [path, { ...entry }]),
+    );
 
     let totalUsage: ForkLoopResult["usage"];
     let content: string | undefined;
@@ -1668,6 +1657,22 @@ ${question}`;
           if (taskReminderText) {
             this.messageManager.addUserMessage({
               content: taskReminderText,
+              isMeta: true,
+            });
+          }
+
+          // External file-change reminder (aligned with Claude Code's
+          // changed_files attachment): notify the agent about files it read
+          // that were since changed on disk by another process — the
+          // auto-memory extraction fork, an external editor, another session.
+          // Persisted as a meta message like the task reminder, so it stays in
+          // the message prefix the auto-memory fork mirrors for cache reuse.
+          const changedFilesReminder = await getChangedFilesReminder(
+            this.readFileState,
+          );
+          if (changedFilesReminder) {
+            this.messageManager.addUserMessage({
+              content: wrapInSystemReminder(changedFilesReminder),
               isMeta: true,
             });
           }

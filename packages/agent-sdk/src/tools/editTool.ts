@@ -1,6 +1,7 @@
-import { readFile, writeFile, stat } from "fs/promises";
+import { readFile, stat } from "fs/promises";
 import { createHash } from "crypto";
 import { logger } from "../utils/globalLogger.js";
+import { atomicWriteFile } from "../utils/atomicWrite.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { escapeRegExp, analyzeEditMismatch } from "../utils/editUtils.js";
@@ -267,9 +268,10 @@ Usage:
         );
       }
 
-      // Write file
+      // Write file (atomic: temp file + rename, so concurrent readers never
+      // observe a truncated file). Staleness/OCC was checked above.
       try {
-        await writeFile(resolvedPath, newContent, "utf-8");
+        await atomicWriteFile(resolvedPath, newContent);
         // Commit snapshot on success
         if (context.reversionManager && snapshotId) {
           await context.reversionManager.commitSnapshot(snapshotId);
@@ -290,6 +292,7 @@ Usage:
           mtime: newStats.mtime.getTime(),
           hash,
           source: "edit",
+          content: newContent,
           offset: undefined,
           limit: undefined,
         });

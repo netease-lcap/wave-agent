@@ -11,6 +11,34 @@ import type {
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { SkillMetadata } from "../types/skills.js";
 
+/**
+ * Read state recorded for a file by the Read/Write/Edit tools. Used for
+ * read-before-write enforcement, staleness detection, Read dedup, and the
+ * external-change notification (diffing `content` against the disk).
+ */
+export interface ReadFileStateEntry {
+  /** File mtime (ms) observed when this entry was recorded. */
+  mtime: number;
+  /** sha256 of the content observed when this entry was recorded. */
+  hash: string;
+  /**
+   * Which tool recorded the entry. Read dedups only entries from Read;
+   * "changed" is recorded when an external change was observed and reported.
+   */
+  source: "read" | "edit" | "write" | "changed";
+  /**
+   * Content observed when this entry was recorded (full reads and writes
+   * only). Serves as the diff baseline for the external-change notification.
+   */
+  content?: string;
+  /** Line offset the entry was recorded at; undefined = full read. */
+  offset?: number;
+  limit?: number;
+}
+
+/** Per-session read state keyed by resolved absolute path. */
+export type ReadFileState = Map<string, ReadFileStateEntry>;
+
 export interface ToolPlugin {
   name: string;
   config: ChatCompletionFunctionTool;
@@ -114,16 +142,7 @@ export interface ToolContext {
     maxTokens: number;
   };
   /** State of files read in the current session for deduplication */
-  readFileState?: Map<
-    string,
-    {
-      mtime: number;
-      hash: string;
-      source: "read" | "edit" | "write"; // Read dedups only entries from Read
-      offset?: number; // undefined = full read
-      limit?: number;
-    }
-  >;
+  readFileState?: ReadFileState;
   /** Hook manager instance for executing hooks */
   hookManager?: import("../managers/hookManager.js").HookManager;
   /** Callback to notify when the current working directory changes */

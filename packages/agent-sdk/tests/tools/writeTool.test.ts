@@ -7,6 +7,19 @@ import { readFile, writeFile, mkdir, stat } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
 import { Container } from "@/utils/container.js";
 
+// Write routes through the atomic writer. Forward it to the mocked
+// fs/promises so the existing write-call assertions keep working; the atomic
+// temp-file+rename mechanics are covered by atomicWrite.test.ts.
+vi.mock("@/utils/atomicWrite.js", async () => {
+  const fsp = await import("fs/promises");
+  return {
+    atomicWriteFile: vi.fn((filePath: string, data: string) =>
+      fsp.writeFile(filePath, data, "utf-8"),
+    ),
+  };
+});
+import { atomicWriteFile } from "@/utils/atomicWrite.js";
+
 const testContext: ToolContext = {
   workdir: "/test/workdir",
   taskManager: new TaskManager(new Container(), "test-session"),
@@ -50,6 +63,10 @@ describe("writeTool", () => {
     vi.mocked(stat).mockResolvedValue({
       mtime: { getTime: () => 1000 } as Date,
     } as unknown as Awaited<ReturnType<typeof stat>>);
+    // afterEach's resetAllMocks wipes the factory implementation.
+    vi.mocked(atomicWriteFile).mockImplementation(
+      (filePath: string, data: string) => writeFile(filePath, data, "utf-8"),
+    );
   });
 
   afterEach(() => {
@@ -132,11 +149,30 @@ describe("writeTool", () => {
       path.resolve("/test/file.js"),
       "utf-8",
     );
+    // Routed through the atomic writer (temp file + rename).
+    expect(atomicWriteFile).toHaveBeenCalledWith(
+      path.resolve("/test/file.js"),
+      newContent,
+    );
     expect(writeFile).toHaveBeenCalledWith(
       path.resolve("/test/file.js"),
       newContent,
       "utf-8",
     );
+  });
+
+  it("should report failure when the atomic write rejects", async () => {
+    vi.mocked(readFile).mockRejectedValue(new Error("File not found"));
+    vi.mocked(mkdir).mockResolvedValue(undefined);
+    vi.mocked(atomicWriteFile).mockRejectedValueOnce(new Error("disk full"));
+
+    const result = await writeTool.execute(
+      { file_path: "/test/brand-new.js", content: "fresh" },
+      { ...mockContext, readFileState: new Map() },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("disk full");
   });
 
   it("should handle file with same content", async () => {

@@ -8,6 +8,19 @@ import { homedir } from "node:os";
 // Mock fs operations
 vi.mock("node:fs/promises");
 
+// Memory writes route through the atomic writer. Forward it to the mocked
+// node:fs/promises so the existing write-call assertions keep working; the
+// atomic temp-file+rename mechanics are covered by atomicWrite.test.ts.
+vi.mock("@/utils/atomicWrite.js", async () => {
+  const fsp = await import("node:fs/promises");
+  return {
+    atomicWriteFile: vi.fn((filePath: string, data: string) =>
+      fsp.writeFile(filePath, data, "utf-8"),
+    ),
+  };
+});
+import { atomicWriteFile } from "@/utils/atomicWrite.js";
+
 // Mock the logger
 vi.mock("@/utils/globalLogger.js", () => ({
   logger: {
@@ -48,6 +61,11 @@ describe("MemoryService", () => {
     vi.mocked(fsPromises.writeFile).mockResolvedValue(undefined);
     vi.mocked(fsPromises.readFile).mockResolvedValue("");
     vi.mocked(fsPromises.access).mockResolvedValue(undefined);
+    // afterEach's restoreAllMocks wipes the factory implementation.
+    vi.mocked(atomicWriteFile).mockImplementation(
+      (filePath: string, data: string) =>
+        fsPromises.writeFile(filePath, data, "utf-8"),
+    );
 
     container = new Container();
     memoryService = new MemoryService(container);
@@ -99,6 +117,11 @@ describe("MemoryService", () => {
       await memoryService.ensureAutoMemoryDirectory(workdir);
 
       expect(fsPromises.mkdir).toHaveBeenCalled();
+      // Written through the atomic writer (temp file + rename).
+      expect(atomicWriteFile).toHaveBeenCalledWith(
+        expect.stringContaining("MEMORY.md"),
+        expect.stringContaining("# Project Memory"),
+      );
       expect(fsPromises.writeFile).toHaveBeenCalledWith(
         expect.stringContaining("MEMORY.md"),
         expect.stringContaining("# Project Memory"),
@@ -241,6 +264,11 @@ describe("MemoryService", () => {
       expect(vi.mocked(fsPromises.mkdir)).toHaveBeenCalledWith("/mock/data", {
         recursive: true,
       });
+      // Written through the atomic writer (temp file + rename).
+      expect(atomicWriteFile).toHaveBeenCalledWith(
+        "/mock/user/AGENTS.md",
+        expect.stringContaining("# User Memory"),
+      );
       expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalledWith(
         "/mock/user/AGENTS.md",
         expect.stringContaining("# User Memory"),
@@ -373,6 +401,48 @@ describe("MemoryService", () => {
 
       await memoryService.getCombinedMemoryContent("/mock/workdir");
       expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("memory content writes (settings-page editor)", () => {
+    it("should write user memory through the atomic writer", async () => {
+      await memoryService.writeUserMemoryContent("new user memory");
+
+      expect(atomicWriteFile).toHaveBeenCalledWith(
+        "/mock/user/AGENTS.md",
+        "new user memory",
+      );
+    });
+
+    it("should write project memory through the atomic writer", async () => {
+      await memoryService.writeProjectMemoryContent(
+        "/mock/workdir",
+        "new project memory",
+      );
+
+      expect(vi.mocked(fsPromises.mkdir)).toHaveBeenCalledWith(
+        "/mock/workdir",
+        { recursive: true },
+      );
+      expect(atomicWriteFile).toHaveBeenCalledWith(
+        path.join("/mock/workdir", "AGENTS.md"),
+        "new project memory",
+      );
+    });
+
+    it("should invalidate the read cache so the next read sees the new content", async () => {
+      vi.mocked(fsPromises.readFile).mockResolvedValue("old content");
+      await memoryService.readMemoryFile("/mock/workdir");
+
+      await memoryService.writeProjectMemoryContent(
+        "/mock/workdir",
+        "new content",
+      );
+
+      vi.mocked(fsPromises.readFile).mockResolvedValue("new content");
+      expect(await memoryService.readMemoryFile("/mock/workdir")).toBe(
+        "new content",
+      );
     });
   });
 });

@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { homedir } from "node:os";
 import { USER_MEMORY_FILE, DATA_DIRECTORY } from "../utils/constants.js";
 import { logger } from "../utils/globalLogger.js";
+import { atomicWriteFile } from "../utils/atomicWrite.js";
 import { Container } from "../utils/container.js";
 import { getGitCommonDir } from "../utils/gitUtils.js";
 import { pathEncoder } from "../utils/pathEncoder.js";
@@ -60,7 +61,7 @@ export class MemoryService {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           const initialContent =
             "# Project Memory\n\nThis file serves as an index for the project's auto-memory. Wave uses this to track knowledge across sessions.\n\n";
-          await fs.writeFile(memoryFile, initialContent, "utf-8");
+          await atomicWriteFile(memoryFile, initialContent);
           logger.debug(`Created auto-memory file: ${memoryFile}`);
         } else {
           throw error;
@@ -115,7 +116,7 @@ export class MemoryService {
           });
           const initialContent =
             "# User Memory\n\nThis is the user-level memory file, recording important information and context across projects.\n\n";
-          await fs.writeFile(USER_MEMORY_FILE, initialContent, "utf-8");
+          await atomicWriteFile(USER_MEMORY_FILE, initialContent);
           logger.debug(`Created user memory file: ${USER_MEMORY_FILE}`);
         } else {
           throw error;
@@ -240,7 +241,7 @@ export class MemoryService {
    */
   async writeUserMemoryContent(content: string): Promise<void> {
     await this.ensureUserMemoryFile();
-    await fs.writeFile(USER_MEMORY_FILE, content, "utf-8");
+    await atomicWriteFile(USER_MEMORY_FILE, content);
     this._cachedUserMemory = null;
     this._cachedCombinedMemory = null;
     logger.debug("User memory content written", {
@@ -261,7 +262,7 @@ export class MemoryService {
   ): Promise<void> {
     const memoryFilePath = path.join(workdir, "AGENTS.md");
     await fs.mkdir(workdir, { recursive: true });
-    await fs.writeFile(memoryFilePath, content, "utf-8");
+    await atomicWriteFile(memoryFilePath, content);
     this._cachedProjectMemory = null;
     this._cachedCombinedMemory = null;
     logger.debug("Project memory content written", {
