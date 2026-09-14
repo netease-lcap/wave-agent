@@ -315,6 +315,7 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 | `AskUserQuestion` | 向用户提问，支持单选/多选选项                                                                    |
 | `WebFetch`        | 网页内容抓取与 AI 摘要                                                                           |
 | `Artifact`        | 发布本地 `.html`/`.md` 为可分享网页，或读取已发布页面的原文/摘要（启用 `enableArtifact` 后注册） |
+| `Exec`            | 在沙箱脚本里编排 MCP 调用（MCP 工具池达到阈值时声明，并取代逐条扁平声明）                        |
 
 #### 任务管理
 
@@ -464,6 +465,30 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 - 发布结果返回 `{ url, path, title, version }`，`url` 形如 `{host}/code/artifact/{slug}`；页面默认仅发布者可见
 - `action: "read"` 读取**自己拥有**的页面时返回原始 HTML（内联 CSS/JS 保留，可直接在其上继续改页面、查样式），内容超过 ~2KB 时落盘到临时文件并返回路径与预览；读取**他人分享**的页面时只返回隔离摘要（`prompt` 引导关注点），全文不进入对话上下文，且首次读取需用户确认、同会话内不再重复确认
 - 读取到的版本号会同步到会话记录，因此「读取最新版本后再重新部署」不会触发 stale 冲突保护；页面不存在（404）与无权限（403）返回不同错误
+
+#### Exec — 沙箱内编排 MCP 调用 {#tool-exec}
+
+把当前会话的 MCP 工具池收敛成一个可编程工具：模型写一段 JavaScript，在同一个脚本里串联多步 MCP 调用（取数据 → 转换 → 写回），而不是每一步都单独往返一轮。默认启用（`enableExec: false` 关闭）。
+
+| 参数   | 类型   | 说明                                 |
+| ------ | ------ | ------------------------------------ |
+| `code` | string | 必需，在沙箱里执行的 JavaScript 源码 |
+
+沙箱内可用的 API：
+
+- `await tools.<name>(args)` — 调用一个 MCP 工具，直接传该工具自己的实参对象，resolve 为 `{ content, images }`
+- `tools["$codemode"].search("query")` — 按名称或描述检索完整工具池（目录被截断时用它找其余工具）
+- `console.log(...)` — 收集输出并随结果一并返回
+- `return <value>` — 返回值序列化后交给模型
+
+要点：
+
+- **池收敛**：沙箱里能调到的工具恰好是**代理本来就能直接调**的那一批（同一来源、同一拒绝过滤），所以 Exec 不是提权通道。收敛生效时不再逐条声明 `mcp__*` 工具，而是把这些工具渲染进 `Exec` 的描述（目录）；目录超出预算时在末尾给出显式 `PARTIAL — X of Y` 提示并指向 `search`，不静默截断
+- **阈值**：可编目 MCP 工具数达到 5 个才收敛（`Exec` 才出现在 `tools[]` 里）；池更小时保持逐条扁平声明，因为此时目录加编排开销不划算。`enableExec: false` 或把 `Exec` 排除出工具集都会退回扁平声明，MCP 能力不受影响
+- **权限**：每次嵌套调用都走与直接调用完全相同的确认与规则匹配，规则身份是被调用的**叶子工具全名**（`mcp__server__tool`），外层是 `Exec` 不构成豁免；调用被拒绝时错误回到脚本，脚本可 catch 后继续
+- **隔离**：脚本运行在独立 worker 内的 `node:vm` 上下文（`codeGeneration: false`）里，没有文件系统、网络、`require`、`import()`、`eval`/`new Function`；沙箱与宿主之间只传普通 JSON，跨界值深拷贝
+- **预算**：墙钟时间 60s（含 `await` 之后卡死的情形，靠终止 worker 实现）、单脚本最多 50 次嵌套调用、日志 8,000 字符、返回给模型的值 100,000 字符、嵌套调用带回的图片最多 4 张；超预算返回失败结果而不是挂住会话
+- **非并发安全**：嵌套调用可触达任意 MCP 工具，因此 `Exec` 与其它工具不会并行执行
 
 #### EnterWorktree / ExitWorktree — Git Worktree 隔离 {#tool-worktree}
 
@@ -1399,6 +1424,7 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 - `autoMemoryEnabled`：启用或禁用自动记忆（默认：`true`）。
 - `autoMemoryFrequency`：自动记忆提取频率（默认：`1`）。
 - `enableArtifact`：启用 Artifact 工具（默认：`false`）。未设置时跟随代码默认值（当前默认禁用）；设为 `true` 后注册 [Artifact 工具](#tool-artifact) 与 `/artifact` 内置技能，将本地 HTML/Markdown 发布为可分享网页。
+- `enableExec`：启用 [Exec 工具](#tool-exec)（默认：`true`）。未设置时跟随代码默认值（当前默认启用）；设为 `false` 后不注册 `Exec`，MCP 工具回到逐条扁平声明（会话能力不变）。服务端下发的同名配置优先于本地设置。改动后配置热重载即时生效，无需重启会话。
 - `worktree.baseRef`：新建 worktree 的基准引用。`"fresh"`（默认）基于 `origin/<默认分支>` 创建新分支；`"head"` 基于当前本地 HEAD 创建，跳过 origin 解析与网络 fetch。适用于基于尚未推送的本地分支工作的场景。
 - `cleanupPeriodDays`：会话 jsonl 保留期（天），启动时后台清理过期会话文件（默认：`30`，对齐 Claude Code）。设为 `0` 跳过清理。作用域 user → project → local 依次覆盖（last-wins）。详见 [会话文件存储](#session-storage)。
 
