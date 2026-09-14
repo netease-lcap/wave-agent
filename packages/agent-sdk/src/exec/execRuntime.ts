@@ -18,18 +18,12 @@ import {
   EXEC_SEARCH_CALL,
 } from "./constants.js";
 import { EXEC_WORKER_SOURCE } from "./workerSource.js";
-
-/** One MCP tool the sandbox may reach. */
-export interface ExecToolEntry {
-  /** Flattened `mcp__<server>__<tool>` name — the key on the sandbox `tools` object. */
-  name: string;
-  description?: string;
-}
+import type { ExecPoolEntry } from "./catalog.js";
 
 export interface RunExecOptions {
   code: string;
   /** Every MCP tool the sandbox may call. Also the allowlist for nested calls. */
-  pool: ExecToolEntry[];
+  pool: ExecPoolEntry[];
   context: ToolContext;
   timeoutMs?: number;
   maxToolCalls?: number;
@@ -77,7 +71,7 @@ function humanizeError(message: string): string {
 async function handleExecCall(
   name: string,
   args: Record<string, unknown>,
-  pool: Map<string, ExecToolEntry>,
+  pool: Map<string, ExecPoolEntry>,
   context: ToolContext,
 ): Promise<ExecCallResult> {
   if (name === EXEC_SEARCH_CALL) {
