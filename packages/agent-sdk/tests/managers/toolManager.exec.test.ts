@@ -167,9 +167,17 @@ describe("Exec catalog content", () => {
 
     expect(description).toMatch(/PARTIAL — \d+ of 2000 tools shown/);
     expect(description).toContain("search");
-    // The budget is a knob; it must not appear in the prompt, or tuning it would
-    // change model-visible text for an unchanged pool.
-    expect(description).not.toContain(String(EXEC_DEFAULT_CATALOG_TOKENS));
+    // The budget is a knob; it must not be rendered, or tuning it would change
+    // model-visible text for an unchanged pool. Assert on the budget-denoting
+    // form rather than on the bare number: this fixture's pool happens to be as
+    // large as the default budget, so a bare "2000" is a legitimate pool size.
+    expect(description).not.toMatch(
+      new RegExp(
+        `(?:${EXEC_DEFAULT_CATALOG_TOKENS}\\s*(?:tokens?|budget)` +
+          `|(?:tokens?|budget)\\s*[:=]?\\s*${EXEC_DEFAULT_CATALOG_TOKENS})`,
+        "i",
+      ),
+    );
   });
 
   it("stays inside the catalog budget", () => {
