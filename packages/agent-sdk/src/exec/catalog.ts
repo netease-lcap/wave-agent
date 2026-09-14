@@ -9,7 +9,6 @@
  */
 import type { McpManager } from "../managers/mcpManager.js";
 import type { PermissionManager } from "../managers/permissionManager.js";
-import { estimateTokens } from "../utils/tokenEstimate.js";
 import { EXEC_RESERVED_NAMESPACE } from "./constants.js";
 
 export interface ExecPoolEntry {
@@ -26,6 +25,16 @@ const MAX_SIGNATURE_DEPTH = 3;
 const MAX_SIGNATURE_PROPS = 8;
 /** Cap rendered enum variants per field. */
 const MAX_ENUM_VARIANTS = 6;
+
+/**
+ * Budget accounting for the catalog, in estimated tokens.
+ *
+ * A plain `chars / 4`, same basis as opencode's `catalogBudget`. Deliberately
+ * not the CJK-aware `utils/tokenEstimate`: MCP tool descriptions are
+ * overwhelmingly English, so telling CJK from Latin text would not move the
+ * result in practice.
+ */
+const estimateCatalogTokens = (line: string) => Math.round(line.length / 4);
 
 /**
  * Every MCP tool the current agent may call, in catalog form.
@@ -153,7 +162,7 @@ export function renderCatalog(
 
   for (const entry of entries) {
     const line = renderCatalogEntry(entry);
-    const cost = estimateTokens(line) + 1;
+    const cost = estimateCatalogTokens(line) + 1;
     if (shown > 0 && used + cost > budgetTokens) break;
     lines.push(line);
     used += cost;

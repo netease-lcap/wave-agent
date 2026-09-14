@@ -37,13 +37,13 @@ export const EXEC_DEFAULT_MAX_IMAGES = 4;
 
 /**
  * Maximum size of the MCP catalog rendered into the Exec tool description, in
- * estimated tokens (CJK-aware — see `utils/tokenEstimate.ts`).
+ * estimated tokens (a plain `chars / 4`; see `estimateCatalogTokens`).
  *
- * Provenance: measured on a typical pool during the deferred-tools probe
- * (PR #2200, closed). The catalog stays COMPLETE well below this and starts
- * truncating around 50 MCP tools. Tunable, not a contract.
+ * Provenance: opencode's `catalogBudget` — `defaultCatalogBudget = 2_000` in
+ * `packages/codemode/src/tool-runtime.ts`. Deliberately not CJK-aware: MCP tool
+ * descriptions are overwhelmingly English. Tunable, not a contract.
  */
-export const EXEC_DEFAULT_CATALOG_TOKENS = 6_000;
+export const EXEC_DEFAULT_CATALOG_TOKENS = 2_000;
 
 /**
  * Minimum number of catalogable MCP tools before Exec is registered at all.
