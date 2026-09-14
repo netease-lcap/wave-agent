@@ -712,6 +712,12 @@ export class Agent {
       options,
     );
 
+    // Freeze the session-level bypass authorization now that settings.json (and
+    // thus `permissions.defaultMode`) has been loaded. Later mode switches and
+    // config reloads must not change it — it records what the user authorized
+    // when the session started.
+    this.permissionManager.captureBypassAuthorization();
+
     // Initialize OpenTelemetry (awaited to ensure ALS context is ready before
     // startInteractionSpan is called, preventing trace context fragmentation)
     const telemetryConfig = this.configurationService.resolveTelemetryConfig();

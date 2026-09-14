@@ -405,6 +405,10 @@ export class SubagentManager {
       configuredPermissionMode:
         parameters.permissionModeOverride ??
         parentPermissionManager?.getConfiguredPermissionMode(),
+      // Inherit the parent session's bypass authorization: the subagent is
+      // created mid-session, so re-deriving it from its own mode would
+      // (wrongly) deny an authorized session's plan-mode subagent.
+      bypassAuthorization: parentPermissionManager?.getBypassAuthorization?.(),
       allowedRules: parentPermissionManager?.getAllowedRules(),
       deniedRules: parentPermissionManager?.getDeniedRules(),
       instanceAllowedRules:
