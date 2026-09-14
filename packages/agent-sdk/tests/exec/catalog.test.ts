@@ -192,6 +192,29 @@ describe("renderCatalog", () => {
     expect(rendered.text).toContain("tools.mcp__srv__a");
   });
 
+  it("gives every server a seat before any server gets a second", () => {
+    // A plain first-N cut would show only alpha here and drop beta and gamma
+    // entirely, which the model would read as "those tools do not exist".
+    const pooled = [
+      { name: "mcp__alpha__t1" },
+      { name: "mcp__alpha__t2" },
+      { name: "mcp__alpha__t3" },
+      { name: "mcp__beta__t1" },
+      { name: "mcp__beta__t2" },
+      { name: "mcp__gamma__t1" },
+    ];
+    // Room for exactly three lines: one full round of the rotation.
+    const rendered = renderCatalog(pooled, 21);
+    const lines = rendered.text.split("\n");
+
+    expect(rendered.shown).toBe(3);
+    expect(rendered.truncated).toBe(true);
+    expect(lines[0]).toContain("tools.mcp__alpha__t1");
+    expect(lines[1]).toContain("tools.mcp__beta__t1");
+    expect(lines[2]).toContain("tools.mcp__gamma__t1");
+    expect(rendered.text).not.toContain("mcp__alpha__t2");
+  });
+
   it("is byte-stable for an unchanged pool", () => {
     expect(renderCatalog(entries, 4096).text).toBe(
       renderCatalog(entries, 4096).text,
