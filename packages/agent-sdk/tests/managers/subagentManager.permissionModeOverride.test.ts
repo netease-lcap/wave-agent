@@ -60,6 +60,7 @@ describe("SubagentManager - permissionModeOverride", () => {
       getAdditionalDirectories: vi.fn().mockReturnValue([]),
       getSystemAdditionalDirectories: vi.fn().mockReturnValue([]),
       getPlanFilePath: vi.fn().mockReturnValue(undefined),
+      getBypassAuthorization: vi.fn().mockReturnValue(false),
     } as unknown as Record<string, unknown>);
     container.register("TaskManager", {} as unknown as Record<string, unknown>);
     container.register(
@@ -312,6 +313,61 @@ describe("SubagentManager - permissionModeOverride", () => {
         permissionMode: "dontAsk",
       });
       expect(decision).toEqual({ behavior: "allow" });
+    });
+  });
+
+  describe("T05: subagent inherits the parent session's bypass authorization", () => {
+    const mockConfig: SubagentConfiguration = {
+      name: "test-subagent",
+      description: "A test subagent",
+      systemPrompt: "You are a test subagent",
+      tools: ["Read"],
+      model: "inherit",
+      filePath: "/tmp/test-subagent.md",
+      scope: "project",
+      priority: 1,
+    };
+
+    function subPermissionManagerOf(instance: { toolManager: ToolManager }): {
+      getBypassAuthorization: () => boolean;
+    } {
+      const subContainer = (
+        instance.toolManager as unknown as { container: Container }
+      ).container;
+      return subContainer.get<{ getBypassAuthorization: () => boolean }>(
+        "PermissionManager",
+      )!;
+    }
+
+    it("should inherit true when the parent session was authorized", async () => {
+      const parentPermissionManager = container.get<{
+        getBypassAuthorization: () => boolean;
+      }>("PermissionManager")!;
+      vi.mocked(parentPermissionManager.getBypassAuthorization).mockReturnValue(
+        true,
+      );
+
+      const instance = await subagentManager.createInstance(mockConfig, {
+        description: "Test bypass inheritance",
+        prompt: "Test prompt",
+        subagent_type: "test-subagent",
+      });
+
+      expect(subPermissionManagerOf(instance).getBypassAuthorization()).toBe(
+        true,
+      );
+    });
+
+    it("should inherit false when the parent session was not authorized", async () => {
+      const instance = await subagentManager.createInstance(mockConfig, {
+        description: "Test bypass inheritance",
+        prompt: "Test prompt",
+        subagent_type: "test-subagent",
+      });
+
+      expect(subPermissionManagerOf(instance).getBypassAuthorization()).toBe(
+        false,
+      );
     });
   });
 });

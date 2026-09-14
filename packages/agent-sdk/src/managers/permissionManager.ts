@@ -119,6 +119,12 @@ export function resolveAdditionalDirectory(
 export interface PermissionManagerOptions {
   /** Configured permission mode from settings */
   configuredPermissionMode?: PermissionMode;
+  /**
+   * Session-level bypass authorization (see `captureBypassAuthorization`).
+   * Passed explicitly by subagents so they inherit the parent session's value
+   * instead of re-deriving it from their own (mid-session) mode.
+   */
+  bypassAuthorization?: boolean;
   /** Allowed rules from settings */
   allowedRules?: string[];
   /** Denied rules from settings */
@@ -141,6 +147,15 @@ export interface PermissionManagerOptions {
 
 export class PermissionManager {
   private configuredPermissionMode?: PermissionMode;
+  /**
+   * Session-level bypass authorization: the permission mode in effect when the
+   * session was created was `bypassPermissions`. Frozen at session start, so a
+   * later mode switch (or config reload) can never grant it. Its only effect is
+   * that plan mode skips permission checks instead of re-asking — mirroring
+   * Claude Code's `isBypassPermissionsModeAvailable`. `undefined` = not
+   * captured yet (subagents get an explicit value instead).
+   */
+  private bypassAuthorization?: boolean;
   private allowedRules: string[] = [];
   private deniedRules: string[] = [];
   private instanceAllowedRules: string[] = [];
@@ -163,6 +178,7 @@ export class PermissionManager {
     options: PermissionManagerOptions = {},
   ) {
     this.configuredPermissionMode = options.configuredPermissionMode;
+    this.bypassAuthorization = options.bypassAuthorization;
     this.allowedRules = options.allowedRules || [];
     this.deniedRules = options.deniedRules || [];
     this.instanceAllowedRules = options.instanceAllowedRules || [];
@@ -220,6 +236,30 @@ export class PermissionManager {
    */
   public getConfiguredPermissionMode(): PermissionMode | undefined {
     return this.configuredPermissionMode;
+  }
+
+  /**
+   * Freeze the session-level bypass authorization from the permission mode in
+   * effect when the session was created (CLI mode > configured default mode >
+   * `default`). No-op once captured, so switching to `bypassPermissions`
+   * mid-session does not grant it.
+   */
+  public captureBypassAuthorization(): void {
+    if (this.bypassAuthorization !== undefined) {
+      return;
+    }
+    const sessionMode = this.container.has("PermissionMode")
+      ? this.container.get<PermissionMode>("PermissionMode")
+      : undefined;
+    this.bypassAuthorization =
+      this.getCurrentEffectiveMode(sessionMode) === "bypassPermissions";
+  }
+
+  /**
+   * Whether this session keeps bypass semantics while in plan mode
+   */
+  public getBypassAuthorization(): boolean {
+    return this.bypassAuthorization === true;
   }
 
   /**
@@ -599,11 +639,15 @@ export class PermissionManager {
       }
     }
 
-    // If bypassPermissions mode, always allow
+    // If bypassPermissions mode — or plan mode in a session that was authorized
+    // to bypass at creation time — always allow.
     // Exception: tools that require user interaction (e.g. AskUserQuestion)
     // must still prompt the user, matching Claude Code's requiresUserInteraction behavior.
     // Worktree safety check above runs unconditionally, so bypass never skips it.
-    if (context.permissionMode === "bypassPermissions") {
+    const bypassesPermissionChecks =
+      context.permissionMode === "bypassPermissions" ||
+      (context.permissionMode === "plan" && this.getBypassAuthorization());
+    if (bypassesPermissionChecks) {
       const requiresUserInteraction =
         context.toolName === ASK_USER_QUESTION_TOOL_NAME;
       if (!requiresUserInteraction) {
