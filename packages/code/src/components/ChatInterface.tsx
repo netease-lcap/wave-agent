@@ -132,6 +132,7 @@ export const ChatInterface: React.FC = () => {
             toolInput={confirmingTool!.input}
             suggestedPrefix={confirmingTool!.suggestedPrefix}
             hidePersistentOption={confirmingTool!.hidePersistentOption}
+            outsideSafeZoneDirectory={confirmingTool!.outsideSafeZoneDirectory}
             permissionMode={confirmingTool!.permissionMode}
             isExpanded={isExpanded}
             onDecision={handleConfirmationDecision}

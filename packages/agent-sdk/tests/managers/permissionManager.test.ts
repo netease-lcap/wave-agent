@@ -1763,6 +1763,65 @@ describe("PermissionManager", () => {
         expect(context.hidePersistentOption).toBeFalsy();
       });
     });
+
+    describe("outsideSafeZoneDirectory logic", () => {
+      const workdir = "/home/user/project";
+
+      it("should expose the target directory for out-of-Safe-Zone Edit/Write", () => {
+        const outsideFile = path.resolve(workdir, "..", "outside", "file.ts");
+
+        for (const toolName of ["Edit", "Write"]) {
+          const context = permissionManager.createContext(
+            toolName,
+            "default",
+            undefined,
+            { file_path: outsideFile, workdir },
+          );
+
+          expect(context.outsideSafeZoneDirectory).toBe(
+            path.dirname(outsideFile),
+          );
+        }
+      });
+
+      it("should not expose a directory for in-Safe-Zone Edit", () => {
+        const context = permissionManager.createContext(
+          "Edit",
+          "default",
+          undefined,
+          { file_path: path.resolve(workdir, "src", "index.ts"), workdir },
+        );
+
+        expect(context.outsideSafeZoneDirectory).toBeUndefined();
+      });
+
+      it("should not expose a directory for out-of-bounds Bash (only file tools offer it)", () => {
+        const context = permissionManager.createContext(
+          "Bash",
+          "default",
+          undefined,
+          { command: "ls /etc", workdir },
+        );
+
+        expect(context.hidePersistentOption).toBe(true);
+        expect(context.outsideSafeZoneDirectory).toBeUndefined();
+      });
+
+      it("should not expose a directory once the target is added to the session Safe Zone", () => {
+        const outsideDir = path.resolve(workdir, "..", "outside");
+        permissionManager.addInstanceAdditionalDirectory(outsideDir);
+
+        const context = permissionManager.createContext(
+          "Write",
+          "default",
+          undefined,
+          { file_path: path.join(outsideDir, "file.ts"), workdir },
+        );
+
+        expect(context.hidePersistentOption).toBeFalsy();
+        expect(context.outsideSafeZoneDirectory).toBeUndefined();
+      });
+    });
   });
 
   describe("Logger Integration", () => {

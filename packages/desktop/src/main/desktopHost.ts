@@ -102,6 +102,7 @@ interface PendingConfirmation {
   hidePersistentOption?: boolean;
   permissionMode?: PermissionMode;
   warning?: string;
+  outsideSafeZoneDirectory?: string;
 }
 
 interface WorktreeInfo {
@@ -2393,6 +2394,7 @@ export class DesktopHost {
       hidePersistentOption: context.hidePersistentOption,
       permissionMode: context.permissionMode,
       warning: context.warning,
+      outsideSafeZoneDirectory: context.outsideSafeZoneDirectory,
     });
     this.refreshSessionTree();
 
@@ -2434,6 +2436,7 @@ export class DesktopHost {
         hidePersistentOption: context.hidePersistentOption,
         permissionMode: context.permissionMode,
         warning: context.warning,
+        outsideSafeZoneDirectory: context.outsideSafeZoneDirectory,
       });
     }
   }
@@ -2642,6 +2645,7 @@ export class DesktopHost {
         planContent: p.planContent,
         suggestedPrefix: p.suggestedPrefix,
         permissionMode: p.permissionMode,
+        outsideSafeZoneDirectory: p.outsideSafeZoneDirectory,
       }));
 
     this.postMessage({
@@ -5378,6 +5382,7 @@ export class DesktopHost {
         hidePersistentOption: p.hidePersistentOption,
         permissionMode: p.permissionMode,
         warning: p.warning,
+        outsideSafeZoneDirectory: p.outsideSafeZoneDirectory,
       });
     }
   }

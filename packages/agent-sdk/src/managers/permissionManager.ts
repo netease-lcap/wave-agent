@@ -869,9 +869,15 @@ export class PermissionManager {
       const workdir = toolInput?.workdir as string | undefined;
 
       if (targetPath) {
-        const { isInside } = this.isInsideSafeZone(targetPath, workdir);
+        const { isInside, resolvedPath } = this.isInsideSafeZone(
+          targetPath,
+          workdir,
+        );
         if (!isInside) {
           context.hidePersistentOption = true;
+          // Surface the target's directory so the confirmation UI can offer
+          // adding it to the session Safe Zone.
+          context.outsideSafeZoneDirectory = path.dirname(resolvedPath);
         }
       }
     }

@@ -355,6 +355,81 @@ describe("confirmationReducer", () => {
     });
   });
 
+  describe("HANDLE_KEY add-directory option", () => {
+    it("should return newAdditionalDirectory decision when selected for an out-of-zone Write", () => {
+      const state: ConfirmationState = {
+        ...initialState,
+        selectedOption: "addDirectory",
+      };
+      const result = confirmationReducer(state, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { return: true } as unknown as Key,
+        toolName: "Write",
+        toolInput: { file_path: "/other/project/a.md" },
+        hidePersistentOption: true,
+        outsideSafeZoneDirectory: "/other/project",
+      });
+      expect(result.decision).toEqual({
+        behavior: "allow",
+        newAdditionalDirectory: "/other/project",
+      });
+    });
+
+    it("should include the option in navigation for an out-of-zone Edit", () => {
+      const result = confirmationReducer(initialState, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { downArrow: true } as unknown as Key,
+        toolName: "Edit",
+        toolInput: { file_path: "/other/project/a.md" },
+        hidePersistentOption: true,
+        outsideSafeZoneDirectory: "/other/project",
+      });
+      expect(result.selectedOption).toBe("addDirectory");
+    });
+
+    it("should not include the option for an in-zone Write", () => {
+      const result = confirmationReducer(initialState, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { downArrow: true } as unknown as Key,
+        toolName: "Write",
+        toolInput: { file_path: "/workdir/a.md" },
+      });
+      expect(result.selectedOption).toBe("auto");
+    });
+
+    it("should not include the option for Bash even when a directory is reported", () => {
+      // Bash keeps its own next stop (bypass), never add-directory.
+      const result = confirmationReducer(initialState, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { downArrow: true } as unknown as Key,
+        toolName: "Bash",
+        toolInput: { command: "ls /other/project" },
+        hidePersistentOption: true,
+        outsideSafeZoneDirectory: "/other/project",
+      });
+      expect(result.selectedOption).toBe("bypass");
+    });
+
+    it("should not produce a decision when no directory was reported", () => {
+      const state: ConfirmationState = {
+        ...initialState,
+        selectedOption: "addDirectory",
+      };
+      const result = confirmationReducer(state, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { return: true } as unknown as Key,
+        toolName: "Write",
+        toolInput: { file_path: "/workdir/a.md" },
+      });
+      expect(result.decision).toBeNull();
+    });
+  });
+
   describe("default action", () => {
     it("should return state unchanged for unknown action", () => {
       const result = confirmationReducer(initialState, {

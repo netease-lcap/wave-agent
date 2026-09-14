@@ -1834,6 +1834,7 @@ export class MessageHandler {
       toolInput: pending.toolInput,
       suggestedPrefix: pending.suggestedPrefix,
       permissionMode: pending.permissionMode,
+      outsideSafeZoneDirectory: pending.outsideSafeZoneDirectory,
     }));
 
     this.context.postMessage(

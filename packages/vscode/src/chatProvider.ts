@@ -711,6 +711,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         hidePersistentOption: context.hidePersistentOption,
         warning: context.warning,
         permissionMode: context.permissionMode,
+        outsideSafeZoneDirectory: context.outsideSafeZoneDirectory,
       });
 
       // ExitPlanMode: the full plan renders in a dedicated plan-preview panel opened beside the
@@ -742,6 +743,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           hidePersistentOption: context.hidePersistentOption,
           warning: context.warning,
           permissionMode: context.permissionMode,
+          outsideSafeZoneDirectory: context.outsideSafeZoneDirectory,
         },
         viewType,
         windowId,

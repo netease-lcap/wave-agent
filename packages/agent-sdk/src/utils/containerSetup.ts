@@ -29,6 +29,8 @@ import { MemoryService } from "../services/memory.js";
 import { AutoMemoryService } from "../services/autoMemoryService.js";
 import { USER_MEMORY_FILE } from "./constants.js";
 import { getGitMainRepoRoot } from "./gitUtils.js";
+import { toPosixPath } from "./path.js";
+import { EDIT_TOOL_NAME, WRITE_TOOL_NAME } from "../constants/tools.js";
 import { AsyncWorkRegistry } from "./asyncWorkRegistry.js";
 import type { AgentOptions, McpServerConfig } from "../types/index.js";
 import type {
@@ -305,6 +307,26 @@ export function setupAgentContainer(
 
         if (decision.newPermissionRule) {
           await addPermissionRule(decision.newPermissionRule);
+        }
+
+        if (decision.newAdditionalDirectory) {
+          // Session-level only: the user approved this directory from the
+          // confirmation dialog (never persisted to settings).
+          permissionManager.addInstanceAdditionalDirectory(
+            decision.newAdditionalDirectory,
+          );
+          // The dialog option is "允许本会话编辑 <目录名>/" — it has to cover
+          // later edits too, otherwise `default` mode would keep prompting for
+          // every Write/Edit in that directory. Forward slashes: minimatch
+          // treats the pattern `\` as an escape, while it normalises the input
+          // path's separators on Windows.
+          const pattern = `${toPosixPath(decision.newAdditionalDirectory)}/**`;
+          permissionManager.addInstanceAllowedRule(
+            `${EDIT_TOOL_NAME}(${pattern})`,
+          );
+          permissionManager.addInstanceAllowedRule(
+            `${WRITE_TOOL_NAME}(${pattern})`,
+          );
         }
 
         return decision;

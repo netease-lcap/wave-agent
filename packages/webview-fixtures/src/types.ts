@@ -121,6 +121,9 @@ export interface ConfirmationRequest {
   planContent?: string;
   suggestedPrefix?: string;
   hidePersistentOption?: boolean;
+  /** Edit/Write only: directory of an out-of-Safe-Zone target, when the host
+   *  wants the dialog to offer adding it to the session Safe Zone. */
+  outsideSafeZoneDirectory?: string;
 }
 
 export interface AttachedImage {
@@ -350,6 +353,9 @@ export interface ShowConfirmationMessage extends HostToWebviewMessageBase {
   planContent?: string;
   suggestedPrefix?: string;
   hidePersistentOption?: boolean;
+  /** Edit/Write only: directory of an out-of-Safe-Zone target, when the host
+   *  wants the dialog to offer adding it to the session Safe Zone. */
+  outsideSafeZoneDirectory?: string;
 }
 
 /** Desktop /plan display: the host pushes the current plan file contents to

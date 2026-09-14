@@ -1122,6 +1122,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                 : message.planContent,
             suggestedPrefix: message.suggestedPrefix,
             hidePersistentOption: message.hidePersistentOption,
+            outsideSafeZoneDirectory: message.outsideSafeZoneDirectory,
             permissionMode: message.permissionMode,
             warning: message.warning,
           },

@@ -7,8 +7,10 @@ import type {
 } from "wave-agent-sdk";
 import {
   BASH_TOOL_NAME,
+  EDIT_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
+  WRITE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
 } from "wave-agent-sdk";
 import { confirmationReducer } from "../reducers/confirmationReducer.js";
@@ -24,11 +26,19 @@ const getHeaderColor = (header: string) => {
   return colors[Math.abs(hash) % colors.length];
 };
 
+/** Last path segment of a directory path (handles both `/` and `\` separators). */
+const lastPathSegment = (dirPath: string): string => {
+  const segments = dirPath.split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] ?? dirPath;
+};
+
 export interface ConfirmationSelectorProps {
   toolName: string;
   toolInput?: Record<string, unknown>;
   suggestedPrefix?: string;
   hidePersistentOption?: boolean;
+  /** Directory holding an out-of-Safe-Zone Write/Edit target, when the host reports one. */
+  outsideSafeZoneDirectory?: string;
   permissionMode?: PermissionMode;
   isExpanded?: boolean;
   onDecision: (decision: PermissionDecision) => void;
@@ -40,6 +50,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
   toolInput,
   suggestedPrefix,
   hidePersistentOption,
+  outsideSafeZoneDirectory,
   permissionMode,
   isExpanded = false,
   onDecision,
@@ -104,6 +115,15 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     return "Yes, and auto-accept edits";
   };
 
+  // Only Write/Edit can be out of the Safe Zone, and the host only reports the
+  // directory for such requests.
+  const showAddDirectoryOption =
+    (toolName === EDIT_TOOL_NAME || toolName === WRITE_TOOL_NAME) &&
+    !!outsideSafeZoneDirectory;
+  const addDirectoryOptionText = `Yes, and allow all edits in ${lastPathSegment(
+    outsideSafeZoneDirectory ?? "",
+  )}/ this session`;
+
   const pasteDetectorRef = useRef(createBracketedPasteDetector());
 
   useInput((input, key) => {
@@ -140,6 +160,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
         toolInput,
         suggestedPrefix,
         hidePersistentOption,
+        outsideSafeZoneDirectory,
         permissionMode,
       });
     }
@@ -248,6 +269,24 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                   : "Yes, proceed"}
               </Text>
             </Box>
+            {showAddDirectoryOption && (
+              <Box key="add-directory-option">
+                <Text
+                  color={
+                    state.selectedOption === "addDirectory" ? "black" : "white"
+                  }
+                  backgroundColor={
+                    state.selectedOption === "addDirectory"
+                      ? "yellow"
+                      : undefined
+                  }
+                  bold={state.selectedOption === "addDirectory"}
+                >
+                  {state.selectedOption === "addDirectory" ? "> " : "  "}
+                  {addDirectoryOptionText}
+                </Text>
+              </Box>
+            )}
             {!hidePersistentOption && (
               <Box key="auto-option">
                 <Text

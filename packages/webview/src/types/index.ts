@@ -791,12 +791,19 @@ export interface ConfirmationRequest {
   hidePersistentOption?: boolean;
   permissionMode?: PermissionMode;
   warning?: string;
+  /**
+   * Absolute path of the directory holding an out-of-Safe-Zone target
+   * (Edit/Write only). When present the dialog offers adding it to the
+   * session Safe Zone.
+   */
+  outsideSafeZoneDirectory?: string;
 }
 
 export interface ConfirmationDecision {
   behavior: "allow" | "deny";
   newPermissionMode?: string;
   newPermissionRule?: string;
+  newAdditionalDirectory?: string;
   message?: string;
 }
 

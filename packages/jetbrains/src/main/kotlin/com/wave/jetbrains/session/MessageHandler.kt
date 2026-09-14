@@ -1182,6 +1182,7 @@ class MessageHandler(
                     if (pc.toolInput != null) put("toolInput", pc.toolInput)
                     if (pc.planContent != null) put("planContent", pc.planContent)
                     if (pc.permissionMode != null) put("permissionMode", pc.permissionMode)
+                    if (pc.outsideSafeZoneDirectory != null) put("outsideSafeZoneDirectory", pc.outsideSafeZoneDirectory)
                 }
             }
             put("pendingConfirmations", JsonArray(confirmations))

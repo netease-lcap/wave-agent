@@ -34,6 +34,7 @@ object PermissionFlow {
         val suggestedPrefix = ctx?.get("suggestedPrefix")?.jsonPrimitive?.content
         val hidePersistentOption = ctx?.get("hidePersistentOption")?.jsonPrimitive?.content?.toBoolean() ?: false
         val permissionMode = ctx?.get("permissionMode")?.jsonPrimitive?.content
+        val outsideSafeZoneDirectory = ctx?.get("outsideSafeZoneDirectory")?.jsonPrimitive?.content
 
         // JB: ExitPlanMode plan preview lives in the editor-area tab (right column of the chat
         // split pane), not inside the confirmation dialog. Render it before showing the compact
@@ -57,6 +58,7 @@ object PermissionFlow {
             toolInput = toolInput,
             planContent = if (isPlanApproval) null else planContent,
             permissionMode = permissionMode,
+            outsideSafeZoneDirectory = outsideSafeZoneDirectory,
         )
 
         Edt.invokeLater {
@@ -71,6 +73,7 @@ object PermissionFlow {
                     suggestedPrefix = suggestedPrefix,
                     hidePersistentOption = hidePersistentOption,
                     permissionMode = permissionMode,
+                    outsideSafeZoneDirectory = outsideSafeZoneDirectory,
                 ),
             )
         }
@@ -133,6 +136,7 @@ object PermissionFlow {
         suggestedPrefix: String?,
         hidePersistentOption: Boolean,
         permissionMode: String?,
+        outsideSafeZoneDirectory: String?,
     ): JsonObject {
         val planApproval = isPlanApproval(toolName)
         return buildJsonObject {
@@ -144,6 +148,7 @@ object PermissionFlow {
             if (suggestedPrefix != null) put("suggestedPrefix", suggestedPrefix)
             put("hidePersistentOption", hidePersistentOption)
             if (permissionMode != null) put("permissionMode", permissionMode)
+            if (outsideSafeZoneDirectory != null) put("outsideSafeZoneDirectory", outsideSafeZoneDirectory)
         }
     }
 

@@ -1580,4 +1580,89 @@ describe("Confirmation", () => {
       });
     });
   });
+
+  describe("Add session directory option", () => {
+    it("should offer the option for an out-of-zone Write and send newAdditionalDirectory", async () => {
+      const { stdin, lastFrame } = render(
+        <Confirmation
+          toolName="Write"
+          toolInput={{ file_path: "/other/project/a.md" }}
+          hidePersistentOption={true}
+          outsideSafeZoneDirectory="/other/project"
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Yes, and allow all edits in project/ this session",
+        );
+      });
+      // Out-of-zone targets hide the auto-accept option.
+      expect(stripAnsiColors(lastFrame() || "")).not.toContain(
+        "Yes, and auto-accept edits",
+      );
+
+      stdin.write("\u001b[B");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and allow all edits in project/ this session",
+        );
+      });
+
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(mockOnDecision).toHaveBeenCalledWith({
+          behavior: "allow",
+          newAdditionalDirectory: "/other/project",
+        } as PermissionDecision);
+      });
+    });
+
+    it("should not offer the option when the target is inside the Safe Zone", async () => {
+      const { stdin, lastFrame } = render(
+        <Confirmation
+          toolName="Write"
+          toolInput={{ file_path: "/workdir/a.md" }}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
+      });
+      expect(stripAnsiColors(lastFrame() || "")).not.toContain(
+        "Yes, and allow all edits in",
+      );
+
+      stdin.write("\u001b[B");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and auto-accept edits",
+        );
+      });
+    });
+
+    it("should not offer the option for Bash even when a directory is reported", async () => {
+      const { lastFrame } = render(
+        <Confirmation
+          toolName="Bash"
+          toolInput={{ command: "ls /other/project" }}
+          hidePersistentOption={true}
+          outsideSafeZoneDirectory="/other/project"
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
+      });
+      expect(stripAnsiColors(lastFrame() || "")).not.toContain(
+        "Yes, and allow all edits in",
+      );
+    });
+  });
 });

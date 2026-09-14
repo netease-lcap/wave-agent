@@ -117,6 +117,79 @@ describe("Agent Auto-Accept Permissions Integration", () => {
     expect(mockCallback).not.toHaveBeenCalled();
   });
 
+  it("should add a peer directory to the session Safe Zone from the decision", async () => {
+    const mockCallback = vi.fn();
+    const agent = await Agent.create({
+      workdir: tempDir,
+      permissionMode: "default",
+      canUseTool: mockCallback as unknown as PermissionCallback,
+    });
+    activeAgent = agent;
+
+    const toolManager = (agent as unknown as { toolManager: ToolManager })
+      .toolManager;
+    const taskManager = (agent as unknown as { taskManager: TaskManager })
+      .taskManager;
+
+    // A directory outside the working directory (peer of the temp workdir).
+    // Name it after the temp workdir so runs never share it — a leftover file
+    // would make the Write below a no-op and its assertions vacuous.
+    const outsideDir = path.join(
+      path.dirname(tempDir),
+      `wave-outside-zone-${path.basename(tempDir)}`,
+    );
+    await fs.mkdir(outsideDir, { recursive: true });
+    expect(agent.getAdditionalDirectories()).not.toContain(outsideDir);
+
+    // 1. The user approves the operation AND the directory — session-level only,
+    //    nothing is written to settings.local.json.
+    mockCallback.mockResolvedValueOnce({
+      behavior: "allow",
+      newAdditionalDirectory: outsideDir,
+    });
+
+    await toolManager.execute(
+      "Bash",
+      { command: `ls ${outsideDir}` },
+      { workdir: tempDir, taskManager },
+    );
+
+    expect(agent.getAdditionalDirectories()).toContain(outsideDir);
+    const persisted = await fs
+      .readFile(path.join(tempDir, ".wave", "settings.local.json"), "utf-8")
+      .catch(() => "");
+    expect(persisted).not.toContain(outsideDir);
+
+    // 2. That directory is now part of the Safe Zone: the same command is no
+    //    longer out-of-bounds and needs no confirmation.
+    mockCallback.mockClear();
+    await toolManager.execute(
+      "Bash",
+      { command: `ls ${outsideDir}` },
+      { workdir: tempDir, taskManager },
+    );
+    expect(mockCallback).not.toHaveBeenCalled();
+
+    // 3. The label promises "allow all edits in <dir>/ during this session", so
+    //    later edits there are auto-allowed too — without the session-level
+    //    Edit/Write rules `default` mode would prompt for every write.
+    const notesPath = path.join(outsideDir, "notes.md");
+    try {
+      const writeResult = await toolManager.execute(
+        "Write",
+        { file_path: notesPath, content: "hello" },
+        { workdir: tempDir, taskManager },
+      );
+      // Guard against a vacuous pass: the write must actually have happened
+      // (an identical-content no-op skips the permission check entirely).
+      expect(writeResult.success).toBe(true);
+      expect(mockCallback).not.toHaveBeenCalled();
+      await expect(fs.readFile(notesPath, "utf-8")).resolves.toBe("hello");
+    } finally {
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    }
+  });
+
   it("should load persistent rules on startup", async () => {
     // 1. Create a settings.local.json file
     const waveDir = path.join(tempDir, ".wave");

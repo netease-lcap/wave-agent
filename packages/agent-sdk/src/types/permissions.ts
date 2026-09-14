@@ -36,6 +36,8 @@ export interface PermissionDecision {
   newPermissionMode?: PermissionMode;
   /** Signal to persist a new allowed rule */
   newPermissionRule?: string;
+  /** Signal to add a directory to this session's Safe Zone (not persisted) */
+  newAdditionalDirectory?: string;
 }
 
 /** Callback function for custom permission logic */
@@ -57,6 +59,12 @@ export interface ToolPermissionContext {
   suggestedPrefix?: string;
   /** Whether to hide the persistent permission option (e.g., "Don't ask again") in the UI */
   hidePersistentOption?: boolean;
+  /**
+   * Absolute path of the directory holding an out-of-Safe-Zone target, set for
+   * Edit/Write when the target lies outside the Safe Zone. Lets the confirmation
+   * UI offer adding that directory to the session Safe Zone.
+   */
+  outsideSafeZoneDirectory?: string;
   /** The ID of the tool call that triggered this permission request */
   toolCallId?: string;
   /** The content of the plan being exited from */

@@ -82,6 +82,7 @@ export class ChatSession {
       hidePersistentOption?: boolean;
       warning?: string;
       permissionMode?: PermissionMode;
+      outsideSafeZoneDirectory?: string;
     }
   > = new Map();
 
