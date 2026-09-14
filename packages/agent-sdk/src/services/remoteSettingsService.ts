@@ -347,6 +347,7 @@ export function mergeRemoteSettings(
     result.enabledPlugins = remote.enabledPlugins;
   if (remote.enableArtifact !== undefined)
     result.enableArtifact = remote.enableArtifact;
+  if (remote.enableExec !== undefined) result.enableExec = remote.enableExec;
 
   return result;
 }

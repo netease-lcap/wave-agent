@@ -1550,6 +1550,8 @@ export function loadWaveConfigFromFile(
       worktree: config.worktree || undefined,
       enableArtifact:
         config.enableArtifact !== undefined ? config.enableArtifact : undefined,
+      enableExec:
+        config.enableExec !== undefined ? config.enableExec : undefined,
     };
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -1723,6 +1725,11 @@ export function loadMergedWaveConfig(
       mergedConfig.enableArtifact = config.enableArtifact;
     }
 
+    // Merge enableExec (last one wins)
+    if (config.enableExec !== undefined) {
+      mergedConfig.enableExec = config.enableExec;
+    }
+
     // Merge models
     if (config.models) {
       if (!mergedConfig.models) mergedConfig.models = {};
@@ -1770,6 +1777,7 @@ export function loadMergedWaveConfig(
         : undefined,
     worktree: mergedConfig.worktree,
     enableArtifact: mergedConfig.enableArtifact,
+    enableExec: mergedConfig.enableExec,
   };
 }
 

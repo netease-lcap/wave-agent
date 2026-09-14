@@ -11,7 +11,12 @@ import { cronDeleteTool } from "../tools/cronDeleteTool.js";
 import { cronListTool } from "../tools/cronListTool.js";
 import { webFetchTool } from "../tools/webFetchTool.js";
 import { artifactTool } from "../tools/artifactTool.js";
+import { execTool } from "../tools/execTool.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
+import { isExecEnabled } from "../services/execAvailability.js";
+import { buildExecPool } from "../exec/catalog.js";
+import { EXEC_MIN_MCP_TOOLS } from "../exec/constants.js";
+import { EXEC_TOOL_NAME } from "../constants/tools.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
@@ -144,6 +149,14 @@ class ToolManager {
       builtInTools.push(artifactTool);
     }
 
+    // Exec is on by default; enableExec: false restores flat MCP declarations.
+    // Registration is decoupled from declaration: getToolsConfig() only declares
+    // it (and only then collapses the MCP pool) once the pool clears
+    // EXEC_MIN_MCP_TOOLS, which cannot be known until MCP servers have connected.
+    if (isExecEnabled(this.container.get<string>("Workdir"))) {
+      builtInTools.push(execTool);
+    }
+
     for (const tool of builtInTools) {
       if (this.shouldEnableTool(tool.name)) {
         this.toolsRegistry.set(tool.name, tool);
@@ -161,12 +174,14 @@ class ToolManager {
   /**
    * Re-evaluate feature-gated built-in tools after a live configuration
    * reload. Currently gates the Artifact tool on settings.json
-   * `enableArtifact`. Safe to call multiple times: gated tools are removed
-   * from the registry first, then initializeBuiltInTools() re-registers them
-   * only if still enabled (so toggling the flag off actually unregisters).
+   * `enableArtifact` and the Exec tool on `enableExec`. Safe to call multiple
+   * times: gated tools are removed from the registry first, then
+   * initializeBuiltInTools() re-registers them only if still enabled (so
+   * toggling a flag off actually unregisters).
    */
   public reloadFeatureGatedTools(): void {
     this.toolsRegistry.delete(artifactTool.name);
+    this.toolsRegistry.delete(execTool.name);
     this.initializeBuiltInTools();
   }
 
@@ -385,8 +400,25 @@ class ToolManager {
   }): ChatCompletionFunctionTool[] {
     const permissionManager =
       this.container.get<PermissionManager>("PermissionManager");
+
+    // Exec either replaces the flat MCP declarations or is absent: the two must
+    // never coexist, or the model would see the same tool twice while the
+    // catalog claimed to be the only way in. Both halves are derived from the
+    // same pool, and the pool is exactly what the agent could already call
+    // directly, so collapsing it cannot widen access.
+    const execRegistered =
+      this.toolsRegistry.has(EXEC_TOOL_NAME) &&
+      !permissionManager?.isToolDenied(EXEC_TOOL_NAME);
+    const execPool = buildExecPool(this.mcpManager, permissionManager);
+    const collapseMcp = execRegistered && execPool.length >= EXEC_MIN_MCP_TOOLS;
+
     const builtInToolsConfig = Array.from(this.toolsRegistry.values())
       .filter((tool) => {
+        // Below the collapse threshold Exec stays registered but undeclared:
+        // the flat declarations are already cheaper than a catalog.
+        if (tool.name === EXEC_TOOL_NAME && !collapseMcp) {
+          return false;
+        }
         // If tool is explicitly denied by name in permission rules, filter it out
         if (permissionManager?.isToolDenied(tool.name)) {
           return false;
@@ -403,18 +435,18 @@ class ToolManager {
         };
         // Override description with prompt if available
         if (tool.prompt) {
-          config.function.description = tool.prompt(options);
+          config.function.description = tool.prompt({ ...options, execPool });
         }
         return config;
       });
-    const mcpToolsConfig = this.mcpManager
-      .getMcpToolsConfig()
-      .filter((tool) => {
-        if (permissionManager?.isToolDenied(tool.function.name)) {
-          return false;
-        }
-        return true;
-      });
+    const mcpToolsConfig = collapseMcp
+      ? []
+      : this.mcpManager.getMcpToolsConfig().filter((tool) => {
+          if (permissionManager?.isToolDenied(tool.function.name)) {
+            return false;
+          }
+          return true;
+        });
     return [...builtInToolsConfig, ...mcpToolsConfig];
   }
 
