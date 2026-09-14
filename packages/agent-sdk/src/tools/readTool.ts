@@ -298,6 +298,12 @@ Usage:
           source: "read",
           offset, // undefined for full reads
           limit, // undefined for full reads
+          // Retain the raw content only for full reads: it is the diff baseline
+          // for the external-change notification, and partial entries are
+          // excluded from that comparison anyway.
+          ...(offset === undefined && limit === undefined
+            ? { content: fileContent }
+            : {}),
         });
       }
 
