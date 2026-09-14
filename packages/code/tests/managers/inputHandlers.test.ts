@@ -234,7 +234,7 @@ describe("inputHandlers", () => {
   });
 
   describe("cyclePermissionMode", () => {
-    it("should cycle through modes including bypassPermissions", () => {
+    it("should cycle default → acceptEdits → plan → bypassPermissions → default", () => {
       cyclePermissionMode("default", dispatch, callbacks);
       expect(dispatch).toHaveBeenNthCalledWith(1, {
         type: "SET_PERMISSION_MODE",
@@ -247,16 +247,16 @@ describe("inputHandlers", () => {
       cyclePermissionMode("acceptEdits", dispatch, callbacks);
       expect(dispatch).toHaveBeenNthCalledWith(2, {
         type: "SET_PERMISSION_MODE",
-        payload: "bypassPermissions",
-      });
-
-      cyclePermissionMode("bypassPermissions", dispatch, callbacks);
-      expect(dispatch).toHaveBeenNthCalledWith(3, {
-        type: "SET_PERMISSION_MODE",
         payload: "plan",
       });
 
       cyclePermissionMode("plan", dispatch, callbacks);
+      expect(dispatch).toHaveBeenNthCalledWith(3, {
+        type: "SET_PERMISSION_MODE",
+        payload: "bypassPermissions",
+      });
+
+      cyclePermissionMode("bypassPermissions", dispatch, callbacks);
       expect(dispatch).toHaveBeenNthCalledWith(4, {
         type: "SET_PERMISSION_MODE",
         payload: "default",

@@ -6,6 +6,7 @@ import {
   InputAction,
   InputManagerCallbacks,
   isPasteImageKey,
+  permissionModeCycle,
 } from "./inputReducer.js";
 
 export const expandLongTextPlaceholders = (
@@ -136,15 +137,10 @@ export const cyclePermissionMode = (
   dispatch: React.Dispatch<InputAction>,
   callbacks: Partial<InputManagerCallbacks>,
 ) => {
-  const modes: PermissionMode[] = [
-    "default",
-    "acceptEdits",
-    "bypassPermissions",
-    "plan",
-  ];
-  const currentIndex = modes.indexOf(currentMode);
-  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % modes.length;
-  const nextMode = modes[nextIndex];
+  const currentIndex = permissionModeCycle.indexOf(currentMode);
+  const nextIndex =
+    currentIndex === -1 ? 0 : (currentIndex + 1) % permissionModeCycle.length;
+  const nextMode = permissionModeCycle[nextIndex];
 
   callbacks.logger?.debug("Cycling permission mode", {
     from: currentMode,

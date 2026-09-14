@@ -22,8 +22,8 @@ order: 140
 
 1. **假设**系统处于 "default" 模式，**当**用户按下 Shift+Tab 时，**则**系统切换到 "acceptEdits" 模式。
 2. **假设**系统处于 "acceptEdits" 模式，**当**用户按下 Shift+Tab 时，**则**系统切换到 "plan" 模式。
-3. **假设**系统处于 "plan" 模式，**当**用户按下 Shift+Tab 时，**则**系统切换回 "default" 模式（除非启动时启用了 `bypassPermissions`）。
-4. **假设**系统启动时带有绕过标志，**当**用户处于 "plan" 模式并按下 Shift+Tab 时，**则**系统切换到 "bypassPermissions" 模式。
+3. **假设**系统处于 "plan" 模式，**当**用户按下 Shift+Tab 时，**则**系统切换到 "bypassPermissions" 模式。
+4. **假设**系统处于 "bypassPermissions" 模式，**当**用户按下 Shift+Tab 时，**则**系统切换回 "default" 模式（完整循环为 `default` → `acceptEdits` → `plan` → `bypassPermissions` → `default`，与 CLI 循环及 GUI 模式菜单的选项顺序一致）。
 5. **假设**系统切换到 "plan" 模式，**当**模式活动时，**则**在 `~/.wave/plans/` 中确定带有随机英文名称的计划文件路径。
 6. **假设**系统处于 "plan" 模式，**当** LLM 在指定计划文件上使用 `Write` 或 `Edit` 工具时，**则**操作被允许。
 7. **假设**系统处于 "plan" 模式，**当**用户查看 UI 时，**则**有清晰的视觉指示器表明计划模式已激活。

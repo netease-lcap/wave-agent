@@ -47,8 +47,8 @@ describe("Permission Mode Shortcut", () => {
     expect(optionValues).toEqual([
       "default",
       "acceptEdits",
-      "bypassPermissions",
       "plan",
+      "bypassPermissions",
     ]);
     expect(vscode.postMessage).not.toHaveBeenCalledWith({
       command: "setPermissionMode",

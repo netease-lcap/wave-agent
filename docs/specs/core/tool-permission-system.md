@@ -224,7 +224,7 @@ order: 130
 
 **验收场景**：
 
-1. **假设** GUI webview 输入框聚焦且当前为 `default` 模式，**当**用户按下 `Cmd+Shift+M`（macOS）/ `Ctrl+Shift+M`（Windows/Linux）时，**则**打开权限模式菜单（输入框左下角下拉），展示 `default` / `acceptEdits` / `bypassPermissions` / `plan` 四个选项，而非直接切换模式。
+1. **假设** GUI webview 输入框聚焦且当前为 `default` 模式，**当**用户按下 `Cmd+Shift+M`（macOS）/ `Ctrl+Shift+M`（Windows/Linux）时，**则**打开权限模式菜单（输入框左下角下拉），展示 `default` / `acceptEdits` / `plan` / `bypassPermissions` 四个选项（与 CLI Shift+Tab 循环顺序一致），而非直接切换模式。
 2. **假设**权限模式菜单已通过快捷键打开，**当**用户从菜单中选择某个模式（如 `acceptEdits`）时，**则**权限模式更改为该模式且菜单关闭，行为与点击模式按钮打开后选择完全一致。
 3. **假设** GUI webview 输入框聚焦，**当**用户按下 `Shift+Tab` 时，**则**不再循环权限模式，按键落到浏览器默认行为（移动焦点）。
 4. **假设**桌面端用户查看应用菜单栏，**则**「对话」菜单下存在「权限模式…」菜单项并显示对应快捷键，点击菜单项与按快捷键等效，均打开权限模式菜单。
