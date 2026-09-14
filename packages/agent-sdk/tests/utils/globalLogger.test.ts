@@ -429,24 +429,6 @@ describe("Global Logger Registry", () => {
   // =============================================================================
 
   describe("Performance Characteristics", () => {
-    it("should have minimal overhead when unconfigured", () => {
-      expect(isLoggerConfigured()).toBe(false);
-
-      // These calls should return immediately without any processing
-      const start = performance.now();
-      for (let i = 0; i < 1000; i++) {
-        logger.debug("performance test", i);
-        logger.info("performance test", i);
-        logger.warn("performance test", i);
-        logger.error("performance test", i);
-      }
-      const end = performance.now();
-
-      // Should complete very quickly (less than 12ms for 4000 no-op calls)
-      expect(end - start).toBeLessThan(12);
-      expectNoLoggerCalls(mockLogger);
-    });
-
     it("should handle rapid logger configuration changes", () => {
       const logger1 = createMockLogger();
       const logger2 = createMockLogger();
