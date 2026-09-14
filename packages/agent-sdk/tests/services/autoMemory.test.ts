@@ -9,6 +9,18 @@ import * as path from "node:path";
 // Mock fs operations
 vi.mock("node:fs/promises");
 
+// Memory writes route through the atomic writer. Forward it to the mocked
+// node:fs/promises so the existing write-call assertions keep working; the
+// atomic temp-file+rename mechanics are covered by atomicWrite.test.ts.
+vi.mock("@/utils/atomicWrite.js", async () => {
+  const fsp = await import("node:fs/promises");
+  return {
+    atomicWriteFile: vi.fn((filePath: string, data: string) =>
+      fsp.writeFile(filePath, data, "utf-8"),
+    ),
+  };
+});
+
 // Mock gitUtils
 vi.mock("@/utils/gitUtils.js", () => ({
   getGitCommonDir: vi.fn(),

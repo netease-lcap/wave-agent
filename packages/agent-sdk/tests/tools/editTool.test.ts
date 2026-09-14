@@ -17,6 +17,18 @@ const r = (p: string) => path.resolve(WORKDIR, p);
 
 // Mock fs/promises
 vi.mock("fs/promises");
+// Edits route through the atomic writer. Forward it to the mocked fs/promises
+// so the existing write-call assertions keep working; the atomic
+// temp-file+rename mechanics are covered by atomicWrite.test.ts.
+vi.mock("@/utils/atomicWrite.js", async () => {
+  const fsp = await import("fs/promises");
+  return {
+    atomicWriteFile: vi.fn((filePath: string, data: string) =>
+      fsp.writeFile(filePath, data, "utf-8"),
+    ),
+  };
+});
+import { atomicWriteFile } from "@/utils/atomicWrite.js";
 vi.mock("../../src/utils/editUtils.js", () => ({
   escapeRegExp: vi.fn((s) => s.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)),
   analyzeEditMismatch: vi.fn(
@@ -59,6 +71,10 @@ describe("editTool", () => {
     vi.mocked(stat).mockResolvedValue({
       mtime: { getTime: () => 1000 } as Date,
     } as unknown as Awaited<ReturnType<typeof stat>>);
+    // afterEach's resetAllMocks wipes the factory implementation.
+    vi.mocked(atomicWriteFile).mockImplementation(
+      (filePath: string, data: string) => writeFile(filePath, data, "utf-8"),
+    );
   });
 
   afterEach(() => {
@@ -108,6 +124,11 @@ describe("editTool", () => {
     expect(result.filePath).toBe(r("/test/file.js"));
 
     expect(readFile).toHaveBeenCalledWith(r("/test/file.js"), "utf-8");
+    // Routed through the atomic writer (temp file + rename).
+    expect(atomicWriteFile).toHaveBeenCalledWith(
+      r("/test/file.js"),
+      expectedContent,
+    );
     expect(writeFile).toHaveBeenCalledWith(
       r("/test/file.js"),
       expectedContent,

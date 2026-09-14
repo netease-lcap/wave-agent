@@ -19,6 +19,14 @@ import { Container } from "../../src/utils/container.js";
 // Mock fs/promises so the Write tool never touches the real filesystem
 vi.mock("fs/promises");
 
+// The Write tool persists through the atomic writer, which takes its async
+// fs API from the `fs` module rather than `fs/promises`; mock it explicitly so
+// this test stays off the real filesystem (this test asserts isolation, not the
+// write mechanics).
+vi.mock("../../src/utils/atomicWrite.js", () => ({
+  atomicWriteFile: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../src/services/memory.js", () => ({
   MemoryService: vi.fn().mockImplementation(() => ({
     getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
