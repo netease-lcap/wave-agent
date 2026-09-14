@@ -2474,10 +2474,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
 
   // Close one tab: removes it from the open set; closing the active tab falls
-  // back to its left neighbor (PreviewPane closeTab convention); closing the
-  // last tab collapses the whole slot and exits panel fullscreen. Browser-tab
+  // back to its left neighbor (PreviewPane closeTab convention). Browser-tab
   // semantics: closing destroys the instance — re-opening via a link or "＋"
   // creates a fresh one (terminal PTYs / preview guests do not survive close).
+  // Closing the LAST tab takes the slot down with it (spec desktop-panels.md
+  // 场景 10: 关闭最后一个 tab 时右侧面板随之一并收起，不显示空态) — the
+  // "expanded but no tabs" empty state is only ever reached by the user
+  // explicitly expanding the panel, never as the leftover of a close.
   const handleCloseTab = useCallback((tabId: string) => {
     const tabs = tabsRef.current;
     const idx = tabs.findIndex((t) => t.id === tabId);
@@ -2491,6 +2494,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     if (closed.kind === "preview" || next.length === 0) {
       setPreviewFullscreen(false);
     }
+    if (next.length === 0) setPanelExpanded(false);
   }, []);
 
   // Header 面板按钮: expand/collapse the right-hand panel (spec
@@ -2516,6 +2520,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // Header 面板 menu (checkbox per kind). Checking a multi-instance kind opens
   // a fresh tab; unchecking closes ALL tabs of that kind — the checkbox mirrors
   // "any tab of this kind is open" (a single-instance kind has at most one).
+  // Clearing the last remaining tab this way collapses the slot too (same rule
+  // as the tab close button, spec 场景 10).
   const handleTogglePanel = useCallback(
     (kind: DesktopPanelKind) => {
       if (panelDisabledRef.current.includes(kind)) return;
@@ -2529,6 +2535,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         if (kind === "preview" || next.length === 0) {
           setPreviewFullscreen(false);
         }
+        if (next.length === 0) setPanelExpanded(false);
       } else {
         tryOpenPanel(kind);
       }

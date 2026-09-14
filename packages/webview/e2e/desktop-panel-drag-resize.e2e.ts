@@ -163,9 +163,13 @@ test.describe("Desktop panel divider drag (real geometry)", () => {
     const S0 = await slotWidth(page);
     await page.getByTestId("panel-tab-close-diff-1").click();
 
-    // Closing the last tab leaves the slot mounted in its empty state — the
-    // divider handle must stay on the slot's left edge and still drag.
+    // Closing the last tab takes the slot down with it (spec desktop-panels.md
+    // 场景 10 — no empty-state leftover); the user re-enters the empty state by
+    // explicitly expanding the panel again.
+    await expect(page.getByTestId("desktop-panel-slot")).toBeHidden();
+    await page.getByTestId("panel-toggle-btn").click();
     await expect(page.getByTestId("panel-empty-state")).toBeVisible();
+    // The divider handle must sit on the slot's left edge and still drag.
     await expect(page.getByTestId("panel-slot-drag-handle")).toBeVisible();
     const slotBox = (await page
       .getByTestId("desktop-panel-slot")
@@ -193,8 +197,11 @@ test.describe("Desktop panel divider drag (real geometry)", () => {
     const injector = new MessageInjector(page);
     await setupSinglePane(page, injector);
 
-    // Empty state: close the diff tab opened by setup.
+    // Empty state: closing the setup's diff tab collapses the whole slot, so
+    // expand the panel again with no tab open.
     await page.getByTestId("panel-tab-close-diff-1").click();
+    await expect(page.getByTestId("desktop-panel-slot")).toBeHidden();
+    await page.getByTestId("panel-toggle-btn").click();
     await expect(page.getByTestId("panel-empty-state")).toBeVisible();
 
     const itemBoxes = async (): Promise<
