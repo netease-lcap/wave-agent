@@ -23,3 +23,4 @@ export const ENTER_WORKTREE_TOOL_NAME = "EnterWorktree";
 export const EXIT_WORKTREE_TOOL_NAME = "ExitWorktree";
 export const WORKFLOW_TOOL_NAME = "Workflow";
 export const ARTIFACT_TOOL_NAME = "Artifact";
+export const EXEC_TOOL_NAME = "Exec";
