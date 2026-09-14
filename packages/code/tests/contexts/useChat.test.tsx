@@ -712,6 +712,47 @@ describe("ChatProvider", () => {
     expect(decision).toEqual({ behavior: "allow" });
   });
 
+  it("forwards the out-of-Safe-Zone directory to the confirmation UI", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const canUseTool = agentCreateArgs.canUseTool;
+
+    const decisionPromise = canUseTool!({
+      toolName: "Write",
+      toolInput: { file_path: "/other/project/a.md" },
+      permissionMode: "default",
+      hidePersistentOption: true,
+      outsideSafeZoneDirectory: "/other/project",
+    });
+
+    await vi.waitFor(() => {
+      expect(lastValue?.confirmingTool?.outsideSafeZoneDirectory).toBe(
+        "/other/project",
+      );
+      expect(lastValue?.confirmingTool?.hidePersistentOption).toBe(true);
+    });
+
+    lastValue?.handleConfirmationDecision({
+      behavior: "allow",
+      newAdditionalDirectory: "/other/project",
+    });
+    const decision = await decisionPromise;
+    expect(decision).toEqual({
+      behavior: "allow",
+      newAdditionalDirectory: "/other/project",
+    });
+  });
+
   it("handles canUseTool callback rejection", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {

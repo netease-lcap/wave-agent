@@ -2,12 +2,14 @@ import { Key } from "ink";
 import type { PermissionDecision, PermissionMode } from "wave-agent-sdk";
 import {
   BASH_TOOL_NAME,
+  EDIT_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
+  WRITE_TOOL_NAME,
 } from "wave-agent-sdk";
 
 export interface ConfirmationState {
-  selectedOption: "auto" | "bypass" | "allow" | "alternative";
+  selectedOption: "auto" | "bypass" | "allow" | "addDirectory" | "alternative";
   alternativeText: string;
   alternativeCursorPosition: number;
   hasUserInput: boolean;
@@ -30,6 +32,7 @@ export type ConfirmationAction =
       toolInput?: Record<string, unknown>;
       suggestedPrefix?: string;
       hidePersistentOption?: boolean;
+      outsideSafeZoneDirectory?: string;
       permissionMode?: PermissionMode;
     };
 
@@ -96,6 +99,7 @@ export function confirmationReducer(
         toolInput,
         suggestedPrefix,
         hidePersistentOption,
+        outsideSafeZoneDirectory,
         permissionMode,
       } = action;
 
@@ -134,6 +138,16 @@ export function confirmationReducer(
           decision = {
             behavior: "allow",
             newPermissionMode: "bypassPermissions",
+          };
+        } else if (
+          state.selectedOption === "addDirectory" &&
+          outsideSafeZoneDirectory
+        ) {
+          // Approve this operation AND add the out-of-Safe-Zone target
+          // directory to this session's Safe Zone (in-memory only).
+          decision = {
+            behavior: "allow",
+            newAdditionalDirectory: outsideSafeZoneDirectory,
           };
         } else if (state.alternativeText.trim()) {
           decision = {
@@ -176,6 +190,11 @@ export function confirmationReducer(
 
       const availableOptions: ConfirmationState["selectedOption"][] = [];
       availableOptions.push("allow");
+      if (
+        (toolName === EDIT_TOOL_NAME || toolName === WRITE_TOOL_NAME) &&
+        outsideSafeZoneDirectory
+      )
+        availableOptions.push("addDirectory");
       if (!hidePersistentOption) availableOptions.push("auto");
       if (
         toolName === EXIT_PLAN_MODE_TOOL_NAME ||

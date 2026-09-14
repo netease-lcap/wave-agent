@@ -31,6 +31,7 @@ class PermissionFlowTest {
             suggestedPrefix = null,
             hidePersistentOption = false,
             permissionMode = null,
+            outsideSafeZoneDirectory = null,
         )
         assertNull(payload["planContent"], "ExitPlanMode must not send planContent to the webview")
         assertEquals("ExitPlanMode", payload["toolName"]?.jsonPrimitive?.content)
@@ -47,6 +48,7 @@ class PermissionFlowTest {
             suggestedPrefix = null,
             hidePersistentOption = false,
             permissionMode = null,
+            outsideSafeZoneDirectory = null,
         )
         assertEquals(
             "保留在对话框内的计划",
@@ -66,6 +68,7 @@ class PermissionFlowTest {
             suggestedPrefix = "改",
             hidePersistentOption = true,
             permissionMode = "plan",
+            outsideSafeZoneDirectory = "/tmp/other",
         )
         assertEquals("c3", payload["confirmationId"]?.jsonPrimitive?.content)
         assertEquals("计划待确认", payload["confirmationType"]?.jsonPrimitive?.content)
@@ -73,6 +76,7 @@ class PermissionFlowTest {
         assertEquals("改", payload["suggestedPrefix"]?.jsonPrimitive?.content)
         assertTrue(payload["hidePersistentOption"]?.jsonPrimitive?.content?.toBoolean() == true)
         assertEquals("plan", payload["permissionMode"]?.jsonPrimitive?.content)
+        assertEquals("/tmp/other", payload["outsideSafeZoneDirectory"]?.jsonPrimitive?.content)
     }
 
     // ── plan 移到独立标签页：ExitPlanMode 内容路由到计划 tab ──

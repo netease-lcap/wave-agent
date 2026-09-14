@@ -131,6 +131,7 @@ export interface ChatContextType {
     input?: Record<string, unknown>;
     suggestedPrefix?: string;
     hidePersistentOption?: boolean;
+    outsideSafeZoneDirectory?: string;
     planContent?: string;
     permissionMode?: PermissionMode;
     warning?: string;
@@ -143,6 +144,7 @@ export interface ChatContextType {
     planContent?: string,
     permissionMode?: PermissionMode,
     warning?: string,
+    outsideSafeZoneDirectory?: string,
   ) => Promise<PermissionDecision>;
   hideConfirmation: () => void;
   handleConfirmationDecision: (decision: PermissionDecision) => void;
@@ -512,6 +514,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         input?: Record<string, unknown>;
         suggestedPrefix?: string;
         hidePersistentOption?: boolean;
+        outsideSafeZoneDirectory?: string;
         planContent?: string;
         permissionMode?: PermissionMode;
         warning?: string;
@@ -524,6 +527,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       toolInput?: Record<string, unknown>;
       suggestedPrefix?: string;
       hidePersistentOption?: boolean;
+      outsideSafeZoneDirectory?: string;
       planContent?: string;
       permissionMode?: PermissionMode;
       warning?: string;
@@ -536,6 +540,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     toolInput?: Record<string, unknown>;
     suggestedPrefix?: string;
     hidePersistentOption?: boolean;
+    outsideSafeZoneDirectory?: string;
     planContent?: string;
     permissionMode?: PermissionMode;
     warning?: string;
@@ -592,6 +597,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       planContent?: string,
       permissionMode?: PermissionMode,
       warning?: string,
+      outsideSafeZoneDirectory?: string,
     ): Promise<PermissionDecision> => {
       return new Promise<PermissionDecision>((resolve, reject) => {
         const queueItem = {
@@ -599,6 +605,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           toolInput,
           suggestedPrefix,
           hidePersistentOption,
+          outsideSafeZoneDirectory,
           planContent,
           permissionMode,
           warning,
@@ -775,6 +782,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
               context.planContent,
               context.permissionMode,
               context.warning,
+              context.outsideSafeZoneDirectory,
             );
           } catch {
             // If confirmation was cancelled or failed, deny the operation
@@ -1170,6 +1178,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         input: next.toolInput,
         suggestedPrefix: next.suggestedPrefix,
         hidePersistentOption: next.hidePersistentOption,
+        outsideSafeZoneDirectory: next.outsideSafeZoneDirectory,
         planContent: next.planContent,
         permissionMode: next.permissionMode,
         warning: next.warning,

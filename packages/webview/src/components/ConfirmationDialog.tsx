@@ -29,6 +29,12 @@ function getDialogFocusables(dialog: HTMLElement): HTMLElement[] {
   ).filter((el) => el.tabIndex !== -1);
 }
 
+/** Last path segment of a directory path (handles both `/` and `\` separators). */
+function lastPathSegment(dirPath: string): string {
+  const segments = dirPath.split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] ?? dirPath;
+}
+
 /**
  * Radio / Checkbox indicator that matches the Figma design (16×16).
  * - Radio unchecked: hollow ring; checked: accent ring + center dot.
@@ -477,6 +483,24 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     });
   }, [onConfirm, confirmation.confirmationId, restoreFocus]);
 
+  // Approve this operation and add the out-of-Safe-Zone target directory to the
+  // session Safe Zone — in-memory only (the user can persist it via /add-dir
+  // --remember). The SDK also registers session-level Edit/Write rules for that
+  // directory, so later edits there are not prompted again. Only offered when
+  // the host reports such a directory.
+  const handleAddDirConfirm = useCallback(() => {
+    restoreFocus();
+    onConfirm(confirmation.confirmationId, {
+      behavior: "allow",
+      newAdditionalDirectory: confirmation.outsideSafeZoneDirectory,
+    });
+  }, [
+    confirmation.confirmationId,
+    confirmation.outsideSafeZoneDirectory,
+    onConfirm,
+    restoreFocus,
+  ]);
+
   const getAutoOptionText = () => {
     if (confirmation.toolName === BASH_TOOL_NAME) {
       if (confirmation.suggestedPrefix) {
@@ -917,6 +941,22 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                     <span className="btn-text">是，并跳过权限确认</span>
                   </button>
                 )}
+
+                {[EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(
+                  confirmation.toolName,
+                ) &&
+                  !!confirmation.outsideSafeZoneDirectory && (
+                    <button
+                      className="confirmation-btn confirmation-btn-auto"
+                      onClick={handleAddDirConfirm}
+                    >
+                      <span className="btn-text">
+                        {`是，且允许本会话编辑 ${lastPathSegment(
+                          confirmation.outsideSafeZoneDirectory,
+                        )}/`}
+                      </span>
+                    </button>
+                  )}
 
                 {confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME &&
                   confirmation.toolName !== EXIT_PLAN_MODE_TOOL_NAME &&

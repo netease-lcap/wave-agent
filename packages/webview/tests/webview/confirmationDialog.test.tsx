@@ -742,6 +742,88 @@ describe("Confirmation Dialog", () => {
     expect(screen.queryByText("是，并跳过权限确认")).not.toBeInTheDocument();
   });
 
+  it("should offer adding an out-of-Safe-Zone directory to the session Safe Zone", async () => {
+    const { vscode } = renderChatApp();
+    vscode.postMessage.mockClear();
+
+    await act(async () => {
+      sendCommand("showConfirmation", {
+        confirmationId: "test_edit_add_dir",
+        toolName: EDIT_TOOL_NAME,
+        confirmationType: "代码修改待确认",
+        toolInput: {
+          file_path: "/other/project/test.ts",
+          old_string: "old",
+          new_string: "new",
+        },
+        hidePersistentOption: true,
+        outsideSafeZoneDirectory: "/other/project",
+      });
+    });
+
+    // The auto-accept button is hidden out-of-zone, but the add-directory option
+    // names the target's last path segment.
+    expect(screen.queryByText("是，且自动接受修改")).not.toBeInTheDocument();
+    const addDirBtn = screen
+      .getByText("是，且允许本会话编辑 project/")
+      .closest("button");
+
+    await act(async () => {
+      fireEvent.click(addDirBtn as HTMLElement);
+    });
+
+    expect(
+      document.querySelector(".confirmation-dialog"),
+    ).not.toBeInTheDocument();
+    const sentMessages = vscode.postMessage.mock.calls.map((c) => c[0]);
+    expect(sentMessages).toHaveLength(1);
+    expect(sentMessages[0]).toEqual({
+      command: "confirmationResponse",
+      confirmationId: "test_edit_add_dir",
+      approved: true,
+      decision: {
+        behavior: "allow",
+        newAdditionalDirectory: "/other/project",
+      },
+    });
+  });
+
+  it("should not offer the add-directory option when the target is inside the Safe Zone", async () => {
+    renderChatApp();
+
+    await act(async () => {
+      sendCommand("showConfirmation", {
+        confirmationId: "test_edit_inside_zone",
+        toolName: EDIT_TOOL_NAME,
+        confirmationType: "代码修改待确认",
+        toolInput: {
+          file_path: "test.ts",
+          old_string: "old",
+          new_string: "new",
+        },
+      });
+    });
+
+    expect(screen.queryByText(/是，且允许本会话编辑/)).not.toBeInTheDocument();
+  });
+
+  it("should not offer the add-directory option for Bash even if the host sends it", async () => {
+    renderChatApp();
+
+    await act(async () => {
+      sendCommand("showConfirmation", {
+        confirmationId: "test_bash_add_dir",
+        toolName: BASH_TOOL_NAME,
+        confirmationType: "命令执行待确认",
+        toolInput: { command: "ls /other/project" },
+        hidePersistentOption: true,
+        outsideSafeZoneDirectory: "/other/project",
+      });
+    });
+
+    expect(screen.queryByText(/是，且允许本会话编辑/)).not.toBeInTheDocument();
+  });
+
   it("should not show bypass button for Bash tool in plan mode", async () => {
     renderChatApp();
 
