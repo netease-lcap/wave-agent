@@ -49,6 +49,16 @@ function cleanSchema(schema: unknown): unknown {
 }
 
 /**
+ * The flattened name an MCP tool is declared and called under.
+ *
+ * Single source of truth: `McpManager.executeMcpTool` parses names in this
+ * shape back into (server, tool), so every producer must agree exactly.
+ */
+function mcpToolFlatName(serverName: string, toolName: string): string {
+  return `mcp__${serverName}__${toolName}`;
+}
+
+/**
  * Convert MCP tool to OpenAI function tool format
  */
 export function mcpToolToOpenAITool(
@@ -60,7 +70,7 @@ export function mcpToolToOpenAITool(
     unknown
   >;
 
-  const prefixedName = `mcp__${serverName}__${mcpTool.name}`;
+  const prefixedName = mcpToolFlatName(serverName, mcpTool.name);
 
   return {
     type: "function",
@@ -89,7 +99,7 @@ export function createMcpToolPlugin(
     images?: Array<{ data: string; mediaType?: string }>;
   }>,
 ): ToolPlugin {
-  const prefixedName = `mcp__${serverName}__${mcpTool.name}`;
+  const prefixedName = mcpToolFlatName(serverName, mcpTool.name);
   return {
     name: prefixedName,
     config: mcpToolToOpenAITool(mcpTool, serverName),

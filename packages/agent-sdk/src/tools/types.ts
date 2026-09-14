@@ -58,6 +58,11 @@ export interface ToolPlugin {
     availableSkills?: SkillMetadata[];
     workdir?: string;
     isSubagent?: boolean;
+    /**
+     * MCP tools the sandbox may reach, supplied by ToolManager so that `Exec`
+     * can render its catalog. Only `Exec` reads it.
+     */
+    execPool?: import("../exec/catalog.js").ExecPoolEntry[];
   }) => string;
   /**
    * Whether this tool is safe to run in parallel with other tools.
@@ -96,7 +101,7 @@ export interface ToolContext {
   abortSignal?: AbortSignal;
   backgroundTaskManager?: import("../managers/backgroundTaskManager.js").BackgroundTaskManager;
   workdir: string;
-  /** Tool manager instance for tool discovery (used by ToolSearchTool) */
+  /** Tool manager instance, for tools that need to change session tool state */
   toolManager?: import("../managers/toolManager.js").ToolManager;
   /** Permission mode for this tool execution */
   permissionMode?: PermissionMode;
