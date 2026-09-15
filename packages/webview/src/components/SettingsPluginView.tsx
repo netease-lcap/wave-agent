@@ -337,9 +337,21 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
 
   return (
     <div className="settings-view settings-plugin-view">
-      <header className="settings-page-header">
-        <h1>插件市场</h1>
-        <p>浏览并安装插件市场的插件，扩展 Wave 的能力。</p>
+      {/* 页头右侧留操作位（新建市场）；其余设置视图页头仍是「标题 + 说明」两行 */}
+      <header className="settings-page-header settings-plugin-header">
+        <div className="settings-page-header-text">
+          <h1>插件市场</h1>
+          <p>浏览并安装插件市场的插件，扩展 Wave 的能力。</p>
+        </div>
+        {/* 新建市场是全局入口，放页头右上角（设计师 0926 走查） */}
+        <button
+          type="button"
+          className="settings-save-btn settings-plugin-new-market"
+          onClick={() => setNewMarketOpen(true)}
+        >
+          <SettingsAddIcon />
+          新建市场
+        </button>
       </header>
       <section className="settings-section">
         <SettingsTabs
@@ -348,8 +360,7 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
           onChange={setActiveMarket}
           actions={
             <div className="settings-plugin-ops">
-              {/* 更新/移除紧跟市场切换（当前市场的上下文操作）；新建市场是
-                  全局入口，靠右与上方操作分层（对齐原型 .market-ops/.market-add） */}
+              {/* 更新/移除紧跟市场切换，是当前市场的上下文操作 */}
               {activeMarket && (
                 <div className="settings-plugin-market-ops">
                   <button
@@ -378,21 +389,20 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
                   </button>
                 </div>
               )}
-              <button
-                type="button"
-                className="settings-save-btn settings-plugin-new-market"
-                onClick={() => setNewMarketOpen(true)}
-              >
-                <SettingsAddIcon />
-                新建市场
-              </button>
             </div>
           }
         />
 
         {!loading && marketplaces.length > 0 && (
           <div className="settings-plugin-toolbar">
-            <div className="settings-plugin-filters">
+            {/* 形制与新建市场弹窗的分段 tab 一致（设计师 0926 走查）；语义上这是一组
+                筛选开关，故保留 aria-pressed 按钮而不是 role=tab（弹窗那边没有方向键
+                导航，这里换 role 反而是无障碍降级） */}
+            <div
+              className="settings-plugin-filters"
+              role="group"
+              aria-label="插件筛选"
+            >
               {FILTERS.map((f) => (
                 <button
                   key={f.key}

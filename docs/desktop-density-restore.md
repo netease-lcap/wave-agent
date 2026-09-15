@@ -3044,3 +3044,55 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 
 - 未跟踪文件 `packages/webview/prototype/mockShared.ts`、`prototype/pluginMarketMock.ts` 属原型工具链，不在本次提交内。
 - `--cc-*` 角色只在 `[data-host="desktop"]` 内定义，组件里消费必须带 host token 兜底（否则会连带打断 VS Code / JetBrains 宿主）。
+
+---
+
+## 插件市场设置页走查追加批（页头操作位 · 分段 tab · 选中段配色 · 弹窗面角色）
+
+来源 = 设计走查对本页的追加评论（新建市场按钮位置与圆角 / 筛选改用弹窗分段形制 / 选中段配色 / 深色弹窗面是否可角色化）。四轮指示按序实施，逐轮留在工作区，本轮一次性提交。
+
+### 第一处 · 「新建市场」移入页头右上角
+
+- 页头改「标题块 + 右上角操作位」两列：`SettingsPluginView.tsx` 把 `h1 + p` 包进 `.settings-page-header-text`，按钮移到同层；样式只挂**视图修饰类** `.settings-plugin-header`（`display:flex; align-items:flex-start; justify-content:space-between; gap:12px`）。
+- **不能挂在公共 `.settings-page-header` 上**：其余 7 个设置视图的页头是 `h1` + `p` 两个直接子元素，加 `flex` 会让标题与说明并排。泄漏模拟（MCP 服务视图）实测：临时加 `display:flex` 后标题 x=484 / 说明 x=1043 **同排**，故用修饰类把作用域锁死。
+- 按钮圆角 **6px → 8px**（`.settings-plugin-new-market`），并自带 `gap: 4px`（原挂在工具条操作区容器上）；高 32px、配色、字号沿用 D-02 既有档。按钮顶边与 `h1` 顶边差 **0px**，右缘贴页头右界。
+- 侧效：工具条那一行不再折行，其下内容整体**上移 9px**（筛选行 y 201 → 192、首行 263 → 254）。
+
+### 第二处 · 筛选（全部/已安装/未安装）改用弹窗分段形制
+
+- `.settings-plugin-filters` 由胶囊组改为**静态轨道**：`--cc-fill` 面 + `3px` 内衬 + `3px` 间距 + `8px` 圆角，整组 **32px**（= 3×2 内衬 + 26 段高，与右侧 32px 搜索框同高）。
+- `.settings-plugin-chip`：高 26px、`padding: 0 12px`、圆角 6px、13px/500；hover 只提文字色（不在轨道上再叠一层填充面）。
+- 与弹窗分段逐值对照：轨道面 / 圆角 / 内衬 / 间距 / 段圆角一致；弹窗分段的轨道与两段在浅深 × 1440/994 四组下**与改前逐值为同一字符串**（零回归）。
+- 语义**不换** `role=tab`：这是一组筛选开关（保留 `aria-pressed`），弹窗那边本无方向键导航，换 role 会让键盘用户误以为支持 ←/→；改为补 `role="group" aria-label="插件筛选"`。
+
+### 第三处 · 选中段配色（浅色档为白面 + 炭黑字）
+
+- 新增一对角色（`host-desktop.css` 浅深两块）：**`--cc-bg-segment-active` / `--cc-text-segment-active`**
+  - 浅色：`#FFFFFF` / `#1F2329`（白面 + 炭黑字，本组件特殊规范，与主按钮反相）
+  - 深色：`#E0E3E5` / `#191C1E`（浅灰面 + 深字，即上一轮的「反白」）
+  - 两档统一读作「**亮面 + 深字**」。不能用单一既有角色表达：`--cc-text-inverse` 浅色档 = `#FFFFFF`、`--cc-text-primary` 浅色档 = `#1F2329`，而深色档恰好相反，故必须成对立盏。
+- 消费点两处：`.settings-plugin-chip.is-active` 与 `.settings-modal-seg-item.is-active`（同一组件，两处同值）。宿主兜底仍落 `--vscode-button-background` / `--vscode-button-foreground`，非 desktop 宿主外观不变。
+- 对比度：浅色 **15.78:1**、深色 **13.28:1**（≥13:1）；浅色选中面 vs 轨道（`--cc-fill`）ΔL* **4.6**，vs 页底/弹窗体（均 `#FFFFFF`）ΔL* 0 —— 轮廓由轨道给出。**未加投影**（用户明确不需要）。
+- 深色档改前/改后截图**逐像素 0 差异**（未动）；浅色差异只落在选中段矩形内（10.85% / 18.77% 像素）。
+
+### 第四处 · 新增「模态弹窗面」角色 `--cc-bg-modal`
+
+- 背景：深色弹窗原随 `--cc-bg-overlay`（`#232526`）。该角色是菜单 / 气泡 / 确认卡 / 面板共用的 floating 层，深色 `#232526` 是 skill `references/dark-theme.md:11` 的 **Accepted decisions**（2026-09-06 已接受），不能为弹窗改它；故另立一盏，**只喂 `.settings-modal`**。
+- 定义：浅 `#FFFFFF`（与原值同 → 浅色零视觉变化）/ 深 `#181A1B`（= `--cc-bg-navigation`，即用户要的「与侧边导航同色」）。
+- 消费链：`var(--cc-bg-modal, var(--cc-bg-overlay, var(--vscode-editorWidget-background, var(--vscode-dropdown-background))))`；两个弹窗（新建市场 / 选择·更换安装作用域）共用 `.settings-modal`，实测两处同值。
+- 零回归：`--cc-bg-overlay` 及 5 处消费点（`.permission-mode-menu` / `.plus-menu` / `.desktop-remote-browser` / `.history-search-header` / `.confirmation-dialog-inner`）逐值未动；浅色改前/改后截图**逐像素 0 差异**；深色 `#232526 → #181A1B`。
+- 分离度读数（深色，遮罩 `rgba(0,0,0,.4)` 压暗后页底 `#0E1010`）：面 vs 页底 ΔL* 5.4 → **0.0**（同色）；面 vs 压暗页底 ΔL* 10.0 → **4.6**；1px 边框 `#34393C` vs 面 ΔL\* 9.1 → **14.5**（面变暗，边框反而更清楚）。浅色同口径为 36.8，故浅色不易察觉、深色更依赖边框与遮罩。
+- **未做**（用户已明确关闭阴影议题）：阴影 `0 24px 64px rgba(0,0,0,0.22)` 与遮罩 `rgba(0,0,0,0.4)` 仍是字面值，未接 `--cc-shadow-overlay` / `--cc-bg-mask`；深色面也未再抬档。
+
+### 验收
+
+- 探针（Playwright，DPR2，真实 DOM；「改前」用内联 style 复现旧声明，不是历史截图）：`probe-newmarket-header-0916.mjs`、`probe-plugin-seg-0916.mjs`、`probe-modal-role-0926.mjs`、`probe-modal-scope-0926.mjs`、`probe-segment-active-0926.mjs`。
+- axe-core 4.13.0（装在 `/tmp/axe`，未进仓库依赖）：本视图浅深各 **0 违规、0 color-contrast**。
+- `pnpm --filter wave-webview exec tsc --noEmit` exit 0；改前/改后像素 diff 逐组核过（见上）。
+- 其余 7 个设置视图页头零回归（`display: block` + `H1+P` 两行，8/8）。
+
+### 残留（未授权，保持原样，带触发语）
+
+- **弹窗分段整组高 38px**（段高 32px、`padding: 7px 0` + `flex: 1`）与本轮筛选分段整组 32px（段高 26px）**不一致**；skill `.cc-segmented__item` 的 `min-height: 32px` 与弹窗那处一致。触发语：**「弹窗分段也对齐 32」**。
+- skill 回写归属：本轮四处已整理为交接单 **W-15 ~ W-21**（`skill-backfill-0926-for-codex.md`），其余由 codex 执行；其中 W-16 是**覆盖** skill 现有条款 `desktop-theme-bridge.md:29`（该行要求选中胶囊浅深两档都用反白，与本轮浅色档相反）。
+- 确认卡族口径（本体 `--cc-bg-overlay` / 外容器 `--vscode-panel-background` → `#111314`）未动，仅记录。

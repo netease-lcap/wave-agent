@@ -224,6 +224,21 @@
   box-sizing: border-box;
 }
 
+/* 插件市场页头 = 标题块 + 右上角「新建市场」（设计师 0926 走查）。
+   只挂在本视图上：其余设置视图的页头是 h1 + p 两个直接子元素，若把
+   display:flex 加在公共的 .settings-page-header 上，它俩会变成同一行的
+   两个 flex item。 */
+.settings-plugin-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-page-header-text {
+  min-width: 0;
+}
+
 .settings-page-header h1,
 .settings-page-header p {
   margin: 0;
@@ -838,8 +853,15 @@
   gap: 6px;
 }
 
+/* 新建市场（页头右上角，设计师 0926 走查）：8px 圆角；图标与文字间距沿用
+   工具栏操作区的 4px 口径（该口径原挂在 .settings-toolbar-actions 下，
+   按钮移入页头后需自带） */
 .settings-plugin-new-market {
-  margin-left: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 8px;
 }
 
 /* 筛选（全部/已安装/未安装，各带计数）+ 当前市场内搜索 */
@@ -852,41 +874,56 @@
   padding: 12px 0;
 }
 
+/* 插件筛选（全部/已安装/未安装）：与新建市场弹窗的分段 tab 同一形制
+   （.settings-modal-seg 一族：静态轨道 = --cc-fill + 3px 内衬；激活段 =
+   --cc-bg-segment-active 面 + --cc-text-segment-active 字 + 600 字重），
+   设计师 0926 走查指定「也用这个 tab，高度 32px，宽度和现在差不多」。
+   轨道总高 32px：32 = 3px 内衬 ×2 + 26px 段高，与右侧 32px 搜索框同高；
+   段内左右内衬沿用原胶囊的 12px，故整组宽度与改前基本一致。 */
 .settings-plugin-filters {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 3px;
+  height: 32px;
+  padding: 3px;
+  box-sizing: border-box;
+  background: var(--cc-fill, var(--vscode-toolbar-hoverBackground));
+  border-radius: 8px;
 }
 
 .settings-plugin-chip {
   display: inline-flex;
   align-items: center;
-  padding: 5px 12px;
+  height: 26px;
+  padding: 0 12px;
   color: var(--vscode-descriptionForeground);
   background: transparent;
   border: 0;
-  border-radius: 999px;
+  border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
 }
 
 .settings-plugin-chip:hover {
+  /* 分段轨道上的 hover 只提文字色（与 .settings-modal-seg-item 同口径）；
+     原胶囊的填充式 hover 会在轨道上叠成第二层面 */
   color: var(--vscode-foreground);
-  background: var(--vscode-toolbar-hoverBackground);
 }
 
 .settings-plugin-chip.is-active {
-  /* 0915-F-01：反白胶囊必须成对取自同一反白角色 —— 深色下原用
-     --vscode-foreground 作底 + --vscode-badge-foreground 作字，
-     两者在深色分别是 #E5E7E8 / #F8F8F8 → 1.16:1 不可读。
-     现统一 action-primary / action-primary-text（浅深均 ≥13:1）。 */
-  color: var(--cc-action-primary-text, var(--vscode-button-foreground));
-  background: var(--cc-action-primary, var(--vscode-button-background));
+  /* 设计师 0926 追加指示：浅色档 = 白面 + 炭黑字（这个组件的特殊规范，与主按钮反相）；
+     深色档 = 主按钮档（浅灰面 + 深字，即上一轮定的「反白」），两档都由
+     --cc-bg-segment-active / --cc-text-segment-active 一对角色管（写在 host-desktop.css）。
+     浅色 #1F2329/#FFFFFF 实测 15.78:1、深色 #191C1E/#E0E3E5 13.28:1（≥13:1）。
+     宿主回退仍落到 button 变量，非 desktop 宿主外观不变。 */
+  color: var(--cc-text-segment-active, var(--vscode-button-foreground));
+  background: var(--cc-bg-segment-active, var(--vscode-button-background));
+  font-weight: 600;
 }
 
 .settings-plugin-chip.is-active .settings-tab-count {
-  /* 反白面内的计数继承同一组配对（透明底 + 继承文字色），不再二次反相 */
+  /* 激活段内的计数继承同一文字色（透明底），不再二次反相 */
   color: inherit;
   background: transparent;
 }
@@ -1054,11 +1091,14 @@
   overflow-y: auto;
   padding: 22px 24px 20px;
   color: var(--vscode-foreground);
-  /* 0915-D-06：弹窗面接入产品浮层角色（原 --vscode-editorWidget-background
-     是编辑器面：浅 #FAFAFD / 深 #202020） */
+  /* 0915-D-06：弹窗面接入产品语义角色（原 --vscode-editorWidget-background
+     是编辑器面：浅 #FAFAFD / 深 #202020）。
+     0926：改取新增的「模态弹窗面」角色（浅 #FFFFFF / 深 #181A1B）——深色底下
+     弹窗与侧边导航同色。不能改共享的 --cc-bg-overlay：那是菜单/气泡/确认卡共用
+     的 floating surface，深色档 #232526 是 dark-theme.md:11 的已接受决策。 */
   background: var(
-    --cc-bg-overlay,
-    var(--vscode-editorWidget-background, var(--vscode-dropdown-background))
+    --cc-bg-modal,
+    var(--cc-bg-overlay, var(--vscode-editorWidget-background, var(--vscode-dropdown-background)))
   );
   border: 1px solid var(--cc-settings-border-light);
   border-radius: 12px;
@@ -1127,15 +1167,11 @@
 }
 
 .settings-modal-seg-item.is-active {
-  color: var(--vscode-foreground);
-  /* 0915-D-06：激活段与弹窗面同为浮层面（原两者共用 editorWidget 值，
-     此处同步改为 --cc-bg-overlay 以保持「激活段=弹窗面」的相对关系） */
-  background: var(
-    --cc-bg-overlay,
-    var(--vscode-editorWidget-background, var(--vscode-dropdown-background))
-  );
+  /* 与筛选分段同一对角色（--cc-bg-segment-active / --cc-text-segment-active）：
+     浅色白面 + 炭黑字 / 深色浅灰面 + 深字。弹窗本体的面是 --cc-bg-modal，未动。 */
+  color: var(--cc-text-segment-active, var(--vscode-button-foreground));
+  background: var(--cc-bg-segment-active, var(--vscode-button-background));
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .settings-modal-row {
