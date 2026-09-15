@@ -18,6 +18,7 @@ import {
   EXEC_SEARCH_CALL,
 } from "./constants.js";
 import { EXEC_WORKER_SOURCE } from "./workerSource.js";
+import { renderToolSignature } from "./catalog.js";
 import type { ExecPoolEntry } from "./catalog.js";
 
 export interface RunExecOptions {
@@ -84,7 +85,18 @@ async function handleExecCall(
         (entry.description ?? "").toLowerCase().includes(query)
       );
     });
-    return { content: JSON.stringify(matches) };
+    // Return the same rendered signature the catalog shows, not the raw schema,
+    // so a hit can be copied verbatim into a call. Rendering is done on the
+    // matched entries only, never the whole pool.
+    return {
+      content: JSON.stringify(
+        matches.map((entry) => ({
+          name: entry.name,
+          description: entry.description,
+          signature: renderToolSignature(entry),
+        })),
+      ),
+    };
   }
 
   if (!pool.has(name)) {

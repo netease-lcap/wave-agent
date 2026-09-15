@@ -2,7 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 import type { ChatCompletionFunctionTool } from "openai/resources.js";
 import { execTool } from "../../src/tools/execTool.js";
 import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
-import { EXEC_RESERVED_NAMESPACE } from "../../src/exec/constants.js";
+import {
+  EXEC_RESERVED_NAMESPACE,
+  EXEC_DEFAULT_CATALOG_TOKENS,
+} from "../../src/exec/constants.js";
 import type { McpManager } from "../../src/managers/mcpManager.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
@@ -57,6 +60,15 @@ function pool(...names: string[]): ExecPoolEntry[] {
   return names.map((name) => ({ name, description: `${name} description` }));
 }
 
+/** Matches the catalog budget being spelled out in model-visible text. */
+function budgetForm(): RegExp {
+  return new RegExp(
+    `(?:${EXEC_DEFAULT_CATALOG_TOKENS}\\s*(?:tokens?|budget)` +
+      `|(?:tokens?|budget)\\s*[:=]?\\s*${EXEC_DEFAULT_CATALOG_TOKENS})`,
+    "i",
+  );
+}
+
 describe("execTool declaration", () => {
   it("is named Exec and takes a required code string", () => {
     expect(execTool.name).toBe(EXEC_TOOL_NAME);
@@ -76,8 +88,49 @@ describe("execTool declaration", () => {
     const description = execTool.prompt!({ execPool: pool("mcp__srv__a") })!;
     expect(description).toContain(`tools["${EXEC_RESERVED_NAMESPACE}"].search`);
     // Budgets live in constants.ts and must stay out of model-visible text, or
-    // changing one would change the prompt for an unchanged pool.
-    expect(description).not.toMatch(/\d{3,}/);
+    // changing one would change the prompt for an unchanged pool. Assert on the
+    // budget-denoting form rather than on any bare number: the catalog now
+    // renders field-level docs, so legitimate numbers (a field's @default) are
+    // expected in the text.
+    expect(description).not.toMatch(budgetForm());
+  });
+
+  it("renders field-level docs from the pool into the description", () => {
+    const description = execTool.prompt!({
+      execPool: [
+        {
+          name: "mcp__srv__a",
+          description: "A tool",
+          inputSchema: {
+            type: "object",
+            properties: {
+              timeout: {
+                type: "number",
+                description: "how long to wait",
+                default: 30000,
+              },
+            },
+            required: [],
+          },
+        },
+      ],
+    })!;
+
+    expect(description).toContain(
+      [
+        "tools.mcp__srv__a({",
+        "  /**",
+        "   * how long to wait",
+        "   * @default 30000",
+        "   */",
+        "  timeout?: number,",
+        "})",
+      ].join("\n"),
+    );
+    // ...and that numeric default is exactly what the bare-number form would
+    // have rejected, which is why the assertion above is form-based.
+    expect(description).toMatch(/\d{3,}/);
+    expect(description).not.toMatch(budgetForm());
   });
 
   it("renders the catalog for the supplied pool", () => {

@@ -166,6 +166,48 @@ describe("runExecScript — the bridge", () => {
     });
   });
 
+  it("returns the rendered signature rather than the raw JSON Schema", async () => {
+    // The point of search is that the model can copy the result verbatim into a
+    // call, so the entry must carry the same rendering the catalog uses — and
+    // must not leak the schema object itself.
+    const pool = [
+      {
+        name: "mcp__srv__sum",
+        description: "Add numbers",
+        inputSchema: {
+          type: "object",
+          properties: {
+            a: { type: "number", description: "first addend" },
+            b: { type: "number" },
+          },
+          required: ["a", "b"],
+        },
+      },
+    ];
+    const result = await run(
+      `
+        const found = await tools["$codemode"].search({ query: "sum" });
+        return JSON.parse(found.content);
+      `,
+      { pool },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(result.value!)).toEqual([
+      {
+        name: "mcp__srv__sum",
+        description: "Add numbers",
+        signature: [
+          "tools.mcp__srv__sum({",
+          "  /** first addend */",
+          "  a: number,",
+          "  b: number,",
+          "})",
+        ].join("\n"),
+      },
+    ]);
+  });
+
   it("rejects arguments that are not a plain object", async () => {
     const result = await run(`
       try {
