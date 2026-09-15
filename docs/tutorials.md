@@ -8,13 +8,13 @@ title: 教程 & 最佳实践
 
 本文面向实际研发场景，整理并推荐了一组可直接应用于日常开发流程的 Agent 工具——既有开箱即用的 Skill（技能），也有 MCP 服务器与 LSP 等能力。分别针对具体任务提供明确的能力边界与使用场景说明，帮助你在不同阶段选择合适的工具，提高开发效率。
 
-CodeWave IDE 的能力主要来自**内置**（开箱即用，无需安装）与**插件市场**（在对话中输入 `/plugin` 打开插件市场，搜索插件名并安装）两部分，涵盖 Skill（技能）、MCP 服务器与 LSP 等。其中技能由 AI 根据任务描述自动匹配调用，也可以显式点名或用 `/技能名` 直接触发；MCP / LSP 安装后由 AI 按需自动调用。
+CodeWave IDE 的能力主要来自**内置**（开箱即用，无需安装）与**插件市场**（在对话中输入 `/plugin` 打开插件市场，搜索插件名并安装）两部分，涵盖 Skill（技能）、MCP 服务器与 LSP 等。其中技能由 AI 根据任务描述自动匹配调用，也可以显式点名或用 `/技能名` 直接触发；MCP / LSP 安装后由 AI 按需自动调用。此外，`gh` / `glab` 这类平台 CLI 工具装好并认证后，AI 可直接驱动它们完成 PR / MR 相关操作，推荐一并配置。
 
 ### 1. 需求与规划
 
 这一阶段的重点是：把模糊的想法变成清晰的规格，让后续编码有据可依。
 
-- **SDD（内置）**——规格驱动开发：把需求自动整理成功能规格说明（用户故事 + 验收场景），内置校验脚本统计规格完整性。SDD 插件默认关闭，先在「设置 → 项目设置」启用「SDD」开关（写入项目 .wave/settings.json）。
+- **SDD（内置）**——规格驱动开发：把模糊需求自动整理成功能规格说明（用户故事 + 验收场景），内置校验脚本统计规格完整性，并用单选衔接「技术方案（可选）→ 编码」。SDD 插件默认关闭，先在「设置 → 项目设置」启用「SDD」开关（写入项目 .wave/settings.json）。
   - 场景：新功能从想法到可执行规格的全过程。
   - 示例："把'支付模块改造'的需求写成规格说明，先 clarify 一下有哪些歧义。"
 - **/plan（内置）**——进入计划模式：AI 只允许修改计划文件（`.wave/plans/` 目录），用于协作制定和完善开发计划，不直接改动项目代码。`/plan` 查看当前计划，`/plan <描述>` 切换计划模式并立即开始规划。
@@ -25,9 +25,6 @@ CodeWave IDE 的能力主要来自**内置**（开箱即用，无需安装）与
 
 进入编码阶段，以下技能帮助你设计高质量方案并落地实现。
 
-- **superpowers**（插件市场）——AI 编程核心技能库，收录了经过验证的工程实践：`brainstorming`（动手前先探索需求与设计）、`test-driven-development`（TDD 红-绿-重构）、`writing-plans`（写实施计划）、`systematic-debugging`（系统化调试）等。
-  - 场景：复杂功能设计、需要严格测试驱动的开发、反复出 bug 的疑难问题。
-  - 示例："用 brainstorming 先帮我理清这个功能的方案"；"用 test-driven-development 实现用户注册接口"。
 - **frontend-design**（插件市场）——创建独特的、生产级的前端界面，避免千篇一律的"AI 风格"。
   - 场景：网页、着陆页、海报、React 组件等一切需要视觉设计的界面。
   - 示例："做一个分享海报"。
@@ -39,6 +36,9 @@ CodeWave IDE 的能力主要来自**内置**（开箱即用，无需安装）与
 
 写完之后，用这一组技能把代码打磨干净并安全合入。
 
+- **gh / glab（CLI 工具）**——GitHub CLI 与 GitLab CLI，分别对应 GitHub 与 GitLab / 内部 GitLab 仓库。安装并认证（`gh auth login` / `glab auth login`）后，AI 可以直接创建与查看 PR / MR、发表审查评论、查询 CI 状态，不必再手工复制粘贴链接；内置的 `code-review` 与插件市场的 `commit-skills`（提交、推送 MR/PR、等待合并）都依赖它们。
+  - 场景：提交后自动开 PR / MR、按审查意见逐条回复、盯 CI 与合并状态。
+  - 示例："把这次改动推上去开个 MR，并回复刚才的审查意见。"
 - **code-review**（内置）——审查当前 diff，按力度查找正确性 bug 与简化机会，并直接给出修改建议。
   - 场景：提交前的自查、合并请求评审。
   - 示例："用 code-review 审查这次改动。"（`/code-review` 直接触发）
@@ -51,14 +51,12 @@ CodeWave IDE 的能力主要来自**内置**（开箱即用，无需安装）与
 
 ### 4. 测试与调试
 
-- **systematic-debugging**（superpowers 插件市场）——遇到 bug 时先诊断根因再修复，避免盲试。
-  - 场景：任何疑难 bug、测试失败、意外行为。
-  - 示例："用 systematic-debugging 排查这个偶发超时问题。"
-- **chrome-devtools**（插件市场）——Chrome DevTools Protocol MCP 服务器，支持浏览器自动化：页面导航、元素检查、截图、网络请求监控、控制台执行。
+- **先诊断再修复（提示词实践）**——遇到 bug 时明确要求 AI 先定位根因、给出证据，再动手改，避免盲试；新功能先用测试驱动，先写能复现的失败用例，实现后再确认转绿。
+  - 场景：疑难 bug、测试失败、易回归的核心逻辑。
+  - 示例："先写一个能复现这个偶发超时的测试，再修到它转绿。"
+- **Playwright CLI**（命令行工具）——通过 Bash 直接驱动真实浏览器：页面导航、抓取可交互元素快照、点击、填充、执行脚本与断言。命令按需取数，不必把工具 schema 与整棵页面无障碍树塞进上下文，**比 MCP 方案更省 token**（安装：`npm install -g @playwright/cli@latest`）。
   - 场景：Web 应用端到端验证、抓取接口请求、复现前端问题。
-  - 示例："用 chrome-devtools 打开本地页面，检查登录流程的接口请求。"
-- **test-driven-development**（superpowers 插件市场）——见上文，实现功能前先写测试，用测试驱动设计与验证。
-  - 场景：核心逻辑、易回归模块的新功能。
+  - 示例："用 playwright-cli 打开本地页面，检查登录流程的接口请求。"（详见[第四部分](#四、实现网页自动化测试)）
 
 ### 5. 文档与知识沉淀
 
@@ -92,7 +90,7 @@ CodeWave IDE 的能力主要来自**内置**（开箱即用，无需安装）与
   - 场景：调整模型、配置钩子、注册 MCP 服务。
   - 示例：`/settings 帮我加一个 PreToolUse 钩子`
 
-> 提示：技能支持叠加使用——例如先用 `brainstorming` 理清方案，再用 `frontend-design` 实现界面；先用 SDD 写好规格，再用 `test-driven-development` 落地。描述任务时直接说明目标，AI 会自动匹配合适的技能。
+> 提示：能力支持叠加使用——例如先用 SDD 把需求写成规格，再用 `frontend-design` 实现界面，最后用 `commit-skills` 走完提交到合并的流程（依赖 `gh` / `glab` 完成实际的 PR / MR 操作）。描述任务时直接说明目标，AI 会自动匹配合适的能力。
 
 ---
 
@@ -236,31 +234,50 @@ _确认后重新汇入实现流程：任务列表展示「更新功能规格」�
 
 ## 四、实现网页自动化测试
 
-功能验证与回归测试是保证页面质量的关键。通过 MCP，CodeWave IDE 可以连接浏览器自动化工具，让 AI 直接驱动真实浏览器完成"打开页面 → 操作元素 → 校验结果"的自动化测试，并把结论整理成测试报告。
+功能验证与回归测试是保证页面质量的关键。CodeWave IDE 可以让 AI 直接驱动真实浏览器完成"打开页面 → 操作元素 → 校验结果"的自动化测试，并把结论整理成测试报告。
 
-本教程以官方市场内置的 **chrome-devtools** MCP（Chrome DevTools Protocol）为例，演示完整的网页自动化测试流程。
+本教程推荐 **Playwright CLI**（`playwright-cli`）：它由 AI 通过 Bash 工具直接调用，无需安装插件或配置 MCP；命令简短、只在需要时抓取页面数据，**不必把工具 schema 与整棵页面无障碍树塞进模型上下文，因此比 MCP 方案更省 token**。
 
-> **推荐补充**：除 MCP 方案外，**Playwright CLI**（`playwright-cli`）同样极力推荐——无需安装插件或配置 MCP，AI 通过 Bash 工具直接驱动真实浏览器：打开页面、抓取可交互元素快照、点击、填充、执行脚本与断言，而且更省 token。
+### 1. 安装 Playwright CLI
 
-### 1. 安装 chrome-devtools 插件
+```bash
+npm install -g @playwright/cli@latest   # 需要 Node.js 18+
+playwright-cli --help                   # 确认安装成功
+```
 
-chrome-devtools 已内置在官方插件市场，无需手动配置 MCP：打开「设置 → 插件市场」，搜索 chrome-devtools，点击行内「安装」并选择安装作用域，一键安装。安装后 MCP 服务器自动注册并连接。
+可选：把它的用法安装成技能，AI 会自动匹配加载（写入项目 `.agents/skills/`，Wave 会识别该目录）：
 
-![插件市场安装 chrome-devtools](/screenshots/desktop-plugin-chrome-devtools.webp)
+```bash
+playwright-cli install --skills=agents
+```
 
-也可以在对话中输入 `/plugin` 直接打开插件市场，搜索 chrome-devtools 完成安装。如需自定义启动参数，仍可在设置 → MCP 中手动添加，更多配置方式见 [桌面版文档 - MCP](/desktop#_5-1-mcp)。
+不装技能也可以——直接让 AI 读 `playwright-cli --help` 自己上手。
 
 ### 2. 对话驱动自动化测试
 
-安装完成后，直接用自然语言描述测试目标即可。AI 会通过 chrome-devtools MCP 驱动浏览器执行操作——支持打开页面、填写表单、点击元素、截图、检查控制台日志等。
+直接用自然语言描述测试目标即可。AI 会用 `open` 打开页面、`snapshot` 抓取可交互元素快照（每个元素带 `ref`）、再用 `fill` / `click` / `select` / `press` 操作元素，最后用 `screenshot` / `eval` 校验结果：
 
 > 打开登录页 https://example.com/login，填写账号密码点击登录，检查是否跳转成功并截图，最后把测试结论写成 test-report.md
 
-AI 依次执行：打开页面（`navigate`）→ 填写表单（`fill`）→ 截图校验（`screenshot`）→ 汇总结论并写入测试报告：
+对应的命令大致如下：
 
-![网页自动化测试](/screenshots/desktop-chrome-devtools.webp)
+```bash
+playwright-cli open https://example.com/login --browser chrome
+playwright-cli snapshot          # 拿到页面上各元素的 ref
+playwright-cli fill e3 "dev@example.com"
+playwright-cli fill e4 "******"
+playwright-cli click e5
+playwright-cli screenshot        # 校验渲染结果并留证
+```
 
-**首次调用需授权**：MCP 工具首次使用时弹出权限确认，勾选「总是允许」后存为信任规则，后续调用免确认。
+几个容易踩的点：
+
+- **ref 每次都变**：页面一变就重新 `snapshot`，不要复用旧 ref。
+- **本地服务优先用 `127.0.0.1`**：部分环境下 `localhost` 会连接异常。
+- **`--headed` 可以看着浏览器跑**（调试时好用）；`--device "iphone 15"` / `--mobile` 用于移动端视口校验。
+- 快照文件默认落在当前目录的 `.playwright-cli/`。
+
+> Bash 命令首次执行时可能弹出权限确认，勾选「总是允许」后存为信任规则，后续免确认。
 
 ### 3. 常用测试指令
 
