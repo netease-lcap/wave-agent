@@ -13,9 +13,8 @@ This is a pnpm monorepo focused on AI-powered development tools.
 - **`packages/jetbrains`**: JetBrains plugin (Gradle/Kotlin), reuses the `packages/webview` UI.
 - **`packages/desktop`**: Electron desktop app, reuses the `packages/webview` UI and drives the CLI via stdio.
 - **`packages/webview-fixtures`**: Shared host→webview message contract fixtures consumed by the webview, VS Code, JetBrains, and desktop test suites. Rebuild after edits: `pnpm -F wave-webview-fixtures build`.
-- **`packages/vsce`**: Not a real package — contains only a synced `webview/` build artifact; the VS Code extension source lives in `packages/vscode`.
 - **`docs/`**: VitePress documentation site.
-- **`docs/specs/`**: Contains feature specifications grouped by topic (e.g., `docs/specs/ui/slash-commands.md`). These are the source of truth for feature design and implementation tasks, and are rendered into the docs site.
+- **`docs/specs/`**: Feature specifications grouped by topic (e.g., `docs/specs/ui/slash-commands.md`). See "Specs & Spec-First Workflow" below.
 - **`.wave/rules/`**: Modular memory rules scoped to specific paths or tasks.
 
 ### Key Dependencies
@@ -26,6 +25,24 @@ This is a pnpm monorepo focused on AI-powered development tools.
 - `packages/jetbrains` consumes the `packages/webview` build output.
 - `packages/desktop` consumes the `packages/webview` build output and spawns the `wave --stdio` CLI (from `packages/code`).
 - **Important**: After modifying `agent-sdk` or `webview`, you MUST rebuild them (`pnpm -F wave-agent-sdk build` / `pnpm -F wave-webview build`) before the changes are available to dependent packages.
+
+### Agent SDK Internals (`packages/agent-sdk`)
+
+The SDK _is_ the product — every host (CLI, VS Code, JetBrains, desktop) drives the same `Agent`. When the question is "why did the model see / do X", the answer is usually in one of these:
+
+- **`Agent` (`src/agent.ts`)**: constructed only via `Agent.create(options)` (the constructor is private). It stands up a lightweight DI `Container` (`utils/container.ts` + `utils/containerSetup.ts`) and pulls the managers/services out of it. `sendMessage()` queues when busy, else delegates to `InteractionService`.
+- **Turn loop (`managers/aiManager.ts`)**: `sendAIMessage()` runs a `while (true)` loop — pin the per-turn config snapshot → call the model (`services/aiService.ts`) → if `tool_calls` came back: PreToolUse hook → `toolManager.execute()` → PostToolUse hook → loop again until the model stops calling tools.
+- **Tools (`managers/toolManager.ts`, `src/tools/`)**: each built-in tool is a `ToolPlugin` (`src/tools/types.ts`) registered via `toolManager.register()`; names/limits live in `src/constants/`.
+- **Permissions (`managers/permissionManager.ts`)**: `PermissionMode = default | acceptEdits | plan | dontAsk | bypassPermissions` (`src/types/permissions.ts`). `checkPermission()` is the single gate; the mode resolves CLI override > configured > `default`.
+- **Memory (`services/memory.ts`)**: three scopes — project `<workdir>/AGENTS.md` (falls back to `CLAUDE.md`), user `~/.wave/AGENTS.md`, and auto-memory `~/.wave/projects/<git-common-dir>/memory/MEMORY.md` (only the first 200 lines load; keyed by git common dir so worktrees share it). Writes go through `utils/atomicWrite.ts`.
+- **Config chain**: `services/configurationService.ts` + `utils/configPaths.ts`. Effective order: override > `AgentOptions` > Remote > `<workdir>/.wave/settings.local.json` > `<workdir>/.wave/settings.json` > `~/.wave/settings.json`. Per-session env vars are snapshotted (no `process.env` pollution). Hot reload is `LiveConfigManager` + `services/fileWatcher.ts`; each turn pins a snapshot.
+- **Host transport (`src/stdio/`)**: `StdioAgent` mirrors the `Agent` API over JSON-RPC with a `sessionId` on every call; `NotificationRouter` demuxes notifications by session. Exported as `wave-agent-sdk/stdio` and used by the VS Code extension and desktop app.
+- **Build**: `pnpm -F wave-agent-sdk build` = `tsc` → `dist/` (per-file ESM + `.d.ts`, no bundling). Dependents import `dist/`, so rebuild after any SDK edit.
+
+### Webview Internals (`packages/webview`)
+
+- `src/index.tsx` branches on the injected `window.waveHostType === "desktop"` → `DesktopApp`, else `ChatApp`. `DesktopApp` owns the desktop pane list / workdir and delegates rendering to `ChatApp`.
+- `ChatApp.tsx` is the reducer host (`useReducer(chatReducer, ...)`, `src/reducers/chatReducer.ts`) — the single `ChatState`/`ChatAction` for messages, tasks, sessions, confirmations, permissionMode, etc. Host↔webview traffic is a flat `command`-discriminated `postMessage` protocol.
 
 ## 🛠 Development Commands
 
@@ -46,10 +63,22 @@ Always use `pnpm` as the package manager.
   - **Caution**: for `agent-sdk` and `code`, `pnpm test` includes `tests/integration/` + `*.integration.test.ts` files that hit real external dependencies (git/spawn/hook/filesystem — no real LLM calls; AI paths are mocked). Use `test:unit` to skip them.
 - **Testing Framework**: Vitest.
 
+Test layers, ordered fast→slow (the PR gate only runs unit + demo; the rest are post-merge):
+
+| Layer            | Where                                                      | Command                                                                                    |
+| ---------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Unit             | `*.test.ts` / `*.test.tsx`                                 | `pnpm -F <pkg> test:unit` — what PR CI gates                                               |
+| Integration      | `tests/integration/**`, `*.integration.test.ts`            | `pnpm run test:integration` (real git/spawn/fs, no LLM)                                    |
+| Webview e2e      | `packages/webview/e2e/*.e2e.ts` (real Chromium)            | `pnpm -F wave-webview run test:e2e`                                                        |
+| Demo/screenshots | `packages/webview/demo/*.demo.ts`                          | `pnpm -F wave-webview run test:demo` (also regenerates docs screenshots)                   |
+| Real-host        | `packages/desktop/tests/integration/*.integration.test.ts` | `pnpm -F wave-desktop run test:realhost` (real `DesktopHost` ↔ real `wave --stdio` child) |
+
 ### Linting
 
 - **Lint all**: `pnpm lint`
 - **Format**: `pnpm exec prettier --write .`
+- **Pre-commit** (`.husky/pre-commit`): runs `pnpm run type-check`, then `lint-staged` (prettier `--write` on staged code/json/md), then — only if a staged path is under `docs/` — `scripts/check-docs-links.mjs` + `scripts/check-sidebar-anchors.mjs`. Hooks install via `pnpm install` (`prepare` → husky).
+- **Webview command contract**: `pnpm run audit:commands` statically verifies every webview→host `command` literal is registered in all four host routers (this is the `webview-command-audit` CI job).
 
 ### CI Parity & Release
 
@@ -114,3 +143,22 @@ Known legacy hotspots (duplication not yet deduplicated — check **both** copie
 - **Unit tests**: Vitest in `tests/` — `pnpm -F wave-vscode test`
 - **E2E tests**: real-browser Playwright tests in `packages/webview/e2e/` (`.e2e.ts`, requires Chromium) — `pnpm -F wave-webview run test:e2e`
 - **Demo/screenshot tests**: screenshot-only Playwright tests in `packages/webview/demo/` (`.demo.ts`); `pnpm -F wave-webview run test:demo` runs the `demo` project and regenerates the gitignored screenshots under `docs/public/screenshots/` (the `e2e` project has its own `test:e2e`)
+
+## 🖥 CLI (`packages/code`)
+
+React Ink terminal app. `src/index.ts` is the yargs entry; it dispatches to one of several run modes:
+
+- `src/cli.tsx` — interactive TUI (`render(<App/>)`), the default.
+- `src/print-cli.ts` — non-interactive `-p/--print`.
+- `src/stdio-cli.ts` + `src/stdio/` — JSON-RPC server over stdin/stdout (what the desktop app spawns as `wave --stdio`).
+- `src/daemon-cli.ts` + `src/daemon/` — background daemon on a Unix socket (`~/.wave/daemon.sock`).
+
+The `Agent` is constructed in `src/contexts/useChat.tsx` (it imports `wave-agent-sdk`, wires `AgentCallbacks`, and owns send/compact/queue state) — unlike the desktop app, which spawns the CLI and talks JSON-RPC. Slash commands are declared in `src/constants/commands.ts` (`AVAILABLE_COMMANDS`) with handling in `useChat.tsx`; the input state machine is `src/managers/inputReducer.ts` + `inputHandlers.ts`. Note `src/utils/logger.ts` writes to a log file, not stdout — stdout belongs to the Ink UI (don't `console.log` in CLI code).
+
+## 📐 Specs & Spec-First Workflow
+
+`docs/specs/` is the **source of truth for feature design** (and is rendered into the docs site). Update the spec — and get it confirmed — _before_ implementing a requirement change; the spec is design, not a changelog.
+
+- Grouped by topic under `core/`, `ui/`, `desktop/`, `multi-agent/`, `ecosystem/`, `automation/`, `enterprise/`. Frontmatter carries `name` / `description` / `order`; the H1 is `# 功能规格说明：<name>`.
+- A spec needs a `## 用户场景与测试` section with user stories (`### 用户故事：…`) and acceptance scenarios (numbered `N. **假设** … **当** … **则** …`).
+- Counts + template warnings come from `docs/.vitepress/spec-stats.mjs` (consumed by `docs/specs/specs.data.js` → `docs/specs/index.md`). Prefer targeted edits to an existing spec over whole-file rewrites, and re-run the stats after editing.
