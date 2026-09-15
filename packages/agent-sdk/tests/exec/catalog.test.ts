@@ -194,6 +194,24 @@ describe("renderCatalogEntry", () => {
     );
   });
 
+  it("renders every union branch", () => {
+    // Like properties and enum variants, a union is a list of choices the model
+    // has to pick from, so no branch may be dropped. opencode's renderer, whose
+    // depth ceiling this one borrows, caps neither.
+    const line = renderCatalogEntry({
+      name: "u",
+      inputSchema: {
+        anyOf: ["a", "b", "c", "d", "e", "f"].map((kind) => ({
+          type: "object",
+          properties: { kind: { enum: [kind] } },
+        })),
+      },
+    });
+    expect(line).toContain('"f"');
+    expect(line.match(/kind/g) ?? []).toHaveLength(6);
+    expect(line).not.toContain("...");
+  });
+
   it("expands nested schemas until the depth ceiling, then degrades to unknown", () => {
     // `nestedSchema(n)` puts the innermost string at depth n.
     expect(
