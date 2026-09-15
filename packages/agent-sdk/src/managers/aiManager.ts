@@ -34,6 +34,7 @@ import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
 import type { BackgroundTaskInfo, SessionCronInfo } from "../types/hooks.js";
 import type { PermissionManager } from "./permissionManager.js";
+import type { McpManager } from "./mcpManager.js";
 import type { SubagentManager } from "./subagentManager.js";
 import type { CronManager } from "./cronManager.js";
 import type { SkillManager } from "./skillManager.js";
@@ -241,6 +242,10 @@ export class AIManager {
 
   private get permissionManager(): PermissionManager | undefined {
     return this.container.get<PermissionManager>("PermissionManager");
+  }
+
+  private get mcpManager(): McpManager | undefined {
+    return this.container.get<McpManager>("McpManager");
   }
 
   private get planManager():
@@ -844,7 +849,26 @@ export class AIManager {
       additionalWorkingDirectories:
         this.permissionManager?.getEffectiveAdditionalDirectories?.() ?? [],
       autoMemory: autoMemoryOptions,
+      mcpInstructions: this.getMcpInstructions(),
     });
+  }
+
+  /**
+   * Server-level usage notes to describe in the system prompt. The permission
+   * filter is applied by `McpManager` (a server whose tools are all excluded does
+   * not get a voice), so this only wires in the rule source.
+   */
+  private getMcpInstructions():
+    | Array<{ name: string; instructions: string }>
+    | undefined {
+    // Both calls are optional for the same reason as
+    // `getEffectiveAdditionalDirectories` above: hosts and tests register partial
+    // McpManager/permission doubles, and a missing usage-notes channel is not a
+    // reason to fail the prompt build.
+    const instructions = this.mcpManager?.getServerInstructions?.(
+      (toolName) => this.permissionManager?.isToolDenied?.(toolName) === true,
+    );
+    return instructions && instructions.length > 0 ? instructions : undefined;
   }
 
   private resolveFilteredTools() {

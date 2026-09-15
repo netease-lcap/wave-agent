@@ -6,6 +6,9 @@ import {
   buildExecPool,
   renderCatalog,
   renderCatalogEntry,
+  renderSearchCallForm,
+  renderSearchSignature,
+  resolveSearchQuery,
 } from "../../src/exec/catalog.js";
 import { EXEC_RESERVED_NAMESPACE } from "../../src/exec/constants.js";
 
@@ -40,6 +43,15 @@ const blockEntry = (name: string) => ({
     required: ["cmd"],
   },
 });
+
+/** An object schema nested `levels` deep; the innermost field is a string at that depth. */
+function nestedSchema(levels: number): Record<string, unknown> {
+  let schema: Record<string, unknown> = { type: "string" };
+  for (let i = 0; i < levels; i += 1) {
+    schema = { type: "object", properties: { [`p${i}`]: schema } };
+  }
+  return schema;
+}
 
 describe("buildExecPool", () => {
   it("maps the very configs that would be declared flat", () => {
@@ -111,7 +123,7 @@ describe("renderCatalogEntry", () => {
 
   it("falls back to bracket access when the name is not a valid identifier", () => {
     const line = renderCatalogEntry({ name: "mcp__my-srv__x" });
-    expect(line).toBe('tools["mcp__my-srv__x"](any)');
+    expect(line).toBe('tools["mcp__my-srv__x"](unknown)');
   });
 
   it("renders enum, array and union types", () => {
@@ -143,39 +155,9 @@ describe("renderCatalogEntry", () => {
     ).toBe("tools.c(string | number)");
   });
 
-  it("caps deep and wide schemas instead of unbounded expansion", () => {
-    const nested = {
-      type: "object",
-      properties: {
-        a: {
-          type: "object",
-          properties: {
-            b: {
-              type: "object",
-              properties: {
-                c: { type: "object", properties: { d: { type: "string" } } },
-              },
-            },
-          },
-        },
-      },
-    };
-    // Recursion stops at MAX_SIGNATURE_DEPTH, so the innermost level degrades
-    // to `any` instead of expanding forever.
-    expect(renderCatalogEntry({ name: "d", inputSchema: nested })).toBe(
-      [
-        "tools.d({",
-        "  a?: {",
-        "    b?: {",
-        "      c?: {",
-        "        d?: any,",
-        "      },",
-        "    },",
-        "  },",
-        "})",
-      ].join("\n"),
-    );
-
+  it("renders every property of a wide schema", () => {
+    // No per-level property cap: a wide schema is exactly where the model would
+    // otherwise have to guess which parameter to pass.
     const wide = {
       type: "object",
       properties: Object.fromEntries(
@@ -183,10 +165,48 @@ describe("renderCatalogEntry", () => {
       ),
     };
     const line = renderCatalogEntry({ name: "e", inputSchema: wide });
-    expect(line).toContain("  p7?: string,");
-    expect(line).not.toContain("p8");
-    // The overflow marker is a bare `...` line, not a property.
-    expect(line).toContain("\n  ...\n");
+    expect(line).toContain("  p9?: string,");
+    expect(line).not.toContain("...");
+  });
+
+  it("renders every enum variant", () => {
+    const line = renderCatalogEntry({
+      name: "en",
+      inputSchema: {
+        type: "object",
+        properties: {
+          mode: {
+            enum: [
+              "alpha",
+              "bravo",
+              "charlie",
+              "delta",
+              "echo",
+              "foxtrot",
+              "golf",
+            ],
+          },
+        },
+      },
+    });
+    expect(line).toContain(
+      '  mode?: "alpha" | "bravo" | "charlie" | "delta" | "echo" | "foxtrot" | "golf",',
+    );
+  });
+
+  it("expands nested schemas until the depth ceiling, then degrades to unknown", () => {
+    // `nestedSchema(n)` puts the innermost string at depth n.
+    expect(
+      renderCatalogEntry({ name: "d", inputSchema: nestedSchema(8) }),
+    ).toContain("p0?: string,");
+    // One level past the ceiling the field renders as `unknown` rather than
+    // expanding further or overflowing the stack.
+    const past = renderCatalogEntry({
+      name: "d",
+      inputSchema: nestedSchema(9),
+    });
+    expect(past).toContain("p0?: unknown,");
+    expect(past).not.toContain("string");
   });
 
   it("renders per-field JSDoc for descriptions, defaults and constraints", () => {
@@ -242,7 +262,7 @@ describe("renderCatalogEntry", () => {
     );
   });
 
-  it("clamps over-long descriptions to one line of fixed width", () => {
+  it("clamps the tool description but keeps a field description verbatim", () => {
     const line = renderCatalogEntry({
       name: "gl",
       description: `${"t".repeat(200)}\nsecond line`,
@@ -255,11 +275,18 @@ describe("renderCatalogEntry", () => {
     });
     const lines = line.split("\n");
 
-    // 120 characters including the ellipsis, for both the tool description (which
-    // trails the block) and a field description.
-    expect(lines[1]).toBe(`  /** ${"d".repeat(117)}... */`);
+    // Field text is decision guidance ("which variant, and why"), so it arrives
+    // whole: multi-line, no width cap, nothing dropped.
+    expect(lines.slice(0, 6)).toEqual([
+      "tools.gl({",
+      "  /**",
+      `   * ${"d".repeat(200)}`,
+      "   * second line",
+      "   */",
+      "  p?: string,",
+    ]);
+    // Only the tool's own description is compressed, to one line of fixed width.
     expect(lines[lines.length - 1]).toBe(`}) // ${"t".repeat(117)}...`);
-    expect(line).not.toContain("second line");
   });
 
   it("emits a tag even when the field has no description", () => {
@@ -286,6 +313,57 @@ describe("renderCatalogEntry", () => {
   });
 });
 
+describe("search entry", () => {
+  it("renders its signature and its one-line call form from the same schema", () => {
+    // The sandbox entry point is documented in two places with different room:
+    // the multi-line signature in the API blurb and the one-line form in the
+    // truncation notice and in error messages. Both come from one schema.
+    expect(renderSearchSignature()).toBe(
+      [
+        `tools["${EXEC_RESERVED_NAMESPACE}"].search({`,
+        "  /** Substring matched against tool names and descriptions, case-insensitively. Omit it (or pass an empty string) to list the entire pool. */",
+        "  query?: string,",
+        "})",
+      ].join("\n"),
+    );
+    expect(renderSearchCallForm()).toBe(
+      `tools["${EXEC_RESERVED_NAMESPACE}"].search({ query: "..." })`,
+    );
+  });
+
+  it("advertises exactly the arguments the validator accepts", () => {
+    const advertised = renderSearchSignature()
+      .split("\n")
+      .map((line) => /^\s*([A-Za-z_$][\w$]*)\??:/.exec(line)?.[1])
+      .filter((key): key is string => key !== undefined);
+
+    expect(advertised).toEqual(["query"]);
+    // The form taught to the model, fed straight back in: drift between the
+    // prose and the host is what this catches.
+    expect(() => resolveSearchQuery({ query: "..." })).not.toThrow();
+  });
+
+  it("rejects an argument the schema does not declare instead of searching", () => {
+    // `{ q: "..." }` used to read as "no query" and answer with the whole pool,
+    // dressing a typo up as a successful search.
+    expect(() => resolveSearchQuery({ q: "sum" })).toThrow(
+      `search() does not take "q". Expected ${renderSearchCallForm()}`,
+    );
+  });
+
+  it("rejects a non-string query", () => {
+    expect(() => resolveSearchQuery({ query: 42 })).toThrow(
+      `search() expects "query" to be a string, got number. Expected ${renderSearchCallForm()}`,
+    );
+  });
+
+  it("trims and lower-cases the query, and treats an omission as empty", () => {
+    expect(resolveSearchQuery({ query: "  Sum  " })).toBe("sum");
+    expect(resolveSearchQuery({ query: "" })).toBe("");
+    expect(resolveSearchQuery({})).toBe("");
+  });
+});
+
 describe("renderCatalog", () => {
   const entries = [
     { name: "mcp__srv__a", description: "A" },
@@ -307,9 +385,9 @@ describe("renderCatalog", () => {
     expect(rendered.text).toContain(
       `PARTIAL — ${rendered.shown} of 3 tools shown`,
     );
-    expect(rendered.text).toContain(
-      `tools["${EXEC_RESERVED_NAMESPACE}"].search`,
-    );
+    // The notice has one line, not a signature block, so it teaches the same
+    // call in its one-line form — still derived from the same schema.
+    expect(rendered.text).toContain(renderSearchCallForm());
   });
 
   it("names every server, with counts, when the catalog is truncated", () => {
@@ -334,8 +412,8 @@ describe("renderCatalog", () => {
       { name: "mcp__beta__t1" },
       { name: "mcp__beta__t2" },
     ];
-    // Each entry is 23 chars / 7 estimated tokens, so 14 is room for exactly two.
-    const rendered = renderCatalog(pooled, 14);
+    // Each entry is 29 chars / 8 estimated tokens, so 16 is room for exactly two.
+    const rendered = renderCatalog(pooled, 16);
 
     expect(rendered.shown).toBe(2);
     expect(rendered.text).toContain("- mcp__alpha (1 tool)");
@@ -349,10 +427,10 @@ describe("renderCatalog", () => {
       }`,
       description: "d",
     }));
-    // Twenty servers, two tools each. Every entry is 28 chars / 8 estimated
-    // tokens, so 160 is exactly one seat for each server. Were the summaries
+    // Twenty servers, two tools each. Every entry is 32 chars / 9 estimated
+    // tokens, so 180 is exactly one seat for each server. Were the summaries
     // budgeted, half of them would lose their seat to their own summary line.
-    const rendered = renderCatalog(pooled, 160);
+    const rendered = renderCatalog(pooled, 180);
 
     expect(rendered.shown).toBe(20);
     expect(entryLines(rendered.text)).toHaveLength(20);
@@ -433,7 +511,7 @@ describe("renderCatalog", () => {
       { name: "mcp__gamma__t1" },
     ];
     // Room for exactly three lines: one full round of the rotation.
-    const rendered = renderCatalog(pooled, 21);
+    const rendered = renderCatalog(pooled, 24);
     // Summary lines sit in between; only the entries are being asserted here.
     const lines = entryLines(rendered.text);
 

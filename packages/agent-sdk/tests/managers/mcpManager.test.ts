@@ -17,6 +17,7 @@ interface MockClient {
   listTools: ReturnType<typeof vi.fn>;
   callTool: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
+  getInstructions: ReturnType<typeof vi.fn>;
 }
 
 interface MockTransport {
@@ -25,6 +26,9 @@ interface MockTransport {
   onclose: null;
   stderr: import("node:stream").Stream | null;
 }
+
+/** What a mocked server says about itself in `initialize`. */
+const SERVER_INSTRUCTIONS = "Use lookup before mutate.";
 
 // Mock the MCP SDK
 vi.mock("@modelcontextprotocol/sdk/client/index.js");
@@ -335,6 +339,7 @@ describe("McpManager", () => {
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         callTool: vi.fn(),
         close: vi.fn().mockResolvedValue(undefined),
+        getInstructions: vi.fn().mockReturnValue(SERVER_INSTRUCTIONS),
       };
 
       mockTransport = {
@@ -691,6 +696,7 @@ describe("McpManager", () => {
         }),
         callTool: vi.fn(),
         close: vi.fn().mockResolvedValue(undefined),
+        getInstructions: vi.fn().mockReturnValue(SERVER_INSTRUCTIONS),
       };
 
       mockTransport = {
@@ -737,6 +743,8 @@ describe("McpManager", () => {
       const server = mcpManager.getServer("test-server");
       expect(server?.status).toBe("connected");
       expect(server?.toolCount).toBe(1);
+      // The server's own usage notes ride along with the handshake.
+      expect(server?.instructions).toBe(SERVER_INSTRUCTIONS);
     });
 
     it("should connect to MCP server successfully via SSE", async () => {
@@ -765,6 +773,7 @@ describe("McpManager", () => {
 
       const server = mcpManager.getServer("sse-server");
       expect(server?.status).toBe("connected");
+      expect(server?.instructions).toBe(SERVER_INSTRUCTIONS);
     });
 
     it("should connect to MCP server successfully via Streamable HTTP", async () => {
@@ -802,6 +811,7 @@ describe("McpManager", () => {
 
       const server = mcpManager.getServer("streamable-server");
       expect(server?.status).toBe("connected");
+      expect(server?.instructions).toBe(SERVER_INSTRUCTIONS);
     });
 
     it("should not fallback to SSE when type is 'http'", async () => {
@@ -1111,6 +1121,7 @@ describe("McpManager", () => {
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         callTool: vi.fn(),
         close: vi.fn().mockResolvedValue(undefined),
+        getInstructions: vi.fn().mockReturnValue(SERVER_INSTRUCTIONS),
       };
 
       mockTransport = {
@@ -1181,6 +1192,7 @@ describe("McpManager", () => {
         listTools: vi.fn(),
         callTool: vi.fn(),
         close: vi.fn().mockResolvedValue(undefined),
+        getInstructions: vi.fn().mockReturnValue(SERVER_INSTRUCTIONS),
       };
 
       mockTransport = {

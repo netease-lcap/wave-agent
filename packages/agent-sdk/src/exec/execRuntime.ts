@@ -18,7 +18,11 @@ import {
   EXEC_SEARCH_CALL,
 } from "./constants.js";
 import { EXEC_WORKER_SOURCE } from "./workerSource.js";
-import { renderToolSignature } from "./catalog.js";
+import {
+  renderSearchCallForm,
+  renderToolSignature,
+  resolveSearchQuery,
+} from "./catalog.js";
 import type { ExecPoolEntry } from "./catalog.js";
 
 export interface RunExecOptions {
@@ -82,8 +86,9 @@ async function handleExecCall(
   context: ToolContext,
 ): Promise<ExecCallResult> {
   if (name === EXEC_SEARCH_CALL) {
-    const query =
-      typeof args.query === "string" ? args.query.trim().toLowerCase() : "";
+    // The shape is validated against the schema the tool description renders from,
+    // not by hand — see `resolveSearchQuery`.
+    const query = resolveSearchQuery(args);
     const matches = [...pool.values()].filter((entry) => {
       if (query.length === 0) return true;
       return (
@@ -108,7 +113,7 @@ async function handleExecCall(
   if (!pool.has(name)) {
     throw new Error(
       `Unknown tool "${name}". Only MCP tools are reachable from Exec. ` +
-        `Use tools["${EXEC_RESERVED_NAMESPACE}"].search("...") to find one.`,
+        `Use ${renderSearchCallForm()} to find one.`,
     );
   }
 

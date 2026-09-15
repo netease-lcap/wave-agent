@@ -101,14 +101,17 @@ describe("execTool declaration", () => {
 
   it("documents that an empty query lists the whole pool", () => {
     // The catalog can be truncated, so the model needs an enumeration path that
-    // does not depend on guessing a keyword.
+    // does not depend on guessing a keyword. Both the call form and the field doc
+    // come from the schema the host validates against, so the prose cannot teach
+    // a shape the host would reject.
     const description = execTool.prompt!({
       execPool: pool("mcp__srv__a"),
     })!;
     expect(description).toContain(
-      `tools["${EXEC_RESERVED_NAMESPACE}"].search("query")`,
+      `tools["${EXEC_RESERVED_NAMESPACE}"].search({`,
     );
-    expect(description).toMatch(/[Ee]mpty query lists the entire pool/);
+    expect(description).toContain("query?: string,");
+    expect(description).toMatch(/empty string\) to list the entire pool/);
   });
 
   it("renders field-level docs from the pool into the description", () => {

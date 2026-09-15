@@ -477,7 +477,7 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 沙箱内可用的 API：
 
 - `await tools.<name>(args)` — 调用一个 MCP 工具，直接传该工具自己的实参对象，resolve 为 `{ content, images }`
-- `tools["$codemode"].search("query")` — 按名称或描述检索完整工具池（目录被截断时用它找其余工具）
+- `tools["$codemode"].search({ query: "query" })` — 按名称或描述检索完整工具池，返回每条命中的名称、完整描述与参数签名（目录被截断时用它找其余工具；`query` 传空串列出完整池）
 - `console.log(...)` — 收集输出并随结果一并返回
 - `return <value>` — 返回值序列化后交给模型
 
@@ -803,6 +803,8 @@ await agent.connectMcpServer("github");
 // 断开指定 MCP 服务器
 await agent.disconnectMcpServer("github");
 ```
+
+服务器在 `initialize` 响应里返回的使用说明（`instructions`）会被记录在 `McpServerStatus.instructions` 上，并注入系统提示的**动态块**（按服务器标明来源；多行文本原样保留，不裁剪）——适合承载限流、前置条件、整体用法约定这类"不调用也要知道"的信息。服务器的工具被权限规则全部排除、或服务器断开/连接失败时，该服务器的说明不注入（与工具同源，见 `docs/specs/ecosystem/mcp.md`）。
 
 ### 状态回调 {#mcp-callbacks}
 
