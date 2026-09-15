@@ -90,8 +90,7 @@ ${renderToolSection(pool)}`;
 
   // Value only, never the tool name: the collapsed row renders
   // "<tool name> <compactParams>" (webview Message.tsx, CLI ToolDisplay), so
-  // wrapping the preview in "Exec(...)" printed the name twice. Every other tool
-  // but Artifact follows the same value-only convention.
+  // wrapping the preview in "Exec(...)" printed the name twice.
   formatCompactParams: (params: Record<string, unknown>) => {
     const code = typeof params.code === "string" ? params.code.trim() : "";
     const firstLine = code.split("\n")[0] ?? "";
