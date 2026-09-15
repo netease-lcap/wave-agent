@@ -237,6 +237,31 @@ export interface RenderedCatalog {
 }
 
 /**
+ * The one-line index of a server: `- mcp__github (40 tools, 13 shown)`. The tail
+ * is dropped when the server is fully shown, and reads `none shown` when it got
+ * no seat at all.
+ *
+ * The prefix is the flattened name's, not the routing key alone, so the line is a
+ * substring of every tool name it covers (and of what search matches on). For a
+ * server whose name itself contains `__` the key is only the first segment — the
+ * same pre-existing ambiguity the grouping key has (see `execNamespace`).
+ */
+function summarizeNamespace(
+  group: ExecPoolEntry[],
+  shownCount: number,
+): string {
+  const count = group.length;
+  const label = `${count} tool${count === 1 ? "" : "s"}`;
+  const detail =
+    shownCount === count
+      ? ""
+      : shownCount === 0
+        ? ", none shown"
+        : `, ${shownCount} shown`;
+  return `- mcp__${execNamespace(group[0].name)} (${label}${detail})`;
+}
+
+/**
  * The server a flat MCP tool name routes to. Mirrors the split `executeMcpTool`
  * does on the way back (`parts[1]`), so a group key always agrees with where a
  * call would actually go — including its behaviour for server names that
@@ -274,6 +299,9 @@ function groupByNamespace(entries: ExecPoolEntry[]): ExecPoolEntry[][] {
  * server either gets the block this round or sits the round out, never half a
  * signature.
  *
+ * A truncated catalog additionally prints one summary line per server (see
+ * `summarizeNamespace`), before that server's blocks and outside the budget.
+ *
  * The truncation notice deliberately carries no budget number: the budget is a
  * tuning knob, and rendering it would make an unchanged tool pool produce
  * different model-visible text after a config change.
@@ -307,11 +335,24 @@ export function renderCatalog(
     active = stillActive;
   }
 
-  const blocks = picked.flat();
-
   const truncated = shown < entries.length;
+
+  // Rotation alone cannot promise any server a seat — a group whose block does
+  // not fit the remaining budget sits the round out for good — so a truncated
+  // catalog also names every server, one line each, outside the budget. Without
+  // that line a server nobody picked is invisible, and "not in the catalog" is
+  // read as "that capability does not exist". An untruncated catalog skips them:
+  // the entries are already the index.
+  const lines: string[] = [];
+  for (let index = 0; index < groups.length; index += 1) {
+    if (truncated) {
+      lines.push(summarizeNamespace(groups[index], picked[index].length));
+    }
+    lines.push(...picked[index]);
+  }
+
   if (truncated) {
-    blocks.push(
+    lines.push(
       `PARTIAL — ${shown} of ${entries.length} tools shown. ` +
         `Use tools["${EXEC_RESERVED_NAMESPACE}"].search("...") to find the rest; ` +
         `search covers the full pool.`,
@@ -319,7 +360,7 @@ export function renderCatalog(
   }
 
   return {
-    text: blocks.join("\n"),
+    text: lines.join("\n"),
     shown,
     total: entries.length,
     truncated,

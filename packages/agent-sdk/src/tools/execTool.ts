@@ -16,7 +16,7 @@ const EXEC_DESCRIPTION = `Run a JavaScript script in a sandbox where every MCP t
 
 Sandbox API:
 - \`await tools.<name>(args)\` — call an MCP tool, passing that tool's own arguments object directly. Resolves to \`{ content, images }\`.
-- \`tools["${EXEC_RESERVED_NAMESPACE}"].search("query")\` — list tools whose name or description matches the query.
+- \`tools["${EXEC_RESERVED_NAMESPACE}"].search("query")\` — list tools whose name or description matches the query, each with the same signature the catalog below shows, so a hit can be copied verbatim. An empty query lists the entire pool: use it when you cannot name what you are looking for.
 - \`console.log(...)\` — collected and returned alongside the result. Use it to inspect intermediate values.
 - \`return <value>\` — the returned value is JSON-serialized and given back to you.
 
