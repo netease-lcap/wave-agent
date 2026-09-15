@@ -41,10 +41,11 @@ describe("context usage indicator conversation isolation", () => {
     // change in setInitialState can clear the local contextUsage state.
     sendHostMessage(fixtures.setInitialState(conversationState("session-b")));
     expect(screen.queryByText("45%")).not.toBeInTheDocument();
-    // Back to the empty ring (spec 场景 4: no usage info yet → no number).
-    expect(
-      document.querySelector(".compress-context-button")?.getAttribute("title"),
-    ).toBe("");
+    // Back to the empty ring (spec 场景 4: no usage info yet → no number, and
+    // the Tooltip is disabled so hovering must not pop an empty bubble).
+    const indicator = document.querySelector(".compress-context-button");
+    expect(indicator?.getAttribute("aria-label")).toBe("");
+    expect(indicator?.closest(".tooltip-container")).toBeNull();
 
     // B's own usage arrives only after the next turn/restore push.
     sendHostMessage(fixtures.contextUsage(12));

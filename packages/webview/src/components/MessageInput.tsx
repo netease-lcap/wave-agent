@@ -170,14 +170,15 @@ export const MessageInput = forwardRef<
   const [message, setMessage] = useState("");
 
   // Context-usage indicator: the ring fill and the trailing number both
-  // reflect the current usage (rounded up per spec); the description lives
-  // in the aria-label/title. Pure display — not a button, no click action.
+  // reflect the current usage (rounded up per spec); hovering pops a
+  // design-system tooltip naming the number as the context usage (the same
+  // text is the aria-label). Pure display — not a button, no click action.
   const contextUsagePct =
     contextUsage !== undefined
       ? Math.min(100, Math.max(0, Math.ceil(contextUsage)))
       : undefined;
   const contextUsageLabel =
-    contextUsagePct !== undefined ? `已使用 ${contextUsagePct}%` : "";
+    contextUsagePct !== undefined ? `上下文已使用 ${contextUsagePct}%` : "";
   const ringCircumference = 2 * Math.PI * 8;
 
   // Permission mode custom dropdown (roving-tabindex listbox shared with
@@ -1834,47 +1835,53 @@ export const MessageInput = forwardRef<
             {/* Context-usage indicator. Hidden on the welcome composer in
                   either flavor: desktop signals that via workdirSelector being
                   present, IDE hosts via ChatApp withholding showContextUsage
-                  when no visible messages yet (spec 场景 3). The indicator is
-                  display-only — compression stays on /compact and auto
-                  compaction; usage may still be undefined until the first
-                  push (spec 场景 4). */}
+                  when no visible messages yet (spec 场景 3). Hovering pops the
+                  context-usage tooltip (spec 场景 1) unless usage is still
+                  unknown, in which case the Tooltip is disabled so no empty
+                  bubble shows. The indicator is display-only — compression
+                  stays on /compact and auto compaction. */}
             {!workdirSelector && showContextUsage && (
-              <span
-                className="compress-context-button"
-                aria-label={contextUsageLabel}
-                title={contextUsageLabel}
+              <Tooltip
+                text={contextUsageLabel}
+                position="top"
+                disabled={contextUsagePct === undefined}
               >
-                <svg
-                  className="compress-context-ring"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
+                <span
+                  className="compress-context-button"
+                  aria-label={contextUsageLabel}
                 >
-                  {/* The designer's track is a left half-ring (right side
+                  <svg
+                    className="compress-context-ring"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    {/* The designer's track is a left half-ring (right side
                         open); the progress arc sweeps counter-clockwise from
                         the 3 o'clock anchor. */}
-                  <path
-                    className="compress-context-ring-track"
-                    d="M 20 12 A 8 8 0 0 0 4 12"
-                  />
-                  <circle
-                    className="compress-context-ring-fill"
-                    cx="12"
-                    cy="12"
-                    r="8"
-                    strokeDasharray={`${
-                      (ringCircumference * (contextUsagePct ?? 0)) / 100
-                    } ${ringCircumference}`}
-                    // Mirror the circle so its stroke sweeps
-                    // counter-clockwise from 3 o'clock like the designer's.
-                    transform="scale(-1, 1) translate(-24, 0)"
-                  />
-                </svg>
-                {contextUsagePct !== undefined && (
-                  <span className="compress-context-pct">
-                    {contextUsagePct}%
-                  </span>
-                )}
-              </span>
+                    <path
+                      className="compress-context-ring-track"
+                      d="M 20 12 A 8 8 0 0 0 4 12"
+                    />
+                    <circle
+                      className="compress-context-ring-fill"
+                      cx="12"
+                      cy="12"
+                      r="8"
+                      strokeDasharray={`${
+                        (ringCircumference * (contextUsagePct ?? 0)) / 100
+                      } ${ringCircumference}`}
+                      // Mirror the circle so its stroke sweeps
+                      // counter-clockwise from 3 o'clock like the designer's.
+                      transform="scale(-1, 1) translate(-24, 0)"
+                    />
+                  </svg>
+                  {contextUsagePct !== undefined && (
+                    <span className="compress-context-pct">
+                      {contextUsagePct}%
+                    </span>
+                  )}
+                </span>
+              </Tooltip>
             )}
 
             <div className="permission-mode-container" ref={permMenuRef}>
