@@ -155,7 +155,7 @@ describe("execTool declaration", () => {
     );
   });
 
-  it("previews the first line of the code in a collapsed block", () => {
+  it("previews the first 50 characters of the code in a collapsed block", () => {
     // Value only: the row already prints the tool name, so a wrapped value showed
     // "Exec Exec(const a = 1;)".
     expect(
@@ -163,18 +163,30 @@ describe("execTool declaration", () => {
         { code: "const a = 1;\nreturn a;" },
         contextWith(),
       ),
-    ).toBe("const a = 1;");
+    ).toBe("const a = 1;\nreturn a;...");
 
     const long = execTool.formatCompactParams!(
       { code: "x".repeat(200) },
       contextWith(),
     );
-    expect(long).toBe(`${"x".repeat(57)}...`);
+    expect(long).toBe(`${"x".repeat(50)}...`);
 
-    // Leading blank lines are trimmed, so the preview is the first real line.
+    // Same shape as Workflow's script preview: newlines stay as they are, so a
+    // multi-line script can wrap the row.
+    const multiline = execTool.formatCompactParams!(
+      { code: "a\n".repeat(60) },
+      contextWith(),
+    );
+    expect(multiline).toBe(`${"a\n".repeat(25)}...`);
+
+    // Leading blank lines are trimmed first.
     expect(
       execTool.formatCompactParams!({ code: "\n\n  return 1;" }, contextWith()),
-    ).toBe("return 1;");
+    ).toBe("return 1;...");
+
+    expect(execTool.formatCompactParams!({ code: "   " }, contextWith())).toBe(
+      "",
+    );
   });
 });
 
