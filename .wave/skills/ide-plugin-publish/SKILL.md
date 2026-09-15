@@ -92,7 +92,7 @@ const zip = process.argv[2];
 语义与坑：
 
 - pre-release 与 release **共用同一 X.Y.Z 单调序列**，同号不能双发；发更高号的正式版会自动把 pre 用户收回来。
-- **市场页面 / `vsce show` / 公开 API 只显示 stable**，pre 版本看不到属正常（发布成功以 vsce 的 `DONE Published …` 为准）。
+- **`vsce show` 与市场公开 items 页面只显示 stable**，pre 版本看不到属正常；**扩展查询 API（`extensionquery`，`flags: 401`）能看到 pre，但有传播滞后**（实测发布后 5~8 分钟仍可能只回上一版），别据此判定发布失败——发布成功仍以 vsce 的 `DONE Published …` 为准。
 - 用户侧：扩展页 → 齿轮/右键 → **Switch to Pre-Release Version**。
 
 ### JetBrains：自定义 channel
@@ -108,6 +108,27 @@ form.append("channel", "beta"); // 与 file 一起 multipart 提交；不带 cha
 ## 发布后校验
 
 - VS Code：输出 `DONE Published wave-codechat.wave-vscode vX.Y.Z`；页面 https://marketplace.visualstudio.com/items?itemName=wave-codechat.wave-vscode
+  - 版本列表 / 市场页面刷新有滞后，**别据此判定失败**（历史出过「发了新版但用户端无变化」的事故）。跑下面三步硬证据链：
+    1. **直下预发布包**（用 node fetch，不要 curl；能下 = 市场已收下该版本，比列表刷新快）：
+       ```bash
+       node -e "
+       (async () => {
+         const url = 'https://marketplace.visualstudio.com/_apis/public/gallery/publishers/wave-codechat/vsextensions/wave-vscode/<version>/vspackage';
+         const r = await fetch(url);
+         console.log('status', r.status, '|', r.headers.get('content-type')); // 期望 200 application/vsix
+         require('fs').writeFileSync('/tmp/wave-vscode-<version>.vsix', Buffer.from(await r.arrayBuffer()));
+       })();
+       "
+       ```
+    2. **解包验真**：`extension.vsixmanifest` 里 `Version="<version>"` 且存在 `Microsoft.VisualStudio.Code.PreRelease` 的 `Value="true"`。
+       ```bash
+       unzip -o -q /tmp/wave-vscode-<version>.vsix -d /tmp/wave-vscode-<version>
+       grep -E 'Version="<version>"|Microsoft\.VisualStudio\.Code\.PreRelease' /tmp/wave-vscode-<version>/extension.vsixmanifest
+       ```
+    3. **CLI 防呆自检**：解出的 `extension/dist/wave-cli/dist/bundle/wave.mjs` 的 sha256 **必须等于**本地新构建的 `packages/code/dist/bundle/wave.mjs`（发 pre 包前刚跑过 `pnpm run vsce:package:pre`）—— 专防「上游产物过期被夹带」。
+       ```bash
+       sha256sum /tmp/wave-vscode-<version>/extension/dist/wave-cli/dist/bundle/wave.mjs packages/code/dist/bundle/wave.mjs
+       ```
 - JetBrains：201 响应返回版本记录 id；插件 https://plugins.jetbrains.com/plugin/33466（Wave Code Chat）。新版本先 `approve: false`，marketplace 自动审核后变 `approve: true` 才上架（与历史版本一致，无需人工干预）。
 
 ## 坑
