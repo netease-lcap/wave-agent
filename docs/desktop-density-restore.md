@@ -3486,3 +3486,65 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 - **tab 条自身没有键盘焦点**（`tabindex` 未加）—— 当前键盘可达性依赖条内的 tab 按钮（axe 通过、焦点会走到各按钮）；若要支持方向键直接滚动整条，需给条加 `tabindex="0"`。触发语 **「tab 条也给键盘聚焦」**。
 - 第十四处的残留（其他设置页视图）与第十~十三处的残留不变。
 - 验证脚本：`CC02/probe-tabops-align-0915.mjs`、`CC02/probe-tabops-align-narrow-0915.mjs`、`CC02/probe-tabops-overflow-0915.mjs`、`CC02/probe-tab-underline-clip-0915.mjs`、`CC02/probe-tabscroll-keyboard-0915.mjs`、`CC02/audit-plugin-tabscroll-0915-axe.mjs`。
+
+## 0915 追加批 · 第十六处：设置页左导航「插件市场」图标按 skill 归一 + 设计师 Figma 版替换（工作区未提交）
+
+来源 = 设计走查对本页的追加评论（`svg.header-icon`，DOM `aside > nav > div:nth-of-type(3) > div > button:nth-of-type(1) > svg`，即左导航第三组「AI 与扩展」第一项「插件市场」）：「帮我把图标按照skill换一下 和其他图标保持一致」。后续她追加两条指示：「把插件市场图标保存为svg到桌面，我需要稍微调整一下」→ 我导出可编辑版 → 「保存到原位置了，替换一下就好」→ 按她的 Figma 导出替换。
+
+### 依据（逐字）
+
+- skill `icon.md` 优先级 1：「Reuse the icon component or asset already used by CodeChat for the same action.」→ codechat-ui 原型 `src/features/settings/settings-navigation.ts` 的「AI 与扩展」四项为 技能和指令 / 子代理 / 钩子 / MCP 服务，**没有插件市场条目**，同源资产不存在。
+- skill `icon.md` 优先级 3：「For a new generic utility action with no existing asset, use the single icon library already installed in the target project.」→ wave 已在用 lucide（`SettingsGearIcon`/`HouseIcon`/`FileTextIcon`/`HelpCircleIcon`/`LogOutIcon`/`SplitIcon`/本项均为 lucide path 内联）。
+- skill `icon.md`：「**Do not mix libraries within one surface**」「Wrap frequently reused icons in a product component so **size, stroke, color**, and accessibility remain consistent」「**Use `currentColor`** so hover, active, disabled, and danger states follow the control token」「Verify alignment optically; do not rely only on equal bounding boxes.」
+- ⚠️ Figma API 侧仍未核对（本轮两个访问令牌均返回 `403 Forbidden`，疑似过期）；**本轮最终形状由设计师本人在 Figma 调整后导出**，不需要 API。
+
+### 步骤 1 · 根因与归一（实测）
+
+| 项                   | 原实现                    | 同面其余 7 项  |
+| -------------------- | ------------------------- | -------------- |
+| `viewBox`            | `0 0 24 24`               | `0 0 16 16`    |
+| `stroke-width`       | 1.4（24 网格）            | 1.4（16 网格） |
+| **effective stroke** | **1.4 × 16/24 = 0.933px** | **1.4px**      |
+
+lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 0.933，比同面其余图标**细 33%**（DOM 采样 8 项里只有本项 `viewBox=0 0 24 24`）。按 skill 的「同一面内口径一致」先把渲染口径归一。
+
+### 步骤 2 · 设计师 Figma 版替换（最终形状）
+
+- 她调整后的文件：`~/Desktop/招商局/插件市场图标.svg`（Figma 导出，4254 B）。替换时按 skill 只做两处规范化，**path 逐字照搬**：
+  1. 去掉导出外壳（`<g clip-path="url(#clip0_…)">` + `<defs>` 里的 16×16 矩形 `clipPath`，无视觉作用），只留 `<path>`，与同面其余图标结构一致；
+  2. `stroke="black"` → svg 级 `stroke="currentColor"` + `strokeWidth={1.4}`（浅色 #565A60 / 深色 #9A9EA5 由 CSS 控）。
+- 最终组件：`HeaderIcons.tsx` `SettingsPluginsIcon`（`viewBox="0 0 16 16"` / `stroke-width 1.4` / bare `<path>`）。
+
+### 实测（4× 设备像素 + DOM，浅深两档）
+
+| 指标                 | 原实现（24 网格） | 步骤 1 归一后 | **步骤 2 她的版本（最终）** | 同面其余 7 项         |
+| -------------------- | ----------------- | ------------- | --------------------------- | --------------------- |
+| `viewBox`            | `0 0 24 24`       | `0 0 16 16`   | **`0 0 16 16`**             | `0 0 16 16`           |
+| 渲染笔画             | 0.933             | 1.4           | **1.4**                     | 1.4                   |
+| path 中心线 bbox     | 13.33（= 20×2/3） | 13.33         | **11.515 × 11.514**         | —                     |
+| 墨迹外接盒（含笔画） | 14.5 × 14.5       | 15 × 15       | **13.0 × 13.0**             | 12.5~15（12.5~14.25） |
+| 墨迹像素数           | —                 | —             | **1425**                    | 953~1750              |
+| 横切 run 中位数      | 1.5               | 2.25          | **2.25**                    | 1.75~2.25             |
+
+> run 中位数**受斜率影响**（45° 段横切更长）：同面「MCP 服务」为已知 1.4 笔画、中位数同为 2.25；「技能」等轴对齐段为 1.75 —— 步骤 2 落在同一区间，笔画与同面一致。
+> **尺寸差异须知**：她的形状中心线 11.515（含笔画 13.0），比步骤 1 的 13.333（含笔画 15.0）**小约 13.6%**，墨迹位置 x/y 1.5 → 14.5（步骤 1 为 0.5 → 15.5）。但**仍落在同面其余图标的实测区间内**（「全局设置」12.5、「钩子」13.5、「技能/子代理」15×12.5），故按她的指示原样替换、未做缩放。
+
+- **逐像素回归**（步骤 1 → 步骤 2）：整条导航（956×3464 设备像素）差分外接框 = `x 20.8–35.2, y 231.8–246.2`（CSS px）= 恰好「插件市场」16×16 盒内，浅深各 1464 个差异像素；其余 7 项与文字、分隔线、选中底**零像素变化**。
+- 对照图：`走查/0915-插件市场/navicon-{light,dark}-lucide归一-vs-她的版本.png`（左 = 步骤 1，右 = 她的版本）；`navicon-{light,dark}-{before,after}.png`。
+- 浅深两档均实测；`pnpm -F wave-webview type-check` 全绿（退出码 0）。
+
+### 影响面
+
+`SettingsPluginsIcon` 全仓仅 1 处引用（`SettingsPage.tsx:208` 左导航「插件市场」），无其他面受影响。
+
+### 残留（未授权，供后续点名；不在本轮范围）
+
+- **图标比同面多数项略小**（墨迹 13.0 vs 多数 15.0，仍在区间内）——若她要求放大到与「技能/子代理」同档，需把 path 等比放大 13.333/11.515 ≈ 1.1579 并重算落点。触发语 **「插件市场图标放大到同档」**。
+- 桌面根目录 `~/Desktop/插件市场图标.svg` 是我导出给她的**可编辑原稿（步骤 1 版）**；她的调整版在 `~/Desktop/招商局/插件市场图标.svg`。两份都在，未删改她的文件。
+- skill 回写候选（交 codex 审）：`icon.md` 可补实现陷阱 ——「n 网格图标库（lucide 24）用于 16px 盒时必须补偿 stroke（`scale(2/3)` + `strokeWidth ÷ 2/3`），否则 1.4 会渲染成 0.933，与同面 Figma 直出图标不成比例」；以及「Figma 导出的 `<g clip-path>` + 16×16 矩形 clipPath 外壳可直接去掉，改 `currentColor` 即可内嵌」。触发语 **「图标网格补偿写进 skill」**。
+- 其他导航图标若有同类网格混用（本页仅此 1 项曾存在），触发语 **「全站图标网格口径复核」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-settings-navicon-0915.mjs`（DOM + 4× 导航截图，浅深两档）；步骤 2 采样用 `/tmp/probe-navicon-after.mjs`。
+- 证据目录 `CC02/走查/0915-插件市场/`：`navicon-{light,dark}-{before,after}.png`、`navicon-{light,dark}-lucide归一-vs-她的版本.png`、`navicon-0915-{before,after}.json`。
