@@ -99,6 +99,18 @@ describe("execTool declaration", () => {
     expect(description).not.toMatch(budgetForm());
   });
 
+  it("documents that an empty query lists the whole pool", () => {
+    // The catalog can be truncated, so the model needs an enumeration path that
+    // does not depend on guessing a keyword.
+    const description = execTool.prompt!({
+      execPool: pool("mcp__srv__a"),
+    })!;
+    expect(description).toContain(
+      `tools["${EXEC_RESERVED_NAMESPACE}"].search("query")`,
+    );
+    expect(description).toMatch(/[Ee]mpty query lists the entire pool/);
+  });
+
   it("renders field-level docs from the pool into the description", () => {
     const description = execTool.prompt!({
       execPool: [

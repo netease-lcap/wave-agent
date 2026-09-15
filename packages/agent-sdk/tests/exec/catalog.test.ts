@@ -312,6 +312,59 @@ describe("renderCatalog", () => {
     );
   });
 
+  it("names every server, with counts, when the catalog is truncated", () => {
+    const pooled = [
+      { name: "mcp__alpha__t1" },
+      { name: "mcp__alpha__t2" },
+      { name: "mcp__beta__t1" },
+    ];
+    // Room for a single entry: alpha gets one, beta's turn never comes.
+    const rendered = renderCatalog(pooled, 6);
+
+    expect(rendered.shown).toBe(1);
+    expect(rendered.text).toContain("- mcp__alpha (2 tools, 1 shown)");
+    // The server rotation alone cannot promise beta a seat, so the summary is
+    // what keeps it from being invisible.
+    expect(rendered.text).toContain("- mcp__beta (1 tool, none shown)");
+  });
+
+  it("drops the shown-count for a server that is fully shown", () => {
+    const pooled = [
+      { name: "mcp__alpha__t1" },
+      { name: "mcp__beta__t1" },
+      { name: "mcp__beta__t2" },
+    ];
+    // Each entry is 23 chars / 7 estimated tokens, so 14 is room for exactly two.
+    const rendered = renderCatalog(pooled, 14);
+
+    expect(rendered.shown).toBe(2);
+    expect(rendered.text).toContain("- mcp__alpha (1 tool)");
+    expect(rendered.text).toContain("- mcp__beta (2 tools, 1 shown)");
+  });
+
+  it("keeps the per-server summaries outside the budget", () => {
+    const pooled = Array.from({ length: 40 }, (_, index) => ({
+      name: `mcp__s${String(Math.floor(index / 2)).padStart(2, "0")}__t${
+        (index % 2) + 1
+      }`,
+      description: "d",
+    }));
+    // Twenty servers, two tools each. Every entry is 28 chars / 8 estimated
+    // tokens, so 160 is exactly one seat for each server. Were the summaries
+    // budgeted, half of them would lose their seat to their own summary line.
+    const rendered = renderCatalog(pooled, 160);
+
+    expect(rendered.shown).toBe(20);
+    expect(entryLines(rendered.text)).toHaveLength(20);
+    expect(rendered.text).toContain("- mcp__s00 (2 tools, 1 shown)");
+  });
+
+  it("omits the per-server summaries when nothing is truncated", () => {
+    const rendered = renderCatalog(entries, 10_000);
+    expect(rendered.truncated).toBe(false);
+    expect(rendered.text).not.toContain("- mcp__");
+  });
+
   it("never leaks the budget number into model-visible text", () => {
     const rendered = renderCatalog(entries, 4096);
     expect(rendered.text).not.toContain("4096");
@@ -381,7 +434,8 @@ describe("renderCatalog", () => {
     ];
     // Room for exactly three lines: one full round of the rotation.
     const rendered = renderCatalog(pooled, 21);
-    const lines = rendered.text.split("\n");
+    // Summary lines sit in between; only the entries are being asserted here.
+    const lines = entryLines(rendered.text);
 
     expect(rendered.shown).toBe(3);
     expect(rendered.truncated).toBe(true);
