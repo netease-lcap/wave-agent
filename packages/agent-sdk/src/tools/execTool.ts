@@ -22,7 +22,11 @@ Sandbox API:
 
 The script has no filesystem, no network, no \`import\`, and no \`eval\`/\`new Function\`. It stops when it exceeds its time or tool-call budget. Every nested MCP call goes through the normal permission check, so it can still be denied — a denied call rejects with the reason.`;
 
-/** Characters of the script shown in a collapsed tool row, as Workflow does. */
+/**
+ * Characters of a script's first line shown in a collapsed tool row. Same
+ * threshold as the Claude Code REPL's summary, and like it the comparison is on
+ * code units (`.length`) rather than on display width.
+ */
 const MAX_PREVIEW_CHARS = 50;
 
 /** Rows rendered under the sandbox API blurb; the catalog is the mutable part. */
@@ -94,12 +98,20 @@ ${renderToolSection(pool)}`;
   // Value only, never the tool name: the collapsed row renders
   // "<tool name> <compactParams>" (webview Message.tsx, CLI ToolDisplay), so
   // wrapping the preview in "Exec(...)" printed the name twice.
-  // Same preview shape as the Workflow tool's script — first 50 characters plus an
-  // ellipsis — including the fact that newlines are left unescaped, so multi-line
-  // code can wrap the row.
+  // Shape follows the Claude Code REPL's summary — the script's first line, with an
+  // ellipsis only when it does not fit — except that blank lines are skipped, so a
+  // script opening with a newline still shows something.
   formatCompactParams: (params: Record<string, unknown>) => {
-    const code = typeof params.code === "string" ? params.code.trim() : "";
-    return code ? `${code.slice(0, MAX_PREVIEW_CHARS)}...` : "";
+    const code = typeof params.code === "string" ? params.code : "";
+    const line =
+      code
+        .split("\n")
+        .find((candidate) => candidate.trim().length > 0)
+        ?.trim() ?? "";
+    if (line.length <= MAX_PREVIEW_CHARS) {
+      return line;
+    }
+    return `${line.slice(0, MAX_PREVIEW_CHARS - 1)}…`;
   },
 
   execute: async (
