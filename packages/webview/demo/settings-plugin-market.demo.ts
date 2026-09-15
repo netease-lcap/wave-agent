@@ -100,12 +100,17 @@ test.describe("设置页插件市场截图", () => {
     ).toHaveAttribute("aria-selected", "true");
     await expect(webviewPage.locator(".settings-tab")).toHaveCount(2);
 
-    // 市场栏层级（对齐原型）：更新/移除紧跟市场切换，「新建市场」靠右
-    const tabsBox = (await webviewPage
-      .locator(".settings-tabs")
+    /* 「新建市场」的层级（设计师 0915 走查）：它是全局入口，落在**页头**里
+       （标题块 + 右上角按钮），整条位于市场栏之上，不再与市场 tab 同一行。
+       下面的断言表达这三件事，不依赖任何两个元素右缘恰好相等：
+       - 按钮的盒子整个落在页头容器内（不溢出）；
+       - 按钮在页头标题块右侧（与 h1/p 不重叠）；
+       - 按钮底边不低于市场栏顶边（= 属于页头那一行，不在工具栏一行）。 */
+    const headerBox = (await webviewPage
+      .locator(".settings-plugin-header")
       .boundingBox())!;
-    const marketOpsBox = (await webviewPage
-      .locator(".settings-plugin-market-ops")
+    const headerTextBox = (await webviewPage
+      .locator(".settings-page-header-text")
       .boundingBox())!;
     const addBox = (await webviewPage
       .locator(".settings-plugin-new-market")
@@ -113,11 +118,33 @@ test.describe("设置页插件市场截图", () => {
     const toolbarBox = (await webviewPage
       .locator(".settings-card-toolbar")
       .boundingBox())!;
-    expect(marketOpsBox.x - (tabsBox.x + tabsBox.width)).toBeLessThan(40);
-    expect(marketOpsBox.x).toBeLessThan(addBox.x);
-    expect(
-      toolbarBox.x + toolbarBox.width - (addBox.x + addBox.width),
-    ).toBeLessThan(2);
+    expect(addBox.x).toBeGreaterThanOrEqual(headerBox.x);
+    expect(addBox.x + addBox.width).toBeLessThanOrEqual(
+      headerBox.x + headerBox.width,
+    );
+    expect(addBox.y).toBeGreaterThanOrEqual(headerBox.y);
+    expect(addBox.y + addBox.height).toBeLessThanOrEqual(
+      headerBox.y + headerBox.height,
+    );
+    expect(addBox.x).toBeGreaterThanOrEqual(
+      headerTextBox.x + headerTextBox.width,
+    );
+    expect(addBox.y + addBox.height).toBeLessThanOrEqual(toolbarBox.y);
+
+    /* 市场栏层级（对齐原型）：「更新/移除市场」是**当前市场**的上下文操作，
+       因此与市场 tab 同处工具栏一行、紧跟在 tab 条右侧（工具条不换行，
+       宽度不足时由 tab 条自身横向滚动消化 —— 见 SettingsPage.css）。 */
+    const tabsBox = (await webviewPage
+      .locator(".settings-tabs")
+      .boundingBox())!;
+    const marketOpsBox = (await webviewPage
+      .locator(".settings-plugin-market-ops")
+      .boundingBox())!;
+    expect(marketOpsBox.x).toBeGreaterThanOrEqual(tabsBox.x + tabsBox.width);
+    expect(marketOpsBox.y).toBeGreaterThanOrEqual(toolbarBox.y);
+    expect(marketOpsBox.y + marketOpsBox.height).toBeLessThanOrEqual(
+      toolbarBox.y + toolbarBox.height,
+    );
     // 版本三态：未安装=最新版、有新版=两版并列、最新=单版
     await expect(webviewPage.getByText("最新 v2.3.1")).toBeVisible();
     await expect(
