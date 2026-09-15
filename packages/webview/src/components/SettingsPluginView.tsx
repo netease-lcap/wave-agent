@@ -509,6 +509,10 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
                   className="settings-row-btn settings-modal-block-btn"
                   onClick={handlePickFolder}
                 >
+                  {/* 加号图标：沿用页头「新建市场」同一个 Figma 加号（16px,
+                      currentColor），表达「新增一个本地市场」的动作语义。
+                      设计师 0915 评论指定「选择文件夹前面加个加号的图标」。 */}
+                  <SettingsAddIcon />
                   选择文件夹
                 </button>
               </div>
@@ -584,15 +588,18 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
                   }`}
                   onClick={() => setPendingScope(option.scope)}
                 >
-                  <span className="settings-scope-option-head">
+                  {/* 单选指示在文本左侧（设计师 0915 评论「radio 应该在左侧」）：
+                      原结构是「标题行 = 标题 … 单选圆」靠 space-between 把圆推到右端，
+                      这里改成「圆 + 文本块」的行式结构，标题与描述同处右侧文本列。 */}
+                  <span className="settings-scope-radio" aria-hidden="true" />
+                  <span className="settings-scope-option-body">
                     <span className="settings-scope-option-title">
                       {option.title}
                       <em>（{option.scope}）</em>
                     </span>
-                    <span className="settings-scope-radio" aria-hidden="true" />
-                  </span>
-                  <span className="settings-scope-option-desc">
-                    {option.desc}
+                    <span className="settings-scope-option-desc">
+                      {option.desc}
+                    </span>
                   </span>
                 </button>
               ))}

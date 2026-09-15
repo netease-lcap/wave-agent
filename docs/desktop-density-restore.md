@@ -3096,3 +3096,393 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 - **弹窗分段整组高 38px**（段高 32px、`padding: 7px 0` + `flex: 1`）与本轮筛选分段整组 32px（段高 26px）**不一致**；skill `.cc-segmented__item` 的 `min-height: 32px` 与弹窗那处一致。触发语：**「弹窗分段也对齐 32」**。
 - skill 回写归属：本轮四处已整理为交接单 **W-15 ~ W-21**（`skill-backfill-0915-for-codex.md`），其余由 codex 执行；其中 W-16 是**覆盖** skill 现有条款 `desktop-theme-bridge.md:29`（该行要求选中胶囊浅深两档都用反白，与本轮浅色档相反）。
 - 确认卡族口径（本体 `--cc-bg-overlay` / 外容器 `--vscode-panel-background` → `#111314`）未动，仅记录。
+
+## 0915 追加批 · 第五处：「选择文件夹」改为「虚线 + 加号」块（已随本批推送）
+
+来源 = 设计走查对本页的追加评论（`button.settings-row-btn.settings-modal-block-btn`「选择文件夹」）：「选择文件夹前面加个加号的图标，字号 14px，居中显示，描边用虚线，这块区域高度 32px，和表单保持一致」。
+
+- **文件**：`SettingsPluginView.tsx`（按钮内前置 `<SettingsAddIcon />`）、`SettingsPage.css`（`.settings-modal-block-btn`）。
+- **实现**（基准 `.settings-row-btn` = 12px / 28px / 实线 / 左对齐 → 本档抬到表单档）：
+  - `height: 40px → 32px`（原 `min-height: 40px` 移除）：与同档 `.settings-text-input` 的 `min-height: 32px` 同高，故「本地路径 / 远程仓库」两个 tab 的行高一致。
+  - `font-size: 12px → 14px`；`justify-content: center`；`border-style: dashed`；`gap: 4px`（图标与文字间距，沿用页头「新建市场」口径）。
+  - 图标沿用页头「新建市场」用的同一个 Figma 加号 `SettingsAddIcon`（16×16、`viewBox 0 0 32 32`、`fill: currentColor` → 随按钮文字色），不新增图标资源。
+- **实测**（`probe-pickfolder-btn-0915.mjs`，DPR2 / 1440，浅深两档，after = 现网 DOM / before = 内联 style 复现旧声明）：
+  - 高 **40 → 32**、字号 **12px → 14px**、边框 **solid → dashed**、图标 无 → **16×16**（浅色 `rgb(32,32,32)` / 深色 `rgb(229,231,232)`，= 按钮文字色）。
+  - 居中：**图标 + 文字整组**在 540px 宽按钮里的左/右内衬均 **224px**（对称）；文字盒左 244 / 右 224 —— 差值 20px **恰好等于图标 16px + 间距 4px**，即整组居中，非文字偏心。
+  - 行高 40 → **32**，与同档输入框（32px）一致；圆角保持 **8px**（评论点名的是高度，未动圆角）。
+  - 两档均无横向溢出、无 console/pageerror；`pnpm --filter wave-webview exec tsc --noEmit` exit 0。
+- **未做 / 待她点名**：
+  - 虚线颜色仍取按钮口径 `--vscode-panel-border`（浅 `#E4E7ED` = quiet line），比同档输入框的 `--cc-border`（浅 `#DCDFE6` = 强边界）淡一档；评论只说「描边用虚线」故未改色。触发语：**「虚线描边用输入框档」**。
+  - 圆角 8px（按钮口径）vs 表单 6px；评论只点名高度，未动。触发语：**「虚线块圆角也跟表单」**。
+  - 14px 字重仍是 400（`.settings-row-btn` 无 `font-weight`）；页头「新建市场」是 500。触发语：**「选择文件夹也用 500」**。
+- 截图：`走查/0915-插件市场/pickfolder-{before,after}-{light,dark}.png`；读数 JSON `pickfolder-btn-0915.json`。
+
+## 0915 追加批 · 第六处：公共 tab 组件字号 13px → 14px（已随本批推送）
+
+来源 = 设计走查对本页的追加评论（`button.settings-tab`「wave-plugins-official 10」）：「tab 里面的字号也应该是 14px」。
+
+- **文件**：`SettingsPage.css` `.settings-tab`（**公共 tab 组件**，非插件市场专有）。
+- **改动**：`font-size: 13px → 14px`；`line-height` 保持 22px（14/22 = 契约正文档档）。
+- **作用范围（按组件规格改，非单视图覆盖）**：`.settings-tab` 由共享组件 `SettingsTabs`（`SettingsManageComponents.tsx:26`）与两处内联 tablist 共用 → 共 **6 条 tab 条**受影响：插件市场 / MCP / 技能 / 钩子（均走 `SettingsTabs`）+ 「AGENTS.md 规则范围」（`SettingsPage.tsx:763`）+ 「来源范围」（`SettingsManageComponents.tsx:33`）。若只想改插件市场这一处，加作用域覆盖即可（触发语：**「tab 字号只改插件市场」**）。
+- **实测**（`probe-tabfont-0915.mjs`，浅深 × 1440/994 四组，after = 现网 DOM / before = 内联 style 复现 13px）：
+  - 段盒**高度 46px 未变**、tab 条**高 59px 未变**、工具条顶 **192px 未变**（下方内容零位移）。
+  - 宽度按文字重排：`wave-plugins-official` 152 → **161**、`wave-community` 126 → **134**、`acme-internal-tools-marketplace` 214 → **229**（三条合计 +31px）。
+  - **计数角标不受牵连**：仍是 **12px / 16px**（F-07 已批准的紧凑元信息下限）。触发语：**「tab 里计数也用 14」**。
+  - 激活下划线仍是 **3px** 贴底（浅色 `rgb(32,32,32)` / 深色 `rgb(229,231,232)`）；横向溢出 0（1440 与 994 两档都不换行、无裁切）。
+- 截图：`走查/0915-插件市场/tabfont-after-{light,dark}-{1440,994}.png`；读数 JSON `tabfont-0915.json`。
+
+## 0915 追加批 · 第七处：作用域胶囊（`.settings-scope-pill`）字号/字色/宽度（已随本批推送）
+
+来源 = 设计走查对本页的追加评论（`button.settings-scope-pill`「用户」）：「里面字号应该是 14px，字体颜色应该是最高级的，宽度和后面的按钮保持一致吧，可以按钮窄一点，看看按钮现在里面最多的文本是多少，不抖动的情况下保持宽度一致」。
+
+- **文件**：`SettingsPage.css` `.settings-scope-pill`（已安装插件行里显示当前作用域、点击更换的那个胶囊）。
+- **改动**：`font-size: 12px → 14px`；字色 `--vscode-descriptionForeground → var(--cc-text-primary, var(--vscode-foreground))`（浅 `#1F2329` / 深 `#E5E7E8`，即最高级正文档；桌面宿主下 `--vscode-foreground` 本就 = `--cc-text-primary`，故 hover 不再变色）；`min-width: 88px` + `justify-content: center`（与同行 `.settings-plugin-act` 同宽同机制）。
+- **宽度取值依据（实测数据，非估计）**：
+  - 同行 `.settings-plugin-act`（安装 / 更新 / 移除 / ✓ 已安装）**全部恒为 88px**（`min-width: 88px`；最长文案「✓ 已安装」13px/600 = 52.34px + 内衬 28 = 80.34 < 88，故均按 88 收敛）。
+  - 胶囊侧内容宽 = 文字 26.84（四种作用域文案「用户/项目/本地/未知」均为 2 字，14px/500 实测同宽）+ gap 6 + chevron 16 + 内衬 24 = **72.84px** → 用 `min-width: 88px` 收敛到 **88px**，与右侧按钮**逐像素同宽**，四种文案下宽度恒定（**无抖动**），余量 15.16px。
+  - 用共用 `min-width` 而非写死 `width`：文案将来变长时两侧同步增长，仍对齐。
+- **实测**（`verify-scopepill-0915.mjs`，浅深两档，after = 现网 DOM / before = 内联 style 复现改前）：宽度 **72 → 88**、字号 **12 → 14px**、字色 `rgb(96,96,96)` → 浅 `rgb(31,35,41)` / 深 `rgb(229,231,232)`、居中空隙 13/13 → **19/19**（`文字 26.84 + gap 6 + chevron 16` 整组居中）；`.settings-plugin-act` 保持 88px/13px **未动**。
+- **侧效（已量化）**：有胶囊行的操作列 `168 → 184px`，信息列 `510 → 494px`；**10 行描述仍全部 1 行**（换行数不变）、行高合计 `656 → 656`、横向溢出 0；**无胶囊行改前/改后截图逐像素 0 差异**（227,136 px 全等，作用范围仅此一个控件）。
+- **候选（未做，带触发语）**：若这组还要更窄，胶囊与 `.settings-plugin-act` 可一起收到 **81px**（= 最长文案 80.34 + 余量 1，胶囊内容 72.84 也放得下）。触发语：**「行按钮组收到 81」**。
+- 截图：`走查/0915-插件市场/scopepill-{before,after}-{light,dark}-row{0,1}.png`、`scopepill-nopill-{light,dark}-{before,after}.png`；读数 `scopepill-0915.json`、`scopepill-measure-{light,dark}.json`。
+
+## 0915 追加批 · 第八处：三批字级修正（正文 13 → 14 / 控件 13 → 14 / 弹层列表 13 → 14）（已随本批推送）
+
+来源 = 设计师先问「检查一下 skill 的规范，什么时候用 13 号字，现在界面中我感觉把 13 号字当正文来用了」（审计，不改代码），审计结论汇报后她连发三条授权：**「正文类 13 改 14」→「控件文字也改 14」→「弹层列表也一起」**。三条按序实施，范围严格限定在她点名的三类。
+
+### 契约依据（逐字回源，回答「13px 什么时候用」）
+
+| 依据                                          | 逐字                                                                                            | 结论                                    |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `references/conversation-typography.md:30`    | 「用户正文、AI 段落、列表正文、引用正文、表格单元格 \| 14 / 22 \| 400 \| 沿用正文约定」         | 正文 = **14/22**                        |
+| `references/conversation-typography.md:37`    | 「时间、数量、依赖等辅助信息 \| 12 / 20 \| 400 \| …**必要操作说明不降为辅助文字**」             | 紧凑元信息 = **12/20**；说明类不得降级  |
+| `references/conversation-typography.md:38`    | 「行内代码、命令、代码块、diff、文件预览、原始日志 \| 13 / 20 \| 400 \| CC 本轮采用的代码角色」 | **13px 的唯一正当用途 = 代码/等宽角色** |
+| `references/conversation-typography.md:39`    | 「面向用户的错误解释 \| 14 / 22 \| 400 \| 正文角色」                                            | 错误解释也是正文                        |
+| `references/conversation-typography.md:35`    | 「H4 / H5 / H6 \| 14 / 22 \| 600 \| 候选；**不小于正文**」                                      | 没有比正文更小的标题层级                |
+| `references/design-system.md:66-67`           | 「Body text defaults to `14px`」「Compact metadata may use `12px`」                             | UI 正文也只有 14 / 12 两级              |
+| `theme/element-plus.css:50` + `layout.css:19` | `--el-font-size-base: var(--cc-font-size-md)`                                                   | 控件基线字号 = 14px                     |
+| `tokens/tokens.css`                           | `--cc-font-size-xs: 12 / sm: 13 / md: 14`，另设 `--cc-code-font-size: 13px`                     | 13px 在 token 层是给代码角色的档位      |
+
+**审计结论**：契约里 **不存在「13px 的 UI 层级」**——正文 14、紧凑元信息 12、代码角色 13。她的判断成立：界面把 13px 当正文/控件文字用，属历史漂移而非设计决定。13px 的合法保留项只有代码/等宽角色（本页无代码角色）。
+
+### 审计口径（有效集，不是原始计数）
+
+- 组件 CSS 中声明 `13px` 的类共 **51 个**；其中 **11 个**已被桌面语义层 `host-desktop.css:1936` 覆盖为 14px（`.rewind-popup-item`、`.model-popup-item`、`.history-item-prompt`、`.slash-command-name`、`.session-list-item-title` 等），**故「弹层列表也一起」实际只剩 `.file-suggestion-dropdown` 一处漏网**（其子项靠继承取字号，桌面层未覆盖）。
+- 证据等级：`.file-suggestion-dropdown` 一组为 **B**（桌面层覆盖清单 + 计算值抽查，非全量视觉回归）；其余为 **A**（计算值 + 几何实测）。
+
+### 批 1 · 正文类 13 → 14/22（其中描述类经追加评论再收到辅助档，见本节末「之一」）
+
+| 类                            | 文件               | 改前 → 改后                                                  |
+| ----------------------------- | ------------------ | ------------------------------------------------------------ |
+| `.settings-plugin-desc`       | `SettingsPage.css` | `13px`/1.5（19.5）→ 14/22 → **追加评论后定档 `12px`/`20px`** |
+| `.settings-scope-option-desc` | `SettingsPage.css` | 同上（**仍 14/22**，见残留：语义同为「描述」，待她裁决）     |
+| `.settings-modal-hint`        | `SettingsPage.css` | `13px`/1.5 → `14px`/`22px`（必要操作说明，契约不降级）       |
+| `.btw-panel-answer`           | `BtwPanel.css`     | `13px`/1.5 → `14px`/`22px`                                   |
+
+#### 之一 · 追加评论：插件行描述归辅助档 `12/20`（已随本批推送）
+
+来源 = 设计师对 `div.settings-plugin-desc`（「集成 Git 工作流：…」）的评论：**「这里属于描述，应该都是 12px」**。
+
+- **依据**：`conversation-typography.md:37`「时间、数量、依赖等辅助信息 \| 12 / 20」+ `design-system.md:67`「Compact metadata may use `12px`」——描述归**辅助**而非正文（正文 14/22 一条被本评论收窄适用范围）。同时 `:37`「必要操作说明不降为辅助文字」→ 同组 `.settings-modal-hint` **保持 14/22 不动**。
+- **改动**：`.settings-plugin-desc` `font-size: 14px → 12px`、`line-height: 22px → 20px`。
+- **三态实测**（`verify-desc12-0915.mjs`，浅深 × 1440/994 四档，Range 数真实行盒）：
+
+| 档位                 | 字号/行高       | 10 行描述换行数（1440 / 994） | 单行行高    | 内容总高（1440 / 994） |
+| -------------------- | --------------- | ----------------------------- | ----------- | ---------------------- |
+| 原始                 | 13px / 19.5px   | 1111111111 / 1111111**2**11   | 65.5 / 64.5 | 1013 / 1033            |
+| 上一版               | 14px / 22px     | 1**2**11111**22**1 / 同上     | 68 / 67     | 1104 / 1104            |
+| **现状（本评论后）** | **12px / 20px** | **全 1 行** / **全 1 行**     | **66 / 65** | **1018 / 1018**        |
+
+- **结论**：12px 后 **10 行描述在 1440 与 994 全部单行**（994 下原本会换行的 Monorepo Release Orchestrator 也回到单行，行高 `85 → 66`），前述「Code Reviewer 末行 1 个汉字」的孤字问题**随之消解**；横向溢出 0、console/pageerror 0、浅深一致。列表比原始 13px 状态在 994 下还更紧凑（内容总高 `1033 → 1018`）。
+- 截图：`走查/0915-插件市场/fontfix3-{light,dark}-{1440,994}-list-{12,13,14}.png`；读数 `fontfix3-desc-0915.json`。
+
+### 批 2 · 控件与标题类 13 → 14（行高保持原值）
+
+`SettingsPage.css` 共 **19 处**（对 HEAD 逐规则比对：本文件 `13px → 14px` 的规则共 22 条，其中 3 条属批 1、1 条 `.settings-tab` 属第六处，余 18 条 + 原无声明（继承 13px）的 `.settings-back` = 19）：`.settings-back`、`.settings-nav-group h2`、`.settings-nav-item`、`.settings-section-heading h2`、`.settings-row-copy h3`、`.settings-number-control`、`.settings-select`、`.settings-number-input`、`.settings-text-input`、`.settings-save-btn`、`.project-item`、`.settings-textarea`、`.memory-turns`、`.settings-readonly-value`、`.settings-placeholder`、`.settings-project-card-header`、`.settings-plugin-chip`、`.settings-plugin-act`、`.settings-modal-seg-item`。依据 = `element-plus.css:50` 控件基线 14px + 标题不得小于正文（`conversation-typography.md:35`）。行高沿用各自原值（如 `.settings-nav-item` / `.project-item` / `.settings-textarea` 保持 22px）。
+
+- **几何护栏**：`.settings-modal-seg-item` 若沿用 `line-height: normal`，段高会 `32 → 34`、整组 `38 → 40`（normal 行盒随字号变大）。已把行盒钉在 `18px`，**只动字号不动几何**（实测组高 38 / 段高 32 与改前逐值相同）。若将来收「弹窗分段也对齐 32」，需同时改 `padding`（`26 = 18 行盒 + 上下各 4px`）。
+
+### 批 3 · 弹层列表 13 → 14
+
+`.file-suggestion-dropdown`（`FileSuggestionDropdown.css`，`13px → 14px`）：子项 `.suggestion-item` / `.suggestion-name` 靠继承取字号，一改即全列表生效；该容器是桌面层弹层字号清单里的漏网一处（同批 `.model-popup-item` / `.rewind-popup-item` / `.history-item-prompt` 已由 `host-desktop.css` 置 14px）。
+
+### 实测（浅深 × 1440/994；after = 现网 DOM，before = 注入改前 `!important` 覆盖同帧复现）
+
+- **字号**：`.settings-plugin-desc` 13 → 14 → **12（追加评论定档，见「之一」）**、`.settings-plugin-act` 13 → 14、`.settings-plugin-chip` 13 → 14、`.settings-save-btn` 13 → 14、`.settings-nav-item` 13 → 14、`.settings-text-input` 13 → 14、`.settings-modal-seg-item` 13 → 14（浅深四档一致）。
+- **控件高全部未动**：`.settings-plugin-act` 28、`.settings-plugin-chip` 26、`.settings-save-btn` 32、`.settings-tab` 46、`.settings-back` 30、`.settings-nav-item` 30、`.settings-text-input` 32、`.settings-scope-pill` 28（改前 = 改后）。
+- **弹窗分段**：`13px/18px 组高 38 段高 32 → 14px/18px 组高 38 段高 32`（护栏生效，几何零变化）。
+- **BtwPanel**：答复字号 `13px/19.5px → 14px/22px`，答复块高 `36 → 38`，**面板高 77 → 77 不变**。
+- **@ 文件建议弹层**：容器 `13px → 14px`、`.suggestion-name` `13px → 14px`；**弹层 `302×302` 不变、item `300×57`（末项 56）不变、滚动内容 `341` 不变、首屏完整可见条数 `5` 不变**（名字行盒 16 → 17 落在 item 内部弹性空间，不外溢）。
+- **插件列表（最终 12/20 档）**：单行描述行高 `65.5/64.5 → 66/65`；**10 行全部单行**；内容总高 `1013（1440）/ 1033（994）→ 1018 / 1018`；横向溢出 `0 → 0`；浅深一致。（14px 中间档的对照读数：单行 68/67、两行 90、内容总高 1104。）
+- 溢出与报错：横向溢出 0、console/pageerror **0 条**、`tsc --noEmit` 通过。
+
+### 侧效与换行归因（描述 14px 档下的代价，已量化；**已由「之一」的 12px 定档消解**）
+
+按 canvas 逐行量文本所需宽度（`probe-descwrap-0915.mjs`）与 DOM 行盒实测（`verify-fontfix-0915b.mjs`）：
+
+| 行                            | 1440 可用宽 | 14px 单行所需 | 结果                                         |
+| ----------------------------- | ----------- | ------------- | -------------------------------------------- |
+| Code Reviewer                 | 494         | 486.5         | **换行**，且第 2 行只剩 1 个字「论」（孤字） |
+| Monorepo Release Orchestrator | 494         | 517.7         | 换行（994 下改前本就两行）                   |
+| Performance Profiler…         | 590         | 576.7         | 换行（临界）                                 |
+
+→ 10 行里 1440 有 3 行、994 有 3 行变两行；**换行由字号引起（非行高）**：13px 时所需宽度均小于可用宽，14px 时临界两行越界。这是「正文对齐契约」与「列表密度」之间的真实取舍，当时单列为残留项待裁决、未自行改动列宽；**随后由她的追加评论「这里属于描述，应该都是 12px」定档 12/20 收口，换行与孤字问题随之消解**（见本节「之一」）。
+
+### 残留（未授权，保持原样，带触发语）
+
+- **描述档位的同组两处**（本评论只点名了插件行 `.settings-plugin-desc`）：`.settings-scope-option-desc`（作用域弹窗里的描述文案，语义同为「描述」，现 14/22，触发语 **「作用域描述也 12」**）；`.settings-modal-hint`（现 14/22，契约 `conversation-typography.md:37` 明确「必要操作说明不降为辅助文字」，**建议保留 14**，触发语「弹窗说明也降 12」）。
+- **描述换行 / 孤字（14px 档下的问题）**：已由 12px 定档消解；若将来描述回 14，会重新出现（1440 三行两行化、Code Reviewer 末行 1 个汉字）。触发语：**「描述回到 14」**。
+- **其余 13px 的 UI 类**（未在本轮点名范围）：`.btw-panel-header`、`.btw-panel-loading`、`.tool-block`、`.toast-action`、`.account-card-login`、`.confirm-dialog-btn`、`.confirmation-btn`、`.feedback-textarea`、`.desktop-panel-empty-sub`、`.desktop-session-empty`、`.error-message`、`.mermaid-empty`、`.configuration-field`、`.configuration-textarea`、`.radio-label`、`.mcp-server-name` 等（合计约 40 个类，多数不在插件市场面）。触发语：**「13px 只留代码角色」**。
+- **低于 12px 的辅助文字**：`.suggestion-path` = `11px`（本批新发现，低于契约辅助下限 12/20；桌面层未覆盖）。触发语：**「建议弹层路径 11 改 12」**。
+- **`.settings-modal-note` = 12px** 但语义是「必要操作说明」，契约 `conversation-typography.md:37` 明确「必要操作说明不降为辅助文字」→ 是否升 14 待裁决。触发语：**「弹窗说明也改 14」**。
+- 弹窗分段整组高度（38 → 32）与触发语「弹窗分段也对齐 32」见批 2 护栏说明。
+
+### 验证脚本与证据
+
+- 脚本：`verify-fontfix-0915.mjs`（v1）、`verify-fontfix-0915b.mjs`（v2，Range 数真实行盒 + 逐行归因）、`probe-descwrap-0915.mjs`（换行临界）、`probe-filesuggest-0915.mjs`（弹层小数位几何）、`shots-fontfix-0915.mjs`（32 张 before/after）。
+- 读数：`走查/0915-插件市场/fontfix-v2-0915.json`、`fontfix-0915.json`。
+- 截图（32 张，`走查/0915-插件市场/fontfix2-*`）：`{light,dark}-{1440,994}` × `{list,modal,btw,filesuggest}-{before,after}.png`。
+- **工具链文件（不推）**：`packages/webview/prototype/mockShared.ts` 的 `requestFileSuggestions` 补 `relativePath` / `icon` 字段——原 mock 缺字段会让 `FileSuggestionDropdown` 抛 `reading 'length'` 被 `PreviewBoundary` 兜住、弹层无法绘制（还原真实 host 回包字段，仅用于取证）。
+
+## 0915 审计记录（无代码改动）· 新建市场弹窗「添加」按钮样式合规检查
+
+来源 = 设计师评论（`div.settings-modal-row` 内「添加」，即 `button.settings-save-btn`，远程仓库档）：「检查添加按钮样式是否符合规范」。**仅审计，工作区未因此新增改动**；页 `CC02/审计-添加按钮样式-0915.html`，Artifact `…/artifact/qa0czyodfz`。
+
+12 项检查结果 = **8 通过 / 1 不一致 / 2 不通过 / 1 提示**：
+
+- **不通过（高）· 按钮文字折行且溢出按钮盒**：内衬 `4px 16px` → 内容可用 **24.4px**，「添加」14px/500 需 **28px** → 折 2 行，两行行盒总高 **36px** > 按钮高 **32px**（`scrollHeight 36 / clientHeight 32`），上下各溢出 2px；空值 / 短值 / 完整 Git 地址三种状态 × 浅深两档全部复现。**归因 = 历史缺陷**：注入 13px 复测同样折行（内容可用 22.8 < 文字需 26）。根因 = `.settings-text-input { width: 100% }` 先占满 540px 行宽，`.settings-save-btn` 为 `flex: 0 1 auto` + `white-space: normal` + `min-width: auto`（中文 min-content = 1 字）→ 被压到 56.4px，小于固有宽 60px。候选：**B1** `.settings-modal-row .settings-save-btn { flex: 0 0 auto; white-space: nowrap; }`（推荐，输入框让出 3.6px，行总宽与两档行高不变）/ B2 `min-width: 60px` / B3 全局改（范围大）。
+- **不通过（低）· 缺按压态**：按下时底色仍 = hover 色（浅 `#34383F` / 深 `#F0F2F3`），未接 `--cc-action-primary-active`（浅 `#111318` / 深 `#C7CCCF`，`dark-theme.md:30`）。
+- **不一致（中）· 圆角口径**：实测「添加」**6px**（= Element Plus 按钮基线 `--el-border-radius-base: var(--cc-radius-sm)`，`element-plus.css:44`；codechat 动作按钮 r6，见 `host-desktop.css:2070` 注释）vs 同弹窗「选择文件夹」**8px** vs 同一个 `.settings-save-btn` class 的页头「新建市场」**8px**（由 `.settings-plugin-new-market` 覆盖）→ 同一弹窗内两种口径并存，属口径选择而非硬违规，待裁决。
+- **通过**：字号 14px/500（本轮已由 13 修正）；高 32 = 同排输入框 32（`vue-element-plus.md:55`）；浅色主色底 `#1F2329` + 白字 **15.78:1**；深色浅灰底 `#E0E3E5` + 深字 `#191C1E` **13.28:1**（已批准 dark 映射，`host-desktop.css:168-170`）；hover 只加深底色（11.77:1 / 15.25:1）；禁用态 `disabled={!input.trim()}` + `opacity .6` + `not-allowed`，合成后字/底 **4.25:1**（浅）/ **5.56:1**（深）可辨；焦点环 `2px solid` + `offset 2px`（环/画布 15.78:1 / 7.02:1；深色环色 `#A0A5A8` = wave 已批准值，与 skill `desktop-colors.css:64` 映射不同，属已批准差异）；键盘自输入框 1 次 Tab 可达；Enter 提交。
+- **提示**：6px 为字面量（wave 仓库未见 `--cc-radius-sm` 变量声明）。
+- **触发语**：「添加按钮不要折行」「按 B1 修」「按 B2 修」「添加按钮补按压态」「添加按钮圆角用 8」「按钮圆角统一回 6」。
+- 证据：脚本 `CC02/audit-addbtn-{0915,states-0915,wrap-0915,wrap13-0915}.mjs`；读数 `走查/0915-插件市场/audit-addbtn-*.json`；截图 `audit-addbtn-{light,dark}-{disabled,enabled,focus}.png` 与行级 `audit-addbtn-{light,dark}-row-{empty,short,long}.png`（DSF3，12 张）。
+
+## 0915 追加批 · 第十处：新建市场弹窗「添加」按钮四项修正（已随本批推送）
+
+授权 = 设计师对上述审计记录的四条指示，逐条对应审计结论，**范围严格等于这四条**：
+**「添加按钮不要折行」**（修不通过 1）、**「按 B1 修」**（选定候选 B1）、**「添加按钮补按压态」**（修不通过 2）、**「添加按钮圆角用 8」**（裁决口径不一致项，取 8）。
+
+### 依据（逐字回源，与前节审计同源）
+
+- 折行不该发生：`conversation-typography.md:37`「时间、数量、依赖等辅助信息 \| 12 / 20」与控件基线 `element-plus.css:50`（`--el-font-size-base = --cc-font-size-md` = 14px）都要求 14px 的「添加」在其固有宽内单行可读；按钮高 32（`vue-element-plus.md:55` 设置页控件 32px）为既定档位，**文字溢出按钮盒**属几何违规而非风格取舍。
+- 按压态：`dark-theme.md:30`「pointer-down → `--cc-action-primary-active`」；`tokens/tokens.css:20` 浅色 active = `#111318`。
+- 圆角 8：`design-system.md:32/169` 内容面板 / 设置页返回行取 8px + `tokens/tokens.css:119-123`（`--cc-radius-md` = 8px）；同一弹窗内「选择文件夹」已是 8px，取 8 使弹窗内口径归一。
+
+### 改动（3 处，均在 `SettingsPage.css`）
+
+| #   | 规则                                       | 改动                                                         | 对应指示                  |
+| --- | ------------------------------------------ | ------------------------------------------------------------ | ------------------------- |
+| ①   | `.settings-modal-row .settings-save-btn`   | 新增：`flex: 0 0 auto; white-space: nowrap;`                 | 「不要折行」+「按 B1 修」 |
+| ②   | `.settings-modal-row .settings-save-btn`   | 新增：`border-radius: var(--cc-radius-md, 8px)`              | 「圆角用 8」              |
+| ③   | `.settings-save-btn:active:not(:disabled)` | 新增：`background: var(--cc-action-primary-active, #111318)` | 「补按压态」              |
+
+- ①的机理：同级 `.settings-text-input { width: 100% }` 先占满 540px 行宽，按钮 `flex: 0 1 auto` 被压到 56.4px（< 固有宽 60px），中文 `min-content` = 1 字 → 「添加」折 2 行、行盒总高 36px > 32px 按钮盒。钉住固有宽后输入框让出 3.6px（`473.6 → 470`），行总宽仍 540。
+- ③的**坑（已在代码注释中写明）**：深色档已定义 `--cc-action-primary-active`（`host-desktop.css:155` `#c7cccf`），**浅色档没有定义**（浅色块只有 primary / primary-hover）。首版 fallback 写成 `var(--cc-action-primary-active, var(--vscode-button-hoverBackground))`，实测浅色按压仍 = hover `#34383F` → 改为**字面量 `#111318`**（= skill `tokens.css:20` 浅色 active 值）。浅色缺 token 一事单列为残留／回写候选。
+- ③的作用域是**整个 `.settings-save-btn` 类**（含全局设置 / MCP / 钩子 / 个性化的「保存」），非仅弹窗内那一颗；如只需弹窗内一颗，触发语见下。
+
+### 实测（`verify-addbtn-fix-0915.mjs`，浅深 × {空值, 完整地址}；before = 同帧注入改前 `!important` 覆盖）
+
+| 指标                      | 改前                                                     | 改后                                                              |
+| ------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------- |
+| 按钮盒                    | 56.4 × 32                                                | **60 × 32**                                                       |
+| 内容可用宽 / 「添加」所需 | 24.4 / 28                                                | **28 / 28**                                                       |
+| 行数                      | **2 行**（竖排「添」「加」）                             | **1 行**                                                          |
+| 行盒总高 / 溢出           | 36 / 溢出 2px 每侧                                       | **16 / 0**（`scrollHeight 32 = clientHeight 32`）                 |
+| 圆角                      | 6px                                                      | **8px**                                                           |
+| `flex` / `white-space`    | `0 1 auto` / `normal`                                    | `0 0 auto` / `nowrap`                                             |
+| 输入框宽                  | 473.6                                                    | **470**（让出 3.6，为按钮固有宽让位）                             |
+| 行盒总宽 × 高             | 540 × 32                                                 | **540 × 32（不变）**                                              |
+| 弹窗盒                    | 590 × 227.2                                              | **590 × 227.2（不变）**                                           |
+| 按压态底色                | 浅 `#34383F`（= hover，无反馈）/ 深 `#F0F2F3`（= hover） | **浅 `#111318`（18.58:1）/ 深 `#C7CCCF`（10.57:1）**              |
+| 禁用态按压                | 无变化                                                   | **无变化**（`:not(:disabled)` 生效：浅 `#1F2329` / 深 `#E0E3E5`） |
+| 横向溢出 / console 报错   | 0 / 0                                                    | **0 / 0**                                                         |
+
+- **未越界核验**：同页其余 `.settings-save-btn` 逐 tab 实测仍为 `6px` / `flex 0 1 auto` / `white-space normal`（全局设置 `60×32`、个性化 `130×32` + `60×32`、MCP 服务 `189×32`、钩子 `108×32`）——① 只作用于 `.settings-modal-row` 内，未波及别处；页头「新建市场」仍 `108×32` / `r8px`（其 8px 来自 `.settings-plugin-new-market`，与本批无关）。
+- 截图（12 张，`走查/0915-插件市场/`）：`fix-addbtn-{light,dark}-row-{empty,long}-{before,after,pressed}.png`；读数 `fix-addbtn-0915.json`。
+- 弹窗为定宽 590，行宽 540 与视口无关，故本批未重复 994 档（折行判定不受视口影响）。
+
+### 残留（未授权，保持原样，带触发语）
+
+- **其余「保存」按钮圆角**：全局设置 / 个性化 / MCP 服务 / 钩子的 `.settings-save-btn` 仍是 6px（= Element Plus 按钮基线，本批只按指示改了弹窗行内那颗）。触发语 **「保存按钮圆角也用 8」**。
+- **浅色档缺 `--cc-action-primary-active`**：`host-desktop.css` 浅色块未定义该 token，现用字面量 `#111318`（= skill `tokens.css:20` 的浅色 active 值）；若要消字面量，需在浅色块补 token。触发语 **「补浅色 active token」**（建议回写 skill：wave 浅色缺 pointer-down 档，与 `dark-theme.md:30` 的声明不对称）。
+- **按压态作用域**：现覆盖整个 `.settings-save-btn` 类；如只想保留弹窗内一颗，「弹窗内按压态」改为 `.settings-modal-row .settings-save-btn:active` 即可。触发语 **「按压态只留弹窗那颗」**。
+- 前节（第八处 / 审计记录）的其它残留项与触发语不变。
+- 验证脚本：`CC02/verify-addbtn-fix-0915.mjs`；辅助探针 `/tmp/probe-other-save-0915.mjs`（逐 tab 读其余保存按钮，证明未越界）。
+
+## 0915 追加批 · 第十一处：弹窗底部按钮组（卸载 / 取消 / 保存）层级统一（已随本批推送）
+
+来源 = 设计师对 `div.settings-modal-actions`（作用域弹窗底部的「卸载 取消 保存」）的评论：**「弹窗中的按钮层级应该保持一致，卸载按钮放在最左边，按钮圆角统一 8px，字号 14px」**。四条要求逐条落实：
+
+| 指示             | 改前                                                                                                                                                   | 改后                                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| 按钮层级保持一致 | 同一行三种口径：卸载/取消 = `.settings-row-btn` 列表行档（**12px / 28px / r8 描边**），保存 = `.settings-save-btn` 控件档（**14px / 32px / r6 实心**） | 三者同一条控件基线：**14px / 32px / r8**，层级只靠填充区分（危险描边 / 次要描边 / 主色实心） |
+| 卸载放最左边     | 卸载在右对齐簇的最左端（`xInBar 367`）                                                                                                                 | **`xInBar 0`**，与上方作用域选项卡左缘对齐（弹窗内 `xInDialog 25` = 选项卡 25）              |
+| 圆角统一 8px     | 卸载/取消 8px、保存 6px                                                                                                                                | **三者 8px**                                                                                 |
+| 字号 14px        | 卸载/取消 12px、保存 14px                                                                                                                              | **三者 14px**                                                                                |
+
+- **依据**：32px = `references/vue-element-plus.md:55` 设置页控件 32px（同弹窗「选择文件夹」「添加」已是 32px，故三档一致）；14px = `theme/element-plus.css:50` 控件基线 `--el-font-size-base` = `--cc-font-size-md`；8px = `tokens/tokens.css` `--cc-radius-md`（并与上一轮「添加按钮圆角用 8」同口径，使弹窗内四个按钮圆角一致）。**层级一致性也要求同盒高**：28px 的描边按钮紧挨 32px 的实心按钮正是「层级不一致」的可见来源，故一并收到 32px。
+- **内衬**同取 `0 16px`（与主按钮一致），使 2 字标签的三个按钮盒宽相同（`62.6×32`（描边含 1px 边框）/ `60×32`（实心无边框）），差异只落在底色与描边上。
+- **实施**（`SettingsPage.css`，作用域仅 `.settings-modal-actions`）：
+
+```css
+.settings-modal-actions .settings-row-btn {
+  height: 32px;
+  padding: 0 16px;
+  font-size: 14px;
+  border-radius: var(--cc-radius-md, 8px);
+}
+.settings-modal-actions .settings-row-btn-danger {
+  margin-right: auto;
+} /* 卸载钉最左 */
+.settings-modal-actions .settings-save-btn {
+  border-radius: var(--cc-radius-md, 8px);
+}
+```
+
+### 实测（`verify-modalactions-fix-0915.mjs`，浅深两档；before = 同帧注入改前声明 `!important` 复现）
+
+| 元素               | 改前                                                     | 改后                                                                  |
+| ------------------ | -------------------------------------------------------- | --------------------------------------------------------------------- |
+| 卸载（危险描边）   | 46.5×28 / 12px / r8 / `xInBar 367`                       | **62.6×32 / 14px / r8 / `xInBar 0`（对齐选项卡左缘）**                |
+| 取消（次要描边）   | 46.5×28 / 12px / r8 / 右距 95                            | **62.6×32 / 14px / r8 / 右距 95（不变）**                             |
+| 保存（主色实心）   | 60×32 / 14px / **r6** / 右距 25                          | **60×32 / 14px / r8 / 右距 25（不变）**                               |
+| 按钮组 / 弹窗盒    | 540×32 / 590×400                                         | **540×32 / 590×400（不变）**                                          |
+| 未安装档（无卸载） | 取消 46.5×28 + 安装 60×32                                | 取消 62.6×32 + 安装 60×32，**右对齐位置不变**（`xInBar 407.4 / 480`） |
+| 保存 hover / 按压  | `#34383F` / `#111318`（浅）、`#F0F2F3` / `#C7CCCF`（深） | **逐值不变**（上一轮的按压态未被本批破坏）                            |
+| 报错               | —                                                        | console/pageerror **0 条**（浅深）                                    |
+
+- **未越界核验**：同页其它 `.settings-row-btn` 仍是列表行档（「更新市场」「移除市场」= `12px / 71×28 / padding 0 10px`）；其它页面「保存」按钮仍是 `14px/32/r6`（全局设置 `60×32`、MCP 服务 `189×32`、钩子 `108×32`）——本批只作用于 `.settings-modal-actions` 内。
+- 截图（6 张）：`fix-modalactions-{light,dark}-{before,after}.png`、`fix-modalactions-{light,dark}-install-mode.png`；读数 `fix-modalactions-0915.json`。
+
+### 残留（未授权，保持原样，带触发语）
+
+- **确认弹窗（移除市场 / 删除 worktree 共用的 `ConfirmDialog`）按钮仍是 `28px / r6 / 13px / min-width 64`**（`ConfirmDialog.css:68-81`），与本轮确立的「弹窗按钮 = 32/14/8」不一致。它同时被对话流外壳的删除 worktree 复用，改动面跨出插件市场页，故未动。触发语 **「确认弹窗按钮也统一 32/14/8」**。
+- **卸载是否改用柔和危险底**（现为危险描边 + 文字色，hover 走 `--cc-fill-hover`）未点名，未动。触发语 **「卸载改柔和危险底」**。
+- 上一节（第十处）的三条残留与触发语不变；另「弹窗次要按钮内衬回到 10px」触发语 **「弹窗次要按钮内衬用 10」**（本批为对齐主按钮取了 16px）。
+- 验证脚本：`CC02/verify-modalactions-fix-0915.mjs`；现状审计探针 `CC02/audit-modalactions-0915.mjs`。
+
+## 0915 追加批 · 第十二处：作用域选项的单选指示移到左侧（已随本批推送）
+
+来源 = 设计师对 `button.settings-scope-option.is-selected`（「为你安装（user）仅在你的用户配置中安装此插件」）的评论：**「radio 应该在左侧」**。
+
+- **改前**：选项是**列式**布局（`flex-direction: column`），标题行 `.settings-scope-option-head` 用 `justify-content: space-between` 把单选圆**推到标题行右端** → 实测圆距选项左缘 **505px**、距右缘 17px；标题与描述左缘俱为 17px。
+- **改后**：行式布局「单选圆 + 文本块」，圆的 `aria-hidden` 与按钮的 `aria-pressed` 语义、键盘路径均未变（原 `.settings-scope-option-head` 规则移除）：
+  - `SettingsPluginView.tsx`：`<span class="settings-scope-radio" /> + <span class="settings-scope-option-body">{标题, 描述}</span>`；
+  - `SettingsPage.css`：`.settings-scope-option { flex-direction: row; align-items: flex-start; gap: 12px }`、新增 `.settings-scope-option-body { display:flex; flex-direction:column; gap:6px; min-width:0 }`、`.settings-scope-radio { margin-top: 1px }`。
+- **依据**：单选/复选指示与被选文本同属一个可点区域时，指示符应在文本**之前**（阅读顺序即操作顺序；`design-system.md` 的列表项与状态项均按此组织），且指示符与首行文本垂直居中——`margin-top: 1px` = (标题首行行盒 20px（14px 且 `line-height: normal`）− 圆 18px（16px 盒 + 1.5px×2 边框）) / 2，实测对齐偏移 **0px**（改前圆与标题行同心，也已是 0，视觉无回退）。
+
+### 实测（`verify-scoperadio-0915.mjs before|after`，浅深两档；因本轮改的是 DOM 结构，改前取改动前现网实测而非同帧注入）
+
+| 指标                       | 改前                       | 改后                                                 |
+| -------------------------- | -------------------------- | ---------------------------------------------------- |
+| 布局方向                   | `column`（标题行右推圆）   | `row`（圆 + 文本块）                                 |
+| 单选圆水平位置             | 距左缘 **505** / 距右缘 17 | **距左缘 17** / 距右缘 505                           |
+| 文字左缘（标题 / 描述）    | 17 / 17                    | **47 / 47**（内衬 16 + 边框 1 + 圆 18 + 间距 12）    |
+| 圆 ↔ 标题首行居中偏移     | 0px（与标题行同心）        | **0px**（对齐首行，`margin-top: 1px`）               |
+| 选项盒 / 列表总高 / 弹窗盒 | 540×78 / 540×258 / 590×400 | **逐值不变**                                         |
+| 描述行数（三档）           | 1 / 1 / 1                  | **1 / 1 / 1**（文本列可用 476px，最长描述需 ~280px） |
+| 未选中态（点第 2 项）      | 圆同在右端                 | 圆同在左端（三行一致）                               |
+| 报错                       | —                          | console / pageerror **0 条**（浅深）                 |
+
+- 截图（8 张）：`走查/0915-插件市场/scoperadio-{light,dark}-{before,after}[-second].png`；读数 `scoperadio-0915-{before,after}.json`。
+
+### 残留（未授权，保持原样，带触发语）
+
+- **单选圆与文本块间距 12px**（沿用被移除的标题行 `gap` 值）。触发语 **「单选圆间距改 8」**。
+- **指示符仍是「按钮 + 伪元素」**（`button[aria-pressed]` + `.settings-scope-radio::after`），未改为原生 `input[type=radio]`；若要真单选框语义（同组上下键切换）需改结构与交互。触发语 **「作用域用原生 radio」**。
+- 第十一处的三条残留与触发语不变。
+
+## 0915 追加批 · 第十三处：插件行主操作按钮字重 600 → 500（与「新建市场」一致）（已随本批推送）
+
+来源 = 设计师对 `button.settings-plugin-act.is-primary`（插件行「安装」）的评论：**「检查按钮字重，和新建市场保持一致」**。
+
+- **改前**：同页两个 14px 级按钮两种字重 —— 页头「新建市场」（`.settings-save-btn` + `.settings-plugin-new-market`）= **500**，插件行主操作（`.settings-plugin-act`）= **600**；同页还有作用域胶囊 500、列表行按钮（更新市场 / 移除市场）400、筛选激活段 600。
+- **改动**：`.settings-plugin-act { font-weight: 600 → 500 }` —— 覆盖该族全部 10 个实例与三个变体（`is-primary` 安装 / 更新、`is-installed` ✓ 已安装）。
+- **依据**：以「新建市场」为准（其值 500 = `tokens/tokens.css:105` `--cc-font-weight-medium`，也是 `.settings-save-btn` / `.settings-scope-pill` 的既有值）。**契约注记**：skill `theme/element-plus.css:61` 的 `.el-button` 基线是 `--cc-font-weight-regular`（400）；本页按钮历来走 medium(500)，故本处按设计师指示与页内基准对齐、未据契约改档（若将来要按契约收，是一整批的事）。
+- **实测**（`verify-pluginact-weight-0915.mjs`，浅深两档；before = 同帧注入 `font-weight: 600 !important` 复现）：
+
+| 按钮     | 类                                  | 改前 → 改后   | 盒            | 文字实测宽     |
+| -------- | ----------------------------------- | ------------- | ------------- | -------------- |
+| 安装     | `.settings-plugin-act.is-primary`   | **600 → 500** | 88×28（不变） | 28px（不变）   |
+| 更新     | `.settings-plugin-act.is-primary`   | **600 → 500** | 88×28（不变） | 28px（不变）   |
+| ✓ 已安装 | `.settings-plugin-act.is-installed` | **600 → 500** | 88×28（不变） | 56.6px（不变） |
+
+- **几何零影响的原因**：该族有 `min-width: 88px`，且文案全为全角字（安装 / 更新 / ✓ 已安装），**中文字形宽度不随字重变化**，故文字宽与盒宽前后一致；插件列表总高 **692 → 692**。
+- **未越界**：全局设置「保存」、MCP 服务「新增用户级 MCP」、钩子「新增钩子」仍 500（本就同档）；「更新市场 / 移除市场」仍 400 / 12px；筛选激活段仍 600（tab 激活段口径，0915-D-02 指定）；console / pageerror **0 条**（浅深）。
+- 截图（4 张）：`走查/0915-插件市场/pluginact-weight-{light,dark}-{before,after}.png`；读数 `pluginact-weight-0915-fix.json`（现状审计 `pluginact-weight-0915.json`）。
+
+### 残留（未授权，保持原样，带触发语）
+
+- **「更新市场 / 移除市场」仍是 400 / 12px**（列表行档，与插件行主按钮 500 不同档）—— 本批只按指示改了 `.settings-plugin-act`。触发语 **「市场操作按钮也用 500」**。
+- 第十一处、第十二处的残留与触发语不变。
+- 验证脚本：`CC02/verify-pluginact-weight-0915.mjs`；现状探针 `CC02/audit-pluginact-weight-0915.mjs`。
+
+---
+
+## 0915 追加批 · 第十四处：市场 tab 行右侧「更新市场 / 移除市场」与 tab 垂直居中对齐（已随本批推送）
+
+来源 = 设计师对 `div.settings-plugin-market-ops`（「更新市场 移除市场」）的评论：**「这两个按钮和 tab 居中对齐」**。
+
+- **改前成因（逐字回源 `SettingsPage.css` 公共块）**：`.settings-card-toolbar { display: flex; align-items: center }` 把右侧操作区居中在 **tab 条的边框盒**（59px）上；而 `.settings-tabs { height: 59px; padding-top: 12px; border-bottom: 1px }` 的 tab 按钮盒（`.settings-tab { height: 100% }`）落在**去掉 12px 上内衬、再去掉 1px 下边框**的内容区里（46px）——两者中心天然差 6px，故实测按钮中心 **144.5** vs tab 文案中心 **150**，按钮比 tab 高 **5.5px**。
+- **改动（1 处，`SettingsPage.css`）**：`.settings-plugin-view .settings-toolbar-actions` 补 `display: flex; align-items: center; align-self: stretch; padding-top: 12px; padding-bottom: 1px` —— 撑满条高并镜像 tab 条自身的纵向内衬（12px 上内衬 + 1px 下边框），使按钮中心与 tab 按钮盒中心重合。
+- **实测**（`CC02/probe-tabops-align-0915.mjs before|after`，浅深两档，1440 / DPR2；只改 CSS，故 before = 同帧注入改前声明复现）：
+
+| 项                              | 改前                                   | 改后                                  |
+| ------------------------------- | -------------------------------------- | ------------------------------------- |
+| 操作组盒                        | 148×28 @ 130.5→158.5（中心 **144.5**） | 148×28 @ 136→164（中心 **150**）      |
+| 按钮「更新市场」/「移除市场」   | 71×28，中心 144.5                      | 71×28，中心 **150**                   |
+| 选中 tab 文案行盒中心           | 150（tab 盒 127→173，46px 高）         | 150（**不变**）                       |
+| 偏差（按钮中心 − tab 文案中心） | **−5.5px**                             | **0px**                               |
+| tab 条 / 工具栏盒               | 559.5×59 / 712×59                      | 552×59 / 712×59（条宽变化见第十五处） |
+| 筛选分段轨道                    | 276.7×32                               | 276.7×32（不变）                      |
+
+- 浅深两档同值；console / pageerror **0 条**；`pnpm --filter wave-webview exec tsc --noEmit` → exit 0。
+- 截图（4 张）：`走查/0915-插件市场/tabops-align-{light,dark}-{before,after}.png`；读数 `tabops-align-0915-{before,after}.json`。
+
+### 残留（未授权，保持原样，带触发语）
+
+- **其余复用 `SettingsTabs` 的视图（MCP 服务 / 规则范围 / 来源范围）操作区仍按旧口径居中在条边框盒上**（同样会偏高 5.5px）—— 本轮按评论点名范围只改插件市场视图。触发语 **「其他设置页的 tab 行按钮也对齐」**。
+
+---
+
+## 0915 追加批 · 第十五处：市场 tab 条显示不下时横向滚动，且不影响右侧按钮（已随本批推送）
+
+来源 = 设计师对 `div.settings-tabs`（「wave-plugins-official 10 / wave-community 3 / …」）的评论：**「tab显示不下的时候应该出现滚动，但不要影响到按钮」**。
+
+- **改前成因**：tab 条与右侧操作区同处一条 `flex-wrap: wrap` 的 flex 行、两者都按内容宽占位 → 市场名较长时（实测三个 tab 内容共 560px）总需求超过容器：
+
+| 视口 | 工具栏盒 | 需求宽                    | 结果（改前，实测）                                                            |
+| ---- | -------- | ------------------------- | ----------------------------------------------------------------------------- |
+| 1440 | 712×59   | 560 + 12(gap) + 148 = 720 | 操作区被挤出内容右界 **8px**（按钮右缘 1203.6 vs 内容右界 1196）              |
+| 994  | 706×59   | 720                       | 溢出 **14px**（983.6 vs 970）                                                 |
+| 480  | 228×112  | 720                       | 整条**换行**（条高 59 → 112），按钮被甩到第二行，tab 文案在 46px 高的盒里折行 |
+
+- **改动（3 处，均在 `SettingsPage.css`，作用域 `.settings-plugin-view`）**：
+  1. `.settings-card-toolbar { flex-wrap: nowrap }` —— 宽度不足不再换行（换行本身就是「影响到按钮」）。
+  2. `.settings-tabs { flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden }` + `.settings-tab { flex: 0 0 auto; white-space: nowrap; outline-offset: -2px }` —— tab 条成为滚动容器、段不收缩不折行。
+  3. `.settings-toolbar-actions { flex: 1 → flex: 0 0 auto }` —— 操作区不参与收缩分配，剩余空间全部让给可滚动的 tab 条。
+  4. 分隔线从 `border-bottom` 换成 `box-shadow: inset 0 -1px 0 var(--cc-settings-border-light)` 并补 `padding-bottom: 1px`；滚动条按 `.desktop-panel-tabs-strip` 既有口径隐藏（`scrollbar-width: none` + `::-webkit-scrollbar { display: none }`）。
+- **为什么要换分隔线（像素级原因）**：滚动容器只把子元素裁到 **padding box**，而活跃段下划线是 `bottom: -1px`、正好压在条自身的 `border-bottom` 上（分隔线在边框区、裁剪区之外）→ 直接加滚动会把下划线裁掉 1px（实测 3px → **2px**）且分隔线在下方重新露出。改成 inset 阴影（条自身绘制、排在子元素之前）+ 1px 下内衬后，段盒仍是 46px、中心仍是 150，下划线 3px 完整可见并继续盖住分隔线。滚动条隐藏的理由同源：条内只有这 1px 余量，经典滚动条（Windows/Linux 占 ~8px 布局空间）会把段盒压扁、下划线重新被裁。
+- **实测**（`CC02/probe-tabops-overflow-0915.mjs before|after`；before = 同帧回滚本轮四处声明、保留上一轮已确认的居中对齐）：
+
+| 项                          | 改前                                                                                             | 改后                                                          |
+| --------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| 1440 工具栏                 | 712×59（内容 720，溢 8）                                                                         | 712×**59**（单行）                                            |
+| 1440 tab 条                 | 559.5×59，`overflow-x: visible`（滚动 560/560）                                                  | 552×59，`overflow-x: auto`（滚动 **560/552 → 溢 8px**，可滚） |
+| 1440 按钮右缘               | 1203.6（= 内容右界 +8）                                                                          | **1196 = 页头「新建市场」右缘（差 0）**                       |
+| 994 tab 条 / 按钮右缘       | 559.5，`visible`；983.6（+14）                                                                   | 546（滚动 560/546 → 溢 14px）；**970 = 页头右缘（差 0）**     |
+| 480 工具栏                  | 228×112（换行；tab 文案折行）                                                                    | 228×**59**（单行；tab 条 68px 可滚、文案不折行）              |
+| 页内横向溢出元素            | `settings-section` / `settings-card-toolbar` / `settings-toolbar-actions` 均 `visible` 溢 8~94px | **仅 `settings-tabs`（`auto`，8~14px）**                      |
+| 活跃段下划线（DPR2 逐像素） | 6 个深色行（= 3px），无分隔线露出                                                                | **6 个深色行（= 3px），无分隔线露出（与改前逐行一致）**       |
+| 段盒 / 文案                 | 46px 高，折行（480）                                                                             | 46px 高，`nowrap`                                             |
+
+- **键盘与无障碍**：axe-core 4.13.0（`/tmp/axe`，未进仓库依赖）浅深各 **0 违规**（`scrollable-region-focusable` 0 违规 / 2 个通过节点），仅余既有 `region`(moderate) 一条（预览台 `select` 不在 landmark 内，非本轮引入）；键盘 Tab 到首个市场 tab 时焦点环 `2px solid` 且 `outline-offset: -2px`（贴边内环，**不被滚动容器裁切**），滚到最右时末个 tab 完整可见（右余 0.4px）。
+- 截图：`走查/0915-插件市场/tabops-overflow-{1440,994,480}-{before,after}.png`、`tab-underline-{before,after}.png`、`tabscroll-focus-first.png` / `tabscroll-focus-last.png` / `tabscroll-scrolled-end.png`；读数 `tabops-overflow-0915-{before,after}.json`、`tab-underline-0915-{before,after}.json`、`tabscroll-keyboard-0915.json`、`axe-tabscroll-0915.json`。
+
+### 残留（未授权，保持原样，带触发语）
+
+- **480 窄窗下 tab 条只剩 68px 宽**（可用 228 − 按钮 148 − 间距 12）—— 按钮已按评论要求「不受影响」，但 tab 只剩一条缝；该视口下预览页本身也已横向溢出（插件行比卡片宽 52~94px，非本轮引入）。触发语 **「窄窗 tab 条太窄」**。
+- **tab 条自身没有键盘焦点**（`tabindex` 未加）—— 当前键盘可达性依赖条内的 tab 按钮（axe 通过、焦点会走到各按钮）；若要支持方向键直接滚动整条，需给条加 `tabindex="0"`。触发语 **「tab 条也给键盘聚焦」**。
+- 第十四处的残留（其他设置页视图）与第十~十三处的残留不变。
+- 验证脚本：`CC02/probe-tabops-align-0915.mjs`、`CC02/probe-tabops-align-narrow-0915.mjs`、`CC02/probe-tabops-overflow-0915.mjs`、`CC02/probe-tab-underline-clip-0915.mjs`、`CC02/probe-tabscroll-keyboard-0915.mjs`、`CC02/audit-plugin-tabscroll-0915-axe.mjs`。
