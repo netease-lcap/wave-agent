@@ -974,7 +974,7 @@ export class AgentBridge {
 
   private async setModel(model: string, sessionId?: string): Promise<null> {
     const entry = this.requireSession(sessionId);
-    entry.agent.setModel(model);
+    await entry.agent.setModel(model);
     // Keep storedConfig in sync: updateConfig recreates the agent from
     // storedConfig, so without this a later config save would revert the
     // model chosen here.

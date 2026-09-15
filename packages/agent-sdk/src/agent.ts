@@ -139,8 +139,8 @@ export class Agent {
    * Set the active model for the agent session
    * @param model - The ID of the model to use
    */
-  public setModel(model: string): void {
-    this.configurationService.setModel(model);
+  public async setModel(model: string): Promise<void> {
+    await this.configurationService.setModel(model);
     this.options.callbacks?.onModelChange?.(model);
   }
 

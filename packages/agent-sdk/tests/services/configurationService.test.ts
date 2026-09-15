@@ -14,6 +14,14 @@ vi.mock("fs", async () => {
   };
 });
 
+// Wraps the real atomic writer so tests can inject write failures (e.g. the
+// Windows rename EPERM seen on CI) without losing the real implementation.
+vi.mock("../../src/utils/atomicWrite.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../src/utils/atomicWrite.js")>();
+  return { ...actual, atomicWriteFile: vi.fn(actual.atomicWriteFile) };
+});
+
 import {
   ConfigurationService,
   validateEnvironmentConfig,
@@ -1259,10 +1267,23 @@ describe("ConfigurationService", () => {
   });
 
   describe("Model Selection", () => {
-    it("should set model in options", () => {
-      configService.setModel("new-model");
+    it("should set model in options", async () => {
+      await configService.setModel("new-model");
       const config = configService.resolveModelConfig();
       expect(config.model).toBe("new-model");
+    });
+
+    it("should keep the in-memory model when persisting fails", async () => {
+      vi.mocked(atomicWriteFile).mockRejectedValueOnce(
+        Object.assign(new Error("EPERM: operation not permitted, rename"), {
+          code: "EPERM",
+        }),
+      );
+
+      await expect(
+        configService.setModel("new-model"),
+      ).resolves.toBeUndefined();
+      expect(configService.resolveModelConfig().model).toBe("new-model");
     });
 
     it("should get configured models including current", () => {

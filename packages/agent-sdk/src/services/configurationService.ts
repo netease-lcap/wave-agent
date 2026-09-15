@@ -922,11 +922,19 @@ export class ConfigurationService {
   }
 
   /**
-   * Set the active model in the session
+   * Set the active model in the session.
+   *
+   * Persisting to `~/.wave/settings.json` is best-effort: the in-memory model
+   * applies immediately, and a failed write (e.g. a locked file / rename EPERM
+   * on Windows) is logged instead of escaping as an unhandled rejection.
    */
-  setModel(model: string): void {
+  async setModel(model: string): Promise<void> {
     this.options.model = model;
-    this.persistModelToSettings(model);
+    try {
+      await this.persistModelToSettings(model);
+    } catch (error) {
+      logger.warn(`Failed to persist model to settings: ${error}`);
+    }
   }
 
   private async persistModelToSettings(model: string): Promise<void> {
