@@ -88,12 +88,14 @@ MCP tools reachable from the sandbox, called as \`tools.<name>\` (no other name 
 ${renderToolSection(pool)}`;
   },
 
+  // Value only, never the tool name: the collapsed row renders
+  // "<tool name> <compactParams>" (webview Message.tsx, CLI ToolDisplay), so
+  // wrapping the preview in "Exec(...)" printed the name twice. Every other tool
+  // but Artifact follows the same value-only convention.
   formatCompactParams: (params: Record<string, unknown>) => {
     const code = typeof params.code === "string" ? params.code.trim() : "";
     const firstLine = code.split("\n")[0] ?? "";
-    const preview =
-      firstLine.length > 60 ? `${firstLine.slice(0, 57)}...` : firstLine;
-    return `${EXEC_TOOL_NAME}(${preview})`;
+    return firstLine.length > 60 ? `${firstLine.slice(0, 57)}...` : firstLine;
   },
 
   execute: async (

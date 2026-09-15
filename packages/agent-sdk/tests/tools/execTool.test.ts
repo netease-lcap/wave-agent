@@ -156,19 +156,25 @@ describe("execTool declaration", () => {
   });
 
   it("previews the first line of the code in a collapsed block", () => {
+    // Value only: the row already prints the tool name, so a wrapped value showed
+    // "Exec Exec(const a = 1;)".
     expect(
       execTool.formatCompactParams!(
         { code: "const a = 1;\nreturn a;" },
         contextWith(),
       ),
-    ).toBe(`${EXEC_TOOL_NAME}(const a = 1;)`);
+    ).toBe("const a = 1;");
 
     const long = execTool.formatCompactParams!(
       { code: "x".repeat(200) },
       contextWith(),
     );
-    expect(long.length).toBeLessThan(80);
-    expect(long.endsWith("...)")).toBe(true);
+    expect(long).toBe(`${"x".repeat(57)}...`);
+
+    // Leading blank lines are trimmed, so the preview is the first real line.
+    expect(
+      execTool.formatCompactParams!({ code: "\n\n  return 1;" }, contextWith()),
+    ).toBe("return 1;");
   });
 });
 

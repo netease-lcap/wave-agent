@@ -162,7 +162,7 @@ describe("artifactTool", () => {
           },
           makeContext(),
         ),
-      ).toBe("Artifact(docs/guide.md → https://server.test/code/artifact/abc)");
+      ).toBe("docs/guide.md → https://server.test/code/artifact/abc");
     });
 
     it("should format compact params for reads", () => {
@@ -171,7 +171,7 @@ describe("artifactTool", () => {
           { action: "read", url: "https://server.test/code/artifact/abc" },
           makeContext(),
         ),
-      ).toBe("Artifact(read https://server.test/code/artifact/abc)");
+      ).toBe("read https://server.test/code/artifact/abc");
     });
   });
 
