@@ -50,56 +50,15 @@ describe("buildSystemPrompt", () => {
     expect(prompt).not.toContain("Write for creating files");
   });
 
-  it("injects MCP servers' own usage notes verbatim", () => {
-    const blocks = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
-      mcpInstructions: [
-        { name: "guide", instructions: "Use lookup before mutate." },
-        {
-          name: "tavily",
-          instructions: "Rate limit: 20 requests per minute.\n\nCrawl first.",
-        },
-      ],
-    });
+  it("never carries MCP usage notes in any block", () => {
+    // A server's usage notes are announced as a message when the server becomes
+    // usable, not put into the prompt: they appear only when a connection
+    // happens, and that must not rewrite the cached prefix
+    // (docs/specs/ecosystem/mcp.md, docs/specs/core/prompt-cache-control.md).
+    const blocks = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, []);
+    const prompt = flattenBlocks(blocks);
 
-    expect(flattenBlocks(blocks)).toContain(
-      [
-        "<mcp_instructions>",
-        '  <server name="guide">',
-        "    Use lookup before mutate.",
-        "  </server>",
-        '  <server name="tavily">',
-        "    Rate limit: 20 requests per minute.",
-        // A blank line keeps its indent, exactly like opencode's rendering.
-        "    ",
-        "    Crawl first.",
-        "  </server>",
-        "</mcp_instructions>",
-      ].join("\n"),
-    );
-  });
-
-  it("keeps MCP usage notes out of the cacheable block", () => {
-    // The notes come and go with connections, so they must not sit in the block
-    // that is meant to stay byte-identical (docs/specs/core/prompt-cache-control.md).
-    const blocks = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
-      mcpInstructions: [{ name: "guide", instructions: "Use lookup." }],
-    });
-    const staticBlocks = blocks.filter((block) => block.cacheable);
-
-    expect(blocks.filter((block) => !block.cacheable)).toHaveLength(1);
-    for (const block of staticBlocks) {
-      expect(block.text).not.toContain("<mcp_instructions>");
-    }
-  });
-
-  it("adds no MCP section when no server has usage notes", () => {
-    expect(
-      flattenBlocks(buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [])),
-    ).not.toContain("<mcp_instructions>");
-    expect(
-      flattenBlocks(
-        buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], { mcpInstructions: [] }),
-      ),
-    ).not.toContain("<mcp_instructions>");
+    expect(prompt).not.toContain("<mcp_instructions>");
+    expect(prompt).not.toContain("mcp-instructions");
   });
 });

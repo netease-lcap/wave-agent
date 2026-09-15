@@ -804,7 +804,7 @@ await agent.connectMcpServer("github");
 await agent.disconnectMcpServer("github");
 ```
 
-服务器在 `initialize` 响应里返回的使用说明（`instructions`）会被记录在 `McpServerStatus.instructions` 上，并注入系统提示的**动态块**（按服务器标明来源；多行文本原样保留，不裁剪）——适合承载限流、前置条件、整体用法约定这类"不调用也要知道"的信息。服务器的工具被权限规则全部排除、或服务器断开/连接失败时，该服务器的说明不注入（与工具同源，见 `docs/specs/ecosystem/mcp.md`）。
+服务器在 `initialize` 响应里返回的使用说明（`instructions`）会被记录在 `McpServerStatus.instructions` 上，并在服务器变为可用时**播报一次**（作为一条对 UI 隐藏的消息追加进对话历史，按服务器标明来源；多行文本原样保留，单台服务器超过 2048 字节时截断并标明）——适合承载限流、前置条件、整体用法约定这类"不调用也要知道"的信息。已播报过的服务器不重复播报；服务器断开时播报一次"已下线、上述说明不再适用"（已播报原文留在历史里，不回撤，与"历史不改写"一致）；工具被权限规则全部排除的服务器不播报（与工具同源）。见 `docs/specs/ecosystem/mcp.md`。
 
 ### 状态回调 {#mcp-callbacks}
 
