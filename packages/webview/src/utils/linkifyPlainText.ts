@@ -10,31 +10,30 @@
 
 import { escapeHtml, linkifyCodeBlockPaths } from "./filePathLinks";
 
-// 剥离裸 URL 尾部的 ASCII/中文标点。marked 默认 url tokenizer 的
-// _backpedal 正则只剔除 ASCII 标点（?!.,:;*_'"~()&），中文标点（。、（ 等）
-// 会被百分号编码进 href，点击打开错误链接（如 "https://example.com。" →
-// href 带 %E3%80%82）。这里对纯文本链接化同时处理两类标点。
+// 剥离 URL 候选里的正文尾巴。marked 默认 url tokenizer 的 _backpedal 正则
+// 只剔除 ASCII 标点（?!.,:;*_'"~()&），中文标点（。、（ 等）会被百分号编码进
+// href，点击打开错误链接（如 "https://example.com。" → href 带 %E3%80%82）。
+// 这里对纯文本链接化同时处理两类标点。
 //
-// 注意括号语义差异：ASCII 括号成对时是 URL 内容（如 "/foo(bar)"、
+// 全角标点一律是终止符而非仅尾部：中文写作习惯里 URL 后可直接接「（注释）」
+// 或「，然后」而不打空格，此时标点及其后内容属于正文，并入链接目标会得到
+// 带 %EF%BC%88 的错误地址（如 "…/pull/2217（commit 说明"、
+// "https://a.com/b（中文说明）后"）。真实 URL 中的非 ASCII 字符应百分号编码，
+// 故把第一个全角标点之后整体交给正文是安全的。
+//
+// ASCII 括号语义不同（见下）：成对时是 URL 内容（如 "/foo(bar)"、
 // "wiki_(disambiguation)"），保留；孤立闭括号（如 "(https://a.com)" 中的
-// ")"）剥离。中文括号成对时多为注释（如 "（帮助）"），整体剥离。
+// ")"）剥离。
 const asciiPunct = "!?.,:;*_~'\"&";
-const plainCjkPunct = "，。、；：！？…";
-
-// 成对中文括号整体剥离（如 "（帮助文档）"），孤立开括号（如 "（"）也剥掉。
-const closingPairs: Record<string, string> = {
-  "）": "（",
-  "」": "「",
-  "』": "『",
-  "】": "【",
-};
+const cjkPunctRe = /[，。、；：！？…（）「」『』【】《》〈〉“”‘’—]/;
 
 export function stripTrailingUrlPunct(url: string): string {
-  let s = url;
+  const cut = url.search(cjkPunctRe);
+  let s = cut >= 0 ? url.slice(0, cut) : url;
   for (;;) {
     const last = s[s.length - 1];
     if (!last) break;
-    if (asciiPunct.includes(last) || plainCjkPunct.includes(last)) {
+    if (asciiPunct.includes(last)) {
       s = s.slice(0, -1);
       continue;
     }
@@ -48,47 +47,30 @@ export function stripTrailingUrlPunct(url: string): string {
       s = s.slice(0, -1);
       continue;
     }
-    const open = closingPairs[last];
-    if (open) {
-      const openIdx = s.lastIndexOf(open);
-      if (openIdx >= 0) {
-        s = s.slice(0, openIdx); // 成对中文括号（注释/说明）整体剥离
-        continue;
-      }
-      s = s.slice(0, -1);
-      continue;
-    }
-    if (Object.values(closingPairs).includes(last)) {
-      s = s.slice(0, -1); // 孤立中文开括号
-      continue;
-    }
     break;
   }
   return s;
 }
 
-// 非空白序列。URL 尾部标点由 stripTrailingUrlPunct 在候选上剥离。
+// 非空白序列。URL 候选里的正文尾巴（尾部标点、全角标点及其后内容）由
+// stripTrailingUrlPunct 截断，截断掉的部分随后原样显示。
 const URL_RE = /https?:\/\/\S+/g;
 // 空白分隔的 token：URL 与文件路径都以 token 为最小识别单位。
 const RUN_RE = /\S+/g;
 
-// URL token → <a>；尾部标点按既有规则剥离（见 stripTrailingUrlPunct）。
+// URL token → <a>；正文尾巴按上述规则截断（见 stripTrailingUrlPunct）。
 const urlAnchor = (rawUrl: string): string => {
   const url = stripTrailingUrlPunct(rawUrl);
   if (!/^https?:\/\/\S+$/i.test(url)) {
     // 剥离后不再是合法 http(s) URL（极端情况），原样转义整段
     return escapeHtml(rawUrl);
   }
-  let html = `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`;
-  // 剥离掉的后缀：含开括号的成对中文括号（注释/说明，如
-  // "（帮助）"）整体丢弃，纯尾部标点（如 "。"、"）"）作为普通文本
-  // 保留显示——标点不进链接目标，但输出原文保持可见。
-  const remainder = rawUrl.slice(url.length);
-  const hasOpeningBracket = Object.values(closingPairs).some((open) =>
-    remainder.includes(open),
+  // 剥离/截断掉的后缀（尾部标点，或全角标点及其后的正文）作为普通文本保留
+  // 显示——不进链接目标，但输出原文保持可见。
+  return (
+    `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>` +
+    escapeHtml(rawUrl.slice(url.length))
   );
-  if (!hasOpeningBracket) html += escapeHtml(remainder);
-  return html;
 };
 
 // 单个 token：先切出其中的 URL（保持既有行为），剩余片段按文件路径规则处理。

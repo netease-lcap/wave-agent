@@ -66,7 +66,8 @@ marked.use({
   },
 });
 
-// 在默认 url tokenizer 之上剥离尾部中文标点；返回 false 时 marked.use 会
+// 在默认 url tokenizer 之上截断 URL 候选里的正文尾巴（尾部中文标点，以及全角
+// 标点及其后的正文，如 "…/pull/2217（commit 说明"）；返回 false 时 marked.use 会
 // 回退到默认实现（url tokenizer 被 marked.use 包装，实例共享默认 rules）。
 // ASCII 标点已由默认实现的 _backpedal 剔除，剥离函数对 ASCII 是 no-op。
 const baseUrlTokenizer = new marked.Tokenizer();
@@ -79,8 +80,8 @@ marked.use({
       const raw = stripTrailingUrlPunct(token.raw);
       if (raw === token.raw) return token;
       // href 可能是 raw 加前缀的形式（www. → "http://" + raw）；token.text
-      // 是 raw 的转义形式（默认实现 escape(cap[0])），中文标点在转义中
-      // 保持不变，同样剥离即可。
+      // 是 raw 的转义形式（默认实现 escape(cap[0])），全角标点在转义中
+      // 保持不变，同样截断即可（截断点按同一函数重算，不受转义影响）。
       const prefix = token.href.endsWith(token.raw)
         ? token.href.slice(0, -token.raw.length)
         : "";

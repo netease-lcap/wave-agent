@@ -119,6 +119,14 @@ describe("bash result URL linkification", () => {
     expect(link!.textContent).toBe("https://example.com");
   });
 
+  it("ends the link target before a full-width bracket and keeps the annotation", () => {
+    const { output, link } = renderBashMessage(
+      "Server started at http://localhost:8000（说明）",
+    );
+    expect(link!.getAttribute("href")).toBe("http://localhost:8000");
+    expect(output).toHaveTextContent("http://localhost:8000（说明）");
+  });
+
   it("keeps non-URL output as plain text without links", () => {
     const { output, link } = renderBashMessage("error: command not found");
     expect(output).toHaveTextContent("error: command not found");

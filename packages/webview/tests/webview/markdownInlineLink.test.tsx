@@ -97,7 +97,7 @@ describe("bare URL with trailing CJK punctuation (marked GFM autolink)", () => {
     expect(link?.textContent).toBe("https://example.com");
   });
 
-  it("strips a trailing pair of Chinese brackets as a whole", () => {
+  it("ends the link target before a full-width bracket, keeping the annotation", () => {
     const { container } = renderAssistantMessage(
       "详见 https://example.com（帮助文档）。",
     );
@@ -138,5 +138,57 @@ describe("bare URL with trailing CJK punctuation (marked GFM autolink)", () => {
     expect(link?.getAttribute("href")).toBe(
       "https://example.com/search?q=%E4%BD%A0%E5%A5%BD",
     );
+  });
+});
+
+// URL 后紧跟全角标点（中文写作习惯里不打空格）：链接目标止于标点之前，标点及其
+// 后的正文作为普通文本显示（见 specs/ui/markdown-links.md「裸 URL 后紧跟全角
+// 标点时链接正确终止」）。
+describe("bare URL followed by full-width punctuation (marked GFM autolink)", () => {
+  const text = (container: HTMLElement) =>
+    container.querySelector(".markdown-content")?.textContent ?? "";
+
+  it("ends the target before a full-width opening bracket that starts an annotation", () => {
+    const { container } = renderAssistantMessage(
+      "https://github.com/netease-lcap/wave-agent/pull/2217（commit 这种文本消息",
+    );
+    const link = container.querySelector(".markdown-content a");
+    expect(link?.getAttribute("href")).toBe(
+      "https://github.com/netease-lcap/wave-agent/pull/2217",
+    );
+    expect(link?.textContent).toBe(
+      "https://github.com/netease-lcap/wave-agent/pull/2217",
+    );
+    expect(text(container)).toContain("（commit 这种文本消息");
+  });
+
+  it("keeps a paired annotation and the text after it visible", () => {
+    const { container } = renderAssistantMessage(
+      "详见 https://example.com/b（中文说明）后",
+    );
+    const link = container.querySelector(".markdown-content a");
+    expect(link?.getAttribute("href")).toBe("https://example.com/b");
+    expect(text(container)).toContain("（中文说明）后");
+  });
+
+  it("ends the target before other full-width punctuation too", () => {
+    const { container } = renderAssistantMessage(
+      "见 https://example.com，然后继续",
+    );
+    const links = container.querySelectorAll(".markdown-content a");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.getAttribute("href")).toBe("https://example.com");
+    expect(text(container)).toContain("，然后继续");
+  });
+
+  it("does not truncate legitimate URL characters", () => {
+    const { container } = renderAssistantMessage(
+      "示例 https://example.com/a_b?q=你好#frag 与 https://example.com/foo(bar)",
+    );
+    const links = container.querySelectorAll(".markdown-content a");
+    expect(links[0]?.getAttribute("href")).toBe(
+      "https://example.com/a_b?q=%E4%BD%A0%E5%A5%BD#frag",
+    );
+    expect(links[1]?.getAttribute("href")).toBe("https://example.com/foo(bar)");
   });
 });

@@ -45,9 +45,9 @@ describe("linkifyPlainText", () => {
     expect(linkifyPlainText("（https://example.com）")).toBe(
       '（<a href="https://example.com">https://example.com</a>）',
     );
-    // 成对中文括号（注释/说明）整体剥离，不保留显示
+    // URL 后紧跟括号注释：注释文本保留可见（不进链接目标）
     expect(linkifyPlainText("见 https://example.com（帮助）")).toBe(
-      '见 <a href="https://example.com">https://example.com</a>',
+      '见 <a href="https://example.com">https://example.com</a>（帮助）',
     );
   });
 
@@ -94,6 +94,37 @@ describe("linkifyPlainText", () => {
   it("keeps URLs with query strings and fragments intact", () => {
     expect(linkifyPlainText("http://a.com/p?x=1&y=2#frag")).toContain(
       'href="http://a.com/p?x=1&amp;y=2#frag"',
+    );
+  });
+});
+
+// URL 后紧跟全角标点时，链接目标止于标点之前，标点及其后的正文作为普通文本
+// 保留可见（见 specs/ui/markdown-links.md「裸 URL 后紧跟全角标点时链接正确终止」）。
+describe("linkifyPlainText — 全角标点终止 URL", () => {
+  it("全角开括号后的正文不再进链接目标", () => {
+    expect(linkifyPlainText("见 https://example.com（commit 说明")).toBe(
+      '见 <a href="https://example.com">https://example.com</a>（commit 说明',
+    );
+  });
+
+  it("成对括号注释与其后的正文都保留可见", () => {
+    expect(linkifyPlainText("详见 https://example.com/b（中文说明）后")).toBe(
+      '详见 <a href="https://example.com/b">https://example.com/b</a>（中文说明）后',
+    );
+  });
+
+  it("其他全角标点同样终止链接，后续 URL 独立成链", () => {
+    expect(linkifyPlainText("https://a.com，然后是 https://b.com。")).toBe(
+      '<a href="https://a.com">https://a.com</a>，然后是 <a href="https://b.com">https://b.com</a>。',
+    );
+  });
+
+  it("URL 自身的合法字符不受影响", () => {
+    expect(linkifyPlainText("https://a.com/p?q=你好#frag")).toBe(
+      '<a href="https://a.com/p?q=你好#frag">https://a.com/p?q=你好#frag</a>',
+    );
+    expect(linkifyPlainText("https://a.com/foo(bar)")).toBe(
+      '<a href="https://a.com/foo(bar)">https://a.com/foo(bar)</a>',
     );
   });
 });
@@ -163,11 +194,15 @@ describe("stripTrailingUrlPunct", () => {
     expect(stripTrailingUrlPunct("https://a.com/b")).toBe("https://a.com/b");
   });
 
-  it("strips paired CJK parentheses as a whole", () => {
+  it("cuts at the first full-width punctuation (paired or not)", () => {
     expect(stripTrailingUrlPunct("https://a.com（说明）")).toBe(
       "https://a.com",
     );
     expect(stripTrailingUrlPunct("https://a.com（")).toBe("https://a.com");
+    expect(stripTrailingUrlPunct("https://a.com（commit 说明")).toBe(
+      "https://a.com",
+    );
+    expect(stripTrailingUrlPunct("https://a.com，然后")).toBe("https://a.com");
   });
 
   it("keeps balanced ASCII parens but strips an orphan closing paren", () => {
