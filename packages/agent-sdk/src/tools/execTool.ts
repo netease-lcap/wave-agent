@@ -22,6 +22,9 @@ Sandbox API:
 
 The script has no filesystem, no network, no \`import\`, and no \`eval\`/\`new Function\`. It stops when it exceeds its time or tool-call budget. Every nested MCP call goes through the normal permission check, so it can still be denied — a denied call rejects with the reason.`;
 
+/** Characters of the script shown in a collapsed tool row, as Workflow does. */
+const MAX_PREVIEW_CHARS = 50;
+
 /** Rows rendered under the sandbox API blurb; the catalog is the mutable part. */
 function renderToolSection(pool: ExecPoolEntry[]): string {
   if (pool.length === 0) {
@@ -91,10 +94,12 @@ ${renderToolSection(pool)}`;
   // Value only, never the tool name: the collapsed row renders
   // "<tool name> <compactParams>" (webview Message.tsx, CLI ToolDisplay), so
   // wrapping the preview in "Exec(...)" printed the name twice.
+  // Same preview shape as the Workflow tool's script — first 50 characters plus an
+  // ellipsis — including the fact that newlines are left unescaped, so multi-line
+  // code can wrap the row.
   formatCompactParams: (params: Record<string, unknown>) => {
     const code = typeof params.code === "string" ? params.code.trim() : "";
-    const firstLine = code.split("\n")[0] ?? "";
-    return firstLine.length > 60 ? `${firstLine.slice(0, 57)}...` : firstLine;
+    return code ? `${code.slice(0, MAX_PREVIEW_CHARS)}...` : "";
   },
 
   execute: async (
