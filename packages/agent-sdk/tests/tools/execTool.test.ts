@@ -34,6 +34,7 @@ function contextWith(
   options: {
     denied?: (name: string) => boolean;
     execute?: ReturnType<typeof vi.fn>;
+    onShortResultUpdate?: (shortResult: string) => void;
   } = {},
 ): ToolContext {
   const executeMcpTool =
@@ -52,6 +53,9 @@ function contextWith(
             isToolDenied: options.denied,
           } as unknown as PermissionManager,
         }
+      : {}),
+    ...(options.onShortResultUpdate
+      ? { onShortResultUpdate: options.onShortResultUpdate }
       : {}),
   } as unknown as ToolContext;
 }
@@ -155,51 +159,10 @@ describe("execTool declaration", () => {
     );
   });
 
-  it("previews the script's first non-empty line in a collapsed block", () => {
-    // Value only: the row already prints the tool name, so a wrapped value showed
-    // "Exec Exec(const a = 1;)".
-    expect(
-      execTool.formatCompactParams!(
-        { code: "const a = 1;\nreturn a;" },
-        contextWith(),
-      ),
-    ).toBe("const a = 1;");
-
-    // Leading blank lines are skipped, and the row never gets a newline of its own.
-    const multiline = execTool.formatCompactParams!(
-      { code: "a\n".repeat(60) },
-      contextWith(),
-    );
-    expect(multiline).toBe("a");
-
-    expect(
-      execTool.formatCompactParams!({ code: "\n\n  return 1;" }, contextWith()),
-    ).toBe("return 1;");
-  });
-
-  it("ellipsizes the first line only when it does not fit", () => {
-    // 50 characters fit exactly, so the value is left alone.
-    const exact = "x".repeat(50);
-    expect(execTool.formatCompactParams!({ code: exact }, contextWith())).toBe(
-      exact,
-    );
-
-    // One past that: 49 characters plus the ellipsis, 50 columns in total.
-    const long = execTool.formatCompactParams!(
-      { code: "x".repeat(200) },
-      contextWith(),
-    );
-    expect(long).toBe(`${"x".repeat(49)}…`);
-  });
-
-  it("previews nothing when code is missing or blank", () => {
-    expect(execTool.formatCompactParams!({ code: "   " }, contextWith())).toBe(
-      "",
-    );
-    expect(execTool.formatCompactParams!({ code: "\n\n" }, contextWith())).toBe(
-      "",
-    );
-    expect(execTool.formatCompactParams!({}, contextWith())).toBe("");
+  it("previews nothing in the collapsed row", () => {
+    // The row prints the tool name itself; the script is a multi-line blob whose
+    // first line usually says nothing, so there is no compact text at all.
+    expect(execTool.formatCompactParams).toBeUndefined();
   });
 });
 
@@ -245,12 +208,81 @@ describe("execTool execution", () => {
     expect(result.success).toBe(true);
     expect(result.content).toContain("step 1");
     expect(result.content).toContain('{"got":"ok:mcp__srv__a"}');
-    expect(result.shortResult).toBe("Exec · 1 tool call");
+    expect(result.shortResult).toBe("1 tool call\nmcp__srv__a");
     expect(execute).toHaveBeenCalledWith(
       "mcp__srv__a",
       { input: "hi" },
       context,
     );
+  });
+
+  it("lists only the two most recent calls under the count", async () => {
+    const context = contextWith(
+      ["a", "b", "c"].map((suffix) => mcpConfig(`mcp__srv__${suffix}`)),
+    );
+
+    const result = await execTool.execute(
+      {
+        code: `
+          await tools.mcp__srv__a({});
+          await tools.mcp__srv__b({});
+          await tools.mcp__srv__c({});
+        `,
+      },
+      context,
+    );
+
+    expect(result.shortResult).toBe(
+      "... 3 tool calls\nmcp__srv__b\nmcp__srv__c",
+    );
+  });
+
+  it("reports a script that never reaches a tool", async () => {
+    const result = await execTool.execute(
+      { code: `console.log("nothing to call"); return 1;` },
+      contextWith([mcpConfig("mcp__srv__a")]),
+    );
+
+    expect(result.shortResult).toBe("0 tool calls");
+  });
+
+  it("updates the summary while the script is still running", async () => {
+    // Hold both calls open so the summary can be observed mid-run: the live
+    // update is the whole point (the row is all the user sees while it runs).
+    let release: () => void = () => {};
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const execute = vi.fn(async (name: string) => {
+      await pending;
+      return { success: true, content: `ok:${name}` };
+    });
+    const updates: string[] = [];
+    const context = contextWith(
+      [mcpConfig("mcp__srv__a"), mcpConfig("mcp__srv__b")],
+      { execute, onShortResultUpdate: (summary) => updates.push(summary) },
+    );
+
+    const run = execTool.execute(
+      {
+        code: `
+          await tools.mcp__srv__a({});
+          await tools.mcp__srv__b({});
+        `,
+      },
+      context,
+    );
+
+    await vi.waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]).toBe("1 tool call\nmcp__srv__a");
+
+    release();
+    const result = await run;
+
+    expect(updates[updates.length - 1]).toBe(
+      "2 tool calls\nmcp__srv__a\nmcp__srv__b",
+    );
+    expect(result.shortResult).toBe(updates[updates.length - 1]);
   });
 
   it("excludes denied tools from the pool it exposes to the sandbox", async () => {
@@ -286,7 +318,7 @@ describe("execTool execution", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe("bad script");
     expect(result.content).toContain("bad script");
-    expect(result.shortResult).toBe("Exec failed");
+    expect(result.shortResult).toBe("failed");
   });
 
   it("keeps console output produced before a failure", async () => {

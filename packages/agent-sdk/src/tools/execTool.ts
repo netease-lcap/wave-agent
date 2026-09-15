@@ -22,13 +22,6 @@ Sandbox API:
 
 The script has no filesystem, no network, no \`import\`, and no \`eval\`/\`new Function\`. It stops when it exceeds its time or tool-call budget. Every nested MCP call goes through the normal permission check, so it can still be denied — a denied call rejects with the reason.`;
 
-/**
- * Characters of a script's first line shown in a collapsed tool row. Same
- * threshold as the Claude Code REPL's summary, and like it the comparison is on
- * code units (`.length`) rather than on display width.
- */
-const MAX_PREVIEW_CHARS = 50;
-
 /** Rows rendered under the sandbox API blurb; the catalog is the mutable part. */
 function renderToolSection(pool: ExecPoolEntry[]): string {
   if (pool.length === 0) {
@@ -37,7 +30,39 @@ function renderToolSection(pool: ExecPoolEntry[]): string {
   return renderCatalog(pool, EXEC_DEFAULT_CATALOG_TOKENS).text;
 }
 
-function formatRun(result: ExecRunResult): ToolResult {
+/**
+ * How many of the most recent nested calls the result summary lists, mirroring
+ * how the `Agent` tool lists the subagent tools it just ran.
+ */
+const RECENT_CALLS_SHOWN = 2;
+
+/**
+ * The collapsed result row: the call count, then the most recent calls by name.
+ *
+ * Names only — MCP tools have no compact-params summary of their own, and a
+ * flat MCP call's collapsed row shows just the name. No "Exec" prefix either:
+ * the row this text sits in already prints the tool name.
+ *
+ * Derived from the calls the sandbox actually issued, so it can be rendered
+ * mid-run as well as at the end.
+ */
+function formatSummary(calls: readonly string[]): string {
+  const count = calls.length;
+  const lines: string[] = [
+    `${count > RECENT_CALLS_SHOWN ? "... " : ""}${count} tool call${
+      count === 1 ? "" : "s"
+    }`,
+  ];
+  for (const name of calls.slice(-RECENT_CALLS_SHOWN)) {
+    lines.push(name);
+  }
+  return lines.join("\n");
+}
+
+function formatRun(
+  result: ExecRunResult,
+  calls: readonly string[],
+): ToolResult {
   const lines: string[] = [];
   if (result.logs.length > 0) {
     lines.push(result.logs.join("\n"));
@@ -53,13 +78,12 @@ function formatRun(result: ExecRunResult): ToolResult {
   }
 
   const content = lines.join("\n");
-  const toolCalls = `${result.toolCalls} tool call${result.toolCalls === 1 ? "" : "s"}`;
 
   return {
     success: result.ok,
     content,
     ...(result.ok ? {} : { error: result.error }),
-    shortResult: result.ok ? `Exec · ${toolCalls}` : "Exec failed",
+    shortResult: result.ok ? formatSummary(calls) : "failed",
     ...(result.images.length > 0 ? { images: result.images } : {}),
   };
 }
@@ -95,25 +119,6 @@ MCP tools reachable from the sandbox, called as \`tools.<name>\` (no other name 
 ${renderToolSection(pool)}`;
   },
 
-  // Value only, never the tool name: the collapsed row renders
-  // "<tool name> <compactParams>" (webview Message.tsx, CLI ToolDisplay), so
-  // wrapping the preview in "Exec(...)" printed the name twice.
-  // Shape follows the Claude Code REPL's summary — the script's first line, with an
-  // ellipsis only when it does not fit — except that blank lines are skipped, so a
-  // script opening with a newline still shows something.
-  formatCompactParams: (params: Record<string, unknown>) => {
-    const code = typeof params.code === "string" ? params.code : "";
-    const line =
-      code
-        .split("\n")
-        .find((candidate) => candidate.trim().length > 0)
-        ?.trim() ?? "";
-    if (line.length <= MAX_PREVIEW_CHARS) {
-      return line;
-    }
-    return `${line.slice(0, MAX_PREVIEW_CHARS - 1)}…`;
-  },
-
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
@@ -141,7 +146,18 @@ ${renderToolSection(pool)}`;
     // `buildExecPool`, so the sandbox can never reach a tool the agent could not
     // already call directly.
     const pool = buildExecPool(mcpManager, context.permissionManager);
-    const result = await runExecScript({ code, pool, context });
-    return formatRun(result);
+    const calls: string[] = [];
+    const result = await runExecScript({
+      code,
+      pool,
+      context,
+      // Report each call as it is issued, so the collapsed row shows what the
+      // script is doing while it runs — the same live update the Agent tool does.
+      onToolCall: (name) => {
+        calls.push(name);
+        context.onShortResultUpdate?.(formatSummary(calls));
+      },
+    });
+    return formatRun(result, calls);
   },
 };

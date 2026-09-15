@@ -26,6 +26,12 @@ export interface RunExecOptions {
   /** Every MCP tool the sandbox may call. Also the allowlist for nested calls. */
   pool: ExecPoolEntry[];
   context: ToolContext;
+  /**
+   * Called as each nested call is issued, before it is dispatched, in the order
+   * the script issues them. Lets the caller show live progress; a call that is
+   * refused afterwards (over the limit) still reports.
+   */
+  onToolCall?: (name: string) => void;
   timeoutMs?: number;
   maxToolCalls?: number;
   maxLogChars?: number;
@@ -190,6 +196,7 @@ export function runExecScript(options: RunExecOptions): Promise<ExecRunResult> {
         if (message.kind === "call") {
           const call = message as ExecCallMessage;
           toolCalls += 1;
+          options.onToolCall?.(call.name);
           if (toolCalls > maxToolCalls) {
             worker.postMessage({
               kind: "result",
