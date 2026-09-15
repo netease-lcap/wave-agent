@@ -102,7 +102,7 @@ const OptionIndicator: React.FC<{ multiSelect: boolean; checked: boolean }> = ({
   );
 };
 
-export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
+const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
   confirmation,
   onConfirm,
   onReject,
@@ -226,23 +226,14 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     [],
   );
 
-  // Auto-grow the "other" textarea to fit its content (capped by CSS max-height).
-  const autoGrow = useCallback((el: HTMLTextAreaElement) => {
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, []);
-
-  // Size the textarea once when it mounts (e.g. when reopening with prior content).
-  const autoGrowTextarea = useCallback(
-    (el: HTMLTextAreaElement | null) => {
-      if (el) autoGrow(el);
-    },
-    [autoGrow],
-  );
-
   // Auto-focus the "Other" textarea when the user selects "Other" (keyboard
   // Space or mouse click). Only focus on an explicit unselected → selected
   // transition, never when navigating between questions.
+  //
+  // Auto-growing is purely CSS (`field-sizing: content` on .other-text-input),
+  // so this ref does nothing but hand the node to the focus effect. A plain ref
+  // object is stable across renders — an inline callback ref would get a new
+  // identity every render and make React detach/re-attach the node each time.
   const otherInputRef = useRef<HTMLTextAreaElement | null>(null);
   const wasOtherSelectedRef = useRef(false);
   const prevQuestionIndexRef = useRef(currentQuestionIndex);
@@ -711,12 +702,8 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                         className="other-text-input"
                         placeholder="输入自定义回答..."
                         value={otherInputs[q.question] || ""}
-                        ref={(el) => {
-                          autoGrowTextarea(el);
-                          otherInputRef.current = el;
-                        }}
+                        ref={otherInputRef}
                         onChange={(e) => {
-                          autoGrow(e.currentTarget);
                           handleOtherInputChange(q.question, e.target.value);
                         }}
                         onKeyDown={(e) => {
@@ -1057,3 +1044,9 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     </div>
   );
 };
+
+// Memoized: ChatApp re-renders on every state update (host messages, streaming
+// chunks, toasts); the dialog has no reason to re-render unless its own
+// confirmation changes. Its props (confirmation object + the two useCallback
+// handlers) are referentially stable across those updates.
+export const ConfirmationDialog = React.memo(ConfirmationDialogImpl);

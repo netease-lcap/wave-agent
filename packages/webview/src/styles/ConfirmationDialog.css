@@ -315,6 +315,12 @@
   min-height: 26px;
   max-height: 160px;
   height: auto;
+  /* Grows with the content up to max-height, then scrolls internally. Pure CSS
+     on purpose: measuring in JS (write height + read scrollHeight) forces a
+     synchronous layout on every keystroke. Needs Chromium 123+, so on older
+     engines (JCEF of the JetBrains 2024.2 baseline) the box simply stays at
+     min-height and scrolls. */
+  field-sizing: content;
   overflow-y: auto;
   resize: none;
 }
