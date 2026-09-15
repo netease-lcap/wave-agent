@@ -100,8 +100,8 @@ export default {
           collapsed: false,
           items: [
             {
-              text: "安装 chrome-devtools 插件",
-              link: "/tutorials#_1-安装-chrome-devtools-插件",
+              text: "安装 Playwright CLI",
+              link: "/tutorials#_1-安装-playwright-cli",
             },
             {
               text: "对话驱动自动化测试",
@@ -525,7 +525,6 @@ export default {
             { text: "deep-wiki", link: "/sdk#plugin-deep-wiki" },
             { text: "tavily-search", link: "/sdk#plugin-tavily-search" },
             { text: "frontend-design", link: "/sdk#plugin-frontend-design" },
-            { text: "superpowers", link: "/sdk#plugin-superpowers" },
           ],
         },
         {

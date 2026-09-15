@@ -660,7 +660,7 @@ model: fastModel
 
 描述任务时，我会根据技能的 description 自动匹配合适的技能并加载其操作规范。例如：
 
-- 你说"把需求整理成 PRD" → 自动调用 write-requirement-doc
+- 你说"把这段模糊需求整理成规格文档" → 自动调用 SDD 插件的 specify 技能（内置插件，需先在「设置 → 项目设置」启用 SDD）
 - 你说"做一个分享海报" → 自动调用 frontend-design
 - 你说"帮我改这份 .docx" → 自动调用 document-skills:docx
 
@@ -669,7 +669,7 @@ model: fastModel
 在需求中直接指定技能名，或用 `/技能名` 直接触发，例如：
 
 - "用 docx 技能把这个文档转成带修订的版本"
-- "用 brainstorming 先帮我理清这个功能的方案"
+- "用 deep-research 调研这个方案的开源替代品"
 - 输入 `/loop 5m 检查服务状态` 触发循环技能
 
 ![技能调用](/screenshots/desktop-skill.webp)
@@ -694,7 +694,7 @@ description: 生成单文件 HTML 原型
 关键点：
 
 - **匹配靠 description**：描述写得越精准，自动调用越准
-- **技能可叠加**：如 brainstorming 先理方案 → frontend-design 再实现
+- **技能可叠加**：如 SDD 先出规格 → frontend-design 再实现
 - **支持 bash 插值**：技能内容里可用 `!cmd` 嵌入实时命令输出
 
 ![技能设置页](/screenshots/desktop-settings-skills.webp)
@@ -1016,7 +1016,6 @@ Artifact：把本地 HTML 或 Markdown 文件发布成一个可分享的网页�
 | deep-wiki       | AI Wiki 生成器（Mermaid 图表、源码引用、llms.txt，含 3 个子代理）        |
 | tavily-search   | Tavily 搜索引擎 MCP，为 Agent 提供实时网络搜索能力                       |
 | frontend-design | 生产级前端界面设计技能                                                   |
-| superpowers     | AI 编程核心技能库（TDD、调试、代码审查等成熟实践）                       |
 
 #### 1）安装插件
 

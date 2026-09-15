@@ -1470,10 +1470,6 @@ Tavily AI 驱动的搜索引擎 MCP 服务器，通过 `https://mcp.tavily.com/m
 
 创建独特的、生产级前端界面设计技能。注重美学品质，避免千篇一律的 AI 审美风格。
 
-### superpowers {#plugin-superpowers}
-
-AI 编程助手核心技能库，包含 TDD、调试、协作模式和成熟技巧等经过验证的实践方法。（来源：[obra/superpowers](https://github.com/obra/superpowers)）
-
 ## 16. OpenTelemetry 遥测 {#opentelemetry-telemetry}
 
 Wave 支持 OpenTelemetry 可观测性标准，提供结构化的遥测数据（Traces、Metrics、Logs），帮助开发者观察 Agent 行为、调试性能问题并分析会话模式。
