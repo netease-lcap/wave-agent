@@ -10,7 +10,10 @@
   overflow-y: auto;
   z-index: 1000;
   font-family: var(--vscode-font-family);
-  font-size: 13px;
+  /* 弹层列表文字 13 → 14（skill theme/element-plus.css:50 基线 --cc-font-size-md = 14px；
+     同批的 .model-popup-item / .rewind-popup-item / .history-item-prompt 由桌面层
+     host-desktop.css 已置 14px，此容器是漏网的一处） */
+  font-size: 14px;
   transform: translateY(-100%); /* Move dropdown up by its own height */
   transform-origin: bottom left; /* Dropdown expands upward from bottom */
 }

@@ -337,9 +337,21 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
 
   return (
     <div className="settings-view settings-plugin-view">
-      <header className="settings-page-header">
-        <h1>插件市场</h1>
-        <p>浏览并安装插件市场的插件，扩展 Wave 的能力。</p>
+      {/* 页头右侧留操作位（新建市场）；其余设置视图页头仍是「标题 + 说明」两行 */}
+      <header className="settings-page-header settings-plugin-header">
+        <div className="settings-page-header-text">
+          <h1>插件市场</h1>
+          <p>浏览并安装插件市场的插件，扩展 Wave 的能力。</p>
+        </div>
+        {/* 新建市场是全局入口，放页头右上角（设计师 0915 走查） */}
+        <button
+          type="button"
+          className="settings-save-btn settings-plugin-new-market"
+          onClick={() => setNewMarketOpen(true)}
+        >
+          <SettingsAddIcon />
+          新建市场
+        </button>
       </header>
       <section className="settings-section">
         <SettingsTabs
@@ -348,8 +360,7 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
           onChange={setActiveMarket}
           actions={
             <div className="settings-plugin-ops">
-              {/* 更新/移除紧跟市场切换（当前市场的上下文操作）；新建市场是
-                  全局入口，靠右与上方操作分层（对齐原型 .market-ops/.market-add） */}
+              {/* 更新/移除紧跟市场切换，是当前市场的上下文操作 */}
               {activeMarket && (
                 <div className="settings-plugin-market-ops">
                   <button
@@ -378,21 +389,20 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
                   </button>
                 </div>
               )}
-              <button
-                type="button"
-                className="settings-save-btn settings-plugin-new-market"
-                onClick={() => setNewMarketOpen(true)}
-              >
-                <SettingsAddIcon />
-                新建市场
-              </button>
             </div>
           }
         />
 
         {!loading && marketplaces.length > 0 && (
           <div className="settings-plugin-toolbar">
-            <div className="settings-plugin-filters">
+            {/* 形制与新建市场弹窗的分段 tab 一致（设计师 0915 走查）；语义上这是一组
+                筛选开关，故保留 aria-pressed 按钮而不是 role=tab（弹窗那边没有方向键
+                导航，这里换 role 反而是无障碍降级） */}
+            <div
+              className="settings-plugin-filters"
+              role="group"
+              aria-label="插件筛选"
+            >
               {FILTERS.map((f) => (
                 <button
                   key={f.key}
@@ -499,6 +509,10 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
                   className="settings-row-btn settings-modal-block-btn"
                   onClick={handlePickFolder}
                 >
+                  {/* 加号图标：沿用页头「新建市场」同一个 Figma 加号（16px,
+                      currentColor），表达「新增一个本地市场」的动作语义。
+                      设计师 0915 评论指定「选择文件夹前面加个加号的图标」。 */}
+                  <SettingsAddIcon />
                   选择文件夹
                 </button>
               </div>
@@ -574,15 +588,18 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
                   }`}
                   onClick={() => setPendingScope(option.scope)}
                 >
-                  <span className="settings-scope-option-head">
+                  {/* 单选指示在文本左侧（设计师 0915 评论「radio 应该在左侧」）：
+                      原结构是「标题行 = 标题 … 单选圆」靠 space-between 把圆推到右端，
+                      这里改成「圆 + 文本块」的行式结构，标题与描述同处右侧文本列。 */}
+                  <span className="settings-scope-radio" aria-hidden="true" />
+                  <span className="settings-scope-option-body">
                     <span className="settings-scope-option-title">
                       {option.title}
                       <em>（{option.scope}）</em>
                     </span>
-                    <span className="settings-scope-radio" aria-hidden="true" />
-                  </span>
-                  <span className="settings-scope-option-desc">
-                    {option.desc}
+                    <span className="settings-scope-option-desc">
+                      {option.desc}
+                    </span>
                   </span>
                 </button>
               ))}

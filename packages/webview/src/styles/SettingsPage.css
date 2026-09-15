@@ -31,6 +31,48 @@
   min-height: 0;
 }
 
+/* ── 键盘焦点环（0915-F-06，含同日「双圈 + 空隙」修正）──────────────────
+   按控件有没有自身边界分两种语言：
+   ① 无边界控件（返回 / 导航项 / 页签 / 筛选胶囊 / 主次按钮 / 弹窗关闭）走契约
+      的外移环：skill theme/layout.css:211 与 codechat-ui global.css:44 均为
+      `outline: 2px solid var(--cc-border-focus); outline-offset: 2px`。
+   ② 自身带 1px 边界的表单控件（输入类 / 行内操作按钮 / 作用域胶囊 / 单选卡 /
+      安装按钮）不套外移环，焦点色落在自身边框上——此前一刀切套外移环，与控件
+      自身边框叠成「1px 边框 + 2px 空隙 + 2px 外环」的双圈（设计师 0915 走查）。
+      参考实现同语言：codechat-ui settings.css:566 `border-color: var(--cc-border-focus)`；
+      skill element-plus.css:114 亦把焦点落在控件自身边界上。
+   范围仅限设置页；对话流有自己的焦点处理，不在本规则内。 */
+.settings-page button:focus-visible,
+.settings-page input:focus-visible,
+.settings-page select:focus-visible,
+.settings-page textarea:focus-visible {
+  outline: 2px solid var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
+  outline-offset: 2px;
+}
+
+/* 输入类不套外移环：焦点由 .settings-select/:focus 一族的边框变色表达 */
+.settings-page input:focus-visible,
+.settings-page select:focus-visible,
+.settings-page textarea:focus-visible {
+  outline: none;
+}
+
+/* 自身带 1px 边界的按钮 / 胶囊 / 单选卡：焦点色落在边框上（单圈、无空隙） */
+.settings-page .settings-row-btn:focus-visible,
+.settings-page .settings-scope-pill:focus-visible,
+.settings-page .settings-scope-option:focus-visible,
+.settings-page .settings-plugin-act:focus-visible {
+  outline: none;
+  border-color: var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
+}
+
+/* 危险操作（移除市场）保住红色语义：红边不动，焦点环贴边同色加粗（单圈、无空隙） */
+.settings-page .settings-row-btn-danger:focus-visible {
+  border-color: var(--cc-color-danger, var(--vscode-errorForeground, #f48771));
+  outline: 2px solid var(--cc-color-danger, var(--vscode-errorForeground, #f48771));
+  outline-offset: 0;
+}
+
 /* ---- Left navigation ---- */
 
 .settings-sidebar {
@@ -43,6 +85,17 @@
   border-right: 1px solid var(--cc-settings-border);
 }
 
+/* 字级修正（设计师 0915 指示，分三批；依据见 docs/desktop-density-restore.md「第八处」）：
+   ① 正文类 13 → 14/22：skill design-system.md:66「Body text defaults to 14px」；
+   ② 控件与标题类 13 → 14：skill theme/element-plus.css:50 基线 --el-font-size-base =
+      --cc-font-size-md(14px)，且标题不得小于正文（conversation-typography.md:35）；
+   ③ 代码/等宽类仍是 13px（本文件无代码角色），未动。
+   规则：非等宽的 UI 文字不再用 13px；紧凑元信息/描述走辅助档 12/20
+   （conversation-typography.md:37「时间、数量、依赖等辅助信息 12 / 20」、
+   design-system.md:67「Compact metadata may use 12px」）。
+   ④ 追加（设计师 0915 对本列表的评论「这里属于描述，应该都是 12px」）：
+   `.settings-plugin-desc` 由 14/22 收到辅助档 12/20——插件行描述归辅助而非正文；
+   `.settings-modal-hint`（必要操作说明）按 :37「必要操作说明不降为辅助文字」保持 14/22。 */
 .settings-back {
   display: flex;
   flex: 0 0 auto;
@@ -53,7 +106,7 @@
   margin: 4px 12px 0;
   padding: 0 8px;
   color: var(--vscode-descriptionForeground);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   text-align: left;
   background: transparent;
@@ -114,7 +167,7 @@
   margin: 0;
   padding: 0 8px;
   color: var(--vscode-descriptionForeground);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   line-height: 19px;
 }
@@ -133,7 +186,7 @@
   min-height: 32px;
   padding: 0 8px;
   color: var(--vscode-foreground);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 22px;
   text-align: left;
   background: transparent;
@@ -182,6 +235,21 @@
   box-sizing: border-box;
 }
 
+/* 插件市场页头 = 标题块 + 右上角「新建市场」（设计师 0915 走查）。
+   只挂在本视图上：其余设置视图的页头是 h1 + p 两个直接子元素，若把
+   display:flex 加在公共的 .settings-page-header 上，它俩会变成同一行的
+   两个 flex item。 */
+.settings-plugin-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-page-header-text {
+  min-width: 0;
+}
+
 .settings-page-header h1,
 .settings-page-header p {
   margin: 0;
@@ -197,7 +265,9 @@
 .settings-page-header p {
   margin-top: 4px;
   color: var(--vscode-descriptionForeground);
-  font-size: 13px;
+  /* 0915-D-03：页头说明按契约 design-system.md:179 的 supporting 档 14px / 22px
+     （原 13px / 22px） */
+  font-size: 14px;
   line-height: 22px;
 }
 
@@ -214,7 +284,7 @@
 
 .settings-section-heading h2 {
   color: var(--vscode-foreground);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 25px;
 }
@@ -259,7 +329,7 @@
 
 .settings-row-copy h3 {
   color: var(--vscode-foreground);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 26px;
 }
@@ -289,7 +359,7 @@
   align-items: center;
   gap: 8px;
   color: var(--vscode-descriptionForeground);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .settings-select,
@@ -304,7 +374,7 @@
   border: 1px solid var(--vscode-input-border);
   border-radius: 6px;
   font-family: var(--vscode-font-family);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .settings-select:focus,
@@ -347,13 +417,26 @@
   background: var(--vscode-button-background);
   border: 0;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
 }
 
 .settings-save-btn:hover:not(:disabled) {
   background: var(--vscode-button-hoverBackground);
+}
+
+/* 0915 审计后修复（设计师授权「添加按钮补按压态」）：契约 dark-theme.md:30 给了
+   pointer-down 档 --cc-action-primary-active（浅 #111318 / 深 #C7CCCF），此前未接，
+   按下时底色与 hover 同色、无按压反馈。
+   注意：深色档已定义该 token（host-desktop.css:155 #c7cccf），**浅色档没有定义**
+   （浅色块只有 primary / primary-hover），故 fallback 必须写字面量 #111318
+   （= skill tokens.css:20 的浅色 active 值），不能回落 hover 色——回落 hover
+   会让浅色下的按压态与 hover 无差别（首版就是这么写的，实测按压仍是 #34383F）。
+   作用域为整个 .settings-save-btn 类（含全局设置 / MCP / 钩子 / 个性化 的「保存」），
+   如只想要弹窗内那一颗，说一声收窄。 */
+.settings-save-btn:active:not(:disabled) {
+  background: var(--cc-action-primary-active, #111318);
 }
 
 .settings-save-btn:disabled {
@@ -383,7 +466,11 @@
   color: var(--vscode-descriptionForeground);
   background: transparent;
   border: 0;
-  font-size: 13px;
+  /* 设计师 0915 评论（插件市场「wave-plugins-official」tab）：「tab 里面的字号
+     也应该是 14px」。这是公共 tab 组件（SettingsTabs / 规则范围 / 来源范围 共用
+     同一条规则），故按组件规格抬到正文档 14px，不是单视图覆盖；行高保持 22px
+     （14/22 = 契约正文档），59px 的 tab 条高度由容器给定，不受字号影响。 */
+  font-size: 14px;
   line-height: 22px;
   cursor: pointer;
 }
@@ -427,7 +514,7 @@
   background: transparent;
   border: 0;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   line-height: 22px;
   cursor: pointer;
@@ -453,7 +540,7 @@
   border-radius: 6px;
   outline: none;
   font-family: var(--vscode-font-family);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 22px;
 }
 
@@ -529,7 +616,7 @@
   align-items: center;
   gap: 8px;
   color: var(--vscode-descriptionForeground);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .memory-turns .memory-turns-input {
@@ -540,7 +627,7 @@
 
 .settings-readonly-value {
   color: var(--vscode-foreground);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -557,7 +644,7 @@
   gap: 8px;
   padding: 48px 0;
   color: var(--vscode-descriptionForeground);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .settings-placeholder .codicon {
@@ -634,7 +721,7 @@
   gap: 8px;
   padding: 8px 12px;
   background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.1));
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -677,12 +764,15 @@
   background: var(--vscode-button-hoverBackground, #1177bb);
 }
 
-/* 列表行操作按钮 */
+/* 列表行操作按钮：0915-D-02 统一到 8px / 28px（原 4px / 23px 均越契约刻度） */
 .settings-row-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
   background: none;
   border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
-  border-radius: 4px;
-  padding: 2px 10px;
+  border-radius: 8px;
   font-size: 12px;
   color: var(--vscode-foreground);
   cursor: pointer;
@@ -690,12 +780,16 @@
 }
 
 .settings-row-btn:hover {
-  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+  /* 0915-T-01：普通 hover 面 → --cc-fill-hover（桌面宿主语义层；插件宿主回落
+     宿主 token，行为不变） */
+  background: var(--cc-fill-hover, var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15)));
 }
 
 .settings-row-btn-danger {
-  color: var(--vscode-errorForeground, #f48771);
-  border-color: var(--vscode-errorForeground, #f48771);
+  /* 0915-T-01：危险语义 → --cc-color-danger（桌面宿主）；插件宿主回落
+     --vscode-errorForeground，行为不变 */
+  color: var(--cc-color-danger, var(--vscode-errorForeground, #f48771));
+  border-color: var(--cc-color-danger, var(--vscode-errorForeground, #f48771));
 }
 
 /* 来源/状态小标签 */
@@ -751,14 +845,17 @@
    形制取自设计师原型（市场分段 tab + 计数角标 / 胶囊操作按钮 / 弹窗卡片），
    颜色全部映射 --vscode-* token。 */
 
-/* 市场 tab 与筛选胶囊上的计数角标（原型 .market-count / .tab-count） */
+/* 市场 tab 与筛选胶囊上的计数角标（原型 .market-count / .tab-count）
+   0915-F-07：字号 11px → 12px（紧凑元信息下限）；行高保持 16px，胶囊高度不变。
+   0915-T-01：普通计数角标 = 中性 fill + regular 文字（原借 --vscode-badge-*
+   的编辑器蓝/灰；badge-* 仍归宿主，状态徽标另行处理）。 */
 .settings-tab-count {
   margin-left: 6px;
   padding: 0 6px;
   border-radius: 999px;
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-  font-size: 11px;
+  background: var(--cc-fill, var(--vscode-badge-background));
+  color: var(--cc-text-regular, var(--vscode-badge-foreground));
+  font-size: 12px;
   line-height: 16px;
   font-weight: 500;
 }
@@ -766,8 +863,73 @@
 /* 市场栏：更新/移除紧跟市场切换（当前市场的上下文操作），新建市场是全局入口
    靠右分层（对齐原型 .market-ops / .market-add） */
 .settings-plugin-view .settings-toolbar-actions {
-  flex: 1;
+  /* 设计师 0915 评论「tab 显示不下的时候应该出现滚动，但不要影响到按钮」的第二半：
+     改前本区 `flex: 1` 参与收缩分配，市场名长时被挤出内容右界（实测 1440 溢 8px /
+     994 溢 14px，按钮右缘超出页面内容右界，与页头「新建市场」、卡片不再对齐）。
+     改后不参与收缩（`flex: 0 0 auto`），剩余空间全部让给可滚动的 tab 条。 */
+  flex: 0 0 auto;
   min-width: 0;
+  /* 设计师 0915 评论「这两个按钮和 tab 居中对齐」：改前 .settings-card-toolbar 的
+     `align-items: center` 把操作区居中在 tab 条的**边框盒**（59px）上，而 tab 按钮盒
+     落在去掉 `padding-top: 12px` 的内容区里（46px，其中心比条中心低 6px）→ 实测按钮
+     中心 144.5 vs tab 文案中心 150（**低 5.5px**，视觉上按钮偏上）。
+     改后 = 操作区撑满条高并镜像 tab 条自身的纵向内衬（12px 上内衬 + 1px 下边框），
+     使按钮中心与 tab 按钮盒中心重合（150）。 */
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  padding-top: 12px;
+  padding-bottom: 1px;
+}
+
+/* 市场 tab 条：显示不下时**自身横向滚动**（设计师 0915 评论「tab 显示不下的时候应该
+   出现滚动，但不要影响到按钮」的上半句）。改前 tab 条与操作区同为内容宽、都在 flex 行里
+   抢空间 → 溢出时按钮被推出去、480 下整条换行且 tab 文案在 46px 高的盒里折行。
+   改后 = 本区允许收缩到容器可用宽（min-width: 0）并成为滚动容器（overflow-x: auto），
+   段落保持单行且不收缩（flex: 0 0 auto + white-space: nowrap）→ tab 超出部分横向滚动查看，
+   右侧按钮位置固定。活跃段的下划线随内容一起滚动（下划线挂在段盒底部，条自身的
+   1px 分隔线仍是条盒的边框、不滚动）。
+   作用域仅插件市场视图；共用 .settings-tabs 的其余视图（MCP / 规则范围 / 来源范围）未改。 */
+/* 本视图的工具栏不换行：评论要求「不要影响到按钮」，而改前 480/994 宽度不足时
+   `.settings-card-toolbar` 的 `flex-wrap: wrap` 会把按钮整条甩到第二行（实测 994/1440
+   都换行、工具条高 59 → 112）。不换行后宽度不足由 tab 条自己滚动消化，按钮始终留在
+   第一行、右缘与页头「新建市场」/卡片同一条内容右界。 */
+.settings-plugin-view .settings-card-toolbar {
+  flex-wrap: nowrap;
+}
+
+.settings-plugin-view .settings-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* 滚动容器只把子元素裁到 **padding box**，而活跃段的下划线是 `bottom: -1px`、正好压在
+     条自身的 `border-bottom` 分隔线上（分隔线在边框区、裁剪区之外）→ 直接加滚动会让
+     下划线被裁掉 1px（实测 3px → 2px）且分隔线在下方重新露出。
+     本档把分隔线从 `border-bottom` 换成 inset 阴影（属于条自身绘制、排在子元素之前），
+     并补 1px 下内衬把裁剪区延伸到条的下缘：段盒仍是 46px、中心仍是 150，
+     下划线 3px 完整可见并继续盖住分隔线（逐行像素核对与改动前一致）。 */
+  padding-bottom: 1px;
+  border-bottom: 0;
+  box-shadow: inset 0 -1px 0 var(--cc-settings-border-light);
+  /* 滚动条隐藏，与桌面面板标签条同一口径（DesktopPanelTabs.css:28-35「滚动条会压
+     在 tab 下方、像裁掉了内容」）：条内只有 1px 的余量留给下划线，经典滚动条
+     （Windows/Linux 会占 ~8px 布局空间）会把段盒压扁、下划线重新被裁。
+     横向滚动仍可用触控板 / Shift+滚轮，键盘可达性由 tab 按钮自身保证。 */
+  scrollbar-width: none;
+}
+
+.settings-plugin-view .settings-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.settings-plugin-view .settings-tabs .settings-tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  /* 滚动容器会裁掉外移的焦点环（全局 `.settings-page button:focus-visible` 是
+     `outline-offset: 2px`，首/末个 tab 的环会落在裁切区外）→ 本档改贴边内环，
+     键盘走查时焦点仍完整可见。 */
+  outline-offset: -2px;
 }
 
 .settings-plugin-ops {
@@ -784,8 +946,15 @@
   gap: 6px;
 }
 
+/* 新建市场（页头右上角，设计师 0915 走查）：8px 圆角；图标与文字间距沿用
+   工具栏操作区的 4px 口径（该口径原挂在 .settings-toolbar-actions 下，
+   按钮移入页头后需自带） */
 .settings-plugin-new-market {
-  margin-left: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 8px;
 }
 
 /* 筛选（全部/已安装/未安装，各带计数）+ 当前市场内搜索 */
@@ -798,38 +967,58 @@
   padding: 12px 0;
 }
 
+/* 插件筛选（全部/已安装/未安装）：与新建市场弹窗的分段 tab 同一形制
+   （.settings-modal-seg 一族：静态轨道 = --cc-fill + 3px 内衬；激活段 =
+   --cc-bg-segment-active 面 + --cc-text-segment-active 字 + 600 字重），
+   设计师 0915 走查指定「也用这个 tab，高度 32px，宽度和现在差不多」。
+   轨道总高 32px：32 = 3px 内衬 ×2 + 26px 段高，与右侧 32px 搜索框同高；
+   段内左右内衬沿用原胶囊的 12px，故整组宽度与改前基本一致。 */
 .settings-plugin-filters {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 3px;
+  height: 32px;
+  padding: 3px;
+  box-sizing: border-box;
+  background: var(--cc-fill, var(--vscode-toolbar-hoverBackground));
+  border-radius: 8px;
 }
 
 .settings-plugin-chip {
   display: inline-flex;
   align-items: center;
-  padding: 5px 12px;
+  height: 26px;
+  padding: 0 12px;
   color: var(--vscode-descriptionForeground);
   background: transparent;
   border: 0;
-  border-radius: 999px;
-  font-size: 13px;
+  border-radius: 6px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
 }
 
 .settings-plugin-chip:hover {
+  /* 分段轨道上的 hover 只提文字色（与 .settings-modal-seg-item 同口径）；
+     原胶囊的填充式 hover 会在轨道上叠成第二层面 */
   color: var(--vscode-foreground);
-  background: var(--vscode-toolbar-hoverBackground);
 }
 
 .settings-plugin-chip.is-active {
-  color: var(--vscode-badge-foreground);
-  background: var(--vscode-foreground);
+  /* 设计师 0915 追加指示：浅色档 = 白面 + 炭黑字（这个组件的特殊规范，与主按钮反相）；
+     深色档 = 主按钮档（浅灰面 + 深字，即上一轮定的「反白」），两档都由
+     --cc-bg-segment-active / --cc-text-segment-active 一对角色管（写在 host-desktop.css）。
+     浅色 #1F2329/#FFFFFF 实测 15.78:1、深色 #191C1E/#E0E3E5 13.28:1（≥13:1）。
+     宿主回退仍落到 button 变量，非 desktop 宿主外观不变。 */
+  color: var(--cc-text-segment-active, var(--vscode-button-foreground));
+  background: var(--cc-bg-segment-active, var(--vscode-button-background));
+  font-weight: 600;
 }
 
 .settings-plugin-chip.is-active .settings-tab-count {
-  background: var(--vscode-badge-foreground);
-  color: var(--vscode-foreground);
+  /* 激活段内的计数继承同一文字色（透明底），不再二次反相 */
+  color: inherit;
+  background: transparent;
 }
 
 .settings-plugin-search {
@@ -882,17 +1071,29 @@
   font-weight: 400;
 }
 
-/* 已安装且有新版本：两版并列 + 提示色（原型 .plugin-ver.update） */
+/* 已安装且有新版本：两版并列 + 可读正文色（原型 .plugin-ver.update）
+   0915-F-03：原用 --vscode-editorWarning-foreground，浅色 3.11:1 不达 4.5。
+   依 desktop-theme-bridge.md「信号色不自动等于可读文字色：字面信息用既有
+   primary/regular，状态语义交给带标签的图标/指示」——此处「已安装 vX · 最新 vY」
+   自身即指示，颜色回到正文色（浅深均 ≥15:1）。若后续需要专门的 warning
+   文字角色，按该文档另立经过测量的 Light/Dark 配对，不改全局信号色。 */
 .settings-plugin-version.is-update {
-  color: var(--vscode-editorWarning-foreground, #b98a2f);
+  color: var(
+    --cc-text-primary,
+    var(--vscode-editorWarning-foreground, #b98a2f)
+  );
   font-weight: 500;
 }
 
 .settings-plugin-desc {
   margin-top: 4px;
   color: var(--vscode-descriptionForeground);
-  font-size: 13px;
-  line-height: 1.5;
+  /* 设计师 0915 评论（点插件行描述）「这里属于描述，应该都是 12px」：描述归辅助档
+     12/20（conversation-typography.md:37 辅助 12/20；design-system.md:67 compact
+     metadata 12px），不做正文 14/22。副作用：13px 时临界换行的三行（Code Reviewer /
+     Monorepo / Performance Profiler）在 12px 下所需宽度更小，列表恢复全 1 行。 */
+  font-size: 12px;
+  line-height: 20px;
 }
 
 .settings-plugin-actions {
@@ -902,14 +1103,30 @@
   gap: 8px;
 }
 
-/* 行操作胶囊：安装 / 更新（主色）、已安装（弱化 + 勾） */
+/* 行操作胶囊：安装 / 更新（主色）、已安装（语义 soft 底 + 可读正文）
+   0915-D-02：999px / 32px → 8px / 28px；0915-F-02：已安装态不再用编辑器测试绿
+   当文字色（浅色 1.51:1），改 soft success 底 + regular 文字，✓ 与文案保留状态语义。 */
+/* 插件行主操作按钮（安装 / 更新 / ✓ 已安装）
+   字重 600 → 500（设计师 0915 评论「检查按钮字重，和新建市场保持一致」，点名
+   `button.settings-plugin-act.is-primary`「安装」）：同页「新建市场」是
+   `.settings-save-btn` 的 **500**，而本族此前是 600 —— 同页两个 14px 级按钮两种字重。
+   口径改以「新建市场」为准（500 = `tokens/tokens.css:105` `--cc-font-weight-medium`，
+   也是 `.settings-save-btn` / `.settings-scope-pill` 的既有值），使插件行三个变体
+   （is-primary 安装·更新 / is-installed 已安装）与页头主按钮同字重。
+   注：skill `theme/element-plus.css:61` 的 `.el-button` 基线是 `--cc-font-weight-regular`
+   （400）；本页按钮历来走 medium（500），此处不据契约改档、只与「新建市场」对齐。
+   字重变轻会收窄文字，但本族有 min-width: 88px（四变体文案均 2–3 字），故宽度不变。 */
 .settings-plugin-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 88px;
-  padding: 6px 14px;
+  height: 28px;
+  padding: 0 14px;
   border: 1px solid transparent;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 600;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
   text-align: center;
   white-space: nowrap;
   cursor: pointer;
@@ -925,26 +1142,42 @@
 }
 
 .settings-plugin-act.is-installed {
-  color: var(--vscode-testing-iconPassed, #2fa36b);
-  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--cc-text-regular, var(--vscode-foreground));
+  background: var(
+    --cc-color-success-soft,
+    var(--vscode-toolbar-hoverBackground)
+  );
 }
 
 .settings-plugin-act.is-installed:hover {
-  color: var(--vscode-foreground);
+  color: var(--cc-text-primary, var(--vscode-foreground));
 }
 
-/* 已安装插件的作用域按钮（显示当前作用域，点击更换） */
+/* 已安装插件的作用域按钮（显示当前作用域，点击更换）
+   0915-D-02：999px → 8px（高度 28px 不变）
+   设计师 0915 评论：「里面字号应该是 14px，字体颜色应该是最高级的，宽度和后面的
+   按钮保持一致，可以窄一点，看按钮里最多的文本是多少，不抖动的情况下保持宽度一致」。
+   → 字号 12 → 14px；字色由 description 提到最高级 --cc-text-primary（桌面宿主下
+     与 --vscode-foreground 同值 = hover 色，故 hover 不再变色）；宽度与同行
+     .settings-plugin-act 对齐（同为 88px），并居中承载「文字 + 下箭头」。
+   宽度取值依据（实测，浅深同）：四种作用域文案（用户/项目/本地/未知）均为 2 字，
+   14px/500 下文字宽 26.84px；内容宽 = 26.84 + gap 6 + chevron 16 + 内衬 24 = 72.84px
+   → 用与 .settings-plugin-act 相同的 min-width: 88px，四档文案均为 88px 恒定（无抖动），
+   余量 15.16px；若横向空间紧，可把这一组一起收到 81px（= 最长文案 80.34 + 内衬）。
+   共用同一 min-width 而非写死 width：文案若将来变长，两个控件同步长高长大，仍对齐。 */
 .settings-scope-pill {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  min-width: 88px;
   height: 28px;
   padding: 0 12px;
-  color: var(--vscode-descriptionForeground);
+  color: var(--cc-text-primary, var(--vscode-foreground));
   background: transparent;
   border: 1px solid var(--cc-settings-border);
-  border-radius: 999px;
-  font-size: 12px;
+  border-radius: 8px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
 }
@@ -964,6 +1197,10 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
+  /* 0915-D-06：遮罩保持模态遮罩（0.4 黑）。desktop-theme-bridge.md 明确
+     「editorWidget → overlay 的映射不授权把遮罩换成轻量 approval scrim；
+     modal / nonmodal 由面契约决定」——设置弹窗是模态（拦截交互、Esc 关闭），
+     故不接入 --cc-overlay-scrim（浅 5% / 深 30%）。 */
   background: rgba(0, 0, 0, 0.4);
 }
 
@@ -973,7 +1210,15 @@
   overflow-y: auto;
   padding: 22px 24px 20px;
   color: var(--vscode-foreground);
-  background: var(--vscode-editorWidget-background, var(--vscode-dropdown-background));
+  /* 0915-D-06：弹窗面接入产品语义角色（原 --vscode-editorWidget-background
+     是编辑器面：浅 #FAFAFD / 深 #202020）。
+     0915：改取新增的「模态弹窗面」角色（浅 #FFFFFF / 深 #181A1B）——深色底下
+     弹窗与侧边导航同色。不能改共享的 --cc-bg-overlay：那是菜单/气泡/确认卡共用
+     的 floating surface，深色档 #232526 是 dark-theme.md:11 的已接受决策。 */
+  background: var(
+    --cc-bg-modal,
+    var(--cc-bg-overlay, var(--vscode-editorWidget-background, var(--vscode-dropdown-background)))
+  );
   border: 1px solid var(--cc-settings-border-light);
   border-radius: 12px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
@@ -1007,13 +1252,15 @@
 
 .settings-modal-close:hover {
   color: var(--vscode-foreground);
-  background: var(--vscode-toolbar-hoverBackground);
+  /* 0915-T-01：普通 hover 面 → --cc-fill-hover（插件宿主回落宿主 token） */
+  background: var(--cc-fill-hover, var(--vscode-toolbar-hoverBackground));
 }
 
 .settings-modal-hint {
   margin: 4px 0 0;
   color: var(--vscode-descriptionForeground);
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 22px;
 }
 
 .settings-modal-seg {
@@ -1021,7 +1268,9 @@
   gap: 3px;
   margin-top: 14px;
   padding: 3px;
-  background: var(--vscode-toolbar-hoverBackground);
+  /* 0915-T-01：静态轨道是 resting 填充面（非 hover）→ --cc-fill
+     （原借 --vscode-toolbar-hoverBackground，角色不符） */
+  background: var(--cc-fill, var(--vscode-toolbar-hoverBackground));
   border-radius: 8px;
 }
 
@@ -1032,16 +1281,22 @@
   background: transparent;
   border: 0;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 14px;
+  /* 字号 13 → 14 时若沿用 line-height: normal，段高会 32 → 34、整组 38 → 40
+     （normal 行盒随字号变大）。这里把行盒钉在 18px，段高与整组几何保持改前值，
+     即本轮只动字号不动几何。若后续按残留项「弹窗分段也对齐 32」收整组，
+     需同时改 padding（26 = 18 行盒 + 上下各 4px）。 */
+  line-height: 18px;
   font-weight: 500;
   cursor: pointer;
 }
 
 .settings-modal-seg-item.is-active {
-  color: var(--vscode-foreground);
-  background: var(--vscode-editorWidget-background, var(--vscode-dropdown-background));
+  /* 与筛选分段同一对角色（--cc-bg-segment-active / --cc-text-segment-active）：
+     浅色白面 + 炭黑字 / 深色浅灰面 + 深字。弹窗本体的面是 --cc-bg-modal，未动。 */
+  color: var(--cc-text-segment-active, var(--vscode-button-foreground));
+  background: var(--cc-bg-segment-active, var(--vscode-button-background));
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .settings-modal-row {
@@ -1050,9 +1305,34 @@
   margin-top: 16px;
 }
 
+/* 弹窗行内的提交按钮（远程仓库档的「添加」）：0915 审计后修复，
+   设计师授权「添加按钮不要折行」+「按 B1 修」+「添加按钮圆角用 8」。
+   缺陷：内衬 4px 16px → 内容可用 24.4px，而「添加」14px/500 需 28px → 折 2 行，
+   两行行盒 36px 溢出 32px 按钮（scrollHeight 36 / clientHeight 32）；
+   三种输入长度 × 浅深两档全复现，且注入 13px 同样折行 → 历史缺陷。
+   根因：同级 .settings-text-input 的 width:100% 先占满 540px 行宽，本按钮
+   flex: 0 1 auto + white-space: normal + min-width: auto（中文 min-content = 1 字）
+   被压到 56.4px，小于固有宽 60px。B1 = 钉住固有宽，让输入框让出 3.6px；
+   行总宽 540 与两档行高均不变。圆角按本条指示由 6px 收到按钮口径 8px。 */
+.settings-modal-row .settings-save-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  border-radius: var(--cc-radius-md, 8px);
+}
+
+/* 「选择文件夹」（新建市场弹窗 · 本地路径档）：设计师 0915 评论「加号图标 +
+   字号 14px + 居中 + 虚线描边 + 高度 32px，和表单保持一致」。
+   基准 .settings-row-btn = 12px/28px/实线；本档抬到表单档：
+   32px 高 = 同档 .settings-text-input 的 min-height（因此「本地路径」与
+   「远程仓库」两档的行高一致）、14px = 表单说明档字号、图标与文字间距 4px
+   沿用页头「新建市场」。圆角仍取按钮口径 8px（评论未点名圆角，未动）。 */
 .settings-modal-block-btn {
   flex: 1;
-  min-height: 40px;
+  justify-content: center;
+  gap: 4px;
+  height: 32px;
+  border-style: dashed;
+  font-size: 14px;
 }
 
 .settings-modal-note {
@@ -1069,17 +1349,28 @@
   margin-top: 16px;
 }
 
+/* 单选指示移到文本左侧（设计师 0915 评论「radio 应该在左侧」，点名
+   `button.settings-scope-option.is-selected`）：
+   改前 = 列式（`flex-direction: column`）+ 标题行 `.settings-scope-option-head`
+   `justify-content: space-between` 把单选圆推到行的**右端**（实测距选项左缘 505px、
+   距右缘 17px）；改后 = 行式（圆在左 + 文本块在右），标题与描述同处右侧文本列，
+   文字左缘 17px → 47px（= 内衬 16 + 边框 1 + 圆 18 + 间距 12）。
+   选项自身盒高不变（78px：标题行 22 + 列间距 6 + 描述 22 + 上下内衬 28），
+   故选项组总高、弹窗盒高均不变。 */
 .settings-scope-option {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
   width: 100%;
   padding: 14px 16px;
   color: var(--vscode-foreground);
   text-align: left;
-  background: var(--vscode-toolbar-hoverBackground);
+  /* 0915-T-01：静态选项面 = resting 填充（原借 toolbar-hoverBackground）；
+     0915-D-01：10px → 8px（回到 4/6/8/12/999 刻度） */
+  background: var(--cc-fill, var(--vscode-toolbar-hoverBackground));
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
 }
 
@@ -1088,15 +1379,18 @@
 }
 
 .settings-scope-option.is-selected {
+  /* 持久选中面 = --cc-fill-pressed（浅色桥接后与深色同族；描边走 --cc-border-focus） */
   background: var(--vscode-list-activeSelectionBackground);
   border-color: var(--vscode-focusBorder);
 }
 
-.settings-scope-option-head {
+/* 右侧文本列（标题 + 描述）：内距 6px 沿用原选项列的 gap，
+   `min-width: 0` 使长描述在窄容器里正常换行而不是撑破选项盒。 */
+.settings-scope-option-body {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 
 .settings-scope-option-title {
@@ -1111,7 +1405,19 @@
   font-weight: 500;
 }
 
-/* 单选指示（原型 .scope-radio：外圈 + 选中实心点） */
+/* 0915-F-04：深色选中面 #393E41 上，descriptionForeground(#A0A5A8) 只有 4.35:1；
+   选中态内的次级文字改用 --cc-text-regular（浅 #565A60 / 深 #C4C7C9，均 ≥5.6:1）。
+   未选中态维持原描述色。 */
+.settings-scope-option.is-selected .settings-scope-option-title em,
+.settings-scope-option.is-selected .settings-scope-option-desc {
+  color: var(--cc-text-regular, var(--vscode-descriptionForeground));
+}
+
+/* 单选指示（原型 .scope-radio：外圈 + 选中实心点）
+   `margin-top: 1px` = 与右侧标题**首行**行盒垂直居中对齐（标题 14px 且
+   `line-height: normal` → 行盒实测 20px；圆含 1.5px 边框实测 18px；
+   (20 − 18) / 2 = 1）。改前圆与标题同心（标题行即首行），改后标题与描述并列成
+   文本块，故改为对齐首行——描述增多时圆不下沉。 */
 .settings-scope-radio {
   display: flex;
   align-items: center;
@@ -1119,6 +1425,7 @@
   flex: 0 0 auto;
   width: 16px;
   height: 16px;
+  margin-top: 1px;
   border: 1.5px solid var(--cc-settings-border);
   border-radius: 50%;
 }
@@ -1142,8 +1449,8 @@
 
 .settings-scope-option-desc {
   color: var(--vscode-descriptionForeground);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 22px;
 }
 
 .settings-modal-actions {
@@ -1152,4 +1459,34 @@
   align-items: center;
   gap: 10px;
   margin-top: 22px;
+}
+
+/* 弹窗底部按钮组（作用域弹窗：卸载 / 取消 / 保存·安装）：设计师 0915 评论
+   「弹窗中的按钮层级应该保持一致，卸载按钮放在最左边，按钮圆角统一 8px，字号 14px」。
+   改前三种口径混在一行：卸载/取消 = `.settings-row-btn`（列表行档 12px / 28px / r8），
+   保存 = `.settings-save-btn`（控件档 14px / 32px / **r6**）→ 同一行三种盒高与两种圆角。
+   本档把三者收到同一条控件基线：高 32px（= `references/vue-element-plus.md:55`
+   设置页控件 32px，与同弹窗「选择文件夹」32px、「添加」32px 一致）、字号 14px
+   （= `theme/element-plus.css:50` 控件基线 `--el-font-size-base`）、圆角 8px
+   （= `tokens/tokens.css` `--cc-radius-md`；与上一轮「添加按钮圆角用 8」同口径，
+   使弹窗内四个按钮圆角一致）。层级只靠填充区分：卸载 = 危险描边（最左）、
+   取消 = 次要描边、保存 = 主色实心（最右）——与 Element Plus 按钮层级的写法一致。
+   内衬同取 0 16px（与主按钮一致），使 2 字标签的三个按钮盒宽相同（60×32），
+   层级差异仅体现在底色/描边上。作用域仅 `.settings-modal-actions` 内。 */
+.settings-modal-actions .settings-row-btn {
+  height: 32px;
+  padding: 0 16px;
+  font-size: 14px;
+  border-radius: var(--cc-radius-md, 8px);
+}
+
+/* 「卸载」钉在最左（评论「卸载按钮放在最左边」）：`margin-right: auto` 把它推到
+   按钮组左缘，与上方作用域选项卡的左缘对齐；其余按钮仍靠右。
+   未安装档（无卸载、只有取消+保存）保持原右对齐，不受影响。 */
+.settings-modal-actions .settings-row-btn-danger {
+  margin-right: auto;
+}
+
+.settings-modal-actions .settings-save-btn {
+  border-radius: var(--cc-radius-md, 8px);
 }

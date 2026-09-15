@@ -94,8 +94,11 @@
 .btw-panel-answer {
   padding: 8px 12px;
   overflow-y: auto;
-  font-size: 13px;
-  line-height: 1.5;
+  /* 正文类 13 → 14/22（skill design-system.md:66「Body text defaults to 14px」；
+     设计师 0915 指示「13px 不再承担界面正文」，见 docs/desktop-density-restore.md
+     「第八处」） */
+  font-size: 14px;
+  line-height: 22px;
   word-break: break-word;
 }
 

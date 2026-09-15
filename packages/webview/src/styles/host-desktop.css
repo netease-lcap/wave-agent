@@ -30,8 +30,19 @@
   --cc-bg-conversation: #ffffff;   /* 对话画布（= panel-background） */
   --cc-bg-navigation: #f7f8fb;     /* 左导航/侧栏 */
   --cc-bg-inspector: #ffffff;      /* 右 pane 内容面（editor-background base #fff） */
-  --cc-bg-overlay: #ffffff;        /* 浮层：菜单/弹窗/确认卡 */
+  --cc-bg-overlay: #ffffff;        /* 浮层：菜单/气泡/确认卡/面板 */
+  --cc-bg-modal: #ffffff;          /* 模态弹窗面（设置页新建市场/安装作用域）。新增角色
+                                      （设计师 0915 指示）：深色档要降到导航层 #181a1b，
+                                      但 --cc-bg-overlay 是菜单/气泡/确认卡共用的「floating
+                                      surface #232526」已接受决策（dark-theme.md:11），
+                                      故另立一盏，只喂 .settings-modal。浅色档照旧取
+                                      #ffffff（与原 --cc-bg-overlay 同值 → 浅色零视觉变化）。 */
   --cc-bg-panel: #ffffff;          /* 输入区卡片（task/queued = codechat composer-task-list 面） */
+  /* 分段控件选中段（筛选 全部/已安装/未安装 与 弹窗分段 本地路径/远程仓库 共用同一对）。
+     设计师 0915：浅色档 = 白面 + 炭黑字（本组件的特殊规范，与主按钮反相）。
+     深色档见 dark 块（= 主按钮档，即她说的「反白」）。 */
+  --cc-bg-segment-active: #ffffff;
+  --cc-text-segment-active: #1f2329;
   --cc-bg-code: #f7f8fa;           /* 代码块/引用代码 */
   /* 文字 */
   --cc-text-primary: #1f2329;      /* 顶级文字/激活（Figma cc 主文字） */
@@ -51,6 +62,10 @@
   --cc-border: #dcdfe6;            /* 强边界（composer/输入框） */
   --cc-border-light: #e4e7ed;      /* quiet lines（面板分隔） */
   --cc-border-lighter: #ebeef5;    /* 浮层面板边 */
+  /* 焦点环（浅色档）：skill tokens.css:84 / desktop-colors.css:64 均为
+     var(--cc-action-primary)。此前浅色档未定义本角色，只有深色档有，
+     于是 --vscode-focusBorder 桥接在浅色取不到值。 */
+  --cc-border-focus: var(--cc-action-primary);
 
   /* 桥接：组件消费的 host token → 语义值（值与上版字面一致，浅色零回归） */
   --vscode-button-background: var(--cc-action-primary);
@@ -69,6 +84,15 @@
   --vscode-panel-border: var(--cc-border-light);
   --vscode-widget-border: var(--cc-border-light);
   --vscode-input-border: var(--cc-border);
+
+  /* 0915-T-01：浅色补齐与深色档同族的三条中性角色桥接（codechat
+     references/desktop-theme-bridge.md「Mapping by meaning」）——
+     此前浅色沿用编辑器原值（黑 alpha / VS Code 蓝），深色已桥接，
+     同一组件在两模式取到不同值族。语义依次为：
+     普通行 hover / 中性持久选中 / 键盘与控制焦点。 */
+  --vscode-list-hoverBackground: var(--cc-fill-hover);
+  --vscode-list-activeSelectionBackground: var(--cc-fill-pressed);
+  --vscode-focusBorder: var(--cc-border-focus);
 
   /* 链接蓝：Figma --cc-text-link #2F5EDB（正文链接 / picker 高亮等 host 取样
      token；浅色沿用 cc 蓝，区别于插件端 --vscode-textLink #0069cc） */
@@ -104,8 +128,16 @@
   --cc-bg-conversation: #111314;   /* 对话画布 canvas */
   --cc-bg-navigation: #181a1b;     /* 导航/侧栏 nav */
   --cc-bg-inspector: #181a1b;      /* 右 pane 内容面（= navigation 同级） */
-  --cc-bg-overlay: #232526;        /* 浮层：菜单/弹窗/确认卡 floating */
+  --cc-bg-overlay: #232526;        /* 浮层：菜单/气泡/确认卡/面板 floating */
+  --cc-bg-modal: #181a1b;          /* 模态弹窗面（设置页新建市场/安装作用域）。新增角色
+                                      （设计师 0915 指示）：深色档取导航层 #181a1b（原随
+                                      --cc-bg-overlay 是 #232526）；浮层角色本身不动。 */
   --cc-bg-panel: #181a1b;          /* 输入区卡片（task/queued = codechat composer-task-list 面） */
+  /* 分段控件选中段（同浅色档那对）。深色 = 主按钮档（浅灰面 + 深字），即设计师 0915
+     说的「反白」；深色下主按钮面本身就是亮面，故与浅色档的「白面 + 炭黑字」同一语言：
+     选中段 = 亮面 + 深字。 */
+  --cc-bg-segment-active: #e0e3e5;
+  --cc-text-segment-active: #191c1e;
   --cc-bg-code: #1b1d1e;           /* 代码面 */
   /* 文字 —— user-approved 中性梯度 */
   --cc-text-primary: #e5e7e8;
