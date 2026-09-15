@@ -193,10 +193,11 @@ function renderType(schema: unknown, depth: number): string {
       ? (typed.oneOf as unknown[])
       : undefined;
   if (union) {
-    return union
-      .slice(0, 4)
-      .map((variant) => renderType(variant, depth + 1))
-      .join(" | ");
+    // No cap on branches, for the reason there is none on properties or enum
+    // variants: a union is a list of choices, and showing the first few is how
+    // the model ends up using a branch that does not exist. opencode's renderer,
+    // whose depth ceiling this one borrows, renders every member too.
+    return union.map((variant) => renderType(variant, depth + 1)).join(" | ");
   }
 
   if (Array.isArray(typed.type)) {
