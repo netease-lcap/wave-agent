@@ -50,6 +50,7 @@ function run(
     maxLogChars?: number;
     maxResultChars?: number;
     abortSignal?: AbortSignal;
+    onToolCall?: (name: string) => void;
   } = {},
 ) {
   const { context } = contextWith(options);
@@ -62,6 +63,7 @@ function run(
     maxToolCalls: options.maxToolCalls,
     maxLogChars: options.maxLogChars,
     maxResultChars: options.maxResultChars,
+    onToolCall: options.onToolCall,
   });
 }
 
@@ -317,6 +319,45 @@ describe("runExecScript — budgets and lifecycle", () => {
       "ok:mcp__srv__echo",
       "rejected",
       "rejected",
+    ]);
+  });
+
+  it("reports each call as it is issued, in order", async () => {
+    const names: string[] = [];
+
+    await run(
+      `
+        await tools.mcp__srv__echo({});
+        await tools.mcp__srv__sum({});
+      `,
+      { onToolCall: (name) => names.push(name) },
+    );
+
+    expect(names).toEqual(["mcp__srv__echo", "mcp__srv__sum"]);
+  });
+
+  it("reports a call the tool-call limit refuses", async () => {
+    const names: string[] = [];
+
+    const result = await run(
+      `
+        const outcomes = [];
+        for (let i = 0; i < 3; i++) {
+          try { outcomes.push((await tools.mcp__srv__echo({ i })).content); }
+          catch (error) { outcomes.push("rejected"); }
+        }
+        return outcomes;
+      `,
+      { maxToolCalls: 1, onToolCall: (name) => names.push(name) },
+    );
+
+    // The host saw all three attempts, so the caller's summary can count them
+    // even though only the first one actually ran.
+    expect(result.toolCalls).toBe(3);
+    expect(names).toEqual([
+      "mcp__srv__echo",
+      "mcp__srv__echo",
+      "mcp__srv__echo",
     ]);
   });
 
