@@ -15,7 +15,10 @@ import type {
   PermissionCallback,
   PermissionMode,
 } from "../types/permissions.js";
-import { RESTRICTED_TOOLS } from "../types/permissions.js";
+import {
+  RESTRICTED_TOOLS,
+  USER_INTERACTION_REQUIRED_TOOLS,
+} from "../types/permissions.js";
 import type { Logger } from "../types/index.js";
 import {
   splitBashCommand,
@@ -44,7 +47,6 @@ import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
   READ_TOOL_NAME,
-  ASK_USER_QUESTION_TOOL_NAME,
 } from "../constants/tools.js";
 import { Container } from "../utils/container.js";
 import { ConfigurationService } from "../services/configurationService.js";
@@ -641,15 +643,18 @@ export class PermissionManager {
 
     // If bypassPermissions mode — or plan mode in a session that was authorized
     // to bypass at creation time — always allow.
-    // Exception: tools that require user interaction (e.g. AskUserQuestion)
-    // must still prompt the user, matching Claude Code's requiresUserInteraction behavior.
+    // Exception: tools that require user interaction (AskUserQuestion and
+    // ExitPlanMode) must still prompt, matching Claude Code's
+    // requiresUserInteraction behavior (its step 1e returns the tool's ask
+    // result before the bypass step).
     // Worktree safety check above runs unconditionally, so bypass never skips it.
     const bypassesPermissionChecks =
       context.permissionMode === "bypassPermissions" ||
       (context.permissionMode === "plan" && this.getBypassAuthorization());
     if (bypassesPermissionChecks) {
-      const requiresUserInteraction =
-        context.toolName === ASK_USER_QUESTION_TOOL_NAME;
+      const requiresUserInteraction = (
+        USER_INTERACTION_REQUIRED_TOOLS as readonly string[]
+      ).includes(context.toolName);
       if (!requiresUserInteraction) {
         return { behavior: "allow" };
       }

@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
-import { RESTRICTED_TOOLS } from "../../src/types/permissions.js";
+import {
+  RESTRICTED_TOOLS,
+  USER_INTERACTION_REQUIRED_TOOLS,
+} from "../../src/types/permissions.js";
 import type {
   PermissionDecision,
   ToolPermissionContext,
@@ -547,8 +550,12 @@ describe("PermissionManager", () => {
 
           const result = await permissionManager.checkPermission(context);
 
-          // AskUserQuestion requires user interaction, so it's not auto-approved
-          if (toolName === "AskUserQuestion") {
+          // Tools that require user interaction are not auto-approved
+          if (
+            (USER_INTERACTION_REQUIRED_TOOLS as readonly string[]).includes(
+              toolName,
+            )
+          ) {
             expect(result.behavior).toBe("deny");
           } else {
             expect(result).toEqual({ behavior: "allow" });

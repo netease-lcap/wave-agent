@@ -17,6 +17,8 @@ import { Agent } from "../../src/agent.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { callAgent } from "../../src/services/aiService.js";
+import type { ToolManager } from "../../src/managers/toolManager.js";
+import type { ToolContext } from "../../src/tools/types.js";
 
 vi.mock("node:fs/promises");
 vi.mock("../../src/services/aiService.js");
@@ -243,6 +245,43 @@ describe("Plan Mode Integration", () => {
     const tools = agent.getAvailableToolNames();
     expect(tools).toContain("ExitPlanMode");
     expect(tools).toContain("EnterPlanMode");
+
+    await agent.destroy();
+    activeAgent = undefined;
+  });
+
+  it("still asks the user to approve ExitPlanMode in a bypass-authorized session", async () => {
+    // A session started in bypassPermissions keeps its "don't ask me"
+    // authorization inside plan mode, but leaving plan mode is the user's
+    // approval of the plan and must still reach them (Claude Code:
+    // requiresUserInteraction returns the ask before the bypass step).
+    const requestedTools: string[] = [];
+    const agent = await Agent.create({
+      workdir,
+      permissionMode: "bypassPermissions",
+      canUseTool: async (context) => {
+        requestedTools.push(context.toolName);
+        return { behavior: "allow", newPermissionMode: "default" };
+      },
+    });
+    activeAgent = agent;
+
+    agent.setPermissionMode("plan");
+    for (let i = 0; i < 20; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      if (agent.getPlanFilePath()) break;
+    }
+    expect(agent.getPlanFilePath()).toBeDefined();
+
+    const toolManager = (agent as unknown as { toolManager: ToolManager })
+      .toolManager;
+    const result = await toolManager.execute("ExitPlanMode", {}, {
+      workdir,
+    } as unknown as ToolContext);
+
+    expect(requestedTools).toEqual(["ExitPlanMode"]);
+    expect(result.success).toBe(true);
+    expect(agent.getPermissionMode()).toBe("default");
 
     await agent.destroy();
     activeAgent = undefined;

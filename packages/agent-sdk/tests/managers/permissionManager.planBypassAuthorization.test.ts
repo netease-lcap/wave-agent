@@ -163,6 +163,26 @@ describe("PermissionManager plan-mode bypass authorization", () => {
       expect(decision.behavior).toBe("allow");
     });
 
+    it("still prompts for ExitPlanMode", async () => {
+      const manager = createManager({}, "bypassPermissions");
+      manager.captureBypassAuthorization();
+      const callback = vi
+        .fn()
+        .mockResolvedValue({ behavior: "allow" as const });
+      const context = manager.createContext(
+        "ExitPlanMode",
+        "plan",
+        callback,
+        {},
+        undefined,
+        "My plan",
+      );
+
+      const decision = await manager.checkPermission(context);
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(decision.behavior).toBe("allow");
+    });
+
     it("still denies restricted tools in dontAsk mode", async () => {
       const manager = createManager({}, "bypassPermissions");
       manager.captureBypassAuthorization();
