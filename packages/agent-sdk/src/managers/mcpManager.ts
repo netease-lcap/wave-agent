@@ -380,7 +380,7 @@ export class McpManager {
 
   /**
    * The usage notes each usable server described about itself (`initialize`'s
-   * `instructions`), for the system prompt's dynamic block.
+   * `instructions`), for the announcement appended to the conversation.
    *
    * "Usable" is the same predicate `getAllConnectedTools` uses — connected, or
    * reconnecting with its last-known snapshot retained — so a server's prose is

@@ -22,6 +22,19 @@ function noteMessage(content: string): Message {
   };
 }
 
+/** A message the scanner did not write: prose that happens to quote a marker. */
+function quotingMessage(
+  content: string,
+  role: Message["role"] = "assistant",
+): Message {
+  return {
+    id: "m-quote",
+    role,
+    timestamp: "2026-09-15T00:00:00.000Z",
+    blocks: [{ type: "text", content }],
+  };
+}
+
 describe("truncateMcpInstructions", () => {
   it("passes through notes that fit, including exactly at the cap", () => {
     expect(truncateMcpInstructions(undefined)).toBeUndefined();
@@ -146,6 +159,23 @@ describe("collectAnnouncedServers", () => {
       '<system-reminder>\n<mcp_instructions>\n  <server name="guide">\n    Use lookup.\n  </server>\n</mcp_instructions>\n</system-reminder>';
 
     expect(collectAnnouncedServers([noteMessage(prose)])).toEqual(new Set());
+  });
+
+  it("ignores a marker quoted in a message the scanner did not write", () => {
+    // Explaining this mechanism means quoting a marker verbatim, and a hook can
+    // echo one too. Neither is a statement about which servers are connected, so
+    // reading them as state invents announcements (and, worse, departures).
+    const quoted = buildMcpInstructionsAnnouncement({
+      added: [{ name: "guide", instructions: "Use lookup." }],
+      removed: [],
+    })!;
+
+    expect(collectAnnouncedServers([quotingMessage(quoted)])).toEqual(
+      new Set(),
+    );
+    expect(collectAnnouncedServers([quotingMessage(quoted, "user")])).toEqual(
+      new Set(),
+    );
   });
 
   it("ignores a marker it cannot read instead of failing the turn", () => {
