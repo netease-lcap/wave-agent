@@ -525,14 +525,17 @@ export const artifactTool: ToolPlugin = {
       },
     },
   },
+  // Value only, never the tool name: the collapsed row renders
+  // "<tool name> <compactParams>", so wrapping the value in "Artifact(...)"
+  // printed the name twice.
   formatCompactParams: (params: Record<string, unknown>) => {
     const url = typeof params.url === "string" ? params.url : "";
     if (params.action === READ_ACTION) {
-      return `${ARTIFACT_TOOL_NAME}(read ${url})`;
+      return `read ${url}`;
     }
     const filePath =
       typeof params.file_path === "string" ? params.file_path : "";
-    return `${ARTIFACT_TOOL_NAME}(${filePath}${url ? ` → ${url}` : ""})`;
+    return `${filePath}${url ? ` → ${url}` : ""}`;
   },
   execute: async (
     args: Record<string, unknown>,
