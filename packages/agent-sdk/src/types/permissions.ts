@@ -84,6 +84,24 @@ export const RESTRICTED_TOOLS = [
   ARTIFACT_TOOL_NAME,
 ] as const;
 
+/**
+ * Tools that must still reach the user when permission checks are bypassed
+ * (`bypassPermissions` mode, or `plan` mode in a session holding the bypass
+ * authorization) — aligned with Claude Code's `requiresUserInteraction`:
+ * its permission pipeline returns the tool's own ask result before the
+ * bypass step can allow it.
+ *
+ * - `AskUserQuestion`: the tool *is* the question; bypassing it would strand
+ *   the agent without an answer.
+ * - `ExitPlanMode`: leaving plan mode is the user's approval of the plan, so
+ *   it stays a user decision even in a "don't ask me" session. This is the
+ *   one remaining gate on plan mode for such sessions (see plan-mode.md).
+ */
+export const USER_INTERACTION_REQUIRED_TOOLS = [
+  ASK_USER_QUESTION_TOOL_NAME,
+  EXIT_PLAN_MODE_TOOL_NAME,
+] as const;
+
 /** Type for restricted tool names */
 export type RestrictedTool = (typeof RESTRICTED_TOOLS)[number];
 
