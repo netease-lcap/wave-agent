@@ -1,11 +1,17 @@
 /**
  * The Exec catalog: which MCP tools exist, how they are rendered into the tool
- * description, and how that rendering is budgeted.
+ * description, how that rendering is budgeted, and the shape of the sandbox's
+ * `search` entry point.
  *
  * This module is the single source of truth for "what the sandbox may reach".
  * The hard constraint is that the pool must equal the tools the agent could
  * already call directly — if a tool were reachable from the sandbox but hidden
  * from the agent, Exec would be a permission-escalation channel.
+ *
+ * The same reasoning applies to `search`: its call form is written once, as a
+ * schema, and both the model-visible prose and the host-side validation derive
+ * from that one object. Teaching a form in prose while accepting a different one
+ * in code is a bug with no diff to review.
  */
 import type { McpManager } from "../managers/mcpManager.js";
 import type { PermissionManager } from "../managers/permissionManager.js";
@@ -19,13 +25,20 @@ export interface ExecPoolEntry {
   inputSchema?: Record<string, unknown>;
 }
 
-/** Cap recursion so a deeply nested schema cannot blow up the catalog. */
-const MAX_SIGNATURE_DEPTH = 3;
-/** Cap rendered properties per object level; the rest collapse to `...`. */
-const MAX_SIGNATURE_PROPS = 8;
-/** Cap rendered enum variants per field. */
-const MAX_ENUM_VARIANTS = 6;
-/** Cap a rendered description (tool or field) at one line of this length. */
+/**
+ * Recursion ceiling for signature rendering. Object, array and union recursion all
+ * increment depth, so this bounds every path: a pathological or structurally cyclic
+ * schema degrades to `unknown` instead of overflowing the stack. Rendering must
+ * never throw.
+ *
+ * This is the *only* silent reduction left in the renderer — there is deliberately
+ * no cap on properties per level or on enum variants. A wide schema or a long enum
+ * is decision-relevant text, and truncating it is how the model ends up guessing
+ * which parameter or which variant to use. Depth 8 and `unknown` are opencode's
+ * values (`tool-schema.ts`, `MAX_RENDER_DEPTH`).
+ */
+const MAX_SIGNATURE_DEPTH = 8;
+/** Cap a rendered *tool* description at one line of this length. */
 const MAX_DESCRIPTION_CHARS = 120;
 
 /** A property name that can be written bare in TypeScript. */
@@ -86,7 +99,13 @@ function toolExpression(name: string): string {
     : `tools[${JSON.stringify(name)}]`;
 }
 
-/** Trim a description to its first line and cap its length. */
+/**
+ * Trim a *tool* description to its first line and cap its length.
+ *
+ * Only tool-level prose is compressed here: it is padding that the model does not
+ * need to act, and the full text stays reachable through search. Field descriptions
+ * are never clamped (see `jsdoc`) — those carry the decision guidance.
+ */
 function clampDescription(text: string): string {
   const first = text.split("\n")[0].trim();
   return first.length > MAX_DESCRIPTION_CHARS
@@ -121,24 +140,30 @@ function docTags(schema: unknown): string[] {
  * The JSDoc block rendered above one field, indented to `pad`. Emits nothing
  * when the field has neither a description nor a tag, so plain fields stay
  * unadorned.
+ *
+ * The description is kept verbatim — multi-line included, no width cap. A field
+ * description says what to put in the field ("which of these variants, and why"),
+ * so cutting it at a fixed column cuts the guidance and keeps the preamble. Only
+ * the tool's own description is clamped (see `clampDescription`); when a model
+ * needs that one in full it searches the pool by name.
  */
 function jsdoc(schema: unknown, pad: string): string {
-  const lines: string[] = [];
   const description =
     schema && typeof schema === "object" && !Array.isArray(schema)
       ? (schema as Record<string, unknown>).description
       : undefined;
-  if (typeof description === "string") {
-    const first = clampDescription(description);
-    if (first !== "") lines.push(first);
-  }
-  lines.push(...docTags(schema));
-  if (lines.length === 0) return "";
-  // A `*/` inside third-party text would close the comment early. Split/join
-  // rather than `replaceAll`: these packages compile against lib ES2020.
-  const safe = lines.map((line) => line.split("*/").join("* /"));
-  if (safe.length === 1) return `${pad}/** ${safe[0]} */\n`;
-  const body = safe
+  const raw = [
+    ...(typeof description === "string" ? description.split("\n") : []),
+    ...docTags(schema),
+  ]
+    // A `*/` inside third-party text would close the comment early. Split/join
+    // rather than `replaceAll`: these packages compile against lib ES2020.
+    .map((line) => line.split("*/").join("* /").replace(/\s+$/, ""));
+  while (raw.length > 0 && raw[0].trim() === "") raw.shift();
+  while (raw.length > 0 && raw[raw.length - 1].trim() === "") raw.pop();
+  if (raw.length === 0) return "";
+  if (raw.length === 1) return `${pad}/** ${raw[0]} */\n`;
+  const body = raw
     .map((line) => `${pad} *${line === "" ? "" : ` ${line}`}`)
     .join("\n");
   return `${pad}/**\n${body}\n${pad} */\n`;
@@ -146,21 +171,20 @@ function jsdoc(schema: unknown, pad: string): string {
 
 /**
  * Render a JSON Schema as TypeScript: a multi-line block whose fields each carry
- * their own JSDoc. Depth, per-level property count and enum variants are capped.
+ * their own JSDoc. Only recursion depth is capped; properties and enum variants
+ * are rendered in full.
  */
 function renderType(schema: unknown, depth: number): string {
-  if (depth > MAX_SIGNATURE_DEPTH) return "any";
+  if (depth > MAX_SIGNATURE_DEPTH) return "unknown";
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-    return "any";
+    return "unknown";
   }
   const typed = schema as Record<string, unknown>;
 
   if (Array.isArray(typed.enum)) {
-    const variants = typed.enum
-      .slice(0, MAX_ENUM_VARIANTS)
-      .map((value) => JSON.stringify(value) ?? "null");
-    if (typed.enum.length > MAX_ENUM_VARIANTS) variants.push("...");
-    return variants.join(" | ");
+    return typed.enum
+      .map((value) => JSON.stringify(value) ?? "null")
+      .join(" | ");
   }
 
   const union = Array.isArray(typed.anyOf)
@@ -180,7 +204,7 @@ function renderType(schema: unknown, depth: number): string {
       (value): value is string => typeof value === "string",
     );
     if (names.length > 0) return names.join(" | ");
-    return "any";
+    return "unknown";
   }
 
   if (typed.type === "array" || typed.items) {
@@ -196,17 +220,14 @@ function renderType(schema: unknown, depth: number): string {
     if (keys.length === 0) return "{}";
     const pad = "  ".repeat(depth + 1);
     const close = "  ".repeat(depth);
-    const lines = keys
-      .slice(0, MAX_SIGNATURE_PROPS)
-      .map(
-        (key) =>
-          `${jsdoc(properties[key], pad)}${pad}${renderKey(key)}${required.has(key) ? "" : "?"}: ${renderType(properties[key], depth + 1)},`,
-      );
-    if (keys.length > MAX_SIGNATURE_PROPS) lines.push(`${pad}...`);
+    const lines = keys.map(
+      (key) =>
+        `${jsdoc(properties[key], pad)}${pad}${renderKey(key)}${required.has(key) ? "" : "?"}: ${renderType(properties[key], depth + 1)},`,
+    );
     return `{\n${lines.join("\n")}\n${close}}`;
   }
 
-  return typeof typed.type === "string" ? typed.type : "any";
+  return typeof typed.type === "string" ? typed.type : "unknown";
 }
 
 /**
@@ -215,6 +236,110 @@ function renderType(schema: unknown, depth: number): string {
  */
 export function renderToolSignature(entry: ExecPoolEntry): string {
   return `${toolExpression(entry.name)}(${renderType(entry.inputSchema, 0)})`;
+}
+
+/**
+ * The path the sandbox exposes search under. Built from the reserved namespace
+ * (the sandbox builds it the same way), so prose and runtime cannot drift.
+ */
+const SEARCH_EXPRESSION = `tools[${JSON.stringify(EXEC_RESERVED_NAMESPACE)}].search`;
+
+/**
+ * Input schema of the sandbox's `search` entry point.
+ *
+ * Load-bearing: the call form in the tool description, the call form in error
+ * messages and the validation `resolveSearchQuery` runs all come from this object.
+ * The description asked for the object form while the host only accepted a
+ * positional string, and nothing in the code tied the two together — one object
+ * makes that class of drift impossible rather than unlikely.
+ */
+const SEARCH_INPUT_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    query: {
+      type: "string",
+      description:
+        "Substring matched against tool names and descriptions, case-insensitively. Omit it (or pass an empty string) to list the entire pool.",
+    },
+  },
+};
+
+const SEARCH_INPUT_KEYS = Object.keys(
+  SEARCH_INPUT_SCHEMA.properties as Record<string, unknown>,
+);
+
+/** A type-shaped placeholder for a field, used by the one-line call form. */
+function placeholderFor(schema: unknown): string {
+  const type =
+    schema && typeof schema === "object" && !Array.isArray(schema)
+      ? (schema as Record<string, unknown>).type
+      : undefined;
+  switch (type) {
+    case "string":
+      return '"..."';
+    case "number":
+    case "integer":
+      return "0";
+    case "boolean":
+      return "false";
+    case "array":
+      return "[]";
+    case "object":
+      return "{}";
+    default:
+      return "...";
+  }
+}
+
+/**
+ * The callable signature of search, rendered by the very function that renders
+ * every catalog entry, so its shape cannot drift from what the host accepts.
+ * Multi-line, for the sandbox API blurb where there is room to show the field docs.
+ */
+export function renderSearchSignature(): string {
+  return `${SEARCH_EXPRESSION}(${renderType(SEARCH_INPUT_SCHEMA, 0)})`;
+}
+
+/**
+ * The one-line call form of search: the path plus a placeholder per field, all
+ * derived from `SEARCH_INPUT_SCHEMA`. For prose that cannot afford the multi-line
+ * block — the catalog's `PARTIAL` notice and error messages, which must still name
+ * a shape the host accepts.
+ */
+export function renderSearchCallForm(): string {
+  const properties = SEARCH_INPUT_SCHEMA.properties as Record<string, unknown>;
+  const fields = Object.keys(properties)
+    .map((key) => `${renderKey(key)}: ${placeholderFor(properties[key])}`)
+    .join(", ");
+  return `${SEARCH_EXPRESSION}({ ${fields} })`;
+}
+
+/**
+ * Validate a search call's arguments against `SEARCH_INPUT_SCHEMA` and return the
+ * query to match on.
+ *
+ * The sandbox only guarantees a plain object (see `callHost`); it knows nothing
+ * about this schema, so a call naming a field the schema does not have must fail
+ * loudly here. Treating `{ q: "..." }` as an empty query would answer "here is the
+ * whole pool" and dress a typo up as a successful search.
+ */
+export function resolveSearchQuery(args: Record<string, unknown>): string {
+  const unexpected = Object.keys(args).find(
+    (key) => !SEARCH_INPUT_KEYS.includes(key),
+  );
+  if (unexpected !== undefined) {
+    throw new Error(
+      `search() does not take "${unexpected}". Expected ${renderSearchCallForm()}`,
+    );
+  }
+  const query = args.query;
+  if (query === undefined) return "";
+  if (typeof query !== "string") {
+    throw new Error(
+      `search() expects "query" to be a string, got ${typeof query}. Expected ${renderSearchCallForm()}`,
+    );
+  }
+  return query.trim().toLowerCase();
 }
 
 /**
@@ -354,7 +479,7 @@ export function renderCatalog(
   if (truncated) {
     lines.push(
       `PARTIAL — ${shown} of ${entries.length} tools shown. ` +
-        `Use tools["${EXEC_RESERVED_NAMESPACE}"].search("...") to find the rest; ` +
+        `Use ${renderSearchCallForm()} to find the rest; ` +
         `search covers the full pool.`,
     );
   }

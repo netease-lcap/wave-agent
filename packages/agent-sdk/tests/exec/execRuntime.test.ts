@@ -151,7 +151,9 @@ describe("runExecScript — the bridge", () => {
     expect(result.ok).toBe(true);
     const { outcome } = JSON.parse(result.value!);
     expect(outcome).toContain("mcp__srv__nope");
-    expect(outcome).toContain("search");
+    // The pointer names a call the host actually accepts, derived from the same
+    // schema the tool description is rendered from.
+    expect(outcome).toContain(`tools["$codemode"].search({ query: "..." })`);
   });
 
   it("offers search over the full pool", async () => {
@@ -166,6 +168,24 @@ describe("runExecScript — the bridge", () => {
       all: 2,
       sums: ["mcp__srv__sum"],
     });
+  });
+
+  it("fails a search whose arguments do not match the documented shape", async () => {
+    // A typo'd field used to fall through as "no query" and answer with the whole
+    // pool — a wrong call dressed up as a successful search.
+    const result = await run(`
+      try {
+        const res = await tools["$codemode"].search({ q: "sum" });
+        return { outcome: "returned " + JSON.parse(res.content).length };
+      } catch (error) {
+        return { outcome: error.message };
+      }
+    `);
+
+    expect(result.ok).toBe(true);
+    const { outcome } = JSON.parse(result.value!);
+    expect(outcome).toContain(`does not take "q"`);
+    expect(outcome).toContain(`tools["$codemode"].search({ query: "..." })`);
   });
 
   it("returns the rendered signature rather than the raw JSON Schema", async () => {

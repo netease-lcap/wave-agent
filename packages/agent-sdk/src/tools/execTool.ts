@@ -1,12 +1,33 @@
 import { EXEC_TOOL_NAME } from "../constants/tools.js";
+import { EXEC_DEFAULT_CATALOG_TOKENS } from "../exec/constants.js";
 import {
-  EXEC_DEFAULT_CATALOG_TOKENS,
-  EXEC_RESERVED_NAMESPACE,
-} from "../exec/constants.js";
-import { buildExecPool, renderCatalog } from "../exec/catalog.js";
+  buildExecPool,
+  renderCatalog,
+  renderSearchSignature,
+} from "../exec/catalog.js";
 import type { ExecPoolEntry } from "../exec/catalog.js";
 import { runExecScript, type ExecRunResult } from "../exec/execRuntime.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
+
+/**
+ * The `search` bullet of the sandbox API blurb: what it does, then its signature
+ * indented under the bullet.
+ *
+ * The signature is rendered from the schema the host validates against, not
+ * written out by hand — this text used to teach a positional string while the host
+ * accepted only an object, and nothing made the two agree.
+ */
+function renderSearchEntry(): string {
+  const signature = renderSearchSignature()
+    .split("\n")
+    .map((line) => `  ${line}`)
+    .join("\n");
+  return (
+    "- Search the whole pool from inside the script; each hit carries the same " +
+    "signature the catalog below shows, so it can be copied verbatim:\n" +
+    signature
+  );
+}
 
 /**
  * Model-visible API description. Static on purpose: it names the sandbox surface
@@ -16,7 +37,7 @@ const EXEC_DESCRIPTION = `Run a JavaScript script in a sandbox where every MCP t
 
 Sandbox API:
 - \`await tools.<name>(args)\` — call an MCP tool, passing that tool's own arguments object directly. Resolves to \`{ content, images }\`.
-- \`tools["${EXEC_RESERVED_NAMESPACE}"].search("query")\` — list tools whose name or description matches the query, each with the same signature the catalog below shows, so a hit can be copied verbatim. An empty query lists the entire pool: use it when you cannot name what you are looking for.
+${renderSearchEntry()}
 - \`console.log(...)\` — collected and returned alongside the result. Use it to inspect intermediate values.
 - \`return <value>\` — the returned value is JSON-serialized and given back to you.
 

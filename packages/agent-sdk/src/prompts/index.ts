@@ -383,6 +383,30 @@ function getUnameSR(): string {
   return `${os.type()} ${os.release()}`;
 }
 
+/**
+ * The connected MCP servers' own usage notes, in the shape opencode uses
+ * (`session/system.ts` `SystemPrompt.mcp`): an XML envelope with one `<server>`
+ * per server, every line of its text indented inside.
+ *
+ * Nothing about the text is rewritten — no trimming, no width cap, no first line
+ * only. That is the whole point of the channel: a server's rate limit or
+ * precondition reaches the model exactly as the server wrote it, unlike a tool
+ * description, which the catalog compresses.
+ */
+function buildMcpInstructionsPrompt(
+  servers: Array<{ name: string; instructions: string }>,
+): string {
+  return [
+    "<mcp_instructions>",
+    ...servers.flatMap((server) => [
+      `  <server name="${server.name}">`,
+      ...server.instructions.split("\n").map((line) => `    ${line}`),
+      "  </server>",
+    ]),
+    "</mcp_instructions>",
+  ].join("\n");
+}
+
 export function buildSystemPrompt(
   basePrompt: string | undefined,
   tools: ToolPlugin[],
@@ -397,6 +421,12 @@ export function buildSystemPrompt(
       directory: string;
       content: string;
     };
+    /**
+     * Server-level usage notes of the connected MCP servers, already filtered by
+     * the caller (see `McpManager.getServerInstructions`). Dynamic content — it
+     * comes and goes with connections — so it belongs in the non-cacheable block.
+     */
+    mcpInstructions?: Array<{ name: string; instructions: string }>;
   } = {},
 ): SystemPromptBlock[] {
   // --- Static block (cacheable) ---
@@ -484,6 +514,10 @@ OS Version: ${osVersion}
 
       dynamicText += `\n\n${envBlock}`;
     }
+  }
+
+  if (options.mcpInstructions && options.mcpInstructions.length > 0) {
+    dynamicText += `\n\n${buildMcpInstructionsPrompt(options.mcpInstructions)}`;
   }
 
   if (options.autoMemory) {

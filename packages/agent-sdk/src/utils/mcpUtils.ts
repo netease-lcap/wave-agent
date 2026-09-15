@@ -54,7 +54,7 @@ function cleanSchema(schema: unknown): unknown {
  * Single source of truth: `McpManager.executeMcpTool` parses names in this
  * shape back into (server, tool), so every producer must agree exactly.
  */
-function mcpToolFlatName(serverName: string, toolName: string): string {
+export function mcpToolFlatName(serverName: string, toolName: string): string {
   return `mcp__${serverName}__${toolName}`;
 }
 

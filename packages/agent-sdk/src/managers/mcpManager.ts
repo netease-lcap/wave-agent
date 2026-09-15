@@ -7,7 +7,11 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
-import { createMcpToolPlugin, findToolServer } from "../utils/mcpUtils.js";
+import {
+  createMcpToolPlugin,
+  findToolServer,
+  mcpToolFlatName,
+} from "../utils/mcpUtils.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 import { Container } from "../utils/container.js";
 import type { ConfigurationService } from "../services/configurationService.js";
@@ -373,6 +377,45 @@ export class McpManager {
     return this.servers.get(name);
   }
 
+  /**
+   * The usage notes each usable server described about itself (`initialize`'s
+   * `instructions`), for the system prompt's dynamic block.
+   *
+   * "Usable" is the same predicate `getAllConnectedTools` uses — connected, or
+   * reconnecting with its last-known snapshot retained — so a server's prose is
+   * visible exactly while its tools are. A server that dropped, failed to connect
+   * or went to `error` keeps its snapshot but stops being reported here, which is
+   * what keeps a dead server from still talking to the model.
+   *
+   * `isDenied` receives flattened tool names (`mcp__server__tool`, the shape
+   * permission rules match on); a server whose tools are *all* excluded by rules is
+   * dropped whole, so prose cannot reach the context after the user ruled the
+   * server out. A server exposing no tools at all is still reported: nothing was
+   * excluded, it is simply a server that brings context rather than tools.
+   */
+  getServerInstructions(
+    isDenied?: (toolName: string) => boolean,
+  ): Array<{ name: string; instructions: string }> {
+    const result: Array<{ name: string; instructions: string }> = [];
+    for (const server of this.servers.values()) {
+      const usable =
+        server.status === "connected" || server.status === "reconnecting";
+      const instructions = server.instructions?.trim();
+      if (!usable || !instructions) continue;
+      const tools = server.tools ?? [];
+      if (
+        tools.length > 0 &&
+        tools.every((tool) =>
+          isDenied?.(mcpToolFlatName(server.name, tool.name)),
+        )
+      ) {
+        continue;
+      }
+      result.push({ name: server.name, instructions });
+    }
+    return result;
+  }
+
   updateServerStatus(name: string, updates: Partial<McpServerStatus>): void {
     const server = this.servers.get(name);
     if (server) {
@@ -512,6 +555,9 @@ export class McpManager {
       let transport: Transport;
       let client: Client;
       let tools: McpTool[] = [];
+      // Server-level usage notes from `initialize`; part of the connection's
+      // handshake, so it is read once here rather than re-requested later.
+      let instructions: string | undefined;
 
       const createClient = () =>
         new Client(
@@ -542,6 +588,7 @@ export class McpManager {
         });
         client = createClient();
         await client.connect(transport);
+        instructions = client.getInstructions();
         const toolsResponse = await client.listTools();
         tools =
           toolsResponse.tools?.map((tool) => ({
@@ -566,6 +613,7 @@ export class McpManager {
         });
         client = createClient();
         await client.connect(transport);
+        instructions = client.getInstructions();
         const toolsResponse = await client.listTools();
         tools =
           toolsResponse.tools?.map((tool) => ({
@@ -673,6 +721,7 @@ export class McpManager {
           stderrOutput = "";
         }
 
+        instructions = client.getInstructions();
         const toolsResponse = await client.listTools();
         tools =
           toolsResponse.tools?.map((tool) => ({
@@ -728,6 +777,7 @@ export class McpManager {
           status: "disconnected",
           tools: [],
           toolCount: 0,
+          instructions: undefined,
         });
         // Auto-reconnect with exponential backoff. Skipped while an explicit
         // disconnectServer teardown is in flight — that close is expected, and
@@ -750,6 +800,7 @@ export class McpManager {
         tools,
         toolCount: tools.length,
         capabilities: ["tools"],
+        instructions,
         lastConnected: Date.now(),
         error: undefined,
       });
@@ -873,6 +924,7 @@ export class McpManager {
           status: "disconnected",
           tools: [],
           toolCount: 0,
+          instructions: undefined,
           error: undefined,
         });
       }
@@ -900,6 +952,7 @@ export class McpManager {
         status: "disconnected",
         tools: [],
         toolCount: 0,
+        instructions: undefined,
         error: undefined,
       });
 
@@ -916,6 +969,7 @@ export class McpManager {
         status: "disconnected",
         tools: [],
         toolCount: 0,
+        instructions: undefined,
         error: error instanceof Error ? error.message : String(error),
       });
       return false;

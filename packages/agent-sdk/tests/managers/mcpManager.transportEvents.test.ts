@@ -66,6 +66,7 @@ describe("McpManager transport error/close handlers", () => {
     listTools: ReturnType<typeof vi.fn>;
     callTool: ReturnType<typeof vi.fn>;
     close: ReturnType<typeof vi.fn>;
+    getInstructions: ReturnType<typeof vi.fn>;
   };
   let transport: MockTransport;
 
@@ -85,6 +86,7 @@ describe("McpManager transport error/close handlers", () => {
       listTools: vi.fn().mockResolvedValue({ tools: [] }),
       callTool: vi.fn(),
       close: vi.fn().mockResolvedValue(undefined),
+      getInstructions: vi.fn().mockReturnValue("Use lookup before mutate."),
     };
     transport = makeTransport();
     vi.mocked(Client).mockImplementation(function () {
@@ -173,6 +175,9 @@ describe("McpManager transport error/close handlers", () => {
     expect(server?.status).toBe("disconnected");
     expect(server?.tools).toEqual([]);
     expect(server?.toolCount).toBe(0);
+    // The server's own usage notes go with it: a server that is gone must stop
+    // talking to the model.
+    expect(server?.instructions).toBeUndefined();
     expect(reconnectTimersOf(manager).has("s1")).toBe(true);
   });
 
