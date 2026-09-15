@@ -1266,7 +1266,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const setModel = useCallback((model: string) => {
     if (agentRef.current) {
-      agentRef.current.setModel(model);
+      void agentRef.current.setModel(model);
       setCurrentModelState(model);
     }
   }, []);
