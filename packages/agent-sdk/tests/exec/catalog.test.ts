@@ -23,6 +23,24 @@ function mcpManagerOf(configs: ChatCompletionFunctionTool[]): McpManager {
   } as unknown as McpManager;
 }
 
+/** Catalog lines that begin an entry (a multi-line block starts with `tools.`). */
+const entryLines = (text: string) =>
+  text.split("\n").filter((line) => line.startsWith("tools."));
+
+/** A tool whose pretty signature is a six-line block (25 estimated tokens at the
+ * eleven-character name `mcp__srv__a`). */
+const blockEntry = (name: string) => ({
+  name,
+  inputSchema: {
+    type: "object",
+    properties: {
+      cmd: { type: "string", description: "the command" },
+      cwd: { type: "string", description: "working dir" },
+    },
+    required: ["cmd"],
+  },
+});
+
 describe("buildExecPool", () => {
   it("maps the very configs that would be declared flat", () => {
     const config = tool("mcp__srv__run", "Run it (MCP: srv)", {
@@ -80,8 +98,15 @@ describe("renderCatalogEntry", () => {
     });
 
     expect(line).toBe(
-      "tools.mcp__srv__run({ cmd: string, cwd?: string }) // Run a command",
+      [
+        "tools.mcp__srv__run({",
+        "  cmd: string,",
+        "  cwd?: string,",
+        "}) // Run a command",
+      ].join("\n"),
     );
+    // Only the first line of the tool description reaches the catalog.
+    expect(line).not.toContain("Second line");
   });
 
   it("falls back to bracket access when the name is not a valid identifier", () => {
@@ -98,7 +123,7 @@ describe("renderCatalogEntry", () => {
           properties: { mode: { enum: ["fast", "slow"] } },
         },
       }),
-    ).toBe('tools.a({ mode?: "fast" | "slow" })');
+    ).toBe(["tools.a({", '  mode?: "fast" | "slow",', "})"].join("\n"));
 
     expect(
       renderCatalogEntry({
@@ -108,7 +133,7 @@ describe("renderCatalogEntry", () => {
           properties: { items: { type: "array", items: { type: "string" } } },
         },
       }),
-    ).toBe("tools.b({ items?: string[] })");
+    ).toBe(["tools.b({", "  items?: Array<string>,", "})"].join("\n"));
 
     expect(
       renderCatalogEntry({
@@ -138,7 +163,17 @@ describe("renderCatalogEntry", () => {
     // Recursion stops at MAX_SIGNATURE_DEPTH, so the innermost level degrades
     // to `any` instead of expanding forever.
     expect(renderCatalogEntry({ name: "d", inputSchema: nested })).toBe(
-      "tools.d({ a?: { b?: { c?: { d?: any } } } })",
+      [
+        "tools.d({",
+        "  a?: {",
+        "    b?: {",
+        "      c?: {",
+        "        d?: any,",
+        "      },",
+        "    },",
+        "  },",
+        "})",
+      ].join("\n"),
     );
 
     const wide = {
@@ -148,9 +183,106 @@ describe("renderCatalogEntry", () => {
       ),
     };
     const line = renderCatalogEntry({ name: "e", inputSchema: wide });
-    expect(line).toContain("p7?: string");
-    expect(line).not.toContain("p8?: string");
-    expect(line).toContain("...");
+    expect(line).toContain("  p7?: string,");
+    expect(line).not.toContain("p8");
+    // The overflow marker is a bare `...` line, not a property.
+    expect(line).toContain("\n  ...\n");
+  });
+
+  it("renders per-field JSDoc for descriptions, defaults and constraints", () => {
+    const line = renderCatalogEntry({
+      name: "g",
+      inputSchema: {
+        type: "object",
+        properties: {
+          owner: { type: "string", description: "Repository owner" },
+          perPage: {
+            type: "number",
+            description: "Results per page",
+            default: 30,
+          },
+          labels: {
+            type: "array",
+            items: { type: "string" },
+            description: "Filter by labels",
+            minItems: 1,
+            maxItems: 10,
+          },
+          home: { type: "string", format: "uri" },
+          legacy: { type: "string", deprecated: true },
+          plain: { type: "boolean" },
+        },
+      },
+    });
+
+    expect(line).toBe(
+      [
+        "tools.g({",
+        "  /** Repository owner */",
+        "  owner?: string,",
+        "  /**",
+        "   * Results per page",
+        "   * @default 30",
+        "   */",
+        "  perPage?: number,",
+        "  /**",
+        "   * Filter by labels",
+        "   * @minItems 1",
+        "   * @maxItems 10",
+        "   */",
+        "  labels?: Array<string>,",
+        "  /** @format uri */",
+        "  home?: string,",
+        "  /** @deprecated */",
+        "  legacy?: string,",
+        // No description and no tag -> no comment line at all.
+        "  plain?: boolean,",
+        "})",
+      ].join("\n"),
+    );
+  });
+
+  it("clamps over-long descriptions to one line of fixed width", () => {
+    const line = renderCatalogEntry({
+      name: "gl",
+      description: `${"t".repeat(200)}\nsecond line`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          p: { type: "string", description: `${"d".repeat(200)}\nsecond line` },
+        },
+      },
+    });
+    const lines = line.split("\n");
+
+    // 120 characters including the ellipsis, for both the tool description (which
+    // trails the block) and a field description.
+    expect(lines[1]).toBe(`  /** ${"d".repeat(117)}... */`);
+    expect(lines[lines.length - 1]).toBe(`}) // ${"t".repeat(117)}...`);
+    expect(line).not.toContain("second line");
+  });
+
+  it("emits a tag even when the field has no description", () => {
+    const line = renderCatalogEntry({
+      name: "gt",
+      inputSchema: {
+        type: "object",
+        properties: { limit: { type: "number", default: 30000 } },
+      },
+    });
+    expect(line).toContain("  /** @default 30000 */\n  limit?: number,");
+  });
+
+  it("neutralizes a comment terminator inside a description", () => {
+    const line = renderCatalogEntry({
+      name: "gs",
+      inputSchema: {
+        type: "object",
+        properties: { note: { type: "string", description: "Ends */ early" } },
+      },
+    });
+    expect(line).toContain("/** Ends * / early */");
+    expect(line).not.toContain("Ends */");
   });
 });
 
@@ -165,7 +297,7 @@ describe("renderCatalog", () => {
     const rendered = renderCatalog(entries, 10_000);
     expect(rendered.truncated).toBe(false);
     expect(rendered.shown).toBe(3);
-    expect(rendered.text.split("\n")).toHaveLength(3);
+    expect(entryLines(rendered.text)).toHaveLength(3);
   });
 
   it("announces truncation with counts and the search path", () => {
@@ -186,10 +318,54 @@ describe("renderCatalog", () => {
     expect(rendered.text).not.toContain("token");
   });
 
-  it("shows at least one entry even when it alone exceeds the budget", () => {
+  it("shows at least one whole entry even when it alone exceeds the budget", () => {
     const rendered = renderCatalog(entries, 1);
     expect(rendered.shown).toBe(1);
     expect(rendered.text).toContain("tools.mcp__srv__a");
+    // The block is placed atomically: its description trailer comes along too.
+    expect(rendered.text).toContain("// A");
+  });
+
+  it("budgets a whole multi-line entry as one unit", () => {
+    const blocks = [
+      blockEntry("mcp__srv__a"),
+      blockEntry("mcp__srv__b"),
+      blockEntry("mcp__srv__c"),
+    ];
+    // Each block is six lines / 95 chars / 25 estimated tokens, so three of them
+    // cost 75 as blocks. Per-line accounting would need 90 and fit only two.
+    const exact = renderCatalog(blocks, 75);
+    expect(exact.shown).toBe(3);
+    expect(exact.truncated).toBe(false);
+
+    const oneLess = renderCatalog(blocks, 74);
+    expect(oneLess.shown).toBe(2);
+  });
+
+  it("round-robins whole blocks across servers", () => {
+    // A block's cost depends on its first line, which carries the tool name, so
+    // the three server names are kept the same length to make the budget exact.
+    const pooled = [
+      blockEntry("mcp__alpha__t1"),
+      blockEntry("mcp__alpha__t2"),
+      blockEntry("mcp__alpha__t3"),
+      blockEntry("mcp__bravo__t1"),
+      blockEntry("mcp__bravo__t2"),
+      blockEntry("mcp__delta__t1"),
+    ];
+    // Each block costs 26 tokens, so 78 is room for exactly one round.
+    const rendered = renderCatalog(pooled, 78);
+    expect(rendered.shown).toBe(3);
+    expect(rendered.truncated).toBe(true);
+
+    const order = [
+      "tools.mcp__alpha__t1",
+      "tools.mcp__bravo__t1",
+      "tools.mcp__delta__t1",
+    ].map((name) => rendered.text.indexOf(name));
+    expect(order[0]).toBeLessThan(order[1]);
+    expect(order[1]).toBeLessThan(order[2]);
+    expect(rendered.text).not.toContain("mcp__alpha__t2");
   });
 
   it("gives every server a seat before any server gets a second", () => {
