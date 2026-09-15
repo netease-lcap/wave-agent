@@ -1,6 +1,42 @@
+import * as path from "node:path";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { WORKFLOW_TOOL_NAME } from "../constants/tools.js";
+import { parseScript } from "../workflow/scriptRuntime.js";
 import { logger } from "../utils/globalLogger.js";
+
+/** Characters that would corrupt a single-line summary (ANSI-adjacent controls, separators, invisibles). */
+const SUMMARY_UNSAFE_CHARS =
+  /[\p{Cc}\p{Cf}\p{Cs}\p{Default_Ignorable_Code_Point}\u2028\u2029]/gu;
+
+/** Max characters of the script head shown when `meta` cannot be parsed. */
+const FALLBACK_SUMMARY_MAX_CHARS = 80;
+
+function sanitizeForSummary(text: string): string {
+  return text.replace(SUMMARY_UNSAFE_CHARS, "");
+}
+
+/**
+ * Summary for a script whose `meta` could not be parsed: its first non-empty
+ * line, truncated if needed, plus a hint that more lines follow.
+ */
+function summarizeUnparsedScript(script: string): string {
+  const lines = script.split("\n");
+  const head = sanitizeForSummary(lines.find((line) => line.trim()) ?? "");
+  if (!head) {
+    return "";
+  }
+
+  const preview =
+    head.length > FALLBACK_SUMMARY_MAX_CHARS
+      ? `${head.slice(0, FALLBACK_SUMMARY_MAX_CHARS - 1)}…`
+      : head;
+
+  const extraLines = lines.length - 1;
+  if (extraLines <= 0) {
+    return preview;
+  }
+  return `${preview} … +${extraLines} line${extraLines === 1 ? "" : "s"}`;
+}
 
 /**
  * Workflow tool plugin for executing deterministic multi-subagent orchestration scripts.
@@ -191,15 +227,20 @@ Use this tool for multi-step orchestration where control flow should be determin
   },
 
   formatCompactParams: (params: Record<string, unknown>) => {
-    if (params.scriptPath) {
-      return `scriptPath: ${params.scriptPath}`;
+    const script = params.script;
+    if (typeof script === "string" && script) {
+      try {
+        return sanitizeForSummary(parseScript(script).meta.description);
+      } catch {
+        return summarizeUnparsedScript(script);
+      }
     }
-    const script = params.script as string;
-    if (script) {
-      // Extract meta.name from the script
-      const nameMatch = script.match(/name:\s*['"]([^'"]+)['"]/);
-      return nameMatch ? nameMatch[1] : script.slice(0, 50) + "...";
+
+    const scriptPath = params.scriptPath;
+    if (typeof scriptPath === "string" && scriptPath) {
+      return sanitizeForSummary(path.basename(scriptPath));
     }
-    return "workflow";
+
+    return "";
   },
 };

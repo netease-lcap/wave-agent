@@ -188,39 +188,67 @@ describe("workflowTool", () => {
   describe("formatCompactParams", () => {
     const ctx = createMockContext();
 
-    it("shows scriptPath when present", () => {
+    it("shows the script basename when only scriptPath is given", () => {
       const result = workflowTool.formatCompactParams!(
         {
           scriptPath: "/tmp/workflow.js",
         },
         ctx,
       );
-      expect(result).toBe("scriptPath: /tmp/workflow.js");
+      expect(result).toBe("workflow.js");
     });
 
-    it("extracts name from script", () => {
+    it("shows meta.description rather than meta.name", () => {
       const result = workflowTool.formatCompactParams!(
         {
-          script: `export const meta = { name: "my-workflow", description: "test" };\nreturn 1;`,
+          script: `export const meta = { name: "my-workflow", description: "Find flaky tests and propose fixes" };\nreturn 1;`,
         },
         ctx,
       );
-      expect(result).toBe("my-workflow");
+      expect(result).toBe("Find flaky tests and propose fixes");
     });
 
-    it("shows truncated script when no name match", () => {
+    it("strips control characters from the description", () => {
+      const result = workflowTool.formatCompactParams!(
+        {
+          script: `export const meta = { name: "x", description: "Keep\u2028it\u0007clean" };\nreturn 1;`,
+        },
+        ctx,
+      );
+      expect(result).toBe("Keepitclean");
+    });
+
+    it("falls back to the first non-empty line when meta cannot be parsed", () => {
       const result = workflowTool.formatCompactParams!(
         {
           script: "some very long script without a name",
         },
         ctx,
       );
-      expect(result).toContain("...");
+      expect(result).toBe("some very long script without a name");
     });
 
-    it("returns workflow when no script or path", () => {
-      const result = workflowTool.formatCompactParams!({}, ctx);
-      expect(result).toBe("workflow");
+    it("truncates an over-long fallback line", () => {
+      const result = workflowTool.formatCompactParams!(
+        { script: "x".repeat(120) },
+        ctx,
+      );
+      expect(result).toBe(`${"x".repeat(79)}…`);
+    });
+
+    it("appends a line hint when the fallback script has more lines", () => {
+      const result = workflowTool.formatCompactParams!(
+        { script: "// scan logs\nconst x = 1;" },
+        ctx,
+      );
+      expect(result).toBe("// scan logs … +1 line");
+    });
+
+    it("returns an empty string when there is no script or path", () => {
+      expect(workflowTool.formatCompactParams!({}, ctx)).toBe("");
+      expect(workflowTool.formatCompactParams!({ script: "  \n " }, ctx)).toBe(
+        "",
+      );
     });
   });
 });
