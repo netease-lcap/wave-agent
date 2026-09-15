@@ -31,6 +31,48 @@
   min-height: 0;
 }
 
+/* ── 键盘焦点环（0915-F-06；0926 修正「双圈 + 空隙」）──────────────────
+   按控件有没有自身边界分两种语言：
+   ① 无边界控件（返回 / 导航项 / 页签 / 筛选胶囊 / 主次按钮 / 弹窗关闭）走契约
+      的外移环：skill theme/layout.css:211 与 codechat-ui global.css:44 均为
+      `outline: 2px solid var(--cc-border-focus); outline-offset: 2px`。
+   ② 自身带 1px 边界的表单控件（输入类 / 行内操作按钮 / 作用域胶囊 / 单选卡 /
+      安装按钮）不套外移环，焦点色落在自身边框上——此前一刀切套外移环，与控件
+      自身边框叠成「1px 边框 + 2px 空隙 + 2px 外环」的双圈（设计师 0926 走查）。
+      参考实现同语言：codechat-ui settings.css:566 `border-color: var(--cc-border-focus)`；
+      skill element-plus.css:114 亦把焦点落在控件自身边界上。
+   范围仅限设置页；对话流有自己的焦点处理，不在本规则内。 */
+.settings-page button:focus-visible,
+.settings-page input:focus-visible,
+.settings-page select:focus-visible,
+.settings-page textarea:focus-visible {
+  outline: 2px solid var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
+  outline-offset: 2px;
+}
+
+/* 输入类不套外移环：焦点由 .settings-select/:focus 一族的边框变色表达 */
+.settings-page input:focus-visible,
+.settings-page select:focus-visible,
+.settings-page textarea:focus-visible {
+  outline: none;
+}
+
+/* 自身带 1px 边界的按钮 / 胶囊 / 单选卡：焦点色落在边框上（单圈、无空隙） */
+.settings-page .settings-row-btn:focus-visible,
+.settings-page .settings-scope-pill:focus-visible,
+.settings-page .settings-scope-option:focus-visible,
+.settings-page .settings-plugin-act:focus-visible {
+  outline: none;
+  border-color: var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
+}
+
+/* 危险操作（移除市场）保住红色语义：红边不动，焦点环贴边同色加粗（单圈、无空隙） */
+.settings-page .settings-row-btn-danger:focus-visible {
+  border-color: var(--cc-color-danger, var(--vscode-errorForeground, #f48771));
+  outline: 2px solid var(--cc-color-danger, var(--vscode-errorForeground, #f48771));
+  outline-offset: 0;
+}
+
 /* ---- Left navigation ---- */
 
 .settings-sidebar {
@@ -197,7 +239,9 @@
 .settings-page-header p {
   margin-top: 4px;
   color: var(--vscode-descriptionForeground);
-  font-size: 13px;
+  /* 0915-D-03：页头说明按契约 design-system.md:179 的 supporting 档 14px / 22px
+     （原 13px / 22px） */
+  font-size: 14px;
   line-height: 22px;
 }
 
@@ -677,12 +721,15 @@
   background: var(--vscode-button-hoverBackground, #1177bb);
 }
 
-/* 列表行操作按钮 */
+/* 列表行操作按钮：0915-D-02 统一到 8px / 28px（原 4px / 23px 均越契约刻度） */
 .settings-row-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
   background: none;
   border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
-  border-radius: 4px;
-  padding: 2px 10px;
+  border-radius: 8px;
   font-size: 12px;
   color: var(--vscode-foreground);
   cursor: pointer;
@@ -690,12 +737,16 @@
 }
 
 .settings-row-btn:hover {
-  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+  /* 0915-T-01：普通 hover 面 → --cc-fill-hover（桌面宿主语义层；插件宿主回落
+     宿主 token，行为不变） */
+  background: var(--cc-fill-hover, var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15)));
 }
 
 .settings-row-btn-danger {
-  color: var(--vscode-errorForeground, #f48771);
-  border-color: var(--vscode-errorForeground, #f48771);
+  /* 0915-T-01：危险语义 → --cc-color-danger（桌面宿主）；插件宿主回落
+     --vscode-errorForeground，行为不变 */
+  color: var(--cc-color-danger, var(--vscode-errorForeground, #f48771));
+  border-color: var(--cc-color-danger, var(--vscode-errorForeground, #f48771));
 }
 
 /* 来源/状态小标签 */
@@ -751,14 +802,17 @@
    形制取自设计师原型（市场分段 tab + 计数角标 / 胶囊操作按钮 / 弹窗卡片），
    颜色全部映射 --vscode-* token。 */
 
-/* 市场 tab 与筛选胶囊上的计数角标（原型 .market-count / .tab-count） */
+/* 市场 tab 与筛选胶囊上的计数角标（原型 .market-count / .tab-count）
+   0915-F-07：字号 11px → 12px（紧凑元信息下限）；行高保持 16px，胶囊高度不变。
+   0915-T-01：普通计数角标 = 中性 fill + regular 文字（原借 --vscode-badge-*
+   的编辑器蓝/灰；badge-* 仍归宿主，状态徽标另行处理）。 */
 .settings-tab-count {
   margin-left: 6px;
   padding: 0 6px;
   border-radius: 999px;
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-  font-size: 11px;
+  background: var(--cc-fill, var(--vscode-badge-background));
+  color: var(--cc-text-regular, var(--vscode-badge-foreground));
+  font-size: 12px;
   line-height: 16px;
   font-weight: 500;
 }
@@ -823,13 +877,18 @@
 }
 
 .settings-plugin-chip.is-active {
-  color: var(--vscode-badge-foreground);
-  background: var(--vscode-foreground);
+  /* 0915-F-01：反白胶囊必须成对取自同一反白角色 —— 深色下原用
+     --vscode-foreground 作底 + --vscode-badge-foreground 作字，
+     两者在深色分别是 #E5E7E8 / #F8F8F8 → 1.16:1 不可读。
+     现统一 action-primary / action-primary-text（浅深均 ≥13:1）。 */
+  color: var(--cc-action-primary-text, var(--vscode-button-foreground));
+  background: var(--cc-action-primary, var(--vscode-button-background));
 }
 
 .settings-plugin-chip.is-active .settings-tab-count {
-  background: var(--vscode-badge-foreground);
-  color: var(--vscode-foreground);
+  /* 反白面内的计数继承同一组配对（透明底 + 继承文字色），不再二次反相 */
+  color: inherit;
+  background: transparent;
 }
 
 .settings-plugin-search {
@@ -882,9 +941,17 @@
   font-weight: 400;
 }
 
-/* 已安装且有新版本：两版并列 + 提示色（原型 .plugin-ver.update） */
+/* 已安装且有新版本：两版并列 + 可读正文色（原型 .plugin-ver.update）
+   0915-F-03：原用 --vscode-editorWarning-foreground，浅色 3.11:1 不达 4.5。
+   依 desktop-theme-bridge.md「信号色不自动等于可读文字色：字面信息用既有
+   primary/regular，状态语义交给带标签的图标/指示」——此处「已安装 vX · 最新 vY」
+   自身即指示，颜色回到正文色（浅深均 ≥15:1）。若后续需要专门的 warning
+   文字角色，按该文档另立经过测量的 Light/Dark 配对，不改全局信号色。 */
 .settings-plugin-version.is-update {
-  color: var(--vscode-editorWarning-foreground, #b98a2f);
+  color: var(
+    --cc-text-primary,
+    var(--vscode-editorWarning-foreground, #b98a2f)
+  );
   font-weight: 500;
 }
 
@@ -902,12 +969,18 @@
   gap: 8px;
 }
 
-/* 行操作胶囊：安装 / 更新（主色）、已安装（弱化 + 勾） */
+/* 行操作胶囊：安装 / 更新（主色）、已安装（语义 soft 底 + 可读正文）
+   0915-D-02：999px / 32px → 8px / 28px；0915-F-02：已安装态不再用编辑器测试绿
+   当文字色（浅色 1.51:1），改 soft success 底 + regular 文字，✓ 与文案保留状态语义。 */
 .settings-plugin-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 88px;
-  padding: 6px 14px;
+  height: 28px;
+  padding: 0 14px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
   text-align: center;
@@ -925,15 +998,19 @@
 }
 
 .settings-plugin-act.is-installed {
-  color: var(--vscode-testing-iconPassed, #2fa36b);
-  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--cc-text-regular, var(--vscode-foreground));
+  background: var(
+    --cc-color-success-soft,
+    var(--vscode-toolbar-hoverBackground)
+  );
 }
 
 .settings-plugin-act.is-installed:hover {
-  color: var(--vscode-foreground);
+  color: var(--cc-text-primary, var(--vscode-foreground));
 }
 
-/* 已安装插件的作用域按钮（显示当前作用域，点击更换） */
+/* 已安装插件的作用域按钮（显示当前作用域，点击更换）
+   0915-D-02：999px → 8px（高度 28px 不变） */
 .settings-scope-pill {
   display: inline-flex;
   align-items: center;
@@ -943,7 +1020,7 @@
   color: var(--vscode-descriptionForeground);
   background: transparent;
   border: 1px solid var(--cc-settings-border);
-  border-radius: 999px;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -964,6 +1041,10 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
+  /* 0915-D-06：遮罩保持模态遮罩（0.4 黑）。desktop-theme-bridge.md 明确
+     「editorWidget → overlay 的映射不授权把遮罩换成轻量 approval scrim；
+     modal / nonmodal 由面契约决定」——设置弹窗是模态（拦截交互、Esc 关闭），
+     故不接入 --cc-overlay-scrim（浅 5% / 深 30%）。 */
   background: rgba(0, 0, 0, 0.4);
 }
 
@@ -973,7 +1054,12 @@
   overflow-y: auto;
   padding: 22px 24px 20px;
   color: var(--vscode-foreground);
-  background: var(--vscode-editorWidget-background, var(--vscode-dropdown-background));
+  /* 0915-D-06：弹窗面接入产品浮层角色（原 --vscode-editorWidget-background
+     是编辑器面：浅 #FAFAFD / 深 #202020） */
+  background: var(
+    --cc-bg-overlay,
+    var(--vscode-editorWidget-background, var(--vscode-dropdown-background))
+  );
   border: 1px solid var(--cc-settings-border-light);
   border-radius: 12px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
@@ -1007,7 +1093,8 @@
 
 .settings-modal-close:hover {
   color: var(--vscode-foreground);
-  background: var(--vscode-toolbar-hoverBackground);
+  /* 0915-T-01：普通 hover 面 → --cc-fill-hover（插件宿主回落宿主 token） */
+  background: var(--cc-fill-hover, var(--vscode-toolbar-hoverBackground));
 }
 
 .settings-modal-hint {
@@ -1021,7 +1108,9 @@
   gap: 3px;
   margin-top: 14px;
   padding: 3px;
-  background: var(--vscode-toolbar-hoverBackground);
+  /* 0915-T-01：静态轨道是 resting 填充面（非 hover）→ --cc-fill
+     （原借 --vscode-toolbar-hoverBackground，角色不符） */
+  background: var(--cc-fill, var(--vscode-toolbar-hoverBackground));
   border-radius: 8px;
 }
 
@@ -1039,7 +1128,12 @@
 
 .settings-modal-seg-item.is-active {
   color: var(--vscode-foreground);
-  background: var(--vscode-editorWidget-background, var(--vscode-dropdown-background));
+  /* 0915-D-06：激活段与弹窗面同为浮层面（原两者共用 editorWidget 值，
+     此处同步改为 --cc-bg-overlay 以保持「激活段=弹窗面」的相对关系） */
+  background: var(
+    --cc-bg-overlay,
+    var(--vscode-editorWidget-background, var(--vscode-dropdown-background))
+  );
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
@@ -1077,9 +1171,11 @@
   padding: 14px 16px;
   color: var(--vscode-foreground);
   text-align: left;
-  background: var(--vscode-toolbar-hoverBackground);
+  /* 0915-T-01：静态选项面 = resting 填充（原借 toolbar-hoverBackground）；
+     0915-D-01：10px → 8px（回到 4/6/8/12/999 刻度） */
+  background: var(--cc-fill, var(--vscode-toolbar-hoverBackground));
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
 }
 
@@ -1088,6 +1184,7 @@
 }
 
 .settings-scope-option.is-selected {
+  /* 持久选中面 = --cc-fill-pressed（浅色桥接后与深色同族；描边走 --cc-border-focus） */
   background: var(--vscode-list-activeSelectionBackground);
   border-color: var(--vscode-focusBorder);
 }
@@ -1109,6 +1206,14 @@
   font-size: 12px;
   font-style: normal;
   font-weight: 500;
+}
+
+/* 0915-F-04：深色选中面 #393E41 上，descriptionForeground(#A0A5A8) 只有 4.35:1；
+   选中态内的次级文字改用 --cc-text-regular（浅 #565A60 / 深 #C4C7C9，均 ≥5.6:1）。
+   未选中态维持原描述色。 */
+.settings-scope-option.is-selected .settings-scope-option-title em,
+.settings-scope-option.is-selected .settings-scope-option-desc {
+  color: var(--cc-text-regular, var(--vscode-descriptionForeground));
 }
 
 /* 单选指示（原型 .scope-radio：外圈 + 选中实心点） */

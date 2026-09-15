@@ -51,6 +51,10 @@
   --cc-border: #dcdfe6;            /* 强边界（composer/输入框） */
   --cc-border-light: #e4e7ed;      /* quiet lines（面板分隔） */
   --cc-border-lighter: #ebeef5;    /* 浮层面板边 */
+  /* 焦点环（浅色档）：skill tokens.css:84 / desktop-colors.css:64 均为
+     var(--cc-action-primary)。此前浅色档未定义本角色，只有深色档有，
+     于是 --vscode-focusBorder 桥接在浅色取不到值。 */
+  --cc-border-focus: var(--cc-action-primary);
 
   /* 桥接：组件消费的 host token → 语义值（值与上版字面一致，浅色零回归） */
   --vscode-button-background: var(--cc-action-primary);
@@ -69,6 +73,15 @@
   --vscode-panel-border: var(--cc-border-light);
   --vscode-widget-border: var(--cc-border-light);
   --vscode-input-border: var(--cc-border);
+
+  /* 0915-T-01：浅色补齐与深色档同族的三条中性角色桥接（codechat
+     references/desktop-theme-bridge.md「Mapping by meaning」）——
+     此前浅色沿用编辑器原值（黑 alpha / VS Code 蓝），深色已桥接，
+     同一组件在两模式取到不同值族。语义依次为：
+     普通行 hover / 中性持久选中 / 键盘与控制焦点。 */
+  --vscode-list-hoverBackground: var(--cc-fill-hover);
+  --vscode-list-activeSelectionBackground: var(--cc-fill-pressed);
+  --vscode-focusBorder: var(--cc-border-focus);
 
   /* 链接蓝：Figma --cc-text-link #2F5EDB（正文链接 / picker 高亮等 host 取样
      token；浅色沿用 cc 蓝，区别于插件端 --vscode-textLink #0069cc） */

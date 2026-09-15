@@ -2998,3 +2998,49 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 - **base 未动**：`Message.css` 的表格规则保持原样，IDE 宿主不受影响。
 - **可检索规则**：右对齐关键词表 / 标识列关键词表 / 图标与操作列判据都写在 `Message.tsx` 顶部常量里，改词表即可扩缩范围，不需要动渲染流程。
 - **测试**：`npx tsc --noEmit`（webview）exit 0；三档×两主题实测全部画布溢出 0。
+
+## 插件市场设置页走查修复（0915 批，用户 2026-09-15 授权「除了 F05 其他通过」+ 裁决 D-01/D-02/D-03/D-06/T-01；2026-09-26 追加焦点环修正）
+
+来源：`走查/0915-插件市场/0915-pluginmarket-走查.html`（Artifact `h2qt8rsv4a`）。走查本身为 audit-only（产品代码零改动）；以下为本批授权后的实施。
+
+### 授权范围（逐条回源）
+
+- **F-01 深色选中的市场筛选胶囊反白**：`.settings-plugin-chip.is-active` → `color: var(--cc-action-primary-text, var(--vscode-button-foreground))` / `background: var(--cc-action-primary, var(--vscode-button-background))`；其内 `.settings-tab-count` → `color: inherit` / `background: transparent`（嵌套角标继承反白对）。深色 1.16:1 → **13.28:1**。
+- **F-02「✓ 已安装」小字不可读**：`.settings-plugin-act.is-installed` → `color: var(--cc-text-regular, …)` / `background: var(--cc-color-success-soft, …)`；`hover` → `--cc-text-primary`。浅色 1.51:1 → **6.63:1**，深色 7.22 → **8.77:1**。
+- **F-03「· 可更新」版本行不可读**：`.settings-plugin-version.is-update` → `color: var(--cc-text-primary, …)` / `font-weight: 500`（字号属 D-03，未动）。浅色 3.11:1 → **15.78:1**，深色 8.07 → **15.02:1**。
+  - F-02/F-03 共同理由：桥接文档「小字状态色不可读时改用可读标签 + 指示」。`--cc-color-success` 浅色 #16A34A 在白底仅 **3.30:1**、`--cc-color-warning` #D97706 仅 **3.19:1**，不能承载 12–13px 文字，故状态含义交给文案与 soft 底，不由色相独担。
+- **F-04 深色作用域弹窗选中项说明**：`.settings-scope-option.is-selected` 内的标题 `em` 与 `.settings-scope-option-desc` → `var(--cc-text-regular, …)`（仅选中态内生效）。深色 4.35:1 → **6.37:1**；浅色 5.71:1（未选中项 5.61 未回归）。
+- **F-06 键盘焦点环**（0926 修正后，见下节）：设置页统一到 `--cc-border-focus`，修前为浏览器默认蓝 `rgb(0,95,204)`。
+- **F-07 计数角标字号**：`.settings-tab-count` → `var(--cc-fill / --cc-text-regular)` + **12px / 16px**（修前 11px + badge token）。浅色 6.19:1 / 深色 8.64:1。
+- **D-01 / D-02 几何**：行内「更新/移除市场」**8px 圆角 / 28px 高**（修前 4px / 23px）；「新建市场」与搜索框 **6px / 32px**；「安装·已安装」**8px / 28px / min-width 88px / padding 0 14px**；作用域胶囊 **8px / 28px**。
+- **D-03 页头说明**：仅页头说明由 13px → **14px / 22px**（契约档），其余字号项按「不改」保持。
+- **D-06 弹窗面**：作用域弹窗表面接 **`--cc-bg-overlay`**（浅 #FFFFFF / 深 #232526）；遮罩按桥接文档「面与遮罩分开决定」保持模态 `rgba(0,0,0,0.4)`，未换轻量 scrim。
+- **T-01 浅色 host token 桥接**（`host-desktop.css`，依 skill 新分支 `docs/desktop-theme-bridge`@`6598e6c`）：浅色档补 `--cc-border-focus: var(--cc-action-primary)`；补三条与深色同族的桥接 `--vscode-list-hoverBackground: var(--cc-fill-hover)`、`--vscode-list-activeSelectionBackground: var(--cc-fill-pressed)`、`--vscode-focusBorder: var(--cc-border-focus)`。此前浅色沿用编辑器原值（黑 alpha / VS Code 蓝），同一组件在两模式落到不同值族。
+
+### 焦点环两种语言（0926 修正「双圈 + 空隙」）
+
+用户 2026-09-26 反馈「表单选中态的描边和本身的边框线产生了间距，感觉有两圈边框」。根因：上一版把设置页所有可聚焦控件一刀切套通用外移环（`outline: 2px solid var(--cc-border-focus); outline-offset: 2px`），而 `.settings-page input:focus-visible` 特异性 **(0,2,1)** 高于设置页原有表单语言 `.settings-text-input:focus` **(0,2,0)**，于是输入类与自带 1px 边框的行内按钮 / 作用域胶囊 / 单选卡全部变成「边框变色 + 2px 空隙 + 2px 外环」。
+
+修正后的分工（`SettingsPage.css:34-72`）：
+
+| 控件                                                                                                                         | 焦点表达                                                                     | 依据                                                                                                                                            |
+| ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 无边界控件（返回 / 导航项 / 页签 / 筛选胶囊 / 主次按钮）                                                                     | `outline: 2px solid var(--cc-border-focus)` + `outline-offset: 2px`          | skill `theme/layout.css:211`、codechat-ui `src/styles/global.css:44`                                                                            |
+| 自身带 1px 边界（输入类 / `.settings-row-btn` / `.settings-scope-pill` / `.settings-scope-option` / `.settings-plugin-act`） | `outline: none`，焦点色落在自身 `border-color`                               | codechat-ui `src/features/settings/settings.css:566`、skill `theme/element-plus.css:114`（输入类显式 `outline: none`，见 settings.css:110/560） |
+| 危险操作（`.settings-row-btn-danger`）                                                                                       | 红边保留 + `outline: 2px solid var(--cc-color-danger)`、`offset: 0` 贴边同色 | 保住红色语义，避免异色双圈                                                                                                                      |
+
+实测：`verify-focus-ring-0916.mjs` **14/14**（浅深 × 列表 / 弹窗 / 搜索框；含「无 border+outline(offset>0) 双圈」「每个焦点都有可见指示」「有边界控件焦点色 = `--cc-border-focus`」「危险按钮保红边 offset 0」）；其他设置 Tab（全局设置 / 个性化 / 项目设置 / MCP 服务 × 浅深）**16/16**；`scan-double-ring-0916.mjs` 全产品扫描（外壳 29 步 / 设置页 19 步 / 弹窗 5 步 × 浅深）**双圈 0 处、无焦点指示 0 处**。前后对照用真实 Tab 走到同一元素且前后步数一致（row-btn 13 / danger 14 / search 19 / plugin-act 20 / scope-pill 21），差异像素 1742~3566，bbox 全部落在控件周界（`focus-compare-*.png` + `focus-compare-stats.json`）。
+
+**测量踩坑（可复用）**：Chromium 未设置 outline 时 computed 报 `outline-width: 3px` + `outline-style: none`，判「有没有环」必须先看 `outlineStyle !== "none"`，只看宽度会误报双圈；`:focus-visible` 在程序化 `focus()` 下不一定命中（须键盘模态），但文本输入框在鼠标点击时也会命中——用户看到的双圈很可能就是点搜索框时出现的。
+
+### 验收
+
+- `verify-pluginmarket-fixes-0915.mjs` **82/82 断言**（浅深 × 1440/994 列表 + 浅深 × 作用域/新建市场弹窗，共 8 场景）。
+- axe-core 4.13.0：8 场景 `color-contrast` **全 0 处**（修前去重后 4 类根因）；无横向溢出、无 console error / pageerror。
+- 浅色桥接影响面（`verify-light-bridges-0915.mjs` → `light-bridge-impact.json`，**EV-07 模拟对照**：同页把三条 token 改回编辑器字面值作 before）：**静止态全量 DOM 0 项变化**（desktop-rich 585 元素 / 插件市场 143 元素）；交互态可达 5 项中 3 项按设计变化（插件行 hover 面、文本输入与作用域胶囊 hover 边框去蓝）。**副作用**：浅色选中面 `rgba(0,0,0,.14)`≈#DBDBDB → `--cc-fill-pressed #E7E9ED`，选中态变淡（与深色口径一致）。
+- 未授权项保持原样（残留清单见报告，带触发语）：**F-05** 弹窗焦点管理（打开移入 / Tab 困于弹窗 / 关闭归还）、**D-04** 外壳几何 800 vs 768、**D-05** 选中语言统一、**D-03 其余字号**、**T-01b** 小字状态色角色缺失（待 codex 回写 skill）、**F-06r** 对话流外壳约 20 类控件的焦点环仍是浏览器默认蓝 `rgb(0,95,204)`（贴边单圈、无空隙，非本次的双圈问题）。
+
+### 备注
+
+- 未跟踪文件 `packages/webview/prototype/mockShared.ts`、`prototype/pluginMarketMock.ts` 属原型工具链，不在本次提交内。
+- `--cc-*` 角色只在 `[data-host="desktop"]` 内定义，组件里消费必须带 host token 兜底（否则会连带打断 VS Code / JetBrains 宿主）。
