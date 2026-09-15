@@ -31,14 +31,14 @@
   min-height: 0;
 }
 
-/* ── 键盘焦点环（0915-F-06；0926 修正「双圈 + 空隙」）──────────────────
+/* ── 键盘焦点环（0915-F-06，含同日「双圈 + 空隙」修正）──────────────────
    按控件有没有自身边界分两种语言：
    ① 无边界控件（返回 / 导航项 / 页签 / 筛选胶囊 / 主次按钮 / 弹窗关闭）走契约
       的外移环：skill theme/layout.css:211 与 codechat-ui global.css:44 均为
       `outline: 2px solid var(--cc-border-focus); outline-offset: 2px`。
    ② 自身带 1px 边界的表单控件（输入类 / 行内操作按钮 / 作用域胶囊 / 单选卡 /
       安装按钮）不套外移环，焦点色落在自身边框上——此前一刀切套外移环，与控件
-      自身边框叠成「1px 边框 + 2px 空隙 + 2px 外环」的双圈（设计师 0926 走查）。
+      自身边框叠成「1px 边框 + 2px 空隙 + 2px 外环」的双圈（设计师 0915 走查）。
       参考实现同语言：codechat-ui settings.css:566 `border-color: var(--cc-border-focus)`；
       skill element-plus.css:114 亦把焦点落在控件自身边界上。
    范围仅限设置页；对话流有自己的焦点处理，不在本规则内。 */
@@ -224,7 +224,7 @@
   box-sizing: border-box;
 }
 
-/* 插件市场页头 = 标题块 + 右上角「新建市场」（设计师 0926 走查）。
+/* 插件市场页头 = 标题块 + 右上角「新建市场」（设计师 0915 走查）。
    只挂在本视图上：其余设置视图的页头是 h1 + p 两个直接子元素，若把
    display:flex 加在公共的 .settings-page-header 上，它俩会变成同一行的
    两个 flex item。 */
@@ -853,7 +853,7 @@
   gap: 6px;
 }
 
-/* 新建市场（页头右上角，设计师 0926 走查）：8px 圆角；图标与文字间距沿用
+/* 新建市场（页头右上角，设计师 0915 走查）：8px 圆角；图标与文字间距沿用
    工具栏操作区的 4px 口径（该口径原挂在 .settings-toolbar-actions 下，
    按钮移入页头后需自带） */
 .settings-plugin-new-market {
@@ -877,7 +877,7 @@
 /* 插件筛选（全部/已安装/未安装）：与新建市场弹窗的分段 tab 同一形制
    （.settings-modal-seg 一族：静态轨道 = --cc-fill + 3px 内衬；激活段 =
    --cc-bg-segment-active 面 + --cc-text-segment-active 字 + 600 字重），
-   设计师 0926 走查指定「也用这个 tab，高度 32px，宽度和现在差不多」。
+   设计师 0915 走查指定「也用这个 tab，高度 32px，宽度和现在差不多」。
    轨道总高 32px：32 = 3px 内衬 ×2 + 26px 段高，与右侧 32px 搜索框同高；
    段内左右内衬沿用原胶囊的 12px，故整组宽度与改前基本一致。 */
 .settings-plugin-filters {
@@ -912,7 +912,7 @@
 }
 
 .settings-plugin-chip.is-active {
-  /* 设计师 0926 追加指示：浅色档 = 白面 + 炭黑字（这个组件的特殊规范，与主按钮反相）；
+  /* 设计师 0915 追加指示：浅色档 = 白面 + 炭黑字（这个组件的特殊规范，与主按钮反相）；
      深色档 = 主按钮档（浅灰面 + 深字，即上一轮定的「反白」），两档都由
      --cc-bg-segment-active / --cc-text-segment-active 一对角色管（写在 host-desktop.css）。
      浅色 #1F2329/#FFFFFF 实测 15.78:1、深色 #191C1E/#E0E3E5 13.28:1（≥13:1）。
@@ -1093,7 +1093,7 @@
   color: var(--vscode-foreground);
   /* 0915-D-06：弹窗面接入产品语义角色（原 --vscode-editorWidget-background
      是编辑器面：浅 #FAFAFD / 深 #202020）。
-     0926：改取新增的「模态弹窗面」角色（浅 #FFFFFF / 深 #181A1B）——深色底下
+     0915：改取新增的「模态弹窗面」角色（浅 #FFFFFF / 深 #181A1B）——深色底下
      弹窗与侧边导航同色。不能改共享的 --cc-bg-overlay：那是菜单/气泡/确认卡共用
      的 floating surface，深色档 #232526 是 dark-theme.md:11 的已接受决策。 */
   background: var(

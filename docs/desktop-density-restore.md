@@ -2999,7 +2999,7 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 - **可检索规则**：右对齐关键词表 / 标识列关键词表 / 图标与操作列判据都写在 `Message.tsx` 顶部常量里，改词表即可扩缩范围，不需要动渲染流程。
 - **测试**：`npx tsc --noEmit`（webview）exit 0；三档×两主题实测全部画布溢出 0。
 
-## 插件市场设置页走查修复（0915 批，用户 2026-09-15 授权「除了 F05 其他通过」+ 裁决 D-01/D-02/D-03/D-06/T-01；2026-09-26 追加焦点环修正）
+## 插件市场设置页走查修复（0915 批，用户 2026-09-15 授权「除了 F05 其他通过」+ 裁决 D-01/D-02/D-03/D-06/T-01；同日追加焦点环修正）
 
 来源：`走查/0915-插件市场/0915-pluginmarket-走查.html`（Artifact `h2qt8rsv4a`）。走查本身为 audit-only（产品代码零改动）；以下为本批授权后的实施。
 
@@ -3010,16 +3010,16 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 - **F-03「· 可更新」版本行不可读**：`.settings-plugin-version.is-update` → `color: var(--cc-text-primary, …)` / `font-weight: 500`（字号属 D-03，未动）。浅色 3.11:1 → **15.78:1**，深色 8.07 → **15.02:1**。
   - F-02/F-03 共同理由：桥接文档「小字状态色不可读时改用可读标签 + 指示」。`--cc-color-success` 浅色 #16A34A 在白底仅 **3.30:1**、`--cc-color-warning` #D97706 仅 **3.19:1**，不能承载 12–13px 文字，故状态含义交给文案与 soft 底，不由色相独担。
 - **F-04 深色作用域弹窗选中项说明**：`.settings-scope-option.is-selected` 内的标题 `em` 与 `.settings-scope-option-desc` → `var(--cc-text-regular, …)`（仅选中态内生效）。深色 4.35:1 → **6.37:1**；浅色 5.71:1（未选中项 5.61 未回归）。
-- **F-06 键盘焦点环**（0926 修正后，见下节）：设置页统一到 `--cc-border-focus`，修前为浏览器默认蓝 `rgb(0,95,204)`。
+- **F-06 键盘焦点环**（0915 修正后，见下节）：设置页统一到 `--cc-border-focus`，修前为浏览器默认蓝 `rgb(0,95,204)`。
 - **F-07 计数角标字号**：`.settings-tab-count` → `var(--cc-fill / --cc-text-regular)` + **12px / 16px**（修前 11px + badge token）。浅色 6.19:1 / 深色 8.64:1。
 - **D-01 / D-02 几何**：行内「更新/移除市场」**8px 圆角 / 28px 高**（修前 4px / 23px）；「新建市场」与搜索框 **6px / 32px**；「安装·已安装」**8px / 28px / min-width 88px / padding 0 14px**；作用域胶囊 **8px / 28px**。
 - **D-03 页头说明**：仅页头说明由 13px → **14px / 22px**（契约档），其余字号项按「不改」保持。
 - **D-06 弹窗面**：作用域弹窗表面接 **`--cc-bg-overlay`**（浅 #FFFFFF / 深 #232526）；遮罩按桥接文档「面与遮罩分开决定」保持模态 `rgba(0,0,0,0.4)`，未换轻量 scrim。
 - **T-01 浅色 host token 桥接**（`host-desktop.css`，依 skill 新分支 `docs/desktop-theme-bridge`@`6598e6c`）：浅色档补 `--cc-border-focus: var(--cc-action-primary)`；补三条与深色同族的桥接 `--vscode-list-hoverBackground: var(--cc-fill-hover)`、`--vscode-list-activeSelectionBackground: var(--cc-fill-pressed)`、`--vscode-focusBorder: var(--cc-border-focus)`。此前浅色沿用编辑器原值（黑 alpha / VS Code 蓝），同一组件在两模式落到不同值族。
 
-### 焦点环两种语言（0926 修正「双圈 + 空隙」）
+### 焦点环两种语言（0915 修正「双圈 + 空隙」）
 
-用户 2026-09-26 反馈「表单选中态的描边和本身的边框线产生了间距，感觉有两圈边框」。根因：上一版把设置页所有可聚焦控件一刀切套通用外移环（`outline: 2px solid var(--cc-border-focus); outline-offset: 2px`），而 `.settings-page input:focus-visible` 特异性 **(0,2,1)** 高于设置页原有表单语言 `.settings-text-input:focus` **(0,2,0)**，于是输入类与自带 1px 边框的行内按钮 / 作用域胶囊 / 单选卡全部变成「边框变色 + 2px 空隙 + 2px 外环」。
+用户 2026-09-15 反馈「表单选中态的描边和本身的边框线产生了间距，感觉有两圈边框」。根因：上一版把设置页所有可聚焦控件一刀切套通用外移环（`outline: 2px solid var(--cc-border-focus); outline-offset: 2px`），而 `.settings-page input:focus-visible` 特异性 **(0,2,1)** 高于设置页原有表单语言 `.settings-text-input:focus` **(0,2,0)**，于是输入类与自带 1px 边框的行内按钮 / 作用域胶囊 / 单选卡全部变成「边框变色 + 2px 空隙 + 2px 外环」。
 
 修正后的分工（`SettingsPage.css:34-72`）：
 
@@ -3086,7 +3086,7 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 
 ### 验收
 
-- 探针（Playwright，DPR2，真实 DOM；「改前」用内联 style 复现旧声明，不是历史截图）：`probe-newmarket-header-0916.mjs`、`probe-plugin-seg-0916.mjs`、`probe-modal-role-0926.mjs`、`probe-modal-scope-0926.mjs`、`probe-segment-active-0926.mjs`。
+- 探针（Playwright，DPR2，真实 DOM；「改前」用内联 style 复现旧声明，不是历史截图）：`probe-newmarket-header-0916.mjs`、`probe-plugin-seg-0916.mjs`、`probe-modal-role-0915.mjs`、`probe-modal-scope-0915.mjs`、`probe-segment-active-0915.mjs`。
 - axe-core 4.13.0（装在 `/tmp/axe`，未进仓库依赖）：本视图浅深各 **0 违规、0 color-contrast**。
 - `pnpm --filter wave-webview exec tsc --noEmit` exit 0；改前/改后像素 diff 逐组核过（见上）。
 - 其余 7 个设置视图页头零回归（`display: block` + `H1+P` 两行，8/8）。
@@ -3094,5 +3094,5 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 ### 残留（未授权，保持原样，带触发语）
 
 - **弹窗分段整组高 38px**（段高 32px、`padding: 7px 0` + `flex: 1`）与本轮筛选分段整组 32px（段高 26px）**不一致**；skill `.cc-segmented__item` 的 `min-height: 32px` 与弹窗那处一致。触发语：**「弹窗分段也对齐 32」**。
-- skill 回写归属：本轮四处已整理为交接单 **W-15 ~ W-21**（`skill-backfill-0926-for-codex.md`），其余由 codex 执行；其中 W-16 是**覆盖** skill 现有条款 `desktop-theme-bridge.md:29`（该行要求选中胶囊浅深两档都用反白，与本轮浅色档相反）。
+- skill 回写归属：本轮四处已整理为交接单 **W-15 ~ W-21**（`skill-backfill-0915-for-codex.md`），其余由 codex 执行；其中 W-16 是**覆盖** skill 现有条款 `desktop-theme-bridge.md:29`（该行要求选中胶囊浅深两档都用反白，与本轮浅色档相反）。
 - 确认卡族口径（本体 `--cc-bg-overlay` / 外容器 `--vscode-panel-background` → `#111314`）未动，仅记录。

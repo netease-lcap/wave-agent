@@ -343,7 +343,7 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
           <h1>插件市场</h1>
           <p>浏览并安装插件市场的插件，扩展 Wave 的能力。</p>
         </div>
-        {/* 新建市场是全局入口，放页头右上角（设计师 0926 走查） */}
+        {/* 新建市场是全局入口，放页头右上角（设计师 0915 走查） */}
         <button
           type="button"
           className="settings-save-btn settings-plugin-new-market"
@@ -395,7 +395,7 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
 
         {!loading && marketplaces.length > 0 && (
           <div className="settings-plugin-toolbar">
-            {/* 形制与新建市场弹窗的分段 tab 一致（设计师 0926 走查）；语义上这是一组
+            {/* 形制与新建市场弹窗的分段 tab 一致（设计师 0915 走查）；语义上这是一组
                 筛选开关，故保留 aria-pressed 按钮而不是 role=tab（弹窗那边没有方向键
                 导航，这里换 role 反而是无障碍降级） */}
             <div
