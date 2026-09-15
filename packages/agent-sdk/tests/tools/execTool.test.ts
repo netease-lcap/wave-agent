@@ -155,7 +155,7 @@ describe("execTool declaration", () => {
     );
   });
 
-  it("previews the first 50 characters of the code in a collapsed block", () => {
+  it("previews the script's first non-empty line in a collapsed block", () => {
     // Value only: the row already prints the tool name, so a wrapped value showed
     // "Exec Exec(const a = 1;)".
     expect(
@@ -163,30 +163,43 @@ describe("execTool declaration", () => {
         { code: "const a = 1;\nreturn a;" },
         contextWith(),
       ),
-    ).toBe("const a = 1;\nreturn a;...");
+    ).toBe("const a = 1;");
 
-    const long = execTool.formatCompactParams!(
-      { code: "x".repeat(200) },
-      contextWith(),
-    );
-    expect(long).toBe(`${"x".repeat(50)}...`);
-
-    // Same shape as Workflow's script preview: newlines stay as they are, so a
-    // multi-line script can wrap the row.
+    // Leading blank lines are skipped, and the row never gets a newline of its own.
     const multiline = execTool.formatCompactParams!(
       { code: "a\n".repeat(60) },
       contextWith(),
     );
-    expect(multiline).toBe(`${"a\n".repeat(25)}...`);
+    expect(multiline).toBe("a");
 
-    // Leading blank lines are trimmed first.
     expect(
       execTool.formatCompactParams!({ code: "\n\n  return 1;" }, contextWith()),
-    ).toBe("return 1;...");
+    ).toBe("return 1;");
+  });
 
+  it("ellipsizes the first line only when it does not fit", () => {
+    // 50 characters fit exactly, so the value is left alone.
+    const exact = "x".repeat(50);
+    expect(execTool.formatCompactParams!({ code: exact }, contextWith())).toBe(
+      exact,
+    );
+
+    // One past that: 49 characters plus the ellipsis, 50 columns in total.
+    const long = execTool.formatCompactParams!(
+      { code: "x".repeat(200) },
+      contextWith(),
+    );
+    expect(long).toBe(`${"x".repeat(49)}…`);
+  });
+
+  it("previews nothing when code is missing or blank", () => {
     expect(execTool.formatCompactParams!({ code: "   " }, contextWith())).toBe(
       "",
     );
+    expect(execTool.formatCompactParams!({ code: "\n\n" }, contextWith())).toBe(
+      "",
+    );
+    expect(execTool.formatCompactParams!({}, contextWith())).toBe("");
   });
 });
 
