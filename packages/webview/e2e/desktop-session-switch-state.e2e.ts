@@ -148,10 +148,17 @@ test.describe("桌面会话切换状态收敛", () => {
     // 切到会话 B：host 先推 setInitialState（同步清空用量）再 replay 缓存用量
     await switchPaneSession(injector, "pane-1", "sess-b1");
     await expect(contextPct(webviewPage, "pane-1")).toHaveCount(0);
+    // 无用量即无说明文案，且 Tooltip 被禁用（不渲染 tooltip 包裹层）⇒ 悬停不会
+    // 弹出空提示框。
     await expect(contextButton(webviewPage, "pane-1")).toHaveAttribute(
-      "title",
+      "aria-label",
       "",
     );
+    await expect(
+      webviewPage
+        .getByTestId("desktop-pane-pane-1")
+        .locator(".tooltip-container .compress-context-button"),
+    ).toHaveCount(0);
 
     await injector.simulateExtensionMessage("contextUsage", {
       paneId: "pane-1",

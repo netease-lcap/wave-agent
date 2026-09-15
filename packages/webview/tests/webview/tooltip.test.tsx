@@ -7,8 +7,11 @@ import {
   fireEvent,
   act,
   sendCommand,
+  sendHostMessage,
+  fixtures,
 } from "./test-utils";
 import { Tooltip } from "../../src/components/Tooltip";
+import { MockDataGenerator } from "../fixtures/mockData";
 
 describe("Tooltip Component", () => {
   beforeEach(() => {
@@ -132,6 +135,42 @@ describe("Tooltip Component", () => {
     await waitFor(() => {
       const tooltip = document.querySelector('[role="tooltip"]');
       expect(tooltip).not.toBeNull();
+    });
+  });
+
+  it("should explain that the toolbar percentage is the context usage", async () => {
+    renderChatApp();
+
+    // The indicator only renders once the session has visible messages
+    // (spec 场景 3), so start a non-welcome conversation first.
+    await act(async () => {
+      sendHostMessage(
+        fixtures.setInitialState({
+          messages: [MockDataGenerator.createUserMessage("hello", "msg-1")],
+        }),
+      );
+    });
+    await act(async () => {
+      sendHostMessage(fixtures.contextUsage(45));
+    });
+
+    const indicator = document.querySelector(".compress-context-button");
+    expect(indicator).not.toBeNull();
+    // The same wording is the accessible name, so the number is not opaque to
+    // screen readers either.
+    expect(indicator?.getAttribute("aria-label")).toBe("上下文已使用 45%");
+
+    const container = indicator?.closest(".tooltip-container") as HTMLElement;
+    expect(container).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.mouseEnter(container);
+    });
+
+    await waitFor(() => {
+      const tooltip = document.querySelector(".tooltip-box.visible");
+      expect(tooltip).not.toBeNull();
+      expect(tooltip).toHaveTextContent("上下文已使用 45%");
     });
   });
 

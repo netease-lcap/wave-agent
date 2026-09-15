@@ -109,7 +109,7 @@ test.describe("Desktop batch 2 feature screenshots", () => {
     await setupSinglePane(injector);
 
     // 1. 上下文用量指示器：host 推送 contextUsage 后输入框工具栏显示
-    //    圆环进度 + 百分比数字（「64%」，说明在 aria-label/title）。
+    //    圆环进度 + 百分比数字（「64%」），悬停弹出气泡说明这是上下文用量。
     await injector.simulateExtensionMessage("contextUsage", { percent: 64 });
     await expect(webviewPage.locator(".compress-context-button")).toBeVisible();
     await expect(webviewPage.locator(".compress-context-button")).toContainText(
@@ -117,7 +117,7 @@ test.describe("Desktop batch 2 feature screenshots", () => {
     );
     await expect(
       webviewPage.locator(".compress-context-button"),
-    ).toHaveAttribute("aria-label", "已使用 64%");
+    ).toHaveAttribute("aria-label", "上下文已使用 64%");
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-compress-button.webp",

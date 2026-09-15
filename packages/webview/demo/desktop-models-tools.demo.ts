@@ -89,10 +89,11 @@ test.describe("Desktop 模型/上下文/代码理解 screenshots", () => {
     await injector.endStreaming();
 
     // Context-window usage indicator in the bottom-right of the input box.
+    // Hovering it pops a tooltip naming the number as the context usage.
     await injector.simulateExtensionMessage("contextUsage", { percent: 38 });
     await expect(
       webviewPage.locator(".compress-context-button"),
-    ).toHaveAttribute("aria-label", "已使用 38%");
+    ).toHaveAttribute("aria-label", "上下文已使用 38%");
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-context-usage.webp",
