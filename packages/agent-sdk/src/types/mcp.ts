@@ -44,8 +44,10 @@ export interface McpServerStatus {
   /**
    * Usage notes the server described about itself during `initialize`
    * (`instructions`): rate limits, preconditions, how the server is meant to be
-   * used. Server-level prose, handed to the model through the system prompt and
-   * never truncated — unlike a tool description, which the catalog compresses.
+   * used. Server-level prose, announced once in the conversation instead of the
+   * system prompt — see `utils/mcpInstructions.ts` for why, and for the per-server
+   * cap — and already truncated by the time it lands here, unlike a tool
+   * description, which the catalog compresses.
    * Retained across a reconnecting server (like `tools`) and cleared once the
    * server is gone, so a dropped server cannot keep talking to the model.
    */

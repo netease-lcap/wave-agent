@@ -267,6 +267,29 @@ describe("AIManager MCP usage notes announcement", () => {
     expect(announcements(messages)).toHaveLength(0);
   });
 
+  it("does not read a quoted marker as a connection that never happened", async () => {
+    // The reply that explains this mechanism quotes a marker verbatim. Reading it
+    // as state made the history claim a server had been announced, so the next
+    // turn announced a departure for a server that was never there.
+    const { aiManager, messages } = createHarness(mcpDouble());
+    messages.push({
+      id: "reply",
+      role: "assistant",
+      timestamp: "2026-09-15T00:00:00.000Z",
+      blocks: [
+        {
+          type: "text",
+          content:
+            'A marker looks like:\n\n<!-- mcp-instructions {"added":["guide"],"removed":[]} -->',
+        },
+      ],
+    });
+
+    await aiManager.sendAIMessage({ recursionDepth: 0 });
+
+    expect(announcements(messages.filter((m) => m.isMeta))).toHaveLength(0);
+  });
+
   it("tolerates a manager double without the usage-notes channel", async () => {
     // Hosts and tests register partial McpManager doubles; reading absence as
     // "every server left" would announce departures that never happened — and

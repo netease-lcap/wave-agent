@@ -64,10 +64,16 @@ export function truncateMcpInstructions(
  * Servers whose notes the history already contains: markers are folded in message
  * order, so an announced server that later went away stops counting as announced
  * (and is announced again if it comes back).
+ *
+ * Only the scanner's own messages are read. A marker quoted anywhere else — a
+ * reply explaining the mechanism, a hook echoing one — is prose *about* a marker,
+ * not a statement of connection state. Counting it invents an announcement, and
+ * the invented server is then reported as departed as soon as it is unavailable.
  */
 export function collectAnnouncedServers(messages: Message[]): Set<string> {
   const announced = new Set<string>();
   for (const message of messages) {
+    if (message.isMeta !== true) continue;
     for (const block of message.blocks) {
       if (block.type !== "text") continue;
       for (const line of block.content.split("\n")) {
