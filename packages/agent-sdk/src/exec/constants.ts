@@ -46,13 +46,6 @@ export const EXEC_DEFAULT_MAX_IMAGES = 4;
 export const EXEC_DEFAULT_CATALOG_TOKENS = 2_000;
 
 /**
- * Minimum number of catalogable MCP tools before Exec is registered at all.
- * Below this, the flat declarations cost less than the catalog plus the
- * orchestration overhead, so collapsing the pool is a net loss.
- */
-export const EXEC_MIN_MCP_TOOLS = 5;
-
-/**
  * Reserved property on the sandbox `tools` object hosting search. The `$`
  * prefix cannot collide with an MCP tool name (`[A-Za-z0-9_.-]`).
  */

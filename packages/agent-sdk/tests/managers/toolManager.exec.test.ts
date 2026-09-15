@@ -77,7 +77,7 @@ beforeEach(() => {
 });
 
 describe("MCP pool collapse", () => {
-  it("declares Exec and drops every flat MCP declaration once the pool clears the threshold", () => {
+  it("declares Exec and drops every flat MCP declaration once the pool is non-empty", () => {
     const { toolManager } = build({ pool: mcpPool(5) });
     const declared = names(toolManager);
 
@@ -85,21 +85,31 @@ describe("MCP pool collapse", () => {
     expect(declared.filter((name) => name.startsWith("mcp__"))).toEqual([]);
   });
 
-  it("falls back to flat declarations when the pool is below the threshold", () => {
-    const { toolManager } = build({ pool: mcpPool(4) });
+  it("collapses a pool of one: there is no minimum tool count", () => {
+    // Aligned with opencode, which collapses any non-empty pool. The switch, not
+    // a count, decides whether Exec is used.
+    const { toolManager } = build({ pool: mcpPool(1) });
+    const declared = names(toolManager);
+
+    expect(declared).toContain(EXEC_TOOL_NAME);
+    expect(declared.filter((name) => name.startsWith("mcp__"))).toEqual([]);
+  });
+
+  it("keeps Exec undeclared while there is nothing to catalog", () => {
+    const { toolManager } = build({ pool: mcpPool(0) });
     const declared = names(toolManager);
 
     expect(declared).not.toContain(EXEC_TOOL_NAME);
-    expect(declared.filter((name) => name.startsWith("mcp__"))).toHaveLength(4);
+    expect(declared.filter((name) => name.startsWith("mcp__"))).toEqual([]);
   });
 
-  it("tracks the threshold in both directions", () => {
-    expect(names(build({ pool: mcpPool(4) }).toolManager)).not.toContain(
-      EXEC_TOOL_NAME,
-    );
-    expect(names(build({ pool: mcpPool(6) }).toolManager)).toContain(
-      EXEC_TOOL_NAME,
-    );
+  it("re-evaluates the collapse in both directions on each assembly", () => {
+    const pool = mcpPool(2);
+    const { toolManager } = build({ pool });
+    expect(names(toolManager)).toContain(EXEC_TOOL_NAME);
+
+    pool.length = 0; // the last MCP server disconnected
+    expect(names(toolManager)).not.toContain(EXEC_TOOL_NAME);
   });
 
   it("falls back to flat declarations when Exec itself is denied", () => {

@@ -15,7 +15,6 @@ import { execTool } from "../tools/execTool.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 import { isExecEnabled } from "../services/execAvailability.js";
 import { buildExecPool } from "../exec/catalog.js";
-import { EXEC_MIN_MCP_TOOLS } from "../exec/constants.js";
 import { EXEC_TOOL_NAME } from "../constants/tools.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
@@ -151,8 +150,8 @@ class ToolManager {
 
     // Exec is on by default; enableExec: false restores flat MCP declarations.
     // Registration is decoupled from declaration: getToolsConfig() only declares
-    // it (and only then collapses the MCP pool) once the pool clears
-    // EXEC_MIN_MCP_TOOLS, which cannot be known until MCP servers have connected.
+    // it (and only then collapses the MCP pool) once MCP servers have connected
+    // and yielded a non-empty pool, which cannot be known until then.
     if (isExecEnabled(this.container.get<string>("Workdir"))) {
       builtInTools.push(execTool);
     }
@@ -410,12 +409,15 @@ class ToolManager {
       this.toolsRegistry.has(EXEC_TOOL_NAME) &&
       !permissionManager?.isToolDenied(EXEC_TOOL_NAME);
     const execPool = buildExecPool(this.mcpManager, permissionManager);
-    const collapseMcp = execRegistered && execPool.length >= EXEC_MIN_MCP_TOOLS;
+    // No minimum pool size: any catalogable tool collapses the pool, matching
+    // opencode. The switch (`enableExec`), not a count, decides whether Exec is
+    // used at all.
+    const collapseMcp = execRegistered && execPool.length > 0;
 
     const builtInToolsConfig = Array.from(this.toolsRegistry.values())
       .filter((tool) => {
-        // Below the collapse threshold Exec stays registered but undeclared:
-        // the flat declarations are already cheaper than a catalog.
+        // With an empty pool there is nothing to collapse, so Exec stays
+        // registered but undeclared rather than declaring an empty catalog.
         if (tool.name === EXEC_TOOL_NAME && !collapseMcp) {
           return false;
         }
