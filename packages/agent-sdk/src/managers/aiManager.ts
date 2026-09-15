@@ -12,6 +12,10 @@ import {
   TASK_REMINDER_CONFIG,
 } from "../utils/taskReminder.js";
 import { getChangedFilesReminder } from "../utils/fileChangeReminder.js";
+import {
+  buildMcpInstructionsAnnouncement,
+  collectAnnouncedServers,
+} from "../utils/mcpInstructions.js";
 import { existsSync } from "node:fs";
 import * as path from "node:path";
 import type {
@@ -849,26 +853,46 @@ export class AIManager {
       additionalWorkingDirectories:
         this.permissionManager?.getEffectiveAdditionalDirectories?.() ?? [],
       autoMemory: autoMemoryOptions,
-      mcpInstructions: this.getMcpInstructions(),
     });
   }
 
   /**
-   * Server-level usage notes to describe in the system prompt. The permission
-   * filter is applied by `McpManager` (a server whose tools are all excluded does
-   * not get a voice), so this only wires in the rule source.
+   * Announce the connected MCP servers' own usage notes in the conversation,
+   * once per server. Not part of the system prompt: this content appears when a
+   * connection happens, and rewriting the system prompt mid-session would drop
+   * the whole cached prefix (see `utils/mcpInstructions.ts`).
    */
-  private getMcpInstructions():
-    | Array<{ name: string; instructions: string }>
-    | undefined {
-    // Both calls are optional for the same reason as
-    // `getEffectiveAdditionalDirectories` above: hosts and tests register partial
-    // McpManager/permission doubles, and a missing usage-notes channel is not a
-    // reason to fail the prompt build.
-    const instructions = this.mcpManager?.getServerInstructions?.(
+  private maybeAnnounceMcpInstructions(): void {
+    const mcpManager = this.mcpManager;
+    // Optional for the same reason as `getEffectiveAdditionalDirectories` above:
+    // hosts and tests register partial McpManager doubles, and a missing
+    // usage-notes channel is not a reason to fail the turn. Bailing out matters
+    // more here than elsewhere — reading an absent manager as "no servers left"
+    // would announce every previously announced server as disconnected.
+    if (!mcpManager || typeof mcpManager.getServerInstructions !== "function") {
+      return;
+    }
+
+    const available = mcpManager.getServerInstructions(
       (toolName) => this.permissionManager?.isToolDenied?.(toolName) === true,
     );
-    return instructions && instructions.length > 0 ? instructions : undefined;
+    const announced = collectAnnouncedServers(
+      this.messageManager.getMessages(),
+    );
+    const availableNames = new Set(available.map((server) => server.name));
+
+    const text = buildMcpInstructionsAnnouncement({
+      added: available.filter((server) => !announced.has(server.name)),
+      removed: Array.from(announced).filter(
+        (name) => !availableNames.has(name),
+      ),
+    });
+    if (!text) return;
+
+    this.messageManager.addUserMessage({
+      content: wrapInSystemReminder(text),
+      isMeta: true,
+    });
   }
 
   private resolveFilteredTools() {
@@ -1622,6 +1646,12 @@ ${question}`;
           // and compact BEFORE issuing the request, so an over-limit request
           // never goes out. Skipped on fork paths (they use runForkLoop).
           await this.maybeAutoCompactBeforeRequest(abortController);
+
+          // Announce MCP servers' own usage notes (persisted meta message) before
+          // the snapshot below, so a server that connected mid-session explains
+          // itself in the request that can already call it. After compaction, so
+          // the announcement is not the content that just got summarized away.
+          this.maybeAnnounceMcpInstructions();
 
           // Get recent message history
           const rawMessages = this.messageManager.getMessages();

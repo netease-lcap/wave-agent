@@ -112,3 +112,4 @@ order: 90
 - **边界情况 7**：当动态块为空（无 workdir、无权限模式、无 auto memory 等动态内容）时，`buildSystemPrompt` 只返回静态块，不添加空的动态块
 - **边界情况 8**：`transformMessagesForExplicitCache` 的幂等性检查（检测系统消息是否已有 cache_control）必须正确处理 `SystemPromptBlock[]` 映射产生的内容部分数组，避免重复标记
 - **边界情况 9**：工具声明（`tools[]`）与工具描述位于缓存前缀内，因此必须逐字节稳定——同一工具池、同一配置下，工具描述（含 `Exec` 的目录渲染，见 `docs/specs/core/exec-tool.md`）不得混入预算、时间、连接状态等易变信息。工具池本身发生真实变化（MCP 服务器连接/断开导致池由空转非空，或反之）时允许变更，因为这确实改变了前缀内容。
+- **边界情况 10**：MCP 服务器自带的使用说明（`initialize` 的 `instructions`）不属于系统提示的任何块——它在服务器变为可用时作为一条 `isMeta` 消息一次性追加到消息尾部（见 `docs/specs/ecosystem/mcp.md`），因此连接/断开不改变系统提示文本、也不改写已有历史。不得把它逐轮重算进动态块：那会在会话中途连接时击穿整个前缀缓存（Claude Code 把同一条内容从系统提示段移出的注释原文："busts the prompt cache on late MCP connect"）。

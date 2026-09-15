@@ -14,6 +14,7 @@ import {
 } from "../utils/mcpUtils.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 import { Container } from "../utils/container.js";
+import { truncateMcpInstructions } from "../utils/mcpInstructions.js";
 import type { ConfigurationService } from "../services/configurationService.js";
 import type {
   Logger,
@@ -588,7 +589,7 @@ export class McpManager {
         });
         client = createClient();
         await client.connect(transport);
-        instructions = client.getInstructions();
+        instructions = truncateMcpInstructions(client.getInstructions());
         const toolsResponse = await client.listTools();
         tools =
           toolsResponse.tools?.map((tool) => ({
@@ -613,7 +614,7 @@ export class McpManager {
         });
         client = createClient();
         await client.connect(transport);
-        instructions = client.getInstructions();
+        instructions = truncateMcpInstructions(client.getInstructions());
         const toolsResponse = await client.listTools();
         tools =
           toolsResponse.tools?.map((tool) => ({
@@ -721,7 +722,7 @@ export class McpManager {
           stderrOutput = "";
         }
 
-        instructions = client.getInstructions();
+        instructions = truncateMcpInstructions(client.getInstructions());
         const toolsResponse = await client.listTools();
         tools =
           toolsResponse.tools?.map((tool) => ({
