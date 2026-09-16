@@ -15,29 +15,11 @@
 
 import {
   MEMORY_ENTRYPOINT_NAME,
+  MEMORY_INDEX_LINE_GUIDANCE_CHARS,
+  MEMORY_TYPES,
   MAX_MEMORY_ENTRYPOINT_CHARS,
   MAX_MEMORY_ENTRYPOINT_LINES,
-  MEMORY_INDEX_LINE_GUIDANCE_CHARS,
 } from "../constants/memory.js";
-
-export const MEMORY_TYPES = [
-  "user",
-  "feedback",
-  "project",
-  "reference",
-] as const;
-
-export type MemoryType = (typeof MEMORY_TYPES)[number];
-
-/**
- * Parse a raw frontmatter value into a MemoryType. Invalid or missing values
- * return undefined — files written before the taxonomy existed keep working
- * and unknown types degrade gracefully.
- */
-export function parseMemoryType(raw: unknown): MemoryType | undefined {
-  if (typeof raw !== "string") return undefined;
-  return MEMORY_TYPES.find((t) => t === raw);
-}
 
 /**
  * Appended to the memory directory line. Shipped because the model was burning

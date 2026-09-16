@@ -1,5 +1,4 @@
 import * as path from "node:path";
-import * as fs from "node:fs/promises";
 import { Container } from "../utils/container.js";
 import { MessageManager } from "../managers/messageManager.js";
 import { AIManager } from "../managers/aiManager.js";
@@ -7,6 +6,7 @@ import { MemoryService } from "./memory.js";
 import { ConfigurationService } from "./configurationService.js";
 import { logger } from "../utils/globalLogger.js";
 import { isPathInside } from "../utils/pathSafety.js";
+import { formatMemoryManifest, scanMemoryFiles } from "../utils/memoryIndex.js";
 import { buildAutoMemoryExtractionPrompt } from "../prompts/autoMemoryExtraction.js";
 import {
   READ_ONLY_COMMANDS,
@@ -186,17 +186,12 @@ export class AutoMemoryService {
     // Ensure memory directory exists before starting
     await this.memoryService.ensureAutoMemoryDirectory(workdir);
 
-    // Prepare manifest of existing memory files
-    let existingMemoriesManifest = "";
-    try {
-      const files = await fs.readdir(memoryDir);
-      existingMemoriesManifest = files
-        .filter((f) => f.endsWith(".md"))
-        .map((f) => `- ${f}`)
-        .join("\n");
-    } catch {
-      // Ignore if directory doesn't exist yet
-    }
+    // Prepare manifest of existing memory files: type tag, filename, timestamp
+    // and description, so the fork can tell whether a memory already exists
+    // without spending a turn on `ls`.
+    const existingMemoriesManifest = formatMemoryManifest(
+      await scanMemoryFiles(memoryDir),
+    );
 
     const prompt = buildAutoMemoryExtractionPrompt(
       newMessageCount,
