@@ -14,6 +14,17 @@ import type {
   PermissionDecision,
 } from "wave-agent-sdk/types";
 
+/**
+ * 插件变更提示里的显示名：优先用 RPC 回包里的 name（install/update 返回
+ * InstalledPlugin），否则从 `<name>@<marketplace>` 形式的 pluginId 取名称段
+ * （该形式由 agentBridge 的 listPlugins 唯一构造）。卸载/更换作用域没有回包名
+ * 可用，走 id 兜底。
+ */
+function pluginName(pluginId: string, result?: unknown): string {
+  const name = (result as { name?: string } | undefined)?.name;
+  return name ?? pluginId.split("@")[0];
+}
+
 export interface MessageHandlerContext {
   getChatSession: (
     viewType: "sidebar" | "tab" | "window",
@@ -478,18 +489,31 @@ export class MessageHandler {
               msg.scope as Scope,
             ),
           "安装插件失败",
+          (result) =>
+            `已安装「${pluginName(msg.pluginId as string, result)}」（作用域：${
+              (msg.scope as Scope | undefined) ?? "user"
+            }）`,
         );
         break;
       case "uninstallPlugin":
         await this.applyPluginChange(
           () => this.pluginService.uninstallPlugin(msg.pluginId as string),
           "卸载插件失败",
+          () => `已卸载「${pluginName(msg.pluginId as string)}」`,
         );
         break;
       case "updatePlugin":
         await this.applyPluginChange(
           () => this.pluginService.updatePlugin(msg.pluginId as string),
           "更新插件失败",
+          (result) => {
+            const name = pluginName(msg.pluginId as string, result);
+            const version = (result as { version?: string } | undefined)
+              ?.version;
+            return version
+              ? `已更新「${name}」至 v${version}`
+              : `已更新「${name}」`;
+          },
         );
         break;
       case "setPluginScope":
@@ -500,18 +524,25 @@ export class MessageHandler {
               msg.scope as Scope,
             ),
           "更换安装作用域失败",
+          (result) =>
+            `已更新「${pluginName(msg.pluginId as string, result)}」的作用域：${
+              (msg.scope as Scope | undefined) ?? "user"
+            }`,
         );
         break;
       case "addMarketplace":
         await this.applyMarketplaceChange(
           () => this.pluginService.addMarketplace(msg.input as string),
           "添加市场失败",
+          (result) =>
+            `已添加市场「${(result as { name?: string } | undefined)?.name ?? ""}」`,
         );
         break;
       case "removeMarketplace":
         await this.applyMarketplaceChange(
           () => this.pluginService.removeMarketplace(msg.name as string),
           "移除市场失败",
+          () => `已移除市场「${String(msg.name ?? "")}」`,
         );
         break;
       case "updateMarketplace":
@@ -866,16 +897,19 @@ export class MessageHandler {
    * 执行一次插件变更（安装/卸载/更新/更换作用域）并收尾：刷新插件列表 +
    * 重建全部会话 agent。插件在 Agent 构造期注册技能/命令/子代理/MCP，属构造期
    * 副作用（spec agent-config「配置变更的构造期副作用与重建」），不重建则运行中
-   * 的会话看不到变更。失败经宿主提示告知原因（spec 插件市场场景 17）。
+   * 的会话看不到变更。成功后按原型/需求文档逐字给宿主提示（spec 插件「插件市场
+   * 操作提示」），失败经宿主提示告知原因（spec 插件市场场景 17）。
    */
   private async applyPluginChange(
     change: () => Promise<unknown>,
     failureMessage: string,
+    successMessage: (result: unknown) => string,
   ): Promise<void> {
     try {
-      await change();
+      const result = await change();
       await this.handleSettingsListPlugins();
       this.context.updateAllSessionsConfig();
+      vscode.window.showInformationMessage(successMessage(result));
     } catch (error) {
       console.error(`${failureMessage}:`, error);
       vscode.window.showErrorMessage(`${failureMessage}: ${error}`);
@@ -884,16 +918,19 @@ export class MessageHandler {
 
   /**
    * 执行一次市场变更（新增/移除）并收尾：市场列表与插件列表都要刷新——插件按
-   * 所属市场组织，市场增减会改变插件集合（spec 插件市场场景 15）。
+   * 所属市场组织，市场增减会改变插件集合（spec 插件市场场景 15）。成功后按原型/
+   * 需求文档逐字给宿主提示。
    */
   private async applyMarketplaceChange(
     change: () => Promise<unknown>,
     failureMessage: string,
+    successMessage: (result: unknown) => string,
   ): Promise<void> {
     try {
-      await change();
+      const result = await change();
       await this.handleSettingsListMarketplaces();
       await this.handleSettingsListPlugins();
+      vscode.window.showInformationMessage(successMessage(result));
     } catch (error) {
       console.error(`${failureMessage}:`, error);
       vscode.window.showErrorMessage(`${failureMessage}: ${error}`);
@@ -902,16 +939,18 @@ export class MessageHandler {
 
   /**
    * 更新市场：拉取最新市场源并升级该市场内已安装且有新版本的插件（升级发生在
-   * SDK 侧），按实际升级数量给出宿主提示——0 个时提示「已是最新」
-   * （spec 插件市场场景 13）。
+   * SDK 侧），按实际升级数量给出宿主提示（spec 插件市场场景 13）。
    */
   private async handleSettingsUpdateMarketplace(name?: string): Promise<void> {
     try {
       const { updated } = await this.pluginService.updateMarketplace(name);
       await this.handleSettingsListMarketplaces();
       await this.handleSettingsListPlugins();
+      const marketLabel = name ? `「${name}」` : "当前市场";
       vscode.window.showInformationMessage(
-        updated > 0 ? `已更新 ${updated} 个插件` : "当前市场已是最新",
+        updated > 0
+          ? `${marketLabel}已更新 ${updated} 个插件`
+          : `${marketLabel}已是最新`,
       );
     } catch (error) {
       console.error("更新市场失败:", error);
