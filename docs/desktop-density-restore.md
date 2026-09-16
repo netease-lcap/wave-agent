@@ -4481,3 +4481,63 @@ base `MessageInput.css:169` 有一条 `.ai-send-btn:disabled:hover { background:
   自测页 `0916-发送按钮禁用态-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/lmvnzp6zwp ）。
 - 取证注意：本轮「改前」用同面注入复现 base 规则（单属性变化适用）；深色档的注入会被 `--cc-fill` 深色值污染，
   深色基线取**未注入那次真实运行**的读数（静止与 hover 同为 8% 白）。
+
+---
+
+## 0916 评论（设置页页头 h1：字体绑定审计 + 字重 600 → 500）（已随本批推送）
+
+设计师（点 `main > div > header > h1`「全局设置」）：「这里是否绑定了全局的字体，字重500就好」。
+
+### ① 字体绑定（审计结论，无需改动）
+
+- `.settings-page-header h1`（`SettingsPage.css:258`）规则只写 color / font-size / font-weight / line-height，
+  **自身没有任何 `font-family` 声明** ⇒ 继承 `body`（`globals.css:4` 的 `var(--vscode-font-family)`）。
+- 实测 computed：h1 `-apple-system, "system-ui", sans-serif`、body 同值、`.settings-page` 同值（逐字相同），
+  token 声明原文为 `-apple-system, BlinkMacSystemFont, sans-serif`（浏览器把 `BlinkMacSystemFont` 归一为 `system-ui`）。
+  ⇒ **已绑全局字体**，随宿主字体设置变化。
+
+### ② 字重 600 → 500
+
+- `packages/webview/src/styles/SettingsPage.css`：
+
+```css
+.settings-page-header h1 {
+  color: var(--vscode-foreground);
+  font-size: 20px;
+  font-weight: var(--cc-font-weight-medium, 500); /* 600 → 500 */
+  line-height: 25px;
+}
+```
+
+- 写法与同页 `.settings-section-heading h2` / `.settings-row-copy h3`（上一轮 600 → 400）的 token 化一致；
+  改动落在 base 文件 ⇒ IDE / VS Code 宿主的设置页同样 500（token 未定义时 fallback 也是 500，两宿主同值）。
+- 波及面：所有使用 `.settings-page-header` 的视图统一生效 —— 全局设置 / 个性化 / 项目设置 / 插件市场 /
+  技能 / 子代理 / 钩子 / MCP 服务（实测插件市场页头 h1 由 600 → 500，几何未动）。
+
+### 实测（1440×900 DPR2，浅/深）
+
+| 项                    | 改前                            | 改后                                                                                    |
+| --------------------- | ------------------------------- | --------------------------------------------------------------------------------------- |
+| 页头 h1 字重          | 600                             | **500**                                                                                 |
+| 字号 / 行高           | 20px / 25px                     | 同左                                                                                    |
+| 颜色                  | 浅 #202020 / 深 #E5E7E8（1 级） | 同左                                                                                    |
+| 页头盒 / 文字盒       | 712×25 / 80×23                  | 同左（零位移、不换行）                                                                  |
+| 插件市场页头 h1       | 600 · 313.9×25                  | 500 · 313.9×25                                                                          |
+| 同页 h2 / h3 / 说明 p | 400 / 400 / 400                 | 同左                                                                                    |
+| 像素差异              | —                               | 页头裁切 0.63~0.699%；**整页 0.03%，包围盒只落在标题文字**（CSS `[484,43→563.5,62.5]`） |
+| 控制台                | 0 pageerror                     | 0 pageerror                                                                             |
+
+改后设置页层级 = 分节/行标题 400、说明 400、页头 500（靠字号 20 与字重双档区隔）。
+
+### 残留（未授权，供你点名）
+
+- 页头字号 20px 是否再收一档 → 触发语 **「页头字号也收一档」**。
+- 页头说明 p 仍 400 → 触发语 **「页头说明也 500」**。
+- 面板标题（计划 / 文件 / 差异 / 终端）契约上仍 600（0904 裁定「未点名保持 600」）→ 触发语 **「面板标题也降到 500」**。
+
+### 验证脚本与证据
+
+- 脚本：`/tmp/pw-0916/h1w.mjs`（前后对照：注入 600 复现改前 + 实测改后，含字体族取证与视图切换）、
+  `CC02/build-settingsh1weight-0916.py`（差异像素 + 竖排对照图 + 本页）。
+- 证据目录 `CC02/走查/0916-设置页标题字重/`：`measure.json`、`pixel.json`、`h1-{light,dark}-{global,plugins}-{before,after}.png`、
+  `h1-*-full-*.png`、`sbs-*`，自测页 `0916-设置页标题字重-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/0hhprwwhoz ）。

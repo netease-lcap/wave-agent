@@ -255,10 +255,20 @@
   margin: 0;
 }
 
+/* 设计师 0916 评论（点页头 `h1`「全局设置」）「这里是否绑定了全局的字体，字重500就好」：
+   ① 字体族：h1 无自身 `font-family` 声明，继承 `body`（globals.css:4）的
+      `var(--vscode-font-family)` —— 实测 computed 与 body 逐字相同
+      （`-apple-system, "system-ui", sans-serif`，宿主注入的 UI 栈），随宿主字体设置变
+      ⇒ **已绑全局字体**（本项为审计结论，无需改动）。
+   ② 字重：600 → 500（`--cc-font-weight-medium`，var 带 500 fallback；与同页
+      `.settings-section-heading h2` / `.settings-row-copy h3` 的 token 写法一致）。
+   字号 20 / 行高 25 / 颜色（1 级 `--vscode-foreground`）/ 盒 712×25 均未动。
+   本条对所有使用 `.settings-page-header` 的设置视图（全局设置 / 个性化 / 项目设置 /
+   插件市场 / 技能 / 子代理 / 钩子 / MCP 服务）统一生效。 */
 .settings-page-header h1 {
   color: var(--vscode-foreground);
   font-size: 20px;
-  font-weight: 600;
+  font-weight: var(--cc-font-weight-medium, 500);
   line-height: 25px;
 }
 
