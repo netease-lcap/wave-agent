@@ -314,8 +314,9 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
 }
 
 .desktop-session-item--current .desktop-session-title {
-  /* 选中会话标题 medium（Figma 14/500） */
-  font-weight: 500;
+  /* 选中会话标题不加粗（0916 第 2 轮：选中态字重与未选中一致 400；
+     原为 Figma 14/500，用户走查改） */
+  font-weight: 400;
 }
 
 .desktop-session-title {
@@ -956,6 +957,10 @@ html[data-theme="dark"] .desktop-session-status-slot {
    「面板空态」场景 9). Spans the full slot height, tab strip included (评论：拖拽
    区域未覆盖标签区域 → top:0 from the slot top keeps the strip draggable). */
 .panel-slot-drag-handle {
+  /* 指示线取色（设计师 0916 选定「B」档）：桌面端 = --cc-text-secondary ——
+     浅色 #6C7076（次级灰，比炭黑柔和）、深色 #A0A5A8（与原 --cc-border-focus
+     同值，故深色观感不变）；插件端无 --cc-* 层，回落 host 焦点色。 */
+  --panel-drag-line: var(--cc-text-secondary, var(--vscode-focusBorder, #007fd4));
   position: absolute;
   left: -3px;
   top: 0;
@@ -965,9 +970,34 @@ html[data-theme="dark"] .desktop-session-status-slot {
   z-index: 10;
 }
 
-/* Visible affordance on hover, matching the pane separator style. */
-.panel-slot-drag-handle:hover {
-  background: var(--vscode-focusBorder, #007fd4);
+/* Visible affordance on hover / during the whole drag: a 2px hairline, darkest
+   at the vertical centre and fading toward both ends (设计师 0916 评论：细到
+   2px、中间深两边浅的渐变感，比 codex 明显一档；只改线的观感，不动 6px 命中
+   区与拖拽逻辑). Ends fade to 8% of the line colour. Painted as a pseudo-element
+   so the line never changes the hit area the drag relies on. */
+.panel-slot-drag-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--panel-drag-line) 8%, transparent) 0%,
+    var(--panel-drag-line) 20%,
+    var(--panel-drag-line) 80%,
+    color-mix(in srgb, var(--panel-drag-line) 8%, transparent) 100%
+  );
+}
+
+.panel-slot-drag-handle:hover::after,
+body.is-panel-resizing .panel-slot-drag-handle::after {
+  opacity: 1;
 }
 
 /* While dragging a panel handle, lock the cursor globally so it doesn't
@@ -1233,8 +1263,15 @@ body.is-panel-resizing webview {
   overflow-y: hidden;
 }
 
-/* Resize handle between the two pane rows; overlays the row border. */
+/* Resize handle between the two pane rows; overlays the row border.
+   可见线 = ::after 上的 2px 横向渐变（设计师 0916 评论③「类似的地方都一起
+   改掉」→ 与 .panel-slot-drag-handle 同一档：中间深两端浅 8% 淡出、核心走
+   --cc-text-secondary）；5px 命中区整条保留，拖拽手感与逻辑零改动。 */
 .desktop-row-separator {
+  --pane-drag-line: var(
+    --cc-text-secondary,
+    var(--vscode-focusBorder, #007fd4)
+  );
   position: relative;
   z-index: 6;
   flex: 0 0 5px;
@@ -1242,9 +1279,29 @@ body.is-panel-resizing webview {
   cursor: row-resize;
 }
 
-.desktop-row-separator:hover,
-.desktop-row-separator--active {
-  background: var(--vscode-focusBorder, #007fd4);
+.desktop-row-separator::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--pane-drag-line) 8%, transparent) 0%,
+    var(--pane-drag-line) 20%,
+    var(--pane-drag-line) 80%,
+    color-mix(in srgb, var(--pane-drag-line) 8%, transparent) 100%
+  );
+}
+
+.desktop-row-separator:hover::after,
+.desktop-row-separator--active::after {
+  opacity: 1;
 }
 
 /* VS Code-style translucent overlay over the half of a single-row layout
@@ -1268,8 +1325,14 @@ body.is-panel-resizing webview {
   bottom: 0;
 }
 
-/* Resize handle between adjacent panes; overlays the pane border. */
+/* Resize handle between adjacent panes; overlays the pane border.
+   与上一条同档（0916 评论③）：可见线画在 ::after（2px 竖向渐变），5px 命中区
+   原样保留 —— 拖动几何、MIN_PANE_WIDTH 守卫、col-resize 逻辑均未改动。 */
 .desktop-pane-separator {
+  --pane-drag-line: var(
+    --cc-text-secondary,
+    var(--vscode-focusBorder, #007fd4)
+  );
   position: relative;
   z-index: 6;
   flex: 0 0 5px;
@@ -1277,9 +1340,29 @@ body.is-panel-resizing webview {
   cursor: col-resize;
 }
 
-.desktop-pane-separator:hover,
-.desktop-pane-separator--active {
-  background: var(--vscode-focusBorder, #007fd4);
+.desktop-pane-separator::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--pane-drag-line) 8%, transparent) 0%,
+    var(--pane-drag-line) 20%,
+    var(--pane-drag-line) 80%,
+    color-mix(in srgb, var(--pane-drag-line) 8%, transparent) 100%
+  );
+}
+
+.desktop-pane-separator:hover::after,
+.desktop-pane-separator--active::after {
+  opacity: 1;
 }
 
 /* Insertion marker shown while dragging a pane header to reorder. */

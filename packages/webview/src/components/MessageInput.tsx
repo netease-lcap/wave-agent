@@ -173,12 +173,16 @@ export const MessageInput = forwardRef<
   // reflect the current usage (rounded up per spec); hovering pops a
   // design-system tooltip naming the number as the context usage (the same
   // text is the aria-label). Pure display — not a button, no click action.
+  // Both readings below are only consumed where the indicator is rendered,
+  // i.e. when the host has reported a non-zero usage (see the JSX gate).
   const contextUsagePct =
     contextUsage !== undefined
       ? Math.min(100, Math.max(0, Math.ceil(contextUsage)))
       : undefined;
   const contextUsageLabel =
-    contextUsagePct !== undefined ? `上下文已使用 ${contextUsagePct}%` : "";
+    contextUsagePct !== undefined && contextUsagePct > 0
+      ? `上下文已使用 ${contextUsagePct}%`
+      : "";
   const ringCircumference = 2 * Math.PI * 8;
 
   // Permission mode custom dropdown (roving-tabindex listbox shared with
@@ -1835,17 +1839,29 @@ export const MessageInput = forwardRef<
             {/* Context-usage indicator. Hidden on the welcome composer in
                   either flavor: desktop signals that via workdirSelector being
                   present, IDE hosts via ChatApp withholding showContextUsage
-                  when no visible messages yet (spec 场景 3). Hovering pops the
-                  context-usage tooltip (spec 场景 1) unless usage is still
-                  unknown, in which case the Tooltip is disabled so no empty
-                  bubble shows. The indicator is display-only — compression
+                  when no visible messages yet (spec 场景 3).
+
+                  No usage to show ⇒ render nothing at all (no ring, no number,
+                  no placeholder in the toolbar): 0% is meaningless to display
+                  and undefined means the host has not pushed usage yet
+                  (designer 0916, 先「为 0 时整个都不显示」再「未知时也整块
+                  隐藏」——后者偏离 spec 场景 4 的「空圆环」，规格待回写).
+                  Hence the ring always carries a known, non-zero percentage.
+
+                  ⚠️ MERGE-TIME REVIEW（合并前请开发确认，2026-09-16 设计师裁决）:
+                  the 「宿主尚未推送用量 → 显示空圆环」requirement in
+                  docs/specs/desktop/desktop-account-and-settings.md 场景 4
+                  (line ~77) is intentionally NOT implemented — the indicator is
+                  now unmounted in that state, same as 0%. Either update/remove
+                  that 场景 or ask us to restore the empty ring. Note 场景 4's
+                  other half still holds: no empty tooltip bubble (the Tooltip
+                  is no longer rendered at all when usage is unknown).
+
+                  Hovering pops the context-usage tooltip naming the number
+                  (spec 场景 1). The indicator is display-only — compression
                   stays on /compact and auto compaction. */}
-            {!workdirSelector && showContextUsage && (
-              <Tooltip
-                text={contextUsageLabel}
-                position="top"
-                disabled={contextUsagePct === undefined}
-              >
+            {!workdirSelector && showContextUsage && !!contextUsagePct && (
+              <Tooltip text={contextUsageLabel} position="top">
                 <span
                   className="compress-context-button"
                   aria-label={contextUsageLabel}
@@ -1855,12 +1871,14 @@ export const MessageInput = forwardRef<
                     viewBox="0 0 24 24"
                     aria-hidden="true"
                   >
-                    {/* The designer's track is a left half-ring (right side
-                        open); the progress arc sweeps counter-clockwise from
-                        the 3 o'clock anchor. */}
-                    <path
+                    {/* Track = full ring（设计师 0916：「100% 时应该是进度沾满，
+                        而不是半圈轨道」——原先是左半环 path，进度一旦超过 50%
+                        就长到没有轨道的位置（64% 时弧长 32.17 > 轨道 25.14））。 */}
+                    <circle
                       className="compress-context-ring-track"
-                      d="M 20 12 A 8 8 0 0 0 4 12"
+                      cx="12"
+                      cy="12"
+                      r="8"
                     />
                     <circle
                       className="compress-context-ring-fill"
@@ -1868,18 +1886,16 @@ export const MessageInput = forwardRef<
                       cy="12"
                       r="8"
                       strokeDasharray={`${
-                        (ringCircumference * (contextUsagePct ?? 0)) / 100
+                        (ringCircumference * contextUsagePct) / 100
                       } ${ringCircumference}`}
                       // Mirror the circle so its stroke sweeps
                       // counter-clockwise from 3 o'clock like the designer's.
                       transform="scale(-1, 1) translate(-24, 0)"
                     />
                   </svg>
-                  {contextUsagePct !== undefined && (
-                    <span className="compress-context-pct">
-                      {contextUsagePct}%
-                    </span>
-                  )}
+                  <span className="compress-context-pct">
+                    {contextUsagePct}%
+                  </span>
                 </span>
               </Tooltip>
             )}

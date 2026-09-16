@@ -3487,7 +3487,7 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 - 第十四处的残留（其他设置页视图）与第十~十三处的残留不变。
 - 验证脚本：`CC02/probe-tabops-align-0915.mjs`、`CC02/probe-tabops-align-narrow-0915.mjs`、`CC02/probe-tabops-overflow-0915.mjs`、`CC02/probe-tab-underline-clip-0915.mjs`、`CC02/probe-tabscroll-keyboard-0915.mjs`、`CC02/audit-plugin-tabscroll-0915-axe.mjs`。
 
-## 0915 追加批 · 第十六处：设置页左导航「插件市场」图标按 skill 归一 + 设计师 Figma 版替换（工作区未提交）
+## 0915 追加批 · 第十六处：设置页左导航「插件市场」图标按 skill 归一 + 设计师 Figma 版替换（已随 0915 批推送）
 
 来源 = 设计走查对本页的追加评论（`svg.header-icon`，DOM `aside > nav > div:nth-of-type(3) > div > button:nth-of-type(1) > svg`，即左导航第三组「AI 与扩展」第一项「插件市场」）：「帮我把图标按照skill换一下 和其他图标保持一致」。后续她追加两条指示：「把插件市场图标保存为svg到桌面，我需要稍微调整一下」→ 我导出可编辑版 → 「保存到原位置了，替换一下就好」→ 按她的 Figma 导出替换。
 
@@ -3548,3 +3548,1329 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 
 - 脚本：`CC02/probe-settings-navicon-0915.mjs`（DOM + 4× 导航截图，浅深两档）；步骤 2 采样用 `/tmp/probe-navicon-after.mjs`。
 - 证据目录 `CC02/走查/0915-插件市场/`：`navicon-{light,dark}-{before,after}.png`、`navicon-{light,dark}-lucide归一-vs-她的版本.png`、`navicon-0915-{before,after}.json`。
+
+## 0916 第 1 轮：右侧面板拖拽分隔线（`.panel-slot-drag-handle`）→ 2px 中间深两端浅的渐变细线（已随本批推送）
+
+用户 2026-09-16 预览评论（元素 `div.panel-slot-drag-handle`）：「拖拽界面宽度时会有个 hover 和选中都会变色的线，细一些 2px 左右、中间深两边浅的渐变，参考 codex 但比 codex 再明显一些，**只改线的样式不改功能和交互**」；同轮追加选定「**用 B**」= 浅色核心换次级灰 `#6C7076`、深色不变、两端降到 8%。
+
+### 改前 → 改后
+
+| 状态   | 改前                                                              | 改后                                                                                                             |
+| ------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| hover  | 整条 **6px 命中区实色填充**（浅 `#1F2329` / 深 `#A0A5A8`）        | **2px 细线 + 竖向渐变**：中间深两端浅，实色核心占 20%–80% 高度，两端淡出 **8%**；核心浅 `#6C7076` / 深 `#A0A5A8` |
+| 拖拽中 | 同上（`ChatApp.tsx` mousedown 写内联 `background`、mouseup 清空） | 同上（由既有的 `body.is-panel-resizing` 在 CSS 点亮——指针跑出命中区仍保持亮起）                                  |
+| 静止   | 无                                                                | 无（`opacity:0`，加 120ms 淡入）                                                                                 |
+
+实现：线画在 `.panel-slot-drag-handle::after`（`width:2px` / `left:50%` / `margin-left:-1px` / `pointer-events:none`），**6px 命中区原样保留**；取色走规则内局部变量 `--panel-drag-line: var(--cc-text-secondary, var(--vscode-focusBorder, #007fd4))`（插件端无 `--cc-*` 层时回落 host 焦点色，行为不变）。`ChatApp.tsx:2701` 只删掉 mousedown/mouseup 两处内联 `background` 写入，拖拽逻辑（宽度计算、`CHAT_MAIN_MIN_WIDTH` 守卫、全局光标锁定、webview 命中穿透）**零改动**。
+
+### 实测（用例 `desktop-full`，浅/深双主题，DPR2）
+
+- 线宽：12 设备像素（6 CSS px）→ **4 设备像素（2 CSS px）**；命中区 6px 不变。
+- 渐变（线上像素采样）：浅色 顶 `rgb(240,240,241)` → 中 `rgb(108,112,118)` → 底 `rgb(237,237,238)`；深色 `rgb(30,31,32)` → `rgb(160,165,168)` → `rgb(29,30,31)`。
+- 静止 `opacity:0`；hover 与拖拽中恒为 `1`（指针移出命中区 50px 仍亮）；0 pageerror。
+- 拖拽功能基线复核：用 `git stash` 抽出本轮改动重测改前代码，clientX 轨迹（528→478）、`is-panel-resizing` 类、`col-resize` 全局锁定、面板宽度**逐值相同**。
+- 说明：预览用例里整行只有 589px 宽，展开后一拖面板即落到 229px（对话列卡在 `CHAT_MAIN_MIN_WIDTH` 360px）——既有约束，改前改后一致，非本轮引入。
+
+### 残留（未授权，供后续点名；不在本轮范围）
+
+- 其它窗口/侧栏的拖拽分隔线是否统一成这条 2px 渐变线 —— 触发语 **「侧栏分隔线也统一」**。
+- 浅色核心若嫌偏浅/偏深：备选 **A** = 炭黑核心 `#1F2329` + 两端 20%（触发语「用 A」）；备选 **C** = 常规灰核心 `#565A60`/`#C4C7C9` + 两端 8%（触发语「用 C」）。深色下 A 与 B 同色。
+- skill 回写候选（交 codex 审）：拖拽分隔线可补一条实现陷阱 ——「**命中区与可视线必须分离**：命中区宽度决定拖拽手感（此处 6px），可视指示线画在伪元素上（2px）；若直接把 `:hover` 底色铺在命中区上，线会随命中区变粗，且拖拽期间 `:hover` 因指针跑出命中区而丢失，须由 `body.is-*-resizing` 之类的全局类点亮」。触发语 **「分隔线实现陷阱写进 skill」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/shots-draghandle-0916.mjs`（注入改前样式做同页对照 + 三态裁剪）、`CC02/variants-draghandle-0916.mjs`（强度档对照）、`CC02/verify-draghandle-fn-0916.mjs`、`CC02/verify-draghandle-drag-0916.mjs`、`CC02/build-draghandle-report-0916.py`。
+- 证据目录 `CC02/走查/0916-分隔线/`：`{light,dark}-{before,after}-{hover,drag}.png`、`zoom-*.png`（5× 线宽放大）、`cmp-*-ctx.png`（强度对照上下文）、`measure-0916.json`、走查页 `0916-分隔线-review.html`（Artifact https://codechat.codewave.163.com/code/artifact/b27xy4jugh）。
+- `pnpm -F wave-webview type-check` 全绿（退出码 0）；`oxlint` 对改动文件 0 error（仓库现有 2 error 在未跟踪的 `prototype/mockShared.ts`）。
+
+## 0916 第 2 轮：左侧导航 / 下拉菜单 / 右侧面板 tab 的选中态与选项字重统一 400（已随本批推送）
+
+用户 2026-09-16 预览评论（原话）：「我希望左侧导航包括设置页的左侧导航、所有下拉菜单、右侧展开区域的 tab 页，选中状态字重都不变，保持 400（现在未选中应该是 400），下拉菜单中的选项默认也是 400，**全局调整**」。口径 = 选中与否、默认与命中，都不再用字重区分，选择只由底色/描边表达。
+
+### 改前 → 改后（桌面端 `[data-host="desktop"]` 计算值）
+
+| 位置                                                                                | 改前                                                        | 改后            |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------- |
+| 左侧导航 · 会话列表**选中**标题                                                     | `500`（`--cc-font-weight-medium`）                          | 400             |
+| 左侧导航 · 未选中标题                                                               | 400                                                         | 400（原本即是） |
+| 设置页左侧导航 · 选中项（`.settings-nav-item.is-active`）                           | `500`                                                       | 400             |
+| 右侧面板 tab · 选中页签文案（`.desktop-panel-tab.active`）                          | `500`（契约 `design-system.md:138` 本写 regular，实现偏离） | 400             |
+| 下拉选项：会话行菜单 / 加号 / 权限模式 / 工作目录 / 快捷指令列表 / 账户个人信息菜单 | `500`                                                       | 400             |
+| 文件建议弹层选项名（`.suggestion-name`，含键盘命中 `.kb-option`）                   | `500` / `600`                                               | 400             |
+| 会话列表弹层项 / 工作目录下拉「当前分支」项                                         | `500` / `600`                                               | 400             |
+
+实现落点：
+
+- `host-desktop.css` 新增 **⑧ 组**（七条 `[data-host="desktop"] …` 选择器统一 `var(--cc-font-weight-regular, 400)`）：面板页签 active、设置页导航 active、`.suggestion-name`、`.suggestion-item.kb-option .suggestion-name`、`.slash-command-name`、`.session-list-item-title`、`.desktop-branch-active .desktop-workdir-menu-name`。
+- 就地改值：`.permission-mode-item`（427）、`.plus-menu-item`（648）、`.more-menu-item` / `.panel-toggle-menu-item` / `.desktop-session-menu-item` / `.desktop-workdir-menu-item` 同组（1799）、会话选中标题（723）、`DesktopApp.css:316`、`DesktopPanelTabs.css:86`。
+- 移出旧组：`.suggestion-item.kb-option .suggestion-name` 从 ④ `600` 组移出（否则覆盖 ⑧）；`.desktop-panel-tab.active .desktop-panel-tab-label` 与 `.permission-mode-item` 从 ② `500` 组移出。
+- **base 文件不改**（IDE 端不受影响，沿用 0904 约定）：`MoreMenu.css` / `PanelToggleMenu.css` / `SessionListPopup.css` / `SlashCommandsPopup.css` / `FileSuggestionDropdown.css` / `SettingsPage.css` / `MessageInput.css` 里的 500/600 保持原样，桌面端由 host 覆盖层接住。
+
+### 实测（同页回退对照 = 注入旧值当「修复前」，用例 `desktop-full`，1440×900，深色）
+
+- 计算值：上表全部命中（`500/600 → 400`）；未选中项与未改项逐值不变。
+- 几何：**行盒与菜单容器逐值不变**（`211x22` 会话标题、`146x28` 权限项、`160x28` 加号项、`217x28` 账户项、`215x30` 设置页导航项…）；唯**工作目录下拉因菜单宽度由内容决定窄 5px**（`280x150 → 275x150`，高不变）—— 字重变细带来的字宽差（400 比 500 窄约 1–2%），非布局缺陷。
+- 0 pageerror；截图 4 组（左侧导航 / 权限下拉 / 账户菜单 / 设置页导航）差异像素 2.29% / 10.45% / 4.00% / 0.42%，差异仅落在文字笔画上。
+- 右侧面板 tab：原型 mock 用例**都开不出面板 tab**（tab 由真实交互/宿主驱动），故该项用「同页级联计算值」验证（注入同 class 链节点读 computed font-weight：`500 → 400`）；真机走查路径 = 头部「展开面板 → 预览」。
+
+### 残留（未授权，供后续点名）
+
+- 下拉/导航内的**分组标签**仍 500（最近打开 / SSH 主机 12px、快捷指令分组标题、设置页导航分组标题）—— 0908 曾按用户点名「加粗」，故本轮不动 → 触发语 **「分组标签也改 400」**。
+- 设置页**内容区** tab（`.settings-tab.is-active` 500）、弹窗分段 tab（`.settings-modal-seg-item.is-active` 600）、插件市场筛选胶囊（`.settings-plugin-chip.is-active` 600）：不属本轮三个范围 → 触发语 **「设置页 tab 也改 400」**。
+- 插件行按钮 `.settings-plugin-act` 500 = 0915 用户明确定的档（与「新建市场」同档），**不动**。
+- 列表/标题类 600（`.desktop-panel-toolbar-title`、`.settings-plugin-name`、`.session-card-title`、`.desktop-panel-empty-title` 等）未动 → 触发语 **「面板标题也改 500/400」**。
+- IDE（VS Code / JetBrains）宿主仍按 base 渲染 500（本轮只改桌面端语义层）→ 触发语 **「IDE 也一起改」**（需改 base 文件）。
+- 唯一可见副作用：工作目录下拉窄 5px；若要宽度恒定 → 触发语 **「工作目录菜单宽度钉死」**。
+- skill 回写候选：见交接单 **W-25 ~ W-29**（`~/Desktop/skill-backfill-0916-fontweight-for-codex.md`）。
+
+### 并行窗口说明
+
+`packages/webview/src/styles/DesktopApp.css` 的会话选中标题一行（`.desktop-session-item--current .desktop-session-title`，500 → 400）写入工作区后，被另一个窗口的第 1 轮提交 `0a250209`（拖拽分隔线）一并带走并推送——该行**已在远端分支**，但记录归在第 1 轮小节；本轮其余改动已随本批推送。
+
+同一份 `host-desktop.css` 当时还含另一窗口在途的两处改动（0916 评论② 工具行内控件圆角 8px、账户热区深色 hover 回接 `--cc-fill-hover`），与本轮 hunk 不重叠；本批提交**只取本轮 7 条 hunk**（用临时索引 `GIT_INDEX_FILE` 组装，未动共享索引里他窗口已暂存的内容），推送版里那两处仍是改前值。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/verify-fontweight-0916.mjs`（同页回退对照 + 计算值/盒尺寸表）、`CC02/shots-fontweight-0916.mjs`（前后裁剪图 + 面板 tab 级联校验）。
+- 证据目录 `CC02/走查/0916-字重/`：`dark-{before,after}-{nav-session,menu-permission,menu-account,nav-settings}.png`、`verify.json`。
+- 本轮无 TS 改动（纯 CSS 字重），未跑 type-check。
+
+---
+
+## 0916 账户热区 hover 审计 →（用户改判）侧栏 hover 统一到「普通会话行」档：深色 8% 白 / 浅色 `--cc-fill-hover`（已随本批推送）
+
+### 起因与审计结论
+
+8899 预览走查评论 `div.account-card-hotzone`（侧栏底部账户卡片个人信息行，「Aadmin@corp.netease.com」）「检查深色模式这里的hover色是否符合规范」。审计结论 = **不符合规范**（审计页 Artifact https://codechat.codewave.163.com/code/artifact/n7n3rgt6xk ，审计 only 未改码）：
+
+- 深色生效规则是裸 alpha `rgba(255,255,255,.14)`（`host-desktop.css:764-766`），未消费语义 hover 面 token；叠侧栏底 `--cc-bg-navigation #181A1B` 后实测渲染 `#383A3B` —— 比契约 hover 面 `--cc-fill-hover #303436` 亮 **+8/+6/+5**，而与契约按下面 `--cc-fill-pressed #393E41` 只差 **−1/−4/−6**（即普通 hover 用掉了按下档亮度）。
+- 同侧栏层级倒挂：普通会话行 hover 8% 白（合成 `#2A2B2C`）比契约还暗一档；「当前会话」持久选中 12% 白（合成 `#343536`）**比热区 hover 更暗**。
+- 浅色同族同样偏出且方向不一致：热区 `#E2E4E8` 比契约 `#EEF0F3` 重一档、比按下面 `#E7E9ED` 还重；而同侧栏会话行 /「新建对话」浅色 hover 都已是 `#EEF0F3`。
+- 值出处（非本轮回归）：第十二轮「hover `#E2E4E8`（深色 14% 白）保留」，当轮验收表只测了浅色 `rgb(226,228,232)`，深色值未做像素验收。
+
+### 权威依据（逐字）
+
+- skill `theme/desktop-colors.css:147` `--cc-fill-hover: #303436;`（深色档；`:49` 浅色 `#eef0f3`），且 `scripts/build_desktop_dark.py:37` 将其列入 user-approved 集。
+- skill `references/desktop-theme-bridge.md:15`：| `--vscode-list-hoverBackground` | `--cc-fill-hover` | **Ordinary row hover** |。
+- skill `references/dark-theme.md`：State backgrounds are opaque for predictable layering. Alpha is reserved for scrollbar thumbs, scrims, focus rings and shadows where compositing is intentional.
+- skill `references/design-system.md:171` 只规定了热区几何（`30px` tall），未单列 hover 色值 → 适用通用 hover 面契约。
+- 用户 0916 指示（两步）：先 **「按 A 改，新对话的hover态一起改」**（A = 深色档回接 `--cc-fill-hover #303436`），实施并自测后用户追问 **「账户热区 hover、新建对话 hover，可以统一成普通会话行 hover（8% 白）吗？会有什么问题吗，hover为什么会有这么多颜色」** → 我给出四档实测对比（决策页 Artifact https://codechat.codewave.163.com/code/artifact/h13p0js8q6 ，含真元素 4 档并排与对比度步长）后，用户裁决：**统一范围 = 账户热区 + 新建对话 + 账户卡「更多」按钮；浅色同步**（即 A 档被本次覆盖）。
+
+### 为什么会有多套 hover 颜色（供契约侧参考）
+
+三套来源并存、且互不拉通：① 契约语义 hover 面（不透明 `#303436`/`#EEF0F3`）为**浮层/面板面**设计，落在更暗的导航底上会变成「重一步」；② 侧栏手写 **α 阶梯**（6% / 8% / 12% / 14% 白）——早期深色无 Figma 权威帧，逐轮按单组件评论定「中性百分之几白」，从无一次拉通；③ VS Code 宿主 token（`list-hoverBackground` 已桥接、`toolbar-hoverBackground` 未桥接）。根因：**不透明定值在不同面上步长不同，α 白则到处近似**，「一个值走全站」与「每面步长一致」不可兼得。
+
+实测对比度步长（vs 深色导航底 `#181A1B`）：8% 白 `#2A2B2C` = **1.231**｜`--cc-fill-hover #303436` = 1.389｜选中 12% 白 `#343536` = 1.421｜原 14% 白 `#383A3B` = 1.527｜`--cc-fill-pressed #393E41` = 1.613。浅色参照（vs `#F7F8FB`）：`#EEF0F3` = 1.075、`#E2E4E8` = 1.199、选中 `#EBEDF0` = 1.104。→ 关键结论：用契约值会让侧栏 hover（1.389）与持久选中（1.421）几乎同亮（差 0.03），**8% 与选中差 0.19，阶梯干净**；且深色 8% 已是浅色 hover 的 1.6 倍步长，不存在「太轻看不见」。
+
+### 变更点（`packages/webview/src/styles/host-desktop.css`，共 5 条规则）
+
+| 选择器                                                               | 修复前                  | 修复后                          |
+| -------------------------------------------------------------------- | ----------------------- | ------------------------------- |
+| `[data-theme="dark"] .account-card-hotzone:hover`                    | `rgba(255,255,255,.14)` | `rgba(255, 255, 255, 0.08)`     |
+| `[data-theme="dark"] .desktop-sidebar-new-chat:hover:not(:disabled)` | `rgba(255,255,255,.14)` | `rgba(255, 255, 255, 0.08)`     |
+| `[data-theme="dark"] .account-card-more-btn:hover`                   | `rgba(255,255,255,.14)` | `rgba(255, 255, 255, 0.08)`     |
+| `[data-theme="light"] .account-card-hotzone:hover`                   | `#e2e4e8`               | `var(--cc-fill-hover, #eef0f3)` |
+| `[data-theme="light"] .account-card-more-btn:hover`                  | `#e2e4e8`               | `var(--cc-fill-hover, #eef0f3)` |
+
+浅色「新建对话」原本即 `#eef0f3`（= fill-hover），未动。三处规则上方均补了逐字裁决依据注释。**未动**：常态透明、焦点态、几何（热区 `201×30` / 新对话 `235×30` / 更多 `32×32`）、圆角、字色、「当前会话」选中 12% 白。
+
+### 实测（Playwright 探针，用例 `desktop-full` + `tmp-account-logged-out`，深/浅，渲染像素 = 裁切图众数）
+
+| 元素（深色）                    | 修复前                            | 修复后                                    | 说明                                            |
+| ------------------------------- | --------------------------------- | ----------------------------------------- | ----------------------------------------------- |
+| 账户热区 hover                  | `#383A3B`                         | **`#2A2B2C`**                             | 8% 白 = 普通会话行档 ✓                          |
+| 新建对话 hover                  | `#383A3B`                         | **`#2A2B2C`**                             | 同上 ✓                                          |
+| 账户卡「更多」按钮 hover        | `#383A3B`                         | **`#2A2B2C`**                             | 同排两控件不再分档 ✓（修复前值 = 同面注入渲染） |
+| 普通会话行 hover / 当前会话选中 | `#2A2B2C` / `#343536`             | `#2A2B2C` / `#343536`                     | 未动；hover 与选中差 0.19 ✓                     |
+| 浅色：热区 / 「更多」 / 新对话  | `#E2E4E8` / `#E2E4E8` / `#EEF0F3` | **`#EEF0F3`** / **`#EEF0F3`** / `#EEF0F3` | 浅色侧栏 hover 现在只有一个值 ✓                 |
+
+- `0 pageerror / 0 console error`（两个用例均 0）；before/after 裁切图尺寸逐张一致（热区 `402×60`、行 `470×60`、更多按钮 `64×64` @DPR2）。
+- 「更多」按钮仅在未登录态渲染（`DesktopSidebar` 需 `account !== null` 才挂载账户卡），故新增临时用例 `prototype/mock/tmp-account-logged-out.ts`（`mock/` 目录 gitignore、不进推送集）。
+
+### 统一后的侧栏阶梯（深色，已实测）
+
+| 交互级别                       | 值                  | 步长  | 用于                                                              |
+| ------------------------------ | ------------------- | ----- | ----------------------------------------------------------------- |
+| 弱化（非聚焦 pane 的当前会话） | 6% 白 `#222425`     | 1.170 | 已有，未动                                                        |
+| 普通 hover                     | **8% 白 `#2A2B2C`** | 1.231 | 会话行 / 分组头 / 全部菜单项 / 新对话 / 账户热区 / 账户卡「更多」 |
+| 持久选中                       | 12% 白 `#343536`    | 1.421 | 当前会话，未动                                                    |
+
+### 残留（未授权，供后续点名）
+
+- `.account-card-collapse-btn`（账户卡用量区显隐按钮）base 吃 `--vscode-list-hoverBackground` → 深色 hover = `#303436`（1.389），与同卡另两个控件不同族 → 触发语 **「账户卡用量显隐按钮也一起」**。
+- 更大范围「一个 hover 值走全站」：需把侧栏 hover 抬到 `#303436`、选中抬到 `--cc-fill-pressed #393E41`，牵动菜单/下拉/设置页/表格行所有面，浅色选中也要从 Figma `#EBEDF0` 换成 `#E7E9ED` → 触发语 **「全站深色 hover 面回接 fill-hover」**（未开单）。
+- **契约回写（我的动作，待办）**：向 codex 交交接单 —— 在 `references/desktop-theme-bridge.md` 补「导航面按 α 阶梯：hover 8% / selected 12% / weak 6%」，并说明语义 hover token `#303436` 的适用面为浮层/面板面；否则 skill 的「ordinary row hover = `--cc-fill-hover`」与本实现继续冲突。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-account-hotzone-hover-0916.mjs`（深/浅 × 热区/会话行/当前会话/新对话，computed + 裁切图 + `measure.json`；第二遍走 `tmp-account-logged-out` 用例采 `.account-card-more-btn` 真 after 图 → `measure-morebtn.json`）、`CC02/probe-hover-ladder-0916.mjs`（真元素注入 4 档候选 hover 值并裁切 → `走查/0916-账户热区hover/candidates/` + `candidates.json`）、`CC02/build-account-hotzone-review-0916.py`（审计页）、`CC02/build-hover-ladder-0916.py`（档位决策页）、`CC02/build-hotzone-fix-verify-0916.py`（修复自测页，before 图自审计页内联图按序提取）。
+- 证据目录 `CC02/走查/0916-账户热区hover/`：`0916-账户热区hover-走查.html`（审计页，Artifact https://codechat.codewave.163.com/code/artifact/n7n3rgt6xk ）、`0916-账户热区hover-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/s9cn0ij7b4 **v2**）、`0916-hover档位候选对比.html`（决策页，Artifact https://codechat.codewave.163.com/code/artifact/h13p0js8q6 ）、`before-after/`（27 张 before/after 裁切图）、`measure.json`、`measure-morebtn.json`。
+- 临时用例 `packages/webview/prototype/mock/tmp-account-logged-out.ts`（`mock/` gitignore、不进推送集）。
+- 本轮纯 CSS（无 TS/JS 改动），未跑 type-check。
+
+### 并行窗口说明
+
+`host-desktop.css` 与 `docs/desktop-density-restore.md` 为多窗口共用文件，同期另一窗口在做「0916 字重统一 400」三条评论——其批次已分别提交（`e75a4e74` 第 2 轮 / `dea19a19` 评论③），**故本批推送时已无在途混推风险**。本轮 5 条规则 hunk 为 `host-desktop.css` 的 `:746-758`（新对话）/ `:765-780`（热区）/ `:782-795`（更多按钮）。
+
+## 0916 第 3 轮：输入工具行（`.input-buttons-row`）控件圆角统一 8px（评论②）（已随本批推送）
+
+用户 2026-09-16 预览评论（元素 `div.input-buttons-row`「修改前询问发送」）：「这里的元素圆角统一成 8px，现在有些 6px 的」。口径 = 工具行内控件圆角收成同一档 **8px**（原 6px 一档的来源不同：图标按钮是桌面端覆盖值、权限选择器是继承基座值），**只改圆角，不动尺寸 / 配色 / 间距 / 交互**。
+
+### 改前 → 改后（桌面端 `[data-host="desktop"]` 计算值）
+
+| 控件（工具行内）                     | 改前                                                   | 改后                                    |
+| ------------------------------------ | ------------------------------------------------------ | --------------------------------------- |
+| 工具行图标按钮（添加 / 快捷指令）    | `6px`（base 4px → 桌面端覆盖 6px，`host-desktop.css`） | **`8px`**（`var(--cc-radius-md, 8px)`） |
+| 权限模式选择器（修改前询问）         | `6px`（继承 base `MessageInput.css:219`）              | **`8px`**（显式落到本节规则上）         |
+| 发送 / 停止按钮（`.ai-send-btn` 等） | `8px`（与 Figma 一致）                                 | `8px`（本轮未动）                       |
+
+实现：`host-desktop.css` 里 `.toolbar-icon-button` 的 `border-radius: 6px` → `var(--cc-radius-md, 8px)`（并在上方注释标明 4 → 6 → 8 的沿革与依据），`.permission-mode-select` 规则内新增 `border-radius: var(--cc-radius-md, 8px);` 一行 + 依据注释。两处均只写桌面端语义层，**基座文件（`MessageInput.css`）不动，插件端不受影响**。注意 `--cc-radius-md` 在本仓库**没有变量定义**（它是 skill 契约里的角色名），实际生效值来自 `var()` 的字面量兜底 `8px`——与既有写法一致。
+
+### 实测（用例 `desktop-full` / `desktop-new-chat`，浅/深双主题，DPR2，共 8 组）
+
+- 计算值：图标按钮 `6px → 8px`、权限选择器 `6px → 8px`、发送按钮恒 `8px`，8 组场景**逐组命中**。
+- 盒尺寸零变化：图标按钮 `32×32`、权限选择器 `112×32`、发送按钮 `32×32`（前后逐值相同）；工具行高 `32px`、12px 内衬、间距未动。
+- hover 面零变化（背景非本轮目标，用于确认没连带改色）：浅色图标行 `rgb(240,242,245)`、浅色权限 `rgb(238,240,243)`、深色两者 `rgba(255,255,255,0.08)`，前后一致。
+- `0 pageerror / 0 console error`；before/after 裁切图尺寸逐张一致。
+- **取证踩坑（供后续复用）**：这三个控件静止态 `background: transparent`，权限选择器连描边也透明 —— 直接截静止态，改前/改后两张图**逐字节相同**（第一版 md5 一致才发现），必须**逐个 hover 后再裁剪**才能看见圆角。
+
+### 残留（未授权，供后续点名；不在本轮范围）
+
+- 弹出层圆角仍是各自口径 —— `.permission-mode-menu` 权限下拉 `4px`、`.tooltip-box` 气泡 `2px`（`.plus-menu` 已是 8px）→ 触发语 **「下拉与气泡圆角也统一」**。
+- 插件端（VS Code / JetBrains）同名控件仍是基座的 `4px` / `6px`（本轮只改桌面端 host 层）→ 触发语 **「插件端也统一」**。
+- 工具行之外、同一面板里的其它 6px 控件（如会话列表行内按钮等）未动 → 触发语 **「面板内其余 6px 也统一 8」**。
+- skill 回写候选（交 codex 审）：工具行内控件的圆角档位建议在契约里写明「同一工具行内的可点控件共用一档圆角（8px / `--cc-radius-md`）」，避免出现「图标按钮走覆盖值 6px、选择器继承基座 6px、发送按钮 8px」这种同排三来源 → 触发语 **「工具行圆角口径写进 skill」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-inputrow-radius-0916.mjs`（8 组场景 computed + 盒尺寸 + hover 裁切图）、`CC02/build-inputrow-report-0916.py`（走查页）、`CC02/shot-report2-0916.mjs`（复核截图）。
+- 证据目录 `CC02/走查/0916-输入行圆角/`：`hover-{toolbar,perm,send}-{light,dark}-{desktop-full,desktop-new-chat}-{before,after}.png`（含 `-z2` 2× 放大版）、`row-*.png` / `zoom-*.png` / `half-*.png`、`measure-0916-inputrow.json`、走查页 `0916-输入行圆角-review.html`（Artifact https://codechat.codewave.163.com/code/artifact/3mowwjf1rt）。
+- `pnpm -F wave-webview type-check` 退出码 0（本轮纯 CSS，无 TS 改动）。
+
+### 并行窗口说明
+
+本批提交**只取本窗口（评论②）的内容**：`host-desktop.css` 的 3 条 hunk（`:277-289` 图标按钮、`:336-352` 权限选择器）用**共享索引里已暂存的快照**提交；`docs/desktop-density-restore.md` 用「HEAD 版本 + 本节」组装的 blob 写入索引（`git update-index --cacheinfo`），因此**同一文件里另一窗口在途的「账户热区 hover 审计」小节与 `host-desktop.css` 的 `:750-752` / `:764-766` 两条 hunk 均未进入本提交**，仍留在工作区。与本轮同批推送的第 2 轮（字重 400）由另一窗口独立提交。
+
+---
+
+## 0916 评论③：账户卡片文字「不加粗」→ 名称 / 套餐用量行 / 用量标签 / 用量数值 / 百分比 统一 400（已随本批推送）
+
+用户 2026-09-16 预览评论（逐元素给了元素路径，原话均为「**不加粗**」）：
+
+- `span.account-card-name`「admin@corp.netease.com」
+- `span.account-usage-label`「API 余额」（`.account-usage-row` 内那个）
+- `span.account-usage-value-text`「¥6,800.00」
+- `span.account-usage-percent`「76%」
+- **追加授权（同日）**：`span`「套餐用量」（`.account-usage-title` 里无 class 的子 span）也是「不加粗，改完直接推送」 —— 即把上一版列的残留一并收掉。
+
+口径 = 账户卡片的名称与用量文字不再用字重分层，一律 regular 400。
+
+### 改前 → 改后（桌面端 `[data-host="desktop"]` 计算值，用例 `desktop-full` 1440×900，深/浅同值）
+
+| 元素                                                                    | 改前 | 改后    | 盒尺寸 / 位置                             |
+| ----------------------------------------------------------------------- | ---- | ------- | ----------------------------------------- |
+| `.account-card-name`（账户邮箱，14px）                                  | 500  | **400** | `153x17 @52,865` 逐值不变                 |
+| `.account-usage-title`（套餐用量行，含「套餐用量」span 与 `76%`，12px） | 500  | **400** | `231x17 @14,789` 逐值不变                 |
+| `.account-usage-row .account-usage-label`（API 余额，12px）             | 500  | **400** | `47x17 @14,826` 逐值不变                  |
+| `.account-usage-row .account-usage-value-text`（¥6,800.00，12px）       | 500  | **400** | 宽 `60 → 58`，**右缘 221 不变**（右对齐） |
+| `.account-usage-percent`（76%，12px）                                   | 500  | **400** | 宽 `26 → 25`，**右缘 245 不变**（右对齐） |
+| 对照 · `.account-usage-bar`（进度条，未点名）                           | 400  | 400     | `231x6 @14,812` 逐值不变                  |
+
+实现：这些选择器原在 **② 界面标题类（500）** 组，本轮**移出**并新增 **⑨ 组**（`font-weight: var(--cc-font-weight-regular, 400)`，带逐条评论依据注释）；`host-desktop.css` ② 组注释同步说明移出。「套餐用量」这四个字本身没有 class（继承行容器），故 400 落在 `.account-usage-title` 行上。base `AccountCard.css`（`.account-card-name` 500、`.account-usage-title` 500、`.account-usage-percent` 500、`.account-usage-row` 内标签与金额 500）**不动**——该组件仅桌面侧栏使用，但按 0904 约定桌面值一律落在 host 覆盖层。
+
+### 实测
+
+- 计算值：五条 `500 → 400` 全命中（含追加授权的套餐用量行），浅色档同值；对照项 `.account-usage-bar` 未动。
+- 几何：用量数值与百分比在行内**右对齐**，字重变细后盒宽各收 2px / 1px，**右缘逐值不变**；套餐用量行与卡片总高逐值不变；卡片内其余元素未动。
+- `0 pageerror`；裁剪图 `acc-{dark,light}-{before,after}.png`（`494×240` @DPR2）差异像素均 **6.26%**，bbox `(16,35,477,215)` 只落在卡片文字区。
+
+### 残留（未授权，供后续点名）
+
+- 契约冲突：skill `references/design-system.md:161`（Labels 套餐用量 / API 额度 `12px / 500`）、`:162`（`48%` 说明 `12px / 500`）、`:163`（额度行右侧金额 `12px / 500`）仍写 500 —— 本轮已作为 **W-30** 写进交接单，交 codex 裁决（改条款 or 记为桌面宿主例外）。
+- 账户卡其余仍 500 的文字（套餐余量提示等）未点名 → 触发语 **「账户卡其余文字也一起」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-accountcard-font-0916.mjs`（同页回退对照 + 深/浅双主题 + DPR2 裁剪图）。
+- 证据目录 `CC02/走查/0916-字重/`：`acc-{dark,light}-{before,after}.png`、`acc-verify.json`、`acc-verify.md`。
+- 纯 CSS 字重改动（无 TS），未跑 type-check。
+
+### 并行窗口说明
+
+本轮 hunk（`host-desktop.css` ② 组缩减 + 新增 ⑨ 组）与同文件内另一窗口在途改动不重叠；推送时仍用分离索引只取本窗口 hunk，共享索引里他窗口已暂存的内容保持原样。
+
+---
+
+## 0916 评论④：权限下拉菜单内边距 8px → 4px —— **试做后用户撤回，未采用（代码已还原）**
+
+用户 2026-09-16 预览评论（元素 `button.permission-mode-select.mode-default`「修改前询问」）：「下拉菜单的内边距改为 4px，我先看看效果」。我按此试做并给了前后对照（**未提交**），她看过后回复「**还是不改了**」→ 改动**全部还原**，`host-desktop.css` 与撤回前逐字节一致（该文件当前无本轮 diff）。
+
+留档（供以后判断，避免重做）：菜单是 `width:164px` + `box-sizing:border-box` 的**上展开**菜单，`padding: 8px → 4px` 的实际效果 = **外框宽度不变** `164px`、菜单总高 `130 → 122`（底边固定、顶边上移 8px）、选项底色块 `146 → 154` 宽（左缘 1273 → 1269）；触发按钮 `112x32` 与其余属性逐值不变，深/浅两档一致、0 pageerror。
+
+- 探针与截图（保留作证据）：`CC02/probe-permissionmenu-pad-0916.mjs`、`CC02/走查/0916-权限菜单内边距/menu-{dark,light}-{before,after}.png`、`menu-verify.json`。
+- 若以后再提：其他下拉菜单内边距仍是 8px 档（触发语「所有下拉菜单内边距都改 4px」）；契约 `references/design-system.md:116` 写的就是容器 `8px padding`，**撤回后无需任何 skill 回写**。
+
+### 并行窗口说明
+
+撤回后本窗口在 `host-desktop.css` **零残留**（只剩另一窗口在途的账户热区 hover 改动 `:746-797` 与 `docs` 里他们的小节），本批无需提交。
+
+---
+
+## 0916 评论⑤：权限下拉项「图标 → 文案」间距 10px → 8px（与其余桌面下拉统一）（已随本批推送）
+
+用户 2026-09-16 预览评论（元素 `li.permission-mode-item.mode-default.selected`「修改前询问」）：「**检查图标到文案之间的间距是 8px 吗**」→ 先审计（只测不改），结论 **不是 8px，实测 10px，且是桌面端唯一的 10px**；她随即指示「**要统一成 8px**」→ 本轮改正。
+
+### 审计读数（`desktop-full` 1440×900；浅/深一致）
+
+| 下拉项                                  | 文案          | computed gap | 图标盒  | 图标右缘 → 文案左缘（实测像素）             |
+| --------------------------------------- | ------------- | ------------ | ------- | ------------------------------------------- |
+| **权限下拉 `.permission-mode-item`**    | 修改前询问    | **10px**     | `16x16` | **10.0**（图标 `1281→1297`，文案起 `1307`） |
+| 账户更多 `.more-menu-item`              | 设置          | 8px          | `16x16` | 8.0                                         |
+| 会话行菜单 `.desktop-session-menu-item` | 并排打开      | 8px          | `15x15` | 8.0                                         |
+| 工作目录 `.desktop-workdir-menu-item`   | CC02/Users/a… | 8px          | `16x16` | 8.0                                         |
+| 加号菜单 `.plus-menu-item`              | 上传文件      | 无图标       | —       | 不适用                                      |
+| 快捷指令列表 `.slash-command-item`      | /clear…       | 无图标       | —       | 不适用                                      |
+
+项内衬全部为 `0 8px`，故差异纯粹来自 `host-desktop.css` 的 `.permission-mode-item { gap: 10px }`；契约 `references/design-system.md` **未规定**菜单项「图标→文案」间距（只规定容器 `8px` padding、项高与圆角），无契约冲突。
+
+### 改前 → 改后（计算值 + 像素实测）
+
+| 指标                        | 改前                 | 改后                                        |
+| --------------------------- | -------------------- | ------------------------------------------- |
+| `.permission-mode-item` gap | `10px`               | **`8px`**                                   |
+| 图标右缘 → 文案左缘（实测） | `10.0px`             | **`8.0px`**                                 |
+| 文案左缘 / 右缘             | `1307` / `1378.4`    | `1305` / `1376.4`（整体左移 2px，字宽不变） |
+| 图标左/右缘                 | `1281` / `1297`      | `1281` / `1297` **逐值不变**                |
+| 项盒 / 菜单外框             | `146x28` / `164x130` | `146x28` / `164x130` **逐值不变**           |
+| 其余五个下拉项              | `8px`                | `8px` **未动**                              |
+
+实现：`host-desktop.css` 的 `[data-host="desktop"] .permission-mode-item`：`gap: 10px` → `gap: 8px`（上方补 0916 评论⑤ 依据注释）。base `MessageInput.css` 不动 → IDE 端不受影响。0 pageerror。
+
+### 残留（未授权，供后续点名）
+
+- 其他「图标 + 文案」组合未纳入本轮（设置页左侧导航项、账户卡折叠按钮、面板页签等）各自维持原值 → 触发语 **「所有图标+文案都用 8」**（需要时我先出读数表）。
+- 无图标的两个列表（加号菜单 / 快捷指令列表）不受影响。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-menuitem-gap-0916.mjs`（六个下拉项横向对照：computed gap + 图标/文案盒 + 像素间距）。
+- 证据目录 `CC02/走查/0916-权限菜单内边距/`：`gap-{light,dark}-{before,after}.png`（只裁菜单前两项，便于看间距差）、`gap-verify.json`。
+
+### 并行窗口说明
+
+本轮代码只有 `host-desktop.css` 的 1 条 hunk（`gap` 一行 + 注释 3 行），与同文件内另一窗口在途的账户热区 hover 改动（`:746-797`）不重叠——但该 hunk 在本窗口提交前，被另一窗口的账户热区 hover 提交 **`0b11e794`** 一并带走（他们的提交同时含我的 `gap: 8px`）；截至本节写入时该提交仍在本地未推送（远端 tip `dea19a19`）。本节（docs 记录）由本窗口单独提交，docs 里另一窗口的账户热区小节已随 `0b11e794` 入库、本窗口未改动其内容。
+
+## 0916 拖拽分隔线统一：面板分隔条 / 行分隔条 → 2px 中间深两端浅的渐变线（评论「类似的地方都一起改掉」）（已随本批推送）
+
+用户 2026-09-16 预览评论（承接第 1 轮的拖拽分隔线）：先问「`div.desktop-pane-separator` … 包含在之前的拖拽线优化里吗」→ 审计答复「没有包含」（审计页 Artifact https://codechat.codewave.163.com/code/artifact/xo2nsgzavy ）→ 用户随即指示 **「类似的地方都一起改掉」**。口径 = 与第 1 轮完全同档，只改可见线，**命中区与交互零改动**。
+
+### 改了哪三条（同一族的拖拽缩放分隔线）
+
+| 位置                       | 元素                      | 本轮                                   |
+| -------------------------- | ------------------------- | -------------------------------------- |
+| 对话区 ↔ 右侧面板（竖）   | `.panel-slot-drag-handle` | 第 1 轮已改，本次未再动                |
+| 面板 ↔ 面板（竖）         | `.desktop-pane-separator` | **本次改**（`DesktopApp.css:1328` 起） |
+| 上排面板 ↔ 下排面板（横） | `.desktop-row-separator`  | **本次改**（`DesktopApp.css:1266` 起） |
+
+### 改前 → 改后
+
+| 项                | 改前                                                                                          | 改后                                                                                                                                                                                             |
+| ----------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 可见线            | **5px 命中区整条实色** `background: var(--vscode-focusBorder)`（浅 `#1F2329` / 深 `#A0A5A8`） | `::after` 画 **2px 细线**：竖向线 `linear-gradient(180deg, …)`、横向线 `90deg`，核心实色占 **20%–80%**、两端 **8%** 淡出；静止 `opacity:0`、hover 与 `--active` 为 `1`（120ms 淡入）             |
+| 取色              | host 焦点色（浅色偏黑 `#1F2329`）                                                             | 局部变量 `--pane-drag-line: var(--cc-text-secondary, var(--vscode-focusBorder, #007fd4))` —— 桌面端浅 `#6C7076` / 深 `#A0A5A8`（＝第 1 轮 B 档同一颗核心色）；插件端无 `--cc-*` 层时回落原焦点色 |
+| 命中区 / 拖拽逻辑 | 5px，`col-resize` / `row-resize`                                                              | **逐值不变**；`DesktopShell.tsx` 的 `handleSeparatorMouseDown` / `handleRowSeparatorMouseDown`、`MIN_PANE_WIDTH`（320）/ `MIN_ROW_HEIGHT` 守卫、`--active` 类**一行未改**（本轮纯 CSS）          |
+
+### 实测（`desktop-full`，1440×900，DPR2，浅/深）
+
+- 线宽（穿过线的像素剖面）：**10 设备像素（5px）整条实色 → 4 设备像素（2px）**；面板之间竖线 `5×900`、两行之间横线 `1180×5`，命中区尺寸与改前一致。
+- 渐变（全高/全宽取样，DPR2）：竖线（900px 高）浅 `rgb(240,241,241)` → `rgb(108,112,118)` → `rgb(241,241,242)`；深 `rgb(30,33,34)` → `rgb(160,165,168)` → `rgb(30,32,33)`。横线（1180px 宽）浅 `rgb(241,241,242)` → `rgb(108,112,118)` → `rgb(241,242,242)`；深 `rgb(31,33,34)` → `rgb(160,165,168)` → `rgb(31,33,34)`。
+- 三态：静止 `opacity:0`、命中区透明；hover 与拖拽中 `opacity:1` 且 `--active` 类正常出现；`0 pageerror`。
+- **交互等价（同页 A/B：注入改前样式后重测拖拽轨迹）**：面板之间（每次右移 12px）面板宽 `603→615→627→639`（每步 +12）；两行之间（每次下移 10px）行高 `460→470→480→490`（每步 +10）—— **改前/改后逐值相同**，浅深一致。
+
+### 残留（未授权，供后续点名）
+
+- `.desktop-pane-dropzone` / `.desktop-pane-drop-indicator`：拖 pane 标题重排时的**放置提示**（半透明虚框 + 2px 插入标记），属「放置」语义非「拖拽缩放」，本轮未动 → 触发语 **「放置提示也改」**。
+- 线若嫌细/嫌浅，可整体换档（如核心再深一档或 1px）→ 触发语 **「分隔线用 A / C」**（A = 炭黑核心 `#1F2329`，C = 常规灰 `#565A60`/`#C4C7C9`）。
+- skill 回写候选（交 codex 审）：把第 1 轮那条实现陷阱扩成一条**通用条款** ——「拖拽缩放分隔线的命中区宽度决定手感、可视线必须画在伪元素上并独立取色；同一产品内所有同类分隔线（竖 / 横）共用同一档线宽与渐变量，不得出现『命中区即可见线』的整条实色实现」。触发语 **「分隔线通用条款写进 skill」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/verify-separators-0916.mjs`（三态计算值 + 同页 A/B 拖拽轨迹 + 全页截图）、`CC02/measure-line-metrics-0916.py`、`CC02/build-separator-evidence-0916.py`、`CC02/build-separator-zoom-0916.py`、`CC02/build-separator-fix-report-0916.py`；审计脚本 `CC02/probe-paneseparator-0916.mjs`、`CC02/shots-both-separators-0916.mjs`。
+- 证据目录 `CC02/走查/0916-面板分隔条/`：`crop-{pane,row}-{light,dark}-{old,new}-{hover,drag}.png`、`px-{pane,row}-{light,dark}-{hover,drag}.png`（全页）、`线宽对照-*.png`、`对比-两种拖拽条-{1x,4x}.png`、`verify-0916-separators.json`、`gradient-samples-0916.json`、实施页 `0916-面板分隔条-实施.html`（Artifact https://codechat.codewave.163.com/code/artifact/wfzd1krul8 ）、审计页 `0916-面板分隔条-审计.html`（Artifact https://codechat.codewave.163.com/code/artifact/xo2nsgzavy ）。
+- **取证诚实说明**：预览 mock 不跟踪「两行」布局，且它的 `desktopResizePanes` 回包会把布局打回单行 → 行分隔条用 harness 的 `simulateExtensionMessage` 注入一条真实的 `desktopPanes` 宿主消息（`row` 0/1 + `rowHeights [0.5,0.5]`）后测量，组件为真实渲染；另注意 `handleRowSeparatorMouseDown` 在宿主未提供 `rowHeights` 时会**直接 return**（既有逻辑，非本轮引入），故测量必须带 `rowHeights`。
+- 本轮纯 CSS（`DesktopApp.css` 两条规则），无 TS 改动。
+
+## 0916 评论（设置页卡片圆角 8px → 12px）（已随本批推送）
+
+**她的评论**（点 `div.settings-card`「AI 回复语言设置 AI 回复时使用的语言（技术术语与代码保…）」）：
+「设置里面类似布局这里的圆角是 12px，全局统一修改后补充在交接 skill 中」。
+
+### 改动
+
+- `styles/SettingsPage.css` `.settings-card`：`border-radius: 8px → 12px`（文件头部注释里的「radius 8px cards」口径同步改成 12px）。
+- 依据：12px = `--cc-radius-lg`（skill `design-system.md:116` 的「弹层 / 容器」口径），与本页弹窗 `.settings-modal`（同文件 `:1223` 已是 12px）同档。
+- **「全局统一」的覆盖面 = 设置页唯一的卡片容器类 `.settings-card`**：`全局设置`（AI 回复语言 / 主题选择 / 服务端配置占位 3 张）、`个性化`（`.settings-card.agents-card` + `.settings-card.memory-card`）、`项目设置`（1 张）；插件市场 / 技能 / 子代理 / 钩子 / MCP 服务视图本来就没有卡片容器（列表是行、无描边）。
+- 卡内控件圆角**未动**：导航项 8px（桌面宿主）/ 下拉与文本域 6px / 开关 20px / 行按钮 8px、保存按钮 6px。
+
+### 实测（`desktop-full` → 输入框敲 `/config` 回车进设置页，1440×900，DPR2，浅/深）
+
+- 三张卡片 `border-top-left-radius`：**8px → 12px**（浅深逐值一致）。
+- 卡片盒（宽 × 高）**逐值不变**：`712x176`（AI 回复语言）/ `712x169`（主题选择）/ `712x46`（服务端配置占位）—— 只改角，不动行高与内距。
+- 控件圆角（改后）：`.settings-nav-item` 8px、`.settings-select` 6px、`.settings-number-input` 6px、`.settings-switch-slider` 20px、`.settings-save-btn` 6px。
+- `0 pageerror`。
+- 证据：`CC02/走查/0916-设置卡片圆角/card-{light,dark}-{before,after}.png`（单卡裁剪 DPR2）+ `page-{light,dark}-{before,after}.png`（整页）+ `card-verify.json`。
+
+### 作用域说明（IDE 宿主）
+
+本条写在共享的 `SettingsPage.css`（不是桌面覆盖层）→ **IDE 宿主（VS Code / JetBrains）的设置页同步生效**。设置页是共享视觉、卡片圆角属产品基线而非桌面特性，故按基线处理；若只允许桌面改，需改为 `host-desktop.css` 覆盖承载 → 触发语 **「卡片圆角只在桌面改」**。
+
+### 残留（未授权，供后续点名）
+
+- `.settings-project-card`（同文件 `:714`，6px「项目分组卡片」）**是死代码**（全 `src` 无 TSX 引用）→ 本轮未动；触发语 **「项目分组卡片也用 12」**。
+- 弹窗选项卡 `.settings-scope-option`（8px）、分段轨道 `.settings-modal-seg`（8px）、列表行 `.settings-plugin-row`（8px）属控件 / 行，不在「卡片容器」范围内 → 触发语 **「弹窗选项卡也用 12」**。
+- skill 回写候选（交 codex 审）：契约 `design-system.md:34`「Content panel radius: 8px」与 `management-surfaces.md:18`「content panels … 8px radius」与本轮「设置页卡片容器 12px」冲突，已写入交接单 **W-31**（含逐字现文 / 两种建议改法 / 验收口径）。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-settingscard-radius-0916.mjs`（同页回退对照 + 卡片与控件计算值 + 逐视图容器盘点 + 浅深裁剪图）。运行需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
+- 探针坑：分屏用例下页面同时存在**两个 `contenteditable`**（另一个在隐藏 pane，盒 `0×0`）→ 取输入框必须用 `[contenteditable="true"]:visible`，否则会一直等到超时。
+- 本轮纯 CSS（`SettingsPage.css` 两条规则 + 头注一行），无 TS 改动。
+
+## 0916 评论（右侧面板操作按钮圆角统一 8px）（已随本批推送）
+
+**她的评论**（点 `button.preview-pane-button`「刷新」，预览面板工具条第 2 颗）：**「类似这种操作按钮圆角统一8px」**。
+
+### 改动
+
+- `packages/webview/src/styles/host-desktop.css`：新增一条规则（写在既有 `.preview-pane-button` 桌面覆盖块之前，含逐字依据注释）：
+
+  ```css
+  [data-host="desktop"] .preview-pane-button,
+  [data-host="desktop"] .desktop-panel-tabs-add {
+    border-radius: var(--cc-radius-md, 8px);
+  }
+  ```
+
+- 覆盖面（本族 = 24×24 方形图标操作按钮）：四类右侧面板工具条按钮（刷新 / 选择元素并评论 / 在浏览器打开 / 搜索文件 / 重启终端）、tab 条的「全屏」与「＋ 新建面板」、错误态文字按钮（重新加载 / 重启终端 / 重试，同一 class、`width:auto`）。
+- 改前两档并存：图标按钮 base `4px`（`DesktopApp.css:1162`）、「＋」`6px`（`DesktopPanelTabs.css:130`）；而同一条 tab 上的页签是 8px、工具行控件 8px（0916 第 3 轮）→ 统一到 `--cc-radius-md`。
+- 只改圆角：尺寸 24×24 / 图标 16px / 内衬 0 / 常态透明 / hover 底 / 字色 / hover·active·交互全部未动。
+
+### 实测（临时用例 `tmp-panels-0916`，1440×900，DPR2，浅/深）
+
+- 5 颗：`4px`（4 颗）/ `6px`（「＋」）→ **`8px`**；盒 `24×24`、图标 `16×16`（「＋」13×12）逐值不变；hover 底浅 `#EEF0F3` / 深 8% 白逐值不变。
+- 同 class 其余实例（非激活 tab / 错误态，逐条核 computed）：`file-pane-search-trigger`、`diff-refresh`、`terminal-restart`、`terminal-retry`(78×24) 全部 **8px**。
+- 像素差异（hover 态，72×72 裁切 = 按钮 48×48 设备像素 + 12px 留白）：单颗 **237（浅）/ 254（深）像素**（4.57% / 4.90%，全部落在四角弧），「＋」181 / 195（3.49% / 3.76%）；整条工具条 0.19%、整条 tab 条 0.14%。`0 pageerror / 0 console error`。
+- **静止态看不到任何差异**：这些按钮常态是透明底、无边框 → 圆角只在 hover 出底色时可见，故所有对照图都取 **hover 态**（与 0916 第 3 轮同类坑一致）。
+
+### 取证方式（本轮新增三条坑）
+
+- `.preview-pane-button` 只存在于右侧面板，而 8899 原型默认把面板开不出来（扫全部 17 个用例命中 0 处）→ 新增临时用例 `prototype/mock/tmp-panels-0916.ts`（`desktop-full` 单 pane + 4 条 `desktopTogglePanel` 依次打开 file/diff/terminal/preview，预览最后开 = active）；`mock/` 目录 gitignore、不进推送集。
+- 坑 ①：**双 pane 时新面板过不了 `ensurePanelSpace` 空间守卫**（必须单 pane，否则面板一直不开）；坑 ②：**隐藏 tab 里的按钮 `boundingBox()` 返回 null**（须按可见按钮反查父工具条取裁剪区）；坑 ③：对话头部「面板开关」被原型预览层的主题开关遮住、hover 被拦截（残留项降级为只读静止态）。
+- **「改前」用同面注入旧值还原（4px / 6px）而非 `git stash`**：本轮只动 `border-radius` 一条属性，注入法在像素上等价，同时避免把并行窗口在途改动一起带走。
+
+### 残留（未授权，供后续点名）
+
+- `.preview-tab-close` 页签关闭「×」`16×16` **3px**（8px ≈ 短边 60%、近圆）→ 触发语 **「页签关闭也统一 8」**。
+- `.header-button.header-panel-toggle` 对话头部「面板开关」`24×24` **4px** → 触发语 **「头部按钮也一起」**。
+- `.desktop-pane-close` 对话 pane 头部关闭按钮（本轮 mock 未渲染、未核）→ 触发语 **「pane 头部关闭也一起」**。
+- `.desktop-session-more-btn` 会话行「更多」`24×24` **6px** → 触发语 **「会话行更多按钮也统一 8」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-pane-button-radius-0916.mjs`（computed 读数 + hover 态 1:1 裁切 + 6× 放大 + 差异像素图）、`CC02/build-pane-button-radius-0916.py`（自测页）。
+- 证据目录 `CC02/走查/0916-面板操作按钮圆角/`：`measure.json`、`{tag}-{theme}-{before,after}-hover.png`、`zoom-{tag}-{theme}-{before,after}.png`、`diffmap-*`、`toolbar-{theme}-{before,after}-hover.png`、`tabbar-*`，自测页 `0916-面板操作按钮圆角-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/z8pzpxevzk ）。
+- 本轮纯 CSS（`host-desktop.css` 一条规则），无 TS 改动。
+
+## 0916 评论（行内说明色与其余说明统一：去掉 hint 上的 opacity 0.75）（已随本批推送）
+
+**她的评论**（点 `p.settings-row-hint`「全局默认；当前模型自带上下文上限时以模型配置为准」）：
+「这里用了不一致的字体颜色，和其他说明保持一致」。
+
+### 改动
+
+- `styles/SettingsPage.css` `.settings-row-copy .settings-row-hint`：**去掉 `opacity: 0.75`**（颜色声明本来就是 `--vscode-descriptionForeground`，与其余说明同一颗 token，只是被那层透明度压淡了）。注释同步改写为「说明档差异只保留字号行高（12/20 对正文 14/22）」。
+- 依据：桌面宿主在 `host-desktop.css:190` 把 `--vscode-descriptionForeground` 映到 `--cc-text-secondary`，故「同色」只在透明度上是差异；契约也是同一条原则——`design-system.md:151`「keeps the semantic color at full opacity … (not dimmed)」、`:107`（不得再乘一层 opacity）、`conversation-surfaces-desktop.md:16`（不能用整行 opacity 降文字对比）。
+- 影响面：`.settings-row-hint` 全族（AI 回复语言 / 上下文长度 / 个性化 / 记忆等 8 处「由组织配置管理」「全局默认；…」等行内说明）统一变回到说明档本色，不再比同级说明更淡。
+
+### 实测（`desktop-full` → 敲 `/config` 进设置页，1440×900，DPR2，浅/深）
+
+| 主题 | 元素                                       | 声明色    | 修复前（实际渲染 / 对比度）          | 修复后               |
+| ---- | ------------------------------------------ | --------- | ------------------------------------ | -------------------- |
+| 浅   | `.settings-row-hint`                       | `#606060` | `opacity .75` → **#888888 / 3.56:1** | **#606060 / 6.29:1** |
+| 浅   | 同级说明（`.settings-row-copy p` 等 6 处） | `#606060` | #606060 / 6.29:1                     | 同值（未动）         |
+| 深   | `.settings-row-hint`                       | `#A0A5A8` | `opacity .75` → **#7C8183 / 4.7:1**  | **#A0A5A8 / 7.49:1** |
+| 深   | 同级说明（6 处）                           | `#A0A5A8` | #A0A5A8 / 7.49:1                     | 同值（未动）         |
+
+- 改后设置页内 12px 说明文字的渲染色**全部同族**（浅 #606060 / 深 #A0A5A8），对比度浅 6.29:1、深 7.49:1；卡片盒 / 行高 / 字号未变；`0 pageerror`。
+- 证据：`CC02/走查/0916-说明文字色/hint-{light,dark}-{before,after}.png`（评论所在行的裁剪图）+ `hint-verify.json`（逐元素 声明色 / 透明度 / 叠加卡面后的实际渲染色 / 对比度）。
+
+### 残留（未授权，供后续点名）
+
+- `.settings-number-input::placeholder`（同文件 `:403`，同款 `opacity: 0.75`）：**占位符**语义（「未设置」的灰字占位，弱于输入值本身），本轮未动；且它的注释写「与同行的说明文字/单位同色」与实际不符（叠了 0.75 后比说明更淡）→ 触发语 **「未设置占位符也和说明同色」**。
+- 禁用态 `.settings-select:disabled` 一族 / `.settings-switch input:disabled + .settings-switch-slider`（`opacity 0.6 / 0.55`）属**不可用状态**降档，不是文字色不一致，不在本条范围 → 触发语 **「禁用态也一起提亮」**（不推荐，禁用态需要与可用态区分）。
+- skill 回写候选（交 codex 审）：契约已有「语义色不叠额外 opacity」的三处先例（`design-system.md:151` 关闭按钮 / `:107` scrollbar fill / `conversation-surfaces-desktop.md:16` 表格），但**没有把它写成文字角色的通用条款**，以致本处把「弱化说明」实现成了「同一 token 再乘 0.75」。建议补一条通用条款（见交接单 **W-32**）。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-settingshint-color-0916.mjs`（同页回退对照 + 全页 12px 说明文字盘点：声明色 / opacity / 叠加卡面后的实际渲染色 / 对比度 + 评论行裁剪图）。运行需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
+- 本轮纯 CSS（`SettingsPage.css` 一条规则 + 注释），无 TS 改动。
+
+## 0916 评论（tab 选中高亮条：下两角直角、上两角不变、高度不变）（已随本批推送）
+
+**她的评论**（点 MCP 视图的 `button.settings-tab.is-active`「用户级 MCP」）：
+「调整 tab 选中高亮条的样式，左下右下圆角是 0，上面不变，高度不变」。
+
+### 改动
+
+- `styles/SettingsPage.css` `.settings-tab.is-active::after`：`border-radius: 999px` → **`1.5px 1.5px 0 0`**。
+- 依据：原值 999px 在 3px 高的盒上被浏览器「圆角收缩」折算成 **1.5px**（= 高的一半，四角胶囊、两端半圆头）。要高亮条下缘成一条直线并与 tab 条自身的 1px 分隔线平齐，只把下两角归零、上两角保持折算后的真实值。
+- 高度 3px、`bottom: -1px`、`background: --vscode-foreground`、宽度（`left/right: 0`）**全部未动**；只改圆角一条声明。
+- 覆盖面：设置页公共 tab（MCP 用户级/项目级/插件、技能、子代理、钩子、规则范围、来源范围、插件市场）——它是共用组件，非单视图覆盖。
+
+### ⚠ 踩坑（第一版写错，已修正，留档避免重做）
+
+第一版写的是 `border-radius: 999px 999px 0 0`（想「上角沿用 999px」）——**错**：CSS 圆角收缩规则按每条边两侧圆角之和判断，左侧和 = 999 + 0 = 999 仍远大于盒高 3px，收缩系数变成 `3/999`，上两角被放大到 **3px**（顶角明显变圆）。实测顶行像素差 100+（浅色左上角 `32` → `228`）。**必须写折算后的真值 `1.5px`** 才满足「上面不变」。
+
+### 实测（`desktop-full` → 敲 `/mcp` 进 MCP 视图，1440×900，DPR2，浅/深）
+
+- 计算值：`radius` `999px` → `999px 999px 0px 0px`（BL/BR 0、TL/TR 保持），`height` 3px、`bottom` -1px、`background` 浅 `rgb(32,32,32)` / 深 `rgb(229,231,232)`、tab 盒 `81x46`、tab 条 `266x59` + `border-bottom: 1px solid` **逐值不变**。
+- **像素级 diff（同页回退对照，DPR2）**：差异包围盒 = `(48,27) → (210,30)`，即**只有高亮条底部 1.5px 的圆角区**共 **10 个设备像素**；顶行 `y=24` 剖面**逐像素全等**（浅色左上角两侧同为 `234`，深色同为 `37`）→ 满足「上面不变」。
+- 底部左端剖面（浅色，底行 `y=29`）：`x=48` `209 → 32`、`x=49` `103 → 32`、`x=50` `50 → 32`（半透明的圆角渐隐 → 实色直角）；右端 `x=207/208/209` 同理由 `50/103/209` → `32`。深色同构（`168/164/212` → `229`）。
+- `0 pageerror`。
+- 证据：`CC02/走查/0916-tab高亮条/bar-{light,dark}-{before,after}.png`（活跃 tab 下半部裁剪）+ `strip-*.png`（整条 tab 条）+ `zoom-bar-*.png`（6× 放大）+ `对比-tab高亮条-{light,dark}.png`（前后并排）+ `corner-pixels.json`（四角像素采样 + 差异行统计）。
+
+### 残留（未授权，供后续点名）
+
+- 高亮条颜色仍是 `--vscode-foreground`（浅 `#202020` / 深 `#E5E7E8` 直线），粗细 3px 未动 → 触发语 **「高亮条改 2px / 换主色」**。
+- 插件市场视图的 tab 条有滚动覆盖（`overflow-x: auto` + 隐藏滚动条 + 焦点环内移），本轮未动；该视图 tab 与 MCP 同组件，高亮条样式已随之生效。
+- 可复用实现陷阱（建议沉淀）：**「3px 高亮条改单侧直角时必须写折算后的真值，不能写 `999px 999px 0 0`」**——已记入本文件，是否写进交接单（新增 W-33：`common-components.md` 的 tabs 条款补一句「下划线 / 高亮条的圆角按其盒高折算后书写，避免 CSS 圆角收缩把上角放大」）**等她点名** → 触发语 **「tab 高亮条圆角写进 skill」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-settings-tab-underline-0916.mjs`（同页回退对照 + 伪元素 `::after` 计算值 + 活跃 tab 裁剪）、`CC02/build-tab-underline-evidence-0916.py`（四角像素采样 + 逐行/逐列剖面 + 6× 放大 + 并排对比图）。运行 JS 需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
+- 本轮纯 CSS（`SettingsPage.css` 一条规则 + 注释），无 TS 改动。
+
+## 0916 评论（操作按钮圆角统一 8px · 第 2 族：侧边栏图标按钮 + 头部 `.header-button`）（已随本批推送）
+
+**她的评论**（连标 4 处）：`button.desktop-sidebar-more-btn`「这里」/ `svg.header-icon`「这里」×2 / `button.header-button`「这里」——
+**「再看看类似下面我标注的这些地方也要统一」**（承接上一轮 `button.preview-pane-button` 的「类似这种操作按钮圆角统一8px」）。
+
+### 改动
+
+- `packages/webview/src/styles/host-desktop.css`：
+  1. 新增一条规则（写在既有「收起态按钮」块之后，含逐字依据注释）：
+
+     ```css
+     [data-host="desktop"] .desktop-sidebar-more-btn,
+     [data-host="desktop"] .header-button {
+       border-radius: var(--cc-radius-md, 8px);
+     }
+     ```
+
+  2. 同步把既有 `[data-host="desktop"] .header-collapsed-leading .header-button` 的 `border-radius: 6px` 改为 `var(--cc-radius-md, 8px)`（同一族、否则会 6 与 8 并存；注释同步改写）。
+
+- 覆盖面（本族 = 24×24 方形图标操作按钮）：①侧边栏品牌行 2 颗（收起侧边栏 / 活动，`DesktopApp.css:139` 原 **6px**）②会话头 / pane 头 `.header-button`（base 22×22 r4 `ChatHeader.css:52-58`；面板开关 `.header-panel-toggle` 24×24 `ChatHeader.css:112` 原 **4px**）③收起侧边栏后的头部按钮（原 **6px**）。
+- 只改圆角：盒 `24×24`（部分 22×22）、图标尺寸（开关按 24 artboard）、常态透明、hover / active 底、字色、交互全部未动。
+- **作用域限 `[data-host="desktop"]`**：IDE / VS Code 宿主共用 `.header-button`、`.desktop-sidebar-more-btn` 这两个 class → 已实测 IDE 用例 `ide-chat` 仍是 `4px`、desktop 为 `8px`，两者互不影响。
+
+### 实测（用例 `desktop-full`，1440×900，DPR2，浅/深，0 pageerror）
+
+- `6px → 8px`：侧栏「收起侧边栏」「活动」（hover 底浅 `rgba(0,0,0,0.12)` / 深 `rgba(90,93,94,0.31)`，逐值不变）；`4px → 8px`：左右两颗 pane 头部「面板开关」（同 hover 底）。
+- 激活态可见（有底色，静止即可见圆角）：`活动` `.is-active` 浅 `#FFEBE8` / 深 `color(srgb 0.756863 0.160784 0.180392 / 0.18)`，圆角 `8px`。
+- 收起态：`.header-collapsed-leading .header-button`（「展开侧边栏」）`24×24`，hover 底浅 `#EEF0F3` / 深 8% 白，圆角 `8px`。
+- 像素差异（hover 态，40×40 CSS 裁切）：单颗侧栏按钮 **200（浅）/ 192（深）像素**（3.12% / 3.00%）、面板开关 **257 / 258**（4.02% / 4.03%）、激活态 200 / 192、收起态 181 / 194；整条侧栏品牌行 `0.06%`、整条 pane 头部行 `0.05%`（只有 hover 中那颗的四角变）。**静止态（透明）前后差异 0 像素**。
+- 同族残留现状（本轮未动，已实测）：`.desktop-session-more-btn` 24×24 **6px**、`.desktop-pane-close` 24×24 **4px**、`.toast-close` 20×20 **4px**、`.confirmation-close-btn` 20×20 **4px**、`.preview-tab-close` 16×16 **3px**；已一致未动者：`.desktop-sidebar-new-chat` 8px、`.desktop-workdir-trigger` 8px、面板工具条按钮与「＋」8px（0916 上一轮）。
+
+### 取证方式（两条坑）
+
+- 这族按钮静止态透明无边框 → 圆角只在 hover / active 出底色时可见，故全部对照图取 **hover 态**；**「改前」用探针在同一元素注入旧值（6px / 4px）还原**而非 `git stash`（本轮只动 `border-radius` 一条属性，像素等价，且不带走并行窗口在途改动）。
+- 坑 ①：mock 的 toast 浮层正好压在两颗「面板开关」上（`elementFromPoint` 命中 `.toast`）→ 真实 hover 失效；坑 ②：原型右上角的用例浮层（`<select>`）同样压住右侧那颗 → 探针内先移除这两个浮层再 hover（只动探针，不动产品代码）。
+- **可复用结论**：`--cc-radius-md` 在 wave 仓库内**只被引用、未定义**（全仓 0 处定义），本族既有规则都靠 `var(--cc-radius-md, 8px)` 的 fallback → 新增规则沿用同一写法，避免「有的读 token、有的写字面量」（是否请 codex 在 skill 侧补 token 定义，待她点名）。
+
+### 残留（未授权，供后续点名）
+
+- `.desktop-session-more-btn` 会话行「更多」`24×24` **6px** → 触发语 **「会话行更多按钮也统一 8」**（上一轮已列出，仍未授权）。
+- `.desktop-pane-close` pane 头部「关闭」`24×24` **4px** → 触发语 **「pane 头部关闭也一起」**。
+- `.toast-close` / `.confirmation-close-btn` `20×20` **4px** → 触发语 **「toast 关闭也统一」**/「确认弹层关闭也统一」。
+- `.preview-tab-close` 页签关闭「×」`16×16` **3px**（8px ≈ 短边 60%、近圆）→ 触发语 **「页签关闭也统一 8」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-btn-family-radius-0916.mjs`（computed 读数 + 前后 hover/rest 裁切 + 激活态 + 收起态 + 上下文整条 + 掩掉遮挡浮层）、`CC02/build-btn-family-radius-0916.py`（像素差异统计 + 6× 放大 + 差异图 + 自测页）；另有一次性定位脚本 `CC02/probe-find-0916-btns.mjs`（先确认这些 class 在哪些用例渲染）。
+- 证据目录 `CC02/走查/0916-操作按钮圆角/`：`measure.json` + 42 张图（`{tag}-{theme}-{hover,rest}-{before,after}.png`、`sidebar-activity-{theme}-active-*.png`、`collapsed-leading-*`、`strip-sidebar-*`、`strip-paneheader-*`、`zoom-*`、`diffmap-*`），自测页 `0916-操作按钮圆角-第2族-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/yt2cbsxx33 ）。
+- 本轮纯 CSS（`host-desktop.css` 一条新增规则 + 一条既有规则的圆角值），无 TS 改动。
+
+## 0916 评论（设置页分节标题与卡片内行标题不再加粗）（已随本批推送）
+
+**她的评论**（两条，同批）：
+
+- 点设置页 `h3`「AI 回复语言」→「下面类似的地方都不要加粗」；
+- 点设置页 `h2`「基础设置」→「这里」。
+
+### 改动
+
+- `styles/SettingsPage.css` `.settings-section-heading h2`：`font-weight: 600` → **`var(--cc-font-weight-regular, 400)`**。
+- `styles/SettingsPage.css` `.settings-row-copy h3`：`font-weight: 600` → **`var(--cc-font-weight-regular, 400)`**。
+- 覆盖面（两类都是设置页公共类，全视图生效）：分节标题 = 全局设置「基础设置 / 桌面端设置 / 服务端配置 / 内置插件 / AGENTS.md / 自动记忆规则」；行标题 = 每个卡片行的 `h3`（AI 回复语言、上下文长度、主题、接收 Beta 版更新、SDD、开启自动记忆、触发记忆提取会话轮次…），以及 MCP / 技能 / 子代理 / 钩子 / 插件市场等视图里同样使用 `.settings-row-copy` 的行。
+- 未动项（**不同层级，同批未授权**）：左侧导航分组标题 `.settings-nav-group h2`（500）、页头主标题 `.settings-page-header h1`（600）、插件行名 `.settings-plugin-name`（600）、弹窗标题 `.settings-modal-header h3`（600）、作用域弹窗选项标题 `.settings-scope-option-title`（600）、分段选中态 `.settings-plugin-chip.is-active` / `.settings-modal-seg-item.is-active`（600）。
+- 依据：设置页内部层级只靠**字号（14px）+ 位置（分节在卡外、行标题在卡内）**表达即可；加粗在 14px 中文小字号上会让标题与同行说明（12px）抢视觉权重，且与「按钮 500 / 正文 400」的既有口径不同族。
+
+### 实测（`desktop-full` → 敲 `/config`，1440×900，DPR2，浅/深；同页回退对照）
+
+- 字重：全部 `.settings-section-heading h2` 与 `.settings-row-copy h3` 计算值 `600 → 400`（浅/深一致）。
+- **几何零位移**：分节标题盒 `712x25`、行标题盒 `300x26 / 294x26 / 261x26 / 135x26`、同行说明 `712x20`；**所有 `.settings-row` 的盒、y、`h3` 文本、右侧控件盒（`宽x高@x`）前后逐值完全相同**（脚本断言 `行盒 / 行高 / 右侧控件列 前后完全一致 = true`，浅/深均通过）。
+- 文字宽只随字重微变（浅色：「基础设置」`56 → 57.1`、「AI 回复语言」`73.5 → 73.8`、「上下文长度」`70 → 71.4`、「接收 Beta 版更新」`108 → 108.4`），远小于其容器余量，**无一处换行变化**。
+- `0 pageerror`。
+- 证据：`CC02/走查/0916-设置标题字重/titles-{light,dark}-{before,after}.png`（分节标题 + 首张卡片前两行的裁剪图）+ `title-weight-verify.json`（逐元素字重 / 字号 / 行高 / 盒 / 裸文本宽 + 全部行盒与控件列对照）。
+
+### 残留（未授权，供后续点名）
+
+- 上述「未动项」里的 600 尚未随本轮收整 → 触发语 **「页头标题也不要加粗」** / **「插件名也不要加粗」** / **「弹窗标题也不要加粗」** / **「作用域弹窗选项标题也不要加粗」**（导航分组 500 → 触发语 **「导航分组标题也统一 400」**）。
+- skill 契约口径待 codex 确认：`common-components.md:11` 有「group headings retain their own typography」的保留句，而 `design-system.md:183` 规定页头标题 semibold —— **设置页「分节标题 400」是否属于该保留句的例外情形、要不要显式写入**，本轮只在代码注释里留了提示，未擅自回写 → 触发语 **「分节标题字重写进 skill」**（新增交接单条目）。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-settings-title-weight-0916.mjs`（同页回退对照 + 逐元素字重/盒/裸文本宽 + 全部 `.settings-row` 与右侧控件列对照 + 裁剪图）。运行需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
+- 本轮纯 CSS（`SettingsPage.css` 两条规则 + 注释），无 TS 改动。
+
+## 0916 评论④：账户卡用量区（`.account-card-usage-inline`）字号**统一 12px** + 余额状态文字色绑定审计（**颜色一律不动：两批换色尝试已按她指示全部撤回**）（已提交，待推送）
+
+> **⚠️ 颜色结论（最终态）**：她看过换色对比后指示「这里颜色先不动了」→ 我列出三种理解请她选，她选 **「两批换色全退」**。故本轮**只落地字号一项**，账户卡所有文字色 / 图标色 / 气泡色 / 状态色**与改动前逐字节一致**（`host-desktop.css` 中该区域除下方那一条字号规则外与 HEAD 无差异，`git diff` 已验证）。下方「追加」「追加 2」两节的换色内容**已全部回退，仅作审计留档**，其中状态色绑定审计与对比度实测仍是有效结论（浅色预警琥珀 12px 小字对比度 2.93:1 不达标属历史遗留，仍未处理）。
+
+**她的评论（两步）**：
+
+1. 先点 `div.account-card-usage-inline`「套餐用量 76% / API 余额 ¥6,800.00」→「这里面信息，字号都大一号，除了套餐余量用完的报错提示用 12px 之外」；
+2. 撤销 →「还是改回来，都用 12px，然后检查不同余额状态字体颜色是否绑定了全局变量」。
+
+### 改动（`styles/host-desktop.css`，`[data-host="desktop"]` 作用域）
+
+- **字号全部回到 12px**：四段文字（`span` 无类名「套餐用量」/ `.account-usage-percent` / `.account-usage-row .account-usage-label` / `.account-usage-row .account-usage-value-text`）不再有任何字号覆盖 → 走 base 的 12px / `line-height: normal`（中途试过的 14px / 20px 已删除）。
+- **仅保留一条**：`.account-usage-exhausted`（「套餐余量已用完，请联系销售人员充值」）`11px`（越档，契约无此档）→ **`12px`**；其 `line-height: 15px` 与盒 231×15 未动，故该行**几何零变化**。
+- 未动：ⓘ `.account-api-info-btn` 内嵌 16px SVG（非文字）；进度条 231×6px；**全部文字色与状态配色（见下「颜色」说明）**。
+
+### 实测（`desktop-full` / `desktop-account-plan-exhausted` / `desktop-account-api-low` / `desktop-account-api-empty`，浅+深，1440×900 @DPR2）
+
+- 最终计算值：四段文字全部 `12px / normal`（「套餐用量」49×17、「76%」25×15、「API 余额」47×17、「¥6,800.00」58×15、耗尽态「已用完」37×17）；提示行 `12px / 15px`（盒 231×15）。
+- **几何与改动前逐值一致**：用量区 `235×63` 不变，账户卡 `235×108` 不变，耗尽场景 `235×84` / `235×129` 不变，进度条 231×6 不变（改大一号那版的 +6px 已一并撤回）。
+- `0 pageerror`（4 用例 × 2 主题全为 `[]`）。
+
+### 余额状态文字色 × 全局变量绑定审计（她第二条指示）
+
+**结论：正常 / 预警 / 耗尽三个状态的文字色全部来自宿主主题变量，无硬编码色值。** 实测（CSSOM 枚举命中声明 + 浅深对照）：
+
+| 角色                  | 浅色                             | 深色                                  | 绑定声明                                                                                                                                            |
+| --------------------- | -------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 套餐用量标签          | `rgb(32,32,32)`                  | `rgb(229,231,232)`                    | `var(--vscode-foreground)`（继承自 `.account-usage-title`）                                                                                         |
+| API 余额标签          | 同上                             | 同上                                  | `var(--vscode-foreground)`                                                                                                                          |
+| 余额金额 · 正常       | `rgb(32,32,32)`                  | `rgb(229,231,232)`                    | 继承 `body` 的 `var(--vscode-editor-foreground)`                                                                                                    |
+| 余额金额 · 预警       | `rgb(191,136,3)`                 | `rgb(204,167,0)`                      | `var(--vscode-editorWarning-foreground, #d18616)`（`.account-usage-value.is-warning`）                                                              |
+| 余额金额 · 耗尽       | `rgb(173,7,7)`                   | `rgb(248,81,73)`                      | `var(--vscode-errorForeground, #f14c4c)`（`.account-usage-value.is-empty`）                                                                         |
+| 用量百分比 · 耗尽     | `rgb(173,7,7)`                   | `rgb(248,81,73)`                      | `var(--vscode-errorForeground, #f14c4c)`                                                                                                            |
+| 用完提示行            | `rgb(173,7,7)`                   | `rgb(248,81,73)`                      | `var(--vscode-errorForeground, #f14c4c)`                                                                                                            |
+| 进度条填充（正 / 耗） | `rgb(31,35,41)` / `rgb(173,7,7)` | `rgb(154,158,165)` / `rgb(248,81,73)` | `var(--vscode-button-background)` / `var(--vscode-errorForeground)`                                                                                 |
+| **用量百分比 · 正常** | `rgb(31,35,41)`                  | `rgb(160,165,168)`                    | ⚠️ 浅色是**字面量 `#1f2329`**（`[data-theme=light] .account-usage-percent:not(.is-empty)`，覆盖 `var(--vscode-descriptionForeground)`）；深色走变量 |
+
+- 宿主变量在预览主题下的解析值：`--vscode-errorForeground` `#ad0707 / #f85149`、`--vscode-editorWarning-foreground` `#bf8803 / #cca700`、`--vscode-descriptionForeground` `#606060 / #a0a5a8`、`--vscode-foreground` `#202020 / #e5e7e8`。
+- **另发现 3 处字面量**：① 上述浅色正常态百分比 `#1f2329`；② ⓘ 图标 `.account-api-info-btn` 浅 `#8b8f95` / 深 `#9a9ea5`（hover 走 `var(--vscode-foreground)`）；③ 明细气泡 `.api-quota-popover` 浅色档标题/金额 `#1f2329`、行标签 `#565a60`；另有进度条轨道浅色 `#e6e8eb`（背景色，非文字）。**她先选「浅深都绑 token」→ 前三处曾改绑，随后改判「颜色先不动了」已全部撤回，详见下节「追加」。**
+- 三者与仓库已定义的 `--cc-text-*` token 同值（故浅色档改绑零视觉变化）：`--cc-text-primary` = `#1f2329 / #e5e7e8`、`--cc-text-placeholder` = `#8b8f95 / #858b8f`、`--cc-text-regular` = `#565a60 / #c4c7c9`。
+
+### 追加（**已撤回，未采用**）：3 处字面量改绑 cc token（她曾选「浅深都绑 token」，后改判「颜色先不动了」）
+
+> 本节所述改动**已全部回退**（百分比、ⓘ、气泡三处恢复为改动前的字面量 / vscode 变量写法）。保留本节是因为「审计查出的 3 处字面量」与其 A/B 数值仍是有效信息，供后续点名时复用。
+
+审计查出的 3 处字面量已按她选择改绑，**并从「仅浅色档」提升为主题无关声明**（深浅共用一条规则）：
+
+- 用量百分比 `:not(.is-empty)`：`[data-theme=light] #1F2329` → **`var(--cc-text-primary, #1f2329)`**。
+- ⓘ 明细图标 `.account-api-info-btn`：浅 `#8B8F95` / 深 `#9A9EA5` 两条 → 一条 **`var(--cc-text-placeholder, #8b8f95)`**。
+- 明细气泡：标题 / 金额 → **`var(--cc-text-primary, #1f2329)`**、行标签 → **`var(--cc-text-regular, #565a60)`**（原只有浅色档有字面量，深色走 base 的 vscode token）。
+- **字重未动**（气泡金额 500 仍只在浅色档、深色保持 base 400）；状态色（预警琥珀 / 耗尽红）仍走 `--vscode-*` 状态变量。
+
+同页 A/B（同一页面注入「改前声明」逐字回放旧值，布局完全一致）：
+
+| 角色                   | 浅色 改前 → 改后           | 深色 改前 → 改后                            |
+| ---------------------- | -------------------------- | ------------------------------------------- |
+| 用量百分比 · 正常      | `rgb(31,35,41)` **零变化** | `#A0A5A8` → **`#E5E7E8`**                   |
+| ⓘ 明细图标             | `#8B8F95` **零变化**       | `#9A9EA5` → **`#858B8F`**                   |
+| 气泡标题 / 金额        | `#1F2329` **零变化**       | `#E5E7E8` **零变化**（原本就等于 token 值） |
+| 气泡行标签             | `#565A60` **零变化**       | `#A0A5A8` → **`#C4C7C9`**                   |
+| 气泡警示文案（状态色） | 零变化                     | 零变化（未动）                              |
+
+- 深色三处变化的对比度（深色侧栏底 `#181A1B`、气泡底 `#111314`）：百分比 `7.02:1 → 14.08:1`（更醒目）、ⓘ `6.49:1 → 5.06:1`（略退，仍远超图形 3:1 门槛）、气泡行标签 `7.49:1 → 10.97:1`（更清晰）。浅色参考：百分比 14.86:1、行标签（白底）6.94:1、ⓘ 3.06:1（刚好过 3:1，未动）。
+- `0 pageerror`；深浅各 2 用例实测。
+- **未随本轮改绑**：进度条轨道浅色 `#E6E8EB` —— 仓库无同名 token（`--cc-fill` = `#F0F2F5` 偏浅，绑了会变浅）→ 触发语 **「进度条轨道也绑 token」**（需先定轨道档）。
+
+### 追加 2（**已撤回，未采用**）：余额状态文字色改绑 skill 角色 token（她曾指「我的意思是走桌面端 skill 的变量」，后改判「颜色先不动了」）
+
+> 本节所述改动**已全部回退**：7 处状态色绑定删除，新增的 `--cc-color-warning` / `--cc-color-warning-soft`（浅深两档）也从 token 块移除；状态色回到 `--vscode-errorForeground` / `--vscode-editorWarning-foreground`，与改动前逐字节一致。
+> **仍有效的结论**：① 状态色的确全部来自宿主变量、无硬编码（审计表见上）；② 浅色档预警琥珀对 12px 小字对比度不足（`#BF8803` = 2.93:1）属**历史遗留未解决**，若日后处理，skill 处方为「可读文字 + 图标承担状态含义」或另立 state-text 角色，**不得静默调暗全局信号色**；③ skill 角色 token 的映射表与两档取值（下文引文）可直接复用。
+
+依据 = skill 契约（`codechat-desktop-skill` 仓库，非 wave 写法）：
+`references/desktop-theme-bridge.md` 映射表 —— `--vscode-editorWarning-foreground → --cc-color-warning`（Warning signal）、`--vscode-errorForeground → --cc-color-danger`（Error/destructive meaning）；取值 = `theme/desktop-colors.css` 两档（warning 浅 `#D97706` / 深 `#E8BF78`，danger 浅 `#DC2626` / 深 `#F19B95`）。
+
+- **wave 侧 `--cc-color-warning` 此前缺失**（只有 success / danger / info）→ 曾按 skill 补齐浅深两档 + `-soft`（`host-desktop.css` token 块；`--cc-color-danger` 等值本就与 skill 逐值一致，未动）。**已随本轮撤回，token 块现与改动前一致。**
+- 曾新增 host 层绑定（base `AccountCard.css` 不动，IDE / VS Code 宿主不受影响；回退链 = `cc token → vscode → 原字面量`），覆盖 7 处：`.account-usage-percent.is-empty`、`.account-usage-exhausted`、`.account-usage-value.is-empty`、`.api-popover-amt.is-empty`、`.api-popover-warn.is-empty` → `var(--cc-color-danger, …)`；`.account-usage-value.is-warning`、`.api-popover-warn.is-warning` → `var(--cc-color-warning, …)`。**已删除。**
+- 字号 / 字重 / 几何全未动（纯换色）。
+
+同页 A/B（注入改前的 `--vscode-*` 声明回放旧值）：
+
+| 角色                           | 浅色                  | 深色                  |
+| ------------------------------ | --------------------- | --------------------- |
+| 余额金额 · 预警                | `#BF8803` → `#D97706` | `#CCA700` → `#E8BF78` |
+| 气泡警示行 · 预警              | `#BF8803` → `#D97706` | `#CCA700` → `#E8BF78` |
+| 余额金额 · 耗尽                | `#AD0707` → `#DC2626` | `#F85149` → `#F19B95` |
+| 气泡警示行 / 气泡金额 · 耗尽   | `#AD0707` → `#DC2626` | `#F85149` → `#F19B95` |
+| 用量百分比 · 耗尽 / 用完提示行 | `#AD0707` → `#DC2626` | `#F85149` → `#F19B95` |
+
+按实际合成底色实测对比度（12px 属正常文字，门槛 4.5:1）：
+
+- **深色档全部达标且更清晰**：预警 侧栏 `7.56 → 10.11:1`、气泡 `8.07 → 10.78:1`；耗尽 侧栏 `5.21 → 8.20:1`、气泡 `5.56 → 8.75:1`。
+- 浅色 danger：`7.04 → 4.55:1`（侧栏）、`7.47 → 4.83:1`（白底）→ 仍达标。
+- ⚠️ **浅色 warning 不达标**：改前 `#BF8803` = **2.93:1**（白底 3.12），改绑 skill 值 `#D97706` 后 = **3.00:1**（白底 3.19）→ 仍 < 4.5:1。属**历史遗留**（改前就不达标），本次略升但未解决。skill 明确写了处置原则：_「Existing signal colors are not automatically readable text colors… When a state color fails, use existing primary/regular text for the readable label and retain state meaning through a labelled icon/indicator, or propose a dedicated state-text role with measured Light/Dark pairs. Do not silently darken a global signal color.」_ → **未擅自调暗**，处置方式待她裁决（A 保持 skill 信号色 / B 文案改可读色 + 图标承担状态含义 / C 另立 `--cc-state-text-warning` 角色交 codex 回写）。
+- `0 pageerror`（3 用例 × 2 主题 × 静止/悬停）。
+
+### 残留（未授权，供后续点名）
+
+- 气泡内文字仍是 12px（0916 第 6 轮按设计稿 13651:4864 定值）→ 触发语 **「气泡也大一号」**。
+- 账户名 `.account-card-name` 已是 14px；字重由「不加粗」那轮处理为 400 → 触发语 **「账户名也一起看」**。
+- **颜色相关一律暂停**（她「这里颜色先不动了」）：以下候选均已冻结，需她另行点名才会动 ——
+  - 进度条轨道：skill `design-system.md:106` 明确「`--cc-fill-track` **就是**账户用量进度条的轨道色（不是滚动条轨道）」，值 浅 `#EBEDF0` / 深 `#303436`；wave 现为浅色字面量 `#E6E8EB` + 深色 color-mix → 触发语 **「进度条轨道走 fill-track」**。
+  - 进度条填充：skill `design-system.md:162` 描述该设计稿「filled `--cc-text-primary`」，wave 现为 `--vscode-button-background`（浅色实测同 `#1F2329`、深色 `#E0E3E5` vs token `#E5E7E8`）→ 触发语 **「进度条填充走 text-primary」**。
+  - 用量百分比浅色字面量 `#1f2329`、ⓘ 图标浅深两条字面量、气泡浅色档 `#1F2329` / `#565A60` 三处（审计见上）→ 触发语 **「账户卡那三处字面量还是绑 token」**。
+  - 浅色预警琥珀 12px 小字对比度 2.93:1（历史遗留）→ 触发语 **「浅色预警小字对比度」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-account-usage-type-0916.mjs <tag>`（4 用例 × 2 主题枚举用量区内所有直接承载文本的节点：computed 字号/行高/字重/颜色/盒 + 裁剪图 + `pageerror` 监听）、`CC02/probe-account-usage-colors-0916.mjs`（枚举命中该节点的全部 `color` 声明，区分 `var()` / 字面量；自身无声明时沿继承链定位上游声明；并读变量实际解析值）、`CC02/probe-usagelink-tokens-0916.mjs`（同页 A/B：先测改后，再 `addStyleTag` 注入改前声明测改前；气泡裁剪框按气泡 rect 计算；ⓘ 的图像色单列静止态采集，避免混入 hover 色）、`CC02/probe-usage-statecolors-0916.mjs`（状态色同页 A/B：静止 + 悬停两相，含气泡警示行/金额）、`CC02/build-account-usage-type-0916.py`（内联图片生成证据页，含按实际底色算的对比度表）。
+- 数据与图：`CC02/走查/0916-账户用量字号/{before,final}-0916-usage-type.json`、`colors-0916-usage.json`、`tokens-0916-usagelink-colors.json`、`statecolors-0916-usage.json`、`final-{case}-{theme}.png`、`tokens-{before,after}-{popover,usage}-*-{light,dark}.png`、`对比-用量区字号-{light,dark}.png`（已撤回的 14px 版留档）。
+- 证据页（字号表 / 几何表 / 状态色绑定表 / 变量解析值 / 4 状态最终态截图 / §7 cc token 改绑 / §8 skill 状态色改绑 + 对比度；**§7 / §8 已标注「已撤回」**）：`CC02/走查/0916-账户用量字号/0916-账户用量字号-实施.html`（Artifact https://codechat.codewave.163.com/code/artifact/ybcochklxt ）。
+- 踩坑：① CSSOM 枚举「分组规则」必须用 `r.selectorText === undefined` 判断 —— 新版 Chrome 的 `CSSStyleRule` 也带（空的）`cssRules`，用 `if (r.cssRules)` 会把所有普通规则整批漏掉；② 采 ⓘ 这类「hover 会变色」的控件时，静止色必须单独在 hover 之前采，注入改前声明时也要带 `:not(:hover)`，否则 A/B 会拿「改前静止色」比「改后 hover 色」；③ **回退换色时并行窗口刚在同一文件提交了新 commit**（`12130ba8`「设置页返回 1 级字色」）→ 不能用 `git checkout` 整文件回退，必须逐段 `Edit` 还原成 HEAD 原文，再用 `git diff` 核对「该区域只剩字号那一条」。
+- 本轮落地内容：**纯一条字号规则 + 注释**（`host-desktop.css`），无 TS 改动、无 token 增删、无换色。
+
+## 0916 评论（侧栏「新对话」文案提到 1 级文字色）（已随本批推送）
+
+**她的评论**（点侧栏 `span`「新对话」）：「这里的字体颜色深浅模式都用 1 级的」。
+
+### 改动
+
+- `styles/host-desktop.css` **新增**两条规则（放在「控件图标统一灰」块之后，因为它就是本处被染灰的原因）：
+  ```css
+  [data-host="desktop"] .desktop-sidebar-new-chat span {
+    color: #1f2329;
+  }
+  [data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat span {
+    color: #e6e6e6;
+  }
+  ```
+- 根因：第三十八轮的「控件图标统一灰」规则把 `.desktop-sidebar-new-chat` 整颗按钮（含**文案**）一起染成 `#565a60` / `#9a9ea5`；该规则本意只管**图标**。本次只把**文案**提回 1 级。
+- 1 级取值依据：与同栏会话行标题 `.desktop-session-item`（`DesktopApp.css:299` 浅 `#1f2329` / `:427` 深 `#e6e6e6`）**逐值相同**；浅色档值同时等于 `--cc-text-primary`。深色档刻意不取 token 的 `#E5E7E8`，而取同一面板既有 1 级值 `#E6E6E6`（差 1~2 通道，避免同栏两处「1 级」不同值）。
+- 参考实现同构：`codechat-ui` `components/TaskSidebar.vue` 的 `.sidebar-tool-button` 自身不设色（文字继承 `body` 的 `--cc-text-primary`），图标资源 `assets/figma/new-chat.svg` 单独填灰 `#4E5969` —— 即「**文字 1 级 + 图标灰**」。
+- 未动项：图标仍按第三十八轮图标规范留 `#565A60` / `#9A9EA5`；字号 14 / 字重 400 / 盒 235×30 / r8 / gap 8 / 左右内衬 / hover 底色 / 禁用态 `opacity: 0.5` 全部未动。作用域只有侧栏这一颗按钮的文案 `span`。
+
+### 实测（`desktop-full` 首屏，1440×900，DPR2，浅/深；同页回退对照）
+
+| 主题                   | 文案色（修前 → 修后） | 对比度（修前 → 修后） | 与同栏会话行标题同值 | 图标（修前 → 修后）           |
+| ---------------------- | --------------------- | --------------------- | -------------------- | ----------------------------- |
+| 浅（侧栏底 `#F7F8FB`） | `#565A60` → `#1F2329` | 6.53:1 → **14.86:1**  | ✅                   | `#565A60` → `#565A60`（未动） |
+| 深（侧栏底 `#181A1B`） | `#9A9EA5` → `#E6E6E6` | 6.49:1 → **13.99:1**  | ✅                   | `#9A9EA5` → `#9A9EA5`（未动） |
+
+- 几何与交互零变动：按钮盒 `235x30`、`14px`、`r8`、`gap 8px`、文案宽 `42.8px` 前后逐值相同；hover 底色浅 `rgb(238, 240, 243)` / 深 `rgba(255, 255, 255, 0.08)` 前后一致。
+- `0 pageerror`。
+- 证据：`CC02/走查/0916-新对话文字色/newchat-{light,dark}-{before,after}.png` + `newchat-level1-verify.json`。
+
+### 残留（未授权，供后续点名）
+
+- 该按钮**图标**仍是控件图标灰 `#565A60` / `#9A9EA5`（第三十八轮图标规范 normal 档，且参考实现亦为灰）→ 触发语 **「新对话图标也提到 1 级」**。
+- 同一条「图标统一灰」名单里的其余项（`.desktop-sidebar-more-btn:not(.is-active)`、`.desktop-session-more-btn`、`.account-card-more-btn`、`.header-panel-toggle`、`.desktop-pane-close`、`.write-preview-open`、`.toast-close`、`.confirmation-close-btn` 等）都是**纯图标按钮**，本轮未动、也不建议动 → 若要把「侧栏导航项一律 1 级文字」写成通用条款，触发语 **「侧栏文字层级写进 skill」**。
+- 左侧分组标题 `.desktop-session-group-name` 仍是次级灰（浅 `#6C7076` / 深 `#9A9EA5`），属分组标签层级，未动 → 触发语 **「分组标题也提到 1 级」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-sidebar-newchat-color-0916.mjs`（盘点该按钮/文案/图标/同级会话标题的计算色与对比度）与 `CC02/probe-sidebar-newchat-level1-0916.mjs`（同页回退对照 + 几何/hover/文案宽前后比对 + 裁剪图）。运行需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
+- 本轮纯 CSS（`host-desktop.css` 两条新增规则 + 注释），无 TS 改动。
+
+## 0916 评论（关闭按钮族：pane 头部 / toast / 确认弹层 / 面板页签）（已随本批推送）
+
+**她的三条指示**（承接上一轮残留清单）：
+①「pane 头部关闭也一起」②「页签关闭仅图标变色，不要背景色也不用圆角了」③「toast 关闭 / 确认弹层关闭应该是和 pane 头部关闭用同一个图标，同样的圆角」。
+
+### 改动
+
+- `packages/webview/src/styles/host-desktop.css`（一侧新增「关闭按钮族」块，另改两处既有规则）：
+  - 新增：`[data-host="desktop"] .desktop-pane-close, .toast-close, .confirmation-close-btn { border-radius: var(--cc-radius-md, 8px) }`（**4px → 8px**，三个按钮）。
+  - 新增：`[data-host="desktop"] .toast-close { width: 20px; height: 20px; padding: 0 }` + `… .toast-close-icon, … .confirmation-close-btn-icon { flex-shrink: 0 }` —— 图标换成 24 artboard 后，20 的按钮盒会把 svg 压成 20×24（实测 computed），字形被缩到 0.83 倍；加 `flex-shrink: 0` 后保持 24×24 居中溢出，字形与 pane 头部关闭**逐像素同尺寸**。
+  - 新增：`[data-host="desktop"] .preview-tab-close { border-radius: 0 }`（**3px → 0**）+ `… .desktop-panel-tab .preview-tab-close:hover { background: transparent }`。
+  - 改既有：`[data-host="desktop"] .confirmation-close-btn` 里的 `border-radius: 4px` → `var(--cc-radius-md, 8px)`（同选择器同特异性，不改这处会被先前定义覆盖）。
+  - 改既有：把「add / 全屏 / close hover 统一 fill-hover」规则里的 `.preview-tab-close:hover` 选择器摘掉（只留 `＋` 与全屏），否则页签关闭的 hover 底去不掉。
+- `packages/webview/src/components/ToastStack.tsx`、`ConfirmationDialog.tsx`：关闭图标按宿主选择 —— 桌面端用 `ConversationCloseIcon`（= pane 头部关闭那颗，Figma 关闭 13440:12465），其余宿主保持 `CloseIcon`（`isDesktopHost()`，见 `utils/platform.ts`）。
+
+### 实测（`desktop-full` + 临时用例 `tmp-panels-0916`，1440×900 @DPR2，浅/深，0 pageerror）
+
+- 圆角：pane 头部关闭 24×24 `4px → 8px`；toast 关闭 20×20 `4px → 8px`；确认弹层关闭 20×20 `4px → 8px`；面板页签关闭 16×16 `3px → 0`。
+- 图标（`path d` 长度可判定）：toast / 确认弹层 `143（16×16 · viewBox 17 17）→ 524（24×24 · viewBox 24 24）`，与 pane 头部关闭同值；**墨迹实测 8.0px → 9.0px**，与 pane 头部关闭的 9.0px 一致（同一官方矢量、同一实际字号）。
+- 页签关闭：hover 底 浅 `#EEF0F3` / 深 8% 白 → **透明**；hover 仍只做图标变色（浅 `#565A60 → #1F2329`、深 `#9A9EA5 → #FFFFFF`）。像素差异：深色 hover 裁切 **914 px（17.63%）**（底色整块消失）、浅色仅 **7 px（0.14%）**（浅色下 `#EEF0F3` 与 tab 底几乎同色，去掉后几乎看不出——如实记录）；静止态 0 px。
+- hover 态像素差异（40×40 CSS 裁切）：pane 头部 257 / 258（3.32% / 3.33%，只四角弧）、toast 359 / 363（5.61% / 5.67%）、确认弹层 309 / 328（4.83% / 5.12%）；静止态 toast / 确认弹层 74~101 px（就是 × 形变化）。
+- **几何零变化（逐值复核）**：toast 整条 `452×46`、确认弹窗 `589×226`、pane 头部行 `589×44`、头部按钮组 `52×24`、四个按钮盒 `24 / 20 / 20 / 16` —— 前后一致。
+- **宿主分叉实测**：在 desktop 用例里把 `window.waveHostType` 改成 `"ide"` 再发一条 toast，重渲染后所有 toast 关闭的 `path d` 从 524 变回 **143** → 分叉是活的，真实 IDE / VS Code 宿主保持原 `CloseIcon`（mock 的 `ide-chat` 用例本身不渲染 toast / 弹层，故用同页切标记取证，非 IDE 截图）。
+
+### 取证方式
+
+- **改前是真实构建**：把本轮三个改动文件备份到 `/tmp/0916close-backup/`、`git checkout --` 回 HEAD 采 before，再原样还原（md5 逐值校验 `de940bfd…` / `5b270f99…` / `269a0463…`）采 after —— 图标形变化与 hover 底消失都是真截图对比（上一轮只动圆角时用的是同面注入法，本轮不适用）。
+- 坑 ①：页签关闭「×」默认 `visibility:hidden`，必须先 hover 所在 tab 才显形；它的「静止态」要把指针停在 tab 左缘（仍算 tab hover、但不在 × 上），否则截到空白。
+- 坑 ②：mock 的 toast 浮层会压住 pane 头部关闭（`elementFromPoint` 命中 `.toast`），取该目标前先移除 toast。
+- 坑 ③：20 的按钮盒 + 24 的 svg 会被 flex 压成 20×24（字形等比缩到 0.83），必须 `flex-shrink: 0` 才能与 pane 头部逐像素同尺寸。
+
+### 残留（未授权，供你点名）
+
+- toast / 确认弹层关闭按钮盒仍 20×20（pane 头部是 24×24）→ 触发语 **「关闭按钮盒也统一 24」**。
+- 页签关闭 hover 仍带 `opacity 0.6 → 1`（明度变化，非颜色）→ 触发语 **「页签关闭的 hover 只留变色」**。
+- 本轮按 desktop 作用域处理，IDE / VS Code 宿主的 toast・弹层关闭仍用旧 `CloseIcon` → 触发语 **「关闭图标全宿主统一」**。
+- toast 右侧关闭在顶部栈的 hover 底是 `color-mix(currentColor 14%)`，与圆角 8px 不属同一套 token → 触发语 **「toast 关闭 hover 底接 fill-hover」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-close-buttons-0916.mjs`（`PHASE=before|after`，computed 读数含图标 viewBox / `path d` 长度 / 墨迹依赖的 rect + 裁切图）、`CC02/build-close-buttons-0916.py`（差异像素 + 墨迹 bbox + 6× 放大 + 差异图 + 本页）、`/tmp/gate-check-0916.mjs`（宿主分叉验证）。
+- 证据目录 `CC02/走查/0916-关闭按钮族/`：`measure-{before,after}.json`、`{key}-{theme}-{rest,hover}-{before,after}.png`、`zoom-*`、`diffmap-*`、`gate-check-desktop-vs-ide.png`，自测页 `0916-关闭按钮族-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/wjwh6vzelp ）。
+- `pnpm -F wave-webview type-check` 通过（本轮含 2 个 TSX 改动）。
+
+---
+
+## 0916 评论（设置页左导航「返回」：1 级字色 + 图标同 1 级 + 字重 500）（已随本批推送）
+
+设计师（点 `#root > div:nth-of-type(1) > div > div > aside > button.settings-back > span`）：
+「这里用1级字色且加粗」；同日追加两条：**「返回图标也提亮」**、**「返回字重改回 500」**。
+
+### 实现
+
+- `packages/webview/src/styles/host-desktop.css` —— 「设置栏返回行」块后追加：
+
+```css
+/* 设计师 0916 评论（点左导航 `span`「返回」）「这里用1级字色且加粗」 */
+[data-host="desktop"] .settings-back {
+  color: var(--vscode-foreground);
+  font-weight: var(--cc-font-weight-medium, 500);
+}
+/* 同日「返回图标也提亮」：SVG 随文案取同一 1 级色 */
+[data-host="desktop"] .settings-back svg,
+[data-host="desktop"][data-theme="dark"] .settings-back svg {
+  color: var(--vscode-foreground);
+}
+```
+
+- 同时把第三十八轮「设置页图标统一 `#565A60` / `#9A9EA5`」组里的 `.settings-back svg` **摘出单列**
+  （删掉那条选择器，只留 `.settings-nav-item svg`），避免同特异性规则互相压制。
+
+### 取值口径
+
+- **文字色**从 base 的「次要说明」档（`SettingsPage.css:108` 取 `--vscode-descriptionForeground`：
+  浅 #606060 / 深 #A0A5A8）提到 **1 级文字色**。取 `--vscode-foreground`，因为设置左导航的
+  1 级参照物 `.settings-nav-item`（`SettingsPage.css:186`）同取该变量：浅色档该变量由宿主注入 =
+  #202020，深色档由 dark 块映射（`:root[data-host="desktop"][data-theme="dark"]`
+  `--vscode-foreground → --cc-text-primary` = #E5E7E8）给出 ⇒ 两档都与同栏导航项默认态**逐值一致**，
+  且随宿主主题自适应（不写死字面量）。
+- **图标色**原按第三十八轮图标规范留灰档（浅 #565A60 / 深 #9A9EA5），同日按「返回图标也提亮」改取
+  同一个 `var(--vscode-foreground)`（= 与文案同色；浅 #202020 / 深 #E5E7E8）。
+- **字重**先按「加粗」做到 600（`--cc-font-weight-semibold`），同日按「返回字重改回 500」回落 500
+  （`--cc-font-weight-medium`）。
+- 作用域限 `[data-host="desktop"]`；实测宿主切 `ide` 后浅 #606060 / 深 #9D9D9D、字重 500 不变
+  ⇒ IDE / VS Code 观感零回归。
+
+### 实测（改前 → 改后，1440×900 DPR2）
+
+| 项                     | 改前                                           | 改后                                                                                                                           |
+| ---------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 文案色（浅 / 深）      | #606060 / #A0A5A8，字重 500                    | **#202020 / #E5E7E8**，字重 **500**（v1 曾按「加粗」做 600，同日按她「改回 500」回落）                                         |
+| 同栏导航项（1 级参照） | #202020 / #E5E7E8                              | 同左（未受影响）                                                                                                               |
+| 图标                   | 浅 #565A60 / 深 #9A9EA5 · 16×16 · `path d` 442 | **浅 #202020 / 深 #E5E7E8**（同日按「图标也提亮」，几何未动）                                                                  |
+| 按钮盒 / 圆角 / 字号   | 215×30 · r8 · 14px                             | 同左                                                                                                                           |
+| 文案盒                 | 28×16（单行）                                  | 28×16（单行，无位移、无换行）                                                                                                  |
+| hover 底色             | 浅 #EEF0F3 / 深 rgba(255,255,255,.08)          | 同左                                                                                                                           |
+| 像素差异               | —                                              | 4 场景 1.313~1.315%（1077~1079 设备像素），包围盒 `[45,24,142,51]` **覆盖图标区 + 文字区**（v1 只改文案时是 `[89,24,142,52]`） |
+| 控制台                 | 0 pageerror                                    | 0 pageerror                                                                                                                    |
+
+副作用（已报备）：① hover 的文字色变化消失 —— base hover 取 `--vscode-foreground`（浅 #202020 / 深 #E5E7E8）
+与新静止色同值，悬停只剩底色变化；② 返回图标现在比同栏 7 个导航项图标亮/深一档（那些仍是灰档）。
+
+### 同日追加两条（她点名）
+
+- **「返回图标也提亮」** → 左箭头 SVG 从第三十八轮图标组（#565A60 / #9A9EA5）**摘出单列**，
+  改取 `var(--vscode-foreground)`（= 与文案同色，浅 #202020 / 深 #E5E7E8）；第三十八轮那组
+  现在只剩 `.settings-nav-item svg`（7 个导航项图标仍留灰档）。
+- **「返回字重改回 500」** → 600 → 500（`--cc-font-weight-medium`）。
+- 追加后实测（原始基线 → v1 → v2）：文案 浅 #606060/500 → #202020/600 → **#202020/500**、
+  深 #A0A5A8/500 → #E5E7E8/600 → **#E5E7E8/500**；图标 浅 #565A60 → #565A60 → **#202020**、
+  深 #9A9EA5 → #9A9EA5 → **#E5E7E8**。像素差异（原始 vs 本版）1.313~1.315%，
+  包围盒起点 `x=45`（设备像素）**覆盖箭头图标区**（v1 时是 `x=89` 纯文字区）⇒ 图标确随文案提亮；
+  图标几何 16×16 / `path d` 442 未变，按钮盒 215×30 r8、卡片 712×176、导航项 8 个、
+  导航项文案与图标、hover 底色全部零变动，0 pageerror。
+
+### 残留（未授权，供你点名）
+
+- 7 个导航项图标仍是灰档 → 触发语 **「导航项图标也一起提亮」**。
+- hover 文字反差消失 → 触发语 **「hover 文字再提亮一档」**（需契约新增比 1 级更亮的悬停档）。
+- 浅色取的是宿主值 #202020（与同栏导航项一致），与 token `--cc-text-primary` 差 1 通道 →
+  触发语 **「浅色用 token #1F2329」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-settingsback-color-0916.mjs`（现状取证，含同页 1 级参照物采集）、
+  `/tmp/pw-0916/sb2.mjs`（改前注入对照 + 改后实测，浅/深 × 静止/hover）、
+  `/tmp/pw-0916/sb-gate.mjs`（宿主 `ide` 分叉验证）、`CC02/build-settingsback-0916.py`（差异像素 + 墨迹 bbox + 6× 放大）、
+  `CC02/build-settingsback-page-0916.py`（本页）。
+- 证据目录 `CC02/走查/0916-返回按钮字色/`：`measure.json`、`measure-rest.json`、`pixel-report.json`（v1 对基线）、
+  `measure-v2.json`、`pixel-report-v2.json`、`trio-*.png`（三版竖排：原始 / v1 / v2）、
+  `back-{light,dark}-{rest,hover}-{before,after}.png`、`v2-{light,dark}-{rest,hover}-{before,after}.png`、
+  `sbs-*`、`zoom-*`、`diffmap-*`，
+  自测页 `0916-返回按钮字色-修复自测.html`（v2，含三版对照；Artifact https://codechat.codewave.163.com/code/artifact/h04fk95l2b ）。
+
+---
+
+## 0916 评论（输入区发送按钮禁用态：浅色 hover 不再变色）（已随本批推送）
+
+设计师（点 `.input-buttons-row` 内 `button.send-button.ai-send-btn`）：
+「浅色模式发送按钮禁用态，hover 不应该变色」。
+
+### 根因
+
+base `MessageInput.css:169` 有一条 `.ai-send-btn:disabled:hover { background: var(--vscode-button-background) }`
+—— 与桌面端禁用态规则（`host-desktop.css` `[data-host="desktop"] .ai-send-btn:disabled`）**同特异性 (0,3,0) 但后加载**，
+于是浅色下 hover 把禁用底 `--cc-fill #F0F2F5` 换成主按钮色 `#1F2329`（实测复现：`#F0F2F5 → #1F2329`）。
+深色档因为 `[data-host="desktop"][data-theme="dark"] .ai-send-btn:disabled` 特异性更高（0,4,0），本来就不受影响。
+
+### 实现
+
+- `packages/webview/src/styles/host-desktop.css` —— 把 `:disabled:hover` 并进桌面端禁用态那条（升到 0,4,0），
+  改一个选择器、不动任何值：
+
+```css
+[data-host="desktop"] .ai-send-btn:disabled,
+[data-host="desktop"] .ai-send-btn:disabled:hover {
+  background: var(--cc-fill, #f0f2f5);
+  color: var(--cc-text-disabled, #bec1c6);
+  opacity: 1;
+}
+```
+
+- 深色档保持原样：`[data-host="desktop"][data-theme="dark"] .ai-send-btn:disabled`（同为 0,4,0、在本组之后）
+  仍后出现胜出 ⇒ 深色禁用态hover 保持 `rgb(255 255 255 / 8%)`。
+
+### 实测（1440×900 DPR2，浅/深 × 禁用/激活 × 静止/hover）
+
+| 场景                  | 改前                                | 改后                                                |
+| --------------------- | ----------------------------------- | --------------------------------------------------- |
+| 浅 · 禁用静止         | #F0F2F5                             | #F0F2F5（0 像素差异）                               |
+| 浅 · 禁用 hover       | **#1F2329**（主按钮色，看着像可点） | **#F0F2F5**（同静止；改动 3848 设备像素 / 35.577%） |
+| 浅 · 激活静止 / hover | #1F2329 / #34383F                   | 同左（0 像素差异，未误伤）                          |
+| 深 · 禁用静止 / hover | rgba(255,255,255,.08) / 同          | 同左（本轮无变化）                                  |
+| 深 · 激活静止 / hover | #E0E3E5 / #F0F2F3                   | 同左                                                |
+
+几何零变动：按钮盒 32×32 · r8、`input-buttons-row` 566.5×32；行内其余 3 颗按钮
+（添加 / 快捷指令 / 权限模式「修改前询问」）背景与文字色前后逐值相同；0 pageerror。
+
+### 残留（未授权，供你点名）
+
+- 同类「禁用态被 base hover 点亮」的写法可能还有别的控件 → 触发语 **「其余禁用按钮也查一遍 hover（浅色）」**。
+- 禁用态现在是 `opacity: 1` + 底色/文字双灰（codechat composer 规范）；若想改回透明度口径 →
+  触发语 **「禁用态用底色区分改为 opacity」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-sendbtn-disabled-0916.mjs`（现状，含行内结构与四颗按钮读数）、
+  `/tmp/pw-0916/send2.mjs`（前后对照 + 激活态对照）、`CC02/build-sendbtn-0916.py`（差异像素 + 对照图 + 本页）。
+- 证据目录 `CC02/走查/0916-发送按钮禁用态/`：`measure.json`、`measure-v.json`、`pixel-v.json`、
+  `v-{light,dark}-{disabled,enabled}-{rest,hover}-{before,after}.png`、`v-row-*`、`sbs-*`，
+  自测页 `0916-发送按钮禁用态-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/lmvnzp6zwp ）。
+- 取证注意：本轮「改前」用同面注入复现 base 规则（单属性变化适用）；深色档的注入会被 `--cc-fill` 深色值污染，
+  深色基线取**未注入那次真实运行**的读数（静止与 hover 同为 8% 白）。
+
+## 0916 评论（所有图标 hover 时提亮：浅 1 级 #1F2329 / 深白 #FFFFFF）（已随本批推送）
+
+**她的评论**（点面板页签右侧 `button.preview-pane-button`）：
+「所有的 icon 能不能像这里这样 hover 的时候颜色会提亮」。
+范围她同日拍板：**「排除主按钮 / 危险 / 语义色」**——即只补「hover 只变底、图标色不动」的
+ghost 图标与「图标 + 文字」控件。
+
+**参考语言**（同文件 `.preview-pane-button` 第 1691 / 1698 行）：常态灰 → hover **1 级文字色**，
+浅 `#565A60 → #1F2329`、深 `#9A9EA5 → #FFFFFF`。hover 底色仍由原有 `--cc-fill-hover` 规则提供，
+本条只补文字 / 图标色。
+
+**规则**（`host-desktop.css` 末尾新增，浅 / 深各两条共 4 组选择器）：每组都写两份 `:is(...)`——
+`X:hover`（改按钮自身文字色）与 `X:hover :is(svg, .codicon)`（图标自带颜色的场景，如
+`.desktop-session-group-header .codicon`）。15 个选择器：
+`.desktop-sidebar-more-btn:not(.is-active)`、`.desktop-sidebar-new-chat`、`.desktop-session-more-btn`、
+`.desktop-session-group-header`、`.account-card-more-btn`、`.account-card-collapse-btn`、
+`.header-button:not(.active)`、`.desktop-pane-close`、`.write-preview-open`、`.toolbar-icon-button`、
+`.desktop-panel-tabs-add`、`.message-action-btn`、`.task-list-chevron`、`.queued-chevron`、
+`.settings-nav-item:not(.is-active)`。
+
+> 注：第三十八轮图标规范原写「normal 与 hover 图标色均 #565A60…图标色保持不变」，
+> 本条即对该句的修订——规范后续按「hover 提亮到 1 级」理解（待 codex 一并回写 skill）。
+
+### 实测（CDP `CSS.forcePseudoState({forcedPseudoClasses:['hover']})`，1440×900 DPR2，6 状态 × 浅/深）
+
+24 个 icon 签名盘点，改前 → 改后（「变了但未命中目标值」清单为**空**）：
+
+| 控件                                 | 区域   | 浅色                  | 深色                  |
+| ------------------------------------ | ------ | --------------------- | --------------------- |
+| `.desktop-sidebar-more-btn`          | 侧栏   | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.desktop-sidebar-new-chat`          | 侧栏   | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.desktop-session-more-btn`          | 侧栏   | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.desktop-session-group-header`      | 侧栏   | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.account-card-collapse-btn`         | 侧栏   | #606060 → **#1F2329** | #A0A5A8 → **#FFFFFF** |
+| `.header-button.header-panel-toggle` | 对话头 | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.desktop-pane-close`                | 对话头 | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.write-preview-open`                | 对话头 | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.toolbar-icon-button`               | 工具行 | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.message-action-btn`                | 消息行 | #606060 → **#1F2329** | #CCCCCC → **#FFFFFF** |
+| `.settings-nav-item`（未选中）       | 设置页 | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+
+### 排除（改前改后同值）
+
+| 类别                             | 控件                                                                                                                                                                          | 浅                | 深      |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------- |
+| 实底主按钮                       | `.settings-save-btn.settings-plugin-new…`                                                                                                                                     | #FFFFFF           | #191C1E |
+| 危险 / 删除                      | `.desktop-session-menu-item.is-danger`                                                                                                                                        | #D92D20           | #F4655C |
+| 发送按钮禁用态（同批已治）       | `.send-button.ai-send-btn:disabled`                                                                                                                                           | #BEC1C6           | #FFFFFF |
+| 选中态                           | `.settings-nav-item.is-active`                                                                                                                                                | #202020           | #9A9EA5 |
+| 关闭族（另一窗口本轮已改）       | `.toast-close`                                                                                                                                                                | #202020           | #E5E7E8 |
+| 设置「返回」（另一窗口本轮已改） | `.settings-back`                                                                                                                                                              | #202020           | #E5E7E8 |
+| 常态已是 1 级（无需改）          | `.desktop-host-trigger`、`.desktop-workdir-trigger`、`.confirmation-close-btn`、`.desktop-session-menu-item`、`.permission-mode-select.mode-default`、`.account-api-info-btn` | #202020 / #202020 | #E5E7E8 |
+
+只改颜色不动几何：涉及控件的盒 / 字号 / 圆角 / hover 底色盘点半前盘后逐值相同。
+
+### 未覆盖 / 待点名
+
+- `.desktop-panel-tabs-add`、`.task-list-chevron`、`.queued-chevron`、`.preview-tab-close` 已在规则清单内，
+  但 `desktop-full` 用例里**未渲染**（点检 存在=0），无活体证据；触发语「面板页签＋ / 任务卡 chevron 也要提亮」。
+- 输入区拖动柄是无 class 的 `span[role=button]`、色值写在**行内**（`--vscode-descriptionForeground`），
+  CSS 覆盖需 `!important` 或改 TSX，本轮未动；触发语「工具行拖动柄也提亮」。
+- `.message-action-btn` 在用例里**未布局**（盒 0×0，`visible: false`，按需挂载但容器不占位），
+  只有计算值证据（浅 #606060 → #1F2329 / 深 #CCCCCC → #FFFFFF），没有裁剪图。
+
+### 可裁剪对照（6 个可见控件，浅 / 深 × 改前 / 改后）
+
+同页回退：注入旧值 `!important` 重建「改前」，鼠标与强制 `:hover` 都保持在位，只改颜色。
+像素差异落在图标笔画内（悬停底色前后同值）：
+
+| 控件              | 浅色差值 | 深色差值 |
+| ----------------- | -------- | -------- |
+| 侧栏「新对话」    | 0.48%    | 0.48%    |
+| 侧栏 more（活动） | 3.18%    | 3.18%    |
+| 会话分组标题      | 1.35%    | 1.35%    |
+| 会话行 more       | 0.38%    | 0.38%    |
+| 对话头 面板切换   | 3.54%    | 3.54%    |
+| pane 关闭         | 1.24%    | 1.24%    |
+
+对照图 `CC02/走查/0916-icon-hover/0916-icon-hover-对照.png`（行 = 控件，列 = 浅前 / 浅后 / 深前 / 深后）。
+
+### 验证脚本与证据
+
+- 盘点脚本：`CC02/probe-icon-hover-inventory-0916-v3.mjs`（v1/v2 用鼠标坐标 hover 会漏 0×0 盒、
+  被 toast 遮挡与离屏元素，≤56px 宽度过滤会漏宽导航项，v3 改用 CDP 强制伪类）。
+- 裁剪脚本：`CC02/probe-icon-hover-crops-0916.mjs` + 拼图 `CC02/build-icon-hover-sheet-0916.py`
+  （运行需拷到 `/tmp/pw-0916/`，`playwright-core` 装在那里）。运行 / 取证三坑（已写进脚本注释）：
+  ① CDP `DOM.getDocument` 必须 `depth: -1`，`depth: 1` 时深层节点
+  未推给客户端、`forcePseudoState` **静默不生效**；② Playwright `addStyleTag` **没有 `id` 选项**，
+  自建 `<style id>` 才能摘掉回退样式（否则旧值一直 `!important` 挂着）；③ 首屏 toast 是整层遮罩，
+  会盖住对话头按钮与 pane 关闭按钮（`elementFromPoint` 命中 `.toast--top`），取证前先移除。
+- 证据：`CC02/走查/0916-icon-hover/inventory-0916-{before,after}.json`（24 签名 × 6 状态 × 浅/深，
+  `errs: []`）、`inventory-0916-{,v2,v3}.json` 中间版本、`inventory-{light,dark}.png`、
+  `hover-<控件>-{light,dark}-{before,after}.png`、`hover-crops-0916.json`、`hover-diff-0916.json`。
+- 本轮纯 CSS（`host-desktop.css` 末尾 4 条规则 + 注释），无 TS 改动；`errs: []`（0 pageerror）。
+
+---
+
+## 0916 评论（设置页页头 h1：字体绑定审计 + 字重 600 → 500）（已随本批推送）
+
+设计师（点 `main > div > header > h1`「全局设置」）：「这里是否绑定了全局的字体，字重500就好」。
+
+### ① 字体绑定（审计结论，无需改动）
+
+- `.settings-page-header h1`（`SettingsPage.css:258`）规则只写 color / font-size / font-weight / line-height，
+  **自身没有任何 `font-family` 声明** ⇒ 继承 `body`（`globals.css:4` 的 `var(--vscode-font-family)`）。
+- 实测 computed：h1 `-apple-system, "system-ui", sans-serif`、body 同值、`.settings-page` 同值（逐字相同），
+  token 声明原文为 `-apple-system, BlinkMacSystemFont, sans-serif`（浏览器把 `BlinkMacSystemFont` 归一为 `system-ui`）。
+  ⇒ **已绑全局字体**，随宿主字体设置变化。
+
+### ② 字重 600 → 500
+
+- `packages/webview/src/styles/SettingsPage.css`：
+
+```css
+.settings-page-header h1 {
+  color: var(--vscode-foreground);
+  font-size: 20px;
+  font-weight: var(--cc-font-weight-medium, 500); /* 600 → 500 */
+  line-height: 25px;
+}
+```
+
+- 写法与同页 `.settings-section-heading h2` / `.settings-row-copy h3`（上一轮 600 → 400）的 token 化一致；
+  改动落在 base 文件 ⇒ IDE / VS Code 宿主的设置页同样 500（token 未定义时 fallback 也是 500，两宿主同值）。
+- 波及面：所有使用 `.settings-page-header` 的视图统一生效 —— 全局设置 / 个性化 / 项目设置 / 插件市场 /
+  技能 / 子代理 / 钩子 / MCP 服务（实测插件市场页头 h1 由 600 → 500，几何未动）。
+
+### 实测（1440×900 DPR2，浅/深）
+
+| 项                    | 改前                            | 改后                                                                                    |
+| --------------------- | ------------------------------- | --------------------------------------------------------------------------------------- |
+| 页头 h1 字重          | 600                             | **500**                                                                                 |
+| 字号 / 行高           | 20px / 25px                     | 同左                                                                                    |
+| 颜色                  | 浅 #202020 / 深 #E5E7E8（1 级） | 同左                                                                                    |
+| 页头盒 / 文字盒       | 712×25 / 80×23                  | 同左（零位移、不换行）                                                                  |
+| 插件市场页头 h1       | 600 · 313.9×25                  | 500 · 313.9×25                                                                          |
+| 同页 h2 / h3 / 说明 p | 400 / 400 / 400                 | 同左                                                                                    |
+| 像素差异              | —                               | 页头裁切 0.63~0.699%；**整页 0.03%，包围盒只落在标题文字**（CSS `[484,43→563.5,62.5]`） |
+| 控制台                | 0 pageerror                     | 0 pageerror                                                                             |
+
+改后设置页层级 = 分节/行标题 400、说明 400、页头 500（靠字号 20 与字重双档区隔）。
+
+### 残留（未授权，供你点名）
+
+- 页头字号 20px 是否再收一档 → 触发语 **「页头字号也收一档」**。
+- 页头说明 p 仍 400 → 触发语 **「页头说明也 500」**。
+- 面板标题（计划 / 文件 / 差异 / 终端）契约上仍 600（0904 裁定「未点名保持 600」）→ 触发语 **「面板标题也降到 500」**。
+
+### 验证脚本与证据
+
+- 脚本：`/tmp/pw-0916/h1w.mjs`（前后对照：注入 600 复现改前 + 实测改后，含字体族取证与视图切换）、
+  `CC02/build-settingsh1weight-0916.py`（差异像素 + 竖排对照图 + 本页）。
+- 证据目录 `CC02/走查/0916-设置页标题字重/`：`measure.json`、`pixel.json`、`h1-{light,dark}-{global,plugins}-{before,after}.png`、
+  `h1-*-full-*.png`、`sbs-*`，自测页 `0916-设置页标题字重-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/0hhprwwhoz ）。
+
+## 0916 评论（对话头图标按钮：默认色补齐 + hover 底与刷新按钮一致）（已随本批推送）
+
+**她的两条评论**（都在侧栏收起态的对话头左侧）：
+① 点 `button.header-button`（「展开侧边栏」）「深色模式这个图标的默认色不对，现在很亮」；
+② 点 `svg.header-icon`「浅色模式类似图标的背景色不对，检查是否绑定了变量，和刷新按钮一致」。
+
+### ① 默认色：漏在「图标统一灰」清单之外 → 深色 #E5E7E8 过亮
+
+- 第三十八轮「控件图标统一灰」（`host-desktop.css:2427` / `:2440`）只列了 `.header-panel-toggle`，
+  **没有** `.header-collapsed-leading .header-button`（侧栏收起态的「展开侧边栏」按钮，24×24 @1793），
+  它因此回落 base `--vscode-foreground`：浅 **#202020**（比同排图标灰深一档）、
+  深 **#E5E7E8**（实测相对亮度 0.796；同排面板开关 #9A9EA5 仅 0.34 —— 就是她说的「很亮」）。
+- 修法：整个 `.header-button` 族统一到第三十八轮图标灰 —— 浅 **#565A60** / 深 **#9A9EA5**
+  （= 同排 `.desktop-pane-close`、刷新按钮的静止色）。`.header-button.active`
+  （base 取 `--vscode-foreground`，:228）特异性更高，不受影响。
+
+### ② hover 底：取的是 VS Code 工具栏 token，不是桌面 fill 角色
+
+- `.header-button:hover`（`ChatHeader.css:78`）与 `.desktop-pane-close:hover`（`DesktopApp.css:1436`）
+  取 `--vscode-toolbar-hoverBackground` → 浅 `rgba(0,0,0,.12)`（发灰）、
+  深 `rgba(90,93,94,.31)`（一颗很亮的药丸，相对亮度远高于本族其余控件）。
+- 刷新按钮（`.preview-pane-button:hover` @1697-1710）用 浅 **#EEF0F3**（`--cc-fill-hover`）/ 深 **8% 白**。
+- 修法：按刷新按钮逐值对齐 —— 浅色档改成**绑定 `--cc-fill-hover`**（回答她「检查是否绑定了变量」）；
+  深色档沿用本族既有口径 8% 白。
+
+### 实测（1440×900 DPR2；同页注入回退值重建「改前」，真实鼠标 + CDP 强制 `:hover`）
+
+| 控件                       | 状态          | 改前                                 | 改后                             |
+| -------------------------- | ------------- | ------------------------------------ | -------------------------------- |
+| 收起态「展开侧边栏」       | 浅 · 静止图标 | #202020                              | **#565A60**                      |
+|                            | 深 · 静止图标 | **#E5E7E8**（亮度 0.796）            | **#9A9EA5**（0.34）              |
+|                            | 浅 · hover 底 | rgba(0,0,0,.12)                      | **#EEF0F3**（`--cc-fill-hover`） |
+|                            | 深 · hover 底 | rgba(90,93,94,.31)                   | **rgba(255,255,255,.08)**        |
+| 面板开关（同族）           | 静止图标      | #565A60 / #9A9EA5                    | 同左（未受牵连）                 |
+|                            | hover 底      | rgba(0,0,0,.12) / rgba(90,93,94,.31) | #EEF0F3 / 8% 白（同族对齐）      |
+| hover 图标色（上一轮已定） | 浅 / 深       | #1F2329 / #FFFFFF                    | 同左（未动）                     |
+| 几何                       | —             | 24×24 @12,10 / @1403,10              | 同左（零位移、无换行）           |
+| 控制台                     | —             | 0 pageerror                          | 0 pageerror                      |
+
+像素差异（同页回退对照，裁剪 56×56 设备像素）：浅静止 **3.54%** / 浅 hover **14.88%** /
+深静止 **3.54%** / 深 hover **14.76%**，差异全部落在这颗图标的笔画与按钮底上。
+
+### 未覆盖 / 待点名
+
+- `.desktop-pane-close` 与刷新按钮在默认用例里**未渲染**（单 pane 无「关闭分屏」；右侧
+  `.header-panel-toggle` 被原型预览工具条遮住、`elementFromPoint` 命中工具条），
+  两者本轮的值取自 CSS 源（`DesktopApp.css:1436` / `host-desktop.css:1697-1710`）并以 computed 复核；
+  触发语「多分屏再验一次 pane 关闭」。
+- `.header-button.active` 仍是 base 的 `--vscode-toolbar-activeBackground`（VS Code 蓝底），
+  用例中未见 `.active`，本轮未动；触发语「面板开关选中的底也换中性色」。
+- 深色 hover 底没接 token（`--cc-fill-hover` 深色值 = #303436 不透明灰，与本族既有「8% 白」口径不同）；
+  触发语「深色 hover 底也统一走 token」。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-header-icon-fix-0916.mjs`（同页回退对照 + **可命中实例选择**：多个同名按钮时用
+  `elementFromPoint` 挑出真正可见的那个，否则截图会落到盖在它上面的原型预览工具条上）、
+  `CC02/build-header-icon-fix-0916.py`（对照表）。
+- 证据目录 `CC02/走查/0916-头部图标/`：`header-fix-0916.json`、
+  `fix-收起态-展开侧边栏-{light,dark}-{before,after}-{rest,hover}.png`、`header-fix-diff-0916.json`、
+  对照图 `0916-头部图标-修正对照.png`；另 `header-icons-0916.json`、`header-dom-{light,dark}.html`
+  （元素定位）、`header-open-dom-{light,dark}.html`。
+- 本轮纯 CSS（`host-desktop.css` 末尾新增 3 组规则 + 注释），无 TS 改动。
+
+## 0916 评论③（侧栏品牌行图标按钮 hover 底色：漏改补齐）（已随本批推送）
+
+**她的评论**：点 `svg.header-icon` @
+`#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div > span:nth-of-type(2) > button > svg`
+——「这里的是不是漏改了」。
+
+### 先把路径解析成元素（避免猜）
+
+在 8899 实测把该路径逐段解析（`CC02/probe-resolve-path-0916.mjs`）：命中
+`.desktop-sidebar-header > .desktop-sidebar-actions > span.tooltip-container:nth-of-type(2) > button.desktop-sidebar-more-btn`
+= **侧栏品牌行的「收起侧边栏」按钮**（span#1 是「活动」，两者同 class；她的 svg 带
+`header-icon`，所以是第 2 个）。全页 `svg.header-icon` 的按钮只有 3 个：活动/收起侧边栏、
+账户卡「收起用量」、对话头面板开关。
+
+### 结论：**是漏改**，漏的是 hover 底色（不是颜色、不是尺寸）
+
+上一轮已把 `.header-button:hover` / `.desktop-pane-close:hover` 的底色从
+`--vscode-toolbar-hoverBackground` 换到桌面 fill 角色，但**同排 `.desktop-sidebar-more-btn:hover`
+没跟着换**（`DesktopApp.css:146` 仍是工具栏 token）。逐族核对：
+
+| 同族控件                                             | hover 底（浅 / 深）                           | 状态              |
+| ---------------------------------------------------- | --------------------------------------------- | ----------------- |
+| `.desktop-sidebar-new-chat`（764/767）               | #EEF0F3 / 8% 白                               | 0916 已换         |
+| `.desktop-session-group-header`（700/704）           | #EEF0F3 / 8% 白                               | 0916 已换         |
+| `.account-card-more-btn`（801/804）                  | #EEF0F3 / 8% 白                               | 0916 已换         |
+| `.desktop-session-more-btn`（1671/1674）             | #EEF0F3 / 8% 白                               | 0916 已换         |
+| `.account-card-collapse-btn`                         | #EEF0F3 / `--cc-fill-hover` 深 #303436        | 已换              |
+| `.header-button` / `.desktop-pane-close`             | #EEF0F3 / 8% 白                               | 上一轮已换        |
+| **`.desktop-sidebar-more-btn`（活动 / 收起侧边栏）** | 改前 `rgba(0,0,0,.12)` / `rgba(90,93,94,.31)` | **漏 → 本轮补齐** |
+
+修法：把 `.desktop-sidebar-more-btn:not(.is-active):hover` 加入上一轮那两条规则
+（浅 `var(--cc-fill-hover, #eef0f3)` / 深 `rgba(255,255,255,.08)`）。
+`:not(.is-active)` 是为了保留「活动」选中态的品牌红底（`#FFEBE8` / 深色 18% 品牌红，
+`DesktopApp.css:153`、`:160`）。
+
+### 验证（`CC02/probe-verify-sidebar-hover-0916.mjs`）
+
+- **hover 底**：活动 / 收起侧边栏 浅 `rgb(238,240,243)` / 深 `rgba(255,255,255,.08)`
+  —— 与同排「新对话」「面板开关」**逐值相同**（= 刷新按钮口径）；改前实测
+  `rgba(0,0,0,.12)` / `rgba(90,93,94,.31)`。
+- **选中态不受影响**：「活动」`is-active` 浅 `#FFEBE8`（改前改后一致）、深
+  `color(srgb .757 .161 .180 / .18)`，hover 也保持品牌色（点击实测）。
+- **静止态零变化**：带键全量 DOM 快照（tag#id.class@index + 颜色 + 圆角 + 尺寸）对比
+  「注入旧 token 回退样式 vs 不注入」→ 浅 0 / 深 0 处真实差异（深色那 3 处是
+  `permission-mode-select` 过渡动画中途的 1/255 色差，与本轮无关）；基线连拍噪声 0。
+- **几何与图标色不变**：两组按钮均 24×24，x/y 未动；hover 图标色仍 #1F2329 / #FFFFFF。
+- **0 pageerror**；对照图 `CC02/走查/0916-头部图标/0916-侧栏图标-hover底色-对照.png`
+  （浅/深各「改前 / 改后」，4× 放大；裁剪区域像素差异浅 6.98% / 深 6.67%，全在按钮底色上）。
+- 证据 JSON：`header-fix-3-0916.json`（含选中态）、`header-icon-buttons-{light,dark}.json`
+  （全页 `svg.header-icon` 按钮枚举）。
+
+### 残留（同族但本轮未动，等她点名）
+
+`--vscode-toolbar-hoverBackground` 仍留在：`.toolbar-icon-button:hover`（工具行，
+`MessageInput.css:371`）、`.send-button:hover` / `.abort-button:hover`（128）、
+`.permission-mode-select:hover`（246）、`.btw-panel-close:hover`、`.queued-action-button:hover`、
+`.confirmation-close-btn:hover`、`.toast-close:hover`、`.desktop-panel-empty-item:hover`
+（`DesktopApp.css:1571`）、`.message-action-btn`（`Message.css:453`）等 —— 各自属不同面
+（工具行 / 消息流 / 弹层 / 空态），未在本族内。触发语：「工具行图标按钮 hover 底也统一」/
+「消息操作按钮 hover 底也统一」/「弹层关闭 hover 底也统一」。
+
+> ⚠️ 平行窗口提示：`docs/desktop-density-restore.md` 的工作区副本在另一窗口每次提交时会被
+> lint-staged 的「未暂存补丁还原」写回旧快照（已两次把已推送小节改回「（工作区未提交）」、
+> 表格退回未格式化版本）。提交本文件时必须**按 HEAD 内容 + 本人新增段构造 blob**（隔离索引 /
+> `git hash-object`），不要整文件 `git add`，否则会连带把别窗口已推送的记录回退。
+
+## 0916 评论：上下文用量环的轨道补成**整圈**（半圈轨道 → 空圆环 / 100% 沾满）+ 无用量两态整块隐藏（已随本批推送）
+
+**她的评论**（点 `svg.compress-context-ring`）：「这里是真实的进度条吗？」→ 我答：是宿主上报的
+**上下文窗口已用百分比**（非装饰、非 mock；8899 上显示的数字是各 mock 用例的固定值）→ 她接着指出
+**「100% 时应该是进度沾满，而不是半圈轨道」**。
+
+### 结论：环本体是真的，但轨道画错了
+
+- **数据是真的**：宿主（CLI 会话）上报 `contextUsagePercent` → `contextUsage` 通知按 pane 路由
+  （`ChatApp.tsx:1460`）→ `MessageInput.tsx` 渲染。纯展示：非按钮、不在 Tab 序、点击无行为；
+  hover 气泡与 `aria-label` 同为「上下文已使用 N%」。
+- **规格本就要求整圈**：`docs/specs/desktop/desktop-account-and-settings.md:77`（场景 4）写「宿主尚未
+  推送用量信息…**显示空圆环**（不显示百分比数字）」——而实现里轨道是一条**左半环 path**
+  （`d="M 20 12 A 8 8 0 0 0 4 12"`，实画长度 25.14 = 半周长），「空」的时候只有半圈，与「空圆环」不符。
+- **可量化偏差**：进度弧按**整周长**算 dash（`2πr × pct%`），轨道却只有半周长 → pct > 50% 弧线就长到
+  没有轨道的位置（64%：弧 32.17 vs 轨道 25.14，超出 7.03；100%：50.27 vs 25.14，超出 25.13 = 整整半圈）。
+
+### 改动（`components/MessageInput.tsx`，纯结构、无样式值改动）
+
+1. 轨道 `path`（左半环）→ **`<circle cx=12 cy=12 r=8>`**（整圈）：`class` 不变，故所有既有
+   样式（含 host-desktop 的 16×16 / 线宽 2.6 / 浅 `#D4D7DE` / 深 12% 白）原样生效，**无需改 CSS**。
+2. 顺带修一处相邻缺陷：0% / 用量未知时**不渲染进度弧** —— 原先 `stroke-dasharray: 0 C` 配合
+   `stroke-linecap: round` 会在起点渲出一个圆点（实测 0% 时环上有一颗深色点），与「空圆环」不符。
+3. **0% 时整颗指示器都不渲染**（她先写「为0时不渲染也不显示百分比」，我按「只隐藏弧与数字、
+   保留空环」实现后她更正：「我的意思是为0时整个都不显示」）→ 渲染闸门由
+   `!workdirSelector && showContextUsage` 扩为 **`… && contextUsagePct !== 0`**，
+   环、数字、气泡、`aria-label` 一并消失（元素从工具栏移除，不占位）。
+4. **后续同轮追加裁决：用量未知（`undefined`）也整块隐藏**（见下节）→ 闸门最终为
+   **`!workdirSelector && showContextUsage && !!contextUsagePct`**（0 与 undefined 都是假值，
+   一并挡掉；`NaN` 也不会渲染）。内层「弧 / 数字」的条件与 Tooltip 的 `disabled` 随之删除——
+   走到渲染分支时百分比必然已知且非 0，`aria-label` 也必然非空。
+
+### 追加：用量未知（宿主未推送）也整块隐藏（她 0916 追加裁决）
+
+她对着工具栏的**空圆环**（`span.compress-context-button`）问「这里是进度为0的情况吗，这里是不是还渲染出来了」
+——实测那**不是 0%**，而是「宿主尚未推送用量」态：三个推了 `contextUsage` 的 mock 用例是
+38%（队列）/ 52%（对话流全样式）/ 64%（desktop-full），**插件市场用例（`desktop-plugins`）与 IDE 用例
+未推**，故落到 `contextUsage === undefined` 分支，按当时的实现渲染**空圆环**（宽 24px、无数字、无气泡、
+`aria-label=""`，浅色轨道 `#D4D7DE` / 深 `rgba(255,255,255,.12)`）。我给出两态对照后，她选
+**「未知时也整块隐藏」**。
+
+- 顺带修掉一个 a11y 小瑕疵：旧实现这一态输出 **`aria-label=""`**（空字符串，语义为空）；
+  现在该分支已不存在，`aria-label` 恒为「上下文已使用 N%」。
+
+### ✅ 已确认（原「合并前需开发确认（MERGE-TIME REVIEW）」）：上下文用量环采用新行为，规格已回写
+
+> **2026-09-16 已闭环**：仓库 owner 裁定**采用 ①**——「无用量（`undefined` / `0`）整块不渲染」是既定产品口径，
+> 由开发改规格与实现对齐（**不回退实现**）；同时确认 `MessageInput.tsx` 的用量环与 `SettingsPage.css` 的共享视觉
+> 改动**刻意三端统一**（VSCE/JetBrains 一并变，不收回桌面专属）。规格已回写
+> `docs/specs/desktop/desktop-account-and-settings.md`（场景 1 补 0% 例外 / 场景 4 改为「不得渲染指示器」/ 独立测试补一句），
+> 两条既有断言（单测 `contextUsageIsolation.test.tsx`、e2e `desktop-session-switch-state.e2e.ts`）已同步为「元素不存在」。
+> 下列原始确认点与实测数据保留为过程留档。
+
+> 本节原文（写于确认之前）：本节是**给开发看得见的确认点**（PR 描述里也附了同文案）。**未擅自改规格文件**，等确认后由她决定改规格还是改回实现。
+
+- **不一致点（唯一一条）**：`docs/specs/desktop/desktop-account-and-settings.md:77`（场景 4）要求
+  「宿主尚未推送用量信息，**当**指示器渲染，**则**显示**空圆环**（不显示百分比数字），且悬停**不弹出**气泡」。
+  **本实现有意不实现「空圆环」这半句**：用量未知（`contextUsage === undefined`）时**整块不渲染**
+  （与 0% 同）——环 / 数字 / 气泡 / `aria-label` 全都不存在，工具栏不留占位。
+- **依据**：设计师 2026-09-16 裁决（先定「为 0 时整个都不显示」，随后追加「未知时也整块隐藏」）。
+- **场景 4 的另一半仍满足**：用量未知时**不会**出现空气泡（Tooltip 整个不渲染，比原先「Tooltip disabled」更彻底）。
+- **请开发二选一后确认**（**2026-09-16 已按 ① 确认**）：① 认可新行为 → 改该场景文案（删「空圆环」半句或整条删除）；
+  ② 不认可 → 告诉我，我把该态改回「空圆环 + 无数字、无气泡」（改动量 = 一处渲染闸门）。
+- 代码里的对应标注：`packages/webview/src/components/MessageInput.tsx:1851`（`⚠️ MERGE-TIME REVIEW` 注释块）。
+- 附：本节所在分支的实现**不触碰** `docs/specs/` 下任何文件（`git status` 可核）。
+
+### 实测（`desktop-queues`，1440×900 @DPR2/4，浅+深，0 pageerror）
+
+| 项                                   | 改前                                     | 改后                                                                                                                                                                                                                                              |
+| ------------------------------------ | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 轨道实画长度 `getTotalLength()`      | **25.14**（半周长）                      | **49.94**（= 周长，`2π×8`）                                                                                                                                                                                                                       |
+| 0%                                   | 半圈轨道 + 起点一颗深色圆点 + 「0%」数字 | **整颗不渲染**：`.compress-context-button` / `svg` / `.compress-context-pct` 三者均不存在，工具栏不留空位（实测 `.input-buttons-row` 内已无该节点）                                                                                               |
+| 用量未知（宿主未推送）               | 半圈轨道、无数字                         | 先改为**完整空圆环**、无数字 → 追加裁决后**整颗不渲染**（与 0% 同；实测 `.input-buttons-row` 子元素从 `context-actions \| button-spacer \| compress-context-button \| permission-mode-container` 变为**跳过该节点**，无占位、无 `aria-label=""`） |
+| 50%                                  | 上=轨道半圈、下=进度半圈，两者不相接     | 整圈轨道 + 上半圈进度                                                                                                                                                                                                                             |
+| 64%（用例值）                        | 弧 32.17 > 轨道 25.14，弧尾悬空          | 弧 32.17 < 轨道 49.94，**全程落在轨道上**                                                                                                                                                                                                         |
+| 100%                                 | 弧自成一整圈，背后只有半圈轨道           | **整圈轨道被进度填满**                                                                                                                                                                                                                            |
+| 盒 / 线宽 / 颜色 / 字体 / 百分比文本 | 16×16 · 2.6 · 未变                       | 同左（仅轨道路径几何变化）                                                                                                                                                                                                                        |
+
+- `pnpm -F wave-webview` 的 `tsc --noEmit` 通过（JSX 结构改动，无样式值改动）。
+- 验证方式：`desktop-queues` 用例的 mock 值临时改成 0（该文件在 `prototype/.gitignore` 内、不跟踪）
+  → 实测后**已还原为 38%**；另用 38% 复跑确认正常态未受影响。截图
+  `CC02/走查/0916-上下文环/ring4-0pct-button-light.png`（0% 只留空环，中间版）、
+  `ring5-0pct-row-light.png`（0% 整块消失，最终态）、`ring5-38pct-row-light.png`（38% 正常态，环 +「38%」）。
+- 证据：`CC02/probe-context-ring-0916.mjs`（按 0/25/50/64/75/100% 逐值回放 + 4× 放大裁剪图 + `pageerror`）、
+  截图 `CC02/走查/0916-上下文环/ring-*（改前）/ ring2-*（改后）/ ring3-0pct-natural-*（真实 0%）`。
+- 「未知 / 0%」两态对照：`CC02/probe-ring-unknown-vs-zero-0916.mjs`（枚举用例 → 记
+  `buttonExists / fillExists / pctText / ariaLabel / rowChildren / 工具条裁剪图`）、
+  `CC02/probe-ring-all-cases-0916.mjs`（14 个 mock 用例逐一枚举环态：只有队列 38% / 对话流 52% /
+  desktop-full 64% 有值，插件市场与 IDE 用例为「未推送」态，其余用例欢迎态不渲染）、
+  数据 `CC02/走查/0916-上下文环/unknown-vs-zero.json`、图 `state-{unknown,zero}-{light,dark}-toolbar.png`
+  （最终态：两态都无环，工具条连续无空位；改前的空圆环见本节文字实测与 live 页面）。
+- 落点：`components/MessageInput.tsx:1846`（闸门）+ `:1856-1890`（环结构）；无 CSS 改动。
+
+### 残留（未授权，供后续点名）
+
+- **进度弧的起点不在整点**：注释写「counter-clockwise from 3 o'clock」，但 `transform="scale(-1,1) …"`
+  只做了水平镜像 → 实测弧从 **9 点方向**起、向下（逆时针）生长：25% 时进度落在**左下**象限。
+  候选：① 现状（9 点起逆时针）② 回到注释原意（3 点起逆时针）③ 常规做法（12 点起顺时针）。
+  已出 25% / 64% 三态对照图 `CC02/走查/0916-上下文环/anchor-{current,anchor3,anchor12}-*.png`。
+  触发语 **「进度弧从 12 点开始」** / **「进度弧按 3 点起」**。
+- 该环只在**非欢迎态且有已知非 0 用量**时渲染（`!workdirSelector && showContextUsage && !!contextUsagePct`），
+  故 mock 用例里要在「队列」（38%）或「对话流全样式」（52%）才能看到；`desktop-full` 里那颗 0×0 的是隐藏欢迎态 composer 的实例。
+- **规格场景 4 原先与实现不一致**（规格要求「未推送用量 → 空圆环」，实现为整块不渲染）
+  → **2026-09-16 已闭环**：规格按新行为回写（场景 1 / 场景 4 / 独立测试），见本节顶部「✅ 已确认」块；
+  两条断言（单测 `contextUsageIsolation.test.tsx`、e2e `desktop-session-switch-state.e2e.ts`）已同步为「元素不存在」。
+- 标题栏那段注释里的 `transform` 注释仍写「counter-clockwise from 3 o'clock」，实测起点在 9 点
+  （见上「进度弧起点」残留）→ 触发语 **「注释也一起改」**。

@@ -83,8 +83,10 @@
   background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
 }
 
+/* 选中页签文案不加粗（0916 第 2 轮：选中态字重与未选中一致 400，选中只靠
+   底色/下划线表达；原 500） */
 .desktop-panel-tab.active .desktop-panel-tab-label {
-  font-weight: 500;
+  font-weight: 400;
 }
 
 /* 关闭按钮：默认隐藏，tab hover / 选中（active）/ 键盘聚焦时显示。

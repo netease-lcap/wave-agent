@@ -144,16 +144,20 @@ test.describe("桌面会话切换状态收敛", () => {
       percent: 45,
     });
     await expect(contextPct(webviewPage, "pane-1")).toHaveText("45%");
+    // 轨道是整圈而非半环（Chromium 实测：整圈 getTotalLength ≈ 49.9，原半环
+    // 25.1）——进度超过 50% 时弧不再长到没有轨道的位置（设计师 0916：「100% 时
+    // 应该是进度沾满，而不是半圈轨道」）。
+    const trackLength = await webviewPage
+      .getByTestId("desktop-pane-pane-1")
+      .locator(".compress-context-ring-track")
+      .evaluate((el) => (el as SVGGeometryElement).getTotalLength());
+    expect(trackLength).toBeGreaterThan(40);
 
     // 切到会话 B：host 先推 setInitialState（同步清空用量）再 replay 缓存用量
     await switchPaneSession(injector, "pane-1", "sess-b1");
     await expect(contextPct(webviewPage, "pane-1")).toHaveCount(0);
-    // 无用量即无说明文案，且 Tooltip 被禁用（不渲染 tooltip 包裹层）⇒ 悬停不会
-    // 弹出空提示框。
-    await expect(contextButton(webviewPage, "pane-1")).toHaveAttribute(
-      "aria-label",
-      "",
-    );
+    // 无用量即整块不渲染（不占位、无 aria-label、无空提示框，spec 场景 4）。
+    await expect(contextButton(webviewPage, "pane-1")).toHaveCount(0);
     await expect(
       webviewPage
         .getByTestId("desktop-pane-pane-1")

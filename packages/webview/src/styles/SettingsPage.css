@@ -1,7 +1,7 @@
 /* SettingsPage - full-height settings page (left navigation + right content)
    Visual details follow the designer's prototype (codechat-ui settings.css):
    grid layout with --cc-settings-navigation-width left column, 32px nav items,
-   radius 6px nav / radius 8px cards, 3px tab underline. All colors map to VS
+   radius 6px nav / radius 12px cards, 3px tab underline. All colors map to VS
    Code theme tokens (--vscode-*) - no hardcoded color values. */
 
 .settings-page {
@@ -255,10 +255,20 @@
   margin: 0;
 }
 
+/* 设计师 0916 评论（点页头 `h1`「全局设置」）「这里是否绑定了全局的字体，字重500就好」：
+   ① 字体族：h1 无自身 `font-family` 声明，继承 `body`（globals.css:4）的
+      `var(--vscode-font-family)` —— 实测 computed 与 body 逐字相同
+      （`-apple-system, "system-ui", sans-serif`，宿主注入的 UI 栈），随宿主字体设置变
+      ⇒ **已绑全局字体**（本项为审计结论，无需改动）。
+   ② 字重：600 → 500（`--cc-font-weight-medium`，var 带 500 fallback；与同页
+      `.settings-section-heading h2` / `.settings-row-copy h3` 的 token 写法一致）。
+   字号 20 / 行高 25 / 颜色（1 级 `--vscode-foreground`）/ 盒 712×25 均未动。
+   本条对所有使用 `.settings-page-header` 的设置视图（全局设置 / 个性化 / 项目设置 /
+   插件市场 / 技能 / 子代理 / 钩子 / MCP 服务）统一生效。 */
 .settings-page-header h1 {
   color: var(--vscode-foreground);
   font-size: 20px;
-  font-weight: 600;
+  font-weight: var(--cc-font-weight-medium, 500);
   line-height: 25px;
 }
 
@@ -282,10 +292,17 @@
   margin: 0;
 }
 
+/* 设计师 0916 评论（点 `h2`「基础设置」）「这里」+（点 `h3`「AI 回复语言」）
+   「下面类似的地方都不要加粗」：设置页的**分节标题**与**卡片内行标题**都不再加粗，
+   600 → 400（`--cc-font-weight-regular`）。两者只靠字号（14px）与位置表达层级，
+   与同页正文/说明同级；导航分组标题（`.settings-nav-group h2` 500）与页头主标题
+   （`.settings-page-header h1` 600）不在本条范围，未动。
+   注：skill `common-components.md:11` 有「group headings retain their own typography」
+   的保留句，若契约把设置页分节标题也算 group heading，需 codex 一并回写。 */
 .settings-section-heading h2 {
   color: var(--vscode-foreground);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: var(--cc-font-weight-regular, 400);
   line-height: 25px;
 }
 
@@ -295,12 +312,18 @@
   line-height: 20px;
 }
 
+/* 设计师 0916 评论（点「AI 回复语言」卡片）「设置里面类似布局这里的圆角是 12px，
+   全局统一修改」：卡片容器 8px → 12px。12px = `--cc-radius-lg`
+   （skill design-system.md:116 弹层/容器口径），与本页弹窗 `.settings-modal`
+   （SettingsPage.css:1223）同档；卡内行 / 控件（按钮 8px、输入 6px、导航项 6px）
+   的圆角不在本条范围内，未动。
+   作用域：设置页基础样式 → 桌面与 IDE 宿主同时生效（设置页是共享视觉）。 */
 .settings-card {
   overflow: hidden;
   padding: 0 12px;
   background: var(--cc-settings-surface);
   border: 1px solid var(--cc-settings-border-light);
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 /* ---- Rows inside cards ---- */
@@ -327,10 +350,14 @@
   margin: 0;
 }
 
+/* 同一条评论（点 `h3`「AI 回复语言」）「下面类似的地方都不要加粗」：卡片内行标题
+   600 → 400（与分节标题同档，见 `.settings-section-heading h2` 上方注释）。
+   行盒 26px / 字号 14px / 颜色未动；行右控件由 `space-between` 定位，字重变轻只收窄
+   标题自身文字宽，不动控件列与行高。 */
 .settings-row-copy h3 {
   color: var(--vscode-foreground);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: var(--cc-font-weight-regular, 400);
   line-height: 26px;
 }
 
@@ -340,12 +367,19 @@
   line-height: 20px;
 }
 
-/* 行内补充说明，比正文描述更弱化（见 spec agent-config「上下文长度的落点」）。 */
+/* 行内补充说明（见 spec agent-config「上下文长度的落点」）。设计师 0916 评论（点
+   「全局默认；当前模型自带上下文上限时以模型配置为准」）：「这里用了不一致的字体
+   颜色，和其他说明保持一致」——原实现在本行叠了 `opacity: 0.75`，同色被渲成更淡的
+   一层，比同页其他说明（`.settings-row-copy p` / `.settings-managed-empty` /
+   `.settings-plugin-desc`，都直接走 `--vscode-descriptionForeground` 不加透明度）
+   明显更浅（实测：浅色 #888888 / 3.56:1 对同级说明 #606060 / 6.29:1；深色
+   #7C8183 / 4.7:1 对 #A0A5A8 / 7.49:1，卡面浅 #FFFFFF / 深 #111314）。
+   去掉该透明度后渲染色与其余说明逐值一致；档位差异只保留字号行高（说明 12/20
+   对正文 14/22）。 */
 .settings-row-copy .settings-row-hint {
   color: var(--vscode-descriptionForeground);
   font-size: 12px;
   line-height: 20px;
-  opacity: 0.75;
 }
 
 .settings-control,
@@ -488,7 +522,16 @@
   left: 0;
   height: 3px;
   background: var(--vscode-foreground);
-  border-radius: 999px;
+  /* 设计师 0916 评论（点 MCP 视图的 `button.settings-tab.is-active`「用户级」）：
+     「调整 tab 选中高亮条的样式，左下右下圆角是 0，上面不变，高度不变」。
+     原 `border-radius: 999px`（四角胶囊）在本条 3px 高的盒上被浏览器按「圆角收缩」
+     规则折算成 **1.5px**（= 高的一半）；改为只保留上面两角，下面两角直角，
+     高亮条下缘与 tab 条自身的 1px 分隔线平齐成一条直线。
+     注意**不能写 `999px 999px 0 0`**：那样左侧相邻两角之和 999px 仍大于盒高 3px，
+     收缩系数变成 3/999，上两角会被放大到 **3px**（顶角明显变圆，实测像素差 100+）——
+     必须写回折算后的真实值 `1.5px`，才满足「上面不变」。
+     高度 3px、`bottom: -1px`、颜色 `--vscode-foreground`、宽度（right/left: 0）均未动。 */
+  border-radius: 1.5px 1.5px 0 0;
   content: "";
 }
 

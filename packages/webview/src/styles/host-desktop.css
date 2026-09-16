@@ -277,12 +277,13 @@
 }
 
 /* 工具行图标按钮：22px → 32px（codechat composer-icon-button 32×32），
-   圆角 4px → 6px；图标保持 16px；Figma 图标色 #565A60（base 用 vscode
-   icon-foreground 偏暗） */
+   圆角 4px → 6px → 8px（设计师 0916 评论②：工具行内控件圆角统一 8px，
+   与发送按钮同档；走 --cc-radius-md）；图标保持 16px；Figma 图标色 #565A60
+   （base 用 vscode icon-foreground 偏暗） */
 [data-host="desktop"] .toolbar-icon-button {
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: var(--cc-radius-md, 8px);
   color: #565a60;
 }
 [data-host="desktop"] .toolbar-icon-button:hover {
@@ -338,7 +339,9 @@
    仅「跳过权限确认」为 danger 红 #D92D20（codechat is-danger）。
    第二十轮：固定宽度 112px + 居中（codechat .permission-button width:112px
    justify-content:center）、无 caret（codechat 权限按钮只有 icon+label，
-   chevron 仅 contextbar picker 有） */
+   chevron 仅 contextbar picker 有）。
+   0916 评论②：圆角按设计师指示统一到 8px（原继承 base 的 6px），与工具行
+   其余控件（图标按钮 / 发送按钮）同档，走 --cc-radius-md */
 [data-host="desktop"] .permission-mode-select {
   font-size: 14px;
   min-height: 32px;
@@ -346,6 +349,7 @@
   padding: 0;
   justify-content: center;
   gap: 6px;
+  border-radius: var(--cc-radius-md, 8px);
   color: #565a60;
   white-space: nowrap;
   box-sizing: border-box;
@@ -423,13 +427,16 @@
 [data-host="desktop"] .permission-mode-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  /* 0916 评论⑤：图标→文案间距 10px → 8px，与其余桌面下拉项（账户更多 /
+     会话行菜单 / 工作目录…）统一；项盒 146x28 与图标 16px 不变，文案左移 2px。 */
+  gap: 8px;
   min-height: 28px;
   padding: 0 8px;
   border-radius: 6px;
   color: #565a60;
   font-size: 14px;
-  font-weight: 500;
+  /* 0916 第 2 轮：下拉选项默认字重 400（原 500 加粗取消） */
+  font-weight: 400;
   box-sizing: border-box;
 }
 [data-host="desktop"] .permission-mode-item:hover {
@@ -494,7 +501,16 @@
   background: var(--cc-fill, #f0f2f5);
   color: var(--cc-text-disabled, #bec1c6);
 }
-[data-host="desktop"] .ai-send-btn:disabled {
+/* 设计师 0916 评论（输入区 `.input-buttons-row` 发送按钮）「浅色模式发送按钮
+   禁用态，hover 不应该变色」：base `MessageInput.css:169` 有一条
+   `.ai-send-btn:disabled:hover { background: var(--vscode-button-background) }`
+   —— 与桌面端禁用态规则同特异性（0,3,0）但后加载，于是浅色下 hover 会把禁用底
+   `--cc-fill #F0F2F5` 换成主按钮色 `#1F2329`（实测复现）。修法：把 `:disabled:hover`
+   并进本条（提升到 0,4,0），hover 与静止同底。
+   ⚠️ 深色档不动：`[data-host="desktop"][data-theme="dark"] .ai-send-btn:disabled`
+   （0,4,0，在本组之后）仍后出现胜出，禁用 hover 保持 `rgb(255 255 255 / 8%)`。 */
+[data-host="desktop"] .ai-send-btn:disabled,
+[data-host="desktop"] .ai-send-btn:disabled:hover {
   background: var(--cc-fill, #f0f2f5);
   color: var(--cc-text-disabled, #bec1c6);
   opacity: 1;
@@ -646,7 +662,8 @@
   padding: 0 8px;
   border-radius: 6px;
   font-size: 14px;
-  font-weight: 500;
+  /* 0916 第 2 轮：下拉选项默认字重 400（原 500 加粗取消） */
+  font-weight: 400;
   box-sizing: border-box;
 }
 [data-host="desktop"] .plus-menu-item:hover {
@@ -712,10 +729,10 @@
 [data-host="desktop"][data-theme="dark"] .desktop-session-item--current:hover {
   background: rgba(255, 255, 255, 0.12);
 }
-/* 选中项标题字重：codechat 桌面壳 .task-row.is-active .task-title 500
-   （--cc-font-weight-medium），skill 契约菜单/导航选中同值。 */
+/* 选中项标题字重（0916 第 2 轮修正）：选中不再靠字重强调 → 与未选中同值
+   regular 400（原 500 = --cc-font-weight-medium；用户走查：选中态字重不要变）。 */
 [data-host="desktop"] .desktop-session-item--current .desktop-session-title {
-  font-weight: var(--cc-font-weight-medium, 500);
+  font-weight: var(--cc-font-weight-regular, 400);
 }
 /* 非当前会话标题不强调（用户 0904 走查：未选中不要加粗 → regular） */
 [data-host="desktop"]
@@ -737,12 +754,18 @@
 [data-host="desktop"] .desktop-sidebar-new-chat {
   font-weight: 400;
 }
-/* hover 与 codechat sidebar-tool-button 一致（--cc-fill-hover #eef0f3）。 */
+/* hover 与 codechat sidebar-tool-button 一致（--cc-fill-hover #eef0f3）。
+   0916 用户裁决（账户热区 hover 审计追问后）：侧栏「导航面」hover 统一到
+   普通会话行现档 = 深色 8% 白（合成 #2A2B2C）/ 浅色 --cc-fill-hover
+   #EEF0F3。理由（实测对比度步长 vs 导航底 #181A1B）：8% = 1.231，契约
+   #303436 = 1.389，而「当前会话」持久选中 12% 白 = 1.421 —— 用契约值会让
+   hover 与选中几乎同亮（差 0.03），8% 与选中差 0.19，阶梯干净；浅色档
+   本就是 #EEF0F3，不动。契约侧「按面分档」待 codex 回写。 */
 [data-host="desktop"][data-theme="light"] .desktop-sidebar-new-chat:hover:not(:disabled) {
   background: #eef0f3;
 }
 [data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* 侧栏右边框：Figma Sidebar stroke #EBEEF5（比 panel-border #e4e7ed 更浅） */
@@ -751,25 +774,35 @@
 }
 
 /* 账户热区：常态透明底（用户反馈常驻实底 #EBEDF0 形似「始终选中」——
-   第十二轮取消第三轮 Figma 实底化）；hover/focus 保留浅灰反馈 */
+   第十二轮取消第三轮 Figma 实底化）；hover/focus 保留浅灰反馈。
+   0916 用户裁决（先按修法 A 接 --cc-fill-hover #303436，随后追问并改判）：
+   深色统一到普通会话行现档 8% 白（#2A2B2C）、浅色统一到 --cc-fill-hover
+   #EEF0F3 —— 即「导航面阶梯：hover 8% / 选中 12% / 弱化 6%」。
+   原 14% 白（#383A3B，步长 1.527）比选中 12%（1.421）还亮 = hover 重于
+   选中；契约 hover token 深色 #303436（1.389）又几乎贴住选中 → 两者都不用。
+   依据 skill references/desktop-theme-bridge.md:15（普通行 hover 语义）与
+   dark-theme.md「State backgrounds are opaque…」（侧栏 α 阶梯为已裁决的
+   面级例外，待 codex 回写契约）。 */
 [data-host="desktop"][data-theme="light"] .account-card-hotzone:hover {
-  background: #e2e4e8;
+  background: var(--cc-fill-hover, #eef0f3);
 }
 [data-host="desktop"][data-theme="dark"] .account-card-hotzone:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* 账户卡片「更多」按钮（问号圆图标）：与热区同行同规格——r6、hover 底同
    热区（ccui figma-icon-button / sidebar-account-more 32×32 r6 fill-hover；
-   base r4 + vscode list-hoverBackground 蓝灰与热区两档灰不一致） */
+   base r4 + vscode list-hoverBackground 蓝灰与热区两档灰不一致）。
+   0916：hover 随热区统一（深色 8% 白 / 浅色 --cc-fill-hover），
+   同排两控件不再分档（原 14% / #e2e4e8）。 */
 [data-host="desktop"] .account-card-more-btn {
   border-radius: 6px;
 }
 [data-host="desktop"][data-theme="light"] .account-card-more-btn:hover {
-  background: #e2e4e8;
+  background: var(--cc-fill-hover, #eef0f3);
 }
 [data-host="desktop"][data-theme="dark"] .account-card-more-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* 消息流时间线节点：Figma design-node 12px / #16A34A / 白描边（覆盖此前
@@ -1496,6 +1529,17 @@
 [data-host="desktop"] .account-usage-row .account-usage-value-text {
   font-weight: 500;
 }
+/* 账户卡用量区（`.account-card-usage-inline` = 套餐用量 / 百分比 / API 余额 /
+   金额）字号**统一 12px**（契约 design-system.md:66 的 compact metadata 档）：
+   0916 曾按评论④「字号都大一号」把四段文字抬到 14px/20px，随后设计师改判
+   「还是改回来，都用 12px」→ 四段文字回到 base 的 12px（不再覆盖字号，行高
+   随之回到 normal，故用量区 / 卡片高度回到 63 / 108px）。
+   仅保留「套餐余量已用完」提示的同档修正：原 11px 越档（契约无此档位），
+   按评论固定为 12px；其 line-height 15px 与盒宽 231px 未动，故该行几何零变化。
+   ⓘ 明细图标是 16px svg，不属文字，未动。 */
+[data-host="desktop"] .account-usage-exhausted {
+  font-size: 12px;
+}
 /* ⓘ 明细钮：官方 info 图标（16px，灰 #8B8F95）已内嵌 svg 替换 codicon；
    浅色取稿 #8B8F95（base descriptionForeground 偏深）。hover 仅颜色加深
    （base hover 已切 foreground），不出背景（设计稿 ⓘ 无 hover 底色）。 */
@@ -1636,6 +1680,20 @@
   flex-shrink: 0;
 }
 
+/* 面板操作按钮圆角统一 8px（用户 0916 评论 `button.preview-pane-button`
+   「类似这种操作按钮圆角统一8px」）。本族 = 右侧面板工具条的方形图标操作
+   按钮（刷新 / 全屏 / 选择元素并评论 / 在浏览器打开 / 搜索文件 / 重启终端，
+   24×24 @DesktopApp.css:1158）＋ 面板 tab 条的「＋」新建面板按钮
+   （24×24 @DesktopPanelTabs.css:120，同属 Figma「功能」icon-button）＋ 错误态
+   文字按钮（重新加载 / 重启终端 / 重试，同一 class，`width:auto`）。
+   改前两档并存（图标按钮 base 4px / 「＋」6px），与同条 tab 的页签 8px、
+   工具行控件 8px（0916 第 3 轮）不同族 → 统一走 --cc-radius-md。
+   只改圆角：尺寸 24×24、图标 16px、配色、间距、hover/active 态均不动。 */
+[data-host="desktop"] .preview-pane-button,
+[data-host="desktop"] .desktop-panel-tabs-add {
+  border-radius: var(--cc-radius-md, 8px);
+}
+
 [data-host="desktop"][data-theme="light"] .preview-pane-button {
   color: #565a60;
 }
@@ -1730,11 +1788,12 @@
   background-color: rgba(255, 255, 255, 0.12);
 }
 
-/* 收起态按钮：对齐 codechat .figma-icon-button（24×24，r6，hover --cc-fill-hover） */
+/* 收起态按钮：对齐 codechat .figma-icon-button（24×24，hover --cc-fill-hover；
+   圆角随「操作按钮统一 8px」见下方 0916 第 5 轮） */
 [data-host="desktop"] .header-collapsed-leading .header-button {
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  border-radius: var(--cc-radius-md, 8px);
 }
 [data-host="desktop"] .header-collapsed-leading .header-button:hover {
   background-color: #eef0f3;
@@ -1743,6 +1802,58 @@
   .header-collapsed-leading
   .header-button:hover {
   background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* 操作按钮圆角统一 8px（用户 0916 评论 `button.desktop-sidebar-more-btn`
+   「这里」/ `svg.header-icon`×2 + `button.header-button`「这里」「类似下面我
+   标注的这些地方也要统一」，与上一轮 `button.preview-pane-button`「类似这种
+   操作按钮圆角统一8px」同族）。本族 = ①侧边栏品牌行图标按钮（收起侧边栏 /
+   活动，24×24 @DesktopApp.css:139，改前 6px）②会话头 / 面板头图标按钮
+   .header-button（含面板开关 .header-panel-toggle 24×24 @ChatHeader.css:112，
+   改前 base 4px；收起态 24×24 改前 6px）。改前 4px / 6px 两档并存，与同面
+   tab 页签 8px（DesktopPanelTabs）、对话头部工具行控件 8px（0916 第 3 轮）、
+   面板操作按钮 8px（0916 第 4 轮）不同族 → 统一走 --cc-radius-md。
+   只改圆角：24×24（部分 22×22）、图标尺寸、配色、hover / active 态均不动。
+   作用域限 [data-host="desktop"]，IDE / VS Code 宿主共用这些 class 不受影响。 */
+[data-host="desktop"] .desktop-sidebar-more-btn,
+[data-host="desktop"] .header-button {
+  border-radius: var(--cc-radius-md, 8px);
+}
+
+/* 关闭按钮族（用户 0916 两条指示）：
+   ①「pane 头部关闭也一起」→ `.desktop-pane-close`（24×24，改前 4px）纳上一族。
+   ②「toast 关闭 / 确认弹层关闭应该是和 pane 头部关闭用同一个图标，同样的圆角」
+      → 圆角同档（两者 20×20，改前 4px）；**图标同一官方矢量** = 与
+      `.desktop-pane-close` 相同的 `ConversationCloseIcon`（Figma 关闭 13440:12465，
+      24 artboard，path 墨迹 8.5×8.5），改由组件层按宿主选择（见 ToastStack /
+      ConfirmationDialog），IDE / VS Code 保持原 `CloseIcon` 不变。
+      按钮盒仍是 20×20（`.toast-close` 的 2px 内衬归零以维持原 20×20 外廓，
+      避免 toast 宽度变化），24 的图标盒在 20 的按钮内居中、透明溢出不影响布局。
+   ③「页签关闭仅图标变色，不要背景色也不用圆角了」→ `.preview-tab-close`
+      （16×16）圆角 0，并去掉 hover 底（浅 #EEF0F3 / 深 8% 白），只保留
+      hover 图标变色（下方既有 color 规则）。 */
+[data-host="desktop"] .desktop-pane-close,
+[data-host="desktop"] .toast-close,
+[data-host="desktop"] .confirmation-close-btn {
+  border-radius: var(--cc-radius-md, 8px);
+}
+[data-host="desktop"] .toast-close {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+}
+/* 24 的图标盒在 20 的按钮里会被 flex 缩到 20（实测 computed 20×24、字形被压到
+   0.83 倍），加 flex-shrink: 0 让它保持 24×24 居中溢出 → 字形与 pane 头部关闭
+   逐像素同尺寸（实测墨迹都是 9.0px）。 */
+[data-host="desktop"] .toast-close .toast-close-icon,
+[data-host="desktop"] .confirmation-close-btn .confirmation-close-btn-icon {
+  flex-shrink: 0;
+}
+[data-host="desktop"] .preview-tab-close {
+  border-radius: 0;
+}
+[data-host="desktop"] .desktop-panel-tab .preview-tab-close:hover {
+  background: transparent;
 }
 
 /* ═══ 第十三轮：下拉菜单/弹层统一（对齐 codechat 菜单规格）═══════
@@ -1783,9 +1894,10 @@
   padding: 8px;
 }
 
-/* 简单菜单项：28px 高 / 14px / 500 / r6 / 默认 #565A60（0908 第 4 轮：
-   单行下拉菜单选项高度统一 28px，原 32；workdir 最近打开的两行带注释项
-   内容自然高 >28 不受 min-height 影响，保持原样） */
+/* 简单菜单项：28px 高 / 14px / 400 / r6 / 默认 #565A60（0908 第 4 轮：
+   单行下拉菜单选项高度统一 28px，原 32；0916 第 2 轮：选项字重去强调 →
+   400，原 500。workdir 最近打开的两行带注释项内容自然高 >28 不受
+   min-height 影响，保持原样） */
 [data-host="desktop"] .more-menu-item,
 [data-host="desktop"] .panel-toggle-menu-item,
 [data-host="desktop"] .desktop-session-menu-item,
@@ -1795,7 +1907,7 @@
   padding: 0 8px;
   border-radius: 6px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 400;
   color: #565a60;
   gap: 8px;
   box-sizing: border-box;
@@ -2147,7 +2259,7 @@
 [data-host="desktop"] .confirmation-close-btn {
   top: 22px;
   right: 16px;
-  border-radius: 4px;
+  border-radius: var(--cc-radius-md, 8px);
 }
 [data-host="desktop"][data-theme="light"] .confirmation-close-btn:hover {
   background-color: #eef0f3;
@@ -2232,14 +2344,14 @@
    #EEF0F3，图标色保持不变。设置页 7 导航 + 返回按钮已由 codicon 字体
    替换为 Figma 导出 SVG（HeaderIcons Settings*Icon），此处统一图标色：
    light #565A60 / dark #9A9EA5（wave 深色惯例），选中项保持同色（codechat
-   settings-nav-item 选中只变文字与底，图标不动）。 */
+   settings-nav-item 选中只变文字与底，图标不动）。
+   ⚠️ `.settings-back svg` 已于 0916 按设计师指示（「返回图标也提亮」）从本组
+   摘出，改由下方「返回」块提到 1 级色；本组只剩导航项图标。 */
 
-[data-host="desktop"] .settings-nav-item svg,
-[data-host="desktop"] .settings-back svg {
+[data-host="desktop"] .settings-nav-item svg {
   color: #565a60;
 }
-[data-host="desktop"][data-theme="dark"] .settings-nav-item svg,
-[data-host="desktop"][data-theme="dark"] .settings-back svg {
+[data-host="desktop"][data-theme="dark"] .settings-nav-item svg {
   color: #9a9ea5;
 }
 
@@ -2283,6 +2395,30 @@
   border-radius: 8px;
 }
 
+/* 设计师 0916 评论（点左导航 `span`「返回」）「这里用1级字色且加粗」：
+   文字从 base 的「次要说明」档（`.settings-back` @SettingsPage.css:108 取
+   `--vscode-descriptionForeground`）提到 **1 级文字色**。
+   取值 = 与本面板同栏 1 级文字逐值一致（`.settings-nav-item` @SettingsPage.css:186
+   同取 `--vscode-foreground`）：浅色档该变量由宿主注入 = #202020，深色档由
+   dark 块的映射（:root[data-host="desktop"][data-theme="dark"] --vscode-foreground
+   → --cc-text-primary = #E5E7E8）给出 → 两档都与导航项默认态同值，且随宿主主题
+   自适应（不写死字面量）。
+   同日追加两条（她点名）：① **「返回图标也提亮」** → 左箭头 SVG 随文案提到同一
+   1 级色（原按第三十八轮图标规范留 #565A60 / #9A9EA5，本轮从该组摘出单列；同栏
+   7 个导航项图标仍留灰档未动）；② **「返回字重改回 500」** → 600 → 500
+   （`--cc-font-weight-medium`）。
+   盒 215×30 / r8 / 字号 14 / hover 底色 / 图标几何均未动。副作用（已报备）：
+   hover 的文字色变化消失（hover 原为 浅 #202020 / 深 #E5E7E8，与新静止色同值），
+   悬停只剩底色变化。 */
+[data-host="desktop"] .settings-back {
+  color: var(--vscode-foreground);
+  font-weight: var(--cc-font-weight-medium, 500);
+}
+[data-host="desktop"] .settings-back svg,
+[data-host="desktop"][data-theme="dark"] .settings-back svg {
+  color: var(--vscode-foreground);
+}
+
 /* 桌面端其余控件图标统一 #565A60（同一图标规范；base 各按钮继承
    vscode-foreground，light 下 #202020 深黑偏重）。保留：
    - `.desktop-sidebar-more-btn.is-active` 品牌红 #C1292E（规范「活动器」）
@@ -2313,6 +2449,25 @@
 [data-host="desktop"][data-theme="dark"] .desktop-session-group-header .codicon,
 [data-host="desktop"][data-theme="dark"] .desktop-workdir-trigger .codicon {
   color: #9a9ea5;
+}
+
+/* 设计师 0916 评论（点侧栏 `span`「新对话」）「这里的字体颜色深浅模式都用 1 级的」：
+   文案从「控件图标灰」提到 **1 级文字色**。上一条「图标统一灰」规则是同名按钮
+   一并染灰的（本意只针对图标），故这里把**文字**单独提回 1 级 ——
+   浅 #1F2329 / 深 #E6E6E6，与同栏会话行标题（`.desktop-session-item` @DesktopApp.css
+   浅 :299 / 深 :427）逐值相同，也和 codechat 参考实现同构（`TaskSidebar.vue` 的
+   `.sidebar-tool-button` 只给图片上灰色 #4E5969，文字继承 `body` 的
+   `--cc-text-primary`）。
+   **只改文案**：图标仍按第三十八轮图标规范留在 #565A60 / #9A9EA5（不随文字变深）；
+   字号 14 / 字重 400 / 盒 30px / r8 / hover 底色 / 禁用态 opacity 均未动。
+   浅色档值 = `--cc-text-primary`（#1f2329）；深色档随侧栏导航面色系取 #E6E6E6
+   （token `--cc-text-primary` 深色档为 #E5E7E8，与同栏其余 1 级文字差 1~2 通道，
+   此处对齐同一面板内的既有值）。 */
+[data-host="desktop"] .desktop-sidebar-new-chat span {
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat span {
+  color: #e6e6e6;
 }
 
 /* ═══ 第三十九轮：简单菜单选项间距归零（用户：panel-toggle-menu 选项之间不应有间距）═══
@@ -2575,24 +2730,20 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* add / 全屏 / close 按钮 hover 统一 fill-hover（spec-first base 用 vscode
-   list-hover 蓝灰；第 5/6 轮同类按钮先例 #EEF0F3 / dark 8% 白） */
+/* add / 全屏 按钮 hover 统一 fill-hover（spec-first base 用 vscode list-hover
+   蓝灰；第 5/6 轮同类按钮先例 #EEF0F3 / dark 8% 白）。
+   ⚠️ 页签关闭「×」已按用户 0916 指示移出本组（「仅图标变色，不要背景色也不用
+   圆角」）→ 见上方「关闭按钮族」块里的 `background: transparent`。 */
 [data-host="desktop"][data-theme="light"] .desktop-panel-tabs-add:hover,
 [data-host="desktop"][data-theme="light"]
   .desktop-panel-tabs-actions
-  .preview-pane-button:hover,
-[data-host="desktop"][data-theme="light"]
-  .desktop-panel-tab
-  .preview-tab-close:hover {
+  .preview-pane-button:hover {
   background: #eef0f3;
 }
 [data-host="desktop"][data-theme="dark"] .desktop-panel-tabs-add:hover,
 [data-host="desktop"][data-theme="dark"]
   .desktop-panel-tabs-actions
-  .preview-pane-button:hover,
-[data-host="desktop"][data-theme="dark"]
-  .desktop-panel-tab
-  .preview-tab-close:hover {
+  .preview-pane-button:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -2736,13 +2887,13 @@
   font-weight: var(--cc-font-weight-medium, 500);
 }
 
-/* ④ markdown / 内容语义粗体（strong / h5-6 / 表头 / kb 建议名）：600 */
+/* ④ markdown / 内容语义粗体（strong / h5-6 / 表头）：600（kb 建议名原在此组，
+   0916 第 2 轮移出 → 下拉选项一律 400，见 ⑧） */
 [data-host="desktop"] .markdown-content strong,
 [data-host="desktop"] .markdown-content b,
 [data-host="desktop"] .markdown-content h5,
 [data-host="desktop"] .markdown-content h6,
-[data-host="desktop"] .markdown-content th,
-[data-host="desktop"] .suggestion-item.kb-option .suggestion-name {
+[data-host="desktop"] .markdown-content th {
   font-weight: var(--cc-font-weight-semibold, 600);
 }
 
@@ -2767,22 +2918,47 @@
 }
 
 /* ② 界面标题类（用户 2026-09-04 逐项点名 → medium 500）：顶栏会话标题
-   （就地改于上方 header-title 块）、账户卡套餐用量行/百分比/API 余额标签
-   与金额、账户名、会话状态页卡标题、面板页签（active）、会话分组名、
-   权限下拉全部选项、用户消息正文。侧栏会话名例外：仅选中（current）500、
-   未选中不强调 regular（见上方 desktop-session-title 两态规则）。部分 base/
-   继承本即 500（等值 token 化），部分由 600/400 提到 500（视觉相应变化）。 */
+   （就地改于上方 header-title 块）、会话状态页卡标题、会话分组名、用户消息
+   正文。侧栏会话名（仅选中）与面板页签 active、权限下拉选项原在此组，
+   **0916 第 2 轮移出** → 选中态/选项一律不靠字重强调，见 ⑧；账户卡名称 /
+   用量标签 / 用量数值 / 百分比 / 套餐用量行也原在此组，**0916 评论③移出** →
+   不加粗一并走 400，见 ⑨。部分 base/继承本即 500（等值 token 化），部分由
+   600/400 提到 500（视觉相应变化）。 */
+[data-host="desktop"] .session-card-title,
+[data-host="desktop"] .desktop-session-group-name,
+[data-host="desktop"] .user-content {
+  font-weight: var(--cc-font-weight-medium, 500);
+}
+
+/* ⑧ 0916 第 2 轮（用户走查：左侧导航 / 下拉菜单 / 右侧面板 tab 的选中态字重
+   都不要变，与未选中一致 400；下拉选项默认也 400）：凡「选中/命中」靠底色或
+   描边表达，不靠字重。覆盖对象 = 面板页签 active、设置页左侧导航 active、
+   文件建议与快捷指令弹层选项名（含键盘选中）、会话列表弹层项、工作目录下拉
+   的当前分支项。 */
+[data-host="desktop"] .desktop-panel-tab.active .desktop-panel-tab-label,
+[data-host="desktop"] .settings-nav-item.is-active,
+[data-host="desktop"] .suggestion-name,
+[data-host="desktop"] .suggestion-item.kb-option .suggestion-name,
+[data-host="desktop"] .slash-command-name,
+[data-host="desktop"] .session-list-item-title,
+[data-host="desktop"] .desktop-branch-active .desktop-workdir-menu-name {
+  font-weight: var(--cc-font-weight-regular, 400);
+}
+
+/* ⑨ 0916 评论③（用户 2026-09-16 逐元素走查：账户卡片 `span.account-card-name`
+   「admin@corp.netease.com」、`span.account-usage-label`「API 余额」、
+   `span.account-usage-value-text`「¥6,800.00」、`span.account-usage-percent`
+   「76%」「不加粗」；随后追加同一行的「套餐用量」四个字也不加粗）：账户卡片的
+   名称与用量数值不再用字重分层，全部 regular。`.account-usage-title` 是行容器
+   （「套餐用量」文字是无 class 的 span，靠继承），故改成 400 落在此行本身。
+   base `AccountCard.css` 不动（组件仅桌面侧栏使用，但按 0904 约定桌面值一律
+   落在 host 层）。 */
+[data-host="desktop"] .account-card-name,
 [data-host="desktop"] .account-usage-title,
 [data-host="desktop"] .account-usage-percent,
 [data-host="desktop"] .account-usage-row .account-usage-label,
-[data-host="desktop"] .account-usage-row .account-usage-value-text,
-[data-host="desktop"] .account-card-name,
-[data-host="desktop"] .session-card-title,
-[data-host="desktop"] .desktop-panel-tab.active .desktop-panel-tab-label,
-[data-host="desktop"] .desktop-session-group-name,
-[data-host="desktop"] .permission-mode-item,
-[data-host="desktop"] .user-content {
-  font-weight: var(--cc-font-weight-medium, 500);
+[data-host="desktop"] .account-usage-row .account-usage-value-text {
+  font-weight: var(--cc-font-weight-regular, 400);
 }
 
 /* 正文 regular（normal 重置并入，值不变）：显式 reset 为 400 的字面语义
@@ -2926,3 +3102,165 @@
 [data-host="desktop"] .tool-error {
   font-style: normal;
 }
+
+/* ═══ 0916 评论：所有图标 hover 时提亮 ═══
+   她的评论（点面板页签右侧 `button.preview-pane-button`）：「所有的 icon 能不能像
+   这里这样 hover 的时候颜色会提亮」。
+
+   参考语言（同文件 `.preview-pane-button` 的 hover，上方 1691 / 1698 行）：
+   常态控件灰 → hover **1 级文字色** —— 浅 `#565A60 → #1F2329`、深 `#9A9EA5 → #FFFFFF`
+   （底色的 fill-hover 由原有规则提供，本条只补文字/图标色）。
+
+   范围（她 0916 拍板「排除主按钮/危险/语义色」）：把桌面壳里「hover 只变底、图标色不动」
+   的 ghost 图标 / 图标+文字控件补上同款提亮。第三十八轮图标规范原写「hover 图标色保持
+   不变」——本条即对该句的修订，规范后续按「hover 提亮」理解。
+
+   **不纳入**（各有更合适的语义，故不动）：
+   - 实底主按钮（`.settings-save-btn` / 弹窗主按钮 / `.send-button` 可用态）：白字反白，
+     提亮会变成深字，属另一套语言；
+   - 危险红（`.desktop-session-menu-item--danger` 等）、品牌红（`.desktop-sidebar-more-btn.is-active`
+     —— 已用 `:not(.is-active)` 摘出）、状态/语义图标（`.toast-close` 与其语义图标常态已是
+     1 级或语义色，没有更亮档）；
+   - 已到位的 10 族（`.preview-pane-button` / `.account-api-info-btn` / `.confirmation-close-btn` /
+     `.desktop-session-menu-item` / `.desktop-host-trigger` / `.desktop-workdir-trigger` /
+     `.permission-mode-select` / `.queued-action-button` / 页签关闭 `.preview-tab-close` /
+     设置页「返回」`.settings-back`）。
+
+   只改颜色：盒尺寸、圆角、字号、间距、hover 底色、`opacity`、图标几何一律不动。
+   选择器同时命中「控件自身」与「控件内的 svg/.codicon」——后者用于修掉那些给图标写了
+   独立 color 的元素（如 `.desktop-session-group-header .codicon`）。 */
+
+[data-host="desktop"][data-theme="light"]
+  :is(
+    .desktop-sidebar-more-btn:not(.is-active),
+    .desktop-sidebar-new-chat,
+    .desktop-session-more-btn,
+    .desktop-session-group-header,
+    .account-card-more-btn,
+    .account-card-collapse-btn,
+    .header-button:not(.active),
+    .desktop-pane-close,
+    .write-preview-open,
+    .toolbar-icon-button,
+    .desktop-panel-tabs-add,
+    .message-action-btn,
+    .task-list-chevron,
+    .queued-chevron,
+    .settings-nav-item:not(.is-active)
+  ):hover,
+[data-host="desktop"][data-theme="light"]
+  :is(
+    .desktop-sidebar-more-btn:not(.is-active),
+    .desktop-sidebar-new-chat,
+    .desktop-session-more-btn,
+    .desktop-session-group-header,
+    .account-card-more-btn,
+    .account-card-collapse-btn,
+    .header-button:not(.active),
+    .desktop-pane-close,
+    .write-preview-open,
+    .toolbar-icon-button,
+    .desktop-panel-tabs-add,
+    .message-action-btn,
+    .task-list-chevron,
+    .queued-chevron,
+    .settings-nav-item:not(.is-active)
+  ):hover
+  :is(svg, .codicon) {
+  color: #1f2329;
+}
+
+[data-host="desktop"][data-theme="dark"]
+  :is(
+    .desktop-sidebar-more-btn:not(.is-active),
+    .desktop-sidebar-new-chat,
+    .desktop-session-more-btn,
+    .desktop-session-group-header,
+    .account-card-more-btn,
+    .account-card-collapse-btn,
+    .header-button:not(.active),
+    .desktop-pane-close,
+    .write-preview-open,
+    .toolbar-icon-button,
+    .desktop-panel-tabs-add,
+    .message-action-btn,
+    .task-list-chevron,
+    .queued-chevron,
+    .settings-nav-item:not(.is-active)
+  ):hover,
+[data-host="desktop"][data-theme="dark"]
+  :is(
+    .desktop-sidebar-more-btn:not(.is-active),
+    .desktop-sidebar-new-chat,
+    .desktop-session-more-btn,
+    .desktop-session-group-header,
+    .account-card-more-btn,
+    .account-card-collapse-btn,
+    .header-button:not(.active),
+    .desktop-pane-close,
+    .write-preview-open,
+    .toolbar-icon-button,
+    .desktop-panel-tabs-add,
+    .message-action-btn,
+    .task-list-chevron,
+    .queued-chevron,
+    .settings-nav-item:not(.is-active)
+  ):hover
+  :is(svg, .codicon) {
+  color: #ffffff;
+}
+
+/* ═══ 0916 评论：对话头图标按钮 —— 默认色补齐 + hover 底与刷新按钮一致 ═══
+   她的两条评论（点 `button.header-button` / `svg.header-icon`，均在侧栏收起的
+   对话头左侧）：
+   ①「深色模式这个图标的默认色不对，现在很亮」②「浅色模式类似图标的背景色不对，
+   检查是否绑定了变量，和刷新按钮一致」。
+
+   ① 默认色：侧栏收起态的 `.header-collapsed-leading .header-button`
+   （展开侧边栏，24×24 @1793）**不在**第三十八轮「控件图标统一灰」清单里
+   （2427/2440 只列了 `.header-panel-toggle`），回落 base `--vscode-foreground`
+   = 浅 #202020 / 深 #E5E7E8 —— 深色档确实过亮（实测相对亮度 0.796，同排面板
+   开关 #9A9EA5 仅 0.34）。此处把整个 `.header-button` 族（含面板开关、收起态
+   展开按钮，以及桌面端隐藏的 新建对话 / 历史 / 更多）统一到第三十八轮图标灰：
+   浅 #565A60 / 深 #9A9EA5（= 同排 `.desktop-pane-close`、刷新按钮的静止色）。
+   `.header-button.active`（base 取 --vscode-foreground，见 228 行）特异性更高，
+   不受影响。
+
+   ② hover 底：`.header-button:hover`（ChatHeader.css:78）与 `.desktop-pane-close:hover`
+   （DesktopApp.css:1436）取的都是 `--vscode-toolbar-hoverBackground`
+   （VS Code 工具栏 token：浅 rgba(0,0,0,.12)、深 rgba(90,93,94,.31)），
+   不是桌面 fill 角色；刷新按钮（`.preview-pane-button:hover` @1697-1710）用
+   浅 #EEF0F3（--cc-fill-hover）/ 深 8% 白。此处按刷新按钮逐值对齐，
+   浅色档改成绑定 `--cc-fill-hover`。
+
+   ③ 第三条评论（点 `svg.header-icon` @
+   `#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div
+   > span:nth-of-type(2) > button > svg`「这里的是不是漏改了」）——
+   该路径逐段解析到**侧栏品牌行的「收起侧边栏」按钮**（`.desktop-sidebar-more-btn`，
+   span#2；span#1 是「活动」）。查证：同排族的 hover 底在 0916 各轮已陆续换成
+   浅 #EEF0F3 / 深 8% 白 —— `.desktop-sidebar-new-chat`（764/767）、
+   `.desktop-session-group-header`（700/704）、`.account-card-more-btn`（801/804）、
+   `.desktop-session-more-btn`（1671/1674）、`.header-button`（见 ②），
+   **只剩 `.desktop-sidebar-more-btn:hover`（DesktopApp.css:146）还是 VS Code 工具栏
+   token**（实测浅 rgba(0,0,0,.12) / 深 rgba(90,93,94,.31)）→ 确实漏改，本处补齐。
+   `:not(.is-active)` 保留「活动」选中态的品牌红底（#FFEBE8 / 深色 18% 品牌红，
+   DesktopApp.css:153/160）。 */
+[data-host="desktop"] .header-button {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="dark"] .header-button {
+  color: #9a9ea5;
+}
+
+[data-host="desktop"] .header-button:hover,
+[data-host="desktop"] .desktop-pane-close:hover,
+[data-host="desktop"] .desktop-sidebar-more-btn:not(.is-active):hover {
+  background-color: var(--cc-fill-hover, #eef0f3);
+}
+[data-host="desktop"][data-theme="dark"] .header-button:hover,
+[data-host="desktop"][data-theme="dark"] .desktop-pane-close:hover,
+[data-host="desktop"][data-theme="dark"]
+  .desktop-sidebar-more-btn:not(.is-active):hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+

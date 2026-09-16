@@ -7,7 +7,8 @@ import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
 } from "wave-agent-sdk/dist/constants/tools.js";
-import { CloseIcon } from "./HeaderIcons";
+import { CloseIcon, ConversationCloseIcon } from "./HeaderIcons";
+import { isDesktopHost } from "../utils/platform";
 import type {
   ConfirmationDialogProps,
   ConfirmationDecision,
@@ -1038,7 +1039,14 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
           aria-label="关闭"
           title="关闭"
         >
-          <CloseIcon className="confirmation-close-btn-icon" />
+          {/* 桌面端与 pane 头部关闭同一官方矢量（用户 0916：「toast 关闭 /
+              确认弹层关闭应该是和 pane 头部关闭用同一个图标」）；IDE 宿主
+              保持原 CloseIcon 不变 */}
+          {isDesktopHost() ? (
+            <ConversationCloseIcon className="confirmation-close-btn-icon" />
+          ) : (
+            <CloseIcon className="confirmation-close-btn-icon" />
+          )}
         </button>
       </div>
     </div>
