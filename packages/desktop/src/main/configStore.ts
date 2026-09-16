@@ -16,6 +16,12 @@ import { LOCAL_HOST } from "./sshHosts";
  * 设置页配置回包载荷只承载用户偏好键（见 `ConfigurationData`）。
  */
 export interface DesktopConfigData {
+  /**
+   * 服务端地址。两条路径共用同一字段名：①本地缓存（`wave-desktop.json`，由 CLI 的
+   * `getAuthStatus` 解析写入，仅用于拼更新 feed URL）；②设置页载荷里的用户偏好
+   * （落会话进程用户级 `~/.wave/settings.json` 的 `env.WAVE_SERVER_URL`，经
+   * `updateUserSettings` RPC）。二者是同一概念的不同落点。
+   */
   serverUrl?: string;
   /**
    * 用户偏好：AI 回复语言。落点唯一为用户级 `~/.wave/settings.json`（读写经

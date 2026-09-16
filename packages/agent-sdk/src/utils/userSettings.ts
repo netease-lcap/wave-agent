@@ -3,7 +3,7 @@
  *
  * 落点唯一 = 用户级 `~/.wave/settings.json`（`getUserConfigPaths()[0]`）：
  * 三端（VS Code 扩展 / JetBrains 插件 / 桌面端）设置页保存的 AI 回复语言、
- * 上下文长度、自动记忆开关/轮次都写这个文件，由 SDK 的实时重载
+ * 上下文长度、自动记忆开关/轮次、服务端地址都写这个文件，由 SDK 的实时重载
  * （LiveConfigManager）在各会话下一轮开始时生效——不经 `AgentOptions`
  * 覆盖层下发（覆盖层优先级高于 settings.json，会永久遮蔽实时配置，
  * 见 docs/specs/core/agent-config.md「设置实时重载」「分层职责」）。
@@ -11,7 +11,12 @@
  * 上下文长度的键 = `env.WAVE_MAX_INPUT_TOKENS`（全局默认，K×1000 落盘、
  * 回读按同一换算），UI 与线协议都传 K 值。
  *
- * 写入是「读-改-写」：只覆盖这四个键，其余顶层键与 `env` 下其它键原样保留。
+ * 服务端地址的键 = `env.WAVE_SERVER_URL`（SDK 既有键，解析链
+ * `options.serverUrl > process.env.WAVE_SERVER_URL > DEFAULT_SERVER_URL`；
+ * settings `env` 的值经 `setEnvironmentVars` 特例镜像到 `process.env`，
+ * 见 docs/specs/core/agent-config.md 边界说明「服务端地址的落点」）。
+ *
+ * 写入是「读-改-写」：只覆盖这些键，其余顶层键与 `env` 下其它键原样保留。
  *
  * `readUserPreferenceView` 额外回答**当前生效值来自哪一层**：用户级文件是用户
  * 偏好的**落点**，但企业下发的 remote-settings（或机器上的环境变量）可以盖过它，
@@ -44,14 +49,20 @@ export const MAX_INPUT_TOKENS_ENV_KEY = "WAVE_MAX_INPUT_TOKENS";
 export const DISABLE_AUTO_MEMORY_ENV_KEY = "WAVE_DISABLE_AUTO_MEMORY";
 export const AUTO_MEMORY_FREQUENCY_ENV_KEY = "WAVE_AUTO_MEMORY_FREQUENCY";
 
-/** 用户偏好键（设置页四个控件）。 */
+/**
+ * 服务端地址的 env 键（SDK 既有键，见文件头与
+ * `ConfigurationService.setEnvironmentVars` 的镜像特例）。
+ */
+export const SERVER_URL_ENV_KEY = "WAVE_SERVER_URL";
+
+/** 用户偏好键（设置页控件）。 */
 export type { UserPreferenceKey, UserPreferenceSource };
 
 /** 生效偏好 + 每个键的来源。 */
 export interface UserPreferenceView {
   /** 生效值；键缺失 = 该偏好没有任何提供者（落 SDK 默认/未设置态）。 */
   values: UserPreferenceSettings;
-  /** 四个键恒有来源（缺省即 `default`）。 */
+  /** 每个键恒有来源（缺省即 `default`）。 */
   sources: Record<UserPreferenceKey, UserPreferenceSource>;
 }
 
@@ -73,6 +84,11 @@ function envDisableAutoMemory(raw: unknown): boolean | undefined {
 function envAutoMemoryFrequency(raw: unknown): number | undefined {
   const parsed = Number.parseInt(typeof raw === "string" ? raw : "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/** 服务端地址：非空字符串 / 未提供（空串视作未提供，不编造默认值）。 */
+function envNonEmptyString(raw: unknown): string | undefined {
+  return typeof raw === "string" && raw.trim() !== "" ? raw : undefined;
 }
 
 /** 按优先级取第一个提供了值的层。 */
@@ -124,7 +140,8 @@ function asEnvBlock(value: unknown): Record<string, unknown> {
 }
 
 function toSettings(data: Record<string, unknown>): UserPreferenceSettings {
-  const rawMax = asEnvBlock(data.env)[MAX_INPUT_TOKENS_ENV_KEY];
+  const env = asEnvBlock(data.env);
+  const rawMax = env[MAX_INPUT_TOKENS_ENV_KEY];
   const settings: UserPreferenceSettings = {};
   if (typeof data.language === "string") settings.language = data.language;
   const contextLength = maxInputTokensToContextLength(
@@ -137,6 +154,8 @@ function toSettings(data: Record<string, unknown>): UserPreferenceSettings {
   if (typeof data.autoMemoryFrequency === "number") {
     settings.autoMemoryFrequency = data.autoMemoryFrequency;
   }
+  const serverUrl = envNonEmptyString(env[SERVER_URL_ENV_KEY]);
+  if (serverUrl !== undefined) settings.serverUrl = serverUrl;
   return settings;
 }
 
@@ -171,7 +190,7 @@ export function readUserPreferenceSettings(
  *
  * `values` 的语义**与只读用户文件时完全一致**：只有真的有提供者才会出现该键，
  * 没有任何层提供时键缺失（设置页据此显示「未设置」态、按 SDK 默认值展示）。
- * 新增信息只在 `sources`：四个键恒有来源（缺省 `default`）。
+ * 新增信息只在 `sources`：每个键恒有来源（缺省 `default`）。
  *
  * 注意归因范围：`project`（`.wave/settings.json`）/ `local`（`.wave/settings.local.json`）
  * 需要 workdir，而本 RPC 是刻意的无会话全局请求；`override` / `options` 是会话级
@@ -198,6 +217,7 @@ export function readUserPreferenceView(
     contextLength: "default",
     autoMemoryEnabled: "default",
     autoMemoryFrequency: "default",
+    serverUrl: "default",
   };
 
   // language 没有 env 落点（`resolveLanguage` 只读合并后的顶层键）。
@@ -254,6 +274,18 @@ export function readUserPreferenceView(
     sources.autoMemoryFrequency = autoMemoryFrequency.source;
   }
 
+  // 服务端地址的落点 = `env.WAVE_SERVER_URL`，来源只可能是 user / env / default——
+  // 不归因 remote（远端托管配置本身取自该地址，不存在「组织下发服务端地址」的闭环，
+  // 见 spec core/agent-config.md 边界说明「服务端地址的落点」）。
+  const serverUrl = selectPreference<string>([
+    ["user", user.serverUrl],
+    ["env", envNonEmptyString(env[SERVER_URL_ENV_KEY])],
+  ]);
+  if (serverUrl) {
+    values.serverUrl = serverUrl.value;
+    sources.serverUrl = serverUrl.source;
+  }
+
   return { values, sources };
 }
 
@@ -288,7 +320,17 @@ export async function updateUserPreferenceSettings(
   const hasContextLength = patch.contextLength !== undefined;
   const hasEnabled = patch.autoMemoryEnabled !== undefined;
   const hasFrequency = patch.autoMemoryFrequency !== undefined;
-  if (!hasLanguage && !hasContextLength && !hasEnabled && !hasFrequency) {
+  // 空串视作未提供（与回读侧 `envNonEmptyString` 同一判据）：写进去会在
+  // `process.env` 镜像里遮蔽 OS 环境变量（解析链用 `||` 回落到默认值），而回读侧
+  // 又按「未设置」展示 ⇒ 显示值与生效值分叉。省略键 = 不改该键。
+  const serverUrl = envNonEmptyString(patch.serverUrl);
+  if (
+    !hasLanguage &&
+    !hasContextLength &&
+    !hasEnabled &&
+    !hasFrequency &&
+    serverUrl === undefined
+  ) {
     return toSettings(data);
   }
 
@@ -311,6 +353,14 @@ export async function updateUserPreferenceSettings(
     Number.isFinite(patch.autoMemoryFrequency)
   ) {
     data.autoMemoryFrequency = patch.autoMemoryFrequency;
+  }
+
+  // 服务端地址落 `env.WAVE_SERVER_URL`（既有键）：原样写入，不做归一/清理
+  // （格式校验在设置页，见 spec 边界说明「服务端地址的落点」）。
+  if (serverUrl !== undefined) {
+    const env = asEnvBlock(data.env);
+    env[SERVER_URL_ENV_KEY] = serverUrl;
+    data.env = env;
   }
 
   // 首次保存时 `~/.wave` 可能尚不存在（会话启动时文件不存在，场景 7），

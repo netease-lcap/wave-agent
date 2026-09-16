@@ -92,9 +92,11 @@ export interface UserPreferenceSettings {
   autoMemoryEnabled?: boolean;
   /** 自动记忆提取的轮次频率（1–100）。 */
   autoMemoryFrequency?: number;
+  /** Wave 服务端地址（settings.json 的 `env.WAVE_SERVER_URL`，如 https://…）。 */
+  serverUrl?: string;
 }
 
-/** 用户偏好键（设置页四个控件）。 */
+/** 用户偏好键（设置页控件）。 */
 export type UserPreferenceKey = keyof UserPreferenceSettings;
 
 /**
@@ -112,7 +114,7 @@ export type UserPreferenceSource = "remote" | "user" | "env" | "default";
  * 「由组织配置管理」）。
  */
 export interface UserPreferenceSettingsView extends UserPreferenceSettings {
-  /** 四个键恒有来源（缺省即 `default`）。 */
+  /** 每个键恒有来源（缺省即 `default`）。 */
   preferenceSources?: Partial<Record<UserPreferenceKey, UserPreferenceSource>>;
 }
 

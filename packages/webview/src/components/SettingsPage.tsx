@@ -147,6 +147,17 @@ type AgentsScope = "user" | "project";
 export const UNSET_OPTION_LABEL = "未设置（默认：中文）";
 export const CONTEXT_LENGTH_PLACEHOLDER = "跟随模型配置（默认 200K）";
 export const AUTO_MEMORY_FREQUENCY_PLACEHOLDER = "默认 1 轮";
+/**
+ * 「服务端地址」未设置态（settings.json 的 `env.WAVE_SERVER_URL` 无该键）的灰字
+ * 占位符：默认地址与 SDK 解析链末尾的 `DEFAULT_SERVER_URL`（`utils/constants.ts`）
+ * 同源，由单测跨包引用该常量守卫「显示 ≡ 生效」（与 `CONTEXT_LENGTH_PLACEHOLDER`
+ * 引 SDK 默认同源的做法一致，spec agent-config「配置服务端地址」场景 1）。
+ */
+export const SERVER_URL_PLACEHOLDER =
+  "未设置（默认：https://codechat.codewave.163.com）";
+/** 服务端地址格式不合法时的行内提示（spec「配置服务端地址」场景 4）。 */
+export const SERVER_URL_INVALID_HINT =
+  "服务端地址须以 http:// 或 https:// 开头";
 /** 生效值来自机器环境变量时的行内说明（可编辑，保存后写入用户级 settings.json）。 */
 export const ENV_SOURCE_HINT = "当前值来自系统环境变量；保存后以本页设置为准";
 
@@ -170,6 +181,14 @@ function changedNumber(current: string, initial?: number): number | undefined {
   const value = Number(current);
   if (!Number.isFinite(value)) return undefined;
   return value === initial ? undefined : value;
+}
+
+/**
+ * 服务端地址格式：非空时必须 `http(s)://` 开头（spec「配置服务端地址」场景 4）。
+ * 写坏的地址会让 SSO 登录与网关请求指向错误端点，故在设置页这一用户输入边界拦一道。
+ */
+function isValidServerUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
 }
 
 interface NavItem {
@@ -257,6 +276,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   // 保存时不写该键（见文件顶部 UNSET 说明与 spec agent-config 场景 7–8）。
   const [language, setLanguage] = useState("");
   const [contextLength, setContextLength] = useState("");
+  // 服务端地址草稿（注意与上面的 `serverUrl` prop 区分：那是宿主 authStatus 下发的
+  // 进程级服务地址，只用于「接收 Beta 版更新」开关的可用性判断；这里是用户偏好的
+  // 可编辑值，落 `env.WAVE_SERVER_URL`，带 `preferenceSources` 归因）。
+  const [serverUrlDraft, setServerUrlDraft] = useState("");
+  // 上次点「保存」时服务端地址格式是否不合法（用于行内提示；编辑即复位）。
+  const [serverUrlInvalid, setServerUrlInvalid] = useState(false);
+  // 格式不合法时保留用户输入的草稿：保存回执会重置其余草稿（见下方回填 effect），
+  // 若把非法输入一并抹掉，就会出现「行内提示说地址不合法、输入框却是个合法/空值」
+  // 的自相矛盾（其余控件不会遇到：下拉/数字框造不出非法串）。
+  const keepServerUrlDraftRef = useRef(false);
   const [autoMemoryFrequency, setAutoMemoryFrequency] = useState("");
   // 自动记忆开关不做占位态：它的真实默认就是「开」，三态开关更难用（spec 场景 7）。
   const [autoMemoryEnabled, setAutoMemoryEnabled] = useState(true);
@@ -286,6 +315,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         ? ""
         : String(configurationData.contextLength),
     );
+    if (!keepServerUrlDraftRef.current) {
+      setServerUrlDraft(configurationData.serverUrl ?? "");
+    }
     setAutoMemoryEnabled(configurationData.autoMemoryEnabled ?? true);
     setAutoMemoryFrequency(
       configurationData.autoMemoryFrequency === undefined
@@ -424,6 +456,20 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
       configurationData.contextLength,
     );
     if (contextPatch !== undefined) patch.contextLength = contextPatch;
+    // 服务端地址：非空时必须 http(s):// 开头，否则该键不写入并给出行内提示
+    // （spec agent-config「配置服务端地址」场景 4）；同一次保存里其余有效字段照常写入。
+    const trimmedServerUrl = serverUrlDraft.trim();
+    const serverUrlValid =
+      trimmedServerUrl === "" || isValidServerUrl(trimmedServerUrl);
+    setServerUrlInvalid(!serverUrlValid);
+    keepServerUrlDraftRef.current = !serverUrlValid;
+    if (serverUrlValid) {
+      const serverUrlPatch = changedString(
+        trimmedServerUrl,
+        configurationData.serverUrl,
+      );
+      if (serverUrlPatch !== undefined) patch.serverUrl = serverUrlPatch;
+    }
     onSave(patch);
   };
 
@@ -596,6 +642,45 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         onChange={(e) => setContextLength(e.target.value)}
                       />
                       <span>K</span>
+                    </div>
+                  </div>
+                  <div className="settings-row">
+                    <div className="settings-row-copy">
+                      <h3>服务端地址</h3>
+                      <p>
+                        设置要连接的 Wave 服务端地址（SSO 登录与 AI 网关端点）
+                      </p>
+                      {/* 服务端地址不可能来源为 remote（远端托管配置本身取自该地址），
+                          故无「由组织配置管理」置灰态；env 来源仍标注并保持可编辑
+                          （spec agent-config「配置服务端地址」场景 5）。 */}
+                      {envManaged("serverUrl") && (
+                        <p className="settings-row-hint">{ENV_SOURCE_HINT}</p>
+                      )}
+                      {serverUrlInvalid && (
+                        <p
+                          className="settings-row-hint"
+                          data-testid="server-url-invalid-hint"
+                        >
+                          {SERVER_URL_INVALID_HINT}
+                        </p>
+                      )}
+                    </div>
+                    <div className="settings-control">
+                      {/* 未设置态：settings.json 的 env.WAVE_SERVER_URL 无该键时留空 +
+                          灰字占位符显示 SDK 默认地址（DEFAULT_SERVER_URL），保存时
+                          不写该键（spec「配置服务端地址」场景 1/3）。 */}
+                      <input
+                        className="settings-text-input"
+                        type="text"
+                        aria-label="服务端地址"
+                        placeholder={SERVER_URL_PLACEHOLDER}
+                        value={serverUrlDraft}
+                        onChange={(e) => {
+                          setServerUrlDraft(e.target.value);
+                          setServerUrlInvalid(false);
+                          keepServerUrlDraftRef.current = false;
+                        }}
+                      />
                     </div>
                   </div>
                 </div>

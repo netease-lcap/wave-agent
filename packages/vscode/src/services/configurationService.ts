@@ -14,6 +14,8 @@ export interface ConfigurationData {
   autoMemoryEnabled?: boolean;
   /** Auto-memory extraction turn frequency, 1–100 */
   autoMemoryFrequency?: number;
+  /** Wave 服务端地址（落 `env.WAVE_SERVER_URL`）。 */
+  serverUrl?: string;
   /**
    * 每个用户偏好键的来源层（`remote` / `user` / `env` / `default`）：回包带上
    * 它，设置页才能把被组织配置（Remote）覆盖的键显示为「生效值 + 置灰」而不是
@@ -24,11 +26,11 @@ export interface ConfigurationData {
 
 /**
  * 设置页配置载荷：**只有用户偏好**（AI 回复语言 / 上下文长度 / 自动记忆开关与
- * 频率），落点唯一为用户级 `~/.wave/settings.json`。
+ * 频率 / 服务端地址），落点唯一为用户级 `~/.wave/settings.json`。
  *
- * 模型选择与服务地址不属于这里：模型经 `/model` 命令走
- * `getConfiguredModels` / `setModel`，服务地址随 `authStatusResponse.serverUrl`
- * 下发（由 CLI 的 `getAuthStatus` 解析）。
+ * 模型选择不属于这里：模型经 `/model` 命令走 `getConfiguredModels` / `setModel`。
+ * 服务端地址的用户偏好落点（`env.WAVE_SERVER_URL`）属于这里；宿主的
+ * `authStatusResponse.serverUrl` 仍单独下发（由 CLI 的 `getAuthStatus` 解析）。
  *
  * 用户偏好经共享 CLI 进程（即**会话所在进程**，VS Code Remote/SSH 下是远端机器
  * 上的该文件）的 `getUserSettings` / `updateUserSettings` 读写，SDK 侧热重载在
@@ -101,5 +103,7 @@ function pickUserPreferences(
     patch.autoMemoryEnabled = configData.autoMemoryEnabled;
   if (typeof configData.autoMemoryFrequency === "number")
     patch.autoMemoryFrequency = configData.autoMemoryFrequency;
+  if (typeof configData.serverUrl === "string")
+    patch.serverUrl = configData.serverUrl;
   return patch;
 }

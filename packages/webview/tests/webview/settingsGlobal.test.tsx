@@ -3,11 +3,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "./test-utils";
 import SettingsPage, {
   ENV_SOURCE_HINT,
+  SERVER_URL_INVALID_HINT,
+  SERVER_URL_PLACEHOLDER,
   UNSET_OPTION_LABEL,
 } from "../../src/components/SettingsPage";
 import type { ConfigurationData } from "../../src/types";
 import {
   DEFAULT_LANGUAGE,
+  DEFAULT_SERVER_URL,
   DEFAULT_WAVE_MAX_INPUT_TOKENS,
 } from "wave-agent-sdk/dist/utils/constants.js";
 
@@ -508,5 +511,174 @@ describe("SettingsPage 被组织配置覆盖的键：显示生效值 + 置灰 + 
     fireEvent.click(saveButton());
 
     expect(onSave).toHaveBeenCalledWith({ contextLength: 128 });
+  });
+});
+
+/**
+ * 「服务端地址」行（spec agent-config「配置服务端地址」）：落 SDK 既有键
+ * `env.WAVE_SERVER_URL`，未设置态用灰字占位符显示 SDK 默认地址；保存时省略键 =
+ * 不改该键；格式不合法（非 `http(s)://` 开头）时该键不写入 + 行内提示，其余字段照常
+ * 保存。该键来源只可能是 `user` / `env` / `default`（远端托管配置本身取自该地址），
+ * 故不出现「由组织配置管理」置灰态。
+ */
+describe("SettingsPage「服务端地址」行（落 env.WAVE_SERVER_URL）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function serverUrlInput(): HTMLInputElement {
+    return screen.getByLabelText("服务端地址") as HTMLInputElement;
+  }
+
+  function serverUrlRow(): HTMLElement {
+    const row = serverUrlInput().closest(".settings-row");
+    if (!row) throw new Error("找不到服务端地址行");
+    return row as HTMLElement;
+  }
+
+  it("落在「基础设置」区块内、位于上下文长度行之后", () => {
+    renderGlobalView({ configurationData: {} });
+
+    const basic = sectionFor("基础设置");
+    expect(within(basic).getByLabelText("服务端地址")).toBeInTheDocument();
+    const headings = [...basic.querySelectorAll(".settings-row h3")].map(
+      (h) => h.textContent,
+    );
+    expect(headings.indexOf("服务端地址")).toBeGreaterThan(
+      headings.indexOf("上下文长度"),
+    );
+  });
+
+  it("未设置该键时留空 + 灰字占位符显示 SDK 默认地址（不退出未设置态语义）", () => {
+    renderGlobalView({ configurationData: {} });
+
+    const input = serverUrlInput();
+    expect(input.value).toBe("");
+    // 「显示 ≡ 生效」：占位符里的默认地址必须与 SDK 解析链末尾同串，否则会出现
+    // 「设置页写着 A、实际连 B」的分叉（与语言/上下文长度的守卫同理）。
+    expect(SERVER_URL_PLACEHOLDER).toContain(DEFAULT_SERVER_URL);
+    expect(input.placeholder).toBe(SERVER_URL_PLACEHOLDER);
+    expect(
+      screen.queryByTestId("server-url-invalid-hint"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("由组织配置管理")).not.toBeInTheDocument();
+  });
+
+  it("settings.json 有值时回填该值", () => {
+    renderGlobalView({
+      configurationData: {
+        serverUrl: "https://codechat.codewave-test.163yun.com",
+      },
+    });
+
+    expect(serverUrlInput().value).toBe(
+      "https://codechat.codewave-test.163yun.com",
+    );
+  });
+
+  it("填入地址并保存 → 载荷带 serverUrl（其余未改动的键不出现）", () => {
+    const { onSave } = renderGlobalView({ configurationData: {} });
+
+    fireEvent.change(serverUrlInput(), {
+      target: { value: "https://codechat.codewave-test.163yun.com" },
+    });
+    fireEvent.click(saveButton());
+
+    expect(onSave).toHaveBeenCalledWith({
+      serverUrl: "https://codechat.codewave-test.163yun.com",
+    });
+  });
+
+  it("把已写过的值清空 → 载荷不含该键（不提供清除/恢复默认）", () => {
+    const { onSave } = renderGlobalView({
+      configurationData: { serverUrl: "https://kept.test" },
+    });
+
+    fireEvent.change(serverUrlInput(), { target: { value: "" } });
+    fireEvent.click(saveButton());
+
+    expect(onSave).toHaveBeenCalledWith({});
+  });
+
+  it("格式不合法（不以 http(s):// 开头）→ 该键不写入 + 行内提示，其余字段照常保存", () => {
+    const { onSave } = renderGlobalView({
+      configurationData: { language: "zh-CN" },
+    });
+
+    fireEvent.change(languageSelect(), { target: { value: "en-US" } });
+    fireEvent.change(serverUrlInput(), {
+      target: { value: "codechat.example.com" },
+    });
+    fireEvent.click(saveButton());
+
+    expect(onSave).toHaveBeenCalledWith({ language: "en-US" });
+    expect(
+      within(serverUrlRow()).getByTestId("server-url-invalid-hint"),
+    ).toHaveTextContent(SERVER_URL_INVALID_HINT);
+  });
+
+  it("在非法值基础上改成合法值 → 提示消失、可写入", () => {
+    const { onSave } = renderGlobalView({ configurationData: {} });
+
+    fireEvent.change(serverUrlInput(), {
+      target: { value: "codechat.example.com" },
+    });
+    fireEvent.click(saveButton());
+    expect(screen.getByTestId("server-url-invalid-hint")).toBeInTheDocument();
+
+    fireEvent.change(serverUrlInput(), {
+      target: { value: "https://good.example.com" },
+    });
+    expect(
+      screen.queryByTestId("server-url-invalid-hint"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(saveButton());
+
+    expect(onSave).toHaveBeenLastCalledWith({
+      serverUrl: "https://good.example.com",
+    });
+  });
+
+  it("非法值被拒后保留在输入框（保存回包不得抹掉它，否则提示与被抹掉的值自相矛盾）", () => {
+    const props = {
+      onSave: () => {},
+      onClose: () => {},
+      userAgentsContent: null,
+      projectAgentsContent: null,
+      onLoadAgentsContent: () => {},
+    };
+    const { rerender } = render(
+      <SettingsPage configurationData={{}} {...props} />,
+    );
+
+    fireEvent.change(serverUrlInput(), {
+      target: { value: "codechat.example.com" },
+    });
+    fireEvent.click(saveButton());
+
+    // 宿主回包：该键未写入，仍是未设置态
+    rerender(<SettingsPage configurationData={{}} {...props} />);
+
+    expect(serverUrlInput().value).toBe("codechat.example.com");
+    expect(
+      within(serverUrlRow()).getByTestId("server-url-invalid-hint"),
+    ).toBeInTheDocument();
+  });
+
+  it("生效值来自机器环境变量（env 来源）→ 显示生效值 + 来源说明 + 仍可编辑", () => {
+    renderGlobalView({
+      configurationData: {
+        serverUrl: "https://from-os-env.test",
+        preferenceSources: { serverUrl: "env" },
+      },
+    });
+
+    const input = serverUrlInput();
+    expect(input.value).toBe("https://from-os-env.test");
+    expect(input).toBeEnabled();
+    expect(
+      within(serverUrlRow()).getByText(ENV_SOURCE_HINT),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("由组织配置管理")).not.toBeInTheDocument();
   });
 });
