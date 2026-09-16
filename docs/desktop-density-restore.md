@@ -3673,3 +3673,51 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 ### 并行窗口说明
 
 本批提交**只取本窗口（评论②）的内容**：`host-desktop.css` 的 3 条 hunk（`:277-289` 图标按钮、`:336-352` 权限选择器）用**共享索引里已暂存的快照**提交；`docs/desktop-density-restore.md` 用「HEAD 版本 + 本节」组装的 blob 写入索引（`git update-index --cacheinfo`），因此**同一文件里另一窗口在途的「账户热区 hover 审计」小节与 `host-desktop.css` 的 `:750-752` / `:764-766` 两条 hunk 均未进入本提交**，仍留在工作区。与本轮同批推送的第 2 轮（字重 400）由另一窗口独立提交。
+
+---
+
+## 0916 评论③：账户卡片文字「不加粗」→ 名称 / 套餐用量行 / 用量标签 / 用量数值 / 百分比 统一 400（已随本批推送）
+
+用户 2026-09-16 预览评论（逐元素给了元素路径，原话均为「**不加粗**」）：
+
+- `span.account-card-name`「admin@corp.netease.com」
+- `span.account-usage-label`「API 余额」（`.account-usage-row` 内那个）
+- `span.account-usage-value-text`「¥6,800.00」
+- `span.account-usage-percent`「76%」
+- **追加授权（同日）**：`span`「套餐用量」（`.account-usage-title` 里无 class 的子 span）也是「不加粗，改完直接推送」 —— 即把上一版列的残留一并收掉。
+
+口径 = 账户卡片的名称与用量文字不再用字重分层，一律 regular 400。
+
+### 改前 → 改后（桌面端 `[data-host="desktop"]` 计算值，用例 `desktop-full` 1440×900，深/浅同值）
+
+| 元素                                                                    | 改前 | 改后    | 盒尺寸 / 位置                             |
+| ----------------------------------------------------------------------- | ---- | ------- | ----------------------------------------- |
+| `.account-card-name`（账户邮箱，14px）                                  | 500  | **400** | `153x17 @52,865` 逐值不变                 |
+| `.account-usage-title`（套餐用量行，含「套餐用量」span 与 `76%`，12px） | 500  | **400** | `231x17 @14,789` 逐值不变                 |
+| `.account-usage-row .account-usage-label`（API 余额，12px）             | 500  | **400** | `47x17 @14,826` 逐值不变                  |
+| `.account-usage-row .account-usage-value-text`（¥6,800.00，12px）       | 500  | **400** | 宽 `60 → 58`，**右缘 221 不变**（右对齐） |
+| `.account-usage-percent`（76%，12px）                                   | 500  | **400** | 宽 `26 → 25`，**右缘 245 不变**（右对齐） |
+| 对照 · `.account-usage-bar`（进度条，未点名）                           | 400  | 400     | `231x6 @14,812` 逐值不变                  |
+
+实现：这些选择器原在 **② 界面标题类（500）** 组，本轮**移出**并新增 **⑨ 组**（`font-weight: var(--cc-font-weight-regular, 400)`，带逐条评论依据注释）；`host-desktop.css` ② 组注释同步说明移出。「套餐用量」这四个字本身没有 class（继承行容器），故 400 落在 `.account-usage-title` 行上。base `AccountCard.css`（`.account-card-name` 500、`.account-usage-title` 500、`.account-usage-percent` 500、`.account-usage-row` 内标签与金额 500）**不动**——该组件仅桌面侧栏使用，但按 0904 约定桌面值一律落在 host 覆盖层。
+
+### 实测
+
+- 计算值：五条 `500 → 400` 全命中（含追加授权的套餐用量行），浅色档同值；对照项 `.account-usage-bar` 未动。
+- 几何：用量数值与百分比在行内**右对齐**，字重变细后盒宽各收 2px / 1px，**右缘逐值不变**；套餐用量行与卡片总高逐值不变；卡片内其余元素未动。
+- `0 pageerror`；裁剪图 `acc-{dark,light}-{before,after}.png`（`494×240` @DPR2）差异像素均 **6.26%**，bbox `(16,35,477,215)` 只落在卡片文字区。
+
+### 残留（未授权，供后续点名）
+
+- 契约冲突：skill `references/design-system.md:161`（Labels 套餐用量 / API 额度 `12px / 500`）、`:162`（`48%` 说明 `12px / 500`）、`:163`（额度行右侧金额 `12px / 500`）仍写 500 —— 本轮已作为 **W-30** 写进交接单，交 codex 裁决（改条款 or 记为桌面宿主例外）。
+- 账户卡其余仍 500 的文字（套餐余量提示等）未点名 → 触发语 **「账户卡其余文字也一起」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-accountcard-font-0916.mjs`（同页回退对照 + 深/浅双主题 + DPR2 裁剪图）。
+- 证据目录 `CC02/走查/0916-字重/`：`acc-{dark,light}-{before,after}.png`、`acc-verify.json`、`acc-verify.md`。
+- 纯 CSS 字重改动（无 TS），未跑 type-check。
+
+### 并行窗口说明
+
+本轮 hunk（`host-desktop.css` ② 组缩减 + 新增 ⑨ 组）与同文件内另一窗口在途改动不重叠；推送时仍用分离索引只取本窗口 hunk，共享索引里他窗口已暂存的内容保持原样。

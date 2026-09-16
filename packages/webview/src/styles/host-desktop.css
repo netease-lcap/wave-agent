@@ -2774,16 +2774,12 @@
 }
 
 /* ② 界面标题类（用户 2026-09-04 逐项点名 → medium 500）：顶栏会话标题
-   （就地改于上方 header-title 块）、账户卡套餐用量行/百分比/API 余额标签
-   与金额、账户名、会话状态页卡标题、会话分组名、用户消息正文。侧栏会话名
-   （仅选中）与面板页签 active、权限下拉选项原在此组，**0916 第 2 轮移出** →
-   选中态/选项一律不靠字重强调，见 ⑧。部分 base/继承本即 500（等值 token 化），
-   部分由 600/400 提到 500（视觉相应变化）。 */
-[data-host="desktop"] .account-usage-title,
-[data-host="desktop"] .account-usage-percent,
-[data-host="desktop"] .account-usage-row .account-usage-label,
-[data-host="desktop"] .account-usage-row .account-usage-value-text,
-[data-host="desktop"] .account-card-name,
+   （就地改于上方 header-title 块）、会话状态页卡标题、会话分组名、用户消息
+   正文。侧栏会话名（仅选中）与面板页签 active、权限下拉选项原在此组，
+   **0916 第 2 轮移出** → 选中态/选项一律不靠字重强调，见 ⑧；账户卡名称 /
+   用量标签 / 用量数值 / 百分比 / 套餐用量行也原在此组，**0916 评论③移出** →
+   不加粗一并走 400，见 ⑨。部分 base/继承本即 500（等值 token 化），部分由
+   600/400 提到 500（视觉相应变化）。 */
 [data-host="desktop"] .session-card-title,
 [data-host="desktop"] .desktop-session-group-name,
 [data-host="desktop"] .user-content {
@@ -2802,6 +2798,22 @@
 [data-host="desktop"] .slash-command-name,
 [data-host="desktop"] .session-list-item-title,
 [data-host="desktop"] .desktop-branch-active .desktop-workdir-menu-name {
+  font-weight: var(--cc-font-weight-regular, 400);
+}
+
+/* ⑨ 0916 评论③（用户 2026-09-16 逐元素走查：账户卡片 `span.account-card-name`
+   「admin@corp.netease.com」、`span.account-usage-label`「API 余额」、
+   `span.account-usage-value-text`「¥6,800.00」、`span.account-usage-percent`
+   「76%」「不加粗」；随后追加同一行的「套餐用量」四个字也不加粗）：账户卡片的
+   名称与用量数值不再用字重分层，全部 regular。`.account-usage-title` 是行容器
+   （「套餐用量」文字是无 class 的 span，靠继承），故改成 400 落在此行本身。
+   base `AccountCard.css` 不动（组件仅桌面侧栏使用，但按 0904 约定桌面值一律
+   落在 host 层）。 */
+[data-host="desktop"] .account-card-name,
+[data-host="desktop"] .account-usage-title,
+[data-host="desktop"] .account-usage-percent,
+[data-host="desktop"] .account-usage-row .account-usage-label,
+[data-host="desktop"] .account-usage-row .account-usage-value-text {
   font-weight: var(--cc-font-weight-regular, 400);
 }
 
