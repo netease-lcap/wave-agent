@@ -170,6 +170,38 @@ describe("PluginCore", () => {
     expect(result.mergedEnabled).toEqual({ "p1@m1": true });
   });
 
+  it("should treat a plugin installed outside the current workdir as not installed", async () => {
+    // 安装产物在本机（曾以项目作用域装在别的项目里），但当前工作目录的配置链里
+    // 没有启用记录 → 未安装，且不回传作用域/版本/缓存路径（spec plugin A-012）
+    mockMarketplaceService.getInstalledPlugins.mockResolvedValue({
+      plugins: [
+        { name: "p1", marketplace: "m1", version: "1.0.0", cachePath: "/p1" },
+      ],
+    });
+    mockMarketplaceService.listMarketplaces.mockResolvedValue([
+      { name: "m1", source: { source: "directory", path: "/m1" } },
+    ]);
+    mockMarketplaceService.getMarketplacePath.mockReturnValue("/m1");
+    mockMarketplaceService.loadMarketplaceManifest.mockResolvedValue({
+      name: "m1",
+      owner: { name: "o1" },
+      plugins: [{ name: "p1", description: "desc1", source: "s1" }],
+    });
+    mockConfigurationService.getMergedEnabledPlugins.mockReturnValue({});
+    mockPluginScopeManager.findPluginScope.mockReturnValue(null);
+
+    const result = await pluginCore.listPlugins();
+
+    expect(result.plugins[0]).toMatchObject({
+      name: "p1",
+      marketplace: "m1",
+      installed: false,
+    });
+    expect(result.plugins[0].scope).toBeUndefined();
+    expect(result.plugins[0].version).toBeUndefined();
+    expect(result.plugins[0].cachePath).toBeUndefined();
+  });
+
   it("should handle marketplace load failures in listPlugins", async () => {
     mockMarketplaceService.getInstalledPlugins.mockResolvedValue({
       plugins: [],
