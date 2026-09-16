@@ -85,6 +85,13 @@ async function openPluginMarket(page: Parameters<typeof openSettings>[0]) {
     command: "listPluginsResponse",
     plugins: PLUGINS,
   });
+  // 打开视图触发的后台清单刷新在宿主侧已完成（只拉检出、不升级插件）：
+  // 截图不带瞬态的「检查更新中」，模型 = 宿主带 refreshed 标记的补发
+  await simulateHostMessage(page, {
+    command: "listPluginsResponse",
+    plugins: PLUGINS,
+    refreshed: true,
+  });
   await expect(page.locator(".settings-plugin-list")).toBeVisible();
 }
 

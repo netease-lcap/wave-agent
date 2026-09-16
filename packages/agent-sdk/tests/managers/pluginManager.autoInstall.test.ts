@@ -82,7 +82,7 @@ describe("PluginManager Auto-install", () => {
           .mockImplementation(async () => installedPlugins),
         listMarketplaces: vi.fn().mockResolvedValue(knownMarketplaces),
         installPlugin: mockInstallPlugin,
-        autoUpdateAll: vi.fn().mockResolvedValue(undefined),
+        refreshMarketplaces: vi.fn().mockResolvedValue(undefined),
       } as unknown as MarketplaceService;
     });
 
@@ -132,7 +132,7 @@ describe("PluginManager Auto-install", () => {
           .mockImplementation(async () => installedPlugins),
         listMarketplaces: vi.fn().mockResolvedValue(knownMarketplaces),
         installPlugin: mockInstallPlugin,
-        autoUpdateAll: vi.fn().mockResolvedValue(undefined),
+        refreshMarketplaces: vi.fn().mockResolvedValue(undefined),
       } as unknown as MarketplaceService;
     });
 
@@ -176,7 +176,7 @@ describe("PluginManager Auto-install", () => {
           .mockImplementation(async () => installedPlugins),
         listMarketplaces: vi.fn().mockResolvedValue(knownMarketplaces),
         installPlugin: mockInstallPlugin,
-        autoUpdateAll: vi.fn().mockResolvedValue(undefined),
+        refreshMarketplaces: vi.fn().mockResolvedValue(undefined),
         getMarketplacePath: vi.fn().mockReturnValue("/marketplace/path"),
         loadMarketplaceManifest: vi.fn().mockResolvedValue({
           plugins: [{ name: "test-plugin" }],
@@ -233,7 +233,7 @@ describe("PluginManager Auto-install", () => {
           .mockImplementation(async () => installedPlugins),
         listMarketplaces: vi.fn().mockResolvedValue(knownMarketplaces),
         installPlugin: mockInstallPlugin,
-        autoUpdateAll: vi.fn().mockResolvedValue(undefined),
+        refreshMarketplaces: vi.fn().mockResolvedValue(undefined),
         getMarketplacePath: vi.fn().mockReturnValue("/marketplace/path"),
         loadMarketplaceManifest: vi.fn().mockResolvedValue({
           plugins: [{ name: "other-plugin" }], // stale-plugin NOT in manifest
@@ -294,7 +294,7 @@ describe("PluginManager Auto-install", () => {
           .mockImplementation(async () => installedPlugins),
         listMarketplaces: vi.fn().mockResolvedValue(knownMarketplaces),
         installPlugin: mockInstallPlugin,
-        autoUpdateAll: vi.fn().mockResolvedValue(undefined),
+        refreshMarketplaces: vi.fn().mockResolvedValue(undefined),
         getMarketplacePath: vi.fn().mockReturnValue("/marketplace/path"),
         loadMarketplaceManifest: vi
           .fn()
@@ -359,7 +359,7 @@ describe("PluginManager Auto-install", () => {
           .mockImplementation(async () => installedPlugins),
         listMarketplaces: vi.fn().mockResolvedValue(knownMarketplaces),
         installPlugin: mockInstallPlugin,
-        autoUpdateAll: vi.fn().mockResolvedValue(undefined),
+        refreshMarketplaces: vi.fn().mockResolvedValue(undefined),
         getMarketplacePath: vi.fn().mockReturnValue("/marketplace/path"),
         loadMarketplaceManifest: vi.fn().mockResolvedValue({
           plugins: [{ name: "stale-plugin" }], // Exists in manifest but installPlugin still fails

@@ -51,6 +51,12 @@ describe("PluginManager", () => {
   let mockMcpManager: McpManager;
   let mockSlashCommandManager: SlashCommandManager;
   let mockPermissionManager: PermissionManager;
+  /** 每个用例里 PluginManager 构造的 MarketplaceService 替身（守卫「加载插件不刷市场」）。 */
+  let createdMarketplaceServices: {
+    getInstalledPlugins: ReturnType<typeof vi.fn>;
+    listMarketplaces: ReturnType<typeof vi.fn>;
+    refreshMarketplaces: ReturnType<typeof vi.fn>;
+  }[];
   const workdir = "/test/workdir";
 
   beforeEach(() => {
@@ -87,12 +93,15 @@ describe("PluginManager", () => {
       mockConfigurationService as unknown as Record<string, unknown>,
     );
 
+    createdMarketplaceServices = [];
     vi.mocked(MarketplaceService).mockImplementation(function () {
-      return {
+      const instance = {
         getInstalledPlugins: vi.fn().mockResolvedValue({ plugins: [] }),
         listMarketplaces: vi.fn().mockResolvedValue([]),
-        autoUpdateAll: vi.fn().mockResolvedValue(undefined),
-      } as unknown as MarketplaceService;
+        refreshMarketplaces: vi.fn().mockResolvedValue(undefined),
+      };
+      createdMarketplaceServices.push(instance);
+      return instance as unknown as MarketplaceService;
     });
 
     pluginManager = new PluginManager(container, {
@@ -254,7 +263,7 @@ describe("PluginManager", () => {
             .fn()
             .mockResolvedValue({ plugins: installedPlugins }),
           listMarketplaces: vi.fn().mockResolvedValue([]),
-          autoUpdateAll: vi.fn().mockResolvedValue(undefined),
+          refreshMarketplaces: vi.fn().mockResolvedValue(undefined),
         } as unknown as MarketplaceService;
       });
 
@@ -337,7 +346,7 @@ describe("PluginManager", () => {
             .fn()
             .mockResolvedValue({ plugins: installedPlugins }),
           listMarketplaces: vi.fn().mockResolvedValue([]),
-          autoUpdateAll: vi.fn().mockResolvedValue(undefined),
+          refreshMarketplaces: vi.fn().mockResolvedValue(undefined),
         } as unknown as MarketplaceService;
       });
 
@@ -378,31 +387,14 @@ describe("PluginManager", () => {
       );
     });
 
-    it("should log error if background auto-update fails", async () => {
-      const originalVitest = process.env.VITEST;
-      delete process.env.VITEST;
+    it("should not refresh marketplace checkouts while loading plugins", async () => {
+      // 清单刷新只由「打开插件市场界面」触发（spec 插件市场 A-012 场景 5）：
+      // 插件加载路径（宿主启动 / 新建会话 / 配置重建）不得发起任何市场拉取。
+      await pluginManager.loadPlugins([]);
 
-      const error = new Error("Update failed");
-      vi.mocked(MarketplaceService).mockImplementation(function () {
-        return {
-          getInstalledPlugins: vi.fn().mockResolvedValue({ plugins: [] }),
-          listMarketplaces: vi.fn().mockResolvedValue([]),
-          autoUpdateAll: vi.fn().mockRejectedValue(error),
-        } as unknown as MarketplaceService;
-      });
-
-      try {
-        await pluginManager.loadPlugins([]);
-
-        // Wait for background promise to settle
-        await new Promise((resolve) => setTimeout(resolve, 0));
-
-        expect(logger.error).toHaveBeenCalledWith(
-          "Background marketplace auto-update failed:",
-          error,
-        );
-      } finally {
-        process.env.VITEST = originalVitest;
+      expect(createdMarketplaceServices.length).toBeGreaterThan(0);
+      for (const service of createdMarketplaceServices) {
+        expect(service.refreshMarketplaces).not.toHaveBeenCalled();
       }
     });
   });

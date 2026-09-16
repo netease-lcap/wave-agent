@@ -458,6 +458,18 @@ class MessageHandler(
                 }
                 postMessage("listMarketplacesResponse", buildJsonObject { put("marketplaces", marketplaces) })
             }
+            // VSCE :116/:333 → 打开插件市场界面时的后台清单刷新：只拉各市场检出、
+            // 不升级任何插件（spec 插件市场 A-012 场景 5）。失败静默记日志、不打扰
+            // 用户（场景 9），完成后补发两份最新列表并带 refreshed 标记（场景 2/12）。
+            "refreshMarketplaces" -> {
+                try {
+                    session.agent?.refreshMarketplaces(currentWorkdir())
+                } catch (e: StdioClientException) {
+                    LOG.warn("refreshMarketplaces failed: ${e.message}")
+                }
+                postListMarketplaces(refreshed = true)
+                postListPlugins(refreshed = true)
+            }
             // VSCE :119/:339 → add, show info, reload list（插件按市场组织，市场增减
             // 会改变插件集合 → 插件列表一并刷新）
             "addMarketplace" -> {
@@ -981,24 +993,30 @@ class MessageHandler(
         return chosen
     }
 
-    private suspend fun postListPlugins() {
+    private suspend fun postListPlugins(refreshed: Boolean = false) {
         val plugins = try {
             session.agent?.listPlugins(currentWorkdir())?.jsonObject?.get("plugins") ?: JsonArray(emptyList())
         } catch (e: StdioClientException) {
             LOG.warn("listPlugins failed: ${e.message}")
             JsonArray(emptyList())
         }
-        postMessage("listPluginsResponse", buildJsonObject { put("plugins", plugins) })
+        postMessage("listPluginsResponse", buildJsonObject {
+            put("plugins", plugins)
+            if (refreshed) put("refreshed", true)
+        })
     }
 
-    private suspend fun postListMarketplaces() {
+    private suspend fun postListMarketplaces(refreshed: Boolean = false) {
         val marketplaces = try {
             session.agent?.listMarketplaces(currentWorkdir()) ?: JsonObject(emptyMap())
         } catch (e: StdioClientException) {
             LOG.warn("listMarketplaces failed: ${e.message}")
             JsonObject(emptyMap())
         }
-        postMessage("listMarketplacesResponse", buildJsonObject { put("marketplaces", marketplaces) })
+        postMessage("listMarketplacesResponse", buildJsonObject {
+            put("marketplaces", marketplaces)
+            if (refreshed) put("refreshed", true)
+        })
     }
 
     /**

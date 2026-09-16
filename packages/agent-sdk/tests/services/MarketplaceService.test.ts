@@ -7,6 +7,7 @@ const { existsSync } = fsModule;
 import * as path from "path";
 import { getPluginsDir } from "../../src/utils/configPaths.js";
 import type { ConfigurationService } from "../../src/services/configurationService.js";
+import type { MarketplaceConfig } from "../../src/types/configuration.js";
 
 vi.mock("fs", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
@@ -411,7 +412,6 @@ describe("MarketplaceService - Scoped Marketplace", () => {
     ).mockReturnValue({
       "my-marketplace": {
         source: { source: "github", repo: "user/repo" },
-        autoUpdate: true,
       },
     });
 
@@ -427,7 +427,6 @@ describe("MarketplaceService - Scoped Marketplace", () => {
     ).mockReturnValue({
       "scoped-mkt": {
         source: { source: "directory", path: "/scoped/path" },
-        autoUpdate: false,
       },
     });
 
@@ -439,7 +438,6 @@ describe("MarketplaceService - Scoped Marketplace", () => {
           {
             name: "cached-mkt",
             source: { source: "directory", path: "/cached/path" },
-            autoUpdate: false,
           },
           {
             name: "scoped-mkt", // already in settings, should not duplicate
@@ -472,7 +470,6 @@ describe("MarketplaceService - Scoped Marketplace", () => {
       .mockReturnValueOnce({
         "test-mkt": {
           source: { source: "directory", path: "/test" },
-          autoUpdate: false,
         },
       });
 
@@ -504,7 +501,6 @@ describe("MarketplaceService - Scoped Marketplace", () => {
     ).mockReturnValue({
       "test-mkt": {
         source: { source: "directory", path: "/test" },
-        autoUpdate: false,
       },
     });
     vi.spyOn(
@@ -562,7 +558,6 @@ describe("MarketplaceService - Scoped Marketplace", () => {
     ).mockReturnValue({
       "test-mkt": {
         source: { source: "directory", path: "/test" },
-        autoUpdate: false,
       },
     });
     vi.spyOn(
@@ -617,7 +612,6 @@ describe("MarketplaceService - Scoped Marketplace", () => {
           source: "github",
           repo: "netease-lcap/wave-plugins-official",
         },
-        autoUpdate: true,
       },
     });
 
@@ -627,67 +621,131 @@ describe("MarketplaceService - Scoped Marketplace", () => {
     expect(builtinCount).toBe(1);
   });
 
-  it("should toggle auto-update for a marketplace", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getScopedMarketplaces",
-    ).mockReturnValue({
-      "test-mkt": {
-        source: { source: "directory", path: "/test" },
-        autoUpdate: false,
-      },
-    });
-
-    await service.toggleAutoUpdate("test-mkt", true);
-    expect(
-      vi.mocked(
-        (service["configurationService"] as ConfigurationService)
-          .addMarketplaceToScope,
-      ),
-    ).toHaveBeenCalled();
-  });
-
-  it("should throw when toggling auto-update for builtin", async () => {
-    await expect(
-      service.toggleAutoUpdate("wave-plugins-official", true),
-    ).rejects.toThrow("Marketplace wave-plugins-official not found");
-  });
-
-  it("should throw when toggling auto-update for unknown marketplace", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getScopedMarketplaces",
-    ).mockReturnValue({});
-
-    await expect(service.toggleAutoUpdate("unknown-mkt", true)).rejects.toThrow(
-      "Marketplace unknown-mkt not found",
-    );
-  });
-
-  it("should auto-update marketplaces with autoUpdate enabled", async () => {
+  it("should refresh every registered marketplace, ignoring legacy autoUpdate values", async () => {
+    // 存量 settings.json 里可能还留着 autoUpdate 键（已不是 WaveConfiguration 的字段），
+    // 它不再影响任何行为：所有市场一律刷新清单。
     vi.spyOn(
       service["configurationService"],
       "getMergedMarketplaces",
     ).mockReturnValue({
-      "auto-mkt": {
-        source: { source: "directory", path: "/auto" },
-        autoUpdate: true,
-      },
-      "no-auto-mkt": {
-        source: { source: "directory", path: "/noauto" },
+      "legacy-off-mkt": {
+        source: { source: "directory", path: "/legacy-off" },
         autoUpdate: false,
       },
-    });
+      "never-configured-mkt": {
+        source: { source: "directory", path: "/never-configured" },
+      },
+    } as unknown as Record<string, MarketplaceConfig>);
 
     vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
-      name: "auto-mkt",
+      name: "mkt",
       owner: { name: "test" },
       plugins: [],
     });
 
-    await service.autoUpdateAll();
-    // Should have attempted to update auto-mkt
-    expect(vi.mocked(fs.writeFile).mock.calls.length).toBeGreaterThan(0);
+    const updateSpy = vi.spyOn(service, "updateMarketplace");
+
+    await service.refreshMarketplaces();
+
+    const refreshed = updateSpy.mock.calls.map(([name]) => name);
+    expect(refreshed).toContain("legacy-off-mkt");
+    expect(refreshed).toContain("never-configured-mkt");
+  });
+
+  it("should not reinstall installed plugins while refreshing marketplaces", async () => {
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "test-mkt": {
+        source: { source: "directory", path: "/test" },
+      },
+    });
+
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "test-mkt",
+      owner: { name: "test" },
+      plugins: [],
+    });
+    vi.spyOn(service, "getInstalledPlugins").mockResolvedValue({
+      plugins: [
+        {
+          name: "plugin1",
+          marketplace: "test-mkt",
+          version: "1.0.0",
+          cachePath: "/tmp/plugin1",
+        },
+      ],
+    });
+
+    const installSpy = vi.spyOn(service, "installPlugin");
+    const uninstallSpy = vi.spyOn(service, "uninstallPlugin");
+
+    await service.refreshMarketplaces();
+
+    expect(installSpy).not.toHaveBeenCalled();
+    expect(uninstallSpy).not.toHaveBeenCalled();
+  });
+
+  it("should keep refreshing other marketplaces when one fails", async () => {
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "bad-mkt": {
+        source: { source: "directory", path: "/bad" },
+      },
+      "good-mkt": {
+        source: { source: "directory", path: "/good" },
+      },
+    });
+
+    vi.spyOn(service, "loadMarketplaceManifest").mockImplementation(
+      async (marketplacePath: string) => {
+        if (marketplacePath === "/bad") throw new Error("boom");
+        return { name: "good-mkt", owner: { name: "test" }, plugins: [] };
+      },
+    );
+
+    const updateSpy = vi.spyOn(service, "updateMarketplace");
+
+    await expect(service.refreshMarketplaces()).resolves.toBeUndefined();
+
+    expect(updateSpy.mock.calls.map(([name]) => name)).toContain("good-mkt");
+  });
+
+  it("should reuse an in-flight refresh instead of pulling every checkout twice", async () => {
+    // 打开插件市场界面的刷新是重复可达的（重复打开 / 界面重挂），同一进程内
+    // 进行中的那次刷新被复用（spec 插件市场场景 13）。
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "test-mkt": {
+        source: { source: "directory", path: "/test" },
+      },
+    });
+
+    let releaseAll: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      releaseAll = resolve;
+    });
+    const updateSpy = vi
+      .spyOn(service, "updateMarketplace")
+      .mockImplementation(async () => {
+        await gate;
+        return 0;
+      });
+
+    const first = service.refreshMarketplaces();
+    const second = service.refreshMarketplaces();
+    releaseAll?.();
+    await Promise.all([first, second]);
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+
+    // 刷新结束后再调用 → 发起新的一轮（单飞只覆盖进行中的那次）
+    await service.refreshMarketplaces();
+    expect(updateSpy).toHaveBeenCalledTimes(2);
   });
 
   it("should throw when updating nonexistent marketplace", async () => {
@@ -708,7 +766,6 @@ describe("MarketplaceService - Scoped Marketplace", () => {
     ).mockReturnValue({
       "test-mkt": {
         source: { source: "directory", path: "/test" },
-        autoUpdate: false,
       },
     });
 
@@ -855,7 +912,6 @@ describe("MarketplaceService - Coverage Targets", () => {
     ).mockReturnValue({
       "unknown-cache-mkt": {
         source: { source: "directory", path: "/unknown" },
-        autoUpdate: false,
       },
     });
     vi.spyOn(
@@ -919,34 +975,6 @@ describe("MarketplaceService - Coverage Targets", () => {
     await expect(service.loadMarketplaceManifest(tempDir)).rejects.toThrow(
       "Invalid marketplace manifest",
     );
-  });
-
-  // Line 376: buildMarketplaceEntry autoUpdate fallback
-  it("should fall back to cache autoUpdate when config has none", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "fallback-auto-mkt": {
-        source: { source: "directory", path: "/fallback" },
-        // no autoUpdate set
-      },
-    });
-
-    // Use getCacheRegistry mock instead of readFile
-    vi.spyOn(service, "getCacheRegistry").mockResolvedValue({
-      marketplaces: [
-        {
-          name: "fallback-auto-mkt",
-          source: { source: "directory", path: "/fallback" },
-          autoUpdate: true,
-        },
-      ],
-    });
-
-    const marketplaces = await service.listMarketplaces();
-    const entry = marketplaces.find((m) => m.name === "fallback-auto-mkt");
-    expect(entry?.autoUpdate).toBe(true);
   });
 
   // Line 435: addMarketplace existsSync check for target path (exists already)
@@ -1055,7 +1083,6 @@ describe("MarketplaceService - Coverage Targets", () => {
     ).mockReturnValue({
       "already-scoped": {
         source: { source: "directory", path: "/scoped" },
-        autoUpdate: true,
       },
     });
 
@@ -1067,7 +1094,6 @@ describe("MarketplaceService - Coverage Targets", () => {
           {
             name: "already-scoped",
             source: { source: "directory", path: "/old-path" },
-            autoUpdate: false,
           },
         ],
       }),
@@ -1078,7 +1104,10 @@ describe("MarketplaceService - Coverage Targets", () => {
       (m) => m.name === "already-scoped",
     );
     expect(scopedEntries).toHaveLength(1);
-    expect(scopedEntries[0].autoUpdate).toBe(true); // from settings, not cache
+    expect(scopedEntries[0].source).toEqual({
+      source: "directory",
+      path: "/scoped", // from settings, not cache
+    });
   });
 
   // Line 558: removeMarketplace scope inference fallback
@@ -1105,11 +1134,9 @@ describe("MarketplaceService - Coverage Targets", () => {
     ).mockReturnValue({
       "mkt-one": {
         source: { source: "directory", path: "/one" },
-        autoUpdate: false,
       },
       "mkt-two": {
         source: { source: "directory", path: "/two" },
-        autoUpdate: false,
       },
     });
 
@@ -1151,7 +1178,6 @@ describe("MarketplaceService - Coverage Targets", () => {
     ).mockReturnValue({
       "git-mkt": {
         source: { source: "github", repo: "user/repo" },
-        autoUpdate: false,
       },
     });
 
@@ -1191,7 +1217,6 @@ describe("MarketplaceService - Coverage Targets", () => {
     ).mockReturnValue({
       "git-mkt": {
         source: { source: "github", repo: "user/repo" },
-        autoUpdate: false,
       },
     });
 
@@ -1230,7 +1255,6 @@ describe("MarketplaceService - Coverage Targets", () => {
     ).mockReturnValue({
       "plugin-mkt": {
         source: { source: "directory", path: "/pmkt" },
-        autoUpdate: false,
       },
     });
 
@@ -1277,7 +1301,6 @@ describe("MarketplaceService - Coverage Targets", () => {
     ).mockReturnValue({
       "orphan-mkt": {
         source: { source: "directory", path: "/orphan" },
-        autoUpdate: false,
       },
     });
 
@@ -1316,7 +1339,6 @@ describe("MarketplaceService - Coverage Targets", () => {
     ).mockReturnValue({
       "error-mkt": {
         source: { source: "directory", path: "/error" },
-        autoUpdate: false,
       },
     });
 
@@ -1337,11 +1359,9 @@ describe("MarketplaceService - Coverage Targets", () => {
     ).mockReturnValue({
       "fail-one": {
         source: { source: "directory", path: "/fail1" },
-        autoUpdate: false,
       },
       "fail-two": {
         source: { source: "directory", path: "/fail2" },
-        autoUpdate: false,
       },
     });
 
@@ -1351,33 +1371,6 @@ describe("MarketplaceService - Coverage Targets", () => {
 
     await expect(service.updateMarketplace()).rejects.toThrow(
       "Some marketplaces failed to update",
-    );
-  });
-
-  // Line 720, 729: toggleAutoUpdate not found branches
-  it("should throw when declaringSource is null for toggleAutoUpdate", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getScopedMarketplaces",
-    ).mockReturnValue({});
-
-    await expect(service.toggleAutoUpdate("nonexistent", true)).rejects.toThrow(
-      "Marketplace nonexistent not found",
-    );
-  });
-
-  it("should throw when config is missing for toggleAutoUpdate", async () => {
-    // This tests the case where declaringSource exists but config[name] doesn't
-    // Override getMarketplaceDeclaringSource to return "user"
-    vi.spyOn(service, "getMarketplaceDeclaringSource").mockReturnValue("user");
-    // But user scope doesn't have the marketplace
-    vi.spyOn(
-      service["configurationService"],
-      "getScopedMarketplaces",
-    ).mockReturnValue({});
-
-    await expect(service.toggleAutoUpdate("ghost-mkt", true)).rejects.toThrow(
-      "Marketplace ghost-mkt not found",
     );
   });
 
@@ -1414,7 +1407,6 @@ describe("MarketplaceService - Coverage Targets", () => {
     ).mockReturnValue({
       "test-mkt": {
         source: { source: "directory", path: "/test" },
-        autoUpdate: false,
       },
     });
 
@@ -1439,7 +1431,6 @@ describe("MarketplaceService - Coverage Targets", () => {
     ).mockReturnValue({
       "compat-mkt": {
         source: { source: "directory", path: mockPluginsDir },
-        autoUpdate: false,
       },
     });
 
@@ -1481,7 +1472,6 @@ describe("MarketplaceService - Coverage Targets", () => {
     ).mockReturnValue({
       "cache-mkt": {
         source: { source: "directory", path: mockPluginsDir },
-        autoUpdate: false,
       },
     });
 
@@ -1540,7 +1530,6 @@ describe("MarketplaceService - Coverage Targets", () => {
     ).mockReturnValue({
       "update-mkt": {
         source: { source: "directory", path: mockPluginsDir },
-        autoUpdate: false,
       },
     });
 
@@ -1704,7 +1693,6 @@ describe("MarketplaceService - Builtin Seeding", () => {
           source: "github",
           repo: "netease-lcap/wave-plugins-official",
         },
-        autoUpdate: true,
       }),
     );
 

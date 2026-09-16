@@ -16,7 +16,6 @@ export type Scope = "user" | "project" | "local";
 
 export interface MarketplaceConfig {
   source: MarketplaceSource;
-  autoUpdate?: boolean;
 }
 
 /**

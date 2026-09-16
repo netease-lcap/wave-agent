@@ -2095,6 +2095,17 @@ test("listMarketplaces delegates to PluginCore", async () => {
   ]);
 });
 
+test("refreshMarketplaces delegates to PluginCore and returns null", async () => {
+  const { bridge } = createBridge();
+  const refreshMarketplaces = vi.fn().mockResolvedValue(undefined);
+  mockPluginCore({ refreshMarketplaces });
+
+  const result = await bridge.handleRequest("refreshMarketplaces", {});
+
+  expect(refreshMarketplaces).toHaveBeenCalled();
+  expect(result).toBeNull();
+});
+
 test("addMarketplace delegates to PluginCore", async () => {
   const { bridge } = createBridge();
   const addMarketplace = vi.fn().mockResolvedValue({ name: "new-market" });

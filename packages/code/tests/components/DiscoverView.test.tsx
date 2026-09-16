@@ -15,7 +15,6 @@ describe("DiscoverView", () => {
     installPlugin: vi.fn(),
     uninstallPlugin: vi.fn(),
     updatePlugin: vi.fn(),
-    toggleAutoUpdate: vi.fn(),
     refresh: vi.fn(),
   };
 
@@ -52,6 +51,7 @@ describe("DiscoverView", () => {
     marketplaces: [],
     installedPlugins: [],
     discoverablePlugins: plugins,
+    checkingForUpdates: false,
     actions: {
       ...mockActions,
       clearPluginFeedback: vi.fn(),

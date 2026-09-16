@@ -54,7 +54,6 @@ export interface KnownMarketplace {
   name: string;
   source: MarketplaceSource;
   isBuiltin?: boolean;
-  autoUpdate?: boolean;
   lastUpdated?: string;
   /** The scope where this marketplace was declared (user, project, local, or builtin) */
   declaredScope?: "user" | "project" | "local" | "builtin";

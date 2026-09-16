@@ -24,6 +24,8 @@ export interface PluginManagerState {
 export interface PluginManagerContextType {
   state: PluginManagerState;
   marketplaces: KnownMarketplace[];
+  /** 打开插件管理器触发的后台清单刷新是否仍在进行（只拉检出、不升级插件）。 */
+  checkingForUpdates: boolean;
   installedPlugins: (InstalledPlugin & { enabled: boolean })[];
   discoverablePlugins: (MarketplacePluginEntry & {
     marketplace: string;
@@ -49,7 +51,6 @@ export interface PluginManagerContextType {
     ) => Promise<void>;
     uninstallPlugin: (name: string, marketplace: string) => Promise<void>;
     updatePlugin: (name: string, marketplace: string) => Promise<void>;
-    toggleAutoUpdate: (name: string, enabled: boolean) => Promise<void>;
     refresh: () => Promise<void>;
     clearPluginFeedback: () => void;
   };

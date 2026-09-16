@@ -749,12 +749,12 @@ SDK 通过 `PluginCore` 提供完整的插件管理能力：
 
 - 插件安装与卸载
 - 插件启用与禁用
-- 插件自动更新
+- 插件升级（单个插件，或「批量更新插件」批量升级整个市场的插件）
 - Skill、Hook、MCP、LSP 资源自动注册
 
 ### Marketplace 集成 {#marketplace}
 
-SDK 内置 Marketplace 服务，支持从远程 Git 仓库安装和管理插件。默认市场 `wave-plugins-official` 自动启用且支持自动更新。
+SDK 内置 Marketplace 服务，支持从远程 Git 仓库安装和管理插件。默认市场 `wave-plugins-official` 自动启用；所有已注册市场的清单在打开插件市场界面时自动刷新（只拉取检出内容，不升级已安装插件）。
 
 ## 8. MCP 集成 {#mcp-integration}
 
@@ -1432,7 +1432,7 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 
 ## 15. 官方插件市场 {#plugin-marketplaces}
 
-SDK 内置默认插件市场 `wave-plugins-official`（来源：[netease-lcap/wave-plugins-official](https://github.com/netease-lcap/wave-plugins-official)），自动启用且支持自动更新。该市场提供以下插件：
+SDK 内置默认插件市场 `wave-plugins-official`（来源：[netease-lcap/wave-plugins-official](https://github.com/netease-lcap/wave-plugins-official)），自动启用，与其他市场一样在打开插件市场界面时自动刷新清单。该市场提供以下插件：
 
 ### document-skills {#plugin-document-skills}
 

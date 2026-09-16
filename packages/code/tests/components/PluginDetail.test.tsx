@@ -15,7 +15,6 @@ describe("PluginDetail", () => {
     installPlugin: vi.fn(),
     uninstallPlugin: vi.fn(),
     updatePlugin: vi.fn(),
-    toggleAutoUpdate: vi.fn(),
     refresh: vi.fn(),
   };
 
@@ -57,6 +56,7 @@ describe("PluginDetail", () => {
     marketplaces: [],
     installedPlugins: installed,
     discoverablePlugins: discoverable,
+    checkingForUpdates: false,
     actions: {
       ...mockActions,
       clearPluginFeedback: vi.fn(),

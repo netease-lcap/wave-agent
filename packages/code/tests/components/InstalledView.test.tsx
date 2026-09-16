@@ -15,7 +15,6 @@ describe("InstalledView", () => {
     installPlugin: vi.fn(),
     uninstallPlugin: vi.fn(),
     updatePlugin: vi.fn(),
-    toggleAutoUpdate: vi.fn(),
     refresh: vi.fn(),
   };
 
@@ -51,6 +50,7 @@ describe("InstalledView", () => {
     marketplaces: [],
     installedPlugins: plugins,
     discoverablePlugins: [],
+    checkingForUpdates: false,
     actions: {
       ...mockActions,
       clearPluginFeedback: vi.fn(),

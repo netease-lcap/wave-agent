@@ -109,6 +109,16 @@ export class PluginService {
   }
 
   /**
+   * 刷新各市场检出（只拉清单、不升级插件）。打开设置页插件市场视图时在后台
+   * 调用（spec 插件市场 A-012 场景 5）。
+   */
+  public async refreshMarketplaces() {
+    await this.utilityClient.request("refreshMarketplaces", {
+      workdir: this.getWorkdir(),
+    });
+  }
+
+  /**
    * 更新市场（拉取最新市场源），同时把该市场内已安装插件升级到最新。
    * 返回实际升级的插件数（0 = 已是最新），宿主据此提示。
    */
