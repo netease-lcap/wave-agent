@@ -1,7 +1,7 @@
 /* SettingsPage - full-height settings page (left navigation + right content)
    Visual details follow the designer's prototype (codechat-ui settings.css):
    grid layout with --cc-settings-navigation-width left column, 32px nav items,
-   radius 6px nav / radius 8px cards, 3px tab underline. All colors map to VS
+   radius 6px nav / radius 12px cards, 3px tab underline. All colors map to VS
    Code theme tokens (--vscode-*) - no hardcoded color values. */
 
 .settings-page {
@@ -295,12 +295,18 @@
   line-height: 20px;
 }
 
+/* 设计师 0916 评论（点「AI 回复语言」卡片）「设置里面类似布局这里的圆角是 12px，
+   全局统一修改」：卡片容器 8px → 12px。12px = `--cc-radius-lg`
+   （skill design-system.md:116 弹层/容器口径），与本页弹窗 `.settings-modal`
+   （SettingsPage.css:1223）同档；卡内行 / 控件（按钮 8px、输入 6px、导航项 6px）
+   的圆角不在本条范围内，未动。
+   作用域：设置页基础样式 → 桌面与 IDE 宿主同时生效（设置页是共享视觉）。 */
 .settings-card {
   overflow: hidden;
   padding: 0 12px;
   background: var(--cc-settings-surface);
   border: 1px solid var(--cc-settings-border-light);
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 /* ---- Rows inside cards ---- */
@@ -340,12 +346,19 @@
   line-height: 20px;
 }
 
-/* 行内补充说明，比正文描述更弱化（见 spec agent-config「上下文长度的落点」）。 */
+/* 行内补充说明（见 spec agent-config「上下文长度的落点」）。设计师 0916 评论（点
+   「全局默认；当前模型自带上下文上限时以模型配置为准」）：「这里用了不一致的字体
+   颜色，和其他说明保持一致」——原实现在本行叠了 `opacity: 0.75`，同色被渲成更淡的
+   一层，比同页其他说明（`.settings-row-copy p` / `.settings-managed-empty` /
+   `.settings-plugin-desc`，都直接走 `--vscode-descriptionForeground` 不加透明度）
+   明显更浅（实测：浅色 #888888 / 3.56:1 对同级说明 #606060 / 6.29:1；深色
+   #7C8183 / 4.7:1 对 #A0A5A8 / 7.49:1，卡面浅 #FFFFFF / 深 #111314）。
+   去掉该透明度后渲染色与其余说明逐值一致；档位差异只保留字号行高（说明 12/20
+   对正文 14/22）。 */
 .settings-row-copy .settings-row-hint {
   color: var(--vscode-descriptionForeground);
   font-size: 12px;
   line-height: 20px;
-  opacity: 0.75;
 }
 
 .settings-control,

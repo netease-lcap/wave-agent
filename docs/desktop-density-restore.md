@@ -3900,6 +3900,42 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 - **取证诚实说明**：预览 mock 不跟踪「两行」布局，且它的 `desktopResizePanes` 回包会把布局打回单行 → 行分隔条用 harness 的 `simulateExtensionMessage` 注入一条真实的 `desktopPanes` 宿主消息（`row` 0/1 + `rowHeights [0.5,0.5]`）后测量，组件为真实渲染；另注意 `handleRowSeparatorMouseDown` 在宿主未提供 `rowHeights` 时会**直接 return**（既有逻辑，非本轮引入），故测量必须带 `rowHeights`。
 - 本轮纯 CSS（`DesktopApp.css` 两条规则），无 TS 改动。
 
+## 0916 评论（设置页卡片圆角 8px → 12px）（工作区未提交）
+
+**她的评论**（点 `div.settings-card`「AI 回复语言设置 AI 回复时使用的语言（技术术语与代码保…）」）：
+「设置里面类似布局这里的圆角是 12px，全局统一修改后补充在交接 skill 中」。
+
+### 改动
+
+- `styles/SettingsPage.css` `.settings-card`：`border-radius: 8px → 12px`（文件头部注释里的「radius 8px cards」口径同步改成 12px）。
+- 依据：12px = `--cc-radius-lg`（skill `design-system.md:116` 的「弹层 / 容器」口径），与本页弹窗 `.settings-modal`（同文件 `:1223` 已是 12px）同档。
+- **「全局统一」的覆盖面 = 设置页唯一的卡片容器类 `.settings-card`**：`全局设置`（AI 回复语言 / 主题选择 / 服务端配置占位 3 张）、`个性化`（`.settings-card.agents-card` + `.settings-card.memory-card`）、`项目设置`（1 张）；插件市场 / 技能 / 子代理 / 钩子 / MCP 服务视图本来就没有卡片容器（列表是行、无描边）。
+- 卡内控件圆角**未动**：导航项 8px（桌面宿主）/ 下拉与文本域 6px / 开关 20px / 行按钮 8px、保存按钮 6px。
+
+### 实测（`desktop-full` → 输入框敲 `/config` 回车进设置页，1440×900，DPR2，浅/深）
+
+- 三张卡片 `border-top-left-radius`：**8px → 12px**（浅深逐值一致）。
+- 卡片盒（宽 × 高）**逐值不变**：`712x176`（AI 回复语言）/ `712x169`（主题选择）/ `712x46`（服务端配置占位）—— 只改角，不动行高与内距。
+- 控件圆角（改后）：`.settings-nav-item` 8px、`.settings-select` 6px、`.settings-number-input` 6px、`.settings-switch-slider` 20px、`.settings-save-btn` 6px。
+- `0 pageerror`。
+- 证据：`CC02/走查/0916-设置卡片圆角/card-{light,dark}-{before,after}.png`（单卡裁剪 DPR2）+ `page-{light,dark}-{before,after}.png`（整页）+ `card-verify.json`。
+
+### 作用域说明（IDE 宿主）
+
+本条写在共享的 `SettingsPage.css`（不是桌面覆盖层）→ **IDE 宿主（VS Code / JetBrains）的设置页同步生效**。设置页是共享视觉、卡片圆角属产品基线而非桌面特性，故按基线处理；若只允许桌面改，需改为 `host-desktop.css` 覆盖承载 → 触发语 **「卡片圆角只在桌面改」**。
+
+### 残留（未授权，供后续点名）
+
+- `.settings-project-card`（同文件 `:714`，6px「项目分组卡片」）**是死代码**（全 `src` 无 TSX 引用）→ 本轮未动；触发语 **「项目分组卡片也用 12」**。
+- 弹窗选项卡 `.settings-scope-option`（8px）、分段轨道 `.settings-modal-seg`（8px）、列表行 `.settings-plugin-row`（8px）属控件 / 行，不在「卡片容器」范围内 → 触发语 **「弹窗选项卡也用 12」**。
+- skill 回写候选（交 codex 审）：契约 `design-system.md:34`「Content panel radius: 8px」与 `management-surfaces.md:18`「content panels … 8px radius」与本轮「设置页卡片容器 12px」冲突，已写入交接单 **W-31**（含逐字现文 / 两种建议改法 / 验收口径）。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-settingscard-radius-0916.mjs`（同页回退对照 + 卡片与控件计算值 + 逐视图容器盘点 + 浅深裁剪图）。运行需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
+- 探针坑：分屏用例下页面同时存在**两个 `contenteditable`**（另一个在隐藏 pane，盒 `0×0`）→ 取输入框必须用 `[contenteditable="true"]:visible`，否则会一直等到超时。
+- 本轮纯 CSS（`SettingsPage.css` 两条规则 + 头注一行），无 TS 改动。
+
 ## 0916 评论（右侧面板操作按钮圆角统一 8px）（已随本批推送）
 
 **她的评论**（点 `button.preview-pane-button`「刷新」，预览面板工具条第 2 颗）：**「类似这种操作按钮圆角统一8px」**。
@@ -3944,3 +3980,37 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 - 脚本：`CC02/probe-pane-button-radius-0916.mjs`（computed 读数 + hover 态 1:1 裁切 + 6× 放大 + 差异像素图）、`CC02/build-pane-button-radius-0916.py`（自测页）。
 - 证据目录 `CC02/走查/0916-面板操作按钮圆角/`：`measure.json`、`{tag}-{theme}-{before,after}-hover.png`、`zoom-{tag}-{theme}-{before,after}.png`、`diffmap-*`、`toolbar-{theme}-{before,after}-hover.png`、`tabbar-*`，自测页 `0916-面板操作按钮圆角-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/z8pzpxevzk ）。
 - 本轮纯 CSS（`host-desktop.css` 一条规则），无 TS 改动。
+
+## 0916 评论（行内说明色与其余说明统一：去掉 hint 上的 opacity 0.75）（工作区未提交）
+
+**她的评论**（点 `p.settings-row-hint`「全局默认；当前模型自带上下文上限时以模型配置为准」）：
+「这里用了不一致的字体颜色，和其他说明保持一致」。
+
+### 改动
+
+- `styles/SettingsPage.css` `.settings-row-copy .settings-row-hint`：**去掉 `opacity: 0.75`**（颜色声明本来就是 `--vscode-descriptionForeground`，与其余说明同一颗 token，只是被那层透明度压淡了）。注释同步改写为「说明档差异只保留字号行高（12/20 对正文 14/22）」。
+- 依据：桌面宿主在 `host-desktop.css:190` 把 `--vscode-descriptionForeground` 映到 `--cc-text-secondary`，故「同色」只在透明度上是差异；契约也是同一条原则——`design-system.md:151`「keeps the semantic color at full opacity … (not dimmed)」、`:107`（不得再乘一层 opacity）、`conversation-surfaces-desktop.md:16`（不能用整行 opacity 降文字对比）。
+- 影响面：`.settings-row-hint` 全族（AI 回复语言 / 上下文长度 / 个性化 / 记忆等 8 处「由组织配置管理」「全局默认；…」等行内说明）统一变回到说明档本色，不再比同级说明更淡。
+
+### 实测（`desktop-full` → 敲 `/config` 进设置页，1440×900，DPR2，浅/深）
+
+| 主题 | 元素                                       | 声明色    | 修复前（实际渲染 / 对比度）          | 修复后               |
+| ---- | ------------------------------------------ | --------- | ------------------------------------ | -------------------- |
+| 浅   | `.settings-row-hint`                       | `#606060` | `opacity .75` → **#888888 / 3.56:1** | **#606060 / 6.29:1** |
+| 浅   | 同级说明（`.settings-row-copy p` 等 6 处） | `#606060` | #606060 / 6.29:1                     | 同值（未动）         |
+| 深   | `.settings-row-hint`                       | `#A0A5A8` | `opacity .75` → **#7C8183 / 4.7:1**  | **#A0A5A8 / 7.49:1** |
+| 深   | 同级说明（6 处）                           | `#A0A5A8` | #A0A5A8 / 7.49:1                     | 同值（未动）         |
+
+- 改后设置页内 12px 说明文字的渲染色**全部同族**（浅 #606060 / 深 #A0A5A8），对比度浅 6.29:1、深 7.49:1；卡片盒 / 行高 / 字号未变；`0 pageerror`。
+- 证据：`CC02/走查/0916-说明文字色/hint-{light,dark}-{before,after}.png`（评论所在行的裁剪图）+ `hint-verify.json`（逐元素 声明色 / 透明度 / 叠加卡面后的实际渲染色 / 对比度）。
+
+### 残留（未授权，供后续点名）
+
+- `.settings-number-input::placeholder`（同文件 `:403`，同款 `opacity: 0.75`）：**占位符**语义（「未设置」的灰字占位，弱于输入值本身），本轮未动；且它的注释写「与同行的说明文字/单位同色」与实际不符（叠了 0.75 后比说明更淡）→ 触发语 **「未设置占位符也和说明同色」**。
+- 禁用态 `.settings-select:disabled` 一族 / `.settings-switch input:disabled + .settings-switch-slider`（`opacity 0.6 / 0.55`）属**不可用状态**降档，不是文字色不一致，不在本条范围 → 触发语 **「禁用态也一起提亮」**（不推荐，禁用态需要与可用态区分）。
+- skill 回写候选（交 codex 审）：契约已有「语义色不叠额外 opacity」的三处先例（`design-system.md:151` 关闭按钮 / `:107` scrollbar fill / `conversation-surfaces-desktop.md:16` 表格），但**没有把它写成文字角色的通用条款**，以致本处把「弱化说明」实现成了「同一 token 再乘 0.75」。建议补一条通用条款（见交接单 **W-32**）。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-settingshint-color-0916.mjs`（同页回退对照 + 全页 12px 说明文字盘点：声明色 / opacity / 叠加卡面后的实际渲染色 / 对比度 + 评论行裁剪图）。运行需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
+- 本轮纯 CSS（`SettingsPage.css` 一条规则 + 注释），无 TS 改动。
