@@ -155,6 +155,17 @@ interface ReconnectTarget {
   entry?: SessionIndexEntry;
 }
 
+/**
+ * listPlugins 回包里的插件行。插件变更成功后要按 `pluginId` 反查显示名与版本
+ * 拼提示文案（spec plugin「插件市场操作提示」），故只声明用到的字段。
+ */
+interface PluginListRow {
+  id?: string;
+  name?: string;
+  version?: string;
+  latestVersion?: string;
+}
+
 export class DesktopHost {
   private mainWindow: BrowserWindow | null = null;
 
@@ -5619,20 +5630,64 @@ export class DesktopHost {
   /**
    * `refreshed` 标记：本次回包是「打开界面触发的后台清单刷新」结束后的补发，
    * webview 据此收起界面内的「检查更新中」提示（spec 插件市场场景 12/13）。
+   * 返回插件行供变更后的提示文案反查显示名/版本；拉取失败时已提示，返回 null。
    */
-  private async handleListPlugins(refreshed = false): Promise<void> {
+  private async handleListPlugins(
+    refreshed = false,
+  ): Promise<PluginListRow[] | null> {
     try {
       const result = (await this.utilityClientFor(this.currentHost).request(
         "listPlugins",
         { workdir: this.workdir },
-      )) as { plugins: unknown[] };
+      )) as { plugins: PluginListRow[] };
       this.postMessage({
         command: "listPluginsResponse",
         plugins: result.plugins,
         ...(refreshed ? { refreshed: true } : {}),
       });
+      return result.plugins;
     } catch (error) {
       this.showToast({ message: `获取插件列表失败: ${error}` });
+      return null;
+    }
+  }
+
+  /**
+   * 插件变更成功后的结果提示（spec 插件「插件市场操作提示」）：文案与原型/
+   * 需求文档逐字一致，中性色顶部轻提示。显示名与升级后版本从刷新后的插件列表
+   * 里按 `pluginId`（`<name>@<marketplace>`）反查，查不到时退回 id 的名称段。
+   * 安装/卸载/更新/更换作用域之外的动作（启用/禁用）在文档口径外，不提示。
+   */
+  private showPluginMutationToast(
+    method: string,
+    params: Record<string, unknown>,
+    plugins: PluginListRow[] | null,
+  ): void {
+    const pluginId = String(params.pluginId ?? "");
+    const hit = (plugins ?? []).find((p) => p.id === pluginId);
+    const name = hit?.name ?? pluginId.split("@")[0];
+    const scope = params.scope ? String(params.scope) : "user";
+    switch (method) {
+      case "installPlugin":
+        this.showToast({ message: `已安装「${name}」（作用域：${scope}）` });
+        break;
+      case "uninstallPlugin":
+        this.showToast({ message: `已卸载「${name}」` });
+        break;
+      case "updatePlugin": {
+        const version = hit?.version ?? hit?.latestVersion;
+        this.showToast({
+          message: version
+            ? `已更新「${name}」至 v${version}`
+            : `已更新「${name}」`,
+        });
+        break;
+      }
+      case "setPluginScope":
+        this.showToast({ message: `已更新「${name}」的作用域：${scope}` });
+        break;
+      default:
+        break;
     }
   }
 
@@ -5645,7 +5700,8 @@ export class DesktopHost {
         ...params,
         workdir: this.workdir,
       });
-      await this.handleListPlugins();
+      const plugins = await this.handleListPlugins();
+      this.showPluginMutationToast(method, params, plugins);
       // 插件装卸是构造期副作用（插件在构造期注册技能/命令/MCP），必须重建才能
       // 生效——但不得静默重建：先弹重建确认框由用户选时机（spec「配置变更的
       // 构造期副作用与重建」）。
@@ -5818,19 +5874,30 @@ export class DesktopHost {
   /**
    * 新增 / 移除市场。插件按所属市场组织，市场增减会改变插件集合 → 市场列表与插件
    * 列表都刷新（spec 插件市场场景 15）。更新市场走 [handleUpdateMarketplace]
-   * （需要拿到升级数量）。
+   * （需要拿到升级数量）。成功后按原型/需求文档逐字提示（新建用 SDK 返回的市场名，
+   * 移除用请求里的名字）。
    */
   private async handleMarketplaceMutation(
     method: string,
     params: Record<string, unknown>,
   ): Promise<void> {
     try {
-      await this.utilityClientFor(this.currentHost).request(method, {
-        ...params,
-        workdir: this.workdir,
-      });
+      const result = (await this.utilityClientFor(this.currentHost).request(
+        method,
+        {
+          ...params,
+          workdir: this.workdir,
+        },
+      )) as { name?: string } | null;
       await this.handleListMarketplaces();
       await this.handleListPlugins();
+      if (method === "addMarketplace") {
+        this.showToast({ message: `已添加市场「${result?.name ?? ""}」` });
+      } else if (method === "removeMarketplace") {
+        this.showToast({
+          message: `已移除市场「${String(params.name ?? "")}」`,
+        });
+      }
     } catch (error) {
       this.showToast({ message: `市场操作失败: ${error}` });
     }
@@ -5850,8 +5917,12 @@ export class DesktopHost {
       await this.handleListMarketplaces();
       await this.handleListPlugins();
       const updated = result?.updated ?? 0;
+      const marketLabel = name ? `「${name}」` : "当前市场";
       this.showToast({
-        message: updated > 0 ? `已更新 ${updated} 个插件` : "当前市场已是最新",
+        message:
+          updated > 0
+            ? `${marketLabel}已更新 ${updated} 个插件`
+            : `${marketLabel}已是最新`,
       });
     } catch (error) {
       this.showToast({ message: `更新市场失败: ${error}` });

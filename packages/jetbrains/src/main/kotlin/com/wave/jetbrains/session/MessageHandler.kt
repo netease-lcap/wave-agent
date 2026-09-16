@@ -340,15 +340,15 @@ class MessageHandler(
                 postMessage("listPluginsResponse", buildJsonObject { put("plugins", plugins) })
             }
             // VSCE :101/:262 → install, show info, reload list, updateAllSessionsConfig
-            "installPlugin" -> handlePluginMutation(msg) { id, scope ->
+            "installPlugin" -> handlePluginMutation(command, msg) { id, scope ->
                 session.agent?.installPlugin(id, currentWorkdir(), scope)
             }
             // VSCE :104/:276
-            "enablePlugin" -> handlePluginMutation(msg) { id, scope ->
+            "enablePlugin" -> handlePluginMutation(command, msg) { id, scope ->
                 session.agent?.enablePlugin(id, currentWorkdir(), scope)
             }
             // VSCE :107/:289
-            "disablePlugin" -> handlePluginMutation(msg) { id, scope ->
+            "disablePlugin" -> handlePluginMutation(command, msg) { id, scope ->
                 session.agent?.disablePlugin(id, currentWorkdir(), scope)
             }
             // Read merged enabledPlugins (.wave/settings.json) for the 项目设置 tab.
@@ -425,15 +425,15 @@ class MessageHandler(
                 }
             }
             // VSCE :110/:302
-            "uninstallPlugin" -> handlePluginMutation(msg) { id, _ ->
+            "uninstallPlugin" -> handlePluginMutation(command, msg) { id, _ ->
                 session.agent?.uninstallPlugin(id, currentWorkdir())
             }
             // VSCE :113/:316
-            "updatePlugin" -> handlePluginMutation(msg) { id, _ ->
+            "updatePlugin" -> handlePluginMutation(command, msg) { id, _ ->
                 session.agent?.updatePlugin(id, currentWorkdir())
             }
             // 更换安装作用域（设置页插件市场）：清各作用域启用记录 + 在目标作用域启用
-            "setPluginScope" -> handlePluginMutation(msg) { id, scope ->
+            "setPluginScope" -> handlePluginMutation(command, msg) { id, scope ->
                 if (scope == null) null else session.agent?.setPluginScope(id, scope, currentWorkdir())
             }
             // 新建市场「本地路径」：IDE 原生目录选择器，选定即把 path 回给 webview
@@ -475,9 +475,11 @@ class MessageHandler(
             "addMarketplace" -> {
                 val input = msg["input"]?.jsonPrimitive?.content ?: return
                 try {
-                    session.agent?.addMarketplace(input, currentWorkdir())
+                    val result = session.agent?.addMarketplace(input, currentWorkdir())
                     postListMarketplaces()
                     postListPlugins()
+                    val name = (result as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull ?: ""
+                    IdeService.showInfo(project, "已添加市场「$name」")
                 } catch (e: StdioClientException) {
                     LOG.warn("addMarketplace failed: ${e.message}")
                     IdeService.showError(project, "添加市场失败: ${e.message}")
@@ -490,14 +492,14 @@ class MessageHandler(
                     session.agent?.removeMarketplace(name, currentWorkdir())
                     postListMarketplaces()
                     postListPlugins()
+                    IdeService.showInfo(project, "已移除市场「$name」")
                 } catch (e: StdioClientException) {
                     LOG.warn("removeMarketplace failed: ${e.message}")
                     IdeService.showError(project, "移除市场失败: ${e.message}")
                 }
             }
             // 更新市场：拉取最新市场源并升级该市场内已安装且有新版本的插件（升级在
-            // SDK 侧完成），返回实际升级数量 → 0 个时提示「已是最新」
-            // （spec 插件市场场景 13）。
+            // SDK 侧完成），返回实际升级数量（spec 插件市场场景 13）。
             "updateMarketplace" -> {
                 val name = msg["name"]?.jsonPrimitive?.content
                 try {
@@ -505,9 +507,10 @@ class MessageHandler(
                     val updated = result?.jsonObject?.get("updated")?.jsonPrimitive?.intOrNull ?: 0
                     postListMarketplaces()
                     postListPlugins()
+                    val marketLabel = if (name != null) "「$name」" else "当前市场"
                     IdeService.showInfo(
                         project,
-                        if (updated > 0) "已更新 $updated 个插件" else "当前市场已是最新",
+                        if (updated > 0) "${marketLabel}已更新 $updated 个插件" else "${marketLabel}已是最新",
                     )
                 } catch (e: StdioClientException) {
                     LOG.warn("updateMarketplace failed: ${e.message}")
@@ -952,21 +955,55 @@ class MessageHandler(
     /**
      * Plugin install/enable/disable/uninstall/update share the same shape (VSCE :101-328):
      * run the mutation, then reload the list and push the updated config to the agent
-     * (mirrors VSCE's updateAllSessionsConfig → ChatSession.updateConfig).
+     * (mirrors VSCE's updateAllSessionsConfig → ChatSession.updateConfig). Install/
+     * uninstall/update/scope-change additionally report the result per the spec's
+     * verbatim wording (spec plugin「插件市场操作提示」).
      */
     private suspend fun handlePluginMutation(
+        command: String,
         msg: JsonObject,
         action: suspend (pluginId: String, scope: String?) -> JsonElement?,
     ) {
         val pluginId = msg["pluginId"]?.jsonPrimitive?.content ?: return
         val scope = msg["scope"]?.jsonPrimitive?.content
         try {
-            action(pluginId, scope)
+            val result = action(pluginId, scope)
             postListPlugins()
             reloadAgentConfig()
+            pluginMutationSuccessMessage(command, pluginId, scope, result)?.let {
+                IdeService.showInfo(project, it)
+            }
         } catch (e: StdioClientException) {
             LOG.warn("plugin mutation failed: ${e.message}")
             IdeService.showError(project, "插件操作失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 插件变更成功后的结果提示（spec plugin「插件市场操作提示」）：文案与原型/需求
+     * 文档逐字一致。显示名优先取回包里的 name（install/update 返回 InstalledPlugin），
+     * 否则从 `<name>@<marketplace>` 形式的 pluginId 取名称段；启用/禁用不在文档口径
+     * 内，返回 null 即不提示。
+     */
+    private fun pluginMutationSuccessMessage(
+        command: String,
+        pluginId: String,
+        scope: String?,
+        result: JsonElement?,
+    ): String? {
+        val resultObj = result as? JsonObject
+        val name = resultObj?.get("name")?.jsonPrimitive?.contentOrNull
+            ?: pluginId.substringBefore("@")
+        val targetScope = scope ?: "user"
+        return when (command) {
+            "installPlugin" -> "已安装「$name」（作用域：$targetScope）"
+            "uninstallPlugin" -> "已卸载「$name」"
+            "updatePlugin" -> {
+                val version = resultObj?.get("version")?.jsonPrimitive?.contentOrNull
+                if (version != null) "已更新「$name」至 v$version" else "已更新「$name」"
+            }
+            "setPluginScope" -> "已更新「$name」的作用域：$targetScope"
+            else -> null
         }
     }
 

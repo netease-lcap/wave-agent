@@ -1074,6 +1074,198 @@ describe("MessageHandler settings tab", () => {
     });
   });
 
+  // 插件市场操作成功提示（spec plugin「插件市场操作提示」2026-09-16 原型 + 需求
+  // 文档口径）：三端文案逐字一致，这里锁 VSCE 侧的原生信息通知。
+  describe("plugin marketplace success prompts", () => {
+    /** 设置页路由 + 一份可控的 PluginService，免去每个用例重写 handler 装配。 */
+    function settingsHandler(pluginService: Record<string, unknown>) {
+      const context: MessageHandlerContext = {
+        getChatSession: vi.fn().mockReturnValue(createMockSession()),
+        postMessage: vi.fn(),
+        initializeAgent: vi.fn(),
+        listSessions: vi.fn(),
+        updateAllSessionsConfig: vi.fn(),
+        getVersion: vi.fn().mockReturnValue("1.2.3"),
+        openPlanPreview: vi.fn(),
+        openSettings: vi.fn(),
+        postSettingsMessage: vi.fn(),
+        closeSettings: vi.fn(),
+      };
+      const handler = new MessageHandler(
+        {} as unknown as ConfigurationService,
+        {} as unknown as FileService,
+        {} as unknown as SessionService,
+        pluginService as unknown as PluginService,
+        {} as unknown as StdioClient,
+        context,
+      );
+      return handler;
+    }
+
+    test("installPlugin reports the plugin name and the chosen scope", async () => {
+      const handler = settingsHandler({
+        installPlugin: vi
+          .fn()
+          .mockResolvedValue({ name: "demo", version: "1.0.0" }),
+        listPlugins: vi.fn().mockResolvedValue([]),
+      });
+      await handler.handleSettingsMessage({
+        command: "installPlugin",
+        pluginId: "demo@mkt",
+        scope: "project",
+      });
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        "已安装「demo」（作用域：project）",
+      );
+    });
+
+    test("uninstallPlugin reports the plugin name taken from the plugin id", async () => {
+      const handler = settingsHandler({
+        uninstallPlugin: vi.fn().mockResolvedValue(undefined),
+        listPlugins: vi.fn().mockResolvedValue([]),
+      });
+      await handler.handleSettingsMessage({
+        command: "uninstallPlugin",
+        pluginId: "demo@mkt",
+      });
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        "已卸载「demo」",
+      );
+    });
+
+    test("updatePlugin reports the version returned by the SDK", async () => {
+      const handler = settingsHandler({
+        updatePlugin: vi
+          .fn()
+          .mockResolvedValue({ name: "demo", version: "1.2.0" }),
+        listPlugins: vi.fn().mockResolvedValue([]),
+      });
+      await handler.handleSettingsMessage({
+        command: "updatePlugin",
+        pluginId: "demo@mkt",
+      });
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        "已更新「demo」至 v1.2.0",
+      );
+    });
+
+    test("setPluginScope reports the target scope", async () => {
+      const handler = settingsHandler({
+        setPluginScope: vi.fn().mockResolvedValue("local"),
+        listPlugins: vi.fn().mockResolvedValue([]),
+      });
+      await handler.handleSettingsMessage({
+        command: "setPluginScope",
+        pluginId: "demo@mkt",
+        scope: "local",
+      });
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        "已更新「demo」的作用域：local",
+      );
+    });
+
+    test("plugin enable/disable stays silent (not in the prototype's prompt set)", async () => {
+      const handler = settingsHandler({
+        setBuiltinPluginEnabled: vi
+          .fn()
+          .mockResolvedValue({ enabledPlugins: { "sdd@builtin": true } }),
+        getWorkdir: vi.fn().mockReturnValue("/ws/root"),
+      });
+      await handler.handleSettingsMessage({
+        command: "setBuiltinPluginEnabled",
+        pluginId: "sdd@builtin",
+        enabled: true,
+        scope: "project",
+      });
+      expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+    });
+
+    test("addMarketplace reports the marketplace name returned by the SDK", async () => {
+      const handler = settingsHandler({
+        addMarketplace: vi.fn().mockResolvedValue({ name: "团队市场" }),
+        listMarketplaces: vi.fn().mockResolvedValue([]),
+        listPlugins: vi.fn().mockResolvedValue([]),
+      });
+      await handler.handleSettingsMessage({
+        command: "addMarketplace",
+        input: "owner/repo",
+      });
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        "已添加市场「团队市场」",
+      );
+    });
+
+    test("removeMarketplace reports the removed marketplace name", async () => {
+      const handler = settingsHandler({
+        removeMarketplace: vi.fn().mockResolvedValue(undefined),
+        listMarketplaces: vi.fn().mockResolvedValue([]),
+        listPlugins: vi.fn().mockResolvedValue([]),
+      });
+      await handler.handleSettingsMessage({
+        command: "removeMarketplace",
+        name: "团队市场",
+      });
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        "已移除市场「团队市场」",
+      );
+    });
+
+    test("updateMarketplace reports the market name and the upgraded count", async () => {
+      const handler = settingsHandler({
+        updateMarketplace: vi.fn().mockResolvedValue({ updated: 3 }),
+        listMarketplaces: vi.fn().mockResolvedValue([]),
+        listPlugins: vi.fn().mockResolvedValue([]),
+      });
+      await handler.handleSettingsMessage({
+        command: "updateMarketplace",
+        name: "团队市场",
+      });
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        "「团队市场」已更新 3 个插件",
+      );
+    });
+
+    test("updateMarketplace with nothing to upgrade reports 已是最新", async () => {
+      const handler = settingsHandler({
+        updateMarketplace: vi.fn().mockResolvedValue({ updated: 0 }),
+        listMarketplaces: vi.fn().mockResolvedValue([]),
+        listPlugins: vi.fn().mockResolvedValue([]),
+      });
+      await handler.handleSettingsMessage({
+        command: "updateMarketplace",
+        name: "团队市场",
+      });
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        "「团队市场」已是最新",
+      );
+    });
+
+    test("failures still report the reason and never a success prompt", async () => {
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      const handler = settingsHandler({
+        addMarketplace: vi
+          .fn()
+          .mockRejectedValue(new Error("marketplace down")),
+        listMarketplaces: vi.fn().mockResolvedValue([]),
+        listPlugins: vi.fn().mockResolvedValue([]),
+      });
+      try {
+        await handler.handleSettingsMessage({
+          command: "addMarketplace",
+          input: "owner/repo",
+        });
+      } finally {
+        consoleError.mockRestore();
+      }
+      expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining("添加市场失败"),
+      );
+    });
+  });
+
   // 设置页「服务端配置」区块（spec server-managed-config「在设置页查看服务端下发的
   // 配置」）：展示服务端到底管控了什么，读的是 CLI 进程内最近一次成功下发的缓存。
   test("getManagedSettings replies with the delivered config to the settings panel", async () => {
