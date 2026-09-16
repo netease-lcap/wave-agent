@@ -817,8 +817,7 @@ export interface ConfirmationDialogProps {
 
 /**
  * 用户偏好配置（设置页载荷）。**只含落 `~/.wave/settings.json` 的偏好键**：
- * 模型经 `/model` 命令走宿主 RPC，服务地址经 `authStatusResponse.serverUrl`
- * 下发，都不在这个信封里。
+ * 模型经 `/model` 命令走宿主 RPC，不在这个信封里。
  */
 export interface ConfigurationData {
   /** Preferred language for agent communication */
@@ -829,6 +828,11 @@ export interface ConfigurationData {
   autoMemoryEnabled?: boolean;
   /** Auto-memory extraction turn frequency, 1–100 */
   autoMemoryFrequency?: number;
+  /**
+   * Wave 服务端地址（落 `env.WAVE_SERVER_URL`）。设置页「全局设置」的「服务端地址」
+   * 输入框读写该键（spec core/agent-config.md「配置服务端地址」）。
+   */
+  serverUrl?: string;
   /**
    * 每个用户偏好键的来源层：用户级 `~/.wave/settings.json` 是用户偏好的**落点**，
    * 但生效值可能来自更高层（`remote` = 企业下发的组织配置，`env` = 机器环境变量）。

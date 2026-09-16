@@ -1059,8 +1059,9 @@ class MessageHandler(
      * 标明每个键的来源层，设置页据此把被组织配置覆盖的键显示为「生效值 + 置灰」。
      * 读取失败降级为空。
      *
-     * 模型选择与服务地址不在回包里：模型经 `/model` 命令走宿主 RPC，服务地址随
-     * `authStatusResponse.serverUrl` 下发（由 CLI 的 getAuthStatus 解析）。
+     * 模型选择不在回包里：模型经 `/model` 命令走宿主 RPC。服务端地址的用户偏好
+     * （`env.WAVE_SERVER_URL`）属于回包；宿主的 `authStatusResponse.serverUrl`
+     * 仍单独下发（由 CLI 的 getAuthStatus 解析）。
      */
     private suspend fun configurationDataJson(): JsonObject {
         val prefs = try {
@@ -1074,6 +1075,7 @@ class MessageHandler(
             prefs["contextLength"]?.let { put("contextLength", it) }
             prefs["autoMemoryEnabled"]?.let { put("autoMemoryEnabled", it) }
             prefs["autoMemoryFrequency"]?.let { put("autoMemoryFrequency", it) }
+            prefs["serverUrl"]?.let { put("serverUrl", it) }
             prefs["preferenceSources"]?.let { put("preferenceSources", it) }
         }
     }
@@ -1099,7 +1101,7 @@ class MessageHandler(
     }
 
     /**
-     * 写用户级偏好（settings.json）——只取四个用户偏好键，扩展本地键与模型键
+     * 写用户级偏好（settings.json）——只取用户偏好键，扩展本地键与模型键
      * 不落该文件（spec agent-config 边界说明「用户偏好的落点」）。
      */
     private suspend fun writeUserSettings(data: JsonObject) {
@@ -1108,6 +1110,7 @@ class MessageHandler(
             data["contextLength"]?.let { put("contextLength", it) }
             data["autoMemoryEnabled"]?.let { put("autoMemoryEnabled", it) }
             data["autoMemoryFrequency"]?.let { put("autoMemoryFrequency", it) }
+            data["serverUrl"]?.let { put("serverUrl", it) }
         }
         val (client, _) = WaveBackendService.getInstance(project).ensureClient()
         client.request("updateUserSettings", patch)

@@ -2207,6 +2207,27 @@ describe("configuration and status", () => {
     expect(lastAgent().updateConfig).not.toHaveBeenCalled();
   });
 
+  it("updateConfiguration forwards the server URL preference to the CLI (lands in env.WAVE_SERVER_URL)", async () => {
+    const { host } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "updateConfiguration",
+      configurationData: {
+        serverUrl: "https://codechat.codewave-test.163yun.com",
+      },
+    });
+
+    // 设置页载荷里的服务端地址是**用户偏好**，落会话进程用户级 settings.json 的
+    // `env.WAVE_SERVER_URL`；宿主本地存储里那个 serverUrl（只用于拼更新 feed）不经
+    // 本载荷，别混淆两条路径。
+    expect(
+      h.clientRequests
+        .filter((r) => r.method === "updateUserSettings")
+        .map((r) => r.params),
+    ).toEqual([{ serverUrl: "https://codechat.codewave-test.163yun.com" }]);
+    expect(lastAgent().updateConfig).not.toHaveBeenCalled();
+  });
+
   it("getStatus replies with app version, session id and workdir", async () => {
     const { host, sent } = await readyHost();
     await host.handleWebviewMessage({ command: "getStatus" });

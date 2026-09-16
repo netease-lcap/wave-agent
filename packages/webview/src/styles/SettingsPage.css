@@ -387,7 +387,8 @@
 
 /* 「未设置」态的灰字占位符（spec agent-config 场景 7：文件里没有该键时显示系统
    默认而不是假装一个真实值）：与同行的说明文字/单位同色，弱于输入值本身。 */
-.settings-number-input::placeholder {
+.settings-number-input::placeholder,
+.settings-text-input::placeholder {
   color: var(--vscode-descriptionForeground);
   opacity: 0.75;
 }
