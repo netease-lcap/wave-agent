@@ -206,8 +206,15 @@ describe("usePluginManager", () => {
       await vi.waitFor(() => {
         expect(lastValue?.state.isLoading).toBe(false);
       });
+      // 打开插件管理器的后台刷新也会重读列表（spec「市场清单自动刷新与插件升级
+      // 解耦」场景 11）：等它落定，后面的调用次数断言才是确定的
+      await vi.waitFor(() => {
+        expect(mockPluginCore.listMarketplaces).toHaveBeenCalledTimes(2);
+      });
 
-      mockPluginCore.addMarketplace.mockResolvedValue(undefined);
+      // 返回值里的市场名（由市场自身清单决定）成为列表选中项，供市场视图把焦点
+      // 落到新加的市场（spec plugin「管理市场」场景 5）
+      mockPluginCore.addMarketplace.mockResolvedValue({ name: "wave-team" });
       lastValue?.actions.addMarketplace("test/repo");
 
       await vi.waitFor(() => {
@@ -215,7 +222,9 @@ describe("usePluginManager", () => {
           "test/repo",
           "user",
         );
-        expect(mockPluginCore.listMarketplaces).toHaveBeenCalledTimes(2);
+        expect(mockPluginCore.listMarketplaces).toHaveBeenCalledTimes(3);
+        expect(lastValue?.state.selectedId).toBe("wave-team");
+        expect(lastValue?.state.currentView).toBe("MARKETPLACES");
       });
     });
 

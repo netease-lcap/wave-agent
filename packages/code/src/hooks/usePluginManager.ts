@@ -175,11 +175,15 @@ export function usePluginManager(options?: {
         isLoading: true,
       }));
       try {
-        await pluginCore.addMarketplace(source, scope);
+        const marketplace = await pluginCore.addMarketplace(source, scope);
         await refresh();
         setSuccessMessage(`Marketplace added successfully (${scope} scope)`);
+        // 焦点落到新加的市场（spec plugin「管理市场」场景 5）：刷新会把市场列表的
+        // 选中项归零，这里用 addMarketplace 的返回值（市场名由市场自身清单决定，
+        // 调用方事先不知道）把选中项设为新市场；失败路径不设置，保持原选中不变。
         setState((prev: PluginManagerState) => ({
           ...prev,
+          selectedId: marketplace.name,
           currentView: "MARKETPLACES",
         }));
       } catch (error) {
