@@ -500,7 +500,16 @@
   left: 0;
   height: 3px;
   background: var(--vscode-foreground);
-  border-radius: 999px;
+  /* 设计师 0916 评论（点 MCP 视图的 `button.settings-tab.is-active`「用户级」）：
+     「调整 tab 选中高亮条的样式，左下右下圆角是 0，上面不变，高度不变」。
+     原 `border-radius: 999px`（四角胶囊）在本条 3px 高的盒上被浏览器按「圆角收缩」
+     规则折算成 **1.5px**（= 高的一半）；改为只保留上面两角，下面两角直角，
+     高亮条下缘与 tab 条自身的 1px 分隔线平齐成一条直线。
+     注意**不能写 `999px 999px 0 0`**：那样左侧相邻两角之和 999px 仍大于盒高 3px，
+     收缩系数变成 3/999，上两角会被放大到 **3px**（顶角明显变圆，实测像素差 100+）——
+     必须写回折算后的真实值 `1.5px`，才满足「上面不变」。
+     高度 3px、`bottom: -1px`、颜色 `--vscode-foreground`、宽度（right/left: 0）均未动。 */
+  border-radius: 1.5px 1.5px 0 0;
   content: "";
 }
 
