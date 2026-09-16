@@ -1660,6 +1660,20 @@
   flex-shrink: 0;
 }
 
+/* 面板操作按钮圆角统一 8px（用户 0916 评论 `button.preview-pane-button`
+   「类似这种操作按钮圆角统一8px」）。本族 = 右侧面板工具条的方形图标操作
+   按钮（刷新 / 全屏 / 选择元素并评论 / 在浏览器打开 / 搜索文件 / 重启终端，
+   24×24 @DesktopApp.css:1158）＋ 面板 tab 条的「＋」新建面板按钮
+   （24×24 @DesktopPanelTabs.css:120，同属 Figma「功能」icon-button）＋ 错误态
+   文字按钮（重新加载 / 重启终端 / 重试，同一 class，`width:auto`）。
+   改前两档并存（图标按钮 base 4px / 「＋」6px），与同条 tab 的页签 8px、
+   工具行控件 8px（0916 第 3 轮）不同族 → 统一走 --cc-radius-md。
+   只改圆角：尺寸 24×24、图标 16px、配色、间距、hover/active 态均不动。 */
+[data-host="desktop"] .preview-pane-button,
+[data-host="desktop"] .desktop-panel-tabs-add {
+  border-radius: var(--cc-radius-md, 8px);
+}
+
 [data-host="desktop"][data-theme="light"] .preview-pane-button {
   color: #565a60;
 }

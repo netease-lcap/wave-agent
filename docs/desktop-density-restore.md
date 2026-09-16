@@ -3899,3 +3899,48 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 - 证据目录 `CC02/走查/0916-面板分隔条/`：`crop-{pane,row}-{light,dark}-{old,new}-{hover,drag}.png`、`px-{pane,row}-{light,dark}-{hover,drag}.png`（全页）、`线宽对照-*.png`、`对比-两种拖拽条-{1x,4x}.png`、`verify-0916-separators.json`、`gradient-samples-0916.json`、实施页 `0916-面板分隔条-实施.html`（Artifact https://codechat.codewave.163.com/code/artifact/wfzd1krul8 ）、审计页 `0916-面板分隔条-审计.html`（Artifact https://codechat.codewave.163.com/code/artifact/xo2nsgzavy ）。
 - **取证诚实说明**：预览 mock 不跟踪「两行」布局，且它的 `desktopResizePanes` 回包会把布局打回单行 → 行分隔条用 harness 的 `simulateExtensionMessage` 注入一条真实的 `desktopPanes` 宿主消息（`row` 0/1 + `rowHeights [0.5,0.5]`）后测量，组件为真实渲染；另注意 `handleRowSeparatorMouseDown` 在宿主未提供 `rowHeights` 时会**直接 return**（既有逻辑，非本轮引入），故测量必须带 `rowHeights`。
 - 本轮纯 CSS（`DesktopApp.css` 两条规则），无 TS 改动。
+
+## 0916 评论（右侧面板操作按钮圆角统一 8px）（已随本批推送）
+
+**她的评论**（点 `button.preview-pane-button`「刷新」，预览面板工具条第 2 颗）：**「类似这种操作按钮圆角统一8px」**。
+
+### 改动
+
+- `packages/webview/src/styles/host-desktop.css`：新增一条规则（写在既有 `.preview-pane-button` 桌面覆盖块之前，含逐字依据注释）：
+
+  ```css
+  [data-host="desktop"] .preview-pane-button,
+  [data-host="desktop"] .desktop-panel-tabs-add {
+    border-radius: var(--cc-radius-md, 8px);
+  }
+  ```
+
+- 覆盖面（本族 = 24×24 方形图标操作按钮）：四类右侧面板工具条按钮（刷新 / 选择元素并评论 / 在浏览器打开 / 搜索文件 / 重启终端）、tab 条的「全屏」与「＋ 新建面板」、错误态文字按钮（重新加载 / 重启终端 / 重试，同一 class、`width:auto`）。
+- 改前两档并存：图标按钮 base `4px`（`DesktopApp.css:1162`）、「＋」`6px`（`DesktopPanelTabs.css:130`）；而同一条 tab 上的页签是 8px、工具行控件 8px（0916 第 3 轮）→ 统一到 `--cc-radius-md`。
+- 只改圆角：尺寸 24×24 / 图标 16px / 内衬 0 / 常态透明 / hover 底 / 字色 / hover·active·交互全部未动。
+
+### 实测（临时用例 `tmp-panels-0916`，1440×900，DPR2，浅/深）
+
+- 5 颗：`4px`（4 颗）/ `6px`（「＋」）→ **`8px`**；盒 `24×24`、图标 `16×16`（「＋」13×12）逐值不变；hover 底浅 `#EEF0F3` / 深 8% 白逐值不变。
+- 同 class 其余实例（非激活 tab / 错误态，逐条核 computed）：`file-pane-search-trigger`、`diff-refresh`、`terminal-restart`、`terminal-retry`(78×24) 全部 **8px**。
+- 像素差异（hover 态，72×72 裁切 = 按钮 48×48 设备像素 + 12px 留白）：单颗 **237（浅）/ 254（深）像素**（4.57% / 4.90%，全部落在四角弧），「＋」181 / 195（3.49% / 3.76%）；整条工具条 0.19%、整条 tab 条 0.14%。`0 pageerror / 0 console error`。
+- **静止态看不到任何差异**：这些按钮常态是透明底、无边框 → 圆角只在 hover 出底色时可见，故所有对照图都取 **hover 态**（与 0916 第 3 轮同类坑一致）。
+
+### 取证方式（本轮新增三条坑）
+
+- `.preview-pane-button` 只存在于右侧面板，而 8899 原型默认把面板开不出来（扫全部 17 个用例命中 0 处）→ 新增临时用例 `prototype/mock/tmp-panels-0916.ts`（`desktop-full` 单 pane + 4 条 `desktopTogglePanel` 依次打开 file/diff/terminal/preview，预览最后开 = active）；`mock/` 目录 gitignore、不进推送集。
+- 坑 ①：**双 pane 时新面板过不了 `ensurePanelSpace` 空间守卫**（必须单 pane，否则面板一直不开）；坑 ②：**隐藏 tab 里的按钮 `boundingBox()` 返回 null**（须按可见按钮反查父工具条取裁剪区）；坑 ③：对话头部「面板开关」被原型预览层的主题开关遮住、hover 被拦截（残留项降级为只读静止态）。
+- **「改前」用同面注入旧值还原（4px / 6px）而非 `git stash`**：本轮只动 `border-radius` 一条属性，注入法在像素上等价，同时避免把并行窗口在途改动一起带走。
+
+### 残留（未授权，供后续点名）
+
+- `.preview-tab-close` 页签关闭「×」`16×16` **3px**（8px ≈ 短边 60%、近圆）→ 触发语 **「页签关闭也统一 8」**。
+- `.header-button.header-panel-toggle` 对话头部「面板开关」`24×24` **4px** → 触发语 **「头部按钮也一起」**。
+- `.desktop-pane-close` 对话 pane 头部关闭按钮（本轮 mock 未渲染、未核）→ 触发语 **「pane 头部关闭也一起」**。
+- `.desktop-session-more-btn` 会话行「更多」`24×24` **6px** → 触发语 **「会话行更多按钮也统一 8」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-pane-button-radius-0916.mjs`（computed 读数 + hover 态 1:1 裁切 + 6× 放大 + 差异像素图）、`CC02/build-pane-button-radius-0916.py`（自测页）。
+- 证据目录 `CC02/走查/0916-面板操作按钮圆角/`：`measure.json`、`{tag}-{theme}-{before,after}-hover.png`、`zoom-{tag}-{theme}-{before,after}.png`、`diffmap-*`、`toolbar-{theme}-{before,after}-hover.png`、`tabbar-*`，自测页 `0916-面板操作按钮圆角-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/z8pzpxevzk ）。
+- 本轮纯 CSS（`host-desktop.css` 一条规则），无 TS 改动。
