@@ -476,8 +476,8 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 
 沙箱内可用的 API：
 
-- `await tools.<name>(args)` — 调用一个 MCP 工具，直接传该工具自己的实参对象，resolve 为 `{ content, images }`
-- `tools["$codemode"].search({ query: "query" })` — 按名称或描述检索完整工具池，返回每条命中的名称、完整描述与参数签名（`query` 传空串即列出完整池）。目录被截断时模型会拿到这个调用形式；目录完整时不宣传它，入口照旧可用
+- `await tools.<name>(args)` — 调用一个 MCP 工具，直接传该工具自己的实参对象，resolve 为该工具的输出：服务器返回了 `structuredContent` 就是那个对象，否则是它的文本，两者都没有则是 `null`（不套信封，脚本拿到的就是值本身；目录里的签名已写明每个工具的返回类型）
+- `tools["$codemode"].search({ query: "query" })` — 按名称或描述检索完整工具池，resolve 为命中条目的数组（每条含名称、完整描述与参数签名；`query` 传空串即列出完整池）。目录被截断时模型会拿到这个调用形式；目录完整时不宣传它，入口照旧可用
 - `console.log(...)` — 收集输出并随结果一并返回
 - `return <value>` — 返回值序列化后交给模型
 

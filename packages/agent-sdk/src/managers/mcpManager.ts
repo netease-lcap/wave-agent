@@ -21,6 +21,7 @@ import type {
   McpServerConfig,
   McpConfig,
   McpTool,
+  McpToolCallResult,
   McpServerStatus,
 } from "../types/index.js";
 
@@ -596,6 +597,7 @@ export class McpManager {
             name: tool.name,
             description: tool.description,
             inputSchema: tool.inputSchema,
+            outputSchema: tool.outputSchema,
           })) || [];
         logger?.info(`Connected to MCP server ${name} using Streamable HTTP`);
       } else if (serverType === "sse") {
@@ -621,6 +623,7 @@ export class McpManager {
             name: tool.name,
             description: tool.description,
             inputSchema: tool.inputSchema,
+            outputSchema: tool.outputSchema,
           })) || [];
         logger?.info(`Connected to MCP server ${name} using SSE`);
       } else if (
@@ -729,6 +732,7 @@ export class McpManager {
             name: tool.name,
             description: tool.description,
             inputSchema: tool.inputSchema,
+            outputSchema: tool.outputSchema,
           })) || [];
       } else if (serverType) {
         // Unknown type value
@@ -875,6 +879,7 @@ export class McpManager {
             name: tool.name,
             description: tool.description,
             inputSchema: tool.inputSchema,
+            outputSchema: tool.outputSchema,
           })) || [];
         logger?.info(
           `MCP Server ${name} auto-reconnected successfully (attempt ${i + 1})`,
@@ -1001,12 +1006,7 @@ export class McpManager {
     toolName: string,
     args: Record<string, unknown>,
     context?: ToolContext,
-  ): Promise<{
-    success: boolean;
-    content: string;
-    serverName?: string;
-    images?: Array<{ data: string; mediaType?: string }>;
-  }> {
+  ): Promise<McpToolCallResult> {
     // Check if it's a prefixed name: mcp__[serverName]__[toolName]
     if (!toolName.startsWith("mcp__")) {
       throw new Error(
@@ -1065,12 +1065,7 @@ export class McpManager {
     toolName: string,
     args: Record<string, unknown>,
     serverName: string,
-  ): Promise<{
-    success: boolean;
-    content: string;
-    serverName?: string;
-    images?: Array<{ data: string; mediaType?: string }>;
-  }> {
+  ): Promise<McpToolCallResult> {
     try {
       const result = await connection.client.callTool({
         name: toolName,
@@ -1116,9 +1111,18 @@ export class McpManager {
             ? `Tool returned ${images.length} image(s).`
             : "No content";
 
+      // The sandbox's value, decided from the text parts rather than from
+      // `textContentStr`: that one carries display placeholders ("No content"),
+      // and a script has to be able to tell "the tool said nothing" (`null`) from
+      // "the tool said 'No content'". Same rule the catalog renders return types
+      // from: structured, else text, else null.
+      const text = textContent.join("\n");
+      const output = result.structuredContent ?? (text === "" ? null : text);
+
       return {
         success: true,
         content: textContentStr,
+        output,
         images: images.length > 0 ? images : undefined,
         serverName,
       };
@@ -1180,6 +1184,32 @@ export class McpManager {
    */
   getMcpToolsConfig(): ChatCompletionFunctionTool[] {
     return this.getMcpToolPlugins().map((tool) => tool.config);
+  }
+
+  /**
+   * Declared output schema per flattened tool name, for the Exec catalog's return
+   * types.
+   *
+   * A separate accessor because `getMcpToolsConfig()` cannot carry it: an OpenAI
+   * function declaration has room for `parameters` and nothing else, so the schema
+   * a server declared for its *output* has no field to travel in. Correlated with
+   * the same `findToolServer` lookup `getMcpToolPlugins` uses and keyed with the
+   * same `mcpToolFlatName`, so the two agree on which server owns a tool.
+   *
+   * Servers that declare no output schema are simply absent, which renders as
+   * `Promise<unknown>`: honest about the call returning *something* of unspecified
+   * shape.
+   */
+  getMcpToolOutputSchemas(): Map<string, Record<string, unknown>> {
+    const schemas = new Map<string, Record<string, unknown>>();
+    const servers = this.getAllServers();
+    for (const tool of this.getAllConnectedTools()) {
+      const server = findToolServer(tool.name, servers);
+      if (server && tool.outputSchema) {
+        schemas.set(mcpToolFlatName(server.name, tool.name), tool.outputSchema);
+      }
+    }
+    return schemas;
   }
 
   /**

@@ -54,6 +54,7 @@ function flatten(agent: Agent): ExecPoolEntry[] {
       name: `mcp__${server.name}__${tool.name}`,
       description: tool.description,
       inputSchema: tool.inputSchema,
+      outputSchema: tool.outputSchema,
     })),
   );
 }
@@ -169,6 +170,24 @@ async function main(): Promise<void> {
     check(
       !registry.includes("This second line is padding"),
       "the second description line survived the clamp",
+    );
+
+    section("return type — from the server's own output schema");
+    const reverse = entryFor(prompt, "reverse_text");
+    console.log(reverse);
+    check(
+      reverse.includes("Promise<{"),
+      "a declared output schema did not reach the signature",
+    );
+    check(
+      reverse.includes("reversed: string,"),
+      "the declared output schema was not rendered field by field",
+    );
+    // The tools that declare nothing still get a return type: leaving it out
+    // would read as "this call returns nothing".
+    check(
+      entryFor(prompt, "word_count").includes("): Promise<unknown>"),
+      "an undeclared output schema did not fall back to `unknown`",
     );
 
     section("union — how many anyOf variants survive?");

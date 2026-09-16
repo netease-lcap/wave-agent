@@ -1239,12 +1239,53 @@ describe("McpManager", () => {
       expect(result).toEqual({
         success: true,
         content: "Tool execution result",
+        // No structured content declared, so the script's value is the text.
+        output: "Tool execution result",
         serverName: "test-server",
       });
 
       expect(mockClient.callTool).toHaveBeenCalledWith({
         name: "test_tool",
         arguments: { param: "value" },
+      });
+    });
+
+    it("should surface structuredContent as the value a script gets", async () => {
+      // `structuredContent` is the server's typed result and was dropped on the
+      // floor before; the catalog renders the return type from the schema, so the
+      // value has to be the object rather than the text it was also sent as.
+      mockClient.listTools.mockResolvedValue({
+        tools: [
+          {
+            name: "lookup_tool",
+            description: "A tool with an output schema",
+            inputSchema: { type: "object" },
+            outputSchema: {
+              type: "object",
+              properties: { id: { type: "string" } },
+              required: ["id"],
+            },
+          },
+        ],
+      });
+
+      mockClient.callTool.mockResolvedValue({
+        content: [{ type: "text", text: '{"id":"7"}' }],
+        structuredContent: { id: "7" },
+      });
+
+      await mcpManager.connectServer("test-server");
+
+      const result = await mcpManager.executeMcpTool(
+        "mcp__test-server__lookup_tool",
+        {},
+      );
+
+      expect(result).toEqual({
+        success: true,
+        content: '{"id":"7"}',
+        output: { id: "7" },
+        serverName: "test-server",
       });
     });
 
@@ -1283,6 +1324,7 @@ describe("McpManager", () => {
       expect(result).toEqual({
         success: true,
         content: "Screenshot captured successfully",
+        output: "Screenshot captured successfully",
         images: [
           {
             data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jU77vwAAAABJRU5ErkJggg==",
@@ -1373,6 +1415,7 @@ describe("McpManager", () => {
       expect(result).toEqual({
         success: true,
         content: "Multiple screenshots captured",
+        output: "Multiple screenshots captured",
         images: [
           {
             data: "image1_base64_data",
@@ -1426,6 +1469,9 @@ describe("McpManager", () => {
         success: true,
         content:
           "First text result\nSecond text result\n[Resource: file:///path/to/file.txt]",
+        // A resource part is textual as far as the script is concerned.
+        output:
+          "First text result\nSecond text result\n[Resource: file:///path/to/file.txt]",
         images: [
           {
             data: "screenshot_data",
@@ -1468,6 +1514,9 @@ describe("McpManager", () => {
       expect(result).toEqual({
         success: true,
         content: "Tool returned 1 image(s).",
+        // An image is not something a script composes with, so the value is `null`
+        // rather than the display placeholder the user sees.
+        output: null,
         images: [
           {
             data: "only_image_data",
@@ -1512,6 +1561,8 @@ describe("McpManager", () => {
       expect(result).toEqual({
         success: true,
         content:
+          'Known text\n{\n  "type": "unknown_type",\n  "data": "some_data",\n  "custom_field": "custom_value"\n}',
+        output:
           'Known text\n{\n  "type": "unknown_type",\n  "data": "some_data",\n  "custom_field": "custom_value"\n}',
         serverName: "test-server",
       });
@@ -1585,6 +1636,45 @@ describe("McpManager", () => {
 
       expect(tools).toHaveLength(2);
       expect(tools.map((t) => t.name)).toEqual(["tool1", "tool2"]);
+    });
+  });
+
+  describe("getMcpToolOutputSchemas", () => {
+    it("keys each declared output schema by the flattened tool name", async () => {
+      // A tool declaration has no field an output schema could ride in, so the
+      // catalog asks for it separately — and has to address it the same way the
+      // sandbox does, by the flattened name.
+      const { promises: fs } = await import("fs");
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({ mcpServers: { server1: { command: "cmd1" } } }),
+      );
+      await mcpManager.loadConfig();
+
+      const outputSchema = {
+        type: "object",
+        properties: { id: { type: "string" } },
+      };
+      mcpManager.updateServerStatus("server1", {
+        status: "connected",
+        tools: [
+          {
+            name: "with_schema",
+            description: "Declares one",
+            inputSchema: {},
+            outputSchema,
+          },
+          {
+            name: "without_schema",
+            description: "Declares none",
+            inputSchema: {},
+          },
+        ],
+      });
+
+      const schemas = mcpManager.getMcpToolOutputSchemas();
+
+      expect([...schemas.keys()]).toEqual(["mcp__server1__with_schema"]);
+      expect(schemas.get("mcp__server1__with_schema")).toBe(outputSchema);
     });
   });
 });

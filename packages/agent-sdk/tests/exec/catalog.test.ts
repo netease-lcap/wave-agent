@@ -20,9 +20,13 @@ function tool(
   return { type: "function", function: { name, description, parameters } };
 }
 
-function mcpManagerOf(configs: ChatCompletionFunctionTool[]): McpManager {
+function mcpManagerOf(
+  configs: ChatCompletionFunctionTool[],
+  outputSchemas: Map<string, Record<string, unknown>> = new Map(),
+): McpManager {
   return {
     getMcpToolsConfig: () => configs,
+    getMcpToolOutputSchemas: () => outputSchemas,
   } as unknown as McpManager;
 }
 
@@ -30,7 +34,7 @@ function mcpManagerOf(configs: ChatCompletionFunctionTool[]): McpManager {
 const entryLines = (text: string) =>
   text.split("\n").filter((line) => line.startsWith("tools."));
 
-/** A tool whose pretty signature is a six-line block (25 estimated tokens at the
+/** A tool whose pretty signature is a six-line block (29 estimated tokens at the
  * eleven-character name `mcp__srv__a`). */
 const blockEntry = (name: string) => ({
   name,
@@ -94,6 +98,25 @@ describe("buildExecPool", () => {
   it("tolerates a tool with no schema", () => {
     const pool = buildExecPool(mcpManagerOf([tool("mcp__srv__ping")]));
     expect(pool[0].inputSchema).toBeUndefined();
+    expect(pool[0].outputSchema).toBeUndefined();
+  });
+
+  it("carries each tool's declared output schema for the signature", () => {
+    // A tool declaration has no field for an output schema, so it rides
+    // alongside the pool rather than inside it.
+    const outputSchema = {
+      type: "object",
+      properties: { id: { type: "string" } },
+    };
+    const pool = buildExecPool(
+      mcpManagerOf(
+        [tool("mcp__srv__run"), tool("mcp__srv__quiet")],
+        new Map([["mcp__srv__run", outputSchema]]),
+      ),
+    );
+
+    expect(pool[0].outputSchema).toBe(outputSchema);
+    expect(pool[1].outputSchema).toBeUndefined();
   });
 });
 
@@ -114,7 +137,7 @@ describe("renderCatalogEntry", () => {
         "tools.mcp__srv__run({",
         "  cmd: string,",
         "  cwd?: string,",
-        "}) // Run a command",
+        "}): Promise<unknown> // Run a command",
       ].join("\n"),
     );
     // Only the first line of the tool description reaches the catalog.
@@ -123,7 +146,43 @@ describe("renderCatalogEntry", () => {
 
   it("falls back to bracket access when the name is not a valid identifier", () => {
     const line = renderCatalogEntry({ name: "mcp__my-srv__x" });
-    expect(line).toBe('tools["mcp__my-srv__x"](unknown)');
+    expect(line).toBe('tools["mcp__my-srv__x"](unknown): Promise<unknown>');
+  });
+
+  it("renders a declared output schema as the return type", () => {
+    const line = renderCatalogEntry({
+      name: "mcp__srv__a",
+      outputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "the id" },
+          count: { type: "number" },
+        },
+        required: ["id"],
+      },
+    });
+
+    expect(line).toBe(
+      [
+        "tools.mcp__srv__a(unknown): Promise<{",
+        "  /** the id */",
+        "  id: string,",
+        "  count?: number,",
+        "}>",
+      ].join("\n"),
+    );
+  });
+
+  it("renders a degenerate output schema as what it says, not as a guess", () => {
+    // `{ type: "object" }` declares "some object, shape unspecified" — the
+    // lifetime of a real server declaring that. Rendering `{}` says exactly that;
+    // inventing a narrower shape would be a lie the model could act on.
+    expect(
+      renderCatalogEntry({
+        name: "mcp__srv__a",
+        outputSchema: { type: "object" },
+      }),
+    ).toBe("tools.mcp__srv__a(unknown): Promise<{}>");
   });
 
   it("renders enum, array and union types", () => {
@@ -135,7 +194,11 @@ describe("renderCatalogEntry", () => {
           properties: { mode: { enum: ["fast", "slow"] } },
         },
       }),
-    ).toBe(["tools.a({", '  mode?: "fast" | "slow",', "})"].join("\n"));
+    ).toBe(
+      ["tools.a({", '  mode?: "fast" | "slow",', "}): Promise<unknown>"].join(
+        "\n",
+      ),
+    );
 
     expect(
       renderCatalogEntry({
@@ -145,14 +208,18 @@ describe("renderCatalogEntry", () => {
           properties: { items: { type: "array", items: { type: "string" } } },
         },
       }),
-    ).toBe(["tools.b({", "  items?: Array<string>,", "})"].join("\n"));
+    ).toBe(
+      ["tools.b({", "  items?: Array<string>,", "}): Promise<unknown>"].join(
+        "\n",
+      ),
+    );
 
     expect(
       renderCatalogEntry({
         name: "c",
         inputSchema: { anyOf: [{ type: "string" }, { type: "number" }] },
       }),
-    ).toBe("tools.c(string | number)");
+    ).toBe("tools.c(string | number): Promise<unknown>");
   });
 
   it("renders every property of a wide schema", () => {
@@ -275,7 +342,7 @@ describe("renderCatalogEntry", () => {
         "  legacy?: string,",
         // No description and no tag -> no comment line at all.
         "  plain?: boolean,",
-        "})",
+        "}): Promise<unknown>",
       ].join("\n"),
     );
   });
@@ -304,7 +371,9 @@ describe("renderCatalogEntry", () => {
       "  p?: string,",
     ]);
     // Only the tool's own description is compressed, to one line of fixed width.
-    expect(lines[lines.length - 1]).toBe(`}) // ${"t".repeat(117)}...`);
+    expect(lines[lines.length - 1]).toBe(
+      `}): Promise<unknown> // ${"t".repeat(117)}...`,
+    );
   });
 
   it("emits a tag even when the field has no description", () => {
@@ -341,7 +410,11 @@ describe("search entry", () => {
         `tools["${EXEC_RESERVED_NAMESPACE}"].search({`,
         "  /** Substring matched against tool names and descriptions, case-insensitively. Omit it (or pass an empty string) to list the entire pool. */",
         "  query?: string,",
-        "})",
+        "}): Promise<Array<{",
+        "    name: string,",
+        "    description?: string,",
+        "    signature: string,",
+        "  }>>",
       ].join("\n"),
     );
     expect(renderSearchCallForm()).toBe(
@@ -350,7 +423,12 @@ describe("search entry", () => {
   });
 
   it("advertises exactly the arguments the validator accepts", () => {
-    const advertised = renderSearchSignature()
+    // Only the parameter block: the return type's fields are addresses into a
+    // result, not arguments, and reading them as arguments would make this test
+    // assert its own drift rather than catch it.
+    const signature = renderSearchSignature();
+    const block = signature.slice(0, signature.indexOf("}): ") + 1);
+    const advertised = block
       .split("\n")
       .map((line) => /^\s*([A-Za-z_$][\w$]*)\??:/.exec(line)?.[1])
       .filter((key): key is string => key !== undefined);
@@ -454,8 +532,8 @@ describe("renderCatalog", () => {
       { name: "mcp__beta__t1" },
       { name: "mcp__beta__t2" },
     ];
-    // Each entry is 29 chars / 8 estimated tokens, so 16 is room for exactly two.
-    const rendered = renderCatalog(pooled, 16);
+    // Each entry is 47 chars / 13 estimated tokens, so 26 is room for exactly two.
+    const rendered = renderCatalog(pooled, 26);
 
     expect(rendered.shown).toBe(2);
     expect(rendered.text).toContain("- mcp__alpha (1 tool)");
@@ -469,10 +547,10 @@ describe("renderCatalog", () => {
       }`,
       description: "d",
     }));
-    // Twenty servers, two tools each. Every entry is 32 chars / 9 estimated
-    // tokens, so 180 is exactly one seat for each server. Were the summaries
+    // Twenty servers, two tools each. Every entry is 50 chars / 14 estimated
+    // tokens, so 280 is exactly one seat for each server. Were the summaries
     // budgeted, half of them would lose their seat to their own summary line.
-    const rendered = renderCatalog(pooled, 180);
+    const rendered = renderCatalog(pooled, 280);
 
     expect(rendered.shown).toBe(20);
     expect(entryLines(rendered.text)).toHaveLength(20);
@@ -505,13 +583,13 @@ describe("renderCatalog", () => {
       blockEntry("mcp__srv__b"),
       blockEntry("mcp__srv__c"),
     ];
-    // Each block is six lines / 95 chars / 25 estimated tokens, so three of them
-    // cost 75 as blocks. Per-line accounting would need 90 and fit only two.
-    const exact = renderCatalog(blocks, 75);
+    // Each block is six lines / 113 chars / 29 estimated tokens, so three of them
+    // cost 87 as blocks. Per-line accounting would need 102 and fit only two.
+    const exact = renderCatalog(blocks, 87);
     expect(exact.shown).toBe(3);
     expect(exact.truncated).toBe(false);
 
-    const oneLess = renderCatalog(blocks, 74);
+    const oneLess = renderCatalog(blocks, 86);
     expect(oneLess.shown).toBe(2);
   });
 
@@ -526,8 +604,8 @@ describe("renderCatalog", () => {
       blockEntry("mcp__bravo__t2"),
       blockEntry("mcp__delta__t1"),
     ];
-    // Each block costs 26 tokens, so 78 is room for exactly one round.
-    const rendered = renderCatalog(pooled, 78);
+    // Each block costs 30 tokens, so 90 is room for exactly one round.
+    const rendered = renderCatalog(pooled, 90);
     expect(rendered.shown).toBe(3);
     expect(rendered.truncated).toBe(true);
 
@@ -553,7 +631,7 @@ describe("renderCatalog", () => {
       { name: "mcp__gamma__t1" },
     ];
     // Room for exactly three lines: one full round of the rotation.
-    const rendered = renderCatalog(pooled, 24);
+    const rendered = renderCatalog(pooled, 39);
     // Summary lines sit in between; only the entries are being asserted here.
     const lines = entryLines(rendered.text);
 
@@ -586,14 +664,15 @@ describe("renderCatalog", () => {
   });
 
   it("spends a budget that only fits one entry on the cheap one, not the first one", () => {
-    // 8 tokens is exactly the one-line entry (`tools.mcp__alpha__narrow()`, 26
-    // chars) and far short of the six-line block. In pool order the block came
-    // first, and the first entry is always shown even when it alone is over
-    // budget — so this ordering is also what keeps a tiny budget from being
-    // swallowed by whichever tool the server happened to list first.
+    // 14 tokens is exactly the one-line entry
+    // (`tools.mcp__alpha__narrow(unknown): Promise<unknown>`, 51 chars) and far
+    // short of the six-line block. In pool order the block came first, and the
+    // first entry is always shown even when it alone is over budget — so this
+    // ordering is also what keeps a tiny budget from being swallowed by whichever
+    // tool the server happened to list first.
     const rendered = renderCatalog(
       [blockEntry("mcp__alpha__wide"), { name: "mcp__alpha__narrow" }],
-      8,
+      14,
     );
 
     expect(rendered.shown).toBe(1);

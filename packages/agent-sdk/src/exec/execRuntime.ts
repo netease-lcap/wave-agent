@@ -43,7 +43,18 @@ export interface RunExecOptions {
 }
 
 export interface ExecCallResult {
-  content: string;
+  /**
+   * What the script's `await` resolves to — the tool's structured output, else its
+   * text, else `null` (the rule `renderToolSignature` promises in the catalog).
+   * Plain JSON only: it crosses the worker boundary and is deep-cloned inside the
+   * sandbox.
+   */
+  output: unknown;
+  /**
+   * Images to hoist onto the `Exec` result. Never seen by the script: a nested call
+   * resolves to the tool's output, and an image is not something a script composes
+   * with.
+   */
   images?: Array<{ data: string; mediaType?: string }>;
 }
 
@@ -98,15 +109,16 @@ async function handleExecCall(
     });
     // Return the same rendered signature the catalog shows, not the raw schema,
     // so a hit can be copied verbatim into a call. Rendering is done on the
-    // matched entries only, never the whole pool.
+    // matched entries only, never the whole pool. The value is the array itself,
+    // not its JSON text — same rule as an MCP call: a script composes values, and
+    // making it parse a string first is the kind of extra step a signature should
+    // not have to mention.
     return {
-      content: JSON.stringify(
-        matches.map((entry) => ({
-          name: entry.name,
-          description: entry.description,
-          signature: renderToolSignature(entry),
-        })),
-      ),
+      output: matches.map((entry) => ({
+        name: entry.name,
+        description: entry.description,
+        signature: renderToolSignature(entry),
+      })),
     };
   }
 
@@ -126,7 +138,7 @@ async function handleExecCall(
   // keys it on the flattened name, so a nested call is approved exactly like a
   // flat MCP call.
   const result = await mcpManager.executeMcpTool(name, args, context);
-  return { content: result.content, images: result.images };
+  return { output: result.output, images: result.images };
 }
 
 function terminate(worker: Worker): void {
@@ -224,10 +236,7 @@ export function runExecScript(options: RunExecOptions): Promise<ExecRunResult> {
                 kind: "result",
                 id: call.id,
                 ok: true,
-                value: {
-                  content: result.content,
-                  images: result.images?.length ?? 0,
-                },
+                value: result.output,
               });
             },
             (error: unknown) => {

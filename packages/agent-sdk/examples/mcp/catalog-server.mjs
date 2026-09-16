@@ -108,6 +108,15 @@ const TOOLS = [
       },
       required: ["text"],
     },
+    // The one tool here that declares its output, so the catalog has a return
+    // type to render and the sandbox has a `structuredContent` to resolve to.
+    outputSchema: {
+      type: "object",
+      properties: {
+        reversed: { type: "string", description: "The same text, backwards." },
+      },
+      required: ["reversed"],
+    },
   },
   {
     name: "word_count",
@@ -162,9 +171,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const text = String(args.text ?? "");
   const result = {};
   switch (request.params.name) {
-    case "reverse_text":
-      result.reversed = [...text].reverse().join("");
-      break;
+    case "reverse_text": {
+      const reversed = [...text].reverse().join("");
+      // Mirrors a real structured-output server: the text stays the display
+      // form, and the typed result rides alongside it.
+      return {
+        content: [{ type: "text", text: JSON.stringify({ reversed }) }],
+        structuredContent: { reversed },
+      };
+    }
     case "word_count":
       result.words = text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
       break;
