@@ -6700,6 +6700,18 @@ describe("multi-session parallel (FR-031)", () => {
     });
   });
 
+  it("forwards planFileUpdated to the pane so an open Plan pane refreshes live", async () => {
+    const { sent } = await readyHost();
+    const agent1 = seedActiveSession("sess-1");
+
+    agent1.callbacks.onPlanFileUpdated("## v2\n- 新步骤");
+
+    const msg = sent("planFileUpdated").at(-1);
+    expect(msg).toMatchObject({ content: "## v2\n- 新步骤" });
+    // Scoped to the owning pane: the refresh must not leak to other panes.
+    expect(msg?.paneId).toBeTruthy();
+  });
+
   it("never evicts idle agents — the pool is unbounded until session deletion", async () => {
     const { host } = await readyHost();
     const agents = [seedActiveSession("sess-1")];

@@ -3,6 +3,7 @@ package com.wave.jetbrains.session
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.wave.jetbrains.WaveBackendService
+import com.wave.jetbrains.WavePanelHolder
 import com.wave.jetbrains.stdio.AgentCallbacks
 import com.wave.jetbrains.stdio.NotificationRouter
 import com.wave.jetbrains.stdio.StdioAgent
@@ -158,6 +159,12 @@ class WaveSession(
     // tail, mirrors VSCE chatSession.ts).
     override fun onCompactionContentUpdate(content: String) {
         postMessage("compactionContentUpdate", buildJsonObject { put("content", content) })
+    }
+
+    // Plan panel live refresh (spec: 计划文件更新后刷新计划面板): the model wrote the
+    // plan file — update the already-open editor tab, never create one.
+    override fun onPlanFileUpdated(content: String) {
+        WavePanelHolder.getInstance(project).refreshPlanPreview(this, content)
     }
 
     override fun onUserMessageAdded(message: JsonElement?) {

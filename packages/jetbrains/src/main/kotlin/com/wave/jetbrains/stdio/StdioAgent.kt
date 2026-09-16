@@ -25,6 +25,8 @@ interface AgentCallbacks {
     fun onCompactBlockAdded(content: String) {}
     fun onCompactionStateChange(isCompacting: Boolean) {}
     fun onCompactionContentUpdate(content: String) {}
+    /** Full plan-file content after the model writes it (spec: 计划文件更新后刷新计划面板). */
+    fun onPlanFileUpdated(content: String) {}
     fun onLoadingChange(loading: Boolean) {}
     fun onContextUsage(percent: Double) {}
     fun onCommandRunningChange(running: Boolean) {}
@@ -147,6 +149,9 @@ class StdioAgent(
                 params?.jsonObject?.get("isCompacting")?.jsonPrimitive?.content?.toBoolean() ?: false
             )
             "compactionContentUpdate" -> callbacks.onCompactionContentUpdate(
+                params?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+            )
+            "planFileUpdated" -> callbacks.onPlanFileUpdated(
                 params?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
             )
             else -> {}

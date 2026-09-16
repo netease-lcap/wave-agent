@@ -365,6 +365,14 @@ export interface PlanContentMessage extends HostToWebviewMessageBase {
   content: string;
 }
 
+/** The agent wrote the plan file (spec plan-mode.md「计划文件更新后刷新计划面板」):
+ *  the host pushes the fresh contents so an already-open Plan pane updates live.
+ *  Unlike `planContent` this never opens the pane — a closed panel stays closed. */
+export interface PlanFileUpdatedMessage extends HostToWebviewMessageBase {
+  command: "planFileUpdated";
+  content: string;
+}
+
 export interface ConfigurationResponseMessage extends HostToWebviewMessageBase {
   command: "configurationResponse";
   configurationData: ConfigurationData;
@@ -923,6 +931,7 @@ export type HostToWebviewMessage =
   | UpdateCurrentSessionMessage
   | ShowConfirmationMessage
   | PlanContentMessage
+  | PlanFileUpdatedMessage
   | ConfigurationResponseMessage
   | ProjectSettingsMessage
   | HooksConfigResponseMessage

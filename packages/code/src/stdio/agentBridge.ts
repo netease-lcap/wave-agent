@@ -2123,6 +2123,9 @@ export class AgentBridge {
           ctx.registeredSessionId,
         );
       },
+      onPlanFileUpdated: (content: string) => {
+        this.emit("planFileUpdated", { content }, ctx.registeredSessionId);
+      },
     };
   }
 

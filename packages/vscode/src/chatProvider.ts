@@ -363,6 +363,15 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           windowId,
         );
       },
+      onPlanFileUpdated: (content) => {
+        // Plan panel live refresh (spec: 计划文件更新后刷新计划面板): the model
+        // wrote the plan file. postPlanContent only reaches an already-open
+        // panel, so a closed preview stays closed.
+        this.webviewManager.postPlanContent(
+          this.planPanelKey(viewType, windowId),
+          content,
+        );
+      },
       onCommandRunningChange: (running) => {
         this.webviewManager.postMessage(
           { command: "updateCommandRunning", running },
@@ -723,7 +732,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         context.planContent
       ) {
         this.openPlanPreview(
-          `plan_${viewType || "tab"}_${windowId || "sidebar"}`,
+          this.planPanelKey(viewType, windowId),
           context.planContent,
         );
       }
@@ -774,6 +783,13 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       );
       await this.listSessions(viewType, windowId);
     }
+  }
+
+  /** Plan-preview panel key — one panel per chat session (viewType + windowId).
+   *  Shared by the ExitPlanMode flow, the /plan command, and the live refresh
+   *  (spec: 计划文件更新后刷新计划面板) so all three address the same panel. */
+  private planPanelKey(viewType?: string, windowId?: string): string {
+    return `plan_${viewType || "tab"}_${windowId || "sidebar"}`;
   }
 
   /** Opens (or refreshes) the plan-preview panel for a session key with the

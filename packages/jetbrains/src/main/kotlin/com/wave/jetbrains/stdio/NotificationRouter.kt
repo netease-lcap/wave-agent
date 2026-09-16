@@ -85,6 +85,7 @@ class NotificationRouter(private val client: StdioClient) {
             "compactBlockAdded",
             "compactionStateChange",
             "compactionContentUpdate",
+            "planFileUpdated",
             "backgroundTasksChange",
         )
     }
