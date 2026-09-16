@@ -2354,6 +2354,25 @@
   color: #9a9ea5;
 }
 
+/* 设计师 0916 评论（点侧栏 `span`「新对话」）「这里的字体颜色深浅模式都用 1 级的」：
+   文案从「控件图标灰」提到 **1 级文字色**。上一条「图标统一灰」规则是同名按钮
+   一并染灰的（本意只针对图标），故这里把**文字**单独提回 1 级 ——
+   浅 #1F2329 / 深 #E6E6E6，与同栏会话行标题（`.desktop-session-item` @DesktopApp.css
+   浅 :299 / 深 :427）逐值相同，也和 codechat 参考实现同构（`TaskSidebar.vue` 的
+   `.sidebar-tool-button` 只给图片上灰色 #4E5969，文字继承 `body` 的
+   `--cc-text-primary`）。
+   **只改文案**：图标仍按第三十八轮图标规范留在 #565A60 / #9A9EA5（不随文字变深）；
+   字号 14 / 字重 400 / 盒 30px / r8 / hover 底色 / 禁用态 opacity 均未动。
+   浅色档值 = `--cc-text-primary`（#1f2329）；深色档随侧栏导航面色系取 #E6E6E6
+   （token `--cc-text-primary` 深色档为 #E5E7E8，与同栏其余 1 级文字差 1~2 通道，
+   此处对齐同一面板内的既有值）。 */
+[data-host="desktop"] .desktop-sidebar-new-chat span {
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat span {
+  color: #e6e6e6;
+}
+
 /* ═══ 第三十九轮：简单菜单选项间距归零（用户：panel-toggle-menu 选项之间不应有间距）═══
    codechat workspace-header-menu / el-dropdown-menu 菜单项连续排列（容器 pad 8、
    item 32px 高、item 之间无 gap）；wave base 的 .more-menu / .panel-toggle-menu

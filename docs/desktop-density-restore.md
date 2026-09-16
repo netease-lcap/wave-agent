@@ -4132,3 +4132,45 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 
 - 脚本：`CC02/probe-settings-title-weight-0916.mjs`（同页回退对照 + 逐元素字重/盒/裸文本宽 + 全部 `.settings-row` 与右侧控件列对照 + 裁剪图）。运行需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
 - 本轮纯 CSS（`SettingsPage.css` 两条规则 + 注释），无 TS 改动。
+
+## 0916 评论（侧栏「新对话」文案提到 1 级文字色）（工作区未提交）
+
+**她的评论**（点侧栏 `span`「新对话」）：「这里的字体颜色深浅模式都用 1 级的」。
+
+### 改动
+
+- `styles/host-desktop.css` **新增**两条规则（放在「控件图标统一灰」块之后，因为它就是本处被染灰的原因）：
+  ```css
+  [data-host="desktop"] .desktop-sidebar-new-chat span {
+    color: #1f2329;
+  }
+  [data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat span {
+    color: #e6e6e6;
+  }
+  ```
+- 根因：第三十八轮的「控件图标统一灰」规则把 `.desktop-sidebar-new-chat` 整颗按钮（含**文案**）一起染成 `#565a60` / `#9a9ea5`；该规则本意只管**图标**。本次只把**文案**提回 1 级。
+- 1 级取值依据：与同栏会话行标题 `.desktop-session-item`（`DesktopApp.css:299` 浅 `#1f2329` / `:427` 深 `#e6e6e6`）**逐值相同**；浅色档值同时等于 `--cc-text-primary`。深色档刻意不取 token 的 `#E5E7E8`，而取同一面板既有 1 级值 `#E6E6E6`（差 1~2 通道，避免同栏两处「1 级」不同值）。
+- 参考实现同构：`codechat-ui` `components/TaskSidebar.vue` 的 `.sidebar-tool-button` 自身不设色（文字继承 `body` 的 `--cc-text-primary`），图标资源 `assets/figma/new-chat.svg` 单独填灰 `#4E5969` —— 即「**文字 1 级 + 图标灰**」。
+- 未动项：图标仍按第三十八轮图标规范留 `#565A60` / `#9A9EA5`；字号 14 / 字重 400 / 盒 235×30 / r8 / gap 8 / 左右内衬 / hover 底色 / 禁用态 `opacity: 0.5` 全部未动。作用域只有侧栏这一颗按钮的文案 `span`。
+
+### 实测（`desktop-full` 首屏，1440×900，DPR2，浅/深；同页回退对照）
+
+| 主题                   | 文案色（修前 → 修后） | 对比度（修前 → 修后） | 与同栏会话行标题同值 | 图标（修前 → 修后）           |
+| ---------------------- | --------------------- | --------------------- | -------------------- | ----------------------------- |
+| 浅（侧栏底 `#F7F8FB`） | `#565A60` → `#1F2329` | 6.53:1 → **14.86:1**  | ✅                   | `#565A60` → `#565A60`（未动） |
+| 深（侧栏底 `#181A1B`） | `#9A9EA5` → `#E6E6E6` | 6.49:1 → **13.99:1**  | ✅                   | `#9A9EA5` → `#9A9EA5`（未动） |
+
+- 几何与交互零变动：按钮盒 `235x30`、`14px`、`r8`、`gap 8px`、文案宽 `42.8px` 前后逐值相同；hover 底色浅 `rgb(238, 240, 243)` / 深 `rgba(255, 255, 255, 0.08)` 前后一致。
+- `0 pageerror`。
+- 证据：`CC02/走查/0916-新对话文字色/newchat-{light,dark}-{before,after}.png` + `newchat-level1-verify.json`。
+
+### 残留（未授权，供后续点名）
+
+- 该按钮**图标**仍是控件图标灰 `#565A60` / `#9A9EA5`（第三十八轮图标规范 normal 档，且参考实现亦为灰）→ 触发语 **「新对话图标也提到 1 级」**。
+- 同一条「图标统一灰」名单里的其余项（`.desktop-sidebar-more-btn:not(.is-active)`、`.desktop-session-more-btn`、`.account-card-more-btn`、`.header-panel-toggle`、`.desktop-pane-close`、`.write-preview-open`、`.toast-close`、`.confirmation-close-btn` 等）都是**纯图标按钮**，本轮未动、也不建议动 → 若要把「侧栏导航项一律 1 级文字」写成通用条款，触发语 **「侧栏文字层级写进 skill」**。
+- 左侧分组标题 `.desktop-session-group-name` 仍是次级灰（浅 `#6C7076` / 深 `#9A9EA5`），属分组标签层级，未动 → 触发语 **「分组标题也提到 1 级」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-sidebar-newchat-color-0916.mjs`（盘点该按钮/文案/图标/同级会话标题的计算色与对比度）与 `CC02/probe-sidebar-newchat-level1-0916.mjs`（同页回退对照 + 几何/hover/文案宽前后比对 + 裁剪图）。运行需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
+- 本轮纯 CSS（`host-desktop.css` 两条新增规则 + 注释），无 TS 改动。
