@@ -158,4 +158,10 @@ export interface ToolContext {
    * the subprocess without polluting other sessions in one stdio process.
    */
   sessionEnv?: Record<string, string>;
+  /**
+   * Auto-memory directory for this session, or undefined when auto-memory is
+   * off. Read uses it to prepend a staleness note to files inside it — leaving
+   * it unset is what keeps that note off when the feature is disabled.
+   */
+  autoMemoryDir?: string;
 }

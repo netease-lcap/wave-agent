@@ -814,4 +814,78 @@ describe("readTool", () => {
       expect(result.error).toContain("exceeds limit");
     });
   });
+
+  describe("Auto-memory staleness note", () => {
+    const memoryDir = "/test/workdir/memory";
+    const memoryFile = `${memoryDir}/user_role.md`;
+
+    function mockMtime(mtimeMs: number) {
+      mockStat.mockResolvedValue({
+        size: 32,
+        mtime: { getTime: () => mtimeMs },
+      } as unknown as Awaited<ReturnType<typeof stat>>);
+    }
+
+    beforeEach(() => {
+      mockFiles[memoryFile] = "# User role\n\nSenior engineer";
+    });
+
+    it("prepends a staleness note for a memory older than a day", async () => {
+      mockMtime(Date.now() - 47 * 86_400_000);
+
+      const result = await readTool.execute(
+        { file_path: memoryFile },
+        { ...testContext, autoMemoryDir: memoryDir },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toMatch(
+        /^<system-reminder>This memory is 47 days old\. /,
+      );
+      expect(result.content).toContain(
+        "Verify against current code before asserting as fact.</system-reminder>",
+      );
+      expect(result.content).toContain("File: ");
+    });
+
+    it("leaves a memory from today or yesterday unannotated", async () => {
+      mockMtime(Date.now() - 3_600_000);
+
+      const today = await readTool.execute(
+        { file_path: memoryFile },
+        { ...testContext, autoMemoryDir: memoryDir },
+      );
+      mockMtime(Date.now() - 30 * 3_600_000);
+      const yesterday = await readTool.execute(
+        { file_path: memoryFile },
+        { ...testContext, autoMemoryDir: memoryDir },
+      );
+
+      expect(today.content).not.toContain("<system-reminder>");
+      expect(yesterday.content).not.toContain("<system-reminder>");
+      expect(yesterday.content.startsWith("File: ")).toBe(true);
+    });
+
+    it("leaves files outside the memory directory unannotated", async () => {
+      mockMtime(Date.now() - 47 * 86_400_000);
+
+      const result = await readTool.execute(
+        { file_path: "/test/workdir/small.txt" },
+        { ...testContext, autoMemoryDir: memoryDir },
+      );
+
+      expect(result.content).not.toContain("<system-reminder>");
+    });
+
+    it("annotates nothing when auto-memory is off (no memory directory)", async () => {
+      mockMtime(Date.now() - 47 * 86_400_000);
+
+      const result = await readTool.execute(
+        { file_path: memoryFile },
+        testContext,
+      );
+
+      expect(result.content).not.toContain("<system-reminder>");
+    });
+  });
 });

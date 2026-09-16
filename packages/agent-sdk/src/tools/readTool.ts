@@ -11,6 +11,8 @@ import {
   getBinaryDocumentError,
 } from "../utils/fileFormat.js";
 import { convertImageToBase64 } from "../utils/messageOperations.js";
+import { isPathInside } from "../utils/pathSafety.js";
+import { memoryFreshnessNote } from "../utils/memoryAge.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
 
 /**
@@ -378,8 +380,17 @@ Usage:
         };
       }
 
-      // Add file information header
-      let content = `File: ${filePath}\n`;
+      // Add file information header. A file inside the auto-memory directory
+      // gets a staleness note in front of it: memory is a point-in-time
+      // observation, and a stale `file:line` citation reads as authoritative.
+      // `autoMemoryDir` is unset when auto-memory is off, so the note can never
+      // fire for a disabled feature.
+      const memoryNote =
+        context.autoMemoryDir &&
+        isPathInside(actualFilePath, context.autoMemoryDir)
+          ? memoryFreshnessNote(stats.mtime.getTime())
+          : "";
+      let content = `${memoryNote}File: ${filePath}\n`;
       if (startLine > 1 || endLine < totalLines) {
         content += `Lines ${startLine}-${endLine} of ${totalLines}\n`;
       } else {
