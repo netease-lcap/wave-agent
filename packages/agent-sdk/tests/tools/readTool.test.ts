@@ -3,6 +3,7 @@ import { readTool } from "@/tools/readTool.js";
 import { TaskManager } from "@/services/taskManager.js";
 import { readFile, stat } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
+import type { MessageManager } from "@/managers/messageManager.js";
 import { Container } from "@/utils/container.js";
 
 // Mock fs/promises
@@ -812,6 +813,175 @@ describe("readTool", () => {
       expect(result.success).toBe(false);
       expect(result.metadata?.type).toBe("error_limit_exceeded");
       expect(result.error).toContain("exceeds limit");
+    });
+  });
+
+  describe("Auto-memory staleness note", () => {
+    const memoryDir = "/test/workdir/memory";
+    const memoryFile = `${memoryDir}/user_role.md`;
+
+    function mockMtime(mtimeMs: number) {
+      mockStat.mockResolvedValue({
+        size: 32,
+        mtime: { getTime: () => mtimeMs },
+      } as unknown as Awaited<ReturnType<typeof stat>>);
+    }
+
+    beforeEach(() => {
+      mockFiles[memoryFile] = "# User role\n\nSenior engineer";
+    });
+
+    it("prepends a staleness note for a memory older than a day", async () => {
+      mockMtime(Date.now() - 47 * 86_400_000);
+
+      const result = await readTool.execute(
+        { file_path: memoryFile },
+        { ...testContext, autoMemoryDir: memoryDir },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toMatch(
+        /^<system-reminder>This memory is 47 days old\. /,
+      );
+      expect(result.content).toContain(
+        "Verify against current code before asserting as fact.</system-reminder>",
+      );
+      expect(result.content).toContain("File: ");
+    });
+
+    it("leaves a memory from today or yesterday unannotated", async () => {
+      mockMtime(Date.now() - 3_600_000);
+
+      const today = await readTool.execute(
+        { file_path: memoryFile },
+        { ...testContext, autoMemoryDir: memoryDir },
+      );
+      mockMtime(Date.now() - 30 * 3_600_000);
+      const yesterday = await readTool.execute(
+        { file_path: memoryFile },
+        { ...testContext, autoMemoryDir: memoryDir },
+      );
+
+      expect(today.content).not.toContain("<system-reminder>");
+      expect(yesterday.content).not.toContain("<system-reminder>");
+      expect(yesterday.content.startsWith("File: ")).toBe(true);
+    });
+
+    it("leaves files outside the memory directory unannotated", async () => {
+      mockMtime(Date.now() - 47 * 86_400_000);
+
+      const result = await readTool.execute(
+        { file_path: "/test/workdir/small.txt" },
+        { ...testContext, autoMemoryDir: memoryDir },
+      );
+
+      expect(result.content).not.toContain("<system-reminder>");
+    });
+
+    it("annotates nothing when auto-memory is off (no memory directory)", async () => {
+      mockMtime(Date.now() - 47 * 86_400_000);
+
+      const result = await readTool.execute(
+        { file_path: memoryFile },
+        testContext,
+      );
+
+      expect(result.content).not.toContain("<system-reminder>");
+    });
+  });
+
+  describe("Nested memory trigger", () => {
+    function buildMessageManager(
+      triggerNestedMemory: ReturnType<typeof vi.fn>,
+    ) {
+      return {
+        triggerFileRead: vi.fn(),
+        triggerNestedMemory,
+      } as unknown as MessageManager;
+    }
+
+    it("asks for the directories above the file it just read", async () => {
+      const triggerNestedMemory = vi.fn();
+
+      await readTool.execute(
+        { file_path: "/test/workdir/subdir/nested.txt" },
+        {
+          ...testContext,
+          messageManager: buildMessageManager(triggerNestedMemory),
+        },
+      );
+
+      expect(triggerNestedMemory).toHaveBeenCalledWith(
+        "/test/workdir/subdir/nested.txt",
+      );
+    });
+
+    it("resolves a relative path before triggering", async () => {
+      const triggerNestedMemory = vi.fn();
+
+      await readTool.execute(
+        { file_path: "subdir/nested.txt" },
+        {
+          ...testContext,
+          messageManager: buildMessageManager(triggerNestedMemory),
+        },
+      );
+
+      expect(triggerNestedMemory).toHaveBeenCalledWith(
+        "/test/workdir/subdir/nested.txt",
+      );
+    });
+
+    it("does not trigger when the read itself fails", async () => {
+      const triggerNestedMemory = vi.fn();
+
+      const result = await readTool.execute(
+        { file_path: "/test/workdir/missing.txt" },
+        {
+          ...testContext,
+          messageManager: buildMessageManager(triggerNestedMemory),
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(triggerNestedMemory).not.toHaveBeenCalled();
+    });
+
+    it("does not trigger for a deduplicated (unchanged) read", async () => {
+      const triggerNestedMemory = vi.fn();
+      const readFileState = new Map<
+        string,
+        {
+          mtime: number;
+          hash: string;
+          source: "read";
+          offset?: number;
+          limit?: number;
+        }
+      >();
+      const filePath = "/test/workdir/small.txt";
+
+      await readTool.execute(
+        { file_path: filePath },
+        {
+          ...testContext,
+          readFileState,
+          messageManager: buildMessageManager(triggerNestedMemory),
+        },
+      );
+      triggerNestedMemory.mockClear();
+
+      const second = await readTool.execute(
+        { file_path: filePath },
+        {
+          ...testContext,
+          readFileState,
+          messageManager: buildMessageManager(triggerNestedMemory),
+        },
+      );
+
+      expect(second.metadata?.type).toBe("file_unchanged");
+      expect(triggerNestedMemory).not.toHaveBeenCalled();
     });
   });
 });

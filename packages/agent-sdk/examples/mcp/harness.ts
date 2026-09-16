@@ -27,6 +27,8 @@ export async function startDemo(options: {
   servers: DemoServer[];
   workdirPrefix: string;
   callbacks?: AgentCallbacks;
+  /** Pass `process.env.WAVE_FAST_MODEL` when the demo sends real turns. */
+  model?: string;
 }): Promise<{ agent: Agent; workDir: string }> {
   const workDir = await fs.mkdtemp(
     path.join(os.tmpdir(), options.workdirPrefix),
@@ -51,6 +53,7 @@ export async function startDemo(options: {
     workdir: workDir,
     permissionMode: "bypassPermissions",
     callbacks: options.callbacks,
+    ...(options.model ? { model: options.model } : {}),
   });
   return { agent, workDir };
 }
@@ -138,4 +141,23 @@ export function toolBlocks(agent: Agent, name: string) {
       (block) => block.type === "tool" && block.name === name,
     ),
   );
+}
+
+/**
+ * The `Exec` catalog channel's marker line — a different channel from the usage
+ * notes above, with its own marker prefix and its own readers.
+ */
+export function catalogMarkerOf(text: string): string | undefined {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.startsWith("<!-- exec-catalog "));
+}
+
+/** What the catalog channel appended, in message order: marker line and body. */
+export function catalogAnnouncements(agent: Agent): string[] {
+  return agent.messages
+    .filter((message) => message.isMeta === true)
+    .map(textOf)
+    .filter((text) => catalogMarkerOf(text) !== undefined);
 }

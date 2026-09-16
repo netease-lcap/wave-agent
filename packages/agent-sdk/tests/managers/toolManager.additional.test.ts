@@ -15,6 +15,7 @@ describe("ToolManager additional coverage", () => {
       isMcpTool: vi.fn().mockReturnValue(false),
       getMcpToolPlugins: vi.fn().mockReturnValue([]),
       getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      getMcpToolOutputSchemas: vi.fn().mockReturnValue(new Map()),
       executeMcpToolByRegistry: vi.fn(),
     } as unknown as McpManager;
 

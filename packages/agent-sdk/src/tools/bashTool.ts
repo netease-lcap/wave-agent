@@ -21,6 +21,7 @@ import {
 } from "../constants/tools.js";
 
 const BASH_DEFAULT_TIMEOUT_MS = 120000;
+const BASH_MAX_TIMEOUT_MS = 600000;
 
 // After the shell exits, its last stdout/stderr chunks may still be in flight:
 // Node emits the child's 'exit' event as soon as the process terminates, then
@@ -81,7 +82,7 @@ export const bashTool: ToolPlugin = {
           },
           timeout: {
             type: "number",
-            description: "Optional timeout in milliseconds (max 600000)",
+            description: `Optional timeout in milliseconds (max ${BASH_MAX_TIMEOUT_MS})`,
           },
           description: {
             type: "string",
@@ -120,7 +121,7 @@ Before executing the command, please follow these steps:
 
 Usage notes:
   - The command argument is required.
-  - You can specify an optional timeout in milliseconds (up to ${BASH_DEFAULT_TIMEOUT_MS}ms / ${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes). If not specified, commands will timeout after ${BASH_DEFAULT_TIMEOUT_MS}ms (${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes).
+  - You may specify an optional timeout in milliseconds (up to ${BASH_MAX_TIMEOUT_MS}ms / ${BASH_MAX_TIMEOUT_MS / 60000} minutes). By default, your command will timeout after ${BASH_DEFAULT_TIMEOUT_MS}ms (${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes).
   - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
   - If the output exceeds ${BASH_MAX_OUTPUT_CHARS.toLocaleString()} characters, output will be truncated and the full output will be persisted to a file you can read with the Read tool.
   - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the ${READ_TOOL_NAME} tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
@@ -205,15 +206,14 @@ The working directory persists between commands. Try to maintain your current wo
       };
     }
 
-    // Validate timeout
-    if (
-      timeout !== undefined &&
-      (typeof timeout !== "number" || timeout < 0 || timeout > 600000)
-    ) {
+    // Validate the timeout's type only. An upper bound is deliberately not
+    // enforced (matching Claude Code, which leaves the type check to its zod
+    // schema and applies whatever value the model sends).
+    if (timeout !== undefined && (typeof timeout !== "number" || timeout < 0)) {
       return {
         success: false,
         content: "",
-        error: "Timeout must be a number between 0 and 600000 milliseconds",
+        error: "Timeout must be a non-negative number of milliseconds",
       };
     }
 

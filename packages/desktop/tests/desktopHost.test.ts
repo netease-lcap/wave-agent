@@ -2207,6 +2207,27 @@ describe("configuration and status", () => {
     expect(lastAgent().updateConfig).not.toHaveBeenCalled();
   });
 
+  it("updateConfiguration forwards the server URL preference to the CLI (lands in env.WAVE_SERVER_URL)", async () => {
+    const { host } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "updateConfiguration",
+      configurationData: {
+        serverUrl: "https://codechat.codewave-test.163yun.com",
+      },
+    });
+
+    // 设置页载荷里的服务端地址是**用户偏好**，落会话进程用户级 settings.json 的
+    // `env.WAVE_SERVER_URL`；宿主本地存储里那个 serverUrl（只用于拼更新 feed）不经
+    // 本载荷，别混淆两条路径。
+    expect(
+      h.clientRequests
+        .filter((r) => r.method === "updateUserSettings")
+        .map((r) => r.params),
+    ).toEqual([{ serverUrl: "https://codechat.codewave-test.163yun.com" }]);
+    expect(lastAgent().updateConfig).not.toHaveBeenCalled();
+  });
+
   it("getStatus replies with app version, session id and workdir", async () => {
     const { host, sent } = await readyHost();
     await host.handleWebviewMessage({ command: "getStatus" });
@@ -4194,6 +4215,55 @@ describe("misc commands", () => {
       true,
     );
     expect(sent("appendMessage")).toHaveLength(0);
+  });
+
+  it("refreshMarketplaces pulls the checkouts, then re-pushes both lists with the refreshed flag", async () => {
+    // spec 插件市场场景 5/2：打开插件市场视图 → 后台只刷各市场检出（不升级插件），
+    // 完成后把两份最新列表推给已打开的视图（带 refreshed 标记收起「检查更新中…」）。
+    const { host, sent } = await readyHost();
+    const orig = h.handleClientRequest;
+    const seen: Array<{ method: string; params: unknown }> = [];
+    h.handleClientRequest = (method, params) => {
+      if (method === "refreshMarketplaces") {
+        seen.push({ method, params });
+        return null;
+      }
+      return orig(method, params);
+    };
+    try {
+      await host.handleWebviewMessage({ command: "refreshMarketplaces" });
+    } finally {
+      h.handleClientRequest = orig;
+    }
+
+    expect(seen).toEqual([
+      { method: "refreshMarketplaces", params: { workdir: "/work/a" } },
+    ]);
+    expect(sent("listMarketplacesResponse")[0]).toMatchObject({
+      refreshed: true,
+    });
+    expect(sent("listPluginsResponse")[0]).toMatchObject({ refreshed: true });
+    // 刷新不升级插件：不出现任何市场更新调用
+    expect(
+      h.clientRequests.filter((r) => r.method === "updateMarketplace"),
+    ).toHaveLength(0);
+  });
+
+  it("refreshMarketplaces failure stays silent but still re-pushes the current lists", async () => {
+    // spec 插件市场场景 9：刷新失败静默记日志（不弹 toast），列表仍按刷新前的清单呈现。
+    const { host, sent } = await readyHost();
+    const restore = failRpc("refreshMarketplaces", "network down");
+    try {
+      await host.handleWebviewMessage({ command: "refreshMarketplaces" });
+    } finally {
+      restore();
+    }
+
+    expect(shownToasts()).toHaveLength(0);
+    expect(sent("listMarketplacesResponse")[0]).toMatchObject({
+      refreshed: true,
+    });
+    expect(sent("listPluginsResponse")[0]).toMatchObject({ refreshed: true });
   });
 
   it("getProjectSettings failure surfaces as a toast, not a chat message", async () => {
@@ -6698,6 +6768,18 @@ describe("multi-session parallel (FR-031)", () => {
     expect(sent("compactionContentUpdate").at(-1)).toMatchObject({
       content: "streaming summary",
     });
+  });
+
+  it("forwards planFileUpdated to the pane so an open Plan pane refreshes live", async () => {
+    const { sent } = await readyHost();
+    const agent1 = seedActiveSession("sess-1");
+
+    agent1.callbacks.onPlanFileUpdated("## v2\n- 新步骤");
+
+    const msg = sent("planFileUpdated").at(-1);
+    expect(msg).toMatchObject({ content: "## v2\n- 新步骤" });
+    // Scoped to the owning pane: the refresh must not leak to other panes.
+    expect(msg?.paneId).toBeTruthy();
   });
 
   it("never evicts idle agents — the pool is unbounded until session deletion", async () => {

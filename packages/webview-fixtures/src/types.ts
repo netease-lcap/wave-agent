@@ -137,10 +137,10 @@ export interface AttachedImage {
 /**
  * 设置页配置载荷：**只有用户偏好键**（落 `~/.wave/settings.json`）。
  *
- * 模型选择与服务地址（`model` / `fastModel` / `serverUrl`）不属于这里——它们是
- * 宿主/SDK 侧的状态，webview 侧没有设置入口：模型经 `/model` 命令走
- * `getConfiguredModels` / `setModel`，服务地址经 `authStatusResponse.serverUrl`
- * 下发（`serverUrl` 由 CLI 的 `getAuthStatus` 解析，宿主只缓存）。
+ * 模型选择（`model` / `fastModel`）不属于这里——它经 `/model` 命令走
+ * `getConfiguredModels` / `setModel`。服务端地址虽为 SDK 既有状态，但其用户偏好
+ * 落点（`env.WAVE_SERVER_URL`）可从设置页编辑，故 `serverUrl` 属于这里；宿主的
+ * `authStatusResponse.serverUrl` 仍单独下发（由 CLI 的 `getAuthStatus` 解析）。
  */
 export interface ConfigurationData {
   language?: string;
@@ -150,6 +150,8 @@ export interface ConfigurationData {
   autoMemoryEnabled?: boolean;
   /** Auto-memory extraction turn frequency, 1–100 */
   autoMemoryFrequency?: number;
+  /** Wave 服务端地址（落 `env.WAVE_SERVER_URL`）。 */
+  serverUrl?: string;
   /**
    * 每个用户偏好键的来源层（`remote` = 企业下发的组织配置 / `user` = 用户级
    * `~/.wave/settings.json` / `env` = 机器环境变量 / `default` = 谁都没提供）。
@@ -362,6 +364,14 @@ export interface ShowConfirmationMessage extends HostToWebviewMessageBase {
  *  the shared Plan pane (opened on first delivery, like ExitPlanMode plans). */
 export interface PlanContentMessage extends HostToWebviewMessageBase {
   command: "planContent";
+  content: string;
+}
+
+/** The agent wrote the plan file (spec plan-mode.md「计划文件更新后刷新计划面板」):
+ *  the host pushes the fresh contents so an already-open Plan pane updates live.
+ *  Unlike `planContent` this never opens the pane — a closed panel stays closed. */
+export interface PlanFileUpdatedMessage extends HostToWebviewMessageBase {
+  command: "planFileUpdated";
   content: string;
 }
 
@@ -923,6 +933,7 @@ export type HostToWebviewMessage =
   | UpdateCurrentSessionMessage
   | ShowConfirmationMessage
   | PlanContentMessage
+  | PlanFileUpdatedMessage
   | ConfigurationResponseMessage
   | ProjectSettingsMessage
   | HooksConfigResponseMessage

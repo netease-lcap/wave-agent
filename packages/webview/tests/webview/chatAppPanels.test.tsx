@@ -1842,6 +1842,56 @@ describe("remote preview port forwarding", () => {
 });
 
 describe("desktop plan panel", () => {
+  it("refreshes an already-open plan panel when the model writes the plan file", () => {
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop({ workdir: "/work/a" });
+
+    sendCommand("showConfirmation", {
+      confirmationId: "conf_plan_1",
+      toolName: EXIT_PLAN_MODE_TOOL_NAME,
+      confirmationType: "计划待确认",
+      planContent: "## v1\n- 旧步骤",
+    });
+    // spec 计划文件更新后刷新计划面板: the pane is already open, so the fresh
+    // content replaces the old one in place.
+    sendCommand("planFileUpdated", { content: "## v2\n- 新步骤" });
+
+    const content = screen.getByTestId("plan-pane-content");
+    expect(content.querySelector("h2")).toHaveTextContent("v2");
+    expect(content.querySelectorAll("li")).toHaveLength(1);
+    expect(screen.getAllByTestId("plan-pane")).toHaveLength(1);
+    expect(lastPanelState(vscode)).toContain("plan");
+  });
+
+  it("does not open the plan panel on planFileUpdated when it was never opened", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+
+    expect(screen.queryByTestId("plan-pane")).not.toBeInTheDocument();
+
+    sendCommand("planFileUpdated", { content: "## 模型刚写的计划" });
+
+    // Unlike planContent / ExitPlanMode, a live refresh never opens the pane.
+    expect(screen.queryByTestId("plan-pane")).not.toBeInTheDocument();
+  });
+
+  it("clears an open plan panel when the plan file is written empty", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+
+    sendCommand("showConfirmation", {
+      confirmationId: "conf_plan_1",
+      toolName: EXIT_PLAN_MODE_TOOL_NAME,
+      confirmationType: "计划待确认",
+      planContent: "## v1\n- 旧步骤",
+    });
+    expect(screen.getByTestId("plan-pane-content")).toBeInTheDocument();
+
+    sendCommand("planFileUpdated", { content: "" });
+
+    expect(screen.queryByTestId("plan-pane-content")).not.toBeInTheDocument();
+  });
+
   it("ExitPlanMode showConfirmation auto-opens the plan panel with the plan and keeps the dialog compact", () => {
     window.waveHostType = "desktop";
     const { vscode } = renderDesktop({ workdir: "/work/a" });

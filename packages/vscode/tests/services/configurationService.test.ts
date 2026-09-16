@@ -8,7 +8,7 @@
  * support and the `WAVE_API_KEY` / `WAVE_BASE_URL` env vars — only the host-side
  * user-config pipeline was removed.
  *
- * 用户偏好（AI 回复语言 / 上下文长度 / 自动记忆）也不在 globalState：它们经共享
+ * 用户偏好（AI 回复语言 / 上下文长度 / 自动记忆 / 服务端地址）也不在 globalState：它们经共享
  * CLI 进程（= 会话所在进程）的 `getUserSettings` / `updateUserSettings` 读写用户级
  * `~/.wave/settings.json`（spec core/agent-config.md「设置实时重载」与「IDE 插件
  * 配置入口」场景 6）。服务不再持有 ExtensionContext——宿主私有存储不再是任何键的
@@ -55,11 +55,27 @@ describe("ConfigurationService", () => {
       headers: "X-Legacy: 1",
       baseURL: "https://legacy.example.com",
       model: "m2",
-      serverUrl: "https://codechat.example.com",
     } as unknown as ConfigurationData);
 
     // 一个用户偏好键都没有 → 不写 settings.json。
     expect(calls).toHaveLength(0);
+  });
+
+  it("save forwards the server URL preference (lands in env.WAVE_SERVER_URL)", async () => {
+    const service = createService();
+    const { client, calls } = createClient();
+    service.attachClient(client);
+
+    await service.saveConfiguration({
+      serverUrl: "https://codechat.example.com",
+    });
+
+    expect(calls.filter((c) => c.method === "updateUserSettings")).toEqual([
+      {
+        method: "updateUserSettings",
+        params: { serverUrl: "https://codechat.example.com" },
+      },
+    ]);
   });
 
   it("loads user preferences through the shared CLI client, not host storage", async () => {
@@ -69,6 +85,7 @@ describe("ConfigurationService", () => {
       contextLength: 200,
       autoMemoryEnabled: false,
       autoMemoryFrequency: 5,
+      serverUrl: "https://codechat.example.com",
     });
     service.attachClient(client);
 
@@ -80,6 +97,7 @@ describe("ConfigurationService", () => {
       contextLength: 200,
       autoMemoryEnabled: false,
       autoMemoryFrequency: 5,
+      serverUrl: "https://codechat.example.com",
     });
   });
 

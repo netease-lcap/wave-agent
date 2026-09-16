@@ -1,7 +1,11 @@
 /**
- * The Exec catalog: which MCP tools exist, how they are rendered into the tool
- * description, how that rendering is budgeted, and the shape of the sandbox's
- * `search` entry point.
+ * The Exec catalog: which MCP tools exist, how they are rendered, how that
+ * rendering is budgeted, and the shape of the sandbox's `search` entry point.
+ *
+ * "Rendered" means into the catalog announcement (`exec/catalogAnnouncement.ts`),
+ * not into `Exec`'s tool description: the description has to stay a
+ * pool-independent constant, or every server that connects rewrites the cached
+ * prefix. This module produces the entries; the announcement wraps them.
  *
  * This module is the single source of truth for "what the sandbox may reach".
  * The hard constraint is that the pool must equal the tools the agent could
@@ -23,6 +27,13 @@ export interface ExecPoolEntry {
   description?: string;
   /** Raw MCP input schema (JSON Schema), used only to render a compact signature. */
   inputSchema?: Record<string, unknown>;
+  /**
+   * The schema the server declared for this tool's output, rendered as the
+   * signature's return type. Absent for most servers today; a tool without one
+   * still gets a return type (`Promise<unknown>`), because leaving it out would
+   * read as "this call returns nothing".
+   */
+  outputSchema?: Record<string, unknown>;
 }
 
 /**
@@ -70,6 +81,7 @@ export function buildExecPool(
   mcpManager: McpManager,
   permissionManager?: PermissionManager,
 ): ExecPoolEntry[] {
+  const outputSchemas = mcpManager.getMcpToolOutputSchemas();
   const entries: ExecPoolEntry[] = [];
   for (const tool of mcpManager.getMcpToolsConfig()) {
     if (permissionManager?.isToolDenied(tool.function.name)) continue;
@@ -79,6 +91,7 @@ export function buildExecPool(
       inputSchema: tool.function.parameters as
         | Record<string, unknown>
         | undefined,
+      outputSchema: outputSchemas.get(tool.function.name),
     });
   }
   return entries;
@@ -232,11 +245,19 @@ function renderType(schema: unknown, depth: number): string {
 }
 
 /**
- * The callable signature for one tool. The catalog and search results share it,
- * so the model can copy either one verbatim.
+ * The callable signature for one tool: parameters and return type. The catalog and
+ * search results share it, so the model can copy either one verbatim.
+ *
+ * The return type comes from the schema the server declared for its output, and a
+ * tool that declared none still gets `Promise<unknown>` rather than no return type
+ * at all: the sandbox resolves every call to the tool's output (its structured
+ * content, else its text, else `null`), and a signature ending at the parameters
+ * would read as "calls this, get nothing". Rendering it from the same rule the
+ * runtime applies is what keeps the catalog from teaching a shape the host will
+ * not deliver.
  */
 export function renderToolSignature(entry: ExecPoolEntry): string {
-  return `${toolExpression(entry.name)}(${renderType(entry.inputSchema, 0)})`;
+  return `${toolExpression(entry.name)}(${renderType(entry.inputSchema, 0)}): Promise<${renderType(entry.outputSchema, 0)}>`;
 }
 
 /**
@@ -262,6 +283,28 @@ const SEARCH_INPUT_SCHEMA: Record<string, unknown> = {
       description:
         "Substring matched against tool names and descriptions, case-insensitively. Omit it (or pass an empty string) to list the entire pool.",
     },
+  },
+};
+
+/**
+ * Output schema of the sandbox's `search` entry point.
+ *
+ * The same role `SEARCH_INPUT_SCHEMA` plays at the other end of the call: the
+ * return type in the rendered signature and the value the host actually hands back
+ * both come from this one object, so "what a hit looks like" cannot drift between
+ * the prose and the runtime. It also keeps the sandbox API uniform — every call
+ * resolves to its output, so nothing hands back a JSON *string* to parse.
+ */
+const SEARCH_OUTPUT_SCHEMA: Record<string, unknown> = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      description: { type: "string" },
+      signature: { type: "string" },
+    },
+    required: ["name", "signature"],
   },
 };
 
@@ -294,11 +337,12 @@ function placeholderFor(schema: unknown): string {
 
 /**
  * The callable signature of search, rendered by the very function that renders
- * every catalog entry, so its shape cannot drift from what the host accepts.
- * Multi-line, for the sandbox API blurb where there is room to show the field docs.
+ * every catalog entry, so its shape cannot drift from what the host accepts or
+ * returns. Multi-line, for the sandbox API blurb where there is room to show the
+ * field docs.
  */
 export function renderSearchSignature(): string {
-  return `${SEARCH_EXPRESSION}(${renderType(SEARCH_INPUT_SCHEMA, 0)})`;
+  return `${SEARCH_EXPRESSION}(${renderType(SEARCH_INPUT_SCHEMA, 0)}): Promise<${renderType(SEARCH_OUTPUT_SCHEMA, 0)}>`;
 }
 
 /**
@@ -360,6 +404,12 @@ export interface RenderedCatalog {
   total: number;
   /** True when the budget forced entries out. Never silent. */
   truncated: boolean;
+  /**
+   * Per-server tool counts, in pool order. The rendered entries cannot tell a later
+   * turn what moved — the announcement diff is count-level — so the snapshot is
+   * handed back here rather than recovered by parsing `text`.
+   */
+  namespaces: Array<{ name: string; count: number; shown: number }>;
 }
 
 /**
@@ -371,12 +421,15 @@ export interface RenderedCatalog {
  * substring of every tool name it covers (and of what search matches on). For a
  * server whose name itself contains `__` the key is only the first segment — the
  * same pre-existing ambiguity the grouping key has (see `execNamespace`).
+ *
+ * Exported for the announcement's per-namespace delta lines: the same renderer for
+ * the same counts, so a summary line and a delta line cannot drift apart.
  */
-function summarizeNamespace(
-  group: ExecPoolEntry[],
+export function summarizeNamespace(
+  name: string,
+  count: number,
   shownCount: number,
 ): string {
-  const count = group.length;
   const label = `${count} tool${count === 1 ? "" : "s"}`;
   const detail =
     shownCount === count
@@ -384,7 +437,7 @@ function summarizeNamespace(
       : shownCount === 0
         ? ", none shown"
         : `, ${shownCount} shown`;
-  return `- mcp__${execNamespace(group[0].name)} (${label}${detail})`;
+  return `- mcp__${name} (${label}${detail})`;
 }
 
 /**
@@ -397,7 +450,26 @@ function execNamespace(name: string): string {
   return name.split("__")[1] ?? name;
 }
 
-/** Pool order within a group; groups in order of first appearance. */
+/**
+ * Cheapest rendered block first, ties broken by tool name.
+ *
+ * The rotation takes each server's next unshown entry every round, so this order
+ * *is* the seat order: cheapest-first means one budget buys the most entries, and
+ * the tie-break keeps the result a pure function of the entries themselves — the
+ * order `tools/list` happened to return is not a reason to seat one tool first.
+ * opencode ranks its listings the same way (`rankListings`: cost, then path).
+ */
+function orderByCost(group: ExecPoolEntry[]): ExecPoolEntry[] {
+  return [...group].sort((left, right) => {
+    const delta =
+      estimateCatalogTokens(renderCatalogEntry(left)) -
+      estimateCatalogTokens(renderCatalogEntry(right));
+    if (delta !== 0) return delta;
+    return left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
+  });
+}
+
+/** Groups in order of first appearance; within a group, cheapest block first. */
 function groupByNamespace(entries: ExecPoolEntry[]): ExecPoolEntry[][] {
   const groups = new Map<string, ExecPoolEntry[]>();
   for (const entry of entries) {
@@ -409,7 +481,7 @@ function groupByNamespace(entries: ExecPoolEntry[]): ExecPoolEntry[][] {
       groups.set(namespace, [entry]);
     }
   }
-  return [...groups.values()];
+  return [...groups.values()].map(orderByCost);
 }
 
 /**
@@ -472,17 +544,23 @@ export function renderCatalog(
   const lines: string[] = [];
   for (let index = 0; index < groups.length; index += 1) {
     if (truncated) {
-      lines.push(summarizeNamespace(groups[index], picked[index].length));
+      const group = groups[index];
+      lines.push(
+        summarizeNamespace(
+          execNamespace(group[0].name),
+          group.length,
+          picked[index].length,
+        ),
+      );
     }
     lines.push(...picked[index]);
   }
 
   if (truncated) {
-    lines.push(
-      `PARTIAL — ${shown} of ${entries.length} tools shown. ` +
-        `Use ${renderSearchCallForm()} to find the rest; ` +
-        `search covers the full pool.`,
-    );
+    // Counts only: the call form that reaches the rest is taught once, in the
+    // announcement's search section, which exists in exactly this state. Writing it
+    // here as well would give the same call two spellings to drift between.
+    lines.push(`PARTIAL — ${shown} of ${entries.length} tools shown.`);
   }
 
   return {
@@ -490,5 +568,10 @@ export function renderCatalog(
     shown,
     total: entries.length,
     truncated,
+    namespaces: groups.map((group, index) => ({
+      name: execNamespace(group[0].name),
+      count: group.length,
+      shown: picked[index].length,
+    })),
   };
 }

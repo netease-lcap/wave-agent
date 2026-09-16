@@ -1,7 +1,8 @@
 /**
  * 设置页「插件市场」视图（spec ecosystem/plugin「设置页插件市场」）：
  * 市场 Tab + 计数、筛选计数、搜索、版本文案三态与行操作、安装/更换作用域弹窗、
- * 更新市场 / 移除市场、新建市场（本地路径 / 远程仓库）、空态与自动切市场。
+ * 批量更新插件 / 移除市场、新建市场（本地路径 / 远程仓库）、空态与自动切市场，
+ * 以及打开视图触发的后台清单刷新（只拉检出、不升级插件）。
  */
 
 import React from "react";
@@ -89,15 +90,19 @@ function filterChip(label: string): HTMLElement {
   return found;
 }
 
-/** 挂载视图并回发两份列表 */
+/** 挂载视图并回发两份列表（含刷新完成后的补发：宿主在打开视图触发的后台清单
+ *  刷新结束后带 refreshed 标记再推一次，spec 插件市场场景 2/12） */
 async function mountWithData() {
   const utils = renderPluginView();
-  // 挂载即拉取两份列表
+  // 挂载即拉取两份列表 + 触发一次后台清单刷新（只拉检出、不升级插件）
   expect(utils.vscode.postMessage).toHaveBeenCalledWith({
     command: "listMarketplaces",
   });
   expect(utils.vscode.postMessage).toHaveBeenCalledWith({
     command: "listPlugins",
+  });
+  expect(utils.vscode.postMessage).toHaveBeenCalledWith({
+    command: "refreshMarketplaces",
   });
   await act(async () => {
     window.dispatchEvent(
@@ -111,6 +116,15 @@ async function mountWithData() {
     window.dispatchEvent(
       new MessageEvent("message", {
         data: { command: "listPluginsResponse", plugins: PLUGINS },
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          command: "listPluginsResponse",
+          plugins: PLUGINS,
+          refreshed: true,
+        },
       }),
     );
   });
@@ -314,11 +328,82 @@ describe("SettingsPage 插件市场视图", () => {
     });
   });
 
-  it("更新市场按当前市场名下发，移除市场二次确认后按名下发", async () => {
+  it("打开视图后台刷新清单：刷新完成后自动呈现最新版本并收起「检查更新中」", async () => {
+    // spec 插件市场「市场清单自动刷新与插件升级解耦」场景 2/12：打开视图触发
+    // 一次只拉检出的刷新，列表先显示进入前的清单（此时无「更新」按钮），宿主在
+    // 刷新结束后带 refreshed 标记补发最新清单 → 版本对比可达、提示收起。
+    const utils = renderPluginView();
+    expect(utils.vscode.postMessage).toHaveBeenCalledWith({
+      command: "refreshMarketplaces",
+    });
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            command: "listMarketplacesResponse",
+            marketplaces: MARKETPLACES,
+          },
+        }),
+      );
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            command: "listPluginsResponse",
+            plugins: [
+              {
+                id: "code-reviewer@wave-plugins-official",
+                name: "Code Reviewer",
+                marketplace: "wave-plugins-official",
+                installed: true,
+                version: "3.1.2",
+                latestVersion: "3.1.2",
+                scope: "user",
+              },
+            ],
+          },
+        }),
+      );
+    });
+
+    // 刷新未完成：清单是进入前的那份（已装 = 最新，只展示安装版本），且界面给出轻量提示
+    expect(screen.getByText("v3.1.2")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "更新" })).toBeNull();
+    expect(screen.getByText("检查更新中…")).toBeInTheDocument();
+
+    // 刷新完成：宿主补发最新清单（上游已发布 3.2.0）
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            command: "listPluginsResponse",
+            plugins: [
+              {
+                id: "code-reviewer@wave-plugins-official",
+                name: "Code Reviewer",
+                marketplace: "wave-plugins-official",
+                installed: true,
+                version: "3.1.2",
+                latestVersion: "3.2.0",
+                scope: "user",
+              },
+            ],
+            refreshed: true,
+          },
+        }),
+      );
+    });
+
+    expect(screen.getByText("已安装 v3.1.2 · 最新 v3.2.0")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "更新" })).toBeInTheDocument();
+    expect(screen.queryByText("检查更新中…")).toBeNull();
+  });
+
+  it("批量更新插件按当前市场名下发，移除市场二次确认后按名下发", async () => {
     const { vscode } = await mountWithData();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "更新市场" }));
+      fireEvent.click(screen.getByRole("button", { name: "批量更新插件" }));
     });
     expect(vscode.postMessage).toHaveBeenCalledWith({
       command: "updateMarketplace",
@@ -376,7 +461,7 @@ describe("SettingsPage 插件市场视图", () => {
       screen.getByRole("button", { name: "新建市场" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "更新市场" }),
+      screen.queryByRole("button", { name: "批量更新插件" }),
     ).not.toBeInTheDocument();
     expect(vscode.postMessage).toHaveBeenCalled();
   });
@@ -463,6 +548,112 @@ describe("SettingsPage 插件市场视图", () => {
       command: "addMarketplace",
       input: "netease/wave-plugins",
     });
+  });
+
+  it("新建市场成功后自动选中该新市场 Tab，筛选回到「全部」", async () => {
+    const { vscode } = await mountWithData();
+
+    // 先落在「已安装」筛选上：添加成功后应回到「全部」（否则新市场的空分类会像坏掉）
+    await act(async () => {
+      fireEvent.click(filterChip("已安装"));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "新建市场" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: "远程仓库" }));
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("市场地址"), {
+        target: { value: "netease/team-plugins" },
+      });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "添加" }));
+    });
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      command: "addMarketplace",
+      input: "netease/team-plugins",
+    });
+
+    // host 刷新两份列表：市场名由市场自身清单决定，只有回包才知道新市场叫什么
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            command: "listMarketplacesResponse",
+            marketplaces: [...MARKETPLACES, { name: "team-plugins" }],
+          },
+        }),
+      );
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            command: "listPluginsResponse",
+            plugins: [
+              ...PLUGINS,
+              {
+                id: "release-notes@team-plugins",
+                name: "Release Notes",
+                description: "从提交记录生成发布说明",
+                marketplace: "team-plugins",
+                installed: false,
+                latestVersion: "1.0.0",
+              },
+            ],
+          },
+        }),
+      );
+    });
+
+    // 选中新市场：列表与筛选计数随即显示它的内容
+    expect(screen.getByRole("tab", { name: /team-plugins/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      screen.getByRole("tab", { name: /wave-plugins-official/ }),
+    ).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByText("Release Notes")).toBeInTheDocument();
+    expect(screen.queryByText("Git Workflow")).not.toBeInTheDocument();
+    expect(filterChip("全部")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("添加市场失败（回包未出现新市场）时保持原选中市场", async () => {
+    await mountWithData();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "新建市场" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: "远程仓库" }));
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("市场地址"), {
+        target: { value: "netease/duplicated" },
+      });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "添加" }));
+    });
+
+    // 重名 / 无效来源 ⇒ 宿主只提示失败，随后任何一次列表刷新都不含新市场名
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            command: "listMarketplacesResponse",
+            marketplaces: MARKETPLACES,
+          },
+        }),
+      );
+    });
+
+    expect(
+      screen.getByRole("tab", { name: /wave-plugins-official/ }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Git Workflow")).toBeInTheDocument();
   });
 
   it("弹窗内 Esc 关闭（capture 拦截，不穿透到下层）", async () => {

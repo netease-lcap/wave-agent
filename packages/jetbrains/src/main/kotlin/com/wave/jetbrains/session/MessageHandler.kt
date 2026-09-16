@@ -458,6 +458,18 @@ class MessageHandler(
                 }
                 postMessage("listMarketplacesResponse", buildJsonObject { put("marketplaces", marketplaces) })
             }
+            // VSCE :116/:333 → 打开插件市场界面时的后台清单刷新：只拉各市场检出、
+            // 不升级任何插件（spec 插件市场 A-013 场景 5）。失败静默记日志、不打扰
+            // 用户（场景 9），完成后补发两份最新列表并带 refreshed 标记（场景 2/12）。
+            "refreshMarketplaces" -> {
+                try {
+                    session.agent?.refreshMarketplaces(currentWorkdir())
+                } catch (e: StdioClientException) {
+                    LOG.warn("refreshMarketplaces failed: ${e.message}")
+                }
+                postListMarketplaces(refreshed = true)
+                postListPlugins(refreshed = true)
+            }
             // VSCE :119/:339 → add, show info, reload list（插件按市场组织，市场增减
             // 会改变插件集合 → 插件列表一并刷新）
             "addMarketplace" -> {
@@ -981,24 +993,30 @@ class MessageHandler(
         return chosen
     }
 
-    private suspend fun postListPlugins() {
+    private suspend fun postListPlugins(refreshed: Boolean = false) {
         val plugins = try {
             session.agent?.listPlugins(currentWorkdir())?.jsonObject?.get("plugins") ?: JsonArray(emptyList())
         } catch (e: StdioClientException) {
             LOG.warn("listPlugins failed: ${e.message}")
             JsonArray(emptyList())
         }
-        postMessage("listPluginsResponse", buildJsonObject { put("plugins", plugins) })
+        postMessage("listPluginsResponse", buildJsonObject {
+            put("plugins", plugins)
+            if (refreshed) put("refreshed", true)
+        })
     }
 
-    private suspend fun postListMarketplaces() {
+    private suspend fun postListMarketplaces(refreshed: Boolean = false) {
         val marketplaces = try {
             session.agent?.listMarketplaces(currentWorkdir()) ?: JsonObject(emptyMap())
         } catch (e: StdioClientException) {
             LOG.warn("listMarketplaces failed: ${e.message}")
             JsonObject(emptyMap())
         }
-        postMessage("listMarketplacesResponse", buildJsonObject { put("marketplaces", marketplaces) })
+        postMessage("listMarketplacesResponse", buildJsonObject {
+            put("marketplaces", marketplaces)
+            if (refreshed) put("refreshed", true)
+        })
     }
 
     /**
@@ -1059,8 +1077,9 @@ class MessageHandler(
      * 标明每个键的来源层，设置页据此把被组织配置覆盖的键显示为「生效值 + 置灰」。
      * 读取失败降级为空。
      *
-     * 模型选择与服务地址不在回包里：模型经 `/model` 命令走宿主 RPC，服务地址随
-     * `authStatusResponse.serverUrl` 下发（由 CLI 的 getAuthStatus 解析）。
+     * 模型选择不在回包里：模型经 `/model` 命令走宿主 RPC。服务端地址的用户偏好
+     * （`env.WAVE_SERVER_URL`）属于回包；宿主的 `authStatusResponse.serverUrl`
+     * 仍单独下发（由 CLI 的 getAuthStatus 解析）。
      */
     private suspend fun configurationDataJson(): JsonObject {
         val prefs = try {
@@ -1074,6 +1093,7 @@ class MessageHandler(
             prefs["contextLength"]?.let { put("contextLength", it) }
             prefs["autoMemoryEnabled"]?.let { put("autoMemoryEnabled", it) }
             prefs["autoMemoryFrequency"]?.let { put("autoMemoryFrequency", it) }
+            prefs["serverUrl"]?.let { put("serverUrl", it) }
             prefs["preferenceSources"]?.let { put("preferenceSources", it) }
         }
     }
@@ -1099,7 +1119,7 @@ class MessageHandler(
     }
 
     /**
-     * 写用户级偏好（settings.json）——只取四个用户偏好键，扩展本地键与模型键
+     * 写用户级偏好（settings.json）——只取用户偏好键，扩展本地键与模型键
      * 不落该文件（spec agent-config 边界说明「用户偏好的落点」）。
      */
     private suspend fun writeUserSettings(data: JsonObject) {
@@ -1108,6 +1128,7 @@ class MessageHandler(
             data["contextLength"]?.let { put("contextLength", it) }
             data["autoMemoryEnabled"]?.let { put("autoMemoryEnabled", it) }
             data["autoMemoryFrequency"]?.let { put("autoMemoryFrequency", it) }
+            data["serverUrl"]?.let { put("serverUrl", it) }
         }
         val (client, _) = WaveBackendService.getInstance(project).ensureClient()
         client.request("updateUserSettings", patch)

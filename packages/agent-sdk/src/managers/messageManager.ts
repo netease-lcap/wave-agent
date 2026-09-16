@@ -16,7 +16,7 @@ import {
 } from "../utils/messageOperations.js";
 import type { Message, Usage, ToolBlock } from "../types/index.js";
 import { getLastApiRounds } from "../utils/groupMessagesByApiRound.js";
-import { join, isAbsolute, relative } from "path";
+import { join, isAbsolute, relative, resolve } from "path";
 import {
   appendMessages,
   createSession,
@@ -30,6 +30,10 @@ import type { MemoryRule } from "../types/memoryRule.js";
 import type { MemoryService } from "../services/memory.js";
 import { pathEncoder } from "../utils/pathEncoder.js";
 import { estimateTokens } from "../utils/tokenEstimate.js";
+import {
+  findNestedMemoryFiles,
+  type NestedMemoryFile,
+} from "../utils/nestedMemory.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
 
 import { Container } from "../utils/container.js";
@@ -109,6 +113,8 @@ export class MessageManager {
   private savedMessageCount: number; // Track how many messages have been saved to prevent duplication
   private pendingFileReadTriggers: Set<string> = new Set(); // File paths read via Read tool, awaiting rule matching
   private loadedRuleIds: Set<string> = new Set(); // IDs of conditional rules already injected as meta messages
+  private pendingNestedMemoryTriggers: Set<string> = new Set(); // Absolute paths read since the last nested-memory scan
+  private loadedNestedMemoryPaths: Set<string> = new Set(); // Nested memory files already injected (session-scoped, never evicted)
   private recentFileReads: Map<string, { content: string; timestamp: number }> =
     new Map(); // Track file read contents
   private invokedSkills: Map<string, { skillName: string; timestamp: number }> =
@@ -301,6 +307,42 @@ export class MessageManager {
       ? relative(this.workdir, filePath)
       : filePath;
     this.pendingFileReadTriggers.add(normalizedPath);
+  }
+
+  /**
+   * Record an absolute path whose read may pull in a nested memory file
+   * (`AGENTS.md` in one of its ancestor directories). Separate from
+   * `triggerFileRead`: rule matching needs workdir-relative paths, the nested
+   * walk needs absolute ones.
+   */
+  public triggerNestedMemory(filePath: string): void {
+    this.pendingNestedMemoryTriggers.add(
+      isAbsolute(filePath) ? filePath : resolve(this.workdir, filePath),
+    );
+  }
+
+  /**
+   * Resolve nested memory files for the paths read since the last call,
+   * outermost first. Clears the pending set; dedup is session-scoped via
+   * `loadedNestedMemoryPaths`.
+   */
+  public async collectNestedMemoryFiles(): Promise<NestedMemoryFile[]> {
+    if (this.pendingNestedMemoryTriggers.size === 0) return [];
+
+    const filePaths = Array.from(this.pendingNestedMemoryTriggers);
+    this.pendingNestedMemoryTriggers.clear();
+
+    const memories: NestedMemoryFile[] = [];
+    for (const filePath of filePaths) {
+      memories.push(
+        ...(await findNestedMemoryFiles(
+          filePath,
+          this.workdir,
+          this.loadedNestedMemoryPaths,
+        )),
+      );
+    }
+    return memories;
   }
 
   /**
@@ -672,6 +714,12 @@ export class MessageManager {
     // Clear and rebuild loaded rule IDs from remaining meta messages
     this.clearLoadedRuleIds();
     this.rebuildLoadedRuleIds();
+
+    // Nested memory has no marker to rebuild from, so the dedup set is dropped
+    // outright: compaction may have summarized the injected text away, and
+    // re-injecting it on the next read of that subtree beats never showing it
+    // again in this session.
+    this.loadedNestedMemoryPaths.clear();
 
     // Trigger compaction callback
     this.callbacks.onCompactBlockAdded?.(compactedContent);

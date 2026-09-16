@@ -58,11 +58,6 @@ export interface ToolPlugin {
     availableSkills?: SkillMetadata[];
     workdir?: string;
     isSubagent?: boolean;
-    /**
-     * MCP tools the sandbox may reach, supplied by ToolManager so that `Exec`
-     * can render its catalog. Only `Exec` reads it.
-     */
-    execPool?: import("../exec/catalog.js").ExecPoolEntry[];
   }) => string;
   /**
    * Whether this tool is safe to run in parallel with other tools.
@@ -163,4 +158,10 @@ export interface ToolContext {
    * the subprocess without polluting other sessions in one stdio process.
    */
   sessionEnv?: Record<string, string>;
+  /**
+   * Auto-memory directory for this session, or undefined when auto-memory is
+   * off. Read uses it to prepend a staleness note to files inside it — leaving
+   * it unset is what keeps that note off when the feature is disabled.
+   */
+  autoMemoryDir?: string;
 }

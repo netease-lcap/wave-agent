@@ -149,4 +149,10 @@ export interface AgentCallbacks
   onCompactionContentUpdate?: (content: string) => void;
   /** Streaming reasoning from the compaction fork (accumulated). */
   onCompactionReasoningUpdate?: (content: string) => void;
+  /**
+   * Full content of the plan file right after a successful `Write`/`Edit` of
+   * that file (spec: 计划文件更新后刷新计划面板). Hosts use it to refresh an
+   * already-open plan panel; it is not emitted for other files.
+   */
+  onPlanFileUpdated?: (content: string) => void;
 }

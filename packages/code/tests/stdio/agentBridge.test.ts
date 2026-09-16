@@ -1757,6 +1757,7 @@ test("getUserSettings 回包 = 生效值 + 每键来源层", async () => {
       contextLength: "user",
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "user",
+      serverUrl: "default",
     },
   });
   const { bridge } = createBridge();
@@ -1773,6 +1774,7 @@ test("getUserSettings 回包 = 生效值 + 每键来源层", async () => {
       contextLength: "user",
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "user",
+      serverUrl: "default",
     },
   });
 });
@@ -1816,17 +1818,26 @@ test("updateUserSettings writes the patch and returns the read-back values", asy
     contextLength: 128,
   });
   vi.mocked(readUserPreferenceView).mockReturnValue({
-    values: { language: "English", contextLength: 128 },
+    values: {
+      language: "English",
+      contextLength: 128,
+      serverUrl: "https://codechat.example.com",
+    },
     sources: {
       language: "user",
       contextLength: "user",
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "default",
+      serverUrl: "user",
     },
   });
   const { bridge } = createBridge();
 
-  const patch = { language: "English", contextLength: 128 };
+  const patch = {
+    language: "English",
+    contextLength: 128,
+    serverUrl: "https://codechat.example.com",
+  };
   const result = await bridge.handleRequest("updateUserSettings", patch);
 
   expect(vi.mocked(updateUserPreferenceSettings).mock.calls[0][0]).toEqual(
@@ -1837,11 +1848,13 @@ test("updateUserSettings writes the patch and returns the read-back values", asy
   expect(result).toEqual({
     language: "English",
     contextLength: 128,
+    serverUrl: "https://codechat.example.com",
     preferenceSources: {
       language: "user",
       contextLength: "user",
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "default",
+      serverUrl: "user",
     },
   });
 });
@@ -1857,6 +1870,7 @@ test("updateUserSettings 写完后显式重载本进程内全部会话（不依�
       contextLength: "default",
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "default",
+      serverUrl: "default",
     },
   });
   const { bridge } = createBridge();
@@ -1885,6 +1899,7 @@ test("空载荷（无差异保存）既不落盘也不重载", async () => {
       contextLength: "default",
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "default",
+      serverUrl: "default",
     },
   });
   const { bridge } = createBridge();
@@ -2078,6 +2093,17 @@ test("listMarketplaces delegates to PluginCore", async () => {
   expect(result).toEqual([
     { name: "official", source: { source: "directory", path: "/path" } },
   ]);
+});
+
+test("refreshMarketplaces delegates to PluginCore and returns null", async () => {
+  const { bridge } = createBridge();
+  const refreshMarketplaces = vi.fn().mockResolvedValue(undefined);
+  mockPluginCore({ refreshMarketplaces });
+
+  const result = await bridge.handleRequest("refreshMarketplaces", {});
+
+  expect(refreshMarketplaces).toHaveBeenCalled();
+  expect(result).toBeNull();
 });
 
 test("addMarketplace delegates to PluginCore", async () => {

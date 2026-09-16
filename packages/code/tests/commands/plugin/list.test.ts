@@ -112,6 +112,28 @@ describe("Plugin List Command Tests", () => {
     expect(mockExit).toHaveBeenCalledWith(0);
   });
 
+  it("should list a plugin installed elsewhere as not installed and without a scope label", async () => {
+    mockPluginCore.listPlugins.mockResolvedValue({
+      plugins: [
+        {
+          name: "document-skills",
+          marketplace: "wave-plugins-official",
+          installed: false,
+          version: undefined,
+          scope: undefined,
+        },
+      ],
+      mergedEnabled: {},
+    });
+
+    await listPluginsCommand();
+
+    expect(mockLog).toHaveBeenCalledWith(
+      "- document-skills@wave-plugins-official [not installed]",
+    );
+    expect(mockExit).toHaveBeenCalledWith(0);
+  });
+
   it("should handle general error in list command", async () => {
     mockPluginCore.listPlugins.mockRejectedValue(new Error("Unexpected error"));
 

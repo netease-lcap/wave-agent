@@ -467,6 +467,9 @@ export class MessageHandler {
       case "listMarketplaces":
         await this.handleSettingsListMarketplaces();
         break;
+      case "refreshMarketplaces":
+        await this.handleSettingsRefreshMarketplaces();
+        break;
       case "installPlugin":
         await this.applyPluginChange(
           () =>
@@ -807,13 +810,18 @@ export class MessageHandler {
     }
   }
 
-  /** 插件市场：插件列表（回包发给设置面板，插件市场视图据此渲染）。 */
-  private async handleSettingsListPlugins(): Promise<void> {
+  /**
+   * 插件市场：插件列表（回包发给设置面板，插件市场视图据此渲染）。
+   * `refreshed` 标记 = 本次回包来自「打开界面触发的后台清单刷新」结束后的补发，
+   * webview 据此收起界面内的「检查更新中」提示（spec 插件市场场景 12/13）。
+   */
+  private async handleSettingsListPlugins(refreshed = false): Promise<void> {
     try {
       const plugins = await this.pluginService.listPlugins();
       this.context.postSettingsMessage({
         command: "listPluginsResponse",
         plugins,
+        ...(refreshed ? { refreshed: true } : {}),
       });
     } catch (error) {
       console.error("获取插件列表失败:", error);
@@ -822,16 +830,35 @@ export class MessageHandler {
   }
 
   /** 插件市场：已注册市场列表（同上）。 */
-  private async handleSettingsListMarketplaces(): Promise<void> {
+  private async handleSettingsListMarketplaces(
+    refreshed = false,
+  ): Promise<void> {
     try {
       const marketplaces = await this.pluginService.listMarketplaces();
       this.context.postSettingsMessage({
         command: "listMarketplacesResponse",
         marketplaces,
+        ...(refreshed ? { refreshed: true } : {}),
       });
     } catch (error) {
       console.error("获取市场列表失败:", error);
       vscode.window.showErrorMessage("获取市场列表失败: " + error);
+    }
+  }
+
+  /**
+   * 打开设置页插件市场视图时的后台清单刷新：只拉各市场检出、不升级任何插件
+   * （spec 插件市场 A-013 场景 5）。刷新在后台进行、不阻塞界面，完成后把两份
+   * 最新列表推给已打开的视图（场景 2）；失败按场景 9 静默记日志、不打扰用户。
+   */
+  private async handleSettingsRefreshMarketplaces(): Promise<void> {
+    try {
+      await this.pluginService.refreshMarketplaces();
+    } catch (error) {
+      console.error("刷新市场清单失败:", error);
+    } finally {
+      await this.handleSettingsListMarketplaces(true);
+      await this.handleSettingsListPlugins(true);
     }
   }
 

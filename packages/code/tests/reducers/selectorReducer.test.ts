@@ -96,6 +96,15 @@ describe("selectorReducer", () => {
     expect(result.selectedIndex).toBe(0);
   });
 
+  it("should handle SET_INDEX", () => {
+    const result = selectorReducer(initialState, {
+      type: "SET_INDEX",
+      index: 2,
+    });
+    expect(result.selectedIndex).toBe(2);
+    expect(result.items).toEqual(initialState.items);
+  });
+
   it("should return state for unknown action", () => {
     const result = selectorReducer(initialState, {
       type: "UNKNOWN",

@@ -14,7 +14,9 @@ import { artifactTool } from "../tools/artifactTool.js";
 import { execTool } from "../tools/execTool.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 import { isExecEnabled } from "../services/execAvailability.js";
-import { buildExecPool } from "../exec/catalog.js";
+import { buildExecPool, renderCatalog } from "../exec/catalog.js";
+import type { ExecPoolEntry, RenderedCatalog } from "../exec/catalog.js";
+import { EXEC_DEFAULT_CATALOG_TOKENS } from "../exec/constants.js";
 import { EXEC_TOOL_NAME } from "../constants/tools.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
@@ -205,6 +207,23 @@ class ToolManager {
   }
 
   /**
+   * The auto-memory directory for this session, or undefined when the feature
+   * is off. Consumers (Read) treat "unset" as "not a memory file".
+   */
+  private resolveAutoMemoryDir(workdir: string): string | undefined {
+    if (!this.container.has("MemoryService")) return undefined;
+    const configuration = this.container.has("ConfigurationService")
+      ? this.container.get<
+          import("../services/configurationService.js").ConfigurationService
+        >("ConfigurationService")
+      : undefined;
+    if (!configuration?.resolveAutoMemoryEnabled?.()) return undefined;
+    return this.container
+      .get<import("../services/memory.js").MemoryService>("MemoryService")
+      ?.getAutoMemoryDirectory?.(workdir);
+  }
+
+  /**
    * Execute a tool by name with the provided arguments and context
    *
    * Enhances the context with permission-related fields before execution:
@@ -294,6 +313,7 @@ class ToolManager {
             >("ConfigurationService")
             ?.getMergedEnv?.()
         : undefined,
+      autoMemoryDir: this.resolveAutoMemoryDir(context.workdir),
       sessionId: context.sessionId,
       toolCallId: context.toolCallId,
     };
@@ -391,28 +411,56 @@ class ToolManager {
     return [...builtInTools, ...mcpTools];
   }
 
+  /**
+   * Whether `Exec` is declared at all: registered and not denied. Exactly when the
+   * catalog channel is open — an undeclared `Exec` cannot be called, so a catalog
+   * for it would advertise a way in that does not exist.
+   */
+  private isExecDeclared(): boolean {
+    return (
+      this.toolsRegistry.has(EXEC_TOOL_NAME) &&
+      !this.getPermissionManager()?.isToolDenied(EXEC_TOOL_NAME)
+    );
+  }
+
+  /** The tools the sandbox may reach — the pool the flat declarations give up. */
+  private execPool(): ExecPoolEntry[] {
+    return buildExecPool(this.mcpManager, this.getPermissionManager());
+  }
+
+  /**
+   * The MCP catalog as the model is meant to see it, or `undefined` when the
+   * catalog channel is closed.
+   *
+   * A function of the pool alone, and computed per call: with the catalog out of
+   * `tools[]` the declaration no longer moves when a server comes or goes, and the
+   * announcement channel diffs this against the history. Caching the rendering would
+   * mean caching pool state, which is exactly the process-side bookkeeping the
+   * channel is built to avoid.
+   */
+  public getExecCatalog(): RenderedCatalog | undefined {
+    if (!this.isExecDeclared()) return undefined;
+    return renderCatalog(this.execPool(), EXEC_DEFAULT_CATALOG_TOKENS);
+  }
+
   getToolsConfig(options?: {
     availableSubagents?: SubagentConfiguration[];
     availableSkills?: SkillMetadata[];
     workdir?: string;
     isSubagent?: boolean;
   }): ChatCompletionFunctionTool[] {
-    const permissionManager =
-      this.container.get<PermissionManager>("PermissionManager");
+    const permissionManager = this.getPermissionManager();
 
     // Exec either replaces the flat MCP declarations or is absent: the two must
     // never coexist, or the model would see the same tool twice while the
     // catalog claimed to be the only way in. Both halves are derived from the
     // same pool, and the pool is exactly what the agent could already call
     // directly, so collapsing it cannot widen access.
-    const execRegistered =
-      this.toolsRegistry.has(EXEC_TOOL_NAME) &&
-      !permissionManager?.isToolDenied(EXEC_TOOL_NAME);
-    const execPool = buildExecPool(this.mcpManager, permissionManager);
+    const execPool = this.execPool();
     // No minimum pool size: any catalogable tool collapses the pool, matching
     // opencode. The switch (`enableExec`), not a count, decides whether Exec is
     // used at all.
-    const collapseMcp = execRegistered && execPool.length > 0;
+    const collapseMcp = this.isExecDeclared() && execPool.length > 0;
 
     const builtInToolsConfig = Array.from(this.toolsRegistry.values())
       .filter((tool) => {
@@ -437,7 +485,7 @@ class ToolManager {
         };
         // Override description with prompt if available
         if (tool.prompt) {
-          config.function.description = tool.prompt({ ...options, execPool });
+          config.function.description = tool.prompt({ ...options });
         }
         return config;
       });

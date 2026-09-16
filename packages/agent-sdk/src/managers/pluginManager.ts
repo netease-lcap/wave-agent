@@ -101,13 +101,6 @@ export class PluginManager {
         this.configurationService,
       );
 
-      // Trigger auto-update for marketplaces in the background
-      if (!process.env.VITEST) {
-        marketplaceService.autoUpdateAll().catch((error) => {
-          logger?.error("Background marketplace auto-update failed:", error);
-        });
-      }
-
       let installedRegistry = await marketplaceService.getInstalledPlugins();
       const knownMarketplaces = await marketplaceService.listMarketplaces();
 
@@ -131,7 +124,7 @@ export class PluginManager {
 
           if (isMarketplaceKnown) {
             // Pre-check: verify the plugin still exists in the marketplace manifest
-            // before acquiring the lock in installPlugin (which can block ~8s during autoUpdate)
+            // before acquiring the lock in installPlugin (which can block ~8s during a marketplace refresh)
             const marketplace = knownMarketplaces.find(
               (m) => m.name === marketplaceName,
             );

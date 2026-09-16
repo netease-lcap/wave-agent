@@ -9,7 +9,6 @@ import {
 import type { McpManager } from "../../src/managers/mcpManager.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
-import type { ExecPoolEntry } from "../../src/exec/catalog.js";
 
 function mcpConfig(
   name: string,
@@ -39,12 +38,17 @@ function contextWith(
 ): ToolContext {
   const executeMcpTool =
     options.execute ??
-    vi.fn(async (name: string) => ({ success: true, content: `ok:${name}` }));
+    vi.fn(async (name: string) => ({
+      success: true,
+      content: `ok:${name}`,
+      output: `ok:${name}`,
+    }));
 
   return {
     workdir: "/tmp",
     mcpManager: {
       getMcpToolsConfig: () => configs,
+      getMcpToolOutputSchemas: () => new Map(),
       executeMcpTool,
     } as unknown as McpManager,
     ...(options.denied
@@ -58,10 +62,6 @@ function contextWith(
       ? { onShortResultUpdate: options.onShortResultUpdate }
       : {}),
   } as unknown as ToolContext;
-}
-
-function pool(...names: string[]): ExecPoolEntry[] {
-  return names.map((name) => ({ name, description: `${name} description` }));
 }
 
 /** Matches the catalog budget being spelled out in model-visible text. */
@@ -89,89 +89,39 @@ describe("execTool declaration", () => {
   });
 
   it("names the sandbox surface without any tunable limit", () => {
-    const description = execTool.prompt!({ execPool: pool("mcp__srv__a") })!;
+    const description = execTool.prompt!()!;
     expect(description).toContain(`tools["${EXEC_RESERVED_NAMESPACE}"].search`);
     // Budgets live in constants.ts and must stay out of model-visible text, or
     // changing one would change the prompt for an unchanged pool. Assert on the
-    // budget-denoting form rather than on any bare number: the catalog now
-    // renders field-level docs, so legitimate numbers (a field's @default) are
+    // budget-denoting form rather than on any bare number: legitimate numbers are
     // expected in the text.
     expect(description).not.toMatch(budgetForm());
   });
 
-  it("documents that an empty query lists the whole pool", () => {
-    // The catalog can be truncated, so the model needs an enumeration path that
-    // does not depend on guessing a keyword. Both the call form and the field doc
-    // come from the schema the host validates against, so the prose cannot teach
-    // a shape the host would reject.
-    const description = execTool.prompt!({
-      execPool: pool("mcp__srv__a"),
-    })!;
-    expect(description).toContain(
-      `tools["${EXEC_RESERVED_NAMESPACE}"].search({`,
-    );
-    expect(description).toContain("query?: string,");
-    expect(description).toMatch(/empty string\) to list the entire pool/);
+  it("is the same text the tool manager declares", () => {
+    expect(execTool.prompt!()).toBe(execTool.config.function.description);
   });
 
-  it("renders field-level docs from the pool into the description", () => {
-    const description = execTool.prompt!({
-      execPool: [
-        {
-          name: "mcp__srv__a",
-          description: "A tool",
-          inputSchema: {
-            type: "object",
-            properties: {
-              timeout: {
-                type: "number",
-                description: "how long to wait",
-                default: 30000,
-              },
-            },
-            required: [],
-          },
-        },
-      ],
-    })!;
-
-    expect(description).toContain(
-      [
-        "tools.mcp__srv__a({",
-        "  /**",
-        "   * how long to wait",
-        "   * @default 30000",
-        "   */",
-        "  timeout?: number,",
-        "})",
-      ].join("\n"),
-    );
-    // ...and that numeric default is exactly what the bare-number form would
-    // have rejected, which is why the assertion above is form-based.
-    expect(description).toMatch(/\d{3,}/);
-    expect(description).not.toMatch(budgetForm());
-  });
-
-  it("renders the catalog for the supplied pool", () => {
-    const description = execTool.prompt!({
-      execPool: pool("mcp__srv__a", "mcp__srv__b"),
-    })!;
-
-    expect(description).toContain("tools.mcp__srv__a");
-    expect(description).toContain("tools.mcp__srv__b");
+  it("renders no catalog, no tool name and no truncation notice", () => {
+    // The description has to be byte-identical for every pool: `tools[]` is inside
+    // the cached prefix, so a server connecting would otherwise drop the whole
+    // prefix. The catalog is a tail announcement instead
+    // (`tests/exec/catalogAnnouncement.test.ts`).
+    const description = execTool.prompt!()!;
+    expect(description).not.toContain("mcp__");
     expect(description).not.toContain("PARTIAL");
+    expect(description).not.toContain("tools.mcp__");
+    expect(description).not.toContain("No MCP tools are currently available");
   });
 
-  it("is byte-identical for an unchanged pool", () => {
-    const first = execTool.prompt!({ execPool: pool("mcp__srv__a") })!;
-    const second = execTool.prompt!({ execPool: pool("mcp__srv__a") })!;
-    expect(first).toBe(second);
-  });
-
-  it("says so when no pool is supplied", () => {
-    expect(execTool.prompt!({})).toContain(
-      "No MCP tools are currently available",
-    );
+  it("names the search entry point without teaching its call form", () => {
+    // The call form and the "empty query lists everything" doc belong to the
+    // announcement, which carries them only while the catalog is truncated. Doing it
+    // here would advertise a search on every turn — this text cannot know whether the
+    // catalog was truncated.
+    const description = execTool.prompt!()!;
+    expect(description).not.toContain("query?: string");
+    expect(description).not.toMatch(/empty string\) to list the entire pool/);
   });
 
   it("previews nothing in the collapsed row", () => {
@@ -206,6 +156,7 @@ describe("execTool execution", () => {
     const execute = vi.fn(async (name: string) => ({
       success: true,
       content: `ok:${name}`,
+      output: `ok:${name}`,
     }));
     const context = contextWith([mcpConfig("mcp__srv__a")], { execute });
 
@@ -214,7 +165,7 @@ describe("execTool execution", () => {
         code: `
           console.log("step 1");
           const r = await tools.mcp__srv__a({ input: "hi" });
-          return { got: r.content };
+          return { got: r };
         `,
       },
       context,
@@ -270,7 +221,7 @@ describe("execTool execution", () => {
     });
     const execute = vi.fn(async (name: string) => {
       await pending;
-      return { success: true, content: `ok:${name}` };
+      return { success: true, content: `ok:${name}`, output: `ok:${name}` };
     });
     const updates: string[] = [];
     const context = contextWith(
@@ -352,6 +303,7 @@ describe("execTool execution", () => {
       execute: vi.fn(async () => ({
         success: true,
         content: "screenshot",
+        output: "screenshot",
         images: [{ data: "AAAA", mediaType: "image/png" }],
       })),
     });

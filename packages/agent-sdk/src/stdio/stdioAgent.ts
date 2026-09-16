@@ -101,6 +101,8 @@ export interface StdioAgentCallbacks {
   onCompactBlockAdded?: (content: string) => void;
   onCompactionStateChange?: (isCompacting: boolean) => void;
   onCompactionContentUpdate?: (content: string) => void;
+  /** Full plan-file content after the model writes it (spec: 计划文件更新后刷新计划面板). */
+  onPlanFileUpdated?: (content: string) => void;
   onLoadingChange?: (loading: boolean) => void;
   onContextUsage?: (percent: number) => void;
   onCommandRunningChange?: (running: boolean) => void;
@@ -633,6 +635,11 @@ export class StdioAgent {
       case "compactionContentUpdate": {
         const p = params as { content: string };
         this.callbacks.onCompactionContentUpdate?.(p.content);
+        break;
+      }
+      case "planFileUpdated": {
+        const p = params as { content: string };
+        this.callbacks.onPlanFileUpdated?.(p.content);
         break;
       }
       case "loadingChange": {

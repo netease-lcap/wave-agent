@@ -32,7 +32,7 @@ describe("Agent Plugin Loading Integration", () => {
           ],
         }),
         listMarketplaces: vi.fn().mockResolvedValue([]),
-        autoUpdateAll: vi.fn().mockResolvedValue(undefined),
+        refreshMarketplaces: vi.fn().mockResolvedValue(undefined),
       } as unknown as MarketplaceService;
     });
 

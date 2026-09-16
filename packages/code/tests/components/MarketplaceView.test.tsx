@@ -15,7 +15,6 @@ describe("MarketplaceView", () => {
     installPlugin: vi.fn(),
     uninstallPlugin: vi.fn(),
     updatePlugin: vi.fn(),
-    toggleAutoUpdate: vi.fn(),
     refresh: vi.fn(),
   };
 
@@ -42,6 +41,7 @@ describe("MarketplaceView", () => {
     ],
     installedPlugins: [],
     discoverablePlugins: [],
+    checkingForUpdates: false,
     actions: {
       ...mockActions,
       clearPluginFeedback: vi.fn(),
@@ -81,6 +81,24 @@ describe("MarketplaceView", () => {
     stdin.write("\u001B[A"); // Up
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("> mp1");
+    });
+  });
+
+  it("should focus the selected marketplace (set by addMarketplace)", async () => {
+    const { lastFrame } = render(
+      <PluginManagerContext.Provider
+        value={{
+          ...mockContext,
+          state: { ...mockContext.state, selectedId: "mp2" },
+        }}
+      >
+        <MarketplaceView />
+      </PluginManagerContext.Provider>,
+    );
+
+    // 新加的市场（selectedId = 市场名）成为列表选中项，而不是回落首项
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("> mp2");
     });
   });
 

@@ -421,7 +421,8 @@
 
 /* 「未设置」态的灰字占位符（spec agent-config 场景 7：文件里没有该键时显示系统
    默认而不是假装一个真实值）：与同行的说明文字/单位同色，弱于输入值本身。 */
-.settings-number-input::placeholder {
+.settings-number-input::placeholder,
+.settings-text-input::placeholder {
   color: var(--vscode-descriptionForeground);
   opacity: 0.75;
 }
@@ -1067,6 +1068,16 @@
 .settings-plugin-search {
   width: 180px;
   flex: 0 0 auto;
+}
+
+/* 打开视图触发的后台清单刷新进行中（spec 插件市场场景 12）：界面内轻量状态，
+   不阻塞列表浏览与操作，刷新完成后由宿主补发的列表（refreshed 标记）收起它。
+   归辅助档 12/20，与 .settings-plugin-desc 同口径。 */
+.settings-plugin-checking {
+  flex: 1 1 auto;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  line-height: 20px;
 }
 
 .settings-plugin-list {

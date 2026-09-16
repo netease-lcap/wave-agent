@@ -7,19 +7,23 @@ import {
   renderSearchCallForm,
   resolveSearchQuery,
 } from "../../src/exec/catalog.js";
-import type { ExecPoolEntry } from "../../src/exec/catalog.js";
+import type { RenderedCatalog, ExecPoolEntry } from "../../src/exec/catalog.js";
+import { EXEC_DEFAULT_CATALOG_TOKENS } from "../../src/exec/constants.js";
+import { buildExecCatalogAnnouncement } from "../../src/exec/catalogAnnouncement.js";
 import { execTool } from "../../src/tools/execTool.js";
 import { section, startDemo, stopDemo, waitForServer } from "./harness.js";
 
 /**
  * What the model actually reads about its MCP tools, rendered from a real
- * connection: the `Exec` tool's own text (signatures + field docs + the search
- * entry), then the truncation shape under a budget too small to fit the pool.
+ * connection: the tail announcement `Exec` produces for that pool (signatures +
+ * field docs + the way back to a truncated catalog), then the truncation shape
+ * under a budget too small to fit the pool.
  *
- * The first half is the deployed text — `execTool.prompt()` is the function the
- * tool manager calls. The second half re-renders the same pool with a small budget
- * because the deployed budget (2000 estimated tokens) is far too generous to
- * truncate nine tools.
+ * The first half is the deployed text. The announcement is built here the way the
+ * agent builds it each turn (`buildExecCatalogAnnouncement` with no prior history);
+ * `Exec`'s own description is printed to show it stays pool-independent. The second
+ * half re-renders the same pool with a small budget because the deployed budget
+ * (2000 estimated tokens) is far too generous to truncate nine tools.
  *
  * Run from `packages/agent-sdk`:
  *
@@ -50,7 +54,18 @@ function flatten(agent: Agent): ExecPoolEntry[] {
       name: `mcp__${server.name}__${tool.name}`,
       description: tool.description,
       inputSchema: tool.inputSchema,
+      outputSchema: tool.outputSchema,
     })),
+  );
+}
+
+/** The announcement a session with no prior catalog receives for this pool. */
+function announcementFor(catalog: RenderedCatalog): string {
+  return (
+    buildExecCatalogAnnouncement(
+      { last: null, fullHashes: new Set<string>() },
+      catalog,
+    ) ?? ""
   );
 }
 
@@ -99,9 +114,16 @@ async function main(): Promise<void> {
     for (const entry of pool) console.log(`  ${entry.name}`);
 
     // The deployed text: what the model is handed for this exact pool.
-    const prompt = execTool.prompt ? execTool.prompt({ execPool: pool }) : "";
-    const catalog = prompt.slice(prompt.indexOf("MCP tools reachable"));
-    check(prompt !== "", "Exec has no prompt() to render a catalog");
+    const catalog = renderCatalog(pool, EXEC_DEFAULT_CATALOG_TOKENS);
+    const prompt = announcementFor(catalog);
+    check(
+      prompt !== "",
+      "no catalog announcement was rendered for a non-empty pool",
+    );
+    check(
+      !(execTool.config.function.description ?? "").includes("mcp__"),
+      "the Exec description names a tool: it must stay independent of the pool",
+    );
 
     section("signature — a non-identifier name, in bracket form");
     const deep = entryFor(prompt, "deep_lookup");
@@ -150,6 +172,24 @@ async function main(): Promise<void> {
       "the second description line survived the clamp",
     );
 
+    section("return type — from the server's own output schema");
+    const reverse = entryFor(prompt, "reverse_text");
+    console.log(reverse);
+    check(
+      reverse.includes("Promise<{"),
+      "a declared output schema did not reach the signature",
+    );
+    check(
+      reverse.includes("reversed: string,"),
+      "the declared output schema was not rendered field by field",
+    );
+    // The tools that declare nothing still get a return type: leaving it out
+    // would read as "this call returns nothing".
+    check(
+      entryFor(prompt, "word_count").includes("): Promise<unknown>"),
+      "an undeclared output schema did not fall back to `unknown`",
+    );
+
     section("union — how many anyOf variants survive?");
     const engine = entryFor(prompt, "pick_engine");
     const rendered = (engine.match(/kind/g) ?? []).length;
@@ -161,22 +201,28 @@ async function main(): Promise<void> {
       );
     }
 
-    section("search entry — the way back to the full pool");
+    section("search entry — advertised only while the catalog is truncated");
+    const starved = renderCatalog(pool, 40);
+    const starvedNote = announcementFor(starved);
     console.log(
-      prompt
+      starvedNote
         .split("\n")
         .filter((line) => line.includes("search") || line.includes("pool"))
         .join("\n"),
     );
     check(
-      prompt.includes(
+      starvedNote.includes(
         "Omit it (or pass an empty string) to list the entire pool.",
       ),
-      "the search entry does not document the empty query",
+      "the truncated catalog does not document the empty query",
     );
     check(
-      prompt.includes('tools["$codemode"].search('),
+      starvedNote.includes('tools["$codemode"].search('),
       "the search signature is not rendered from its schema",
+    );
+    check(
+      !prompt.includes('tools["$codemode"].search('),
+      "a complete catalog advertised a search anyway",
     );
 
     section("search validation");
@@ -202,31 +248,30 @@ async function main(): Promise<void> {
 
     section("the deployed budget does not truncate this pool");
     check(
-      !catalog.includes("PARTIAL"),
-      `9 tools should fit the default budget, but the catalog says: ${catalog.slice(-120)}`,
+      !catalog.text.includes("PARTIAL"),
+      `9 tools should fit the default budget, but the catalog says: ${catalog.text.slice(-120)}`,
     );
     check(
-      !/^- mcp__/m.test(catalog),
+      !/^- mcp__/m.test(catalog.text),
       "an untruncated catalog printed per-server summary lines",
     );
 
     section("a starved budget — one summary line per server");
-    const small = renderCatalog(pool, 40);
-    console.log(small.text);
+    console.log(starved.text);
     console.log(
-      `\nshown ${small.shown}/${small.total}, truncated=${small.truncated}`,
+      `\nshown ${starved.shown}/${starved.total}, truncated=${starved.truncated}`,
     );
-    check(small.truncated, "a 40-token budget did not truncate");
+    check(starved.truncated, "a 40-token budget did not truncate");
     check(
-      small.text.includes(`- mcp__${CATALOG_SERVER} (8 tools, `),
+      starved.text.includes(`- mcp__${CATALOG_SERVER} (8 tools, `),
       "the starved server has no summary line",
     );
     check(
-      small.text.includes(`- mcp__${SIDE_SERVER} (1 tool, none shown)`),
+      starved.text.includes(`- mcp__${SIDE_SERVER} (1 tool, none shown)`),
       "the server that got no seat is not named as `none shown`",
     );
     const partialLine =
-      small.text.split("\n").find((line) => line.startsWith("PARTIAL")) ?? "";
+      starved.text.split("\n").find((line) => line.startsWith("PARTIAL")) ?? "";
     check(
       /^PARTIAL — \d+ of 9 tools shown/.test(partialLine),
       `the PARTIAL line is missing or malformed: ${partialLine}`,
@@ -238,8 +283,8 @@ async function main(): Promise<void> {
 
     section("a live turn — the model reads this text and acts on it");
     await agent.sendMessage(
-      "Search the tool pool for a tool that changes the release channel, " +
-        "then use it to move to `canary`. Report the tool name.",
+      "Using one of the MCP tools announced in your context, move the release " +
+        "channel to `canary`. Report the tool name.",
     );
     const execBlocks = agent.messages.flatMap((message) =>
       message.blocks.filter((block) => block.type === "tool"),
@@ -247,7 +292,7 @@ async function main(): Promise<void> {
     const used = execBlocks.some((block) =>
       (block.parameters ?? "").includes("mcp__catalog-demo__set_channel"),
     );
-    console.log(`searched and called by bracket form: ${used ? "yes" : "no"}`);
+    console.log(`called from the announced catalog: ${used ? "yes" : "no"}`);
     check(used, "the model did not reach the tool through the sandbox");
   } catch (error) {
     console.error("\n❌ Error:", error);

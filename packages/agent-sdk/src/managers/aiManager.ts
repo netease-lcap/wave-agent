@@ -16,8 +16,14 @@ import {
   buildMcpInstructionsAnnouncement,
   collectAnnouncedServers,
 } from "../utils/mcpInstructions.js";
+import {
+  buildExecCatalogAnnouncement,
+  collectExecCatalogState,
+} from "../exec/catalogAnnouncement.js";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import * as path from "node:path";
+import { EDIT_TOOL_NAME, WRITE_TOOL_NAME } from "../constants/tools.js";
 import type {
   GatewayConfig,
   ModelConfig,
@@ -149,6 +155,12 @@ export interface AIManagerCallbacks {
   onCompactionReasoningUpdate?: (content: string) => void;
   onUsageAdded?: (usage: Usage) => void;
   onCwdChange?: (newCwd: string) => void;
+  /**
+   * Full plan-file content after a successful `Write`/`Edit` of the plan file
+   * (spec: 计划文件更新后刷新计划面板). Inherited from AgentCallbacks via the
+   * spread in container setup.
+   */
+  onPlanFileUpdated?: (content: string) => void;
 }
 
 export interface AIManagerOptions {
@@ -887,6 +899,33 @@ export class AIManager {
         (name) => !availableNames.has(name),
       ),
     });
+    if (!text) return;
+
+    this.messageManager.addUserMessage({
+      content: wrapInSystemReminder(text),
+      isMeta: true,
+    });
+  }
+
+  /**
+   * Announce the MCP catalog in the conversation, whenever the pool renders
+   * differently from the last announcement. Keeping it out of `Exec`'s description
+   * is what makes that declaration a constant: a server connecting would otherwise
+   * rewrite `tools[]`, which sits in the cached prefix (see
+   * `exec/catalogAnnouncement.ts`).
+   */
+  private maybeAnnounceExecCatalog(): void {
+    const toolManager = this.toolManager;
+    // Optional for the same reason as `maybeAnnounceMcpInstructions` above, and it
+    // matters just as much here: reading an absent channel as "the catalog is gone"
+    // would tell the model to stop using every tool an earlier catalog listed.
+    if (!toolManager || typeof toolManager.getExecCatalog !== "function")
+      return;
+
+    const text = buildExecCatalogAnnouncement(
+      collectExecCatalogState(this.messageManager.getMessages()),
+      toolManager.getExecCatalog(),
+    );
     if (!text) return;
 
     this.messageManager.addUserMessage({
@@ -1642,6 +1681,23 @@ ${question}`;
             });
           }
 
+          // Nested memory: a read inside a subtree pulls in that subtree's
+          // AGENTS.md (persisted as a meta message, aligned with Claude Code's
+          // nested_memory attachment). Runs with the rules above — before the
+          // message snapshot below, so the file lands in this request rather
+          // than the next one. Optional call: hosts and tests register partial
+          // MessageManager doubles, and absence reads as "nothing triggered".
+          const nestedMemories =
+            (await this.messageManager.collectNestedMemoryFiles?.()) ?? [];
+          for (const memory of nestedMemories) {
+            this.messageManager.addUserMessage({
+              content: wrapInSystemReminder(
+                `Contents of ${memory.path}:\n\n${memory.content}`,
+              ),
+              isMeta: true,
+            });
+          }
+
           // Pre-request auto-compaction: estimate the context about to be sent
           // and compact BEFORE issuing the request, so an over-limit request
           // never goes out. Skipped on fork paths (they use runForkLoop).
@@ -1652,6 +1708,7 @@ ${question}`;
           // itself in the request that can already call it. After compaction, so
           // the announcement is not the content that just got summarized away.
           this.maybeAnnounceMcpInstructions();
+          this.maybeAnnounceExecCatalog();
 
           // Get recent message history
           const rawMessages = this.messageManager.getMessages();
@@ -2572,6 +2629,11 @@ ${question}`;
         timestamp: Date.now(),
       });
 
+      // Plan panel refresh (spec: 计划文件更新后刷新计划面板): a successful
+      // Write/Edit of the plan file broadcasts the new content so hosts can
+      // update an already-open plan panel without waiting for ExitPlanMode.
+      await this.notifyPlanFileUpdate(toolName, toolArgs, toolResult.success);
+
       // Execute PostToolUse hooks after successful tool completion
       await this.executePostToolUseHooks(
         toolId,
@@ -2594,6 +2656,44 @@ ${question}`;
         compactParams,
         timestamp: Date.now(),
       });
+    }
+  }
+
+  /**
+   * Plan panel refresh (spec: 计划文件更新后刷新计划面板).
+   *
+   * When a successful `Write`/`Edit` targets the current plan file, read it and
+   * emit the full content so hosts can update an already-open plan panel. The
+   * path comparison mirrors the plan-mode allow branch in PermissionManager so
+   * "the write that was allowed" and "the write that refreshes the panel" stay
+   * the same set. The path is only set while plan mode is active, so post-exit
+   * writes can't reach the panels.
+   */
+  private async notifyPlanFileUpdate(
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    success: boolean,
+  ): Promise<void> {
+    if (!success) return;
+    if (toolName !== WRITE_TOOL_NAME && toolName !== EDIT_TOOL_NAME) return;
+
+    const targetPath = toolArgs.file_path;
+    if (typeof targetPath !== "string" || targetPath.trim() === "") return;
+
+    const planFilePath = this.container
+      .get<PermissionManager>("PermissionManager")
+      ?.getPlanFilePath();
+    if (!planFilePath) return;
+    if (path.resolve(targetPath) !== path.resolve(planFilePath)) return;
+
+    try {
+      const content = await readFile(planFilePath, "utf8");
+      this.callbacks?.onPlanFileUpdated?.(content);
+    } catch (error) {
+      logger?.warn(
+        `Failed to read plan file for panel refresh: ${planFilePath}`,
+        error,
+      );
     }
   }
 

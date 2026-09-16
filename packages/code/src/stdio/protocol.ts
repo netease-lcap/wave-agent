@@ -155,6 +155,7 @@ export type ServerNotificationMethod =
   | "compactBlockAdded"
   | "compactionStateChange"
   | "compactionContentUpdate"
+  | "planFileUpdated"
   | "backgroundTasksChange"
   | "btwContent"
   | "contextUsage";

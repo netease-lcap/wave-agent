@@ -1,10 +1,17 @@
-import React, { useReducer, useEffect, useMemo } from "react";
+import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
 import {
   selectorReducer,
   type SelectorState,
 } from "../reducers/selectorReducer.js";
+
+const ACTIONS = [
+  // 先刷新该市场检出，再把该市场内所有可更新插件一次升掉（范围恒为当前市场，
+  // spec 插件市场场景 13）
+  { id: "update", label: "Update plugins (batch)" },
+  { id: "remove", label: "Remove marketplace" },
+] as const;
 
 export const MarketplaceDetail: React.FC = () => {
   const { state, marketplaces, actions } = usePluginManagerContext();
@@ -25,23 +32,10 @@ export const MarketplaceDetail: React.FC = () => {
 
   const marketplace = marketplaces.find((m) => m.name === state.selectedId);
 
-  const ACTIONS = useMemo(
-    () =>
-      [
-        {
-          id: "toggle-auto-update",
-          label: `${marketplace?.autoUpdate ? "Disable" : "Enable"} auto-update`,
-        },
-        { id: "update", label: "Update marketplace" },
-        { id: "remove", label: "Remove marketplace" },
-      ] as const,
-    [marketplace?.autoUpdate],
-  );
-
   // Sync ACTIONS into reducer state
   useEffect(() => {
     dispatch({ type: "SET_ITEMS", items: [...ACTIONS] });
-  }, [ACTIONS]);
+  }, []);
 
   useInput((_input, key) => {
     if (state.isLoading && !key.escape) return;
@@ -58,9 +52,7 @@ export const MarketplaceDetail: React.FC = () => {
 
     if (pendingDecision === "select" && marketplace && !state.isLoading) {
       const action = actionsList[selectedActionIndex]?.id;
-      if (action === "toggle-auto-update") {
-        actions.toggleAutoUpdate(marketplace.name, !marketplace.autoUpdate);
-      } else if (action === "update") {
+      if (action === "update") {
         actions.updateMarketplace(marketplace.name);
       } else if (action === "remove") {
         actions.removeMarketplace(marketplace.name);
@@ -102,15 +94,6 @@ export const MarketplaceDetail: React.FC = () => {
 
       <Box marginBottom={1}>
         <Text>Source: {JSON.stringify(marketplace.source)}</Text>
-      </Box>
-
-      <Box marginBottom={1}>
-        <Text>
-          Auto-update:{" "}
-          <Text color={marketplace.autoUpdate ? "green" : "red"}>
-            {marketplace.autoUpdate ? "Enabled" : "Disabled"}
-          </Text>
-        </Text>
       </Box>
 
       {marketplace.lastUpdated && (

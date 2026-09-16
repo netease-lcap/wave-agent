@@ -1,55 +1,40 @@
 import { EXEC_TOOL_NAME } from "../constants/tools.js";
-import { EXEC_DEFAULT_CATALOG_TOKENS } from "../exec/constants.js";
-import {
-  buildExecPool,
-  renderCatalog,
-  renderSearchSignature,
-} from "../exec/catalog.js";
-import type { ExecPoolEntry } from "../exec/catalog.js";
+import { EXEC_RESERVED_NAMESPACE } from "../exec/constants.js";
+import { buildExecPool } from "../exec/catalog.js";
 import { runExecScript, type ExecRunResult } from "../exec/execRuntime.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 
 /**
- * The `search` bullet of the sandbox API blurb: what it does, then its signature
- * indented under the bullet.
+ * The `search` bullet of the sandbox API blurb. It names the entry point and stops
+ * there: the call form is taught by the catalog announcement, and only while the
+ * catalog is actually truncated. Printing it here would advertise a search on every
+ * turn, complete catalog or not — the tool has no idea how many tools exist.
  *
- * The signature is rendered from the schema the host validates against, not
- * written out by hand — this text used to teach a positional string while the host
- * accepted only an object, and nothing made the two agree.
+ * The path is derived from the reserved namespace, the same constant the sandbox
+ * builds its `tools` object from, so the two cannot drift.
  */
-function renderSearchEntry(): string {
-  const signature = renderSearchSignature()
-    .split("\n")
-    .map((line) => `  ${line}`)
-    .join("\n");
-  return (
-    "- Search the whole pool from inside the script; each hit carries the same " +
-    "signature the catalog below shows, so it can be copied verbatim:\n" +
-    signature
-  );
-}
+const SEARCH_ENTRY =
+  `- \`tools[${JSON.stringify(EXEC_RESERVED_NAMESPACE)}].search(...)\` — ` +
+  "search the whole pool from inside the script.";
 
 /**
- * Model-visible API description. Static on purpose: it names the sandbox surface
- * but none of the tunable limits, so changing a budget cannot change the text.
+ * Model-visible API description.
+ *
+ * Static on purpose, and not merely "no tunable limits in it": it must be identical
+ * for any tool pool. `tools[]` sits in the cached prefix, so a description that
+ * mentioned the MCP servers (or their tools) would rewrite that prefix every time a
+ * server connected or dropped. The catalog is a tail announcement instead — see
+ * `exec/catalogAnnouncement.ts`.
  */
 const EXEC_DESCRIPTION = `Run a JavaScript script in a sandbox where every MCP tool of this session is exposed as a function, so a whole sequence of MCP calls can be composed in a single turn instead of one model round-trip per call.
 
 Sandbox API:
-- \`await tools.<name>(args)\` — call an MCP tool, passing that tool's own arguments object directly. Resolves to \`{ content, images }\`.
-${renderSearchEntry()}
+- \`await tools.<name>(args)\` — call an MCP tool, passing that tool's own arguments object directly. Resolves to the tool's output: its \`structuredContent\` object when it returned one, otherwise its text, otherwise \`null\`. The catalog gives each tool's return type.
+${SEARCH_ENTRY}
 - \`console.log(...)\` — collected and returned alongside the result. Use it to inspect intermediate values.
 - \`return <value>\` — the returned value is JSON-serialized and given back to you.
 
-The script has no filesystem, no network, no \`import\`, and no \`eval\`/\`new Function\`. It stops when it exceeds its time or tool-call budget. Every nested MCP call goes through the normal permission check, so it can still be denied — a denied call rejects with the reason.`;
-
-/** Rows rendered under the sandbox API blurb; the catalog is the mutable part. */
-function renderToolSection(pool: ExecPoolEntry[]): string {
-  if (pool.length === 0) {
-    return "No MCP tools are currently available.";
-  }
-  return renderCatalog(pool, EXEC_DEFAULT_CATALOG_TOKENS).text;
-}
+Which MCP tools are reachable is announced in the conversation as the catalog changes. The script has no filesystem, no network, no \`import\`, and no \`eval\`/\`new Function\`. It stops when it exceeds its time or tool-call budget. Every nested MCP call goes through the normal permission check, so it can still be denied — a denied call rejects with the reason.`;
 
 /**
  * How many of the most recent nested calls the result summary lists, mirroring
@@ -132,13 +117,7 @@ export const execTool: ToolPlugin = {
     },
   },
 
-  prompt: (options) => {
-    const pool = options?.execPool ?? [];
-    return `${EXEC_DESCRIPTION}
-
-MCP tools reachable from the sandbox, called as \`tools.<name>\` (no other name resolves):
-${renderToolSection(pool)}`;
-  },
+  prompt: () => EXEC_DESCRIPTION,
 
   execute: async (
     args: Record<string, unknown>,

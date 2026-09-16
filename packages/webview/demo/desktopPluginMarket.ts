@@ -40,5 +40,10 @@ export async function openPluginMarket(
   await injector.simulateExtensionMessage("listPluginsResponse", {
     plugins: data.plugins,
   });
+  // 后台清单刷新已完成（宿主带 refreshed 标记的补发）：截图不带瞬态的「检查更新中」
+  await injector.simulateExtensionMessage("listPluginsResponse", {
+    plugins: data.plugins,
+    refreshed: true,
+  });
   await expect(webviewPage.locator(".settings-plugin-list")).toBeVisible();
 }

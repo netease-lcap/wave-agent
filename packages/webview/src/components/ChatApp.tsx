@@ -1143,6 +1143,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         if (!forThisPane(message)) break;
         routePlanToPanel(message.content);
         break;
+      case "planFileUpdated":
+        // Plan panel live refresh (spec: 计划文件更新后刷新计划面板): the model
+        // wrote the plan file. Only the content updates — a closed pane must
+        // NOT open here (unlike planContent / ExitPlanMode).
+        if (!forThisPane(message)) break;
+        setPlanContent(message.content);
+        break;
       case "configurationResponse":
         dispatch({
           type: "SET_CONFIGURATION_DATA",

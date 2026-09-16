@@ -22,6 +22,32 @@ export interface McpTool {
   name: string;
   description?: string;
   inputSchema: Record<string, unknown>;
+  /**
+   * The schema the server declared for its *output*, raw as listed. Not passed
+   * through `cleanSchema` like `inputSchema`: that cleaning exists because the
+   * input schema travels inside a request, and this one is only ever rendered as
+   * a return type. Absent for most servers today, and degenerate
+   * (`{ type: "object" }`) when present.
+   */
+  outputSchema?: Record<string, unknown>;
+}
+
+/**
+ * What one MCP tool call produced. Two audiences, two fields:
+ *
+ * - `content` is the display text the flat path hands the model — a placeholder
+ *   when the tool said nothing (`No content`) or returned only images.
+ * - `output` is what a sandbox `await` resolves to: the server's
+ *   `structuredContent` when it returned one, otherwise its text, otherwise
+ *   `null`. The catalog renders its return types from this same rule, so a
+ *   signature can never promise a shape the sandbox does not deliver.
+ */
+export interface McpToolCallResult {
+  success: boolean;
+  content: string;
+  output: unknown;
+  serverName?: string;
+  images?: Array<{ data: string; mediaType?: string }>;
 }
 
 export interface McpServerStatus {

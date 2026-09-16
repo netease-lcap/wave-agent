@@ -113,13 +113,6 @@ export class PluginCore {
   }
 
   /**
-   * Toggles auto-update for a marketplace
-   */
-  async toggleAutoUpdate(name: string, enabled: boolean): Promise<void> {
-    await this.marketplaceService.toggleAutoUpdate(name, enabled);
-  }
-
-  /**
    * Lists all plugins from all registered marketplaces with their installation and enabled status
    */
   async listPlugins(): Promise<{
@@ -146,9 +139,17 @@ export class PluginCore {
           );
         for (const p of manifest.plugins) {
           const pluginId = `${p.name}@${m.name}`;
-          const installed = installedPlugins.plugins.find(
+          const scope =
+            this.pluginScopeManager.findPluginScope(pluginId) ?? undefined;
+          const installedEntry = installedPlugins.plugins.find(
             (ip) => ip.name === p.name && ip.marketplace === m.name,
           );
+          // 安装状态以当前工作目录为准（spec plugin A-012）：配置链里有启用记录、
+          // 且本机已有安装产物，才视为「已安装」。安装产物单独存在只说明该插件曾被
+          // 下载过（例如以项目/本地作用域装在别的项目里），若据此判为已安装，会在
+          // 当前目录渲染出「已安装 + 作用域未知」。作用域标签与安装态同源，未安装时
+          // 不回传作用域。
+          const installed = scope ? installedEntry : undefined;
           allMarketplacePlugins.push({
             ...p,
             marketplace: m.name,
@@ -160,8 +161,7 @@ export class PluginCore {
             ),
             cachePath: installed?.cachePath,
             projectPath: installed?.projectPath,
-            scope:
-              this.pluginScopeManager.findPluginScope(pluginId) || undefined,
+            scope: installed ? scope : undefined,
           });
         }
       } catch {
@@ -229,8 +229,8 @@ export class PluginCore {
    * Updates a specific marketplace or all marketplaces
    *
    * Pulls the latest marketplace source and reinstalls any plugins that are
-   * already installed from it, so a manual "update marketplace" also brings
-   * installed plugins up to date (mirrors Claude Code's refresh-and-bump).
+   * already installed from it, so a manual "批量更新插件" also brings installed
+   * plugins up to date (mirrors Claude Code's refresh-and-bump).
    *
    * @returns 实际发生版本变化的插件数量（0 = 全部已是最新），供 GUI 宿主区分提示。
    */
@@ -238,6 +238,15 @@ export class PluginCore {
     return await this.marketplaceService.updateMarketplace(name, {
       updatePlugins: true,
     });
+  }
+
+  /**
+   * Refreshes the checkout of every registered marketplace, without touching
+   * installed plugins. Called by hosts when the user opens a plugin
+   * marketplace surface (spec 插件市场 A-013 场景 5/13).
+   */
+  async refreshMarketplaces(): Promise<void> {
+    await this.marketplaceService.refreshMarketplaces();
   }
 
   /**

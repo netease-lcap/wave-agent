@@ -45,6 +45,7 @@ const ALL_NOTIFICATION_METHODS = [
   "compactBlockAdded",
   "compactionStateChange",
   "compactionContentUpdate",
+  "planFileUpdated",
   "backgroundTasksChange",
 ] as const;
 

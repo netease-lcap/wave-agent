@@ -453,6 +453,11 @@ export class AgentBridge {
           p.workdir as string | undefined,
           sessionId,
         );
+      case "refreshMarketplaces":
+        return this.refreshMarketplaces(
+          p.workdir as string | undefined,
+          sessionId,
+        );
       case "addMarketplace":
         return this.addMarketplace(
           p.input as string,
@@ -1919,6 +1924,16 @@ export class AgentBridge {
     return this.getPluginCore(workdir, sessionId).listMarketplaces();
   }
 
+  /**
+   * 刷新各已注册市场的检出（不装插件），供「打开插件市场界面」时后台调用
+   * （spec 插件市场 A-013 场景 5）。市场级错误在 SDK 内静默记录，宿主侧失败
+   * 也不打断界面（场景 9）。
+   */
+  private async refreshMarketplaces(workdir?: string, sessionId?: string) {
+    await this.getPluginCore(workdir, sessionId).refreshMarketplaces();
+    return null;
+  }
+
   private async addMarketplace(
     input: string,
     scope?: Scope,
@@ -2122,6 +2137,9 @@ export class AgentBridge {
           { content },
           ctx.registeredSessionId,
         );
+      },
+      onPlanFileUpdated: (content: string) => {
+        this.emit("planFileUpdated", { content }, ctx.registeredSessionId);
       },
     };
   }

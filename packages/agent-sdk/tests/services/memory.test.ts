@@ -131,7 +131,7 @@ describe("MemoryService", () => {
   });
 
   describe("getAutoMemoryContent", () => {
-    it("should return the first 200 lines of MEMORY.md", async () => {
+    it("should bound MEMORY.md by the line cap and warn about it", async () => {
       const workdir = "/mock/workdir";
       const lines = Array.from({ length: 300 }, (_, i) => `line ${i + 1}`).join(
         "\n",
@@ -141,9 +141,10 @@ describe("MemoryService", () => {
       const result = await memoryService.getAutoMemoryContent(workdir);
       const resultLines = result.split("\n");
 
-      expect(resultLines.length).toBe(200);
       expect(resultLines[0]).toBe("line 1");
       expect(resultLines[199]).toBe("line 200");
+      expect(result).not.toContain("line 201");
+      expect(result).toContain("WARNING: MEMORY.md is 300 lines (limit: 200)");
     });
 
     it("should return empty string if MEMORY.md doesn't exist", async () => {
