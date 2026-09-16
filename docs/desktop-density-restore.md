@@ -4421,3 +4421,63 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
   `back-{light,dark}-{rest,hover}-{before,after}.png`、`v2-{light,dark}-{rest,hover}-{before,after}.png`、
   `sbs-*`、`zoom-*`、`diffmap-*`，
   自测页 `0916-返回按钮字色-修复自测.html`（v2，含三版对照；Artifact https://codechat.codewave.163.com/code/artifact/h04fk95l2b ）。
+
+---
+
+## 0916 评论（输入区发送按钮禁用态：浅色 hover 不再变色）（已随本批推送）
+
+设计师（点 `.input-buttons-row` 内 `button.send-button.ai-send-btn`）：
+「浅色模式发送按钮禁用态，hover 不应该变色」。
+
+### 根因
+
+base `MessageInput.css:169` 有一条 `.ai-send-btn:disabled:hover { background: var(--vscode-button-background) }`
+—— 与桌面端禁用态规则（`host-desktop.css` `[data-host="desktop"] .ai-send-btn:disabled`）**同特异性 (0,3,0) 但后加载**，
+于是浅色下 hover 把禁用底 `--cc-fill #F0F2F5` 换成主按钮色 `#1F2329`（实测复现：`#F0F2F5 → #1F2329`）。
+深色档因为 `[data-host="desktop"][data-theme="dark"] .ai-send-btn:disabled` 特异性更高（0,4,0），本来就不受影响。
+
+### 实现
+
+- `packages/webview/src/styles/host-desktop.css` —— 把 `:disabled:hover` 并进桌面端禁用态那条（升到 0,4,0），
+  改一个选择器、不动任何值：
+
+```css
+[data-host="desktop"] .ai-send-btn:disabled,
+[data-host="desktop"] .ai-send-btn:disabled:hover {
+  background: var(--cc-fill, #f0f2f5);
+  color: var(--cc-text-disabled, #bec1c6);
+  opacity: 1;
+}
+```
+
+- 深色档保持原样：`[data-host="desktop"][data-theme="dark"] .ai-send-btn:disabled`（同为 0,4,0、在本组之后）
+  仍后出现胜出 ⇒ 深色禁用态hover 保持 `rgb(255 255 255 / 8%)`。
+
+### 实测（1440×900 DPR2，浅/深 × 禁用/激活 × 静止/hover）
+
+| 场景                  | 改前                                | 改后                                                |
+| --------------------- | ----------------------------------- | --------------------------------------------------- |
+| 浅 · 禁用静止         | #F0F2F5                             | #F0F2F5（0 像素差异）                               |
+| 浅 · 禁用 hover       | **#1F2329**（主按钮色，看着像可点） | **#F0F2F5**（同静止；改动 3848 设备像素 / 35.577%） |
+| 浅 · 激活静止 / hover | #1F2329 / #34383F                   | 同左（0 像素差异，未误伤）                          |
+| 深 · 禁用静止 / hover | rgba(255,255,255,.08) / 同          | 同左（本轮无变化）                                  |
+| 深 · 激活静止 / hover | #E0E3E5 / #F0F2F3                   | 同左                                                |
+
+几何零变动：按钮盒 32×32 · r8、`input-buttons-row` 566.5×32；行内其余 3 颗按钮
+（添加 / 快捷指令 / 权限模式「修改前询问」）背景与文字色前后逐值相同；0 pageerror。
+
+### 残留（未授权，供你点名）
+
+- 同类「禁用态被 base hover 点亮」的写法可能还有别的控件 → 触发语 **「其余禁用按钮也查一遍 hover（浅色）」**。
+- 禁用态现在是 `opacity: 1` + 底色/文字双灰（codechat composer 规范）；若想改回透明度口径 →
+  触发语 **「禁用态用底色区分改为 opacity」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-sendbtn-disabled-0916.mjs`（现状，含行内结构与四颗按钮读数）、
+  `/tmp/pw-0916/send2.mjs`（前后对照 + 激活态对照）、`CC02/build-sendbtn-0916.py`（差异像素 + 对照图 + 本页）。
+- 证据目录 `CC02/走查/0916-发送按钮禁用态/`：`measure.json`、`measure-v.json`、`pixel-v.json`、
+  `v-{light,dark}-{disabled,enabled}-{rest,hover}-{before,after}.png`、`v-row-*`、`sbs-*`，
+  自测页 `0916-发送按钮禁用态-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/lmvnzp6zwp ）。
+- 取证注意：本轮「改前」用同面注入复现 base 规则（单属性变化适用）；深色档的注入会被 `--cc-fill` 深色值污染，
+  深色基线取**未注入那次真实运行**的读数（静止与 hover 同为 8% 白）。

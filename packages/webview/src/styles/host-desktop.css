@@ -501,7 +501,16 @@
   background: var(--cc-fill, #f0f2f5);
   color: var(--cc-text-disabled, #bec1c6);
 }
-[data-host="desktop"] .ai-send-btn:disabled {
+/* 设计师 0916 评论（输入区 `.input-buttons-row` 发送按钮）「浅色模式发送按钮
+   禁用态，hover 不应该变色」：base `MessageInput.css:169` 有一条
+   `.ai-send-btn:disabled:hover { background: var(--vscode-button-background) }`
+   —— 与桌面端禁用态规则同特异性（0,3,0）但后加载，于是浅色下 hover 会把禁用底
+   `--cc-fill #F0F2F5` 换成主按钮色 `#1F2329`（实测复现）。修法：把 `:disabled:hover`
+   并进本条（提升到 0,4,0），hover 与静止同底。
+   ⚠️ 深色档不动：`[data-host="desktop"][data-theme="dark"] .ai-send-btn:disabled`
+   （0,4,0，在本组之后）仍后出现胜出，禁用 hover 保持 `rgb(255 255 255 / 8%)`。 */
+[data-host="desktop"] .ai-send-btn:disabled,
+[data-host="desktop"] .ai-send-btn:disabled:hover {
   background: var(--cc-fill, #f0f2f5);
   color: var(--cc-text-disabled, #bec1c6);
   opacity: 1;
