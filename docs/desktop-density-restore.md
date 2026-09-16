@@ -4701,6 +4701,67 @@ ghost 图标与「图标 + 文字」控件。
   （元素定位）、`header-open-dom-{light,dark}.html`。
 - 本轮纯 CSS（`host-desktop.css` 末尾新增 3 组规则 + 注释），无 TS 改动。
 
+## 0916 评论③（侧栏品牌行图标按钮 hover 底色：漏改补齐）（工作区未提交）
+
+**她的评论**：点 `svg.header-icon` @
+`#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div > span:nth-of-type(2) > button > svg`
+——「这里的是不是漏改了」。
+
+### 先把路径解析成元素（避免猜）
+
+在 8899 实测把该路径逐段解析（`CC02/probe-resolve-path-0916.mjs`）：命中
+`.desktop-sidebar-header > .desktop-sidebar-actions > span.tooltip-container:nth-of-type(2) > button.desktop-sidebar-more-btn`
+= **侧栏品牌行的「收起侧边栏」按钮**（span#1 是「活动」，两者同 class；她的 svg 带
+`header-icon`，所以是第 2 个）。全页 `svg.header-icon` 的按钮只有 3 个：活动/收起侧边栏、
+账户卡「收起用量」、对话头面板开关。
+
+### 结论：**是漏改**，漏的是 hover 底色（不是颜色、不是尺寸）
+
+上一轮已把 `.header-button:hover` / `.desktop-pane-close:hover` 的底色从
+`--vscode-toolbar-hoverBackground` 换到桌面 fill 角色，但**同排 `.desktop-sidebar-more-btn:hover`
+没跟着换**（`DesktopApp.css:146` 仍是工具栏 token）。逐族核对：
+
+| 同族控件                                             | hover 底（浅 / 深）                           | 状态              |
+| ---------------------------------------------------- | --------------------------------------------- | ----------------- |
+| `.desktop-sidebar-new-chat`（764/767）               | #EEF0F3 / 8% 白                               | 0916 已换         |
+| `.desktop-session-group-header`（700/704）           | #EEF0F3 / 8% 白                               | 0916 已换         |
+| `.account-card-more-btn`（801/804）                  | #EEF0F3 / 8% 白                               | 0916 已换         |
+| `.desktop-session-more-btn`（1671/1674）             | #EEF0F3 / 8% 白                               | 0916 已换         |
+| `.account-card-collapse-btn`                         | #EEF0F3 / `--cc-fill-hover` 深 #303436        | 已换              |
+| `.header-button` / `.desktop-pane-close`             | #EEF0F3 / 8% 白                               | 上一轮已换        |
+| **`.desktop-sidebar-more-btn`（活动 / 收起侧边栏）** | 改前 `rgba(0,0,0,.12)` / `rgba(90,93,94,.31)` | **漏 → 本轮补齐** |
+
+修法：把 `.desktop-sidebar-more-btn:not(.is-active):hover` 加入上一轮那两条规则
+（浅 `var(--cc-fill-hover, #eef0f3)` / 深 `rgba(255,255,255,.08)`）。
+`:not(.is-active)` 是为了保留「活动」选中态的品牌红底（`#FFEBE8` / 深色 18% 品牌红，
+`DesktopApp.css:153`、`:160`）。
+
+### 验证（`CC02/probe-verify-sidebar-hover-0916.mjs`）
+
+- **hover 底**：活动 / 收起侧边栏 浅 `rgb(238,240,243)` / 深 `rgba(255,255,255,.08)`
+  —— 与同排「新对话」「面板开关」**逐值相同**（= 刷新按钮口径）；改前实测
+  `rgba(0,0,0,.12)` / `rgba(90,93,94,.31)`。
+- **选中态不受影响**：「活动」`is-active` 浅 `#FFEBE8`（改前改后一致）、深
+  `color(srgb .757 .161 .180 / .18)`，hover 也保持品牌色（点击实测）。
+- **静止态零变化**：带键全量 DOM 快照（tag#id.class@index + 颜色 + 圆角 + 尺寸）对比
+  「注入旧 token 回退样式 vs 不注入」→ 浅 0 / 深 0 处真实差异（深色那 3 处是
+  `permission-mode-select` 过渡动画中途的 1/255 色差，与本轮无关）；基线连拍噪声 0。
+- **几何与图标色不变**：两组按钮均 24×24，x/y 未动；hover 图标色仍 #1F2329 / #FFFFFF。
+- **0 pageerror**；对照图 `CC02/走查/0916-头部图标/0916-侧栏图标-hover底色-对照.png`
+  （浅/深各「改前 / 改后」，4× 放大；裁剪区域像素差异浅 6.98% / 深 6.67%，全在按钮底色上）。
+- 证据 JSON：`header-fix-3-0916.json`（含选中态）、`header-icon-buttons-{light,dark}.json`
+  （全页 `svg.header-icon` 按钮枚举）。
+
+### 残留（同族但本轮未动，等她点名）
+
+`--vscode-toolbar-hoverBackground` 仍留在：`.toolbar-icon-button:hover`（工具行，
+`MessageInput.css:371`）、`.send-button:hover` / `.abort-button:hover`（128）、
+`.permission-mode-select:hover`（246）、`.btw-panel-close:hover`、`.queued-action-button:hover`、
+`.confirmation-close-btn:hover`、`.toast-close:hover`、`.desktop-panel-empty-item:hover`
+（`DesktopApp.css:1571`）、`.message-action-btn`（`Message.css:453`）等 —— 各自属不同面
+（工具行 / 消息流 / 弹层 / 空态），未在本族内。触发语：「工具行图标按钮 hover 底也统一」/
+「消息操作按钮 hover 底也统一」/「弹层关闭 hover 底也统一」。
+
 > ⚠️ 平行窗口提示：`docs/desktop-density-restore.md` 的工作区副本在另一窗口每次提交时会被
 > lint-staged 的「未暂存补丁还原」写回旧快照（已两次把已推送小节改回「（工作区未提交）」、
 > 表格退回未格式化版本）。提交本文件时必须**按 HEAD 内容 + 本人新增段构造 blob**（隔离索引 /

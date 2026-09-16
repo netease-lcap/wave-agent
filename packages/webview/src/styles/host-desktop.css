@@ -3232,7 +3232,19 @@
    不是桌面 fill 角色；刷新按钮（`.preview-pane-button:hover` @1697-1710）用
    浅 #EEF0F3（--cc-fill-hover）/ 深 8% 白。此处按刷新按钮逐值对齐，
    浅色档改成绑定 `--cc-fill-hover`。
- */
+
+   ③ 第三条评论（点 `svg.header-icon` @
+   `#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div
+   > span:nth-of-type(2) > button > svg`「这里的是不是漏改了」）——
+   该路径逐段解析到**侧栏品牌行的「收起侧边栏」按钮**（`.desktop-sidebar-more-btn`，
+   span#2；span#1 是「活动」）。查证：同排族的 hover 底在 0916 各轮已陆续换成
+   浅 #EEF0F3 / 深 8% 白 —— `.desktop-sidebar-new-chat`（764/767）、
+   `.desktop-session-group-header`（700/704）、`.account-card-more-btn`（801/804）、
+   `.desktop-session-more-btn`（1671/1674）、`.header-button`（见 ②），
+   **只剩 `.desktop-sidebar-more-btn:hover`（DesktopApp.css:146）还是 VS Code 工具栏
+   token**（实测浅 rgba(0,0,0,.12) / 深 rgba(90,93,94,.31)）→ 确实漏改，本处补齐。
+   `:not(.is-active)` 保留「活动」选中态的品牌红底（#FFEBE8 / 深色 18% 品牌红，
+   DesktopApp.css:153/160）。 */
 [data-host="desktop"] .header-button {
   color: #565a60;
 }
@@ -3241,10 +3253,14 @@
 }
 
 [data-host="desktop"] .header-button:hover,
-[data-host="desktop"] .desktop-pane-close:hover {
+[data-host="desktop"] .desktop-pane-close:hover,
+[data-host="desktop"] .desktop-sidebar-more-btn:not(.is-active):hover {
   background-color: var(--cc-fill-hover, #eef0f3);
 }
 [data-host="desktop"][data-theme="dark"] .header-button:hover,
-[data-host="desktop"][data-theme="dark"] .desktop-pane-close:hover {
+[data-host="desktop"][data-theme="dark"] .desktop-pane-close:hover,
+[data-host="desktop"][data-theme="dark"]
+  .desktop-sidebar-more-btn:not(.is-active):hover {
   background-color: rgba(255, 255, 255, 0.08);
 }
+
