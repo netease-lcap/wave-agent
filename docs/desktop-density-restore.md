@@ -3487,7 +3487,7 @@ CSS 与上表「初版」列一致：`.markdown-content a` 常态 `text-decorati
 - 第十四处的残留（其他设置页视图）与第十~十三处的残留不变。
 - 验证脚本：`CC02/probe-tabops-align-0915.mjs`、`CC02/probe-tabops-align-narrow-0915.mjs`、`CC02/probe-tabops-overflow-0915.mjs`、`CC02/probe-tab-underline-clip-0915.mjs`、`CC02/probe-tabscroll-keyboard-0915.mjs`、`CC02/audit-plugin-tabscroll-0915-axe.mjs`。
 
-## 0915 追加批 · 第十六处：设置页左导航「插件市场」图标按 skill 归一 + 设计师 Figma 版替换（工作区未提交）
+## 0915 追加批 · 第十六处：设置页左导航「插件市场」图标按 skill 归一 + 设计师 Figma 版替换（已随 0915 批推送）
 
 来源 = 设计走查对本页的追加评论（`svg.header-icon`，DOM `aside > nav > div:nth-of-type(3) > div > button:nth-of-type(1) > svg`，即左导航第三组「AI 与扩展」第一项「插件市场」）：「帮我把图标按照skill换一下 和其他图标保持一致」。后续她追加两条指示：「把插件市场图标保存为svg到桌面，我需要稍微调整一下」→ 我导出可编辑版 → 「保存到原位置了，替换一下就好」→ 按她的 Figma 导出替换。
 
@@ -3548,3 +3548,37 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 
 - 脚本：`CC02/probe-settings-navicon-0915.mjs`（DOM + 4× 导航截图，浅深两档）；步骤 2 采样用 `/tmp/probe-navicon-after.mjs`。
 - 证据目录 `CC02/走查/0915-插件市场/`：`navicon-{light,dark}-{before,after}.png`、`navicon-{light,dark}-lucide归一-vs-她的版本.png`、`navicon-0915-{before,after}.json`。
+
+## 0916 第 1 轮：右侧面板拖拽分隔线（`.panel-slot-drag-handle`）→ 2px 中间深两端浅的渐变细线（已随本批推送）
+
+用户 2026-09-16 预览评论（元素 `div.panel-slot-drag-handle`）：「拖拽界面宽度时会有个 hover 和选中都会变色的线，细一些 2px 左右、中间深两边浅的渐变，参考 codex 但比 codex 再明显一些，**只改线的样式不改功能和交互**」；同轮追加选定「**用 B**」= 浅色核心换次级灰 `#6C7076`、深色不变、两端降到 8%。
+
+### 改前 → 改后
+
+| 状态   | 改前                                                              | 改后                                                                                                             |
+| ------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| hover  | 整条 **6px 命中区实色填充**（浅 `#1F2329` / 深 `#A0A5A8`）        | **2px 细线 + 竖向渐变**：中间深两端浅，实色核心占 20%–80% 高度，两端淡出 **8%**；核心浅 `#6C7076` / 深 `#A0A5A8` |
+| 拖拽中 | 同上（`ChatApp.tsx` mousedown 写内联 `background`、mouseup 清空） | 同上（由既有的 `body.is-panel-resizing` 在 CSS 点亮——指针跑出命中区仍保持亮起）                                  |
+| 静止   | 无                                                                | 无（`opacity:0`，加 120ms 淡入）                                                                                 |
+
+实现：线画在 `.panel-slot-drag-handle::after`（`width:2px` / `left:50%` / `margin-left:-1px` / `pointer-events:none`），**6px 命中区原样保留**；取色走规则内局部变量 `--panel-drag-line: var(--cc-text-secondary, var(--vscode-focusBorder, #007fd4))`（插件端无 `--cc-*` 层时回落 host 焦点色，行为不变）。`ChatApp.tsx:2701` 只删掉 mousedown/mouseup 两处内联 `background` 写入，拖拽逻辑（宽度计算、`CHAT_MAIN_MIN_WIDTH` 守卫、全局光标锁定、webview 命中穿透）**零改动**。
+
+### 实测（用例 `desktop-full`，浅/深双主题，DPR2）
+
+- 线宽：12 设备像素（6 CSS px）→ **4 设备像素（2 CSS px）**；命中区 6px 不变。
+- 渐变（线上像素采样）：浅色 顶 `rgb(240,240,241)` → 中 `rgb(108,112,118)` → 底 `rgb(237,237,238)`；深色 `rgb(30,31,32)` → `rgb(160,165,168)` → `rgb(29,30,31)`。
+- 静止 `opacity:0`；hover 与拖拽中恒为 `1`（指针移出命中区 50px 仍亮）；0 pageerror。
+- 拖拽功能基线复核：用 `git stash` 抽出本轮改动重测改前代码，clientX 轨迹（528→478）、`is-panel-resizing` 类、`col-resize` 全局锁定、面板宽度**逐值相同**。
+- 说明：预览用例里整行只有 589px 宽，展开后一拖面板即落到 229px（对话列卡在 `CHAT_MAIN_MIN_WIDTH` 360px）——既有约束，改前改后一致，非本轮引入。
+
+### 残留（未授权，供后续点名；不在本轮范围）
+
+- 其它窗口/侧栏的拖拽分隔线是否统一成这条 2px 渐变线 —— 触发语 **「侧栏分隔线也统一」**。
+- 浅色核心若嫌偏浅/偏深：备选 **A** = 炭黑核心 `#1F2329` + 两端 20%（触发语「用 A」）；备选 **C** = 常规灰核心 `#565A60`/`#C4C7C9` + 两端 8%（触发语「用 C」）。深色下 A 与 B 同色。
+- skill 回写候选（交 codex 审）：拖拽分隔线可补一条实现陷阱 ——「**命中区与可视线必须分离**：命中区宽度决定拖拽手感（此处 6px），可视指示线画在伪元素上（2px）；若直接把 `:hover` 底色铺在命中区上，线会随命中区变粗，且拖拽期间 `:hover` 因指针跑出命中区而丢失，须由 `body.is-*-resizing` 之类的全局类点亮」。触发语 **「分隔线实现陷阱写进 skill」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/shots-draghandle-0916.mjs`（注入改前样式做同页对照 + 三态裁剪）、`CC02/variants-draghandle-0916.mjs`（强度档对照）、`CC02/verify-draghandle-fn-0916.mjs`、`CC02/verify-draghandle-drag-0916.mjs`、`CC02/build-draghandle-report-0916.py`。
+- 证据目录 `CC02/走查/0916-分隔线/`：`{light,dark}-{before,after}-{hover,drag}.png`、`zoom-*.png`（5× 线宽放大）、`cmp-*-ctx.png`（强度对照上下文）、`measure-0916.json`、走查页 `0916-分隔线-review.html`（Artifact https://codechat.codewave.163.com/code/artifact/b27xy4jugh）。
+- `pnpm -F wave-webview type-check` 全绿（退出码 0）；`oxlint` 对改动文件 0 error（仓库现有 2 error 在未跟踪的 `prototype/mockShared.ts`）。

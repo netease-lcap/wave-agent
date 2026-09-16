@@ -314,8 +314,9 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
 }
 
 .desktop-session-item--current .desktop-session-title {
-  /* 选中会话标题 medium（Figma 14/500） */
-  font-weight: 500;
+  /* 选中会话标题不加粗（0916 第 1 轮：选中态字重与未选中一致 400；
+     原为 Figma 14/500，用户走查改） */
+  font-weight: 400;
 }
 
 .desktop-session-title {
@@ -956,6 +957,10 @@ html[data-theme="dark"] .desktop-session-status-slot {
    「面板空态」场景 9). Spans the full slot height, tab strip included (评论：拖拽
    区域未覆盖标签区域 → top:0 from the slot top keeps the strip draggable). */
 .panel-slot-drag-handle {
+  /* 指示线取色（设计师 0916 选定「B」档）：桌面端 = --cc-text-secondary ——
+     浅色 #6C7076（次级灰，比炭黑柔和）、深色 #A0A5A8（与原 --cc-border-focus
+     同值，故深色观感不变）；插件端无 --cc-* 层，回落 host 焦点色。 */
+  --panel-drag-line: var(--cc-text-secondary, var(--vscode-focusBorder, #007fd4));
   position: absolute;
   left: -3px;
   top: 0;
@@ -965,9 +970,34 @@ html[data-theme="dark"] .desktop-session-status-slot {
   z-index: 10;
 }
 
-/* Visible affordance on hover, matching the pane separator style. */
-.panel-slot-drag-handle:hover {
-  background: var(--vscode-focusBorder, #007fd4);
+/* Visible affordance on hover / during the whole drag: a 2px hairline, darkest
+   at the vertical centre and fading toward both ends (设计师 0916 评论：细到
+   2px、中间深两边浅的渐变感，比 codex 明显一档；只改线的观感，不动 6px 命中
+   区与拖拽逻辑). Ends fade to 8% of the line colour. Painted as a pseudo-element
+   so the line never changes the hit area the drag relies on. */
+.panel-slot-drag-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--panel-drag-line) 8%, transparent) 0%,
+    var(--panel-drag-line) 20%,
+    var(--panel-drag-line) 80%,
+    color-mix(in srgb, var(--panel-drag-line) 8%, transparent) 100%
+  );
+}
+
+.panel-slot-drag-handle:hover::after,
+body.is-panel-resizing .panel-slot-drag-handle::after {
+  opacity: 1;
 }
 
 /* While dragging a panel handle, lock the cursor globally so it doesn't

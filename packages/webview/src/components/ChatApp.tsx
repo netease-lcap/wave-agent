@@ -2701,17 +2701,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const handleSlotResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
-      const handle = e.currentTarget as HTMLElement;
-      // Keep the handle lit + cursor locked for the whole drag — :hover and the
-      // 6px-only col-resize cursor both flicker as the pointer outruns the handle.
-      handle.style.background = "var(--vscode-focusBorder, #007fd4)";
+      // Cursor lock is global (.is-panel-resizing) so it doesn't flicker as the
+      // pointer outruns the 6px handle. The line itself is lit by CSS for the
+      // same class (DesktopApp.css: .panel-slot-drag-handle::after), so no
+      // inline background is needed here.
       document.body.classList.add("is-panel-resizing");
       const rect = panelSlotRef.current?.getBoundingClientRect();
       const onMove = (ev: MouseEvent) => {
         handlePanelWidthChange((rect?.right ?? 0) - ev.clientX);
       };
       const onUp = () => {
-        handle.style.background = "";
         document.body.classList.remove("is-panel-resizing");
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
