@@ -392,7 +392,12 @@ describe("MessageManager context injection and file reads", () => {
   });
 
   describe("nested memory collection", () => {
-    const memoryFile = path.join(workdir, "packages/foo/AGENTS.md");
+    // The walk resolves the workdir with `path.resolve`, which on Windows adds
+    // the cwd's drive letter — the fixture key has to be derived the same way.
+    const memoryFile = path.join(
+      path.resolve(workdir),
+      "packages/foo/AGENTS.md",
+    );
 
     beforeEach(() => {
       vi.mocked(fsPromises.readFile).mockImplementation(async (filePath) => {
