@@ -287,19 +287,74 @@ describe("bashTool", () => {
       );
     });
 
-    it("should validate timeout parameter", async () => {
+    it("advertises the same timeout maximum in the schema and the tool description", () => {
+      const parameterDescription = (
+        bashTool.config.function.parameters as {
+          properties: { timeout: { description: string } };
+        }
+      ).properties.timeout.description;
+      const toolDescription = bashTool.prompt?.() ?? "";
+
+      // The ceiling the model reads must be the real one (600000 / 10 minutes),
+      // not the default (120000 / 2 minutes). See docs/specs/core/bash-tools.md.
+      expect(parameterDescription).toContain("max 600000");
+      expect(toolDescription).toContain("up to 600000ms / 10 minutes");
+      expect(toolDescription).toContain("after 120000ms (2 minutes)");
+    });
+
+    it("should accept a timeout above the advertised maximum", async () => {
+      // An upper bound is deliberately not enforced — matching Claude Code,
+      // which leaves the type check to its schema and applies whatever value
+      // the model sends. See docs/specs/core/bash-tools.md.
+      const mockProcess = {
+        pid: 1234,
+        stdout: {
+          on: vi.fn((event, callback) => {
+            if (event === "data") {
+              setTimeout(() => callback(Buffer.from("test output")), 10);
+            }
+          }),
+        },
+        stderr: {
+          on: vi.fn(),
+        },
+        on: vi.fn((event, callback) => {
+          if (event === "exit") {
+            setTimeout(() => callback(0), 20);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
       const result = await bashTool.execute(
         {
           command: "echo hello",
-          timeout: 700000, // Exceeds max timeout
+          timeout: 900000, // Above the advertised 600000 maximum
         },
         context,
       );
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe(
-        "Timeout must be a number between 0 and 600000 milliseconds",
-      );
+      expect(result.success).toBe(true);
+      expect(result.content).toBe("test output");
+    });
+
+    it("should reject a non-numeric or negative timeout", async () => {
+      const expectRejected = async (timeout: unknown) => {
+        const result = await bashTool.execute(
+          { command: "echo hello", timeout },
+          context,
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe(
+          "Timeout must be a non-negative number of milliseconds",
+        );
+      };
+
+      await expectRejected("abc");
+      await expectRejected(-1);
     });
 
     it("should handle command failure", async () => {
