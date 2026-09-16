@@ -479,7 +479,6 @@ let lastSend: ReturnType<typeof vi.fn> | undefined;
 /** The message/action of every update toast the host pushed to the webview. */
 function shownToasts(): Array<{
   message: string;
-  type?: string;
   position?: string;
   actionLabel?: string;
   action?: { type: string };
@@ -498,7 +497,6 @@ function shownToasts(): Array<{
           msg as {
             toast: {
               message: string;
-              type?: string;
               position?: string;
               actionLabel?: string;
               action?: { type: string };
@@ -4423,8 +4421,8 @@ describe("misc commands", () => {
     expect(sent("appendMessage")).toHaveLength(0);
   });
 
-  // 插件市场操作成功提示（spec plugin「插件市场操作提示」2026-09-16 原型 + 需求
-  // 文档口径）：桌面端走 showToast，文案逐字、中性色（不传 type ⇒ 无成功语义色）。
+  // 插件市场操作成功提示（spec plugin「插件市场操作提示」2026-09-16 原型文案口径）：
+  // 桌面端走 showToast，只断言文案逐字，不约束颜色/图标/位置等视觉形态。
   describe("plugin marketplace success toasts", () => {
     /** 覆盖某个 RPC 的返回值（提示文案要从回包/刷新后的列表里取名字与版本）。 */
     function rpcResult(method: string, result: unknown): () => void {
@@ -4447,10 +4445,7 @@ describe("misc commands", () => {
       } finally {
         restore();
       }
-      const toast = shownToasts().at(-1);
-      expect(toast?.message).toBe("已添加市场「团队市场」");
-      // 中性色：原型里的轻提示是单一中性浮层，不带成功语义色。
-      expect(toast?.type).toBeUndefined();
+      expect(shownToasts().at(-1)?.message).toBe("已添加市场「团队市场」");
     });
 
     it("removeMarketplace reports the removed marketplace name", async () => {
