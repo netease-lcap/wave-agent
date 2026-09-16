@@ -481,6 +481,10 @@ export default {
               link: "/sdk#skill-deep-research",
             },
             { text: "artifact — 发布可分享网页", link: "/sdk#skill-artifact" },
+            {
+              text: "wave-daemon — 后台会话委托",
+              link: "/sdk#skill-wave-daemon",
+            },
           ],
         },
         {

@@ -1199,6 +1199,15 @@ await agent.triggerWorktreeRemoveHook("/path/to/worktree");
 - **使用方式**: `/artifact` 或 `/artifact <文件路径>`
 - **特性**: 与 [Artifact 工具](#tool-artifact) 同 gate（`enableArtifact`），禁用时不注册；声明 `disable-model-invocation: true`，仅人工触发、模型不可自动调用。技能内容仅指示模型调用 `Artifact` 工具——无参数时由模型根据对话上下文推断要发布的文件（不确定则询问用户），带参数时经 `$ARGUMENTS` 原样透传给工具的 `file_path`；发布 / 校验 / 权限确认 / 会话映射全部由工具完成，技能不含也不绕过这些逻辑。
 
+### wave-daemon — 后台会话委托 {#skill-wave-daemon}
+
+将开发 / 调研类长任务委托给后台 daemon 会话执行（无 UI 窗口，客户端断开后继续生成），并覆盖中断、改范围、监控、权限审批与收尾的完整委托流程。
+
+- **名称**: `wave-daemon`
+- **使用方式**: 由模型在需要委托长任务时自动调用，无需用户手动触发
+- **要点**: 会话经 `wave daemon create --worktree` 建立在隔离 worktree 中，默认 `bypassPermissions`（不产生审批）；`wave daemon send` 默认异步派单，进度与最终汇报用 `wave daemon status [--lines N]` 查看；子命令语法细节见 [Daemon 客户端命令](cli.md#daemon-commands)
+- **主要经验**: 被中断的 `send` 不等于消息没送达（先 `status` 复核再决定是否重发）；改范围先 `abort`；审批刷屏的根因是 daemon 进程重启后权限模式回落，用 `respond <id> --allow --mode bypassPermissions` 一步恢复；`destroy --remove-worktree` 是两步操作，中断会部分执行
+
 ## 13. 内置 Subagents {#builtin-subagents}
 
 ### Bash — 命令执行 {#subagent-bash}
