@@ -2324,14 +2324,14 @@
    #EEF0F3，图标色保持不变。设置页 7 导航 + 返回按钮已由 codicon 字体
    替换为 Figma 导出 SVG（HeaderIcons Settings*Icon），此处统一图标色：
    light #565A60 / dark #9A9EA5（wave 深色惯例），选中项保持同色（codechat
-   settings-nav-item 选中只变文字与底，图标不动）。 */
+   settings-nav-item 选中只变文字与底，图标不动）。
+   ⚠️ `.settings-back svg` 已于 0916 按设计师指示（「返回图标也提亮」）从本组
+   摘出，改由下方「返回」块提到 1 级色；本组只剩导航项图标。 */
 
-[data-host="desktop"] .settings-nav-item svg,
-[data-host="desktop"] .settings-back svg {
+[data-host="desktop"] .settings-nav-item svg {
   color: #565a60;
 }
-[data-host="desktop"][data-theme="dark"] .settings-nav-item svg,
-[data-host="desktop"][data-theme="dark"] .settings-back svg {
+[data-host="desktop"][data-theme="dark"] .settings-nav-item svg {
   color: #9a9ea5;
 }
 
@@ -2373,6 +2373,30 @@
 [data-host="desktop"] .settings-back {
   min-height: 30px;
   border-radius: 8px;
+}
+
+/* 设计师 0916 评论（点左导航 `span`「返回」）「这里用1级字色且加粗」：
+   文字从 base 的「次要说明」档（`.settings-back` @SettingsPage.css:108 取
+   `--vscode-descriptionForeground`）提到 **1 级文字色**。
+   取值 = 与本面板同栏 1 级文字逐值一致（`.settings-nav-item` @SettingsPage.css:186
+   同取 `--vscode-foreground`）：浅色档该变量由宿主注入 = #202020，深色档由
+   dark 块的映射（:root[data-host="desktop"][data-theme="dark"] --vscode-foreground
+   → --cc-text-primary = #E5E7E8）给出 → 两档都与导航项默认态同值，且随宿主主题
+   自适应（不写死字面量）。
+   同日追加两条（她点名）：① **「返回图标也提亮」** → 左箭头 SVG 随文案提到同一
+   1 级色（原按第三十八轮图标规范留 #565A60 / #9A9EA5，本轮从该组摘出单列；同栏
+   7 个导航项图标仍留灰档未动）；② **「返回字重改回 500」** → 600 → 500
+   （`--cc-font-weight-medium`）。
+   盒 215×30 / r8 / 字号 14 / hover 底色 / 图标几何均未动。副作用（已报备）：
+   hover 的文字色变化消失（hover 原为 浅 #202020 / 深 #E5E7E8，与新静止色同值），
+   悬停只剩底色变化。 */
+[data-host="desktop"] .settings-back {
+  color: var(--vscode-foreground);
+  font-weight: var(--cc-font-weight-medium, 500);
+}
+[data-host="desktop"] .settings-back svg,
+[data-host="desktop"][data-theme="dark"] .settings-back svg {
+  color: var(--vscode-foreground);
 }
 
 /* 桌面端其余控件图标统一 #565A60（同一图标规范；base 各按钮继承

@@ -4218,3 +4218,93 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 - 脚本：`CC02/probe-close-buttons-0916.mjs`（`PHASE=before|after`，computed 读数含图标 viewBox / `path d` 长度 / 墨迹依赖的 rect + 裁切图）、`CC02/build-close-buttons-0916.py`（差异像素 + 墨迹 bbox + 6× 放大 + 差异图 + 本页）、`/tmp/gate-check-0916.mjs`（宿主分叉验证）。
 - 证据目录 `CC02/走查/0916-关闭按钮族/`：`measure-{before,after}.json`、`{key}-{theme}-{rest,hover}-{before,after}.png`、`zoom-*`、`diffmap-*`、`gate-check-desktop-vs-ide.png`，自测页 `0916-关闭按钮族-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/wjwh6vzelp ）。
 - `pnpm -F wave-webview type-check` 通过（本轮含 2 个 TSX 改动）。
+
+---
+
+## 0916 评论（设置页左导航「返回」：1 级字色 + 图标同 1 级 + 字重 500）（已随本批推送）
+
+设计师（点 `#root > div:nth-of-type(1) > div > div > aside > button.settings-back > span`）：
+「这里用1级字色且加粗」；同日追加两条：**「返回图标也提亮」**、**「返回字重改回 500」**。
+
+### 实现
+
+- `packages/webview/src/styles/host-desktop.css` —— 「设置栏返回行」块后追加：
+
+```css
+/* 设计师 0916 评论（点左导航 `span`「返回」）「这里用1级字色且加粗」 */
+[data-host="desktop"] .settings-back {
+  color: var(--vscode-foreground);
+  font-weight: var(--cc-font-weight-medium, 500);
+}
+/* 同日「返回图标也提亮」：SVG 随文案取同一 1 级色 */
+[data-host="desktop"] .settings-back svg,
+[data-host="desktop"][data-theme="dark"] .settings-back svg {
+  color: var(--vscode-foreground);
+}
+```
+
+- 同时把第三十八轮「设置页图标统一 `#565A60` / `#9A9EA5`」组里的 `.settings-back svg` **摘出单列**
+  （删掉那条选择器，只留 `.settings-nav-item svg`），避免同特异性规则互相压制。
+
+### 取值口径
+
+- **文字色**从 base 的「次要说明」档（`SettingsPage.css:108` 取 `--vscode-descriptionForeground`：
+  浅 #606060 / 深 #A0A5A8）提到 **1 级文字色**。取 `--vscode-foreground`，因为设置左导航的
+  1 级参照物 `.settings-nav-item`（`SettingsPage.css:186`）同取该变量：浅色档该变量由宿主注入 =
+  #202020，深色档由 dark 块映射（`:root[data-host="desktop"][data-theme="dark"]`
+  `--vscode-foreground → --cc-text-primary` = #E5E7E8）给出 ⇒ 两档都与同栏导航项默认态**逐值一致**，
+  且随宿主主题自适应（不写死字面量）。
+- **图标色**原按第三十八轮图标规范留灰档（浅 #565A60 / 深 #9A9EA5），同日按「返回图标也提亮」改取
+  同一个 `var(--vscode-foreground)`（= 与文案同色；浅 #202020 / 深 #E5E7E8）。
+- **字重**先按「加粗」做到 600（`--cc-font-weight-semibold`），同日按「返回字重改回 500」回落 500
+  （`--cc-font-weight-medium`）。
+- 作用域限 `[data-host="desktop"]`；实测宿主切 `ide` 后浅 #606060 / 深 #9D9D9D、字重 500 不变
+  ⇒ IDE / VS Code 观感零回归。
+
+### 实测（改前 → 改后，1440×900 DPR2）
+
+| 项                     | 改前                                           | 改后                                                                                                                           |
+| ---------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 文案色（浅 / 深）      | #606060 / #A0A5A8，字重 500                    | **#202020 / #E5E7E8**，字重 **500**（v1 曾按「加粗」做 600，同日按她「改回 500」回落）                                         |
+| 同栏导航项（1 级参照） | #202020 / #E5E7E8                              | 同左（未受影响）                                                                                                               |
+| 图标                   | 浅 #565A60 / 深 #9A9EA5 · 16×16 · `path d` 442 | **浅 #202020 / 深 #E5E7E8**（同日按「图标也提亮」，几何未动）                                                                  |
+| 按钮盒 / 圆角 / 字号   | 215×30 · r8 · 14px                             | 同左                                                                                                                           |
+| 文案盒                 | 28×16（单行）                                  | 28×16（单行，无位移、无换行）                                                                                                  |
+| hover 底色             | 浅 #EEF0F3 / 深 rgba(255,255,255,.08)          | 同左                                                                                                                           |
+| 像素差异               | —                                              | 4 场景 1.313~1.315%（1077~1079 设备像素），包围盒 `[45,24,142,51]` **覆盖图标区 + 文字区**（v1 只改文案时是 `[89,24,142,52]`） |
+| 控制台                 | 0 pageerror                                    | 0 pageerror                                                                                                                    |
+
+副作用（已报备）：① hover 的文字色变化消失 —— base hover 取 `--vscode-foreground`（浅 #202020 / 深 #E5E7E8）
+与新静止色同值，悬停只剩底色变化；② 返回图标现在比同栏 7 个导航项图标亮/深一档（那些仍是灰档）。
+
+### 同日追加两条（她点名）
+
+- **「返回图标也提亮」** → 左箭头 SVG 从第三十八轮图标组（#565A60 / #9A9EA5）**摘出单列**，
+  改取 `var(--vscode-foreground)`（= 与文案同色，浅 #202020 / 深 #E5E7E8）；第三十八轮那组
+  现在只剩 `.settings-nav-item svg`（7 个导航项图标仍留灰档）。
+- **「返回字重改回 500」** → 600 → 500（`--cc-font-weight-medium`）。
+- 追加后实测（原始基线 → v1 → v2）：文案 浅 #606060/500 → #202020/600 → **#202020/500**、
+  深 #A0A5A8/500 → #E5E7E8/600 → **#E5E7E8/500**；图标 浅 #565A60 → #565A60 → **#202020**、
+  深 #9A9EA5 → #9A9EA5 → **#E5E7E8**。像素差异（原始 vs 本版）1.313~1.315%，
+  包围盒起点 `x=45`（设备像素）**覆盖箭头图标区**（v1 时是 `x=89` 纯文字区）⇒ 图标确随文案提亮；
+  图标几何 16×16 / `path d` 442 未变，按钮盒 215×30 r8、卡片 712×176、导航项 8 个、
+  导航项文案与图标、hover 底色全部零变动，0 pageerror。
+
+### 残留（未授权，供你点名）
+
+- 7 个导航项图标仍是灰档 → 触发语 **「导航项图标也一起提亮」**。
+- hover 文字反差消失 → 触发语 **「hover 文字再提亮一档」**（需契约新增比 1 级更亮的悬停档）。
+- 浅色取的是宿主值 #202020（与同栏导航项一致），与 token `--cc-text-primary` 差 1 通道 →
+  触发语 **「浅色用 token #1F2329」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-settingsback-color-0916.mjs`（现状取证，含同页 1 级参照物采集）、
+  `/tmp/pw-0916/sb2.mjs`（改前注入对照 + 改后实测，浅/深 × 静止/hover）、
+  `/tmp/pw-0916/sb-gate.mjs`（宿主 `ide` 分叉验证）、`CC02/build-settingsback-0916.py`（差异像素 + 墨迹 bbox + 6× 放大）、
+  `CC02/build-settingsback-page-0916.py`（本页）。
+- 证据目录 `CC02/走查/0916-返回按钮字色/`：`measure.json`、`measure-rest.json`、`pixel-report.json`（v1 对基线）、
+  `measure-v2.json`、`pixel-report-v2.json`、`trio-*.png`（三版竖排：原始 / v1 / v2）、
+  `back-{light,dark}-{rest,hover}-{before,after}.png`、`v2-{light,dark}-{rest,hover}-{before,after}.png`、
+  `sbs-*`、`zoom-*`、`diffmap-*`，
+  自测页 `0916-返回按钮字色-修复自测.html`（v2，含三版对照；Artifact https://codechat.codewave.163.com/code/artifact/h04fk95l2b ）。
