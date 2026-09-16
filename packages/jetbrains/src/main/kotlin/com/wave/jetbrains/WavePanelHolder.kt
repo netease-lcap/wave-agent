@@ -100,6 +100,20 @@ class WavePanelHolder(private val project: Project) {
         openPlanTab(p.tabId, PlanPreviewBuilder.buildHtml(planContent))
     }
 
+    /**
+     * Refreshes the content of an ALREADY-OPEN plan tab for [session] (spec: 计划文件更新后刷新计划面板).
+     * Never creates the tab — a closed plan preview stays closed, so the model writing the plan file
+     * mid-planning does not pop the tab open (unlike [showPlanPreview]).
+     */
+    fun refreshPlanPreview(session: WaveSession, planContent: String) {
+        val p = panel ?: return
+        if (!p.belongsTo(session)) return
+        val editor = planEditors[p.tabId] ?: return
+        val html = PlanPreviewBuilder.buildHtml(planContent)
+        val update = { editor.showPlan(html) }
+        if (SwingUtilities.isEventDispatchThread()) update() else Edt.invokeLater(update)
+    }
+
     /** Registers a plan editor once its tab is created (called from WavePlanFileEditor.init). */
     fun registerPlanEditor(planId: String, editor: WavePlanFileEditor) {
         planEditors[planId] = editor

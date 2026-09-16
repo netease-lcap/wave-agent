@@ -1054,6 +1054,13 @@ export class DesktopHost {
             paneId,
           });
       },
+      onPlanFileUpdated: (content: string) => {
+        // Plan panel live refresh (spec: 计划文件更新后刷新计划面板) — the pane
+        // updates only if it is already open on the webview side.
+        const paneId = paneIdOf();
+        if (paneId)
+          this.postMessage({ command: "planFileUpdated", content, paneId });
+      },
       onUserMessageAdded: (message: Message) => {
         // Keep the cache mirroring the server (no messagesChange snapshot
         // arrives anymore) — feeds FR-024 title + idle checks.

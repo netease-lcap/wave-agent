@@ -17,7 +17,9 @@ import {
   collectAnnouncedServers,
 } from "../utils/mcpInstructions.js";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import * as path from "node:path";
+import { EDIT_TOOL_NAME, WRITE_TOOL_NAME } from "../constants/tools.js";
 import type {
   GatewayConfig,
   ModelConfig,
@@ -149,6 +151,12 @@ export interface AIManagerCallbacks {
   onCompactionReasoningUpdate?: (content: string) => void;
   onUsageAdded?: (usage: Usage) => void;
   onCwdChange?: (newCwd: string) => void;
+  /**
+   * Full plan-file content after a successful `Write`/`Edit` of the plan file
+   * (spec: 计划文件更新后刷新计划面板). Inherited from AgentCallbacks via the
+   * spread in container setup.
+   */
+  onPlanFileUpdated?: (content: string) => void;
 }
 
 export interface AIManagerOptions {
@@ -2572,6 +2580,11 @@ ${question}`;
         timestamp: Date.now(),
       });
 
+      // Plan panel refresh (spec: 计划文件更新后刷新计划面板): a successful
+      // Write/Edit of the plan file broadcasts the new content so hosts can
+      // update an already-open plan panel without waiting for ExitPlanMode.
+      await this.notifyPlanFileUpdate(toolName, toolArgs, toolResult.success);
+
       // Execute PostToolUse hooks after successful tool completion
       await this.executePostToolUseHooks(
         toolId,
@@ -2594,6 +2607,44 @@ ${question}`;
         compactParams,
         timestamp: Date.now(),
       });
+    }
+  }
+
+  /**
+   * Plan panel refresh (spec: 计划文件更新后刷新计划面板).
+   *
+   * When a successful `Write`/`Edit` targets the current plan file, read it and
+   * emit the full content so hosts can update an already-open plan panel. The
+   * path comparison mirrors the plan-mode allow branch in PermissionManager so
+   * "the write that was allowed" and "the write that refreshes the panel" stay
+   * the same set. The path is only set while plan mode is active, so post-exit
+   * writes can't reach the panels.
+   */
+  private async notifyPlanFileUpdate(
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    success: boolean,
+  ): Promise<void> {
+    if (!success) return;
+    if (toolName !== WRITE_TOOL_NAME && toolName !== EDIT_TOOL_NAME) return;
+
+    const targetPath = toolArgs.file_path;
+    if (typeof targetPath !== "string" || targetPath.trim() === "") return;
+
+    const planFilePath = this.container
+      .get<PermissionManager>("PermissionManager")
+      ?.getPlanFilePath();
+    if (!planFilePath) return;
+    if (path.resolve(targetPath) !== path.resolve(planFilePath)) return;
+
+    try {
+      const content = await readFile(planFilePath, "utf8");
+      this.callbacks?.onPlanFileUpdated?.(content);
+    } catch (error) {
+      logger?.warn(
+        `Failed to read plan file for panel refresh: ${planFilePath}`,
+        error,
+      );
     }
   }
 

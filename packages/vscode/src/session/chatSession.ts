@@ -27,6 +27,8 @@ export interface ChatSessionCallbacks {
   onContextUsage?: (percent: number) => void;
   onCompactionStateChange?: (isCompacting: boolean) => void;
   onCompactionContentUpdate?: (content: string) => void;
+  /** Full plan-file content after the model writes it (spec: 计划文件更新后刷新计划面板). */
+  onPlanFileUpdated?: (content: string) => void;
   onQueueChange: (queue: QueuedMessage[]) => void;
   onCommandRunningChange: (running: boolean) => void;
   onPermissionModeChange: (mode: PermissionMode) => void;
@@ -135,6 +137,9 @@ export class ChatSession {
         },
         onCompactionContentUpdate: (content: string) => {
           this.callbacks.onCompactionContentUpdate?.(content);
+        },
+        onPlanFileUpdated: (content: string) => {
+          this.callbacks.onPlanFileUpdated?.(content);
         },
         onUserMessageAdded: (message: Message) => {
           this.callbacks.onUserMessageAdded?.(message);
