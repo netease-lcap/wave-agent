@@ -277,12 +277,13 @@
 }
 
 /* 工具行图标按钮：22px → 32px（codechat composer-icon-button 32×32），
-   圆角 4px → 6px；图标保持 16px；Figma 图标色 #565A60（base 用 vscode
-   icon-foreground 偏暗） */
+   圆角 4px → 6px → 8px（设计师 0916 评论②：工具行内控件圆角统一 8px，
+   与发送按钮同档；走 --cc-radius-md）；图标保持 16px；Figma 图标色 #565A60
+   （base 用 vscode icon-foreground 偏暗） */
 [data-host="desktop"] .toolbar-icon-button {
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: var(--cc-radius-md, 8px);
   color: #565a60;
 }
 [data-host="desktop"] .toolbar-icon-button:hover {
@@ -338,7 +339,9 @@
    仅「跳过权限确认」为 danger 红 #D92D20（codechat is-danger）。
    第二十轮：固定宽度 112px + 居中（codechat .permission-button width:112px
    justify-content:center）、无 caret（codechat 权限按钮只有 icon+label，
-   chevron 仅 contextbar picker 有） */
+   chevron 仅 contextbar picker 有）。
+   0916 评论②：圆角按设计师指示统一到 8px（原继承 base 的 6px），与工具行
+   其余控件（图标按钮 / 发送按钮）同档，走 --cc-radius-md */
 [data-host="desktop"] .permission-mode-select {
   font-size: 14px;
   min-height: 32px;
@@ -346,6 +349,7 @@
   padding: 0;
   justify-content: center;
   gap: 6px;
+  border-radius: var(--cc-radius-md, 8px);
   color: #565a60;
   white-space: nowrap;
   box-sizing: border-box;

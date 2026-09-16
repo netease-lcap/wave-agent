@@ -3634,3 +3634,42 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 - 脚本：`CC02/verify-fontweight-0916.mjs`（同页回退对照 + 计算值/盒尺寸表）、`CC02/shots-fontweight-0916.mjs`（前后裁剪图 + 面板 tab 级联校验）。
 - 证据目录 `CC02/走查/0916-字重/`：`dark-{before,after}-{nav-session,menu-permission,menu-account,nav-settings}.png`、`verify.json`。
 - 本轮无 TS 改动（纯 CSS 字重），未跑 type-check。
+
+## 0916 第 3 轮：输入工具行（`.input-buttons-row`）控件圆角统一 8px（评论②）（已随本批推送）
+
+用户 2026-09-16 预览评论（元素 `div.input-buttons-row`「修改前询问发送」）：「这里的元素圆角统一成 8px，现在有些 6px 的」。口径 = 工具行内控件圆角收成同一档 **8px**（原 6px 一档的来源不同：图标按钮是桌面端覆盖值、权限选择器是继承基座值），**只改圆角，不动尺寸 / 配色 / 间距 / 交互**。
+
+### 改前 → 改后（桌面端 `[data-host="desktop"]` 计算值）
+
+| 控件（工具行内）                     | 改前                                                   | 改后                                    |
+| ------------------------------------ | ------------------------------------------------------ | --------------------------------------- |
+| 工具行图标按钮（添加 / 快捷指令）    | `6px`（base 4px → 桌面端覆盖 6px，`host-desktop.css`） | **`8px`**（`var(--cc-radius-md, 8px)`） |
+| 权限模式选择器（修改前询问）         | `6px`（继承 base `MessageInput.css:219`）              | **`8px`**（显式落到本节规则上）         |
+| 发送 / 停止按钮（`.ai-send-btn` 等） | `8px`（与 Figma 一致）                                 | `8px`（本轮未动）                       |
+
+实现：`host-desktop.css` 里 `.toolbar-icon-button` 的 `border-radius: 6px` → `var(--cc-radius-md, 8px)`（并在上方注释标明 4 → 6 → 8 的沿革与依据），`.permission-mode-select` 规则内新增 `border-radius: var(--cc-radius-md, 8px);` 一行 + 依据注释。两处均只写桌面端语义层，**基座文件（`MessageInput.css`）不动，插件端不受影响**。注意 `--cc-radius-md` 在本仓库**没有变量定义**（它是 skill 契约里的角色名），实际生效值来自 `var()` 的字面量兜底 `8px`——与既有写法一致。
+
+### 实测（用例 `desktop-full` / `desktop-new-chat`，浅/深双主题，DPR2，共 8 组）
+
+- 计算值：图标按钮 `6px → 8px`、权限选择器 `6px → 8px`、发送按钮恒 `8px`，8 组场景**逐组命中**。
+- 盒尺寸零变化：图标按钮 `32×32`、权限选择器 `112×32`、发送按钮 `32×32`（前后逐值相同）；工具行高 `32px`、12px 内衬、间距未动。
+- hover 面零变化（背景非本轮目标，用于确认没连带改色）：浅色图标行 `rgb(240,242,245)`、浅色权限 `rgb(238,240,243)`、深色两者 `rgba(255,255,255,0.08)`，前后一致。
+- `0 pageerror / 0 console error`；before/after 裁切图尺寸逐张一致。
+- **取证踩坑（供后续复用）**：这三个控件静止态 `background: transparent`，权限选择器连描边也透明 —— 直接截静止态，改前/改后两张图**逐字节相同**（第一版 md5 一致才发现），必须**逐个 hover 后再裁剪**才能看见圆角。
+
+### 残留（未授权，供后续点名；不在本轮范围）
+
+- 弹出层圆角仍是各自口径 —— `.permission-mode-menu` 权限下拉 `4px`、`.tooltip-box` 气泡 `2px`（`.plus-menu` 已是 8px）→ 触发语 **「下拉与气泡圆角也统一」**。
+- 插件端（VS Code / JetBrains）同名控件仍是基座的 `4px` / `6px`（本轮只改桌面端 host 层）→ 触发语 **「插件端也统一」**。
+- 工具行之外、同一面板里的其它 6px 控件（如会话列表行内按钮等）未动 → 触发语 **「面板内其余 6px 也统一 8」**。
+- skill 回写候选（交 codex 审）：工具行内控件的圆角档位建议在契约里写明「同一工具行内的可点控件共用一档圆角（8px / `--cc-radius-md`）」，避免出现「图标按钮走覆盖值 6px、选择器继承基座 6px、发送按钮 8px」这种同排三来源 → 触发语 **「工具行圆角口径写进 skill」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-inputrow-radius-0916.mjs`（8 组场景 computed + 盒尺寸 + hover 裁切图）、`CC02/build-inputrow-report-0916.py`（走查页）、`CC02/shot-report2-0916.mjs`（复核截图）。
+- 证据目录 `CC02/走查/0916-输入行圆角/`：`hover-{toolbar,perm,send}-{light,dark}-{desktop-full,desktop-new-chat}-{before,after}.png`（含 `-z2` 2× 放大版）、`row-*.png` / `zoom-*.png` / `half-*.png`、`measure-0916-inputrow.json`、走查页 `0916-输入行圆角-review.html`（Artifact https://codechat.codewave.163.com/code/artifact/3mowwjf1rt）。
+- `pnpm -F wave-webview type-check` 退出码 0（本轮纯 CSS，无 TS 改动）。
+
+### 并行窗口说明
+
+本批提交**只取本窗口（评论②）的内容**：`host-desktop.css` 的 3 条 hunk（`:277-289` 图标按钮、`:336-352` 权限选择器）用**共享索引里已暂存的快照**提交；`docs/desktop-density-restore.md` 用「HEAD 版本 + 本节」组装的 blob 写入索引（`git update-index --cacheinfo`），因此**同一文件里另一窗口在途的「账户热区 hover 审计」小节与 `host-desktop.css` 的 `:750-752` / `:764-766` 两条 hunk 均未进入本提交**，仍留在工作区。与本轮同批推送的第 2 轮（字重 400）由另一窗口独立提交。
